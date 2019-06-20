@@ -1,0 +1,10 @@
+run:
+  deadline: 60m
+  skip-dirs:
+    - "internal"
+
+linters:
+  enable-all: true
+
+output:
+  format: colored-line-number

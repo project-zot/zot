@@ -1,0 +1,47 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "auth.go",
+        "config.go",
+        "controller.go",
+        "errors.go",
+        "log.go",
+        "routes.go",
+    ],
+    importpath = "github.com/anuvu/zot/pkg/api",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//docs:go_default_library",
+        "//errors:go_default_library",
+        "//pkg/storage:go_default_library",
+        "@com_github_gin_gonic_gin//:go_default_library",
+        "@com_github_opencontainers_distribution_spec//:go_default_library",
+        "@com_github_opencontainers_image_spec//specs-go/v1:go_default_library",
+        "@com_github_rs_zerolog//:go_default_library",
+        "@com_github_swaggo_gin_swagger//:go_default_library",
+        "@com_github_swaggo_gin_swagger//swaggerFiles:go_default_library",
+        "@org_golang_x_crypto//bcrypt:go_default_library",
+    ],
+)
+
+go_test(
+    name = "go_default_test",
+    timeout = "short",
+    srcs = [
+        "controller_test.go",
+        "routes_test.go",
+    ],
+    data = [
+        "//:exported_testdata",
+    ],
+    embed = [":go_default_library"],
+    race = "on",
+    deps = [
+        "@com_github_opencontainers_go_digest//:go_default_library",
+        "@com_github_opencontainers_image_spec//specs-go/v1:go_default_library",
+        "@com_github_smartystreets_goconvey//convey:go_default_library",
+        "@in_gopkg_resty_v1//:go_default_library",
+    ],
+)

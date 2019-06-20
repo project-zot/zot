@@ -1,0 +1,7 @@
+{
+  "printf": {
+    "exclude_files": {
+      "/vendor/": "no need to vet third party code"
+    }
+  }
+}

@@ -1,0 +1,19 @@
+---
+version:
+  0.1.0-dev
+storage:
+  rootDirectory: /tmp/zot
+http:
+  address: 127.0.0.1
+  port: 8080
+  realm: zot
+  tls:
+    cert: test/data/server.crt
+    key: test/data/server.key
+  auth:
+    htpasswd:
+      path: test/data/htpasswd
+    failDelay: 5
+log:
+  level: debug
+  output: /tmp/zot.log
