@@ -1,0 +1,14 @@
+language: go
+
+matrix:
+  include:
+    - os: linux
+
+notifications:
+  email: false
+
+install:
+  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then wget -N https://github.com/bazelbuild/bazel/releases/download/0.26.1/bazel-0.26.1-installer-linux-x86_64.sh && chmod +x bazel-0.26.1-installer-linux-x86_64.sh && ./bazel-0.26.1-installer-linux-x86_64.sh --user; fi
+
+script:
+  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; make && make -f Makefile.bazel build; fi
