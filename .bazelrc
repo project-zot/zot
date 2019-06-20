@@ -1,0 +1,7 @@
+build --workspace_status_command .bazel/print-workspace-status.sh 
+build --action_env=GO111MODULE=on
+
+test --test_output=errors
+test --test_verbose_timeout_warnings
+
+coverage --test_output=summary  --keep_going --collect_code_coverage --combined_report=none 
