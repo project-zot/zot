@@ -1,0 +1,27 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["root.go"],
+    importpath = "github.com/anuvu/zot/pkg/cli",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//errors:go_default_library",
+        "//pkg/api:go_default_library",
+        "//pkg/storage:go_default_library",
+        "@com_github_mitchellh_mapstructure//:go_default_library",
+        "@com_github_opencontainers_distribution_spec//:go_default_library",
+        "@com_github_rs_zerolog//log:go_default_library",
+        "@com_github_spf13_cobra//:go_default_library",
+        "@com_github_spf13_viper//:go_default_library",
+    ],
+)
+
+go_test(
+    name = "go_default_test",
+    timeout = "short",
+    srcs = ["root_test.go"],
+    embed = [":go_default_library"],
+    race = "on",
+    deps = ["@com_github_smartystreets_goconvey//convey:go_default_library"],
+)
