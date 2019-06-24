@@ -27,6 +27,7 @@ import (
 )
 
 const RoutePrefix = "/v2"
+const DistAPIVersion = "Docker-Distribution-API-Version"
 const DistContentDigestKey = "Docker-Content-Digest"
 const BlobUploadUUID = "Blob-Upload-UUID"
 
@@ -84,7 +85,8 @@ func (rh *RouteHandler) SetupRoutes() {
 // @Produce json
 // @Success 200 {string} string	"ok"
 func (rh *RouteHandler) CheckVersionSupport(ginCtx *gin.Context) {
-	ginCtx.Data(http.StatusOK, "application/json; charset=utf-8", []byte{})
+	ginCtx.Data(http.StatusOK, "application/json", []byte{})
+	ginCtx.Header(DistAPIVersion, "registry/2.0")
 }
 
 type ImageTags struct {
