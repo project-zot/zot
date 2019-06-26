@@ -1,5 +1,6 @@
 OS := $(shell uname -s | tr A-Z a-z)
 BINARY_PREFIX_DIRECTORY := $(OS)_amd64_stripped
+BAZEL=$(HOME)/bin/bazel
 
 .PHONY: all
 all: build check
@@ -7,7 +8,7 @@ all: build check
 .PHONY: info
 .SILENT: info
 info:
-	bazel build @io_bazel_rules_go//:go_info
+	${BAZEL} build @io_bazel_rules_go//:go_info
 	cat bazel-bin/external/io_bazel_rules_go/linux_amd64_stripped/go_info%/go_info_report
 
 .PHONY: setup-base
@@ -17,37 +18,37 @@ setup-base:
 
 .PHONY: fmt-bazel
 fmt-bazel:
-	bazel run //:buildozer
-	bazel run //:buildifier
+	${BAZEL} run //:buildozer
+	${BAZEL} run //:buildifier
 
 .PHONY: update-bazel
 update-bazel:
-	bazel run //:gazelle
-	bazel run //:gazelle -- update-repos -from_file=go.mod
+	${BAZEL} run //:gazelle
+	${BAZEL} run //:gazelle -- update-repos -from_file=go.mod
 
 .PHONY: init
 init: setup-base update-bazel fmt-bazel
 
 .PHONY: build
 build:	
-	bazel build //...
-	bazel test //...
+	${BAZEL} build //...
+	${BAZEL} test //...
 
 .PHONY: check
 check:
-	bazel run //:golangcilint
+	${BAZEL} run //:golangcilint
 
 .PHONY: bench
 .SILENT: bench
 bench:
-	for i in $$(bazel query 'tests(//...)'); do \
-		bazel run $$i -- -test.bench=.; \
+	for i in $$(${BAZEL} query 'tests(//...)'); do \
+		${BAZEL} run $$i -- -test.bench=.; \
 	done
 
 .PHONY: coverage
 .SILENT: coverage
 coverage:
-	bazel coverage //...
+	${BAZEL} coverage //...
 	for c in $$(find ./bazel-out/ -name 'coverage.dat'); do \
 		go tool cover --html=$$c -o /tmp/cover.html; \
 		cat /tmp/cover.html | grep 'option value="file' | sed 's/<[^>]*>//g' | sed 's/^[ \t]*//'; \
@@ -55,4 +56,4 @@ coverage:
 
 .PHONY: clean
 clean:
-	bazel clean
+	${BAZEL} clean
