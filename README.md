@@ -8,3 +8,9 @@
 * TLS support
 * *Basic* and TLS mutual authentication
 * Swagger based documentation
+
+# Caveats
+
+* go 1.12+
+* Image name consists of only one path component, for example, _busybox:latest_ instead _ubuntu/busybox:latest_
+* The OCI distribution spec is still WIP, and we try to keep up
