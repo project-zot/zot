@@ -12,8 +12,8 @@ info:
 
 .PHONY: setup-base
 setup-base:
-	swag -v || go get -u github.com/swaggo/swag/cmd/swag
-	swag init -g pkg/api/routes.go
+	${GOPATH}/bin/swag -v || go get -u github.com/swaggo/swag/cmd/swag
+	${GOPATH}/bin/swag init -g pkg/api/routes.go
 
 .PHONY: fmt-bazel
 fmt-bazel:
@@ -29,7 +29,7 @@ update-bazel:
 init: setup-base update-bazel fmt-bazel
 
 .PHONY: build
-build:	
+build:
 	bazel build //...
 	bazel test //...
 
