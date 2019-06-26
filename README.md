@@ -1,4 +1,4 @@
-# zot [![Build Status](https://travis-ci.org/anuvu/zot.svg?branch=master)](https://travis-ci.org/anuvu/zot)
+# zot [![Build Status](https://travis-ci.org/anuvu/zot.svg?branch=master)](https://travis-ci.org/anuvu/zot) [![codecov.io](http://codecov.io/github/anuvu/zot/coverage.svg?branch=master)](http://codecov.io/github/anuvu/zot?branch=master)
 
 **zot** is a single-purpose OCI image repository server based on the
 [OCI distribution spec](https://github.com/opencontainers/distribution-spec).

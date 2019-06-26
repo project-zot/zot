@@ -1,6 +1,10 @@
 OS := $(shell uname -s | tr A-Z a-z)
 BINARY_PREFIX_DIRECTORY := $(OS)_amd64_stripped
 BAZEL=$(HOME)/bin/bazel
+BAZELOPTS= --repository_cache="$$HOME/.bzrepos" \
+					 --test_output=errors \
+					 --noshow_progress \
+					 --noshow_loading_progress
 
 .PHONY: all
 all: build check
@@ -31,8 +35,8 @@ init: setup-base update-bazel fmt-bazel
 
 .PHONY: build
 build:	
-	${BAZEL} build //...
-	${BAZEL} test //...
+	${BAZEL} build ${BAZELOPTS} //...
+	${BAZEL} test ${BAZELOPTS} //...
 
 .PHONY: check
 check:
