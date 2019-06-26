@@ -13,7 +13,7 @@ debug: doc
 
 .PHONY: test
 test:
-	go test -v -race -cover ./pkg/... ./cmd/...
+	go test -v -race -cover -coverprofile=coverage.txt -covermode=atomic ./...
 
 ./bin/golangci-lint:
 	curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.17.1
