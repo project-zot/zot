@@ -194,6 +194,7 @@ func (rh *RouteHandler) GetManifest(ginCtx *gin.Context) {
 	if err != nil {
 		switch err {
 		case errors.ErrRepoNotFound:
+			ginCtx.JSON(http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
 		case errors.ErrRepoBadVersion:
 			ginCtx.JSON(http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
 		case errors.ErrManifestNotFound:
@@ -518,6 +519,7 @@ func (rh *RouteHandler) GetBlobUpload(ginCtx *gin.Context) {
 	if err != nil {
 		switch err {
 		case errors.ErrBadUploadRange:
+			ginCtx.JSON(http.StatusBadRequest, NewError(BLOB_UPLOAD_INVALID, map[string]string{"uuid": uuid}))
 		case errors.ErrBadBlobDigest:
 			ginCtx.JSON(http.StatusBadRequest, NewError(BLOB_UPLOAD_INVALID, map[string]string{"uuid": uuid}))
 		case errors.ErrRepoNotFound:
