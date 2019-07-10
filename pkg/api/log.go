@@ -1,10 +1,11 @@
 package api
 
 import (
+	"net/http"
 	"os"
 	"time"
 
-	"github.com/gin-gonic/gin"
+	"github.com/gorilla/mux"
 	"github.com/rs/zerolog"
 )
 
@@ -28,43 +29,65 @@ func NewLogger(config *Config) zerolog.Logger {
 	return log.With().Timestamp().Logger()
 }
 
-func Logger(log zerolog.Logger) gin.HandlerFunc {
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+	length int
+}
+
+func (w *statusWriter) WriteHeader(status int) {
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *statusWriter) Write(b []byte) (int, error) {
+	if w.status == 0 {
+		w.status = 200
+	}
+	n, err := w.ResponseWriter.Write(b)
+	w.length += n
+	return n, err
+}
+
+func Logger(log zerolog.Logger) mux.MiddlewareFunc {
 	l := log.With().Str("module", "http").Logger()
-	return func(ginCtx *gin.Context) {
-		// Start timer
-		start := time.Now()
-		path := ginCtx.Request.URL.Path
-		raw := ginCtx.Request.URL.RawQuery
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Start timer
+			start := time.Now()
+			path := r.URL.Path
+			raw := r.URL.RawQuery
 
-		// Process request
-		ginCtx.Next()
+			sw := statusWriter{ResponseWriter: w}
 
-		// Stop timer
-		end := time.Now()
-		latency := end.Sub(start)
-		if latency > time.Minute {
-			// Truncate in a golang < 1.8 safe way
-			latency -= latency % time.Second
-		}
-		clientIP := ginCtx.ClientIP()
-		method := ginCtx.Request.Method
-		headers := ginCtx.Request.Header
-		statusCode := ginCtx.Writer.Status()
-		errMsg := ginCtx.Errors.ByType(gin.ErrorTypePrivate).String()
-		bodySize := ginCtx.Writer.Size()
-		if raw != "" {
-			path = path + "?" + raw
-		}
+			// Process request
+			next.ServeHTTP(&sw, r)
 
-		l.Info().
-			Str("clientIP", clientIP).
-			Str("method", method).
-			Str("path", path).
-			Int("statusCode", statusCode).
-			Str("errMsg", errMsg).
-			Str("latency", latency.String()).
-			Int("bodySize", bodySize).
-			Interface("headers", headers).
-			Msg("HTTP API")
+			// Stop timer
+			end := time.Now()
+			latency := end.Sub(start)
+			if latency > time.Minute {
+				// Truncate in a golang < 1.8 safe way
+				latency -= latency % time.Second
+			}
+			clientIP := r.RemoteAddr
+			method := r.Method
+			headers := r.Header
+			statusCode := sw.status
+			bodySize := sw.length
+			if raw != "" {
+				path = path + "?" + raw
+			}
+
+			l.Info().
+				Str("clientIP", clientIP).
+				Str("method", method).
+				Str("path", path).
+				Int("statusCode", statusCode).
+				Str("latency", latency.String()).
+				Int("bodySize", bodySize).
+				Interface("headers", headers).
+				Msg("HTTP API")
+		})
 	}
 }

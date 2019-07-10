@@ -9,7 +9,7 @@ binary: doc
 
 .PHONY: debug
 debug: doc
-	go build -v -gcflags '-N -l' -o bin/zot-debug -tags=jsoniter ./cmd/zot
+	go build -v -gcflags all='-N -l' -o bin/zot-debug -tags=jsoniter ./cmd/zot
 
 .PHONY: test
 test:

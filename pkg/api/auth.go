@@ -9,20 +9,25 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
+	"github.com/gorilla/mux"
 	"golang.org/x/crypto/bcrypt"
 )
 
-func authFail(ginCtx *gin.Context, realm string, delay int) {
+func authFail(w http.ResponseWriter, realm string, delay int) {
 	time.Sleep(time.Duration(delay) * time.Second)
-	ginCtx.Header("WWW-Authenticate", realm)
-	ginCtx.AbortWithStatusJSON(http.StatusUnauthorized, NewError(UNAUTHORIZED))
+	w.Header().Set("WWW-Authenticate", realm)
+	w.Header().Set("Content-Type", "application/json")
+	WriteJSON(w, http.StatusUnauthorized, NewError(UNAUTHORIZED))
 }
 
-func BasicAuthHandler(c *Controller) gin.HandlerFunc {
+func BasicAuthHandler(c *Controller) mux.MiddlewareFunc {
 	if c.Config.HTTP.Auth.HTPasswd.Path == "" {
 		// no authentication
-		return func(ginCtx *gin.Context) {
+		return func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// Process request
+				next.ServeHTTP(w, r)
+			})
 		}
 	}
 
@@ -49,43 +54,48 @@ func BasicAuthHandler(c *Controller) gin.HandlerFunc {
 		credMap[tokens[0]] = tokens[1]
 	}
 
-	return func(ginCtx *gin.Context) {
-		basicAuth := ginCtx.Request.Header.Get("Authorization")
-		if basicAuth == "" {
-			authFail(ginCtx, realm, delay)
-			return
-		}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			basicAuth := r.Header.Get("Authorization")
+			if basicAuth == "" {
+				authFail(w, realm, delay)
+				return
+			}
 
-		s := strings.SplitN(basicAuth, " ", 2)
-		if len(s) != 2 || strings.ToLower(s[0]) != "basic" {
-			authFail(ginCtx, realm, delay)
-			return
-		}
+			s := strings.SplitN(basicAuth, " ", 2)
+			if len(s) != 2 || strings.ToLower(s[0]) != "basic" {
+				authFail(w, realm, delay)
+				return
+			}
 
-		b, err := base64.StdEncoding.DecodeString(s[1])
-		if err != nil {
-			authFail(ginCtx, realm, delay)
-			return
-		}
+			b, err := base64.StdEncoding.DecodeString(s[1])
+			if err != nil {
+				authFail(w, realm, delay)
+				return
+			}
 
-		pair := strings.SplitN(string(b), ":", 2)
-		if len(pair) != 2 {
-			authFail(ginCtx, realm, delay)
-			return
-		}
+			pair := strings.SplitN(string(b), ":", 2)
+			if len(pair) != 2 {
+				authFail(w, realm, delay)
+				return
+			}
 
-		username := pair[0]
-		passphrase := pair[1]
+			username := pair[0]
+			passphrase := pair[1]
 
-		passphraseHash, ok := credMap[username]
-		if !ok {
-			authFail(ginCtx, realm, delay)
-			return
-		}
+			passphraseHash, ok := credMap[username]
+			if !ok {
+				authFail(w, realm, delay)
+				return
+			}
 
-		if err := bcrypt.CompareHashAndPassword([]byte(passphraseHash), []byte(passphrase)); err != nil {
-			authFail(ginCtx, realm, delay)
-			return
-		}
+			if err := bcrypt.CompareHashAndPassword([]byte(passphraseHash), []byte(passphrase)); err != nil {
+				authFail(w, realm, delay)
+				return
+			}
+
+			// Process request
+			next.ServeHTTP(w, r)
+		})
 	}
 }

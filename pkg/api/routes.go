@@ -13,6 +13,8 @@ package api
 
 import (
 	"fmt"
+	"io"
+	"io/ioutil"
 	"net/http"
 	"path"
 	"strconv"
@@ -20,10 +22,10 @@ import (
 
 	_ "github.com/anuvu/zot/docs" // nolint (golint) - as required by swaggo
 	"github.com/anuvu/zot/errors"
-	"github.com/gin-gonic/gin"
+	"github.com/gorilla/mux"
+	jsoniter "github.com/json-iterator/go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	ginSwagger "github.com/swaggo/gin-swagger"
-	"github.com/swaggo/gin-swagger/swaggerFiles"
+	httpSwagger "github.com/swaggo/http-swagger"
 )
 
 const RoutePrefix = "/v2"
@@ -43,36 +45,41 @@ func NewRouteHandler(c *Controller) *RouteHandler {
 
 func (rh *RouteHandler) SetupRoutes() {
 	rh.c.Router.Use(BasicAuthHandler(rh.c))
-	g := rh.c.Router.Group(RoutePrefix)
+	g := rh.c.Router.PathPrefix(RoutePrefix).Subrouter()
 	{
-		g.GET("/", rh.CheckVersionSupport)
-		g.GET("/:name/tags/list", rh.ListTags)
-		g.HEAD("/:name/manifests/:reference", rh.CheckManifest)
-		g.GET("/:name/manifests/:reference", rh.GetManifest)
-		g.PUT("/:name/manifests/:reference", rh.UpdateManifest)
-		g.DELETE("/:name/manifests/:reference", rh.DeleteManifest)
-		g.HEAD("/:name/blobs/:digest", rh.CheckBlob)
-		g.GET("/:name/blobs/:digest", rh.GetBlob)
-		g.DELETE("/:name/blobs/:digest", rh.DeleteBlob)
-
-		// NOTE: some routes as per the spec need to be setup with URL params which
-		// must equal specific keywords
-
-		// route for POST "/v2/:name/blobs/uploads/" and param ":digest"="uploads"
-		g.POST("/:name/blobs/:digest/", rh.CreateBlobUpload)
-		// route for GET "/v2/:name/blobs/uploads/:uuid" and param ":digest"="uploads"
-		g.GET("/:name/blobs/:digest/:uuid", rh.GetBlobUpload)
-		// route for PATCH "/v2/:name/blobs/uploads/:uuid" and param ":digest"="uploads"
-		g.PATCH("/:name/blobs/:digest/:uuid", rh.PatchBlobUpload)
-		// route for PUT "/v2/:name/blobs/uploads/:uuid" and param ":digest"="uploads"
-		g.PUT("/:name/blobs/:digest/:uuid", rh.UpdateBlobUpload)
-		// route for DELETE "/v2/:name/blobs/uploads/:uuid" and param ":digest"="uploads"
-		g.DELETE("/:name/blobs/:digest/:uuid", rh.DeleteBlobUpload)
-		// route for GET "/v2/_catalog" and param ":name"="_catalog"
-		g.GET("/:name", rh.ListRepositories)
+		g.HandleFunc(fmt.Sprintf("/{name:%s}/tags/list", NameRegexp.String()),
+			rh.ListTags).Methods("GET")
+		g.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", NameRegexp.String()),
+			rh.CheckManifest).Methods("HEAD")
+		g.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", NameRegexp.String()),
+			rh.GetManifest).Methods("GET")
+		g.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", NameRegexp.String()),
+			rh.UpdateManifest).Methods("PUT")
+		g.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", NameRegexp.String()),
+			rh.DeleteManifest).Methods("DELETE")
+		g.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/{digest}", NameRegexp.String()),
+			rh.CheckBlob).Methods("HEAD")
+		g.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/{digest}", NameRegexp.String()),
+			rh.GetBlob).Methods("GET")
+		g.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/{digest}", NameRegexp.String()),
+			rh.DeleteBlob).Methods("DELETE")
+		g.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/", NameRegexp.String()),
+			rh.CreateBlobUpload).Methods("POST")
+		g.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/{uuid}", NameRegexp.String()),
+			rh.GetBlobUpload).Methods("GET")
+		g.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/{uuid}", NameRegexp.String()),
+			rh.PatchBlobUpload).Methods("PATCH")
+		g.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/{uuid}", NameRegexp.String()),
+			rh.UpdateBlobUpload).Methods("PUT")
+		g.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/{uuid}", NameRegexp.String()),
+			rh.DeleteBlobUpload).Methods("DELETE")
+		g.HandleFunc("/_catalog",
+			rh.ListRepositories).Methods("GET")
+		g.HandleFunc("/",
+			rh.CheckVersionSupport).Methods("GET")
 	}
 	// swagger docs "/swagger/v2/index.html"
-	rh.c.Router.GET("/swagger/v2/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	rh.c.Router.PathPrefix("/swagger/v2/").Methods("GET").Handler(httpSwagger.WrapHandler)
 }
 
 // Method handlers
@@ -84,9 +91,9 @@ func (rh *RouteHandler) SetupRoutes() {
 // @Accept  json
 // @Produce json
 // @Success 200 {string} string	"ok"
-func (rh *RouteHandler) CheckVersionSupport(ginCtx *gin.Context) {
-	ginCtx.Data(http.StatusOK, "application/json", []byte{})
-	ginCtx.Header(DistAPIVersion, "registry/2.0")
+func (rh *RouteHandler) CheckVersionSupport(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set(DistAPIVersion, "registry/2.0")
+	WriteData(w, http.StatusOK, "application/json", []byte{})
 }
 
 type ImageTags struct {
@@ -103,20 +110,21 @@ type ImageTags struct {
 // @Param   name     path    string     true        "test"
 // @Success 200 {object} 	api.ImageTags
 // @Failure 404 {string} 	string 				"not found"
-func (rh *RouteHandler) ListTags(ginCtx *gin.Context) {
-	name := ginCtx.Param("name")
-	if name == "" {
-		ginCtx.Status(http.StatusNotFound)
+func (rh *RouteHandler) ListTags(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	name, ok := vars["name"]
+	if !ok || name == "" {
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
 	tags, err := rh.c.ImageStore.GetImageTags(name)
 	if err != nil {
-		ginCtx.JSON(http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
+		WriteJSON(w, http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
 		return
 	}
 
-	ginCtx.JSON(http.StatusOK, ImageTags{Name: name, Tags: tags})
+	WriteJSON(w, http.StatusOK, ImageTags{Name: name, Tags: tags})
 }
 
 // CheckManifest godoc
@@ -131,16 +139,17 @@ func (rh *RouteHandler) ListTags(ginCtx *gin.Context) {
 // @Header  200 {object} api.DistContentDigestKey
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
-func (rh *RouteHandler) CheckManifest(ginCtx *gin.Context) {
-	name := ginCtx.Param("name")
-	if name == "" {
-		ginCtx.Status(http.StatusNotFound)
+func (rh *RouteHandler) CheckManifest(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	name, ok := vars["name"]
+	if !ok || name == "" {
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
-	reference := ginCtx.Param("reference")
-	if reference == "" {
-		ginCtx.JSON(http.StatusNotFound, NewError(MANIFEST_INVALID, map[string]string{"reference": reference}))
+	reference, ok := vars["reference"]
+	if !ok || reference == "" {
+		WriteJSON(w, http.StatusNotFound, NewError(MANIFEST_INVALID, map[string]string{"reference": reference}))
 		return
 	}
 
@@ -148,16 +157,16 @@ func (rh *RouteHandler) CheckManifest(ginCtx *gin.Context) {
 	if err != nil {
 		switch err {
 		case errors.ErrManifestNotFound:
-			ginCtx.JSON(http.StatusNotFound, NewError(MANIFEST_UNKNOWN, map[string]string{"reference": reference}))
+			WriteJSON(w, http.StatusNotFound, NewError(MANIFEST_UNKNOWN, map[string]string{"reference": reference}))
 		default:
-			ginCtx.JSON(http.StatusInternalServerError, NewError(MANIFEST_INVALID, map[string]string{"reference": reference}))
+			WriteJSON(w, http.StatusInternalServerError, NewError(MANIFEST_INVALID, map[string]string{"reference": reference}))
 		}
 		return
 	}
 
-	ginCtx.Status(http.StatusOK)
-	ginCtx.Header(DistContentDigestKey, digest)
-	ginCtx.Header("Content-Length", "0")
+	w.Header().Set(DistContentDigestKey, digest)
+	w.Header().Set("Content-Length", "0")
+	w.WriteHeader(http.StatusOK)
 }
 
 // NOTE: https://github.com/swaggo/swag/issues/387
@@ -177,16 +186,17 @@ type ImageManifest struct {
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/manifests/{reference} [get]
-func (rh *RouteHandler) GetManifest(ginCtx *gin.Context) {
-	name := ginCtx.Param("name")
-	if name == "" {
-		ginCtx.Status(http.StatusNotFound)
+func (rh *RouteHandler) GetManifest(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	name, ok := vars["name"]
+	if !ok || name == "" {
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
-	reference := ginCtx.Param("reference")
-	if reference == "" {
-		ginCtx.JSON(http.StatusNotFound, NewError(MANIFEST_UNKNOWN, map[string]string{"reference": reference}))
+	reference, ok := vars["reference"]
+	if !ok || reference == "" {
+		WriteJSON(w, http.StatusNotFound, NewError(MANIFEST_UNKNOWN, map[string]string{"reference": reference}))
 		return
 	}
 
@@ -194,19 +204,19 @@ func (rh *RouteHandler) GetManifest(ginCtx *gin.Context) {
 	if err != nil {
 		switch err {
 		case errors.ErrRepoNotFound:
-			ginCtx.JSON(http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
+			WriteJSON(w, http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
 		case errors.ErrRepoBadVersion:
-			ginCtx.JSON(http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
+			WriteJSON(w, http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
 		case errors.ErrManifestNotFound:
-			ginCtx.JSON(http.StatusNotFound, NewError(MANIFEST_UNKNOWN, map[string]string{"reference": reference}))
+			WriteJSON(w, http.StatusNotFound, NewError(MANIFEST_UNKNOWN, map[string]string{"reference": reference}))
 		default:
-			ginCtx.Status(http.StatusInternalServerError)
+			w.WriteHeader(http.StatusInternalServerError)
 		}
 		return
 	}
 
-	ginCtx.Data(http.StatusOK, mediaType, content)
-	ginCtx.Header(DistContentDigestKey, digest)
+	WriteData(w, http.StatusOK, mediaType, content)
+	w.Header().Set(DistContentDigestKey, digest)
 }
 
 // UpdateManifest godoc
@@ -222,28 +232,29 @@ func (rh *RouteHandler) GetManifest(ginCtx *gin.Context) {
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/manifests/{reference} [put]
-func (rh *RouteHandler) UpdateManifest(ginCtx *gin.Context) {
-	name := ginCtx.Param("name")
-	if name == "" {
-		ginCtx.Status(http.StatusNotFound)
+func (rh *RouteHandler) UpdateManifest(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	name, ok := vars["name"]
+	if !ok || name == "" {
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
-	reference := ginCtx.Param("reference")
-	if reference == "" {
-		ginCtx.JSON(http.StatusNotFound, NewError(MANIFEST_INVALID, map[string]string{"reference": reference}))
+	reference, ok := vars["reference"]
+	if !ok || reference == "" {
+		WriteJSON(w, http.StatusNotFound, NewError(MANIFEST_INVALID, map[string]string{"reference": reference}))
 		return
 	}
 
-	mediaType := ginCtx.ContentType()
+	mediaType := r.Header.Get("Content-Type")
 	if mediaType != ispec.MediaTypeImageManifest {
-		ginCtx.Status(http.StatusUnsupportedMediaType)
+		w.WriteHeader(http.StatusUnsupportedMediaType)
 		return
 	}
 
-	body, err := ginCtx.GetRawData()
+	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		ginCtx.Status(http.StatusInternalServerError)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
@@ -251,22 +262,22 @@ func (rh *RouteHandler) UpdateManifest(ginCtx *gin.Context) {
 	if err != nil {
 		switch err {
 		case errors.ErrRepoNotFound:
-			ginCtx.JSON(http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
+			WriteJSON(w, http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
 		case errors.ErrManifestNotFound:
-			ginCtx.JSON(http.StatusNotFound, NewError(MANIFEST_UNKNOWN, map[string]string{"reference": reference}))
+			WriteJSON(w, http.StatusNotFound, NewError(MANIFEST_UNKNOWN, map[string]string{"reference": reference}))
 		case errors.ErrBadManifest:
-			ginCtx.JSON(http.StatusBadRequest, NewError(MANIFEST_INVALID, map[string]string{"reference": reference}))
+			WriteJSON(w, http.StatusBadRequest, NewError(MANIFEST_INVALID, map[string]string{"reference": reference}))
 		case errors.ErrBlobNotFound:
-			ginCtx.JSON(http.StatusBadRequest, NewError(BLOB_UNKNOWN, map[string]string{"blob": digest}))
+			WriteJSON(w, http.StatusBadRequest, NewError(BLOB_UNKNOWN, map[string]string{"blob": digest}))
 		default:
-			ginCtx.Status(http.StatusInternalServerError)
+			w.WriteHeader(http.StatusInternalServerError)
 		}
 		return
 	}
 
-	ginCtx.Status(http.StatusCreated)
-	ginCtx.Header("Location", fmt.Sprintf("/v2/%s/manifests/%s", name, digest))
-	ginCtx.Header(DistContentDigestKey, digest)
+	w.Header().Set("Location", fmt.Sprintf("/v2/%s/manifests/%s", name, digest))
+	w.Header().Set(DistContentDigestKey, digest)
+	w.WriteHeader(http.StatusCreated)
 }
 
 // DeleteManifest godoc
@@ -278,16 +289,17 @@ func (rh *RouteHandler) UpdateManifest(ginCtx *gin.Context) {
 // @Param   reference     path    string     true        "image reference or digest"
 // @Success 200 {string} string	"ok"
 // @Router /v2/{name}/manifests/{reference} [delete]
-func (rh *RouteHandler) DeleteManifest(ginCtx *gin.Context) {
-	name := ginCtx.Param("name")
-	if name == "" {
-		ginCtx.Status(http.StatusNotFound)
+func (rh *RouteHandler) DeleteManifest(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	name, ok := vars["name"]
+	if !ok || name == "" {
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
-	reference := ginCtx.Param("reference")
-	if reference == "" {
-		ginCtx.Status(http.StatusNotFound)
+	reference, ok := vars["reference"]
+	if !ok || reference == "" {
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
@@ -295,16 +307,16 @@ func (rh *RouteHandler) DeleteManifest(ginCtx *gin.Context) {
 	if err != nil {
 		switch err {
 		case errors.ErrRepoNotFound:
-			ginCtx.JSON(http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
+			WriteJSON(w, http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
 		case errors.ErrManifestNotFound:
-			ginCtx.JSON(http.StatusNotFound, NewError(MANIFEST_UNKNOWN, map[string]string{"reference": reference}))
+			WriteJSON(w, http.StatusNotFound, NewError(MANIFEST_UNKNOWN, map[string]string{"reference": reference}))
 		default:
-			ginCtx.Status(http.StatusInternalServerError)
+			w.WriteHeader(http.StatusInternalServerError)
 		}
 		return
 	}
 
-	ginCtx.Status(http.StatusOK)
+	w.WriteHeader(http.StatusOK)
 }
 
 // CheckBlob godoc
@@ -317,44 +329,45 @@ func (rh *RouteHandler) DeleteManifest(ginCtx *gin.Context) {
 // @Success 200 {object} api.ImageManifest
 // @Header  200 {object} api.DistContentDigestKey
 // @Router /v2/{name}/blobs/{digest} [head]
-func (rh *RouteHandler) CheckBlob(ginCtx *gin.Context) {
-	name := ginCtx.Param("name")
-	if name == "" {
-		ginCtx.Status(http.StatusNotFound)
+func (rh *RouteHandler) CheckBlob(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	name, ok := vars["name"]
+	if !ok || name == "" {
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
-	digest := ginCtx.Param("digest")
-	if digest == "" {
-		ginCtx.Status(http.StatusNotFound)
+	digest, ok := vars["digest"]
+	if !ok || digest == "" {
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
-	mediaType := ginCtx.Request.Header.Get("Accept")
+	mediaType := r.Header.Get("Accept")
 
 	ok, blen, err := rh.c.ImageStore.CheckBlob(name, digest, mediaType)
 	if err != nil {
 		switch err {
 		case errors.ErrBadBlobDigest:
-			ginCtx.JSON(http.StatusBadRequest, NewError(DIGEST_INVALID, map[string]string{"digest": digest}))
+			WriteJSON(w, http.StatusBadRequest, NewError(DIGEST_INVALID, map[string]string{"digest": digest}))
 		case errors.ErrRepoNotFound:
-			ginCtx.JSON(http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
+			WriteJSON(w, http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
 		case errors.ErrBlobNotFound:
-			ginCtx.JSON(http.StatusNotFound, NewError(BLOB_UNKNOWN, map[string]string{"digest": digest}))
+			WriteJSON(w, http.StatusNotFound, NewError(BLOB_UNKNOWN, map[string]string{"digest": digest}))
 		default:
-			ginCtx.Status(http.StatusInternalServerError)
+			w.WriteHeader(http.StatusInternalServerError)
 		}
 		return
 	}
 
 	if !ok {
-		ginCtx.JSON(http.StatusNotFound, NewError(BLOB_UNKNOWN, map[string]string{"digest": digest}))
+		WriteJSON(w, http.StatusNotFound, NewError(BLOB_UNKNOWN, map[string]string{"digest": digest}))
 		return
 	}
 
-	ginCtx.Status(http.StatusOK)
-	ginCtx.Header("Content-Length", fmt.Sprintf("%d", blen))
-	ginCtx.Header(DistContentDigestKey, digest)
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", blen))
+	w.Header().Set(DistContentDigestKey, digest)
+	w.WriteHeader(http.StatusOK)
 }
 
 // GetBlob godoc
@@ -367,41 +380,41 @@ func (rh *RouteHandler) CheckBlob(ginCtx *gin.Context) {
 // @Header  200 {object} api.DistContentDigestKey
 // @Success 200 {object} api.ImageManifest
 // @Router /v2/{name}/blobs/{digest} [get]
-func (rh *RouteHandler) GetBlob(ginCtx *gin.Context) {
-	name := ginCtx.Param("name")
-	if name == "" {
-		ginCtx.Status(http.StatusNotFound)
+func (rh *RouteHandler) GetBlob(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	name, ok := vars["name"]
+	if !ok || name == "" {
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
-	digest := ginCtx.Param("digest")
-	if digest == "" {
-		ginCtx.Status(http.StatusNotFound)
+	digest, ok := vars["digest"]
+	if !ok || digest == "" {
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
-	mediaType := ginCtx.Request.Header.Get("Accept")
+	mediaType := r.Header.Get("Accept")
 
 	br, blen, err := rh.c.ImageStore.GetBlob(name, digest, mediaType)
 	if err != nil {
 		switch err {
 		case errors.ErrBadBlobDigest:
-			ginCtx.JSON(http.StatusBadRequest, NewError(DIGEST_INVALID, map[string]string{"digest": digest}))
+			WriteJSON(w, http.StatusBadRequest, NewError(DIGEST_INVALID, map[string]string{"digest": digest}))
 		case errors.ErrRepoNotFound:
-			ginCtx.JSON(http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
+			WriteJSON(w, http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
 		case errors.ErrBlobNotFound:
-			ginCtx.JSON(http.StatusNotFound, NewError(BLOB_UNKNOWN, map[string]string{"digest": digest}))
+			WriteJSON(w, http.StatusNotFound, NewError(BLOB_UNKNOWN, map[string]string{"digest": digest}))
 		default:
-			ginCtx.Status(http.StatusInternalServerError)
+			w.WriteHeader(http.StatusInternalServerError)
 		}
 		return
 	}
 
-	ginCtx.Status(http.StatusOK)
-	ginCtx.Header("Content-Length", fmt.Sprintf("%d", blen))
-	ginCtx.Header(DistContentDigestKey, digest)
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", blen))
+	w.Header().Set(DistContentDigestKey, digest)
 	// return the blob data
-	ginCtx.DataFromReader(http.StatusOK, blen, mediaType, br, map[string]string{})
+	WriteDataFromReader(w, http.StatusOK, blen, mediaType, br)
 }
 
 // DeleteBlob godoc
@@ -413,16 +426,17 @@ func (rh *RouteHandler) GetBlob(ginCtx *gin.Context) {
 // @Param   digest     	path    string     true        "blob/layer digest"
 // @Success 202 {string} string "accepted"
 // @Router /v2/{name}/blobs/{digest} [delete]
-func (rh *RouteHandler) DeleteBlob(ginCtx *gin.Context) {
-	name := ginCtx.Param("name")
-	if name == "" {
-		ginCtx.Status(http.StatusNotFound)
+func (rh *RouteHandler) DeleteBlob(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	name, ok := vars["name"]
+	if !ok || name == "" {
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
-	digest := ginCtx.Param("digest")
-	if digest == "" {
-		ginCtx.Status(http.StatusNotFound)
+	digest, ok := vars["digest"]
+	if !ok || digest == "" {
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
@@ -430,18 +444,18 @@ func (rh *RouteHandler) DeleteBlob(ginCtx *gin.Context) {
 	if err != nil {
 		switch err {
 		case errors.ErrBadBlobDigest:
-			ginCtx.JSON(http.StatusBadRequest, NewError(DIGEST_INVALID, map[string]string{"digest": digest}))
+			WriteJSON(w, http.StatusBadRequest, NewError(DIGEST_INVALID, map[string]string{"digest": digest}))
 		case errors.ErrRepoNotFound:
-			ginCtx.JSON(http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
+			WriteJSON(w, http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
 		case errors.ErrBlobNotFound:
-			ginCtx.JSON(http.StatusNotFound, NewError(BLOB_UNKNOWN, map[string]string{"digest": digest}))
+			WriteJSON(w, http.StatusNotFound, NewError(BLOB_UNKNOWN, map[string]string{"digest": digest}))
 		default:
-			ginCtx.Status(http.StatusInternalServerError)
+			w.WriteHeader(http.StatusInternalServerError)
 		}
 		return
 	}
 
-	ginCtx.Status(http.StatusAccepted)
+	w.WriteHeader(http.StatusAccepted)
 }
 
 // CreateBlobUpload godoc
@@ -456,15 +470,11 @@ func (rh *RouteHandler) DeleteBlob(ginCtx *gin.Context) {
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/blobs/uploads [post]
-func (rh *RouteHandler) CreateBlobUpload(ginCtx *gin.Context) {
-	if paramIsNot(ginCtx, "digest", "uploads") {
-		ginCtx.Status(http.StatusNotFound)
-		return
-	}
-
-	name := ginCtx.Param("name")
-	if name == "" {
-		ginCtx.Status(http.StatusNotFound)
+func (rh *RouteHandler) CreateBlobUpload(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	name, ok := vars["name"]
+	if !ok || name == "" {
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
@@ -472,16 +482,16 @@ func (rh *RouteHandler) CreateBlobUpload(ginCtx *gin.Context) {
 	if err != nil {
 		switch err {
 		case errors.ErrRepoNotFound:
-			ginCtx.JSON(http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
+			WriteJSON(w, http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
 		default:
-			ginCtx.Status(http.StatusInternalServerError)
+			w.WriteHeader(http.StatusInternalServerError)
 		}
 		return
 	}
 
-	ginCtx.Status(http.StatusAccepted)
-	ginCtx.Header("Location", path.Join(ginCtx.Request.URL.String(), u))
-	ginCtx.Header("Range", "bytes=0-0")
+	w.Header().Set("Location", path.Join(r.URL.String(), u))
+	w.Header().Set("Range", "bytes=0-0")
+	w.WriteHeader(http.StatusAccepted)
 }
 
 // GetBlobUpload godoc
@@ -497,21 +507,17 @@ func (rh *RouteHandler) CreateBlobUpload(ginCtx *gin.Context) {
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/blobs/uploads/{uuid} [get]
-func (rh *RouteHandler) GetBlobUpload(ginCtx *gin.Context) {
-	if paramIsNot(ginCtx, "digest", "uploads") {
-		ginCtx.Status(http.StatusNotFound)
+func (rh *RouteHandler) GetBlobUpload(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	name, ok := vars["name"]
+	if !ok || name == "" {
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
-	name := ginCtx.Param("name")
-	if name == "" {
-		ginCtx.Status(http.StatusNotFound)
-		return
-	}
-
-	uuid := ginCtx.Param("uuid")
-	if uuid == "" {
-		ginCtx.Status(http.StatusNotFound)
+	uuid, ok := vars["uuid"]
+	if !ok || uuid == "" {
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
@@ -519,22 +525,22 @@ func (rh *RouteHandler) GetBlobUpload(ginCtx *gin.Context) {
 	if err != nil {
 		switch err {
 		case errors.ErrBadUploadRange:
-			ginCtx.JSON(http.StatusBadRequest, NewError(BLOB_UPLOAD_INVALID, map[string]string{"uuid": uuid}))
+			WriteJSON(w, http.StatusBadRequest, NewError(BLOB_UPLOAD_INVALID, map[string]string{"uuid": uuid}))
 		case errors.ErrBadBlobDigest:
-			ginCtx.JSON(http.StatusBadRequest, NewError(BLOB_UPLOAD_INVALID, map[string]string{"uuid": uuid}))
+			WriteJSON(w, http.StatusBadRequest, NewError(BLOB_UPLOAD_INVALID, map[string]string{"uuid": uuid}))
 		case errors.ErrRepoNotFound:
-			ginCtx.JSON(http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
+			WriteJSON(w, http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
 		case errors.ErrUploadNotFound:
-			ginCtx.JSON(http.StatusNotFound, NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"uuid": uuid}))
+			WriteJSON(w, http.StatusNotFound, NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"uuid": uuid}))
 		default:
-			ginCtx.Status(http.StatusInternalServerError)
+			w.WriteHeader(http.StatusInternalServerError)
 		}
 		return
 	}
 
-	ginCtx.Status(http.StatusNoContent)
-	ginCtx.Header("Location", path.Join(ginCtx.Request.URL.String(), uuid))
-	ginCtx.Header("Range", fmt.Sprintf("bytes=0-%d", size))
+	w.Header().Set("Location", path.Join(r.URL.String(), uuid))
+	w.Header().Set("Range", fmt.Sprintf("bytes=0-%d", size))
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // PatchBlobUpload godoc
@@ -553,72 +559,67 @@ func (rh *RouteHandler) GetBlobUpload(ginCtx *gin.Context) {
 // @Failure 416 {string} string "range not satisfiable"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/blobs/uploads/{uuid} [patch]
-func (rh *RouteHandler) PatchBlobUpload(ginCtx *gin.Context) {
-
-	rh.c.Log.Info().Interface("headers", ginCtx.Request.Header).Msg("request headers")
-	if paramIsNot(ginCtx, "digest", "uploads") {
-		ginCtx.Status(http.StatusNotFound)
+func (rh *RouteHandler) PatchBlobUpload(w http.ResponseWriter, r *http.Request) {
+	rh.c.Log.Info().Interface("headers", r.Header).Msg("request headers")
+	vars := mux.Vars(r)
+	name, ok := vars["name"]
+	if !ok || name == "" {
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-
-	name := ginCtx.Param("name")
-	if name == "" {
-		ginCtx.Status(http.StatusNotFound)
-		return
-	}
-	uuid := ginCtx.Param("uuid")
-	if uuid == "" {
-		ginCtx.Status(http.StatusNotFound)
+	uuid, ok := vars["uuid"]
+	if !ok || uuid == "" {
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
 	var err error
 	var contentLength int64
-	if contentLength, err = strconv.ParseInt(ginCtx.Request.Header.Get("Content-Length"), 10, 64); err != nil {
-		rh.c.Log.Warn().Str("actual", ginCtx.Request.Header.Get("Content-Length")).Msg("invalid content length")
-		ginCtx.Status(http.StatusBadRequest)
+	if contentLength, err = strconv.ParseInt(r.Header.Get("Content-Length"), 10, 64); err != nil {
+		rh.c.Log.Warn().Str("actual", r.Header.Get("Content-Length")).Msg("invalid content length")
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	contentRange := ginCtx.Request.Header.Get("Content-Range")
+	contentRange := r.Header.Get("Content-Range")
 	if contentRange == "" {
-		rh.c.Log.Warn().Str("actual", ginCtx.Request.Header.Get("Content-Range")).Msg("invalid content range")
-		ginCtx.Status(http.StatusRequestedRangeNotSatisfiable)
+		rh.c.Log.Warn().Str("actual", r.Header.Get("Content-Range")).Msg("invalid content range")
+		w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
 		return
 	}
 
 	var from, to int64
-	if from, to, err = getContentRange(ginCtx); err != nil || (to-from) != contentLength {
-		ginCtx.Status(http.StatusRequestedRangeNotSatisfiable)
+	if from, to, err = getContentRange(r); err != nil || (to-from) != contentLength {
+		w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
 		return
 	}
 
-	if ginCtx.ContentType() != "application/octet-stream" {
-		rh.c.Log.Warn().Str("actual", ginCtx.ContentType()).Msg("invalid media type")
-		ginCtx.Status(http.StatusUnsupportedMediaType)
+	if contentType := r.Header.Get("Content-Type"); contentType != "application/octet-stream" {
+		rh.c.Log.Warn().Str("actual", contentType).Str("expected", "application/octet-stream").Msg("invalid media type")
+		w.WriteHeader(http.StatusUnsupportedMediaType)
 		return
 	}
 
-	clen, err := rh.c.ImageStore.PutBlobChunk(name, uuid, from, to, ginCtx.Request.Body)
+	clen, err := rh.c.ImageStore.PutBlobChunk(name, uuid, from, to, r.Body)
 	if err != nil {
 		switch err {
 		case errors.ErrBadUploadRange:
-			ginCtx.JSON(http.StatusBadRequest, NewError(BLOB_UPLOAD_INVALID, map[string]string{"uuid": uuid}))
+			WriteJSON(w, http.StatusBadRequest, NewError(BLOB_UPLOAD_INVALID, map[string]string{"uuid": uuid}))
 		case errors.ErrRepoNotFound:
-			ginCtx.JSON(http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
+			WriteJSON(w, http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
 		case errors.ErrUploadNotFound:
-			ginCtx.JSON(http.StatusNotFound, NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"uuid": uuid}))
+			WriteJSON(w, http.StatusNotFound, NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"uuid": uuid}))
 		default:
-			ginCtx.Status(http.StatusInternalServerError)
+			w.WriteHeader(http.StatusInternalServerError)
 		}
 		return
 	}
 
-	ginCtx.Status(http.StatusAccepted)
-	ginCtx.Header("Location", path.Join(ginCtx.Request.URL.String(), uuid))
-	ginCtx.Header("Range", fmt.Sprintf("bytes=0-%d", clen))
-	ginCtx.Header("Content-Length", "0")
-	ginCtx.Header(BlobUploadUUID, uuid)
+	w.Header().Set("Location", path.Join(r.URL.String(), uuid))
+	w.Header().Set("Range", fmt.Sprintf("bytes=0-%d", clen))
+	w.Header().Set("Content-Length", "0")
+	w.Header().Set(BlobUploadUUID, uuid)
+	w.WriteHeader(http.StatusAccepted)
 }
 
 // UpdateBlobUpload godoc
@@ -635,105 +636,102 @@ func (rh *RouteHandler) PatchBlobUpload(ginCtx *gin.Context) {
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/blobs/uploads/{uuid} [put]
-func (rh *RouteHandler) UpdateBlobUpload(ginCtx *gin.Context) {
-	if paramIsNot(ginCtx, "digest", "uploads") {
-		ginCtx.Status(http.StatusNotFound)
+func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	name, ok := vars["name"]
+	if !ok || name == "" {
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
-	name := ginCtx.Param("name")
-	if name == "" {
-		ginCtx.Status(http.StatusNotFound)
+	uuid, ok := vars["uuid"]
+	if !ok || uuid == "" {
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
-	uuid := ginCtx.Param("uuid")
-	if uuid == "" {
-		ginCtx.Status(http.StatusNotFound)
+	digests, ok := r.URL.Query()["digest"]
+	if !ok || len(digests) != 1 {
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-
-	digest := ginCtx.Query("digest")
-	if digest == "" {
-		ginCtx.Status(http.StatusBadRequest)
-		return
-	}
+	digest := digests[0]
 
 	contentPresent := true
-	contentLen, err := strconv.ParseInt(ginCtx.Request.Header.Get("Content-Length"), 10, 64)
+	contentLen, err := strconv.ParseInt(r.Header.Get("Content-Length"), 10, 64)
 	if err != nil || contentLen == 0 {
 		contentPresent = false
 	}
 	contentRangePresent := true
-	if ginCtx.Request.Header.Get("Content-Range") == "" {
+	if r.Header.Get("Content-Range") == "" {
 		contentRangePresent = false
 	}
 
 	// we expect at least one of "Content-Length" or "Content-Range" to be
 	// present
 	if !contentPresent && !contentRangePresent {
-		ginCtx.Status(http.StatusBadRequest)
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
 	var from, to int64
 
 	if contentPresent {
-		if ginCtx.ContentType() != "application/octet-stream" {
-			ginCtx.Status(http.StatusUnsupportedMediaType)
+		if r.Header.Get("Content-Type") != "application/octet-stream" {
+			w.WriteHeader(http.StatusUnsupportedMediaType)
 			return
 		}
 
-		contentRange := ginCtx.Request.Header.Get("Content-Range")
+		contentRange := r.Header.Get("Content-Range")
 		if contentRange == "" { // monolithic upload
 			from = 0
 			if contentLen == 0 {
-				ginCtx.Status(http.StatusBadRequest)
+				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
 			to = contentLen
-		} else if from, to, err = getContentRange(ginCtx); err != nil { // finish chunked upload
-			ginCtx.Status(http.StatusRequestedRangeNotSatisfiable)
+		} else if from, to, err = getContentRange(r); err != nil { // finish chunked upload
+			w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
 			return
 		}
 
-		_, err = rh.c.ImageStore.PutBlobChunk(name, uuid, from, to, ginCtx.Request.Body)
+		_, err = rh.c.ImageStore.PutBlobChunk(name, uuid, from, to, r.Body)
 		if err != nil {
 			switch err {
 			case errors.ErrBadUploadRange:
-				ginCtx.JSON(http.StatusBadRequest, NewError(BLOB_UPLOAD_INVALID, map[string]string{"uuid": uuid}))
+				WriteJSON(w, http.StatusBadRequest, NewError(BLOB_UPLOAD_INVALID, map[string]string{"uuid": uuid}))
 			case errors.ErrRepoNotFound:
-				ginCtx.JSON(http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
+				WriteJSON(w, http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
 			case errors.ErrUploadNotFound:
-				ginCtx.JSON(http.StatusNotFound, NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"uuid": uuid}))
+				WriteJSON(w, http.StatusNotFound, NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"uuid": uuid}))
 			default:
-				ginCtx.Status(http.StatusInternalServerError)
+				w.WriteHeader(http.StatusInternalServerError)
 			}
 			return
 		}
 	}
 
 	// blob chunks already transferred, just finish
-	if err := rh.c.ImageStore.FinishBlobUpload(name, uuid, ginCtx.Request.Body, digest); err != nil {
+	if err := rh.c.ImageStore.FinishBlobUpload(name, uuid, r.Body, digest); err != nil {
 		switch err {
 		case errors.ErrBadBlobDigest:
-			ginCtx.JSON(http.StatusBadRequest, NewError(DIGEST_INVALID, map[string]string{"digest": digest}))
+			WriteJSON(w, http.StatusBadRequest, NewError(DIGEST_INVALID, map[string]string{"digest": digest}))
 		case errors.ErrBadUploadRange:
-			ginCtx.JSON(http.StatusBadRequest, NewError(BLOB_UPLOAD_INVALID, map[string]string{"uuid": uuid}))
+			WriteJSON(w, http.StatusBadRequest, NewError(BLOB_UPLOAD_INVALID, map[string]string{"uuid": uuid}))
 		case errors.ErrRepoNotFound:
-			ginCtx.JSON(http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
+			WriteJSON(w, http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
 		case errors.ErrUploadNotFound:
-			ginCtx.JSON(http.StatusNotFound, NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"uuid": uuid}))
+			WriteJSON(w, http.StatusNotFound, NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"uuid": uuid}))
 		default:
-			ginCtx.Status(http.StatusInternalServerError)
+			w.WriteHeader(http.StatusInternalServerError)
 		}
 		return
 	}
 
-	ginCtx.Status(http.StatusCreated)
-	ginCtx.Header("Location", fmt.Sprintf("/v2/%s/blobs/%s", name, digest))
-	ginCtx.Header("Content-Length", "0")
-	ginCtx.Header(DistContentDigestKey, digest)
+	w.Header().Set("Location", fmt.Sprintf("/v2/%s/blobs/%s", name, digest))
+	w.Header().Set("Content-Length", "0")
+	w.Header().Set(DistContentDigestKey, digest)
+	w.WriteHeader(http.StatusCreated)
 }
 
 // DeleteBlobUpload godoc
@@ -747,28 +745,33 @@ func (rh *RouteHandler) UpdateBlobUpload(ginCtx *gin.Context) {
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/blobs/uploads/{uuid} [delete]
-func (rh *RouteHandler) DeleteBlobUpload(ginCtx *gin.Context) {
-	if paramIsNot(ginCtx, "digest", "uploads") {
-		ginCtx.Status(http.StatusNotFound)
+func (rh *RouteHandler) DeleteBlobUpload(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	name, ok := vars["name"]
+	if !ok || name == "" {
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
-	name := ginCtx.Param("name")
-	uuid := ginCtx.Param("uuid")
+	uuid, ok := vars["uuid"]
+	if !ok || uuid == "" {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
 
 	if err := rh.c.ImageStore.DeleteBlobUpload(name, uuid); err != nil {
 		switch err {
 		case errors.ErrRepoNotFound:
-			ginCtx.JSON(http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
+			WriteJSON(w, http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
 		case errors.ErrUploadNotFound:
-			ginCtx.JSON(http.StatusNotFound, NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"uuid": uuid}))
+			WriteJSON(w, http.StatusNotFound, NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"uuid": uuid}))
 		default:
-			ginCtx.Status(http.StatusInternalServerError)
+			w.WriteHeader(http.StatusInternalServerError)
 		}
 		return
 	}
 
-	ginCtx.Status(http.StatusOK)
+	w.WriteHeader(http.StatusOK)
 }
 
 type RepositoryList struct {
@@ -783,32 +786,22 @@ type RepositoryList struct {
 // @Success 200 {object} 	api.RepositoryList
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/_catalog [get]
-func (rh *RouteHandler) ListRepositories(ginCtx *gin.Context) {
-	if paramIsNot(ginCtx, "name", "_catalog") {
-		ginCtx.Status(http.StatusNotFound)
-		return
-	}
-
+func (rh *RouteHandler) ListRepositories(w http.ResponseWriter, r *http.Request) {
 	repos, err := rh.c.ImageStore.GetRepositories()
 	if err != nil {
-		ginCtx.Status(http.StatusInternalServerError)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
 	is := RepositoryList{Repositories: repos}
 
-	ginCtx.JSON(http.StatusOK, is)
+	WriteJSON(w, http.StatusOK, is)
 }
 
 // helper routines
 
-func paramIsNot(ginCtx *gin.Context, name string, expected string) bool {
-	actual := ginCtx.Param(name)
-	return actual != expected
-}
-
-func getContentRange(ginCtx *gin.Context) (int64 /* from */, int64 /* to */, error) {
-	contentRange := ginCtx.Request.Header.Get("Content-Range")
+func getContentRange(r *http.Request) (int64 /* from */, int64 /* to */, error) {
+	contentRange := r.Header.Get("Content-Range")
 	tokens := strings.Split(contentRange, "-")
 	from, err := strconv.ParseInt(tokens[0], 10, 64)
 	if err != nil {
@@ -822,4 +815,37 @@ func getContentRange(ginCtx *gin.Context) (int64 /* from */, int64 /* to */, err
 		return -1, -1, errors.ErrBadUploadRange
 	}
 	return from, to, nil
+}
+
+func WriteJSON(w http.ResponseWriter, status int, data interface{}) {
+	var json = jsoniter.ConfigCompatibleWithStandardLibrary
+	body, err := json.Marshal(data)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+	WriteData(w, status, "application/json; charset=utf-8", body)
+}
+
+func WriteData(w http.ResponseWriter, status int, mediaType string, data []byte) {
+	w.Header().Set("Content-Type", mediaType)
+	w.WriteHeader(status)
+	_, _ = w.Write(data)
+}
+
+func WriteDataFromReader(w http.ResponseWriter, status int, length int64, mediaType string, reader io.Reader) {
+	w.Header().Set("Content-Type", mediaType)
+	w.Header().Set("Content-Length", strconv.FormatInt(length, 10))
+
+	const maxSize = 10 * 1024 * 1024
+	for {
+		size, err := io.CopyN(w, reader, maxSize)
+		if size == 0 {
+			if err != io.EOF {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			break
+		}
+	}
+	w.WriteHeader(status)
 }

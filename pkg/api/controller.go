@@ -9,13 +9,13 @@ import (
 	"net/http"
 
 	"github.com/anuvu/zot/pkg/storage"
-	"github.com/gin-gonic/gin"
+	"github.com/gorilla/mux"
 	"github.com/rs/zerolog"
 )
 
 type Controller struct {
 	Config     *Config
-	Router     *gin.Engine
+	Router     *mux.Router
 	ImageStore *storage.ImageStore
 	Log        zerolog.Logger
 	Server     *http.Server
@@ -26,13 +26,8 @@ func NewController(config *Config) *Controller {
 }
 
 func (c *Controller) Run() error {
-	if c.Config.Log.Level == "debug" {
-		gin.SetMode(gin.DebugMode)
-	} else {
-		gin.SetMode(gin.ReleaseMode)
-	}
-	engine := gin.New()
-	engine.Use(gin.Recovery(), Logger(c.Log))
+	engine := mux.NewRouter()
+	engine.Use(Logger(c.Log))
 	c.Router = engine
 	_ = NewRouteHandler(c)
 

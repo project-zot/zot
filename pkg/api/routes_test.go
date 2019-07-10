@@ -1,3 +1,4 @@
+// nolint (dupl)
 package api_test
 
 import (
@@ -49,7 +50,7 @@ func TestAPI(t *testing.T) {
 			So(resp.StatusCode(), ShouldEqual, 404)
 			So(resp.String(), ShouldNotBeEmpty)
 
-			// after newly created upload should fail
+			// after newly created upload should succeed
 			resp, err = resty.R().Post(BaseURL + "/v2/repo/blobs/uploads/")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 202)
@@ -111,8 +112,126 @@ func TestAPI(t *testing.T) {
 			So(resp.StatusCode(), ShouldEqual, 200)
 		})
 
+		Convey("Monolithic blob upload with multiple name components", func() {
+			resp, err := resty.R().Post(BaseURL + "/v2/repo1/repo2/repo3/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 202)
+			loc := resp.Header().Get("Location")
+			So(loc, ShouldNotBeEmpty)
+
+			resp, err = resty.R().Get(BaseURL + loc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 204)
+
+			resp, err = resty.R().Get(BaseURL + "/v2/repo1/repo2/repo3/tags/list")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+			So(resp.String(), ShouldNotBeEmpty)
+
+			// without a "?digest=<>" should fail
+			content := []byte("this is a blob")
+			digest := godigest.FromBytes(content)
+			So(digest, ShouldNotBeNil)
+			resp, err = resty.R().Put(BaseURL + loc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 400)
+			// without the Content-Length should fail
+			resp, err = resty.R().SetQueryParam("digest", digest.String()).Put(BaseURL + loc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 400)
+			// without any data to send, should fail
+			resp, err = resty.R().SetQueryParam("digest", digest.String()).
+				SetHeader("Content-Type", "application/octet-stream").Put(BaseURL + loc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 400)
+			// monolithic blob upload: success
+			resp, err = resty.R().SetQueryParam("digest", digest.String()).
+				SetHeader("Content-Type", "application/octet-stream").SetBody(content).Put(BaseURL + loc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 201)
+			blobLoc := resp.Header().Get("Location")
+			So(blobLoc, ShouldNotBeEmpty)
+			So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
+			So(resp.Header().Get(api.DistContentDigestKey), ShouldNotBeEmpty)
+			// upload reference should now be removed
+			resp, err = resty.R().Get(BaseURL + loc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 404)
+			// blob reference should be accessible
+			resp, err = resty.R().Get(BaseURL + blobLoc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+		})
+
 		Convey("Chunked blob upload", func() {
 			resp, err := resty.R().Post(BaseURL + "/v2/repo/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 202)
+			loc := resp.Header().Get("Location")
+			So(loc, ShouldNotBeEmpty)
+
+			var buf bytes.Buffer
+			chunk1 := []byte("this is the first chunk")
+			n, err := buf.Write(chunk1)
+			So(n, ShouldEqual, len(chunk1))
+			So(err, ShouldBeNil)
+
+			// write first chunk
+			contentRange := fmt.Sprintf("%d-%d", 0, len(chunk1))
+			resp, err = resty.R().SetHeader("Content-Type", "application/octet-stream").
+				SetHeader("Content-Range", contentRange).SetBody(chunk1).Patch(BaseURL + loc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 202)
+
+			// check progress
+			resp, err = resty.R().Get(BaseURL + loc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 204)
+			r := resp.Header().Get("Range")
+			So(r, ShouldNotBeEmpty)
+			So(r, ShouldEqual, "bytes="+contentRange)
+
+			// write same chunk should fail
+			contentRange = fmt.Sprintf("%d-%d", 0, len(chunk1))
+			resp, err = resty.R().SetHeader("Content-Type", "application/octet-stream").
+				SetHeader("Content-Range", contentRange).SetBody(chunk1).Patch(BaseURL + loc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 400)
+			So(resp.String(), ShouldNotBeEmpty)
+
+			chunk2 := []byte("this is the second chunk")
+			n, err = buf.Write(chunk2)
+			So(n, ShouldEqual, len(chunk2))
+			So(err, ShouldBeNil)
+
+			digest := godigest.FromBytes(buf.Bytes())
+			So(digest, ShouldNotBeNil)
+
+			// write final chunk
+			contentRange = fmt.Sprintf("%d-%d", len(chunk1), len(buf.Bytes()))
+			resp, err = resty.R().SetQueryParam("digest", digest.String()).
+				SetHeader("Content-Range", contentRange).
+				SetHeader("Content-Type", "application/octet-stream").SetBody(chunk2).Put(BaseURL + loc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 201)
+			blobLoc := resp.Header().Get("Location")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 201)
+			So(blobLoc, ShouldNotBeEmpty)
+			So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
+			So(resp.Header().Get(api.DistContentDigestKey), ShouldNotBeEmpty)
+			// upload reference should now be removed
+			resp, err = resty.R().Get(BaseURL + loc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 404)
+			// blob reference should be accessible
+			resp, err = resty.R().Get(BaseURL + blobLoc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+		})
+
+		Convey("Chunked blob upload with multiple name components", func() {
+			resp, err := resty.R().Post(BaseURL + "/v2/repo4/repo5/repo6/blobs/uploads/")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 202)
 			loc := resp.Header().Get("Location")
