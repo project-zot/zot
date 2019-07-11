@@ -575,7 +575,7 @@ go_repository(
 
 go_repository(
     name = "com_github_smartystreets_goconvey",
-    commit = "68dc04aab96a",
+    commit = "9d28bd7c0945",
     importpath = "github.com/smartystreets/goconvey",
 )
 
@@ -648,7 +648,7 @@ go_repository(
 go_repository(
     name = "com_github_swaggo_swag",
     importpath = "github.com/swaggo/swag",
-    tag = "v1.5.1",
+    tag = "v1.6.2",
 )
 
 go_repository(
@@ -660,7 +660,7 @@ go_repository(
 go_repository(
     name = "com_github_ugorji_go",
     importpath = "github.com/ugorji/go",
-    tag = "v1.1.5-pre",
+    tag = "v1.1.4",
 )
 
 go_repository(
@@ -761,7 +761,7 @@ go_repository(
 
 go_repository(
     name = "org_golang_x_crypto",
-    commit = "ea8f1a30c443",
+    commit = "4def268fd1a4",
     importpath = "golang.org/x/crypto",
 )
 
@@ -829,4 +829,28 @@ go_repository(
     name = "org_uber_go_zap",
     importpath = "go.uber.org/zap",
     tag = "v1.10.0",
+)
+
+go_repository(
+    name = "com_github_gorilla_mux",
+    importpath = "github.com/gorilla/mux",
+    tag = "v1.7.3",
+)
+
+go_repository(
+    name = "com_github_kylebanks_depth",
+    importpath = "github.com/KyleBanks/depth",
+    tag = "v1.2.1",
+)
+
+go_repository(
+    name = "com_github_swaggo_files",
+    commit = "630677cd5c14",
+    importpath = "github.com/swaggo/files",
+)
+
+go_repository(
+    name = "com_github_swaggo_http_swagger",
+    commit = "c2865af9083e",
+    importpath = "github.com/swaggo/http-swagger",
 )

@@ -66,7 +66,7 @@ func TestBasicAuth(t *testing.T) {
 		}()
 
 		// without creds, should get access error
-		resp, err := resty.R().Get(BaseURL1)
+		resp, err := resty.R().Get(BaseURL1 + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 401)
@@ -135,7 +135,7 @@ func TestTLSWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, 400)
 
 		// without creds, should get access error
-		resp, err = resty.R().Get(BaseSecureURL2)
+		resp, err = resty.R().Get(BaseSecureURL2 + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 401)
@@ -220,7 +220,7 @@ func TestTLSMutualAuth(t *testing.T) {
 		defer func() { resty.SetCertificates(tls.Certificate{}) }()
 
 		// with client certs but without creds, should get access error
-		resp, err = resty.R().Get(BaseSecureURL2)
+		resp, err = resty.R().Get(BaseSecureURL2 + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 401)
