@@ -360,7 +360,7 @@ func (is *ImageStore) PutImageManifest(repo string, reference string,
 			// manifest contents have changed for the same tag
 			desc = m
 			desc.Digest = mDigest
-			index.Manifests = append(index.Manifests[:i], index.Manifests[1+1:]...)
+			index.Manifests = append(index.Manifests[:i], index.Manifests[i+1:]...)
 			break
 		}
 	}
