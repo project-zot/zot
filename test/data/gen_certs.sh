@@ -24,7 +24,7 @@ openssl x509 \
     -CA ca.crt \
     -CAkey ca.key \
     -CAcreateserial \
-    -out server.crt \
+    -out server.cert \
     -extfile <(echo subjectAltName = IP:127.0.0.1)
 
 openssl req \
@@ -42,4 +42,4 @@ openssl x509 \
     -CA ca.crt \
     -CAkey ca.key \
     -CAcreateserial \
-    -out client.crt
+    -out client.cert

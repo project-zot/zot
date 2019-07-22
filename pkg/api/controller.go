@@ -44,6 +44,11 @@ func (c *Controller) Run() error {
 		return err
 	}
 
+	clientAuth := tls.VerifyClientCertIfGiven
+	if c.Config.HTTP.Auth.HTPasswd.Path == "" {
+		clientAuth = tls.RequireAndVerifyClientCert
+	}
+
 	if c.Config.HTTP.TLS.Key != "" && c.Config.HTTP.TLS.Cert != "" {
 		if c.Config.HTTP.TLS.CACert != "" {
 			caCert, err := ioutil.ReadFile(c.Config.HTTP.TLS.CACert)
@@ -53,7 +58,7 @@ func (c *Controller) Run() error {
 			caCertPool := x509.NewCertPool()
 			caCertPool.AppendCertsFromPEM(caCert)
 			server.TLSConfig = &tls.Config{
-				ClientAuth: tls.RequireAndVerifyClientCert,
+				ClientAuth: clientAuth,
 				ClientCAs:  caCertPool,
 			}
 		}

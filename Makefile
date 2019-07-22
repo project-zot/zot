@@ -1,4 +1,5 @@
 export GO111MODULE=on
+TOP_LEVEL=$(shell git rev-parse --show-toplevel)
 
 .PHONY: all
 all: doc binary debug test check
@@ -13,6 +14,7 @@ debug: doc
 
 .PHONY: test
 test:
+	$(shell cd test/data; ./gen_certs.sh; cd ${TOP_LEVEL})
 	go test -v -race -cover -coverprofile=coverage.txt -covermode=atomic ./...
 
 ./bin/golangci-lint:

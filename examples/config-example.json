@@ -8,7 +8,7 @@
     "port":"8080",
     "realm":"zot",
     "tls": {
-      "cert":"test/data/server.crt",
+      "cert":"test/data/server.cert",
       "key":"test/data/server.key"
     },
     "auth": {
