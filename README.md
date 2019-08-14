@@ -17,6 +17,12 @@
 make binary-container
 ```
 
+* Alternatively, build inside a container using [stacker](https://github.com/anuvu/stacker) (preferred)
+
+```
+make binary-stacker
+```
+
 * Build using host's toolchain
 
 ```
@@ -28,7 +34,7 @@ Build artifacts are in bin/
 
 # Running
 
-bin/zot serve _<config>_
+bin/zot serve <config>
 
 # Caveats
 
