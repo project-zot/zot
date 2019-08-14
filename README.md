@@ -9,6 +9,27 @@
 * *Basic* and TLS mutual authentication
 * Swagger based documentation
 
+# Building
+
+* Build inside a container (preferred)
+
+```
+make binary-container
+```
+
+* Build using host's toolchain
+
+```
+make
+
+```
+
+Build artifacts are in bin/
+
+# Running
+
+bin/zot serve _<config>_
+
 # Caveats
 
 * go 1.12+
