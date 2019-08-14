@@ -1,0 +1,16 @@
+build:
+  from:
+    type: docker
+    url: docker://golang:1.12.8
+  binds:
+    - ${{PWD}} -> /go/src/github.com/anuvu/zot
+  run: |
+    export GO111MODULE=on 
+    export GOPATH='/go'
+    export HOME='/root'
+    export PATH='/go/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+    go get -u github.com/swaggo/swag/cmd/swag
+    cd /go/src/github.com/anuvu/zot
+    curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.17.1 
+    make
+  build_only: true

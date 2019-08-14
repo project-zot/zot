@@ -42,3 +42,7 @@ binary-container:
 	${CONTAINER_RUNTIME} build ${BUILD_ARGS} -f Dockerfile -t zot:latest .
 	${CONTAINER_RUNTIME} run --rm --security-opt label=disable -v $$(pwd):/go/src/github.com/anuvu/zot \
 		zot:latest make
+
+.PHONY: binary-stacker
+binary-stacker:
+	stacker build --substitute PWD=$$PWD --no-cache
