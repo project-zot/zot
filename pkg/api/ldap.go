@@ -71,6 +71,11 @@ func (lc *LDAPClient) Connect() error {
 
 // Authenticate authenticates the user against the ldap backend.
 func (lc *LDAPClient) Authenticate(username, password string) (bool, map[string]string, error) {
+	if password == "" {
+		// RFC 4513 section 5.1.2
+		return false, nil, errors.ErrLDAPEmptyPassphrase
+	}
+
 	err := lc.Connect()
 	if err != nil {
 		return false, nil, err
