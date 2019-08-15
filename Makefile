@@ -22,9 +22,9 @@ test:
 	go test -v -race -cover -coverprofile=coverage.txt -covermode=atomic ./...
 
 .PHONY: check
-check:
+check: .bazel/golangcilint.yaml
 	golangci-lint --version || curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.17.1
-	golangci-lint run --enable-all ./cmd/... ./pkg/...
+	golangci-lint  --config .bazel/golangcilint.yaml run --enable-all ./cmd/... ./pkg/...
 
 docs/docs.go: 
 	swag -v || go install github.com/swaggo/swag/cmd/swag

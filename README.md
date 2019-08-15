@@ -6,9 +6,9 @@
 * Conforms to [OCI distribution spec](https://github.com/opencontainers/distribution-spec) APIs
 * Uses [OCI storage layout](https://github.com/opencontainers/image-spec/blob/master/image-layout.md) for storage layout
 * TLS support
-* *Basic* and TLS mutual authentication
-* Swagger based documentation
+* Authentication via TLS mutual authentication and HTTP *BASIC* (local _htpasswd_ and LDAP)
 * Doesn't require _root_ privileges
+* Swagger based documentation
 
 # Building
 

@@ -27,12 +27,20 @@ func NewController(config *Config) *Controller {
 }
 
 func (c *Controller) Run() error {
+	// validate configuration
+	if err := c.Config.Validate(c.Log); err != nil {
+		c.Log.Error().Err(err).Msg("configuration validation failed")
+		return err
+	}
+
+	// print the current configuration, but strip secrets
+	c.Log.Info().Interface("params", c.Config.Sanitize()).Msg("configuration settings")
+
 	engine := mux.NewRouter()
 	engine.Use(Logger(c.Log))
 	c.Router = engine
 	_ = NewRouteHandler(c)
 
-	c.Log.Info().Interface("params", c.Config).Msg("configuration settings")
 	c.ImageStore = storage.NewImageStore(c.Config.Storage.RootDirectory, c.Log)
 
 	addr := fmt.Sprintf("%s:%s", c.Config.HTTP.Address, c.Config.HTTP.Port)
@@ -45,10 +53,10 @@ func (c *Controller) Run() error {
 		return err
 	}
 
-	if c.Config.HTTP.TLS.Key != "" && c.Config.HTTP.TLS.Cert != "" {
+	if c.Config.HTTP.TLS != nil && c.Config.HTTP.TLS.Key != "" && c.Config.HTTP.TLS.Cert != "" {
 		if c.Config.HTTP.TLS.CACert != "" {
 			clientAuth := tls.VerifyClientCertIfGiven
-			if c.Config.HTTP.Auth.HTPasswd.Path == "" && !c.Config.HTTP.AllowReadAccess {
+			if (c.Config.HTTP.Auth == nil || c.Config.HTTP.Auth.HTPasswd.Path == "") && !c.Config.HTTP.AllowReadAccess {
 				clientAuth = tls.RequireAndVerifyClientCert
 			}
 

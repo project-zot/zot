@@ -1008,3 +1008,108 @@ go_repository(
     sum = "h1:9zdDQZ7Thm29KFXgAX/+yaf3eVbP7djjWp/dXAppNCc=",
     version = "v0.0.0-20190717185122-a985d3407aa7",
 )
+
+go_repository(
+    name = "com_github_boombuler_barcode",
+    importpath = "github.com/boombuler/barcode",
+    sum = "h1:biVzkmvwrH8WK8raXaxBx6fRVTlJILwEwQGL1I/ByEI=",
+    version = "v1.0.1-0.20190219062509-6c824513bacc",
+)
+
+go_repository(
+    name = "com_github_docopt_docopt_go",
+    importpath = "github.com/docopt/docopt-go",
+    sum = "h1:bWDMxwH3px2JBh6AyO7hdCn/PkvCZXii8TGj7sbtEbQ=",
+    version = "v0.0.0-20180111231733-ee0de3bc6815",
+)
+
+go_repository(
+    name = "com_github_geertjohan_yubigo",
+    importpath = "github.com/GeertJohan/yubigo",
+    sum = "h1:KA/G9j1p6mBmMihAZwmpnS6t8WsToyVlvF2v5VgJIcY=",
+    version = "v0.0.0-20190829090426-2d4089dc8789",
+)
+
+go_repository(
+    name = "com_github_glauth_glauth",
+    importpath = "github.com/glauth/glauth",
+    sum = "h1:2Rl5vTPWlchM4P+VCUtHbD7U3wFcoLYZiTwYad2QCOM=",
+    version = "v1.1.1",
+)
+
+go_repository(
+    name = "com_github_jtblin_go_ldap_client",
+    importpath = "github.com/jtblin/go-ldap-client",
+    sum = "h1:XDpFOMOZq0u0Ar4F0p/wklqQXp/AMV1pTF5T5bDoUfQ=",
+    version = "v0.0.0-20170223121919-b73f66626b33",
+)
+
+go_repository(
+    name = "com_github_nmcclain_asn1_ber",
+    importpath = "github.com/nmcclain/asn1-ber",
+    sum = "h1:D9EvfGQvlkKaDr2CRKN++7HbSXbefUNDrPq60T+g24s=",
+    version = "v0.0.0-20170104154839-2661553a0484",
+)
+
+go_repository(
+    name = "com_github_nmcclain_ldap",
+    importpath = "github.com/nmcclain/ldap",
+    sum = "h1:SNpbw8iNcHdnboQsLB5wkRAgCSqWXplItrd8Xxu+9Dc=",
+    version = "v0.0.0-20190703182433-09931d85c0ff",
+)
+
+go_repository(
+    name = "com_github_op_go_logging",
+    importpath = "github.com/op/go-logging",
+    sum = "h1:lDH9UUVJtmYCjyT0CI4q8xvlXPxeZ0gYCVvWbmPlp88=",
+    version = "v0.0.0-20160315200505-970db520ece7",
+)
+
+go_repository(
+    name = "com_github_pquerna_otp",
+    importpath = "github.com/pquerna/otp",
+    sum = "h1:/A3+Jn+cagqayeR3iHs/L62m5ue7710D35zl1zJ1kok=",
+    version = "v1.2.0",
+)
+
+go_repository(
+    name = "com_github_samuel_go_ldap",
+    importpath = "github.com/samuel/go-ldap",
+    sum = "h1:1iey3/nAwh5WYP9DGAH6vZGyBhCbRZ0fkX33LO138Fg=",
+    version = "v0.0.0-20150819063227-09b1a56d2755",
+)
+
+go_repository(
+    name = "com_github_vjeantet_ldapserver",
+    importpath = "github.com/vjeantet/ldapserver",
+    sum = "h1:VWE8ZC9ER1YIfx0V0QgZGdG4UB/nGeaSmKxesfVuheo=",
+    version = "v0.0.0-20170919170217-479fece7c5f1",
+)
+
+go_repository(
+    name = "in_gopkg_amz_v1",
+    importpath = "gopkg.in/amz.v1",
+    sum = "h1:FMrsB0OTjHsPDA1NM7AhRmmZzkBPu3iGdxK/5MFfBmk=",
+    version = "v1.0.0-20150111123259-ad23e96a31d2",
+)
+
+go_repository(
+    name = "in_gopkg_asn1_ber_v1",
+    importpath = "gopkg.in/asn1-ber.v1",
+    sum = "h1:TxyelI5cVkbREznMhfzycHdkp5cLA7DpE+GKjSslYhM=",
+    version = "v1.0.0-20181015200546-f715ec2f112d",
+)
+
+go_repository(
+    name = "in_gopkg_ldap_v2",
+    importpath = "gopkg.in/ldap.v2",
+    sum = "h1:wiu0okdNfjlBzg6UWvd1Hn8Y+Ux17/u/4nlk4CQr6tU=",
+    version = "v2.5.1",
+)
+
+go_repository(
+    name = "com_github_getlantern_deepcopy",
+    importpath = "github.com/getlantern/deepcopy",
+    sum = "h1:yU/FENpkHYISWsQrbr3pcZOBj0EuRjPzNc1+dTCLu44=",
+    version = "v0.0.0-20160317154340-7f45deb8130a",
+)
