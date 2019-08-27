@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 
+	"github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/storage"
 	"github.com/gorilla/mux"
 	"github.com/rs/zerolog"
@@ -56,11 +57,16 @@ func (c *Controller) Run() error {
 				panic(err)
 			}
 			caCertPool := x509.NewCertPool()
-			caCertPool.AppendCertsFromPEM(caCert)
-			server.TLSConfig = &tls.Config{
-				ClientAuth: clientAuth,
-				ClientCAs:  caCertPool,
+			if !caCertPool.AppendCertsFromPEM(caCert) {
+				panic(errors.ErrBadCACert)
 			}
+			server.TLSConfig = &tls.Config{
+				ClientAuth:               clientAuth,
+				ClientCAs:                caCertPool,
+				PreferServerCipherSuites: true,
+				MinVersion:               tls.VersionTLS12,
+			}
+			server.TLSConfig.BuildNameToCertificate()
 		}
 
 		return server.ServeTLS(l, c.Config.HTTP.TLS.Cert, c.Config.HTTP.TLS.Key)

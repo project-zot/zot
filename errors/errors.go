@@ -15,4 +15,5 @@ var (
 	ErrBadBlob          = errors.New("blob: bad blob")
 	ErrBadBlobDigest    = errors.New("blob: bad blob digest")
 	ErrUnknownCode      = errors.New("error: unknown error code")
+	ErrBadCACert        = errors.New("tls: invalid ca cert")
 )
