@@ -7,11 +7,11 @@ PATH := bin:$(PATH)
 all: doc binary debug test check
 
 .PHONY: binary
-binary: doc
+binary:
 	go build -v -o bin/zot -tags=jsoniter ./cmd/zot
 
 .PHONY: debug
-debug: doc
+debug:
 	go build -v -gcflags all='-N -l' -o bin/zot-debug -tags=jsoniter ./cmd/zot
 
 .PHONY: test
