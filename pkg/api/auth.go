@@ -21,22 +21,30 @@ func authFail(w http.ResponseWriter, realm string, delay int) {
 }
 
 func BasicAuthHandler(c *Controller) mux.MiddlewareFunc {
-	if c.Config.HTTP.Auth.HTPasswd.Path == "" {
-		// no authentication
-		return func(next http.Handler) http.Handler {
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				// Process request
-				next.ServeHTTP(w, r)
-			})
-		}
-	}
-
 	realm := c.Config.HTTP.Realm
 	if realm == "" {
 		realm = "Authorization Required"
 	}
 	realm = "Basic realm=" + strconv.Quote(realm)
 	delay := c.Config.HTTP.Auth.FailDelay
+
+	if c.Config.HTTP.Auth.HTPasswd.Path == "" {
+		return func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if c.Config.HTTP.AllowReadAccess &&
+					c.Config.HTTP.TLS.CACert != "" &&
+					r.TLS.VerifiedChains == nil &&
+					r.Method != "GET" && r.Method != "HEAD" {
+					authFail(w, realm, delay)
+					return
+				}
+
+				// Process request
+				next.ServeHTTP(w, r)
+			})
+		}
+	}
+
 	credMap := make(map[string]string)
 
 	f, err := os.Open(c.Config.HTTP.Auth.HTPasswd.Path)
@@ -56,6 +64,12 @@ func BasicAuthHandler(c *Controller) mux.MiddlewareFunc {
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if (r.Method == "GET" || r.Method == "HEAD") && c.Config.HTTP.AllowReadAccess {
+				// Process request
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			basicAuth := r.Header.Get("Authorization")
 			if basicAuth == "" {
 				authFail(w, realm, delay)

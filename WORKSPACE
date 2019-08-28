@@ -1,29 +1,39 @@
 workspace(name = "com_github_anuvu_zot")
 
+go_version = "1.12.9"
+
+go_os = "linux"
+
+go_arch = "amd64"
+
+
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 
-go_rules_version = "0.18.6"
+go_rules_version = "0.19.3"
 
 http_archive(
     name = "io_bazel_rules_go",
-    sha256 = "f04d2373bcaf8aa09bccb08a98a57e721306c8f6043a2a0ee610fd6853dcde3d",
-    urls = ["https://github.com/bazelbuild/rules_go/releases/download/{}/rules_go-{}.tar.gz".format(go_rules_version, go_rules_version)],
+    urls = [
+        "https://storage.googleapis.com/bazel-mirror/github.com/bazelbuild/rules_go/releases/download/{}/rules_go-{}.tar.gz".format(go_rules_version, go_rules_version),
+        "https://github.com/bazelbuild/rules_go/releases/download/{}/rules_go-{}.tar.gz".format(go_rules_version, go_rules_version),
+    ],
+    sha256 = "313f2c7a23fecc33023563f082f381a32b9b7254f727a7dd2d6380ccc6dfe09b",
 )
 
-gazelle_version = "0.17.0"
+gazelle_version = "0.18.1"
 
 http_archive(
     name = "bazel_gazelle",
-    sha256 = "3c681998538231a2d24d0c07ed5a7658cb72bfb5fd4bf9911157c0e9ac6a2687",
+    sha256 = "be9296bfd64882e3c08e3283c58fcb461fa6dd3c171764fcc4cf322f60615a9b",
     urls = ["https://github.com/bazelbuild/bazel-gazelle/releases/download/{}/bazel-gazelle-{}.tar.gz".format(gazelle_version, gazelle_version)],
 )
 
-buildtools_version = "0.26.0"
+buildtools_version = "0.25.1"
 
 http_archive(
     name = "com_github_bazelbuild_buildtools",
-    sha256 = "86592d703ecbe0c5cbb5139333a63268cf58d7efd2c459c8be8e69e77d135e29",
+    sha256 = "0a0920151acf18c51866331944d12db9023707a6861e78225366f5711efc845b",
     strip_prefix = "buildtools-{}".format(buildtools_version),
     urls = ["https://github.com/bazelbuild/buildtools/archive/{}.tar.gz".format(buildtools_version)],
 )
@@ -47,7 +57,14 @@ load("@bazel_skylib//lib:versions.bzl", "versions")
 
 versions.check(minimum_bazel_version = "0.26.1")
 
-load("@io_bazel_rules_go//go:deps.bzl", "go_register_toolchains", "go_rules_dependencies")
+load("@io_bazel_rules_go//go:deps.bzl", "go_download_sdk", "go_register_toolchains", "go_rules_dependencies")
+
+go_download_sdk(
+    name = "go_sdk",
+    goos = go_os,
+    goarch = go_arch,
+    version = go_version,
+)
 
 go_rules_dependencies()
 

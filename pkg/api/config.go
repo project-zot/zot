@@ -24,11 +24,12 @@ type AuthConfig struct {
 }
 
 type HTTPConfig struct {
-	Address string
-	Port    string
-	TLS     TLSConfig  `mapstructure:",omitempty"`
-	Auth    AuthConfig `mapstructure:",omitempty"`
-	Realm   string
+	Address         string
+	Port            string
+	TLS             TLSConfig  `mapstructure:",omitempty"`
+	Auth            AuthConfig `mapstructure:",omitempty"`
+	Realm           string
+	AllowReadAccess bool `mapstructure:",omitempty"`
 }
 
 type LogConfig struct {

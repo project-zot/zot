@@ -45,13 +45,13 @@ func (c *Controller) Run() error {
 		return err
 	}
 
-	clientAuth := tls.VerifyClientCertIfGiven
-	if c.Config.HTTP.Auth.HTPasswd.Path == "" {
-		clientAuth = tls.RequireAndVerifyClientCert
-	}
-
 	if c.Config.HTTP.TLS.Key != "" && c.Config.HTTP.TLS.Cert != "" {
 		if c.Config.HTTP.TLS.CACert != "" {
+			clientAuth := tls.VerifyClientCertIfGiven
+			if c.Config.HTTP.Auth.HTPasswd.Path == "" && !c.Config.HTTP.AllowReadAccess {
+				clientAuth = tls.RequireAndVerifyClientCert
+			}
+
 			caCert, err := ioutil.ReadFile(c.Config.HTTP.TLS.CACert)
 			if err != nil {
 				panic(err)

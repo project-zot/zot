@@ -26,6 +26,7 @@ const (
 	htpasswdPath   = "../../test/data/htpasswd" // nolint (gosec) - this is just test data
 	ServerCert     = "../../test/data/server.cert"
 	ServerKey      = "../../test/data/server.key"
+	CACert         = "../../test/data/ca.crt"
 )
 
 func TestNew(t *testing.T) {
@@ -91,7 +92,7 @@ func TestBasicAuth(t *testing.T) {
 
 func TestTLSWithBasicAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		caCert, err := ioutil.ReadFile("../../test/data/ca.crt")
+		caCert, err := ioutil.ReadFile(CACert)
 		So(err, ShouldBeNil)
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
@@ -158,9 +159,80 @@ func TestTLSWithBasicAuth(t *testing.T) {
 	})
 }
 
+func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
+	Convey("Make a new controller", t, func() {
+		caCert, err := ioutil.ReadFile(CACert)
+		So(err, ShouldBeNil)
+		caCertPool := x509.NewCertPool()
+		caCertPool.AppendCertsFromPEM(caCert)
+
+		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
+		defer func() { resty.SetTLSClientConfig(nil) }()
+		config := api.NewConfig()
+		config.HTTP.Port = SecurePort2
+		config.HTTP.Auth.HTPasswd.Path = htpasswdPath
+		config.HTTP.TLS.Cert = ServerCert
+		config.HTTP.TLS.Key = ServerKey
+		config.HTTP.AllowReadAccess = true
+
+		c := api.NewController(config)
+		dir, err := ioutil.TempDir("", "oci-repo-test")
+		if err != nil {
+			panic(err)
+		}
+		defer os.RemoveAll(dir)
+		c.Config.Storage.RootDirectory = dir
+		go func() {
+			// this blocks
+			if err := c.Run(); err != nil {
+				return
+			}
+		}()
+
+		// wait till ready
+		for {
+			_, err := resty.R().Get(BaseURL2)
+			if err == nil {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		defer func() {
+			ctx := context.Background()
+			_ = c.Server.Shutdown(ctx)
+		}()
+
+		// accessing insecure HTTP site should fail
+		resp, err := resty.R().Get(BaseURL2)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 400)
+
+		// without creds, should still be allowed to access
+		resp, err = resty.R().Get(BaseSecureURL2 + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		// with creds, should get expected status code
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseSecureURL2)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 404)
+
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseSecureURL2 + "/v2/")
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		// without creds, writes should fail
+		resp, err = resty.R().Post(BaseSecureURL2 + "/v2/repo/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 401)
+	})
+}
+
 func TestTLSMutualAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		caCert, err := ioutil.ReadFile("../../test/data/ca.crt")
+		caCert, err := ioutil.ReadFile(CACert)
 		So(err, ShouldBeNil)
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
@@ -171,7 +243,7 @@ func TestTLSMutualAuth(t *testing.T) {
 		config.HTTP.Port = SecurePort2
 		config.HTTP.TLS.Cert = ServerCert
 		config.HTTP.TLS.Key = ServerKey
-		config.HTTP.TLS.CACert = "../../test/data/ca.crt"
+		config.HTTP.TLS.CACert = CACert
 
 		c := api.NewController(config)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
@@ -240,9 +312,9 @@ func TestTLSMutualAuth(t *testing.T) {
 	})
 }
 
-func TestTLSMutualAndBasicAuth(t *testing.T) {
+func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		caCert, err := ioutil.ReadFile("../../test/data/ca.crt")
+		caCert, err := ioutil.ReadFile(CACert)
 		So(err, ShouldBeNil)
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
@@ -253,7 +325,97 @@ func TestTLSMutualAndBasicAuth(t *testing.T) {
 		config.HTTP.Port = SecurePort2
 		config.HTTP.TLS.Cert = ServerCert
 		config.HTTP.TLS.Key = ServerKey
-		config.HTTP.TLS.CACert = "../../test/data/ca.crt"
+		config.HTTP.TLS.CACert = CACert
+		config.HTTP.AllowReadAccess = true
+
+		c := api.NewController(config)
+		dir, err := ioutil.TempDir("", "oci-repo-test")
+		if err != nil {
+			panic(err)
+		}
+		defer os.RemoveAll(dir)
+		c.Config.Storage.RootDirectory = dir
+		go func() {
+			// this blocks
+			if err := c.Run(); err != nil {
+				return
+			}
+		}()
+
+		// wait till ready
+		for {
+			_, err := resty.R().Get(BaseURL2)
+			if err == nil {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		defer func() {
+			ctx := context.Background()
+			_ = c.Server.Shutdown(ctx)
+		}()
+
+		// accessing insecure HTTP site should fail
+		resp, err := resty.R().Get(BaseURL2)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 400)
+
+		// without client certs and creds, reads are allowed
+		resp, err = resty.R().Get(BaseSecureURL2 + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		// with creds but without certs, reads are allowed
+		resp, err = resty.R().SetBasicAuth(username, passphrase).Get(BaseSecureURL2 + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		// without creds, writes should fail
+		resp, err = resty.R().Post(BaseSecureURL2 + "/v2/repo/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 401)
+
+		// setup TLS mutual auth
+		cert, err := tls.LoadX509KeyPair("../../test/data/client.cert", "../../test/data/client.key")
+		So(err, ShouldBeNil)
+
+		resty.SetCertificates(cert)
+		defer func() { resty.SetCertificates(tls.Certificate{}) }()
+
+		// with client certs but without creds, should succeed
+		resp, err = resty.R().Get(BaseSecureURL2 + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		// with client certs and creds, should get expected status code
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseSecureURL2)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 404)
+
+		// with client certs, creds shouldn't matter
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseSecureURL2 + "/v2/")
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+	})
+}
+
+func TestTLSMutualAndBasicAuth(t *testing.T) {
+	Convey("Make a new controller", t, func() {
+		caCert, err := ioutil.ReadFile(CACert)
+		So(err, ShouldBeNil)
+		caCertPool := x509.NewCertPool()
+		caCertPool.AppendCertsFromPEM(caCert)
+
+		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
+		defer func() { resty.SetTLSClientConfig(nil) }()
+		config := api.NewConfig()
+		config.HTTP.Port = SecurePort2
+		config.HTTP.TLS.Cert = ServerCert
+		config.HTTP.TLS.Key = ServerKey
+		config.HTTP.TLS.CACert = CACert
 		config.HTTP.Auth.HTPasswd.Path = htpasswdPath
 
 		c := api.NewController(config)
@@ -313,6 +475,97 @@ func TestTLSMutualAndBasicAuth(t *testing.T) {
 		resp, err = resty.R().Get(BaseSecureURL2 + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 401)
+
+		// with client certs and creds, should get expected status code
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseSecureURL2)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 404)
+
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseSecureURL2 + "/v2/")
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+	})
+}
+
+func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
+	Convey("Make a new controller", t, func() {
+		caCert, err := ioutil.ReadFile(CACert)
+		So(err, ShouldBeNil)
+		caCertPool := x509.NewCertPool()
+		caCertPool.AppendCertsFromPEM(caCert)
+
+		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
+		defer func() { resty.SetTLSClientConfig(nil) }()
+		config := api.NewConfig()
+		config.HTTP.Port = SecurePort2
+		config.HTTP.TLS.Cert = ServerCert
+		config.HTTP.TLS.Key = ServerKey
+		config.HTTP.TLS.CACert = CACert
+		config.HTTP.Auth.HTPasswd.Path = htpasswdPath
+		config.HTTP.AllowReadAccess = true
+
+		c := api.NewController(config)
+		dir, err := ioutil.TempDir("", "oci-repo-test")
+		if err != nil {
+			panic(err)
+		}
+		defer os.RemoveAll(dir)
+		c.Config.Storage.RootDirectory = dir
+		go func() {
+			// this blocks
+			if err := c.Run(); err != nil {
+				return
+			}
+		}()
+
+		// wait till ready
+		for {
+			_, err := resty.R().Get(BaseURL2)
+			if err == nil {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		defer func() {
+			ctx := context.Background()
+			_ = c.Server.Shutdown(ctx)
+		}()
+
+		// accessing insecure HTTP site should fail
+		resp, err := resty.R().Get(BaseURL2)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 400)
+
+		// without client certs and creds, should fail
+		_, err = resty.R().Get(BaseSecureURL2)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 400)
+
+		// with creds but without certs, should succeed
+		_, err = resty.R().SetBasicAuth(username, passphrase).Get(BaseSecureURL2)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 400)
+
+		// setup TLS mutual auth
+		cert, err := tls.LoadX509KeyPair("../../test/data/client.cert", "../../test/data/client.key")
+		So(err, ShouldBeNil)
+
+		resty.SetCertificates(cert)
+		defer func() { resty.SetCertificates(tls.Certificate{}) }()
+
+		// with client certs but without creds, reads should succeed
+		resp, err = resty.R().Get(BaseSecureURL2 + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		// with only client certs, writes should fail
+		resp, err = resty.R().Post(BaseSecureURL2 + "/v2/repo/blobs/uploads/")
+		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 401)
 
 		// with client certs and creds, should get expected status code
