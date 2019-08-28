@@ -8,6 +8,7 @@
 * TLS support
 * *Basic* and TLS mutual authentication
 * Swagger based documentation
+* Doesn't require _root_ privileges
 
 # Building
 
@@ -34,7 +35,46 @@ Build artifacts are in bin/
 
 # Running
 
-bin/zot serve <config>
+bin/zot serve _config-file_
+
+Examples of config files are available in [examples/](examples/) dir.
+
+# Ecosystem
+
+## skopeo
+
+[skopeo](https://github.com/containers/skopeo) is a tool to work with remote
+image repositories.
+
+We have a [patched version](https://github.com/anuvu/skopeo) available that
+works with _zot_.
+
+```
+git clone https://github.com/anuvu/skopeo
+
+cd skopeo
+
+make GO111MODULE=on binary-local
+```
+
+## cri-o
+
+[cri-o](https://github.com/cri-o/cri-o) is a OCI-based Kubernetes container
+runtime interface.
+
+We have a [patched version](https://github.com/anuvu/image) of containers/image
+available that works with _zot_ which must be linked with cri-o.
+
+```
+git clone https://github.com/cri-o/cri-o
+
+cd cri-o
+
+echo 'replace github.com/containers/image => github.com/anuvu/image v1.5.2-0.20190827234748-f71edca6153a' >> go.mod
+
+make bin/crio crio.conf GO111MODULE=on
+
+```
 
 # Caveats
 
