@@ -38,11 +38,5 @@ func TestRepoLayout(t *testing.T) {
 			So(v, ShouldEqual, true)
 			So(err, ShouldBeNil)
 		})
-
-		Convey("Validate all repos", func() {
-			v, err := il.Validate()
-			So(v, ShouldEqual, true)
-			So(err, ShouldBeNil)
-		})
 	})
 }

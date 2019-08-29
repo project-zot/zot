@@ -41,6 +41,24 @@ func TestAPI(t *testing.T) {
 			err = json.Unmarshal(resp.Body(), &repoList)
 			So(err, ShouldBeNil)
 			So(len(repoList.Repositories), ShouldEqual, 0)
+
+			// after newly created upload should succeed
+			resp, err = resty.R().Post(BaseURL + "/v2/z/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 202)
+
+			// after newly created upload should succeed
+			resp, err = resty.R().Post(BaseURL + "/v2/a/b/c/d/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 202)
+
+			resp, err = resty.R().SetResult(&api.RepositoryList{}).Get(BaseURL + "/v2/_catalog")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+			So(resp.String(), ShouldNotBeEmpty)
+			r := resp.Result().(*api.RepositoryList)
+			So(r.Repositories[0], ShouldEqual, "a/b/c/d")
+			So(r.Repositories[1], ShouldEqual, "z")
 		})
 
 		Convey("Get images in a repository", func() {
