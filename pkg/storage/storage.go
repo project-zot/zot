@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"path/filepath"
 	"sync"
 
 	"github.com/anuvu/zot/errors"
@@ -39,33 +40,9 @@ func NewImageStore(rootDir string, log zerolog.Logger) *ImageStore {
 	}
 	if _, err := os.Stat(rootDir); os.IsNotExist(err) {
 		_ = os.MkdirAll(rootDir, 0700)
-	} else if _, err := is.Validate(); err != nil {
-		panic(err)
 	}
+
 	return is
-}
-
-func (is *ImageStore) Validate() (bool, error) {
-	dir := is.rootDir
-	files, err := ioutil.ReadDir(dir)
-	if err != nil {
-		is.log.Error().Err(err).Str("dir", dir).Msg("unable to read directory")
-		return false, errors.ErrRepoNotFound
-	}
-
-	for _, file := range files {
-		if !file.IsDir() {
-			is.log.Error().Err(err).Str("file", file.Name()).Msg("not a directory")
-			return false, errors.ErrRepoIsNotDir
-		}
-
-		v, err := is.ValidateRepo(file.Name())
-		if !v {
-			return v, err
-		}
-	}
-
-	return true, nil
 }
 
 func (is *ImageStore) InitRepo(name string) error {
@@ -176,19 +153,39 @@ func (is *ImageStore) ValidateRepo(name string) (bool, error) {
 
 func (is *ImageStore) GetRepositories() ([]string, error) {
 	dir := is.rootDir
-	files, err := ioutil.ReadDir(dir)
+
+	_, err := ioutil.ReadDir(dir)
 	if err != nil {
 		is.log.Error().Err(err).Msg("failure walking storage root-dir")
 		return nil, err
 	}
 
 	stores := make([]string, 0)
-	for _, file := range files {
-		p := path.Join(dir, file.Name())
-		is.log.Debug().Str("dir", p).Str("name", file.Name()).Msg("found image store")
-		stores = append(stores, file.Name())
-	}
-	return stores, nil
+	err = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if !info.IsDir() {
+			return nil
+		}
+
+		rel, err := filepath.Rel(is.rootDir, path)
+		if err != nil {
+			return nil
+		}
+
+		if ok, err := is.ValidateRepo(rel); !ok || err != nil {
+			return nil
+		}
+
+		is.log.Debug().Str("dir", path).Str("name", info.Name()).Msg("found image store")
+		stores = append(stores, rel)
+
+		return nil
+	})
+
+	return stores, err
 }
 
 func (is *ImageStore) GetImageTags(repo string) ([]string, error) {
