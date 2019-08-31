@@ -24,14 +24,16 @@ check:
 	golangci-lint --version || curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.17.1
 	golangci-lint run --enable-all ./cmd/... ./pkg/...
 
-.PHONY: doc
-doc:
+docs/docs.go: 
 	swag -v || go get -u github.com/swaggo/swag/cmd/swag
 	swag init -g pkg/api/routes.go
 
+.PHONY: doc
+doc: docs/docs.go
+
 .PHONY: clean
 clean:
-	rm -f bin/zot*
+	rm -f bin/zot* docs/*
 
 .PHONY: run
 run: binary test
