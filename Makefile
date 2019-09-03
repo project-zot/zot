@@ -25,7 +25,7 @@ check:
 	golangci-lint run --enable-all ./cmd/... ./pkg/...
 
 docs/docs.go: 
-	swag -v || go get -u github.com/swaggo/swag/cmd/swag
+	swag -v || go install github.com/swaggo/swag/cmd/swag
 	swag init -g pkg/api/routes.go
 
 .PHONY: doc
