@@ -85,7 +85,7 @@ func NewRootCmd() *cobra.Command {
 		Long:  "`zot`",
 		Run: func(cmd *cobra.Command, args []string) {
 			if showVersion {
-				log.Info().Str("version", dspec.Version).Msg("distribution-spec")
+				log.Info().Str("distribution-spec", dspec.Version).Str("commit", api.Commit).Msg("version")
 			}
 			_ = cmd.Usage()
 		},

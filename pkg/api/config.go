@@ -4,6 +4,9 @@ import (
 	dspec "github.com/opencontainers/distribution-spec"
 )
 
+//nolint (gochecknoglobals)
+var Commit string
+
 type StorageConfig struct {
 	RootDirectory string
 }
@@ -39,6 +42,7 @@ type LogConfig struct {
 
 type Config struct {
 	Version string
+	Commit  string
 	Storage StorageConfig
 	HTTP    HTTPConfig
 	Log     LogConfig `mapstructure:",omitempty"`
@@ -47,6 +51,7 @@ type Config struct {
 func NewConfig() *Config {
 	return &Config{
 		Version: dspec.Version,
+		Commit:  Commit,
 		HTTP:    HTTPConfig{Address: "127.0.0.1", Port: "8080"},
 		Log:     LogConfig{Level: "debug"},
 	}
