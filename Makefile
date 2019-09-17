@@ -1,5 +1,7 @@
 export GO111MODULE=on
 TOP_LEVEL=$(shell git rev-parse --show-toplevel)
+COMMIT_HASH=$(shell git describe --always --tags --long)
+COMMIT=$(if $(shell git status --porcelain --untracked-files=no),$(COMMIT_HASH)-dirty,$(COMMIT_HASH))
 CONTAINER_RUNTIME := $(shell command -v podman 2> /dev/null || echo docker)
 PATH := bin:$(PATH)
 
@@ -8,11 +10,11 @@ all: doc binary debug test check
 
 .PHONY: binary
 binary: doc
-	go build -v -o bin/zot -tags=jsoniter ./cmd/zot
+	go build -v -ldflags "-X  github.com/anuvu/zot/pkg/api.Commit=${COMMIT}" -o bin/zot -tags=jsoniter ./cmd/zot
 
 .PHONY: debug
 debug: doc
-	go build -v -gcflags all='-N -l' -o bin/zot-debug -tags=jsoniter ./cmd/zot
+	go build -v -gcflags all='-N -l' -ldflags "-X  github.com/anuvu/zot/pkg/api.Commit=${COMMIT}" -o bin/zot-debug -tags=jsoniter ./cmd/zot
 
 .PHONY: test
 test:
