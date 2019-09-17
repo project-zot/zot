@@ -4,6 +4,7 @@ go 1.12
 
 require (
 	github.com/alecthomas/template v0.0.0-20160405071501-a0175ee3bccc
+	github.com/go-chi/chi v4.0.2+incompatible // indirect
 	github.com/gofrs/uuid v3.2.0+incompatible
 	github.com/gorilla/mux v1.7.3
 	github.com/json-iterator/go v1.1.6
