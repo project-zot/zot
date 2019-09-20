@@ -16,4 +16,7 @@ var (
 	ErrBadBlobDigest    = errors.New("blob: bad blob digest")
 	ErrUnknownCode      = errors.New("error: unknown error code")
 	ErrBadCACert        = errors.New("tls: invalid ca cert")
+	ErrBadUser          = errors.New("ldap: non-existent user")
+	ErrEntriesExceeded  = errors.New("ldap: too many entries returned")
+	ErrLDAPConfig       = errors.New("config: invalid LDAP configuration")
 )

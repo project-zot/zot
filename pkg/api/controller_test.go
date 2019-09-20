@@ -5,12 +5,16 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io/ioutil"
+	"net"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/anuvu/zot/pkg/api"
+	vldap "github.com/nmcclain/ldap"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 )
@@ -41,7 +45,11 @@ func TestBasicAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		config := api.NewConfig()
 		config.HTTP.Port = SecurePort1
-		config.HTTP.Auth.HTPasswd.Path = htpasswdPath
+		config.HTTP.Auth = &api.AuthConfig{
+			HTPasswd: api.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+		}
 		c := api.NewController(config)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
@@ -101,9 +109,15 @@ func TestTLSWithBasicAuth(t *testing.T) {
 		defer func() { resty.SetTLSClientConfig(nil) }()
 		config := api.NewConfig()
 		config.HTTP.Port = SecurePort2
-		config.HTTP.Auth.HTPasswd.Path = htpasswdPath
-		config.HTTP.TLS.Cert = ServerCert
-		config.HTTP.TLS.Key = ServerKey
+		config.HTTP.TLS = &api.TLSConfig{
+			Cert: ServerCert,
+			Key:  ServerKey,
+		}
+		config.HTTP.Auth = &api.AuthConfig{
+			HTPasswd: api.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+		}
 
 		c := api.NewController(config)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
@@ -170,9 +184,15 @@ func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 		defer func() { resty.SetTLSClientConfig(nil) }()
 		config := api.NewConfig()
 		config.HTTP.Port = SecurePort2
-		config.HTTP.Auth.HTPasswd.Path = htpasswdPath
-		config.HTTP.TLS.Cert = ServerCert
-		config.HTTP.TLS.Key = ServerKey
+		config.HTTP.Auth = &api.AuthConfig{
+			HTPasswd: api.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+		}
+		config.HTTP.TLS = &api.TLSConfig{
+			Cert: ServerCert,
+			Key:  ServerKey,
+		}
 		config.HTTP.AllowReadAccess = true
 
 		c := api.NewController(config)
@@ -241,9 +261,11 @@ func TestTLSMutualAuth(t *testing.T) {
 		defer func() { resty.SetTLSClientConfig(nil) }()
 		config := api.NewConfig()
 		config.HTTP.Port = SecurePort2
-		config.HTTP.TLS.Cert = ServerCert
-		config.HTTP.TLS.Key = ServerKey
-		config.HTTP.TLS.CACert = CACert
+		config.HTTP.TLS = &api.TLSConfig{
+			Cert:   ServerCert,
+			Key:    ServerKey,
+			CACert: CACert,
+		}
 
 		c := api.NewController(config)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
@@ -323,9 +345,11 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 		defer func() { resty.SetTLSClientConfig(nil) }()
 		config := api.NewConfig()
 		config.HTTP.Port = SecurePort2
-		config.HTTP.TLS.Cert = ServerCert
-		config.HTTP.TLS.Key = ServerKey
-		config.HTTP.TLS.CACert = CACert
+		config.HTTP.TLS = &api.TLSConfig{
+			Cert:   ServerCert,
+			Key:    ServerKey,
+			CACert: CACert,
+		}
 		config.HTTP.AllowReadAccess = true
 
 		c := api.NewController(config)
@@ -413,10 +437,16 @@ func TestTLSMutualAndBasicAuth(t *testing.T) {
 		defer func() { resty.SetTLSClientConfig(nil) }()
 		config := api.NewConfig()
 		config.HTTP.Port = SecurePort2
-		config.HTTP.TLS.Cert = ServerCert
-		config.HTTP.TLS.Key = ServerKey
-		config.HTTP.TLS.CACert = CACert
-		config.HTTP.Auth.HTPasswd.Path = htpasswdPath
+		config.HTTP.Auth = &api.AuthConfig{
+			HTPasswd: api.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+		}
+		config.HTTP.TLS = &api.TLSConfig{
+			Cert:   ServerCert,
+			Key:    ServerKey,
+			CACert: CACert,
+		}
 
 		c := api.NewController(config)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
@@ -499,10 +529,16 @@ func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 		defer func() { resty.SetTLSClientConfig(nil) }()
 		config := api.NewConfig()
 		config.HTTP.Port = SecurePort2
-		config.HTTP.TLS.Cert = ServerCert
-		config.HTTP.TLS.Key = ServerKey
-		config.HTTP.TLS.CACert = CACert
-		config.HTTP.Auth.HTPasswd.Path = htpasswdPath
+		config.HTTP.Auth = &api.AuthConfig{
+			HTPasswd: api.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+		}
+		config.HTTP.TLS = &api.TLSConfig{
+			Cert:   ServerCert,
+			Key:    ServerKey,
+			CACert: CACert,
+		}
 		config.HTTP.AllowReadAccess = true
 
 		c := api.NewController(config)
@@ -574,6 +610,142 @@ func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, 404)
 
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseSecureURL2 + "/v2/")
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+	})
+}
+
+const (
+	LDAPAddress      = "127.0.0.1"
+	LDAPPort         = 9636
+	LDAPBaseDN       = "ou=test"
+	LDAPBindDN       = "cn=reader," + LDAPBaseDN
+	LDAPBindPassword = "bindPassword"
+)
+
+type testLDAPServer struct {
+	server *vldap.Server
+	quitCh chan bool
+}
+
+func newTestLDAPServer() *testLDAPServer {
+	l := &testLDAPServer{}
+	quitCh := make(chan bool)
+	server := vldap.NewServer()
+	server.QuitChannel(quitCh)
+	server.BindFunc("", l)
+	server.SearchFunc("", l)
+	l.server = server
+	l.quitCh = quitCh
+	return l
+}
+
+func (l *testLDAPServer) Start() {
+	addr := fmt.Sprintf("%s:%d", LDAPAddress, LDAPPort)
+	go func() {
+		if err := l.server.ListenAndServe(addr); err != nil {
+			panic(err)
+		}
+	}()
+	for {
+		_, err := net.Dial("tcp", addr)
+		if err == nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func (l *testLDAPServer) Stop() {
+	l.quitCh <- true
+}
+
+func (l *testLDAPServer) Bind(bindDN, bindSimplePw string, conn net.Conn) (vldap.LDAPResultCode, error) {
+	if bindDN == "" || bindSimplePw == "" {
+		return vldap.LDAPResultInappropriateAuthentication, errors.New("ldap: bind creds required")
+	}
+	if (bindDN == LDAPBindDN && bindSimplePw == LDAPBindPassword) ||
+		(bindDN == fmt.Sprintf("cn=%s,%s", username, LDAPBaseDN) && bindSimplePw == passphrase) {
+		return vldap.LDAPResultSuccess, nil
+	}
+	return vldap.LDAPResultInvalidCredentials, errors.New("ldap: invalid credentials")
+}
+
+func (l *testLDAPServer) Search(boundDN string, req vldap.SearchRequest,
+	conn net.Conn) (vldap.ServerSearchResult, error) {
+	check := fmt.Sprintf("(uid=%s)", username)
+	if check == req.Filter {
+		return vldap.ServerSearchResult{
+			Entries: []*vldap.Entry{
+				{DN: fmt.Sprintf("cn=%s,%s", username, LDAPBaseDN)},
+			},
+			ResultCode: vldap.LDAPResultSuccess,
+		}, nil
+	}
+	return vldap.ServerSearchResult{}, nil
+}
+
+func TestBasicAuthWithLDAP(t *testing.T) {
+	Convey("Make a new controller", t, func() {
+		l := newTestLDAPServer()
+		l.Start()
+		defer l.Stop()
+		config := api.NewConfig()
+		config.HTTP.Port = SecurePort1
+		config.HTTP.Auth = &api.AuthConfig{
+			LDAP: &api.LDAPConfig{
+				Insecure:      true,
+				Address:       LDAPAddress,
+				Port:          LDAPPort,
+				BindDN:        LDAPBindDN,
+				BindPassword:  LDAPBindPassword,
+				BaseDN:        LDAPBaseDN,
+				UserAttribute: "uid",
+			},
+		}
+		c := api.NewController(config)
+		dir, err := ioutil.TempDir("", "oci-repo-test")
+		if err != nil {
+			panic(err)
+		}
+		defer os.RemoveAll(dir)
+		c.Config.Storage.RootDirectory = dir
+		go func() {
+			// this blocks
+			if err := c.Run(); err != nil {
+				return
+			}
+		}()
+
+		// wait till ready
+		for {
+			_, err := resty.R().Get(BaseURL1)
+			if err == nil {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		defer func() {
+			ctx := context.Background()
+			_ = c.Server.Shutdown(ctx)
+		}()
+
+		// without creds, should get access error
+		resp, err := resty.R().Get(BaseURL1 + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 401)
+		var e api.Error
+		err = json.Unmarshal(resp.Body(), &e)
+		So(err, ShouldBeNil)
+
+		// with creds, should get expected status code
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 404)
+
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/v2/")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 	})
