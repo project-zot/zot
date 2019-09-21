@@ -20,7 +20,7 @@ func NewLogger(config *Config) zerolog.Logger {
 	if config.Log.Output == "" {
 		log = zerolog.New(os.Stdout)
 	} else {
-		file, err := os.OpenFile(config.Log.Output, os.O_WRONLY|os.O_CREATE, 0600)
+		file, err := os.OpenFile(config.Log.Output, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
 		if err != nil {
 			panic(err)
 		}
