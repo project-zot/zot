@@ -1,7 +1,8 @@
 # zot [![Build Status](https://travis-ci.org/anuvu/zot.svg?branch=master)](https://travis-ci.org/anuvu/zot) [![codecov.io](http://codecov.io/github/anuvu/zot/coverage.svg?branch=master)](http://codecov.io/github/anuvu/zot?branch=master)
 
-**zot** is a single-purpose OCI image repository server based on the
-[OCI distribution spec](https://github.com/opencontainers/distribution-spec).
+**zot** is a vendor-neutral OCI image repository server purely based on 
+[OCI Distribution Specification]
+(https://github.com/opencontainers/distribution-spec).
 
 * Conforms to [OCI distribution spec](https://github.com/opencontainers/distribution-spec) APIs
 * Uses [OCI storage layout](https://github.com/opencontainers/image-spec/blob/master/image-layout.md) for storage layout
@@ -9,6 +10,11 @@
 * Authentication via TLS mutual authentication and HTTP *BASIC* (local _htpasswd_ and LDAP)
 * Doesn't require _root_ privileges
 * Swagger based documentation
+* Released under Apache 2.0 License
+
+# Presentations
+
+* [OCI Weekly Discussion - Oct 2, 2019](https://hackmd.io/El8Dd2xrTlCaCG59ns5cwg#October-2-2019)
 
 # Building
 
