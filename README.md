@@ -1,8 +1,7 @@
 # zot [![Build Status](https://travis-ci.org/anuvu/zot.svg?branch=master)](https://travis-ci.org/anuvu/zot) [![codecov.io](http://codecov.io/github/anuvu/zot/coverage.svg?branch=master)](http://codecov.io/github/anuvu/zot?branch=master)
 
 **zot** is a vendor-neutral OCI image repository server purely based on 
-[OCI Distribution Specification]
-(https://github.com/opencontainers/distribution-spec).
+[OCI Distribution Specification](https://github.com/opencontainers/distribution-spec).
 
 * Conforms to [OCI distribution spec](https://github.com/opencontainers/distribution-spec) APIs
 * Uses [OCI storage layout](https://github.com/opencontainers/image-spec/blob/master/image-layout.md) for storage layout
@@ -10,6 +9,7 @@
 * Authentication via TLS mutual authentication and HTTP *BASIC* (local _htpasswd_ and LDAP)
 * Doesn't require _root_ privileges
 * Swagger based documentation
+* Can run compliance checks against registries
 * Released under Apache 2.0 License
 
 # Presentations
@@ -39,11 +39,18 @@ make
 
 Build artifacts are in bin/
 
-# Running
-
+# Serving
+```
 bin/zot serve _config-file_
+```
 
 Examples of config files are available in [examples/](examples/) dir.
+
+# Compliance checks
+
+```
+bin/zot -H hostIP -P port [-V "all"]
+```
 
 # Ecosystem
 
