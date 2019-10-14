@@ -49,7 +49,7 @@ Examples of config files are available in [examples/](examples/) dir.
 # Compliance checks
 
 ```
-bin/zot -H hostIP -P port [-V "all"]
+bin/zot compliance -H hostIP -P port [-V "all"]
 ```
 
 # Ecosystem
