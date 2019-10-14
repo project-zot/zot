@@ -34,10 +34,7 @@ go_library(
 go_test(
     name = "go_default_test",
     timeout = "short",
-    srcs = [
-        "controller_test.go",
-        "routes_test.go",
-    ],
+    srcs = ["controller_test.go"],
     data = [
         "//:exported_testdata",
     ],
@@ -45,8 +42,6 @@ go_test(
     race = "on",
     deps = [
         "@com_github_nmcclain_ldap//:go_default_library",
-        "@com_github_opencontainers_go_digest//:go_default_library",
-        "@com_github_opencontainers_image_spec//specs-go/v1:go_default_library",
         "@com_github_smartystreets_goconvey//convey:go_default_library",
         "@in_gopkg_resty_v1//:go_default_library",
     ],

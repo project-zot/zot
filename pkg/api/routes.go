@@ -28,10 +28,13 @@ import (
 	httpSwagger "github.com/swaggo/http-swagger"
 )
 
-const RoutePrefix = "/v2"
-const DistAPIVersion = "Docker-Distribution-API-Version"
-const DistContentDigestKey = "Docker-Content-Digest"
-const BlobUploadUUID = "Blob-Upload-UUID"
+const (
+	RoutePrefix          = "/v2"
+	DistAPIVersion       = "Docker-Distribution-API-Version"
+	DistContentDigestKey = "Docker-Content-Digest"
+	BlobUploadUUID       = "Blob-Upload-UUID"
+	DefaultMediaType     = "application/json"
+)
 
 type RouteHandler struct {
 	c *Controller
@@ -823,7 +826,7 @@ func WriteJSON(w http.ResponseWriter, status int, data interface{}) {
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 	}
-	WriteData(w, status, "application/json; charset=utf-8", body)
+	WriteData(w, status, DefaultMediaType, body)
 }
 
 func WriteData(w http.ResponseWriter, status int, mediaType string, data []byte) {

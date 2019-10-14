@@ -1,14 +1,19 @@
 package cli
 
 import (
+	"testing"
+
 	"github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/api"
+	"github.com/anuvu/zot/pkg/compliance"
 	"github.com/anuvu/zot/pkg/storage"
 	"github.com/mitchellh/mapstructure"
 	dspec "github.com/opencontainers/distribution-spec"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	"github.com/anuvu/zot/pkg/compliance/v1_0_0"
 )
 
 // metadataConfig reports metadata after parsing, which we use to track
@@ -23,6 +28,7 @@ func NewRootCmd() *cobra.Command {
 	showVersion := false
 	config := api.NewConfig()
 
+	// "serve"
 	serveCmd := &cobra.Command{
 		Use:     "serve <config>",
 		Aliases: []string{"serve"},
@@ -53,6 +59,7 @@ func NewRootCmd() *cobra.Command {
 		},
 	}
 
+	// "garbage-collect"
 	gcDelUntagged := false
 	gcDryRun := false
 
@@ -79,6 +86,37 @@ func NewRootCmd() *cobra.Command {
 	gcCmd.Flags().BoolVarP(&gcDryRun, "dry-run", "d", false,
 		"do everything except remove the blobs")
 
+	// "compliance"
+	complianceConfig := compliance.NewConfig()
+	complianceCmd := &cobra.Command{
+		Use:     "compliance",
+		Aliases: []string{"co"},
+		Short:   "`compliance` checks compliance with respect to OCI distribution-spec",
+		Long:    "`compliance` checks compliance with respect to OCI distribution-spec",
+		Run: func(cmd *cobra.Command, args []string) {
+			t := &testing.T{}
+			switch complianceConfig.Version {
+			case "all":
+				fallthrough
+			default:
+				v1_0_0.CheckWorkflows(t, complianceConfig)
+			}
+		},
+	}
+
+	complianceCmd.Flags().StringVarP(&complianceConfig.Address, "address", "H", "",
+		"Registry server address")
+	if err := complianceCmd.MarkFlagRequired("address"); err != nil {
+		panic(err)
+	}
+	complianceCmd.Flags().StringVarP(&complianceConfig.Port, "port", "P", "",
+		"Registry server port")
+	if err := complianceCmd.MarkFlagRequired("port"); err != nil {
+		panic(err)
+	}
+	complianceCmd.Flags().StringVarP(&complianceConfig.Version, "version", "V", "all",
+		"OCI dist-spec version to check")
+
 	rootCmd := &cobra.Command{
 		Use:   "zot",
 		Short: "`zot`",
@@ -93,6 +131,7 @@ func NewRootCmd() *cobra.Command {
 
 	rootCmd.AddCommand(serveCmd)
 	rootCmd.AddCommand(gcCmd)
+	rootCmd.AddCommand(complianceCmd)
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "show the version and exit")
 
 	return rootCmd
