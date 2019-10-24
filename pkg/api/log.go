@@ -73,6 +73,7 @@ func Logger(log zerolog.Logger) mux.MiddlewareFunc {
 			clientIP := r.RemoteAddr
 			method := r.Method
 			headers := r.Header
+			delete(headers, "Authorization") // strip from logs
 			statusCode := sw.status
 			bodySize := sw.length
 			if raw != "" {
