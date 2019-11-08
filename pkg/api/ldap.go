@@ -86,6 +86,9 @@ func (lc *LDAPClient) Authenticate(username, password string) (bool, map[string]
 		err := lc.Conn.Bind(lc.BindDN, lc.BindPassword)
 		if err != nil {
 			lc.log.Error().Err(err).Str("bindDN", lc.BindDN).Msg("bind failed")
+			// clean up the cached conn, so we can retry
+			lc.Conn.Close()
+			lc.Conn = nil
 			return false, nil, err
 		}
 	}
