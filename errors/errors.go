@@ -19,5 +19,6 @@ var (
 	ErrBadUser             = errors.New("ldap: non-existent user")
 	ErrEntriesExceeded     = errors.New("ldap: too many entries returned")
 	ErrLDAPEmptyPassphrase = errors.New("ldap: empty passphrase")
+	ErrLDAPBadConn         = errors.New("ldap: bad connection")
 	ErrLDAPConfig          = errors.New("config: invalid LDAP configuration")
 )

@@ -4,12 +4,15 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"time"
 
 	"github.com/anuvu/zot/errors"
 	"github.com/jtblin/go-ldap-client"
 	"github.com/rs/zerolog"
 	goldap "gopkg.in/ldap.v2"
 )
+
+const maxRetries = 8
 
 type LDAPClient struct {
 	ldap.LDAPClient
@@ -69,6 +72,17 @@ func (lc *LDAPClient) Connect() error {
 	return nil
 }
 
+func sleepAndRetry(retries, maxRetries int) bool {
+	if retries > maxRetries {
+		return false
+	}
+	if retries < maxRetries {
+		time.Sleep(time.Duration(retries) * time.Second) // gradually backoff
+		return true
+	}
+	return false
+}
+
 // Authenticate authenticates the user against the ldap backend.
 func (lc *LDAPClient) Authenticate(username, password string) (bool, map[string]string, error) {
 	if password == "" {
@@ -76,21 +90,31 @@ func (lc *LDAPClient) Authenticate(username, password string) (bool, map[string]
 		return false, nil, errors.ErrLDAPEmptyPassphrase
 	}
 
-	err := lc.Connect()
-	if err != nil {
-		return false, nil, err
+	connected := false
+	for retries := 0; !connected && sleepAndRetry(retries, maxRetries); retries++ {
+		err := lc.Connect()
+		if err != nil {
+			continue
+		}
+
+		// First bind with a read only user
+		if lc.BindDN != "" && lc.BindPassword != "" {
+			err := lc.Conn.Bind(lc.BindDN, lc.BindPassword)
+			if err != nil {
+				lc.log.Error().Err(err).Str("bindDN", lc.BindDN).Msg("bind failed")
+				// clean up the cached conn, so we can retry
+				lc.Conn.Close()
+				lc.Conn = nil
+				continue
+			}
+		}
+		connected = true
 	}
 
-	// First bind with a read only user
-	if lc.BindDN != "" && lc.BindPassword != "" {
-		err := lc.Conn.Bind(lc.BindDN, lc.BindPassword)
-		if err != nil {
-			lc.log.Error().Err(err).Str("bindDN", lc.BindDN).Msg("bind failed")
-			// clean up the cached conn, so we can retry
-			lc.Conn.Close()
-			lc.Conn = nil
-			return false, nil, err
-		}
+	// exhausted all retries?
+	if !connected {
+		lc.log.Error().Err(errors.ErrLDAPBadConn).Msg("exhausted all retries")
+		return false, nil, errors.ErrLDAPBadConn
 	}
 
 	attributes := append(lc.Attributes, "dn")
