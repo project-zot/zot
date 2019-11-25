@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/anuvu/zot/errors"
+	"github.com/anuvu/zot/pkg/log"
 	"github.com/jtblin/go-ldap-client"
-	"github.com/rs/zerolog"
 	goldap "gopkg.in/ldap.v2"
 )
 
@@ -18,7 +18,7 @@ type LDAPClient struct {
 	ldap.LDAPClient
 	subtreeSearch bool
 	clientCAs     *x509.CertPool
-	log           zerolog.Logger
+	log           log.Logger
 }
 
 // Connect connects to the ldap backend.

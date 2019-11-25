@@ -1,4 +1,4 @@
-package api
+package log
 
 import (
 	"net/http"
@@ -9,24 +9,33 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func NewLogger(config *Config) zerolog.Logger {
+// Logger extends zerolog's Logger
+type Logger struct {
+	zerolog.Logger
+}
+
+func (l Logger) Println(v ...interface{}) {
+	l.Logger.Error().Msg("panic recovered")
+}
+
+func NewLogger(level string, output string) Logger {
 	zerolog.TimeFieldFormat = time.RFC3339Nano
-	lvl, err := zerolog.ParseLevel(config.Log.Level)
+	lvl, err := zerolog.ParseLevel(level)
 	if err != nil {
 		panic(err)
 	}
 	zerolog.SetGlobalLevel(lvl)
 	var log zerolog.Logger
-	if config.Log.Output == "" {
+	if output == "" {
 		log = zerolog.New(os.Stdout)
 	} else {
-		file, err := os.OpenFile(config.Log.Output, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+		file, err := os.OpenFile(output, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
 		if err != nil {
 			panic(err)
 		}
 		log = zerolog.New(file)
 	}
-	return log.With().Timestamp().Logger()
+	return Logger{Logger: log.With().Timestamp().Logger()}
 }
 
 type statusWriter struct {
@@ -49,7 +58,7 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 	return n, err
 }
 
-func Logger(log zerolog.Logger) mux.MiddlewareFunc {
+func SessionLogger(log Logger) mux.MiddlewareFunc {
 	l := log.With().Str("module", "http").Logger()
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

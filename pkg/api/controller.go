@@ -9,21 +9,22 @@ import (
 	"net/http"
 
 	"github.com/anuvu/zot/errors"
+	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
+	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
-	"github.com/rs/zerolog"
 )
 
 type Controller struct {
 	Config     *Config
 	Router     *mux.Router
 	ImageStore *storage.ImageStore
-	Log        zerolog.Logger
+	Log        log.Logger
 	Server     *http.Server
 }
 
 func NewController(config *Config) *Controller {
-	return &Controller{Config: config, Log: NewLogger(config)}
+	return &Controller{Config: config, Log: log.NewLogger(config.Log.Level, config.Log.Output)}
 }
 
 func (c *Controller) Run() error {
@@ -37,7 +38,8 @@ func (c *Controller) Run() error {
 	c.Log.Info().Interface("params", c.Config.Sanitize()).Msg("configuration settings")
 
 	engine := mux.NewRouter()
-	engine.Use(Logger(c.Log))
+	engine.Use(log.SessionLogger(c.Log), handlers.RecoveryHandler(handlers.RecoveryLogger(c.Log),
+		handlers.PrintRecoveryStack(false)))
 	c.Router = engine
 	_ = NewRouteHandler(c)
 

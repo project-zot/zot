@@ -162,6 +162,7 @@ func (rh *RouteHandler) CheckManifest(w http.ResponseWriter, r *http.Request) {
 		case errors.ErrManifestNotFound:
 			WriteJSON(w, http.StatusNotFound, NewError(MANIFEST_UNKNOWN, map[string]string{"reference": reference}))
 		default:
+			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			WriteJSON(w, http.StatusInternalServerError, NewError(MANIFEST_INVALID, map[string]string{"reference": reference}))
 		}
 		return
@@ -213,6 +214,7 @@ func (rh *RouteHandler) GetManifest(w http.ResponseWriter, r *http.Request) {
 		case errors.ErrManifestNotFound:
 			WriteJSON(w, http.StatusNotFound, NewError(MANIFEST_UNKNOWN, map[string]string{"reference": reference}))
 		default:
+			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 		return
@@ -273,6 +275,7 @@ func (rh *RouteHandler) UpdateManifest(w http.ResponseWriter, r *http.Request) {
 		case errors.ErrBlobNotFound:
 			WriteJSON(w, http.StatusBadRequest, NewError(BLOB_UNKNOWN, map[string]string{"blob": digest}))
 		default:
+			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 		return
@@ -314,6 +317,7 @@ func (rh *RouteHandler) DeleteManifest(w http.ResponseWriter, r *http.Request) {
 		case errors.ErrManifestNotFound:
 			WriteJSON(w, http.StatusNotFound, NewError(MANIFEST_UNKNOWN, map[string]string{"reference": reference}))
 		default:
+			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 		return
@@ -358,6 +362,7 @@ func (rh *RouteHandler) CheckBlob(w http.ResponseWriter, r *http.Request) {
 		case errors.ErrBlobNotFound:
 			WriteJSON(w, http.StatusNotFound, NewError(BLOB_UNKNOWN, map[string]string{"digest": digest}))
 		default:
+			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 		return
@@ -409,6 +414,7 @@ func (rh *RouteHandler) GetBlob(w http.ResponseWriter, r *http.Request) {
 		case errors.ErrBlobNotFound:
 			WriteJSON(w, http.StatusNotFound, NewError(BLOB_UNKNOWN, map[string]string{"digest": digest}))
 		default:
+			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 		return
@@ -453,6 +459,7 @@ func (rh *RouteHandler) DeleteBlob(w http.ResponseWriter, r *http.Request) {
 		case errors.ErrBlobNotFound:
 			WriteJSON(w, http.StatusNotFound, NewError(BLOB_UNKNOWN, map[string]string{"digest": digest}))
 		default:
+			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 		return
@@ -487,6 +494,7 @@ func (rh *RouteHandler) CreateBlobUpload(w http.ResponseWriter, r *http.Request)
 		case errors.ErrRepoNotFound:
 			WriteJSON(w, http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
 		default:
+			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 		return
@@ -536,6 +544,7 @@ func (rh *RouteHandler) GetBlobUpload(w http.ResponseWriter, r *http.Request) {
 		case errors.ErrUploadNotFound:
 			WriteJSON(w, http.StatusNotFound, NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"uuid": uuid}))
 		default:
+			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 		return
@@ -613,6 +622,7 @@ func (rh *RouteHandler) PatchBlobUpload(w http.ResponseWriter, r *http.Request) 
 		case errors.ErrUploadNotFound:
 			WriteJSON(w, http.StatusNotFound, NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"uuid": uuid}))
 		default:
+			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 		return
@@ -708,6 +718,7 @@ func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request)
 			case errors.ErrUploadNotFound:
 				WriteJSON(w, http.StatusNotFound, NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"uuid": uuid}))
 			default:
+				rh.c.Log.Error().Err(err).Msg("unexpected error")
 				w.WriteHeader(http.StatusInternalServerError)
 			}
 			return
@@ -726,6 +737,7 @@ func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request)
 		case errors.ErrUploadNotFound:
 			WriteJSON(w, http.StatusNotFound, NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"uuid": uuid}))
 		default:
+			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 		return
@@ -769,6 +781,7 @@ func (rh *RouteHandler) DeleteBlobUpload(w http.ResponseWriter, r *http.Request)
 		case errors.ErrUploadNotFound:
 			WriteJSON(w, http.StatusNotFound, NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"uuid": uuid}))
 		default:
+			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 		return

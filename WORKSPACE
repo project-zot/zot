@@ -1113,3 +1113,10 @@ go_repository(
     sum = "h1:yU/FENpkHYISWsQrbr3pcZOBj0EuRjPzNc1+dTCLu44=",
     version = "v0.0.0-20160317154340-7f45deb8130a",
 )
+
+go_repository(
+    name = "com_github_gorilla_handlers",
+    importpath = "github.com/gorilla/handlers",
+    sum = "h1:0QniY0USkHQ1RGCLfKxeNHK9bkDHGRYGNDFBCS+YARg=",
+    version = "v1.4.2",
+)
