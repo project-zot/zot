@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/anuvu/zot/errors"
+	zlog "github.com/anuvu/zot/pkg/log"
 	guuid "github.com/gofrs/uuid"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -32,7 +33,7 @@ type ImageStore struct {
 	log         zerolog.Logger
 }
 
-func NewImageStore(rootDir string, log zerolog.Logger) *ImageStore {
+func NewImageStore(rootDir string, log zlog.Logger) *ImageStore {
 	is := &ImageStore{rootDir: rootDir,
 		lock:        &sync.Mutex{},
 		blobUploads: make(map[string]BlobUpload),
@@ -69,11 +70,10 @@ func (is *ImageStore) InitRepo(name string) error {
 		il := ispec.ImageLayout{Version: ispec.ImageLayoutVersion}
 		buf, err := json.Marshal(il)
 		if err != nil {
-			panic(err)
+			is.log.Panic().Err(err).Msg("unable to marshal JSON")
 		}
 		if err := ioutil.WriteFile(ilPath, buf, 0644); err != nil {
-			is.log.Error().Err(err).Str("file", ilPath).Msg("unable to write file")
-			panic(err)
+			is.log.Panic().Err(err).Str("file", ilPath).Msg("unable to write file")
 		}
 	}
 
@@ -84,11 +84,10 @@ func (is *ImageStore) InitRepo(name string) error {
 		index.SchemaVersion = 2
 		buf, err := json.Marshal(index)
 		if err != nil {
-			panic(err)
+			is.log.Panic().Err(err).Msg("unable to marshal JSON")
 		}
 		if err := ioutil.WriteFile(indexPath, buf, 0644); err != nil {
-			is.log.Error().Err(err).Str("file", indexPath).Msg("unable to write file")
-			panic(err)
+			is.log.Panic().Err(err).Str("file", indexPath).Msg("unable to write file")
 		}
 	}
 

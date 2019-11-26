@@ -2,9 +2,9 @@ package api
 
 import (
 	"github.com/anuvu/zot/errors"
+	"github.com/anuvu/zot/pkg/log"
 	"github.com/getlantern/deepcopy"
 	dspec "github.com/opencontainers/distribution-spec"
-	"github.com/rs/zerolog"
 )
 
 //nolint (gochecknoglobals)
@@ -92,7 +92,7 @@ func (c *Config) Sanitize() *Config {
 	return c
 }
 
-func (c *Config) Validate(log zerolog.Logger) error {
+func (c *Config) Validate(log log.Logger) error {
 	// LDAP configuration
 	if c.HTTP.Auth != nil && c.HTTP.Auth.LDAP != nil {
 		l := c.HTTP.Auth.LDAP

@@ -7,6 +7,7 @@ require (
 	github.com/getlantern/deepcopy v0.0.0-20160317154340-7f45deb8130a
 	github.com/go-chi/chi v4.0.2+incompatible // indirect
 	github.com/gofrs/uuid v3.2.0+incompatible
+	github.com/gorilla/handlers v1.4.2
 	github.com/gorilla/mux v1.7.3
 	github.com/json-iterator/go v1.1.6
 	github.com/jtblin/go-ldap-client v0.0.0-20170223121919-b73f66626b33
@@ -33,4 +34,5 @@ require (
 	gopkg.in/asn1-ber.v1 v1.0.0-20181015200546-f715ec2f112d // indirect
 	gopkg.in/ldap.v2 v2.5.1
 	gopkg.in/resty.v1 v1.12.0
+	honnef.co/go/tools v0.0.0-20190102054323-c2f93a96b099
 )

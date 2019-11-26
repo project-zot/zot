@@ -8,6 +8,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -22,7 +23,7 @@ func TestAPIs(t *testing.T) {
 	}
 	defer os.RemoveAll(dir)
 
-	il := storage.NewImageStore(dir, zerolog.New(os.Stdout))
+	il := storage.NewImageStore(dir, log.Logger{Logger: zerolog.New(os.Stdout)})
 
 	Convey("Repo layout", t, func(c C) {
 		repoName := "test"
