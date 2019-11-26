@@ -218,8 +218,8 @@ func (rh *RouteHandler) GetManifest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	WriteData(w, http.StatusOK, mediaType, content)
 	w.Header().Set(DistContentDigestKey, digest)
+	WriteData(w, http.StatusOK, mediaType, content)
 }
 
 // UpdateManifest godoc
