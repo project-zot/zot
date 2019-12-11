@@ -1,0 +1,474 @@
+basePath: '{{.BasePath}}'
+definitions:
+  api.ImageManifest:
+    type: object
+  api.ImageTags:
+    properties:
+      name:
+        type: string
+      tags:
+        items:
+          type: string
+        type: array
+    type: object
+  api.RepositoryList:
+    properties:
+      repositories:
+        items:
+          type: string
+        type: array
+    type: object
+host: '{{.Host}}'
+info:
+  contact:
+    email: support@swagger.io
+    name: API Support
+    url: http://www.swagger.io/support
+  description: APIs for Open Container Initiative Distribution Specification
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  title: Open Container Initiative Distribution Specification
+  version: v0.1.0-dev
+paths:
+  /v2/:
+    get:
+      consumes:
+      - application/json
+      description: Check if this API version is supported
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: ok
+          schema:
+            type: string
+      summary: Check API support
+  /v2/_catalog:
+    get:
+      consumes:
+      - application/json
+      description: List all image repositories
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.RepositoryList'
+            type: object
+        "500":
+          description: internal server error
+          schema:
+            type: string
+      summary: List image repositories
+  /v2/{name}/blobs/{digest}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete an image's blob/layer given a digest
+      parameters:
+      - description: repository name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: blob/layer digest
+        in: path
+        name: digest
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: accepted
+          schema:
+            type: string
+      summary: Delete image blob/layer
+    get:
+      consumes:
+      - application/json
+      description: Get an image's blob/layer given a digest
+      parameters:
+      - description: repository name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: blob/layer digest
+        in: path
+        name: digest
+        required: true
+        type: string
+      produces:
+      - application/vnd.oci.image.layer.v1.tar+gzip
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.ImageManifest'
+            type: object
+      summary: Get image blob/layer
+    head:
+      consumes:
+      - application/json
+      description: Check an image's blob/layer given a digest
+      parameters:
+      - description: repository name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: blob/layer digest
+        in: path
+        name: digest
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          headers:
+            api.DistContentDigestKey:
+              description: OK
+              type: object
+          schema:
+            $ref: '#/definitions/api.ImageManifest'
+            type: object
+      summary: Check image blob/layer
+  /v2/{name}/blobs/uploads:
+    post:
+      consumes:
+      - application/json
+      description: Create a new image blob/layer upload
+      parameters:
+      - description: repository name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: accepted
+          headers:
+            Location:
+              description: /v2/{name}/blobs/uploads/{uuid}
+              type: string
+            Range:
+              description: bytes=0-0
+              type: string
+          schema:
+            type: string
+        "404":
+          description: not found
+          schema:
+            type: string
+        "500":
+          description: internal server error
+          schema:
+            type: string
+      summary: Create image blob/layer upload
+  /v2/{name}/blobs/uploads/{uuid}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete an image's blob/layer given a digest
+      parameters:
+      - description: repository name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: upload uuid
+        in: path
+        name: uuid
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: ok
+          schema:
+            type: string
+        "404":
+          description: not found
+          schema:
+            type: string
+        "500":
+          description: internal server error
+          schema:
+            type: string
+      summary: Delete image blob/layer
+    get:
+      consumes:
+      - application/json
+      description: Get an image's blob/layer upload given a uuid
+      parameters:
+      - description: repository name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: upload uuid
+        in: path
+        name: uuid
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: no content
+          schema:
+            type: string
+        "404":
+          description: not found
+          schema:
+            type: string
+        "500":
+          description: internal server error
+          schema:
+            type: string
+      summary: Get image blob/layer upload
+    patch:
+      consumes:
+      - application/json
+      description: Resume an image's blob/layer upload given an uuid
+      parameters:
+      - description: repository name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: upload uuid
+        in: path
+        name: uuid
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: accepted
+          headers:
+            Location:
+              description: /v2/{name}/blobs/uploads/{uuid}
+              type: string
+            Range:
+              description: bytes=0-128
+              type: string
+          schema:
+            type: string
+        "400":
+          description: bad request
+          schema:
+            type: string
+        "404":
+          description: not found
+          schema:
+            type: string
+        "416":
+          description: range not satisfiable
+          schema:
+            type: string
+        "500":
+          description: internal server error
+          schema:
+            type: string
+      summary: Resume image blob/layer upload
+    put:
+      consumes:
+      - application/json
+      description: Update and finish an image's blob/layer upload given a digest
+      parameters:
+      - description: repository name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: upload uuid
+        in: path
+        name: uuid
+        required: true
+        type: string
+      - description: blob/layer digest
+        in: query
+        name: digest
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: created
+          schema:
+            type: string
+        "404":
+          description: not found
+          schema:
+            type: string
+        "500":
+          description: internal server error
+          schema:
+            type: string
+      summary: Update image blob/layer upload
+  /v2/{name}/manifests/{reference}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete an image's manifest given a reference or a digest
+      parameters:
+      - description: repository name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: image reference or digest
+        in: path
+        name: reference
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: ok
+          schema:
+            type: string
+      summary: Delete image manifest
+    get:
+      consumes:
+      - application/json
+      description: Get an image's manifest given a reference or a digest
+      parameters:
+      - description: repository name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: image reference or digest
+        in: path
+        name: reference
+        required: true
+        type: string
+      produces:
+      - application/vnd.oci.image.manifest.v1+json
+      responses:
+        "200":
+          description: OK
+          headers:
+            api.DistContentDigestKey:
+              description: OK
+              type: object
+          schema:
+            $ref: '#/definitions/api.ImageManifest'
+            type: object
+        "404":
+          description: not found
+          schema:
+            type: string
+        "500":
+          description: internal server error
+          schema:
+            type: string
+      summary: Get image manifest
+    head:
+      consumes:
+      - application/json
+      description: Check an image's manifest given a reference or a digest
+      parameters:
+      - description: repository name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: image reference or digest
+        in: path
+        name: reference
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: ok
+          headers:
+            api.DistContentDigestKey:
+              description: OK
+              type: object
+          schema:
+            type: string
+        "404":
+          description: not found
+          schema:
+            type: string
+        "500":
+          description: internal server error
+          schema:
+            type: string
+      summary: Check image manifest
+    put:
+      consumes:
+      - application/json
+      description: Update an image's manifest given a reference or a digest
+      parameters:
+      - description: repository name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: image reference or digest
+        in: path
+        name: reference
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: created
+          schema:
+            type: string
+        "400":
+          description: bad request
+          schema:
+            type: string
+        "404":
+          description: not found
+          schema:
+            type: string
+        "500":
+          description: internal server error
+          schema:
+            type: string
+      summary: Update image manifest
+  /v2/{name}/tags/list:
+    get:
+      consumes:
+      - application/json
+      description: List all image tags in a repository
+      parameters:
+      - description: test
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.ImageTags'
+            type: object
+        "404":
+          description: not found
+          schema:
+            type: string
+      summary: List image tags
+swagger: "2.0"

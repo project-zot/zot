@@ -11,12 +11,19 @@
 * Swagger based documentation
 * Can run compliance checks against registries
 * Released under Apache 2.0 License
+* ```go get -u github.com/anuvu/zot/cmd/zot```
 
 # Presentations
 
 * [OCI Weekly Discussion - Oct 2, 2019](https://hackmd.io/El8Dd2xrTlCaCG59ns5cwg#October-2-2019)
 
-# Building
+# Build and install binary (using host's toolchain)
+
+```
+go get -u github.com/anuvu/zot/cmd/zot
+```
+
+# Full CI/CD Build
 
 * Build inside a container (preferred)
 

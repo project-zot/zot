@@ -14,7 +14,6 @@ import (
 
 	"github.com/anuvu/zot/errors"
 	"github.com/gorilla/mux"
-	"github.com/jtblin/go-ldap-client"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -58,20 +57,18 @@ func BasicAuthHandler(c *Controller) mux.MiddlewareFunc {
 		if c.Config.HTTP.Auth.LDAP != nil {
 			l := c.Config.HTTP.Auth.LDAP
 			ldapClient = &LDAPClient{
-				LDAPClient: ldap.LDAPClient{
-					Host:               l.Address,
-					Port:               l.Port,
-					UseSSL:             !l.Insecure,
-					SkipTLS:            !l.StartTLS,
-					Base:               l.BaseDN,
-					BindDN:             l.BindDN,
-					BindPassword:       l.BindPassword,
-					UserFilter:         fmt.Sprintf("(%s=%%s)", l.UserAttribute),
-					InsecureSkipVerify: l.SkipVerify,
-					ServerName:         l.Address,
-				},
-				log:           c.Log,
-				subtreeSearch: l.SubtreeSearch,
+				Host:               l.Address,
+				Port:               l.Port,
+				UseSSL:             !l.Insecure,
+				SkipTLS:            !l.StartTLS,
+				Base:               l.BaseDN,
+				BindDN:             l.BindDN,
+				BindPassword:       l.BindPassword,
+				UserFilter:         fmt.Sprintf("(%s=%%s)", l.UserAttribute),
+				InsecureSkipVerify: l.SkipVerify,
+				ServerName:         l.Address,
+				Log:                c.Log,
+				SubtreeSearch:      l.SubtreeSearch,
 			}
 			if c.Config.HTTP.Auth.LDAP.CACert != "" {
 				caCert, err := ioutil.ReadFile(c.Config.HTTP.Auth.LDAP.CACert)
@@ -82,14 +79,14 @@ func BasicAuthHandler(c *Controller) mux.MiddlewareFunc {
 				if !caCertPool.AppendCertsFromPEM(caCert) {
 					panic(errors.ErrBadCACert)
 				}
-				ldapClient.clientCAs = caCertPool
+				ldapClient.ClientCAs = caCertPool
 			} else {
 				// default to system cert pool
 				caCertPool, err := x509.SystemCertPool()
 				if err != nil {
 					panic(errors.ErrBadCACert)
 				}
-				ldapClient.clientCAs = caCertPool
+				ldapClient.ClientCAs = caCertPool
 			}
 		}
 		if c.Config.HTTP.Auth.HTPasswd.Path != "" {
