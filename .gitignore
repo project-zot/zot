@@ -13,3 +13,5 @@
 
 bin/
 bazel-*
+coverage.txt
+test/data/
