@@ -40,6 +40,7 @@ func (c *Controller) Run() error {
 	engine := mux.NewRouter()
 	engine.Use(log.SessionLogger(c.Log), handlers.RecoveryHandler(handlers.RecoveryLogger(c.Log),
 		handlers.PrintRecoveryStack(false)))
+
 	c.Router = engine
 	_ = NewRouteHandler(c)
 
@@ -66,10 +67,13 @@ func (c *Controller) Run() error {
 			if err != nil {
 				panic(err)
 			}
+
 			caCertPool := x509.NewCertPool()
+
 			if !caCertPool.AppendCertsFromPEM(caCert) {
 				panic(errors.ErrBadCACert)
 			}
+
 			server.TLSConfig = &tls.Config{
 				ClientAuth:               clientAuth,
 				ClientCAs:                caCertPool,
@@ -81,5 +85,6 @@ func (c *Controller) Run() error {
 
 		return server.ServeTLS(l, c.Config.HTTP.TLS.Cert, c.Config.HTTP.TLS.Key)
 	}
+
 	return server.Serve(l)
 }

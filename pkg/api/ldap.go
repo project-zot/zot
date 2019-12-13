@@ -40,8 +40,11 @@ type LDAPClient struct {
 func (lc *LDAPClient) Connect() error {
 	if lc.Conn == nil {
 		var l *goldap.Conn
+
 		var err error
+
 		address := fmt.Sprintf("%s:%d", lc.Host, lc.Port)
+
 		if !lc.UseSSL {
 			l, err = goldap.Dial("tcp", address)
 			if err != nil {
@@ -59,7 +62,9 @@ func (lc *LDAPClient) Connect() error {
 					config.Certificates = lc.ClientCertificates
 					config.BuildNameToCertificate()
 				}
+
 				err = l.StartTLS(config)
+
 				if err != nil {
 					lc.Log.Error().Err(err).Str("address", address).Msg("TLS connection failed")
 					return err
@@ -84,6 +89,7 @@ func (lc *LDAPClient) Connect() error {
 
 		lc.Conn = l
 	}
+
 	return nil
 }
 
@@ -101,10 +107,12 @@ func sleepAndRetry(retries, maxRetries int) bool {
 	if retries > maxRetries {
 		return false
 	}
+
 	if retries < maxRetries {
 		time.Sleep(time.Duration(retries) * time.Second) // gradually backoff
 		return true
 	}
+
 	return false
 }
 
@@ -130,9 +138,11 @@ func (lc *LDAPClient) Authenticate(username, password string) (bool, map[string]
 				// clean up the cached conn, so we can retry
 				lc.Conn.Close()
 				lc.Conn = nil
+
 				continue
 			}
 		}
+
 		connected = true
 	}
 
@@ -144,6 +154,7 @@ func (lc *LDAPClient) Authenticate(username, password string) (bool, map[string]
 
 	attributes := append(lc.Attributes, "dn")
 	searchScope := goldap.ScopeSingleLevel
+
 	if lc.SubtreeSearch {
 		searchScope = goldap.ScopeWholeSubtree
 	}
@@ -161,6 +172,7 @@ func (lc *LDAPClient) Authenticate(username, password string) (bool, map[string]
 		fmt.Printf("%v\n", err)
 		lc.Log.Error().Err(err).Str("bindDN", lc.BindDN).Str("username", username).
 			Str("baseDN", lc.Base).Msg("search failed")
+
 		return false, nil, err
 	}
 
@@ -168,6 +180,7 @@ func (lc *LDAPClient) Authenticate(username, password string) (bool, map[string]
 		err := errors.ErrBadUser
 		lc.Log.Error().Err(err).Str("bindDN", lc.BindDN).Str("username", username).
 			Str("baseDN", lc.Base).Msg("entries not found")
+
 		return false, nil, err
 	}
 
@@ -175,11 +188,13 @@ func (lc *LDAPClient) Authenticate(username, password string) (bool, map[string]
 		err := errors.ErrEntriesExceeded
 		lc.Log.Error().Err(err).Str("bindDN", lc.BindDN).Str("username", username).
 			Str("baseDN", lc.Base).Msg("too many entries")
+
 		return false, nil, err
 	}
 
 	userDN := sr.Entries[0].DN
 	user := map[string]string{}
+
 	for _, attr := range lc.Attributes {
 		user[attr] = sr.Entries[0].GetAttributeValue(attr)
 	}
@@ -217,12 +232,16 @@ func (lc *LDAPClient) GetGroupsOfUser(username string) ([]string, error) {
 		nil,
 	)
 	sr, err := lc.Conn.Search(searchRequest)
+
 	if err != nil {
 		return nil, err
 	}
+
 	groups := []string{}
+
 	for _, entry := range sr.Entries {
 		groups = append(groups, entry.GetAttributeValue("cn"))
 	}
+
 	return groups, nil
 }

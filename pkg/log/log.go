@@ -21,11 +21,15 @@ func (l Logger) Println(v ...interface{}) {
 func NewLogger(level string, output string) Logger {
 	zerolog.TimeFieldFormat = time.RFC3339Nano
 	lvl, err := zerolog.ParseLevel(level)
+
 	if err != nil {
 		panic(err)
 	}
+
 	zerolog.SetGlobalLevel(lvl)
+
 	var log zerolog.Logger
+
 	if output == "" {
 		log = zerolog.New(os.Stdout)
 	} else {
@@ -35,6 +39,7 @@ func NewLogger(level string, output string) Logger {
 		}
 		log = zerolog.New(file)
 	}
+
 	return Logger{Logger: log.With().Timestamp().Logger()}
 }
 
@@ -53,13 +58,16 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 	if w.status == 0 {
 		w.status = 200
 	}
+
 	n, err := w.ResponseWriter.Write(b)
 	w.length += n
+
 	return n, err
 }
 
 func SessionLogger(log Logger) mux.MiddlewareFunc {
 	l := log.With().Str("module", "http").Logger()
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Start timer

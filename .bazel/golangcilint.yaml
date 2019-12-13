@@ -5,6 +5,7 @@ run:
 
 linters:
   enable-all: true
+  disable: funlen,godox,gocognit
 
 output:
   format: colored-line-number

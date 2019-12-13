@@ -82,13 +82,18 @@ func (c *Config) Sanitize() *Config {
 		if err := deepcopy.Copy(s, c); err != nil {
 			panic(err)
 		}
+
 		s.HTTP.Auth.LDAP = &LDAPConfig{}
+
 		if err := deepcopy.Copy(s.HTTP.Auth.LDAP, c.HTTP.Auth.LDAP); err != nil {
 			panic(err)
 		}
+
 		s.HTTP.Auth.LDAP.BindPassword = "******"
+
 		return s
 	}
+
 	return c
 }
 
@@ -101,5 +106,6 @@ func (c *Config) Validate(log log.Logger) error {
 			return errors.ErrLDAPConfig
 		}
 	}
+
 	return nil
 }

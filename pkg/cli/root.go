@@ -80,6 +80,7 @@ func NewRootCmd() *cobra.Command {
 
 	gcCmd.Flags().StringVarP(&config.Storage.RootDirectory, "storage-root-dir", "r", "",
 		"Use specified directory for filestore backing image data")
+
 	_ = gcCmd.MarkFlagRequired("storage-root-dir")
 	gcCmd.Flags().BoolVarP(&gcDelUntagged, "delete-untagged", "m", false,
 		"delete manifests that are not currently referenced via tag")
@@ -106,14 +107,18 @@ func NewRootCmd() *cobra.Command {
 
 	complianceCmd.Flags().StringVarP(&complianceConfig.Address, "address", "H", "",
 		"Registry server address")
+
 	if err := complianceCmd.MarkFlagRequired("address"); err != nil {
 		panic(err)
 	}
+
 	complianceCmd.Flags().StringVarP(&complianceConfig.Port, "port", "P", "",
 		"Registry server port")
+
 	if err := complianceCmd.MarkFlagRequired("port"); err != nil {
 		panic(err)
 	}
+
 	complianceCmd.Flags().StringVarP(&complianceConfig.Version, "version", "V", "all",
 		"OCI dist-spec version to check")
 

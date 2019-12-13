@@ -29,11 +29,13 @@ func TestMain(m *testing.M) {
 	config.HTTP.Port = Port
 	c := api.NewController(config)
 	dir, err := ioutil.TempDir("", "oci-repo-test")
+
 	if err != nil {
 		panic(err)
 	}
 	//defer os.RemoveAll(dir)
 	c.Config.Storage.RootDirectory = dir
+
 	go func() {
 		// this blocks
 		if err := c.Run(); err != nil {
@@ -42,16 +44,20 @@ func TestMain(m *testing.M) {
 	}()
 
 	BaseURL := fmt.Sprintf("http://%s:%s", Address, Port)
+
 	for {
 		// poll until ready
 		resp, _ := resty.R().Get(BaseURL)
 		if resp.StatusCode() == 404 {
 			break
 		}
+
 		time.Sleep(100 * time.Millisecond)
 	}
+
 	status := m.Run()
 	ctx := context.Background()
 	_ = c.Server.Shutdown(ctx)
+
 	os.Exit(status)
 }
