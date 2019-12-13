@@ -11,6 +11,7 @@ go_library(
         "@com_github_opencontainers_go_digest//:go_default_library",
         "@com_github_opencontainers_image_spec//specs-go/v1:go_default_library",
         "@com_github_smartystreets_goconvey//convey:go_default_library",
+        "@com_github_smartystreets_goconvey//convey/reporting:go_default_library",
         "@in_gopkg_resty_v1//:go_default_library",
     ],
 )
@@ -23,6 +24,7 @@ go_test(
     deps = [
         "//pkg/api:go_default_library",
         "//pkg/compliance:go_default_library",
+        "@com_github_phayes_freeport//:go_default_library",
         "@in_gopkg_resty_v1//:go_default_library",
     ],
 )
