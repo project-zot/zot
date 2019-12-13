@@ -18,7 +18,7 @@ debug: doc
 
 .PHONY: test
 test:
-	$(shell cd test/data; ./gen_certs.sh; cd ${TOP_LEVEL})
+	$(shell mkdir -p test/data; cd test/data; ../scripts/gen_certs.sh; cd ${TOP_LEVEL})
 	go test -v -race -cover -coverprofile=coverage.txt -covermode=atomic ./...
 
 .PHONY: check
