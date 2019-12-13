@@ -11,6 +11,7 @@ import (
 
 func TestUsage(t *testing.T) {
 	oldArgs := os.Args
+
 	defer func() { os.Args = oldArgs }()
 
 	Convey("Test usage", t, func(c C) {
@@ -28,6 +29,7 @@ func TestUsage(t *testing.T) {
 
 func TestServe(t *testing.T) {
 	oldArgs := os.Args
+
 	defer func() { os.Args = oldArgs }()
 
 	Convey("Test serve help", t, func(c C) {
@@ -64,6 +66,7 @@ func TestServe(t *testing.T) {
 
 func TestGC(t *testing.T) {
 	oldArgs := os.Args
+
 	defer func() { os.Args = oldArgs }()
 
 	Convey("Test gc", t, func(c C) {

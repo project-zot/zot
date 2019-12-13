@@ -35,7 +35,6 @@ const (
 )
 
 func NewError(code ErrorCode, detail ...interface{}) Error {
-
 	var errMap = map[ErrorCode]Error{
 		BLOB_UNKNOWN: {
 			Message: "blob unknown to registry",
@@ -138,5 +137,6 @@ func NewError(code ErrorCode, detail ...interface{}) Error {
 
 	e.Code = code
 	e.Detail = detail
+
 	return e
 }

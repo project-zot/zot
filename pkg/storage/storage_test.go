@@ -21,6 +21,7 @@ func TestAPIs(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
+
 	defer os.RemoveAll(dir)
 
 	il := storage.NewImageStore(dir, log.Logger{Logger: zerolog.New(os.Stdout)})

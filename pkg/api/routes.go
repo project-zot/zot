@@ -43,6 +43,7 @@ type RouteHandler struct {
 func NewRouteHandler(c *Controller) *RouteHandler {
 	rh := &RouteHandler{c: c}
 	rh.SetupRoutes()
+
 	return rh
 }
 
@@ -116,6 +117,7 @@ type ImageTags struct {
 func (rh *RouteHandler) ListTags(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
+
 	if !ok || name == "" {
 		w.WriteHeader(http.StatusNotFound)
 		return
@@ -145,6 +147,7 @@ func (rh *RouteHandler) ListTags(w http.ResponseWriter, r *http.Request) {
 func (rh *RouteHandler) CheckManifest(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
+
 	if !ok || name == "" {
 		w.WriteHeader(http.StatusNotFound)
 		return
@@ -165,6 +168,7 @@ func (rh *RouteHandler) CheckManifest(w http.ResponseWriter, r *http.Request) {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			WriteJSON(w, http.StatusInternalServerError, NewError(MANIFEST_INVALID, map[string]string{"reference": reference}))
 		}
+
 		return
 	}
 
@@ -193,6 +197,7 @@ type ImageManifest struct {
 func (rh *RouteHandler) GetManifest(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
+
 	if !ok || name == "" {
 		w.WriteHeader(http.StatusNotFound)
 		return
@@ -217,6 +222,7 @@ func (rh *RouteHandler) GetManifest(w http.ResponseWriter, r *http.Request) {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			w.WriteHeader(http.StatusInternalServerError)
 		}
+
 		return
 	}
 
@@ -240,6 +246,7 @@ func (rh *RouteHandler) GetManifest(w http.ResponseWriter, r *http.Request) {
 func (rh *RouteHandler) UpdateManifest(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
+
 	if !ok || name == "" {
 		w.WriteHeader(http.StatusNotFound)
 		return
@@ -278,6 +285,7 @@ func (rh *RouteHandler) UpdateManifest(w http.ResponseWriter, r *http.Request) {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			w.WriteHeader(http.StatusInternalServerError)
 		}
+
 		return
 	}
 
@@ -298,6 +306,7 @@ func (rh *RouteHandler) UpdateManifest(w http.ResponseWriter, r *http.Request) {
 func (rh *RouteHandler) DeleteManifest(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
+
 	if !ok || name == "" {
 		w.WriteHeader(http.StatusNotFound)
 		return
@@ -320,6 +329,7 @@ func (rh *RouteHandler) DeleteManifest(w http.ResponseWriter, r *http.Request) {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			w.WriteHeader(http.StatusInternalServerError)
 		}
+
 		return
 	}
 
@@ -339,6 +349,7 @@ func (rh *RouteHandler) DeleteManifest(w http.ResponseWriter, r *http.Request) {
 func (rh *RouteHandler) CheckBlob(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
+
 	if !ok || name == "" {
 		w.WriteHeader(http.StatusNotFound)
 		return
@@ -365,6 +376,7 @@ func (rh *RouteHandler) CheckBlob(w http.ResponseWriter, r *http.Request) {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			w.WriteHeader(http.StatusInternalServerError)
 		}
+
 		return
 	}
 
@@ -391,6 +403,7 @@ func (rh *RouteHandler) CheckBlob(w http.ResponseWriter, r *http.Request) {
 func (rh *RouteHandler) GetBlob(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
+
 	if !ok || name == "" {
 		w.WriteHeader(http.StatusNotFound)
 		return
@@ -417,6 +430,7 @@ func (rh *RouteHandler) GetBlob(w http.ResponseWriter, r *http.Request) {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			w.WriteHeader(http.StatusInternalServerError)
 		}
+
 		return
 	}
 
@@ -438,6 +452,7 @@ func (rh *RouteHandler) GetBlob(w http.ResponseWriter, r *http.Request) {
 func (rh *RouteHandler) DeleteBlob(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
+
 	if !ok || name == "" {
 		w.WriteHeader(http.StatusNotFound)
 		return
@@ -462,6 +477,7 @@ func (rh *RouteHandler) DeleteBlob(w http.ResponseWriter, r *http.Request) {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			w.WriteHeader(http.StatusInternalServerError)
 		}
+
 		return
 	}
 
@@ -483,6 +499,7 @@ func (rh *RouteHandler) DeleteBlob(w http.ResponseWriter, r *http.Request) {
 func (rh *RouteHandler) CreateBlobUpload(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
+
 	if !ok || name == "" {
 		w.WriteHeader(http.StatusNotFound)
 		return
@@ -497,6 +514,7 @@ func (rh *RouteHandler) CreateBlobUpload(w http.ResponseWriter, r *http.Request)
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			w.WriteHeader(http.StatusInternalServerError)
 		}
+
 		return
 	}
 
@@ -521,6 +539,7 @@ func (rh *RouteHandler) CreateBlobUpload(w http.ResponseWriter, r *http.Request)
 func (rh *RouteHandler) GetBlobUpload(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
+
 	if !ok || name == "" {
 		w.WriteHeader(http.StatusNotFound)
 		return
@@ -547,6 +566,7 @@ func (rh *RouteHandler) GetBlobUpload(w http.ResponseWriter, r *http.Request) {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			w.WriteHeader(http.StatusInternalServerError)
 		}
+
 		return
 	}
 
@@ -575,10 +595,12 @@ func (rh *RouteHandler) PatchBlobUpload(w http.ResponseWriter, r *http.Request) 
 	rh.c.Log.Info().Interface("headers", r.Header).Msg("request headers")
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
+
 	if !ok || name == "" {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
+
 	uuid, ok := vars["uuid"]
 	if !ok || uuid == "" {
 		w.WriteHeader(http.StatusNotFound)
@@ -586,10 +608,13 @@ func (rh *RouteHandler) PatchBlobUpload(w http.ResponseWriter, r *http.Request) 
 	}
 
 	var err error
+
 	var contentLength int64
+
 	if contentLength, err = strconv.ParseInt(r.Header.Get("Content-Length"), 10, 64); err != nil {
 		rh.c.Log.Warn().Str("actual", r.Header.Get("Content-Length")).Msg("invalid content length")
 		w.WriteHeader(http.StatusBadRequest)
+
 		return
 	}
 
@@ -597,6 +622,7 @@ func (rh *RouteHandler) PatchBlobUpload(w http.ResponseWriter, r *http.Request) 
 	if contentRange == "" {
 		rh.c.Log.Warn().Str("actual", r.Header.Get("Content-Range")).Msg("invalid content range")
 		w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+
 		return
 	}
 
@@ -609,6 +635,7 @@ func (rh *RouteHandler) PatchBlobUpload(w http.ResponseWriter, r *http.Request) 
 	if contentType := r.Header.Get("Content-Type"); contentType != "application/octet-stream" {
 		rh.c.Log.Warn().Str("actual", contentType).Str("expected", "application/octet-stream").Msg("invalid media type")
 		w.WriteHeader(http.StatusUnsupportedMediaType)
+
 		return
 	}
 
@@ -625,6 +652,7 @@ func (rh *RouteHandler) PatchBlobUpload(w http.ResponseWriter, r *http.Request) 
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			w.WriteHeader(http.StatusInternalServerError)
 		}
+
 		return
 	}
 
@@ -652,6 +680,7 @@ func (rh *RouteHandler) PatchBlobUpload(w http.ResponseWriter, r *http.Request) 
 func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
+
 	if !ok || name == "" {
 		w.WriteHeader(http.StatusNotFound)
 		return
@@ -668,14 +697,18 @@ func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+
 	digest := digests[0]
 
 	contentPresent := true
 	contentLen, err := strconv.ParseInt(r.Header.Get("Content-Length"), 10, 64)
+
 	if err != nil || contentLen == 0 {
 		contentPresent = false
 	}
+
 	contentRangePresent := true
+
 	if r.Header.Get("Content-Range") == "" {
 		contentRangePresent = false
 	}
@@ -698,10 +731,12 @@ func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request)
 		contentRange := r.Header.Get("Content-Range")
 		if contentRange == "" { // monolithic upload
 			from = 0
+
 			if contentLen == 0 {
 				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
+
 			to = contentLen
 		} else if from, to, err = getContentRange(r); err != nil { // finish chunked upload
 			w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
@@ -721,6 +756,7 @@ func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request)
 				rh.c.Log.Error().Err(err).Msg("unexpected error")
 				w.WriteHeader(http.StatusInternalServerError)
 			}
+
 			return
 		}
 	}
@@ -740,6 +776,7 @@ func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request)
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			w.WriteHeader(http.StatusInternalServerError)
 		}
+
 		return
 	}
 
@@ -763,6 +800,7 @@ func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request)
 func (rh *RouteHandler) DeleteBlobUpload(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
+
 	if !ok || name == "" {
 		w.WriteHeader(http.StatusNotFound)
 		return
@@ -784,6 +822,7 @@ func (rh *RouteHandler) DeleteBlobUpload(w http.ResponseWriter, r *http.Request)
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			w.WriteHeader(http.StatusInternalServerError)
 		}
+
 		return
 	}
 
@@ -820,25 +859,31 @@ func getContentRange(r *http.Request) (int64 /* from */, int64 /* to */, error) 
 	contentRange := r.Header.Get("Content-Range")
 	tokens := strings.Split(contentRange, "-")
 	from, err := strconv.ParseInt(tokens[0], 10, 64)
+
 	if err != nil {
 		return -1, -1, errors.ErrBadUploadRange
 	}
+
 	to, err := strconv.ParseInt(tokens[1], 10, 64)
 	if err != nil {
 		return -1, -1, errors.ErrBadUploadRange
 	}
+
 	if from > to {
 		return -1, -1, errors.ErrBadUploadRange
 	}
+
 	return from, to, nil
 }
 
 func WriteJSON(w http.ResponseWriter, status int, data interface{}) {
 	var json = jsoniter.ConfigCompatibleWithStandardLibrary
 	body, err := json.Marshal(data)
+
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 	}
+
 	WriteData(w, status, DefaultMediaType, body)
 }
 
@@ -853,6 +898,7 @@ func WriteDataFromReader(w http.ResponseWriter, status int, length int64, mediaT
 	w.Header().Set("Content-Length", strconv.FormatInt(length, 10))
 
 	const maxSize = 10 * 1024 * 1024
+
 	for {
 		size, err := io.CopyN(w, reader, maxSize)
 		if size == 0 {
@@ -860,6 +906,7 @@ func WriteDataFromReader(w http.ResponseWriter, status int, length int64, mediaT
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
+
 			break
 		}
 	}
