@@ -27,11 +27,25 @@ const (
 	SecurePort2    = "8082"
 	username       = "test"
 	passphrase     = "test"
-	htpasswdPath   = "../../test/data/htpasswd" // nolint (gosec) - this is just test data
 	ServerCert     = "../../test/data/server.cert"
 	ServerKey      = "../../test/data/server.key"
 	CACert         = "../../test/data/ca.crt"
 )
+
+func makeHtpasswdFile() string {
+	f, err := ioutil.TempFile("", "htpasswd-")
+	if err != nil {
+		panic(err)
+	}
+
+	// bcrypt(username="test", passwd="test")
+	content := []byte("test:$2y$05$hlbSXDp6hzDLu6VwACS39ORvVRpr3OMR4RlJ31jtlaOEGnPjKZI1m\n")
+	if err := ioutil.WriteFile(f.Name(), content, 0644); err != nil {
+		panic(err)
+	}
+
+	return f.Name()
+}
 
 func TestNew(t *testing.T) {
 	Convey("Make a new controller", t, func() {
@@ -45,6 +59,9 @@ func TestBasicAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		config := api.NewConfig()
 		config.HTTP.Port = SecurePort1
+		htpasswdPath := makeHtpasswdFile()
+		defer os.Remove(htpasswdPath)
+
 		config.HTTP.Auth = &api.AuthConfig{
 			HTPasswd: api.AuthHTPasswd{
 				Path: htpasswdPath,
@@ -104,6 +121,8 @@ func TestTLSWithBasicAuth(t *testing.T) {
 		So(err, ShouldBeNil)
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
+		htpasswdPath := makeHtpasswdFile()
+		defer os.Remove(htpasswdPath)
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
 		defer func() { resty.SetTLSClientConfig(nil) }()
@@ -179,6 +198,8 @@ func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 		So(err, ShouldBeNil)
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
+		htpasswdPath := makeHtpasswdFile()
+		defer os.Remove(htpasswdPath)
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
 		defer func() { resty.SetTLSClientConfig(nil) }()
@@ -432,6 +453,8 @@ func TestTLSMutualAndBasicAuth(t *testing.T) {
 		So(err, ShouldBeNil)
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
+		htpasswdPath := makeHtpasswdFile()
+		defer os.Remove(htpasswdPath)
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
 		defer func() { resty.SetTLSClientConfig(nil) }()
@@ -524,6 +547,8 @@ func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 		So(err, ShouldBeNil)
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
+		htpasswdPath := makeHtpasswdFile()
+		defer os.Remove(htpasswdPath)
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
 		defer func() { resty.SetTLSClientConfig(nil) }()
