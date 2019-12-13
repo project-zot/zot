@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"os"
 	"testing"
 
 	"github.com/anuvu/zot/errors"
@@ -102,6 +103,9 @@ func NewRootCmd() *cobra.Command {
 			default:
 				v1_0_0.CheckWorkflows(t, complianceConfig)
 			}
+			if t.Failed() {
+				os.Exit(1)
+			}
 		},
 	}
 
@@ -121,6 +125,8 @@ func NewRootCmd() *cobra.Command {
 
 	complianceCmd.Flags().StringVarP(&complianceConfig.Version, "version", "V", "all",
 		"OCI dist-spec version to check")
+	complianceCmd.Flags().BoolVarP(&complianceConfig.OutputJSON, "json", "j", false,
+		"output test results as JSON")
 
 	rootCmd := &cobra.Command{
 		Use:   "zot",

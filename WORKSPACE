@@ -1073,6 +1073,13 @@ go_repository(
 )
 
 go_repository(
+    name = "com_github_phayes_freeport",
+    importpath = "github.com/phayes/freeport",
+    sum = "h1:JhzVVoYvbOACxoUmOs6V/G4D5nPVUW73rKvXxP4XUJc=",
+    version = "v0.0.0-20180830031419-95f893ade6f2",
+)
+
+go_repository(
     name = "com_github_pquerna_otp",
     importpath = "github.com/pquerna/otp",
     sum = "h1:/A3+Jn+cagqayeR3iHs/L62m5ue7710D35zl1zJ1kok=",

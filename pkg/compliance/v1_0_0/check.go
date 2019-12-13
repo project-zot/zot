@@ -5,6 +5,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/anuvu/zot/pkg/api"
@@ -12,6 +15,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/smartystreets/goconvey/convey/reporting"
 	"gopkg.in/resty.v1"
 )
 
@@ -19,6 +23,12 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 	if config == nil || config.Address == "" || config.Port == "" {
 		panic("insufficient config")
 	}
+
+	if config.OutputJSON {
+		outputJSONEnter()
+		defer outputJSONExit()
+	}
+
 	baseURL := fmt.Sprintf("http://%s:%s", config.Address, config.Port)
 
 	fmt.Println("------------------------------")
@@ -450,4 +460,61 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(resp.Body(), ShouldNotBeEmpty)
 		})
 	})
+}
+
+var (
+	old  *os.File
+	r    *os.File
+	w    *os.File
+	outC chan string
+)
+
+func outputJSONEnter() {
+	// this env var instructs goconvey to output results to JSON (stdout)
+	os.Setenv("GOCONVEY_REPORTER", "json")
+
+	// stdout capture copied from: https://stackoverflow.com/a/29339052
+	old = os.Stdout
+	// keep backup of the real stdout
+	r, w, _ = os.Pipe()
+	outC = make(chan string)
+	os.Stdout = w
+
+	// copy the output in a separate goroutine so printing can't block indefinitely
+	go func() {
+		var buf bytes.Buffer
+		io.Copy(&buf, r)
+		outC <- buf.String()
+	}()
+}
+
+func outputJSONExit() {
+	// back to normal state
+	w.Close()
+	os.Stdout = old // restoring the real stdout
+	out := <-outC
+
+	// The output of JSON is combined with regular output, so we look for the
+	// first occurrence of the "{" character and take everything after that
+	rawJSON := "[{" + strings.Join(strings.Split(out, "{")[1:], "{")
+	rawJSON = strings.Replace(rawJSON, reporting.OpenJson, "", 1)
+	rawJSON = strings.Replace(rawJSON, reporting.CloseJson, "", 1)
+	tmp := strings.Split(rawJSON, ",")
+	rawJSON = strings.Join(tmp[0:len(tmp)-1], ",") + "]"
+
+	rawJSONMinified := validateMinifyRawJSON(rawJSON)
+	fmt.Println(rawJSONMinified)
+}
+
+func validateMinifyRawJSON(rawJSON string) string {
+	var j interface{}
+	err := json.Unmarshal([]byte(rawJSON), &j)
+	if err != nil {
+		panic(err)
+	}
+	rawJSONBytesMinified, err := json.Marshal(j)
+	if err != nil {
+		panic(err)
+	}
+	return string(rawJSONBytesMinified)
 }
