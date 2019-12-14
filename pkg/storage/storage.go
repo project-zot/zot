@@ -18,14 +18,17 @@ import (
 )
 
 const (
+	// BlobUploadDir defines the upload directory for blob uploads.
 	BlobUploadDir = ".uploads"
 )
 
+// BlobUpload models and upload request.
 type BlobUpload struct {
 	StoreName string
 	ID        string
 }
 
+// ImageStore provides the image storage operations.
 type ImageStore struct {
 	rootDir     string
 	lock        *sync.Mutex
@@ -33,6 +36,7 @@ type ImageStore struct {
 	log         zerolog.Logger
 }
 
+// NewImageStore returns a new image store backed by a file storage.
 func NewImageStore(rootDir string, log zlog.Logger) *ImageStore {
 	is := &ImageStore{rootDir: rootDir,
 		lock:        &sync.Mutex{},
@@ -47,6 +51,7 @@ func NewImageStore(rootDir string, log zlog.Logger) *ImageStore {
 	return is
 }
 
+// InitRepo creates an image repository under this store.
 func (is *ImageStore) InitRepo(name string) error {
 	repoDir := path.Join(is.rootDir, name)
 
@@ -99,6 +104,7 @@ func (is *ImageStore) InitRepo(name string) error {
 	return nil
 }
 
+// ValidateRepo validates that the repository layout is complaint with the OCI repo layout.
 func (is *ImageStore) ValidateRepo(name string) (bool, error) {
 	// https://github.com/opencontainers/image-spec/blob/master/image-layout.md#content
 	// at least, expect exactly 4 entries - ["blobs", "oci-layout", "index.json"] and BlobUploadDir
@@ -156,6 +162,7 @@ func (is *ImageStore) ValidateRepo(name string) (bool, error) {
 	return true, nil
 }
 
+// GetRepositories returns a list of all the repositories under this store.
 func (is *ImageStore) GetRepositories() ([]string, error) {
 	dir := is.rootDir
 
@@ -193,6 +200,7 @@ func (is *ImageStore) GetRepositories() ([]string, error) {
 	return stores, err
 }
 
+// GetImageTags returns a list of image tags available in the specified repository.
 func (is *ImageStore) GetImageTags(repo string) ([]string, error) {
 	dir := path.Join(is.rootDir, repo)
 	if !dirExists(dir) {
@@ -224,6 +232,7 @@ func (is *ImageStore) GetImageTags(repo string) ([]string, error) {
 	return tags, nil
 }
 
+// GetImageManifest returns the image manifest of an image in the specific repository.
 func (is *ImageStore) GetImageManifest(repo string, reference string) ([]byte, string, string, error) {
 	dir := path.Join(is.rootDir, repo)
 	if !dirExists(dir) {
@@ -291,7 +300,9 @@ func (is *ImageStore) GetImageManifest(repo string, reference string) ([]byte, s
 	return buf, digest.String(), mediaType, nil
 }
 
-func (is *ImageStore) PutImageManifest(repo string, reference string, mediaType string, body []byte) (string, error) {
+// PutImageManifest adds an image manifest to the repository.
+func (is *ImageStore) PutImageManifest(repo string, reference string, mediaType string,
+	body []byte) (string, error) {
 	if err := is.InitRepo(repo); err != nil {
 		return "", err
 	}
@@ -414,6 +425,7 @@ func (is *ImageStore) PutImageManifest(repo string, reference string, mediaType 
 	return desc.Digest.String(), nil
 }
 
+// DeleteImageManifest deletes the image manifest from the repository.
 func (is *ImageStore) DeleteImageManifest(repo string, reference string) error {
 	dir := path.Join(is.rootDir, repo)
 	if !dirExists(dir) {
@@ -488,6 +500,7 @@ func (is *ImageStore) DeleteImageManifest(repo string, reference string) error {
 	return nil
 }
 
+// BlobUploadPath returns the upload path for a blob in this store.
 func (is *ImageStore) BlobUploadPath(repo string, uuid string) string {
 	dir := path.Join(is.rootDir, repo)
 	blobUploadPath := path.Join(dir, BlobUploadDir)
@@ -496,6 +509,7 @@ func (is *ImageStore) BlobUploadPath(repo string, uuid string) string {
 	return blobUploadPath
 }
 
+// NewBlobUpload returns the unique ID for an upload in progress.
 func (is *ImageStore) NewBlobUpload(repo string) (string, error) {
 	if err := is.InitRepo(repo); err != nil {
 		return "", err
@@ -518,6 +532,7 @@ func (is *ImageStore) NewBlobUpload(repo string) (string, error) {
 	return u, nil
 }
 
+// GetBlobUpload returns the current size of a blob upload.
 func (is *ImageStore) GetBlobUpload(repo string, uuid string) (int64, error) {
 	blobUploadPath := is.BlobUploadPath(repo, uuid)
 	fi, err := os.Stat(blobUploadPath)
@@ -533,7 +548,10 @@ func (is *ImageStore) GetBlobUpload(repo string, uuid string) (int64, error) {
 	return fi.Size(), nil
 }
 
-func (is *ImageStore) PutBlobChunk(repo string, uuid string, from int64, to int64, body io.Reader) (int64, error) {
+// PutBlobChunk writes another chunk of data to the specified blob. It returns
+// the number of actual bytes to the blob.
+func (is *ImageStore) PutBlobChunk(repo string, uuid string, from int64, to int64,
+	body io.Reader) (int64, error) {
 	if err := is.InitRepo(repo); err != nil {
 		return -1, err
 	}
@@ -570,6 +588,7 @@ func (is *ImageStore) PutBlobChunk(repo string, uuid string, from int64, to int6
 	return n, err
 }
 
+// BlobUploadInfo returns the current blob size in bytes.
 func (is *ImageStore) BlobUploadInfo(repo string, uuid string) (int64, error) {
 	blobUploadPath := is.BlobUploadPath(repo, uuid)
 	fi, err := os.Stat(blobUploadPath)
@@ -584,6 +603,7 @@ func (is *ImageStore) BlobUploadInfo(repo string, uuid string) (int64, error) {
 	return size, nil
 }
 
+// FinishBlobUpload finalizes the blob upload and moves blob the repository.
 func (is *ImageStore) FinishBlobUpload(repo string, uuid string, body io.Reader, digest string) error {
 	dstDigest, err := godigest.Parse(digest)
 	if err != nil {
@@ -631,6 +651,7 @@ func (is *ImageStore) FinishBlobUpload(repo string, uuid string, body io.Reader,
 	return err
 }
 
+// DeleteBlobUpload deletes an existing blob upload that is currently in progress.
 func (is *ImageStore) DeleteBlobUpload(repo string, uuid string) error {
 	blobUploadPath := is.BlobUploadPath(repo, uuid)
 	_ = os.Remove(blobUploadPath)
@@ -638,6 +659,7 @@ func (is *ImageStore) DeleteBlobUpload(repo string, uuid string) error {
 	return nil
 }
 
+// BlobPath returns the repository path of a blob.
 func (is *ImageStore) BlobPath(repo string, digest godigest.Digest) string {
 	dir := path.Join(is.rootDir, repo)
 	blobPath := path.Join(dir, "blobs")
@@ -647,6 +669,7 @@ func (is *ImageStore) BlobPath(repo string, digest godigest.Digest) string {
 	return blobPath
 }
 
+// CheckBlob verifies a blob and returns true if the blob is correct.
 func (is *ImageStore) CheckBlob(repo string, digest string,
 	mediaType string) (bool, int64, error) {
 	d, err := godigest.Parse(digest)
@@ -666,6 +689,7 @@ func (is *ImageStore) CheckBlob(repo string, digest string,
 	return true, blobInfo.Size(), nil
 }
 
+// GetBlob returns a stream to read the blob.
 // FIXME: we should probably parse the manifest and use (digest, mediaType) as a
 // blob selector instead of directly downloading the blob
 func (is *ImageStore) GetBlob(repo string, digest string, mediaType string) (io.Reader, int64, error) {
@@ -692,6 +716,7 @@ func (is *ImageStore) GetBlob(repo string, digest string, mediaType string) (io.
 	return blobReader, blobInfo.Size(), nil
 }
 
+// DeleteBlob removes the blob from the repository.
 func (is *ImageStore) DeleteBlob(repo string, digest string) error {
 	d, err := godigest.Parse(digest)
 	if err != nil {
@@ -714,8 +739,8 @@ func (is *ImageStore) DeleteBlob(repo string, digest string) error {
 
 // garbage collection
 
+// Scrub will clean up all unreferenced blobs.
 // TODO
-
 func Scrub(dir string, fix bool) error {
 	return nil
 }
