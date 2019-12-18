@@ -13,6 +13,19 @@
 * Released under Apache 2.0 License
 * ```go get -u github.com/anuvu/zot/cmd/zot```
 
+## Zot Extensions
+
+Zot provides an experimental playground for features that are desired but yet to be covered by the
+standards committee. The core code base will be the canonical implementation of the OCI
+specifications. Experimental features will be implemented using an extension mechanism and can be enabled
+via runtime configuration. We plan to use this mechanism to implement any draft features and also
+incubate projects that can be later proposed in the OCI standards body once we get practical
+experience with th use cases.
+
+All experimental components will be under ```extensions``` directory and will be compiled in with
+zot. Zot server configuration will enable/disable these components to provide these experimental
+features.
+
 # Presentations
 
 * [OCI Weekly Discussion - Oct 2, 2019](https://hackmd.io/El8Dd2xrTlCaCG59ns5cwg#October-2-2019)
