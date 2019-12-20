@@ -377,6 +377,14 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
 		})
 
+		Convey("Mount blobs", func() {
+			Print("\nMount blobs from another repository")
+			// create a upload
+			resp, err := resty.R().Post(baseURL + "/v2/repo/blobs/uploads/?digest=\"abc\"&&from=\"xyz\"")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 405)
+		})
+
 		Convey("Manifests", func() {
 			Print("\nManifests")
 			// create a blob/layer
