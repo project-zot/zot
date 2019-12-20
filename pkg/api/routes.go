@@ -505,6 +505,18 @@ func (rh *RouteHandler) CreateBlobUpload(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// blob mounts not allowed since we don't have access control yet, and this
+	// may be a uncommon use case, but remain compliant
+	if _, ok := r.URL.Query()["mount"]; ok {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	if _, ok := r.URL.Query()["from"]; ok {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
 	u, err := rh.c.ImageStore.NewBlobUpload(name)
 	if err != nil {
 		switch err {
