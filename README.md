@@ -59,6 +59,34 @@ Examples of config files are available in [examples/](examples/) dir.
 bin/zot compliance -H hostIP -P port [-V "all"] [--json]
 ```
 
+Compliance is important for the following reasons:
+
+1. A standards-based client code can be implemented that can then interact with
+   compliant registries.
+
+2. Customers benefit from the ability to move and locate their images across
+   compliant registries.
+
+## Methodology
+
+* A _positive_ compliance means the registry is compliant and meaningful work
+can be accomplished when interacting with that registry.
+
+* A _negative_ compliance means the registry is compliant, however, it only
+returns errors that are compliant and no meaningful work can be performed when
+interacting with that registry.
+
+The focus of compliance tests is _positive_ compliance.
+
+## Compliance Reports
+
+Registry | Notes
+---------|------
+zot | <ul><li>[Mount Blob](https://github.com/opencontainers/distribution-spec/blob/master/spec.md#mount-blob) is not implemented contingent upon [Issue #51](https://github.com/anuvu/zot/issues/51)</li></ul>
+docker | <ul><li>[Patch Blob Upload](https://github.com/opencontainers/distribution-spec/blob/master/spec.md#patch-blob-upload) is not [implemented](https://github.com/docker/distribution/blob/master/registry/handlers/blobupload.go#L136)</li><li>Repository names cannot be mixed case due to [Issue #2771](https://github.com/docker/distribution/issues/2771)</li></ul>
+quay | TBD
+
+
 # Ecosystem
 
 ## skopeo
