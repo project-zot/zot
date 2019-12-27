@@ -42,6 +42,7 @@ func (c *Controller) Run() error {
 		handlers.PrintRecoveryStack(false)))
 
 	c.Router = engine
+	c.Router.UseEncodedPath()
 	_ = NewRouteHandler(c)
 
 	c.ImageStore = storage.NewImageStore(c.Config.Storage.RootDirectory, c.Log)

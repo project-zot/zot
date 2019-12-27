@@ -6,7 +6,7 @@ import "regexp"
 var (
 	// alphaNumericRegexp defines the alpha numeric atom, typically a
 	// component of names. This only allows lower case characters and digits.
-	alphaNumericRegexp = match(`[a-z0-9]+`)
+	alphaNumericRegexp = match(`[a-zA-Z0-9]+`)
 
 	// separatorRegexp defines the separators allowed to be embedded in name
 	// components. This allow one period, one or two underscore and multiple
