@@ -22,6 +22,7 @@ import (
 
 	_ "github.com/anuvu/zot/docs" // nolint (golint) - as required by swaggo
 	"github.com/anuvu/zot/errors"
+	"github.com/anuvu/zot/pkg/log"
 	"github.com/gorilla/mux"
 	jsoniter "github.com/json-iterator/go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -437,7 +438,7 @@ func (rh *RouteHandler) GetBlob(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", blen))
 	w.Header().Set(DistContentDigestKey, digest)
 	// return the blob data
-	WriteDataFromReader(w, http.StatusOK, blen, mediaType, br)
+	WriteDataFromReader(w, http.StatusOK, blen, mediaType, br, rh.c.Log)
 }
 
 // DeleteBlob godoc
@@ -905,22 +906,21 @@ func WriteData(w http.ResponseWriter, status int, mediaType string, data []byte)
 	_, _ = w.Write(data)
 }
 
-func WriteDataFromReader(w http.ResponseWriter, status int, length int64, mediaType string, reader io.Reader) {
+func WriteDataFromReader(w http.ResponseWriter, status int, length int64, mediaType string,
+	reader io.Reader, logger log.Logger) {
 	w.Header().Set("Content-Type", mediaType)
 	w.Header().Set("Content-Length", strconv.FormatInt(length, 10))
+	w.WriteHeader(status)
 
 	const maxSize = 10 * 1024 * 1024
 
 	for {
-		size, err := io.CopyN(w, reader, maxSize)
-		if size == 0 {
-			if err != io.EOF {
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
-
+		_, err := io.CopyN(w, reader, maxSize)
+		if err == io.EOF {
 			break
+		} else if err != nil {
+			// other kinds of intermittent errors can occur, e.g, io.ErrShortWrite
+			logger.Error().Err(err).Msg("copying data into http response")
 		}
 	}
-	w.WriteHeader(status)
 }
