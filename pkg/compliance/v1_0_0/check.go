@@ -19,18 +19,18 @@ import (
 	"gopkg.in/resty.v1"
 )
 
-func Location(baseURL string, resp *resty.Response, config *compliance.Config) string {
+func Location(baseURL string, resp *resty.Response) string {
 	// For some API responses, the Location header is set and is supposed to
 	// indicate an opaque value. However, it is not clear if this value is an
 	// absolute URL (https://server:port/v2/...) or just a path (/v2/...)
 	// zot implements the latter as per the spec, but some registries appear to
 	// return the former - this needs to be clarified
 	loc := resp.Header().Get("Location")
-	if config.Compliance {
-		return loc
+	if loc[0] == '/' {
+		return baseURL + loc
 	}
+	return loc
 
-	return baseURL + loc
 }
 
 func CheckWorkflows(t *testing.T, config *compliance.Config) {
@@ -119,7 +119,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			resp, err := resty.R().Post(baseURL + "/v2/repo2/blobs/uploads/")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 202)
-			loc := Location(baseURL, resp, config)
+			loc := Location(baseURL, resp)
 			So(loc, ShouldNotBeEmpty)
 
 			resp, err = resty.R().Get(loc)
@@ -155,7 +155,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 				SetHeader("Content-Type", "application/octet-stream").SetBody(content).Put(loc)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 201)
-			blobLoc := Location(baseURL, resp, config)
+			blobLoc := Location(baseURL, resp)
 			So(blobLoc, ShouldNotBeEmpty)
 			So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
 			So(resp.Header().Get(api.DistContentDigestKey), ShouldNotBeEmpty)
@@ -174,7 +174,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			resp, err := resty.R().Post(baseURL + "/v2/repo10/repo20/repo30/blobs/uploads/")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 202)
-			loc := Location(baseURL, resp, config)
+			loc := Location(baseURL, resp)
 			So(loc, ShouldNotBeEmpty)
 
 			resp, err = resty.R().Get(loc)
@@ -210,7 +210,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 				SetHeader("Content-Type", "application/octet-stream").SetBody(content).Put(loc)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 201)
-			blobLoc := Location(baseURL, resp, config)
+			blobLoc := Location(baseURL, resp)
 			So(blobLoc, ShouldNotBeEmpty)
 			So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
 			So(resp.Header().Get(api.DistContentDigestKey), ShouldNotBeEmpty)
@@ -229,7 +229,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			resp, err := resty.R().Post(baseURL + "/v2/repo3/blobs/uploads/")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 202)
-			loc := Location(baseURL, resp, config)
+			loc := Location(baseURL, resp)
 			So(loc, ShouldNotBeEmpty)
 
 			var buf bytes.Buffer
@@ -276,7 +276,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 				SetHeader("Content-Type", "application/octet-stream").SetBody(chunk2).Put(loc)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 201)
-			blobLoc := Location(baseURL, resp, config)
+			blobLoc := Location(baseURL, resp)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 201)
 			So(blobLoc, ShouldNotBeEmpty)
@@ -297,7 +297,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			resp, err := resty.R().Post(baseURL + "/v2/repo40/repo50/repo60/blobs/uploads/")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 202)
-			loc := Location(baseURL, resp, config)
+			loc := Location(baseURL, resp)
 			So(loc, ShouldNotBeEmpty)
 
 			var buf bytes.Buffer
@@ -344,7 +344,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 				SetHeader("Content-Type", "application/octet-stream").SetBody(chunk2).Put(loc)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 201)
-			blobLoc := Location(baseURL, resp, config)
+			blobLoc := Location(baseURL, resp)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 201)
 			So(blobLoc, ShouldNotBeEmpty)
@@ -366,7 +366,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			resp, err := resty.R().Post(baseURL + "/v2/repo4/blobs/uploads/")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 202)
-			loc := Location(baseURL, resp, config)
+			loc := Location(baseURL, resp)
 			So(loc, ShouldNotBeEmpty)
 
 			// delete this upload
@@ -381,7 +381,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			resp, err := resty.R().Post(baseURL + "/v2/repo5/blobs/uploads/")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 202)
-			loc := Location(baseURL, resp, config)
+			loc := Location(baseURL, resp)
 			So(loc, ShouldNotBeEmpty)
 
 			content := []byte("this is a blob")
@@ -392,7 +392,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 				SetHeader("Content-Type", "application/octet-stream").SetBody(content).Put(loc)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 201)
-			blobLoc := Location(baseURL, resp, config)
+			blobLoc := Location(baseURL, resp)
 			So(blobLoc, ShouldNotBeEmpty)
 			So(resp.Header().Get(api.DistContentDigestKey), ShouldNotBeEmpty)
 
@@ -417,7 +417,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			resp, err := resty.R().Post(baseURL + "/v2/repo7/blobs/uploads/")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 202)
-			loc := Location(baseURL, resp, config)
+			loc := Location(baseURL, resp)
 			So(loc, ShouldNotBeEmpty)
 
 			resp, err = resty.R().Get(loc)
