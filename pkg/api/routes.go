@@ -920,7 +920,7 @@ func WriteDataFromReader(w http.ResponseWriter, status int, length int64, mediaT
 			break
 		} else if err != nil {
 			// other kinds of intermittent errors can occur, e.g, io.ErrShortWrite
-			logger.Error().Err(err).Msg("copying data into http response")
+			logger.Panic().Err(err).Msg("copying data into http response")
 		}
 	}
 }
