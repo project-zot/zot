@@ -267,7 +267,9 @@ func (rh *RouteHandler) UpdateManifest(w http.ResponseWriter, r *http.Request) {
 
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
+		rh.c.Log.Error().Err(err).Msg("unexpected error")
 		w.WriteHeader(http.StatusInternalServerError)
+
 		return
 	}
 
@@ -605,7 +607,6 @@ func (rh *RouteHandler) GetBlobUpload(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/blobs/uploads/{uuid} [patch]
 func (rh *RouteHandler) PatchBlobUpload(w http.ResponseWriter, r *http.Request) {
-	rh.c.Log.Info().Interface("headers", r.Header).Msg("request headers")
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
 
@@ -894,7 +895,7 @@ func WriteJSON(w http.ResponseWriter, status int, data interface{}) {
 	body, err := json.Marshal(data)
 
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		panic(err)
 	}
 
 	WriteData(w, status, DefaultMediaType, body)
@@ -920,7 +921,8 @@ func WriteDataFromReader(w http.ResponseWriter, status int, length int64, mediaT
 			break
 		} else if err != nil {
 			// other kinds of intermittent errors can occur, e.g, io.ErrShortWrite
-			logger.Panic().Err(err).Msg("copying data into http response")
+			logger.Error().Err(err).Msg("copying data into http response")
+			return
 		}
 	}
 }
