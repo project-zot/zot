@@ -80,14 +80,18 @@ The focus of compliance tests is _positive_ compliance.
 
 ## Compliance Reports
 
-Registry | Notes
----------|------
-zot | <ul><li>[Mount Blob](https://github.com/opencontainers/distribution-spec/blob/master/spec.md#mount-blob) is not implemented contingent upon [Issue #51](https://github.com/anuvu/zot/issues/51)</li></ul>
-docker | <ul><li>[Patch Blob Upload](https://github.com/opencontainers/distribution-spec/blob/master/spec.md#patch-blob-upload) is not [implemented](https://github.com/docker/distribution/blob/master/registry/handlers/blobupload.go#L136)</li><li>Repository names cannot be mixed case due to [Issue #2771](https://github.com/docker/distribution/issues/2771)</li></ul>
-quay | TBD
+Registry | Version Tested | Notes
+---------|----------------|-------
+zot | [v0.3.8](https://github.com/anuvu/zot/tree/v0.3.8) | <ul><li>[Mount Blob](https://github.com/opencontainers/distribution-spec/blob/master/spec.md#mount-blob) is not implemented contingent upon [Issue #51](https://github.com/anuvu/zot/issues/51)</li></ul>
+docker | [v2.7.1](https://github.com/docker/distribution/releases/tag/v2.7.1) | <ul><li>[Patch Blob Upload](https://github.com/opencontainers/distribution-spec/blob/master/spec.md#patch-blob-upload) is not [implemented](https://github.com/docker/distribution/blob/master/registry/handlers/blobupload.go#L136)</li><li>Repository names cannot be mixed case due to [Issue #2771](https://github.com/docker/distribution/issues/2771)</li></ul>
+quay | | TODO, [opensourced recently] (https://www.redhat.com/en/blog/red-hat-introduces-open-source-project-quay-container-registry)
 
 
 # Ecosystem
+
+Since we couldn't find clients or client libraries that are stictly compliant to
+the dist spec, we had to patch containers/image (available as [anuvu/image](https://github.com/anuvu/image)) and
+then link various binaries against the patched version.
 
 ## skopeo
 
