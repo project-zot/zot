@@ -144,7 +144,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			// without the Content-Length should fail
 			resp, err = resty.R().SetQueryParam("digest", digest.String()).Put(loc)
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, 400)
+			So(resp.StatusCode(), ShouldEqual, 415)
 			// without any data to send, should fail
 			resp, err = resty.R().SetQueryParam("digest", digest.String()).
 				SetHeader("Content-Type", "application/octet-stream").Put(loc)
@@ -199,7 +199,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			// without the Content-Length should fail
 			resp, err = resty.R().SetQueryParam("digest", digest.String()).Put(loc)
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, 400)
+			So(resp.StatusCode(), ShouldEqual, 415)
 			// without any data to send, should fail
 			resp, err = resty.R().SetQueryParam("digest", digest.String()).
 				SetHeader("Content-Type", "application/octet-stream").Put(loc)
@@ -239,7 +239,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(err, ShouldBeNil)
 
 			// write first chunk
-			contentRange := fmt.Sprintf("%d-%d", 0, len(chunk1))
+			contentRange := fmt.Sprintf("%d-%d", 0, len(chunk1)-1)
 			resp, err = resty.R().SetHeader("Content-Type", "application/octet-stream").
 				SetHeader("Content-Range", contentRange).SetBody(chunk1).Patch(loc)
 			So(err, ShouldBeNil)
@@ -254,7 +254,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(r, ShouldEqual, "bytes="+contentRange)
 
 			// write same chunk should fail
-			contentRange = fmt.Sprintf("%d-%d", 0, len(chunk1))
+			contentRange = fmt.Sprintf("%d-%d", 0, len(chunk1)-1)
 			resp, err = resty.R().SetHeader("Content-Type", "application/octet-stream").
 				SetHeader("Content-Range", contentRange).SetBody(chunk1).Patch(loc)
 			So(err, ShouldBeNil)
@@ -270,7 +270,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(digest, ShouldNotBeNil)
 
 			// write final chunk
-			contentRange = fmt.Sprintf("%d-%d", len(chunk1), len(buf.Bytes()))
+			contentRange = fmt.Sprintf("%d-%d", len(chunk1), len(buf.Bytes())-1)
 			resp, err = resty.R().SetQueryParam("digest", digest.String()).
 				SetHeader("Content-Range", contentRange).
 				SetHeader("Content-Type", "application/octet-stream").SetBody(chunk2).Put(loc)
@@ -307,7 +307,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(err, ShouldBeNil)
 
 			// write first chunk
-			contentRange := fmt.Sprintf("%d-%d", 0, len(chunk1))
+			contentRange := fmt.Sprintf("%d-%d", 0, len(chunk1)-1)
 			resp, err = resty.R().SetHeader("Content-Type", "application/octet-stream").
 				SetHeader("Content-Range", contentRange).SetBody(chunk1).Patch(loc)
 			So(err, ShouldBeNil)
@@ -322,7 +322,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(r, ShouldEqual, "bytes="+contentRange)
 
 			// write same chunk should fail
-			contentRange = fmt.Sprintf("%d-%d", 0, len(chunk1))
+			contentRange = fmt.Sprintf("%d-%d", 0, len(chunk1)-1)
 			resp, err = resty.R().SetHeader("Content-Type", "application/octet-stream").
 				SetHeader("Content-Range", contentRange).SetBody(chunk1).Patch(loc)
 			So(err, ShouldBeNil)
@@ -338,7 +338,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(digest, ShouldNotBeNil)
 
 			// write final chunk
-			contentRange = fmt.Sprintf("%d-%d", len(chunk1), len(buf.Bytes()))
+			contentRange = fmt.Sprintf("%d-%d", len(chunk1), len(buf.Bytes())-1)
 			resp, err = resty.R().SetQueryParam("digest", digest.String()).
 				SetHeader("Content-Range", contentRange).
 				SetHeader("Content-Type", "application/octet-stream").SetBody(chunk2).Put(loc)
@@ -470,7 +470,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			// delete manifest
 			resp, err = resty.R().Delete(baseURL + "/v2/repo7/manifests/test:1.0")
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, 200)
+			So(resp.StatusCode(), ShouldEqual, 202)
 			// delete again should fail
 			resp, err = resty.R().Delete(baseURL + "/v2/repo7/manifests/" + digest.String())
 			So(err, ShouldBeNil)
@@ -494,6 +494,67 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(resp.Body(), ShouldNotBeEmpty)
 		})
 
+		// pagination
+		Convey("Pagination", func() {
+			Print("\nPagination")
+
+			for i := 0; i <= 4; i++ {
+				// create a blob/layer
+				resp, err := resty.R().Post(baseURL + "/v2/page0/blobs/uploads/")
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, 202)
+				loc := Location(baseURL, resp)
+				So(loc, ShouldNotBeEmpty)
+
+				resp, err = resty.R().Get(loc)
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, 204)
+				content := []byte("this is a blob")
+				digest := godigest.FromBytes(content)
+				So(digest, ShouldNotBeNil)
+				// monolithic blob upload: success
+				resp, err = resty.R().SetQueryParam("digest", digest.String()).
+					SetHeader("Content-Type", "application/octet-stream").SetBody(content).Put(loc)
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, 201)
+				blobLoc := resp.Header().Get("Location")
+				So(blobLoc, ShouldNotBeEmpty)
+				So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
+				So(resp.Header().Get(api.DistContentDigestKey), ShouldNotBeEmpty)
+
+				// create a manifest
+				m := ispec.Manifest{Layers: []ispec.Descriptor{{Digest: digest}}}
+				content, err = json.Marshal(m)
+				So(err, ShouldBeNil)
+				digest = godigest.FromBytes(content)
+				So(digest, ShouldNotBeNil)
+				resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+					SetBody(content).Put(baseURL + fmt.Sprintf("/v2/page0/manifests/test:%d.0", i))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, 201)
+				d := resp.Header().Get(api.DistContentDigestKey)
+				So(d, ShouldNotBeEmpty)
+				So(d, ShouldEqual, digest.String())
+			}
+
+			resp, err := resty.R().Get(baseURL + "/v2/page0/tags/list")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			resp, err = resty.R().Get(baseURL + "/v2/page0/tags/list?n=3")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+			next := resp.Header().Get("Link")
+			So(next, ShouldNotBeEmpty)
+
+			u := baseURL + strings.Split(next, ";")[0]
+			resp, err = resty.R().Get(u)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+			next = resp.Header().Get("Link")
+			So(next, ShouldBeEmpty)
+		})
+
 		// this is an additional test for repository names (alphanumeric)
 		Convey("Repository names", func() {
 			Print("\nRepository names")
@@ -502,9 +563,6 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 202)
 			resp, err = resty.R().Post(baseURL + "/v2/repotest123/blobs/uploads/")
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, 202)
-			resp, err = resty.R().Post(baseURL + "/v2/repoTest123/blobs/uploads/")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 202)
 		})
