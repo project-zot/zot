@@ -243,6 +243,11 @@ func (is *ImageStore) GetImageManifest(repo string, reference string) ([]byte, s
 
 	if err != nil {
 		is.log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
+
+		if os.IsNotExist(err) {
+			return nil, "", "", errors.ErrRepoNotFound
+		}
+
 		return nil, "", "", err
 	}
 
@@ -286,8 +291,14 @@ func (is *ImageStore) GetImageManifest(repo string, reference string) ([]byte, s
 	p = path.Join(p, digest.Encoded())
 
 	buf, err = ioutil.ReadFile(p)
+
 	if err != nil {
 		is.log.Error().Err(err).Str("blob", p).Msg("failed to read manifest")
+
+		if os.IsNotExist(err) {
+			return nil, "", "", errors.ErrManifestNotFound
+		}
+
 		return nil, "", "", err
 	}
 
@@ -546,6 +557,39 @@ func (is *ImageStore) GetBlobUpload(repo string, uuid string) (int64, error) {
 	}
 
 	return fi.Size(), nil
+}
+
+// PutBlobChunkStreamed appends another chunk of data to the specified blob. It returns
+// the number of actual bytes to the blob.
+func (is *ImageStore) PutBlobChunkStreamed(repo string, uuid string, body io.Reader) (int64, error) {
+	if err := is.InitRepo(repo); err != nil {
+		return -1, err
+	}
+
+	blobUploadPath := is.BlobUploadPath(repo, uuid)
+
+	_, err := os.Stat(blobUploadPath)
+	if err != nil {
+		return -1, errors.ErrUploadNotFound
+	}
+
+	file, err := os.OpenFile(
+		blobUploadPath,
+		os.O_WRONLY|os.O_CREATE,
+		0600,
+	)
+	if err != nil {
+		is.log.Fatal().Err(err).Msg("failed to open file")
+	}
+	defer file.Close()
+
+	if _, err := file.Seek(0, 2); err != nil {
+		is.log.Fatal().Err(err).Msg("failed to seek file")
+	}
+
+	n, err := io.Copy(file, body)
+
+	return n, err
 }
 
 // PutBlobChunk writes another chunk of data to the specified blob. It returns
