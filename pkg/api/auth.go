@@ -142,7 +142,17 @@ func BasicAuthHandler(c *Controller) mux.MiddlewareFunc {
 			username := pair[0]
 			passphrase := pair[1]
 
-			// prefer LDAP if configured
+			// first, HTTPPassword authN (which is local)
+			passphraseHash, ok := credMap[username]
+			if ok {
+				if err := bcrypt.CompareHashAndPassword([]byte(passphraseHash), []byte(passphrase)); err == nil {
+					// Process request
+					next.ServeHTTP(w, r)
+					return
+				}
+			}
+
+			// next, LDAP if configured (network-based which can lose connectivity)
 			if c.Config.HTTP.Auth != nil && c.Config.HTTP.Auth.LDAP != nil {
 				ok, _, err := ldapClient.Authenticate(username, passphrase)
 				if ok && err == nil {
@@ -152,20 +162,8 @@ func BasicAuthHandler(c *Controller) mux.MiddlewareFunc {
 				}
 			}
 
-			// fallback to HTTPPassword
-			passphraseHash, ok := credMap[username]
-			if !ok {
-				authFail(w, realm, delay)
-				return
-			}
-
-			if err := bcrypt.CompareHashAndPassword([]byte(passphraseHash), []byte(passphrase)); err != nil {
-				authFail(w, realm, delay)
-				return
-			}
-
-			// Process request
-			next.ServeHTTP(w, r)
+			authFail(w, realm, delay)
+			return
 		})
 	}
 }
