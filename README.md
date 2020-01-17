@@ -3,15 +3,16 @@
 **zot** is a vendor-neutral OCI image repository server purely based on 
 [OCI Distribution Specification](https://github.com/opencontainers/distribution-spec).
 
-* Conforms to [OCI distribution spec](https://github.com/opencontainers/distribution-spec) APIs
+* Conforms to [OCI distribution spec](https://github.com/opencontainers/distribution-spec) APIs [![zot](https://github.com/bloodorangeio/oci-distribution-conformance-results/workflows/zot/badge.svg)](https://oci.bloodorange.io/results/report-zot.html) [![zot w. auth](https://github.com/bloodorangeio/oci-distribution-conformance-results/workflows/zot-auth/badge.svg)](https://oci.bloodorange.io/results/report-zot-auth.html)
 * Uses [OCI storage layout](https://github.com/opencontainers/image-spec/blob/master/image-layout.md) for storage layout
+* Currently suitable for on-prem deployments (e.g. colocated with Kubernetes)
 * TLS support
 * Authentication via TLS mutual authentication and HTTP *BASIC* (local _htpasswd_ and LDAP)
 * Doesn't require _root_ privileges
 * Swagger based documentation
-* Can run compliance checks against registries
 * Released under Apache 2.0 License
 * ```go get -u github.com/anuvu/zot/cmd/zot```
+
 
 # Presentations
 
@@ -52,40 +53,6 @@ bin/zot serve _config-file_
 ```
 
 Examples of config files are available in [examples/](examples/) dir.
-
-# Compliance checks
-
-```
-bin/zot compliance -H hostIP -P port [-V "all"] [--json]
-```
-
-Compliance is important for the following reasons:
-
-1. A standards-based client code can be implemented that can then interact with
-   compliant registries.
-
-2. Customers benefit from the ability to move and locate their images across
-   compliant registries.
-
-## Methodology
-
-* A _positive_ compliance means the registry is compliant and meaningful work
-can be accomplished when interacting with that registry.
-
-* A _negative_ compliance means the registry is compliant, however, it only
-returns errors that are compliant and no meaningful work can be performed when
-interacting with that registry.
-
-The focus of compliance tests is _positive_ compliance.
-
-## Compliance Reports
-
-Registry | Version Tested | Notes
----------|----------------|-------
-zot | [v0.3.8](https://github.com/anuvu/zot/tree/v0.3.8) | <ul><li>[Mount Blob](https://github.com/opencontainers/distribution-spec/blob/master/spec.md#mount-blob) is not implemented contingent upon [Issue #51](https://github.com/anuvu/zot/issues/51)</li></ul>
-docker | [v2.7.1](https://github.com/docker/distribution/releases/tag/v2.7.1) | <ul><li>[Patch Blob Upload](https://github.com/opencontainers/distribution-spec/blob/master/spec.md#patch-blob-upload) is not [implemented](https://github.com/docker/distribution/blob/master/registry/handlers/blobupload.go#L136)</li><li>Repository names cannot be mixed case due to [Issue #2771](https://github.com/docker/distribution/issues/2771)</li></ul>
-quay | | TODO, [opensourced recently] (https://www.redhat.com/en/blog/red-hat-introduces-open-source-project-quay-container-registry)
-
 
 # Ecosystem
 
