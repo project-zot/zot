@@ -17,11 +17,13 @@ import (
 	"io/ioutil"
 	"net/http"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 
 	_ "github.com/anuvu/zot/docs" // nolint (golint) - as required by swaggo
 	"github.com/anuvu/zot/errors"
+	"github.com/anuvu/zot/pkg/log"
 	"github.com/gorilla/mux"
 	jsoniter "github.com/json-iterator/go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -34,6 +36,7 @@ const (
 	DistContentDigestKey = "Docker-Content-Digest"
 	BlobUploadUUID       = "Blob-Upload-UUID"
 	DefaultMediaType     = "application/json"
+	BinaryMediaType      = "application/octet-stream"
 )
 
 type RouteHandler struct {
@@ -69,13 +72,13 @@ func (rh *RouteHandler) SetupRoutes() {
 			rh.DeleteBlob).Methods("DELETE")
 		g.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/", NameRegexp.String()),
 			rh.CreateBlobUpload).Methods("POST")
-		g.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/{uuid}", NameRegexp.String()),
+		g.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/{session_id}", NameRegexp.String()),
 			rh.GetBlobUpload).Methods("GET")
-		g.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/{uuid}", NameRegexp.String()),
+		g.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/{session_id}", NameRegexp.String()),
 			rh.PatchBlobUpload).Methods("PATCH")
-		g.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/{uuid}", NameRegexp.String()),
+		g.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/{session_id}", NameRegexp.String()),
 			rh.UpdateBlobUpload).Methods("PUT")
-		g.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/{uuid}", NameRegexp.String()),
+		g.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/{session_id}", NameRegexp.String()),
 			rh.DeleteBlobUpload).Methods("DELETE")
 		g.HandleFunc("/_catalog",
 			rh.ListRepositories).Methods("GET")
@@ -112,8 +115,11 @@ type ImageTags struct {
 // @Accept  json
 // @Produce json
 // @Param   name     path    string     true        "test"
+// @Param 	n	 			 query 	 integer 		true				"limit entries for pagination"
+// @Param 	last	 	 query 	 string 		true				"last tag value for pagination"
 // @Success 200 {object} 	api.ImageTags
 // @Failure 404 {string} 	string 				"not found"
+// @Failure 400 {string} 	string 				"bad request"
 func (rh *RouteHandler) ListTags(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
@@ -123,9 +129,83 @@ func (rh *RouteHandler) ListTags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	paginate := false
+	n := -1
+
+	var err error
+
+	nQuery, ok := r.URL.Query()["n"]
+
+	if ok {
+		if len(nQuery) != 1 {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		var n1 int64
+
+		if n1, err = strconv.ParseInt(nQuery[0], 10, 0); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		n = int(n1)
+		paginate = true
+	}
+
+	last := ""
+	lastQuery, ok := r.URL.Query()["last"]
+
+	if ok {
+		if len(lastQuery) != 1 {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		last = lastQuery[0]
+	}
+
 	tags, err := rh.c.ImageStore.GetImageTags(name)
 	if err != nil {
 		WriteJSON(w, http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
+		return
+	}
+
+	if paginate && (n < len(tags)) {
+		sort.Strings(tags)
+
+		pTags := ImageTags{Name: name}
+
+		if last == "" {
+			// first
+			pTags.Tags = tags[:n]
+		} else {
+			// next
+			i := -1
+			tag := ""
+			found := false
+			for i, tag = range tags {
+				if tag == last {
+					found = true
+					break
+				}
+			}
+			if !found {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			if n >= len(tags)-i {
+				pTags.Tags = tags[i+1:]
+				WriteJSON(w, http.StatusOK, pTags)
+				return
+			}
+			pTags.Tags = tags[i+1 : i+1+n]
+		}
+
+		last = pTags.Tags[len(pTags.Tags)-1]
+		w.Header().Set("Link", fmt.Sprintf("/v2/%s/tags/list?n=%d&last=%s; rel=\"next\"", name, n, last))
+		WriteJSON(w, http.StatusOK, pTags)
+
 		return
 	}
 
@@ -266,7 +346,9 @@ func (rh *RouteHandler) UpdateManifest(w http.ResponseWriter, r *http.Request) {
 
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
+		rh.c.Log.Error().Err(err).Msg("unexpected error")
 		w.WriteHeader(http.StatusInternalServerError)
+
 		return
 	}
 
@@ -333,7 +415,7 @@ func (rh *RouteHandler) DeleteManifest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(http.StatusAccepted)
 }
 
 // CheckBlob godoc
@@ -437,7 +519,7 @@ func (rh *RouteHandler) GetBlob(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", blen))
 	w.Header().Set(DistContentDigestKey, digest)
 	// return the blob data
-	WriteDataFromReader(w, http.StatusOK, blen, mediaType, br)
+	WriteDataFromReader(w, http.StatusOK, blen, mediaType, br, rh.c.Log)
 }
 
 // DeleteBlob godoc
@@ -491,7 +573,7 @@ func (rh *RouteHandler) DeleteBlob(w http.ResponseWriter, r *http.Request) {
 // @Produce json
 // @Param   name				path    string     true        "repository name"
 // @Success 202 {string} string	"accepted"
-// @Header  202 {string} Location "/v2/{name}/blobs/uploads/{uuid}"
+// @Header  202 {string} Location "/v2/{name}/blobs/uploads/{session_id}"
 // @Header  202 {string} Range "bytes=0-0"
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
@@ -537,17 +619,17 @@ func (rh *RouteHandler) CreateBlobUpload(w http.ResponseWriter, r *http.Request)
 
 // GetBlobUpload godoc
 // @Summary Get image blob/layer upload
-// @Description Get an image's blob/layer upload given a uuid
+// @Description Get an image's blob/layer upload given a session_id
 // @Accept  json
 // @Produce json
 // @Param   name     path    string     true        "repository name"
-// @Param   uuid     path    string     true        "upload uuid"
+// @Param   session_id     path    string     true        "upload session_id"
 // @Success 204 {string} string "no content"
-// @Header  202 {string} Location "/v2/{name}/blobs/uploads/{uuid}"
+// @Header  202 {string} Location "/v2/{name}/blobs/uploads/{session_id}"
 // @Header  202 {string} Range "bytes=0-128"
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
-// @Router /v2/{name}/blobs/uploads/{uuid} [get]
+// @Router /v2/{name}/blobs/uploads/{session_id} [get]
 func (rh *RouteHandler) GetBlobUpload(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
@@ -557,23 +639,23 @@ func (rh *RouteHandler) GetBlobUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	uuid, ok := vars["uuid"]
-	if !ok || uuid == "" {
+	sessionID, ok := vars["session_id"]
+	if !ok || sessionID == "" {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
-	size, err := rh.c.ImageStore.GetBlobUpload(name, uuid)
+	size, err := rh.c.ImageStore.GetBlobUpload(name, sessionID)
 	if err != nil {
 		switch err {
 		case errors.ErrBadUploadRange:
-			WriteJSON(w, http.StatusBadRequest, NewError(BLOB_UPLOAD_INVALID, map[string]string{"uuid": uuid}))
+			WriteJSON(w, http.StatusBadRequest, NewError(BLOB_UPLOAD_INVALID, map[string]string{"session_id": sessionID}))
 		case errors.ErrBadBlobDigest:
-			WriteJSON(w, http.StatusBadRequest, NewError(BLOB_UPLOAD_INVALID, map[string]string{"uuid": uuid}))
+			WriteJSON(w, http.StatusBadRequest, NewError(BLOB_UPLOAD_INVALID, map[string]string{"session_id": sessionID}))
 		case errors.ErrRepoNotFound:
 			WriteJSON(w, http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
 		case errors.ErrUploadNotFound:
-			WriteJSON(w, http.StatusNotFound, NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"uuid": uuid}))
+			WriteJSON(w, http.StatusNotFound, NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"session_id": sessionID}))
 		default:
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			w.WriteHeader(http.StatusInternalServerError)
@@ -582,29 +664,28 @@ func (rh *RouteHandler) GetBlobUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Location", path.Join(r.URL.String(), uuid))
-	w.Header().Set("Range", fmt.Sprintf("bytes=0-%d", size))
+	w.Header().Set("Location", path.Join(r.URL.String(), sessionID))
+	w.Header().Set("Range", fmt.Sprintf("bytes=0-%d", size-1))
 	w.WriteHeader(http.StatusNoContent)
 }
 
 // PatchBlobUpload godoc
 // @Summary Resume image blob/layer upload
-// @Description Resume an image's blob/layer upload given an uuid
+// @Description Resume an image's blob/layer upload given an session_id
 // @Accept  json
 // @Produce json
 // @Param   name     path    string     true        "repository name"
-// @Param   uuid     path    string     true        "upload uuid"
+// @Param   session_id     path    string     true        "upload session_id"
 // @Success 202 {string} string	"accepted"
-// @Header  202 {string} Location "/v2/{name}/blobs/uploads/{uuid}"
+// @Header  202 {string} Location "/v2/{name}/blobs/uploads/{session_id}"
 // @Header  202 {string} Range "bytes=0-128"
 // @Header  200 {object} api.BlobUploadUUID
 // @Failure 400 {string} string "bad request"
 // @Failure 404 {string} string "not found"
 // @Failure 416 {string} string "range not satisfiable"
 // @Failure 500 {string} string "internal server error"
-// @Router /v2/{name}/blobs/uploads/{uuid} [patch]
+// @Router /v2/{name}/blobs/uploads/{session_id} [patch]
 func (rh *RouteHandler) PatchBlobUpload(w http.ResponseWriter, r *http.Request) {
-	rh.c.Log.Info().Interface("headers", r.Header).Msg("request headers")
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
 
@@ -613,53 +694,63 @@ func (rh *RouteHandler) PatchBlobUpload(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	uuid, ok := vars["uuid"]
-	if !ok || uuid == "" {
+	sessionID, ok := vars["session_id"]
+	if !ok || sessionID == "" {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
-	var err error
-
-	var contentLength int64
-
-	if contentLength, err = strconv.ParseInt(r.Header.Get("Content-Length"), 10, 64); err != nil {
-		rh.c.Log.Warn().Str("actual", r.Header.Get("Content-Length")).Msg("invalid content length")
-		w.WriteHeader(http.StatusBadRequest)
-
-		return
-	}
-
-	contentRange := r.Header.Get("Content-Range")
-	if contentRange == "" {
-		rh.c.Log.Warn().Str("actual", r.Header.Get("Content-Range")).Msg("invalid content range")
-		w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
-
-		return
-	}
-
-	var from, to int64
-	if from, to, err = getContentRange(r); err != nil || (to-from) != contentLength {
-		w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
-		return
-	}
-
-	if contentType := r.Header.Get("Content-Type"); contentType != "application/octet-stream" {
-		rh.c.Log.Warn().Str("actual", contentType).Str("expected", "application/octet-stream").Msg("invalid media type")
+	if contentType := r.Header.Get("Content-Type"); contentType != BinaryMediaType {
+		rh.c.Log.Warn().Str("actual", contentType).Str("expected", BinaryMediaType).Msg("invalid media type")
 		w.WriteHeader(http.StatusUnsupportedMediaType)
 
 		return
 	}
 
-	clen, err := rh.c.ImageStore.PutBlobChunk(name, uuid, from, to, r.Body)
+	var err error
+
+	var clen int64
+
+	if r.Header.Get("Content-Length") == "" || r.Header.Get("Content-Range") == "" {
+		// streamed blob upload
+		clen, err = rh.c.ImageStore.PutBlobChunkStreamed(name, sessionID, r.Body)
+	} else {
+		// chunked blob upload
+
+		var contentLength int64
+
+		if contentLength, err = strconv.ParseInt(r.Header.Get("Content-Length"), 10, 64); err != nil {
+			rh.c.Log.Warn().Str("actual", r.Header.Get("Content-Length")).Msg("invalid content length")
+			w.WriteHeader(http.StatusBadRequest)
+
+			return
+		}
+
+		contentRange := r.Header.Get("Content-Range")
+		if contentRange == "" {
+			rh.c.Log.Warn().Str("actual", r.Header.Get("Content-Range")).Msg("invalid content range")
+			w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+
+			return
+		}
+
+		var from, to int64
+		if from, to, err = getContentRange(r); err != nil || (to-from)+1 != contentLength {
+			w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+			return
+		}
+
+		clen, err = rh.c.ImageStore.PutBlobChunk(name, sessionID, from, to, r.Body)
+	}
+
 	if err != nil {
 		switch err {
 		case errors.ErrBadUploadRange:
-			WriteJSON(w, http.StatusBadRequest, NewError(BLOB_UPLOAD_INVALID, map[string]string{"uuid": uuid}))
+			WriteJSON(w, http.StatusBadRequest, NewError(BLOB_UPLOAD_INVALID, map[string]string{"session_id": sessionID}))
 		case errors.ErrRepoNotFound:
 			WriteJSON(w, http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
 		case errors.ErrUploadNotFound:
-			WriteJSON(w, http.StatusNotFound, NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"uuid": uuid}))
+			WriteJSON(w, http.StatusNotFound, NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"session_id": sessionID}))
 		default:
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			w.WriteHeader(http.StatusInternalServerError)
@@ -668,10 +759,10 @@ func (rh *RouteHandler) PatchBlobUpload(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	w.Header().Set("Location", path.Join(r.URL.String(), uuid))
-	w.Header().Set("Range", fmt.Sprintf("bytes=0-%d", clen))
+	w.Header().Set("Location", r.URL.String())
+	w.Header().Set("Range", fmt.Sprintf("bytes=0-%d", clen-1))
 	w.Header().Set("Content-Length", "0")
-	w.Header().Set(BlobUploadUUID, uuid)
+	w.Header().Set(BlobUploadUUID, sessionID)
 	w.WriteHeader(http.StatusAccepted)
 }
 
@@ -681,15 +772,16 @@ func (rh *RouteHandler) PatchBlobUpload(w http.ResponseWriter, r *http.Request) 
 // @Accept  json
 // @Produce json
 // @Param   name     path    string     true        "repository name"
-// @Param   uuid     path    string     true        "upload uuid"
+// @Param   session_id     path    string     true        "upload session_id"
 // @Param 	digest	 query 	 string 		true				"blob/layer digest"
 // @Success 201 {string} string	"created"
-// @Header  202 {string} Location "/v2/{name}/blobs/{digest}"
+// @Header  202 {string} Location "/v2/{name}/blobs/uploads/{digest}"
 // @Header  200 {object} api.DistContentDigestKey
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
-// @Router /v2/{name}/blobs/uploads/{uuid} [put]
+// @Router /v2/{name}/blobs/uploads/{session_id} [put]
 func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request) {
+	rh.c.Log.Info().Interface("headers", r.Header).Msg("HEADERS")
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
 
@@ -698,8 +790,8 @@ func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	uuid, ok := vars["uuid"]
-	if !ok || uuid == "" {
+	sessionID, ok := vars["session_id"]
+	if !ok || sessionID == "" {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
@@ -712,10 +804,12 @@ func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request)
 
 	digest := digests[0]
 
+	rh.c.Log.Info().Int64("r.ContentLength", r.ContentLength).Msg("DEBUG")
+
 	contentPresent := true
 	contentLen, err := strconv.ParseInt(r.Header.Get("Content-Length"), 10, 64)
 
-	if err != nil || contentLen == 0 {
+	if err != nil {
 		contentPresent = false
 	}
 
@@ -735,18 +829,12 @@ func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request)
 	var from, to int64
 
 	if contentPresent {
-		if r.Header.Get("Content-Type") != "application/octet-stream" {
-			w.WriteHeader(http.StatusUnsupportedMediaType)
-			return
-		}
-
 		contentRange := r.Header.Get("Content-Range")
 		if contentRange == "" { // monolithic upload
 			from = 0
 
 			if contentLen == 0 {
-				w.WriteHeader(http.StatusBadRequest)
-				return
+				goto finish // FIXME:
 			}
 
 			to = contentLen
@@ -755,15 +843,20 @@ func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request)
 			return
 		}
 
-		_, err = rh.c.ImageStore.PutBlobChunk(name, uuid, from, to, r.Body)
+		if r.Header.Get("Content-Type") != BinaryMediaType {
+			w.WriteHeader(http.StatusUnsupportedMediaType)
+			return
+		}
+
+		_, err = rh.c.ImageStore.PutBlobChunk(name, sessionID, from, to, r.Body)
 		if err != nil {
 			switch err {
 			case errors.ErrBadUploadRange:
-				WriteJSON(w, http.StatusBadRequest, NewError(BLOB_UPLOAD_INVALID, map[string]string{"uuid": uuid}))
+				WriteJSON(w, http.StatusBadRequest, NewError(BLOB_UPLOAD_INVALID, map[string]string{"session_id": sessionID}))
 			case errors.ErrRepoNotFound:
 				WriteJSON(w, http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
 			case errors.ErrUploadNotFound:
-				WriteJSON(w, http.StatusNotFound, NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"uuid": uuid}))
+				WriteJSON(w, http.StatusNotFound, NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"session_id": sessionID}))
 			default:
 				rh.c.Log.Error().Err(err).Msg("unexpected error")
 				w.WriteHeader(http.StatusInternalServerError)
@@ -773,17 +866,22 @@ func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
+finish:
+	if r.Header.Get("Content-Type") != BinaryMediaType {
+		w.WriteHeader(http.StatusUnsupportedMediaType)
+		return
+	}
 	// blob chunks already transferred, just finish
-	if err := rh.c.ImageStore.FinishBlobUpload(name, uuid, r.Body, digest); err != nil {
+	if err := rh.c.ImageStore.FinishBlobUpload(name, sessionID, r.Body, digest); err != nil {
 		switch err {
 		case errors.ErrBadBlobDigest:
 			WriteJSON(w, http.StatusBadRequest, NewError(DIGEST_INVALID, map[string]string{"digest": digest}))
 		case errors.ErrBadUploadRange:
-			WriteJSON(w, http.StatusBadRequest, NewError(BLOB_UPLOAD_INVALID, map[string]string{"uuid": uuid}))
+			WriteJSON(w, http.StatusBadRequest, NewError(BLOB_UPLOAD_INVALID, map[string]string{"session_id": sessionID}))
 		case errors.ErrRepoNotFound:
 			WriteJSON(w, http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
 		case errors.ErrUploadNotFound:
-			WriteJSON(w, http.StatusNotFound, NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"uuid": uuid}))
+			WriteJSON(w, http.StatusNotFound, NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"session_id": sessionID}))
 		default:
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			w.WriteHeader(http.StatusInternalServerError)
@@ -804,11 +902,11 @@ func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request)
 // @Accept  json
 // @Produce json
 // @Param   name     path    string     true        "repository name"
-// @Param   uuid     path    string     true        "upload uuid"
+// @Param   session_id     path    string     true        "upload session_id"
 // @Success 200 {string} string "ok"
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
-// @Router /v2/{name}/blobs/uploads/{uuid} [delete]
+// @Router /v2/{name}/blobs/uploads/{session_id} [delete]
 func (rh *RouteHandler) DeleteBlobUpload(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
@@ -818,18 +916,18 @@ func (rh *RouteHandler) DeleteBlobUpload(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	uuid, ok := vars["uuid"]
-	if !ok || uuid == "" {
+	sessionID, ok := vars["session_id"]
+	if !ok || sessionID == "" {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
-	if err := rh.c.ImageStore.DeleteBlobUpload(name, uuid); err != nil {
+	if err := rh.c.ImageStore.DeleteBlobUpload(name, sessionID); err != nil {
 		switch err {
 		case errors.ErrRepoNotFound:
 			WriteJSON(w, http.StatusNotFound, NewError(NAME_UNKNOWN, map[string]string{"name": name}))
 		case errors.ErrUploadNotFound:
-			WriteJSON(w, http.StatusNotFound, NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"uuid": uuid}))
+			WriteJSON(w, http.StatusNotFound, NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"session_id": sessionID}))
 		default:
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			w.WriteHeader(http.StatusInternalServerError)
@@ -838,7 +936,7 @@ func (rh *RouteHandler) DeleteBlobUpload(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 type RepositoryList struct {
@@ -893,7 +991,7 @@ func WriteJSON(w http.ResponseWriter, status int, data interface{}) {
 	body, err := json.Marshal(data)
 
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		panic(err)
 	}
 
 	WriteData(w, status, DefaultMediaType, body)
@@ -905,22 +1003,22 @@ func WriteData(w http.ResponseWriter, status int, mediaType string, data []byte)
 	_, _ = w.Write(data)
 }
 
-func WriteDataFromReader(w http.ResponseWriter, status int, length int64, mediaType string, reader io.Reader) {
+func WriteDataFromReader(w http.ResponseWriter, status int, length int64, mediaType string,
+	reader io.Reader, logger log.Logger) {
 	w.Header().Set("Content-Type", mediaType)
 	w.Header().Set("Content-Length", strconv.FormatInt(length, 10))
+	w.WriteHeader(status)
 
 	const maxSize = 10 * 1024 * 1024
 
 	for {
-		size, err := io.CopyN(w, reader, maxSize)
-		if size == 0 {
-			if err != io.EOF {
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
-
+		_, err := io.CopyN(w, reader, maxSize)
+		if err == io.EOF {
 			break
+		} else if err != nil {
+			// other kinds of intermittent errors can occur, e.g, io.ErrShortWrite
+			logger.Error().Err(err).Msg("copying data into http response")
+			return
 		}
 	}
-	w.WriteHeader(status)
 }

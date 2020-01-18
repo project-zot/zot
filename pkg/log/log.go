@@ -40,7 +40,7 @@ func NewLogger(level string, output string) Logger {
 		log = zerolog.New(file)
 	}
 
-	return Logger{Logger: log.With().Timestamp().Logger()}
+	return Logger{Logger: log.With().Caller().Timestamp().Logger()}
 }
 
 type statusWriter struct {

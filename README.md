@@ -3,19 +3,19 @@
 **zot** is a vendor-neutral OCI image repository server purely based on 
 [OCI Distribution Specification](https://github.com/opencontainers/distribution-spec).
 
-* Conforms to [OCI distribution spec](https://github.com/opencontainers/distribution-spec) APIs
+* Conforms to [OCI distribution spec](https://github.com/opencontainers/distribution-spec) APIs [![zot](https://github.com/bloodorangeio/oci-distribution-conformance-results/workflows/zot/badge.svg)](https://oci.bloodorange.io/results/report-zot.html) [![zot w. auth](https://github.com/bloodorangeio/oci-distribution-conformance-results/workflows/zot-auth/badge.svg)](https://oci.bloodorange.io/results/report-zot-auth.html)
 * Uses [OCI storage layout](https://github.com/opencontainers/image-spec/blob/master/image-layout.md) for storage layout
+* Currently suitable for on-prem deployments (e.g. colocated with Kubernetes)
 * TLS support
 * Authentication via TLS mutual authentication and HTTP *BASIC* (local _htpasswd_ and LDAP)
 * Doesn't require _root_ privileges
 * Swagger based documentation
-* Can run compliance checks against registries
 * Released under Apache 2.0 License
 * ```go get -u github.com/anuvu/zot/cmd/zot```
 
-## Zot Extensions
+## zot extensions
 
-Zot provides an experimental playground for features that are desired but yet to be covered by the
+Zot provides a playground for features that are desired but yet to be covered by the
 standards committee. The core code base will be the canonical implementation of the OCI
 specifications. Experimental features will be implemented using an extension mechanism and can be enabled
 via runtime configuration. We plan to use this mechanism to implement any draft features and also
@@ -66,13 +66,11 @@ bin/zot serve _config-file_
 
 Examples of config files are available in [examples/](examples/) dir.
 
-# Compliance checks
-
-```
-bin/zot compliance -H hostIP -P port [-V "all"] [--json]
-```
-
 # Ecosystem
+
+Since we couldn't find clients or client libraries that are stictly compliant to
+the dist spec, we had to patch containers/image (available as [anuvu/image](https://github.com/anuvu/image)) and
+then link various binaries against the patched version.
 
 ## skopeo
 

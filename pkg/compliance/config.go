@@ -5,8 +5,9 @@ type Config struct {
 	Port       string
 	Version    string
 	OutputJSON bool
+	Compliance bool
 }
 
 func NewConfig() *Config {
-	return &Config{}
+	return &Config{Compliance: true}
 }
