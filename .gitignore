@@ -16,3 +16,4 @@ bazel-*
 coverage.txt
 test/data/
 *.orig
+.idea/
