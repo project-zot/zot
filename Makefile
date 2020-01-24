@@ -50,3 +50,7 @@ binary-container:
 .PHONY: binary-stacker
 binary-stacker:
 	stacker build --substitute PWD=$$PWD --no-cache
+
+.PHONY: image
+image:
+	${CONTAINER_RUNTIME} build ${BUILD_ARGS} -f Dockerfile -t zot:latest .

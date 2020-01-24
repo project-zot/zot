@@ -42,17 +42,57 @@ make binary-stacker
 
 ```
 make
-
 ```
 
 Build artifacts are in bin/
 
 # Serving
+
 ```
 bin/zot serve _config-file_
 ```
 
 Examples of config files are available in [examples/](examples/) dir.
+
+# Container Image
+
+The [Dockerfile](./Dockerfile) in this repo can be used to build a container image
+that runs _zot_.
+
+To build the image:
+
+```
+make image
+```
+
+Then run the image with your preferred container runtime:
+
+```
+# with podman
+podman run --rm -p 5000:5000 \
+  -v $(pwd)/registry:/var/lib/registry \
+  zot:latest
+
+# with docker
+docker run --rm -p 5000:5000 \
+  -v $(pwd)/registry:/var/lib/registry \
+  zot:latest
+```
+
+By default, the server will use no auth, listen on port 5000,
+and store content at `/var/lib/registry`.
+
+If you wish use custom configuration settings, you can override
+the YAML config file located at `/etc/zot/config.yml`:
+
+```
+# Example: using a local file "custom-config.yml" that
+# listens on port 8080 and uses /tmp/zot for storage
+podman run --rm -p 8080:8080 \
+  -v $(pwd)/custom-config.yml:/etc/zot/config.yml \
+  -v $(pwd)/registry:/tmp/zot \
+  zot:latest
+```
 
 # Ecosystem
 
