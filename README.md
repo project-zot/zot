@@ -69,10 +69,10 @@ Then run the image with your preferred container runtime:
 
 ```
 # with podman
-podman run --rm -p 5000:5000 -v $(pwd)/registry:/var/lib/registry zot:latest
+podman run --rm -it -p 5000:5000 -v $(pwd)/registry:/var/lib/registry zot:latest
 
 # with docker
-docker run --rm -p 5000:5000 -v $(pwd)/registry:/var/lib/registry zot:latest
+docker run --rm -it -p 5000:5000 -v $(pwd)/registry:/var/lib/registry zot:latest
 ```
 
 This will run a registry at http://localhost:5000, storing content at `./registry` 
