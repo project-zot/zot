@@ -135,6 +135,13 @@ go_repository(
 )
 
 go_repository(
+    name = "com_github_chartmuseum_auth",
+    importpath = "github.com/chartmuseum/auth",
+    sum = "h1:76rqyKtBdQAnC/YuT9ftL7OpLTDwfrfk8Ee8rD9OVOw=",
+    version = "v0.3.1",
+)
+
+go_repository(
     name = "com_github_client9_misspell",
     importpath = "github.com/client9/misspell",
     sum = "h1:ta993UF76GwbvJcIo3Y68y/M3WxlpEHPWIGDkJYwzJI=",
@@ -1052,6 +1059,13 @@ go_repository(
 )
 
 go_repository(
+    name = "com_github_mitchellh_mapstructure",
+    importpath = "github.com/mitchellh/mapstructure",
+    sum = "h1:fmNYVwqnSfB9mZU6OS2O6GsXM+wcskZDuKQzvN1EDeE=",
+    version = "v1.1.2",
+)
+
+go_repository(
     name = "com_github_nmcclain_asn1_ber",
     importpath = "github.com/nmcclain/asn1-ber",
     sum = "h1:D9EvfGQvlkKaDr2CRKN++7HbSXbefUNDrPq60T+g24s=",
@@ -1070,6 +1084,13 @@ go_repository(
     importpath = "github.com/op/go-logging",
     sum = "h1:lDH9UUVJtmYCjyT0CI4q8xvlXPxeZ0gYCVvWbmPlp88=",
     version = "v0.0.0-20160315200505-970db520ece7",
+)
+
+go_repository(
+    name = "com_github_opencontainers_go_digest",
+    importpath = "github.com/opencontainers/go-digest",
+    sum = "h1:WzifXhOVOEOuFYOJAW6aQqW0TooG2iki3E3Ii+WN7gQ=",
+    version = "v1.0.0-rc1",
 )
 
 go_repository(

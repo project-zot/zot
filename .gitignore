@@ -16,3 +16,7 @@ bazel-*
 coverage.txt
 test/data/
 *.orig
+.idea/
+coverage.html
+tags
+vendor/

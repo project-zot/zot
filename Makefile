@@ -21,6 +21,10 @@ test:
 	$(shell mkdir -p test/data; cd test/data; ../scripts/gen_certs.sh; cd ${TOP_LEVEL})
 	go test -v -race -cover -coverprofile=coverage.txt -covermode=atomic ./...
 
+.PHONY: covhtml
+covhtml:
+	go tool cover -html=coverage.txt -o coverage.html
+
 .PHONY: check
 check: .bazel/golangcilint.yaml
 	golangci-lint --version || curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.21.0

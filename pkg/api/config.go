@@ -28,6 +28,13 @@ type AuthConfig struct {
 	FailDelay int
 	HTPasswd  AuthHTPasswd
 	LDAP      *LDAPConfig
+	Bearer    *BearerConfig
+}
+
+type BearerConfig struct {
+	Realm   string
+	Service string
+	Cert    string
 }
 
 type HTTPConfig struct {
