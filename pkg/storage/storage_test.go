@@ -115,6 +115,9 @@ func TestAPIs(t *testing.T) {
 					_, _, _, err = il.GetImageManifest("test", d.String())
 					So(err, ShouldBeNil)
 
+					err = il.DeleteImageManifest("test", "1.0")
+					So(err, ShouldNotBeNil)
+
 					err = il.DeleteImageManifest("test", d.String())
 					So(err, ShouldBeNil)
 
