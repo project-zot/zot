@@ -443,6 +443,12 @@ func (is *ImageStore) DeleteImageManifest(repo string, reference string) error {
 		return errors.ErrRepoNotFound
 	}
 
+	_, err := godigest.Parse(reference)
+	if err != nil {
+		is.log.Error().Err(err).Msg("invalid reference")
+		return errors.ErrManifestNotFound
+	}
+
 	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
 
 	if err != nil {
