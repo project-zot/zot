@@ -1,7 +1,9 @@
 package storage
 
 import (
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -477,14 +479,6 @@ func (is *ImageStore) DeleteImageManifest(repo string, reference string) error {
 
 			break
 		}
-
-		v, ok := m.Annotations[ispec.AnnotationRefName]
-		if ok && v == reference {
-			digest = m.Digest
-			found = true
-
-			break
-		}
 	}
 
 	if !found {
@@ -699,6 +693,62 @@ func (is *ImageStore) FinishBlobUpload(repo string, uuid string, body io.Reader,
 	_ = os.Rename(src, dst)
 
 	return err
+}
+
+// FullBlobUpload handles a full blob upload, and no partial session is created
+func (is *ImageStore) FullBlobUpload(repo string, body io.Reader, digest string) (string, int64, error) {
+	if err := is.InitRepo(repo); err != nil {
+		return "", -1, err
+	}
+
+	dstDigest, err := godigest.Parse(digest)
+	if err != nil {
+		is.log.Error().Err(err).Str("digest", digest).Msg("failed to parse digest")
+		return "", -1, errors.ErrBadBlobDigest
+	}
+
+	u, err := guuid.NewV4()
+	if err != nil {
+		return "", -1, err
+	}
+
+	uuid := u.String()
+
+	src := is.BlobUploadPath(repo, uuid)
+
+	f, err := os.Create(src)
+	if err != nil {
+		is.log.Error().Err(err).Str("blob", src).Msg("failed to open blob")
+		return "", -1, errors.ErrUploadNotFound
+	}
+
+	defer f.Close()
+
+	digester := sha256.New()
+	mw := io.MultiWriter(f, digester)
+	n, err := io.Copy(mw, body)
+
+	if err != nil {
+		return "", -1, err
+	}
+
+	srcDigest := godigest.NewDigestFromEncoded(godigest.SHA256, fmt.Sprintf("%x", digester.Sum(nil)))
+	if srcDigest != dstDigest {
+		is.log.Error().Str("srcDigest", srcDigest.String()).
+			Str("dstDigest", dstDigest.String()).Msg("actual digest not equal to expected digest")
+		return "", -1, errors.ErrBadBlobDigest
+	}
+
+	dir := path.Join(is.rootDir, repo)
+	dir = path.Join(dir, "blobs")
+	dir = path.Join(dir, dstDigest.Algorithm().String())
+	_ = os.MkdirAll(dir, 0755)
+	dst := is.BlobPath(repo, dstDigest)
+
+	// move the blob from uploads to final dest
+	_ = os.Rename(src, dst)
+
+	return uuid, n, err
 }
 
 // DeleteBlobUpload deletes an existing blob upload that is currently in progress.

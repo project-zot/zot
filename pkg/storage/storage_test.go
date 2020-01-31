@@ -58,6 +58,16 @@ func TestAPIs(t *testing.T) {
 			So(v, ShouldBeEmpty)
 		})
 
+		Convey("Full blob upload", func() {
+			body := []byte("this is a blob")
+			buf := bytes.NewBuffer(body)
+			d := godigest.FromBytes(body)
+			u, n, err := il.FullBlobUpload("test", buf, d.String())
+			So(err, ShouldBeNil)
+			So(n, ShouldEqual, len(body))
+			So(u, ShouldNotBeEmpty)
+		})
+
 		Convey("New blob upload", func() {
 			v, err := il.NewBlobUpload("test")
 			So(err, ShouldBeNil)

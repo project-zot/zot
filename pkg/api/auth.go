@@ -58,7 +58,7 @@ func bearerAuthHandler(c *Controller) mux.MiddlewareFunc {
 			if err != nil {
 				c.Log.Error().Err(err).Msg("issue parsing Authorization header")
 				w.Header().Set("Content-Type", "application/json")
-				WriteJSON(w, http.StatusInternalServerError, NewError(UNSUPPORTED))
+				WriteJSON(w, http.StatusInternalServerError, NewErrorList(NewError(UNSUPPORTED)))
 				return
 			}
 			if !permissions.Allowed {
@@ -218,5 +218,5 @@ func authFail(w http.ResponseWriter, realm string, delay int) {
 	time.Sleep(time.Duration(delay) * time.Second)
 	w.Header().Set("WWW-Authenticate", realm)
 	w.Header().Set("Content-Type", "application/json")
-	WriteJSON(w, http.StatusUnauthorized, NewError(UNAUTHORIZED))
+	WriteJSON(w, http.StatusUnauthorized, NewErrorList(NewError(UNAUTHORIZED)))
 }
