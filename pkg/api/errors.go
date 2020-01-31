@@ -1,9 +1,11 @@
 package api
 
-import "github.com/anuvu/zot/errors"
+import (
+	"github.com/anuvu/zot/errors"
+)
 
 type Error struct {
-	Code        ErrorCode   `json:"code"`
+	Code        string      `json:"code"`
 	Message     string      `json:"message"`
 	Description string      `json:"description"`
 	Detail      interface{} `json:"detail,omitempty"`
@@ -33,6 +35,27 @@ const (
 	DENIED
 	UNSUPPORTED
 )
+
+func (e ErrorCode) String() string {
+	m := map[ErrorCode]string{
+		BLOB_UNKNOWN:          "BLOB_UNKNOWN",
+		BLOB_UPLOAD_INVALID:   "BLOB_UPLOAD_INVALID",
+		BLOB_UPLOAD_UNKNOWN:   "BLOB_UPLOAD_UNKNOWN",
+		DIGEST_INVALID:        "DIGEST_INVALID",
+		MANIFEST_BLOB_UNKNOWN: "MANIFEST_BLOB_UNKNOWN",
+		MANIFEST_INVALID:      "MANIFEST_INVALID",
+		MANIFEST_UNKNOWN:      "MANIFEST_UNKNOWN",
+		MANIFEST_UNVERIFIED:   "MANIFEST_UNVERIFIED",
+		NAME_INVALID:          "NAME_INVALID",
+		NAME_UNKNOWN:          "NAME_UNKNOWN",
+		SIZE_INVALID:          "SIZE_INVALID",
+		TAG_INVALID:           "TAG_INVALID",
+		UNAUTHORIZED:          "UNAUTHORIZED",
+		DENIED:                "DENIED",
+		UNSUPPORTED:           "UNSUPPORTED",
+	}
+	return m[e]
+}
 
 func NewError(code ErrorCode, detail ...interface{}) Error {
 	var errMap = map[ErrorCode]Error{
@@ -135,8 +158,18 @@ func NewError(code ErrorCode, detail ...interface{}) Error {
 		panic(errors.ErrUnknownCode)
 	}
 
-	e.Code = code
+	e.Code = code.String()
 	e.Detail = detail
 
 	return e
+}
+
+func NewErrorList(errors ...Error) ErrorList {
+	el := make([]*Error, 0)
+
+	for _, e := range errors {
+		el = append(el, &e)
+	}
+
+	return ErrorList{el}
 }
