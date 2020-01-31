@@ -243,10 +243,12 @@ func (rh *RouteHandler) CheckManifest(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch err {
 		case errors.ErrManifestNotFound:
-			WriteJSON(w, http.StatusNotFound, NewErrorList(NewError(MANIFEST_UNKNOWN, map[string]string{"reference": reference})))
+			WriteJSON(w, http.StatusNotFound,
+				NewErrorList(NewError(MANIFEST_UNKNOWN, map[string]string{"reference": reference})))
 		default:
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
-			WriteJSON(w, http.StatusInternalServerError, NewErrorList(NewError(MANIFEST_INVALID, map[string]string{"reference": reference})))
+			WriteJSON(w, http.StatusInternalServerError,
+				NewErrorList(NewError(MANIFEST_INVALID, map[string]string{"reference": reference})))
 		}
 
 		return
@@ -293,11 +295,14 @@ func (rh *RouteHandler) GetManifest(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch err {
 		case errors.ErrRepoNotFound:
-			WriteJSON(w, http.StatusNotFound, NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
+			WriteJSON(w, http.StatusNotFound,
+				NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
 		case errors.ErrRepoBadVersion:
-			WriteJSON(w, http.StatusNotFound, NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
+			WriteJSON(w, http.StatusNotFound,
+				NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
 		case errors.ErrManifestNotFound:
-			WriteJSON(w, http.StatusNotFound, NewErrorList(NewError(MANIFEST_UNKNOWN, map[string]string{"reference": reference})))
+			WriteJSON(w, http.StatusNotFound,
+				NewErrorList(NewError(MANIFEST_UNKNOWN, map[string]string{"reference": reference})))
 		default:
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			w.WriteHeader(http.StatusInternalServerError)
@@ -356,13 +361,17 @@ func (rh *RouteHandler) UpdateManifest(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch err {
 		case errors.ErrRepoNotFound:
-			WriteJSON(w, http.StatusNotFound, NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
+			WriteJSON(w, http.StatusNotFound,
+				NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
 		case errors.ErrManifestNotFound:
-			WriteJSON(w, http.StatusNotFound, NewErrorList(NewError(MANIFEST_UNKNOWN, map[string]string{"reference": reference})))
+			WriteJSON(w, http.StatusNotFound,
+				NewErrorList(NewError(MANIFEST_UNKNOWN, map[string]string{"reference": reference})))
 		case errors.ErrBadManifest:
-			WriteJSON(w, http.StatusBadRequest, NewErrorList(NewError(MANIFEST_INVALID, map[string]string{"reference": reference})))
+			WriteJSON(w, http.StatusBadRequest,
+				NewErrorList(NewError(MANIFEST_INVALID, map[string]string{"reference": reference})))
 		case errors.ErrBlobNotFound:
-			WriteJSON(w, http.StatusBadRequest, NewErrorList(NewError(BLOB_UNKNOWN, map[string]string{"blob": digest})))
+			WriteJSON(w, http.StatusBadRequest,
+				NewErrorList(NewError(BLOB_UNKNOWN, map[string]string{"blob": digest})))
 		default:
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			w.WriteHeader(http.StatusInternalServerError)
@@ -404,9 +413,11 @@ func (rh *RouteHandler) DeleteManifest(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch err {
 		case errors.ErrRepoNotFound:
-			WriteJSON(w, http.StatusNotFound, NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
+			WriteJSON(w, http.StatusNotFound,
+				NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
 		case errors.ErrManifestNotFound:
-			WriteJSON(w, http.StatusNotFound, NewErrorList(NewError(MANIFEST_UNKNOWN, map[string]string{"reference": reference})))
+			WriteJSON(w, http.StatusNotFound,
+				NewErrorList(NewError(MANIFEST_UNKNOWN, map[string]string{"reference": reference})))
 		default:
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			w.WriteHeader(http.StatusInternalServerError)
@@ -587,6 +598,18 @@ func (rh *RouteHandler) CreateBlobUpload(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// blob mounts not allowed since we don't have access control yet, and this
+	// may be a uncommon use case, but remain compliant
+	if _, ok := r.URL.Query()["mount"]; ok {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	if _, ok := r.URL.Query()["from"]; ok {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
 	// a full blob upload if "digest" is present
 	digests, ok := r.URL.Query()["digest"]
 	if ok {
@@ -607,16 +630,18 @@ func (rh *RouteHandler) CreateBlobUpload(w http.ResponseWriter, r *http.Request)
 		rh.c.Log.Info().Int64("r.ContentLength", r.ContentLength).Msg("DEBUG")
 
 		var contentLength int64
+
 		var err error
 
-		if contentLength, err = strconv.ParseInt(r.Header.Get("Content-Length"), 10, 64); err != nil {
+		if contentLength, err = strconv.ParseInt(r.Header.Get("Content-Length"), 10, 64); err != nil || contentLength <= 0 {
 			rh.c.Log.Warn().Str("actual", r.Header.Get("Content-Length")).Msg("invalid content length")
-			w.WriteHeader(http.StatusBadRequest)
+			WriteJSON(w, http.StatusBadRequest,
+				NewErrorList(NewError(BLOB_UPLOAD_INVALID, map[string]string{"digest": digest})))
 
 			return
 		}
 
-		size, err := rh.c.ImageStore.FullBlobUpload(name, r.Body, digest)
+		sessionID, size, err := rh.c.ImageStore.FullBlobUpload(name, r.Body, digest)
 		if err != nil {
 			rh.c.Log.Error().Err(err).Int64("actual", size).Int64("expected", contentLength).Msg("failed full upload")
 			w.WriteHeader(http.StatusInternalServerError)
@@ -631,19 +656,10 @@ func (rh *RouteHandler) CreateBlobUpload(w http.ResponseWriter, r *http.Request)
 			return
 		}
 
+		w.Header().Set("Location", fmt.Sprintf("/v2/%s/blobs/%s", name, digest))
+		w.Header().Set(BlobUploadUUID, sessionID)
 		w.WriteHeader(http.StatusCreated)
-		return
-	}
 
-	// blob mounts not allowed since we don't have access control yet, and this
-	// may be a uncommon use case, but remain compliant
-	if _, ok := r.URL.Query()["mount"]; ok {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-
-	if _, ok := r.URL.Query()["from"]; ok {
-		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -697,13 +713,17 @@ func (rh *RouteHandler) GetBlobUpload(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch err {
 		case errors.ErrBadUploadRange:
-			WriteJSON(w, http.StatusBadRequest, NewErrorList(NewError(BLOB_UPLOAD_INVALID, map[string]string{"session_id": sessionID})))
+			WriteJSON(w, http.StatusBadRequest,
+				NewErrorList(NewError(BLOB_UPLOAD_INVALID, map[string]string{"session_id": sessionID})))
 		case errors.ErrBadBlobDigest:
-			WriteJSON(w, http.StatusBadRequest, NewErrorList(NewError(BLOB_UPLOAD_INVALID, map[string]string{"session_id": sessionID})))
+			WriteJSON(w, http.StatusBadRequest,
+				NewErrorList(NewError(BLOB_UPLOAD_INVALID, map[string]string{"session_id": sessionID})))
 		case errors.ErrRepoNotFound:
-			WriteJSON(w, http.StatusNotFound, NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
+			WriteJSON(w, http.StatusNotFound,
+				NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
 		case errors.ErrUploadNotFound:
-			WriteJSON(w, http.StatusNotFound, NewErrorList(NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"session_id": sessionID})))
+			WriteJSON(w, http.StatusNotFound,
+				NewErrorList(NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"session_id": sessionID})))
 		default:
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			w.WriteHeader(http.StatusInternalServerError)
@@ -794,11 +814,14 @@ func (rh *RouteHandler) PatchBlobUpload(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		switch err {
 		case errors.ErrBadUploadRange:
-			WriteJSON(w, http.StatusRequestedRangeNotSatisfiable, NewErrorList(NewError(BLOB_UPLOAD_INVALID, map[string]string{"session_id": sessionID})))
+			WriteJSON(w, http.StatusRequestedRangeNotSatisfiable,
+				NewErrorList(NewError(BLOB_UPLOAD_INVALID, map[string]string{"session_id": sessionID})))
 		case errors.ErrRepoNotFound:
-			WriteJSON(w, http.StatusNotFound, NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
+			WriteJSON(w, http.StatusNotFound,
+				NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
 		case errors.ErrUploadNotFound:
-			WriteJSON(w, http.StatusNotFound, NewErrorList(NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"session_id": sessionID})))
+			WriteJSON(w, http.StatusNotFound,
+				NewErrorList(NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"session_id": sessionID})))
 		default:
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			w.WriteHeader(http.StatusInternalServerError)
@@ -900,11 +923,14 @@ func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request)
 		if err != nil {
 			switch err {
 			case errors.ErrBadUploadRange:
-				WriteJSON(w, http.StatusBadRequest, NewErrorList(NewError(BLOB_UPLOAD_INVALID, map[string]string{"session_id": sessionID})))
+				WriteJSON(w, http.StatusBadRequest,
+					NewErrorList(NewError(BLOB_UPLOAD_INVALID, map[string]string{"session_id": sessionID})))
 			case errors.ErrRepoNotFound:
-				WriteJSON(w, http.StatusNotFound, NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
+				WriteJSON(w, http.StatusNotFound,
+					NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
 			case errors.ErrUploadNotFound:
-				WriteJSON(w, http.StatusNotFound, NewErrorList(NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"session_id": sessionID})))
+				WriteJSON(w, http.StatusNotFound,
+					NewErrorList(NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"session_id": sessionID})))
 			default:
 				rh.c.Log.Error().Err(err).Msg("unexpected error")
 				w.WriteHeader(http.StatusInternalServerError)
@@ -923,13 +949,17 @@ finish:
 	if err := rh.c.ImageStore.FinishBlobUpload(name, sessionID, r.Body, digest); err != nil {
 		switch err {
 		case errors.ErrBadBlobDigest:
-			WriteJSON(w, http.StatusBadRequest, NewErrorList(NewError(DIGEST_INVALID, map[string]string{"digest": digest})))
+			WriteJSON(w, http.StatusBadRequest,
+				NewErrorList(NewError(DIGEST_INVALID, map[string]string{"digest": digest})))
 		case errors.ErrBadUploadRange:
-			WriteJSON(w, http.StatusBadRequest, NewErrorList(NewError(BLOB_UPLOAD_INVALID, map[string]string{"session_id": sessionID})))
+			WriteJSON(w, http.StatusBadRequest,
+				NewErrorList(NewError(BLOB_UPLOAD_INVALID, map[string]string{"session_id": sessionID})))
 		case errors.ErrRepoNotFound:
-			WriteJSON(w, http.StatusNotFound, NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
+			WriteJSON(w, http.StatusNotFound,
+				NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
 		case errors.ErrUploadNotFound:
-			WriteJSON(w, http.StatusNotFound, NewErrorList(NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"session_id": sessionID})))
+			WriteJSON(w, http.StatusNotFound,
+				NewErrorList(NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"session_id": sessionID})))
 		default:
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			w.WriteHeader(http.StatusInternalServerError)
@@ -973,9 +1003,11 @@ func (rh *RouteHandler) DeleteBlobUpload(w http.ResponseWriter, r *http.Request)
 	if err := rh.c.ImageStore.DeleteBlobUpload(name, sessionID); err != nil {
 		switch err {
 		case errors.ErrRepoNotFound:
-			WriteJSON(w, http.StatusNotFound, NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
+			WriteJSON(w, http.StatusNotFound,
+				NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
 		case errors.ErrUploadNotFound:
-			WriteJSON(w, http.StatusNotFound, NewErrorList(NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"session_id": sessionID})))
+			WriteJSON(w, http.StatusNotFound,
+				NewErrorList(NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"session_id": sessionID})))
 		default:
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			w.WriteHeader(http.StatusInternalServerError)

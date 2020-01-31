@@ -727,6 +727,7 @@ func (is *ImageStore) FullBlobUpload(repo string, body io.Reader, digest string)
 	digester := sha256.New()
 	mw := io.MultiWriter(f, digester)
 	n, err := io.Copy(mw, body)
+
 	if err != nil {
 		return "", -1, err
 	}

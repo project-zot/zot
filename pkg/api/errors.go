@@ -54,10 +54,11 @@ func (e ErrorCode) String() string {
 		DENIED:                "DENIED",
 		UNSUPPORTED:           "UNSUPPORTED",
 	}
+
 	return m[e]
 }
 
-func NewError(code ErrorCode, detail ...interface{}) Error {
+func NewError(code ErrorCode, detail ...interface{}) Error { //nolint (interfacer)
 	var errMap = map[ErrorCode]Error{
 		BLOB_UNKNOWN: {
 			Message: "blob unknown to registry",
@@ -166,9 +167,11 @@ func NewError(code ErrorCode, detail ...interface{}) Error {
 
 func NewErrorList(errors ...Error) ErrorList {
 	el := make([]*Error, 0)
+	er := Error{}
 
 	for _, e := range errors {
-		el = append(el, &e)
+		er = e
+		el = append(el, &er)
 	}
 
 	return ErrorList{el}

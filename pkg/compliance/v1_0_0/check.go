@@ -169,6 +169,44 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(resp.StatusCode(), ShouldEqual, 200)
 		})
 
+		Convey("Monolithic blob upload with body", func() {
+			Print("\nMonolithic blob upload")
+			// create content
+			content := []byte("this is a blob")
+			digest := godigest.FromBytes(content)
+			So(digest, ShouldNotBeNil)
+			// setting invalid URL params should fail
+			resp, err := resty.R().
+				SetQueryParam("digest", digest.String()).
+				SetQueryParam("from", digest.String()).
+				SetHeader("Content-Type", "application/octet-stream").
+				SetBody(content).
+				Post(baseURL + "/v2/repo2/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 405)
+			// setting a "?digest=<>" but without body should fail
+			resp, err = resty.R().
+				SetQueryParam("digest", digest.String()).
+				SetHeader("Content-Type", "application/octet-stream").
+				Post(baseURL + "/v2/repo2/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 400)
+			// set a "?digest=<>"
+			resp, err = resty.R().
+				SetQueryParam("digest", digest.String()).
+				SetHeader("Content-Type", "application/octet-stream").
+				SetBody(content).
+				Post(baseURL + "/v2/repo2/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 201)
+			loc := Location(baseURL, resp)
+			So(loc, ShouldNotBeEmpty)
+			// blob reference should be accessible
+			resp, err = resty.R().Get(loc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+		})
+
 		Convey("Monolithic blob upload with multiple name components", func() {
 			Print("\nMonolithic blob upload with multiple name components")
 			resp, err := resty.R().Post(baseURL + "/v2/repo10/repo20/repo30/blobs/uploads/")
@@ -258,7 +296,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			resp, err = resty.R().SetHeader("Content-Type", "application/octet-stream").
 				SetHeader("Content-Range", contentRange).SetBody(chunk1).Patch(loc)
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, 400)
+			So(resp.StatusCode(), ShouldEqual, 416)
 			So(resp.String(), ShouldNotBeEmpty)
 
 			chunk2 := []byte("this is the second chunk")
@@ -326,7 +364,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			resp, err = resty.R().SetHeader("Content-Type", "application/octet-stream").
 				SetHeader("Content-Range", contentRange).SetBody(chunk1).Patch(loc)
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, 400)
+			So(resp.StatusCode(), ShouldEqual, 416)
 			So(resp.String(), ShouldNotBeEmpty)
 
 			chunk2 := []byte("this is the second chunk")
@@ -450,6 +488,23 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(d, ShouldNotBeEmpty)
 			So(d, ShouldEqual, digest.String())
 
+			content = []byte("this is a blob")
+			digest = godigest.FromBytes(content)
+			So(digest, ShouldNotBeNil)
+			// create a manifest with same blob but a different tag
+			m = ispec.Manifest{Layers: []ispec.Descriptor{{Digest: digest}}}
+			content, err = json.Marshal(m)
+			So(err, ShouldBeNil)
+			digest = godigest.FromBytes(content)
+			So(digest, ShouldNotBeNil)
+			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+				SetBody(content).Put(baseURL + "/v2/repo7/manifests/test:2.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 201)
+			d = resp.Header().Get(api.DistContentDigestKey)
+			So(d, ShouldNotBeEmpty)
+			So(d, ShouldEqual, digest.String())
+
 			// check/get by tag
 			resp, err = resty.R().Head(baseURL + "/v2/repo7/manifests/test:1.0")
 			So(err, ShouldBeNil)
@@ -475,6 +530,10 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			resp, err = resty.R().Delete(baseURL + "/v2/repo7/manifests/" + digest.String())
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 202)
+			// delete manifest by digest
+			resp, err = resty.R().Delete(baseURL + "/v2/repo7/manifests/" + digest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 202)
 			// delete again should fail
 			resp, err = resty.R().Delete(baseURL + "/v2/repo7/manifests/" + digest.String())
 			So(err, ShouldBeNil)
@@ -485,6 +544,13 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 404)
 			resp, err = resty.R().Get(baseURL + "/v2/repo7/manifests/test:1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 404)
+			So(resp.Body(), ShouldNotBeEmpty)
+			resp, err = resty.R().Head(baseURL + "/v2/repo7/manifests/test:2.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 404)
+			resp, err = resty.R().Get(baseURL + "/v2/repo7/manifests/test:2.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 404)
 			So(resp.Body(), ShouldNotBeEmpty)
