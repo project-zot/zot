@@ -4,7 +4,7 @@ go 1.13
 
 require (
 	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
-	github.com/chartmuseum/auth v0.3.1
+	github.com/chartmuseum/auth v0.4.0
 	github.com/getlantern/deepcopy v0.0.0-20160317154340-7f45deb8130a
 	github.com/go-chi/chi v4.0.2+incompatible // indirect
 	github.com/go-ldap/ldap/v3 v3.1.3

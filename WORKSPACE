@@ -137,8 +137,8 @@ go_repository(
 go_repository(
     name = "com_github_chartmuseum_auth",
     importpath = "github.com/chartmuseum/auth",
-    sum = "h1:76rqyKtBdQAnC/YuT9ftL7OpLTDwfrfk8Ee8rD9OVOw=",
-    version = "v0.3.1",
+    sum = "h1:CkCJPO/daho9iN9t6ztK4cJRjHkQoom5/n5ndAS3OyM=",
+    version = "v0.4.0",
 )
 
 go_repository(

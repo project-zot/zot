@@ -36,10 +36,11 @@ func AuthHandler(c *Controller) mux.MiddlewareFunc {
 
 func bearerAuthHandler(c *Controller) mux.MiddlewareFunc {
 	authorizer, err := auth.NewAuthorizer(&auth.AuthorizerOptions{
-		Realm:           c.Config.HTTP.Auth.Bearer.Realm,
-		Service:         c.Config.HTTP.Auth.Bearer.Service,
-		PublicKeyPath:   c.Config.HTTP.Auth.Bearer.Cert,
-		AccessEntryType: bearerAuthDefaultAccessEntryType,
+		Realm:                 c.Config.HTTP.Auth.Bearer.Realm,
+		Service:               c.Config.HTTP.Auth.Bearer.Service,
+		PublicKeyPath:         c.Config.HTTP.Auth.Bearer.Cert,
+		AccessEntryType:       bearerAuthDefaultAccessEntryType,
+		EmptyDefaultNamespace: true,
 	})
 	if err != nil {
 		c.Log.Panic().Err(err).Msg("error creating bearer authorizer")
