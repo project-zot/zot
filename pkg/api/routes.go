@@ -242,6 +242,9 @@ func (rh *RouteHandler) CheckManifest(w http.ResponseWriter, r *http.Request) {
 	_, digest, _, err := rh.c.ImageStore.GetImageManifest(name, reference)
 	if err != nil {
 		switch err {
+		case errors.ErrRepoNotFound:
+			WriteJSON(w, http.StatusNotFound,
+				NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"reference": reference})))
 		case errors.ErrManifestNotFound:
 			WriteJSON(w, http.StatusNotFound,
 				NewErrorList(NewError(MANIFEST_UNKNOWN, map[string]string{"reference": reference})))
