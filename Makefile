@@ -19,7 +19,7 @@ debug: doc
 .PHONY: test
 test:
 	$(shell mkdir -p test/data; cd test/data; ../scripts/gen_certs.sh; cd ${TOP_LEVEL})
-	go test -v -race -cover -coverprofile=coverage.txt -covermode=atomic ./...
+	go test -v -race -cover -coverpkg ./... -coverprofile=coverage.txt -covermode=atomic ./...
 
 .PHONY: covhtml
 covhtml:

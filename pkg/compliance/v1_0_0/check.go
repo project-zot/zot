@@ -474,6 +474,12 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
 			So(resp.Header().Get(api.DistContentDigestKey), ShouldNotBeEmpty)
 
+			// check a non-existent manifest
+			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+				SetBody(content).Head(baseURL + "/v2/unknown/manifests/test:1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 404)
+
 			// create a manifest
 			m := ispec.Manifest{Layers: []ispec.Descriptor{{Digest: digest}}}
 			content, err = json.Marshal(m)
