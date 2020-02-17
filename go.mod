@@ -26,6 +26,8 @@ require (
 	github.com/spf13/viper v1.6.1
 	github.com/swaggo/http-swagger v0.0.0-20190614090009-c2865af9083e
 	github.com/swaggo/swag v1.6.3
+	go.etcd.io/bbolt v1.3.4
 	golang.org/x/crypto v0.0.0-20191206172530-e9b2fee46413
+	golang.org/x/sys v0.0.0-20200223170610-d5e6a3e2c0ae // indirect
 	gopkg.in/resty.v1 v1.12.0
 )

@@ -20,7 +20,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 
 	_ "github.com/anuvu/zot/docs" // nolint (golint) - as required by swaggo
 	"github.com/anuvu/zot/errors"
@@ -41,12 +40,11 @@ const (
 )
 
 type RouteHandler struct {
-	c        *Controller
-	blobLock sync.RWMutex
+	c *Controller
 }
 
 func NewRouteHandler(c *Controller) *RouteHandler {
-	rh := &RouteHandler{c: c, blobLock: sync.RWMutex{}}
+	rh := &RouteHandler{c: c}
 	rh.SetupRoutes()
 
 	return rh
@@ -56,9 +54,9 @@ func NewRouteHandler(c *Controller) *RouteHandler {
 func (rh *RouteHandler) blobRLockWrapper(f func(w http.ResponseWriter,
 	r *http.Request)) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		rh.blobLock.RLock()
+		rh.c.ImageStore.RLock()
 		f(w, r)
-		rh.blobLock.RUnlock()
+		rh.c.ImageStore.RUnlock()
 	}
 }
 
@@ -66,9 +64,9 @@ func (rh *RouteHandler) blobRLockWrapper(f func(w http.ResponseWriter,
 func (rh *RouteHandler) blobLockWrapper(f func(w http.ResponseWriter,
 	r *http.Request)) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		rh.blobLock.Lock()
+		rh.c.ImageStore.Lock()
 		f(w, r)
-		rh.blobLock.Unlock()
+		rh.c.ImageStore.Unlock()
 	}
 }
 

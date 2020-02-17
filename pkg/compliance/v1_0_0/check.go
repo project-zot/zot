@@ -135,7 +135,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			}
 
 			// without a "?digest=<>" should fail
-			content := []byte("this is a blob")
+			content := []byte("this is a blob1")
 			digest := godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
 			resp, err = resty.R().Put(loc)
@@ -172,7 +172,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 		Convey("Monolithic blob upload with body", func() {
 			Print("\nMonolithic blob upload")
 			// create content
-			content := []byte("this is a blob")
+			content := []byte("this is a blob2")
 			digest := godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
 			// setting invalid URL params should fail
@@ -228,7 +228,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			}
 
 			// without a "?digest=<>" should fail
-			content := []byte("this is a blob")
+			content := []byte("this is a blob3")
 			digest := godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
 			resp, err = resty.R().Put(loc)
@@ -271,7 +271,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(loc, ShouldNotBeEmpty)
 
 			var buf bytes.Buffer
-			chunk1 := []byte("this is the first chunk")
+			chunk1 := []byte("this is the first chunk1")
 			n, err := buf.Write(chunk1)
 			So(n, ShouldEqual, len(chunk1))
 			So(err, ShouldBeNil)
@@ -299,7 +299,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(resp.StatusCode(), ShouldEqual, 416)
 			So(resp.String(), ShouldNotBeEmpty)
 
-			chunk2 := []byte("this is the second chunk")
+			chunk2 := []byte("this is the second chunk1")
 			n, err = buf.Write(chunk2)
 			So(n, ShouldEqual, len(chunk2))
 			So(err, ShouldBeNil)
@@ -339,7 +339,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(loc, ShouldNotBeEmpty)
 
 			var buf bytes.Buffer
-			chunk1 := []byte("this is the first chunk")
+			chunk1 := []byte("this is the first chunk2")
 			n, err := buf.Write(chunk1)
 			So(n, ShouldEqual, len(chunk1))
 			So(err, ShouldBeNil)
@@ -367,7 +367,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(resp.StatusCode(), ShouldEqual, 416)
 			So(resp.String(), ShouldNotBeEmpty)
 
-			chunk2 := []byte("this is the second chunk")
+			chunk2 := []byte("this is the second chunk2")
 			n, err = buf.Write(chunk2)
 			So(n, ShouldEqual, len(chunk2))
 			So(err, ShouldBeNil)
@@ -422,7 +422,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			loc := Location(baseURL, resp)
 			So(loc, ShouldNotBeEmpty)
 
-			content := []byte("this is a blob")
+			content := []byte("this is a blob4")
 			digest := godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
 			// monolithic blob upload
@@ -461,7 +461,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			resp, err = resty.R().Get(loc)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 204)
-			content := []byte("this is a blob")
+			content := []byte("this is a blob5")
 			digest := godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
 			// monolithic blob upload: success
@@ -507,7 +507,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(d, ShouldNotBeEmpty)
 			So(d, ShouldEqual, digest.String())
 
-			content = []byte("this is a blob")
+			content = []byte("this is a blob5")
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
 			// create a manifest with same blob but a different tag
@@ -611,7 +611,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 				resp, err = resty.R().Get(loc)
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, 204)
-				content := []byte("this is a blob")
+				content := []byte("this is a blob7")
 				digest := godigest.FromBytes(content)
 				So(digest, ShouldNotBeNil)
 				// monolithic blob upload: success

@@ -21,4 +21,7 @@ var (
 	ErrLDAPEmptyPassphrase = errors.New("ldap: empty passphrase")
 	ErrLDAPBadConn         = errors.New("ldap: bad connection")
 	ErrLDAPConfig          = errors.New("config: invalid LDAP configuration")
+	ErrCacheRootBucket     = errors.New("cache: unable to create/update root bucket")
+	ErrCacheNoBucket       = errors.New("cache: unable to find bucket")
+	ErrCacheMiss           = errors.New("cache: miss")
 )
