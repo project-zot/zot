@@ -135,8 +135,6 @@ func TestAPIs(t *testing.T) {
 					So(err, ShouldNotBeNil)
 				})
 
-				err = il.DeleteBlob("test", d.String())
-				So(err, ShouldBeNil)
 			})
 
 			err = il.DeleteBlobUpload("test", v)

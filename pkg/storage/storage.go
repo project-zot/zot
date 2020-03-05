@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	guuid "github.com/gofrs/uuid"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/openSUSE/umoci"
 	"github.com/rs/zerolog"
 )
 
@@ -435,6 +437,16 @@ func (is *ImageStore) PutImageManifest(repo string, reference string, mediaType 
 		return "", err
 	}
 
+	oci, err := umoci.OpenLayout(dir)
+	if err != nil {
+		return "", err
+	}
+	defer oci.Close()
+
+	if err := oci.GC(context.Background()); err != nil {
+		return "", err
+	}
+
 	return desc.Digest.String(), nil
 }
 
@@ -499,6 +511,16 @@ func (is *ImageStore) DeleteImageManifest(repo string, reference string) error {
 	}
 
 	if err := ioutil.WriteFile(file, buf, 0644); err != nil {
+		return err
+	}
+
+	oci, err := umoci.OpenLayout(dir)
+	if err != nil {
+		return err
+	}
+	defer oci.Close()
+
+	if err := oci.GC(context.Background()); err != nil {
 		return err
 	}
 

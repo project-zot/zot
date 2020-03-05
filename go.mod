@@ -15,6 +15,7 @@ require (
 	github.com/mitchellh/mapstructure v1.1.2
 	github.com/nmcclain/asn1-ber v0.0.0-20170104154839-2661553a0484 // indirect
 	github.com/nmcclain/ldap v0.0.0-20191021200707-3b3b69a7e9e3
+	github.com/openSUSE/umoci v0.4.5
 	github.com/opencontainers/distribution-spec v1.0.0-rc0
 	github.com/opencontainers/go-digest v1.0.0-rc1
 	github.com/opencontainers/image-spec v1.0.1
