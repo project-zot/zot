@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"testing"
 	"time"
 
@@ -56,7 +57,6 @@ func startServer() (*api.Controller, string) {
 		panic(err)
 	}
 
-	//defer os.RemoveAll(dir)
 	ctrl.Config.Storage.RootDirectory = dir
 	go func() {
 		// this blocks
@@ -80,4 +80,5 @@ func startServer() (*api.Controller, string) {
 
 func stopServer(ctrl *api.Controller) {
 	ctrl.Server.Shutdown(context.Background())
+	os.RemoveAll(ctrl.Config.Storage.RootDirectory)
 }
