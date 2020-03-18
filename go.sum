@@ -128,6 +128,7 @@ github.com/klauspost/cpuid v1.2.1/go.mod h1:Pj4uuM528wm8OyEC2QMXAi2YiTZ96dNQPGgo
 github.com/klauspost/pgzip v1.2.1 h1:oIPZROsWuPHpOdMVWLuJZXwgjhrW8r1yEX8UqMyeNHM=
 github.com/klauspost/pgzip v1.2.1/go.mod h1:Ch1tH69qFZu15pkjo5kYi6mth2Zzwzt50oCQKQE9RUs=
 github.com/konsorten/go-windows-terminal-sequences v1.0.1/go.mod h1:T0+1ngSBFLxvqU3pZ+m/2kptfBszLMUkC4ZK/EgS/cQ=
+github.com/konsorten/go-windows-terminal-sequences v1.0.2 h1:DB17ag19krx9CFsz4o3enTrPXyIXCl+2iCXH/aMAp9s=
 github.com/konsorten/go-windows-terminal-sequences v1.0.2/go.mod h1:T0+1ngSBFLxvqU3pZ+m/2kptfBszLMUkC4ZK/EgS/cQ=
 github.com/kr/logfmt v0.0.0-20140226030751-b84e30acd515/go.mod h1:+0opPa2QZZtGFBFZlji/RkVcI2GknAs/DXo4wKdlNEc=
 github.com/kr/pretty v0.1.0 h1:L/CwN0zerZDmRFUapSPitk6f+Q3+0za1rQkzVuMiMFI=
@@ -172,6 +173,8 @@ github.com/onsi/gomega v1.5.0/go.mod h1:ex+gbHU/CVuBBDIJjb2X0qEXbFg53c61hWP/1Cpa
 github.com/onsi/gomega v1.7.0/go.mod h1:ex+gbHU/CVuBBDIJjb2X0qEXbFg53c61hWP/1CpauHY=
 github.com/openSUSE/umoci v0.4.5 h1:MZgFLy5Jl3VKe5uEOU9c25FoySbx3vUXeXLw4Jf6aRs=
 github.com/openSUSE/umoci v0.4.5/go.mod h1:3p4KA5nwyY65lVmQZxv7tm0YEylJ+t1fY91ORsVXv58=
+github.com/openSUSE/umoci v0.4.6-0.20200320140503-9aa268eeb258 h1:/8Yu54FufyHHQgIZ/wLy+BLQyzk0gbOG24xf5suWOOI=
+github.com/openSUSE/umoci v0.4.6-0.20200320140503-9aa268eeb258/go.mod h1:3p4KA5nwyY65lVmQZxv7tm0YEylJ+t1fY91ORsVXv58=
 github.com/opencontainers/distribution-spec v1.0.0-rc0 h1:xMzwhweo1gjvEo74mQjGTLau0TD3ACyTEC1310NbuSQ=
 github.com/opencontainers/distribution-spec v1.0.0-rc0/go.mod h1:copR2flp+jTEvQIFMb6MIx45OkrxzqyjszPDT3hx/5Q=
 github.com/opencontainers/go-digest v1.0.0-rc1 h1:WzifXhOVOEOuFYOJAW6aQqW0TooG2iki3E3Ii+WN7gQ=

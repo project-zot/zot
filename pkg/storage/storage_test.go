@@ -105,6 +105,7 @@ func TestAPIs(t *testing.T) {
 				So(err, ShouldBeNil)
 
 				m := ispec.Manifest{}
+				m.SchemaVersion = 2
 				mb, _ := json.Marshal(m)
 
 				Convey("Bad image manifest", func() {
@@ -116,7 +117,20 @@ func TestAPIs(t *testing.T) {
 				})
 
 				Convey("Good image manifest", func() {
-					m := ispec.Manifest{Layers: []ispec.Descriptor{{Digest: d}}}
+					m := ispec.Manifest{
+						Config: ispec.Descriptor{
+							Digest: d,
+							Size:   int64(l),
+						},
+						Layers: []ispec.Descriptor{
+							{
+								MediaType: "application/vnd.oci.image.layer.v1.tar",
+								Digest:    d,
+								Size:      int64(l),
+							},
+						},
+					}
+					m.SchemaVersion = 2
 					mb, _ = json.Marshal(m)
 					d := godigest.FromBytes(mb)
 					_, err = il.PutImageManifest("test", d.String(), ispec.MediaTypeImageManifest, mb)

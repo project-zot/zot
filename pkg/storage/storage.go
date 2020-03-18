@@ -15,9 +15,9 @@ import (
 	"github.com/anuvu/zot/errors"
 	zlog "github.com/anuvu/zot/pkg/log"
 	guuid "github.com/gofrs/uuid"
+	"github.com/openSUSE/umoci"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/openSUSE/umoci"
 	"github.com/rs/zerolog"
 )
 
@@ -332,6 +332,11 @@ func (is *ImageStore) PutImageManifest(repo string, reference string, mediaType 
 
 	var m ispec.Manifest
 	if err := json.Unmarshal(body, &m); err != nil {
+		return "", errors.ErrBadManifest
+	}
+
+	if m.SchemaVersion != 2 {
+		is.log.Error().Int("SchemaVersion", m.SchemaVersion).Msg("invalid manifest")
 		return "", errors.ErrBadManifest
 	}
 

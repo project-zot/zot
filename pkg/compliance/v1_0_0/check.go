@@ -481,7 +481,20 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(resp.StatusCode(), ShouldEqual, 404)
 
 			// create a manifest
-			m := ispec.Manifest{Layers: []ispec.Descriptor{{Digest: digest}}}
+			m := ispec.Manifest{
+				Config: ispec.Descriptor{
+					Digest: digest,
+					Size:   int64(len(content)),
+				},
+				Layers: []ispec.Descriptor{
+					{
+						MediaType: "application/vnd.oci.image.layer.v1.tar",
+						Digest:    digest,
+						Size:      int64(len(content)),
+					},
+				},
+			}
+			m.SchemaVersion = 2
 			content, err = json.Marshal(m)
 			So(err, ShouldBeNil)
 			digest = godigest.FromBytes(content)
@@ -498,7 +511,20 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
 			// create a manifest with same blob but a different tag
-			m = ispec.Manifest{Layers: []ispec.Descriptor{{Digest: digest}}}
+			m = ispec.Manifest{
+				Config: ispec.Descriptor{
+					Digest: digest,
+					Size:   int64(len(content)),
+				},
+				Layers: []ispec.Descriptor{
+					{
+						MediaType: "application/vnd.oci.image.layer.v1.tar",
+						Digest:    digest,
+						Size:      int64(len(content)),
+					},
+				},
+			}
+			m.SchemaVersion = 2
 			content, err = json.Marshal(m)
 			So(err, ShouldBeNil)
 			digest = godigest.FromBytes(content)
@@ -599,7 +625,20 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 				So(resp.Header().Get(api.DistContentDigestKey), ShouldNotBeEmpty)
 
 				// create a manifest
-				m := ispec.Manifest{Layers: []ispec.Descriptor{{Digest: digest}}}
+				m := ispec.Manifest{
+					Config: ispec.Descriptor{
+						Digest: digest,
+						Size:   int64(len(content)),
+					},
+					Layers: []ispec.Descriptor{
+						{
+							MediaType: "application/vnd.oci.image.layer.v1.tar",
+							Digest:    digest,
+							Size:      int64(len(content)),
+						},
+					},
+				}
+				m.SchemaVersion = 2
 				content, err = json.Marshal(m)
 				So(err, ShouldBeNil)
 				digest = godigest.FromBytes(content)
