@@ -148,7 +148,6 @@ func TestAPIs(t *testing.T) {
 					_, _, _, err = il.GetImageManifest("test", d.String())
 					So(err, ShouldNotBeNil)
 				})
-
 			})
 
 			err = il.DeleteBlobUpload("test", v)

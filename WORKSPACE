@@ -1362,8 +1362,8 @@ go_repository(
 go_repository(
     name = "com_github_opensuse_umoci",
     importpath = "github.com/openSUSE/umoci",
-    sum = "h1:MZgFLy5Jl3VKe5uEOU9c25FoySbx3vUXeXLw4Jf6aRs=",
-    version = "v0.4.5",
+    sum = "h1:/8Yu54FufyHHQgIZ/wLy+BLQyzk0gbOG24xf5suWOOI=",
+    version = "v0.4.6-0.20200320140503-9aa268eeb258",
 )
 
 go_repository(

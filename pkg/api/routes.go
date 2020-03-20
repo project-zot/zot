@@ -53,7 +53,8 @@ func NewRouteHandler(c *Controller) *RouteHandler {
 }
 
 // blobRLockWrapper calls the real handler with read-lock held
-func (rh *RouteHandler) blobRLockWrapper(f func(w http.ResponseWriter, r *http.Request)) func(w http.ResponseWriter, r *http.Request) {
+func (rh *RouteHandler) blobRLockWrapper(f func(w http.ResponseWriter,
+	r *http.Request)) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		rh.blobLock.RLock()
 		f(w, r)
@@ -62,7 +63,8 @@ func (rh *RouteHandler) blobRLockWrapper(f func(w http.ResponseWriter, r *http.R
 }
 
 // blobLockWrapper calls the real handler with write-lock held
-func (rh *RouteHandler) blobLockWrapper(f func(w http.ResponseWriter, r *http.Request)) func(w http.ResponseWriter, r *http.Request) {
+func (rh *RouteHandler) blobLockWrapper(f func(w http.ResponseWriter,
+	r *http.Request)) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		rh.blobLock.Lock()
 		f(w, r)
