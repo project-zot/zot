@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"github.com/anuvu/zot/errors"
 	zlog "github.com/anuvu/zot/pkg/log"
 	guuid "github.com/gofrs/uuid"
+	"github.com/openSUSE/umoci"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/rs/zerolog"
@@ -33,7 +35,7 @@ type BlobUpload struct {
 // ImageStore provides the image storage operations.
 type ImageStore struct {
 	rootDir     string
-	lock        *sync.Mutex
+	lock        *sync.RWMutex
 	blobUploads map[string]BlobUpload
 	log         zerolog.Logger
 }
@@ -41,7 +43,7 @@ type ImageStore struct {
 // NewImageStore returns a new image store backed by a file storage.
 func NewImageStore(rootDir string, log zlog.Logger) *ImageStore {
 	is := &ImageStore{rootDir: rootDir,
-		lock:        &sync.Mutex{},
+		lock:        &sync.RWMutex{},
 		blobUploads: make(map[string]BlobUpload),
 		log:         log.With().Caller().Logger(),
 	}
@@ -333,6 +335,11 @@ func (is *ImageStore) PutImageManifest(repo string, reference string, mediaType 
 		return "", errors.ErrBadManifest
 	}
 
+	if m.SchemaVersion != 2 {
+		is.log.Error().Int("SchemaVersion", m.SchemaVersion).Msg("invalid manifest")
+		return "", errors.ErrBadManifest
+	}
+
 	for _, l := range m.Layers {
 		digest := l.Digest
 		blobPath := is.BlobPath(repo, digest)
@@ -435,6 +442,16 @@ func (is *ImageStore) PutImageManifest(repo string, reference string, mediaType 
 		return "", err
 	}
 
+	oci, err := umoci.OpenLayout(dir)
+	if err != nil {
+		return "", err
+	}
+	defer oci.Close()
+
+	if err := oci.GC(context.Background()); err != nil {
+		return "", err
+	}
+
 	return desc.Digest.String(), nil
 }
 
@@ -499,6 +516,16 @@ func (is *ImageStore) DeleteImageManifest(repo string, reference string) error {
 	}
 
 	if err := ioutil.WriteFile(file, buf, 0644); err != nil {
+		return err
+	}
+
+	oci, err := umoci.OpenLayout(dir)
+	if err != nil {
+		return err
+	}
+	defer oci.Close()
+
+	if err := oci.GC(context.Background()); err != nil {
 		return err
 	}
 
