@@ -35,7 +35,7 @@ type BlobUpload struct {
 // ImageStore provides the image storage operations.
 type ImageStore struct {
 	rootDir     string
-	lock        *sync.Mutex
+	lock        *sync.RWMutex
 	blobUploads map[string]BlobUpload
 	log         zerolog.Logger
 }
@@ -43,7 +43,7 @@ type ImageStore struct {
 // NewImageStore returns a new image store backed by a file storage.
 func NewImageStore(rootDir string, log zlog.Logger) *ImageStore {
 	is := &ImageStore{rootDir: rootDir,
-		lock:        &sync.Mutex{},
+		lock:        &sync.RWMutex{},
 		blobUploads: make(map[string]BlobUpload),
 		log:         log.With().Caller().Logger(),
 	}

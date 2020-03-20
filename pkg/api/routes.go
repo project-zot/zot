@@ -42,17 +42,27 @@ const (
 
 type RouteHandler struct {
 	c        *Controller
-	blobLock sync.Mutex
+	blobLock sync.RWMutex
 }
 
 func NewRouteHandler(c *Controller) *RouteHandler {
-	rh := &RouteHandler{c: c, blobLock: sync.Mutex{}}
+	rh := &RouteHandler{c: c, blobLock: sync.RWMutex{}}
 	rh.SetupRoutes()
 
 	return rh
 }
 
-func (rh *RouteHandler) blobLockWrapper(f func (w http.ResponseWriter, r *http.Request)) func (w http.ResponseWriter, r *http.Request) {
+// blobRLockWrapper calls the real handler with read-lock held
+func (rh *RouteHandler) blobRLockWrapper(f func(w http.ResponseWriter, r *http.Request)) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		rh.blobLock.RLock()
+		f(w, r)
+		rh.blobLock.RUnlock()
+	}
+}
+
+// blobLockWrapper calls the real handler with write-lock held
+func (rh *RouteHandler) blobLockWrapper(f func(w http.ResponseWriter, r *http.Request)) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		rh.blobLock.Lock()
 		f(w, r)
@@ -67,23 +77,23 @@ func (rh *RouteHandler) SetupRoutes() {
 		g.HandleFunc(fmt.Sprintf("/{name:%s}/tags/list", NameRegexp.String()),
 			rh.ListTags).Methods("GET")
 		g.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", NameRegexp.String()),
-			rh.CheckManifest).Methods("HEAD")
+			rh.blobRLockWrapper(rh.CheckManifest)).Methods("HEAD")
 		g.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", NameRegexp.String()),
-			rh.GetManifest).Methods("GET")
+			rh.blobRLockWrapper(rh.GetManifest)).Methods("GET")
 		g.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", NameRegexp.String()),
 			rh.blobLockWrapper(rh.UpdateManifest)).Methods("PUT")
 		g.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", NameRegexp.String()),
 			rh.blobLockWrapper(rh.DeleteManifest)).Methods("DELETE")
 		g.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/{digest}", NameRegexp.String()),
-			rh.CheckBlob).Methods("HEAD")
+			rh.blobRLockWrapper(rh.CheckBlob)).Methods("HEAD")
 		g.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/{digest}", NameRegexp.String()),
-			rh.GetBlob).Methods("GET")
+			rh.blobRLockWrapper(rh.GetBlob)).Methods("GET")
 		g.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/{digest}", NameRegexp.String()),
 			rh.blobLockWrapper(rh.DeleteBlob)).Methods("DELETE")
 		g.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/", NameRegexp.String()),
 			rh.blobLockWrapper(rh.CreateBlobUpload)).Methods("POST")
 		g.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/{session_id}", NameRegexp.String()),
-			rh.GetBlobUpload).Methods("GET")
+			rh.blobRLockWrapper(rh.GetBlobUpload)).Methods("GET")
 		g.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/{session_id}", NameRegexp.String()),
 			rh.blobLockWrapper(rh.PatchBlobUpload)).Methods("PATCH")
 		g.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/{session_id}", NameRegexp.String()),
