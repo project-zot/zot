@@ -462,10 +462,11 @@ func (is *ImageStore) DeleteImageManifest(repo string, reference string) error {
 		return errors.ErrRepoNotFound
 	}
 
+	// as per spec "reference" can only be a digest and not a tag
 	_, err := godigest.Parse(reference)
 	if err != nil {
 		is.log.Error().Err(err).Msg("invalid reference")
-		return errors.ErrManifestNotFound
+		return errors.ErrBadManifest
 	}
 
 	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
