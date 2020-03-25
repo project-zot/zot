@@ -569,7 +569,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			// delete again should fail
 			resp, err = resty.R().Delete(baseURL + "/v2/repo7/manifests/" + digest.String())
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, 400)
+			So(resp.StatusCode(), ShouldEqual, 404)
 
 			// check/get by tag
 			resp, err = resty.R().Head(baseURL + "/v2/repo7/manifests/test:1.0")

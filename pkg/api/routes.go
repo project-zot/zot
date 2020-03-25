@@ -441,8 +441,11 @@ func (rh *RouteHandler) DeleteManifest(w http.ResponseWriter, r *http.Request) {
 			WriteJSON(w, http.StatusBadRequest,
 				NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
 		case errors.ErrManifestNotFound:
-			WriteJSON(w, http.StatusBadRequest,
+			WriteJSON(w, http.StatusNotFound,
 				NewErrorList(NewError(MANIFEST_UNKNOWN, map[string]string{"reference": reference})))
+		case errors.ErrBadManifest:
+			WriteJSON(w, http.StatusBadRequest,
+				NewErrorList(NewError(UNSUPPORTED, map[string]string{"reference": reference})))
 		default:
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			w.WriteHeader(http.StatusInternalServerError)

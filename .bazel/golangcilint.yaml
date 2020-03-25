@@ -9,3 +9,8 @@ linters:
 
 output:
   format: colored-line-number
+
+linters-settings:
+  dupl:
+    # tokens count to trigger issue, 150 by default
+    threshold: 200
