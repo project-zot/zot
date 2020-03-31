@@ -216,32 +216,3 @@ func (lc *LDAPClient) Authenticate(username, password string) (bool, map[string]
 
 	return true, user, nil
 }
-
-// GetGroupsOfUser returns the group for a user.
-func (lc *LDAPClient) GetGroupsOfUser(username string) ([]string, error) {
-	err := lc.Connect()
-	if err != nil {
-		return nil, err
-	}
-
-	searchRequest := ldap.NewSearchRequest(
-		lc.Base,
-		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
-		fmt.Sprintf(lc.GroupFilter, username),
-		[]string{"cn"}, // can it be something else than "cn"?
-		nil,
-	)
-	sr, err := lc.Conn.Search(searchRequest)
-
-	if err != nil {
-		return nil, err
-	}
-
-	groups := []string{}
-
-	for _, entry := range sr.Entries {
-		groups = append(groups, entry.GetAttributeValue("cn"))
-	}
-
-	return groups, nil
-}
