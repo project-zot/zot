@@ -7,8 +7,14 @@
 * Uses [OCI storage layout](https://github.com/opencontainers/image-spec/blob/master/image-layout.md) for storage layout
 * Currently suitable for on-prem deployments (e.g. colocated with Kubernetes)
 * TLS support
-* Authentication via TLS mutual authentication and HTTP *BASIC* (local _htpasswd_ and LDAP)
+* Authentication via:
+  * TLS mutual authentication
+  * HTTP *Basic* (local _htpasswd_ and LDAP)
+  * HTTP *Bearer* token
 * Doesn't require _root_ privileges
+* Storage optimizations:
+  * Automatic garbage collection of orphaned blobs
+  * Layer deduplication using hard links when content is identical
 * Swagger based documentation
 * Released under Apache 2.0 License
 * ```go get -u github.com/anuvu/zot/cmd/zot```

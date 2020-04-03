@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"os"
 
 	"github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/log"
@@ -41,11 +42,15 @@ func (c *Controller) Run() error {
 	engine.Use(log.SessionLogger(c.Log), handlers.RecoveryHandler(handlers.RecoveryLogger(c.Log),
 		handlers.PrintRecoveryStack(false)))
 
+	c.ImageStore = storage.NewImageStore(c.Config.Storage.RootDirectory, c.Log)
+	if c.ImageStore == nil {
+		// we can't proceed without at least a image store
+		os.Exit(1)
+	}
+
 	c.Router = engine
 	c.Router.UseEncodedPath()
 	_ = NewRouteHandler(c)
-
-	c.ImageStore = storage.NewImageStore(c.Config.Storage.RootDirectory, c.Log)
 
 	addr := fmt.Sprintf("%s:%s", c.Config.HTTP.Address, c.Config.HTTP.Port)
 	server := &http.Server{Addr: addr, Handler: c.Router}
