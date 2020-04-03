@@ -53,7 +53,7 @@ binary-container:
 
 .PHONY: binary-stacker
 binary-stacker:
-	stacker build --substitute PWD=$$PWD --no-cache
+	stacker --stacker-dir=../.zot-stacker build --substitute PWD=$$PWD
 
 .PHONY: image
 image:

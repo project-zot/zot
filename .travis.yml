@@ -19,10 +19,10 @@ cache:
     - $HOME/.cache/bazel
 
 install:
-  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then wget -N https://github.com/bazelbuild/bazel/releases/download/0.26.1/bazel-0.26.1-installer-linux-x86_64.sh && chmod +x bazel-0.26.1-installer-linux-x86_64.sh && ./bazel-0.26.1-installer-linux-x86_64.sh --user; go get -u github.com/swaggo/swag/cmd/swag; go mod download; fi
+  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then wget -N https://github.com/bazelbuild/bazel/releases/download/0.26.1/bazel-0.26.1-installer-linux-x86_64.sh && chmod +x bazel-0.26.1-installer-linux-x86_64.sh && ./bazel-0.26.1-installer-linux-x86_64.sh --user; go get -u github.com/swaggo/swag/cmd/swag; go get -u github.com/anuvu/stacker; go mod download; fi
 
 script:
-  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then make && make -f Makefile.bazel build; fi
+  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then make && make -f Makefile.bazel build && make binary-stacker; fi
 
 after_success:
   - bash <(curl -s https://codecov.io/bash)
