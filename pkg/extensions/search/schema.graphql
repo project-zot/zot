@@ -1,0 +1,29 @@
+type CVEIdResult {
+     name: String
+     VulDesc: String 
+     VulDetails: [VulDetail]
+}
+
+type VulDetail {
+	PkgVendor:  String
+	PkgName:    String
+	PkgVersion: String
+}
+
+type CVEID {
+     name: String
+}
+
+type Query {
+  repositories(name: String): [Repository]
+  PkgName(text: String!): [CVEID!]!
+  PkgNameVer(text: String!): [CVEID!]!
+  PkgVendor(text: String!): [CVEID!]!
+  CveIdSearch(text: String!): CVEIdResult!
+}
+
+type Repository {
+  name: String!
+}
+
+union SearchResult = Repository
