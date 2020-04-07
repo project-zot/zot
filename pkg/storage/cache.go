@@ -154,6 +154,17 @@ func (c *Cache) DeleteBlob(digest string, path string) error {
 			return err
 		}
 
+		cur := b.Cursor()
+		k, _ := cur.First()
+
+		if k == nil {
+			c.log.Debug().Str("digest", digest).Str("path", path).Msg("deleting empty bucket")
+			if err := root.DeleteBucket([]byte(digest)); err != nil {
+				c.log.Error().Err(err).Str("digest", digest).Str("path", path).Msg("unable to delete")
+				return err
+			}
+		}
+
 		return nil
 	}); err != nil {
 		return err

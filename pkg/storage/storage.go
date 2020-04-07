@@ -488,7 +488,7 @@ func (is *ImageStore) DeleteImageManifest(repo string, reference string) error {
 	}
 
 	// as per spec "reference" can only be a digest and not a tag
-	_, err := godigest.Parse(reference)
+	digest, err := godigest.Parse(reference)
 	if err != nil {
 		is.log.Error().Err(err).Msg("invalid reference")
 		return errors.ErrBadManifest
@@ -509,33 +509,29 @@ func (is *ImageStore) DeleteImageManifest(repo string, reference string) error {
 
 	found := false
 
-	var digest godigest.Digest
-
-	var i int
-
 	var m ispec.Descriptor
 
-	for i, m = range index.Manifests {
-		if reference == m.Digest.String() {
-			digest = m.Digest
-			found = true
+	// we are deleting, so keep only those manifests that don't match
+	outIndex := index
+	outIndex.Manifests = []ispec.Descriptor{}
 
-			break
+	for _, m = range index.Manifests {
+		if reference == m.Digest.String() {
+			found = true
+			continue
 		}
+
+		outIndex.Manifests = append(outIndex.Manifests, m)
 	}
 
 	if !found {
 		return errors.ErrManifestNotFound
 	}
 
-	// remove the manifest entry, not preserving order
-	index.Manifests[i] = index.Manifests[len(index.Manifests)-1]
-	index.Manifests = index.Manifests[:len(index.Manifests)-1]
-
 	// now update "index.json"
 	dir = path.Join(is.rootDir, repo)
 	file := path.Join(dir, "index.json")
-	buf, err = json.Marshal(index)
+	buf, err = json.Marshal(outIndex)
 
 	if err != nil {
 		return err
@@ -809,44 +805,53 @@ func (is *ImageStore) FullBlobUpload(repo string, body io.Reader, digest string)
 
 // nolint (interfacer)
 func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dst string) error {
+retry:
+	is.log.Debug().Str("src", src).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe: ENTER")
 	dstRecord, err := is.cache.GetBlob(dstDigest.String())
 	if err != nil && err != errors.ErrCacheMiss {
-		is.log.Error().Err(err).Str("blobPath", dst).Msg("unable to lookup blob record")
+		is.log.Error().Err(err).Str("blobPath", dst).Msg("dedupe: unable to lookup blob record")
 		return err
 	}
 
 	if dstRecord == "" {
 		if err := is.cache.PutBlob(dstDigest.String(), dst); err != nil {
-			is.log.Error().Err(err).Str("blobPath", dst).Msg("unable to insert blob record")
+			is.log.Error().Err(err).Str("blobPath", dst).Msg("dedupe: unable to insert blob record")
 			return err
 		}
 
 		// move the blob from uploads to final dest
 		if err := os.Rename(src, dst); err != nil {
-			is.log.Error().Err(err).Str("src", src).Str("dst", dst).Msg("unable to rename blob")
+			is.log.Error().Err(err).Str("src", src).Str("dst", dst).Msg("dedupe: unable to rename blob")
 			return err
 		}
+		is.log.Debug().Str("src", src).Str("dst", dst).Msg("dedupe: rename")
 	} else {
 		dstRecordFi, err := os.Stat(dstRecord)
 		if err != nil {
-			is.log.Error().Err(err).Str("blobPath", dstRecord).Msg("unable to stat")
-			return err
+			is.log.Error().Err(err).Str("blobPath", dstRecord).Msg("dedupe: unable to stat")
+			// the actual blob on disk may have been removed by GC, so sync the cache
+			if err := is.cache.DeleteBlob(dstDigest.String(), dst); err != nil {
+				is.log.Error().Err(err).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe: unable to delete blob record")
+				return err
+			}
+			goto retry
 		}
 		dstFi, err := os.Stat(dst)
 		if err != nil && !os.IsNotExist(err) {
-			is.log.Error().Err(err).Str("blobPath", dstRecord).Msg("unable to stat")
+			is.log.Error().Err(err).Str("blobPath", dstRecord).Msg("dedupe: unable to stat")
 			return err
 		}
 		if !os.SameFile(dstFi, dstRecordFi) {
 			if err := os.Link(dstRecord, dst); err != nil {
-				is.log.Error().Err(err).Str("blobPath", dst).Str("link", dstRecord).Msg("unable to hard link")
+				is.log.Error().Err(err).Str("blobPath", dst).Str("link", dstRecord).Msg("dedupe: unable to hard link")
 				return err
 			}
 		}
 		if err := os.Remove(src); err != nil {
-			is.log.Error().Err(err).Str("src", src).Msg("uname to remove blob")
+			is.log.Error().Err(err).Str("src", src).Msg("dedupe: uname to remove blob")
 			return err
 		}
+		is.log.Debug().Str("src", src).Msg("dedupe: remove")
 	}
 
 	return nil

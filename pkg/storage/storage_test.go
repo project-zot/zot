@@ -113,6 +113,12 @@ func TestAPIs(t *testing.T) {
 				mb, _ := json.Marshal(m)
 
 				Convey("Bad image manifest", func() {
+					_, err = il.PutImageManifest("test", d.String(), "application/json", mb)
+					So(err, ShouldNotBeNil)
+
+					_, err = il.PutImageManifest("test", d.String(), ispec.MediaTypeImageManifest, []byte{})
+					So(err, ShouldNotBeNil)
+
 					_, err = il.PutImageManifest("test", d.String(), ispec.MediaTypeImageManifest, mb)
 					So(err, ShouldNotBeNil)
 
@@ -133,11 +139,15 @@ func TestAPIs(t *testing.T) {
 								Size:      int64(l),
 							},
 						},
+						Annotations: map[string]string{ispec.AnnotationRefName: "1.0"},
 					}
 					m.SchemaVersion = 2
 					mb, _ = json.Marshal(m)
 					d := godigest.FromBytes(mb)
 					_, err = il.PutImageManifest("test", d.String(), ispec.MediaTypeImageManifest, mb)
+					So(err, ShouldBeNil)
+
+					_, err = il.GetImageTags("test")
 					So(err, ShouldBeNil)
 
 					_, _, _, err = il.GetImageManifest("test", d.String())
