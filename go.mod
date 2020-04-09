@@ -3,7 +3,9 @@ module github.com/anuvu/zot
 go 1.13
 
 require (
+	github.com/99designs/gqlgen v0.11.3
 	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
+	github.com/boltdb/bolt v1.3.1
 	github.com/chartmuseum/auth v0.4.0
 	github.com/getlantern/deepcopy v0.0.0-20160317154340-7f45deb8130a
 	github.com/go-chi/chi v4.0.2+incompatible // indirect
@@ -26,6 +28,8 @@ require (
 	github.com/spf13/viper v1.6.1
 	github.com/swaggo/http-swagger v0.0.0-20190614090009-c2865af9083e
 	github.com/swaggo/swag v1.6.3
+	github.com/vektah/gqlparser v1.3.1
+	github.com/vektah/gqlparser/v2 v2.0.1
 	go.etcd.io/bbolt v1.3.4
 	golang.org/x/crypto v0.0.0-20191206172530-e9b2fee46413
 	golang.org/x/sys v0.0.0-20200223170610-d5e6a3e2c0ae // indirect
