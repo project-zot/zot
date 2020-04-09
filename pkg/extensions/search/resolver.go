@@ -5,13 +5,16 @@ package search
 import (
 	"context"
 
+	"github.com/anuvu/zot/pkg/log"
+
 	"github.com/anuvu/zot/pkg/extensions/search/utils"
 	"github.com/boltdb/bolt"
 ) // THIS CODE IS A STARTING POINT ONLY. IT WILL NOT BE UPDATED WITH SCHEMA CHANGES.
 
 // Resolver ...
 type Resolver struct {
-	Db *bolt.DB
+	Db  *bolt.DB
+	Log log.Logger
 }
 
 // Query ...
@@ -27,6 +30,7 @@ func (r *queryResolver) Repositories(ctx context.Context, name *string) ([]*Repo
 }
 
 func (r *queryResolver) CveIDSearch(ctx context.Context, text string) (*CVEIdResult, error) {
+	r.Log.Info().Msg("Inside Resolver")
 	var cveidresult = &CVEIdResult{}
 	ans := utils.SearchByCVEId(r.Db, text)
 	cveidresult.Name = &ans.CveID

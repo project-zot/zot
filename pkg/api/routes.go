@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	gqlHandler "github.com/99designs/gqlgen/handler"
+
 	_ "github.com/anuvu/zot/docs" // nolint (golint) - as required by swaggo
 	"github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/extensions/search"
@@ -42,7 +43,7 @@ const (
 	BlobUploadUUID       = "Blob-Upload-UUID"
 	DefaultMediaType     = "application/json"
 	BinaryMediaType      = "application/octet-stream"
-	DbPath               = "../data/db/ZotSearch.db"
+	DbPath               = "../../data/db/ZotSearch.db"
 )
 
 type RouteHandler struct {
@@ -125,7 +126,8 @@ func (rh *RouteHandler) SetupRoutes() {
 			} else {
 				db = utils.Conn(DbPath)
 			}
-			g.HandleFunc("/query", gqlHandler.GraphQL(search.NewExecutableSchema(search.Config{Resolvers: &search.Resolver{Db: db}})))
+			rh.c.Log.Info().Msg("Inside GrpahQl")
+			g.HandleFunc("/query", gqlHandler.GraphQL(search.NewExecutableSchema(search.Config{Resolvers: &search.Resolver{Db: db, Log: rh.c.Log}})))
 		}
 
 	}
