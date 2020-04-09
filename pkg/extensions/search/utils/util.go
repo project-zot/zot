@@ -334,6 +334,7 @@ func extractSchema(nvdjson NvdJSON) ([]Schema, []map[string][]CVEId) {
 	for _, cveitem := range cveitems {
 		schema := Schema{}
 		cveid := CVEId{}
+		vuldescs = []VulDetail{}
 		vendorSet := map[string]struct{}{}
 		nameSet := map[string]struct{}{}
 		nameverSet := map[string]struct{}{}
