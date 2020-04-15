@@ -42,7 +42,8 @@ func (c *Controller) Run() error {
 	engine.Use(log.SessionLogger(c.Log), handlers.RecoveryHandler(handlers.RecoveryLogger(c.Log),
 		handlers.PrintRecoveryStack(false)))
 
-	c.ImageStore = storage.NewImageStore(c.Config.Storage.RootDirectory, c.Log)
+	c.ImageStore = storage.NewImageStore(c.Config.Storage.RootDirectory, c.Config.Storage.GC,
+		c.Config.Storage.Dedupe, c.Log)
 	if c.ImageStore == nil {
 		// we can't proceed without at least a image store
 		os.Exit(1)

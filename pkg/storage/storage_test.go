@@ -27,7 +27,7 @@ func TestAPIs(t *testing.T) {
 
 	defer os.RemoveAll(dir)
 
-	il := storage.NewImageStore(dir, log.Logger{Logger: zerolog.New(os.Stdout)})
+	il := storage.NewImageStore(dir, true, true, log.Logger{Logger: zerolog.New(os.Stdout)})
 
 	Convey("Repo layout", t, func(c C) {
 		repoName := "test"
@@ -404,7 +404,7 @@ func TestDedupe(t *testing.T) {
 			}
 			defer os.RemoveAll(dir)
 
-			is := storage.NewImageStore(dir, log.Logger{Logger: zerolog.New(os.Stdout)})
+			is := storage.NewImageStore(dir, true, true, log.Logger{Logger: zerolog.New(os.Stdout)})
 
 			So(is.DedupeBlob("", "", ""), ShouldNotBeNil)
 		})
@@ -419,8 +419,8 @@ func TestNegativeCases(t *testing.T) {
 		}
 		os.RemoveAll(dir)
 
-		So(storage.NewImageStore(dir, log.Logger{Logger: zerolog.New(os.Stdout)}), ShouldNotBeNil)
-		So(storage.NewImageStore("/deadBEEF", log.Logger{Logger: zerolog.New(os.Stdout)}), ShouldBeNil)
+		So(storage.NewImageStore(dir, true, true, log.Logger{Logger: zerolog.New(os.Stdout)}), ShouldNotBeNil)
+		So(storage.NewImageStore("/deadBEEF", true, true, log.Logger{Logger: zerolog.New(os.Stdout)}), ShouldBeNil)
 	})
 
 	Convey("Invalid init repo", t, func(c C) {
@@ -429,7 +429,7 @@ func TestNegativeCases(t *testing.T) {
 			panic(err)
 		}
 		defer os.RemoveAll(dir)
-		il := storage.NewImageStore(dir, log.Logger{Logger: zerolog.New(os.Stdout)})
+		il := storage.NewImageStore(dir, true, true, log.Logger{Logger: zerolog.New(os.Stdout)})
 		err = os.Chmod(dir, 0000) // remove all perms
 		So(err, ShouldBeNil)
 		So(func() { _ = il.InitRepo("test") }, ShouldPanic)
@@ -441,7 +441,7 @@ func TestNegativeCases(t *testing.T) {
 			panic(err)
 		}
 		defer os.RemoveAll(dir)
-		il := storage.NewImageStore(dir, log.Logger{Logger: zerolog.New(os.Stdout)})
+		il := storage.NewImageStore(dir, true, true, log.Logger{Logger: zerolog.New(os.Stdout)})
 		So(il, ShouldNotBeNil)
 		So(il.InitRepo("test"), ShouldBeNil)
 		files, err := ioutil.ReadDir(path.Join(dir, "test"))
@@ -472,7 +472,7 @@ func TestNegativeCases(t *testing.T) {
 			panic(err)
 		}
 		defer os.RemoveAll(dir)
-		il = storage.NewImageStore(dir, log.Logger{Logger: zerolog.New(os.Stdout)})
+		il = storage.NewImageStore(dir, true, true, log.Logger{Logger: zerolog.New(os.Stdout)})
 		So(il, ShouldNotBeNil)
 		So(il.InitRepo("test"), ShouldBeNil)
 		So(os.Remove(path.Join(dir, "test", "index.json")), ShouldBeNil)
@@ -495,7 +495,7 @@ func TestNegativeCases(t *testing.T) {
 			panic(err)
 		}
 		defer os.RemoveAll(dir)
-		il = storage.NewImageStore(dir, log.Logger{Logger: zerolog.New(os.Stdout)})
+		il = storage.NewImageStore(dir, true, true, log.Logger{Logger: zerolog.New(os.Stdout)})
 		So(il, ShouldNotBeNil)
 		So(il.InitRepo("test"), ShouldBeNil)
 		So(os.Remove(path.Join(dir, "test", "index.json")), ShouldBeNil)

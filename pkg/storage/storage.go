@@ -38,11 +38,13 @@ type ImageStore struct {
 	lock        *sync.RWMutex
 	blobUploads map[string]BlobUpload
 	cache       *Cache
+	gc          bool
+	dedupe      bool
 	log         zerolog.Logger
 }
 
 // NewImageStore returns a new image store backed by a file storage.
-func NewImageStore(rootDir string, log zlog.Logger) *ImageStore {
+func NewImageStore(rootDir string, gc bool, dedupe bool, log zlog.Logger) *ImageStore {
 	if _, err := os.Stat(rootDir); os.IsNotExist(err) {
 		if err := os.MkdirAll(rootDir, 0700); err != nil {
 			log.Error().Err(err).Str("rootDir", rootDir).Msg("unable to create root dir")
@@ -54,8 +56,13 @@ func NewImageStore(rootDir string, log zlog.Logger) *ImageStore {
 		rootDir:     rootDir,
 		lock:        &sync.RWMutex{},
 		blobUploads: make(map[string]BlobUpload),
-		cache:       NewCache(rootDir, "cache", log),
+		gc:          gc,
+		dedupe:      dedupe,
 		log:         log.With().Caller().Logger(),
+	}
+
+	if dedupe {
+		is.cache = NewCache(rootDir, "cache", log)
 	}
 
 	return is
@@ -467,14 +474,16 @@ func (is *ImageStore) PutImageManifest(repo string, reference string, mediaType 
 		return "", err
 	}
 
-	oci, err := umoci.OpenLayout(dir)
-	if err != nil {
-		return "", err
-	}
-	defer oci.Close()
+	if is.gc {
+		oci, err := umoci.OpenLayout(dir)
+		if err != nil {
+			return "", err
+		}
+		defer oci.Close()
 
-	if err := oci.GC(context.Background()); err != nil {
-		return "", err
+		if err := oci.GC(context.Background()); err != nil {
+			return "", err
+		}
 	}
 
 	return desc.Digest.String(), nil
@@ -541,14 +550,16 @@ func (is *ImageStore) DeleteImageManifest(repo string, reference string) error {
 		return err
 	}
 
-	oci, err := umoci.OpenLayout(dir)
-	if err != nil {
-		return err
-	}
-	defer oci.Close()
+	if is.gc {
+		oci, err := umoci.OpenLayout(dir)
+		if err != nil {
+			return err
+		}
+		defer oci.Close()
 
-	if err := oci.GC(context.Background()); err != nil {
-		return err
+		if err := oci.GC(context.Background()); err != nil {
+			return err
+		}
 	}
 
 	p := path.Join(dir, "blobs", digest.Algorithm().String(), digest.Encoded())
@@ -733,15 +744,21 @@ func (is *ImageStore) FinishBlobUpload(repo string, uuid string, body io.Reader,
 	ensureDir(dir, is.log)
 	dst := is.BlobPath(repo, dstDigest)
 
-	if is.cache != nil {
+	if is.dedupe && is.cache != nil {
 		if err := is.DedupeBlob(src, dstDigest, dst); err != nil {
 			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
 				Str("dst", dst).Msg("unable to dedupe blob")
 			return err
 		}
+	} else {
+		if err := os.Rename(src, dst); err != nil {
+			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
+				Str("dst", dst).Msg("unable to finish blob")
+			return err
+		}
 	}
 
-	return err
+	return nil
 }
 
 // FullBlobUpload handles a full blob upload, and no partial session is created
@@ -792,15 +809,21 @@ func (is *ImageStore) FullBlobUpload(repo string, body io.Reader, digest string)
 	ensureDir(dir, is.log)
 	dst := is.BlobPath(repo, dstDigest)
 
-	if is.cache != nil {
+	if is.dedupe && is.cache != nil {
 		if err := is.DedupeBlob(src, dstDigest, dst); err != nil {
 			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
 				Str("dst", dst).Msg("unable to dedupe blob")
 			return "", -1, err
 		}
+	} else {
+		if err := os.Rename(src, dst); err != nil {
+			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
+				Str("dst", dst).Msg("unable to finish blob")
+			return "", -1, err
+		}
 	}
 
-	return uuid, n, err
+	return uuid, n, nil
 }
 
 // nolint (interfacer)
