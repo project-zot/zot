@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path"
 	"regexp"
 	"strings"
 	"testing"
@@ -44,6 +45,12 @@ const (
 	UnauthorizedNamespace = "fortknox/notallowed"
 )
 
+// nolint (gochecknoglobals)
+var (
+	DBPath = ""
+	DBdir  = ""
+)
+
 type (
 	accessTokenResponse struct {
 		AccessToken string `json:"access_token"`
@@ -55,6 +62,19 @@ type (
 		Scope   string
 	}
 )
+
+func testSetup() error {
+	dir, err := ioutil.TempDir("", "util_test")
+	if err != nil {
+		return err
+	}
+
+	DBdir = dir
+
+	DBPath = path.Join(DBdir, "Test.db")
+
+	return nil
+}
 
 func makeHtpasswdFile() string {
 	f, err := ioutil.TempFile("", "htpasswd-")
@@ -72,6 +92,11 @@ func makeHtpasswdFile() string {
 }
 
 func TestNew(t *testing.T) {
+	err := testSetup()
+	if err != nil {
+		t.Fatal("Unable to Setup Test environment")
+	}
+
 	Convey("Make a new controller", t, func() {
 		config := api.NewConfig()
 		So(config, ShouldNotBeNil)
@@ -92,6 +117,7 @@ func TestBasicAuth(t *testing.T) {
 			},
 		}
 		c := api.NewController(config)
+		c.DBPath = DBPath
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
@@ -117,6 +143,7 @@ func TestBasicAuth(t *testing.T) {
 		defer func() {
 			ctx := context.Background()
 			_ = c.Server.Shutdown(ctx)
+			c.DB.Close()
 		}()
 
 		// without creds, should get access error
@@ -169,6 +196,7 @@ func TestTLSWithBasicAuth(t *testing.T) {
 		}
 		defer os.RemoveAll(dir)
 		c.Config.Storage.RootDirectory = dir
+		c.DBPath = DBPath
 		go func() {
 			// this blocks
 			if err := c.Run(); err != nil {
@@ -188,6 +216,7 @@ func TestTLSWithBasicAuth(t *testing.T) {
 		defer func() {
 			ctx := context.Background()
 			_ = c.Server.Shutdown(ctx)
+			c.DB.Close()
 		}()
 
 		// accessing insecure HTTP site should fail
@@ -247,6 +276,7 @@ func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 		}
 		defer os.RemoveAll(dir)
 		c.Config.Storage.RootDirectory = dir
+		c.DBPath = DBPath
 		go func() {
 			// this blocks
 			if err := c.Run(); err != nil {
@@ -266,6 +296,7 @@ func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 		defer func() {
 			ctx := context.Background()
 			_ = c.Server.Shutdown(ctx)
+			c.DB.Close()
 		}()
 
 		// accessing insecure HTTP site should fail
@@ -319,6 +350,7 @@ func TestTLSMutualAuth(t *testing.T) {
 		}
 		defer os.RemoveAll(dir)
 		c.Config.Storage.RootDirectory = dir
+		c.DBPath = DBPath
 		go func() {
 			// this blocks
 			if err := c.Run(); err != nil {
@@ -338,6 +370,7 @@ func TestTLSMutualAuth(t *testing.T) {
 		defer func() {
 			ctx := context.Background()
 			_ = c.Server.Shutdown(ctx)
+			c.DB.Close()
 		}()
 
 		// accessing insecure HTTP site should fail
@@ -404,6 +437,7 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 		}
 		defer os.RemoveAll(dir)
 		c.Config.Storage.RootDirectory = dir
+		c.DBPath = DBPath
 		go func() {
 			// this blocks
 			if err := c.Run(); err != nil {
@@ -423,6 +457,7 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 		defer func() {
 			ctx := context.Background()
 			_ = c.Server.Shutdown(ctx)
+			c.DB.Close()
 		}()
 
 		// accessing insecure HTTP site should fail
@@ -502,6 +537,7 @@ func TestTLSMutualAndBasicAuth(t *testing.T) {
 		}
 		defer os.RemoveAll(dir)
 		c.Config.Storage.RootDirectory = dir
+		c.DBPath = DBPath
 		go func() {
 			// this blocks
 			if err := c.Run(); err != nil {
@@ -521,6 +557,7 @@ func TestTLSMutualAndBasicAuth(t *testing.T) {
 		defer func() {
 			ctx := context.Background()
 			_ = c.Server.Shutdown(ctx)
+			c.DB.Close()
 		}()
 
 		// accessing insecure HTTP site should fail
@@ -597,6 +634,7 @@ func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 		}
 		defer os.RemoveAll(dir)
 		c.Config.Storage.RootDirectory = dir
+		c.DBPath = DBPath
 		go func() {
 			// this blocks
 			if err := c.Run(); err != nil {
@@ -616,6 +654,7 @@ func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 		defer func() {
 			ctx := context.Background()
 			_ = c.Server.Shutdown(ctx)
+			c.DB.Close()
 		}()
 
 		// accessing insecure HTTP site should fail
@@ -766,6 +805,7 @@ func TestBasicAuthWithLDAP(t *testing.T) {
 		}
 		defer os.RemoveAll(dir)
 		c.Config.Storage.RootDirectory = dir
+		c.DBPath = DBPath
 		go func() {
 			// this blocks
 			if err := c.Run(); err != nil {
@@ -785,6 +825,7 @@ func TestBasicAuthWithLDAP(t *testing.T) {
 		defer func() {
 			ctx := context.Background()
 			_ = c.Server.Shutdown(ctx)
+			c.DB.Close()
 		}()
 
 		// without creds, should get access error
@@ -830,6 +871,7 @@ func TestBearerAuth(t *testing.T) {
 		So(err, ShouldBeNil)
 		defer os.RemoveAll(dir)
 		c.Config.Storage.RootDirectory = dir
+		c.DBPath = DBPath
 		go func() {
 			// this blocks
 			if err := c.Run(); err != nil {
@@ -849,6 +891,7 @@ func TestBearerAuth(t *testing.T) {
 		defer func() {
 			ctx := context.Background()
 			_ = c.Server.Shutdown(ctx)
+			c.DB.Close()
 		}()
 
 		blob := []byte("hello, blob!")
