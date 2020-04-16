@@ -487,8 +487,8 @@ go_repository(
 go_repository(
     name = "com_github_mattn_go_isatty",
     importpath = "github.com/mattn/go-isatty",
-    sum = "h1:d5US/mDsogSGW37IV293h//ZFaeajb69h+EHFsv2xGg=",
-    version = "v0.0.9",
+    sum = "h1:wuysRhFDzyxgEmMf5xjvJ2M9dZoWAXNNr5LSBS7uHXY=",
+    version = "v0.0.12",
 )
 
 go_repository(
@@ -956,8 +956,8 @@ go_repository(
 go_repository(
     name = "org_golang_x_tools",
     importpath = "golang.org/x/tools",
-    sum = "h1:JG5eBjADEFhCRMAdfzvIYKuT/2E9oOzCDJMqMxD5LVw=",
-    version = "v0.0.0-20190913181337-0240832f5c3d",
+    sum = "h1:rjUrONFu4kLchcZTfp3/96bR8bW8dIa8uz3cR5n0cgM=",
+    version = "v0.0.0-20200114235610-7ae403b6b589",
 )
 
 go_repository(
@@ -1019,8 +1019,8 @@ go_repository(
 go_repository(
     name = "org_golang_x_xerrors",
     importpath = "golang.org/x/xerrors",
-    sum = "h1:9zdDQZ7Thm29KFXgAX/+yaf3eVbP7djjWp/dXAppNCc=",
-    version = "v0.0.0-20190717185122-a985d3407aa7",
+    sum = "h1:/atklqdjdhuosWIl6AIbOeHJjicWYPqR9bpxqxYG2pA=",
+    version = "v0.0.0-20191011141410-1b5146add898",
 )
 
 go_repository(
@@ -1334,8 +1334,8 @@ go_repository(
 go_repository(
     name = "com_github_mattn_go_colorable",
     importpath = "github.com/mattn/go-colorable",
-    sum = "h1:/bC9yWikZXAL9uJdulbSfyVNIR3n3trXl+v8+1sx8mU=",
-    version = "v0.1.2",
+    sum = "h1:snbPLB8fVfU9iwbbo30TPtbLRzwWu6aJS6Xh4eaaviA=",
+    version = "v0.1.4",
 )
 
 go_repository(
@@ -1397,8 +1397,8 @@ go_repository(
 go_repository(
     name = "com_github_sergi_go_diff",
     importpath = "github.com/sergi/go-diff",
-    sum = "h1:Kpca3qRNrduNnOQeazBd0ysaKrUJiIuISHxogkT9RPQ=",
-    version = "v1.0.0",
+    sum = "h1:we8PVUC3FE2uYfodKH/nBHMSetSfHDR6scGdBi+erh0=",
+    version = "v1.1.0",
 )
 
 go_repository(
@@ -1469,4 +1469,151 @@ go_repository(
     importpath = "gopkg.in/tomb.v1",
     sum = "h1:uRGJdciOHaEIrze2W8Q3AKkepLTh2hOroT7a+7czfdQ=",
     version = "v1.0.0-20141024135613-dd632973f1e7",
+)
+
+go_repository(
+    name = "com_github_99designs_gqlgen",
+    importpath = "github.com/99designs/gqlgen",
+    sum = "h1:oFSxl1DFS9X///uHV3y6CEfpcXWrDUxVblR4Xib2bs4=",
+    version = "v0.11.3",
+)
+
+go_repository(
+    name = "com_github_agnivade_levenshtein",
+    importpath = "github.com/agnivade/levenshtein",
+    sum = "h1:M5ZnqLOoZR8ygVq0FfkXsNOKzMCk0xRiow0R5+5VkQ0=",
+    version = "v1.0.3",
+)
+
+go_repository(
+    name = "com_github_andreyvit_diff",
+    importpath = "github.com/andreyvit/diff",
+    sum = "h1:bvNMNQO63//z+xNgfBlViaCIJKLlCJ6/fmUseuG0wVQ=",
+    version = "v0.0.0-20170406064948-c7f18ee00883",
+)
+
+go_repository(
+    name = "com_github_arbovm_levenshtein",
+    importpath = "github.com/arbovm/levenshtein",
+    sum = "h1:jfIu9sQUG6Ig+0+Ap1h4unLjW6YQJpKZVmUzxsD4E/Q=",
+    version = "v0.0.0-20160628152529-48b4e1c0c4d0",
+)
+
+go_repository(
+    name = "com_github_dgryski_trifles",
+    importpath = "github.com/dgryski/trifles",
+    sum = "h1:TUuUh0Xgj97tLMNtWtNvI9mIV6isjEb9lBMNv+77IGM=",
+    version = "v0.0.0-20190318185328-a8d75aae118c",
+)
+
+go_repository(
+    name = "com_github_gorilla_context",
+    importpath = "github.com/gorilla/context",
+    sum = "h1:9oNbS1z4rVpbnkHBdPZU4jo9bSmrLpII768arSyMFgk=",
+    version = "v0.0.0-20160226214623-1ea25387ff6f",
+)
+
+go_repository(
+    name = "com_github_hashicorp_golang_lru",
+    importpath = "github.com/hashicorp/golang-lru",
+    sum = "h1:CL2msUPvZTLb5O648aiLNJw3hnBxN2+1Jq8rCOH9wdo=",
+    version = "v0.5.0",
+)
+
+go_repository(
+    name = "com_github_logrusorgru_aurora",
+    importpath = "github.com/logrusorgru/aurora",
+    sum = "h1:bqDmpDG49ZRnB5PcgP0RXtQvnMSgIF14M7CBd2shtXs=",
+    version = "v0.0.0-20200102142835-e9ef32dff381",
+)
+
+go_repository(
+    name = "com_github_matryer_moq",
+    importpath = "github.com/matryer/moq",
+    sum = "h1:reVOUXwnhsYv/8UqjvhrMOu5CNT9UapHFLbQ2JcXsmg=",
+    version = "v0.0.0-20200106131100-75d0ddfc0007",
+)
+
+go_repository(
+    name = "com_github_opentracing_basictracer_go",
+    importpath = "github.com/opentracing/basictracer-go",
+    sum = "h1:YyUAhaEfjoWXclZVJ9sGoNct7j4TVk7lZWlQw5UXuoo=",
+    version = "v1.0.0",
+)
+
+go_repository(
+    name = "com_github_opentracing_opentracing_go",
+    importpath = "github.com/opentracing/opentracing-go",
+    sum = "h1:3jA2P6O1F9UOrWVpwrIo17pu01KWvNWg4X946/Y5Zwg=",
+    version = "v1.0.2",
+)
+
+go_repository(
+    name = "com_github_rs_cors",
+    importpath = "github.com/rs/cors",
+    sum = "h1:G9tHG9lebljV9mfp9SNPDL36nCDxmo3zTlAf1YgvzmI=",
+    version = "v1.6.0",
+)
+
+go_repository(
+    name = "com_github_shurcool_httpfs",
+    importpath = "github.com/shurcooL/httpfs",
+    sum = "h1:SWV2fHctRpRrp49VXJ6UZja7gU9QLHwRpIPBN89SKEo=",
+    version = "v0.0.0-20171119174359-809beceb2371",
+)
+
+go_repository(
+    name = "com_github_shurcool_vfsgen",
+    importpath = "github.com/shurcooL/vfsgen",
+    sum = "h1:JJV9CsgM9EC9w2iVkwuz+sMx8yRFe89PJRUrv6hPCIA=",
+    version = "v0.0.0-20180121065927-ffb13db8def0",
+)
+
+go_repository(
+    name = "com_github_urfave_cli_v2",
+    importpath = "github.com/urfave/cli/v2",
+    sum = "h1:Qt8FeAtxE/vfdrLmR3rxR6JRE0RoVmbXu8+6kZtYU4k=",
+    version = "v2.1.1",
+)
+
+go_repository(
+    name = "com_github_vektah_dataloaden",
+    importpath = "github.com/vektah/dataloaden",
+    sum = "h1:+w0Zm/9gaWpEAyDlU1eKOuk5twTjAjuevXqcJJw8hrg=",
+    version = "v0.2.1-0.20190515034641-a19b9a6e7c9e",
+)
+
+go_repository(
+    name = "com_github_vektah_gqlparser",
+    importpath = "github.com/vektah/gqlparser",
+    sum = "h1:8b0IcD3qZKWJQHSzynbDlrtP3IxVydZ2DZepCGofqfU=",
+    version = "v1.3.1",
+)
+
+go_repository(
+    name = "com_github_vektah_gqlparser_v2",
+    importpath = "github.com/vektah/gqlparser/v2",
+    sum = "h1:xgl5abVnsd4hkN9rk65OJID9bfcLSMuTaTcZj777q1o=",
+    version = "v2.0.1",
+)
+
+go_repository(
+    name = "com_sourcegraph_sourcegraph_appdash",
+    importpath = "sourcegraph.com/sourcegraph/appdash",
+    sum = "h1:d2maSb13hr/ArmfK3rW+wNUKKfytCol7W1/vDHxMPiE=",
+    version = "v0.0.0-20180110180208-2cc67fd64755",
+)
+
+go_repository(
+    name = "com_sourcegraph_sourcegraph_appdash_data",
+    importpath = "sourcegraph.com/sourcegraph/appdash-data",
+    sum = "h1:e1sMhtVq9AfcEy8AXNb8eSg6gbzfdpYhoNqnPJa+GzI=",
+    version = "v0.0.0-20151005221446-73f23eafcf67",
+)
+
+go_repository(
+    name = "org_golang_x_mod",
+    importpath = "golang.org/x/mod",
+    sum = "h1:WG0RUwxtNT4qqaXX3DPA8zHFNm/D9xaBpxzHt1WcA/E=",
+    version = "v0.1.1-0.20191105210325-c90efee705ee",
 )

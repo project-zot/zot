@@ -10,6 +10,7 @@ import (
 	"fmt"
 
 	"github.com/anuvu/zot/errors"
+        // nolint (stylecheck)
 	goldap "github.com/go-ldap/ldap/v3"
 
 	"github.com/anuvu/zot/pkg/log"
