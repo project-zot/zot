@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path"
 	"testing"
 	"time"
 
@@ -16,11 +17,32 @@ import (
 	"gopkg.in/resty.v1"
 )
 
+// nolint (gochecknoglobals)
 var (
 	listenAddress = "127.0.0.1"
+	DBPath        = ""
+	DBdir         = ""
 )
 
+func testSetup() error {
+	dir, err := ioutil.TempDir("", "util_test")
+	if err != nil {
+		return err
+	}
+
+	DBdir = dir
+
+	DBPath = path.Join(DBdir, "Test.db")
+
+	return nil
+}
+
 func TestWorkflows(t *testing.T) {
+	err := testSetup()
+	if err != nil {
+		t.Fatal("Unable to Setup Test environment")
+	}
+
 	ctrl, randomPort := startServer()
 	defer stopServer(ctrl)
 	v1_0_0.CheckWorkflows(t, &compliance.Config{
@@ -37,6 +59,13 @@ func TestWorkflowsOutputJSON(t *testing.T) {
 		Port:       randomPort,
 		OutputJSON: true,
 	})
+}
+
+func TestCreateDb(t *testing.T) {
+	err := os.RemoveAll(DBdir)
+	if err != nil {
+		t.Fatal("Not able to remove Test Db file")
+	}
 }
 
 // start local server on random open port
@@ -58,6 +87,7 @@ func startServer() (*api.Controller, string) {
 	}
 
 	ctrl.Config.Storage.RootDirectory = dir
+	ctrl.DBPath = DBPath
 	go func() {
 		// this blocks
 		if err := ctrl.Run(); err != nil {
@@ -74,11 +104,11 @@ func startServer() (*api.Controller, string) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-
 	return ctrl, randomPort
 }
 
 func stopServer(ctrl *api.Controller) {
 	ctrl.Server.Shutdown(context.Background())
+	ctrl.DB.Close()
 	os.RemoveAll(ctrl.Config.Storage.RootDirectory)
 }

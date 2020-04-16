@@ -145,7 +145,7 @@ func (is *ImageStore) ValidateRepo(name string) (bool, error) {
 		is.log.Error().Err(err).Str("dir", dir).Msg("unable to read directory")
 		return false, errors.ErrRepoNotFound
 	}
-
+	// nolint (gomnd)	
 	if len(files) < 3 {
 		return false, errors.ErrRepoBadVersion
 	}
@@ -357,7 +357,7 @@ func (is *ImageStore) PutImageManifest(repo string, reference string, mediaType 
 		is.log.Error().Err(err).Msg("unable to unmarshal JSON")
 		return "", errors.ErrBadManifest
 	}
-
+	// nolint (gomnd)
 	if m.SchemaVersion != 2 {
 		is.log.Error().Int("SchemaVersion", m.SchemaVersion).Msg("invalid manifest")
 		return "", errors.ErrBadManifest

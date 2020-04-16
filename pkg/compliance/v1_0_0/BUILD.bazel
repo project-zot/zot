@@ -21,6 +21,9 @@ go_test(
     timeout = "short",
     srcs = ["check_test.go"],
     embed = [":go_default_library"],
+    data = [
+        "//:exported_testdata",
+    ],
     deps = [
         "//pkg/api:go_default_library",
         "//pkg/compliance:go_default_library",
