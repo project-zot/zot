@@ -16,7 +16,6 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
-	"os"
 	"path"
 	"sort"
 	"strconv"
@@ -29,7 +28,6 @@ import (
 	"github.com/anuvu/zot/pkg/extensions/search"
 	"github.com/anuvu/zot/pkg/extensions/search/utils"
 	"github.com/anuvu/zot/pkg/log"
-	"github.com/boltdb/bolt"
 	"github.com/gorilla/mux"
 	jsoniter "github.com/json-iterator/go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -43,7 +41,6 @@ const (
 	BlobUploadUUID       = "Blob-Upload-UUID"
 	DefaultMediaType     = "application/json"
 	BinaryMediaType      = "application/octet-stream"
-	DbPath               = "../../data/db/ZotSearch.db"
 )
 
 type RouteHandler struct {
@@ -51,6 +48,7 @@ type RouteHandler struct {
 }
 
 func NewRouteHandler(c *Controller) *RouteHandler {
+	c.DB = utils.InitSearch(c.DBPath)
 	rh := &RouteHandler{c: c}
 	rh.SetupRoutes()
 
@@ -109,27 +107,9 @@ func (rh *RouteHandler) SetupRoutes() {
 			rh.blobLockWrapper(rh.DeleteBlobUpload)).Methods("DELETE")
 		g.HandleFunc("/_catalog",
 			rh.ListRepositories).Methods("GET")
-		g.HandleFunc("/",
-			rh.CheckVersionSupport).Methods("GET")
-		if true /*rh.c.Config.Experimental*/ {
-			var db *bolt.DB
-			if _, err := os.Stat(DbPath); os.IsNotExist(err) {
-				db = utils.Conn(DbPath)
-				nvdjsondb := utils.CreateDB("NvdJSON", db)
-				pkgvendordb := utils.CreateDB("NvdPkgVendor", db)
-				pkgnamedb := utils.CreateDB("NvdPkgName", db)
-				pkgnameverdb := utils.CreateDB("NvdPkgNameVer", db)
-				nvdmeatabd := utils.CreateDB("NvdMeta", db)
-				if !nvdjsondb || !nvdmeatabd || !pkgvendordb || !pkgnamedb || !pkgnameverdb {
-					fmt.Println("Not able to Create Database")
-				}
-			} else {
-				db = utils.Conn(DbPath)
-			}
-			rh.c.Log.Info().Msg("Inside GrpahQl")
-			g.HandleFunc("/query", gqlHandler.GraphQL(search.NewExecutableSchema(search.Config{Resolvers: &search.Resolver{Db: db, Log: rh.c.Log}})))
-		}
-
+		g.HandleFunc("/", rh.CheckVersionSupport).Methods("GET")
+		//nolint (lll)
+		g.HandleFunc("/query", gqlHandler.GraphQL(search.NewExecutableSchema(search.Config{Resolvers: &search.Resolver{DB: rh.c.DB, Log: rh.c.Log}})))
 	}
 	// swagger docs "/swagger/v2/index.html"
 	rh.c.Router.PathPrefix("/swagger/v2/").Methods("GET").Handler(httpSwagger.WrapHandler)
