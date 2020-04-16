@@ -565,7 +565,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			// delete manifest by digest
 			resp, err = resty.R().Delete(baseURL + "/v2/repo7/manifests/" + digest.String())
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, 202)
+			So(resp.StatusCode(), ShouldEqual, 404)
 			// delete again should fail
 			resp, err = resty.R().Delete(baseURL + "/v2/repo7/manifests/" + digest.String())
 			So(err, ShouldBeNil)
@@ -653,6 +653,10 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			}
 
 			resp, err := resty.R().Get(baseURL + "/v2/page0/tags/list")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			resp, err = resty.R().Get(baseURL + "/v2/page0/tags/list?n=0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 

@@ -12,6 +12,8 @@ var Commit string
 
 type StorageConfig struct {
 	RootDirectory string
+	GC            bool
+	Dedupe        bool
 }
 
 type TLSConfig struct {
@@ -77,6 +79,7 @@ func NewConfig() *Config {
 	return &Config{
 		Version: dspec.Version,
 		Commit:  Commit,
+		Storage: StorageConfig{GC: true, Dedupe: true},
 		HTTP:    HTTPConfig{Address: "127.0.0.1", Port: "8080"},
 		Log:     &LogConfig{Level: "debug"},
 	}

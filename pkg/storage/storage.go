@@ -38,11 +38,13 @@ type ImageStore struct {
 	lock        *sync.RWMutex
 	blobUploads map[string]BlobUpload
 	cache       *Cache
+	gc          bool
+	dedupe      bool
 	log         zerolog.Logger
 }
 
 // NewImageStore returns a new image store backed by a file storage.
-func NewImageStore(rootDir string, log zlog.Logger) *ImageStore {
+func NewImageStore(rootDir string, gc bool, dedupe bool, log zlog.Logger) *ImageStore {
 	if _, err := os.Stat(rootDir); os.IsNotExist(err) {
 		if err := os.MkdirAll(rootDir, 0700); err != nil {
 			log.Error().Err(err).Str("rootDir", rootDir).Msg("unable to create root dir")
@@ -54,8 +56,13 @@ func NewImageStore(rootDir string, log zlog.Logger) *ImageStore {
 		rootDir:     rootDir,
 		lock:        &sync.RWMutex{},
 		blobUploads: make(map[string]BlobUpload),
-		cache:       NewCache(rootDir, "cache", log),
+		gc:          gc,
+		dedupe:      dedupe,
 		log:         log.With().Caller().Logger(),
+	}
+
+	if dedupe {
+		is.cache = NewCache(rootDir, "cache", log)
 	}
 
 	return is
@@ -467,14 +474,16 @@ func (is *ImageStore) PutImageManifest(repo string, reference string, mediaType 
 		return "", err
 	}
 
-	oci, err := umoci.OpenLayout(dir)
-	if err != nil {
-		return "", err
-	}
-	defer oci.Close()
+	if is.gc {
+		oci, err := umoci.OpenLayout(dir)
+		if err != nil {
+			return "", err
+		}
+		defer oci.Close()
 
-	if err := oci.GC(context.Background()); err != nil {
-		return "", err
+		if err := oci.GC(context.Background()); err != nil {
+			return "", err
+		}
 	}
 
 	return desc.Digest.String(), nil
@@ -488,7 +497,7 @@ func (is *ImageStore) DeleteImageManifest(repo string, reference string) error {
 	}
 
 	// as per spec "reference" can only be a digest and not a tag
-	_, err := godigest.Parse(reference)
+	digest, err := godigest.Parse(reference)
 	if err != nil {
 		is.log.Error().Err(err).Msg("invalid reference")
 		return errors.ErrBadManifest
@@ -509,33 +518,29 @@ func (is *ImageStore) DeleteImageManifest(repo string, reference string) error {
 
 	found := false
 
-	var digest godigest.Digest
-
-	var i int
-
 	var m ispec.Descriptor
 
-	for i, m = range index.Manifests {
-		if reference == m.Digest.String() {
-			digest = m.Digest
-			found = true
+	// we are deleting, so keep only those manifests that don't match
+	outIndex := index
+	outIndex.Manifests = []ispec.Descriptor{}
 
-			break
+	for _, m = range index.Manifests {
+		if reference == m.Digest.String() {
+			found = true
+			continue
 		}
+
+		outIndex.Manifests = append(outIndex.Manifests, m)
 	}
 
 	if !found {
 		return errors.ErrManifestNotFound
 	}
 
-	// remove the manifest entry, not preserving order
-	index.Manifests[i] = index.Manifests[len(index.Manifests)-1]
-	index.Manifests = index.Manifests[:len(index.Manifests)-1]
-
 	// now update "index.json"
 	dir = path.Join(is.rootDir, repo)
 	file := path.Join(dir, "index.json")
-	buf, err = json.Marshal(index)
+	buf, err = json.Marshal(outIndex)
 
 	if err != nil {
 		return err
@@ -545,14 +550,16 @@ func (is *ImageStore) DeleteImageManifest(repo string, reference string) error {
 		return err
 	}
 
-	oci, err := umoci.OpenLayout(dir)
-	if err != nil {
-		return err
-	}
-	defer oci.Close()
+	if is.gc {
+		oci, err := umoci.OpenLayout(dir)
+		if err != nil {
+			return err
+		}
+		defer oci.Close()
 
-	if err := oci.GC(context.Background()); err != nil {
-		return err
+		if err := oci.GC(context.Background()); err != nil {
+			return err
+		}
 	}
 
 	p := path.Join(dir, "blobs", digest.Algorithm().String(), digest.Encoded())
@@ -737,15 +744,21 @@ func (is *ImageStore) FinishBlobUpload(repo string, uuid string, body io.Reader,
 	ensureDir(dir, is.log)
 	dst := is.BlobPath(repo, dstDigest)
 
-	if is.cache != nil {
+	if is.dedupe && is.cache != nil {
 		if err := is.DedupeBlob(src, dstDigest, dst); err != nil {
 			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
 				Str("dst", dst).Msg("unable to dedupe blob")
 			return err
 		}
+	} else {
+		if err := os.Rename(src, dst); err != nil {
+			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
+				Str("dst", dst).Msg("unable to finish blob")
+			return err
+		}
 	}
 
-	return err
+	return nil
 }
 
 // FullBlobUpload handles a full blob upload, and no partial session is created
@@ -796,57 +809,72 @@ func (is *ImageStore) FullBlobUpload(repo string, body io.Reader, digest string)
 	ensureDir(dir, is.log)
 	dst := is.BlobPath(repo, dstDigest)
 
-	if is.cache != nil {
+	if is.dedupe && is.cache != nil {
 		if err := is.DedupeBlob(src, dstDigest, dst); err != nil {
 			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
 				Str("dst", dst).Msg("unable to dedupe blob")
 			return "", -1, err
 		}
+	} else {
+		if err := os.Rename(src, dst); err != nil {
+			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
+				Str("dst", dst).Msg("unable to finish blob")
+			return "", -1, err
+		}
 	}
 
-	return uuid, n, err
+	return uuid, n, nil
 }
 
 // nolint (interfacer)
 func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dst string) error {
+retry:
+	is.log.Debug().Str("src", src).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe: ENTER")
 	dstRecord, err := is.cache.GetBlob(dstDigest.String())
 	if err != nil && err != errors.ErrCacheMiss {
-		is.log.Error().Err(err).Str("blobPath", dst).Msg("unable to lookup blob record")
+		is.log.Error().Err(err).Str("blobPath", dst).Msg("dedupe: unable to lookup blob record")
 		return err
 	}
 
 	if dstRecord == "" {
 		if err := is.cache.PutBlob(dstDigest.String(), dst); err != nil {
-			is.log.Error().Err(err).Str("blobPath", dst).Msg("unable to insert blob record")
+			is.log.Error().Err(err).Str("blobPath", dst).Msg("dedupe: unable to insert blob record")
 			return err
 		}
 
 		// move the blob from uploads to final dest
 		if err := os.Rename(src, dst); err != nil {
-			is.log.Error().Err(err).Str("src", src).Str("dst", dst).Msg("unable to rename blob")
+			is.log.Error().Err(err).Str("src", src).Str("dst", dst).Msg("dedupe: unable to rename blob")
 			return err
 		}
+		is.log.Debug().Str("src", src).Str("dst", dst).Msg("dedupe: rename")
 	} else {
 		dstRecordFi, err := os.Stat(dstRecord)
 		if err != nil {
-			is.log.Error().Err(err).Str("blobPath", dstRecord).Msg("unable to stat")
-			return err
+			is.log.Error().Err(err).Str("blobPath", dstRecord).Msg("dedupe: unable to stat")
+			// the actual blob on disk may have been removed by GC, so sync the cache
+			if err := is.cache.DeleteBlob(dstDigest.String(), dst); err != nil {
+				is.log.Error().Err(err).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe: unable to delete blob record")
+				return err
+			}
+			goto retry
 		}
 		dstFi, err := os.Stat(dst)
 		if err != nil && !os.IsNotExist(err) {
-			is.log.Error().Err(err).Str("blobPath", dstRecord).Msg("unable to stat")
+			is.log.Error().Err(err).Str("blobPath", dstRecord).Msg("dedupe: unable to stat")
 			return err
 		}
 		if !os.SameFile(dstFi, dstRecordFi) {
 			if err := os.Link(dstRecord, dst); err != nil {
-				is.log.Error().Err(err).Str("blobPath", dst).Str("link", dstRecord).Msg("unable to hard link")
+				is.log.Error().Err(err).Str("blobPath", dst).Str("link", dstRecord).Msg("dedupe: unable to hard link")
 				return err
 			}
 		}
 		if err := os.Remove(src); err != nil {
-			is.log.Error().Err(err).Str("src", src).Msg("uname to remove blob")
+			is.log.Error().Err(err).Str("src", src).Msg("dedupe: uname to remove blob")
 			return err
 		}
+		is.log.Debug().Str("src", src).Msg("dedupe: remove")
 	}
 
 	return nil

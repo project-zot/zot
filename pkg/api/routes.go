@@ -222,7 +222,12 @@ func (rh *RouteHandler) ListTags(w http.ResponseWriter, r *http.Request) {
 			pTags.Tags = tags[i+1 : i+1+n]
 		}
 
-		last = pTags.Tags[len(pTags.Tags)-1]
+		if len(pTags.Tags) == 0 {
+			last = ""
+		} else {
+			last = pTags.Tags[len(pTags.Tags)-1]
+		}
+
 		w.Header().Set("Link", fmt.Sprintf("/v2/%s/tags/list?n=%d&last=%s; rel=\"next\"", name, n, last))
 		WriteJSON(w, http.StatusOK, pTags)
 
