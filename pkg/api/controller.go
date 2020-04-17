@@ -12,13 +12,8 @@ import (
 	"github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
-	"github.com/boltdb/bolt"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
-)
-
-const (
-	DBFilePath = "./data/db/ZotSearch.db"
 )
 
 type Controller struct {
@@ -27,12 +22,10 @@ type Controller struct {
 	ImageStore *storage.ImageStore
 	Log        log.Logger
 	Server     *http.Server
-	DBPath     string
-	DB         *bolt.DB
 }
 
 func NewController(config *Config) *Controller {
-	return &Controller{Config: config, Log: log.NewLogger(config.Log.Level, config.Log.Output), DBPath: DBFilePath}
+	return &Controller{Config: config, Log: log.NewLogger(config.Log.Level, config.Log.Output)}
 }
 
 func (c *Controller) Run() error {

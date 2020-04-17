@@ -67,21 +67,37 @@ type LogConfig struct {
 	Output string
 }
 
+type ExtensionConfig struct {
+	Search *SearchConfig
+}
+
+type SearchConfig struct {
+	// CVE search
+	CVE *CVEConfig
+}
+
+type CVEConfig struct {
+	DataSource      string // can be a 'file://' or 'https://'
+	PeriodicUpdates bool
+}
+
 type Config struct {
-	Version string
-	Commit  string
-	Storage StorageConfig
-	HTTP    HTTPConfig
-	Log     *LogConfig
+	Version    string
+	Commit     string
+	Storage    StorageConfig
+	HTTP       HTTPConfig
+	Log        *LogConfig
+	Extensions *ExtensionConfig
 }
 
 func NewConfig() *Config {
 	return &Config{
-		Version: dspec.Version,
-		Commit:  Commit,
-		Storage: StorageConfig{GC: true, Dedupe: true},
-		HTTP:    HTTPConfig{Address: "127.0.0.1", Port: "8080"},
-		Log:     &LogConfig{Level: "debug"},
+		Version:    dspec.Version,
+		Commit:     Commit,
+		Storage:    StorageConfig{GC: true, Dedupe: true},
+		HTTP:       HTTPConfig{Address: "127.0.0.1", Port: "8080"},
+		Log:        &LogConfig{Level: "debug"},
+		Extensions: &ExtensionConfig{&SearchConfig{CVE: &CVEConfig{PeriodicUpdates: true}}},
 	}
 }
 

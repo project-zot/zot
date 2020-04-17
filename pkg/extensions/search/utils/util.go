@@ -1,19 +1,21 @@
-package utils
+package cveinfo
 
 import (
 	"archive/zip"
 	"bufio"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 
-	"github.com/boltdb/bolt"
+	"github.com/anuvu/zot/pkg/log"
+	"go.etcd.io/bbolt"
 )
 
 //NvdJSON ...
@@ -207,34 +209,52 @@ type CVEId struct {
 	Name string
 }
 
+// CveInfo ...
+type CveInfo struct {
+	Log log.Logger
+}
+
 // InitSearch ...
-func InitSearch(dbPath string) *bolt.DB {
-	var db *bolt.DB
+func (cve CveInfo) InitSearch(dbPath string) *bbolt.DB {
+	var db *bbolt.DB
 
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-		db = Conn(dbPath)
-		nvdjsondb := CreateDB(NvdDB, db)
-		pkgvendordb := CreateDB(VendorDB, db)
-		pkgnamedb := CreateDB(NameDB, db)
-		pkgnameverdb := CreateDB(NameverDB, db)
-		nvdmeatabd := CreateDB(NvdmetaDB, db)
+		db = cve.Connect(dbPath)
+		nvdjsondb := cve.CreateBucket(NvdDB, db)
+		pkgvendordb := cve.CreateBucket(VendorDB, db)
+		pkgnamedb := cve.CreateBucket(NameDB, db)
+		pkgnameverdb := cve.CreateBucket(NameverDB, db)
+		nvdmeatabd := cve.CreateBucket(NvdmetaDB, db)
 
+		// If not able to create a bucket, this should return nil
 		if !nvdjsondb || !nvdmeatabd || !pkgvendordb || !pkgnamedb || !pkgnameverdb {
-			fmt.Println("Not able to Create Database")
-
 			return nil
 		}
 	} else {
-		db = Conn(dbPath)
+		db = cve.Connect(dbPath)
 	}
 
 	return db
 }
 
+// StartUpdate ...
+func (cve CveInfo) StartUpdate(dbDir string, startYear int, endYear int) error {
+	db := cve.InitSearch(path.Join(dbDir, "search.db"))
+	defer Close(db)
+
+	if db == nil {
+		return errors.New("unable to open db")
+	}
+
+	err := cve.getNvdData(dbDir, startYear, endYear, db)
+
+	return err
+}
+
 // GetNvdData ...
 //This function downloads the .meta files, reads the hashcode of json files,
 //compares it in database and if not found, downloads the JSON file in zip format.
-func GetNvdData(filepath string, startYear int, endYear int, db *bolt.DB) error {
+func (cve CveInfo) getNvdData(filepath string, startYear int, endYear int, db *bbolt.DB) error {
 	var header = "https://nvd.nist.gov/feeds/json/cve/1.1/nvdcve-1.1-"
 
 	for i := startYear; i < endYear; i++ {
@@ -251,15 +271,14 @@ func GetNvdData(filepath string, startYear int, endYear int, db *bolt.DB) error 
 		// Downloading Meta file
 		err := downloadFile(path.Join(filepath, metaFileName), metaURL)
 		if err != nil {
-			fmt.Println("Not able to Download the Meta file")
+			cve.Log.Error().Err(err).Msg("Not able to Download the Meta file")
 
 			return err
 		}
 		// Opening the Meta File
 		file, err := os.Open(path.Join(filepath, metaFileName))
 		if err != nil {
-			fmt.Println("Unable to Open Meta File")
-			fmt.Println(err)
+			cve.Log.Error().Err(err).Msg("Not able to open meta file")
 
 			return err
 		}
@@ -270,7 +289,7 @@ func GetNvdData(filepath string, startYear int, endYear int, db *bolt.DB) error 
 			if strings.Contains(line, "sha256") {
 				hashcode := strings.Split(line, ":")[1]
 				// Checking if file having same name and hashcode is already downloaded...
-				if !isPresent(metaFileName, hashcode, db) {
+				if !cve.isPresent(metaFileName, hashcode, db) {
 					err := downloadFile(path.Join(filepath, zipFileName), zipURL)
 					if err != nil {
 						return err
@@ -281,25 +300,40 @@ func GetNvdData(filepath string, startYear int, endYear int, db *bolt.DB) error 
 						return err
 					}
 
-					nvdjson := readJSON(path.Join(filepath, jsonFileName))
+					nvdjson, jsonErr := readJSON(path.Join(filepath, jsonFileName))
+					if jsonErr != nil {
+						return jsonErr
+					}
+
 					nvdschema, mapList := extractSchema(nvdjson)
 					// Updating the NVD Data
-					updateNVD(nvdschema, mapList, db)
+					err = cve.updateNVD(nvdschema, mapList, db)
+					if err != nil {
+						cve.Log.Error().Err(err).Msg("Unable to update Nvd Data")
+					}
 					// Updating the NVD Meta Db
-					updateNVDMeta(metaFileName, hashcode, db)
+					err = cve.updateNVDMeta(metaFileName, hashcode, db)
+					if err != nil {
+						cve.Log.Error().Err(err).Msg("Unable to update Nvd Meta")
+					}
 				}
 			}
 		}
 	}
 
-	return nil
+	err := removeFiles(filepath)
+	if err != nil {
+		cve.Log.Error().Err(err).Msg("Unable to Remove downloaded files")
+	}
+
+	return err
 }
 
 /* Download and saves the file with given filepath */
 func downloadFile(filepath string, url string) error {
 	// nolint (gosec)
 	resp, err := http.Get(url)
-	if err != nil {
+	if err != nil || resp.StatusCode != 200 {
 		return err
 	}
 	defer resp.Body.Close()
@@ -342,21 +376,20 @@ func unzipFiles(filepath string, filename string) error {
 }
 
 /*ReadJSON ... Reading the JSON files */
-func readJSON(filepath string) NvdJSON {
+func readJSON(filepath string) (NvdJSON, error) {
 	var nvdjson NvdJSON
 
 	byteValue, err := ioutil.ReadFile(filepath)
 	if err != nil {
-		fmt.Println(err)
+		return nvdjson, err
 	}
 
 	err = json.Unmarshal(byteValue, &nvdjson)
 	if err != nil {
-		fmt.Println(err)
+		return nvdjson, err
 	}
-	//fmt.Println(nvdjson.CVEItems[0].Configuration)
 
-	return nvdjson
+	return nvdjson, nil
 }
 
 /*ExtractSchema ... Extracting the Schema */
@@ -529,4 +562,41 @@ func extractSchema(nvdjson NvdJSON) ([]Schema, []map[string][]CVEId) {
 	mapList = append(mapList, pkgvendors, pkgnames, pkgnamevers)
 
 	return schemas, mapList
+}
+
+func removeFiles(filePath string) error {
+	files, err := filepath.Glob(path.Join(filePath, "*.json"))
+	if err != nil {
+		return err
+	}
+
+	for _, f := range files {
+		if err := os.Remove(f); err != nil {
+			return err
+		}
+	}
+
+	files, err = filepath.Glob(path.Join(filePath, "*.meta"))
+	if err != nil {
+		return err
+	}
+
+	for _, f := range files {
+		if err := os.Remove(f); err != nil {
+			return err
+		}
+	}
+
+	files, err = filepath.Glob(path.Join(filePath, "*.json.zip"))
+	if err != nil {
+		panic(err)
+	}
+
+	for _, f := range files {
+		if err := os.Remove(f); err != nil {
+			panic(err)
+		}
+	}
+
+	return nil
 }
