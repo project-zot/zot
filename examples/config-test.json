@@ -9,5 +9,12 @@
   },
   "log":{
     "level":"debug"
+  },
+  "extensions":{
+    "search":{
+      "cve":{
+        "periodicupdates":true
+      }
+    }
   }
 }
