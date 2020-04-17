@@ -21,12 +21,10 @@ import (
 	"strconv"
 	"strings"
 
-	gqlHandler "github.com/99designs/gqlgen/handler"
-
+	gqlHandler "github.com/99designs/gqlgen/graphql/handler"
 	_ "github.com/anuvu/zot/docs" // nolint (golint) - as required by swaggo
 	"github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/extensions/search"
-	"github.com/anuvu/zot/pkg/extensions/search/utils"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/gorilla/mux"
 	jsoniter "github.com/json-iterator/go"
@@ -48,7 +46,6 @@ type RouteHandler struct {
 }
 
 func NewRouteHandler(c *Controller) *RouteHandler {
-	c.DB = utils.InitSearch(c.DBPath)
 	rh := &RouteHandler{c: c}
 	rh.SetupRoutes()
 
@@ -73,6 +70,11 @@ func (rh *RouteHandler) blobLockWrapper(f func(w http.ResponseWriter,
 		f(w, r)
 		rh.c.ImageStore.Unlock()
 	}
+}
+
+func (rh *RouteHandler) searchHandler() *gqlHandler.Server {
+	resConfig := search.GetResolverConfig(rh.c.Config.Storage.RootDirectory, rh.c.Log)
+	return gqlHandler.NewDefaultServer(search.NewExecutableSchema(resConfig))
 }
 
 func (rh *RouteHandler) SetupRoutes() {
@@ -107,12 +109,13 @@ func (rh *RouteHandler) SetupRoutes() {
 			rh.blobLockWrapper(rh.DeleteBlobUpload)).Methods("DELETE")
 		g.HandleFunc("/_catalog",
 			rh.ListRepositories).Methods("GET")
-		g.HandleFunc("/", rh.CheckVersionSupport).Methods("GET")
-		//nolint (lll)
-		g.HandleFunc("/query", gqlHandler.GraphQL(search.NewExecutableSchema(search.Config{Resolvers: &search.Resolver{DB: rh.c.DB, Log: rh.c.Log}})))
+		g.HandleFunc("/",
+			rh.CheckVersionSupport).Methods("GET")
 	}
 	// swagger docs "/swagger/v2/index.html"
 	rh.c.Router.PathPrefix("/swagger/v2/").Methods("GET").Handler(httpSwagger.WrapHandler)
+	// Zot Search Extension Router
+	rh.c.Router.PathPrefix("/v2/query").Methods("GET", "POST").Handler(rh.searchHandler())
 }
 
 // Method handlers

@@ -3,24 +3,33 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "go_default_library",
     srcs = [
-        "db.go",
+        "cve.go",
         "util.go",
     ],
     importpath = "github.com/anuvu/zot/pkg/extensions/search/utils",
     visibility = ["//visibility:public"],
-    deps = ["@com_github_boltdb_bolt//:go_default_library"],
+    deps = [
+        "//pkg/log:go_default_library",
+        "@io_etcd_go_bbolt//:go_default_library",
+    ],
 )
 
 go_test(
     name = "go_default_test",
     srcs = [
-        "db_test.go",
+        "cve_test.go",
         "utils_test.go",
     ],
     data = [
         ":search_testdata",
     ],
     embed = [":go_default_library"],
+    deps = [
+        "//pkg/api:go_default_library",
+        "//pkg/extensions/search:go_default_library",
+        "@com_github_smartystreets_goconvey//convey:go_default_library",
+        "@in_gopkg_resty_v1//:go_default_library",
+    ],
 )
 
 filegroup(

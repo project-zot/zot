@@ -20,13 +20,15 @@ go_test(
     name = "go_default_test",
     timeout = "short",
     srcs = ["check_test.go"],
-    embed = [":go_default_library"],
     data = [
         "//:exported_testdata",
     ],
+    embed = [":go_default_library"],
     deps = [
         "//pkg/api:go_default_library",
         "//pkg/compliance:go_default_library",
+        "//pkg/extensions/search:go_default_library",
+        "//pkg/extensions/search/utils:go_default_library",
         "@com_github_phayes_freeport//:go_default_library",
         "@in_gopkg_resty_v1//:go_default_library",
     ],

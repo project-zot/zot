@@ -16,6 +16,7 @@
   * Automatic garbage collection of orphaned blobs
   * Layer deduplication using hard links when content is identical
 * Swagger based documentation
+* Search CVE Vulnerabilities based on CVEId, Package Vendor, Package Name and Package Name+Version
 * Released under Apache 2.0 License
 * ```go get -u github.com/anuvu/zot/cmd/zot```
 
@@ -56,6 +57,18 @@ Build artifacts are in bin/
 
 ```
 bin/zot serve _config-file_
+```
+# Search Vulnerabilities 
+
+* Start the server 
+
+* Run the following command
+
+``` 
+curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ CveIdSearch (text:\"CVE-1999-0002\") { name VulDesc VulDetails { PkgName PkgVendor PkgVersion } } }" }' http://localhost:8080/v2/query
+```
+```
+curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ PkgVendor (text:\"openbsd\") { name  } }" }' http://localhost:8080/v2/query 
 ```
 
 Examples of config files are available in [examples/](examples/) dir.
