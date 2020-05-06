@@ -4,9 +4,9 @@ go_library(
     name = "go_default_library",
     srcs = [
         "cve.go",
-        "util.go",
+        "models.go",
     ],
-    importpath = "github.com/anuvu/zot/pkg/extensions/search/utils",
+    importpath = "github.com/anuvu/zot/pkg/extensions/search/cve",
     visibility = ["//visibility:public"],
     deps = [
         "//pkg/log:go_default_library",
@@ -19,7 +19,7 @@ go_test(
     name = "go_default_test",
     srcs = [
         "cve_test.go",
-        "utils_test.go",
+        "models_test.go",
     ],
     data = [
         ":search_testdata",

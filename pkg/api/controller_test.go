@@ -20,7 +20,7 @@ import (
 
 	"github.com/anuvu/zot/pkg/api"
 	"github.com/anuvu/zot/pkg/extensions/search"
-	cveinfo "github.com/anuvu/zot/pkg/extensions/search/utils"
+	cveinfo "github.com/anuvu/zot/pkg/extensions/search/cve"
 	"github.com/chartmuseum/auth"
 	"github.com/mitchellh/mapstructure"
 	vldap "github.com/nmcclain/ldap"
@@ -133,7 +133,7 @@ func TestBasicAuth(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// without creds, should get access error to graphql route also
-		resp, err = resty.R().Get(BaseURL1 + "/v2/query")
+		resp, err = resty.R().Get(BaseURL1 + "/query")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 401)

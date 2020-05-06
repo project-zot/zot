@@ -13,7 +13,7 @@ import (
 	"github.com/anuvu/zot/pkg/compliance"
 	"github.com/anuvu/zot/pkg/compliance/v1_0_0"
 	"github.com/anuvu/zot/pkg/extensions/search"
-	cveinfo "github.com/anuvu/zot/pkg/extensions/search/utils"
+	cveinfo "github.com/anuvu/zot/pkg/extensions/search/cve"
 	"github.com/phayes/freeport"
 	"gopkg.in/resty.v1"
 )

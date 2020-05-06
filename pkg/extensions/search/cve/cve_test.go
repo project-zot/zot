@@ -6,7 +6,7 @@ import (
 	"path"
 	"testing"
 
-	cveinfo "github.com/anuvu/zot/pkg/extensions/search/utils"
+	cveinfo "github.com/anuvu/zot/pkg/extensions/search/cve"
 	. "github.com/smartystreets/goconvey/convey"
 )
 

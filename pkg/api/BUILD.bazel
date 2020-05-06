@@ -44,7 +44,7 @@ go_test(
     race = "on",
     deps = [
         "//pkg/extensions/search:go_default_library",
-        "//pkg/extensions/search/utils:go_default_library",
+        "//pkg/extensions/search/cve:go_default_library",
         "@com_github_chartmuseum_auth//:go_default_library",
         "@com_github_mitchellh_mapstructure//:go_default_library",
         "@com_github_nmcclain_ldap//:go_default_library",

@@ -3,7 +3,7 @@ package cli
 import (
 	"github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/api"
-	cveinfo "github.com/anuvu/zot/pkg/extensions/search/utils"
+	cveinfo "github.com/anuvu/zot/pkg/extensions/search/cve"
 	zlog "github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
 	"github.com/mitchellh/mapstructure"
