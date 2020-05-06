@@ -10,7 +10,7 @@ import (
 
 	"github.com/anuvu/zot/pkg/api"
 	"github.com/anuvu/zot/pkg/extensions/search"
-	cveinfo "github.com/anuvu/zot/pkg/extensions/search/utils"
+	cveinfo "github.com/anuvu/zot/pkg/extensions/search/cve"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 )
@@ -80,7 +80,7 @@ func TestRepeatDownload(t *testing.T) {
 }
 
 func TestSearchCveId(t *testing.T) {
-	db := cve.InitSearch(dbPath)
+	db := cve.InitDB(dbPath)
 
 	result := cve.SearchByCVEId(db, "CVE-1999-0001")
 	if result == nil {
@@ -101,7 +101,7 @@ func TestSearchCveId(t *testing.T) {
 }
 
 func TestSearchPkgVendor(t *testing.T) {
-	db := cve.InitSearch(dbPath)
+	db := cve.InitDB(dbPath)
 
 	result := cve.SearchByPkgType("NvdPkgVendor", db, "freebsd")
 	if result == nil {
@@ -114,7 +114,7 @@ func TestSearchPkgVendor(t *testing.T) {
 }
 
 func TestSearchPkgName(t *testing.T) {
-	db := cve.InitSearch(dbPath)
+	db := cve.InitDB(dbPath)
 
 	result := cve.SearchByPkgType("NvdPkgName", db, "bsd_os")
 	if result == nil {
@@ -127,7 +127,7 @@ func TestSearchPkgName(t *testing.T) {
 }
 
 func TestSearchPkgNameVer(t *testing.T) {
-	db := cve.InitSearch(dbPath)
+	db := cve.InitDB(dbPath)
 
 	result := cve.SearchByPkgType("NvdPkgNameVer", db, "bsd_os3.1")
 	if result == nil {
@@ -141,7 +141,7 @@ func TestSearchPkgNameVer(t *testing.T) {
 
 func TestInvalidSearch(t *testing.T) {
 	Convey("Test Invalid Search", t, func() {
-		db := cve.InitSearch(dbPath)
+		db := cve.InitDB(dbPath)
 		defer cveinfo.Close(db)
 		So(db, ShouldNotBeNil)
 
@@ -219,7 +219,7 @@ func TestServerResponse(t *testing.T) {
 
 		// Test PkgVendor, PkgName and PkgNameVer
 		// nolint (lll)
-		resp, _ := resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/v2/query?query={PkgVendor(text:\"openbsd\"){name}}")
+		resp, _ := resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={PkgVendor(text:\"openbsd\"){name}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -229,7 +229,7 @@ func TestServerResponse(t *testing.T) {
 		So(len(cveids.Data.List), ShouldNotBeZeroValue)
 
 		// nolint (lll)
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/v2/query?query={PkgName(text:\"bsd_os\"){name}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={PkgName(text:\"bsd_os\"){name}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -238,7 +238,7 @@ func TestServerResponse(t *testing.T) {
 		So(len(cveids.Data.List), ShouldNotBeZeroValue)
 
 		// nolint (lll)
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/v2/query?query={PkgNameVer(text:\"bsd_os3.1\"){name}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={PkgNameVer(text:\"bsd_os3.1\"){name}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -248,7 +248,7 @@ func TestServerResponse(t *testing.T) {
 
 		// Test CveId
 		// nolint (lll)
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/v2/query?query={CveIdSearch(text:\"CVE-1999-0001\"){name%20VulDesc%20VulDetails{PkgVendor%20PkgName%20PkgVersion}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={CveIdSearch(text:\"CVE-1999-0001\"){name%20VulDesc%20VulDetails{PkgVendor%20PkgName%20PkgVersion}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -259,7 +259,7 @@ func TestServerResponse(t *testing.T) {
 		So(len(cveresult.CveData.CveDetail.VulDetails), ShouldNotEqual, 0)
 
 		// Testing Invalid Dataß
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/v2/query?query={PkgVendor(text:\"\"){name}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={PkgVendor(text:\"\"){name}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -268,7 +268,7 @@ func TestServerResponse(t *testing.T) {
 		So(len(cveids.Data.List), ShouldBeZeroValue)
 
 		// nolint (lll)
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/v2/query?query={PkgName(text:\"\"){name}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={PkgName(text:\"\"){name}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -277,7 +277,7 @@ func TestServerResponse(t *testing.T) {
 		So(len(cveids.Data.List), ShouldBeZeroValue)
 
 		// nolint (lll)
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/v2/query?query={PkgNameVer(text:\"\"){name}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={PkgNameVer(text:\"\"){name}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -287,7 +287,7 @@ func TestServerResponse(t *testing.T) {
 
 		// Test CveId
 		// nolint (lll)
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/v2/query?query={CveIdSearch(text:\"\"){name%20VulDesc%20VulDetails{PkgVendor%20PkgName%20PkgVersion}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={CveIdSearch(text:\"\"){name%20VulDesc%20VulDetails{PkgVendor%20PkgName%20PkgVersion}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -297,15 +297,15 @@ func TestServerResponse(t *testing.T) {
 
 		// Test Invalid URL
 		// nolint (lll)
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/v2/query?query={CveIdearch(text:\"\"){name%20VulDesc%20VulDetails{PkgVendor%20PkgName%20PkgVersion}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={CveIdearch(text:\"\"){name%20VulDesc%20VulDetails{PkgVendor%20PkgName%20PkgVersion}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldNotEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/v2/query?query={CveIdearch(text:\"\")")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={CveIdearch(text:\"\")")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldNotEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/v2/query?query={}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldNotEqual, 200)
 	})

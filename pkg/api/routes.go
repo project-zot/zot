@@ -73,7 +73,7 @@ func (rh *RouteHandler) blobLockWrapper(f func(w http.ResponseWriter,
 }
 
 func (rh *RouteHandler) searchHandler() *gqlHandler.Server {
-	resConfig := search.GetResolverConfig(rh.c.Config.Storage.RootDirectory, rh.c.Log)
+	resConfig := search.GetResolverConfig(rh.c.Config.Storage.RootDirectory, rh.c.Log, rh.c.ImageStore)
 	return gqlHandler.NewDefaultServer(search.NewExecutableSchema(resConfig))
 }
 
@@ -115,7 +115,7 @@ func (rh *RouteHandler) SetupRoutes() {
 	// swagger docs "/swagger/v2/index.html"
 	rh.c.Router.PathPrefix("/swagger/v2/").Methods("GET").Handler(httpSwagger.WrapHandler)
 	// Zot Search Extension Router
-	rh.c.Router.PathPrefix("/v2/query").Methods("GET", "POST").Handler(rh.searchHandler())
+	rh.c.Router.PathPrefix("/query").Methods("GET", "POST").Handler(rh.searchHandler())
 }
 
 // Method handlers

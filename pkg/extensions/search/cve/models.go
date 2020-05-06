@@ -1,3 +1,4 @@
+// Referred from https://github.com/kotakanbe/go-cve-dictionary/blob/master/models/models.go
 package cveinfo
 
 import (
@@ -5,7 +6,6 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -229,8 +229,8 @@ type CveInfo struct {
 	Log log.Logger
 }
 
-// InitSearch ...
-func (cve CveInfo) InitSearch(dbPath string) *bbolt.DB {
+// InitDB ...
+func (cve CveInfo) InitDB(dbPath string) *bbolt.DB {
 	var db *bbolt.DB
 
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
@@ -254,7 +254,14 @@ func (cve CveInfo) InitSearch(dbPath string) *bbolt.DB {
 
 // StartUpdate ...
 func (cve CveInfo) StartUpdate(dbDir string, startYear int, endYear int) error {
-	db := cve.InitSearch(path.Join(dbDir, "search.db"))
+	if _, err := os.Stat(dbDir); os.IsNotExist(err) {
+		if err := os.MkdirAll(dbDir, 0700); err != nil {
+			cve.Log.Error().Err(err).Str("rootDir", dbDir).Msg("unable to create root dir")
+			return nil
+		}
+	}
+
+	db := cve.InitDB(path.Join(dbDir, "search.db"))
 
 	if db == nil {
 		return errors.New("unable to open db")
@@ -268,7 +275,7 @@ func (cve CveInfo) StartUpdate(dbDir string, startYear int, endYear int) error {
 }
 
 // GetImageAnnotations ...
-func (cve CveInfo) GetImageAnnotations(repo string) ([]string, error) {
+func (cve CveInfo) GetImageAnnotations(repo string) (map[string][]string, error) {
 	dir := path.Join("/tmp/zot", repo)
 	if !dirExists(dir) {
 		cve.Log.Error().Msg("Image Directory not exists")
@@ -284,6 +291,7 @@ func (cve CveInfo) GetImageAnnotations(repo string) ([]string, error) {
 
 			return nil, nil
 		}
+
 		cve.Log.Error().Err(err).Msg("Unable to open index.json")
 
 		return nil, nil
@@ -301,10 +309,18 @@ func (cve CveInfo) GetImageAnnotations(repo string) ([]string, error) {
 		return nil, nil
 	}
 
-	var pkgList []string
+	tagpkgMap := make(map[string][]string)
 
 	for _, m := range index.Manifests {
+		pkgList := make([]string, 0)
+		v, ok := m.Annotations[ispec.AnnotationRefName]
+
 		blobFile := strings.Split(m.Digest.String(), ":")[1]
+
+		// If there is no tag associated with Image, consider its sha256 as a tag
+		if !ok {
+			v = blobFile
+		}
 
 		blobBuf, err := ioutil.ReadFile(path.Join(path.Join(dir, "blobs", "sha256"), blobFile))
 		if err != nil {
@@ -319,7 +335,7 @@ func (cve CveInfo) GetImageAnnotations(repo string) ([]string, error) {
 
 		layerFile := strings.Split(blobIndex.Config.Digest, ":")[1]
 
-		blobBuf, err = ioutil.ReadFile(path.Join(path.Join(dir, "blobs/sha256"), layerFile))
+		blobBuf, err = ioutil.ReadFile(path.Join(path.Join(dir, "blobs", "sha256"), layerFile))
 		if err != nil {
 			cve.Log.Error().Err(err).Msg("Unable to open Image Layers file")
 		}
@@ -330,14 +346,14 @@ func (cve CveInfo) GetImageAnnotations(repo string) ([]string, error) {
 			return nil, nil
 		}
 
-		fmt.Println(layerIndex.Config.Labels)
-
 		for _, v := range layerIndex.Config.Labels {
 			pkgList = append(pkgList, v)
 		}
+
+		tagpkgMap[v] = pkgList
 	}
 
-	return pkgList, nil
+	return tagpkgMap, nil
 }
 
 // GetNvdData ...

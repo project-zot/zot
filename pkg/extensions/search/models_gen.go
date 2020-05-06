@@ -16,6 +16,16 @@ type CVEIdResult struct {
 	VulDetails []*VulDetail `json:"VulDetails"`
 }
 
+type CveImgResult struct {
+	Name *string   `json:"name"`
+	Tags []*string `json:"tags"`
+}
+
+type ImgCveResult struct {
+	Tag       *string  `json:"tag"`
+	CVEIdList []*Cveid `json:"CVEIdList"`
+}
+
 type Repository struct {
 	Name string `json:"name"`
 }
