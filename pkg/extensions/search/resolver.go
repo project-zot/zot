@@ -4,6 +4,7 @@ package search
 
 import (
 	"context"
+	"fmt"
 	"path"
 
 	"github.com/anuvu/zot/pkg/log"
@@ -94,6 +95,63 @@ func (r *queryResolver) PkgNameVer(ctx context.Context, text string) ([]*Cveid, 
 		name := cveid.Name
 
 		cveids = append(cveids, &Cveid{Name: &name})
+	}
+
+	return cveids, nil
+}
+
+func (r *queryResolver) ImageCveSearch(ctx context.Context, repo string, reference string) ([]*Cveid, error) {
+	cveids := []*Cveid{}
+	uniqueCveID := make(map[string]struct{})
+
+	pkgList, err := r.Cve.GetImageAnnotations(repo)
+
+	fmt.Println(pkgList)
+
+	if err != nil {
+		r.Cve.Log.Error().Err(err).Msg("Unable to get package list from Image")
+	}
+
+	for _, pkg := range pkgList {
+		ans := r.Cve.SearchByPkgType("NvdPkgName", r.DB, pkg)
+
+		for _, cveid := range ans {
+			name := cveid.Name
+
+			_, ok := uniqueCveID[name]
+			if !ok {
+				cveids = append(cveids, &Cveid{Name: &name})
+				uniqueCveID[name] = struct{}{}
+			}
+		}
+	}
+
+	return cveids, nil
+}
+
+func (r *queryResolver) ImageTagCveSearch(ctx context.Context, repo string, reference string) ([]*Cveid, error) {
+	//ans := r.Cve.SearchByPkgType("NvdPkgNameVer", r.DB, text)
+	cveids := []*Cveid{}
+	uniqueCveID := make(map[string]struct{})
+
+	pkgList, err := r.Cve.GetImageAnnotations(repo)
+
+	if err != nil {
+		r.Cve.Log.Error().Err(err).Msg("Unable to get package list from Image")
+	}
+
+	for _, pkg := range pkgList {
+		ans := r.Cve.SearchByPkgType("NvdPkgNameVer", r.DB, pkg)
+
+		for _, cveid := range ans {
+			name := cveid.Name
+
+			_, ok := uniqueCveID[name]
+			if !ok {
+				cveids = append(cveids, &Cveid{Name: &name})
+				uniqueCveID[name] = struct{}{}
+			}
+		}
 	}
 
 	return cveids, nil

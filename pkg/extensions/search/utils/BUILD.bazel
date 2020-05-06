@@ -10,6 +10,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//pkg/log:go_default_library",
+        "@com_github_opencontainers_image_spec//specs-go/v1:go_default_library",
         "@io_etcd_go_bbolt//:go_default_library",
     ],
 )

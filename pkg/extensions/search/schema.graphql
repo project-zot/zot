@@ -20,6 +20,8 @@ type Query {
   PkgNameVer(text: String!): [CVEID!]!
   PkgVendor(text: String!): [CVEID!]!
   CveIdSearch(text: String!): CVEIdResult!
+  ImageCveSearch(repo: String!,reference: String!) :[CVEID!]! 
+  ImageTagCveSearch(repo: String!, reference: String!) :[CVEID!]!
 }
 
 type Repository {

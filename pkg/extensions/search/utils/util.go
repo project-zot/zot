@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/anuvu/zot/pkg/log"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"go.etcd.io/bbolt"
 )
 
@@ -172,6 +174,19 @@ type CVEDescriptionData struct {
 	Value string `json:"value"`
 }
 
+// ImageLayers ...
+type ImageLayers struct {
+	SchemaVersion int32            `json:"schemaVersion"`
+	Config        ImageLayerConfig `json:"config"`
+}
+
+// ImageLayerConfig ...
+type ImageLayerConfig struct {
+	MediaType string `json:"mediaType"`
+	Digest    string `json:"digest"`
+	Size      int32  `json:"size"`
+}
+
 // Schema ...
 type Schema struct {
 	CveID      string
@@ -240,7 +255,6 @@ func (cve CveInfo) InitSearch(dbPath string) *bbolt.DB {
 // StartUpdate ...
 func (cve CveInfo) StartUpdate(dbDir string, startYear int, endYear int) error {
 	db := cve.InitSearch(path.Join(dbDir, "search.db"))
-	defer Close(db)
 
 	if db == nil {
 		return errors.New("unable to open db")
@@ -248,7 +262,82 @@ func (cve CveInfo) StartUpdate(dbDir string, startYear int, endYear int) error {
 
 	err := cve.getNvdData(dbDir, startYear, endYear, db)
 
+	defer Close(db)
+
 	return err
+}
+
+// GetImageAnnotations ...
+func (cve CveInfo) GetImageAnnotations(repo string) ([]string, error) {
+	dir := path.Join("/tmp/zot", repo)
+	if !dirExists(dir) {
+		cve.Log.Error().Msg("Image Directory not exists")
+
+		return nil, nil
+	}
+
+	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
+
+	if err != nil {
+		if os.IsNotExist(err) {
+			cve.Log.Error().Err(err).Msg("Index.json does not exist")
+
+			return nil, nil
+		}
+		cve.Log.Error().Err(err).Msg("Unable to open index.json")
+
+		return nil, nil
+	}
+
+	var index ispec.Index
+
+	var blobIndex ImageLayers
+
+	var layerIndex ispec.Image
+
+	if err := json.Unmarshal(buf, &index); err != nil {
+		cve.Log.Error().Err(err).Msg("Unable to marshal index.json file")
+
+		return nil, nil
+	}
+
+	var pkgList []string
+
+	for _, m := range index.Manifests {
+		blobFile := strings.Split(m.Digest.String(), ":")[1]
+
+		blobBuf, err := ioutil.ReadFile(path.Join(path.Join(dir, "blobs", "sha256"), blobFile))
+		if err != nil {
+			cve.Log.Error().Err(err).Msg("Unable to open Image Metadata file")
+		}
+
+		if err := json.Unmarshal(blobBuf, &blobIndex); err != nil {
+			cve.Log.Error().Err(err).Msg("Unable to marshal blob index")
+
+			return nil, nil
+		}
+
+		layerFile := strings.Split(blobIndex.Config.Digest, ":")[1]
+
+		blobBuf, err = ioutil.ReadFile(path.Join(path.Join(dir, "blobs/sha256"), layerFile))
+		if err != nil {
+			cve.Log.Error().Err(err).Msg("Unable to open Image Layers file")
+		}
+
+		if err := json.Unmarshal(blobBuf, &layerIndex); err != nil {
+			cve.Log.Error().Err(err).Msg("Unable to marshal blob index")
+
+			return nil, nil
+		}
+
+		fmt.Println(layerIndex.Config.Labels)
+
+		for _, v := range layerIndex.Config.Labels {
+			pkgList = append(pkgList, v)
+		}
+	}
+
+	return pkgList, nil
 }
 
 // GetNvdData ...
@@ -599,4 +688,17 @@ func removeFiles(filePath string) error {
 	}
 
 	return nil
+}
+
+func dirExists(d string) bool {
+	fi, err := os.Stat(d)
+	if err != nil && os.IsNotExist(err) {
+		return false
+	}
+
+	if !fi.IsDir() {
+		return false
+	}
+
+	return true
 }
