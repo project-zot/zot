@@ -1,3 +1,4 @@
+// Package cveinfo ...
 // Referred from https://github.com/kotakanbe/go-cve-dictionary/blob/master/models/models.go
 package cveinfo
 
@@ -5,7 +6,6 @@ import (
 	"archive/zip"
 	"bufio"
 	"encoding/json"
-	"errors"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/anuvu/zot/errors"
 
 	"github.com/anuvu/zot/pkg/log"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -264,7 +266,7 @@ func (cve CveInfo) StartUpdate(dbDir string, startYear int, endYear int) error {
 	db := cve.InitDB(path.Join(dbDir, "search.db"))
 
 	if db == nil {
-		return errors.New("unable to open db")
+		return errors.ErrUnknownDB
 	}
 
 	err := cve.getNvdData(dbDir, startYear, endYear, db)
@@ -357,7 +359,7 @@ func (cve CveInfo) GetImageAnnotations(repo string) (map[string][]string, error)
 }
 
 // GetNvdData ...
-//This function downloads the .meta files, reads the hashcode of json files,
+//This function downloads the .meta files, reads the hashcode of json files.
 //compares it in database and if not found, downloads the JSON file in zip format.
 func (cve CveInfo) getNvdData(filepath string, startYear int, endYear int, db *bbolt.DB) error {
 	var header = "https://nvd.nist.gov/feeds/json/cve/1.1/nvdcve-1.1-"
@@ -434,9 +436,9 @@ func (cve CveInfo) getNvdData(filepath string, startYear int, endYear int, db *b
 	return err
 }
 
-/* Download and saves the file with given filepath */
+/* Download and saves the file with given filepath. */
 func downloadFile(filepath string, url string) error {
-	// nolint (gosec)
+	// nolint:gosec
 	resp, err := http.Get(url)
 	if err != nil || resp.StatusCode != 200 {
 		return err
@@ -454,7 +456,7 @@ func downloadFile(filepath string, url string) error {
 	return err
 }
 
-/* Unzipping the files and storing all the unzipped files */
+/* Unzipping the files and storing all the unzipped files. */
 func unzipFiles(filepath string, filename string) error {
 	// Unzipping zip file
 	reader, err := zip.OpenReader(path.Join(filepath, filename))
@@ -480,7 +482,7 @@ func unzipFiles(filepath string, filename string) error {
 	return err
 }
 
-/*ReadJSON ... Reading the JSON files */
+/*ReadJSON ... Reading the JSON files. */
 func readJSON(filepath string) (NvdJSON, error) {
 	var nvdjson NvdJSON
 
@@ -497,7 +499,7 @@ func readJSON(filepath string) (NvdJSON, error) {
 	return nvdjson, nil
 }
 
-/*ExtractSchema ... Extracting the Schema */
+/*ExtractSchema ... Extracting the Schema. */
 func extractSchema(nvdjson NvdJSON) ([]Schema, []map[string][]CVEId) {
 	var (
 		// This variable stores list of CVEIds and its detailed description
@@ -663,7 +665,7 @@ func extractSchema(nvdjson NvdJSON) ([]Schema, []map[string][]CVEId) {
 			schemas = append(schemas, schema)
 		}
 	}
-	// nolint (wsl)
+
 	mapList = append(mapList, pkgvendors, pkgnames, pkgnamevers)
 
 	return schemas, mapList

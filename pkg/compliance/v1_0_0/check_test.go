@@ -1,4 +1,3 @@
-//nolint (dupl)
 package v1_0_0_test
 
 import (
@@ -18,6 +17,7 @@ import (
 	"gopkg.in/resty.v1"
 )
 
+// nolint:gochecknoglobals
 var (
 	listenAddress = "127.0.0.1"
 )
@@ -41,25 +41,27 @@ func TestWorkflowsOutputJSON(t *testing.T) {
 	})
 }
 
-// start local server on random open port
+// start local server on random open port.
 func startServer() (*api.Controller, string) {
 	portInt, err := freeport.GetFreePort()
 	if err != nil {
 		panic(err)
 	}
+
 	randomPort := fmt.Sprintf("%d", portInt)
-	fmt.Println(randomPort)
 
 	config := api.NewConfig()
 	config.HTTP.Address = listenAddress
 	config.HTTP.Port = randomPort
 	ctrl := api.NewController(config)
 	dir, err := ioutil.TempDir("", "oci-repo-test")
+
 	if err != nil {
 		panic(err)
 	}
 
 	ctrl.Config.Storage.RootDirectory = dir
+
 	go func() {
 		// this blocks
 		if err := ctrl.Run(); err != nil {
@@ -68,19 +70,33 @@ func startServer() (*api.Controller, string) {
 	}()
 
 	baseURL := fmt.Sprintf("http://%s:%s", listenAddress, randomPort)
+
 	for {
 		// poll until ready
 		resp, _ := resty.R().Get(baseURL)
 		if resp.StatusCode() == 404 {
 			break
 		}
+
 		time.Sleep(100 * time.Millisecond)
 	}
+
 	return ctrl, randomPort
 }
 
 func stopServer(ctrl *api.Controller) {
-	ctrl.Server.Shutdown(context.Background())
-	os.RemoveAll(ctrl.Config.Storage.RootDirectory)
-	cveinfo.Close(search.ResConfig.DB)
+	err := ctrl.Server.Shutdown(context.Background())
+	if err != nil {
+		panic(err)
+	}
+
+	err = os.RemoveAll(ctrl.Config.Storage.RootDirectory)
+	if err != nil {
+		panic(err)
+	}
+
+	err = cveinfo.Close(search.ResConfig.DB)
+	if err != nil {
+		panic(err)
+	}
 }

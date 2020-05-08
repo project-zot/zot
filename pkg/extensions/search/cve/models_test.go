@@ -82,14 +82,14 @@ func TestRepeatDownload(t *testing.T) {
 func TestSearchCveId(t *testing.T) {
 	db := cve.InitDB(dbPath)
 
-	result := cve.SearchByCVEId(db, "CVE-1999-0001")
+	result := cve.QueryByCVEId(db, "CVE-1999-0001")
 	if result == nil {
 		t.Fatal("Not able to search CVEID")
 	} else {
 		if result.CveID != "CVE-1999-0001" {
 			t.Fatal("Retrieved Incorrect CVEId")
 		} else {
-			//nolint : lll
+			//nolint:lll
 			if result.VulDesc != "ip_input.c in BSD-derived TCP/IP implementations allows remote attackers to cause a denial of service (crash or hang) via crafted packets." {
 				t.Fatal("Retrieved Incorrect Vulnerability Description")
 			} else if len(result.VulDetails) == 0 {
@@ -103,7 +103,7 @@ func TestSearchCveId(t *testing.T) {
 func TestSearchPkgVendor(t *testing.T) {
 	db := cve.InitDB(dbPath)
 
-	result := cve.SearchByPkgType("NvdPkgVendor", db, "freebsd")
+	result := cve.QueryByPkgType("NvdPkgVendor", db, "freebsd")
 	if result == nil {
 		t.Fatal("Not able to search freebsd package vendor")
 	} else if len(result) == 0 {
@@ -116,7 +116,7 @@ func TestSearchPkgVendor(t *testing.T) {
 func TestSearchPkgName(t *testing.T) {
 	db := cve.InitDB(dbPath)
 
-	result := cve.SearchByPkgType("NvdPkgName", db, "bsd_os")
+	result := cve.QueryByPkgType("NvdPkgName", db, "bsd_os")
 	if result == nil {
 		t.Fatal("Not able to search freebsd package vendor")
 	} else if len(result) == 0 {
@@ -129,7 +129,7 @@ func TestSearchPkgName(t *testing.T) {
 func TestSearchPkgNameVer(t *testing.T) {
 	db := cve.InitDB(dbPath)
 
-	result := cve.SearchByPkgType("NvdPkgNameVer", db, "bsd_os3.1")
+	result := cve.QueryByPkgType("NvdPkgNameVer", db, "bsd_os3.1")
 	if result == nil {
 		t.Fatal("Not able to search freebsd package vendor")
 	} else if len(result) == 0 {
@@ -145,22 +145,22 @@ func TestInvalidSearch(t *testing.T) {
 		defer cveinfo.Close(db)
 		So(db, ShouldNotBeNil)
 
-		result := cve.SearchByPkgType("NvdPkgNameVer", db, "")
+		result := cve.QueryByPkgType("NvdPkgNameVer", db, "")
 		So(len(result), ShouldEqual, 0)
 
-		result = cve.SearchByPkgType("NvdPkgName", db, "")
+		result = cve.QueryByPkgType("NvdPkgName", db, "")
 		So(len(result), ShouldEqual, 0)
 
-		result = cve.SearchByPkgType("NvdPkgName", db, "")
+		result = cve.QueryByPkgType("NvdPkgName", db, "")
 		So(len(result), ShouldEqual, 0)
 
-		result = cve.SearchByPkgType("NvdInvalid", db, "freebsd")
+		result = cve.QueryByPkgType("NvdInvalid", db, "freebsd")
 		So(len(result), ShouldEqual, 0)
 
-		result = cve.SearchByPkgType("", db, "freebsd")
+		result = cve.QueryByPkgType("", db, "freebsd")
 		So(len(result), ShouldEqual, 0)
 
-		cveresult := cve.SearchByCVEId(db, "")
+		cveresult := cve.QueryByCVEId(db, "")
 		So(len(cveresult.VulDetails), ShouldEqual, 0)
 	})
 }
@@ -173,7 +173,7 @@ func makeHtpasswdFile() string {
 
 	// bcrypt(username="test", passwd="test")
 	content := []byte("test:$2y$05$hlbSXDp6hzDLu6VwACS39ORvVRpr3OMR4RlJ31jtlaOEGnPjKZI1m\n")
-	if err := ioutil.WriteFile(f.Name(), content, 0644); err != nil {
+	if err := ioutil.WriteFile(f.Name(), content, 0600); err != nil {
 		panic(err)
 	}
 
@@ -218,7 +218,7 @@ func TestServerResponse(t *testing.T) {
 		}()
 
 		// Test PkgVendor, PkgName and PkgNameVer
-		// nolint (lll)
+		// nolint:lll
 		resp, _ := resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={PkgVendor(text:\"openbsd\"){name}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -228,7 +228,6 @@ func TestServerResponse(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(cveids.Data.List), ShouldNotBeZeroValue)
 
-		// nolint (lll)
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={PkgName(text:\"bsd_os\"){name}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -237,7 +236,7 @@ func TestServerResponse(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(cveids.Data.List), ShouldNotBeZeroValue)
 
-		// nolint (lll)
+		// nolint:lll
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={PkgNameVer(text:\"bsd_os3.1\"){name}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -247,7 +246,7 @@ func TestServerResponse(t *testing.T) {
 		So(len(cveids.Data.List), ShouldNotBeZeroValue)
 
 		// Test CveId
-		// nolint (lll)
+		// nolint:lll
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={CveIdSearch(text:\"CVE-1999-0001\"){name%20VulDesc%20VulDetails{PkgVendor%20PkgName%20PkgVersion}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -258,7 +257,7 @@ func TestServerResponse(t *testing.T) {
 		So(cveresult.CveData.CveDetail.Name, ShouldEqual, "CVE-1999-0001")
 		So(len(cveresult.CveData.CveDetail.VulDetails), ShouldNotEqual, 0)
 
-		// Testing Invalid Dataß
+		// Testing Invalid Data
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={PkgVendor(text:\"\"){name}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -267,7 +266,6 @@ func TestServerResponse(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(cveids.Data.List), ShouldBeZeroValue)
 
-		// nolint (lll)
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={PkgName(text:\"\"){name}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -276,7 +274,6 @@ func TestServerResponse(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(cveids.Data.List), ShouldBeZeroValue)
 
-		// nolint (lll)
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={PkgNameVer(text:\"\"){name}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -286,7 +283,7 @@ func TestServerResponse(t *testing.T) {
 		So(len(cveids.Data.List), ShouldBeZeroValue)
 
 		// Test CveId
-		// nolint (lll)
+		// nolint:lll
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={CveIdSearch(text:\"\"){name%20VulDesc%20VulDetails{PkgVendor%20PkgName%20PkgVersion}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -296,7 +293,7 @@ func TestServerResponse(t *testing.T) {
 		So(len(cveresult.CveData.CveDetail.VulDetails), ShouldEqual, 0)
 
 		// Test Invalid URL
-		// nolint (lll)
+		// nolint:lll
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={CveIdearch(text:\"\"){name%20VulDesc%20VulDetails{PkgVendor%20PkgName%20PkgVersion}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldNotEqual, 200)

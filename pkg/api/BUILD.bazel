@@ -43,6 +43,7 @@ go_test(
     embed = [":go_default_library"],
     race = "on",
     deps = [
+        "//errors:go_default_library",
         "//pkg/extensions/search:go_default_library",
         "//pkg/extensions/search/cve:go_default_library",
         "@com_github_chartmuseum_auth//:go_default_library",

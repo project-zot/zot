@@ -22,7 +22,7 @@ import (
 	"strings"
 
 	gqlHandler "github.com/99designs/gqlgen/graphql/handler"
-	_ "github.com/anuvu/zot/docs" // nolint (golint) - as required by swaggo
+	_ "github.com/anuvu/zot/docs" // as required by swaggo
 	"github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/extensions/search"
 	"github.com/anuvu/zot/pkg/log"
@@ -52,7 +52,7 @@ func NewRouteHandler(c *Controller) *RouteHandler {
 	return rh
 }
 
-// blobRLockWrapper calls the real handler with read-lock held
+// blobRLockWrapper calls the real handler with read-lock held.
 func (rh *RouteHandler) blobRLockWrapper(f func(w http.ResponseWriter,
 	r *http.Request)) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -62,7 +62,7 @@ func (rh *RouteHandler) blobRLockWrapper(f func(w http.ResponseWriter,
 	}
 }
 
-// blobLockWrapper calls the real handler with write-lock held
+// blobLockWrapper calls the real handler with write-lock held.
 func (rh *RouteHandler) blobLockWrapper(f func(w http.ResponseWriter,
 	r *http.Request)) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -126,7 +126,7 @@ func (rh *RouteHandler) SetupRoutes() {
 // @Router 	/v2/ [get]
 // @Accept  json
 // @Produce json
-// @Success 200 {string} string	"ok"
+// @Success 200 {string} string	"ok".
 func (rh *RouteHandler) CheckVersionSupport(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set(DistAPIVersion, "registry/2.0")
 	// NOTE: compatibility workaround - return this header in "allowed-read" mode to allow for clients to
@@ -160,7 +160,7 @@ type ImageTags struct {
 // @Param 	last	 	 query 	 string 		true				"last tag value for pagination"
 // @Success 200 {object} 	api.ImageTags
 // @Failure 404 {string} 	string 				"not found"
-// @Failure 400 {string} 	string 				"bad request"
+// @Failure 400 {string} 	string 				"bad request".
 func (rh *RouteHandler) ListTags(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
@@ -269,7 +269,7 @@ func (rh *RouteHandler) ListTags(w http.ResponseWriter, r *http.Request) {
 // @Success 200 {string} string	"ok"
 // @Header  200 {object} api.DistContentDigestKey
 // @Failure 404 {string} string "not found"
-// @Failure 500 {string} string "internal server error"
+// @Failure 500 {string} string "internal server error".
 func (rh *RouteHandler) CheckManifest(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
@@ -308,7 +308,7 @@ func (rh *RouteHandler) CheckManifest(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// NOTE: https://github.com/swaggo/swag/issues/387
+// NOTE: https://github.com/swaggo/swag/issues/387.
 type ImageManifest struct {
 	ispec.Manifest
 }
@@ -324,7 +324,7 @@ type ImageManifest struct {
 // @Header  200 {object} api.DistContentDigestKey
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
-// @Router /v2/{name}/manifests/{reference} [get]
+// @Router /v2/{name}/manifests/{reference} [get].
 func (rh *RouteHandler) GetManifest(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
@@ -376,7 +376,7 @@ func (rh *RouteHandler) GetManifest(w http.ResponseWriter, r *http.Request) {
 // @Failure 400 {string} string "bad request"
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
-// @Router /v2/{name}/manifests/{reference} [put]
+// @Router /v2/{name}/manifests/{reference} [put].
 func (rh *RouteHandler) UpdateManifest(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
@@ -442,7 +442,7 @@ func (rh *RouteHandler) UpdateManifest(w http.ResponseWriter, r *http.Request) {
 // @Param   name     			path    string     true        "repository name"
 // @Param   reference     path    string     true        "image reference or digest"
 // @Success 200 {string} string	"ok"
-// @Router /v2/{name}/manifests/{reference} [delete]
+// @Router /v2/{name}/manifests/{reference} [delete].
 func (rh *RouteHandler) DeleteManifest(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
@@ -490,7 +490,7 @@ func (rh *RouteHandler) DeleteManifest(w http.ResponseWriter, r *http.Request) {
 // @Param   digest     	path    string     true        "blob/layer digest"
 // @Success 200 {object} api.ImageManifest
 // @Header  200 {object} api.DistContentDigestKey
-// @Router /v2/{name}/blobs/{digest} [head]
+// @Router /v2/{name}/blobs/{digest} [head].
 func (rh *RouteHandler) CheckBlob(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
@@ -544,7 +544,7 @@ func (rh *RouteHandler) CheckBlob(w http.ResponseWriter, r *http.Request) {
 // @Param   digest     	path    string     true        "blob/layer digest"
 // @Header  200 {object} api.DistContentDigestKey
 // @Success 200 {object} api.ImageManifest
-// @Router /v2/{name}/blobs/{digest} [get]
+// @Router /v2/{name}/blobs/{digest} [get].
 func (rh *RouteHandler) GetBlob(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
@@ -593,7 +593,7 @@ func (rh *RouteHandler) GetBlob(w http.ResponseWriter, r *http.Request) {
 // @Param   name				path    string     true        "repository name"
 // @Param   digest     	path    string     true        "blob/layer digest"
 // @Success 202 {string} string "accepted"
-// @Router /v2/{name}/blobs/{digest} [delete]
+// @Router /v2/{name}/blobs/{digest} [delete].
 func (rh *RouteHandler) DeleteBlob(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
@@ -640,7 +640,7 @@ func (rh *RouteHandler) DeleteBlob(w http.ResponseWriter, r *http.Request) {
 // @Header  202 {string} Range "bytes=0-0"
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
-// @Router /v2/{name}/blobs/uploads [post]
+// @Router /v2/{name}/blobs/uploads [post].
 func (rh *RouteHandler) CreateBlobUpload(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
@@ -745,7 +745,7 @@ func (rh *RouteHandler) CreateBlobUpload(w http.ResponseWriter, r *http.Request)
 // @Header  202 {string} Range "bytes=0-128"
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
-// @Router /v2/{name}/blobs/uploads/{session_id} [get]
+// @Router /v2/{name}/blobs/uploads/{session_id} [get].
 func (rh *RouteHandler) GetBlobUpload(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
@@ -804,7 +804,7 @@ func (rh *RouteHandler) GetBlobUpload(w http.ResponseWriter, r *http.Request) {
 // @Failure 404 {string} string "not found"
 // @Failure 416 {string} string "range not satisfiable"
 // @Failure 500 {string} string "internal server error"
-// @Router /v2/{name}/blobs/uploads/{session_id} [patch]
+// @Router /v2/{name}/blobs/uploads/{session_id} [patch].
 func (rh *RouteHandler) PatchBlobUpload(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
@@ -902,7 +902,7 @@ func (rh *RouteHandler) PatchBlobUpload(w http.ResponseWriter, r *http.Request) 
 // @Header  200 {object} api.DistContentDigestKey
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
-// @Router /v2/{name}/blobs/uploads/{session_id} [put]
+// @Router /v2/{name}/blobs/uploads/{session_id} [put].
 func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request) {
 	rh.c.Log.Info().Interface("headers", r.Header).Msg("HEADERS")
 	vars := mux.Vars(r)
@@ -1027,7 +1027,7 @@ finish:
 // @Success 200 {string} string "ok"
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
-// @Router /v2/{name}/blobs/uploads/{session_id} [delete]
+// @Router /v2/{name}/blobs/uploads/{session_id} [delete].
 func (rh *RouteHandler) DeleteBlobUpload(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
@@ -1073,7 +1073,7 @@ type RepositoryList struct {
 // @Produce json
 // @Success 200 {object} 	api.RepositoryList
 // @Failure 500 {string} string "internal server error"
-// @Router /v2/_catalog [get]
+// @Router /v2/_catalog [get].
 func (rh *RouteHandler) ListRepositories(w http.ResponseWriter, r *http.Request) {
 	repos, err := rh.c.ImageStore.GetRepositories()
 	if err != nil {

@@ -69,22 +69,22 @@ func NewImageStore(rootDir string, gc bool, dedupe bool, log zlog.Logger) *Image
 	return is
 }
 
-// RLock read-lock
+// RLock read-lock.
 func (is *ImageStore) RLock() {
 	is.lock.RLock()
 }
 
-// RUnlock read-unlock
+// RUnlock read-unlock.
 func (is *ImageStore) RUnlock() {
 	is.lock.RUnlock()
 }
 
-// Lock write-lock
+// Lock write-lock.
 func (is *ImageStore) Lock() {
 	is.lock.Lock()
 }
 
-// Unlock write-unlock
+// Unlock write-unlock.
 func (is *ImageStore) Unlock() {
 	is.lock.Unlock()
 }
@@ -112,7 +112,7 @@ func (is *ImageStore) InitRepo(name string) error {
 			is.log.Panic().Err(err).Msg("unable to marshal JSON")
 		}
 
-		if err := ioutil.WriteFile(ilPath, buf, 0644); err != nil {
+		if err := ioutil.WriteFile(ilPath, buf, 0600); err != nil {
 			is.log.Error().Err(err).Str("file", ilPath).Msg("unable to write file")
 			return err
 		}
@@ -129,7 +129,7 @@ func (is *ImageStore) InitRepo(name string) error {
 			is.log.Panic().Err(err).Msg("unable to marshal JSON")
 		}
 
-		if err := ioutil.WriteFile(indexPath, buf, 0644); err != nil {
+		if err := ioutil.WriteFile(indexPath, buf, 0600); err != nil {
 			is.log.Error().Err(err).Str("file", indexPath).Msg("unable to write file")
 			return err
 		}
@@ -153,7 +153,7 @@ func (is *ImageStore) ValidateRepo(name string) (bool, error) {
 		is.log.Error().Err(err).Str("dir", dir).Msg("unable to read directory")
 		return false, errors.ErrRepoNotFound
 	}
-	// nolint (gomnd)
+	// nolint:gomnd
 	if len(files) < 3 {
 		return false, errors.ErrRepoBadVersion
 	}
@@ -454,7 +454,7 @@ func (is *ImageStore) PutImageManifest(repo string, reference string, mediaType 
 	ensureDir(dir, is.log)
 	file := path.Join(dir, mDigest.Encoded())
 
-	if err := ioutil.WriteFile(file, body, 0644); err != nil {
+	if err := ioutil.WriteFile(file, body, 0600); err != nil {
 		is.log.Error().Err(err).Str("file", file).Msg("unable to write")
 		return "", err
 	}
@@ -470,7 +470,7 @@ func (is *ImageStore) PutImageManifest(repo string, reference string, mediaType 
 		return "", err
 	}
 
-	if err := ioutil.WriteFile(file, buf, 0644); err != nil {
+	if err := ioutil.WriteFile(file, buf, 0600); err != nil {
 		is.log.Error().Err(err).Str("file", file).Msg("unable to write")
 		return "", err
 	}
@@ -547,7 +547,7 @@ func (is *ImageStore) DeleteImageManifest(repo string, reference string) error {
 		return err
 	}
 
-	if err := ioutil.WriteFile(file, buf, 0644); err != nil {
+	if err := ioutil.WriteFile(file, buf, 0600); err != nil {
 		return err
 	}
 
@@ -762,7 +762,7 @@ func (is *ImageStore) FinishBlobUpload(repo string, uuid string, body io.Reader,
 	return nil
 }
 
-// FullBlobUpload handles a full blob upload, and no partial session is created
+// FullBlobUpload handles a full blob upload, and no partial session is created.
 func (is *ImageStore) FullBlobUpload(repo string, body io.Reader, digest string) (string, int64, error) {
 	if err := is.InitRepo(repo); err != nil {
 		return "", -1, err
@@ -827,11 +827,14 @@ func (is *ImageStore) FullBlobUpload(repo string, body io.Reader, digest string)
 	return uuid, n, nil
 }
 
-// nolint (interfacer)
+// nolint:interfacer
 func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dst string) error {
 retry:
 	is.log.Debug().Str("src", src).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe: ENTER")
+
 	dstRecord, err := is.cache.GetBlob(dstDigest.String())
+
+	// nolint:goerr113
 	if err != nil && err != errors.ErrCacheMiss {
 		is.log.Error().Err(err).Str("blobPath", dst).Msg("dedupe: unable to lookup blob record")
 		return err
@@ -840,14 +843,17 @@ retry:
 	if dstRecord == "" {
 		if err := is.cache.PutBlob(dstDigest.String(), dst); err != nil {
 			is.log.Error().Err(err).Str("blobPath", dst).Msg("dedupe: unable to insert blob record")
+
 			return err
 		}
 
 		// move the blob from uploads to final dest
 		if err := os.Rename(src, dst); err != nil {
 			is.log.Error().Err(err).Str("src", src).Str("dst", dst).Msg("dedupe: unable to rename blob")
+
 			return err
 		}
+
 		is.log.Debug().Str("src", src).Str("dst", dst).Msg("dedupe: rename")
 	} else {
 		dstRecord = path.Join(is.rootDir, dstRecord)
@@ -857,7 +863,9 @@ retry:
 			is.log.Error().Err(err).Str("blobPath", dstRecord).Msg("dedupe: unable to stat")
 			// the actual blob on disk may have been removed by GC, so sync the cache
 			if err := is.cache.DeleteBlob(dstDigest.String(), dst); err != nil {
+				// nolint:lll
 				is.log.Error().Err(err).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe: unable to delete blob record")
+
 				return err
 			}
 			goto retry
@@ -865,11 +873,13 @@ retry:
 		dstFi, err := os.Stat(dst)
 		if err != nil && !os.IsNotExist(err) {
 			is.log.Error().Err(err).Str("blobPath", dstRecord).Msg("dedupe: unable to stat")
+
 			return err
 		}
 		if !os.SameFile(dstFi, dstRecordFi) {
 			if err := os.Link(dstRecord, dst); err != nil {
 				is.log.Error().Err(err).Str("blobPath", dst).Str("link", dstRecord).Msg("dedupe: unable to hard link")
+
 				return err
 			}
 		}
@@ -921,7 +931,7 @@ func (is *ImageStore) CheckBlob(repo string, digest string,
 
 // GetBlob returns a stream to read the blob.
 // FIXME: we should probably parse the manifest and use (digest, mediaType) as a
-// blob selector instead of directly downloading the blob
+// blob selector instead of directly downloading the blob.
 func (is *ImageStore) GetBlob(repo string, digest string, mediaType string) (io.Reader, int64, error) {
 	d, err := godigest.Parse(digest)
 	if err != nil {
@@ -980,7 +990,7 @@ func (is *ImageStore) DeleteBlob(repo string, digest string) error {
 // garbage collection
 
 // Scrub will clean up all unreferenced blobs.
-// TODO
+// TODO.
 func Scrub(dir string, fix bool) error {
 	return nil
 }

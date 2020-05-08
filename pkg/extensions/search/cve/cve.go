@@ -3,7 +3,8 @@ package cveinfo
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
+
+	"github.com/anuvu/zot/errors"
 
 	"go.etcd.io/bbolt"
 )
@@ -21,7 +22,7 @@ const (
 	NvdmetaDB = "NvdMeta"
 )
 
-/*Connect ... Create a database connection to */
+/*Connect ... Create a database connection to. */
 func (cve CveInfo) Connect(dbPath string) *bbolt.DB {
 	// Opening the connection on DB on given port
 	db, err := bbolt.Open(dbPath, 0600, nil)
@@ -34,7 +35,7 @@ func (cve CveInfo) Connect(dbPath string) *bbolt.DB {
 }
 
 // Close ...
-// nolint (interfacer)
+// nolint:interfacer
 func Close(db *bbolt.DB) error {
 	err := db.Close()
 	return err
@@ -98,7 +99,7 @@ func (cve CveInfo) updateNVD(schemas []Schema, mapList []map[string][]CVEId, db 
 	return err
 }
 
-/*UpdateNVD ... Updating the NVD database */
+/*UpdateNVD ... Updating the NVD database. */
 func (cve CveInfo) updateNVDPkg(name string, pkgList map[string][]CVEId, db *bbolt.DB) error {
 	var dbcveidlist []CVEId
 
@@ -165,7 +166,7 @@ func (cve CveInfo) updateNVDPkg(name string, pkgList map[string][]CVEId, db *bbo
 	return err
 }
 
-/* Updating the NVD Meta Database */
+/* Updating the NVD Meta Database. */
 func (cve CveInfo) updateNVDMeta(filepath string, hashcode string, db *bbolt.DB) error {
 	err := db.Update(func(tx *bbolt.Tx) error {
 		b := tx.Bucket([]byte("NvdMeta"))
@@ -183,7 +184,7 @@ func (cve CveInfo) updateNVDMeta(filepath string, hashcode string, db *bbolt.DB)
 	return err
 }
 
-// Method to check if file content is already present in DB
+// Method to check if file content is already present in DB.
 func (cve CveInfo) isPresent(filename string, hashcode string, db *bbolt.DB) bool {
 	var v []byte
 
@@ -210,7 +211,7 @@ func (cve CveInfo) isPresent(filename string, hashcode string, db *bbolt.DB) boo
 }
 
 // SearchByCVEId ...
-func (cve CveInfo) SearchByCVEId(db *bbolt.DB, key string) *Schema {
+func (cve CveInfo) QueryByCVEId(db *bbolt.DB, key string) *Schema {
 	var schema Schema
 
 	err := db.View(func(tx *bbolt.Tx) error {
@@ -237,7 +238,7 @@ func (cve CveInfo) SearchByCVEId(db *bbolt.DB, key string) *Schema {
 }
 
 // SearchByPkgType ...
-func (cve CveInfo) SearchByPkgType(name string, db *bbolt.DB, key string) []CVEId {
+func (cve CveInfo) QueryByPkgType(name string, db *bbolt.DB, key string) []CVEId {
 	var cveidlist []CVEId
 
 	err := db.View(func(tx *bbolt.Tx) error {
@@ -256,7 +257,7 @@ func (cve CveInfo) SearchByPkgType(name string, db *bbolt.DB, key string) []CVEI
 			return nil
 		}
 		cveidlist = []CVEId{}
-		return errors.New("invalid bucket name")
+		return errors.ErrInvalidBucket
 	})
 	if err != nil {
 		cve.Log.Error().Err(err).Msg("Unable to search given package")
