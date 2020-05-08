@@ -20,7 +20,8 @@ type Resolver struct {
 	ImgStore *storage.ImageStore
 }
 
-// nolint (gochecknoglobals)
+// ResConfig ...
+// nolint:gochecknoglobals
 var ResConfig *Resolver
 
 // Query ...
@@ -44,7 +45,7 @@ func GetResolverConfig(dir string, log log.Logger, imgstorage *storage.ImageStor
 
 func (r *queryResolver) CveIDSearch(ctx context.Context, text string) (*CVEIdResult, error) {
 	cveidresult := &CVEIdResult{}
-	ans := r.Cve.SearchByCVEId(r.DB, text)
+	ans := r.Cve.QueryByCVEId(r.DB, text)
 	cveidresult.Name = &ans.CveID
 	cveidresult.VulDesc = &ans.VulDesc
 	cveidresult.VulDetails = make([]*VulDetail, len(ans.VulDetails))
@@ -63,7 +64,7 @@ func (r *queryResolver) CveIDSearch(ctx context.Context, text string) (*CVEIdRes
 }
 
 func (r *queryResolver) PkgVendor(ctx context.Context, text string) ([]*Cveid, error) {
-	ans := r.Cve.SearchByPkgType("NvdPkgVendor", r.DB, text)
+	ans := r.Cve.QueryByPkgType("NvdPkgVendor", r.DB, text)
 	cveids := []*Cveid{}
 
 	for _, cveid := range ans {
@@ -76,7 +77,7 @@ func (r *queryResolver) PkgVendor(ctx context.Context, text string) ([]*Cveid, e
 }
 
 func (r *queryResolver) PkgName(ctx context.Context, text string) ([]*Cveid, error) {
-	ans := r.Cve.SearchByPkgType("NvdPkgName", r.DB, text)
+	ans := r.Cve.QueryByPkgType("NvdPkgName", r.DB, text)
 	cveids := []*Cveid{}
 
 	for _, cveid := range ans {
@@ -89,7 +90,7 @@ func (r *queryResolver) PkgName(ctx context.Context, text string) ([]*Cveid, err
 }
 
 func (r *queryResolver) PkgNameVer(ctx context.Context, text string) ([]*Cveid, error) {
-	ans := r.Cve.SearchByPkgType("NvdPkgNameVer", r.DB, text)
+	ans := r.Cve.QueryByPkgType("NvdPkgNameVer", r.DB, text)
 	cveids := []*Cveid{}
 
 	for _, cveid := range ans {
@@ -122,7 +123,7 @@ func (r *queryResolver) ImageCveSearch(ctx context.Context, repo string) ([]*Img
 		for _, pkg := range pkgList {
 			// Getting list of CveIDs corresponding to given package name
 			// Need to change this method calling for package version
-			ans := r.Cve.SearchByPkgType("NvdPkgName", r.DB, pkg)
+			ans := r.Cve.QueryByPkgType("NvdPkgName", r.DB, pkg)
 
 			// Traversing through list of CveIds and appending it to result
 			for _, cveid := range ans {
@@ -155,7 +156,7 @@ func (r *queryResolver) ImageTagCveSearch(ctx context.Context, repo string, tag 
 	for imgTag, pkgList := range imgList {
 		if imgTag == tag {
 			for _, pkg := range pkgList {
-				ans := r.Cve.SearchByPkgType("NvdPkgNameVer", r.DB, pkg)
+				ans := r.Cve.QueryByPkgType("NvdPkgNameVer", r.DB, pkg)
 
 				for _, cveid := range ans {
 					name := cveid.Name
@@ -173,7 +174,7 @@ func (r *queryResolver) ImageTagCveSearch(ctx context.Context, repo string, tag 
 	return cveids, nil
 }
 
-// Not Tested Yet ... O(n.m+l.k) Also needed improvement
+// Not Tested Yet.
 func (r *queryResolver) CveImageSearch(ctx context.Context, text string) ([]*CveImgResult, error) {
 	repoList, err := r.ImgStore.GetRepositories()
 
@@ -186,7 +187,7 @@ func (r *queryResolver) CveImageSearch(ctx context.Context, text string) ([]*Cve
 	cvepkgSet := make(map[string]struct{})
 
 	// Returning the CveDetails for given CveId
-	cveDetails := r.Cve.SearchByCVEId(r.DB, text)
+	cveDetails := r.Cve.QueryByCVEId(r.DB, text)
 
 	// Maintaining a Set of packages in Cveid for O(1) search
 	for _, vulDetail := range cveDetails.VulDetails {

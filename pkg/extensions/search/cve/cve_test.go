@@ -12,7 +12,7 @@ import (
 
 const dbName = "NvdJSON"
 
-// nolint (gochecknoglobals)
+// nolint:gochecknoglobals
 var (
 	dbPath = ""
 	dbDir  = ""

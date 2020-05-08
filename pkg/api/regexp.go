@@ -2,7 +2,7 @@ package api
 
 import "regexp"
 
-// nolint (gochecknoglobals)
+// nolint:gochecknoglobals
 var (
 	// alphaNumericRegexp defines the alpha numeric atom, typically a
 	// component of names. This only allows lower case characters and digits.
@@ -29,7 +29,7 @@ var (
 )
 
 // match compiles the string to a regular expression.
-// nolint (gochecknoglobals)
+// nolint:gochecknoglobals
 var match = regexp.MustCompile
 
 // literal compiles s into a literal regular expression, escaping any regexp
