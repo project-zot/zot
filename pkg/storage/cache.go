@@ -18,7 +18,7 @@ type Cache struct {
 	log zlog.Logger
 }
 
-// Blob is a blob record
+// Blob is a blob record.
 type Blob struct {
 	Path string
 }
