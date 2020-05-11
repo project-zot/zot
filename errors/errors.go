@@ -24,4 +24,6 @@ var (
 	ErrCacheRootBucket     = errors.New("cache: unable to create/update root bucket")
 	ErrCacheNoBucket       = errors.New("cache: unable to find bucket")
 	ErrCacheMiss           = errors.New("cache: miss")
+	ErrRequireCred         = errors.New("ldap: bind credentials required")
+	ErrInvalidCred         = errors.New("ldap: invalid credentials")
 )

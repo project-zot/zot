@@ -9,7 +9,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// Logger extends zerolog's Logger
+// Logger extends zerolog's Logger.
 type Logger struct {
 	zerolog.Logger
 }

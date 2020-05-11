@@ -12,7 +12,7 @@ import (
 )
 
 // metadataConfig reports metadata after parsing, which we use to track
-// errors
+// errors.
 func metadataConfig(md *mapstructure.Metadata) viper.DecoderConfigOption {
 	return func(c *mapstructure.DecoderConfig) {
 		c.Metadata = md

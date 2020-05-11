@@ -71,12 +71,13 @@ func bearerAuthHandler(c *Controller) mux.MiddlewareFunc {
 	}
 }
 
-// nolint (gocyclo) - we use closure making this a complex subroutine
+// nolint:gocyclo  // we use closure making this a complex subroutine
 func basicAuthHandler(c *Controller) mux.MiddlewareFunc {
 	realm := c.Config.HTTP.Realm
 	if realm == "" {
 		realm = "Authorization Required"
 	}
+
 	realm = "Basic realm=" + strconv.Quote(realm)
 
 	// no password based authN, if neither LDAP nor HTTP BASIC is enabled
@@ -97,7 +98,9 @@ func basicAuthHandler(c *Controller) mux.MiddlewareFunc {
 	}
 
 	credMap := make(map[string]string)
+
 	delay := c.Config.HTTP.Auth.FailDelay
+
 	var ldapClient *LDAPClient
 
 	if c.Config.HTTP.Auth != nil {
@@ -117,27 +120,36 @@ func basicAuthHandler(c *Controller) mux.MiddlewareFunc {
 				Log:                c.Log,
 				SubtreeSearch:      l.SubtreeSearch,
 			}
+
 			if c.Config.HTTP.Auth.LDAP.CACert != "" {
 				caCert, err := ioutil.ReadFile(c.Config.HTTP.Auth.LDAP.CACert)
+
 				if err != nil {
 					panic(err)
 				}
+
 				caCertPool := x509.NewCertPool()
+
 				if !caCertPool.AppendCertsFromPEM(caCert) {
 					panic(errors.ErrBadCACert)
 				}
+
 				ldapClient.ClientCAs = caCertPool
 			} else {
 				// default to system cert pool
 				caCertPool, err := x509.SystemCertPool()
+
 				if err != nil {
 					panic(errors.ErrBadCACert)
 				}
+
 				ldapClient.ClientCAs = caCertPool
 			}
 		}
+
 		if c.Config.HTTP.Auth.HTPasswd.Path != "" {
 			f, err := os.Open(c.Config.HTTP.Auth.HTPasswd.Path)
+
 			if err != nil {
 				panic(err)
 			}
@@ -170,6 +182,7 @@ func basicAuthHandler(c *Controller) mux.MiddlewareFunc {
 			}
 
 			s := strings.SplitN(basicAuth, " ", 2)
+
 			if len(s) != 2 || strings.ToLower(s[0]) != "basic" {
 				authFail(w, realm, delay)
 				return
@@ -182,6 +195,7 @@ func basicAuthHandler(c *Controller) mux.MiddlewareFunc {
 			}
 
 			pair := strings.SplitN(string(b), ":", 2)
+			// nolint:gomnd
 			if len(pair) != 2 {
 				authFail(w, realm, delay)
 				return
@@ -211,7 +225,6 @@ func basicAuthHandler(c *Controller) mux.MiddlewareFunc {
 			}
 
 			authFail(w, realm, delay)
-			return
 		})
 	}
 }

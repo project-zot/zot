@@ -1,5 +1,5 @@
-//nolint (dupl)
-package v1_0_0
+// nolint: dupl
+package v1_0_0 // nolint:stylecheck,golint
 
 import (
 	"bytes"
@@ -14,7 +14,7 @@ import (
 	"github.com/anuvu/zot/pkg/compliance"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	. "github.com/smartystreets/goconvey/convey"
+	. "github.com/smartystreets/goconvey/convey" // nolint:golint,stylecheck
 	"github.com/smartystreets/goconvey/convey/reporting"
 	"gopkg.in/resty.v1"
 )
@@ -29,8 +29,8 @@ func Location(baseURL string, resp *resty.Response) string {
 	if loc[0] == '/' {
 		return baseURL + loc
 	}
-	return loc
 
+	return loc
 }
 
 func CheckWorkflows(t *testing.T, config *compliance.Config) {
@@ -40,6 +40,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 
 	if config.OutputJSON {
 		outputJSONEnter()
+
 		defer outputJSONExit()
 	}
 
@@ -688,6 +689,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 	})
 }
 
+// nolint: gochecknoglobals
 var (
 	old  *os.File
 	r    *os.File
@@ -709,7 +711,12 @@ func outputJSONEnter() {
 	// copy the output in a separate goroutine so printing can't block indefinitely
 	go func() {
 		var buf bytes.Buffer
-		io.Copy(&buf, r)
+
+		_, err := io.Copy(&buf, r)
+		if err != nil {
+			panic(err)
+		}
+
 		outC <- buf.String()
 	}()
 }
@@ -717,7 +724,9 @@ func outputJSONEnter() {
 func outputJSONExit() {
 	// back to normal state
 	w.Close()
+
 	os.Stdout = old // restoring the real stdout
+
 	out := <-outC
 
 	// The output of JSON is combined with regular output, so we look for the
@@ -734,13 +743,16 @@ func outputJSONExit() {
 
 func validateMinifyRawJSON(rawJSON string) string {
 	var j interface{}
+
 	err := json.Unmarshal([]byte(rawJSON), &j)
 	if err != nil {
 		panic(err)
 	}
+
 	rawJSONBytesMinified, err := json.Marshal(j)
 	if err != nil {
 		panic(err)
 	}
+
 	return string(rawJSONBytesMinified)
 }

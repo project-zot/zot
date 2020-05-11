@@ -55,12 +55,12 @@ func (lc *LDAPClient) Connect() error {
 			// Reconnect with TLS
 			if !lc.SkipTLS {
 				config := &tls.Config{
-					InsecureSkipVerify: lc.InsecureSkipVerify, // nolint (gosec): InsecureSkipVerify is not true by default
+					InsecureSkipVerify: lc.InsecureSkipVerify, // nolint: gosec // InsecureSkipVerify is not true by default
 					RootCAs:            lc.ClientCAs,
 				}
 				if lc.ClientCertificates != nil && len(lc.ClientCertificates) > 0 {
 					config.Certificates = lc.ClientCertificates
-					config.BuildNameToCertificate()
+					config.BuildNameToCertificate() // nolint: staticcheck
 				}
 
 				err = l.StartTLS(config)
@@ -72,13 +72,13 @@ func (lc *LDAPClient) Connect() error {
 			}
 		} else {
 			config := &tls.Config{
-				InsecureSkipVerify: lc.InsecureSkipVerify, // nolint (gosec): InsecureSkipVerify is not true by default
+				InsecureSkipVerify: lc.InsecureSkipVerify, // nolint: gosec // InsecureSkipVerify is not true by default
 				ServerName:         lc.ServerName,
 				RootCAs:            lc.ClientCAs,
 			}
 			if lc.ClientCertificates != nil && len(lc.ClientCertificates) > 0 {
 				config.Certificates = lc.ClientCertificates
-				config.BuildNameToCertificate()
+				config.BuildNameToCertificate() // nolint: staticcheck
 			}
 			l, err = goldap.DialTLS("tcp", address, config)
 			if err != nil {
