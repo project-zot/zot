@@ -14,12 +14,12 @@ type CVEID {
      name: String
 }
 
-type ImgCveResult {
+type ImgCVEResult {
      tag: String 
      CVEIdList: [CVEID]
 }
 
-type CveImgResult {
+type CVEImgResult {
      name: String 
      tags: [String]
 }
@@ -29,10 +29,10 @@ type Query {
   PkgName(text: String!): [CVEID!]!
   PkgNameVer(text: String!): [CVEID!]!
   PkgVendor(text: String!): [CVEID!]!
-  CveIdSearch(text: String!): CVEIdResult!
-  ImageCveSearch(repo: String!) :[ImgCveResult]! 
-  ImageTagCveSearch(repo: String!, tag: String!) :[CVEID!]!
-  CveImageSearch(text: String!) :[CveImgResult]
+  CVEIdSearch(text: String!): CVEIdResult!
+  CVEListForImage(repo: String!) :[ImgCVEResult]! 
+  CVEListForImageTag(repo: String!, tag: String!) :[CVEID!]!
+  ImageListForCVE(text: String!) :[CVEImgResult]
 }
 
 type Repository {
