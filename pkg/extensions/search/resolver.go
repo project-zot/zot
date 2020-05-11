@@ -43,7 +43,7 @@ func GetResolverConfig(dir string, log log.Logger, imgstorage *storage.ImageStor
 	return Config{Resolvers: ResConfig}
 }
 
-func (r *queryResolver) CveIDSearch(ctx context.Context, text string) (*CVEIdResult, error) {
+func (r *queryResolver) CVEIdSearch(ctx context.Context, text string) (*CVEIdResult, error) {
 	cveidresult := &CVEIdResult{}
 	ans := r.Cve.QueryByCVEId(r.DB, text)
 	cveidresult.Name = &ans.CveID
@@ -102,8 +102,8 @@ func (r *queryResolver) PkgNameVer(ctx context.Context, text string) ([]*Cveid, 
 	return cveids, nil
 }
 
-func (r *queryResolver) ImageCveSearch(ctx context.Context, repo string) ([]*ImgCveResult, error) {
-	imgResult := []*ImgCveResult{}
+func (r *queryResolver) CVEListForImage(ctx context.Context, repo string) ([]*ImgCVEResult, error) {
+	imgResult := []*ImgCVEResult{}
 
 	// Getting Repo Image Tag and its corresponding package list
 	tagpkgMap, err := r.Cve.GetImageAnnotations(repo)
@@ -137,13 +137,13 @@ func (r *queryResolver) ImageCveSearch(ctx context.Context, repo string) ([]*Img
 			}
 		}
 
-		imgResult = append(imgResult, &ImgCveResult{Tag: &copyImgTag, CVEIdList: cveids})
+		imgResult = append(imgResult, &ImgCVEResult{Tag: &copyImgTag, CVEIdList: cveids})
 	}
 
 	return imgResult, nil
 }
 
-func (r *queryResolver) ImageTagCveSearch(ctx context.Context, repo string, tag string) ([]*Cveid, error) {
+func (r *queryResolver) CVEListForImageTag(ctx context.Context, repo string, tag string) ([]*Cveid, error) {
 	cveids := []*Cveid{}
 	uniqueCveID := make(map[string]struct{})
 
@@ -175,14 +175,14 @@ func (r *queryResolver) ImageTagCveSearch(ctx context.Context, repo string, tag 
 }
 
 // Not Tested Yet.
-func (r *queryResolver) CveImageSearch(ctx context.Context, text string) ([]*CveImgResult, error) {
+func (r *queryResolver) ImageListForCve(ctx context.Context, text string) ([]*CVEImgResult, error) {
 	repoList, err := r.ImgStore.GetRepositories()
 
 	if err != nil {
 		r.Cve.Log.Error().Err(err).Msg("Not able to search repositories")
 	}
 
-	cveimgResult := []*CveImgResult{}
+	cveimgResult := []*CVEImgResult{}
 
 	cvepkgSet := make(map[string]struct{})
 
@@ -229,7 +229,7 @@ func (r *queryResolver) CveImageSearch(ctx context.Context, text string) ([]*Cve
 		}
 
 		if len(imgTagResult) != 0 {
-			cveimgResult = append(cveimgResult, &CveImgResult{Name: &copyRepo, Tags: imgTagResult})
+			cveimgResult = append(cveimgResult, &CVEImgResult{Name: &copyRepo, Tags: imgTagResult})
 		}
 	}
 
