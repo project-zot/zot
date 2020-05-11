@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -66,7 +65,7 @@ func makeHtpasswdFile() string {
 
 	// bcrypt(username="test", passwd="test")
 	content := []byte("test:$2y$05$hlbSXDp6hzDLu6VwACS39ORvVRpr3OMR4RlJ31jtlaOEGnPjKZI1m\n")
-	if err := ioutil.WriteFile(f.Name(), content, 0644); err != nil {
+	if err := ioutil.WriteFile(f.Name(), content, 0600); err != nil {
 		panic(err)
 	}
 
@@ -935,7 +934,7 @@ func (l *testLDAPServer) Stop() {
 
 func (l *testLDAPServer) Bind(bindDN, bindSimplePw string, conn net.Conn) (vldap.LDAPResultCode, error) {
 	if bindDN == "" || bindSimplePw == "" {
-		return vldap.LDAPResultInappropriateAuthentication, errors.New("ldap: bind creds required")
+		return vldap.LDAPResultInappropriateAuthentication, errors.ErrRequireCred
 	}
 
 	if (bindDN == LDAPBindDN && bindSimplePw == LDAPBindPassword) ||
@@ -943,7 +942,7 @@ func (l *testLDAPServer) Bind(bindDN, bindSimplePw string, conn net.Conn) (vldap
 		return vldap.LDAPResultSuccess, nil
 	}
 
-	return vldap.LDAPResultInvalidCredentials, errors.New("ldap: invalid credentials")
+	return vldap.LDAPResultInvalidCredentials, errors.ErrInvalidCred
 }
 
 func (l *testLDAPServer) Search(boundDN string, req vldap.SearchRequest,

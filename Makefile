@@ -27,7 +27,7 @@ covhtml:
 
 .PHONY: check
 check: .bazel/golangcilint.yaml
-	golangci-lint --version || curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.21.0
+	golangci-lint --version || curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.26.0
 	golangci-lint --config .bazel/golangcilint.yaml run --enable-all ./cmd/... ./pkg/...
 
 docs/docs.go: 

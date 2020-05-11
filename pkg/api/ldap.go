@@ -55,7 +55,7 @@ func (lc *LDAPClient) Connect() error {
 			// Reconnect with TLS
 			if !lc.SkipTLS {
 				config := &tls.Config{
-					InsecureSkipVerify: lc.InsecureSkipVerify, // nolint (gosec): InsecureSkipVerify is not true by default
+					InsecureSkipVerify: lc.InsecureSkipVerify, // nolint: gosec // InsecureSkipVerify is not true by default
 					RootCAs:            lc.ClientCAs,
 				}
 				if lc.ClientCertificates != nil && len(lc.ClientCertificates) > 0 {
@@ -72,7 +72,7 @@ func (lc *LDAPClient) Connect() error {
 			}
 		} else {
 			config := &tls.Config{
-				InsecureSkipVerify: lc.InsecureSkipVerify, // nolint (gosec): InsecureSkipVerify is not true by default
+				InsecureSkipVerify: lc.InsecureSkipVerify, // nolint: gosec // InsecureSkipVerify is not true by default
 				ServerName:         lc.ServerName,
 				RootCAs:            lc.ClientCAs,
 			}
