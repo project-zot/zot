@@ -16,7 +16,7 @@ import (
 // Resolver ...
 type Resolver struct {
 	DB       *bbolt.DB
-	Cve      *cveinfo.CveInfo
+	CVEInfo  *cveinfo.CveInfo
 	ImgStore *storage.ImageStore
 }
 
@@ -31,21 +31,18 @@ func (r *Resolver) Query() QueryResolver {
 
 type queryResolver struct{ *Resolver }
 
-func (r *queryResolver) Repositories(ctx context.Context, name *string) ([]*Repository, error) {
-	return []*Repository{}, nil
-}
-
+// GetResolverConfig ...
 func GetResolverConfig(dir string, log log.Logger, imgstorage *storage.ImageStore) Config {
-	cve := &cveinfo.CveInfo{Log: log}
-	db := cve.InitDB(path.Join(dir, "search.db"))
-	ResConfig = &Resolver{DB: db, Cve: &cveinfo.CveInfo{Log: log}, ImgStore: imgstorage}
+	cve := &cveinfo.CveInfo{Log: log, RootDir: dir}
+	db := cve.InitDB(path.Join(dir, "search.db"), true)
+	ResConfig = &Resolver{DB: db, CVEInfo: cve, ImgStore: imgstorage}
 
 	return Config{Resolvers: ResConfig}
 }
 
-func (r *queryResolver) CVEIdSearch(ctx context.Context, text string) (*CVEIdResult, error) {
+func (r *queryResolver) Cve(ctx context.Context, text string) (*CVEIdResult, error) {
 	cveidresult := &CVEIdResult{}
-	ans := r.Cve.QueryByCVEId(r.DB, text)
+	ans := r.CVEInfo.QueryByCVEId(r.DB, text)
 	cveidresult.Name = &ans.CveID
 	cveidresult.VulDesc = &ans.VulDesc
 	cveidresult.VulDetails = make([]*VulDetail, len(ans.VulDetails))
@@ -63,8 +60,8 @@ func (r *queryResolver) CVEIdSearch(ctx context.Context, text string) (*CVEIdRes
 	return cveidresult, nil
 }
 
-func (r *queryResolver) PkgVendor(ctx context.Context, text string) ([]*Cveid, error) {
-	ans := r.Cve.QueryByPkgType("NvdPkgVendor", r.DB, text)
+func (r *queryResolver) CVEListForPkgVendor(ctx context.Context, text string) ([]*Cveid, error) {
+	ans := r.CVEInfo.QueryByPkgType("NvdPkgVendor", r.DB, text)
 	cveids := []*Cveid{}
 
 	for _, cveid := range ans {
@@ -76,8 +73,8 @@ func (r *queryResolver) PkgVendor(ctx context.Context, text string) ([]*Cveid, e
 	return cveids, nil
 }
 
-func (r *queryResolver) PkgName(ctx context.Context, text string) ([]*Cveid, error) {
-	ans := r.Cve.QueryByPkgType("NvdPkgName", r.DB, text)
+func (r *queryResolver) CVEListForPkgName(ctx context.Context, text string) ([]*Cveid, error) {
+	ans := r.CVEInfo.QueryByPkgType("NvdPkgName", r.DB, text)
 	cveids := []*Cveid{}
 
 	for _, cveid := range ans {
@@ -89,8 +86,8 @@ func (r *queryResolver) PkgName(ctx context.Context, text string) ([]*Cveid, err
 	return cveids, nil
 }
 
-func (r *queryResolver) PkgNameVer(ctx context.Context, text string) ([]*Cveid, error) {
-	ans := r.Cve.QueryByPkgType("NvdPkgNameVer", r.DB, text)
+func (r *queryResolver) CVEListForPkgNameVer(ctx context.Context, text string) ([]*Cveid, error) {
+	ans := r.CVEInfo.QueryByPkgType("NvdPkgNameVer", r.DB, text)
 	cveids := []*Cveid{}
 
 	for _, cveid := range ans {
@@ -106,10 +103,12 @@ func (r *queryResolver) CVEListForImage(ctx context.Context, repo string) ([]*Im
 	imgResult := []*ImgCVEResult{}
 
 	// Getting Repo Image Tag and its corresponding package list
-	tagpkgMap, err := r.Cve.GetImageAnnotations(repo)
+	tagpkgMap, err := r.CVEInfo.GetImageAnnotations(repo)
 
 	if err != nil {
-		r.Cve.Log.Error().Err(err).Msg("Unable to get package list from Image")
+		r.CVEInfo.Log.Error().Err(err).Msg("Unable to get package list from Image")
+
+		return imgResult, nil
 	}
 
 	// Traversing through all Image Tags
@@ -123,7 +122,7 @@ func (r *queryResolver) CVEListForImage(ctx context.Context, repo string) ([]*Im
 		for _, pkg := range pkgList {
 			// Getting list of CveIDs corresponding to given package name
 			// Need to change this method calling for package version
-			ans := r.Cve.QueryByPkgType("NvdPkgName", r.DB, pkg)
+			ans := r.CVEInfo.QueryByPkgType("NvdPkgName", r.DB, pkg)
 
 			// Traversing through list of CveIds and appending it to result
 			for _, cveid := range ans {
@@ -147,16 +146,16 @@ func (r *queryResolver) CVEListForImageTag(ctx context.Context, repo string, tag
 	cveids := []*Cveid{}
 	uniqueCveID := make(map[string]struct{})
 
-	imgList, err := r.Cve.GetImageAnnotations(repo)
+	imgList, err := r.CVEInfo.GetImageAnnotations(repo)
 
 	if err != nil {
-		r.Cve.Log.Error().Err(err).Msg("Unable to get package list from Image")
+		r.CVEInfo.Log.Error().Err(err).Msg("Unable to get package list from Image")
 	}
 
 	for imgTag, pkgList := range imgList {
 		if imgTag == tag {
 			for _, pkg := range pkgList {
-				ans := r.Cve.QueryByPkgType("NvdPkgNameVer", r.DB, pkg)
+				ans := r.CVEInfo.QueryByPkgType("NvdPkgName", r.DB, pkg)
 
 				for _, cveid := range ans {
 					name := cveid.Name
@@ -174,12 +173,11 @@ func (r *queryResolver) CVEListForImageTag(ctx context.Context, repo string, tag
 	return cveids, nil
 }
 
-// Not Tested Yet.
 func (r *queryResolver) ImageListForCve(ctx context.Context, text string) ([]*CVEImgResult, error) {
 	repoList, err := r.ImgStore.GetRepositories()
 
 	if err != nil {
-		r.Cve.Log.Error().Err(err).Msg("Not able to search repositories")
+		r.CVEInfo.Log.Error().Err(err).Msg("Not able to search repositories")
 	}
 
 	cveimgResult := []*CVEImgResult{}
@@ -187,7 +185,7 @@ func (r *queryResolver) ImageListForCve(ctx context.Context, text string) ([]*CV
 	cvepkgSet := make(map[string]struct{})
 
 	// Returning the CveDetails for given CveId
-	cveDetails := r.Cve.QueryByCVEId(r.DB, text)
+	cveDetails := r.CVEInfo.QueryByCVEId(r.DB, text)
 
 	// Maintaining a Set of packages in Cveid for O(1) search
 	for _, vulDetail := range cveDetails.VulDetails {
@@ -201,12 +199,12 @@ func (r *queryResolver) ImageListForCve(ctx context.Context, text string) ([]*CV
 	for _, repo := range repoList {
 		copyRepo := repo
 		// Getting Map of Tag and Package List
-		imgTagList, err := r.Cve.GetImageAnnotations(repo)
+		imgTagList, err := r.CVEInfo.GetImageAnnotations(repo)
 
 		if err != nil {
-			r.Cve.Log.Error().Err(err).Msg("Not able to search Image ")
+			r.CVEInfo.Log.Error().Err(err).Msg("Not able to search Image ")
 
-			return nil, nil
+			return nil, err
 		}
 
 		imgTagResult := make([]*string, 0)

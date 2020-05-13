@@ -3,8 +3,6 @@ package cli
 import (
 	"github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/api"
-	cveinfo "github.com/anuvu/zot/pkg/extensions/search/cve"
-	zlog "github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
 	"github.com/mitchellh/mapstructure"
 	dspec "github.com/opencontainers/distribution-spec"
@@ -21,6 +19,7 @@ func metadataConfig(md *mapstructure.Metadata) viper.DecoderConfigOption {
 	}
 }
 
+// NewRootCmd ...
 func NewRootCmd() *cobra.Command {
 	showVersion := false
 	config := api.NewConfig()
@@ -48,15 +47,6 @@ func NewRootCmd() *cobra.Command {
 				if len(md.Keys) == 0 || len(md.Unused) > 0 {
 					panic(errors.ErrBadConfig)
 				}
-			}
-			if config.Extensions.Search.CVE.PeriodicUpdates {
-				go func() {
-					cveinfo := &cveinfo.CveInfo{Log: zlog.NewLogger(config.Log.Level, config.Log.Output)}
-					err := cveinfo.StartUpdate(config.Storage.RootDirectory, 2002, 2020)
-					if err != nil {
-						panic(err)
-					}
-				}()
 			}
 			c := api.NewController(config)
 			if err := c.Run(); err != nil {

@@ -1,3 +1,4 @@
+// nolint:lll
 package cveinfo_test
 
 import (
@@ -24,7 +25,7 @@ type CveResult struct {
 }
 
 type CveData struct {
-	CveDetail CveDetail `json:"CveIdSearch"`
+	CveDetail CveDetail `json:"CVE"`
 }
 
 type CveDetail struct {
@@ -40,7 +41,7 @@ type VulDetail struct {
 }
 
 type Data struct {
-	List []Pkgvendor `json:"PkgVendor"`
+	List []Pkgvendor `json:"CVEListForPkgVendor"`
 }
 
 type Pkgvendor struct {
@@ -60,27 +61,38 @@ func TestUtil(t *testing.T) {
 		t.Fatal("Unable to Setup Test environment")
 	}
 
-	err = cve.StartUpdate(dbDir, 2002, 2003)
+	err = cve.StartUpdate(dbDir, 2002, 2003, false)
 	if err != nil {
 		t.Fatal("Unable to Get the Data")
 	}
 }
 
 func TestRepeatDownload(t *testing.T) {
-	err := cve.StartUpdate(dbDir, 2002, 2003)
+	err := cve.StartUpdate(dbDir, 2002, 2003, false)
+	if err != nil {
+		t.Fatal("Unable to Get the Data")
+	}
+
+	err = cve.StartUpdate(dbDir, 2004, 2005, false)
 	if err != nil {
 		t.Fatal("Unable to Get the Data")
 	}
 
 	// Testing Invlaid Year, it should return error
-	err = cve.StartUpdate(dbDir, 1980, 1981)
+	err = cve.StartUpdate(dbDir, 1980, 1981, false)
+	if err == nil {
+		t.Fatal("Error should not be nil")
+	}
+
+	// Not able to create a directory with invalid directory name
+	err = cve.StartUpdate("/000", 1999, 2020, false)
 	if err == nil {
 		t.Fatal("Error should not be nil")
 	}
 }
 
 func TestSearchCveId(t *testing.T) {
-	db := cve.InitDB(dbPath)
+	db := cve.InitDB(dbPath, true)
 
 	result := cve.QueryByCVEId(db, "CVE-1999-0001")
 	if result == nil {
@@ -101,7 +113,7 @@ func TestSearchCveId(t *testing.T) {
 }
 
 func TestSearchPkgVendor(t *testing.T) {
-	db := cve.InitDB(dbPath)
+	db := cve.InitDB(dbPath, true)
 
 	result := cve.QueryByPkgType("NvdPkgVendor", db, "freebsd")
 	if result == nil {
@@ -114,7 +126,7 @@ func TestSearchPkgVendor(t *testing.T) {
 }
 
 func TestSearchPkgName(t *testing.T) {
-	db := cve.InitDB(dbPath)
+	db := cve.InitDB(dbPath, true)
 
 	result := cve.QueryByPkgType("NvdPkgName", db, "bsd_os")
 	if result == nil {
@@ -127,7 +139,7 @@ func TestSearchPkgName(t *testing.T) {
 }
 
 func TestSearchPkgNameVer(t *testing.T) {
-	db := cve.InitDB(dbPath)
+	db := cve.InitDB(dbPath, true)
 
 	result := cve.QueryByPkgType("NvdPkgNameVer", db, "bsd_os3.1")
 	if result == nil {
@@ -141,7 +153,7 @@ func TestSearchPkgNameVer(t *testing.T) {
 
 func TestInvalidSearch(t *testing.T) {
 	Convey("Test Invalid Search", t, func() {
-		db := cve.InitDB(dbPath)
+		db := cve.InitDB(dbPath, true)
 		defer cveinfo.Close(db)
 		So(db, ShouldNotBeNil)
 
@@ -164,22 +176,6 @@ func TestInvalidSearch(t *testing.T) {
 		So(len(cveresult.VulDetails), ShouldEqual, 0)
 	})
 }
-
-func makeHtpasswdFile() string {
-	f, err := ioutil.TempFile("", "htpasswd-")
-	if err != nil {
-		panic(err)
-	}
-
-	// bcrypt(username="test", passwd="test")
-	content := []byte("test:$2y$05$hlbSXDp6hzDLu6VwACS39ORvVRpr3OMR4RlJ31jtlaOEGnPjKZI1m\n")
-	if err := ioutil.WriteFile(f.Name(), content, 0600); err != nil {
-		panic(err)
-	}
-
-	return f.Name()
-}
-
 func TestServerResponse(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		config := api.NewConfig()
@@ -195,6 +191,7 @@ func TestServerResponse(t *testing.T) {
 
 		c := api.NewController(config)
 		c.Config.Storage.RootDirectory = dbDir
+		c.Config.Extensions.Search.CVE.UpdateInterval = 1
 		go func() {
 			// this blocks
 			if err := c.Run(); err != nil {
@@ -218,8 +215,7 @@ func TestServerResponse(t *testing.T) {
 		}()
 
 		// Test PkgVendor, PkgName and PkgNameVer
-		// nolint:lll
-		resp, _ := resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={PkgVendor(text:\"openbsd\"){name}}")
+		resp, _ := resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={CVEListForPkgVendor(text:\"openbsd\"){name}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -228,7 +224,7 @@ func TestServerResponse(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(cveids.Data.List), ShouldNotBeZeroValue)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={PkgName(text:\"bsd_os\"){name}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={CVEListForPkgName(text:\"bsd_os\"){name}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -236,8 +232,7 @@ func TestServerResponse(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(cveids.Data.List), ShouldNotBeZeroValue)
 
-		// nolint:lll
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={PkgNameVer(text:\"bsd_os3.1\"){name}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={CVEListForPkgNameVer(text:\"bsd_os3.1\"){name}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -246,8 +241,7 @@ func TestServerResponse(t *testing.T) {
 		So(len(cveids.Data.List), ShouldNotBeZeroValue)
 
 		// Test CveId
-		// nolint:lll
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={CVEIdSearch(text:\"CVE-1999-0001\"){name%20VulDesc%20VulDetails{PkgVendor%20PkgName%20PkgVersion}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={CVE(text:\"CVE-1999-0001\"){name%20VulDesc%20VulDetails{PkgVendor%20PkgName%20PkgVersion}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -257,8 +251,16 @@ func TestServerResponse(t *testing.T) {
 		So(cveresult.CveData.CveDetail.Name, ShouldEqual, "CVE-1999-0001")
 		So(len(cveresult.CveData.CveDetail.VulDetails), ShouldNotEqual, 0)
 
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={CVEListForImage(repo:\"zot-test\"){tag%20CVEIdList{name}}}")
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={CVEListForImage(repo:\"zot-test\"){tag%20CVEIdList{name}}}")
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
 		// Testing Invalid Data
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={PkgVendor(text:\"\"){name}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={CVEListForPkgVendor(text:\"\"){name}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -266,7 +268,7 @@ func TestServerResponse(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(cveids.Data.List), ShouldBeZeroValue)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={PkgName(text:\"\"){name}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={CVEListForPkgName(text:\"\"){name}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -274,7 +276,7 @@ func TestServerResponse(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(cveids.Data.List), ShouldBeZeroValue)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={PkgNameVer(text:\"\"){name}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={CVEListForPkgNameVer(text:\"\"){name}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -283,8 +285,7 @@ func TestServerResponse(t *testing.T) {
 		So(len(cveids.Data.List), ShouldBeZeroValue)
 
 		// Test CveId
-		// nolint:lll
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={CVEIdSearch(text:\"\"){name%20VulDesc%20VulDetails{PkgVendor%20PkgName%20PkgVersion}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={CVE(text:\"\"){name%20VulDesc%20VulDetails{PkgVendor%20PkgName%20PkgVersion}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -292,17 +293,40 @@ func TestServerResponse(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(cveresult.CveData.CveDetail.VulDetails), ShouldEqual, 0)
 
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={CVEListForImage(repo:\"zo-test\"){tag%20CVEIdList{name}}}")
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={ImageListForCVE(text:\"CVE-2002-1119\"){name%20tags}}")
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={ImageListForCVE(text:\"CVE-202-001\"){name%20tags}}")
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={CVEListForImageTag(repo:\"zot-test\",tag:\"1.0.0\"){name}}")
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={CVEListForImageTag(repo:\"zot-est\",tag:\"1.0.0\"){name}}")
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
 		// Test Invalid URL
-		// nolint:lll
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={CVEidSearch(text:\"\"){name%20VulDesc%20VulDetails{PkgVendor%20PkgName%20PkgVersion}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldNotEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={CVEIdSearch(text:\"\")")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={CVE(text:\"\")")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldNotEqual, 200)
 
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={}")
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldNotEqual, 200)
+
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={CVEListForImage(repo:\"zot-test\"){tg%20CVEIdList{name}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldNotEqual, 200)
 	})
@@ -313,4 +337,19 @@ func TestRemoveData(t *testing.T) {
 	if err != nil {
 		t.Fatal("Unable to remove test data")
 	}
+}
+
+func makeHtpasswdFile() string {
+	f, err := ioutil.TempFile("", "htpasswd-")
+	if err != nil {
+		panic(err)
+	}
+
+	// bcrypt(username="test", passwd="test")
+	content := []byte("test:$2y$05$hlbSXDp6hzDLu6VwACS39ORvVRpr3OMR4RlJ31jtlaOEGnPjKZI1m\n")
+	if err := ioutil.WriteFile(f.Name(), content, 0600); err != nil {
+		panic(err)
+	}
+
+	return f.Name()
 }

@@ -17,6 +17,7 @@ go_library(
         "//docs:go_default_library",
         "//errors:go_default_library",
         "//pkg/extensions/search:go_default_library",
+        "//pkg/extensions/search/cve:go_default_library",
         "//pkg/log:go_default_library",
         "//pkg/storage:go_default_library",
         "@com_github_99designs_gqlgen//graphql/handler:go_default_library",

@@ -29,6 +29,7 @@ go_test(
     deps = [
         "//pkg/api:go_default_library",
         "//pkg/extensions/search:go_default_library",
+        "//pkg/log:go_default_library",
         "@com_github_smartystreets_goconvey//convey:go_default_library",
         "@in_gopkg_resty_v1//:go_default_library",
     ],
