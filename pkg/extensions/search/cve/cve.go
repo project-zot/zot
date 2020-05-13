@@ -3,8 +3,10 @@ package cveinfo
 import (
 	"bytes"
 	"encoding/json"
+	"time"
 
 	"github.com/anuvu/zot/errors"
+	"github.com/anuvu/zot/pkg/log"
 
 	"go.etcd.io/bbolt"
 )
@@ -23,15 +25,31 @@ const (
 )
 
 /*Connect ... Create a database connection to. */
-func (cve CveInfo) Connect(dbPath string) *bbolt.DB {
+func (cve CveInfo) Connect(dbPath string, readOnly bool) *bbolt.DB {
 	// Opening the connection on DB on given port
-	db, err := bbolt.Open(dbPath, 0600, nil)
+	db, err := bbolt.Open(dbPath, 0600, &bbolt.Options{ReadOnly: readOnly})
 	if err != nil {
 		cve.Log.Error().Err(err).Msg("Not able to open a database")
 		return nil
 	}
 
 	return db
+}
+
+// UpdateCVEDb ...
+func UpdateCVEDb(dbDir string, log log.Logger, interval time.Duration, readOnly bool) {
+	for {
+		curTime := time.Now()
+
+		cveinfo := &CveInfo{Log: log}
+
+		err := cveinfo.StartUpdate(dbDir, 2002, curTime.Year(), readOnly)
+		if err != nil {
+			panic(err)
+		}
+
+		time.Sleep(interval * time.Hour)
+	}
 }
 
 // Close ...
@@ -210,7 +228,7 @@ func (cve CveInfo) isPresent(filename string, hashcode string, db *bbolt.DB) boo
 	return res == 0
 }
 
-// SearchByCVEId ...
+// QueryByCVEId ...
 func (cve CveInfo) QueryByCVEId(db *bbolt.DB, key string) *Schema {
 	var schema Schema
 
@@ -237,7 +255,7 @@ func (cve CveInfo) QueryByCVEId(db *bbolt.DB, key string) *Schema {
 	return &schema
 }
 
-// SearchByPkgType ...
+// QueryByPkgType ...
 func (cve CveInfo) QueryByPkgType(name string, db *bbolt.DB, key string) []CVEId {
 	var cveidlist []CVEId
 

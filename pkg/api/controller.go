@@ -10,6 +10,7 @@ import (
 	"os"
 
 	"github.com/anuvu/zot/errors"
+	cveinfo "github.com/anuvu/zot/pkg/extensions/search/cve"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
 	"github.com/gorilla/handlers"
@@ -49,9 +50,21 @@ func (c *Controller) Run() error {
 		os.Exit(1)
 	}
 
+	// Updating the CVE Database
+	if c.Config != nil && c.Config.Extensions != nil && c.Config.Extensions.Search != nil &&
+		c.Config.Extensions.Search.CVE.UpdateInterval >= 2 {
+		go func() {
+			cveinfo.UpdateCVEDb(c.Config.Storage.RootDirectory, c.Log, c.Config.Extensions.Search.CVE.UpdateInterval, false)
+		}()
+	}
+
+	fmt.Println("After the Updated")
+
 	c.Router = engine
 	c.Router.UseEncodedPath()
 	_ = NewRouteHandler(c)
+
+	fmt.Println("Server started")
 
 	addr := fmt.Sprintf("%s:%s", c.Config.HTTP.Address, c.Config.HTTP.Port)
 	server := &http.Server{Addr: addr, Handler: c.Router}

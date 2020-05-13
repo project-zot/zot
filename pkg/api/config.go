@@ -1,6 +1,8 @@
 package api
 
 import (
+	"time"
+
 	"github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/getlantern/deepcopy"
@@ -78,8 +80,8 @@ type SearchConfig struct {
 }
 
 type CVEConfig struct {
-	DataSource      string // can be a 'file://' or 'https://'
-	PeriodicUpdates bool
+	DataSource     string        // can be a 'file://' or 'https://'
+	UpdateInterval time.Duration // should be 2 hours or more, if not specified default be kept as 24 hours
 }
 
 type Config struct {
@@ -98,7 +100,7 @@ func NewConfig() *Config {
 		Storage:    StorageConfig{GC: true, Dedupe: true},
 		HTTP:       HTTPConfig{Address: "127.0.0.1", Port: "8080"},
 		Log:        &LogConfig{Level: "debug"},
-		Extensions: &ExtensionConfig{&SearchConfig{CVE: &CVEConfig{PeriodicUpdates: true}}},
+		Extensions: &ExtensionConfig{&SearchConfig{CVE: &CVEConfig{UpdateInterval: 24}}}, // nolint: gomnd
 	}
 }
 

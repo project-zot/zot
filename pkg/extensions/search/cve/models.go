@@ -6,6 +6,7 @@ import (
 	"archive/zip"
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -228,15 +229,16 @@ type CVEId struct {
 
 // CveInfo ...
 type CveInfo struct {
-	Log log.Logger
+	Log     log.Logger
+	RootDir string
 }
 
 // InitDB ...
-func (cve CveInfo) InitDB(dbPath string) *bbolt.DB {
+func (cve CveInfo) InitDB(dbPath string, readOnly bool) *bbolt.DB {
 	var db *bbolt.DB
-
+	fmt.Println("Initializing DB")
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-		db = cve.Connect(dbPath)
+		db = cve.Connect(dbPath, false)
 		nvdjsondb := cve.CreateBucket(NvdDB, db)
 		pkgvendordb := cve.CreateBucket(VendorDB, db)
 		pkgnamedb := cve.CreateBucket(NameDB, db)
@@ -248,22 +250,23 @@ func (cve CveInfo) InitDB(dbPath string) *bbolt.DB {
 			return nil
 		}
 	} else {
-		db = cve.Connect(dbPath)
+		db = cve.Connect(dbPath, readOnly)
+		fmt.Println("Database already created")
 	}
 
 	return db
 }
 
 // StartUpdate ...
-func (cve CveInfo) StartUpdate(dbDir string, startYear int, endYear int) error {
+func (cve CveInfo) StartUpdate(dbDir string, startYear int, endYear int, readOnly bool) error {
 	if _, err := os.Stat(dbDir); os.IsNotExist(err) {
 		if err := os.MkdirAll(dbDir, 0700); err != nil {
 			cve.Log.Error().Err(err).Str("rootDir", dbDir).Msg("unable to create root dir")
-			return nil
+			return err
 		}
 	}
 
-	db := cve.InitDB(path.Join(dbDir, "search.db"))
+	db := cve.InitDB(path.Join(dbDir, "search.db"), readOnly)
 
 	if db == nil {
 		return errors.ErrUnknownDB
@@ -278,11 +281,11 @@ func (cve CveInfo) StartUpdate(dbDir string, startYear int, endYear int) error {
 
 // GetImageAnnotations ...
 func (cve CveInfo) GetImageAnnotations(repo string) (map[string][]string, error) {
-	dir := path.Join("/tmp/zot", repo)
+	dir := path.Join(cve.RootDir, repo)
 	if !dirExists(dir) {
 		cve.Log.Error().Msg("Image Directory not exists")
 
-		return nil, nil
+		return nil, errors.ErrRepoIsNotDir
 	}
 
 	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
@@ -291,12 +294,12 @@ func (cve CveInfo) GetImageAnnotations(repo string) (map[string][]string, error)
 		if os.IsNotExist(err) {
 			cve.Log.Error().Err(err).Msg("Index.json does not exist")
 
-			return nil, nil
+			return nil, err
 		}
 
 		cve.Log.Error().Err(err).Msg("Unable to open index.json")
 
-		return nil, nil
+		return nil, err
 	}
 
 	var index ispec.Index
@@ -308,7 +311,7 @@ func (cve CveInfo) GetImageAnnotations(repo string) (map[string][]string, error)
 	if err := json.Unmarshal(buf, &index); err != nil {
 		cve.Log.Error().Err(err).Msg("Unable to marshal index.json file")
 
-		return nil, nil
+		return nil, err
 	}
 
 	tagpkgMap := make(map[string][]string)
@@ -327,12 +330,14 @@ func (cve CveInfo) GetImageAnnotations(repo string) (map[string][]string, error)
 		blobBuf, err := ioutil.ReadFile(path.Join(path.Join(dir, "blobs", "sha256"), blobFile))
 		if err != nil {
 			cve.Log.Error().Err(err).Msg("Unable to open Image Metadata file")
+
+			return nil, err
 		}
 
 		if err := json.Unmarshal(blobBuf, &blobIndex); err != nil {
 			cve.Log.Error().Err(err).Msg("Unable to marshal blob index")
 
-			return nil, nil
+			return nil, err
 		}
 
 		layerFile := strings.Split(blobIndex.Config.Digest, ":")[1]
@@ -340,12 +345,14 @@ func (cve CveInfo) GetImageAnnotations(repo string) (map[string][]string, error)
 		blobBuf, err = ioutil.ReadFile(path.Join(path.Join(dir, "blobs", "sha256"), layerFile))
 		if err != nil {
 			cve.Log.Error().Err(err).Msg("Unable to open Image Layers file")
+
+			return nil, err
 		}
 
 		if err := json.Unmarshal(blobBuf, &layerIndex); err != nil {
 			cve.Log.Error().Err(err).Msg("Unable to marshal blob index")
 
-			return nil, nil
+			return nil, err
 		}
 
 		for _, v := range layerIndex.Config.Labels {
@@ -714,9 +721,5 @@ func dirExists(d string) bool {
 		return false
 	}
 
-	if !fi.IsDir() {
-		return false
-	}
-
-	return true
+	return fi.IsDir()
 }

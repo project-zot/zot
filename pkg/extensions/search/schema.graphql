@@ -25,18 +25,11 @@ type CVEImgResult {
 }
 
 type Query {
-  repositories(name: String): [Repository]
-  PkgName(text: String!): [CVEID!]!
-  PkgNameVer(text: String!): [CVEID!]!
-  PkgVendor(text: String!): [CVEID!]!
-  CVEIdSearch(text: String!): CVEIdResult!
+  CVEListForPkgName(text: String!): [CVEID!]!
+  CVEListForPkgNameVer(text: String!): [CVEID!]!
+  CVEListForPkgVendor(text: String!): [CVEID!]!
+  CVE(text: String!): CVEIdResult!
   CVEListForImage(repo: String!) :[ImgCVEResult]! 
   CVEListForImageTag(repo: String!, tag: String!) :[CVEID!]!
   ImageListForCVE(text: String!) :[CVEImgResult]
 }
-
-type Repository {
-  name: String!
-}
-
-union SearchResult = Repository

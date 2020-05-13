@@ -2,10 +2,6 @@
 
 package search
 
-type SearchResult interface {
-	IsSearchResult()
-}
-
 type Cveid struct {
 	Name *string `json:"name"`
 }
@@ -25,12 +21,6 @@ type ImgCVEResult struct {
 	Tag       *string  `json:"tag"`
 	CVEIdList []*Cveid `json:"CVEIdList"`
 }
-
-type Repository struct {
-	Name string `json:"name"`
-}
-
-func (Repository) IsSearchResult() {}
 
 type VulDetail struct {
 	PkgVendor  *string `json:"PkgVendor"`
