@@ -986,6 +986,186 @@ func TestBearerAuth(t *testing.T) {
 	})
 }
 
+func TestBearerAuthWithAllowReadAccess(t *testing.T) {
+	Convey("Make a new controller", t, func() {
+		authTestServer := makeAuthTestServer()
+		defer authTestServer.Close()
+
+		config := api.NewConfig()
+		config.HTTP.Port = SecurePort3
+
+		u, err := url.Parse(authTestServer.URL)
+		So(err, ShouldBeNil)
+
+		config.HTTP.Auth = &api.AuthConfig{
+			Bearer: &api.BearerConfig{
+				Cert:    ServerCert,
+				Realm:   authTestServer.URL + "/auth/token",
+				Service: u.Host,
+			},
+		}
+		config.HTTP.AllowReadAccess = true
+		c := api.NewController(config)
+		dir, err := ioutil.TempDir("", "oci-repo-test")
+		So(err, ShouldBeNil)
+		defer os.RemoveAll(dir)
+		c.Config.Storage.RootDirectory = dir
+		go func() {
+			// this blocks
+			if err := c.Run(); err != nil {
+				return
+			}
+		}()
+
+		// wait till ready
+		for {
+			_, err := resty.R().Get(BaseURL3)
+			if err == nil {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		defer func() {
+			ctx := context.Background()
+			_ = c.Server.Shutdown(ctx)
+		}()
+
+		blob := []byte("hello, blob!")
+		digest := godigest.FromBytes(blob).String()
+
+		resp, err := resty.R().Get(BaseURL3 + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 401)
+
+		authorizationHeader := parseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		resp, err = resty.R().
+			SetQueryParam("service", authorizationHeader.Service).
+			SetQueryParam("scope", authorizationHeader.Scope).
+			Get(authorizationHeader.Realm)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+		var goodToken accessTokenResponse
+		err = json.Unmarshal(resp.Body(), &goodToken)
+		So(err, ShouldBeNil)
+
+		resp, err = resty.R().
+			SetHeader("Authorization", fmt.Sprintf("Bearer %s", goodToken.AccessToken)).
+			Get(BaseURL3 + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		resp, err = resty.R().Post(BaseURL3 + "/v2/" + AuthorizedNamespace + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 401)
+
+		authorizationHeader = parseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		resp, err = resty.R().
+			SetQueryParam("service", authorizationHeader.Service).
+			SetQueryParam("scope", authorizationHeader.Scope).
+			Get(authorizationHeader.Realm)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+		err = json.Unmarshal(resp.Body(), &goodToken)
+		So(err, ShouldBeNil)
+
+		resp, err = resty.R().
+			SetHeader("Authorization", fmt.Sprintf("Bearer %s", goodToken.AccessToken)).
+			Post(BaseURL3 + "/v2/" + AuthorizedNamespace + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 202)
+		loc := resp.Header().Get("Location")
+
+		resp, err = resty.R().
+			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", digest).
+			SetBody(blob).
+			Put(BaseURL3 + loc)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 401)
+
+		authorizationHeader = parseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		resp, err = resty.R().
+			SetQueryParam("service", authorizationHeader.Service).
+			SetQueryParam("scope", authorizationHeader.Scope).
+			Get(authorizationHeader.Realm)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+		err = json.Unmarshal(resp.Body(), &goodToken)
+		So(err, ShouldBeNil)
+
+		resp, err = resty.R().
+			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetHeader("Authorization", fmt.Sprintf("Bearer %s", goodToken.AccessToken)).
+			SetQueryParam("digest", digest).
+			SetBody(blob).
+			Put(BaseURL3 + loc)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 201)
+
+		resp, err = resty.R().
+			SetHeader("Authorization", fmt.Sprintf("Bearer %s", goodToken.AccessToken)).
+			Get(BaseURL3 + "/v2/" + AuthorizedNamespace + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 401)
+
+		authorizationHeader = parseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		resp, err = resty.R().
+			SetQueryParam("service", authorizationHeader.Service).
+			SetQueryParam("scope", authorizationHeader.Scope).
+			Get(authorizationHeader.Realm)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+		err = json.Unmarshal(resp.Body(), &goodToken)
+		So(err, ShouldBeNil)
+
+		resp, err = resty.R().
+			SetHeader("Authorization", fmt.Sprintf("Bearer %s", goodToken.AccessToken)).
+			Get(BaseURL3 + "/v2/" + AuthorizedNamespace + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		resp, err = resty.R().
+			Post(BaseURL3 + "/v2/" + UnauthorizedNamespace + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 401)
+
+		authorizationHeader = parseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		resp, err = resty.R().
+			SetQueryParam("service", authorizationHeader.Service).
+			SetQueryParam("scope", authorizationHeader.Scope).
+			Get(authorizationHeader.Realm)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+		var badToken accessTokenResponse
+		err = json.Unmarshal(resp.Body(), &badToken)
+		So(err, ShouldBeNil)
+
+		resp, err = resty.R().
+			SetHeader("Authorization", fmt.Sprintf("Bearer %s", badToken.AccessToken)).
+			Post(BaseURL3 + "/v2/" + UnauthorizedNamespace + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 401)
+	})
+}
+
 func makeAuthTestServer() *httptest.Server {
 	cmTokenGenerator, err := auth.NewTokenGenerator(&auth.TokenGeneratorOptions{
 		PrivateKeyPath: ServerKey,
