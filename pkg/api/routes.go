@@ -120,6 +120,18 @@ func (rh *RouteHandler) SetupRoutes() {
 // @Success 200 {string} string	"ok"
 func (rh *RouteHandler) CheckVersionSupport(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set(DistAPIVersion, "registry/2.0")
+	// NOTE: compatibility workaround - return this header in "allowed-read" mode to allow for clients to
+	// work correctly
+	if rh.c.Config.HTTP.AllowReadAccess {
+		if rh.c.Config.HTTP.Auth != nil {
+			if rh.c.Config.HTTP.Auth.Bearer != nil {
+				w.Header().Set("WWW-Authenticate", fmt.Sprintf("bearer realm=%s", rh.c.Config.HTTP.Auth.Bearer.Realm))
+			} else {
+				w.Header().Set("WWW-Authenticate", fmt.Sprintf("basic realm=%s", rh.c.Config.HTTP.Realm))
+			}
+		}
+	}
+
 	WriteData(w, http.StatusOK, "application/json", []byte{})
 }
 
