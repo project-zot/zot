@@ -957,11 +957,6 @@ func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request)
 			return
 		}
 
-		if r.Header.Get("Content-Type") != BinaryMediaType {
-			w.WriteHeader(http.StatusUnsupportedMediaType)
-			return
-		}
-
 		_, err = rh.c.ImageStore.PutBlobChunk(name, sessionID, from, to, r.Body)
 		if err != nil {
 			switch err {
@@ -984,10 +979,6 @@ func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request)
 	}
 
 finish:
-	if r.Header.Get("Content-Type") != BinaryMediaType {
-		w.WriteHeader(http.StatusUnsupportedMediaType)
-		return
-	}
 	// blob chunks already transferred, just finish
 	if err := rh.c.ImageStore.FinishBlobUpload(name, sessionID, r.Body, digest); err != nil {
 		switch err {

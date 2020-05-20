@@ -144,7 +144,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			// without the Content-Length should fail
 			resp, err = resty.R().SetQueryParam("digest", digest.String()).Put(loc)
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, 415)
+			So(resp.StatusCode(), ShouldEqual, 400)
 			// without any data to send, should fail
 			resp, err = resty.R().SetQueryParam("digest", digest.String()).
 				SetHeader("Content-Type", "application/octet-stream").Put(loc)
@@ -237,7 +237,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			// without the Content-Length should fail
 			resp, err = resty.R().SetQueryParam("digest", digest.String()).Put(loc)
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, 415)
+			So(resp.StatusCode(), ShouldEqual, 400)
 			// without any data to send, should fail
 			resp, err = resty.R().SetQueryParam("digest", digest.String()).
 				SetHeader("Content-Type", "application/octet-stream").Put(loc)
