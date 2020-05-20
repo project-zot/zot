@@ -3,7 +3,7 @@
 **zot** is a vendor-neutral OCI image repository server purely based on 
 [OCI Distribution Specification](https://github.com/opencontainers/distribution-spec).
 
-* Conforms to [OCI distribution spec](https://github.com/opencontainers/distribution-spec) APIs [![zot](https://github.com/bloodorangeio/oci-distribution-conformance-results/workflows/zot/badge.svg)](https://oci.bloodorange.io/results/report-zot.html) [![zot w. auth](https://github.com/bloodorangeio/oci-distribution-conformance-results/workflows/zot-auth/badge.svg)](https://oci.bloodorange.io/results/report-zot-auth.html)
+* Conforms to [OCI distribution spec](https://github.com/opencontainers/distribution-spec) APIs [![zot](https://github.com/bloodorangeio/oci-conformance/workflows/zot-1/badge.svg)](https://github.com/bloodorangeio/oci-conformance/actions?query=workflow%3Azot-1) [![zot w. auth](https://github.com/bloodorangeio/oci-distribution-conformance-results/workflows/zot-auth/badge.svg)](https://oci.bloodorange.io/results/report-zot-auth.html)
 * Uses [OCI storage layout](https://github.com/opencontainers/image-spec/blob/master/image-layout.md) for storage layout
 * Supports [helm charts](https://helm.sh/docs/topics/registries/)
 * Currently suitable for on-prem deployments (e.g. colocated with Kubernetes)
