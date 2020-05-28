@@ -2,9 +2,7 @@ OS := $(shell uname -s | tr A-Z a-z)
 BINARY_PREFIX_DIRECTORY := $(OS)_amd64_stripped
 BAZEL=$(HOME)/bin/bazel
 BAZELOPTS= --repository_cache="$$HOME/.bzrepos" \
-					 --test_output=errors \
-					 --noshow_progress \
-					 --noshow_loading_progress
+					 --test_output=errors
 
 .PHONY: all
 all: build check
