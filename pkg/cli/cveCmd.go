@@ -25,14 +25,18 @@ var cveCmd = &cobra.Command{
 	Long:  `Find CVEs (Common Vulnerabilities and Exposures)`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if cmd.Flags().NFlag() == 0 {
-			cmd.Usage()
+			if err := cmd.Usage(); err != nil {
+				panic(err)
+			}
 			panic(zotErrors.ErrInvalidArgs) //TODO to panic or not to panic
 		}
 		err := searchCve(searchParams)
 		if err != nil {
 			cmd.PrintErrln(err.Error())
 			cmd.PrintErrln()
-			cmd.Usage()
+			if err := cmd.Usage(); err != nil {
+				panic(err)
+			}
 		}
 
 	},
@@ -71,9 +75,18 @@ var imageCmd = &cobra.Command{
 	Long:  `Find images`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if cmd.Flags().NFlag() == 0 {
-			cmd.Usage()
+			if err := cmd.Usage(); err != nil {
+				panic(err)
+			}
 			panic(zotErrors.ErrInvalidArgs)
 		}
-		searchCve(searchParams)
+		err := searchCve(searchParams)
+		if err != nil {
+			cmd.PrintErrln(err.Error())
+			cmd.PrintErrln()
+			if err := cmd.Usage(); err != nil {
+				panic(err)
+			}
+		}
 	},
 }

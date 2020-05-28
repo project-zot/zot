@@ -13,6 +13,7 @@ func getSearchers() []searcher {
 		new(searchByPackageNameAndVersion),
 		new(searchByPackageName),
 		new(searchByPackageVendor),
+		new(searchImageByCveID),
 	}
 
 	return searchers
@@ -59,7 +60,7 @@ func (search searchImageByCveID) search(params map[string]*string) (string, erro
 	if !canSearch(params, newSet("cveIDForImage")) {
 		return "", errors.New("searchImageByCveID: cannot search image with given params. Only CVE ID is required")
 	}
-	return fmt.Sprintf("Searching image with CVE ID: %s", *params["cveID"]), nil
+	return fmt.Sprintf("Searching image with CVE ID: %s", *params["cveIDForImage"]), nil
 }
 
 type searchByImageNameAndTag struct{}
