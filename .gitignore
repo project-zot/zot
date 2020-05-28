@@ -20,3 +20,4 @@ test/data/
 coverage.html
 tags
 vendor/
+.vscode/

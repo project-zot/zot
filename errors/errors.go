@@ -24,4 +24,5 @@ var (
 	ErrCacheRootBucket     = errors.New("cache: unable to create/update root bucket")
 	ErrCacheNoBucket       = errors.New("cache: unable to find bucket")
 	ErrCacheMiss           = errors.New("cache: miss")
+	ErrInvalidArgs         = errors.New("cli: Invalid Arguments")
 )
