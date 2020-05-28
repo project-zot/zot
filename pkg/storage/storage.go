@@ -849,6 +849,8 @@ retry:
 		}
 		is.log.Debug().Str("src", src).Str("dst", dst).Msg("dedupe: rename")
 	} else {
+		dstRecord = path.Join(is.rootDir, dstRecord)
+
 		dstRecordFi, err := os.Stat(dstRecord)
 		if err != nil {
 			is.log.Error().Err(err).Str("blobPath", dstRecord).Msg("dedupe: unable to stat")

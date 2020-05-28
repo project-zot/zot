@@ -3,6 +3,7 @@ package storage_test
 import (
 	"io/ioutil"
 	"os"
+	"path"
 	"testing"
 
 	"github.com/anuvu/zot/errors"
@@ -33,7 +34,7 @@ func TestCache(t *testing.T) {
 		b := c.HasBlob("key", "value")
 		So(b, ShouldBeFalse)
 
-		err = c.PutBlob("key", "value")
+		err = c.PutBlob("key", path.Join(dir, "value"))
 		So(err, ShouldBeNil)
 
 		b = c.HasBlob("key", "value")

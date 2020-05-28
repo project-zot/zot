@@ -2,6 +2,7 @@ package storage
 
 import (
 	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/anuvu/zot/errors"
@@ -14,8 +15,9 @@ const (
 )
 
 type Cache struct {
-	db  *bbolt.DB
-	log zlog.Logger
+	rootDir string
+	db      *bbolt.DB
+	log     zlog.Logger
 }
 
 // Blob is a blob record
@@ -45,10 +47,16 @@ func NewCache(rootDir string, name string, log zlog.Logger) *Cache {
 		return nil
 	}
 
-	return &Cache{db: db, log: log}
+	return &Cache{rootDir: rootDir, db: db, log: log}
 }
 
 func (c *Cache) PutBlob(digest string, path string) error {
+	// use only relative (to rootDir) paths on blobs
+	relp, err := filepath.Rel(c.rootDir, path)
+	if err != nil {
+		c.log.Error().Err(err).Str("path", path).Msg("unable to get relative path")
+	}
+
 	if err := c.db.Update(func(tx *bbolt.Tx) error {
 		root := tx.Bucket([]byte(BlobsCache))
 		if root == nil {
@@ -63,8 +71,8 @@ func (c *Cache) PutBlob(digest string, path string) error {
 			c.log.Error().Err(err).Str("bucket", digest).Msg("unable to create a bucket")
 			return err
 		}
-		if err := b.Put([]byte(path), nil); err != nil {
-			c.log.Error().Err(err).Str("bucket", digest).Str("value", path).Msg("unable to put record")
+		if err := b.Put([]byte(relp), nil); err != nil {
+			c.log.Error().Err(err).Str("bucket", digest).Str("value", relp).Msg("unable to put record")
 			return err
 		}
 		return nil
@@ -135,6 +143,12 @@ func (c *Cache) HasBlob(digest string, blob string) bool {
 }
 
 func (c *Cache) DeleteBlob(digest string, path string) error {
+	// use only relative (to rootDir) paths on blobs
+	relp, err := filepath.Rel(c.rootDir, path)
+	if err != nil {
+		c.log.Error().Err(err).Str("path", path).Msg("unable to get relative path")
+	}
+
 	if err := c.db.Update(func(tx *bbolt.Tx) error {
 		root := tx.Bucket([]byte(BlobsCache))
 		if root == nil {
@@ -149,8 +163,8 @@ func (c *Cache) DeleteBlob(digest string, path string) error {
 			return errors.ErrCacheMiss
 		}
 
-		if err := b.Delete([]byte(path)); err != nil {
-			c.log.Error().Err(err).Str("digest", digest).Str("path", path).Msg("unable to delete")
+		if err := b.Delete([]byte(relp)); err != nil {
+			c.log.Error().Err(err).Str("digest", digest).Str("path", relp).Msg("unable to delete")
 			return err
 		}
 
@@ -158,9 +172,9 @@ func (c *Cache) DeleteBlob(digest string, path string) error {
 		k, _ := cur.First()
 
 		if k == nil {
-			c.log.Debug().Str("digest", digest).Str("path", path).Msg("deleting empty bucket")
+			c.log.Debug().Str("digest", digest).Str("path", relp).Msg("deleting empty bucket")
 			if err := root.DeleteBucket([]byte(digest)); err != nil {
-				c.log.Error().Err(err).Str("digest", digest).Str("path", path).Msg("unable to delete")
+				c.log.Error().Err(err).Str("digest", digest).Str("path", relp).Msg("unable to delete")
 				return err
 			}
 		}
