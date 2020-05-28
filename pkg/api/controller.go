@@ -52,19 +52,15 @@ func (c *Controller) Run() error {
 
 	// Updating the CVE Database
 	if c.Config != nil && c.Config.Extensions != nil && c.Config.Extensions.Search != nil &&
-		c.Config.Extensions.Search.CVE.UpdateInterval >= 2 {
+		c.Config.Extensions.Search.CVE.UpdateInterval > 1 {
 		go func() {
 			cveinfo.UpdateCVEDb(c.Config.Storage.RootDirectory, c.Log, c.Config.Extensions.Search.CVE.UpdateInterval, false)
 		}()
 	}
 
-	fmt.Println("After the Updated")
-
 	c.Router = engine
 	c.Router.UseEncodedPath()
 	_ = NewRouteHandler(c)
-
-	fmt.Println("Server started")
 
 	addr := fmt.Sprintf("%s:%s", c.Config.HTTP.Address, c.Config.HTTP.Port)
 	server := &http.Server{Addr: addr, Handler: c.Router}
@@ -100,7 +96,7 @@ func (c *Controller) Run() error {
 				PreferServerCipherSuites: true,
 				MinVersion:               tls.VersionTLS12,
 			}
-			server.TLSConfig.BuildNameToCertificate()
+			server.TLSConfig.BuildNameToCertificate() // nolint:staticcheck
 		}
 
 		return server.ServeTLS(l, c.Config.HTTP.TLS.Cert, c.Config.HTTP.TLS.Key)

@@ -18,9 +18,8 @@ import (
 	"time"
 
 	"github.com/anuvu/zot/errors"
+
 	"github.com/anuvu/zot/pkg/api"
-	"github.com/anuvu/zot/pkg/extensions/search"
-	cveinfo "github.com/anuvu/zot/pkg/extensions/search/cve"
 	"github.com/chartmuseum/auth"
 	"github.com/mitchellh/mapstructure"
 	vldap "github.com/nmcclain/ldap"
@@ -93,7 +92,6 @@ func TestBasicAuth(t *testing.T) {
 				Path: htpasswdPath,
 			},
 		}
-
 		c := api.NewController(config)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
@@ -121,7 +119,6 @@ func TestBasicAuth(t *testing.T) {
 		defer func() {
 			ctx := context.Background()
 			_ = c.Server.Shutdown(ctx)
-			_ = cveinfo.Close(search.ResConfig.DB)
 		}()
 
 		// without creds, should get access error
@@ -130,14 +127,6 @@ func TestBasicAuth(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 401)
 		var e api.Error
-		err = json.Unmarshal(resp.Body(), &e)
-		So(err, ShouldBeNil)
-
-		// without creds, should get access error to graphql route also
-		resp, err = resty.R().Get(BaseURL1 + "/query")
-		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 401)
 		err = json.Unmarshal(resp.Body(), &e)
 		So(err, ShouldBeNil)
 
@@ -202,7 +191,6 @@ func TestTLSWithBasicAuth(t *testing.T) {
 		defer func() {
 			ctx := context.Background()
 			_ = c.Server.Shutdown(ctx)
-			_ = cveinfo.Close(search.ResConfig.DB)
 		}()
 
 		// accessing insecure HTTP site should fail
@@ -282,7 +270,6 @@ func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 		defer func() {
 			ctx := context.Background()
 			_ = c.Server.Shutdown(ctx)
-			_ = cveinfo.Close(search.ResConfig.DB)
 		}()
 
 		// accessing insecure HTTP site should fail
@@ -356,7 +343,6 @@ func TestTLSMutualAuth(t *testing.T) {
 		defer func() {
 			ctx := context.Background()
 			_ = c.Server.Shutdown(ctx)
-			_ = cveinfo.Close(search.ResConfig.DB)
 		}()
 
 		// accessing insecure HTTP site should fail
@@ -443,7 +429,6 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 		defer func() {
 			ctx := context.Background()
 			_ = c.Server.Shutdown(ctx)
-			_ = cveinfo.Close(search.ResConfig.DB)
 		}()
 
 		// accessing insecure HTTP site should fail
@@ -543,7 +528,6 @@ func TestTLSMutualAndBasicAuth(t *testing.T) {
 		defer func() {
 			ctx := context.Background()
 			_ = c.Server.Shutdown(ctx)
-			_ = cveinfo.Close(search.ResConfig.DB)
 		}()
 
 		// accessing insecure HTTP site should fail
@@ -640,7 +624,6 @@ func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 		defer func() {
 			ctx := context.Background()
 			_ = c.Server.Shutdown(ctx)
-			_ = cveinfo.Close(search.ResConfig.DB)
 		}()
 
 		// accessing insecure HTTP site should fail
@@ -784,7 +767,6 @@ func TestBasicAuthWithLDAP(t *testing.T) {
 				UserAttribute: "uid",
 			},
 		}
-
 		c := api.NewController(config)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
@@ -812,7 +794,6 @@ func TestBasicAuthWithLDAP(t *testing.T) {
 		defer func() {
 			ctx := context.Background()
 			_ = c.Server.Shutdown(ctx)
-			_ = cveinfo.Close(search.ResConfig.DB)
 		}()
 
 		// without creds, should get access error
@@ -853,7 +834,6 @@ func TestBearerAuth(t *testing.T) {
 				Service: u.Host,
 			},
 		}
-
 		c := api.NewController(config)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		So(err, ShouldBeNil)
@@ -879,7 +859,6 @@ func TestBearerAuth(t *testing.T) {
 		defer func() {
 			ctx := context.Background()
 			_ = c.Server.Shutdown(ctx)
-			_ = cveinfo.Close(search.ResConfig.DB)
 		}()
 
 		blob := []byte("hello, blob!")
@@ -1041,6 +1020,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		So(err, ShouldBeNil)
 		defer os.RemoveAll(dir)
 		c.Config.Storage.RootDirectory = dir
+		c.Config.Extensions.Search.CVE.UpdateInterval = 1
 		go func() {
 			// this blocks
 			if err := c.Run(); err != nil {

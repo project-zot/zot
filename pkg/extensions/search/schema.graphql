@@ -1,35 +1,20 @@
-type CVEIdResult {
-     name: String
-     VulDesc: String 
-     VulDetails: [VulDetail]
+type CVEResultForImage {
+     Tag: String 
+     CVEList: [CVE]
 }
 
-type VulDetail {
-	PkgVendor:  String
-	PkgName:    String
-	PkgVersion: String
+type CVE {
+     Id: String 
+     Description: String
+     Severity: String
 }
 
-type CVEID {
-     name: String
-}
-
-type ImgCVEResult {
-     tag: String 
-     CVEIdList: [CVEID]
-}
-
-type CVEImgResult {
-     name: String 
-     tags: [String]
+type ImgResultForCVE {
+     Name: String 
+     Tags: [String]
 }
 
 type Query {
-  CVEListForPkgName(text: String!): [CVEID!]!
-  CVEListForPkgNameVer(text: String!): [CVEID!]!
-  CVEListForPkgVendor(text: String!): [CVEID!]!
-  CVE(text: String!): CVEIdResult!
-  CVEListForImage(repo: String!) :[ImgCVEResult]! 
-  CVEListForImageTag(repo: String!, tag: String!) :[CVEID!]!
-  ImageListForCVE(text: String!) :[CVEImgResult]
+  CVEListForImage(repo: String!) :[CVEResultForImage]! 
+  ImageListForCVE(text: String!) :[ImgResultForCVE]
 }

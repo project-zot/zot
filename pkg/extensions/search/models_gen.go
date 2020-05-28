@@ -2,28 +2,18 @@
 
 package search
 
-type Cveid struct {
-	Name *string `json:"name"`
+type Cve struct {
+	ID          *string `json:"Id"`
+	Description *string `json:"Description"`
+	Severity    *string `json:"Severity"`
 }
 
-type CVEIdResult struct {
-	Name       *string      `json:"name"`
-	VulDesc    *string      `json:"VulDesc"`
-	VulDetails []*VulDetail `json:"VulDetails"`
+type CVEResultForImage struct {
+	Tag     *string `json:"Tag"`
+	CVEList []*Cve  `json:"CVEList"`
 }
 
-type CVEImgResult struct {
-	Name *string   `json:"name"`
-	Tags []*string `json:"tags"`
-}
-
-type ImgCVEResult struct {
-	Tag       *string  `json:"tag"`
-	CVEIdList []*Cveid `json:"CVEIdList"`
-}
-
-type VulDetail struct {
-	PkgVendor  *string `json:"PkgVendor"`
-	PkgName    *string `json:"PkgName"`
-	PkgVersion *string `json:"PkgVersion"`
+type ImgResultForCve struct {
+	Name *string   `json:"Name"`
+	Tags []*string `json:"Tags"`
 }

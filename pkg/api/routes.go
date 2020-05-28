@@ -115,9 +115,7 @@ func (rh *RouteHandler) SetupRoutes() {
 	// swagger docs "/swagger/v2/index.html"
 	rh.c.Router.PathPrefix("/swagger/v2/").Methods("GET").Handler(httpSwagger.WrapHandler)
 	// Zot Search Extension Router
-	fmt.Println("Calling Search Handler")
 	rh.c.Router.PathPrefix("/query").Methods("GET", "POST").Handler(rh.searchHandler())
-	fmt.Println("Call Returned")
 }
 
 // Method handlers
