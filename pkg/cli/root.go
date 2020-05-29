@@ -96,7 +96,8 @@ func NewRootCmd() *cobra.Command {
 
 	rootCmd.AddCommand(serveCmd)
 	rootCmd.AddCommand(gcCmd)
-	initSearchCommand(rootCmd)
+	rootCmd.AddCommand(NewSearchCmd(NewCveCommand, NewImageCommand))
+
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "show the version and exit")
 
 	return rootCmd

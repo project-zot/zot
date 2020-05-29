@@ -14,6 +14,7 @@ func getSearchers() []searcher {
 		new(searchByPackageName),
 		new(searchByPackageVendor),
 		new(searchImageByCveID),
+		new(searchByPackageVersion),
 	}
 
 	return searchers
@@ -98,6 +99,15 @@ func (search searchByPackageName) search(params map[string]*string) (string, err
 		return "", errors.New("searchByPackageName: cannot search with given params. Only package name is required")
 	}
 	return fmt.Sprintf("Searching with package name: %s", *params["packageName"]), nil
+}
+
+type searchByPackageVersion struct{}
+
+func (search searchByPackageVersion) search(params map[string]*string) (string, error) {
+	if !canSearch(params, newSet("packageVersion")) {
+		return "", errors.New("searchByPackageVersion: cannot search with given params. Only package version is required")
+	}
+	return fmt.Sprintf("Searching with package version: %s", *params["packageVersion"]), nil
 }
 
 type searchByPackageVendor struct{}
