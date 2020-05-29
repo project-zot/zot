@@ -1658,8 +1658,8 @@ go_repository(
     build_file_proto_mode = "disable",
     importpath = "github.com/aquasecurity/trivy",
     replace = "github.com/shimish2/trivy",
-    sum = "h1:XhZiWCHKA5vgWC0u094+9vgjYTJJIvAyUeob2nUfHmQ=",
-    version = "v0.7.1-0.20200527172237-e43d8062d8fb",
+    sum = "h1:pBjEMJ3AecViOydKN2cqDcjIONsvpZpeSzPcYotXzTU=",
+    version = "v0.7.1-0.20200601224636-c55c6f1bc929",
 )
 
 go_repository(

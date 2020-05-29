@@ -11,16 +11,13 @@ import (
 
 	cveinfo "github.com/anuvu/zot/pkg/extensions/search/cve"
 	"github.com/anuvu/zot/pkg/storage"
-	integration "github.com/aquasecurity/trivy/integration"
-	config "github.com/aquasecurity/trivy/integration/config"
 ) // THIS CODE IS A STARTING POINT ONLY. IT WILL NOT BE UPDATED WITH SCHEMA CHANGES.
 
 // Resolver ...
 type Resolver struct {
-	CVEInfo  *cveinfo.CveInfo
-	ImgStore *storage.ImageStore
-	//Config   config.Config
-	dir string
+	cveInfo  *cveinfo.CveInfo
+	imgStore *storage.ImageStore
+	dir      string
 }
 
 // ResConfig ...
@@ -36,8 +33,14 @@ type queryResolver struct{ *Resolver }
 
 // GetResolverConfig ...
 func GetResolverConfig(dir string, log log.Logger, imgstorage *storage.ImageStore) Config {
-	cve := &cveinfo.CveInfo{Log: log, RootDir: dir}
-	ResConfig = &Resolver{CVEInfo: cve, ImgStore: imgstorage, dir: dir}
+	config, err := cveinfo.NewTrivyConfig(dir)
+	if err != nil {
+		panic(err)
+	}
+
+	cve := &cveinfo.CveInfo{Log: log, CveTrivyConfig: config}
+
+	ResConfig = &Resolver{cveInfo: cve, imgStore: imgstorage, dir: dir}
 
 	return Config{Resolvers: ResConfig}
 }
@@ -45,14 +48,9 @@ func GetResolverConfig(dir string, log log.Logger, imgstorage *storage.ImageStor
 func (r *queryResolver) CVEListForImage(ctx context.Context, repo string) ([]*CVEResultForImage, error) {
 	imgResult := []*CVEResultForImage{}
 
-	config, err := config.NewConfig()
-	if err != nil {
-		panic(err)
-	}
+	r.cveInfo.CveTrivyConfig.TrivyConfig.Input = path.Join(r.dir, repo)
 
-	config.Input = path.Join(r.dir, repo)
-
-	results, err := integration.Run(config)
+	results, err := cveinfo.ScanImage(r.cveInfo.CveTrivyConfig)
 	if err != nil {
 		return imgResult, err
 	}
@@ -83,20 +81,15 @@ func (r *queryResolver) CVEListForImage(ctx context.Context, repo string) ([]*CV
 func (r *queryResolver) ImageListForCve(ctx context.Context, text string) ([]*ImgResultForCve, error) {
 	cveResult := []*ImgResultForCve{}
 
-	repoList, err := r.ImgStore.GetRepositories()
+	repoList, err := r.imgStore.GetRepositories()
 	if err != nil {
 		return cveResult, nil
 	}
 
-	config, err := config.NewConfig()
-	if err != nil {
-		panic(err)
-	}
-
 	for _, repo := range repoList {
-		config.Input = path.Join(r.dir, repo)
+		r.cveInfo.CveTrivyConfig.TrivyConfig.Input = path.Join(r.dir, repo)
 
-		results, err := integration.Run(config)
+		results, err := cveinfo.ScanImage(r.cveInfo.CveTrivyConfig)
 		if err != nil {
 			continue
 		}
@@ -124,7 +117,7 @@ func (r *queryResolver) ImageListForCve(ctx context.Context, text string) ([]*Im
 	}
 
 	if err != nil {
-		r.CVEInfo.Log.Error().Err(err).Msg("Not able to search repositories")
+		r.cveInfo.Log.Error().Err(err).Msg("Not able to search repositories")
 	}
 
 	return cveResult, nil

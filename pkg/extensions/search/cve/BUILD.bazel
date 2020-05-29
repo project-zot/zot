@@ -12,6 +12,7 @@ go_library(
         "//pkg/log:go_default_library",
         "@com_github_aquasecurity_trivy//integration:go_default_library",
         "@com_github_aquasecurity_trivy//integration/config:go_default_library",
+        "@com_github_aquasecurity_trivy//pkg/report:go_default_library",
     ],
 )
 
@@ -25,6 +26,12 @@ go_test(
         ":search_testdata",
     ],
     embed = [":go_default_library"],
+    deps = [
+        "//pkg/api:go_default_library",
+        "//pkg/log:go_default_library",
+        "@com_github_smartystreets_goconvey//convey:go_default_library",
+        "@in_gopkg_resty_v1//:go_default_library",
+    ],
 )
 
 filegroup(

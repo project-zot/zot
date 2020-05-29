@@ -54,7 +54,11 @@ func (c *Controller) Run() error {
 	if c.Config != nil && c.Config.Extensions != nil && c.Config.Extensions.Search != nil &&
 		c.Config.Extensions.Search.CVE.UpdateInterval > 1 {
 		go func() {
-			cveinfo.UpdateCVEDb(c.Config.Storage.RootDirectory, c.Log, c.Config.Extensions.Search.CVE.UpdateInterval, false)
+			err := cveinfo.UpdateCVEDb(c.Config.Storage.RootDirectory, c.Log,
+				c.Config.Extensions.Search.CVE.UpdateInterval, false)
+			if err != nil {
+				panic(err)
+			}
 		}()
 	}
 

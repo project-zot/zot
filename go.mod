@@ -58,4 +58,4 @@ require (
 	gopkg.in/resty.v1 v1.12.0
 )
 
-replace github.com/aquasecurity/trivy => github.com/shimish2/trivy v0.7.1-0.20200527172237-e43d8062d8fb
+replace github.com/aquasecurity/trivy => github.com/shimish2/trivy v0.7.1-0.20200601224636-c55c6f1bc929

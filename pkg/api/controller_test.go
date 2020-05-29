@@ -99,7 +99,7 @@ func TestBasicAuth(t *testing.T) {
 		}
 		defer os.RemoveAll(dir)
 		c.Config.Storage.RootDirectory = dir
-		c.Config.Extensions.Search.CVE.UpdateInterval = 1
+		c.Config.Extensions.Search.CVE.UpdateInterval = 2
 		go func() {
 			// this blocks
 			if err := c.Run(); err != nil {

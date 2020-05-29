@@ -507,8 +507,8 @@ github.com/satori/go.uuid v1.2.0/go.mod h1:dA0hQrYB0VpLJoorglMZABFdXlWrHn1NEOzdh
 github.com/sclevine/spec v1.2.0/go.mod h1:W4J29eT/Kzv7/b9IWLB055Z+qvVC9vt0Arko24q7p+U=
 github.com/sergi/go-diff v1.0.0/go.mod h1:0CfEIISq7TuYL3j771MWULgwwjU+GofnZX9QAmXWZgo=
 github.com/sergi/go-diff v1.1.0/go.mod h1:STckp+ISIX8hZLjrqAeVduY0gWCT9IjLuqbuNXdaHfM=
-github.com/shimish2/trivy v0.7.1-0.20200527172237-e43d8062d8fb h1:XhZiWCHKA5vgWC0u094+9vgjYTJJIvAyUeob2nUfHmQ=
-github.com/shimish2/trivy v0.7.1-0.20200527172237-e43d8062d8fb/go.mod h1:h05Fj8acbpAR7ZzYYW4sx7dm/uVt7Fi1pXMCgPvAFM8=
+github.com/shimish2/trivy v0.7.1-0.20200601224636-c55c6f1bc929 h1:pBjEMJ3AecViOydKN2cqDcjIONsvpZpeSzPcYotXzTU=
+github.com/shimish2/trivy v0.7.1-0.20200601224636-c55c6f1bc929/go.mod h1:h05Fj8acbpAR7ZzYYW4sx7dm/uVt7Fi1pXMCgPvAFM8=
 github.com/shurcooL/httpfs v0.0.0-20171119174359-809beceb2371/go.mod h1:ZY1cvUeJuFPAdZ/B6v7RHavJWZn2YPVFQ1OSXhCGOkg=
 github.com/shurcooL/sanitized_anchor_name v1.0.0 h1:PdmoCO6wvbs+7yrJyMORt4/BmY5IYyJwS/kOiWx8mHo=
 github.com/shurcooL/sanitized_anchor_name v1.0.0/go.mod h1:1NzhyTcUVG4SuEtjjoZeVRXNmyL/1OwPU0+IJeTBvfc=
