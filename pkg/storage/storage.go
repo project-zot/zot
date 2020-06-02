@@ -373,6 +373,7 @@ func (is *ImageStore) PutImageManifest(repo string, reference string, mediaType 
 	for _, l := range m.Layers {
 		digest := l.Digest
 		blobPath := is.BlobPath(repo, digest)
+		is.log.Info().Str("blobPath", blobPath).Str("reference", reference).Msg("manifest layers")
 
 		if _, err := os.Stat(blobPath); err != nil {
 			is.log.Error().Err(err).Str("blobPath", blobPath).Msg("unable to find blob")
@@ -435,6 +436,9 @@ func (is *ImageStore) PutImageManifest(repo string, reference string, mediaType 
 				break
 			}
 			// manifest contents have changed for the same tag
+			is.log.Info().Str("old", desc.Digest.String()).Str("new", mDigest.String()).
+				Msg("updating existing tag with new manifest contents")
+
 			desc = m
 			desc.Digest = mDigest
 
