@@ -60,7 +60,7 @@ func (lc *LDAPClient) Connect() error {
 				}
 				if lc.ClientCertificates != nil && len(lc.ClientCertificates) > 0 {
 					config.Certificates = lc.ClientCertificates
-					config.BuildNameToCertificate()
+					config.BuildNameToCertificate() //nolint: staticcheck
 				}
 
 				err = l.StartTLS(config)
@@ -78,7 +78,7 @@ func (lc *LDAPClient) Connect() error {
 			}
 			if lc.ClientCertificates != nil && len(lc.ClientCertificates) > 0 {
 				config.Certificates = lc.ClientCertificates
-				config.BuildNameToCertificate()
+				config.BuildNameToCertificate() //nolint: staticcheck
 			}
 			l, err = goldap.DialTLS("tcp", address, config)
 			if err != nil {

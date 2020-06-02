@@ -87,7 +87,7 @@ func (c *Controller) Run() error {
 				PreferServerCipherSuites: true,
 				MinVersion:               tls.VersionTLS12,
 			}
-			server.TLSConfig.BuildNameToCertificate()
+			server.TLSConfig.BuildNameToCertificate() //nolint: staticcheck
 		}
 
 		return server.ServeTLS(l, c.Config.HTTP.TLS.Cert, c.Config.HTTP.TLS.Key)
