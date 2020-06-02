@@ -1,6 +1,6 @@
 workspace(name = "com_github_anuvu_zot")
 
-go_version = "1.12.9"
+go_version = "1.14.1"
 
 go_os = "linux"
 
@@ -9,22 +9,22 @@ go_arch = "amd64"
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 
-go_rules_version = "0.19.3"
+go_rules_version = "v0.23.2"
 
 http_archive(
     name = "io_bazel_rules_go",
+    sha256 = "0c10738a488239750dbf35336be13252bad7c74348f867d30c3c3e0001906096",
     urls = [
-        "https://storage.googleapis.com/bazel-mirror/github.com/bazelbuild/rules_go/releases/download/{}/rules_go-{}.tar.gz".format(go_rules_version, go_rules_version),
+        "https://mirror.bazel.build/github.com/bazelbuild/rules_go/releases/download/{}/rules_go-{}.tar.gz".format(go_rules_version, go_rules_version),
         "https://github.com/bazelbuild/rules_go/releases/download/{}/rules_go-{}.tar.gz".format(go_rules_version, go_rules_version),
     ],
-    sha256 = "313f2c7a23fecc33023563f082f381a32b9b7254f727a7dd2d6380ccc6dfe09b",
 )
 
-gazelle_version = "0.18.1"
+gazelle_version = "v0.21.0"
 
 http_archive(
     name = "bazel_gazelle",
-    sha256 = "be9296bfd64882e3c08e3283c58fcb461fa6dd3c171764fcc4cf322f60615a9b",
+    sha256 = "bfd86b3cbe855d6c16c6fce60d76bd51f5c8dbc9cfcaef7a2bb5c1aafd0710e8",
     urls = ["https://github.com/bazelbuild/bazel-gazelle/releases/download/{}/bazel-gazelle-{}.tar.gz".format(gazelle_version, gazelle_version)],
 )
 
@@ -43,13 +43,15 @@ git_repository(
     remote = "https://github.com/atlassian/bazel-tools.git",
 )
 
-skylib_version = "0.8.0"
+skylib_version = "1.0.2"
 
 http_archive(
     name = "bazel_skylib",
-    sha256 = "2ea8a5ed2b448baf4a6855d3ce049c4c452a6470b1efd1504fdb7c1c134d220a",
-    strip_prefix = "bazel-skylib-{}".format(skylib_version),
-    urls = ["https://github.com/bazelbuild/bazel-skylib/archive/{}.tar.gz".format(skylib_version)],
+    sha256 = "97e70364e9249702246c0e9444bccdc4b847bed1eb03c5a3ece4f83dfe6abc44",
+    urls = [
+        "https://mirror.bazel.build/github.com/bazelbuild/bazel-skylib/releases/download/{}/bazel-skylib-{}.tar.gz".format(skylib_version, skylib_version),
+        "https://github.com/bazelbuild/bazel-skylib/releases/download/{}/bazel-skylib-{}.tar.gz".format(skylib_version, skylib_version),
+    ],
 )
 
 load("@bazel_skylib//lib:versions.bzl", "versions")
