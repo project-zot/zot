@@ -7,14 +7,14 @@ import (
 
 func getSearchers() []searcher {
 	searchers := []searcher{
-		new(searchCveByID),
-		new(searchByImageName),
-		new(searchByImageNameAndTag),
-		new(searchByPackageNameAndVersion),
-		new(searchByPackageName),
-		new(searchByPackageVendor),
-		new(searchImageByCveID),
-		new(searchByPackageVersion),
+		new(cveByIDSearcher),
+		new(cveByImageNameSearcher),
+		new(cveByImageNameAndTagSearcher),
+		new(cveByPackageNameAndVersionSearcher),
+		new(cveByPackageNameSearcher),
+		new(cveByPackageVendorSearcher),
+		new(imageByCveIDSearcher),
+		new(cveByPackageVersionSearcher),
 	}
 
 	return searchers
@@ -29,10 +29,12 @@ Only these combinations of flags(or their shorthands) are allowed:
   --package-name
   --package-name --package-version
   --package-version
+
+URL of the zot repository with --url is required
 `
 
 type searcher interface {
-	search(params map[string]*string) (string, error)
+	search(params map[string]*string, searchService CveSearchService) (string, error)
 }
 
 func canSearch(params map[string]*string, requiredParams *set) bool {
@@ -46,75 +48,83 @@ func canSearch(params map[string]*string, requiredParams *set) bool {
 	return true
 }
 
-type searchCveByID struct{}
+type cveByIDSearcher struct{}
 
-func (search searchCveByID) search(params map[string]*string) (string, error) {
+func (search cveByIDSearcher) search(params map[string]*string, searchService CveSearchService) (string, error) {
 	if !canSearch(params, newSet("cveID")) {
-		return "", errors.New("searchByCveId: cannot search with given params. Only CVE ID is required")
+		return "", cannotSearchError
 	}
 	return fmt.Sprintf("Searching with CVE ID: %s", *params["cveID"]), nil
 }
 
-type searchImageByCveID struct{}
+type imageByCveIDSearcher struct{}
 
-func (search searchImageByCveID) search(params map[string]*string) (string, error) {
+func (search imageByCveIDSearcher) search(params map[string]*string, searchService CveSearchService) (string, error) {
 	if !canSearch(params, newSet("cveIDForImage")) {
-		return "", errors.New("searchImageByCveID: cannot search image with given params. Only CVE ID is required")
+		return "", cannotSearchError
 	}
-	return fmt.Sprintf("Searching image with CVE ID: %s", *params["cveIDForImage"]), nil
+	if results, err := searchService.findImagesByCveId(*params["cveIDForImage"], servURL); err != nil {
+		return "", err
+	} else {
+		return results.String(), nil
+	}
 }
 
-type searchByImageNameAndTag struct{}
+type cveByImageNameAndTagSearcher struct{}
 
-func (search searchByImageNameAndTag) search(params map[string]*string) (string, error) {
+func (search cveByImageNameAndTagSearcher) search(params map[string]*string, searchService CveSearchService) (string, error) {
 
 	if !canSearch(params, newSet("imageName", "tag")) {
-		return "", errors.New("searchByImageNameAndTag: cannot search with given params. Only image name and tag are required")
+		return "", cannotSearchError
 	}
 	return fmt.Sprintf("Searching with image name and tag: %s and %s", *params["imageName"], *params["tag"]), nil
 }
 
-type searchByImageName struct{}
+type cveByImageNameSearcher struct{}
 
-func (search searchByImageName) search(params map[string]*string) (string, error) {
+func (search cveByImageNameSearcher) search(params map[string]*string, searchService CveSearchService) (string, error) {
 	if !canSearch(params, newSet("imageName")) {
-		return "", errors.New("searchByImageName: cannot search with given params. Only image name is required")
+		return "", cannotSearchError
 	}
-	return fmt.Sprintf("Searching with image name: %s", *params["imageName"]), nil
+	if results, err := searchService.findCveByImageName(*params["imageName"], servURL); err != nil {
+		return "", err
+	} else {
+		return results.String(), nil
+	}
 }
 
-type searchByPackageNameAndVersion struct{}
+type cveByPackageNameAndVersionSearcher struct{}
 
-func (search searchByPackageNameAndVersion) search(params map[string]*string) (string, error) {
+func (search cveByPackageNameAndVersionSearcher) search(params map[string]*string, searchService CveSearchService) (string, error) {
 	if !canSearch(params, newSet("packageName", "packageVersion")) {
-		return "", errors.New("searchByPackageNameAndVersion: cannot search with given params. Only package name and version are required")
+		return "", cannotSearchError
 	}
 	return fmt.Sprintf("Searching with package name: %s and version %s", *params["packageName"], *params["packageVersion"]), nil
 }
 
-type searchByPackageName struct{}
+type cveByPackageNameSearcher struct{}
 
-func (search searchByPackageName) search(params map[string]*string) (string, error) {
+func (search cveByPackageNameSearcher) search(params map[string]*string, searchService CveSearchService) (string, error) {
 	if !canSearch(params, newSet("packageName")) {
-		return "", errors.New("searchByPackageName: cannot search with given params. Only package name is required")
+		return "", cannotSearchError
 	}
 	return fmt.Sprintf("Searching with package name: %s", *params["packageName"]), nil
 }
 
-type searchByPackageVersion struct{}
+type cveByPackageVersionSearcher struct{}
 
-func (search searchByPackageVersion) search(params map[string]*string) (string, error) {
+func (search cveByPackageVersionSearcher) search(params map[string]*string, searchService CveSearchService) (string, error) {
 	if !canSearch(params, newSet("packageVersion")) {
-		return "", errors.New("searchByPackageVersion: cannot search with given params. Only package version is required")
+		return "", cannotSearchError
 	}
 	return fmt.Sprintf("Searching with package version: %s", *params["packageVersion"]), nil
 }
 
-type searchByPackageVendor struct{}
+type cveByPackageVendorSearcher struct{}
 
-func (search searchByPackageVendor) search(params map[string]*string) (string, error) {
+func (search cveByPackageVendorSearcher) search(params map[string]*string, searchService CveSearchService) (string, error) {
 	if !canSearch(params, newSet("packageVendor")) {
-		return "", errors.New("searchByPackageVendor: cannot search with given params. Only package vendor is required")
+		return "", cannotSearchError
 	}
 	return fmt.Sprintf("Searching with package vendor: %s", *params["packageVendor"]), nil
 }
@@ -138,3 +148,5 @@ func (s *set) contains(value string) bool {
 	_, c := s.m[value]
 	return c
 }
+
+var cannotSearchError = errors.New("Cannot search with these parameters")

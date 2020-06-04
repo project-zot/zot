@@ -1,67 +1,107 @@
 package cli
 
 import (
-	zotErrors "github.com/anuvu/zot/errors"
+	"fmt"
+	"time"
 
+	zotErrors "github.com/anuvu/zot/errors"
+	"github.com/briandowns/spinner"
 	"github.com/spf13/cobra"
 )
 
-var searchParams = make(map[string]*string)
+var searchCveParams map[string]*string
+var searchImageParams map[string]*string
+var service CveSearchService
+var servURL string
 
-func NewCveCommand() *cobra.Command {
+func NewCveCommand(searchService CveSearchService) *cobra.Command {
 	var cveCmd = &cobra.Command{
 		Use:   "cve",
 		Short: "Find CVEs",
 		Long:  `Find CVEs (Common Vulnerabilities and Exposures)`,
-		RunE:  runE,
+		RunE:  runCveE,
 	}
-
+	searchCveParams = make(map[string]*string)
 	setupFlags(cveCmd)
 	cveCmd.SetUsageTemplate(cveCmd.UsageTemplate() + allowedCombinations)
-
+	service = searchService
 	return cveCmd
 }
 
-func NewImageCommand() *cobra.Command {
+func NewImageCommand(searchService CveSearchService) *cobra.Command {
 	var imageCmd = &cobra.Command{
 		Use:   "image",
 		Short: "Find images",
-		Long:  `Find images`,
-		RunE:  runE,
+		Long:  `Find images in zot repository`,
+		RunE:  runImageE,
 	}
+	searchImageParams = make(map[string]*string)
 	setupImageFlags(imageCmd)
+	service = searchService
 	return imageCmd
 }
 
-func runE(cmd *cobra.Command, args []string) error {
-	if cmd.Flags().NFlag() == 0 {
+func runCveE(cmd *cobra.Command, args []string) error {
+	spin := spinner.New(spinner.CharSets[39], 150*time.Millisecond, spinner.WithWriter(cmd.ErrOrStderr()))
+	spin.Prefix = "Searching... "
+	if cmd.Flags().NFlag() == 1 {
+		spin.Stop()
 		return zotErrors.ErrInvalidArgs
 	}
-	result, err := searchCve(searchParams)
+	spin.Start()
+	result, err := searchCve(searchCveParams)
+	spin.Stop()
 	if err != nil {
 		return err
 	}
-	cmd.Println(result)
+	fmt.Fprintln(cmd.OutOrStdout(), result)
+	return nil
+}
+
+func runImageE(cmd *cobra.Command, args []string) error {
+	spin := spinner.New(spinner.CharSets[39], 150*time.Millisecond, spinner.WithWriter(cmd.ErrOrStderr()))
+	spin.Prefix = "Searching... "
+	if cmd.Flags().NFlag() == 1 {
+		return zotErrors.ErrInvalidArgs
+	}
+	spin.Start()
+	result, err := searchCve(searchImageParams)
+	spin.Stop()
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(cmd.OutOrStdout(), result)
 	return nil
 }
 
 func setupFlags(cveCmd *cobra.Command) {
-	searchParams["imageName"] = cveCmd.Flags().StringP("image-name", "I", "", "Specify image name")
-	searchParams["tag"] = cveCmd.Flags().StringP("tag", "t", "", "Specify tag")
-	searchParams["packageName"] = cveCmd.Flags().StringP("package-name", "p", "", "Specify package name")
-	searchParams["packageVersion"] = cveCmd.Flags().StringP("package-version", "V", "", "Specify package version")
-	searchParams["packageVendor"] = cveCmd.Flags().StringP("package-vendor", "d", "", "Specify package vendor")
-	searchParams["cveID"] = cveCmd.Flags().StringP("cve-id", "i", "", "Find by CVE-ID")
+	searchCveParams["imageName"] = cveCmd.Flags().StringP("image-name", "I", "", "Specify image name")
+	searchCveParams["tag"] = cveCmd.Flags().StringP("tag", "t", "", "Specify tag")
+	searchCveParams["packageName"] = cveCmd.Flags().StringP("package-name", "p", "", "Specify package name")
+	searchCveParams["packageVersion"] = cveCmd.Flags().StringP("package-version", "V", "", "Specify package version")
+	searchCveParams["packageVendor"] = cveCmd.Flags().StringP("package-vendor", "d", "", "Specify package vendor")
+	searchCveParams["cveID"] = cveCmd.Flags().StringP("cve-id", "i", "", "Find by CVE-ID")
+	cveCmd.Flags().StringVar(&servURL, "url", "", "Specify zot server URL [required]")
+	_ = cveCmd.MarkFlagRequired("url")
 }
 
 func setupImageFlags(imageCmd *cobra.Command) {
-	searchParams["cveIDForImage"] = imageCmd.Flags().StringP("cve-id", "c", "", "Find by CVE-ID")
+	searchImageParams["cveIDForImage"] = imageCmd.Flags().StringP("cve-id", "c", "", "Find by CVE-ID")
+	imageCmd.Flags().StringVar(&servURL, "url", "", "Specify zot server URL [required]")
+	_ = imageCmd.MarkFlagRequired("url")
+
 }
 
 func searchCve(params map[string]*string) (string, error) {
 	for _, searcher := range getSearchers() {
-		results, err := searcher.search(params)
-		if err == nil {
+		results, err := searcher.search(params, service)
+		if err != nil {
+			if err == cannotSearchError {
+				continue
+			} else {
+				return "", err
+			}
+		} else {
 			return results, nil
 		}
 	}

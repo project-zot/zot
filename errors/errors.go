@@ -26,4 +26,5 @@ var (
 	ErrCacheMiss               = errors.New("cache: miss")
 	ErrInvalidArgs             = errors.New("cli: Invalid Arguments")
 	ErrInvalidFlagsCombination = errors.New("cli: Invalid combination of flags")
+	ErrInvalidURL              = errors.New("cli: invalid URL format")
 )
