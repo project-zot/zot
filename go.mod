@@ -9,11 +9,11 @@ require (
 	github.com/getlantern/deepcopy v0.0.0-20160317154340-7f45deb8130a
 	github.com/go-chi/chi v4.0.2+incompatible // indirect
 	github.com/go-ldap/ldap/v3 v3.1.3
+	github.com/go-resty/resty/v2 v2.3.0
 	github.com/gofrs/uuid v3.2.0+incompatible
 	github.com/gorilla/handlers v1.4.2
 	github.com/gorilla/mux v1.7.3
-	github.com/json-iterator/go v1.1.9
-	github.com/machinebox/graphql v0.2.2
+	github.com/json-iterator/go v1.1.6
 	github.com/mitchellh/mapstructure v1.1.2
 	github.com/nmcclain/asn1-ber v0.0.0-20170104154839-2661553a0484 // indirect
 	github.com/nmcclain/ldap v0.0.0-20191021200707-3b3b69a7e9e3
@@ -30,7 +30,6 @@ require (
 	github.com/swaggo/http-swagger v0.0.0-20190614090009-c2865af9083e
 	github.com/swaggo/swag v1.6.3
 	go.etcd.io/bbolt v1.3.4
-	golang.org/x/crypto v0.0.0-20191206172530-e9b2fee46413
-	golang.org/x/sys v0.0.0-20200223170610-d5e6a3e2c0ae // indirect
+	golang.org/x/crypto v0.0.0-20190911031432-227b76d455e7
 	gopkg.in/resty.v1 v1.12.0
 )

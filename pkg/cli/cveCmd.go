@@ -13,6 +13,7 @@ var searchCveParams map[string]*string
 var searchImageParams map[string]*string
 var service CveSearchService
 var servURL string
+var user string
 
 func NewCveCommand(searchService CveSearchService) *cobra.Command {
 	var cveCmd = &cobra.Command{
@@ -22,7 +23,8 @@ func NewCveCommand(searchService CveSearchService) *cobra.Command {
 		RunE:  runCveE,
 	}
 	searchCveParams = make(map[string]*string)
-	setupFlags(cveCmd)
+	setupCmdFlags(cveCmd)
+	setupCommonFlags(cveCmd)
 	cveCmd.SetUsageTemplate(cveCmd.UsageTemplate() + allowedCombinations)
 	service = searchService
 	return cveCmd
@@ -37,6 +39,7 @@ func NewImageCommand(searchService CveSearchService) *cobra.Command {
 	}
 	searchImageParams = make(map[string]*string)
 	setupImageFlags(imageCmd)
+	setupCommonFlags(imageCmd)
 	service = searchService
 	return imageCmd
 }
@@ -74,22 +77,23 @@ func runImageE(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func setupFlags(cveCmd *cobra.Command) {
+func setupCommonFlags(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&servURL, "url", "", "Specify zot server URL [required]")
+	_ = cmd.MarkFlagRequired("url")
+	cmd.Flags().StringVarP(&user, "user", "u", "", `User Credentials of zot server in "username:password" format`)
+}
+
+func setupCmdFlags(cveCmd *cobra.Command) {
 	searchCveParams["imageName"] = cveCmd.Flags().StringP("image-name", "I", "", "Specify image name")
 	searchCveParams["tag"] = cveCmd.Flags().StringP("tag", "t", "", "Specify tag")
 	searchCveParams["packageName"] = cveCmd.Flags().StringP("package-name", "p", "", "Specify package name")
 	searchCveParams["packageVersion"] = cveCmd.Flags().StringP("package-version", "V", "", "Specify package version")
 	searchCveParams["packageVendor"] = cveCmd.Flags().StringP("package-vendor", "d", "", "Specify package vendor")
 	searchCveParams["cveID"] = cveCmd.Flags().StringP("cve-id", "i", "", "Find by CVE-ID")
-	cveCmd.Flags().StringVar(&servURL, "url", "", "Specify zot server URL [required]")
-	_ = cveCmd.MarkFlagRequired("url")
 }
 
 func setupImageFlags(imageCmd *cobra.Command) {
 	searchImageParams["cveIDForImage"] = imageCmd.Flags().StringP("cve-id", "c", "", "Find by CVE-ID")
-	imageCmd.Flags().StringVar(&servURL, "url", "", "Specify zot server URL [required]")
-	_ = imageCmd.MarkFlagRequired("url")
-
 }
 
 func searchCve(params map[string]*string) (string, error) {

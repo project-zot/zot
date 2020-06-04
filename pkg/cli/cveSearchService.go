@@ -1,19 +1,20 @@
 package cli
 
 import (
-	"context"
+	"crypto/tls"
+	"errors"
+	"fmt"
 	"net/url"
 	"strings"
 
 	zotErrors "github.com/anuvu/zot/errors"
-
-	"github.com/machinebox/graphql"
+	resty "github.com/go-resty/resty/v2"
 	"github.com/olekukonko/tablewriter"
 )
 
 type CveSearchService interface {
-	findCveByImageName(imageName string, serverUrl string) (CVEListForImageStruct, error)
-	findImagesByCveId(cveID string, serverUrl string) (ImageListForCVEStruct, error)
+	findCveByImageName(imageName, serverUrl, username, password string) (CVEListForImageStruct, error)
+	findImagesByCveId(cveID, serverUrl, username, password string) (ImageListForCVEStruct, error)
 }
 type searchService struct{}
 
@@ -21,51 +22,94 @@ func NewCveSearchService() CveSearchService {
 	return new(searchService)
 }
 
-func makeGraphQLRequest(serverUrl string, query string, params map[string]string, resultStructReference interface{}) error {
+func makeGraphQLRequestNoAuth(serverUrl, query string, params map[string]string, resultStructPointer interface{}) error {
 	newUrl, err := createEndpointUrl(serverUrl)
 	if err != nil {
 		return err
 	}
-	client := graphql.NewClient(newUrl)
-	req := graphql.NewRequest(query)
+	client := resty.New().
+		SetDisableWarn(true).
+		SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true}) //temp
 
-	for key, value := range params {
-		req.Var(key, value)
+	resp, err := client.R().
+		SetHeader("Content-Type", "application/json").
+		SetBody(query).
+		Post(newUrl)
+
+	if err != nil {
+		return err
 	}
-
-	req.Header.Set("Cache-Control", "no-cache")
-	ctx := context.Background()
-	if err := client.Run(ctx, req, resultStructReference); err != nil {
+	if !resp.IsSuccess() {
+		return errors.New(resp.String())
+	}
+	err = client.JSONUnmarshal(resp.Body(), resultStructPointer)
+	if err != nil {
 		return err
 	}
 	return nil
 }
-func (service searchService) findCveByImageName(imageName string, serverUrl string) (CVEListForImageStruct, error) {
-	query := "query ($imageName: String!) {CVEListForImage (repo: $imageName) {Tag CVEList {Id Description Severity}}}"
+
+func makeGraphQLRequestBasicAuth(serverUrl, query, username, password string, params map[string]string, resultStructPointer interface{}) error {
+	newUrl, err := createEndpointUrl(serverUrl)
+	if err != nil {
+		return err
+	}
+	client := resty.New().
+		SetDisableWarn(true).
+		SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true}) //temp
+
+	resp, err := client.R().
+		SetHeader("Content-Type", "application/json").
+		SetBody(query).
+		SetBasicAuth(username, password).
+		Post(newUrl)
+
+	if err != nil {
+		return err
+	}
+	if !resp.IsSuccess() {
+		return errors.New(resp.String())
+	}
+	err = client.JSONUnmarshal(resp.Body(), resultStructPointer)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (service searchService) findCveByImageName(imageName, serverUrl, username, password string) (CVEListForImageStruct, error) {
+	query := fmt.Sprintf(`{ "query": "{ CVEListForImage (repo:\"%s\" ) { Tag CVEList { Id Description Severity } } }" }`, imageName)
 	result := &CVEListForImageStruct{}
 	params := make(map[string]string)
 	params["imageName"] = imageName
-
-	if err := makeGraphQLRequest(serverUrl, query, params, result); err != nil {
-		return CVEListForImageStruct{}, err
+	if username != "" && password != "" {
+		if err := makeGraphQLRequestBasicAuth(serverUrl, query, username, password, params, result); err != nil {
+			return CVEListForImageStruct{}, err
+		}
+	} else {
+		if err := makeGraphQLRequestNoAuth(serverUrl, query, params, result); err != nil {
+			return CVEListForImageStruct{}, err
+		}
 	}
 	return *result, nil
 }
 
 type CVEListForImageStruct struct {
-	CVEListForImage []struct {
-		Tag     string
-		CVEList []struct {
-			Id          string
-			Description string
-			Severity    string
-		}
-	}
+	Data struct {
+		CVEListForImage []struct {
+			Tag     string `json:"Tag"`
+			CVEList []struct {
+				ID          string `json:"Id"`
+				Description string `json:"Description"`
+				Severity    string `json:"Severity"`
+			} `json:"CVEList"`
+		} `json:"CVEListForImage"`
+	} `json:"data"`
 }
 
 func (c CVEListForImageStruct) String() string {
 	stringBuilder := &strings.Builder{}
-	for _, image := range c.CVEListForImage {
+	for _, image := range c.Data.CVEListForImage {
 		stringBuilder.WriteString("Tag:" + image.Tag + "\n")
 		stringBuilder.WriteString("CVE List:\n")
 
@@ -73,7 +117,7 @@ func (c CVEListForImageStruct) String() string {
 		table.SetHeader([]string{"ID", "Description", "Severity"})
 		table.SetRowLine(true)
 		for _, cve := range image.CVEList {
-			row := []string{cve.Id, cve.Severity, cve.Description}
+			row := []string{cve.ID, cve.Severity, cve.Description}
 			table.Append(row)
 		}
 		table.Render()
@@ -82,21 +126,27 @@ func (c CVEListForImageStruct) String() string {
 	return stringBuilder.String()
 }
 
-func (service searchService) findImagesByCveId(cveID string, serverUrl string) (ImageListForCVEStruct, error) {
-	query := "query ($cveID: String!) {ImageListForCVE (text: $cveID) {Tags Name}}"
+func (service searchService) findImagesByCveId(cveID, serverUrl, username, password string) (ImageListForCVEStruct, error) {
+	query := fmt.Sprintf(`{ "query": "{ ImageListForCVE (text:\"%s\" ) { Name Tags } }" }`, cveID)
 	result := &ImageListForCVEStruct{}
 	params := make(map[string]string)
 	params["cveID"] = cveID
-
-	if err := makeGraphQLRequest(serverUrl, query, params, result); err != nil {
-		return ImageListForCVEStruct{}, err
+	if username != "" && password != "" {
+		if err := makeGraphQLRequestBasicAuth(serverUrl, query, username, password, params, result); err != nil {
+			return ImageListForCVEStruct{}, err
+		}
+	} else {
+		if err := makeGraphQLRequestNoAuth(serverUrl, query, params, result); err != nil {
+			return ImageListForCVEStruct{}, err
+		}
 	}
+
 	return *result, nil
 }
 
 func (c ImageListForCVEStruct) String() string {
 	stringBuilder := &strings.Builder{}
-	for _, image := range c.ImageListForCVE {
+	for _, image := range c.Data.ImageListForCVE {
 		stringBuilder.WriteString("Images List:\n")
 		stringBuilder.WriteString("Name:" + image.Name + "\n")
 
@@ -114,10 +164,12 @@ func (c ImageListForCVEStruct) String() string {
 }
 
 type ImageListForCVEStruct struct {
-	ImageListForCVE []struct {
-		Name string
-		Tags []string
-	}
+	Data struct {
+		ImageListForCVE []struct {
+			Name string   `json:"Name"`
+			Tags []string `json:"Tags"`
+		} `json:"ImageListForCVE"`
+	} `json:"data"`
 }
 
 func createEndpointUrl(rawUrl string) (string, error) {

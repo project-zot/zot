@@ -2,6 +2,7 @@ package cli
 
 import (
 	"errors"
+	"strings"
 )
 
 func getSearchers() []searcher {
@@ -41,11 +42,13 @@ func (search imageByCveIDSearcher) search(params map[string]*string, searchServi
 	if !canSearch(params, newSet("cveIDForImage")) {
 		return "", cannotSearchError
 	}
-	if results, err := searchService.findImagesByCveId(*params["cveIDForImage"], servURL); err != nil {
+	username, password := getUsernameAndPassword(user)
+	if results, err := searchService.findImagesByCveId(*params["cveIDForImage"], servURL, username, password); err != nil {
 		return "", err
 	} else {
 		return results.String(), nil
 	}
+
 }
 
 type cveByImageNameSearcher struct{}
@@ -54,11 +57,21 @@ func (search cveByImageNameSearcher) search(params map[string]*string, searchSer
 	if !canSearch(params, newSet("imageName")) {
 		return "", cannotSearchError
 	}
-	if results, err := searchService.findCveByImageName(*params["imageName"], servURL); err != nil {
+	username, password := getUsernameAndPassword(user)
+
+	if results, err := searchService.findCveByImageName(*params["imageName"], servURL, username, password); err != nil {
 		return "", err
 	} else {
 		return results.String(), nil
 	}
+}
+
+func getUsernameAndPassword(user string) (string, string) {
+	if strings.Contains(user, ":") {
+		split := strings.Split(user, ":")
+		return split[0], split[1]
+	}
+	return "", ""
 }
 
 var exists = struct{}{}

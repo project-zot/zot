@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -69,7 +70,16 @@ func TestSearchCveCmd(t *testing.T) {
 		So(err, ShouldEqual, zotErrors.ErrInvalidURL)
 	})
 	Convey("Test cve invalid url port", t, func() {
-		args := []string{"--image-name", "dummyImageName", "--url", "https://localhost:99999"}
+		args := []string{"--image-name", "dummyImageName", "--url", "http://localhost:99999"}
+		cmd := NewCveCommand(new(searchService))
+		buff := bytes.NewBufferString("")
+		cmd.SetOut(buff)
+		cmd.SetArgs(args)
+		err := cmd.Execute()
+		So(err, ShouldNotBeNil)
+	})
+	Convey("Test cve invalid url port with user", t, func() {
+		args := []string{"--image-name", "dummyImageName", "--url", "http://localhost:99999", "--user", "test:test"}
 		cmd := NewCveCommand(new(searchService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
@@ -154,7 +164,7 @@ func TestSearchImageCmd(t *testing.T) {
 		So(err, ShouldEqual, zotErrors.ErrInvalidURL)
 	})
 	Convey("Test image invalid url port", t, func() {
-		args := []string{"--cve-id", "dummyCveId", "--url", "https://localhost:99999"}
+		args := []string{"--cve-id", "dummyCveId", "--url", "http://localhost:99999"}
 		cmd := NewImageCommand(new(searchService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
@@ -162,6 +172,17 @@ func TestSearchImageCmd(t *testing.T) {
 		err := cmd.Execute()
 		So(err, ShouldNotBeNil)
 	})
+
+	Convey("Test image with user", t, func() {
+		args := []string{"--cve-id", "dummyCveId", "--url", "http://localhost:99999", "--user", "test:test"}
+		cmd := NewImageCommand(new(searchService))
+		buff := bytes.NewBufferString("")
+		cmd.SetOut(buff)
+		cmd.SetArgs(args)
+		err := cmd.Execute()
+		So(err, ShouldNotBeNil)
+	})
+
 	Convey("Test image by cve id", t, func() {
 		args := []string{"--cve-id", "dummyCveID", "--url", "someUrlImage"}
 		imageCmd := NewImageCommand(new(mockService))
@@ -189,19 +210,66 @@ func TestSearchImageCmd(t *testing.T) {
 	})
 }
 
+func TestResponseStructs(t *testing.T) {
+	Convey("Test ImageListForCVEStruct string", t, func() {
+		jsonData := []byte(`{"data":{"ImageListForCVE":[{"Name":"dummyName","Tags":["dummyTag"]}]}}`)
+		testStruct := ImageListForCVEStruct{}
+		err := json.Unmarshal(jsonData, &testStruct)
+		if err != nil {
+			t.FailNow()
+		}
+		expected :=
+			`Images List:
+Name:dummyName
++----------+
+|   TAG    |
++----------+
+| dummyTag |
++----------+
+
+`
+		So(testStruct.String(), ShouldEqual, expected)
+	})
+
+	Convey("Test CVEListForImageStruct string", t, func() {
+		jsonData := []byte(`{"data":{"CVEListForImage":[{"Tag":"dummyTag","CVEList":[
+			{"Id":"id1","Description":"desc1","Severity":"s1"},
+			{"Id":"id2","Description":"desc2","Severity":"s2"}]}]}}`)
+		testStruct := CVEListForImageStruct{}
+		err := json.Unmarshal(jsonData, &testStruct)
+		if err != nil {
+			t.FailNow()
+		}
+		expected :=
+			`Tag:dummyTag
+CVE List:
++-----+-------------+----------+
+| ID  | DESCRIPTION | SEVERITY |
++-----+-------------+----------+
+| id1 | s1          | desc1    |
++-----+-------------+----------+
+| id2 | s2          | desc2    |
++-----+-------------+----------+
+
+`
+		So(testStruct.String(), ShouldEqual, expected)
+	})
+
+}
+
 type mockService struct{}
 
 var inputTestImageName string
 var inputTestCveId string
 var urlTest string
 
-func (service mockService) findCveByImageName(imageName string, serverUrl string) (CVEListForImageStruct, error) {
+func (service mockService) findCveByImageName(imageName, serverUrl, username, password string) (CVEListForImageStruct, error) {
 	inputTestImageName = imageName
 	urlTest = serverUrl
 	return CVEListForImageStruct{}, nil
 }
 
-func (service mockService) findImagesByCveId(cveID string, serverUrl string) (ImageListForCVEStruct, error) {
+func (service mockService) findImagesByCveId(cveID, serverUrl, username, password string) (ImageListForCVEStruct, error) {
 	inputTestCveId = cveID
 	urlTest = serverUrl
 	return ImageListForCVEStruct{}, nil
