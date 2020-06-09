@@ -71,6 +71,20 @@ func makeHtpasswdFile() string {
 	return f.Name()
 }
 
+func makeHtpasswdFileFromString(fileContent string) string {
+	f, err := ioutil.TempFile("", "htpasswd-")
+	if err != nil {
+		panic(err)
+	}
+
+	// bcrypt(username="test", passwd="test")
+	content := []byte(fileContent)
+	if err := ioutil.WriteFile(f.Name(), content, 0644); err != nil {
+		panic(err)
+	}
+
+	return f.Name()
+}
 func TestNew(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		config := api.NewConfig()
@@ -79,6 +93,131 @@ func TestNew(t *testing.T) {
 	})
 }
 
+func TestHtpasswdSingleCred(t *testing.T) {
+	Convey("Single cred", t, func() {
+		singleCredtests :=
+			[]string{"alice:$2y$12$wc6M7d7vTyFD3m9J2hTWPuM3q1gd1lM.8Epnpd8YheZCh6hx/vxma",
+				"alice:$2y$12$wc6M7d7vTyFD3m9J2hTWPuM3q1gd1lM.8Epnpd8YheZCh6hx/vxma\n",
+			}
+
+		for _, testString := range singleCredtests {
+			func() {
+				config := api.NewConfig()
+				config.HTTP.Port = SecurePort1
+
+				htpasswdPath := makeHtpasswdFileFromString(testString)
+				defer os.Remove(htpasswdPath)
+				config.HTTP.Auth = &api.AuthConfig{
+					HTPasswd: api.AuthHTPasswd{
+						Path: htpasswdPath,
+					},
+				}
+				c := api.NewController(config)
+				dir, err := ioutil.TempDir("", "oci-repo-test")
+				if err != nil {
+					panic(err)
+				}
+				defer os.RemoveAll(dir)
+				c.Config.Storage.RootDirectory = dir
+				go func(controller *api.Controller) {
+					// this blocks
+					if err := controller.Run(); err != nil {
+						return
+					}
+				}(c)
+				// wait till ready
+				for {
+					_, err := resty.R().Get(BaseURL1)
+					if err == nil {
+						break
+					}
+					time.Sleep(100 * time.Millisecond)
+				}
+				defer func(controller *api.Controller) {
+					ctx := context.Background()
+					_ = controller.Server.Shutdown(ctx)
+				}(c)
+				// with creds, should get expected status code
+				resp, _ := resty.R().SetBasicAuth("alice", "alice").Get(BaseURL1 + "/v2/")
+				So(resp, ShouldNotBeNil)
+				So(resp.StatusCode(), ShouldEqual, 200)
+
+				//with invalid creds, it should fail
+				resp, _ = resty.R().SetBasicAuth("chuck", "chuck").Get(BaseURL1 + "/v2/")
+				So(resp, ShouldNotBeNil)
+				So(resp.StatusCode(), ShouldEqual, 401)
+			}()
+		}
+	})
+}
+
+func TestHtpasswdTwoCreds(t *testing.T) {
+	Convey("Two creds", t, func() {
+		twoCredtests :=
+			[]string{"alice:$2y$12$wc6M7d7vTyFD3m9J2hTWPuM3q1gd1lM.8Epnpd8YheZCh6hx/vxma\n" +
+				"bob:$2y$12$MZ9Wh44eZC4ck6TIftfM5.0QAQgpgvCTGDHQHgKCeqtxIx/OzJt6m",
+
+				"alice:$2y$12$wc6M7d7vTyFD3m9J2hTWPuM3q1gd1lM.8Epnpd8YheZCh6hx/vxma\n" +
+					"bob:$2y$12$MZ9Wh44eZC4ck6TIftfM5.0QAQgpgvCTGDHQHgKCeqtxIx/OzJt6m\n",
+
+				"alice:$2y$12$wc6M7d7vTyFD3m9J2hTWPuM3q1gd1lM.8Epnpd8YheZCh6hx/vxma\n\n" +
+					"bob:$2y$12$MZ9Wh44eZC4ck6TIftfM5.0QAQgpgvCTGDHQHgKCeqtxIx/OzJt6m\n\n",
+			}
+
+		for _, testString := range twoCredtests {
+			func() {
+				config := api.NewConfig()
+				config.HTTP.Port = SecurePort1
+				htpasswdPath := makeHtpasswdFileFromString(testString)
+				defer os.Remove(htpasswdPath)
+				config.HTTP.Auth = &api.AuthConfig{
+					HTPasswd: api.AuthHTPasswd{
+						Path: htpasswdPath,
+					},
+				}
+				c := api.NewController(config)
+				dir, err := ioutil.TempDir("", "oci-repo-test")
+				if err != nil {
+					panic(err)
+				}
+				defer os.RemoveAll(dir)
+				c.Config.Storage.RootDirectory = dir
+				go func(controller *api.Controller) {
+					// this blocks
+					if err := controller.Run(); err != nil {
+						return
+					}
+				}(c)
+				// wait till ready
+				for {
+					_, err := resty.R().Get(BaseURL1)
+					if err == nil {
+						break
+					}
+					time.Sleep(100 * time.Millisecond)
+				}
+
+				defer func(controller *api.Controller) {
+					ctx := context.Background()
+					_ = controller.Server.Shutdown(ctx)
+				}(c)
+				// with creds, should get expected status code
+				resp, _ := resty.R().SetBasicAuth("alice", "alice").Get(BaseURL1 + "/v2/")
+				So(resp, ShouldNotBeNil)
+				So(resp.StatusCode(), ShouldEqual, 200)
+
+				resp, _ = resty.R().SetBasicAuth("bob", "bob").Get(BaseURL1 + "/v2/")
+				So(resp, ShouldNotBeNil)
+				So(resp.StatusCode(), ShouldEqual, 200)
+
+				//with invalid creds, it should fail
+				resp, _ = resty.R().SetBasicAuth("chuck", "chuck").Get(BaseURL1 + "/v2/")
+				So(resp, ShouldNotBeNil)
+				So(resp.StatusCode(), ShouldEqual, 401)
+			}()
+		}
+	})
+}
 func TestBasicAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		config := api.NewConfig()
