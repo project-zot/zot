@@ -141,15 +141,16 @@ func basicAuthHandler(c *Controller) mux.MiddlewareFunc {
 			if err != nil {
 				panic(err)
 			}
+			defer f.Close()
 
-			for {
-				r := bufio.NewReader(f)
-				line, err := r.ReadString('\n')
-				if err != nil {
-					break
+			scanner := bufio.NewScanner(f)
+
+			for scanner.Scan() {
+				line := scanner.Text()
+				if strings.Contains(line, ":") {
+					tokens := strings.Split(scanner.Text(), ":")
+					credMap[tokens[0]] = tokens[1]
 				}
-				tokens := strings.Split(line, ":")
-				credMap[tokens[0]] = tokens[1]
 			}
 		}
 	}
