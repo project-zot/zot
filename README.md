@@ -68,13 +68,7 @@ bin/zot serve _config-file_
 Query for list of CVE given Image
 
 ```
-curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ CVEListForImage (repo:\"zot-test\" ) { tag CVEIdList { name } } }" }' http://localhost:8080/query
-
-```
-
-Query for list of CVE given Image and Tag
-```
-curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ CVEListForImageTag (repo:\"zot-test\",tag:\"1.0.0\" ) { name } }" }' http://localhost:8080/query
+curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ CVEListForImage (image:\"zot-test:1.0.0\" ) { Tag CVEList { name } } }" }' http://localhost:8080/query
 
 ```
 
@@ -82,27 +76,6 @@ Query for list of Images vulnerable to given CVE
 
 ```
 curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageListForCVE (text:\"CVE-2002-1119\") { name tags } }" }' http://localhost:8080/query
-
-```
-
-Query for CVE Details given CVE ID
-``` 
-curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ CVE (text:\"CVE-1999-0002\") { name VulDesc VulDetails { PkgName PkgVendor PkgVersion } } }" }' http://localhost:8080/query
-
-```
-Query for list of CVE given Package Vendor
-```
-curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ CVEListForPkgVendor (text:\"freebsd\") { name} }" }' http://localhost:8080/query 
-```
-Query for list of CVE given Package Name
-``` 
-curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ CVEListForPkgName (text:\"freebsd\") { name} }" }' http://localhost:8080/query
-
-```
-
-Query for list of CVE given Package Name and Version
-```
-curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ CVEListForPkgNameVer (text:\"openlinux1.2\") { name} }" }' http://localhost:8080/query
 
 ```
 

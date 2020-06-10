@@ -9,9 +9,9 @@ require (
 	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
 	github.com/aquasecurity/go-dep-parser v0.0.0-20190819075924-ea223f0ef24b // indirect
 	github.com/aquasecurity/testdocker v0.0.0-20200426142840-5f05bce6f12a // indirect
-	github.com/aquasecurity/trivy v0.0.0-00010101000000-000000000000
+	github.com/aquasecurity/trivy v0.9.1
 	github.com/aquasecurity/trivy-db v0.0.0-20200514134639-7e57e3e02470 // indirect
-	github.com/boltdb/bolt v1.3.1
+	github.com/boltdb/bolt v1.3.1 // indirect
 	github.com/caarlos0/env/v6 v6.0.0 // indirect
 	github.com/chartmuseum/auth v0.4.0
 	github.com/cheggaaa/pb/v3 v3.0.3 // indirect
@@ -21,7 +21,6 @@ require (
 	github.com/go-chi/chi v4.0.2+incompatible // indirect
 	github.com/go-ldap/ldap/v3 v3.1.3
 	github.com/gofrs/uuid v3.2.0+incompatible
-	github.com/google/wire v0.3.0 // indirect
 	github.com/gorilla/handlers v1.4.2
 	github.com/gorilla/mux v1.7.4
 	github.com/json-iterator/go v1.1.9
@@ -47,15 +46,16 @@ require (
 	github.com/testcontainers/testcontainers-go v0.3.1 // indirect
 	github.com/twitchtv/twirp v5.10.1+incompatible // indirect
 	github.com/urfave/cli/v2 v2.2.0 // indirect
-	github.com/vektah/gqlparser v1.3.1
+	github.com/vektah/gqlparser v1.3.1 // indirect
 	github.com/vektah/gqlparser/v2 v2.0.1
 	go.etcd.io/bbolt v1.3.4
 	go.uber.org/atomic v1.5.1 // indirect
 	go.uber.org/multierr v1.4.0 // indirect
 	go.uber.org/zap v1.13.0 // indirect
-	golang.org/x/crypto v0.0.0-20200220183623-bac4c82f6975
-	golang.org/x/net v0.0.0-20191108221443-4ba9e2ef068c // indirect
+	golang.org/x/crypto v0.0.0-20200302210943-78000ba7a073
 	gopkg.in/resty.v1 v1.12.0
 )
 
-replace github.com/aquasecurity/trivy => github.com/shimish2/trivy v0.7.1-0.20200601224636-c55c6f1bc929
+replace github.com/aquasecurity/trivy => github.com/shimish2/trivy v0.7.1-0.20200610180309-cfc70452fc7c
+
+replace github.com/aquasecurity/fanal => github.com/shimish2/fanal v0.0.0-20200609223534-80322e01924e

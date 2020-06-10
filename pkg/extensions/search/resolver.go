@@ -45,21 +45,25 @@ func GetResolverConfig(dir string, log log.Logger, imgstorage *storage.ImageStor
 	return Config{Resolvers: ResConfig}
 }
 
-func (r *queryResolver) CVEListForImage(ctx context.Context, repo string) ([]*CVEResultForImage, error) {
+func (r *queryResolver) CVEListForImage(ctx context.Context, image string) ([]*CVEResultForImage, error) {
 	imgResult := []*CVEResultForImage{}
 
-	r.cveInfo.CveTrivyConfig.TrivyConfig.Input = path.Join(r.dir, repo)
+	r.cveInfo.CveTrivyConfig.TrivyConfig.Input = path.Join(r.dir, image)
+
+	r.cveInfo.Log.Info().Str("Scanning Image", image).Msg("")
 
 	results, err := cveinfo.ScanImage(r.cveInfo.CveTrivyConfig)
 	if err != nil {
 		return imgResult, err
 	}
 
+	var copyImgTag string
+
+	if strings.Contains(image, ":") {
+		copyImgTag = strings.Split(image, ":")[1]
+	}
+
 	for _, result := range results {
-		tagExtract := strings.Split(result.Target, " ")
-
-		copyImgTag := strings.Split(tagExtract[2], ")")[0]
-
 		cveids := []*Cve{}
 
 		for _, vulnerability := range result.Vulnerabilities {
@@ -78,46 +82,59 @@ func (r *queryResolver) CVEListForImage(ctx context.Context, repo string) ([]*CV
 	return imgResult, nil
 }
 
-func (r *queryResolver) ImageListForCve(ctx context.Context, text string) ([]*ImgResultForCve, error) {
+func (r *queryResolver) ImageListForCve(ctx context.Context, id string) ([]*ImgResultForCve, error) {
 	cveResult := []*ImgResultForCve{}
+
+	r.cveInfo.Log.Info().Msg("Extracting Repositories")
 
 	repoList, err := r.imgStore.GetRepositories()
 	if err != nil {
-		return cveResult, nil
+		r.cveInfo.Log.Error().Err(err).Msg("Not able to search repositories")
+
+		return cveResult, err
 	}
 
-	for _, repo := range repoList {
-		r.cveInfo.CveTrivyConfig.TrivyConfig.Input = path.Join(r.dir, repo)
+	r.cveInfo.Log.Info().Msg("Scanning each repository")
 
-		results, err := cveinfo.ScanImage(r.cveInfo.CveTrivyConfig)
+	for _, repo := range repoList {
+		r.cveInfo.Log.Info().Str("Extracting list of tags available in image", repo).Msg("")
+
+		tagList, err := r.imgStore.GetImageTags(repo)
 		if err != nil {
-			continue
+			r.cveInfo.Log.Error().Err(err).Msg("Not able to get list of Image Tag")
 		}
+
+		var name string
 
 		tags := make([]*string, 0)
 
-		for _, result := range results {
-			tagExtract := strings.Split(result.Target, " ")
+		for _, tag := range tagList {
+			r.cveInfo.CveTrivyConfig.TrivyConfig.Input = path.Join(r.dir, repo+":"+tag)
 
-			name := tagExtract[0]
+			r.cveInfo.Log.Info().Str("Scanning Image", path.Join(r.dir, repo+":"+tag)).Msg("")
 
-			for _, vulnerability := range result.Vulnerabilities {
-				if vulnerability.VulnerabilityID == text {
-					copyImgTag := strings.Split(tagExtract[2], ")")[0]
-					tags = append(tags, &copyImgTag)
+			results, err := cveinfo.ScanImage(r.cveInfo.CveTrivyConfig)
+			if err != nil {
+				continue
+			}
 
-					break
+			name = repo
+
+			for _, result := range results {
+				for _, vulnerability := range result.Vulnerabilities {
+					if vulnerability.VulnerabilityID == id {
+						copyImgTag := tag
+						tags = append(tags, &copyImgTag)
+
+						break
+					}
 				}
 			}
-
-			if len(tags) != 0 {
-				cveResult = append(cveResult, &ImgResultForCve{Name: &name, Tags: tags})
-			}
 		}
-	}
 
-	if err != nil {
-		r.cveInfo.Log.Error().Err(err).Msg("Not able to search repositories")
+		if len(tags) != 0 {
+			cveResult = append(cveResult, &ImgResultForCve{Name: &name, Tags: tags})
+		}
 	}
 
 	return cveResult, nil

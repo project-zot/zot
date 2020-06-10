@@ -57,14 +57,14 @@ type ComplexityRoot struct {
 	}
 
 	Query struct {
-		CVEListForImage func(childComplexity int, repo string) int
-		ImageListForCve func(childComplexity int, text string) int
+		CVEListForImage func(childComplexity int, image string) int
+		ImageListForCve func(childComplexity int, id string) int
 	}
 }
 
 type QueryResolver interface {
-	CVEListForImage(ctx context.Context, repo string) ([]*CVEResultForImage, error)
-	ImageListForCve(ctx context.Context, text string) ([]*ImgResultForCve, error)
+	CVEListForImage(ctx context.Context, image string) ([]*CVEResultForImage, error)
+	ImageListForCve(ctx context.Context, id string) ([]*ImgResultForCve, error)
 }
 
 type executableSchema struct {
@@ -141,7 +141,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 			return 0, false
 		}
 
-		return e.complexity.Query.CVEListForImage(childComplexity, args["repo"].(string)), true
+		return e.complexity.Query.CVEListForImage(childComplexity, args["image"].(string)), true
 
 	case "Query.ImageListForCVE":
 		if e.complexity.Query.ImageListForCve == nil {
@@ -153,7 +153,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 			return 0, false
 		}
 
-		return e.complexity.Query.ImageListForCve(childComplexity, args["text"].(string)), true
+		return e.complexity.Query.ImageListForCve(childComplexity, args["id"].(string)), true
 
 	}
 	return 0, false
@@ -222,8 +222,8 @@ type ImgResultForCVE {
 }
 
 type Query {
-  CVEListForImage(repo: String!) :[CVEResultForImage] 
-  ImageListForCVE(text: String!) :[ImgResultForCVE]
+  CVEListForImage(image: String!) :[CVEResultForImage] 
+  ImageListForCVE(id: String!) :[ImgResultForCVE]
 }`, BuiltIn: false},
 }
 var parsedSchema = gqlparser.MustLoadSchema(sources...)
@@ -236,13 +236,13 @@ func (ec *executionContext) field_Query_CVEListForImage_args(ctx context.Context
 	var err error
 	args := map[string]interface{}{}
 	var arg0 string
-	if tmp, ok := rawArgs["repo"]; ok {
+	if tmp, ok := rawArgs["image"]; ok {
 		arg0, err = ec.unmarshalNString2string(ctx, tmp)
 		if err != nil {
 			return nil, err
 		}
 	}
-	args["repo"] = arg0
+	args["image"] = arg0
 	return args, nil
 }
 
@@ -250,13 +250,13 @@ func (ec *executionContext) field_Query_ImageListForCVE_args(ctx context.Context
 	var err error
 	args := map[string]interface{}{}
 	var arg0 string
-	if tmp, ok := rawArgs["text"]; ok {
+	if tmp, ok := rawArgs["id"]; ok {
 		arg0, err = ec.unmarshalNString2string(ctx, tmp)
 		if err != nil {
 			return nil, err
 		}
 	}
-	args["text"] = arg0
+	args["id"] = arg0
 	return args, nil
 }
 
@@ -551,7 +551,7 @@ func (ec *executionContext) _Query_CVEListForImage(ctx context.Context, field gr
 	fc.Args = args
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().CVEListForImage(rctx, args["repo"].(string))
+		return ec.resolvers.Query().CVEListForImage(rctx, args["image"].(string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -589,7 +589,7 @@ func (ec *executionContext) _Query_ImageListForCVE(ctx context.Context, field gr
 	fc.Args = args
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().ImageListForCve(rctx, args["text"].(string))
+		return ec.resolvers.Query().ImageListForCve(rctx, args["id"].(string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
