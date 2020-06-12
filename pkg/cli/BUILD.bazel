@@ -2,14 +2,23 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "go_default_library",
-    srcs = ["root.go"],
+    srcs = [
+        "cveCmd.go",
+        "cveSearchService.go",
+        "cveSearchers.go",
+        "root.go",
+        "searchCmd.go",
+    ],
     importpath = "github.com/anuvu/zot/pkg/cli",
     visibility = ["//visibility:public"],
     deps = [
         "//errors:go_default_library",
         "//pkg/api:go_default_library",
         "//pkg/storage:go_default_library",
+        "@com_github_briandowns_spinner//:go_default_library",
+        "@com_github_go_resty_resty_v2//:go_default_library",
         "@com_github_mitchellh_mapstructure//:go_default_library",
+        "@com_github_olekukonko_tablewriter//:go_default_library",
         "@com_github_opencontainers_distribution_spec//:go_default_library",
         "@com_github_rs_zerolog//log:go_default_library",
         "@com_github_spf13_cobra//:go_default_library",
@@ -20,8 +29,15 @@ go_library(
 go_test(
     name = "go_default_test",
     timeout = "short",
-    srcs = ["root_test.go"],
+    srcs = [
+        "cveCmd_test.go",
+        "root_test.go",
+        "searchCmd_test.go",
+    ],
     embed = [":go_default_library"],
     race = "on",
-    deps = ["@com_github_smartystreets_goconvey//convey:go_default_library"],
+    deps = [
+        "//errors:go_default_library",
+        "@com_github_smartystreets_goconvey//convey:go_default_library",
+    ],
 )

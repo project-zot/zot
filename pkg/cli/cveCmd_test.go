@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"io/ioutil"
 	"strings"
 	"testing"
 
@@ -16,6 +17,7 @@ func TestSearchCveCmd(t *testing.T) {
 		cmd := NewCveCommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
+		cmd.SetErr(ioutil.Discard)
 		cmd.SetArgs(args)
 		err := cmd.Execute()
 		So(buff.String(), ShouldContainSubstring, "Usage")
@@ -25,6 +27,7 @@ func TestSearchCveCmd(t *testing.T) {
 			cmd := NewCveCommand(new(mockService))
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
+			cmd.SetErr(ioutil.Discard)
 			cmd.SetArgs(args)
 			err := cmd.Execute()
 			So(buff.String(), ShouldContainSubstring, "Usage")
@@ -36,6 +39,7 @@ func TestSearchCveCmd(t *testing.T) {
 		cmd := NewCveCommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
+		cmd.SetErr(ioutil.Discard)
 		cmd.SetArgs(args)
 		err := cmd.Execute()
 		So(err, ShouldNotBeNil)
@@ -46,6 +50,7 @@ func TestSearchCveCmd(t *testing.T) {
 		cmd := NewCveCommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
+		cmd.SetErr(ioutil.Discard)
 		cmd.SetArgs(args)
 		err := cmd.Execute()
 		So(err, ShouldEqual, zotErrors.ErrInvalidArgs)
@@ -56,6 +61,7 @@ func TestSearchCveCmd(t *testing.T) {
 		cmd := NewCveCommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
+		cmd.SetErr(ioutil.Discard)
 		cmd.SetArgs(args)
 		err := cmd.Execute()
 		So(err, ShouldEqual, zotErrors.ErrInvalidFlagsCombination)
@@ -65,6 +71,7 @@ func TestSearchCveCmd(t *testing.T) {
 		cmd := NewCveCommand(new(searchService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
+		cmd.SetErr(ioutil.Discard)
 		cmd.SetArgs(args)
 		err := cmd.Execute()
 		So(err, ShouldEqual, zotErrors.ErrInvalidURL)
@@ -74,6 +81,7 @@ func TestSearchCveCmd(t *testing.T) {
 		cmd := NewCveCommand(new(searchService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
+		cmd.SetErr(ioutil.Discard)
 		cmd.SetArgs(args)
 		err := cmd.Execute()
 		So(err, ShouldNotBeNil)
@@ -83,6 +91,7 @@ func TestSearchCveCmd(t *testing.T) {
 		cmd := NewCveCommand(new(searchService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
+		cmd.SetErr(ioutil.Discard)
 		cmd.SetArgs(args)
 		err := cmd.Execute()
 		So(err, ShouldNotBeNil)
@@ -92,10 +101,9 @@ func TestSearchCveCmd(t *testing.T) {
 		cmd := NewCveCommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
+		cmd.SetErr(ioutil.Discard)
 		cmd.SetArgs(args)
 		err := cmd.Execute()
-		So(inputTestImageName, ShouldEqual, "dummyImageName")
-		So(urlTest, ShouldEqual, "someUrl")
 		So(strings.TrimSpace(buff.String()), ShouldEqual, "")
 		So(err, ShouldBeNil)
 		Convey("using shorthand", func() {
@@ -103,15 +111,13 @@ func TestSearchCveCmd(t *testing.T) {
 			buff := bytes.NewBufferString("")
 			cmd := NewCveCommand(new(mockService))
 			cmd.SetOut(buff)
+			cmd.SetErr(ioutil.Discard)
 			cmd.SetArgs(args)
 			err := cmd.Execute()
-			So(inputTestImageName, ShouldEqual, "dummyImageNameShort")
-			So(urlTest, ShouldEqual, "someUrl")
 			So(strings.TrimSpace(buff.String()), ShouldEqual, "")
 			So(err, ShouldBeNil)
 		})
 	})
-
 }
 
 func TestSearchImageCmd(t *testing.T) {
@@ -120,6 +126,7 @@ func TestSearchImageCmd(t *testing.T) {
 		cmd := NewImageCommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
+		cmd.SetErr(ioutil.Discard)
 		cmd.SetArgs(args)
 		err := cmd.Execute()
 		So(buff.String(), ShouldContainSubstring, "Usage")
@@ -129,6 +136,7 @@ func TestSearchImageCmd(t *testing.T) {
 			cmd := NewImageCommand(new(mockService))
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
+			cmd.SetErr(ioutil.Discard)
 			cmd.SetArgs(args)
 			err := cmd.Execute()
 			So(buff.String(), ShouldContainSubstring, "Usage")
@@ -140,6 +148,7 @@ func TestSearchImageCmd(t *testing.T) {
 		cmd := NewImageCommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
+		cmd.SetErr(ioutil.Discard)
 		cmd.SetArgs(args)
 		err := cmd.Execute()
 		So(err, ShouldNotBeNil)
@@ -150,6 +159,7 @@ func TestSearchImageCmd(t *testing.T) {
 		cmd := NewImageCommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
+		cmd.SetErr(ioutil.Discard)
 		cmd.SetArgs(args)
 		err := cmd.Execute()
 		So(err, ShouldEqual, zotErrors.ErrInvalidArgs)
@@ -159,6 +169,7 @@ func TestSearchImageCmd(t *testing.T) {
 		cmd := NewImageCommand(new(searchService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
+		cmd.SetErr(ioutil.Discard)
 		cmd.SetArgs(args)
 		err := cmd.Execute()
 		So(err, ShouldEqual, zotErrors.ErrInvalidURL)
@@ -168,6 +179,7 @@ func TestSearchImageCmd(t *testing.T) {
 		cmd := NewImageCommand(new(searchService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
+		cmd.SetErr(ioutil.Discard)
 		cmd.SetArgs(args)
 		err := cmd.Execute()
 		So(err, ShouldNotBeNil)
@@ -178,6 +190,7 @@ func TestSearchImageCmd(t *testing.T) {
 		cmd := NewImageCommand(new(searchService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
+		cmd.SetErr(ioutil.Discard)
 		cmd.SetArgs(args)
 		err := cmd.Execute()
 		So(err, ShouldNotBeNil)
@@ -188,10 +201,9 @@ func TestSearchImageCmd(t *testing.T) {
 		imageCmd := NewImageCommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		imageCmd.SetOut(buff)
+		imageCmd.SetErr(ioutil.Discard)
 		imageCmd.SetArgs(args)
 		err := imageCmd.Execute()
-		So(inputTestCveId, ShouldEqual, "dummyCveID")
-		So(urlTest, ShouldEqual, "someUrlImage")
 		So(strings.TrimSpace(buff.String()), ShouldEqual, "")
 		So(err, ShouldBeNil)
 		Convey("using shorthand", func() {
@@ -199,10 +211,9 @@ func TestSearchImageCmd(t *testing.T) {
 			buff := bytes.NewBufferString("")
 			imageCmd := NewImageCommand(new(mockService))
 			imageCmd.SetOut(buff)
+			imageCmd.SetErr(ioutil.Discard)
 			imageCmd.SetArgs(args)
 			err := imageCmd.Execute()
-			So(inputTestCveId, ShouldEqual, "dummyCveIDShort")
-			So(urlTest, ShouldEqual, "someUrlImage")
 
 			So(strings.TrimSpace(buff.String()), ShouldEqual, "")
 			So(err, ShouldBeNil)
@@ -254,23 +265,16 @@ CVE List:
 `
 		So(testStruct.String(), ShouldEqual, expected)
 	})
-
 }
 
 type mockService struct{}
 
-var inputTestImageName string
-var inputTestCveId string
-var urlTest string
-
-func (service mockService) findCveByImageName(imageName, serverUrl, username, password string) (CVEListForImageStruct, error) {
-	inputTestImageName = imageName
-	urlTest = serverUrl
+func (service mockService) findCveByImageName(imageName, serverURL,
+	username, password string) (CVEListForImageStruct, error) {
 	return CVEListForImageStruct{}, nil
 }
 
-func (service mockService) findImagesByCveId(cveID, serverUrl, username, password string) (ImageListForCVEStruct, error) {
-	inputTestCveId = cveID
-	urlTest = serverUrl
+func (service mockService) findImagesByCveID(cveID, serverURL,
+	username, password string) (ImageListForCVEStruct, error) {
 	return ImageListForCVEStruct{}, nil
 }

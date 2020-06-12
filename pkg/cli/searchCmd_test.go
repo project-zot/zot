@@ -60,5 +60,4 @@ func TestSearchCmd(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 	})
-
 }

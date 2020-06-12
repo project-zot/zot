@@ -10,7 +10,9 @@ func NewSearchCmd() *cobra.Command {
 		Short: "Search in zot",
 		Long:  `Search in zot`,
 	}
+
 	searchCmd.AddCommand(NewCveCommand(NewCveSearchService()))
 	searchCmd.AddCommand(NewImageCommand(NewCveSearchService()))
+
 	return searchCmd
 }

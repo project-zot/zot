@@ -14,15 +14,15 @@ func getSearchers() []searcher {
 	return searchers
 }
 
-var allowedCombinations = `
+const allowedCombinations = `
 Only these combinations of flags(or their shorthands) are allowed:
-  --image-name
+	--image-name
 
-URL of the zot repository with is required (--url)
-`
+URL of the zot repository is required [--url]
+	`
 
 type searcher interface {
-	search(params map[string]*string, searchService CveSearchService) (string, error)
+	search(params map[string]*string, searchService CveSearchService, servURL, user *string) (string, error)
 }
 
 func canSearch(params map[string]*string, requiredParams *set) bool {
@@ -33,37 +33,44 @@ func canSearch(params map[string]*string, requiredParams *set) bool {
 			return false
 		}
 	}
+
 	return true
 }
 
 type imageByCveIDSearcher struct{}
 
-func (search imageByCveIDSearcher) search(params map[string]*string, searchService CveSearchService) (string, error) {
+func (search imageByCveIDSearcher) search(params map[string]*string,
+	searchService CveSearchService, servURL, user *string) (string, error) {
 	if !canSearch(params, newSet("cveIDForImage")) {
-		return "", cannotSearchError
-	}
-	username, password := getUsernameAndPassword(user)
-	if results, err := searchService.findImagesByCveId(*params["cveIDForImage"], servURL, username, password); err != nil {
-		return "", err
-	} else {
-		return results.String(), nil
+		return "", ErrCannotSearch
 	}
 
+	username, password := getUsernameAndPassword(*user)
+	results, err := searchService.findImagesByCveID(*params["cveIDForImage"], *servURL, username, password)
+
+	if err != nil {
+		return "", err
+	}
+
+	return results.String(), nil
 }
 
 type cveByImageNameSearcher struct{}
 
-func (search cveByImageNameSearcher) search(params map[string]*string, searchService CveSearchService) (string, error) {
+func (search cveByImageNameSearcher) search(params map[string]*string,
+	searchService CveSearchService, servURL, user *string) (string, error) {
 	if !canSearch(params, newSet("imageName")) {
-		return "", cannotSearchError
+		return "", ErrCannotSearch
 	}
-	username, password := getUsernameAndPassword(user)
 
-	if results, err := searchService.findCveByImageName(*params["imageName"], servURL, username, password); err != nil {
+	username, password := getUsernameAndPassword(*user)
+	results, err := searchService.findCveByImageName(*params["imageName"], *servURL, username, password)
+
+	if err != nil {
 		return "", err
-	} else {
-		return results.String(), nil
 	}
+
+	return results.String(), nil
 }
 
 func getUsernameAndPassword(user string) (string, string) {
@@ -71,10 +78,13 @@ func getUsernameAndPassword(user string) (string, string) {
 		split := strings.Split(user, ":")
 		return split[0], split[1]
 	}
+
 	return "", ""
 }
 
-var exists = struct{}{}
+func getEmptyStruct() struct{} {
+	return struct{}{}
+}
 
 type set struct {
 	m map[string]struct{}
@@ -83,9 +93,11 @@ type set struct {
 func newSet(initialValues ...string) *set {
 	s := &set{}
 	s.m = make(map[string]struct{})
+
 	for _, val := range initialValues {
-		s.m[val] = exists
+		s.m[val] = getEmptyStruct()
 	}
+
 	return s
 }
 
@@ -94,4 +106,6 @@ func (s *set) contains(value string) bool {
 	return c
 }
 
-var cannotSearchError = errors.New("Cannot search with these parameters")
+var (
+	ErrCannotSearch = errors.New("cannot search with these parameters")
+)

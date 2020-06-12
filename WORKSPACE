@@ -403,8 +403,8 @@ go_repository(
 go_repository(
     name = "com_github_json_iterator_go",
     importpath = "github.com/json-iterator/go",
-    sum = "h1:9yzud/Ht36ygwatGx56VwCZtlI/2AD15T1X2sjSuGns=",
-    version = "v1.1.9",
+    sum = "h1:MrUvLMLTMxbqFJ9kzlvat/rYZqZnW3u4wkLzWTaFwKs=",
+    version = "v1.1.6",
 )
 
 go_repository(
@@ -900,8 +900,8 @@ go_repository(
 go_repository(
     name = "org_golang_x_crypto",
     importpath = "golang.org/x/crypto",
-    sum = "h1:ULYEB3JvPRE/IfO+9uO7vKV/xzVTO7XPAwm8xbf4w2g=",
-    version = "v0.0.0-20191206172530-e9b2fee46413",
+    sum = "h1:0hQKqeLdqlt5iIwVOBErRisrHJAN57yOiPRQItI20fU=",
+    version = "v0.0.0-20190911031432-227b76d455e7",
 )
 
 go_repository(
@@ -914,8 +914,8 @@ go_repository(
 go_repository(
     name = "org_golang_x_net",
     importpath = "golang.org/x/net",
-    sum = "h1:4dVFTC832rPn4pomLSz1vA+are2+dU19w1H8OngV7nc=",
-    version = "v0.0.0-20190912160710-24e19bdeb0f2",
+    sum = "h1:EZ3cVSzKOlJxAd8e8YAJ7no8nNypTxexh/YE/xW3ZEY=",
+    version = "v0.0.0-20200513185701-a91f0712d120",
 )
 
 go_repository(
@@ -935,8 +935,8 @@ go_repository(
 go_repository(
     name = "org_golang_x_sys",
     importpath = "golang.org/x/sys",
-    sum = "h1:/WDfKMnPU+m5M4xB+6x4kaepxRw6jWvR5iDRdvjHgy8=",
-    version = "v0.0.0-20200223170610-d5e6a3e2c0ae",
+    sum = "h1:xhmwyvizuTgC2qz7ZlMluP20uW+C3Rm0FD/WLDX8884=",
+    version = "v0.0.0-20200323222414-85ca7c5b95cd",
 )
 
 go_repository(
@@ -1469,4 +1469,32 @@ go_repository(
     importpath = "gopkg.in/tomb.v1",
     sum = "h1:uRGJdciOHaEIrze2W8Q3AKkepLTh2hOroT7a+7czfdQ=",
     version = "v1.0.0-20141024135613-dd632973f1e7",
+)
+
+go_repository(
+    name = "com_github_briandowns_spinner",
+    importpath = "github.com/briandowns/spinner",
+    sum = "h1:OixPqDEcX3juo5AjQZAnFPbeUA0jvkp2qzB5gOZJ/L0=",
+    version = "v1.11.1",
+)
+
+go_repository(
+    name = "com_github_go_resty_resty_v2",
+    importpath = "github.com/go-resty/resty/v2",
+    sum = "h1:JOOeAvjSlapTT92p8xiS19Zxev1neGikoHsXJeOq8So=",
+    version = "v2.3.0",
+)
+
+go_repository(
+    name = "com_github_mattn_go_runewidth",
+    importpath = "github.com/mattn/go-runewidth",
+    sum = "h1:Ei8KR0497xHyKJPAv59M1dkC+rOZCMBJ+t3fZ+twI54=",
+    version = "v0.0.7",
+)
+
+go_repository(
+    name = "com_github_olekukonko_tablewriter",
+    importpath = "github.com/olekukonko/tablewriter",
+    sum = "h1:vHD/YYe1Wolo78koG299f7V/VAS08c6IpCLn+Ejf/w8=",
+    version = "v0.0.4",
 )

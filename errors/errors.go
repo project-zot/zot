@@ -27,4 +27,5 @@ var (
 	ErrInvalidArgs             = errors.New("cli: Invalid Arguments")
 	ErrInvalidFlagsCombination = errors.New("cli: Invalid combination of flags")
 	ErrInvalidURL              = errors.New("cli: invalid URL format")
+	ErrUnauthorizedAccess      = errors.New("cli: unauthorized access. check credentials")
 )

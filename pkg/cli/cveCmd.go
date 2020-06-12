@@ -9,81 +9,98 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var searchCveParams map[string]*string
-var searchImageParams map[string]*string
-var service CveSearchService
-var servURL string
-var user string
-
 func NewCveCommand(searchService CveSearchService) *cobra.Command {
+	searchCveParams := make(map[string]*string)
+
+	var servURL string
+
+	var user string
+
 	var cveCmd = &cobra.Command{
 		Use:   "cve",
 		Short: "Find CVEs",
 		Long:  `Find CVEs (Common Vulnerabilities and Exposures)`,
-		RunE:  runCveE,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			spin := spinner.New(spinner.CharSets[39], spinnerDuration, spinner.WithWriter(cmd.ErrOrStderr()))
+			spin.Prefix = "Searching... "
+
+			if cmd.Flags().NFlag() == 1 {
+				return zotErrors.ErrInvalidArgs
+			}
+
+			spin.Start()
+
+			result, err := searchCve(searchCveParams, searchService, &servURL, &user)
+
+			spin.Stop()
+
+			if err != nil {
+				return err
+			}
+
+			fmt.Fprintln(cmd.OutOrStdout(), result)
+
+			return nil
+		},
 	}
-	searchCveParams = make(map[string]*string)
-	setupCmdFlags(cveCmd)
-	setupCommonFlags(cveCmd)
+
+	setupCmdFlags(cveCmd, searchCveParams)
+	setupCommonFlags(cveCmd, &servURL, &user)
 	cveCmd.SetUsageTemplate(cveCmd.UsageTemplate() + allowedCombinations)
-	service = searchService
+
 	return cveCmd
 }
 
 func NewImageCommand(searchService CveSearchService) *cobra.Command {
+	searchImageParams := make(map[string]*string)
+
+	var servURL string
+
+	var user string
+
 	var imageCmd = &cobra.Command{
 		Use:   "image",
 		Short: "Find images",
 		Long:  `Find images in zot repository`,
-		RunE:  runImageE,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			spin := spinner.New(spinner.CharSets[39], spinnerDuration, spinner.WithWriter(cmd.ErrOrStderr()))
+			spin.Prefix = "Searching... "
+
+			if cmd.Flags().NFlag() == 1 {
+				return zotErrors.ErrInvalidArgs
+			}
+
+			spin.Start()
+
+			result, err := searchCve(searchImageParams, searchService, &servURL, &user)
+
+			spin.Stop()
+
+			if err != nil {
+				return err
+			}
+
+			fmt.Fprintln(cmd.OutOrStdout(), result)
+
+			return nil
+		},
 	}
+
 	searchImageParams = make(map[string]*string)
-	setupImageFlags(imageCmd)
-	setupCommonFlags(imageCmd)
-	service = searchService
+
+	setupImageFlags(imageCmd, searchImageParams)
+	setupCommonFlags(imageCmd, &servURL, &user)
+
 	return imageCmd
 }
 
-func runCveE(cmd *cobra.Command, args []string) error {
-	spin := spinner.New(spinner.CharSets[39], 150*time.Millisecond, spinner.WithWriter(cmd.ErrOrStderr()))
-	spin.Prefix = "Searching... "
-	if cmd.Flags().NFlag() == 1 {
-		spin.Stop()
-		return zotErrors.ErrInvalidArgs
-	}
-	spin.Start()
-	result, err := searchCve(searchCveParams)
-	spin.Stop()
-	if err != nil {
-		return err
-	}
-	fmt.Fprintln(cmd.OutOrStdout(), result)
-	return nil
-}
-
-func runImageE(cmd *cobra.Command, args []string) error {
-	spin := spinner.New(spinner.CharSets[39], 150*time.Millisecond, spinner.WithWriter(cmd.ErrOrStderr()))
-	spin.Prefix = "Searching... "
-	if cmd.Flags().NFlag() == 1 {
-		return zotErrors.ErrInvalidArgs
-	}
-	spin.Start()
-	result, err := searchCve(searchImageParams)
-	spin.Stop()
-	if err != nil {
-		return err
-	}
-	fmt.Fprintln(cmd.OutOrStdout(), result)
-	return nil
-}
-
-func setupCommonFlags(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&servURL, "url", "", "Specify zot server URL [required]")
+func setupCommonFlags(cmd *cobra.Command, servURL *string, user *string) {
+	cmd.Flags().StringVar(servURL, "url", "", "Specify zot server URL [required]")
 	_ = cmd.MarkFlagRequired("url")
-	cmd.Flags().StringVarP(&user, "user", "u", "", `User Credentials of zot server in "username:password" format`)
+	cmd.Flags().StringVarP(user, "user", "u", "", `User Credentials of zot server in "username:password" format`)
 }
 
-func setupCmdFlags(cveCmd *cobra.Command) {
+func setupCmdFlags(cveCmd *cobra.Command, searchCveParams map[string]*string) {
 	searchCveParams["imageName"] = cveCmd.Flags().StringP("image-name", "I", "", "Specify image name")
 	searchCveParams["tag"] = cveCmd.Flags().StringP("tag", "t", "", "Specify tag")
 	searchCveParams["packageName"] = cveCmd.Flags().StringP("package-name", "p", "", "Specify package name")
@@ -92,15 +109,15 @@ func setupCmdFlags(cveCmd *cobra.Command) {
 	searchCveParams["cveID"] = cveCmd.Flags().StringP("cve-id", "i", "", "Find by CVE-ID")
 }
 
-func setupImageFlags(imageCmd *cobra.Command) {
+func setupImageFlags(imageCmd *cobra.Command, searchImageParams map[string]*string) {
 	searchImageParams["cveIDForImage"] = imageCmd.Flags().StringP("cve-id", "c", "", "Find by CVE-ID")
 }
 
-func searchCve(params map[string]*string) (string, error) {
+func searchCve(params map[string]*string, service CveSearchService, servURL, user *string) (string, error) {
 	for _, searcher := range getSearchers() {
-		results, err := searcher.search(params, service)
+		results, err := searcher.search(params, service, servURL, user)
 		if err != nil {
-			if err == cannotSearchError {
+			if err == ErrCannotSearch {
 				continue
 			} else {
 				return "", err
@@ -111,5 +128,8 @@ func searchCve(params map[string]*string) (string, error) {
 	}
 
 	return "", zotErrors.ErrInvalidFlagsCombination
-
 }
+
+const (
+	spinnerDuration = 150 * time.Millisecond
+)
