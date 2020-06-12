@@ -61,7 +61,7 @@ func makeGraphQLRequestBasicAuth(serverURL, query, username,
 
 func (service searchService) findCveByImageName(imageName, serverURL,
 	username, password string) (CVEListForImageStruct, error) {
-	query := fmt.Sprintf(`{ "query": "{ CVEListForImage (repo:\"%s\" )`+
+	query := fmt.Sprintf(`{ "query": "{ CVEListForImage (image:\"%s\" )`+
 		` { Tag CVEList { Id Description Severity } } }" }`, imageName)
 	result := &CVEListForImageStruct{}
 
@@ -110,7 +110,7 @@ func (c CVEListForImageStruct) String() string {
 
 func (service searchService) findImagesByCveID(cveID, serverURL, username,
 	password string) (ImageListForCVEStruct, error) {
-	query := fmt.Sprintf(`{ "query": "{ ImageListForCVE (text:\"%s\" ) { Name Tags } }" }`, cveID)
+	query := fmt.Sprintf(`{ "query": "{ ImageListForCVE (id:\"%s\" ) { Name Tags } }" }`, cveID)
 	result := &ImageListForCVEStruct{}
 
 	if err := makeGraphQLRequestBasicAuth(serverURL, query, username, password, result); err != nil {
