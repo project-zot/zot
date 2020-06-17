@@ -461,8 +461,8 @@ go_repository(
 go_repository(
     name = "com_github_kr_pty",
     importpath = "github.com/kr/pty",
-    sum = "h1:AkaSdXYQOWeaO3neb8EM634ahkXXe3jYbVh/F9lq+GI=",
-    version = "v1.1.8",
+    sum = "h1:VkoXIwSboBpnk99O/KFauAEILuNHv5DVFKZMBN/gUgw=",
+    version = "v1.1.1",
 )
 
 go_repository(
@@ -881,8 +881,8 @@ go_repository(
 go_repository(
     name = "org_golang_google_appengine",
     importpath = "google.golang.org/appengine",
-    sum = "h1:igQkv0AAhEIvTEpD5LIpAfav2eeVO9HBTjvKHVJPRSs=",
-    version = "v1.1.0",
+    sum = "h1:/wp5JvzpHIxhs/dumFmF7BXTf3Z+dd4uXta4kVyO508=",
+    version = "v1.4.0",
 )
 
 go_repository(
@@ -1520,4 +1520,53 @@ go_repository(
     importpath = "google.golang.org/protobuf",
     sum = "h1:UhZDfRO8JRQru4/+LlLE0BRKGF8L+PICnvYZmx/fEGA=",
     version = "v1.24.0",
+)
+
+go_repository(
+    name = "com_github_briandowns_spinner",
+    importpath = "github.com/briandowns/spinner",
+    sum = "h1:OixPqDEcX3juo5AjQZAnFPbeUA0jvkp2qzB5gOZJ/L0=",
+    version = "v1.11.1",
+)
+
+go_repository(
+    name = "com_github_coreos_go_etcd",
+    importpath = "github.com/coreos/go-etcd",
+    sum = "h1:bXhRBIXoTm9BYHS3gE0TtQuyNZyeEMux2sDi4oo5YOo=",
+    version = "v2.0.0+incompatible",
+)
+
+go_repository(
+    name = "com_github_dustin_go_humanize",
+    importpath = "github.com/dustin/go-humanize",
+    sum = "h1:VSnTsYCnlFHaM2/igO1h6X3HA71jcobQuxemgkq4zYo=",
+    version = "v1.0.0",
+)
+
+go_repository(
+    name = "com_github_go_resty_resty_v2",
+    importpath = "github.com/go-resty/resty/v2",
+    sum = "h1:JOOeAvjSlapTT92p8xiS19Zxev1neGikoHsXJeOq8So=",
+    version = "v2.3.0",
+)
+
+go_repository(
+    name = "com_github_mattn_go_runewidth",
+    importpath = "github.com/mattn/go-runewidth",
+    sum = "h1:Ei8KR0497xHyKJPAv59M1dkC+rOZCMBJ+t3fZ+twI54=",
+    version = "v0.0.7",
+)
+
+go_repository(
+    name = "com_github_olekukonko_tablewriter",
+    importpath = "github.com/olekukonko/tablewriter",
+    sum = "h1:vHD/YYe1Wolo78koG299f7V/VAS08c6IpCLn+Ejf/w8=",
+    version = "v0.0.4",
+)
+
+go_repository(
+    name = "org_golang_x_exp",
+    importpath = "golang.org/x/exp",
+    sum = "h1:c2HOrn5iMezYjSlGPncknSEr/8x5LELb/ilJbXi9DEA=",
+    version = "v0.0.0-20190121172915-509febef88a4",
 )
