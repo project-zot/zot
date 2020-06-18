@@ -257,6 +257,89 @@ func TestAPIs(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
+		Convey("Modify manifest in-place", func() {
+			// original blob
+			v, err := il.NewBlobUpload("replace")
+			So(err, ShouldBeNil)
+			So(v, ShouldNotBeEmpty)
+
+			content := []byte("test-data-replace-1")
+			buf := bytes.NewBuffer(content)
+			l := buf.Len()
+			d := godigest.FromBytes(content)
+			b, err := il.PutBlobChunkStreamed("replace", v, buf)
+			So(err, ShouldBeNil)
+			So(b, ShouldEqual, l)
+			blobDigest1 := strings.Split(d.String(), ":")[1]
+			So(blobDigest1, ShouldNotBeEmpty)
+
+			err = il.FinishBlobUpload("replace", v, buf, d.String())
+			So(err, ShouldBeNil)
+			So(b, ShouldEqual, l)
+
+			m := ispec.Manifest{}
+			m.SchemaVersion = 2
+			m = ispec.Manifest{
+				Config: ispec.Descriptor{
+					Digest: d,
+					Size:   int64(l),
+				},
+				Layers: []ispec.Descriptor{
+					{
+						MediaType: "application/vnd.oci.image.layer.v1.tar",
+						Digest:    d,
+						Size:      int64(l),
+					},
+				},
+			}
+			m.SchemaVersion = 2
+			mb, _ := json.Marshal(m)
+			d = godigest.FromBytes(mb)
+			_, err = il.PutImageManifest("replace", "1.0", ispec.MediaTypeImageManifest, mb)
+			So(err, ShouldBeNil)
+
+			_, _, _, err = il.GetImageManifest("replace", d.String())
+			So(err, ShouldBeNil)
+
+			// new blob to replace
+			v, err = il.NewBlobUpload("replace")
+			So(err, ShouldBeNil)
+			So(v, ShouldNotBeEmpty)
+
+			content = []byte("test-data-replace-2")
+			buf = bytes.NewBuffer(content)
+			l = buf.Len()
+			d = godigest.FromBytes(content)
+			b, err = il.PutBlobChunkStreamed("replace", v, buf)
+			So(err, ShouldBeNil)
+			So(b, ShouldEqual, l)
+			blobDigest2 := strings.Split(d.String(), ":")[1]
+			So(blobDigest2, ShouldNotBeEmpty)
+
+			err = il.FinishBlobUpload("replace", v, buf, d.String())
+			So(err, ShouldBeNil)
+			So(b, ShouldEqual, l)
+
+			m = ispec.Manifest{
+				Config: ispec.Descriptor{
+					Digest: d,
+					Size:   int64(l),
+				},
+				Layers: []ispec.Descriptor{
+					{
+						MediaType: "application/vnd.oci.image.layer.v1.tar",
+						Digest:    d,
+						Size:      int64(l),
+					},
+				},
+			}
+			m.SchemaVersion = 2
+			mb, _ = json.Marshal(m)
+			_ = godigest.FromBytes(mb)
+			_, err = il.PutImageManifest("replace", "1.0", ispec.MediaTypeImageManifest, mb)
+			So(err, ShouldBeNil)
+		})
+
 		Convey("Dedupe", func() {
 			blobDigest1 := ""
 			blobDigest2 := ""
