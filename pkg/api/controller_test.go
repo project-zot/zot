@@ -18,6 +18,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
+
 	"github.com/anuvu/zot/pkg/api"
 	"github.com/chartmuseum/auth"
 	"github.com/mitchellh/mapstructure"
@@ -85,6 +87,17 @@ func makeHtpasswdFileFromString(fileContent string) string {
 
 	return f.Name()
 }
+
+func getCredString(username, password string) string {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), 10)
+	if err != nil {
+		panic(err)
+	}
+
+	usernameAndHash := fmt.Sprintf("%s:%s", username, string(hash))
+
+	return usernameAndHash
+}
 func TestNew(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		config := api.NewConfig()
@@ -95,10 +108,11 @@ func TestNew(t *testing.T) {
 
 func TestHtpasswdSingleCred(t *testing.T) {
 	Convey("Single cred", t, func() {
-		singleCredtests :=
-			[]string{"alice:$2y$12$wc6M7d7vTyFD3m9J2hTWPuM3q1gd1lM.8Epnpd8YheZCh6hx/vxma",
-				"alice:$2y$12$wc6M7d7vTyFD3m9J2hTWPuM3q1gd1lM.8Epnpd8YheZCh6hx/vxma\n",
-			}
+		singleCredtests := []string{}
+		user := "alice"
+		password := "alice"
+		singleCredtests = append(singleCredtests, getCredString(user, password))
+		singleCredtests = append(singleCredtests, getCredString(user, password)+"\n")
 
 		for _, testString := range singleCredtests {
 			func() {
@@ -138,7 +152,7 @@ func TestHtpasswdSingleCred(t *testing.T) {
 					_ = controller.Server.Shutdown(ctx)
 				}(c)
 				// with creds, should get expected status code
-				resp, _ := resty.R().SetBasicAuth("alice", "alice").Get(BaseURL1 + "/v2/")
+				resp, _ := resty.R().SetBasicAuth(user, password).Get(BaseURL1 + "/v2/")
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -153,18 +167,21 @@ func TestHtpasswdSingleCred(t *testing.T) {
 
 func TestHtpasswdTwoCreds(t *testing.T) {
 	Convey("Two creds", t, func() {
-		twoCredtests :=
-			[]string{"alice:$2y$12$wc6M7d7vTyFD3m9J2hTWPuM3q1gd1lM.8Epnpd8YheZCh6hx/vxma\n" +
-				"bob:$2y$12$MZ9Wh44eZC4ck6TIftfM5.0QAQgpgvCTGDHQHgKCeqtxIx/OzJt6m",
+		twoCredTests := []string{}
+		user1 := "alicia"
+		password1 := "aliciapassword"
+		user2 := "bob"
+		password2 := "robert"
+		twoCredTests = append(twoCredTests, getCredString(user1, password1)+"\n"+
+			getCredString(user2, password2))
 
-				"alice:$2y$12$wc6M7d7vTyFD3m9J2hTWPuM3q1gd1lM.8Epnpd8YheZCh6hx/vxma\n" +
-					"bob:$2y$12$MZ9Wh44eZC4ck6TIftfM5.0QAQgpgvCTGDHQHgKCeqtxIx/OzJt6m\n",
+		twoCredTests = append(twoCredTests, getCredString(user1, password1)+"\n"+
+			getCredString(user2, password2)+"\n")
 
-				"alice:$2y$12$wc6M7d7vTyFD3m9J2hTWPuM3q1gd1lM.8Epnpd8YheZCh6hx/vxma\n\n" +
-					"bob:$2y$12$MZ9Wh44eZC4ck6TIftfM5.0QAQgpgvCTGDHQHgKCeqtxIx/OzJt6m\n\n",
-			}
+		twoCredTests = append(twoCredTests, getCredString(user1, password1)+"\n\n"+
+			getCredString(user2, password2)+"\n\n")
 
-		for _, testString := range twoCredtests {
+		for _, testString := range twoCredTests {
 			func() {
 				config := api.NewConfig()
 				config.HTTP.Port = SecurePort1
@@ -202,11 +219,11 @@ func TestHtpasswdTwoCreds(t *testing.T) {
 					_ = controller.Server.Shutdown(ctx)
 				}(c)
 				// with creds, should get expected status code
-				resp, _ := resty.R().SetBasicAuth("alice", "alice").Get(BaseURL1 + "/v2/")
+				resp, _ := resty.R().SetBasicAuth(user1, password1).Get(BaseURL1 + "/v2/")
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, 200)
 
-				resp, _ = resty.R().SetBasicAuth("bob", "bob").Get(BaseURL1 + "/v2/")
+				resp, _ = resty.R().SetBasicAuth(user2, password2).Get(BaseURL1 + "/v2/")
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -216,6 +233,70 @@ func TestHtpasswdTwoCreds(t *testing.T) {
 				So(resp.StatusCode(), ShouldEqual, 401)
 			}()
 		}
+	})
+}
+func TestHtpasswdFiveCreds(t *testing.T) {
+	Convey("Five creds", t, func() {
+		tests := map[string]string{
+			"michael": "scott",
+			"jim":     "halpert",
+			"dwight":  "shrute",
+			"pam":     "bessley",
+			"creed":   "bratton",
+		}
+		credString := strings.Builder{}
+		for key, val := range tests {
+			credString.WriteString(getCredString(key, val) + "\n")
+		}
+
+		func() {
+			config := api.NewConfig()
+			config.HTTP.Port = SecurePort1
+			htpasswdPath := makeHtpasswdFileFromString(credString.String())
+			defer os.Remove(htpasswdPath)
+			config.HTTP.Auth = &api.AuthConfig{
+				HTPasswd: api.AuthHTPasswd{
+					Path: htpasswdPath,
+				},
+			}
+			c := api.NewController(config)
+			dir, err := ioutil.TempDir("", "oci-repo-test")
+			if err != nil {
+				panic(err)
+			}
+			defer os.RemoveAll(dir)
+			c.Config.Storage.RootDirectory = dir
+			go func(controller *api.Controller) {
+				// this blocks
+				if err := controller.Run(); err != nil {
+					return
+				}
+			}(c)
+			// wait till ready
+			for {
+				_, err := resty.R().Get(BaseURL1)
+				if err == nil {
+					break
+				}
+				time.Sleep(100 * time.Millisecond)
+			}
+
+			defer func(controller *api.Controller) {
+				ctx := context.Background()
+				_ = controller.Server.Shutdown(ctx)
+			}(c)
+			// with creds, should get expected status code
+			for key, val := range tests {
+				resp, _ := resty.R().SetBasicAuth(key, val).Get(BaseURL1 + "/v2/")
+				So(resp, ShouldNotBeNil)
+				So(resp.StatusCode(), ShouldEqual, 200)
+			}
+
+			//with invalid creds, it should fail
+			resp, _ := resty.R().SetBasicAuth("chuck", "chuck").Get(BaseURL1 + "/v2/")
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, 401)
+		}()
 	})
 }
 func TestBasicAuth(t *testing.T) {
