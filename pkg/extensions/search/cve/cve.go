@@ -11,7 +11,7 @@ import (
 
 // UpdateCVEDb ...
 func UpdateCVEDb(dbDir string, log log.Logger, interval time.Duration, isTest bool) error {
-	config, err := config.NewDbConfig(dbDir)
+	config, err := config.NewConfig(dbDir)
 	if err != nil {
 		log.Error().Err(err).Msg("Unable to get config")
 		return err
