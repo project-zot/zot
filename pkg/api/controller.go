@@ -8,7 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
-
+	cveinfo "github.com/anuvu/zot/pkg/extensions/search/cve"
 	"github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
@@ -47,6 +47,18 @@ func (c *Controller) Run() error {
 	if c.ImageStore == nil {
 		// we can't proceed without at least a image store
 		os.Exit(1)
+	}
+
+	// Updating the CVE Database
+	if c.Config != nil && c.Config.Extensions != nil && c.Config.Extensions.Search != nil &&
+		c.Config.Extensions.Search.CVE.UpdateInterval > 1 {
+		go func() {
+			err := cveinfo.UpdateCVEDb(c.Config.Storage.RootDirectory, c.Log,
+				c.Config.Extensions.Search.CVE.UpdateInterval, false)
+			if err != nil {
+				panic(err)
+			}
+		}()
 	}
 
 	c.Router = engine

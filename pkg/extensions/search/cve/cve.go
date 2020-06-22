@@ -19,6 +19,7 @@ func UpdateCVEDb(dbDir string, log log.Logger, interval time.Duration, isTest bo
 
 	for {
 		log.Info().Msg("Updating the CVE database")
+
 		err = integration.RunTrivyDb(config.TrivyConfig)
 		if err != nil {
 			log.Error().Err(err).Msg("Unable to update DB ")

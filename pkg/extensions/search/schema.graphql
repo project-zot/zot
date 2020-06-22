@@ -1,0 +1,28 @@
+type CVEResultForImage {
+     Tag: String 
+     CVEList: [CVE]
+}
+
+type CVE {
+     Id: String 
+     Title: String
+     Description: String
+     Severity: String
+     PackageList: [PackageInfo]
+}
+
+type PackageInfo {
+     Name: String 
+     InstalledVersion: String 
+     FixedVersion: String 
+}
+
+type ImgResultForCVE {
+     Name: String 
+     Tags: [String]
+}
+
+type Query {
+  CVEListForImage(image: String!) :CVEResultForImage 
+  ImageListForCVE(id: String!) :[ImgResultForCVE]
+}
