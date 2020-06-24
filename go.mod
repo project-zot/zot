@@ -34,9 +34,7 @@ require (
 	gopkg.in/resty.v1 v1.12.0
 )
 
-// replace github.com/aquasecurity/trivy => github.com/shimish2/trivy v0.7.1-0.20200610180309-cfc70452fc7c
-
-replace github.com/aquasecurity/trivy => /home/shimish2/go/src/trivy 
+replace github.com/aquasecurity/trivy => github.com/anuvu/trivy v0.9.2-0.20200624055514-7fa927d7ca1d 
 
 replace github.com/aquasecurity/fanal => github.com/anuvu/fanal v0.0.0-20200623180831-a648790ef38e
 
