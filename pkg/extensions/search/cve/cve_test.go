@@ -68,6 +68,11 @@ func testSetup() error {
 
 	dbDir = dir
 
+	err = copyFiles("./testdata", dbDir)
+	if err != nil {
+		panic(err)
+	}
+
 	return nil
 }
 
@@ -122,6 +127,7 @@ func TestDownloadDB(t *testing.T) {
 		So(err, ShouldBeNil)
 		err = cveinfo.UpdateCVEDb(dbDir, cve.Log, 1, true)
 		So(err, ShouldBeNil)
+		time.Sleep(100 * time.Millisecond)
 	})
 }
 
@@ -142,11 +148,6 @@ func TestCVESearch(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}*/
-
-		err := copyFiles("./testdata", dbDir)
-		if err != nil {
-			panic(err)
-		}
 
 		defer os.RemoveAll(dbDir)
 		c.Config.Storage.RootDirectory = dbDir

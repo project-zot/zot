@@ -339,8 +339,8 @@ go_repository(
 go_repository(
     name = "com_github_golang_protobuf",
     importpath = "github.com/golang/protobuf",
-    sum = "h1:gyjaxf+svBWX08ZjK86iN9geUJF0H6gp2IRKX6Nf6/I=",
-    version = "v1.3.3",
+    sum = "h1:+Z5KGCizgyZCbGh1KZqA0fcLLkwbsjIzS4aV2v7wJX0=",
+    version = "v1.4.2",
 )
 
 go_repository(
@@ -766,8 +766,8 @@ go_repository(
 go_repository(
     name = "com_github_stretchr_testify",
     importpath = "github.com/stretchr/testify",
-    sum = "h1:2E4SXV/wtOkTonXsotYi4li6zVWxYlZuYNCXe9XRJyk=",
-    version = "v1.4.0",
+    sum = "h1:hDPOHmpOpP40lSULcqw7IrRb/u7w6RpDC9399XyoNd0=",
+    version = "v1.6.1",
 )
 
 go_repository(
@@ -934,8 +934,8 @@ go_repository(
 go_repository(
     name = "org_golang_x_oauth2",
     importpath = "golang.org/x/oauth2",
-    sum = "h1:SVwTIAaPC2U/AvvLNZ2a7OVsmBpC8L5BlwK1whH3hm0=",
-    version = "v0.0.0-20190604053449-0f29369cfe45",
+    sum = "h1:TzXSXBo42m9gQenoE3b9BGiEpg5IG2JkU5FkPIawgtw=",
+    version = "v0.0.0-20200107190931-bf48bf16ab8d",
 )
 
 go_repository(
@@ -1501,9 +1501,9 @@ go_repository(
 go_repository(
     name = "com_github_aquasecurity_fanal",
     importpath = "github.com/aquasecurity/fanal",
-    replace = "github.com/shimish2/fanal",
-    sum = "h1:ChbFK96dc6a9EvNlnOKSCy1o1Bx+tLmaddTfXmzazcI=",
-    version = "v0.0.0-20200609223534-80322e01924e",
+    replace = "github.com/anuvu/fanal",
+    sum = "h1:ft16YDnT+8Z5tuc7WvP5X1iq5WdjHaqJF+uGXBPQeKc=",
+    version = "v0.0.0-20200623180831-a648790ef38e",
 )
 
 go_repository(
@@ -1522,19 +1522,20 @@ go_repository(
 
 go_repository(
     name = "com_github_aquasecurity_trivy",
-    importpath = "github.com/aquasecurity/trivy",
     build_extra_args = ["-exclude=vendor"],
     build_file_proto_mode = "disable",
-    replace = "github.com/shimish2/trivy",
-    sum = "h1:WwC9H4zmCvPlpwOEjrAZJHcsW5UxebAEtQK3p0D/Tfg=",
-    version = "v0.7.1-0.20200610180309-cfc70452fc7c",
+    importpath = "github.com/aquasecurity/trivy",
+    replace = "github.com/anuvu/trivy",
+    sum = "h1:dMWcl9ev/Wpw6Szhxuknluln6zFlQ8sSMOlCT16D9xw=",
+    version = "v0.9.2-0.20200624055514-7fa927d7ca1d",
 )
 
 go_repository(
     name = "com_github_aquasecurity_trivy_db",
     importpath = "github.com/aquasecurity/trivy-db",
-    sum = "h1:6VE+g4AK2uivPqZtVk/QtcCBb2rUjAvKqDNexSgqMC0=",
-    version = "v0.0.0-20200514134639-7e57e3e02470",
+    replace = "github.com/anuvu/trivy-db",
+    sum = "h1:A37WALDUn+HtuNI/81p+cUzHe/8IE7m9zxVzsXP/b4E=",
+    version = "v0.0.0-20200623200932-d185809a68f7",
 )
 
 go_repository(
@@ -1967,8 +1968,8 @@ go_repository(
 go_repository(
     name = "com_github_google_wire",
     importpath = "github.com/google/wire",
-    sum = "h1:kXcsA/rIGzJImVqPdhfnr6q0xsS9gU0515q1EPpJ9fE=",
-    version = "v0.4.0",
+    sum = "h1:imGQZGEVEHpje5056+K+cgdO72p0LQv2xIIFXNGUf60=",
+    version = "v0.3.0",
 )
 
 go_repository(
@@ -2761,4 +2762,25 @@ go_repository(
     importpath = "sourcegraph.com/sourcegraph/appdash-data",
     sum = "h1:e1sMhtVq9AfcEy8AXNb8eSg6gbzfdpYhoNqnPJa+GzI=",
     version = "v0.0.0-20151005221446-73f23eafcf67",
+)
+
+go_repository(
+    name = "com_github_knqyf263_go_apk_version",
+    importpath = "github.com/knqyf263/go-apk-version",
+    sum = "h1:GvCU5GXhHq+7LeOzx/haG7HSIZokl3/0GkoUFzsRJjg=",
+    version = "v0.0.0-20200609155635-041fdbb8563f",
+)
+
+go_repository(
+    name = "in_gopkg_yaml_v3",
+    importpath = "gopkg.in/yaml.v3",
+    sum = "h1:dUUwHk2QECo/6vqA44rthZ8ie2QXMNeKRTHCNY2nXvo=",
+    version = "v3.0.0-20200313102051-9f266ea9e77c",
+)
+
+go_repository(
+    name = "org_golang_google_protobuf",
+    importpath = "google.golang.org/protobuf",
+    sum = "h1:4MY060fB1DLGMB/7MBTLnwQUY6+F09GEiz6SsrNqyzM=",
+    version = "v1.23.0",
 )

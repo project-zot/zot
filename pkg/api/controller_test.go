@@ -17,14 +17,14 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/crypto/bcrypt"
-
+	"github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/api"
 	"github.com/chartmuseum/auth"
 	"github.com/mitchellh/mapstructure"
 	vldap "github.com/nmcclain/ldap"
 	godigest "github.com/opencontainers/go-digest"
 	. "github.com/smartystreets/goconvey/convey"
+	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/resty.v1"
 )
 
@@ -80,7 +80,7 @@ func makeHtpasswdFileFromString(fileContent string) string {
 
 	// bcrypt(username="test", passwd="test")
 	content := []byte(fileContent)
-	if err := ioutil.WriteFile(f.Name(), content, 0644); err != nil {
+	if err := ioutil.WriteFile(f.Name(), content, 0600); err != nil {
 		panic(err)
 	}
 
@@ -132,6 +132,7 @@ func TestHtpasswdSingleCred(t *testing.T) {
 				}
 				defer os.RemoveAll(dir)
 				c.Config.Storage.RootDirectory = dir
+				c.Config.Extensions.Search.CVE.UpdateInterval = 1
 				go func(controller *api.Controller) {
 					// this blocks
 					if err := controller.Run(); err != nil {
@@ -198,6 +199,7 @@ func TestHtpasswdTwoCreds(t *testing.T) {
 				}
 				defer os.RemoveAll(dir)
 				c.Config.Storage.RootDirectory = dir
+				c.Config.Extensions.Search.CVE.UpdateInterval = 1
 				go func(controller *api.Controller) {
 					// this blocks
 					if err := controller.Run(); err != nil {
@@ -265,6 +267,7 @@ func TestHtpasswdFiveCreds(t *testing.T) {
 			}
 			defer os.RemoveAll(dir)
 			c.Config.Storage.RootDirectory = dir
+			c.Config.Extensions.Search.CVE.UpdateInterval = 1
 			go func(controller *api.Controller) {
 				// this blocks
 				if err := controller.Run(); err != nil {
@@ -317,7 +320,7 @@ func TestBasicAuth(t *testing.T) {
 		}
 		defer os.RemoveAll(dir)
 		c.Config.Storage.RootDirectory = dir
-		c.Config.Extensions.Search.CVE.UpdateInterval = 2
+		c.Config.Extensions.Search.CVE.UpdateInterval = 1
 		go func() {
 			// this blocks
 			if err := c.Run(); err != nil {
