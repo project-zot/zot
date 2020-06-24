@@ -1,6 +1,8 @@
 package api
 
 import (
+	"time"
+
 	"github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/getlantern/deepcopy"
@@ -9,6 +11,8 @@ import (
 
 //nolint (gochecknoglobals)
 var Commit string
+
+const updateInterval = 24
 
 type StorageConfig struct {
 	RootDirectory string
@@ -67,21 +71,36 @@ type LogConfig struct {
 	Output string
 }
 
+type ExtensionConfig struct {
+	Search *SearchConfig
+}
+
+type SearchConfig struct {
+	// CVE search
+	CVE *CVEConfig
+}
+
+type CVEConfig struct {
+	UpdateInterval time.Duration // should be 2 hours or more, if not specified default be kept as 24 hours
+}
+
 type Config struct {
-	Version string
-	Commit  string
-	Storage StorageConfig
-	HTTP    HTTPConfig
-	Log     *LogConfig
+	Version    string
+	Commit     string
+	Storage    StorageConfig
+	HTTP       HTTPConfig
+	Log        *LogConfig
+	Extensions *ExtensionConfig
 }
 
 func NewConfig() *Config {
 	return &Config{
-		Version: dspec.Version,
-		Commit:  Commit,
-		Storage: StorageConfig{GC: true, Dedupe: true},
-		HTTP:    HTTPConfig{Address: "127.0.0.1", Port: "8080"},
-		Log:     &LogConfig{Level: "debug"},
+		Version:    dspec.Version,
+		Commit:     Commit,
+		Storage:    StorageConfig{GC: true, Dedupe: true},
+		HTTP:       HTTPConfig{Address: "127.0.0.1", Port: "8080"},
+		Log:        &LogConfig{Level: "debug"},
+		Extensions: &ExtensionConfig{&SearchConfig{CVE: &CVEConfig{UpdateInterval: updateInterval}}},
 	}
 }
 
