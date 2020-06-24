@@ -8,8 +8,9 @@ import (
 	"net"
 	"net/http"
 	"os"
-	cveinfo "github.com/anuvu/zot/pkg/extensions/search/cve"
+
 	"github.com/anuvu/zot/errors"
+	cveinfo "github.com/anuvu/zot/pkg/extensions/search/cve"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
 	"github.com/gorilla/handlers"
