@@ -1569,9 +1569,9 @@ go_repository(
 
 go_repository(
     name = "com_github_aquasecurity_trivy",
-    importpath = "github.com/aquasecurity/trivy",
     build_extra_args = ["-exclude=vendor"],
     build_file_proto_mode = "disable",
+    importpath = "github.com/aquasecurity/trivy",
     replace = "github.com/anuvu/trivy",
     sum = "h1:dMWcl9ev/Wpw6Szhxuknluln6zFlQ8sSMOlCT16D9xw=",
     version = "v0.9.2-0.20200624055514-7fa927d7ca1d",
@@ -2050,8 +2050,8 @@ go_repository(
 go_repository(
     name = "com_github_hashicorp_go_multierror",
     importpath = "github.com/hashicorp/go-multierror",
-    sum = "h1:iVjPR7a6H0tWELX5NxNe7bYopibicUzc7uPribsnS6o=",
-    version = "v1.0.0",
+    sum = "h1:B9UzwGQJehnUY1yNrnwREHc3fGbC2xefo8g4TbElacI=",
+    version = "v1.1.0",
 )
 
 go_repository(

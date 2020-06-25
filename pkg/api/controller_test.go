@@ -133,6 +133,7 @@ func TestHtpasswdSingleCred(t *testing.T) {
 				}
 				defer os.RemoveAll(dir)
 				c.Config.Storage.RootDirectory = dir
+				c.Config.Extensions.Search.CVE.UpdateInterval = 1
 				go func(controller *api.Controller) {
 					// this blocks
 					if err := controller.Run(); err != nil {
@@ -199,6 +200,7 @@ func TestHtpasswdTwoCreds(t *testing.T) {
 				}
 				defer os.RemoveAll(dir)
 				c.Config.Storage.RootDirectory = dir
+				c.Config.Extensions.Search.CVE.UpdateInterval = 1
 				go func(controller *api.Controller) {
 					// this blocks
 					if err := controller.Run(); err != nil {
@@ -266,6 +268,7 @@ func TestHtpasswdFiveCreds(t *testing.T) {
 			}
 			defer os.RemoveAll(dir)
 			c.Config.Storage.RootDirectory = dir
+			c.Config.Extensions.Search.CVE.UpdateInterval = 1
 			go func(controller *api.Controller) {
 				// this blocks
 				if err := controller.Run(); err != nil {
@@ -318,6 +321,7 @@ func TestBasicAuth(t *testing.T) {
 		}
 		defer os.RemoveAll(dir)
 		c.Config.Storage.RootDirectory = dir
+		c.Config.Extensions.Search.CVE.UpdateInterval = 1
 		go func() {
 			// this blocks
 			if err := c.Run(); err != nil {
@@ -389,6 +393,7 @@ func TestTLSWithBasicAuth(t *testing.T) {
 		}
 		defer os.RemoveAll(dir)
 		c.Config.Storage.RootDirectory = dir
+		c.Config.Extensions.Search.CVE.UpdateInterval = 1
 		go func() {
 			// this blocks
 			if err := c.Run(); err != nil {
@@ -467,6 +472,7 @@ func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 		}
 		defer os.RemoveAll(dir)
 		c.Config.Storage.RootDirectory = dir
+		c.Config.Extensions.Search.CVE.UpdateInterval = 1
 		go func() {
 			// this blocks
 			if err := c.Run(); err != nil {
@@ -539,6 +545,7 @@ func TestTLSMutualAuth(t *testing.T) {
 		}
 		defer os.RemoveAll(dir)
 		c.Config.Storage.RootDirectory = dir
+		c.Config.Extensions.Search.CVE.UpdateInterval = 1
 		go func() {
 			// this blocks
 			if err := c.Run(); err != nil {
@@ -624,6 +631,7 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 		}
 		defer os.RemoveAll(dir)
 		c.Config.Storage.RootDirectory = dir
+		c.Config.Extensions.Search.CVE.UpdateInterval = 1
 		go func() {
 			// this blocks
 			if err := c.Run(); err != nil {
@@ -722,6 +730,7 @@ func TestTLSMutualAndBasicAuth(t *testing.T) {
 		}
 		defer os.RemoveAll(dir)
 		c.Config.Storage.RootDirectory = dir
+		c.Config.Extensions.Search.CVE.UpdateInterval = 1
 		go func() {
 			// this blocks
 			if err := c.Run(); err != nil {
@@ -817,6 +826,7 @@ func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 		}
 		defer os.RemoveAll(dir)
 		c.Config.Storage.RootDirectory = dir
+		c.Config.Extensions.Search.CVE.UpdateInterval = 1
 		go func() {
 			// this blocks
 			if err := c.Run(); err != nil {
@@ -986,6 +996,7 @@ func TestBasicAuthWithLDAP(t *testing.T) {
 		}
 		defer os.RemoveAll(dir)
 		c.Config.Storage.RootDirectory = dir
+		c.Config.Extensions.Search.CVE.UpdateInterval = 1
 		go func() {
 			// this blocks
 			if err := c.Run(); err != nil {
@@ -1050,6 +1061,7 @@ func TestBearerAuth(t *testing.T) {
 		So(err, ShouldBeNil)
 		defer os.RemoveAll(dir)
 		c.Config.Storage.RootDirectory = dir
+		c.Config.Extensions.Search.CVE.UpdateInterval = 1
 		go func() {
 			// this blocks
 			if err := c.Run(); err != nil {
@@ -1230,6 +1242,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		So(err, ShouldBeNil)
 		defer os.RemoveAll(dir)
 		c.Config.Storage.RootDirectory = dir
+		c.Config.Extensions.Search.CVE.UpdateInterval = 1
 		go func() {
 			// this blocks
 			if err := c.Run(); err != nil {

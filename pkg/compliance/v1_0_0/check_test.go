@@ -58,6 +58,8 @@ func startServer() (*api.Controller, string) {
 	}
 
 	ctrl.Config.Storage.RootDirectory = dir
+	ctrl.Config.Extensions.Search.CVE.UpdateInterval = 1
+
 	go func() {
 		// this blocks
 		if err := ctrl.Run(); err != nil {
