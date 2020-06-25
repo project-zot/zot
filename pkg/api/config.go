@@ -12,8 +12,6 @@ import (
 // Commit ...
 var Commit string //nolint: gochecknoglobals
 
-const updateInterval = 24
-
 type StorageConfig struct {
 	RootDirectory string
 	GC            bool
@@ -96,12 +94,11 @@ type Config struct {
 
 func NewConfig() *Config {
 	return &Config{
-		Version:    dspec.Version,
-		Commit:     Commit,
-		Storage:    StorageConfig{GC: true, Dedupe: true},
-		HTTP:       HTTPConfig{Address: "127.0.0.1", Port: "8080"},
-		Log:        &LogConfig{Level: "debug"},
-		Extensions: &ExtensionConfig{&SearchConfig{CVE: &CVEConfig{UpdateInterval: updateInterval}}},
+		Version: dspec.Version,
+		Commit:  Commit,
+		Storage: StorageConfig{GC: true, Dedupe: true},
+		HTTP:    HTTPConfig{Address: "127.0.0.1", Port: "8080"},
+		Log:     &LogConfig{Level: "debug"},
 	}
 }
 
