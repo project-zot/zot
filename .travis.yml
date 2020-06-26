@@ -29,7 +29,7 @@ after_success:
 
 
 script:
-  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then make && make -f Makefile.bazel build; fi
+  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then make && travis_wait make -f Makefile.bazel build; fi
 
 after_success:
   - bash <(curl -s https://codecov.io/bash)

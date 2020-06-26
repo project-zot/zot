@@ -324,7 +324,7 @@ func TestBasicAuth(t *testing.T) {
 		}
 		defer os.RemoveAll(dir)
 		c.Config.Storage.RootDirectory = dir
-		c.Config.Extensions.Search.CVE.UpdateInterval = 1
+		c.Config.Extensions.Search.CVE.UpdateInterval = 2
 		go func() {
 			// this blocks
 			if err := c.Run(); err != nil {
@@ -361,6 +361,10 @@ func TestBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, 404)
 
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/v2/")
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 	})
