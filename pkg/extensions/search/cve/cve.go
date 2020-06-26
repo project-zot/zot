@@ -4,6 +4,7 @@ import (
 	"github.com/anuvu/zot/pkg/log"
 	integration "github.com/aquasecurity/trivy/integration"
 	config "github.com/aquasecurity/trivy/integration/config"
+	"github.com/aquasecurity/trivy/pkg/report"
 )
 
 // UpdateCVEDb ...
@@ -21,4 +22,12 @@ func UpdateCVEDb(dbDir string, log log.Logger) error {
 	}
 
 	return nil
+}
+
+func NewTrivyConfig(dir string) (*config.Config, error) {
+	return config.NewConfig(dir)
+}
+
+func ScanImage(config *config.Config) (report.Results, error) {
+	return integration.ScanTrivyImage(config.TrivyConfig)
 }
