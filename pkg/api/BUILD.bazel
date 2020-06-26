@@ -41,6 +41,7 @@ go_test(
     embed = [":go_default_library"],
     race = "on",
     deps = [
+        "//errors:go_default_library",
         "@com_github_chartmuseum_auth//:go_default_library",
         "@com_github_mitchellh_mapstructure//:go_default_library",
         "@com_github_nmcclain_ldap//:go_default_library",

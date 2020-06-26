@@ -7,8 +7,8 @@ import (
 	dspec "github.com/opencontainers/distribution-spec"
 )
 
-//nolint (gochecknoglobals)
-var Commit string
+// Commit ...
+var Commit string //nolint: gochecknoglobals
 
 type StorageConfig struct {
 	RootDirectory string
@@ -85,7 +85,7 @@ func NewConfig() *Config {
 	}
 }
 
-// Sanitize makes a sanitized copy of the config removing any secrets
+// Sanitize makes a sanitized copy of the config removing any secrets.
 func (c *Config) Sanitize() *Config {
 	if c.HTTP.Auth != nil && c.HTTP.Auth.LDAP != nil && c.HTTP.Auth.LDAP.BindPassword != "" {
 		s := &Config{}
