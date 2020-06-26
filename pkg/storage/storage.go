@@ -15,9 +15,9 @@ import (
 	"github.com/anuvu/zot/errors"
 	zlog "github.com/anuvu/zot/pkg/log"
 	guuid "github.com/gofrs/uuid"
-	"github.com/openSUSE/umoci"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/opencontainers/umoci"
 	"github.com/rs/zerolog"
 )
 
