@@ -3,6 +3,7 @@ module github.com/anuvu/zot
 go 1.14
 
 require (
+	github.com/99designs/gqlgen v0.11.3
 	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
 	github.com/apex/log v1.4.0
 	github.com/briandowns/spinner v1.11.1
@@ -30,6 +31,7 @@ require (
 	github.com/spf13/viper v1.6.1
 	github.com/swaggo/http-swagger v0.0.0-20190614090009-c2865af9083e
 	github.com/swaggo/swag v1.6.3
+	github.com/vektah/gqlparser/v2 v2.0.1
 	go.etcd.io/bbolt v1.3.4
 	golang.org/x/crypto v0.0.0-20200604202706-70a84ac30bf9
 	gopkg.in/resty.v1 v1.12.0
