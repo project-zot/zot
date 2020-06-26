@@ -47,5 +47,6 @@ go_test(
         "@com_github_opencontainers_go_digest//:go_default_library",
         "@com_github_smartystreets_goconvey//convey:go_default_library",
         "@in_gopkg_resty_v1//:go_default_library",
+        "@org_golang_x_crypto//bcrypt:go_default_library",
     ],
 )

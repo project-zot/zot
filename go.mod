@@ -15,10 +15,10 @@ require (
 	github.com/mitchellh/mapstructure v1.1.2
 	github.com/nmcclain/asn1-ber v0.0.0-20170104154839-2661553a0484 // indirect
 	github.com/nmcclain/ldap v0.0.0-20191021200707-3b3b69a7e9e3
-	github.com/openSUSE/umoci v0.4.6-0.20200320140503-9aa268eeb258
 	github.com/opencontainers/distribution-spec v1.0.0-rc0
-	github.com/opencontainers/go-digest v1.0.0-rc1
+	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.0.1
+	github.com/opencontainers/umoci v0.4.6
 	github.com/phayes/freeport v0.0.0-20180830031419-95f893ade6f2
 	github.com/rs/zerolog v1.17.2
 	github.com/smartystreets/goconvey v1.6.4
@@ -27,7 +27,6 @@ require (
 	github.com/swaggo/http-swagger v0.0.0-20190614090009-c2865af9083e
 	github.com/swaggo/swag v1.6.3
 	go.etcd.io/bbolt v1.3.4
-	golang.org/x/crypto v0.0.0-20191206172530-e9b2fee46413
-	golang.org/x/sys v0.0.0-20200223170610-d5e6a3e2c0ae // indirect
+	golang.org/x/crypto v0.0.0-20200604202706-70a84ac30bf9
 	gopkg.in/resty.v1 v1.12.0
 )
