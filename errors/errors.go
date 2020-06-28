@@ -34,4 +34,7 @@ var (
 	ErrConfigNotFound          = errors.New("cli: config with the given name does not exist")
 	ErrNoURLProvided           = errors.New("cli: no URL provided in argument or via config. see 'zot config -h'")
 	ErrIllegalConfigKey        = errors.New("cli: given config key is not allowed")
+	ErrNotSupported            = errors.New("search: squashfs image scanning not supported")
+	ErrJSONNotFound            = errors.New("repository: index.json not found")
+	ErrInvalidJSON             = errors.New("repository: invalid index.json")
 )

@@ -7,6 +7,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/log"
 
 	cveinfo "github.com/anuvu/zot/pkg/extensions/search/cve"
@@ -49,13 +50,25 @@ func GetResolverConfig(dir string, log log.Logger, imgstorage *storage.ImageStor
 
 	ResConfig = &Resolver{cveInfo: cve, imgStore: imgstorage, dir: dir}
 
-	return Config{Resolvers: ResConfig}
+	return Config{Resolvers: ResConfig, Directives: DirectiveRoot{},
+		Complexity: ComplexityRoot{}}
 }
 
 func (r *queryResolver) CVEListForImage(ctx context.Context, image string) (*CVEResultForImage, error) {
 	r.cveInfo.CveTrivyConfig.TrivyConfig.Input = path.Join(r.dir, image)
 
 	r.cveInfo.Log.Info().Str("Scanning Image", image).Msg("")
+
+	isSquashFS, err := r.cveInfo.IsSquashFS(r.cveInfo.CveTrivyConfig.TrivyConfig.Input)
+	if isSquashFS {
+		r.cveInfo.Log.Info().Msg("SquashFS image scanning not supported")
+
+		return &CVEResultForImage{}, errors.ErrNotSupported
+	}
+
+	if err != nil {
+		r.cveInfo.Log.Error().Err(err).Msg("Error scanning image repository")
+	}
 
 	results, err := cveinfo.ScanImage(r.cveInfo.CveTrivyConfig)
 	if err != nil {
@@ -143,6 +156,19 @@ func (r *queryResolver) ImageListForCve(ctx context.Context, id string) ([]*ImgR
 
 	for _, repo := range repoList {
 		r.cveInfo.Log.Info().Str("Extracting list of tags available in image", repo).Msg("")
+
+		isSquashFS, err := r.cveInfo.IsSquashFS(r.cveInfo.CveTrivyConfig.TrivyConfig.Input)
+		if isSquashFS {
+			r.cveInfo.Log.Info().Msg("SquashFS image scanning not supported")
+
+			continue
+		}
+
+		if err != nil {
+			r.cveInfo.Log.Info().Msg("Error Scanning repository, continuing scanning next repository")
+
+			continue
+		}
 
 		tagList, err := r.imgStore.GetImageTags(repo)
 		if err != nil {

@@ -1,0 +1,17 @@
+{
+    "schemaVersion": 2,
+    "manifests"[
+        {
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "digest": "sha256:2a9b097b4e4c613dd8185eba55163201a221909f3d430f8df87cd3639afc5929",
+            "size": 1240,
+            "annotations": {
+                "org.opencontainers.image.ref.name": "commit-aaa7c6e7-squashfs"
+            },
+            "platform": {
+                "architecture": "amd64",
+                "os": "linux"
+            }
+        }
+    ]
+}
