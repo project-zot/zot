@@ -33,7 +33,7 @@ go_library(
 
 go_test(
     name = "go_default_test",
-    timeout = "short",
+    timeout = "moderate",
     srcs = ["controller_test.go"],
     data = [
         "//:exported_testdata",

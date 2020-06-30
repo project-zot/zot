@@ -4,6 +4,7 @@ go 1.14
 
 require (
 	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
+	github.com/apex/log v1.4.0
 	github.com/briandowns/spinner v1.11.1
 	github.com/chartmuseum/auth v0.4.0
 	github.com/dustin/go-humanize v1.0.0
@@ -21,7 +22,7 @@ require (
 	github.com/opencontainers/distribution-spec v1.0.0-rc0
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.0.1
-	github.com/opencontainers/umoci v0.4.6
+	github.com/opencontainers/umoci v0.4.7-0.20200704224433-977db481b72c
 	github.com/phayes/freeport v0.0.0-20180830031419-95f893ade6f2
 	github.com/rs/zerolog v1.17.2
 	github.com/smartystreets/goconvey v1.6.4

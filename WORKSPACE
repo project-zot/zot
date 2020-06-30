@@ -1504,8 +1504,8 @@ go_repository(
 go_repository(
     name = "com_github_opencontainers_umoci",
     importpath = "github.com/opencontainers/umoci",
-    sum = "h1:nUULYM+jSLLJCVN2gd4wldm8/yuVMahC36UXna3jEqI=",
-    version = "v0.4.6",
+    sum = "h1:6JA6emg6B0/8EhBw8i010nkXCnB1skxW+FQPFDJDzoA=",
+    version = "v0.4.7-0.20200704224433-977db481b72c",
 )
 
 go_repository(
