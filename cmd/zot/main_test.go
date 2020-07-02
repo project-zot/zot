@@ -1,6 +1,7 @@
 package main_test
 
 import (
+	"io/ioutil"
 	"testing"
 
 	"github.com/anuvu/zot/pkg/api"
@@ -14,7 +15,8 @@ func TestIntegration(t *testing.T) {
 		c := api.NewController(config)
 		So(c, ShouldNotBeNil)
 
-		cl := cli.NewRootCmd()
+		tempFile, _ := ioutil.TempFile("", "tmp-")
+		cl := cli.NewRootCmd(tempFile.Name())
 		So(cl, ShouldNotBeNil)
 
 		So(cl.Execute(), ShouldBeNil)
