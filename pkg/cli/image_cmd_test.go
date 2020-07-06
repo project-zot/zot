@@ -63,6 +63,7 @@ func TestSearchImageCmd(t *testing.T) {
 		cmd.SetArgs(args)
 		err := cmd.Execute()
 		So(err, ShouldNotBeNil)
+		So(err, ShouldEqual, zotErrors.ErrNoURLProvided)
 	})
 
 	Convey("Test image no params", t, func() {
@@ -440,8 +441,9 @@ func uploadManifest(url string) {
 type mockService struct{}
 
 func (service mockService) getAllImages(ctx context.Context, config searchConfig, username, password string,
-	channel chan imageListResult, wg *sync.WaitGroup) {
+	channel chan stringResult, wg *sync.WaitGroup) {
 	defer wg.Done()
+	defer close(channel)
 
 	image := &imageStruct{}
 	image.Name = "randomimageName"
@@ -455,15 +457,16 @@ func (service mockService) getAllImages(ctx context.Context, config searchConfig
 
 	str, err := image.string(*config.outputFormat)
 	if err != nil {
-		channel <- imageListResult{"", err}
+		channel <- stringResult{"", err}
 		return
 	}
-	channel <- imageListResult{str, nil}
+	channel <- stringResult{str, nil}
 }
 
 func (service mockService) getImageByName(ctx context.Context, config searchConfig,
-	username, password, imageName string, channel chan imageListResult, wg *sync.WaitGroup) {
+	username, password, imageName string, channel chan stringResult, wg *sync.WaitGroup) {
 	defer wg.Done()
+	defer close(channel)
 
 	image := &imageStruct{}
 	image.Name = imageName
@@ -477,10 +480,60 @@ func (service mockService) getImageByName(ctx context.Context, config searchConf
 
 	str, err := image.string(*config.outputFormat)
 	if err != nil {
-		channel <- imageListResult{"", err}
+		channel <- stringResult{"", err}
 		return
 	}
-	channel <- imageListResult{str, nil}
+	channel <- stringResult{str, nil}
+}
+
+func (service mockService) getCveByImage(ctx context.Context, config searchConfig, username, password,
+	imageName string, c chan stringResult, wg *sync.WaitGroup) {
+	defer wg.Done()
+	defer close(c)
+
+	cveRes := &cveResult{}
+	cveRes.Data = cveData{
+		CVEListForImage: cveListForImage{
+			Tag: imageName,
+			CVEList: []cve{
+				{
+					ID:          "dummyCVEID",
+					Description: "Description of the CVE",
+					Title:       "Title of that CVE",
+					Severity:    "HIGH",
+					PackageList: []packageList{
+						{
+							Name:             "packagename",
+							FixedVersion:     "fixedver",
+							InstalledVersion: "installedver",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	str, err := cveRes.string(*config.outputFormat)
+	if err != nil {
+		c <- stringResult{"", err}
+		return
+	}
+	c <- stringResult{str, nil}
+}
+
+func (service mockService) getImagesByCveID(ctx context.Context, config searchConfig, username, password, cveID string,
+	c chan stringResult, wg *sync.WaitGroup) {
+	service.getImageByName(ctx, config, username, password, "anImage", c, wg)
+}
+
+func (service mockService) getImageByNameAndCVEID(ctx context.Context, config searchConfig, username,
+	password, imageName, cveID string, c chan stringResult, wg *sync.WaitGroup) {
+	service.getImageByName(ctx, config, username, password, imageName, c, wg)
+}
+
+func (service mockService) getFixedTagsForCVE(ctx context.Context, config searchConfig,
+	username, password, imageName, cveID string, c chan stringResult, wg *sync.WaitGroup) {
+	service.getImageByName(ctx, config, username, password, imageName, c, wg)
 }
 
 func makeConfigFile(content string) string {

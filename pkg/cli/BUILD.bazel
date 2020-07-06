@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "client.go",
         "config_cmd.go",
+        "cve_cmd.go",
         "image_cmd.go",
         "root.go",
         "searcher.go",
@@ -31,11 +32,15 @@ go_library(
 
 go_test(
     name = "go_default_test",
-    timeout = "short",
+    timeout = "moderate",
     srcs = [
         "config_cmd_test.go",
+        "cve_cmd_test.go",
         "image_cmd_test.go",
         "root_test.go",
+    ],
+      data = [
+        "//:exported_testdata",
     ],
     embed = [":go_default_library"],
     race = "on",
