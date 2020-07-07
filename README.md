@@ -7,6 +7,7 @@
 * Uses [OCI storage layout](https://github.com/opencontainers/image-spec/blob/master/image-layout.md) for storage layout
 * Supports [helm charts](https://helm.sh/docs/topics/registries/)
 * Currently suitable for on-prem deployments (e.g. colocated with Kubernetes)
+* [Command-line client support](#cli)
 * TLS support
 * Authentication via:
   * TLS mutual authentication
@@ -95,6 +96,44 @@ podman run --rm -p 8080:8080 \
   -v $(pwd)/custom-config.yml:/etc/zot/config.yml \
   -v $(pwd)/registry:/tmp/zot \
   zot:latest
+```
+
+# CLI
+
+The same zot binary can be used for interacting with any zot server instances.
+
+## Adding a zot server URL
+
+To add a zot server URL with an alias "remote-zot":
+
+```console
+$ zot config add remote-zot https://server-example:8080
+```
+
+List all configured URLs with their aliases:
+```console
+$ zot config -l
+remote-zot https://server-example:8080
+local      http://localhost:8080
+```
+
+## Fetching images
+You can fetch all images from a server by using its alias specified [in this step](#adding-a-zot-server-url):
+
+```console
+$ zot images remote-zot
+IMAGE NAME                        TAG                       DIGEST    SIZE
+postgres                          9.6.18-alpine             ef27f3e1  14.4MB
+postgres                          9.5-alpine                264450a7  14.4MB
+busybox                           latest                    414aeb86  707.8KB
+```
+
+Or filter the list by an image name:
+
+```console
+$ zot images remote-zot -n busybox
+IMAGE NAME                        TAG                       DIGEST    SIZE
+busybox                           latest                    414aeb86  707.8KB
 ```
 
 # Ecosystem

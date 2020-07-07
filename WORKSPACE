@@ -1,6 +1,6 @@
 workspace(name = "com_github_anuvu_zot")
 
-go_version = "1.12.9"
+go_version = "1.14.4"
 
 go_os = "linux"
 
@@ -9,22 +9,22 @@ go_arch = "amd64"
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 
-go_rules_version = "0.19.3"
+go_rules_version = "v0.23.3"
 
 http_archive(
     name = "io_bazel_rules_go",
+    sha256 = "a8d6b1b354d371a646d2f7927319974e0f9e52f73a2452d2b3877118169eb6bb",
     urls = [
-        "https://storage.googleapis.com/bazel-mirror/github.com/bazelbuild/rules_go/releases/download/{}/rules_go-{}.tar.gz".format(go_rules_version, go_rules_version),
+        "https://mirror.bazel.build/github.com/bazelbuild/rules_go/releases/download/{}/rules_go-{}.tar.gz".format(go_rules_version, go_rules_version),
         "https://github.com/bazelbuild/rules_go/releases/download/{}/rules_go-{}.tar.gz".format(go_rules_version, go_rules_version),
     ],
-    sha256 = "313f2c7a23fecc33023563f082f381a32b9b7254f727a7dd2d6380ccc6dfe09b",
 )
 
-gazelle_version = "0.18.1"
+gazelle_version = "v0.21.0"
 
 http_archive(
     name = "bazel_gazelle",
-    sha256 = "be9296bfd64882e3c08e3283c58fcb461fa6dd3c171764fcc4cf322f60615a9b",
+    sha256 = "bfd86b3cbe855d6c16c6fce60d76bd51f5c8dbc9cfcaef7a2bb5c1aafd0710e8",
     urls = ["https://github.com/bazelbuild/bazel-gazelle/releases/download/{}/bazel-gazelle-{}.tar.gz".format(gazelle_version, gazelle_version)],
 )
 
@@ -43,13 +43,15 @@ git_repository(
     remote = "https://github.com/atlassian/bazel-tools.git",
 )
 
-skylib_version = "0.8.0"
+skylib_version = "1.0.2"
 
 http_archive(
     name = "bazel_skylib",
-    sha256 = "2ea8a5ed2b448baf4a6855d3ce049c4c452a6470b1efd1504fdb7c1c134d220a",
-    strip_prefix = "bazel-skylib-{}".format(skylib_version),
-    urls = ["https://github.com/bazelbuild/bazel-skylib/archive/{}.tar.gz".format(skylib_version)],
+    sha256 = "97e70364e9249702246c0e9444bccdc4b847bed1eb03c5a3ece4f83dfe6abc44",
+    urls = [
+        "https://mirror.bazel.build/github.com/bazelbuild/bazel-skylib/releases/download/{}/bazel-skylib-{}.tar.gz".format(skylib_version, skylib_version),
+        "https://github.com/bazelbuild/bazel-skylib/releases/download/{}/bazel-skylib-{}.tar.gz".format(skylib_version, skylib_version),
+    ],
 )
 
 load("@bazel_skylib//lib:versions.bzl", "versions")
@@ -459,8 +461,8 @@ go_repository(
 go_repository(
     name = "com_github_kr_pty",
     importpath = "github.com/kr/pty",
-    sum = "h1:AkaSdXYQOWeaO3neb8EM634ahkXXe3jYbVh/F9lq+GI=",
-    version = "v1.1.8",
+    sum = "h1:VkoXIwSboBpnk99O/KFauAEILuNHv5DVFKZMBN/gUgw=",
+    version = "v1.1.1",
 )
 
 go_repository(
@@ -879,8 +881,8 @@ go_repository(
 go_repository(
     name = "org_golang_google_appengine",
     importpath = "google.golang.org/appengine",
-    sum = "h1:igQkv0AAhEIvTEpD5LIpAfav2eeVO9HBTjvKHVJPRSs=",
-    version = "v1.1.0",
+    sum = "h1:/wp5JvzpHIxhs/dumFmF7BXTf3Z+dd4uXta4kVyO508=",
+    version = "v1.4.0",
 )
 
 go_repository(
@@ -1502,8 +1504,8 @@ go_repository(
 go_repository(
     name = "com_github_opencontainers_umoci",
     importpath = "github.com/opencontainers/umoci",
-    sum = "h1:nUULYM+jSLLJCVN2gd4wldm8/yuVMahC36UXna3jEqI=",
-    version = "v0.4.6",
+    sum = "h1:6JA6emg6B0/8EhBw8i010nkXCnB1skxW+FQPFDJDzoA=",
+    version = "v0.4.7-0.20200704224433-977db481b72c",
 )
 
 go_repository(
@@ -1518,4 +1520,53 @@ go_repository(
     importpath = "google.golang.org/protobuf",
     sum = "h1:UhZDfRO8JRQru4/+LlLE0BRKGF8L+PICnvYZmx/fEGA=",
     version = "v1.24.0",
+)
+
+go_repository(
+    name = "com_github_briandowns_spinner",
+    importpath = "github.com/briandowns/spinner",
+    sum = "h1:OixPqDEcX3juo5AjQZAnFPbeUA0jvkp2qzB5gOZJ/L0=",
+    version = "v1.11.1",
+)
+
+go_repository(
+    name = "com_github_coreos_go_etcd",
+    importpath = "github.com/coreos/go-etcd",
+    sum = "h1:bXhRBIXoTm9BYHS3gE0TtQuyNZyeEMux2sDi4oo5YOo=",
+    version = "v2.0.0+incompatible",
+)
+
+go_repository(
+    name = "com_github_dustin_go_humanize",
+    importpath = "github.com/dustin/go-humanize",
+    sum = "h1:VSnTsYCnlFHaM2/igO1h6X3HA71jcobQuxemgkq4zYo=",
+    version = "v1.0.0",
+)
+
+go_repository(
+    name = "com_github_go_resty_resty_v2",
+    importpath = "github.com/go-resty/resty/v2",
+    sum = "h1:JOOeAvjSlapTT92p8xiS19Zxev1neGikoHsXJeOq8So=",
+    version = "v2.3.0",
+)
+
+go_repository(
+    name = "com_github_mattn_go_runewidth",
+    importpath = "github.com/mattn/go-runewidth",
+    sum = "h1:Ei8KR0497xHyKJPAv59M1dkC+rOZCMBJ+t3fZ+twI54=",
+    version = "v0.0.7",
+)
+
+go_repository(
+    name = "com_github_olekukonko_tablewriter",
+    importpath = "github.com/olekukonko/tablewriter",
+    sum = "h1:vHD/YYe1Wolo78koG299f7V/VAS08c6IpCLn+Ejf/w8=",
+    version = "v0.0.4",
+)
+
+go_repository(
+    name = "org_golang_x_exp",
+    importpath = "golang.org/x/exp",
+    sum = "h1:c2HOrn5iMezYjSlGPncknSEr/8x5LELb/ilJbXi9DEA=",
+    version = "v0.0.0-20190121172915-509febef88a4",
 )
