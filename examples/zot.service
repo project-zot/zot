@@ -1,0 +1,15 @@
+[Unit]
+Description=OCI Distribution Registry
+Documentation=https://github.com/anuvu/zot
+After=network.target auditd.service local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/zot serve /etc/zot/config.json
+Restart=on-failure
+User=zot
+Group=zot
+LimitNOFILE=500000
+
+[Install]
+WantedBy=multi-user.target
