@@ -11,13 +11,16 @@ import (
 	"path"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/anuvu/zot/errors"
 	zlog "github.com/anuvu/zot/pkg/log"
+	apexlog "github.com/apex/log"
 	guuid "github.com/gofrs/uuid"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opencontainers/umoci"
+	"github.com/opencontainers/umoci/oci/casext"
 	"github.com/rs/zerolog"
 )
 
@@ -25,6 +28,7 @@ const (
 	// BlobUploadDir defines the upload directory for blob uploads.
 	BlobUploadDir = ".uploads"
 	schemaVersion = 2
+	gcDelay       = 1 * time.Hour
 )
 
 // BlobUpload models and upload request.
@@ -64,6 +68,20 @@ func NewImageStore(rootDir string, gc bool, dedupe bool, log zlog.Logger) *Image
 
 	if dedupe {
 		is.cache = NewCache(rootDir, "cache", log)
+	}
+
+	if gc {
+		// we use umoci GC to perform garbage-collection, but it uses its own logger
+		// - so capture those logs, could be useful
+		apexlog.SetLevel(apexlog.DebugLevel)
+		apexlog.SetHandler(apexlog.HandlerFunc(func(entry *apexlog.Entry) error {
+			e := log.Debug()
+			for k, v := range entry.Fields {
+				e = e.Interface(k, v)
+			}
+			e.Msg(entry.Message)
+			return nil
+		}))
 	}
 
 	return is
@@ -492,7 +510,7 @@ func (is *ImageStore) PutImageManifest(repo string, reference string, mediaType 
 		}
 		defer oci.Close()
 
-		if err := oci.GC(context.Background()); err != nil {
+		if err := oci.GC(context.Background(), ifOlderThan(is, repo, gcDelay)); err != nil {
 			return "", err
 		}
 	}
@@ -568,7 +586,7 @@ func (is *ImageStore) DeleteImageManifest(repo string, reference string) error {
 		}
 		defer oci.Close()
 
-		if err := oci.GC(context.Background()); err != nil {
+		if err := oci.GC(context.Background(), ifOlderThan(is, repo, gcDelay)); err != nil {
 			return err
 		}
 	}
@@ -1023,5 +1041,24 @@ func dirExists(d string) bool {
 func ensureDir(dir string, log zerolog.Logger) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		log.Panic().Err(err).Str("dir", dir).Msg("unable to create dir")
+	}
+}
+
+func ifOlderThan(is *ImageStore, repo string, delay time.Duration) casext.GCPolicy {
+	return func(ctx context.Context, digest godigest.Digest) (bool, error) {
+		blobPath := is.BlobPath(repo, digest)
+		fi, err := os.Stat(blobPath)
+
+		if err != nil {
+			return false, err
+		}
+
+		if fi.ModTime().Add(delay).After(time.Now()) {
+			return false, nil
+		}
+
+		is.log.Info().Str("digest", digest.String()).Str("blobPath", blobPath).Msg("perform GC on blob")
+
+		return true, nil
 	}
 }
