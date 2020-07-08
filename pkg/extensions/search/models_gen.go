@@ -25,3 +25,7 @@ type PackageInfo struct {
 	InstalledVersion *string `json:"InstalledVersion"`
 	FixedVersion     *string `json:"FixedVersion"`
 }
+
+type TagResultForCve struct {
+	Tags []*string `json:"Tags"`
+}

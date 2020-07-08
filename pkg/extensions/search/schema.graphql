@@ -22,7 +22,12 @@ type ImgResultForCVE {
      Tags: [String]
 }
 
+type TagResultForCVE {
+     Tags: [String]
+}
+
 type Query {
   CVEListForImage(image: String!) :CVEResultForImage 
   ImageListForCVE(id: String!) :[ImgResultForCVE]
+  FixedTagForCVE(id: String!, image: String!) :TagResultForCVE
 }

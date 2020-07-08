@@ -157,7 +157,7 @@ func (r *queryResolver) ImageListForCve(ctx context.Context, id string) ([]*ImgR
 	for _, repo := range repoList {
 		r.cveInfo.Log.Info().Str("Extracting list of tags available in image", repo).Msg("")
 
-		isSquashFS, err := r.cveInfo.IsSquashFS(r.cveInfo.CveTrivyConfig.TrivyConfig.Input)
+		isSquashFS, err := r.cveInfo.IsSquashFS(path.Join(r.dir, repo))
 		if isSquashFS {
 			r.cveInfo.Log.Info().Msg("SquashFS image scanning not supported")
 
@@ -209,4 +209,60 @@ func (r *queryResolver) ImageListForCve(ctx context.Context, id string) ([]*ImgR
 	}
 
 	return cveResult, nil
+}
+
+func (r *queryResolver) FixedTagForCve(ctx context.Context, id string, image string) (*TagResultForCve, error) {
+	tagResult := &TagResultForCve{}
+
+	r.cveInfo.Log.Info().Str("Extracting list of tags available in image", image).Msg("")
+
+	isSquashFS, err := r.cveInfo.IsSquashFS(path.Join(r.dir, image))
+	if isSquashFS {
+		r.cveInfo.Log.Info().Msg("SquashFS image scanning not supported")
+
+		return tagResult, errors.ErrNotSupported
+	}
+
+	tagList, err := r.imgStore.GetImageTags(image)
+	if err != nil {
+		r.cveInfo.Log.Error().Err(err).Msg("Not able to get list of Image Tag")
+	}
+
+	tags := make([]*string, 0)
+
+	var hasCVE bool
+
+	for _, tag := range tagList {
+		r.cveInfo.CveTrivyConfig.TrivyConfig.Input = path.Join(r.dir, image+":"+tag)
+
+		r.cveInfo.Log.Info().Str("Scanning Image", path.Join(r.dir, image+":"+tag)).Msg("")
+
+		results, err := cveinfo.ScanImage(r.cveInfo.CveTrivyConfig)
+		if err != nil {
+			continue
+		}
+
+		hasCVE = false
+
+		for _, result := range results {
+			for _, vulnerability := range result.Vulnerabilities {
+				if vulnerability.VulnerabilityID == id {
+					hasCVE = true
+
+					break
+				}
+			}
+		}
+
+		if !hasCVE {
+			copyImgTag := tag
+			tags = append(tags, &copyImgTag)
+		}
+	}
+
+	if len(tags) != 0 {
+		tagResult = &TagResultForCve{Tags: tags}
+	}
+
+	return tagResult, nil
 }

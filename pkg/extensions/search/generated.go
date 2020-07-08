@@ -66,13 +66,19 @@ type ComplexityRoot struct {
 
 	Query struct {
 		CVEListForImage func(childComplexity int, image string) int
+		FixedTagForCve  func(childComplexity int, id string, image string) int
 		ImageListForCve func(childComplexity int, id string) int
+	}
+
+	TagResultForCve struct {
+		Tags func(childComplexity int) int
 	}
 }
 
 type QueryResolver interface {
 	CVEListForImage(ctx context.Context, image string) (*CVEResultForImage, error)
 	ImageListForCve(ctx context.Context, id string) ([]*ImgResultForCve, error)
+	FixedTagForCve(ctx context.Context, id string, image string) (*TagResultForCve, error)
 }
 
 type executableSchema struct {
@@ -186,6 +192,18 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Query.CVEListForImage(childComplexity, args["image"].(string)), true
 
+	case "Query.FixedTagForCVE":
+		if e.complexity.Query.FixedTagForCve == nil {
+			break
+		}
+
+		args, err := ec.field_Query_FixedTagForCVE_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.FixedTagForCve(childComplexity, args["id"].(string), args["image"].(string)), true
+
 	case "Query.ImageListForCVE":
 		if e.complexity.Query.ImageListForCve == nil {
 			break
@@ -197,6 +215,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Query.ImageListForCve(childComplexity, args["id"].(string)), true
+
+	case "TagResultForCVE.Tags":
+		if e.complexity.TagResultForCve.Tags == nil {
+			break
+		}
+
+		return e.complexity.TagResultForCve.Tags(childComplexity), true
 
 	}
 	return 0, false
@@ -272,9 +297,14 @@ type ImgResultForCVE {
      Tags: [String]
 }
 
+type TagResultForCVE {
+     Tags: [String]
+}
+
 type Query {
   CVEListForImage(image: String!) :CVEResultForImage 
   ImageListForCVE(id: String!) :[ImgResultForCVE]
+  FixedTagForCVE(id: String!, image: String!) :TagResultForCVE
 }`, BuiltIn: false},
 }
 var parsedSchema = gqlparser.MustLoadSchema(sources...)
@@ -294,6 +324,28 @@ func (ec *executionContext) field_Query_CVEListForImage_args(ctx context.Context
 		}
 	}
 	args["image"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_FixedTagForCVE_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 string
+	if tmp, ok := rawArgs["id"]; ok {
+		arg0, err = ec.unmarshalNString2string(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["id"] = arg0
+	var arg1 string
+	if tmp, ok := rawArgs["image"]; ok {
+		arg1, err = ec.unmarshalNString2string(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["image"] = arg1
 	return args, nil
 }
 
@@ -809,6 +861,44 @@ func (ec *executionContext) _Query_ImageListForCVE(ctx context.Context, field gr
 	return ec.marshalOImgResultForCVE2ᚕᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐImgResultForCve(ctx, field.Selections, res)
 }
 
+func (ec *executionContext) _Query_FixedTagForCVE(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	fc := &graphql.FieldContext{
+		Object:   "Query",
+		Field:    field,
+		Args:     nil,
+		IsMethod: true,
+	}
+
+	ctx = graphql.WithFieldContext(ctx, fc)
+	rawArgs := field.ArgumentMap(ec.Variables)
+	args, err := ec.field_Query_FixedTagForCVE_args(ctx, rawArgs)
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	fc.Args = args
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Query().FixedTagForCve(rctx, args["id"].(string), args["image"].(string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*TagResultForCve)
+	fc.Result = res
+	return ec.marshalOTagResultForCVE2ᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐTagResultForCve(ctx, field.Selections, res)
+}
+
 func (ec *executionContext) _Query___type(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -876,6 +966,37 @@ func (ec *executionContext) _Query___schema(ctx context.Context, field graphql.C
 	res := resTmp.(*introspection.Schema)
 	fc.Result = res
 	return ec.marshalO__Schema2ᚖgithubᚗcomᚋ99designsᚋgqlgenᚋgraphqlᚋintrospectionᚐSchema(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _TagResultForCVE_Tags(ctx context.Context, field graphql.CollectedField, obj *TagResultForCve) (ret graphql.Marshaler) {
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	fc := &graphql.FieldContext{
+		Object:   "TagResultForCVE",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+
+	ctx = graphql.WithFieldContext(ctx, fc)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Tags, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.([]*string)
+	fc.Result = res
+	return ec.marshalOString2ᚕᚖstring(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) ___Directive_name(ctx context.Context, field graphql.CollectedField, obj *introspection.Directive) (ret graphql.Marshaler) {
@@ -2090,10 +2211,45 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 				res = ec._Query_ImageListForCVE(ctx, field)
 				return res
 			})
+		case "FixedTagForCVE":
+			field := field
+			out.Concurrently(i, func() (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_FixedTagForCVE(ctx, field)
+				return res
+			})
 		case "__type":
 			out.Values[i] = ec._Query___type(ctx, field)
 		case "__schema":
 			out.Values[i] = ec._Query___schema(ctx, field)
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch()
+	if invalids > 0 {
+		return graphql.Null
+	}
+	return out
+}
+
+var tagResultForCVEImplementors = []string{"TagResultForCVE"}
+
+func (ec *executionContext) _TagResultForCVE(ctx context.Context, sel ast.SelectionSet, obj *TagResultForCve) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, tagResultForCVEImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	var invalids uint32
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("TagResultForCVE")
+		case "Tags":
+			out.Values[i] = ec._TagResultForCVE_Tags(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -2844,6 +3000,17 @@ func (ec *executionContext) marshalOString2ᚖstring(ctx context.Context, sel as
 		return graphql.Null
 	}
 	return ec.marshalOString2string(ctx, sel, *v)
+}
+
+func (ec *executionContext) marshalOTagResultForCVE2githubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐTagResultForCve(ctx context.Context, sel ast.SelectionSet, v TagResultForCve) graphql.Marshaler {
+	return ec._TagResultForCVE(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalOTagResultForCVE2ᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐTagResultForCve(ctx context.Context, sel ast.SelectionSet, v *TagResultForCve) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._TagResultForCVE(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalO__EnumValue2ᚕgithubᚗcomᚋ99designsᚋgqlgenᚋgraphqlᚋintrospectionᚐEnumValueᚄ(ctx context.Context, sel ast.SelectionSet, v []introspection.EnumValue) graphql.Marshaler {
