@@ -1,7 +1,7 @@
 build:
   from:
     type: docker
-    url: docker://golang:1.12.8
+    url: docker://golang:1.14.4
   binds:
     - ${{PWD}} -> /go/src/github.com/anuvu/zot
   run: |
@@ -11,6 +11,16 @@ build:
     export PATH='/go/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
     go get -u github.com/swaggo/swag/cmd/swag
     cd /go/src/github.com/anuvu/zot
-    curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.17.1 
+    go get -u -v -d ./...
+    curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.26.0
     make
   build_only: true
+
+zot:
+  from:
+    type: docker
+    url: docker://centos:latest
+  import:
+    - ${{PWD}}/bin/zot
+  run: |
+    cp /stacker/zot /usr/bin/zot

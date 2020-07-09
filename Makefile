@@ -4,6 +4,7 @@ COMMIT_HASH=$(shell git describe --always --tags --long)
 COMMIT=$(if $(shell git status --porcelain --untracked-files=no),$(COMMIT_HASH)-dirty,$(COMMIT_HASH))
 CONTAINER_RUNTIME := $(shell command -v podman 2> /dev/null || echo docker)
 PATH := bin:$(PATH)
+TMPDIR := $(shell mktemp -d)
 
 .PHONY: all
 all: doc binary debug test check
@@ -53,7 +54,7 @@ binary-container:
 
 .PHONY: binary-stacker
 binary-stacker:
-	stacker build --substitute PWD=$$PWD --no-cache
+	stacker build --roots ${TMPDIR} --substitute PWD=$$PWD
 
 .PHONY: image
 image:
