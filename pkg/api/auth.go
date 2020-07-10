@@ -91,6 +91,12 @@ func basicAuthHandler(c *Controller) mux.MiddlewareFunc {
 					authFail(w, realm, 5)
 					return
 				}
+
+				if (r.Method != http.MethodGet && r.Method != http.MethodHead) && c.Config.HTTP.ReadOnly {
+					// Reject modification requests in read-only mode
+					w.WriteHeader(http.StatusMethodNotAllowed)
+					return
+				}
 				// Process request
 				next.ServeHTTP(w, r)
 			})
@@ -172,6 +178,12 @@ func basicAuthHandler(c *Controller) mux.MiddlewareFunc {
 			if (r.Method == http.MethodGet || r.Method == http.MethodHead) && c.Config.HTTP.AllowReadAccess {
 				// Process request
 				next.ServeHTTP(w, r)
+				return
+			}
+
+			if (r.Method != http.MethodGet && r.Method != http.MethodHead) && c.Config.HTTP.ReadOnly {
+				// Reject modification requests in read-only mode
+				w.WriteHeader(http.StatusMethodNotAllowed)
 				return
 			}
 
