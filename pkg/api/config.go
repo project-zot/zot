@@ -46,6 +46,7 @@ type HTTPConfig struct {
 	Auth            *AuthConfig
 	Realm           string
 	AllowReadAccess bool `mapstructure:",omitempty"`
+	ReadOnly        bool `mapstructure:",omitempty"`
 }
 
 type LDAPConfig struct {

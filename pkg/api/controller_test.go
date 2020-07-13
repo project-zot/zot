@@ -33,10 +33,12 @@ const (
 	BaseURL1              = "http://127.0.0.1:8081"
 	BaseURL2              = "http://127.0.0.1:8082"
 	BaseURL3              = "http://127.0.0.1:8083"
+	BaseURL4              = "http://127.0.0.1:8084"
 	BaseSecureURL2        = "https://127.0.0.1:8082"
 	SecurePort1           = "8081"
 	SecurePort2           = "8082"
 	SecurePort3           = "8083"
+	SecurePort4           = "8084"
 	username              = "test"
 	passphrase            = "test"
 	ServerCert            = "../../test/data/server.cert"
@@ -44,6 +46,7 @@ const (
 	CACert                = "../../test/data/ca.crt"
 	AuthorizedNamespace   = "everyone/isallowed"
 	UnauthorizedNamespace = "fortknox/notallowed"
+	ALICE                 = "alice"
 )
 
 type (
@@ -109,8 +112,8 @@ func TestNew(t *testing.T) {
 func TestHtpasswdSingleCred(t *testing.T) {
 	Convey("Single cred", t, func() {
 		singleCredtests := []string{}
-		user := "alice"
-		password := "alice"
+		user := ALICE
+		password := ALICE
 		singleCredtests = append(singleCredtests, getCredString(user, password))
 		singleCredtests = append(singleCredtests, getCredString(user, password)+"\n")
 
@@ -1438,4 +1441,77 @@ func parseBearerAuthHeader(authHeaderRaw string) *authHeader {
 	}
 
 	return &h
+}
+
+func TestHTTPReadOnly(t *testing.T) {
+	Convey("Single cred", t, func() {
+		singleCredtests := []string{}
+		user := ALICE
+		password := ALICE
+		singleCredtests = append(singleCredtests, getCredString(user, password))
+		singleCredtests = append(singleCredtests, getCredString(user, password)+"\n")
+
+		for _, testString := range singleCredtests {
+			func() {
+				config := api.NewConfig()
+				config.HTTP.Port = SecurePort4
+				// enable read-only mode
+				config.HTTP.ReadOnly = true
+
+				htpasswdPath := makeHtpasswdFileFromString(testString)
+				defer os.Remove(htpasswdPath)
+				config.HTTP.Auth = &api.AuthConfig{
+					HTPasswd: api.AuthHTPasswd{
+						Path: htpasswdPath,
+					},
+				}
+				c := api.NewController(config)
+				dir, err := ioutil.TempDir("", "oci-repo-test")
+				if err != nil {
+					panic(err)
+				}
+				defer os.RemoveAll(dir)
+				c.Config.Storage.RootDirectory = dir
+				go func(controller *api.Controller) {
+					// this blocks
+					if err := controller.Run(); err != nil {
+						return
+					}
+				}(c)
+				// wait till ready
+				for {
+					_, err := resty.R().Get(BaseURL4)
+					if err == nil {
+						break
+					}
+					time.Sleep(100 * time.Millisecond)
+				}
+				defer func(controller *api.Controller) {
+					ctx := context.Background()
+					_ = controller.Server.Shutdown(ctx)
+				}(c)
+				// with creds, should get expected status code
+				resp, _ := resty.R().SetBasicAuth(user, password).Get(BaseURL4 + "/v2/")
+				So(resp, ShouldNotBeNil)
+				So(resp.StatusCode(), ShouldEqual, 200)
+
+				// with creds, should get expected status code
+				resp, _ = resty.R().SetBasicAuth(user, password).Get(BaseURL4 + "/v2/")
+				So(resp, ShouldNotBeNil)
+				So(resp.StatusCode(), ShouldEqual, 200)
+
+				// with creds, any modifications should still fail on read-only mode
+				resp, err = resty.R().SetBasicAuth(user, password).
+					Post(BaseURL4 + "/v2/" + AuthorizedNamespace + "/blobs/uploads/")
+				So(err, ShouldBeNil)
+				So(resp, ShouldNotBeNil)
+				So(resp.StatusCode(), ShouldEqual, 405)
+
+				//with invalid creds, it should fail
+				resp, _ = resty.R().SetBasicAuth("chuck", "chuck").Get(BaseURL4 + "/v2/")
+				So(resp, ShouldNotBeNil)
+				So(resp.StatusCode(), ShouldEqual, 401)
+			}()
+		}
+	})
 }
