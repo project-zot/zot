@@ -120,9 +120,9 @@ func collectImages(outputFormat *string, stdWriter io.Writer, wg *sync.WaitGroup
 				return
 			}
 
-			if !foundResult && (*outputFormat == "text" || *outputFormat == "") {
-				spinner.stopSpinner()
+			spinner.stopSpinner()
 
+			if !foundResult && (*outputFormat == "text" || *outputFormat == "") {
 				var builder strings.Builder
 
 				printImageTableHeader(&builder)
