@@ -19,7 +19,7 @@ func metadataConfig(md *mapstructure.Metadata) viper.DecoderConfigOption {
 	}
 }
 
-func NewRootCmd(configPath string) *cobra.Command {
+func NewRootCmd() *cobra.Command {
 	showVersion := false
 	config := api.NewConfig()
 
@@ -97,8 +97,8 @@ func NewRootCmd(configPath string) *cobra.Command {
 	rootCmd.AddCommand(serveCmd)
 	rootCmd.AddCommand(gcCmd)
 
-	rootCmd.AddCommand(NewConfigCommand(configPath))
-	rootCmd.AddCommand(NewImageCommand(NewImageSearchService(), configPath))
+	rootCmd.AddCommand(NewConfigCommand())
+	rootCmd.AddCommand(NewImageCommand(NewImageSearchService()))
 
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "show the version and exit")
 

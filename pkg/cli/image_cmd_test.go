@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path"
 	"regexp"
 	"strings"
 	"sync"
@@ -29,7 +30,7 @@ func TestSearchImageCmd(t *testing.T) {
 		args := []string{"--help"}
 		configPath := makeConfigFile("")
 		defer os.Remove(configPath)
-		cmd := NewImageCommand(new(mockService), configPath)
+		cmd := NewImageCommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(ioutil.Discard)
@@ -41,7 +42,7 @@ func TestSearchImageCmd(t *testing.T) {
 			args[0] = "-h"
 			configPath := makeConfigFile("")
 			defer os.Remove(configPath)
-			cmd := NewImageCommand(new(mockService), configPath)
+			cmd := NewImageCommand(new(mockService))
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(ioutil.Discard)
@@ -55,7 +56,7 @@ func TestSearchImageCmd(t *testing.T) {
 		args := []string{"imagetest", "--name", "dummyIdRandom"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
-		cmd := NewImageCommand(new(mockService), configPath)
+		cmd := NewImageCommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(ioutil.Discard)
@@ -68,7 +69,7 @@ func TestSearchImageCmd(t *testing.T) {
 		args := []string{"imagetest", "--url", "someUrl"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
-		cmd := NewImageCommand(new(mockService), configPath)
+		cmd := NewImageCommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(ioutil.Discard)
@@ -81,7 +82,7 @@ func TestSearchImageCmd(t *testing.T) {
 		args := []string{"imagetest", "--name", "dummyImageName", "--url", "invalidUrl"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
-		cmd := NewImageCommand(new(searchService), configPath)
+		cmd := NewImageCommand(new(searchService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -95,7 +96,7 @@ func TestSearchImageCmd(t *testing.T) {
 		args := []string{"imagetest", "--name", "dummyImageName", "--url", "http://localhost:99999"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
-		cmd := NewImageCommand(new(searchService), configPath)
+		cmd := NewImageCommand(new(searchService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -108,7 +109,7 @@ func TestSearchImageCmd(t *testing.T) {
 			args := []string{"imagetest", "--url", "http://localhost:99999"}
 			configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","showspinner":false}]}`)
 			defer os.Remove(configPath)
-			cmd := NewImageCommand(new(searchService), configPath)
+			cmd := NewImageCommand(new(searchService))
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -122,7 +123,7 @@ func TestSearchImageCmd(t *testing.T) {
 		args := []string{"imagetest", "--name", "dummyImageName", "--url", "http://localhost:9999"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
-		cmd := NewImageCommand(new(searchService), configPath)
+		cmd := NewImageCommand(new(searchService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -137,7 +138,7 @@ func TestSearchImageCmd(t *testing.T) {
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","url":"https://test-url.com","showspinner":false}]}`)
 		defer os.Remove(configPath)
 
-		cmd := NewImageCommand(new(mockService), configPath)
+		cmd := NewImageCommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(ioutil.Discard)
@@ -153,7 +154,7 @@ func TestSearchImageCmd(t *testing.T) {
 		args := []string{"imagetest", "--name", "dummyImageName", "--url", "someUrlImage"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
-		imageCmd := NewImageCommand(new(mockService), configPath)
+		imageCmd := NewImageCommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		imageCmd.SetOut(buff)
 		imageCmd.SetErr(ioutil.Discard)
@@ -168,7 +169,7 @@ func TestSearchImageCmd(t *testing.T) {
 			buff := bytes.NewBufferString("")
 			configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","showspinner":false}]}`)
 			defer os.Remove(configPath)
-			imageCmd := NewImageCommand(new(mockService), configPath)
+			imageCmd := NewImageCommand(new(mockService))
 			imageCmd.SetOut(buff)
 			imageCmd.SetErr(ioutil.Discard)
 			imageCmd.SetArgs(args)
@@ -189,7 +190,7 @@ func TestOutputFormat(t *testing.T) {
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","url":"https://test-url.com","showspinner":false}]}`)
 		defer os.Remove(configPath)
 
-		cmd := NewImageCommand(new(mockService), configPath)
+		cmd := NewImageCommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(ioutil.Discard)
@@ -207,7 +208,7 @@ func TestOutputFormat(t *testing.T) {
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","url":"https://test-url.com","showspinner":false}]}`)
 		defer os.Remove(configPath)
 
-		cmd := NewImageCommand(new(mockService), configPath)
+		cmd := NewImageCommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(ioutil.Discard)
@@ -226,7 +227,7 @@ func TestOutputFormat(t *testing.T) {
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","url":"https://test-url.com","showspinner":false}]}`)
 		defer os.Remove(configPath)
 
-		cmd := NewImageCommand(new(mockService), configPath)
+		cmd := NewImageCommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(ioutil.Discard)
@@ -244,7 +245,7 @@ func TestOutputFormat(t *testing.T) {
 			configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","url":"https://test-url.com","showspinner":false}]}`)
 			defer os.Remove(configPath)
 
-			cmd := NewImageCommand(new(mockService), configPath)
+			cmd := NewImageCommand(new(mockService))
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(ioutil.Discard)
@@ -264,7 +265,7 @@ func TestOutputFormat(t *testing.T) {
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","url":"https://test-url.com","showspinner":false}]}`)
 		defer os.Remove(configPath)
 
-		cmd := NewImageCommand(new(mockService), configPath)
+		cmd := NewImageCommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
 		cmd.SetErr(buff)
@@ -315,7 +316,7 @@ func TestServerResponse(t *testing.T) {
 			args := []string{"imagetest"}
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 			defer os.Remove(configPath)
-			cmd := NewImageCommand(new(searchService), configPath)
+			cmd := NewImageCommand(new(searchService))
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -334,7 +335,7 @@ func TestServerResponse(t *testing.T) {
 			args := []string{"imagetest", "--name", "repo7"}
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 			defer os.Remove(configPath)
-			cmd := NewImageCommand(new(searchService), configPath)
+			cmd := NewImageCommand(new(searchService))
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -352,7 +353,7 @@ func TestServerResponse(t *testing.T) {
 				args := []string{"imagetest", "-n", "repo7"}
 				configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 				defer os.Remove(configPath)
-				cmd := NewImageCommand(new(searchService), configPath)
+				cmd := NewImageCommand(new(searchService))
 				buff := bytes.NewBufferString("")
 				cmd.SetOut(buff)
 				cmd.SetErr(buff)
@@ -372,7 +373,7 @@ func TestServerResponse(t *testing.T) {
 			args := []string{"imagetest", "--name", "repo777"}
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 			defer os.Remove(configPath)
-			cmd := NewImageCommand(new(searchService), configPath)
+			cmd := NewImageCommand(new(searchService))
 			buff := bytes.NewBufferString("")
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
@@ -483,17 +484,18 @@ func (service mockService) getImageByName(ctx context.Context, serverURL, userna
 }
 
 func makeConfigFile(content string) string {
-	f, err := ioutil.TempFile("", "config-*.properties")
+	os.Setenv("HOME", os.TempDir())
+	home, err := os.UserHomeDir()
+
 	if err != nil {
 		panic(err)
 	}
 
-	defer f.Close()
+	configPath := path.Join(home + "/.zot")
 
-	text := []byte(content)
-	if err := ioutil.WriteFile(f.Name(), text, 0600); err != nil {
+	if err := ioutil.WriteFile(configPath, []byte(content), 0600); err != nil {
 		panic(err)
 	}
 
-	return f.Name()
+	return configPath
 }

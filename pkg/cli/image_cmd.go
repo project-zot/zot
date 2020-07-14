@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"os"
+	"path"
 	"strconv"
 	"time"
 
@@ -9,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func NewImageCommand(searchService ImageSearchService, configPath string) *cobra.Command {
+func NewImageCommand(searchService ImageSearchService) *cobra.Command {
 	searchImageParams := make(map[string]*string)
 
 	var servURL string
@@ -23,6 +25,12 @@ func NewImageCommand(searchService ImageSearchService, configPath string) *cobra
 		Short: "List hosted images",
 		Long:  `List images hosted on zot`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				panic(err)
+			}
+
+			configPath := path.Join(home + "/.zot")
 			if servURL == "" {
 				if len(args) > 0 {
 					urlFromConfig, err := getConfigValue(configPath, args[0], "url")
@@ -52,7 +60,7 @@ func NewImageCommand(searchService ImageSearchService, configPath string) *cobra
 				isSpinner = true
 			}
 
-			err := searchImage(cmd, searchImageParams, searchService, &servURL, &user, &outputFormat, isSpinner)
+			err = searchImage(cmd, searchImageParams, searchService, &servURL, &user, &outputFormat, isSpinner)
 
 			if err != nil {
 				cmd.SilenceUsage = true

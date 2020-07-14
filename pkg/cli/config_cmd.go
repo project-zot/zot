@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -16,7 +17,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func NewConfigCommand(configPath string) *cobra.Command {
+func NewConfigCommand() *cobra.Command {
 	var isListing bool
 
 	var isReset bool
@@ -28,6 +29,12 @@ func NewConfigCommand(configPath string) *cobra.Command {
 		Long:    `Configure default parameters for CLI`,
 		Args:    cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				panic(err)
+			}
+
+			configPath := path.Join(home + "/.zot")
 			switch len(args) {
 			case noArgs:
 				if isListing { // zot config -l
@@ -83,20 +90,26 @@ func NewConfigCommand(configPath string) *cobra.Command {
 	configCmd.Flags().BoolVarP(&isListing, "list", "l", false, "List configurations")
 	configCmd.Flags().BoolVar(&isReset, "reset", false, "Reset a variable value")
 	configCmd.SetUsageTemplate(configCmd.UsageTemplate() + supportedOptions)
-	configCmd.AddCommand(NewConfigAddCommand(configPath))
+	configCmd.AddCommand(NewConfigAddCommand())
 
 	return configCmd
 }
 
-func NewConfigAddCommand(configPath string) *cobra.Command {
+func NewConfigAddCommand() *cobra.Command {
 	var configAddCmd = &cobra.Command{
 		Use:   "add <config-name> <url>",
 		Short: "Add configuration for a zot URL",
 		Long:  `Configure CLI for interaction with a zot server`,
 		Args:  cobra.ExactArgs(twoArgs),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				panic(err)
+			}
+
+			configPath := path.Join(home + "/.zot")
 			// zot config add <config-name> <url>
-			err := addConfig(configPath, args[0], args[1])
+			err = addConfig(configPath, args[0], args[1])
 			if err != nil {
 				return err
 			}
