@@ -503,7 +503,9 @@ func TestNegativeCases(t *testing.T) {
 		os.RemoveAll(dir)
 
 		So(storage.NewImageStore(dir, true, true, log.Logger{Logger: zerolog.New(os.Stdout)}), ShouldNotBeNil)
-		So(storage.NewImageStore("/deadBEEF", true, true, log.Logger{Logger: zerolog.New(os.Stdout)}), ShouldBeNil)
+		if os.Geteuid() != 0 {
+			So(storage.NewImageStore("/deadBEEF", true, true, log.Logger{Logger: zerolog.New(os.Stdout)}), ShouldBeNil)
+		}
 	})
 
 	Convey("Invalid init repo", t, func(c C) {
@@ -515,7 +517,9 @@ func TestNegativeCases(t *testing.T) {
 		il := storage.NewImageStore(dir, true, true, log.Logger{Logger: zerolog.New(os.Stdout)})
 		err = os.Chmod(dir, 0000) // remove all perms
 		So(err, ShouldBeNil)
-		So(func() { _ = il.InitRepo("test") }, ShouldPanic)
+		if os.Geteuid() != 0 {
+			So(func() { _ = il.InitRepo("test") }, ShouldPanic)
+		}
 	})
 
 	Convey("Invalid validate repo", t, func(c C) {
@@ -539,7 +543,9 @@ func TestNegativeCases(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		err = os.Chmod(dir, 0000) // remove all perms
 		So(err, ShouldBeNil)
-		So(func() { _, _ = il.ValidateRepo("test") }, ShouldPanic)
+		if os.Geteuid() != 0 {
+			So(func() { _, _ = il.ValidateRepo("test") }, ShouldPanic)
+		}
 		os.RemoveAll(dir)
 		_, err = il.GetRepositories()
 		So(err, ShouldNotBeNil)
