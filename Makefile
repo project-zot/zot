@@ -54,7 +54,7 @@ binary-container:
 
 .PHONY: binary-stacker
 binary-stacker:
-	stacker build --roots ${TMPDIR} --substitute PWD=$$PWD
+	stacker --roots-dir ${TMPDIR} build --substitute PWD=$$PWD
 
 .PHONY: image
 image:
