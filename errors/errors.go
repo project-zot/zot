@@ -37,4 +37,5 @@ var (
 	ErrNotSupported            = errors.New("search: squashfs image scanning not supported")
 	ErrJSONNotFound            = errors.New("repository: index.json not found")
 	ErrInvalidJSON             = errors.New("repository: invalid index.json")
+	ErrFixedTagNotFound		   = errors.New("search: no fixed tag found")
 )

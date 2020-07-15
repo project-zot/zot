@@ -290,6 +290,7 @@ func TestServerResponse(t *testing.T) {
 		defer os.RemoveAll(dir)
 
 		c.Config.Storage.RootDirectory = dir
+		c.Config.Extensions.Search.CVE.UpdateInterval = 1
 		go func(controller *api.Controller) {
 			// this blocks
 			if err := controller.Run(); err != nil {

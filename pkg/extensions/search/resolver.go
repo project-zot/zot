@@ -4,6 +4,7 @@ package search
 
 import (
 	"context"
+	"fmt"
 	"path"
 	"strings"
 
@@ -211,8 +212,8 @@ func (r *queryResolver) ImageListForCve(ctx context.Context, id string) ([]*ImgR
 	return cveResult, nil
 }
 
-func (r *queryResolver) FixedTagForCve(ctx context.Context, id string, image string) (*TagResultForCve, error) {
-	tagResult := &TagResultForCve{}
+func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, image string) (*ImgResultForFixedCve, error) { // nolint: lll
+	imgResultForFixedCVE := &ImgResultForFixedCve{}
 
 	r.cveInfo.Log.Info().Str("Extracting list of tags available in image", image).Msg("")
 
@@ -220,22 +221,26 @@ func (r *queryResolver) FixedTagForCve(ctx context.Context, id string, image str
 	if isSquashFS {
 		r.cveInfo.Log.Info().Msg("SquashFS image scanning not supported")
 
-		return tagResult, errors.ErrNotSupported
+		return imgResultForFixedCVE, errors.ErrNotSupported
 	}
 
-	tagList, err := r.imgStore.GetImageTags(image)
+	if err != nil {
+		return imgResultForFixedCVE, err
+	}
+
+	tagsInfo, err := r.cveInfo.GetImageTagsWithTimestamp(r.dir, image)
 	if err != nil {
 		r.cveInfo.Log.Error().Err(err).Msg("Not able to get list of Image Tag")
 	}
 
-	tags := make([]*string, 0)
+	infectedTags := make([]cveinfo.TagInfo, 0)
 
 	var hasCVE bool
 
-	for _, tag := range tagList {
-		r.cveInfo.CveTrivyConfig.TrivyConfig.Input = path.Join(r.dir, image+":"+tag)
+	for _, tag := range tagsInfo {
+		r.cveInfo.CveTrivyConfig.TrivyConfig.Input = path.Join(r.dir, image+":"+tag.Name)
 
-		r.cveInfo.Log.Info().Str("Scanning Image", path.Join(r.dir, image+":"+tag)).Msg("")
+		r.cveInfo.Log.Info().Str("Scanning Image", path.Join(r.dir, image+":"+tag.Name)).Msg("")
 
 		results, err := cveinfo.ScanImage(r.cveInfo.CveTrivyConfig)
 		if err != nil {
@@ -254,15 +259,40 @@ func (r *queryResolver) FixedTagForCve(ctx context.Context, id string, image str
 			}
 		}
 
-		if !hasCVE {
-			copyImgTag := tag
-			tags = append(tags, &copyImgTag)
+		if hasCVE {
+			infectedTags = append(infectedTags, cveinfo.TagInfo{Name: tag.Name, Timestamp: tag.Timestamp})
 		}
 	}
 
-	if len(tags) != 0 {
-		tagResult = &TagResultForCve{Tags: tags}
+	if len(infectedTags) != 0 {
+		r.cveInfo.Log.Info().Msg("Comparing fixed tags timestamp")
+
+		r.cveInfo.Log.Info().Str("List of all tags", fmt.Sprintf("%v", tagsInfo)).Msg("")
+
+		r.cveInfo.Log.Info().Str("List of infected tags", fmt.Sprintf("%v", infectedTags)).Msg("")
+
+		fixedTags := cveinfo.GetFixedTags(tagsInfo, infectedTags)
+
+		r.cveInfo.Log.Info().Str("List of filtered fixed tags", fmt.Sprintf("%v", fixedTags)).Msg("")
+
+		finalTagList := make([]*TagInfo, 0)
+
+		for _, tag := range fixedTags {
+			copyTag := tag.Name
+
+			copyTimeStamp := tag.Timestamp
+
+			finalTagList = append(finalTagList, &TagInfo{Name: &copyTag, Timestamp: &copyTimeStamp})
+		}
+
+		imgResultForFixedCVE = &ImgResultForFixedCve{Tags: finalTagList}
+
+		return imgResultForFixedCVE, nil
 	}
 
-	return tagResult, nil
+	r.cveInfo.Log.Info().Msg("Input image does not contain any tag that does not have given cve")
+
+	imgResultForFixedCVE = &ImgResultForFixedCve{}
+
+	return imgResultForFixedCVE, errors.ErrFixedTagNotFound
 }

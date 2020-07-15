@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"sort"
 	"strings"
 	"time"
 
@@ -133,4 +134,97 @@ func getImageDir(imageName string) string {
 	}
 
 	return imageDir
+}
+
+// GetImageTagsWithTimestamp returns a list of image tags with timestamp available in the specified repository.
+func (cveinfo CveInfo) GetImageTagsWithTimestamp(rootDir string, repo string) ([]TagInfo, error) {
+	dir := path.Join(rootDir, repo)
+	if !dirExists(dir) {
+		return nil, errors.ErrRepoNotFound
+	}
+
+	var digest godigest.Digest
+
+	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
+	if err != nil {
+		cveinfo.Log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
+		return nil, errors.ErrRepoNotFound
+	}
+
+	var index ispec.Index
+	if err := json.Unmarshal(buf, &index); err != nil {
+		cveinfo.Log.Error().Err(err).Str("dir", dir).Msg("invalid JSON")
+		return nil, errors.ErrRepoNotFound
+	}
+
+	tagsInfo := make([]TagInfo, 0)
+
+	var blobIndex ispec.Manifest
+
+	var layerIndex ispec.Image
+
+	for _, manifest := range index.Manifests {
+		digest = manifest.Digest
+		v, ok := manifest.Annotations[ispec.AnnotationRefName]
+
+		blobBuf, err := ioutil.ReadFile(path.Join(dir, "blobs", digest.Algorithm().String(), digest.Encoded()))
+		if err != nil {
+			cveinfo.Log.Error().Err(err).Msg("Unable to open Image Metadata file")
+
+			return nil, err
+		}
+
+		if err := json.Unmarshal(blobBuf, &blobIndex); err != nil {
+			cveinfo.Log.Error().Err(err).Msg("Unable to marshal blob index")
+
+			return nil, err
+		}
+
+		digest = blobIndex.Config.Digest
+
+		blobBuf, err = ioutil.ReadFile(path.Join(dir, "blobs", digest.Algorithm().String(), digest.Encoded()))
+		if err != nil {
+			cveinfo.Log.Error().Err(err).Msg("Unable to open Image Layers file")
+
+			return nil, err
+		}
+
+		if err := json.Unmarshal(blobBuf, &layerIndex); err != nil {
+			cveinfo.Log.Error().Err(err).Msg("Unable to marshal blob index")
+
+			return nil, err
+		}
+
+		timeStamp := *layerIndex.History[0].Created
+
+		if ok {
+			tagsInfo = append(tagsInfo, TagInfo{Name: v, Timestamp: timeStamp})
+		}
+	}
+
+	return tagsInfo, nil
+}
+
+func GetFixedTags(allTags []TagInfo, infectedTags []TagInfo) []TagInfo {
+	sort.Slice(allTags, func(i, j int) bool {
+		return allTags[i].Timestamp.Before(allTags[j].Timestamp)
+	})
+
+	latestInfected := TagInfo{}
+
+	for _, tag := range infectedTags {
+		if !tag.Timestamp.Before(latestInfected.Timestamp) {
+			latestInfected = tag
+		}
+	}
+
+	var fixedTags []TagInfo
+
+	for _, tag := range allTags {
+		if tag.Timestamp.After(latestInfected.Timestamp) {
+			fixedTags = append(fixedTags, tag)
+		}
+	}
+
+	return fixedTags
 }

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/99designs/gqlgen/graphql"
 	"github.com/99designs/gqlgen/graphql/introspection"
@@ -58,6 +59,10 @@ type ComplexityRoot struct {
 		Tags func(childComplexity int) int
 	}
 
+	ImgResultForFixedCve struct {
+		Tags func(childComplexity int) int
+	}
+
 	PackageInfo struct {
 		FixedVersion     func(childComplexity int) int
 		InstalledVersion func(childComplexity int) int
@@ -65,20 +70,21 @@ type ComplexityRoot struct {
 	}
 
 	Query struct {
-		CVEListForImage func(childComplexity int, image string) int
-		FixedTagForCve  func(childComplexity int, id string, image string) int
-		ImageListForCve func(childComplexity int, id string) int
+		CVEListForImage       func(childComplexity int, image string) int
+		ImageListForCve       func(childComplexity int, id string) int
+		ImageListWithCVEFixed func(childComplexity int, id string, image string) int
 	}
 
-	TagResultForCve struct {
-		Tags func(childComplexity int) int
+	TagInfo struct {
+		Name      func(childComplexity int) int
+		Timestamp func(childComplexity int) int
 	}
 }
 
 type QueryResolver interface {
 	CVEListForImage(ctx context.Context, image string) (*CVEResultForImage, error)
 	ImageListForCve(ctx context.Context, id string) ([]*ImgResultForCve, error)
-	FixedTagForCve(ctx context.Context, id string, image string) (*TagResultForCve, error)
+	ImageListWithCVEFixed(ctx context.Context, id string, image string) (*ImgResultForFixedCve, error)
 }
 
 type executableSchema struct {
@@ -159,6 +165,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.ImgResultForCve.Tags(childComplexity), true
 
+	case "ImgResultForFixedCVE.Tags":
+		if e.complexity.ImgResultForFixedCve.Tags == nil {
+			break
+		}
+
+		return e.complexity.ImgResultForFixedCve.Tags(childComplexity), true
+
 	case "PackageInfo.FixedVersion":
 		if e.complexity.PackageInfo.FixedVersion == nil {
 			break
@@ -192,18 +205,6 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Query.CVEListForImage(childComplexity, args["image"].(string)), true
 
-	case "Query.FixedTagForCVE":
-		if e.complexity.Query.FixedTagForCve == nil {
-			break
-		}
-
-		args, err := ec.field_Query_FixedTagForCVE_args(context.TODO(), rawArgs)
-		if err != nil {
-			return 0, false
-		}
-
-		return e.complexity.Query.FixedTagForCve(childComplexity, args["id"].(string), args["image"].(string)), true
-
 	case "Query.ImageListForCVE":
 		if e.complexity.Query.ImageListForCve == nil {
 			break
@@ -216,12 +217,31 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Query.ImageListForCve(childComplexity, args["id"].(string)), true
 
-	case "TagResultForCVE.Tags":
-		if e.complexity.TagResultForCve.Tags == nil {
+	case "Query.ImageListWithCVEFixed":
+		if e.complexity.Query.ImageListWithCVEFixed == nil {
 			break
 		}
 
-		return e.complexity.TagResultForCve.Tags(childComplexity), true
+		args, err := ec.field_Query_ImageListWithCVEFixed_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.ImageListWithCVEFixed(childComplexity, args["id"].(string), args["image"].(string)), true
+
+	case "TagInfo.Name":
+		if e.complexity.TagInfo.Name == nil {
+			break
+		}
+
+		return e.complexity.TagInfo.Name(childComplexity), true
+
+	case "TagInfo.Timestamp":
+		if e.complexity.TagInfo.Timestamp == nil {
+			break
+		}
+
+		return e.complexity.TagInfo.Timestamp(childComplexity), true
 
 	}
 	return 0, false
@@ -273,7 +293,9 @@ func (ec *executionContext) introspectType(name string) (*introspection.Type, er
 }
 
 var sources = []*ast.Source{
-	&ast.Source{Name: "schema.graphql", Input: `type CVEResultForImage {
+	&ast.Source{Name: "schema.graphql", Input: `scalar Time
+
+type CVEResultForImage {
      Tag: String 
      CVEList: [CVE]
 }
@@ -297,14 +319,19 @@ type ImgResultForCVE {
      Tags: [String]
 }
 
-type TagResultForCVE {
-     Tags: [String]
+type ImgResultForFixedCVE {
+     Tags: [TagInfo]
+}
+
+type TagInfo {
+     Name: String
+     Timestamp: Time
 }
 
 type Query {
   CVEListForImage(image: String!) :CVEResultForImage 
   ImageListForCVE(id: String!) :[ImgResultForCVE]
-  FixedTagForCVE(id: String!, image: String!) :TagResultForCVE
+  ImageListWithCVEFixed(id: String!, image: String!) :ImgResultForFixedCVE
 }`, BuiltIn: false},
 }
 var parsedSchema = gqlparser.MustLoadSchema(sources...)
@@ -327,7 +354,21 @@ func (ec *executionContext) field_Query_CVEListForImage_args(ctx context.Context
 	return args, nil
 }
 
-func (ec *executionContext) field_Query_FixedTagForCVE_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+func (ec *executionContext) field_Query_ImageListForCVE_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 string
+	if tmp, ok := rawArgs["id"]; ok {
+		arg0, err = ec.unmarshalNString2string(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["id"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_ImageListWithCVEFixed_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
 	var arg0 string
@@ -346,20 +387,6 @@ func (ec *executionContext) field_Query_FixedTagForCVE_args(ctx context.Context,
 		}
 	}
 	args["image"] = arg1
-	return args, nil
-}
-
-func (ec *executionContext) field_Query_ImageListForCVE_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
-	var err error
-	args := map[string]interface{}{}
-	var arg0 string
-	if tmp, ok := rawArgs["id"]; ok {
-		arg0, err = ec.unmarshalNString2string(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
-	}
-	args["id"] = arg0
 	return args, nil
 }
 
@@ -692,6 +719,37 @@ func (ec *executionContext) _ImgResultForCVE_Tags(ctx context.Context, field gra
 	return ec.marshalOString2ᚕᚖstring(ctx, field.Selections, res)
 }
 
+func (ec *executionContext) _ImgResultForFixedCVE_Tags(ctx context.Context, field graphql.CollectedField, obj *ImgResultForFixedCve) (ret graphql.Marshaler) {
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	fc := &graphql.FieldContext{
+		Object:   "ImgResultForFixedCVE",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+
+	ctx = graphql.WithFieldContext(ctx, fc)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Tags, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.([]*TagInfo)
+	fc.Result = res
+	return ec.marshalOTagInfo2ᚕᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐTagInfo(ctx, field.Selections, res)
+}
+
 func (ec *executionContext) _PackageInfo_Name(ctx context.Context, field graphql.CollectedField, obj *PackageInfo) (ret graphql.Marshaler) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -861,7 +919,7 @@ func (ec *executionContext) _Query_ImageListForCVE(ctx context.Context, field gr
 	return ec.marshalOImgResultForCVE2ᚕᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐImgResultForCve(ctx, field.Selections, res)
 }
 
-func (ec *executionContext) _Query_FixedTagForCVE(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+func (ec *executionContext) _Query_ImageListWithCVEFixed(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	defer func() {
 		if r := recover(); r != nil {
 			ec.Error(ctx, ec.Recover(ctx, r))
@@ -877,7 +935,7 @@ func (ec *executionContext) _Query_FixedTagForCVE(ctx context.Context, field gra
 
 	ctx = graphql.WithFieldContext(ctx, fc)
 	rawArgs := field.ArgumentMap(ec.Variables)
-	args, err := ec.field_Query_FixedTagForCVE_args(ctx, rawArgs)
+	args, err := ec.field_Query_ImageListWithCVEFixed_args(ctx, rawArgs)
 	if err != nil {
 		ec.Error(ctx, err)
 		return graphql.Null
@@ -885,7 +943,7 @@ func (ec *executionContext) _Query_FixedTagForCVE(ctx context.Context, field gra
 	fc.Args = args
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().FixedTagForCve(rctx, args["id"].(string), args["image"].(string))
+		return ec.resolvers.Query().ImageListWithCVEFixed(rctx, args["id"].(string), args["image"].(string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -894,9 +952,9 @@ func (ec *executionContext) _Query_FixedTagForCVE(ctx context.Context, field gra
 	if resTmp == nil {
 		return graphql.Null
 	}
-	res := resTmp.(*TagResultForCve)
+	res := resTmp.(*ImgResultForFixedCve)
 	fc.Result = res
-	return ec.marshalOTagResultForCVE2ᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐTagResultForCve(ctx, field.Selections, res)
+	return ec.marshalOImgResultForFixedCVE2ᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐImgResultForFixedCve(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _Query___type(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
@@ -968,7 +1026,7 @@ func (ec *executionContext) _Query___schema(ctx context.Context, field graphql.C
 	return ec.marshalO__Schema2ᚖgithubᚗcomᚋ99designsᚋgqlgenᚋgraphqlᚋintrospectionᚐSchema(ctx, field.Selections, res)
 }
 
-func (ec *executionContext) _TagResultForCVE_Tags(ctx context.Context, field graphql.CollectedField, obj *TagResultForCve) (ret graphql.Marshaler) {
+func (ec *executionContext) _TagInfo_Name(ctx context.Context, field graphql.CollectedField, obj *TagInfo) (ret graphql.Marshaler) {
 	defer func() {
 		if r := recover(); r != nil {
 			ec.Error(ctx, ec.Recover(ctx, r))
@@ -976,7 +1034,7 @@ func (ec *executionContext) _TagResultForCVE_Tags(ctx context.Context, field gra
 		}
 	}()
 	fc := &graphql.FieldContext{
-		Object:   "TagResultForCVE",
+		Object:   "TagInfo",
 		Field:    field,
 		Args:     nil,
 		IsMethod: false,
@@ -985,7 +1043,7 @@ func (ec *executionContext) _TagResultForCVE_Tags(ctx context.Context, field gra
 	ctx = graphql.WithFieldContext(ctx, fc)
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return obj.Tags, nil
+		return obj.Name, nil
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -994,9 +1052,40 @@ func (ec *executionContext) _TagResultForCVE_Tags(ctx context.Context, field gra
 	if resTmp == nil {
 		return graphql.Null
 	}
-	res := resTmp.([]*string)
+	res := resTmp.(*string)
 	fc.Result = res
-	return ec.marshalOString2ᚕᚖstring(ctx, field.Selections, res)
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _TagInfo_Timestamp(ctx context.Context, field graphql.CollectedField, obj *TagInfo) (ret graphql.Marshaler) {
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	fc := &graphql.FieldContext{
+		Object:   "TagInfo",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+
+	ctx = graphql.WithFieldContext(ctx, fc)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Timestamp, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*time.Time)
+	fc.Result = res
+	return ec.marshalOTime2ᚖtimeᚐTime(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) ___Directive_name(ctx context.Context, field graphql.CollectedField, obj *introspection.Directive) (ret graphql.Marshaler) {
@@ -2146,6 +2235,30 @@ func (ec *executionContext) _ImgResultForCVE(ctx context.Context, sel ast.Select
 	return out
 }
 
+var imgResultForFixedCVEImplementors = []string{"ImgResultForFixedCVE"}
+
+func (ec *executionContext) _ImgResultForFixedCVE(ctx context.Context, sel ast.SelectionSet, obj *ImgResultForFixedCve) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, imgResultForFixedCVEImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	var invalids uint32
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("ImgResultForFixedCVE")
+		case "Tags":
+			out.Values[i] = ec._ImgResultForFixedCVE_Tags(ctx, field, obj)
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch()
+	if invalids > 0 {
+		return graphql.Null
+	}
+	return out
+}
+
 var packageInfoImplementors = []string{"PackageInfo"}
 
 func (ec *executionContext) _PackageInfo(ctx context.Context, sel ast.SelectionSet, obj *PackageInfo) graphql.Marshaler {
@@ -2211,7 +2324,7 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 				res = ec._Query_ImageListForCVE(ctx, field)
 				return res
 			})
-		case "FixedTagForCVE":
+		case "ImageListWithCVEFixed":
 			field := field
 			out.Concurrently(i, func() (res graphql.Marshaler) {
 				defer func() {
@@ -2219,7 +2332,7 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 						ec.Error(ctx, ec.Recover(ctx, r))
 					}
 				}()
-				res = ec._Query_FixedTagForCVE(ctx, field)
+				res = ec._Query_ImageListWithCVEFixed(ctx, field)
 				return res
 			})
 		case "__type":
@@ -2237,19 +2350,21 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 	return out
 }
 
-var tagResultForCVEImplementors = []string{"TagResultForCVE"}
+var tagInfoImplementors = []string{"TagInfo"}
 
-func (ec *executionContext) _TagResultForCVE(ctx context.Context, sel ast.SelectionSet, obj *TagResultForCve) graphql.Marshaler {
-	fields := graphql.CollectFields(ec.OperationContext, sel, tagResultForCVEImplementors)
+func (ec *executionContext) _TagInfo(ctx context.Context, sel ast.SelectionSet, obj *TagInfo) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, tagInfoImplementors)
 
 	out := graphql.NewFieldSet(fields)
 	var invalids uint32
 	for i, field := range fields {
 		switch field.Name {
 		case "__typename":
-			out.Values[i] = graphql.MarshalString("TagResultForCVE")
-		case "Tags":
-			out.Values[i] = ec._TagResultForCVE_Tags(ctx, field, obj)
+			out.Values[i] = graphql.MarshalString("TagInfo")
+		case "Name":
+			out.Values[i] = ec._TagInfo_Name(ctx, field, obj)
+		case "Timestamp":
+			out.Values[i] = ec._TagInfo_Timestamp(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -2896,6 +3011,17 @@ func (ec *executionContext) marshalOImgResultForCVE2ᚖgithubᚗcomᚋanuvuᚋzo
 	return ec._ImgResultForCVE(ctx, sel, v)
 }
 
+func (ec *executionContext) marshalOImgResultForFixedCVE2githubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐImgResultForFixedCve(ctx context.Context, sel ast.SelectionSet, v ImgResultForFixedCve) graphql.Marshaler {
+	return ec._ImgResultForFixedCVE(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalOImgResultForFixedCVE2ᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐImgResultForFixedCve(ctx context.Context, sel ast.SelectionSet, v *ImgResultForFixedCve) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._ImgResultForFixedCVE(ctx, sel, v)
+}
+
 func (ec *executionContext) marshalOPackageInfo2githubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐPackageInfo(ctx context.Context, sel ast.SelectionSet, v PackageInfo) graphql.Marshaler {
 	return ec._PackageInfo(ctx, sel, &v)
 }
@@ -3002,15 +3128,78 @@ func (ec *executionContext) marshalOString2ᚖstring(ctx context.Context, sel as
 	return ec.marshalOString2string(ctx, sel, *v)
 }
 
-func (ec *executionContext) marshalOTagResultForCVE2githubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐTagResultForCve(ctx context.Context, sel ast.SelectionSet, v TagResultForCve) graphql.Marshaler {
-	return ec._TagResultForCVE(ctx, sel, &v)
+func (ec *executionContext) marshalOTagInfo2githubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐTagInfo(ctx context.Context, sel ast.SelectionSet, v TagInfo) graphql.Marshaler {
+	return ec._TagInfo(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalOTagResultForCVE2ᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐTagResultForCve(ctx context.Context, sel ast.SelectionSet, v *TagResultForCve) graphql.Marshaler {
+func (ec *executionContext) marshalOTagInfo2ᚕᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐTagInfo(ctx context.Context, sel ast.SelectionSet, v []*TagInfo) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
-	return ec._TagResultForCVE(ctx, sel, v)
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalOTagInfo2ᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐTagInfo(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+	return ret
+}
+
+func (ec *executionContext) marshalOTagInfo2ᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐTagInfo(ctx context.Context, sel ast.SelectionSet, v *TagInfo) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._TagInfo(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalOTime2timeᚐTime(ctx context.Context, v interface{}) (time.Time, error) {
+	return graphql.UnmarshalTime(v)
+}
+
+func (ec *executionContext) marshalOTime2timeᚐTime(ctx context.Context, sel ast.SelectionSet, v time.Time) graphql.Marshaler {
+	return graphql.MarshalTime(v)
+}
+
+func (ec *executionContext) unmarshalOTime2ᚖtimeᚐTime(ctx context.Context, v interface{}) (*time.Time, error) {
+	if v == nil {
+		return nil, nil
+	}
+	res, err := ec.unmarshalOTime2timeᚐTime(ctx, v)
+	return &res, err
+}
+
+func (ec *executionContext) marshalOTime2ᚖtimeᚐTime(ctx context.Context, sel ast.SelectionSet, v *time.Time) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec.marshalOTime2timeᚐTime(ctx, sel, *v)
 }
 
 func (ec *executionContext) marshalO__EnumValue2ᚕgithubᚗcomᚋ99designsᚋgqlgenᚋgraphqlᚋintrospectionᚐEnumValueᚄ(ctx context.Context, sel ast.SelectionSet, v []introspection.EnumValue) graphql.Marshaler {
