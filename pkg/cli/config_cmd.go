@@ -205,6 +205,7 @@ func addConfig(configPath, configName, url string) error {
 	configMap := make(map[string]interface{})
 	configMap["url"] = url
 	configMap[nameKey] = configName
+	addDefaultConfigs(configMap)
 	configs = append(configs, configMap)
 
 	err = saveConfigMapToFile(configPath, configs)
@@ -213,6 +214,16 @@ func addConfig(configPath, configName, url string) error {
 	}
 
 	return nil
+}
+
+func addDefaultConfigs(config map[string]interface{}) {
+	if _, ok := config[showspinnerConfig]; !ok {
+		config[showspinnerConfig] = true
+	}
+
+	if _, ok := config[verifyTLSConfig]; !ok {
+		config[verifyTLSConfig] = true
+	}
 }
 
 func getConfigValue(configPath, configName, key string) (string, error) {
@@ -227,6 +238,7 @@ func getConfigValue(configPath, configName, key string) (string, error) {
 
 	for _, val := range configs {
 		configMap := val.(map[string]interface{})
+		addDefaultConfigs(configMap)
 
 		name := configMap[nameKey]
 		if name == configName {
@@ -257,6 +269,7 @@ func resetConfigValue(configPath, configName, key string) error {
 
 	for _, val := range configs {
 		configMap := val.(map[string]interface{})
+		addDefaultConfigs(configMap)
 
 		name := configMap[nameKey]
 		if name == configName {
@@ -290,6 +303,7 @@ func setConfigValue(configPath, configName, key, value string) error {
 
 	for _, val := range configs {
 		configMap := val.(map[string]interface{})
+		addDefaultConfigs(configMap)
 
 		name := configMap[nameKey]
 		if name == configName {
@@ -326,6 +340,7 @@ func getAllConfig(configPath, configName string) (string, error) {
 
 	for _, value := range configs {
 		configMap := value.(map[string]interface{})
+		addDefaultConfigs(configMap)
 
 		name := configMap[nameKey]
 		if name == configName {
@@ -353,7 +368,8 @@ const (
 	supportedOptions = `
 Useful variables:
   url		zot server URL
-  showspinner	show spinner while loading data [true/false]`
+  showspinner	show spinner while loading data [true/false]
+  verify-tls	verify TLS Certificate verification of the server [default: true]`
 
 	nameKey = "_name"
 
@@ -361,6 +377,9 @@ Useful variables:
 	oneArg    = 1
 	twoArgs   = 2
 	threeArgs = 3
+
+	showspinnerConfig = "showspinner"
+	verifyTLSConfig   = "verify-tls"
 )
 
 var (
