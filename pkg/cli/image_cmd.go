@@ -14,11 +14,9 @@ import (
 func NewImageCommand(searchService ImageSearchService) *cobra.Command {
 	searchImageParams := make(map[string]*string)
 
-	var servURL string
+	var servURL, user, outputFormat string
 
-	var user string
-
-	var outputFormat string
+	var isSpinner, verifyTLS bool
 
 	var imageCmd = &cobra.Command{
 		Use:   "images [config-name]",
@@ -47,20 +45,35 @@ func NewImageCommand(searchService ImageSearchService) *cobra.Command {
 				}
 			}
 
-			var isSpinner bool
-
 			if len(args) > 0 {
 				var err error
-				isSpinner, err = isSpinnerEnabled(configPath, args[0])
+				isSpinner, err = parseBooleanConfig(configPath, args[0], showspinnerConfig)
 				if err != nil {
 					cmd.SilenceUsage = true
 					return err
 				}
-			} else {
-				isSpinner = true
+				verifyTLS, err = parseBooleanConfig(configPath, args[0], verifyTLSConfig)
+				if err != nil {
+					cmd.SilenceUsage = true
+					return err
+				}
 			}
 
-			err = searchImage(cmd, searchImageParams, searchService, &servURL, &user, &outputFormat, isSpinner)
+			spin := spinner.New(spinner.CharSets[39], spinnerDuration, spinner.WithWriter(cmd.ErrOrStderr()))
+			spin.Prefix = "Searching... "
+
+			searchConfig := searchConfig{
+				params:        searchImageParams,
+				searchService: searchService,
+				servURL:       &servURL,
+				user:          &user,
+				outputFormat:  &outputFormat,
+				spinner:       spinnerState{spin, isSpinner},
+				verifyTLS:     &verifyTLS,
+				resultWriter:  cmd.OutOrStdout(),
+			}
+
+			err = searchImage(searchConfig)
 
 			if err != nil {
 				cmd.SilenceUsage = true
@@ -77,22 +90,18 @@ func NewImageCommand(searchService ImageSearchService) *cobra.Command {
 	return imageCmd
 }
 
-func isSpinnerEnabled(configPath, configName string) (bool, error) {
-	spinnerConfig, err := getConfigValue(configPath, configName, "showspinner")
+func parseBooleanConfig(configPath, configName, configParam string) (bool, error) {
+	config, err := getConfigValue(configPath, configName, configParam)
 	if err != nil {
 		return false, err
 	}
 
-	if spinnerConfig == "" {
-		return true, nil // spinner is enabled by default
-	}
-
-	isSpinner, err := strconv.ParseBool(spinnerConfig)
+	val, err := strconv.ParseBool(config)
 	if err != nil {
 		return false, err
 	}
 
-	return isSpinner, nil
+	return val, nil
 }
 
 func setupCmdFlags(imageCmd *cobra.Command, searchImageParams map[string]*string, servURL, user, outputFormat *string) {
@@ -103,14 +112,9 @@ func setupCmdFlags(imageCmd *cobra.Command, searchImageParams map[string]*string
 	imageCmd.Flags().StringVarP(outputFormat, "output", "o", "", "Specify output format [text/json/yaml]")
 }
 
-func searchImage(cmd *cobra.Command, params map[string]*string,
-	service ImageSearchService, servURL, user, outputFormat *string, isSpinner bool) error {
-	spin := spinner.New(spinner.CharSets[39], spinnerDuration, spinner.WithWriter(cmd.ErrOrStderr()))
-	spin.Prefix = "Searching... "
-
+func searchImage(searchConfig searchConfig) error {
 	for _, searcher := range getSearchers() {
-		found, err := searcher.search(params, service, servURL, user, outputFormat,
-			cmd.OutOrStdout(), spinnerState{spin, isSpinner})
+		found, err := searcher.search(searchConfig)
 		if found {
 			if err != nil {
 				return err

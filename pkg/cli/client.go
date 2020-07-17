@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"io/ioutil"
@@ -14,17 +15,23 @@ import (
 	zotErrors "github.com/anuvu/zot/errors"
 )
 
-var httpClient *http.Client = createHTTPClient() //nolint: gochecknoglobals
+var httpClient *http.Client //nolint: gochecknoglobals
 
 const httpTimeout = 5 * time.Second
 
-func createHTTPClient() *http.Client {
+func createHTTPClient(verifyTLS bool) *http.Client {
+	var tr = http.DefaultTransport.(*http.Transport).Clone()
+	if !verifyTLS {
+		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint: gosec
+	}
+
 	return &http.Client{
-		Timeout: httpTimeout,
+		Timeout:   httpTimeout,
+		Transport: tr,
 	}
 }
 
-func makeGETRequest(url, username, password string, resultsPtr interface{}) (http.Header, error) {
+func makeGETRequest(url, username, password string, verifyTLS bool, resultsPtr interface{}) (http.Header, error) {
 	req, err := http.NewRequest("GET", url, nil)
 
 	if err != nil {
@@ -32,6 +39,10 @@ func makeGETRequest(url, username, password string, resultsPtr interface{}) (htt
 	}
 
 	req.SetBasicAuth(username, password)
+
+	if httpClient == nil {
+		httpClient = createHTTPClient(verifyTLS)
+	}
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
@@ -74,9 +85,9 @@ type manifestJob struct {
 	url          string
 	username     string
 	password     string
-	outputFormat string
 	imageName    string
 	tagName      string
+	config       searchConfig
 	manifestResp manifestResponse
 }
 
@@ -116,7 +127,7 @@ func (p *requestsPool) startRateLimiter() {
 func (p *requestsPool) doJob(job *manifestJob) {
 	defer p.waitGroup.Done()
 
-	header, err := makeGETRequest(job.url, job.username, job.password, &job.manifestResp)
+	header, err := makeGETRequest(job.url, job.username, job.password, *job.config.verifyTLS, &job.manifestResp)
 	if err != nil {
 		if isContextDone(p.context) {
 			return
@@ -143,7 +154,7 @@ func (p *requestsPool) doJob(job *manifestJob) {
 		},
 	}
 
-	str, err := image.string(job.outputFormat)
+	str, err := image.string(*job.config.outputFormat)
 	if err != nil {
 		if isContextDone(p.context) {
 			return

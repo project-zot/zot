@@ -439,8 +439,8 @@ func uploadManifest(url string) {
 
 type mockService struct{}
 
-func (service mockService) getAllImages(ctx context.Context, serverURL, username, password,
-	outputFormat string, channel chan imageListResult, wg *sync.WaitGroup) {
+func (service mockService) getAllImages(ctx context.Context, config searchConfig, username, password string,
+	channel chan imageListResult, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	image := &imageStruct{}
@@ -453,7 +453,7 @@ func (service mockService) getAllImages(ctx context.Context, serverURL, username
 		},
 	}
 
-	str, err := image.string(outputFormat)
+	str, err := image.string(*config.outputFormat)
 	if err != nil {
 		channel <- imageListResult{"", err}
 		return
@@ -461,8 +461,8 @@ func (service mockService) getAllImages(ctx context.Context, serverURL, username
 	channel <- imageListResult{str, nil}
 }
 
-func (service mockService) getImageByName(ctx context.Context, serverURL, username, password,
-	imageName, outputFormat string, channel chan imageListResult, wg *sync.WaitGroup) {
+func (service mockService) getImageByName(ctx context.Context, config searchConfig,
+	username, password, imageName string, channel chan imageListResult, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	image := &imageStruct{}
@@ -475,7 +475,7 @@ func (service mockService) getImageByName(ctx context.Context, serverURL, userna
 		},
 	}
 
-	str, err := image.string(outputFormat)
+	str, err := image.string(*config.outputFormat)
 	if err != nil {
 		channel <- imageListResult{"", err}
 		return

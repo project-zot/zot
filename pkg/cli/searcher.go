@@ -22,8 +22,7 @@ func getSearchers() []searcher {
 }
 
 type searcher interface {
-	search(params map[string]*string, searchService ImageSearchService,
-		servURL, user, outputFormat *string, stdWriter io.Writer, spinner spinnerState) (bool, error)
+	search(searchConfig searchConfig) (bool, error)
 }
 
 func canSearch(params map[string]*string, requiredParams *set) bool {
@@ -38,15 +37,25 @@ func canSearch(params map[string]*string, requiredParams *set) bool {
 	return true
 }
 
+type searchConfig struct {
+	params        map[string]*string
+	searchService ImageSearchService
+	servURL       *string
+	user          *string
+	outputFormat  *string
+	verifyTLS     *bool
+	resultWriter  io.Writer
+	spinner       spinnerState
+}
+
 type allImagesSearcher struct{}
 
-func (search allImagesSearcher) search(params map[string]*string, searchService ImageSearchService,
-	servURL, user, outputFormat *string, stdWriter io.Writer, spinner spinnerState) (bool, error) {
-	if !canSearch(params, newSet("")) {
+func (search allImagesSearcher) search(config searchConfig) (bool, error) {
+	if !canSearch(config.params, newSet("")) {
 		return false, nil
 	}
 
-	username, password := getUsernameAndPassword(*user)
+	username, password := getUsernameAndPassword(*config.user)
 	imageErr := make(chan imageListResult)
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -54,12 +63,12 @@ func (search allImagesSearcher) search(params map[string]*string, searchService 
 
 	wg.Add(1)
 
-	go searchService.getAllImages(ctx, *servURL, username, password, *outputFormat, imageErr, &wg)
+	go config.searchService.getAllImages(ctx, config, username, password, imageErr, &wg)
 	wg.Add(1)
 
 	var errCh chan error = make(chan error, 1)
 
-	go collectImages(outputFormat, stdWriter, &wg, imageErr, cancel, spinner, errCh)
+	go collectImages(config, &wg, imageErr, cancel, errCh)
 	wg.Wait()
 	select {
 	case err := <-errCh:
@@ -71,14 +80,12 @@ func (search allImagesSearcher) search(params map[string]*string, searchService 
 
 type imageByNameSearcher struct{}
 
-func (search imageByNameSearcher) search(params map[string]*string,
-	searchService ImageSearchService, servURL, user, outputFormat *string,
-	stdWriter io.Writer, spinner spinnerState) (bool, error) {
-	if !canSearch(params, newSet("imageName")) {
+func (search imageByNameSearcher) search(config searchConfig) (bool, error) {
+	if !canSearch(config.params, newSet("imageName")) {
 		return false, nil
 	}
 
-	username, password := getUsernameAndPassword(*user)
+	username, password := getUsernameAndPassword(*config.user)
 	imageErr := make(chan imageListResult)
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -86,11 +93,11 @@ func (search imageByNameSearcher) search(params map[string]*string,
 
 	wg.Add(1)
 
-	go searchService.getImageByName(ctx, *servURL, username, password, *params["imageName"], *outputFormat, imageErr, &wg)
+	go config.searchService.getImageByName(ctx, config, username, password, *config.params["imageName"], imageErr, &wg)
 	wg.Add(1)
 
 	var errCh chan error = make(chan error, 1)
-	go collectImages(outputFormat, stdWriter, &wg, imageErr, cancel, spinner, errCh)
+	go collectImages(config, &wg, imageErr, cancel, errCh)
 
 	wg.Wait()
 
@@ -102,38 +109,44 @@ func (search imageByNameSearcher) search(params map[string]*string,
 	}
 }
 
-func collectImages(outputFormat *string, stdWriter io.Writer, wg *sync.WaitGroup,
-	imageErr chan imageListResult, cancel context.CancelFunc, spinner spinnerState, errCh chan error) {
+func collectImages(config searchConfig, wg *sync.WaitGroup, imageErr chan imageListResult,
+	cancel context.CancelFunc, errCh chan error) {
 	var foundResult bool
 
 	defer wg.Done()
-	spinner.startSpinner()
+	config.spinner.startSpinner()
 
 	for {
 		select {
-		case result := <-imageErr:
+		case result, ok := <-imageErr:
+			config.spinner.stopSpinner()
+
+			if !ok {
+				cancel()
+				return
+			}
+
 			if result.Err != nil {
-				spinner.stopSpinner()
 				cancel()
 				errCh <- result.Err
 
 				return
 			}
 
-			spinner.stopSpinner()
-
-			if !foundResult && (*outputFormat == "text" || *outputFormat == "") {
+			if !foundResult && (*config.outputFormat == "text" || *config.outputFormat == "") {
 				var builder strings.Builder
 
 				printImageTableHeader(&builder)
-				fmt.Fprint(stdWriter, builder.String())
+				fmt.Fprint(config.resultWriter, builder.String())
 			}
 
 			foundResult = true
 
-			fmt.Fprint(stdWriter, result.StrValue)
+			fmt.Fprint(config.resultWriter, result.StrValue)
 		case <-time.After(waitTimeout):
 			cancel()
+			config.spinner.stopSpinner()
+
 			return
 		}
 	}
@@ -211,5 +224,5 @@ func printImageTableHeader(writer io.Writer) {
 }
 
 const (
-	waitTimeout = 2 * time.Second
+	waitTimeout = 6 * time.Second
 )

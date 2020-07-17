@@ -17,9 +17,9 @@ import (
 )
 
 type ImageSearchService interface {
-	getAllImages(ctx context.Context, serverURL, username, password,
-		outputFormat string, channel chan imageListResult, wg *sync.WaitGroup)
-	getImageByName(ctx context.Context, serverURL, username, password, imageName, outputFormat string,
+	getAllImages(ctx context.Context, config searchConfig, username, password string,
+		channel chan imageListResult, wg *sync.WaitGroup)
+	getImageByName(ctx context.Context, config searchConfig, username, password, imageName string,
 		channel chan imageListResult, wg *sync.WaitGroup)
 }
 type searchService struct{}
@@ -28,27 +28,32 @@ func NewImageSearchService() ImageSearchService {
 	return searchService{}
 }
 
-func (service searchService) getImageByName(ctx context.Context, url, username, password,
-	imageName, outputFormat string, c chan imageListResult, wg *sync.WaitGroup) {
+func (service searchService) getImageByName(ctx context.Context, config searchConfig,
+	username, password, imageName string, c chan imageListResult, wg *sync.WaitGroup) {
 	defer wg.Done()
+	defer close(c)
 
-	p := newSmoothRateLimiter(ctx, wg, c)
+	var localWg sync.WaitGroup
+	p := newSmoothRateLimiter(ctx, &localWg, c)
 
-	wg.Add(1)
+	localWg.Add(1)
 
 	go p.startRateLimiter()
-	wg.Add(1)
+	localWg.Add(1)
 
-	go getImage(ctx, url, username, password, imageName, outputFormat, c, wg, p)
+	go getImage(ctx, config, username, password, imageName, c, &localWg, p)
+
+	localWg.Wait()
 }
 
-func (service searchService) getAllImages(ctx context.Context, url, username, password,
-	outputFormat string, c chan imageListResult, wg *sync.WaitGroup) {
+func (service searchService) getAllImages(ctx context.Context, config searchConfig, username, password string,
+	c chan imageListResult, wg *sync.WaitGroup) {
 	defer wg.Done()
+	defer close(c)
 
 	catalog := &catalogResponse{}
 
-	catalogEndPoint, err := combineServerAndEndpointURL(url, "/v2/_catalog")
+	catalogEndPoint, err := combineServerAndEndpointURL(*config.servURL, "/v2/_catalog")
 	if err != nil {
 		if isContextDone(ctx) {
 			return
@@ -58,7 +63,7 @@ func (service searchService) getAllImages(ctx context.Context, url, username, pa
 		return
 	}
 
-	_, err = makeGETRequest(catalogEndPoint, username, password, catalog)
+	_, err = makeGETRequest(catalogEndPoint, username, password, *config.verifyTLS, catalog)
 	if err != nil {
 		if isContextDone(ctx) {
 			return
@@ -68,23 +73,28 @@ func (service searchService) getAllImages(ctx context.Context, url, username, pa
 		return
 	}
 
-	p := newSmoothRateLimiter(ctx, wg, c)
+	var localWg sync.WaitGroup
 
-	wg.Add(1)
+	p := newSmoothRateLimiter(ctx, &localWg, c)
+
+	localWg.Add(1)
 
 	go p.startRateLimiter()
 
 	for _, repo := range catalog.Repositories {
-		wg.Add(1)
+		localWg.Add(1)
 
-		go getImage(ctx, url, username, password, repo, outputFormat, c, wg, p)
+		go getImage(ctx, config, username, password, repo, c, &localWg, p)
 	}
+
+	localWg.Wait()
 }
-func getImage(ctx context.Context, url, username, password, imageName, outputFormat string,
+
+func getImage(ctx context.Context, config searchConfig, username, password, imageName string,
 	c chan imageListResult, wg *sync.WaitGroup, pool *requestsPool) {
 	defer wg.Done()
 
-	tagListEndpoint, err := combineServerAndEndpointURL(url, fmt.Sprintf("/v2/%s/tags/list", imageName))
+	tagListEndpoint, err := combineServerAndEndpointURL(*config.servURL, fmt.Sprintf("/v2/%s/tags/list", imageName))
 	if err != nil {
 		if isContextDone(ctx) {
 			return
@@ -95,7 +105,7 @@ func getImage(ctx context.Context, url, username, password, imageName, outputFor
 	}
 
 	tagsList := &tagListResp{}
-	_, err = makeGETRequest(tagListEndpoint, username, password, &tagsList)
+	_, err = makeGETRequest(tagListEndpoint, username, password, *config.verifyTLS, &tagsList)
 
 	if err != nil {
 		if isContextDone(ctx) {
@@ -109,7 +119,7 @@ func getImage(ctx context.Context, url, username, password, imageName, outputFor
 	for _, tag := range tagsList.Tags {
 		wg.Add(1)
 
-		go addManifestCallToPool(ctx, pool, url, username, password, imageName, tag, outputFormat, c, wg)
+		go addManifestCallToPool(ctx, config, pool, username, password, imageName, tag, c, wg)
 	}
 }
 
@@ -122,13 +132,14 @@ func isContextDone(ctx context.Context) bool {
 	}
 }
 
-func addManifestCallToPool(ctx context.Context, p *requestsPool, url, username, password, imageName,
-	tagName, outputFormat string, c chan imageListResult, wg *sync.WaitGroup) {
+func addManifestCallToPool(ctx context.Context, config searchConfig, p *requestsPool, username, password, imageName,
+	tagName string, c chan imageListResult, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	resultManifest := manifestResponse{}
 
-	manifestEndpoint, err := combineServerAndEndpointURL(url, fmt.Sprintf("/v2/%s/manifests/%s", imageName, tagName))
+	manifestEndpoint, err := combineServerAndEndpointURL(*config.servURL,
+		fmt.Sprintf("/v2/%s/manifests/%s", imageName, tagName))
 	if err != nil {
 		if isContextDone(ctx) {
 			return
@@ -143,7 +154,7 @@ func addManifestCallToPool(ctx context.Context, p *requestsPool, url, username, 
 		password:     password,
 		tagName:      tagName,
 		manifestResp: resultManifest,
-		outputFormat: outputFormat,
+		config:       config,
 	}
 
 	wg.Add(1)
