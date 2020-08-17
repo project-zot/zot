@@ -890,7 +890,7 @@ retry:
 		if err != nil {
 			is.log.Error().Err(err).Str("blobPath", dstRecord).Msg("dedupe: unable to stat")
 			// the actual blob on disk may have been removed by GC, so sync the cache
-			if err := is.cache.DeleteBlob(dstDigest.String(), dst); err != nil {
+			if err := is.cache.DeleteBlob(dstDigest.String(), dstRecord); err != nil {
 				// nolint:lll
 				is.log.Error().Err(err).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe: unable to delete blob record")
 
