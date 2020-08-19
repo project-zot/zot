@@ -14,6 +14,7 @@ require (
 	github.com/go-chi/chi v4.0.2+incompatible // indirect
 	github.com/go-ldap/ldap/v3 v3.1.3
 	github.com/gofrs/uuid v3.2.0+incompatible
+	github.com/google/go-containerregistry v0.0.0-20200331213917-3d03ed9b1ca2
 	github.com/gorilla/handlers v1.4.2
 	github.com/gorilla/mux v1.7.4
 	github.com/json-iterator/go v1.1.9

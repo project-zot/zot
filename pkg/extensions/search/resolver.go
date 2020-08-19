@@ -7,6 +7,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/log"
 
 	cveinfo "github.com/anuvu/zot/pkg/extensions/search/cve"
@@ -53,6 +54,19 @@ func (r *queryResolver) CVEListForImage(ctx context.Context, image string) (*CVE
 	r.cveInfo.CveTrivyConfig.TrivyConfig.Input = path.Join(r.dir, image)
 
 	r.cveInfo.Log.Info().Str("Scanning Image", image).Msg("")
+
+	isValidImage, err := r.cveInfo.IsValidImageFormat(r.cveInfo.CveTrivyConfig.TrivyConfig.Input)
+	if !isValidImage {
+		r.cveInfo.Log.Debug().Msg("Image media type not supported for scanning")
+
+		return &CVEResultForImage{}, errors.ErrScanNotSupported
+	}
+
+	if err != nil {
+		r.cveInfo.Log.Error().Err(err).Msg("Error scanning image repository")
+
+		return &CVEResultForImage{}, err
+	}
 
 	cveResults, err := cveinfo.ScanImage(r.cveInfo.CveTrivyConfig)
 	if err != nil {
@@ -142,6 +156,19 @@ func (r *queryResolver) ImageListForCve(ctx context.Context, id string) ([]*ImgR
 
 	for _, repo := range repoList {
 		r.cveInfo.Log.Info().Str("Extracting list of tags available in image", repo).Msg("")
+
+		isValidImage, err := r.cveInfo.IsValidImageFormat(path.Join(r.dir, repo))
+		if !isValidImage {
+			r.cveInfo.Log.Debug().Str("Image media type not supported for scanning", repo)
+
+			continue
+		}
+
+		if err != nil {
+			r.cveInfo.Log.Error().Err(err).Str("Error reading image media type", repo)
+
+			return cveResult, err
+		}
 
 		if err != nil {
 			r.cveInfo.Log.Error().Err(err).Str("Error reading image media type", repo)
