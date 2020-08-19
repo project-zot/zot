@@ -1,3 +1,5 @@
+scalar Time
+
 type CVEResultForImage {
      Tag: String 
      CVEList: [CVE]
@@ -22,7 +24,17 @@ type ImgResultForCVE {
      Tags: [String]
 }
 
+type ImgResultForFixedCVE {
+     Tags: [TagInfo]
+}
+
+type TagInfo {
+     Name: String
+     Timestamp: Time
+}
+
 type Query {
   CVEListForImage(image: String!) :CVEResultForImage 
   ImageListForCVE(id: String!) :[ImgResultForCVE]
+  ImageListWithCVEFixed(id: String!, image: String!) :ImgResultForFixedCVE
 }

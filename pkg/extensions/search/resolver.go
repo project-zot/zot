@@ -218,3 +218,86 @@ func (r *queryResolver) ImageListForCve(ctx context.Context, id string) ([]*ImgR
 
 	return cveResult, nil
 }
+
+func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, image string) (*ImgResultForFixedCve, error) { // nolint: lll
+	imgResultForFixedCVE := &ImgResultForFixedCve{}
+
+	r.cveInfo.Log.Info().Str("Extracting list of tags available in image", image).Msg("")
+
+	isValidImage, err := r.cveInfo.IsValidImageFormat(path.Join(r.dir, image))
+	if !isValidImage {
+		r.cveInfo.Log.Debug().Msg("Image media type not supported for scanning")
+
+		return imgResultForFixedCVE, errors.ErrScanNotSupported
+	}
+
+	if err != nil {
+		return imgResultForFixedCVE, err
+	}
+
+	tagsInfo, err := r.cveInfo.GetImageTagsWithTimestamp(r.dir, image)
+	if err != nil {
+		r.cveInfo.Log.Error().Err(err).Msg("Error while readling image media type")
+
+		return imgResultForFixedCVE, err
+	}
+
+	infectedTags := make([]cveinfo.TagInfo, 0)
+
+	var hasCVE bool
+
+	for _, tag := range tagsInfo {
+		r.cveInfo.CveTrivyConfig.TrivyConfig.Input = path.Join(r.dir, image+":"+tag.Name)
+
+		r.cveInfo.Log.Info().Str("Scanning image", path.Join(r.dir, image+":"+tag.Name)).Msg("")
+
+		results, err := cveinfo.ScanImage(r.cveInfo.CveTrivyConfig)
+		if err != nil {
+			r.cveInfo.Log.Error().Err(err).Str("Error scanning image", image+":"+tag.Name).Msg("")
+
+			continue
+		}
+
+		hasCVE = false
+
+		for _, result := range results {
+			for _, vulnerability := range result.Vulnerabilities {
+				if vulnerability.VulnerabilityID == id {
+					hasCVE = true
+
+					break
+				}
+			}
+		}
+
+		if hasCVE {
+			infectedTags = append(infectedTags, cveinfo.TagInfo{Name: tag.Name, Timestamp: tag.Timestamp})
+		}
+	}
+
+	if len(infectedTags) != 0 {
+		r.cveInfo.Log.Info().Msg("Comparing fixed tags timestamp")
+
+		fixedTags := cveinfo.GetFixedTags(tagsInfo, infectedTags)
+
+		finalTagList := make([]*TagInfo, 0)
+
+		for _, tag := range fixedTags {
+			copyTag := tag.Name
+
+			copyTimeStamp := tag.Timestamp
+
+			finalTagList = append(finalTagList, &TagInfo{Name: &copyTag, Timestamp: &copyTimeStamp})
+		}
+
+		imgResultForFixedCVE = &ImgResultForFixedCve{Tags: finalTagList}
+
+		return imgResultForFixedCVE, nil
+	}
+
+	r.cveInfo.Log.Info().Msg("Input image does not contain any tag that does not have given cve")
+
+	imgResultForFixedCVE = &ImgResultForFixedCve{}
+
+	return imgResultForFixedCVE, errors.ErrFixedTagNotFound
+}

@@ -2,6 +2,10 @@
 
 package search
 
+import (
+	"time"
+)
+
 type Cve struct {
 	ID          *string        `json:"Id"`
 	Title       *string        `json:"Title"`
@@ -20,8 +24,17 @@ type ImgResultForCve struct {
 	Tags []*string `json:"Tags"`
 }
 
+type ImgResultForFixedCve struct {
+	Tags []*TagInfo `json:"Tags"`
+}
+
 type PackageInfo struct {
 	Name             *string `json:"Name"`
 	InstalledVersion *string `json:"InstalledVersion"`
 	FixedVersion     *string `json:"FixedVersion"`
+}
+
+type TagInfo struct {
+	Name      *string    `json:"Name"`
+	Timestamp *time.Time `json:"Timestamp"`
 }
