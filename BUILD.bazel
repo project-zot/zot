@@ -94,7 +94,7 @@ go_library(
 filegroup(
     name = "exported_testdata",
     srcs = glob([
-        "test/data/*",
+        "test/data/**",
     ]),
     visibility = ["//visibility:public"],
 )

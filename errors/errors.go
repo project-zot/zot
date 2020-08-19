@@ -34,4 +34,6 @@ var (
 	ErrConfigNotFound          = errors.New("cli: config with the given name does not exist")
 	ErrNoURLProvided           = errors.New("cli: no URL provided in argument or via config. see 'zot config -h'")
 	ErrIllegalConfigKey        = errors.New("cli: given config key is not allowed")
+	ErrScanNotSupported        = errors.New("search: scanning of image media type not supported")
+	ErrFixedTagNotFound        = errors.New("search: no fixed tag found")
 )
