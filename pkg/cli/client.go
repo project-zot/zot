@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -17,7 +18,7 @@ import (
 
 var httpClient *http.Client //nolint: gochecknoglobals
 
-const httpTimeout = 5 * time.Second
+const httpTimeout = 5 * time.Minute
 
 func createHTTPClient(verifyTLS bool) *http.Client {
 	var tr = http.DefaultTransport.(*http.Transport).Clone()
@@ -40,6 +41,33 @@ func makeGETRequest(url, username, password string, verifyTLS bool, resultsPtr i
 
 	req.SetBasicAuth(username, password)
 
+	return doHTTPRequest(req, verifyTLS, resultsPtr)
+}
+
+func makeGraphQLRequest(url, query, username,
+	password string, verifyTLS bool, resultsPtr interface{}) error {
+	req, err := http.NewRequest("GET", url, bytes.NewBufferString(query))
+	if err != nil {
+		return err
+	}
+
+	q := req.URL.Query()
+	q.Add("query", query)
+
+	req.URL.RawQuery = q.Encode()
+
+	req.SetBasicAuth(username, password)
+	req.Header.Add("Content-Type", "application/json")
+
+	_, err = doHTTPRequest(req, verifyTLS, resultsPtr)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func doHTTPRequest(req *http.Request, verifyTLS bool, resultsPtr interface{}) (http.Header, error) {
 	if httpClient == nil {
 		httpClient = createHTTPClient(verifyTLS)
 	}
@@ -77,7 +105,7 @@ type requestsPool struct {
 	jobs      chan *manifestJob
 	done      chan struct{}
 	waitGroup *sync.WaitGroup
-	outputCh  chan imageListResult
+	outputCh  chan stringResult
 	context   context.Context
 }
 
@@ -93,7 +121,7 @@ type manifestJob struct {
 
 const rateLimiterBuffer = 5000
 
-func newSmoothRateLimiter(ctx context.Context, wg *sync.WaitGroup, op chan imageListResult) *requestsPool {
+func newSmoothRateLimiter(ctx context.Context, wg *sync.WaitGroup, op chan stringResult) *requestsPool {
 	ch := make(chan *manifestJob, rateLimiterBuffer)
 
 	return &requestsPool{
@@ -132,7 +160,7 @@ func (p *requestsPool) doJob(job *manifestJob) {
 		if isContextDone(p.context) {
 			return
 		}
-		p.outputCh <- imageListResult{"", err}
+		p.outputCh <- stringResult{"", err}
 	}
 
 	digest := header.Get("docker-content-digest")
@@ -159,7 +187,7 @@ func (p *requestsPool) doJob(job *manifestJob) {
 		if isContextDone(p.context) {
 			return
 		}
-		p.outputCh <- imageListResult{"", err}
+		p.outputCh <- stringResult{"", err}
 
 		return
 	}
@@ -168,7 +196,7 @@ func (p *requestsPool) doJob(job *manifestJob) {
 		return
 	}
 
-	p.outputCh <- imageListResult{str, nil}
+	p.outputCh <- stringResult{str, nil}
 }
 
 func (p *requestsPool) submitJob(job *manifestJob) {

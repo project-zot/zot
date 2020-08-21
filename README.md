@@ -7,6 +7,7 @@
 * Uses [OCI storage layout](https://github.com/opencontainers/image-spec/blob/master/image-layout.md) for storage layout
 * Supports [helm charts](https://helm.sh/docs/topics/registries/)
 * Currently suitable for on-prem deployments (e.g. colocated with Kubernetes)
+* [Vulnerability scanning of images](#Scanning-images-for-known-vulnerabilities)
 * [Command-line client support](#cli)
 * TLS support
 * Authentication via:
@@ -117,8 +118,8 @@ remote-zot https://server-example:8080
 local      http://localhost:8080
 ```
 
-## Fetching images
-You can fetch all images from a server by using its alias specified [in this step](#adding-a-zot-server-url):
+## Listing images
+You can list all images from a server by using its alias specified [in this step](#adding-a-zot-server-url):
 
 ```console
 $ zot images remote-zot
@@ -134,6 +135,76 @@ Or filter the list by an image name:
 $ zot images remote-zot -n busybox
 IMAGE NAME                        TAG                       DIGEST    SIZE
 busybox                           latest                    414aeb86  707.8KB
+```
+## Scanning images for known vulnerabilities
+
+You can fetch CVE (Common Vulnerabilities and Exposures) info for images hosted on zot
+
+- Get all images affected by a CVE
+
+```console
+$ zot cve remote-zot -i CVE-2017-9935
+IMAGE NAME                        TAG                       DIGEST    SIZE
+c3/openjdk-dev                    commit-5be4d92            ac3762e2  335MB
+```
+
+- Get all CVEs for an image
+
+```console
+$ zot cve remote-zot -I c3/openjdk-dev:0.3.19
+ID                SEVERITY  TITLE
+CVE-2015-8540     LOW       libpng: underflow read in png_check_keyword()
+CVE-2017-16826    LOW       binutils: Invalid memory access in the coff_s...
+```
+
+- Get detailed json output
+
+```console
+$ zot cve remote-zot -I c3/openjdk-dev:0.3.19 -o json
+{
+  "Tag": "0.3.19",
+  "CVEList": [
+    {
+      "Id": "CVE-2019-17006",
+      "Severity": "MEDIUM",
+      "Title": "nss: Check length of inputs for cryptographic primitives",
+      "Description": "A vulnerability was discovered in nss where input text length was not checked when using certain cryptographic primitives. This could lead to a heap-buffer overflow resulting in a crash and data leak. The highest threat is to confidentiality and integrity of data as well as system availability.",
+      "PackageList": [
+        {
+          "Name": "nss",
+          "InstalledVersion": "3.44.0-7.el7_7",
+          "FixedVersion": "Not Specified"
+        },
+        {
+          "Name": "nss-sysinit",
+          "InstalledVersion": "3.44.0-7.el7_7",
+          "FixedVersion": "Not Specified"
+        },
+        {
+          "Name": "nss-tools",
+          "InstalledVersion": "3.44.0-7.el7_7",
+          "FixedVersion": "Not Specified"
+        }
+      ]
+    },
+```
+
+- Get all images in a specific repo affected by a CVE
+
+```console
+$ zot cve remote-zot -I c3/openjdk-dev -i CVE-2017-9935
+IMAGE NAME                        TAG                       DIGEST    SIZE
+c3/openjdk-dev                    commit-2674e8a            71046748  338MB
+c3/openjdk-dev                    commit-bd5cc94            0ab7fc76  
+```
+
+- Get all images of a specific repo where a CVE is fixed
+
+```console
+$ zot cve remote-zot -I c3/openjdk-dev -i CVE-2017-9935 --fixed
+IMAGE NAME                        TAG                       DIGEST    SIZE
+c3/openjdk-dev                    commit-2674e8a-squashfs   b545b8ba  321MB
+c3/openjdk-dev                    commit-d5024ec-squashfs   cd45f8cf  321MB
 ```
 
 # Ecosystem

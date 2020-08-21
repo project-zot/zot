@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func NewImageCommand(searchService ImageSearchService) *cobra.Command {
+func NewImageCommand(searchService SearchService) *cobra.Command {
 	searchImageParams := make(map[string]*string)
 
 	var servURL, user, outputFormat string
@@ -84,7 +84,7 @@ func NewImageCommand(searchService ImageSearchService) *cobra.Command {
 		},
 	}
 
-	setupCmdFlags(imageCmd, searchImageParams, &servURL, &user, &outputFormat)
+	setupImageFlags(imageCmd, searchImageParams, &servURL, &user, &outputFormat)
 	imageCmd.SetUsageTemplate(imageCmd.UsageTemplate() + usageFooter)
 
 	return imageCmd
@@ -104,7 +104,8 @@ func parseBooleanConfig(configPath, configName, configParam string) (bool, error
 	return val, nil
 }
 
-func setupCmdFlags(imageCmd *cobra.Command, searchImageParams map[string]*string, servURL, user, outputFormat *string) {
+func setupImageFlags(imageCmd *cobra.Command, searchImageParams map[string]*string,
+	servURL, user, outputFormat *string) {
 	searchImageParams["imageName"] = imageCmd.Flags().StringP("name", "n", "", "List image details by name")
 
 	imageCmd.Flags().StringVar(servURL, "url", "", "Specify zot server URL if config-name is not mentioned")
@@ -113,7 +114,7 @@ func setupCmdFlags(imageCmd *cobra.Command, searchImageParams map[string]*string
 }
 
 func searchImage(searchConfig searchConfig) error {
-	for _, searcher := range getSearchers() {
+	for _, searcher := range getImageSearchers() {
 		found, err := searcher.search(searchConfig)
 		if found {
 			if err != nil {
