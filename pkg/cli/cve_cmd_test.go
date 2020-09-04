@@ -427,6 +427,23 @@ func TestServerCVEResponse(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(str, ShouldEqual, "")
 		})
+
+		Convey("invalid image", func() {
+			args := []string{"cvetest", "--cve-id", "CVE-2019-20807", "--image", "zot-cv-test", "--fixed"}
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
+			defer os.Remove(configPath)
+			cveCmd := NewCveCommand(new(searchService))
+			buff := bytes.NewBufferString("")
+			cveCmd.SetOut(buff)
+			cveCmd.SetErr(ioutil.Discard)
+			cveCmd.SetArgs(args)
+			err := cveCmd.Execute()
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			str = strings.TrimSpace(str)
+			So(err, ShouldNotBeNil)
+			So(strings.TrimSpace(str), ShouldNotContainSubstring, "IMAGE NAME TAG DIGEST SIZE")
+		})
 	})
 
 	Convey("Test CVE by name and CVE ID", t, func() {
