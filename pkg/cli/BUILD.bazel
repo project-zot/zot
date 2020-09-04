@@ -39,7 +39,7 @@ go_test(
         "image_cmd_test.go",
         "root_test.go",
     ],
-      data = [
+    data = [
         "//:exported_testdata",
     ],
     embed = [":go_default_library"],

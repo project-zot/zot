@@ -10,7 +10,6 @@ go_library(
     importpath = "github.com/anuvu/zot/pkg/extensions/search",
     visibility = ["//visibility:public"],
     deps = [
-        "//errors:go_default_library",
         "//pkg/extensions/search/cve:go_default_library",
         "//pkg/log:go_default_library",
         "//pkg/storage:go_default_library",
