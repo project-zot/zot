@@ -311,6 +311,8 @@ func (service searchService) getCveByImage(ctx context.Context, config searchCon
 		return
 	}
 
+	result.Data.CVEListForImage.CVEList = groupCVEsBySeverity(result.Data.CVEListForImage.CVEList)
+
 	str, err := result.string(*config.outputFormat)
 	if err != nil {
 		if isContextDone(ctx) {
@@ -325,6 +327,27 @@ func (service searchService) getCveByImage(ctx context.Context, config searchCon
 		return
 	}
 	c <- stringResult{str, nil}
+}
+
+func groupCVEsBySeverity(cveList []cve) []cve {
+	high := make([]cve, 0)
+	med := make([]cve, 0)
+	low := make([]cve, 0)
+
+	for _, cve := range cveList {
+		switch cve.Severity {
+		case "LOW":
+			low = append(low, cve)
+
+		case "MEDIUM":
+			med = append(med, cve)
+
+		case "HIGH":
+			high = append(high, cve)
+		}
+	}
+
+	return append(append(high, med...), low...)
 }
 
 func isContextDone(ctx context.Context) bool {
