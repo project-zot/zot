@@ -11,6 +11,7 @@ build:
   import:
     - stacker://skopeo/usr/local/bin/skopeo
   run: |
+    apt-get -y install uidmap
     cp /stacker/skopeo /usr/bin/
     mkdir -p /go/src/github.com/anuvu
     cd /go/src/github.com/anuvu
