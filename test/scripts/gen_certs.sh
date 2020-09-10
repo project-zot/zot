@@ -1,5 +1,7 @@
 #!/bin/bash -xe
 
+[ -n "$1" ] && cd $1
+
 openssl req \
     -newkey rsa:2048 \
     -nodes \

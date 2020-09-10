@@ -1,10 +1,20 @@
+skopeo:
+  from:
+    type: docker
+    url: docker://twistedvines/skopeo
 build:
   from:
     type: docker
     url: docker://golang:1.14.4
   binds:
-    - ${{PWD}} -> /go/src/github.com/anuvu/zot
+    - ${{PWD}} -> /zotcopy
+  import:
+    - stacker://skopeo/usr/local/bin/skopeo
   run: |
+    cp /stacker/skopeo /usr/bin/
+    mkdir -p /go/src/github.com/anuvu
+    cd /go/src/github.com/anuvu
+    git clone /zotcopy zot
     export GO111MODULE=on 
     export GOPATH='/go'
     export HOME='/root'
@@ -13,7 +23,7 @@ build:
     cd /go/src/github.com/anuvu/zot
     go get -u -v -d ./...
     curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.26.0
-    make
+    make binary
   build_only: true
 
 zot:

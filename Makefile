@@ -19,7 +19,10 @@ debug: doc
 
 .PHONY: test
 test:
-	$(shell mkdir -p test/data;  cd test/data; ../scripts/gen_certs.sh; cd ${TOP_LEVEL}; sudo skopeo --insecure-policy copy -q docker://centos:latest oci:${TOP_LEVEL}/test/data/zot-test:0.0.1;sudo skopeo --insecure-policy copy -q docker://centos:8 oci:${TOP_LEVEL}/test/data/zot-cve-test:0.0.1)
+	mkdir -p test/data
+	./test/scripts/gen_certs.sh ./test/data
+	skopeo --insecure-policy copy docker://centos:latest oci:./test/data/zot-test:0.0.1
+	skopeo --insecure-policy copy docker://centos:8 oci:./test/data/zot-cve-test:0.0.1
 	go test -v -race -cover -coverpkg ./... -coverprofile=coverage.txt -covermode=atomic ./...
 
 .PHONY: covhtml
@@ -54,7 +57,7 @@ binary-container:
 
 .PHONY: binary-stacker
 binary-stacker:
-	stacker --roots-dir ${TMPDIR} build --substitute PWD=$$PWD
+	stacker build --substitute PWD=$$PWD
 
 .PHONY: image
 image:
