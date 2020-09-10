@@ -394,12 +394,6 @@ func (service searchService) getFixedTagsForCVE(ctx context.Context, config sear
 		var errBuilder strings.Builder
 
 		for _, err := range result.Errors {
-			if err.Message == zotErrors.ErrFixedTagNotFound.Error() {
-				// this if block and goto should be removed when the server API is fixed.
-				// currently, the API returns an error if the data is empty and we are ignoring that error here
-				goto Outside
-			}
-
 			fmt.Fprintln(&errBuilder, err.Message)
 		}
 
@@ -411,7 +405,6 @@ func (service searchService) getFixedTagsForCVE(ctx context.Context, config sear
 		return
 	}
 
-Outside:
 	var localWg sync.WaitGroup
 
 	p := newSmoothRateLimiter(ctx, &localWg, c)

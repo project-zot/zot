@@ -36,6 +36,23 @@ type CveResult struct {
 	ImgList ImgList `json:"data"`
 }
 
+type ImgWithFixedCVE struct {
+	ImgResults ImgResults `json:"data"`
+}
+
+type ImgResults struct {
+	ImgResultForFixedCVE ImgResultForFixedCVE `json:"ImgResultForFixedCVE"`
+}
+
+type ImgResultForFixedCVE struct {
+	Tags []TagInfo `json:"Tags"`
+}
+
+type TagInfo struct {
+	Name      string
+	Timestamp time.Time
+}
+
 type ImgList struct {
 	CVEResultForImage CVEResultForImage `json:"CVEListForImage"`
 }
@@ -363,6 +380,15 @@ func TestCVESearch(t *testing.T) {
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={ImageListForCVE(id:\"" + id + "\"){Name%20Tags}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
+
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={ImageListWithCVEFixed(id:\"" + id + "\",image:\"zot-test\"){Tags{Name%20Timestamp}}}")
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		var imgFixedCVEResult ImgWithFixedCVE
+		err = json.Unmarshal(resp.Body(), &imgFixedCVEResult)
+		So(err, ShouldBeNil)
+		So(len(imgFixedCVEResult.ImgResults.ImgResultForFixedCVE.Tags), ShouldEqual, 0)
 
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={ImageListWithCVEFixed(id:\"" + id + "\",image:\"zot-test\"){Tags{Name%20Timestamp}}}")
 		So(resp, ShouldNotBeNil)

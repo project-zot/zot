@@ -297,7 +297,5 @@ func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, im
 
 	r.cveInfo.Log.Info().Msg("Input image does not contain any tag that does not have given cve")
 
-	imgResultForFixedCVE = &ImgResultForFixedCve{}
-
-	return imgResultForFixedCVE, errors.ErrFixedTagNotFound
+	return imgResultForFixedCVE, nil
 }
