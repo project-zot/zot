@@ -1,4 +1,5 @@
 language: go
+os: linux
 
 go:
   - 1.14.x
@@ -19,10 +20,21 @@ cache:
     - $HOME/.cache/bazel
 
 install:
-  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then wget -N https://github.com/bazelbuild/bazel/releases/download/3.0.0/bazel-3.0.0-installer-linux-x86_64.sh && chmod +x bazel-3.0.0-installer-linux-x86_64.sh && ./bazel-3.0.0-installer-linux-x86_64.sh --user; go get -u github.com/swaggo/swag/cmd/swag; go mod download; sudo apt-get update; sudo apt-get install rpm uidmap; sudo apt install snapd; sudo snap install skopeo --edge --devmode; fi
+  - wget -N https://github.com/bazelbuild/bazel/releases/download/3.0.0/bazel-3.0.0-installer-linux-x86_64.sh
+  - chmod +x bazel-3.0.0-installer-linux-x86_64.sh
+  - ./bazel-3.0.0-installer-linux-x86_64.sh --user
+  - go get -u github.com/swaggo/swag/cmd/swag
+  - go mod download
+  - sudo apt-get update
+  - sudo apt-get install rpm uidmap
+  - which newgidmap
+  - echo $PATH
+  - sudo apt install snapd
+  - sudo snap install skopeo --edge --devmode
 
 script:
-  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then make && travis_wait make -f Makefile.bazel build; fi
+  - make
+  - travis_wait make -f Makefile.bazel build
 
 after_success:
   - bash <(curl -s https://codecov.io/bash)
