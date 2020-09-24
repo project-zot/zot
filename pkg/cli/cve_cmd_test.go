@@ -425,7 +425,7 @@ func TestServerCVEResponse(t *testing.T) {
 			str := space.ReplaceAllString(buff.String(), " ")
 			str = strings.TrimSpace(str)
 			So(err, ShouldBeNil)
-			So(str, ShouldEqual, "")
+			So(strings.TrimSpace(str), ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIZE")
 		})
 
 		Convey("invalid image", func() {

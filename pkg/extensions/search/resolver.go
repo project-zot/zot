@@ -7,7 +7,6 @@ import (
 	"path"
 	"strings"
 
-	"github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/log"
 
 	cveinfo "github.com/anuvu/zot/pkg/extensions/search/cve"
@@ -53,24 +52,18 @@ func GetResolverConfig(dir string, log log.Logger, imgstorage *storage.ImageStor
 func (r *queryResolver) CVEListForImage(ctx context.Context, image string) (*CVEResultForImage, error) {
 	r.cveInfo.CveTrivyConfig.TrivyConfig.Input = path.Join(r.dir, image)
 
-	r.cveInfo.Log.Info().Str("Scanning Image", image).Msg("")
+	r.cveInfo.Log.Info().Str("image", image).Msg("scanning image")
 
 	isValidImage, err := r.cveInfo.IsValidImageFormat(r.cveInfo.CveTrivyConfig.TrivyConfig.Input)
 	if !isValidImage {
-		r.cveInfo.Log.Debug().Msg("Image media type not supported for scanning")
-
-		return &CVEResultForImage{}, errors.ErrScanNotSupported
-	}
-
-	if err != nil {
-		r.cveInfo.Log.Error().Err(err).Msg("Error scanning image repository")
+		r.cveInfo.Log.Debug().Str("image", image).Msg("image media type not supported for scanning")
 
 		return &CVEResultForImage{}, err
 	}
 
 	cveResults, err := cveinfo.ScanImage(r.cveInfo.CveTrivyConfig)
 	if err != nil {
-		r.cveInfo.Log.Error().Err(err).Msg("Error scanning image repository")
+		r.cveInfo.Log.Error().Err(err).Msg("unable to scan image repository")
 
 		return &CVEResultForImage{}, err
 	}
@@ -143,42 +136,23 @@ func (r *queryResolver) CVEListForImage(ctx context.Context, image string) (*CVE
 func (r *queryResolver) ImageListForCve(ctx context.Context, id string) ([]*ImgResultForCve, error) {
 	cveResult := []*ImgResultForCve{}
 
-	r.cveInfo.Log.Info().Msg("Extracting Repositories")
+	r.cveInfo.Log.Info().Msg("extracting repositories")
 
 	repoList, err := r.imgStore.GetRepositories()
 	if err != nil {
-		r.cveInfo.Log.Error().Err(err).Msg("Not able to search repositories")
+		r.cveInfo.Log.Error().Err(err).Msg("unable to search repositories")
 
 		return cveResult, err
 	}
 
-	r.cveInfo.Log.Info().Msg("Scanning each repository")
+	r.cveInfo.Log.Info().Msg("scanning each repository")
 
 	for _, repo := range repoList {
-		r.cveInfo.Log.Info().Str("Extracting list of tags available in image", repo).Msg("")
-
-		isValidImage, err := r.cveInfo.IsValidImageFormat(path.Join(r.dir, repo))
-		if !isValidImage {
-			r.cveInfo.Log.Debug().Str("Image media type not supported for scanning", repo)
-
-			continue
-		}
-
-		if err != nil {
-			r.cveInfo.Log.Error().Err(err).Str("Error reading image media type", repo)
-
-			return cveResult, err
-		}
-
-		if err != nil {
-			r.cveInfo.Log.Error().Err(err).Str("Error reading image media type", repo)
-
-			return cveResult, err
-		}
+		r.cveInfo.Log.Info().Str("repo", repo).Msg("extracting list of tags available in image repo")
 
 		tagList, err := r.imgStore.GetImageTags(repo)
 		if err != nil {
-			r.cveInfo.Log.Error().Err(err).Msg("Not able to get list of Image Tag")
+			r.cveInfo.Log.Error().Err(err).Msg("unable to get list of image tag")
 		}
 
 		var name string
@@ -188,11 +162,18 @@ func (r *queryResolver) ImageListForCve(ctx context.Context, id string) ([]*ImgR
 		for _, tag := range tagList {
 			r.cveInfo.CveTrivyConfig.TrivyConfig.Input = path.Join(r.dir, repo+":"+tag)
 
-			r.cveInfo.Log.Info().Str("Scanning Image", path.Join(r.dir, repo+":"+tag)).Msg("")
+			isValidImage, _ := r.cveInfo.IsValidImageFormat(r.cveInfo.CveTrivyConfig.TrivyConfig.Input)
+			if !isValidImage {
+				r.cveInfo.Log.Debug().Str("image", repo+":"+tag).Msg("image media type not supported for scanning")
+
+				continue
+			}
+
+			r.cveInfo.Log.Info().Str("image", repo+":"+tag).Msg("scanning image")
 
 			results, err := cveinfo.ScanImage(r.cveInfo.CveTrivyConfig)
 			if err != nil {
-				r.cveInfo.Log.Error().Err(err).Str("Error scanning image", repo+":"+tag)
+				r.cveInfo.Log.Error().Err(err).Str("image", repo+":"+tag).Msg("unable to scan image")
 
 				continue
 			}
@@ -222,22 +203,11 @@ func (r *queryResolver) ImageListForCve(ctx context.Context, id string) ([]*ImgR
 func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, image string) (*ImgResultForFixedCve, error) { // nolint: lll
 	imgResultForFixedCVE := &ImgResultForFixedCve{}
 
-	r.cveInfo.Log.Info().Str("Extracting list of tags available in image", image).Msg("")
-
-	isValidImage, err := r.cveInfo.IsValidImageFormat(path.Join(r.dir, image))
-	if !isValidImage {
-		r.cveInfo.Log.Debug().Msg("Image media type not supported for scanning")
-
-		return imgResultForFixedCVE, errors.ErrScanNotSupported
-	}
-
-	if err != nil {
-		return imgResultForFixedCVE, err
-	}
+	r.cveInfo.Log.Info().Str("image", image).Msg("extracting list of tags available in image")
 
 	tagsInfo, err := r.cveInfo.GetImageTagsWithTimestamp(r.dir, image)
 	if err != nil {
-		r.cveInfo.Log.Error().Err(err).Msg("Error while readling image media type")
+		r.cveInfo.Log.Error().Err(err).Msg("unable to read image tags")
 
 		return imgResultForFixedCVE, err
 	}
@@ -249,11 +219,21 @@ func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, im
 	for _, tag := range tagsInfo {
 		r.cveInfo.CveTrivyConfig.TrivyConfig.Input = path.Join(r.dir, image+":"+tag.Name)
 
-		r.cveInfo.Log.Info().Str("Scanning image", path.Join(r.dir, image+":"+tag.Name)).Msg("")
+		isValidImage, _ := r.cveInfo.IsValidImageFormat(r.cveInfo.CveTrivyConfig.TrivyConfig.Input)
+		if !isValidImage {
+			r.cveInfo.Log.Debug().Str("image",
+				image+":"+tag.Name).Msg("image media type not supported for scanning, adding as an infected image")
+
+			infectedTags = append(infectedTags, cveinfo.TagInfo{Name: tag.Name, Timestamp: tag.Timestamp})
+
+			continue
+		}
+
+		r.cveInfo.Log.Info().Str("image", image+":"+tag.Name).Msg("scanning image")
 
 		results, err := cveinfo.ScanImage(r.cveInfo.CveTrivyConfig)
 		if err != nil {
-			r.cveInfo.Log.Error().Err(err).Str("Error scanning image", image+":"+tag.Name).Msg("")
+			r.cveInfo.Log.Error().Err(err).Str("image", image+":"+tag.Name).Msg("unable to scan image")
 
 			continue
 		}
@@ -275,27 +255,35 @@ func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, im
 		}
 	}
 
+	var finalTagList []*TagInfo
+
 	if len(infectedTags) != 0 {
-		r.cveInfo.Log.Info().Msg("Comparing fixed tags timestamp")
+		r.cveInfo.Log.Info().Msg("comparing fixed tags timestamp")
 
 		fixedTags := cveinfo.GetFixedTags(tagsInfo, infectedTags)
 
-		finalTagList := make([]*TagInfo, 0)
+		finalTagList = getGraphqlCompatibleTags(fixedTags)
+	} else {
+		r.cveInfo.Log.Info().Str("image", image).Str("cve-id", id).Msg("image does not contain any tag that have given cve")
 
-		for _, tag := range fixedTags {
-			copyTag := tag.Name
-
-			copyTimeStamp := tag.Timestamp
-
-			finalTagList = append(finalTagList, &TagInfo{Name: &copyTag, Timestamp: &copyTimeStamp})
-		}
-
-		imgResultForFixedCVE = &ImgResultForFixedCve{Tags: finalTagList}
-
-		return imgResultForFixedCVE, nil
+		finalTagList = getGraphqlCompatibleTags(tagsInfo)
 	}
 
-	r.cveInfo.Log.Info().Msg("Input image does not contain any tag that does not have given cve")
+	imgResultForFixedCVE = &ImgResultForFixedCve{Tags: finalTagList}
 
 	return imgResultForFixedCVE, nil
+}
+
+func getGraphqlCompatibleTags(fixedTags []cveinfo.TagInfo) []*TagInfo {
+	finalTagList := make([]*TagInfo, 0)
+
+	for _, tag := range fixedTags {
+		copyTag := tag.Name
+
+		copyTimeStamp := tag.Timestamp
+
+		finalTagList = append(finalTagList, &TagInfo{Name: &copyTag, Timestamp: &copyTimeStamp})
+	}
+
+	return finalTagList
 }

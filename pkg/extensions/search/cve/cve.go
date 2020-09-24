@@ -23,13 +23,13 @@ import (
 func UpdateCVEDb(dbDir string, log log.Logger) error {
 	config, err := config.NewConfig(dbDir)
 	if err != nil {
-		log.Error().Err(err).Msg("Unable to get config")
+		log.Error().Err(err).Msg("unable to get config")
 		return err
 	}
 
 	err = integration.RunTrivyDb(config.TrivyConfig)
 	if err != nil {
-		log.Error().Err(err).Msg("Unable to update DB ")
+		log.Error().Err(err).Msg("unable to update DB ")
 		return err
 	}
 
@@ -45,53 +45,29 @@ func ScanImage(config *config.Config) (report.Results, error) {
 }
 
 func (cveinfo CveInfo) IsValidImageFormat(imagePath string) (bool, error) {
-	imageDir := getImageDir(imagePath)
+	imageDir, inputTag := getImageDirAndTag(imagePath)
 
 	if !dirExists(imageDir) {
-		cveinfo.Log.Error().Msg("Image Directory not exists")
+		cveinfo.Log.Error().Msg("image directory doesn't exist")
 
 		return false, errors.ErrRepoNotFound
 	}
 
-	buf, err := ioutil.ReadFile(path.Join(imageDir, "index.json"))
+	manifests, err := cveinfo.getImageManifests(imageDir)
 
 	if err != nil {
-		if os.IsNotExist(err) {
-			cveinfo.Log.Error().Err(err).Msg("Index.json does not exist")
-
-			return false, errors.ErrRepoNotFound
-		}
-
-		cveinfo.Log.Error().Err(err).Msg("Unable to open index.json")
-
-		return false, errors.ErrRepoNotFound
-	}
-
-	var index ispec.Index
-
-	var blobManifest v1.Manifest
-
-	var digest godigest.Digest
-
-	if err := json.Unmarshal(buf, &index); err != nil {
-		cveinfo.Log.Error().Err(err).Msg("Unable to marshal index.json file")
-
 		return false, err
 	}
 
-	for _, m := range index.Manifests {
-		digest = m.Digest
+	for _, m := range manifests {
+		tag, ok := m.Annotations[ispec.AnnotationRefName]
 
-		blobBuf, err := ioutil.ReadFile(path.Join(imageDir, "blobs", digest.Algorithm().String(), digest.Encoded()))
-		if err != nil {
-			cveinfo.Log.Error().Err(err).Msg("Failed to read manifest file")
-
-			return false, err
+		if ok && inputTag != "" && tag != inputTag {
+			continue
 		}
 
-		if err := json.Unmarshal(blobBuf, &blobManifest); err != nil {
-			cveinfo.Log.Error().Err(err).Msg("Invalid manifest json")
-
+		blobManifest, err := cveinfo.getImageBlobManifest(imageDir, m.Digest)
+		if err != nil {
 			return false, err
 		}
 
@@ -103,8 +79,8 @@ func (cveinfo CveInfo) IsValidImageFormat(imagePath string) (bool, error) {
 				return true, nil
 
 			default:
-				cveinfo.Log.Debug().Msg("Image media type not supported for scanning")
-				return false, nil
+				cveinfo.Log.Debug().Msg("image media type not supported for scanning")
+				return false, errors.ErrScanNotSupported
 			}
 		}
 	}
@@ -121,79 +97,61 @@ func dirExists(d string) bool {
 	return fi.IsDir()
 }
 
-func getImageDir(imageName string) string {
+func getImageDirAndTag(imageName string) (string, string) {
 	var imageDir string
+
+	var imageTag string
+
 	if strings.Contains(imageName, ":") {
-		imageDir = strings.Split(imageName, ":")[0]
+		splitImageName := strings.Split(imageName, ":")
+		imageDir = splitImageName[0]
+		imageTag = splitImageName[1]
 	} else {
 		imageDir = imageName
 	}
 
-	return imageDir
+	return imageDir, imageTag
 }
 
 // GetImageTagsWithTimestamp returns a list of image tags with timestamp available in the specified repository.
 func (cveinfo CveInfo) GetImageTagsWithTimestamp(rootDir string, repo string) ([]TagInfo, error) {
+	tagsInfo := make([]TagInfo, 0)
+
 	dir := path.Join(rootDir, repo)
 	if !dirExists(dir) {
 		return nil, errors.ErrRepoNotFound
 	}
 
-	var digest godigest.Digest
+	manifests, err := cveinfo.getImageManifests(dir)
 
-	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
 	if err != nil {
-		cveinfo.Log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
-		return nil, errors.ErrRepoNotFound
+		cveinfo.Log.Error().Err(err).Msg("unable to read image manifests")
+
+		return tagsInfo, err
 	}
 
-	var index ispec.Index
-	if err := json.Unmarshal(buf, &index); err != nil {
-		cveinfo.Log.Error().Err(err).Str("dir", dir).Msg("invalid JSON")
-		return nil, errors.ErrRepoNotFound
-	}
+	for _, manifest := range manifests {
+		digest := manifest.Digest
 
-	tagsInfo := make([]TagInfo, 0)
-
-	var blobIndex ispec.Manifest
-
-	var layerIndex ispec.Image
-
-	for _, manifest := range index.Manifests {
-		digest = manifest.Digest
 		v, ok := manifest.Annotations[ispec.AnnotationRefName]
-
-		blobBuf, err := ioutil.ReadFile(path.Join(dir, "blobs", digest.Algorithm().String(), digest.Encoded()))
-		if err != nil {
-			cveinfo.Log.Error().Err(err).Msg("Unable to open Image Metadata file")
-
-			return nil, err
-		}
-
-		if err := json.Unmarshal(blobBuf, &blobIndex); err != nil {
-			cveinfo.Log.Error().Err(err).Msg("Unable to marshal blob index")
-
-			return nil, err
-		}
-
-		digest = blobIndex.Config.Digest
-
-		blobBuf, err = ioutil.ReadFile(path.Join(dir, "blobs", digest.Algorithm().String(), digest.Encoded()))
-		if err != nil {
-			cveinfo.Log.Error().Err(err).Msg("Unable to open Image Layers file")
-
-			return nil, err
-		}
-
-		if err := json.Unmarshal(blobBuf, &layerIndex); err != nil {
-			cveinfo.Log.Error().Err(err).Msg("Unable to marshal blob index")
-
-			return nil, err
-		}
-
-		timeStamp := *layerIndex.History[0].Created
-
 		if ok {
+			imageBlobManifest, err := cveinfo.getImageBlobManifest(dir, digest)
+
+			if err != nil {
+				cveinfo.Log.Error().Err(err).Msg("unable to read image blob manifest")
+
+				return tagsInfo, err
+			}
+
+			imageInfo, err := cveinfo.getImageInfo(dir, imageBlobManifest.Config.Digest)
+			if err != nil {
+				cveinfo.Log.Error().Err(err).Msg("unable to read image info")
+
+				return tagsInfo, err
+			}
+
+			timeStamp := *imageInfo.History[0].Created
+
 			tagsInfo = append(tagsInfo, TagInfo{Name: v, Timestamp: timeStamp})
 		}
 	}
@@ -223,4 +181,67 @@ func GetFixedTags(allTags []TagInfo, infectedTags []TagInfo) []TagInfo {
 	}
 
 	return fixedTags
+}
+
+func (cveinfo CveInfo) getImageManifests(imagePath string) ([]ispec.Descriptor, error) {
+	buf, err := ioutil.ReadFile(path.Join(imagePath, "index.json"))
+
+	if err != nil {
+		if os.IsNotExist(err) {
+			cveinfo.Log.Error().Err(err).Msg("index.json doesn't exist")
+
+			return nil, errors.ErrRepoNotFound
+		}
+
+		cveinfo.Log.Error().Err(err).Msg("unable to open index.json")
+
+		return nil, errors.ErrRepoNotFound
+	}
+
+	var index ispec.Index
+
+	if err := json.Unmarshal(buf, &index); err != nil {
+		cveinfo.Log.Error().Err(err).Str("dir", imagePath).Msg("invalid JSON")
+		return nil, errors.ErrRepoNotFound
+	}
+
+	return index.Manifests, nil
+}
+
+func (cveinfo CveInfo) getImageBlobManifest(imageDir string, digest godigest.Digest) (v1.Manifest, error) {
+	var blobIndex v1.Manifest
+
+	blobBuf, err := ioutil.ReadFile(path.Join(imageDir, "blobs", digest.Algorithm().String(), digest.Encoded()))
+	if err != nil {
+		cveinfo.Log.Error().Err(err).Msg("unable to open image metadata file")
+
+		return blobIndex, err
+	}
+
+	if err := json.Unmarshal(blobBuf, &blobIndex); err != nil {
+		cveinfo.Log.Error().Err(err).Msg("unable to marshal blob index")
+
+		return blobIndex, err
+	}
+
+	return blobIndex, nil
+}
+
+func (cveinfo CveInfo) getImageInfo(imageDir string, hash v1.Hash) (ispec.Image, error) {
+	var imageInfo ispec.Image
+
+	blobBuf, err := ioutil.ReadFile(path.Join(imageDir, "blobs", hash.Algorithm, hash.Hex))
+	if err != nil {
+		cveinfo.Log.Error().Err(err).Msg("unable to open image layers file")
+
+		return imageInfo, err
+	}
+
+	if err := json.Unmarshal(blobBuf, &imageInfo); err != nil {
+		cveinfo.Log.Error().Err(err).Msg("unable to marshal blob index")
+
+		return imageInfo, err
+	}
+
+	return imageInfo, err
 }
