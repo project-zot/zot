@@ -7,6 +7,7 @@
 * Uses [OCI storage layout](https://github.com/opencontainers/image-spec/blob/master/image-layout.md) for storage layout
 * Supports [helm charts](https://helm.sh/docs/topics/registries/)
 * Currently suitable for on-prem deployments (e.g. colocated with Kubernetes)
+* Compatible with ecosystem tools such as [skopeo](#skopeo) and [cri-o](#cri-o)
 * [Vulnerability scanning of images](#Scanning-images-for-known-vulnerabilities)
 * [Command-line client support](#cli)
 * TLS support
@@ -19,6 +20,7 @@
   * Automatic garbage collection of orphaned blobs
   * Layer deduplication using hard links when content is identical
 * Swagger based documentation
+* Single binary for _all_ the above features
 * Released under Apache 2.0 License
 * ```go get -u github.com/anuvu/zot/cmd/zot```
 
@@ -209,24 +211,22 @@ c3/openjdk-dev                    commit-d5024ec-squashfs   cd45f8cf  321MB
 
 # Ecosystem
 
-Since we couldn't find clients or client libraries that are stictly compliant to
-the dist spec, we had to patch containers/image (available as [anuvu/image](https://github.com/anuvu/image)) and
-then link various binaries against the patched version.
 
 ## skopeo
 
 [skopeo](https://github.com/containers/skopeo) is a tool to work with remote
 image repositories.
 
-We have a [patched version](https://github.com/anuvu/skopeo) available that
-works with _zot_.
+* Pull Images
 
 ```
-git clone https://github.com/anuvu/skopeo
+skopeo copy docker://<zot-server:port>/repo:tag docker://<another-server:port>/repo:tag
+```
 
-cd skopeo
+* Push Images
 
-make GO111MODULE=on binary-local
+```
+skopeo copy --format=oci docker://<another-server:port>/repo:tag docker://<zot-server:port>/repo:tag
 ```
 
 ## cri-o
@@ -234,19 +234,7 @@ make GO111MODULE=on binary-local
 [cri-o](https://github.com/cri-o/cri-o) is a OCI-based Kubernetes container
 runtime interface.
 
-We have a [patched version](https://github.com/anuvu/image) of containers/image
-available that works with _zot_ which must be linked with cri-o.
-
-```
-git clone https://github.com/cri-o/cri-o
-
-cd cri-o
-
-echo 'replace github.com/containers/image => github.com/anuvu/image v1.5.2-0.20190827234748-f71edca6153a' >> go.mod
-
-make bin/crio crio.conf GO111MODULE=on
-
-```
+Works with "docker://" transport which is the default.
 
 # Caveats
 
