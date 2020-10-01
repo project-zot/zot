@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/anuvu/zot/errors"
 	ext "github.com/anuvu/zot/pkg/extensions"
@@ -15,6 +16,10 @@ import (
 	"github.com/anuvu/zot/pkg/storage"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
+)
+
+const (
+	ioTimeout = 15
 )
 
 type Controller struct {
@@ -60,7 +65,13 @@ func (c *Controller) Run() error {
 	_ = NewRouteHandler(c)
 
 	addr := fmt.Sprintf("%s:%s", c.Config.HTTP.Address, c.Config.HTTP.Port)
-	server := &http.Server{Addr: addr, Handler: c.Router}
+	server := &http.Server{
+		Addr:         addr,
+		ReadTimeout:  ioTimeout * time.Minute,
+		WriteTimeout: ioTimeout * time.Minute,
+		Handler: http.TimeoutHandler(c.Router, (ioTimeout-1)*time.Minute,
+			"server: timeout occurred while processing request"),
+	}
 	c.Server = server
 
 	// Create the listener
