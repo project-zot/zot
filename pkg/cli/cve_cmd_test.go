@@ -326,7 +326,7 @@ func TestServerCVEResponse(t *testing.T) {
 
 		time.Sleep(100 * time.Millisecond)
 	}
-	time.Sleep(25 * time.Second)
+	time.Sleep(35 * time.Second)
 
 	defer func(controller *api.Controller) {
 		ctx := context.Background()

@@ -503,7 +503,7 @@ func TestCVESearch(t *testing.T) {
 		}
 
 		// Wait for trivy db to download
-		time.Sleep(30 * time.Second)
+		time.Sleep(35 * time.Second)
 
 		defer func() {
 			ctx := context.Background()
