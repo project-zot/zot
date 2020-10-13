@@ -1,17 +1,20 @@
 package api_test
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path"
 	"regexp"
 	"strings"
 	"testing"
@@ -23,8 +26,11 @@ import (
 	"github.com/anuvu/zot/pkg/api"
 	"github.com/chartmuseum/auth"
 	"github.com/mitchellh/mapstructure"
-	vldap "github.com/nmcclain/ldap"
 	godigest "github.com/opencontainers/go-digest"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/stretchr/testify/assert"
+
+	vldap "github.com/nmcclain/ldap"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 )
@@ -101,6 +107,7 @@ func getCredString(username, password string) string {
 
 	return usernameAndHash
 }
+
 func TestNew(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		config := api.NewConfig()
@@ -1514,4 +1521,506 @@ func TestHTTPReadOnly(t *testing.T) {
 			}()
 		}
 	})
+}
+
+func TestParallelRequests(t *testing.T) {
+	testCases := []struct {
+		srcImageName  string
+		srcImageTag   string
+		destImageName string
+		destImageTag  string
+		testCaseName  string
+	}{
+		{
+			srcImageName:  "zot-test",
+			srcImageTag:   "0.0.1",
+			destImageName: "zot-1-test",
+			destImageTag:  "0.0.1",
+			testCaseName:  "Request-1",
+		},
+		{
+			srcImageName:  "zot-test",
+			srcImageTag:   "0.0.1",
+			destImageName: "zot-2-test",
+			testCaseName:  "Request-2",
+		},
+		{
+			srcImageName:  "zot-cve-test",
+			srcImageTag:   "0.0.1",
+			destImageName: "zot-3-test",
+			testCaseName:  "Request-3",
+		},
+		{
+			srcImageName:  "zot-cve-test",
+			srcImageTag:   "0.0.1",
+			destImageName: "zot-4-test",
+			testCaseName:  "Request-4",
+		},
+		{
+			srcImageName:  "zot-cve-test",
+			srcImageTag:   "0.0.1",
+			destImageName: "zot-5-test",
+			testCaseName:  "Request-5",
+		},
+		{
+			srcImageName:  "zot-cve-test",
+			srcImageTag:   "0.0.1",
+			destImageName: "zot-1-test",
+			testCaseName:  "Request-6",
+		},
+		{
+			srcImageName:  "zot-cve-test",
+			srcImageTag:   "0.0.1",
+			destImageName: "zot-2-test",
+			testCaseName:  "Request-7",
+		},
+		{
+			srcImageName:  "zot-cve-test",
+			srcImageTag:   "0.0.1",
+			destImageName: "zot-3-test",
+			testCaseName:  "Request-8",
+		},
+		{
+			srcImageName:  "zot-cve-test",
+			srcImageTag:   "0.0.1",
+			destImageName: "zot-4-test",
+			testCaseName:  "Request-9",
+		},
+		{
+			srcImageName:  "zot-cve-test",
+			srcImageTag:   "0.0.1",
+			destImageName: "zot-5-test",
+			testCaseName:  "Request-10",
+		},
+		{
+			srcImageName:  "zot-test",
+			srcImageTag:   "0.0.1",
+			destImageName: "zot-1-test",
+			destImageTag:  "0.0.1",
+			testCaseName:  "Request-11",
+		},
+		{
+			srcImageName:  "zot-test",
+			srcImageTag:   "0.0.1",
+			destImageName: "zot-2-test",
+			testCaseName:  "Request-12",
+		},
+		{
+			srcImageName:  "zot-cve-test",
+			srcImageTag:   "0.0.1",
+			destImageName: "zot-3-test",
+			testCaseName:  "Request-13",
+		},
+		{
+			srcImageName:  "zot-cve-test",
+			srcImageTag:   "0.0.1",
+			destImageName: "zot-4-test",
+			testCaseName:  "Request-14",
+		},
+		{
+			srcImageName:  "zot-cve-test",
+			srcImageTag:   "0.0.1",
+			destImageName: "zot-5-test",
+			testCaseName:  "Request-15",
+		},
+		{
+			srcImageName:  "zot-cve-test",
+			srcImageTag:   "0.0.1",
+			destImageName: "zot-1-test",
+			testCaseName:  "Request-16",
+		},
+		{
+			srcImageName:  "zot-cve-test",
+			srcImageTag:   "0.0.1",
+			destImageName: "zot-2-test",
+			testCaseName:  "Request-17",
+		},
+		{
+			srcImageName:  "zot-cve-test",
+			srcImageTag:   "0.0.1",
+			destImageName: "zot-3-test",
+			testCaseName:  "Request-18",
+		},
+		{
+			srcImageName:  "zot-cve-test",
+			srcImageTag:   "0.0.1",
+			destImageName: "zot-4-test",
+			testCaseName:  "Request-19",
+		},
+		{
+			srcImageName:  "zot-cve-test",
+			srcImageTag:   "0.0.1",
+			destImageName: "zot-5-test",
+			testCaseName:  "Request-20",
+		},
+	}
+
+	config := api.NewConfig()
+	config.HTTP.Port = SecurePort1
+	htpasswdPath := makeHtpasswdFileFromString(getCredString(username, passphrase))
+
+	// defer os.Remove(htpasswdPath)
+
+	config.HTTP.Auth = &api.AuthConfig{
+		HTPasswd: api.AuthHTPasswd{
+			Path: htpasswdPath,
+		},
+	}
+
+	c := api.NewController(config)
+
+	dir, err := ioutil.TempDir("", "oci-repo-test")
+	if err != nil {
+		panic(err)
+	}
+
+	err = copyFiles("../../test/data", dir)
+	if err != nil {
+		panic(err)
+	}
+	//defer os.RemoveAll(dir)
+	c.Config.Storage.RootDirectory = dir
+
+	go func() {
+		// this blocks
+		if err := c.Run(); err != nil {
+			return
+		}
+	}()
+
+	// wait till ready
+	for {
+		_, err := resty.R().Get(BaseURL1)
+		if err == nil {
+			break
+		}
+
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// without creds, should get access error
+	for i, testcase := range testCases {
+		testcase := testcase
+		j := i
+		//println(i)
+		t.Run(testcase.testCaseName, func(t *testing.T) {
+			t.Parallel()
+			client := resty.New()
+
+			tagResponse, err := client.R().SetBasicAuth(username, passphrase).
+				Get(BaseURL1 + "/v2/" + testcase.destImageName + "/tags/list")
+			assert.Equal(t, err, nil, "Error should be nil")
+			assert.NotEqual(t, tagResponse.StatusCode(), 400, "bad request")
+
+			manifestList := getAllManifests(path.Join(c.Config.Storage.RootDirectory, testcase.srcImageName))
+
+			for _, manifest := range manifestList {
+				headResponse, err := client.R().SetBasicAuth(username, passphrase).
+					Head(BaseURL1 + "/v2/" + testcase.destImageName + "/manifests/" + manifest)
+				assert.Equal(t, err, nil, "Error should be nil")
+				assert.Equal(t, headResponse.StatusCode(), 404, "response status code should return 404")
+
+				getResponse, err := client.R().SetBasicAuth(username, passphrase).
+					Get(BaseURL1 + "/v2/" + testcase.destImageName + "/manifests/" + manifest)
+				assert.Equal(t, err, nil, "Error should be nil")
+				assert.Equal(t, getResponse.StatusCode(), 404, "response status code should return 404")
+			}
+
+			blobList := getAllBlobs(path.Join(c.Config.Storage.RootDirectory, testcase.srcImageName))
+
+			for _, blob := range blobList {
+				// Get request of blob
+				headResponse, err := client.R().
+					SetBasicAuth(username, passphrase).
+					Head(BaseURL1 + "/v2/" + testcase.destImageName + "/blobs/sha256:" + blob)
+
+				assert.Equal(t, err, nil, "Should not be nil")
+				assert.NotEqual(t, headResponse.StatusCode(), 500, "internal server error should not occurred")
+
+				getResponse, err := client.R().
+					SetBasicAuth(username, passphrase).
+					Get(BaseURL1 + "/v2/" + testcase.destImageName + "/blobs/sha256:" + blob)
+
+				assert.Equal(t, err, nil, "Should not be nil")
+				assert.NotEqual(t, getResponse.StatusCode(), 500, "internal server error should not occurred")
+
+				blobPath := path.Join(c.Config.Storage.RootDirectory, testcase.srcImageName, "blobs/sha256", blob)
+
+				buf, err := ioutil.ReadFile(blobPath)
+				if err != nil {
+					panic(err)
+				}
+
+				// Post request of blob
+				postResponse, err := client.R().
+					SetHeader("Content-type", "application/octet-stream").
+					SetBasicAuth(username, passphrase).
+					SetBody(buf).Post(BaseURL1 + "/v2/" + testcase.destImageName + "/blobs/uploads/")
+
+				assert.Equal(t, err, nil, "Error should be nil")
+				assert.NotEqual(t, postResponse.StatusCode(), 500, "response status code should not return 500")
+
+				// Post request with query parameter
+
+				if j%2 == 0 {
+					postResponse, err = client.R().
+						SetHeader("Content-type", "application/octet-stream").
+						SetBasicAuth(username, passphrase).
+						SetBody(buf).
+						Post(BaseURL1 + "/v2/" + testcase.destImageName + "/blobs/uploads/")
+
+					assert.Equal(t, err, nil, "Error should be nil")
+					assert.NotEqual(t, postResponse.StatusCode(), 500, "response status code should not return 500")
+
+					var sessionID string
+					sessionIDList := postResponse.Header().Values("Blob-Upload-UUID")
+					if len(sessionIDList) == 0 {
+						location := postResponse.Header().Values("Location")
+						firstLocation := location[0]
+						splitLocation := strings.Split(firstLocation, "/")
+						sessionID = splitLocation[len(splitLocation)-1]
+					} else {
+						sessionID = sessionIDList[0]
+					}
+
+					file, err := os.Open(blobPath)
+					if err != nil {
+						panic(err)
+					}
+
+					defer file.Close()
+
+					reader := bufio.NewReader(file)
+
+					b := make([]byte, 1024*1024)
+
+					if j%4 == 0 {
+						readContent := 0
+						for {
+							n, err := reader.Read(b)
+							if err != nil {
+								if err == io.EOF {
+									break
+								}
+								panic(err)
+							}
+							// Patch request of blob
+
+							patchResponse, err := client.R().
+								SetBody(b[0:n]).
+								SetHeader("Content-Type", "application/octet-stream").
+								SetHeader("Content-Length", fmt.Sprintf("%d", n)).
+								SetHeader("Content-Range", fmt.Sprintf("%d", readContent)+"-"+fmt.Sprintf("%d", readContent+n-1)).
+								SetBasicAuth(username, passphrase).
+								Patch(BaseURL1 + "/v2/" + testcase.destImageName + "/blobs/uploads/" + sessionID)
+							if err != nil {
+								panic(err)
+							}
+
+							assert.Equal(t, err, nil, "Error should be nil")
+							assert.NotEqual(t, patchResponse.StatusCode(), 500, "response status code should not return 500")
+
+							readContent += n
+						}
+					} else {
+						for {
+							n, err := reader.Read(b)
+							if err != nil {
+								if err == io.EOF {
+									break
+								}
+								panic(err)
+							}
+							// Patch request of blob
+
+							patchResponse, err := client.R().SetBody(b[0:n]).SetHeader("Content-type", "application/octet-stream").
+								SetBasicAuth(username, passphrase).
+								Patch(BaseURL1 + "/v2/" + testcase.destImageName + "/blobs/uploads/" + sessionID)
+
+							if err != nil {
+								panic(err)
+							}
+
+							assert.Equal(t, err, nil, "Error should be nil")
+							assert.NotEqual(t, patchResponse.StatusCode(), 500, "response status code should not return 500")
+						}
+					}
+				} else {
+					postResponse, err = client.R().
+						SetHeader("Content-type", "application/octet-stream").
+						SetBasicAuth(username, passphrase).
+						SetBody(buf).SetQueryParam("digest", "sha256:"+blob).
+						Post(BaseURL1 + "/v2/" + testcase.destImageName + "/blobs/uploads/")
+
+					assert.Equal(t, err, nil, "Error should be nil")
+					assert.NotEqual(t, postResponse.StatusCode(), 500, "response status code should not return 500")
+				}
+
+				headResponse, err = client.R().
+					SetBasicAuth(username, passphrase).
+					Head(BaseURL1 + "/v2/" + testcase.destImageName + "/blobs/sha256:" + blob)
+
+				assert.Equal(t, err, nil, "Should not be nil")
+				assert.NotEqual(t, headResponse.StatusCode(), 500, "response should return success code")
+
+				getResponse, err = client.R().
+					SetBasicAuth(username, passphrase).
+					Get(BaseURL1 + "/v2/" + testcase.destImageName + "/blobs/sha256:" + blob)
+
+				assert.Equal(t, err, nil, "Should not be nil")
+				assert.NotEqual(t, getResponse.StatusCode(), 500, "response should return success code")
+
+				if i < 5 { // nolint: scopelint
+					deleteResponse, err := client.R().
+						SetBasicAuth(username, passphrase).
+						Delete(BaseURL1 + "/v2/" + testcase.destImageName + "/blobs/sha256:" + blob)
+
+					assert.Equal(t, err, nil, "Should not be nil")
+					assert.Equal(t, deleteResponse.StatusCode(), 202, "response should return success code")
+				}
+			}
+
+			tagResponse, err = client.R().SetBasicAuth(username, passphrase).
+				Get(BaseURL1 + "/v2/" + testcase.destImageName + "/tags/list")
+			assert.Equal(t, err, nil, "Error should be nil")
+			assert.Equal(t, tagResponse.StatusCode(), 200, "response status code should return success code")
+
+			repoResponse, err := client.R().SetBasicAuth(username, passphrase).
+				Get(BaseURL1 + "/v2/_catalog")
+			assert.Equal(t, err, nil, "Error should be nil")
+			assert.Equal(t, repoResponse.StatusCode(), 200, "response status code should return success code")
+		})
+	}
+}
+
+func getAllBlobs(imagePath string) []string {
+	blobList := make([]string, 0)
+
+	if !dirExists(imagePath) {
+		return []string{}
+	}
+
+	buf, err := ioutil.ReadFile(path.Join(imagePath, "index.json"))
+
+	if err != nil {
+		panic(err)
+	}
+
+	var index ispec.Index
+	if err := json.Unmarshal(buf, &index); err != nil {
+		panic(err)
+	}
+
+	var digest godigest.Digest
+
+	for _, m := range index.Manifests {
+		digest = m.Digest
+		blobList = append(blobList, digest.Encoded())
+		p := path.Join(imagePath, "blobs", digest.Algorithm().String(), digest.Encoded())
+
+		buf, err = ioutil.ReadFile(p)
+
+		if err != nil {
+			panic(err)
+		}
+
+		var manifest ispec.Manifest
+		if err := json.Unmarshal(buf, &manifest); err != nil {
+			panic(err)
+		}
+
+		blobList = append(blobList, manifest.Config.Digest.Encoded())
+
+		for _, layer := range manifest.Layers {
+			blobList = append(blobList, layer.Digest.Encoded())
+		}
+	}
+
+	return blobList
+}
+
+func getAllManifests(imagePath string) []string {
+	manifestList := make([]string, 0)
+
+	if !dirExists(imagePath) {
+		return []string{}
+	}
+
+	buf, err := ioutil.ReadFile(path.Join(imagePath, "index.json"))
+
+	if err != nil {
+		panic(err)
+	}
+
+	var index ispec.Index
+	if err := json.Unmarshal(buf, &index); err != nil {
+		panic(err)
+	}
+
+	var digest godigest.Digest
+
+	for _, m := range index.Manifests {
+		digest = m.Digest
+		manifestList = append(manifestList, digest.Encoded())
+	}
+
+	return manifestList
+}
+
+func dirExists(d string) bool {
+	fi, err := os.Stat(d)
+	if err != nil && os.IsNotExist(err) {
+		return false
+	}
+
+	if !fi.IsDir() {
+		return false
+	}
+
+	return true
+}
+
+func copyFiles(sourceDir string, destDir string) error {
+	sourceMeta, err := os.Stat(sourceDir)
+	if err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(destDir, sourceMeta.Mode()); err != nil {
+		return err
+	}
+
+	files, err := ioutil.ReadDir(sourceDir)
+	if err != nil {
+		return err
+	}
+
+	for _, file := range files {
+		sourceFilePath := path.Join(sourceDir, file.Name())
+		destFilePath := path.Join(destDir, file.Name())
+
+		if file.IsDir() {
+			if err = copyFiles(sourceFilePath, destFilePath); err != nil {
+				return err
+			}
+		} else {
+			sourceFile, err := os.Open(sourceFilePath)
+			if err != nil {
+				return err
+			}
+			defer sourceFile.Close()
+
+			destFile, err := os.Create(destFilePath)
+			if err != nil {
+				return err
+			}
+			defer destFile.Close()
+
+			if _, err = io.Copy(destFile, sourceFile); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
