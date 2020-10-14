@@ -7,11 +7,15 @@ PATH := bin:$(PATH)
 TMPDIR := $(shell mktemp -d)
 
 .PHONY: all
-all: doc binary debug test check
+all: doc minimal-binary debug test check
+
+.PHONY: minimal-binary
+minimal-binary: doc
+	go build -tags minimal -v  -ldflags "-X  github.com/anuvu/zot/pkg/api.Commit=${COMMIT}" -o bin/zot-minimal ./cmd/zot
 
 .PHONY: binary
 binary: doc
-	go build -v -ldflags "-X  github.com/anuvu/zot/pkg/api.Commit=${COMMIT}" -o bin/zot -tags=jsoniter ./cmd/zot
+	go build -tags extended -v -ldflags "-X  github.com/anuvu/zot/pkg/api.Commit=${COMMIT}" -o bin/zot ./cmd/zot
 
 .PHONY: debug
 debug: doc
@@ -20,7 +24,7 @@ debug: doc
 .PHONY: test
 test:
 	$(shell mkdir -p test/data;  cd test/data; ../scripts/gen_certs.sh; cd ${TOP_LEVEL}; sudo skopeo --insecure-policy copy -q docker://centos:latest oci:${TOP_LEVEL}/test/data/zot-test:0.0.1;sudo skopeo --insecure-policy copy -q docker://centos:8 oci:${TOP_LEVEL}/test/data/zot-cve-test:0.0.1)
-	go test -v -race -cover -coverpkg ./... -coverprofile=coverage.txt -covermode=atomic ./...
+	go test -tags extended -v -race -cover -coverpkg ./... -coverprofile=coverage.txt -covermode=atomic ./...
 
 .PHONY: covhtml
 covhtml:
@@ -29,7 +33,7 @@ covhtml:
 .PHONY: check
 check: .bazel/golangcilint.yaml
 	golangci-lint --version || curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.26.0
-	golangci-lint --config .bazel/golangcilint.yaml run --enable-all ./cmd/... ./pkg/...
+	golangci-lint --config .bazel/golangcilint.yaml run --enable-all --build-tags extended ./cmd/... ./pkg/...
 
 docs/docs.go: 
 	swag -v || go install github.com/swaggo/swag/cmd/swag

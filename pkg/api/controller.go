@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/anuvu/zot/errors"
-	cveinfo "github.com/anuvu/zot/pkg/extensions/search/cve"
+	"github.com/anuvu/zot/pkg/extensions"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
 	"github.com/gorilla/handlers"
@@ -62,17 +62,10 @@ func (c *Controller) Run() error {
 		}
 
 		go func() {
-			for {
-				c.Log.Info().Msg("Updating the CVE database")
-
-				err := cveinfo.UpdateCVEDb(c.Config.Storage.RootDirectory, c.Log)
-				if err != nil {
-					panic(err)
-				}
-
-				c.Log.Info().Str("Db update completed, next update scheduled after", c.Config.Extensions.Search.CVE.UpdateInterval.String()).Msg("") //nolint: lll
-
-				time.Sleep(c.Config.Extensions.Search.CVE.UpdateInterval)
+			err := extensions.DownloadTrivyDB(c.Config.Storage.RootDirectory, c.Log,
+				c.Config.Extensions.Search.CVE.UpdateInterval)
+			if err != nil {
+				panic(err)
 			}
 		}()
 	} else {
