@@ -365,12 +365,12 @@ func makeHtpasswdFile() string {
 }
 
 func TestDownloadDB(t *testing.T) {
-	Convey("Download DB", t, func() {
+	Convey("Download DB passing invalid dir", t, func() {
 		err := testSetup()
 		So(err, ShouldBeNil)
-		err = cveinfo.UpdateCVEDb(dbDir, cve.Log)
-		So(err, ShouldBeNil)
-
+		/*err = cveinfo.UpdateCVEDb(dbDir, cve.Log)
+		So(err, ShouldBeNil)*/
+		// Test Invalid dir download
 		err = cveinfo.UpdateCVEDb("./testdata1", cve.Log)
 		So(err, ShouldNotBeNil)
 	})
@@ -462,6 +462,8 @@ func TestImageTag(t *testing.T) {
 
 func TestCVESearch(t *testing.T) {
 	Convey("Test image vulenrability scanning", t, func() {
+		updateDuration, _ := time.ParseDuration("1h")
+		expectedDuration, _ := time.ParseDuration("2h")
 		config := api.NewConfig()
 		config.HTTP.Port = SecurePort1
 		htpasswdPath := makeHtpasswdFile()
@@ -476,7 +478,7 @@ func TestCVESearch(t *testing.T) {
 		defer os.RemoveAll(dbDir)
 		c.Config.Storage.RootDirectory = dbDir
 		cveConfig := &api.CVEConfig{
-			UpdateInterval: 2,
+			UpdateInterval: updateDuration,
 		}
 		searchConfig := &api.SearchConfig{
 			CVE: cveConfig,
@@ -507,6 +509,8 @@ func TestCVESearch(t *testing.T) {
 			ctx := context.Background()
 			_ = c.Server.Shutdown(ctx)
 		}()
+
+		So(c.Config.Extensions.Search.CVE.UpdateInterval, ShouldEqual, expectedDuration)
 
 		// without creds, should get access error
 		resp, err := resty.R().Get(BaseURL1 + "/v2/")
@@ -682,54 +686,5 @@ func TestCVESearch(t *testing.T) {
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/query?query={ImageListForCVE(id:\"" + id + "\"){Name%20Tags}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
-	})
-}
-
-func TestCveConfig(t *testing.T) {
-	updateDuration, _ := time.ParseDuration("1h")
-	expectedDuration, _ := time.ParseDuration("2h")
-
-	Convey("Make a new cve config", t, func() {
-		config := api.NewConfig()
-		config.HTTP.Port = SecurePort1
-		cveConfig := &api.CVEConfig{
-			UpdateInterval: updateDuration,
-		}
-		searchConfig := &api.SearchConfig{
-			CVE: cveConfig,
-		}
-		config.Extensions = &api.ExtensionConfig{
-			Search: searchConfig,
-		}
-		c := api.NewController(config)
-		dir, err := ioutil.TempDir("", "oci-repo-test")
-		if err != nil {
-			panic(err)
-		}
-		defer os.RemoveAll(dir)
-		c.Config.Storage.RootDirectory = dir
-
-		go func() {
-			// this blocks
-			if err := c.Run(); err != nil {
-				return
-			}
-		}()
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(BaseURL1)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		So(c.Config.Extensions.Search.CVE.UpdateInterval, ShouldEqual, expectedDuration)
-
-		defer func() {
-			ctx := context.Background()
-			_ = c.Server.Shutdown(ctx)
-		}()
 	})
 }
