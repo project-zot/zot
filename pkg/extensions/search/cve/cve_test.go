@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/anuvu/zot/pkg/api"
+	ext "github.com/anuvu/zot/pkg/extensions"
 	cveinfo "github.com/anuvu/zot/pkg/extensions/search/cve"
 	"github.com/anuvu/zot/pkg/log"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -461,7 +462,6 @@ func TestImageTag(t *testing.T) {
 func TestCVESearch(t *testing.T) {
 	Convey("Test image vulenrability scanning", t, func() {
 		updateDuration, _ := time.ParseDuration("1h")
-		expectedDuration, _ := time.ParseDuration("2h")
 		config := api.NewConfig()
 		config.HTTP.Port = SecurePort1
 		htpasswdPath := makeHtpasswdFile()
@@ -475,13 +475,13 @@ func TestCVESearch(t *testing.T) {
 		c := api.NewController(config)
 		defer os.RemoveAll(dbDir)
 		c.Config.Storage.RootDirectory = dbDir
-		cveConfig := &api.CVEConfig{
+		cveConfig := &ext.CVEConfig{
 			UpdateInterval: updateDuration,
 		}
-		searchConfig := &api.SearchConfig{
+		searchConfig := &ext.SearchConfig{
 			CVE: cveConfig,
 		}
-		c.Config.Extensions = &api.ExtensionConfig{
+		c.Config.Extensions = &ext.ExtensionConfig{
 			Search: searchConfig,
 		}
 		go func() {
@@ -507,8 +507,6 @@ func TestCVESearch(t *testing.T) {
 			ctx := context.Background()
 			_ = c.Server.Shutdown(ctx)
 		}()
-
-		So(c.Config.Extensions.Search.CVE.UpdateInterval, ShouldEqual, expectedDuration)
 
 		// without creds, should get access error
 		resp, err := resty.R().Get(BaseURL1 + "/v2/")

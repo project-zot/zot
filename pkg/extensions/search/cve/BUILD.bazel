@@ -30,6 +30,7 @@ go_test(
     embed = [":go_default_library"],
     deps = [
         "//pkg/api:go_default_library",
+        "//pkg/extensions:go_default_library",
         "//pkg/log:go_default_library",
         "@com_github_opencontainers_image_spec//specs-go/v1:go_default_library",
         "@com_github_smartystreets_goconvey//convey:go_default_library",

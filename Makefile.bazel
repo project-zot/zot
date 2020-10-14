@@ -27,19 +27,19 @@ fmt-bazel:
 
 .PHONY: update-bazel
 update-bazel:
-	${BAZEL} run //:gazelle
+	${BAZEL} run //:gazelle -- update -build_tags minimal,extended 
 
 .PHONY: update-mod
 update-mod:
-	${BAZEL} run //:gazelle -- update-repos -from_file=go.mod
+	${BAZEL} run //:gazelle -- update -from_file=go.mod
 
 .PHONY: init
 init: setup-base update-bazel fmt-bazel
 
 .PHONY: build
 build:	
-	${BAZEL} build ${BAZELOPTS} //...
-	${BAZEL} test ${BAZELOPTS} //...
+	${BAZEL} build --define gotags=extended ${BAZELOPTS} //...
+	${BAZEL} test --define gotags=extended ${BAZELOPTS} //...
 
 .PHONY: check
 check:

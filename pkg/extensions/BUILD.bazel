@@ -1,0 +1,20 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "config.go",
+        "extension.go",
+        "minimal.go",
+    ],
+    importpath = "github.com/anuvu/zot/pkg/extensions",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/extensions/search:go_default_library",
+        "//pkg/extensions/search/cve:go_default_library",
+        "//pkg/log:go_default_library",
+        "//pkg/storage:go_default_library",
+        "@com_github_99designs_gqlgen//graphql/handler:go_default_library",
+        "@com_github_gorilla_mux//:go_default_library",
+    ],
+)
