@@ -22,7 +22,7 @@ install:
   - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then wget -N https://github.com/bazelbuild/bazel/releases/download/3.0.0/bazel-3.0.0-installer-linux-x86_64.sh && chmod +x bazel-3.0.0-installer-linux-x86_64.sh && ./bazel-3.0.0-installer-linux-x86_64.sh --user; go get -u github.com/swaggo/swag/cmd/swag; go mod download; sudo apt-get update; sudo apt-get install rpm; sudo apt install snapd; sudo snap install skopeo --edge --devmode; fi
 
 script:
-  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then make && travis_wait make -f Makefile.bazel build; fi
+  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then travis_wait make && travis_wait make -f Makefile.bazel build; fi
 
 after_success:
   - bash <(curl -s https://codecov.io/bash)

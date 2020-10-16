@@ -1617,42 +1617,6 @@ func TestParallelRequests(t *testing.T) {
 			destImageName: "zot-4-test",
 			testCaseName:  "Request-14",
 		},
-		{
-			srcImageName:  "zot-cve-test",
-			srcImageTag:   "0.0.1",
-			destImageName: "zot-5-test",
-			testCaseName:  "Request-15",
-		},
-		{
-			srcImageName:  "zot-cve-test",
-			srcImageTag:   "0.0.1",
-			destImageName: "zot-1-test",
-			testCaseName:  "Request-16",
-		},
-		{
-			srcImageName:  "zot-cve-test",
-			srcImageTag:   "0.0.1",
-			destImageName: "zot-2-test",
-			testCaseName:  "Request-17",
-		},
-		{
-			srcImageName:  "zot-cve-test",
-			srcImageTag:   "0.0.1",
-			destImageName: "zot-3-test",
-			testCaseName:  "Request-18",
-		},
-		{
-			srcImageName:  "zot-cve-test",
-			srcImageTag:   "0.0.1",
-			destImageName: "zot-4-test",
-			testCaseName:  "Request-19",
-		},
-		{
-			srcImageName:  "zot-cve-test",
-			srcImageTag:   "0.0.1",
-			destImageName: "zot-5-test",
-			testCaseName:  "Request-20",
-		},
 	}
 
 	config := api.NewConfig()
@@ -1792,7 +1756,7 @@ func TestParallelRequests(t *testing.T) {
 
 					reader := bufio.NewReader(file)
 
-					b := make([]byte, 1024*1024)
+					b := make([]byte, 5*1024*1024)
 
 					if j%4 == 0 {
 						readContent := 0
