@@ -111,6 +111,9 @@ func (is *ImageStore) Unlock() {
 func (is *ImageStore) InitRepo(name string) error {
 	repoDir := path.Join(is.rootDir, name)
 
+	is.Lock()
+	defer is.Unlock()
+
 	if fi, err := os.Stat(repoDir); err == nil && fi.IsDir() {
 		return nil
 	}
@@ -217,6 +220,9 @@ func (is *ImageStore) ValidateRepo(name string) (bool, error) {
 func (is *ImageStore) GetRepositories() ([]string, error) {
 	dir := is.rootDir
 
+	is.RLock()
+	defer is.RUnlock()
+
 	_, err := ioutil.ReadDir(dir)
 	if err != nil {
 		is.log.Error().Err(err).Msg("failure walking storage root-dir")
@@ -258,6 +264,9 @@ func (is *ImageStore) GetImageTags(repo string) ([]string, error) {
 		return nil, errors.ErrRepoNotFound
 	}
 
+	is.RLock()
+	defer is.RUnlock()
+
 	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
 	if err != nil {
 		is.log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
@@ -288,6 +297,9 @@ func (is *ImageStore) GetImageManifest(repo string, reference string) ([]byte, s
 	if !dirExists(dir) {
 		return nil, "", "", errors.ErrRepoNotFound
 	}
+
+	is.RLock()
+	defer is.RUnlock()
 
 	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
 
@@ -414,6 +426,9 @@ func (is *ImageStore) PutImageManifest(repo string, reference string, mediaType 
 		refIsDigest = true
 	}
 
+	is.Lock()
+	defer is.Unlock()
+
 	dir := path.Join(is.rootDir, repo)
 	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
 
@@ -531,6 +546,9 @@ func (is *ImageStore) DeleteImageManifest(repo string, reference string) error {
 		is.log.Error().Err(err).Msg("invalid reference")
 		return errors.ErrBadManifest
 	}
+
+	is.Lock()
+	defer is.Unlock()
 
 	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
 
@@ -770,6 +788,10 @@ func (is *ImageStore) FinishBlobUpload(repo string, uuid string, body io.Reader,
 	}
 
 	dir := path.Join(is.rootDir, repo, "blobs", dstDigest.Algorithm().String())
+
+	is.Lock()
+	defer is.Unlock()
+
 	ensureDir(dir, is.log)
 	dst := is.BlobPath(repo, dstDigest)
 
@@ -835,6 +857,10 @@ func (is *ImageStore) FullBlobUpload(repo string, body io.Reader, digest string)
 	}
 
 	dir := path.Join(is.rootDir, repo, "blobs", dstDigest.Algorithm().String())
+
+	is.Lock()
+	defer is.Unlock()
+
 	ensureDir(dir, is.log)
 	dst := is.BlobPath(repo, dstDigest)
 
@@ -948,6 +974,9 @@ func (is *ImageStore) CheckBlob(repo string, digest string,
 
 	blobPath := is.BlobPath(repo, d)
 
+	is.RLock()
+	defer is.RUnlock()
+
 	blobInfo, err := os.Stat(blobPath)
 	if err != nil {
 		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
@@ -968,6 +997,9 @@ func (is *ImageStore) GetBlob(repo string, digest string, mediaType string) (io.
 	}
 
 	blobPath := is.BlobPath(repo, d)
+
+	is.RLock()
+	defer is.RUnlock()
 
 	blobInfo, err := os.Stat(blobPath)
 	if err != nil {
@@ -993,6 +1025,9 @@ func (is *ImageStore) DeleteBlob(repo string, digest string) error {
 	}
 
 	blobPath := is.BlobPath(repo, d)
+
+	is.Lock()
+	defer is.Unlock()
 
 	_, err = os.Stat(blobPath)
 	if err != nil {

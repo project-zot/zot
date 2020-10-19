@@ -36,7 +36,7 @@ go_library(
 
 go_test(
     name = "go_default_test",
-    timeout = "moderate",
+    timeout = "long",
     srcs = ["controller_test.go"],
     data = [
         "//:exported_testdata",
@@ -49,7 +49,9 @@ go_test(
         "@com_github_mitchellh_mapstructure//:go_default_library",
         "@com_github_nmcclain_ldap//:go_default_library",
         "@com_github_opencontainers_go_digest//:go_default_library",
+        "@com_github_opencontainers_image_spec//specs-go/v1:go_default_library",
         "@com_github_smartystreets_goconvey//convey:go_default_library",
+        "@com_github_stretchr_testify//assert:go_default_library",
         "@in_gopkg_resty_v1//:go_default_library",
         "@org_golang_x_crypto//bcrypt:go_default_library",
     ],
