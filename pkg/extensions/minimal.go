@@ -11,13 +11,16 @@ import (
 )
 
 // DownloadTrivyDB ...
-func DownloadTrivyDB(dbDir string, log log.Logger, updateInterval time.Duration) error {
+func downloadTrivyDB(dbDir string, log log.Logger, updateInterval time.Duration) error {
 	return nil
 }
 
-func EnableExtension(extension *ExtensionConfig, log log.Logger, rootDir string) {
-	log.Info().Msg("given zot binary doesn't support any extensions, please build zot full binary for this feature")
+// EnableExtensions ...
+func EnableExtensions(extension *ExtensionConfig, log log.Logger, rootDir string) {
+	log.Warn().Msg("skipping enabling extensions because given zot binary doesn't support any extensions, please build zot full binary for this feature")
 }
 
+// SetupRoutes ...
 func SetupRoutes(router *mux.Router, rootDir string, imgStore *storage.ImageStore, log log.Logger) {
+	log.Warn().Msg("skipping setting up extensions routes because given zot binary doesn't support any extensions, please build zot full binary for this feature")
 }

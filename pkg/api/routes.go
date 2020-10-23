@@ -88,7 +88,7 @@ func (rh *RouteHandler) SetupRoutes() {
 	}
 	// swagger docs "/swagger/v2/index.html"
 	rh.c.Router.PathPrefix("/swagger/v2/").Methods("GET").Handler(httpSwagger.WrapHandler)
-	// Zot Search Extension Router
+	// Setup Extensions Routes
 	if rh.c.Config != nil && rh.c.Config.Extensions != nil {
 		ext.SetupRoutes(rh.c.Router, rh.c.Config.Storage.RootDirectory, rh.c.ImageStore, rh.c.Log)
 	}

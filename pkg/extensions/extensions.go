@@ -16,24 +16,24 @@ import (
 )
 
 // DownloadTrivyDB ...
-func DownloadTrivyDB(dbDir string, log log.Logger, updateInterval time.Duration) error {
+func downloadTrivyDB(dbDir string, log log.Logger, updateInterval time.Duration) error {
 	for {
-		log.Info().Msg("Updating the CVE database")
+		log.Info().Msg("updating the CVE database")
 
 		err := cveinfo.UpdateCVEDb(dbDir, log)
 		if err != nil {
 			return err
 		}
 
-		log.Info().Str("Db update completed, next update scheduled after", updateInterval.String()).Msg("")
+		log.Info().Str("DB update completed, next update scheduled after", updateInterval.String()).Msg("")
 
 		time.Sleep(updateInterval)
 	}
 }
 
-func EnableExtension(extension *ExtensionConfig, log log.Logger, rootDir string) {
-	if extension != nil && extension.Search != nil &&
-		extension.Search.CVE != nil {
+// EnableExtensions ...
+func EnableExtensions(extension *ExtensionConfig, log log.Logger, rootDir string) {
+	if extension.Search != nil && extension.Search.CVE != nil {
 		defaultUpdateInterval, _ := time.ParseDuration("2h")
 
 		if extension.Search.CVE.UpdateInterval < defaultUpdateInterval {
@@ -43,18 +43,20 @@ func EnableExtension(extension *ExtensionConfig, log log.Logger, rootDir string)
 		}
 
 		go func() {
-			err := DownloadTrivyDB(rootDir, log,
+			err := downloadTrivyDB(rootDir, log,
 				extension.Search.CVE.UpdateInterval)
 			if err != nil {
 				panic(err)
 			}
 		}()
 	} else {
-		log.Info().Msg("Cve config not provided, skipping cve update")
+		log.Info().Msg("CVE config not provided, skipping CVE update")
 	}
 }
 
+// SetupRoutes ...
 func SetupRoutes(router *mux.Router, rootDir string, imgStore *storage.ImageStore, log log.Logger) {
+	log.Info().Msg("setting up extensions routes")
 	resConfig := search.GetResolverConfig(rootDir, log, imgStore)
 	router.PathPrefix("/query").Methods("GET", "POST").
 		Handler(gqlHandler.NewDefaultServer(search.NewExecutableSchema(resConfig)))

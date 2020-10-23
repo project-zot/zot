@@ -50,9 +50,9 @@ func (c *Controller) Run() error {
 		os.Exit(1)
 	}
 
-	// Updating the CVE Database
-	if c.Config != nil {
-		ext.EnableExtension(c.Config.Extensions, c.Log, c.Config.Storage.RootDirectory)
+	// Enable extensions if extension config is provided
+	if c.Config != nil && c.Config.Extensions != nil {
+		ext.EnableExtensions(c.Config.Extensions, c.Log, c.Config.Storage.RootDirectory)
 	}
 
 	c.Router = engine
