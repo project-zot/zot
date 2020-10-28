@@ -1,3 +1,5 @@
+// +build extended
+
 package cli //nolint:testpackage
 
 import (

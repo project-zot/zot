@@ -2,3 +2,5 @@ ignore:
     - "*_gen.go"
     - "./pkg/extensions/search/*_gen.go"
     - "./pkg/extensions/search/generated.go"
+    - "./pkg/extensions/minimal.go"
+    - "./pkg/cli/minimal.go"

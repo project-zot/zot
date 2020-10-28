@@ -1,3 +1,5 @@
+// +build extended
+
 package cli //nolint:testpackage
 
 import (
@@ -15,6 +17,7 @@ import (
 
 	zotErrors "github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/api"
+	ext "github.com/anuvu/zot/pkg/extensions"
 	"gopkg.in/resty.v1"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -301,13 +304,13 @@ func TestServerCVEResponse(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	c.Config.Storage.RootDirectory = dir
-	cveConfig := &api.CVEConfig{
+	cveConfig := &ext.CVEConfig{
 		UpdateInterval: 2,
 	}
-	searchConfig := &api.SearchConfig{
+	searchConfig := &ext.SearchConfig{
 		CVE: cveConfig,
 	}
-	c.Config.Extensions = &api.ExtensionConfig{
+	c.Config.Extensions = &ext.ExtensionConfig{
 		Search: searchConfig,
 	}
 

@@ -8,10 +8,9 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"time"
 
 	"github.com/anuvu/zot/errors"
-	cveinfo "github.com/anuvu/zot/pkg/extensions/search/cve"
+	ext "github.com/anuvu/zot/pkg/extensions"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
 	"github.com/gorilla/handlers"
@@ -51,32 +50,9 @@ func (c *Controller) Run() error {
 		os.Exit(1)
 	}
 
-	// Updating the CVE Database
-	if c.Config != nil && c.Config.Extensions != nil && c.Config.Extensions.Search != nil &&
-		c.Config.Extensions.Search.CVE != nil {
-		defaultUpdateInterval, _ := time.ParseDuration("2h")
-
-		if c.Config.Extensions.Search.CVE.UpdateInterval < defaultUpdateInterval {
-			c.Config.Extensions.Search.CVE.UpdateInterval = defaultUpdateInterval
-			c.Log.Warn().Msg("CVE update interval set to too-short interval <= 1, changing update duration to 2 hours and continuing.") // nolint: lll
-		}
-
-		go func() {
-			for {
-				c.Log.Info().Msg("Updating the CVE database")
-
-				err := cveinfo.UpdateCVEDb(c.Config.Storage.RootDirectory, c.Log)
-				if err != nil {
-					panic(err)
-				}
-
-				c.Log.Info().Str("Db update completed, next update scheduled after", c.Config.Extensions.Search.CVE.UpdateInterval.String()).Msg("") //nolint: lll
-
-				time.Sleep(c.Config.Extensions.Search.CVE.UpdateInterval)
-			}
-		}()
-	} else {
-		c.Log.Info().Msg("Cve config not provided, skipping cve update")
+	// Enable extensions if extension config is provided
+	if c.Config != nil && c.Config.Extensions != nil {
+		ext.EnableExtensions(c.Config.Extensions, c.Log, c.Config.Storage.RootDirectory)
 	}
 
 	c.Router = engine

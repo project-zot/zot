@@ -1,9 +1,8 @@
 package api
 
 import (
-	"time"
-
 	"github.com/anuvu/zot/errors"
+	ext "github.com/anuvu/zot/pkg/extensions"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/getlantern/deepcopy"
 	dspec "github.com/opencontainers/distribution-spec"
@@ -70,26 +69,13 @@ type LogConfig struct {
 	Output string
 }
 
-type ExtensionConfig struct {
-	Search *SearchConfig
-}
-
-type SearchConfig struct {
-	// CVE search
-	CVE *CVEConfig
-}
-
-type CVEConfig struct {
-	UpdateInterval time.Duration // should be 2 hours or more, if not specified default be kept as 24 hours
-}
-
 type Config struct {
 	Version    string
 	Commit     string
 	Storage    StorageConfig
 	HTTP       HTTPConfig
 	Log        *LogConfig
-	Extensions *ExtensionConfig
+	Extensions *ext.ExtensionConfig
 }
 
 func NewConfig() *Config {

@@ -11,6 +11,7 @@ go_library(
 go_binary(
     name = "zot",
     embed = [":go_default_library"],
+    gotags = ["extended"],
     visibility = ["//visibility:public"],
 )
 

@@ -1,3 +1,5 @@
+// +build extended
+
 package cli
 
 import (
@@ -331,6 +333,23 @@ func validateImageNameTag(input string) bool {
 	return true
 }
 
+type spinnerState struct {
+	spinner *spinner.Spinner
+	enabled bool
+}
+
+func (spinner *spinnerState) startSpinner() {
+	if spinner.enabled {
+		spinner.spinner.Start()
+	}
+}
+
+func (spinner *spinnerState) stopSpinner() {
+	if spinner.enabled && spinner.spinner.Active() {
+		spinner.spinner.Stop()
+	}
+}
+
 type set struct {
 	m map[string]struct{}
 }
@@ -363,23 +382,6 @@ var (
 type stringResult struct {
 	StrValue string
 	Err      error
-}
-
-type spinnerState struct {
-	spinner *spinner.Spinner
-	enabled bool
-}
-
-func (spinner *spinnerState) startSpinner() {
-	if spinner.enabled {
-		spinner.spinner.Start()
-	}
-}
-
-func (spinner *spinnerState) stopSpinner() {
-	if spinner.enabled && spinner.spinner.Active() {
-		spinner.spinner.Stop()
-	}
 }
 
 type printHeader func(writer io.Writer)

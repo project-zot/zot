@@ -1,3 +1,5 @@
+// +build extended
+
 package api_test
 
 import (
