@@ -204,6 +204,10 @@ func addConfig(configPath, configName, url string) error {
 		return zotErrors.ErrInvalidURL
 	}
 
+	if configNameExists(configs, configName) {
+		return zotErrors.ErrDuplicateConfigName
+	}
+
 	configMap := make(map[string]interface{})
 	configMap["url"] = url
 	configMap[nameKey] = configName
@@ -359,6 +363,17 @@ func getAllConfig(configPath, configName string) (string, error) {
 	}
 
 	return "", zotErrors.ErrConfigNotFound
+}
+
+func configNameExists(configs []interface{}, configName string) bool {
+	for _, val := range configs {
+		configMap := val.(map[string]interface{})
+		if configMap[nameKey] == configName {
+			return true
+		}
+	}
+
+	return false
 }
 
 const (
