@@ -36,4 +36,5 @@ var (
 	ErrIllegalConfigKey        = errors.New("cli: given config key is not allowed")
 	ErrScanNotSupported        = errors.New("search: scanning of image media type not supported")
 	ErrCLITimeout              = errors.New("cli: Query timed out while waiting for results")
+	ErrDuplicateConfigName     = errors.New("cli: cli config name already added")
 )

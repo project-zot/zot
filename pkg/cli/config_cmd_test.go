@@ -300,4 +300,18 @@ func TestConfigCmdMain(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		So(buff.String(), ShouldContainSubstring, "cannot reset")
 	})
+
+	Convey("Test add a config with an existing saved name", t, func() {
+		args := []string{"add", "configtest", "https://test-url.com/new"}
+		configPath := makeConfigFile(`{"configs":[{"_name":"configtest","url":"https://test-url.com","showspinner":false}]}`)
+		defer os.Remove(configPath)
+		cmd := NewConfigCommand()
+		buff := bytes.NewBufferString("")
+		cmd.SetOut(buff)
+		cmd.SetErr(ioutil.Discard)
+		cmd.SetArgs(args)
+		err := cmd.Execute()
+		So(err, ShouldNotBeNil)
+		So(buff.String(), ShouldContainSubstring, "cli config name already added")
+	})
 }
