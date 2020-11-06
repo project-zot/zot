@@ -52,9 +52,12 @@ run: binary test
 
 .PHONY: binary-container
 binary-container:
-	${CONTAINER_RUNTIME} build ${BUILD_ARGS} -f Dockerfile.build -t zot-build:latest .
+	${CONTAINER_RUNTIME} build ${BUILD_ARGS} -f Dockerfile -t zot-build:latest .
+
+.PHONY: run-container
+run-container:
 	${CONTAINER_RUNTIME} run --rm --security-opt label=disable -v $$(pwd):/go/src/github.com/anuvu/zot \
-		zot-build:latest make
+		zot-build:latest 
 
 .PHONY: binary-stacker
 binary-stacker:
