@@ -5,6 +5,7 @@ COMMIT=$(if $(shell git status --porcelain --untracked-files=no),$(COMMIT_HASH)-
 CONTAINER_RUNTIME := $(shell command -v podman 2> /dev/null || echo docker)
 PATH := bin:$(PATH)
 TMPDIR := $(shell mktemp -d)
+STACKER := $(shell which stacker)
 
 .PHONY: all
 all: doc binary binary-minimal debug test check
@@ -61,7 +62,7 @@ run-container:
 
 .PHONY: binary-stacker
 binary-stacker:
-	stacker --roots-dir ${TMPDIR} build --substitute PWD=$$PWD
+	sudo ${STACKER} build --substitute PWD=$$PWD
 
 .PHONY: image
 image:
