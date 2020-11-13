@@ -2847,3 +2847,10 @@ go_repository(
     sum = "h1:e1sMhtVq9AfcEy8AXNb8eSg6gbzfdpYhoNqnPJa+GzI=",
     version = "v0.0.0-20151005221446-73f23eafcf67",
 )
+
+go_repository(
+    name = "com_github_g0rbe_go_chattr",
+    importpath = "github.com/g0rbe/go-chattr",
+    sum = "h1:kVr4Kev6L3EhHqTRDiA0dhxF0m/y0ZpKwzG4gEZnD1o=",
+    version = "v0.0.0-20190906133247-aa435a6a0a37",
+)

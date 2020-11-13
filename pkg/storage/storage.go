@@ -16,6 +16,7 @@ import (
 	"github.com/anuvu/zot/errors"
 	zlog "github.com/anuvu/zot/pkg/log"
 	apexlog "github.com/apex/log"
+	"github.com/g0rbe/go-chattr"
 	guuid "github.com/gofrs/uuid"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -774,7 +775,7 @@ func (is *ImageStore) FinishBlobUpload(repo string, uuid string, body io.Reader,
 	}
 
 	srcDigest, err := godigest.FromReader(f)
-	f.Close()
+	defer f.Close()
 
 	if err != nil {
 		is.log.Error().Err(err).Str("blob", src).Msg("failed to open blob")
@@ -807,6 +808,11 @@ func (is *ImageStore) FinishBlobUpload(repo string, uuid string, body io.Reader,
 				Str("dst", dst).Msg("unable to finish blob")
 			return err
 		}
+	}
+
+	// remove immutable attr from blob if it's the case
+	if err = is.setImmutableAttr(dst); err != nil {
+		return err
 	}
 
 	return nil
@@ -878,6 +884,12 @@ func (is *ImageStore) FullBlobUpload(repo string, body io.Reader, digest string)
 		}
 	}
 
+	// remove immutable attr from blob if it's the case
+	if err = is.setImmutableAttr(dst); err != nil {
+		is.log.Error().Err(err).Str("dst", dst).Msg("Could not unset immutable attribute")
+		return "", -1, err
+	}
+
 	return uuid, n, nil
 }
 
@@ -930,6 +942,12 @@ retry:
 
 			return err
 		}
+
+		// remove immutable attr from blob if it's the case
+		if err = is.unsetImmutableAttr(dstRecord); err != nil {
+			return err
+		}
+
 		if !os.SameFile(dstFi, dstRecordFi) {
 			if err := os.Link(dstRecord, dst); err != nil {
 				is.log.Error().Err(err).Str("blobPath", dst).Str("link", dstRecord).Msg("dedupe: unable to hard link")
@@ -1042,6 +1060,11 @@ func (is *ImageStore) DeleteBlob(repo string, digest string) error {
 		}
 	}
 
+	// remove immutable attr from blob if it's the case
+	if err = is.unsetImmutableAttr(blobPath); err != nil {
+		return err
+	}
+
 	if err := os.Remove(blobPath); err != nil {
 		is.log.Error().Err(err).Str("blobPath", blobPath).Msg("unable to remove blob path")
 		return err
@@ -1096,4 +1119,97 @@ func ifOlderThan(is *ImageStore, repo string, delay time.Duration) casext.GCPoli
 
 		return true, nil
 	}
+}
+
+// RemoveStorage removes all repositories within image store.
+func (is *ImageStore) RemoveStorage() error {
+	repos, err := is.GetRepositories()
+	if err != nil {
+		is.log.Err(err).Str("rootDir", is.rootDir).Msg("Could not get repositories for ImageStore")
+	}
+
+	for _, repo := range repos {
+		blobsPath := path.Join(is.rootDir, repo, "blobs", "sha256")
+		fi, err := os.Stat(blobsPath)
+
+		if err != nil {
+			return err
+		}
+		// nolint: scopelint
+		if fi.IsDir() {
+			_ = filepath.Walk(blobsPath, func(blobPath string, info os.FileInfo, err error) error {
+				if err != nil {
+					return err
+				}
+
+				if !info.IsDir() {
+					return nil
+				}
+
+				if err = is.unsetImmutableAttr(blobPath); err != nil {
+					return err
+				}
+
+				if err = os.Remove(blobPath); err != nil {
+					is.log.Error().Err(err).Str("blobPath", blobPath).Msg("unable to remove blob path")
+					return err
+				}
+
+				return nil
+			})
+		}
+	}
+
+	if err := os.RemoveAll(is.rootDir); err != nil {
+		is.log.Error().Err(err).Str("rootDir", is.rootDir).Msg("unable to remove ImageStore rootDir")
+		return err
+	}
+
+	return nil
+}
+
+// setImmutableAttr sets immutable attribute on a file. (chattr +i).
+func (is *ImageStore) setImmutableAttr(blobPath string) error {
+	blobReader, err := os.OpenFile(blobPath, os.O_RDONLY, 0755)
+	if err != nil {
+		is.log.Error().Err(err).Str("blobPath", blobPath).Msg("failed to open blob")
+		return err
+	}
+	defer blobReader.Close()
+
+	// set immutable attribute
+	err = chattr.SetAttr(blobReader, chattr.FS_IMMUTABLE_FL)
+	if err != nil {
+		is.log.Error().Err(err).Str("blobPath", blobPath).Msg("Unable to set immutable attribute from blob")
+		return err
+	}
+
+	return nil
+}
+
+// unsetImmutableAttr removes immutable attribute from a file. (chattr -i).
+func (is *ImageStore) unsetImmutableAttr(blobPath string) error {
+	blobReader, err := os.OpenFile(blobPath, os.O_RDONLY, 0755)
+	if err != nil {
+		is.log.Error().Err(err).Str("blobPath", blobPath).Msg("failed to open blob")
+		return err
+	}
+	defer blobReader.Close()
+
+	attr, err := chattr.GetAttrs(blobReader)
+	if err != nil {
+		is.log.Error().Err(err).Str("blobPath", blobPath).Msg("failed to get attributes from blob")
+		return err
+	}
+
+	if attr == chattr.FS_IMMUTABLE_FL {
+		// unset immutable attribute
+		err = chattr.UnsetAttr(blobReader, chattr.FS_IMMUTABLE_FL)
+		if err != nil {
+			is.log.Error().Err(err).Str("blobPath", blobPath).Msg("Unable to remove immutable attribute from blob")
+			return err
+		}
+	}
+
+	return nil
 }

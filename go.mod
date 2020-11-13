@@ -10,6 +10,7 @@ require (
 	github.com/briandowns/spinner v1.11.1
 	github.com/chartmuseum/auth v0.4.0
 	github.com/dustin/go-humanize v1.0.0
+	github.com/g0rbe/go-chattr v0.0.0-20190906133247-aa435a6a0a37
 	github.com/getlantern/deepcopy v0.0.0-20160317154340-7f45deb8130a
 	github.com/go-chi/chi v4.0.2+incompatible // indirect
 	github.com/go-ldap/ldap/v3 v3.1.3

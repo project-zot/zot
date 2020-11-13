@@ -12,6 +12,7 @@ go_library(
         "//errors:go_default_library",
         "//pkg/log:go_default_library",
         "@com_github_apex_log//:go_default_library",
+        "@com_github_g0rbe_go_chattr//:go_default_library",
         "@com_github_gofrs_uuid//:go_default_library",
         "@com_github_opencontainers_go_digest//:go_default_library",
         "@com_github_opencontainers_image_spec//specs-go/v1:go_default_library",
