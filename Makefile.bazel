@@ -31,7 +31,7 @@ update-bazel:
 
 .PHONY: update-mod
 update-mod:
-	${BAZEL} run //:gazelle -- update -from_file=go.mod
+	${BAZEL} run //:gazelle -- update-repos -from_file=go.mod
 
 .PHONY: init
 init: setup-base update-bazel fmt-bazel

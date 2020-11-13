@@ -25,7 +25,7 @@ debug: doc
 .PHONY: test
 test:
 	$(shell mkdir -p test/data;  cd test/data; ../scripts/gen_certs.sh; cd ${TOP_LEVEL}; sudo skopeo --insecure-policy copy -q docker://public.ecr.aws/t0x7q1g8/centos:7 oci:${TOP_LEVEL}/test/data/zot-test:0.0.1;sudo skopeo --insecure-policy copy -q docker://public.ecr.aws/t0x7q1g8/centos:8 oci:${TOP_LEVEL}/test/data/zot-cve-test:0.0.1)
-	go test -tags extended -v -race -cover -coverpkg ./... -coverprofile=coverage.txt -covermode=atomic ./...
+	sudo -E env "PATH=$$PATH" go test -tags extended -v -race -cover -coverpkg ./... -coverprofile=coverage.txt -covermode=atomic ./...
 
 .PHONY: covhtml
 covhtml:

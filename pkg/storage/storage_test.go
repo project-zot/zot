@@ -69,6 +69,11 @@ func TestAPIs(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(n, ShouldEqual, len(body))
 			So(u, ShouldNotBeEmpty)
+			Convey("Check if immutable attr was added to blob", func() {
+				blobPath := il.BlobPath("test", d)
+				err = ioutil.WriteFile(blobPath, []byte("this should not work"), 0644)
+				So(err, ShouldNotBeNil)
+			})
 		})
 
 		Convey("New blob upload", func() {
@@ -101,6 +106,12 @@ func TestAPIs(t *testing.T) {
 				err = il.FinishBlobUpload("test", v, buf, d.String())
 				So(err, ShouldBeNil)
 				So(b, ShouldEqual, l)
+
+				Convey("Check if immutable attr was added to blob", func() {
+					blobPath := il.BlobPath("test", d)
+					err = ioutil.WriteFile(blobPath, []byte("this should not work"), 0644)
+					So(err, ShouldNotBeNil)
+				})
 
 				_, _, err = il.CheckBlob("test", d.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
 				So(err, ShouldBeNil)

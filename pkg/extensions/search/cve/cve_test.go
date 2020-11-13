@@ -418,7 +418,7 @@ func TestImageFormat(t *testing.T) {
 		So(isValidImage, ShouldEqual, false)
 
 		isValidImage, err = cve.IsValidImageFormat(path.Join(dbDir, "zot-nonreadable-test"))
-		So(err, ShouldNotBeNil)
+		So(err, ShouldBeNil)
 		So(isValidImage, ShouldEqual, false)
 	})
 }

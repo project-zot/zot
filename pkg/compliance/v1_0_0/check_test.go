@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
-	"os"
 	"testing"
 	"time"
 
@@ -89,7 +88,7 @@ func stopServer(ctrl *api.Controller) {
 		panic(err)
 	}
 
-	err = os.RemoveAll(ctrl.Config.Storage.RootDirectory)
+	err = ctrl.ImageStore.RemoveStorage()
 	if err != nil {
 		panic(err)
 	}
