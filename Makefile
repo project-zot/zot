@@ -5,6 +5,7 @@ COMMIT=$(if $(shell git status --porcelain --untracked-files=no),$(COMMIT_HASH)-
 CONTAINER_RUNTIME := $(shell command -v podman 2> /dev/null || echo docker)
 PATH := bin:$(PATH)
 TMPDIR := $(shell mktemp -d)
+STACKER := $(shell which stacker)
 
 .PHONY: all
 all: doc binary binary-minimal debug test check
@@ -52,13 +53,16 @@ run: binary test
 
 .PHONY: binary-container
 binary-container:
-	${CONTAINER_RUNTIME} build ${BUILD_ARGS} -f Dockerfile.build -t zot-build:latest .
+	${CONTAINER_RUNTIME} build ${BUILD_ARGS} -f Dockerfile -t zot-build:latest .
+
+.PHONY: run-container
+run-container:
 	${CONTAINER_RUNTIME} run --rm --security-opt label=disable -v $$(pwd):/go/src/github.com/anuvu/zot \
-		zot-build:latest make
+		zot-build:latest 
 
 .PHONY: binary-stacker
 binary-stacker:
-	stacker --roots-dir ${TMPDIR} build --substitute PWD=$$PWD
+	sudo ${STACKER} build --substitute PWD=$$PWD
 
 .PHONY: image
 image:
