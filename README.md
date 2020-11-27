@@ -22,7 +22,7 @@
 * Swagger based documentation
 * Single binary for _all_ the above features
 * Released under Apache 2.0 License
-* [```docker run -p 5000:5000 atomixos/zot:<tagname>```](https://hub.docker.com/repository/docker/atomixos/zot)
+* [```docker run -p 5000:5000 atomixos/zot:<tagname>```](https://hub.docker.com/r/atomixos/zot)
 * ```go get -u github.com/anuvu/zot/cmd/zot```
 
 
