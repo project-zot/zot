@@ -43,6 +43,11 @@ docs/docs.go:
 .PHONY: doc
 doc: docs/docs.go
 
+.PHONY: update-licenses
+update-licenses:
+	go get github.com/google/go-licenses
+	$(shell echo "Module | License URL | License" > THIRD-PARTY-LICENSES.md; echo "---|---|---" >> THIRD-PARTY-LICENSES.md; for i in $$(cat go.sum  | awk '{print $$1}'); do l=$$(go-licenses csv $$i 2>/dev/null); if [ $$? -ne 0 ]; then continue; fi; echo $$l | tr \, \| | tr ' ' '\n'; done | sort -u >> THIRD-PARTY-LICENSES.md)
+
 .PHONY: clean
 clean:
 	rm -f bin/zot*
