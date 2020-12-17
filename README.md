@@ -3,6 +3,9 @@
 **zot** is a vendor-neutral OCI image repository server purely based on 
 [OCI Distribution Specification](https://github.com/opencontainers/distribution-spec).
 
+https://anuvu.github.io/zot/
+
+# Features
 * Conforms to [OCI distribution spec](https://github.com/opencontainers/distribution-spec) APIs [![zot](https://github.com/opencontainers/oci-conformance/workflows/zot-1/badge.svg)](https://github.com/opencontainers/oci-conformance/tree/master/distribution-spec#anuvu/zot)
 * Uses [OCI image layout](https://github.com/opencontainers/image-spec/blob/master/image-layout.md) for image storage
 * Supports [helm charts](https://helm.sh/docs/topics/registries/)
