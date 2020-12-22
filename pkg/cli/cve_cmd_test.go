@@ -367,7 +367,7 @@ func TestServerCVEResponse(t *testing.T) {
 	})
 
 	Convey("Test images by CVE ID", t, func() {
-		args := []string{"cvetest", "--cve-id", "CVE-2019-20807"}
+		args := []string{"cvetest", "--cve-id", "CVE-2019-9923"}
 		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
 		defer os.Remove(configPath)
 		cveCmd := NewCveCommand(new(searchService))
@@ -380,7 +380,7 @@ func TestServerCVEResponse(t *testing.T) {
 		str := space.ReplaceAllString(buff.String(), " ")
 		str = strings.TrimSpace(str)
 		So(err, ShouldBeNil)
-		So(str, ShouldEqual, "IMAGE NAME TAG DIGEST SIZE zot-cve-test 0.0.1 da0186c7 75MB")
+		So(str, ShouldEqual, "IMAGE NAME TAG DIGEST SIZE zot-cve-test 0.0.1 63a795ca 75MB")
 		Convey("invalid CVE ID", func() {
 			args := []string{"cvetest", "--cve-id", "invalid"}
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
@@ -400,7 +400,7 @@ func TestServerCVEResponse(t *testing.T) {
 	})
 
 	Convey("Test fixed tags by and image name CVE ID", t, func() {
-		args := []string{"cvetest", "--cve-id", "CVE-2019-20807", "--image", "zot-cve-test", "--fixed"}
+		args := []string{"cvetest", "--cve-id", "CVE-2019-9923", "--image", "zot-cve-test", "--fixed"}
 		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
 		defer os.Remove(configPath)
 		cveCmd := NewCveCommand(new(searchService))
@@ -450,7 +450,7 @@ func TestServerCVEResponse(t *testing.T) {
 	})
 
 	Convey("Test CVE by name and CVE ID", t, func() {
-		args := []string{"cvetest", "--image", "zot-cve-test", "--cve-id", "CVE-2019-20807"}
+		args := []string{"cvetest", "--image", "zot-cve-test", "--cve-id", "CVE-2019-9923"}
 		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
 		defer os.Remove(configPath)
 		cveCmd := NewCveCommand(new(searchService))
@@ -462,7 +462,7 @@ func TestServerCVEResponse(t *testing.T) {
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
 		So(err, ShouldBeNil)
-		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIZE zot-cve-test 0.0.1 da0186c7 75MB")
+		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIZE zot-cve-test 0.0.1 63a795ca 75MB")
 		Convey("invalidname and CVE ID", func() {
 			args := []string{"cvetest", "--image", "test", "--cve-id", "CVE-20807"}
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
