@@ -244,3 +244,9 @@ Works with "docker://" transport which is the default.
 
 * go 1.12+
 * The OCI distribution spec is still WIP, and we try to keep up
+
+# Contributing
+
+We encourage and support an active, healthy community of contributors.
+
+* Details are in the (code of conduct)[CODE_OF_CONDUCT.md]
