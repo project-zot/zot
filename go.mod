@@ -3,7 +3,8 @@ module github.com/anuvu/zot
 go 1.14
 
 require (
-	github.com/99designs/gqlgen v0.12.2
+	github.com/99designs/gqlgen v0.13.0
+	github.com/agnivade/levenshtein v1.1.0 // indirect
 	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
 	github.com/apex/log v1.4.0
 	github.com/aquasecurity/trivy v0.0.0-00010101000000-000000000000
@@ -17,8 +18,10 @@ require (
 	github.com/google/go-containerregistry v0.0.0-20200331213917-3d03ed9b1ca2
 	github.com/gorilla/handlers v1.4.2
 	github.com/gorilla/mux v1.7.4
+	github.com/hashicorp/golang-lru v0.5.4 // indirect
 	github.com/json-iterator/go v1.1.9
-	github.com/mitchellh/mapstructure v1.1.2
+	github.com/matryer/moq v0.1.4 // indirect
+	github.com/mitchellh/mapstructure v1.4.1
 	github.com/nmcclain/asn1-ber v0.0.0-20170104154839-2661553a0484 // indirect
 	github.com/nmcclain/ldap v0.0.0-20191021200707-3b3b69a7e9e3
 	github.com/olekukonko/tablewriter v0.0.4
@@ -28,17 +31,22 @@ require (
 	github.com/opencontainers/umoci v0.4.7-0.20200704224433-977db481b72c
 	github.com/phayes/freeport v0.0.0-20180830031419-95f893ade6f2
 	github.com/rs/zerolog v1.17.2
+	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/smartystreets/goconvey v1.6.4
 	github.com/spf13/cobra v0.0.5
 	github.com/spf13/viper v1.6.1
 	github.com/stretchr/testify v1.6.1
 	github.com/swaggo/http-swagger v0.0.0-20190614090009-c2865af9083e
 	github.com/swaggo/swag v1.6.3
-	github.com/vektah/gqlparser/v2 v2.0.1
+	github.com/urfave/cli/v2 v2.3.0 // indirect
+	github.com/vektah/dataloaden v0.3.0 // indirect
+	github.com/vektah/gqlparser/v2 v2.1.0
 	go.etcd.io/bbolt v1.3.4
-	golang.org/x/crypto v0.0.0-20200604202706-70a84ac30bf9
+	golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9
+	golang.org/x/mod v0.4.1 // indirect
+	golang.org/x/tools v0.0.0-20210114065538-d78b04bdf963 // indirect
 	gopkg.in/resty.v1 v1.12.0
-	gopkg.in/yaml.v2 v2.2.8
+	gopkg.in/yaml.v2 v2.4.0
 )
 
 replace github.com/aquasecurity/trivy => github.com/anuvu/trivy v0.9.2-0.20200731014147-c5f97b59c172

@@ -1,22 +1,10 @@
 package cveinfo
 
 import (
-	"encoding/json"
-	"io/ioutil"
-	"os"
-	"path"
-	"sort"
-	"strings"
-
-	"github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/log"
 	integration "github.com/aquasecurity/trivy/integration"
 	config "github.com/aquasecurity/trivy/integration/config"
 	"github.com/aquasecurity/trivy/pkg/report"
-	v1 "github.com/google/go-containerregistry/pkg/v1"
-	"github.com/google/go-containerregistry/pkg/v1/types"
-	godigest "github.com/opencontainers/go-digest"
-	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
 // UpdateCVEDb ...
@@ -44,7 +32,7 @@ func ScanImage(config *config.Config) (report.Results, error) {
 	return integration.ScanTrivyImage(config.TrivyConfig)
 }
 
-func (cveinfo CveInfo) IsValidImageFormat(imagePath string) (bool, error) {
+/*func (cveinfo CveInfo) IsValidImageFormat(imagePath string) (bool, error) {
 	imageDir, inputTag := getImageDirAndTag(imagePath)
 
 	if !dirExists(imageDir) {
@@ -54,7 +42,6 @@ func (cveinfo CveInfo) IsValidImageFormat(imagePath string) (bool, error) {
 	}
 
 	manifests, err := cveinfo.getImageManifests(imageDir)
-
 	if err != nil {
 		return false, err
 	}
@@ -114,7 +101,7 @@ func getImageDirAndTag(imageName string) (string, string) {
 }
 
 // GetImageTagsWithTimestamp returns a list of image tags with timestamp available in the specified repository.
-func (cveinfo CveInfo) GetImageTagsWithTimestamp(rootDir string, repo string) ([]TagInfo, error) {
+ func (cveinfo CveInfo) GetImageTagsWithTimestamp(rootDir string, repo string) ([]TagInfo, error) {
 	tagsInfo := make([]TagInfo, 0)
 
 	dir := path.Join(rootDir, repo)
@@ -123,7 +110,6 @@ func (cveinfo CveInfo) GetImageTagsWithTimestamp(rootDir string, repo string) ([
 	}
 
 	manifests, err := cveinfo.getImageManifests(dir)
-
 	if err != nil {
 		cveinfo.Log.Error().Err(err).Msg("unable to read image manifests")
 
@@ -136,7 +122,6 @@ func (cveinfo CveInfo) GetImageTagsWithTimestamp(rootDir string, repo string) ([
 		v, ok := manifest.Annotations[ispec.AnnotationRefName]
 		if ok {
 			imageBlobManifest, err := cveinfo.getImageBlobManifest(dir, digest)
-
 			if err != nil {
 				cveinfo.Log.Error().Err(err).Msg("unable to read image blob manifest")
 
@@ -183,7 +168,7 @@ func GetFixedTags(allTags []TagInfo, infectedTags []TagInfo) []TagInfo {
 	return fixedTags
 }
 
-func (cveinfo CveInfo) getImageManifests(imagePath string) ([]ispec.Descriptor, error) {
+/*func (cveinfo CveInfo) getImageManifests(imagePath string) ([]ispec.Descriptor, error) {
 	buf, err := ioutil.ReadFile(path.Join(imagePath, "index.json"))
 
 	if err != nil {
@@ -244,4 +229,4 @@ func (cveinfo CveInfo) getImageInfo(imageDir string, hash v1.Hash) (ispec.Image,
 	}
 
 	return imageInfo, err
-}
+}*/

@@ -37,6 +37,11 @@ type BlobUpload struct {
 	ID        string
 }
 
+type TagInfo struct {
+	Name      string
+	Timestamp time.Time
+}
+
 // ImageStore provides the image storage operations.
 type ImageStore struct {
 	rootDir     string
@@ -51,7 +56,7 @@ type ImageStore struct {
 // NewImageStore returns a new image store backed by a file storage.
 func NewImageStore(rootDir string, gc bool, dedupe bool, log zlog.Logger) *ImageStore {
 	if _, err := os.Stat(rootDir); os.IsNotExist(err) {
-		if err := os.MkdirAll(rootDir, 0700); err != nil {
+		if err := os.MkdirAll(rootDir, 0o700); err != nil {
 			log.Error().Err(err).Str("rootDir", rootDir).Msg("unable to create root dir")
 			return nil
 		}
@@ -128,12 +133,11 @@ func (is *ImageStore) InitRepo(name string) error {
 	if _, err := os.Stat(ilPath); err != nil {
 		il := ispec.ImageLayout{Version: ispec.ImageLayoutVersion}
 		buf, err := json.Marshal(il)
-
 		if err != nil {
 			is.log.Panic().Err(err).Msg("unable to marshal JSON")
 		}
 
-		if err := ioutil.WriteFile(ilPath, buf, 0644); err != nil { //nolint: gosec
+		if err := ioutil.WriteFile(ilPath, buf, 0o644); err != nil { //nolint: gosec
 			is.log.Error().Err(err).Str("file", ilPath).Msg("unable to write file")
 			return err
 		}
@@ -145,12 +149,11 @@ func (is *ImageStore) InitRepo(name string) error {
 		index := ispec.Index{}
 		index.SchemaVersion = 2
 		buf, err := json.Marshal(index)
-
 		if err != nil {
 			is.log.Panic().Err(err).Msg("unable to marshal JSON")
 		}
 
-		if err := ioutil.WriteFile(indexPath, buf, 0644); err != nil { //nolint: gosec
+		if err := ioutil.WriteFile(indexPath, buf, 0o644); err != nil { //nolint: gosec
 			is.log.Error().Err(err).Str("file", indexPath).Msg("unable to write file")
 			return err
 		}
@@ -248,7 +251,7 @@ func (is *ImageStore) GetRepositories() ([]string, error) {
 			return nil
 		}
 
-		//is.log.Debug().Str("dir", path).Str("name", info.Name()).Msg("found image store")
+		// is.log.Debug().Str("dir", path).Str("name", info.Name()).Msg("found image store")
 		stores = append(stores, rel)
 
 		return nil
@@ -302,7 +305,6 @@ func (is *ImageStore) GetImageManifest(repo string, reference string) ([]byte, s
 	defer is.RUnlock()
 
 	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
-
 	if err != nil {
 		is.log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
 
@@ -431,7 +433,6 @@ func (is *ImageStore) PutImageManifest(repo string, reference string, mediaType 
 
 	dir := path.Join(is.rootDir, repo)
 	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
-
 	if err != nil {
 		is.log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
 		return "", err
@@ -445,8 +446,10 @@ func (is *ImageStore) PutImageManifest(repo string, reference string, mediaType 
 
 	updateIndex := true
 	// create a new descriptor
-	desc := ispec.Descriptor{MediaType: mediaType, Size: int64(len(body)), Digest: mDigest,
-		Platform: &ispec.Platform{Architecture: "amd64", OS: "linux"}}
+	desc := ispec.Descriptor{
+		MediaType: mediaType, Size: int64(len(body)), Digest: mDigest,
+		Platform: &ispec.Platform{Architecture: "amd64", OS: "linux"},
+	}
 	if !refIsDigest {
 		desc.Annotations = map[string]string{ispec.AnnotationRefName: reference}
 	}
@@ -497,7 +500,7 @@ func (is *ImageStore) PutImageManifest(repo string, reference string, mediaType 
 	ensureDir(dir, is.log)
 	file := path.Join(dir, mDigest.Encoded())
 
-	if err := ioutil.WriteFile(file, body, 0600); err != nil {
+	if err := ioutil.WriteFile(file, body, 0o600); err != nil {
 		is.log.Error().Err(err).Str("file", file).Msg("unable to write")
 		return "", err
 	}
@@ -513,7 +516,7 @@ func (is *ImageStore) PutImageManifest(repo string, reference string, mediaType 
 		return "", err
 	}
 
-	if err := ioutil.WriteFile(file, buf, 0644); err != nil { //nolint: gosec
+	if err := ioutil.WriteFile(file, buf, 0o644); err != nil { //nolint: gosec
 		is.log.Error().Err(err).Str("file", file).Msg("unable to write")
 		return "", err
 	}
@@ -551,7 +554,6 @@ func (is *ImageStore) DeleteImageManifest(repo string, reference string) error {
 	defer is.Unlock()
 
 	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
-
 	if err != nil {
 		is.log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
 		return err
@@ -593,7 +595,7 @@ func (is *ImageStore) DeleteImageManifest(repo string, reference string) error {
 		return err
 	}
 
-	if err := ioutil.WriteFile(file, buf, 0644); err != nil { //nolint: gosec
+	if err := ioutil.WriteFile(file, buf, 0o644); err != nil { //nolint: gosec
 		return err
 	}
 
@@ -637,8 +639,7 @@ func (is *ImageStore) NewBlobUpload(repo string) (string, error) {
 
 	u := uuid.String()
 	blobUploadPath := is.BlobUploadPath(repo, u)
-	file, err := os.OpenFile(blobUploadPath, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0600)
-
+	file, err := os.OpenFile(blobUploadPath, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0o600)
 	if err != nil {
 		return "", errors.ErrRepoNotFound
 	}
@@ -651,7 +652,6 @@ func (is *ImageStore) NewBlobUpload(repo string) (string, error) {
 func (is *ImageStore) GetBlobUpload(repo string, uuid string) (int64, error) {
 	blobUploadPath := is.BlobUploadPath(repo, uuid)
 	fi, err := os.Stat(blobUploadPath)
-
 	if err != nil {
 		if os.IsNotExist(err) {
 			return -1, errors.ErrUploadNotFound
@@ -680,7 +680,7 @@ func (is *ImageStore) PutBlobChunkStreamed(repo string, uuid string, body io.Rea
 	file, err := os.OpenFile(
 		blobUploadPath,
 		os.O_WRONLY|os.O_CREATE,
-		0600,
+		0o600,
 	)
 	if err != nil {
 		is.log.Fatal().Err(err).Msg("failed to open file")
@@ -720,7 +720,7 @@ func (is *ImageStore) PutBlobChunk(repo string, uuid string, from int64, to int6
 	file, err := os.OpenFile(
 		blobUploadPath,
 		os.O_WRONLY|os.O_CREATE,
-		0600,
+		0o600,
 	)
 	if err != nil {
 		is.log.Fatal().Err(err).Msg("failed to open file")
@@ -740,7 +740,6 @@ func (is *ImageStore) PutBlobChunk(repo string, uuid string, from int64, to int6
 func (is *ImageStore) BlobUploadInfo(repo string, uuid string) (int64, error) {
 	blobUploadPath := is.BlobUploadPath(repo, uuid)
 	fi, err := os.Stat(blobUploadPath)
-
 	if err != nil {
 		is.log.Error().Err(err).Str("blob", blobUploadPath).Msg("failed to stat blob")
 		return -1, err
@@ -844,7 +843,6 @@ func (is *ImageStore) FullBlobUpload(repo string, body io.Reader, digest string)
 	digester := sha256.New()
 	mw := io.MultiWriter(f, digester)
 	n, err := io.Copy(mw, body)
-
 	if err != nil {
 		return "", -1, err
 	}
@@ -1074,7 +1072,7 @@ func dirExists(d string) bool {
 }
 
 func ensureDir(dir string, log zerolog.Logger) {
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		log.Panic().Err(err).Str("dir", dir).Msg("unable to create dir")
 	}
 }
@@ -1083,7 +1081,6 @@ func ifOlderThan(is *ImageStore, repo string, delay time.Duration) casext.GCPoli
 	return func(ctx context.Context, digest godigest.Digest) (bool, error) {
 		blobPath := is.BlobPath(repo, digest)
 		fi, err := os.Stat(blobPath)
-
 		if err != nil {
 			return false, err
 		}

@@ -1,0 +1,8 @@
+type ImageInfo {
+     Name: String
+     Latest: String
+}
+
+type Query {
+  ImageListWithLatestTag(text: String!) :[ImageInfo]
+}

@@ -4,13 +4,16 @@ package search
 
 import (
 	"context"
+	"fmt"
 	"path"
+	"strconv"
 	"strings"
 
 	"github.com/anuvu/zot/pkg/log"
 
 	cveinfo "github.com/anuvu/zot/pkg/extensions/search/cve"
 	"github.com/anuvu/zot/pkg/storage"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 ) // THIS CODE IS A STARTING POINT ONLY. IT WILL NOT BE UPDATED WITH SCHEMA CHANGES.
 
 // Resolver ...
@@ -18,6 +21,7 @@ type Resolver struct {
 	cveInfo  *cveinfo.CveInfo
 	imgStore *storage.ImageStore
 	dir      string
+	log      log.Logger
 }
 
 // Query ...
@@ -43,10 +47,12 @@ func GetResolverConfig(dir string, log log.Logger, imgstorage *storage.ImageStor
 
 	cve := &cveinfo.CveInfo{Log: log, CveTrivyConfig: config}
 
-	resConfig := &Resolver{cveInfo: cve, imgStore: imgstorage, dir: dir}
+	resConfig := &Resolver{cveInfo: cve, imgStore: imgstorage, dir: dir, log: log}
 
-	return Config{Resolvers: resConfig, Directives: DirectiveRoot{},
-		Complexity: ComplexityRoot{}}
+	return Config{
+		Resolvers: resConfig, Directives: DirectiveRoot{},
+		Complexity: ComplexityRoot{},
+	}
 }
 
 func (r *queryResolver) CVEListForImage(ctx context.Context, image string) (*CVEResultForImage, error) {
@@ -54,7 +60,7 @@ func (r *queryResolver) CVEListForImage(ctx context.Context, image string) (*CVE
 
 	r.cveInfo.Log.Info().Str("image", image).Msg("scanning image")
 
-	isValidImage, err := r.cveInfo.IsValidImageFormat(r.cveInfo.CveTrivyConfig.TrivyConfig.Input)
+	isValidImage, err := IsValidImageFormat(r.cveInfo.CveTrivyConfig.TrivyConfig.Input, r.cveInfo.Log)
 	if !isValidImage {
 		r.cveInfo.Log.Debug().Str("image", image).Msg("image media type not supported for scanning")
 
@@ -107,8 +113,10 @@ func (r *queryResolver) CVEListForImage(ctx context.Context, image string) (*CVE
 				newPkgList = append(newPkgList,
 					&PackageInfo{Name: &pkgName, InstalledVersion: &installedVersion, FixedVersion: &fixedVersion})
 
-				cveidMap[vulnerability.VulnerabilityID] = cveDetail{Title: vulnerability.Title,
-					Description: vulnerability.Description, Severity: vulnerability.Severity, PackageList: newPkgList}
+				cveidMap[vulnerability.VulnerabilityID] = cveDetail{
+					Title:       vulnerability.Title,
+					Description: vulnerability.Description, Severity: vulnerability.Severity, PackageList: newPkgList,
+				}
 			}
 		}
 	}
@@ -162,7 +170,7 @@ func (r *queryResolver) ImageListForCve(ctx context.Context, id string) ([]*ImgR
 		for _, tag := range tagList {
 			r.cveInfo.CveTrivyConfig.TrivyConfig.Input = path.Join(r.dir, repo+":"+tag)
 
-			isValidImage, _ := r.cveInfo.IsValidImageFormat(r.cveInfo.CveTrivyConfig.TrivyConfig.Input)
+			isValidImage, _ := IsValidImageFormat(r.cveInfo.CveTrivyConfig.TrivyConfig.Input, r.cveInfo.Log)
 			if !isValidImage {
 				r.cveInfo.Log.Debug().Str("image", repo+":"+tag).Msg("image media type not supported for scanning")
 
@@ -205,35 +213,35 @@ func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, im
 
 	r.cveInfo.Log.Info().Str("image", image).Msg("extracting list of tags available in image")
 
-	tagsInfo, err := r.cveInfo.GetImageTagsWithTimestamp(r.dir, image)
+	tagsInfo, err := GetImageTagsWithTimestamp(r.dir, image, r.cveInfo.Log)
 	if err != nil {
 		r.cveInfo.Log.Error().Err(err).Msg("unable to read image tags")
 
 		return imgResultForFixedCVE, err
 	}
 
-	infectedTags := make([]cveinfo.TagInfo, 0)
+	infectedTags := make([]TagInfo, 0)
 
 	var hasCVE bool
 
 	for _, tag := range tagsInfo {
-		r.cveInfo.CveTrivyConfig.TrivyConfig.Input = path.Join(r.dir, image+":"+tag.Name)
+		r.cveInfo.CveTrivyConfig.TrivyConfig.Input = path.Join(r.dir, fmt.Sprintf("%s:%s", image, *tag.Name))
 
-		isValidImage, _ := r.cveInfo.IsValidImageFormat(r.cveInfo.CveTrivyConfig.TrivyConfig.Input)
+		isValidImage, _ := IsValidImageFormat(r.cveInfo.CveTrivyConfig.TrivyConfig.Input, r.cveInfo.Log)
 		if !isValidImage {
 			r.cveInfo.Log.Debug().Str("image",
-				image+":"+tag.Name).Msg("image media type not supported for scanning, adding as an infected image")
+				fmt.Sprintf("%s:%s", image, *tag.Name)).Msg("image media type not supported for scanning, adding as an infected image")
 
-			infectedTags = append(infectedTags, cveinfo.TagInfo{Name: tag.Name, Timestamp: tag.Timestamp})
+			infectedTags = append(infectedTags, TagInfo{Name: tag.Name, Timestamp: tag.Timestamp})
 
 			continue
 		}
 
-		r.cveInfo.Log.Info().Str("image", image+":"+tag.Name).Msg("scanning image")
+		r.cveInfo.Log.Info().Str("image", fmt.Sprintf("%s:%s", image, *tag.Name)).Msg("scanning image")
 
 		results, err := cveinfo.ScanImage(r.cveInfo.CveTrivyConfig)
 		if err != nil {
-			r.cveInfo.Log.Error().Err(err).Str("image", image+":"+tag.Name).Msg("unable to scan image")
+			r.cveInfo.Log.Error().Err(err).Str("image", fmt.Sprintf("%s:%s", image, *tag.Name)).Msg("unable to scan image")
 
 			continue
 		}
@@ -251,7 +259,7 @@ func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, im
 		}
 
 		if hasCVE {
-			infectedTags = append(infectedTags, cveinfo.TagInfo{Name: tag.Name, Timestamp: tag.Timestamp})
+			infectedTags = append(infectedTags, TagInfo{Name: tag.Name, Timestamp: tag.Timestamp})
 		}
 	}
 
@@ -260,7 +268,7 @@ func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, im
 	if len(infectedTags) != 0 {
 		r.cveInfo.Log.Info().Msg("comparing fixed tags timestamp")
 
-		fixedTags := cveinfo.GetFixedTags(tagsInfo, infectedTags)
+		fixedTags := GetFixedTags(tagsInfo, infectedTags)
 
 		finalTagList = getGraphqlCompatibleTags(fixedTags)
 	} else {
@@ -274,16 +282,95 @@ func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, im
 	return imgResultForFixedCVE, nil
 }
 
-func getGraphqlCompatibleTags(fixedTags []cveinfo.TagInfo) []*TagInfo {
-	finalTagList := make([]*TagInfo, 0)
+func (r *queryResolver) ImageListWithLatestTag(ctx context.Context) ([]*ImageInfo, error) {
+	r.log.Info().Msg("extension api: finding image list")
+	var result []*ImageInfo
 
-	for _, tag := range fixedTags {
-		copyTag := tag.Name
+	repoList, err := r.imgStore.GetRepositories()
+	if err != nil {
+		r.log.Error().Err(err).Msg("extension api: error extracting repositories list")
 
-		copyTimeStamp := tag.Timestamp
-
-		finalTagList = append(finalTagList, &TagInfo{Name: &copyTag, Timestamp: &copyTimeStamp})
+		return result, err
 	}
 
-	return finalTagList
+	for _, repo := range repoList {
+		r.log.Info().Msg("extension api: reading repositories list")
+
+		tagsInfo, err := GetImageTagsWithTimestamp(r.dir, repo, r.log)
+		if err != nil {
+			r.log.Error().Err(err).Msg("extension api: error getting tag timestamp info")
+
+			return result, nil
+		}
+
+		if len(tagsInfo) == 0 {
+			continue
+		}
+
+		latestTag := getLatestTag(tagsInfo)
+
+		manifestByte, _, _, err := r.imgStore.GetImageManifest(repo, *latestTag.Name)
+		if err != nil {
+			r.log.Error().Err(err).Msg("extension api: error reading manifest")
+
+			return result, nil
+		}
+
+		manifest, err := unmarshalManifest(manifestByte)
+		if err != nil {
+			r.log.Error().Err(err).Msg("extension api: error reading manifest")
+
+			return result, err
+		}
+
+		size := strconv.FormatInt(manifest.Config.Size, 10)
+
+		name := repo
+
+		imageConfig, err := getManifestConfigBlob(path.Join(r.dir, repo), manifest.Config.Digest, r.log)
+		if err != nil {
+			r.log.Error().Err(err).Msg("extension api: error reading image config")
+
+			return result, err
+		}
+
+		labels := imageConfig.Config.Labels
+
+		// Read Description
+
+		desc, ok := labels[ispec.AnnotationDescription]
+		if !ok {
+			desc, ok = labels[LabelAnnotationDescription]
+			if !ok {
+				desc = ""
+			}
+		}
+
+		// Read licenses
+		license, ok := labels[ispec.AnnotationLicenses]
+		if !ok {
+			license, ok = labels[LabelAnnotationLicenses]
+			if !ok {
+				license = ""
+			}
+		}
+
+		// Read vendor
+		vendor, ok := labels[ispec.AnnotationVendor]
+		if !ok {
+			vendor, ok = labels[LabelAnnotationVendor]
+			if !ok {
+				vendor = ""
+			}
+		}
+
+		categories, ok := labels[AnnotationLabels]
+		if !ok {
+			categories = ""
+		}
+
+		result = append(result, &ImageInfo{Name: &name, Latest: latestTag.Name, Description: &desc, Licenses: &license, Vendor: &vendor, Labels: &categories, Size: &size, LastUpdated: latestTag.Timestamp})
+	}
+
+	return result, nil
 }
