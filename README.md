@@ -250,3 +250,5 @@ Works with "docker://" transport which is the default.
 We encourage and support an active, healthy community of contributors.
 
 * Details are in the [code of conduct](CODE_OF_CONDUCT.md)
+* Details to get started on code development are in
+[contributing](CONTRIBUTING.md) document.
