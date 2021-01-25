@@ -35,7 +35,19 @@ type ImgResultForDigest {
 
 type TagInfo {
      Name: String
+     Digest: String
      Timestamp: Time
+}
+
+type ImageInfo {
+     Name: String
+     Latest: String
+     LastUpdated: Time
+     Description: String
+     Licenses: String
+     Vendor: String
+     Size: String
+     Labels: String
 }
 
 type Query {
@@ -43,4 +55,5 @@ type Query {
   ImageListForCVE(id: String!) :[ImgResultForCVE]
   ImageListWithCVEFixed(id: String!, image: String!) :ImgResultForFixedCVE
   ImageListForDigest(id: String!) :[ImgResultForDigest]
+  ImageListWithLatestTag:[ImageInfo]
 }
