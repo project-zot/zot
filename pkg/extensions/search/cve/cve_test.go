@@ -95,7 +95,8 @@ func testSetup() error {
 	log := log.NewLogger("debug", "")
 
 	storeController := storage.StoreController{DefaultStore: storage.NewImageStore(dir, false, false, log)}
-	layoutUtils := common.NewOciLayoutUtils(storeController, log)
+
+	layoutUtils := common.NewOciLayoutUtils(log)
 
 	cve = &cveinfo.CveInfo{Log: log, StoreController: storeController, LayoutUtils: layoutUtils}
 
@@ -116,30 +117,30 @@ func testSetup() error {
 
 func generateTestData() error { // nolint: gocyclo
 	// Image dir with no files
-	err := os.Mkdir(path.Join(dbDir, "zot-noindex-test"), 0755)
+	err := os.Mkdir(path.Join(dbDir, "zot-noindex-test"), 0o755)
 	if err != nil {
 		return err
 	}
 
-	err = os.Mkdir(path.Join(dbDir, "zot-nonreadable-test"), 0755)
+	err = os.Mkdir(path.Join(dbDir, "zot-nonreadable-test"), 0o755)
 	if err != nil {
 		return err
 	}
 
 	index := ispec.Index{}
 	index.SchemaVersion = 2
-	buf, err := json.Marshal(index)
 
+	buf, err := json.Marshal(index)
 	if err != nil {
 		return err
 	}
 
-	if err = ioutil.WriteFile(path.Join(dbDir, "zot-nonreadable-test", "index.json"), buf, 0111); err != nil {
+	if err = ioutil.WriteFile(path.Join(dbDir, "zot-nonreadable-test", "index.json"), buf, 0o111); err != nil {
 		return err
 	}
 
 	// Image dir with invalid index.json
-	err = os.Mkdir(path.Join(dbDir, "zot-squashfs-invalid-index"), 0755)
+	err = os.Mkdir(path.Join(dbDir, "zot-squashfs-invalid-index"), 0o755)
 	if err != nil {
 		return err
 	}
@@ -152,7 +153,7 @@ func generateTestData() error { // nolint: gocyclo
 	}
 
 	// Image dir with no blobs
-	err = os.Mkdir(path.Join(dbDir, "zot-squashfs-noblobs"), 0755)
+	err = os.Mkdir(path.Join(dbDir, "zot-squashfs-noblobs"), 0o755)
 	if err != nil {
 		return err
 	}
@@ -166,7 +167,7 @@ func generateTestData() error { // nolint: gocyclo
 	}
 
 	// Image dir with invalid blob
-	err = os.MkdirAll(path.Join(dbDir, "zot-squashfs-invalid-blob", "blobs/sha256"), 0755)
+	err = os.MkdirAll(path.Join(dbDir, "zot-squashfs-invalid-blob", "blobs/sha256"), 0o755)
 	if err != nil {
 		return err
 	}
@@ -189,7 +190,7 @@ func generateTestData() error { // nolint: gocyclo
 
 	// Create a squashfs image
 
-	err = os.MkdirAll(path.Join(dbDir, "zot-squashfs-test", "blobs/sha256"), 0755)
+	err = os.MkdirAll(path.Join(dbDir, "zot-squashfs-test", "blobs/sha256"), 0o755)
 	if err != nil {
 		return err
 	}
@@ -201,11 +202,11 @@ func generateTestData() error { // nolint: gocyclo
 		return err
 	}
 
-	if err = ioutil.WriteFile(path.Join(dbDir, "zot-squashfs-test", "oci-layout"), buf, 0644); err != nil { //nolint: gosec
+	if err = ioutil.WriteFile(path.Join(dbDir, "zot-squashfs-test", "oci-layout"), buf, 0o644); err != nil { //nolint: gosec
 		return err
 	}
 
-	err = os.Mkdir(path.Join(dbDir, "zot-squashfs-test", ".uploads"), 0755)
+	err = os.Mkdir(path.Join(dbDir, "zot-squashfs-test", ".uploads"), 0o755)
 	if err != nil {
 		return err
 	}
@@ -261,7 +262,7 @@ func generateTestData() error { // nolint: gocyclo
 
 	// Create a image with invalid layer blob
 
-	err = os.MkdirAll(path.Join(dbDir, "zot-invalid-layer", "blobs/sha256"), 0755)
+	err = os.MkdirAll(path.Join(dbDir, "zot-invalid-layer", "blobs/sha256"), 0o755)
 	if err != nil {
 		return err
 	}
@@ -289,7 +290,7 @@ func generateTestData() error { // nolint: gocyclo
 
 	// Create a image with no layer blob
 
-	err = os.MkdirAll(path.Join(dbDir, "zot-no-layer", "blobs/sha256"), 0755)
+	err = os.MkdirAll(path.Join(dbDir, "zot-no-layer", "blobs/sha256"), 0o755)
 	if err != nil {
 		return err
 	}
@@ -319,7 +320,7 @@ func generateTestData() error { // nolint: gocyclo
 }
 
 func makeTestFile(fileName string, content string) error {
-	if err := ioutil.WriteFile(fileName, []byte(content), 0600); err != nil {
+	if err := ioutil.WriteFile(fileName, []byte(content), 0o600); err != nil {
 		panic(err)
 	}
 
@@ -379,7 +380,7 @@ func makeHtpasswdFile() string {
 
 	// bcrypt(username="test", passwd="test")
 	content := []byte("test:$2y$05$hlbSXDp6hzDLu6VwACS39ORvVRpr3OMR4RlJ31jtlaOEGnPjKZI1m\n")
-	if err := ioutil.WriteFile(f.Name(), content, 0600); err != nil {
+	if err := ioutil.WriteFile(f.Name(), content, 0o600); err != nil {
 		panic(err)
 	}
 
@@ -432,18 +433,6 @@ func TestMultipleStoragePath(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(cveInfo.StoreController.DefaultStore, ShouldNotBeNil)
 		So(cveInfo.StoreController.SubStore, ShouldNotBeNil)
-
-		imagePath := cveInfo.LayoutUtils.GetImageRepoPath("zot-test")
-		So(imagePath, ShouldEqual, path.Join(firstRootDir, "zot-test"))
-
-		imagePath = cveInfo.LayoutUtils.GetImageRepoPath("a/zot-a-test")
-		So(imagePath, ShouldEqual, path.Join(secondRootDir, "a/zot-a-test"))
-
-		imagePath = cveInfo.LayoutUtils.GetImageRepoPath("b/zot-b-test")
-		So(imagePath, ShouldEqual, path.Join(thirdRootDir, "b/zot-b-test"))
-
-		imagePath = cveInfo.LayoutUtils.GetImageRepoPath("c/zot-c-test")
-		So(imagePath, ShouldEqual, path.Join(firstRootDir, "c/zot-c-test"))
 	})
 }
 
@@ -454,90 +443,6 @@ func TestDownloadDB(t *testing.T) {
 		// Test Invalid dir download
 		err = cveinfo.UpdateCVEDb("./testdata1", cve.Log)
 		So(err, ShouldNotBeNil)
-	})
-}
-
-func TestImageFormat(t *testing.T) {
-	Convey("Test valid image", t, func() {
-		isValidImage, err := cve.IsValidImageFormat(path.Join(dbDir, "zot-test"))
-		So(err, ShouldBeNil)
-		So(isValidImage, ShouldEqual, true)
-
-		isValidImage, err = cve.IsValidImageFormat(path.Join(dbDir, "zot-test:0.0.1"))
-		So(err, ShouldBeNil)
-		So(isValidImage, ShouldEqual, true)
-
-		isValidImage, err = cve.IsValidImageFormat(path.Join(dbDir, "zot-test:0.0."))
-		So(err, ShouldBeNil)
-		So(isValidImage, ShouldEqual, false)
-
-		isValidImage, err = cve.IsValidImageFormat(path.Join(dbDir, "zot-noindex-test"))
-		So(err, ShouldNotBeNil)
-		So(isValidImage, ShouldEqual, false)
-
-		isValidImage, err = cve.IsValidImageFormat(path.Join(dbDir, "zot--tet"))
-		So(err, ShouldNotBeNil)
-		So(isValidImage, ShouldEqual, false)
-
-		isValidImage, err = cve.IsValidImageFormat(path.Join(dbDir, "zot-noindex-test"))
-		So(err, ShouldNotBeNil)
-		So(isValidImage, ShouldEqual, false)
-
-		isValidImage, err = cve.IsValidImageFormat(path.Join(dbDir, "zot-squashfs-noblobs"))
-		So(err, ShouldNotBeNil)
-		So(isValidImage, ShouldEqual, false)
-
-		isValidImage, err = cve.IsValidImageFormat(path.Join(dbDir, "zot-squashfs-invalid-index"))
-		So(err, ShouldNotBeNil)
-		So(isValidImage, ShouldEqual, false)
-
-		isValidImage, err = cve.IsValidImageFormat(path.Join(dbDir, "zot-squashfs-invalid-blob"))
-		So(err, ShouldNotBeNil)
-		So(isValidImage, ShouldEqual, false)
-
-		isValidImage, err = cve.IsValidImageFormat(path.Join(dbDir, "zot-squashfs-test:0.3.22-squashfs"))
-		So(err, ShouldNotBeNil)
-		So(isValidImage, ShouldEqual, false)
-
-		isValidImage, err = cve.IsValidImageFormat(path.Join(dbDir, "zot-nonreadable-test"))
-		So(err, ShouldNotBeNil)
-		So(isValidImage, ShouldEqual, false)
-	})
-}
-
-func TestImageTag(t *testing.T) {
-	Convey("Test image tag", t, func() {
-		imageTags, err := cve.GetImageTagsWithTimestamp("zot-test")
-		So(err, ShouldBeNil)
-		So(len(imageTags), ShouldNotEqual, 0)
-
-		imageTags, err = cve.GetImageTagsWithTimestamp("zot-tes")
-		So(err, ShouldNotBeNil)
-		So(imageTags, ShouldBeNil)
-
-		imageTags, err = cve.GetImageTagsWithTimestamp("zot-noindex-test")
-		So(err, ShouldNotBeNil)
-		So(len(imageTags), ShouldEqual, 0)
-
-		imageTags, err = cve.GetImageTagsWithTimestamp("zot-squashfs-noblobs")
-		So(err, ShouldNotBeNil)
-		So(len(imageTags), ShouldEqual, 0)
-
-		imageTags, err = cve.GetImageTagsWithTimestamp("zot-squashfs-invalid-index")
-		So(err, ShouldNotBeNil)
-		So(len(imageTags), ShouldEqual, 0)
-
-		imageTags, err = cve.GetImageTagsWithTimestamp("zot-squashfs-invalid-blob")
-		So(err, ShouldNotBeNil)
-		So(len(imageTags), ShouldEqual, 0)
-
-		imageTags, err = cve.GetImageTagsWithTimestamp("zot-invalid-layer")
-		So(err, ShouldNotBeNil)
-		So(len(imageTags), ShouldEqual, 0)
-
-		imageTags, err = cve.GetImageTagsWithTimestamp("zot-no-layer")
-		So(err, ShouldNotBeNil)
-		So(len(imageTags), ShouldEqual, 0)
 	})
 }
 

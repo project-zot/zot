@@ -3,52 +3,31 @@ package common
 
 import (
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/log"
-	"github.com/anuvu/zot/pkg/storage"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/types"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
-// CveInfo ...
+// OciLayoutInfo ...
 type OciLayoutUtils struct {
-	Log             log.Logger
-	StoreController storage.StoreController
+	Log log.Logger
 }
 
 // NewOciLayoutUtils initializes a new OciLayoutUtils object.
-func NewOciLayoutUtils(storeController storage.StoreController, log log.Logger) *OciLayoutUtils {
-	return &OciLayoutUtils{Log: log, StoreController: storeController}
+func NewOciLayoutUtils(log log.Logger) *OciLayoutUtils {
+	return &OciLayoutUtils{Log: log}
 }
 
 // Below method will return image path including root dir, root dir is determined by splitting.
-func (olu OciLayoutUtils) GetImageRepoPath(image string) string {
-	var rootDir string
-
-	prefixName := GetRoutePrefix(image)
-
-	subStore := olu.StoreController.SubStore
-
-	if subStore != nil {
-		imgStore, ok := olu.StoreController.SubStore[prefixName]
-		if ok {
-			rootDir = imgStore.RootDir()
-		} else {
-			rootDir = olu.StoreController.DefaultStore.RootDir()
-		}
-	} else {
-		rootDir = olu.StoreController.DefaultStore.RootDir()
-	}
-
-	return path.Join(rootDir, image)
-}
 
 func (olu OciLayoutUtils) GetImageManifests(imagePath string) ([]ispec.Descriptor, error) {
 	buf, err := ioutil.ReadFile(path.Join(imagePath, "index.json"))
@@ -113,17 +92,93 @@ func (olu OciLayoutUtils) GetImageInfo(imageDir string, hash v1.Hash) (ispec.Ima
 	return imageInfo, err
 }
 
-func GetRoutePrefix(name string) string {
-	names := strings.SplitN(name, "/", 2)
+func (olu OciLayoutUtils) IsValidImageFormat(imagePath string) (bool, error) {
+	imageDir, inputTag := GetImageDirAndTag(imagePath)
 
-	if len(names) != 2 { // nolint: gomnd
-		// it means route is of global storage e.g "centos:latest"
-		if len(names) == 1 {
-			return "/"
+	if !DirExists(imageDir) {
+		olu.Log.Error().Msg("image directory doesn't exist")
+
+		return false, errors.ErrRepoNotFound
+	}
+
+	manifests, err := olu.GetImageManifests(imageDir)
+
+	if err != nil {
+		return false, err
+	}
+
+	for _, m := range manifests {
+		tag, ok := m.Annotations[ispec.AnnotationRefName]
+
+		if ok && inputTag != "" && tag != inputTag {
+			continue
+		}
+
+		blobManifest, err := olu.GetImageBlobManifest(imageDir, m.Digest)
+		if err != nil {
+			return false, err
+		}
+
+		imageLayers := blobManifest.Layers
+
+		for _, imageLayer := range imageLayers {
+			switch imageLayer.MediaType {
+			case types.OCILayer, types.DockerLayer:
+				return true, nil
+
+			default:
+				olu.Log.Debug().Msg("image media type not supported for scanning")
+				return false, errors.ErrScanNotSupported
+			}
 		}
 	}
 
-	return fmt.Sprintf("/%s", names[0])
+	return false, nil
+}
+
+// GetImageTagsWithTimestamp returns a list of image tags with timestamp available in the specified repository.
+func (olu OciLayoutUtils) GetImageTagsWithTimestamp(repo string) ([]TagInfo, error) {
+	tagsInfo := make([]TagInfo, 0)
+
+	manifests, err := olu.GetImageManifests(repo)
+	if err != nil {
+		olu.Log.Error().Err(err).Msg("unable to read image manifests")
+
+		return tagsInfo, err
+	}
+
+	for _, manifest := range manifests {
+		digest := manifest.Digest
+
+		v, ok := manifest.Annotations[ispec.AnnotationRefName]
+		if ok {
+			imageBlobManifest, err := olu.GetImageBlobManifest(repo, digest)
+			if err != nil {
+				olu.Log.Error().Err(err).Msg("unable to read image blob manifest")
+
+				return tagsInfo, err
+			}
+
+			imageInfo, err := olu.GetImageInfo(repo, imageBlobManifest.Config.Digest)
+			if err != nil {
+				olu.Log.Error().Err(err).Msg("unable to read image info")
+
+				return tagsInfo, err
+			}
+
+			var timeStamp time.Time
+
+			if len(imageInfo.History) != 0 {
+				timeStamp = *imageInfo.History[0].Created
+			} else {
+				timeStamp = time.Time{}
+			}
+
+			tagsInfo = append(tagsInfo, TagInfo{Name: v, Timestamp: timeStamp, Digest: digest.String()})
+		}
+	}
+
+	return tagsInfo, nil
 }
 
 func DirExists(d string) bool {
