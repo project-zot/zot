@@ -15,7 +15,6 @@ import (
 	ext "github.com/anuvu/zot/pkg/extensions"
 	digestinfo "github.com/anuvu/zot/pkg/extensions/search/digest"
 	"github.com/anuvu/zot/pkg/log"
-	"github.com/anuvu/zot/pkg/storage"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 )
@@ -79,9 +78,7 @@ func testSetup() error {
 
 	log := log.NewLogger("debug", "")
 
-	storeController := storage.StoreController{DefaultStore: storage.NewImageStore(rootDir, false, false, log)}
-
-	digestInfo = digestinfo.NewDigestInfo(storeController, log)
+	digestInfo = digestinfo.NewDigestInfo(log)
 
 	return nil
 }
@@ -134,30 +131,30 @@ func copyFiles(sourceDir string, destDir string) error {
 func TestDigestInfo(t *testing.T) {
 	Convey("Test image tag", t, func() {
 		// Search by manifest digest
-		imageTags, err := digestInfo.GetImageTagsByDigest("zot-cve-test", "63a795ca")
+		imageTags, err := digestInfo.GetImageTagsByDigest(path.Join(rootDir, "zot-cve-test"), "63a795ca")
 		So(err, ShouldBeNil)
 		So(len(imageTags), ShouldEqual, 1)
 		So(*imageTags[0], ShouldEqual, "0.0.1")
 
 		// Search by config digest
-		imageTags, err = digestInfo.GetImageTagsByDigest("zot-test", "adf3bb6c")
+		imageTags, err = digestInfo.GetImageTagsByDigest(path.Join(rootDir, "zot-test"), "adf3bb6c")
 		So(err, ShouldBeNil)
 		So(len(imageTags), ShouldEqual, 1)
 		So(*imageTags[0], ShouldEqual, "0.0.1")
 
 		// Search by layer digest
-		imageTags, err = digestInfo.GetImageTagsByDigest("zot-cve-test", "7a0437f0")
+		imageTags, err = digestInfo.GetImageTagsByDigest(path.Join(rootDir, "zot-cve-test"), "7a0437f0")
 		So(err, ShouldBeNil)
 		So(len(imageTags), ShouldEqual, 1)
 		So(*imageTags[0], ShouldEqual, "0.0.1")
 
 		// Search by non-existent image
-		imageTags, err = digestInfo.GetImageTagsByDigest("zot-tes", "63a795ca")
+		imageTags, err = digestInfo.GetImageTagsByDigest(path.Join(rootDir, "zot-tes"), "63a795ca")
 		So(err, ShouldNotBeNil)
 		So(len(imageTags), ShouldEqual, 0)
 
 		// Search by non-existent digest
-		imageTags, err = digestInfo.GetImageTagsByDigest("zot-test", "111")
+		imageTags, err = digestInfo.GetImageTagsByDigest(path.Join(rootDir, "zot-test"), "111")
 		So(err, ShouldBeNil)
 		So(len(imageTags), ShouldEqual, 0)
 	})
