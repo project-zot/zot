@@ -26,4 +26,5 @@ type CveTrivyController struct {
 type TagInfo struct {
 	Name      string
 	Timestamp time.Time
+	Digest    string
 }

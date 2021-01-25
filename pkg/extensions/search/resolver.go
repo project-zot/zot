@@ -5,10 +5,13 @@ package search
 import (
 	"context"
 	"fmt"
+	"path"
+	"strconv"
 	"strings"
 
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/aquasecurity/trivy/integration/config"
+	godigest "github.com/opencontainers/go-digest"
 
 	cveinfo "github.com/anuvu/zot/pkg/extensions/search/cve"
 	digestinfo "github.com/anuvu/zot/pkg/extensions/search/digest"
@@ -44,10 +47,13 @@ func GetResolverConfig(log log.Logger, storeController storage.StoreController) 
 	}
 
 	digestInfo := digestinfo.NewDigestInfo(storeController, log)
+
 	resConfig := &Resolver{cveInfo: cveInfo, storeController: storeController, digestInfo: digestInfo}
 
-	return Config{Resolvers: resConfig, Directives: DirectiveRoot{},
-		Complexity: ComplexityRoot{}}
+	return Config{
+		Resolvers: resConfig, Directives: DirectiveRoot{},
+		Complexity: ComplexityRoot{},
+	}
 }
 
 func (r *queryResolver) CVEListForImage(ctx context.Context, image string) (*CVEResultForImage, error) {
@@ -108,8 +114,10 @@ func (r *queryResolver) CVEListForImage(ctx context.Context, image string) (*CVE
 				newPkgList = append(newPkgList,
 					&PackageInfo{Name: &pkgName, InstalledVersion: &installedVersion, FixedVersion: &fixedVersion})
 
-				cveidMap[vulnerability.VulnerabilityID] = cveDetail{Title: vulnerability.Title,
-					Description: vulnerability.Description, Severity: vulnerability.Severity, PackageList: newPkgList}
+				cveidMap[vulnerability.VulnerabilityID] = cveDetail{
+					Title:       vulnerability.Title,
+					Description: vulnerability.Description, Severity: vulnerability.Severity, PackageList: newPkgList,
+				}
 			}
 		}
 	}
@@ -239,18 +247,20 @@ func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, im
 		isValidImage, _ := r.cveInfo.IsValidImageFormat(trivyConfig.TrivyConfig.Input)
 		if !isValidImage {
 			r.cveInfo.Log.Debug().Str("image",
-				image+":"+tag.Name).Msg("image media type not supported for scanning, adding as an infected image")
+				fmt.Sprintf("%s:%s", image, tag.Name)).
+				Msg("image media type not supported for scanning, adding as an infected image")
 
 			infectedTags = append(infectedTags, cveinfo.TagInfo{Name: tag.Name, Timestamp: tag.Timestamp})
 
 			continue
 		}
 
-		r.cveInfo.Log.Info().Str("image", image+":"+tag.Name).Msg("scanning image")
+		r.cveInfo.Log.Info().Str("image", fmt.Sprintf("%s:%s", image, tag.Name)).Msg("scanning image")
 
 		results, err := cveinfo.ScanImage(trivyConfig)
 		if err != nil {
-			r.cveInfo.Log.Error().Err(err).Str("image", image+":"+tag.Name).Msg("unable to scan image")
+			r.cveInfo.Log.Error().Err(err).
+				Str("image", fmt.Sprintf("%s:%s", image, tag.Name)).Msg("unable to scan image")
 
 			continue
 		}
@@ -268,7 +278,7 @@ func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, im
 		}
 
 		if hasCVE {
-			infectedTags = append(infectedTags, cveinfo.TagInfo{Name: tag.Name, Timestamp: tag.Timestamp})
+			infectedTags = append(infectedTags, cveinfo.TagInfo{Name: tag.Name, Timestamp: tag.Timestamp, Digest: tag.Digest})
 		}
 	}
 
@@ -364,16 +374,115 @@ func (r *queryResolver) getImageListForDigest(repoList []string, digest string) 
 	return imgResultForDigest, errResult
 }
 
-func getGraphqlCompatibleTags(fixedTags []cveinfo.TagInfo) []*TagInfo {
-	finalTagList := make([]*TagInfo, 0)
+func (r *queryResolver) ImageListWithLatestTag(ctx context.Context) ([]*ImageInfo, error) {
+	r.cveInfo.Log.Info().Msg("extension api: finding image list")
 
-	for _, tag := range fixedTags {
-		copyTag := tag.Name
+	imageList := make([]*ImageInfo, 0)
 
-		copyTimeStamp := tag.Timestamp
+	defaultStore := r.storeController.DefaultStore
 
-		finalTagList = append(finalTagList, &TagInfo{Name: &copyTag, Timestamp: &copyTimeStamp})
+	dsImageList, err := r.getImageListWithLatestTimeStamp(defaultStore)
+	if err != nil {
+		r.cveInfo.Log.Error().Err(err).Msg("extension api: error extracting default store image list")
+
+		return imageList, err
 	}
 
-	return finalTagList
+	if len(dsImageList) != 0 {
+		imageList = append(imageList, dsImageList...)
+	}
+
+	subStore := r.storeController.SubStore
+
+	for _, store := range subStore {
+		ssImageList, err := r.getImageListWithLatestTimeStamp(store)
+		if err != nil {
+			r.cveInfo.Log.Error().Err(err).Msg("extension api: error extracting default store image list")
+
+			return imageList, err
+		}
+
+		if len(ssImageList) != 0 {
+			imageList = append(imageList, ssImageList...)
+		}
+	}
+
+	return imageList, nil
+}
+
+func (r *queryResolver) getImageListWithLatestTimeStamp(store *storage.ImageStore) ([]*ImageInfo, error) {
+	results := make([]*ImageInfo, 0)
+
+	repoList, err := store.GetRepositories()
+	if err != nil {
+		r.cveInfo.Log.Error().Err(err).Msg("extension api: error extracting repositories list")
+
+		return results, err
+	}
+
+	if len(repoList) == 0 {
+		r.cveInfo.Log.Info().Msg("no repositories found")
+	}
+
+	dir := store.RootDir()
+
+	for _, repo := range repoList {
+		tagsInfo, err := r.cveInfo.GetImageTagsWithTimestamp(repo)
+		if err != nil {
+			r.cveInfo.Log.Error().Err(err).Msg("extension api: error getting tag timestamp info")
+
+			return results, nil
+		}
+
+		if len(tagsInfo) == 0 {
+			r.cveInfo.Log.Info().Str("no tagsinfo found for repo", repo).Msg(" continuing traversing")
+
+			continue
+		}
+
+		latestTag := cveinfo.GetLatestTag(tagsInfo)
+
+		digest := godigest.Digest(latestTag.Digest)
+
+		manifest, err := r.cveInfo.LayoutUtils.GetImageBlobManifest(repo, digest)
+		if err != nil {
+			r.cveInfo.Log.Error().Err(err).Msg("extension api: error reading manifest")
+
+			return results, err
+		}
+
+		size := strconv.FormatInt(manifest.Config.Size, 10)
+
+		name := repo
+
+		imageConfig, err := r.cveInfo.LayoutUtils.GetImageInfo(path.Join(dir, repo), manifest.Config.Digest)
+		if err != nil {
+			r.cveInfo.Log.Error().Err(err).Msg("extension api: error reading image config")
+
+			return results, err
+		}
+
+		labels := imageConfig.Config.Labels
+
+		// Read Description
+
+		desc := getDescription(labels)
+
+		// Read licenses
+		license := getLicense(labels)
+
+		// Read vendor
+		vendor := getVendor(labels)
+
+		// Read categories
+		categories := getCategories(labels)
+
+		results = append(results, &ImageInfo{
+			Name: &name, Latest: &latestTag.Name,
+			Description: &desc, Licenses: &license, Vendor: &vendor,
+			Labels: &categories, Size: &size, LastUpdated: &latestTag.Timestamp,
+		})
+	}
+
+	return results, nil
 }

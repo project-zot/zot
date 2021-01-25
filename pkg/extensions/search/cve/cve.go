@@ -252,7 +252,7 @@ func (cveinfo CveInfo) GetImageTagsWithTimestamp(repo string) ([]TagInfo, error)
 
 			timeStamp := *imageInfo.History[0].Created
 
-			tagsInfo = append(tagsInfo, TagInfo{Name: v, Timestamp: timeStamp})
+			tagsInfo = append(tagsInfo, TagInfo{Name: v, Timestamp: timeStamp, Digest: digest.String()})
 		}
 	}
 
@@ -281,4 +281,12 @@ func GetFixedTags(allTags []TagInfo, infectedTags []TagInfo) []TagInfo {
 	}
 
 	return fixedTags
+}
+
+func GetLatestTag(allTags []TagInfo) TagInfo {
+	sort.Slice(allTags, func(i, j int) bool {
+		return allTags[i].Timestamp.Before(allTags[j].Timestamp)
+	})
+
+	return allTags[len(allTags)-1]
 }
