@@ -1,4 +1,4 @@
-# zot [![Build Status](https://travis-ci.org/anuvu/zot.svg?branch=master)](https://travis-ci.org/anuvu/zot) [![codecov.io](http://codecov.io/github/anuvu/zot/coverage.svg?branch=master)](http://codecov.io/github/anuvu/zot?branch=master)
+# zot [![Build Status](https://travis-ci.org/anuvu/zot.svg?branch=master)](https://travis-ci.org/anuvu/zot) [![codecov.io](http://codecov.io/github/anuvu/zot/coverage.svg?branch=master)](http://codecov.io/github/anuvu/zot?branch=master) [![Conformance Results](https://github.com/anuvu/zot/workflows/conformance/badge.svg)](https://github.com/anuvu/zot/actions?query=workflow%3Aconformance)
 
 **zot** is a vendor-neutral OCI image repository server purely based on 
 [OCI Distribution Specification](https://github.com/opencontainers/distribution-spec).
@@ -6,7 +6,7 @@
 https://anuvu.github.io/zot/
 
 # Features
-* Conforms to [OCI distribution spec](https://github.com/opencontainers/distribution-spec) APIs [![zot](https://github.com/opencontainers/oci-conformance/workflows/zot-1/badge.svg)](https://github.com/opencontainers/oci-conformance/tree/master/distribution-spec#anuvu/zot)
+* Conforms to [OCI distribution spec](https://github.com/opencontainers/distribution-spec) APIs
 * Uses [OCI image layout](https://github.com/opencontainers/image-spec/blob/master/image-layout.md) for image storage
 * Supports [helm charts](https://helm.sh/docs/topics/registries/)
 * Currently suitable for on-prem deployments (e.g. colocated with Kubernetes)

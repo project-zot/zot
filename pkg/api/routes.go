@@ -906,6 +906,7 @@ func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request)
 	rh.c.Log.Info().Int64("r.ContentLength", r.ContentLength).Msg("DEBUG")
 
 	contentPresent := true
+
 	contentLen, err := strconv.ParseInt(r.Header.Get("Content-Length"), 10, 64)
 
 	if err != nil {
@@ -1067,6 +1068,7 @@ func (rh *RouteHandler) ListRepositories(w http.ResponseWriter, r *http.Request)
 func getContentRange(r *http.Request) (int64 /* from */, int64 /* to */, error) {
 	contentRange := r.Header.Get("Content-Range")
 	tokens := strings.Split(contentRange, "-")
+
 	from, err := strconv.ParseInt(tokens[0], 10, 64)
 
 	if err != nil {
