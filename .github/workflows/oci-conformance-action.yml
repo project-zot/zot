@@ -1,0 +1,58 @@
+# This is a conformance test workflow that is automatically triggered with each PR
+
+name: conformance
+
+# Controls when the action will run. Workflow runs when manually triggered using the UI
+# or API.
+on:
+  push:
+    branches: 
+      - master
+  pull_request:
+    branches:
+      - master
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+    - name: setup docker
+      uses: docker-practice/actions-setup-docker@0.0.1
+      with: 
+        docker_version: 18.09
+        docker_channel: stable
+    - name: checkout this PR 
+      uses: actions/checkout@v2
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+        path: zot
+        repository: anuvu/zot
+    - name: start zot server
+      run: |
+          cd ./zot
+          IP=`hostname -I | awk '{print $1}'`
+          echo "ZOT_URL=http://${IP}:5000" >> $GITHUB_ENV
+          ZOT_REF="local-zot:v$(date +%Y%m%d%H%M%S)"
+          docker build -f ./Dockerfile-conformance -t "${ZOT_REF}" .
+          docker run --rm -p 5000:5000 -v "$(pwd)":/go/src/github.com/anuvu/zot -idt "${ZOT_REF}"
+    - name: Run OCI Distribution Spec conformance tests
+      uses: opencontainers/distribution-spec@master
+      env:
+        OCI_ROOT_URL: ${{ env.ZOT_URL }}
+        OCI_NAMESPACE: oci-conformance/distribution-test
+        OCI_TEST_PULL: 1
+        OCI_TEST_PUSH: 1
+        OCI_TEST_CONTENT_DISCOVERY: 1
+        OCI_TEST_CONTENT_MANGEMENT: 1
+        OCI_HIDE_SKIPPED_WORKFLOWS: 1
+    - run: mkdir -p .out/ && mv {report.html,junit.xml} .out/
+      if: always()
+      #run: docker run --rm -v $(pwd)/results:/results -w /results -e OCI_ROOT_URL=${{ env.OCI_ROOT_URL }} -e OCI_NAMESPACE="anuvu/zot" -e OCI_TEST_PULL=1 -e OCI_TEST_PUSH=1 -e OCI_TEST_CONTENT_DISCOVERY=1 -e OCI_TEST_CONTENT_MANAGEMENT=1 -e OCI_HIDE_SKIPPED_WORKFLOWS=0 -e OCI_DEBUG="true" ghcr.io/opencontainers/distribution-spec/conformance:db4cc68
+    - name: Upload test results zip as build artifact
+      uses: actions/upload-artifact@v1
+      with:
+        name: oci-test-results-${{ github.sha }}
+        path: .out/
+      if: github.event == 'push'

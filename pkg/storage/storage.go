@@ -636,9 +636,10 @@ func (is *ImageStore) NewBlobUpload(repo string) (string, error) {
 	}
 
 	u := uuid.String()
-	blobUploadPath := is.BlobUploadPath(repo, u)
-	file, err := os.OpenFile(blobUploadPath, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0600)
 
+	blobUploadPath := is.BlobUploadPath(repo, u)
+
+	file, err := os.OpenFile(blobUploadPath, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0600)
 	if err != nil {
 		return "", errors.ErrRepoNotFound
 	}

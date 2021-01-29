@@ -1525,6 +1525,78 @@ func TestHTTPReadOnly(t *testing.T) {
 	})
 }
 
+func TestCrossRepoMount(t *testing.T) {
+	Convey("Cross Repo Mount", t, func() {
+		config := api.NewConfig()
+		config.HTTP.Port = SecurePort1
+		htpasswdPath := makeHtpasswdFileFromString(getCredString(username, passphrase))
+
+		// defer os.Remove(htpasswdPath)
+
+		config.HTTP.Auth = &api.AuthConfig{
+			HTPasswd: api.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+		}
+
+		c := api.NewController(config)
+
+		dir, err := ioutil.TempDir("", "oci-repo-test")
+		if err != nil {
+			panic(err)
+		}
+
+		err = copyFiles("../../test/data", dir)
+		if err != nil {
+			panic(err)
+		}
+		// defer os.RemoveAll(dir)
+
+		c.Config.Storage.RootDirectory = dir
+
+		go func() {
+			// this blocks
+			if err := c.Run(); err != nil {
+				return
+			}
+		}()
+
+		// wait till ready
+		for {
+			_, err := resty.R().Get(BaseURL1)
+			if err == nil {
+				break
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		params := make(map[string]string)
+
+		params["mount"] = "63a795ca90aa6e7cca60941e826810a4cd0a2e73ea02bf458241df2a5c973e29"
+		params["from"] = "zot-test"
+
+		client := resty.New()
+		postResponse, err := client.R().
+			SetBasicAuth(username, passphrase).SetQueryParams(params).
+			Post(BaseURL1 + "/v2/zot-c-test/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(postResponse.StatusCode(), ShouldEqual, 202)
+
+		postResponse, err = client.R().
+			SetBasicAuth(username, passphrase).SetQueryParams(params).
+			Post(BaseURL1 + "/v2/zot-cve-test/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(postResponse.StatusCode(), ShouldEqual, 500)
+
+		postResponse, err = client.R().
+			SetBasicAuth(username, passphrase).SetQueryParams(params).
+			Post(BaseURL1 + "/v2/ /blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(postResponse.StatusCode(), ShouldEqual, 404)
+	})
+}
+
 func TestParallelRequests(t *testing.T) {
 	testCases := []struct {
 		srcImageName  string

@@ -626,10 +626,23 @@ func (rh *RouteHandler) CreateBlobUpload(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// blob mounts not allowed since we don't have access control yet, and this
-	// may be a uncommon use case, but remain compliant
-	if _, ok := r.URL.Query()["mount"]; ok {
-		w.WriteHeader(http.StatusMethodNotAllowed)
+	// currently zot does not support cross-repository mounting, following dist-spec and returning 202
+	if mountDigests, ok := r.URL.Query()["mount"]; ok {
+		if len(mountDigests) != 1 {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		u, err := rh.c.ImageStore.NewBlobUpload(name)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Location", path.Join(r.URL.String(), u))
+		w.Header().Set(BlobUploadUUID, u)
+		w.WriteHeader(http.StatusAccepted)
+
 		return
 	}
 
@@ -906,8 +919,8 @@ func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request)
 	rh.c.Log.Info().Int64("r.ContentLength", r.ContentLength).Msg("DEBUG")
 
 	contentPresent := true
-	contentLen, err := strconv.ParseInt(r.Header.Get("Content-Length"), 10, 64)
 
+	contentLen, err := strconv.ParseInt(r.Header.Get("Content-Length"), 10, 64)
 	if err != nil {
 		contentPresent = false
 	}
@@ -1067,8 +1080,8 @@ func (rh *RouteHandler) ListRepositories(w http.ResponseWriter, r *http.Request)
 func getContentRange(r *http.Request) (int64 /* from */, int64 /* to */, error) {
 	contentRange := r.Header.Get("Content-Range")
 	tokens := strings.Split(contentRange, "-")
-	from, err := strconv.ParseInt(tokens[0], 10, 64)
 
+	from, err := strconv.ParseInt(tokens[0], 10, 64)
 	if err != nil {
 		return -1, -1, errors.ErrBadUploadRange
 	}
@@ -1087,8 +1100,8 @@ func getContentRange(r *http.Request) (int64 /* from */, int64 /* to */, error) 
 
 func WriteJSON(w http.ResponseWriter, status int, data interface{}) {
 	var json = jsoniter.ConfigCompatibleWithStandardLibrary
-	body, err := json.Marshal(data)
 
+	body, err := json.Marshal(data)
 	if err != nil {
 		panic(err)
 	}
