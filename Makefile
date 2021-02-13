@@ -12,15 +12,15 @@ all: doc binary binary-minimal debug test check
 
 .PHONY: binary-minimal
 binary-minimal: doc
-	go build -tags minimal -v  -ldflags "-X  github.com/anuvu/zot/pkg/api.Commit=${COMMIT}" -o bin/zot-minimal ./cmd/zot
+	go build -tags minimal -v  -ldflags "-X  github.com/anuvu/zot/pkg/api.Commit=${COMMIT} -X github.com/anuvu/zot/pkg/api.BinaryType=minimal" -o bin/zot-minimal ./cmd/zot
 
 .PHONY: binary
 binary: doc
-	go build -tags extended -v -ldflags "-X  github.com/anuvu/zot/pkg/api.Commit=${COMMIT}" -o bin/zot ./cmd/zot
+	go build -tags extended -v -ldflags "-X  github.com/anuvu/zot/pkg/api.Commit=${COMMIT} -X github.com/anuvu/zot/pkg/api.BinaryType=extended" -o bin/zot ./cmd/zot
 
 .PHONY: debug
 debug: doc
-	go build -tags extended -v -gcflags all='-N -l' -ldflags "-X  github.com/anuvu/zot/pkg/api.Commit=${COMMIT}" -o bin/zot-debug ./cmd/zot
+	go build -tags extended -v -gcflags all='-N -l' -ldflags "-X  github.com/anuvu/zot/pkg/api.Commit=${COMMIT} -X github.com/anuvu/zot/pkg/api.BinaryType=extended" -o bin/zot-debug ./cmd/zot
 
 .PHONY: test
 test:

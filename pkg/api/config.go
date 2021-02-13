@@ -8,8 +8,11 @@ import (
 	dspec "github.com/opencontainers/distribution-spec"
 )
 
-// Commit ...
-var Commit string //nolint: gochecknoglobals
+// Global vars...
+var (
+	Commit     string // nolint: gochecknoglobals
+	BinaryType string // nolint: gochecknoglobals
+)
 
 type StorageConfig struct {
 	RootDirectory string
@@ -72,6 +75,7 @@ type LogConfig struct {
 type Config struct {
 	Version    string
 	Commit     string
+	BinaryType string
 	Storage    StorageConfig
 	HTTP       HTTPConfig
 	Log        *LogConfig
@@ -80,11 +84,12 @@ type Config struct {
 
 func NewConfig() *Config {
 	return &Config{
-		Version: dspec.Version,
-		Commit:  Commit,
-		Storage: StorageConfig{GC: true, Dedupe: true},
-		HTTP:    HTTPConfig{Address: "127.0.0.1", Port: "8080"},
-		Log:     &LogConfig{Level: "debug"},
+		Version:    dspec.Version,
+		Commit:     Commit,
+		BinaryType: BinaryType,
+		Storage:    StorageConfig{GC: true, Dedupe: true},
+		HTTP:       HTTPConfig{Address: "127.0.0.1", Port: "8080"},
+		Log:        &LogConfig{Level: "debug"},
 	}
 }
 
