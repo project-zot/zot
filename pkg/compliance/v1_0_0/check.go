@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"strings"
 	"testing"
 
@@ -45,6 +46,8 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 	}
 
 	baseURL := fmt.Sprintf("http://%s:%s", config.Address, config.Port)
+
+	storageInfo := config.StorageInfo
 
 	fmt.Println("------------------------------")
 	fmt.Println("Checking for v1.0.0 compliance")
@@ -459,6 +462,11 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			loc := Location(baseURL, resp)
 			So(loc, ShouldNotBeEmpty)
 
+			// since we are not specifying any prefix i.e provided in config while starting server,
+			// so it should store repo7 to global root dir
+			_, err = os.Stat(path.Join(storageInfo[0], "repo7"))
+			So(err, ShouldBeNil)
+
 			resp, err = resty.R().Get(loc)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 204)
@@ -685,6 +693,276 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			resp, err = resty.R().Post(baseURL + "/v2/repotest123/blobs/uploads/")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 202)
+		})
+
+		Convey("Multiple Storage", func() {
+			// test APIS on subpath routes, default storage already tested above
+			// subpath route firsttest
+			resp, err := resty.R().Post(baseURL + "/v2/firsttest/first/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 202)
+			firstloc := Location(baseURL, resp)
+			So(firstloc, ShouldNotBeEmpty)
+
+			resp, err = resty.R().Get(firstloc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 204)
+
+			// if firsttest route is used as prefix in url that means repo should be stored in subpaths["firsttest"] rootdir
+			_, err = os.Stat(path.Join(storageInfo[1], "firsttest/first"))
+			So(err, ShouldBeNil)
+
+			// subpath route secondtest
+			resp, err = resty.R().Post(baseURL + "/v2/secondtest/second/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 202)
+			secondloc := Location(baseURL, resp)
+			So(secondloc, ShouldNotBeEmpty)
+
+			resp, err = resty.R().Get(secondloc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 204)
+
+			// if secondtest route is used as prefix in url that means repo should be stored in subpaths["secondtest"] rootdir
+			_, err = os.Stat(path.Join(storageInfo[2], "secondtest/second"))
+			So(err, ShouldBeNil)
+
+			content := []byte("this is a blob5")
+			digest := godigest.FromBytes(content)
+			So(digest, ShouldNotBeNil)
+			// monolithic blob upload: success
+			// first test
+			resp, err = resty.R().SetQueryParam("digest", digest.String()).
+				SetHeader("Content-Type", "application/octet-stream").SetBody(content).Put(firstloc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 201)
+			firstblobLoc := resp.Header().Get("Location")
+			So(firstblobLoc, ShouldNotBeEmpty)
+			So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
+			So(resp.Header().Get(api.DistContentDigestKey), ShouldNotBeEmpty)
+
+			// second test
+			resp, err = resty.R().SetQueryParam("digest", digest.String()).
+				SetHeader("Content-Type", "application/octet-stream").SetBody(content).Put(secondloc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 201)
+			secondblobLoc := resp.Header().Get("Location")
+			So(secondblobLoc, ShouldNotBeEmpty)
+			So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
+			So(resp.Header().Get(api.DistContentDigestKey), ShouldNotBeEmpty)
+
+			// check a non-existent manifest
+			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+				SetBody(content).Head(baseURL + "/v2/unknown/manifests/test:1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 404)
+
+			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+				SetBody(content).Head(baseURL + "/v2/firsttest/unknown/manifests/test:1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 404)
+
+			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+				SetBody(content).Head(baseURL + "/v2/secondtest/unknown/manifests/test:1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 404)
+
+			// create a manifest
+			m := ispec.Manifest{
+				Config: ispec.Descriptor{
+					Digest: digest,
+					Size:   int64(len(content)),
+				},
+				Layers: []ispec.Descriptor{
+					{
+						MediaType: "application/vnd.oci.image.layer.v1.tar",
+						Digest:    digest,
+						Size:      int64(len(content)),
+					},
+				},
+			}
+			m.SchemaVersion = 2
+			content, err = json.Marshal(m)
+			So(err, ShouldBeNil)
+			digest = godigest.FromBytes(content)
+			So(digest, ShouldNotBeNil)
+			// subpath firsttest
+			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+				SetBody(content).Put(baseURL + "/v2/firsttest/first/manifests/test:1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 201)
+			d := resp.Header().Get(api.DistContentDigestKey)
+			So(d, ShouldNotBeEmpty)
+			So(d, ShouldEqual, digest.String())
+
+			// subpath secondtest
+			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+				SetBody(content).Put(baseURL + "/v2/secondtest/second/manifests/test:1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 201)
+			d = resp.Header().Get(api.DistContentDigestKey)
+			So(d, ShouldNotBeEmpty)
+			So(d, ShouldEqual, digest.String())
+
+			content = []byte("this is a blob5")
+			digest = godigest.FromBytes(content)
+			So(digest, ShouldNotBeNil)
+			// create a manifest with same blob but a different tag
+			m = ispec.Manifest{
+				Config: ispec.Descriptor{
+					Digest: digest,
+					Size:   int64(len(content)),
+				},
+				Layers: []ispec.Descriptor{
+					{
+						MediaType: "application/vnd.oci.image.layer.v1.tar",
+						Digest:    digest,
+						Size:      int64(len(content)),
+					},
+				},
+			}
+			m.SchemaVersion = 2
+			content, err = json.Marshal(m)
+			So(err, ShouldBeNil)
+			digest = godigest.FromBytes(content)
+			So(digest, ShouldNotBeNil)
+
+			// subpath firsttest
+			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+				SetBody(content).Put(baseURL + "/v2/firsttest/first/manifests/test:2.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 201)
+			d = resp.Header().Get(api.DistContentDigestKey)
+			So(d, ShouldNotBeEmpty)
+			So(d, ShouldEqual, digest.String())
+
+			// subpath secondtest
+			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+				SetBody(content).Put(baseURL + "/v2/secondtest/second/manifests/test:2.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 201)
+			d = resp.Header().Get(api.DistContentDigestKey)
+			So(d, ShouldNotBeEmpty)
+			So(d, ShouldEqual, digest.String())
+
+			// check/get by tag
+			resp, err = resty.R().Head(baseURL + "/v2/firsttest/first/manifests/test:1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+			resp, err = resty.R().Get(baseURL + "/v2/firsttest/first/manifests/test:1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+			So(resp.Body(), ShouldNotBeEmpty)
+			resp, err = resty.R().Head(baseURL + "/v2/secondtest/second/manifests/test:1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+			resp, err = resty.R().Get(baseURL + "/v2/secondtest/second/manifests/test:1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+			So(resp.Body(), ShouldNotBeEmpty)
+
+			// check/get by reference
+			resp, err = resty.R().Head(baseURL + "/v2/firsttest/first/manifests/" + digest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+			resp, err = resty.R().Get(baseURL + "/v2/firsttest/first/manifests/" + digest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+			So(resp.Body(), ShouldNotBeEmpty)
+
+			resp, err = resty.R().Head(baseURL + "/v2/secondtest/second/manifests/" + digest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+			resp, err = resty.R().Get(baseURL + "/v2/secondtest/second/manifests/" + digest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+			So(resp.Body(), ShouldNotBeEmpty)
+
+			// delete manifest by tag should fail
+			resp, err = resty.R().Delete(baseURL + "/v2/firsttest/first/manifests/test:1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 400)
+
+			resp, err = resty.R().Delete(baseURL + "/v2/secondtest/second/manifests/test:1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 400)
+
+			// delete manifest by digest
+			resp, err = resty.R().Delete(baseURL + "/v2/firsttest/first/manifests/" + digest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 202)
+
+			resp, err = resty.R().Delete(baseURL + "/v2/secondtest/second/manifests/" + digest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 202)
+
+			// delete manifest by digest
+			resp, err = resty.R().Delete(baseURL + "/v2/firsttest/first/manifests/" + digest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 404)
+
+			resp, err = resty.R().Delete(baseURL + "/v2/secondtest/second/manifests/" + digest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 404)
+
+			// delete again should fail
+			resp, err = resty.R().Delete(baseURL + "/v2/firsttest/first/manifests/" + digest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 404)
+
+			resp, err = resty.R().Delete(baseURL + "/v2/secondtest/second/manifests/" + digest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 404)
+
+			// check/get by tag
+			resp, err = resty.R().Head(baseURL + "/v2/firsttest/first/manifests/test:1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 404)
+			resp, err = resty.R().Get(baseURL + "/v2/firsttest/first/manifests/test:1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 404)
+			So(resp.Body(), ShouldNotBeEmpty)
+
+			resp, err = resty.R().Head(baseURL + "/v2/secondtest/second/manifests/test:1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 404)
+			resp, err = resty.R().Get(baseURL + "/v2/secondtest/second/manifests/test:1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 404)
+			So(resp.Body(), ShouldNotBeEmpty)
+
+			resp, err = resty.R().Head(baseURL + "/v2/firsttest/first/repo7/manifests/test:2.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 404)
+			resp, err = resty.R().Get(baseURL + "/v2/firsttest/first/manifests/test:2.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 404)
+			So(resp.Body(), ShouldNotBeEmpty)
+
+			resp, err = resty.R().Head(baseURL + "/v2/secondtest/second/manifests/test:2.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 404)
+			resp, err = resty.R().Get(baseURL + "/v2/secondtest/second/manifests/test:2.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 404)
+			So(resp.Body(), ShouldNotBeEmpty)
+
+			// check/get by reference
+			resp, err = resty.R().Head(baseURL + "/v2/firsttest/first/manifests/" + digest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 404)
+			resp, err = resty.R().Get(baseURL + "/v2/firsttest/first/manifests/" + digest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 404)
+			So(resp.Body(), ShouldNotBeEmpty)
+
+			resp, err = resty.R().Head(baseURL + "/v2/secondtest/second/manifests/" + digest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 404)
+			resp, err = resty.R().Get(baseURL + "/v2/secondtest/second/manifests/" + digest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 404)
+			So(resp.Body(), ShouldNotBeEmpty)
 		})
 	})
 }

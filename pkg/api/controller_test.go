@@ -371,6 +371,136 @@ func TestBasicAuth(t *testing.T) {
 	})
 }
 
+func TestMultipleInstance(t *testing.T) {
+	Convey("Negative test zot multiple instance", t, func() {
+		config := api.NewConfig()
+		config.HTTP.Port = SecurePort1
+		htpasswdPath := makeHtpasswdFile()
+		defer os.Remove(htpasswdPath)
+
+		config.HTTP.Auth = &api.AuthConfig{
+			HTPasswd: api.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+		}
+		c := api.NewController(config)
+		err := c.Run()
+		So(err, ShouldEqual, errors.ErrImgStoreNotFound)
+
+		globalDir, err := ioutil.TempDir("", "oci-repo-test")
+		if err != nil {
+			panic(err)
+		}
+		defer os.RemoveAll(globalDir)
+
+		subDir, err := ioutil.TempDir("/tmp", "oci-sub-test")
+		if err != nil {
+			panic(err)
+		}
+		defer os.RemoveAll(subDir)
+
+		c.Config.Storage.RootDirectory = globalDir
+		subPathMap := make(map[string]api.StorageConfig)
+
+		subPathMap["/a"] = api.StorageConfig{RootDirectory: subDir}
+
+		go func() {
+			if err := c.Run(); err != nil {
+				return
+			}
+		}()
+
+		// wait till ready
+		for {
+			_, err := resty.R().Get(BaseURL1)
+			if err == nil {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		defer func() {
+			ctx := context.Background()
+			_ = c.Server.Shutdown(ctx)
+		}()
+
+		client := resty.New()
+
+		tagResponse, err := client.R().SetBasicAuth(username, passphrase).
+			Get(BaseURL1 + "/v2/zot-test/tags/list")
+		So(err, ShouldBeNil)
+		So(tagResponse.StatusCode(), ShouldEqual, 404)
+	})
+
+	Convey("Test zot multiple instance", t, func() {
+		config := api.NewConfig()
+		config.HTTP.Port = SecurePort1
+		htpasswdPath := makeHtpasswdFile()
+		defer os.Remove(htpasswdPath)
+
+		config.HTTP.Auth = &api.AuthConfig{
+			HTPasswd: api.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+		}
+		c := api.NewController(config)
+		globalDir, err := ioutil.TempDir("", "oci-repo-test")
+		if err != nil {
+			panic(err)
+		}
+		defer os.RemoveAll(globalDir)
+
+		subDir, err := ioutil.TempDir("/tmp", "oci-sub-test")
+		if err != nil {
+			panic(err)
+		}
+		defer os.RemoveAll(subDir)
+
+		c.Config.Storage.RootDirectory = globalDir
+		subPathMap := make(map[string]api.StorageConfig)
+
+		subPathMap["/a"] = api.StorageConfig{RootDirectory: subDir}
+		go func() {
+			// this blocks
+			if err := c.Run(); err != nil {
+				return
+			}
+		}()
+
+		// wait till ready
+		for {
+			_, err := resty.R().Get(BaseURL1)
+			if err == nil {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		defer func() {
+			ctx := context.Background()
+			_ = c.Server.Shutdown(ctx)
+		}()
+
+		// without creds, should get access error
+		resp, err := resty.R().Get(BaseURL1 + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 401)
+		var e api.Error
+		err = json.Unmarshal(resp.Body(), &e)
+		So(err, ShouldBeNil)
+
+		// with creds, should get expected status code
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 404)
+
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/v2/")
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+	})
+}
+
 func TestTLSWithBasicAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		caCert, err := ioutil.ReadFile(CACert)
@@ -1820,13 +1950,13 @@ func TestParallelRequests(t *testing.T) {
 		{
 			srcImageName:  "zot-cve-test",
 			srcImageTag:   "0.0.1",
-			destImageName: "zot-3-test",
+			destImageName: "a/zot-3-test",
 			testCaseName:  "Request-3",
 		},
 		{
 			srcImageName:  "zot-cve-test",
 			srcImageTag:   "0.0.1",
-			destImageName: "zot-4-test",
+			destImageName: "b/zot-4-test",
 			testCaseName:  "Request-4",
 		},
 		{
@@ -1881,13 +2011,13 @@ func TestParallelRequests(t *testing.T) {
 		{
 			srcImageName:  "zot-cve-test",
 			srcImageTag:   "0.0.1",
-			destImageName: "zot-3-test",
+			destImageName: "a/zot-3-test",
 			testCaseName:  "Request-13",
 		},
 		{
 			srcImageName:  "zot-cve-test",
 			srcImageTag:   "0.0.1",
-			destImageName: "zot-4-test",
+			destImageName: "b/zot-4-test",
 			testCaseName:  "Request-14",
 		},
 	}
@@ -1895,8 +2025,6 @@ func TestParallelRequests(t *testing.T) {
 	config := api.NewConfig()
 	config.HTTP.Port = SecurePort1
 	htpasswdPath := makeHtpasswdFileFromString(getCredString(username, passphrase))
-
-	// defer os.Remove(htpasswdPath)
 
 	config.HTTP.Auth = &api.AuthConfig{
 		HTPasswd: api.AuthHTPasswd{
@@ -1911,11 +2039,23 @@ func TestParallelRequests(t *testing.T) {
 		panic(err)
 	}
 
-	err = copyFiles("../../test/data", dir)
+	firstSubDir, err := ioutil.TempDir("", "oci-sub-dir")
 	if err != nil {
 		panic(err)
 	}
-	//defer os.RemoveAll(dir)
+
+	secondSubDir, err := ioutil.TempDir("", "oci-sub-dir")
+	if err != nil {
+		panic(err)
+	}
+
+	subPaths := make(map[string]api.StorageConfig)
+
+	subPaths["/a"] = api.StorageConfig{RootDirectory: firstSubDir}
+	subPaths["/b"] = api.StorageConfig{RootDirectory: secondSubDir}
+
+	c.Config.Storage.SubPaths = subPaths
+
 	c.Config.Storage.RootDirectory = dir
 
 	go func() {
@@ -1939,7 +2079,7 @@ func TestParallelRequests(t *testing.T) {
 	for i, testcase := range testCases {
 		testcase := testcase
 		j := i
-		//println(i)
+
 		t.Run(testcase.testCaseName, func(t *testing.T) {
 			t.Parallel()
 			client := resty.New()
@@ -1949,7 +2089,7 @@ func TestParallelRequests(t *testing.T) {
 			assert.Equal(t, err, nil, "Error should be nil")
 			assert.NotEqual(t, tagResponse.StatusCode(), 400, "bad request")
 
-			manifestList := getAllManifests(path.Join(c.Config.Storage.RootDirectory, testcase.srcImageName))
+			manifestList := getAllManifests(path.Join("../../test/data", testcase.srcImageName))
 
 			for _, manifest := range manifestList {
 				headResponse, err := client.R().SetBasicAuth(username, passphrase).
@@ -1963,7 +2103,7 @@ func TestParallelRequests(t *testing.T) {
 				assert.Equal(t, getResponse.StatusCode(), 404, "response status code should return 404")
 			}
 
-			blobList := getAllBlobs(path.Join(c.Config.Storage.RootDirectory, testcase.srcImageName))
+			blobList := getAllBlobs(path.Join("../../test/data", testcase.srcImageName))
 
 			for _, blob := range blobList {
 				// Get request of blob
@@ -1981,7 +2121,7 @@ func TestParallelRequests(t *testing.T) {
 				assert.Equal(t, err, nil, "Should not be nil")
 				assert.NotEqual(t, getResponse.StatusCode(), 500, "internal server error should not occurred")
 
-				blobPath := path.Join(c.Config.Storage.RootDirectory, testcase.srcImageName, "blobs/sha256", blob)
+				blobPath := path.Join("../../test/data", testcase.srcImageName, "blobs/sha256", blob)
 
 				buf, err := ioutil.ReadFile(blobPath)
 				if err != nil {
@@ -2050,9 +2190,6 @@ func TestParallelRequests(t *testing.T) {
 								SetHeader("Content-Range", fmt.Sprintf("%d", readContent)+"-"+fmt.Sprintf("%d", readContent+n-1)).
 								SetBasicAuth(username, passphrase).
 								Patch(BaseURL1 + "/v2/" + testcase.destImageName + "/blobs/uploads/" + sessionID)
-							if err != nil {
-								panic(err)
-							}
 
 							assert.Equal(t, err, nil, "Error should be nil")
 							assert.NotEqual(t, patchResponse.StatusCode(), 500, "response status code should not return 500")
@@ -2272,4 +2409,80 @@ func stopServer(ctrl *api.Controller) {
 	if err != nil {
 		panic(err)
 	}
+}
+
+func TestHardLink(t *testing.T) {
+	Convey("Validate hard link", t, func() {
+		config := api.NewConfig()
+		config.HTTP.Port = SecurePort1
+		htpasswdPath := makeHtpasswdFileFromString(getCredString(username, passphrase))
+
+		config.HTTP.Auth = &api.AuthConfig{
+			HTPasswd: api.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+		}
+
+		c := api.NewController(config)
+
+		dir, err := ioutil.TempDir("", "hard-link-test")
+		if err != nil {
+			panic(err)
+		}
+		defer os.RemoveAll(dir)
+
+		err = os.Chmod(dir, 0400)
+		if err != nil {
+			panic(err)
+		}
+
+		subDir, err := ioutil.TempDir("", "sub-hardlink-test")
+		if err != nil {
+			panic(err)
+		}
+		defer os.RemoveAll(subDir)
+
+		err = os.Chmod(subDir, 0400)
+		if err != nil {
+			panic(err)
+		}
+
+		c.Config.Storage.RootDirectory = dir
+		subPaths := make(map[string]api.StorageConfig)
+
+		subPaths["/a"] = api.StorageConfig{RootDirectory: subDir, Dedupe: true}
+
+		c.Config.Storage.SubPaths = subPaths
+
+		go func() {
+			// this blocks
+			if err := c.Run(); err != nil {
+				return
+			}
+		}()
+
+		time.Sleep(5 * time.Second)
+
+		// wait till ready
+		for {
+			_, err := resty.R().Get(BaseURL1)
+			if err == nil {
+				break
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		err = os.Chmod(dir, 0644)
+		if err != nil {
+			panic(err)
+		}
+
+		err = os.Chmod(subDir, 0644)
+		if err != nil {
+			panic(err)
+		}
+
+		So(c.Config.Storage.Dedupe, ShouldEqual, false)
+	})
 }

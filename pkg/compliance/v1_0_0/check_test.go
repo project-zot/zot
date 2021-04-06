@@ -18,24 +18,35 @@ import (
 // nolint: gochecknoglobals
 var (
 	listenAddress = "127.0.0.1"
+	defaultDir    = ""
+	firstDir      = ""
+	secondDir     = ""
 )
 
 func TestWorkflows(t *testing.T) {
 	ctrl, randomPort := startServer()
 	defer stopServer(ctrl)
+
+	storageInfo := []string{defaultDir, firstDir, secondDir}
+
 	v1_0_0.CheckWorkflows(t, &compliance.Config{
-		Address: listenAddress,
-		Port:    randomPort,
+		Address:     listenAddress,
+		Port:        randomPort,
+		StorageInfo: storageInfo,
 	})
 }
 
 func TestWorkflowsOutputJSON(t *testing.T) {
 	ctrl, randomPort := startServer()
 	defer stopServer(ctrl)
+
+	storageInfo := []string{defaultDir, firstDir, secondDir}
+
 	v1_0_0.CheckWorkflows(t, &compliance.Config{
-		Address:    listenAddress,
-		Port:       randomPort,
-		OutputJSON: true,
+		Address:     listenAddress,
+		Port:        randomPort,
+		OutputJSON:  true,
+		StorageInfo: storageInfo,
 	})
 }
 
@@ -59,7 +70,30 @@ func startServer() (*api.Controller, string) {
 		panic(err)
 	}
 
+	defaultDir = dir
+
+	firstSubDir, err := ioutil.TempDir("", "oci-repo-test")
+	if err != nil {
+		panic(err)
+	}
+
+	firstDir = firstSubDir
+
+	secondSubDir, err := ioutil.TempDir("", "oci-repo-test")
+	if err != nil {
+		panic(err)
+	}
+
+	secondDir = secondSubDir
+
+	subPaths := make(map[string]api.StorageConfig)
+
+	subPaths["/firsttest"] = api.StorageConfig{RootDirectory: firstSubDir}
+	subPaths["/secondtest"] = api.StorageConfig{RootDirectory: secondSubDir}
+
 	ctrl.Config.Storage.RootDirectory = dir
+
+	ctrl.Config.Storage.SubPaths = subPaths
 
 	go func() {
 		// this blocks

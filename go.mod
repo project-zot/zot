@@ -9,6 +9,7 @@ require (
 	github.com/aquasecurity/trivy v0.0.0-00010101000000-000000000000
 	github.com/briandowns/spinner v1.11.1
 	github.com/chartmuseum/auth v0.4.0
+	github.com/containers/storage v1.29.0
 	github.com/dustin/go-humanize v1.0.0
 	github.com/getlantern/deepcopy v0.0.0-20160317154340-7f45deb8130a
 	github.com/go-chi/chi v4.0.2+incompatible // indirect
@@ -17,7 +18,7 @@ require (
 	github.com/google/go-containerregistry v0.0.0-20200331213917-3d03ed9b1ca2
 	github.com/gorilla/handlers v1.4.2
 	github.com/gorilla/mux v1.7.4
-	github.com/json-iterator/go v1.1.9
+	github.com/json-iterator/go v1.1.10
 	github.com/mitchellh/mapstructure v1.1.2
 	github.com/nmcclain/asn1-ber v0.0.0-20170104154839-2661553a0484 // indirect
 	github.com/nmcclain/ldap v0.0.0-20191021200707-3b3b69a7e9e3
@@ -31,14 +32,14 @@ require (
 	github.com/smartystreets/goconvey v1.6.4
 	github.com/spf13/cobra v0.0.5
 	github.com/spf13/viper v1.6.1
-	github.com/stretchr/testify v1.6.1
+	github.com/stretchr/testify v1.7.0
 	github.com/swaggo/http-swagger v0.0.0-20190614090009-c2865af9083e
 	github.com/swaggo/swag v1.6.3
 	github.com/vektah/gqlparser/v2 v2.0.1
-	go.etcd.io/bbolt v1.3.4
-	golang.org/x/crypto v0.0.0-20200604202706-70a84ac30bf9
+	go.etcd.io/bbolt v1.3.5
+	golang.org/x/crypto v0.0.0-20201002170205-7f63de1d35b0
 	gopkg.in/resty.v1 v1.12.0
-	gopkg.in/yaml.v2 v2.2.8
+	gopkg.in/yaml.v2 v2.4.0
 )
 
 replace github.com/aquasecurity/trivy => github.com/anuvu/trivy v0.9.2-0.20200731014147-c5f97b59c172

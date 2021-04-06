@@ -598,3 +598,89 @@ func TestNegativeCases(t *testing.T) {
 		So(err, ShouldNotBeNil)
 	})
 }
+
+func TestHardLink(t *testing.T) {
+	Convey("Test if filesystem supports hardlink", t, func() {
+		dir, err := ioutil.TempDir("", "storage-hard-test")
+		if err != nil {
+			panic(err)
+		}
+		defer os.RemoveAll(dir)
+
+		err = storage.ValidateHardLink(dir)
+		So(err, ShouldBeNil)
+
+		err = ioutil.WriteFile(path.Join(dir, "hardtest.txt"), []byte("testing hard link code"), 0644) //nolint: gosec
+		if err != nil {
+			panic(err)
+		}
+
+		err = os.Chmod(dir, 0400)
+		if err != nil {
+			panic(err)
+		}
+
+		err = storage.CheckHardLink(path.Join(dir, "hardtest.txt"), path.Join(dir, "duphardtest.txt"))
+		So(err, ShouldNotBeNil)
+
+		err = os.Chmod(dir, 0644)
+		if err != nil {
+			panic(err)
+		}
+	})
+}
+
+func TestStorageHandler(t *testing.T) {
+	Convey("Test storage handler", t, func() {
+		// Create temporary directory
+		firstRootDir, err := ioutil.TempDir("", "util_test")
+		if err != nil {
+			panic(err)
+		}
+		defer os.RemoveAll(firstRootDir)
+
+		secondRootDir, err := ioutil.TempDir("", "util_test")
+		if err != nil {
+			panic(err)
+		}
+		defer os.RemoveAll(secondRootDir)
+
+		thirdRootDir, err := ioutil.TempDir("", "util_test")
+		if err != nil {
+			panic(err)
+		}
+		defer os.RemoveAll(thirdRootDir)
+
+		log := log.NewLogger("debug", "")
+
+		// Create ImageStore
+		firstStore := storage.NewImageStore(firstRootDir, false, false, log)
+
+		secondStore := storage.NewImageStore(secondRootDir, false, false, log)
+
+		thirdStore := storage.NewImageStore(thirdRootDir, false, false, log)
+
+		storeController := storage.StoreController{}
+
+		storeController.DefaultStore = firstStore
+
+		subStore := make(map[string]*storage.ImageStore)
+
+		subStore["/a"] = secondStore
+		subStore["/b"] = thirdStore
+
+		storeController.SubStore = subStore
+
+		is := storeController.GetImageStore("zot-x-test")
+		So(is.RootDir(), ShouldEqual, firstRootDir)
+
+		is = storeController.GetImageStore("a/zot-a-test")
+		So(is.RootDir(), ShouldEqual, secondRootDir)
+
+		is = storeController.GetImageStore("b/zot-b-test")
+		So(is.RootDir(), ShouldEqual, thirdRootDir)
+
+		is = storeController.GetImageStore("c/zot-c-test")
+		So(is.RootDir(), ShouldEqual, firstRootDir)
+	})
+}
