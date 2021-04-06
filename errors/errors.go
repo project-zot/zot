@@ -37,4 +37,6 @@ var (
 	ErrScanNotSupported        = errors.New("search: scanning of image media type not supported")
 	ErrCLITimeout              = errors.New("cli: Query timed out while waiting for results")
 	ErrDuplicateConfigName     = errors.New("cli: cli config name already added")
+	ErrInvalidRoute            = errors.New("routes: invalid route prefix")
+	ErrImgStoreNotFound        = errors.New("routes: image store not found corresponding to given route")
 )

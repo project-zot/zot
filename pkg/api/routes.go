@@ -25,6 +25,7 @@ import (
 	"github.com/anuvu/zot/errors"
 	ext "github.com/anuvu/zot/pkg/extensions"
 	"github.com/anuvu/zot/pkg/log"
+	"github.com/anuvu/zot/pkg/storage"
 	"github.com/gorilla/mux"
 	jsoniter "github.com/json-iterator/go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -90,7 +91,7 @@ func (rh *RouteHandler) SetupRoutes() {
 	rh.c.Router.PathPrefix("/swagger/v2/").Methods("GET").Handler(httpSwagger.WrapHandler)
 	// Setup Extensions Routes
 	if rh.c.Config != nil && rh.c.Config.Extensions != nil {
-		ext.SetupRoutes(rh.c.Router, rh.c.Config.Storage.RootDirectory, rh.c.ImageStore, rh.c.Log)
+		ext.SetupRoutes(rh.c.Router, rh.c.StoreController, rh.c.Log)
 	}
 }
 
@@ -139,6 +140,7 @@ type ImageTags struct {
 // @Failure 400 {string} 	string 				"bad request".
 func (rh *RouteHandler) ListTags(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
+
 	name, ok := vars["name"]
 
 	if !ok || name == "" {
@@ -146,10 +148,10 @@ func (rh *RouteHandler) ListTags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	is := rh.getImageStore(name)
+
 	paginate := false
 	n := -1
-
-	var err error
 
 	nQuery, ok := r.URL.Query()["n"]
 
@@ -160,6 +162,8 @@ func (rh *RouteHandler) ListTags(w http.ResponseWriter, r *http.Request) {
 		}
 
 		var n1 int64
+
+		var err error
 
 		if n1, err = strconv.ParseInt(nQuery[0], 10, 0); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
@@ -182,7 +186,7 @@ func (rh *RouteHandler) ListTags(w http.ResponseWriter, r *http.Request) {
 		last = lastQuery[0]
 	}
 
-	tags, err := rh.c.ImageStore.GetImageTags(name)
+	tags, err := is.GetImageTags(name)
 	if err != nil {
 		WriteJSON(w, http.StatusNotFound, NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
 		return
@@ -255,13 +259,15 @@ func (rh *RouteHandler) CheckManifest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	is := rh.getImageStore(name)
+
 	reference, ok := vars["reference"]
 	if !ok || reference == "" {
 		WriteJSON(w, http.StatusNotFound, NewErrorList(NewError(MANIFEST_INVALID, map[string]string{"reference": reference})))
 		return
 	}
 
-	_, digest, _, err := rh.c.ImageStore.GetImageManifest(name, reference)
+	_, digest, _, err := is.GetImageManifest(name, reference)
 	if err != nil {
 		switch err {
 		case errors.ErrRepoNotFound:
@@ -310,13 +316,15 @@ func (rh *RouteHandler) GetManifest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	is := rh.getImageStore(name)
+
 	reference, ok := vars["reference"]
 	if !ok || reference == "" {
 		WriteJSON(w, http.StatusNotFound, NewErrorList(NewError(MANIFEST_UNKNOWN, map[string]string{"reference": reference})))
 		return
 	}
 
-	content, digest, mediaType, err := rh.c.ImageStore.GetImageManifest(name, reference)
+	content, digest, mediaType, err := is.GetImageManifest(name, reference)
 	if err != nil {
 		switch err {
 		case errors.ErrRepoNotFound:
@@ -362,6 +370,8 @@ func (rh *RouteHandler) UpdateManifest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	is := rh.getImageStore(name)
+
 	reference, ok := vars["reference"]
 	if !ok || reference == "" {
 		WriteJSON(w, http.StatusNotFound, NewErrorList(NewError(MANIFEST_INVALID, map[string]string{"reference": reference})))
@@ -382,7 +392,7 @@ func (rh *RouteHandler) UpdateManifest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	digest, err := rh.c.ImageStore.PutImageManifest(name, reference, mediaType, body)
+	digest, err := is.PutImageManifest(name, reference, mediaType, body)
 	if err != nil {
 		switch err {
 		case errors.ErrRepoNotFound:
@@ -428,13 +438,16 @@ func (rh *RouteHandler) DeleteManifest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	is := rh.getImageStore(name)
+
 	reference, ok := vars["reference"]
 	if !ok || reference == "" {
 		w.WriteHeader(http.StatusNotFound)
+
 		return
 	}
 
-	err := rh.c.ImageStore.DeleteImageManifest(name, reference)
+	err := is.DeleteImageManifest(name, reference)
 	if err != nil {
 		switch err {
 		case errors.ErrRepoNotFound:
@@ -476,6 +489,8 @@ func (rh *RouteHandler) CheckBlob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	is := rh.getImageStore(name)
+
 	digest, ok := vars["digest"]
 	if !ok || digest == "" {
 		w.WriteHeader(http.StatusNotFound)
@@ -484,7 +499,7 @@ func (rh *RouteHandler) CheckBlob(w http.ResponseWriter, r *http.Request) {
 
 	mediaType := r.Header.Get("Accept")
 
-	ok, blen, err := rh.c.ImageStore.CheckBlob(name, digest, mediaType)
+	ok, blen, err := is.CheckBlob(name, digest, mediaType)
 	if err != nil {
 		switch err {
 		case errors.ErrBadBlobDigest:
@@ -530,6 +545,8 @@ func (rh *RouteHandler) GetBlob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	is := rh.getImageStore(name)
+
 	digest, ok := vars["digest"]
 	if !ok || digest == "" {
 		w.WriteHeader(http.StatusNotFound)
@@ -538,7 +555,7 @@ func (rh *RouteHandler) GetBlob(w http.ResponseWriter, r *http.Request) {
 
 	mediaType := r.Header.Get("Accept")
 
-	br, blen, err := rh.c.ImageStore.GetBlob(name, digest, mediaType)
+	br, blen, err := is.GetBlob(name, digest, mediaType)
 	if err != nil {
 		switch err {
 		case errors.ErrBadBlobDigest:
@@ -576,16 +593,20 @@ func (rh *RouteHandler) DeleteBlob(w http.ResponseWriter, r *http.Request) {
 
 	if !ok || name == "" {
 		w.WriteHeader(http.StatusNotFound)
+
 		return
 	}
 
 	digest, ok := vars["digest"]
 	if !ok || digest == "" {
 		w.WriteHeader(http.StatusNotFound)
+
 		return
 	}
 
-	err := rh.c.ImageStore.DeleteBlob(name, digest)
+	is := rh.getImageStore(name)
+
+	err := is.DeleteBlob(name, digest)
 	if err != nil {
 		switch err {
 		case errors.ErrBadBlobDigest:
@@ -626,6 +647,9 @@ func (rh *RouteHandler) CreateBlobUpload(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	is := rh.getImageStore(name)
+
+	// currently zot does not support cross-repository mounting, following dist-spec and returning 202
 	if mountDigests, ok := r.URL.Query()["mount"]; ok {
 		if len(mountDigests) != 1 {
 			w.WriteHeader(http.StatusBadRequest)
@@ -639,9 +663,9 @@ func (rh *RouteHandler) CreateBlobUpload(w http.ResponseWriter, r *http.Request)
 		}
 
 		// zot does not support cross mounting directly and do a workaround by copying blob using hard link
-		err := rh.c.ImageStore.MountBlob(name, from[0], mountDigests[0])
+		err := is.MountBlob(name, from[0], mountDigests[0])
 		if err != nil {
-			u, err := rh.c.ImageStore.NewBlobUpload(name)
+			u, err := is.NewBlobUpload(name)
 			if err != nil {
 				switch err {
 				case errors.ErrRepoNotFound:
@@ -703,7 +727,7 @@ func (rh *RouteHandler) CreateBlobUpload(w http.ResponseWriter, r *http.Request)
 			return
 		}
 
-		sessionID, size, err := rh.c.ImageStore.FullBlobUpload(name, r.Body, digest)
+		sessionID, size, err := is.FullBlobUpload(name, r.Body, digest)
 		if err != nil {
 			rh.c.Log.Error().Err(err).Int64("actual", size).Int64("expected", contentLength).Msg("failed full upload")
 			w.WriteHeader(http.StatusInternalServerError)
@@ -725,7 +749,7 @@ func (rh *RouteHandler) CreateBlobUpload(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	u, err := rh.c.ImageStore.NewBlobUpload(name)
+	u, err := is.NewBlobUpload(name)
 	if err != nil {
 		switch err {
 		case errors.ErrRepoNotFound:
@@ -765,13 +789,16 @@ func (rh *RouteHandler) GetBlobUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	is := rh.getImageStore(name)
+
 	sessionID, ok := vars["session_id"]
 	if !ok || sessionID == "" {
 		w.WriteHeader(http.StatusNotFound)
+
 		return
 	}
 
-	size, err := rh.c.ImageStore.GetBlobUpload(name, sessionID)
+	size, err := is.GetBlobUpload(name, sessionID)
 	if err != nil {
 		switch err {
 		case errors.ErrBadUploadRange:
@@ -824,19 +851,21 @@ func (rh *RouteHandler) PatchBlobUpload(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	is := rh.getImageStore(name)
+
 	sessionID, ok := vars["session_id"]
 	if !ok || sessionID == "" {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
-	var err error
-
 	var clen int64
+
+	var err error
 
 	if r.Header.Get("Content-Length") == "" || r.Header.Get("Content-Range") == "" {
 		// streamed blob upload
-		clen, err = rh.c.ImageStore.PutBlobChunkStreamed(name, sessionID, r.Body)
+		clen, err = is.PutBlobChunkStreamed(name, sessionID, r.Body)
 	} else {
 		// chunked blob upload
 
@@ -863,7 +892,7 @@ func (rh *RouteHandler) PatchBlobUpload(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 
-		clen, err = rh.c.ImageStore.PutBlobChunk(name, sessionID, from, to, r.Body)
+		clen, err = is.PutBlobChunk(name, sessionID, from, to, r.Body)
 	}
 
 	if err != nil {
@@ -915,6 +944,8 @@ func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request)
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
+
+	is := rh.getImageStore(name)
 
 	sessionID, ok := vars["session_id"]
 	if !ok || sessionID == "" {
@@ -969,7 +1000,7 @@ func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request)
 			return
 		}
 
-		_, err = rh.c.ImageStore.PutBlobChunk(name, sessionID, from, to, r.Body)
+		_, err = is.PutBlobChunk(name, sessionID, from, to, r.Body)
 		if err != nil {
 			switch err {
 			case errors.ErrBadUploadRange:
@@ -992,7 +1023,7 @@ func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request)
 
 finish:
 	// blob chunks already transferred, just finish
-	if err := rh.c.ImageStore.FinishBlobUpload(name, sessionID, r.Body, digest); err != nil {
+	if err := is.FinishBlobUpload(name, sessionID, r.Body, digest); err != nil {
 		switch err {
 		case errors.ErrBadBlobDigest:
 			WriteJSON(w, http.StatusBadRequest,
@@ -1040,13 +1071,15 @@ func (rh *RouteHandler) DeleteBlobUpload(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	is := rh.getImageStore(name)
+
 	sessionID, ok := vars["session_id"]
 	if !ok || sessionID == "" {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
-	if err := rh.c.ImageStore.DeleteBlobUpload(name, sessionID); err != nil {
+	if err := is.DeleteBlobUpload(name, sessionID); err != nil {
 		switch err {
 		case errors.ErrRepoNotFound:
 			WriteJSON(w, http.StatusNotFound,
@@ -1078,13 +1111,32 @@ type RepositoryList struct {
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/_catalog [get].
 func (rh *RouteHandler) ListRepositories(w http.ResponseWriter, r *http.Request) {
-	repos, err := rh.c.ImageStore.GetRepositories()
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+	combineRepoList := make([]string, 0)
+
+	subStore := rh.c.StoreController.SubStore
+
+	for _, imgStore := range subStore {
+		repos, err := imgStore.GetRepositories()
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		combineRepoList = append(combineRepoList, repos...)
 	}
 
-	is := RepositoryList{Repositories: repos}
+	singleStore := rh.c.StoreController.DefaultStore
+	if singleStore != nil {
+		repos, err := singleStore.GetRepositories()
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		combineRepoList = append(combineRepoList, repos...)
+	}
+
+	is := RepositoryList{Repositories: combineRepoList}
 
 	WriteJSON(w, http.StatusOK, is)
 }
@@ -1147,4 +1199,9 @@ func WriteDataFromReader(w http.ResponseWriter, status int, length int64, mediaT
 			return
 		}
 	}
+}
+
+// will return image storage corresponding to subpath provided in config.
+func (rh *RouteHandler) getImageStore(name string) *storage.ImageStore {
+	return rh.c.StoreController.GetImageStore(name)
 }

@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/anuvu/zot/errors"
@@ -23,11 +22,11 @@ const (
 )
 
 type Controller struct {
-	Config     *Config
-	Router     *mux.Router
-	ImageStore *storage.ImageStore
-	Log        log.Logger
-	Server     *http.Server
+	Config          *Config
+	Router          *mux.Router
+	StoreController storage.StoreController
+	Log             log.Logger
+	Server          *http.Server
 }
 
 func NewController(config *Config) *Controller {
@@ -63,20 +62,69 @@ func (c *Controller) Run() error {
 		handlers.RecoveryHandler(handlers.RecoveryLogger(c.Log),
 			handlers.PrintRecoveryStack(false)))
 
-	c.ImageStore = storage.NewImageStore(c.Config.Storage.RootDirectory, c.Config.Storage.GC,
-		c.Config.Storage.Dedupe, c.Log)
-	if c.ImageStore == nil {
-		// we can't proceed without at least a image store
-		os.Exit(1)
-	}
-
-	// Enable extensions if extension config is provided
-	if c.Config != nil && c.Config.Extensions != nil {
-		ext.EnableExtensions(c.Config.Extensions, c.Log, c.Config.Storage.RootDirectory)
-	}
-
 	c.Router = engine
 	c.Router.UseEncodedPath()
+
+	c.StoreController = storage.StoreController{}
+
+	if c.Config.Storage.RootDirectory != "" {
+		if c.Config.Storage.Dedupe {
+			err := storage.ValidateHardLink(c.Config.Storage.RootDirectory)
+			if err != nil {
+				c.Log.Warn().Msg("input storage root directory filesystem does not supports hardlinking," +
+					"disabling dedupe functionality")
+
+				c.Config.Storage.Dedupe = false
+			}
+		}
+
+		defaultStore := storage.NewImageStore(c.Config.Storage.RootDirectory,
+			c.Config.Storage.GC, c.Config.Storage.Dedupe, c.Log)
+
+		c.StoreController.DefaultStore = defaultStore
+
+		// Enable extensions if extension config is provided
+		if c.Config != nil && c.Config.Extensions != nil {
+			ext.EnableExtensions(c.Config.Extensions, c.Log, c.Config.Storage.RootDirectory)
+		}
+	} else {
+		// we can't proceed without global storage
+		c.Log.Error().Err(errors.ErrImgStoreNotFound).Msg("controller: no storage config provided")
+
+		return errors.ErrImgStoreNotFound
+	}
+
+	if c.Config.Storage.SubPaths != nil {
+		if len(c.Config.Storage.SubPaths) > 0 {
+			subPaths := c.Config.Storage.SubPaths
+
+			subImageStore := make(map[string]*storage.ImageStore)
+
+			// creating image store per subpaths
+			for route, storageConfig := range subPaths {
+				if storageConfig.Dedupe {
+					err := storage.ValidateHardLink(storageConfig.RootDirectory)
+					if err != nil {
+						c.Log.Warn().Msg("input storage root directory filesystem does not supports hardlinking, " +
+							"disabling dedupe functionality")
+
+						storageConfig.Dedupe = false
+					}
+				}
+
+				subImageStore[route] = storage.NewImageStore(storageConfig.RootDirectory,
+					storageConfig.GC, storageConfig.Dedupe, c.Log)
+
+				// Enable extensions if extension config is provided
+				if c.Config != nil && c.Config.Extensions != nil {
+					ext.EnableExtensions(c.Config.Extensions, c.Log, storageConfig.RootDirectory)
+				}
+			}
+
+			c.StoreController.SubStore = subImageStore
+		}
+	}
+
 	_ = NewRouteHandler(c)
 
 	addr := fmt.Sprintf("%s:%s", c.Config.HTTP.Address, c.Config.HTTP.Port)

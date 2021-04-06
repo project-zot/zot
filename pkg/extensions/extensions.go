@@ -55,9 +55,9 @@ func EnableExtensions(extension *ExtensionConfig, log log.Logger, rootDir string
 }
 
 // SetupRoutes ...
-func SetupRoutes(router *mux.Router, rootDir string, imgStore *storage.ImageStore, log log.Logger) {
+func SetupRoutes(router *mux.Router, storeController storage.StoreController, log log.Logger) {
 	log.Info().Msg("setting up extensions routes")
-	resConfig := search.GetResolverConfig(rootDir, log, imgStore)
+	resConfig := search.GetResolverConfig(log, storeController)
 	router.PathPrefix("/query").Methods("GET", "POST").
 		Handler(gqlHandler.NewDefaultServer(search.NewExecutableSchema(resConfig)))
 }

@@ -16,6 +16,7 @@ import (
 	ext "github.com/anuvu/zot/pkg/extensions"
 	cveinfo "github.com/anuvu/zot/pkg/extensions/search/cve"
 	"github.com/anuvu/zot/pkg/log"
+	"github.com/anuvu/zot/pkg/storage"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
@@ -23,8 +24,9 @@ import (
 
 // nolint:gochecknoglobals
 var (
-	cve   *cveinfo.CveInfo
-	dbDir string
+	cve            *cveinfo.CveInfo
+	dbDir          string
+	updateDuration time.Duration
 )
 
 const (
@@ -76,7 +78,11 @@ func testSetup() error {
 		return err
 	}
 
-	cve = &cveinfo.CveInfo{Log: log.NewLogger("debug", "")}
+	log := log.NewLogger("debug", "")
+
+	cve = &cveinfo.CveInfo{Log: log}
+
+	cve.StoreController = storage.StoreController{DefaultStore: storage.NewImageStore(dir, false, false, log)}
 
 	dbDir = dir
 
@@ -365,6 +371,67 @@ func makeHtpasswdFile() string {
 	return f.Name()
 }
 
+func TestMultipleStoragePath(t *testing.T) {
+	Convey("Test multiple storage path", t, func() {
+		// Create temporary directory
+		firstRootDir, err := ioutil.TempDir("", "util_test")
+		if err != nil {
+			panic(err)
+		}
+		defer os.RemoveAll(firstRootDir)
+
+		secondRootDir, err := ioutil.TempDir("", "util_test")
+		if err != nil {
+			panic(err)
+		}
+		defer os.RemoveAll(secondRootDir)
+
+		thirdRootDir, err := ioutil.TempDir("", "util_test")
+		if err != nil {
+			panic(err)
+		}
+		defer os.RemoveAll(thirdRootDir)
+
+		log := log.NewLogger("debug", "")
+
+		// Create ImageStore
+		firstStore := storage.NewImageStore(firstRootDir, false, false, log)
+
+		secondStore := storage.NewImageStore(secondRootDir, false, false, log)
+
+		thirdStore := storage.NewImageStore(thirdRootDir, false, false, log)
+
+		storeController := storage.StoreController{}
+
+		storeController.DefaultStore = firstStore
+
+		subStore := make(map[string]*storage.ImageStore)
+
+		subStore["/a"] = secondStore
+		subStore["/b"] = thirdStore
+
+		storeController.SubStore = subStore
+
+		cveInfo, err := cveinfo.GetCVEInfo(storeController, log)
+
+		So(err, ShouldBeNil)
+		So(cveInfo.StoreController.DefaultStore, ShouldNotBeNil)
+		So(cveInfo.StoreController.SubStore, ShouldNotBeNil)
+
+		imagePath := cveInfo.GetImageRepoPath("zot-test")
+		So(imagePath, ShouldEqual, path.Join(firstRootDir, "zot-test"))
+
+		imagePath = cveInfo.GetImageRepoPath("a/zot-a-test")
+		So(imagePath, ShouldEqual, path.Join(secondRootDir, "a/zot-a-test"))
+
+		imagePath = cveInfo.GetImageRepoPath("b/zot-b-test")
+		So(imagePath, ShouldEqual, path.Join(thirdRootDir, "b/zot-b-test"))
+
+		imagePath = cveInfo.GetImageRepoPath("c/zot-c-test")
+		So(imagePath, ShouldEqual, path.Join(firstRootDir, "c/zot-c-test"))
+	})
+}
+
 func TestDownloadDB(t *testing.T) {
 	Convey("Download DB passing invalid dir", t, func() {
 		err := testSetup()
@@ -425,35 +492,35 @@ func TestImageFormat(t *testing.T) {
 
 func TestImageTag(t *testing.T) {
 	Convey("Test image tag", t, func() {
-		imageTags, err := cve.GetImageTagsWithTimestamp(dbDir, "zot-test")
+		imageTags, err := cve.GetImageTagsWithTimestamp("zot-test")
 		So(err, ShouldBeNil)
 		So(len(imageTags), ShouldNotEqual, 0)
 
-		imageTags, err = cve.GetImageTagsWithTimestamp(dbDir, "zot-tes")
+		imageTags, err = cve.GetImageTagsWithTimestamp("zot-tes")
 		So(err, ShouldNotBeNil)
 		So(imageTags, ShouldBeNil)
 
-		imageTags, err = cve.GetImageTagsWithTimestamp(dbDir, "zot-noindex-test")
+		imageTags, err = cve.GetImageTagsWithTimestamp("zot-noindex-test")
 		So(err, ShouldNotBeNil)
 		So(len(imageTags), ShouldEqual, 0)
 
-		imageTags, err = cve.GetImageTagsWithTimestamp(dbDir, "zot-squashfs-noblobs")
+		imageTags, err = cve.GetImageTagsWithTimestamp("zot-squashfs-noblobs")
 		So(err, ShouldNotBeNil)
 		So(len(imageTags), ShouldEqual, 0)
 
-		imageTags, err = cve.GetImageTagsWithTimestamp(dbDir, "zot-squashfs-invalid-index")
+		imageTags, err = cve.GetImageTagsWithTimestamp("zot-squashfs-invalid-index")
 		So(err, ShouldNotBeNil)
 		So(len(imageTags), ShouldEqual, 0)
 
-		imageTags, err = cve.GetImageTagsWithTimestamp(dbDir, "zot-squashfs-invalid-blob")
+		imageTags, err = cve.GetImageTagsWithTimestamp("zot-squashfs-invalid-blob")
 		So(err, ShouldNotBeNil)
 		So(len(imageTags), ShouldEqual, 0)
 
-		imageTags, err = cve.GetImageTagsWithTimestamp(dbDir, "zot-invalid-layer")
+		imageTags, err = cve.GetImageTagsWithTimestamp("zot-invalid-layer")
 		So(err, ShouldNotBeNil)
 		So(len(imageTags), ShouldEqual, 0)
 
-		imageTags, err = cve.GetImageTagsWithTimestamp(dbDir, "zot-no-layer")
+		imageTags, err = cve.GetImageTagsWithTimestamp("zot-no-layer")
 		So(err, ShouldNotBeNil)
 		So(len(imageTags), ShouldEqual, 0)
 	})
@@ -461,7 +528,7 @@ func TestImageTag(t *testing.T) {
 
 func TestCVESearch(t *testing.T) {
 	Convey("Test image vulenrability scanning", t, func() {
-		updateDuration, _ := time.ParseDuration("1h")
+		updateDuration, _ = time.ParseDuration("1h")
 		config := api.NewConfig()
 		config.HTTP.Port = SecurePort1
 		htpasswdPath := makeHtpasswdFile()
@@ -473,7 +540,6 @@ func TestCVESearch(t *testing.T) {
 			},
 		}
 		c := api.NewController(config)
-		defer os.RemoveAll(dbDir)
 		c.Config.Storage.RootDirectory = dbDir
 		cveConfig := &ext.CVEConfig{
 			UpdateInterval: updateDuration,
@@ -698,13 +764,30 @@ func TestCVEConfig(t *testing.T) {
 			},
 		}
 		c := api.NewController(config)
-		dir, err := ioutil.TempDir("", "oci-repo-test")
+		firstDir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
 		}
-		defer os.RemoveAll(dir)
-		c.Config.Storage.RootDirectory = dir
-		c.Config.Extensions = &ext.ExtensionConfig{}
+
+		secondDir, err := ioutil.TempDir("", "oci-repo-test")
+		if err != nil {
+			panic(err)
+		}
+		defer os.RemoveAll(firstDir)
+		defer os.RemoveAll(secondDir)
+
+		err = copyFiles("../../../../test/data", path.Join(secondDir, "a"))
+		if err != nil {
+			panic(err)
+		}
+
+		c.Config.Storage.RootDirectory = firstDir
+		subPaths := make(map[string]api.StorageConfig)
+		subPaths["/a"] = api.StorageConfig{
+			RootDirectory: secondDir,
+		}
+		c.Config.Storage.SubPaths = subPaths
+
 		go func() {
 			// this blocks
 			if err := c.Run(); err != nil {
@@ -720,6 +803,22 @@ func TestCVEConfig(t *testing.T) {
 			}
 			time.Sleep(100 * time.Millisecond)
 		}
+
+		resp, _ := resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/v2/")
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/v2/_catalog")
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/v2/a/zot-test/tags/list")
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/v2/zot-test/tags/list")
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 404)
 
 		defer func() {
 			ctx := context.Background()

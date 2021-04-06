@@ -5,13 +5,20 @@ import (
 	"time"
 
 	"github.com/anuvu/zot/pkg/log"
+	"github.com/anuvu/zot/pkg/storage"
 	config "github.com/aquasecurity/trivy/integration/config"
 )
 
 // CveInfo ...
 type CveInfo struct {
-	Log            log.Logger
-	CveTrivyConfig *config.Config
+	Log                log.Logger
+	CveTrivyController CveTrivyController
+	StoreController    storage.StoreController
+}
+
+type CveTrivyController struct {
+	DefaultCveConfig *config.Config
+	SubCveConfig     map[string]*config.Config
 }
 
 type TagInfo struct {

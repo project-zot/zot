@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -37,6 +38,11 @@ type BlobUpload struct {
 	ID        string
 }
 
+type StoreController struct {
+	DefaultStore *ImageStore
+	SubStore     map[string]*ImageStore
+}
+
 // ImageStore provides the image storage operations.
 type ImageStore struct {
 	rootDir     string
@@ -46,6 +52,39 @@ type ImageStore struct {
 	gc          bool
 	dedupe      bool
 	log         zerolog.Logger
+}
+
+func (is *ImageStore) RootDir() string {
+	return is.rootDir
+}
+
+func getRoutePrefix(name string) string {
+	names := strings.SplitN(name, "/", 2)
+
+	if len(names) != 2 { // nolint: gomnd
+		// it means route is of global storage e.g "centos:latest"
+		if len(names) == 1 {
+			return "/"
+		}
+	}
+
+	return fmt.Sprintf("/%s", names[0])
+}
+
+func (sc StoreController) GetImageStore(name string) *ImageStore {
+	if sc.SubStore != nil {
+		// SubStore is being provided, now we need to find equivalent image store and this will be found by splitting name
+		prefixName := getRoutePrefix(name)
+
+		imgStore, ok := sc.SubStore[prefixName]
+		if !ok {
+			imgStore = sc.DefaultStore
+		}
+
+		return imgStore
+	}
+
+	return sc.DefaultStore
 }
 
 // NewImageStore returns a new image store backed by a file storage.
@@ -1173,6 +1212,36 @@ func Scrub(dir string, fix bool) error {
 }
 
 // utility routines
+
+func CheckHardLink(srcFileName string, destFileName string) error {
+	return os.Link(srcFileName, destFileName)
+}
+
+func ValidateHardLink(rootDir string) error {
+	err := ioutil.WriteFile(path.Join(rootDir, "hardlinkcheck.txt"), //nolint: gosec
+		[]byte("check whether hardlinks work on filesystem"), 0644)
+	if err != nil {
+		return err
+	}
+
+	err = CheckHardLink(path.Join(rootDir, "hardlinkcheck.txt"), path.Join(rootDir, "duphardlinkcheck.txt"))
+	if err != nil {
+		// Remove hardlinkcheck.txt if hardlink fails
+		zerr := os.RemoveAll(path.Join(rootDir, "hardlinkcheck.txt"))
+		if zerr != nil {
+			return zerr
+		}
+
+		return err
+	}
+
+	err = os.RemoveAll(path.Join(rootDir, "hardlinkcheck.txt"))
+	if err != nil {
+		return err
+	}
+
+	return os.RemoveAll(path.Join(rootDir, "duphardlinkcheck.txt"))
+}
 
 func dirExists(d string) bool {
 	fi, err := os.Stat(d)

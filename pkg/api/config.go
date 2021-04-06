@@ -72,11 +72,18 @@ type LogConfig struct {
 	Output string
 }
 
+type GlobalStorageConfig struct {
+	RootDirectory string
+	Dedupe        bool
+	GC            bool
+	SubPaths      map[string]StorageConfig
+}
+
 type Config struct {
 	Version    string
 	Commit     string
 	BinaryType string
-	Storage    StorageConfig
+	Storage    GlobalStorageConfig
 	HTTP       HTTPConfig
 	Log        *LogConfig
 	Extensions *ext.ExtensionConfig
@@ -87,7 +94,7 @@ func NewConfig() *Config {
 		Version:    dspec.Version,
 		Commit:     Commit,
 		BinaryType: BinaryType,
-		Storage:    StorageConfig{GC: true, Dedupe: true},
+		Storage:    GlobalStorageConfig{GC: true, Dedupe: true},
 		HTTP:       HTTPConfig{Address: "127.0.0.1", Port: "8080"},
 		Log:        &LogConfig{Level: "debug"},
 	}
