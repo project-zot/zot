@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 998 83" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <!-- Generator: Sketch 52.5 (67469) - http://www.bohemiancoding.com/sketch -->
+    <title>Visuals/epg-communication</title>
+    <desc>Created with Sketch.</desc>
+    <g id="Visuals/epg-communication" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="Group-2">
+            <text id="Consumer-EPGs" font-family="CiscoSansTT" font-size="14" font-weight="normal" fill="#7F7F86">
+                <tspan x="0.311" y="14">Consumer EPGs</tspan>
+            </text>
+            <g id="Group-3" transform="translate(21.000000, 35.000000)">
+                <g id="Topology/circle/epg/small-Copy">
+                    <circle id="Oval-2" stroke="#FFFFFF" fill="#025E91" cx="24" cy="24" r="23.5"></circle>
+                    <text id="EPG" font-family="CiscoSansTT" font-size="16" font-weight="normal" fill="#FFFFFF">
+                        <tspan x="8.456" y="28">EPG</tspan>
+                    </text>
+                </g>
+                <g id="Topology/circle/epg/small-Copy-2" transform="translate(8.000000, 0.000000)">
+                    <circle id="Oval-2" stroke="#FFFFFF" fill="#025E91" cx="24" cy="24" r="23.5"></circle>
+                    <text id="EPG" font-family="CiscoSansTT" font-size="16" font-weight="normal" fill="#FFFFFF">
+                        <tspan x="8.456" y="28">EPG</tspan>
+                    </text>
+                </g>
+                <g id="Topology/circle/epg/small-Copy-3" transform="translate(16.000000, 0.000000)">
+                    <circle id="Oval-2" stroke="#FFFFFF" fill="#025E91" cx="24" cy="24" r="23.5"></circle>
+                    <text id="EPG" font-family="CiscoSansTT" font-size="16" font-weight="normal" fill="#FFFFFF">
+                        <tspan x="8.456" y="28">EPG</tspan>
+                    </text>
+                </g>
+            </g>
+            <path d="M477,59.5 L86,59.5" id="Line-Copy" stroke="#FBAB18" stroke-linecap="square" fill-rule="nonzero"></path>
+            <g id="Group" transform="translate(919.000000, 35.000000)">
+                <g id="Topology/circle/epg/small-Copy-6" transform="translate(16.000000, 0.000000)">
+                    <circle id="Oval-2" stroke="#FFFFFF" fill="#025E91" cx="24" cy="24" r="23.5"></circle>
+                    <text id="EPG" font-family="CiscoSansTT" font-size="16" font-weight="normal" fill="#FFFFFF">
+                        <tspan x="8.456" y="28">EPG</tspan>
+                    </text>
+                </g>
+                <g id="Topology/circle/epg/small-Copy-5" transform="translate(8.000000, 0.000000)">
+                    <circle id="Oval-2" stroke="#FFFFFF" fill="#025E91" cx="24" cy="24" r="23.5"></circle>
+                    <text id="EPG" font-family="CiscoSansTT" font-size="16" font-weight="normal" fill="#FFFFFF">
+                        <tspan x="8.456" y="28">EPG</tspan>
+                    </text>
+                </g>
+                <g id="Topology/circle/epg/small-Copy-4">
+                    <circle id="Oval-2" stroke="#FFFFFF" fill="#025E91" cx="24" cy="24" r="23.5"></circle>
+                    <text id="EPG" font-family="CiscoSansTT" font-size="16" font-weight="normal" fill="#FFFFFF">
+                        <tspan x="8.456" y="28">EPG</tspan>
+                    </text>
+                </g>
+            </g>
+            <text id="Provider-EPGs" font-family="CiscoSansTT" font-size="14" font-weight="normal" fill="#7F7F86">
+                <tspan x="904.814" y="14">Provider EPGs</tspan>
+            </text>
+            <path d="M918,59.5 L527,59.5" id="Line-Copy-4" stroke="#14A792" stroke-linecap="square" fill-rule="nonzero"></path>
+            <g id="Topology/circle/contract/default" transform="translate(478.000000, 35.000000)">
+                <circle id="Oval-2" fill="#28AAE1" fill-rule="evenodd" cx="24" cy="24" r="24"></circle>
+                <text id="C" font-family="CiscoSansTT" font-size="16" font-weight="normal" fill="#FFFFFF">
+                    <tspan x="18.668" y="28">C</tspan>
+                </text>
+            </g>
+        </g>
+    </g>
+</svg>

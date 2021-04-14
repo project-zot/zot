@@ -1,0 +1,233 @@
+@import './scss/app/utilities/variables.scss';
+
+.app-container {
+
+    overflow-x: hidden;
+
+    .modal-wrap {
+        position: fixed;
+        width: 100%;
+        height: 100%;
+        top: 0;
+        left: 0;
+        z-index: 2050;
+        display: -webkit-box;
+        display: -ms-flexbox;
+        display: flex;
+        -webkit-box-align: center;
+        -ms-flex-align: center;
+        align-items: center;
+        -webkit-box-pack: center;
+        -ms-flex-pack: center;
+        justify-content: center;
+        overflow: hidden;
+        background-color: hsla(218,7%,78%,.65);
+
+        .modal-container {
+            position: relative;
+            display: -webkit-box;
+            display: -ms-flexbox;
+            display: flex;
+            -webkit-box-orient: vertical;
+            -webkit-box-direction: normal;
+            -ms-flex-direction: column;
+            flex-direction: column;
+            overflow: auto;
+            max-height: 90%;
+
+            > header {
+                display: flex;
+                -webkit-box-align: center;
+                -ms-flex-align: center;
+                align-items: center;
+                justify-content: space-between;
+                background-color: #fff;
+                padding: 12px 20px;
+                height: 54px;
+                min-height: 54px;
+                border-bottom: 1px solid #dfdfdf;
+            }
+
+            > main {
+                background-color: #f2f2f2;
+                padding: 10px;
+                overflow: auto;
+                height: 100%;
+
+                .form-section {
+                    >main {
+                        border: none;
+                        background-color: transparent;
+                    }
+                }
+            }
+
+            > footer {
+                display: flex;
+                -webkit-box-pack: end;
+                -ms-flex-pack: end;
+                justify-content: flex-end;
+                -webkit-box-align: center;
+                -ms-flex-align: center;
+                align-items: center;
+                background-color: #fff;
+                padding: 10px;
+                height: 54px;
+                min-height: 54px;
+                border-top: 1px solid #dfdfdf;
+            }
+        }
+    }
+
+    .custom-modal {
+        width: 50% !important;
+    }
+
+    .wide-modal {
+        width: 55% !important;
+    }
+
+    .modal-wrap .modal-container.restart-service-modal > main {
+        overflow: visible;
+        .form-section {
+            overflow: visible;
+        }
+    }
+
+    display: flex;
+    flex-direction: row;
+    height: 100vh;
+    transition: margin-left 0.25s !important;
+
+    .sidebar__header {
+        height: $header-height-small;
+        justify-content: flex-start;
+    }
+
+    .sidebar--locked ~ .main-content-wrapper {
+        margin-left: $sidebar-expanded-menu-width;
+    }
+
+    .sidebar--collapsed ~ .screen-dock {
+        left: 70px;
+    }
+
+    .main-content-wrapper {
+        margin-left: $sidebar-collapsed-menu-width;
+        transition: margin-left 0.25s !important;
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 auto;
+        overflow: hidden;
+
+        > main {
+            position: relative;
+            flex: 1;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            background: $light-gray-5;
+            overflow-y: auto; //scroll only content+footer
+            .routed-content {
+                height: 100%;
+                overflow-y: auto;
+                flex: 1;
+                padding: $padding-medium;
+            }
+        }
+    }
+
+    .main-content-wrapper-with-schemas {
+        margin-left: 0px !important;
+        transition: margin-left 0.25s !important;
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 auto;
+        overflow: hidden;
+
+        > main {
+            position: relative;
+            flex: 1;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            background: $light-gray-5;
+            overflow-y: auto; //scroll only content+footer
+            .routed-content {
+                height: 100%;
+                overflow-y: auto;
+                flex: 1;
+                padding: $padding-medium;
+            }
+        }
+    }
+
+    span[class*="icon-"] {
+        position: unset;
+    }
+
+    > .loader--spinner {
+        margin: auto;
+    }
+}
+
+.app-main {
+    height: 100%;
+    > .loader--spinner {
+        height: 100%;
+    }
+}
+
+.app-main-pad {
+    padding: $padding-base;
+}
+
+.select-file {
+  display: flex;
+  margin-bottom: 10px;
+}
+
+.upload-btn {
+  margin: 24px 0px 0px 10px;
+}
+
+.overflow-wrap-anywhere {
+    overflow-wrap: anywhere;
+}
+
+.cui.blueprint .app-main .with-popup {
+    line-height: unset;
+}
+
+.dropdown__menu {
+    overflow: auto;
+}
+.cui .dropdown.active .dropdown__menu a {
+    min-height: 35px;
+}
+
+.modal-wrap .cluster,
+.config-modal {
+	height: 655px;
+    width: 640px;
+    &.proxy-config {
+        width: 800px;
+    }
+}
+.config-form-group {
+    margin: $base-spacing-half;
+    background-color: #fff;
+    padding: $padding-large;
+}
+
+code {
+    background-color: $dark-gray-4;
+    color: #fff;
+}
+.grafana_group {
+    display: flex;
+
+    .grafana_img {
+        margin: 2px 0px 0px 5px;
+    }
+}

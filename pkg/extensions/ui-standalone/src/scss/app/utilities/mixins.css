@@ -1,0 +1,12 @@
+.full-page {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0; }
+
+.divider--vertical > :after {
+  color: #9e9ea2;
+  content: '|';
+  margin: 0 5px;
+  padding: 0; }

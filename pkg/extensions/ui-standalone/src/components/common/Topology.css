@@ -1,0 +1,68 @@
+/** @see sass/vendor/tooltip/balloon.scss (written with CUIK c1.3.4 as the current version in use) */
+/* Status Colors (here from _variable.scss for documentation)
+$status-blue: #64bbe3 !default;
+$status-turq: #14a792 !default;
+$status-green: #6cc04a !default;
+$status-red: $accent-red !default;
+$status-orange: $accent-orange !default;
+$status-yellow: #ffcc00 !default;
+*/
+.topology-container {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  height: 100%; }
+  .topology-container .topology-graph-container {
+    min-width: 50vw;
+    flex: 1;
+    justify-content: center; }
+  .topology-container .topology-info-container {
+    display: flex;
+    flex-direction: column; }
+    .topology-container .topology-info-container .legends-container {
+      padding: 10px;
+      background-color: #ffffff;
+      min-width: 250px; }
+    .topology-container .topology-info-container .search-container {
+      margin-top: 10px;
+      padding: 10px;
+      background-color: #ffffff;
+      min-height: 250px;
+      min-width: 250px; }
+      .topology-container .topology-info-container .search-container .legend {
+        padding-top: 3px;
+        padding-bottom: 3px;
+        border-bottom: 1px solid #e9e9e9; }
+      .topology-container .topology-info-container .search-container .selected-data .legend .topology-legend-icon {
+        width: 24px;
+        height: 24px;
+        border-radius: 12px;
+        font-size: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center; }
+      .topology-container .topology-info-container .search-container .form-group {
+        padding-top: 5px;
+        margin-bottom: 3px; }
+      .topology-container .topology-info-container .search-container .search-result-container {
+        max-height: 360px;
+        overflow: auto; }
+    .topology-container .topology-info-container .legend {
+      padding-top: 10px;
+      display: flex;
+      align-items: center; }
+      .topology-container .topology-info-container .legend .topology-legend-icon {
+        width: 20px;
+        height: 20px;
+        border-radius: 10px;
+        font-size: 9px;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center; }
+      .topology-container .topology-info-container .legend .topology-legend-label {
+        font-size: 10px;
+        padding-left: 10px; }
+      .topology-container .topology-info-container .legend .topology-legend-link {
+        width: 20px;
+        height: 2px; }

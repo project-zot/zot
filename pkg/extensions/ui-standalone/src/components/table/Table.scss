@@ -1,0 +1,147 @@
+@import "src/scss/assets/sass/utilities/variables.scss";
+
+.ReactTable {
+
+    &.selectable {
+        .rt-thead {
+            .rt-th {
+                display: flex;
+                align-items: center;
+            }
+        }
+
+        .rt-th:first-of-type, .rt-td:first-of-type {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .checkbox {
+            margin: 0;
+        }
+    }
+
+    .rt-thead {
+        box-shadow: none!important;
+        .rt-tr {
+            background-color: $white;
+            font-weight: bold;
+        }
+
+        .rt-th {
+            text-align: left;
+            padding: 10px!important;
+        }
+
+        .grouped-columns-header {
+            font-weight: normal;
+            justify-content: center;
+        }
+    }
+
+    .rt-tbody {
+        .rt-tr-group {
+            border-bottom: 0 !important;
+        }
+
+        .rt-td {
+            padding: 10px!important;
+        }
+    }
+
+    .rt-tr {
+        border-left: $base-table-active-row-border-width solid transparent;
+        &.active {
+            transition: background .25s ease-in-out;
+            background-color: rgba($cisco-blue, 0.3);
+            border-left: $base-table-active-row-border-width solid $cisco-blue;
+
+            &.-odd {
+                transition: background .25s ease-in-out;
+                background-color: rgba($cisco-blue, 0.3);
+                border-left: $base-table-active-row-border-width solid $cisco-blue;
+            }
+        }
+
+        .rt-th, .rt-td {
+            display: flex;
+            align-items: center;
+            white-space: normal;
+        }
+    }
+
+    &.-striped {
+        .rt-tbody {
+            .rt-tr {
+                background-color: $white;
+
+                &.-odd {
+                    background-color: $light-gray-5;
+                }
+
+                &.active {
+                    background-color: rgba($cisco-blue, 0.3);
+
+                    &.-odd {
+                        background-color: rgba($cisco-blue, 0.3);
+                    }
+                }
+            }
+        }
+    }
+
+    .rt-td .cell-title-subtitle {
+        .cell-subtitle {
+            color: $dark-gray-4;
+        }
+    }
+
+    .pagination-bottom {
+        background-color: $light-gray-3;
+
+        .link {
+            color: $dark-gray-4;
+        }
+
+        .-pagination {
+            font-weight: 400;
+            display: flex;
+            align-items: center;
+            padding: $padding-small $padding-base;
+            box-shadow: none;
+            border: none;
+
+            .form-group {
+                margin: 0;
+            }
+
+            .-previous {
+                text-align: left;
+                .form-group {
+                    margin-right: $margin-base;
+                }
+            }
+
+            .-next {
+                text-align: right;
+            }
+
+            .page-items-info {
+                margin: 0 $margin-base;
+            }
+
+            .-pageInfo {
+                margin: 0 $margin-base 0 0!important;
+            }
+
+            .page-size-container {
+                display: flex;
+                align-items: center;
+
+                .form-group {
+                    margin-right: $margin-small;
+                }
+            }
+        }
+    }
+}

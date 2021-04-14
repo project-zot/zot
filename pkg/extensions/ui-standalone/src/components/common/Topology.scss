@@ -1,0 +1,93 @@
+@import '../../scss/app/utilities/variables.scss';
+
+$icon-size: 20px;
+$icon-size-large: 24px;
+
+.topology-container {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    height: 100%;
+    .topology-graph-container {
+        min-width: 50vw;
+        flex: 1;
+        justify-content: center;
+    }
+
+    .topology-info-container {
+        display: flex;
+        flex-direction: column;
+
+        .legends-container {
+            padding: $padding-base;
+            background-color: $white;
+            min-width: 250px;
+        }
+
+        .search-container {
+            margin-top: $padding-base;
+            padding: $padding-base;
+            background-color: $white;
+            min-height: 250px;
+            min-width: 250px;
+
+            .legend {
+                padding-top: $padding-xsmall;
+                padding-bottom: $padding-xsmall;
+                border-bottom: 1px solid $light-gray;
+            }
+
+            .selected-data {
+                .legend {
+
+                    .topology-legend-icon {
+                        width: $icon-size-large;
+                        height: $icon-size-large;
+                        border-radius: $icon-size-large/2;
+                        font-size: $xsmall-font-size;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center
+                    }
+                }
+            }
+
+            .form-group {
+                padding-top: $padding-small;
+                margin-bottom: $padding-xsmall;
+            }
+
+            .search-result-container {
+                max-height: 360px;
+                overflow: auto;
+            }
+        }
+
+        .legend {
+            padding-top: $padding-base;
+            display: flex;
+            align-items: center;
+
+            .topology-legend-icon {
+                width: $icon-size;
+                height: $icon-size;
+                border-radius: $icon-size/2;
+                font-size: $xxsmall-font-size;
+                color: white;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            .topology-legend-label {
+                font-size: $xsmall-font-size;
+                padding-left: $padding-base;
+            }
+
+            .topology-legend-link {
+                width: $icon-size;
+                height: 2px;
+            }
+        }
+    }
+}

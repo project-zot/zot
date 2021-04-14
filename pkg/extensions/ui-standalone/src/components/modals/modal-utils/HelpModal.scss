@@ -1,0 +1,46 @@
+@import 'src/scss/assets/sass/utilities/variables.scss';
+
+.quickstart {
+    &.modal-container {
+        min-width: fit-content;
+        max-width: fit-content;
+        min-height: fit-content;
+        max-height: fit-content;
+    }
+
+    .quickstart-image {
+        background-size: 100% 100%;
+        background-repeat: no-repeat;
+        height: 225px;
+        width: 300px;
+        margin: 0;
+        @include break-at('xsmall') {
+            width: 400px;
+            height: 300px;
+        }
+        @include break-at('medium') {
+            width: 600px;
+            height: 450px;
+        }
+        @include break-at('large') {
+            width: 800px;
+            height: 600px;
+        }
+    }
+
+    .cover {
+        background-image: url('../../../scss/images/quickstart/nd_quickStart.svg');
+    }
+
+    .quick-object-reference {
+        background-image: url('../../../scss/images/quickstart/Overview.svg');
+    }
+
+    .quick-access-tools {
+        background-image: url('../../../scss/images/quickstart/QuickTools.svg');
+    }
+
+    .quick-data {
+        background-image: url('../../../scss/images/quickstart/LevelsofData.svg');
+    }
+}

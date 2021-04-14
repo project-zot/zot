@@ -1,0 +1,44 @@
+@import '../scss/assets/sass/utilities/variables.scss';
+
+.cisco-ui-tabs {
+    .tab-header {
+        margin-bottom: $margin-base;
+    }
+    &.vertical {
+        display: flex;
+        .tab-content {
+            flex: 1;
+        }
+        .tabs {
+            margin-right: $margin-base;
+            min-width: 200px;
+            max-width: 300px;
+            .tab {
+                overflow: hidden;
+            }
+        }
+    }
+    .tabs {
+        .tab {
+            margin: 0 20px 1px 0;
+        }
+    }
+
+    &.apps {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        .tab-content {
+            height: 100%;
+            .AppStore {
+                height: 100%;
+            }
+        }
+        .appcenter-iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            margin: 0px;
+        }
+    }
+}

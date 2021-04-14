@@ -1,0 +1,56 @@
+// @import '~styles/variables';
+
+.selectionCard {
+  border: 1px solid #E9E9E9;
+  border-radius: 5px;
+  display: inline-block;
+  min-width: 280px;
+  box-shadow: 0 0 1px 0 rgba(0, 0, 0, 0.2);
+  padding: 10px;
+  margin: 20px;
+  background: #ffffff;
+  width: 286px;
+  box-shadow: 0px 0px 2px rgba(0, 0, 0, .1);
+  border-bottom: 2px solid #ccc;
+
+  &.isSelected {
+    box-shadow: 0 0 0 2px #017CAD;
+  }
+
+  :global(.form-group) {
+    margin-left: 235px;
+  }
+
+  .selectioncard-header{
+    float: right;
+  }
+
+  .selectioncard-content {
+    margin: 15px 0px 8px 10px;
+    display: flex;
+
+    .selectioncard-label {
+      margin-bottom: 8px;
+      margin-top: 14px;
+      font-size: 22px;
+      display: inline-block;
+      background: #fff;
+    }
+
+    .site-icon {
+      width: 20px;
+      height: 20px;
+      margin: auto 15px auto 0px;
+
+      &.ACI {
+          background-image: url('../../static/icons/icon_apic.svg');
+      }
+      &.CloudACI {
+          background-image: url('../../static/icons/icon_cApic.svg');
+      }
+      &.DCNM {
+          background-image: url('../../static/icons/icon_dcnm.svg');
+      }
+  }
+  }
+}

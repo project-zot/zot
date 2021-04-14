@@ -1,0 +1,33 @@
+/** @see sass/vendor/tooltip/balloon.scss (written with CUIK c1.3.4 as the current version in use) */
+/* Status Colors (here from _variable.scss for documentation)
+$status-blue: #64bbe3 !default;
+$status-turq: #14a792 !default;
+$status-green: #6cc04a !default;
+$status-red: $accent-red !default;
+$status-orange: $accent-orange !default;
+$status-yellow: #ffcc00 !default;
+*/
+.widget-panel.skeleton > header > .title {
+  flex: none;
+  color: #e8ebf1;
+  background-color: #e8ebf1; }
+
+.widget-panel.skeleton > main {
+  padding: 12px; }
+  .widget-panel.skeleton > main label,
+  .widget-panel.skeleton > main div {
+    color: #e8ebf1 !important;
+    background-color: #e8ebf1;
+    display: table; }
+
+.widget-panel.skeleton .fake-label,
+.widget-panel.skeleton .fake-property-value {
+  background-color: #e8ebf1;
+  height: 10px; }
+
+.widget-panel.skeleton .fake-label {
+  margin-bottom: 2.5px;
+  width: 50%; }
+
+.widget-panel.skeleton .fake-property-value {
+  margin-bottom: 15px; }

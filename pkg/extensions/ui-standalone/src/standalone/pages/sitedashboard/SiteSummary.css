@@ -1,0 +1,138 @@
+.SiteSummary {
+  max-width: 400px; }
+  .SiteSummary .site-summary-header {
+    display: flex;
+    margin: 10px 0px; }
+    .SiteSummary .site-summary-header .site-icon {
+      width: 30px;
+      height: 30px;
+      margin: auto 15px auto 0px; }
+      .SiteSummary .site-summary-header .site-icon.ACI {
+        background-image: url("../../../static/icons/icon_apic.svg"); }
+      .SiteSummary .site-summary-header .site-icon.CloudACI {
+        background-image: url("../../../static/icons/icon_cApic.svg"); }
+      .SiteSummary .site-summary-header .site-icon.DCNM {
+        background-image: url("../../../static/icons/icon_dcnm.svg"); }
+    .SiteSummary .site-summary-header .cloudapic.azure {
+      width: 40px;
+      height: 12px;
+      margin: 25px auto auto 5px;
+      background-image: url("../../../static/icons/Azure.svg"); }
+    .SiteSummary .site-summary-header .cloudapic.aws {
+      width: 26px;
+      height: 15px;
+      margin: 25px auto auto 5px;
+      background-image: url("../../../static/icons/AWS.svg"); }
+    .SiteSummary .site-summary-header .cloudapic.unknown {
+      flex: 1; }
+    .SiteSummary .site-summary-header .site-title {
+      flex: 1; }
+      .SiteSummary .site-summary-header .site-title .title {
+        font-weight: bold;
+        font-size: 80%; }
+  .SiteSummary .site-summary-body .divider {
+    margin: 10px 0px; }
+  .SiteSummary .score-list,
+  .SiteSummary .resource-list,
+  .SiteSummary .site-app-list {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between; }
+    .SiteSummary .score-list .resource-item,
+    .SiteSummary .score-list .score-item,
+    .SiteSummary .resource-list .resource-item,
+    .SiteSummary .resource-list .score-item,
+    .SiteSummary .site-app-list .resource-item,
+    .SiteSummary .site-app-list .score-item {
+      width: 110px;
+      flex: 1;
+      margin: 0px 0px 0px 5px; }
+  .SiteSummary .score-list {
+    margin: 15px 0px; }
+  .SiteSummary .site-app-list {
+    flex-wrap: wrap;
+    justify-content: unset; }
+    .SiteSummary .site-app-list .site-app {
+      margin-top: 2px; }
+  .SiteSummary .score-item,
+  .SiteSummary .site-app {
+    margin: 0px 5px 2px 0px; }
+    .SiteSummary .score-item:last-child,
+    .SiteSummary .site-app:last-child {
+      margin-right: 0px; }
+  .SiteSummary .resource-item {
+    text-align: center; }
+    .SiteSummary .resource-item .item-count {
+      font-size: 20px;
+      margin-top: 5px; }
+    .SiteSummary .resource-item .item-name {
+      font-size: 12px; }
+
+.site-inline {
+  display: flex;
+  margin: 10px 0px; }
+  .site-inline .site-icon {
+    width: 20px;
+    height: 20px;
+    margin: auto 15px auto 0px; }
+    .site-inline .site-icon.ACI {
+      background-image: url("../../../static/icons/icon_apic.svg"); }
+    .site-inline .site-icon.CloudACI {
+      background-image: url("../../../static/icons/icon_cApic.svg"); }
+    .site-inline .site-icon.DCNM {
+      background-image: url("../../../static/icons/icon_dcnm.svg"); }
+  .site-inline .cloudapic.azure {
+    width: 40px;
+    height: 12px;
+    margin: 5px auto auto 5px;
+    background-image: url("../../../static/icons/Azure.svg"); }
+  .site-inline .cloudapic.aws {
+    width: 25px;
+    height: 15px;
+    margin: 6px auto auto 5px;
+    background-image: url("../../../static/icons/AWS.svg"); }
+
+.site-selection {
+  width: 40px;
+  height: 40px;
+  margin: auto 15px auto 0px;
+  white-space: nowrap; }
+  .site-selection.ACI {
+    background-image: url("../../../static/icons/icon_apic.svg"); }
+  .site-selection.CloudACI {
+    background-image: url("../../../static/icons/icon_cApic.svg"); }
+  .site-selection.DCNM {
+    background-image: url("../../../static/icons/icon_dcnm.svg"); }
+
+.naAnomaly {
+  display: flex;
+  align-items: center;
+  padding: 0px 5px;
+  background: lightgrey !important; }
+  .naAnomaly .icon-score-unknown {
+    height: 16px;
+    width: 16px;
+    background-repeat: no-repeat;
+    background-image: url("../../../static/icons/anomaly-unknown.svg"); }
+  .naAnomaly label {
+    margin-left: 5px; }
+
+.serviceUsed {
+  color: #ffffff;
+  font-size: 11px;
+  border-radius: 2px;
+  padding: 0px 5px;
+  margin-bottom: 1px;
+  width: fit-content; }
+
+.ant-app {
+  background: #9b81ba !important; }
+
+.ant-app-others {
+  background: #f59764 !important; }
+
+.advisory-success {
+  color: #FBAB18; }
+
+.cui.blueprint .popup .popup__content {
+  border: 1px solid lightgray; }

@@ -1,0 +1,28 @@
+@import 'src/scss/assets/sass/utilities/variables.scss';
+
+.form-error {
+    padding: 0 $padding-base;
+    margin: $padding-base 0px;
+    .error-detail {
+        padding: $padding-small $padding-medium;
+        .detail-content + .detail-content {
+            margin-top: $margin-small;
+        }
+        span[class*="icon-"] {
+            margin-right: $margin-base;
+            &.icon-warning {
+                color: $status-orange;
+                &.minor {
+                    color: $status-yellow;
+                }
+            }
+            &.icon-error {
+                color: $status-red;
+            }
+        }
+    }
+}
+
+.cui .form-error.background-white .alert{
+    background-color: #fff;
+}

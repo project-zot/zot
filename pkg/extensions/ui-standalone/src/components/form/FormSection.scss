@@ -1,0 +1,68 @@
+@import '../../scss/assets/sass/utilities/variables.scss';
+
+.form-section {
+    padding: $padding-base;
+    overflow: auto;
+    > header {
+        padding-left: $padding-base;
+        .title {
+            font-size: $large-icon-font-size;
+            font-weight: 300;
+        }
+    }
+    > main {
+        .form-group {
+            div {
+                .vertical-display {
+                    display: block;
+                    width: 40%;
+                    padding: $padding-base;
+                    border-bottom: 2px solid lightgray;
+                }
+            }
+        }
+        .form-group--limited-width {
+            width: 350px;
+        }
+        .form-group--certificate-width {
+            max-width:600px;
+        }
+        .form-group-light-background {
+            background-color: white;
+            padding: 16px;
+        }
+        .disabled-overlay {
+            position: absolute;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            left: 0;
+            background-color: white;
+            opacity: 0.5;
+            z-index: 1;
+        }
+
+        .inline-multiple-fields {
+            display: flex;
+            flex-wrap: wrap;
+            > * {
+                margin-right: $margin-base;
+                label, .form-group {
+                    margin: 0;
+                }
+            }
+
+            .field-bottom-label {
+                margin-bottom: $margin-base;
+            }
+        }
+
+        .form-group .checkbox {
+            margin-top: $margin-small;
+        }
+    }
+}
+
+.node-form > .form-group__text > * {
+    padding:$padding-base;
+}

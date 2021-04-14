@@ -1,0 +1,23 @@
+@import "../../scss/assets/sass/utilities/variables.scss";
+
+.property-list-item {
+    padding: 0;
+    margin-bottom: $margin-large !important;
+    .property-label {
+        color: $dark-gray-4;
+        margin-bottom: $margin-xsmall;
+    }
+    .property-value {
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .property-subvalue {
+        color: $dark-gray-4;
+        font-size: $small-font-size
+    }
+    .StatusTile {
+        span {
+            font-size: $base-font-size;
+        }
+    }
+}

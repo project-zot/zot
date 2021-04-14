@@ -1,0 +1,33 @@
+/** @see sass/vendor/tooltip/balloon.scss (written with CUIK c1.3.4 as the current version in use) */
+/* Status Colors (here from _variable.scss for documentation)
+$status-blue: #64bbe3 !default;
+$status-turq: #14a792 !default;
+$status-green: #6cc04a !default;
+$status-red: $accent-red !default;
+$status-orange: $accent-orange !default;
+$status-yellow: #ffcc00 !default;
+*/
+/** @see sass/vendor/tooltip/balloon.scss (written with CUIK c1.3.4 as the current version in use) */
+/* Status Colors (here from _variable.scss for documentation)
+$status-blue: #64bbe3 !default;
+$status-turq: #14a792 !default;
+$status-green: #6cc04a !default;
+$status-red: $accent-red !default;
+$status-orange: $accent-orange !default;
+$status-yellow: #ffcc00 !default;
+*/
+.total__count {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  justify-content: space-evenly;
+  width: 110px;
+  height: 110px;
+  margin-left: 5px;
+  margin-top: 5px; }
+  .total__count .count {
+    font-size: 3rem;
+    font-weight: 370; }
+  .total__count .text {
+    color: #a3a3a7;
+    font-size: 1.5rem; }

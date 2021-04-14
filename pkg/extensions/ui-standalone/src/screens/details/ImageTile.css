@@ -1,0 +1,112 @@
+/** @see sass/vendor/tooltip/balloon.scss (written with CUIK c1.3.4 as the current version in use) */
+/* Status Colors (here from _variable.scss for documentation)
+$status-blue: #64bbe3 !default;
+$status-turq: #14a792 !default;
+$status-green: #6cc04a !default;
+$status-red: $accent-red !default;
+$status-orange: $accent-orange !default;
+$status-yellow: #ffcc00 !default;
+*/
+.main-content-container {
+  margin-left: 10px; }
+
+.top-wrapper {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  padding-bottom: 10px; }
+
+.bottom-wrapper {
+  margin-left: 10px; }
+
+.text-card {
+  margin-right: 20px; }
+  .text-card .card {
+    min-width: 140px; }
+
+.image-icon-small {
+  background-color: #4DC6CD;
+  width: 75px;
+  height: 75px;
+  border-radius: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 5px 0 0;
+  color: white; }
+  .image-icon-small > span {
+    font-size: 26px; }
+
+.image-icon-extra-small {
+  background-color: #4DC6CD;
+  width: 50px;
+  height: 50px;
+  border-radius: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 5px 0 0;
+  color: white; }
+  .image-icon-extra-small > span {
+    font-size: 26px; }
+
+.image-details-container {
+  width: 600px;
+  margin-left: 20px; }
+  .image-details-container .name {
+    margin-top: 16px;
+    font-weight: 250;
+    font-size: 36px;
+    color: #58585b; }
+  .image-details-container .version {
+    font-weight: 350;
+    font-size: 20px;
+    color: #58585b;
+    margin-top: 30px; }
+  .image-details-container .vendor {
+    font-weight: 350;
+    font-size: 20px;
+    color: #58585b;
+    margin-top: 20px; }
+  .image-details-container .tags {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    margin-top: 18px; }
+    .image-details-container .tags .tag {
+      margin-right: 16px; }
+
+.image-details-container-compressed {
+  width: 600px;
+  margin-left: 20px; }
+  .image-details-container-compressed .name {
+    font-weight: 600;
+    font-size: 16px;
+    color: #58585b; }
+  .image-details-container-compressed .version {
+    font-weight: 300;
+    font-size: 12px;
+    color: #908989;
+    margin-top: 4px; }
+  .image-details-container-compressed .description {
+    width: 800px;
+    font-weight: 400;
+    font-size: 12px;
+    color: #58585b;
+    margin-top: 2px; }
+  .image-details-container-compressed .tags {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    margin-top: 6px; }
+    .image-details-container-compressed .tags .tag {
+      margin-right: 10px;
+      line-height: 18px; }
+
+.search-container {
+  display: flex;
+  flex-direction: row;
+  padding-bottom: 10px;
+  margin-bottom: 8px; }
+  .search-container > .input--compressed {
+    flex: 1; }

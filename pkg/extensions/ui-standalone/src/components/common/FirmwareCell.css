@@ -1,0 +1,87 @@
+/** @see sass/vendor/tooltip/balloon.scss (written with CUIK c1.3.4 as the current version in use) */
+/* Status Colors (here from _variable.scss for documentation)
+$status-blue: #64bbe3 !default;
+$status-turq: #14a792 !default;
+$status-green: #6cc04a !default;
+$status-red: $accent-red !default;
+$status-orange: $accent-orange !default;
+$status-yellow: #ffcc00 !default;
+*/
+/** @see sass/vendor/tooltip/balloon.scss (written with CUIK c1.3.4 as the current version in use) */
+/* Status Colors (here from _variable.scss for documentation)
+$status-blue: #64bbe3 !default;
+$status-turq: #14a792 !default;
+$status-green: #6cc04a !default;
+$status-red: $accent-red !default;
+$status-orange: $accent-orange !default;
+$status-yellow: #ffcc00 !default;
+*/
+.firmware-cell {
+  border-radius: 5px;
+  border: 1px solid #dfdfdf;
+  width: 200px;
+  margin-right: 10px;
+  margin-bottom: 10px;
+  height: 80px; }
+  .firmware-cell .firmware-cell-heading {
+    background-color: #dfdfdf;
+    height: 20px;
+    border-top-left-radius: 5px;
+    border-top-right-radius: 5px; }
+    .firmware-cell .firmware-cell-heading .cell-heading-icon {
+      text-align: left;
+      font-size: small;
+      margin-right: 5px; }
+    .firmware-cell .firmware-cell-heading .cell-heading-text {
+      text-align: center;
+      font-size: small; }
+
+.firmware-cell:hover, .firmware-cell-warning:hover, .firmware-cell-selected {
+  border-radius: 5px;
+  border: 1px solid #007493;
+  width: 200px;
+  margin-right: 10px;
+  margin-bottom: 10px;
+  height: 80px; }
+  .firmware-cell:hover .firmware-cell-heading, .firmware-cell-warning:hover .firmware-cell-heading, .firmware-cell-selected .firmware-cell-heading {
+    background-color: #007493;
+    height: 20px;
+    border-top-left-radius: 5px;
+    border-top-right-radius: 5px; }
+    .firmware-cell:hover .firmware-cell-heading .cell-heading-icon, .firmware-cell-warning:hover .firmware-cell-heading .cell-heading-icon, .firmware-cell-selected .firmware-cell-heading .cell-heading-icon {
+      color: #ffffff;
+      margin-right: 5px; }
+    .firmware-cell:hover .firmware-cell-heading .cell-heading-text, .firmware-cell-warning:hover .firmware-cell-heading .cell-heading-text, .firmware-cell-selected .firmware-cell-heading .cell-heading-text {
+      color: #ffffff;
+      text-align: center;
+      font-size: small; }
+
+.firmware-cell-warning {
+  border-radius: 5px;
+  border: 1px solid #f0ad42;
+  width: 200px;
+  margin-right: 10px;
+  margin-bottom: 10px;
+  height: 80px; }
+  .firmware-cell-warning .firmware-cell-heading {
+    background-color: #fdf0d6;
+    height: 20px;
+    border-top-left-radius: 5px;
+    border-top-right-radius: 5px; }
+    .firmware-cell-warning .firmware-cell-heading .cell-heading-icon {
+      color: #f0ad42;
+      margin-right: 5px; }
+    .firmware-cell-warning .firmware-cell-heading .cell-heading-text {
+      text-align: center;
+      font-size: small; }
+
+.firmware-cell-content {
+  align-items: center; }
+  .firmware-cell-content .firmware-cell-title {
+    text-align: center;
+    padding-top: 20px;
+    font-size: medium; }
+
+.add-button-icon {
+  margin: 15px;
+  color: #b7b9bb; }

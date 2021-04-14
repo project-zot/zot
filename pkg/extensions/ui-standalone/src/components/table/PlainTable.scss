@@ -1,0 +1,24 @@
+@import "src/scss/assets/sass/utilities/variables.scss";
+
+.plain-table {
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .table-header,
+    .table-row {
+        border-bottom: 1px solid $light-gray-3;
+    }
+    .table-header {
+        color: $med-gray-2;
+    }
+    .table-cell {
+        padding: $padding-base;
+    }
+}
+
+.popup .plain-table {
+    width: max-content;
+    max-width: 800px;
+}

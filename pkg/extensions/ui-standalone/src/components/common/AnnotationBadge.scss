@@ -1,0 +1,20 @@
+@import 'src/scss/assets/sass/utilities/variables.scss';
+.annotation-container {
+    margin-bottom: $margin-large;
+    div {
+        .label--info {
+            color: $white;
+            font-weight: bold;
+            background: $info;
+        }
+        .label--bordered {
+            border: none;
+        }
+    }
+}
+
+.inline-annotation {
+    display: inline-block;
+    padding-right: $padding-xsmall;
+    margin-bottom: 0;
+}

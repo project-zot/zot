@@ -1,0 +1,311 @@
+@import 'src/scss/assets/sass/utilities/variables.scss';
+
+$app-tile-size: 75px;
+
+.images-tiles-container {
+    .widget-panel {
+        height: 130px;
+    }
+}
+
+.apps-list-container {
+
+    .actions-container {
+        display: flex;
+        flex-direction: row;
+        padding-bottom: $padding-base;
+
+        > .input--compressed {
+            flex: 1;
+            padding-right: $padding-base;
+        }
+    }
+
+    .apps-tiles-container {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+
+        .apps-tile-container {
+            width: 370px;
+            height: fit-content;
+            display: flex;
+            flex-direction: column;
+            background-color: $white;
+            border: 2px solid $pale-gray-1;
+            margin: 0 $margin-base $margin-base 0;
+            &:hover {
+                border: 2px solid $vibrant-blue;
+            }
+
+            .apps-tiles-content-container {
+                min-height: 136px;
+                display: flex;
+                flex-direction: row;
+                align-items: flex-start;
+                padding: 16px 16px 0px 16px;
+
+                .apps-tile-content-image-container {
+                    padding-right: 16px;
+
+                    .apps-tile-icon {
+                        width: $app-tile-size;
+                        height: $app-tile-size;
+                        border-radius: $app-tile-size/2;
+                    }
+
+                    .apps-tile-details {
+                        padding-left: 0 !important;
+                    }
+                }
+
+                .apps-tile-content-details-container {
+                    width: 248px;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: flex-start;
+                    font-size: $base-font-size-sm;
+
+                    .appTitle{
+                        display: flex;
+                        width: 100%;
+                        padding: 4px 0px;
+                    }
+
+                    .app-name {
+                        font-weight: bold;
+                        font-size: 14px;
+                        color: $dark-gray-2;
+                    }
+
+                    .vendor {
+                        color: $dark-gray-2;
+                        padding-bottom: 4px;
+                        font-size: 14px;
+                    }
+
+                    .short-app-description {
+                        color: $dark-gray-1;
+                        padding: 4px 0px;
+                        font-size: 14px;
+                    }
+
+                    .app-version {
+                        color: $med-gray-2;
+                        padding: 4px 0px;
+                    }
+
+                    .long-text-ellipsis {
+                        width: 100%;
+                        white-space: nowrap;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                    }
+                }
+            }
+
+            .apps-tile-status-container {
+                display: flex;
+                flex-direction: row;
+                align-items: center;
+                justify-content: space-between;
+                padding: $padding-base;
+                background-color: $timeline-detail-view-panel-color;
+                width: 100%;
+                height: 75px;
+
+                .health-badge-icon {
+                    font-size: 24px;
+                }
+
+                .number-container {
+                    display: flex;
+                    width: 100%;
+                    margin-left: 10px;
+                }
+
+                .apps-tile-status-number-container {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: space-between;
+                    color: $dark-gray-2;
+                    padding: 0px 5px;
+                    min-width:50px;
+
+                    .apps-tile-status-number {
+                        font-size: 14px;
+                        font-weight: $font-weight-solid;
+                        color: $vibrant-blue;
+                    }
+
+                    .apps-tile-status-label {
+                        font-size: $base-font-size-xs;
+                        color: $light-gray-1;
+                    }
+                }
+            }
+
+            .loader--spinner .loading-spinner .wrapper .wheel.loading--spinner--small {
+                width: 32px!important;
+                height: 32px!important;
+            }
+        }
+    }
+}
+
+.text-ellipsis {
+    width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.failed-cmp {
+    padding: 30px 50px;
+    text-align: center;
+
+    .failed-title {
+        font-size: 20px;
+        color: #58585B;
+        line-height: 27px;
+        padding: 10px;
+    }
+}
+
+.import-cmp {
+    padding: 75px 30px;
+
+    .tile {
+        display: flex;
+        padding: 5px 0px;
+        margin-right: 4px;
+        background-color: #F2F2F2;
+        border-radius: 5px;
+        border: 1px solid #DFDFDF;
+    }
+    .percentage-cmp {
+        padding: 10px 5px;
+    }
+    .err-cmp {
+        padding: 2px;
+
+        .err-msg {
+            color: red;
+        }
+    }
+}
+.installation-cmp {
+    text-align: center;
+    display: flex;
+    height: 40px;
+    padding-top: 5px;
+
+    .installation-text {
+        color: #58585B;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        padding-left: 5px;
+    }
+    .tile-installation-text {
+        color: #58585B;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+}
+.disable-element {
+    opacity: 50%;
+}
+.app-system-tile-body-disable {
+    background: rgba(250, 250, 250, 1);
+}
+.app-system-tile-footer {
+    margin-top: 0px;
+}
+.app-error {
+    color: red;
+    padding-left: 5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.app-footer-err {
+    width: 100%;
+    overflow: hidden;
+}
+
+.apps-dot-label{
+        background-color: #4DC6CD;
+        width: $app-tile-size;
+        height: $app-tile-size;
+        border-radius: $app-tile-size/2;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 5px 0 0;
+        color: white;
+
+    > span {
+        font-size: 26px;
+    }
+}
+
+.cui .btn.btn--wide {
+    padding-left: 13px !important;
+}
+
+.multi-installation-cmp {
+    text-align: left;
+    display: flex;
+    width: 100%;
+    height: 2rem;
+}
+
+.update-tile {
+    padding-left: 30px;
+
+    .loader--spinner .loading-spinner .wrapper .wheel.loading--spinner--xsmall {
+        width: 16px!important;
+        height: 16px!important;
+    }
+}
+
+.apps-initial {
+    height: 400px;
+
+    > div {
+        text-align: center;
+        width: 100%;
+        padding: 3rem 2rem;
+    }
+
+    .illustration {
+        height: 145px;
+        width: 200px;
+      }
+
+    .apps-initial-title {
+        height: 33px;
+        color: #7F7F86;
+        font-family: CiscoSansTT;
+        font-size: 24px;
+        font-weight: 300;
+        letter-spacing: 0;
+        line-height: 33px;
+        text-align: center;
+        margin: 20px 0px;
+      }
+
+      .apps-initial-content {
+        height: 19px;
+        color: #7F7F86;
+        font-family: CiscoSansTT;
+        font-size: 14px;
+        letter-spacing: 0;
+        line-height: 19px;
+        text-align: center;
+        margin: 20px 0px;
+        // background-color: #FFFFFF !important;
+      }
+}

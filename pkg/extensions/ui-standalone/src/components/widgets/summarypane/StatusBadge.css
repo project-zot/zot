@@ -1,0 +1,14 @@
+.status-badge {
+  border: 1px solid #dfdfdf;
+  border-radius: 3px;
+  width: fit-content;
+  padding: 0px 5px; }
+  .status-badge span[class*="icon-"] {
+    margin-right: 5px; }
+  .status-badge .status-success {
+    color: #6ebe4a; }
+  .status-badge .status-unknown,
+  .status-badge .status-warning {
+    color: #fbab18; }
+  .status-badge .status-error {
+    color: #e2231a; }

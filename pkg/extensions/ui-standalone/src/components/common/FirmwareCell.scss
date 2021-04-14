@@ -1,0 +1,97 @@
+@import '../../scss/app/utilities/variables.scss';
+@import "../../scss/assets/sass/utilities/variables.scss";
+
+.firmware-cell {
+    border-radius: 5px;
+    border: 1px solid #dfdfdf;
+    width: 200px;
+    margin-right: 10px;
+    margin-bottom: 10px;
+    height: 80px;
+
+    .firmware-cell-heading {
+        background-color: #dfdfdf;
+        height: 20px;
+        border-top-left-radius: 5px;
+        border-top-right-radius: 5px;
+
+        .cell-heading-icon {
+            text-align: left;
+            font-size: small;
+            margin-right: 5px;
+        }
+
+        .cell-heading-text {
+            text-align: center;
+            font-size: small;
+        }
+    }
+}
+
+.firmware-cell:hover, .firmware-cell-warning:hover, .firmware-cell-selected {
+    border-radius: 5px;
+    border: 1px solid $base-link-color;
+    width: 200px;
+    margin-right: 10px;
+    margin-bottom: 10px;
+    height: 80px;
+
+    .firmware-cell-heading {
+        background-color: $base-link-color;
+        height: 20px;
+        border-top-left-radius: 5px;
+        border-top-right-radius: 5px;
+        
+        .cell-heading-icon {
+            color: $white;
+            margin-right: 5px;
+        }
+
+        .cell-heading-text {
+            color: $white;
+            text-align: center;
+            font-size: small;
+        }
+    }
+}
+
+.firmware-cell-warning {
+    border-radius: 5px;
+    border: 1px solid #f0ad42;
+    width: 200px;
+    margin-right: 10px;
+    margin-bottom: 10px;
+    height: 80px;
+
+    .firmware-cell-heading {
+        background-color: #fdf0d6;
+        height: 20px;
+        border-top-left-radius: 5px;
+        border-top-right-radius: 5px;
+
+        .cell-heading-icon {
+            color: #f0ad42;
+            margin-right: 5px;
+        }
+    
+        .cell-heading-text {
+            text-align: center;
+            font-size: small;
+        }
+    }
+}
+
+.firmware-cell-content {
+    align-items: center;
+    
+    .firmware-cell-title {
+        text-align: center;
+        padding-top: 20px;
+        font-size: medium;
+    }
+}
+
+.add-button-icon {
+    margin: 15px;
+    color: #b7b9bb;
+}

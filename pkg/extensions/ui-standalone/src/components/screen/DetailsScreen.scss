@@ -1,0 +1,59 @@
+@import 'src/scss/assets/sass/utilities/variables.scss';
+
+.screen-container.details {
+    > main {
+        padding: $padding-base;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+        > header {
+            display: flex;
+            padding: 10px;
+            min-height: 51px;
+            .left-area {
+                flex: 1;
+            }
+            .right-menu {
+                z-index: 1; //this is necessary because in case of tabbed view they end up overlapping
+            }
+        }
+
+        >.cisco-ui-tabs {
+            margin-top: -40px;
+        }
+
+        .details-skeleton {
+            position: relative;
+            >.loader {
+                position: absolute;
+            }
+
+        }
+    }
+
+    &.loading {
+        > main {
+            > header {
+                .right-menu {
+                    z-index: 0; //stay under the loader
+                }
+                .tabs {
+
+                }
+            }
+            >.cisco-ui-tabs {
+                .tab__heading {
+                    color: $pale-gray-1;
+                    background-color: $pale-gray-1;
+                }
+            }
+        }
+    }
+    .login-domain-overview .children-objects-table {
+        margin-bottom: $padding-large;
+    }
+}
+
+.cui .btn+.dropdown {
+    margin-left: 10px !important;
+}

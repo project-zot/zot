@@ -1,0 +1,4 @@
+@media (min-width: 1200px) {
+  footer.footer--basic .footer__links ul.list, .footer.footer--basic .footer__links ul.list {
+    column-count: 0;
+    column-gap: 0; } }

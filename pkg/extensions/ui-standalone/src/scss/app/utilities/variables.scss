@@ -1,0 +1,97 @@
+
+// @import "../../assets/cui/sass/vendor/bootstrap/custom.scss";
+@import '../../assets/sass/utilities/variables.scss';
+@import "../../assets/cui/sass/utilities/_variables.scss";
+
+
+/// Fonts
+$font-weight-thin:                  100 !default;
+$font-weight-extra-light:           200 !default;
+$font-weight-light:                 300 !default;
+$font-weight-normal:                400 !default;  // 400 same as "normal"
+$font-weight-solid:                 500 !default;
+$font-weight-extra-solid:           600 !default;
+$font-weight-heavy:                 700 !default;
+
+$font-size-h7:                      .9rem !default;
+$font-size-h8:                      .8rem !default;
+$font-size-h9:                      .7rem !default;
+
+$xxsmall-font-size:                 9px !default;
+
+/// General
+$padding-base:                  10px;
+$padding-large:                 15px;
+$padding-large-plus:            18px;
+$padding-xlarge:                20px;
+$padding-xxlarge:               30px;
+$padding-small:                 5px;
+$padding-xsmall-plus:           4px;
+$padding-xsmall:                3px;
+
+$label-separation:              1em;
+
+// Borders
+// ------------------------------
+$border-radius-lg:            $base-border-radius * 1.67;
+// deprecated.  use $base-border-radius directly
+$border-radius-base:          $base-border-radius;
+$border-radius-sm:            $base-border-radius * .4167;
+
+
+// Shadows
+$shadow:                            rgba(0,0,0,.2);
+$light-shadow:                      rgba(0,0,0,.1);
+$lighter-shadow:                    rgba(0,0,0,.05);
+$lightest-shadow:                   rgba(0,0,0,.025);
+$dark-shadow:                       rgba(0,0,0,.3);
+$darker-shadow:                     rgba(0,0,0,.5);
+$darkest-shadow:                    rgba(0,0,0,.75);
+
+// Highlights
+$highlight:                         rgba(255,255,255,.4);
+$weak-highlight:                    rgba(255,255,255,.2);
+$weaker-highlight:                  rgba(255,255,255,.1);
+$weakest-highlight:                 rgba(255,255,255,.05);
+$strong-highlight:                  rgba(255,255,255,.6);
+$strongest-highlight:               rgba(255,255,255,.8);
+$link-container-highlight:          rgba(33, 183, 239, 1);
+
+/// Transitions
+$transition-base:        all .2s ease-in-out !default;
+
+/// Category colors
+$catastrophic-color:                $danger;
+$severe-color:                      $warning;
+$moderate-color:                    $warning-alt;
+
+// Empty results message styling
+$empty-results-background:      rgba(254, 254, 254, .7);
+$empty-results-color:           rgba(31, 31, 32, .7);
+$empty-results-font-size:       12px;
+$empty-results-font-weight:     $font-weight-extra-solid;
+
+
+/// Overrides of cui and bootstrap variables
+
+$max-page-width:                none;
+
+$header-height-small-se:            64px !default;
+
+$sidebar-collapsed-menu-width:  50px;
+$sidebar-expanded-menu-width:  280px;
+
+
+// faults and health indicators
+$health-critical: $status-red;
+$health-critical-bg: lighten($health-critical, 45%);
+$health-major: $status-orange;
+$health-major-bg: lighten($health-major, 30%);
+$health-minor: $status-yellow;
+$health-minor-bg: lighten($health-minor, 35%);
+$health-warning: $status-turq;
+$health-warning-bg: lighten($health-warning, 35%);
+$health-unknown: $dark-gray-4;
+$health-unknown-bg: $light-gray-3;
+$health-ok: $success;
+$health-ok-bg: lighten($health-ok, 35%);

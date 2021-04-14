@@ -1,0 +1,66 @@
+@import "../scss/assets/sass/utilities/variables.scss";
+
+.cui {
+    .field-tooltip-icon {
+        $ballon-title-height: 30px;
+        font-size: 12px;
+        margin: 0 0 4px 4px;
+        width: 16px;
+        height: 16px;
+        color: $light-gray-2;
+        display: inline-block;
+        position: relative;
+
+        .field-tooltip {
+            position: absolute;
+            left: 0;
+            top: 0;
+            display: block;
+            height: 100%;
+            width: 100%;
+            font-family: CiscoSans,Arial,sans-serif!important;
+
+            &[data-balloon][data-balloon-pos][data-balloon-length],
+            &[data-balloon][data-balloon-pos][data-balloon-length]:hover {
+                &:before {
+                    content: attr(data-balloon-title);
+                    color: $white;
+                    font-size: $base-font-size!important;
+                    top: -40px;
+                    padding: $padding-base;
+                    position: absolute;
+                    z-index: 999;
+                    background: transparent;
+                    white-space: nowrap;
+                    -webkit-transform: none;
+                    -ms-transform: none;
+                    transform: none;
+                }
+
+                &:after {
+                    color: $dark-gray-2;
+                    top: -$ballon-title-height;
+                    left: 50%;
+                    position: absolute;
+                    white-space: pre-wrap;
+                    white-space: -moz-pre-wrap;
+                    background: -moz-linear-gradient(top, $med-gray-2 0%, $med-gray-2 $ballon-title-height, $white $ballon-title-height, $white 100%); /* FF3.6-15 */
+                    background: -webkit-linear-gradient(top, $med-gray-2 0%, $med-gray-2 $ballon-title-height, $white $ballon-title-height, $white 100%); /* Chrome10-25,Safari5.1-6 */
+                    background: linear-gradient(to bottom, $med-gray-2 0%, $med-gray-2 $ballon-title-height, $white $ballon-title-height, $white 100%); /* W3C, IE10+, FF16+, Chrome26+, Opera12+, Safari7+ */
+                    padding: 40px $padding-base $padding-base $padding-base;
+                    box-shadow: 0 10px 20px 0 rgba(0, 0, 0, 0.2);
+                    border-radius: 4px;
+                    font-size: $base-font-size!important;
+                    -webkit-transform: none;
+                    -ms-transform: none;
+                    transform: none;
+                }
+            }
+        }
+
+        /* Override default balloon dimensions */
+        [data-balloon][data-balloon-length=large]:after {
+            width: 350px;
+        }
+    }
+}

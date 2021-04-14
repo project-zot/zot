@@ -1,0 +1,52 @@
+@import '../../scss/app/utilities/variables.scss';
+@import "../../scss/assets/sass/utilities/variables.scss";
+
+.legend-container {
+    height: 40px;
+    width: 220px;
+    max-width: auto;
+    margin: $margin-base 0px 0px $margin-base;
+
+    .legend-marker {
+        height: 5px;
+        width: 5px;
+        margin-top: 6px;
+        border-radius: 9px;
+        color: 'white';
+        display: flex;
+        align-items: center;
+        background-color: #f0a326;
+        font-size: 7px;
+        justify-content: center
+    }
+
+    .legend-text {
+        height: 5px;
+        width: auto;
+        margin-left: .15em;
+        justify-content: center
+    }
+
+    .chart-text {
+        color: $med-gray-2;
+        font-size: $small-font-size;
+        margin-bottom: 8px
+    }
+
+    .totalcount-text{
+        color: $med-gray-2;
+        font-size: $small-font-size;
+    }
+}
+
+.pie-chart-small .legend-container{
+    margin: $margin-small 0px 0px $margin-small;
+}
+.popup .popup__body .legend-container {
+    padding: 0;
+    margin: 0;
+    width: 45px;
+    .chart-text {
+        margin: 2px 0px;
+    }
+}

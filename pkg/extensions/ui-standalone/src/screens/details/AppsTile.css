@@ -1,0 +1,232 @@
+/** @see sass/vendor/tooltip/balloon.scss (written with CUIK c1.3.4 as the current version in use) */
+/* Status Colors (here from _variable.scss for documentation)
+$status-blue: #64bbe3 !default;
+$status-turq: #14a792 !default;
+$status-green: #6cc04a !default;
+$status-red: $accent-red !default;
+$status-orange: $accent-orange !default;
+$status-yellow: #ffcc00 !default;
+*/
+.apps-list-container .actions-container {
+  display: flex;
+  flex-direction: row;
+  padding-bottom: 10px; }
+  .apps-list-container .actions-container > .input--compressed {
+    flex: 1;
+    padding-right: 10px; }
+
+.apps-list-container .apps-tiles-container {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap; }
+  .apps-list-container .apps-tiles-container .apps-tile-container {
+    width: 370px;
+    height: fit-content;
+    display: flex;
+    flex-direction: column;
+    background-color: #ffffff;
+    border: 2px solid #e8ebf1;
+    margin: 0 10px 10px 0; }
+    .apps-list-container .apps-tiles-container .apps-tile-container:hover {
+      border: 2px solid #017CAD; }
+    .apps-list-container .apps-tiles-container .apps-tile-container .apps-tiles-content-container {
+      min-height: 136px;
+      display: flex;
+      flex-direction: row;
+      align-items: flex-start;
+      padding: 16px 16px 0px 16px; }
+      .apps-list-container .apps-tiles-container .apps-tile-container .apps-tiles-content-container .apps-tile-content-image-container {
+        padding-right: 16px; }
+        .apps-list-container .apps-tiles-container .apps-tile-container .apps-tiles-content-container .apps-tile-content-image-container .apps-tile-icon {
+          width: 75px;
+          height: 75px;
+          border-radius: 37.5px; }
+        .apps-list-container .apps-tiles-container .apps-tile-container .apps-tiles-content-container .apps-tile-content-image-container .apps-tile-details {
+          padding-left: 0 !important; }
+      .apps-list-container .apps-tiles-container .apps-tile-container .apps-tiles-content-container .apps-tile-content-details-container {
+        width: 248px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        font-size: 12px; }
+        .apps-list-container .apps-tiles-container .apps-tile-container .apps-tiles-content-container .apps-tile-content-details-container .appTitle {
+          display: flex;
+          width: 100%;
+          padding: 4px 0px; }
+        .apps-list-container .apps-tiles-container .apps-tile-container .apps-tiles-content-container .apps-tile-content-details-container .app-name {
+          font-weight: bold;
+          font-size: 14px;
+          color: #58585b; }
+        .apps-list-container .apps-tiles-container .apps-tile-container .apps-tiles-content-container .apps-tile-content-details-container .vendor {
+          color: #58585b;
+          padding-bottom: 4px;
+          font-size: 14px; }
+        .apps-list-container .apps-tiles-container .apps-tile-container .apps-tiles-content-container .apps-tile-content-details-container .short-app-description {
+          color: #39393b;
+          padding: 4px 0px;
+          font-size: 14px; }
+        .apps-list-container .apps-tiles-container .apps-tile-container .apps-tiles-content-container .apps-tile-content-details-container .app-version {
+          color: #9e9ea2;
+          padding: 4px 0px; }
+        .apps-list-container .apps-tiles-container .apps-tile-container .apps-tiles-content-container .apps-tile-content-details-container .long-text-ellipsis {
+          width: 100%;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis; }
+    .apps-list-container .apps-tiles-container .apps-tile-container .apps-tile-status-container {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px;
+      background-color: #fafafa;
+      width: 100%;
+      height: 75px; }
+      .apps-list-container .apps-tiles-container .apps-tile-container .apps-tile-status-container .health-badge-icon {
+        font-size: 24px; }
+      .apps-list-container .apps-tiles-container .apps-tile-container .apps-tile-status-container .number-container {
+        display: flex;
+        width: 100%;
+        margin-left: 10px; }
+      .apps-list-container .apps-tiles-container .apps-tile-container .apps-tile-status-container .apps-tile-status-number-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: space-between;
+        color: #58585b;
+        padding: 0px 5px;
+        min-width: 50px; }
+        .apps-list-container .apps-tiles-container .apps-tile-container .apps-tile-status-container .apps-tile-status-number-container .apps-tile-status-number {
+          font-size: 14px;
+          font-weight: 500;
+          color: #017CAD; }
+        .apps-list-container .apps-tiles-container .apps-tile-container .apps-tile-status-container .apps-tile-status-number-container .apps-tile-status-label {
+          font-size: 10px;
+          color: #aeaeaf; }
+    .apps-list-container .apps-tiles-container .apps-tile-container .loader--spinner .loading-spinner .wrapper .wheel.loading--spinner--small {
+      width: 32px !important;
+      height: 32px !important; }
+
+.text-ellipsis {
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis; }
+
+.failed-cmp {
+  padding: 30px 50px;
+  text-align: center; }
+  .failed-cmp .failed-title {
+    font-size: 20px;
+    color: #58585B;
+    line-height: 27px;
+    padding: 10px; }
+
+.import-cmp {
+  padding: 75px 30px; }
+  .import-cmp .tile {
+    display: flex;
+    padding: 5px 0px;
+    margin-right: 4px;
+    background-color: #F2F2F2;
+    border-radius: 5px;
+    border: 1px solid #DFDFDF; }
+  .import-cmp .percentage-cmp {
+    padding: 10px 5px; }
+  .import-cmp .err-cmp {
+    padding: 2px; }
+    .import-cmp .err-cmp .err-msg {
+      color: red; }
+
+.installation-cmp {
+  text-align: center;
+  display: flex;
+  height: 40px;
+  padding-top: 5px; }
+  .installation-cmp .installation-text {
+    color: #58585B;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-left: 5px; }
+  .installation-cmp .tile-installation-text {
+    color: #58585B;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis; }
+
+.disable-element {
+  opacity: 50%; }
+
+.app-system-tile-body-disable {
+  background: #fafafa; }
+
+.app-system-tile-footer {
+  margin-top: 0px; }
+
+.app-error {
+  color: red;
+  padding-left: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis; }
+
+.app-footer-err {
+  width: 100%;
+  overflow: hidden; }
+
+.apps-dot-label {
+  background-color: #4DC6CD;
+  width: 75px;
+  height: 75px;
+  border-radius: 37.5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 5px 0 0;
+  color: white; }
+  .apps-dot-label > span {
+    font-size: 26px; }
+
+.cui .btn.btn--wide {
+  padding-left: 13px !important; }
+
+.multi-installation-cmp {
+  text-align: left;
+  display: flex;
+  width: 100%;
+  height: 2rem; }
+
+.update-tile {
+  padding-left: 30px; }
+  .update-tile .loader--spinner .loading-spinner .wrapper .wheel.loading--spinner--xsmall {
+    width: 16px !important;
+    height: 16px !important; }
+
+.apps-initial {
+  height: 400px; }
+  .apps-initial > div {
+    text-align: center;
+    width: 100%;
+    padding: 3rem 2rem; }
+  .apps-initial .illustration {
+    height: 145px;
+    width: 200px; }
+  .apps-initial .apps-initial-title {
+    height: 33px;
+    color: #7F7F86;
+    font-family: CiscoSansTT;
+    font-size: 24px;
+    font-weight: 300;
+    letter-spacing: 0;
+    line-height: 33px;
+    text-align: center;
+    margin: 20px 0px; }
+  .apps-initial .apps-initial-content {
+    height: 19px;
+    color: #7F7F86;
+    font-family: CiscoSansTT;
+    font-size: 14px;
+    letter-spacing: 0;
+    line-height: 19px;
+    text-align: center;
+    margin: 20px 0px; }

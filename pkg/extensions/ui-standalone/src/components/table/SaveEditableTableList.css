@@ -1,0 +1,94 @@
+/** @see sass/vendor/tooltip/balloon.scss (written with CUIK c1.3.4 as the current version in use) */
+/* Status Colors (here from _variable.scss for documentation)
+$status-blue: #64bbe3 !default;
+$status-turq: #14a792 !default;
+$status-green: #6cc04a !default;
+$status-red: $accent-red !default;
+$status-orange: $accent-orange !default;
+$status-yellow: #ffcc00 !default;
+*/
+.children-objects-field {
+  background-color: #ffffff;
+  padding: 10px; }
+  .children-objects-field .children-objects-table .form-group {
+    margin: 0 !important; }
+    .children-objects-field .children-objects-table .form-group > p {
+      display: none; }
+    .children-objects-field .children-objects-table .form-group > label:not(.checkbox) {
+      display: none; }
+    .children-objects-field .children-objects-table .form-group > div label:not(.checkbox) {
+      display: none; }
+    .children-objects-field .children-objects-table .form-group.input--compressed .form-group__text.select:after {
+      top: 5px !important; }
+  .children-objects-field .children-objects-table .actions-row {
+    vertical-align: middle;
+    width: 1px;
+    white-space: nowrap;
+    border-top: 1px solid lightgray; }
+  .children-objects-field .edit-form {
+    padding: 10px; }
+  .children-objects-field.form-group--error .children-objects-table tr.editing {
+    background-color: mistyrose; }
+  .children-objects-field .actionable {
+    cursor: pointer; }
+  .children-objects-field .add-item {
+    color: #017cad;
+    padding: 15px 7.5px; }
+
+div.actions-row1 {
+  vertical-align: middle;
+  width: 1px;
+  white-space: nowrap;
+  border-top: 1px solid lightgray; }
+
+.edit-form span.icon-check {
+  font-size: 34px;
+  color: #6cc04a;
+  padding-left: 30px; }
+
+.edit-form span.icon-close {
+  font-size: 34px;
+  padding-left: 10px; }
+
+span.actionable {
+  cursor: pointer; }
+
+span.icon-small:before {
+  line-height: 18px !important;
+  font-size: 18px !important; }
+
+.property-label {
+  display: inline-block;
+  color: #7f7f86 !important; }
+  .property-label::first-letter {
+    text-transform: capitalize; }
+
+.edit-property-label {
+  padding: 15px 10px;
+  color: #7f7f86; }
+  .edit-property-label::first-letter {
+    text-transform: capitalize; }
+
+.providersList {
+  padding: 15px 0px; }
+
+.hostnamelbl {
+  padding: 8px 0px; }
+
+.ntpheader {
+  padding-bottom: 20px;
+  color: #58585B;
+  font-size: 16px;
+  line-height: 22px; }
+
+.ntp-subheader {
+  color: #7F7F86;
+  font-size: 14px;
+  line-height: 24px; }
+
+.edit-input {
+  height: 32px;
+  width: 266px; }
+
+.editlist {
+  width: 200px; }

@@ -1,0 +1,28 @@
+/** @see sass/vendor/tooltip/balloon.scss (written with CUIK c1.3.4 as the current version in use) */
+/* Status Colors (here from _variable.scss for documentation)
+$status-blue: #64bbe3 !default;
+$status-turq: #14a792 !default;
+$status-green: #6cc04a !default;
+$status-red: $accent-red !default;
+$status-orange: $accent-orange !default;
+$status-yellow: #ffcc00 !default;
+*/
+.health-widget {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: #f5f5f6;
+  height: 80px; }
+  .health-widget.healthy {
+    background-color: #F0F8EC; }
+  .health-widget.minor {
+    background-color: #FFF9E5; }
+  .health-widget.major {
+    background-color: #FEF6E7; }
+  .health-widget.critical {
+    background-color: #FCE9E8; }
+  .health-widget .badge {
+    font-size: 34px;
+    margin-right: 10px; }
+  .health-widget .count {
+    font-size: 36px; }

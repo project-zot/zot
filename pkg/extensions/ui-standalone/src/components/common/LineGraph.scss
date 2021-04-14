@@ -1,0 +1,26 @@
+@import 'src/scss/app/utilities/variables.scss';
+
+
+.horizontalGrid {
+	stroke: lightgrey;
+  }
+  
+  .svg-container {
+	display: inline-block;
+	position: relative;
+	width: 100%;
+	vertical-align: top;
+	overflow: hidden;
+	height: 100%;
+  }
+  
+  .svg-content {
+	display: inline-block;
+	position: absolute;
+	top: 0;
+	left: 0;
+  }
+  
+  .overlay {
+	 opacity: 0;
+  }

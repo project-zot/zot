@@ -1,0 +1,32 @@
+@import 'src/scss/assets/sass/utilities/variables.scss';
+
+.widget-panel.skeleton {
+    > header {
+        > .title {
+            flex: none;
+            color: $pale-gray-1;
+            background-color: $pale-gray-1;
+        }
+    }
+    > main {
+        padding: $padding-medium;
+        label,
+        div {
+            color: $pale-gray-1 !important;
+            background-color: $pale-gray-1;
+            display: table;
+        }
+    }
+    .fake-label,
+    .fake-property-value {
+        background-color: $pale-gray-1;
+        height: 10px;
+    }
+    .fake-label {
+        margin-bottom: $margin-xsmall;
+        width: 50%;
+    }
+    .fake-property-value {
+        margin-bottom: $margin-large;
+    }
+}

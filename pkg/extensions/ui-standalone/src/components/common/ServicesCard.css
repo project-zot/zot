@@ -1,0 +1,43 @@
+.cui .card__body {
+  margin-top: 0px !important; }
+
+.image-container {
+  padding-right: 16px; }
+  .image-container .tile-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 32px; }
+  .image-container .tile-details {
+    padding-left: 0 !important; }
+
+.apps-dot-label {
+  background-color: #4DC6CD;
+  width: 64px;
+  height: 64px;
+  border-radius: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 5px 0 0;
+  color: white; }
+  .apps-dot-label > span {
+    font-size: 26px; }
+
+.pb {
+  padding-bottom: 10px; }
+
+.service-footer-txt {
+  margin: 1px 0;
+  padding: 0 6px;
+  font-size: 9px;
+  height: 15px;
+  line-height: 14px;
+  vertical-align: middle;
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  color: #ffffff;
+  background: #9B81BA; }
+
+.service-others {
+  background: #F59764; }

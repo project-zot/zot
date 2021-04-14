@@ -1,0 +1,51 @@
+/** @see sass/vendor/tooltip/balloon.scss (written with CUIK c1.3.4 as the current version in use) */
+/* Status Colors (here from _variable.scss for documentation)
+$status-blue: #64bbe3 !default;
+$status-turq: #14a792 !default;
+$status-green: #6cc04a !default;
+$status-red: $accent-red !default;
+$status-orange: $accent-orange !default;
+$status-yellow: #ffcc00 !default;
+*/
+.faults-widget .counters, .faults-widget .labels {
+  display: flex; }
+  .faults-widget .counters > *, .faults-widget .labels > * {
+    flex: 1;
+    text-align: center;
+    display: flex;
+    justify-content: center;
+    align-items: center; }
+
+.faults-widget .labels > * {
+  height: 16px;
+  font-size: 10px;
+  text-transform: uppercase;
+  color: #ffffff;
+  font-weight: bold; }
+
+.faults-widget .labels .faults-level-critical {
+  background-color: #e2231a; }
+
+.faults-widget .labels .faults-level-major {
+  background-color: #fbab18; }
+
+.faults-widget .labels .faults-level-minor {
+  background-color: #ffcc00; }
+
+.faults-widget .labels .faults-level-warning {
+  background-color: #14a792; }
+
+.faults-widget .counters > * {
+  padding: 5px; }
+
+.faults-widget .counters .faults-level-critical {
+  background-color: rgba(207, 32, 48, 0.15); }
+
+.faults-widget .counters .faults-level-major {
+  background-color: rgba(255, 115, 0, 0.15); }
+
+.faults-widget .counters .faults-level-minor {
+  background-color: rgba(255, 204, 0, 0.15); }
+
+.faults-widget .counters .faults-level-warning {
+  background-color: rgba(20, 167, 146, 0.15); }

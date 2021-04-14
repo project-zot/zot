@@ -1,0 +1,326 @@
+/// Overrides of Cisco UI Kit's variables with default values (src/assets/cui/sass/utilities/_variables.scss)
+
+
+// Label
+$base-form-label-margin-regular: 1.5ch; // 1ch === width of '0' (zero) for the current font
+
+// Sidebar
+$sidebar-menu-width-mini: 50px;
+
+// Card raised shadow override
+$cui-card-box-shadow: 0 3px 1px -2px rgba(0, 0, 0, .2), 0 2px 2px 0 rgba(0, 0, 0, .2), 0 1px 5px 0 rgba(0, 0, 0, .15);
+
+@import "../../cui/sass/utilities/_variables.scss";
+
+
+// -----------------------------------------------------------------------------
+// Namespace
+$namespace: blueprint;
+
+
+/// Overrides of Cisco UI Kit's variables that use variables from the src/assets/cui/sass/utilities/_variables.scss import
+
+// Modal
+$base-modal-close-size: $h4-font-size !important;
+$base-modal-title-size: $h4-font-size !important;
+$base-modal-title-weight: $h4-font-weight !important;
+
+
+/// Variables for extending Cisco UI Kit components with dependencies below ...
+
+// supports mini sizes (e.g. forms and inputs)
+$base-spacing-eighth: $base-spacing * 0.125;
+//--------
+
+/// Variables that shadow hardcoded Cisco UI Kit's values (e.g. border-radius: 4px;) AND thus need to be kept in sync when we upgraded
+
+/** @see sass/vendor/tooltip/balloon.scss (written with CUIK c1.3.4 as the current version in use) */
+$balloon-bg: fade-out(#39393b, .05) !default; // shadows variable $balloon-bg defined in _balloon.scss (as of CUIK v1.3.4)
+// Tooltip
+$tooltip-border-radius: 4px;
+
+
+/// Colors
+
+// Accent Palette
+$orange-tint-30: #f59764;
+$orange-tint-20: #F4884E;
+$orange-tint-10: #f27938;
+$orange-base: #F4884E;
+$orange-shade-10: #d95f1f;
+$orange-shade-20: #c1551b;
+$orange-shade-30: #a94a18;
+
+$yellow-tint-30: #faba64;
+$yellow-tint-20: #F9B04E;
+$yellow-tint-10: #f9a638;
+$yellow-base: #f89c22;
+$yellow-shade-10: #df8c1f;
+$yellow-shade-20: #c67d1b;
+$yellow-shade-30: #ae6d18;
+
+// Maroon
+$maroon-tint-30:  #ba6b6d;
+$maroon-tint-20:  #b15559;
+$maroon-tint-10:  #a74044;
+$maroon-base:     #9d2b2f;
+$maroon-shade-10:  #8d272a;
+$maroon-shade-20:  #7e2226;
+$maroon-shade-30:  #6e1e21;
+
+// Dark Teal
+$dark-teal-tint-30:  #51a5be;
+$dark-teal-tint-20:  #3899b5;
+$dark-teal-tint-10:  #1f8cab;
+$dark-teal-base:      #067fa2;
+$dark-teal-shade-10:  #057292;
+$dark-teal-shade-20:  #056682;
+$dark-teal-shade-30:  #045971;
+
+// Bright Teal
+$bright-teal-tint-30:  #4dc6cd;
+$bright-teal-tint-20:  #33bec6;
+$bright-teal-tint-10:  #1ab6bf;
+$bright-teal-base:      #00aebe;
+$bright-teal-shade-10:  #009da6;
+$bright-teal-shade-20:  #008b93;
+$bright-teal-shade-30:  #007a81;
+
+$dark-green-tint-30: #4fb57f;
+$dark-green-tint-20: #36aa60;
+$dark-green-tint-10: #1da05a;
+$dark-green-base: #049548;
+$dark-green-shade-10: #048641;
+$dark-green-shade-20: #03773a;
+$dark-green-shade-30: #036832;
+
+$bright-green-tint-30: #9bd280;
+$bright-green-tint-20: #8dcb6e;
+$bright-green-tint-10: #7ec55c;
+$bright-green-base: #70be4a;
+$bright-green-shade-10: #65ab43;
+$bright-green-shade-20: #5a983b;
+$bright-green-shade-30: #4e8534;
+
+$dark-purple-tint-30: #85699e;
+$dark-purple-tint-20: #735391;
+$dark-purple-tint-10: #623e83;
+$dark-purple-base: #502875;
+$dark-purple-shade-10: #482469;
+$dark-purple-shade-20: #40205e;
+$dark-purple-shade-30: #381c52;
+
+$bright-purple-tint-30: #9b81ba;
+$bright-purple-tint-20: #8d6fb1;
+$bright-purple-tint-10: #7e5da7;
+$bright-purple-base: #704b9d;
+$bright-purple-shade-10: #65448d;
+$bright-purple-shade-20: #5a3c7e;
+$bright-purple-shade-30: #4e356e;
+
+// Dark Rose
+$dark-rose-tint-30: #c26293;
+$dark-rose-tint-20: #b94c83;
+$dark-rose-tint-10: #b13574;
+$dark-rose-base: #a81f64;
+$dark-rose-shade-10: #971c5a;
+$dark-rose-shade-20: #861950;
+$dark-rose-shade-30: #761646;
+
+// Bright Rose
+$bright-rose-tint-30: #dd80b8;
+$bright-rose-tint-20: #d96dad;
+$bright-rose-tint-10: #d45ba3;
+$bright-rose-base: #cf4999;
+$bright-rose-shade-10: #ba428a;
+$bright-rose-shade-20: #a63a7a;
+$bright-rose-shade-30: #91336b;
+
+
+// Shadow colors
+$shadow: rgba(0, 0, 0, .2);
+$light-shadow: rgba(0, 0, 0, .1);
+$lighter-shadow: rgba(0, 0, 0, .05);
+$lightest-shadow: rgba(0, 0, 0, .025);
+$dark-shadow: rgba(0, 0, 0, .3);
+$darker-shadow: rgba(0, 0, 0, .5);
+$darkest-shadow: rgba(0, 0, 0, .75);
+
+// Box Shadows (e.g. transitions)
+$empty-box-shadow: rgba(0, 0, 0, 0) 0 0 0;
+
+
+/* Status Colors (here from _variable.scss for documentation)
+$status-blue: #64bbe3 !default;
+$status-turq: #14a792 !default;
+$status-green: #6cc04a !default;
+$status-red: $accent-red !default;
+$status-orange: $accent-orange !default;
+$status-yellow: #ffcc00 !default;
+*/
+
+
+// Highlights
+$highlight: rgba(255, 255, 255, .4);
+$weak-highlight: rgba(255, 255, 255, .2);
+$weaker-highlight: rgba(255, 255, 255, .1);
+$weakest-highlight: rgba(255, 255, 255, .05);
+$strong-highlight: rgba(255, 255, 255, .6);
+$strongest-highlight: rgba(255, 255, 255, .8);
+
+$link-container-highlight: rgba(33, 183, 239, 1);
+
+// mso.  no ux palette colors come close to this
+$light-blue-1: #eef8fd;
+/// Variables defined outside of Cisco UI Kit's _variables.scss file (e.g. in src/assets/cui/sass/vendor/tooltip/balloon.scss) but there's no reason for them not to be,
+/// except they may be more likely to disappear when upgrading.
+$tooltip-green: fade-out($success, 0.01); // keep value in sync with the value for $tooltip-green defined in src/assets/cui/sass/vendor/tooltip/balloon.scss
+$tooltip-indigo: fade-out($indigo, 0.01); // keep value in sync with the value for $tooltip-indigo defined in src/assets/cui/sass/vendor/tooltip/balloon.scss
+$tooltip-blue: fade-out($cisco-blue, 0.01); // keep value in sync with the value for $tooltip-blue defined in src/assets/cui/sass/vendor/tooltip/balloon.scss
+$tooltip-white: fade-out($white, 0.01);
+$tooltip-off-white: fade-out($off-white-alt, 0.01); // Cisco specific
+$tooltip-light-blue: fade-out($light-blue-1, 0.01); // Cisco specific
+$base-tooltip-background: fade-out($dark-gray-1, .05); // keep value in sync with the value for $balloon-bg defined in src/assets/cui/sass/vendor/tooltip/balloon.scss
+
+
+/// Needed variables from past versions of Cisco UI Kit (keep limited please)
+$sidebar-item-border-selected: 5px 0 0 $white inset; // taken out of v1.3.2
+
+
+/// blueprint-react specific variables ...$base-box-shadow-small
+
+/// Fonts
+$font-weight-hairline: 100;
+$font-weight-ultra-light: 200;
+// @deprecated
+$font-weight-thinner: $font-weight-ultra-light;
+
+$font-weight-light: 300;
+// @deprecated
+$font-weight-thin: $font-weight-light;
+
+$font-weight-normal: 400;
+
+$font-weight-medium: 500;
+// @deprecated
+$font-weight-solid: $font-weight-medium;
+
+$font-weight-semi-bold: 600;
+// @deprecated
+$font-weight-extra-solid: $font-weight-semi-bold;
+
+$font-weight-bold: 700;
+// @deprecated
+$font-weight-heavy: $font-weight-bold;
+
+$font-weight-extra-bold: 800;
+$font-weight-bold: 900;
+$font-weight-extra-black: 950;
+
+
+/// Spacing
+$base-line-height-calc: 1.4285714286;
+
+// Margin
+$margin-base:     $base-spacing-half;
+$margin-small:    $base-spacing-qtr;
+$margin-xsmall:   $base-spacing-eighth;
+$margin-medium:   $margin-base + $base-spacing-eighth; // 12.5px (assuming $base-spacing is 20px)
+$margin-large:    $base-spacing - $base-spacing-qtr;
+$margin-larger:   $base-spacing; // 20px
+$margin-xlarge:   $margin-larger + $base-spacing-half;
+$margin-xxlarge:  $base-spacing-dbl;
+
+// Padding
+$padding-base:    $base-spacing-half;
+$padding-small:   $base-spacing-qtr;
+$padding-medium:  $padding-base + 2px;
+$padding-large:   $padding-medium + 3px;
+$padding-xlarge:  $padding-large + 3px;
+$padding-xxlarge: $base-spacing + $base-spacing-half;
+$padding-xsmall:  $padding-small - 1px;
+$padding-xxsmall: $padding-xsmall - 1px;
+
+
+/// Components
+
+// Header
+$header-height-medium: 64px; // add an additional height to what CUIK provides.
+
+// Dropdown
+// Restrict dropdowns from having an endless height in case of large number of items.
+$dropdown-max-height: 400px;
+$dropdown-min-width: 150px;
+
+// SecondarySidebar
+$secondary-sidebar-width: $sidebar-menu-width + 100px;
+
+// MultilaneTimeline components
+$timeline-brush-z-index: 1;
+$timeline-minimap-height: 70px;
+$timelime-labels-font-size: 12px;
+$timeline-border-color: #babbbe;
+$timeline-detail-view-panel-color: #fafafa;
+$timeline-events-overlay-odd-color: #f2f2f2;
+$timeline-events-overlay-even-color: $white;
+
+// Progress Gauge font-size
+$base-progress-gauge-font-size: 3rem;
+$small-progress-gauge-font-size: 1.2rem;
+$medium-progress-gauge-font-size: $base-progress-gauge-font-size;
+$large-progress-gauge-font-size: 4.5rem;
+
+// Progress Gauge line-height
+$base-progress-gauge-line-height: 25px;
+$small-progress-gauge-line-height: 12px;
+$medium-progress-gauge-line-height: $base-progress-gauge-line-height;
+$large-progress-gauge-line-height: 35px;
+
+// Top level content styling
+$content-header-bg: $indigo;
+$content-header-color: $white;
+
+// Maintain the cosmic order between the various layered components
+$screen-zindex: $base-modal-zindex - 5;
+$screen-doc-zindex: $base-modal-zindex - 1;
+$screen-loading-zindex: $base-modal-zindex - 2;
+
+// Animation related variables
+$base-animation-duration-fastest: 500ms;
+$base-animation-duration-faster: .1s;
+$base-animation-duration: .2s;
+$base-animation-duration-slower: .3s;
+$base-animation-duration-slowest: .5s;
+
+
+//// Variables for extending Cisco UI Kit components ...
+
+// Icons
+$base-icon-color: $base-font-color;
+$base-icon-color-light: $white;
+$base-icon-color-inverted: $base-icon-color-light;
+$base-icon-color-hover: $base-accent-color; // darken($icon-color, 20%);  // nui
+$base-icon-transition: color .3s ease-out, background-color .3s ease-out, border-color .3s ease-out, stroke .3s ease-out, fill .3s ease-out;
+$base-icon-size: $base-font-size;
+
+// Input & Select mini size
+$cui-input-size-mini: $base-spacing;
+$cui-input-padding-mini: $padding-xxsmall;
+$cui-input-vert-center-mini: 1px;
+$cui-input-font-size-mini: $xsmall-font-size;
+
+// X-Small size for Buttons and IconButtons
+$aui-xsmall-button-padding: 0 16px !default;
+$aui-xsmall-button-font-size: 12px !default;
+$aui-xsmall-button-line-height: 20px !default;
+$aui-xsmall-button-min-width: 0 !default;
+$aui-xsmall-button-max-width: 160px !default;
+$aui-xsmall-button-margin: 3px !default;
+$aui-xsmall-button-height: 24px !default;
+
+$aui-xsmall-button-icon-height: 24px !default;
+$aui-xsmall-button-icon-width: 24px !default;
+$aui-xsmall-button-icon-font-size: 14px !default;
+
+/// ... Variables for extending Cisco UI Kit components
+

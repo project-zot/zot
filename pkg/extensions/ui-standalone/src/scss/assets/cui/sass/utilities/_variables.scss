@@ -1,0 +1,1597 @@
+// =============================================================================
+// Cisco UI Kit
+// Variables
+// -----------------------------------------------------------------------------
+
+
+// -----------------------------------------------------------------------------
+// Namespace
+
+$namespace: cui;
+
+
+// -----------------------------------------------------------------------------
+// Scaffolding
+
+$mobile-menu-width: 280px !default;
+$min-page-width: 320px !default;
+$max-page-width: 2560px !default;
+$max-columns: 12 !default;
+$cui-resource-path: ".." !default;
+
+
+// -----------------------------------------------------------------------------
+// Other Sizes
+
+$base-line-height: 20px !default;
+$base-spacing: 20px !default; // Note: Use even #s otherwise icons get clipped
+$base-spacing-qtr: $base-spacing * 0.25 !default;
+$base-spacing-half: $base-spacing * 0.5 !default;
+$base-spacing-dbl: $base-spacing * 2 !default;
+$base-z-index: 0 !default;
+
+
+// -----------------------------------------------------------------------------
+// Typography
+
+$base-font-family: 'CiscoSans', 'Arial', sans-serif !default;
+$monospace-font-family: Monaco, Inconsolata, Consolas, 'Courier New', Courier, 'Lucida Console', monospace !default;
+
+$h1-font-size: 40px !default;
+$h2-font-size: 32px !default;
+$h3-font-size: 28px !default;
+$h4-font-size: 24px !default;
+$h5-font-size: 20px !default;
+$h6-font-size: 16px !default;
+
+$h1-font-weight: 100 !default;
+$h2-font-weight: 200 !default;
+$h3-font-weight: 200 !default;
+$h4-font-weight: 300 !default;
+$h5-font-weight: 300 !default;
+$h6-font-weight: 300 !default;
+
+$headings: (
+    ( 'h1', $h1-font-size, $h1-font-weight ),
+    ( 'h2', $h2-font-size, $h2-font-weight ),
+    ( 'h3', $h3-font-size, $h3-font-weight ),
+    ( 'h4', $h4-font-size, $h4-font-weight ),
+    ( 'h5', $h5-font-size, $h5-font-weight ),
+    ( 'h6', $h6-font-size, $h6-font-weight )
+) !default;
+
+$heading-margin: 0 0 $base-spacing-half 0;
+
+
+// -----------------------------------------------------------------------------
+// Breakpoints
+
+$breakpoints: (
+  'xsmall'  : ( min-width: 479px ),
+  'small'   : ( min-width: 767px ),
+  'medium'  : ( min-width: 992px ),
+  'large'   : ( min-width: 1200px )
+);
+@mixin break-at($name) {
+    @if map-has-key($breakpoints, $name) {
+        @media #{inspect(map-get($breakpoints, $name))} {
+            @content;
+        }
+    }
+    @else {
+        @warn "Unfortunately, no value could be retrieved from `#{$breakpoints}`. "
+        + "Please make sure it is defined in `$breakpoints` map.";
+    }
+}
+
+
+// -----------------------------------------------------------------------------
+// Font
+
+$base-font-weight: 400 !default;
+
+// 1rem = 10px (see https://snook.ca/archives/html_and_css/font-size-with-rem)
+$html-font-size: 62.5% !default;
+$base-font-size: 14px !default;
+
+// Breakpoint-based font sizes
+$base-font-size-xs: 10px !default;
+$base-font-size-sm: 12px !default;
+$base-font-size-md: $base-font-size !default;
+$base-font-size-lg: 18px !default;
+
+// These font sizes are used to generate the scalable header sizes
+$xsmall-font-size: 10px !default;
+$small-font-size: 12px !default;
+$medium-font-size: $base-font-size !default;
+$large-font-size: 16px !default;
+
+// Extra font sizes
+$tiny-font-size: 8px !default;
+$xlarge-font-size: 24px !default;
+$huge-font-size: 48px !default;
+$goliath-font-size: 64px !default;
+$billboard-font-size: 60px !default;
+$billboard-font-size-md: 54px !default;
+$billboard-title-font-size: 36px !default;
+$billboard-subtitle-font-size: 20px !default;
+$compressed-font-size: $small-font-size !default;
+
+// Display font sizes
+$display-size-0: 9rem !default;
+$display-size-1: 6rem !default;
+$display-size-2: 5.5rem !default;
+$display-size-3: 4.5rem !default;
+$display-size-4: 3.5rem !default;
+
+// Icon font sizes
+$xsmall-icon-font-size: 10px !default;
+$small-icon-font-size: 12px !default;
+$default-icon-font-size: $base-font-size !default;
+$medium-icon-font-size: 16px !default;
+$large-icon-font-size: 18px !default;
+$xlarge-icon-font-size: 24px !default;
+$huge-icon-font-size: 34px !default;
+
+
+// -----------------------------------------------------------------------------
+// Spacing
+
+$base-spacing-compressed: $base-spacing * 0.5 !default;
+$base-spacing-regular: $base-spacing !default;
+$base-spacing-loose: $base-spacing * 2 !default;
+
+$base-spacing-qtr: $base-spacing * 0.25 !default;
+$base-spacing-half: $base-spacing * 0.5 !default;
+$base-spacing-dbl: $base-spacing * 2 !default;
+
+
+// -----------------------------------------------------------------------------
+// Colors
+
+// Hero Palette
+$cisco-blue: #00bceb !default;
+$cisco-indigo: #005073 !default;
+$cisco-green: #6ebe4a !default;
+$cisco-logo: #1BA0D7 !default;
+
+// Accent Palette
+$accent-blue: #049fd9 !default;
+$accent-orange: #fbab18 !default;
+$accent-red: #e2231a !default;
+
+// Secondary Palette
+$dark-gray-1: #39393b !default;
+$dark-gray-2: #58585b !default;
+$med-gray-2: #9e9ea2 !default;
+$white: #ffffff !default;
+$light-blue: #f2fbfd !default;
+$vibrant-blue: #017CAD !default;
+
+$blue: #004676 !default;
+$green: #00bb00 !default;
+$red: $accent-red !default;
+$orange: $accent-orange !default;
+$yellow: #efb73e !default;
+$dark-gray: #555 !default;
+$gray: #888 !default;
+$light-gray: #e9e9e9 !default;
+$off-white: #f9f9f9 !default;
+$off-white-alt: #f6f6f6 !default;
+
+$cisco-blue2: #0377A1 !default; // New link color
+$cisco-blue3: #0E748E !default;
+$cisco-blue4: $accent-blue !default; // Link hover color
+$cisco-darkgreen: #487B32 !default; // For filenames and non link URLs
+$med-blue: #34adde !default;
+$black: #1a1a1a !default;
+$soft-black: #0e1111 !default;
+$dark-blue: #003C56 !default;
+$indigo: $cisco-indigo !default;
+$dark-gray-3: #626469 !default;
+$dark-gray-4: #7f7f86 !default;
+$med-gray-3: #b0b0b2 !default;
+$med-gray-4: #b6b9bb !default;
+$med-gray-5: #8e9299 !default; // CDC Footer background
+$light-gray-1: #aeaeaf !default;
+$light-gray-2: #c6c7ca !default;
+$light-gray-3: #dfdfdf !default;
+$light-gray-4: #f5f5f6 !default;
+$light-gray-5: #f2f2f2 !default;
+$light-gray-compliant: #74747B !default;
+$light-gray-disabled: #d7d7d8 !default;
+$pale-gray-1: #e8ebf1 !default;
+$pale-gray-2: #f3f6f9 !default;
+
+$status-blue: #64bbe3 !default; // e2f7fb
+$status-turq: #14a792 !default;
+$status-green: #6cc04a !default;
+$status-red: $accent-red !default;
+$status-orange: $accent-orange !default;
+$status-yellow: #ffcc00 !default;
+
+$default: $gray !default;
+$primary: $cisco-blue !default;
+$secondary: $cisco-blue !default;
+$info: $status-blue !default;
+$success: $cisco-green !default;
+$danger: $status-red !default;
+$warning: $status-orange !default;
+$warning-alt: $status-yellow !default;
+
+$base-colors: (
+  default : $default,
+  primary : $primary,
+  secondary : $secondary,
+  info : $info,
+  success : $success,
+  danger: $danger,
+  warning : $warning,
+  warning-alt : $warning-alt
+);
+
+$base-hover-color: rgba(0,0,0,0.05) !default;
+$base-color-disabled: $dark-gray-3 !default;
+
+
+// -----------------------------------------------------------------------------
+// Background Colors
+
+$base-background-color: $light-gray-4 !default;
+$alt-background-color: $white !default;
+
+
+// -----------------------------------------------------------------------------
+// Text Colors
+
+$header-font-color: $dark-gray-2 !default;
+$base-font-color: $dark-gray-2 !default;
+$base-form-label-color: $base-font-color !default;
+$base-muted-color: $med-gray-2 !default;
+$base-disabled-color: $light-gray-2 !default;
+$base-disabled-background: $light-gray-5 !default;
+$base-accent-color: $vibrant-blue !default;
+
+$base-link-color: #007493 !default;
+$base-link-color-pressed: #6f53bc !default;     // From Dave Ngo cisco.com
+$hover-link-color: #005073 !default;            // From Dave Ngo cisco.com
+$base-link-color-invert: $white !default;
+
+
+// -----------------------------------------------------------------------------
+// Base: Borders and Outlines
+
+$base-border-color: $light-gray-3 !default;
+$base-border-color-alt: $white !default;
+$base-border: 1px solid $base-border-color !default;
+$base-border-alt: 1px solid $base-border-color-alt !default;
+$base-border-radius: 2px !default;
+$base-box-shadow: 0 10px 24px -6px rgba(0, 0, 0, 0.25) !default;
+$base-box-shadow-small: 0 5px 24px -6px rgba(0, 0, 0, 0.25) !default;
+$base-box-shadow-medium: $base-box-shadow !default;
+$base-box-shadow-large: 0 20px 20px rgba(0,0,0,.05), 0 10px 12px rgba(0,0,0,.10) !default;
+$base-outline: 3px solid $base-accent-color !default;
+
+
+// -----------------------------------------------------------------------------
+// Alert Pattern
+
+$base-alert-margin: 0 0 $base-spacing 0 !default;
+$base-alert-icon-size: 24px !default;
+$base-alert-border-left-width: 48px !default;
+$base-alert-close-icon-opacity: 0.5 !default;
+$base-alert-background-opacity: 0.01 !default;
+$base-alert-default-background: rgba($cisco-blue, $base-alert-background-opacity) !default;
+$base-alert-default-color: $base-font-color !default;
+$base-alert-default-border-color: $cisco-blue !default;
+$base-alert-default-border-left-width: $base-alert-border-left-width !default;
+$base-alert-default-icon-color: $cisco-blue !default;
+$alert-colors:
+    (
+        'name': 'info',
+        'params': (
+            'background': rgba($cisco-blue, $base-alert-background-opacity),
+            'color': $base-font-color,
+            'border-color': $cisco-blue,
+            'border-left-width': $base-alert-border-left-width,
+            'icon-color': $white
+        )
+    ),(
+        'name': 'success',
+        'params': (
+            'background': rgba($success, $base-alert-background-opacity),
+            'color': $base-font-color,
+            'border-color': $success,
+            'border-left-width': $base-alert-border-left-width,
+            'icon-color': $white
+        )
+    ),(
+        'name': 'warning',
+        'params': (
+            'background': rgba($warning, $base-alert-background-opacity),
+            'color': $base-font-color,
+            'border-color': $warning,
+            'border-left-width': $base-alert-border-left-width,
+            'icon-color': $white
+        )
+    ),(
+        'name': 'danger',
+        'params': (
+            'background': rgba($danger, $base-alert-background-opacity),
+            'color': $base-font-color,
+            'border-color': $danger,
+            'border-left-width': $base-alert-border-left-width,
+            'icon-color': $white
+        )
+    );
+
+
+// -----------------------------------------------------------------------------
+// Badge Pattern
+
+$cui-badge-size: 20px;
+$cui-badge-font-size: 11px;
+
+$badge-sizes:
+    ("tiny", 16px, 9px),
+    ("small", $cui-badge-size, $cui-badge-font-size),
+    ("medium", 24px, $base-font-size),
+    ("large", 28px, 16px);
+
+$badge-colors:
+    ("info", $dark-gray-1, $info),
+    ("success", $white, $success),
+    ("warning", $dark-gray-1, $warning),
+    ("warning-alt", $dark-gray-1, $status-yellow),
+    ("danger", $white, $danger),
+    ("blue", $indigo, $cisco-blue),
+    ("ltgray", $indigo, $light-gray-5),
+    ("mdgray", $dark-gray-1, $light-gray-3),
+    ("dkgray", $white, $dark-gray-2),
+    ("vibblue", $white, $vibrant-blue),
+    ("indigo", $white, $indigo),
+    ("white", $dark-gray-1, $white),
+    ("ghost", $white, transparent, 1px solid $white);
+
+
+// -----------------------------------------------------------------------------
+// Blockquote Pattern
+
+$cui-blockquote-border-width: 5px !default;
+$cui-blockquote-colors:
+    ("blue", $vibrant-blue),
+    ("danger", $danger),
+    ("default", $base-border-color),
+    ("indigo", $indigo),
+    ("info", $info),
+    ("success", $success),
+    ("warning", $warning);
+$cui-blockquote-positions:
+    ("default", left),
+    ("center", center),
+    ("right", right);
+$cui-blockquote-sizes:
+    ("compressed", $base-spacing-qtr),
+    ("default", $base-spacing-half),
+    ("loose", $base-spacing);
+
+
+// -----------------------------------------------------------------------------
+// Breadcrumb Pattern
+
+$breadcrumb-color: $base-font-color !default;
+$breadcrumb-padding: 0 2px 0 6px !default;
+$breadcrumb-separator: '/\00a0' !default;
+
+
+// -----------------------------------------------------------------------------
+// Button Pattern
+
+$base-button-color: $med-gray-2 !default;
+$base-button-border-radius: 2rem !default;
+$base-button-border-size: 1px !default;
+$base-button-background: $med-gray-2 !default;
+$base-button-padding: 0 35px !default;
+$base-button-font-size: 14px !default;
+$base-button-font-weight: normal !default;
+$base-button-line-height: 40px !default;
+$base-button-background-active: $dark-gray-2 !default;
+$base-button-background-hover: $cisco-blue !default;
+$base-button-background-disabled: $light-gray-3 !default;
+$base-button-color-active: $white !default;
+$base-button-color-hover: $white !default;
+$base-button-color-disabled: $light-gray-2 !default;
+$base-button-fixed-width: 150px !default;
+$base-button-min-width: 150px !default;
+$base-button-max-width: 300px !default;
+$base-button-margin: 20px !default;
+$base-button-height: 40px !default;
+
+$aui-button-color: $white !default;
+$aui-button-border-radius: 30px !default;
+$aui-button-border-size: 1px !default;
+$aui-button-border-selected: $dark-gray-4 !default;
+$aui-button-background: $dark-gray-4 !default;
+$aui-button-padding: 0 35px !default;
+$aui-button-font-size: 16px !default;
+$aui-button-font-weight: $base-button-font-weight !default;
+$aui-button-line-height: 40px !default;
+$aui-button-background-active: $dark-gray-3 !default;
+$aui-button-background-hover: $dark-gray-3 !default;
+$aui-button-background-disabled: $light-gray-3 !default;
+$aui-button-background-selected: $white !default;
+$aui-button-color-active: $white !default;
+$aui-button-color-hover: $white !default;
+$aui-button-color-disabled: $light-gray-2 !default;
+$aui-button-color-selected: $dark-gray-3 !default;
+$aui-button-min-width: 0 !default;
+$aui-button-max-width: 300px !default;
+$aui-button-margin: $base-spacing * 0.5 !default;
+$aui-button-height: 40px !default;
+
+$aui-button-spacing: 0 !default;
+$aui-button-skinny-spacing: ($base-spacing * 0.25) !default;
+$aui-button-regular-spacing: ($base-spacing * 0.5) !default;
+$aui-button-relaxed-spacing: $base-spacing !default;
+$aui-button-wide-spacing: ($base-spacing * 1.25) !default;
+
+$aui-small-button-padding: 0 $base-spacing !default;
+$aui-small-button-font-size: $base-font-size !default;
+$aui-small-button-line-height: 24px !default;
+$aui-small-button-min-width: 0 !default;
+$aui-small-button-max-width: 200px !default;
+$aui-small-button-margin: $base-spacing * 0.25 !default;
+$aui-small-button-height: 30px !default;
+
+$aui-button-icon-height: 40px !default;
+$aui-button-icon-width: 40px !default;
+$aui-button-icon-font-size: 18px !default;
+
+$aui-small-button-icon-height: 30px !default;
+$aui-small-button-icon-width: 30px !default;
+$aui-small-button-icon-font-size: 13px !default;
+
+$aui-large-button-icon-height: 50px !default;
+$aui-large-button-icon-width: 50px !default;
+$aui-large-button-icon-font-size: 24px !default;
+
+$aui-primary-button-color: $white !default;
+$aui-primary-button-color-hover: $white !default;
+$aui-primary-button-color-selected: $cisco-blue !default;
+
+$aui-primary-button-background: $cisco-blue !default;
+$aui-primary-button-background-hover: #047fad !default;
+$aui-primary-button-background-selected: transparent !default;
+$aui-primary-button-border-selected: $cisco-blue !default;
+
+$aui-primary-ghost-button-color: $cisco-blue !default;
+$aui-primary-ghost-button-color-hover: $white !default;
+$aui-primary-ghost-button-background: transparent !default;
+$aui-primary-ghost-button-background-hover: $cisco-blue !default;
+$aui-primary-ghost-button-border: $cisco-blue !default;
+$aui-primary-ghost-button-border-selected: $cisco-blue !default;
+
+$aui-secondary-button-color: $dark-gray-1 !default;
+$aui-secondary-button-color-hover: $white !default;
+$aui-secondary-button-background: $cisco-green !default;
+$aui-secondary-button-background-hover: #889B28 !default;
+
+$aui-negative-button-color: $white !default;
+$aui-negative-button-color-hover: $white !default;
+$aui-negative-button-background: $danger !default;
+$aui-negative-button-background-hover: #A4101E !default;
+
+$aui-success-button-color: $white !default;
+$aui-success-button-color-hover: $white !default;
+$aui-success-button-background: $success !default;
+$aui-success-button-background-hover: #50AA2A !default;
+
+$aui-white-button-color: $dark-gray-2 !default;
+$aui-white-button-color-hover: $dark-gray-2 !default;
+$aui-white-button-background: $white !default;
+$aui-white-button-background-hover: #e8e8f1 !default;
+
+$aui-white-ghost-button-color: $white !default;
+$aui-white-ghost-button-color-hover: $dark-gray-2 !default;
+$aui-white-ghost-button-background: transparent !default;
+$aui-white-ghost-button-background-hover: $white !default;
+$aui-white-ghost-button-border: $white !default;
+
+$aui-gray-ghost-button-color: $dark-gray-3 !default;
+$aui-gray-ghost-button-color-hover: $white !default;
+$aui-gray-ghost-button-background: transparent !default;
+$aui-gray-ghost-button-background-hover: $dark-gray-3 !default;
+$aui-gray-ghost-button-border: $dark-gray-3 !default;
+
+$base-btn-margin: -1px !default;
+$base-btn-compressed-margin: ($base-spacing * 0.25) !default;
+$base-btn-regular-margin: ($base-spacing * 0.5) !default;
+$base-btn-loose-margin: $base-spacing !default;
+
+$base-btn-group-padding: 10px !default;
+$base-btn-group-toggle-box-shadow: inset 1px 2px 5px rgba(0,0,0,0.25) !default;
+
+$button-colors:
+    (
+        'name': 'default',
+        'params': (
+            'background': $dark-gray-2,
+            'background-active': darken($dark-gray-2, 10),
+            'background-disabled': lighten($dark-gray-2, 40),
+            'background-hover': darken($dark-gray-2, 5),
+            'background-selected': $white,
+            'border-focus': $dark-gray-2,
+            'border-selected': $dark-gray-2,
+            'color': $white,
+            'color-disabled': $white,
+            'color-hover': $white,
+            'color-selected': $dark-gray-2,
+            'group-border-color': $dark-gray-2
+        )
+    ),(
+        'name': 'primary',
+        'params': (
+            'background': $vibrant-blue,
+            'background-active': darken($vibrant-blue, 10),
+            'background-disabled': lighten($vibrant-blue, 50),
+            'background-hover': darken($vibrant-blue, 5),
+            'background-selected': $white,
+            'border-focus': $vibrant-blue,
+            'border-selected': $vibrant-blue,
+            'color': $white,
+            'color-disabled': $white,
+            'color-hover': $white,
+            'color-selected': $vibrant-blue,
+            'group-border-color': $vibrant-blue
+        )
+    ),(
+        'name': 'primary-ghost',
+        'params': (
+            'background': transparent,
+            'background-active': darken($vibrant-blue, 5),
+            'background-disabled': transparent,
+            'background-focus': $vibrant-blue,
+            'background-hover': $vibrant-blue,
+            'background-selected': $vibrant-blue,
+            'border': $vibrant-blue,
+            'border-disabled': $vibrant-blue,
+            'border-focus': $vibrant-blue,
+            'border-selected': $vibrant-blue,
+            'color': $vibrant-blue,
+            'color-disabled': $vibrant-blue,
+            'color-focus': $white,
+            'color-hover': $white,
+            'color-selected': $white,
+            'group-border-color': $vibrant-blue
+        )
+    ),(
+        'name': 'secondary',
+        'params': (
+            'background': transparent,
+            'background-active': darken($vibrant-blue, 5),
+            'background-disabled': transparent,
+            'background-focus': $vibrant-blue,
+            'background-hover': $vibrant-blue,
+            'background-selected': $vibrant-blue,
+            'border': $vibrant-blue,
+            'border-disabled': $vibrant-blue,
+            'border-focus': $vibrant-blue,
+            'border-selected': $vibrant-blue,
+            'color': $vibrant-blue,
+            'color-disabled': $vibrant-blue,
+            'color-focus': $white,
+            'color-hover': $white,
+            'color-selected': $white,
+            'group-border-color': $vibrant-blue
+        )
+    ),(
+        'name': 'negative',
+        'params': (
+            'background': $danger,
+            'background-active': darken($danger, 10),
+            'background-disabled': lighten($danger, 25),
+            'background-hover': darken($danger, 5),
+            'border-focus': $danger,
+            'color': $white,
+            'color-disabled': $white,
+            'color-hover': $white
+        )
+    ),(
+        'name': 'success',
+        'params': (
+            'background': $cisco-green,
+            'background-active': darken($cisco-green, 10),
+            'background-disabled': lighten($cisco-green, 25),
+            'background-focus': darken($cisco-green, 5),
+            'background-hover': darken($cisco-green, 5),
+            'background-selected': $cisco-green,
+            'border': $cisco-green,
+            'border-focus': $cisco-green,
+            'border-selected': $cisco-green,
+            'color': $white,
+            'color-active': $white,
+            'color-disabled': $white,
+            'color-hover': $white,
+            'color-selected': $white,
+            'group-border-color': $cisco-green
+        )
+    ),(
+        'name': 'white',
+        'params': (
+            'background': $white,
+            'background-active': darken($white, 10),
+            'background-focus': darken($white, 5),
+            'background-hover': darken($white, 5),
+            'background-selected': darken($white, 10),
+            'border': transparent,
+            'border-selected': darken($white, 10),
+            'color': $aui-white-button-color,
+            'color-active': $aui-white-button-color,
+            'color-disabled': $base-font-color,
+            'color-hover': $aui-white-button-color-hover,
+            'color-selected': $aui-white-button-color,
+            'group-border-color': transparent
+        )
+    ),(
+        'name': 'white-ghost',
+        'params': (
+            'background': transparent,
+            'background-active': darken($white, 5),
+            'background-disabled': transparent,
+            'background-focus': $white,
+            'background-hover': $white,
+            'background-selected': $white,
+            'border': $white,
+            'border-disabled': $base-muted-color,
+            'color': $white,
+            'color-active': $base-font-color,
+            'color-disabled': $base-muted-color,
+            'color-focus': $base-font-color,
+            'color-hover': $aui-white-ghost-button-color-hover,
+            'color-selected': $base-font-color,
+            'group-border-color': $aui-white-ghost-button-background
+        )
+    ),(
+        'name': 'gray-ghost',
+        'params': (
+            'background': transparent,
+            'background-active': darken($dark-gray-3, 5),
+            'background-disabled': transparent,
+            'background-focus': $dark-gray-3,
+            'background-hover': $dark-gray-3,
+            'background-selected': $dark-gray-3,
+            'border': $dark-gray-3,
+            'border-disabled': $dark-gray-3,
+            'border-focus': $dark-gray-3,
+            'border-selected': $dark-gray-3,
+            'color': $dark-gray-3,
+            'color-disabled': $base-muted-color,
+            'color-focus': $white,
+            'color-hover': $white,
+            'color-selected': $white,
+            'group-border-color': $dark-gray-3
+        )
+    );
+
+
+// -----------------------------------------------------------------------------
+// Card Pattern
+
+$cui-card-title-font-size: 16px !default;
+$cui-card-subtitle-font-size: 12px !default;
+$cui-card-box-shadow: 0 10px 24px -6px rgba(0, 0, 0, 0.25) !default;
+$cui-card-footer-background: $light-gray-5 !default;
+$cui-card-selection-background: rgba($base-accent-color, 0.20) !default;
+
+
+// -----------------------------------------------------------------------------
+// Checkbox Pattern
+
+$cui-checkbox-size: 20px !default;
+$cui-checkbox-icon-size: $base-font-size !default;
+$cui-checkbox-border-radius: $base-border-radius !default;
+$cui-checkbox-border-width: 1px !default;
+$cui-checkbox-border-width-hover: 2px !default;
+$cui-checkbox-light: (
+    'params': (
+        'background-disabled': $light-gray-5,
+        'background-normal-on': $base-accent-color,
+        'background-normal-off': $white,
+        'background-hover-on': $base-accent-color,
+        'background-hover-off': $white,
+        'background-pressed': $base-accent-color,
+        'background-focus': $white,
+        'border-disabled': $light-gray-2,
+        'border-hover': $base-accent-color,
+        'border-focus': $base-accent-color,
+        'checkmark-disabled': $light-gray-2,
+        'color-disabled': $base-font-color,
+        'color-normal': $base-form-label-color,
+        'outline-color': $base-accent-color
+    )
+);
+$cui-checkbox-dark: (
+    'params': (
+        'background-disabled': $light-gray-5,
+        'background-normal-on': $cisco-blue,
+        'background-normal-off': $white,
+        'background-hover-on': $cisco-blue,
+        'background-hover-off': $white,
+        'background-pressed': $cisco-blue,
+        'background-focus': $white,
+        'border-disabled': $light-gray-2,
+        'border-hover': $cisco-blue,
+        'border-focus': $cisco-blue,
+        'checkmark-disabled': $light-gray-2,
+        'color-disabled': $white,
+        'color-normal': $white,
+        'outline-color': $white
+    )
+);
+$cui-checkbox-color: (
+    'params': (
+        'background-disabled': $light-gray-disabled,
+        'background-normal-on': $indigo,
+        'background-normal-off': $white,
+        'background-hover-on': $indigo,
+        'background-hover-off': $white,
+        'background-pressed': $indigo,
+        'background-focus': $white,
+        'border-disabled': $med-gray-2,
+        'border-hover': $base-link-color,
+        'border-focus': $base-link-color,
+        'checkmark-disabled': $med-gray-2,
+        'color-disabled': $dark-gray-1,
+        'color-normal': $dark-gray-1,
+        'outline-color': $white
+    )
+);
+
+
+// -----------------------------------------------------------------------------
+// Divider Pattern
+
+$base-divider-color: $light-gray-3 !default;
+$base-divider-height: 1px !default;
+$base-divider-height-thick: 3px !default;
+$base-divider-height-thicker: 5px !default;
+$base-divider-height-thickest: 8px !default;
+
+$base-divider-accent-width: 5% !default;
+$base-divider-accent-min-width: $base-spacing * 2 !default;
+$base-divider-accent-background: $base-accent-color !default;
+
+$divider-sizes: ("thick", 3px),
+                ("thicker", 5px),
+                ("thickest", 8px);
+
+$divider-accent-colors: ("blue", $base-accent-color),
+                        ("indigo", $indigo),
+                        ("success", $success);
+
+
+// -----------------------------------------------------------------------------
+// Dropdown Menu Pattern
+
+$base-dropdown-zindex: 1032 !default;
+$base-dropdown-box-shadow: rgba(0,0,0,0.1) 0 5px 10px !default;
+$base-dropdown-menu-minwidth: 200px !default;
+$base-dropdown-menu-maxwidth: 300px !default;
+$base-dropdown-menu-item-height: 35px !default;
+$base-dropdown-menu-hover-color: $base-font-color !default;
+$base-dropdown-menu-hover-background: $base-hover-color !default;
+$base-dropdown-menu-selected-color: $white !default;
+$base-dropdown-menu-selected-background: $base-accent-color !default;
+
+
+// -----------------------------------------------------------------------------
+// Figure Pattern
+
+$base-figure-font-weight: 200 !default;
+$base-figure-font-size: 18px !default;
+$base-figure-highlight-color: $cisco-green !default;
+$base-figure-highlight-width: 4px !default;
+
+
+// -----------------------------------------------------------------------------
+// Footer Pattern
+
+$footer-color: $white !default;
+$footer-background-color: $indigo !default;
+$footer-spacing-compressed: $base-spacing-half 0 !default;
+$footer-spacing-regular: $base-spacing 0 !default;
+$footer-spacing-loose: $base-spacing-dbl 0 !default;
+
+
+// -----------------------------------------------------------------------------
+// Forms
+
+$base-form-border-color: $light-gray-3 !default;
+$base-form-checkbox-font-size: $base-font-size !default;
+$base-form-select-chevron-color: $med-gray-2 !default;
+
+$base-form-label-margin-compressed: $base-spacing-qtr !default;
+$base-form-label-margin-regular: $base-spacing-qtr !default;
+$base-form-label-margin-loose: $base-spacing !default;
+
+
+// -----------------------------------------------------------------------------
+// Gauge Pattern
+
+$base-gauge-size: 120px !default;
+$base-gauge-font-size: 3.5rem !default;
+$base-gauge-font-weight: 200 !default;
+$base-gauge-font-color: $dark-gray-2 !default;
+$base-gauge-circle-width: 10 !default;
+$base-gauge-circle-color: $light-gray-3 !default;
+
+$small-gauge-size: 60px !default;
+$small-gauge-font-size: 2rem !default;
+$small-gauge-font-weight: 300 !default;
+$small-gauge-circle-width: 8 !default;
+
+$medium-gauge-size: $base-gauge-size !default;
+$medium-gauge-font-size: $base-gauge-font-size !default;
+$medium-gauge-font-weight: $base-gauge-font-weight !default;
+
+$large-gauge-size: 160px !default;
+$large-gauge-font-size: 6rem !default;
+$large-gauge-font-weight: 100 !default;
+$large-gauge-circle-width: 12 !default;
+
+
+// -----------------------------------------------------------------------------
+// Grid Pattern (Advanced)
+
+$cui-grid-default-cols: 12 !default;
+$cui-grid-default-rows: 12 !default;
+$cui-grid-default-card-size: 275px !default;
+$cui-grid-default-gutter: $base-spacing-qtr !default;
+
+
+// -----------------------------------------------------------------------------
+// Header Pattern
+
+$header-zindex: 1030 !default;
+$header-height-tall: 130px !default;
+$header-height-large: 110px !default;
+$header-height-regular: 90px !default;
+$header-height-small: 54px !default;
+$header-background-color: $white !default;
+$header-line-height: 1.2 !default;
+$header-hamburger-color: $white !default;
+$header-hamburger-background: $dark-gray-3 !default;
+$header-hamburger-background-active: $base-accent-color !default;
+$header-hamburger-background-hover: $base-accent-color !default;
+$header-hamburger-color-active: $white !default;
+$header-logo-size: 35px !default;
+$header-logo-size-small: 30px !default;
+$header-logo-margin: 0 !default;
+$header-logo-margin-small: 0 !default;
+$header-title-size-large: 24px !default;
+$header-title-size-small: 24px !default;
+$header-breadcrumbs-margin: 20px 0 18px 0 !default;
+$header-breadcrumbs-font-size: $small-font-size !default;
+$header-toolbar-margin: 0 ($base-spacing * 0.25) 0 0 !default;
+$header-toolbar-color: $white !default;
+$header-toolbar-background: $med-gray-2 !default;
+$header-toolbar-background-hover: $base-accent-color !default;
+$header-toolbar-color-hover: $white !default;
+$header-utilities-margin: 0 15px 0 0 !default;
+$header-utilities-font-size: 16px !default;
+$header-utilities-color: $light-gray-2 !default;
+$header-utilities-background: transparent !default;
+$header-utilities-background-active: transparent !default;
+$header-utilities-background-hover: transparent !default;
+$header-utilities-background-disabled: transparent !default;
+$header-utilities-color-active: $dark-gray-2 !default;
+$header-utilities-color-hover: $base-accent-color !default;
+$header-utilities-color-disabled: $light-gray-3 !default;
+
+
+// -----------------------------------------------------------------------------
+// Hero Pattern
+
+$hero-spacing-compressed: $base-spacing-half 0 $base-spacing-qtr;
+$hero-spacing-regular: ($base-spacing * 2) 0 ($base-spacing * 1.5);
+$hero-spacing-loose: ($base-spacing * 3) 0 ($base-spacing * 5);
+
+$hero-title-font-size-mobile: 28px;
+$hero-title-font-size-small: 32px;
+$hero-title-font-size-medium: 38px;
+$hero-title-font-size-large: 44px;
+
+$hero-gradient-default: (rgba($black, .75) 0%, rgba($black, .1) 50%);
+$hero-gradient-transparency: (rgba($black, .75) 50%, rgba($light-gray-2, .25) 100%);
+
+$hero-backgrounds:
+    (1, '#{$cui-resource-path}/img/hero-bg-1.jpg'),
+    (2, '#{$cui-resource-path}/img/hero-bg-2.jpg'),
+    (3, '#{$cui-resource-path}/img/hero-bg-3.jpg'),
+    (4, '#{$cui-resource-path}/img/hero-bg-4.jpg'),
+    (5, '#{$cui-resource-path}/img/hero-bg-5.jpg');
+
+$hero-filters:
+    ("blue", "solid", rgba($cisco-blue, .25)),
+    ("dkgray", "solid", rgba($dark-gray-2, .5)),
+    ("dkblue", "solid", rgba($dark-blue, .75)),
+    ("smoke", "linear", (rgba($black, .75) 50%, rgba($light-gray-2, .25) 100%));
+
+$hero-padding:
+    (skinny, $hero-spacing-compressed),
+    (compressed, $hero-spacing-compressed),
+    (regular, $hero-spacing-regular),
+    (loose, $hero-spacing-loose);
+
+
+// -----------------------------------------------------------------------------
+// Input Pattern
+
+$cui-input-size: 40px !default;
+$cui-input-size-compressed: 30px !default;
+$cui-input-padding: 10px !default;
+$cui-input-padding-compressed: 5px !default;
+$cui-input-label-weight: normal !default;
+$cui-input-error-icon-bottom: 10px !default;
+$cui-input-error-icon-bottom-compressed: 5px !default;
+$cui-input-vert-center: 10px !default;
+$cui-input-vert-center-compressed: 5px !default;
+
+$cui-input-icon-size: 16px !default;
+$cui-input-icon-size-compressed: $base-font-size !default;
+
+
+// -----------------------------------------------------------------------------
+// Label Pattern
+
+$base-label-color: $white !default;
+$base-label-color-dark: $dark-gray-2 !default;
+$base-label-color-darker: $dark-gray-1 !default;
+$base-label-font-size: $small-font-size !default;
+$base-label-circle-size: 24px !default;
+$base-label-height: 24px !default;
+$base-label-padding: 0 ($base-spacing * 0.5) !default;
+$base-label-background: $light-gray-3 !default;
+$base-label-border-radius: $base-border-radius !default;
+$base-label-border: $base-border !default;
+$base-label-box-shadow: $base-box-shadow !default;
+
+$base-label-large-font-size: $base-font-size !default;
+$base-label-large-height: 30px !default;
+$base-label-large-padding: 0 ($base-spacing * 0.75) !default;
+
+$base-label-blue-background: $cisco-blue !default;
+$base-label-ltgray-background: $light-gray-5 !default;
+$base-label-mdgray-background: $light-gray-3 !default;
+$base-label-dkgray-background: $dark-gray-2 !default;
+$base-label-vibblue-background: $vibrant-blue !default;
+$base-label-indigo-background: $indigo !default;
+
+$label-sizes:   ("tiny", 15px, 9px, 0 6px),
+                ("small", 20px, $xsmall-font-size, 0 10px),
+                ("medium", $base-label-height, $base-label-font-size, $base-label-padding),
+                ("large", $base-label-large-height, $base-label-large-font-size, $base-label-large-padding);
+
+$label-colors:  ("info", $base-label-color-darker, $info),
+                ("success", $white, $success),
+                ("warning", $base-label-color-darker, $warning),
+                ("warning-alt", $base-label-color-darker, $status-yellow),
+                ("danger", $base-label-color, $danger),
+                ("blue", $base-label-color-darker, $base-label-blue-background),
+                ("ltgray", $base-label-color-darker, $base-label-ltgray-background),
+                ("dkgray", $base-label-color, $base-label-dkgray-background),
+                ("vibblue", $base-label-color, $base-label-vibblue-background),
+                ("indigo", $base-label-color, $base-label-indigo-background),
+                ("white", $base-label-color-darker, $white),
+                ("ghost", $base-label-color, transparent, 1px solid $white);
+
+$label-circles: ("tiny", 18px, 11px),
+                ("small", 24px, 12px),
+                ("medium", 36px, 16px),
+                ("large", 48px, 24px),
+                ("xlarge", 60px, 32px),
+                ("huge", 72px, 36px),
+                ("goliath", 96px, 40px);
+
+
+// -----------------------------------------------------------------------------
+// List Pattern
+
+$base-list-item-spacing: $base-spacing * 0.5 !default;
+$base-list-item-border: 1px solid $light-gray !default;
+
+$base-dl-label-font-weight: bold !default;
+$base-dl-label-right-spacing: $base-spacing !default;
+$base-dl-label-bottom-spacing: $base-spacing * 0.5 !default;
+$base-dl-value-color: $dark-gray-4 !default;
+$base-dl-label-width-xsmall: 80px !default;
+$base-dl-label-width-small: 120px !default;
+$base-dl-label-width-medium: 240px !default;
+$base-dl-label-width-large: 360px !default;
+$base-dl-label-width-xlarge: 480px !default;
+$base-dl-sizes: (
+    xsmall : $base-dl-label-width-xsmall,
+    small : $base-dl-label-width-small,
+    medium : $base-dl-label-width-medium,
+    large : $base-dl-label-width-large,
+    xlarge : $base-dl-label-width-xlarge
+);
+
+
+// -----------------------------------------------------------------------------
+// Modal Pattern
+
+$base-backdrop-zindex: 1040 !default;
+$base-modal-zindex: 1050 !default;
+
+$base-backdrop-background: rgb(196,199,204) !default;
+$base-backdrop-opacity: 0.65 !default;
+$base-overlay-background: rgba(0,0,0,0.5) !default;
+
+$base-modal-background: $white !default;
+$base-modal-maxwidth: 767px !default;
+$base-modal-close-size: $huge-icon-font-size !default;
+$base-modal-title-size: 48px !default;
+$base-modal-title-weight: 100 !default;
+
+$small-modal-maxwidth: 575px !default;
+$large-modal-maxwidth: 991px !default;
+
+
+// -----------------------------------------------------------------------------
+// Panel Pattern
+
+$base-panel-compressed-margin: $base-spacing-qtr 0 !default;
+$base-panel-compressed-padding: $base-spacing-qtr !default;
+$base-panel-loose-margin: $base-spacing 0 !default;
+$base-panel-loose-padding: $base-spacing !default;
+$base-panel-margin: 1px 0 !default;
+$base-panel-padding: $base-spacing-half !default;
+$base-panel-regular-margin: $base-spacing-half 0 !default;
+$base-panel-regular-padding: $base-spacing-half !default;
+$base-panel-section-padding: $base-spacing-qtr 0 !default;
+$base-panel-well: inset 0 5px 10px -5px rgba(0, 0, 0, 0.25);
+$panel-colors:
+    (
+        name: 'blue',
+        params: (
+            background: $cisco-blue,
+            color: #404040,
+            embellish: 'lighten',
+            link-color: $indigo,
+            link-color-hover: $indigo,
+            link-decoration: underline
+        )
+    ),(
+        name: 'ltblue',
+        params: (
+            background: $light-blue,
+            color: $base-font-color,
+            embellish: 'lighten',
+            link-color: $base-link-color,
+            link-color-hover: $base-link-color
+        )
+    ),(
+        name: 'vibblue',
+        params: (
+            background: $vibrant-blue,
+            color: $white,
+            embellish: 'lighten',
+            link-color: $white,
+            link-color-hover: $white,
+            link-decoration: underline
+        )
+    ),(
+        name: 'ltgray',
+        params: (
+            background: $light-gray-5,
+            color: $dark-gray-2,
+            embellish: 'darken'
+        )
+    ),(
+        name: 'mdgray',
+        params: (
+            background: $light-gray-3,
+            color: $dark-gray-2,
+            embellish: 'lighten'
+        )
+    ),(
+        name: 'dkgray',
+        params: (
+            background: $dark-gray-2,
+            color: $white,
+            embellish: 'lighten',
+            link-color: $white,
+            link-color-hover: $white,
+            link-decoration: underline
+        )
+    ),(
+        name: 'indigo',
+        params: (
+            background: $indigo,
+            color: $white,
+            embellish: 'lighten',
+            link-color: $white,
+            link-color-hover: $white,
+            link-decoration: underline
+        )
+    ),(
+        name: 'gray-ghost',
+        params: (
+            border-color: $light-gray-5,
+            background: transparent,
+            color: $base-font-color,
+            embellish: 'darken'
+        )
+    ),(
+        name: 'info',
+        params: (
+            background: $info,
+            color: $base-font-color,
+            embellish: 'darken',
+            link-color: $white
+        )
+    ),(
+        name: 'green',
+        params: (
+            background: $success,
+            color: #404040,
+            embellish: 'lighten',
+            link-color: $indigo,
+            link-color-hover: $indigo,
+            link-decoration: underline
+        )
+    ),(
+        name: 'success',
+        params: (
+            background: $success,
+            color: #404040,
+            embellish: 'lighten',
+            link-color: $indigo,
+            link-color-hover: $indigo,
+            link-decoration: underline
+        )
+    ),(
+        name: 'warning',
+        params: (
+            background: $warning,
+            color: $white,
+            embellish: 'lighten',
+            link-color: $white,
+            link-decoration: underline
+        )
+    ),(
+        name: 'danger',
+        params: (
+            background: $danger,
+            color: $white,
+            embellish: 'lighten',
+            link-color: $white,
+            link-color-hover: $white,
+            link-decoration: underline
+        )
+    );
+
+
+// -----------------------------------------------------------------------------
+// Progressbar Pattern
+
+$cui-progressbar-sizes:
+    ( 'default', $base-spacing-qtr ),
+    ( 'small', 2px),
+    ( 'large', $base-spacing-half );
+
+$cui-progressbar-colors:
+    ( 'default', $base-accent-color ),
+    ( 'success', $success ),
+    ( 'warning', $warning ),
+    ( 'indigo', $indigo );
+
+
+// -----------------------------------------------------------------------------
+// Radio Pattern
+
+$cui-radio-size: 20px !default;
+$cui-radio-border-radius: 50% !default;
+$cui-radio-border-width: 1px !default;
+$cui-radio-border-width-hover: 2px !default;
+$cui-radio-light: (
+    'params': (
+        'background-disabled': $light-gray-5,
+        'background-normal-on': $base-accent-color,
+        'background-normal-off': $white,
+        'background-hover-on': $base-accent-color,
+        'background-hover-off': $white,
+        'background-pressed': $base-accent-color,
+        'background-focus': $white,
+        'background-knob-disabled': $light-gray-2,
+        'border-disabled': $light-gray-2,
+        'border-hover': $base-accent-color,
+        'border-focus': $base-link-color,
+        'color-disabled': $base-font-color,
+        'color-normal': $base-form-label-color,
+        'outline-color': $base-accent-color
+    )
+);
+$cui-radio-dark: (
+    'params': (
+        'background-disabled': $light-gray-5,
+        'background-normal-on': $cisco-blue,
+        'background-normal-off': $white,
+        'background-hover-on': $cisco-blue,
+        'background-hover-off': $white,
+        'background-pressed': $cisco-blue,
+        'background-focus': $white,
+        'background-knob-disabled': $light-gray-2,
+        'border-disabled': $light-gray-2,
+        'border-hover': $cisco-blue,
+        'border-focus': $base-link-color,
+        'color-disabled': $white,
+        'color-normal': $white,
+        'outline-color': $white
+    )
+);
+$cui-radio-color: (
+    'params': (
+        'background-disabled': $light-gray-disabled,
+        'background-normal-on': $indigo,
+        'background-normal-off': $white,
+        'background-hover-on': $indigo,
+        'background-hover-off': $white,
+        'background-pressed': $indigo,
+        'background-focus': $white,
+        'background-knob-disabled': $light-gray-disabled,
+        'border-disabled': $med-gray-2,
+        'border-hover': $base-link-color,
+        'border-focus': $base-link-color,
+        'color-disabled': $dark-gray-1,
+        'color-normal': $dark-gray-1,
+        'outline-color': $white
+    )
+);
+
+
+// -----------------------------------------------------------------------------
+// Rating Pattern
+
+$base-rating-font-size: 20px !default;
+$base-rating-font-size-small: 12px !default;
+$base-rating-font-size-large: 30px !default;
+$base-rating-margin: 3px !default;
+
+
+// -----------------------------------------------------------------------------
+// Scoreboard Pattern
+
+$scoreboard-title-font-size: 36px !default;
+$scoreboard-title-font-size-large: 48px !default;
+$scoreboard-title-font-weight: 100 !default;
+$scoreboard-subtitle-font-size: 14px !default;
+
+
+// -----------------------------------------------------------------------------
+// Sidebar Pattern
+
+$sidebar-divider-color: rgba($white, .25) !default;
+$sidebar-item-height: 40px !default;
+$sidebar-item-height-compressed: 30px !default;
+$sidebar-font-size-compressed: 13px !default;
+$sidebar-item-border: $base-border !default;
+$sidebar-menu-width: $mobile-menu-width !default;
+$sidebar-menu-width-mini: 80px !default;
+$sidebar-menu-icon-size-mini: 22px !default;
+$sidebar-menu-font-size-mini: 11px !default;
+$sidebar-menu-opacity: 0.8 !default;
+$sidebar-title-font-size: 24px !default;
+$sidebar-title-font-weight: 300 !default;
+$sidebar-zindex: 1031 !default;
+$sidebar-colors:
+    (
+        name: 'default',
+        params: (
+            background: $vibrant-blue,
+            background-selected: rgba(0,0,0,0.1),
+            background-opened: $vibrant-blue,
+            background-hover: rgba(0,0,0,0.1),
+            color: $white,
+            color-selected: $white,
+            border-selected: $white,
+            divider-color: $sidebar-divider-color
+        )
+    ),(
+        name: 'ltgray',
+        params: (
+            background: $light-gray-5,
+            background-selected: rgba(0,0,0,0.1),
+            background-opened: $light-gray-5,
+            background-hover: rgba(0,0,0,0.1),
+            color: $base-font-color,
+            color-selected: $base-font-color,
+            border-selected: $base-font-color,
+            divider-color: $base-font-color
+        )
+    ),(
+        name: 'dkgray',
+        params: (
+            background: $dark-gray-2,
+            background-selected: rgba(0,0,0,0.1),
+            background-opened: $dark-gray-2,
+            background-hover: rgba(0,0,0,0.1),
+            color: $white,
+            color-selected: $white,
+            border-selected: $white,
+            divider-color: $white
+        )
+    ),(
+        name: 'indigo',
+        params: (
+            background: $indigo,
+            background-selected: rgba(0,0,0,0.1),
+            background-opened: $indigo,
+            background-hover: rgba(0,0,0,0.1),
+            color: $white,
+            color-selected: $white,
+            border-selected: $white,
+            divider-color: $white
+        )
+    );
+
+
+// -----------------------------------------------------------------------------
+// Step Pattern
+
+$base-step-line-width: 1px !default;
+$base-step-inactive-color: $light-gray-compliant !default;
+$base-step-icon-size: 48px !default;
+$base-step-halo-size: 10px !default;
+$base-step-halo-color: $base-background-color !default;
+$base-step-halo-alt-color: $white !default;
+$base-step-size: 48px !default;
+$base-step-font-size: 18px !default;
+$step-sizes:
+    (
+        name: 'default',
+        params: (
+            size: 48px,
+            font-size: 18px
+        ),
+    ),(
+        name: 'tiny',
+        params: (
+            size: 24px,
+            font-size: 9px
+        )
+    ),(
+        name: 'small',
+        params: (
+            size: 32px,
+            font-size: 12px
+        )
+    ),(
+        name: 'large',
+        params: (
+            size: 64px,
+            font-size: 28px
+        )
+    );
+$step-colors:
+    (
+        name: 'default',
+        params: (
+            background-active: $base-accent-color,
+            background-visited: $white,
+            border-active: $base-accent-color,
+            border-visited: $base-accent-color,
+            color-active: $white,
+            color-visited: $base-accent-color,
+            label-visited: $base-font-color,
+            line-color-active: $base-accent-color
+        )
+    ),(
+        name: 'indigo',
+        params: (
+            background-active: $indigo,
+            background-visited: $white,
+            border-active: $indigo,
+            border-visited: $indigo,
+            color-active: $white,
+            color-visited: $indigo,
+            label-visited: $base-font-color,
+            line-color-active: $indigo
+        )
+    ),(
+        name: 'success',
+        params: (
+            background-active: $cisco-green,
+            background-visited: $white,
+            border-active: $cisco-green,
+            border-visited: $cisco-green,
+            color-active: $white,
+            color-visited: $cisco-green,
+            label-visited: $base-font-color,
+            line-color-active: $cisco-green
+        )
+    ),(
+        name: 'vibblue',
+        params: (
+            background-active: $vibrant-blue,
+            background-visited: $white,
+            border-active: $vibrant-blue,
+            border-visited: $vibrant-blue,
+            color-active: $white,
+            color-visited: $vibrant-blue,
+            label-visited: $base-font-color,
+            line-color-active: $vibrant-blue
+        )
+    );
+
+// -----------------------------------------------------------------------------
+// Switch Pattern
+
+$cui-switch-size: 24px !default;
+$cui-switch-size-large: 30px !default;
+$cui-switch-border-radius: 30px !default;
+$cui-switch-knob-border-radius: 50% !default;
+$cui-switch-knob-shadow-active: 0 1px 3px rgba(0,0,0,.25) !default;
+$cui-switch-border-width: 1px !default;
+$cui-switch-border-width-hover: 2px !default;
+$cui-switch-icon-size: 20px !default;
+$cui-switch-icon-size-large: 28px !default;
+$cui-switch-light: (
+    'params': (
+        'background-disabled': $light-gray-disabled,
+        'background-knob-disabled': $light-gray-5,
+        'background-knob-on': $white,
+        'background-knob-off': $light-gray-1,
+        'background-normal-on': $base-accent-color,
+        'background-normal-off': $light-gray-3,
+        'background-hover-on': $base-accent-color,
+        'background-hover-off': $white,
+        'background-focus': $white,
+        'border-knob-on': $base-accent-color,
+        'border-knob-disabled': $light-gray-disabled,
+        'border-hover': $base-accent-color,
+        'border-focus': $base-link-color,
+        'color-disabled': $base-font-color,
+        'color-normal': $base-form-label-color,
+        'outline-color': $base-accent-color
+    )
+);
+$cui-switch-dark: (
+    'params': (
+        'background-disabled': $light-gray-disabled,
+        'background-knob-disabled': $light-gray-5,
+        'background-knob-on': $white,
+        'background-knob-off': $light-gray-1,
+        'background-normal-on': $cisco-blue,
+        'background-normal-off': $light-gray-3,
+        'background-hover-on': $cisco-blue,
+        'background-hover-off': $white,
+        'background-focus': $white,
+        'border-knob-on': $cisco-blue,
+        'border-knob-disabled': $med-gray-2,
+        'border-hover': $cisco-blue,
+        'border-focus': $base-link-color,
+        'color-disabled': $white,
+        'color-normal': $white,
+        'outline-color': $white
+    )
+);
+$cui-switch-color: (
+    'params': (
+        'background-disabled': $light-gray-disabled,
+        'background-knob-disabled': $light-gray-5,
+        'background-knob-on': $white,
+        'background-knob-off': $med-gray-2,
+        'background-normal-on': $indigo,
+        'background-normal-off': $light-gray-3,
+        'background-hover-on': $indigo,
+        'background-hover-off': $white,
+        'background-focus': $white,
+        'border-knob-on': $indigo,
+        'border-knob-disabled': $med-gray-2,
+        'border-hover': $base-link-color,
+        'border-focus': $base-link-color,
+        'color-disabled': $dark-gray-1,
+        'color-normal': $dark-gray-1,
+        'outline-color': $white
+    )
+);
+$cui-switch-icon-light: (
+    'params': (
+        'color-disabled': $light-gray-disabled,
+        'color-normal': $base-muted-color,
+        'color-normal-on': $base-accent-color,
+        'outline-color': $base-accent-color
+    )
+);
+$cui-switch-icon-dark: (
+    'params': (
+        'color-disabled': $light-gray-disabled,
+        'color-normal': $base-muted-color,
+        'color-normal-on': $base-accent-color,
+        'outline-color': $white
+    )
+);
+$cui-switch-icon-color: (
+    'params': (
+        'color-disabled': $light-gray-disabled,
+        'color-normal': $base-muted-color,
+        'color-normal-on': $indigo,
+        'outline-color': $white
+    )
+);
+
+
+
+// -----------------------------------------------------------------------------
+// Tab Pattern
+
+$base-tab-font-size: 12px !default;
+$base-tab-padding: ($base-spacing * 0.5) 0 !default;
+$base-tab-tall-padding: $base-spacing 0 !default;
+$base-tab-margin: 0 ($base-spacing) 2px 0 !default;
+$base-tab-vertical-height: 40px !default;
+$base-tab-accent-width: 3px !default;
+
+
+// -----------------------------------------------------------------------------
+// Table Pattern
+
+$base-table-striping-odd-background-color: $base-background-color !default;
+$base-table-striping-even-background-color: $alt-background-color !default;
+
+$base-table-cell-padding: $base-spacing * 0.5 !default;
+$base-table-border: 1px solid $base-border-color !default;
+$base-table-header-separator: 1px solid $base-border-color !default;
+
+$base-table-active-row-border-width: 4px !default;
+$base-table-active-row-border-color: $base-accent-color !default;
+
+$base-table-compressed-padding: $base-spacing * 0.25 !default;
+$base-table-compressed-font-size: $base-font-size !default;
+
+$base-table-loose-padding: $base-spacing * 0.75 !default;
+$base-table-loose-font-size: $base-font-size !default;
+
+$base-table-highlight-animation: all .2s linear !default;
+$base-table-hover-animation: background .2s linear !default;
+$base-table-selection-animation: background .25s ease-in-out !default;
+
+
+// -----------------------------------------------------------------------------
+// Thumbnail Pattern
+
+$small-thumbnail-size: 32px !default;
+$medium-thumbnail-size: 48px !default;
+$large-thumbnail-size: 64px !default;
+$xlarge-thumbnail-size: 96px !default;
+$huge-thumbnail-size: 128px !default;
+$goliath-thumbnail-size: 256px !default;
+$base-thumbnail-size: $medium-thumbnail-size !default;
+$base-thumbnail-border: 2px solid $base-border-color !default;
+$default-thumbnail-size: $medium-thumbnail-size !default;
+
+
+// -----------------------------------------------------------------------------
+// Timeline Pattern
+
+$cui-timeline-line-color: $base-border-color !default;
+$cui-timeline-line-width: 2px !default;
+
+
+// -----------------------------------------------------------------------------
+// Toast Pattern
+
+$toast-max-width: 300px !default;
+$toast-icon-size: $base-font-size * 1.5 !default;
+$toast-border-width: 1px !default;
+$toast-border-opacity: 0.1 !default;
+$toast-box-shadow: $base-box-shadow !default;
+
+
+// -----------------------------------------------------------------------------
+// Tooltip Pattern
+
+$base-tooltip-background: rgba(0,0,0,0.9) !default;
+$base-tooltip-color: $white !default;

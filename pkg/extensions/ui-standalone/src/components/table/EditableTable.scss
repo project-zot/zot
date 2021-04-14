@@ -1,0 +1,32 @@
+@import "src/scss/assets/sass/utilities/variables.scss";
+
+.EditableTable {
+    .row-action {
+        cursor: pointer;
+    }
+    .add-row-action {
+        padding: $padding-base;
+        > span {
+            margin-right: $padding-small;
+        }
+    }
+    .table-cell.icon-cell {
+        width: 40px;
+        >.cell-content {
+            margin-top: $padding-small;
+        }
+    }
+    .icon-check {
+        color: $status-green;
+    }
+    .icon-selected{
+        color: #005073;
+    }
+}
+
+.cui .EditableTable a.add-row-action:hover {
+    text-decoration: none;
+}
+.cui .EditableTable .form-group.input--compressed .form-group__text.select:after {
+    top: 5px;
+}

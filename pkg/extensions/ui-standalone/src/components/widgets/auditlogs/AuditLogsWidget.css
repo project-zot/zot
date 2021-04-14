@@ -1,0 +1,27 @@
+/** @see sass/vendor/tooltip/balloon.scss (written with CUIK c1.3.4 as the current version in use) */
+/* Status Colors (here from _variable.scss for documentation)
+$status-blue: #64bbe3 !default;
+$status-turq: #14a792 !default;
+$status-green: #6cc04a !default;
+$status-red: $accent-red !default;
+$status-orange: $accent-orange !default;
+$status-yellow: #ffcc00 !default;
+*/
+.audit-logs-widget {
+  display: flex;
+  text-align: center;
+  justify-content: space-between; }
+  .audit-logs-widget .display-flex-column {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center; }
+  .audit-logs-widget .audit-logs-deletion-value {
+    color: #e2231a; }
+  .audit-logs-widget .audit-logs-creation-value {
+    color: #14a792; }
+  .audit-logs-widget .audit-logs-modification-value {
+    color: #64bbe3; }
+  .audit-logs-widget span {
+    font-size: 1.25rem;
+    color: #9e9ea2; }

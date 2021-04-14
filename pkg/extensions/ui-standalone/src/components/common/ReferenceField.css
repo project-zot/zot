@@ -1,0 +1,33 @@
+/** @see sass/vendor/tooltip/balloon.scss (written with CUIK c1.3.4 as the current version in use) */
+/* Status Colors (here from _variable.scss for documentation)
+$status-blue: #64bbe3 !default;
+$status-turq: #14a792 !default;
+$status-green: #6cc04a !default;
+$status-red: $accent-red !default;
+$status-orange: $accent-orange !default;
+$status-yellow: #ffcc00 !default;
+*/
+.form-reference-field .actionable {
+  cursor: pointer; }
+
+.form-reference-field .add-item {
+  color: #7f7f86;
+  padding: 15px 7.5px; }
+
+.form-reference-field ul.list {
+  padding: 10px 0; }
+  .form-reference-field ul.list li {
+    display: flex;
+    padding: 10px;
+    border-bottom: 1px solid #dfdfdf; }
+    .form-reference-field ul.list li:first-child {
+      border-top: 1px solid #dfdfdf; }
+    .form-reference-field ul.list li .item-info {
+      flex: 1; }
+    .form-reference-field ul.list li .remove-button {
+      margin: auto 0 auto auto; }
+
+.form-reference-field .custom-header {
+  padding-top: 12px;
+  color: #b0b0b2;
+  font-weight: bold; }

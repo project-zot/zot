@@ -1,0 +1,186 @@
+/** @see sass/vendor/tooltip/balloon.scss (written with CUIK c1.3.4 as the current version in use) */
+/* Status Colors (here from _variable.scss for documentation)
+$status-blue: #64bbe3 !default;
+$status-turq: #14a792 !default;
+$status-green: #6cc04a !default;
+$status-red: $accent-red !default;
+$status-orange: $accent-orange !default;
+$status-yellow: #ffcc00 !default;
+*/
+.Modal {
+  transition: visibility 140ms;
+  bottom: 0;
+  left: 0;
+  outline: 0;
+  overflow-x: hidden;
+  overflow-y: hidden;
+  position: fixed;
+  right: 0;
+  top: 0;
+  visibility: hidden;
+  z-index: 1050;
+  -webkit-overflow-scrolling: touch; }
+  .Modal.is-open {
+    transition: none;
+    visibility: visible; }
+
+.Modal-dialog {
+  max-width: 100%;
+  padding: 10px;
+  position: relative;
+  transition: all 260ms cubic-bezier(0.5, -0.55, 0.4, 1.55);
+  width: auto;
+  z-index: 2; }
+
+.Modal-dialog-enter {
+  opacity: 0;
+  transform: scale(0.96); }
+
+.Modal-dialog-enter-active {
+  opacity: 1;
+  transform: scale(1); }
+
+.Modal-dialog-leave {
+  opacity: 1;
+  transform: scale(1); }
+
+.Modal-dialog-leave-active {
+  opacity: 0;
+  transform: scale(0.8); }
+
+.Modal-content {
+  background-color: #ffffff;
+  border-radius: 0;
+  outline: none;
+  position: relative;
+  padding: 20px 20px;
+  background-color: #ffffff;
+  color: #58585b;
+  border-radius: 2px;
+  border: 0 none;
+  box-shadow: 0 10px 24px -6px rgba(0, 0, 0, 0.25); }
+
+@media (min-width: 320px) {
+  .Modal-dialog {
+    margin: 80px auto; }
+  .Modal-dialog--small {
+    width: 320px; }
+  .Modal-dialog--medium {
+    width: 640px; }
+  .Modal-dialog--large {
+    width: 960px; }
+  .Modal-dialog--full {
+    width: 100vw;
+    height: 100vh;
+    margin: auto;
+    padding: 0; }
+    .Modal-dialog--full > .Modal-content {
+      height: 100%;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      padding: 0; }
+      .Modal-dialog--full > .Modal-content > .Modal__header {
+        color: #ffffff;
+        background: #005073; }
+        .Modal-dialog--full > .Modal-content > .Modal__header > .Modal__header__close {
+          display: inline;
+          float: right;
+          color: #ffffff; }
+          .Modal-dialog--full > .Modal-content > .Modal__header > .Modal__header__close:hover, .Modal-dialog--full > .Modal-content > .Modal__header > .Modal__header__close:focus {
+            color: #007493;
+            outline: 0; }
+      .Modal-dialog--full > .Modal-content > .Modal__body {
+        padding: 0; } }
+
+.Modal__header,
+.Modal__body,
+.Modal__footer {
+  margin-left: 20px;
+  margin-right: 20px;
+  padding-bottom: 20px;
+  padding-top: 20px;
+  position: relative; }
+
+.Modal__header {
+  z-index: 1;
+  margin: 0;
+  padding: 20px 20px;
+  position: static; }
+
+.Modal__header__text {
+  color: inherit;
+  font-size: 24px !important;
+  font-weight: 300 !important;
+  line-height: 1;
+  margin: 0;
+  text-align: center; }
+
+.Modal-sub-title {
+  text-align: center; }
+
+.cui button.Modal__header__close,
+.Modal__header__close {
+  color: #9e9ea2;
+  font-family: cui-font;
+  transition: opacity 140ms;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 24px !important;
+  line-height: 24px !important;
+  display: block;
+  margin-left: auto;
+  margin-right: 0;
+  font-size: 24px !important;
+  line-height: 24px !important;
+  padding: 0; }
+  .cui button.Modal__header__close:hover, .cui button.Modal__header__close:focus,
+  .Modal__header__close:hover,
+  .Modal__header__close:focus {
+    color: #007493;
+    outline: 0; }
+
+.Modal__body {
+  margin: 0;
+  overflow-y: hidden; }
+  .Modal__body + .Modal-err-text {
+    color: #e2231a;
+    text-align: center; }
+
+.Modal__footer {
+  z-index: 1;
+  text-align: center;
+  margin-top: 40px; }
+
+.Modal-backdrop {
+  background-color: #c4c7cc;
+  opacity: 0.65;
+  pointer-events: none;
+  height: 100%;
+  left: 0;
+  position: fixed;
+  top: 0;
+  width: 100%;
+  z-index: 1040; }
+
+.Modal-background-enter {
+  opacity: 0;
+  transition: opacity 140ms linear; }
+
+.Modal-background-enter-active {
+  opacity: 1; }
+
+.Modal-background-leave {
+  opacity: 1;
+  transition: opacity 240ms; }
+
+.Modal-background-leave-active {
+  opacity: 0; }
+
+.modal-items {
+  align-items: flex-start;
+  display: flex;
+  flex-direction: column; }
+
+.modal-items h6 {
+  margin-bottom: 10px !important; }

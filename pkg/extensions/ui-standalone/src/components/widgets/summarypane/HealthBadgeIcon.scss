@@ -1,0 +1,81 @@
+@import '../../../scss/app/utilities/variables.scss';
+
+.health-badge-icon {
+    height: 1em;
+    width: 1em;
+}
+
+.health-icon-container {
+    align-items: center;
+    border-radius: $base-border-radius;
+    box-sizing: content-box;
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    padding: $padding-xxsmall $padding-xsmall;
+
+    .health-badge-icon {
+        height: 16px;
+        width: 16px;
+    }
+
+    &.bg-health-critical {
+        background-color: $health-critical-bg;
+    }
+
+    &.bg-health-major {
+        background-color: $health-major-bg;
+    }
+
+    &.bg-health-minor {
+        background-color: $health-minor-bg;
+    }
+
+    &.bg-health-unknown {
+        background-color: $health-unknown-bg;
+    }
+
+    &.bg-health-ok {
+        background-color: $health-ok-bg;
+    }
+
+    &.theme-halo {
+        align-items: center;
+        border-radius: 34px;
+        box-sizing: content-box;
+        height: 26px;
+        width: 22px;
+
+        .health-badge-icon {
+            height: 18px;
+            width: 18px;
+            margin: auto;
+        }
+
+        > span {
+            display: none;
+        }
+
+        &.bg-health-critical {
+            background-color: $health-critical;
+        }
+
+        &.bg-health-major {
+            background-color: $health-major;
+        }
+
+        &.bg-health-minor {
+            background-color: $health-minor;
+        }
+
+        &.bg-health-unknown {
+            background-color: $health-unknown;
+        }
+
+        &.bg-health-ok {
+            background-color: $health-ok;
+        }
+    }
+
+
+}

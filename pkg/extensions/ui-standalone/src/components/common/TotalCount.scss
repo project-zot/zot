@@ -1,0 +1,21 @@
+@import '../../scss/app/utilities/variables.scss';
+@import "../../scss/assets/sass/utilities/variables.scss";
+
+.total__count {
+    display: flex;
+    align-items: center;
+    flex-direction: column;
+    justify-content: space-evenly;
+    width: 110px;
+    height: 110px;
+    margin-left: 5px;
+    margin-top: 5px;
+    .count {
+        font-size: 3rem;
+        font-weight: 370;
+    }
+    .text {
+        color: #a3a3a7;
+        font-size: 1.5rem;
+    }
+}

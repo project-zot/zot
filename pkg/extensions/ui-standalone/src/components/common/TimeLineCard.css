@@ -1,0 +1,121 @@
+/** @see sass/vendor/tooltip/balloon.scss (written with CUIK c1.3.4 as the current version in use) */
+/* Status Colors (here from _variable.scss for documentation)
+$status-blue: #64bbe3 !default;
+$status-turq: #14a792 !default;
+$status-green: #6cc04a !default;
+$status-red: $accent-red !default;
+$status-orange: $accent-orange !default;
+$status-yellow: #ffcc00 !default;
+*/
+.timeline-card {
+  width: 660px;
+  max-height: 350px;
+  overflow: auto; }
+  .timeline-card .timeline .timeline-card-item {
+    display: inline-flex;
+    width: 100%;
+    padding: 10px 10px 0px 10px;
+    background-color: #ffffff; }
+    .timeline-card .timeline .timeline-card-item .timeline-card-title {
+      width: 170px;
+      margin: 15px 0px 0px; }
+    .timeline-card .timeline .timeline-card-item .timeline-card-icon {
+      display: flex;
+      justify-content: center;
+      border-radius: 50%;
+      width: 16px;
+      height: 16px;
+      position: absolute;
+      z-index: 2;
+      border: 1px solid #ffffff;
+      background-color: #9e9ea2;
+      left: 163px;
+      margin-top: 18px; }
+    .timeline-card .timeline .timeline-card-item .timeline-card-icon.status-success,
+    .timeline-card .timeline .timeline-card-item .sub-timeline-icon.status-success {
+      background-color: #6cc04a; }
+    .timeline-card .timeline .timeline-card-item .timeline-card-icon.status-error,
+    .timeline-card .timeline .timeline-card-item .sub-timeline-icon.status-error {
+      background-color: #e2231a; }
+    .timeline-card .timeline .timeline-card-item .timeline-card-icon.status-unknown,
+    .timeline-card .timeline .timeline-card-item .sub-timeline-icon.status-unknown {
+      background-color: #888; }
+    .timeline-card .timeline .timeline-card-item .timeline-card-icon.status-warning,
+    .timeline-card .timeline .timeline-card-item .sub-timeline-icon.status-warning {
+      background-color: #fbab18; }
+    .timeline-card .timeline .timeline-card-item .timeline-card-icon.status-info,
+    .timeline-card .timeline .timeline-card-item .sub-timeline-icon.status-info {
+      background-color: #64bbe3; }
+    .timeline-card .timeline .timeline-card-item .timeline-card-content {
+      flex: auto;
+      background-color: #F8F8F8;
+      position: relative;
+      padding: 15px;
+      margin-left: 16px;
+      max-width: 434px; }
+      .timeline-card .timeline .timeline-card-item .timeline-card-content:before {
+        position: absolute;
+        right: 0;
+        bottom: 0;
+        content: '';
+        pointer-events: none;
+        height: 20px;
+        width: 20px;
+        background-color: #F8F8F8;
+        transform: rotate(45deg);
+        top: 15px;
+        left: -10px;
+        opacity: 1; }
+      .timeline-card .timeline .timeline-card-item .timeline-card-content > div {
+        text-align: center;
+        color: #58585B;
+        font-size: 14px;
+        line-height: 19px; }
+      .timeline-card .timeline .timeline-card-item .timeline-card-content.content-with-detail > div {
+        text-align: left; }
+
+.cui .TimeLineCard .timeline:after {
+  background-color: #dfdfdf;
+  content: " ";
+  position: absolute;
+  display: block;
+  width: 2px;
+  top: 0;
+  left: 170px;
+  bottom: 0;
+  z-index: 1; }
+
+.sub-timeline {
+  position: relative;
+  width: 100%;
+  margin-top: 10px;
+  padding: 5px 0px; }
+  .sub-timeline .sub-timeline-item .sub-timeline-content {
+    padding-left: 25px;
+    margin: 5px 0px;
+    overflow-wrap: anywhere; }
+  .sub-timeline .sub-timeline-item .sub-timeline-icon {
+    display: flex;
+    justify-content: center;
+    border-radius: 50%;
+    width: 10px;
+    height: 10px;
+    position: absolute;
+    z-index: 4;
+    left: 6px;
+    border: 1px solid #ffffff;
+    background-color: #9e9ea2;
+    margin: 5px 0px; }
+  .sub-timeline:after {
+    background-color: #dfdfdf;
+    content: " ";
+    position: absolute;
+    display: block;
+    width: 2px;
+    top: 0;
+    left: 10px;
+    bottom: 0;
+    z-index: 3; }
+
+.cui.blueprint .timeline-card .collapsible-pane > header .collapsible-pane-title.text-overflow {
+  font-weight: unset; }

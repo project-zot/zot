@@ -1,0 +1,9 @@
+@import '../../scss/assets/sass/utilities/variables.scss';
+
+.property-label {
+    display: inline-block;
+    color: $dark-gray-4!important;
+    &::first-letter {
+        text-transform: capitalize;
+    }
+}

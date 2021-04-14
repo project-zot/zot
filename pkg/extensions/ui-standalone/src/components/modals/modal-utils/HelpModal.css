@@ -1,0 +1,45 @@
+/** @see sass/vendor/tooltip/balloon.scss (written with CUIK c1.3.4 as the current version in use) */
+/* Status Colors (here from _variable.scss for documentation)
+$status-blue: #64bbe3 !default;
+$status-turq: #14a792 !default;
+$status-green: #6cc04a !default;
+$status-red: $accent-red !default;
+$status-orange: $accent-orange !default;
+$status-yellow: #ffcc00 !default;
+*/
+.quickstart.modal-container {
+  min-width: fit-content;
+  max-width: fit-content;
+  min-height: fit-content;
+  max-height: fit-content; }
+
+.quickstart .quickstart-image {
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  height: 225px;
+  width: 300px;
+  margin: 0; }
+  @media (min-width: 479px) {
+    .quickstart .quickstart-image {
+      width: 400px;
+      height: 300px; } }
+  @media (min-width: 992px) {
+    .quickstart .quickstart-image {
+      width: 600px;
+      height: 450px; } }
+  @media (min-width: 1200px) {
+    .quickstart .quickstart-image {
+      width: 800px;
+      height: 600px; } }
+
+.quickstart .cover {
+  background-image: url("../../../scss/images/quickstart/nd_quickStart.svg"); }
+
+.quickstart .quick-object-reference {
+  background-image: url("../../../scss/images/quickstart/Overview.svg"); }
+
+.quickstart .quick-access-tools {
+  background-image: url("../../../scss/images/quickstart/QuickTools.svg"); }
+
+.quickstart .quick-data {
+  background-image: url("../../../scss/images/quickstart/LevelsofData.svg"); }

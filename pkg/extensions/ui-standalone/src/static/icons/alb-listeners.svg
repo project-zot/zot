@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 573 111" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <!-- Generator: Sketch 52.5 (67469) - http://www.bohemiancoding.com/sketch -->
+    <title>Visuals/Service/alb-listeners</title>
+    <desc>Created with Sketch.</desc>
+    <g id="Visuals/Service/alb-listeners" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <rect id="Rectangle" stroke="#FFC001" fill="#F9F9F9" x="176.5" y="12.5" width="155" height="98" rx="3"></rect>
+        <g id="Group-Copy-2" transform="translate(192.000000, 28.000000)">
+            <rect id="Rectangle-Copy" fill="#4774A6" x="0" y="0" width="124" height="67" rx="3"></rect>
+            <text id="Listener" font-family="CiscoSansTT" font-size="14" font-weight="normal" fill="#FFFFFF">
+                <tspan x="36" y="22">Listener</tspan>
+            </text>
+            <g id="Topology/circle/alb/default-Copy" transform="translate(24.000000, 34.000000)">
+                <circle id="Oval-2" fill="#40A889" cx="12" cy="12" r="12"></circle>
+                <text id="Rule" font-family="CiscoSansTT" font-size="10" font-weight="normal" fill="#FFFFFF">
+                    <tspan x="1.85" y="15">Rule</tspan>
+                </text>
+            </g>
+            <g id="Topology/circle/alb/default-Copy-2" transform="translate(76.000000, 34.000000)">
+                <circle id="Oval-2" fill="#FE9760" cx="12" cy="12" r="12"></circle>
+                <text id="Rule" font-family="CiscoSansTT" font-size="10" font-weight="normal" fill="#FFFFFF">
+                    <tspan x="2.35" y="15">Rule</tspan>
+                </text>
+            </g>
+        </g>
+        <path id="Line-Copy-3" d="M467.589501,91.1720265 L331.893152,61.48845 L331.404702,61.3816016 L331.618398,60.4047016 L332.106848,60.51155 L467.803198,90.1951265 L468.657986,86.2875265 L476.48845,92.6068484 L466.734714,95.0796266 L467.589501,91.1720265 Z" fill="#FE9760" fill-rule="nonzero"></path>
+        <path id="Line-Copy-2" d="M467.788082,32.7504222 L332.103604,61.4891484 L331.614456,61.5927527 L331.407247,60.614456 L331.896396,60.5108516 L467.580873,31.7721255 L466.752038,27.8589384 L476.489148,30.3963957 L468.616917,36.6636093 L467.788082,32.7504222 Z" fill="#40A889" fill-rule="nonzero"></path>
+        <g id="Topology/circle/alb/small" transform="translate(164.000000, 0.000000)">
+            <circle id="Oval-2" fill="#FFC001" fill-rule="evenodd" cx="12" cy="12" r="12"></circle>
+            <text id="ALB" font-family="CiscoSansTT" font-size="10" font-weight="normal" fill="#FFFFFF">
+                <tspan x="2.45" y="15">ALB</tspan>
+            </text>
+        </g>
+        <path id="Line-Copy-2" d="M167.5,63 L0.5,63 L-1.42108547e-13,63 L-1.42108547e-13,62 L0.5,62 L167.5,62 L167.5,58 L176.5,62.5 L167.5,67 L167.5,63 Z" fill="#9E9EA2" fill-rule="nonzero"></path>
+        <text id="request" font-family="CiscoSansTT" font-size="14" font-weight="normal" fill="#58585B">
+            <tspan x="67" y="52">request</tspan>
+        </text>
+        <g id="Group" transform="translate(477.000000, 12.000000)">
+            <rect id="Rectangle-Copy" stroke="#00AB87" x="0.5" y="0.5" width="95" height="34" rx="3"></rect>
+            <g id="Topology/circle/epg/small" transform="translate(8.000000, 6.000000)">
+                <circle id="Oval-2" fill="#025E91" fill-rule="evenodd" cx="12" cy="12" r="12"></circle>
+                <text id="EPG" font-family="CiscoSansTT" font-size="10" font-weight="normal" fill="#FFFFFF">
+                    <tspan x="2.285" y="15">EPG</tspan>
+                </text>
+            </g>
+            <g id="Topology/circle/epg/small" transform="translate(37.000000, 6.000000)">
+                <circle id="Oval-2" fill="#025E91" fill-rule="evenodd" cx="12" cy="12" r="12"></circle>
+                <text id="EPG" font-family="CiscoSansTT" font-size="10" font-weight="normal" fill="#FFFFFF">
+                    <tspan x="2.285" y="15">EPG</tspan>
+                </text>
+            </g>
+            <g id="Topology/circle/epg/small" transform="translate(66.000000, 6.000000)">
+                <circle id="Oval-2" fill="#025E91" fill-rule="evenodd" cx="12" cy="12" r="12"></circle>
+                <text id="EPG" font-family="CiscoSansTT" font-size="10" font-weight="normal" fill="#FFFFFF">
+                    <tspan x="2.285" y="15">EPG</tspan>
+                </text>
+            </g>
+        </g>
+        <g id="Group-Copy" transform="translate(477.000000, 76.000000)">
+            <rect id="Rectangle-Copy" stroke="#FE9760" x="0.5" y="0.5" width="95" height="34" rx="3"></rect>
+            <g id="Topology/circle/epg/small" transform="translate(8.000000, 6.000000)">
+                <circle id="Oval-2" fill="#025E91" fill-rule="evenodd" cx="12" cy="12" r="12"></circle>
+                <text id="EPG" font-family="CiscoSansTT" font-size="10" font-weight="normal" fill="#FFFFFF">
+                    <tspan x="2.285" y="15">EPG</tspan>
+                </text>
+            </g>
+            <g id="Topology/circle/epg/small" transform="translate(37.000000, 6.000000)">
+                <circle id="Oval-2" fill="#025E91" fill-rule="evenodd" cx="12" cy="12" r="12"></circle>
+                <text id="EPG" font-family="CiscoSansTT" font-size="10" font-weight="normal" fill="#FFFFFF">
+                    <tspan x="2.285" y="15">EPG</tspan>
+                </text>
+            </g>
+            <g id="Topology/circle/epg/small" transform="translate(66.000000, 6.000000)">
+                <circle id="Oval-2" fill="#025E91" fill-rule="evenodd" cx="12" cy="12" r="12"></circle>
+                <text id="EPG" font-family="CiscoSansTT" font-size="10" font-weight="normal" fill="#FFFFFF">
+                    <tspan x="2.285" y="15">EPG</tspan>
+                </text>
+            </g>
+        </g>
+    </g>
+</svg>

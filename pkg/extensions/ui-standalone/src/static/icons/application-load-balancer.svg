@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 419 80" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <!-- Generator: Sketch 52.5 (67469) - http://www.bohemiancoding.com/sketch -->
+    <title>Visuals/Service/application-load-balancer</title>
+    <desc>Created with Sketch.</desc>
+    <g id="Visuals/Service/application-load-balancer" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="Visuals/Service-Graph/ALB" transform="translate(161.000000, 0.000000)">
+            <rect id="Rectangle" stroke="#C6C7CA" stroke-width="1" fill="#FFFFFF" fill-rule="evenodd" x="12.5" y="0.5" width="79" height="79" rx="3"></rect>
+            <g id="CAPIC/Topology/Service-Node/Connector/default" transform="translate(0.000000, 28.000000)" fill="#D8D8D8" fill-rule="evenodd">
+                <path d="M12,24 L12,12 L12,5 L12,9.23705556e-14 C5.372583,-7.17065296e-14 -3.55271368e-15,5.372583 -3.55271368e-15,12 C-3.55271368e-15,18.627417 5.372583,24 12,24 Z" id="Oval"></path>
+            </g>
+            <g id="CAPIC/Topology/Service-Node/Connector/default" transform="translate(98.000000, 40.000000) scale(-1, 1) translate(-98.000000, -40.000000) translate(92.000000, 28.000000)" fill="#D8D8D8" fill-rule="evenodd">
+                <path d="M12,24 L12,12 L12,5 L12,9.23705556e-14 C5.372583,-7.17065296e-14 -3.55271368e-15,5.372583 -3.55271368e-15,12 C-3.55271368e-15,18.627417 5.372583,24 12,24 Z" id="Oval"></path>
+            </g>
+            <g id="Topology/circle/alb/small" transform="translate(40.000000, 16.000000)">
+                <circle id="Oval-2" fill="#FFC001" fill-rule="evenodd" cx="12" cy="12" r="12"></circle>
+                <text id="ALB" font-family="CiscoSansTT" font-size="10" font-weight="normal" fill="#FFFFFF">
+                    <tspan x="2.45" y="15">ALB</tspan>
+                </text>
+            </g>
+            <text id="App.-Load-Balancer" font-family="CiscoSansTT" font-size="10" font-weight="normal" fill="#7F7F86">
+                <tspan x="27.985" y="54">App. Load </tspan>
+                <tspan x="31.78" y="68">Balancer</tspan>
+            </text>
+        </g>
+        <g id="Group" transform="translate(0.000000, 10.000000)">
+            <g id="Topology/circle/epg/small" transform="translate(24.000000, 18.000000)">
+                <circle id="Oval-2" fill="#025E91" fill-rule="evenodd" cx="12" cy="12" r="12"></circle>
+                <text id="EPG" font-family="CiscoSansTT" font-size="10" font-weight="normal" fill="#FFFFFF">
+                    <tspan x="2.285" y="15">EPG</tspan>
+                </text>
+            </g>
+            <text id="Consumer-EPG" font-family="CiscoSansTT" font-size="10" font-weight="normal" fill="#7F7F86">
+                <tspan x="0.42" y="10">Consumer EPG</tspan>
+            </text>
+        </g>
+        <g id="Group-2" transform="translate(358.000000, 10.000000)">
+            <g id="Topology/circle/epg/small" transform="translate(19.000000, 18.000000)">
+                <circle id="Oval-2" fill="#025E91" fill-rule="evenodd" cx="12" cy="12" r="12"></circle>
+                <text id="EPG" font-family="CiscoSansTT" font-size="10" font-weight="normal" fill="#FFFFFF">
+                    <tspan x="2.285" y="15">EPG</tspan>
+                </text>
+            </g>
+            <text id="Provider-EPG" font-family="CiscoSansTT" font-size="10" font-weight="normal" fill="#7F7F86">
+                <tspan x="0.065" y="10">Provider EPG</tspan>
+            </text>
+        </g>
+        <path d="M49,39.5 L161,39.5" id="Line-Copy-2" stroke="#DFDFDF" stroke-linecap="square" fill-rule="nonzero"></path>
+        <path d="M265,39.6224486 L376.999636,39.3367362" id="Line-Copy-3" stroke="#DFDFDF" stroke-linecap="square" fill-rule="nonzero"></path>
+    </g>
+</svg>

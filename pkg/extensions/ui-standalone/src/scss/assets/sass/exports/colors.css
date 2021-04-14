@@ -1,0 +1,41 @@
+/**
+ * @see http://cisco-ui.cisco.com/section-color.html#color
+ */
+:export {
+  ciscoblue: #00bceb;
+  ciscoindigo: #005073;
+  ciscogreen: #6ebe4a;
+  cisco-logo: #1BA0D7;
+  accentorange: #fbab18;
+  accentred: #e2231a;
+  darkgray1: #39393b;
+  darkgray2: #58585b;
+  medgray2: #9e9ea2;
+  white: #ffffff;
+  ltblue: #f2fbfd;
+  vibblue: #017CAD;
+  darkgray3: #626469;
+  darkgray4: #7f7f86;
+  medgray4: #b6b9bb;
+  litegray2: #c6c7ca;
+  litegray3: #dfdfdf;
+  litegray5: #f2f2f2;
+  statusblue: #64bbe3;
+  statusturq: #14a792;
+  statusgreen: #6cc04a;
+  statusyellow: #ffcc00;
+  statusorange: #fbab18;
+  statusred: #e2231a;
+  headerfontcolor: #58585b;
+  basefontcolor: #58585b;
+  baseformlabelcolor: #58585b;
+  cuiinputlabelweight: normal;
+  basemutedcolor: #9e9ea2;
+  basedisabledcolor: #c6c7ca;
+  basedisabledbackground: #f2f2f2;
+  disabled: #c6c7ca;
+  baseaccentcolor: #017CAD;
+  baselinkcolor: #007493;
+  baselinkcolorpressed: #6f53bc;
+  hoverlinkcolor: #005073;
+  baselinkcolorinvert: #ffffff; }

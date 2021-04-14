@@ -1,0 +1,144 @@
+@import 'src/scss/assets/sass/utilities/variables.scss';
+
+.main-content-container {
+  margin-left: 10px;
+}
+
+.top-wrapper {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    padding-bottom: 10px;
+}
+
+.bottom-wrapper {
+  margin-left: 10px;
+}
+
+.text-card {
+   margin-right: 20px;
+
+   .card {
+     min-width: 140px;
+   }
+}
+
+.image-icon-small {
+        background-color: #4DC6CD;
+        width: 75px;
+        height: 75px;
+        border-radius: 38px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 5px 0 0;
+        color: white;
+
+    > span {
+        font-size: 26px;
+    }
+}
+
+.image-icon-extra-small {
+        background-color: #4DC6CD;
+        width: 50px;
+        height: 50px;
+        border-radius: 26px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 5px 0 0;
+        color: white;
+
+    > span {
+        font-size: 26px;
+    }
+}
+
+.image-details-container {
+
+    width: 600px;
+    margin-left: 20px;
+
+    .name {
+        margin-top: 16px;
+        font-weight: 250;
+        font-size: 36px;
+        color: $dark-gray-2;
+    }
+
+    .version {
+        font-weight: 350;
+        font-size: 20px;
+        color: $dark-gray-2;
+        margin-top: 30px;
+    }
+
+    .vendor {
+        font-weight: 350;
+        font-size: 20px;
+        color: $dark-gray-2;
+        margin-top: 20px;
+    }
+
+    .tags {
+        display: flex;
+        flex-direction: row;
+        align-items: flex-start;
+        margin-top: 18px;
+
+        .tag {
+            margin-right: 16px;
+        }
+    }
+}
+
+.image-details-container-compressed {
+
+    width: 600px;
+    margin-left: 20px;
+
+    .name {
+        font-weight: 600;
+        font-size: 16px;
+        color: $dark-gray-2;
+    }
+
+    .version {
+        font-weight: 300;
+        font-size: 12px;
+        color: #908989;
+        margin-top: 4px;
+    }
+
+    .description {
+        width: 800px;
+        font-weight: 400;
+        font-size: 12px;
+        color: $dark-gray-2;
+        margin-top: 2px;
+    }
+
+    .tags {
+        display: flex;
+        flex-direction: row;
+        align-items: flex-start;
+        margin-top: 6px;
+
+        .tag {
+            margin-right: 10px;
+            line-height: 18px;
+        }
+    }
+}
+
+.search-container {
+    display: flex;
+    flex-direction: row;
+    padding-bottom: $padding-base;
+    margin-bottom: 8px;
+
+    > .input--compressed {
+        flex: 1;
+    }
+}

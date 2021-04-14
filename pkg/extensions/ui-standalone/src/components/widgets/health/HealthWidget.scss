@@ -1,0 +1,29 @@
+@import "src/scss/assets/sass/utilities/variables.scss";
+
+.health-widget {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: $light-gray-4;
+    height: 80px;
+    &.healthy {
+        background-color: #F0F8EC;
+    }
+    &.minor {
+        background-color: #FFF9E5;
+    }
+    &.major {
+        background-color: #FEF6E7;
+    }
+    &.critical {
+        background-color: #FCE9E8;
+    }
+
+    .badge {
+        font-size: $huge-icon-font-size;
+        margin-right: $margin-base;
+    }
+    .count {
+        font-size: $billboard-title-font-size;
+    }
+}

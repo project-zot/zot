@@ -1,0 +1,56 @@
+/** @see sass/vendor/tooltip/balloon.scss (written with CUIK c1.3.4 as the current version in use) */
+/* Status Colors (here from _variable.scss for documentation)
+$status-blue: #64bbe3 !default;
+$status-turq: #14a792 !default;
+$status-green: #6cc04a !default;
+$status-red: $accent-red !default;
+$status-orange: $accent-orange !default;
+$status-yellow: #ffcc00 !default;
+*/
+.health-badge-icon {
+  height: 1em;
+  width: 1em; }
+
+.health-icon-container {
+  align-items: center;
+  border-radius: 2px;
+  box-sizing: content-box;
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  padding: 3px 3px; }
+  .health-icon-container .health-badge-icon {
+    height: 16px;
+    width: 16px; }
+  .health-icon-container.bg-health-critical {
+    background-color: #fce6e5; }
+  .health-icon-container.bg-health-major {
+    background-color: #fee2ae; }
+  .health-icon-container.bg-health-minor {
+    background-color: #fff0b3; }
+  .health-icon-container.bg-health-unknown {
+    background-color: #dfdfdf; }
+  .health-icon-container.bg-health-ok {
+    background-color: #d7edcd; }
+  .health-icon-container.theme-halo {
+    align-items: center;
+    border-radius: 34px;
+    box-sizing: content-box;
+    height: 26px;
+    width: 22px; }
+    .health-icon-container.theme-halo .health-badge-icon {
+      height: 18px;
+      width: 18px;
+      margin: auto; }
+    .health-icon-container.theme-halo > span {
+      display: none; }
+    .health-icon-container.theme-halo.bg-health-critical {
+      background-color: #e2231a; }
+    .health-icon-container.theme-halo.bg-health-major {
+      background-color: #fbab18; }
+    .health-icon-container.theme-halo.bg-health-minor {
+      background-color: #ffcc00; }
+    .health-icon-container.theme-halo.bg-health-unknown {
+      background-color: #7f7f86; }
+    .health-icon-container.theme-halo.bg-health-ok {
+      background-color: #6ebe4a; }

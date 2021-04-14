@@ -1,0 +1,276 @@
+@import '../../scss/app/utilities/variables.scss';
+
+
+//
+// Modal
+// ==============================
+
+// Inspired by https://github.com/twbs/bootstrap
+
+// Modals
+// ------------------------------
+
+// Variables
+$modal-bg:                          $white;
+$modal-backdrop-bg:                 $base-backdrop-background;
+$modal-padding-vertical:            $base-spacing;
+$modal-padding-horizontal:          $base-spacing;
+
+$modal-body-height:           400px;
+
+$modal-width-small:           320px;
+$modal-width-medium:          640px;
+$modal-width-large:           960px;
+
+
+
+// Wrapper
+// ------------------------------
+
+.Modal {
+    transition: visibility 140ms;
+    bottom: 0;
+    left: 0;
+    outline: 0;
+    overflow-x: hidden;
+    overflow-y: hidden;
+    position: fixed;
+    right: 0;
+    top: 0;
+    visibility: hidden;
+    z-index: $base-modal-zindex;
+    -webkit-overflow-scrolling: touch;
+
+    &.is-open {
+        transition: none;
+        visibility: visible;
+    }
+}
+
+
+
+
+// Dialog
+// ------------------------------
+
+// shell div to position the modal
+.Modal-dialog {
+    max-width: 100%;
+    padding: 10px;
+    position: relative;
+    transition: all 260ms cubic-bezier(0.500, -0.550, 0.400, 1.550);
+    width: auto;
+    z-index: 2;
+}
+.Modal-dialog-enter {
+    opacity: 0;
+    transform: scale(0.96);
+}
+.Modal-dialog-enter-active {
+    opacity: 1;
+    transform: scale(1);
+}
+.Modal-dialog-leave {
+    opacity: 1;
+    transform: scale(1);
+}
+.Modal-dialog-leave-active {
+    opacity: 0;
+    transform: scale(0.8);
+}
+
+
+// actual modal
+
+.Modal-content {
+    background-color: $modal-bg;
+    border-radius: 0; // $border-radius-base;
+    outline: none; // remove focus outline from opened modal
+    position: relative;
+    padding: $modal-padding-vertical $modal-padding-horizontal;
+    background-color: $white;
+    color: $base-font-color;
+    border-radius: $base-border-radius;
+    border: 0 none;
+    //box-shadow: 0 0 0 1px rgba(0,0,0,.175), 0 3px 8px rgba(0,0,0,.175);
+    box-shadow: 0 10px 24px -6px rgba(0,0,0,0.25);
+}
+
+
+// sizes
+$grid-breakpoints: (
+    xs: 0,
+    sm: 576px,
+    md: 768px,
+    lg: 992px,
+    xl: 1200px
+) !default;
+
+@media (min-width: $modal-width-small) {
+    .Modal-dialog {
+        margin: 80px auto;
+    }
+    .Modal-dialog--small  { width: $modal-width-small; }
+    .Modal-dialog--medium { width: $modal-width-medium; }
+    .Modal-dialog--large  { width: $modal-width-large; }
+    .Modal-dialog--full   {
+        width: 100vw; height: 100vh; margin: auto;
+        padding: 0;
+        > .Modal-content {
+            height: 100%;
+            display: grid;
+            grid-template-rows: auto 1fr auto;
+            padding: 0;
+
+            > .Modal__header {
+                color: $white;
+                background: $indigo;
+
+                > .Modal__header__close {
+                    display: inline;
+                    float: right;
+                    color: $white;
+
+                    &:hover,
+                    &:focus {
+                        color: $base-link-color;
+                        outline: 0;
+                    }
+                }
+            }
+
+            > .Modal__body {
+                padding: 0;
+            }
+        }
+    }
+}
+
+
+
+
+// Inner
+// ------------------------------
+
+// common
+.Modal__header,
+.Modal__body,
+.Modal__footer {
+    margin-left: $modal-padding-horizontal;
+    margin-right: $modal-padding-horizontal;
+    padding-bottom: $modal-padding-vertical;
+    padding-top: $modal-padding-vertical;
+    position: relative;
+}
+
+// header
+.Modal__header {
+    z-index: 1;
+    margin: 0;
+    padding: $modal-padding-vertical $modal-padding-horizontal;
+    position: static;
+}
+.Modal__header__text {
+    color: inherit;
+    font-size: $base-modal-title-size;
+    font-weight: $base-modal-title-weight;
+    line-height: 1;
+    margin: 0;
+
+    text-align: center;
+}
+
+.Modal-sub-title {
+    text-align: center;
+}
+
+// close button (make compatible with cui)
+.cui button.Modal__header__close,
+.Modal__header__close {
+    color: $base-muted-color;
+    font-family: cui-font;
+    transition: opacity 140ms;
+    // dechrome
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: $base-modal-close-size;
+    line-height: $base-modal-close-size;
+
+    display: block;
+    margin-left:auto; margin-right:0;
+
+    // style and position
+    font-size: $base-modal-close-size;
+    line-height: $base-modal-close-size;
+
+    //right: $base-spacing;
+    //top: $base-spacing;
+    padding: 0;
+
+    &:hover,
+    &:focus {
+        color: $base-link-color;
+        outline: 0;
+    }
+}
+
+// body
+.Modal__body {
+    margin: 0;
+    // max-height: $modal-body-height;
+    // overflow: scroll;
+    // -webkit-overflow-scrolling: touch;
+    overflow-y: hidden;
+
+    + .Modal-err-text {
+        color: $danger;
+        text-align: center;
+    }
+}
+
+// footer
+.Modal__footer {
+    z-index: 1;
+    text-align: center;
+    margin-top: $base-spacing * 2;
+}
+
+
+// Background
+// ------------------------------
+
+.Modal-backdrop {
+    background-color: $modal-backdrop-bg;
+    opacity: $base-backdrop-opacity;
+    pointer-events: none;
+    height: 100%;
+    left: 0;
+    position: fixed;
+    top: 0;
+    width: 100%;
+    z-index: $base-backdrop-zindex;
+}
+.Modal-background-enter {
+    opacity: 0;
+    transition: opacity 140ms linear;
+}
+.Modal-background-enter-active {
+    opacity: 1;
+}
+.Modal-background-leave {
+    opacity: 1;
+    transition: opacity 240ms;
+}
+.Modal-background-leave-active {
+    opacity: 0;
+}
+.modal-items {
+  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-items h6 {
+    margin-bottom: 10px !important;
+}

@@ -1,0 +1,65 @@
+@import 'src/scss/app/utilities/variables.scss';
+
+.multi-gauge-container {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+
+    .donut-chart-container {
+        position: relative;
+        height: 100px;
+        width: 100px;
+
+        .donut-chart-center {
+            position: absolute;
+            top:0;
+            height: 100%;
+            width: 100%;
+            color: $dark-gray-2;
+            font-size: $base-font-size;
+            font-weight: bold;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+    }
+
+    .multi-gauge-legends-container {
+        padding-left: $padding-large;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-evenly;
+
+        .legend {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+
+            .legend-indicator {
+                width: 10px;
+                height: 10px;
+                border-radius: 5px;
+            }
+
+            .legend-label {
+                flex: 1;
+                color: $med-gray-2;
+                font-size: $base-font-size-sm;
+                padding-left: $padding-xsmall;
+            }
+
+            &.legend-size {
+                width: 200px;
+            }
+        }
+    }
+}
+.health_critical {
+    color: red;
+}
+.health_ok {
+    color:rgb(110, 190, 74);
+}
+.health_minor {
+    color: rgb(255, 204, 0);
+}

@@ -1,0 +1,1 @@
+const ENV = {development: true, endpointConfig: {IS_APIC_DEV_MODE: true, BASE_NATIVE_URI: '/apicProxy', APIC_DEV_SETTINGS: {URI: 'https://172.16.176.28', USERNAME: 'admin', PASSWORD: 'ins3965!'}, BASE_URI: 'https://172.16.176.28/api'}}; export {ENV};

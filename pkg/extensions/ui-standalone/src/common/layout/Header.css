@@ -1,0 +1,93 @@
+/** @see sass/vendor/tooltip/balloon.scss (written with CUIK c1.3.4 as the current version in use) */
+/* Status Colors (here from _variable.scss for documentation)
+$status-blue: #64bbe3 !default;
+$status-turq: #14a792 !default;
+$status-green: #6cc04a !default;
+$status-red: $accent-red !default;
+$status-orange: $accent-orange !default;
+$status-yellow: #ffcc00 !default;
+*/
+.global-header {
+  display: flex;
+  align-items: center;
+  background: #ffffff;
+  border-bottom: 1px solid #c6c7ca;
+  padding: 0 12px;
+  line-height: 1;
+  height: 64px;
+  min-height: 64px; }
+  .global-header > .header-bar__logo {
+    margin: 0 18px !important; }
+    .global-header > .header-bar__logo span.icon-cisco {
+      font-size: 30px; }
+  .global-header .app-title {
+    flex: 1;
+    margin: auto;
+    white-space: nowrap;
+    display: flex;
+    align-items: center; }
+    .global-header .app-title > img {
+      margin-left: 10px; }
+  .global-header .header-dropdown-user a:first-of-type {
+    font-weight: bold;
+    border-bottom: 1px solid #dfdfdf;
+    cursor: auto; }
+    .global-header .header-dropdown-user a:first-of-type:hover {
+      background-color: inherit; }
+  .global-header .header-buttons {
+    justify-content: center;
+    align-items: center;
+    display: flex; }
+    .global-header .header-buttons > div:last-child {
+      margin-left: 10px; }
+      .global-header .header-buttons > div:last-child button, .global-header .header-buttons > div:last-child button:hover {
+        background-color: white;
+        color: #0377A1;
+        border: 1px solid lightgray; }
+  .global-header .intent-icon {
+    display: flex;
+    background-color: #017CAD;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    margin: 0 5px;
+    cursor: pointer;
+    position: relative; }
+  .global-header .intent-tooltip {
+    background-color: #005073; }
+  .global-header .tooltiptext {
+    background-color: #005073;
+    color: #ffffff;
+    min-width: 200px;
+    height: 43px;
+    text-align: center;
+    border-radius: 4px;
+    padding: 10px 0;
+    margin-top: 5px;
+    position: absolute;
+    z-index: 1;
+    top: 100%; }
+  .global-header .tooltiptext::after {
+    content: "";
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    margin-left: -2.5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: transparent transparent #005073 transparent; }
+
+.app-banner {
+  line-height: 40px;
+  max-height: 40px;
+  padding: 0 10px;
+  text-align: center; }
+  .app-banner.app-banner-severity-info {
+    background-color: #e5f8fd; }
+    .app-banner.app-banner-severity-info .icon-info-outline {
+      color: #0d84a3; }
+  .app-banner span[class*="icon-"] {
+    font-size: 18px;
+    padding-right: 10px; }

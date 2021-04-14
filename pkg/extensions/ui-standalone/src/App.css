@@ -1,0 +1,184 @@
+/** @see sass/vendor/tooltip/balloon.scss (written with CUIK c1.3.4 as the current version in use) */
+/* Status Colors (here from _variable.scss for documentation)
+$status-blue: #64bbe3 !default;
+$status-turq: #14a792 !default;
+$status-green: #6cc04a !default;
+$status-red: $accent-red !default;
+$status-orange: $accent-orange !default;
+$status-yellow: #ffcc00 !default;
+*/
+.app-container {
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: row;
+  height: 100vh;
+  transition: margin-left 0.25s !important; }
+  .app-container .modal-wrap {
+    position: fixed;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    z-index: 2050;
+    display: -webkit-box;
+    display: -ms-flexbox;
+    display: flex;
+    -webkit-box-align: center;
+    -ms-flex-align: center;
+    align-items: center;
+    -webkit-box-pack: center;
+    -ms-flex-pack: center;
+    justify-content: center;
+    overflow: hidden;
+    background-color: rgba(195, 198, 203, 0.65); }
+    .app-container .modal-wrap .modal-container {
+      position: relative;
+      display: -webkit-box;
+      display: -ms-flexbox;
+      display: flex;
+      -webkit-box-orient: vertical;
+      -webkit-box-direction: normal;
+      -ms-flex-direction: column;
+      flex-direction: column;
+      overflow: auto;
+      max-height: 90%; }
+      .app-container .modal-wrap .modal-container > header {
+        display: flex;
+        -webkit-box-align: center;
+        -ms-flex-align: center;
+        align-items: center;
+        justify-content: space-between;
+        background-color: #fff;
+        padding: 12px 20px;
+        height: 54px;
+        min-height: 54px;
+        border-bottom: 1px solid #dfdfdf; }
+      .app-container .modal-wrap .modal-container > main {
+        background-color: #f2f2f2;
+        padding: 10px;
+        overflow: auto;
+        height: 100%; }
+        .app-container .modal-wrap .modal-container > main .form-section > main {
+          border: none;
+          background-color: transparent; }
+      .app-container .modal-wrap .modal-container > footer {
+        display: flex;
+        -webkit-box-pack: end;
+        -ms-flex-pack: end;
+        justify-content: flex-end;
+        -webkit-box-align: center;
+        -ms-flex-align: center;
+        align-items: center;
+        background-color: #fff;
+        padding: 10px;
+        height: 54px;
+        min-height: 54px;
+        border-top: 1px solid #dfdfdf; }
+  .app-container .custom-modal {
+    width: 50% !important; }
+  .app-container .wide-modal {
+    width: 55% !important; }
+  .app-container .modal-wrap .modal-container.restart-service-modal > main {
+    overflow: visible; }
+    .app-container .modal-wrap .modal-container.restart-service-modal > main .form-section {
+      overflow: visible; }
+  .app-container .sidebar__header {
+    height: 54px;
+    justify-content: flex-start; }
+  .app-container .sidebar--locked ~ .main-content-wrapper {
+    margin-left: 280px; }
+  .app-container .sidebar--collapsed ~ .screen-dock {
+    left: 70px; }
+  .app-container .main-content-wrapper {
+    margin-left: 50px;
+    transition: margin-left 0.25s !important;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    overflow: hidden; }
+    .app-container .main-content-wrapper > main {
+      position: relative;
+      flex: 1;
+      flex-grow: 1;
+      display: flex;
+      flex-direction: column;
+      background: #f2f2f2;
+      overflow-y: auto; }
+      .app-container .main-content-wrapper > main .routed-content {
+        height: 100%;
+        overflow-y: auto;
+        flex: 1;
+        padding: 12px; }
+  .app-container .main-content-wrapper-with-schemas {
+    margin-left: 0px !important;
+    transition: margin-left 0.25s !important;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    overflow: hidden; }
+    .app-container .main-content-wrapper-with-schemas > main {
+      position: relative;
+      flex: 1;
+      flex-grow: 1;
+      display: flex;
+      flex-direction: column;
+      background: #f2f2f2;
+      overflow-y: auto; }
+      .app-container .main-content-wrapper-with-schemas > main .routed-content {
+        height: 100%;
+        overflow-y: auto;
+        flex: 1;
+        padding: 12px; }
+  .app-container span[class*="icon-"] {
+    position: unset; }
+  .app-container > .loader--spinner {
+    margin: auto; }
+
+.app-main {
+  height: 100%; }
+  .app-main > .loader--spinner {
+    height: 100%; }
+
+.app-main-pad {
+  padding: 10px; }
+
+.select-file {
+  display: flex;
+  margin-bottom: 10px; }
+
+.upload-btn {
+  margin: 24px 0px 0px 10px; }
+
+.overflow-wrap-anywhere {
+  overflow-wrap: anywhere; }
+
+.cui.blueprint .app-main .with-popup {
+  line-height: unset; }
+
+.dropdown__menu {
+  overflow: auto; }
+
+.cui .dropdown.active .dropdown__menu a {
+  min-height: 35px; }
+
+.modal-wrap .cluster,
+.config-modal {
+  height: 655px;
+  width: 640px; }
+  .modal-wrap .cluster.proxy-config,
+  .config-modal.proxy-config {
+    width: 800px; }
+
+.config-form-group {
+  margin: 10px;
+  background-color: #fff;
+  padding: 15px; }
+
+code {
+  background-color: #7f7f86;
+  color: #fff; }
+
+.grafana_group {
+  display: flex; }
+  .grafana_group .grafana_img {
+    margin: 2px 0px 0px 5px; }

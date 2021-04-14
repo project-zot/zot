@@ -1,0 +1,186 @@
+/** WORK IN PROGRESS
+
+@import "../../app/utilities/variables.scss";
+// @import './scss/app/utilities/animations.scss';
+
+
+
+@function xicon-contrast-color($clr) {
+    @return invert($clr); // , $icon-color, $icon-color-light
+}
+
+@mixin xicon-clrs($clr: $icon-color) {
+    // calc contrasting color.  result is exposed via $contrast-clr variable
+    $contrast-color: xicon-contrast-color($clr);
+
+    &:before {
+        color: $clr;
+    }
+
+    &.inactive {
+        &:before {
+            color: $inactive;
+        }
+    }
+    &[disabled],
+    &.disabled {
+        &:before {
+            color: $disabled;
+        }
+    }
+
+    // icon inverted against solid background color
+    &.inverted {
+        background-color: $clr;
+        &:before {
+            color: $contrast-clr;
+        }
+    }
+
+    .icon-decorator {
+        background-color: $clr;
+        color: $contrast-clr;
+
+        &.annotation {
+            background-color: $clr;
+            border: 1px solid $contrast-clr;
+            color: $contrast-clr;
+        }
+    }
+
+    &.inverted {
+        .icon-decorator {
+            background-color: $contrast-clr;
+            color: $clr;
+            &.annotation {
+                border: 1px solid $clr;
+            }
+        }
+    }
+
+    &[popover],
+    &[icon-popover],
+    &.actionable {
+        .icon-actionable-rules($icon-color-hover);
+        &.inverted {
+            .icon-actionable-rules(lighten($contrast-clr, 20%));
+        }
+    }
+}
+
+@mixin make-icon($clr: $icon-color) {
+    .glyphicon();
+
+    .form-inline & {
+        top: 2px;
+    }
+
+    .transition($icon-transition);
+
+    &:before {
+        margin: auto;
+
+        .transition($icon-transition);
+    }
+
+    &[disabled],
+    &.disabled {
+        &:before {
+            cursor: not-allowed;
+        }
+    }
+
+    // icon inverted against solid background color
+    &.inverted {
+        padding: 1px;
+        border-radius: $border-radius-base;
+        line-height: $line-height-base;
+    }
+
+    .icon-decorator {
+        position: absolute;
+        display: table-cell;
+        font-family: $font-family-base;
+
+        font-weight: $font-weight-extra-solid;
+        text-align: center;
+        z-index: 2;
+
+        line-height: 1.2em;
+        min-width: 1.2em;
+        padding: 0 .2em;
+        vertical-align: middle;
+
+        &.annotation {
+            font-size: 60%;
+
+            top: 80%;
+            right: 0;
+            bottom: auto;
+
+            border-radius: $border-radius-base;
+        }
+
+        &.counter {
+            font-size: .35em;
+
+            top: -(.25em);
+            right: -(.25em);
+            border-radius: 1.2em;
+            padding: 0 .3em;
+        }
+    }
+
+    &.inverted {
+        .icon-decorator {
+            &.annotation {
+                text-shadow: none;
+            }
+        }
+    }
+}
+
+.icon-actionable-rules($hover-clr: $icon-color-hover) {
+    .actionable:hover > &, // if parented by an actionable
+    &:hover { // if icon is actionable itself
+        &:before {
+            color: $hover-clr;
+            .transition($icon-transition);
+        }
+    }
+}
+
+.icon-actionable($hover-clr: $icon-color-hover) {
+    @extend .actionable; // apply whatever styles are associated with actionable-s, if not already
+    .icon-actionable-rules($hover-clr);
+}
+
+.svg-icon-actionable($svg; $hover-clr: $icon-color-hover) {
+    @extend .actionable; // apply whatever styles are associated with actionable-s, if not already
+
+.btn:hover > &, // if parented by a btn
+.actionable:hover > &, // if parented by an actionable
+&:hover { // if icon is actionable itself
+    background-image: url($svg);
+    .transition($icon-transition);
+}
+}
+
+
+.svg-icon, .xicon-radar, .xicon-radar-small {
+    width: 1em;
+    height: 1em;
+    line-height: 1;
+    background-repeat: no-repeat;
+    background-size: 100%;
+    background-position: center;
+    background-origin: padding-box;
+    margin-top: -.5px;
+}
+
+.xicon-radar:before {
+    contents: url("./icons/radar.png"); }
+
+.xicon-radar-sm:before {
+    contents: url("./icons/radar-small.png"); }
+*/

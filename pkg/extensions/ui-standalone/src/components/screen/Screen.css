@@ -1,0 +1,137 @@
+/** @see sass/vendor/tooltip/balloon.scss (written with CUIK c1.3.4 as the current version in use) */
+/* Status Colors (here from _variable.scss for documentation)
+$status-blue: #64bbe3 !default;
+$status-turq: #14a792 !default;
+$status-green: #6cc04a !default;
+$status-red: $accent-red !default;
+$status-orange: $accent-orange !default;
+$status-yellow: #ffcc00 !default;
+*/
+.screen-container {
+  position: fixed;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  z-index: 1050;
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column; }
+  .screen-container.minimized {
+    display: none; }
+  .screen-container.scrollable {
+    overflow-y: auto; }
+  .screen-container > main {
+    background-color: #f2f2f2;
+    flex: 1; }
+    .screen-container > main.scrollable {
+      overflow-y: auto; }
+  .screen-container > header {
+    display: flex;
+    align-items: center;
+    color: #ffffff;
+    background-color: #005073;
+    padding: 0 15px;
+    line-height: 1;
+    height: 64px;
+    min-height: 64px; }
+    .screen-container > header h3 {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 300; }
+    .screen-container > header .close-button, .screen-container > header .minimize-button {
+      cursor: pointer; }
+      .screen-container > header .close-button:hover, .screen-container > header .minimize-button:hover {
+        text-shadow: 0 0 2px #ffffff; }
+  .screen-container > footer {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    background-color: #ffffff !important;
+    padding: 10px !important;
+    height: 54px;
+    min-height: 54px; }
+
+.screen-dock {
+  transition: all 0.25s !important;
+  position: absolute;
+  bottom: 0;
+  left: 300px;
+  z-index: 1049;
+  color: #ffffff;
+  background-color: #005073;
+  border-radius: 8px 8px 0 0;
+  min-width: 230px;
+  max-width: 350px;
+  width: 20vw; }
+  .screen-dock .item-count-container {
+    display: flex;
+    align-items: center;
+    height: 40px;
+    min-height: 40px; }
+    .screen-dock .item-count-container:hover .close-button {
+      visibility: visible; }
+    .screen-dock .item-count-container .title {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      margin: 5px;
+      overflow: hidden;
+      white-space: nowrap;
+      padding-left: 20px; }
+      .screen-dock .item-count-container .title .item-count {
+        width: 20px;
+        background-color: #34adde;
+        border-radius: 8px;
+        text-align: center;
+        margin-right: 10px; }
+      .screen-dock .item-count-container .title .open-items-text {
+        text-transform: uppercase; }
+    .screen-dock .item-count-container .close-button {
+      visibility: hidden;
+      margin: 5px;
+      cursor: pointer; }
+      .screen-dock .item-count-container .close-button:hover {
+        text-shadow: 0 0 2px #ffffff; }
+  .screen-dock.open {
+    min-height: 40px; }
+    .screen-dock.open ul {
+      margin: 0;
+      padding: 0 0 0 0px;
+      text-decoration: none; }
+      .screen-dock.open ul li {
+        display: flex;
+        align-items: center;
+        height: 40px;
+        min-height: 40px;
+        cursor: pointer; }
+        .screen-dock.open ul li:hover {
+          background-color: #34adde; }
+          .screen-dock.open ul li:hover .close-button {
+            display: block; }
+        .screen-dock.open ul li .title {
+          flex: 1;
+          margin: 5px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap; }
+        .screen-dock.open ul li .close-button {
+          display: none;
+          margin: 5px;
+          cursor: pointer; }
+          .screen-dock.open ul li .close-button:hover {
+            text-shadow: 0 0 2px #ffffff; }
+  .screen-dock.closed {
+    height: 40px;
+    min-height: 40px; }
+
+.screen-confirmation {
+  background-color: rgba(196, 199, 204, 0.65); }
+  .screen-confirmation .screen-confirmation-header {
+    padding-bottom: 15px;
+    font-size: 24px; }
+    .screen-confirmation .screen-confirmation-header > span[class*="icon-"] {
+      color: #FBAB18;
+      padding-bottom: 10px; }

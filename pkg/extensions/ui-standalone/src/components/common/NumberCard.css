@@ -1,0 +1,34 @@
+/** @see sass/vendor/tooltip/balloon.scss (written with CUIK c1.3.4 as the current version in use) */
+/* Status Colors (here from _variable.scss for documentation)
+$status-blue: #64bbe3 !default;
+$status-turq: #14a792 !default;
+$status-green: #6cc04a !default;
+$status-red: $accent-red !default;
+$status-orange: $accent-orange !default;
+$status-yellow: #ffcc00 !default;
+*/
+.number-card-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 4px;
+  padding-top: 18px;
+  border: 1px solid #dfdfdf;
+  border-top-width: 3px;
+  margin: 0px 16px 10px 0px; }
+  .number-card-container .number-card-value {
+    font-size: 24px; }
+  .number-card-container .number-card-label {
+    font-size: 10px;
+    background-color: transparent;
+    color: #9e9ea2; }
+  .number-card-container .icons-container {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center; }
+    .number-card-container .icons-container .health-badge-icon {
+      padding-right: 3px; }
+    .number-card-container .icons-container .icon-small:before {
+      font-size: 11px !important;
+      color: #c6c7ca; }

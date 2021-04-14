@@ -1,0 +1,57 @@
+/** @see sass/vendor/tooltip/balloon.scss (written with CUIK c1.3.4 as the current version in use) */
+/* Status Colors (here from _variable.scss for documentation)
+$status-blue: #64bbe3 !default;
+$status-turq: #14a792 !default;
+$status-green: #6cc04a !default;
+$status-red: $accent-red !default;
+$status-orange: $accent-orange !default;
+$status-yellow: #ffcc00 !default;
+*/
+.multi-gauge-container {
+  display: flex;
+  flex-direction: row;
+  align-items: center; }
+  .multi-gauge-container .donut-chart-container {
+    position: relative;
+    height: 100px;
+    width: 100px; }
+    .multi-gauge-container .donut-chart-container .donut-chart-center {
+      position: absolute;
+      top: 0;
+      height: 100%;
+      width: 100%;
+      color: #58585b;
+      font-size: 14px;
+      font-weight: bold;
+      display: flex;
+      justify-content: center;
+      align-items: center; }
+  .multi-gauge-container .multi-gauge-legends-container {
+    padding-left: 15px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-evenly; }
+    .multi-gauge-container .multi-gauge-legends-container .legend {
+      display: flex;
+      flex-direction: row;
+      align-items: center; }
+      .multi-gauge-container .multi-gauge-legends-container .legend .legend-indicator {
+        width: 10px;
+        height: 10px;
+        border-radius: 5px; }
+      .multi-gauge-container .multi-gauge-legends-container .legend .legend-label {
+        flex: 1;
+        color: #9e9ea2;
+        font-size: 12px;
+        padding-left: 3px; }
+      .multi-gauge-container .multi-gauge-legends-container .legend.legend-size {
+        width: 200px; }
+
+.health_critical {
+  color: red; }
+
+.health_ok {
+  color: #6ebe4a; }
+
+.health_minor {
+  color: #ffcc00; }

@@ -1,0 +1,32 @@
+@import "src/scss/assets/sass/utilities/variables.scss";
+
+.widget-panel {
+    background-color: white;
+    margin-bottom: $padding-base;
+    > header {
+        display: flex;
+        text-transform: capitalize;
+        font-weight: bold;
+        padding: $padding-base;
+        > .title {
+            flex: 1;
+        }
+        .link:hover {
+            text-decoration: none;
+        }
+    }
+    > .main-content {
+        padding: $padding-base;
+        padding-top: 0;
+    }
+
+    &.collapsible {
+        header {
+            cursor: pointer;
+        }
+    }
+}
+
+.dashboard-panel {
+    padding: 0px 6px;
+}

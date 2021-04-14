@@ -1,0 +1,2053 @@
+@charset "UTF-8";
+.full-page {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0; }
+
+.divider--vertical > :after {
+  color: #9e9ea2;
+  content: '|';
+  margin: 0 5px;
+  padding: 0; }
+
+@font-face {
+  font-family: "cui-font";
+  src: url("/src/assets/cui/fonts/cui-font.eot");
+  src: url("/src/assets/cui/fonts/cui-font.eot?#iefix") format("eot"), url("/src/assets/cui/fonts/cui-font.woff2") format("woff2"), url("/src/assets/cui/fonts/cui-font.woff") format("woff"), url("/src/assets/cui/fonts/cui-font.ttf") format("truetype"), url("/src/assets/cui/fonts/cui-font.svg#cui-font") format("svg"); }
+
+.sidebar ul li.sidebar__drawer > a:after, .sidebar ul li.sidebar-drawer > a:after,
+*[class*='icon-'] {
+  position: relative;
+  display: inline-block;
+  font-family: "cui-font";
+  font-size: inherit;
+  font-style: normal;
+  font-weight: normal;
+  speak: none;
+  text-decoration: inherit;
+  text-transform: none;
+  text-rendering: optimizeLegibility;
+  vertical-align: middle;
+  text-indent: 0.5px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale; }
+
+.icon--medium {
+  font-size: 32px; }
+
+.icon--large {
+  font-size: 48px; }
+
+.icon-4-way-nav:before {
+  content: ""; }
+
+.icon-ac-power:before {
+  content: ""; }
+
+.icon-account:before {
+  content: ""; }
+
+.icon-acessibility:before {
+  content: ""; }
+
+.icon-aci:before {
+  content: ""; }
+
+.icon-active-speaker-cross:before {
+  content: ""; }
+
+.icon-active-speaker:before {
+  content: ""; }
+
+.icon-activities:before {
+  content: ""; }
+
+.icon-add-contact:before {
+  content: ""; }
+
+.icon-add-contain:before {
+  content: ""; }
+
+.icon-add-outline:before {
+  content: ""; }
+
+.icon-add:before {
+  content: ""; }
+
+.icon-admin:before {
+  content: ""; }
+
+.icon-alarm:before {
+  content: ""; }
+
+.icon-alert-blank:before {
+  content: ""; }
+
+.icon-alert:before {
+  content: ""; }
+
+.icon-alerting:before {
+  content: ""; }
+
+.icon-all-calls:before {
+  content: ""; }
+
+.icon-analysis:before {
+  content: ""; }
+
+.icon-android-home:before {
+  content: ""; }
+
+.icon-animation:before {
+  content: ""; }
+
+.icon-annotation:before {
+  content: ""; }
+
+.icon-answer-oldest:before {
+  content: ""; }
+
+.icon-applause:before {
+  content: ""; }
+
+.icon-application:before {
+  content: ""; }
+
+.icon-applications:before {
+  content: ""; }
+
+.icon-apps:before {
+  content: ""; }
+
+.icon-arrow-down-tail:before {
+  content: ""; }
+
+.icon-arrow-left-tail:before {
+  content: ""; }
+
+.icon-arrow-right-tail:before {
+  content: ""; }
+
+.icon-arrow-up-tail:before {
+  content: ""; }
+
+.icon-arrow:before {
+  content: ""; }
+
+.icon-asterisk:before {
+  content: ""; }
+
+.icon-at-contain:before {
+  content: ""; }
+
+.icon-at:before {
+  content: ""; }
+
+.icon-attachment:before {
+  content: ""; }
+
+.icon-audio-broadcast:before {
+  content: ""; }
+
+.icon-audio-min:before {
+  content: ""; }
+
+.icon-audio-plus:before {
+  content: ""; }
+
+.icon-audio-settings:before {
+  content: ""; }
+
+.icon-aux-camera:before {
+  content: ""; }
+
+.icon-back:before {
+  content: ""; }
+
+.icon-backup-data:before {
+  content: ""; }
+
+.icon-battery-0:before {
+  content: ""; }
+
+.icon-battery-25:before {
+  content: ""; }
+
+.icon-battery-50:before {
+  content: ""; }
+
+.icon-battery-75:before {
+  content: ""; }
+
+.icon-battery-full:before {
+  content: ""; }
+
+.icon-battery:before {
+  content: ""; }
+
+.icon-bell-cross:before {
+  content: ""; }
+
+.icon-bell:before {
+  content: ""; }
+
+.icon-blocked:before {
+  content: ""; }
+
+.icon-bluetooth-contain-cross:before {
+  content: ""; }
+
+.icon-bluetooth-contained:before {
+  content: ""; }
+
+.icon-bluetooth-outline:before {
+  content: ""; }
+
+.icon-bluetooth:before {
+  content: ""; }
+
+.icon-bookmark:before {
+  content: ""; }
+
+.icon-briefcase:before {
+  content: ""; }
+
+.icon-brightness:before {
+  content: ""; }
+
+.icon-broadcast-message:before {
+  content: ""; }
+
+.icon-broken-image:before {
+  content: ""; }
+
+.icon-browser:before {
+  content: ""; }
+
+.icon-bug:before {
+  content: ""; }
+
+.icon-calendar-meetings:before {
+  content: ""; }
+
+.icon-calendar-weekly:before {
+  content: ""; }
+
+.icon-calendar:before {
+  content: ""; }
+
+.icon-call-forward-divert:before {
+  content: ""; }
+
+.icon-call-handling:before {
+  content: ""; }
+
+.icon-call-log:before {
+  content: ""; }
+
+.icon-call-rate:before {
+  content: ""; }
+
+.icon-callback:before {
+  content: ""; }
+
+.icon-camera:before {
+  content: ""; }
+
+.icon-cart:before {
+  content: ""; }
+
+.icon-certified:before {
+  content: ""; }
+
+.icon-chapters:before {
+  content: ""; }
+
+.icon-charging:before {
+  content: ""; }
+
+.icon-chats:before {
+  content: ""; }
+
+.icon-check-outline:before {
+  content: ""; }
+
+.icon-check-square-o:before {
+  content: ""; }
+
+.icon-check-square:before {
+  content: ""; }
+
+.icon-check:before {
+  content: ""; }
+
+.icon-checklist:before {
+  content: ""; }
+
+.icon-chevron-down:before {
+  content: ""; }
+
+.icon-chevron-left-double:before {
+  content: ""; }
+
+.icon-chevron-left:before {
+  content: ""; }
+
+.icon-chevron-right-circle:before {
+  content: ""; }
+
+.icon-chevron-right-double:before {
+  content: ""; }
+
+.icon-chevron-right:before {
+  content: ""; }
+
+.icon-chevron-up:before {
+  content: ""; }
+
+.icon-circle:before {
+  content: ""; }
+
+.icon-cisco:before {
+  content: ""; }
+
+.icon-clipboard-md:before {
+  content: ""; }
+
+.icon-clipboard-sm:before {
+  content: ""; }
+
+.icon-clipboard:before {
+  content: ""; }
+
+.icon-clock:before {
+  content: ""; }
+
+.icon-close-keyboard:before {
+  content: ""; }
+
+.icon-close:before {
+  content: ""; }
+
+.icon-cloud-upload:before {
+  content: ""; }
+
+.icon-cloud:before {
+  content: ""; }
+
+.icon-cog:before {
+  content: ""; }
+
+.icon-comment:before {
+  content: ""; }
+
+.icon-communities:before {
+  content: ""; }
+
+.icon-community:before {
+  content: ""; }
+
+.icon-compass:before {
+  content: ""; }
+
+.icon-compliance:before {
+  content: ""; }
+
+.icon-computer-queue:before {
+  content: ""; }
+
+.icon-computer:before {
+  content: ""; }
+
+.icon-conference:before {
+  content: ""; }
+
+.icon-configurations:before {
+  content: ""; }
+
+.icon-contact-card:before {
+  content: ""; }
+
+.icon-contact:before {
+  content: ""; }
+
+.icon-contract-login-md:before {
+  content: ""; }
+
+.icon-contract-login-sm:before {
+  content: ""; }
+
+.icon-contract-login:before {
+  content: ""; }
+
+.icon-cpu-chip:before {
+  content: ""; }
+
+.icon-create-page:before {
+  content: ""; }
+
+.icon-data-usage:before {
+  content: ""; }
+
+.icon-day:before {
+  content: ""; }
+
+.icon-dc-power:before {
+  content: ""; }
+
+.icon-default-app:before {
+  content: ""; }
+
+.icon-delete:before {
+  content: ""; }
+
+.icon-desk-phone:before {
+  content: ""; }
+
+.icon-device-crash:before {
+  content: ""; }
+
+.icon-device-faults:before {
+  content: ""; }
+
+.icon-device-reload:before {
+  content: ""; }
+
+.icon-devices:before {
+  content: ""; }
+
+.icon-diagnostics:before {
+  content: ""; }
+
+.icon-dial:before {
+  content: ""; }
+
+.icon-directory:before {
+  content: ""; }
+
+.icon-disc-not-connected:before {
+  content: ""; }
+
+.icon-disc:before {
+  content: ""; }
+
+.icon-display:before {
+  content: ""; }
+
+.icon-dms:before {
+  content: ""; }
+
+.icon-dna:before {
+  content: ""; }
+
+.icon-document-camera-cross:before {
+  content: ""; }
+
+.icon-document-camera:before {
+  content: ""; }
+
+.icon-document:before {
+  content: ""; }
+
+.icon-download-contain:before {
+  content: ""; }
+
+.icon-download:before {
+  content: ""; }
+
+.icon-draw:before {
+  content: ""; }
+
+.icon-dropdown:before {
+  content: ""; }
+
+.icon-dual-line:before {
+  content: ""; }
+
+.icon-edit-call:before {
+  content: ""; }
+
+.icon-edit:before {
+  content: ""; }
+
+.icon-email:before {
+  content: ""; }
+
+.icon-emoticons:before {
+  content: ""; }
+
+.icon-endpoint:before {
+  content: ""; }
+
+.icon-eraser:before {
+  content: ""; }
+
+.icon-error-outline:before {
+  content: ""; }
+
+.icon-error:before {
+  content: ""; }
+
+.icon-ethernet:before {
+  content: ""; }
+
+.icon-exclamation-circle:before {
+  content: ""; }
+
+.icon-exclamation-triangle:before {
+  content: ""; }
+
+.icon-exernal-calendar:before {
+  content: ""; }
+
+.icon-exit-contain:before {
+  content: ""; }
+
+.icon-exit-fullscreen:before {
+  content: ""; }
+
+.icon-exit-outline:before {
+  content: ""; }
+
+.icon-exit:before {
+  content: ""; }
+
+.icon-export:before {
+  content: ""; }
+
+.icon-extension-mobility:before {
+  content: ""; }
+
+.icon-eye-closed:before {
+  content: ""; }
+
+.icon-eye:before {
+  content: ""; }
+
+.icon-fbw:before {
+  content: ""; }
+
+.icon-features:before {
+  content: ""; }
+
+.icon-feedback-clear:before {
+  content: ""; }
+
+.icon-feedback-result:before {
+  content: ""; }
+
+.icon-feedback:before {
+  content: ""; }
+
+.icon-ffw:before {
+  content: ""; }
+
+.icon-file-archive-o:before {
+  content: ""; }
+
+.icon-file-audio-o:before {
+  content: ""; }
+
+.icon-file-code-o:before {
+  content: ""; }
+
+.icon-file-excel-o:before {
+  content: ""; }
+
+.icon-file-image-o:before {
+  content: ""; }
+
+.icon-file-o:before {
+  content: ""; }
+
+.icon-file-pdf-o:before {
+  content: ""; }
+
+.icon-file-powerpoint-o:before {
+  content: ""; }
+
+.icon-file-text-o:before {
+  content: ""; }
+
+.icon-file-text:before {
+  content: ""; }
+
+.icon-file-video-o:before {
+  content: ""; }
+
+.icon-file-word-o:before {
+  content: ""; }
+
+.icon-file:before {
+  content: ""; }
+
+.icon-filter:before {
+  content: ""; }
+
+.icon-flagged:before {
+  content: ""; }
+
+.icon-folder:before {
+  content: ""; }
+
+.icon-forced-sign-in:before {
+  content: ""; }
+
+.icon-forward-to-mobility:before {
+  content: ""; }
+
+.icon-fullscreen:before {
+  content: ""; }
+
+.icon-general-source-cross:before {
+  content: ""; }
+
+.icon-general-source:before {
+  content: ""; }
+
+.icon-google-analytics:before {
+  content: ""; }
+
+.icon-gpu-graphicscard:before {
+  content: ""; }
+
+.icon-graph:before {
+  content: ""; }
+
+.icon-grid-view:before {
+  content: ""; }
+
+.icon-ground:before {
+  content: ""; }
+
+.icon-group-call:before {
+  content: ""; }
+
+.icon-group-chat:before {
+  content: ""; }
+
+.icon-headset-cross:before {
+  content: ""; }
+
+.icon-headset:before {
+  content: ""; }
+
+.icon-help-alt:before {
+  content: ""; }
+
+.icon-help-outline:before {
+  content: ""; }
+
+.icon-help:before {
+  content: ""; }
+
+.icon-hide-editor:before {
+  content: ""; }
+
+.icon-highlight-line:before {
+  content: ""; }
+
+.icon-highlight:before {
+  content: ""; }
+
+.icon-highlighter-check:before {
+  content: ""; }
+
+.icon-highlighter:before {
+  content: ""; }
+
+.icon-history:before {
+  content: ""; }
+
+.icon-home:before {
+  content: ""; }
+
+.icon-hue:before {
+  content: ""; }
+
+.icon-hunt-group:before {
+  content: ""; }
+
+.icon-idefix:before {
+  content: ""; }
+
+.icon-image-contain:before {
+  content: ""; }
+
+.icon-image:before {
+  content: ""; }
+
+.icon-import:before {
+  content: ""; }
+
+.icon-inbox:before {
+  content: ""; }
+
+.icon-incoming-call:before {
+  content: ""; }
+
+.icon-info-circle:before {
+  content: ""; }
+
+.icon-info-outline:before {
+  content: ""; }
+
+.icon-info:before {
+  content: ""; }
+
+.icon-insights:before {
+  content: ""; }
+
+.icon-instant-meeting:before {
+  content: ""; }
+
+.icon-intercom-duplex-connected:before {
+  content: ""; }
+
+.icon-intercom-whisper:before {
+  content: ""; }
+
+.icon-intercom:before {
+  content: ""; }
+
+.icon-invite:before {
+  content: ""; }
+
+.icon-jump-out:before {
+  content: ""; }
+
+.icon-key-expansion-module:before {
+  content: ""; }
+
+.icon-keyboard-close:before {
+  content: ""; }
+
+.icon-keyboard:before {
+  content: ""; }
+
+.icon-keywords:before {
+  content: ""; }
+
+.icon-language:before {
+  content: ""; }
+
+.icon-laser-pointer:before {
+  content: ""; }
+
+.icon-layers:before {
+  content: ""; }
+
+.icon-layout:before {
+  content: ""; }
+
+.icon-learning:before {
+  content: ""; }
+
+.icon-leave-meeting:before {
+  content: ""; }
+
+.icon-left-arrow:before {
+  content: ""; }
+
+.icon-lifecycle:before {
+  content: ""; }
+
+.icon-lightbulb:before {
+  content: ""; }
+
+.icon-like:before {
+  content: ""; }
+
+.icon-line-out-left:before {
+  content: ""; }
+
+.icon-line-out-right:before {
+  content: ""; }
+
+.icon-link-broken:before {
+  content: ""; }
+
+.icon-link:before {
+  content: ""; }
+
+.icon-list-menu:before {
+  content: ""; }
+
+.icon-list-view:before {
+  content: ""; }
+
+.icon-location:before {
+  content: ""; }
+
+.icon-lock-contain:before {
+  content: ""; }
+
+.icon-lock:before {
+  content: ""; }
+
+.icon-locked-speaker:before {
+  content: ""; }
+
+.icon-mail-read:before {
+  content: ""; }
+
+.icon-mail:before {
+  content: ""; }
+
+.icon-manage-cable:before {
+  content: ""; }
+
+.icon-maximize:before {
+  content: ""; }
+
+.icon-media-viewer:before {
+  content: ""; }
+
+.icon-meet-me:before {
+  content: ""; }
+
+.icon-meeting-room:before {
+  content: ""; }
+
+.icon-memory-ram:before {
+  content: ""; }
+
+.icon-merge-call:before {
+  content: ""; }
+
+.icon-message:before {
+  content: ""; }
+
+.icon-mic-in:before {
+  content: ""; }
+
+.icon-micro-blog:before {
+  content: ""; }
+
+.icon-microphone:before {
+  content: ""; }
+
+.icon-minimize:before {
+  content: ""; }
+
+.icon-missed-call:before {
+  content: ""; }
+
+.icon-mlpp-1:before {
+  content: ""; }
+
+.icon-mlpp-2:before {
+  content: ""; }
+
+.icon-mlpp-3:before {
+  content: ""; }
+
+.icon-mlpp-4:before {
+  content: ""; }
+
+.icon-mlpp-5:before {
+  content: ""; }
+
+.icon-mobile-phone:before {
+  content: ""; }
+
+.icon-mobile-presenter:before {
+  content: ""; }
+
+.icon-month:before {
+  content: ""; }
+
+.icon-more:before {
+  content: ""; }
+
+.icon-move-page:before {
+  content: ""; }
+
+.icon-multi-display:before {
+  content: ""; }
+
+.icon-music:before {
+  content: ""; }
+
+.icon-mute:before {
+  content: ""; }
+
+.icon-network:before {
+  content: ""; }
+
+.icon-new-call:before {
+  content: ""; }
+
+.icon-no-signal:before {
+  content: ""; }
+
+.icon-notebook-in:before {
+  content: ""; }
+
+.icon-notes:before {
+  content: ""; }
+
+.icon-numbered-input:before {
+  content: ""; }
+
+.icon-numbered-output:before {
+  content: ""; }
+
+.icon-off-hook:before {
+  content: ""; }
+
+.icon-other-phone:before {
+  content: ""; }
+
+.icon-outbox:before {
+  content: ""; }
+
+.icon-outgoing-call:before {
+  content: ""; }
+
+.icon-paired-audio:before {
+  content: ""; }
+
+.icon-paired-call:before {
+  content: ""; }
+
+.icon-panel-shift-left:before {
+  content: ""; }
+
+.icon-panel-shift-right:before {
+  content: ""; }
+
+.icon-parked:before {
+  content: ""; }
+
+.icon-participant-list:before {
+  content: ""; }
+
+.icon-pass-mouse:before {
+  content: ""; }
+
+.icon-pause:before {
+  content: ""; }
+
+.icon-pc:before {
+  content: ""; }
+
+.icon-pencil:before {
+  content: ""; }
+
+.icon-persistent-chat:before {
+  content: ""; }
+
+.icon-phone-cross:before {
+  content: ""; }
+
+.icon-phone:before {
+  content: ""; }
+
+.icon-picture-in-picture:before {
+  content: ""; }
+
+.icon-pin:before {
+  content: ""; }
+
+.icon-pip-0:before {
+  content: ""; }
+
+.icon-pip-1:before {
+  content: ""; }
+
+.icon-pip-2:before {
+  content: ""; }
+
+.icon-pip-3:before {
+  content: ""; }
+
+.icon-pip:before {
+  content: ""; }
+
+.icon-play-contained:before {
+  content: ""; }
+
+.icon-play:before {
+  content: ""; }
+
+.icon-playlist:before {
+  content: ""; }
+
+.icon-plugin:before {
+  content: ""; }
+
+.icon-plus:before {
+  content: ""; }
+
+.icon-point:before {
+  content: ""; }
+
+.icon-poll:before {
+  content: ""; }
+
+.icon-popout:before {
+  content: ""; }
+
+.icon-popup-dialogue:before {
+  content: ""; }
+
+.icon-power-contain:before {
+  content: ""; }
+
+.icon-power:before {
+  content: ""; }
+
+.icon-presence-available:before {
+  content: ""; }
+
+.icon-presence-end:before {
+  content: ""; }
+
+.icon-presence-offline:before {
+  content: ""; }
+
+.icon-presentation:before {
+  content: ""; }
+
+.icon-prevent-download-contain:before {
+  content: ""; }
+
+.icon-prevent-download:before {
+  content: ""; }
+
+.icon-print:before {
+  content: ""; }
+
+.icon-priority:before {
+  content: ""; }
+
+.icon-privacy:before {
+  content: ""; }
+
+.icon-private:before {
+  content: ""; }
+
+.icon-profile-settings:before {
+  content: ""; }
+
+.icon-proximity-not-connected:before {
+  content: ""; }
+
+.icon-proximity:before {
+  content: ""; }
+
+.icon-quality:before {
+  content: ""; }
+
+.icon-question-circle:before {
+  content: ""; }
+
+.icon-raise-hand:before {
+  content: ""; }
+
+.icon-read-email:before {
+  content: ""; }
+
+.icon-recent-apps:before {
+  content: ""; }
+
+.icon-record:before {
+  content: ""; }
+
+.icon-redial:before {
+  content: ""; }
+
+.icon-refresh:before {
+  content: ""; }
+
+.icon-remove-contact:before {
+  content: ""; }
+
+.icon-remove-contain:before {
+  content: ""; }
+
+.icon-remove-outline:before {
+  content: ""; }
+
+.icon-remove:before {
+  content: ""; }
+
+.icon-reply-all:before {
+  content: ""; }
+
+.icon-report:before {
+  content: ""; }
+
+.icon-reset:before {
+  content: ""; }
+
+.icon-right-arrow-closed-contained:before {
+  content: ""; }
+
+.icon-right-arrow-closed-outline:before {
+  content: ""; }
+
+.icon-right-arrow-contain:before {
+  content: ""; }
+
+.icon-right-arrow-contained:before {
+  content: ""; }
+
+.icon-right-arrow-outline:before {
+  content: ""; }
+
+.icon-right-arrow:before {
+  content: ""; }
+
+.icon-ringer-settings:before {
+  content: ""; }
+
+.icon-rotate-object-ccw:before {
+  content: ""; }
+
+.icon-rotate-object-cw:before {
+  content: ""; }
+
+.icon-rtprx-rtptx-duplex:before {
+  content: ""; }
+
+.icon-rtprx:before {
+  content: ""; }
+
+.icon-rtptx:before {
+  content: ""; }
+
+.icon-running-application:before {
+  content: ""; }
+
+.icon-save:before {
+  content: ""; }
+
+.icon-schedule-add:before {
+  content: ""; }
+
+.icon-screen-capture-square:before {
+  content: ""; }
+
+.icon-screen-capture:before {
+  content: ""; }
+
+.icon-sd:before {
+  content: ""; }
+
+.icon-search:before {
+  content: ""; }
+
+.icon-self-view-alt:before {
+  content: ""; }
+
+.icon-self-view-crossed:before {
+  content: ""; }
+
+.icon-self-view:before {
+  content: ""; }
+
+.icon-send-email:before {
+  content: ""; }
+
+.icon-send:before {
+  content: ""; }
+
+.icon-sent:before {
+  content: ""; }
+
+.icon-setup-assistant:before {
+  content: ""; }
+
+.icon-share-contain:before {
+  content: ""; }
+
+.icon-share-content:before {
+  content: ""; }
+
+.icon-share:before {
+  content: ""; }
+
+.icon-shipment:before {
+  content: ""; }
+
+.icon-show-editor:before {
+  content: ""; }
+
+.icon-sign-in:before {
+  content: ""; }
+
+.icon-sign-out:before {
+  content: ""; }
+
+.icon-signal-1:before {
+  content: ""; }
+
+.icon-signal-2:before {
+  content: ""; }
+
+.icon-signal-3:before {
+  content: ""; }
+
+.icon-signal-4:before {
+  content: ""; }
+
+.icon-skip-bw:before {
+  content: ""; }
+
+.icon-skip-fw:before {
+  content: ""; }
+
+.icon-slides:before {
+  content: ""; }
+
+.icon-social-facebook:before {
+  content: ""; }
+
+.icon-social-linkedin:before {
+  content: ""; }
+
+.icon-social-twitter:before {
+  content: ""; }
+
+.icon-soft-phone:before {
+  content: ""; }
+
+.icon-software-certified-md:before {
+  content: ""; }
+
+.icon-software-certified-sm:before {
+  content: ""; }
+
+.icon-software-certified:before {
+  content: ""; }
+
+.icon-software-suggested-md:before {
+  content: ""; }
+
+.icon-software-suggested-sm:before {
+  content: ""; }
+
+.icon-software-suggested:before {
+  content: ""; }
+
+.icon-software:before {
+  content: ""; }
+
+.icon-sort-amount-asc:before {
+  content: ""; }
+
+.icon-sort-amount-desc:before {
+  content: ""; }
+
+.icon-sound:before {
+  content: ""; }
+
+.icon-space:before {
+  content: ""; }
+
+.icon-spam:before {
+  content: ""; }
+
+.icon-spark:before {
+  content: ""; }
+
+.icon-speaker-cross:before {
+  content: ""; }
+
+.icon-speaker-out-left:before {
+  content: ""; }
+
+.icon-speaker:before {
+  content: ""; }
+
+.icon-speed-dial:before {
+  content: ""; }
+
+.icon-spinner:before {
+  content: ""; }
+
+.icon-square-o-checked:before {
+  content: ""; }
+
+.icon-square-o:before {
+  content: ""; }
+
+.icon-star-empty:before {
+  content: ""; }
+
+.icon-star-half:before {
+  content: ""; }
+
+.icon-star:before {
+  content: ""; }
+
+.icon-step-backward:before {
+  content: ""; }
+
+.icon-step-forward:before {
+  content: ""; }
+
+.icon-step-next:before {
+  content: ""; }
+
+.icon-step-prev:before {
+  content: ""; }
+
+.icon-stop:before {
+  content: ""; }
+
+.icon-storage:before {
+  content: ""; }
+
+.icon-subscribe:before {
+  content: ""; }
+
+.icon-swap-calls:before {
+  content: ""; }
+
+.icon-swap-camera:before {
+  content: ""; }
+
+.icon-swap-video-camera:before {
+  content: ""; }
+
+.icon-syslog:before {
+  content: ""; }
+
+.icon-tables:before {
+  content: ""; }
+
+.icon-tablet:before {
+  content: ""; }
+
+.icon-tags:before {
+  content: ""; }
+
+.icon-team-collapsed-view:before {
+  content: ""; }
+
+.icon-team-expanded-view:before {
+  content: ""; }
+
+.icon-terminalalt:before {
+  content: ""; }
+
+.icon-text-color:before {
+  content: ""; }
+
+.icon-text-format:before {
+  content: ""; }
+
+.icon-text-size:before {
+  content: ""; }
+
+.icon-text:before {
+  content: ""; }
+
+.icon-thumbnail-view:before {
+  content: ""; }
+
+.icon-time:before {
+  content: ""; }
+
+.icon-timeline:before {
+  content: ""; }
+
+.icon-tine:before {
+  content: ""; }
+
+.icon-toggle-menu:before {
+  content: ""; }
+
+.icon-too-fast:before {
+  content: ""; }
+
+.icon-too-slow:before {
+  content: ""; }
+
+.icon-tools:before {
+  content: ""; }
+
+.icon-touch-gesture:before {
+  content: ""; }
+
+.icon-touch-point:before {
+  content: ""; }
+
+.icon-touch:before {
+  content: ""; }
+
+.icon-transcript:before {
+  content: ""; }
+
+.icon-transfer-to-mobile:before {
+  content: ""; }
+
+.icon-transfer:before {
+  content: ""; }
+
+.icon-transit:before {
+  content: ""; }
+
+.icon-trash:before {
+  content: ""; }
+
+.icon-tree-closed:before {
+  content: ""; }
+
+.icon-tree-opened:before {
+  content: ""; }
+
+.icon-universal-inbox:before {
+  content: ""; }
+
+.icon-unlock:before {
+  content: ""; }
+
+.icon-upload-contain:before {
+  content: ""; }
+
+.icon-upload:before {
+  content: ""; }
+
+.icon-usb:before {
+  content: ""; }
+
+.icon-user-queue:before {
+  content: ""; }
+
+.icon-user:before {
+  content: ""; }
+
+.icon-vibrate:before {
+  content: ""; }
+
+.icon-video-cross:before {
+  content: ""; }
+
+.icon-video-input:before {
+  content: ""; }
+
+.icon-video-layout:before {
+  content: ""; }
+
+.icon-video-settings:before {
+  content: ""; }
+
+.icon-video-tips:before {
+  content: ""; }
+
+.icon-video:before {
+  content: ""; }
+
+.icon-view-feed-dual:before {
+  content: ""; }
+
+.icon-view-feed-multi:before {
+  content: ""; }
+
+.icon-view-feed-single:before {
+  content: ""; }
+
+.icon-view-preview-telepresence:before {
+  content: ""; }
+
+.icon-view-side-by-side:before {
+  content: ""; }
+
+.icon-view-split:before {
+  content: ""; }
+
+.icon-view-stacked:before {
+  content: ""; }
+
+.icon-virtual-machine:before {
+  content: ""; }
+
+.icon-voicemail:before {
+  content: ""; }
+
+.icon-volume-cross:before {
+  content: ""; }
+
+.icon-volume:before {
+  content: ""; }
+
+.icon-waiting-silence:before {
+  content: ""; }
+
+.icon-wallpaper:before {
+  content: ""; }
+
+.icon-warning-outline:before {
+  content: ""; }
+
+.icon-warning:before {
+  content: ""; }
+
+.icon-watchlist:before {
+  content: ""; }
+
+.icon-web-camera:before {
+  content: ""; }
+
+.icon-web-sharing:before {
+  content: ""; }
+
+.icon-webex-meetings-16:before {
+  content: ""; }
+
+.icon-webex-meetings-24:before {
+  content: ""; }
+
+.icon-webex-meetings-48:before {
+  content: ""; }
+
+.icon-webex-teams-16:before {
+  content: ""; }
+
+.icon-webex-teams-24:before {
+  content: ""; }
+
+.icon-webex-teams-48:before {
+  content: ""; }
+
+.icon-webex:before {
+  content: ""; }
+
+.icon-webhook:before {
+  content: ""; }
+
+.icon-week:before {
+  content: ""; }
+
+.icon-whisper:before {
+  content: ""; }
+
+.icon-whiteboard-cross:before {
+  content: ""; }
+
+.icon-whiteboard:before {
+  content: ""; }
+
+.icon-wifi-1:before {
+  content: ""; }
+
+.icon-wifi-2:before {
+  content: ""; }
+
+.icon-wifi-3:before {
+  content: ""; }
+
+.icon-wifi:before {
+  content: ""; }
+
+.icon-work:before {
+  content: ""; }
+
+.icon-zip:before {
+  content: ""; }
+
+.icon-zoom-in:before {
+  content: ""; }
+
+.icon-zoom-out:before {
+  content: ""; }
+
+@media screen and (max-width: 1199px) {
+  .show-desktop-menu .content-fluid, .show-desktop-menu
+  .content-body {
+    transition: padding-left 0.5s, transform 0.5s, opacity 0.5s; } }
+
+@media screen and (min-width: 1200px) {
+  .show-desktop-menu .content-fluid, .show-desktop-menu
+  .content-body {
+    padding-left: 280px; } }
+
+@media screen and (max-width: 1199px) {
+  .show-desktop-menu.show-menu .content-fluid, .show-desktop-menu.show-menu
+  .content-body {
+    transform: translateX(280px); } }
+
+@media screen and (max-width: 767px) {
+  .hide-desktop-menu .content-fluid, .hide-desktop-menu
+  .content-body {
+    transition: padding-left 0.5s, transform 0.5s, opacity 0.5s; } }
+
+@media screen and (max-width: 767px) {
+  .hide-desktop-menu.show-menu .content-fluid, .hide-desktop-menu.show-menu
+  .content-body {
+    transform: translateX(280px); } }
+
+.toggle-menu {
+  margin-left: 0;
+  margin-right: 20px; }
+  @media screen and (min-width: 768px) {
+    .toggle-menu {
+      margin-right: 30px; } }
+  @media screen and (min-width: 1200px) {
+    .toggle-menu {
+      display: none; } }
+  @media screen and (min-width: 768px) {
+    .hide-desktop-menu .toggle-menu {
+      display: none; } }
+
+.sidebar ~ main,
+main.withSidebar {
+  transform: translate3d(280px, 0, 0); }
+  @media (min-width: 768px) {
+    .sidebar ~ main,
+    main.withSidebar {
+      margin: 0 0 0 280px;
+      transform: none;
+      transform: translate3d(0, 0, 0); } }
+
+.sidebar.sidebar--mini ~ main {
+  transform: translate3d(80px, 0, 0); }
+  @media (min-width: 768px) {
+    .sidebar.sidebar--mini ~ main {
+      margin: 0 0 0 80px;
+      transform: none;
+      transform: translate3d(0, 0, 0); } }
+
+.sidebar.sidebar--hidden ~ main,
+.sidebar.sidebar--hidden.sidebar--mini ~ main,
+main.withSidebar.sidebarHidden {
+  margin: 0;
+  transform: translate3d(0, 0, 0); }
+
+.sidebar {
+  display: block;
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  width: 280px;
+  height: 100%;
+  z-index: 1031;
+  background: #017CAD;
+  color: #ffffff; }
+  .sidebar__header {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.25); }
+  .sidebar a {
+    color: #ffffff; }
+    .sidebar a span[class^=icon-] {
+      color: rgba(255, 255, 255, 0.75); }
+  .sidebar > ul > li > a:hover, .sidebar > ul > li > a:visited, .sidebar > ul > li > a:active, .sidebar > ul > li > a:focus {
+    box-shadow: inset 3px 0 0 0 #ffffff; }
+    .sidebar > ul > li > a:hover span[class^=icon-], .sidebar > ul > li > a:visited span[class^=icon-], .sidebar > ul > li > a:active span[class^=icon-], .sidebar > ul > li > a:focus span[class^=icon-] {
+      color: #ffffff; }
+  .sidebar > ul > li.sidebar__item--selected a,
+  .sidebar > ul > li.selected a {
+    box-shadow: inset 3px 0 0 0 #ffffff; }
+    .sidebar > ul > li.sidebar__item--selected a span[class^=icon-],
+    .sidebar > ul > li.selected a span[class^=icon-] {
+      color: #ffffff; }
+  .sidebar li.sidebar__item--selected a,
+  .sidebar li.selected a {
+    opacity: 1;
+    color: #ffffff;
+    background-color: rgba(0, 0, 0, 0.1); }
+  .sidebar li a:hover {
+    background-color: rgba(0, 0, 0, 0.1); }
+  .sidebar li a:hover,
+  .sidebar li a:visited,
+  .sidebar li a:active,
+  .sidebar li a:focus {
+    opacity: 1;
+    text-decoration: none;
+    color: #ffffff; }
+  .sidebar > ul li.sidebar__drawer > a:after {
+    color: #ffffff; }
+  .sidebar > ul li.sidebar__drawer:hover > a:after {
+    color: #ffffff; }
+  .sidebar li.sidebar__drawer.sidebar__drawer--opened {
+    position: relative; }
+    .sidebar li.sidebar__drawer.sidebar__drawer--opened ul {
+      position: relative;
+      background-color: #017CAD; }
+  .sidebar--ltgray {
+    background: #f2f2f2;
+    color: #58585b; }
+    .sidebar--ltgray__header {
+      border-bottom: 1px solid #58585b; }
+    .sidebar--ltgray a {
+      color: #58585b; }
+      .sidebar--ltgray a span[class^=icon-] {
+        color: rgba(88, 88, 91, 0.75); }
+    .sidebar--ltgray > ul > li > a:hover, .sidebar--ltgray > ul > li > a:visited, .sidebar--ltgray > ul > li > a:active, .sidebar--ltgray > ul > li > a:focus {
+      box-shadow: inset 3px 0 0 0 #58585b; }
+      .sidebar--ltgray > ul > li > a:hover span[class^=icon-], .sidebar--ltgray > ul > li > a:visited span[class^=icon-], .sidebar--ltgray > ul > li > a:active span[class^=icon-], .sidebar--ltgray > ul > li > a:focus span[class^=icon-] {
+        color: #58585b; }
+    .sidebar--ltgray > ul > li.sidebar__item--selected a,
+    .sidebar--ltgray > ul > li.selected a {
+      box-shadow: inset 3px 0 0 0 #58585b; }
+      .sidebar--ltgray > ul > li.sidebar__item--selected a span[class^=icon-],
+      .sidebar--ltgray > ul > li.selected a span[class^=icon-] {
+        color: #58585b; }
+    .sidebar--ltgray li.sidebar__item--selected a,
+    .sidebar--ltgray li.selected a {
+      opacity: 1;
+      color: #58585b;
+      background-color: rgba(0, 0, 0, 0.1); }
+    .sidebar--ltgray li a:hover {
+      background-color: rgba(0, 0, 0, 0.1); }
+    .sidebar--ltgray li a:hover,
+    .sidebar--ltgray li a:visited,
+    .sidebar--ltgray li a:active,
+    .sidebar--ltgray li a:focus {
+      opacity: 1;
+      text-decoration: none;
+      color: #58585b; }
+    .sidebar--ltgray > ul li.sidebar__drawer > a:after {
+      color: #58585b; }
+    .sidebar--ltgray > ul li.sidebar__drawer:hover > a:after {
+      color: #58585b; }
+    .sidebar--ltgray li.sidebar__drawer.sidebar__drawer--opened {
+      position: relative; }
+      .sidebar--ltgray li.sidebar__drawer.sidebar__drawer--opened ul {
+        position: relative;
+        background-color: #f2f2f2; }
+  .sidebar--dkgray {
+    background: #58585b;
+    color: #ffffff; }
+    .sidebar--dkgray__header {
+      border-bottom: 1px solid #ffffff; }
+    .sidebar--dkgray a {
+      color: #ffffff; }
+      .sidebar--dkgray a span[class^=icon-] {
+        color: rgba(255, 255, 255, 0.75); }
+    .sidebar--dkgray > ul > li > a:hover, .sidebar--dkgray > ul > li > a:visited, .sidebar--dkgray > ul > li > a:active, .sidebar--dkgray > ul > li > a:focus {
+      box-shadow: inset 3px 0 0 0 #ffffff; }
+      .sidebar--dkgray > ul > li > a:hover span[class^=icon-], .sidebar--dkgray > ul > li > a:visited span[class^=icon-], .sidebar--dkgray > ul > li > a:active span[class^=icon-], .sidebar--dkgray > ul > li > a:focus span[class^=icon-] {
+        color: #ffffff; }
+    .sidebar--dkgray > ul > li.sidebar__item--selected a,
+    .sidebar--dkgray > ul > li.selected a {
+      box-shadow: inset 3px 0 0 0 #ffffff; }
+      .sidebar--dkgray > ul > li.sidebar__item--selected a span[class^=icon-],
+      .sidebar--dkgray > ul > li.selected a span[class^=icon-] {
+        color: #ffffff; }
+    .sidebar--dkgray li.sidebar__item--selected a,
+    .sidebar--dkgray li.selected a {
+      opacity: 1;
+      color: #ffffff;
+      background-color: rgba(0, 0, 0, 0.1); }
+    .sidebar--dkgray li a:hover {
+      background-color: rgba(0, 0, 0, 0.1); }
+    .sidebar--dkgray li a:hover,
+    .sidebar--dkgray li a:visited,
+    .sidebar--dkgray li a:active,
+    .sidebar--dkgray li a:focus {
+      opacity: 1;
+      text-decoration: none;
+      color: #ffffff; }
+    .sidebar--dkgray > ul li.sidebar__drawer > a:after {
+      color: #ffffff; }
+    .sidebar--dkgray > ul li.sidebar__drawer:hover > a:after {
+      color: #ffffff; }
+    .sidebar--dkgray li.sidebar__drawer.sidebar__drawer--opened {
+      position: relative; }
+      .sidebar--dkgray li.sidebar__drawer.sidebar__drawer--opened ul {
+        position: relative;
+        background-color: #58585b; }
+  .sidebar--indigo {
+    background: #005073;
+    color: #ffffff; }
+    .sidebar--indigo__header {
+      border-bottom: 1px solid #ffffff; }
+    .sidebar--indigo a {
+      color: #ffffff; }
+      .sidebar--indigo a span[class^=icon-] {
+        color: rgba(255, 255, 255, 0.75); }
+    .sidebar--indigo > ul > li > a:hover, .sidebar--indigo > ul > li > a:visited, .sidebar--indigo > ul > li > a:active, .sidebar--indigo > ul > li > a:focus {
+      box-shadow: inset 3px 0 0 0 #ffffff; }
+      .sidebar--indigo > ul > li > a:hover span[class^=icon-], .sidebar--indigo > ul > li > a:visited span[class^=icon-], .sidebar--indigo > ul > li > a:active span[class^=icon-], .sidebar--indigo > ul > li > a:focus span[class^=icon-] {
+        color: #ffffff; }
+    .sidebar--indigo > ul > li.sidebar__item--selected a,
+    .sidebar--indigo > ul > li.selected a {
+      box-shadow: inset 3px 0 0 0 #ffffff; }
+      .sidebar--indigo > ul > li.sidebar__item--selected a span[class^=icon-],
+      .sidebar--indigo > ul > li.selected a span[class^=icon-] {
+        color: #ffffff; }
+    .sidebar--indigo li.sidebar__item--selected a,
+    .sidebar--indigo li.selected a {
+      opacity: 1;
+      color: #ffffff;
+      background-color: rgba(0, 0, 0, 0.1); }
+    .sidebar--indigo li a:hover {
+      background-color: rgba(0, 0, 0, 0.1); }
+    .sidebar--indigo li a:hover,
+    .sidebar--indigo li a:visited,
+    .sidebar--indigo li a:active,
+    .sidebar--indigo li a:focus {
+      opacity: 1;
+      text-decoration: none;
+      color: #ffffff; }
+    .sidebar--indigo > ul li.sidebar__drawer > a:after {
+      color: #ffffff; }
+    .sidebar--indigo > ul li.sidebar__drawer:hover > a:after {
+      color: #ffffff; }
+    .sidebar--indigo li.sidebar__drawer.sidebar__drawer--opened {
+      position: relative; }
+      .sidebar--indigo li.sidebar__drawer.sidebar__drawer--opened ul {
+        position: relative;
+        background-color: #005073; }
+  .sidebar__header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 54px;
+    padding: 15px; }
+    .sidebar__header a:hover {
+      box-shadow: none; }
+  .sidebar.sidebar--hidden {
+    width: 0; }
+  .sidebar ul {
+    list-style: none;
+    padding-left: 0; }
+  .sidebar li a {
+    display: flex;
+    align-items: center;
+    height: 40px;
+    padding: 0 20px;
+    user-select: none;
+    font-size: 14px; }
+    .sidebar li a span[class^="icon-"] {
+      margin-right: 10px; }
+  .sidebar li.sidebar__item {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    position: relative; }
+  .sidebar li.sidebar__item--selected a,
+  .sidebar li.selected a,
+  .sidebar li a:hover {
+    text-decoration: none; }
+  .sidebar ul:after {
+    clear: both !important;
+    content: "" !important;
+    display: table !important; }
+  .sidebar ul li.sidebar__drawer:hover > a:after, .sidebar ul li.sidebar-drawer:hover > a:after {
+    opacity: 1; }
+  .sidebar ul li.sidebar__drawer > a:after, .sidebar ul li.sidebar-drawer > a:after {
+    content: "";
+    transform: rotate(0);
+    opacity: 0.5;
+    position: absolute;
+    right: 14px; }
+  .sidebar ul li.sidebar__drawer > ul, .sidebar ul li.sidebar-drawer > ul {
+    display: none; }
+  .sidebar ul li.sidebar__drawer--opened > a:after, .sidebar ul li.sidebar-drawer--opened > a:after {
+    transform: rotate(180deg);
+    opacity: 1; }
+  .sidebar ul li.sidebar__drawer--opened > ul, .sidebar ul li.sidebar-drawer--opened > ul {
+    display: block; }
+  .sidebar ul li ul > li > a {
+    padding-left: 40px; }
+  .sidebar ul li ul > li > ul > li > a {
+    padding-left: 60px; }
+  .sidebar ul.sidebar-section > li {
+    box-shadow: none; }
+    .sidebar ul.sidebar-section > li a {
+      display: flex;
+      align-items: center; }
+      .sidebar ul.sidebar-section > li a > span[class^="icon-"] {
+        margin-right: 7px; }
+  .sidebar.sidebar--compressed .sidebar__header {
+    padding: 10px; }
+  .sidebar.sidebar--compressed a {
+    height: 30px;
+    font-size: 13px; }
+  .sidebar.sidebar--compressed ul li ul > li > a,
+  .sidebar.sidebar--compressed ul > li.sidebar__drawer a:after {
+    font-size: 13px; }
+  .sidebar.sidebar--mini.sidebar--hidden {
+    width: 0;
+    overflow: hidden; }
+  .sidebar.sidebar--mini {
+    width: 80px;
+    overflow: visible; }
+    .sidebar.sidebar--mini .sidebar__header .sidebar__header-title {
+      font-size: 0; }
+    .sidebar.sidebar--mini .sidebar__drawer > a:after {
+      display: none;
+      font-size: 10px;
+      right: 10px;
+      top: auto;
+      transform: rotate(270deg); }
+    .sidebar.sidebar--mini .sidebar__drawer.sidebar__drawer--opened > a:after {
+      transform: rotate(90deg); }
+    .sidebar.sidebar--mini > ul > li.sidebar__item--selected a span[class^=icon-] {
+      opacity: 1; }
+    .sidebar.sidebar--mini > ul > li > a:hover span[class^=icon-], .sidebar.sidebar--mini > ul > li > a:focus span[class^=icon-], .sidebar.sidebar--mini > ul > li > a:active span[class^=icon-] {
+      opacity: 1; }
+    .sidebar.sidebar--mini li a {
+      height: auto;
+      padding: 15px 20px;
+      flex-wrap: wrap;
+      flex-direction: column;
+      position: relative; }
+    .sidebar.sidebar--mini .sidebar__item a,
+    .sidebar.sidebar--mini .sidebar__drawer a {
+      justify-content: center; }
+    .sidebar.sidebar--mini .sidebar__drawer ul {
+      display: block;
+      opacity: 0;
+      margin-left: -100%;
+      height: 0;
+      width: 0;
+      visibility: hidden; }
+    .sidebar.sidebar--mini .sidebar__drawer.sidebar__drawer--opened ul {
+      position: absolute;
+      margin-left: 0;
+      width: auto;
+      min-width: 250px;
+      height: auto;
+      opacity: 1;
+      flex-wrap: wrap;
+      left: 100%;
+      top: 0;
+      visibility: visible;
+      transition: margin-left .2s, opacity .5s;
+      box-shadow: 5px 0 10px -5px rgba(0, 0, 0, 0.2), inset 5px 0 10px -5px rgba(0, 0, 0, 0.2); }
+      .sidebar.sidebar--mini .sidebar__drawer.sidebar__drawer--opened ul a {
+        justify-content: flex-start;
+        padding-left: 20px;
+        align-items: flex-start; }
+      .sidebar.sidebar--mini .sidebar__drawer.sidebar__drawer--opened ul ul {
+        overflow-y: auto;
+        height: auto;
+        max-height: 250px; }
+    .sidebar.sidebar--mini a {
+      opacity: 1; }
+    .sidebar.sidebar--mini a span[class^=icon-] {
+      margin: 0;
+      font-size: 22px; }
+      .sidebar.sidebar--mini a span[class^=icon-] + * {
+        text-align: center;
+        white-space: normal;
+        margin-top: 5px;
+        font-size: 11px;
+        font-weight: normal; }
+  .sidebar .sidebar-header + .sidebar-section,
+  .sidebar .sidebar-section + .sidebar-section {
+    border-top: 1px solid #dfdfdf; }
+  .sidebar .sidebar__item-action,
+  .sidebar .sidebar-action {
+    position: absolute;
+    font-size: 14px;
+    right: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center; }
+
+.sidebar__header-title,
+.sidebar-header__title {
+  font-size: 24px;
+  font-weight: 300; }
+
+.sidebar__header-toolbar,
+.sidebar-header__toolbar {
+  margin-top: 15px; }
+  .sidebar__header-toolbar .btn,
+  .sidebar-header__toolbar .btn {
+    color: #ffffff;
+    opacity: 0.5; }
+    .sidebar__header-toolbar .btn:hover,
+    .sidebar-header__toolbar .btn:hover {
+      opacity: 1; }
+
+.content-overlay {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1029;
+  display: block;
+  margin: auto;
+  background: rgba(0, 0, 0, 0.2);
+  content: '';
+  opacity: 0;
+  cursor: pointer;
+  pointer-events: none; }
+
+a.sidebar-toggle {
+  opacity: 1;
+  position: absolute;
+  left: 26.5px; }
+  a.sidebar-toggle span[class^=icon-] {
+    font-weight: bold;
+    font-size: 22px; }
+  a.sidebar-toggle:hover {
+    opacity: 1;
+    color: inherit;
+    text-decoration: none; }
+
+@media screen and (max-height: 458px) {
+  .sidebar-logo,
+  .sidebar__logo {
+    position: relative;
+    bottom: auto;
+    text-align: center;
+    top: 90px; } }
+
+@media screen and (min-height: 458px) {
+  .sidebar-logo,
+  .sidebar__logo {
+    text-align: center;
+    position: absolute;
+    bottom: 100px;
+    left: calc(140px - 48px);
+    top: auto; } }
+
+.sidebar-logo span,
+.sidebar__logo span {
+  font-weight: light;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 10px;
+  display: block; }
+
+.cui.cui--compressed .sidebar .sidebar__header {
+  padding: 10px; }
+
+.cui.cui--compressed .sidebar a {
+  font-size: 13px; }
+
+.cui.cui--compressed .sidebar ul > li a {
+  height: 30px; }
+
+.cui.cui--compressed .sidebar ul li ul > li > a,
+.cui.cui--compressed .sidebar ul > li.sidebar__drawer a:after {
+  font-size: 13px; }
+
+.cui.cui--compressed .sidebar.sidebar--mini ul li ul > li > a,
+.cui.cui--compressed .sidebar.sidebar--mini ul > li.sidebar__drawer a:after {
+  font-size: 10px; }
+
+.cui.cui--compressed .sidebar.sidebar--mini ul > li a {
+  height: auto; }
+
+.cui.cui--animated .sidebar,
+.cui.cui--animated main {
+  transition: width .2s; }
+
+.cui.cui--animated .sidebar ul > li.sidebar__drawer a:hover::after {
+  transition: all .2s; }
+
+.cui.cui--animated .sidebar .sidebar__header .sidebar__header-title {
+  transition: font-size .2s; }
+
+.cui.cui--animated .sidebar.sidebar--mini .sidebar__header .sidebar__header-title {
+  transition: none; }
+
+.cui.cui--animated .sidebar ul li a {
+  transition: padding .2s; }
+
+.cui.cui--animated .sidebar ul > li.sidebar__drawer.sidebar__drawer--opened {
+  transition: all 1s; }

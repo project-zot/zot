@@ -1,0 +1,119 @@
+.full-page {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0; }
+
+.divider--vertical > :after {
+  color: #9e9ea2;
+  content: '|';
+  margin: 0 5px;
+  padding: 0; }
+
+@font-face {
+  font-family: 'CiscoSans';
+  font-style: normal;
+  font-weight: 100;
+  src: url("../fonts/CiscoSans/CiscoSansTTThin.woff2") format("woff2"), url("../fonts/CiscoSans/CiscoSansTTThin.woff") format("woff");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2212, U+2215, U+E0FF, U+EFFD, U+F000; }
+
+@font-face {
+  font-family: 'CiscoSans';
+  font-style: oblique;
+  font-weight: 100;
+  src: url("../fonts/CiscoSans/CiscoSansTTThinOblique.woff2") format("woff2"), url("../fonts/CiscoSans/CiscoSansTTThinOblique.woff") format("woff");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2212, U+2215, U+E0FF, U+EFFD, U+F000; }
+
+@font-face {
+  font-family: 'CiscoSans';
+  font-style: normal;
+  font-weight: 200;
+  src: url("../fonts/CiscoSans/CiscoSansTTExtraLight.woff2") format("woff2"), url("../fonts/CiscoSans/CiscoSansTTExtraLight.woff") format("woff");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2212, U+2215, U+E0FF, U+EFFD, U+F000; }
+
+@font-face {
+  font-family: 'CiscoSans';
+  font-style: oblique;
+  font-weight: 200;
+  src: url("../fonts/CiscoSans/CiscoSansTTExtraLightOblique.woff2") format("woff2"), url("../fonts/CiscoSans/CiscoSansTTExtraLightOblique.woff") format("woff");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2212, U+2215, U+E0FF, U+EFFD, U+F000; }
+
+@font-face {
+  font-family: 'CiscoSans';
+  font-style: normal;
+  font-weight: 300;
+  src: url("../fonts/CiscoSans/CiscoSansTTLight.woff2") format("woff2"), url("../fonts/CiscoSans/CiscoSansTTLight.woff") format("woff");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2212, U+2215, U+E0FF, U+EFFD, U+F000; }
+
+@font-face {
+  font-family: 'CiscoSans';
+  font-style: oblique;
+  font-weight: 300;
+  src: url("../fonts/CiscoSans/CiscoSansTTLightOblique.woff2") format("woff2"), url("../fonts/CiscoSans/CiscoSansTTLightOblique.woff") format("woff");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2212, U+2215, U+E0FF, U+EFFD, U+F000; }
+
+@font-face {
+  font-family: 'CiscoSans';
+  font-style: normal;
+  font-weight: 400;
+  src: url("../fonts/CiscoSans/CiscoSansTTRegular.woff2") format("woff2"), url("../fonts/CiscoSans/CiscoSansTTRegular.woff") format("woff");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2212, U+2215, U+E0FF, U+EFFD, U+F000; }
+
+@font-face {
+  font-family: 'CiscoSans';
+  font-style: oblique;
+  font-weight: 400;
+  src: url("../fonts/CiscoSans/CiscoSansTTRegularOblique.woff2") format("woff2"), url("../fonts/CiscoSans/CiscoSansTTRegularOblique.woff") format("woff");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2212, U+2215, U+E0FF, U+EFFD, U+F000; }
+
+@font-face {
+  font-family: 'CiscoSans';
+  font-style: bold;
+  font-weight: 700;
+  src: url("../fonts/CiscoSans/CiscoSansTTBold.woff2") format("woff2"), url("../fonts/CiscoSans/CiscoSansTTBold.woff") format("woff");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2212, U+2215, U+E0FF, U+EFFD, U+F000; }
+
+@font-face {
+  font-family: 'CiscoSans';
+  font-style: oblique;
+  font-weight: 700;
+  src: url("../fonts/CiscoSans/CiscoSansTTBoldOblique.woff2") format("woff2"), url("../fonts/CiscoSans/CiscoSansTTBoldOblique.woff") format("woff");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2212, U+2215, U+E0FF, U+EFFD, U+F000; }
+
+@font-face {
+  font-family: 'CiscoSans';
+  font-style: normal;
+  font-weight: 900;
+  src: url("../fonts/CiscoSans/CiscoSansTTHeavy.woff2") format("woff2"), url("../fonts/CiscoSans/CiscoSansTTHeavy.woff") format("woff");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2212, U+2215, U+E0FF, U+EFFD, U+F000; }
+
+@font-face {
+  font-family: 'CiscoSans';
+  font-style: oblique;
+  font-weight: 900;
+  src: url("../fonts/CiscoSans/CiscoSansTTHeavyOblique.woff2") format("woff2"), url("../fonts/CiscoSans/CiscoSansTTHeavyOblique.woff") format("woff");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2212, U+2215, U+E0FF, U+EFFD, U+F000; }
+
+html {
+  height: 100%;
+  font-size: 62.5%; }
+
+.cui body, body.cui {
+  color: #58585b;
+  font-family: "CiscoSans", "Arial", sans-serif;
+  line-height: 20px;
+  font-weight: 400;
+  font-size: 14px;
+  position: relative;
+  min-width: 320px;
+  max-width: none;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  direction: ltr;
+  text-align: left;
+  box-sizing: border-box;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale; }

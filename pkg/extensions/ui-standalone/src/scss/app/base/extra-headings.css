@@ -1,0 +1,111 @@
+h7, .h7 {
+  font-size: 0.9rem; }
+
+h8, .h8 {
+  font-size: 0.8rem; }
+
+h9, .h9 {
+  font-size: 0.7rem; }
+
+body h7, body .h7, body h8, body .h8, body h9, body .h9 {
+  transition: all 0.2s ease-in-out; }
+
+@media (max-width: 767.98px) {
+  body h7, body .h7 {
+    font-size: 10px;
+    font-weight: 300;
+    transition: all 0.2s ease-in-out; }
+    body h7 > small, body h7 > .small, body .h7 > small, body .h7 > .small {
+      font-size: 8px; }
+  body h8, body .h8 {
+    font-size: 8px;
+    font-weight: 400;
+    transition: all 0.2s ease-in-out; }
+    body h8 > small, body h8 > .small, body .h8 > small, body .h8 > .small {
+      font-size: 6.4px; }
+  body h9, body .h9 {
+    font-size: 6px;
+    font-weight: 400;
+    transition: all 0.2s ease-in-out; }
+    body h9 > small, body h9 > .small, body .h9 > small, body .h9 > .small {
+      font-size: 4.8px; } }
+
+@media (min-width: 576px) and (max-width: 991.98px) {
+  body h7, body .h7 {
+    font-size: 10px;
+    font-weight: 300;
+    transition: all 0.2s ease-in-out; }
+    body h7 > small, body h7 > .small, body .h7 > small, body .h7 > .small {
+      font-size: 8px; }
+  body h8, body .h8 {
+    font-size: 8px;
+    font-weight: 400;
+    transition: all 0.2s ease-in-out; }
+    body h8 > small, body h8 > .small, body .h8 > small, body .h8 > .small {
+      font-size: 6.4px; }
+  body h9, body .h9 {
+    font-size: 6px;
+    font-weight: 400;
+    transition: all 0.2s ease-in-out; }
+    body h9 > small, body h9 > .small, body .h9 > small, body .h9 > .small {
+      font-size: 4.8px; } }
+
+@media (min-width: 768px) and (max-width: 1199.98px) {
+  body h7, body .h7 {
+    font-size: 12px;
+    font-weight: 300;
+    transition: all 0.2s ease-in-out; }
+    body h7 > small, body h7 > .small, body .h7 > small, body .h7 > .small {
+      font-size: 9.6px; }
+  body h8, body .h8 {
+    font-size: 9.6px;
+    font-weight: 400;
+    transition: all 0.2s ease-in-out; }
+    body h8 > small, body h8 > .small, body .h8 > small, body .h8 > .small {
+      font-size: 7.68px; }
+  body h9, body .h9 {
+    font-size: 7.2px;
+    font-weight: 400;
+    transition: all 0.2s ease-in-out; }
+    body h9 > small, body h9 > .small, body .h9 > small, body .h9 > .small {
+      font-size: 5.76px; } }
+
+@media (min-width: 992px) and (max-width: 1439.98px) {
+  body h7, body .h7 {
+    font-size: 14px;
+    font-weight: 300;
+    transition: all 0.2s ease-in-out; }
+    body h7 > small, body h7 > .small, body .h7 > small, body .h7 > .small {
+      font-size: 11.2px; }
+  body h8, body .h8 {
+    font-size: 11.2px;
+    font-weight: 400;
+    transition: all 0.2s ease-in-out; }
+    body h8 > small, body h8 > .small, body .h8 > small, body .h8 > .small {
+      font-size: 8.96px; }
+  body h9, body .h9 {
+    font-size: 8.4px;
+    font-weight: 400;
+    transition: all 0.2s ease-in-out; }
+    body h9 > small, body h9 > .small, body .h9 > small, body .h9 > .small {
+      font-size: 6.72px; } }
+
+@media (min-width: 1200px) {
+  body h7, body .h7 {
+    font-size: 14px;
+    font-weight: 300;
+    transition: all 0.2s ease-in-out; }
+    body h7 > small, body h7 > .small, body .h7 > small, body .h7 > .small {
+      font-size: 11.2px; }
+  body h8, body .h8 {
+    font-size: 11.2px;
+    font-weight: 400;
+    transition: all 0.2s ease-in-out; }
+    body h8 > small, body h8 > .small, body .h8 > small, body .h8 > .small {
+      font-size: 8.96px; }
+  body h9, body .h9 {
+    font-size: 8.4px;
+    font-weight: 400;
+    transition: all 0.2s ease-in-out; }
+    body h9 > small, body h9 > .small, body .h9 > small, body .h9 > .small {
+      font-size: 6.72px; } }

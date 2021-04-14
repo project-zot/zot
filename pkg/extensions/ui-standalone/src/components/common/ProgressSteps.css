@@ -1,0 +1,60 @@
+/** @see sass/vendor/tooltip/balloon.scss (written with CUIK c1.3.4 as the current version in use) */
+/* Status Colors (here from _variable.scss for documentation)
+$status-blue: #64bbe3 !default;
+$status-turq: #14a792 !default;
+$status-green: #6cc04a !default;
+$status-red: $accent-red !default;
+$status-orange: $accent-orange !default;
+$status-yellow: #ffcc00 !default;
+*/
+/** @see sass/vendor/tooltip/balloon.scss (written with CUIK c1.3.4 as the current version in use) */
+/* Status Colors (here from _variable.scss for documentation)
+$status-blue: #64bbe3 !default;
+$status-turq: #14a792 !default;
+$status-green: #6cc04a !default;
+$status-red: $accent-red !default;
+$status-orange: $accent-orange !default;
+$status-yellow: #ffcc00 !default;
+*/
+.step-content {
+  align-items: center;
+  margin-top: 4px;
+  padding: 5px;
+  width: 180px;
+  height: 40px;
+  border: 1px solid #dfdfdf;
+  background-color: #dfdfdf; }
+  .step-content .step-icon {
+    text-align: center;
+    margin-right: 10px;
+    margin-top: 3px; }
+  .step-content .step-title {
+    text-align: center;
+    font-size: large;
+    color: #79797d;
+    margin-top: 3px; }
+
+.step-content-selected {
+  align-items: center;
+  padding: 10px;
+  width: 250px;
+  height: 60px;
+  border: 1px solid #d7eff5;
+  background-color: #eaf6f4;
+  box-shadow: #d7eff5; }
+  .step-content-selected .step-icon {
+    text-align: center;
+    color: #4ba08f;
+    margin-right: 10px;
+    margin-top: 10px; }
+  .step-content-selected .step-title {
+    text-align: center;
+    font-size: x-large;
+    color: #79797d;
+    margin-top: 10px; }
+
+.connecting-line {
+  margin-top: 5px;
+  border-bottom: 1px dotted #b7b7ba;
+  height: 1px;
+  width: 20px; }

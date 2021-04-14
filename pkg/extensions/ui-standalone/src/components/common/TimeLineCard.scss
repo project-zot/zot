@@ -1,0 +1,151 @@
+@import '../../scss/assets/sass/utilities/variables.scss';
+
+$default-timeline-width: 660px;
+$default-icon-x: 170px;
+$default-icon-width: 16px;
+
+$sub-timeline-margin: $margin-base;
+$sub-timeline-icon-width: 10px;
+
+.timeline-card {
+	width: $default-timeline-width;
+	max-height: 350px;
+	overflow: auto;
+
+	.timeline {
+		.timeline-card-item {
+			display: inline-flex;
+			width:100%;
+			padding: 10px 10px 0px 10px;
+			background-color: #ffffff;
+
+			.timeline-card-title {
+				width: $default-icon-x;
+				margin: 15px 0px 0px;
+			}
+	
+			.timeline-card-icon {
+				display: flex;
+				justify-content: center;
+				border-radius: 50%;
+				width: $default-icon-width;
+				height: $default-icon-width;
+				position: absolute;
+				z-index: 2;
+				border: 1px solid #ffffff;
+				background-color: #9e9ea2;
+				left: $default-icon-x - $default-icon-width/2 + 1;
+				margin-top: 18px;
+			}
+
+			.timeline-card-icon,
+			.sub-timeline-icon {
+				&.status-success {
+					background-color: $status-green;
+				}
+				&.status-error {
+					background-color: $accent-red;
+				}
+				&.status-unknown {
+					background-color: $gray;
+				}
+				&.status-warning {
+					background-color: $accent-orange;
+				}
+				&.status-info {
+					background-color: $status-blue;
+				}
+			}
+
+			.timeline-card-content {
+				flex: auto;
+				background-color: #F8F8F8;
+				position: relative;
+				padding: 15px;
+				margin-left: $default-icon-width;
+				max-width: $default-timeline-width - $default-icon-x - $default-icon-width - 40px;
+
+				&:before {
+					position: absolute;
+					right: 0;
+					bottom: 0;
+					content: '';
+					pointer-events: none;
+					height: 20px;
+					width: 20px;
+					background-color:  #F8F8F8;
+					transform: rotate(45deg);
+					top: 15px;
+					left: -10px;
+					opacity: 1;
+				}
+
+				> div {
+					text-align: center;
+					color: #58585B;
+					font-size: 14px;
+					line-height: 19px;
+				}
+				&.content-with-detail {
+					> div {
+						text-align: left;
+					}
+				} 
+			}
+		}
+	}
+}
+
+.cui .TimeLineCard .timeline:after {
+    background-color: #dfdfdf;
+    content: " ";
+    position: absolute;
+    display: block;
+    width: 2px;
+    top: 0;
+    left: $default-icon-x;
+    bottom: 0;
+	z-index: 1;
+}
+.sub-timeline {
+	position: relative;
+	width: 100%;
+	margin-top: 10px;
+	padding: $margin-small 0px;
+	.sub-timeline-item {
+		.sub-timeline-content {
+			padding-left: $sub-timeline-margin + 15px;
+			margin: $margin-small 0px;
+			overflow-wrap: anywhere;
+		}
+		.sub-timeline-icon {
+			display: flex;
+			justify-content: center;
+			border-radius: 50%;
+			width: $sub-timeline-icon-width;
+			height: $sub-timeline-icon-width;
+			position: absolute;
+			z-index: 4;
+			left: $sub-timeline-margin - $sub-timeline-icon-width/2 + 1;
+			border: 1px solid #ffffff;
+			background-color: #9e9ea2;
+			margin: $margin-small 0px;
+		}
+	}
+
+	&:after {
+		background-color: #dfdfdf;
+		content: " ";
+		position: absolute;
+		display: block;
+		width: 2px;
+		top: 0;
+		left: $sub-timeline-margin;
+		bottom: 0;
+		z-index: 3;
+	}
+}
+
+.cui.blueprint .timeline-card .collapsible-pane > header .collapsible-pane-title.text-overflow {
+	font-weight: unset;
+}

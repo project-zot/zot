@@ -1,0 +1,52 @@
+/** @see sass/vendor/tooltip/balloon.scss (written with CUIK c1.3.4 as the current version in use) */
+/* Status Colors (here from _variable.scss for documentation)
+$status-blue: #64bbe3 !default;
+$status-turq: #14a792 !default;
+$status-green: #6cc04a !default;
+$status-red: $accent-red !default;
+$status-orange: $accent-orange !default;
+$status-yellow: #ffcc00 !default;
+*/
+.form-section {
+  padding: 10px;
+  overflow: auto; }
+  .form-section > header {
+    padding-left: 10px; }
+    .form-section > header .title {
+      font-size: 18px;
+      font-weight: 300; }
+  .form-section > main .form-group div .vertical-display {
+    display: block;
+    width: 40%;
+    padding: 10px;
+    border-bottom: 2px solid lightgray; }
+  .form-section > main .form-group--limited-width {
+    width: 350px; }
+  .form-section > main .form-group--certificate-width {
+    max-width: 600px; }
+  .form-section > main .form-group-light-background {
+    background-color: white;
+    padding: 16px; }
+  .form-section > main .disabled-overlay {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    background-color: white;
+    opacity: 0.5;
+    z-index: 1; }
+  .form-section > main .inline-multiple-fields {
+    display: flex;
+    flex-wrap: wrap; }
+    .form-section > main .inline-multiple-fields > * {
+      margin-right: 10px; }
+      .form-section > main .inline-multiple-fields > * label, .form-section > main .inline-multiple-fields > * .form-group {
+        margin: 0; }
+    .form-section > main .inline-multiple-fields .field-bottom-label {
+      margin-bottom: 10px; }
+  .form-section > main .form-group .checkbox {
+    margin-top: 5px; }
+
+.node-form > .form-group__text > * {
+  padding: 10px; }

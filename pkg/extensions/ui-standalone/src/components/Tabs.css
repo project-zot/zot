@@ -1,0 +1,39 @@
+/** @see sass/vendor/tooltip/balloon.scss (written with CUIK c1.3.4 as the current version in use) */
+/* Status Colors (here from _variable.scss for documentation)
+$status-blue: #64bbe3 !default;
+$status-turq: #14a792 !default;
+$status-green: #6cc04a !default;
+$status-red: $accent-red !default;
+$status-orange: $accent-orange !default;
+$status-yellow: #ffcc00 !default;
+*/
+.cisco-ui-tabs .tab-header {
+  margin-bottom: 10px; }
+
+.cisco-ui-tabs.vertical {
+  display: flex; }
+  .cisco-ui-tabs.vertical .tab-content {
+    flex: 1; }
+  .cisco-ui-tabs.vertical .tabs {
+    margin-right: 10px;
+    min-width: 200px;
+    max-width: 300px; }
+    .cisco-ui-tabs.vertical .tabs .tab {
+      overflow: hidden; }
+
+.cisco-ui-tabs .tabs .tab {
+  margin: 0 20px 1px 0; }
+
+.cisco-ui-tabs.apps {
+  height: 100%;
+  display: flex;
+  flex-direction: column; }
+  .cisco-ui-tabs.apps .tab-content {
+    height: 100%; }
+    .cisco-ui-tabs.apps .tab-content .AppStore {
+      height: 100%; }
+  .cisco-ui-tabs.apps .appcenter-iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    margin: 0px; }

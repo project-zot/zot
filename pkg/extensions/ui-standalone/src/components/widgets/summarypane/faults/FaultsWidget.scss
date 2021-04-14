@@ -1,0 +1,54 @@
+@import "src/scss/assets/sass/utilities/variables.scss";
+
+.faults-widget {
+    .counters, .labels {
+        display: flex;
+        > * {
+            flex: 1;
+            text-align: center;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+    }
+
+    .labels {
+        > * {
+            height: 16px;
+            font-size: $xsmall-font-size;
+            text-transform: uppercase;
+            color: $white;
+            font-weight: bold;
+        }
+        .faults-level-critical {
+            background-color: $status-red;
+        }
+        .faults-level-major {
+            background-color: $status-orange;
+        }
+        .faults-level-minor {
+            background-color: $status-yellow;
+        }
+        .faults-level-warning {
+            background-color: $status-turq;
+        }
+    }
+
+    .counters {
+        > * {
+            padding: $padding-small;
+        }
+        .faults-level-critical {
+            background-color: rgba(207, 32, 48, .15);
+        }
+        .faults-level-major {
+            background-color: rgba(255, 115, 0, .15);
+        }
+        .faults-level-minor {
+            background-color: rgba(255, 204, 0, .15);
+        }
+        .faults-level-warning {
+            background-color: rgba(20, 167, 146, .15);
+        }
+    }
+}

@@ -1,0 +1,28 @@
+@import '../scss/assets/sass/utilities/variables.scss';
+
+.app-page {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    > header {
+        display: flex;
+
+        > .title {
+            flex: 1;
+            color: #58585B;
+        }
+        padding: $padding-base;
+    }
+
+    .app-main-pad {
+        padding: $padding-base;
+        height: 100%;
+    }
+
+    &.topology {
+        height: 100%;
+    }
+    &.apps {
+        height: 100%;
+    }
+}

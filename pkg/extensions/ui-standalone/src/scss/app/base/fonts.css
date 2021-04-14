@@ -1,0 +1,1546 @@
+@charset "UTF-8";
+@font-face {
+  font-family: "cui-font";
+  src: url("./scss/cui/fonts/cui-font.eot");
+  src: url("./scss/cui/fonts/cui-font.eot?#iefix") format("eot"), url("./scss/cui/fonts/cui-font.woff2") format("woff2"), url("./scss/cui/fonts/cui-font.woff") format("woff"), url("./scss/cui/fonts/cui-font.ttf") format("truetype"), url("./scss/cui/fonts/cui-font.svg#cui-font") format("svg"); }
+
+
+*[class*='icon-'] {
+  position: relative;
+  display: inline-block;
+  font-family: "cui-font";
+  font-size: inherit;
+  font-style: normal;
+  font-weight: normal;
+  speak: none;
+  text-decoration: inherit;
+  text-transform: none;
+  text-rendering: optimizeLegibility;
+  vertical-align: middle;
+  text-indent: 0.5px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale; }
+
+.icon--medium {
+  font-size: 32px; }
+
+.icon--large {
+  font-size: 48px; }
+
+.icon-4-way-nav:before {
+  content: ""; }
+
+.icon-ac-power:before {
+  content: ""; }
+
+.icon-account:before {
+  content: ""; }
+
+.icon-acessibility:before {
+  content: ""; }
+
+.icon-aci:before {
+  content: ""; }
+
+.icon-active-speaker-cross:before {
+  content: ""; }
+
+.icon-active-speaker:before {
+  content: ""; }
+
+.icon-activities:before {
+  content: ""; }
+
+.icon-add-contact:before {
+  content: ""; }
+
+.icon-add-contain:before {
+  content: ""; }
+
+.icon-add-outline:before {
+  content: ""; }
+
+.icon-add:before {
+  content: ""; }
+
+.icon-admin:before {
+  content: ""; }
+
+.icon-alarm:before {
+  content: ""; }
+
+.icon-alert-blank:before {
+  content: ""; }
+
+.icon-alert:before {
+  content: ""; }
+
+.icon-alerting:before {
+  content: ""; }
+
+.icon-all-calls:before {
+  content: ""; }
+
+.icon-analysis:before {
+  content: ""; }
+
+.icon-android-home:before {
+  content: ""; }
+
+.icon-animation:before {
+  content: ""; }
+
+.icon-annotation:before {
+  content: ""; }
+
+.icon-answer-oldest:before {
+  content: ""; }
+
+.icon-applause:before {
+  content: ""; }
+
+.icon-application:before {
+  content: ""; }
+
+.icon-applications:before {
+  content: ""; }
+
+.icon-apps:before {
+  content: ""; }
+
+.icon-arrow-down-tail:before {
+  content: ""; }
+
+.icon-arrow-left-tail:before {
+  content: ""; }
+
+.icon-arrow-right-tail:before {
+  content: ""; }
+
+.icon-arrow-up-tail:before {
+  content: ""; }
+
+.icon-arrow:before {
+  content: ""; }
+
+.icon-asterisk:before {
+  content: ""; }
+
+.icon-at-contain:before {
+  content: ""; }
+
+.icon-at:before {
+  content: ""; }
+
+.icon-attachment:before {
+  content: ""; }
+
+.icon-audio-broadcast:before {
+  content: ""; }
+
+.icon-audio-min:before {
+  content: ""; }
+
+.icon-audio-plus:before {
+  content: ""; }
+
+.icon-audio-settings:before {
+  content: ""; }
+
+.icon-aux-camera:before {
+  content: ""; }
+
+.icon-back:before {
+  content: ""; }
+
+.icon-backup-data:before {
+  content: ""; }
+
+.icon-battery-0:before {
+  content: ""; }
+
+.icon-battery-25:before {
+  content: ""; }
+
+.icon-battery-50:before {
+  content: ""; }
+
+.icon-battery-75:before {
+  content: ""; }
+
+.icon-battery-full:before {
+  content: ""; }
+
+.icon-battery:before {
+  content: ""; }
+
+.icon-bell-cross:before {
+  content: ""; }
+
+.icon-bell:before {
+  content: ""; }
+
+.icon-blocked:before {
+  content: ""; }
+
+.icon-bluetooth-contain-cross:before {
+  content: ""; }
+
+.icon-bluetooth-contained:before {
+  content: ""; }
+
+.icon-bluetooth-outline:before {
+  content: ""; }
+
+.icon-bluetooth:before {
+  content: ""; }
+
+.icon-bookmark:before {
+  content: ""; }
+
+.icon-briefcase:before {
+  content: ""; }
+
+.icon-brightness:before {
+  content: ""; }
+
+.icon-broadcast-message:before {
+  content: ""; }
+
+.icon-broken-image:before {
+  content: ""; }
+
+.icon-browser:before {
+  content: ""; }
+
+.icon-bug:before {
+  content: ""; }
+
+.icon-calendar-meetings:before {
+  content: ""; }
+
+.icon-calendar-weekly:before {
+  content: ""; }
+
+.icon-calendar:before {
+  content: ""; }
+
+.icon-call-forward-divert:before {
+  content: ""; }
+
+.icon-call-handling:before {
+  content: ""; }
+
+.icon-call-log:before {
+  content: ""; }
+
+.icon-call-rate:before {
+  content: ""; }
+
+.icon-callback:before {
+  content: ""; }
+
+.icon-camera:before {
+  content: ""; }
+
+.icon-cart:before {
+  content: ""; }
+
+.icon-certified:before {
+  content: ""; }
+
+.icon-chapters:before {
+  content: ""; }
+
+.icon-charging:before {
+  content: ""; }
+
+.icon-chats:before {
+  content: ""; }
+
+.icon-check-outline:before {
+  content: ""; }
+
+.icon-check-square-o:before {
+  content: ""; }
+
+.icon-check-square:before {
+  content: ""; }
+
+.icon-check:before {
+  content: ""; }
+
+.icon-checklist:before {
+  content: ""; }
+
+.icon-chevron-down:before {
+  content: ""; }
+
+.icon-chevron-left-double:before {
+  content: ""; }
+
+.icon-chevron-left:before {
+  content: ""; }
+
+.icon-chevron-right-circle:before {
+  content: ""; }
+
+.icon-chevron-right-double:before {
+  content: ""; }
+
+.icon-chevron-right:before {
+  content: ""; }
+
+.icon-chevron-up:before {
+  content: ""; }
+
+.icon-circle:before {
+  content: ""; }
+
+.icon-cisco:before {
+  content: ""; }
+
+.icon-clipboard-md:before {
+  content: ""; }
+
+.icon-clipboard-sm:before {
+  content: ""; }
+
+.icon-clipboard:before {
+  content: ""; }
+
+.icon-clock:before {
+  content: ""; }
+
+.icon-close-keyboard:before {
+  content: ""; }
+
+.icon-close:before {
+  content: ""; }
+
+.icon-cloud-upload:before {
+  content: ""; }
+
+.icon-cloud:before {
+  content: ""; }
+
+.icon-cog:before {
+  content: ""; }
+
+.icon-comment:before {
+  content: ""; }
+
+.icon-communities:before {
+  content: ""; }
+
+.icon-community:before {
+  content: ""; }
+
+.icon-compass:before {
+  content: ""; }
+
+.icon-compliance:before {
+  content: ""; }
+
+.icon-computer-queue:before {
+  content: ""; }
+
+.icon-computer:before {
+  content: ""; }
+
+.icon-conference:before {
+  content: ""; }
+
+.icon-configurations:before {
+  content: ""; }
+
+.icon-contact-card:before {
+  content: ""; }
+
+.icon-contact:before {
+  content: ""; }
+
+.icon-contract-login-md:before {
+  content: ""; }
+
+.icon-contract-login-sm:before {
+  content: ""; }
+
+.icon-contract-login:before {
+  content: ""; }
+
+.icon-cpu-chip:before {
+  content: ""; }
+
+.icon-create-page:before {
+  content: ""; }
+
+.icon-data-usage:before {
+  content: ""; }
+
+.icon-day:before {
+  content: ""; }
+
+.icon-dc-power:before {
+  content: ""; }
+
+.icon-default-app:before {
+  content: ""; }
+
+.icon-delete:before {
+  content: ""; }
+
+.icon-desk-phone:before {
+  content: ""; }
+
+.icon-device-crash:before {
+  content: ""; }
+
+.icon-device-faults:before {
+  content: ""; }
+
+.icon-device-reload:before {
+  content: ""; }
+
+.icon-devices:before {
+  content: ""; }
+
+.icon-diagnostics:before {
+  content: ""; }
+
+.icon-dial:before {
+  content: ""; }
+
+.icon-directory:before {
+  content: ""; }
+
+.icon-disc-not-connected:before {
+  content: ""; }
+
+.icon-disc:before {
+  content: ""; }
+
+.icon-display:before {
+  content: ""; }
+
+.icon-dms:before {
+  content: ""; }
+
+.icon-dna:before {
+  content: ""; }
+
+.icon-document-camera-cross:before {
+  content: ""; }
+
+.icon-document-camera:before {
+  content: ""; }
+
+.icon-document:before {
+  content: ""; }
+
+.icon-download-contain:before {
+  content: ""; }
+
+.icon-download:before {
+  content: ""; }
+
+.icon-draw:before {
+  content: ""; }
+
+.icon-dropdown:before {
+  content: ""; }
+
+.icon-dual-line:before {
+  content: ""; }
+
+.icon-edit-call:before {
+  content: ""; }
+
+.icon-edit:before {
+  content: ""; }
+
+.icon-email:before {
+  content: ""; }
+
+.icon-emoticons:before {
+  content: ""; }
+
+.icon-endpoint:before {
+  content: ""; }
+
+.icon-eraser:before {
+  content: ""; }
+
+.icon-error-outline:before {
+  content: ""; }
+
+.icon-error:before {
+  content: ""; }
+
+.icon-ethernet:before {
+  content: ""; }
+
+.icon-exclamation-circle:before {
+  content: ""; }
+
+.icon-exclamation-triangle:before {
+  content: ""; }
+
+.icon-exernal-calendar:before {
+  content: ""; }
+
+.icon-exit-contain:before {
+  content: ""; }
+
+.icon-exit-fullscreen:before {
+  content: ""; }
+
+.icon-exit-outline:before {
+  content: ""; }
+
+.icon-exit:before {
+  content: ""; }
+
+.icon-export:before {
+  content: ""; }
+
+.icon-extension-mobility:before {
+  content: ""; }
+
+.icon-eye-closed:before {
+  content: ""; }
+
+.icon-eye:before {
+  content: ""; }
+
+.icon-fbw:before {
+  content: ""; }
+
+.icon-features:before {
+  content: ""; }
+
+.icon-feedback-clear:before {
+  content: ""; }
+
+.icon-feedback-result:before {
+  content: ""; }
+
+.icon-feedback:before {
+  content: ""; }
+
+.icon-ffw:before {
+  content: ""; }
+
+.icon-file-archive-o:before {
+  content: ""; }
+
+.icon-file-audio-o:before {
+  content: ""; }
+
+.icon-file-code-o:before {
+  content: ""; }
+
+.icon-file-excel-o:before {
+  content: ""; }
+
+.icon-file-image-o:before {
+  content: ""; }
+
+.icon-file-o:before {
+  content: ""; }
+
+.icon-file-pdf-o:before {
+  content: ""; }
+
+.icon-file-powerpoint-o:before {
+  content: ""; }
+
+.icon-file-text-o:before {
+  content: ""; }
+
+.icon-file-text:before {
+  content: ""; }
+
+.icon-file-video-o:before {
+  content: ""; }
+
+.icon-file-word-o:before {
+  content: ""; }
+
+.icon-file:before {
+  content: ""; }
+
+.icon-filter:before {
+  content: ""; }
+
+.icon-flagged:before {
+  content: ""; }
+
+.icon-folder:before {
+  content: ""; }
+
+.icon-forced-sign-in:before {
+  content: ""; }
+
+.icon-forward-to-mobility:before {
+  content: ""; }
+
+.icon-fullscreen:before {
+  content: ""; }
+
+.icon-general-source-cross:before {
+  content: ""; }
+
+.icon-general-source:before {
+  content: ""; }
+
+.icon-google-analytics:before {
+  content: ""; }
+
+.icon-gpu-graphicscard:before {
+  content: ""; }
+
+.icon-graph:before {
+  content: ""; }
+
+.icon-grid-view:before {
+  content: ""; }
+
+.icon-ground:before {
+  content: ""; }
+
+.icon-group-call:before {
+  content: ""; }
+
+.icon-group-chat:before {
+  content: ""; }
+
+.icon-headset-cross:before {
+  content: ""; }
+
+.icon-headset:before {
+  content: ""; }
+
+.icon-help-alt:before {
+  content: ""; }
+
+.icon-help-outline:before {
+  content: ""; }
+
+.icon-help:before {
+  content: ""; }
+
+.icon-hide-editor:before {
+  content: ""; }
+
+.icon-highlight-line:before {
+  content: ""; }
+
+.icon-highlight:before {
+  content: ""; }
+
+.icon-highlighter-check:before {
+  content: ""; }
+
+.icon-highlighter:before {
+  content: ""; }
+
+.icon-history:before {
+  content: ""; }
+
+.icon-home:before {
+  content: ""; }
+
+.icon-hue:before {
+  content: ""; }
+
+.icon-hunt-group:before {
+  content: ""; }
+
+.icon-idefix:before {
+  content: ""; }
+
+.icon-image-contain:before {
+  content: ""; }
+
+.icon-image:before {
+  content: ""; }
+
+.icon-import:before {
+  content: ""; }
+
+.icon-inbox:before {
+  content: ""; }
+
+.icon-incoming-call:before {
+  content: ""; }
+
+.icon-info-circle:before {
+  content: ""; }
+
+.icon-info-outline:before {
+  content: ""; }
+
+.icon-info:before {
+  content: ""; }
+
+.icon-insights:before {
+  content: ""; }
+
+.icon-instant-meeting:before {
+  content: ""; }
+
+.icon-intercom-duplex-connected:before {
+  content: ""; }
+
+.icon-intercom-whisper:before {
+  content: ""; }
+
+.icon-intercom:before {
+  content: ""; }
+
+.icon-invite:before {
+  content: ""; }
+
+.icon-jump-out:before {
+  content: ""; }
+
+.icon-key-expansion-module:before {
+  content: ""; }
+
+.icon-keyboard-close:before {
+  content: ""; }
+
+.icon-keyboard:before {
+  content: ""; }
+
+.icon-keywords:before {
+  content: ""; }
+
+.icon-language:before {
+  content: ""; }
+
+.icon-laser-pointer:before {
+  content: ""; }
+
+.icon-layers:before {
+  content: ""; }
+
+.icon-layout:before {
+  content: ""; }
+
+.icon-learning:before {
+  content: ""; }
+
+.icon-leave-meeting:before {
+  content: ""; }
+
+.icon-left-arrow:before {
+  content: ""; }
+
+.icon-lifecycle:before {
+  content: ""; }
+
+.icon-lightbulb:before {
+  content: ""; }
+
+.icon-like:before {
+  content: ""; }
+
+.icon-line-out-left:before {
+  content: ""; }
+
+.icon-line-out-right:before {
+  content: ""; }
+
+.icon-link-broken:before {
+  content: ""; }
+
+.icon-link:before {
+  content: ""; }
+
+.icon-list-menu:before {
+  content: ""; }
+
+.icon-list-view:before {
+  content: ""; }
+
+.icon-location:before {
+  content: ""; }
+
+.icon-lock-contain:before {
+  content: ""; }
+
+.icon-lock:before {
+  content: ""; }
+
+.icon-locked-speaker:before {
+  content: ""; }
+
+.icon-mail-read:before {
+  content: ""; }
+
+.icon-mail:before {
+  content: ""; }
+
+.icon-manage-cable:before {
+  content: ""; }
+
+.icon-maximize:before {
+  content: ""; }
+
+.icon-media-viewer:before {
+  content: ""; }
+
+.icon-meet-me:before {
+  content: ""; }
+
+.icon-meeting-room:before {
+  content: ""; }
+
+.icon-memory-ram:before {
+  content: ""; }
+
+.icon-merge-call:before {
+  content: ""; }
+
+.icon-message:before {
+  content: ""; }
+
+.icon-mic-in:before {
+  content: ""; }
+
+.icon-micro-blog:before {
+  content: ""; }
+
+.icon-microphone:before {
+  content: ""; }
+
+.icon-minimize:before {
+  content: ""; }
+
+.icon-missed-call:before {
+  content: ""; }
+
+.icon-mlpp-1:before {
+  content: ""; }
+
+.icon-mlpp-2:before {
+  content: ""; }
+
+.icon-mlpp-3:before {
+  content: ""; }
+
+.icon-mlpp-4:before {
+  content: ""; }
+
+.icon-mlpp-5:before {
+  content: ""; }
+
+.icon-mobile-phone:before {
+  content: ""; }
+
+.icon-mobile-presenter:before {
+  content: ""; }
+
+.icon-month:before {
+  content: ""; }
+
+.icon-more:before {
+  content: ""; }
+
+.icon-move-page:before {
+  content: ""; }
+
+.icon-multi-display:before {
+  content: ""; }
+
+.icon-music:before {
+  content: ""; }
+
+.icon-mute:before {
+  content: ""; }
+
+.icon-network:before {
+  content: ""; }
+
+.icon-new-call:before {
+  content: ""; }
+
+.icon-no-signal:before {
+  content: ""; }
+
+.icon-notebook-in:before {
+  content: ""; }
+
+.icon-notes:before {
+  content: ""; }
+
+.icon-numbered-input:before {
+  content: ""; }
+
+.icon-numbered-output:before {
+  content: ""; }
+
+.icon-off-hook:before {
+  content: ""; }
+
+.icon-other-phone:before {
+  content: ""; }
+
+.icon-outbox:before {
+  content: ""; }
+
+.icon-outgoing-call:before {
+  content: ""; }
+
+.icon-paired-audio:before {
+  content: ""; }
+
+.icon-paired-call:before {
+  content: ""; }
+
+.icon-panel-shift-left:before {
+  content: ""; }
+
+.icon-panel-shift-right:before {
+  content: ""; }
+
+.icon-parked:before {
+  content: ""; }
+
+.icon-participant-list:before {
+  content: ""; }
+
+.icon-pass-mouse:before {
+  content: ""; }
+
+.icon-pause:before {
+  content: ""; }
+
+.icon-pc:before {
+  content: ""; }
+
+.icon-pencil:before {
+  content: ""; }
+
+.icon-persistent-chat:before {
+  content: ""; }
+
+.icon-phone-cross:before {
+  content: ""; }
+
+.icon-phone:before {
+  content: ""; }
+
+.icon-picture-in-picture:before {
+  content: ""; }
+
+.icon-pin:before {
+  content: ""; }
+
+.icon-pip-0:before {
+  content: ""; }
+
+.icon-pip-1:before {
+  content: ""; }
+
+.icon-pip-2:before {
+  content: ""; }
+
+.icon-pip-3:before {
+  content: ""; }
+
+.icon-pip:before {
+  content: ""; }
+
+.icon-play-contained:before {
+  content: ""; }
+
+.icon-play:before {
+  content: ""; }
+
+.icon-playlist:before {
+  content: ""; }
+
+.icon-plugin:before {
+  content: ""; }
+
+.icon-plus:before {
+  content: ""; }
+
+.icon-point:before {
+  content: ""; }
+
+.icon-poll:before {
+  content: ""; }
+
+.icon-popout:before {
+  content: ""; }
+
+.icon-popup-dialogue:before {
+  content: ""; }
+
+.icon-power-contain:before {
+  content: ""; }
+
+.icon-power:before {
+  content: ""; }
+
+.icon-presence-available:before {
+  content: ""; }
+
+.icon-presence-end:before {
+  content: ""; }
+
+.icon-presence-offline:before {
+  content: ""; }
+
+.icon-presentation:before {
+  content: ""; }
+
+.icon-prevent-download-contain:before {
+  content: ""; }
+
+.icon-prevent-download:before {
+  content: ""; }
+
+.icon-print:before {
+  content: ""; }
+
+.icon-priority:before {
+  content: ""; }
+
+.icon-privacy:before {
+  content: ""; }
+
+.icon-private:before {
+  content: ""; }
+
+.icon-profile-settings:before {
+  content: ""; }
+
+.icon-proximity-not-connected:before {
+  content: ""; }
+
+.icon-proximity:before {
+  content: ""; }
+
+.icon-quality:before {
+  content: ""; }
+
+.icon-question-circle:before {
+  content: ""; }
+
+.icon-raise-hand:before {
+  content: ""; }
+
+.icon-read-email:before {
+  content: ""; }
+
+.icon-recent-apps:before {
+  content: ""; }
+
+.icon-record:before {
+  content: ""; }
+
+.icon-redial:before {
+  content: ""; }
+
+.icon-refresh:before {
+  content: ""; }
+
+.icon-remove-contact:before {
+  content: ""; }
+
+.icon-remove-contain:before {
+  content: ""; }
+
+.icon-remove-outline:before {
+  content: ""; }
+
+.icon-remove:before {
+  content: ""; }
+
+.icon-reply-all:before {
+  content: ""; }
+
+.icon-report:before {
+  content: ""; }
+
+.icon-reset:before {
+  content: ""; }
+
+.icon-right-arrow-closed-contained:before {
+  content: ""; }
+
+.icon-right-arrow-closed-outline:before {
+  content: ""; }
+
+.icon-right-arrow-contain:before {
+  content: ""; }
+
+.icon-right-arrow-contained:before {
+  content: ""; }
+
+.icon-right-arrow-outline:before {
+  content: ""; }
+
+.icon-right-arrow:before {
+  content: ""; }
+
+.icon-ringer-settings:before {
+  content: ""; }
+
+.icon-rotate-object-ccw:before {
+  content: ""; }
+
+.icon-rotate-object-cw:before {
+  content: ""; }
+
+.icon-rtprx-rtptx-duplex:before {
+  content: ""; }
+
+.icon-rtprx:before {
+  content: ""; }
+
+.icon-rtptx:before {
+  content: ""; }
+
+.icon-running-application:before {
+  content: ""; }
+
+.icon-save:before {
+  content: ""; }
+
+.icon-schedule-add:before {
+  content: ""; }
+
+.icon-screen-capture-square:before {
+  content: ""; }
+
+.icon-screen-capture:before {
+  content: ""; }
+
+.icon-sd:before {
+  content: ""; }
+
+.icon-search:before {
+  content: ""; }
+
+.icon-self-view-alt:before {
+  content: ""; }
+
+.icon-self-view-crossed:before {
+  content: ""; }
+
+.icon-self-view:before {
+  content: ""; }
+
+.icon-send-email:before {
+  content: ""; }
+
+.icon-send:before {
+  content: ""; }
+
+.icon-sent:before {
+  content: ""; }
+
+.icon-setup-assistant:before {
+  content: ""; }
+
+.icon-share-contain:before {
+  content: ""; }
+
+.icon-share-content:before {
+  content: ""; }
+
+.icon-share:before {
+  content: ""; }
+
+.icon-shipment:before {
+  content: ""; }
+
+.icon-show-editor:before {
+  content: ""; }
+
+.icon-sign-in:before {
+  content: ""; }
+
+.icon-sign-out:before {
+  content: ""; }
+
+.icon-signal-1:before {
+  content: ""; }
+
+.icon-signal-2:before {
+  content: ""; }
+
+.icon-signal-3:before {
+  content: ""; }
+
+.icon-signal-4:before {
+  content: ""; }
+
+.icon-skip-bw:before {
+  content: ""; }
+
+.icon-skip-fw:before {
+  content: ""; }
+
+.icon-slides:before {
+  content: ""; }
+
+.icon-social-facebook:before {
+  content: ""; }
+
+.icon-social-linkedin:before {
+  content: ""; }
+
+.icon-social-twitter:before {
+  content: ""; }
+
+.icon-soft-phone:before {
+  content: ""; }
+
+.icon-software-certified-md:before {
+  content: ""; }
+
+.icon-software-certified-sm:before {
+  content: ""; }
+
+.icon-software-certified:before {
+  content: ""; }
+
+.icon-software-suggested-md:before {
+  content: ""; }
+
+.icon-software-suggested-sm:before {
+  content: ""; }
+
+.icon-software-suggested:before {
+  content: ""; }
+
+.icon-software:before {
+  content: ""; }
+
+.icon-sort-amount-asc:before {
+  content: ""; }
+
+.icon-sort-amount-desc:before {
+  content: ""; }
+
+.icon-sound:before {
+  content: ""; }
+
+.icon-space:before {
+  content: ""; }
+
+.icon-spam:before {
+  content: ""; }
+
+.icon-spark:before {
+  content: ""; }
+
+.icon-speaker-cross:before {
+  content: ""; }
+
+.icon-speaker-out-left:before {
+  content: ""; }
+
+.icon-speaker:before {
+  content: ""; }
+
+.icon-speed-dial:before {
+  content: ""; }
+
+.icon-spinner:before {
+  content: ""; }
+
+.icon-square-o-checked:before {
+  content: ""; }
+
+.icon-square-o:before {
+  content: ""; }
+
+.icon-star-empty:before {
+  content: ""; }
+
+.icon-star-half:before {
+  content: ""; }
+
+.icon-star:before {
+  content: ""; }
+
+.icon-step-backward:before {
+  content: ""; }
+
+.icon-step-forward:before {
+  content: ""; }
+
+.icon-step-next:before {
+  content: ""; }
+
+.icon-step-prev:before {
+  content: ""; }
+
+.icon-stop:before {
+  content: ""; }
+
+.icon-storage:before {
+  content: ""; }
+
+.icon-subscribe:before {
+  content: ""; }
+
+.icon-swap-calls:before {
+  content: ""; }
+
+.icon-swap-camera:before {
+  content: ""; }
+
+.icon-swap-video-camera:before {
+  content: ""; }
+
+.icon-syslog:before {
+  content: ""; }
+
+.icon-tables:before {
+  content: ""; }
+
+.icon-tablet:before {
+  content: ""; }
+
+.icon-tags:before {
+  content: ""; }
+
+.icon-team-collapsed-view:before {
+  content: ""; }
+
+.icon-team-expanded-view:before {
+  content: ""; }
+
+.icon-terminalalt:before {
+  content: ""; }
+
+.icon-text-color:before {
+  content: ""; }
+
+.icon-text-format:before {
+  content: ""; }
+
+.icon-text-size:before {
+  content: ""; }
+
+.icon-text:before {
+  content: ""; }
+
+.icon-thumbnail-view:before {
+  content: ""; }
+
+.icon-time:before {
+  content: ""; }
+
+.icon-timeline:before {
+  content: ""; }
+
+.icon-tine:before {
+  content: ""; }
+
+.icon-toggle-menu:before {
+  content: ""; }
+
+.icon-too-fast:before {
+  content: ""; }
+
+.icon-too-slow:before {
+  content: ""; }
+
+.icon-tools:before {
+  content: ""; }
+
+.icon-touch-gesture:before {
+  content: ""; }
+
+.icon-touch-point:before {
+  content: ""; }
+
+.icon-touch:before {
+  content: ""; }
+
+.icon-transcript:before {
+  content: ""; }
+
+.icon-transfer-to-mobile:before {
+  content: ""; }
+
+.icon-transfer:before {
+  content: ""; }
+
+.icon-transit:before {
+  content: ""; }
+
+.icon-trash:before {
+  content: ""; }
+
+.icon-tree-closed:before {
+  content: ""; }
+
+.icon-tree-opened:before {
+  content: ""; }
+
+.icon-universal-inbox:before {
+  content: ""; }
+
+.icon-unlock:before {
+  content: ""; }
+
+.icon-upload-contain:before {
+  content: ""; }
+
+.icon-upload:before {
+  content: ""; }
+
+.icon-usb:before {
+  content: ""; }
+
+.icon-user-queue:before {
+  content: ""; }
+
+.icon-user:before {
+  content: ""; }
+
+.icon-vibrate:before {
+  content: ""; }
+
+.icon-video-cross:before {
+  content: ""; }
+
+.icon-video-input:before {
+  content: ""; }
+
+.icon-video-layout:before {
+  content: ""; }
+
+.icon-video-settings:before {
+  content: ""; }
+
+.icon-video-tips:before {
+  content: ""; }
+
+.icon-video:before {
+  content: ""; }
+
+.icon-view-feed-dual:before {
+  content: ""; }
+
+.icon-view-feed-multi:before {
+  content: ""; }
+
+.icon-view-feed-single:before {
+  content: ""; }
+
+.icon-view-preview-telepresence:before {
+  content: ""; }
+
+.icon-view-side-by-side:before {
+  content: ""; }
+
+.icon-view-split:before {
+  content: ""; }
+
+.icon-view-stacked:before {
+  content: ""; }
+
+.icon-virtual-machine:before {
+  content: ""; }
+
+.icon-voicemail:before {
+  content: ""; }
+
+.icon-volume-cross:before {
+  content: ""; }
+
+.icon-volume:before {
+  content: ""; }
+
+.icon-waiting-silence:before {
+  content: ""; }
+
+.icon-wallpaper:before {
+  content: ""; }
+
+.icon-warning-outline:before {
+  content: ""; }
+
+.icon-warning:before {
+  content: ""; }
+
+.icon-watchlist:before {
+  content: ""; }
+
+.icon-web-camera:before {
+  content: ""; }
+
+.icon-web-sharing:before {
+  content: ""; }
+
+.icon-webex-meetings-16:before {
+  content: ""; }
+
+.icon-webex-meetings-24:before {
+  content: ""; }
+
+.icon-webex-meetings-48:before {
+  content: ""; }
+
+.icon-webex-teams-16:before {
+  content: ""; }
+
+.icon-webex-teams-24:before {
+  content: ""; }
+
+.icon-webex-teams-48:before {
+  content: ""; }
+
+.icon-webex:before {
+  content: ""; }
+
+.icon-webhook:before {
+  content: ""; }
+
+.icon-week:before {
+  content: ""; }
+
+.icon-whisper:before {
+  content: ""; }
+
+.icon-whiteboard-cross:before {
+  content: ""; }
+
+.icon-whiteboard:before {
+  content: ""; }
+
+.icon-wifi-1:before {
+  content: ""; }
+
+.icon-wifi-2:before {
+  content: ""; }
+
+.icon-wifi-3:before {
+  content: ""; }
+
+.icon-wifi:before {
+  content: ""; }
+
+.icon-work:before {
+  content: ""; }
+
+.icon-zip:before {
+  content: ""; }
+
+.icon-zoom-in:before {
+  content: ""; }
+
+.icon-zoom-out:before {
+  content: ""; }

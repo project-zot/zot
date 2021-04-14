@@ -1,0 +1,128 @@
+/** @see sass/vendor/tooltip/balloon.scss (written with CUIK c1.3.4 as the current version in use) */
+/* Status Colors (here from _variable.scss for documentation)
+$status-blue: #64bbe3 !default;
+$status-turq: #14a792 !default;
+$status-green: #6cc04a !default;
+$status-red: $accent-red !default;
+$status-orange: $accent-orange !default;
+$status-yellow: #ffcc00 !default;
+*/
+.ReactTable.selectable .rt-thead .rt-th {
+  display: flex;
+  align-items: center; }
+
+.ReactTable.selectable .rt-th:first-of-type, .ReactTable.selectable .rt-td:first-of-type {
+  display: flex;
+  align-items: center;
+  justify-content: center; }
+
+.ReactTable.selectable .checkbox {
+  margin: 0; }
+
+.ReactTable .rt-thead {
+  box-shadow: none !important; }
+  .ReactTable .rt-thead .rt-tr {
+    background-color: #ffffff;
+    font-weight: bold; }
+  .ReactTable .rt-thead .rt-th {
+    text-align: left;
+    padding: 10px !important; }
+  .ReactTable .rt-thead .grouped-columns-header {
+    font-weight: normal;
+    justify-content: center; }
+
+.ReactTable .rt-tbody .rt-tr-group {
+  border-bottom: 0 !important; }
+
+.ReactTable .rt-tbody .rt-td {
+  padding: 10px !important; }
+
+.ReactTable .rt-tr {
+  border-left: 4px solid transparent; }
+  .ReactTable .rt-tr.active {
+    transition: background .25s ease-in-out;
+    background-color: rgba(0, 188, 235, 0.3);
+    border-left: 4px solid #00bceb; }
+    .ReactTable .rt-tr.active.-odd {
+      transition: background .25s ease-in-out;
+      background-color: rgba(0, 188, 235, 0.3);
+      border-left: 4px solid #00bceb; }
+  .ReactTable .rt-tr .rt-th, .ReactTable .rt-tr .rt-td {
+    display: flex;
+    align-items: center;
+    white-space: normal; }
+
+.ReactTable.-striped .rt-tbody .rt-tr {
+  background-color: #ffffff; }
+  .ReactTable.-striped .rt-tbody .rt-tr.-odd {
+    background-color: #f2f2f2; }
+  .ReactTable.-striped .rt-tbody .rt-tr.active {
+    background-color: rgba(0, 188, 235, 0.3); }
+    .ReactTable.-striped .rt-tbody .rt-tr.active.-odd {
+      background-color: rgba(0, 188, 235, 0.3); }
+
+.ReactTable .rt-td .cell-title-subtitle .cell-subtitle {
+  color: #7f7f86; }
+
+.ReactTable .pagination-bottom {
+  background-color: #dfdfdf; }
+  .ReactTable .pagination-bottom .link {
+    color: #7f7f86; }
+  .ReactTable .pagination-bottom .-pagination {
+    font-weight: 400;
+    display: flex;
+    align-items: center;
+    padding: 5px 10px;
+    box-shadow: none;
+    border: none; }
+    .ReactTable .pagination-bottom .-pagination .form-group {
+      margin: 0; }
+    .ReactTable .pagination-bottom .-pagination .-previous {
+      text-align: left; }
+      .ReactTable .pagination-bottom .-pagination .-previous .form-group {
+        margin-right: 10px; }
+    .ReactTable .pagination-bottom .-pagination .-next {
+      text-align: right; }
+    .ReactTable .pagination-bottom .-pagination .page-items-info {
+      margin: 0 10px; }
+    .ReactTable .pagination-bottom .-pagination .-pageInfo {
+      margin: 0 10px 0 0 !important; }
+    .ReactTable .pagination-bottom .-pagination .page-size-container {
+      display: flex;
+      align-items: center; }
+      .ReactTable .pagination-bottom .-pagination .page-size-container .form-group {
+        margin-right: 5px; }
+
+.cui.blueprint .filterable-table > header {
+  display: grid;
+  grid-template-columns: 1fr min-content;
+  justify-content: end;
+  align-items: start;
+  margin-bottom: 10px; }
+  .cui.blueprint .filterable-table > header > .header--tools {
+    align-self: center;
+    grid-template-columns: repeat(10, min-content);
+    display: inline-grid;
+    align-items: center;
+    align-content: space-between;
+    justify-content: end; }
+    .cui.blueprint .filterable-table > header > .header--tools > * {
+      margin-left: 5px; }
+      .cui.blueprint .filterable-table > header > .header--tools > *:last-child {
+        margin-right: 5px; }
+
+.cui.blueprint .filterable-table .ReactTable .rt-tbody .rt-tr .rt-td .cell-content {
+  margin-right: 10px; }
+
+.cui.blueprint .filterable-table .ReactTable .rt-tbody .rt-tr .rt-td .hover-filter-icon {
+  opacity: 0;
+  position: absolute;
+  cursor: pointer;
+  right: 5px;
+  transition: background 0.2s linear;
+  transition-property: opacity; }
+
+.cui.blueprint .filterable-table .ReactTable .rt-tbody .rt-tr .rt-td:hover .hover-filter-icon {
+  opacity: 1;
+  transition: background 0.2s linear;
+  transition-property: opacity; }

@@ -1,0 +1,21 @@
+.cui .gauge-container {
+  position: relative; }
+  .cui .gauge-container .background-green {
+    background-color: #00bb00 !important; }
+  .cui .gauge-container .background-orange {
+    background-color: #fbab18 !important; }
+  .cui .gauge-container .background-red {
+    background-color: #e2231a !important; }
+  .cui .gauge-container .background-yellow {
+    background-color: #ffcc00 !important; }
+  .cui .gauge-container .progress-gauge.gauge--small .gauge__inset .gauge__percentage {
+    font-size: 1.2rem;
+    line-height: 12px; }
+  .cui .gauge-container .progress-gauge.gauge--medium .gauge__inset .gauge__percentage {
+    font-size: 3rem;
+    line-height: 25px; }
+  .cui .gauge-container .progress-gauge.gauge--large .gauge__inset .gauge__percentage {
+    font-size: 4.5rem;
+    line-height: 35px; }
+  .cui .gauge-container .progress-gauge .gauge-simple-inset {
+    box-shadow: none; }

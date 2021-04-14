@@ -1,0 +1,61 @@
+/** @see sass/vendor/tooltip/balloon.scss (written with CUIK c1.3.4 as the current version in use) */
+/* Status Colors (here from _variable.scss for documentation)
+$status-blue: #64bbe3 !default;
+$status-turq: #14a792 !default;
+$status-green: #6cc04a !default;
+$status-red: $accent-red !default;
+$status-orange: $accent-orange !default;
+$status-yellow: #ffcc00 !default;
+*/
+.cui .field-tooltip-icon {
+  font-size: 12px;
+  margin: 0 0 4px 4px;
+  width: 16px;
+  height: 16px;
+  color: #c6c7ca;
+  display: inline-block;
+  position: relative;
+  /* Override default balloon dimensions */ }
+  .cui .field-tooltip-icon .field-tooltip {
+    position: absolute;
+    left: 0;
+    top: 0;
+    display: block;
+    height: 100%;
+    width: 100%;
+    font-family: CiscoSans, Arial, sans-serif !important; }
+    .cui .field-tooltip-icon .field-tooltip[data-balloon][data-balloon-pos][data-balloon-length]:before, .cui .field-tooltip-icon .field-tooltip[data-balloon][data-balloon-pos][data-balloon-length]:hover:before {
+      content: attr(data-balloon-title);
+      color: #ffffff;
+      font-size: 14px !important;
+      top: -40px;
+      padding: 10px;
+      position: absolute;
+      z-index: 999;
+      background: transparent;
+      white-space: nowrap;
+      -webkit-transform: none;
+      -ms-transform: none;
+      transform: none; }
+    .cui .field-tooltip-icon .field-tooltip[data-balloon][data-balloon-pos][data-balloon-length]:after, .cui .field-tooltip-icon .field-tooltip[data-balloon][data-balloon-pos][data-balloon-length]:hover:after {
+      color: #58585b;
+      top: -30px;
+      left: 50%;
+      position: absolute;
+      white-space: pre-wrap;
+      white-space: -moz-pre-wrap;
+      background: -moz-linear-gradient(top, #9e9ea2 0%, #9e9ea2 30px, #ffffff 30px, #ffffff 100%);
+      /* FF3.6-15 */
+      background: -webkit-linear-gradient(top, #9e9ea2 0%, #9e9ea2 30px, #ffffff 30px, #ffffff 100%);
+      /* Chrome10-25,Safari5.1-6 */
+      background: linear-gradient(to bottom, #9e9ea2 0%, #9e9ea2 30px, #ffffff 30px, #ffffff 100%);
+      /* W3C, IE10+, FF16+, Chrome26+, Opera12+, Safari7+ */
+      padding: 40px 10px 10px 10px;
+      box-shadow: 0 10px 20px 0 rgba(0, 0, 0, 0.2);
+      border-radius: 4px;
+      font-size: 14px !important;
+      -webkit-transform: none;
+      -ms-transform: none;
+      transform: none; }
+  .cui .field-tooltip-icon [data-balloon][data-balloon-length=large]:after {
+    width: 350px; }

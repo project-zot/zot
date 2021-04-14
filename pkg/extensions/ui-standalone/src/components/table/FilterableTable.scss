@@ -1,0 +1,70 @@
+// @import "../../assets/sass/utilities/mixins.scss";
+@import './Table.scss';
+
+
+.cui.blueprint {
+    .filterable-table {
+        > header {
+            display: grid;
+            grid-template-columns: 1fr min-content;
+            justify-content: end;
+            align-items: start;
+
+            margin-bottom: $margin-base;
+
+            > .filter {
+
+            }
+
+            > .header--tools {
+                align-self: center;
+
+                grid-template-columns: repeat(10, min-content);
+                display: inline-grid;
+                align-items: center;
+                align-content: space-between;
+                justify-content: end;
+
+                > * {
+                    margin-left: $margin-small;
+
+                    &:last-child {
+                        margin-right: $margin-small;
+                    }
+                }
+            }
+        }
+
+        .ReactTable {
+            .rt-tbody {
+                .rt-tr {
+                    .rt-td {
+                        .cell-content {
+                            margin-right: $margin-base;
+                        }
+
+                        .hover-filter-icon {
+                            opacity: 0;
+                            position: absolute;
+                            cursor: pointer;
+                            right: $base-spacing-qtr;
+                            transition: $base-table-hover-animation;
+                            transition-property: opacity;
+                        }
+
+                        &:hover .hover-filter-icon {
+                            opacity: 1;
+                            transition: $base-table-hover-animation;
+                            transition-property: opacity;
+                        }
+
+                    }
+                }
+            }
+        }
+    }
+}
+
+// .cui.blueprint .app-main .filterable-table .ReactTable .rt-tbody .rt-tr .rt-td {
+//     position: inherit;
+// }

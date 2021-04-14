@@ -1,0 +1,41 @@
+/** @see sass/vendor/tooltip/balloon.scss (written with CUIK c1.3.4 as the current version in use) */
+/* Status Colors (here from _variable.scss for documentation)
+$status-blue: #64bbe3 !default;
+$status-turq: #14a792 !default;
+$status-green: #6cc04a !default;
+$status-red: $accent-red !default;
+$status-orange: $accent-orange !default;
+$status-yellow: #ffcc00 !default;
+*/
+.screen-container.details > main {
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  position: relative; }
+  .screen-container.details > main > header {
+    display: flex;
+    padding: 10px;
+    min-height: 51px; }
+    .screen-container.details > main > header .left-area {
+      flex: 1; }
+    .screen-container.details > main > header .right-menu {
+      z-index: 1; }
+  .screen-container.details > main > .cisco-ui-tabs {
+    margin-top: -40px; }
+  .screen-container.details > main .details-skeleton {
+    position: relative; }
+    .screen-container.details > main .details-skeleton > .loader {
+      position: absolute; }
+
+.screen-container.details.loading > main > header .right-menu {
+  z-index: 0; }
+
+.screen-container.details.loading > main > .cisco-ui-tabs .tab__heading {
+  color: #e8ebf1;
+  background-color: #e8ebf1; }
+
+.screen-container.details .login-domain-overview .children-objects-table {
+  margin-bottom: 15px; }
+
+.cui .btn + .dropdown {
+  margin-left: 10px !important; }

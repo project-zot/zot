@@ -1,0 +1,37 @@
+@import 'src/scss/assets/sass/utilities/variables.scss';
+
+.form-reference-field {
+    //todo this class seems useful, make it global?
+    .actionable {
+        cursor: pointer;
+    }
+
+    .add-item {
+        color: $dark-gray-4;
+        padding: $padding-large $padding-large / 2;
+    }
+
+    //this actually belongs to the multiReference, but since I hope on being able to merge them, using the same file for now
+    ul.list {
+        padding: $padding-base 0;
+        li {
+            display: flex;
+            padding: $padding-base;
+            &:first-child {
+                border-top: 1px solid $light-gray-3;
+            }
+            border-bottom: 1px solid $light-gray-3;
+            .item-info {
+                flex: 1;
+            }
+            .remove-button {
+                margin: auto 0 auto auto;
+            }
+        }
+    }
+    .custom-header{
+        padding-top: $padding-medium;
+        color: $med-gray-3;
+        font-weight: bold;
+    }
+}

@@ -1,0 +1,20 @@
+@import 'src/scss/assets/sass/utilities/variables.scss';
+
+.modal-container.confirm {
+    //basic properties
+    width: 200px;
+    .notification-title {
+        display: flex;
+        justify-content: center
+    }
+    .notification-msg-title {
+        padding: 0 $padding-base;
+        font-weight: $font-weight-solid;
+    }
+    .notification-msg {
+        text-align: center;
+    }
+    .check-icon {
+        color: $green;
+    }
+}

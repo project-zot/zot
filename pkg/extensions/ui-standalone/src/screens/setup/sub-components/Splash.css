@@ -1,0 +1,92 @@
+/** @see sass/vendor/tooltip/balloon.scss (written with CUIK c1.3.4 as the current version in use) */
+/* Status Colors (here from _variable.scss for documentation)
+$status-blue: #64bbe3 !default;
+$status-turq: #14a792 !default;
+$status-green: #6cc04a !default;
+$status-red: $accent-red !default;
+$status-orange: $accent-orange !default;
+$status-yellow: #ffcc00 !default;
+*/
+.splash {
+  position: absolute;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 9999;
+  text-align: center; }
+  .splash .splash-backdrop {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background: rgba(196, 199, 204, 0.65);
+    display: flex;
+    justify-content: center;
+    align-items: center; }
+  .splash .splash-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    border-radius: 3px;
+    width: 880px;
+    padding: 48px !important;
+    margin: auto;
+    background-color: #005073 !important; }
+    .splash .splash-content header {
+      margin-bottom: 10px; }
+      .splash .splash-content header h1 {
+        white-space: nowrap; }
+      .splash .splash-content header .whats-new {
+        margin: 10px 0 0 0; }
+      .splash .splash-content header .new-features-label {
+        margin: 0 0 10px 0;
+        color: #00bceb;
+        font-weight: bold; }
+      .splash .splash-content header .versionTxt {
+        color: #ffffff;
+        margin-top: 16px; }
+      .splash .splash-content header p {
+        color: #21b7ef; }
+    .splash .splash-content .row {
+      width: 100%;
+      padding: 18px 0;
+      border-top: 1px solid #fff; }
+      .splash .splash-content .row li {
+        text-align: left; }
+    .splash .splash-content .main-features-right > ul {
+      list-style-type: none; }
+      .splash .splash-content .main-features-right > ul ul {
+        padding-left: 18px;
+        list-style-type: disc; }
+    .splash .splash-content .links {
+      text-align: left; }
+      .splash .splash-content .links h4 {
+        font-size: 16px;
+        font-weight: 300; }
+      .splash .splash-content .links ul {
+        list-style-type: none;
+        padding: 0;
+        margin-top: 10px; }
+      .splash .splash-content .links a, .splash .splash-content .links a:hover, .splash .splash-content .links a:visited, .splash .splash-content .links a:focus {
+        color: #ffffff !important;
+        text-decoration: underline; }
+    .splash .splash-content .actions {
+      padding-bottom: 0; }
+      .splash .splash-content .actions .first-time-message {
+        text-align: left;
+        font-weight: bold; }
+      .splash .splash-content .actions .left-actions {
+        padding-left: 0;
+        display: flex;
+        align-items: center; }
+        .splash .splash-content .actions .left-actions .form-group, .splash .splash-content .actions .left-actions .form-group label {
+          margin: 0 !important; }
+        .splash .splash-content .actions .left-actions .checkbox__label {
+          color: #fff !important; }
+      .splash .splash-content .actions .right-actions {
+        padding-right: 0;
+        display: flex;
+        justify-content: flex-end; }
+  .splash .hero::after {
+    content: none;
+    background: none; }

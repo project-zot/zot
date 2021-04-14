@@ -1,0 +1,38 @@
+@import '../../scss/app/utilities/variables.scss';
+
+.number-card-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: $padding-xsmall-plus;
+    padding-top: $padding-large-plus;
+    border: 1px solid $light-gray-3;
+    border-top-width: 3px;
+    margin: 0px 16px 10px 0px;
+
+    .number-card-value {
+        font-size: $xlarge-font-size;
+    }
+
+    .number-card-label {
+        font-size: $xsmall-font-size;
+        background-color: transparent;
+        color: $med-gray-2;
+    }
+
+    .icons-container {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        justify-content: center;
+
+        .health-badge-icon {
+            padding-right: $padding-xsmall;
+        }
+
+        .icon-small:before {
+            font-size: 11px !important;
+            color: $light-gray-2;
+        }
+    }
+}

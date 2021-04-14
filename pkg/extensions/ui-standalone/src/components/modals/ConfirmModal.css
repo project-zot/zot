@@ -1,0 +1,21 @@
+/** @see sass/vendor/tooltip/balloon.scss (written with CUIK c1.3.4 as the current version in use) */
+/* Status Colors (here from _variable.scss for documentation)
+$status-blue: #64bbe3 !default;
+$status-turq: #14a792 !default;
+$status-green: #6cc04a !default;
+$status-red: $accent-red !default;
+$status-orange: $accent-orange !default;
+$status-yellow: #ffcc00 !default;
+*/
+.modal-container.confirm {
+  width: 200px; }
+  .modal-container.confirm .notification-title {
+    display: flex;
+    justify-content: center; }
+  .modal-container.confirm .notification-msg-title {
+    padding: 0 10px;
+    font-weight: 500; }
+  .modal-container.confirm .notification-msg {
+    text-align: center; }
+  .modal-container.confirm .check-icon {
+    color: #00bb00; }

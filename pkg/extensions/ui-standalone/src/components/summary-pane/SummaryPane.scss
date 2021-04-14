@@ -1,0 +1,83 @@
+@import "src/scss/assets/sass/utilities/variables.scss";
+
+.summary-pane {
+    position: absolute;
+    right: 0;
+    background-color: white;
+    width: 400px;
+    border-bottom: 1px solid $light-gray-2;
+    border-left: 1px solid $vibrant-blue;
+    padding-top: $padding-base;
+    height: 100%;
+    z-index: $base-backdrop-zindex;
+    display: flex;
+    flex-direction: column;
+    box-shadow: $base-box-shadow;
+    overflow-y: auto;
+
+    > .summary-pane-buttons {
+        color: $dark-gray-4;
+        position: absolute;
+        right: $padding-base;
+        .link {
+            padding: $padding-base;
+            &:hover {
+                text-decoration: none;
+            }
+        }
+    }
+}
+
+.summary-pane-content {
+    display: flex;
+    flex-direction: column;
+    background-color: white;
+    > header {
+        .title-area {
+            display: flex;
+            .item-health {
+                margin-right: $margin-base;
+                font-size: $xlarge-font-size;
+                display: flex;
+                align-items: center;
+            }
+            .item-info {
+                flex: 1;
+                .item-class {
+                    font-weight: bold;
+                    font-size: 80%;
+                }
+            }
+            padding-left: $padding-medium;
+        }
+    }
+    > main {
+        flex: 1;
+        overflow-y: auto;
+        .widget-panel {
+            margin: 0;
+            border: 0;
+            > main {
+                padding: $padding-base;
+
+                .widget-list {
+                    padding: 10px 0px;
+                    border-bottom: 1px solid #DFDFDF;
+                }
+                .app-widget-list {
+                    display: flex;
+                    padding: 10px 0px;
+                    border-bottom: 1px solid #DFDFDF;
+                }
+                .app-text-widget {
+                    color: #9E9EA2;
+                    font-size: 14px;
+                }
+            }
+        }
+
+        .property-list-item {
+            width: 100%;
+        }
+    }
+}

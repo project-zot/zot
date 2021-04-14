@@ -1,0 +1,27 @@
+/** @see sass/vendor/tooltip/balloon.scss (written with CUIK c1.3.4 as the current version in use) */
+/* Status Colors (here from _variable.scss for documentation)
+$status-blue: #64bbe3 !default;
+$status-turq: #14a792 !default;
+$status-green: #6cc04a !default;
+$status-red: $accent-red !default;
+$status-orange: $accent-orange !default;
+$status-yellow: #ffcc00 !default;
+*/
+.form-error {
+  padding: 0 10px;
+  margin: 10px 0px; }
+  .form-error .error-detail {
+    padding: 5px 12px; }
+    .form-error .error-detail .detail-content + .detail-content {
+      margin-top: 5px; }
+    .form-error .error-detail span[class*="icon-"] {
+      margin-right: 10px; }
+      .form-error .error-detail span[class*="icon-"].icon-warning {
+        color: #fbab18; }
+        .form-error .error-detail span[class*="icon-"].icon-warning.minor {
+          color: #ffcc00; }
+      .form-error .error-detail span[class*="icon-"].icon-error {
+        color: #e2231a; }
+
+.cui .form-error.background-white .alert {
+  background-color: #fff; }

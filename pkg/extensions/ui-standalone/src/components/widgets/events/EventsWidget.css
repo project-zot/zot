@@ -1,0 +1,28 @@
+/** @see sass/vendor/tooltip/balloon.scss (written with CUIK c1.3.4 as the current version in use) */
+/* Status Colors (here from _variable.scss for documentation)
+$status-blue: #64bbe3 !default;
+$status-turq: #14a792 !default;
+$status-green: #6cc04a !default;
+$status-red: $accent-red !default;
+$status-orange: $accent-orange !default;
+$status-yellow: #ffcc00 !default;
+*/
+.events-widget {
+  display: flex;
+  text-align: center;
+  justify-content: space-between; }
+  .events-widget .display-flex-column {
+    display: flex;
+    flex-direction: column;
+    align-items: center; }
+  .events-widget .events-critical-value {
+    color: #e2231a; }
+  .events-widget .events-major-value {
+    color: #fbab18; }
+  .events-widget .events-minor-value {
+    color: #ffcc00; }
+  .events-widget .events-other-value {
+    color: #64bbe3; }
+  .events-widget span {
+    font-size: 1.25rem;
+    color: #9e9ea2; }
