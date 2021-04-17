@@ -106,13 +106,8 @@ func (is *ImageStore) Lock() {
 func (is *ImageStore) Unlock() {
 	is.lock.Unlock()
 }
-
-// InitRepo creates an image repository under this store.
-func (is *ImageStore) InitRepo(name string) error {
+func (is *ImageStore) initRepo(name string) error {
 	repoDir := path.Join(is.rootDir, name)
-
-	is.Lock()
-	defer is.Unlock()
 
 	if fi, err := os.Stat(repoDir); err == nil && fi.IsDir() {
 		return nil
@@ -157,6 +152,14 @@ func (is *ImageStore) InitRepo(name string) error {
 	}
 
 	return nil
+}
+
+// InitRepo creates an image repository under this store.
+func (is *ImageStore) InitRepo(name string) error {
+	is.Lock()
+	defer is.Unlock()
+
+	return is.initRepo(name)
 }
 
 // ValidateRepo validates that the repository layout is complaint with the OCI repo layout.
@@ -975,16 +978,54 @@ func (is *ImageStore) CheckBlob(repo string, digest string,
 
 	blobPath := is.BlobPath(repo, d)
 
-	is.RLock()
-	defer is.RUnlock()
+	if is.dedupe && is.cache != nil {
+		is.Lock()
+		defer is.Unlock()
+	} else {
+		is.RLock()
+		defer is.RUnlock()
+	}
 
 	blobInfo, err := os.Stat(blobPath)
-	if err != nil {
-		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
+	if err == nil {
+		return true, blobInfo.Size(), nil
+	}
+
+	is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
+
+	if !is.dedupe || is.cache == nil {
 		return false, -1, errors.ErrBlobNotFound
 	}
 
-	return true, blobInfo.Size(), nil
+	// lookup cache and if found, dedupe here
+	dstRecord, err := is.cache.GetBlob(digest)
+	if err != nil {
+		return false, -1, errors.ErrBlobNotFound
+	}
+
+	dstRecord = path.Join(is.rootDir, dstRecord)
+
+	is.log.Debug().Str("digest", digest).Str("dstRecord", dstRecord).Msg("cache: found dedupe record")
+
+	if err := is.initRepo(repo); err != nil {
+		is.log.Error().Err(err).Str("repo", repo).Msg("unable to initialize an empty repo")
+		return false, -1, err
+	}
+
+	ensureDir(filepath.Dir(blobPath), is.log)
+
+	if err := os.Link(dstRecord, blobPath); err != nil {
+		is.log.Error().Err(err).Str("blobPath", blobPath).Str("link", dstRecord).Msg("dedupe: unable to hard link")
+
+		return false, -1, errors.ErrBlobNotFound
+	}
+
+	blobInfo, err = os.Stat(blobPath)
+	if err == nil {
+		return true, blobInfo.Size(), nil
+	}
+
+	return false, -1, errors.ErrBlobNotFound
 }
 
 // GetBlob returns a stream to read the blob.
