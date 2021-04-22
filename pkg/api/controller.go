@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/anuvu/zot/errors"
 	ext "github.com/anuvu/zot/pkg/extensions"
@@ -15,6 +16,10 @@ import (
 	"github.com/anuvu/zot/pkg/storage"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
+)
+
+const (
+	idleTimeout = 120 * time.Second
 )
 
 type Controller struct {
@@ -60,7 +65,11 @@ func (c *Controller) Run() error {
 	_ = NewRouteHandler(c)
 
 	addr := fmt.Sprintf("%s:%s", c.Config.HTTP.Address, c.Config.HTTP.Port)
-	server := &http.Server{Addr: addr, Handler: c.Router}
+	server := &http.Server{
+		Addr:        addr,
+		Handler:     c.Router,
+		IdleTimeout: idleTimeout,
+	}
 	c.Server = server
 
 	// Create the listener
