@@ -1452,6 +1452,64 @@ func parseBearerAuthHeader(authHeaderRaw string) *authHeader {
 	return &h
 }
 
+func TestInvalidCases(t *testing.T) {
+	Convey("Invalid repo dir", t, func() {
+		config := api.NewConfig()
+		config.HTTP.Port = SecurePort1
+		htpasswdPath := makeHtpasswdFileFromString(getCredString(username, passphrase))
+
+		defer os.Remove(htpasswdPath)
+
+		config.HTTP.Auth = &api.AuthConfig{
+			HTPasswd: api.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+		}
+
+		c := api.NewController(config)
+
+		err := os.Mkdir("oci-repo-test", 0000)
+		if err != nil {
+			panic(err)
+		}
+
+		defer stopServer(c)
+
+		c.Config.Storage.RootDirectory = "oci-repo-test"
+
+		go func() {
+			// this blocks
+			if err := c.Run(); err != nil {
+				return
+			}
+		}()
+
+		// wait till ready
+		for {
+			_, err := resty.R().Get(BaseURL1)
+			if err == nil {
+				break
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		digest := "sha256:8dd57e171a61368ffcfde38045ddb6ed74a32950c271c1da93eaddfb66a77e78"
+		name := "zot-c-test"
+
+		client := resty.New()
+
+		params := make(map[string]string)
+		params["from"] = "zot-cveid-test"
+		params["mount"] = digest
+
+		postResponse, err := client.R().
+			SetBasicAuth(username, passphrase).SetQueryParams(params).
+			Post(fmt.Sprintf("%s/v2/%s/blobs/uploads/", BaseURL1, name))
+		So(err, ShouldBeNil)
+		So(postResponse.StatusCode(), ShouldEqual, 500)
+	})
+}
 func TestHTTPReadOnly(t *testing.T) {
 	Convey("Single cred", t, func() {
 		singleCredtests := []string{}
@@ -1531,7 +1589,7 @@ func TestCrossRepoMount(t *testing.T) {
 		config.HTTP.Port = SecurePort1
 		htpasswdPath := makeHtpasswdFileFromString(getCredString(username, passphrase))
 
-		// defer os.Remove(htpasswdPath)
+		defer os.Remove(htpasswdPath)
 
 		config.HTTP.Auth = &api.AuthConfig{
 			HTPasswd: api.AuthHTPasswd{
@@ -1550,7 +1608,7 @@ func TestCrossRepoMount(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
-		// defer os.RemoveAll(dir)
+		defer os.RemoveAll(dir)
 
 		c.Config.Storage.RootDirectory = dir
 
@@ -1573,30 +1631,171 @@ func TestCrossRepoMount(t *testing.T) {
 
 		params := make(map[string]string)
 
-		params["mount"] = "63a795ca90aa6e7cca60941e826810a4cd0a2e73ea02bf458241df2a5c973e29"
-		params["from"] = "zot-test"
+		digest := "sha256:63a795ca90aa6e7cca60941e826810a4cd0a2e73ea02bf458241df2a5c973e29"
+		name := "zot-cve-test"
+
+		params["mount"] = digest
+		params["from"] = name
 
 		client := resty.New()
+		headResponse, err := client.R().SetBasicAuth(username, passphrase).
+			Head(fmt.Sprintf("%s/v2/%s/blobs/%s", BaseURL1, name, digest))
+		So(err, ShouldBeNil)
+		So(headResponse.StatusCode(), ShouldEqual, 200)
+
+		params["mount"] = "sha:"
+
 		postResponse, err := client.R().
 			SetBasicAuth(username, passphrase).SetQueryParams(params).
 			Post(BaseURL1 + "/v2/zot-c-test/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(postResponse.StatusCode(), ShouldEqual, 202)
 
+		incorrectParams := make(map[string]string)
+		incorrectParams["mount"] = "sha256:63a795ca90aa6e7dda60941e826810a4cd0a2e73ea02bf458241df2a5c973e29"
+		incorrectParams["from"] = "zot-x-test"
+
+		postResponse, err = client.R().
+			SetBasicAuth(username, passphrase).SetQueryParams(incorrectParams).
+			Post(BaseURL1 + "/v2/zot-y-test/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(postResponse.StatusCode(), ShouldEqual, 202)
+
+		// Use correct request
+		params["mount"] = digest
 		postResponse, err = client.R().
 			SetBasicAuth(username, passphrase).SetQueryParams(params).
-			Post(BaseURL1 + "/v2/zot-cve-test/blobs/uploads/")
+			Post(BaseURL1 + "/v2/zot-c-test/blobs/uploads/")
 		So(err, ShouldBeNil)
-		So(postResponse.StatusCode(), ShouldEqual, 500)
+		So(postResponse.StatusCode(), ShouldEqual, 201)
+
+		// Send same request again
+		postResponse, err = client.R().
+			SetBasicAuth(username, passphrase).SetQueryParams(params).
+			Post(BaseURL1 + "/v2/zot-c-test/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(postResponse.StatusCode(), ShouldEqual, 202)
+
+		// Valid requests
+		postResponse, err = client.R().
+			SetBasicAuth(username, passphrase).SetQueryParams(params).
+			Post(BaseURL1 + "/v2/zot-d-test/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(postResponse.StatusCode(), ShouldEqual, 201)
+
+		headResponse, err = client.R().SetBasicAuth(username, passphrase).
+			Head(fmt.Sprintf("%s/v2/zot-cv-test/blobs/%s", BaseURL1, digest))
+		So(err, ShouldBeNil)
+		So(headResponse.StatusCode(), ShouldEqual, 404)
+
+		postResponse, err = client.R().
+			SetBasicAuth(username, passphrase).SetQueryParams(params).Post(BaseURL1 + "/v2/zot-c-test/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(postResponse.StatusCode(), ShouldEqual, 202)
 
 		postResponse, err = client.R().
 			SetBasicAuth(username, passphrase).SetQueryParams(params).
 			Post(BaseURL1 + "/v2/ /blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(postResponse.StatusCode(), ShouldEqual, 404)
+
+		digest = "sha256:63a795ca90aa6e7cca60941e826810a4cd0a2e73ea02bf458241df2a5c973e29"
+
+		blob := "63a795ca90aa6e7cca60941e826810a4cd0a2e73ea02bf458241df2a5c973e29"
+
+		buf, err := ioutil.ReadFile(path.Join(c.Config.Storage.RootDirectory, "zot-cve-test/blobs/sha256/"+blob))
+		if err != nil {
+			panic(err)
+		}
+
+		postResponse, err = client.R().SetHeader("Content-type", "application/octet-stream").
+			SetBasicAuth(username, passphrase).SetQueryParam("digest", "sha256:"+blob).
+			SetBody(buf).Post(BaseURL1 + "/v2/zot-d-test/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(postResponse.StatusCode(), ShouldEqual, 201)
+
+		headResponse, err = client.R().SetBasicAuth(username, passphrase).
+			Head(fmt.Sprintf("%s/v2/zot-cv-test/blobs/%s", BaseURL1, digest))
+		So(err, ShouldBeNil)
+		So(headResponse.StatusCode(), ShouldEqual, 200)
+
+		// Invalid request
+		params = make(map[string]string)
+		params["mount"] = "sha256:"
+		postResponse, err = client.R().
+			SetBasicAuth(username, passphrase).SetQueryParams(params).
+			Post(BaseURL1 + "/v2/zot-mount-test/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(postResponse.StatusCode(), ShouldEqual, 405)
+
+		params = make(map[string]string)
+		params["from"] = "zot-cve-test"
+		postResponse, err = client.R().
+			SetBasicAuth(username, passphrase).SetQueryParams(params).
+			Post(BaseURL1 + "/v2/zot-mount-test/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(postResponse.StatusCode(), ShouldEqual, 405)
+	})
+
+	Convey("Disable dedupe and cache", t, func() {
+		config := api.NewConfig()
+		config.HTTP.Port = SecurePort1
+		htpasswdPath := makeHtpasswdFileFromString(getCredString(username, passphrase))
+
+		defer os.Remove(htpasswdPath)
+
+		config.HTTP.Auth = &api.AuthConfig{
+			HTPasswd: api.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+		}
+
+		c := api.NewController(config)
+
+		//defer stopServer(c)
+
+		dir, err := ioutil.TempDir("", "oci-repo-test")
+		if err != nil {
+			panic(err)
+		}
+
+		err = copyFiles("../../test/data", dir)
+		if err != nil {
+			panic(err)
+		}
+		defer os.RemoveAll(dir)
+
+		c.Config.Storage.RootDirectory = dir
+		c.Config.Storage.Dedupe = false
+		c.Config.Storage.GC = false
+
+		go func() {
+			// this blocks
+			if err := c.Run(); err != nil {
+				return
+			}
+		}()
+
+		// wait till ready
+		for {
+			_, err := resty.R().Get(BaseURL1)
+			if err == nil {
+				break
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		digest := "sha256:7a0437f04f83f084b7ed68ad9c4a4947e12fc4e1b006b38129bac89114ec3621"
+		name := "zot-c-test"
+
+		client := resty.New()
+		headResponse, err := client.R().SetBasicAuth(username, passphrase).
+			Head(fmt.Sprintf("%s/v2/%s/blobs/%s", BaseURL1, name, digest))
+		So(err, ShouldBeNil)
+		So(headResponse.StatusCode(), ShouldEqual, 404)
 	})
 }
-
 func TestParallelRequests(t *testing.T) {
 	testCases := []struct {
 		srcImageName  string
@@ -2061,4 +2260,16 @@ func copyFiles(sourceDir string, destDir string) error {
 	}
 
 	return nil
+}
+
+func stopServer(ctrl *api.Controller) {
+	err := ctrl.Server.Shutdown(context.Background())
+	if err != nil {
+		panic(err)
+	}
+
+	err = os.RemoveAll(ctrl.Config.Storage.RootDirectory)
+	if err != nil {
+		panic(err)
+	}
 }

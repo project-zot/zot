@@ -626,22 +626,43 @@ func (rh *RouteHandler) CreateBlobUpload(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// currently zot does not support cross-repository mounting, following dist-spec and returning 202
 	if mountDigests, ok := r.URL.Query()["mount"]; ok {
 		if len(mountDigests) != 1 {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
-		u, err := rh.c.ImageStore.NewBlobUpload(name)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
+		from, ok := r.URL.Query()["from"]
+		if !ok || len(from) != 1 {
+			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
 
-		w.Header().Set("Location", path.Join(r.URL.String(), u))
-		w.Header().Set(BlobUploadUUID, u)
-		w.WriteHeader(http.StatusAccepted)
+		// zot does not support cross mounting directly and do a workaround by copying blob using hard link
+		err := rh.c.ImageStore.MountBlob(name, from[0], mountDigests[0])
+		if err != nil {
+			u, err := rh.c.ImageStore.NewBlobUpload(name)
+			if err != nil {
+				switch err {
+				case errors.ErrRepoNotFound:
+					WriteJSON(w, http.StatusNotFound, NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
+				default:
+					rh.c.Log.Error().Err(err).Msg("unexpected error")
+					w.WriteHeader(http.StatusInternalServerError)
+				}
+
+				return
+			}
+
+			w.Header().Set("Location", path.Join(r.URL.String(), u))
+			w.Header().Set("Range", "bytes=0-0")
+			w.WriteHeader(http.StatusAccepted)
+
+			return
+		}
+
+		w.Header().Set("Location", fmt.Sprintf("/v2/%s/blobs/%s", name, mountDigests[0]))
+		w.WriteHeader(http.StatusCreated)
 
 		return
 	}
