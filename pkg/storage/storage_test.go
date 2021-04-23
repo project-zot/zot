@@ -518,7 +518,8 @@ func TestNegativeCases(t *testing.T) {
 		err = os.Chmod(dir, 0000) // remove all perms
 		So(err, ShouldBeNil)
 		if os.Geteuid() != 0 {
-			So(func() { _ = il.InitRepo("test") }, ShouldPanic)
+			err = il.InitRepo("test")
+			So(err, ShouldNotBeNil)
 		}
 	})
 
