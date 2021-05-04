@@ -1,3 +1,0 @@
-set race "on"|//...:%go_test
-fix unusedLoads|//...:__pkg__
-set timeout short|//...:%go_test
