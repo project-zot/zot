@@ -34,6 +34,19 @@ func NewController(config *Config) *Controller {
 	return &Controller{Config: config, Log: log.NewLogger(config.Log.Level, config.Log.Output)}
 }
 
+func DefaultHeaders() mux.MiddlewareFunc {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// CORS
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+
+			// handle the request
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 func (c *Controller) Run() error {
 	// validate configuration
 	if err := c.Config.Validate(c.Log); err != nil {
@@ -45,8 +58,10 @@ func (c *Controller) Run() error {
 	c.Log.Info().Interface("params", c.Config.Sanitize()).Msg("configuration settings")
 
 	engine := mux.NewRouter()
-	engine.Use(log.SessionLogger(c.Log), handlers.RecoveryHandler(handlers.RecoveryLogger(c.Log),
-		handlers.PrintRecoveryStack(false)))
+	engine.Use(DefaultHeaders(),
+		log.SessionLogger(c.Log),
+		handlers.RecoveryHandler(handlers.RecoveryLogger(c.Log),
+			handlers.PrintRecoveryStack(false)))
 
 	c.ImageStore = storage.NewImageStore(c.Config.Storage.RootDirectory, c.Config.Storage.GC,
 		c.Config.Storage.Dedupe, c.Log)
