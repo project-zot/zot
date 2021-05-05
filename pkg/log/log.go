@@ -1,8 +1,10 @@
 package log
 
 import (
+	"encoding/base64"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -65,6 +67,7 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 	return n, err
 }
 
+// SessionLogger logs session details
 func SessionLogger(log Logger) mux.MiddlewareFunc {
 	l := log.With().Str("module", "http").Logger()
 
@@ -90,8 +93,22 @@ func SessionLogger(log Logger) mux.MiddlewareFunc {
 			clientIP := r.RemoteAddr
 			method := r.Method
 			headers := map[string][]string{}
+			username := ""
+			log := l.Info()
 			for key, value := range r.Header {
 				if key == "Authorization" { // anonymize from logs
+					s := strings.SplitN(value[0], " ", 2)
+					if len(s) == 2 && strings.EqualFold(s[0], "basic") {
+						b, err := base64.StdEncoding.DecodeString(s[1])
+						if err == nil {
+							pair := strings.SplitN(string(b), ":", 2)
+							// nolint:gomnd
+							if len(pair) == 2 {
+								username = pair[0]
+								log = log.Str("username", username)
+							}
+						}
+					}
 					value = []string{"******"}
 				}
 				headers[key] = value
@@ -102,8 +119,7 @@ func SessionLogger(log Logger) mux.MiddlewareFunc {
 				path = path + "?" + raw
 			}
 
-			l.Info().
-				Str("clientIP", clientIP).
+			log.Str("clientIP", clientIP).
 				Str("method", method).
 				Str("path", path).
 				Int("statusCode", statusCode).
