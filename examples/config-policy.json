@@ -1,0 +1,54 @@
+{
+  "version": "0.1.0-dev",
+  "storage": {
+    "rootDirectory": "/tmp/zot"
+  },
+  "http": {
+    "address": "127.0.0.1",
+    "port": "8080",
+    "realm": "zot",
+    "auth": {
+      "htpasswd": {
+        "path": "test/data/htpasswd"
+      },
+      "failDelay": 1
+    },
+    "accessControl": {
+      "repos1/repo": {
+        "policies": [
+          {
+            "users": ["alice", "bob"],
+            "actions": ["create", "read", "update", "delete"]
+          },
+          {
+            "users": ["mallory"],
+            "actions": ["create", "read"]
+          }
+        ],
+        "defaultPolicy": ["read"]
+      },
+      "repos2/repo": {
+        "policies": [
+          {
+            "users": ["bob"],
+            "actions": ["read", "create"]
+          },
+          {
+            "users": ["mallory"],
+            "actions": ["create", "read"]
+          }
+        ],
+        "defaultPolicy": ["read"]
+      },
+      "adminPolicy": {
+          "users": ["admin"],
+          "actions": ["read", "create", "update", "delete"]
+      }
+    }
+  },
+  "log": {
+    "level": "debug",
+    "output": "/tmp/zot.log"
+  }
+}
+

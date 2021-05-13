@@ -4,6 +4,7 @@ import (
 	"github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/api"
 	"github.com/anuvu/zot/pkg/storage"
+	"github.com/fsnotify/fsnotify"
 	"github.com/mitchellh/mapstructure"
 	distspec "github.com/opencontainers/distribution-spec/specs-go"
 	"github.com/rs/zerolog/log"
@@ -31,25 +32,62 @@ func NewRootCmd() *cobra.Command {
 		Long:    "`serve` stores and distributes OCI images",
 		Run: func(cmd *cobra.Command, args []string) {
 			if len(args) > 0 {
-				viper.SetConfigFile(args[0])
-				if err := viper.ReadInConfig(); err != nil {
-					panic(err)
-				}
-
-				md := &mapstructure.Metadata{}
-				if err := viper.Unmarshal(&config, metadataConfig(md)); err != nil {
-					panic(err)
-				}
-
-				// if haven't found a single key or there were unused keys, report it as
-				// a error
-				if len(md.Keys) == 0 || len(md.Unused) > 0 {
-					panic(errors.ErrBadConfig)
-				}
+				LoadConfiguration(config, args[0])
 			}
 			c := api.NewController(config)
+
+			// creates a new file watcher
+			watcher, err := fsnotify.NewWatcher()
+			if err != nil {
+				panic(err)
+			}
+			defer watcher.Close()
+
+			done := make(chan bool)
+			// run watcher
+			go func() {
+				go func() {
+					for {
+						select {
+						// watch for events
+						case event := <-watcher.Events:
+							if event.Op == fsnotify.Write {
+								log.Info().Msg("Config file changed, trying to reload accessControl config")
+								newConfig := api.NewConfig()
+								LoadConfiguration(newConfig, args[0])
+								c.Config.AccessControl = newConfig.AccessControl
+							}
+						// watch for errors
+						case err := <-watcher.Errors:
+							log.Error().Err(err).Msgf("FsNotify error while watching config %s", args[0])
+							panic(err)
+						}
+					}
+				}()
+
+				if err := watcher.Add(args[0]); err != nil {
+					log.Error().Err(err).Msgf("Error adding config file %s to FsNotify watcher", args[0])
+					panic(err)
+				}
+				<-done
+			}()
+
 			if err := c.Run(); err != nil {
 				panic(err)
+			}
+		},
+	}
+
+	verifyCmd := &cobra.Command{
+		Use:     "verify <config>",
+		Aliases: []string{"verify"},
+		Short:   "`verify` validates a zot config file",
+		Long:    "`verify` validates a zot config file",
+		Run: func(cmd *cobra.Command, args []string) {
+			if len(args) > 0 {
+				config := api.NewConfig()
+				LoadConfiguration(config, args[0])
+				log.Info().Msgf("Config file %s is valid", args[0])
 			}
 		},
 	}
@@ -98,10 +136,37 @@ func NewRootCmd() *cobra.Command {
 
 	rootCmd.AddCommand(serveCmd)
 	rootCmd.AddCommand(gcCmd)
+	rootCmd.AddCommand(verifyCmd)
 
 	enableCli(rootCmd)
 
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "show the version and exit")
 
 	return rootCmd
+}
+
+func LoadConfiguration(config *api.Config, configPath string) {
+	viper.SetConfigFile(configPath)
+
+	if err := viper.ReadInConfig(); err != nil {
+		log.Error().Err(err).Msg("Error while reading configuration")
+		panic(err)
+	}
+
+	md := &mapstructure.Metadata{}
+	if err := viper.Unmarshal(&config, metadataConfig(md)); err != nil {
+		log.Error().Err(err).Msg("Error while unmarshalling new config")
+		panic(err)
+	}
+
+	if len(md.Keys) == 0 || len(md.Unused) > 0 {
+		log.Error().Err(errors.ErrBadConfig).Msg("Bad configuration, retry writing it")
+		panic(errors.ErrBadConfig)
+	}
+
+	err := config.LoadAccessControlConfig()
+	if err != nil {
+		log.Error().Err(errors.ErrBadConfig).Msg("Unable to unmarshal http.accessControl.key.policies")
+		panic(err)
+	}
 }

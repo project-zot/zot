@@ -1,11 +1,14 @@
 package api
 
 import (
+	"fmt"
+
 	"github.com/anuvu/zot/errors"
 	ext "github.com/anuvu/zot/pkg/extensions"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/getlantern/deepcopy"
 	distspec "github.com/opencontainers/distribution-spec/specs-go"
+	"github.com/spf13/viper"
 )
 
 var (
@@ -43,13 +46,14 @@ type BearerConfig struct {
 }
 
 type HTTPConfig struct {
-	Address         string
-	Port            string
-	TLS             *TLSConfig
-	Auth            *AuthConfig
-	Realm           string
-	AllowReadAccess bool `mapstructure:",omitempty"`
-	ReadOnly        bool `mapstructure:",omitempty"`
+	Address          string
+	Port             string
+	TLS              *TLSConfig
+	Auth             *AuthConfig
+	RawAccessControl map[string]interface{} `mapstructure:"accessControl,omitempty"`
+	Realm            string
+	AllowReadAccess  bool `mapstructure:",omitempty"`
+	ReadOnly         bool `mapstructure:",omitempty"`
 }
 
 type LDAPConfig struct {
@@ -80,13 +84,14 @@ type GlobalStorageConfig struct {
 }
 
 type Config struct {
-	Version    string
-	Commit     string
-	BinaryType string
-	Storage    GlobalStorageConfig
-	HTTP       HTTPConfig
-	Log        *LogConfig
-	Extensions *ext.ExtensionConfig
+	Version       string
+	Commit        string
+	BinaryType    string
+	AccessControl *AccessControlConfig
+	Storage       GlobalStorageConfig
+	HTTP          HTTPConfig
+	Log           *LogConfig
+	Extensions    *ext.ExtensionConfig
 }
 
 func NewConfig() *Config {
@@ -130,6 +135,42 @@ func (c *Config) Validate(log log.Logger) error {
 			log.Error().Str("userAttribute", l.UserAttribute).Msg("invalid LDAP configuration")
 			return errors.ErrLDAPConfig
 		}
+	}
+
+	return nil
+}
+
+// LoadAccessControlConfig populates config.AccessControl struct with values from config.
+func (c *Config) LoadAccessControlConfig() error {
+	if c.HTTP.RawAccessControl == nil {
+		return nil
+	}
+
+	c.AccessControl = &AccessControlConfig{}
+	c.AccessControl.Repositories = make(map[string]PolicyGroup)
+
+	for k := range c.HTTP.RawAccessControl {
+		var policies []Policy
+
+		var policyGroup PolicyGroup
+
+		if k == "adminpolicy" {
+			adminPolicy := viper.GetStringMapStringSlice("http.accessControl.adminPolicy")
+			c.AccessControl.AdminPolicy.Actions = adminPolicy["actions"]
+			c.AccessControl.AdminPolicy.Users = adminPolicy["users"]
+
+			continue
+		}
+
+		err := viper.UnmarshalKey(fmt.Sprintf("http.accessControl.%s.policies", k), &policies)
+		if err != nil {
+			return err
+		}
+
+		defaultPolicy := viper.GetStringSlice(fmt.Sprintf("http.accessControl.%s.defaultPolicy", k))
+		policyGroup.Policies = policies
+		policyGroup.DefaultPolicy = defaultPolicy
+		c.AccessControl.Repositories[k] = policyGroup
 	}
 
 	return nil
