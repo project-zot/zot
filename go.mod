@@ -11,6 +11,7 @@ require (
 	github.com/briandowns/spinner v1.12.0
 	github.com/chartmuseum/auth v0.4.5
 	github.com/dustin/go-humanize v1.0.0
+	github.com/fsnotify/fsnotify v1.4.9
 	github.com/getlantern/deepcopy v0.0.0-20160317154340-7f45deb8130a
 	github.com/go-ldap/ldap/v3 v3.3.0
 	github.com/gofrs/uuid v4.0.0+incompatible
@@ -40,7 +41,7 @@ require (
 	github.com/swaggo/swag v1.7.0
 	github.com/vektah/gqlparser/v2 v2.2.0
 	go.etcd.io/bbolt v1.3.5
-	golang.org/x/crypto v0.0.0-20210513164829-c07d793c2f9a
+	golang.org/x/crypto v0.0.0-20210322153248-0c34fe9e7dc2
 	gopkg.in/resty.v1 v1.12.0
 	gopkg.in/yaml.v2 v2.4.0
 )

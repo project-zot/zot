@@ -23,11 +23,7 @@ const (
 )
 
 func AuthHandler(c *Controller) mux.MiddlewareFunc {
-	if c.Config.HTTP.Auth != nil &&
-		c.Config.HTTP.Auth.Bearer != nil &&
-		c.Config.HTTP.Auth.Bearer.Cert != "" &&
-		c.Config.HTTP.Auth.Bearer.Realm != "" &&
-		c.Config.HTTP.Auth.Bearer.Service != "" {
+	if isBearerAuthEnabled(c.Config) {
 		return bearerAuthHandler(c)
 	}
 
