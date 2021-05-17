@@ -1,5 +1,70 @@
-# Getting Started
+# Development Environment Setup
 
+## Debian Based Linux distributions
+
+Make sure you have the following tools installed:
+*   make
+    ```bash
+    sudo apt install make
+    ```
+
+* [go](https://golang.org/)
+    First of all, [set up](https://golang.org/dl/) your GO environment.
+    Ensure your GOPATH and PATH have been configured in accordance with the [Go environment instructions](https://medium.com/@saumya.ranjan/how-to-install-go-language-and-set-environment-variables-properly-573222f9ae91).<br/><br/>
+
+* [skopeo](https://github.com/containers/skopeo) for inspecting a repository on a Docker registry or fetching images layers.
+
+    1. For Ubuntu 20.10 and newer, you can use the following alternative:
+        ```bash
+        sudo apt-get -y update
+        sudo apt-get -y install skopeo
+        ```
+    2. Otherwise, read on for [building and installing](https://github.com/containers/skopeo/blob/master/install.md#building-from-source) it from source.
+
+## Microsoft Windows
+In this case, you need Windows Subsystem for Linux 2 (aka WSL 2).
+
+To install WSL 2 on Windows 10, you need the following:
+* Windows 10 2019 or a newer version
+* A computer with [Hyper-V Virtualization](https://petri.com/how-to-install-hyper-v-on-windows-10) support
+
+The process of installing WSL 2 on Windows:
+1. Enable WSL
+    Open the PowerShell as an Administrator and run the command below
+    ```bash
+    dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart
+    ```
+<br/>
+
+2. Enable "Virtual Machine Platform"
+    Open PowerShell as Administrator and run:
+    ```bash
+    dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart
+    ```  
+    <br/>
+    To ensure all of the relevant bits and pieces fall neatly in to place you should restart your system at this point or you may find that things don’t work as intended.
+    <br/><br/>
+
+
+3. Set WSL 2 as default
+    ```bash
+    wsl --set-default-version 2
+    ```
+    <br/>
+
+4. Install a distro
+    To install Ubuntu on Windows 10, open the Microsoft Store app and get [Ubunto 20.04 LTS](https://www.microsoft.com/en-gb/p/ubuntu-2004-lts/9n6svws3rx71?activetab=pivot:overviewtab). Lauch the app, set your credentials (username and password) and your Ubuntu is ready to use.
+    <br/>
+
+5. Convert Ubuntu to WSL2
+    ```bash
+    wsl --set-version Ubuntu-20.04 2
+    ```
+    <br/>
+
+6. Once installed, follow the [instructions for Debian distros](https://github.com/anuvu/zot/blob/master/CONTRIBUTING.md##debian-based-linux-distributions).
+
+# Getting Started
 ## Fork Repository
 
 [Fork](https://github.com/anuvu/zot) the zot repository on GitHub to your personal account.
