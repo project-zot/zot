@@ -830,13 +830,6 @@ func (rh *RouteHandler) PatchBlobUpload(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if contentType := r.Header.Get("Content-Type"); contentType != BinaryMediaType {
-		rh.c.Log.Warn().Str("actual", contentType).Str("expected", BinaryMediaType).Msg("invalid media type")
-		w.WriteHeader(http.StatusUnsupportedMediaType)
-
-		return
-	}
-
 	var err error
 
 	var clen int64
