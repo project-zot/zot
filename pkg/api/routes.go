@@ -85,6 +85,8 @@ func (rh *RouteHandler) SetupRoutes() {
 			rh.ListRepositories).Methods("GET")
 		g.HandleFunc("/",
 			rh.CheckVersionSupport).Methods("GET")
+		g.HandleFunc("/healthz",
+			rh.CheckHealth).Methods("GET")
 	}
 	// swagger docs "/swagger/v2/index.html"
 	rh.c.Router.PathPrefix("/swagger/v2/").Methods("GET").Handler(httpSwagger.WrapHandler)
@@ -95,6 +97,17 @@ func (rh *RouteHandler) SetupRoutes() {
 }
 
 // Method handlers
+
+// CheckHealth godoc
+// @Summary Check Health API to check server health
+// @Description Check if zot server is up or not
+// @Router /v2/ [get]
+// @Accept json
+// @Accept json
+// @Success 200 {string} string "ok".
+func (rh *RouteHandler) CheckHealth(w http.ResponseWriter, r *http.Request) {
+	WriteData(w, http.StatusOK, "application/json", []byte{})
+}
 
 // CheckVersionSupport godoc
 // @Summary Check API support

@@ -2130,6 +2130,72 @@ func TestParallelRequests(t *testing.T) {
 	}
 }
 
+func TestHealthAPI(t *testing.T) {
+	Convey("Verify healthz api", t, func() {
+		config := api.NewConfig()
+		config.HTTP.Port = SecurePort1
+		htpasswdPath := makeHtpasswdFile()
+		defer os.Remove(htpasswdPath)
+
+		config.HTTP.Auth = &api.AuthConfig{
+			HTPasswd: api.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+		}
+		c := api.NewController(config)
+		dir, err := ioutil.TempDir("", "oci-repo-test")
+		if err != nil {
+			panic(err)
+		}
+		defer os.RemoveAll(dir)
+		c.Config.Storage.RootDirectory = dir
+		go func() {
+			// this blocks
+			if err := c.Run(); err != nil {
+				return
+			}
+		}()
+
+		// wait till ready
+		for {
+			_, err := resty.R().Get(BaseURL1)
+			if err == nil {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		// without creds, should get access error
+		resp, err := resty.R().Get(BaseURL1 + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 401)
+		var e api.Error
+		err = json.Unmarshal(resp.Body(), &e)
+		So(err, ShouldBeNil)
+
+		resp, err = resty.R().Get(BaseURL1 + "/v2/healthz")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 401)
+		err = json.Unmarshal(resp.Body(), &e)
+		So(err, ShouldBeNil)
+
+		// with creds, should get expected status code
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 404)
+
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/v2/")
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/v2/healthz")
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+	})
+}
+
 func getAllBlobs(imagePath string) []string {
 	blobList := make([]string, 0)
 
