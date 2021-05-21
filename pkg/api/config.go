@@ -1,14 +1,32 @@
 package api
 
 import (
+	"fmt"
+
 	"github.com/anuvu/zot/errors"
 	ext "github.com/anuvu/zot/pkg/extensions"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/getlantern/deepcopy"
-	dspec "github.com/opencontainers/distribution-spec"
 )
 
 // Global vars...
+
+// dist-spec version
+const (
+	// VersionMajor is for an API incompatible changes
+	DistSpecVersionMajor = 1
+	// VersionMinor is for functionality in a backwards-compatible manner
+	DistSpecVersionMinor = 0
+	// VersionPatch is for backwards-compatible bug fixes
+	DistSpecVersionPatch = 0
+
+	// VersionDev indicates development branch. Releases will be empty string.
+	DistSpecVersionDev = ""
+)
+
+// Version is the specification version that the package types support.
+var DistSpecVersion = fmt.Sprintf("%d.%d.%d%s", DistSpecVersionMajor, DistSpecVersionMinor, DistSpecVersionPatch, DistSpecVersionDev)
+
 var (
 	Commit     string // nolint: gochecknoglobals
 	BinaryType string // nolint: gochecknoglobals
@@ -92,7 +110,7 @@ type Config struct {
 
 func NewConfig() *Config {
 	return &Config{
-		Version:    dspec.Version,
+		Version:    DistSpecVersion,
 		Commit:     Commit,
 		BinaryType: BinaryType,
 		Storage:    GlobalStorageConfig{GC: true, Dedupe: true},

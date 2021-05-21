@@ -33,7 +33,7 @@ covhtml:
 
 .PHONY: check
 check: ./golangcilint.yaml
-	golangci-lint --version || curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.26.0
+	golangci-lint --version || curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.41.1
 	golangci-lint --config ./golangcilint.yaml run --enable-all --build-tags extended ./cmd/... ./pkg/...
 
 docs/docs.go: 
