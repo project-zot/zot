@@ -5,10 +5,9 @@ import (
 	ext "github.com/anuvu/zot/pkg/extensions"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/getlantern/deepcopy"
-	dspec "github.com/opencontainers/distribution-spec"
+	distspec "github.com/opencontainers/distribution-spec/specs-go"
 )
 
-// Global vars...
 var (
 	Commit     string // nolint: gochecknoglobals
 	BinaryType string // nolint: gochecknoglobals
@@ -92,7 +91,7 @@ type Config struct {
 
 func NewConfig() *Config {
 	return &Config{
-		Version:    dspec.Version,
+		Version:    distspec.Version,
 		Commit:     Commit,
 		BinaryType: BinaryType,
 		Storage:    GlobalStorageConfig{GC: true, Dedupe: true},

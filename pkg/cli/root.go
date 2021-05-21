@@ -5,7 +5,7 @@ import (
 	"github.com/anuvu/zot/pkg/api"
 	"github.com/anuvu/zot/pkg/storage"
 	"github.com/mitchellh/mapstructure"
-	dspec "github.com/opencontainers/distribution-spec"
+	distspec "github.com/opencontainers/distribution-spec/specs-go"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -88,10 +88,11 @@ func NewRootCmd() *cobra.Command {
 		Long:  "`zot`",
 		Run: func(cmd *cobra.Command, args []string) {
 			if showVersion {
-				log.Info().Str("distribution-spec", dspec.Version).Str("commit", api.Commit).
+				log.Info().Str("distribution-spec", distspec.Version).Str("commit", api.Commit).
 					Str("binary-type", api.BinaryType).Msg("version")
 			}
 			_ = cmd.Usage()
+			cmd.SilenceErrors = false
 		},
 	}
 
