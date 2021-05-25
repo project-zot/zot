@@ -70,6 +70,7 @@ type LDAPConfig struct {
 type LogConfig struct {
 	Level  string
 	Output string
+	Audit  string
 }
 
 type GlobalStorageConfig struct {

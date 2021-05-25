@@ -28,3 +28,5 @@ http:
 log:
   level: debug
   output: /tmp/zot.log
+  audit: /tmp/zot-audit.log
+

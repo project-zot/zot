@@ -1,8 +1,10 @@
 package log
 
 import (
+	"encoding/base64"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -43,6 +45,28 @@ func NewLogger(level string, output string) Logger {
 	return Logger{Logger: log.With().Caller().Timestamp().Logger()}
 }
 
+func NewAuditLogger(level string, audit string) *Logger {
+	zerolog.TimeFieldFormat = time.RFC3339Nano
+	lvl, err := zerolog.ParseLevel(level)
+
+	if err != nil {
+		panic(err)
+	}
+
+	zerolog.SetGlobalLevel(lvl)
+
+	var auditLog zerolog.Logger
+
+	auditFile, err := os.OpenFile(audit, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+	if err != nil {
+		panic(err)
+	}
+
+	auditLog = zerolog.New(auditFile)
+
+	return &Logger{Logger: auditLog.With().Timestamp().Logger()}
+}
+
 type statusWriter struct {
 	http.ResponseWriter
 	status int
@@ -65,6 +89,7 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 	return n, err
 }
 
+// SessionLogger logs session details.
 func SessionLogger(log Logger) mux.MiddlewareFunc {
 	l := log.With().Str("module", "http").Logger()
 
@@ -90,8 +115,22 @@ func SessionLogger(log Logger) mux.MiddlewareFunc {
 			clientIP := r.RemoteAddr
 			method := r.Method
 			headers := map[string][]string{}
+			username := ""
+			log := l.Info()
 			for key, value := range r.Header {
 				if key == "Authorization" { // anonymize from logs
+					s := strings.SplitN(value[0], " ", 2)
+					if len(s) == 2 && strings.EqualFold(s[0], "basic") {
+						b, err := base64.StdEncoding.DecodeString(s[1])
+						if err == nil {
+							pair := strings.SplitN(string(b), ":", 2)
+							// nolint:gomnd
+							if len(pair) == 2 {
+								username = pair[0]
+								log = log.Str("username", username)
+							}
+						}
+					}
 					value = []string{"******"}
 				}
 				headers[key] = value
@@ -102,8 +141,7 @@ func SessionLogger(log Logger) mux.MiddlewareFunc {
 				path = path + "?" + raw
 			}
 
-			l.Info().
-				Str("clientIP", clientIP).
+			log.Str("clientIP", clientIP).
 				Str("method", method).
 				Str("path", path).
 				Int("statusCode", statusCode).
@@ -111,6 +149,57 @@ func SessionLogger(log Logger) mux.MiddlewareFunc {
 				Int("bodySize", bodySize).
 				Interface("headers", headers).
 				Msg("HTTP API")
+		})
+	}
+}
+
+func SessionAuditLogger(audit *Logger) mux.MiddlewareFunc {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			path := r.URL.Path
+			raw := r.URL.RawQuery
+
+			sw := statusWriter{ResponseWriter: w}
+
+			// Process request
+			next.ServeHTTP(&sw, r)
+
+			clientIP := r.RemoteAddr
+			method := r.Method
+			username := ""
+
+			for key, value := range r.Header {
+				if key == "Authorization" { // anonymize from logs
+					s := strings.SplitN(value[0], " ", 2)
+					if len(s) == 2 && strings.EqualFold(s[0], "basic") {
+						b, err := base64.StdEncoding.DecodeString(s[1])
+						if err == nil {
+							pair := strings.SplitN(string(b), ":", 2)
+							// nolint:gomnd
+							if len(pair) == 2 {
+								username = pair[0]
+							}
+						}
+					}
+				}
+			}
+
+			statusCode := sw.status
+			if raw != "" {
+				path = path + "?" + raw
+			}
+
+			if (method == http.MethodPost || method == http.MethodPut ||
+				method == http.MethodPatch || method == http.MethodDelete) &&
+				(statusCode == http.StatusOK || statusCode == http.StatusCreated || statusCode == http.StatusAccepted) {
+				audit.Info().
+					Str("clientIP", clientIP).
+					Str("subject", username).
+					Str("action", method).
+					Str("object", path).
+					Int("status", statusCode).
+					Msg("HTTP API Audit")
+			}
 		})
 	}
 }
