@@ -32,6 +32,7 @@
   },
   "log":{
     "level":"debug",
-    "output":"/tmp/zot.log"
+    "output":"/tmp/zot.log",
+    "audit": "/tmp/zot-audit.log"
   }
 }

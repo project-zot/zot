@@ -26,11 +26,24 @@ type Controller struct {
 	Router          *mux.Router
 	StoreController storage.StoreController
 	Log             log.Logger
+	Audit           *log.Logger
 	Server          *http.Server
 }
 
 func NewController(config *Config) *Controller {
-	return &Controller{Config: config, Log: log.NewLogger(config.Log.Level, config.Log.Output)}
+	var controller Controller
+
+	logger := log.NewLogger(config.Log.Level, config.Log.Output)
+
+	controller.Config = config
+	controller.Log = logger
+
+	if config.Log.Audit != "" {
+		audit := log.NewAuditLogger(config.Log.Level, config.Log.Audit)
+		controller.Audit = audit
+	}
+
+	return &controller
 }
 
 func DefaultHeaders() mux.MiddlewareFunc {
@@ -61,6 +74,10 @@ func (c *Controller) Run() error {
 		log.SessionLogger(c.Log),
 		handlers.RecoveryHandler(handlers.RecoveryLogger(c.Log),
 			handlers.PrintRecoveryStack(false)))
+
+	if c.Audit != nil {
+		engine.Use(log.SessionAuditLogger(c.Audit))
+	}
 
 	c.Router = engine
 	c.Router.UseEncodedPath()
