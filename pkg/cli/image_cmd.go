@@ -109,6 +109,8 @@ func parseBooleanConfig(configPath, configName, configParam string) (bool, error
 func setupImageFlags(imageCmd *cobra.Command, searchImageParams map[string]*string,
 	servURL, user, outputFormat *string) {
 	searchImageParams["imageName"] = imageCmd.Flags().StringP("name", "n", "", "List image details by name")
+	searchImageParams["digest"] = imageCmd.Flags().StringP("digest", "d", "",
+		"List images containing a specific manifest, config, or layer digest")
 
 	imageCmd.Flags().StringVar(servURL, "url", "", "Specify zot server URL if config-name is not mentioned")
 	imageCmd.Flags().StringVarP(user, "user", "u", "", `User Credentials of zot server in "username:password" format`)

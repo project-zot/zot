@@ -24,6 +24,11 @@ type ImgResultForCve struct {
 	Tags []*string `json:"Tags"`
 }
 
+type ImgResultForDigest struct {
+	Name *string   `json:"Name"`
+	Tags []*string `json:"Tags"`
+}
+
 type ImgResultForFixedCve struct {
 	Tags []*TagInfo `json:"Tags"`
 }

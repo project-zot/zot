@@ -1,23 +1,19 @@
 package cveinfo
 
 import (
-	"encoding/json"
 	"fmt"
-	"io/ioutil"
-	"os"
 	"path"
 	"sort"
 	"strings"
 
 	"github.com/anuvu/zot/errors"
+	"github.com/anuvu/zot/pkg/extensions/search/common"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
 	integration "github.com/aquasecurity/trivy/integration"
 	config "github.com/aquasecurity/trivy/integration/config"
 	"github.com/aquasecurity/trivy/pkg/report"
-	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/types"
-	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
@@ -48,6 +44,7 @@ func ScanImage(config *config.Config) (report.Results, error) {
 
 func GetCVEInfo(storeController storage.StoreController, log log.Logger) (*CveInfo, error) {
 	cveController := CveTrivyController{}
+	layoutUtils := common.NewOciLayoutUtils(storeController, log)
 
 	subCveConfig := make(map[string]*config.Config)
 
@@ -79,7 +76,8 @@ func GetCVEInfo(storeController storage.StoreController, log log.Logger) (*CveIn
 
 	cveController.SubCveConfig = subCveConfig
 
-	return &CveInfo{Log: log, CveTrivyController: cveController, StoreController: storeController}, nil
+	return &CveInfo{Log: log, CveTrivyController: cveController, StoreController: storeController,
+		LayoutUtils: layoutUtils}, nil
 }
 
 func getRoutePrefix(name string) string {
@@ -125,15 +123,15 @@ func (cveinfo CveInfo) GetTrivyConfig(image string) *config.Config {
 }
 
 func (cveinfo CveInfo) IsValidImageFormat(imagePath string) (bool, error) {
-	imageDir, inputTag := getImageDirAndTag(imagePath)
+	imageDir, inputTag := common.GetImageDirAndTag(imagePath)
 
-	if !dirExists(imageDir) {
+	if !common.DirExists(imageDir) {
 		cveinfo.Log.Error().Msg("image directory doesn't exist")
 
 		return false, errors.ErrRepoNotFound
 	}
 
-	manifests, err := cveinfo.getImageManifests(imageDir)
+	manifests, err := cveinfo.LayoutUtils.GetImageManifests(imageDir)
 
 	if err != nil {
 		return false, err
@@ -146,7 +144,7 @@ func (cveinfo CveInfo) IsValidImageFormat(imagePath string) (bool, error) {
 			continue
 		}
 
-		blobManifest, err := cveinfo.getImageBlobManifest(imageDir, m.Digest)
+		blobManifest, err := cveinfo.LayoutUtils.GetImageBlobManifest(imageDir, m.Digest)
 		if err != nil {
 			return false, err
 		}
@@ -166,53 +164,6 @@ func (cveinfo CveInfo) IsValidImageFormat(imagePath string) (bool, error) {
 	}
 
 	return false, nil
-}
-
-func dirExists(d string) bool {
-	fi, err := os.Stat(d)
-	if err != nil && os.IsNotExist(err) {
-		return false
-	}
-
-	return fi.IsDir()
-}
-
-func getImageDirAndTag(imageName string) (string, string) {
-	var imageDir string
-
-	var imageTag string
-
-	if strings.Contains(imageName, ":") {
-		splitImageName := strings.Split(imageName, ":")
-		imageDir = splitImageName[0]
-		imageTag = splitImageName[1]
-	} else {
-		imageDir = imageName
-	}
-
-	return imageDir, imageTag
-}
-
-// Below method will return image path including root dir, root dir is determined by splitting.
-func (cveinfo CveInfo) GetImageRepoPath(image string) string {
-	var rootDir string
-
-	prefixName := getRoutePrefix(image)
-
-	subStore := cveinfo.StoreController.SubStore
-
-	if subStore != nil {
-		imgStore, ok := cveinfo.StoreController.SubStore[prefixName]
-		if ok {
-			rootDir = imgStore.RootDir()
-		} else {
-			rootDir = cveinfo.StoreController.DefaultStore.RootDir()
-		}
-	} else {
-		rootDir = cveinfo.StoreController.DefaultStore.RootDir()
-	}
-
-	return path.Join(rootDir, image)
 }
 
 func (cveinfo CveInfo) GetImageListForCVE(repo string, id string, imgStore *storage.ImageStore,
@@ -266,12 +217,12 @@ func (cveinfo CveInfo) GetImageListForCVE(repo string, id string, imgStore *stor
 func (cveinfo CveInfo) GetImageTagsWithTimestamp(repo string) ([]TagInfo, error) {
 	tagsInfo := make([]TagInfo, 0)
 
-	imagePath := cveinfo.GetImageRepoPath(repo)
-	if !dirExists(imagePath) {
+	imagePath := cveinfo.LayoutUtils.GetImageRepoPath(repo)
+	if !common.DirExists(imagePath) {
 		return nil, errors.ErrRepoNotFound
 	}
 
-	manifests, err := cveinfo.getImageManifests(imagePath)
+	manifests, err := cveinfo.LayoutUtils.GetImageManifests(imagePath)
 
 	if err != nil {
 		cveinfo.Log.Error().Err(err).Msg("unable to read image manifests")
@@ -284,7 +235,7 @@ func (cveinfo CveInfo) GetImageTagsWithTimestamp(repo string) ([]TagInfo, error)
 
 		v, ok := manifest.Annotations[ispec.AnnotationRefName]
 		if ok {
-			imageBlobManifest, err := cveinfo.getImageBlobManifest(imagePath, digest)
+			imageBlobManifest, err := cveinfo.LayoutUtils.GetImageBlobManifest(imagePath, digest)
 
 			if err != nil {
 				cveinfo.Log.Error().Err(err).Msg("unable to read image blob manifest")
@@ -292,7 +243,7 @@ func (cveinfo CveInfo) GetImageTagsWithTimestamp(repo string) ([]TagInfo, error)
 				return tagsInfo, err
 			}
 
-			imageInfo, err := cveinfo.getImageInfo(imagePath, imageBlobManifest.Config.Digest)
+			imageInfo, err := cveinfo.LayoutUtils.GetImageInfo(imagePath, imageBlobManifest.Config.Digest)
 			if err != nil {
 				cveinfo.Log.Error().Err(err).Msg("unable to read image info")
 
@@ -330,67 +281,4 @@ func GetFixedTags(allTags []TagInfo, infectedTags []TagInfo) []TagInfo {
 	}
 
 	return fixedTags
-}
-
-func (cveinfo CveInfo) getImageManifests(imagePath string) ([]ispec.Descriptor, error) {
-	buf, err := ioutil.ReadFile(path.Join(imagePath, "index.json"))
-
-	if err != nil {
-		if os.IsNotExist(err) {
-			cveinfo.Log.Error().Err(err).Msg("index.json doesn't exist")
-
-			return nil, errors.ErrRepoNotFound
-		}
-
-		cveinfo.Log.Error().Err(err).Msg("unable to open index.json")
-
-		return nil, errors.ErrRepoNotFound
-	}
-
-	var index ispec.Index
-
-	if err := json.Unmarshal(buf, &index); err != nil {
-		cveinfo.Log.Error().Err(err).Str("dir", imagePath).Msg("invalid JSON")
-		return nil, errors.ErrRepoNotFound
-	}
-
-	return index.Manifests, nil
-}
-
-func (cveinfo CveInfo) getImageBlobManifest(imageDir string, digest godigest.Digest) (v1.Manifest, error) {
-	var blobIndex v1.Manifest
-
-	blobBuf, err := ioutil.ReadFile(path.Join(imageDir, "blobs", digest.Algorithm().String(), digest.Encoded()))
-	if err != nil {
-		cveinfo.Log.Error().Err(err).Msg("unable to open image metadata file")
-
-		return blobIndex, err
-	}
-
-	if err := json.Unmarshal(blobBuf, &blobIndex); err != nil {
-		cveinfo.Log.Error().Err(err).Msg("unable to marshal blob index")
-
-		return blobIndex, err
-	}
-
-	return blobIndex, nil
-}
-
-func (cveinfo CveInfo) getImageInfo(imageDir string, hash v1.Hash) (ispec.Image, error) {
-	var imageInfo ispec.Image
-
-	blobBuf, err := ioutil.ReadFile(path.Join(imageDir, "blobs", hash.Algorithm, hash.Hex))
-	if err != nil {
-		cveinfo.Log.Error().Err(err).Msg("unable to open image layers file")
-
-		return imageInfo, err
-	}
-
-	if err := json.Unmarshal(blobBuf, &imageInfo); err != nil {
-		cveinfo.Log.Error().Err(err).Msg("unable to marshal blob index")
-
-		return imageInfo, err
-	}
-
-	return imageInfo, err
 }

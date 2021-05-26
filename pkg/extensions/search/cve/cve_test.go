@@ -14,6 +14,7 @@ import (
 
 	"github.com/anuvu/zot/pkg/api"
 	ext "github.com/anuvu/zot/pkg/extensions"
+	"github.com/anuvu/zot/pkg/extensions/search/common"
 	cveinfo "github.com/anuvu/zot/pkg/extensions/search/cve"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
@@ -80,9 +81,10 @@ func testSetup() error {
 
 	log := log.NewLogger("debug", "")
 
-	cve = &cveinfo.CveInfo{Log: log}
+	storeController := storage.StoreController{DefaultStore: storage.NewImageStore(dir, false, false, log)}
+	layoutUtils := common.NewOciLayoutUtils(storeController, log)
 
-	cve.StoreController = storage.StoreController{DefaultStore: storage.NewImageStore(dir, false, false, log)}
+	cve = &cveinfo.CveInfo{Log: log, StoreController: storeController, LayoutUtils: layoutUtils}
 
 	dbDir = dir
 
@@ -418,16 +420,16 @@ func TestMultipleStoragePath(t *testing.T) {
 		So(cveInfo.StoreController.DefaultStore, ShouldNotBeNil)
 		So(cveInfo.StoreController.SubStore, ShouldNotBeNil)
 
-		imagePath := cveInfo.GetImageRepoPath("zot-test")
+		imagePath := cveInfo.LayoutUtils.GetImageRepoPath("zot-test")
 		So(imagePath, ShouldEqual, path.Join(firstRootDir, "zot-test"))
 
-		imagePath = cveInfo.GetImageRepoPath("a/zot-a-test")
+		imagePath = cveInfo.LayoutUtils.GetImageRepoPath("a/zot-a-test")
 		So(imagePath, ShouldEqual, path.Join(secondRootDir, "a/zot-a-test"))
 
-		imagePath = cveInfo.GetImageRepoPath("b/zot-b-test")
+		imagePath = cveInfo.LayoutUtils.GetImageRepoPath("b/zot-b-test")
 		So(imagePath, ShouldEqual, path.Join(thirdRootDir, "b/zot-b-test"))
 
-		imagePath = cveInfo.GetImageRepoPath("c/zot-c-test")
+		imagePath = cveInfo.LayoutUtils.GetImageRepoPath("c/zot-c-test")
 		So(imagePath, ShouldEqual, path.Join(firstRootDir, "c/zot-c-test"))
 	})
 }

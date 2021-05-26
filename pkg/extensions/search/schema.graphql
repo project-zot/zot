@@ -28,6 +28,11 @@ type ImgResultForFixedCVE {
      Tags: [TagInfo]
 }
 
+type ImgResultForDigest {
+     Name: String
+     Tags: [String]
+}
+
 type TagInfo {
      Name: String
      Timestamp: Time
@@ -37,4 +42,5 @@ type Query {
   CVEListForImage(image: String!) :CVEResultForImage 
   ImageListForCVE(id: String!) :[ImgResultForCVE]
   ImageListWithCVEFixed(id: String!, image: String!) :ImgResultForFixedCVE
+  ImageListForDigest(id: String!) :[ImgResultForDigest]
 }

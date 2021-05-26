@@ -19,6 +19,7 @@ func getImageSearchers() []searcher {
 	searchers := []searcher{
 		new(allImagesSearcher),
 		new(imageByNameSearcher),
+		new(imagesByDigestSearcher),
 	}
 
 	return searchers
@@ -110,6 +111,38 @@ func (search imageByNameSearcher) search(config searchConfig) (bool, error) {
 
 	go config.searchService.getImageByName(ctx, config, username, password,
 		*config.params["imageName"], imageErr, &wg)
+	wg.Add(1)
+
+	var errCh chan error = make(chan error, 1)
+	go collectResults(config, &wg, imageErr, cancel, printImageTableHeader, errCh)
+
+	wg.Wait()
+
+	select {
+	case err := <-errCh:
+		return true, err
+	default:
+		return true, nil
+	}
+}
+
+type imagesByDigestSearcher struct{}
+
+func (search imagesByDigestSearcher) search(config searchConfig) (bool, error) {
+	if !canSearch(config.params, newSet("digest")) {
+		return false, nil
+	}
+
+	username, password := getUsernameAndPassword(*config.user)
+	imageErr := make(chan stringResult)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+
+	go config.searchService.getImagesByDigest(ctx, config, username, password,
+		*config.params["digest"], imageErr, &wg)
 	wg.Add(1)
 
 	var errCh chan error = make(chan error, 1)

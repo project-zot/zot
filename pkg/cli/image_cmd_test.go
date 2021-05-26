@@ -22,6 +22,7 @@ import (
 	zotErrors "github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/api"
 	"github.com/anuvu/zot/pkg/compliance/v1_0_0"
+	"github.com/anuvu/zot/pkg/extensions"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
@@ -285,6 +286,9 @@ func TestServerResponse(t *testing.T) {
 		url := "http://127.0.0.1:8080"
 		config := api.NewConfig()
 		config.HTTP.Port = port
+		config.Extensions = &extensions.ExtensionConfig{
+			Search: &extensions.SearchConfig{},
+		}
 		c := api.NewController(config)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
@@ -354,6 +358,47 @@ func TestServerResponse(t *testing.T) {
 
 			Convey("with shorthand", func() {
 				args := []string{"imagetest", "-n", "repo7"}
+				configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
+				defer os.Remove(configPath)
+				cmd := NewImageCommand(new(searchService))
+				buff := bytes.NewBufferString("")
+				cmd.SetOut(buff)
+				cmd.SetErr(buff)
+				cmd.SetArgs(args)
+				err = cmd.Execute()
+				So(err, ShouldBeNil)
+				space := regexp.MustCompile(`\s+`)
+				str := space.ReplaceAllString(buff.String(), " ")
+				actual := strings.TrimSpace(str)
+				So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIZE")
+				So(actual, ShouldContainSubstring, "repo7 test:2.0 a0ca253b 15B")
+				So(actual, ShouldContainSubstring, "repo7 test:1.0 a0ca253b 15B")
+			})
+		})
+
+		Convey("Test image by digest", func() {
+			args := []string{"imagetest", "--digest", "a0ca253b"}
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
+			defer os.Remove(configPath)
+			cmd := NewImageCommand(new(searchService))
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldBeNil)
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			actual := strings.TrimSpace(str)
+			// Actual cli output should be something similar to (order of images may differ):
+			// IMAGE NAME    TAG       DIGEST    SIZE
+			// repo7         test:2.0  a0ca253b  15B
+			// repo7         test:1.0  a0ca253b  15B
+			So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIZE")
+			So(actual, ShouldContainSubstring, "repo7 test:2.0 a0ca253b 15B")
+			So(actual, ShouldContainSubstring, "repo7 test:1.0 a0ca253b 15B")
+			Convey("with shorthand", func() {
+				args := []string{"imagetest", "-d", "a0ca253b"}
 				configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 				defer os.Remove(configPath)
 				cmd := NewImageCommand(new(searchService))
@@ -525,6 +570,11 @@ func (service mockService) getCveByImage(ctx context.Context, config searchConfi
 
 func (service mockService) getImagesByCveID(ctx context.Context, config searchConfig, username, password, cveID string,
 	c chan stringResult, wg *sync.WaitGroup) {
+	service.getImageByName(ctx, config, username, password, "anImage", c, wg)
+}
+
+func (service mockService) getImagesByDigest(ctx context.Context, config searchConfig, username,
+	password, digest string, c chan stringResult, wg *sync.WaitGroup) {
 	service.getImageByName(ctx, config, username, password, "anImage", c, wg)
 }
 
