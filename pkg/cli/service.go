@@ -29,6 +29,8 @@ type SearchService interface {
 		channel chan stringResult, wg *sync.WaitGroup)
 	getImagesByCveID(ctx context.Context, config searchConfig, username, password, cveID string,
 		channel chan stringResult, wg *sync.WaitGroup)
+	getImagesByDigest(ctx context.Context, config searchConfig, username, password, digest string,
+		channel chan stringResult, wg *sync.WaitGroup)
 	getImageByNameAndCVEID(ctx context.Context, config searchConfig, username, password, imageName, cveID string,
 		channel chan stringResult, wg *sync.WaitGroup)
 	getFixedTagsForCVE(ctx context.Context, config searchConfig, username, password, imageName, cveID string,
@@ -147,7 +149,8 @@ func (service searchService) getImagesByCveID(ctx context.Context, config search
 		cveID)
 	result := &imagesForCve{}
 
-	endPoint, err := combineServerAndEndpointURL(*config.servURL, "/query")
+	err := service.makeGraphQLQuery(config, username, password, query, result)
+
 	if err != nil {
 		if isContextDone(ctx) {
 			return
@@ -157,17 +160,7 @@ func (service searchService) getImagesByCveID(ctx context.Context, config search
 		return
 	}
 
-	err = makeGraphQLRequest(endPoint, query, username, password, *config.verifyTLS, result)
-	if err != nil {
-		if isContextDone(ctx) {
-			return
-		}
-		c <- stringResult{"", err}
-
-		return
-	}
-
-	if result.Errors != nil {
+	if result.Errors != nil || err != nil {
 		var errBuilder strings.Builder
 
 		for _, err := range result.Errors {
@@ -200,6 +193,61 @@ func (service searchService) getImagesByCveID(ctx context.Context, config search
 	localWg.Wait()
 }
 
+func (service searchService) getImagesByDigest(ctx context.Context, config searchConfig, username,
+	password string, digest string, c chan stringResult, wg *sync.WaitGroup) {
+	defer wg.Done()
+	defer close(c)
+
+	query := fmt.Sprintf(`{ImageListForDigest(id: "%s") {`+`
+									Name Tags }
+							  }`,
+		digest)
+	result := &imagesForDigest{}
+
+	err := service.makeGraphQLQuery(config, username, password, query, result)
+
+	if err != nil {
+		if isContextDone(ctx) {
+			return
+		}
+		c <- stringResult{"", err}
+
+		return
+	}
+
+	if result.Errors != nil {
+		var errBuilder strings.Builder
+
+		for _, err := range result.Errors {
+			fmt.Fprintln(&errBuilder, err.Message)
+		}
+
+		if isContextDone(ctx) {
+			return
+		}
+		c <- stringResult{"", errors.New(errBuilder.String())} //nolint: goerr113
+
+		return
+	}
+
+	var localWg sync.WaitGroup
+
+	p := newSmoothRateLimiter(ctx, &localWg, c)
+	localWg.Add(1)
+
+	go p.startRateLimiter()
+
+	for _, image := range result.Data.ImageListForDigest {
+		for _, tag := range image.Tags {
+			localWg.Add(1)
+
+			go addManifestCallToPool(ctx, config, p, username, password, image.Name, tag, c, &localWg)
+		}
+	}
+
+	localWg.Wait()
+}
+
 func (service searchService) getImageByNameAndCVEID(ctx context.Context, config searchConfig, username,
 	password, imageName, cveID string, c chan stringResult, wg *sync.WaitGroup) {
 	defer wg.Done()
@@ -211,17 +259,8 @@ func (service searchService) getImageByNameAndCVEID(ctx context.Context, config 
 		cveID)
 	result := &imagesForCve{}
 
-	endPoint, err := combineServerAndEndpointURL(*config.servURL, "/query")
-	if err != nil {
-		if isContextDone(ctx) {
-			return
-		}
-		c <- stringResult{"", err}
+	err := service.makeGraphQLQuery(config, username, password, query, result)
 
-		return
-	}
-
-	err = makeGraphQLRequest(endPoint, query, username, password, *config.verifyTLS, result)
 	if err != nil {
 		if isContextDone(ctx) {
 			return
@@ -278,17 +317,8 @@ func (service searchService) getCveByImage(ctx context.Context, config searchCon
 		`PackageList {Name InstalledVersion FixedVersion}} } }`, imageName)
 	result := &cveResult{}
 
-	endPoint, err := combineServerAndEndpointURL(*config.servURL, "/query")
-	if err != nil {
-		if isContextDone(ctx) {
-			return
-		}
-		c <- stringResult{"", err}
+	err := service.makeGraphQLQuery(config, username, password, query, result)
 
-		return
-	}
-
-	err = makeGraphQLRequest(endPoint, query, username, password, *config.verifyTLS, result)
 	if err != nil {
 		if isContextDone(ctx) {
 			return
@@ -372,17 +402,8 @@ func (service searchService) getFixedTagsForCVE(ctx context.Context, config sear
 		cveID, imageName)
 	result := &fixedTags{}
 
-	endPoint, err := combineServerAndEndpointURL(*config.servURL, "/query")
-	if err != nil {
-		if isContextDone(ctx) {
-			return
-		}
-		c <- stringResult{"", err}
+	err := service.makeGraphQLQuery(config, username, password, query, result)
 
-		return
-	}
-
-	err = makeGraphQLRequest(endPoint, query, username, password, *config.verifyTLS, result)
 	if err != nil {
 		if isContextDone(ctx) {
 			return
@@ -421,6 +442,23 @@ func (service searchService) getFixedTagsForCVE(ctx context.Context, config sear
 	}
 
 	localWg.Wait()
+}
+
+// Query using JQL, the query string is passed as a parameter
+// errors are returned in the stringResult channel, the unmarshalled payload is in resultPtr.
+func (service searchService) makeGraphQLQuery(config searchConfig, username, password, query string,
+	resultPtr interface{}) error {
+	endPoint, err := combineServerAndEndpointURL(*config.servURL, "/query")
+	if err != nil {
+		return err
+	}
+
+	err = makeGraphQLRequest(endPoint, query, username, password, *config.verifyTLS, resultPtr)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func addManifestCallToPool(ctx context.Context, config searchConfig, p *requestsPool, username, password, imageName,
@@ -552,6 +590,13 @@ type imagesForCve struct {
 	Errors []errorGraphQL `json:"errors"`
 	Data   struct {
 		ImageListForCVE []tagListResp `json:"ImageListForCVE"`
+	} `json:"data"`
+}
+
+type imagesForDigest struct {
+	Errors []errorGraphQL `json:"errors"`
+	Data   struct {
+		ImageListForDigest []tagListResp `json:"ImageListForDigest"`
 	} `json:"data"`
 }
 
