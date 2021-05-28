@@ -60,6 +60,7 @@ type searchConfig struct {
 	outputFormat  *string
 	verifyTLS     *bool
 	fixedFlag     *bool
+	verbose       *bool
 	resultWriter  io.Writer
 	spinner       spinnerState
 }
@@ -323,7 +324,7 @@ func collectResults(config searchConfig, wg *sync.WaitGroup, imageErr chan strin
 			if !foundResult && (*config.outputFormat == defaultOutoutFormat || *config.outputFormat == "") {
 				var builder strings.Builder
 
-				printHeader(&builder)
+				printHeader(&builder, *config.verbose)
 				fmt.Fprint(config.resultWriter, builder.String())
 			}
 
@@ -417,22 +418,38 @@ type stringResult struct {
 	Err      error
 }
 
-type printHeader func(writer io.Writer)
+type printHeader func(writer io.Writer, verbose bool)
 
-func printImageTableHeader(writer io.Writer) {
+func printImageTableHeader(writer io.Writer, verbose bool) {
 	table := getImageTableWriter(writer)
-	row := make([]string, 4)
+
+	table.SetColMinWidth(colImageNameIndex, imageNameWidth)
+	table.SetColMinWidth(colTagIndex, tagWidth)
+	table.SetColMinWidth(colDigestIndex, digestWidth)
+	table.SetColMinWidth(colSizeIndex, sizeWidth)
+
+	if verbose {
+		table.SetColMinWidth(colConfigIndex, configWidth)
+		table.SetColMinWidth(colLayersIndex, layersWidth)
+	}
+
+	row := make([]string, 6)
 
 	row[colImageNameIndex] = "IMAGE NAME"
 	row[colTagIndex] = "TAG"
 	row[colDigestIndex] = "DIGEST"
 	row[colSizeIndex] = "SIZE"
 
+	if verbose {
+		row[colConfigIndex] = "CONFIG"
+		row[colLayersIndex] = "LAYERS"
+	}
+
 	table.Append(row)
 	table.Render()
 }
 
-func printCVETableHeader(writer io.Writer) {
+func printCVETableHeader(writer io.Writer, verbose bool) {
 	table := getCVETableWriter(writer)
 	row := make([]string, 3)
 	row[colCVEIDIndex] = "ID"

@@ -18,7 +18,7 @@ func NewImageCommand(searchService SearchService) *cobra.Command {
 
 	var servURL, user, outputFormat string
 
-	var isSpinner, verifyTLS bool
+	var isSpinner, verifyTLS, verbose bool
 
 	var imageCmd = &cobra.Command{
 		Use:   "images [config-name]",
@@ -70,6 +70,7 @@ func NewImageCommand(searchService SearchService) *cobra.Command {
 				servURL:       &servURL,
 				user:          &user,
 				outputFormat:  &outputFormat,
+				verbose:       &verbose,
 				spinner:       spinnerState{spin, isSpinner},
 				verifyTLS:     &verifyTLS,
 				resultWriter:  cmd.OutOrStdout(),
@@ -86,7 +87,7 @@ func NewImageCommand(searchService SearchService) *cobra.Command {
 		},
 	}
 
-	setupImageFlags(imageCmd, searchImageParams, &servURL, &user, &outputFormat)
+	setupImageFlags(imageCmd, searchImageParams, &servURL, &user, &outputFormat, &verbose)
 	imageCmd.SetUsageTemplate(imageCmd.UsageTemplate() + usageFooter)
 
 	return imageCmd
@@ -107,7 +108,7 @@ func parseBooleanConfig(configPath, configName, configParam string) (bool, error
 }
 
 func setupImageFlags(imageCmd *cobra.Command, searchImageParams map[string]*string,
-	servURL, user, outputFormat *string) {
+	servURL, user, outputFormat *string, verbose *bool) {
 	searchImageParams["imageName"] = imageCmd.Flags().StringP("name", "n", "", "List image details by name")
 	searchImageParams["digest"] = imageCmd.Flags().StringP("digest", "d", "",
 		"List images containing a specific manifest, config, or layer digest")
@@ -115,6 +116,7 @@ func setupImageFlags(imageCmd *cobra.Command, searchImageParams map[string]*stri
 	imageCmd.Flags().StringVar(servURL, "url", "", "Specify zot server URL if config-name is not mentioned")
 	imageCmd.Flags().StringVarP(user, "user", "u", "", `User Credentials of zot server in "username:password" format`)
 	imageCmd.Flags().StringVarP(outputFormat, "output", "o", "", "Specify output format [text/json/yaml]")
+	imageCmd.Flags().BoolVar(verbose, "verbose", false, "Show verbose output")
 }
 
 func searchImage(searchConfig searchConfig) error {

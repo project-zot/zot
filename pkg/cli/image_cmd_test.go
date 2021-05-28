@@ -221,7 +221,7 @@ func TestOutputFormat(t *testing.T) {
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
 		So(strings.TrimSpace(str), ShouldEqual, `{ "name": "dummyImageName", "tags": [ { "name":`+
-			` "tag", "size": 123445, "digest": "DigestsAreReallyLong" } ] }`)
+			` "tag", "size": 123445, "digest": "DigestsAreReallyLong", "configDigest": "", "layerDigests": null } ] }`)
 		So(err, ShouldBeNil)
 	})
 
@@ -240,7 +240,7 @@ func TestOutputFormat(t *testing.T) {
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
 		So(strings.TrimSpace(str), ShouldEqual, `name: dummyImageName tags: -`+
-			` name: tag size: 123445 digest: DigestsAreReallyLong`)
+			` name: tag size: 123445 digest: DigestsAreReallyLong configdigest: "" layers: []`)
 		So(err, ShouldBeNil)
 
 		Convey("Test yml", func() {
@@ -257,8 +257,8 @@ func TestOutputFormat(t *testing.T) {
 			err := cmd.Execute()
 			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
-			So(strings.TrimSpace(str), ShouldEqual, "name: dummyImageName tags: - name: "+
-				"tag size: 123445 digest: DigestsAreReallyLong")
+			So(strings.TrimSpace(str), ShouldEqual, `name: dummyImageName tags: -`+
+				` name: tag size: 123445 digest: DigestsAreReallyLong configdigest: "" layers: []`)
 			So(err, ShouldBeNil)
 		})
 	})
@@ -336,6 +336,31 @@ func TestServerResponse(t *testing.T) {
 			So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIZE")
 			So(actual, ShouldContainSubstring, "repo7 test:2.0 a0ca253b 15B")
 			So(actual, ShouldContainSubstring, "repo7 test:1.0 a0ca253b 15B")
+		})
+
+		Convey("Test all images verbose", func() {
+			args := []string{"imagetest", "--verbose"}
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
+			defer os.Remove(configPath)
+			cmd := NewImageCommand(new(searchService))
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldBeNil)
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			actual := strings.TrimSpace(str)
+			// Actual cli output should be something similar to (order of images may differ):
+			// IMAGE NAME    TAG       DIGEST    CONFIG    LAYERS    SIZE
+			// repo7         test:2.0  a0ca253b  b8781e88            15B
+			//                                             b8781e88  15B
+			// repo7         test:1.0  a0ca253b  b8781e88            15B
+			//                                             b8781e88  15B
+			So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST CONFIG LAYERS SIZE")
+			So(actual, ShouldContainSubstring, "repo7 test:2.0 a0ca253b b8781e88 15B b8781e88 15B")
+			So(actual, ShouldContainSubstring, "repo7 test:1.0 a0ca253b b8781e88 15B b8781e88 15B")
 		})
 
 		Convey("Test image by name config url", func() {
