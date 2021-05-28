@@ -18,7 +18,7 @@ func NewCveCommand(searchService SearchService) *cobra.Command {
 
 	var servURL, user, outputFormat string
 
-	var isSpinner, verifyTLS, fixedFlag bool
+	var isSpinner, verifyTLS, fixedFlag, verbose bool
 
 	var cveCmd = &cobra.Command{
 		Use:   "cve [config-name]",
@@ -64,6 +64,8 @@ func NewCveCommand(searchService SearchService) *cobra.Command {
 			spin := spinner.New(spinner.CharSets[39], spinnerDuration, spinner.WithWriter(cmd.ErrOrStderr()))
 			spin.Prefix = fmt.Sprintf("Fetching from %s.. ", servURL)
 
+			verbose = false
+
 			searchConfig := searchConfig{
 				params:        searchCveParams,
 				searchService: searchService,
@@ -72,6 +74,7 @@ func NewCveCommand(searchService SearchService) *cobra.Command {
 				outputFormat:  &outputFormat,
 				fixedFlag:     &fixedFlag,
 				verifyTLS:     &verifyTLS,
+				verbose:       &verbose,
 				resultWriter:  cmd.OutOrStdout(),
 				spinner:       spinnerState{spin, isSpinner},
 			}

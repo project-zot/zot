@@ -606,11 +606,20 @@ type tagListResp struct {
 }
 
 type imageStruct struct {
-	Name string `json:"name"`
-	Tags []tags `json:"tags"`
+	Name    string `json:"name"`
+	Tags    []tags `json:"tags"`
+	verbose bool
 }
+
 type tags struct {
-	Name   string `json:"name"`
+	Name         string  `json:"name"`
+	Size         uint64  `json:"size"`
+	Digest       string  `json:"digest"`
+	ConfigDigest string  `json:"configDigest"`
+	Layers       []layer `json:"layerDigests"`
+}
+
+type layer struct {
 	Size   uint64 `json:"size"`
 	Digest string `json:"digest"`
 }
@@ -632,20 +641,52 @@ func (img imageStruct) stringPlainText() (string, error) {
 	var builder strings.Builder
 
 	table := getImageTableWriter(&builder)
+	table.SetColMinWidth(colImageNameIndex, imageNameWidth)
+	table.SetColMinWidth(colTagIndex, tagWidth)
+	table.SetColMinWidth(colDigestIndex, digestWidth)
+	table.SetColMinWidth(colSizeIndex, sizeWidth)
+
+	if img.verbose {
+		table.SetColMinWidth(colConfigIndex, configWidth)
+		table.SetColMinWidth(colLayersIndex, layersWidth)
+	}
 
 	for _, tag := range img.Tags {
 		imageName := ellipsize(img.Name, imageNameWidth, ellipsis)
 		tagName := ellipsize(tag.Name, tagWidth, ellipsis)
 		digest := ellipsize(tag.Digest, digestWidth, "")
 		size := ellipsize(strings.ReplaceAll(humanize.Bytes(tag.Size), " ", ""), sizeWidth, ellipsis)
-		row := make([]string, 4)
+		config := ellipsize(tag.ConfigDigest, configWidth, "")
+		row := make([]string, 6)
 
 		row[colImageNameIndex] = imageName
 		row[colTagIndex] = tagName
 		row[colDigestIndex] = digest
 		row[colSizeIndex] = size
 
+		if img.verbose {
+			row[colConfigIndex] = config
+			row[colLayersIndex] = ""
+		}
+
 		table.Append(row)
+
+		if img.verbose {
+			for _, entry := range tag.Layers {
+				layerSize := ellipsize(strings.ReplaceAll(humanize.Bytes(entry.Size), " ", ""), sizeWidth, ellipsis)
+				layerDigest := ellipsize(entry.Digest, digestWidth, "")
+
+				layerRow := make([]string, 6)
+				layerRow[colImageNameIndex] = ""
+				layerRow[colTagIndex] = ""
+				layerRow[colDigestIndex] = ""
+				layerRow[colSizeIndex] = layerSize
+				layerRow[colConfigIndex] = ""
+				layerRow[colLayersIndex] = layerDigest
+
+				table.Append(layerRow)
+			}
+		}
 	}
 
 	table.Render()
@@ -737,10 +778,6 @@ func getImageTableWriter(writer io.Writer) *tablewriter.Table {
 	table.SetBorder(false)
 	table.SetTablePadding("  ")
 	table.SetNoWhiteSpace(true)
-	table.SetColMinWidth(colImageNameIndex, imageNameWidth)
-	table.SetColMinWidth(colTagIndex, tagWidth)
-	table.SetColMinWidth(colDigestIndex, digestWidth)
-	table.SetColMinWidth(colSizeIndex, sizeWidth)
 
 	return table
 }
@@ -771,12 +808,16 @@ const (
 	tagWidth       = 24
 	digestWidth    = 8
 	sizeWidth      = 8
+	configWidth    = 8
+	layersWidth    = 8
 	ellipsis       = "..."
 
 	colImageNameIndex = 0
 	colTagIndex       = 1
 	colDigestIndex    = 2
-	colSizeIndex      = 3
+	colConfigIndex    = 3
+	colLayersIndex    = 4
+	colSizeIndex      = 5
 
 	cveIDWidth       = 16
 	cveSeverityWidth = 8

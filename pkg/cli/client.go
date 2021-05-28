@@ -168,19 +168,35 @@ func (p *requestsPool) doJob(job *manifestJob) {
 	digest := header.Get("docker-content-digest")
 	digest = strings.TrimPrefix(digest, "sha256:")
 
+	configDigest := job.manifestResp.Config.Digest
+	configDigest = strings.TrimPrefix(configDigest, "sha256:")
+
 	var size uint64
 
-	for _, layer := range job.manifestResp.Layers {
-		size += layer.Size
+	layers := []layer{}
+
+	for _, entry := range job.manifestResp.Layers {
+		size += entry.Size
+
+		layers = append(
+			layers,
+			layer{
+				Size:   entry.Size,
+				Digest: strings.TrimPrefix(entry.Digest, "sha256:"),
+			},
+		)
 	}
 
 	image := &imageStruct{}
+	image.verbose = *job.config.verbose
 	image.Name = job.imageName
 	image.Tags = []tags{
 		{
-			Name:   job.tagName,
-			Digest: digest,
-			Size:   size,
+			Name:         job.tagName,
+			Digest:       digest,
+			Size:         size,
+			ConfigDigest: configDigest,
+			Layers:       layers,
 		},
 	}
 
