@@ -33,7 +33,7 @@ func downloadTrivyDB(dbDir string, log log.Logger, updateInterval time.Duration)
 
 // EnableExtensions ...
 func EnableExtensions(extension *ExtensionConfig, log log.Logger, rootDir string) {
-	if extension.Search != nil && extension.Search.CVE != nil {
+	if extension.Search != nil && extension.Search.Enable && extension.Search.CVE != nil {
 		defaultUpdateInterval, _ := time.ParseDuration("2h")
 
 		if extension.Search.CVE.UpdateInterval < defaultUpdateInterval {
@@ -46,7 +46,7 @@ func EnableExtensions(extension *ExtensionConfig, log log.Logger, rootDir string
 			err := downloadTrivyDB(rootDir, log,
 				extension.Search.CVE.UpdateInterval)
 			if err != nil {
-				panic(err)
+				log.Error().Err(err).Msg("error while downloading TrivyDB")
 			}
 		}()
 	} else {
@@ -55,9 +55,13 @@ func EnableExtensions(extension *ExtensionConfig, log log.Logger, rootDir string
 }
 
 // SetupRoutes ...
-func SetupRoutes(router *mux.Router, storeController storage.StoreController, log log.Logger) {
+func SetupRoutes(extension *ExtensionConfig, router *mux.Router, storeController storage.StoreController,
+	log log.Logger) {
 	log.Info().Msg("setting up extensions routes")
-	resConfig := search.GetResolverConfig(log, storeController)
-	router.PathPrefix("/query").Methods("GET", "POST").
-		Handler(gqlHandler.NewDefaultServer(search.NewExecutableSchema(resConfig)))
+
+	if extension.Search != nil && extension.Search.Enable {
+		resConfig := search.GetResolverConfig(log, storeController)
+		router.PathPrefix("/query").Methods("GET", "POST").
+			Handler(gqlHandler.NewDefaultServer(search.NewExecutableSchema(resConfig)))
+	}
 }

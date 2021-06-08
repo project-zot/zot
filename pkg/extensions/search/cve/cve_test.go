@@ -547,7 +547,8 @@ func TestCVESearch(t *testing.T) {
 			UpdateInterval: updateDuration,
 		}
 		searchConfig := &ext.SearchConfig{
-			CVE: cveConfig,
+			CVE:    cveConfig,
+			Enable: true,
 		}
 		c.Config.Extensions = &ext.ExtensionConfig{
 			Search: searchConfig,

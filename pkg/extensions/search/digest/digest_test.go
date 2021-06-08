@@ -169,7 +169,7 @@ func TestDigestSearchHTTP(t *testing.T) {
 		config.HTTP.Port = Port1
 		config.Storage.RootDirectory = rootDir
 		config.Extensions = &ext.ExtensionConfig{
-			Search: &ext.SearchConfig{},
+			Search: &ext.SearchConfig{Enable: true},
 		}
 
 		c := api.NewController(config)
@@ -286,5 +286,52 @@ func TestDigestSearchHTTP(t *testing.T) {
 		err = json.Unmarshal(resp.Body(), &responseStruct)
 		So(err, ShouldBeNil)
 		So(len(responseStruct.Errors), ShouldEqual, 1)
+	})
+}
+
+func TestDigestSearchDisabled(t *testing.T) {
+	Convey("Test disabling image search", t, func() {
+		dir, err := ioutil.TempDir("", "digest_test")
+		So(err, ShouldBeNil)
+		config := api.NewConfig()
+		config.HTTP.Port = Port1
+		config.Storage.RootDirectory = dir
+		config.Extensions = &ext.ExtensionConfig{
+			Search: &ext.SearchConfig{Enable: false},
+		}
+
+		c := api.NewController(config)
+
+		go func() {
+			// this blocks
+			if err := c.Run(); err != nil {
+				return
+			}
+		}()
+
+		// wait till ready
+		for {
+			_, err := resty.R().Get(BaseURL1)
+			if err == nil {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		// shut down server
+		defer func() {
+			ctx := context.Background()
+			_ = c.Server.Shutdown(ctx)
+		}()
+
+		resp, err := resty.R().Get(BaseURL1 + "/v2/")
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		resp, err = resty.R().Get(BaseURL1 + "/query")
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 404)
 	})
 }
