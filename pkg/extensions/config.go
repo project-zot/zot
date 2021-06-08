@@ -8,7 +8,8 @@ type ExtensionConfig struct {
 
 type SearchConfig struct {
 	// CVE search
-	CVE *CVEConfig
+	CVE    *CVEConfig
+	Enable bool
 }
 
 type CVEConfig struct {

@@ -21,6 +21,6 @@ func EnableExtensions(extension *ExtensionConfig, log log.Logger, rootDir string
 }
 
 // SetupRoutes ...
-func SetupRoutes(router *mux.Router, storeController storage.StoreController, log log.Logger) {
+func SetupRoutes(extension *ExtensionConfig, router *mux.Router, storeController storage.StoreController, log log.Logger) {
 	log.Warn().Msg("skipping setting up extensions routes because given zot binary doesn't support any extensions, please build zot full binary for this feature")
 }

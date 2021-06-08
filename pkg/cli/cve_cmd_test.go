@@ -308,7 +308,8 @@ func TestServerCVEResponse(t *testing.T) {
 		UpdateInterval: 2,
 	}
 	searchConfig := &ext.SearchConfig{
-		CVE: cveConfig,
+		CVE:    cveConfig,
+		Enable: true,
 	}
 	c.Config.Extensions = &ext.ExtensionConfig{
 		Search: searchConfig,

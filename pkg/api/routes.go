@@ -91,7 +91,7 @@ func (rh *RouteHandler) SetupRoutes() {
 	rh.c.Router.PathPrefix("/swagger/v2/").Methods("GET").Handler(httpSwagger.WrapHandler)
 	// Setup Extensions Routes
 	if rh.c.Config != nil && rh.c.Config.Extensions != nil {
-		ext.SetupRoutes(rh.c.Router, rh.c.StoreController, rh.c.Log)
+		ext.SetupRoutes(rh.c.Config.Extensions, rh.c.Router, rh.c.StoreController, rh.c.Log)
 	}
 }
 
