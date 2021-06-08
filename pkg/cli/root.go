@@ -3,6 +3,7 @@ package cli
 import (
 	"github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/api"
+	"github.com/anuvu/zot/pkg/api/config"
 	"github.com/anuvu/zot/pkg/storage"
 	"github.com/fsnotify/fsnotify"
 	"github.com/mitchellh/mapstructure"
@@ -22,7 +23,7 @@ func metadataConfig(md *mapstructure.Metadata) viper.DecoderConfigOption {
 
 func NewRootCmd() *cobra.Command {
 	showVersion := false
-	config := api.NewConfig()
+	conf := config.New()
 
 	// "serve"
 	serveCmd := &cobra.Command{
@@ -32,9 +33,9 @@ func NewRootCmd() *cobra.Command {
 		Long:    "`serve` stores and distributes OCI images",
 		Run: func(cmd *cobra.Command, args []string) {
 			if len(args) > 0 {
-				LoadConfiguration(config, args[0])
+				LoadConfiguration(conf, args[0])
 			}
-			c := api.NewController(config)
+			c := api.NewController(conf)
 
 			// creates a new file watcher
 			watcher, err := fsnotify.NewWatcher()
@@ -53,7 +54,7 @@ func NewRootCmd() *cobra.Command {
 						case event := <-watcher.Events:
 							if event.Op == fsnotify.Write {
 								log.Info().Msg("Config file changed, trying to reload accessControl config")
-								newConfig := api.NewConfig()
+								newConfig := config.New()
 								LoadConfiguration(newConfig, args[0])
 								c.Config.AccessControl = newConfig.AccessControl
 							}
@@ -85,7 +86,7 @@ func NewRootCmd() *cobra.Command {
 		Long:    "`verify` validates a zot config file",
 		Run: func(cmd *cobra.Command, args []string) {
 			if len(args) > 0 {
-				config := api.NewConfig()
+				config := config.New()
 				LoadConfiguration(config, args[0])
 				log.Info().Msgf("Config file %s is valid", args[0])
 			}
@@ -102,16 +103,16 @@ func NewRootCmd() *cobra.Command {
 		Short:   "`garbage-collect` deletes layers not referenced by any manifests",
 		Long:    "`garbage-collect` deletes layers not referenced by any manifests",
 		Run: func(cmd *cobra.Command, args []string) {
-			log.Info().Interface("values", config).Msg("configuration settings")
-			if config.Storage.RootDirectory != "" {
-				if err := storage.Scrub(config.Storage.RootDirectory, gcDryRun); err != nil {
+			log.Info().Interface("values", conf).Msg("configuration settings")
+			if conf.Storage.RootDirectory != "" {
+				if err := storage.Scrub(conf.Storage.RootDirectory, gcDryRun); err != nil {
 					panic(err)
 				}
 			}
 		},
 	}
 
-	gcCmd.Flags().StringVarP(&config.Storage.RootDirectory, "storage-root-dir", "r", "",
+	gcCmd.Flags().StringVarP(&conf.Storage.RootDirectory, "storage-root-dir", "r", "",
 		"Use specified directory for filestore backing image data")
 
 	_ = gcCmd.MarkFlagRequired("storage-root-dir")
@@ -126,8 +127,8 @@ func NewRootCmd() *cobra.Command {
 		Long:  "`zot`",
 		Run: func(cmd *cobra.Command, args []string) {
 			if showVersion {
-				log.Info().Str("distribution-spec", distspec.Version).Str("commit", api.Commit).
-					Str("binary-type", api.BinaryType).Msg("version")
+				log.Info().Str("distribution-spec", distspec.Version).Str("commit", config.Commit).
+					Str("binary-type", config.BinaryType).Msg("version")
 			}
 			_ = cmd.Usage()
 			cmd.SilenceErrors = false
@@ -145,7 +146,7 @@ func NewRootCmd() *cobra.Command {
 	return rootCmd
 }
 
-func LoadConfiguration(config *api.Config, configPath string) {
+func LoadConfiguration(config *config.Config, configPath string) {
 	viper.SetConfigFile(configPath)
 
 	if err := viper.ReadInConfig(); err != nil {
@@ -177,5 +178,16 @@ func LoadConfiguration(config *api.Config, configPath string) {
 	if err != nil {
 		log.Error().Err(errors.ErrBadConfig).Msg("Unable to unmarshal http.accessControl.key.policies")
 		panic(err)
+	}
+
+	// defaults
+	defualtTLSVerify := true
+
+	if config.Extensions != nil && config.Extensions.Sync != nil {
+		for id, regCfg := range config.Extensions.Sync.Registries {
+			if regCfg.TLSVerify == nil {
+				config.Extensions.Sync.Registries[id].TLSVerify = &defualtTLSVerify
+			}
+		}
 	}
 }

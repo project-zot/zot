@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/anuvu/zot/pkg/api/config"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/gorilla/mux"
 )
@@ -24,26 +25,9 @@ const (
 	authzCtxKey contextKey = 0
 )
 
-type AccessControlConfig struct {
-	Repositories Repositories
-	AdminPolicy  Policy
-}
-
-type Repositories map[string]PolicyGroup
-
-type PolicyGroup struct {
-	Policies      []Policy
-	DefaultPolicy []string
-}
-
-type Policy struct {
-	Users   []string
-	Actions []string
-}
-
 // AccessController authorizes users to act on resources.
 type AccessController struct {
-	Config *AccessControlConfig
+	Config *config.AccessControlConfig
 	Log    log.Logger
 }
 
@@ -53,7 +37,7 @@ type AccessControlContext struct {
 	isAdmin          bool
 }
 
-func NewAccessController(config *Config) *AccessController {
+func NewAccessController(config *config.Config) *AccessController {
 	return &AccessController{
 		Config: config.AccessControl,
 		Log:    log.NewLogger(config.Log.Level, config.Log.Output),
@@ -117,7 +101,7 @@ func (ac *AccessController) getContext(username string, r *http.Request) context
 }
 
 // isPermitted returns true if username can do action on a repository policy.
-func isPermitted(username, action string, pg PolicyGroup) bool {
+func isPermitted(username, action string, pg config.PolicyGroup) bool {
 	var result bool
 	// check repo/system based policies
 	for _, p := range pg.Policies {

@@ -21,8 +21,9 @@ import (
 
 	zotErrors "github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/api"
+	"github.com/anuvu/zot/pkg/api/config"
 	"github.com/anuvu/zot/pkg/compliance/v1_0_0"
-	"github.com/anuvu/zot/pkg/extensions"
+	extconf "github.com/anuvu/zot/pkg/extensions/config"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/phayes/freeport"
@@ -302,12 +303,12 @@ func TestServerResponse(t *testing.T) {
 	Convey("Test from real server", t, func() {
 		port := getFreePort()
 		url := getBaseURL(port)
-		config := api.NewConfig()
-		config.HTTP.Port = port
-		config.Extensions = &extensions.ExtensionConfig{
-			Search: &extensions.SearchConfig{Enable: true},
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{Enable: true},
 		}
-		c := api.NewController(config)
+		c := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)

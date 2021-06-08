@@ -11,7 +11,8 @@ import (
 	"time"
 
 	"github.com/anuvu/zot/pkg/api"
-	ext "github.com/anuvu/zot/pkg/extensions"
+	"github.com/anuvu/zot/pkg/api/config"
+	extconf "github.com/anuvu/zot/pkg/extensions/config"
 	"github.com/anuvu/zot/pkg/extensions/search/common"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
@@ -214,18 +215,18 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
-		config := api.NewConfig()
-		config.HTTP.Port = Port1
-		config.Storage.RootDirectory = rootDir
-		config.Storage.SubPaths = make(map[string]api.StorageConfig)
-		config.Storage.SubPaths["/a"] = api.StorageConfig{RootDirectory: subRootDir}
-		config.Extensions = &ext.ExtensionConfig{
-			Search: &ext.SearchConfig{Enable: true},
+		conf := config.New()
+		conf.HTTP.Port = Port1
+		conf.Storage.RootDirectory = rootDir
+		conf.Storage.SubPaths = make(map[string]config.StorageConfig)
+		conf.Storage.SubPaths["/a"] = config.StorageConfig{RootDirectory: subRootDir}
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{Enable: true},
 		}
 
-		config.Extensions.Search.CVE = nil
+		conf.Extensions.Search.CVE = nil
 
-		c := api.NewController(config)
+		c := api.NewController(conf)
 
 		go func() {
 			// this blocks

@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/anuvu/zot/pkg/api"
+	"github.com/anuvu/zot/pkg/api/config"
 	. "github.com/smartystreets/goconvey/convey"
 )
 
@@ -67,24 +68,24 @@ func TestTLSWithAuth(t *testing.T) {
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
 		defer func() { resty.SetTLSClientConfig(nil) }()
-		config := api.NewConfig()
-		config.HTTP.Port = SecurePort1
+		conf := config.New()
+		conf.HTTP.Port = SecurePort1
 		htpasswdPath := makeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
-		config.HTTP.Auth = &api.AuthConfig{
-			HTPasswd: api.AuthHTPasswd{
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
 				Path: htpasswdPath,
 			},
 		}
 
-		config.HTTP.TLS = &api.TLSConfig{
+		conf.HTTP.TLS = &config.TLSConfig{
 			Cert:   ServerCert,
 			Key:    ServerKey,
 			CACert: CACert,
 		}
 
-		c := api.NewController(config)
+		c := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
@@ -173,15 +174,15 @@ func TestTLSWithoutAuth(t *testing.T) {
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
 		defer func() { resty.SetTLSClientConfig(nil) }()
-		config := api.NewConfig()
-		config.HTTP.Port = SecurePort1
-		config.HTTP.TLS = &api.TLSConfig{
+		conf := config.New()
+		conf.HTTP.Port = SecurePort1
+		conf.HTTP.TLS = &config.TLSConfig{
 			Cert:   ServerCert,
 			Key:    ServerKey,
 			CACert: CACert,
 		}
 
-		c := api.NewController(config)
+		c := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
@@ -241,15 +242,15 @@ func TestTLSWithoutAuth(t *testing.T) {
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
 		defer func() { resty.SetTLSClientConfig(nil) }()
-		config := api.NewConfig()
-		config.HTTP.Port = SecurePort2
-		config.HTTP.TLS = &api.TLSConfig{
+		conf := config.New()
+		conf.HTTP.Port = SecurePort2
+		conf.HTTP.TLS = &config.TLSConfig{
 			Cert:   ServerCert,
 			Key:    ServerKey,
 			CACert: CACert,
 		}
 
-		c := api.NewController(config)
+		c := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
@@ -304,15 +305,15 @@ func TestTLSBadCerts(t *testing.T) {
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
 		defer func() { resty.SetTLSClientConfig(nil) }()
-		config := api.NewConfig()
-		config.HTTP.Port = SecurePort3
-		config.HTTP.TLS = &api.TLSConfig{
+		conf := config.New()
+		conf.HTTP.Port = SecurePort3
+		conf.HTTP.TLS = &config.TLSConfig{
 			Cert:   ServerCert,
 			Key:    ServerKey,
 			CACert: CACert,
 		}
 
-		c := api.NewController(config)
+		c := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)

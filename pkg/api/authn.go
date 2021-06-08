@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/anuvu/zot/errors"
+	"github.com/anuvu/zot/pkg/api/config"
 	"github.com/chartmuseum/auth"
 	"github.com/gorilla/mux"
 	"golang.org/x/crypto/bcrypt"
@@ -237,7 +238,7 @@ func basicAuthHandler(c *Controller) mux.MiddlewareFunc {
 	}
 }
 
-func isAuthnEnabled(config *Config) bool {
+func isAuthnEnabled(config *config.Config) bool {
 	if config.HTTP.Auth != nil &&
 		(config.HTTP.Auth.HTPasswd.Path != "" || config.HTTP.Auth.LDAP != nil) {
 		return true
@@ -246,7 +247,7 @@ func isAuthnEnabled(config *Config) bool {
 	return false
 }
 
-func isBearerAuthEnabled(config *Config) bool {
+func isBearerAuthEnabled(config *config.Config) bool {
 	if config.HTTP.Auth != nil &&
 		config.HTTP.Auth.Bearer != nil &&
 		config.HTTP.Auth.Bearer.Cert != "" &&

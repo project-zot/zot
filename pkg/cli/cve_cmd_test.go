@@ -16,7 +16,8 @@ import (
 
 	zotErrors "github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/api"
-	ext "github.com/anuvu/zot/pkg/extensions"
+	"github.com/anuvu/zot/pkg/api/config"
+	extconf "github.com/anuvu/zot/pkg/extensions/config"
 	"gopkg.in/resty.v1"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -286,9 +287,9 @@ func TestSearchCVECmd(t *testing.T) {
 func TestServerCVEResponse(t *testing.T) {
 	port := getFreePort()
 	url := getBaseURL(port)
-	config := api.NewConfig()
-	config.HTTP.Port = port
-	c := api.NewController(config)
+	conf := config.New()
+	conf.HTTP.Port = port
+	c := api.NewController(conf)
 
 	dir, err := ioutil.TempDir("", "oci-repo-test")
 	if err != nil {
@@ -303,14 +304,14 @@ func TestServerCVEResponse(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	c.Config.Storage.RootDirectory = dir
-	cveConfig := &ext.CVEConfig{
+	cveConfig := &extconf.CVEConfig{
 		UpdateInterval: 2,
 	}
-	searchConfig := &ext.SearchConfig{
+	searchConfig := &extconf.SearchConfig{
 		CVE:    cveConfig,
 		Enable: true,
 	}
-	c.Config.Extensions = &ext.ExtensionConfig{
+	c.Config.Extensions = &extconf.ExtensionConfig{
 		Search: searchConfig,
 	}
 

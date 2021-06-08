@@ -37,6 +37,7 @@ https://anuvu.github.io/zot/
   * Automatic garbage collection of orphaned blobs
   * Layer deduplication using hard links when content is identical
 * Serve [multiple storage paths (and backends)](./examples/config-multiple.json) using a single zot server
+* Pull and synchronize with other zot registries [sync](#sync)
 * Swagger based documentation
 * Single binary for _all_ the above features
 * Released under Apache 2.0 License
@@ -225,6 +226,19 @@ IMAGE NAME                        TAG                       DIGEST    SIZE
 c3/openjdk-dev                    commit-2674e8a-squashfs   b545b8ba  321MB
 c3/openjdk-dev                    commit-d5024ec-squashfs   cd45f8cf  321MB
 ```
+
+# Sync
+Periodically pull and synchronize images between zot registries.
+The synchronization is achieved by copying all the images found at source to destination.
+To use it see [sync-config](examples/config-sync.json)
+Supports:
+  - TLS verification
+  - Prefix filtering (can contain multiple repos, eg repo1/repoX/repoZ)
+  - Tags regex filtering
+  - Tags semver compliance filtering (the 'v' prefix is optional)
+  - BASIC auth
+  - Trigger sync with a POST call to http://registry:port/sync
+
 
 # Ecosystem
 

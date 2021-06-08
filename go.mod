@@ -4,6 +4,8 @@ go 1.16
 
 require (
 	github.com/99designs/gqlgen v0.13.0
+	github.com/AdaLogics/go-fuzz-headers v0.0.0-20210921152813-f50b76b2163b // indirect
+	github.com/Masterminds/semver v1.5.0
 	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
 	github.com/apex/log v1.9.0
 	github.com/aquasecurity/trivy v0.0.0-00010101000000-000000000000
@@ -11,6 +13,8 @@ require (
 	github.com/briandowns/spinner v1.16.0
 	github.com/chartmuseum/auth v0.5.0
 	github.com/containerd/containerd v1.5.7 // indirect
+	github.com/containers/common v0.26.0
+	github.com/containers/image/v5 v5.13.2
 	github.com/cpuguy83/go-md2man/v2 v2.0.1 // indirect
 	github.com/dustin/go-humanize v1.0.0
 	github.com/fsnotify/fsnotify v1.5.1
@@ -49,6 +53,6 @@ require (
 replace (
 	github.com/aquasecurity/fanal => github.com/anuvu/fanal v0.0.0-20211007194926-d0c577a014df
 	github.com/aquasecurity/trivy => github.com/anuvu/trivy v0.9.2-0.20211013001708-27408aa50da3
-
 	github.com/aquasecurity/trivy-db => github.com/anuvu/trivy-db v0.0.0-20211007191113-44f7e57b689c
+	github.com/containers/image/v5 => github.com/anuvu/image/v5 v5.0.0-20210310195111-044dd755e25e
 )

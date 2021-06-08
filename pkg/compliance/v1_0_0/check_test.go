@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/anuvu/zot/pkg/api"
+	"github.com/anuvu/zot/pkg/api/config"
 	"github.com/anuvu/zot/pkg/compliance"
 	"github.com/anuvu/zot/pkg/compliance/v1_0_0"
 	"github.com/phayes/freeport"
@@ -60,10 +61,10 @@ func startServer() (*api.Controller, string) {
 	randomPort := fmt.Sprintf("%d", portInt)
 	fmt.Println(randomPort)
 
-	config := api.NewConfig()
-	config.HTTP.Address = listenAddress
-	config.HTTP.Port = randomPort
-	ctrl := api.NewController(config)
+	conf := config.New()
+	conf.HTTP.Address = listenAddress
+	conf.HTTP.Port = randomPort
+	ctrl := api.NewController(conf)
 
 	dir, err := ioutil.TempDir("", "oci-repo-test")
 	if err != nil {
@@ -86,10 +87,10 @@ func startServer() (*api.Controller, string) {
 
 	secondDir = secondSubDir
 
-	subPaths := make(map[string]api.StorageConfig)
+	subPaths := make(map[string]config.StorageConfig)
 
-	subPaths["/firsttest"] = api.StorageConfig{RootDirectory: firstSubDir}
-	subPaths["/secondtest"] = api.StorageConfig{RootDirectory: secondSubDir}
+	subPaths["/firsttest"] = config.StorageConfig{RootDirectory: firstSubDir}
+	subPaths["/secondtest"] = config.StorageConfig{RootDirectory: secondSubDir}
 
 	ctrl.Config.Storage.RootDirectory = dir
 

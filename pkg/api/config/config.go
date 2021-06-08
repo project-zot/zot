@@ -1,10 +1,10 @@
-package api
+package config
 
 import (
 	"fmt"
 
 	"github.com/anuvu/zot/errors"
-	ext "github.com/anuvu/zot/pkg/extensions"
+	extconf "github.com/anuvu/zot/pkg/extensions/config"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/getlantern/deepcopy"
 	distspec "github.com/opencontainers/distribution-spec/specs-go"
@@ -83,6 +83,23 @@ type GlobalStorageConfig struct {
 	SubPaths      map[string]StorageConfig
 }
 
+type AccessControlConfig struct {
+	Repositories Repositories
+	AdminPolicy  Policy
+}
+
+type Repositories map[string]PolicyGroup
+
+type PolicyGroup struct {
+	Policies      []Policy
+	DefaultPolicy []string
+}
+
+type Policy struct {
+	Users   []string
+	Actions []string
+}
+
 type Config struct {
 	Version       string
 	Commit        string
@@ -91,10 +108,10 @@ type Config struct {
 	Storage       GlobalStorageConfig
 	HTTP          HTTPConfig
 	Log           *LogConfig
-	Extensions    *ext.ExtensionConfig
+	Extensions    *extconf.ExtensionConfig
 }
 
-func NewConfig() *Config {
+func New() *Config {
 	return &Config{
 		Version:    distspec.Version,
 		Commit:     Commit,
@@ -107,12 +124,12 @@ func NewConfig() *Config {
 
 // Sanitize makes a sanitized copy of the config removing any secrets.
 func (c *Config) Sanitize() *Config {
-	if c.HTTP.Auth != nil && c.HTTP.Auth.LDAP != nil && c.HTTP.Auth.LDAP.BindPassword != "" {
-		s := &Config{}
-		if err := deepcopy.Copy(s, c); err != nil {
-			panic(err)
-		}
+	s := &Config{}
+	if err := deepcopy.Copy(s, c); err != nil {
+		panic(err)
+	}
 
+	if c.HTTP.Auth != nil && c.HTTP.Auth.LDAP != nil && c.HTTP.Auth.LDAP.BindPassword != "" {
 		s.HTTP.Auth.LDAP = &LDAPConfig{}
 
 		if err := deepcopy.Copy(s.HTTP.Auth.LDAP, c.HTTP.Auth.LDAP); err != nil {
@@ -120,11 +137,9 @@ func (c *Config) Sanitize() *Config {
 		}
 
 		s.HTTP.Auth.LDAP.BindPassword = "******"
-
-		return s
 	}
 
-	return c
+	return s
 }
 
 func (c *Config) Validate(log log.Logger) error {

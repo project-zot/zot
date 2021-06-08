@@ -26,6 +26,7 @@ import (
 
 	"github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/api"
+	"github.com/anuvu/zot/pkg/api/config"
 	"github.com/chartmuseum/auth"
 	"github.com/mitchellh/mapstructure"
 	godigest "github.com/opencontainers/go-digest"
@@ -124,9 +125,9 @@ func getCredString(username, password string) string {
 
 func TestNew(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		config := api.NewConfig()
-		So(config, ShouldNotBeNil)
-		So(api.NewController(config), ShouldNotBeNil)
+		conf := config.New()
+		So(conf, ShouldNotBeNil)
+		So(api.NewController(conf), ShouldNotBeNil)
 	})
 }
 
@@ -142,17 +143,17 @@ func TestHtpasswdSingleCred(t *testing.T) {
 
 		for _, testString := range singleCredtests {
 			func() {
-				config := api.NewConfig()
-				config.HTTP.Port = port
+				conf := config.New()
+				conf.HTTP.Port = port
 
 				htpasswdPath := makeHtpasswdFileFromString(testString)
 				defer os.Remove(htpasswdPath)
-				config.HTTP.Auth = &api.AuthConfig{
-					HTPasswd: api.AuthHTPasswd{
+				conf.HTTP.Auth = &config.AuthConfig{
+					HTPasswd: config.AuthHTPasswd{
 						Path: htpasswdPath,
 					},
 				}
-				c := api.NewController(config)
+				c := api.NewController(conf)
 				dir, err := ioutil.TempDir("", "oci-repo-test")
 				if err != nil {
 					panic(err)
@@ -211,16 +212,16 @@ func TestHtpasswdTwoCreds(t *testing.T) {
 			func() {
 				port := getFreePort()
 				baseURL := getBaseURL(port, false)
-				config := api.NewConfig()
-				config.HTTP.Port = port
+				conf := config.New()
+				conf.HTTP.Port = port
 				htpasswdPath := makeHtpasswdFileFromString(testString)
 				defer os.Remove(htpasswdPath)
-				config.HTTP.Auth = &api.AuthConfig{
-					HTPasswd: api.AuthHTPasswd{
+				conf.HTTP.Auth = &config.AuthConfig{
+					HTPasswd: config.AuthHTPasswd{
 						Path: htpasswdPath,
 					},
 				}
-				c := api.NewController(config)
+				c := api.NewController(conf)
 				dir, err := ioutil.TempDir("", "oci-repo-test")
 				if err != nil {
 					panic(err)
@@ -280,16 +281,16 @@ func TestHtpasswdFiveCreds(t *testing.T) {
 		func() {
 			port := getFreePort()
 			baseURL := getBaseURL(port, false)
-			config := api.NewConfig()
-			config.HTTP.Port = port
+			conf := config.New()
+			conf.HTTP.Port = port
 			htpasswdPath := makeHtpasswdFileFromString(credString.String())
 			defer os.Remove(htpasswdPath)
-			config.HTTP.Auth = &api.AuthConfig{
-				HTPasswd: api.AuthHTPasswd{
+			conf.HTTP.Auth = &config.AuthConfig{
+				HTPasswd: config.AuthHTPasswd{
 					Path: htpasswdPath,
 				},
 			}
-			c := api.NewController(config)
+			c := api.NewController(conf)
 			dir, err := ioutil.TempDir("", "oci-repo-test")
 			if err != nil {
 				panic(err)
@@ -333,17 +334,17 @@ func TestBasicAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		port := getFreePort()
 		baseURL := getBaseURL(port, false)
-		config := api.NewConfig()
-		config.HTTP.Port = port
+		conf := config.New()
+		conf.HTTP.Port = port
 		htpasswdPath := makeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
-		config.HTTP.Auth = &api.AuthConfig{
-			HTPasswd: api.AuthHTPasswd{
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
 				Path: htpasswdPath,
 			},
 		}
-		c := api.NewController(config)
+		c := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
@@ -395,10 +396,10 @@ func TestInterruptedBlobUpload(t *testing.T) {
 	Convey("Successfully cleaning interrupted blob uploads", t, func() {
 		port := getFreePort()
 		baseURL := getBaseURL(port, false)
-		config := api.NewConfig()
-		config.HTTP.Port = port
+		conf := config.New()
+		conf.HTTP.Port = port
 
-		c := api.NewController(config)
+		c := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
@@ -635,17 +636,17 @@ func TestMultipleInstance(t *testing.T) {
 	Convey("Negative test zot multiple instance", t, func() {
 		port := getFreePort()
 		baseURL := getBaseURL(port, false)
-		config := api.NewConfig()
-		config.HTTP.Port = port
+		conf := config.New()
+		conf.HTTP.Port = port
 		htpasswdPath := makeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
-		config.HTTP.Auth = &api.AuthConfig{
-			HTPasswd: api.AuthHTPasswd{
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
 				Path: htpasswdPath,
 			},
 		}
-		c := api.NewController(config)
+		c := api.NewController(conf)
 		err := c.Run()
 		So(err, ShouldEqual, errors.ErrImgStoreNotFound)
 
@@ -662,9 +663,9 @@ func TestMultipleInstance(t *testing.T) {
 		defer os.RemoveAll(subDir)
 
 		c.Config.Storage.RootDirectory = globalDir
-		subPathMap := make(map[string]api.StorageConfig)
+		subPathMap := make(map[string]config.StorageConfig)
 
-		subPathMap["/a"] = api.StorageConfig{RootDirectory: subDir}
+		subPathMap["/a"] = config.StorageConfig{RootDirectory: subDir}
 
 		go func() {
 			if err := c.Run(); err != nil {
@@ -697,17 +698,17 @@ func TestMultipleInstance(t *testing.T) {
 	Convey("Test zot multiple instance", t, func() {
 		port := getFreePort()
 		baseURL := getBaseURL(port, false)
-		config := api.NewConfig()
-		config.HTTP.Port = port
+		conf := config.New()
+		conf.HTTP.Port = port
 		htpasswdPath := makeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
-		config.HTTP.Auth = &api.AuthConfig{
-			HTPasswd: api.AuthHTPasswd{
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
 				Path: htpasswdPath,
 			},
 		}
-		c := api.NewController(config)
+		c := api.NewController(conf)
 		globalDir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
@@ -721,9 +722,9 @@ func TestMultipleInstance(t *testing.T) {
 		defer os.RemoveAll(subDir)
 
 		c.Config.Storage.RootDirectory = globalDir
-		subPathMap := make(map[string]api.StorageConfig)
+		subPathMap := make(map[string]config.StorageConfig)
 
-		subPathMap["/a"] = api.StorageConfig{RootDirectory: subDir}
+		subPathMap["/a"] = config.StorageConfig{RootDirectory: subDir}
 		go func() {
 			// this blocks
 			if err := c.Run(); err != nil {
@@ -780,19 +781,19 @@ func TestTLSWithBasicAuth(t *testing.T) {
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
 		defer func() { resty.SetTLSClientConfig(nil) }()
-		config := api.NewConfig()
-		config.HTTP.Port = port
-		config.HTTP.TLS = &api.TLSConfig{
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.HTTP.TLS = &config.TLSConfig{
 			Cert: ServerCert,
 			Key:  ServerKey,
 		}
-		config.HTTP.Auth = &api.AuthConfig{
-			HTPasswd: api.AuthHTPasswd{
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
 				Path: htpasswdPath,
 			},
 		}
 
-		c := api.NewController(config)
+		c := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
@@ -861,20 +862,20 @@ func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
 		defer func() { resty.SetTLSClientConfig(nil) }()
-		config := api.NewConfig()
-		config.HTTP.Port = port
-		config.HTTP.Auth = &api.AuthConfig{
-			HTPasswd: api.AuthHTPasswd{
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
 				Path: htpasswdPath,
 			},
 		}
-		config.HTTP.TLS = &api.TLSConfig{
+		conf.HTTP.TLS = &config.TLSConfig{
 			Cert: ServerCert,
 			Key:  ServerKey,
 		}
-		config.HTTP.AllowReadAccess = true
+		conf.HTTP.AllowReadAccess = true
 
-		c := api.NewController(config)
+		c := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
@@ -942,15 +943,15 @@ func TestTLSMutualAuth(t *testing.T) {
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
 		defer func() { resty.SetTLSClientConfig(nil) }()
-		config := api.NewConfig()
-		config.HTTP.Port = port
-		config.HTTP.TLS = &api.TLSConfig{
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.HTTP.TLS = &config.TLSConfig{
 			Cert:   ServerCert,
 			Key:    ServerKey,
 			CACert: CACert,
 		}
 
-		c := api.NewController(config)
+		c := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
@@ -1030,16 +1031,16 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
 		defer func() { resty.SetTLSClientConfig(nil) }()
-		config := api.NewConfig()
-		config.HTTP.Port = port
-		config.HTTP.TLS = &api.TLSConfig{
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.HTTP.TLS = &config.TLSConfig{
 			Cert:   ServerCert,
 			Key:    ServerKey,
 			CACert: CACert,
 		}
-		config.HTTP.AllowReadAccess = true
+		conf.HTTP.AllowReadAccess = true
 
-		c := api.NewController(config)
+		c := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
@@ -1128,20 +1129,20 @@ func TestTLSMutualAndBasicAuth(t *testing.T) {
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
 		defer func() { resty.SetTLSClientConfig(nil) }()
-		config := api.NewConfig()
-		config.HTTP.Port = port
-		config.HTTP.Auth = &api.AuthConfig{
-			HTPasswd: api.AuthHTPasswd{
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
 				Path: htpasswdPath,
 			},
 		}
-		config.HTTP.TLS = &api.TLSConfig{
+		conf.HTTP.TLS = &config.TLSConfig{
 			Cert:   ServerCert,
 			Key:    ServerKey,
 			CACert: CACert,
 		}
 
-		c := api.NewController(config)
+		c := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
@@ -1226,21 +1227,21 @@ func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
 		defer func() { resty.SetTLSClientConfig(nil) }()
-		config := api.NewConfig()
-		config.HTTP.Port = port
-		config.HTTP.Auth = &api.AuthConfig{
-			HTPasswd: api.AuthHTPasswd{
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
 				Path: htpasswdPath,
 			},
 		}
-		config.HTTP.TLS = &api.TLSConfig{
+		conf.HTTP.TLS = &config.TLSConfig{
 			Cert:   ServerCert,
 			Key:    ServerKey,
 			CACert: CACert,
 		}
-		config.HTTP.AllowReadAccess = true
+		conf.HTTP.AllowReadAccess = true
 
-		c := api.NewController(config)
+		c := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
@@ -1400,10 +1401,10 @@ func TestBasicAuthWithLDAP(t *testing.T) {
 		port := getFreePort()
 		baseURL := getBaseURL(port, false)
 
-		config := api.NewConfig()
-		config.HTTP.Port = port
-		config.HTTP.Auth = &api.AuthConfig{
-			LDAP: &api.LDAPConfig{
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.HTTP.Auth = &config.AuthConfig{
+			LDAP: &config.LDAPConfig{
 				Insecure:      true,
 				Address:       LDAPAddress,
 				Port:          LDAPPort,
@@ -1413,7 +1414,7 @@ func TestBasicAuthWithLDAP(t *testing.T) {
 				UserAttribute: "uid",
 			},
 		}
-		c := api.NewController(config)
+		c := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
@@ -1469,20 +1470,20 @@ func TestBearerAuth(t *testing.T) {
 		port := getFreePort()
 		baseURL := getBaseURL(port, false)
 
-		config := api.NewConfig()
-		config.HTTP.Port = port
+		conf := config.New()
+		conf.HTTP.Port = port
 
 		u, err := url.Parse(authTestServer.URL)
 		So(err, ShouldBeNil)
 
-		config.HTTP.Auth = &api.AuthConfig{
-			Bearer: &api.BearerConfig{
+		conf.HTTP.Auth = &config.AuthConfig{
+			Bearer: &config.BearerConfig{
 				Cert:    ServerCert,
 				Realm:   authTestServer.URL + "/auth/token",
 				Service: u.Host,
 			},
 		}
-		c := api.NewController(config)
+		c := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		So(err, ShouldBeNil)
 		defer os.RemoveAll(dir)
@@ -1651,21 +1652,21 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		port := getFreePort()
 		baseURL := getBaseURL(port, false)
 
-		config := api.NewConfig()
-		config.HTTP.Port = port
+		conf := config.New()
+		conf.HTTP.Port = port
 
 		u, err := url.Parse(authTestServer.URL)
 		So(err, ShouldBeNil)
 
-		config.HTTP.Auth = &api.AuthConfig{
-			Bearer: &api.BearerConfig{
+		conf.HTTP.Auth = &config.AuthConfig{
+			Bearer: &config.BearerConfig{
 				Cert:    ServerCert,
 				Realm:   authTestServer.URL + "/auth/token",
 				Service: u.Host,
 			},
 		}
-		config.HTTP.AllowReadAccess = true
-		c := api.NewController(config)
+		conf.HTTP.AllowReadAccess = true
+		c := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		So(err, ShouldBeNil)
 		defer os.RemoveAll(dir)
@@ -1885,20 +1886,20 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		port := getFreePort()
 		baseURL := getBaseURL(port, false)
 
-		config := api.NewConfig()
-		config.HTTP.Port = port
+		conf := config.New()
+		conf.HTTP.Port = port
 		htpasswdPath := makeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
-		config.HTTP.Auth = &api.AuthConfig{
-			HTPasswd: api.AuthHTPasswd{
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
 				Path: htpasswdPath,
 			},
 		}
-		config.AccessControl = &api.AccessControlConfig{
-			Repositories: api.Repositories{
-				AuthorizationNamespace: api.PolicyGroup{
-					Policies: []api.Policy{
+		conf.AccessControl = &config.AccessControlConfig{
+			Repositories: config.Repositories{
+				AuthorizationNamespace: config.PolicyGroup{
+					Policies: []config.Policy{
 						{
 							Users:   []string{},
 							Actions: []string{},
@@ -1907,13 +1908,13 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 					DefaultPolicy: []string{},
 				},
 			},
-			AdminPolicy: api.Policy{
+			AdminPolicy: config.Policy{
 				Users:   []string{},
 				Actions: []string{},
 			},
 		}
 
-		c := api.NewController(config)
+		c := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
@@ -1974,10 +1975,10 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, 403)
 
 		// add test user to repo's policy with create perm
-		config.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Users =
-			append(config.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Users, "test")
-		config.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions =
-			append(config.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions, "create")
+		conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Users =
+			append(conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Users, "test")
+		conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions =
+			append(conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions, "create")
 
 		// now it should get 202
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
@@ -2020,8 +2021,8 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, 403)
 
 		// get tags with read access should get 200
-		config.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions =
-			append(config.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions, "read")
+		conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions =
+			append(conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions, "read")
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
 		So(err, ShouldBeNil)
@@ -2050,8 +2051,8 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, 403)
 
 		// add delete perm on repo
-		config.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions =
-			append(config.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions, "delete")
+		conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions =
+			append(conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions, "delete")
 
 		// delete blob should get 202
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
@@ -2068,10 +2069,10 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, 403)
 
 		// add read perm on repo
-		config.AccessControl.Repositories["zot-test"] = api.PolicyGroup{Policies: []api.Policy{
+		conf.AccessControl.Repositories["zot-test"] = config.PolicyGroup{Policies: []config.Policy{
 			{
-				[]string{"test"},
-				[]string{"read"},
+				Users:   []string{"test"},
+				Actions: []string{"read"},
 			},
 		}, DefaultPolicy: []string{}}
 
@@ -2092,8 +2093,8 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, 403)
 
 		// add create perm on repo
-		config.AccessControl.Repositories["zot-test"].Policies[0].Actions =
-			append(config.AccessControl.Repositories["zot-test"].Policies[0].Actions, "create")
+		conf.AccessControl.Repositories["zot-test"].Policies[0].Actions =
+			append(conf.AccessControl.Repositories["zot-test"].Policies[0].Actions, "create")
 
 		// should get 201 with create perm
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
@@ -2112,8 +2113,8 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, 403)
 
 		// add update perm on repo
-		config.AccessControl.Repositories["zot-test"].Policies[0].Actions =
-			append(config.AccessControl.Repositories["zot-test"].Policies[0].Actions, "update")
+		conf.AccessControl.Repositories["zot-test"].Policies[0].Actions =
+			append(conf.AccessControl.Repositories["zot-test"].Policies[0].Actions, "update")
 
 		// update manifest should get 201 with update perm
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
@@ -2125,10 +2126,10 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, 201)
 
 		// now use default repo policy
-		config.AccessControl.Repositories["zot-test"].Policies[0].Actions = []string{}
-		repoPolicy := config.AccessControl.Repositories["zot-test"]
+		conf.AccessControl.Repositories["zot-test"].Policies[0].Actions = []string{}
+		repoPolicy := conf.AccessControl.Repositories["zot-test"]
 		repoPolicy.DefaultPolicy = []string{"update"}
-		config.AccessControl.Repositories["zot-test"] = repoPolicy
+		conf.AccessControl.Repositories["zot-test"] = repoPolicy
 
 		// update manifest should get 201 with update perm on repo's default policy
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
@@ -2140,10 +2141,10 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, 201)
 
 		// with default read on repo should still get 200
-		config.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions = []string{}
-		repoPolicy = config.AccessControl.Repositories[AuthorizationNamespace]
+		conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions = []string{}
+		repoPolicy = conf.AccessControl.Repositories[AuthorizationNamespace]
 		repoPolicy.DefaultPolicy = []string{"read"}
-		config.AccessControl.Repositories[AuthorizationNamespace] = repoPolicy
+		conf.AccessControl.Repositories[AuthorizationNamespace] = repoPolicy
 
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
@@ -2153,7 +2154,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 
 		// upload blob without user create but with default create should get 200
 		repoPolicy.DefaultPolicy = append(repoPolicy.DefaultPolicy, "create")
-		config.AccessControl.Repositories[AuthorizationNamespace] = repoPolicy
+		conf.AccessControl.Repositories[AuthorizationNamespace] = repoPolicy
 
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
@@ -2162,10 +2163,10 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, 202)
 
 		//remove per repo policy
-		repoPolicy = config.AccessControl.Repositories[AuthorizationNamespace]
-		repoPolicy.Policies = []api.Policy{}
+		repoPolicy = conf.AccessControl.Repositories[AuthorizationNamespace]
+		repoPolicy.Policies = []config.Policy{}
 		repoPolicy.DefaultPolicy = []string{}
-		config.AccessControl.Repositories[AuthorizationNamespace] = repoPolicy
+		conf.AccessControl.Repositories[AuthorizationNamespace] = repoPolicy
 
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
@@ -2175,8 +2176,8 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 
 		// let's use admin policy
 		// remove all repo based policy
-		delete(config.AccessControl.Repositories, AuthorizationNamespace)
-		delete(config.AccessControl.Repositories, "zot-test")
+		delete(conf.AccessControl.Repositories, AuthorizationNamespace)
+		delete(conf.AccessControl.Repositories, "zot-test")
 
 		// whithout any perm should get 403
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
@@ -2186,8 +2187,8 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, 403)
 
 		// add read perm
-		config.AccessControl.AdminPolicy.Users = append(config.AccessControl.AdminPolicy.Users, "test")
-		config.AccessControl.AdminPolicy.Actions = append(config.AccessControl.AdminPolicy.Actions, "read")
+		conf.AccessControl.AdminPolicy.Users = append(conf.AccessControl.AdminPolicy.Users, "test")
+		conf.AccessControl.AdminPolicy.Actions = append(conf.AccessControl.AdminPolicy.Actions, "read")
 		// with read perm should get 200
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
@@ -2203,7 +2204,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, 403)
 
 		// add create perm
-		config.AccessControl.AdminPolicy.Actions = append(config.AccessControl.AdminPolicy.Actions, "create")
+		conf.AccessControl.AdminPolicy.Actions = append(conf.AccessControl.AdminPolicy.Actions, "create")
 		// with create perm should get 202
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
@@ -2231,7 +2232,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, 403)
 
 		// add delete perm
-		config.AccessControl.AdminPolicy.Actions = append(config.AccessControl.AdminPolicy.Actions, "delete")
+		conf.AccessControl.AdminPolicy.Actions = append(conf.AccessControl.AdminPolicy.Actions, "delete")
 		// with delete perm should get 202
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Delete(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
@@ -2247,7 +2248,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, 403)
 
 		// add update perm
-		config.AccessControl.AdminPolicy.Actions = append(config.AccessControl.AdminPolicy.Actions, "update")
+		conf.AccessControl.AdminPolicy.Actions = append(conf.AccessControl.AdminPolicy.Actions, "update")
 		// update manifest should get 201 with update perm
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
@@ -2257,7 +2258,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 201)
 
-		config.AccessControl = &api.AccessControlConfig{}
+		conf.AccessControl = &config.AccessControlConfig{}
 
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
@@ -2274,19 +2275,19 @@ func TestInvalidCases(t *testing.T) {
 		port := getFreePort()
 		baseURL := getBaseURL(port, false)
 
-		config := api.NewConfig()
-		config.HTTP.Port = port
+		conf := config.New()
+		conf.HTTP.Port = port
 		htpasswdPath := makeHtpasswdFileFromString(getCredString(username, passphrase))
 
 		defer os.Remove(htpasswdPath)
 
-		config.HTTP.Auth = &api.AuthConfig{
-			HTPasswd: api.AuthHTPasswd{
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
 				Path: htpasswdPath,
 			},
 		}
 
-		c := api.NewController(config)
+		c := api.NewController(conf)
 
 		err := os.Mkdir("oci-repo-test", 0000)
 		if err != nil {
@@ -2343,19 +2344,19 @@ func TestHTTPReadOnly(t *testing.T) {
 
 		for _, testString := range singleCredtests {
 			func() {
-				config := api.NewConfig()
-				config.HTTP.Port = port
+				conf := config.New()
+				conf.HTTP.Port = port
 				// enable read-only mode
-				config.HTTP.ReadOnly = true
+				conf.HTTP.ReadOnly = true
 
 				htpasswdPath := makeHtpasswdFileFromString(testString)
 				defer os.Remove(htpasswdPath)
-				config.HTTP.Auth = &api.AuthConfig{
-					HTPasswd: api.AuthHTPasswd{
+				conf.HTTP.Auth = &config.AuthConfig{
+					HTPasswd: config.AuthHTPasswd{
 						Path: htpasswdPath,
 					},
 				}
-				c := api.NewController(config)
+				c := api.NewController(conf)
 				dir, err := ioutil.TempDir("", "oci-repo-test")
 				if err != nil {
 					panic(err)
@@ -2408,19 +2409,19 @@ func TestCrossRepoMount(t *testing.T) {
 		port := getFreePort()
 		baseURL := getBaseURL(port, false)
 
-		config := api.NewConfig()
-		config.HTTP.Port = port
+		conf := config.New()
+		conf.HTTP.Port = port
 		htpasswdPath := makeHtpasswdFileFromString(getCredString(username, passphrase))
 
 		defer os.Remove(htpasswdPath)
 
-		config.HTTP.Auth = &api.AuthConfig{
-			HTPasswd: api.AuthHTPasswd{
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
 				Path: htpasswdPath,
 			},
 		}
 
-		c := api.NewController(config)
+		c := api.NewController(conf)
 
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
@@ -2611,19 +2612,19 @@ func TestCrossRepoMount(t *testing.T) {
 		port := getFreePort()
 		baseURL := getBaseURL(port, false)
 
-		config := api.NewConfig()
-		config.HTTP.Port = port
+		conf := config.New()
+		conf.HTTP.Port = port
 		htpasswdPath := makeHtpasswdFileFromString(getCredString(username, passphrase))
 
 		defer os.Remove(htpasswdPath)
 
-		config.HTTP.Auth = &api.AuthConfig{
-			HTPasswd: api.AuthHTPasswd{
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
 				Path: htpasswdPath,
 			},
 		}
 
-		c := api.NewController(config)
+		c := api.NewController(conf)
 
 		//defer stopServer(c)
 
@@ -2768,17 +2769,17 @@ func TestParallelRequests(t *testing.T) {
 	port := getFreePort()
 	baseURL := getBaseURL(port, false)
 
-	config := api.NewConfig()
-	config.HTTP.Port = port
+	conf := config.New()
+	conf.HTTP.Port = port
 	htpasswdPath := makeHtpasswdFileFromString(getCredString(username, passphrase))
 
-	config.HTTP.Auth = &api.AuthConfig{
-		HTPasswd: api.AuthHTPasswd{
+	conf.HTTP.Auth = &config.AuthConfig{
+		HTPasswd: config.AuthHTPasswd{
 			Path: htpasswdPath,
 		},
 	}
 
-	c := api.NewController(config)
+	c := api.NewController(conf)
 
 	dir, err := ioutil.TempDir("", "oci-repo-test")
 	if err != nil {
@@ -2795,10 +2796,10 @@ func TestParallelRequests(t *testing.T) {
 		panic(err)
 	}
 
-	subPaths := make(map[string]api.StorageConfig)
+	subPaths := make(map[string]config.StorageConfig)
 
-	subPaths["/a"] = api.StorageConfig{RootDirectory: firstSubDir}
-	subPaths["/b"] = api.StorageConfig{RootDirectory: secondSubDir}
+	subPaths["/a"] = config.StorageConfig{RootDirectory: firstSubDir}
+	subPaths["/b"] = config.StorageConfig{RootDirectory: secondSubDir}
 
 	c.Config.Storage.SubPaths = subPaths
 
@@ -3162,17 +3163,17 @@ func TestHardLink(t *testing.T) {
 		port := getFreePort()
 		baseURL := getBaseURL(port, false)
 
-		config := api.NewConfig()
-		config.HTTP.Port = port
+		conf := config.New()
+		conf.HTTP.Port = port
 		htpasswdPath := makeHtpasswdFileFromString(getCredString(username, passphrase))
 
-		config.HTTP.Auth = &api.AuthConfig{
-			HTPasswd: api.AuthHTPasswd{
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
 				Path: htpasswdPath,
 			},
 		}
 
-		c := api.NewController(config)
+		c := api.NewController(conf)
 
 		dir, err := ioutil.TempDir("", "hard-link-test")
 		if err != nil {
@@ -3197,9 +3198,9 @@ func TestHardLink(t *testing.T) {
 		}
 
 		c.Config.Storage.RootDirectory = dir
-		subPaths := make(map[string]api.StorageConfig)
+		subPaths := make(map[string]config.StorageConfig)
 
-		subPaths["/a"] = api.StorageConfig{RootDirectory: subDir, Dedupe: true}
+		subPaths["/a"] = config.StorageConfig{RootDirectory: subDir, Dedupe: true}
 
 		c.Config.Storage.SubPaths = subPaths
 

@@ -1,9 +1,14 @@
-package extensions
+package config
 
-import "time"
+import (
+	"time"
+
+	"github.com/anuvu/zot/pkg/extensions/sync"
+)
 
 type ExtensionConfig struct {
 	Search *SearchConfig
+	Sync   *sync.Config
 }
 
 type SearchConfig struct {
