@@ -13,7 +13,8 @@ import (
 	"time"
 
 	"github.com/anuvu/zot/pkg/api"
-	ext "github.com/anuvu/zot/pkg/extensions"
+	"github.com/anuvu/zot/pkg/api/config"
+	extconf "github.com/anuvu/zot/pkg/extensions/config"
 	"github.com/anuvu/zot/pkg/extensions/search/common"
 	cveinfo "github.com/anuvu/zot/pkg/extensions/search/cve"
 	"github.com/anuvu/zot/pkg/log"
@@ -448,26 +449,26 @@ func TestCVESearch(t *testing.T) {
 		updateDuration, _ = time.ParseDuration("1h")
 		port := getFreePort()
 		baseURL := getBaseURL(port)
-		config := api.NewConfig()
-		config.HTTP.Port = port
+		conf := config.New()
+		conf.HTTP.Port = port
 		htpasswdPath := makeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
-		config.HTTP.Auth = &api.AuthConfig{
-			HTPasswd: api.AuthHTPasswd{
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
 				Path: htpasswdPath,
 			},
 		}
-		c := api.NewController(config)
+		c := api.NewController(conf)
 		c.Config.Storage.RootDirectory = dbDir
-		cveConfig := &ext.CVEConfig{
+		cveConfig := &extconf.CVEConfig{
 			UpdateInterval: updateDuration,
 		}
-		searchConfig := &ext.SearchConfig{
+		searchConfig := &extconf.SearchConfig{
 			CVE:    cveConfig,
 			Enable: true,
 		}
-		c.Config.Extensions = &ext.ExtensionConfig{
+		c.Config.Extensions = &extconf.ExtensionConfig{
 			Search: searchConfig,
 		}
 		go func() {
@@ -673,18 +674,18 @@ func TestCVESearch(t *testing.T) {
 
 func TestCVEConfig(t *testing.T) {
 	Convey("Verify CVE config", t, func() {
-		config := api.NewConfig()
-		port := config.HTTP.Port
+		conf := config.New()
+		port := conf.HTTP.Port
 		baseURL := getBaseURL(port)
 		htpasswdPath := makeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
-		config.HTTP.Auth = &api.AuthConfig{
-			HTPasswd: api.AuthHTPasswd{
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
 				Path: htpasswdPath,
 			},
 		}
-		c := api.NewController(config)
+		c := api.NewController(conf)
 		firstDir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
@@ -703,8 +704,8 @@ func TestCVEConfig(t *testing.T) {
 		}
 
 		c.Config.Storage.RootDirectory = firstDir
-		subPaths := make(map[string]api.StorageConfig)
-		subPaths["/a"] = api.StorageConfig{
+		subPaths := make(map[string]config.StorageConfig)
+		subPaths["/a"] = config.StorageConfig{
 			RootDirectory: secondDir,
 		}
 		c.Config.Storage.SubPaths = subPaths

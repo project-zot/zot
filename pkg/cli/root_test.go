@@ -6,7 +6,7 @@ import (
 	"path"
 	"testing"
 
-	"github.com/anuvu/zot/pkg/api"
+	"github.com/anuvu/zot/pkg/api/config"
 	"github.com/anuvu/zot/pkg/cli"
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/spf13/viper"
@@ -137,7 +137,7 @@ func TestVerify(t *testing.T) {
 
 func TestLoadConfig(t *testing.T) {
 	Convey("Test viper load config", t, func(c C) {
-		config := api.NewConfig()
+		config := config.New()
 		So(func() { cli.LoadConfiguration(config, "../../examples/config-policy.json") }, ShouldNotPanic)
 		adminPolicy := viper.GetStringMapStringSlice("http.accessControl.adminPolicy")
 		So(config.AccessControl.AdminPolicy.Actions, ShouldResemble, adminPolicy["actions"])

@@ -97,7 +97,7 @@ func (rh *RouteHandler) SetupRoutes() {
 	rh.c.Router.PathPrefix("/swagger/v2/").Methods("GET").Handler(httpSwagger.WrapHandler)
 	// Setup Extensions Routes
 	if rh.c.Config != nil && rh.c.Config.Extensions != nil {
-		ext.SetupRoutes(rh.c.Config.Extensions, rh.c.Router, rh.c.StoreController, rh.c.Log)
+		ext.SetupRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
 	}
 }
 
@@ -273,7 +273,7 @@ func (rh *RouteHandler) CheckManifest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, digest, mediaType, err := is.GetImageManifest(name, reference)
+	_, digest, mediaType, err := getImageManifest(rh, is, name, reference)
 	if err != nil {
 		switch err {
 		case errors.ErrRepoNotFound:
@@ -331,7 +331,8 @@ func (rh *RouteHandler) GetManifest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	content, digest, mediaType, err := is.GetImageManifest(name, reference)
+	content, digest, mediaType, err := getImageManifest(rh, is, name, reference)
+
 	if err != nil {
 		switch err {
 		case errors.ErrRepoNotFound:
@@ -1239,4 +1240,48 @@ func WriteDataFromReader(w http.ResponseWriter, status int, length int64, mediaT
 // will return image storage corresponding to subpath provided in config.
 func (rh *RouteHandler) getImageStore(name string) storage.ImageStore {
 	return rh.c.StoreController.GetImageStore(name)
+}
+
+// will sync on demand if an image is not found, in case sync extensions is enabled.
+func getImageManifest(rh *RouteHandler, is storage.ImageStore, name,
+	reference string) ([]byte, string, string, error) {
+	content, digest, mediaType, err := is.GetImageManifest(name, reference)
+
+	if err != nil {
+		switch err {
+		case errors.ErrRepoNotFound:
+			if rh.c.Config.Extensions != nil && rh.c.Config.Extensions.Sync != nil {
+				rh.c.Log.Info().Msgf("image not found, trying to get image %s:%s by syncing on demand", name, reference)
+				ok, errSync := ext.SyncOneImage(rh.c.Config, rh.c.Log, name, reference)
+
+				switch ok {
+				case true:
+					content, digest, mediaType, err = is.GetImageManifest(name, reference)
+				case false && errSync == nil:
+					rh.c.Log.Info().Msgf("couldn't find image %s:%s in sync registries", name, reference)
+				case false && errSync != nil:
+					rh.c.Log.Err(err).Msgf("error encounter while syncing image %s:%s", name, reference)
+				}
+			}
+
+		case errors.ErrManifestNotFound:
+			if rh.c.Config.Extensions != nil && rh.c.Config.Extensions.Sync != nil {
+				rh.c.Log.Info().Msgf("manifest not found, trying to get image %s:%s by syncing on demand", name, reference)
+				ok, errSync := ext.SyncOneImage(rh.c.Config, rh.c.Log, name, reference)
+
+				switch ok {
+				case true:
+					content, digest, mediaType, err = is.GetImageManifest(name, reference)
+				case false && errSync == nil:
+					rh.c.Log.Info().Msgf("couldn't find image %s:%s in sync registries", name, reference)
+				case false && errSync != nil:
+					rh.c.Log.Err(err).Msgf("error encounter while syncing image %s:%s", name, reference)
+				}
+			}
+		default:
+			return []byte{}, "", "", err
+		}
+	}
+
+	return content, digest, mediaType, err
 }

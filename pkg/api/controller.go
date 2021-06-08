@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/anuvu/zot/errors"
+	"github.com/anuvu/zot/pkg/api/config"
 	ext "github.com/anuvu/zot/pkg/extensions"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
@@ -22,7 +23,7 @@ const (
 )
 
 type Controller struct {
-	Config          *Config
+	Config          *config.Config
 	Router          *mux.Router
 	StoreController storage.StoreController
 	Log             log.Logger
@@ -30,7 +31,7 @@ type Controller struct {
 	Server          *http.Server
 }
 
-func NewController(config *Config) *Controller {
+func NewController(config *config.Config) *Controller {
 	var controller Controller
 
 	logger := log.NewLogger(config.Log.Level, config.Log.Output)
@@ -102,7 +103,7 @@ func (c *Controller) Run() error {
 
 		// Enable extensions if extension config is provided
 		if c.Config != nil && c.Config.Extensions != nil {
-			ext.EnableExtensions(c.Config.Extensions, c.Log, c.Config.Storage.RootDirectory)
+			ext.EnableExtensions(c.Config, c.Log, c.Config.Storage.RootDirectory)
 		}
 	} else {
 		// we can't proceed without global storage
@@ -134,7 +135,7 @@ func (c *Controller) Run() error {
 
 				// Enable extensions if extension config is provided
 				if c.Config != nil && c.Config.Extensions != nil {
-					ext.EnableExtensions(c.Config.Extensions, c.Log, storageConfig.RootDirectory)
+					ext.EnableExtensions(c.Config, c.Log, storageConfig.RootDirectory)
 				}
 			}
 

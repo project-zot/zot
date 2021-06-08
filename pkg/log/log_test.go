@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/anuvu/zot/pkg/api"
+	"github.com/anuvu/zot/pkg/api/config"
 	godigest "github.com/opencontainers/go-digest"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
@@ -129,23 +130,23 @@ func TestAuditLogMessages(t *testing.T) {
 			panic(err)
 		}
 
-		config := api.NewConfig()
+		conf := config.New()
 
 		outputPath := dir + "/zot.log"
 		auditPath := dir + "/zot-audit.log"
-		config.Log = &api.LogConfig{Level: "debug", Output: outputPath, Audit: auditPath}
+		conf.Log = &config.LogConfig{Level: "debug", Output: outputPath, Audit: auditPath}
 
-		config.HTTP.Port = SecurePort
+		conf.HTTP.Port = SecurePort
 
 		htpasswdPath := makeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
-		config.HTTP.Auth = &api.AuthConfig{
-			HTPasswd: api.AuthHTPasswd{
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
 				Path: htpasswdPath,
 			},
 		}
 
-		c := api.NewController(config)
+		c := api.NewController(conf)
 		c.Config.Storage.RootDirectory = dir
 		go func() {
 			// this blocks

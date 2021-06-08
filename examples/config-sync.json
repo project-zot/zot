@@ -1,0 +1,57 @@
+{
+	"version":"0.1.0-dev",
+	"storage":{
+		"rootDirectory":"/tmp/zot"
+	},
+	"http":{
+		"address":"127.0.0.1",
+		"port":"5000"
+	},
+	"log":{
+		"level":"debug"
+	},
+	"extensions":{
+		"sync": {
+			"credentialsFile": "./examples/sync-auth-filepath.json",
+			"registries": [{
+				"url": "https://registry1:5000",
+				"onDemand": false,
+				"pollInterval": "6h",
+				"tlsVerify": true,
+				"certDir": "/home/user/certs",
+				"content":[
+					{
+						"prefix":"/repo1/repo",
+						"tags":{
+							"regex":"4.*",
+							"semver":true
+						}
+					},
+					{
+						"prefix":"/repo2/repo"
+					}
+				]
+			},
+			{
+				"url": "https://registry2:5000",
+				"pollInterval": "12h",
+				"tlsVerify": false,
+				"onDemand": false,
+				"content":[
+					{
+						"prefix":"/repo2",
+						"tags":{
+							"semver":true
+						}
+					}
+				]
+			},
+			{
+				"url": "https://docker.io/library",
+				"onDemand": true,
+				"tlsVerify": true
+			}
+		]
+		}
+	}
+}
