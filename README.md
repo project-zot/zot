@@ -7,6 +7,9 @@ https://anuvu.github.io/zot/
 
 # Features
 * Conforms to [OCI distribution spec](https://github.com/opencontainers/distribution-spec) APIs
+* Clear separation between core dist-spec and zot-specific extensions
+  * ```make binary-minimal``` builds a dist-spec-only zot
+  * ```make binary``` builds a zot with all extensions enabled 
 * Uses [OCI image layout](https://github.com/opencontainers/image-spec/blob/master/image-layout.md) for image storage
   * Can serve any OCI image layout as a registry 
 * Supports [helm charts](https://helm.sh/docs/topics/registries/)
