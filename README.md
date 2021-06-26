@@ -6,6 +6,7 @@
 https://anuvu.github.io/zot/
 
 [```docker pull ghcr.io/anuvu/zot:latest```](https://github.com/anuvu/zot/pkgs/container/zot)
+[```docker run -p 5000:5000 ghcr.io/anuvu/zot:latest```](https://github.com/anuvu/zot/pkgs/container/zot)
 
 # Features
 * Conforms to [OCI distribution spec](https://github.com/opencontainers/distribution-spec) APIs
