@@ -30,6 +30,7 @@ import (
 	"github.com/mitchellh/mapstructure"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/phayes/freeport"
 	"github.com/stretchr/testify/assert"
 
 	vldap "github.com/nmcclain/ldap"
@@ -38,15 +39,8 @@ import (
 )
 
 const (
-	BaseURL1              = "http://127.0.0.1:8081"
-	BaseURL2              = "http://127.0.0.1:8082"
-	BaseURL3              = "http://127.0.0.1:8083"
-	BaseURL4              = "http://127.0.0.1:8084"
-	BaseSecureURL2        = "https://127.0.0.1:8082"
-	SecurePort1           = "8081"
-	SecurePort2           = "8082"
-	SecurePort3           = "8083"
-	SecurePort4           = "8084"
+	BaseURL               = "http://127.0.0.1:%s"
+	BaseSecureURL         = "https://127.0.0.1:%s"
 	username              = "test"
 	passphrase            = "test"
 	ServerCert            = "../../test/data/server.cert"
@@ -68,6 +62,23 @@ type (
 		Scope   string
 	}
 )
+
+func getFreePort() string {
+	port, err := freeport.GetFreePort()
+	if err != nil {
+		panic(err)
+	}
+
+	return fmt.Sprint(port)
+}
+
+func getBaseURL(port string, secure bool) string {
+	if secure {
+		return fmt.Sprintf(BaseSecureURL, port)
+	}
+
+	return fmt.Sprintf(BaseURL, port)
+}
 
 func makeHtpasswdFile() string {
 	f, err := ioutil.TempFile("", "htpasswd-")
@@ -120,6 +131,8 @@ func TestNew(t *testing.T) {
 
 func TestHtpasswdSingleCred(t *testing.T) {
 	Convey("Single cred", t, func() {
+		port := getFreePort()
+		baseURL := getBaseURL(port, false)
 		singleCredtests := []string{}
 		user := ALICE
 		password := ALICE
@@ -129,7 +142,7 @@ func TestHtpasswdSingleCred(t *testing.T) {
 		for _, testString := range singleCredtests {
 			func() {
 				config := api.NewConfig()
-				config.HTTP.Port = SecurePort1
+				config.HTTP.Port = port
 
 				htpasswdPath := makeHtpasswdFileFromString(testString)
 				defer os.Remove(htpasswdPath)
@@ -153,7 +166,7 @@ func TestHtpasswdSingleCred(t *testing.T) {
 				}(c)
 				// wait till ready
 				for {
-					_, err := resty.R().Get(BaseURL1)
+					_, err := resty.R().Get(baseURL)
 					if err == nil {
 						break
 					}
@@ -164,12 +177,12 @@ func TestHtpasswdSingleCred(t *testing.T) {
 					_ = controller.Server.Shutdown(ctx)
 				}(c)
 				// with creds, should get expected status code
-				resp, _ := resty.R().SetBasicAuth(user, password).Get(BaseURL1 + "/v2/")
+				resp, _ := resty.R().SetBasicAuth(user, password).Get(baseURL + "/v2/")
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, 200)
 
 				//with invalid creds, it should fail
-				resp, _ = resty.R().SetBasicAuth("chuck", "chuck").Get(BaseURL1 + "/v2/")
+				resp, _ = resty.R().SetBasicAuth("chuck", "chuck").Get(baseURL + "/v2/")
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, 401)
 			}()
@@ -195,8 +208,10 @@ func TestHtpasswdTwoCreds(t *testing.T) {
 
 		for _, testString := range twoCredTests {
 			func() {
+				port := getFreePort()
+				baseURL := getBaseURL(port, false)
 				config := api.NewConfig()
-				config.HTTP.Port = SecurePort1
+				config.HTTP.Port = port
 				htpasswdPath := makeHtpasswdFileFromString(testString)
 				defer os.Remove(htpasswdPath)
 				config.HTTP.Auth = &api.AuthConfig{
@@ -219,7 +234,7 @@ func TestHtpasswdTwoCreds(t *testing.T) {
 				}(c)
 				// wait till ready
 				for {
-					_, err := resty.R().Get(BaseURL1)
+					_, err := resty.R().Get(baseURL)
 					if err == nil {
 						break
 					}
@@ -231,16 +246,16 @@ func TestHtpasswdTwoCreds(t *testing.T) {
 					_ = controller.Server.Shutdown(ctx)
 				}(c)
 				// with creds, should get expected status code
-				resp, _ := resty.R().SetBasicAuth(user1, password1).Get(BaseURL1 + "/v2/")
+				resp, _ := resty.R().SetBasicAuth(user1, password1).Get(baseURL + "/v2/")
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, 200)
 
-				resp, _ = resty.R().SetBasicAuth(user2, password2).Get(BaseURL1 + "/v2/")
+				resp, _ = resty.R().SetBasicAuth(user2, password2).Get(baseURL + "/v2/")
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, 200)
 
 				//with invalid creds, it should fail
-				resp, _ = resty.R().SetBasicAuth("chuck", "chuck").Get(BaseURL1 + "/v2/")
+				resp, _ = resty.R().SetBasicAuth("chuck", "chuck").Get(baseURL + "/v2/")
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, 401)
 			}()
@@ -262,8 +277,10 @@ func TestHtpasswdFiveCreds(t *testing.T) {
 		}
 
 		func() {
+			port := getFreePort()
+			baseURL := getBaseURL(port, false)
 			config := api.NewConfig()
-			config.HTTP.Port = SecurePort1
+			config.HTTP.Port = port
 			htpasswdPath := makeHtpasswdFileFromString(credString.String())
 			defer os.Remove(htpasswdPath)
 			config.HTTP.Auth = &api.AuthConfig{
@@ -286,7 +303,7 @@ func TestHtpasswdFiveCreds(t *testing.T) {
 			}(c)
 			// wait till ready
 			for {
-				_, err := resty.R().Get(BaseURL1)
+				_, err := resty.R().Get(baseURL)
 				if err == nil {
 					break
 				}
@@ -299,13 +316,13 @@ func TestHtpasswdFiveCreds(t *testing.T) {
 			}(c)
 			// with creds, should get expected status code
 			for key, val := range tests {
-				resp, _ := resty.R().SetBasicAuth(key, val).Get(BaseURL1 + "/v2/")
+				resp, _ := resty.R().SetBasicAuth(key, val).Get(baseURL + "/v2/")
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, 200)
 			}
 
 			//with invalid creds, it should fail
-			resp, _ := resty.R().SetBasicAuth("chuck", "chuck").Get(BaseURL1 + "/v2/")
+			resp, _ := resty.R().SetBasicAuth("chuck", "chuck").Get(baseURL + "/v2/")
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, 401)
 		}()
@@ -313,8 +330,10 @@ func TestHtpasswdFiveCreds(t *testing.T) {
 }
 func TestBasicAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
+		port := getFreePort()
+		baseURL := getBaseURL(port, false)
 		config := api.NewConfig()
-		config.HTTP.Port = SecurePort1
+		config.HTTP.Port = port
 		htpasswdPath := makeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
@@ -339,7 +358,7 @@ func TestBasicAuth(t *testing.T) {
 
 		// wait till ready
 		for {
-			_, err := resty.R().Get(BaseURL1)
+			_, err := resty.R().Get(baseURL)
 			if err == nil {
 				break
 			}
@@ -352,7 +371,7 @@ func TestBasicAuth(t *testing.T) {
 		}()
 
 		// without creds, should get access error
-		resp, err := resty.R().Get(BaseURL1 + "/v2/")
+		resp, err := resty.R().Get(baseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 401)
@@ -361,11 +380,11 @@ func TestBasicAuth(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// with creds, should get expected status code
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1)
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/v2/")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 	})
@@ -373,8 +392,10 @@ func TestBasicAuth(t *testing.T) {
 
 func TestMultipleInstance(t *testing.T) {
 	Convey("Negative test zot multiple instance", t, func() {
+		port := getFreePort()
+		baseURL := getBaseURL(port, false)
 		config := api.NewConfig()
-		config.HTTP.Port = SecurePort1
+		config.HTTP.Port = port
 		htpasswdPath := makeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
@@ -412,7 +433,7 @@ func TestMultipleInstance(t *testing.T) {
 
 		// wait till ready
 		for {
-			_, err := resty.R().Get(BaseURL1)
+			_, err := resty.R().Get(baseURL)
 			if err == nil {
 				break
 			}
@@ -427,14 +448,16 @@ func TestMultipleInstance(t *testing.T) {
 		client := resty.New()
 
 		tagResponse, err := client.R().SetBasicAuth(username, passphrase).
-			Get(BaseURL1 + "/v2/zot-test/tags/list")
+			Get(baseURL + "/v2/zot-test/tags/list")
 		So(err, ShouldBeNil)
 		So(tagResponse.StatusCode(), ShouldEqual, 404)
 	})
 
 	Convey("Test zot multiple instance", t, func() {
+		port := getFreePort()
+		baseURL := getBaseURL(port, false)
 		config := api.NewConfig()
-		config.HTTP.Port = SecurePort1
+		config.HTTP.Port = port
 		htpasswdPath := makeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
@@ -469,7 +492,7 @@ func TestMultipleInstance(t *testing.T) {
 
 		// wait till ready
 		for {
-			_, err := resty.R().Get(BaseURL1)
+			_, err := resty.R().Get(baseURL)
 			if err == nil {
 				break
 			}
@@ -482,7 +505,7 @@ func TestMultipleInstance(t *testing.T) {
 		}()
 
 		// without creds, should get access error
-		resp, err := resty.R().Get(BaseURL1 + "/v2/")
+		resp, err := resty.R().Get(baseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 401)
@@ -491,11 +514,11 @@ func TestMultipleInstance(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// with creds, should get expected status code
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1)
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/v2/")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 	})
@@ -510,10 +533,14 @@ func TestTLSWithBasicAuth(t *testing.T) {
 		htpasswdPath := makeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
+		port := getFreePort()
+		baseURL := getBaseURL(port, false)
+		secureBaseURL := getBaseURL(port, true)
+
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
 		defer func() { resty.SetTLSClientConfig(nil) }()
 		config := api.NewConfig()
-		config.HTTP.Port = SecurePort2
+		config.HTTP.Port = port
 		config.HTTP.TLS = &api.TLSConfig{
 			Cert: ServerCert,
 			Key:  ServerKey,
@@ -540,7 +567,7 @@ func TestTLSWithBasicAuth(t *testing.T) {
 
 		// wait till ready
 		for {
-			_, err := resty.R().Get(BaseURL2)
+			_, err := resty.R().Get(baseURL)
 			if err == nil {
 				break
 			}
@@ -553,13 +580,13 @@ func TestTLSWithBasicAuth(t *testing.T) {
 		}()
 
 		// accessing insecure HTTP site should fail
-		resp, err := resty.R().Get(BaseURL2)
+		resp, err := resty.R().Get(baseURL)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 400)
 
 		// without creds, should get access error
-		resp, err = resty.R().Get(BaseSecureURL2 + "/v2/")
+		resp, err = resty.R().Get(secureBaseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 401)
@@ -568,11 +595,11 @@ func TestTLSWithBasicAuth(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// with creds, should get expected status code
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseSecureURL2)
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(secureBaseURL)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseSecureURL2 + "/v2/")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(secureBaseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 	})
@@ -587,10 +614,14 @@ func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 		htpasswdPath := makeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
+		port := getFreePort()
+		baseURL := getBaseURL(port, false)
+		secureBaseURL := getBaseURL(port, true)
+
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
 		defer func() { resty.SetTLSClientConfig(nil) }()
 		config := api.NewConfig()
-		config.HTTP.Port = SecurePort2
+		config.HTTP.Port = port
 		config.HTTP.Auth = &api.AuthConfig{
 			HTPasswd: api.AuthHTPasswd{
 				Path: htpasswdPath,
@@ -618,7 +649,7 @@ func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 
 		// wait till ready
 		for {
-			_, err := resty.R().Get(BaseURL2)
+			_, err := resty.R().Get(baseURL)
 			if err == nil {
 				break
 			}
@@ -631,27 +662,27 @@ func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 		}()
 
 		// accessing insecure HTTP site should fail
-		resp, err := resty.R().Get(BaseURL2)
+		resp, err := resty.R().Get(baseURL)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 400)
 
 		// without creds, should still be allowed to access
-		resp, err = resty.R().Get(BaseSecureURL2 + "/v2/")
+		resp, err = resty.R().Get(secureBaseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
 		// with creds, should get expected status code
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseSecureURL2)
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(secureBaseURL)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseSecureURL2 + "/v2/")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(secureBaseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
 		// without creds, writes should fail
-		resp, err = resty.R().Post(BaseSecureURL2 + "/v2/repo/blobs/uploads/")
+		resp, err = resty.R().Post(secureBaseURL + "/v2/repo/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 401)
 	})
@@ -664,10 +695,14 @@ func TestTLSMutualAuth(t *testing.T) {
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
 
+		port := getFreePort()
+		baseURL := getBaseURL(port, false)
+		secureBaseURL := getBaseURL(port, true)
+
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
 		defer func() { resty.SetTLSClientConfig(nil) }()
 		config := api.NewConfig()
-		config.HTTP.Port = SecurePort2
+		config.HTTP.Port = port
 		config.HTTP.TLS = &api.TLSConfig{
 			Cert:   ServerCert,
 			Key:    ServerKey,
@@ -690,7 +725,7 @@ func TestTLSMutualAuth(t *testing.T) {
 
 		// wait till ready
 		for {
-			_, err := resty.R().Get(BaseURL2)
+			_, err := resty.R().Get(baseURL)
 			if err == nil {
 				break
 			}
@@ -703,17 +738,17 @@ func TestTLSMutualAuth(t *testing.T) {
 		}()
 
 		// accessing insecure HTTP site should fail
-		resp, err := resty.R().Get(BaseURL2)
+		resp, err := resty.R().Get(baseURL)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 400)
 
 		// without client certs and creds, should get conn error
-		_, err = resty.R().Get(BaseSecureURL2)
+		_, err = resty.R().Get(secureBaseURL)
 		So(err, ShouldNotBeNil)
 
 		// with creds but without certs, should get conn error
-		_, err = resty.R().SetBasicAuth(username, passphrase).Get(BaseSecureURL2)
+		_, err = resty.R().SetBasicAuth(username, passphrase).Get(secureBaseURL)
 		So(err, ShouldNotBeNil)
 
 		// setup TLS mutual auth
@@ -724,18 +759,18 @@ func TestTLSMutualAuth(t *testing.T) {
 		defer func() { resty.SetCertificates(tls.Certificate{}) }()
 
 		// with client certs but without creds, should succeed
-		resp, err = resty.R().Get(BaseSecureURL2 + "/v2/")
+		resp, err = resty.R().Get(secureBaseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
 		// with client certs and creds, should get expected status code
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseSecureURL2)
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(secureBaseURL)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 
 		// with client certs, creds shouldn't matter
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseSecureURL2 + "/v2/")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(secureBaseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 	})
@@ -748,10 +783,14 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
 
+		port := getFreePort()
+		baseURL := getBaseURL(port, false)
+		secureBaseURL := getBaseURL(port, true)
+
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
 		defer func() { resty.SetTLSClientConfig(nil) }()
 		config := api.NewConfig()
-		config.HTTP.Port = SecurePort2
+		config.HTTP.Port = port
 		config.HTTP.TLS = &api.TLSConfig{
 			Cert:   ServerCert,
 			Key:    ServerKey,
@@ -775,7 +814,7 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 
 		// wait till ready
 		for {
-			_, err := resty.R().Get(BaseURL2)
+			_, err := resty.R().Get(baseURL)
 			if err == nil {
 				break
 			}
@@ -788,23 +827,23 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 		}()
 
 		// accessing insecure HTTP site should fail
-		resp, err := resty.R().Get(BaseURL2)
+		resp, err := resty.R().Get(baseURL)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 400)
 
 		// without client certs and creds, reads are allowed
-		resp, err = resty.R().Get(BaseSecureURL2 + "/v2/")
+		resp, err = resty.R().Get(secureBaseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
 		// with creds but without certs, reads are allowed
-		resp, err = resty.R().SetBasicAuth(username, passphrase).Get(BaseSecureURL2 + "/v2/")
+		resp, err = resty.R().SetBasicAuth(username, passphrase).Get(secureBaseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
 		// without creds, writes should fail
-		resp, err = resty.R().Post(BaseSecureURL2 + "/v2/repo/blobs/uploads/")
+		resp, err = resty.R().Post(secureBaseURL + "/v2/repo/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 401)
 
@@ -816,18 +855,18 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 		defer func() { resty.SetCertificates(tls.Certificate{}) }()
 
 		// with client certs but without creds, should succeed
-		resp, err = resty.R().Get(BaseSecureURL2 + "/v2/")
+		resp, err = resty.R().Get(secureBaseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
 		// with client certs and creds, should get expected status code
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseSecureURL2)
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(secureBaseURL)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 
 		// with client certs, creds shouldn't matter
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseSecureURL2 + "/v2/")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(secureBaseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 	})
@@ -842,10 +881,14 @@ func TestTLSMutualAndBasicAuth(t *testing.T) {
 		htpasswdPath := makeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
+		port := getFreePort()
+		baseURL := getBaseURL(port, false)
+		secureBaseURL := getBaseURL(port, true)
+
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
 		defer func() { resty.SetTLSClientConfig(nil) }()
 		config := api.NewConfig()
-		config.HTTP.Port = SecurePort2
+		config.HTTP.Port = port
 		config.HTTP.Auth = &api.AuthConfig{
 			HTPasswd: api.AuthHTPasswd{
 				Path: htpasswdPath,
@@ -873,7 +916,7 @@ func TestTLSMutualAndBasicAuth(t *testing.T) {
 
 		// wait till ready
 		for {
-			_, err := resty.R().Get(BaseURL2)
+			_, err := resty.R().Get(baseURL)
 			if err == nil {
 				break
 			}
@@ -886,19 +929,19 @@ func TestTLSMutualAndBasicAuth(t *testing.T) {
 		}()
 
 		// accessing insecure HTTP site should fail
-		resp, err := resty.R().Get(BaseURL2)
+		resp, err := resty.R().Get(baseURL)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 400)
 
 		// without client certs and creds, should fail
-		_, err = resty.R().Get(BaseSecureURL2)
+		_, err = resty.R().Get(secureBaseURL)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 400)
 
 		// with creds but without certs, should succeed
-		_, err = resty.R().SetBasicAuth(username, passphrase).Get(BaseSecureURL2)
+		_, err = resty.R().SetBasicAuth(username, passphrase).Get(secureBaseURL)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 400)
@@ -911,17 +954,17 @@ func TestTLSMutualAndBasicAuth(t *testing.T) {
 		defer func() { resty.SetCertificates(tls.Certificate{}) }()
 
 		// with client certs but without creds, should get access error
-		resp, err = resty.R().Get(BaseSecureURL2 + "/v2/")
+		resp, err = resty.R().Get(secureBaseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 401)
 
 		// with client certs and creds, should get expected status code
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseSecureURL2)
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(secureBaseURL)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseSecureURL2 + "/v2/")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(secureBaseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 	})
@@ -936,10 +979,14 @@ func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 		htpasswdPath := makeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
+		port := getFreePort()
+		baseURL := getBaseURL(port, false)
+		secureBaseURL := getBaseURL(port, true)
+
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
 		defer func() { resty.SetTLSClientConfig(nil) }()
 		config := api.NewConfig()
-		config.HTTP.Port = SecurePort2
+		config.HTTP.Port = port
 		config.HTTP.Auth = &api.AuthConfig{
 			HTPasswd: api.AuthHTPasswd{
 				Path: htpasswdPath,
@@ -968,7 +1015,7 @@ func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 
 		// wait till ready
 		for {
-			_, err := resty.R().Get(BaseURL2)
+			_, err := resty.R().Get(baseURL)
 			if err == nil {
 				break
 			}
@@ -981,19 +1028,19 @@ func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 		}()
 
 		// accessing insecure HTTP site should fail
-		resp, err := resty.R().Get(BaseURL2)
+		resp, err := resty.R().Get(baseURL)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 400)
 
 		// without client certs and creds, should fail
-		_, err = resty.R().Get(BaseSecureURL2)
+		_, err = resty.R().Get(secureBaseURL)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 400)
 
 		// with creds but without certs, should succeed
-		_, err = resty.R().SetBasicAuth(username, passphrase).Get(BaseSecureURL2)
+		_, err = resty.R().SetBasicAuth(username, passphrase).Get(secureBaseURL)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 400)
@@ -1006,21 +1053,21 @@ func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 		defer func() { resty.SetCertificates(tls.Certificate{}) }()
 
 		// with client certs but without creds, reads should succeed
-		resp, err = resty.R().Get(BaseSecureURL2 + "/v2/")
+		resp, err = resty.R().Get(secureBaseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
 		// with only client certs, writes should fail
-		resp, err = resty.R().Post(BaseSecureURL2 + "/v2/repo/blobs/uploads/")
+		resp, err = resty.R().Post(secureBaseURL + "/v2/repo/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 401)
 
 		// with client certs and creds, should get expected status code
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseSecureURL2)
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(secureBaseURL)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseSecureURL2 + "/v2/")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(secureBaseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 	})
@@ -1108,8 +1155,12 @@ func TestBasicAuthWithLDAP(t *testing.T) {
 		l := newTestLDAPServer()
 		l.Start()
 		defer l.Stop()
+
+		port := getFreePort()
+		baseURL := getBaseURL(port, false)
+
 		config := api.NewConfig()
-		config.HTTP.Port = SecurePort1
+		config.HTTP.Port = port
 		config.HTTP.Auth = &api.AuthConfig{
 			LDAP: &api.LDAPConfig{
 				Insecure:      true,
@@ -1137,7 +1188,7 @@ func TestBasicAuthWithLDAP(t *testing.T) {
 
 		// wait till ready
 		for {
-			_, err := resty.R().Get(BaseURL1)
+			_, err := resty.R().Get(baseURL)
 			if err == nil {
 				break
 			}
@@ -1150,7 +1201,7 @@ func TestBasicAuthWithLDAP(t *testing.T) {
 		}()
 
 		// without creds, should get access error
-		resp, err := resty.R().Get(BaseURL1 + "/v2/")
+		resp, err := resty.R().Get(baseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 401)
@@ -1159,11 +1210,11 @@ func TestBasicAuthWithLDAP(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// with creds, should get expected status code
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1)
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(BaseURL1 + "/v2/")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 	})
@@ -1174,8 +1225,11 @@ func TestBearerAuth(t *testing.T) {
 		authTestServer := makeAuthTestServer()
 		defer authTestServer.Close()
 
+		port := getFreePort()
+		baseURL := getBaseURL(port, false)
+
 		config := api.NewConfig()
-		config.HTTP.Port = SecurePort3
+		config.HTTP.Port = port
 
 		u, err := url.Parse(authTestServer.URL)
 		So(err, ShouldBeNil)
@@ -1201,7 +1255,7 @@ func TestBearerAuth(t *testing.T) {
 
 		// wait till ready
 		for {
-			_, err := resty.R().Get(BaseURL3)
+			_, err := resty.R().Get(baseURL)
 			if err == nil {
 				break
 			}
@@ -1216,7 +1270,7 @@ func TestBearerAuth(t *testing.T) {
 		blob := []byte("hello, blob!")
 		digest := godigest.FromBytes(blob).String()
 
-		resp, err := resty.R().Get(BaseURL3 + "/v2/")
+		resp, err := resty.R().Get(baseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 401)
@@ -1235,12 +1289,12 @@ func TestBearerAuth(t *testing.T) {
 
 		resp, err = resty.R().
 			SetHeader("Authorization", fmt.Sprintf("Bearer %s", goodToken.AccessToken)).
-			Get(BaseURL3 + "/v2/")
+			Get(baseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, err = resty.R().Post(BaseURL3 + "/v2/" + AuthorizedNamespace + "/blobs/uploads/")
+		resp, err = resty.R().Post(baseURL + "/v2/" + AuthorizedNamespace + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 401)
@@ -1258,7 +1312,7 @@ func TestBearerAuth(t *testing.T) {
 
 		resp, err = resty.R().
 			SetHeader("Authorization", fmt.Sprintf("Bearer %s", goodToken.AccessToken)).
-			Post(BaseURL3 + "/v2/" + AuthorizedNamespace + "/blobs/uploads/")
+			Post(baseURL + "/v2/" + AuthorizedNamespace + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 202)
@@ -1269,7 +1323,7 @@ func TestBearerAuth(t *testing.T) {
 			SetHeader("Content-Type", "application/octet-stream").
 			SetQueryParam("digest", digest).
 			SetBody(blob).
-			Put(BaseURL3 + loc)
+			Put(baseURL + loc)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 401)
@@ -1291,14 +1345,14 @@ func TestBearerAuth(t *testing.T) {
 			SetHeader("Authorization", fmt.Sprintf("Bearer %s", goodToken.AccessToken)).
 			SetQueryParam("digest", digest).
 			SetBody(blob).
-			Put(BaseURL3 + loc)
+			Put(baseURL + loc)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 201)
 
 		resp, err = resty.R().
 			SetHeader("Authorization", fmt.Sprintf("Bearer %s", goodToken.AccessToken)).
-			Get(BaseURL3 + "/v2/" + AuthorizedNamespace + "/tags/list")
+			Get(baseURL + "/v2/" + AuthorizedNamespace + "/tags/list")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 401)
@@ -1316,13 +1370,13 @@ func TestBearerAuth(t *testing.T) {
 
 		resp, err = resty.R().
 			SetHeader("Authorization", fmt.Sprintf("Bearer %s", goodToken.AccessToken)).
-			Get(BaseURL3 + "/v2/" + AuthorizedNamespace + "/tags/list")
+			Get(baseURL + "/v2/" + AuthorizedNamespace + "/tags/list")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
 		resp, err = resty.R().
-			Post(BaseURL3 + "/v2/" + UnauthorizedNamespace + "/blobs/uploads/")
+			Post(baseURL + "/v2/" + UnauthorizedNamespace + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 401)
@@ -1341,7 +1395,7 @@ func TestBearerAuth(t *testing.T) {
 
 		resp, err = resty.R().
 			SetHeader("Authorization", fmt.Sprintf("Bearer %s", badToken.AccessToken)).
-			Post(BaseURL3 + "/v2/" + UnauthorizedNamespace + "/blobs/uploads/")
+			Post(baseURL + "/v2/" + UnauthorizedNamespace + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 401)
@@ -1353,8 +1407,11 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		authTestServer := makeAuthTestServer()
 		defer authTestServer.Close()
 
+		port := getFreePort()
+		baseURL := getBaseURL(port, false)
+
 		config := api.NewConfig()
-		config.HTTP.Port = SecurePort3
+		config.HTTP.Port = port
 
 		u, err := url.Parse(authTestServer.URL)
 		So(err, ShouldBeNil)
@@ -1381,7 +1438,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 
 		// wait till ready
 		for {
-			_, err := resty.R().Get(BaseURL3)
+			_, err := resty.R().Get(baseURL)
 			if err == nil {
 				break
 			}
@@ -1396,7 +1453,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		blob := []byte("hello, blob!")
 		digest := godigest.FromBytes(blob).String()
 
-		resp, err := resty.R().Get(BaseURL3 + "/v2/")
+		resp, err := resty.R().Get(baseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 401)
@@ -1415,12 +1472,12 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 
 		resp, err = resty.R().
 			SetHeader("Authorization", fmt.Sprintf("Bearer %s", goodToken.AccessToken)).
-			Get(BaseURL3 + "/v2/")
+			Get(baseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, err = resty.R().Post(BaseURL3 + "/v2/" + AuthorizedNamespace + "/blobs/uploads/")
+		resp, err = resty.R().Post(baseURL + "/v2/" + AuthorizedNamespace + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 401)
@@ -1438,7 +1495,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 
 		resp, err = resty.R().
 			SetHeader("Authorization", fmt.Sprintf("Bearer %s", goodToken.AccessToken)).
-			Post(BaseURL3 + "/v2/" + AuthorizedNamespace + "/blobs/uploads/")
+			Post(baseURL + "/v2/" + AuthorizedNamespace + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 202)
@@ -1449,7 +1506,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 			SetHeader("Content-Type", "application/octet-stream").
 			SetQueryParam("digest", digest).
 			SetBody(blob).
-			Put(BaseURL3 + loc)
+			Put(baseURL + loc)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 401)
@@ -1471,14 +1528,14 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 			SetHeader("Authorization", fmt.Sprintf("Bearer %s", goodToken.AccessToken)).
 			SetQueryParam("digest", digest).
 			SetBody(blob).
-			Put(BaseURL3 + loc)
+			Put(baseURL + loc)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 201)
 
 		resp, err = resty.R().
 			SetHeader("Authorization", fmt.Sprintf("Bearer %s", goodToken.AccessToken)).
-			Get(BaseURL3 + "/v2/" + AuthorizedNamespace + "/tags/list")
+			Get(baseURL + "/v2/" + AuthorizedNamespace + "/tags/list")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 401)
@@ -1496,13 +1553,13 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 
 		resp, err = resty.R().
 			SetHeader("Authorization", fmt.Sprintf("Bearer %s", goodToken.AccessToken)).
-			Get(BaseURL3 + "/v2/" + AuthorizedNamespace + "/tags/list")
+			Get(baseURL + "/v2/" + AuthorizedNamespace + "/tags/list")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
 		resp, err = resty.R().
-			Post(BaseURL3 + "/v2/" + UnauthorizedNamespace + "/blobs/uploads/")
+			Post(baseURL + "/v2/" + UnauthorizedNamespace + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 401)
@@ -1521,7 +1578,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 
 		resp, err = resty.R().
 			SetHeader("Authorization", fmt.Sprintf("Bearer %s", badToken.AccessToken)).
-			Post(BaseURL3 + "/v2/" + UnauthorizedNamespace + "/blobs/uploads/")
+			Post(baseURL + "/v2/" + UnauthorizedNamespace + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 401)
@@ -1584,8 +1641,11 @@ func parseBearerAuthHeader(authHeaderRaw string) *authHeader {
 
 func TestInvalidCases(t *testing.T) {
 	Convey("Invalid repo dir", t, func() {
+		port := getFreePort()
+		baseURL := getBaseURL(port, false)
+
 		config := api.NewConfig()
-		config.HTTP.Port = SecurePort1
+		config.HTTP.Port = port
 		htpasswdPath := makeHtpasswdFileFromString(getCredString(username, passphrase))
 
 		defer os.Remove(htpasswdPath)
@@ -1616,7 +1676,7 @@ func TestInvalidCases(t *testing.T) {
 
 		// wait till ready
 		for {
-			_, err := resty.R().Get(BaseURL1)
+			_, err := resty.R().Get(baseURL)
 			if err == nil {
 				break
 			}
@@ -1635,7 +1695,7 @@ func TestInvalidCases(t *testing.T) {
 
 		postResponse, err := client.R().
 			SetBasicAuth(username, passphrase).SetQueryParams(params).
-			Post(fmt.Sprintf("%s/v2/%s/blobs/uploads/", BaseURL1, name))
+			Post(fmt.Sprintf("%s/v2/%s/blobs/uploads/", baseURL, name))
 		So(err, ShouldBeNil)
 		So(postResponse.StatusCode(), ShouldEqual, 500)
 	})
@@ -1648,10 +1708,13 @@ func TestHTTPReadOnly(t *testing.T) {
 		singleCredtests = append(singleCredtests, getCredString(user, password))
 		singleCredtests = append(singleCredtests, getCredString(user, password)+"\n")
 
+		port := getFreePort()
+		baseURL := getBaseURL(port, false)
+
 		for _, testString := range singleCredtests {
 			func() {
 				config := api.NewConfig()
-				config.HTTP.Port = SecurePort4
+				config.HTTP.Port = port
 				// enable read-only mode
 				config.HTTP.ReadOnly = true
 
@@ -1677,35 +1740,32 @@ func TestHTTPReadOnly(t *testing.T) {
 				}(c)
 				// wait till ready
 				for {
-					_, err := resty.R().Get(BaseURL4)
+					_, err := resty.R().Get(baseURL)
 					if err == nil {
 						break
 					}
 					time.Sleep(100 * time.Millisecond)
 				}
+
 				defer func(controller *api.Controller) {
 					ctx := context.Background()
 					_ = controller.Server.Shutdown(ctx)
 				}(c)
-				// with creds, should get expected status code
-				resp, _ := resty.R().SetBasicAuth(user, password).Get(BaseURL4 + "/v2/")
-				So(resp, ShouldNotBeNil)
-				So(resp.StatusCode(), ShouldEqual, 200)
 
 				// with creds, should get expected status code
-				resp, _ = resty.R().SetBasicAuth(user, password).Get(BaseURL4 + "/v2/")
+				resp, _ := resty.R().SetBasicAuth(user, password).Get(baseURL + "/v2/")
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, 200)
 
 				// with creds, any modifications should still fail on read-only mode
 				resp, err = resty.R().SetBasicAuth(user, password).
-					Post(BaseURL4 + "/v2/" + AuthorizedNamespace + "/blobs/uploads/")
+					Post(baseURL + "/v2/" + AuthorizedNamespace + "/blobs/uploads/")
 				So(err, ShouldBeNil)
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, 405)
 
 				//with invalid creds, it should fail
-				resp, _ = resty.R().SetBasicAuth("chuck", "chuck").Get(BaseURL4 + "/v2/")
+				resp, _ = resty.R().SetBasicAuth("chuck", "chuck").Get(baseURL + "/v2/")
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, 401)
 			}()
@@ -1715,8 +1775,11 @@ func TestHTTPReadOnly(t *testing.T) {
 
 func TestCrossRepoMount(t *testing.T) {
 	Convey("Cross Repo Mount", t, func() {
+		port := getFreePort()
+		baseURL := getBaseURL(port, false)
+
 		config := api.NewConfig()
-		config.HTTP.Port = SecurePort1
+		config.HTTP.Port = port
 		htpasswdPath := makeHtpasswdFileFromString(getCredString(username, passphrase))
 
 		defer os.Remove(htpasswdPath)
@@ -1751,7 +1814,7 @@ func TestCrossRepoMount(t *testing.T) {
 
 		// wait till ready
 		for {
-			_, err := resty.R().Get(BaseURL1)
+			_, err := resty.R().Get(baseURL)
 			if err == nil {
 				break
 			}
@@ -1769,7 +1832,7 @@ func TestCrossRepoMount(t *testing.T) {
 
 		client := resty.New()
 		headResponse, err := client.R().SetBasicAuth(username, passphrase).
-			Head(fmt.Sprintf("%s/v2/%s/blobs/%s", BaseURL1, name, digest))
+			Head(fmt.Sprintf("%s/v2/%s/blobs/%s", baseURL, name, digest))
 		So(err, ShouldBeNil)
 		So(headResponse.StatusCode(), ShouldEqual, 200)
 
@@ -1777,7 +1840,7 @@ func TestCrossRepoMount(t *testing.T) {
 
 		postResponse, err := client.R().
 			SetBasicAuth(username, passphrase).SetQueryParams(params).
-			Post(BaseURL1 + "/v2/zot-c-test/blobs/uploads/")
+			Post(baseURL + "/v2/zot-c-test/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(postResponse.StatusCode(), ShouldEqual, 202)
 
@@ -1787,7 +1850,7 @@ func TestCrossRepoMount(t *testing.T) {
 
 		postResponse, err = client.R().
 			SetBasicAuth(username, passphrase).SetQueryParams(incorrectParams).
-			Post(BaseURL1 + "/v2/zot-y-test/blobs/uploads/")
+			Post(baseURL + "/v2/zot-y-test/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(postResponse.StatusCode(), ShouldEqual, 202)
 
@@ -1795,37 +1858,37 @@ func TestCrossRepoMount(t *testing.T) {
 		params["mount"] = digest
 		postResponse, err = client.R().
 			SetBasicAuth(username, passphrase).SetQueryParams(params).
-			Post(BaseURL1 + "/v2/zot-c-test/blobs/uploads/")
+			Post(baseURL + "/v2/zot-c-test/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(postResponse.StatusCode(), ShouldEqual, 201)
 
 		// Send same request again
 		postResponse, err = client.R().
 			SetBasicAuth(username, passphrase).SetQueryParams(params).
-			Post(BaseURL1 + "/v2/zot-c-test/blobs/uploads/")
+			Post(baseURL + "/v2/zot-c-test/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(postResponse.StatusCode(), ShouldEqual, 202)
 
 		// Valid requests
 		postResponse, err = client.R().
 			SetBasicAuth(username, passphrase).SetQueryParams(params).
-			Post(BaseURL1 + "/v2/zot-d-test/blobs/uploads/")
+			Post(baseURL + "/v2/zot-d-test/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(postResponse.StatusCode(), ShouldEqual, 201)
 
 		headResponse, err = client.R().SetBasicAuth(username, passphrase).
-			Head(fmt.Sprintf("%s/v2/zot-cv-test/blobs/%s", BaseURL1, digest))
+			Head(fmt.Sprintf("%s/v2/zot-cv-test/blobs/%s", baseURL, digest))
 		So(err, ShouldBeNil)
 		So(headResponse.StatusCode(), ShouldEqual, 404)
 
 		postResponse, err = client.R().
-			SetBasicAuth(username, passphrase).SetQueryParams(params).Post(BaseURL1 + "/v2/zot-c-test/blobs/uploads/")
+			SetBasicAuth(username, passphrase).SetQueryParams(params).Post(baseURL + "/v2/zot-c-test/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(postResponse.StatusCode(), ShouldEqual, 202)
 
 		postResponse, err = client.R().
 			SetBasicAuth(username, passphrase).SetQueryParams(params).
-			Post(BaseURL1 + "/v2/ /blobs/uploads/")
+			Post(baseURL + "/v2/ /blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(postResponse.StatusCode(), ShouldEqual, 404)
 
@@ -1840,12 +1903,12 @@ func TestCrossRepoMount(t *testing.T) {
 
 		postResponse, err = client.R().SetHeader("Content-type", "application/octet-stream").
 			SetBasicAuth(username, passphrase).SetQueryParam("digest", "sha256:"+blob).
-			SetBody(buf).Post(BaseURL1 + "/v2/zot-d-test/blobs/uploads/")
+			SetBody(buf).Post(baseURL + "/v2/zot-d-test/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(postResponse.StatusCode(), ShouldEqual, 201)
 
 		headResponse, err = client.R().SetBasicAuth(username, passphrase).
-			Head(fmt.Sprintf("%s/v2/zot-cv-test/blobs/%s", BaseURL1, digest))
+			Head(fmt.Sprintf("%s/v2/zot-cv-test/blobs/%s", baseURL, digest))
 		So(err, ShouldBeNil)
 		So(headResponse.StatusCode(), ShouldEqual, 200)
 
@@ -1854,7 +1917,7 @@ func TestCrossRepoMount(t *testing.T) {
 		params["mount"] = "sha256:"
 		postResponse, err = client.R().
 			SetBasicAuth(username, passphrase).SetQueryParams(params).
-			Post(BaseURL1 + "/v2/zot-mount-test/blobs/uploads/")
+			Post(baseURL + "/v2/zot-mount-test/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(postResponse.StatusCode(), ShouldEqual, 405)
 
@@ -1862,14 +1925,17 @@ func TestCrossRepoMount(t *testing.T) {
 		params["from"] = "zot-cve-test"
 		postResponse, err = client.R().
 			SetBasicAuth(username, passphrase).SetQueryParams(params).
-			Post(BaseURL1 + "/v2/zot-mount-test/blobs/uploads/")
+			Post(baseURL + "/v2/zot-mount-test/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(postResponse.StatusCode(), ShouldEqual, 405)
 	})
 
 	Convey("Disable dedupe and cache", t, func() {
+		port := getFreePort()
+		baseURL := getBaseURL(port, false)
+
 		config := api.NewConfig()
-		config.HTTP.Port = SecurePort1
+		config.HTTP.Port = port
 		htpasswdPath := makeHtpasswdFileFromString(getCredString(username, passphrase))
 
 		defer os.Remove(htpasswdPath)
@@ -1908,7 +1974,7 @@ func TestCrossRepoMount(t *testing.T) {
 
 		// wait till ready
 		for {
-			_, err := resty.R().Get(BaseURL1)
+			_, err := resty.R().Get(baseURL)
 			if err == nil {
 				break
 			}
@@ -1921,7 +1987,7 @@ func TestCrossRepoMount(t *testing.T) {
 
 		client := resty.New()
 		headResponse, err := client.R().SetBasicAuth(username, passphrase).
-			Head(fmt.Sprintf("%s/v2/%s/blobs/%s", BaseURL1, name, digest))
+			Head(fmt.Sprintf("%s/v2/%s/blobs/%s", baseURL, name, digest))
 		So(err, ShouldBeNil)
 		So(headResponse.StatusCode(), ShouldEqual, 404)
 	})
@@ -2022,8 +2088,11 @@ func TestParallelRequests(t *testing.T) {
 		},
 	}
 
+	port := getFreePort()
+	baseURL := getBaseURL(port, false)
+
 	config := api.NewConfig()
-	config.HTTP.Port = SecurePort1
+	config.HTTP.Port = port
 	htpasswdPath := makeHtpasswdFileFromString(getCredString(username, passphrase))
 
 	config.HTTP.Auth = &api.AuthConfig{
@@ -2067,7 +2136,7 @@ func TestParallelRequests(t *testing.T) {
 
 	// wait till ready
 	for {
-		_, err := resty.R().Get(BaseURL1)
+		_, err := resty.R().Get(baseURL)
 		if err == nil {
 			break
 		}
@@ -2085,7 +2154,7 @@ func TestParallelRequests(t *testing.T) {
 			client := resty.New()
 
 			tagResponse, err := client.R().SetBasicAuth(username, passphrase).
-				Get(BaseURL1 + "/v2/" + testcase.destImageName + "/tags/list")
+				Get(baseURL + "/v2/" + testcase.destImageName + "/tags/list")
 			assert.Equal(t, err, nil, "Error should be nil")
 			assert.NotEqual(t, tagResponse.StatusCode(), 400, "bad request")
 
@@ -2093,12 +2162,12 @@ func TestParallelRequests(t *testing.T) {
 
 			for _, manifest := range manifestList {
 				headResponse, err := client.R().SetBasicAuth(username, passphrase).
-					Head(BaseURL1 + "/v2/" + testcase.destImageName + "/manifests/" + manifest)
+					Head(baseURL + "/v2/" + testcase.destImageName + "/manifests/" + manifest)
 				assert.Equal(t, err, nil, "Error should be nil")
 				assert.Equal(t, headResponse.StatusCode(), 404, "response status code should return 404")
 
 				getResponse, err := client.R().SetBasicAuth(username, passphrase).
-					Get(BaseURL1 + "/v2/" + testcase.destImageName + "/manifests/" + manifest)
+					Get(baseURL + "/v2/" + testcase.destImageName + "/manifests/" + manifest)
 				assert.Equal(t, err, nil, "Error should be nil")
 				assert.Equal(t, getResponse.StatusCode(), 404, "response status code should return 404")
 			}
@@ -2109,14 +2178,14 @@ func TestParallelRequests(t *testing.T) {
 				// Get request of blob
 				headResponse, err := client.R().
 					SetBasicAuth(username, passphrase).
-					Head(BaseURL1 + "/v2/" + testcase.destImageName + "/blobs/sha256:" + blob)
+					Head(baseURL + "/v2/" + testcase.destImageName + "/blobs/sha256:" + blob)
 
 				assert.Equal(t, err, nil, "Should not be nil")
 				assert.NotEqual(t, headResponse.StatusCode(), 500, "internal server error should not occurred")
 
 				getResponse, err := client.R().
 					SetBasicAuth(username, passphrase).
-					Get(BaseURL1 + "/v2/" + testcase.destImageName + "/blobs/sha256:" + blob)
+					Get(baseURL + "/v2/" + testcase.destImageName + "/blobs/sha256:" + blob)
 
 				assert.Equal(t, err, nil, "Should not be nil")
 				assert.NotEqual(t, getResponse.StatusCode(), 500, "internal server error should not occurred")
@@ -2132,7 +2201,7 @@ func TestParallelRequests(t *testing.T) {
 				postResponse, err := client.R().
 					SetHeader("Content-type", "application/octet-stream").
 					SetBasicAuth(username, passphrase).
-					SetBody(buf).Post(BaseURL1 + "/v2/" + testcase.destImageName + "/blobs/uploads/")
+					SetBody(buf).Post(baseURL + "/v2/" + testcase.destImageName + "/blobs/uploads/")
 
 				assert.Equal(t, err, nil, "Error should be nil")
 				assert.NotEqual(t, postResponse.StatusCode(), 500, "response status code should not return 500")
@@ -2144,7 +2213,7 @@ func TestParallelRequests(t *testing.T) {
 						SetHeader("Content-type", "application/octet-stream").
 						SetBasicAuth(username, passphrase).
 						SetBody(buf).
-						Post(BaseURL1 + "/v2/" + testcase.destImageName + "/blobs/uploads/")
+						Post(baseURL + "/v2/" + testcase.destImageName + "/blobs/uploads/")
 
 					assert.Equal(t, err, nil, "Error should be nil")
 					assert.NotEqual(t, postResponse.StatusCode(), 500, "response status code should not return 500")
@@ -2189,7 +2258,7 @@ func TestParallelRequests(t *testing.T) {
 								SetHeader("Content-Length", fmt.Sprintf("%d", n)).
 								SetHeader("Content-Range", fmt.Sprintf("%d", readContent)+"-"+fmt.Sprintf("%d", readContent+n-1)).
 								SetBasicAuth(username, passphrase).
-								Patch(BaseURL1 + "/v2/" + testcase.destImageName + "/blobs/uploads/" + sessionID)
+								Patch(baseURL + "/v2/" + testcase.destImageName + "/blobs/uploads/" + sessionID)
 
 							assert.Equal(t, err, nil, "Error should be nil")
 							assert.NotEqual(t, patchResponse.StatusCode(), 500, "response status code should not return 500")
@@ -2209,7 +2278,7 @@ func TestParallelRequests(t *testing.T) {
 
 							patchResponse, err := client.R().SetBody(b[0:n]).SetHeader("Content-type", "application/octet-stream").
 								SetBasicAuth(username, passphrase).
-								Patch(BaseURL1 + "/v2/" + testcase.destImageName + "/blobs/uploads/" + sessionID)
+								Patch(baseURL + "/v2/" + testcase.destImageName + "/blobs/uploads/" + sessionID)
 
 							if err != nil {
 								panic(err)
@@ -2224,7 +2293,7 @@ func TestParallelRequests(t *testing.T) {
 						SetHeader("Content-type", "application/octet-stream").
 						SetBasicAuth(username, passphrase).
 						SetBody(buf).SetQueryParam("digest", "sha256:"+blob).
-						Post(BaseURL1 + "/v2/" + testcase.destImageName + "/blobs/uploads/")
+						Post(baseURL + "/v2/" + testcase.destImageName + "/blobs/uploads/")
 
 					assert.Equal(t, err, nil, "Error should be nil")
 					assert.NotEqual(t, postResponse.StatusCode(), 500, "response status code should not return 500")
@@ -2232,14 +2301,14 @@ func TestParallelRequests(t *testing.T) {
 
 				headResponse, err = client.R().
 					SetBasicAuth(username, passphrase).
-					Head(BaseURL1 + "/v2/" + testcase.destImageName + "/blobs/sha256:" + blob)
+					Head(baseURL + "/v2/" + testcase.destImageName + "/blobs/sha256:" + blob)
 
 				assert.Equal(t, err, nil, "Should not be nil")
 				assert.NotEqual(t, headResponse.StatusCode(), 500, "response should return success code")
 
 				getResponse, err = client.R().
 					SetBasicAuth(username, passphrase).
-					Get(BaseURL1 + "/v2/" + testcase.destImageName + "/blobs/sha256:" + blob)
+					Get(baseURL + "/v2/" + testcase.destImageName + "/blobs/sha256:" + blob)
 
 				assert.Equal(t, err, nil, "Should not be nil")
 				assert.NotEqual(t, getResponse.StatusCode(), 500, "response should return success code")
@@ -2247,7 +2316,7 @@ func TestParallelRequests(t *testing.T) {
 				if i < 5 { // nolint: scopelint
 					deleteResponse, err := client.R().
 						SetBasicAuth(username, passphrase).
-						Delete(BaseURL1 + "/v2/" + testcase.destImageName + "/blobs/sha256:" + blob)
+						Delete(baseURL + "/v2/" + testcase.destImageName + "/blobs/sha256:" + blob)
 
 					assert.Equal(t, err, nil, "Should not be nil")
 					assert.Equal(t, deleteResponse.StatusCode(), 202, "response should return success code")
@@ -2255,12 +2324,12 @@ func TestParallelRequests(t *testing.T) {
 			}
 
 			tagResponse, err = client.R().SetBasicAuth(username, passphrase).
-				Get(BaseURL1 + "/v2/" + testcase.destImageName + "/tags/list")
+				Get(baseURL + "/v2/" + testcase.destImageName + "/tags/list")
 			assert.Equal(t, err, nil, "Error should be nil")
 			assert.Equal(t, tagResponse.StatusCode(), 200, "response status code should return success code")
 
 			repoResponse, err := client.R().SetBasicAuth(username, passphrase).
-				Get(BaseURL1 + "/v2/_catalog")
+				Get(baseURL + "/v2/_catalog")
 			assert.Equal(t, err, nil, "Error should be nil")
 			assert.Equal(t, repoResponse.StatusCode(), 200, "response status code should return success code")
 		})
@@ -2413,8 +2482,11 @@ func stopServer(ctrl *api.Controller) {
 
 func TestHardLink(t *testing.T) {
 	Convey("Validate hard link", t, func() {
+		port := getFreePort()
+		baseURL := getBaseURL(port, false)
+
 		config := api.NewConfig()
-		config.HTTP.Port = SecurePort1
+		config.HTTP.Port = port
 		htpasswdPath := makeHtpasswdFileFromString(getCredString(username, passphrase))
 
 		config.HTTP.Auth = &api.AuthConfig{
@@ -2465,7 +2537,7 @@ func TestHardLink(t *testing.T) {
 
 		// wait till ready
 		for {
-			_, err := resty.R().Get(BaseURL1)
+			_, err := resty.R().Get(baseURL)
 			if err == nil {
 				break
 			}
