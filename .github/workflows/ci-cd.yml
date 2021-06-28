@@ -1,0 +1,69 @@
+on:
+  push:
+    branches: 
+      - master
+  pull_request:
+    branches:
+      - master
+  release:
+    types:
+      - published
+name: build-test
+jobs:
+  build-test:
+    name: Build and test ZOT
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.15.x
+
+      - name: Check out source code
+        uses: actions/checkout@v1
+
+      - name: Install dependencies
+        run: |
+          cd $GITHUB_WORKSPACE
+          go get -u github.com/swaggo/swag/cmd/swag
+          go mod download
+          sudo apt-get update
+          sudo apt-get install rpm
+          sudo apt install snapd
+          sudo snap install skopeo --edge --devmode
+
+      - name: Run build and test
+        run: |
+          cd $GITHUB_WORKSPACE && make
+
+      - name: Upload code coverage
+        uses: codecov/codecov-action@v1  
+      
+      - if: github.event_name == 'release' && github.event.action == 'published'
+        name: Publish artifacts on releases
+        uses: Roang-zero1/github-upload-release-artifacts-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: bin/zot*
+
+  push-image:
+    if: github.event_name == 'release' && github.event.action== 'published'
+    name: Push Docker image to GitHub Packages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v2
+      - name: Log in to GitHub Docker Registry
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build container image
+        uses: docker/build-push-action@v2
+        with:
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:${{ github.event.release.tag_name }}
+            ghcr.io/${{ github.repository }}:latest

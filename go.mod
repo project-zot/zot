@@ -4,12 +4,12 @@ go 1.14
 
 require (
 	github.com/99designs/gqlgen v0.12.2
+	github.com/Microsoft/hcsshim v0.8.16 // indirect
 	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
 	github.com/apex/log v1.4.0
 	github.com/aquasecurity/trivy v0.0.0-00010101000000-000000000000
 	github.com/briandowns/spinner v1.11.1
 	github.com/chartmuseum/auth v0.4.0
-	github.com/containers/storage v1.29.0
 	github.com/dustin/go-humanize v1.0.0
 	github.com/getlantern/deepcopy v0.0.0-20160317154340-7f45deb8130a
 	github.com/go-chi/chi v4.0.2+incompatible // indirect
@@ -18,7 +18,10 @@ require (
 	github.com/google/go-containerregistry v0.0.0-20200331213917-3d03ed9b1ca2
 	github.com/gorilla/handlers v1.4.2
 	github.com/gorilla/mux v1.7.4
+	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/json-iterator/go v1.1.10
+	github.com/klauspost/compress v1.11.13 // indirect
+	github.com/klauspost/pgzip v1.2.5 // indirect
 	github.com/mitchellh/mapstructure v1.1.2
 	github.com/nmcclain/asn1-ber v0.0.0-20170104154839-2661553a0484 // indirect
 	github.com/nmcclain/ldap v0.0.0-20191021200707-3b3b69a7e9e3
@@ -29,6 +32,7 @@ require (
 	github.com/opencontainers/umoci v0.4.7-0.20200704224433-977db481b72c
 	github.com/phayes/freeport v0.0.0-20180830031419-95f893ade6f2
 	github.com/rs/zerolog v1.17.2
+	github.com/sirupsen/logrus v1.8.1 // indirect
 	github.com/smartystreets/goconvey v1.6.4
 	github.com/spf13/cobra v0.0.5
 	github.com/spf13/viper v1.6.1
