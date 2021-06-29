@@ -1024,40 +1024,8 @@ func (is *ImageStore) BlobPath(repo string, digest godigest.Digest) string {
 	return path.Join(is.rootDir, repo, "blobs", digest.Algorithm().String(), digest.Encoded())
 }
 
-func (is *ImageStore) MountBlob(repo string, mountRepo string, digest string) error {
-	d, err := godigest.Parse(digest)
-	if err != nil {
-		is.log.Error().Err(err).Str("digest", digest).Msg("failed to parse digest")
-
-		return errors.ErrBadBlobDigest
-	}
-
-	mountBlobPath := is.BlobPath(mountRepo, d)
-	is.log.Debug().Str("mount path", mountBlobPath)
-
-	blobPath := is.BlobPath(repo, d)
-	is.log.Debug().Str("repo path", blobPath)
-
-	_, err = os.Stat(mountBlobPath)
-	if err != nil {
-		is.log.Error().Err(err).Msg("mount: blob path not found")
-
-		return errors.ErrBlobNotFound
-	}
-
-	_, err = is.copyBlob(repo, blobPath, mountBlobPath)
-	if err != nil {
-		is.log.Error().Err(err).Msg("cache: error copying blobs from cache location")
-
-		return err
-	}
-
-	return nil
-}
-
 // CheckBlob verifies a blob and returns true if the blob is correct.
-func (is *ImageStore) CheckBlob(repo string, digest string,
-	mediaType string) (bool, int64, error) {
+func (is *ImageStore) CheckBlob(repo string, digest string) (bool, int64, error) {
 	d, err := godigest.Parse(digest)
 	if err != nil {
 		is.log.Error().Err(err).Str("digest", digest).Msg("failed to parse digest")
@@ -1095,6 +1063,12 @@ func (is *ImageStore) CheckBlob(repo string, digest string,
 	blobSize, err := is.copyBlob(repo, blobPath, dstRecord)
 	if err != nil {
 		return false, -1, errors.ErrBlobNotFound
+	}
+
+	if err := is.cache.PutBlob(digest, blobPath); err != nil {
+		is.log.Error().Err(err).Str("blobPath", blobPath).Msg("dedupe: unable to insert blob record")
+
+		return false, -1, err
 	}
 
 	return true, blobSize, nil

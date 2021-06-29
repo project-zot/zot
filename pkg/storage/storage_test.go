@@ -102,7 +102,7 @@ func TestAPIs(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(b, ShouldEqual, l)
 
-				_, _, err = il.CheckBlob("test", d.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
+				_, _, err = il.CheckBlob("test", d.String())
 				So(err, ShouldBeNil)
 
 				_, _, err = il.GetBlob("test", d.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
@@ -201,7 +201,7 @@ func TestAPIs(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(b, ShouldEqual, l)
 
-				_, _, err = il.CheckBlob("test", d.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
+				_, _, err = il.CheckBlob("test", d.String())
 				So(err, ShouldBeNil)
 
 				_, _, err = il.GetBlob("test", d.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
@@ -363,7 +363,7 @@ func TestAPIs(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(b, ShouldEqual, l)
 
-			_, _, err = il.CheckBlob("dedupe1", d.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
+			_, _, err = il.CheckBlob("dedupe1", d.String())
 			So(err, ShouldBeNil)
 
 			_, _, err = il.GetBlob("dedupe1", d.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
@@ -412,7 +412,7 @@ func TestAPIs(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(b, ShouldEqual, l)
 
-			_, _, err = il.CheckBlob("dedupe2", d.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
+			_, _, err = il.CheckBlob("dedupe2", d.String())
 			So(err, ShouldBeNil)
 
 			_, _, err = il.GetBlob("dedupe2", d.String(), "application/vnd.oci.image.layer.v1.tar+gzip")

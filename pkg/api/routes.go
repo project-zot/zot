@@ -497,9 +497,7 @@ func (rh *RouteHandler) CheckBlob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mediaType := r.Header.Get("Accept")
-
-	ok, blen, err := is.CheckBlob(name, digest, mediaType)
+	ok, blen, err := is.CheckBlob(name, digest)
 	if err != nil {
 		switch err {
 		case errors.ErrBadBlobDigest:
@@ -662,8 +660,10 @@ func (rh *RouteHandler) CreateBlobUpload(w http.ResponseWriter, r *http.Request)
 			return
 		}
 
-		// zot does not support cross mounting directly and do a workaround by copying blob using hard link
-		err := is.MountBlob(name, from[0], mountDigests[0])
+		// zot does not support cross mounting directly and do a workaround creating using hard link.
+		// check blob looks for actual path (name+mountDigests[0]) first then look for cache and
+		// if found in cache, will do hard link and if fails we will start new upload.
+		_, _, err := is.CheckBlob(name, mountDigests[0])
 		if err != nil {
 			u, err := is.NewBlobUpload(name)
 			if err != nil {
