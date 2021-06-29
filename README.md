@@ -5,6 +5,10 @@
 
 https://anuvu.github.io/zot/
 
+[```docker pull ghcr.io/anuvu/zot:latest```](https://github.com/anuvu/zot/pkgs/container/zot)
+
+[```docker run -p 5000:5000 ghcr.io/anuvu/zot:latest```](https://github.com/anuvu/zot/pkgs/container/zot)
+
 # Features
 * Conforms to [OCI distribution spec](https://github.com/opencontainers/distribution-spec) APIs
 * Clear separation between core dist-spec and zot-specific extensions
@@ -30,7 +34,6 @@ https://anuvu.github.io/zot/
 * Swagger based documentation
 * Single binary for _all_ the above features
 * Released under Apache 2.0 License
-* [```docker run -p 5000:5000 atomixos/zot:latest```](https://hub.docker.com/r/atomixos/zot)
 * ```go get -u github.com/anuvu/zot/cmd/zot```
 
 
