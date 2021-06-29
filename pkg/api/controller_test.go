@@ -1801,6 +1801,7 @@ func TestCrossRepoMount(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
+
 		defer os.RemoveAll(dir)
 
 		c.Config.Storage.RootDirectory = dir
@@ -1825,6 +1826,9 @@ func TestCrossRepoMount(t *testing.T) {
 		params := make(map[string]string)
 
 		digest := "sha256:63a795ca90aa6e7cca60941e826810a4cd0a2e73ea02bf458241df2a5c973e29"
+
+		d := godigest.Digest(digest)
+
 		name := "zot-cve-test"
 
 		params["mount"] = digest
@@ -1836,6 +1840,7 @@ func TestCrossRepoMount(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(headResponse.StatusCode(), ShouldEqual, 200)
 
+		// All invalid request of mount should return 202.
 		params["mount"] = "sha:"
 
 		postResponse, err := client.R().
@@ -1855,12 +1860,13 @@ func TestCrossRepoMount(t *testing.T) {
 		So(postResponse.StatusCode(), ShouldEqual, 202)
 
 		// Use correct request
+		// This is correct request but it will return 202 because blob is not present in cache.
 		params["mount"] = digest
 		postResponse, err = client.R().
 			SetBasicAuth(username, passphrase).SetQueryParams(params).
 			Post(baseURL + "/v2/zot-c-test/blobs/uploads/")
 		So(err, ShouldBeNil)
-		So(postResponse.StatusCode(), ShouldEqual, 201)
+		So(postResponse.StatusCode(), ShouldEqual, 202)
 
 		// Send same request again
 		postResponse, err = client.R().
@@ -1874,7 +1880,7 @@ func TestCrossRepoMount(t *testing.T) {
 			SetBasicAuth(username, passphrase).SetQueryParams(params).
 			Post(baseURL + "/v2/zot-d-test/blobs/uploads/")
 		So(err, ShouldBeNil)
-		So(postResponse.StatusCode(), ShouldEqual, 201)
+		So(postResponse.StatusCode(), ShouldEqual, 202)
 
 		headResponse, err = client.R().SetBasicAuth(username, passphrase).
 			Head(fmt.Sprintf("%s/v2/zot-cv-test/blobs/%s", baseURL, digest))
@@ -1906,6 +1912,47 @@ func TestCrossRepoMount(t *testing.T) {
 			SetBody(buf).Post(baseURL + "/v2/zot-d-test/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(postResponse.StatusCode(), ShouldEqual, 201)
+
+		// We have uploaded a blob and since we have provided digest it should be full blob upload and there should be entry
+		// in cache, now try mount blob request status and it should be 201 because now blob is present in cache
+		// and it should do hard link.
+
+		params["mount"] = digest
+		postResponse, err = client.R().
+			SetBasicAuth(username, passphrase).SetQueryParams(params).
+			Post(baseURL + "/v2/zot-mount-test/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(postResponse.StatusCode(), ShouldEqual, 201)
+
+		// Check os.SameFile here
+		cachePath := path.Join(c.Config.Storage.RootDirectory, "zot-d-test", "blobs/sha256", d.Hex())
+
+		cacheFi, err := os.Stat(cachePath)
+		So(err, ShouldBeNil)
+
+		linkPath := path.Join(c.Config.Storage.RootDirectory, "zot-mount-test", "blobs/sha256", d.Hex())
+
+		linkFi, err := os.Stat(linkPath)
+		So(err, ShouldBeNil)
+
+		So(os.SameFile(cacheFi, linkFi), ShouldEqual, true)
+
+		// Now try another mount request and this time it should be from above uploaded repo i.e zot-mount-test
+		// mount request should pass and should return 201.
+		params["mount"] = digest
+		params["from"] = "zot-mount-test"
+		postResponse, err = client.R().
+			SetBasicAuth(username, passphrase).SetQueryParams(params).
+			Post(baseURL + "/v2/zot-mount1-test/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(postResponse.StatusCode(), ShouldEqual, 201)
+
+		linkPath = path.Join(c.Config.Storage.RootDirectory, "zot-mount1-test", "blobs/sha256", d.Hex())
+
+		linkFi, err = os.Stat(linkPath)
+		So(err, ShouldBeNil)
+
+		So(os.SameFile(cacheFi, linkFi), ShouldEqual, true)
 
 		headResponse, err = client.R().SetBasicAuth(username, passphrase).
 			Head(fmt.Sprintf("%s/v2/zot-cv-test/blobs/%s", baseURL, digest))
