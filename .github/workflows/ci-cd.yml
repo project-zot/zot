@@ -67,3 +67,11 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository }}:${{ github.event.release.tag_name }}
             ghcr.io/${{ github.repository }}:latest
+      - name: Build minimal container image
+        uses: docker/build-push-action@v2
+        with:
+          push: true
+          dockerfile: Dockerfile-minimal
+          tags: |
+            ghcr.io/${{ github.repository }}-minimal:${{ github.event.release.tag_name }}
+            ghcr.io/${{ github.repository }}-minimal:latest
