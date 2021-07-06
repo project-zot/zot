@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"path"
@@ -285,8 +284,8 @@ func TestSearchCVECmd(t *testing.T) {
 }
 
 func TestServerCVEResponse(t *testing.T) {
-	port := "8080"
-	url := "http://127.0.0.1:8080"
+	port := getFreePort()
+	url := getBaseURL(port)
 	config := api.NewConfig()
 	config.HTTP.Port = port
 	c := api.NewController(config)
@@ -480,49 +479,4 @@ func TestServerCVEResponse(t *testing.T) {
 			So(strings.TrimSpace(str), ShouldNotContainSubstring, "IMAGE NAME TAG DIGEST SIZE")
 		})
 	})
-}
-
-func copyFiles(sourceDir string, destDir string) error {
-	sourceMeta, err := os.Stat(sourceDir)
-	if err != nil {
-		return err
-	}
-
-	if err := os.MkdirAll(destDir, sourceMeta.Mode()); err != nil {
-		return err
-	}
-
-	files, err := ioutil.ReadDir(sourceDir)
-	if err != nil {
-		return err
-	}
-
-	for _, file := range files {
-		sourceFilePath := path.Join(sourceDir, file.Name())
-		destFilePath := path.Join(destDir, file.Name())
-
-		if file.IsDir() {
-			if err = copyFiles(sourceFilePath, destFilePath); err != nil {
-				return err
-			}
-		} else {
-			sourceFile, err := os.Open(sourceFilePath)
-			if err != nil {
-				return err
-			}
-			defer sourceFile.Close()
-
-			destFile, err := os.Create(destFilePath)
-			if err != nil {
-				return err
-			}
-			defer destFile.Close()
-
-			if _, err = io.Copy(destFile, sourceFile); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
 }

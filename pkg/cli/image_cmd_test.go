@@ -25,8 +25,26 @@ import (
 	"github.com/anuvu/zot/pkg/extensions"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/phayes/freeport"
 	. "github.com/smartystreets/goconvey/convey"
 )
+
+const (
+	BaseURL = "http://127.0.0.1:%s"
+)
+
+func getBaseURL(port string) string {
+	return fmt.Sprintf(BaseURL, port)
+}
+
+func getFreePort() string {
+	port, err := freeport.GetFreePort()
+	if err != nil {
+		panic(err)
+	}
+
+	return fmt.Sprint(port)
+}
 
 func TestSearchImageCmd(t *testing.T) {
 	Convey("Test image help", t, func() {
@@ -282,8 +300,8 @@ func TestOutputFormat(t *testing.T) {
 
 func TestServerResponse(t *testing.T) {
 	Convey("Test from real server", t, func() {
-		port := "8080"
-		url := "http://127.0.0.1:8080"
+		port := getFreePort()
+		url := getBaseURL(port)
 		config := api.NewConfig()
 		config.HTTP.Port = port
 		config.Extensions = &extensions.ExtensionConfig{
