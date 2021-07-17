@@ -8,13 +8,16 @@ require (
 	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
 	github.com/apex/log v1.9.0
 	github.com/aquasecurity/trivy v0.0.0-00010101000000-000000000000
+	github.com/aws/aws-sdk-go v1.40.1 // indirect
 	github.com/briandowns/spinner v1.12.0
 	github.com/chartmuseum/auth v0.4.5
+	github.com/docker/distribution v2.7.1+incompatible
 	github.com/dustin/go-humanize v1.0.0
 	github.com/fsnotify/fsnotify v1.4.9
 	github.com/getlantern/deepcopy v0.0.0-20160317154340-7f45deb8130a
 	github.com/go-ldap/ldap/v3 v3.3.0
 	github.com/gofrs/uuid v4.0.0+incompatible
+	github.com/golang/mock v1.6.0 // indirect
 	github.com/google/go-containerregistry v0.6.0
 	github.com/gorilla/handlers v1.5.1
 	github.com/gorilla/mux v1.8.0

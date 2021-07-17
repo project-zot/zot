@@ -28,11 +28,11 @@ func (digestinfo DigestInfo) GetImageTagsByDigest(repo string, digest string) ([
 	uniqueTags := []*string{}
 
 	imagePath := digestinfo.LayoutUtils.GetImageRepoPath(repo)
-	if !common.DirExists(imagePath) {
+	if !digestinfo.LayoutUtils.DirExists(imagePath) {
 		return nil, errors.ErrRepoNotFound
 	}
 
-	manifests, err := digestinfo.LayoutUtils.GetImageManifests(imagePath)
+	manifests, err := digestinfo.LayoutUtils.GetImageManifests(repo)
 
 	if err != nil {
 		digestinfo.Log.Error().Err(err).Msg("unable to read image manifests")
@@ -44,7 +44,7 @@ func (digestinfo DigestInfo) GetImageTagsByDigest(repo string, digest string) ([
 
 		v, ok := manifest.Annotations[ispec.AnnotationRefName]
 		if ok {
-			imageBlobManifest, err := digestinfo.LayoutUtils.GetImageBlobManifest(imagePath, imageDigest)
+			imageBlobManifest, err := digestinfo.LayoutUtils.GetImageBlobManifest(repo, imageDigest)
 
 			if err != nil {
 				digestinfo.Log.Error().Err(err).Msg("unable to read image blob manifest")

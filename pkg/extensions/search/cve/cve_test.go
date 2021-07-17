@@ -94,7 +94,7 @@ func testSetup() error {
 
 	log := log.NewLogger("debug", "")
 
-	storeController := storage.StoreController{DefaultStore: storage.NewImageStore(dir, false, false, log)}
+	storeController := storage.StoreController{DefaultStore: storage.NewImageStoreFS(dir, false, false, log)}
 	layoutUtils := common.NewOciLayoutUtils(storeController, log)
 
 	cve = &cveinfo.CveInfo{Log: log, StoreController: storeController, LayoutUtils: layoutUtils}
@@ -410,17 +410,17 @@ func TestMultipleStoragePath(t *testing.T) {
 		log := log.NewLogger("debug", "")
 
 		// Create ImageStore
-		firstStore := storage.NewImageStore(firstRootDir, false, false, log)
+		firstStore := storage.NewImageStoreFS(firstRootDir, false, false, log)
 
-		secondStore := storage.NewImageStore(secondRootDir, false, false, log)
+		secondStore := storage.NewImageStoreFS(secondRootDir, false, false, log)
 
-		thirdStore := storage.NewImageStore(thirdRootDir, false, false, log)
+		thirdStore := storage.NewImageStoreFS(thirdRootDir, false, false, log)
 
 		storeController := storage.StoreController{}
 
 		storeController.DefaultStore = firstStore
 
-		subStore := make(map[string]*storage.ImageStore)
+		subStore := make(map[string]storage.ImageStore)
 
 		subStore["/a"] = secondStore
 		subStore["/b"] = thirdStore
@@ -459,47 +459,47 @@ func TestDownloadDB(t *testing.T) {
 
 func TestImageFormat(t *testing.T) {
 	Convey("Test valid image", t, func() {
-		isValidImage, err := cve.IsValidImageFormat(path.Join(dbDir, "zot-test"))
+		isValidImage, err := cve.IsValidImageFormat("zot-test")
 		So(err, ShouldBeNil)
 		So(isValidImage, ShouldEqual, true)
 
-		isValidImage, err = cve.IsValidImageFormat(path.Join(dbDir, "zot-test:0.0.1"))
+		isValidImage, err = cve.IsValidImageFormat("zot-test:0.0.1")
 		So(err, ShouldBeNil)
 		So(isValidImage, ShouldEqual, true)
 
-		isValidImage, err = cve.IsValidImageFormat(path.Join(dbDir, "zot-test:0.0."))
+		isValidImage, err = cve.IsValidImageFormat("zot-test:0.0.")
 		So(err, ShouldBeNil)
 		So(isValidImage, ShouldEqual, false)
 
-		isValidImage, err = cve.IsValidImageFormat(path.Join(dbDir, "zot-noindex-test"))
+		isValidImage, err = cve.IsValidImageFormat("zot-noindex-test")
 		So(err, ShouldNotBeNil)
 		So(isValidImage, ShouldEqual, false)
 
-		isValidImage, err = cve.IsValidImageFormat(path.Join(dbDir, "zot--tet"))
+		isValidImage, err = cve.IsValidImageFormat("zot--tet")
 		So(err, ShouldNotBeNil)
 		So(isValidImage, ShouldEqual, false)
 
-		isValidImage, err = cve.IsValidImageFormat(path.Join(dbDir, "zot-noindex-test"))
+		isValidImage, err = cve.IsValidImageFormat("zot-noindex-test")
 		So(err, ShouldNotBeNil)
 		So(isValidImage, ShouldEqual, false)
 
-		isValidImage, err = cve.IsValidImageFormat(path.Join(dbDir, "zot-squashfs-noblobs"))
+		isValidImage, err = cve.IsValidImageFormat("zot-squashfs-noblobs")
 		So(err, ShouldNotBeNil)
 		So(isValidImage, ShouldEqual, false)
 
-		isValidImage, err = cve.IsValidImageFormat(path.Join(dbDir, "zot-squashfs-invalid-index"))
+		isValidImage, err = cve.IsValidImageFormat("zot-squashfs-invalid-index")
 		So(err, ShouldNotBeNil)
 		So(isValidImage, ShouldEqual, false)
 
-		isValidImage, err = cve.IsValidImageFormat(path.Join(dbDir, "zot-squashfs-invalid-blob"))
+		isValidImage, err = cve.IsValidImageFormat("zot-squashfs-invalid-blob")
 		So(err, ShouldNotBeNil)
 		So(isValidImage, ShouldEqual, false)
 
-		isValidImage, err = cve.IsValidImageFormat(path.Join(dbDir, "zot-squashfs-test:0.3.22-squashfs"))
+		isValidImage, err = cve.IsValidImageFormat("zot-squashfs-test:0.3.22-squashfs")
 		So(err, ShouldNotBeNil)
 		So(isValidImage, ShouldEqual, false)
 
-		isValidImage, err = cve.IsValidImageFormat(path.Join(dbDir, "zot-nonreadable-test"))
+		isValidImage, err = cve.IsValidImageFormat("zot-nonreadable-test")
 		So(err, ShouldNotBeNil)
 		So(isValidImage, ShouldEqual, false)
 	})

@@ -79,7 +79,7 @@ func testSetup() error {
 
 	log := log.NewLogger("debug", "")
 
-	storeController := storage.StoreController{DefaultStore: storage.NewImageStore(rootDir, false, false, log)}
+	storeController := storage.StoreController{DefaultStore: storage.NewImageStoreFS(rootDir, false, false, log)}
 
 	digestInfo = digestinfo.NewDigestInfo(storeController, log)
 

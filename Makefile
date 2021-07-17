@@ -33,6 +33,10 @@ test:
 test-clean:
 	$(shell sudo rm -rf /etc/containers/certs.d/127.0.0.1:8089/)
 
+.PHONY: test-s3
+test-s3:
+	go test -tags extended -v -race -cover -coverpkg github.com/anuvu/zot/pkg/storage -coverprofile=coverage.txt -covermode=atomic github.com/anuvu/zot/pkg/storage -run TestObjectsStorageAPIs
+
 .PHONY: covhtml
 covhtml:
 	go tool cover -html=coverage.txt -o coverage.html

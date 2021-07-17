@@ -55,7 +55,7 @@ func (r *queryResolver) CVEListForImage(ctx context.Context, image string) (*CVE
 
 	r.cveInfo.Log.Info().Str("image", image).Msg("scanning image")
 
-	isValidImage, err := r.cveInfo.IsValidImageFormat(trivyConfig.TrivyConfig.Input)
+	isValidImage, err := r.cveInfo.IsValidImageFormat(image)
 	if !isValidImage {
 		r.cveInfo.Log.Debug().Str("image", image).Msg("image media type not supported for scanning")
 
@@ -185,7 +185,7 @@ func (r *queryResolver) ImageListForCve(ctx context.Context, id string) ([]*ImgR
 	return finalCveResult, nil
 }
 
-func (r *queryResolver) getImageListForCVE(repoList []string, id string, imgStore *storage.ImageStore,
+func (r *queryResolver) getImageListForCVE(repoList []string, id string, imgStore storage.ImageStore,
 	trivyConfig *config.Config) ([]*ImgResultForCve, error) {
 	cveResult := []*ImgResultForCve{}
 
@@ -236,7 +236,7 @@ func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, im
 	for _, tag := range tagsInfo {
 		trivyConfig.TrivyConfig.Input = fmt.Sprintf("%s:%s", imagePath, tag.Name)
 
-		isValidImage, _ := r.cveInfo.IsValidImageFormat(trivyConfig.TrivyConfig.Input)
+		isValidImage, _ := r.cveInfo.IsValidImageFormat(image)
 		if !isValidImage {
 			r.cveInfo.Log.Debug().Str("image",
 				image+":"+tag.Name).Msg("image media type not supported for scanning, adding as an infected image")

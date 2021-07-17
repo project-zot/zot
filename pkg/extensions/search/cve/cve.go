@@ -122,17 +122,10 @@ func (cveinfo CveInfo) GetTrivyConfig(image string) *config.Config {
 	return trivyConfig
 }
 
-func (cveinfo CveInfo) IsValidImageFormat(imagePath string) (bool, error) {
-	imageDir, inputTag := common.GetImageDirAndTag(imagePath)
-
-	if !common.DirExists(imageDir) {
-		cveinfo.Log.Error().Msg("image directory doesn't exist")
-
-		return false, errors.ErrRepoNotFound
-	}
+func (cveinfo CveInfo) IsValidImageFormat(image string) (bool, error) {
+	imageDir, inputTag := common.GetImageDirAndTag(image)
 
 	manifests, err := cveinfo.LayoutUtils.GetImageManifests(imageDir)
-
 	if err != nil {
 		return false, err
 	}
@@ -166,7 +159,7 @@ func (cveinfo CveInfo) IsValidImageFormat(imagePath string) (bool, error) {
 	return false, nil
 }
 
-func (cveinfo CveInfo) GetImageListForCVE(repo string, id string, imgStore *storage.ImageStore,
+func (cveinfo CveInfo) GetImageListForCVE(repo string, id string, imgStore storage.ImageStore,
 	trivyConfig *config.Config) ([]*string, error) {
 	tags := make([]*string, 0)
 
@@ -182,7 +175,7 @@ func (cveinfo CveInfo) GetImageListForCVE(repo string, id string, imgStore *stor
 	for _, tag := range tagList {
 		trivyConfig.TrivyConfig.Input = fmt.Sprintf("%s:%s", path.Join(rootDir, repo), tag)
 
-		isValidImage, _ := cveinfo.IsValidImageFormat(trivyConfig.TrivyConfig.Input)
+		isValidImage, _ := cveinfo.IsValidImageFormat(repo)
 		if !isValidImage {
 			cveinfo.Log.Debug().Str("image", repo+":"+tag).Msg("image media type not supported for scanning")
 
@@ -218,11 +211,11 @@ func (cveinfo CveInfo) GetImageTagsWithTimestamp(repo string) ([]TagInfo, error)
 	tagsInfo := make([]TagInfo, 0)
 
 	imagePath := cveinfo.LayoutUtils.GetImageRepoPath(repo)
-	if !common.DirExists(imagePath) {
+	if !cveinfo.LayoutUtils.DirExists(imagePath) {
 		return nil, errors.ErrRepoNotFound
 	}
 
-	manifests, err := cveinfo.LayoutUtils.GetImageManifests(imagePath)
+	manifests, err := cveinfo.LayoutUtils.GetImageManifests(repo)
 
 	if err != nil {
 		cveinfo.Log.Error().Err(err).Msg("unable to read image manifests")
@@ -235,7 +228,7 @@ func (cveinfo CveInfo) GetImageTagsWithTimestamp(repo string) ([]TagInfo, error)
 
 		v, ok := manifest.Annotations[ispec.AnnotationRefName]
 		if ok {
-			imageBlobManifest, err := cveinfo.LayoutUtils.GetImageBlobManifest(imagePath, digest)
+			imageBlobManifest, err := cveinfo.LayoutUtils.GetImageBlobManifest(repo, digest)
 
 			if err != nil {
 				cveinfo.Log.Error().Err(err).Msg("unable to read image blob manifest")
@@ -243,7 +236,7 @@ func (cveinfo CveInfo) GetImageTagsWithTimestamp(repo string) ([]TagInfo, error)
 				return tagsInfo, err
 			}
 
-			imageInfo, err := cveinfo.LayoutUtils.GetImageInfo(imagePath, imageBlobManifest.Config.Digest)
+			imageInfo, err := cveinfo.LayoutUtils.GetImageInfo(repo, imageBlobManifest.Config.Digest)
 			if err != nil {
 				cveinfo.Log.Error().Err(err).Msg("unable to read image info")
 

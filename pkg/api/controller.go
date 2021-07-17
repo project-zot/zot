@@ -95,8 +95,14 @@ func (c *Controller) Run() error {
 			}
 		}
 
-		defaultStore := storage.NewImageStore(c.Config.Storage.RootDirectory,
-			c.Config.Storage.GC, c.Config.Storage.Dedupe, c.Log)
+		var defaultStore storage.ImageStore
+		if len(c.Config.Storage.ObjectStoreParams) == 0 {
+			defaultStore = storage.NewImageStoreFS(c.Config.Storage.RootDirectory,
+				c.Config.Storage.GC, c.Config.Storage.Dedupe, c.Log)
+		} else {
+			defaultStore = storage.NewObjectStorage(c.Config.Storage.RootDirectory,
+				c.Config.Storage.GC, c.Config.Storage.Dedupe, c.Log, c.Config.Storage.ObjectStoreParams)
+		}
 
 		c.StoreController.DefaultStore = defaultStore
 
@@ -115,7 +121,7 @@ func (c *Controller) Run() error {
 		if len(c.Config.Storage.SubPaths) > 0 {
 			subPaths := c.Config.Storage.SubPaths
 
-			subImageStore := make(map[string]*storage.ImageStore)
+			subImageStore := make(map[string]storage.ImageStore)
 
 			// creating image store per subpaths
 			for route, storageConfig := range subPaths {
@@ -129,8 +135,13 @@ func (c *Controller) Run() error {
 					}
 				}
 
-				subImageStore[route] = storage.NewImageStore(storageConfig.RootDirectory,
-					storageConfig.GC, storageConfig.Dedupe, c.Log)
+				if len(c.Config.Storage.ObjectStoreParams) == 0 {
+					subImageStore[route] = storage.NewImageStoreFS(storageConfig.RootDirectory,
+						storageConfig.GC, storageConfig.Dedupe, c.Log)
+				} else {
+					subImageStore[route] = storage.NewObjectStorage(storageConfig.RootDirectory,
+						storageConfig.GC, storageConfig.Dedupe, c.Log, c.Config.Storage.ObjectStoreParams)
+				}
 
 				// Enable extensions if extension config is provided
 				if c.Config != nil && c.Config.Extensions != nil {
