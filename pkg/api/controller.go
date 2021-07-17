@@ -15,8 +15,11 @@ import (
 	"github.com/anuvu/zot/pkg/extensions/monitoring"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
+	"github.com/anuvu/zot/pkg/storage/s3"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
+
+	"github.com/docker/distribution/registry/storage/driver/factory"
 )
 
 const (
@@ -62,6 +65,7 @@ func DefaultHeaders() mux.MiddlewareFunc {
 	}
 }
 
+// nolint: gocyclo
 func (c *Controller) Run() error {
 	// validate configuration
 	if err := c.Config.Validate(c.Log); err != nil {
@@ -107,8 +111,26 @@ func (c *Controller) Run() error {
 			}
 		}
 
-		defaultStore := storage.NewImageStore(c.Config.Storage.RootDirectory,
-			c.Config.Storage.GC, c.Config.Storage.Dedupe, c.Log, c.Metrics)
+		var defaultStore storage.ImageStore
+		if len(c.Config.Storage.StorageDriver) == 0 {
+			defaultStore = storage.NewImageStore(c.Config.Storage.RootDirectory,
+				c.Config.Storage.GC, c.Config.Storage.Dedupe, c.Log, c.Metrics)
+		} else {
+			storeName := fmt.Sprintf("%v", c.Config.Storage.StorageDriver["name"])
+			if storeName != storage.S3StorageDriverName {
+				c.Log.Fatal().Err(errors.ErrBadConfig).Msgf("unsupported storage driver: %s",
+					c.Config.Storage.StorageDriver["name"])
+			}
+			// Init a Storager from connection string.
+			store, err := factory.Create(storeName, c.Config.Storage.StorageDriver)
+			if err != nil {
+				c.Log.Error().Err(err).Str("rootDir", c.Config.Storage.RootDirectory).Msg("unable to create s3 service")
+				return err
+			}
+
+			defaultStore = s3.NewImageStore(c.Config.Storage.RootDirectory,
+				c.Config.Storage.GC, c.Config.Storage.Dedupe, c.Log, c.Metrics, store)
+		}
 
 		c.StoreController.DefaultStore = defaultStore
 
@@ -141,8 +163,25 @@ func (c *Controller) Run() error {
 					}
 				}
 
-				subImageStore[route] = storage.NewImageStore(storageConfig.RootDirectory,
-					storageConfig.GC, storageConfig.Dedupe, c.Log, c.Metrics)
+				if len(storageConfig.StorageDriver) == 0 {
+					subImageStore[route] = storage.NewImageStore(storageConfig.RootDirectory,
+						storageConfig.GC, storageConfig.Dedupe, c.Log, c.Metrics)
+				} else {
+					storeName := fmt.Sprintf("%v", storageConfig.StorageDriver["name"])
+					if storeName != storage.S3StorageDriverName {
+						c.Log.Fatal().Err(errors.ErrBadConfig).Msgf("unsupported storage driver: %s", storageConfig.StorageDriver["name"])
+					}
+
+					// Init a Storager from connection string.
+					store, err := factory.Create(storeName, storageConfig.StorageDriver)
+					if err != nil {
+						c.Log.Error().Err(err).Str("rootDir", storageConfig.RootDirectory).Msg("Unable to create s3 service")
+						return err
+					}
+
+					subImageStore[route] = s3.NewImageStore(storageConfig.RootDirectory,
+						storageConfig.GC, storageConfig.Dedupe, c.Log, c.Metrics, store)
+				}
 
 				// Enable extensions if extension config is provided
 				if c.Config != nil && c.Config.Extensions != nil {

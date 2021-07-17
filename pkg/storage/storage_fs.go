@@ -30,7 +30,7 @@ import (
 const (
 	// BlobUploadDir defines the upload directory for blob uploads.
 	BlobUploadDir = ".uploads"
-	schemaVersion = 2
+	SchemaVersion = 2
 	gcDelay       = 1 * time.Hour
 )
 
@@ -463,7 +463,7 @@ func (is *ImageStoreFS) PutImageManifest(repo string, reference string, mediaTyp
 		return "", errors.ErrBadManifest
 	}
 
-	if m.SchemaVersion != schemaVersion {
+	if m.SchemaVersion != SchemaVersion {
 		is.log.Error().Int("SchemaVersion", m.SchemaVersion).Msg("invalid manifest")
 		return "", errors.ErrBadManifest
 	}

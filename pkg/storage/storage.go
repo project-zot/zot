@@ -6,6 +6,10 @@ import (
 	"github.com/opencontainers/go-digest"
 )
 
+const (
+	S3StorageDriverName = "s3"
+)
+
 type ImageStore interface {
 	DirExists(d string) bool
 	RootDir() string

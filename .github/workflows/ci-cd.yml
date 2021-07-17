@@ -13,6 +13,14 @@ jobs:
   build-test:
     name: Build and test ZOT
     runs-on: ubuntu-latest
+    services:
+      s3mock:
+        image: localstack/localstack-full
+        env:
+          SERVICES: s3
+        ports:
+          - 4563-4599:4563-4599
+          - 9090:8080
     steps:
       - name: Install go
         uses: actions/setup-go@v2
@@ -36,6 +44,10 @@ jobs:
         timeout-minutes: 30
         run: |
           cd $GITHUB_WORKSPACE && make
+        env:
+          S3MOCK_ENDPOINT: localhost:4566
+          AWS_ACCESS_KEY_ID: fake
+          AWS_SECRET_ACCESS_KEY: fake
 
       - name: Upload code coverage
         uses: codecov/codecov-action@v1  

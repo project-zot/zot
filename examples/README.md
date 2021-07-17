@@ -267,3 +267,72 @@ Set server path on which metrics will be exposed:
 ```
 
 In order to test the Metrics feature locally in a [Kind](https://kind.sigs.k8s.io/) cluster, folow [this guide](metrics/README.md).
+
+## Storage Drivers
+
+Beside filesystem storage backend, zot also supports S3 storage backend, check below url to see how to configure it:
+- [s3](https://github.com/docker/docker.github.io/blob/master/registry/storage-drivers/s3.md): A driver storing objects in an Amazon Simple Storage Service (S3) bucket.
+
+For an s3 zot configuration with multiple storage drivers see: [s3-config](config-s3.json).
+
+zot also supports different storage drivers for each subpath.
+
+### Specifying S3 credentials
+
+There are multiple ways to specify S3 credentials:
+
+- Config file: 
+
+```
+        "storageDriver": {
+            "name": "s3",
+            "region": "us-east-2",
+            "bucket": "zot-storage",
+            "secure": true,
+            "skipverify": false,
+            "accesskey": "<YOUR_ACCESS_KEY_ID>",
+            "secretkey": "<YOUR_SECRET_ACCESS_KEY>"
+        }
+```
+
+- Environment variables:
+
+SDK looks for credentials in the following environment variables:
+
+```
+    AWS_ACCESS_KEY_ID
+    AWS_SECRET_ACCESS_KEY
+    AWS_SESSION_TOKEN (optional)
+```
+
+- Credentials file:
+
+A credential file is a plaintext file that contains your access keys. The file must be on the same machine on which you’re running your application. The file must be named credentials and located in the .aws/ folder in your home directory.
+
+```
+    [default]
+    aws_access_key_id = <YOUR_DEFAULT_ACCESS_KEY_ID>
+    aws_secret_access_key = <YOUR_DEFAULT_SECRET_ACCESS_KEY>
+
+    [test-account]
+    aws_access_key_id = <YOUR_TEST_ACCESS_KEY_ID>
+    aws_secret_access_key = <YOUR_TEST_SECRET_ACCESS_KEY>
+
+    [prod-account]
+    ; work profile
+    aws_access_key_id = <YOUR_PROD_ACCESS_KEY_ID>
+    aws_secret_access_key = <YOUR_PROD_SECRET_ACCESS_KEY>
+```
+
+The [default] heading defines credentials for the default profile, which the SDK will use unless you configure it to use another profile.
+
+To specify a profile use AWS_PROFILE environment variable:
+
+```
+AWS_PROFILE=test-account
+```
+
+For more details see https://docs.aws.amazon.com/sdk-for-go/v1/developer-guide/configuring-sdk.html#specifying-credentials
+
+
+

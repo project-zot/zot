@@ -16,11 +16,13 @@ require (
 	github.com/containers/common v0.26.0
 	github.com/containers/image/v5 v5.13.2
 	github.com/cpuguy83/go-md2man/v2 v2.0.1 // indirect
+	github.com/docker/distribution v2.7.1+incompatible
 	github.com/dustin/go-humanize v1.0.0
 	github.com/fsnotify/fsnotify v1.5.1
 	github.com/getlantern/deepcopy v0.0.0-20160317154340-7f45deb8130a
 	github.com/go-ldap/ldap/v3 v3.4.1
 	github.com/gofrs/uuid v4.0.0+incompatible
+	github.com/golang/mock v1.6.0 // indirect
 	github.com/google/go-containerregistry v0.6.0
 	github.com/gorilla/handlers v1.5.1
 	github.com/gorilla/mux v1.8.0

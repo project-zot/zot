@@ -1,0 +1,53 @@
+{
+    "version": "0.1.0-dev",
+    "storage": {
+        "rootDirectory": "/zot",
+        "storageDriver": {
+            "name": "s3",
+            "region": "us-east-2",
+            "bucket": "zot-storage",
+            "secure": true,
+            "skipverify": false
+        },
+        "subPaths": {
+            "/a": {
+                "rootDirectory": "/zot-a",
+                "storageDriver": {
+                    "name": "s3",
+                    "region": "us-east-2",
+                    "bucket": "zot-storage",
+                    "secure": true,
+                    "skipverify": false
+                }
+            },
+            "/b": {
+                "rootDirectory": "/zot-b",
+                "storageDriver": {
+                    "name": "s3",
+                    "region": "us-east-2",
+                    "bucket": "zot-storage",
+                    "secure": true,
+                    "skipverify": false
+                }
+            },
+            "/c": {
+                "rootDirectory": "/zot-c",
+                "storageDriver": {
+                    "name": "s3",
+                    "region": "us-east-2",
+                    "bucket": "zot-storage",
+                    "secure": false,
+                    "skipverify": false
+                }
+            }
+        }
+    },
+    "http": {
+        "address": "127.0.0.1",
+        "port": "8080",
+        "ReadOnly": false
+    },
+    "log": {
+        "level": "debug"
+    }
+}
