@@ -53,7 +53,7 @@ func NewRootCmd() *cobra.Command {
 						// watch for events
 						case event := <-watcher.Events:
 							if event.Op == fsnotify.Write {
-								log.Info().Msg("Config file changed, trying to reload accessControl config")
+								log.Info().Msg("config file changed, trying to reload accessControl config")
 								newConfig := config.New()
 								LoadConfiguration(newConfig, args[0])
 								c.Config.AccessControl = newConfig.AccessControl
@@ -67,7 +67,7 @@ func NewRootCmd() *cobra.Command {
 				}()
 
 				if err := watcher.Add(args[0]); err != nil {
-					log.Error().Err(err).Msgf("Error adding config file %s to FsNotify watcher", args[0])
+					log.Error().Err(err).Msgf("error adding config file %s to FsNotify watcher", args[0])
 					panic(err)
 				}
 				<-done
@@ -150,18 +150,18 @@ func LoadConfiguration(config *config.Config, configPath string) {
 	viper.SetConfigFile(configPath)
 
 	if err := viper.ReadInConfig(); err != nil {
-		log.Error().Err(err).Msg("Error while reading configuration")
+		log.Error().Err(err).Msg("error while reading configuration")
 		panic(err)
 	}
 
 	md := &mapstructure.Metadata{}
 	if err := viper.Unmarshal(&config, metadataConfig(md)); err != nil {
-		log.Error().Err(err).Msg("Error while unmarshalling new config")
+		log.Error().Err(err).Msg("error while unmarshalling new config")
 		panic(err)
 	}
 
 	if len(md.Keys) == 0 || len(md.Unused) > 0 {
-		log.Error().Err(errors.ErrBadConfig).Msg("Bad configuration, retry writing it")
+		log.Error().Err(errors.ErrBadConfig).Msg("bad configuration, retry writing it")
 		panic(errors.ErrBadConfig)
 	}
 
@@ -174,9 +174,34 @@ func LoadConfiguration(config *config.Config, configPath string) {
 		}
 	}
 
+	// enforce s3 driver in case of using storage driver
+	if len(config.Storage.StorageDriver) != 0 {
+		if config.Storage.StorageDriver["name"] != storage.S3StorageDriverName {
+			log.Error().Err(errors.ErrBadConfig).Msgf("unsupported storage driver: %s", config.Storage.StorageDriver["name"])
+			panic(errors.ErrBadConfig)
+		}
+	}
+
+	// enforce s3 driver on subpaths in case of using storage driver
+	if config.Storage.SubPaths != nil {
+		if len(config.Storage.SubPaths) > 0 {
+			subPaths := config.Storage.SubPaths
+
+			for route, storageConfig := range subPaths {
+				if len(storageConfig.StorageDriver) != 0 {
+					if storageConfig.StorageDriver["name"] != storage.S3StorageDriverName {
+						log.Error().Err(errors.ErrBadConfig).Str("subpath",
+							route).Msgf("unsupported storage driver: %s", storageConfig.StorageDriver["name"])
+						panic(errors.ErrBadConfig)
+					}
+				}
+			}
+		}
+	}
+
 	err := config.LoadAccessControlConfig()
 	if err != nil {
-		log.Error().Err(errors.ErrBadConfig).Msg("Unable to unmarshal http.accessControl.key.policies")
+		log.Error().Err(errors.ErrBadConfig).Msg("unable to unmarshal http.accessControl.key.policies")
 		panic(err)
 	}
 
