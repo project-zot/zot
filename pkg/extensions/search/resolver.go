@@ -185,7 +185,7 @@ func (r *queryResolver) ImageListForCve(ctx context.Context, id string) ([]*ImgR
 	return finalCveResult, nil
 }
 
-func (r *queryResolver) getImageListForCVE(repoList []string, id string, imgStore *storage.ImageStore,
+func (r *queryResolver) getImageListForCVE(repoList []string, id string, imgStore storage.ImageStore,
 	trivyConfig *config.Config) ([]*ImgResultForCve, error) {
 	cveResult := []*ImgResultForCve{}
 

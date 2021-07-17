@@ -27,7 +27,7 @@ func TestAPIs(t *testing.T) {
 
 	defer os.RemoveAll(dir)
 
-	il := storage.NewImageStore(dir, true, true, log.Logger{Logger: zerolog.New(os.Stdout)})
+	il := storage.NewImageStoreFS(dir, true, true, log.Logger{Logger: zerolog.New(os.Stdout)})
 
 	Convey("Repo layout", t, func(c C) {
 		repoName := "test"
@@ -476,7 +476,7 @@ func TestAPIs(t *testing.T) {
 func TestDedupe(t *testing.T) {
 	Convey("Dedupe", t, func(c C) {
 		Convey("Nil ImageStore", func() {
-			is := &storage.ImageStore{}
+			var is storage.ImageStore
 			So(func() { _ = is.DedupeBlob("", "", "") }, ShouldPanic)
 		})
 
@@ -487,7 +487,7 @@ func TestDedupe(t *testing.T) {
 			}
 			defer os.RemoveAll(dir)
 
-			is := storage.NewImageStore(dir, true, true, log.Logger{Logger: zerolog.New(os.Stdout)})
+			is := storage.NewImageStoreFS(dir, true, true, log.Logger{Logger: zerolog.New(os.Stdout)})
 
 			So(is.DedupeBlob("", "", ""), ShouldNotBeNil)
 		})
@@ -502,9 +502,9 @@ func TestNegativeCases(t *testing.T) {
 		}
 		os.RemoveAll(dir)
 
-		So(storage.NewImageStore(dir, true, true, log.Logger{Logger: zerolog.New(os.Stdout)}), ShouldNotBeNil)
+		So(storage.NewImageStoreFS(dir, true, true, log.Logger{Logger: zerolog.New(os.Stdout)}), ShouldNotBeNil)
 		if os.Geteuid() != 0 {
-			So(storage.NewImageStore("/deadBEEF", true, true, log.Logger{Logger: zerolog.New(os.Stdout)}), ShouldBeNil)
+			So(storage.NewImageStoreFS("/deadBEEF", true, true, log.Logger{Logger: zerolog.New(os.Stdout)}), ShouldBeNil)
 		}
 	})
 
@@ -514,7 +514,7 @@ func TestNegativeCases(t *testing.T) {
 			panic(err)
 		}
 		defer os.RemoveAll(dir)
-		il := storage.NewImageStore(dir, true, true, log.Logger{Logger: zerolog.New(os.Stdout)})
+		il := storage.NewImageStoreFS(dir, true, true, log.Logger{Logger: zerolog.New(os.Stdout)})
 		err = os.Chmod(dir, 0000) // remove all perms
 		So(err, ShouldBeNil)
 		if os.Geteuid() != 0 {
@@ -529,7 +529,7 @@ func TestNegativeCases(t *testing.T) {
 			panic(err)
 		}
 		defer os.RemoveAll(dir)
-		il := storage.NewImageStore(dir, true, true, log.Logger{Logger: zerolog.New(os.Stdout)})
+		il := storage.NewImageStoreFS(dir, true, true, log.Logger{Logger: zerolog.New(os.Stdout)})
 		So(il, ShouldNotBeNil)
 		So(il.InitRepo("test"), ShouldBeNil)
 		files, err := ioutil.ReadDir(path.Join(dir, "test"))
@@ -553,7 +553,7 @@ func TestNegativeCases(t *testing.T) {
 	})
 
 	Convey("Invalid get image tags", t, func(c C) {
-		il := &storage.ImageStore{}
+		var il storage.ImageStore
 		_, err := il.GetImageTags("test")
 		So(err, ShouldNotBeNil)
 
@@ -562,7 +562,7 @@ func TestNegativeCases(t *testing.T) {
 			panic(err)
 		}
 		defer os.RemoveAll(dir)
-		il = storage.NewImageStore(dir, true, true, log.Logger{Logger: zerolog.New(os.Stdout)})
+		il = storage.NewImageStoreFS(dir, true, true, log.Logger{Logger: zerolog.New(os.Stdout)})
 		So(il, ShouldNotBeNil)
 		So(il.InitRepo("test"), ShouldBeNil)
 		So(os.Remove(path.Join(dir, "test", "index.json")), ShouldBeNil)
@@ -576,7 +576,7 @@ func TestNegativeCases(t *testing.T) {
 	})
 
 	Convey("Invalid get image manifest", t, func(c C) {
-		il := &storage.ImageStore{}
+		var il storage.ImageStore
 		_, _, _, err := il.GetImageManifest("test", "")
 		So(err, ShouldNotBeNil)
 
@@ -585,7 +585,7 @@ func TestNegativeCases(t *testing.T) {
 			panic(err)
 		}
 		defer os.RemoveAll(dir)
-		il = storage.NewImageStore(dir, true, true, log.Logger{Logger: zerolog.New(os.Stdout)})
+		il = storage.NewImageStoreFS(dir, true, true, log.Logger{Logger: zerolog.New(os.Stdout)})
 		So(il, ShouldNotBeNil)
 		So(il.InitRepo("test"), ShouldBeNil)
 		So(os.Remove(path.Join(dir, "test", "index.json")), ShouldBeNil)
@@ -654,17 +654,17 @@ func TestStorageHandler(t *testing.T) {
 		log := log.NewLogger("debug", "")
 
 		// Create ImageStore
-		firstStore := storage.NewImageStore(firstRootDir, false, false, log)
+		firstStore := storage.NewImageStoreFS(firstRootDir, false, false, log)
 
-		secondStore := storage.NewImageStore(secondRootDir, false, false, log)
+		secondStore := storage.NewImageStoreFS(secondRootDir, false, false, log)
 
-		thirdStore := storage.NewImageStore(thirdRootDir, false, false, log)
+		thirdStore := storage.NewImageStoreFS(thirdRootDir, false, false, log)
 
 		storeController := storage.StoreController{}
 
 		storeController.DefaultStore = firstStore
 
-		subStore := make(map[string]*storage.ImageStore)
+		subStore := make(map[string]storage.ImageStore)
 
 		subStore["/a"] = secondStore
 		subStore["/b"] = thirdStore

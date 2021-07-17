@@ -95,7 +95,7 @@ func (c *Controller) Run() error {
 			}
 		}
 
-		defaultStore := storage.NewImageStore(c.Config.Storage.RootDirectory,
+		defaultStore := storage.NewImageStoreFS(c.Config.Storage.RootDirectory,
 			c.Config.Storage.GC, c.Config.Storage.Dedupe, c.Log)
 
 		c.StoreController.DefaultStore = defaultStore
@@ -115,7 +115,7 @@ func (c *Controller) Run() error {
 		if len(c.Config.Storage.SubPaths) > 0 {
 			subPaths := c.Config.Storage.SubPaths
 
-			subImageStore := make(map[string]*storage.ImageStore)
+			subImageStore := make(map[string]storage.ImageStore)
 
 			// creating image store per subpaths
 			for route, storageConfig := range subPaths {
@@ -129,7 +129,7 @@ func (c *Controller) Run() error {
 					}
 				}
 
-				subImageStore[route] = storage.NewImageStore(storageConfig.RootDirectory,
+				subImageStore[route] = storage.NewImageStoreFS(storageConfig.RootDirectory,
 					storageConfig.GC, storageConfig.Dedupe, c.Log)
 
 				// Enable extensions if extension config is provided

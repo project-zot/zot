@@ -166,7 +166,7 @@ func (cveinfo CveInfo) IsValidImageFormat(imagePath string) (bool, error) {
 	return false, nil
 }
 
-func (cveinfo CveInfo) GetImageListForCVE(repo string, id string, imgStore *storage.ImageStore,
+func (cveinfo CveInfo) GetImageListForCVE(repo string, id string, imgStore storage.ImageStore,
 	trivyConfig *config.Config) ([]*string, error) {
 	tags := make([]*string, 0)
 
