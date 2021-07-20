@@ -49,5 +49,10 @@ func TestCache(t *testing.T) {
 
 		err = c.DeleteBlob("key", "bogusValue")
 		So(err, ShouldBeNil)
+
+		// try to insert empty path
+		err = c.PutBlob("key", "")
+		So(err, ShouldNotBeNil)
+		So(err, ShouldEqual, errors.ErrEmptyValue)
 	})
 }

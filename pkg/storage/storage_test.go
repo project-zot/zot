@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"path"
 	"strings"
 	"sync"
 	"testing"
 
+	"github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
 	godigest "github.com/opencontainers/go-digest"
@@ -532,6 +534,51 @@ func TestNegativeCases(t *testing.T) {
 		il := storage.NewImageStore(dir, true, true, log.Logger{Logger: zerolog.New(os.Stdout)})
 		So(il, ShouldNotBeNil)
 		So(il.InitRepo("test"), ShouldBeNil)
+
+		err = os.MkdirAll(path.Join(dir, "invalid-test"), 0755)
+		So(err, ShouldBeNil)
+
+		err = os.Chmod(path.Join(dir, "invalid-test"), 0000) // remove all perms
+		So(err, ShouldBeNil)
+
+		_, err = il.ValidateRepo("invalid-test")
+		So(err, ShouldNotBeNil)
+		So(err, ShouldEqual, errors.ErrRepoNotFound)
+
+		err = os.Chmod(path.Join(dir, "invalid-test"), 0755) // remove all perms
+		So(err, ShouldBeNil)
+
+		err = ioutil.WriteFile(path.Join(dir, "invalid-test", "blobs"), []byte{}, 0755) // nolint: gosec
+		So(err, ShouldBeNil)
+
+		err = ioutil.WriteFile(path.Join(dir, "invalid-test", "index.json"), []byte{}, 0755) // nolint: gosec
+		So(err, ShouldBeNil)
+
+		err = ioutil.WriteFile(path.Join(dir, "invalid-test", ispec.ImageLayoutFile), []byte{}, 0755) // nolint: gosec
+		So(err, ShouldBeNil)
+
+		isValid, err := il.ValidateRepo("invalid-test")
+		So(err, ShouldBeNil)
+		So(isValid, ShouldEqual, false)
+
+		err = os.Remove(path.Join(dir, "invalid-test", "blobs"))
+		So(err, ShouldBeNil)
+
+		err = os.Mkdir(path.Join(dir, "invalid-test", "blobs"), 0755)
+		So(err, ShouldBeNil)
+
+		isValid, err = il.ValidateRepo("invalid-test")
+		So(err, ShouldNotBeNil)
+		So(isValid, ShouldEqual, false)
+
+		err = ioutil.WriteFile(path.Join(dir, "invalid-test", ispec.ImageLayoutFile), []byte("{}"), 0755) // nolint: gosec
+		So(err, ShouldBeNil)
+
+		isValid, err = il.ValidateRepo("invalid-test")
+		So(err, ShouldNotBeNil)
+		So(err, ShouldEqual, errors.ErrRepoBadVersion)
+		So(isValid, ShouldEqual, false)
+
 		files, err := ioutil.ReadDir(path.Join(dir, "test"))
 		So(err, ShouldBeNil)
 		for _, f := range files {
@@ -596,6 +643,76 @@ func TestNegativeCases(t *testing.T) {
 		So(ioutil.WriteFile(path.Join(dir, "test", "index.json"), []byte{}, 0600), ShouldBeNil)
 		_, _, _, err = il.GetImageManifest("test", "")
 		So(err, ShouldNotBeNil)
+	})
+
+	Convey("Invalid dedupe sceanrios", t, func() {
+		dir, err := ioutil.TempDir("", "oci-repo-test")
+		if err != nil {
+			panic(err)
+		}
+		defer os.RemoveAll(dir)
+
+		il := storage.NewImageStore(dir, true, true, log.Logger{Logger: zerolog.New(os.Stdout)})
+		v, err := il.NewBlobUpload("dedupe1")
+		So(err, ShouldBeNil)
+		So(v, ShouldNotBeEmpty)
+
+		content := []byte("test-data3")
+		buf := bytes.NewBuffer(content)
+		l := buf.Len()
+		d := godigest.FromBytes(content)
+		b, err := il.PutBlobChunkStreamed("dedupe1", v, buf)
+		So(err, ShouldBeNil)
+		So(b, ShouldEqual, l)
+
+		blobDigest1 := strings.Split(d.String(), ":")[1]
+		So(blobDigest1, ShouldNotBeEmpty)
+
+		err = il.FinishBlobUpload("dedupe1", v, buf, d.String())
+		So(err, ShouldBeNil)
+		So(b, ShouldEqual, l)
+
+		// Create a file at the same place where FinishBlobUpload will create
+		err = il.InitRepo("dedupe2")
+		So(err, ShouldBeNil)
+
+		err = os.MkdirAll(path.Join(dir, "dedupe2", "blobs/sha256"), 0755)
+		So(err, ShouldBeNil)
+
+		err = ioutil.WriteFile(path.Join(dir, "dedupe2", "blobs/sha256", blobDigest1), content, 0755) // nolint: gosec
+		So(err, ShouldBeNil)
+
+		v, err = il.NewBlobUpload("dedupe2")
+		So(err, ShouldBeNil)
+		So(v, ShouldNotBeEmpty)
+
+		content = []byte("test-data3")
+		buf = bytes.NewBuffer(content)
+		l = buf.Len()
+		d = godigest.FromBytes(content)
+		b, err = il.PutBlobChunkStreamed("dedupe2", v, buf)
+		So(err, ShouldBeNil)
+		So(b, ShouldEqual, l)
+
+		cmd := exec.Command("sudo", "chattr", "+i", path.Join(dir, "dedupe2", "blobs/sha256", blobDigest1)) // nolint: gosec
+		_, err = cmd.Output()
+		if err != nil {
+			panic(err)
+		}
+
+		err = il.FinishBlobUpload("dedupe2", v, buf, d.String())
+		So(err, ShouldNotBeNil)
+		So(b, ShouldEqual, l)
+
+		cmd = exec.Command("sudo", "chattr", "-i", path.Join(dir, "dedupe2", "blobs/sha256", blobDigest1)) // nolint: gosec
+		_, err = cmd.Output()
+		if err != nil {
+			panic(err)
+		}
+
+		err = il.FinishBlobUpload("dedupe2", v, buf, d.String())
+		So(err, ShouldBeNil)
+		So(b, ShouldEqual, l)
 	})
 }
 
