@@ -51,6 +51,12 @@ func NewCache(rootDir string, name string, log zlog.Logger) *Cache {
 }
 
 func (c *Cache) PutBlob(digest string, path string) error {
+	if path == "" {
+		c.log.Error().Err(errors.ErrEmptyValue).Str("digest", digest).Msg("empty path provided")
+
+		return errors.ErrEmptyValue
+	}
+
 	// use only relative (to rootDir) paths on blobs
 	relp, err := filepath.Rel(c.rootDir, path)
 	if err != nil {
@@ -107,10 +113,6 @@ func (c *Cache) GetBlob(digest string) (string, error) {
 		return errors.ErrCacheMiss
 	}); err != nil {
 		return "", err
-	}
-
-	if len(blobPath.String()) == 0 {
-		return "", nil
 	}
 
 	return blobPath.String(), nil

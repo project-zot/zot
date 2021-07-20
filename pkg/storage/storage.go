@@ -956,6 +956,7 @@ retry:
 	}
 
 	if dstRecord == "" {
+		// cache record doesn't exist, so first disk and cache entry for this digest
 		if err := is.cache.PutBlob(dstDigest.String(), dst); err != nil {
 			is.log.Error().Err(err).Str("blobPath", dst).Msg("dedupe: unable to insert blob record")
 
@@ -971,6 +972,8 @@ retry:
 
 		is.log.Debug().Str("src", src).Str("dst", dst).Msg("dedupe: rename")
 	} else {
+		// cache record exists, but due to GC and upgrades from older versions,
+		// disk content and cache records may go out of sync
 		dstRecord = path.Join(is.rootDir, dstRecord)
 
 		dstRecordFi, err := os.Stat(dstRecord)
@@ -985,19 +988,30 @@ retry:
 			}
 			goto retry
 		}
+
 		dstFi, err := os.Stat(dst)
 		if err != nil && !os.IsNotExist(err) {
 			is.log.Error().Err(err).Str("blobPath", dstRecord).Msg("dedupe: unable to stat")
 
 			return err
 		}
+
 		if !os.SameFile(dstFi, dstRecordFi) {
+			// blob lookup cache out of sync with actual disk contents
+			if err := os.Remove(dst); err != nil && !os.IsNotExist(err) {
+				is.log.Error().Err(err).Str("dst", dst).Msg("dedupe: unable to remove blob")
+				return err
+			}
+
+			is.log.Debug().Str("blobPath", dst).Msg("dedupe: creating hard link")
+
 			if err := os.Link(dstRecord, dst); err != nil {
 				is.log.Error().Err(err).Str("blobPath", dst).Str("link", dstRecord).Msg("dedupe: unable to hard link")
 
 				return err
 			}
 		}
+
 		if err := os.Remove(src); err != nil {
 			is.log.Error().Err(err).Str("src", src).Msg("dedupe: uname to remove blob")
 			return err
