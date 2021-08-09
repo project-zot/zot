@@ -523,6 +523,21 @@ func TestNegativeCases(t *testing.T) {
 			err = il.InitRepo("test")
 			So(err, ShouldNotBeNil)
 		}
+
+		err = os.Chmod(dir, 0755)
+		So(err, ShouldBeNil)
+
+		// Init repo should fail if repo is a file.
+		err = ioutil.WriteFile(path.Join(dir, "file-test"), []byte("this is test file"), 0755) // nolint:gosec
+		So(err, ShouldBeNil)
+		err = il.InitRepo("file-test")
+		So(err, ShouldNotBeNil)
+
+		err = os.Mkdir(path.Join(dir, "test-dir"), 0755)
+		So(err, ShouldBeNil)
+
+		err = il.InitRepo("test-dir")
+		So(err, ShouldBeNil)
 	})
 
 	Convey("Invalid validate repo", t, func(c C) {

@@ -148,10 +148,6 @@ func (is *ImageStore) Unlock() {
 func (is *ImageStore) initRepo(name string) error {
 	repoDir := path.Join(is.rootDir, name)
 
-	if fi, err := os.Stat(repoDir); err == nil && fi.IsDir() {
-		return nil
-	}
-
 	// create "blobs" subdir
 	err := ensureDir(path.Join(repoDir, "blobs"), is.log)
 	if err != nil {
