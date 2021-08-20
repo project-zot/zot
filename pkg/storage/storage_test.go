@@ -129,6 +129,8 @@ func TestAPIs(t *testing.T) {
 				})
 
 				Convey("Good image manifest", func() {
+					annotationsMap := make(map[string]string)
+					annotationsMap[ispec.AnnotationRefName] = "1.0"
 					m := ispec.Manifest{
 						Config: ispec.Descriptor{
 							Digest: d,
@@ -141,27 +143,55 @@ func TestAPIs(t *testing.T) {
 								Size:      int64(l),
 							},
 						},
-						Annotations: map[string]string{ispec.AnnotationRefName: "1.0"},
+						Annotations: annotationsMap,
 					}
+
 					m.SchemaVersion = 2
-					mb, _ = json.Marshal(m)
+					mb, _ := json.Marshal(m)
 					d := godigest.FromBytes(mb)
-					_, err = il.PutImageManifest("test", d.String(), ispec.MediaTypeImageManifest, mb)
+					_, err = il.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, mb)
 					So(err, ShouldBeNil)
 
-					_, err = il.GetImageTags("test")
+					_, err = il.PutImageManifest("test", "2.0", ispec.MediaTypeImageManifest, mb)
 					So(err, ShouldBeNil)
+
+					_, err = il.PutImageManifest("test", "3.0", ispec.MediaTypeImageManifest, mb)
+					So(err, ShouldBeNil)
+
+					// total tags should be 3 but they have same reference.
+					tags, err := il.GetImageTags("test")
+					So(err, ShouldBeNil)
+					So(len(tags), ShouldEqual, 3)
 
 					_, _, _, err = il.GetImageManifest("test", d.String())
 					So(err, ShouldBeNil)
 
 					err = il.DeleteImageManifest("test", "1.0")
-					So(err, ShouldNotBeNil)
-
-					err = il.DeleteBlob("test", blobDigest.String())
 					So(err, ShouldBeNil)
 
+					tags, err = il.GetImageTags("test")
+					So(err, ShouldBeNil)
+					So(len(tags), ShouldEqual, 2)
+
+					// We deleted only one tag, make sure blob should not be removed.
+					hasBlob, _, err := il.CheckBlob("test", d.String())
+					So(err, ShouldBeNil)
+					So(hasBlob, ShouldEqual, true)
+
+					// If we pass reference all manifest with input reference should be deleted.
 					err = il.DeleteImageManifest("test", d.String())
+					So(err, ShouldBeNil)
+
+					tags, err = il.GetImageTags("test")
+					So(err, ShouldBeNil)
+					So(len(tags), ShouldEqual, 0)
+
+					// All tags/references are deleted, blob should not be present in disk.
+					hasBlob, _, err = il.CheckBlob("test", d.String())
+					So(err, ShouldNotBeNil)
+					So(hasBlob, ShouldEqual, false)
+
+					err = il.DeleteBlob("test", blobDigest.String())
 					So(err, ShouldBeNil)
 
 					_, _, _, err = il.GetImageManifest("test", d.String())

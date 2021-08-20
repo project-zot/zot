@@ -17,6 +17,7 @@ https://anuvu.github.io/zot/
 * Uses [OCI image layout](https://github.com/opencontainers/image-spec/blob/master/image-layout.md) for image storage
   * Can serve any OCI image layout as a registry 
 * Supports [helm charts](https://helm.sh/docs/topics/registries/)
+* Supports image deletion by tag
 * Currently suitable for on-prem deployments (e.g. colocated with Kubernetes)
 * Compatible with ecosystem tools such as [skopeo](#skopeo) and [cri-o](#cri-o)
 * [Vulnerability scanning of images](#Scanning-images-for-known-vulnerabilities)

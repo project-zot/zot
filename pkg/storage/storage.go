@@ -588,11 +588,14 @@ func (is *ImageStore) DeleteImageManifest(repo string, reference string) error {
 		return errors.ErrRepoNotFound
 	}
 
-	// as per spec "reference" can only be a digest and not a tag
+	isTag := false
+
+	// as per spec "reference" can be a digest and a tag
 	digest, err := godigest.Parse(reference)
 	if err != nil {
-		is.log.Error().Err(err).Msg("invalid reference")
-		return errors.ErrBadManifest
+		is.log.Debug().Str("invalid digest: ", reference).Msg("storage: assuming tag")
+
+		isTag = true
 	}
 
 	is.Lock()
@@ -620,7 +623,19 @@ func (is *ImageStore) DeleteImageManifest(repo string, reference string) error {
 	outIndex.Manifests = []ispec.Descriptor{}
 
 	for _, m = range index.Manifests {
-		if reference == m.Digest.String() {
+		if isTag {
+			tag, ok := m.Annotations[ispec.AnnotationRefName]
+			if ok && tag == reference {
+				is.log.Debug().Str("deleting tag", tag).Msg("")
+
+				digest = m.Digest
+
+				found = true
+
+				continue
+			}
+		} else if reference == m.Digest.String() {
+			is.log.Debug().Str("deleting reference", reference).Msg("")
 			found = true
 			continue
 		}
@@ -657,9 +672,22 @@ func (is *ImageStore) DeleteImageManifest(repo string, reference string) error {
 		}
 	}
 
-	p := path.Join(dir, "blobs", digest.Algorithm().String(), digest.Encoded())
+	// Delete blob only when blob digest not present in manifest entry.
+	// e.g. 1.0.1 & 1.0.2 have same blob digest so if we delete 1.0.1, blob should not be removed.
+	toDelete := true
 
-	_ = os.Remove(p)
+	for _, m = range outIndex.Manifests {
+		if digest.String() == m.Digest.String() {
+			toDelete = false
+			break
+		}
+	}
+
+	if toDelete {
+		p := path.Join(dir, "blobs", digest.Algorithm().String(), digest.Encoded())
+
+		_ = os.Remove(p)
+	}
 
 	return nil
 }

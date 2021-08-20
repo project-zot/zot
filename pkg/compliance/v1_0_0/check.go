@@ -516,6 +516,14 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(d, ShouldNotBeEmpty)
 			So(d, ShouldEqual, digest.String())
 
+			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+				SetBody(content).Put(baseURL + "/v2/repo7/manifests/test:1.0.1")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 201)
+			d = resp.Header().Get(api.DistContentDigestKey)
+			So(d, ShouldNotBeEmpty)
+			So(d, ShouldEqual, digest.String())
+
 			content = []byte("this is a blob5")
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
@@ -565,11 +573,11 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(resp.StatusCode(), ShouldEqual, 200)
 			So(resp.Body(), ShouldNotBeEmpty)
 
-			// delete manifest by tag should fail
+			// delete manifest by tag should pass
 			resp, err = resty.R().Delete(baseURL + "/v2/repo7/manifests/test:1.0")
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, 400)
-			// delete manifest by digest
+			So(resp.StatusCode(), ShouldEqual, 202)
+			// delete manifest by digest (1.0 deleted but 1.0.1 has same reference)
 			resp, err = resty.R().Delete(baseURL + "/v2/repo7/manifests/" + digest.String())
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 202)
@@ -879,15 +887,6 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 			So(resp.Body(), ShouldNotBeEmpty)
-
-			// delete manifest by tag should fail
-			resp, err = resty.R().Delete(baseURL + "/v2/firsttest/first/manifests/test:1.0")
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, 400)
-
-			resp, err = resty.R().Delete(baseURL + "/v2/secondtest/second/manifests/test:1.0")
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, 400)
 
 			// delete manifest by digest
 			resp, err = resty.R().Delete(baseURL + "/v2/firsttest/first/manifests/" + digest.String())
