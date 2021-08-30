@@ -20,6 +20,8 @@ import (
 	storageDriver "github.com/docker/distribution/registry/storage/driver"
 	"github.com/docker/distribution/registry/storage/driver/factory"
 	_ "github.com/docker/distribution/registry/storage/driver/s3-aws"
+
+	"gopkg.in/resty.v1"
 )
 
 func cleanupStorage(store storageDriver.StorageDriver, name string) {
@@ -27,26 +29,22 @@ func cleanupStorage(store storageDriver.StorageDriver, name string) {
 }
 
 func skipIt(t *testing.T) {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		panic(err)
-	}
-
-	_, err = os.Stat(path.Join(homeDir, ".aws", "credentials"))
-
-	if os.IsNotExist(err) {
-		t.Skip("Skipping testing without aws credentials")
+	if os.Getenv("S3MOCK_ENDPOINT") == "" {
+		t.Skip("Skipping testing without AWS S3 mock server")
 	}
 }
 
 func createObjectsStore(rootDir string) (storageDriver.StorageDriver, storage.ImageStore, error) {
+	bucket := "zot-storage-test"
+	endpoint := os.Getenv("S3MOCK_ENDPOINT")
 	objectsStoreParams := map[string]interface{}{
-		"rootDir":    rootDir,
-		"name":       "s3",
-		"region":     "us-east-2",
-		"bucket":     "zot-storage",
-		"secure":     true,
-		"skipverify": false,
+		"rootDir":        rootDir,
+		"name":           "s3",
+		"region":         "us-east-2",
+		"bucket":         bucket,
+		"regionendpoint": endpoint,
+		"secure":         false,
+		"skipverify":     false,
 	}
 
 	storeName := fmt.Sprintf("%v", objectsStoreParams["name"])
@@ -54,6 +52,12 @@ func createObjectsStore(rootDir string) (storageDriver.StorageDriver, storage.Im
 	store, err := factory.Create(storeName, objectsStoreParams)
 	if err != nil {
 		return store, &storage.ObjectStorage{}, err
+	}
+
+	// create bucket
+	_, err = resty.R().Put("http://" + endpoint + "/" + bucket)
+	if err != nil {
+		panic(err)
 	}
 
 	il := storage.NewObjectStorage(rootDir, false, false, log.Logger{Logger: zerolog.New(os.Stdout)}, objectsStoreParams)
