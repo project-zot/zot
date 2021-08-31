@@ -1,18 +1,18 @@
+//go:build extended
 // +build extended
 
 package extensions
 
 import (
-	"github.com/anuvu/zot/pkg/extensions/search"
-	"github.com/anuvu/zot/pkg/storage"
-	"github.com/gorilla/mux"
-
 	"time"
 
 	gqlHandler "github.com/99designs/gqlgen/graphql/handler"
+	"github.com/anuvu/zot/pkg/extensions/search"
 	cveinfo "github.com/anuvu/zot/pkg/extensions/search/cve"
-
 	"github.com/anuvu/zot/pkg/log"
+	"github.com/anuvu/zot/pkg/storage"
+	"github.com/gorilla/mux"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // DownloadTrivyDB ...
@@ -52,6 +52,16 @@ func EnableExtensions(extension *ExtensionConfig, log log.Logger, rootDir string
 	} else {
 		log.Info().Msg("CVE config not provided, skipping CVE update")
 	}
+
+	if extension.Metrics != nil && extension.Metrics.Enable && extension.Metrics.Prometheus != nil {
+		if extension.Metrics.Prometheus.Path == "" {
+			extension.Metrics.Prometheus.Path = "/metrics"
+
+			log.Warn().Msg("Prometheus instrumentation Path not set, changing to '/metrics'.") // nolint: lll
+		}
+	} else {
+		log.Info().Msg("Metrics config not provided, skipping Metrics config update")
+	}
 }
 
 // SetupRoutes ...
@@ -63,5 +73,10 @@ func SetupRoutes(extension *ExtensionConfig, router *mux.Router, storeController
 		resConfig := search.GetResolverConfig(log, storeController)
 		router.PathPrefix("/query").Methods("GET", "POST").
 			Handler(gqlHandler.NewDefaultServer(search.NewExecutableSchema(resConfig)))
+	}
+
+	if extension.Metrics != nil && extension.Metrics.Enable {
+		router.PathPrefix(extension.Metrics.Prometheus.Path).
+			Handler(promhttp.Handler())
 	}
 }

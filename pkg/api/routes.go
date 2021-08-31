@@ -24,6 +24,8 @@ import (
 	_ "github.com/anuvu/zot/docs" // as required by swaggo
 	"github.com/anuvu/zot/errors"
 	ext "github.com/anuvu/zot/pkg/extensions"
+
+	//	"github.com/anuvu/zot/pkg/extensions/prometheus/metrics"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
 	"github.com/gorilla/mux"
@@ -40,6 +42,8 @@ const (
 	DefaultMediaType     = "application/json"
 	BinaryMediaType      = "application/octet-stream"
 )
+
+//var metricsEnabled bool
 
 type RouteHandler struct {
 	c *Controller
@@ -97,6 +101,9 @@ func (rh *RouteHandler) SetupRoutes() {
 	// Setup Extensions Routes
 	if rh.c.Config != nil && rh.c.Config.Extensions != nil {
 		ext.SetupRoutes(rh.c.Config.Extensions, rh.c.Router, rh.c.StoreController, rh.c.Log)
+		/*	if rh.c.Config.Extensions.Metrics != nil && rh.c.Config.Extensions.Metrics.Enable { //
+			metricsEnabled = true
+		} */
 	}
 }
 
@@ -110,6 +117,9 @@ func (rh *RouteHandler) SetupRoutes() {
 // @Produce json
 // @Success 200 {string} string	"ok".
 func (rh *RouteHandler) CheckVersionSupport(w http.ResponseWriter, r *http.Request) {
+	/*	if metricsEnabled {
+		metrics.HttpConnRequests.WithLabelValues("/root", "get", "200").Inc()
+	} */
 	w.Header().Set(DistAPIVersion, "registry/2.0")
 	// NOTE: compatibility workaround - return this header in "allowed-read" mode to allow for clients to
 	// work correctly
@@ -144,6 +154,9 @@ type ImageTags struct {
 // @Failure 404 {string} 	string 				"not found"
 // @Failure 400 {string} 	string 				"bad request".
 func (rh *RouteHandler) ListTags(w http.ResponseWriter, r *http.Request) {
+	/*if metricsEnabled {
+		metrics.HttpConnRequests.WithLabelValues("/root", "get", "200").Inc()
+	}*/
 	vars := mux.Vars(r)
 
 	name, ok := vars["name"]
@@ -487,6 +500,7 @@ func (rh *RouteHandler) DeleteManifest(w http.ResponseWriter, r *http.Request) {
 // @Header  200 {object} api.DistContentDigestKey
 // @Router /v2/{name}/blobs/{digest} [head].
 func (rh *RouteHandler) CheckBlob(w http.ResponseWriter, r *http.Request) {
+	//metrics.HttpConnRequests.Inc()
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
 
@@ -541,6 +555,7 @@ func (rh *RouteHandler) CheckBlob(w http.ResponseWriter, r *http.Request) {
 // @Success 200 {object} api.ImageManifest
 // @Router /v2/{name}/blobs/{digest} [get].
 func (rh *RouteHandler) GetBlob(w http.ResponseWriter, r *http.Request) {
+	//metrics.HttpConnRequests.Inc()
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
 
@@ -592,6 +607,7 @@ func (rh *RouteHandler) GetBlob(w http.ResponseWriter, r *http.Request) {
 // @Success 202 {string} string "accepted"
 // @Router /v2/{name}/blobs/{digest} [delete].
 func (rh *RouteHandler) DeleteBlob(w http.ResponseWriter, r *http.Request) {
+	//metrics.HttpConnRequests.Inc()
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
 
@@ -643,6 +659,7 @@ func (rh *RouteHandler) DeleteBlob(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/blobs/uploads [post].
 func (rh *RouteHandler) CreateBlobUpload(w http.ResponseWriter, r *http.Request) {
+	//metrics.HttpConnRequests.Inc()
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
 
@@ -787,6 +804,7 @@ func (rh *RouteHandler) CreateBlobUpload(w http.ResponseWriter, r *http.Request)
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/blobs/uploads/{session_id} [get].
 func (rh *RouteHandler) GetBlobUpload(w http.ResponseWriter, r *http.Request) {
+	//metrics.HttpConnRequests.Inc()
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
 
@@ -849,6 +867,9 @@ func (rh *RouteHandler) GetBlobUpload(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/blobs/uploads/{session_id} [patch].
 func (rh *RouteHandler) PatchBlobUpload(w http.ResponseWriter, r *http.Request) {
+	/*	if metricsEnabled {
+		metrics.HttpConnRequests.WithLabelValues("/root", "get", "200").Inc()
+	} */
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
 
@@ -899,6 +920,7 @@ func (rh *RouteHandler) PatchBlobUpload(w http.ResponseWriter, r *http.Request) 
 		}
 
 		clen, err = is.PutBlobChunk(name, sessionID, from, to, r.Body)
+		rh.c.Log.Info().Int64("DDN:clen", clen).Msg("DEBUG")
 	}
 
 	if err != nil {
@@ -942,6 +964,9 @@ func (rh *RouteHandler) PatchBlobUpload(w http.ResponseWriter, r *http.Request) 
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/blobs/uploads/{session_id} [put].
 func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request) {
+	/*	if metricsEnabled {
+		metrics.HttpConnRequests.WithLabelValues("/root", "get", "200").Inc()
+	} */
 	rh.c.Log.Info().Interface("headers", r.Header).Msg("HEADERS")
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
@@ -1006,7 +1031,9 @@ func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request)
 			return
 		}
 
-		_, err = is.PutBlobChunk(name, sessionID, from, to, r.Body)
+		sizeBytesWritten, err := is.PutBlobChunk(name, sessionID, from, to, r.Body)
+		rh.c.Log.Info().Int64("DDN:sizeBytesWritten", sizeBytesWritten).Msg("DEBUG")
+
 		if err != nil {
 			switch err {
 			case errors.ErrBadUploadRange:
@@ -1069,6 +1096,7 @@ finish:
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/blobs/uploads/{session_id} [delete].
 func (rh *RouteHandler) DeleteBlobUpload(w http.ResponseWriter, r *http.Request) {
+	//metrics.HttpConnRequests.Inc()
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
 
@@ -1117,6 +1145,7 @@ type RepositoryList struct {
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/_catalog [get].
 func (rh *RouteHandler) ListRepositories(w http.ResponseWriter, r *http.Request) {
+	//metrics.HttpConnRequests.Inc()
 	combineRepoList := make([]string, 0)
 
 	subStore := rh.c.StoreController.SubStore
