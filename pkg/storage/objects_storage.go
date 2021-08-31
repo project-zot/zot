@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -33,9 +32,6 @@ type ObjectStorage struct {
 	store       storageDriver.StorageDriver
 	lock        *sync.RWMutex
 	blobUploads map[string]BlobUpload
-	cache       *Cache
-	gc          bool
-	dedupe      bool
 	log         zerolog.Logger
 }
 
@@ -54,9 +50,9 @@ func (is *ObjectStorage) DirExists(d string) bool {
 // NewObjectStorage returns a new image store backed by a file storage.
 func NewObjectStorage(rootDir string, gc bool, dedupe bool, log zlog.Logger,
 	objectStoreParams map[string]interface{}) ImageStore {
-	// Init a Storager from connection string.
 	storeName := fmt.Sprintf("%v", objectStoreParams["name"])
 
+	// Init a Storager from connection string.
 	store, err := factory.Create(storeName, objectStoreParams)
 	if err != nil {
 		log.Error().Err(err).Str("rootDir", rootDir).Msg("Unable to create s3 service")
@@ -67,8 +63,6 @@ func NewObjectStorage(rootDir string, gc bool, dedupe bool, log zlog.Logger,
 		store:       store,
 		lock:        &sync.RWMutex{},
 		blobUploads: make(map[string]BlobUpload),
-		gc:          false,
-		dedupe:      false,
 		log:         log.With().Caller().Logger(),
 	}
 
@@ -112,18 +106,7 @@ func (is *ObjectStorage) initRepo(name string) error {
 			is.log.Panic().Err(err).Msg("unable to marshal JSON")
 		}
 
-		if fw, err := is.store.Writer(context.Background(), ilPath, false); err == nil {
-			defer fw.Close()
-
-			if _, err := fw.Write(buf); err != nil {
-				return err
-			}
-
-			if err := fw.Commit(); err != nil {
-				is.log.Error().Err(err).Str("dir", ilPath).Msg("Commit written obj failed")
-				return err
-			}
-		} else {
+		if _, err := writeFile(is.store, ilPath, buf); err != nil {
 			is.log.Error().Err(err).Str("file", ilPath).Msg("unable to write file")
 			return err
 		}
@@ -131,7 +114,7 @@ func (is *ObjectStorage) initRepo(name string) error {
 
 	// "index.json" file - create if it doesn't exist
 	indexPath := path.Join(repoDir, "index.json")
-	if _, err := os.Stat(indexPath); err != nil {
+	if _, err := is.store.Stat(context.Background(), indexPath); err != nil {
 		index := ispec.Index{}
 		index.SchemaVersion = 2
 		buf, err := json.Marshal(index)
@@ -140,19 +123,8 @@ func (is *ObjectStorage) initRepo(name string) error {
 			is.log.Panic().Err(err).Msg("unable to marshal JSON")
 		}
 
-		if fw, err := is.store.Writer(context.Background(), indexPath, false); err == nil {
-			defer fw.Close()
-
-			if _, err := fw.Write(buf); err != nil {
-				return err
-			}
-
-			if err := fw.Commit(); err != nil {
-				is.log.Error().Err(err).Str("dir", indexPath).Msg("Commit written obj failed")
-				return err
-			}
-		} else {
-			is.log.Error().Err(err).Str("file", indexPath).Msg("unable to write file")
+		if _, err := writeFile(is.store, indexPath, buf); err != nil {
+			is.log.Error().Err(err).Str("file", ilPath).Msg("unable to write file")
 			return err
 		}
 	}
@@ -502,20 +474,8 @@ func (is *ObjectStorage) PutImageManifest(repo string, reference string, mediaTy
 	dir = path.Join(is.rootDir, repo, "blobs", mDigest.Algorithm().String())
 	manifestPath := path.Join(dir, mDigest.Encoded())
 
-	manifestFile, err := is.store.Writer(context.Background(), manifestPath, false)
-	if err != nil {
+	if err = is.store.PutContent(context.Background(), manifestPath, body); err != nil {
 		is.log.Error().Err(err).Str("file", manifestPath).Msg("unable to write")
-		return "", err
-	}
-
-	defer manifestFile.Close()
-
-	if _, err = manifestFile.Write(body); err != nil {
-		return "", err
-	}
-
-	if err = manifestFile.Commit(); err != nil {
-		return "", err
 	}
 
 	// now update "index.json"
@@ -529,19 +489,8 @@ func (is *ObjectStorage) PutImageManifest(repo string, reference string, mediaTy
 		return "", err
 	}
 
-	indexFile, err := is.store.Writer(context.Background(), indexPath, false)
-	if err != nil {
-		is.log.Error().Err(err).Str("file", indexPath).Msg("unable to write")
-		return "", err
-	}
-	defer indexFile.Close()
-
-	if _, err = indexFile.Write(buf); err != nil {
-		return "", err
-	}
-
-	if err = indexFile.Commit(); err != nil {
-		return "", err
+	if err = is.store.PutContent(context.Background(), indexPath, buf); err != nil {
+		is.log.Error().Err(err).Str("file", manifestPath).Msg("unable to write")
 	}
 
 	return desc.Digest.String(), nil
@@ -622,20 +571,8 @@ func (is *ObjectStorage) DeleteImageManifest(repo string, reference string) erro
 		return err
 	}
 
-	f, err := is.store.Writer(context.Background(), file, false)
-	if err != nil {
-		return err
-	}
-
-	defer f.Close()
-
-	_, err = f.Write(buf)
-	if err != nil {
-		return err
-	}
-
-	err = f.Commit()
-	if err != nil {
+	if _, err := writeFile(is.store, file, buf); err != nil {
+		is.log.Debug().Str("deleting reference", reference).Msg("")
 		return err
 	}
 
@@ -689,7 +626,7 @@ func (is *ObjectStorage) NewBlobUpload(repo string) (string, error) {
 
 	err = is.store.PutContent(context.Background(), blobUploadPath, []byte{})
 	if err != nil {
-		panic(err)
+		return "", errors.ErrRepoNotFound
 	}
 
 	return u, nil
@@ -770,7 +707,7 @@ func (is *ObjectStorage) PutBlobChunk(repo string, uuid string, from int64, to i
 	_, ok := err.(storageDriver.PathNotFoundError)
 	if !ok {
 		if err != nil {
-			is.log.Fatal().Err(err).Msg("failed to open file")
+			is.log.Fatal().Str("blobUploadPath", blobUploadPath).Err(err).Msg("failed to open file")
 			return -1, errors.ErrUploadNotFound
 		}
 	} else {
@@ -852,12 +789,6 @@ func (is *ObjectStorage) FinishBlobUpload(repo string, uuid string, body io.Read
 		return err
 	}
 
-	_, err = is.store.Stat(context.Background(), src)
-	if err != nil {
-		is.log.Error().Err(err).Str("blob", src).Msg("failed to stat blob")
-		return errors.ErrUploadNotFound
-	}
-
 	fileReader, err := is.store.Reader(context.Background(), src, 0)
 	if err != nil {
 		is.log.Error().Err(err).Str("blob", src).Msg("failed to open file")
@@ -913,14 +844,6 @@ func (is *ObjectStorage) FullBlobUpload(repo string, body io.Reader, digest stri
 
 	src := is.BlobUploadPath(repo, uuid)
 
-	f, err := is.store.Writer(context.Background(), src, false)
-	if err != nil {
-		is.log.Error().Err(err).Str("blob", src).Msg("failed to open blob")
-		return "", -1, errors.ErrUploadNotFound
-	}
-
-	defer f.Close()
-
 	digester := sha256.New()
 
 	buf := new(bytes.Buffer)
@@ -930,12 +853,7 @@ func (is *ObjectStorage) FullBlobUpload(repo string, body io.Reader, digest stri
 		is.log.Fatal().Err(err).Msg("failed to read blob")
 	}
 
-	n, err := f.Write(buf.Bytes())
-	if err != nil {
-		return "", -1, err
-	}
-
-	err = f.Commit()
+	n, err := writeFile(is.store, src, buf.Bytes())
 	if err != nil {
 		return "", -1, err
 	}
@@ -996,90 +914,18 @@ func (is *ObjectStorage) CheckBlob(repo string, digest string) (bool, int64, err
 
 	blobPath := is.BlobPath(repo, d)
 
-	if is.dedupe && is.cache != nil {
-		is.Lock()
-		defer is.Unlock()
-	} else {
-		is.RLock()
-		defer is.RUnlock()
-	}
+	is.RLock()
+	defer is.RUnlock()
 
 	blobInfo, err := is.store.Stat(context.Background(), blobPath)
-	if err == nil {
-		is.log.Debug().Str("blob path", blobPath).Msg("blob path found")
-
-		return true, blobInfo.Size(), nil
-	}
-
-	is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
-
-	// Check blobs in cache
-	dstRecord, err := is.checkCacheBlob(digest)
 	if err != nil {
-		is.log.Error().Err(err).Str("digest", digest).Msg("cache: not found")
-
-		return false, -1, errors.ErrBlobNotFound
+		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
+		return false, -1, errors.ErrBadBlobDigest
 	}
 
-	// If found copy to location
-	blobSize, err := is.copyBlob(repo, blobPath, dstRecord)
-	if err != nil {
-		return false, -1, errors.ErrBlobNotFound
-	}
+	is.log.Debug().Str("blob path", blobPath).Msg("blob path found")
 
-	if err := is.cache.PutBlob(digest, blobPath); err != nil {
-		is.log.Error().Err(err).Str("blobPath", blobPath).Msg("dedupe: unable to insert blob record")
-
-		return false, -1, err
-	}
-
-	return true, blobSize, nil
-}
-
-func (is *ObjectStorage) checkCacheBlob(digest string) (string, error) {
-	return "", errors.ErrBlobNotFound
-}
-
-func (is *ObjectStorage) copyBlob(repo string, blobPath string, dstRecord string) (int64, error) {
-	if err := is.initRepo(repo); err != nil {
-		is.log.Error().Err(err).Str("repo", repo).Msg("unable to initialize an empty repo")
-		return -1, err
-	}
-
-	f, err := is.store.Reader(context.Background(), dstRecord, 0)
-	if err != nil {
-		return -1, err
-	}
-
-	defer f.Close()
-
-	buf, err := ioutil.ReadAll(f)
-	if err != nil {
-		return -1, err
-	}
-
-	blobWriter, err := is.store.Writer(context.Background(), blobPath, false)
-	if err != nil {
-		return -1, err
-	}
-
-	defer blobWriter.Close()
-
-	_, err = blobWriter.Write(buf)
-	if err != nil {
-		return -1, err
-	}
-
-	if err = blobWriter.Commit(); err != nil {
-		return -1, err
-	}
-
-	blobInfo, err := os.Stat(blobPath)
-	if err == nil {
-		return blobInfo.Size(), nil
-	}
-
-	return -1, errors.ErrBlobNotFound
+	return true, blobInfo.Size(), nil
 }
 
 // GetBlob returns a stream to read the blob.
@@ -1159,17 +1005,31 @@ func (is *ObjectStorage) DeleteBlob(repo string, digest string) error {
 		return errors.ErrBlobNotFound
 	}
 
-	if is.cache != nil {
-		if err := is.cache.DeleteBlob(digest, blobPath); err != nil {
-			is.log.Error().Err(err).Str("digest", digest).Str("blobPath", blobPath).Msg("unable to remove blob path from cache")
-			return err
-		}
-	}
-
 	if err := is.store.Delete(context.Background(), blobPath); err != nil {
 		is.log.Error().Err(err).Str("blobPath", blobPath).Msg("unable to remove blob path")
 		return err
 	}
 
 	return nil
+}
+
+// do not use for multipart upload
+func writeFile(store storageDriver.StorageDriver, filepath string, buf []byte) (int, error) {
+	var n int
+
+	if fw, err := store.Writer(context.Background(), filepath, false); err == nil {
+		defer fw.Close()
+
+		if n, err = fw.Write(buf); err != nil {
+			return -1, err
+		}
+
+		if err := fw.Commit(); err != nil {
+			return -1, err
+		}
+	} else {
+		return -1, err
+	}
+
+	return n, nil
 }

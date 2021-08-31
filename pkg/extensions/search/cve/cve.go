@@ -175,7 +175,7 @@ func (cveinfo CveInfo) GetImageListForCVE(repo string, id string, imgStore stora
 	for _, tag := range tagList {
 		trivyConfig.TrivyConfig.Input = fmt.Sprintf("%s:%s", path.Join(rootDir, repo), tag)
 
-		isValidImage, _ := cveinfo.IsValidImageFormat(repo)
+		isValidImage, _ := cveinfo.IsValidImageFormat(fmt.Sprintf("%s:%s", repo, tag))
 		if !isValidImage {
 			cveinfo.Log.Debug().Str("image", repo+":"+tag).Msg("image media type not supported for scanning")
 

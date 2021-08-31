@@ -13,6 +13,7 @@ import (
 
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
+	guuid "github.com/gofrs/uuid"
 	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -51,10 +52,10 @@ func createObjectsStore(rootDir string) (storageDriver.StorageDriver, storage.Im
 
 	store, err := factory.Create(storeName, objectsStoreParams)
 	if err != nil {
-		return store, &storage.ObjectStorage{}, err
+		panic(err)
 	}
 
-	// create bucket
+	// create bucket if it doesn't exists
 	_, err = resty.R().Put("http://" + endpoint + "/" + bucket)
 	if err != nil {
 		panic(err)
@@ -68,7 +69,12 @@ func createObjectsStore(rootDir string) (storageDriver.StorageDriver, storage.Im
 func TestNegativeCasesObjectsStorage(t *testing.T) {
 	skipIt(t)
 
-	testDir := "/oci-repo-test-2"
+	uuid, err := guuid.NewV4()
+	if err != nil {
+		panic(err)
+	}
+
+	testDir := path.Join("/oci-repo-test", uuid.String())
 
 	store, il, _ := createObjectsStore(testDir)
 	defer cleanupStorage(store, testDir)
@@ -117,5 +123,24 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 		So(store.PutContent(context.Background(), path.Join(testDir, "test", "index.json"), []byte{}), ShouldBeNil)
 		_, _, _, err = il.GetImageManifest("test", "")
 		So(err, ShouldNotBeNil)
+	})
+
+	Convey("Invalid validate repo", t, func(c C) {
+		store, il, err := createObjectsStore(testDir)
+		defer cleanupStorage(store, testDir)
+		So(err, ShouldBeNil)
+		So(il, ShouldNotBeNil)
+
+		So(il.InitRepo("test"), ShouldBeNil)
+		So(store.Delete(context.Background(), path.Join(testDir, "test", "index.json")), ShouldBeNil)
+		_, err = il.ValidateRepo("test")
+		So(err, ShouldNotBeNil)
+		So(store.Delete(context.Background(), path.Join(testDir, "test")), ShouldBeNil)
+		So(il.InitRepo("test"), ShouldBeNil)
+		So(store.Move(context.Background(), path.Join(testDir, "test", "index.json"),
+			path.Join(testDir, "test", "_index.json")), ShouldBeNil)
+		ok, err := il.ValidateRepo("test")
+		So(err, ShouldBeNil)
+		So(ok, ShouldBeFalse)
 	})
 }

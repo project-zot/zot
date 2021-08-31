@@ -156,7 +156,6 @@ func (is *ImageStoreFS) Unlock() {
 }
 func (is *ImageStoreFS) initRepo(name string) error {
 	repoDir := path.Join(is.rootDir, name)
-
 	// create "blobs" subdir
 	err := ensureDir(path.Join(repoDir, "blobs"), is.log)
 	if err != nil {
@@ -1199,7 +1198,8 @@ func (is *ImageStoreFS) GetBlobContent(repo string, digest string) ([]byte, erro
 
 	_, err = buf.ReadFrom(blob)
 	if err != nil {
-		is.log.Fatal().Err(err).Msg("failed to read blob")
+		is.log.Error().Err(err).Str("digest", digest).Msg("failed to read blob")
+		return []byte{}, err
 	}
 
 	return buf.Bytes(), nil

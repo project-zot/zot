@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"os"
+	"path"
 	"strings"
 	"sync"
 
@@ -14,6 +15,7 @@ import (
 
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
+	guuid "github.com/gofrs/uuid"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/rs/zerolog"
@@ -25,21 +27,22 @@ import (
 	_ "github.com/docker/distribution/registry/storage/driver/s3-aws"
 )
 
-func TestStorageAPIs(t *testing.T) {
-	testCases := []struct {
-		testCaseName string
-		storageType  string
-	}{
-		{
-			testCaseName: "S3APIs",
-			storageType:  "s3",
-		},
-		{
-			testCaseName: "FileSystemAPIs",
-			storageType:  "fs",
-		},
-	}
+// nolint: gochecknoglobals
+var testCases = []struct {
+	testCaseName string
+	storageType  string
+}{
+	{
+		testCaseName: "S3APIs",
+		storageType:  "s3",
+	},
+	{
+		testCaseName: "FileSystemAPIs",
+		storageType:  "fs",
+	},
+}
 
+func TestStorageAPIs(t *testing.T) {
 	for _, testcase := range testCases {
 		testcase := testcase
 		t.Run(testcase.testCaseName, func(t *testing.T) {
@@ -47,7 +50,13 @@ func TestStorageAPIs(t *testing.T) {
 			if testcase.storageType == "s3" {
 				skipIt(t)
 
-				testDir := "/oci-repo-test"
+				uuid, err := guuid.NewV4()
+				if err != nil {
+					panic(err)
+				}
+
+				testDir := path.Join("/oci-repo-test", uuid.String())
+
 				var store driver.StorageDriver
 				store, il, _ = createObjectsStore(testDir)
 				defer cleanupStorage(store, testDir)
@@ -69,11 +78,15 @@ func TestStorageAPIs(t *testing.T) {
 					v, err := il.ValidateRepo(repoName)
 					So(v, ShouldEqual, false)
 					So(err, ShouldNotBeNil)
+					ok := il.DirExists(path.Join(il.RootDir(), repoName))
+					So(ok, ShouldBeFalse)
 				})
 
 				Convey("Initialize repo", func() {
 					err := il.InitRepo(repoName)
 					So(err, ShouldBeNil)
+					ok := il.DirExists(path.Join(il.RootDir(), repoName))
+					So(ok, ShouldBeTrue)
 				})
 
 				Convey("Validate repo", func() {
@@ -109,6 +122,13 @@ func TestStorageAPIs(t *testing.T) {
 					So(err, ShouldBeNil)
 					So(v, ShouldNotBeEmpty)
 
+					err = il.DeleteBlobUpload("test", v)
+					So(err, ShouldBeNil)
+
+					v, err = il.NewBlobUpload("test")
+					So(err, ShouldBeNil)
+					So(v, ShouldNotBeEmpty)
+
 					Convey("Get blob upload", func() {
 						b, err := il.GetBlobUpload("test", "invalid")
 						So(err, ShouldNotBeNil)
@@ -126,6 +146,11 @@ func TestStorageAPIs(t *testing.T) {
 						buf := bytes.NewBuffer(content)
 						l := buf.Len()
 						d := godigest.FromBytes(content)
+
+						// // invalid chunk range - fails with localstack...
+						// _, err = il.PutBlobChunk("test", v, 10, int64(l), buf)
+						// So(err, ShouldNotBeNil)
+
 						b, err = il.PutBlobChunk("test", v, 0, int64(l), buf)
 						So(err, ShouldBeNil)
 						So(b, ShouldEqual, l)
@@ -152,10 +177,16 @@ func TestStorageAPIs(t *testing.T) {
 							_, err = il.PutImageManifest("test", d.String(), ispec.MediaTypeImageManifest, []byte{})
 							So(err, ShouldNotBeNil)
 
+							_, err = il.PutImageManifest("test", d.String(), ispec.MediaTypeImageManifest, []byte(`{"test":true}`))
+							So(err, ShouldNotBeNil)
+
 							_, err = il.PutImageManifest("test", d.String(), ispec.MediaTypeImageManifest, mb)
 							So(err, ShouldNotBeNil)
 
 							_, _, _, err = il.GetImageManifest("test", d.String())
+							So(err, ShouldNotBeNil)
+
+							_, _, _, err = il.GetImageManifest("inexistent", d.String())
 							So(err, ShouldNotBeNil)
 						})
 
@@ -180,6 +211,11 @@ func TestStorageAPIs(t *testing.T) {
 							m.SchemaVersion = 2
 							mb, _ = json.Marshal(m)
 							d := godigest.FromBytes(mb)
+
+							_, err = il.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, mb)
+							So(err, ShouldBeNil)
+
+							// same manifest for coverage
 							_, err = il.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, mb)
 							So(err, ShouldBeNil)
 
@@ -188,6 +224,9 @@ func TestStorageAPIs(t *testing.T) {
 
 							_, err = il.PutImageManifest("test", "3.0", ispec.MediaTypeImageManifest, mb)
 							So(err, ShouldBeNil)
+
+							_, err = il.GetImageTags("inexistent")
+							So(err, ShouldNotBeNil)
 
 							// total tags should be 3 but they have same reference.
 							tags, err := il.GetImageTags("test")
@@ -222,6 +261,12 @@ func TestStorageAPIs(t *testing.T) {
 							So(err, ShouldNotBeNil)
 							So(hasBlob, ShouldEqual, false)
 
+							err = il.DeleteBlob("test", "inexistent")
+							So(err, ShouldNotBeNil)
+
+							err = il.DeleteBlob("test", godigest.FromBytes([]byte("inexistent")).String())
+							So(err, ShouldNotBeNil)
+
 							err = il.DeleteBlob("test", blobDigest.String())
 							So(err, ShouldBeNil)
 
@@ -240,6 +285,9 @@ func TestStorageAPIs(t *testing.T) {
 					So(v, ShouldNotBeEmpty)
 
 					Convey("Get blob upload", func() {
+						err = il.FinishBlobUpload("test", v, bytes.NewBuffer([]byte{}), "inexistent")
+						So(err, ShouldNotBeNil)
+
 						b, err := il.GetBlobUpload("test", "invalid")
 						So(err, ShouldNotBeNil)
 						So(b, ShouldEqual, -1)
@@ -247,6 +295,9 @@ func TestStorageAPIs(t *testing.T) {
 						b, err = il.GetBlobUpload("test", v)
 						So(err, ShouldBeNil)
 						So(b, ShouldBeGreaterThanOrEqualTo, 0)
+
+						_, err = il.BlobUploadInfo("test", "inexistent")
+						So(err, ShouldNotBeNil)
 
 						b, err = il.BlobUploadInfo("test", v)
 						So(err, ShouldBeNil)
@@ -260,6 +311,12 @@ func TestStorageAPIs(t *testing.T) {
 						So(err, ShouldBeNil)
 						So(b, ShouldEqual, l)
 
+						_, err = il.PutBlobChunkStreamed("test", "inexistent", buf)
+						So(err, ShouldNotBeNil)
+
+						err = il.FinishBlobUpload("test", "inexistent", buf, d.String())
+						So(err, ShouldNotBeNil)
+
 						err = il.FinishBlobUpload("test", v, buf, d.String())
 						So(err, ShouldBeNil)
 						So(b, ShouldEqual, l)
@@ -267,15 +324,36 @@ func TestStorageAPIs(t *testing.T) {
 						_, _, err = il.CheckBlob("test", d.String())
 						So(err, ShouldBeNil)
 
+						_, _, err = il.GetBlob("test", "inexistent", "application/vnd.oci.image.layer.v1.tar+gzip")
+						So(err, ShouldNotBeNil)
+
 						_, _, err = il.GetBlob("test", d.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
 						So(err, ShouldBeNil)
+
+						blobContent, err := il.GetBlobContent("test", d.String())
+						So(err, ShouldBeNil)
+						So(content, ShouldResemble, blobContent)
+
+						_, err = il.GetBlobContent("inexistent", d.String())
+						So(err, ShouldNotBeNil)
 
 						m := ispec.Manifest{}
 						m.SchemaVersion = 2
 						mb, _ := json.Marshal(m)
 
+						Convey("Bad digests", func() {
+							_, _, err := il.FullBlobUpload("test", bytes.NewBuffer([]byte{}), "inexistent")
+							So(err, ShouldNotBeNil)
+
+							_, _, err = il.CheckBlob("test", "inexistent")
+							So(err, ShouldNotBeNil)
+						})
+
 						Convey("Bad image manifest", func() {
 							_, err = il.PutImageManifest("test", d.String(), ispec.MediaTypeImageManifest, mb)
+							So(err, ShouldNotBeNil)
+
+							_, err = il.PutImageManifest("test", d.String(), ispec.MediaTypeImageManifest, []byte("bad json"))
 							So(err, ShouldNotBeNil)
 
 							_, _, _, err = il.GetImageManifest("test", d.String())
@@ -302,10 +380,29 @@ func TestStorageAPIs(t *testing.T) {
 							_, err = il.PutImageManifest("test", d.String(), ispec.MediaTypeImageManifest, mb)
 							So(err, ShouldBeNil)
 
+							// same manifest for coverage
+							_, err = il.PutImageManifest("test", d.String(), ispec.MediaTypeImageManifest, mb)
+							So(err, ShouldBeNil)
+
 							_, _, _, err = il.GetImageManifest("test", d.String())
 							So(err, ShouldBeNil)
 
+							_, err = il.GetIndexContent("inexistent")
+							So(err, ShouldNotBeNil)
+
+							indexContent, err := il.GetIndexContent("test")
+							So(err, ShouldBeNil)
+
+							var index ispec.Index
+
+							err = json.Unmarshal(indexContent, &index)
+							So(err, ShouldBeNil)
+
+							So(len(index.Manifests), ShouldEqual, 1)
 							err = il.DeleteImageManifest("test", "1.0")
+							So(err, ShouldNotBeNil)
+
+							err = il.DeleteImageManifest("inexistent", "1.0")
 							So(err, ShouldNotBeNil)
 
 							err = il.DeleteImageManifest("test", d.String())
@@ -429,20 +526,6 @@ func TestStorageAPIs(t *testing.T) {
 }
 
 func TestStorageHandler(t *testing.T) {
-	testCases := []struct {
-		testCaseName string
-		storageType  string
-	}{
-		{
-			testCaseName: "S3APIs",
-			storageType:  "s3",
-		},
-		{
-			testCaseName: "FileSystemAPIs",
-			storageType:  "fs",
-		},
-	}
-
 	for _, testcase := range testCases {
 		testcase := testcase
 		t.Run(testcase.testCaseName, func(t *testing.T) {
