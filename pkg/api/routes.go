@@ -54,8 +54,9 @@ func NewRouteHandler(c *Controller) *RouteHandler {
 
 func (rh *RouteHandler) SetupRoutes() {
 	rh.c.Router.Use(AuthHandler(rh.c))
-
-	if !isBearerAuthEnabled(rh.c.Config) && rh.c.Config.AccessControl != nil {
+	// authz is being enabled because authn is found
+	if rh.c.Config.AccessControl != nil && !isBearerAuthEnabled(rh.c.Config) && isAuthnEnabled(rh.c.Config) {
+		rh.c.Log.Info().Msg("access control is being enabled")
 		rh.c.Router.Use(AuthzHandler(rh.c))
 	}
 
