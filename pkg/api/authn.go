@@ -237,6 +237,27 @@ func basicAuthHandler(c *Controller) mux.MiddlewareFunc {
 	}
 }
 
+func isAuthnEnabled(config *Config) bool {
+	if config.HTTP.Auth != nil &&
+		(config.HTTP.Auth.HTPasswd.Path != "" || config.HTTP.Auth.LDAP != nil) {
+		return true
+	}
+
+	return false
+}
+
+func isBearerAuthEnabled(config *Config) bool {
+	if config.HTTP.Auth != nil &&
+		config.HTTP.Auth.Bearer != nil &&
+		config.HTTP.Auth.Bearer.Cert != "" &&
+		config.HTTP.Auth.Bearer.Realm != "" &&
+		config.HTTP.Auth.Bearer.Service != "" {
+		return true
+	}
+
+	return false
+}
+
 func authFail(w http.ResponseWriter, realm string, delay int) {
 	time.Sleep(time.Duration(delay) * time.Second)
 	w.Header().Set("WWW-Authenticate", realm)
