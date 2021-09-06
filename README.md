@@ -17,6 +17,7 @@ https://anuvu.github.io/zot/
 * Uses [OCI image layout](https://github.com/opencontainers/image-spec/blob/master/image-layout.md) for image storage
   * Can serve any OCI image layout as a registry 
 * Supports [helm charts](https://helm.sh/docs/topics/registries/)
+* Behavior controlled via [configuration](./examples/README.md)
 * Supports image deletion by tag
 * Currently suitable for on-prem deployments (e.g. colocated with Kubernetes)
 * Compatible with ecosystem tools such as [skopeo](#skopeo) and [cri-o](#cri-o)
@@ -27,7 +28,7 @@ https://anuvu.github.io/zot/
   * TLS mutual authentication
   * HTTP *Basic* (local _htpasswd_ and LDAP)
   * HTTP *Bearer* token
-* [Authorization](#Authorization) Supports Identity-Based Access Control: [Configuration](./examples/config-policy.json)
+* Supports Identity-Based Access Control
 * Supports live modifications on the config file while zot is running (Authorization config only)
 * Doesn't require _root_ privileges
 * Storage optimizations:
@@ -223,15 +224,6 @@ IMAGE NAME                        TAG                       DIGEST    SIZE
 c3/openjdk-dev                    commit-2674e8a-squashfs   b545b8ba  321MB
 c3/openjdk-dev                    commit-d5024ec-squashfs   cd45f8cf  321MB
 ```
-
-## Authorization
-
-zot follows the next logic for deciding who has rights on what resource:
-1) First it checks the requested resource in "repositories" as specified in configuration
-2) Searches in all policies for the user who requested the resource
-3) If found, applies the policy, otherwise it falls back to the default policy for that repository
-4) If not found, it falls back to the adminPolicy
-
 
 # Ecosystem
 
