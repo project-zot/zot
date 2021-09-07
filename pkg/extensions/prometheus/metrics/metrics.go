@@ -23,4 +23,28 @@ var (
 		},
 		[]string{"repo"},
 	)
+	StorageUsage = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: metricsNamespace,
+			Name:      "storage_usage_bytes",
+			Help:      "Storage used",
+		},
+		[]string{"repo"},
+	)
+	UploadCounter = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Name:      "upload_image_total",
+			Help:      "Total number times an image was uploaded",
+		},
+		[]string{"repo"},
+	)
+	DownloadCounter = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Name:      "download_image_total",
+			Help:      "Total number times an image was downloaded",
+		},
+		[]string{"repo"},
+	)
 )
