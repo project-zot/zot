@@ -236,6 +236,12 @@ func (is *ObjectStorage) GetRepositories() ([]string, error) {
 		return nil
 	})
 
+	// if the root directory is not yet created then return an empty slice of repositories
+	_, ok := err.(storageDriver.PathNotFoundError)
+	if ok {
+		return stores, nil
+	}
+
 	return stores, err
 }
 
@@ -919,6 +925,11 @@ func (is *ObjectStorage) CheckBlob(repo string, digest string) (bool, int64, err
 
 	blobInfo, err := is.store.Stat(context.Background(), blobPath)
 	if err != nil {
+		_, ok := err.(storageDriver.PathNotFoundError)
+		if ok {
+			return false, -1, errors.ErrBlobNotFound
+		}
+
 		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
 		return false, -1, errors.ErrBadBlobDigest
 	}

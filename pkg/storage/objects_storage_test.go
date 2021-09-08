@@ -91,7 +91,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 		_, err = il.ValidateRepo("test")
 		So(err, ShouldNotBeNil)
 		_, err = il.GetRepositories()
-		So(err, ShouldNotBeNil)
+		So(err, ShouldBeNil)
 	})
 
 	Convey("Invalid get image tags", t, func(c C) {
