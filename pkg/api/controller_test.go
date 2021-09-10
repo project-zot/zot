@@ -130,6 +130,85 @@ func TestNew(t *testing.T) {
 	})
 }
 
+func TestObjectStorageController(t *testing.T) {
+	Convey("Make a new object storage controller", t, func() {
+		port := getFreePort()
+		baseURL := getBaseURL(port, false)
+		config := api.NewConfig()
+		config.HTTP.Port = port
+		objectsStoreParams := map[string]interface{}{
+			"rootDir": "zot",
+			"name":    "s3",
+		}
+		config.Storage.ObjectStoreParams = objectsStoreParams
+		c := api.NewController(config)
+		So(c, ShouldNotBeNil)
+
+		c.Config.Storage.RootDirectory = "zot"
+
+		go func(controller *api.Controller) {
+			// this blocks
+			if err := controller.Run(); err != nil {
+				return
+			}
+		}(c)
+
+		// wait till ready
+		for {
+			_, err := resty.R().Get(baseURL)
+			if err == nil {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		defer func(controller *api.Controller) {
+			ctx := context.Background()
+			_ = controller.Server.Shutdown(ctx)
+		}(c)
+	})
+}
+
+func TestObjectStorageControllerSubPaths(t *testing.T) {
+	Convey("Make a new object storage controller", t, func() {
+		port := getFreePort()
+		baseURL := getBaseURL(port, false)
+		config := api.NewConfig()
+		config.HTTP.Port = port
+		objectsStoreParams := map[string]interface{}{
+			"rootDir": "zot",
+			"name":    "s3",
+		}
+		config.Storage.ObjectStoreParams = objectsStoreParams
+		c := api.NewController(config)
+		So(c, ShouldNotBeNil)
+
+		c.Config.Storage.RootDirectory = "zot"
+		subPathMap := make(map[string]api.StorageConfig)
+		subPathMap["/a"] = api.StorageConfig{RootDirectory: "/a"}
+		c.Config.Storage.SubPaths = subPathMap
+
+		go func(controller *api.Controller) {
+			// this blocks
+			if err := controller.Run(); err != nil {
+				return
+			}
+		}(c)
+
+		for {
+			_, err := resty.R().Get(baseURL)
+			if err == nil {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		defer func(controller *api.Controller) {
+			ctx := context.Background()
+			_ = controller.Server.Shutdown(ctx)
+		}(c)
+	})
+}
+
 func TestHtpasswdSingleCred(t *testing.T) {
 	Convey("Single cred", t, func() {
 		port := getFreePort()

@@ -143,4 +143,23 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(ok, ShouldBeFalse)
 	})
+
+	Convey("Invalid validate repo", t, func(c C) {
+		store, il, err := createObjectsStore(testDir)
+		defer cleanupStorage(store, testDir)
+		So(err, ShouldBeNil)
+		So(il, ShouldNotBeNil)
+
+		So(il.InitRepo("test"), ShouldBeNil)
+		So(store.Delete(context.Background(), path.Join(testDir, "test", "index.json")), ShouldBeNil)
+		_, err = il.ValidateRepo("test")
+		So(err, ShouldNotBeNil)
+		So(store.Delete(context.Background(), path.Join(testDir, "test")), ShouldBeNil)
+		So(il.InitRepo("test"), ShouldBeNil)
+		So(store.Move(context.Background(), path.Join(testDir, "test", "index.json"),
+			path.Join(testDir, "test", "_index.json")), ShouldBeNil)
+		ok, err := il.ValidateRepo("test")
+		So(err, ShouldBeNil)
+		So(ok, ShouldBeFalse)
+	})
 }

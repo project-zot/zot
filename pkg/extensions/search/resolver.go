@@ -236,7 +236,7 @@ func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, im
 	for _, tag := range tagsInfo {
 		trivyConfig.TrivyConfig.Input = fmt.Sprintf("%s:%s", imagePath, tag.Name)
 
-		isValidImage, _ := r.cveInfo.IsValidImageFormat(fmt.Sprintf("%s:%s", image, tag))
+		isValidImage, _ := r.cveInfo.IsValidImageFormat(fmt.Sprintf("%s:%s", image, tag.Name))
 		if !isValidImage {
 			r.cveInfo.Log.Debug().Str("image",
 				image+":"+tag.Name).Msg("image media type not supported for scanning, adding as an infected image")

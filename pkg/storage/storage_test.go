@@ -212,6 +212,13 @@ func TestStorageAPIs(t *testing.T) {
 							mb, _ = json.Marshal(m)
 							d := godigest.FromBytes(mb)
 
+							// bad manifest
+							m.Layers[0].Digest = godigest.FromBytes([]byte("inexistent"))
+							badMb, _ := json.Marshal(m)
+
+							_, err = il.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, badMb)
+							So(err, ShouldNotBeNil)
+
 							_, err = il.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, mb)
 							So(err, ShouldBeNil)
 
@@ -222,7 +229,7 @@ func TestStorageAPIs(t *testing.T) {
 							_, err = il.PutImageManifest("test", "2.0", ispec.MediaTypeImageManifest, mb)
 							So(err, ShouldBeNil)
 
-							_, err = il.PutImageManifest("test", "3.0", ispec.MediaTypeImageManifest, mb)
+							_, err := il.PutImageManifest("test", "3.0", ispec.MediaTypeImageManifest, mb)
 							So(err, ShouldBeNil)
 
 							_, err = il.GetImageTags("inexistent")
@@ -234,6 +241,9 @@ func TestStorageAPIs(t *testing.T) {
 							So(len(tags), ShouldEqual, 3)
 
 							_, _, _, err = il.GetImageManifest("test", d.String())
+							So(err, ShouldBeNil)
+
+							_, _, _, err = il.GetImageManifest("test", "3.0")
 							So(err, ShouldBeNil)
 
 							err = il.DeleteImageManifest("test", "1.0")
