@@ -4,12 +4,10 @@ import (
 	"encoding/base64"
 	"net/http"
 	"os"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
-	"github.com/anuvu/zot/pkg/extensions/prometheus/metrics"
+	"github.com/anuvu/zot/pkg/extensions/monitoring"
 	"github.com/gorilla/mux"
 	"github.com/rs/zerolog"
 )
@@ -144,14 +142,8 @@ func SessionLogger(log Logger) mux.MiddlewareFunc {
 				path = path + "?" + raw
 			}
 
-			metrics.HttpConnRequests.WithLabelValues(method, strconv.Itoa(statusCode)).Inc()
-			re := regexp.MustCompile("\\/v2\\/(.*?)\\/(blobs|tags|manifests)\\/(.*)$")
-			match := re.FindStringSubmatch(path)
-			if len(match) > 1 {
-				metrics.HttpServeLatency.WithLabelValues(match[1]).Observe(latency.Seconds())
-			} else {
-				metrics.HttpServeLatency.WithLabelValues("N/A").Observe(latency.Seconds())
-			}
+			monitoring.IncHttpConnRequests(method, statusCode)
+			monitoring.ObserveHttpServeLatency(path, latency)
 
 			log.Str("clientIP", clientIP).
 				Str("method", method).

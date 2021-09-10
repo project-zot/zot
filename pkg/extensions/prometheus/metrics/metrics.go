@@ -1,3 +1,5 @@
+// +build extended
+
 package metrics
 
 import (

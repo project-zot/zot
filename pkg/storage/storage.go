@@ -4,8 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
-	"fmt"
-	"github.com/anuvu/zot/pkg/extensions/prometheus/metrics"
+	"fmt"	
 	"io"
 	"io/ioutil"
 	"os"
@@ -15,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/anuvu/zot/pkg/extensions/monitoring"
 	"github.com/anuvu/zot/errors"
 	zlog "github.com/anuvu/zot/pkg/log"
 	apexlog "github.com/apex/log"
@@ -417,7 +417,7 @@ func (is *ImageStore) GetImageManifest(repo string, reference string) ([]byte, s
 		return nil, "", "", err
 	}
 
-	metrics.DownloadCounter.WithLabelValues(repo).Inc()
+	monitoring.IncDownloadCounter(repo)
 
 	return buf, digest.String(), mediaType, nil
 }
@@ -581,14 +581,8 @@ func (is *ImageStore) PutImageManifest(repo string, reference string, mediaType 
 		}
 	}
 
-	dir = path.Join(is.rootDir, repo)
-	repoSize, err := getDirSize(dir)
-
-	if err == nil {
-		metrics.StorageUsage.WithLabelValues(repo).Set(float64(repoSize))
-	}
-
-	metrics.UploadCounter.WithLabelValues(repo).Inc()
+	monitoring.SetStorageUsage(repo, is.rootDir)
+	monitoring.IncUploadCounter(repo)
 
 	return desc.Digest.String(), nil
 }
@@ -701,12 +695,7 @@ func (is *ImageStore) DeleteImageManifest(repo string, reference string) error {
 		_ = os.Remove(p)
 	}
 
-	dir = path.Join(is.rootDir, repo)
-	repoSize, err := getDirSize(dir)
-
-	if err == nil {
-		metrics.StorageUsage.WithLabelValues(repo).Set(float64(repoSize))
-	}
+	monitoring.SetStorageUsage(repo, is.rootDir)
 
 	return nil
 }
@@ -1314,18 +1303,4 @@ func ifOlderThan(is *ImageStore, repo string, delay time.Duration) casext.GCPoli
 
 		return true, nil
 	}
-}
-
-func getDirSize(path string) (int64, error) {
-	var size int64
-	err := filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() {
-			size += info.Size()
-		}
-		return err
-	})
-	return size, err
 }
