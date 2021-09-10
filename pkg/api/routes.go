@@ -1234,7 +1234,7 @@ func (rh *RouteHandler) ListRepositories(response http.ResponseWriter, request *
 		}
 
 		for _, r := range combineRepoList {
-			if containsRepo(acCtx.userAllowedRepos, r) || acCtx.isAdmin {
+			if acCtx.isAdmin || matchesRepo(acCtx.globPatterns, r) {
 				repos = append(repos, r)
 			}
 		}

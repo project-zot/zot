@@ -186,40 +186,68 @@ identities. An additional per-repository default policy can be specified for
 identities not in the whitelist. Furthermore, a global admin policy can also be
 specified which can override per-repository policies.
 
+Glob patterns can also be used as repository paths.
+
+Authorization is granted based on the longest path matched.
+For example repos2/repo repository will match both "**" and "repos2/repo" keys,
+in such case repos2/repo policy will be used because it's longer.
+
+Because we use longest path matching we need a way to specify a global policy to override all the other policies.
+For example, we can specify a global policy with "**" (will match all repos), but any other policy will overwrite it,
+because it will be longer. So that's why we have the option to specify an adminPolicy.
+
+Basically '**' means repositories not matched by any other per-repository policy.
+
+create/update/delete can not be used without 'read' action, make sure read is always included in policies!
+
 ```
 "accessControl": {
-    "repos1/repo": {
-        "policies": [
+    "**": {                                                    # matches all repos (which are not matched by any other per-repository policy)
+      "policies": [                                            # user based policies
         {
-            "users": ["alice", "bob"],
-            "actions": ["create", "read", "update", "delete"]
-        },
-        {
-            "users": ["mallory"],
-            "actions": ["create", "read"]
+          "users": ["charlie"],
+          "actions": ["read", "create", "update"]
         }
+      ],
+      "defaultPolicy": ["read", "create"]                      # default policy which is applied for all users => so all users can read/create repositories
+    },
+    "tmp/**": {                                                # matches all repos under tmp/ recursively
+      "defaultPolicy": ["read", "create", "update"]            # so all users have read/create/update on all repos under tmp/ eg: tmp/infra/repo
+    },
+    "infra/*": {                                               # matches all repos directly under infra/ (not recursively)
+        "policies": [
+          {
+              "users": ["alice", "bob"],
+              "actions": ["create", "read", "update", "delete"]
+          },
+          {
+              "users": ["mallory"],
+              "actions": ["create", "read"]
+          }
         ],
         "defaultPolicy": ["read"]
     },
-    "repos2/repo": {
+    "repos2/repo": {                                           # matches only repos2/repo repository
         "policies": [
-        {
-            "users": ["bob"],
-            "actions": ["read", "create"]
-        },
-        {
-            "users": ["mallory"],
-            "actions": ["create", "read"]
-        }
+          {
+              "users": ["bob"],
+              "actions": ["read", "create"]
+          },
+          {
+              "users": ["mallory"],
+              "actions": ["create", "read"]
+          }
         ],
         "defaultPolicy": ["read"]
     },
-    "adminPolicy": {
+    "adminPolicy": {                                            # global admin policy (overrides per-repo policy)
         "users": ["admin"],
         "actions": ["read", "create", "update", "delete"]
     }
 }
 ```
+
+
 
 ## Logging
 

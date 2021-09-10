@@ -14,7 +14,19 @@
       "failDelay": 1
     },
     "accessControl": {
-      "repos1/repo": {
+      "**": {
+        "policies": [
+          {
+            "users": ["charlie"],
+            "actions": ["read", "create", "update"]
+          }
+        ],
+        "defaultPolicy": ["read", "create"] 
+      },
+      "tmp/**": {
+        "defaultPolicy": ["read", "create", "update"]
+      },
+      "infra/**": {
         "policies": [
           {
             "users": ["alice", "bob"],
@@ -30,7 +42,7 @@
       "repos2/repo": {
         "policies": [
           {
-            "users": ["bob"],
+            "users": ["charlie"],
             "actions": ["read", "create"]
           },
           {

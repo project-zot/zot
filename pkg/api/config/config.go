@@ -162,7 +162,7 @@ func (c *Config) Validate(log log.Logger) error {
 }
 
 // LoadAccessControlConfig populates config.AccessControl struct with values from config.
-func (c *Config) LoadAccessControlConfig() error {
+func (c *Config) LoadAccessControlConfig(viperInstance *viper.Viper) error {
 	if c.HTTP.RawAccessControl == nil {
 		return nil
 	}
@@ -176,19 +176,19 @@ func (c *Config) LoadAccessControlConfig() error {
 		var policyGroup PolicyGroup
 
 		if policy == "adminpolicy" {
-			adminPolicy := viper.GetStringMapStringSlice("http.accessControl.adminPolicy")
+			adminPolicy := viperInstance.GetStringMapStringSlice("http::accessControl::adminPolicy")
 			c.AccessControl.AdminPolicy.Actions = adminPolicy["actions"]
 			c.AccessControl.AdminPolicy.Users = adminPolicy["users"]
 
 			continue
 		}
 
-		err := viper.UnmarshalKey(fmt.Sprintf("http.accessControl.%s.policies", policy), &policies)
+		err := viperInstance.UnmarshalKey(fmt.Sprintf("http::accessControl::%s::policies", policy), &policies)
 		if err != nil {
 			return err
 		}
 
-		defaultPolicy := viper.GetStringSlice(fmt.Sprintf("http.accessControl.%s.defaultPolicy", policy))
+		defaultPolicy := viperInstance.GetStringSlice(fmt.Sprintf("http::accessControl::%s::defaultPolicy", policy))
 		policyGroup.Policies = policies
 		policyGroup.DefaultPolicy = defaultPolicy
 		c.AccessControl.Repositories[policy] = policyGroup

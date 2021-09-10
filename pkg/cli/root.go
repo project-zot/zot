@@ -186,25 +186,7 @@ func NewRootCmd() *cobra.Command {
 	return rootCmd
 }
 
-func LoadConfiguration(config *config.Config, configPath string) {
-	viper.SetConfigFile(configPath)
-
-	if err := viper.ReadInConfig(); err != nil {
-		log.Error().Err(err).Msg("error while reading configuration")
-		panic(err)
-	}
-
-	metaData := &mapstructure.Metadata{}
-	if err := viper.Unmarshal(&config, metadataConfig(metaData)); err != nil {
-		log.Error().Err(err).Msg("error while unmarshalling new config")
-		panic(err)
-	}
-
-	if len(metaData.Keys) == 0 || len(metaData.Unused) > 0 {
-		log.Error().Err(errors.ErrBadConfig).Msg("bad configuration, retry writing it")
-		panic(errors.ErrBadConfig)
-	}
-
+func validateConfiguration(config *config.Config) {
 	// check authorization config, it should have basic auth enabled or ldap
 	if config.HTTP.RawAccessControl != nil {
 		if config.HTTP.Auth == nil || (config.HTTP.Auth.HTPasswd.Path == "" && config.HTTP.Auth.LDAP == nil) {
@@ -228,14 +210,14 @@ func LoadConfiguration(config *config.Config, configPath string) {
 		}
 	}
 
-	// check glob patterns in sync are compilable
+	// check glob patterns in sync config are compilable
 	if config.Extensions != nil && config.Extensions.Sync != nil {
 		for _, regCfg := range config.Extensions.Sync.Registries {
 			if regCfg.Content != nil {
 				for _, content := range regCfg.Content {
 					ok := glob.ValidatePattern(content.Prefix)
 					if !ok {
-						log.Error().Err(glob.ErrBadPattern).Str("pattern", content.Prefix).Msg("pattern could not be compiled")
+						log.Error().Err(glob.ErrBadPattern).Str("pattern", content.Prefix).Msg("sync pattern could not be compiled")
 						panic(errors.ErrBadConfig)
 					}
 				}
@@ -260,19 +242,57 @@ func LoadConfiguration(config *config.Config, configPath string) {
 		}
 	}
 
-	err := config.LoadAccessControlConfig()
-	if err != nil {
-		log.Error().Err(errors.ErrBadConfig).Msg("unable to unmarshal http.accessControl.key.policies")
+	// check glob patterns in authz config are compilable
+	if config.AccessControl != nil {
+		for pattern := range config.AccessControl.Repositories {
+			ok := glob.ValidatePattern(pattern)
+			if !ok {
+				log.Error().Err(glob.ErrBadPattern).Str("pattern", pattern).Msg("authorization pattern could not be compiled")
+				panic(errors.ErrBadConfig)
+			}
+		}
+	}
+}
+
+func LoadConfiguration(config *config.Config, configPath string) {
+	// Default is dot (.) but because we allow glob patterns in authz
+	// we need another key delimiter.
+	viperInstance := viper.NewWithOptions(viper.KeyDelimiter("::"))
+
+	viperInstance.SetConfigFile(configPath)
+
+	if err := viperInstance.ReadInConfig(); err != nil {
+		log.Error().Err(err).Msg("error while reading configuration")
 		panic(err)
 	}
 
+	metaData := &mapstructure.Metadata{}
+	if err := viperInstance.Unmarshal(&config, metadataConfig(metaData)); err != nil {
+		log.Error().Err(err).Msg("error while unmarshalling new config")
+		panic(err)
+	}
+
+	if len(metaData.Keys) == 0 || len(metaData.Unused) > 0 {
+		log.Error().Err(errors.ErrBadConfig).Msg("bad configuration, retry writing it")
+		panic(errors.ErrBadConfig)
+	}
+
+	err := config.LoadAccessControlConfig(viperInstance)
+	if err != nil {
+		log.Error().Err(err).Msg("unable to unmarshal config's accessControl")
+		panic(err)
+	}
+
+	// various config checks
+	validateConfiguration(config)
+
 	// defaults
-	defualtTLSVerify := true
+	defaultTLSVerify := true
 
 	if config.Extensions != nil && config.Extensions.Sync != nil {
 		for id, regCfg := range config.Extensions.Sync.Registries {
 			if regCfg.TLSVerify == nil {
-				config.Extensions.Sync.Registries[id].TLSVerify = &defualtTLSVerify
+				config.Extensions.Sync.Registries[id].TLSVerify = &defaultTLSVerify
 			}
 		}
 	}

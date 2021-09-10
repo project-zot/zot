@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	glob "github.com/bmatcuk/doublestar/v4"
 	"github.com/gorilla/mux"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/log"
@@ -33,8 +34,8 @@ type AccessController struct {
 
 // AccessControlContext context passed down to http.Handlers.
 type AccessControlContext struct {
-	userAllowedRepos []string
-	isAdmin          bool
+	globPatterns map[string]bool
+	isAdmin      bool
 }
 
 func NewAccessController(config *config.Config) *AccessController {
@@ -44,27 +45,49 @@ func NewAccessController(config *config.Config) *AccessController {
 	}
 }
 
-// getReadRepos get repositories from config file that the user has READ perms.
-func (ac *AccessController) getReadRepos(username string) []string {
-	var repos []string
+// getReadRepos get glob patterns from config file that the user has or doesn't have READ perms.
+// used to filter /v2/_catalog repositories based on user rights.
+func (ac *AccessController) getReadGlobPatterns(username string) map[string]bool {
+	globPatterns := make(map[string]bool)
 
-	for r, pg := range ac.Config.Repositories {
-		for _, p := range pg.Policies {
-			if (contains(p.Users, username) && contains(p.Actions, READ)) ||
-				contains(pg.DefaultPolicy, READ) {
-				repos = append(repos, r)
+	for pattern, policyGroup := range ac.Config.Repositories {
+		// check default policy
+		if contains(policyGroup.DefaultPolicy, READ) {
+			globPatterns[pattern] = true
+		}
+		// check user based policy
+		for _, p := range policyGroup.Policies {
+			if contains(p.Users, username) && contains(p.Actions, READ) {
+				globPatterns[pattern] = true
 			}
+		}
+
+		// if not allowed then mark it
+		if _, ok := globPatterns[pattern]; !ok {
+			globPatterns[pattern] = false
 		}
 	}
 
-	return repos
+	return globPatterns
 }
 
 // can verifies if a user can do action on repository.
 func (ac *AccessController) can(username, action, repository string) bool {
 	can := false
-	// check repo based policy
-	pg, ok := ac.Config.Repositories[repository]
+
+	var longestMatchedPattern string
+
+	for pattern := range ac.Config.Repositories {
+		matched, err := glob.Match(pattern, repository)
+		if err == nil {
+			if matched && len(pattern) > len(longestMatchedPattern) {
+				longestMatchedPattern = pattern
+			}
+		}
+	}
+
+	// check matched repo based policy
+	pg, ok := ac.Config.Repositories[longestMatchedPattern]
 	if ok {
 		can = isPermitted(username, action, pg)
 	}
@@ -86,8 +109,8 @@ func (ac *AccessController) isAdmin(username string) bool {
 
 // getContext builds ac context(allowed to read repos and if user is admin) and returns it.
 func (ac *AccessController) getContext(username string, request *http.Request) context.Context {
-	userAllowedRepos := ac.getReadRepos(username)
-	acCtx := AccessControlContext{userAllowedRepos: userAllowedRepos}
+	readGlobPatterns := ac.getReadGlobPatterns(username)
+	acCtx := AccessControlContext{globPatterns: readGlobPatterns}
 
 	if ac.isAdmin(username) {
 		acCtx.isAdmin = true
@@ -132,14 +155,23 @@ func contains(slice []string, item string) bool {
 	return false
 }
 
-func containsRepo(slice []string, item string) bool {
-	for _, v := range slice {
-		if strings.HasPrefix(item, v) {
-			return true
+// returns either a user has or not rights on 'repository'.
+func matchesRepo(globPatterns map[string]bool, repository string) bool {
+	var longestMatchedPattern string
+
+	// because of the longest path matching rule, we need to check all patterns from config
+	for pattern := range globPatterns {
+		matched, err := glob.Match(pattern, repository)
+		if err == nil {
+			if matched && len(pattern) > len(longestMatchedPattern) {
+				longestMatchedPattern = pattern
+			}
 		}
 	}
 
-	return false
+	allowed := globPatterns[longestMatchedPattern]
+
+	return allowed
 }
 
 func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
@@ -149,11 +181,19 @@ func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 			resource := vars["name"]
 			reference, ok := vars["reference"]
 
+			// bypass authz for /v2/ route
+			if request.RequestURI == "/v2/" {
+				next.ServeHTTP(response, request)
+
+				return
+			}
+
 			acCtrlr := NewAccessController(ctlr.Config)
 			username := getUsername(request)
 			ctx := acCtrlr.getContext(username, request)
 
-			if request.RequestURI == "/v2/_catalog" || request.RequestURI == "/v2/" {
+			// will return only repos on which client is authorized to read
+			if request.RequestURI == "/v2/_catalog" {
 				next.ServeHTTP(response, request.WithContext(ctx))
 
 				return
@@ -193,7 +233,7 @@ func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 }
 
 func getUsername(r *http.Request) string {
-	// this should work because it worked in auth middleware
+	// this should work because it was already parsed in authn middleware
 	basicAuth := r.Header.Get("Authorization")
 	s := strings.SplitN(basicAuth, " ", 2) //nolint:gomnd
 	b, _ := base64.StdEncoding.DecodeString(s[1])
