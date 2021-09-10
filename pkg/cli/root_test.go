@@ -10,7 +10,6 @@ import (
 	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
-	"github.com/spf13/viper"
 	"gopkg.in/resty.v1"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
@@ -188,6 +187,40 @@ func TestVerify(t *testing.T) {
 		So(func() { _ = cli.NewRootCmd().Execute() }, ShouldPanic)
 	})
 
+	Convey("Test verify with bad authorization repo patterns", t, func(c C) {
+		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1},
+							"accessControl":{"\|":{"policies":[],"defaultPolicy":[]}}}}`)
+		_, err = tmpfile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpfile.Close()
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewRootCmd().Execute() }, ShouldPanic)
+	})
+
+	Convey("Test verify sync config default tls value", t, func(c C) {
+		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+							"extensions":{"sync": {"registries": [{"url":"localhost:9999",
+							"content": [{"prefix":"repo**"}]}]}}}`)
+		_, err = tmpfile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpfile.Close()
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		err = cli.NewRootCmd().Execute()
+		So(err, ShouldBeNil)
+	})
+
 	Convey("Test verify good config", t, func(c C) {
 		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
 		So(err, ShouldBeNil)
@@ -209,9 +242,6 @@ func TestLoadConfig(t *testing.T) {
 	Convey("Test viper load config", t, func(c C) {
 		config := config.New()
 		So(func() { cli.LoadConfiguration(config, "../../examples/config-policy.json") }, ShouldNotPanic)
-		adminPolicy := viper.GetStringMapStringSlice("http.accessControl.adminPolicy")
-		So(config.AccessControl.AdminPolicy.Actions, ShouldResemble, adminPolicy["actions"])
-		So(config.AccessControl.AdminPolicy.Users, ShouldResemble, adminPolicy["users"])
 	})
 }
 

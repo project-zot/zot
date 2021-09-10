@@ -56,6 +56,7 @@ const (
 	UnauthorizedNamespace  = "fortknox/notallowed"
 	ALICE                  = "alice"
 	AuthorizationNamespace = "authz/image"
+	AuthorizationAllRepos  = "**"
 )
 
 type (
@@ -1752,7 +1753,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		}
 		conf.AccessControl = &config.AccessControlConfig{
 			Repositories: config.Repositories{
-				AuthorizationNamespace: config.PolicyGroup{
+				AuthorizationAllRepos: config.PolicyGroup{
 					Policies: []config.Policy{
 						{
 							Users:   []string{},
@@ -1787,8 +1788,14 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		blob := []byte("hello, blob!")
 		digest := godigest.FromBytes(blob).String()
 
+		// unauthenticated clients should not have access to /v2/
+		resp, err := resty.R().Get(baseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 401)
+
 		// everybody should have access to /v2/
-		resp, err := resty.R().SetBasicAuth(username, passphrase).
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Get(baseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
@@ -1804,7 +1811,6 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		err = json.Unmarshal(resp.Body(), &e)
 		So(err, ShouldBeNil)
 
-		// first let's use only repositories based policies
 		// should get 403 without create
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
@@ -1812,11 +1818,13 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
-		// add test user to repo's policy with create perm
-		conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Users =
-			append(conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Users, "test")
-		conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions =
-			append(conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions, "create")
+		// first let's use global based policies
+		// add test user to global policy with create perm
+		conf.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Users =
+			append(conf.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Users, "test")
+
+		conf.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions =
+			append(conf.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions, "create")
 
 		// now it should get 202
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
@@ -1837,16 +1845,102 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
-		// head blob should get 403 with read perm
+		// head blob should get 403 without read perm
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Head(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
-		// get blob should get 403 without read perm
+		// get tags without read access should get 403
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+		// get tags with read access should get 200
+		conf.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions =
+			append(conf.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions, "read")
+
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// head blob should get 200 now
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Head(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// get blob should get 200 now
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Get(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// delete blob should get 403 without delete perm
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Delete(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+		// add delete perm on repo
+		conf.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions =
+			append(conf.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions, "delete")
+
+		// delete blob should get 202
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Delete(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+		// now let's use only repository based policies
+		// add test user to repo's policy with create perm
+		// longest path matching should match the repo and not **/*
+		conf.AccessControl.Repositories[AuthorizationNamespace] = config.PolicyGroup{
+			Policies: []config.Policy{
+				{
+					Users:   []string{},
+					Actions: []string{},
+				},
+			},
+			DefaultPolicy: []string{},
+		}
+
+		conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Users =
+			append(conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Users, "test")
+		conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions =
+			append(conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions, "create")
+
+		// now it should get 202
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+		loc = resp.Header().Get("Location")
+
+		// uploading blob should get 201
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", digest).
+			SetBody(blob).
+			Put(baseURL + loc)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		// head blob should get 403 without read perm
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Head(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
@@ -1861,6 +1955,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		// get tags with read access should get 200
 		conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions =
 			append(conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions, "read")
+
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
 		So(err, ShouldBeNil)
@@ -1898,6 +1993,12 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+		// remove permissions on **/* so it will not interfere with zot-test namespace
+		repoPolicy := conf.AccessControl.Repositories[AuthorizationAllRepos]
+		repoPolicy.Policies = []config.Policy{}
+		repoPolicy.DefaultPolicy = []string{}
+		conf.AccessControl.Repositories[AuthorizationAllRepos] = repoPolicy
 
 		// get manifest should get 403, we don't have perm at all on this repo
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
@@ -1965,7 +2066,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 
 		// now use default repo policy
 		conf.AccessControl.Repositories["zot-test"].Policies[0].Actions = []string{}
-		repoPolicy := conf.AccessControl.Repositories["zot-test"]
+		repoPolicy = conf.AccessControl.Repositories["zot-test"]
 		repoPolicy.DefaultPolicy = []string{"update"}
 		conf.AccessControl.Repositories["zot-test"] = repoPolicy
 
@@ -2006,16 +2107,16 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		repoPolicy.DefaultPolicy = []string{}
 		conf.AccessControl.Repositories[AuthorizationNamespace] = repoPolicy
 
+		repoPolicy = conf.AccessControl.Repositories["zot-test"]
+		repoPolicy.Policies = []config.Policy{}
+		repoPolicy.DefaultPolicy = []string{}
+		conf.AccessControl.Repositories["zot-test"] = repoPolicy
+
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
-
-		// let's use admin policy
-		// remove all repo based policy
-		delete(conf.AccessControl.Repositories, AuthorizationNamespace)
-		delete(conf.AccessControl.Repositories, "zot-test")
 
 		// whithout any perm should get 403
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
