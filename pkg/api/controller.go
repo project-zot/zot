@@ -71,12 +71,12 @@ func (c *Controller) Run() error {
 
 	engine := mux.NewRouter()
 	engine.Use(DefaultHeaders(),
-		log.SessionLogger(c.Log),
+		SessionLogger(c.Log),
 		handlers.RecoveryHandler(handlers.RecoveryLogger(c.Log),
 			handlers.PrintRecoveryStack(false)))
 
 	if c.Audit != nil {
-		engine.Use(log.SessionAuditLogger(c.Audit))
+		engine.Use(SessionAuditLogger(c.Audit))
 	}
 
 	c.Router = engine

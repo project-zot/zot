@@ -7,6 +7,7 @@ import (
 	"time"
 
 	gqlHandler "github.com/99designs/gqlgen/graphql/handler"
+	"github.com/anuvu/zot/pkg/extensions/monitoring"
 	"github.com/anuvu/zot/pkg/extensions/search"
 	cveinfo "github.com/anuvu/zot/pkg/extensions/search/cve"
 	"github.com/anuvu/zot/pkg/log"
@@ -54,6 +55,7 @@ func EnableExtensions(extension *ExtensionConfig, log log.Logger, rootDir string
 	}
 
 	if extension.Metrics != nil && extension.Metrics.Enable && extension.Metrics.Prometheus != nil {
+		monitoring.EnableMetrics()
 		if extension.Metrics.Prometheus.Path == "" {
 			extension.Metrics.Prometheus.Path = "/metrics"
 

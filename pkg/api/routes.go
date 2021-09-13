@@ -24,6 +24,7 @@ import (
 	_ "github.com/anuvu/zot/docs" // as required by swaggo
 	"github.com/anuvu/zot/errors"
 	ext "github.com/anuvu/zot/pkg/extensions"
+	"github.com/anuvu/zot/pkg/extensions/monitoring"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
 	"github.com/gorilla/mux"
@@ -95,8 +96,13 @@ func (rh *RouteHandler) SetupRoutes() {
 	// swagger docs "/swagger/v2/index.html"
 	rh.c.Router.PathPrefix("/swagger/v2/").Methods("GET").Handler(httpSwagger.WrapHandler)
 	// Setup Extensions Routes
-	if rh.c.Config != nil && rh.c.Config.Extensions != nil {
-		ext.SetupRoutes(rh.c.Config.Extensions, rh.c.Router, rh.c.StoreController, rh.c.Log)
+	if rh.c.Config != nil {
+		if rh.c.Config.Extensions == nil {
+			// minimal install
+			g.HandleFunc("/metrics", rh.GetMetrics).Methods("GET")
+		} else {
+			ext.SetupRoutes(rh.c.Config.Extensions, rh.c.Router, rh.c.StoreController, rh.c.Log)
+		}
 	}
 }
 
@@ -1158,6 +1164,11 @@ func (rh *RouteHandler) ListRepositories(w http.ResponseWriter, r *http.Request)
 	is := RepositoryList{Repositories: repos}
 
 	WriteJSON(w, http.StatusOK, is)
+}
+
+func (rh *RouteHandler) GetMetrics(w http.ResponseWriter, r *http.Request) {
+	m := monitoring.GetMetrics()
+	WriteJSON(w, http.StatusOK, m)
 }
 
 // helper routines
