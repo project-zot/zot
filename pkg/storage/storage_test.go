@@ -147,9 +147,9 @@ func TestStorageAPIs(t *testing.T) {
 						l := buf.Len()
 						d := godigest.FromBytes(content)
 
-						// // invalid chunk range - fails with localstack...
-						// _, err = il.PutBlobChunk("test", v, 10, int64(l), buf)
-						// So(err, ShouldNotBeNil)
+						// invalid chunk range - fails with localstack...
+						_, err = il.PutBlobChunk("test", v, 10, int64(l), buf)
+						So(err, ShouldNotBeNil)
 
 						b, err = il.PutBlobChunk("test", v, 0, int64(l), buf)
 						So(err, ShouldBeNil)
@@ -158,7 +158,6 @@ func TestStorageAPIs(t *testing.T) {
 
 						err = il.FinishBlobUpload("test", v, buf, d.String())
 						So(err, ShouldBeNil)
-						So(b, ShouldEqual, l)
 
 						_, _, err = il.CheckBlob("test", d.String())
 						So(err, ShouldBeNil)
@@ -329,7 +328,6 @@ func TestStorageAPIs(t *testing.T) {
 
 						err = il.FinishBlobUpload("test", v, buf, d.String())
 						So(err, ShouldBeNil)
-						So(b, ShouldEqual, l)
 
 						_, _, err = il.CheckBlob("test", d.String())
 						So(err, ShouldBeNil)

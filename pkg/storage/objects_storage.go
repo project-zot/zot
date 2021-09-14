@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"path"
 	"path/filepath"
 	"strings"
@@ -56,6 +55,7 @@ func NewObjectStorage(rootDir string, gc bool, dedupe bool, log zlog.Logger,
 	store, err := factory.Create(storeName, objectStoreParams)
 	if err != nil {
 		log.Error().Err(err).Str("rootDir", rootDir).Msg("Unable to create s3 service")
+		return nil
 	}
 
 	is := &ObjectStorage{
@@ -255,10 +255,9 @@ func (is *ObjectStorage) GetImageTags(repo string) ([]string, error) {
 	is.RLock()
 	defer is.RUnlock()
 
-	buf, err := is.store.GetContent(context.Background(), path.Join(dir, "index.json"))
+	buf, err := is.GetIndexContent(repo)
 	if err != nil {
-		is.log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
-		return nil, errors.ErrRepoNotFound
+		return nil, err
 	}
 
 	var index ispec.Index
@@ -289,10 +288,8 @@ func (is *ObjectStorage) GetImageManifest(repo string, reference string) ([]byte
 	is.RLock()
 	defer is.RUnlock()
 
-	buf, err := is.store.GetContent(context.Background(), path.Join(dir, "index.json"))
-
+	buf, err := is.GetIndexContent(repo)
 	if err != nil {
-		is.log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
 		return nil, "", "", err
 	}
 
@@ -408,16 +405,8 @@ func (is *ObjectStorage) PutImageManifest(repo string, reference string, mediaTy
 
 	dir := path.Join(is.rootDir, repo)
 
-	f, err := is.store.Reader(context.Background(), path.Join(dir, "index.json"), 0)
+	buf, err := is.GetIndexContent(repo)
 	if err != nil {
-		is.log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
-		return "", err
-	}
-	defer f.Close()
-
-	buf, err := ioutil.ReadAll(f)
-	if err != nil {
-		is.log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
 		return "", err
 	}
 
@@ -522,10 +511,8 @@ func (is *ObjectStorage) DeleteImageManifest(repo string, reference string) erro
 	is.Lock()
 	defer is.Unlock()
 
-	buf, err := is.store.GetContent(context.Background(), path.Join(dir, "index.json"))
-
+	buf, err := is.GetIndexContent(repo)
 	if err != nil {
-		is.log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
 		return err
 	}
 
@@ -696,10 +683,16 @@ func (is *ObjectStorage) PutBlobChunk(repo string, uuid string, from int64, to i
 	}
 
 	blobUploadPath := is.BlobUploadPath(repo, uuid)
-	_, err := is.store.Stat(context.Background(), blobUploadPath)
 
+	fi, err := is.store.Stat(context.Background(), blobUploadPath)
 	if err != nil {
 		return -1, errors.ErrUploadNotFound
+	}
+
+	if from != fi.Size() {
+		is.log.Error().Int64("expected", from).Int64("actual", fi.Size()).
+			Msg("invalid range start for blob upload")
+		return -1, errors.ErrBadUploadRange
 	}
 
 	file, err := getMultipartFileWriter(is.store, blobUploadPath)
@@ -709,12 +702,6 @@ func (is *ObjectStorage) PutBlobChunk(repo string, uuid string, from int64, to i
 	}
 
 	defer file.Close()
-
-	if from != file.Size() {
-		is.log.Error().Int64("expected", from).Int64("actual", file.Size()).
-			Msg("invalid range start for blob upload")
-		return -1, errors.ErrBadUploadRange
-	}
 
 	buf := new(bytes.Buffer)
 
@@ -1028,16 +1015,10 @@ func writeFile(store storageDriver.StorageDriver, filepath string, buf []byte) (
 // Because we can not create an empty multipart upload, we first try to get a multipart upload session,
 // otherwise we create it.
 func getMultipartFileWriter(store storageDriver.StorageDriver, filepath string) (storageDriver.FileWriter, error) {
-	file, err := store.Writer(context.Background(), filepath, true)
-
-	_, ok := err.(storageDriver.PathNotFoundError)
-	if !ok {
-		if err != nil {
-			return file, err
-		}
-	} else {
-		// no multiplart upload created yet
-		file, err = store.Writer(context.Background(), filepath, false)
+	file, err := store.Writer(context.Background(), filepath, false)
+	if err != nil {
+		// multipart upload already created
+		file, err = store.Writer(context.Background(), filepath, true)
 		if err != nil {
 			return file, err
 		}

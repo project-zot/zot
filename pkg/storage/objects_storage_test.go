@@ -1,11 +1,14 @@
 package storage_test
 
 import (
+	"bytes"
 	"context"
 	_ "crypto/sha256"
 	"fmt"
 	"os"
 	"path"
+
+	godigest "github.com/opencontainers/go-digest"
 
 	//"strings"
 
@@ -82,9 +85,10 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 	Convey("Invalid validate repo", t, func(c C) {
 		So(il, ShouldNotBeNil)
 		So(il.InitRepo("test"), ShouldBeNil)
-		objects, err := store.List(context.Background(), il.RootDir())
+		objects, err := store.List(context.Background(), path.Join(il.RootDir(), "test"))
 		So(err, ShouldBeNil)
 		for _, object := range objects {
+			t.Logf("Removing object: %s", object)
 			err := store.Delete(context.Background(), object)
 			So(err, ShouldBeNil)
 		}
@@ -99,10 +103,16 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 		defer cleanupStorage(store, testDir)
 		So(err, ShouldBeNil)
 		So(il.InitRepo("test"), ShouldBeNil)
-		So(store.Delete(context.Background(), path.Join(testDir, "test", "index.json")), ShouldBeNil)
+
+		So(store.Move(context.Background(), path.Join(testDir, "test", "index.json"),
+			path.Join(testDir, "test", "blobs")), ShouldBeNil)
+		ok, _ := il.ValidateRepo("test")
+		So(ok, ShouldBeFalse)
 		_, err = il.GetImageTags("test")
 		So(err, ShouldNotBeNil)
+
 		So(store.Delete(context.Background(), path.Join(testDir, "test")), ShouldBeNil)
+
 		So(il.InitRepo("test"), ShouldBeNil)
 		So(store.PutContent(context.Background(), path.Join(testDir, "test", "index.json"), []byte{}), ShouldBeNil)
 		_, err = il.GetImageTags("test")
@@ -144,22 +154,37 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 		So(ok, ShouldBeFalse)
 	})
 
-	Convey("Invalid validate repo", t, func(c C) {
+	Convey("Invalid finish blob upload", t, func(c C) {
 		store, il, err := createObjectsStore(testDir)
 		defer cleanupStorage(store, testDir)
 		So(err, ShouldBeNil)
 		So(il, ShouldNotBeNil)
 
 		So(il.InitRepo("test"), ShouldBeNil)
-		So(store.Delete(context.Background(), path.Join(testDir, "test", "index.json")), ShouldBeNil)
-		_, err = il.ValidateRepo("test")
-		So(err, ShouldNotBeNil)
-		So(store.Delete(context.Background(), path.Join(testDir, "test")), ShouldBeNil)
-		So(il.InitRepo("test"), ShouldBeNil)
-		So(store.Move(context.Background(), path.Join(testDir, "test", "index.json"),
-			path.Join(testDir, "test", "_index.json")), ShouldBeNil)
-		ok, err := il.ValidateRepo("test")
+		v, err := il.NewBlobUpload("test")
 		So(err, ShouldBeNil)
-		So(ok, ShouldBeFalse)
+		So(v, ShouldNotBeEmpty)
+
+		content := []byte("test-data1")
+		buf := bytes.NewBuffer(content)
+		l := buf.Len()
+		d := godigest.FromBytes(content)
+
+		b, err := il.PutBlobChunk("test", v, 0, int64(l), buf)
+		So(err, ShouldBeNil)
+		So(b, ShouldEqual, l)
+
+		src := il.BlobUploadPath("test", v)
+		fw, err := store.Writer(context.Background(), src, true)
+		So(err, ShouldBeNil)
+
+		_, err = fw.Write([]byte("another-chunk-of-data"))
+		So(err, ShouldBeNil)
+
+		err = fw.Close()
+		So(err, ShouldBeNil)
+
+		err = il.FinishBlobUpload("test", v, buf, d.String())
+		So(err, ShouldNotBeNil)
 	})
 }
