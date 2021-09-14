@@ -1,6 +1,7 @@
 export GO111MODULE=on
 TOP_LEVEL=$(shell git rev-parse --show-toplevel)
 COMMIT_HASH=$(shell git describe --always --tags --long)
+GO_VERSION=$(shell go version | awk '{print $$3}')
 COMMIT=$(if $(shell git status --porcelain --untracked-files=no),$(COMMIT_HASH)-dirty,$(COMMIT_HASH))
 CONTAINER_RUNTIME := $(shell command -v podman 2> /dev/null || echo docker)
 PATH := bin:$(PATH)
@@ -12,15 +13,15 @@ all: doc binary binary-minimal debug test test-clean check
 
 .PHONY: binary-minimal
 binary-minimal: doc
-	go build -tags minimal -v  -ldflags "-X  github.com/anuvu/zot/pkg/api.Commit=${COMMIT} -X github.com/anuvu/zot/pkg/api.BinaryType=minimal" -o bin/zot-minimal ./cmd/zot
+	go build -tags minimal -v  -ldflags "-X  github.com/anuvu/zot/pkg/api.Commit=${COMMIT} -X github.com/anuvu/zot/pkg/api.BinaryType=minimal -X github.com/anuvu/zot/pkg/api.GoVersion=${GO_VERSION}" -o bin/zot-minimal ./cmd/zot
 
 .PHONY: binary
 binary: doc
-	go build -tags extended -v -ldflags "-X  github.com/anuvu/zot/pkg/api.Commit=${COMMIT} -X github.com/anuvu/zot/pkg/api.BinaryType=extended" -o bin/zot ./cmd/zot
+	go build -tags extended -v -ldflags "-X  github.com/anuvu/zot/pkg/api.Commit=${COMMIT} -X github.com/anuvu/zot/pkg/api.BinaryType=extended -X github.com/anuvu/zot/pkg/api.GoVersion=${GO_VERSION}" -o bin/zot ./cmd/zot
 
 .PHONY: debug
 debug: doc
-	go build -tags extended -v -gcflags all='-N -l' -ldflags "-X  github.com/anuvu/zot/pkg/api.Commit=${COMMIT} -X github.com/anuvu/zot/pkg/api.BinaryType=extended" -o bin/zot-debug ./cmd/zot
+	go build -tags extended -v -gcflags all='-N -l' -ldflags "-X  github.com/anuvu/zot/pkg/api.Commit=${COMMIT} -X github.com/anuvu/zot/pkg/api.BinaryType=extended -X github.com/anuvu/zot/pkg/api.GoVersion=${GO_VERSION}" -o bin/zot-debug ./cmd/zot
 
 .PHONY: test
 test:

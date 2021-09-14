@@ -14,6 +14,7 @@ import (
 var (
 	Commit     string // nolint: gochecknoglobals
 	BinaryType string // nolint: gochecknoglobals
+	GoVersion  string // nolint: gochecknoglobals
 )
 
 type StorageConfig struct {
@@ -85,6 +86,7 @@ type GlobalStorageConfig struct {
 
 type Config struct {
 	Version       string
+	GoVersion     string
 	Commit        string
 	BinaryType    string
 	AccessControl *AccessControlConfig
@@ -97,6 +99,7 @@ type Config struct {
 func NewConfig() *Config {
 	return &Config{
 		Version:    distspec.Version,
+		GoVersion:  GoVersion,
 		Commit:     Commit,
 		BinaryType: BinaryType,
 		Storage:    GlobalStorageConfig{GC: true, Dedupe: true},

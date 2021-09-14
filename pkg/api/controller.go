@@ -11,6 +11,7 @@ import (
 
 	"github.com/anuvu/zot/errors"
 	ext "github.com/anuvu/zot/pkg/extensions"
+	"github.com/anuvu/zot/pkg/extensions/monitoring"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
 	"github.com/gorilla/handlers"
@@ -142,6 +143,7 @@ func (c *Controller) Run() error {
 		}
 	}
 
+	monitoring.SetZotInfo(c.Config.Commit, c.Config.BinaryType, c.Config.GoVersion, c.Config.Version)
 	_ = NewRouteHandler(c)
 
 	addr := fmt.Sprintf("%s:%s", c.Config.HTTP.Address, c.Config.HTTP.Port)

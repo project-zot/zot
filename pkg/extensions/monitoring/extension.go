@@ -55,6 +55,14 @@ var (
 		},
 		[]string{"repo"},
 	)
+	ZotInfo = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: metricsNamespace,
+			Name:      "info",
+			Help:      "Zot general information",
+		},
+		[]string{"commit", "binaryType", "goVersion", "version"},
+	)
 )
 
 func IncHttpConnRequests(lvalues ...string) {
@@ -104,4 +112,9 @@ func GetMetrics() interface{} {
 
 func EnableMetrics() {
 	metricsEnabled = true
+}
+
+func SetZotInfo(lvalues ...string) {
+	//  This metric is set once at zot startup (do not condition upon metricsEnabled!)
+	ZotInfo.WithLabelValues(lvalues...).Set(0)
 }
