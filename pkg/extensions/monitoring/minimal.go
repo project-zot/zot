@@ -3,13 +3,23 @@
 package monitoring
 
 import (
+	"errors"
 	"fmt"
+	"path"
+	"regexp"
 	"sync"
 	"time"
 )
 
 const (
+	// Counters
 	HttpConnRequests = "zot.http.requests"
+	RepoDownloads    = "zot.repo.downloads"
+	RepoUploads      = "zot.repo.uploads"
+	//Gauge
+	RepoStorageBytes = "zot.repo.storage.bytes"
+	//Summary
+	HttpLatencySeconds = "zot.repo.latency.seconds"
 )
 
 type MetricsInfo struct {
@@ -21,15 +31,18 @@ type MetricsInfo struct {
 
 var inMemoryMetrics MetricsInfo
 var zotCounterList map[string][]string
+var zotGaugeList map[string][]string
+var zotSummaryList map[string][]string
 var metricsEnabled bool
 var lastMetricsCheck time.Time
 
 // GaugeValue stores one value that is updated as time goes on, such as
 // the amount of memory allocated.
 type GaugeValue struct {
-	Name   string
-	Value  float32
-	Labels map[string]string
+	Name        string
+	Value       float64
+	LabelNames  []string
+	LabelValues []string
 }
 
 // SampledValue stores info about a metric that is incremented over time,
@@ -46,6 +59,17 @@ func init() {
 	// contains a map with key=CounterName and value=CounterLabels
 	zotCounterList = map[string][]string{
 		HttpConnRequests: []string{"method", "code"},
+		RepoDownloads:    []string{"repo"},
+		RepoUploads:      []string{"repo"},
+	}
+	// contains a map with key=CounterName and value=CounterLabels
+	zotGaugeList = map[string][]string{
+		RepoStorageBytes: []string{"repo"},
+	}
+
+	// contains a map with key=CounterName and value=CounterLabels
+	zotSummaryList = map[string][]string{
+		HttpLatencySeconds: []string{"repo"},
 	}
 
 	inMemoryMetrics = MetricsInfo{
@@ -68,25 +92,17 @@ func GetMetrics() MetricsInfo {
 	return inMemoryMetrics
 }
 
-// For Counters with no value we can send nil as LabelNames & LabelValues (equivalent of )
 // Increments a counter atomically
 func CounterInc(name string, labelNames []string, labelValues []string) {
 	var sv SampledValue
-	// Sanity Checks
+
 	kLabels, ok := zotCounterList[name] // known label names for the 'name' counter
-	if !ok {
-		goto error
+	err := sanityChecks(name, kLabels, ok, labelNames, labelValues)
+	if err != nil {
+		fmt.Println(err) // The last thing we want is to panic/stop the server due to instrumentation
+		return           // thus log a message (should be detected during development of new metrics)
 	}
-	if len(labelNames) != len(labelValues) ||
-		len(labelNames) != len(zotCounterList[name]) {
-		goto error
-	}
-	// The list of label names defined in init() for the counter must match what was provided in labelNames
-	for i, label := range labelNames {
-		if label != kLabels[i] {
-			goto error
-		}
-	}
+
 	for i, sv := range inMemoryMetrics.Counters {
 		if sv.Name == name {
 			if labelNames == nil && labelValues == nil {
@@ -115,18 +131,133 @@ func CounterInc(name string, labelNames []string, labelValues []string) {
 	}
 	// The Counter/SampledValue still not found: create one and return
 	sv = SampledValue{
-		Count:       1, // First value, no need to increment
 		Name:        name,
+		Count:       1, // First value, no need to increment
 		LabelNames:  labelNames,
 		LabelValues: labelValues,
 	}
 	inMemoryMetrics.mutex.Lock()
 	inMemoryMetrics.Counters = append(inMemoryMetrics.Counters, sv)
 	inMemoryMetrics.mutex.Unlock()
-error:
-	// The last thing we want is to panic/stop the server due to instrumentation
-	// thus log a message (should be detected during development of new metrics)
-	fmt.Println("Counter sanity check failed")
+}
+
+// Sets a gauge atomically
+func GaugeSet(name string, value float64, labelNames []string, labelValues []string) {
+	var gv GaugeValue
+
+	kLabels, ok := zotGaugeList[name] // known label names for the 'name' counter
+	err := sanityChecks(name, kLabels, ok, labelNames, labelValues)
+	if err != nil {
+		fmt.Println(err) // The last thing we want is to panic/stop the server due to instrumentation
+		return           // thus log a message (should be detected during development of new metrics)
+	}
+
+	for i, gv := range inMemoryMetrics.Gauges {
+		if gv.Name == name {
+			if labelNames == nil && labelValues == nil {
+				//found the sampled values
+				inMemoryMetrics.mutex.Lock()
+				inMemoryMetrics.Gauges[i].Value = value
+				inMemoryMetrics.mutex.Unlock()
+				return
+			}
+			if len(labelValues) == len(gv.LabelValues) {
+				found := true
+				for j, v := range gv.LabelValues {
+					if v != labelValues[j] {
+						found = false
+						break
+					}
+				}
+				if found {
+					inMemoryMetrics.mutex.Lock()
+					inMemoryMetrics.Gauges[i].Value = value
+					inMemoryMetrics.mutex.Unlock()
+					return
+				}
+			}
+		}
+	}
+	// The Counter/SampledValue still not found: create one and return
+	gv = GaugeValue{
+		Name:        name,
+		Value:       value,
+		LabelNames:  labelNames,
+		LabelValues: labelValues,
+	}
+	inMemoryMetrics.mutex.Lock()
+	inMemoryMetrics.Gauges = append(inMemoryMetrics.Gauges, gv)
+	inMemoryMetrics.mutex.Unlock()
+}
+
+// Increments a summary counter & add to the summary sum atomically
+func SummaryObserve(name string, value float64, labelNames []string, labelValues []string) {
+	var sv SampledValue
+
+	kLabels, ok := zotSummaryList[name] // known label names for the 'name' counter
+	err := sanityChecks(name, kLabels, ok, labelNames, labelValues)
+	if err != nil {
+		fmt.Println(err) // The last thing we want is to panic/stop the server due to instrumentation
+		return           // thus log a message (should be detected during development of new metrics)
+	}
+
+	for i, sv := range inMemoryMetrics.Samples {
+		if sv.Name == name {
+			if labelNames == nil && labelValues == nil {
+				//found the sampled values
+				inMemoryMetrics.mutex.Lock()
+				inMemoryMetrics.Samples[i].Count++
+				inMemoryMetrics.Samples[i].Sum += value
+				inMemoryMetrics.mutex.Unlock()
+				return
+			}
+			if len(labelValues) == len(sv.LabelValues) {
+				found := true
+				for j, v := range sv.LabelValues {
+					if v != labelValues[j] {
+						found = false
+						break
+					}
+				}
+				if found {
+					inMemoryMetrics.mutex.Lock()
+					inMemoryMetrics.Samples[i].Count++
+					inMemoryMetrics.Samples[i].Sum += value
+					inMemoryMetrics.mutex.Unlock()
+					return
+				}
+			}
+		}
+	}
+	// The Counter/SampledValue still not found: create one and return
+	sv = SampledValue{
+		Name:        name,
+		Count:       1, // First value, no need to increment
+		Sum:         value,
+		LabelNames:  labelNames,
+		LabelValues: labelValues,
+	}
+	inMemoryMetrics.mutex.Lock()
+	inMemoryMetrics.Samples = append(inMemoryMetrics.Samples, sv)
+	inMemoryMetrics.mutex.Unlock()
+}
+
+func sanityChecks(name string, knownLabels []string, found bool, labelNames []string, labelValues []string) error {
+	if !found {
+		return errors.New(fmt.Sprintf("Metric %s not found", name))
+	}
+
+	if len(labelNames) != len(labelValues) ||
+		len(labelNames) != len(knownLabels) {
+		return errors.New(fmt.Sprintf("Metric %s : label size mismatch", name))
+	}
+	// The list of label names defined in init() for the counter must match what was provided in labelNames
+	for i, label := range labelNames {
+		if label != knownLabels[i] {
+			return errors.New(fmt.Sprintf("Metric %s : label order mismatch", name))
+		}
+	}
+	return nil
 }
 
 func IncHttpConnRequests(lvs ...string) {
@@ -136,17 +267,37 @@ func IncHttpConnRequests(lvs ...string) {
 }
 
 func ObserveHttpServeLatency(path string, latency time.Duration) {
-
+	if metricsEnabled {
+		re := regexp.MustCompile("\\/v2\\/(.*?)\\/(blobs|tags|manifests)\\/(.*)$")
+		match := re.FindStringSubmatch(path)
+		if len(match) > 1 {
+			SummaryObserve(HttpLatencySeconds, latency.Seconds(), []string{"repo"}, []string{match[1]})
+		} else {
+			SummaryObserve(HttpLatencySeconds, latency.Seconds(), []string{"repo"}, []string{"N/A"})
+		}
+	}
 }
 
 func IncDownloadCounter(repo string) {
-
+	if metricsEnabled {
+		CounterInc(RepoDownloads, []string{"repo"}, []string{repo})
+	}
 }
 
 func SetStorageUsage(repo string, rootDir string) {
+	if metricsEnabled {
+		dir := path.Join(rootDir, repo)
+		repoSize, err := getDirSize(dir)
+
+		if err == nil {
+			GaugeSet(RepoStorageBytes, float64(repoSize), []string{"repo"}, []string{repo})
+		}
+	}
 
 }
 
 func IncUploadCounter(repo string) {
-
+	if metricsEnabled {
+		CounterInc(RepoUploads, []string{"repo"}, []string{repo})
+	}
 }

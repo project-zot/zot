@@ -3,9 +3,7 @@
 package monitoring
 
 import (
-	"os"
 	"path"
-	"path/filepath"
 	"regexp"
 	"time"
 
@@ -98,21 +96,6 @@ func IncUploadCounter(repo string) {
 	if metricsEnabled {
 		UploadCounter.WithLabelValues(repo).Inc()
 	}
-}
-
-func getDirSize(path string) (int64, error) {
-	var size int64
-	err := filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() {
-			size += info.Size()
-		}
-		return err
-	})
-
-	return size, err
 }
 
 func GetMetrics() interface{} {
