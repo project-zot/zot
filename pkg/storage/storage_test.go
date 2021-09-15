@@ -143,18 +143,29 @@ func TestStorageAPIs(t *testing.T) {
 						So(b, ShouldBeGreaterThanOrEqualTo, 0)
 
 						content := []byte("test-data1")
+						firstChunkContent := []byte("test")
+						firstChunkBuf := bytes.NewBuffer(firstChunkContent)
+						secondChunkContent := []byte("-data1")
+						secondChunkBuf := bytes.NewBuffer(secondChunkContent)
+						firstChunkLen := firstChunkBuf.Len()
+						secondChunkLen := secondChunkBuf.Len()
+
 						buf := bytes.NewBuffer(content)
 						l := buf.Len()
 						d := godigest.FromBytes(content)
+						blobDigest := d
 
-						// invalid chunk range - fails with localstack...
+						// invalid chunk range
 						_, err = il.PutBlobChunk("test", v, 10, int64(l), buf)
 						So(err, ShouldNotBeNil)
 
-						b, err = il.PutBlobChunk("test", v, 0, int64(l), buf)
+						b, err = il.PutBlobChunk("test", v, 0, int64(firstChunkLen), firstChunkBuf)
 						So(err, ShouldBeNil)
-						So(b, ShouldEqual, l)
-						blobDigest := d
+						So(b, ShouldEqual, firstChunkLen)
+
+						b, err = il.PutBlobChunk("test", v, int64(firstChunkLen), int64(l), secondChunkBuf)
+						So(err, ShouldBeNil)
+						So(b, ShouldEqual, secondChunkLen)
 
 						err = il.FinishBlobUpload("test", v, buf, d.String())
 						So(err, ShouldBeNil)

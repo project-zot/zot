@@ -32,6 +32,10 @@ type ObjectStorage struct {
 	lock        *sync.RWMutex
 	blobUploads map[string]BlobUpload
 	log         zerolog.Logger
+	// We must keep track of multi part uploads to s3, because the lib
+	// which we are using doesn't cancel multiparts uploads
+	// see: https://github.com/distribution/distribution/blob/main/registry/storage/driver/s3-aws/s3.go#L545
+	isMultiPartUpload map[string]bool
 }
 
 func (is *ObjectStorage) RootDir() string {
@@ -59,11 +63,12 @@ func NewObjectStorage(rootDir string, gc bool, dedupe bool, log zlog.Logger,
 	}
 
 	is := &ObjectStorage{
-		rootDir:     rootDir,
-		store:       store,
-		lock:        &sync.RWMutex{},
-		blobUploads: make(map[string]BlobUpload),
-		log:         log.With().Caller().Logger(),
+		rootDir:           rootDir,
+		store:             store,
+		lock:              &sync.RWMutex{},
+		blobUploads:       make(map[string]BlobUpload),
+		log:               log.With().Caller().Logger(),
+		isMultiPartUpload: make(map[string]bool),
 	}
 
 	return is
@@ -471,6 +476,7 @@ func (is *ObjectStorage) PutImageManifest(repo string, reference string, mediaTy
 
 	if err = is.store.PutContent(context.Background(), manifestPath, body); err != nil {
 		is.log.Error().Err(err).Str("file", manifestPath).Msg("unable to write")
+		return "", err
 	}
 
 	// now update "index.json"
@@ -486,6 +492,7 @@ func (is *ObjectStorage) PutImageManifest(repo string, reference string, mediaTy
 
 	if err = is.store.PutContent(context.Background(), indexPath, buf); err != nil {
 		is.log.Error().Err(err).Str("file", manifestPath).Msg("unable to write")
+		return "", err
 	}
 
 	return desc.Digest.String(), nil
@@ -617,6 +624,8 @@ func (is *ObjectStorage) NewBlobUpload(repo string) (string, error) {
 
 	blobUploadPath := is.BlobUploadPath(repo, u)
 
+	// here we should create an empty multi part upload, but that's not possible
+	// so we just create a regular empty file which will be overwritten by FinishBlobUpload
 	err = is.store.PutContent(context.Background(), blobUploadPath, []byte{})
 	if err != nil {
 		return "", errors.ErrRepoNotFound
@@ -627,14 +636,31 @@ func (is *ObjectStorage) NewBlobUpload(repo string) (string, error) {
 
 // GetBlobUpload returns the current size of a blob upload.
 func (is *ObjectStorage) GetBlobUpload(repo string, uuid string) (int64, error) {
-	blobUploadPath := is.BlobUploadPath(repo, uuid)
-	fi, err := is.store.Stat(context.Background(), blobUploadPath)
+	var fileSize int64
 
-	if err != nil {
-		return -1, err
+	blobUploadPath := is.BlobUploadPath(repo, uuid)
+
+	// if it's not a multipart upload check for the regular empty file
+	// created by NewBlobUpload, it should have 0 size every time
+	isMultiPartStarted, ok := is.isMultiPartUpload[blobUploadPath]
+	if !isMultiPartStarted || !ok {
+		fi, err := is.store.Stat(context.Background(), blobUploadPath)
+		if err != nil {
+			return -1, err
+		}
+
+		fileSize = fi.Size()
+	} else {
+		// otherwise get the size of multi parts upload
+		fi, err := getMultipartFileWriter(is, blobUploadPath)
+		if err != nil {
+			return -1, err
+		}
+
+		fileSize = fi.Size()
 	}
 
-	return fi.Size(), nil
+	return fileSize, nil
 }
 
 // PutBlobChunkStreamed appends another chunk of data to the specified blob. It returns
@@ -645,13 +671,13 @@ func (is *ObjectStorage) PutBlobChunkStreamed(repo string, uuid string, body io.
 	}
 
 	blobUploadPath := is.BlobUploadPath(repo, uuid)
-	_, err := is.store.Stat(context.Background(), blobUploadPath)
 
+	_, err := is.store.Stat(context.Background(), blobUploadPath)
 	if err != nil {
 		return -1, errors.ErrUploadNotFound
 	}
 
-	file, err := getMultipartFileWriter(is.store, blobUploadPath)
+	file, err := getMultipartFileWriter(is, blobUploadPath)
 	if err != nil {
 		is.log.Fatal().Err(err).Msg("failed to create multipart upload")
 		return -1, err
@@ -684,24 +710,32 @@ func (is *ObjectStorage) PutBlobChunk(repo string, uuid string, from int64, to i
 
 	blobUploadPath := is.BlobUploadPath(repo, uuid)
 
-	fi, err := is.store.Stat(context.Background(), blobUploadPath)
+	_, err := is.store.Stat(context.Background(), blobUploadPath)
 	if err != nil {
 		return -1, errors.ErrUploadNotFound
 	}
 
-	if from != fi.Size() {
-		is.log.Error().Int64("expected", from).Int64("actual", fi.Size()).
-			Msg("invalid range start for blob upload")
-		return -1, errors.ErrBadUploadRange
-	}
-
-	file, err := getMultipartFileWriter(is.store, blobUploadPath)
+	file, err := getMultipartFileWriter(is, blobUploadPath)
 	if err != nil {
 		is.log.Fatal().Err(err).Msg("failed to create multipart upload")
 		return -1, err
 	}
 
 	defer file.Close()
+
+	if from != file.Size() {
+		// cancel multipart upload created earlier
+		err := file.Cancel()
+		if err != nil {
+			is.log.Fatal().Err(err).Msg("failed to cancel multipart upload")
+			return -1, err
+		}
+
+		is.log.Error().Int64("expected", from).Int64("actual", file.Size()).
+			Msg("invalid range start for blob upload")
+
+		return -1, errors.ErrBadUploadRange
+	}
 
 	buf := new(bytes.Buffer)
 
@@ -714,6 +748,8 @@ func (is *ObjectStorage) PutBlobChunk(repo string, uuid string, from int64, to i
 	if err != nil {
 		is.log.Fatal().Err(err).Msg("failed to append to file")
 	}
+
+	is.isMultiPartUpload[blobUploadPath] = true
 
 	return int64(n), err
 }
@@ -755,10 +791,7 @@ func (is *ObjectStorage) FinishBlobUpload(repo string, uuid string, body io.Read
 		return err
 	}
 
-	if err := fileWriter.Close(); err != nil {
-		is.log.Error().Err(err).Msg("failed to close file")
-		return err
-	}
+	fileWriter.Close()
 
 	fileReader, err := is.store.Reader(context.Background(), src, 0)
 	if err != nil {
@@ -778,10 +811,7 @@ func (is *ObjectStorage) FinishBlobUpload(repo string, uuid string, body io.Read
 		return errors.ErrBadBlobDigest
 	}
 
-	err = fileReader.Close()
-	if err != nil {
-		return err
-	}
+	fileReader.Close()
 
 	dst := is.BlobPath(repo, dstDigest)
 
@@ -790,6 +820,9 @@ func (is *ObjectStorage) FinishBlobUpload(repo string, uuid string, body io.Read
 			Str("dst", dst).Msg("unable to finish blob")
 		return err
 	}
+
+	// remove multipart upload, not needed anymore
+	delete(is.isMultiPartUpload, src)
 
 	return nil
 }
@@ -1012,13 +1045,22 @@ func writeFile(store storageDriver.StorageDriver, filepath string, buf []byte) (
 	return n, nil
 }
 
-// Because we can not create an empty multipart upload, we first try to get a multipart upload session,
-// otherwise we create it.
-func getMultipartFileWriter(store storageDriver.StorageDriver, filepath string) (storageDriver.FileWriter, error) {
-	file, err := store.Writer(context.Background(), filepath, false)
-	if err != nil {
-		// multipart upload already created
-		file, err = store.Writer(context.Background(), filepath, true)
+// Because we can not create an empty multipart upload, we store multi part uploads
+// so that we know when to create a fileWriter with append=true or with append=false
+// Trying and handling errors results in weird s3 api errors.
+func getMultipartFileWriter(is *ObjectStorage, filepath string) (storageDriver.FileWriter, error) {
+	var file storageDriver.FileWriter
+
+	var err error
+
+	isMultiPartStarted, ok := is.isMultiPartUpload[filepath]
+	if !isMultiPartStarted || !ok {
+		file, err = is.store.Writer(context.Background(), filepath, false)
+		if err != nil {
+			return file, err
+		}
+	} else {
+		file, err = is.store.Writer(context.Background(), filepath, true)
 		if err != nil {
 			return file, err
 		}
