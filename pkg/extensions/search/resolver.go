@@ -486,3 +486,113 @@ func (r *queryResolver) getImageListWithLatestTimeStamp(store *storage.ImageStor
 
 	return results, nil
 }
+
+func (r *queryResolver) ImageList(ctx context.Context) ([]*ImageInfo, error) {
+	r.cveInfo.Log.Info().Msg("extension api: getting a list of all images")
+
+	imageList := make([]*ImageInfo, 0)
+
+	defaultStore := r.storeController.DefaultStore
+
+	dsImageList, err := r.getImageList(defaultStore)
+	if err != nil {
+		r.cveInfo.Log.Error().Err(err).Msg("extension api: error extracting default store image list")
+		return imageList, err
+	}
+
+	if len(dsImageList) != 0 {
+		imageList = append(imageList, dsImageList...)
+	}
+
+	subStore := r.storeController.SubStore
+
+	for _, store := range subStore {
+		ssImageList, err := r.getImageList(store)
+		if err != nil {
+			r.cveInfo.Log.Error().Err(err).Msg("extension api: error extracting substore image list")
+			return imageList, err
+		}
+
+		if len(ssImageList) != 0 {
+			imageList = append(imageList, ssImageList...)
+		}
+	}
+
+	return imageList, nil
+}
+
+func (r *queryResolver) getImageList(store *storage.ImageStore) ([]*ImageInfo, error) {
+	results := make([]*ImageInfo, 0)
+
+	repoList, err := store.GetRepositories()
+	if err != nil {
+		r.cveInfo.Log.Error().Err(err).Msg("extension api: error extracting repositories list")
+		return results, err
+	}
+
+	if len(repoList) == 0 {
+		r.cveInfo.Log.Info().Msg("no repositories found")
+	}
+
+	for _, repo := range repoList {
+		tagsInfo, err := r.cveInfo.GetImageTagsWithTimestamp(repo)
+		if err != nil {
+			r.cveInfo.Log.Error().Err(err).Msg("extension api: error getting tag timestamp info")
+
+			return results, nil
+		}
+
+		if len(tagsInfo) == 0 {
+			r.cveInfo.Log.Info().Str("no tagsinfo found for repo", repo).Msg(" continuing traversing")
+
+			continue
+		}
+
+		imagePath := r.cveInfo.LayoutUtils.GetImageRepoPath(repo)
+
+		for i := range tagsInfo {
+			// using a loop variable called tag would be reassigned after each iteration, using the same memory address
+			// directly access the value at the current index in the slice as ImageInfo requires pointers to tag fields
+			tag := tagsInfo[i]
+
+			digest := godigest.Digest(tag.Digest)
+
+			manifest, err := r.cveInfo.LayoutUtils.GetImageBlobManifest(imagePath, digest)
+			if err != nil {
+				r.cveInfo.Log.Error().Err(err).Msg("extension api: error reading manifest")
+
+				return results, err
+			}
+
+			layers := []*Layer{}
+			size := int64(0)
+
+			for _, entry := range manifest.Layers {
+				size += entry.Size
+				digest := entry.Digest.Hex
+				layerSize := strconv.FormatInt(entry.Size, 10)
+
+				layers = append(
+					layers,
+					&Layer{
+						Size:   &layerSize,
+						Digest: &digest,
+					},
+				)
+			}
+
+			name := repo
+			formattedSize := strconv.FormatInt(size, 10)
+			tagDigest := digest.Hex()
+
+			imageInfo := &ImageInfo{
+				Name: &name, Tag: &tag.Name, Digest: &tagDigest, ConfigDigest: &manifest.Config.Digest.Hex,
+				Size: &formattedSize, LastUpdated: &tag.Timestamp, Layers: layers,
+			}
+
+			results = append(results, imageInfo)
+		}
+	}
+
+	return results, nil
+}

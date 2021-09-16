@@ -18,6 +18,7 @@ import (
 func getImageSearchers() []searcher {
 	searchers := []searcher{
 		new(allImagesSearcher),
+		new(allImagesSearcherGQL),
 		new(imageByNameSearcher),
 		new(imagesByDigestSearcher),
 	}
@@ -93,6 +94,39 @@ func (search allImagesSearcher) search(config searchConfig) (bool, error) {
 	default:
 		return true, nil
 	}
+}
+
+type allImagesSearcherGQL struct{}
+
+func (search allImagesSearcherGQL) search(config searchConfig) (bool, error) {
+	if !canSearch(config.params, newSet("gql")) {
+		return false, nil
+	}
+
+	var builder strings.Builder
+
+	username, password := getUsernameAndPassword(*config.user)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	imageList, err := config.searchService.getAllImagesGQL(ctx, config, username, password)
+
+	if err != nil {
+		cancel()
+		return true, err
+	}
+
+	printImageTableHeader(&builder, *config.verbose)
+	fmt.Fprint(config.resultWriter, builder.String())
+
+	for i := range imageList.Data.ImageList {
+		img := imageList.Data.ImageList[i]
+		img.verbose = *config.verbose
+		out, _ := img.string(*config.outputFormat)
+		fmt.Fprint(config.resultWriter, out)
+
+	}
+
+	return true, nil
 }
 
 type imageByNameSearcher struct{}

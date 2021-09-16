@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +24,7 @@ import (
 type SearchService interface {
 	getAllImages(ctx context.Context, config searchConfig, username, password string,
 		channel chan stringResult, wg *sync.WaitGroup)
+	getAllImagesGQL(ctx context.Context, config searchConfig, username, password string) (*imageListStructGQL, error)
 	getImageByName(ctx context.Context, config searchConfig, username, password, imageName string,
 		channel chan stringResult, wg *sync.WaitGroup)
 	getCveByImage(ctx context.Context, config searchConfig, username, password, imageName string,
@@ -103,6 +105,36 @@ func (service searchService) getAllImages(ctx context.Context, config searchConf
 	}
 
 	localWg.Wait()
+}
+
+func (service searchService) getAllImagesGQL(ctx context.Context, config searchConfig, username, password string) (*imageListStructGQL, error) {
+
+	query := "{ImageList {Name Tag Digest ConfigDigest Size Layers {Size Digest}}}"
+	result := &imageListStructGQL{}
+
+	err := service.makeGraphQLQuery(config, username, password, query, result)
+
+	if err != nil {
+		if isContextDone(ctx) {
+			return nil, nil
+		}
+
+		return nil, err
+	}
+
+	if result.Errors != nil {
+		var errBuilder strings.Builder
+
+		for _, err := range result.Errors {
+			fmt.Fprintln(&errBuilder, err.Message)
+		}
+
+		if isContextDone(ctx) {
+			return nil, nil
+		}
+	}
+
+	return result, nil
 }
 
 func getImage(ctx context.Context, config searchConfig, username, password, imageName string,
@@ -611,6 +643,23 @@ type imageStruct struct {
 	verbose bool
 }
 
+type imageStructGQL struct {
+	Name         string     `json:"name"`
+	Tag          string     `json:"tag"`
+	ConfigDigest string     `json:"configDigest"`
+	Digest       string     `json:"digest"`
+	Layers       []layerGQL `json:"layers"`
+	Size         string     `json:"size"`
+	verbose      bool
+}
+
+type imageListStructGQL struct {
+	Errors []errorGraphQL `json:"errors"`
+	Data   struct {
+		ImageList []imageStructGQL `json:"ImageList"`
+	} `json:"data"`
+}
+
 type tags struct {
 	Name         string  `json:"name"`
 	Size         uint64  `json:"size"`
@@ -624,7 +673,25 @@ type layer struct {
 	Digest string `json:"digest"`
 }
 
+type layerGQL struct {
+	Size   string `json:"size"`
+	Digest string `json:"digest"`
+}
+
 func (img imageStruct) string(format string) (string, error) {
+	switch strings.ToLower(format) {
+	case "", defaultOutoutFormat:
+		return img.stringPlainText()
+	case "json":
+		return img.stringJSON()
+	case "yml", "yaml":
+		return img.stringYAML()
+	default:
+		return "", ErrInvalidOutputFormat
+	}
+}
+
+func (img imageStructGQL) string(format string) (string, error) {
 	switch strings.ToLower(format) {
 	case "", defaultOutoutFormat:
 		return img.stringPlainText()
@@ -706,6 +773,84 @@ func (img imageStruct) stringJSON() (string, error) {
 }
 
 func (img imageStruct) stringYAML() (string, error) {
+	body, err := yaml.Marshal(&img)
+
+	if err != nil {
+		return "", err
+	}
+
+	return string(body), nil
+}
+
+func (img imageStructGQL) stringPlainText() (string, error) {
+	var builder strings.Builder
+
+	table := getImageTableWriter(&builder)
+	table.SetColMinWidth(colImageNameIndex, imageNameWidth)
+	table.SetColMinWidth(colTagIndex, tagWidth)
+	table.SetColMinWidth(colDigestIndex, digestWidth)
+	table.SetColMinWidth(colSizeIndex, sizeWidth)
+
+	if img.verbose {
+		table.SetColMinWidth(colConfigIndex, configWidth)
+		table.SetColMinWidth(colLayersIndex, layersWidth)
+	}
+
+	imageName := ellipsize(img.Name, imageNameWidth, ellipsis)
+	tagName := ellipsize(img.Tag, tagWidth, ellipsis)
+	digest := ellipsize(img.Digest, digestWidth, "")
+	imgSize, _ := strconv.ParseUint(img.Size, 10, 64)
+	size := ellipsize(strings.ReplaceAll(humanize.Bytes(imgSize), " ", ""), sizeWidth, ellipsis)
+	config := ellipsize(img.ConfigDigest, configWidth, "")
+	row := make([]string, 6)
+
+	row[colImageNameIndex] = imageName
+	row[colTagIndex] = tagName
+	row[colDigestIndex] = digest
+	row[colSizeIndex] = size
+
+	if img.verbose {
+		row[colConfigIndex] = config
+		row[colLayersIndex] = ""
+	}
+
+	table.Append(row)
+
+	if img.verbose {
+		for _, entry := range img.Layers {
+			layerSize, _ := strconv.ParseUint(entry.Size, 10, 64)
+			size := ellipsize(strings.ReplaceAll(humanize.Bytes(layerSize), " ", ""), sizeWidth, ellipsis)
+			layerDigest := ellipsize(entry.Digest, digestWidth, "")
+
+			layerRow := make([]string, 6)
+			layerRow[colImageNameIndex] = ""
+			layerRow[colTagIndex] = ""
+			layerRow[colDigestIndex] = ""
+			layerRow[colSizeIndex] = size
+			layerRow[colConfigIndex] = ""
+			layerRow[colLayersIndex] = layerDigest
+
+			table.Append(layerRow)
+		}
+	}
+
+	table.Render()
+
+	return builder.String(), nil
+}
+
+func (img imageStructGQL) stringJSON() (string, error) {
+	var json = jsoniter.ConfigCompatibleWithStandardLibrary
+	body, err := json.MarshalIndent(img, "", "  ")
+
+	if err != nil {
+		return "", err
+	}
+
+	return string(body), nil
+}
+
+func (img imageStructGQL) stringYAML() (string, error) {
 	body, err := yaml.Marshal(&img)
 
 	if err != nil {

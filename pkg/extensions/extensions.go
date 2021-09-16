@@ -3,6 +3,7 @@
 package extensions
 
 import (
+	"github.com/99designs/gqlgen/graphql/playground"
 	"github.com/anuvu/zot/pkg/extensions/search"
 	"github.com/anuvu/zot/pkg/storage"
 	"github.com/gorilla/mux"
@@ -63,5 +64,7 @@ func SetupRoutes(extension *ExtensionConfig, router *mux.Router, storeController
 		resConfig := search.GetResolverConfig(log, storeController)
 		router.PathPrefix("/query").Methods("GET", "POST").
 			Handler(gqlHandler.NewDefaultServer(search.NewExecutableSchema(resConfig)))
+		router.PathPrefix("/playground").Methods("GET", "POST").
+			Handler(playground.Handler("playground", "/query"))
 	}
 }

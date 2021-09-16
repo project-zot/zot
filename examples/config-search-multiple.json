@@ -1,0 +1,36 @@
+{
+  "version": "0.1.0-dev",
+  "storage": {
+    "rootDirectory": "/tmp/zot",
+    "gc": true,
+    "subPaths": {
+      "/test1": {
+        "rootDirectory": "/tmp/zot1",
+        "gc": true,
+        "dedupe": false
+      },
+      "/test2": {
+        "rootDirectory": "/tmp/zot2",
+        "gc": true,
+        "dedupe": false
+      },
+      "/test3": {
+        "rootDirectory": "/tmp/zot3",
+        "gc": true,
+        "dedupe": false
+      }
+    }
+  },
+  "http": {
+    "address": "127.0.0.1",
+    "port": "5050"
+  },
+  "log": {
+    "level": "debug"
+  },
+  "extensions": {
+    "search": {
+      "enable": true
+    }
+  }
+}

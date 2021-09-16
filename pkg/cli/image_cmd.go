@@ -110,6 +110,7 @@ func parseBooleanConfig(configPath, configName, configParam string) (bool, error
 func setupImageFlags(imageCmd *cobra.Command, searchImageParams map[string]*string,
 	servURL, user, outputFormat *string, verbose *bool) {
 	searchImageParams["imageName"] = imageCmd.Flags().StringP("name", "n", "", "List image details by name")
+	searchImageParams["gql"] = imageCmd.Flags().StringP("gql", "g", "", "List all images using gql")
 	searchImageParams["digest"] = imageCmd.Flags().StringP("digest", "d", "",
 		"List images containing a specific manifest, config, or layer digest")
 
