@@ -1,7 +1,6 @@
 package search
 
 import (
-	cveinfo "github.com/anuvu/zot/pkg/extensions/search/cve"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
@@ -12,19 +11,6 @@ const (
 	LabelAnnotationDescription = "org.label-schema.description"
 	LabelAnnotationLicenses    = "org.label-schema.license"
 )
-
-func getGraphqlCompatibleTags(fixedTags []cveinfo.TagInfo) []*TagInfo {
-	finalTagList := make([]*TagInfo, 0)
-
-	for _, tag := range fixedTags {
-		fixTag := tag
-
-		finalTagList = append(finalTagList,
-			&TagInfo{Name: &fixTag.Name, Digest: &fixTag.Digest, Timestamp: &fixTag.Timestamp})
-	}
-
-	return finalTagList
-}
 
 func getDescription(labels map[string]string) string {
 	desc, ok := labels[ispec.AnnotationDescription]

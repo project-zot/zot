@@ -6,7 +6,6 @@ import (
 	"github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/extensions/search/common"
 	"github.com/anuvu/zot/pkg/log"
-	"github.com/anuvu/zot/pkg/storage"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
@@ -17,8 +16,8 @@ type DigestInfo struct {
 }
 
 // NewDigestInfo initializes a new DigestInfo object.
-func NewDigestInfo(storeController storage.StoreController, log log.Logger) *DigestInfo {
-	layoutUtils := common.NewOciLayoutUtils(storeController, log)
+func NewDigestInfo(log log.Logger) *DigestInfo {
+	layoutUtils := common.NewOciLayoutUtils(log)
 
 	return &DigestInfo{Log: log, LayoutUtils: layoutUtils}
 }
@@ -27,12 +26,11 @@ func NewDigestInfo(storeController storage.StoreController, log log.Logger) *Dig
 func (digestinfo DigestInfo) GetImageTagsByDigest(repo string, digest string) ([]*string, error) {
 	uniqueTags := []*string{}
 
-	imagePath := digestinfo.LayoutUtils.GetImageRepoPath(repo)
-	if !common.DirExists(imagePath) {
+	if !common.DirExists(repo) {
 		return nil, errors.ErrRepoNotFound
 	}
 
-	manifests, err := digestinfo.LayoutUtils.GetImageManifests(imagePath)
+	manifests, err := digestinfo.LayoutUtils.GetImageManifests(repo)
 
 	if err != nil {
 		digestinfo.Log.Error().Err(err).Msg("unable to read image manifests")
@@ -44,7 +42,7 @@ func (digestinfo DigestInfo) GetImageTagsByDigest(repo string, digest string) ([
 
 		v, ok := manifest.Annotations[ispec.AnnotationRefName]
 		if ok {
-			imageBlobManifest, err := digestinfo.LayoutUtils.GetImageBlobManifest(imagePath, imageDigest)
+			imageBlobManifest, err := digestinfo.LayoutUtils.GetImageBlobManifest(repo, imageDigest)
 
 			if err != nil {
 				digestinfo.Log.Error().Err(err).Msg("unable to read image blob manifest")
