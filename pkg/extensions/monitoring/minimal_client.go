@@ -8,7 +8,6 @@ import (
 	"errors"
 	"io/ioutil"
 	"net/http"
-	"strings"
 	"time"
 
 	zotErrors "github.com/anuvu/zot/errors"
@@ -52,12 +51,8 @@ func newHTTPMetricsClient(host string) *http.Client {
 // Creates a MetricsClient that can be used to retrive in memory metrics
 // The new MetricsClient retrieved must be cached  and reused by the Node Exporter
 // in order to prevent concurrent memory leaks
-func NewMetricsClient(config *ZotMetricsConfig) (*MetricsClient, error) {
-	// TODO: Customize from config file
-	logger := log.NewLogger("debug", "")
-
+func NewMetricsClient(config *ZotMetricsConfig, host string, logger log.Logger) (*MetricsClient, error) {
 	if config.HttpClient == nil {
-		host := getHostFromAddress(config.Address)
 		config.HttpClient = newHTTPMetricsClient(host)
 	}
 
@@ -102,17 +97,4 @@ func (mc *MetricsClient) makeGETRequest(url string, resultsPtr interface{}) (htt
 	}
 
 	return resp.Header, nil
-}
-
-// format of expected address is something similar to http://localhost:5050
-func getHostFromAddress(address string) string {
-	parts := strings.SplitN(address, "://", 2)
-	if len(parts) == 2 {
-		parts = strings.SplitN(parts[1], ":", 2)
-		if len(parts) == 2 {
-			return parts[0]
-		}
-	}
-	// TODO: Fix from configuration file: Split address into host & port
-	return "localhost"
 }
