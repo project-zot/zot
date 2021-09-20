@@ -216,18 +216,6 @@ func getUsername(r *http.Request) string {
 	return pair[0]
 }
 
-func isBearerAuthEnabled(config *Config) bool {
-	if config.HTTP.Auth != nil &&
-		config.HTTP.Auth.Bearer != nil &&
-		config.HTTP.Auth.Bearer.Cert != "" &&
-		config.HTTP.Auth.Bearer.Realm != "" &&
-		config.HTTP.Auth.Bearer.Service != "" {
-		return true
-	}
-
-	return false
-}
-
 func authzFail(w http.ResponseWriter, realm string, delay int) {
 	time.Sleep(time.Duration(delay) * time.Second)
 	w.Header().Set("WWW-Authenticate", realm)

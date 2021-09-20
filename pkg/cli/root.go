@@ -164,6 +164,15 @@ func LoadConfiguration(config *api.Config, configPath string) {
 		panic(errors.ErrBadConfig)
 	}
 
+	// check authorization config, it should have basic auth enabled or ldap
+	if config.HTTP.RawAccessControl != nil {
+		if config.HTTP.Auth == nil || (config.HTTP.Auth.HTPasswd.Path == "" && config.HTTP.Auth.LDAP == nil) {
+			log.Error().Err(errors.ErrBadConfig).
+				Msg("access control config requires httpasswd or ldap authentication to be enabled")
+			panic(errors.ErrBadConfig)
+		}
+	}
+
 	err := config.LoadAccessControlConfig()
 	if err != nil {
 		log.Error().Err(errors.ErrBadConfig).Msg("Unable to unmarshal http.accessControl.key.policies")
