@@ -41,6 +41,9 @@ https://anuvu.github.io/zot/
 * ```go get -u github.com/anuvu/zot/cmd/zot```
 
 
+(**Why zot?**)[CONFORMANCE.md]
+
+
 # Presentations
 
 * [OCI Weekly Discussion - Oct 2, 2019](https://hackmd.io/El8Dd2xrTlCaCG59ns5cwg#October-2-2019)
