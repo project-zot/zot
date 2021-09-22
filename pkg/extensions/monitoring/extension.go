@@ -18,31 +18,40 @@ var (
 	HttpConnRequests = promauto.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: metricsNamespace,
-			Name:      "http_requests_total",
+			Name:      "zot_http_requests_total",
 			Help:      "Total number of http request in zot",
 		},
 		[]string{"method", "code"},
 	)
-	HttpServeLatency = promauto.NewSummaryVec(
+	HttpRepoLatency = promauto.NewSummaryVec(
 		prometheus.SummaryOpts{
 			Namespace: metricsNamespace,
-			Name:      "http_latency_seconds",
+			Name:      "http_repo_latency_seconds",
 			Help:      "Latency of serving HTTP requests",
 		},
 		[]string{"repo"},
 	)
+	HttpMethodLatency = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: metricsNamespace,
+			Name:      "http_method_latency_seconds",
+			Help:      "Latency of serving HTTP requests",
+			Buckets:   GetDefaultBuckets(),
+		},
+		[]string{"method"},
+	)
 	StorageUsage = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: metricsNamespace,
-			Name:      "storage_usage_bytes",
-			Help:      "Storage used",
+			Name:      "zot_repo_storage_bytes",
+			Help:      "Storage used per zot repo",
 		},
 		[]string{"repo"},
 	)
 	UploadCounter = promauto.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: metricsNamespace,
-			Name:      "upload_image_total",
+			Name:      "zot_repo_uploads_total",
 			Help:      "Total number times an image was uploaded",
 		},
 		[]string{"repo"},
@@ -50,7 +59,7 @@ var (
 	DownloadCounter = promauto.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: metricsNamespace,
-			Name:      "download_image_total",
+			Name:      "zot_repo_downloads_total",
 			Help:      "Total number times an image was downloaded",
 		},
 		[]string{"repo"},
@@ -71,15 +80,21 @@ func IncHttpConnRequests(lvalues ...string) {
 	}
 }
 
-func ObserveHttpServeLatency(path string, latency time.Duration) {
+func ObserveHttpRepoLatency(path string, latency time.Duration) {
 	if metricsEnabled {
 		re := regexp.MustCompile("\\/v2\\/(.*?)\\/(blobs|tags|manifests)\\/(.*)$")
 		match := re.FindStringSubmatch(path)
 		if len(match) > 1 {
-			HttpServeLatency.WithLabelValues(match[1]).Observe(latency.Seconds())
+			HttpRepoLatency.WithLabelValues(match[1]).Observe(latency.Seconds())
 		} else {
-			HttpServeLatency.WithLabelValues("N/A").Observe(latency.Seconds())
+			HttpRepoLatency.WithLabelValues("N/A").Observe(latency.Seconds())
 		}
+	}
+}
+
+func ObserveHttpMethodLatency(method string, latency time.Duration) {
+	if metricsEnabled {
+		HttpMethodLatency.WithLabelValues(method).Observe(latency.Seconds())
 	}
 }
 

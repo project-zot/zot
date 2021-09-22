@@ -33,10 +33,10 @@ type ZotMetricsConfig struct {
 type MetricsClient struct {
 	headers http.Header
 	config  ZotMetricsConfig
-	Log     log.Logger
+	log     log.Logger
 }
 
-func newHTTPMetricsClient(host string) *http.Client {
+func newHTTPMetricsClient() *http.Client {
 
 	defaultTransport := http.DefaultTransport.(*http.Transport).Clone()
 	defaultTransport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint: gosec
@@ -51,12 +51,12 @@ func newHTTPMetricsClient(host string) *http.Client {
 // Creates a MetricsClient that can be used to retrive in memory metrics
 // The new MetricsClient retrieved must be cached  and reused by the Node Exporter
 // in order to prevent concurrent memory leaks
-func NewMetricsClient(config *ZotMetricsConfig, host string, logger log.Logger) (*MetricsClient, error) {
+func NewMetricsClient(config *ZotMetricsConfig, logger log.Logger) *MetricsClient {
 	if config.HttpClient == nil {
-		config.HttpClient = newHTTPMetricsClient(host)
+		config.HttpClient = newHTTPMetricsClient()
 	}
 
-	return &MetricsClient{config: *config, headers: make(http.Header), Log: logger}, nil
+	return &MetricsClient{config: *config, headers: make(http.Header), log: logger}
 }
 
 func (mc *MetricsClient) GetMetrics() (*MetricsInfo, error) {

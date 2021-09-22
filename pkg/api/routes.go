@@ -949,7 +949,6 @@ func (rh *RouteHandler) PatchBlobUpload(w http.ResponseWriter, r *http.Request) 
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/blobs/uploads/{session_id} [put].
 func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request) {
-	rh.c.Log.Info().Interface("headers", r.Header).Msg("HEADERS")
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
 

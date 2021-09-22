@@ -5,8 +5,10 @@ package monitoring
 import (
 	"errors"
 	"fmt"
+	"math"
 	"path"
 	"regexp"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -21,7 +23,9 @@ const (
 	RepoStorageBytes = "zot.repo.storage.bytes"
 	ZotInfo          = "zot.info"
 	//Summary
-	HttpLatencySeconds = "zot.repo.latency.seconds"
+	HttpRepoLatencySeconds = "zot.repo.latency.seconds"
+	//Histogram
+	HttpMethodLatencySeconds = "zot.method.latency.seconds"
 )
 
 type MetricsInfo struct {
@@ -35,8 +39,10 @@ var inMemoryMetrics MetricsInfo
 var zotCounterList map[string][]string
 var zotGaugeList map[string][]string
 var zotSummaryList map[string][]string
+var zotHistogramList map[string][]string
 var metricsEnabled bool
 var lastMetricsCheck time.Time
+var bucketsFloat2String map[float64]string
 
 // GaugeValue stores one value that is updated as time goes on, such as
 // the amount of memory allocated.
@@ -55,6 +61,7 @@ type SampledValue struct {
 	Sum         float64
 	LabelNames  []string
 	LabelValues []string
+	Buckets     map[string]int
 }
 
 func init() {
@@ -72,7 +79,11 @@ func init() {
 
 	// contains a map with key=CounterName and value=CounterLabels
 	zotSummaryList = map[string][]string{
-		HttpLatencySeconds: []string{"repo"},
+		HttpRepoLatencySeconds: []string{"repo"},
+	}
+
+	zotHistogramList = map[string][]string{
+		HttpMethodLatencySeconds: []string{"method"},
 	}
 
 	inMemoryMetrics = MetricsInfo{
@@ -80,6 +91,17 @@ func init() {
 		Gauges:   make([]GaugeValue, 0),
 		Counters: make([]SampledValue, 0),
 		Samples:  make([]SampledValue, 0),
+	}
+
+	// convert to a map for returning easily the string corresponding to a bucket
+	bucketsFloat2String = map[float64]string{}
+	for _, fvalue := range GetDefaultBuckets() {
+		if fvalue == math.MaxFloat64 {
+			bucketsFloat2String[fvalue] = "+Inf"
+		} else {
+			s := strconv.FormatFloat(fvalue, 'f', -1, 64)
+			bucketsFloat2String[fvalue] = s
+		}
 	}
 }
 
@@ -95,6 +117,47 @@ func GetMetrics() MetricsInfo {
 	return inMemoryMetrics
 }
 
+// return true if a metric does not have any labels or
+// if the label values for searched metric corresponds to the one in the cached slice
+func isMetricMatch(lNames []string, lValues []string, metricValues []string) bool {
+	if lNames == nil && lValues == nil {
+		// metric does not contain any labels
+		return true
+	}
+	if len(lValues) == len(metricValues) {
+		for i, v := range metricValues {
+			if v != lValues[i] {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// returns {-1, false} in case metric was not found in the slice
+func findSampledValueIndex(metricSlice []SampledValue, name string, labelNames []string, labelValues []string) (int, bool) {
+	for i, m := range metricSlice {
+		if m.Name == name {
+			if isMetricMatch(labelNames, labelValues, m.LabelValues) {
+				return i, true
+			}
+		}
+	}
+	return -1, false
+}
+
+// returns {-1, false} in case metric was not found in the slice
+func findGaugeValueIndex(metricSlice []GaugeValue, name string, labelNames []string, labelValues []string) (int, bool) {
+	for i, m := range metricSlice {
+		if m.Name == name {
+			if isMetricMatch(labelNames, labelValues, m.LabelValues) {
+				return i, true
+			}
+		}
+	}
+	return -1, false
+}
+
 // Increments a counter atomically
 func CounterInc(name string, labelNames []string, labelValues []string) {
 	var sv SampledValue
@@ -106,42 +169,21 @@ func CounterInc(name string, labelNames []string, labelValues []string) {
 		return           // thus log a message (should be detected during development of new metrics)
 	}
 
-	for i, sv := range inMemoryMetrics.Counters {
-		if sv.Name == name {
-			if labelNames == nil && labelValues == nil {
-				//found the sampled values
-				inMemoryMetrics.mutex.Lock()
-				inMemoryMetrics.Counters[i].Count++
-				inMemoryMetrics.mutex.Unlock()
-				return
-			}
-			if len(labelValues) == len(sv.LabelValues) {
-				found := true
-				for j, v := range sv.LabelValues {
-					if v != labelValues[j] {
-						found = false
-						break
-					}
-				}
-				if found {
-					inMemoryMetrics.mutex.Lock()
-					inMemoryMetrics.Counters[i].Count++
-					inMemoryMetrics.mutex.Unlock()
-					return
-				}
-			}
-		}
-	}
-	// The Counter/SampledValue still not found: create one and return
-	sv = SampledValue{
-		Name:        name,
-		Count:       1, // First value, no need to increment
-		LabelNames:  labelNames,
-		LabelValues: labelValues,
-	}
+	index, ok := findSampledValueIndex(inMemoryMetrics.Counters, name, labelNames, labelValues)
 	inMemoryMetrics.mutex.Lock()
-	inMemoryMetrics.Counters = append(inMemoryMetrics.Counters, sv)
-	inMemoryMetrics.mutex.Unlock()
+	defer inMemoryMetrics.mutex.Unlock()
+	if !ok {
+		// The SampledValue not found: create one
+		sv = SampledValue{
+			Name:        name,
+			Count:       1, // First value, no need to increment
+			LabelNames:  labelNames,
+			LabelValues: labelValues,
+		}
+		inMemoryMetrics.Counters = append(inMemoryMetrics.Counters, sv)
+	} else {
+		inMemoryMetrics.Counters[index].Count++
+	}
 }
 
 // Sets a gauge atomically
@@ -155,42 +197,21 @@ func GaugeSet(name string, value float64, labelNames []string, labelValues []str
 		return           // thus log a message (should be detected during development of new metrics)
 	}
 
-	for i, gv := range inMemoryMetrics.Gauges {
-		if gv.Name == name {
-			if labelNames == nil && labelValues == nil {
-				//found the sampled values
-				inMemoryMetrics.mutex.Lock()
-				inMemoryMetrics.Gauges[i].Value = value
-				inMemoryMetrics.mutex.Unlock()
-				return
-			}
-			if len(labelValues) == len(gv.LabelValues) {
-				found := true
-				for j, v := range gv.LabelValues {
-					if v != labelValues[j] {
-						found = false
-						break
-					}
-				}
-				if found {
-					inMemoryMetrics.mutex.Lock()
-					inMemoryMetrics.Gauges[i].Value = value
-					inMemoryMetrics.mutex.Unlock()
-					return
-				}
-			}
-		}
-	}
-	// The Counter/SampledValue still not found: create one and return
-	gv = GaugeValue{
-		Name:        name,
-		Value:       value,
-		LabelNames:  labelNames,
-		LabelValues: labelValues,
-	}
+	index, ok := findGaugeValueIndex(inMemoryMetrics.Gauges, name, labelNames, labelValues)
 	inMemoryMetrics.mutex.Lock()
-	inMemoryMetrics.Gauges = append(inMemoryMetrics.Gauges, gv)
-	inMemoryMetrics.mutex.Unlock()
+	defer inMemoryMetrics.mutex.Unlock()
+	if !ok {
+		// The GaugeValue not found: create one
+		gv = GaugeValue{
+			Name:        name,
+			Value:       value,
+			LabelNames:  labelNames,
+			LabelValues: labelValues,
+		}
+		inMemoryMetrics.Gauges = append(inMemoryMetrics.Gauges, gv)
+	} else {
+		inMemoryMetrics.Gauges[index].Value = value
+	}
 }
 
 // Increments a summary counter & add to the summary sum atomically
@@ -204,45 +225,66 @@ func SummaryObserve(name string, value float64, labelNames []string, labelValues
 		return           // thus log a message (should be detected during development of new metrics)
 	}
 
-	for i, sv := range inMemoryMetrics.Samples {
-		if sv.Name == name {
-			if labelNames == nil && labelValues == nil {
-				//found the sampled values
-				inMemoryMetrics.mutex.Lock()
-				inMemoryMetrics.Samples[i].Count++
-				inMemoryMetrics.Samples[i].Sum += value
-				inMemoryMetrics.mutex.Unlock()
-				return
+	index, ok := findSampledValueIndex(inMemoryMetrics.Samples, name, labelNames, labelValues)
+	inMemoryMetrics.mutex.Lock()
+	defer inMemoryMetrics.mutex.Unlock()
+	if !ok {
+		// The SampledValue not found: create one
+		sv = SampledValue{
+			Name:        name,
+			Count:       1, // First value, no need to increment
+			LabelNames:  labelNames,
+			LabelValues: labelValues,
+		}
+		inMemoryMetrics.Samples = append(inMemoryMetrics.Samples, sv)
+	} else {
+		inMemoryMetrics.Samples[index].Count++
+		inMemoryMetrics.Samples[index].Sum += value
+	}
+}
+
+// Increments a summary counter & add to the summary sum atomically
+func HistogramObserve(name string, value float64, labelNames []string, labelValues []string) {
+	var sv SampledValue
+
+	kLabels, ok := zotHistogramList[name] // known label names for the 'name' counter
+	err := sanityChecks(name, kLabels, ok, labelNames, labelValues)
+	if err != nil {
+		fmt.Println(err) // The last thing we want is to panic/stop the server due to instrumentation
+		return           // thus log a message (should be detected during development of new metrics)
+	}
+
+	index, ok := findSampledValueIndex(inMemoryMetrics.Samples, name, labelNames, labelValues)
+	inMemoryMetrics.mutex.Lock()
+	defer inMemoryMetrics.mutex.Unlock()
+	if !ok {
+		// The SampledValue not found: create one
+		buckets := make(map[string]int, 0)
+		for _, fvalue := range GetDefaultBuckets() {
+			if value <= fvalue {
+				buckets[bucketsFloat2String[fvalue]] = 1
+			} else {
+				buckets[bucketsFloat2String[fvalue]] = 0
 			}
-			if len(labelValues) == len(sv.LabelValues) {
-				found := true
-				for j, v := range sv.LabelValues {
-					if v != labelValues[j] {
-						found = false
-						break
-					}
-				}
-				if found {
-					inMemoryMetrics.mutex.Lock()
-					inMemoryMetrics.Samples[i].Count++
-					inMemoryMetrics.Samples[i].Sum += value
-					inMemoryMetrics.mutex.Unlock()
-					return
-				}
+		}
+		sv = SampledValue{
+			Name:        name,
+			Count:       1, // First value, no need to increment
+			Sum:         value,
+			LabelNames:  labelNames,
+			LabelValues: labelValues,
+			Buckets:     buckets,
+		}
+		inMemoryMetrics.Samples = append(inMemoryMetrics.Samples, sv)
+	} else {
+		inMemoryMetrics.Samples[index].Count++
+		inMemoryMetrics.Samples[index].Sum += value
+		for _, fvalue := range GetDefaultBuckets() {
+			if value <= fvalue {
+				inMemoryMetrics.Samples[index].Buckets[bucketsFloat2String[fvalue]]++
 			}
 		}
 	}
-	// The Counter/SampledValue still not found: create one and return
-	sv = SampledValue{
-		Name:        name,
-		Count:       1, // First value, no need to increment
-		Sum:         value,
-		LabelNames:  labelNames,
-		LabelValues: labelValues,
-	}
-	inMemoryMetrics.mutex.Lock()
-	inMemoryMetrics.Samples = append(inMemoryMetrics.Samples, sv)
-	inMemoryMetrics.mutex.Unlock()
 }
 
 func sanityChecks(name string, knownLabels []string, found bool, labelNames []string, labelValues []string) error {
@@ -274,15 +316,21 @@ func IncHttpConnRequests(lvs ...string) {
 	}
 }
 
-func ObserveHttpServeLatency(path string, latency time.Duration) {
+func ObserveHttpRepoLatency(path string, latency time.Duration) {
 	if metricsEnabled {
 		re := regexp.MustCompile("\\/v2\\/(.*?)\\/(blobs|tags|manifests)\\/(.*)$")
 		match := re.FindStringSubmatch(path)
 		if len(match) > 1 {
-			go SummaryObserve(HttpLatencySeconds, latency.Seconds(), []string{"repo"}, []string{match[1]})
+			go SummaryObserve(HttpRepoLatencySeconds, latency.Seconds(), []string{"repo"}, []string{match[1]})
 		} else {
-			go SummaryObserve(HttpLatencySeconds, latency.Seconds(), []string{"repo"}, []string{"N/A"})
+			go SummaryObserve(HttpRepoLatencySeconds, latency.Seconds(), []string{"repo"}, []string{"N/A"})
 		}
+	}
+}
+
+func ObserveHttpMethodLatency(method string, latency time.Duration) {
+	if metricsEnabled {
+		go HistogramObserve(HttpMethodLatencySeconds, latency.Seconds(), []string{"method"}, []string{method})
 	}
 }
 
@@ -312,4 +360,9 @@ func SetStorageUsage(repo string, rootDir string) {
 func SetZotInfo(lvs ...string) {
 	//  This metric is set once at zot startup (do not condition upon metricsEnabled!)
 	go GaugeSet(ZotInfo, 0, []string{"commit", "binaryType", "goVersion", "version"}, lvs)
+}
+
+// Used by the zot exporter
+func BucketConvFloat2String(b float64) string {
+	return bucketsFloat2String[b]
 }

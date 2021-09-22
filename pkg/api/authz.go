@@ -14,13 +14,13 @@ import (
 type contextKey int
 
 const (
-	// actions
+	// actions.
 	CREATE = "create"
 	READ   = "read"
 	UPDATE = "update"
 	DELETE = "delete"
 
-	// request-local context key
+	// request-local context key.
 	authzCtxKey contextKey = 0
 )
 

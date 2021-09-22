@@ -3,6 +3,7 @@
 package api
 
 import (
+	"sync"
 	"time"
 
 	"crypto/tls"
@@ -34,6 +35,7 @@ type LDAPClient struct {
 	ClientCertificates []tls.Certificate // Adding client certificates
 	ClientCAs          *x509.CertPool
 	Log                log.Logger
+	lock               sync.Mutex
 }
 
 // Connect connects to the ldap backend.
@@ -118,6 +120,10 @@ func sleepAndRetry(retries, maxRetries int) bool {
 
 // Authenticate authenticates the user against the ldap backend.
 func (lc *LDAPClient) Authenticate(username, password string) (bool, map[string]string, error) {
+	// serialize LDAP calls since some LDAP servers don't allow searches when binds are in flight
+	lc.lock.Lock()
+	defer lc.lock.Unlock()
+
 	if password == "" {
 		// RFC 4513 section 5.1.2
 		return false, nil, errors.ErrLDAPEmptyPassphrase
@@ -204,14 +210,6 @@ func (lc *LDAPClient) Authenticate(username, password string) (bool, map[string]
 	if err != nil {
 		lc.Log.Error().Err(err).Str("bindDN", userDN).Msg("user bind failed")
 		return false, user, err
-	}
-
-	// Rebind as the read only user for any further queries
-	if lc.BindDN != "" && lc.BindPassword != "" {
-		err = lc.Conn.Bind(lc.BindDN, lc.BindPassword)
-		if err != nil {
-			return true, user, err
-		}
 	}
 
 	return true, user, nil
