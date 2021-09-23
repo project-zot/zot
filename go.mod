@@ -5,27 +5,24 @@ go 1.16
 require (
 	github.com/99designs/gqlgen v0.12.2
 	github.com/AdaLogics/go-fuzz-headers v0.0.0-20210921152813-f50b76b2163b // indirect
-	github.com/AdamKorcz/go-fuzz-headers v0.0.0-20210312213058-32f4d319f0d2 // indirect
-	github.com/Microsoft/hcsshim v0.8.17 // indirect
 	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
 	github.com/apex/log v1.9.0
 	github.com/aquasecurity/trivy v0.0.0-00010101000000-000000000000
 	github.com/briandowns/spinner v1.12.0
-	github.com/chartmuseum/auth v0.4.5
+	github.com/chartmuseum/auth v0.5.0
+	github.com/containerd/containerd v1.5.4 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.1 // indirect
 	github.com/dustin/go-humanize v1.0.0
 	github.com/fsnotify/fsnotify v1.4.9
 	github.com/getlantern/deepcopy v0.0.0-20160317154340-7f45deb8130a
 	github.com/go-ldap/ldap/v3 v3.3.0
 	github.com/gofrs/uuid v4.0.0+incompatible
-	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/go-containerregistry v0.6.0
 	github.com/gorilla/handlers v1.5.1
 	github.com/gorilla/mux v1.8.0
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/json-iterator/go v1.1.11
 	github.com/klauspost/compress v1.13.6 // indirect
-	github.com/klauspost/pgzip v1.2.5 // indirect
 	github.com/mitchellh/mapstructure v1.4.1
 	github.com/moby/sys/mount v0.2.0 // indirect
 	github.com/nmcclain/asn1-ber v0.0.0-20170104154839-2661553a0484 // indirect
@@ -36,7 +33,6 @@ require (
 	github.com/opencontainers/image-spec v1.0.2-0.20190823105129-775207bd45b6
 	github.com/opencontainers/umoci v0.4.8-0.20210922062158-e60a0cc726e6
 	github.com/phayes/freeport v0.0.0-20180830031419-95f893ade6f2
-	github.com/rootless-containers/proto v0.1.2
 	github.com/rs/zerolog v1.22.0
 	github.com/smartystreets/goconvey v1.6.4
 	github.com/spf13/cobra v1.2.1
