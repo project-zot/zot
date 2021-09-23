@@ -9,19 +9,23 @@ TMPDIR := $(shell mktemp -d)
 STACKER := $(shell which stacker)
 
 .PHONY: all
-all: doc binary binary-minimal debug test test-clean check
+all: doc binary binary-minimal exporter-minimal debug test test-clean check
 
 .PHONY: binary-minimal
 binary-minimal: doc
-	go build -tags minimal -v  -ldflags "-X  github.com/anuvu/zot/pkg/api.Commit=${COMMIT} -X github.com/anuvu/zot/pkg/api.BinaryType=minimal -X github.com/anuvu/zot/pkg/api.GoVersion=${GO_VERSION}" -o bin/zot-minimal ./cmd/zot
+	go build -o bin/zot-minimal -tags minimal -v -ldflags "-X  github.com/anuvu/zot/pkg/api.Commit=${COMMIT} -X github.com/anuvu/zot/pkg/api.BinaryType=minimal -X github.com/anuvu/zot/pkg/api.GoVersion=${GO_VERSION}" ./cmd/zot
 
 .PHONY: binary
 binary: doc
-	go build -tags extended -v -ldflags "-X  github.com/anuvu/zot/pkg/api.Commit=${COMMIT} -X github.com/anuvu/zot/pkg/api.BinaryType=extended -X github.com/anuvu/zot/pkg/api.GoVersion=${GO_VERSION}" -o bin/zot ./cmd/zot
+	go build -o bin/zot -tags extended -v -ldflags "-X  github.com/anuvu/zot/pkg/api.Commit=${COMMIT} -X github.com/anuvu/zot/pkg/api.BinaryType=extended -X github.com/anuvu/zot/pkg/api.GoVersion=${GO_VERSION}" ./cmd/zot
 
 .PHONY: debug
 debug: doc
-	go build -tags extended -v -gcflags all='-N -l' -ldflags "-X  github.com/anuvu/zot/pkg/api.Commit=${COMMIT} -X github.com/anuvu/zot/pkg/api.BinaryType=extended -X github.com/anuvu/zot/pkg/api.GoVersion=${GO_VERSION}" -o bin/zot-debug ./cmd/zot
+	go build -o bin/zot-debug -tags extended -v -gcflags all='-N -l' -ldflags "-X  github.com/anuvu/zot/pkg/api.Commit=${COMMIT} -X github.com/anuvu/zot/pkg/api.BinaryType=extended -X github.com/anuvu/zot/pkg/api.GoVersion=${GO_VERSION}" ./cmd/zot
+
+.PHONY: exporter-minimal
+exporter-minimal: doc
+	go build -o bin/zot-exporter -tags minimal -v -trimpath ./cmd/exporter
 
 .PHONY: test
 test:

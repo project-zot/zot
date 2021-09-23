@@ -38,6 +38,8 @@ https://anuvu.github.io/zot/
 * Swagger based documentation
 * Single binary for _all_ the above features
 * Released under Apache 2.0 License
+* Metric [instrumentation](#instrumentation) with Prometheus
+  * Using a node exporter in case of dist-spec-only zot
 * ```go get -u github.com/anuvu/zot/cmd/zot```
 
 
@@ -251,6 +253,21 @@ skopeo copy --format=oci docker://<another-server:port>/repo:tag docker://<zot-s
 runtime interface.
 
 Works with "docker://" transport which is the default.
+
+# Instrumentation
+
+Can be used for both dist-spec-only zot & the zot with all extensions enabled
+
+## Node Exporter
+The dist-spec-only zot exposes internal metrics into a Prometheus format through a node exporter.
+The configuration of node exporter contains connection details for the zot server it is intend to scrape metrics from.
+
+```
+bin/zot-exporter config _config-file_
+```
+
+## Enable Metrics
+In the zot with all extensions case see [configuration example](./examples/config-metrics.json) for enabling metrics
 
 # Caveats
 
