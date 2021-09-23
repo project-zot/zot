@@ -87,3 +87,25 @@ func (h goroutineHook) Run(e *zerolog.Event, level zerolog.Level, msg string) {
 		e.Int("goroutine", goroutineID())
 	}
 }
+
+// goroutineID adds goroutine-id to logs to help debug concurrency issues.
+func goroutineID() int {
+	var buf [64]byte
+	n := runtime.Stack(buf[:], false)
+	idField := strings.Fields(strings.TrimPrefix(string(buf[:n]), "goroutine "))[0]
+
+	id, err := strconv.Atoi(idField)
+	if err != nil {
+		return -1
+	}
+
+	return id
+}
+
+type goroutineHook struct{}
+
+func (h goroutineHook) Run(e *zerolog.Event, level zerolog.Level, msg string) {
+	if level != zerolog.NoLevel {
+		e.Int("goroutine", goroutineID())
+	}
+}
