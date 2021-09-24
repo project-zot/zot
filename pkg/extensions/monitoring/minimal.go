@@ -16,16 +16,16 @@ import (
 const (
 	metricsScrapeTimeout = 5 * time.Minute
 	// Counters
-	HttpConnRequests = "zot.http.requests"
-	RepoDownloads    = "zot.repo.downloads"
-	RepoUploads      = "zot.repo.uploads"
+	httpConnRequests = "zot.http.requests"
+	repoDownloads    = "zot.repo.downloads"
+	repoUploads      = "zot.repo.uploads"
 	//Gauge
-	RepoStorageBytes = "zot.repo.storage.bytes"
-	ZotInfo          = "zot.info"
+	repoStorageBytes = "zot.repo.storage.bytes"
+	zotInfo          = "zot.info"
 	//Summary
-	HttpRepoLatencySeconds = "zot.repo.latency.seconds"
+	httpRepoLatencySeconds = "zot.repo.latency.seconds"
 	//Histogram
-	HttpMethodLatencySeconds = "zot.method.latency.seconds"
+	httpMethodLatencySeconds = "zot.method.latency.seconds"
 )
 
 type MetricsInfo struct {
@@ -67,23 +67,23 @@ type SampledValue struct {
 func init() {
 	// contains a map with key=CounterName and value=CounterLabels
 	zotCounterList = map[string][]string{
-		HttpConnRequests: []string{"method", "code"},
-		RepoDownloads:    []string{"repo"},
-		RepoUploads:      []string{"repo"},
+		httpConnRequests: []string{"method", "code"},
+		repoDownloads:    []string{"repo"},
+		repoUploads:      []string{"repo"},
 	}
 	// contains a map with key=CounterName and value=CounterLabels
 	zotGaugeList = map[string][]string{
-		RepoStorageBytes: []string{"repo"},
-		ZotInfo:          []string{"commit", "binaryType", "goVersion", "version"},
+		repoStorageBytes: []string{"repo"},
+		zotInfo:          []string{"commit", "binaryType", "goVersion", "version"},
 	}
 
 	// contains a map with key=CounterName and value=CounterLabels
 	zotSummaryList = map[string][]string{
-		HttpRepoLatencySeconds: []string{"repo"},
+		httpRepoLatencySeconds: []string{"repo"},
 	}
 
 	zotHistogramList = map[string][]string{
-		HttpMethodLatencySeconds: []string{"method"},
+		httpMethodLatencySeconds: []string{"method"},
 	}
 
 	inMemoryMetrics = MetricsInfo{
@@ -305,9 +305,9 @@ func sanityChecks(name string, knownLabels []string, found bool, labelNames []st
 	return nil
 }
 
-func IncHttpConnRequests(lvs ...string) {
+func IncHTTPConnRequests(lvs ...string) {
 	if metricsEnabled {
-		go CounterInc(HttpConnRequests, []string{"method", "code"}, lvs)
+		go CounterInc(httpConnRequests, []string{"method", "code"}, lvs)
 		// Check if we didn't receive a metrics scrape in a while and if so, disable metrics (possible node exporter down/crashed)
 		latency := time.Now().Sub(lastMetricsCheck)
 		if latency > metricsScrapeTimeout {
@@ -316,33 +316,33 @@ func IncHttpConnRequests(lvs ...string) {
 	}
 }
 
-func ObserveHttpRepoLatency(path string, latency time.Duration) {
+func ObserveHTTPRepoLatency(path string, latency time.Duration) {
 	if metricsEnabled {
 		re := regexp.MustCompile("\\/v2\\/(.*?)\\/(blobs|tags|manifests)\\/(.*)$")
 		match := re.FindStringSubmatch(path)
 		if len(match) > 1 {
-			go SummaryObserve(HttpRepoLatencySeconds, latency.Seconds(), []string{"repo"}, []string{match[1]})
+			go SummaryObserve(httpRepoLatencySeconds, latency.Seconds(), []string{"repo"}, []string{match[1]})
 		} else {
-			go SummaryObserve(HttpRepoLatencySeconds, latency.Seconds(), []string{"repo"}, []string{"N/A"})
+			go SummaryObserve(httpRepoLatencySeconds, latency.Seconds(), []string{"repo"}, []string{"N/A"})
 		}
 	}
 }
 
-func ObserveHttpMethodLatency(method string, latency time.Duration) {
+func ObserveHTTPMethodLatency(method string, latency time.Duration) {
 	if metricsEnabled {
-		go HistogramObserve(HttpMethodLatencySeconds, latency.Seconds(), []string{"method"}, []string{method})
+		go HistogramObserve(httpMethodLatencySeconds, latency.Seconds(), []string{"method"}, []string{method})
 	}
 }
 
 func IncDownloadCounter(repo string) {
 	if metricsEnabled {
-		go CounterInc(RepoDownloads, []string{"repo"}, []string{repo})
+		go CounterInc(repoDownloads, []string{"repo"}, []string{repo})
 	}
 }
 
 func IncUploadCounter(repo string) {
 	if metricsEnabled {
-		go CounterInc(RepoUploads, []string{"repo"}, []string{repo})
+		go CounterInc(repoUploads, []string{"repo"}, []string{repo})
 	}
 }
 
@@ -352,14 +352,14 @@ func SetStorageUsage(repo string, rootDir string) {
 		repoSize, err := getDirSize(dir)
 
 		if err == nil {
-			go GaugeSet(RepoStorageBytes, float64(repoSize), []string{"repo"}, []string{repo})
+			go GaugeSet(repoStorageBytes, float64(repoSize), []string{"repo"}, []string{repo})
 		}
 	}
 }
 
 func SetZotInfo(lvs ...string) {
 	//  This metric is set once at zot startup (do not condition upon metricsEnabled!)
-	go GaugeSet(ZotInfo, 0, []string{"commit", "binaryType", "goVersion", "version"}, lvs)
+	go GaugeSet(zotInfo, 0, []string{"commit", "binaryType", "goVersion", "version"}, lvs)
 }
 
 // Used by the zot exporter

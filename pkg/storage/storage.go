@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
-	"fmt"	
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/anuvu/zot/pkg/extensions/monitoring"
 	"github.com/anuvu/zot/errors"
+	"github.com/anuvu/zot/pkg/extensions/monitoring"
 	zlog "github.com/anuvu/zot/pkg/log"
 	apexlog "github.com/apex/log"
 	guuid "github.com/gofrs/uuid"

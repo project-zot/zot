@@ -11,11 +11,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-var metricsEnabled bool
-var metricsNamespace = "zot"
+const metricsNamespace = "zot"
+
+var metricsEnabled bool // nolint: gochecknoglobals
 
 var (
-	HttpConnRequests = promauto.NewCounterVec(
+	httpConnRequests = promauto.NewCounterVec( // nolint: gochecknoglobals
 		prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Name:      "zot_http_requests_total",
@@ -23,7 +24,7 @@ var (
 		},
 		[]string{"method", "code"},
 	)
-	HttpRepoLatency = promauto.NewSummaryVec(
+	httpRepoLatency = promauto.NewSummaryVec( // nolint: gochecknoglobals
 		prometheus.SummaryOpts{
 			Namespace: metricsNamespace,
 			Name:      "http_repo_latency_seconds",
@@ -31,7 +32,7 @@ var (
 		},
 		[]string{"repo"},
 	)
-	HttpMethodLatency = promauto.NewHistogramVec(
+	httpMethodLatency = promauto.NewHistogramVec( // nolint: gochecknoglobals
 		prometheus.HistogramOpts{
 			Namespace: metricsNamespace,
 			Name:      "http_method_latency_seconds",
@@ -40,7 +41,7 @@ var (
 		},
 		[]string{"method"},
 	)
-	StorageUsage = promauto.NewGaugeVec(
+	repoStorageBytes = promauto.NewGaugeVec( // nolint: gochecknoglobals
 		prometheus.GaugeOpts{
 			Namespace: metricsNamespace,
 			Name:      "zot_repo_storage_bytes",
@@ -48,7 +49,7 @@ var (
 		},
 		[]string{"repo"},
 	)
-	UploadCounter = promauto.NewCounterVec(
+	uploadCounter = promauto.NewCounterVec( // nolint: gochecknoglobals
 		prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Name:      "zot_repo_uploads_total",
@@ -56,7 +57,7 @@ var (
 		},
 		[]string{"repo"},
 	)
-	DownloadCounter = promauto.NewCounterVec(
+	downloadCounter = promauto.NewCounterVec( // nolint: gochecknoglobals
 		prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Name:      "zot_repo_downloads_total",
@@ -64,7 +65,7 @@ var (
 		},
 		[]string{"repo"},
 	)
-	ZotInfo = promauto.NewGaugeVec(
+	zotInfo = promauto.NewGaugeVec( // nolint: gochecknoglobals
 		prometheus.GaugeOpts{
 			Namespace: metricsNamespace,
 			Name:      "info",
@@ -74,33 +75,34 @@ var (
 	)
 )
 
-func IncHttpConnRequests(lvalues ...string) {
+func IncHTTPConnRequests(lvalues ...string) {
 	if metricsEnabled {
-		HttpConnRequests.WithLabelValues(lvalues...).Inc()
+		httpConnRequests.WithLabelValues(lvalues...).Inc()
 	}
 }
 
-func ObserveHttpRepoLatency(path string, latency time.Duration) {
+func ObserveHTTPRepoLatency(path string, latency time.Duration) {
 	if metricsEnabled {
-		re := regexp.MustCompile("\\/v2\\/(.*?)\\/(blobs|tags|manifests)\\/(.*)$")
+		re := regexp.MustCompile(`\/v2\/(.*?)\/(blobs|tags|manifests)\/(.*)$`)
 		match := re.FindStringSubmatch(path)
+
 		if len(match) > 1 {
-			HttpRepoLatency.WithLabelValues(match[1]).Observe(latency.Seconds())
+			httpRepoLatency.WithLabelValues(match[1]).Observe(latency.Seconds())
 		} else {
-			HttpRepoLatency.WithLabelValues("N/A").Observe(latency.Seconds())
+			httpRepoLatency.WithLabelValues("N/A").Observe(latency.Seconds())
 		}
 	}
 }
 
-func ObserveHttpMethodLatency(method string, latency time.Duration) {
+func ObserveHTTPMethodLatency(method string, latency time.Duration) {
 	if metricsEnabled {
-		HttpMethodLatency.WithLabelValues(method).Observe(latency.Seconds())
+		httpMethodLatency.WithLabelValues(method).Observe(latency.Seconds())
 	}
 }
 
 func IncDownloadCounter(repo string) {
 	if metricsEnabled {
-		DownloadCounter.WithLabelValues(repo).Inc()
+		downloadCounter.WithLabelValues(repo).Inc()
 	}
 }
 
@@ -110,14 +112,14 @@ func SetStorageUsage(repo string, rootDir string) {
 		repoSize, err := getDirSize(dir)
 
 		if err == nil {
-			StorageUsage.WithLabelValues(repo).Set(float64(repoSize))
+			repoStorageBytes.WithLabelValues(repo).Set(float64(repoSize))
 		}
 	}
 }
 
 func IncUploadCounter(repo string) {
 	if metricsEnabled {
-		UploadCounter.WithLabelValues(repo).Inc()
+		uploadCounter.WithLabelValues(repo).Inc()
 	}
 }
 
@@ -131,5 +133,5 @@ func EnableMetrics() {
 
 func SetZotInfo(lvalues ...string) {
 	//  This metric is set once at zot startup (do not condition upon metricsEnabled!)
-	ZotInfo.WithLabelValues(lvalues...).Set(0)
+	zotInfo.WithLabelValues(lvalues...).Set(0)
 }

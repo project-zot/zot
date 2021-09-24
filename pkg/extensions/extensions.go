@@ -56,10 +56,11 @@ func EnableExtensions(extension *ExtensionConfig, log log.Logger, rootDir string
 
 	if extension.Metrics != nil && extension.Metrics.Enable && extension.Metrics.Prometheus != nil {
 		monitoring.EnableMetrics()
+
 		if extension.Metrics.Prometheus.Path == "" {
 			extension.Metrics.Prometheus.Path = "/metrics"
 
-			log.Warn().Msg("Prometheus instrumentation Path not set, changing to '/metrics'.") // nolint: lll
+			log.Warn().Msg("Prometheus instrumentation Path not set, changing to '/metrics'.")
 		}
 	} else {
 		log.Info().Msg("Metrics config not provided, skipping Metrics config update")
