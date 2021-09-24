@@ -32,6 +32,6 @@ type Config struct {
 func DefaultConfig() *Config {
 	return &Config{
 		ZotServer:   ServerConfig{Protocol: "http", Host: "localhost", Port: "8080"},
-		ZotExporter: ExporterConfig{Port: "8000", Log: &LogConfig{Level: "debug"}, Metrics: &MetricsConfig{Path: "/metrics"}},
+		ZotExporter: ExporterConfig{Port: "8081", Log: &LogConfig{Level: "debug"}, Metrics: &MetricsConfig{Path: "/metrics"}},
 	}
 }
