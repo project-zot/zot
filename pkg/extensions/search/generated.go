@@ -77,11 +77,6 @@ type ComplexityRoot struct {
 		Tags func(childComplexity int) int
 	}
 
-	ImgResultForDigest struct {
-		Name func(childComplexity int) int
-		Tags func(childComplexity int) int
-	}
-
 	ImgResultForFixedCve struct {
 		Tags func(childComplexity int) int
 	}
@@ -99,11 +94,11 @@ type ComplexityRoot struct {
 
 	Query struct {
 		CVEListForImage        func(childComplexity int, image string) int
-		ImageList              func(childComplexity int) int
+		ImageList              func(childComplexity int, imageName *string) int
 		ImageListForCve        func(childComplexity int, id string) int
-		ImageListForDigest     func(childComplexity int, id string) int
-		ImageListWithCVEFixed  func(childComplexity int, id string, image string) int
+		ImageListForDigest     func(childComplexity int, digest string) int
 		ImageListWithLatestTag func(childComplexity int) int
+		TagListForCve          func(childComplexity int, id string, image string, getFixed *bool) int
 	}
 
 	TagInfo struct {
@@ -115,11 +110,11 @@ type ComplexityRoot struct {
 
 type QueryResolver interface {
 	CVEListForImage(ctx context.Context, image string) (*CVEResultForImage, error)
-	ImageListForCve(ctx context.Context, id string) ([]*ImgResultForCve, error)
-	ImageListWithCVEFixed(ctx context.Context, id string, image string) (*ImgResultForFixedCve, error)
-	ImageListForDigest(ctx context.Context, id string) ([]*ImgResultForDigest, error)
+	ImageListForCve(ctx context.Context, id string) ([]*ImageInfo, error)
+	TagListForCve(ctx context.Context, id string, image string, getFixed *bool) ([]*ImageInfo, error)
+	ImageListForDigest(ctx context.Context, digest string) ([]*ImageInfo, error)
 	ImageListWithLatestTag(ctx context.Context) ([]*ImageInfo, error)
-	ImageList(ctx context.Context) ([]*ImageInfo, error)
+	ImageList(ctx context.Context, imageName *string) ([]*ImageInfo, error)
 }
 
 type executableSchema struct {
@@ -284,20 +279,6 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.ImgResultForCve.Tags(childComplexity), true
 
-	case "ImgResultForDigest.Name":
-		if e.complexity.ImgResultForDigest.Name == nil {
-			break
-		}
-
-		return e.complexity.ImgResultForDigest.Name(childComplexity), true
-
-	case "ImgResultForDigest.Tags":
-		if e.complexity.ImgResultForDigest.Tags == nil {
-			break
-		}
-
-		return e.complexity.ImgResultForDigest.Tags(childComplexity), true
-
 	case "ImgResultForFixedCVE.Tags":
 		if e.complexity.ImgResultForFixedCve.Tags == nil {
 			break
@@ -357,7 +338,12 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 			break
 		}
 
-		return e.complexity.Query.ImageList(childComplexity), true
+		args, err := ec.field_Query_ImageList_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.ImageList(childComplexity, args["imageName"].(*string)), true
 
 	case "Query.ImageListForCVE":
 		if e.complexity.Query.ImageListForCve == nil {
@@ -381,19 +367,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 			return 0, false
 		}
 
-		return e.complexity.Query.ImageListForDigest(childComplexity, args["id"].(string)), true
-
-	case "Query.ImageListWithCVEFixed":
-		if e.complexity.Query.ImageListWithCVEFixed == nil {
-			break
-		}
-
-		args, err := ec.field_Query_ImageListWithCVEFixed_args(context.TODO(), rawArgs)
-		if err != nil {
-			return 0, false
-		}
-
-		return e.complexity.Query.ImageListWithCVEFixed(childComplexity, args["id"].(string), args["image"].(string)), true
+		return e.complexity.Query.ImageListForDigest(childComplexity, args["digest"].(string)), true
 
 	case "Query.ImageListWithLatestTag":
 		if e.complexity.Query.ImageListWithLatestTag == nil {
@@ -401,6 +375,18 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Query.ImageListWithLatestTag(childComplexity), true
+
+	case "Query.TagListForCve":
+		if e.complexity.Query.TagListForCve == nil {
+			break
+		}
+
+		args, err := ec.field_Query_TagListForCve_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.TagListForCve(childComplexity, args["id"].(string), args["image"].(string), args["getFixed"].(*bool)), true
 
 	case "TagInfo.Digest":
 		if e.complexity.TagInfo.Digest == nil {
@@ -476,71 +462,66 @@ var sources = []*ast.Source{
 	{Name: "schema.graphql", Input: `scalar Time
 
 type CVEResultForImage {
-     Tag: String 
-     CVEList: [CVE]
+    Tag: String
+    CVEList: [CVE]
 }
 
 type CVE {
-     Id: String 
-     Title: String
-     Description: String
-     Severity: String
-     PackageList: [PackageInfo]
+    Id: String
+    Title: String
+    Description: String
+    Severity: String
+    PackageList: [PackageInfo]
 }
 
 type PackageInfo {
-     Name: String 
-     InstalledVersion: String 
-     FixedVersion: String 
+    Name: String
+    InstalledVersion: String
+    FixedVersion: String
 }
 
 type ImgResultForCVE {
-     Name: String 
-     Tags: [String]
+    Name: String
+    Tags: [String]
 }
 
 type ImgResultForFixedCVE {
-     Tags: [TagInfo]
-}
-
-type ImgResultForDigest {
-     Name: String
-     Tags: [String]
+    Tags: [TagInfo]
 }
 
 type TagInfo {
-     Name: String
-     Digest: String
-     Timestamp: Time
+    Name: String
+    Digest: String
+    Timestamp: Time
 }
 
 type Layer {
-     Size: String,
-     Digest: String
+    Size: String,
+    Digest: String
 }
 
 type ImageInfo {
-     Name: String
-     Tag: String
-     ConfigDigest: String
-     Digest: String
-     Latest: String
-     Layers: [Layer]
-     LastUpdated: Time
-     Description: String
-     Licenses: String
-     Vendor: String
-     Size: String
-     Labels: String
+    Name: String
+    Tag: String
+    ConfigDigest: String
+    Digest: String
+    Latest: String
+    Layers: [Layer]
+    LastUpdated: Time
+    Description: String
+    Licenses: String
+    Vendor: String
+    Size: String
+    Labels: String
 }
 
 type Query {
-  CVEListForImage(image: String!) :CVEResultForImage 
-  ImageListForCVE(id: String!) :[ImgResultForCVE]
-  ImageListWithCVEFixed(id: String!, image: String!) :ImgResultForFixedCVE
-  ImageListForDigest(id: String!) :[ImgResultForDigest]
-  ImageListWithLatestTag:[ImageInfo]
-  ImageList:[ImageInfo]
+    CVEListForImage(image: String!) :CVEResultForImage
+    ImageListForCVE(id: String!) :[ImageInfo]
+    TagListForCve(id: String!, image: String!, getFixed: Boolean) :[ImageInfo]
+    ImageListForDigest(digest: String!) :[ImageInfo]
+    ImageListWithLatestTag:[ImageInfo]
+    ImageList(imageName: String) :[ImageInfo]
 }
 `, BuiltIn: false},
 }
@@ -629,18 +610,33 @@ func (ec *executionContext) field_Query_ImageListForDigest_args(ctx context.Cont
 	var err error
 	args := map[string]interface{}{}
 	var arg0 string
-	if tmp, ok := rawArgs["id"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("id"))
+	if tmp, ok := rawArgs["digest"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("digest"))
 		arg0, err = ec.unmarshalNString2string(ctx, tmp)
 		if err != nil {
 			return nil, err
 		}
 	}
-	args["id"] = arg0
+	args["digest"] = arg0
 	return args, nil
 }
 
-func (ec *executionContext) field_Query_ImageListWithCVEFixed_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+func (ec *executionContext) field_Query_ImageList_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 *string
+	if tmp, ok := rawArgs["imageName"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("imageName"))
+		arg0, err = ec.unmarshalOString2ᚖstring(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["imageName"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_TagListForCve_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
 	var arg0 string
@@ -661,6 +657,15 @@ func (ec *executionContext) field_Query_ImageListWithCVEFixed_args(ctx context.C
 		}
 	}
 	args["image"] = arg1
+	var arg2 *bool
+	if tmp, ok := rawArgs["getFixed"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("getFixed"))
+		arg2, err = ec.unmarshalOBoolean2ᚖbool(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["getFixed"] = arg2
 	return args, nil
 }
 
@@ -1368,64 +1373,6 @@ func (ec *executionContext) _ImgResultForCVE_Tags(ctx context.Context, field gra
 	return ec.marshalOString2ᚕᚖstring(ctx, field.Selections, res)
 }
 
-func (ec *executionContext) _ImgResultForDigest_Name(ctx context.Context, field graphql.CollectedField, obj *ImgResultForDigest) (ret graphql.Marshaler) {
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	fc := &graphql.FieldContext{
-		Object:     "ImgResultForDigest",
-		Field:      field,
-		Args:       nil,
-		IsMethod:   false,
-		IsResolver: false,
-	}
-
-	ctx = graphql.WithFieldContext(ctx, fc)
-	resTmp := ec._fieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.Name, nil
-	})
-
-	if resTmp == nil {
-		return graphql.Null
-	}
-	res := resTmp.(*string)
-	fc.Result = res
-	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) _ImgResultForDigest_Tags(ctx context.Context, field graphql.CollectedField, obj *ImgResultForDigest) (ret graphql.Marshaler) {
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	fc := &graphql.FieldContext{
-		Object:     "ImgResultForDigest",
-		Field:      field,
-		Args:       nil,
-		IsMethod:   false,
-		IsResolver: false,
-	}
-
-	ctx = graphql.WithFieldContext(ctx, fc)
-	resTmp := ec._fieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.Tags, nil
-	})
-
-	if resTmp == nil {
-		return graphql.Null
-	}
-	res := resTmp.([]*string)
-	fc.Result = res
-	return ec.marshalOString2ᚕᚖstring(ctx, field.Selections, res)
-}
-
 func (ec *executionContext) _ImgResultForFixedCVE_Tags(ctx context.Context, field graphql.CollectedField, obj *ImgResultForFixedCve) (ret graphql.Marshaler) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -1667,12 +1614,12 @@ func (ec *executionContext) _Query_ImageListForCVE(ctx context.Context, field gr
 	if resTmp == nil {
 		return graphql.Null
 	}
-	res := resTmp.([]*ImgResultForCve)
+	res := resTmp.([]*ImageInfo)
 	fc.Result = res
-	return ec.marshalOImgResultForCVE2ᚕᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐImgResultForCve(ctx, field.Selections, res)
+	return ec.marshalOImageInfo2ᚕᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐImageInfo(ctx, field.Selections, res)
 }
 
-func (ec *executionContext) _Query_ImageListWithCVEFixed(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+func (ec *executionContext) _Query_TagListForCve(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	defer func() {
 		if r := recover(); r != nil {
 			ec.Error(ctx, ec.Recover(ctx, r))
@@ -1689,7 +1636,7 @@ func (ec *executionContext) _Query_ImageListWithCVEFixed(ctx context.Context, fi
 
 	ctx = graphql.WithFieldContext(ctx, fc)
 	rawArgs := field.ArgumentMap(ec.Variables)
-	args, err := ec.field_Query_ImageListWithCVEFixed_args(ctx, rawArgs)
+	args, err := ec.field_Query_TagListForCve_args(ctx, rawArgs)
 	if err != nil {
 		ec.Error(ctx, err)
 		return graphql.Null
@@ -1697,15 +1644,15 @@ func (ec *executionContext) _Query_ImageListWithCVEFixed(ctx context.Context, fi
 	fc.Args = args
 	resTmp := ec._fieldMiddleware(ctx, nil, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().ImageListWithCVEFixed(rctx, args["id"].(string), args["image"].(string))
+		return ec.resolvers.Query().TagListForCve(rctx, args["id"].(string), args["image"].(string), args["getFixed"].(*bool))
 	})
 
 	if resTmp == nil {
 		return graphql.Null
 	}
-	res := resTmp.(*ImgResultForFixedCve)
+	res := resTmp.([]*ImageInfo)
 	fc.Result = res
-	return ec.marshalOImgResultForFixedCVE2ᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐImgResultForFixedCve(ctx, field.Selections, res)
+	return ec.marshalOImageInfo2ᚕᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐImageInfo(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _Query_ImageListForDigest(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
@@ -1733,15 +1680,15 @@ func (ec *executionContext) _Query_ImageListForDigest(ctx context.Context, field
 	fc.Args = args
 	resTmp := ec._fieldMiddleware(ctx, nil, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().ImageListForDigest(rctx, args["id"].(string))
+		return ec.resolvers.Query().ImageListForDigest(rctx, args["digest"].(string))
 	})
 
 	if resTmp == nil {
 		return graphql.Null
 	}
-	res := resTmp.([]*ImgResultForDigest)
+	res := resTmp.([]*ImageInfo)
 	fc.Result = res
-	return ec.marshalOImgResultForDigest2ᚕᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐImgResultForDigest(ctx, field.Selections, res)
+	return ec.marshalOImageInfo2ᚕᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐImageInfo(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _Query_ImageListWithLatestTag(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
@@ -1789,9 +1736,16 @@ func (ec *executionContext) _Query_ImageList(ctx context.Context, field graphql.
 	}
 
 	ctx = graphql.WithFieldContext(ctx, fc)
+	rawArgs := field.ArgumentMap(ec.Variables)
+	args, err := ec.field_Query_ImageList_args(ctx, rawArgs)
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	fc.Args = args
 	resTmp := ec._fieldMiddleware(ctx, nil, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().ImageList(rctx)
+		return ec.resolvers.Query().ImageList(rctx, args["imageName"].(*string))
 	})
 
 	if resTmp == nil {
@@ -3083,32 +3037,6 @@ func (ec *executionContext) _ImgResultForCVE(ctx context.Context, sel ast.Select
 	return out
 }
 
-var imgResultForDigestImplementors = []string{"ImgResultForDigest"}
-
-func (ec *executionContext) _ImgResultForDigest(ctx context.Context, sel ast.SelectionSet, obj *ImgResultForDigest) graphql.Marshaler {
-	fields := graphql.CollectFields(ec.OperationContext, sel, imgResultForDigestImplementors)
-
-	out := graphql.NewFieldSet(fields)
-	var invalids uint32
-	for i, field := range fields {
-		switch field.Name {
-		case "__typename":
-			out.Values[i] = graphql.MarshalString("ImgResultForDigest")
-		case "Name":
-			out.Values[i] = ec._ImgResultForDigest_Name(ctx, field, obj)
-		case "Tags":
-			out.Values[i] = ec._ImgResultForDigest_Tags(ctx, field, obj)
-		default:
-			panic("unknown field " + strconv.Quote(field.Name))
-		}
-	}
-	out.Dispatch()
-	if invalids > 0 {
-		return graphql.Null
-	}
-	return out
-}
-
 var imgResultForFixedCVEImplementors = []string{"ImgResultForFixedCVE"}
 
 func (ec *executionContext) _ImgResultForFixedCVE(ctx context.Context, sel ast.SelectionSet, obj *ImgResultForFixedCve) graphql.Marshaler {
@@ -3224,7 +3152,7 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 				res = ec._Query_ImageListForCVE(ctx, field)
 				return res
 			})
-		case "ImageListWithCVEFixed":
+		case "TagListForCve":
 			field := field
 			out.Concurrently(i, func() (res graphql.Marshaler) {
 				defer func() {
@@ -3232,7 +3160,7 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 						ec.Error(ctx, ec.Recover(ctx, r))
 					}
 				}()
-				res = ec._Query_ImageListWithCVEFixed(ctx, field)
+				res = ec._Query_TagListForCve(ctx, field)
 				return res
 			})
 		case "ImageListForDigest":
@@ -3938,107 +3866,6 @@ func (ec *executionContext) marshalOImageInfo2ᚖgithubᚗcomᚋanuvuᚋzotᚋpk
 		return graphql.Null
 	}
 	return ec._ImageInfo(ctx, sel, v)
-}
-
-func (ec *executionContext) marshalOImgResultForCVE2ᚕᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐImgResultForCve(ctx context.Context, sel ast.SelectionSet, v []*ImgResultForCve) graphql.Marshaler {
-	if v == nil {
-		return graphql.Null
-	}
-	ret := make(graphql.Array, len(v))
-	var wg sync.WaitGroup
-	isLen1 := len(v) == 1
-	if !isLen1 {
-		wg.Add(len(v))
-	}
-	for i := range v {
-		i := i
-		fc := &graphql.FieldContext{
-			Index:  &i,
-			Result: &v[i],
-		}
-		ctx := graphql.WithFieldContext(ctx, fc)
-		f := func(i int) {
-			defer func() {
-				if r := recover(); r != nil {
-					ec.Error(ctx, ec.Recover(ctx, r))
-					ret = nil
-				}
-			}()
-			if !isLen1 {
-				defer wg.Done()
-			}
-			ret[i] = ec.marshalOImgResultForCVE2ᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐImgResultForCve(ctx, sel, v[i])
-		}
-		if isLen1 {
-			f(i)
-		} else {
-			go f(i)
-		}
-
-	}
-	wg.Wait()
-	return ret
-}
-
-func (ec *executionContext) marshalOImgResultForCVE2ᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐImgResultForCve(ctx context.Context, sel ast.SelectionSet, v *ImgResultForCve) graphql.Marshaler {
-	if v == nil {
-		return graphql.Null
-	}
-	return ec._ImgResultForCVE(ctx, sel, v)
-}
-
-func (ec *executionContext) marshalOImgResultForDigest2ᚕᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐImgResultForDigest(ctx context.Context, sel ast.SelectionSet, v []*ImgResultForDigest) graphql.Marshaler {
-	if v == nil {
-		return graphql.Null
-	}
-	ret := make(graphql.Array, len(v))
-	var wg sync.WaitGroup
-	isLen1 := len(v) == 1
-	if !isLen1 {
-		wg.Add(len(v))
-	}
-	for i := range v {
-		i := i
-		fc := &graphql.FieldContext{
-			Index:  &i,
-			Result: &v[i],
-		}
-		ctx := graphql.WithFieldContext(ctx, fc)
-		f := func(i int) {
-			defer func() {
-				if r := recover(); r != nil {
-					ec.Error(ctx, ec.Recover(ctx, r))
-					ret = nil
-				}
-			}()
-			if !isLen1 {
-				defer wg.Done()
-			}
-			ret[i] = ec.marshalOImgResultForDigest2ᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐImgResultForDigest(ctx, sel, v[i])
-		}
-		if isLen1 {
-			f(i)
-		} else {
-			go f(i)
-		}
-
-	}
-	wg.Wait()
-	return ret
-}
-
-func (ec *executionContext) marshalOImgResultForDigest2ᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐImgResultForDigest(ctx context.Context, sel ast.SelectionSet, v *ImgResultForDigest) graphql.Marshaler {
-	if v == nil {
-		return graphql.Null
-	}
-	return ec._ImgResultForDigest(ctx, sel, v)
-}
-
-func (ec *executionContext) marshalOImgResultForFixedCVE2ᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐImgResultForFixedCve(ctx context.Context, sel ast.SelectionSet, v *ImgResultForFixedCve) graphql.Marshaler {
-	if v == nil {
-		return graphql.Null
-	}
-	return ec._ImgResultForFixedCVE(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalOLayer2ᚕᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐLayer(ctx context.Context, sel ast.SelectionSet, v []*Layer) graphql.Marshaler {

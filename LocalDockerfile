@@ -1,0 +1,31 @@
+FROM ubuntu:20.04
+
+WORKDIR zot
+
+RUN apt-get -y update
+RUN apt -y upgrade
+RUN apt-get -y install wget
+RUN apt-get -y install make
+RUN apt-get -y install build-essential
+RUN apt-get -y install git
+RUN apt-get -y install curl
+
+RUN wget https://golang.org/dl/go1.16.8.linux-amd64.tar.gz
+RUN tar -C /usr/bin -xzf go1.16.8.linux-amd64.tar.gz
+
+ENV PATH /usr/bin/go/bin:$PATH
+
+RUN DEBIAN_FRONTEND=noninteractive apt install -y libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev pkg-config
+RUN echo "deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_20.04/ /" | tee /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list
+RUN curl -L https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_20.04/Release.key | apt-key add -
+RUN apt-get -y update
+RUN apt -y upgrade
+RUN apt-get -y install skopeo
+
+COPY . .
+
+RUN go mod tidy
+
+EXPOSE 4566
+
+ENTRYPOINT ["make", "test"]

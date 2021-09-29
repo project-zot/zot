@@ -2,6 +2,8 @@ package cveinfo
 
 import (
 	"fmt"
+	"github.com/anuvu/zot/errors"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"path"
 	"strings"
 
@@ -118,49 +120,69 @@ func (cveinfo CveInfo) GetTrivyConfig(image string) *config.Config {
 	return trivyConfig
 }
 
-func (cveinfo CveInfo) GetImageListForCVE(repo string, id string, imgStore *storage.ImageStore,
-	trivyConfig *config.Config) ([]*string, error) {
-	tags := make([]*string, 0)
+func (cveinfo CveInfo) GetImageListForCVE(storeController storage.StoreController, repo string, id string,
+	trivyConfig *config.Config) ([]ImageInfoByCVE, error) {
+	imageList := make([]ImageInfoByCVE, 0)
 
-	tagList, err := imgStore.GetImageTags(repo)
+	imagePath := common.GetImageRepoPath(storeController, repo)
+	if !cveinfo.LayoutUtils.DirExists(storeController, imagePath) {
+		return nil, errors.ErrRepoNotFound
+	}
+
+	manifests, err := cveinfo.LayoutUtils.GetImageManifests(storeController, repo)
 	if err != nil {
 		cveinfo.Log.Error().Err(err).Msg("unable to get list of image tag")
 
-		return tags, err
+		return imageList, err
 	}
 
-	rootDir := imgStore.RootDir()
 
-	for _, tag := range tagList {
-		trivyConfig.TrivyConfig.Input = fmt.Sprintf("%s:%s", path.Join(rootDir, repo), tag)
+	for _, manifest := range manifests {
 
-		isValidImage, _ := cveinfo.LayoutUtils.IsValidImageFormat(trivyConfig.TrivyConfig.Input)
-		if !isValidImage {
-			cveinfo.Log.Debug().Str("image", repo+":"+tag).Msg("image media type not supported for scanning")
+		tag, ok := manifest.Annotations[ispec.AnnotationRefName]
 
-			continue
-		}
+		if ok {
+			trivyConfig.TrivyConfig.Input = fmt.Sprintf("%s:%s", imagePath, tag)
 
-		cveinfo.Log.Info().Str("image", repo+":"+tag).Msg("scanning image")
+			isValidImage, _ := cveinfo.LayoutUtils.IsValidImageFormat(cveinfo.StoreController, fmt.Sprintf("%s:%s", repo, tag))
+			if !isValidImage {
+				cveinfo.Log.Debug().Str("image", repo+":"+tag).Msg("image media type not supported for scanning")
 
-		results, err := ScanImage(trivyConfig)
-		if err != nil {
-			cveinfo.Log.Error().Err(err).Str("image", repo+":"+tag).Msg("unable to scan image")
+				continue
+			}
 
-			continue
-		}
+			cveinfo.Log.Info().Str("image", repo+":"+tag).Msg("scanning image")
 
-		for _, result := range results {
-			for _, vulnerability := range result.Vulnerabilities {
-				if vulnerability.VulnerabilityID == id {
-					copyImgTag := tag
-					tags = append(tags, &copyImgTag)
+			results, err := ScanImage(trivyConfig)
+			if err != nil {
+				cveinfo.Log.Error().Err(err).Str("image", repo+":"+tag).Msg("unable to scan image")
 
-					break
+				continue
+			}
+
+			for _, result := range results {
+				for _, vulnerability := range result.Vulnerabilities {
+					if vulnerability.VulnerabilityID == id {
+						tagDigest := manifest.Digest
+						imageBlobManifest, err := cveinfo.LayoutUtils.GetImageBlobManifest(storeController, repo, tagDigest)
+
+						if err != nil {
+							cveinfo.Log.Error().Err(err).Msg("unable to read image blob manifest")
+							return []ImageInfoByCVE{}, err
+						}
+
+						imageList = append(imageList, ImageInfoByCVE{
+							TagName:       tag,
+							TagDigest:     tagDigest,
+							ImageManifest: imageBlobManifest,
+						})
+
+						break
+					}
 				}
 			}
 		}
 	}
 
-	return tags, nil
+	return imageList, nil
 }

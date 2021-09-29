@@ -77,10 +77,11 @@ type LogConfig struct {
 }
 
 type GlobalStorageConfig struct {
-	RootDirectory string
-	Dedupe        bool
-	GC            bool
-	SubPaths      map[string]StorageConfig
+	RootDirectory     string
+	Dedupe            bool
+	GC                bool
+	ObjectStoreParams map[string]interface{} `mapstructure:",omitempty"`
+	SubPaths          map[string]StorageConfig
 }
 
 type Config struct {

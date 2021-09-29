@@ -9,6 +9,7 @@ require (
 	github.com/aquasecurity/trivy v0.0.0-00010101000000-000000000000
 	github.com/briandowns/spinner v1.16.0
 	github.com/chartmuseum/auth v0.4.5
+	github.com/docker/distribution v2.7.1+incompatible
 	github.com/dustin/go-humanize v1.0.0
 	github.com/fsnotify/fsnotify v1.5.1
 	github.com/getlantern/deepcopy v0.0.0-20160317154340-7f45deb8130a
@@ -41,8 +42,9 @@ require (
 	gopkg.in/yaml.v2 v2.4.0
 )
 
-replace github.com/aquasecurity/trivy => github.com/anuvu/trivy v0.9.2-0.20200731014147-c5f97b59c172
+replace github.com/aquasecurity/trivy => ../../anuvu/trivy
 
-replace github.com/aquasecurity/fanal => github.com/anuvu/fanal v0.0.0-20200731014233-a1725a9d379f
+replace github.com/aquasecurity/fanal => ../../anuvu/fanal
+
 
 replace github.com/aquasecurity/trivy-db => github.com/anuvu/trivy-db v0.0.0-20200623200932-d185809a68f7

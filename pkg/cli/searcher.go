@@ -18,7 +18,6 @@ import (
 func getImageSearchers() []searcher {
 	searchers := []searcher{
 		new(allImagesSearcher),
-		new(allImagesSearcherGQL),
 		new(imageByNameSearcher),
 		new(imagesByDigestSearcher),
 	}
@@ -73,60 +72,9 @@ func (search allImagesSearcher) search(config searchConfig) (bool, error) {
 		return false, nil
 	}
 
-	username, password := getUsernameAndPassword(*config.user)
-	imageErr := make(chan stringResult)
-	ctx, cancel := context.WithCancel(context.Background())
+	err := getImages(config)
 
-	var wg sync.WaitGroup
-
-	wg.Add(1)
-
-	go config.searchService.getAllImages(ctx, config, username, password, imageErr, &wg)
-	wg.Add(1)
-
-	var errCh chan error = make(chan error, 1)
-
-	go collectResults(config, &wg, imageErr, cancel, printImageTableHeader, errCh)
-	wg.Wait()
-	select {
-	case err := <-errCh:
-		return true, err
-	default:
-		return true, nil
-	}
-}
-
-type allImagesSearcherGQL struct{}
-
-func (search allImagesSearcherGQL) search(config searchConfig) (bool, error) {
-	if !canSearch(config.params, newSet("gql")) {
-		return false, nil
-	}
-
-	var builder strings.Builder
-
-	username, password := getUsernameAndPassword(*config.user)
-	ctx, cancel := context.WithCancel(context.Background())
-
-	imageList, err := config.searchService.getAllImagesGQL(ctx, config, username, password)
-
-	if err != nil {
-		cancel()
-		return true, err
-	}
-
-	printImageTableHeader(&builder, *config.verbose)
-	fmt.Fprint(config.resultWriter, builder.String())
-
-	for i := range imageList.Data.ImageList {
-		img := imageList.Data.ImageList[i]
-		img.verbose = *config.verbose
-		out, _ := img.string(*config.outputFormat)
-		fmt.Fprint(config.resultWriter, out)
-
-	}
-
-	return true, nil
+	return true, err
 }
 
 type imageByNameSearcher struct{}
@@ -136,29 +84,43 @@ func (search imageByNameSearcher) search(config searchConfig) (bool, error) {
 		return false, nil
 	}
 
+	err := getImages(config)
+
+	return true, err
+}
+
+func getImages(config searchConfig) error {
+	var builder strings.Builder
+
 	username, password := getUsernameAndPassword(*config.user)
-	imageErr := make(chan stringResult)
 	ctx, cancel := context.WithCancel(context.Background())
 
-	var wg sync.WaitGroup
+	imageList, err := config.searchService.getImages(ctx, config, username, password, *config.params["imageName"])
 
-	wg.Add(1)
-
-	go config.searchService.getImageByName(ctx, config, username, password,
-		*config.params["imageName"], imageErr, &wg)
-	wg.Add(1)
-
-	var errCh chan error = make(chan error, 1)
-	go collectResults(config, &wg, imageErr, cancel, printImageTableHeader, errCh)
-
-	wg.Wait()
-
-	select {
-	case err := <-errCh:
-		return true, err
-	default:
-		return true, nil
+	if err != nil {
+		cancel()
+		return err
 	}
+
+	if len(imageList.Data.ImageList) > 0 && (*config.outputFormat == defaultOutoutFormat || *config.outputFormat == "") {
+		printImageTableHeader(&builder, *config.verbose)
+		fmt.Fprint(config.resultWriter, builder.String())
+	}
+
+	for i := range imageList.Data.ImageList {
+		img := imageList.Data.ImageList[i]
+		img.verbose = *config.verbose
+		out, err := img.string(*config.outputFormat)
+
+		if err != nil {
+			return err
+		}
+
+		fmt.Fprint(config.resultWriter, out)
+
+	}
+
+	return nil
 }
 
 type imagesByDigestSearcher struct{}
@@ -168,29 +130,37 @@ func (search imagesByDigestSearcher) search(config searchConfig) (bool, error) {
 		return false, nil
 	}
 
+	var builder strings.Builder
+
 	username, password := getUsernameAndPassword(*config.user)
-	imageErr := make(chan stringResult)
 	ctx, cancel := context.WithCancel(context.Background())
 
-	var wg sync.WaitGroup
+	imageList, err := config.searchService.getImagesByDigest(ctx, config, username, password, *config.params["digest"])
 
-	wg.Add(1)
-
-	go config.searchService.getImagesByDigest(ctx, config, username, password,
-		*config.params["digest"], imageErr, &wg)
-	wg.Add(1)
-
-	var errCh chan error = make(chan error, 1)
-	go collectResults(config, &wg, imageErr, cancel, printImageTableHeader, errCh)
-
-	wg.Wait()
-
-	select {
-	case err := <-errCh:
+	if err != nil {
+		cancel()
 		return true, err
-	default:
-		return true, nil
 	}
+
+	if len(imageList.Data.ImageList) > 0 && (*config.outputFormat == defaultOutoutFormat || *config.outputFormat == "") {
+		printImageTableHeader(&builder, *config.verbose)
+		fmt.Fprint(config.resultWriter, builder.String())
+	}
+
+	for i := range imageList.Data.ImageList {
+		img := imageList.Data.ImageList[i]
+		img.verbose = *config.verbose
+		out, err := img.string(*config.outputFormat)
+
+		if err != nil {
+			return true, err
+		}
+
+		fmt.Fprint(config.resultWriter, out)
+
+	}
+
+	return true, nil
 }
 
 type cveByImageSearcher struct{}
@@ -204,28 +174,33 @@ func (search cveByImageSearcher) search(config searchConfig) (bool, error) {
 		return true, errInvalidImageNameAndTag
 	}
 
+	var builder strings.Builder
+
 	username, password := getUsernameAndPassword(*config.user)
-	strErr := make(chan stringResult)
 	ctx, cancel := context.WithCancel(context.Background())
 
-	var wg sync.WaitGroup
+	cveList, err := config.searchService.getCveByImage(ctx, config, username, password, *config.params["imageName"])
 
-	wg.Add(1)
-
-	go config.searchService.getCveByImage(ctx, config, username, password, *config.params["imageName"], strErr, &wg)
-	wg.Add(1)
-
-	var errCh chan error = make(chan error, 1)
-	go collectResults(config, &wg, strErr, cancel, printCVETableHeader, errCh)
-
-	wg.Wait()
-
-	select {
-	case err := <-errCh:
+	if err != nil {
+		cancel()
 		return true, err
-	default:
-		return true, nil
 	}
+
+	if len(cveList.Data.CVEListForImage.CVEList) > 0 && (*config.outputFormat == defaultOutoutFormat || *config.outputFormat == "") {
+		printCVETableHeader(&builder, *config.verbose)
+		fmt.Fprint(config.resultWriter, builder.String())
+	}
+
+	out, err := cveList.string(*config.outputFormat)
+
+	if err != nil {
+		return true, err
+	}
+
+	fmt.Fprint(config.resultWriter, out)
+
+	return true, nil
+
 }
 
 type imagesByCVEIDSearcher struct{}
@@ -235,28 +210,35 @@ func (search imagesByCVEIDSearcher) search(config searchConfig) (bool, error) {
 		return false, nil
 	}
 
+	var builder strings.Builder
+
 	username, password := getUsernameAndPassword(*config.user)
-	strErr := make(chan stringResult)
 	ctx, cancel := context.WithCancel(context.Background())
 
-	var wg sync.WaitGroup
+	imageList, err := config.searchService.getImagesByCveID(ctx, config, username, password, *config.params["cveID"])
 
-	wg.Add(1)
-
-	go config.searchService.getImagesByCveID(ctx, config, username, password, *config.params["cveID"], strErr, &wg)
-	wg.Add(1)
-
-	var errCh chan error = make(chan error, 1)
-	go collectResults(config, &wg, strErr, cancel, printImageTableHeader, errCh)
-
-	wg.Wait()
-
-	select {
-	case err := <-errCh:
+	if err != nil {
+		cancel()
 		return true, err
-	default:
-		return true, nil
 	}
+
+	if len(imageList.Data.ImageListForCVE) > 0 {
+		printImageTableHeader(&builder, *config.verbose)
+		fmt.Fprint(config.resultWriter, builder.String())
+	}
+
+	for i := range imageList.Data.ImageListForCVE {
+		img := imageList.Data.ImageListForCVE[i]
+		out, err := img.string(*config.outputFormat)
+
+		if err != nil {
+			return true, err
+		}
+
+		fmt.Fprint(config.resultWriter, out)
+	}
+
+	return true, nil
 }
 
 type tagsByImageNameAndCVEIDSearcher struct{}
@@ -270,29 +252,9 @@ func (search tagsByImageNameAndCVEIDSearcher) search(config searchConfig) (bool,
 		return true, errInvalidImageName
 	}
 
-	username, password := getUsernameAndPassword(*config.user)
-	strErr := make(chan stringResult)
-	ctx, cancel := context.WithCancel(context.Background())
+	err := getTagsByCVE(config)
 
-	var wg sync.WaitGroup
-
-	wg.Add(1)
-
-	go config.searchService.getImageByNameAndCVEID(ctx, config, username, password, *config.params["imageName"],
-		*config.params["cveID"], strErr, &wg)
-	wg.Add(1)
-
-	var errCh chan error = make(chan error, 1)
-	go collectResults(config, &wg, strErr, cancel, printImageTableHeader, errCh)
-
-	wg.Wait()
-
-	select {
-	case err := <-errCh:
-		return true, err
-	default:
-		return true, nil
-	}
+	return true, err
 }
 
 type fixedTagsSearcher struct{}
@@ -302,33 +264,46 @@ func (search fixedTagsSearcher) search(config searchConfig) (bool, error) {
 		return false, nil
 	}
 
+	err := getTagsByCVE(config)
+
+	return true, err
+}
+
+func getTagsByCVE(config searchConfig) error {
 	if strings.Contains(*config.params["imageName"], ":") {
-		return true, errInvalidImageName
+		return errInvalidImageName
 	}
+
+	var builder strings.Builder
 
 	username, password := getUsernameAndPassword(*config.user)
-	strErr := make(chan stringResult)
 	ctx, cancel := context.WithCancel(context.Background())
 
-	var wg sync.WaitGroup
+	tagList, err := config.searchService.getTagsForCVE(ctx, config, username, password, *config.params["imageName"], *config.params["cveID"], *config.fixedFlag)
 
-	wg.Add(1)
-
-	go config.searchService.getFixedTagsForCVE(ctx, config, username, password, *config.params["imageName"],
-		*config.params["cveID"], strErr, &wg)
-	wg.Add(1)
-
-	var errCh chan error = make(chan error, 1)
-	go collectResults(config, &wg, strErr, cancel, printImageTableHeader, errCh)
-
-	wg.Wait()
-
-	select {
-	case err := <-errCh:
-		return true, err
-	default:
-		return true, nil
+	if err != nil {
+		cancel()
+		return err
 	}
+
+	if len(tagList.Data.TagListForCve) > 0 {
+		printImageTableHeader(&builder, *config.verbose)
+		fmt.Fprint(config.resultWriter, builder.String())
+	}
+
+	for i := range tagList.Data.TagListForCve {
+		img := tagList.Data.TagListForCve[i]
+		out, err := img.string(*config.outputFormat)
+
+		if err != nil {
+			return err
+		}
+
+		fmt.Fprint(config.resultWriter, out)
+
+	}
+
+	return nil
 }
 
 func collectResults(config searchConfig, wg *sync.WaitGroup, imageErr chan stringResult,

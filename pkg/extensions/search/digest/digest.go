@@ -1,18 +1,27 @@
 package digestinfo
 
 import (
+	"github.com/anuvu/zot/pkg/storage"
+	"github.com/opencontainers/go-digest"
 	"strings"
 
 	"github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/extensions/search/common"
 	"github.com/anuvu/zot/pkg/log"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
-// DigestInfo implements searching by manifes/config/layer digest.
+// DigestInfo implements searching by manifest/config/layer digest
 type DigestInfo struct {
 	Log         log.Logger
 	LayoutUtils *common.OciLayoutUtils
+}
+
+type ImageInfoByDigest struct {
+	TagName       string
+	TagDigest     digest.Digest
+	ImageManifest v1.Manifest
 }
 
 // NewDigestInfo initializes a new DigestInfo object.
@@ -22,65 +31,60 @@ func NewDigestInfo(log log.Logger) *DigestInfo {
 	return &DigestInfo{Log: log, LayoutUtils: layoutUtils}
 }
 
-// FilterImagesByDigest returns a list of image tags in a repository matching a specific divest.
-func (digestinfo DigestInfo) GetImageTagsByDigest(repo string, digest string) ([]*string, error) {
-	uniqueTags := []*string{}
+// GetRepoInfoByDigest returns a list of manifests in a repository matching a specific digest
+func (digestInfo DigestInfo) GetRepoInfoByDigest(storeController storage.StoreController, repo string, digest string) ([]ImageInfoByDigest, error) {
+	repoManifests := []ImageInfoByDigest{}
 
-	if !common.DirExists(repo) {
+	imagePath := common.GetImageRepoPath(storeController, repo)
+	if !digestInfo.LayoutUtils.DirExists(storeController, imagePath) {
 		return nil, errors.ErrRepoNotFound
 	}
 
-	manifests, err := digestinfo.LayoutUtils.GetImageManifests(repo)
+	manifests, err := digestInfo.LayoutUtils.GetImageManifests(storeController, repo)
 
 	if err != nil {
-		digestinfo.Log.Error().Err(err).Msg("unable to read image manifests")
-		return uniqueTags, err
+		digestInfo.Log.Error().Err(err).Msg("unable to read image manifests")
+		return repoManifests, err
 	}
 
 	for _, manifest := range manifests {
 		imageDigest := manifest.Digest
+		found := false
 
 		v, ok := manifest.Annotations[ispec.AnnotationRefName]
 		if ok {
-			imageBlobManifest, err := digestinfo.LayoutUtils.GetImageBlobManifest(repo, imageDigest)
+			imageBlobManifest, err := digestInfo.LayoutUtils.GetImageBlobManifest(storeController, repo, imageDigest)
 
 			if err != nil {
-				digestinfo.Log.Error().Err(err).Msg("unable to read image blob manifest")
-				return uniqueTags, err
+				digestInfo.Log.Error().Err(err).Msg("unable to read image blob manifest")
+				return []ImageInfoByDigest{}, err
 			}
-
-			tags := []*string{}
 
 			// Check the image manigest in index.json matches the search digest
 			// This is a blob with mediaType application/vnd.oci.image.manifest.v1+json
 			if strings.Contains(manifest.Digest.String(), digest) {
-				tags = append(tags, &v)
+				found = true
 			}
 
 			// Check the image config matches the search digest
 			// This is a blob with mediaType application/vnd.oci.image.config.v1+json
-			if strings.Contains(imageBlobManifest.Config.Digest.Algorithm+":"+imageBlobManifest.Config.Digest.Hex, digest) {
-				tags = append(tags, &v)
+			if strings.Contains(imageBlobManifest.Config.Digest.Algorithm+":"+imageBlobManifest.Config.Digest.Hex, digest) && !found {
+				found = true
 			}
 
 			// Check to see if the individual layers in the oci image manifest match the digest
 			// These are blobs with mediaType application/vnd.oci.image.layer.v1.tar+gzip
 			for _, layer := range imageBlobManifest.Layers {
-				if strings.Contains(layer.Digest.Algorithm+":"+layer.Digest.Hex, digest) {
-					tags = append(tags, &v)
+				if strings.Contains(layer.Digest.Algorithm+":"+layer.Digest.Hex, digest) && !found {
+					found = true
 				}
 			}
 
-			keys := make(map[string]bool)
-
-			for _, entry := range tags {
-				if _, value := keys[*entry]; !value {
-					uniqueTags = append(uniqueTags, entry)
-					keys[*entry] = true
-				}
+			if found {
+				repoManifests = append(repoManifests, ImageInfoByDigest{TagName: v, TagDigest: manifest.Digest, ImageManifest: imageBlobManifest})
 			}
 		}
 	}
 
-	return uniqueTags, nil
+	return repoManifests, nil
 }

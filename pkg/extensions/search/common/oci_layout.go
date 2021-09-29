@@ -3,7 +3,7 @@ package common
 
 import (
 	"encoding/json"
-	"io/ioutil"
+	"github.com/anuvu/zot/pkg/storage"
 	"os"
 	"path"
 	"strings"
@@ -26,10 +26,9 @@ func NewOciLayoutUtils(log log.Logger) *OciLayoutUtils {
 	return &OciLayoutUtils{Log: log}
 }
 
-// Below method will return image path including root dir, root dir is determined by splitting.
-
-func (olu OciLayoutUtils) GetImageManifests(imagePath string) ([]ispec.Descriptor, error) {
-	buf, err := ioutil.ReadFile(path.Join(imagePath, "index.json"))
+func (olu OciLayoutUtils) GetImageManifests(storeController storage.StoreController, image string) ([]ispec.Descriptor, error) {
+	imageStore := storeController.GetImageStore(image)
+	buf, err := imageStore.GetIndexContent(image)
 
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -46,17 +45,19 @@ func (olu OciLayoutUtils) GetImageManifests(imagePath string) ([]ispec.Descripto
 	var index ispec.Index
 
 	if err := json.Unmarshal(buf, &index); err != nil {
-		olu.Log.Error().Err(err).Str("dir", imagePath).Msg("invalid JSON")
+		olu.Log.Error().Err(err).Str("dir", path.Join(imageStore.RootDir(), image)).Msg("invalid JSON")
 		return nil, errors.ErrRepoNotFound
 	}
 
 	return index.Manifests, nil
 }
 
-func (olu OciLayoutUtils) GetImageBlobManifest(imageDir string, digest godigest.Digest) (v1.Manifest, error) {
+func (olu OciLayoutUtils) GetImageBlobManifest(storeController storage.StoreController, imageDir string, digest godigest.Digest) (v1.Manifest, error) {
 	var blobIndex v1.Manifest
 
-	blobBuf, err := ioutil.ReadFile(path.Join(imageDir, "blobs", digest.Algorithm().String(), digest.Encoded()))
+	imageStore := storeController.GetImageStore(imageDir)
+	blobBuf, err := imageStore.GetBlobContent(imageDir, digest.String())
+
 	if err != nil {
 		olu.Log.Error().Err(err).Msg("unable to open image metadata file")
 
@@ -72,10 +73,12 @@ func (olu OciLayoutUtils) GetImageBlobManifest(imageDir string, digest godigest.
 	return blobIndex, nil
 }
 
-func (olu OciLayoutUtils) GetImageInfo(imageDir string, hash v1.Hash) (ispec.Image, error) {
+func (olu OciLayoutUtils) GetImageInfo(storeController storage.StoreController, imageDir string, hash v1.Hash) (ispec.Image, error) {
 	var imageInfo ispec.Image
 
-	blobBuf, err := ioutil.ReadFile(path.Join(imageDir, "blobs", hash.Algorithm, hash.Hex))
+	imageStore := storeController.GetImageStore(imageDir)
+
+	blobBuf, err := imageStore.GetBlobContent(imageDir, hash.String())
 	if err != nil {
 		olu.Log.Error().Err(err).Msg("unable to open image layers file")
 
@@ -91,16 +94,10 @@ func (olu OciLayoutUtils) GetImageInfo(imageDir string, hash v1.Hash) (ispec.Ima
 	return imageInfo, err
 }
 
-func (olu OciLayoutUtils) IsValidImageFormat(imagePath string) (bool, error) {
-	imageDir, inputTag := GetImageDirAndTag(imagePath)
+func (olu OciLayoutUtils) IsValidImageFormat(storeController storage.StoreController, image string) (bool, error) {
+	imageDir, inputTag := GetImageDirAndTag(image)
 
-	if !DirExists(imageDir) {
-		olu.Log.Error().Msg("image directory doesn't exist")
-
-		return false, errors.ErrRepoNotFound
-	}
-
-	manifests, err := olu.GetImageManifests(imageDir)
+	manifests, err := olu.GetImageManifests(storeController, imageDir)
 
 	if err != nil {
 		return false, err
@@ -113,7 +110,7 @@ func (olu OciLayoutUtils) IsValidImageFormat(imagePath string) (bool, error) {
 			continue
 		}
 
-		blobManifest, err := olu.GetImageBlobManifest(imageDir, m.Digest)
+		blobManifest, err := olu.GetImageBlobManifest(storeController, imageDir, m.Digest)
 		if err != nil {
 			return false, err
 		}
@@ -136,10 +133,10 @@ func (olu OciLayoutUtils) IsValidImageFormat(imagePath string) (bool, error) {
 }
 
 // GetImageTagsWithTimestamp returns a list of image tags with timestamp available in the specified repository.
-func (olu OciLayoutUtils) GetImageTagsWithTimestamp(repo string) ([]TagInfo, error) {
+func (olu OciLayoutUtils) GetImageTagsWithTimestamp(storeController storage.StoreController, repo string) ([]TagInfo, error) {
 	tagsInfo := make([]TagInfo, 0)
 
-	manifests, err := olu.GetImageManifests(repo)
+	manifests, err := olu.GetImageManifests(storeController, repo)
 
 	if err != nil {
 		olu.Log.Error().Err(err).Msg("unable to read image manifests")
@@ -152,7 +149,7 @@ func (olu OciLayoutUtils) GetImageTagsWithTimestamp(repo string) ([]TagInfo, err
 
 		v, ok := manifest.Annotations[ispec.AnnotationRefName]
 		if ok {
-			imageBlobManifest, err := olu.GetImageBlobManifest(repo, digest)
+			imageBlobManifest, err := olu.GetImageBlobManifest(storeController, repo, digest)
 
 			if err != nil {
 				olu.Log.Error().Err(err).Msg("unable to read image blob manifest")
@@ -160,7 +157,7 @@ func (olu OciLayoutUtils) GetImageTagsWithTimestamp(repo string) ([]TagInfo, err
 				return tagsInfo, err
 			}
 
-			imageInfo, err := olu.GetImageInfo(repo, imageBlobManifest.Config.Digest)
+			imageInfo, err := olu.GetImageInfo(storeController, repo, imageBlobManifest.Config.Digest)
 			if err != nil {
 				olu.Log.Error().Err(err).Msg("unable to read image info")
 
@@ -176,13 +173,9 @@ func (olu OciLayoutUtils) GetImageTagsWithTimestamp(repo string) ([]TagInfo, err
 	return tagsInfo, nil
 }
 
-func DirExists(d string) bool {
-	fi, err := os.Stat(d)
-	if err != nil && os.IsNotExist(err) {
-		return false
-	}
-
-	return fi.IsDir()
+func (olu OciLayoutUtils) DirExists(storeController storage.StoreController, d string) bool {
+	imageStore := storeController.GetImageStore(d)
+	return imageStore.DirExists(d)
 }
 
 func GetImageDirAndTag(imageName string) (string, string) {

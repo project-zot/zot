@@ -4,39 +4,28 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"errors"
+	"github.com/dustin/go-humanize"
+	jsoniter "github.com/json-iterator/go"
+	"github.com/olekukonko/tablewriter"
+	"gopkg.in/yaml.v2"
 	"io"
 	"net/url"
 	"strconv"
 	"strings"
 	"sync"
-	"time"
-
-	"github.com/dustin/go-humanize"
-	jsoniter "github.com/json-iterator/go"
-	"github.com/olekukonko/tablewriter"
-	"gopkg.in/yaml.v2"
 
 	zotErrors "github.com/anuvu/zot/errors"
 )
 
 type SearchService interface {
-	getAllImages(ctx context.Context, config searchConfig, username, password string,
-		channel chan stringResult, wg *sync.WaitGroup)
-	getAllImagesGQL(ctx context.Context, config searchConfig, username, password string) (*imageListStructGQL, error)
-	getImageByName(ctx context.Context, config searchConfig, username, password, imageName string,
-		channel chan stringResult, wg *sync.WaitGroup)
-	getCveByImage(ctx context.Context, config searchConfig, username, password, imageName string,
-		channel chan stringResult, wg *sync.WaitGroup)
-	getImagesByCveID(ctx context.Context, config searchConfig, username, password, cveID string,
-		channel chan stringResult, wg *sync.WaitGroup)
-	getImagesByDigest(ctx context.Context, config searchConfig, username, password, digest string,
-		channel chan stringResult, wg *sync.WaitGroup)
-	getImageByNameAndCVEID(ctx context.Context, config searchConfig, username, password, imageName, cveID string,
-		channel chan stringResult, wg *sync.WaitGroup)
-	getFixedTagsForCVE(ctx context.Context, config searchConfig, username, password, imageName, cveID string,
-		channel chan stringResult, wg *sync.WaitGroup)
+	getImages(ctx context.Context, config searchConfig, username, password string, imageName string) (*imageListStructGQL, error)
+	getImagesByDigest(ctx context.Context, config searchConfig, username, password string, digest string) (*imageListStructForDigestGQL, error)
+	getCveByImage(ctx context.Context, config searchConfig, username, password,
+		imageName string) (*cveResult, error)
+	getImagesByCveID(ctx context.Context, config searchConfig, username, password string, digest string) (*imagesForCveGQL, error)
+	getTagsForCVE(ctx context.Context, config searchConfig, username, password, imageName, cveID string, getFixed bool) (*tagsForCVE, error)
 }
 
 type searchService struct{}
@@ -45,71 +34,11 @@ func NewSearchService() SearchService {
 	return searchService{}
 }
 
-func (service searchService) getImageByName(ctx context.Context, config searchConfig,
-	username, password, imageName string, c chan stringResult, wg *sync.WaitGroup) {
-	defer wg.Done()
-	defer close(c)
-
-	var localWg sync.WaitGroup
-	p := newSmoothRateLimiter(ctx, &localWg, c)
-
-	localWg.Add(1)
-
-	go p.startRateLimiter()
-	localWg.Add(1)
-
-	go getImage(ctx, config, username, password, imageName, c, &localWg, p)
-
-	localWg.Wait()
-}
-
-func (service searchService) getAllImages(ctx context.Context, config searchConfig, username, password string,
-	c chan stringResult, wg *sync.WaitGroup) {
-	defer wg.Done()
-	defer close(c)
-
-	catalog := &catalogResponse{}
-
-	catalogEndPoint, err := combineServerAndEndpointURL(*config.servURL, "/v2/_catalog")
-	if err != nil {
-		if isContextDone(ctx) {
-			return
-		}
-		c <- stringResult{"", err}
-
-		return
-	}
-
-	_, err = makeGETRequest(catalogEndPoint, username, password, *config.verifyTLS, catalog)
-	if err != nil {
-		if isContextDone(ctx) {
-			return
-		}
-		c <- stringResult{"", err}
-
-		return
-	}
-
-	var localWg sync.WaitGroup
-
-	p := newSmoothRateLimiter(ctx, &localWg, c)
-
-	localWg.Add(1)
-
-	go p.startRateLimiter()
-
-	for _, repo := range catalog.Repositories {
-		localWg.Add(1)
-
-		go getImage(ctx, config, username, password, repo, c, &localWg, p)
-	}
-
-	localWg.Wait()
-}
-
-func (service searchService) getAllImagesGQL(ctx context.Context, config searchConfig, username, password string) (*imageListStructGQL, error) {
-
-	query := "{ImageList {Name Tag Digest ConfigDigest Size Layers {Size Digest}}}"
+func (service searchService) getImages(ctx context.Context, config searchConfig, username, password string, imageName string) (*imageListStructGQL, error) {
+	query := fmt.Sprintf(`{ImageList(imageName: "%s") {`+`
+									Name Tag Digest ConfigDigest Size Layers {Size Digest}}
+							  }`,
+		imageName)
 	result := &imageListStructGQL{}
 
 	err := service.makeGraphQLQuery(config, username, password, query, result)
@@ -131,120 +60,65 @@ func (service searchService) getAllImagesGQL(ctx context.Context, config searchC
 
 		if isContextDone(ctx) {
 			return nil, nil
+		} else {
+			return nil, errors.New(errBuilder.String())
 		}
 	}
 
 	return result, nil
 }
 
-func getImage(ctx context.Context, config searchConfig, username, password, imageName string,
-	c chan stringResult, wg *sync.WaitGroup, pool *requestsPool) {
-	defer wg.Done()
+func (service searchService) getImagesByDigest(ctx context.Context, config searchConfig, username, password string, digest string) (*imageListStructForDigestGQL, error) {
+	query := fmt.Sprintf(`{ImageListForDigest(digest: "%s") {`+`
+									Name Tag Digest ConfigDigest Size Layers {Size Digest}}
+							  }`,
+		digest)
+	result := &imageListStructForDigestGQL{}
 
-	tagListEndpoint, err := combineServerAndEndpointURL(*config.servURL, fmt.Sprintf("/v2/%s/tags/list", imageName))
-	if err != nil {
-		if isContextDone(ctx) {
-			return
-		}
-		c <- stringResult{"", err}
-
-		return
-	}
-
-	tagsList := &tagListResp{}
-	_, err = makeGETRequest(tagListEndpoint, username, password, *config.verifyTLS, &tagsList)
+	err := service.makeGraphQLQuery(config, username, password, query, result)
 
 	if err != nil {
 		if isContextDone(ctx) {
-			return
+			return nil, nil
 		}
-		c <- stringResult{"", err}
 
-		return
+		return nil, err
 	}
 
-	for _, tag := range tagsList.Tags {
-		wg.Add(1)
+	if result.Errors != nil && len(result.Errors) > 0{
+		var errBuilder strings.Builder
 
-		go addManifestCallToPool(ctx, config, pool, username, password, imageName, tag, c, wg)
+		for _, err := range result.Errors {
+			fmt.Fprintln(&errBuilder, err.Message)
+		}
+
+		if isContextDone(ctx) {
+			return nil, nil
+		} else {
+			return nil, errors.New(errBuilder.String())
+		}
 	}
+
+	return result, nil
 }
 
 func (service searchService) getImagesByCveID(ctx context.Context, config searchConfig, username,
-	password, cveID string, c chan stringResult, wg *sync.WaitGroup) {
-	defer wg.Done()
-	defer close(c)
+	password, cveID string) (*imagesForCveGQL, error) {
 
 	query := fmt.Sprintf(`{ImageListForCVE(id: "%s") {`+`
-								Name Tags }
+								Name Tag Digest Size}
 						  }`,
 		cveID)
-	result := &imagesForCve{}
+	result := &imagesForCveGQL{}
 
 	err := service.makeGraphQLQuery(config, username, password, query, result)
 
 	if err != nil {
 		if isContextDone(ctx) {
-			return
-		}
-		c <- stringResult{"", err}
-
-		return
-	}
-
-	if result.Errors != nil || err != nil {
-		var errBuilder strings.Builder
-
-		for _, err := range result.Errors {
-			fmt.Fprintln(&errBuilder, err.Message)
+			return nil, nil
 		}
 
-		if isContextDone(ctx) {
-			return
-		}
-		c <- stringResult{"", errors.New(errBuilder.String())} //nolint: goerr113
-
-		return
-	}
-
-	var localWg sync.WaitGroup
-
-	p := newSmoothRateLimiter(ctx, &localWg, c)
-	localWg.Add(1)
-
-	go p.startRateLimiter()
-
-	for _, image := range result.Data.ImageListForCVE {
-		for _, tag := range image.Tags {
-			localWg.Add(1)
-
-			go addManifestCallToPool(ctx, config, p, username, password, image.Name, tag, c, &localWg)
-		}
-	}
-
-	localWg.Wait()
-}
-
-func (service searchService) getImagesByDigest(ctx context.Context, config searchConfig, username,
-	password string, digest string, c chan stringResult, wg *sync.WaitGroup) {
-	defer wg.Done()
-	defer close(c)
-
-	query := fmt.Sprintf(`{ImageListForDigest(id: "%s") {`+`
-									Name Tags }
-							  }`,
-		digest)
-	result := &imagesForDigest{}
-
-	err := service.makeGraphQLQuery(config, username, password, query, result)
-
-	if err != nil {
-		if isContextDone(ctx) {
-			return
-		}
-		c <- stringResult{"", err}
-
-		return
+		return nil, err
 	}
 
 	if result.Errors != nil {
@@ -255,94 +129,17 @@ func (service searchService) getImagesByDigest(ctx context.Context, config searc
 		}
 
 		if isContextDone(ctx) {
-			return
-		}
-		c <- stringResult{"", errors.New(errBuilder.String())} //nolint: goerr113
-
-		return
-	}
-
-	var localWg sync.WaitGroup
-
-	p := newSmoothRateLimiter(ctx, &localWg, c)
-	localWg.Add(1)
-
-	go p.startRateLimiter()
-
-	for _, image := range result.Data.ImageListForDigest {
-		for _, tag := range image.Tags {
-			localWg.Add(1)
-
-			go addManifestCallToPool(ctx, config, p, username, password, image.Name, tag, c, &localWg)
+			return nil, nil
+		} else {
+			return nil, errors.New(errBuilder.String())
 		}
 	}
 
-	localWg.Wait()
-}
-
-func (service searchService) getImageByNameAndCVEID(ctx context.Context, config searchConfig, username,
-	password, imageName, cveID string, c chan stringResult, wg *sync.WaitGroup) {
-	defer wg.Done()
-	defer close(c)
-
-	query := fmt.Sprintf(`{ImageListForCVE(id: "%s") {`+`
-									Name Tags }
-							  }`,
-		cveID)
-	result := &imagesForCve{}
-
-	err := service.makeGraphQLQuery(config, username, password, query, result)
-
-	if err != nil {
-		if isContextDone(ctx) {
-			return
-		}
-		c <- stringResult{"", err}
-
-		return
-	}
-
-	if result.Errors != nil {
-		var errBuilder strings.Builder
-
-		for _, err := range result.Errors {
-			fmt.Fprintln(&errBuilder, err.Message)
-		}
-
-		if isContextDone(ctx) {
-			return
-		}
-		c <- stringResult{"", errors.New(errBuilder.String())} //nolint: goerr113
-
-		return
-	}
-
-	var localWg sync.WaitGroup
-
-	p := newSmoothRateLimiter(ctx, &localWg, c)
-	localWg.Add(1)
-
-	go p.startRateLimiter()
-
-	for _, image := range result.Data.ImageListForCVE {
-		if !strings.EqualFold(imageName, image.Name) {
-			continue
-		}
-
-		for _, tag := range image.Tags {
-			localWg.Add(1)
-
-			go addManifestCallToPool(ctx, config, p, username, password, image.Name, tag, c, &localWg)
-		}
-	}
-
-	localWg.Wait()
+	return result, nil
 }
 
 func (service searchService) getCveByImage(ctx context.Context, config searchConfig, username, password,
-	imageName string, c chan stringResult, wg *sync.WaitGroup) {
-	defer wg.Done()
-	defer close(c)
+	imageName string) (*cveResult, error) {
 
 	query := fmt.Sprintf(`{ CVEListForImage (image:"%s")`+
 		` { Tag CVEList { Id Title Severity Description `+
@@ -353,11 +150,10 @@ func (service searchService) getCveByImage(ctx context.Context, config searchCon
 
 	if err != nil {
 		if isContextDone(ctx) {
-			return
+			return nil, nil
 		}
-		c <- stringResult{"", err}
 
-		return
+		return nil, err
 	}
 
 	if result.Errors != nil {
@@ -368,29 +164,15 @@ func (service searchService) getCveByImage(ctx context.Context, config searchCon
 		}
 
 		if isContextDone(ctx) {
-			return
+			return nil, nil
+		} else {
+			return nil, errors.New(errBuilder.String())
 		}
-		c <- stringResult{"", errors.New(errBuilder.String())} //nolint: goerr113
-
-		return
 	}
 
 	result.Data.CVEListForImage.CVEList = groupCVEsBySeverity(result.Data.CVEListForImage.CVEList)
 
-	str, err := result.string(*config.outputFormat)
-	if err != nil {
-		if isContextDone(ctx) {
-			return
-		}
-		c <- stringResult{"", err}
-
-		return
-	}
-
-	if isContextDone(ctx) {
-		return
-	}
-	c <- stringResult{str, nil}
+	return result, nil
 }
 
 func groupCVEsBySeverity(cveList []cve) []cve {
@@ -423,57 +205,41 @@ func isContextDone(ctx context.Context) bool {
 	}
 }
 
-func (service searchService) getFixedTagsForCVE(ctx context.Context, config searchConfig,
-	username, password, imageName, cveID string, c chan stringResult, wg *sync.WaitGroup) {
-	defer wg.Done()
-	defer close(c)
+func (service searchService) getTagsForCVE(ctx context.Context, config searchConfig,
+	username, password, imageName, cveID string, getFixed bool) (*tagsForCVE, error){
 
-	query := fmt.Sprintf(`{ImageListWithCVEFixed (id: "%s", image: "%s") {`+`
-								 Tags {Name Timestamp} }
-							  }`,
-		cveID, imageName)
-	result := &fixedTags{}
+	query := fmt.Sprintf(`{TagListForCve(id: "%s", image: "%s", getFixed: %t) {`+`
+								Name Tag Digest Size}
+						  }`,
+		cveID, imageName, getFixed)
+	result := &tagsForCVE{}
+	var err error
 
-	err := service.makeGraphQLQuery(config, username, password, query, result)
+	err = service.makeGraphQLQuery(config, username, password, query, result)
 
 	if err != nil {
 		if isContextDone(ctx) {
-			return
+			return nil, nil
 		}
-		c <- stringResult{"", err}
 
-		return
+		return nil, err
 	}
 
 	if result.Errors != nil {
 		var errBuilder strings.Builder
 
-		for _, err := range result.Errors {
-			fmt.Fprintln(&errBuilder, err.Message)
+		for _, error := range result.Errors {
+			fmt.Fprintln(&errBuilder, error.Message)
 		}
 
 		if isContextDone(ctx) {
-			return
+			return nil, nil
+		} else {
+			return nil, errors.New(errBuilder.String())
 		}
-		c <- stringResult{"", errors.New(errBuilder.String())} //nolint: goerr113
-
-		return
 	}
 
-	var localWg sync.WaitGroup
-
-	p := newSmoothRateLimiter(ctx, &localWg, c)
-	localWg.Add(1)
-
-	go p.startRateLimiter()
-
-	for _, imgTag := range result.Data.ImageListWithCVEFixed.Tags {
-		localWg.Add(1)
-
-		go addManifestCallToPool(ctx, config, p, username, password, imageName, imgTag.Name, c, &localWg)
-	}
-
-	localWg.Wait()
+	return result, err
 }
 
 // Query using JQL, the query string is passed as a parameter
@@ -606,35 +372,18 @@ func (cve cveResult) stringYAML() (string, error) {
 	return string(body), nil
 }
 
-type fixedTags struct {
+type tagsForCVE struct {
 	Errors []errorGraphQL `json:"errors"`
 	Data   struct {
-		ImageListWithCVEFixed struct {
-			Tags []struct {
-				Name      string    `json:"Name"`
-				Timestamp time.Time `json:"Timestamp"`
-			} `json:"Tags"`
-		} `json:"ImageListWithCVEFixed"`
+		TagListForCve []imageStructGQL `json:"TagListForCve"`
 	} `json:"data"`
 }
 
-type imagesForCve struct {
+type imagesForCveGQL struct {
 	Errors []errorGraphQL `json:"errors"`
 	Data   struct {
-		ImageListForCVE []tagListResp `json:"ImageListForCVE"`
+		ImageListForCVE []imageStructGQL `json:"ImageListForCVE"`
 	} `json:"data"`
-}
-
-type imagesForDigest struct {
-	Errors []errorGraphQL `json:"errors"`
-	Data   struct {
-		ImageListForDigest []tagListResp `json:"ImageListForDigest"`
-	} `json:"data"`
-}
-
-type tagListResp struct {
-	Name string   `json:"name"`
-	Tags []string `json:"tags"`
 }
 
 type imageStruct struct {
@@ -657,6 +406,13 @@ type imageListStructGQL struct {
 	Errors []errorGraphQL `json:"errors"`
 	Data   struct {
 		ImageList []imageStructGQL `json:"ImageList"`
+	} `json:"data"`
+}
+
+type imageListStructForDigestGQL struct {
+	Errors []errorGraphQL `json:"errors"`
+	Data   struct {
+		ImageList []imageStructGQL `json:"ImageListForDigest"`
 	} `json:"data"`
 }
 

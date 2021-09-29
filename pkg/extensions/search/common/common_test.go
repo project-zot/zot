@@ -3,6 +3,7 @@ package common_test
 import (
 	"context"
 	"encoding/json"
+	"github.com/anuvu/zot/pkg/storage"
 	"io"
 	"io/ioutil"
 	"os"
@@ -22,6 +23,8 @@ import (
 // nolint:gochecknoglobals
 var (
 	rootDir string
+	subRootDir string
+	fileSystemStoreController storage.StoreController
 )
 
 const (
@@ -54,18 +57,49 @@ type ImageInfo struct {
 	Labels      string
 }
 
-func testSetup() error {
+func init() {
+	err := testFileSystemSetup()
+	if err != nil {
+		panic(err)
+	}
+}
+
+func testFileSystemSetup() error {
 	dir, err := ioutil.TempDir("", "search_test")
+	if err != nil {
+		return err
+	}
+
+	subDir, err := ioutil.TempDir("", "sub_search_test")
 	if err != nil {
 		return err
 	}
 
 	rootDir = dir
 
+	subRootDir = subDir
+
 	err = copyFiles("../../../../test/data", rootDir)
 	if err != nil {
 		return err
 	}
+
+	err = copyFiles("../../../../test/data", subDir)
+	if err != nil {
+		return err
+	}
+
+	logger := log.NewLogger("debug", "")
+
+	imageStore := storage.NewImageStoreFS(rootDir, false, false, logger)
+
+	subStore := storage.NewImageStoreFS(subRootDir, false, false, logger)
+
+	subStoreMap := make(map[string]storage.ImageStore)
+
+	subStoreMap["/b"] = subStore
+
+	fileSystemStoreController = storage.StoreController{DefaultStore: imageStore, SubStore: subStoreMap}
 
 	return nil
 }
@@ -141,67 +175,66 @@ func copyFiles(sourceDir string, destDir string) error {
 
 func TestImageFormat(t *testing.T) {
 	Convey("Test valid image", t, func() {
-		log := log.NewLogger("debug", "")
-		dbDir := "../../../../test/data"
-		olu := common.NewOciLayoutUtils(log)
-		isValidImage, err := olu.IsValidImageFormat(path.Join(dbDir, "zot-test"))
+		logger := log.NewLogger("debug", "")
+		olu := common.NewOciLayoutUtils(logger)
+		isValidImage, err := olu.IsValidImageFormat(fileSystemStoreController, "zot-test")
 		So(err, ShouldBeNil)
 		So(isValidImage, ShouldEqual, true)
 
-		isValidImage, err = olu.IsValidImageFormat(path.Join(dbDir, "zot-test:0.0.1"))
+		isValidImage, err = olu.IsValidImageFormat(fileSystemStoreController, "zot-test:0.0.1")
 		So(err, ShouldBeNil)
 		So(isValidImage, ShouldEqual, true)
 
-		isValidImage, err = olu.IsValidImageFormat(path.Join(dbDir, "zot-test:0.0."))
+		isValidImage, err = olu.IsValidImageFormat(fileSystemStoreController, "zot-test:0.0.")
 		So(err, ShouldBeNil)
 		So(isValidImage, ShouldEqual, false)
 
-		isValidImage, err = olu.IsValidImageFormat(path.Join(dbDir, "zot-noindex-test"))
+		isValidImage, err = olu.IsValidImageFormat(fileSystemStoreController, "zot-noindex-test")
 		So(err, ShouldNotBeNil)
 		So(isValidImage, ShouldEqual, false)
 
-		isValidImage, err = olu.IsValidImageFormat(path.Join(dbDir, "zot--tet"))
+		isValidImage, err = olu.IsValidImageFormat(fileSystemStoreController, "zot--tet")
 		So(err, ShouldNotBeNil)
 		So(isValidImage, ShouldEqual, false)
 
-		isValidImage, err = olu.IsValidImageFormat(path.Join(dbDir, "zot-noindex-test"))
+		isValidImage, err = olu.IsValidImageFormat(fileSystemStoreController, "zot-noindex-test")
 		So(err, ShouldNotBeNil)
 		So(isValidImage, ShouldEqual, false)
 
-		isValidImage, err = olu.IsValidImageFormat(path.Join(dbDir, "zot-squashfs-noblobs"))
+		isValidImage, err = olu.IsValidImageFormat(fileSystemStoreController, "zot-squashfs-noblobs")
 		So(err, ShouldNotBeNil)
 		So(isValidImage, ShouldEqual, false)
 
-		isValidImage, err = olu.IsValidImageFormat(path.Join(dbDir, "zot-squashfs-invalid-index"))
+		isValidImage, err = olu.IsValidImageFormat(fileSystemStoreController, "zot-squashfs-invalid-index")
 		So(err, ShouldNotBeNil)
 		So(isValidImage, ShouldEqual, false)
 
-		isValidImage, err = olu.IsValidImageFormat(path.Join(dbDir, "zot-squashfs-invalid-blob"))
+		isValidImage, err = olu.IsValidImageFormat(fileSystemStoreController, "zot-squashfs-invalid-blob")
 		So(err, ShouldNotBeNil)
 		So(isValidImage, ShouldEqual, false)
 
-		isValidImage, err = olu.IsValidImageFormat(path.Join(dbDir, "zot-squashfs-test:0.3.22-squashfs"))
+		isValidImage, err = olu.IsValidImageFormat(fileSystemStoreController, "zot-squashfs-test:0.3.22-squashfs")
 		So(err, ShouldNotBeNil)
 		So(isValidImage, ShouldEqual, false)
 
-		isValidImage, err = olu.IsValidImageFormat(path.Join(dbDir, "zot-nonreadable-test"))
+		isValidImage, err = olu.IsValidImageFormat(fileSystemStoreController, "zot-nonreadable-test")
 		So(err, ShouldNotBeNil)
 		So(isValidImage, ShouldEqual, false)
 	})
 }
 
-func TestDigestSearchHTTP(t *testing.T) {
+func TestLatestTagSearchHTTP(t *testing.T) {
 	Convey("Test latest image search by timestamp", t, func() {
-		err := testSetup()
-		if err != nil {
-			panic(err)
-		}
 		config := api.NewConfig()
 		config.HTTP.Port = Port1
 		config.Storage.RootDirectory = rootDir
+		config.Storage.SubPaths = make(map[string]api.StorageConfig)
+		config.Storage.SubPaths["/a"] = api.StorageConfig{RootDirectory: subRootDir}
 		config.Extensions = &ext.ExtensionConfig{
 			Search: &ext.SearchConfig{Enable: true},
 		}
+
+		config.Extensions.Search.CVE = nil
 
 		c := api.NewController(config)
 
@@ -237,7 +270,6 @@ func TestDigestSearchHTTP(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		// "sha" should match all digests in all images
 		resp, err = resty.R().Get(BaseURL1 + "/query?query={ImageListWithLatestTag(){Name%20Latest}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
@@ -246,10 +278,79 @@ func TestDigestSearchHTTP(t *testing.T) {
 		var responseStruct ImgResponsWithLatestTag
 		err = json.Unmarshal(resp.Body(), &responseStruct)
 		So(err, ShouldBeNil)
-		So(len(responseStruct.ImgListWithLatestTag.Images), ShouldEqual, 2)
+		So(len(responseStruct.ImgListWithLatestTag.Images), ShouldEqual, 4)
 
 		images := responseStruct.ImgListWithLatestTag.Images
 		So(images[0].Latest, ShouldEqual, "0.0.1")
+
+		resp, err = resty.R().Get(BaseURL1 + "/query?query={ImageListWithLatestTag(){Name%20Latest}}")
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+
+		err = os.Chmod(rootDir, 0000)
+		if err != nil {
+			panic(err)
+		}
+
+		resp, err = resty.R().Get(BaseURL1 + "/query?query={ImageListWithLatestTag(){Name%20Latest}}")
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		err = json.Unmarshal(resp.Body(), &responseStruct)
+		So(err, ShouldBeNil)
+		So(len(responseStruct.ImgListWithLatestTag.Images), ShouldEqual, 0)
+
+		err = os.Chmod(rootDir, 0755)
+		if err != nil {
+			panic(err)
+		}
+
+		// Delete config blob and try.
+		err = os.Remove(path.Join(subRootDir, "zot-test/blobs/sha256",
+			"adf3bb6cc81f8bd6a9d5233be5f0c1a4f1e3ed1cf5bbdfad7708cc8d4099b741"))
+		if err != nil {
+			panic(err)
+		}
+
+		resp, err = resty.R().Get(BaseURL1 + "/query?query={ImageListWithLatestTag(){Name%20Latest}}")
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		err = os.Remove(path.Join(subRootDir, "zot-test/blobs/sha256",
+			"2bacca16b9df395fc855c14ccf50b12b58d35d468b8e7f25758aff90f89bf396"))
+		if err != nil {
+			panic(err)
+		}
+
+		resp, err = resty.R().Get(BaseURL1 + "/query?query={ImageListWithLatestTag(){Name%20Latest}}")
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		err = os.Remove(path.Join(rootDir, "zot-test/blobs/sha256",
+			"adf3bb6cc81f8bd6a9d5233be5f0c1a4f1e3ed1cf5bbdfad7708cc8d4099b741"))
+		if err != nil {
+			panic(err)
+		}
+
+		resp, err = resty.R().Get(BaseURL1 + "/query?query={ImageListWithLatestTag(){Name%20Latest}}")
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		// Delete manifest blob also and try
+		err = os.Remove(path.Join(rootDir, "zot-test/blobs/sha256",
+			"2bacca16b9df395fc855c14ccf50b12b58d35d468b8e7f25758aff90f89bf396"))
+		if err != nil {
+			panic(err)
+		}
+
+		resp, err = resty.R().Get(BaseURL1 + "/query?query={ImageListWithLatestTag(){Name%20Latest}}")
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
 	})
 }
 
@@ -258,6 +359,9 @@ func TestUtilsMethod(t *testing.T) {
 		// Test GetRepo method
 		repo := common.GetRepo("test")
 		So(repo, ShouldEqual, "test")
+
+		repo = common.GetRepo(":")
+		So(repo, ShouldEqual, "")
 
 		repo = common.GetRepo("")
 		So(repo, ShouldEqual, "")
@@ -335,5 +439,13 @@ func TestUtilsMethod(t *testing.T) {
 
 		fixedTags := common.GetFixedTags(allTags, infectedTags)
 		So(len(fixedTags), ShouldEqual, 2)
+
+		dir := common.GetRootDir("a/zot-cve-test", fileSystemStoreController)
+
+		So(dir, ShouldEqual, rootDir)
+
+		dir = common.GetRootDir("b/zot-cve-test", fileSystemStoreController)
+
+		So(dir, ShouldEqual, subRootDir)
 	})
 }

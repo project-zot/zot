@@ -475,7 +475,7 @@ func TestServerCVEResponse(t *testing.T) {
 			err := cveCmd.Execute()
 			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
-			So(err, ShouldBeNil)
+			So(err, ShouldNotBeNil)
 			So(strings.TrimSpace(str), ShouldNotContainSubstring, "IMAGE NAME TAG DIGEST SIZE")
 		})
 	})

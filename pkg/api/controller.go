@@ -15,6 +15,8 @@ import (
 	"github.com/anuvu/zot/pkg/storage"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
+
+	"github.com/docker/distribution/registry/storage/driver/factory"
 )
 
 const (
@@ -95,8 +97,23 @@ func (c *Controller) Run() error {
 			}
 		}
 
-		defaultStore := storage.NewImageStore(c.Config.Storage.RootDirectory,
-			c.Config.Storage.GC, c.Config.Storage.Dedupe, c.Log)
+		var defaultStore storage.ImageStore
+		if len(c.Config.Storage.ObjectStoreParams) == 0 {
+			defaultStore = storage.NewImageStoreFS(c.Config.Storage.RootDirectory,
+				c.Config.Storage.GC, c.Config.Storage.Dedupe, c.Log)
+		} else {
+			storeName := fmt.Sprintf("%v", c.Config.Storage.ObjectStoreParams["name"])
+
+			// Init a Storager from connection string.
+			store, err := factory.Create(storeName, c.Config.Storage.ObjectStoreParams)
+			if err != nil {
+				c.Log.Error().Err(err).Str("rootDir", c.Config.Storage.RootDirectory).Msg("Unable to create s3 service")
+				return err
+			}
+
+			defaultStore = storage.NewObjectStorage(c.Config.Storage.RootDirectory,
+				c.Config.Storage.GC, c.Config.Storage.Dedupe, c.Log, store)
+		}
 
 		c.StoreController.DefaultStore = defaultStore
 
@@ -115,7 +132,7 @@ func (c *Controller) Run() error {
 		if len(c.Config.Storage.SubPaths) > 0 {
 			subPaths := c.Config.Storage.SubPaths
 
-			subImageStore := make(map[string]*storage.ImageStore)
+			subImageStore := make(map[string]storage.ImageStore)
 
 			// creating image store per subpaths
 			for route, storageConfig := range subPaths {
@@ -129,8 +146,22 @@ func (c *Controller) Run() error {
 					}
 				}
 
-				subImageStore[route] = storage.NewImageStore(storageConfig.RootDirectory,
-					storageConfig.GC, storageConfig.Dedupe, c.Log)
+				if len(c.Config.Storage.ObjectStoreParams) == 0 {
+					subImageStore[route] = storage.NewImageStoreFS(storageConfig.RootDirectory,
+						storageConfig.GC, storageConfig.Dedupe, c.Log)
+				} else {
+					storeName := fmt.Sprintf("%v", c.Config.Storage.ObjectStoreParams["name"])
+
+					// Init a Storager from connection string.
+					store, err := factory.Create(storeName, c.Config.Storage.ObjectStoreParams)
+					if err != nil {
+						c.Log.Error().Err(err).Str("rootDir", c.Config.Storage.RootDirectory).Msg("Unable to create s3 service")
+						return err
+					}
+
+					subImageStore[route] = storage.NewObjectStorage(storageConfig.RootDirectory,
+						storageConfig.GC, storageConfig.Dedupe, c.Log, store)
+				}
 
 				// Enable extensions if extension config is provided
 				if c.Config != nil && c.Config.Extensions != nil {

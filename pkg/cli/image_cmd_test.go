@@ -7,14 +7,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"gopkg.in/resty.v1"
 	"io/ioutil"
 	"os"
 	"path"
 	"regexp"
 	"strings"
-	"sync"
-
-	"gopkg.in/resty.v1"
 
 	"testing"
 	"time"
@@ -238,8 +236,8 @@ func TestOutputFormat(t *testing.T) {
 		err := cmd.Execute()
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
-		So(strings.TrimSpace(str), ShouldEqual, `{ "name": "dummyImageName", "tags": [ { "name":`+
-			` "tag", "size": 123445, "digest": "DigestsAreReallyLong", "configDigest": "", "layerDigests": null } ] }`)
+		So(strings.TrimSpace(str), ShouldEqual, `{ "name": "dummyImageName", "tag":`+
+			` "tag", "configDigest": "", "digest": "DigestsAreReallyLong", "layers": null, "size": "123445" }`)
 		So(err, ShouldBeNil)
 	})
 
@@ -257,8 +255,7 @@ func TestOutputFormat(t *testing.T) {
 		err := cmd.Execute()
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
-		So(strings.TrimSpace(str), ShouldEqual, `name: dummyImageName tags: -`+
-			` name: tag size: 123445 digest: DigestsAreReallyLong configdigest: "" layers: []`)
+		So(strings.TrimSpace(str), ShouldEqual, `name: dummyImageName tag: tag configdigest: "" digest: DigestsAreReallyLong layers: [] size: "123445"`)
 		So(err, ShouldBeNil)
 
 		Convey("Test yml", func() {
@@ -275,8 +272,7 @@ func TestOutputFormat(t *testing.T) {
 			err := cmd.Execute()
 			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
-			So(strings.TrimSpace(str), ShouldEqual, `name: dummyImageName tags: -`+
-				` name: tag size: 123445 digest: DigestsAreReallyLong configdigest: "" layers: []`)
+			So(strings.TrimSpace(str), ShouldEqual, `name: dummyImageName tag: tag configdigest: "" digest: DigestsAreReallyLong layers: [] size: "123445"`)
 			So(err, ShouldBeNil)
 		})
 	})
@@ -356,52 +352,8 @@ func TestServerResponse(t *testing.T) {
 			So(actual, ShouldContainSubstring, "repo7 test:1.0 9beeea29 243B")
 		})
 
-		Convey("Test all images config url with graphql", func() {
-			args := []string{"imagetest", "-g", "true"}
-			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-			defer os.Remove(configPath)
-			cmd := NewImageCommand(new(searchService))
-			buff := bytes.NewBufferString("")
-			cmd.SetOut(buff)
-			cmd.SetErr(buff)
-			cmd.SetArgs(args)
-			err = cmd.Execute()
-			So(err, ShouldBeNil)
-			space := regexp.MustCompile(`\s+`)
-			str := space.ReplaceAllString(buff.String(), " ")
-			actual := strings.TrimSpace(str)
-			So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIZE")
-			So(actual, ShouldContainSubstring, "repo7 test:2.0 fdf5f251 243B")
-			So(actual, ShouldContainSubstring, "repo7 test:1.0 9beeea29 243B")
-		})
-
 		Convey("Test all images verbose", func() {
 			args := []string{"imagetest", "--verbose"}
-			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-			defer os.Remove(configPath)
-			cmd := NewImageCommand(new(searchService))
-			buff := bytes.NewBufferString("")
-			cmd.SetOut(buff)
-			cmd.SetErr(buff)
-			cmd.SetArgs(args)
-			err = cmd.Execute()
-			So(err, ShouldBeNil)
-			space := regexp.MustCompile(`\s+`)
-			str := space.ReplaceAllString(buff.String(), " ")
-			actual := strings.TrimSpace(str)
-			// Actual cli output should be something similar to (order of images may differ):
-			// IMAGE NAME    TAG       DIGEST    CONFIG    LAYERS    SIZE
-			// repo7         test:2.0  fdf5f251  dae17351            243B
-			//                                             2f2284ba  243B
-			// repo7         test:1.0  9beeea29  a09bf3b5            243B
-			//                                                		 243B
-			So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST CONFIG LAYERS SIZE")
-			So(actual, ShouldContainSubstring, "repo7 test:2.0 fdf5f251 dae17351 243B 2f2284ba 243B")
-			So(actual, ShouldContainSubstring, "repo7 test:1.0 9beeea29 a09bf3b5 243B 58f98639 243B")
-		})
-
-		Convey("Test all images verbose with graphql", func() {
-			args := []string{"imagetest", "-g", "true", "--verbose"}
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 			defer os.Remove(configPath)
 			cmd := NewImageCommand(new(searchService))
@@ -501,7 +453,7 @@ func TestServerResponse(t *testing.T) {
 			})
 		})
 
-		Convey("Test image by name invalid name", func() {
+		Convey("Test image by name nonexistent name", func() {
 			args := []string{"imagetest", "--name", "repo777"}
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 			defer os.Remove(configPath)
@@ -511,9 +463,8 @@ func TestServerResponse(t *testing.T) {
 			cmd.SetErr(buff)
 			cmd.SetArgs(args)
 			err = cmd.Execute()
-			So(err, ShouldNotBeNil)
-			actual := buff.String()
-			So(actual, ShouldContainSubstring, "unknown")
+			So(err, ShouldBeNil)
+			So(len(buff.String()), ShouldEqual, 0)
 		})
 	})
 }
@@ -569,7 +520,7 @@ func uploadManifest(url string) {
 	_, _ = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
 		SetBody(content).Put(url + "/v2/repo7/manifests/test:1.0")
 
-	// upload same image with different tag
+	// upload another image
 	resp, _ = resty.R().Post(url + "/v2/repo7/blobs/uploads/")
 	loc = v1_0_0.Location(url, resp)
 
@@ -621,61 +572,46 @@ func uploadManifest(url string) {
 
 type mockService struct{}
 
-func (service mockService) getAllImages(ctx context.Context, config searchConfig, username, password string,
-	channel chan stringResult, wg *sync.WaitGroup) {
-	defer wg.Done()
-	defer close(channel)
-
-	image := &imageStruct{}
-	image.Name = "randomimageName"
-	image.Tags = []tags{
+func (service mockService) getImagesByDigest(ctx context.Context, config searchConfig, username, password string, digest string) (*imageListStructForDigestGQL, error) {
+	imageListGQLResponse := &imageListStructForDigestGQL{}
+	imageListGQLResponse.Data.ImageList = []imageStructGQL{
 		{
-			Name:   "tag",
-			Digest: "DigestsAreReallyLong",
-			Size:   123445,
+			Name:         "randomimageName",
+			Tag:          "tag",
+			Digest:       "DigestsAreReallyLong",
+			Size:         "123445",
 		},
 	}
 
-	str, err := image.string(*config.outputFormat)
-	if err != nil {
-		channel <- stringResult{"", err}
-		return
+	return imageListGQLResponse, nil
+}
+
+func (service mockService) getImages(ctx context.Context, config searchConfig, username, password string, imageName string) (*imageListStructGQL, error) {
+	imageListGQLResponse := &imageListStructGQL{}
+	imageListGQLResponse.Data.ImageList = []imageStructGQL{
+		{
+			Name:         "dummyImageName",
+			Tag:          "tag",
+			Digest:       "DigestsAreReallyLong",
+			Size:         "123445",
+		},
 	}
-	channel <- stringResult{str, nil}
+
+	return imageListGQLResponse, nil
 }
 
-func (service mockService) getAllImagesGQL(ctx context.Context, config searchConfig, username, password string) (*imageListStructGQL, error){
-	image := &imageListStructGQL{}
-	return image, nil
-}
-
-func (service mockService) getImageByName(ctx context.Context, config searchConfig,
-	username, password, imageName string, channel chan stringResult, wg *sync.WaitGroup) {
-	defer wg.Done()
-	defer close(channel)
-
-	image := &imageStruct{}
+func (service mockService) getMockedImageByName(imageName string) imageStructGQL {
+	image := imageStructGQL{}
 	image.Name = imageName
-	image.Tags = []tags{
-		{
-			Name:   "tag",
-			Digest: "DigestsAreReallyLong",
-			Size:   123445,
-		},
-	}
+	image.Tag = "tag"
+	image.Digest = "DigestsAreReallyLong"
+	image.Size = "123445"
 
-	str, err := image.string(*config.outputFormat)
-	if err != nil {
-		channel <- stringResult{"", err}
-		return
-	}
-	channel <- stringResult{str, nil}
+	return image
 }
 
 func (service mockService) getCveByImage(ctx context.Context, config searchConfig, username, password,
-	imageName string, c chan stringResult, wg *sync.WaitGroup) {
-	defer wg.Done()
-	defer close(c)
+	imageName string) (*cveResult, error){
 
 	cveRes := &cveResult{}
 	cveRes.Data = cveData{
@@ -699,32 +635,41 @@ func (service mockService) getCveByImage(ctx context.Context, config searchConfi
 		},
 	}
 
-	str, err := cveRes.string(*config.outputFormat)
-	if err != nil {
-		c <- stringResult{"", err}
-		return
+	return cveRes, nil
+}
+
+func (service mockService) getImagesByCveID(ctx context.Context, config searchConfig, username, password string,
+	digest string) (*imagesForCveGQL, error) {
+	imagesForCVEGQL := &imagesForCveGQL{
+		Errors: nil,
+		Data: struct {
+			ImageListForCVE []imageStructGQL `json:"ImageListForCVE"`
+		}{},
 	}
-	c <- stringResult{str, nil}
+
+	imagesForCVEGQL.Errors = nil
+
+	mockedImage := service.getMockedImageByName("anImage")
+	imagesForCVEGQL.Data.ImageListForCVE = []imageStructGQL{mockedImage}
+
+	return imagesForCVEGQL, nil
 }
 
-func (service mockService) getImagesByCveID(ctx context.Context, config searchConfig, username, password, cveID string,
-	c chan stringResult, wg *sync.WaitGroup) {
-	service.getImageByName(ctx, config, username, password, "anImage", c, wg)
-}
+func (service mockService) getTagsForCVE(ctx context.Context, config searchConfig, username, password,
+	imageName, cveID string, getFixed bool) (*tagsForCVE, error) {
+	fixedTags := &tagsForCVE{
+		Errors: nil,
+		Data: struct {
+			TagListForCve []imageStructGQL `json:"TagListForCve"`
+		}{},
+	}
 
-func (service mockService) getImagesByDigest(ctx context.Context, config searchConfig, username,
-	password, digest string, c chan stringResult, wg *sync.WaitGroup) {
-	service.getImageByName(ctx, config, username, password, "anImage", c, wg)
-}
+	fixedTags.Errors = nil
 
-func (service mockService) getImageByNameAndCVEID(ctx context.Context, config searchConfig, username,
-	password, imageName, cveID string, c chan stringResult, wg *sync.WaitGroup) {
-	service.getImageByName(ctx, config, username, password, imageName, c, wg)
-}
+	mockedImage := service.getMockedImageByName(imageName)
+	fixedTags.Data.TagListForCve = []imageStructGQL{mockedImage}
 
-func (service mockService) getFixedTagsForCVE(ctx context.Context, config searchConfig,
-	username, password, imageName, cveID string, c chan stringResult, wg *sync.WaitGroup) {
-	service.getImageByName(ctx, config, username, password, imageName, c, wg)
+	return fixedTags, nil
 }
 
 func makeConfigFile(content string) string {

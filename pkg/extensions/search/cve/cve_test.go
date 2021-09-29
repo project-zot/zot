@@ -41,16 +41,19 @@ type CveResult struct {
 	ImgList ImgList `json:"data"`
 }
 
-type ImgWithFixedCVE struct {
-	ImgResults ImgResults `json:"data"`
+type TagListForCVE struct {
+	TagResults TagResults `json:"data"`
 }
 
-type ImgResults struct {
-	ImgResultForFixedCVE ImgResultForFixedCVE `json:"ImgResultForFixedCVE"`
+type TagResults struct {
+	TagList []ImgInfo `json:"TagListForCve"`
 }
 
-type ImgResultForFixedCVE struct {
-	Tags []TagInfo `json:"Tags"`
+type ImgInfo struct {
+	Name         string `json:"Name"`
+	Tag          string `json:"Tag"`
+	Digest       string `json:"Digest"`
+	Size         string `json:"Size"`
 }
 
 type TagInfo struct {
@@ -94,7 +97,7 @@ func testSetup() error {
 
 	log := log.NewLogger("debug", "")
 
-	storeController := storage.StoreController{DefaultStore: storage.NewImageStore(dir, false, false, log)}
+	storeController := storage.StoreController{DefaultStore: storage.NewImageStoreFS(dir, false, false, log)}
 
 	layoutUtils := common.NewOciLayoutUtils(log)
 
@@ -411,17 +414,17 @@ func TestMultipleStoragePath(t *testing.T) {
 		log := log.NewLogger("debug", "")
 
 		// Create ImageStore
-		firstStore := storage.NewImageStore(firstRootDir, false, false, log)
+		firstStore := storage.NewImageStoreFS(firstRootDir, false, false, log)
 
-		secondStore := storage.NewImageStore(secondRootDir, false, false, log)
+		secondStore := storage.NewImageStoreFS(secondRootDir, false, false, log)
 
-		thirdStore := storage.NewImageStore(thirdRootDir, false, false, log)
+		thirdStore := storage.NewImageStoreFS(thirdRootDir, false, false, log)
 
 		storeController := storage.StoreController{}
 
 		storeController.DefaultStore = firstStore
 
-		subStore := make(map[string]*storage.ImageStore)
+		subStore := make(map[string]storage.ImageStore)
 
 		subStore["/a"] = secondStore
 		subStore["/b"] = thirdStore
@@ -462,6 +465,7 @@ func TestCVESearch(t *testing.T) {
 			},
 		}
 		c := api.NewController(config)
+
 		c.Config.Storage.RootDirectory = dbDir
 		cveConfig := &ext.CVEConfig{
 			UpdateInterval: updateDuration,
@@ -536,25 +540,33 @@ func TestCVESearch(t *testing.T) {
 		So(len(cveResult.ImgList.CVEResultForImage.CVEList), ShouldNotBeZeroValue)
 
 		id := cveResult.ImgList.CVEResultForImage.CVEList[0].ID
+		var tagListForCVE TagListForCVE
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={ImageListWithCVEFixed(id:\"" + id + "\",image:\"zot-test\"){Tags{Name%20Timestamp}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={TagListForCve(id:\"" + id + "\",image:\"zot-test\"" + ",getFixed:true){Name%20Tag%20Digest%20Size}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		var imgFixedCVEResult ImgWithFixedCVE
-		err = json.Unmarshal(resp.Body(), &imgFixedCVEResult)
+		err = json.Unmarshal(resp.Body(), &tagListForCVE)
 		So(err, ShouldBeNil)
-		So(len(imgFixedCVEResult.ImgResults.ImgResultForFixedCVE.Tags), ShouldEqual, 0)
+		So(len(tagListForCVE.TagResults.TagList), ShouldEqual, 0)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={ImageListWithCVEFixed(id:\"" + id + "\",image:\"zot-cve-test\"){Tags{Name%20Timestamp}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={TagListForCve(id:\"" + id + "\",image:\"zot-test\"" + "){Name%20Tag%20Digest%20Size}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		err = json.Unmarshal(resp.Body(), &imgFixedCVEResult)
+		err = json.Unmarshal(resp.Body(), &tagListForCVE)
 		So(err, ShouldBeNil)
-		So(len(imgFixedCVEResult.ImgResults.ImgResultForFixedCVE.Tags), ShouldEqual, 0)
+		So(len(tagListForCVE.TagResults.TagList), ShouldEqual, 1)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={ImageListWithCVEFixed(id:\"" + id + "\",image:\"zot-test\"){Tags{Name%20Timestamp}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={TagListForCve(id:\"nonexistent-cve\",image:\"zot-cve-test\"" + ",getFixed:true){Name%20Tag%20Digest%20Size}}")
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		err = json.Unmarshal(resp.Body(), &tagListForCVE)
+		So(err, ShouldBeNil)
+		So(len(tagListForCVE.TagResults.TagList), ShouldEqual, 1)
+
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={TagListForCve(id:\"" + id + "\",image:\"zot-test\"" + ",getFixed:true){Name%20Tag%20Digest%20Size}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -571,7 +583,7 @@ func TestCVESearch(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={ImageListWithCVEFixed(id:\"" + id + "\",image:\"zot-squashfs-noindex\"){Tags{Name%20Timestamp}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={TagListForCve(id:\"" + id + "\",image:\"zot-squashfs-noindex\"" + ",getFixed:true){Name%20Tag%20Digest%20Size}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -579,7 +591,7 @@ func TestCVESearch(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={ImageListWithCVEFixed(id:\"" + id + "\",image:\"zot-squashfs-invalid-index\"){Tags{Name%20Timestamp}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={TagListForCve(id:\"" + id + "\",image:\"zot-squashfs-invalid-index\"" + ",getFixed:true){Name%20Tag%20Digest%20Size}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -587,11 +599,11 @@ func TestCVESearch(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={ImageListWithCVEFixed(id:\"" + id + "\",image:\"zot-squashfs-noblob\"){Tags{Name%20Timestamp}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={TagListForCve(id:\"" + id + "\",image:\"zot-squashfs-noblob\"" + ",getFixed:true){Name%20Tag%20Digest%20Size}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={ImageListWithCVEFixed(id:\"" + id + "\",image:\"zot-squashfs-test\"){Tags{Name%20Timestamp}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={TagListForCve(id:\"" + id + "\",image:\"zot-squashfs-test\"" + ",getFixed:true){Name%20Tag%20Digest%20Size}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -599,7 +611,7 @@ func TestCVESearch(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={ImageListWithCVEFixed(id:\"" + id + "\",image:\"zot-squashfs-invalid-blob\"){Tags{Name%20Timestamp}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={TagListForCve(id:\"" + id + "\",image:\"zot-squashfs-blob\"" + ",getFixed:true){Name%20Tag%20Digest%20Size}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -611,7 +623,7 @@ func TestCVESearch(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={ImageListForCVE(id:\"CVE-201-20482\"){Name%20Tags}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={ImageListForCVE(id:\"CVE-201-20482\"){Name%20Tag%20Digest%20Size}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -668,7 +680,7 @@ func TestCVESearch(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 422)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={ImageListForCVE(id:\"" + id + "\"){Name%20Tags}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={ImageListForCVE(id:\"" + id + "\"){Name%20Tag%20Digest%20Size}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 	})

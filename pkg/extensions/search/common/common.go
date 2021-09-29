@@ -25,7 +25,7 @@ type TagInfo struct {
 	Timestamp time.Time
 }
 
-func GetImageRepoPath(image string, storeController storage.StoreController) string {
+func GetImageRepoPath(storeController storage.StoreController, image string) string {
 	rootDir := GetRootDir(image, storeController)
 
 	repo := GetRepo(image)

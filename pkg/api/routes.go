@@ -54,9 +54,8 @@ func NewRouteHandler(c *Controller) *RouteHandler {
 
 func (rh *RouteHandler) SetupRoutes() {
 	rh.c.Router.Use(AuthHandler(rh.c))
-	// authz is being enabled because authn is found
-	if rh.c.Config.AccessControl != nil && !isBearerAuthEnabled(rh.c.Config) && isAuthnEnabled(rh.c.Config) {
-		rh.c.Log.Info().Msg("access control is being enabled")
+
+	if !isBearerAuthEnabled(rh.c.Config) && rh.c.Config.AccessControl != nil {
 		rh.c.Router.Use(AuthzHandler(rh.c))
 	}
 
@@ -1222,6 +1221,6 @@ func WriteDataFromReader(w http.ResponseWriter, status int, length int64, mediaT
 }
 
 // will return image storage corresponding to subpath provided in config.
-func (rh *RouteHandler) getImageStore(name string) *storage.ImageStore {
+func (rh *RouteHandler) getImageStore(name string) storage.ImageStore {
 	return rh.c.StoreController.GetImageStore(name)
 }

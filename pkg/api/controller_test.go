@@ -122,11 +122,134 @@ func getCredString(username, password string) string {
 	return usernameAndHash
 }
 
+func skipIt(t *testing.T) {
+	if os.Getenv("S3MOCK_ENDPOINT") == "" {
+		t.Skip("Skipping testing without AWS S3 mock server")
+	}
+}
+
 func TestNew(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		config := api.NewConfig()
 		So(config, ShouldNotBeNil)
 		So(api.NewController(config), ShouldNotBeNil)
+	})
+}
+
+func TestObjectStorageController(t *testing.T) {
+	skipIt(t)
+	Convey("Negative make a new object storage controller", t, func() {
+		port := getFreePort()
+		config := api.NewConfig()
+		config.HTTP.Port = port
+		objectsStoreParams := map[string]interface{}{
+			"rootDir": "zot",
+			"name":    "s3",
+		}
+		config.Storage.ObjectStoreParams = objectsStoreParams
+		c := api.NewController(config)
+		So(c, ShouldNotBeNil)
+
+		c.Config.Storage.RootDirectory = "zot"
+
+		err := c.Run()
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("Make a new object storage controller", t, func() {
+		port := getFreePort()
+		baseURL := getBaseURL(port, false)
+		config := api.NewConfig()
+		config.HTTP.Port = port
+
+		bucket := "zot-storage-test"
+		endpoint := os.Getenv("S3MOCK_ENDPOINT")
+
+		objectsStoreParams := map[string]interface{}{
+			"rootDir":        "zot",
+			"name":           "s3",
+			"region":         "us-east-2",
+			"bucket":         bucket,
+			"regionendpoint": endpoint,
+			"secure":         false,
+			"skipverify":     false,
+		}
+		config.Storage.ObjectStoreParams = objectsStoreParams
+		c := api.NewController(config)
+		So(c, ShouldNotBeNil)
+
+		c.Config.Storage.RootDirectory = "/"
+
+		go func(controller *api.Controller) {
+			// this blocks
+			if err := controller.Run(); err != nil {
+				return
+			}
+		}(c)
+
+		// wait till ready
+		for {
+			_, err := resty.R().Get(baseURL)
+			if err == nil {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		defer func(controller *api.Controller) {
+			ctx := context.Background()
+			_ = controller.Server.Shutdown(ctx)
+		}(c)
+	})
+}
+
+func TestObjectStorageControllerSubPaths(t *testing.T) {
+	skipIt(t)
+	Convey("Make a new object storage controller", t, func() {
+		port := getFreePort()
+		baseURL := getBaseURL(port, false)
+		config := api.NewConfig()
+		config.HTTP.Port = port
+
+		bucket := "zot-storage-test"
+		endpoint := os.Getenv("S3MOCK_ENDPOINT")
+
+		objectsStoreParams := map[string]interface{}{
+			"rootDir":        "zot",
+			"name":           "s3",
+			"region":         "us-east-2",
+			"bucket":         bucket,
+			"regionendpoint": endpoint,
+			"secure":         false,
+			"skipverify":     false,
+		}
+		config.Storage.ObjectStoreParams = objectsStoreParams
+		c := api.NewController(config)
+		So(c, ShouldNotBeNil)
+
+		c.Config.Storage.RootDirectory = "zot"
+		subPathMap := make(map[string]api.StorageConfig)
+		subPathMap["/a"] = api.StorageConfig{RootDirectory: "/a"}
+		c.Config.Storage.SubPaths = subPathMap
+
+		go func(controller *api.Controller) {
+			// this blocks
+			if err := controller.Run(); err != nil {
+				return
+			}
+		}(c)
+
+		for {
+			_, err := resty.R().Get(baseURL)
+			if err == nil {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		defer func(controller *api.Controller) {
+			ctx := context.Background()
+			_ = controller.Server.Shutdown(ctx)
+		}(c)
 	})
 }
 

@@ -5,7 +5,9 @@ import (
 	"github.com/anuvu/zot/pkg/extensions/search/common"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
-	config "github.com/aquasecurity/trivy/integration/config"
+	"github.com/aquasecurity/trivy/integration/config"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/opencontainers/go-digest"
 )
 
 // CveInfo ...
@@ -19,4 +21,10 @@ type CveInfo struct {
 type CveTrivyController struct {
 	DefaultCveConfig *config.Config
 	SubCveConfig     map[string]*config.Config
+}
+
+type ImageInfoByCVE struct {
+	TagName       string
+	TagDigest     digest.Digest
+	ImageManifest v1.Manifest
 }

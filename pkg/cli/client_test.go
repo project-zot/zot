@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	ext "github.com/anuvu/zot/pkg/extensions"
 	"io"
 	"io/ioutil"
 	"os"
@@ -84,6 +85,10 @@ func TestTLSWithAuth(t *testing.T) {
 			CACert: CACert,
 		}
 
+		config.Extensions = &ext.ExtensionConfig{
+			Search: &ext.SearchConfig{Enable: true},
+		}
+
 		c := api.NewController(config)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
@@ -135,7 +140,7 @@ func TestTLSWithAuth(t *testing.T) {
 
 			args = []string{"imagetest"}
 			configPath = makeConfigFile(
-				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s/v2/_catalog","showspinner":false}]}`,
+				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
 					BaseSecureURL1))
 			defer os.Remove(configPath)
 			imageCmd = NewImageCommand(new(searchService))
@@ -150,7 +155,7 @@ func TestTLSWithAuth(t *testing.T) {
 			user := fmt.Sprintf("%s:%s", username, passphrase)
 			args = []string{"imagetest", "-u", user}
 			configPath = makeConfigFile(
-				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s/v2/_catalog","showspinner":false}]}`,
+				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
 					BaseSecureURL1))
 			defer os.Remove(configPath)
 			imageCmd = NewImageCommand(new(searchService))
@@ -179,6 +184,10 @@ func TestTLSWithoutAuth(t *testing.T) {
 			Cert:   ServerCert,
 			Key:    ServerKey,
 			CACert: CACert,
+		}
+
+		config.Extensions = &ext.ExtensionConfig{
+			Search: &ext.SearchConfig{Enable: true},
 		}
 
 		c := api.NewController(config)
@@ -211,7 +220,7 @@ func TestTLSWithoutAuth(t *testing.T) {
 
 		Convey("Certs in user's home", func() {
 			configPath := makeConfigFile(
-				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s/v2/_catalog","showspinner":false}]}`,
+				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
 					BaseSecureURL1))
 			defer os.Remove(configPath)
 
@@ -249,6 +258,10 @@ func TestTLSWithoutAuth(t *testing.T) {
 			CACert: CACert,
 		}
 
+		config.Extensions = &ext.ExtensionConfig{
+			Search: &ext.SearchConfig{Enable: true},
+		}
+
 		c := api.NewController(config)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
@@ -279,7 +292,7 @@ func TestTLSWithoutAuth(t *testing.T) {
 
 		Convey("Certs in privileged path", func() {
 			configPath := makeConfigFile(
-				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s/v2/_catalog","showspinner":false}]}`,
+				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
 					BaseSecureURL2))
 			defer os.Remove(configPath)
 
