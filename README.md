@@ -9,6 +9,8 @@ https://anuvu.github.io/zot/
 
 [```docker run -p 5000:5000 ghcr.io/anuvu/zot:latest```](https://github.com/anuvu/zot/pkgs/container/zot)
 
+[**Why zot?**](COMPARISON.md)
+
 # Features
 * Conforms to [OCI distribution spec](https://github.com/opencontainers/distribution-spec) APIs
 * Clear separation between core dist-spec and zot-specific extensions
@@ -39,7 +41,6 @@ https://anuvu.github.io/zot/
 * Single binary for _all_ the above features
 * Released under Apache 2.0 License
 * ```go get -u github.com/anuvu/zot/cmd/zot```
-
 
 # Presentations
 

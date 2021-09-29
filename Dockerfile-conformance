@@ -1,7 +1,7 @@
 # ---
 # Stage 1: Install certs, build binary, create default config file
 # ---
-FROM docker.io/golang:1.13.6-alpine3.11 AS builder
+FROM docker.io/golang:1.16-alpine AS builder
 RUN apk --update add git make ca-certificates
 RUN mkdir -p /go/src/github.com/anuvu/zot
 WORKDIR /go/src/github.com/anuvu/zot

@@ -41,5 +41,5 @@ var (
 	ErrInvalidRoute            = errors.New("routes: invalid route prefix")
 	ErrImgStoreNotFound        = errors.New("routes: image store not found corresponding to given route")
 	ErrEmptyValue              = errors.New("cache: empty value")
-	ErrEmptyRepoList           = errors.New("extension: no repository found")
+	ErrEmptyRepoList           = errors.New("search: no repository found")
 )

@@ -42,9 +42,9 @@ require (
 	gopkg.in/yaml.v2 v2.4.0
 )
 
-replace github.com/aquasecurity/trivy => ../../anuvu/trivy
+replace (
+	github.com/aquasecurity/fanal => github.com/anuvu/fanal v0.0.0-20200731014233-a1725a9d379f
+	github.com/aquasecurity/trivy => github.com/anuvu/trivy v0.9.2-0.20200731014147-c5f97b59c172
 
-replace github.com/aquasecurity/fanal => ../../anuvu/fanal
-
-
-replace github.com/aquasecurity/trivy-db => github.com/anuvu/trivy-db v0.0.0-20200623200932-d185809a68f7
+	github.com/aquasecurity/trivy-db => github.com/anuvu/trivy-db v0.0.0-20200623200932-d185809a68f7
+)
