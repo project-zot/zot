@@ -15,6 +15,7 @@ import (
 	ext "github.com/anuvu/zot/pkg/extensions"
 	digestinfo "github.com/anuvu/zot/pkg/extensions/search/digest"
 	"github.com/anuvu/zot/pkg/log"
+	"github.com/anuvu/zot/pkg/storage"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 )
@@ -23,6 +24,7 @@ import (
 var (
 	digestInfo *digestinfo.DigestInfo
 	rootDir    string
+	subRootDir string
 )
 
 const (
@@ -62,7 +64,14 @@ func testSetup() error {
 		return err
 	}
 
+	subDir, err := ioutil.TempDir("", "sub_digest_test")
+	if err != nil {
+		return err
+	}
+
 	rootDir = dir
+
+	subRootDir = subDir
 
 	// Test images used/copied:
 	// IMAGE NAME    TAG                       DIGEST    CONFIG    LAYERS    SIZE
@@ -71,14 +80,26 @@ func testSetup() error {
 	// zot-cve-test  0.0.1                     63a795ca  8dd57e17            75MB
 	//                                                             7a0437f0  75MB
 
+	err = os.Mkdir(subDir+"/a", 0700)
+	if err != nil {
+		return err
+	}
+
 	err = copyFiles("../../../../test/data", rootDir)
+	if err != nil {
+		return err
+	}
+
+	err = copyFiles("../../../../test/data", subDir+"/a/")
 	if err != nil {
 		return err
 	}
 
 	log := log.NewLogger("debug", "")
 
-	digestInfo = digestinfo.NewDigestInfo(log)
+	storeController := storage.StoreController{DefaultStore: storage.NewImageStore(rootDir, false, false, log)}
+
+	digestInfo = digestinfo.NewDigestInfo(storeController, log)
 
 	return nil
 }
@@ -131,30 +152,30 @@ func copyFiles(sourceDir string, destDir string) error {
 func TestDigestInfo(t *testing.T) {
 	Convey("Test image tag", t, func() {
 		// Search by manifest digest
-		imageTags, err := digestInfo.GetImageTagsByDigest(path.Join(rootDir, "zot-cve-test"), "63a795ca")
+		imageTags, err := digestInfo.GetImageTagsByDigest("zot-cve-test", "63a795ca")
 		So(err, ShouldBeNil)
 		So(len(imageTags), ShouldEqual, 1)
 		So(*imageTags[0], ShouldEqual, "0.0.1")
 
 		// Search by config digest
-		imageTags, err = digestInfo.GetImageTagsByDigest(path.Join(rootDir, "zot-test"), "adf3bb6c")
+		imageTags, err = digestInfo.GetImageTagsByDigest("zot-test", "adf3bb6c")
 		So(err, ShouldBeNil)
 		So(len(imageTags), ShouldEqual, 1)
 		So(*imageTags[0], ShouldEqual, "0.0.1")
 
 		// Search by layer digest
-		imageTags, err = digestInfo.GetImageTagsByDigest(path.Join(rootDir, "zot-cve-test"), "7a0437f0")
+		imageTags, err = digestInfo.GetImageTagsByDigest("zot-cve-test", "7a0437f0")
 		So(err, ShouldBeNil)
 		So(len(imageTags), ShouldEqual, 1)
 		So(*imageTags[0], ShouldEqual, "0.0.1")
 
 		// Search by non-existent image
-		imageTags, err = digestInfo.GetImageTagsByDigest(path.Join(rootDir, "zot-tes"), "63a795ca")
+		imageTags, err = digestInfo.GetImageTagsByDigest("zot-tes", "63a795ca")
 		So(err, ShouldNotBeNil)
 		So(len(imageTags), ShouldEqual, 0)
 
 		// Search by non-existent digest
-		imageTags, err = digestInfo.GetImageTagsByDigest(path.Join(rootDir, "zot-test"), "111")
+		imageTags, err = digestInfo.GetImageTagsByDigest("zot-test", "111")
 		So(err, ShouldBeNil)
 		So(len(imageTags), ShouldEqual, 0)
 	})
@@ -283,6 +304,75 @@ func TestDigestSearchHTTP(t *testing.T) {
 		err = json.Unmarshal(resp.Body(), &responseStruct)
 		So(err, ShouldBeNil)
 		So(len(responseStruct.Errors), ShouldEqual, 1)
+	})
+}
+
+func TestDigestSearchHTTPSubPaths(t *testing.T) {
+	Convey("Test image search by digest scanning using storage subpaths", t, func() {
+		config := api.NewConfig()
+		config.HTTP.Port = Port1
+		config.Extensions = &ext.ExtensionConfig{
+			Search: &ext.SearchConfig{Enable: true},
+		}
+
+		c := api.NewController(config)
+
+		globalDir, err := ioutil.TempDir("", "digest_test")
+		if err != nil {
+			panic(err)
+		}
+		defer os.RemoveAll(globalDir)
+
+		c.Config.Storage.RootDirectory = globalDir
+
+		subPathMap := make(map[string]api.StorageConfig)
+
+		subPathMap["/a"] = api.StorageConfig{RootDirectory: subRootDir}
+
+		c.Config.Storage.SubPaths = subPathMap
+
+		go func() {
+			// this blocks
+			if err := c.Run(); err != nil {
+				return
+			}
+		}()
+
+		// wait till ready
+		for {
+			_, err := resty.R().Get(BaseURL1)
+			if err == nil {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		// shut down server
+		defer func() {
+			ctx := context.Background()
+			_ = c.Server.Shutdown(ctx)
+		}()
+
+		resp, err := resty.R().Get(BaseURL1 + "/v2/")
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		resp, err = resty.R().Get(BaseURL1 + "/query")
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		resp, err = resty.R().Get(BaseURL1 + "/query?query={ImageListForDigest(id:\"sha\"){Name%20Tags}}")
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		var responseStruct ImgResponseForDigest
+		err = json.Unmarshal(resp.Body(), &responseStruct)
+		So(err, ShouldBeNil)
+		So(len(responseStruct.Errors), ShouldEqual, 0)
+		So(len(responseStruct.ImgListForDigest.Images), ShouldEqual, 2)
 	})
 }
 

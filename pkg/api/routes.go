@@ -1237,6 +1237,6 @@ func WriteDataFromReader(w http.ResponseWriter, status int, length int64, mediaT
 }
 
 // will return image storage corresponding to subpath provided in config.
-func (rh *RouteHandler) getImageStore(name string) *storage.ImageStore {
+func (rh *RouteHandler) getImageStore(name string) storage.ImageStore {
 	return rh.c.StoreController.GetImageStore(name)
 }

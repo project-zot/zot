@@ -157,48 +157,52 @@ func TestImageFormat(t *testing.T) {
 	Convey("Test valid image", t, func() {
 		log := log.NewLogger("debug", "")
 		dbDir := "../../../../test/data"
-		olu := common.NewOciLayoutUtils(log)
-		isValidImage, err := olu.IsValidImageFormat(path.Join(dbDir, "zot-test"))
+
+		defaultStore := storage.NewImageStore(dbDir, false, false, log)
+		storeController := storage.StoreController{DefaultStore: defaultStore}
+		olu := common.NewOciLayoutUtils(storeController, log)
+
+		isValidImage, err := olu.IsValidImageFormat("zot-test")
 		So(err, ShouldBeNil)
 		So(isValidImage, ShouldEqual, true)
 
-		isValidImage, err = olu.IsValidImageFormat(path.Join(dbDir, "zot-test:0.0.1"))
+		isValidImage, err = olu.IsValidImageFormat("zot-test:0.0.1")
 		So(err, ShouldBeNil)
 		So(isValidImage, ShouldEqual, true)
 
-		isValidImage, err = olu.IsValidImageFormat(path.Join(dbDir, "zot-test:0.0."))
+		isValidImage, err = olu.IsValidImageFormat("zot-test:0.0.")
 		So(err, ShouldBeNil)
 		So(isValidImage, ShouldEqual, false)
 
-		isValidImage, err = olu.IsValidImageFormat(path.Join(dbDir, "zot-noindex-test"))
+		isValidImage, err = olu.IsValidImageFormat("zot-noindex-test")
 		So(err, ShouldNotBeNil)
 		So(isValidImage, ShouldEqual, false)
 
-		isValidImage, err = olu.IsValidImageFormat(path.Join(dbDir, "zot--tet"))
+		isValidImage, err = olu.IsValidImageFormat("zot--tet")
 		So(err, ShouldNotBeNil)
 		So(isValidImage, ShouldEqual, false)
 
-		isValidImage, err = olu.IsValidImageFormat(path.Join(dbDir, "zot-noindex-test"))
+		isValidImage, err = olu.IsValidImageFormat("zot-noindex-test")
 		So(err, ShouldNotBeNil)
 		So(isValidImage, ShouldEqual, false)
 
-		isValidImage, err = olu.IsValidImageFormat(path.Join(dbDir, "zot-squashfs-noblobs"))
+		isValidImage, err = olu.IsValidImageFormat("zot-squashfs-noblobs")
 		So(err, ShouldNotBeNil)
 		So(isValidImage, ShouldEqual, false)
 
-		isValidImage, err = olu.IsValidImageFormat(path.Join(dbDir, "zot-squashfs-invalid-index"))
+		isValidImage, err = olu.IsValidImageFormat("zot-squashfs-invalid-index")
 		So(err, ShouldNotBeNil)
 		So(isValidImage, ShouldEqual, false)
 
-		isValidImage, err = olu.IsValidImageFormat(path.Join(dbDir, "zot-squashfs-invalid-blob"))
+		isValidImage, err = olu.IsValidImageFormat("zot-squashfs-invalid-blob")
 		So(err, ShouldNotBeNil)
 		So(isValidImage, ShouldEqual, false)
 
-		isValidImage, err = olu.IsValidImageFormat(path.Join(dbDir, "zot-squashfs-test:0.3.22-squashfs"))
+		isValidImage, err = olu.IsValidImageFormat("zot-squashfs-test:0.3.22-squashfs")
 		So(err, ShouldNotBeNil)
 		So(isValidImage, ShouldEqual, false)
 
-		isValidImage, err = olu.IsValidImageFormat(path.Join(dbDir, "zot-nonreadable-test"))
+		isValidImage, err = olu.IsValidImageFormat("zot-nonreadable-test")
 		So(err, ShouldNotBeNil)
 		So(isValidImage, ShouldEqual, false)
 	})
@@ -443,7 +447,7 @@ func TestUtilsMethod(t *testing.T) {
 
 		subStore := storage.NewImageStore(subRootDir, false, false, log)
 
-		subStoreMap := make(map[string]*storage.ImageStore)
+		subStoreMap := make(map[string]storage.ImageStore)
 
 		subStoreMap["/b"] = subStore
 
