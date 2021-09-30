@@ -5,7 +5,6 @@ package search
 import (
 	"context"
 	"fmt"
-	"path"
 	"strconv"
 	"strings"
 
@@ -54,7 +53,7 @@ func GetResolverConfig(log log.Logger, storeController storage.StoreController, 
 		}
 	}
 
-	digestInfo := digestinfo.NewDigestInfo(log)
+	digestInfo := digestinfo.NewDigestInfo(storeController, log)
 
 	resConfig := &Resolver{cveInfo: cveInfo, storeController: storeController, digestInfo: digestInfo, log: log}
 
@@ -69,7 +68,7 @@ func (r *queryResolver) CVEListForImage(ctx context.Context, image string) (*CVE
 
 	r.log.Info().Str("image", image).Msg("scanning image")
 
-	isValidImage, err := r.cveInfo.LayoutUtils.IsValidImageFormat(trivyConfig.TrivyConfig.Input)
+	isValidImage, err := r.cveInfo.LayoutUtils.IsValidImageFormat(image)
 	if !isValidImage {
 		r.log.Debug().Str("image", image).Msg("image media type not supported for scanning")
 
@@ -201,7 +200,7 @@ func (r *queryResolver) ImageListForCve(ctx context.Context, id string) ([]*ImgR
 	return finalCveResult, nil
 }
 
-func (r *queryResolver) getImageListForCVE(repoList []string, id string, imgStore *storage.ImageStore,
+func (r *queryResolver) getImageListForCVE(repoList []string, id string, imgStore storage.ImageStore,
 	trivyConfig *config.Config) ([]*ImgResultForCve, error) {
 	cveResult := []*ImgResultForCve{}
 
@@ -238,7 +237,7 @@ func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, im
 
 	r.log.Info().Str("image", image).Msg("extracting list of tags available in image")
 
-	tagsInfo, err := r.cveInfo.LayoutUtils.GetImageTagsWithTimestamp(imagePath)
+	tagsInfo, err := r.cveInfo.LayoutUtils.GetImageTagsWithTimestamp(image)
 	if err != nil {
 		r.log.Error().Err(err).Msg("unable to read image tags")
 
@@ -252,7 +251,7 @@ func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, im
 	for _, tag := range tagsInfo {
 		trivyConfig.TrivyConfig.Input = fmt.Sprintf("%s:%s", imagePath, tag.Name)
 
-		isValidImage, _ := r.cveInfo.LayoutUtils.IsValidImageFormat(trivyConfig.TrivyConfig.Input)
+		isValidImage, _ := r.cveInfo.LayoutUtils.IsValidImageFormat(fmt.Sprintf("%s:%s", image, tag.Name))
 		if !isValidImage {
 			r.log.Debug().Str("image",
 				fmt.Sprintf("%s:%s", image, tag.Name)).
@@ -325,9 +324,7 @@ func (r *queryResolver) ImageListForDigest(ctx context.Context, id string) ([]*I
 
 	r.log.Info().Msg("scanning each global repository")
 
-	rootDir := defaultStore.RootDir()
-
-	partialImgResultForDigest, err := r.getImageListForDigest(rootDir, repoList, id)
+	partialImgResultForDigest, err := r.getImageListForDigest(repoList, id)
 	if err != nil {
 		r.log.Error().Err(err).Msg("unable to get image and tag list for global repositories")
 
@@ -338,8 +335,6 @@ func (r *queryResolver) ImageListForDigest(ctx context.Context, id string) ([]*I
 
 	subStore := r.storeController.SubStore
 	for _, store := range subStore {
-		rootDir := store.RootDir()
-
 		subRepoList, err := store.GetRepositories()
 		if err != nil {
 			r.log.Error().Err(err).Msg("unable to search sub-repositories")
@@ -347,7 +342,7 @@ func (r *queryResolver) ImageListForDigest(ctx context.Context, id string) ([]*I
 			return imgResultForDigest, err
 		}
 
-		partialImgResultForDigest, err = r.getImageListForDigest(rootDir, subRepoList, id)
+		partialImgResultForDigest, err = r.getImageListForDigest(subRepoList, id)
 		if err != nil {
 			r.log.Error().Err(err).Msg("unable to get image and tag list for sub-repositories")
 
@@ -360,7 +355,7 @@ func (r *queryResolver) ImageListForDigest(ctx context.Context, id string) ([]*I
 	return imgResultForDigest, nil
 }
 
-func (r *queryResolver) getImageListForDigest(rootDir string, repoList []string,
+func (r *queryResolver) getImageListForDigest(repoList []string,
 	digest string) ([]*ImgResultForDigest, error) {
 	imgResultForDigest := []*ImgResultForDigest{}
 
@@ -369,7 +364,7 @@ func (r *queryResolver) getImageListForDigest(rootDir string, repoList []string,
 	for _, repo := range repoList {
 		r.log.Info().Str("repo", repo).Msg("filtering list of tags in image repo by digest")
 
-		tags, err := r.digestInfo.GetImageTagsByDigest(path.Join(rootDir, repo), digest)
+		tags, err := r.digestInfo.GetImageTagsByDigest(repo, digest)
 		if err != nil {
 			r.log.Error().Err(err).Msg("unable to get filtered list of image tags")
 
@@ -424,7 +419,7 @@ func (r *queryResolver) ImageListWithLatestTag(ctx context.Context) ([]*ImageInf
 	return imageList, nil
 }
 
-func (r *queryResolver) getImageListWithLatestTag(store *storage.ImageStore) ([]*ImageInfo, error) {
+func (r *queryResolver) getImageListWithLatestTag(store storage.ImageStore) ([]*ImageInfo, error) {
 	results := make([]*ImageInfo, 0)
 
 	repoList, err := store.GetRepositories()
@@ -438,12 +433,10 @@ func (r *queryResolver) getImageListWithLatestTag(store *storage.ImageStore) ([]
 		r.log.Info().Msg("no repositories found")
 	}
 
-	dir := store.RootDir()
-
-	layoutUtils := common.NewOciLayoutUtils(r.log)
+	layoutUtils := common.NewOciLayoutUtils(r.storeController, r.log)
 
 	for _, repo := range repoList {
-		tagsInfo, err := layoutUtils.GetImageTagsWithTimestamp(path.Join(dir, repo))
+		tagsInfo, err := layoutUtils.GetImageTagsWithTimestamp(repo)
 		if err != nil {
 			r.log.Error().Err(err).Msg("extension api: error getting tag timestamp info")
 
@@ -460,7 +453,7 @@ func (r *queryResolver) getImageListWithLatestTag(store *storage.ImageStore) ([]
 
 		digest := godigest.Digest(latestTag.Digest)
 
-		manifest, err := layoutUtils.GetImageBlobManifest(path.Join(dir, repo), digest)
+		manifest, err := layoutUtils.GetImageBlobManifest(repo, digest)
 		if err != nil {
 			r.log.Error().Err(err).Msg("extension api: error reading manifest")
 
@@ -471,7 +464,7 @@ func (r *queryResolver) getImageListWithLatestTag(store *storage.ImageStore) ([]
 
 		name := repo
 
-		imageConfig, err := layoutUtils.GetImageInfo(path.Join(dir, repo), manifest.Config.Digest)
+		imageConfig, err := layoutUtils.GetImageInfo(repo, manifest.Config.Digest)
 		if err != nil {
 			r.log.Error().Err(err).Msg("extension api: error reading image config")
 

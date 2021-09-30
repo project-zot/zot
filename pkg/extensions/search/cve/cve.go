@@ -40,7 +40,7 @@ func ScanImage(config *config.Config) (report.Results, error) {
 
 func GetCVEInfo(storeController storage.StoreController, log log.Logger) (*CveInfo, error) {
 	cveController := CveTrivyController{}
-	layoutUtils := common.NewOciLayoutUtils(log)
+	layoutUtils := common.NewOciLayoutUtils(storeController, log)
 
 	subCveConfig := make(map[string]*config.Config)
 
@@ -118,7 +118,7 @@ func (cveinfo CveInfo) GetTrivyConfig(image string) *config.Config {
 	return trivyConfig
 }
 
-func (cveinfo CveInfo) GetImageListForCVE(repo string, id string, imgStore *storage.ImageStore,
+func (cveinfo CveInfo) GetImageListForCVE(repo string, id string, imgStore storage.ImageStore,
 	trivyConfig *config.Config) ([]*string, error) {
 	tags := make([]*string, 0)
 
@@ -134,7 +134,7 @@ func (cveinfo CveInfo) GetImageListForCVE(repo string, id string, imgStore *stor
 	for _, tag := range tagList {
 		trivyConfig.TrivyConfig.Input = fmt.Sprintf("%s:%s", path.Join(rootDir, repo), tag)
 
-		isValidImage, _ := cveinfo.LayoutUtils.IsValidImageFormat(trivyConfig.TrivyConfig.Input)
+		isValidImage, _ := cveinfo.LayoutUtils.IsValidImageFormat(fmt.Sprintf("%s:%s", repo, tag))
 		if !isValidImage {
 			cveinfo.Log.Debug().Str("image", repo+":"+tag).Msg("image media type not supported for scanning")
 
