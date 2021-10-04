@@ -237,6 +237,7 @@ func basicAuthHandler(c *Controller) mux.MiddlewareFunc {
 	}
 }
 
+//nolint
 func isAuthnEnabled(config *Config) bool {
 	if config.HTTP.Auth != nil &&
 		(config.HTTP.Auth.HTPasswd.Path != "" || config.HTTP.Auth.LDAP != nil) {

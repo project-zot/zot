@@ -3,16 +3,15 @@ package common
 
 import (
 	"encoding/json"
-	"github.com/anuvu/zot/pkg/storage"
 	"os"
 	"path"
 	"strings"
 
 	"github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/log"
+	"github.com/anuvu/zot/pkg/storage"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/types"
-	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
@@ -26,7 +25,8 @@ func NewOciLayoutUtils(log log.Logger) *OciLayoutUtils {
 	return &OciLayoutUtils{Log: log}
 }
 
-func (olu OciLayoutUtils) GetImageManifests(storeController storage.StoreController, image string) ([]ispec.Descriptor, error) {
+func (olu OciLayoutUtils) GetImageManifests(storeController storage.StoreController,
+	image string) ([]ispec.Descriptor, error) {
 	imageStore := storeController.GetImageStore(image)
 	buf, err := imageStore.GetIndexContent(image)
 
@@ -52,11 +52,12 @@ func (olu OciLayoutUtils) GetImageManifests(storeController storage.StoreControl
 	return index.Manifests, nil
 }
 
-func (olu OciLayoutUtils) GetImageBlobManifest(storeController storage.StoreController, imageDir string, digest godigest.Digest) (v1.Manifest, error) {
+func (olu OciLayoutUtils) GetImageBlobManifest(storeController storage.StoreController, imageDir string,
+	digest string) (v1.Manifest, error) {
 	var blobIndex v1.Manifest
 
 	imageStore := storeController.GetImageStore(imageDir)
-	blobBuf, err := imageStore.GetBlobContent(imageDir, digest.String())
+	blobBuf, err := imageStore.GetBlobContent(imageDir, digest)
 
 	if err != nil {
 		olu.Log.Error().Err(err).Msg("unable to open image metadata file")
@@ -73,12 +74,13 @@ func (olu OciLayoutUtils) GetImageBlobManifest(storeController storage.StoreCont
 	return blobIndex, nil
 }
 
-func (olu OciLayoutUtils) GetImageInfo(storeController storage.StoreController, imageDir string, hash v1.Hash) (ispec.Image, error) {
+func (olu OciLayoutUtils) GetImageInfo(storeController storage.StoreController, imageDir string,
+	hash string) (ispec.Image, error) {
 	var imageInfo ispec.Image
 
 	imageStore := storeController.GetImageStore(imageDir)
 
-	blobBuf, err := imageStore.GetBlobContent(imageDir, hash.String())
+	blobBuf, err := imageStore.GetBlobContent(imageDir, hash)
 	if err != nil {
 		olu.Log.Error().Err(err).Msg("unable to open image layers file")
 
@@ -110,7 +112,7 @@ func (olu OciLayoutUtils) IsValidImageFormat(storeController storage.StoreContro
 			continue
 		}
 
-		blobManifest, err := olu.GetImageBlobManifest(storeController, imageDir, m.Digest)
+		blobManifest, err := olu.GetImageBlobManifest(storeController, imageDir, m.Digest.String())
 		if err != nil {
 			return false, err
 		}
@@ -133,7 +135,8 @@ func (olu OciLayoutUtils) IsValidImageFormat(storeController storage.StoreContro
 }
 
 // GetImageTagsWithTimestamp returns a list of image tags with timestamp available in the specified repository.
-func (olu OciLayoutUtils) GetImageTagsWithTimestamp(storeController storage.StoreController, repo string) ([]TagInfo, error) {
+func (olu OciLayoutUtils) GetImageTagsWithTimestamp(storeController storage.StoreController,
+	repo string) ([]TagInfo, error) {
 	tagsInfo := make([]TagInfo, 0)
 
 	manifests, err := olu.GetImageManifests(storeController, repo)
@@ -149,7 +152,7 @@ func (olu OciLayoutUtils) GetImageTagsWithTimestamp(storeController storage.Stor
 
 		v, ok := manifest.Annotations[ispec.AnnotationRefName]
 		if ok {
-			imageBlobManifest, err := olu.GetImageBlobManifest(storeController, repo, digest)
+			imageBlobManifest, err := olu.GetImageBlobManifest(storeController, repo, digest.String())
 
 			if err != nil {
 				olu.Log.Error().Err(err).Msg("unable to read image blob manifest")
@@ -157,7 +160,7 @@ func (olu OciLayoutUtils) GetImageTagsWithTimestamp(storeController storage.Stor
 				return tagsInfo, err
 			}
 
-			imageInfo, err := olu.GetImageInfo(storeController, repo, imageBlobManifest.Config.Digest)
+			imageInfo, err := olu.GetImageInfo(storeController, repo, imageBlobManifest.Config.Digest.String())
 			if err != nil {
 				olu.Log.Error().Err(err).Msg("unable to read image info")
 

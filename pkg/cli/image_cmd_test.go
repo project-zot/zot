@@ -7,13 +7,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"gopkg.in/resty.v1"
 	"io/ioutil"
 	"os"
 	"path"
 	"regexp"
 	"strings"
-
 	"testing"
 	"time"
 
@@ -25,6 +23,7 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/phayes/freeport"
 	. "github.com/smartystreets/goconvey/convey"
+	"gopkg.in/resty.v1"
 )
 
 const (
@@ -255,13 +254,21 @@ func TestOutputFormat(t *testing.T) {
 		err := cmd.Execute()
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
-		So(strings.TrimSpace(str), ShouldEqual, `name: dummyImageName tag: tag configdigest: "" digest: DigestsAreReallyLong layers: [] size: "123445"`)
+		So(
+			strings.TrimSpace(str),
+			ShouldEqual,
+			`name: dummyImageName tag: tag configdigest: "" `+
+				`digest: DigestsAreReallyLong layers: [] size: "123445"`,
+		)
 		So(err, ShouldBeNil)
 
 		Convey("Test yml", func() {
 			args := []string{"imagetest", "--name", "dummyImageName", "-o", "yml"}
 
-			configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","url":"https://test-url.com","showspinner":false}]}`)
+			configPath := makeConfigFile(
+				`{"configs":[{"_name":"imagetest",` +
+					`"url":"https://test-url.com","showspinner":false}]}`,
+			)
 			defer os.Remove(configPath)
 
 			cmd := NewImageCommand(new(mockService))
@@ -272,7 +279,12 @@ func TestOutputFormat(t *testing.T) {
 			err := cmd.Execute()
 			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
-			So(strings.TrimSpace(str), ShouldEqual, `name: dummyImageName tag: tag configdigest: "" digest: DigestsAreReallyLong layers: [] size: "123445"`)
+			So(
+				strings.TrimSpace(str),
+				ShouldEqual,
+				`name: dummyImageName tag: tag configdigest: "" `+
+					`digest: DigestsAreReallyLong layers: [] size: "123445"`,
+			)
 			So(err, ShouldBeNil)
 		})
 	})
@@ -486,7 +498,7 @@ func uploadManifest(url string) {
 		Architecture: "amd64",
 		OS:           "linux",
 		Config:       ispec.ImageConfig{},
-		RootFS:       ispec.RootFS{
+		RootFS: ispec.RootFS{
 			Type:    "layers",
 			DiffIDs: []godigest.Digest{layerDigest},
 		},
@@ -536,7 +548,7 @@ func uploadManifest(url string) {
 		Architecture: "amd64",
 		OS:           "linux",
 		Config:       ispec.ImageConfig{},
-		RootFS:       ispec.RootFS{
+		RootFS: ispec.RootFS{
 			Type:    "layers",
 			DiffIDs: []godigest.Digest{layerDigest},
 		},
@@ -572,28 +584,30 @@ func uploadManifest(url string) {
 
 type mockService struct{}
 
-func (service mockService) getImagesByDigest(ctx context.Context, config searchConfig, username, password string, digest string) (*imageListStructForDigestGQL, error) {
+func (service mockService) getImagesByDigest(ctx context.Context, config searchConfig, username, password string,
+	digest string) (*imageListStructForDigestGQL, error) {
 	imageListGQLResponse := &imageListStructForDigestGQL{}
 	imageListGQLResponse.Data.ImageList = []imageStructGQL{
 		{
-			Name:         "randomimageName",
-			Tag:          "tag",
-			Digest:       "DigestsAreReallyLong",
-			Size:         "123445",
+			Name:   "randomimageName",
+			Tag:    "tag",
+			Digest: "DigestsAreReallyLong",
+			Size:   "123445",
 		},
 	}
 
 	return imageListGQLResponse, nil
 }
 
-func (service mockService) getImages(ctx context.Context, config searchConfig, username, password string, imageName string) (*imageListStructGQL, error) {
+func (service mockService) getImages(ctx context.Context, config searchConfig, username, password string,
+	imageName string) (*imageListStructGQL, error) {
 	imageListGQLResponse := &imageListStructGQL{}
 	imageListGQLResponse.Data.ImageList = []imageStructGQL{
 		{
-			Name:         "dummyImageName",
-			Tag:          "tag",
-			Digest:       "DigestsAreReallyLong",
-			Size:         "123445",
+			Name:   "dummyImageName",
+			Tag:    "tag",
+			Digest: "DigestsAreReallyLong",
+			Size:   "123445",
 		},
 	}
 
@@ -611,8 +625,7 @@ func (service mockService) getMockedImageByName(imageName string) imageStructGQL
 }
 
 func (service mockService) getCveByImage(ctx context.Context, config searchConfig, username, password,
-	imageName string) (*cveResult, error){
-
+	imageName string) (*cveResult, error) {
 	cveRes := &cveResult{}
 	cveRes.Data = cveData{
 		CVEListForImage: cveListForImage{

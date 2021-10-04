@@ -50,15 +50,10 @@ type TagResults struct {
 }
 
 type ImgInfo struct {
-	Name         string `json:"Name"`
-	Tag          string `json:"Tag"`
-	Digest       string `json:"Digest"`
-	Size         string `json:"Size"`
-}
-
-type TagInfo struct {
-	Name      string
-	Timestamp time.Time
+	Name   string `json:"Name"`
+	Tag    string `json:"Tag"`
+	Digest string `json:"Digest"`
+	Size   string `json:"Size"`
 }
 
 type ImgList struct {

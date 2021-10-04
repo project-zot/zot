@@ -4,12 +4,8 @@ package cli
 
 import (
 	"context"
-	"fmt"
 	"errors"
-	"github.com/dustin/go-humanize"
-	jsoniter "github.com/json-iterator/go"
-	"github.com/olekukonko/tablewriter"
-	"gopkg.in/yaml.v2"
+	"fmt"
 	"io"
 	"net/url"
 	"strconv"
@@ -17,15 +13,23 @@ import (
 	"sync"
 
 	zotErrors "github.com/anuvu/zot/errors"
+	"github.com/dustin/go-humanize"
+	jsoniter "github.com/json-iterator/go"
+	"github.com/olekukonko/tablewriter"
+	"gopkg.in/yaml.v2"
 )
 
 type SearchService interface {
-	getImages(ctx context.Context, config searchConfig, username, password string, imageName string) (*imageListStructGQL, error)
-	getImagesByDigest(ctx context.Context, config searchConfig, username, password string, digest string) (*imageListStructForDigestGQL, error)
+	getImages(ctx context.Context, config searchConfig, username, password string,
+		imageName string) (*imageListStructGQL, error)
+	getImagesByDigest(ctx context.Context, config searchConfig, username, password string,
+		digest string) (*imageListStructForDigestGQL, error)
 	getCveByImage(ctx context.Context, config searchConfig, username, password,
 		imageName string) (*cveResult, error)
-	getImagesByCveID(ctx context.Context, config searchConfig, username, password string, digest string) (*imagesForCveGQL, error)
-	getTagsForCVE(ctx context.Context, config searchConfig, username, password, imageName, cveID string, getFixed bool) (*tagsForCVE, error)
+	getImagesByCveID(ctx context.Context, config searchConfig, username, password string,
+		digest string) (*imagesForCveGQL, error)
+	getTagsForCVE(ctx context.Context, config searchConfig, username, password, imageName,
+		cveID string, getFixed bool) (*tagsForCVE, error)
 }
 
 type searchService struct{}
@@ -34,7 +38,8 @@ func NewSearchService() SearchService {
 	return searchService{}
 }
 
-func (service searchService) getImages(ctx context.Context, config searchConfig, username, password string, imageName string) (*imageListStructGQL, error) {
+func (service searchService) getImages(ctx context.Context, config searchConfig, username, password string,
+	imageName string) (*imageListStructGQL, error) {
 	query := fmt.Sprintf(`{ImageList(imageName: "%s") {`+`
 									Name Tag Digest ConfigDigest Size Layers {Size Digest}}
 							  }`,
@@ -60,15 +65,17 @@ func (service searchService) getImages(ctx context.Context, config searchConfig,
 
 		if isContextDone(ctx) {
 			return nil, nil
-		} else {
-			return nil, errors.New(errBuilder.String())
 		}
+
+		//nolint: goerr113
+		return nil, errors.New(errBuilder.String())
 	}
 
 	return result, nil
 }
 
-func (service searchService) getImagesByDigest(ctx context.Context, config searchConfig, username, password string, digest string) (*imageListStructForDigestGQL, error) {
+func (service searchService) getImagesByDigest(ctx context.Context, config searchConfig, username, password string,
+	digest string) (*imageListStructForDigestGQL, error) {
 	query := fmt.Sprintf(`{ImageListForDigest(digest: "%s") {`+`
 									Name Tag Digest ConfigDigest Size Layers {Size Digest}}
 							  }`,
@@ -85,7 +92,7 @@ func (service searchService) getImagesByDigest(ctx context.Context, config searc
 		return nil, err
 	}
 
-	if result.Errors != nil && len(result.Errors) > 0{
+	if result.Errors != nil && len(result.Errors) > 0 {
 		var errBuilder strings.Builder
 
 		for _, err := range result.Errors {
@@ -94,9 +101,10 @@ func (service searchService) getImagesByDigest(ctx context.Context, config searc
 
 		if isContextDone(ctx) {
 			return nil, nil
-		} else {
-			return nil, errors.New(errBuilder.String())
 		}
+
+		//nolint: goerr113
+		return nil, errors.New(errBuilder.String())
 	}
 
 	return result, nil
@@ -104,7 +112,6 @@ func (service searchService) getImagesByDigest(ctx context.Context, config searc
 
 func (service searchService) getImagesByCveID(ctx context.Context, config searchConfig, username,
 	password, cveID string) (*imagesForCveGQL, error) {
-
 	query := fmt.Sprintf(`{ImageListForCVE(id: "%s") {`+`
 								Name Tag Digest Size}
 						  }`,
@@ -130,9 +137,10 @@ func (service searchService) getImagesByCveID(ctx context.Context, config search
 
 		if isContextDone(ctx) {
 			return nil, nil
-		} else {
-			return nil, errors.New(errBuilder.String())
 		}
+
+		//nolint: goerr113
+		return nil, errors.New(errBuilder.String())
 	}
 
 	return result, nil
@@ -140,7 +148,6 @@ func (service searchService) getImagesByCveID(ctx context.Context, config search
 
 func (service searchService) getCveByImage(ctx context.Context, config searchConfig, username, password,
 	imageName string) (*cveResult, error) {
-
 	query := fmt.Sprintf(`{ CVEListForImage (image:"%s")`+
 		` { Tag CVEList { Id Title Severity Description `+
 		`PackageList {Name InstalledVersion FixedVersion}} } }`, imageName)
@@ -165,9 +172,10 @@ func (service searchService) getCveByImage(ctx context.Context, config searchCon
 
 		if isContextDone(ctx) {
 			return nil, nil
-		} else {
-			return nil, errors.New(errBuilder.String())
 		}
+
+		//nolint: goerr113
+		return nil, errors.New(errBuilder.String())
 	}
 
 	result.Data.CVEListForImage.CVEList = groupCVEsBySeverity(result.Data.CVEListForImage.CVEList)
@@ -206,16 +214,14 @@ func isContextDone(ctx context.Context) bool {
 }
 
 func (service searchService) getTagsForCVE(ctx context.Context, config searchConfig,
-	username, password, imageName, cveID string, getFixed bool) (*tagsForCVE, error){
-
+	username, password, imageName, cveID string, getFixed bool) (*tagsForCVE, error) {
 	query := fmt.Sprintf(`{TagListForCve(id: "%s", image: "%s", getFixed: %t) {`+`
 								Name Tag Digest Size}
 						  }`,
 		cveID, imageName, getFixed)
 	result := &tagsForCVE{}
-	var err error
 
-	err = service.makeGraphQLQuery(config, username, password, query, result)
+	err := service.makeGraphQLQuery(config, username, password, query, result)
 
 	if err != nil {
 		if isContextDone(ctx) {
@@ -234,9 +240,10 @@ func (service searchService) getTagsForCVE(ctx context.Context, config searchCon
 
 		if isContextDone(ctx) {
 			return nil, nil
-		} else {
-			return nil, errors.New(errBuilder.String())
 		}
+
+		//nolint: goerr113
+		return nil, errors.New(errBuilder.String())
 	}
 
 	return result, err
@@ -259,6 +266,7 @@ func (service searchService) makeGraphQLQuery(config searchConfig, username, pas
 	return nil
 }
 
+//nolint
 func addManifestCallToPool(ctx context.Context, config searchConfig, p *requestsPool, username, password, imageName,
 	tagName string, c chan stringResult, wg *sync.WaitGroup) {
 	defer wg.Done()
@@ -316,6 +324,7 @@ type cveData struct {
 	CVEListForImage cveListForImage `json:"CVEListForImage"`
 }
 
+//nolint: goconst
 func (cve cveResult) string(format string) (string, error) {
 	switch strings.ToLower(format) {
 	case "", defaultOutoutFormat:
@@ -386,6 +395,7 @@ type imagesForCveGQL struct {
 	} `json:"data"`
 }
 
+//nolint
 type imageStruct struct {
 	Name    string `json:"name"`
 	Tags    []tags `json:"tags"`
@@ -416,6 +426,7 @@ type imageListStructForDigestGQL struct {
 	} `json:"data"`
 }
 
+//nolint
 type tags struct {
 	Name         string  `json:"name"`
 	Size         uint64  `json:"size"`
@@ -424,6 +435,7 @@ type tags struct {
 	Layers       []layer `json:"layerDigests"`
 }
 
+//nolint
 type layer struct {
 	Size   uint64 `json:"size"`
 	Digest string `json:"digest"`
@@ -616,10 +628,12 @@ func (img imageStructGQL) stringYAML() (string, error) {
 	return string(body), nil
 }
 
+//nolint
 type catalogResponse struct {
 	Repositories []string `json:"repositories"`
 }
 
+//nolint
 type manifestResponse struct {
 	Layers []struct {
 		MediaType string `json:"mediaType"`

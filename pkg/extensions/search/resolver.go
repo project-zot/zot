@@ -5,18 +5,17 @@ package search
 import (
 	"context"
 	"fmt"
-	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"strconv"
 	"strings"
-
-	"github.com/anuvu/zot/pkg/log"
-	"github.com/aquasecurity/trivy/integration/config"
-	godigest "github.com/opencontainers/go-digest"
 
 	"github.com/anuvu/zot/pkg/extensions/search/common"
 	cveinfo "github.com/anuvu/zot/pkg/extensions/search/cve"
 	digestinfo "github.com/anuvu/zot/pkg/extensions/search/digest"
+	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
+	"github.com/aquasecurity/trivy/integration/config"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
+	godigest "github.com/opencontainers/go-digest"
 ) // THIS CODE IS A STARTING POINT ONLY. IT WILL NOT BE UPDATED WITH SCHEMA CHANGES.
 
 // Resolver ...
@@ -201,11 +200,13 @@ func (r *queryResolver) ImageListForCve(ctx context.Context, id string) ([]*Imag
 	return finalCveResult, nil
 }
 
-func (r *queryResolver) getImageListForCVE(repoList []string, id string, trivyConfig *config.Config) ([]*ImageInfo, error) {
+func (r *queryResolver) getImageListForCVE(repoList []string, id string, trivyConfig *config.Config) (
+	[]*ImageInfo, error) {
 	cveResult := []*ImageInfo{}
 
 	for _, repo := range repoList {
 		r.log.Info().Str("repo", repo).Msg("extracting list of tags available in image repo")
+
 		imageListByCVE, err := r.cveInfo.GetImageListForCVE(r.storeController, repo, id, trivyConfig)
 		if err != nil {
 			r.log.Error().Err(err).Msg("error getting tag")
@@ -214,7 +215,10 @@ func (r *queryResolver) getImageListForCVE(repoList []string, id string, trivyCo
 		}
 
 		for _, imageByCVE := range imageListByCVE {
-			cveResult = append(cveResult, buildImageInfo(repo, imageByCVE.TagName, imageByCVE.TagDigest, imageByCVE.ImageManifest))
+			cveResult = append(
+				cveResult,
+				buildImageInfo(repo, imageByCVE.TagName, imageByCVE.TagDigest, imageByCVE.ImageManifest),
+			)
 		}
 	}
 
@@ -298,7 +302,8 @@ func (r *queryResolver) TagListForCve(ctx context.Context, id string, image stri
 
 	for _, tag := range tagsInfo {
 		digest := godigest.Digest(tag.Digest)
-		manifest, err := r.cveInfo.LayoutUtils.GetImageBlobManifest(r.storeController, image, digest)
+
+		manifest, err := r.cveInfo.LayoutUtils.GetImageBlobManifest(r.storeController, image, digest.String())
 		if err != nil {
 			r.log.Error().Err(err).Msg("extension api: error reading manifest")
 
@@ -328,9 +333,7 @@ func (r *queryResolver) ImageListForDigest(ctx context.Context, digest string) (
 
 	r.log.Info().Msg("scanning each global repository")
 
-	rootDir := defaultStore.RootDir()
-
-	partialImgResultForDigest, err := r.getImageListForDigest(rootDir, repoList, digest)
+	partialImgResultForDigest, err := r.getImageListForDigest(repoList, digest)
 	if err != nil {
 		r.log.Error().Err(err).Msg("unable to get image and tag list for global repositories")
 
@@ -341,8 +344,6 @@ func (r *queryResolver) ImageListForDigest(ctx context.Context, digest string) (
 
 	subStore := r.storeController.SubStore
 	for _, store := range subStore {
-		rootDir := store.RootDir()
-
 		subRepoList, err := store.GetRepositories()
 		if err != nil {
 			r.log.Error().Err(err).Msg("unable to search sub-repositories")
@@ -350,7 +351,7 @@ func (r *queryResolver) ImageListForDigest(ctx context.Context, digest string) (
 			return imgResultForDigest, err
 		}
 
-		partialImgResultForDigest, err = r.getImageListForDigest(rootDir, subRepoList, digest)
+		partialImgResultForDigest, err = r.getImageListForDigest(subRepoList, digest)
 		if err != nil {
 			r.log.Error().Err(err).Msg("unable to get image and tag list for sub-repositories")
 
@@ -363,8 +364,7 @@ func (r *queryResolver) ImageListForDigest(ctx context.Context, digest string) (
 	return imgResultForDigest, nil
 }
 
-func (r *queryResolver) getImageListForDigest(rootDir string, repoList []string,
-	digest string) ([]*ImageInfo, error) {
+func (r *queryResolver) getImageListForDigest(repoList []string, digest string) ([]*ImageInfo, error) {
 	imgResultForDigest := []*ImageInfo{}
 
 	var errResult error
@@ -457,7 +457,7 @@ func (r *queryResolver) getImageListWithLatestTag(store storage.ImageStore) ([]*
 
 		digest := godigest.Digest(latestTag.Digest)
 
-		manifest, err := layoutUtils.GetImageBlobManifest(r.storeController, repo, digest)
+		manifest, err := layoutUtils.GetImageBlobManifest(r.storeController, repo, digest.String())
 		if err != nil {
 			r.log.Error().Err(err).Msg("extension api: error reading manifest")
 
@@ -468,7 +468,7 @@ func (r *queryResolver) getImageListWithLatestTag(store storage.ImageStore) ([]*
 
 		name := repo
 
-		imageConfig, err := layoutUtils.GetImageInfo(r.storeController, repo, manifest.Config.Digest)
+		imageConfig, err := layoutUtils.GetImageInfo(r.storeController, repo, manifest.Config.Digest.String())
 		if err != nil {
 			r.log.Error().Err(err).Msg("extension api: error reading image config")
 
@@ -546,7 +546,7 @@ func (r *queryResolver) getImageList(store storage.ImageStore, imageName *string
 	layoutUtils := common.NewOciLayoutUtils(r.log)
 
 	for _, repo := range repoList {
-		if  imageName == nil || *imageName == "" || repo == *imageName {
+		if imageName == nil || *imageName == "" || repo == *imageName {
 			tagsInfo, err := layoutUtils.GetImageTagsWithTimestamp(r.storeController, repo)
 			if err != nil {
 				r.log.Error().Err(err).Msg("extension api: error getting tag timestamp info")
@@ -567,7 +567,7 @@ func (r *queryResolver) getImageList(store storage.ImageStore, imageName *string
 
 				digest := godigest.Digest(tag.Digest)
 
-				manifest, err := layoutUtils.GetImageBlobManifest(r.storeController, repo, digest)
+				manifest, err := layoutUtils.GetImageBlobManifest(r.storeController, repo, digest.String())
 				if err != nil {
 					r.log.Error().Err(err).Msg("extension api: error reading manifest")
 

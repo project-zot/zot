@@ -60,6 +60,7 @@ func createHTTPClient(verifyTLS bool, host string) *http.Client {
 	}
 }
 
+//nolint
 func makeGETRequest(url, username, password string, verifyTLS bool, resultsPtr interface{}) (http.Header, error) {
 	req, err := http.NewRequest("GET", url, nil)
 
@@ -203,6 +204,7 @@ func isURL(str string) bool {
 	return err == nil && u.Scheme != "" && u.Host != ""
 } // from https://stackoverflow.com/a/55551215
 
+//nolint
 type requestsPool struct {
 	jobs      chan *manifestJob
 	done      chan struct{}
@@ -211,6 +213,7 @@ type requestsPool struct {
 	context   context.Context
 }
 
+//nolint
 type manifestJob struct {
 	url          string
 	username     string
@@ -223,6 +226,7 @@ type manifestJob struct {
 
 const rateLimiterBuffer = 5000
 
+//nolint
 func newSmoothRateLimiter(ctx context.Context, wg *sync.WaitGroup, op chan stringResult) *requestsPool {
 	ch := make(chan *manifestJob, rateLimiterBuffer)
 

@@ -95,10 +95,11 @@ func getImages(config searchConfig) error {
 	username, password := getUsernameAndPassword(*config.user)
 	ctx, cancel := context.WithCancel(context.Background())
 
+	defer cancel()
+
 	imageList, err := config.searchService.getImages(ctx, config, username, password, *config.params["imageName"])
 
 	if err != nil {
-		cancel()
 		return err
 	}
 
@@ -117,7 +118,6 @@ func getImages(config searchConfig) error {
 		}
 
 		fmt.Fprint(config.resultWriter, out)
-
 	}
 
 	return nil
@@ -135,10 +135,11 @@ func (search imagesByDigestSearcher) search(config searchConfig) (bool, error) {
 	username, password := getUsernameAndPassword(*config.user)
 	ctx, cancel := context.WithCancel(context.Background())
 
+	defer cancel()
+
 	imageList, err := config.searchService.getImagesByDigest(ctx, config, username, password, *config.params["digest"])
 
 	if err != nil {
-		cancel()
 		return true, err
 	}
 
@@ -157,7 +158,6 @@ func (search imagesByDigestSearcher) search(config searchConfig) (bool, error) {
 		}
 
 		fmt.Fprint(config.resultWriter, out)
-
 	}
 
 	return true, nil
@@ -179,15 +179,17 @@ func (search cveByImageSearcher) search(config searchConfig) (bool, error) {
 	username, password := getUsernameAndPassword(*config.user)
 	ctx, cancel := context.WithCancel(context.Background())
 
+	defer cancel()
+
 	cveList, err := config.searchService.getCveByImage(ctx, config, username, password, *config.params["imageName"])
 
 	if err != nil {
-		cancel()
 		return true, err
 	}
 
-	if len(cveList.Data.CVEListForImage.CVEList) > 0 && (*config.outputFormat == defaultOutoutFormat || *config.outputFormat == "") {
-		printCVETableHeader(&builder, *config.verbose)
+	if len(cveList.Data.CVEListForImage.CVEList) > 0 &&
+		(*config.outputFormat == defaultOutoutFormat || *config.outputFormat == "") {
+		printCVETableHeader(&builder)
 		fmt.Fprint(config.resultWriter, builder.String())
 	}
 
@@ -200,7 +202,6 @@ func (search cveByImageSearcher) search(config searchConfig) (bool, error) {
 	fmt.Fprint(config.resultWriter, out)
 
 	return true, nil
-
 }
 
 type imagesByCVEIDSearcher struct{}
@@ -215,10 +216,11 @@ func (search imagesByCVEIDSearcher) search(config searchConfig) (bool, error) {
 	username, password := getUsernameAndPassword(*config.user)
 	ctx, cancel := context.WithCancel(context.Background())
 
+	defer cancel()
+
 	imageList, err := config.searchService.getImagesByCveID(ctx, config, username, password, *config.params["cveID"])
 
 	if err != nil {
-		cancel()
 		return true, err
 	}
 
@@ -279,10 +281,12 @@ func getTagsByCVE(config searchConfig) error {
 	username, password := getUsernameAndPassword(*config.user)
 	ctx, cancel := context.WithCancel(context.Background())
 
-	tagList, err := config.searchService.getTagsForCVE(ctx, config, username, password, *config.params["imageName"], *config.params["cveID"], *config.fixedFlag)
+	defer cancel()
+
+	tagList, err := config.searchService.getTagsForCVE(ctx, config, username, password,
+		*config.params["imageName"], *config.params["cveID"], *config.fixedFlag)
 
 	if err != nil {
-		cancel()
 		return err
 	}
 
@@ -300,12 +304,12 @@ func getTagsByCVE(config searchConfig) error {
 		}
 
 		fmt.Fprint(config.resultWriter, out)
-
 	}
 
 	return nil
 }
 
+//nolint
 func collectResults(config searchConfig, wg *sync.WaitGroup, imageErr chan stringResult,
 	cancel context.CancelFunc, printHeader printHeader, errCh chan error) {
 	var foundResult bool
@@ -381,12 +385,14 @@ type spinnerState struct {
 	enabled bool
 }
 
+//nolint
 func (spinner *spinnerState) startSpinner() {
 	if spinner.enabled {
 		spinner.spinner.Start()
 	}
 }
 
+//nolint
 func (spinner *spinnerState) stopSpinner() {
 	if spinner.enabled && spinner.spinner.Active() {
 		spinner.spinner.Stop()
@@ -422,11 +428,13 @@ var (
 	ErrInvalidOutputFormat = errors.New("invalid output format")
 )
 
+//nolint
 type stringResult struct {
 	StrValue string
 	Err      error
 }
 
+//nolint
 type printHeader func(writer io.Writer, verbose bool)
 
 func printImageTableHeader(writer io.Writer, verbose bool) {
@@ -458,7 +466,7 @@ func printImageTableHeader(writer io.Writer, verbose bool) {
 	table.Render()
 }
 
-func printCVETableHeader(writer io.Writer, verbose bool) {
+func printCVETableHeader(writer io.Writer) {
 	table := getCVETableWriter(writer)
 	row := make([]string, 3)
 	row[colCVEIDIndex] = "ID"

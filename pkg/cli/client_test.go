@@ -8,20 +8,18 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	ext "github.com/anuvu/zot/pkg/extensions"
 	"io"
 	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
-
-	"gopkg.in/resty.v1"
-
 	"testing"
 	"time"
 
 	"github.com/anuvu/zot/pkg/api"
+	ext "github.com/anuvu/zot/pkg/extensions"
 	. "github.com/smartystreets/goconvey/convey"
+	"gopkg.in/resty.v1"
 )
 
 const (

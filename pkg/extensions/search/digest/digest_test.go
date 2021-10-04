@@ -6,13 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/anuvu/zot/errors"
-	"github.com/anuvu/zot/pkg/storage"
-	storageDriver "github.com/docker/distribution/registry/storage/driver"
-	"github.com/docker/distribution/registry/storage/driver/factory"
-	guuid "github.com/gofrs/uuid"
-	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/rs/zerolog"
 	"io"
 	"io/ioutil"
 	"os"
@@ -21,10 +14,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/api"
 	ext "github.com/anuvu/zot/pkg/extensions"
 	digestinfo "github.com/anuvu/zot/pkg/extensions/search/digest"
 	"github.com/anuvu/zot/pkg/log"
+	"github.com/anuvu/zot/pkg/storage"
+	storageDriver "github.com/docker/distribution/registry/storage/driver"
+	"github.com/docker/distribution/registry/storage/driver/factory"
+	guuid "github.com/gofrs/uuid"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 )
@@ -62,6 +62,7 @@ type ErrorGQL struct {
 	Path    []string `json:"path"`
 }
 
+// nolint: gochecknoglobals
 var testCases = []struct {
 	testCaseName    string
 	storageType     string
@@ -81,7 +82,8 @@ var testCases = []struct {
 	},
 }
 
-// used as a reference to the s3 bucket for later cleanup
+// used as a reference to the s3 bucket for later cleanup.
+// nolint: gochecknoglobals
 var s3StorageDriver storageDriver.StorageDriver
 
 func init() {
@@ -142,7 +144,6 @@ func testFileSystemSetup() error {
 }
 
 func testS3Setup() error {
-
 	if os.Getenv("S3MOCK_ENDPOINT") == "" {
 		return nil
 	}
@@ -172,6 +173,7 @@ func testS3Setup() error {
 	if err != nil {
 		return err
 	}
+
 	err = copyS3Files("zot-cve-test", "../../../../test/data/zot-cve-test", s3StoreController.DefaultStore)
 	if err != nil {
 		return err
@@ -181,6 +183,7 @@ func testS3Setup() error {
 	if err != nil {
 		return err
 	}
+
 	err = copyS3Files("zot-test", "../../../../test/data/zot-test", s3StoreController.DefaultStore)
 	if err != nil {
 		return err
@@ -219,7 +222,13 @@ func createObjectsStore(rootDir string, objectsStoreParams map[string]interface{
 	// get a reference to the s3 bucket for cleanup after tests
 	s3StorageDriver, _ = factory.Create("s3", objectsStoreParams)
 
-	imageStore := storage.NewObjectStorage(rootDir, false, false, log.Logger{Logger: zerolog.New(os.Stdout)}, s3StorageDriver)
+	imageStore := storage.NewObjectStorage(
+		rootDir,
+		false,
+		false,
+		log.Logger{Logger: zerolog.New(os.Stdout)},
+		s3StorageDriver,
+	)
 	s3StoreController := storage.StoreController{DefaultStore: imageStore}
 
 	return s3StoreController
@@ -311,7 +320,6 @@ func copyS3Files(repo string, sourceDir string, imageStore storage.ImageStore) e
 	}
 
 	for _, manifest := range index.Manifests {
-
 		blobReader, err := os.Open(path.Join(sourceDir, fmt.Sprintf("/blobs/sha256/%s", manifest.Digest.Hex())))
 		if err != nil {
 			return err
@@ -324,7 +332,11 @@ func copyS3Files(repo string, sourceDir string, imageStore storage.ImageStore) e
 			return err
 		}
 
-		_, err = imageStore.PutImageManifest(repo, manifest.Annotations[ispec.AnnotationRefName], ispec.MediaTypeImageManifest, buf.Bytes())
+		_, err = imageStore.PutImageManifest(
+			repo,
+			manifest.Annotations[ispec.AnnotationRefName],
+			ispec.MediaTypeImageManifest, buf.Bytes(),
+		)
 		if err != nil {
 			return err
 		}
@@ -376,6 +388,7 @@ func TestDigestInfo(t *testing.T) {
 
 func TestDigestSearchHTTP(t *testing.T) {
 	defer cleanupStorage(s3StorageDriver, "/oci-repo-test")
+
 	for _, testcase := range testCases {
 		testcase := testcase
 		if testcase.setupSuccess == false {
@@ -417,7 +430,11 @@ func TestDigestSearchHTTP(t *testing.T) {
 				So(resp.StatusCode(), ShouldEqual, 200)
 
 				// "sha" should match all digests in all images
-				resp, err = resty.R().Get(BaseURL1 + "/query?query={ImageListForDigest(digest:\"sha\"){Name%20Tag%20Digest%20ConfigDigest%20Size%20Layers%20{%20Digest}}}")
+				resp, err = resty.R().Get(
+					BaseURL1 +
+						`/query?query={ImageListForDigest(digest:"sha")` +
+						`{Name%20Tag%20Digest%20ConfigDigest%20Size%20Layers%20{%20Digest}}}`,
+				)
 				So(resp, ShouldNotBeNil)
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, 200)
@@ -431,7 +448,11 @@ func TestDigestSearchHTTP(t *testing.T) {
 
 				// Call should return {"data":{"ImageListForDigest":[{"Name":"zot-test","Tag":"0.0.1"}]}}
 				// "2bacca16" should match the manifest of 1 image
-				resp, err = resty.R().Get(BaseURL1 + "/query?query={ImageListForDigest(digest:\"2bacca16\"){Name%20Tag%20Digest%20ConfigDigest%20Size%20Layers%20{%20Digest}}}")
+				resp, err = resty.R().Get(
+					BaseURL1 +
+						`/query?query={ImageListForDigest(digest:"2bacca16")` +
+						`{Name%20Tag%20Digest%20ConfigDigest%20Size%20Layers%20{%20Digest}}}`,
+				)
 				So(resp, ShouldNotBeNil)
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, 200)
@@ -446,7 +467,11 @@ func TestDigestSearchHTTP(t *testing.T) {
 
 				// Call should return {"data":{"ImageListForDigest":[{"Name":"zot-test","Tag":"0.0.1"}]}}
 				// "adf3bb6c" should match the config of 1 image
-				resp, err = resty.R().Get(BaseURL1 + "/query?query={ImageListForDigest(digest:\"adf3bb6c\"){Name%20Tag%20Digest%20ConfigDigest%20Size%20Layers%20{%20Digest}}}")
+				resp, err = resty.R().Get(
+					BaseURL1 +
+						`/query?query={ImageListForDigest(digest:"adf3bb6c")` +
+						`{Name%20Tag%20Digest%20ConfigDigest%20Size%20Layers%20{%20Digest}}}`,
+				)
 				So(resp, ShouldNotBeNil)
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, 200)
@@ -461,7 +486,11 @@ func TestDigestSearchHTTP(t *testing.T) {
 
 				// Call should return {"data":{"ImageListForDigest":[{"Name":"zot-cve-test","Tag":"0.0.1"}]}}
 				// "7a0437f0" should match the layer of 1 image
-				resp, err = resty.R().Get(BaseURL1 + "/query?query={ImageListForDigest(digest:\"7a0437f0\"){Name%20Tag%20Digest%20ConfigDigest%20Size%20Layers%20{%20Digest}}}")
+				resp, err = resty.R().Get(
+					BaseURL1 +
+						`/query?query={ImageListForDigest(digest:"7a0437f0")` +
+						`{Name%20Tag%20Digest%20ConfigDigest%20Size%20Layers%20{%20Digest}}}`,
+				)
 				So(resp, ShouldNotBeNil)
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, 200)
@@ -476,7 +505,11 @@ func TestDigestSearchHTTP(t *testing.T) {
 
 				// Call should return {"data":{"ImageListForDigest":[]}}
 				// "1111111" should match 0 images
-				resp, err = resty.R().Get(BaseURL1 + "/query?query={ImageListForDigest(digest:\"1111111\"){Name%20Tag%20Digest%20ConfigDigest%20Size%20Layers%20{%20Digest}}}")
+				resp, err = resty.R().Get(
+					BaseURL1 +
+						`/query?query={ImageListForDigest(digest:"1111111")` +
+						`{Name%20Tag%20Digest%20ConfigDigest%20Size%20Layers%20{%20Digest}}}`,
+				)
 				So(resp, ShouldNotBeNil)
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, 200)
@@ -487,7 +520,11 @@ func TestDigestSearchHTTP(t *testing.T) {
 				So(len(responseStruct.ImgListForDigest.Images), ShouldEqual, 0)
 
 				// Call should return {"errors": [{....}]", data":null}}
-				resp, err = resty.R().Get(BaseURL1 + "/query?query={ImageListForDigest(digest:\"1111111\"){UnknownField%20Tag%20Digest%20ConfigDigest%20Size%20Layers%20{%20Digest}}}")
+				resp, err = resty.R().Get(
+					BaseURL1 +
+						`/query?query={ImageListForDigest(digest:"1111111")` +
+						`{UnknownField%20Tag%20Digest%20ConfigDigest%20Size%20Layers%20{%20Digest}}}`,
+				)
 				So(resp, ShouldNotBeNil)
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, 422)

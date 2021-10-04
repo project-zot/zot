@@ -2,17 +2,17 @@ package cveinfo
 
 import (
 	"fmt"
-	"github.com/anuvu/zot/errors"
-	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"path"
 	"strings"
 
+	"github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/extensions/search/common"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
 	integration "github.com/aquasecurity/trivy/integration"
 	config "github.com/aquasecurity/trivy/integration/config"
 	"github.com/aquasecurity/trivy/pkg/report"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
 // UpdateCVEDb ...
@@ -136,9 +136,7 @@ func (cveinfo CveInfo) GetImageListForCVE(storeController storage.StoreControlle
 		return imageList, err
 	}
 
-
 	for _, manifest := range manifests {
-
 		tag, ok := manifest.Annotations[ispec.AnnotationRefName]
 
 		if ok {
@@ -164,7 +162,7 @@ func (cveinfo CveInfo) GetImageListForCVE(storeController storage.StoreControlle
 				for _, vulnerability := range result.Vulnerabilities {
 					if vulnerability.VulnerabilityID == id {
 						tagDigest := manifest.Digest
-						imageBlobManifest, err := cveinfo.LayoutUtils.GetImageBlobManifest(storeController, repo, tagDigest)
+						imageBlobManifest, err := cveinfo.LayoutUtils.GetImageBlobManifest(storeController, repo, tagDigest.String())
 
 						if err != nil {
 							cveinfo.Log.Error().Err(err).Msg("unable to read image blob manifest")

@@ -3,7 +3,6 @@ package common_test
 import (
 	"context"
 	"encoding/json"
-	"github.com/anuvu/zot/pkg/storage"
 	"io"
 	"io/ioutil"
 	"os"
@@ -15,6 +14,7 @@ import (
 	ext "github.com/anuvu/zot/pkg/extensions"
 	"github.com/anuvu/zot/pkg/extensions/search/common"
 	"github.com/anuvu/zot/pkg/log"
+	"github.com/anuvu/zot/pkg/storage"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
@@ -22,8 +22,8 @@ import (
 
 // nolint:gochecknoglobals
 var (
-	rootDir string
-	subRootDir string
+	rootDir                   string
+	subRootDir                string
 	fileSystemStoreController storage.StoreController
 )
 
@@ -55,13 +55,6 @@ type ImageInfo struct {
 	Vendor      string
 	Size        string
 	Labels      string
-}
-
-func init() {
-	err := testFileSystemSetup()
-	if err != nil {
-		panic(err)
-	}
 }
 
 func testFileSystemSetup() error {
@@ -174,6 +167,11 @@ func copyFiles(sourceDir string, destDir string) error {
 }
 
 func TestImageFormat(t *testing.T) {
+	err := testFileSystemSetup()
+	if err != nil {
+		panic(err)
+	}
+
 	Convey("Test valid image", t, func() {
 		logger := log.NewLogger("debug", "")
 		olu := common.NewOciLayoutUtils(logger)
