@@ -9,6 +9,7 @@ require (
 	github.com/aquasecurity/trivy v0.0.0-00010101000000-000000000000
 	github.com/briandowns/spinner v1.16.0
 	github.com/chartmuseum/auth v0.5.0
+	github.com/containerd/containerd v1.5.7
 	github.com/cpuguy83/go-md2man/v2 v2.0.1 // indirect
 	github.com/dustin/go-humanize v1.0.0
 	github.com/fsnotify/fsnotify v1.5.1
