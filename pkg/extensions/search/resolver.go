@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/anuvu/zot/pkg/log"
-	"github.com/aquasecurity/trivy/integration/config"
 	godigest "github.com/opencontainers/go-digest"
 
 	"github.com/anuvu/zot/pkg/extensions/search/common"
@@ -64,7 +63,7 @@ func GetResolverConfig(log log.Logger, storeController storage.StoreController, 
 }
 
 func (r *queryResolver) CVEListForImage(ctx context.Context, image string) (*CVEResultForImage, error) {
-	trivyConfig := r.cveInfo.GetTrivyConfig(image)
+	trivyCtx := r.cveInfo.GetTrivyContext(image)
 
 	r.log.Info().Str("image", image).Msg("scanning image")
 
@@ -75,7 +74,7 @@ func (r *queryResolver) CVEListForImage(ctx context.Context, image string) (*CVE
 		return &CVEResultForImage{}, err
 	}
 
-	cveResults, err := cveinfo.ScanImage(trivyConfig)
+	report, err := cveinfo.ScanImage(trivyCtx.Ctx)
 	if err != nil {
 		r.log.Error().Err(err).Msg("unable to scan image repository")
 
@@ -90,7 +89,7 @@ func (r *queryResolver) CVEListForImage(ctx context.Context, image string) (*CVE
 
 	cveidMap := make(map[string]cveDetail)
 
-	for _, result := range cveResults {
+	for _, result := range report.Results {
 		for _, vulnerability := range result.Vulnerabilities {
 			pkgName := vulnerability.PkgName
 
@@ -156,7 +155,7 @@ func (r *queryResolver) ImageListForCve(ctx context.Context, id string) ([]*ImgR
 
 	defaultStore := r.storeController.DefaultStore
 
-	defaultTrivyConfig := r.cveInfo.CveTrivyController.DefaultCveConfig
+	defaultTrivyCtx := r.cveInfo.CveTrivyController.DefaultCveConfig
 
 	repoList, err := defaultStore.GetRepositories()
 	if err != nil {
@@ -167,7 +166,7 @@ func (r *queryResolver) ImageListForCve(ctx context.Context, id string) ([]*ImgR
 
 	r.cveInfo.Log.Info().Msg("scanning each global repository")
 
-	cveResult, err := r.getImageListForCVE(repoList, id, defaultStore, defaultTrivyConfig)
+	cveResult, err := r.getImageListForCVE(repoList, id, defaultStore, defaultTrivyCtx)
 	if err != nil {
 		r.log.Error().Err(err).Msg("error getting cve list for global repositories")
 
@@ -177,6 +176,7 @@ func (r *queryResolver) ImageListForCve(ctx context.Context, id string) ([]*ImgR
 	finalCveResult = append(finalCveResult, cveResult...)
 
 	subStore := r.storeController.SubStore
+
 	for route, store := range subStore {
 		subRepoList, err := store.GetRepositories()
 		if err != nil {
@@ -185,9 +185,9 @@ func (r *queryResolver) ImageListForCve(ctx context.Context, id string) ([]*ImgR
 			return cveResult, err
 		}
 
-		subTrivyConfig := r.cveInfo.CveTrivyController.SubCveConfig[route]
+		subTrivyCtx := r.cveInfo.CveTrivyController.SubCveConfig[route]
 
-		subCveResult, err := r.getImageListForCVE(subRepoList, id, store, subTrivyConfig)
+		subCveResult, err := r.getImageListForCVE(subRepoList, id, store, subTrivyCtx)
 		if err != nil {
 			r.log.Error().Err(err).Msg("unable to get cve result for sub repositories")
 
@@ -201,7 +201,7 @@ func (r *queryResolver) ImageListForCve(ctx context.Context, id string) ([]*ImgR
 }
 
 func (r *queryResolver) getImageListForCVE(repoList []string, id string, imgStore storage.ImageStore,
-	trivyConfig *config.Config) ([]*ImgResultForCve, error) {
+	trivyCtx *cveinfo.TrivyCtx) ([]*ImgResultForCve, error) {
 	cveResult := []*ImgResultForCve{}
 
 	for _, repo := range repoList {
@@ -209,7 +209,7 @@ func (r *queryResolver) getImageListForCVE(repoList []string, id string, imgStor
 
 		name := repo
 
-		tags, err := r.cveInfo.GetImageListForCVE(repo, id, imgStore, trivyConfig)
+		tags, err := r.cveInfo.GetImageListForCVE(repo, id, imgStore, trivyCtx)
 		if err != nil {
 			r.log.Error().Err(err).Msg("error getting tag")
 
@@ -227,14 +227,6 @@ func (r *queryResolver) getImageListForCVE(repoList []string, id string, imgStor
 func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, image string) (*ImgResultForFixedCve, error) { // nolint: lll
 	imgResultForFixedCVE := &ImgResultForFixedCve{}
 
-	r.log.Info().Str("image", image).Msg("retrieving image repo path")
-
-	imagePath := common.GetImageRepoPath(image, r.storeController)
-
-	r.log.Info().Str("image", image).Msg("retrieving trivy config")
-
-	trivyConfig := r.cveInfo.GetTrivyConfig(image)
-
 	r.log.Info().Str("image", image).Msg("extracting list of tags available in image")
 
 	tagsInfo, err := r.cveInfo.LayoutUtils.GetImageTagsWithTimestamp(image)
@@ -249,9 +241,9 @@ func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, im
 	var hasCVE bool
 
 	for _, tag := range tagsInfo {
-		trivyConfig.TrivyConfig.Input = fmt.Sprintf("%s:%s", imagePath, tag.Name)
+		image := fmt.Sprintf("%s:%s", image, tag.Name)
 
-		isValidImage, _ := r.cveInfo.LayoutUtils.IsValidImageFormat(fmt.Sprintf("%s:%s", image, tag.Name))
+		isValidImage, _ := r.cveInfo.LayoutUtils.IsValidImageFormat(image)
 		if !isValidImage {
 			r.log.Debug().Str("image",
 				fmt.Sprintf("%s:%s", image, tag.Name)).
@@ -262,9 +254,11 @@ func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, im
 			continue
 		}
 
+		trivyCtx := r.cveInfo.GetTrivyContext(image)
+
 		r.cveInfo.Log.Info().Str("image", fmt.Sprintf("%s:%s", image, tag.Name)).Msg("scanning image")
 
-		results, err := cveinfo.ScanImage(trivyConfig)
+		report, err := cveinfo.ScanImage(trivyCtx.Ctx)
 		if err != nil {
 			r.log.Error().Err(err).
 				Str("image", fmt.Sprintf("%s:%s", image, tag.Name)).Msg("unable to scan image")
@@ -274,7 +268,7 @@ func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, im
 
 		hasCVE = false
 
-		for _, result := range results {
+		for _, result := range report.Results {
 			for _, vulnerability := range result.Vulnerabilities {
 				if vulnerability.VulnerabilityID == id {
 					hasCVE = true

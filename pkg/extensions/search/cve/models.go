@@ -5,7 +5,7 @@ import (
 	"github.com/anuvu/zot/pkg/extensions/search/common"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
-	config "github.com/aquasecurity/trivy/integration/config"
+	"github.com/urfave/cli/v2"
 )
 
 // CveInfo ...
@@ -17,6 +17,10 @@ type CveInfo struct {
 }
 
 type CveTrivyController struct {
-	DefaultCveConfig *config.Config
-	SubCveConfig     map[string]*config.Config
+	DefaultCveConfig *TrivyCtx
+	SubCveConfig     map[string]*TrivyCtx
+}
+type TrivyCtx struct {
+	Input string
+	Ctx   *cli.Context
 }

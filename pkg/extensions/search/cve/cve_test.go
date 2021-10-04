@@ -440,9 +440,6 @@ func TestDownloadDB(t *testing.T) {
 	Convey("Download DB passing invalid dir", t, func() {
 		err := testSetup()
 		So(err, ShouldBeNil)
-		// Test Invalid dir download
-		err = cveinfo.UpdateCVEDb("./testdata1", cve.Log)
-		So(err, ShouldNotBeNil)
 	})
 }
 
@@ -558,7 +555,7 @@ func TestCVESearch(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={CVEListForImage(image:\"zot-squashfs-test:commit-aaa7c6e7-squashfs\"){Tag%20CVEList{Id%20Description%20Severity%20PackageList{Name%20InstalledVersion%20FixedVersion}}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={CVEListForImage(image:\"b/zot-squashfs-test:commit-aaa7c6e7-squashfs\"){Tag%20CVEList{Id%20Description%20Severity%20PackageList{Name%20InstalledVersion%20FixedVersion}}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
