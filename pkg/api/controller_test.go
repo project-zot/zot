@@ -95,6 +95,48 @@ func TestNew(t *testing.T) {
 	})
 }
 
+func TestRunAlreadyRunningServer(t *testing.T) {
+	Convey("Run server on unavailable port", t, func() {
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		c := api.NewController(conf)
+
+		globalDir, err := ioutil.TempDir("", "oci-repo-test")
+		if err != nil {
+			panic(err)
+		}
+		defer os.RemoveAll(globalDir)
+
+		c.Config.Storage.RootDirectory = globalDir
+
+		go func() {
+			if err := c.Run(); err != nil {
+				return
+			}
+		}()
+
+		// wait till ready
+		for {
+			_, err := resty.R().Get(baseURL)
+			if err == nil {
+				break
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+		defer func() {
+			ctx := context.Background()
+			_ = c.Server.Shutdown(ctx)
+		}()
+
+		err = c.Run()
+		So(err, ShouldNotBeNil)
+	})
+}
+
 func TestObjectStorageController(t *testing.T) {
 	skipIt(t)
 	Convey("Negative make a new object storage controller", t, func() {

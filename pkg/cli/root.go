@@ -1,6 +1,9 @@
 package cli
 
 import (
+	"fmt"
+	"net/http"
+
 	glob "github.com/bmatcuk/doublestar/v4"
 	"github.com/fsnotify/fsnotify"
 	"github.com/mitchellh/mapstructure"
@@ -80,6 +83,49 @@ func NewRootCmd() *cobra.Command {
 		},
 	}
 
+	// "scrub"
+	scrubCmd := &cobra.Command{
+		Use:     "scrub <config>",
+		Aliases: []string{"scrub"},
+		Short:   "`scrub` checks manifest/blob integrity",
+		Long:    "`scrub` checks manifest/blob integrity",
+		Run: func(cmd *cobra.Command, args []string) {
+			configuration := config.New()
+
+			if len(args) > 0 {
+				LoadConfiguration(configuration, args[0])
+			} else {
+				if err := cmd.Usage(); err != nil {
+					panic(err)
+				}
+				return
+			}
+
+			// checking if the server is  already running
+			response, err := http.Get(fmt.Sprintf("http://%s:%s/v2", configuration.HTTP.Address, configuration.HTTP.Port))
+
+			if err == nil {
+				response.Body.Close()
+				log.Info().Msg("The server is running, in order to perform the scrub command the server should be shut down")
+				panic("Error: server is running")
+			} else {
+				// server is down
+				c := api.NewController(configuration)
+
+				if err := c.InitImageStore(); err != nil {
+					panic(err)
+				}
+
+				result, err := c.StoreController.CheckAllBlobsIntegrity()
+				if err != nil {
+					panic(err)
+				}
+
+				result.PrintScrubResults(cmd.OutOrStdout())
+			}
+		},
+	}
+
 	verifyCmd := &cobra.Command{
 		Use:     "verify <config>",
 		Aliases: []string{"verify"},
@@ -137,6 +183,7 @@ func NewRootCmd() *cobra.Command {
 	}
 
 	rootCmd.AddCommand(serveCmd)
+	rootCmd.AddCommand(scrubCmd)
 	rootCmd.AddCommand(gcCmd)
 	rootCmd.AddCommand(verifyCmd)
 

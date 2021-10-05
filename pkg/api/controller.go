@@ -69,7 +69,6 @@ func DefaultHeaders() mux.MiddlewareFunc {
 	}
 }
 
-// nolint: gocyclo
 func (c *Controller) Run() error {
 	// validate configuration
 	if err := c.Config.Validate(c.Log); err != nil {
@@ -102,6 +101,62 @@ func (c *Controller) Run() error {
 	}
 
 	c.Metrics = monitoring.NewMetricsServer(enabled, c.Log)
+
+	if err := c.InitImageStore(); err != nil {
+		return err
+	}
+
+	monitoring.SetServerInfo(c.Metrics, c.Config.Commit, c.Config.BinaryType, c.Config.GoVersion, c.Config.Version)
+	_ = NewRouteHandler(c)
+
+	addr := fmt.Sprintf("%s:%s", c.Config.HTTP.Address, c.Config.HTTP.Port)
+	server := &http.Server{
+		Addr:        addr,
+		Handler:     c.Router,
+		IdleTimeout: idleTimeout,
+	}
+	c.Server = server
+
+	// Create the listener
+	l, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+
+	if c.Config.HTTP.TLS != nil && c.Config.HTTP.TLS.Key != "" && c.Config.HTTP.TLS.Cert != "" {
+		if c.Config.HTTP.TLS.CACert != "" {
+			clientAuth := tls.VerifyClientCertIfGiven
+			if (c.Config.HTTP.Auth == nil || c.Config.HTTP.Auth.HTPasswd.Path == "") && !c.Config.HTTP.AllowReadAccess {
+				clientAuth = tls.RequireAndVerifyClientCert
+			}
+
+			caCert, err := ioutil.ReadFile(c.Config.HTTP.TLS.CACert)
+			if err != nil {
+				panic(err)
+			}
+
+			caCertPool := x509.NewCertPool()
+
+			if !caCertPool.AppendCertsFromPEM(caCert) {
+				panic(errors.ErrBadCACert)
+			}
+
+			server.TLSConfig = &tls.Config{
+				ClientAuth:               clientAuth,
+				ClientCAs:                caCertPool,
+				PreferServerCipherSuites: true,
+				MinVersion:               tls.VersionTLS12,
+			}
+			server.TLSConfig.BuildNameToCertificate() // nolint: staticcheck
+		}
+
+		return server.ServeTLS(l, c.Config.HTTP.TLS.Cert, c.Config.HTTP.TLS.Key)
+	}
+
+	return server.Serve(l)
+}
+
+func (c *Controller) InitImageStore() error {
 	c.StoreController = storage.StoreController{}
 
 	if c.Config.Storage.RootDirectory != "" {
@@ -202,54 +257,7 @@ func (c *Controller) Run() error {
 		ext.EnableSyncExtension(c.Config, c.wgShutDown, c.StoreController, c.Log)
 	}
 
-	monitoring.SetServerInfo(c.Metrics, c.Config.Commit, c.Config.BinaryType, c.Config.GoVersion, c.Config.Version)
-	_ = NewRouteHandler(c)
-
-	addr := fmt.Sprintf("%s:%s", c.Config.HTTP.Address, c.Config.HTTP.Port)
-	server := &http.Server{
-		Addr:        addr,
-		Handler:     c.Router,
-		IdleTimeout: idleTimeout,
-	}
-	c.Server = server
-
-	// Create the listener
-	l, err := net.Listen("tcp", addr)
-	if err != nil {
-		return err
-	}
-
-	if c.Config.HTTP.TLS != nil && c.Config.HTTP.TLS.Key != "" && c.Config.HTTP.TLS.Cert != "" {
-		if c.Config.HTTP.TLS.CACert != "" {
-			clientAuth := tls.VerifyClientCertIfGiven
-			if (c.Config.HTTP.Auth == nil || c.Config.HTTP.Auth.HTPasswd.Path == "") && !c.Config.HTTP.AllowReadAccess {
-				clientAuth = tls.RequireAndVerifyClientCert
-			}
-
-			caCert, err := ioutil.ReadFile(c.Config.HTTP.TLS.CACert)
-			if err != nil {
-				panic(err)
-			}
-
-			caCertPool := x509.NewCertPool()
-
-			if !caCertPool.AppendCertsFromPEM(caCert) {
-				panic(errors.ErrBadCACert)
-			}
-
-			server.TLSConfig = &tls.Config{
-				ClientAuth:               clientAuth,
-				ClientCAs:                caCertPool,
-				PreferServerCipherSuites: true,
-				MinVersion:               tls.VersionTLS12,
-			}
-			server.TLSConfig.BuildNameToCertificate() // nolint: staticcheck
-		}
-
-		return server.ServeTLS(l, c.Config.HTTP.TLS.Cert, c.Config.HTTP.TLS.Key)
-	}
-
-	return server.Serve(l)
+	return nil
 }
 
 func (c *Controller) Shutdown() {
