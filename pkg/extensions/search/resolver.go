@@ -71,7 +71,6 @@ func (r *queryResolver) CVEListForImage(ctx context.Context, image string) (*CVE
 	isValidImage, err := r.cveInfo.LayoutUtils.IsValidImageFormat(r.storeController, image)
 	if !isValidImage {
 		r.log.Debug().Str("image", image).Msg("image media type not supported for scanning")
-
 		return &CVEResultForImage{}, err
 	}
 
