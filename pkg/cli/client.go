@@ -4,7 +4,6 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -14,7 +13,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -203,124 +201,3 @@ func isURL(str string) bool {
 	u, err := url.Parse(str)
 	return err == nil && u.Scheme != "" && u.Host != ""
 } // from https://stackoverflow.com/a/55551215
-
-//nolint
-type requestsPool struct {
-	jobs      chan *manifestJob
-	done      chan struct{}
-	waitGroup *sync.WaitGroup
-	outputCh  chan stringResult
-	context   context.Context
-}
-
-//nolint
-type manifestJob struct {
-	url          string
-	username     string
-	password     string
-	imageName    string
-	tagName      string
-	config       searchConfig
-	manifestResp manifestResponse
-}
-
-const rateLimiterBuffer = 5000
-
-//nolint
-func newSmoothRateLimiter(ctx context.Context, wg *sync.WaitGroup, op chan stringResult) *requestsPool {
-	ch := make(chan *manifestJob, rateLimiterBuffer)
-
-	return &requestsPool{
-		jobs:      ch,
-		done:      make(chan struct{}),
-		waitGroup: wg,
-		outputCh:  op,
-		context:   ctx,
-	}
-}
-
-// block every "rateLimit" time duration.
-const rateLimit = 100 * time.Millisecond
-
-func (p *requestsPool) startRateLimiter() {
-	p.waitGroup.Done()
-
-	throttle := time.NewTicker(rateLimit).C
-
-	for {
-		select {
-		case job := <-p.jobs:
-			go p.doJob(job)
-		case <-p.done:
-			return
-		}
-		<-throttle
-	}
-}
-
-func (p *requestsPool) doJob(job *manifestJob) {
-	defer p.waitGroup.Done()
-
-	header, err := makeGETRequest(job.url, job.username, job.password, *job.config.verifyTLS, &job.manifestResp)
-	if err != nil {
-		if isContextDone(p.context) {
-			return
-		}
-		p.outputCh <- stringResult{"", err}
-	}
-
-	digest := header.Get("docker-content-digest")
-	digest = strings.TrimPrefix(digest, "sha256:")
-
-	configDigest := job.manifestResp.Config.Digest
-	configDigest = strings.TrimPrefix(configDigest, "sha256:")
-
-	var size uint64
-
-	layers := []layer{}
-
-	for _, entry := range job.manifestResp.Layers {
-		size += entry.Size
-
-		layers = append(
-			layers,
-			layer{
-				Size:   entry.Size,
-				Digest: strings.TrimPrefix(entry.Digest, "sha256:"),
-			},
-		)
-	}
-
-	image := &imageStruct{}
-	image.verbose = *job.config.verbose
-	image.Name = job.imageName
-	image.Tags = []tags{
-		{
-			Name:         job.tagName,
-			Digest:       digest,
-			Size:         size,
-			ConfigDigest: configDigest,
-			Layers:       layers,
-		},
-	}
-
-	str, err := image.string(*job.config.outputFormat)
-	if err != nil {
-		if isContextDone(p.context) {
-			return
-		}
-		p.outputCh <- stringResult{"", err}
-
-		return
-	}
-
-	if isContextDone(p.context) {
-		return
-	}
-
-	p.outputCh <- stringResult{str, nil}
-}
-
-func (p *requestsPool) submitJob(job *manifestJob) {
-	p.jobs <- job
-}

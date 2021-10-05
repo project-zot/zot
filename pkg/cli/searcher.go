@@ -8,10 +8,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"sync"
-	"time"
 
-	zotErrors "github.com/anuvu/zot/errors"
 	"github.com/briandowns/spinner"
 )
 
@@ -309,52 +306,6 @@ func getTagsByCVE(config searchConfig) error {
 	return nil
 }
 
-//nolint
-func collectResults(config searchConfig, wg *sync.WaitGroup, imageErr chan stringResult,
-	cancel context.CancelFunc, printHeader printHeader, errCh chan error) {
-	var foundResult bool
-
-	defer wg.Done()
-	config.spinner.startSpinner()
-
-	for {
-		select {
-		case result, ok := <-imageErr:
-			config.spinner.stopSpinner()
-
-			if !ok {
-				cancel()
-				return
-			}
-
-			if result.Err != nil {
-				cancel()
-				errCh <- result.Err
-
-				return
-			}
-
-			if !foundResult && (*config.outputFormat == defaultOutoutFormat || *config.outputFormat == "") {
-				var builder strings.Builder
-
-				printHeader(&builder, *config.verbose)
-				fmt.Fprint(config.resultWriter, builder.String())
-			}
-
-			foundResult = true
-
-			fmt.Fprint(config.resultWriter, result.StrValue)
-		case <-time.After(waitTimeout):
-			config.spinner.stopSpinner()
-			cancel()
-
-			errCh <- zotErrors.ErrCLITimeout
-
-			return
-		}
-	}
-}
-
 func getUsernameAndPassword(user string) (string, string) {
 	if strings.Contains(user, ":") {
 		split := strings.Split(user, ":")
@@ -428,15 +379,6 @@ var (
 	ErrInvalidOutputFormat = errors.New("invalid output format")
 )
 
-//nolint
-type stringResult struct {
-	StrValue string
-	Err      error
-}
-
-//nolint
-type printHeader func(writer io.Writer, verbose bool)
-
 func printImageTableHeader(writer io.Writer, verbose bool) {
 	table := getImageTableWriter(writer)
 
@@ -476,10 +418,6 @@ func printCVETableHeader(writer io.Writer) {
 	table.Append(row)
 	table.Render()
 }
-
-const (
-	waitTimeout = httpTimeout + 5*time.Second
-)
 
 var (
 	errInvalidImageNameAndTag = errors.New("cli: Invalid input format. Expected IMAGENAME:TAG")
