@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/anuvu/zot/errors"
+	"github.com/anuvu/zot/pkg/cluster"
 	ext "github.com/anuvu/zot/pkg/extensions"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
@@ -28,6 +29,7 @@ type Controller struct {
 	Log             log.Logger
 	Audit           *log.Logger
 	Server          *http.Server
+	Cluster         *cluster.Store
 }
 
 func NewController(config *Config) *Controller {
@@ -139,6 +141,19 @@ func (c *Controller) Run() error {
 			}
 
 			c.StoreController.SubStore = subImageStore
+		}
+	}
+
+	// setup clustering
+
+	if c.Config.Cluster != nil {
+		c.Cluster = cluster.New(c.Config.Cluster.StateDir, "", "", c.Log)
+		if !c.Cluster {
+			panic(errors.ErrInitCluster)
+		}
+
+		if err := c.Cluster.Open(true, "1"); err != nil {
+			panic(errors.ErrInitCluster)
 		}
 	}
 

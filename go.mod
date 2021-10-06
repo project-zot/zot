@@ -19,6 +19,7 @@ require (
 	github.com/google/go-containerregistry v0.6.0
 	github.com/gorilla/handlers v1.5.1
 	github.com/gorilla/mux v1.8.0
+	github.com/hashicorp/raft v1.3.1 // indirect
 	github.com/json-iterator/go v1.1.11
 	github.com/klauspost/compress v1.13.6 // indirect
 	github.com/mitchellh/mapstructure v1.4.1

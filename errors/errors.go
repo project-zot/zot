@@ -42,4 +42,5 @@ var (
 	ErrImgStoreNotFound        = errors.New("routes: image store not found corresponding to given route")
 	ErrEmptyValue              = errors.New("cache: empty value")
 	ErrEmptyRepoList           = errors.New("search: no repository found")
+	ErrInitCluster             = errors.New("cluster: init")
 )

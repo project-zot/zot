@@ -83,6 +83,10 @@ type GlobalStorageConfig struct {
 	SubPaths      map[string]StorageConfig
 }
 
+type ClusterConfig struct {
+	StateDir string
+}
+
 type Config struct {
 	Version       string
 	Commit        string
