@@ -9,6 +9,7 @@ var (
 	ErrRepoBadVersion          = errors.New("repository: unsupported layout version")
 	ErrManifestNotFound        = errors.New("manifest: not found")
 	ErrBadManifest             = errors.New("manifest: invalid contents")
+	ErrBadIndex                = errors.New("index: invalid contents")
 	ErrUploadNotFound          = errors.New("uploads: not found")
 	ErrBadUploadRange          = errors.New("uploads: bad range")
 	ErrBlobNotFound            = errors.New("blob: not found")
@@ -40,4 +41,5 @@ var (
 	ErrInvalidRoute            = errors.New("routes: invalid route prefix")
 	ErrImgStoreNotFound        = errors.New("routes: image store not found corresponding to given route")
 	ErrEmptyValue              = errors.New("cache: empty value")
+	ErrEmptyRepoList           = errors.New("search: no repository found")
 )

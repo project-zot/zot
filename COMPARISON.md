@@ -24,8 +24,9 @@ Please see [documentation](./examples/README.md) for various configuration optio
 | **ui** | auxiliary [3],[4] | yes [8] |
 | **External contributions** | yes | yes |
 | **CNCF project** | yes [9] | no |
+| **dist-spec conformance** | pending 3.x release [10][11] | yes [12] |
 
-* NOTE: "minimal build" criterion above means the ability to build a minimal
+\* NOTE: "minimal build" criterion above means the ability to build a minimal
 distribution-spec compliant registry in order to reduce library dependencies
 and the possible attack surface.
 
@@ -48,3 +49,9 @@ and the possible attack surface.
 [8] https://github.com/anuvu/zot-ui
 
 [9] https://www.docker.com/blog/donating-docker-distribution-to-the-cncf/
+
+[10] https://github.com/distribution/distribution/issues/3203
+
+[11] https://github.com/opencontainers/oci-conformance/tree/main/distribution-spec#distributiondistribution
+
+[12] https://github.com/opencontainers/oci-conformance/tree/main/distribution-spec#anuvuzot

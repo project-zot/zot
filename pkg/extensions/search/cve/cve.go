@@ -3,18 +3,14 @@ package cveinfo
 import (
 	"fmt"
 	"path"
-	"sort"
 	"strings"
 
-	"github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/extensions/search/common"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
 	integration "github.com/aquasecurity/trivy/integration"
 	config "github.com/aquasecurity/trivy/integration/config"
 	"github.com/aquasecurity/trivy/pkg/report"
-	"github.com/google/go-containerregistry/pkg/v1/types"
-	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
 // UpdateCVEDb ...
@@ -44,7 +40,7 @@ func ScanImage(config *config.Config) (report.Results, error) {
 
 func GetCVEInfo(storeController storage.StoreController, log log.Logger) (*CveInfo, error) {
 	cveController := CveTrivyController{}
-	layoutUtils := common.NewOciLayoutUtils(storeController, log)
+	layoutUtils := common.NewOciLayoutUtils(log)
 
 	subCveConfig := make(map[string]*config.Config)
 
@@ -122,50 +118,6 @@ func (cveinfo CveInfo) GetTrivyConfig(image string) *config.Config {
 	return trivyConfig
 }
 
-func (cveinfo CveInfo) IsValidImageFormat(imagePath string) (bool, error) {
-	imageDir, inputTag := common.GetImageDirAndTag(imagePath)
-
-	if !common.DirExists(imageDir) {
-		cveinfo.Log.Error().Msg("image directory doesn't exist")
-
-		return false, errors.ErrRepoNotFound
-	}
-
-	manifests, err := cveinfo.LayoutUtils.GetImageManifests(imageDir)
-
-	if err != nil {
-		return false, err
-	}
-
-	for _, m := range manifests {
-		tag, ok := m.Annotations[ispec.AnnotationRefName]
-
-		if ok && inputTag != "" && tag != inputTag {
-			continue
-		}
-
-		blobManifest, err := cveinfo.LayoutUtils.GetImageBlobManifest(imageDir, m.Digest)
-		if err != nil {
-			return false, err
-		}
-
-		imageLayers := blobManifest.Layers
-
-		for _, imageLayer := range imageLayers {
-			switch imageLayer.MediaType {
-			case types.OCILayer, types.DockerLayer:
-				return true, nil
-
-			default:
-				cveinfo.Log.Debug().Msg("image media type not supported for scanning")
-				return false, errors.ErrScanNotSupported
-			}
-		}
-	}
-
-	return false, nil
-}
-
 func (cveinfo CveInfo) GetImageListForCVE(repo string, id string, imgStore *storage.ImageStore,
 	trivyConfig *config.Config) ([]*string, error) {
 	tags := make([]*string, 0)
@@ -182,7 +134,7 @@ func (cveinfo CveInfo) GetImageListForCVE(repo string, id string, imgStore *stor
 	for _, tag := range tagList {
 		trivyConfig.TrivyConfig.Input = fmt.Sprintf("%s:%s", path.Join(rootDir, repo), tag)
 
-		isValidImage, _ := cveinfo.IsValidImageFormat(trivyConfig.TrivyConfig.Input)
+		isValidImage, _ := cveinfo.LayoutUtils.IsValidImageFormat(trivyConfig.TrivyConfig.Input)
 		if !isValidImage {
 			cveinfo.Log.Debug().Str("image", repo+":"+tag).Msg("image media type not supported for scanning")
 
@@ -211,74 +163,4 @@ func (cveinfo CveInfo) GetImageListForCVE(repo string, id string, imgStore *stor
 	}
 
 	return tags, nil
-}
-
-// GetImageTagsWithTimestamp returns a list of image tags with timestamp available in the specified repository.
-func (cveinfo CveInfo) GetImageTagsWithTimestamp(repo string) ([]TagInfo, error) {
-	tagsInfo := make([]TagInfo, 0)
-
-	imagePath := cveinfo.LayoutUtils.GetImageRepoPath(repo)
-	if !common.DirExists(imagePath) {
-		return nil, errors.ErrRepoNotFound
-	}
-
-	manifests, err := cveinfo.LayoutUtils.GetImageManifests(imagePath)
-
-	if err != nil {
-		cveinfo.Log.Error().Err(err).Msg("unable to read image manifests")
-
-		return tagsInfo, err
-	}
-
-	for _, manifest := range manifests {
-		digest := manifest.Digest
-
-		v, ok := manifest.Annotations[ispec.AnnotationRefName]
-		if ok {
-			imageBlobManifest, err := cveinfo.LayoutUtils.GetImageBlobManifest(imagePath, digest)
-
-			if err != nil {
-				cveinfo.Log.Error().Err(err).Msg("unable to read image blob manifest")
-
-				return tagsInfo, err
-			}
-
-			imageInfo, err := cveinfo.LayoutUtils.GetImageInfo(imagePath, imageBlobManifest.Config.Digest)
-			if err != nil {
-				cveinfo.Log.Error().Err(err).Msg("unable to read image info")
-
-				return tagsInfo, err
-			}
-
-			timeStamp := *imageInfo.History[0].Created
-
-			tagsInfo = append(tagsInfo, TagInfo{Name: v, Timestamp: timeStamp})
-		}
-	}
-
-	return tagsInfo, nil
-}
-
-func GetFixedTags(allTags []TagInfo, infectedTags []TagInfo) []TagInfo {
-	sort.Slice(allTags, func(i, j int) bool {
-		return allTags[i].Timestamp.Before(allTags[j].Timestamp)
-	})
-
-	latestInfected := TagInfo{}
-
-	for _, tag := range infectedTags {
-		if !tag.Timestamp.Before(latestInfected.Timestamp) {
-			latestInfected = tag
-		}
-	}
-
-	var fixedTags []TagInfo
-
-	for _, tag := range allTags {
-		if tag.Timestamp.After(latestInfected.Timestamp) {
-			fixedTags = append(fixedTags, tag)
-		}
-	}
-
-	return fixedTags
 }
