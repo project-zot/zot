@@ -35,8 +35,8 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 }
 
 // SessionLogger logs session details.
-func SessionLogger(log log.Logger) mux.MiddlewareFunc {
-	l := log.With().Str("module", "http").Logger()
+func SessionLogger(c *Controller) mux.MiddlewareFunc {
+	l := c.Log.With().Str("module", "http").Logger()
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -86,9 +86,13 @@ func SessionLogger(log log.Logger) mux.MiddlewareFunc {
 				path = path + "?" + raw
 			}
 
-			monitoring.IncHTTPConnRequests(method, strconv.Itoa(statusCode))
-			monitoring.ObserveHTTPRepoLatency(path, latency)     // summary
-			monitoring.ObserveHTTPMethodLatency(method, latency) // histogram
+			if path != "/v2/metrics" {
+				// In order to test zot instrumentation properly,the instrumentation related to node exporter
+				// should be handled by node exporter itself (ex: latency)
+				monitoring.IncHTTPConnRequests(c.Metrics, method, strconv.Itoa(statusCode))
+				monitoring.ObserveHTTPRepoLatency(c.Metrics, path, latency)     // summary
+				monitoring.ObserveHTTPMethodLatency(c.Metrics, method, latency) // histogram
+			}
 
 			log.Str("clientIP", clientIP).
 				Str("method", method).

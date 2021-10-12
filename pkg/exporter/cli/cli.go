@@ -73,5 +73,4 @@ func loadConfiguration(config *api.Config, configPath string) {
 		log.Error().Err(errors.ErrBadConfig).Msg("Bad configuration, retry writing it")
 		panic(errors.ErrBadConfig)
 	}
-
 }

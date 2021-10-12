@@ -6,6 +6,14 @@ import (
 	"path/filepath"
 )
 
+type MetricServer interface {
+	SendMetric(interface{})
+	// works like SendMetric, but adds the metric regardless of the value of 'enabled' field for MetricServer
+	ForceSendMetric(interface{})
+	ReceiveMetrics() interface{}
+	IsEnabled() bool
+}
+
 func GetDefaultBuckets() []float64 {
 	return []float64{.05, .5, 1, 5, 30, 60, 600, math.MaxFloat64}
 }

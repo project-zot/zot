@@ -13,11 +13,11 @@ all: doc binary binary-minimal exporter-minimal debug test test-clean check
 
 .PHONY: binary-minimal
 binary-minimal: doc
-	go build -o bin/zot-minimal -tags minimal -v -ldflags "-X  github.com/anuvu/zot/pkg/api.Commit=${COMMIT} -X github.com/anuvu/zot/pkg/api.BinaryType=minimal -X github.com/anuvu/zot/pkg/api.GoVersion=${GO_VERSION}" ./cmd/zot
+	go build -o bin/zot-minimal -tags minimal -v -trimpath -ldflags "-X  github.com/anuvu/zot/pkg/api.Commit=${COMMIT} -X github.com/anuvu/zot/pkg/api.BinaryType=minimal -X github.com/anuvu/zot/pkg/api.GoVersion=${GO_VERSION}" ./cmd/zot
 
 .PHONY: binary
 binary: doc
-	go build -o bin/zot -tags extended -v -ldflags "-X  github.com/anuvu/zot/pkg/api.Commit=${COMMIT} -X github.com/anuvu/zot/pkg/api.BinaryType=extended -X github.com/anuvu/zot/pkg/api.GoVersion=${GO_VERSION}" ./cmd/zot
+	go build -o bin/zot -tags extended -v -trimpath -ldflags "-X  github.com/anuvu/zot/pkg/api.Commit=${COMMIT} -X github.com/anuvu/zot/pkg/api.BinaryType=extended -X github.com/anuvu/zot/pkg/api.GoVersion=${GO_VERSION}" ./cmd/zot
 
 .PHONY: debug
 debug: doc
@@ -32,7 +32,8 @@ test:
 	$(shell mkdir -p test/data;  cd test/data; ../scripts/gen_certs.sh; cd ${TOP_LEVEL}; sudo skopeo --insecure-policy copy -q docker://public.ecr.aws/t0x7q1g8/centos:7 oci:${TOP_LEVEL}/test/data/zot-test:0.0.1;sudo skopeo --insecure-policy copy -q docker://public.ecr.aws/t0x7q1g8/centos:8 oci:${TOP_LEVEL}/test/data/zot-cve-test:0.0.1)
 	$(shell sudo mkdir -p /etc/containers/certs.d/127.0.0.1:8089/; sudo cp test/data/client.* /etc/containers/certs.d/127.0.0.1:8089/; sudo cp test/data/ca.* /etc/containers/certs.d/127.0.0.1:8089/;)
 	$(shell sudo chmod a=rwx /etc/containers/certs.d/127.0.0.1:8089/*.key)
-	go test -tags extended -v -race -cover -coverpkg ./... -coverprofile=coverage.txt -covermode=atomic ./...
+	go test -tags extended -v -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-extended.txt -covermode=atomic ./...
+	go test -tags minimal -v -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-minimal.txt -covermode=atomic ./...
 
 .PHONY: test-clean
 test-clean:
@@ -40,12 +41,15 @@ test-clean:
 
 .PHONY: covhtml
 covhtml:
+	tail -n +2 coverage-minimal.txt > tmp.txt && mv tmp.txt coverage-minimal.txt
+	cat coverage-extended.txt coverage-minimal.txt > coverage.txt
 	go tool cover -html=coverage.txt -o coverage.html
 
 .PHONY: check
 check: ./golangcilint.yaml
 	golangci-lint --version || curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.26.0
-	golangci-lint --config ./golangcilint.yaml run --enable-all --build-tags extended ./cmd/... ./pkg/...
+	golangci-lint --config ./golangcilint.yaml run --enable-all --build-tags extended ./...
+	golangci-lint --config ./golangcilint.yaml run --enable-all --build-tags minimal ./...
 
 docs/docs.go: 
 	swag -v || go install github.com/swaggo/swag/cmd/swag

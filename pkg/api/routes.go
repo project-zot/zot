@@ -24,7 +24,6 @@ import (
 	_ "github.com/anuvu/zot/docs" // as required by swaggo
 	"github.com/anuvu/zot/errors"
 	ext "github.com/anuvu/zot/pkg/extensions"
-	"github.com/anuvu/zot/pkg/extensions/monitoring"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
 	"github.com/gorilla/mux"
@@ -1167,7 +1166,7 @@ func (rh *RouteHandler) ListRepositories(w http.ResponseWriter, r *http.Request)
 }
 
 func (rh *RouteHandler) GetMetrics(w http.ResponseWriter, r *http.Request) {
-	m := monitoring.GetMetrics()
+	m := rh.c.Metrics.ReceiveMetrics()
 	WriteJSON(w, http.StatusOK, m)
 }
 

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	gqlHandler "github.com/99designs/gqlgen/graphql/handler"
-	"github.com/anuvu/zot/pkg/extensions/monitoring"
 	"github.com/anuvu/zot/pkg/extensions/search"
 	cveinfo "github.com/anuvu/zot/pkg/extensions/search/cve"
 	"github.com/anuvu/zot/pkg/log"
@@ -55,8 +54,6 @@ func EnableExtensions(extension *ExtensionConfig, log log.Logger, rootDir string
 	}
 
 	if extension.Metrics != nil && extension.Metrics.Enable && extension.Metrics.Prometheus != nil {
-		monitoring.EnableMetrics()
-
 		if extension.Metrics.Prometheus.Path == "" {
 			extension.Metrics.Prometheus.Path = "/metrics"
 
@@ -73,7 +70,14 @@ func SetupRoutes(extension *ExtensionConfig, router *mux.Router, storeController
 	log.Info().Msg("setting up extensions routes")
 
 	if extension.Search != nil && extension.Search.Enable {
-		resConfig := search.GetResolverConfig(log, storeController)
+		var resConfig search.Config
+
+		if extension.Search.CVE != nil {
+			resConfig = search.GetResolverConfig(log, storeController, true)
+		} else {
+			resConfig = search.GetResolverConfig(log, storeController, false)
+		}
+
 		router.PathPrefix("/query").Methods("GET", "POST").
 			Handler(gqlHandler.NewDefaultServer(search.NewExecutableSchema(resConfig)))
 	}

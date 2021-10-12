@@ -7,13 +7,13 @@ import (
 )
 
 type Controller struct {
-	config *Config
-	log    log.Logger
+	Config *Config
+	Log    log.Logger
 }
 
 func NewController(cfg *Config) *Controller {
 	logger := log.NewLogger(cfg.ZotExporter.Log.Level, cfg.ZotExporter.Log.Output)
-	return &Controller{config: cfg, log: logger}
+	return &Controller{Config: cfg, Log: logger}
 }
 
 func (c *Controller) Run() {

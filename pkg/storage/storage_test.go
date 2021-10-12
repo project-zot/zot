@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/anuvu/zot/errors"
+	"github.com/anuvu/zot/pkg/extensions/monitoring"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
 	godigest "github.com/opencontainers/go-digest"
@@ -29,7 +30,9 @@ func TestAPIs(t *testing.T) {
 
 	defer os.RemoveAll(dir)
 
-	il := storage.NewImageStore(dir, true, true, log.Logger{Logger: zerolog.New(os.Stdout)})
+	log := log.Logger{Logger: zerolog.New(os.Stdout)}
+	metrics := monitoring.NewMetricsServer(false, log)
+	il := storage.NewImageStore(dir, true, true, log, metrics)
 
 	Convey("Repo layout", t, func(c C) {
 		repoName := "test"
@@ -519,7 +522,9 @@ func TestDedupe(t *testing.T) {
 			}
 			defer os.RemoveAll(dir)
 
-			is := storage.NewImageStore(dir, true, true, log.Logger{Logger: zerolog.New(os.Stdout)})
+			log := log.Logger{Logger: zerolog.New(os.Stdout)}
+			metrics := monitoring.NewMetricsServer(false, log)
+			is := storage.NewImageStore(dir, true, true, log, metrics)
 
 			So(is.DedupeBlob("", "", ""), ShouldNotBeNil)
 		})
@@ -534,9 +539,11 @@ func TestNegativeCases(t *testing.T) {
 		}
 		os.RemoveAll(dir)
 
-		So(storage.NewImageStore(dir, true, true, log.Logger{Logger: zerolog.New(os.Stdout)}), ShouldNotBeNil)
+		log := log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, log)
+		So(storage.NewImageStore(dir, true, true, log, metrics), ShouldNotBeNil)
 		if os.Geteuid() != 0 {
-			So(storage.NewImageStore("/deadBEEF", true, true, log.Logger{Logger: zerolog.New(os.Stdout)}), ShouldBeNil)
+			So(storage.NewImageStore("/deadBEEF", true, true, log, metrics), ShouldBeNil)
 		}
 	})
 
@@ -546,7 +553,9 @@ func TestNegativeCases(t *testing.T) {
 			panic(err)
 		}
 		defer os.RemoveAll(dir)
-		il := storage.NewImageStore(dir, true, true, log.Logger{Logger: zerolog.New(os.Stdout)})
+		log := log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, log)
+		il := storage.NewImageStore(dir, true, true, log, metrics)
 		err = os.Chmod(dir, 0000) // remove all perms
 		So(err, ShouldBeNil)
 		if os.Geteuid() != 0 {
@@ -576,7 +585,9 @@ func TestNegativeCases(t *testing.T) {
 			panic(err)
 		}
 		defer os.RemoveAll(dir)
-		il := storage.NewImageStore(dir, true, true, log.Logger{Logger: zerolog.New(os.Stdout)})
+		log := log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, log)
+		il := storage.NewImageStore(dir, true, true, log, metrics)
 		So(il, ShouldNotBeNil)
 		So(il.InitRepo("test"), ShouldBeNil)
 
@@ -654,7 +665,9 @@ func TestNegativeCases(t *testing.T) {
 			panic(err)
 		}
 		defer os.RemoveAll(dir)
-		il = storage.NewImageStore(dir, true, true, log.Logger{Logger: zerolog.New(os.Stdout)})
+		log := log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, log)
+		il = storage.NewImageStore(dir, true, true, log, metrics)
 		So(il, ShouldNotBeNil)
 		So(il.InitRepo("test"), ShouldBeNil)
 		So(os.Remove(path.Join(dir, "test", "index.json")), ShouldBeNil)
@@ -677,7 +690,9 @@ func TestNegativeCases(t *testing.T) {
 			panic(err)
 		}
 		defer os.RemoveAll(dir)
-		il = storage.NewImageStore(dir, true, true, log.Logger{Logger: zerolog.New(os.Stdout)})
+		log := log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, log)
+		il = storage.NewImageStore(dir, true, true, log, metrics)
 		So(il, ShouldNotBeNil)
 		So(il.InitRepo("test"), ShouldBeNil)
 		So(os.Remove(path.Join(dir, "test", "index.json")), ShouldBeNil)
@@ -690,14 +705,16 @@ func TestNegativeCases(t *testing.T) {
 		So(err, ShouldNotBeNil)
 	})
 
-	Convey("Invalid dedupe sceanrios", t, func() {
+	Convey("Invalid dedupe scenarios", t, func() {
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
 		}
 		defer os.RemoveAll(dir)
 
-		il := storage.NewImageStore(dir, true, true, log.Logger{Logger: zerolog.New(os.Stdout)})
+		log := log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, log)
+		il := storage.NewImageStore(dir, true, true, log, metrics)
 		v, err := il.NewBlobUpload("dedupe1")
 		So(err, ShouldBeNil)
 		So(v, ShouldNotBeEmpty)
@@ -814,13 +831,14 @@ func TestStorageHandler(t *testing.T) {
 		defer os.RemoveAll(thirdRootDir)
 
 		log := log.NewLogger("debug", "")
+		metrics := monitoring.NewMetricsServer(false, log)
 
 		// Create ImageStore
-		firstStore := storage.NewImageStore(firstRootDir, false, false, log)
+		firstStore := storage.NewImageStore(firstRootDir, false, false, log, metrics)
 
-		secondStore := storage.NewImageStore(secondRootDir, false, false, log)
+		secondStore := storage.NewImageStore(secondRootDir, false, false, log, metrics)
 
-		thirdStore := storage.NewImageStore(thirdRootDir, false, false, log)
+		thirdStore := storage.NewImageStore(thirdRootDir, false, false, log, metrics)
 
 		storeController := storage.StoreController{}
 

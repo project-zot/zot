@@ -9,6 +9,8 @@ https://anuvu.github.io/zot/
 
 [```docker run -p 5000:5000 ghcr.io/anuvu/zot:latest```](https://github.com/anuvu/zot/pkgs/container/zot)
 
+[**Why zot?**](COMPARISON.md)
+
 # Features
 * Conforms to [OCI distribution spec](https://github.com/opencontainers/distribution-spec) APIs
 * Clear separation between core dist-spec and zot-specific extensions
@@ -41,7 +43,6 @@ https://anuvu.github.io/zot/
 * Metric [instrumentation](#instrumentation) with Prometheus
   * Using a node exporter in case of dist-spec-only zot
 * ```go get -u github.com/anuvu/zot/cmd/zot```
-
 
 # Presentations
 

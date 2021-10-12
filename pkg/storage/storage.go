@@ -53,6 +53,7 @@ type ImageStore struct {
 	gc          bool
 	dedupe      bool
 	log         zerolog.Logger
+	metrics     monitoring.MetricServer
 }
 
 func (is *ImageStore) RootDir() string {
@@ -89,7 +90,7 @@ func (sc StoreController) GetImageStore(name string) *ImageStore {
 }
 
 // NewImageStore returns a new image store backed by a file storage.
-func NewImageStore(rootDir string, gc bool, dedupe bool, log zlog.Logger) *ImageStore {
+func NewImageStore(rootDir string, gc bool, dedupe bool, log zlog.Logger, m monitoring.MetricServer) *ImageStore {
 	if _, err := os.Stat(rootDir); os.IsNotExist(err) {
 		if err := os.MkdirAll(rootDir, 0700); err != nil {
 			log.Error().Err(err).Str("rootDir", rootDir).Msg("unable to create root dir")
@@ -104,6 +105,7 @@ func NewImageStore(rootDir string, gc bool, dedupe bool, log zlog.Logger) *Image
 		gc:          gc,
 		dedupe:      dedupe,
 		log:         log.With().Caller().Logger(),
+		metrics:     m,
 	}
 
 	if dedupe {
@@ -417,7 +419,7 @@ func (is *ImageStore) GetImageManifest(repo string, reference string) ([]byte, s
 		return nil, "", "", err
 	}
 
-	monitoring.IncDownloadCounter(repo)
+	monitoring.IncDownloadCounter(is.metrics, repo)
 
 	return buf, digest.String(), mediaType, nil
 }
@@ -581,8 +583,8 @@ func (is *ImageStore) PutImageManifest(repo string, reference string, mediaType 
 		}
 	}
 
-	monitoring.SetStorageUsage(repo, is.rootDir)
-	monitoring.IncUploadCounter(repo)
+	monitoring.SetStorageUsage(is.metrics, is.rootDir, repo)
+	monitoring.IncUploadCounter(is.metrics, repo)
 
 	return desc.Digest.String(), nil
 }
@@ -695,7 +697,7 @@ func (is *ImageStore) DeleteImageManifest(repo string, reference string) error {
 		_ = os.Remove(p)
 	}
 
-	monitoring.SetStorageUsage(repo, is.rootDir)
+	monitoring.SetStorageUsage(is.metrics, is.rootDir, repo)
 
 	return nil
 }

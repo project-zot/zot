@@ -2,7 +2,7 @@
 
 package api
 
-// We export below types in order for cli package to be able to read it from configuration file
+// We export below types in order for cli package to be able to read it from configuration file.
 type LogConfig struct {
 	Level  string
 	Output string
