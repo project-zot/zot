@@ -126,7 +126,7 @@ func (c *Controller) Run() error {
 		if len(c.Config.Storage.SubPaths) > 0 {
 			subPaths := c.Config.Storage.SubPaths
 
-			subImageStore := make(map[string]*storage.ImageStore)
+			subImageStore := make(map[string]storage.ImageStore)
 
 			// creating image store per subpaths
 			for route, storageConfig := range subPaths {

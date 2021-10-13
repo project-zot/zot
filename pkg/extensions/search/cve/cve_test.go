@@ -100,7 +100,7 @@ func testSetup() error {
 
 	storeController := storage.StoreController{DefaultStore: storage.NewImageStore(dir, false, false, log, metrics)}
 
-	layoutUtils := common.NewOciLayoutUtils(log)
+	layoutUtils := common.NewOciLayoutUtils(storeController, log)
 
 	cve = &cveinfo.CveInfo{Log: log, StoreController: storeController, LayoutUtils: layoutUtils}
 
@@ -426,7 +426,7 @@ func TestMultipleStoragePath(t *testing.T) {
 
 		storeController.DefaultStore = firstStore
 
-		subStore := make(map[string]*storage.ImageStore)
+		subStore := make(map[string]storage.ImageStore)
 
 		subStore["/a"] = secondStore
 		subStore["/b"] = thirdStore

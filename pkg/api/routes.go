@@ -909,6 +909,14 @@ func (rh *RouteHandler) PatchBlobUpload(w http.ResponseWriter, r *http.Request) 
 
 	if err != nil {
 		switch err {
+		case io.ErrUnexpectedEOF:
+			rh.c.Log.Warn().Msg("received unexpected EOF, removing .uploads/ files")
+
+			if err = is.DeleteBlobUpload(name, sessionID); err != nil {
+				rh.c.Log.Error().Err(err).Msgf("couldn't remove blobUpload %s in repo %s", sessionID, name)
+			}
+
+			w.WriteHeader(http.StatusInternalServerError)
 		case errors.ErrBadUploadRange:
 			WriteJSON(w, http.StatusRequestedRangeNotSatisfiable,
 				NewErrorList(NewError(BLOB_UPLOAD_INVALID, map[string]string{"session_id": sessionID})))
@@ -1014,6 +1022,14 @@ func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request)
 		_, err = is.PutBlobChunk(name, sessionID, from, to, r.Body)
 		if err != nil {
 			switch err {
+			case io.ErrUnexpectedEOF:
+				rh.c.Log.Warn().Msg("received unexpected EOF, removing .uploads/ files")
+
+				if err = is.DeleteBlobUpload(name, sessionID); err != nil {
+					rh.c.Log.Error().Err(err).Msgf("couldn't remove blobUpload %s in repo %s", sessionID, name)
+				}
+
+				w.WriteHeader(http.StatusInternalServerError)
 			case errors.ErrBadUploadRange:
 				WriteJSON(w, http.StatusBadRequest,
 					NewErrorList(NewError(BLOB_UPLOAD_INVALID, map[string]string{"session_id": sessionID})))
@@ -1231,6 +1247,6 @@ func WriteDataFromReader(w http.ResponseWriter, status int, length int64, mediaT
 }
 
 // will return image storage corresponding to subpath provided in config.
-func (rh *RouteHandler) getImageStore(name string) *storage.ImageStore {
+func (rh *RouteHandler) getImageStore(name string) storage.ImageStore {
 	return rh.c.StoreController.GetImageStore(name)
 }

@@ -3,9 +3,9 @@ package digestinfo
 import (
 	"strings"
 
-	"github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/extensions/search/common"
 	"github.com/anuvu/zot/pkg/log"
+	"github.com/anuvu/zot/pkg/storage"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
@@ -16,8 +16,8 @@ type DigestInfo struct {
 }
 
 // NewDigestInfo initializes a new DigestInfo object.
-func NewDigestInfo(log log.Logger) *DigestInfo {
-	layoutUtils := common.NewOciLayoutUtils(log)
+func NewDigestInfo(storeController storage.StoreController, log log.Logger) *DigestInfo {
+	layoutUtils := common.NewOciLayoutUtils(storeController, log)
 
 	return &DigestInfo{Log: log, LayoutUtils: layoutUtils}
 }
@@ -25,10 +25,6 @@ func NewDigestInfo(log log.Logger) *DigestInfo {
 // FilterImagesByDigest returns a list of image tags in a repository matching a specific divest.
 func (digestinfo DigestInfo) GetImageTagsByDigest(repo string, digest string) ([]*string, error) {
 	uniqueTags := []*string{}
-
-	if !common.DirExists(repo) {
-		return nil, errors.ErrRepoNotFound
-	}
 
 	manifests, err := digestinfo.LayoutUtils.GetImageManifests(repo)
 
