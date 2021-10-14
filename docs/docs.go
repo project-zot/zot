@@ -733,6 +733,10 @@ var SwaggerInfo = swaggerInfo{Schemes: []string{}}
 
 type s struct{}
 
+func New() *s {
+	return &s{}
+}
+
 func (s *s) ReadDoc() string {
 	t, err := template.New("swagger_info").Funcs(template.FuncMap{
 		"marshal": func(v interface{}) string {
