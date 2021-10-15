@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: zot-extended
+  labels:
+    app: zot-extended
+spec:
+  ports:
+  - name: zot-extended
+    port: 5000
+    targetPort: zot-extended
+  selector:
+    app: zot-extended
+  sessionAffinity: ClientIP
+

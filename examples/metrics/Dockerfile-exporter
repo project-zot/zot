@@ -1,0 +1,32 @@
+# ---
+# Stage 1: Install certs, build binary, create default config file
+# ---
+FROM docker.io/golang:1.16 AS builder
+RUN mkdir -p /go/src/github.com/anuvu/zot
+WORKDIR /go/src/github.com/anuvu/zot
+COPY . .
+RUN CGO_ENABLED=0 make clean exporter-minimal
+RUN echo '{\n\
+    "Server": {\n\
+        "protocol": "http",\n\
+        "host": "127.0.0.1",\n\
+        "port": "5050"\n\
+    },\n\
+    "Exporter": {\n\
+        "port": "5051",\n\
+        "log": {\n\
+            "level": "debug"\n\
+        }\n\
+    }\n\
+}\n' > config.json && cat config.json
+
+# ---
+# Stage 2: Final image with nothing but certs, binary, and default config file
+# ---
+FROM scratch AS final
+COPY --from=builder /go/src/github.com/anuvu/zot/bin/zot-exporter /zot-exporter
+COPY --from=builder /go/src/github.com/anuvu/zot/config.json /etc/zot/config.json
+ENTRYPOINT ["/zot-exporter"]
+EXPOSE 5051
+VOLUME ["/var/lib/registry"]
+CMD ["config", "/etc/zot/config.json"]

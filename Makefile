@@ -1,6 +1,7 @@
 export GO111MODULE=on
 TOP_LEVEL=$(shell git rev-parse --show-toplevel)
 COMMIT_HASH=$(shell git describe --always --tags --long)
+GO_VERSION=$(shell go version | awk '{print $$3}')
 COMMIT=$(if $(shell git status --porcelain --untracked-files=no),$(COMMIT_HASH)-dirty,$(COMMIT_HASH))
 CONTAINER_RUNTIME := $(shell command -v podman 2> /dev/null || echo docker)
 PATH := bin:$(PATH)
@@ -8,26 +9,31 @@ TMPDIR := $(shell mktemp -d)
 STACKER := $(shell which stacker)
 
 .PHONY: all
-all: swagger binary binary-minimal debug test test-clean check
+all: swagger binary binary-minimal exporter-minimal debug test test-clean check
 
 .PHONY: binary-minimal
 binary-minimal: swagger
-	go build -tags minimal,containers_image_openpgp -v  -ldflags "-X  github.com/anuvu/zot/pkg/api/config.Commit=${COMMIT} -X github.com/anuvu/zot/pkg/api.BinaryType=minimal" -o bin/zot-minimal ./cmd/zot
+	go build -o bin/zot-minimal -tags minimal,containers_image_openpgp -v -trimpath -ldflags "-X  github.com/anuvu/zot/pkg/api/config.Commit=${COMMIT} -X github.com/anuvu/zot/pkg/api/config.BinaryType=minimal -X github.com/anuvu/zot/pkg/api/config.GoVersion=${GO_VERSION}" ./cmd/zot
 
 .PHONY: binary
-binary: swagger 
-	go build -tags extended,containers_image_openpgp -v -ldflags "-X  github.com/anuvu/zot/pkg/api/config.Commit=${COMMIT} -X github.com/anuvu/zot/pkg/api.BinaryType=extended" -o bin/zot ./cmd/zot
+binary: swagger
+	go build -o bin/zot -tags extended,containers_image_openpgp -v -trimpath -ldflags "-X  github.com/anuvu/zot/pkg/api/config.Commit=${COMMIT} -X github.com/anuvu/zot/pkg/api/config.BinaryType=extended -X github.com/anuvu/zot/pkg/api/config.GoVersion=${GO_VERSION}" ./cmd/zot
 
 .PHONY: debug
 debug: swagger
-	go build -tags extended,containers_image_openpgp -v -gcflags all='-N -l' -ldflags "-X  github.com/anuvu/zot/pkg/api.Commit=${COMMIT} -X github.com/anuvu/zot/pkg/api.BinaryType=extended" -o bin/zot-debug ./cmd/zot
+	go build -o bin/zot-debug -tags extended,containers_image_openpgp -v -gcflags all='-N -l' -ldflags "-X  github.com/anuvu/zot/pkg/api/config.Commit=${COMMIT} -X github.com/anuvu/zot/pkg/api/config.BinaryType=extended -X github.com/anuvu/zot/pkg/api/config.GoVersion=${GO_VERSION}" ./cmd/zot
+
+.PHONY: exporter-minimal
+exporter-minimal: swagger
+	go build -o bin/zot-exporter -tags minimal,containers_image_openpgp -v -trimpath ./cmd/exporter
 
 .PHONY: test
 test:
 	$(shell mkdir -p test/data;  cd test/data; ../scripts/gen_certs.sh; cd ${TOP_LEVEL}; sudo skopeo --insecure-policy copy -q docker://public.ecr.aws/t0x7q1g8/centos:7 oci:${TOP_LEVEL}/test/data/zot-test:0.0.1;sudo skopeo --insecure-policy copy -q docker://public.ecr.aws/t0x7q1g8/centos:8 oci:${TOP_LEVEL}/test/data/zot-cve-test:0.0.1)
 	$(shell sudo mkdir -p /etc/containers/certs.d/127.0.0.1:8089/; sudo cp test/data/client.* /etc/containers/certs.d/127.0.0.1:8089/; sudo cp test/data/ca.* /etc/containers/certs.d/127.0.0.1:8089/;)
 	$(shell sudo chmod a=rwx /etc/containers/certs.d/127.0.0.1:8089/*.key)
-	go test -tags extended,containers_image_openpgp -v -race -cover -coverpkg ./... -coverprofile=coverage.txt -covermode=atomic ./...
+	go test -tags extended,containers_image_openpgp -v -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-extended.txt -covermode=atomic ./...
+	go test -tags minimal,containers_image_openpgp -v -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-minimal.txt -covermode=atomic ./...
 
 .PHONY: test-clean
 test-clean:
@@ -35,12 +41,15 @@ test-clean:
 
 .PHONY: covhtml
 covhtml:
+	tail -n +2 coverage-minimal.txt > tmp.txt && mv tmp.txt coverage-minimal.txt
+	cat coverage-extended.txt coverage-minimal.txt > coverage.txt
 	go tool cover -html=coverage.txt -o coverage.html
 
 .PHONY: check
 check: ./golangcilint.yaml
 	golangci-lint --version || curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.26.0
-	golangci-lint --config ./golangcilint.yaml run --enable-all --build-tags extended,containers_image_openpgp ./cmd/... ./pkg/...
+	golangci-lint --config ./golangcilint.yaml run --enable-all --build-tags extended,containers_image_openpgp ./...
+	golangci-lint --config ./golangcilint.yaml run --enable-all --build-tags minimal,containers_image_openpgp ./...
 
 swagger/docs.go: 
 	swag -v || go install github.com/swaggo/swag/cmd/swag

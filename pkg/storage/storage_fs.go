@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/anuvu/zot/errors"
+	"github.com/anuvu/zot/pkg/extensions/monitoring"
 	zlog "github.com/anuvu/zot/pkg/log"
 	apexlog "github.com/apex/log"
 	guuid "github.com/gofrs/uuid"
@@ -53,6 +54,7 @@ type ImageStoreFS struct {
 	gc          bool
 	dedupe      bool
 	log         zerolog.Logger
+	metrics     monitoring.MetricServer
 }
 
 func (is *ImageStoreFS) RootDir() string {
@@ -102,7 +104,7 @@ func (sc StoreController) GetImageStore(name string) ImageStore {
 }
 
 // NewImageStore returns a new image store backed by a file storage.
-func NewImageStore(rootDir string, gc bool, dedupe bool, log zlog.Logger) ImageStore {
+func NewImageStore(rootDir string, gc bool, dedupe bool, log zlog.Logger, m monitoring.MetricServer) ImageStore {
 	if _, err := os.Stat(rootDir); os.IsNotExist(err) {
 		if err := os.MkdirAll(rootDir, 0700); err != nil {
 			log.Error().Err(err).Str("rootDir", rootDir).Msg("unable to create root dir")
@@ -117,6 +119,7 @@ func NewImageStore(rootDir string, gc bool, dedupe bool, log zlog.Logger) ImageS
 		gc:          gc,
 		dedupe:      dedupe,
 		log:         log.With().Caller().Logger(),
+		metrics:     m,
 	}
 
 	if dedupe {
@@ -430,6 +433,8 @@ func (is *ImageStoreFS) GetImageManifest(repo string, reference string) ([]byte,
 		return nil, "", "", err
 	}
 
+	monitoring.IncDownloadCounter(is.metrics, repo)
+
 	return buf, digest.String(), mediaType, nil
 }
 
@@ -592,6 +597,9 @@ func (is *ImageStoreFS) PutImageManifest(repo string, reference string, mediaTyp
 		}
 	}
 
+	monitoring.SetStorageUsage(is.metrics, is.rootDir, repo)
+	monitoring.IncUploadCounter(is.metrics, repo)
+
 	return desc.Digest.String(), nil
 }
 
@@ -702,6 +710,8 @@ func (is *ImageStoreFS) DeleteImageManifest(repo string, reference string) error
 
 		_ = os.Remove(p)
 	}
+
+	monitoring.SetStorageUsage(is.metrics, is.rootDir, repo)
 
 	return nil
 }

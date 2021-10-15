@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zot-minimal
+  labels:
+    app: zot-minimal
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: zot-minimal
+  template:
+    metadata:
+      labels:
+        app: zot-minimal
+    spec:
+      containers:
+      - name: zot-minimal
+        image: zot-minimal:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: zot-minimal
+          containerPort: 5050
+      - name: zot-exporter
+        image: zot-exporter:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: zot-exporter
+          containerPort: 5051
+

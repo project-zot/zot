@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: zot-minimal
+  labels:
+    app: zot-minimal
+spec:
+  ports:
+  - name: zot-minimal
+    port: 5050
+    targetPort: zot-minimal
+  selector:
+    app: zot-minimal
+  sessionAffinity: ClientIP
+

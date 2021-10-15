@@ -1,0 +1,15 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: zot-exporter
+  labels:
+    app: zot-minimal
+spec:
+  endpoints:
+  - interval: 10s
+    port: zot-exporter
+    scrapeTimeout: 5s
+  selector:
+    matchLabels:
+      app: zot-minimal
+

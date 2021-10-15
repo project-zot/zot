@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zot-extended
+  labels:
+    app: zot-extended
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: zot-extended
+  template:
+    metadata:
+      labels:
+        app: zot-extended
+    spec:
+      containers:
+      - name: zot-extended
+        image: zot-build:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: zot-extended
+          containerPort: 5000
+

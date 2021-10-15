@@ -44,6 +44,12 @@ For a minimal dist-spec only zot,
 make binary-minimal
 ```
 
+For a node exporter used by minimal dist-spec only zot,
+
+```
+make exporter-minimal
+```
+
 ## Using container builds (stacker)
 
 ```
@@ -62,12 +68,14 @@ make binary-container
 .
 ...
 ├── cmd/zot             # Source code contains the main logic
+├── cmd/exporter        # Source code contains the main logic for node exporter
 ├── docs                # Source code for Swagger docs
 ├── errors              # Source code for errors
 ├── examples            # Configuration examples to enable various features
 ├── pkg/api             # Source code contains the HTTP handlers
 ├── pkg/cli             # Source code that handles the commandline logic
 ├── pkg/compliance      # Source code that handles the dist-spec compliance logic
+├── pkg/exporter        # Source code used by the node exporter
 ├── pkg/extensions      # Source code that handles the feature extensions
 ├── pkg/log             # Source code that handles logging
 ├── pkg/storage         # Source code that handles image storage

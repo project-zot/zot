@@ -1,20 +1,20 @@
+//go:build extended
 // +build extended
 
 package extensions
 
 import (
-	"github.com/anuvu/zot/pkg/api/config"
-	"github.com/anuvu/zot/pkg/extensions/search"
-	"github.com/anuvu/zot/pkg/extensions/sync"
-	"github.com/anuvu/zot/pkg/storage"
-	"github.com/gorilla/mux"
-
 	"time"
 
 	gqlHandler "github.com/99designs/gqlgen/graphql/handler"
+	"github.com/anuvu/zot/pkg/api/config"
+	"github.com/anuvu/zot/pkg/extensions/search"
 	cveinfo "github.com/anuvu/zot/pkg/extensions/search/cve"
-
+	"github.com/anuvu/zot/pkg/extensions/sync"
 	"github.com/anuvu/zot/pkg/log"
+	"github.com/anuvu/zot/pkg/storage"
+	"github.com/gorilla/mux"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // DownloadTrivyDB ...
@@ -83,6 +83,18 @@ func EnableExtensions(config *config.Config, log log.Logger, rootDir string) {
 	} else {
 		log.Info().Msg("Sync registries config not provided, skipping sync")
 	}
+
+	if config.Extensions.Metrics != nil &&
+		config.Extensions.Metrics.Enable &&
+		config.Extensions.Metrics.Prometheus != nil {
+		if config.Extensions.Metrics.Prometheus.Path == "" {
+			config.Extensions.Metrics.Prometheus.Path = "/metrics"
+
+			log.Warn().Msg("Prometheus instrumentation Path not set, changing to '/metrics'.")
+		}
+	} else {
+		log.Info().Msg("Metrics config not provided, skipping Metrics config update")
+	}
 }
 
 // SetupRoutes ...
@@ -127,6 +139,11 @@ func SetupRoutes(config *config.Config, router *mux.Router, storeController stor
 		}
 
 		router.HandleFunc("/sync", postSyncer.Handler).Methods("POST")
+	}
+
+	if config.Extensions.Metrics != nil && config.Extensions.Metrics.Enable {
+		router.PathPrefix(config.Extensions.Metrics.Prometheus.Path).
+			Handler(promhttp.Handler())
 	}
 }
 

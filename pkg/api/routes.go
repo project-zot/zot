@@ -96,8 +96,14 @@ func (rh *RouteHandler) SetupRoutes() {
 	// swagger swagger "/swagger/v2/index.html"
 	rh.c.Router.PathPrefix("/swagger/v2/").Methods("GET").Handler(httpSwagger.WrapHandler)
 	// Setup Extensions Routes
-	if rh.c.Config != nil && rh.c.Config.Extensions != nil {
-		ext.SetupRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
+	if rh.c.Config != nil {
+		if rh.c.Config.Extensions == nil {
+			// minimal build
+			g.HandleFunc("/metrics", rh.GetMetrics).Methods("GET")
+		} else {
+			// extended build
+			ext.SetupRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
+		}
 	}
 }
 
@@ -1175,6 +1181,11 @@ func (rh *RouteHandler) ListRepositories(w http.ResponseWriter, r *http.Request)
 	is := RepositoryList{Repositories: repos}
 
 	WriteJSON(w, http.StatusOK, is)
+}
+
+func (rh *RouteHandler) GetMetrics(w http.ResponseWriter, r *http.Request) {
+	m := rh.c.Metrics.ReceiveMetrics()
+	WriteJSON(w, http.StatusOK, m)
 }
 
 // helper routines
