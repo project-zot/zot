@@ -34,6 +34,8 @@ require (
 	github.com/opencontainers/image-spec v1.0.2-0.20190823105129-775207bd45b6
 	github.com/opencontainers/umoci v0.4.8-0.20210922062158-e60a0cc726e6
 	github.com/phayes/freeport v0.0.0-20180830031419-95f893ade6f2
+	github.com/prometheus/client_golang v1.11.0
+	github.com/prometheus/client_model v0.2.0
 	github.com/rs/zerolog v1.22.0
 	github.com/smartystreets/goconvey v1.6.4
 	github.com/spf13/cobra v1.2.1

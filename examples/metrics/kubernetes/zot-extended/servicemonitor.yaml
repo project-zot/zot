@@ -1,0 +1,15 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: zot-extended
+  labels:
+    app: zot-extended
+spec:
+  endpoints:
+  - interval: 10s
+    port: zot-extended
+    scrapeTimeout: 5s
+  selector:
+    matchLabels:
+      app: zot-extended
+

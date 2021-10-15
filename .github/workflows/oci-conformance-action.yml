@@ -33,14 +33,14 @@ jobs:
       run: |
           cd ./zot
           IP=`hostname -I | awk '{print $1}'`
-          echo "ZOT_URL=http://${IP}:5000" >> $GITHUB_ENV
-          ZOT_REF="local-zot:v$(date +%Y%m%d%H%M%S)"
-          docker build -f ./Dockerfile-conformance -t "${ZOT_REF}" .
-          docker run --rm -p 5000:5000 -v "$(pwd)":/go/src/github.com/anuvu/zot -idt "${ZOT_REF}"
+          echo "SERVER_URL=http://${IP}:5000" >> $GITHUB_ENV
+          IMAGE_REF="local-zot:v$(date +%Y%m%d%H%M%S)"
+          docker build -f ./Dockerfile-conformance -t "${IMAGE_REF}" .
+          docker run --rm -p 5000:5000 -v "$(pwd)":/go/src/github.com/anuvu/zot -idt "${IMAGE_REF}"
     - name: Run OCI Distribution Spec conformance tests
       uses: opencontainers/distribution-spec@main
       env:
-        OCI_ROOT_URL: ${{ env.ZOT_URL }}
+        OCI_ROOT_URL: ${{ env.SERVER_URL }}
         OCI_NAMESPACE: oci-conformance/distribution-test
         OCI_TEST_PULL: 1
         OCI_TEST_PUSH: 1

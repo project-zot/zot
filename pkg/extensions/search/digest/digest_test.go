@@ -1,3 +1,5 @@
+// +build extended
+
 // nolint: gochecknoinits
 package digestinfo_test
 
@@ -14,6 +16,7 @@ import (
 	"github.com/anuvu/zot/pkg/api"
 	"github.com/anuvu/zot/pkg/api/config"
 	extconf "github.com/anuvu/zot/pkg/extensions/config"
+	"github.com/anuvu/zot/pkg/extensions/monitoring"
 	digestinfo "github.com/anuvu/zot/pkg/extensions/search/digest"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
@@ -97,8 +100,8 @@ func testSetup() error {
 	}
 
 	log := log.NewLogger("debug", "")
-
-	storeController := storage.StoreController{DefaultStore: storage.NewImageStore(rootDir, false, false, log)}
+	metrics := monitoring.NewMetricsServer(false, log)
+	storeController := storage.StoreController{DefaultStore: storage.NewImageStore(rootDir, false, false, log, metrics)}
 
 	digestInfo = digestinfo.NewDigestInfo(storeController, log)
 

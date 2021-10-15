@@ -1,3 +1,5 @@
+// +build extended
+
 // nolint: lll
 package cveinfo_test
 
@@ -15,6 +17,7 @@ import (
 	"github.com/anuvu/zot/pkg/api"
 	"github.com/anuvu/zot/pkg/api/config"
 	extconf "github.com/anuvu/zot/pkg/extensions/config"
+	"github.com/anuvu/zot/pkg/extensions/monitoring"
 	"github.com/anuvu/zot/pkg/extensions/search/common"
 	cveinfo "github.com/anuvu/zot/pkg/extensions/search/cve"
 	"github.com/anuvu/zot/pkg/log"
@@ -94,8 +97,9 @@ func testSetup() error {
 	}
 
 	log := log.NewLogger("debug", "")
+	metrics := monitoring.NewMetricsServer(false, log)
 
-	storeController := storage.StoreController{DefaultStore: storage.NewImageStore(dir, false, false, log)}
+	storeController := storage.StoreController{DefaultStore: storage.NewImageStore(dir, false, false, log, metrics)}
 
 	layoutUtils := common.NewOciLayoutUtils(storeController, log)
 
@@ -410,13 +414,14 @@ func TestMultipleStoragePath(t *testing.T) {
 		defer os.RemoveAll(thirdRootDir)
 
 		log := log.NewLogger("debug", "")
+		metrics := monitoring.NewMetricsServer(false, log)
 
 		// Create ImageStore
-		firstStore := storage.NewImageStore(firstRootDir, false, false, log)
+		firstStore := storage.NewImageStore(firstRootDir, false, false, log, metrics)
 
-		secondStore := storage.NewImageStore(secondRootDir, false, false, log)
+		secondStore := storage.NewImageStore(secondRootDir, false, false, log, metrics)
 
-		thirdStore := storage.NewImageStore(thirdRootDir, false, false, log)
+		thirdStore := storage.NewImageStore(thirdRootDir, false, false, log, metrics)
 
 		storeController := storage.StoreController{}
 
@@ -675,7 +680,8 @@ func TestCVESearch(t *testing.T) {
 func TestCVEConfig(t *testing.T) {
 	Convey("Verify CVE config", t, func() {
 		conf := config.New()
-		port := conf.HTTP.Port
+		port := getFreePort()
+		conf.HTTP.Port = port
 		baseURL := getBaseURL(port)
 		htpasswdPath := makeHtpasswdFile()
 		defer os.Remove(htpasswdPath)

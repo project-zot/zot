@@ -12,6 +12,7 @@ import (
 	"github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/api/config"
 	ext "github.com/anuvu/zot/pkg/extensions"
+	"github.com/anuvu/zot/pkg/extensions/monitoring"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
 	"github.com/gorilla/handlers"
@@ -29,6 +30,7 @@ type Controller struct {
 	Log             log.Logger
 	Audit           *log.Logger
 	Server          *http.Server
+	Metrics         monitoring.MetricServer
 }
 
 func NewController(config *config.Config) *Controller {
@@ -72,17 +74,26 @@ func (c *Controller) Run() error {
 
 	engine := mux.NewRouter()
 	engine.Use(DefaultHeaders(),
-		log.SessionLogger(c.Log),
+		SessionLogger(c),
 		handlers.RecoveryHandler(handlers.RecoveryLogger(c.Log),
 			handlers.PrintRecoveryStack(false)))
 
 	if c.Audit != nil {
-		engine.Use(log.SessionAuditLogger(c.Audit))
+		engine.Use(SessionAuditLogger(c.Audit))
 	}
 
 	c.Router = engine
 	c.Router.UseEncodedPath()
 
+	var enabled bool
+	if c.Config != nil &&
+		c.Config.Extensions != nil &&
+		c.Config.Extensions.Metrics != nil &&
+		c.Config.Extensions.Metrics.Enable {
+		enabled = true
+	}
+
+	c.Metrics = monitoring.NewMetricsServer(enabled, c.Log)
 	c.StoreController = storage.StoreController{}
 
 	if c.Config.Storage.RootDirectory != "" {
@@ -97,7 +108,7 @@ func (c *Controller) Run() error {
 		}
 
 		defaultStore := storage.NewImageStore(c.Config.Storage.RootDirectory,
-			c.Config.Storage.GC, c.Config.Storage.Dedupe, c.Log)
+			c.Config.Storage.GC, c.Config.Storage.Dedupe, c.Log, c.Metrics)
 
 		c.StoreController.DefaultStore = defaultStore
 
@@ -131,7 +142,7 @@ func (c *Controller) Run() error {
 				}
 
 				subImageStore[route] = storage.NewImageStore(storageConfig.RootDirectory,
-					storageConfig.GC, storageConfig.Dedupe, c.Log)
+					storageConfig.GC, storageConfig.Dedupe, c.Log, c.Metrics)
 
 				// Enable extensions if extension config is provided
 				if c.Config != nil && c.Config.Extensions != nil {
@@ -143,6 +154,7 @@ func (c *Controller) Run() error {
 		}
 	}
 
+	monitoring.SetServerInfo(c.Metrics, c.Config.Commit, c.Config.BinaryType, c.Config.GoVersion, c.Config.Version)
 	_ = NewRouteHandler(c)
 
 	addr := fmt.Sprintf("%s:%s", c.Config.HTTP.Address, c.Config.HTTP.Port)

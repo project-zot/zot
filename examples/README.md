@@ -23,6 +23,7 @@ Examples of working configurations for various use cases are available [here](..
 * [Authentication](#authentication)
 * [Identity-based Authorization](#identity-based-authorization)
 * [Logging](#logging)
+* [Metrics](#metrics)
 
 
 ## Network
@@ -245,3 +246,24 @@ Enable audit logs and set output file with:
     "audit": "/tmp/zot-audit.log"
   }
 ```
+
+## Metrics
+
+Enable and configure metrics with:
+
+```
+"metrics":{
+    "enable":"true",
+
+```
+
+Set server path on which metrics will be exposed:
+
+```
+    "prometheus": {
+      "path": "/metrics"
+    }
+}
+```
+
+In order to test the Metrics feature locally in a [Kind](https://kind.sigs.k8s.io/) cluster, folow [this guide](metrics/README.md).

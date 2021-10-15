@@ -1,0 +1,18 @@
+{
+    "Server": {
+        "protocol": "http",
+        "host": "127.0.0.1",
+        "port": "8080"
+    },
+    "Exporter": {
+        "port": "8081",
+        "log": {
+            "level": "info",
+            "output": "/tmp/zot_exporter.log"  
+        },
+        "metrics": {
+            "path": "/mymetrics"
+        }
+    }
+}
+
