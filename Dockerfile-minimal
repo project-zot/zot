@@ -1,7 +1,7 @@
 # ---
 # Stage 1: Install certs, build binary, create default config file
 # ---
-FROM docker.io/golang:1.15.3 AS builder
+FROM docker.io/golang:1.16 AS builder
 RUN mkdir -p /go/src/github.com/anuvu/zot
 WORKDIR /go/src/github.com/anuvu/zot
 COPY . .
