@@ -21,11 +21,11 @@ import (
 	"strconv"
 	"strings"
 
-	_ "github.com/anuvu/zot/docs" // as required by swaggo
 	"github.com/anuvu/zot/errors"
 	ext "github.com/anuvu/zot/pkg/extensions"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
+	_ "github.com/anuvu/zot/swagger" // as required by swaggo
 	"github.com/gorilla/mux"
 	jsoniter "github.com/json-iterator/go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -93,7 +93,7 @@ func (rh *RouteHandler) SetupRoutes() {
 		g.HandleFunc("/",
 			rh.CheckVersionSupport).Methods("GET")
 	}
-	// swagger docs "/swagger/v2/index.html"
+	// swagger swagger "/swagger/v2/index.html"
 	rh.c.Router.PathPrefix("/swagger/v2/").Methods("GET").Handler(httpSwagger.WrapHandler)
 	// Setup Extensions Routes
 	if rh.c.Config != nil && rh.c.Config.Extensions != nil {
