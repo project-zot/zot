@@ -4,6 +4,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/anuvu/zot/errors"
 	zlog "github.com/anuvu/zot/pkg/log"
@@ -11,7 +12,8 @@ import (
 )
 
 const (
-	BlobsCache = "blobs"
+	BlobsCache              = "blobs"
+	dbCacheLockCheckTimeout = 10 * time.Second
 )
 
 type Cache struct {
@@ -27,7 +29,11 @@ type Blob struct {
 
 func NewCache(rootDir string, name string, log zlog.Logger) *Cache {
 	dbPath := path.Join(rootDir, name+".db")
-	db, err := bbolt.Open(dbPath, 0600, nil)
+	dbOpts := &bbolt.Options{
+		Timeout:      dbCacheLockCheckTimeout,
+		FreelistType: bbolt.FreelistArrayType,
+	}
+	db, err := bbolt.Open(dbPath, 0600, dbOpts)
 
 	if err != nil {
 		log.Error().Err(err).Str("dbPath", dbPath).Msg("unable to create cache db")
