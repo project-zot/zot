@@ -435,11 +435,9 @@ func Run(cfg Config, log log.Logger, address, port, serverCert, serverKey, caCer
 		}
 	}
 
-	var ticker *time.Ticker
-
 	for _, regCfg := range cfg.Registries {
 		// schedule each registry sync
-		ticker = time.NewTicker(regCfg.PollInterval)
+		ticker := time.NewTicker(regCfg.PollInterval)
 
 		upstreamRegistry := strings.Replace(strings.Replace(regCfg.URL, "http://", "", 1), "https://", "", 1)
 
