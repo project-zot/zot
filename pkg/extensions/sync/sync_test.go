@@ -37,6 +37,7 @@ const (
 
 	testImage    = "zot-test"
 	testImageTag = "0.0.1"
+	testCveImage = "/zot-cve-test"
 )
 
 var errSync = errors.New("sync error, src oci repo differs from dest one")
@@ -180,6 +181,11 @@ func TestSyncOnDemand(t *testing.T) {
 			}
 		}()
 
+		defer func() {
+			ctx := context.Background()
+			_ = sc.Server.Shutdown(ctx)
+		}()
+
 		// wait till ready
 		for {
 			_, err := resty.R().Get(srcBaseURL)
@@ -239,6 +245,11 @@ func TestSyncOnDemand(t *testing.T) {
 			}
 		}()
 
+		defer func() {
+			ctx := context.Background()
+			_ = dc.Server.Shutdown(ctx)
+		}()
+
 		// wait till ready
 		for {
 			_, err := resty.R().Get(destBaseURL)
@@ -289,12 +300,6 @@ func TestSyncOnDemand(t *testing.T) {
 		if eq := reflect.DeepEqual(destTagsList.Tags, srcTagsList.Tags); eq == false {
 			panic(errSync)
 		}
-
-		defer func() {
-			ctx := context.Background()
-			_ = dc.Server.Shutdown(ctx)
-			_ = sc.Server.Shutdown(ctx)
-		}()
 	})
 }
 
@@ -329,6 +334,11 @@ func TestSync(t *testing.T) {
 			if err := sc.Run(); err != nil {
 				return
 			}
+		}()
+
+		defer func() {
+			ctx := context.Background()
+			_ = sc.Server.Shutdown(ctx)
 		}()
 
 		// wait till ready
@@ -388,6 +398,11 @@ func TestSync(t *testing.T) {
 			}
 		}()
 
+		defer func() {
+			ctx := context.Background()
+			_ = dc.Server.Shutdown(ctx)
+		}()
+
 		// wait till ready
 		for {
 			_, err := resty.R().Get(destBaseURL)
@@ -424,7 +439,7 @@ func TestSync(t *testing.T) {
 				break
 			}
 
-			time.Sleep(1 * time.Second)
+			time.Sleep(500 * time.Millisecond)
 		}
 
 		if eq := reflect.DeepEqual(destTagsList.Tags, srcTagsList.Tags); eq == false {
@@ -437,11 +452,119 @@ func TestSync(t *testing.T) {
 			So(resp.StatusCode(), ShouldEqual, 200)
 		})
 
-		defer func() {
-			ctx := context.Background()
-			_ = dc.Server.Shutdown(ctx)
-			_ = sc.Server.Shutdown(ctx)
-		}()
+		Convey("Test sync with more contents", func() {
+			destPort := getFreePort()
+			destBaseURL := getBaseURL(destPort, false)
+
+			destConfig := config.New()
+			destConfig.HTTP.Port = destPort
+
+			destDir, err := ioutil.TempDir("", "oci-dest-repo-test")
+			if err != nil {
+				panic(err)
+			}
+
+			defer os.RemoveAll(destDir)
+
+			destConfig.Storage.RootDirectory = destDir
+
+			regex := ".*"
+			semver := true
+
+			invalidRegex := "invalid"
+
+			var tlsVerify bool
+
+			syncRegistryConfig := sync.RegistryConfig{
+				Content: []sync.Content{
+					{
+						Prefix: testImage,
+						Tags: &sync.Tags{
+							Regex:  &regex,
+							Semver: &semver,
+						},
+					},
+					{
+						Prefix: testCveImage,
+						Tags: &sync.Tags{
+							Regex:  &invalidRegex,
+							Semver: &semver,
+						},
+					},
+				},
+				URL:          srcBaseURL,
+				PollInterval: updateDuration,
+				TLSVerify:    &tlsVerify,
+				CertDir:      "",
+			}
+
+			destConfig.Extensions = &extconf.ExtensionConfig{}
+			destConfig.Extensions.Search = nil
+			destConfig.Extensions.Sync = &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+
+			dc := api.NewController(destConfig)
+
+			go func() {
+				// this blocks
+				if err := dc.Run(); err != nil {
+					return
+				}
+			}()
+
+			defer func() {
+				ctx := context.Background()
+				_ = dc.Server.Shutdown(ctx)
+			}()
+
+			// wait till ready
+			for {
+				_, err := resty.R().Get(destBaseURL)
+				if err == nil {
+					break
+				}
+				time.Sleep(100 * time.Millisecond)
+			}
+
+			var srcTagsList TagsList
+			var destTagsList TagsList
+
+			resp, _ := resty.R().Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			err = json.Unmarshal(resp.Body(), &srcTagsList)
+			if err != nil {
+				panic(err)
+			}
+
+			for {
+				resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/tags/list")
+				if err != nil {
+					panic(err)
+				}
+
+				err = json.Unmarshal(resp.Body(), &destTagsList)
+				if err != nil {
+					panic(err)
+				}
+
+				if len(destTagsList.Tags) > 0 {
+					break
+				}
+
+				time.Sleep(500 * time.Millisecond)
+			}
+
+			if eq := reflect.DeepEqual(destTagsList.Tags, srcTagsList.Tags); eq == false {
+				panic(errSync)
+			}
+
+			Convey("Test sync on POST request on /sync", func() {
+				resp, _ := resty.R().Post(destBaseURL + "/sync")
+				So(resp, ShouldNotBeNil)
+				So(resp.StatusCode(), ShouldEqual, 200)
+			})
+		})
 	})
 }
 
@@ -495,6 +618,11 @@ func TestSyncTLS(t *testing.T) {
 			if err := sc.Run(); err != nil {
 				return
 			}
+		}()
+
+		defer func() {
+			ctx := context.Background()
+			_ = sc.Server.Shutdown(ctx)
 		}()
 
 		cert, err := tls.LoadX509KeyPair("../../../test/data/client.cert", "../../../test/data/client.key")
@@ -597,11 +725,16 @@ func TestSyncTLS(t *testing.T) {
 			}
 		}()
 
+		defer func() {
+			ctx := context.Background()
+			_ = dc.Server.Shutdown(ctx)
+		}()
+
 		// wait till ready
 		for {
 			destBuf, _ := ioutil.ReadFile(path.Join(destDir, testImage, "index.json"))
 			_ = json.Unmarshal(destBuf, &destIndex)
-			time.Sleep(1 * time.Second)
+			time.Sleep(500 * time.Millisecond)
 			if len(destIndex.Manifests) > 0 {
 				break
 			}
@@ -617,12 +750,6 @@ func TestSyncTLS(t *testing.T) {
 		if !found {
 			panic(errSync)
 		}
-
-		defer func() {
-			ctx := context.Background()
-			_ = dc.Server.Shutdown(ctx)
-			_ = sc.Server.Shutdown(ctx)
-		}()
 	})
 }
 
@@ -666,6 +793,11 @@ func TestSyncBasicAuth(t *testing.T) {
 			if err := sc.Run(); err != nil {
 				return
 			}
+		}()
+
+		defer func() {
+			ctx := context.Background()
+			_ = sc.Server.Shutdown(ctx)
 		}()
 
 		// wait till ready
@@ -726,6 +858,11 @@ func TestSyncBasicAuth(t *testing.T) {
 				}
 			}()
 
+			defer func() {
+				ctx := context.Background()
+				_ = dc.Server.Shutdown(ctx)
+			}()
+
 			// wait till ready
 			for {
 				_, err := resty.R().Get(destBaseURL)
@@ -762,18 +899,12 @@ func TestSyncBasicAuth(t *testing.T) {
 					break
 				}
 
-				time.Sleep(1 * time.Second)
+				time.Sleep(500 * time.Millisecond)
 			}
 
 			if eq := reflect.DeepEqual(destTagsList.Tags, srcTagsList.Tags); eq == false {
 				panic(errSync)
 			}
-
-			defer func() {
-				ctx := context.Background()
-				_ = dc.Server.Shutdown(ctx)
-				_ = sc.Server.Shutdown(ctx)
-			}()
 		})
 
 		Convey("Verify sync basic auth with bad file credentials", func() {
@@ -832,6 +963,11 @@ func TestSyncBasicAuth(t *testing.T) {
 				}
 			}()
 
+			defer func() {
+				ctx := context.Background()
+				_ = dc.Server.Shutdown(ctx)
+			}()
+
 			// wait till ready
 			for {
 				_, err := resty.R().Get(destBaseURL)
@@ -847,12 +983,6 @@ func TestSyncBasicAuth(t *testing.T) {
 				So(string(resp.Body()), ShouldContainSubstring, "sync: couldn't fetch upstream registry's catalog")
 				So(resp.StatusCode(), ShouldEqual, 500)
 			})
-
-			defer func() {
-				ctx := context.Background()
-				_ = dc.Server.Shutdown(ctx)
-				_ = sc.Server.Shutdown(ctx)
-			}()
 		})
 
 		Convey("Verify on demand sync with basic auth", func() {
@@ -904,6 +1034,11 @@ func TestSyncBasicAuth(t *testing.T) {
 				if err := dc.Run(); err != nil {
 					return
 				}
+			}()
+
+			defer func() {
+				ctx := context.Background()
+				_ = dc.Server.Shutdown(ctx)
 			}()
 
 			// wait till ready
@@ -969,12 +1104,6 @@ func TestSyncBasicAuth(t *testing.T) {
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, 200)
 			})
-
-			defer func() {
-				ctx := context.Background()
-				_ = dc.Server.Shutdown(ctx)
-				_ = sc.Server.Shutdown(ctx)
-			}()
 		})
 	})
 }
@@ -1030,6 +1159,11 @@ func TestSyncBadUrl(t *testing.T) {
 			}
 		}()
 
+		defer func() {
+			ctx := context.Background()
+			_ = dc.Server.Shutdown(ctx)
+		}()
+
 		// wait till ready
 		for {
 			_, err := resty.R().Get(destBaseURL)
@@ -1045,11 +1179,6 @@ func TestSyncBadUrl(t *testing.T) {
 			So(string(resp.Body()), ShouldContainSubstring, "unsupported protocol scheme")
 			So(resp.StatusCode(), ShouldEqual, 500)
 		})
-
-		defer func() {
-			ctx := context.Background()
-			_ = dc.Server.Shutdown(ctx)
-		}()
 	})
 }
 
@@ -1084,6 +1213,11 @@ func TestSyncNoImagesByRegex(t *testing.T) {
 			if err := sc.Run(); err != nil {
 				return
 			}
+		}()
+
+		defer func() {
+			ctx := context.Background()
+			_ = sc.Server.Shutdown(ctx)
 		}()
 
 		// wait till ready
@@ -1141,6 +1275,11 @@ func TestSyncNoImagesByRegex(t *testing.T) {
 			}
 		}()
 
+		defer func() {
+			ctx := context.Background()
+			_ = dc.Server.Shutdown(ctx)
+		}()
+
 		// wait till ready
 		for {
 			_, err := resty.R().Get(destBaseURL)
@@ -1169,12 +1308,6 @@ func TestSyncNoImagesByRegex(t *testing.T) {
 
 			So(c.Repositories, ShouldResemble, []string{})
 		})
-
-		defer func() {
-			ctx := context.Background()
-			_ = dc.Server.Shutdown(ctx)
-			_ = sc.Server.Shutdown(ctx)
-		}()
 	})
 }
 
@@ -1209,6 +1342,11 @@ func TestSyncInvalidRegex(t *testing.T) {
 			if err := sc.Run(); err != nil {
 				return
 			}
+		}()
+
+		defer func() {
+			ctx := context.Background()
+			_ = sc.Server.Shutdown(ctx)
 		}()
 
 		// wait till ready
@@ -1266,6 +1404,11 @@ func TestSyncInvalidRegex(t *testing.T) {
 			}
 		}()
 
+		defer func() {
+			ctx := context.Background()
+			_ = dc.Server.Shutdown(ctx)
+		}()
+
 		// wait till ready
 		for {
 			_, err := resty.R().Get(destBaseURL)
@@ -1281,12 +1424,6 @@ func TestSyncInvalidRegex(t *testing.T) {
 			So(string(resp.Body()), ShouldContainSubstring, "error parsing regexp")
 			So(resp.StatusCode(), ShouldEqual, 500)
 		})
-
-		defer func() {
-			ctx := context.Background()
-			_ = dc.Server.Shutdown(ctx)
-			_ = sc.Server.Shutdown(ctx)
-		}()
 	})
 }
 
@@ -1321,6 +1458,11 @@ func TestSyncNotSemver(t *testing.T) {
 			if err := sc.Run(); err != nil {
 				return
 			}
+		}()
+
+		defer func() {
+			ctx := context.Background()
+			_ = sc.Server.Shutdown(ctx)
 		}()
 
 		// wait till ready
@@ -1393,6 +1535,11 @@ func TestSyncNotSemver(t *testing.T) {
 			}
 		}()
 
+		defer func() {
+			ctx := context.Background()
+			_ = dc.Server.Shutdown(ctx)
+		}()
+
 		// wait till ready
 		for {
 			_, err := resty.R().Get(destBaseURL)
@@ -1423,12 +1570,6 @@ func TestSyncNotSemver(t *testing.T) {
 			So(len(destTagsList.Tags), ShouldEqual, 1)
 			So(destTagsList.Tags[0], ShouldEqual, testImageTag)
 		})
-
-		defer func() {
-			ctx := context.Background()
-			_ = dc.Server.Shutdown(ctx)
-			_ = sc.Server.Shutdown(ctx)
-		}()
 	})
 }
 
@@ -1478,6 +1619,11 @@ func TestSyncInvalidCerts(t *testing.T) {
 			if err := sc.Run(); err != nil {
 				return
 			}
+		}()
+
+		defer func() {
+			ctx := context.Background()
+			_ = sc.Server.Shutdown(ctx)
 		}()
 
 		cert, err := tls.LoadX509KeyPair("../../../test/data/client.cert", "../../../test/data/client.key")
@@ -1573,6 +1719,11 @@ func TestSyncInvalidCerts(t *testing.T) {
 			}
 		}()
 
+		defer func() {
+			ctx := context.Background()
+			_ = dc.Server.Shutdown(ctx)
+		}()
+
 		// wait till ready
 		for {
 			_, err := resty.R().Get(destBaseURL)
@@ -1588,12 +1739,6 @@ func TestSyncInvalidCerts(t *testing.T) {
 			So(string(resp.Body()), ShouldContainSubstring, "signed by unknown authority")
 			So(resp.StatusCode(), ShouldEqual, 500)
 		})
-
-		defer func() {
-			ctx := context.Background()
-			_ = sc.Server.Shutdown(ctx)
-			_ = dc.Server.Shutdown(ctx)
-		}()
 	})
 }
 
