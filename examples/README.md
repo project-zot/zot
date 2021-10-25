@@ -357,10 +357,10 @@ Configure each registry sync:
 			"registries": [{
 				"url": "https://registry1:5000",
 				"onDemand": false,                  # pull any image which the local registry doesn't have
-				"pollInterval": "6h",               # polling interval
+				"pollInterval": "6h",               # polling interval, if not set then periodically polling will not run
 				"tlsVerify": true,                  # whether or not to verify tls
 				"certDir": "/home/user/certs",      # use certificates at certDir path, if not specified then use the default certs dir
-				"content":[                         # which content to periodically pull
+				"content":[                         # which content to periodically pull, also it's used for filtering ondemand images, if not set then periodically polling will not run
 					{
 						"prefix":"/repo1/repo",         # pull image repo1/repo
 						"tags":{                        # filter by tags

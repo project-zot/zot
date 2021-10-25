@@ -51,6 +51,16 @@ func OneImage(cfg Config, storeController storage.StoreController,
 			continue
 		}
 
+		// if content config is not specified, then don't filter, just sync demanded image
+		if len(regCfg.Content) != 0 {
+			repos := filterRepos([]string{repo}, regCfg.Content, log)
+			if len(repos) == 0 {
+				log.Info().Msgf("skipping syncing on demand %s from %s registry because it's filtered out by content config",
+					repo, regCfg.URL)
+				continue
+			}
+		}
+
 		registryConfig := regCfg
 		log.Info().Msgf("syncing on demand with %s", registryConfig.URL)
 

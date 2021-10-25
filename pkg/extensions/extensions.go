@@ -72,19 +72,6 @@ func EnableExtensions(config *config.Config, log log.Logger, rootDir string) {
 func EnableSyncExtension(config *config.Config, wg *goSync.WaitGroup,
 	storeController storage.StoreController, log log.Logger) {
 	if config.Extensions.Sync != nil {
-		defaultPollInterval, _ := time.ParseDuration("1h")
-		for id, registryCfg := range config.Extensions.Sync.Registries {
-			if registryCfg.Content != nil &&
-				len(registryCfg.Content) > 0 &&
-				registryCfg.PollInterval < defaultPollInterval {
-				config.Extensions.Sync.Registries[id].PollInterval = defaultPollInterval
-
-				log.Warn().Str("registry", registryCfg.URL).
-					Msg("Sync registries interval set to too-short interval < 1h," +
-						"changing update duration to 1 hour and continuing.")
-			}
-		}
-
 		if err := sync.Run(*config.Extensions.Sync, storeController, wg, log); err != nil {
 			log.Error().Err(err).Msg("Error encountered while setting up syncing")
 		}
