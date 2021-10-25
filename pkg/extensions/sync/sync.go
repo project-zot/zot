@@ -464,15 +464,21 @@ func Run(cfg Config, storeController storage.StoreController, wg *goSync.WaitGro
 
 	// for each upstream registry, start a go routine.
 	for _, regCfg := range cfg.Registries {
+		// if content not provided, don't run periodically sync
 		if len(regCfg.Content) == 0 {
-			logger.Info().Msgf("no content found for %s, will not run periodically sync", regCfg.URL)
+			logger.Info().Msgf("sync config content not configured for %s, will not run periodically sync", regCfg.URL)
+			continue
+		}
+
+		// if pollInterval is not provided, don't run periodically sync
+		if regCfg.PollInterval == 0 {
+			logger.Warn().Msgf("sync config PollInterval not configured for %s, will not run periodically sync", regCfg.URL)
 			continue
 		}
 
 		// increment reference since will be busy, so shutdown has to wait
 		wg.Add(1)
 
-		// schedule each registry sync
 		ticker := time.NewTicker(regCfg.PollInterval)
 
 		// fork a new zerolog child to avoid data race
@@ -480,6 +486,7 @@ func Run(cfg Config, storeController storage.StoreController, wg *goSync.WaitGro
 
 		upstreamRegistry := strings.Replace(strings.Replace(regCfg.URL, "http://", "", 1), "https://", "", 1)
 
+		// schedule each registry sync
 		go func(regCfg RegistryConfig, l log.Logger) {
 			// run on intervals
 			for ; true; <-ticker.C {

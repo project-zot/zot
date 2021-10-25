@@ -48,8 +48,15 @@ func (h *PostHandler) Handler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, regCfg := range h.Cfg.Registries {
+		// if content not provided, don't run periodically sync
 		if len(regCfg.Content) == 0 {
-			h.Log.Info().Msgf("no content found for %s, will not run periodically sync", regCfg.URL)
+			h.Log.Info().Msgf("sync config content not configured for %s, will not run periodically sync", regCfg.URL)
+			continue
+		}
+
+		// if pollInterval is not provided, don't run periodically sync
+		if regCfg.PollInterval == 0 {
+			h.Log.Warn().Msgf("sync config PollInterval not configured for %s, will not run periodically sync", regCfg.URL)
 			continue
 		}
 

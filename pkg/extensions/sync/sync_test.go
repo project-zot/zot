@@ -228,8 +228,6 @@ func startDownstreamServer(secure bool, syncConfig *sync.Config) (*api.Controlle
 
 func TestSyncOnDemand(t *testing.T) {
 	Convey("Verify sync on demand feature", t, func() {
-		updateDuration, _ := time.ParseDuration("30m")
-
 		sc, srcBaseURL, srcDir, _, srcClient := startUpstreamServer(false, false)
 		defer os.RemoveAll(srcDir)
 
@@ -237,26 +235,25 @@ func TestSyncOnDemand(t *testing.T) {
 			sc.Shutdown()
 		}()
 
-		regex := ".*"
-		var semver bool
 		var tlsVerify bool
+
+		regex := ".*"
+		semver := true
 
 		syncRegistryConfig := sync.RegistryConfig{
 			Content: []sync.Content{
 				{
-					// won't match any image on source registry, we will sync on demand
-					Prefix: "dummy",
+					Prefix: testImage,
 					Tags: &sync.Tags{
 						Regex:  &regex,
 						Semver: &semver,
 					},
 				},
 			},
-			URL:          srcBaseURL,
-			PollInterval: updateDuration,
-			TLSVerify:    &tlsVerify,
-			CertDir:      "",
-			OnDemand:     true,
+			URL:       srcBaseURL,
+			TLSVerify: &tlsVerify,
+			CertDir:   "",
+			OnDemand:  true,
 		}
 
 		syncConfig := &sync.Config{
@@ -1619,5 +1616,195 @@ func TestSyncSubPaths(t *testing.T) {
 		fi, err = os.Stat(path.Join(destDir, subpath))
 		So(fi, ShouldBeNil)
 		So(err, ShouldNotBeNil)
+	})
+}
+
+func TestSyncOnDemandContentFiltering(t *testing.T) {
+	Convey("Verify sync on demand feature", t, func() {
+		sc, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
+		defer os.RemoveAll(srcDir)
+
+		defer func() {
+			sc.Shutdown()
+		}()
+
+		Convey("Test image is filtered out by content", func() {
+			regex := ".*"
+			var semver bool
+			var tlsVerify bool
+
+			syncRegistryConfig := sync.RegistryConfig{
+				Content: []sync.Content{
+					{
+						//should be filtered out
+						Prefix: "dummy",
+						Tags: &sync.Tags{
+							Regex:  &regex,
+							Semver: &semver,
+						},
+					},
+				},
+				URL:       srcBaseURL,
+				TLSVerify: &tlsVerify,
+				CertDir:   "",
+				OnDemand:  true,
+			}
+
+			syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+
+			dc, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
+			defer os.RemoveAll(destDir)
+
+			defer func() {
+				dc.Shutdown()
+			}()
+
+			resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 404)
+		})
+
+		Convey("Test image is not filtered out by content", func() {
+			regex := ".*"
+			semver := true
+			var tlsVerify bool
+
+			syncRegistryConfig := sync.RegistryConfig{
+				Content: []sync.Content{
+					{
+						// will sync on demand, should not be filtered out
+						Prefix: testImage,
+						Tags: &sync.Tags{
+							Regex:  &regex,
+							Semver: &semver,
+						},
+					},
+				},
+				URL:       srcBaseURL,
+				TLSVerify: &tlsVerify,
+				CertDir:   "",
+				OnDemand:  true,
+			}
+
+			syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+
+			dc, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
+			defer os.RemoveAll(destDir)
+
+			defer func() {
+				dc.Shutdown()
+			}()
+
+			resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+		})
+	})
+}
+
+func TestSyncConfigRules(t *testing.T) {
+	Convey("Verify sync config rules", t, func() {
+		sc, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
+		defer os.RemoveAll(srcDir)
+
+		defer func() {
+			sc.Shutdown()
+		}()
+
+		Convey("Test periodically sync is disabled when pollInterval is not set", func() {
+			regex := ".*"
+			var semver bool
+			var tlsVerify bool
+
+			syncRegistryConfig := sync.RegistryConfig{
+				Content: []sync.Content{
+					{
+						Prefix: testImage,
+						Tags: &sync.Tags{
+							Regex:  &regex,
+							Semver: &semver,
+						},
+					},
+				},
+				URL:       srcBaseURL,
+				TLSVerify: &tlsVerify,
+				CertDir:   "",
+				OnDemand:  false,
+			}
+
+			syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+
+			dc, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
+			defer os.RemoveAll(destDir)
+
+			defer func() {
+				dc.Shutdown()
+			}()
+
+			// trigger sync, this way we can be sure periodically sync ran
+			resp, _ := resty.R().Post(destBaseURL + "/sync")
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			// image should not be synced
+			resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 404)
+		})
+
+		Convey("Test periodically sync is disabled when content is not set", func() {
+			var tlsVerify bool
+			updateDuration, _ := time.ParseDuration("30m")
+
+			syncRegistryConfig := sync.RegistryConfig{
+				PollInterval: updateDuration,
+				URL:          srcBaseURL,
+				TLSVerify:    &tlsVerify,
+				CertDir:      "",
+				OnDemand:     false,
+			}
+
+			syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+
+			dc, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
+			defer os.RemoveAll(destDir)
+
+			defer func() {
+				dc.Shutdown()
+			}()
+
+			// trigger sync, this way we can be sure periodically sync ran
+			resp, _ := resty.R().Post(destBaseURL + "/sync")
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 404)
+		})
+
+		Convey("Test ondemand sync is disabled when ondemand is false", func() {
+			var tlsVerify bool
+
+			syncRegistryConfig := sync.RegistryConfig{
+				URL:       srcBaseURL,
+				TLSVerify: &tlsVerify,
+				CertDir:   "",
+				OnDemand:  false,
+			}
+
+			syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+
+			dc, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
+			defer os.RemoveAll(destDir)
+
+			defer func() {
+				dc.Shutdown()
+			}()
+
+			resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 404)
+		})
 	})
 }
