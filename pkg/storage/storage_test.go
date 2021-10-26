@@ -5,12 +5,14 @@ import (
 	_ "crypto/sha256"
 	"encoding/json"
 	"io/ioutil"
+	"math/rand"
 	"os"
 	"os/exec"
 	"path"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/log"
@@ -978,6 +980,39 @@ func TestNegativeCases(t *testing.T) {
 }
 
 func TestHardLink(t *testing.T) {
+	Convey("Test that ValidateHardLink creates rootDir if it does not exist", t, func() {
+		var randomDir string
+
+		rand.Seed(time.Now().UnixNano())
+		for {
+			randomLen := rand.Intn(100)
+			randomDir = "/tmp/" + randSeq(randomLen)
+
+			if _, err := os.Stat(randomDir); os.IsNotExist(err) {
+				break
+			}
+		}
+		defer os.RemoveAll(randomDir)
+
+		err := storage.ValidateHardLink(randomDir)
+		So(err, ShouldBeNil)
+	})
+	Convey("Test that ValidateHardLink returns error if rootDir is a file", t, func() {
+		dir, err := ioutil.TempDir("", "storage-hard-test")
+		if err != nil {
+			panic(err)
+		}
+		defer os.RemoveAll(dir)
+
+		filePath := path.Join(dir, "file.txt")
+		err = ioutil.WriteFile(filePath, []byte("some dummy file content"), 0644) //nolint: gosec
+		if err != nil {
+			panic(err)
+		}
+
+		err = storage.ValidateHardLink(filePath)
+		So(err, ShouldNotBeNil)
+	})
 	Convey("Test if filesystem supports hardlink", t, func() {
 		dir, err := ioutil.TempDir("", "storage-hard-test")
 		if err != nil {
@@ -998,7 +1033,7 @@ func TestHardLink(t *testing.T) {
 			panic(err)
 		}
 
-		err = storage.CheckHardLink(path.Join(dir, "hardtest.txt"), path.Join(dir, "duphardtest.txt"))
+		err = os.Link(path.Join(dir, "hardtest.txt"), path.Join(dir, "duphardtest.txt"))
 		So(err, ShouldNotBeNil)
 
 		err = os.Chmod(dir, 0644)
@@ -1061,4 +1096,15 @@ func TestStorageHandler(t *testing.T) {
 		is = storeController.GetImageStore("c/zot-c-test")
 		So(is.RootDir(), ShouldEqual, firstRootDir)
 	})
+}
+
+func randSeq(n int) string {
+	var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+	b := make([]rune, n)
+	for i := range b {
+		b[i] = letters[rand.Intn(len(letters))]
+	}
+
+	return string(b)
 }
