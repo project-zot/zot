@@ -1273,18 +1273,18 @@ func Scrub(dir string, fix bool) error {
 
 // utility routines
 
-func CheckHardLink(srcFileName string, destFileName string) error {
-	return os.Link(srcFileName, destFileName)
-}
-
 func ValidateHardLink(rootDir string) error {
+	if err := os.MkdirAll(rootDir, 0700); err != nil {
+		return err
+	}
+
 	err := ioutil.WriteFile(path.Join(rootDir, "hardlinkcheck.txt"), //nolint: gosec
 		[]byte("check whether hardlinks work on filesystem"), 0644)
 	if err != nil {
 		return err
 	}
 
-	err = CheckHardLink(path.Join(rootDir, "hardlinkcheck.txt"), path.Join(rootDir, "duphardlinkcheck.txt"))
+	err = os.Link(path.Join(rootDir, "hardlinkcheck.txt"), path.Join(rootDir, "duphardlinkcheck.txt"))
 	if err != nil {
 		// Remove hardlinkcheck.txt if hardlink fails
 		zerr := os.RemoveAll(path.Join(rootDir, "hardlinkcheck.txt"))
