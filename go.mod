@@ -16,6 +16,7 @@ require (
 	github.com/containers/common v0.26.0
 	github.com/containers/image/v5 v5.13.2
 	github.com/cpuguy83/go-md2man/v2 v2.0.1 // indirect
+	github.com/dchest/siphash v1.2.2 // indirect
 	github.com/dustin/go-humanize v1.0.0
 	github.com/fsnotify/fsnotify v1.5.1
 	github.com/getlantern/deepcopy v0.0.0-20160317154340-7f45deb8130a

@@ -9,10 +9,10 @@ import (
 type ImageStore interface {
 	DirExists(d string) bool
 	RootDir() string
-	RLock()
-	RUnlock()
-	Lock()
-	Unlock()
+	RLock(string)
+	RUnlock(string)
+	Lock(string)
+	Unlock(string)
 	InitRepo(name string) error
 	ValidateRepo(name string) (bool, error)
 	GetRepositories() ([]string, error)

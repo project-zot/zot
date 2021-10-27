@@ -6,8 +6,10 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"hash"
 	"io"
 	"io/ioutil"
+	"math/rand"
 	"os"
 	"path"
 	"path/filepath"
@@ -18,6 +20,7 @@ import (
 	"github.com/anuvu/zot/errors"
 	zlog "github.com/anuvu/zot/pkg/log"
 	apexlog "github.com/apex/log"
+	"github.com/dchest/siphash"
 	guuid "github.com/gofrs/uuid"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -31,6 +34,7 @@ const (
 	BlobUploadDir = ".uploads"
 	schemaVersion = 2
 	gcDelay       = 1 * time.Hour
+	maxLockStripe = 64
 )
 
 // BlobUpload models and upload request.
@@ -47,7 +51,8 @@ type StoreController struct {
 // ImageStoreFS provides the image storage operations.
 type ImageStoreFS struct {
 	rootDir     string
-	lock        *sync.RWMutex
+	locks       []*sync.RWMutex
+	lockHash    hash.Hash64
 	blobUploads map[string]BlobUpload
 	cache       *Cache
 	gc          bool
@@ -112,12 +117,20 @@ func NewImageStore(rootDir string, gc bool, dedupe bool, log zlog.Logger) ImageS
 
 	is := &ImageStoreFS{
 		rootDir:     rootDir,
-		lock:        &sync.RWMutex{},
 		blobUploads: make(map[string]BlobUpload),
 		gc:          gc,
 		dedupe:      dedupe,
 		log:         log.With().Caller().Logger(),
 	}
+	is.locks = make([]*sync.RWMutex, maxLockStripe+1)
+	for i := 0; i < maxLockStripe+1; i++ {
+		is.locks[i] = &sync.RWMutex{}
+	}
+	seed := make([]byte, 16)
+	if n, err := rand.Read(seed); err != nil {
+		log.Error().Err(err).Int("n", n).Msg("unable to seed rng")
+	}
+	is.lockHash = siphash.New(seed)
 
 	if dedupe {
 		is.cache = NewCache(rootDir, "cache", log)
@@ -140,24 +153,37 @@ func NewImageStore(rootDir string, gc bool, dedupe bool, log zlog.Logger) ImageS
 	return is
 }
 
+// hashedLock returns a rwlock from a striped pool based on a secure/fast hash
+// which avoids malicious collisions
+func (is *ImageStoreFS) hashedLock(name string) *sync.RWMutex {
+	if name == "" {
+		return is.locks[maxLockStripe]
+	}
+
+	is.lockHash.Write([]byte(name))
+	sum64 := is.lockHash.Sum64()
+	is.lockHash.Reset()
+	return is.locks[sum64%maxLockStripe]
+}
+
 // RLock read-lock.
-func (is *ImageStoreFS) RLock() {
-	is.lock.RLock()
+func (is *ImageStoreFS) RLock(name string) {
+	is.hashedLock(name).RLock()
 }
 
 // RUnlock read-unlock.
-func (is *ImageStoreFS) RUnlock() {
-	is.lock.RUnlock()
+func (is *ImageStoreFS) RUnlock(name string) {
+	is.hashedLock(name).RUnlock()
 }
 
 // Lock write-lock.
-func (is *ImageStoreFS) Lock() {
-	is.lock.Lock()
+func (is *ImageStoreFS) Lock(name string) {
+	is.hashedLock(name).Lock()
 }
 
 // Unlock write-unlock.
-func (is *ImageStoreFS) Unlock() {
-	is.lock.Unlock()
+func (is *ImageStoreFS) Unlock(name string) {
+	is.hashedLock(name).Unlock()
 }
 
 func (is *ImageStoreFS) initRepo(name string) error {
@@ -215,8 +241,8 @@ func (is *ImageStoreFS) initRepo(name string) error {
 
 // InitRepo creates an image repository under this store.
 func (is *ImageStoreFS) InitRepo(name string) error {
-	is.Lock()
-	defer is.Unlock()
+	is.Lock(name)
+	defer is.Unlock(name)
 
 	return is.initRepo(name)
 }
@@ -282,8 +308,8 @@ func (is *ImageStoreFS) ValidateRepo(name string) (bool, error) {
 func (is *ImageStoreFS) GetRepositories() ([]string, error) {
 	dir := is.rootDir
 
-	is.RLock()
-	defer is.RUnlock()
+	is.RLock("")
+	defer is.RUnlock("")
 
 	_, err := ioutil.ReadDir(dir)
 	if err != nil {
@@ -326,8 +352,8 @@ func (is *ImageStoreFS) GetImageTags(repo string) ([]string, error) {
 		return nil, errors.ErrRepoNotFound
 	}
 
-	is.RLock()
-	defer is.RUnlock()
+	is.RLock(repo)
+	defer is.RUnlock(repo)
 
 	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
 	if err != nil {
@@ -360,8 +386,8 @@ func (is *ImageStoreFS) GetImageManifest(repo string, reference string) ([]byte,
 		return nil, "", "", errors.ErrRepoNotFound
 	}
 
-	is.RLock()
-	defer is.RUnlock()
+	is.RLock(repo)
+	defer is.RUnlock(repo)
 
 	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
 
@@ -488,8 +514,8 @@ func (is *ImageStoreFS) PutImageManifest(repo string, reference string, mediaTyp
 		refIsDigest = true
 	}
 
-	is.Lock()
-	defer is.Unlock()
+	is.Lock(repo)
+	defer is.Unlock(repo)
 
 	dir := path.Join(is.rootDir, repo)
 	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
@@ -612,8 +638,8 @@ func (is *ImageStoreFS) DeleteImageManifest(repo string, reference string) error
 		isTag = true
 	}
 
-	is.Lock()
-	defer is.Unlock()
+	is.Lock(repo)
+	defer is.Unlock(repo)
 
 	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
 
@@ -882,8 +908,8 @@ func (is *ImageStoreFS) FinishBlobUpload(repo string, uuid string, body io.Reade
 
 	dir := path.Join(is.rootDir, repo, "blobs", dstDigest.Algorithm().String())
 
-	is.Lock()
-	defer is.Unlock()
+	is.Lock(repo)
+	defer is.Unlock(repo)
 
 	err = ensureDir(dir, is.log)
 	if err != nil {
@@ -957,8 +983,8 @@ func (is *ImageStoreFS) FullBlobUpload(repo string, body io.Reader, digest strin
 
 	dir := path.Join(is.rootDir, repo, "blobs", dstDigest.Algorithm().String())
 
-	is.Lock()
-	defer is.Unlock()
+	is.Lock(repo)
+	defer is.Unlock(repo)
 
 	_ = ensureDir(dir, is.log)
 	dst := is.BlobPath(repo, dstDigest)
@@ -1086,11 +1112,11 @@ func (is *ImageStoreFS) CheckBlob(repo string, digest string) (bool, int64, erro
 	blobPath := is.BlobPath(repo, d)
 
 	if is.dedupe && is.cache != nil {
-		is.Lock()
-		defer is.Unlock()
+		is.Lock(repo)
+		defer is.Unlock(repo)
 	} else {
-		is.RLock()
-		defer is.RUnlock()
+		is.RLock(repo)
+		defer is.RUnlock(repo)
 	}
 
 	blobInfo, err := os.Stat(blobPath)
@@ -1176,8 +1202,8 @@ func (is *ImageStoreFS) GetBlob(repo string, digest string, mediaType string) (i
 
 	blobPath := is.BlobPath(repo, d)
 
-	is.RLock()
-	defer is.RUnlock()
+	is.RLock(repo)
+	defer is.RUnlock(repo)
 
 	blobInfo, err := os.Stat(blobPath)
 	if err != nil {
@@ -1239,8 +1265,8 @@ func (is *ImageStoreFS) DeleteBlob(repo string, digest string) error {
 
 	blobPath := is.BlobPath(repo, d)
 
-	is.Lock()
-	defer is.Unlock()
+	is.Lock(repo)
+	defer is.Unlock(repo)
 
 	_, err = os.Stat(blobPath)
 	if err != nil {
