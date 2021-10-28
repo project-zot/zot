@@ -24,6 +24,7 @@ Examples of working configurations for various use cases are available [here](..
 * [Identity-based Authorization](#identity-based-authorization)
 * [Logging](#logging)
 * [Metrics](#metrics)
+* [Sync](#sync)
 
 
 ## Network
@@ -335,4 +336,63 @@ AWS_PROFILE=test-account
 For more details see https://docs.aws.amazon.com/sdk-for-go/v1/developer-guide/configuring-sdk.html#specifying-credentials
 
 
+
+## Sync
+
+Enable and configure sync with:
+
+```
+		"sync": {
+```
+
+Configure credentials for upstream registries:
+
+```
+			"credentialsFile": "./examples/sync-auth-filepath.json",
+```
+
+Configure each registry sync:
+
+```
+			"registries": [{
+				"url": "https://registry1:5000",
+				"onDemand": false,                  # pull any image which the local registry doesn't have
+				"pollInterval": "6h",               # polling interval
+				"tlsVerify": true,                  # wheather or not to verify tls
+				"certDir": "/home/user/certs",      # use certificates at certDir path, if not specified then use the default certs dir
+				"content":[                         # which content to periodically pull
+					{
+						"prefix":"/repo1/repo",         # pull all images under /repo1/repo
+						"tags":{                        # filter by tags
+							"regex":"4.*",                # filter tags by regex
+							"semver":true                 # filter tags by semver compliance
+						}
+					},
+					{
+						"prefix":"/repo2/repo"          # pull all images under /repo2/repo
+					}
+				]
+			},
+			{
+				"url": "https://registry2:5000",
+				"pollInterval": "12h",
+				"tlsVerify": false,
+				"onDemand": false,
+				"content":[
+					{
+						"prefix":"/repo2",
+						"tags":{
+							"semver":true
+						}
+					}
+				]
+			},
+			{
+				"url": "https://docker.io/library",
+				"onDemand": true,                   # doesn't have content, don't periodically pull, pull just on demand.
+				"tlsVerify": true
+			}
+		]
+		}
+```
 

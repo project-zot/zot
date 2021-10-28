@@ -3,35 +3,47 @@ package sync
 import (
 	"context"
 	"fmt"
+	"os"
+	"path"
 	"strings"
 
 	"github.com/anuvu/zot/pkg/log"
+	"github.com/anuvu/zot/pkg/storage"
 	"github.com/containers/common/pkg/retry"
 	"github.com/containers/image/v5/copy"
 	"github.com/containers/image/v5/docker"
 	"github.com/containers/image/v5/docker/reference"
+	"github.com/containers/image/v5/oci/layout"
+	guuid "github.com/gofrs/uuid"
 )
 
 func OneImage(cfg Config, log log.Logger,
-	address, port, serverCert, serverKey, caCert, repoName, tag string) (bool, error) {
-	localCtx, policyCtx, err := getLocalContexts(serverCert, serverKey, caCert, log)
-	if err != nil {
-		return false, err
-	}
-
-	localRegistryName := strings.Replace(fmt.Sprintf("%s:%s", address, port), "0.0.0.0", "127.0.0.1", 1)
-
+	storeController storage.StoreController, repo, tag string) error {
 	var credentialsFile CredentialsFile
 
 	if cfg.CredentialsFile != "" {
+		var err error
+
 		credentialsFile, err = getFileCredentials(cfg.CredentialsFile)
 		if err != nil {
 			log.Error().Err(err).Msgf("couldn't get registry credentials from %s", cfg.CredentialsFile)
-			return false, err
+			return err
 		}
 	}
 
-	var synced bool
+	localCtx, policyCtx, err := getLocalContexts(log)
+	if err != nil {
+		return err
+	}
+
+	imageStore := storeController.GetImageStore(repo)
+
+	var copyErr error
+
+	uuid, err := guuid.NewV4()
+	if err != nil {
+		return err
+	}
 
 	for _, regCfg := range cfg.Registries {
 		if !regCfg.OnDemand {
@@ -46,25 +58,45 @@ func OneImage(cfg Config, log log.Logger,
 
 		upstreamCtx := getUpstreamContext(&registryConfig, credentialsFile[upstreamRegistryName])
 
-		upstreamRepoRef, err := parseRepositoryReference(fmt.Sprintf("%s/%s", upstreamRegistryName, repoName))
+		upstreamRepoRef, err := parseRepositoryReference(fmt.Sprintf("%s/%s", upstreamRegistryName, repo))
+		if err != nil {
+			log.Error().Err(err).Msgf("error parsing repository reference %s/%s", upstreamRegistryName, repo)
+			return err
+		}
 
 		upstreamTaggedRef, err := reference.WithTag(upstreamRepoRef, tag)
 		if err != nil {
-			log.Err(err).Msgf("error creating a reference for repository %s and tag %q", upstreamRepoRef.Name(), tag)
-			return synced, err
+			log.Error().Err(err).Msgf("error creating a reference for repository %s and tag %q",
+				upstreamRepoRef.Name(), tag)
+			return err
 		}
 
 		upstreamRef, err := docker.NewReference(upstreamTaggedRef)
-		ref := strings.Replace(upstreamRef.DockerReference().String(), upstreamRegistryName, "", 1)
-
-		localRef, err := docker.Transport.ParseReference(
-			fmt.Sprintf("//%s%s", localRegistryName, ref),
-		)
 		if err != nil {
-			return synced, err
+			log.Error().Err(err).Msgf("error creating docker reference for repository %s and tag %q",
+				upstreamRepoRef.Name(), tag)
+			return err
 		}
 
-		log.Info().Msgf("copying image %s to %s", upstreamRef.DockerReference().Name(), localRef.DockerReference().Name())
+		imageName := strings.Replace(upstreamTaggedRef.Name(), upstreamRegistryName, "", 1)
+
+		localRepo := path.Join(imageStore.RootDir(), imageName, SyncBlobUploadDir, uuid.String(), imageName)
+
+		if err = os.MkdirAll(localRepo, 0755); err != nil {
+			log.Error().Err(err).Str("dir", localRepo).Msg("couldn't create temporary dir")
+			return err
+		}
+
+		localTaggedRepo := fmt.Sprintf("%s:%s", localRepo, tag)
+
+		localRef, err := layout.ParseReference(localTaggedRepo)
+		if err != nil {
+			log.Error().Err(err).Msgf("cannot obtain a valid image reference for reference %q", localRepo)
+			return err
+		}
+
+		log.Info().Msgf("copying image %s:%s to %s", upstreamTaggedRef.Name(),
+			upstreamTaggedRef.Tag(), localRepo)
 
 		options := getCopyOptions(upstreamCtx, localCtx)
 
@@ -73,18 +105,24 @@ func OneImage(cfg Config, log log.Logger,
 		}
 
 		if err = retry.RetryIfNecessary(context.Background(), func() error {
-			_, err = copy.Image(context.Background(), policyCtx, localRef, upstreamRef, &options)
+			_, copyErr = copy.Image(context.Background(), policyCtx, localRef, upstreamRef, &options)
 			return err
-		}, retryOptions); err != nil {
-			log.Error().Err(err).Msgf("error while copying image %s to %s",
-				upstreamRef.DockerReference().Name(), localRef.DockerReference().Name())
+		}, retryOptions); copyErr != nil {
+			log.Error().Err(copyErr).Msgf("error while copying image %s to %s",
+				upstreamRef.DockerReference().Name(), localTaggedRepo)
 		} else {
 			log.Info().Msgf("successfully synced %s", upstreamRef.DockerReference().Name())
-			synced = true
 
-			return synced, nil
+			err := pushSyncedLocalImage(repo, tag, uuid.String(), storeController, log)
+			if err != nil {
+				log.Error().Err(err).Msgf("error while pushing synced cached image %s",
+					localTaggedRepo)
+				return err
+			}
+
+			return nil
 		}
 	}
 
-	return synced, nil
+	return copyErr
 }

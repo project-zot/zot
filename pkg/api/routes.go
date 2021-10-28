@@ -1263,30 +1263,24 @@ func getImageManifest(rh *RouteHandler, is storage.ImageStore, name,
 		case errors.ErrRepoNotFound:
 			if rh.c.Config.Extensions != nil && rh.c.Config.Extensions.Sync != nil {
 				rh.c.Log.Info().Msgf("image not found, trying to get image %s:%s by syncing on demand", name, reference)
-				ok, errSync := ext.SyncOneImage(rh.c.Config, rh.c.Log, name, reference)
 
-				switch ok {
-				case true:
+				errSync := ext.SyncOneImage(rh.c.Config, rh.c.Log, rh.c.StoreController, name, reference)
+				if errSync != nil {
+					rh.c.Log.Err(errSync).Msgf("error encounter while syncing image %s:%s", name, reference)
+				} else {
 					content, digest, mediaType, err = is.GetImageManifest(name, reference)
-				case false && errSync == nil:
-					rh.c.Log.Info().Msgf("couldn't find image %s:%s in sync registries", name, reference)
-				case false && errSync != nil:
-					rh.c.Log.Err(err).Msgf("error encounter while syncing image %s:%s", name, reference)
 				}
 			}
 
 		case errors.ErrManifestNotFound:
 			if rh.c.Config.Extensions != nil && rh.c.Config.Extensions.Sync != nil {
 				rh.c.Log.Info().Msgf("manifest not found, trying to get image %s:%s by syncing on demand", name, reference)
-				ok, errSync := ext.SyncOneImage(rh.c.Config, rh.c.Log, name, reference)
 
-				switch ok {
-				case true:
+				errSync := ext.SyncOneImage(rh.c.Config, rh.c.Log, rh.c.StoreController, name, reference)
+				if errSync != nil {
+					rh.c.Log.Err(errSync).Msgf("error encounter while syncing image %s:%s", name, reference)
+				} else {
 					content, digest, mediaType, err = is.GetImageManifest(name, reference)
-				case false && errSync == nil:
-					rh.c.Log.Info().Msgf("couldn't find image %s:%s in sync registries", name, reference)
-				case false && errSync != nil:
-					rh.c.Log.Err(err).Msgf("error encounter while syncing image %s:%s", name, reference)
 				}
 			}
 		default:
