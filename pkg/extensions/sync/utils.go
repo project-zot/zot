@@ -2,77 +2,19 @@ package sync
 
 import (
 	"encoding/json"
-	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"path"
 	"strings"
 
 	"github.com/anuvu/zot/errors"
+	"github.com/anuvu/zot/pkg/extensions/monitoring"
 	"github.com/anuvu/zot/pkg/log"
+	"github.com/anuvu/zot/pkg/storage"
 	"github.com/containers/image/v5/docker/reference"
 	"github.com/containers/image/v5/types"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
-
-var certsDir = fmt.Sprintf("%s/zot-certs-dir/", os.TempDir()) //nolint: gochecknoglobals
-
-func copyFile(sourceFilePath, destFilePath string) error {
-	destFile, err := os.Create(destFilePath)
-	if err != nil {
-		return err
-	}
-	defer destFile.Close()
-
-	// should never get error because server certs are already handled by zot, by the time
-	// it gets here
-	sourceFile, _ := os.Open(sourceFilePath)
-	defer sourceFile.Close()
-
-	if _, err := io.Copy(destFile, sourceFile); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func copyLocalCerts(serverCert, serverKey, caCert string, log log.Logger) (string, error) {
-	log.Debug().Msgf("Creating certs directory: %s", certsDir)
-
-	err := os.Mkdir(certsDir, 0755)
-	if err != nil && !os.IsExist(err) {
-		return "", err
-	}
-
-	if serverCert != "" {
-		log.Debug().Msgf("Copying server cert: %s", serverCert)
-
-		err := copyFile(serverCert, path.Join(certsDir, "server.cert"))
-		if err != nil {
-			return "", err
-		}
-	}
-
-	if serverKey != "" {
-		log.Debug().Msgf("Copying server key: %s", serverKey)
-
-		err := copyFile(serverKey, path.Join(certsDir, "server.key"))
-		if err != nil {
-			return "", err
-		}
-	}
-
-	if caCert != "" {
-		log.Debug().Msgf("Copying CA cert: %s", caCert)
-
-		err := copyFile(caCert, path.Join(certsDir, "ca.crt"))
-		if err != nil {
-			return "", err
-		}
-	}
-
-	return certsDir, nil
-}
 
 // getTagFromRef returns a tagged reference from an image reference.
 func getTagFromRef(ref types.ImageReference, log log.Logger) reference.Tagged {
@@ -163,4 +105,71 @@ func getFileCredentials(filepath string) (CredentialsFile, error) {
 	}
 
 	return creds, nil
+}
+
+func pushSyncedLocalImage(repo, tag, uuid string,
+	storeController storage.StoreController, log log.Logger) error {
+	log.Info().Msgf("pushing synced local image %s:%s to local registry", repo, tag)
+
+	imageStore := storeController.GetImageStore(repo)
+
+	metrics := monitoring.NewMetricsServer(false, log)
+	cacheImageStore := storage.NewImageStore(path.Join(imageStore.RootDir(), repo, SyncBlobUploadDir, uuid),
+		false, false, log, metrics)
+
+	manifestContent, _, _, err := cacheImageStore.GetImageManifest(repo, tag)
+	if err != nil {
+		log.Error().Err(err).Str("dir", path.Join(cacheImageStore.RootDir(), repo)).Msg("couldn't find index.json")
+		return err
+	}
+
+	var manifest ispec.Manifest
+
+	if err := json.Unmarshal(manifestContent, &manifest); err != nil {
+		log.Error().Err(err).Str("dir", path.Join(cacheImageStore.RootDir(), repo)).Msg("invalid JSON")
+		return err
+	}
+
+	for _, blob := range manifest.Layers {
+		blobReader, _, err := cacheImageStore.GetBlob(repo, blob.Digest.String(), blob.MediaType)
+		if err != nil {
+			log.Error().Err(err).Str("dir", path.Join(cacheImageStore.RootDir(),
+				repo)).Str("blob digest", blob.Digest.String()).Msg("couldn't read blob")
+			return err
+		}
+
+		_, _, err = imageStore.FullBlobUpload(repo, blobReader, blob.Digest.String())
+		if err != nil {
+			log.Error().Err(err).Str("blob digest", blob.Digest.String()).Msg("couldn't upload blob")
+			return err
+		}
+	}
+
+	blobReader, _, err := cacheImageStore.GetBlob(repo, manifest.Config.Digest.String(), manifest.Config.MediaType)
+	if err != nil {
+		log.Error().Err(err).Str("dir", path.Join(cacheImageStore.RootDir(),
+			repo)).Str("blob digest", manifest.Config.Digest.String()).Msg("couldn't read config blob")
+		return err
+	}
+
+	_, _, err = imageStore.FullBlobUpload(repo, blobReader, manifest.Config.Digest.String())
+	if err != nil {
+		log.Error().Err(err).Str("blob digest", manifest.Config.Digest.String()).Msg("couldn't upload config blob")
+		return err
+	}
+
+	_, err = imageStore.PutImageManifest(repo, tag, ispec.MediaTypeImageManifest, manifestContent)
+	if err != nil {
+		log.Error().Err(err).Msg("couldn't upload manifest")
+		return err
+	}
+
+	log.Info().Msgf("removing temporary cached synced repo %s", path.Join(cacheImageStore.RootDir(), repo))
+
+	if err := os.RemoveAll(path.Join(cacheImageStore.RootDir(), repo)); err != nil {
+		log.Error().Err(err).Msg("couldn't remove locally cached sync repo")
+		return err
+	}
+
+	return nil
 }

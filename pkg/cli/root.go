@@ -174,10 +174,16 @@ func LoadConfiguration(config *config.Config, configPath string) {
 		}
 	}
 
-	// enforce s3 driver in case of using storage driver
 	if len(config.Storage.StorageDriver) != 0 {
+		// enforce s3 driver in case of using storage driver
 		if config.Storage.StorageDriver["name"] != storage.S3StorageDriverName {
 			log.Error().Err(errors.ErrBadConfig).Msgf("unsupported storage driver: %s", config.Storage.StorageDriver["name"])
+			panic(errors.ErrBadConfig)
+		}
+
+		// enforce filesystem storage in case sync feature is enabled
+		if config.Extensions != nil && config.Extensions.Sync != nil {
+			log.Error().Err(errors.ErrBadConfig).Msg("sync supports only filesystem storage")
 			panic(errors.ErrBadConfig)
 		}
 	}

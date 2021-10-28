@@ -6,20 +6,32 @@ import (
 	"strings"
 
 	"github.com/anuvu/zot/pkg/log"
+	"github.com/anuvu/zot/pkg/storage"
+	guuid "github.com/gofrs/uuid"
 )
 
 type PostHandler struct {
-	Address    string
-	Port       string
-	ServerCert string
-	ServerKey  string
-	CACert     string
-	Cfg        Config
-	Log        log.Logger
+	StoreController storage.StoreController
+	Cfg             Config
+	Log             log.Logger
 }
 
 func (h *PostHandler) Handler(w http.ResponseWriter, r *http.Request) {
-	upstreamCtx, policyCtx, err := getLocalContexts(h.ServerCert, h.ServerKey, h.CACert, h.Log)
+	var credentialsFile CredentialsFile
+
+	var err error
+
+	if h.Cfg.CredentialsFile != "" {
+		credentialsFile, err = getFileCredentials(h.Cfg.CredentialsFile)
+		if err != nil {
+			h.Log.Error().Err(err).Msgf("sync http handler: couldn't get registry credentials from %s", h.Cfg.CredentialsFile)
+			WriteData(w, http.StatusInternalServerError, err.Error())
+
+			return
+		}
+	}
+
+	localCtx, policyCtx, err := getLocalContexts(h.Log)
 	if err != nil {
 		WriteData(w, http.StatusInternalServerError, err.Error())
 
@@ -28,25 +40,22 @@ func (h *PostHandler) Handler(w http.ResponseWriter, r *http.Request) {
 
 	defer policyCtx.Destroy() //nolint: errcheck
 
-	var credentialsFile CredentialsFile
+	uuid, err := guuid.NewV4()
+	if err != nil {
+		WriteData(w, http.StatusInternalServerError, err.Error())
 
-	if h.Cfg.CredentialsFile != "" {
-		credentialsFile, err = getFileCredentials(h.Cfg.CredentialsFile)
-		if err != nil {
-			h.Log.Error().Err(err).Msgf("couldn't get registry credentials from %s", h.Cfg.CredentialsFile)
-			WriteData(w, http.StatusInternalServerError, err.Error())
-		}
+		return
 	}
-
-	localRegistryName := strings.Replace(fmt.Sprintf("%s:%s", h.Address, h.Port), "0.0.0.0", "127.0.0.1", 1)
 
 	for _, regCfg := range h.Cfg.Registries {
 		upstreamRegistryName := strings.Replace(strings.Replace(regCfg.URL, "http://", "", 1), "https://", "", 1)
 
-		if err := syncRegistry(regCfg, h.Log, localRegistryName, upstreamCtx, policyCtx,
-			credentialsFile[upstreamRegistryName]); err != nil {
-			h.Log.Err(err).Msg("error while syncing")
+		if err := syncRegistry(regCfg, h.StoreController, h.Log, localCtx, policyCtx,
+			credentialsFile[upstreamRegistryName], uuid.String()); err != nil {
+			h.Log.Err(err).Msg("sync http handler: error while syncing in")
 			WriteData(w, http.StatusInternalServerError, err.Error())
+
+			return
 		}
 	}
 
@@ -56,5 +65,5 @@ func (h *PostHandler) Handler(w http.ResponseWriter, r *http.Request) {
 func WriteData(w http.ResponseWriter, status int, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_, _ = w.Write([]byte(msg))
+	_, _ = w.Write([]byte(fmt.Sprintf("error: %s", msg)))
 }

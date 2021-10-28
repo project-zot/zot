@@ -54,36 +54,6 @@ func EnableExtensions(config *config.Config, log log.Logger, rootDir string) {
 		log.Info().Msg("CVE config not provided, skipping CVE update")
 	}
 
-	if config.Extensions.Sync != nil {
-		defaultPollInterval, _ := time.ParseDuration("1h")
-		for id, registryCfg := range config.Extensions.Sync.Registries {
-			if registryCfg.PollInterval < defaultPollInterval {
-				config.Extensions.Sync.Registries[id].PollInterval = defaultPollInterval
-
-				log.Warn().Msg("Sync registries interval set to too-short interval <= 1h, changing update duration to 1 hour and continuing.") // nolint: lll
-			}
-		}
-
-		var serverCert string
-
-		var serverKey string
-
-		var CACert string
-
-		if config.HTTP.TLS != nil {
-			serverCert = config.HTTP.TLS.Cert
-			serverKey = config.HTTP.TLS.Key
-			CACert = config.HTTP.TLS.CACert
-		}
-
-		if err := sync.Run(*config.Extensions.Sync, log, config.HTTP.Address,
-			config.HTTP.Port, serverCert, serverKey, CACert); err != nil {
-			log.Error().Err(err).Msg("Error encountered while setting up syncing")
-		}
-	} else {
-		log.Info().Msg("Sync registries config not provided, skipping sync")
-	}
-
 	if config.Extensions.Metrics != nil &&
 		config.Extensions.Metrics.Enable &&
 		config.Extensions.Metrics.Prometheus != nil {
@@ -97,9 +67,31 @@ func EnableExtensions(config *config.Config, log log.Logger, rootDir string) {
 	}
 }
 
+// EnableSyncExtension enables sync extension.
+func EnableSyncExtension(config *config.Config, log log.Logger, storeController storage.StoreController) {
+	if config.Extensions.Sync != nil {
+		defaultPollInterval, _ := time.ParseDuration("1h")
+		for id, registryCfg := range config.Extensions.Sync.Registries {
+			if registryCfg.PollInterval < defaultPollInterval {
+				config.Extensions.Sync.Registries[id].PollInterval = defaultPollInterval
+
+				log.Warn().Msg("Sync registries interval set to too-short interval < 1h, changing update duration to 1 hour and continuing.") // nolint: lll
+			}
+		}
+
+		if err := sync.Run(*config.Extensions.Sync, storeController, log); err != nil {
+			log.Error().Err(err).Msg("Error encountered while setting up syncing")
+		}
+	} else {
+		log.Info().Msg("Sync registries config not provided, skipping sync")
+	}
+}
+
 // SetupRoutes ...
 func SetupRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
-	log log.Logger) {
+	l log.Logger) {
+	// fork a new zerolog child to avoid data race
+	log := log.Logger{Logger: l.With().Caller().Timestamp().Logger()}
 	log.Info().Msg("setting up extensions routes")
 
 	if config.Extensions.Search != nil && config.Extensions.Search.Enable {
@@ -115,27 +107,11 @@ func SetupRoutes(config *config.Config, router *mux.Router, storeController stor
 			Handler(gqlHandler.NewDefaultServer(search.NewExecutableSchema(resConfig)))
 	}
 
-	var serverCert string
-
-	var serverKey string
-
-	var CACert string
-
-	if config.HTTP.TLS != nil {
-		serverCert = config.HTTP.TLS.Cert
-		serverKey = config.HTTP.TLS.Key
-		CACert = config.HTTP.TLS.CACert
-	}
-
 	if config.Extensions.Sync != nil {
 		postSyncer := sync.PostHandler{
-			Address:    config.HTTP.Address,
-			Port:       config.HTTP.Port,
-			ServerCert: serverCert,
-			ServerKey:  serverKey,
-			CACert:     CACert,
-			Cfg:        *config.Extensions.Sync,
-			Log:        log,
+			Cfg:             *config.Extensions.Sync,
+			Log:             log,
+			StoreController: storeController,
 		}
 
 		router.HandleFunc("/sync", postSyncer.Handler).Methods("POST")
@@ -148,23 +124,11 @@ func SetupRoutes(config *config.Config, router *mux.Router, storeController stor
 }
 
 // SyncOneImage syncs one image.
-func SyncOneImage(config *config.Config, log log.Logger, repoName, reference string) (bool, error) {
+func SyncOneImage(config *config.Config, log log.Logger,
+	storeController storage.StoreController, repoName, reference string) error {
 	log.Info().Msgf("syncing image %s:%s", repoName, reference)
 
-	var serverCert string
+	err := sync.OneImage(*config.Extensions.Sync, log, storeController, repoName, reference)
 
-	var serverKey string
-
-	var CACert string
-
-	if config.HTTP.TLS != nil {
-		serverCert = config.HTTP.TLS.Cert
-		serverKey = config.HTTP.TLS.Key
-		CACert = config.HTTP.TLS.CACert
-	}
-
-	ok, err := sync.OneImage(*config.Extensions.Sync, log, config.HTTP.Address, config.HTTP.Port,
-		serverCert, serverKey, CACert, repoName, reference)
-
-	return ok, err
+	return err
 }
