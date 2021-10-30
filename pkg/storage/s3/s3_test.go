@@ -18,6 +18,7 @@ import (
 
 	"testing"
 
+	zerr "github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/extensions/monitoring"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
@@ -716,5 +717,17 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 		d := godigest.FromBytes([]byte(""))
 		err := il.DeleteBlob(testImage, d.String())
 		So(err, ShouldNotBeNil)
+	})
+
+	Convey("Test GetReferrers", t, func(c C) {
+		il = createMockStorage(testDir, &StorageDriverMock{
+			deleteFn: func(ctx context.Context, path string) error {
+				return errS3
+			},
+		})
+		d := godigest.FromBytes([]byte(""))
+		_, err := il.GetReferrers(testImage, d.String(), "application/image")
+		So(err, ShouldNotBeNil)
+		So(err, ShouldEqual, zerr.ErrMethodNotSupported)
 	})
 }

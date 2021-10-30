@@ -44,4 +44,5 @@ var (
 	ErrEmptyRepoList           = errors.New("search: no repository found")
 	ErrInvalidRepositoryName   = errors.New("routes: not a repository name")
 	ErrSyncMissingCatalog      = errors.New("sync: couldn't fetch upstream registry's catalog")
+	ErrMethodNotSupported      = errors.New("storage: method not supported")
 )

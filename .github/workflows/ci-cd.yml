@@ -11,7 +11,7 @@ on:
 name: build-test
 jobs:
   build-test:
-    name: Build and test ZOT
+    name: Build and test zot
     runs-on: ubuntu-latest
     services:
       s3mock:
@@ -39,6 +39,9 @@ jobs:
           sudo apt-get install rpm
           sudo apt install snapd
           sudo snap install skopeo --edge --devmode
+          curl -Lo notation.tar.gz https://github.com/notaryproject/notation/releases/download/v0.7.1-alpha.1/notation_0.7.1-alpha.1_linux_amd64.tar.gz
+          sudo tar xvzf notation.tar.gz -C /usr/bin notation
+          go get github.com/wadey/gocovmerge
 
       - name: Run build and test
         timeout-minutes: 30

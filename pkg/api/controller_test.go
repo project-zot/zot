@@ -1,3 +1,4 @@
+//go:build extended
 // +build extended
 
 package api_test
@@ -16,6 +17,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"os/exec"
 	"path"
 	"regexp"
 	"strings"
@@ -30,8 +32,14 @@ import (
 	"github.com/chartmuseum/auth"
 	"github.com/mitchellh/mapstructure"
 	vldap "github.com/nmcclain/ldap"
+	notreg "github.com/notaryproject/notation/pkg/registry"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
+	"github.com/sigstore/cosign/cmd/cosign/cli/generate"
+	"github.com/sigstore/cosign/cmd/cosign/cli/options"
+	"github.com/sigstore/cosign/cmd/cosign/cli/sign"
+	"github.com/sigstore/cosign/cmd/cosign/cli/verify"
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/bcrypt"
@@ -2772,6 +2780,318 @@ func TestHardLink(t *testing.T) {
 		}
 
 		So(c.Config.Storage.Dedupe, ShouldEqual, false)
+	})
+}
+
+func TestImageSignatures(t *testing.T) {
+	Convey("Validate signatures", t, func() {
+		// start a new server
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		c := api.NewController(conf)
+		dir, err := ioutil.TempDir("", "oci-repo-test")
+		if err != nil {
+			panic(err)
+		}
+		defer os.RemoveAll(dir)
+		c.Config.Storage.RootDirectory = dir
+		go func(controller *api.Controller) {
+			// this blocks
+			if err := controller.Run(); err != nil {
+				return
+			}
+		}(c)
+		// wait till ready
+		for {
+			_, err := resty.R().Get(baseURL)
+			if err == nil {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		defer func(controller *api.Controller) {
+			ctx := context.Background()
+			_ = controller.Server.Shutdown(ctx)
+		}(c)
+
+		repoName := "signed-repo"
+
+		// create a blob/layer
+		resp, err := resty.R().Post(baseURL + fmt.Sprintf("/v2/%s/blobs/uploads/", repoName))
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 202)
+		loc := Location(baseURL, resp)
+		So(loc, ShouldNotBeEmpty)
+
+		resp, err = resty.R().Get(loc)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 204)
+		content := []byte("this is a blob")
+		digest := godigest.FromBytes(content)
+		So(digest, ShouldNotBeNil)
+		// monolithic blob upload: success
+		resp, err = resty.R().SetQueryParam("digest", digest.String()).
+			SetHeader("Content-Type", "application/octet-stream").SetBody(content).Put(loc)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 201)
+		blobLoc := resp.Header().Get("Location")
+		So(blobLoc, ShouldNotBeEmpty)
+		So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
+		So(resp.Header().Get(api.DistContentDigestKey), ShouldNotBeEmpty)
+
+		// create a manifest
+		m := ispec.Manifest{
+			Config: ispec.Descriptor{
+				Digest: digest,
+				Size:   int64(len(content)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    digest,
+					Size:      int64(len(content)),
+				},
+			},
+		}
+		m.SchemaVersion = 2
+		content, err = json.Marshal(m)
+		So(err, ShouldBeNil)
+		digest = godigest.FromBytes(content)
+		So(digest, ShouldNotBeNil)
+		resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+			SetBody(content).Put(baseURL + fmt.Sprintf("/v2/%s/manifests/1.0", repoName))
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 201)
+		d := resp.Header().Get(api.DistContentDigestKey)
+		So(d, ShouldNotBeEmpty)
+		So(d, ShouldEqual, digest.String())
+
+		Convey("Validate cosign signatures", func() {
+			cwd, err := os.Getwd()
+			So(err, ShouldBeNil)
+			defer func() { _ = os.Chdir(cwd) }()
+			tdir, err := ioutil.TempDir("", "cosign")
+			So(err, ShouldBeNil)
+			defer os.RemoveAll(tdir)
+			_ = os.Chdir(tdir)
+
+			// generate a keypair
+			os.Setenv("COSIGN_PASSWORD", "")
+			err = generate.GenerateKeyPairCmd(context.TODO(), "", nil)
+			So(err, ShouldBeNil)
+
+			// sign the image
+			err = sign.SignCmd(context.TODO(),
+				sign.KeyOpts{KeyRef: path.Join(tdir, "cosign.key"), PassFunc: generate.GetPass},
+				options.RegistryOptions{AllowInsecure: true},
+				map[string]interface{}{"tag": "1.0"},
+				[]string{fmt.Sprintf("localhost:%s/%s@%s", port, repoName, digest.String())},
+				"", true, "", false, false, "")
+			So(err, ShouldBeNil)
+
+			// verify the image
+			a := &options.AnnotationOptions{Annotations: []string{"tag=1.0"}}
+			amap, err := a.AnnotationsMap()
+			So(err, ShouldBeNil)
+			v := verify.VerifyCommand{
+				RegistryOptions: options.RegistryOptions{AllowInsecure: true},
+				CheckClaims:     true,
+				KeyRef:          path.Join(tdir, "cosign.pub"),
+				Annotations:     amap,
+			}
+			err = v.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", port, repoName, "1.0")})
+			So(err, ShouldBeNil)
+
+			// verify the image with incorrect tag
+			a = &options.AnnotationOptions{Annotations: []string{"tag=2.0"}}
+			amap, err = a.AnnotationsMap()
+			So(err, ShouldBeNil)
+			v = verify.VerifyCommand{
+				RegistryOptions: options.RegistryOptions{AllowInsecure: true},
+				CheckClaims:     true,
+				KeyRef:          path.Join(tdir, "cosign.pub"),
+				Annotations:     amap,
+			}
+			err = v.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", port, repoName, "1.0")})
+			So(err, ShouldNotBeNil)
+
+			// verify the image with incorrect key
+			a = &options.AnnotationOptions{Annotations: []string{"tag=1.0"}}
+			amap, err = a.AnnotationsMap()
+			So(err, ShouldBeNil)
+			v = verify.VerifyCommand{
+				CheckClaims:     true,
+				RegistryOptions: options.RegistryOptions{AllowInsecure: true},
+				KeyRef:          path.Join(tdir, "cosign.key"),
+				Annotations:     amap,
+			}
+			err = v.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", port, repoName, "1.0")})
+			So(err, ShouldNotBeNil)
+
+			// generate another keypair
+			err = os.Remove(path.Join(tdir, "cosign.pub"))
+			So(err, ShouldBeNil)
+			err = os.Remove(path.Join(tdir, "cosign.key"))
+			So(err, ShouldBeNil)
+
+			os.Setenv("COSIGN_PASSWORD", "")
+			err = generate.GenerateKeyPairCmd(context.TODO(), "", nil)
+			So(err, ShouldBeNil)
+
+			// verify the image with incorrect key
+			a = &options.AnnotationOptions{Annotations: []string{"tag=1.0"}}
+			amap, err = a.AnnotationsMap()
+			So(err, ShouldBeNil)
+			v = verify.VerifyCommand{
+				CheckClaims:     true,
+				RegistryOptions: options.RegistryOptions{AllowInsecure: true},
+				KeyRef:          path.Join(tdir, "cosign.pub"),
+				Annotations:     amap,
+			}
+			err = v.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", port, repoName, "1.0")})
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Validate notation signatures", func() {
+			cwd, err := os.Getwd()
+			So(err, ShouldBeNil)
+			defer func() { _ = os.Chdir(cwd) }()
+			tdir, err := ioutil.TempDir("", "notation")
+			So(err, ShouldBeNil)
+			defer os.RemoveAll(tdir)
+			_ = os.Chdir(tdir)
+
+			// "notation" (notaryv2) doesn't yet support exported apis, so use the binary instead
+			notPath, err := exec.LookPath("notation")
+			So(notPath, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+
+			os.Setenv("XDG_CONFIG_HOME", tdir)
+
+			// generate a keypair
+			cmd := exec.Command("notation", "cert", "generate-test", "--trust", "good")
+			err = cmd.Run()
+			So(err, ShouldBeNil)
+
+			// generate another keypair
+			cmd = exec.Command("notation", "cert", "generate-test", "--trust", "bad")
+			err = cmd.Run()
+			So(err, ShouldBeNil)
+
+			// sign the image
+			image := fmt.Sprintf("localhost:%s/%s:%s", port, repoName, "1.0")
+			cmd = exec.Command("notation", "sign", "--key", "good", "--plain-http", image)
+			err = cmd.Run()
+			So(err, ShouldBeNil)
+
+			// verify the image
+			cmd = exec.Command("notation", "verify", "--cert", "good", "--plain-http", image)
+			out, err := cmd.CombinedOutput()
+			So(err, ShouldBeNil)
+			msg := string(out)
+			So(msg, ShouldNotBeEmpty)
+			So(strings.Contains(msg, "verification failure"), ShouldBeFalse)
+
+			// verify the image with incorrect key
+			cmd = exec.Command("notation", "verify", "--cert", "bad", "--plain-http", image)
+			out, err = cmd.CombinedOutput()
+			So(err, ShouldNotBeNil)
+			msg = string(out)
+			So(msg, ShouldNotBeEmpty)
+			So(strings.Contains(msg, "verification failure"), ShouldBeTrue)
+
+			// check unsupported manifest media type
+			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.unsupported.image.manifest.v1+json").
+				SetBody(content).Put(baseURL + fmt.Sprintf("/v2/%s/manifests/1.0", repoName))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 415)
+
+			// check invalid content with artifact media type
+			resp, err = resty.R().SetHeader("Content-Type", artifactspec.MediaTypeArtifactManifest).
+				SetBody([]byte("bogus")).Put(baseURL + fmt.Sprintf("/v2/%s/manifests/1.0", repoName))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 400)
+
+			Convey("Validate corrupted signature", func() {
+				// verify with corrupted signature
+				resp, err = resty.R().SetQueryParam("artifactType", notreg.ArtifactTypeNotation).Get(
+					fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers", baseURL, repoName, digest.String()))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+				var refs api.ReferenceList
+				err = json.Unmarshal(resp.Body(), &refs)
+				So(err, ShouldBeNil)
+				So(len(refs.References), ShouldEqual, 1)
+				err = ioutil.WriteFile(path.Join(dir, repoName, "blobs",
+					strings.ReplaceAll(refs.References[0].Digest.String(), ":", "/")), []byte("corrupt"), 0600)
+				So(err, ShouldBeNil)
+				resp, err = resty.R().SetQueryParam("artifactType", notreg.ArtifactTypeNotation).Get(
+					fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers", baseURL, repoName, digest.String()))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+				cmd = exec.Command("notation", "verify", "--cert", "good", "--plain-http", image)
+				out, err = cmd.CombinedOutput()
+				So(err, ShouldNotBeNil)
+				msg = string(out)
+				So(msg, ShouldNotBeEmpty)
+			})
+
+			Convey("Validate deleted signature", func() {
+				// verify with corrupted signature
+				resp, err = resty.R().SetQueryParam("artifactType", notreg.ArtifactTypeNotation).Get(
+					fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers", baseURL, repoName, digest.String()))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+				var refs api.ReferenceList
+				err = json.Unmarshal(resp.Body(), &refs)
+				So(err, ShouldBeNil)
+				So(len(refs.References), ShouldEqual, 1)
+				err = os.Remove(path.Join(dir, repoName, "blobs",
+					strings.ReplaceAll(refs.References[0].Digest.String(), ":", "/")))
+				So(err, ShouldBeNil)
+				resp, err = resty.R().SetQueryParam("artifactType", notreg.ArtifactTypeNotation).Get(
+					fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers", baseURL, repoName, digest.String()))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+				cmd = exec.Command("notation", "verify", "--cert", "good", "--plain-http", image)
+				out, err = cmd.CombinedOutput()
+				So(err, ShouldNotBeNil)
+				msg = string(out)
+				So(msg, ShouldNotBeEmpty)
+			})
+		})
+
+		Convey("GetReferrers", func() {
+			// cover error paths
+			resp, err := resty.R().Get(
+				fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers", baseURL, "badRepo", "badDigest"))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			resp, err = resty.R().Get(
+				fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers", baseURL, repoName, "badDigest"))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+
+			resp, err = resty.R().Get(
+				fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers", baseURL, repoName, digest.String()))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+
+			resp, err = resty.R().SetQueryParam("artifactType", "badArtifact").Get(
+				fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers", baseURL, repoName, digest.String()))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+
+			resp, err = resty.R().SetQueryParam("artifactType", notreg.ArtifactTypeNotation).Get(
+				fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers", baseURL, "badRepo", digest.String()))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+		})
 	})
 }
 

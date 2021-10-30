@@ -18,6 +18,7 @@ https://anuvu.github.io/zot/
   * ```make binary``` builds a zot with all extensions enabled 
 * Uses [OCI image layout](https://github.com/opencontainers/image-spec/blob/master/image-layout.md) for image storage
   * Can serve any OCI image layout as a registry 
+* Supports container image signatures - [cosign](https://github.com/sigstore/cosign) and [notation](https://github.com/notaryproject/notation)
 * Supports [helm charts](https://helm.sh/docs/topics/registries/)
 * Behavior controlled via [configuration](./examples/README.md)
 * Supports image deletion by tag
