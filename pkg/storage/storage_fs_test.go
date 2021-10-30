@@ -122,6 +122,16 @@ func TestStorageFSAPIs(t *testing.T) {
 				panic(err)
 			}
 
+			// invalid GetReferrers
+			_, err = il.GetReferrers("invalid", "invalid", "invalid")
+			So(err, ShouldNotBeNil)
+
+			_, err = il.GetReferrers(repoName, "invalid", "invalid")
+			So(err, ShouldNotBeNil)
+
+			_, err = il.GetReferrers(repoName, d.String(), "invalid")
+			So(err, ShouldNotBeNil)
+
 			// invalid DeleteImageManifest
 			indexPath := path.Join(il.RootDir(), repoName, "index.json")
 			err = os.Chmod(indexPath, 0000)

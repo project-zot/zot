@@ -15,11 +15,14 @@ import (
 	"sync"
 	"time"
 
+	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
+
 	"github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/extensions/monitoring"
 	zlog "github.com/anuvu/zot/pkg/log"
 	apexlog "github.com/apex/log"
 	guuid "github.com/gofrs/uuid"
+	"github.com/notaryproject/notation-go-lib"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opencontainers/umoci"
@@ -437,7 +440,7 @@ func (is *ImageStoreFS) PutImageManifest(repo string, reference string, mediaTyp
 		return "", err
 	}
 
-	if mediaType != ispec.MediaTypeImageManifest {
+	if !IsSupportedMediaType(mediaType) {
 		is.log.Debug().Interface("actual", mediaType).
 			Interface("expected", ispec.MediaTypeImageManifest).Msg("bad manifest media type")
 		return "", errors.ErrBadManifest
@@ -448,25 +451,33 @@ func (is *ImageStoreFS) PutImageManifest(repo string, reference string, mediaTyp
 		return "", errors.ErrBadManifest
 	}
 
-	var m ispec.Manifest
-	if err := json.Unmarshal(body, &m); err != nil {
-		is.log.Error().Err(err).Msg("unable to unmarshal JSON")
-		return "", errors.ErrBadManifest
-	}
+	if mediaType == ispec.MediaTypeImageManifest {
+		var m ispec.Manifest
+		if err := json.Unmarshal(body, &m); err != nil {
+			is.log.Error().Err(err).Msg("unable to unmarshal JSON")
+			return "", errors.ErrBadManifest
+		}
 
-	if m.SchemaVersion != SchemaVersion {
-		is.log.Error().Int("SchemaVersion", m.SchemaVersion).Msg("invalid manifest")
-		return "", errors.ErrBadManifest
-	}
+		if m.SchemaVersion != SchemaVersion {
+			is.log.Error().Int("SchemaVersion", m.SchemaVersion).Msg("invalid manifest")
+			return "", errors.ErrBadManifest
+		}
 
-	for _, l := range m.Layers {
-		digest := l.Digest
-		blobPath := is.BlobPath(repo, digest)
-		is.log.Info().Str("blobPath", blobPath).Str("reference", reference).Msg("manifest layers")
+		for _, l := range m.Layers {
+			digest := l.Digest
+			blobPath := is.BlobPath(repo, digest)
+			is.log.Info().Str("blobPath", blobPath).Str("reference", reference).Msg("manifest layers")
 
-		if _, err := os.Stat(blobPath); err != nil {
-			is.log.Error().Err(err).Str("blobPath", blobPath).Msg("unable to find blob")
-			return digest.String(), errors.ErrBlobNotFound
+			if _, err := os.Stat(blobPath); err != nil {
+				is.log.Error().Err(err).Str("blobPath", blobPath).Msg("unable to find blob")
+				return digest.String(), errors.ErrBlobNotFound
+			}
+		}
+	} else if mediaType == artifactspec.MediaTypeArtifactManifest {
+		var m notation.Descriptor
+		if err := json.Unmarshal(body, &m); err != nil {
+			is.log.Error().Err(err).Msg("unable to unmarshal JSON")
+			return "", errors.ErrBadManifest
 		}
 	}
 
@@ -1262,6 +1273,90 @@ func (is *ImageStoreFS) DeleteBlob(repo string, digest string) error {
 	}
 
 	return nil
+}
+
+func (is *ImageStoreFS) GetReferrers(repo, digest string, mediaType string) ([]notation.Descriptor, error) {
+	dir := path.Join(is.rootDir, repo)
+	if !is.DirExists(dir) {
+		return nil, errors.ErrRepoNotFound
+	}
+
+	gdigest, err := godigest.Parse(digest)
+	if err != nil {
+		is.log.Error().Err(err).Str("digest", digest).Msg("failed to parse digest")
+		return nil, errors.ErrBadBlobDigest
+	}
+
+	is.RLock()
+	defer is.RUnlock()
+
+	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
+
+	if err != nil {
+		is.log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
+
+		if os.IsNotExist(err) {
+			return nil, errors.ErrRepoNotFound
+		}
+
+		return nil, err
+	}
+
+	var index ispec.Index
+	if err := json.Unmarshal(buf, &index); err != nil {
+		is.log.Error().Err(err).Str("dir", dir).Msg("invalid JSON")
+		return nil, err
+	}
+
+	found := false
+
+	result := []notation.Descriptor{}
+
+	for _, m := range index.Manifests {
+		if m.MediaType != artifactspec.MediaTypeArtifactManifest {
+			continue
+		}
+
+		p := path.Join(dir, "blobs", m.Digest.Algorithm().String(), m.Digest.Encoded())
+
+		buf, err = ioutil.ReadFile(p)
+
+		if err != nil {
+			is.log.Error().Err(err).Str("blob", p).Msg("failed to read manifest")
+
+			if os.IsNotExist(err) {
+				return nil, errors.ErrManifestNotFound
+			}
+
+			return nil, err
+		}
+
+		var manifest artifactspec.Manifest
+		if err := json.Unmarshal(buf, &manifest); err != nil {
+			is.log.Error().Err(err).Str("dir", dir).Msg("invalid JSON")
+			return nil, err
+		}
+
+		if mediaType != manifest.ArtifactType || gdigest != manifest.Subject.Digest {
+			continue
+		}
+
+		result = append(result, notation.Descriptor{MediaType: m.MediaType,
+			Digest: m.Digest, Size: m.Size, Annotations: m.Annotations})
+
+		found = true
+	}
+
+	if !found {
+		return nil, errors.ErrManifestNotFound
+	}
+
+	return result, nil
+}
+
+func IsSupportedMediaType(mediaType string) bool {
+	return mediaType == ispec.MediaTypeImageManifest ||
+		mediaType == artifactspec.MediaTypeArtifactManifest
 }
 
 // garbage collection

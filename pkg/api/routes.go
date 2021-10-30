@@ -28,6 +28,8 @@ import (
 	_ "github.com/anuvu/zot/swagger" // as required by swaggo
 	"github.com/gorilla/mux"
 	jsoniter "github.com/json-iterator/go"
+	"github.com/notaryproject/notation-go-lib"
+	notreg "github.com/notaryproject/notation/pkg/registry"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	httpSwagger "github.com/swaggo/http-swagger"
 )
@@ -93,6 +95,11 @@ func (rh *RouteHandler) SetupRoutes() {
 		g.HandleFunc("/",
 			rh.CheckVersionSupport).Methods("GET")
 	}
+
+	// support for oras artifact reference types (alpha 1) - image signature use case
+	rh.c.Router.HandleFunc(fmt.Sprintf("/oras/artifacts/v1/{name:%s}/manifests/{digest}/referrers", NameRegexp.String()),
+		rh.GetReferrers).Methods("GET")
+
 	// swagger swagger "/swagger/v2/index.html"
 	rh.c.Router.PathPrefix("/swagger/v2/").Methods("GET").Handler(httpSwagger.WrapHandler)
 	// Setup Extensions Routes
@@ -393,7 +400,7 @@ func (rh *RouteHandler) UpdateManifest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	mediaType := r.Header.Get("Content-Type")
-	if mediaType != ispec.MediaTypeImageManifest {
+	if !storage.IsSupportedMediaType(mediaType) {
 		w.WriteHeader(http.StatusUnsupportedMediaType)
 		return
 	}
@@ -1289,4 +1296,69 @@ func getImageManifest(rh *RouteHandler, is storage.ImageStore, name,
 	}
 
 	return content, digest, mediaType, err
+}
+
+type ReferenceList struct {
+	References []notation.Descriptor `json:"references"`
+}
+
+// GetReferrers godoc
+// @Summary Get references for an image
+// @Description Get references for an image given a digest and artifact type
+// @Accept  json
+// @Produce json
+// @Param   name     path    string     true        "repository name"
+// @Param   digest   path    string     true        "image digest"
+// @Param 	artifactType	 query 	 string 	true	    "artifact type"
+// @Success 200 {string} string "ok"
+// @Failure 404 {string} string "not found"
+// @Failure 500 {string} string "internal server error"
+// @Router /oras/artifacts/v1/{name:%s}/manifests/{digest}/referrers [get].
+func (rh *RouteHandler) GetReferrers(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	name, ok := vars["name"]
+
+	if !ok || name == "" {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	digest, ok := vars["digest"]
+	if !ok || digest == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	artifactTypes, ok := r.URL.Query()["artifactType"]
+	if !ok || len(artifactTypes) != 1 {
+		rh.c.Log.Error().Msg("invalid artifact types")
+		w.WriteHeader(http.StatusBadRequest)
+
+		return
+	}
+
+	artifactType := artifactTypes[0]
+
+	if artifactType != notreg.ArtifactTypeNotation {
+		rh.c.Log.Error().Str("artifactType", artifactType).Msg("invalid artifact type")
+		w.WriteHeader(http.StatusBadRequest)
+
+		return
+	}
+
+	is := rh.getImageStore(name)
+
+	rh.c.Log.Info().Str("digest", digest).Str("artifactType", artifactType).Msg("getting manifest")
+
+	refs, err := is.GetReferrers(name, digest, artifactType)
+	if err != nil {
+		rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest).Msg("unable to get references")
+		w.WriteHeader(http.StatusBadRequest)
+
+		return
+	}
+
+	rs := ReferenceList{References: refs}
+
+	WriteJSON(w, http.StatusOK, rs)
 }
