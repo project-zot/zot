@@ -12,11 +12,11 @@ all: swagger binary binary-minimal debug test test-clean check
 
 .PHONY: binary-minimal
 binary-minimal: swagger
-	go build -tags minimal,containers_image_openpgp -v  -ldflags "-X  github.com/anuvu/zot/pkg/api.Commit=${COMMIT} -X github.com/anuvu/zot/pkg/api.BinaryType=minimal" -o bin/zot-minimal ./cmd/zot
+	go build -tags minimal,containers_image_openpgp -v  -ldflags "-X  github.com/anuvu/zot/pkg/api/config.Commit=${COMMIT} -X github.com/anuvu/zot/pkg/api.BinaryType=minimal" -o bin/zot-minimal ./cmd/zot
 
 .PHONY: binary
 binary: swagger 
-	go build -tags extended,containers_image_openpgp -v -ldflags "-X  github.com/anuvu/zot/pkg/api.Commit=${COMMIT} -X github.com/anuvu/zot/pkg/api.BinaryType=extended" -o bin/zot ./cmd/zot
+	go build -tags extended,containers_image_openpgp -v -ldflags "-X  github.com/anuvu/zot/pkg/api/config.Commit=${COMMIT} -X github.com/anuvu/zot/pkg/api.BinaryType=extended" -o bin/zot ./cmd/zot
 
 .PHONY: debug
 debug: swagger
