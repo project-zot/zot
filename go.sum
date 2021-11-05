@@ -1825,6 +1825,8 @@ github.com/op/go-logging v0.0.0-20160315200505-970db520ece7/go.mod h1:HzydrMdWEr
 github.com/open-policy-agent/opa v0.32.0/go.mod h1:5sJdtc+1/U8zy/j30njpQl6u9rM4MzTOhG9EW1uOmsY=
 github.com/open-policy-agent/opa v0.34.1 h1:u+x9Y1ynLv9w7GilJdtOrnM5PfQfOJYZg9eY1LPDAAQ=
 github.com/open-policy-agent/opa v0.34.1/go.mod h1:buysXn+6zB/b+6JgLkP4WgKZ9+UgUtFAgtemYGrL9Ik=
+github.com/opencontainers/distribution-spec/specs-go v0.0.0-20210830161531-162b5c95788b h1:uFT5KpymBH31VQRcA1bf19zWHVMJqsGXPrOMJVOX4bA=
+github.com/opencontainers/distribution-spec/specs-go v0.0.0-20210830161531-162b5c95788b/go.mod h1:aA4vdXRS8E1TG7pLZOz85InHi3BiPdErh8IpJN6E0x4=
 github.com/opencontainers/distribution-spec/specs-go v0.0.0-20211026153258-b3f631f25f1a h1:cZbrj1PTlynrvx4pIVbrI3rvncbxtMG5U4EYM6ScQ/A=
 github.com/opencontainers/distribution-spec/specs-go v0.0.0-20211026153258-b3f631f25f1a/go.mod h1:aA4vdXRS8E1TG7pLZOz85InHi3BiPdErh8IpJN6E0x4=
 github.com/opencontainers/go-digest v0.0.0-20170106003457-a6d0ee40d420/go.mod h1:cMLVZDEM3+U2I4VmLI6N8jQYUd2OVphdqWwCJHrFt2s=

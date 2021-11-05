@@ -31,7 +31,9 @@ require (
 	github.com/notaryproject/notation v0.7.0-alpha.1
 	github.com/notaryproject/notation-go-lib v1.0.0-alpha-1
 	github.com/olekukonko/tablewriter v0.0.5
-	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20211026153258-b3f631f25f1a
+	github.com/onsi/ginkgo v1.16.4 // indirect
+	github.com/onsi/gomega v1.16.0 // indirect
+	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20210830161531-162b5c95788b
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.0.2-0.20211117181255-693428a734f5
 	github.com/opencontainers/runc v1.0.3

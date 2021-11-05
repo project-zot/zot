@@ -1,0 +1,9 @@
+{
+    "singleImagePushTime": 20,
+    "singleImagePullTime": 20,
+	"parallelPushTime": 25,
+	"singleImageParallelPushTime": 15,
+	"singleImageParallelPullTime": 15,
+	"times": 10,
+	"parallelImagesNumber": 30
+}
