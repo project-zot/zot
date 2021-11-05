@@ -1,0 +1,7 @@
+{
+  "address": "127.0.0.1:8080",
+  "username": "test",
+  "password": "test",
+  "repo": "performance-test",
+  "tlsVerify": false
+}

@@ -1,0 +1,7 @@
+{
+    "address": "aci-zot.cisco.com:5000",
+    "username": "zot",
+    "password": "Weiqueip3thi",
+    "repo": "performance-test",
+    "tlsVerify": false
+  }
