@@ -7,28 +7,24 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
-	"path"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/anuvu/zot/pkg/api"
 	"github.com/anuvu/zot/pkg/api/config"
+	. "github.com/anuvu/zot/test"
 	godigest "github.com/opencontainers/go-digest"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 )
 
 const (
-	BaseURL               = "http://127.0.0.1:8086"
-	SecurePort            = "8086"
 	username              = "test"
 	passphrase            = "test"
-	ServerCert            = "../../test/data/server.cert"
 	AuthorizedNamespace   = "everyone/isallowed"
 	UnauthorizedNamespace = "fortknox/notallowed"
 )
@@ -44,80 +40,6 @@ type AuditLog struct {
 	Message  string `json:"message"`
 }
 
-func makeHtpasswdFile() string {
-	f, err := ioutil.TempFile("", "htpasswd-")
-	if err != nil {
-		panic(err)
-	}
-
-	// bcrypt(username="test", passwd="test")
-	content := []byte("test:$2y$05$hlbSXDp6hzDLu6VwACS39ORvVRpr3OMR4RlJ31jtlaOEGnPjKZI1m\n")
-	if err := ioutil.WriteFile(f.Name(), content, 0600); err != nil {
-		panic(err)
-	}
-
-	return f.Name()
-}
-
-func copyFiles(sourceDir string, destDir string) error {
-	sourceMeta, err := os.Stat(sourceDir)
-	if err != nil {
-		return err
-	}
-
-	if err := os.MkdirAll(destDir, sourceMeta.Mode()); err != nil {
-		return err
-	}
-
-	files, err := ioutil.ReadDir(sourceDir)
-	if err != nil {
-		return err
-	}
-
-	for _, file := range files {
-		sourceFilePath := path.Join(sourceDir, file.Name())
-		destFilePath := path.Join(destDir, file.Name())
-
-		if file.IsDir() {
-			if err = copyFiles(sourceFilePath, destFilePath); err != nil {
-				return err
-			}
-		} else {
-			sourceFile, err := os.Open(sourceFilePath)
-			if err != nil {
-				return err
-			}
-			defer sourceFile.Close()
-
-			destFile, err := os.Create(destFilePath)
-			if err != nil {
-				return err
-			}
-			defer destFile.Close()
-
-			if _, err = io.Copy(destFile, sourceFile); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
-}
-
-func Location(baseURL string, resp *resty.Response) string {
-	// For some API responses, the Location header is set and is supposed to
-	// indicate an opaque value. However, it is not clear if this value is an
-	// absolute URL (https://server:port/v2/...) or just a path (/v2/...)
-	// zot implements the latter as per the spec, but some registries appear to
-	// return the former - this needs to be clarified
-	loc := resp.Header().Get("Location")
-	if loc[0] == '/' {
-		return baseURL + loc
-	}
-
-	return loc
-}
-
 func TestAuditLogMessages(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		dir, err := ioutil.TempDir("", "oci-repo-test")
@@ -125,20 +47,22 @@ func TestAuditLogMessages(t *testing.T) {
 			panic(err)
 		}
 		defer os.RemoveAll(dir)
-		err = copyFiles("../../test/data", dir)
+		err = CopyFiles("../../test/data", dir)
 		if err != nil {
 			panic(err)
 		}
 
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
 		conf := config.New()
 
 		outputPath := dir + "/zot.log"
 		auditPath := dir + "/zot-audit.log"
 		conf.Log = &config.LogConfig{Level: "debug", Output: outputPath, Audit: auditPath}
 
-		conf.HTTP.Port = SecurePort
+		conf.HTTP.Port = port
 
-		htpasswdPath := makeHtpasswdFile()
+		htpasswdPath := MakeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 		conf.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{
@@ -157,7 +81,7 @@ func TestAuditLogMessages(t *testing.T) {
 
 		// wait till ready
 		for {
-			_, err := resty.R().Get(BaseURL)
+			_, err := resty.R().Get(baseURL)
 			if err == nil {
 				break
 			}
@@ -178,8 +102,7 @@ func TestAuditLogMessages(t *testing.T) {
 			defer auditFile.Close()
 
 			Convey("Test GET request", func() {
-				resp, err := resty.R().SetBasicAuth(username, passphrase).
-					Get(BaseURL + "/v2/")
+				resp, err := resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/v2/")
 				So(err, ShouldBeNil)
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
@@ -190,8 +113,7 @@ func TestAuditLogMessages(t *testing.T) {
 
 			Convey("Test POST request", func() {
 				path := "/v2/" + AuthorizedNamespace + "/blobs/uploads/"
-				resp, err := resty.R().SetBasicAuth(username, passphrase).
-					Post(BaseURL + path)
+				resp, err := resty.R().SetBasicAuth(username, passphrase).Post(baseURL + path)
 				So(err, ShouldBeNil)
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
@@ -221,10 +143,10 @@ func TestAuditLogMessages(t *testing.T) {
 			Convey("Test PUT and DELETE request", func() {
 				// create upload
 				path := "/v2/repo/blobs/uploads/"
-				resp, err := resty.R().SetBasicAuth(username, passphrase).Post(BaseURL + path)
+				resp, err := resty.R().SetBasicAuth(username, passphrase).Post(baseURL + path)
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-				loc := Location(BaseURL, resp)
+				loc := Location(baseURL, resp)
 				So(loc, ShouldNotBeEmpty)
 				location := resp.Header().Get("Location")
 				So(location, ShouldNotBeEmpty)
@@ -260,7 +182,7 @@ func TestAuditLogMessages(t *testing.T) {
 					SetHeader("Content-Type", "application/octet-stream").SetBody(content).Put(loc)
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-				blobLoc := Location(BaseURL, resp)
+				blobLoc := Location(baseURL, resp)
 				So(blobLoc, ShouldNotBeEmpty)
 				So(resp.Header().Get(api.DistContentDigestKey), ShouldNotBeEmpty)
 
@@ -317,10 +239,10 @@ func TestAuditLogMessages(t *testing.T) {
 
 			Convey("Test PATCH request", func() {
 				path := "/v2/repo/blobs/uploads/"
-				resp, err := resty.R().SetBasicAuth(username, passphrase).Post(BaseURL + path)
+				resp, err := resty.R().SetBasicAuth(username, passphrase).Post(baseURL + path)
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-				loc := Location(BaseURL, resp)
+				loc := Location(baseURL, resp)
 				So(loc, ShouldNotBeEmpty)
 				location := resp.Header().Get("Location")
 				So(location, ShouldNotBeEmpty)

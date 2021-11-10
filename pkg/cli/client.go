@@ -19,6 +19,7 @@ import (
 	"time"
 
 	zotErrors "github.com/anuvu/zot/errors"
+	"github.com/anuvu/zot/pkg/storage"
 )
 
 var httpClientsMap = make(map[string]*http.Client) //nolint: gochecknoglobals
@@ -141,7 +142,7 @@ func loadPerHostCerts(caCertPool *x509.CertPool, host string) *tls.Config {
 	home := os.Getenv("HOME")
 	clientCertsDir := filepath.Join(home, homeCertsDir, host)
 
-	if dirExists(clientCertsDir) {
+	if storage.DirExists(clientCertsDir) {
 		tlsConfig, err := getTLSConfig(clientCertsDir, caCertPool)
 
 		if err == nil {
@@ -151,7 +152,7 @@ func loadPerHostCerts(caCertPool *x509.CertPool, host string) *tls.Config {
 
 	// Check if the /etc/containers/certs.d/$IP:$PORT dir exists
 	clientCertsDir = filepath.Join(certsPath, host)
-	if dirExists(clientCertsDir) {
+	if storage.DirExists(clientCertsDir) {
 		tlsConfig, err := getTLSConfig(clientCertsDir, caCertPool)
 
 		if err == nil {
@@ -183,19 +184,6 @@ func getTLSConfig(certsPath string, caCertPool *x509.CertPool) (*tls.Config, err
 		Certificates: []tls.Certificate{cert},
 		RootCAs:      caCertPool,
 	}, nil
-}
-
-func dirExists(d string) bool {
-	fi, err := os.Stat(d)
-	if err != nil && os.IsNotExist(err) {
-		return false
-	}
-
-	if !fi.IsDir() {
-		return false
-	}
-
-	return true
 }
 
 func isURL(str string) bool {

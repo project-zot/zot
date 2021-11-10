@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"path"
@@ -22,8 +21,8 @@ import (
 	cveinfo "github.com/anuvu/zot/pkg/extensions/search/cve"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
+	. "github.com/anuvu/zot/test"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/phayes/freeport"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 )
@@ -36,7 +35,6 @@ var (
 )
 
 const (
-	BaseURL    = "http://127.0.0.1:%s"
 	username   = "test"
 	passphrase = "test"
 )
@@ -77,19 +75,6 @@ type CVE struct {
 	Severity    string `json:"Severity"`
 }
 
-func getFreePort() string {
-	port, err := freeport.GetFreePort()
-	if err != nil {
-		panic(err)
-	}
-
-	return fmt.Sprint(port)
-}
-
-func getBaseURL(port string) string {
-	return fmt.Sprintf(BaseURL, port)
-}
-
 func testSetup() error {
 	dir, err := ioutil.TempDir("", "util_test")
 	if err != nil {
@@ -112,7 +97,7 @@ func testSetup() error {
 		return err
 	}
 
-	err = copyFiles("../../../../test/data", dbDir)
+	err = CopyFiles("../../../../test/data", dbDir)
 	if err != nil {
 		return err
 	}
@@ -122,12 +107,12 @@ func testSetup() error {
 
 func generateTestData() error { // nolint: gocyclo
 	// Image dir with no files
-	err := os.Mkdir(path.Join(dbDir, "zot-noindex-test"), 0o755)
+	err := os.Mkdir(path.Join(dbDir, "zot-noindex-test"), 0755)
 	if err != nil {
 		return err
 	}
 
-	err = os.Mkdir(path.Join(dbDir, "zot-nonreadable-test"), 0o755)
+	err = os.Mkdir(path.Join(dbDir, "zot-nonreadable-test"), 0755)
 	if err != nil {
 		return err
 	}
@@ -140,12 +125,12 @@ func generateTestData() error { // nolint: gocyclo
 		return err
 	}
 
-	if err = ioutil.WriteFile(path.Join(dbDir, "zot-nonreadable-test", "index.json"), buf, 0o111); err != nil {
+	if err = ioutil.WriteFile(path.Join(dbDir, "zot-nonreadable-test", "index.json"), buf, 0111); err != nil {
 		return err
 	}
 
 	// Image dir with invalid index.json
-	err = os.Mkdir(path.Join(dbDir, "zot-squashfs-invalid-index"), 0o755)
+	err = os.Mkdir(path.Join(dbDir, "zot-squashfs-invalid-index"), 0755)
 	if err != nil {
 		return err
 	}
@@ -158,7 +143,7 @@ func generateTestData() error { // nolint: gocyclo
 	}
 
 	// Image dir with no blobs
-	err = os.Mkdir(path.Join(dbDir, "zot-squashfs-noblobs"), 0o755)
+	err = os.Mkdir(path.Join(dbDir, "zot-squashfs-noblobs"), 0755)
 	if err != nil {
 		return err
 	}
@@ -172,7 +157,7 @@ func generateTestData() error { // nolint: gocyclo
 	}
 
 	// Image dir with invalid blob
-	err = os.MkdirAll(path.Join(dbDir, "zot-squashfs-invalid-blob", "blobs/sha256"), 0o755)
+	err = os.MkdirAll(path.Join(dbDir, "zot-squashfs-invalid-blob", "blobs/sha256"), 0755)
 	if err != nil {
 		return err
 	}
@@ -195,7 +180,7 @@ func generateTestData() error { // nolint: gocyclo
 
 	// Create a squashfs image
 
-	err = os.MkdirAll(path.Join(dbDir, "zot-squashfs-test", "blobs/sha256"), 0o755)
+	err = os.MkdirAll(path.Join(dbDir, "zot-squashfs-test", "blobs/sha256"), 0755)
 	if err != nil {
 		return err
 	}
@@ -207,11 +192,11 @@ func generateTestData() error { // nolint: gocyclo
 		return err
 	}
 
-	if err = ioutil.WriteFile(path.Join(dbDir, "zot-squashfs-test", "oci-layout"), buf, 0o644); err != nil { //nolint: gosec
+	if err = ioutil.WriteFile(path.Join(dbDir, "zot-squashfs-test", "oci-layout"), buf, 0644); err != nil { //nolint: gosec
 		return err
 	}
 
-	err = os.Mkdir(path.Join(dbDir, "zot-squashfs-test", ".uploads"), 0o755)
+	err = os.Mkdir(path.Join(dbDir, "zot-squashfs-test", ".uploads"), 0755)
 	if err != nil {
 		return err
 	}
@@ -267,7 +252,7 @@ func generateTestData() error { // nolint: gocyclo
 
 	// Create a image with invalid layer blob
 
-	err = os.MkdirAll(path.Join(dbDir, "zot-invalid-layer", "blobs/sha256"), 0o755)
+	err = os.MkdirAll(path.Join(dbDir, "zot-invalid-layer", "blobs/sha256"), 0755)
 	if err != nil {
 		return err
 	}
@@ -295,7 +280,7 @@ func generateTestData() error { // nolint: gocyclo
 
 	// Create a image with no layer blob
 
-	err = os.MkdirAll(path.Join(dbDir, "zot-no-layer", "blobs/sha256"), 0o755)
+	err = os.MkdirAll(path.Join(dbDir, "zot-no-layer", "blobs/sha256"), 0755)
 	if err != nil {
 		return err
 	}
@@ -325,71 +310,11 @@ func generateTestData() error { // nolint: gocyclo
 }
 
 func makeTestFile(fileName string, content string) error {
-	if err := ioutil.WriteFile(fileName, []byte(content), 0o600); err != nil {
+	if err := ioutil.WriteFile(fileName, []byte(content), 0600); err != nil {
 		panic(err)
 	}
 
 	return nil
-}
-
-func copyFiles(sourceDir string, destDir string) error {
-	sourceMeta, err := os.Stat(sourceDir)
-	if err != nil {
-		return err
-	}
-
-	if err := os.MkdirAll(destDir, sourceMeta.Mode()); err != nil {
-		return err
-	}
-
-	files, err := ioutil.ReadDir(sourceDir)
-	if err != nil {
-		return err
-	}
-
-	for _, file := range files {
-		sourceFilePath := path.Join(sourceDir, file.Name())
-		destFilePath := path.Join(destDir, file.Name())
-
-		if file.IsDir() {
-			if err = copyFiles(sourceFilePath, destFilePath); err != nil {
-				return err
-			}
-		} else {
-			sourceFile, err := os.Open(sourceFilePath)
-			if err != nil {
-				return err
-			}
-			defer sourceFile.Close()
-
-			destFile, err := os.Create(destFilePath)
-			if err != nil {
-				return err
-			}
-			defer destFile.Close()
-
-			if _, err = io.Copy(destFile, sourceFile); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
-}
-
-func makeHtpasswdFile() string {
-	f, err := ioutil.TempFile("", "htpasswd-")
-	if err != nil {
-		panic(err)
-	}
-
-	// bcrypt(username="test", passwd="test")
-	content := []byte("test:$2y$05$hlbSXDp6hzDLu6VwACS39ORvVRpr3OMR4RlJ31jtlaOEGnPjKZI1m\n")
-	if err := ioutil.WriteFile(f.Name(), content, 0o600); err != nil {
-		panic(err)
-	}
-
-	return f.Name()
 }
 
 func TestMultipleStoragePath(t *testing.T) {
@@ -452,11 +377,11 @@ func TestDownloadDB(t *testing.T) {
 func TestCVESearch(t *testing.T) {
 	Convey("Test image vulenrability scanning", t, func() {
 		updateDuration, _ = time.ParseDuration("1h")
-		port := getFreePort()
-		baseURL := getBaseURL(port)
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
-		htpasswdPath := makeHtpasswdFile()
+		htpasswdPath := MakeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
 		conf.HTTP.Auth = &config.AuthConfig{
@@ -680,10 +605,10 @@ func TestCVESearch(t *testing.T) {
 func TestCVEConfig(t *testing.T) {
 	Convey("Verify CVE config", t, func() {
 		conf := config.New()
-		port := getFreePort()
+		port := GetFreePort()
 		conf.HTTP.Port = port
-		baseURL := getBaseURL(port)
-		htpasswdPath := makeHtpasswdFile()
+		baseURL := GetBaseURL(port)
+		htpasswdPath := MakeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
 		conf.HTTP.Auth = &config.AuthConfig{
@@ -704,7 +629,7 @@ func TestCVEConfig(t *testing.T) {
 		defer os.RemoveAll(firstDir)
 		defer os.RemoveAll(secondDir)
 
-		err = copyFiles("../../../../test/data", path.Join(secondDir, "a"))
+		err = CopyFiles("../../../../test/data", path.Join(secondDir, "a"))
 		if err != nil {
 			panic(err)
 		}

@@ -595,7 +595,7 @@ func TestNegativeCases(t *testing.T) {
 		So(err, ShouldNotBeNil)
 	})
 
-	Convey("Invalid dedupe sceanrios", t, func() {
+	Convey("Invalid dedupe scenarios", t, func() {
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
@@ -670,6 +670,23 @@ func TestNegativeCases(t *testing.T) {
 		err = il.FinishBlobUpload("dedupe2", v, buf, d.String())
 		So(err, ShouldBeNil)
 		So(b, ShouldEqual, l)
+	})
+
+	Convey("DirExists call with a filename as argument", t, func(c C) {
+		dir, err := ioutil.TempDir("", "oci-repo-test")
+		if err != nil {
+			panic(err)
+		}
+		defer os.RemoveAll(dir)
+
+		filePath := path.Join(dir, "file.txt")
+		err = ioutil.WriteFile(filePath, []byte("some dummy file content"), 0644) //nolint: gosec
+		if err != nil {
+			panic(err)
+		}
+
+		ok := storage.DirExists(filePath)
+		So(ok, ShouldBeFalse)
 	})
 }
 

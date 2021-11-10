@@ -13,26 +13,13 @@ import (
 
 	"github.com/anuvu/zot/pkg/api"
 	"github.com/anuvu/zot/pkg/compliance"
+	. "github.com/anuvu/zot/test" // nolint:golint,stylecheck
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey" // nolint:golint,stylecheck
 	"github.com/smartystreets/goconvey/convey/reporting"
 	"gopkg.in/resty.v1"
 )
-
-func Location(baseURL string, resp *resty.Response) string {
-	// For some API responses, the Location header is set and is supposed to
-	// indicate an opaque value. However, it is not clear if this value is an
-	// absolute URL (https://server:port/v2/...) or just a path (/v2/...)
-	// zot implements the latter as per the spec, but some registries appear to
-	// return the former - this needs to be clarified
-	loc := resp.Header().Get("Location")
-	if loc[0] == '/' {
-		return baseURL + loc
-	}
-
-	return loc
-}
 
 func CheckWorkflows(t *testing.T, config *compliance.Config) {
 	if config == nil || config.Address == "" || config.Port == "" {

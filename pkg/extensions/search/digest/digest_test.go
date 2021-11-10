@@ -6,10 +6,8 @@ package digestinfo_test
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"io/ioutil"
 	"os"
-	"path"
 	"testing"
 	"time"
 
@@ -20,6 +18,7 @@ import (
 	digestinfo "github.com/anuvu/zot/pkg/extensions/search/digest"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
+	. "github.com/anuvu/zot/test"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 )
@@ -29,11 +28,6 @@ var (
 	digestInfo *digestinfo.DigestInfo
 	rootDir    string
 	subRootDir string
-)
-
-const (
-	BaseURL1 = "http://127.0.0.1:8085"
-	Port1    = "8085"
 )
 
 type ImgResponseForDigest struct {
@@ -89,12 +83,12 @@ func testSetup() error {
 		return err
 	}
 
-	err = copyFiles("../../../../test/data", rootDir)
+	err = CopyFiles("../../../../test/data", rootDir)
 	if err != nil {
 		return err
 	}
 
-	err = copyFiles("../../../../test/data", subDir+"/a/")
+	err = CopyFiles("../../../../test/data", subDir+"/a/")
 	if err != nil {
 		return err
 	}
@@ -104,51 +98,6 @@ func testSetup() error {
 	storeController := storage.StoreController{DefaultStore: storage.NewImageStore(rootDir, false, false, log, metrics)}
 
 	digestInfo = digestinfo.NewDigestInfo(storeController, log)
-
-	return nil
-}
-
-func copyFiles(sourceDir string, destDir string) error {
-	sourceMeta, err := os.Stat(sourceDir)
-	if err != nil {
-		return err
-	}
-
-	if err := os.MkdirAll(destDir, sourceMeta.Mode()); err != nil {
-		return err
-	}
-
-	files, err := ioutil.ReadDir(sourceDir)
-	if err != nil {
-		return err
-	}
-
-	for _, file := range files {
-		sourceFilePath := path.Join(sourceDir, file.Name())
-		destFilePath := path.Join(destDir, file.Name())
-
-		if file.IsDir() {
-			if err = copyFiles(sourceFilePath, destFilePath); err != nil {
-				return err
-			}
-		} else {
-			sourceFile, err := os.Open(sourceFilePath)
-			if err != nil {
-				return err
-			}
-			defer sourceFile.Close()
-
-			destFile, err := os.Create(destFilePath)
-			if err != nil {
-				return err
-			}
-			defer destFile.Close()
-
-			if _, err = io.Copy(destFile, sourceFile); err != nil {
-				return err
-			}
-		}
-	}
 
 	return nil
 }
@@ -187,8 +136,10 @@ func TestDigestInfo(t *testing.T) {
 
 func TestDigestSearchHTTP(t *testing.T) {
 	Convey("Test image search by digest scanning", t, func() {
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = Port1
+		conf.HTTP.Port = port
 		conf.Storage.RootDirectory = rootDir
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: &extconf.SearchConfig{Enable: true},
@@ -205,7 +156,7 @@ func TestDigestSearchHTTP(t *testing.T) {
 
 		// wait till ready
 		for {
-			_, err := resty.R().Get(BaseURL1)
+			_, err := resty.R().Get(baseURL)
 			if err == nil {
 				break
 			}
@@ -218,18 +169,18 @@ func TestDigestSearchHTTP(t *testing.T) {
 			_ = c.Server.Shutdown(ctx)
 		}()
 
-		resp, err := resty.R().Get(BaseURL1 + "/v2/")
+		resp, err := resty.R().Get(baseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, err = resty.R().Get(BaseURL1 + "/query")
+		resp, err = resty.R().Get(baseURL + "/query")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
 		// "sha" should match all digests in all images
-		resp, err = resty.R().Get(BaseURL1 + "/query?query={ImageListForDigest(id:\"sha\"){Name%20Tags}}")
+		resp, err = resty.R().Get(baseURL + "/query?query={ImageListForDigest(id:\"sha\"){Name%20Tags}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -244,7 +195,7 @@ func TestDigestSearchHTTP(t *testing.T) {
 
 		// Call should return {"data":{"ImageListForDigest":[{"Name":"zot-test","Tags":["0.0.1"]}]}}
 		// "2bacca16" should match the manifest of 1 image
-		resp, err = resty.R().Get(BaseURL1 + "/query?query={ImageListForDigest(id:\"2bacca16\"){Name%20Tags}}")
+		resp, err = resty.R().Get(baseURL + "/query?query={ImageListForDigest(id:\"2bacca16\"){Name%20Tags}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -259,7 +210,7 @@ func TestDigestSearchHTTP(t *testing.T) {
 
 		// Call should return {"data":{"ImageListForDigest":[{"Name":"zot-test","Tags":["0.0.1"]}]}}
 		// "adf3bb6c" should match the config of 1 image
-		resp, err = resty.R().Get(BaseURL1 + "/query?query={ImageListForDigest(id:\"adf3bb6c\"){Name%20Tags}}")
+		resp, err = resty.R().Get(baseURL + "/query?query={ImageListForDigest(id:\"adf3bb6c\"){Name%20Tags}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -274,7 +225,7 @@ func TestDigestSearchHTTP(t *testing.T) {
 
 		// Call should return {"data":{"ImageListForDigest":[{"Name":"zot-cve-test","Tags":["0.0.1"]}]}}
 		// "7a0437f0" should match the layer of 1 image
-		resp, err = resty.R().Get(BaseURL1 + "/query?query={ImageListForDigest(id:\"7a0437f0\"){Name%20Tags}}")
+		resp, err = resty.R().Get(baseURL + "/query?query={ImageListForDigest(id:\"7a0437f0\"){Name%20Tags}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -289,7 +240,7 @@ func TestDigestSearchHTTP(t *testing.T) {
 
 		// Call should return {"data":{"ImageListForDigest":[]}}
 		// "1111111" should match 0 images
-		resp, err = resty.R().Get(BaseURL1 + "/query?query={ImageListForDigest(id:\"1111111\"){Name%20Tags}}")
+		resp, err = resty.R().Get(baseURL + "/query?query={ImageListForDigest(id:\"1111111\"){Name%20Tags}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -300,7 +251,7 @@ func TestDigestSearchHTTP(t *testing.T) {
 		So(len(responseStruct.ImgListForDigest.Images), ShouldEqual, 0)
 
 		// Call should return {"errors": [{....}]", data":null}}
-		resp, err = resty.R().Get(BaseURL1 + "/query?query={ImageListForDigest(id:\"1111111\"){Name%20Tag343s}}")
+		resp, err = resty.R().Get(baseURL + "/query?query={ImageListForDigest(id:\"1111111\"){Name%20Tag343s}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 422)
@@ -313,8 +264,10 @@ func TestDigestSearchHTTP(t *testing.T) {
 
 func TestDigestSearchHTTPSubPaths(t *testing.T) {
 	Convey("Test image search by digest scanning using storage subpaths", t, func() {
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = Port1
+		conf.HTTP.Port = port
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: &extconf.SearchConfig{Enable: true},
 		}
@@ -344,7 +297,7 @@ func TestDigestSearchHTTPSubPaths(t *testing.T) {
 
 		// wait till ready
 		for {
-			_, err := resty.R().Get(BaseURL1)
+			_, err := resty.R().Get(baseURL)
 			if err == nil {
 				break
 			}
@@ -357,17 +310,17 @@ func TestDigestSearchHTTPSubPaths(t *testing.T) {
 			_ = c.Server.Shutdown(ctx)
 		}()
 
-		resp, err := resty.R().Get(BaseURL1 + "/v2/")
+		resp, err := resty.R().Get(baseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, err = resty.R().Get(BaseURL1 + "/query")
+		resp, err = resty.R().Get(baseURL + "/query")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, err = resty.R().Get(BaseURL1 + "/query?query={ImageListForDigest(id:\"sha\"){Name%20Tags}}")
+		resp, err = resty.R().Get(baseURL + "/query?query={ImageListForDigest(id:\"sha\"){Name%20Tags}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -384,8 +337,10 @@ func TestDigestSearchDisabled(t *testing.T) {
 	Convey("Test disabling image search", t, func() {
 		dir, err := ioutil.TempDir("", "digest_test")
 		So(err, ShouldBeNil)
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = Port1
+		conf.HTTP.Port = port
 		conf.Storage.RootDirectory = dir
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: &extconf.SearchConfig{Enable: false},
@@ -402,7 +357,7 @@ func TestDigestSearchDisabled(t *testing.T) {
 
 		// wait till ready
 		for {
-			_, err := resty.R().Get(BaseURL1)
+			_, err := resty.R().Get(baseURL)
 			if err == nil {
 				break
 			}
@@ -415,12 +370,12 @@ func TestDigestSearchDisabled(t *testing.T) {
 			_ = c.Server.Shutdown(ctx)
 		}()
 
-		resp, err := resty.R().Get(BaseURL1 + "/v2/")
+		resp, err := resty.R().Get(baseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, err = resty.R().Get(BaseURL1 + "/query")
+		resp, err = resty.R().Get(baseURL + "/query")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)

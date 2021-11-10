@@ -13,39 +13,19 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-
-	"gopkg.in/resty.v1"
-
 	"testing"
 	"time"
 
 	zotErrors "github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/api"
 	"github.com/anuvu/zot/pkg/api/config"
-	"github.com/anuvu/zot/pkg/compliance/v1_0_0"
 	extconf "github.com/anuvu/zot/pkg/extensions/config"
+	. "github.com/anuvu/zot/test"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/phayes/freeport"
 	. "github.com/smartystreets/goconvey/convey"
+	"gopkg.in/resty.v1"
 )
-
-const (
-	BaseURL = "http://127.0.0.1:%s"
-)
-
-func getBaseURL(port string) string {
-	return fmt.Sprintf(BaseURL, port)
-}
-
-func getFreePort() string {
-	port, err := freeport.GetFreePort()
-	if err != nil {
-		panic(err)
-	}
-
-	return fmt.Sprint(port)
-}
 
 func TestSearchImageCmd(t *testing.T) {
 	Convey("Test image help", t, func() {
@@ -301,8 +281,8 @@ func TestOutputFormat(t *testing.T) {
 
 func TestServerResponse(t *testing.T) {
 	Convey("Test from real server", t, func() {
-		port := getFreePort()
-		url := getBaseURL(port)
+		port := GetFreePort()
+		url := GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
 		conf.Extensions = &extconf.ExtensionConfig{
@@ -481,7 +461,7 @@ func TestServerResponse(t *testing.T) {
 func uploadManifest(url string) {
 	// create a blob/layer
 	resp, _ := resty.R().Post(url + "/v2/repo7/blobs/uploads/")
-	loc := v1_0_0.Location(url, resp)
+	loc := Location(url, resp)
 
 	content := []byte("this is a blob5")
 	digest := godigest.FromBytes(content)
