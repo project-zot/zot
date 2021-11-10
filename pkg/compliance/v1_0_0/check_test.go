@@ -2,8 +2,8 @@ package v1_0_0_test
 
 import (
 	"context"
-	"fmt"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"testing"
 	"time"
@@ -12,7 +12,7 @@ import (
 	"github.com/anuvu/zot/pkg/api/config"
 	"github.com/anuvu/zot/pkg/compliance"
 	"github.com/anuvu/zot/pkg/compliance/v1_0_0"
-	"github.com/phayes/freeport"
+	. "github.com/anuvu/zot/test"
 	"gopkg.in/resty.v1"
 )
 
@@ -53,17 +53,11 @@ func TestWorkflowsOutputJSON(t *testing.T) {
 
 // start local server on random open port.
 func startServer() (*api.Controller, string) {
-	portInt, err := freeport.GetFreePort()
-	if err != nil {
-		panic(err)
-	}
-
-	randomPort := fmt.Sprintf("%d", portInt)
-	fmt.Println(randomPort)
-
+	port := GetFreePort()
+	baseURL := GetBaseURL(port)
 	conf := config.New()
 	conf.HTTP.Address = listenAddress
-	conf.HTTP.Port = randomPort
+	conf.HTTP.Port = port
 	ctrl := api.NewController(conf)
 
 	dir, err := ioutil.TempDir("", "oci-repo-test")
@@ -103,19 +97,17 @@ func startServer() (*api.Controller, string) {
 		}
 	}()
 
-	baseURL := fmt.Sprintf("http://%s:%s", listenAddress, randomPort)
-
 	for {
 		// poll until ready
 		resp, _ := resty.R().Get(baseURL)
-		if resp.StatusCode() == 404 {
+		if resp.StatusCode() == http.StatusNotFound {
 			break
 		}
 
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	return ctrl, randomPort
+	return ctrl, port
 }
 
 func stopServer(ctrl *api.Controller) {

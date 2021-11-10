@@ -5,7 +5,6 @@ package common_test
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"io/ioutil"
 	"os"
 	"path"
@@ -19,6 +18,7 @@ import (
 	"github.com/anuvu/zot/pkg/extensions/search/common"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
+	. "github.com/anuvu/zot/test"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
@@ -28,11 +28,6 @@ import (
 var (
 	rootDir    string
 	subRootDir string
-)
-
-const (
-	BaseURL1 = "http://127.0.0.1:8085"
-	Port1    = "8085"
 )
 
 type ImgResponsWithLatestTag struct {
@@ -75,12 +70,12 @@ func testSetup() error {
 
 	subRootDir = subDir
 
-	err = copyFiles("../../../../test/data", rootDir)
+	err = CopyFiles("../../../../test/data", rootDir)
 	if err != nil {
 		return err
 	}
 
-	err = copyFiles("../../../../test/data", subDir)
+	err = CopyFiles("../../../../test/data", subDir)
 	if err != nil {
 		return err
 	}
@@ -110,51 +105,6 @@ func getTags() ([]common.TagInfo, []common.TagInfo) {
 	infectedTags = append(infectedTags, secondTag)
 
 	return tags, infectedTags
-}
-
-func copyFiles(sourceDir string, destDir string) error {
-	sourceMeta, err := os.Stat(sourceDir)
-	if err != nil {
-		return err
-	}
-
-	if err := os.MkdirAll(destDir, sourceMeta.Mode()); err != nil {
-		return err
-	}
-
-	files, err := ioutil.ReadDir(sourceDir)
-	if err != nil {
-		return err
-	}
-
-	for _, file := range files {
-		sourceFilePath := path.Join(sourceDir, file.Name())
-		destFilePath := path.Join(destDir, file.Name())
-
-		if file.IsDir() {
-			if err = copyFiles(sourceFilePath, destFilePath); err != nil {
-				return err
-			}
-		} else {
-			sourceFile, err := os.Open(sourceFilePath)
-			if err != nil {
-				return err
-			}
-			defer sourceFile.Close()
-
-			destFile, err := os.Create(destFilePath)
-			if err != nil {
-				return err
-			}
-			defer destFile.Close()
-
-			if _, err = io.Copy(destFile, sourceFile); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
 }
 
 func TestImageFormat(t *testing.T) {
@@ -219,8 +169,10 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
 		conf := config.New()
-		conf.HTTP.Port = Port1
+		conf.HTTP.Port = port
 		conf.Storage.RootDirectory = rootDir
 		conf.Storage.SubPaths = make(map[string]config.StorageConfig)
 		conf.Storage.SubPaths["/a"] = config.StorageConfig{RootDirectory: subRootDir}
@@ -241,7 +193,7 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 
 		// wait till ready
 		for {
-			_, err := resty.R().Get(BaseURL1)
+			_, err := resty.R().Get(baseURL)
 			if err == nil {
 				break
 			}
@@ -254,17 +206,17 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 			_ = c.Server.Shutdown(ctx)
 		}()
 
-		resp, err := resty.R().Get(BaseURL1 + "/v2/")
+		resp, err := resty.R().Get(baseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, err = resty.R().Get(BaseURL1 + "/query")
+		resp, err = resty.R().Get(baseURL + "/query")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, err = resty.R().Get(BaseURL1 + "/query?query={ImageListWithLatestTag(){Name%20Latest}}")
+		resp, err = resty.R().Get(baseURL + "/query?query={ImageListWithLatestTag(){Name%20Latest}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -277,7 +229,7 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 		images := responseStruct.ImgListWithLatestTag.Images
 		So(images[0].Latest, ShouldEqual, "0.0.1")
 
-		resp, err = resty.R().Get(BaseURL1 + "/query?query={ImageListWithLatestTag(){Name%20Latest}}")
+		resp, err = resty.R().Get(baseURL + "/query?query={ImageListWithLatestTag(){Name%20Latest}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
@@ -286,7 +238,7 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 			panic(err)
 		}
 
-		resp, err = resty.R().Get(BaseURL1 + "/query?query={ImageListWithLatestTag(){Name%20Latest}}")
+		resp, err = resty.R().Get(baseURL + "/query?query={ImageListWithLatestTag(){Name%20Latest}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -307,7 +259,7 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 			panic(err)
 		}
 
-		resp, err = resty.R().Get(BaseURL1 + "/query?query={ImageListWithLatestTag(){Name%20Latest}}")
+		resp, err = resty.R().Get(baseURL + "/query?query={ImageListWithLatestTag(){Name%20Latest}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -318,7 +270,7 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 			panic(err)
 		}
 
-		resp, err = resty.R().Get(BaseURL1 + "/query?query={ImageListWithLatestTag(){Name%20Latest}}")
+		resp, err = resty.R().Get(baseURL + "/query?query={ImageListWithLatestTag(){Name%20Latest}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -329,7 +281,7 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 			panic(err)
 		}
 
-		resp, err = resty.R().Get(BaseURL1 + "/query?query={ImageListWithLatestTag(){Name%20Latest}}")
+		resp, err = resty.R().Get(baseURL + "/query?query={ImageListWithLatestTag(){Name%20Latest}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -341,7 +293,7 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 			panic(err)
 		}
 
-		resp, err = resty.R().Get(BaseURL1 + "/query?query={ImageListWithLatestTag(){Name%20Latest}}")
+		resp, err = resty.R().Get(baseURL + "/query?query={ImageListWithLatestTag(){Name%20Latest}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)

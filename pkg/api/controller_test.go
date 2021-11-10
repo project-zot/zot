@@ -22,27 +22,23 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/crypto/bcrypt"
-
 	"github.com/anuvu/zot/errors"
 	"github.com/anuvu/zot/pkg/api"
 	"github.com/anuvu/zot/pkg/api/config"
 	"github.com/anuvu/zot/pkg/storage"
+	. "github.com/anuvu/zot/test"
 	"github.com/chartmuseum/auth"
 	"github.com/mitchellh/mapstructure"
+	vldap "github.com/nmcclain/ldap"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/phayes/freeport"
-	"github.com/stretchr/testify/assert"
-
-	vldap "github.com/nmcclain/ldap"
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/stretchr/testify/assert"
+	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/resty.v1"
 )
 
 const (
-	BaseURL                = "http://127.0.0.1:%s"
-	BaseSecureURL          = "https://127.0.0.1:%s"
 	username               = "test"
 	passphrase             = "test"
 	ServerCert             = "../../test/data/server.cert"
@@ -65,53 +61,6 @@ type (
 		Scope   string
 	}
 )
-
-func getFreePort() string {
-	port, err := freeport.GetFreePort()
-	if err != nil {
-		panic(err)
-	}
-
-	return fmt.Sprint(port)
-}
-
-func getBaseURL(port string, secure bool) string {
-	if secure {
-		return fmt.Sprintf(BaseSecureURL, port)
-	}
-
-	return fmt.Sprintf(BaseURL, port)
-}
-
-func makeHtpasswdFile() string {
-	f, err := ioutil.TempFile("", "htpasswd-")
-	if err != nil {
-		panic(err)
-	}
-
-	// bcrypt(username="test", passwd="test")
-	content := []byte("test:$2y$05$hlbSXDp6hzDLu6VwACS39ORvVRpr3OMR4RlJ31jtlaOEGnPjKZI1m\n")
-	if err := ioutil.WriteFile(f.Name(), content, 0600); err != nil {
-		panic(err)
-	}
-
-	return f.Name()
-}
-
-func makeHtpasswdFileFromString(fileContent string) string {
-	f, err := ioutil.TempFile("", "htpasswd-")
-	if err != nil {
-		panic(err)
-	}
-
-	// bcrypt(username="test", passwd="test")
-	content := []byte(fileContent)
-	if err := ioutil.WriteFile(f.Name(), content, 0600); err != nil {
-		panic(err)
-	}
-
-	return f.Name()
-}
 
 func getCredString(username, password string) string {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), 10)
@@ -141,7 +90,7 @@ func TestNew(t *testing.T) {
 func TestObjectStorageController(t *testing.T) {
 	skipIt(t)
 	Convey("Negative make a new object storage controller", t, func() {
-		port := getFreePort()
+		port := GetFreePort()
 		conf := config.New()
 		conf.HTTP.Port = port
 		storageDriverParams := map[string]interface{}{
@@ -159,8 +108,8 @@ func TestObjectStorageController(t *testing.T) {
 	})
 
 	Convey("Make a new object storage controller", t, func() {
-		port := getFreePort()
-		baseURL := getBaseURL(port, false)
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
 
@@ -208,8 +157,8 @@ func TestObjectStorageController(t *testing.T) {
 func TestObjectStorageControllerSubPaths(t *testing.T) {
 	skipIt(t)
 	Convey("Make a new object storage controller", t, func() {
-		port := getFreePort()
-		baseURL := getBaseURL(port, false)
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
 
@@ -260,8 +209,8 @@ func TestObjectStorageControllerSubPaths(t *testing.T) {
 
 func TestHtpasswdSingleCred(t *testing.T) {
 	Convey("Single cred", t, func() {
-		port := getFreePort()
-		baseURL := getBaseURL(port, false)
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
 		singleCredtests := []string{}
 		user := ALICE
 		password := ALICE
@@ -273,7 +222,7 @@ func TestHtpasswdSingleCred(t *testing.T) {
 				conf := config.New()
 				conf.HTTP.Port = port
 
-				htpasswdPath := makeHtpasswdFileFromString(testString)
+				htpasswdPath := MakeHtpasswdFileFromString(testString)
 				defer os.Remove(htpasswdPath)
 				conf.HTTP.Auth = &config.AuthConfig{
 					HTPasswd: config.AuthHTPasswd{
@@ -337,11 +286,11 @@ func TestHtpasswdTwoCreds(t *testing.T) {
 
 		for _, testString := range twoCredTests {
 			func() {
-				port := getFreePort()
-				baseURL := getBaseURL(port, false)
+				port := GetFreePort()
+				baseURL := GetBaseURL(port)
 				conf := config.New()
 				conf.HTTP.Port = port
-				htpasswdPath := makeHtpasswdFileFromString(testString)
+				htpasswdPath := MakeHtpasswdFileFromString(testString)
 				defer os.Remove(htpasswdPath)
 				conf.HTTP.Auth = &config.AuthConfig{
 					HTPasswd: config.AuthHTPasswd{
@@ -406,11 +355,11 @@ func TestHtpasswdFiveCreds(t *testing.T) {
 		}
 
 		func() {
-			port := getFreePort()
-			baseURL := getBaseURL(port, false)
+			port := GetFreePort()
+			baseURL := GetBaseURL(port)
 			conf := config.New()
 			conf.HTTP.Port = port
-			htpasswdPath := makeHtpasswdFileFromString(credString.String())
+			htpasswdPath := MakeHtpasswdFileFromString(credString.String())
 			defer os.Remove(htpasswdPath)
 			conf.HTTP.Auth = &config.AuthConfig{
 				HTPasswd: config.AuthHTPasswd{
@@ -459,11 +408,11 @@ func TestHtpasswdFiveCreds(t *testing.T) {
 }
 func TestBasicAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		port := getFreePort()
-		baseURL := getBaseURL(port, false)
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
-		htpasswdPath := makeHtpasswdFile()
+		htpasswdPath := MakeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
 		conf.HTTP.Auth = &config.AuthConfig{
@@ -521,8 +470,8 @@ func TestBasicAuth(t *testing.T) {
 
 func TestInterruptedBlobUpload(t *testing.T) {
 	Convey("Successfully cleaning interrupted blob uploads", t, func() {
-		port := getFreePort()
-		baseURL := getBaseURL(port, false)
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
 
@@ -761,11 +710,11 @@ func TestInterruptedBlobUpload(t *testing.T) {
 
 func TestMultipleInstance(t *testing.T) {
 	Convey("Negative test zot multiple instance", t, func() {
-		port := getFreePort()
-		baseURL := getBaseURL(port, false)
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
-		htpasswdPath := makeHtpasswdFile()
+		htpasswdPath := MakeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
 		conf.HTTP.Auth = &config.AuthConfig{
@@ -783,7 +732,7 @@ func TestMultipleInstance(t *testing.T) {
 		}
 		defer os.RemoveAll(globalDir)
 
-		subDir, err := ioutil.TempDir("/tmp", "oci-sub-test")
+		subDir, err := ioutil.TempDir("", "oci-sub-test")
 		if err != nil {
 			panic(err)
 		}
@@ -823,11 +772,11 @@ func TestMultipleInstance(t *testing.T) {
 	})
 
 	Convey("Test zot multiple instance", t, func() {
-		port := getFreePort()
-		baseURL := getBaseURL(port, false)
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
-		htpasswdPath := makeHtpasswdFile()
+		htpasswdPath := MakeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
 		conf.HTTP.Auth = &config.AuthConfig{
@@ -842,7 +791,7 @@ func TestMultipleInstance(t *testing.T) {
 		}
 		defer os.RemoveAll(globalDir)
 
-		subDir, err := ioutil.TempDir("/tmp", "oci-sub-test")
+		subDir, err := ioutil.TempDir("", "oci-sub-test")
 		if err != nil {
 			panic(err)
 		}
@@ -899,12 +848,12 @@ func TestTLSWithBasicAuth(t *testing.T) {
 		So(err, ShouldBeNil)
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
-		htpasswdPath := makeHtpasswdFile()
+		htpasswdPath := MakeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
-		port := getFreePort()
-		baseURL := getBaseURL(port, false)
-		secureBaseURL := getBaseURL(port, true)
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		secureBaseURL := GetSecureBaseURL(port)
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
 		defer func() { resty.SetTLSClientConfig(nil) }()
@@ -980,12 +929,12 @@ func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 		So(err, ShouldBeNil)
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
-		htpasswdPath := makeHtpasswdFile()
+		htpasswdPath := MakeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
-		port := getFreePort()
-		baseURL := getBaseURL(port, false)
-		secureBaseURL := getBaseURL(port, true)
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		secureBaseURL := GetSecureBaseURL(port)
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
 		defer func() { resty.SetTLSClientConfig(nil) }()
@@ -1064,9 +1013,9 @@ func TestTLSMutualAuth(t *testing.T) {
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
 
-		port := getFreePort()
-		baseURL := getBaseURL(port, false)
-		secureBaseURL := getBaseURL(port, true)
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		secureBaseURL := GetSecureBaseURL(port)
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
 		defer func() { resty.SetTLSClientConfig(nil) }()
@@ -1152,9 +1101,9 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
 
-		port := getFreePort()
-		baseURL := getBaseURL(port, false)
-		secureBaseURL := getBaseURL(port, true)
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		secureBaseURL := GetSecureBaseURL(port)
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
 		defer func() { resty.SetTLSClientConfig(nil) }()
@@ -1247,12 +1196,12 @@ func TestTLSMutualAndBasicAuth(t *testing.T) {
 		So(err, ShouldBeNil)
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
-		htpasswdPath := makeHtpasswdFile()
+		htpasswdPath := MakeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
-		port := getFreePort()
-		baseURL := getBaseURL(port, false)
-		secureBaseURL := getBaseURL(port, true)
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		secureBaseURL := GetSecureBaseURL(port)
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
 		defer func() { resty.SetTLSClientConfig(nil) }()
@@ -1345,12 +1294,12 @@ func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 		So(err, ShouldBeNil)
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
-		htpasswdPath := makeHtpasswdFile()
+		htpasswdPath := MakeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
-		port := getFreePort()
-		baseURL := getBaseURL(port, false)
-		secureBaseURL := getBaseURL(port, true)
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		secureBaseURL := GetSecureBaseURL(port)
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
 		defer func() { resty.SetTLSClientConfig(nil) }()
@@ -1525,8 +1474,8 @@ func TestBasicAuthWithLDAP(t *testing.T) {
 		l.Start()
 		defer l.Stop()
 
-		port := getFreePort()
-		baseURL := getBaseURL(port, false)
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
 
 		conf := config.New()
 		conf.HTTP.Port = port
@@ -1594,8 +1543,8 @@ func TestBearerAuth(t *testing.T) {
 		authTestServer := makeAuthTestServer()
 		defer authTestServer.Close()
 
-		port := getFreePort()
-		baseURL := getBaseURL(port, false)
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
 
 		conf := config.New()
 		conf.HTTP.Port = port
@@ -1776,8 +1725,8 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		authTestServer := makeAuthTestServer()
 		defer authTestServer.Close()
 
-		port := getFreePort()
-		baseURL := getBaseURL(port, false)
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
 
 		conf := config.New()
 		conf.HTTP.Port = port
@@ -2010,12 +1959,12 @@ func parseBearerAuthHeader(authHeaderRaw string) *authHeader {
 
 func TestAuthorizationWithBasicAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		port := getFreePort()
-		baseURL := getBaseURL(port, false)
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
 
 		conf := config.New()
 		conf.HTTP.Port = port
-		htpasswdPath := makeHtpasswdFile()
+		htpasswdPath := MakeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
 		conf.HTTP.Auth = &config.AuthConfig{
@@ -2047,7 +1996,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 			panic(err)
 		}
 		defer os.RemoveAll(dir)
-		err = copyFiles("../../test/data", dir)
+		err = CopyFiles("../../test/data", dir)
 		if err != nil {
 			panic(err)
 		}
@@ -2399,12 +2348,12 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 
 func TestInvalidCases(t *testing.T) {
 	Convey("Invalid repo dir", t, func() {
-		port := getFreePort()
-		baseURL := getBaseURL(port, false)
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
 
 		conf := config.New()
 		conf.HTTP.Port = port
-		htpasswdPath := makeHtpasswdFileFromString(getCredString(username, passphrase))
+		htpasswdPath := MakeHtpasswdFileFromString(getCredString(username, passphrase))
 
 		defer os.Remove(htpasswdPath)
 
@@ -2466,8 +2415,8 @@ func TestHTTPReadOnly(t *testing.T) {
 		singleCredtests = append(singleCredtests, getCredString(user, password))
 		singleCredtests = append(singleCredtests, getCredString(user, password)+"\n")
 
-		port := getFreePort()
-		baseURL := getBaseURL(port, false)
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
 
 		for _, testString := range singleCredtests {
 			func() {
@@ -2476,7 +2425,7 @@ func TestHTTPReadOnly(t *testing.T) {
 				// enable read-only mode
 				conf.HTTP.ReadOnly = true
 
-				htpasswdPath := makeHtpasswdFileFromString(testString)
+				htpasswdPath := MakeHtpasswdFileFromString(testString)
 				defer os.Remove(htpasswdPath)
 				conf.HTTP.Auth = &config.AuthConfig{
 					HTPasswd: config.AuthHTPasswd{
@@ -2533,12 +2482,12 @@ func TestHTTPReadOnly(t *testing.T) {
 
 func TestCrossRepoMount(t *testing.T) {
 	Convey("Cross Repo Mount", t, func() {
-		port := getFreePort()
-		baseURL := getBaseURL(port, false)
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
 
 		conf := config.New()
 		conf.HTTP.Port = port
-		htpasswdPath := makeHtpasswdFileFromString(getCredString(username, passphrase))
+		htpasswdPath := MakeHtpasswdFileFromString(getCredString(username, passphrase))
 
 		defer os.Remove(htpasswdPath)
 
@@ -2555,7 +2504,7 @@ func TestCrossRepoMount(t *testing.T) {
 			panic(err)
 		}
 
-		err = copyFiles("../../test/data", dir)
+		err = CopyFiles("../../test/data", dir)
 		if err != nil {
 			panic(err)
 		}
@@ -2736,12 +2685,12 @@ func TestCrossRepoMount(t *testing.T) {
 	})
 
 	Convey("Disable dedupe and cache", t, func() {
-		port := getFreePort()
-		baseURL := getBaseURL(port, false)
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
 
 		conf := config.New()
 		conf.HTTP.Port = port
-		htpasswdPath := makeHtpasswdFileFromString(getCredString(username, passphrase))
+		htpasswdPath := MakeHtpasswdFileFromString(getCredString(username, passphrase))
 
 		defer os.Remove(htpasswdPath)
 
@@ -2760,7 +2709,7 @@ func TestCrossRepoMount(t *testing.T) {
 			panic(err)
 		}
 
-		err = copyFiles("../../test/data", dir)
+		err = CopyFiles("../../test/data", dir)
 		if err != nil {
 			panic(err)
 		}
@@ -2797,6 +2746,7 @@ func TestCrossRepoMount(t *testing.T) {
 		So(headResponse.StatusCode(), ShouldEqual, 404)
 	})
 }
+
 func TestParallelRequests(t *testing.T) {
 	testCases := []struct {
 		srcImageName  string
@@ -2893,12 +2843,12 @@ func TestParallelRequests(t *testing.T) {
 		},
 	}
 
-	port := getFreePort()
-	baseURL := getBaseURL(port, false)
+	port := GetFreePort()
+	baseURL := GetBaseURL(port)
 
 	conf := config.New()
 	conf.HTTP.Port = port
-	htpasswdPath := makeHtpasswdFileFromString(getCredString(username, passphrase))
+	htpasswdPath := MakeHtpasswdFileFromString(getCredString(username, passphrase))
 
 	conf.HTTP.Auth = &config.AuthConfig{
 		HTPasswd: config.AuthHTPasswd{
@@ -3141,158 +3091,14 @@ func TestParallelRequests(t *testing.T) {
 	}
 }
 
-func getAllBlobs(imagePath string) []string {
-	blobList := make([]string, 0)
-
-	if !dirExists(imagePath) {
-		return []string{}
-	}
-
-	buf, err := ioutil.ReadFile(path.Join(imagePath, "index.json"))
-
-	if err != nil {
-		panic(err)
-	}
-
-	var index ispec.Index
-	if err := json.Unmarshal(buf, &index); err != nil {
-		panic(err)
-	}
-
-	var digest godigest.Digest
-
-	for _, m := range index.Manifests {
-		digest = m.Digest
-		blobList = append(blobList, digest.Encoded())
-		p := path.Join(imagePath, "blobs", digest.Algorithm().String(), digest.Encoded())
-
-		buf, err = ioutil.ReadFile(p)
-
-		if err != nil {
-			panic(err)
-		}
-
-		var manifest ispec.Manifest
-		if err := json.Unmarshal(buf, &manifest); err != nil {
-			panic(err)
-		}
-
-		blobList = append(blobList, manifest.Config.Digest.Encoded())
-
-		for _, layer := range manifest.Layers {
-			blobList = append(blobList, layer.Digest.Encoded())
-		}
-	}
-
-	return blobList
-}
-
-func getAllManifests(imagePath string) []string {
-	manifestList := make([]string, 0)
-
-	if !dirExists(imagePath) {
-		return []string{}
-	}
-
-	buf, err := ioutil.ReadFile(path.Join(imagePath, "index.json"))
-
-	if err != nil {
-		panic(err)
-	}
-
-	var index ispec.Index
-	if err := json.Unmarshal(buf, &index); err != nil {
-		panic(err)
-	}
-
-	var digest godigest.Digest
-
-	for _, m := range index.Manifests {
-		digest = m.Digest
-		manifestList = append(manifestList, digest.Encoded())
-	}
-
-	return manifestList
-}
-
-func dirExists(d string) bool {
-	fi, err := os.Stat(d)
-	if err != nil && os.IsNotExist(err) {
-		return false
-	}
-
-	if !fi.IsDir() {
-		return false
-	}
-
-	return true
-}
-
-func copyFiles(sourceDir string, destDir string) error {
-	sourceMeta, err := os.Stat(sourceDir)
-	if err != nil {
-		return err
-	}
-
-	if err := os.MkdirAll(destDir, sourceMeta.Mode()); err != nil {
-		return err
-	}
-
-	files, err := ioutil.ReadDir(sourceDir)
-	if err != nil {
-		return err
-	}
-
-	for _, file := range files {
-		sourceFilePath := path.Join(sourceDir, file.Name())
-		destFilePath := path.Join(destDir, file.Name())
-
-		if file.IsDir() {
-			if err = copyFiles(sourceFilePath, destFilePath); err != nil {
-				return err
-			}
-		} else {
-			sourceFile, err := os.Open(sourceFilePath)
-			if err != nil {
-				return err
-			}
-			defer sourceFile.Close()
-
-			destFile, err := os.Create(destFilePath)
-			if err != nil {
-				return err
-			}
-			defer destFile.Close()
-
-			if _, err = io.Copy(destFile, sourceFile); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
-}
-
-func stopServer(ctrl *api.Controller) {
-	err := ctrl.Server.Shutdown(context.Background())
-	if err != nil {
-		panic(err)
-	}
-
-	err = os.RemoveAll(ctrl.Config.Storage.RootDirectory)
-	if err != nil {
-		panic(err)
-	}
-}
-
 func TestHardLink(t *testing.T) {
 	Convey("Validate hard link", t, func() {
-		port := getFreePort()
-		baseURL := getBaseURL(port, false)
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
 
 		conf := config.New()
 		conf.HTTP.Port = port
-		htpasswdPath := makeHtpasswdFileFromString(getCredString(username, passphrase))
+		htpasswdPath := MakeHtpasswdFileFromString(getCredString(username, passphrase))
 
 		conf.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{
@@ -3362,4 +3168,90 @@ func TestHardLink(t *testing.T) {
 
 		So(c.Config.Storage.Dedupe, ShouldEqual, false)
 	})
+}
+
+func getAllBlobs(imagePath string) []string {
+	blobList := make([]string, 0)
+
+	if !storage.DirExists(imagePath) {
+		return []string{}
+	}
+
+	buf, err := ioutil.ReadFile(path.Join(imagePath, "index.json"))
+
+	if err != nil {
+		panic(err)
+	}
+
+	var index ispec.Index
+	if err := json.Unmarshal(buf, &index); err != nil {
+		panic(err)
+	}
+
+	var digest godigest.Digest
+
+	for _, m := range index.Manifests {
+		digest = m.Digest
+		blobList = append(blobList, digest.Encoded())
+		p := path.Join(imagePath, "blobs", digest.Algorithm().String(), digest.Encoded())
+
+		buf, err = ioutil.ReadFile(p)
+
+		if err != nil {
+			panic(err)
+		}
+
+		var manifest ispec.Manifest
+		if err := json.Unmarshal(buf, &manifest); err != nil {
+			panic(err)
+		}
+
+		blobList = append(blobList, manifest.Config.Digest.Encoded())
+
+		for _, layer := range manifest.Layers {
+			blobList = append(blobList, layer.Digest.Encoded())
+		}
+	}
+
+	return blobList
+}
+
+func getAllManifests(imagePath string) []string {
+	manifestList := make([]string, 0)
+
+	if !storage.DirExists(imagePath) {
+		return []string{}
+	}
+
+	buf, err := ioutil.ReadFile(path.Join(imagePath, "index.json"))
+
+	if err != nil {
+		panic(err)
+	}
+
+	var index ispec.Index
+	if err := json.Unmarshal(buf, &index); err != nil {
+		panic(err)
+	}
+
+	var digest godigest.Digest
+
+	for _, m := range index.Manifests {
+		digest = m.Digest
+		manifestList = append(manifestList, digest.Encoded())
+	}
+
+	return manifestList
+}
+
+func stopServer(ctrl *api.Controller) {
+	err := ctrl.Server.Shutdown(context.Background())
+	if err != nil {
+		panic(err)
+	}
+
+	err = os.RemoveAll(ctrl.Config.Storage.RootDirectory)
+	if err != nil {
+		panic(err)
+	}
 }

@@ -22,20 +22,18 @@ import (
 	"github.com/anuvu/zot/pkg/api/config"
 	extconf "github.com/anuvu/zot/pkg/extensions/config"
 	"github.com/anuvu/zot/pkg/extensions/sync"
+	. "github.com/anuvu/zot/test"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/phayes/freeport"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 )
 
 const (
-	BaseURL       = "http://127.0.0.1:%s"
-	BaseSecureURL = "https://127.0.0.1:%s"
-	ServerCert    = "../../../test/data/server.cert"
-	ServerKey     = "../../../test/data/server.key"
-	CACert        = "../../../test/data/ca.crt"
-	ClientCert    = "../../../test/data/client.cert"
-	ClientKey     = "../../../test/data/client.key"
+	ServerCert = "../../../test/data/server.cert"
+	ServerKey  = "../../../test/data/server.key"
+	CACert     = "../../../test/data/ca.crt"
+	ClientCert = "../../../test/data/client.cert"
+	ClientKey  = "../../../test/data/client.key"
 
 	testImage    = "zot-test"
 	testImageTag = "0.0.1"
@@ -51,23 +49,6 @@ type TagsList struct {
 
 type catalog struct {
 	Repositories []string `json:"repositories"`
-}
-
-func getFreePort() string {
-	port, err := freeport.GetFreePort()
-	if err != nil {
-		panic(err)
-	}
-
-	return fmt.Sprint(port)
-}
-
-func getBaseURL(port string, secure bool) string {
-	if secure {
-		return fmt.Sprintf(BaseSecureURL, port)
-	}
-
-	return fmt.Sprintf(BaseURL, port)
 }
 
 func copyFile(sourceFilePath, destFilePath string) error {
@@ -90,72 +71,12 @@ func copyFile(sourceFilePath, destFilePath string) error {
 	return nil
 }
 
-func copyFiles(sourceDir string, destDir string) error {
-	sourceMeta, err := os.Stat(sourceDir)
-	if err != nil {
-		return err
-	}
-
-	if err := os.MkdirAll(destDir, sourceMeta.Mode()); err != nil {
-		return err
-	}
-
-	files, err := ioutil.ReadDir(sourceDir)
-	if err != nil {
-		return err
-	}
-
-	for _, file := range files {
-		sourceFilePath := path.Join(sourceDir, file.Name())
-		destFilePath := path.Join(destDir, file.Name())
-
-		if file.IsDir() {
-			if err = copyFiles(sourceFilePath, destFilePath); err != nil {
-				return err
-			}
-		} else {
-			sourceFile, err := os.Open(sourceFilePath)
-			if err != nil {
-				return err
-			}
-			defer sourceFile.Close()
-
-			destFile, err := os.Create(destFilePath)
-			if err != nil {
-				return err
-			}
-			defer destFile.Close()
-
-			if _, err = io.Copy(destFile, sourceFile); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
-}
-
-func makeHtpasswdFile() string {
-	f, err := ioutil.TempFile("", "htpasswd-")
-	if err != nil {
-		panic(err)
-	}
-
-	// bcrypt(username="test", passwd="test")
-	content := []byte("test:$2y$05$hlbSXDp6hzDLu6VwACS39ORvVRpr3OMR4RlJ31jtlaOEGnPjKZI1m\n")
-	if err := ioutil.WriteFile(f.Name(), content, 0600); err != nil {
-		panic(err)
-	}
-
-	return f.Name()
-}
-
 func TestSyncOnDemand(t *testing.T) {
 	Convey("Verify sync on demand feature", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		srcPort := getFreePort()
-		srcBaseURL := getBaseURL(srcPort, false)
+		srcPort := GetFreePort()
+		srcBaseURL := GetBaseURL(srcPort)
 
 		srcConfig := config.New()
 		srcConfig.HTTP.Port = srcPort
@@ -167,7 +88,7 @@ func TestSyncOnDemand(t *testing.T) {
 
 		defer os.RemoveAll(srcDir)
 
-		err = copyFiles("../../../test/data", srcDir)
+		err = CopyFiles("../../../test/data", srcDir)
 		if err != nil {
 			panic(err)
 		}
@@ -198,8 +119,8 @@ func TestSyncOnDemand(t *testing.T) {
 			time.Sleep(100 * time.Millisecond)
 		}
 
-		destPort := getFreePort()
-		destBaseURL := getBaseURL(destPort, false)
+		destPort := GetFreePort()
+		destBaseURL := GetBaseURL(destPort)
 
 		destConfig := config.New()
 		destConfig.HTTP.Port = destPort
@@ -357,8 +278,8 @@ func TestSync(t *testing.T) {
 	Convey("Verify sync feature", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		srcPort := getFreePort()
-		srcBaseURL := getBaseURL(srcPort, false)
+		srcPort := GetFreePort()
+		srcBaseURL := GetBaseURL(srcPort)
 
 		srcConfig := config.New()
 		srcConfig.HTTP.Port = srcPort
@@ -370,7 +291,7 @@ func TestSync(t *testing.T) {
 
 		defer os.RemoveAll(srcDir)
 
-		err = copyFiles("../../../test/data", srcDir)
+		err = CopyFiles("../../../test/data", srcDir)
 		if err != nil {
 			panic(err)
 		}
@@ -401,8 +322,8 @@ func TestSync(t *testing.T) {
 			time.Sleep(100 * time.Millisecond)
 		}
 
-		destPort := getFreePort()
-		destBaseURL := getBaseURL(destPort, false)
+		destPort := GetFreePort()
+		destBaseURL := GetBaseURL(destPort)
 
 		destConfig := config.New()
 		destConfig.HTTP.Port = destPort
@@ -505,8 +426,8 @@ func TestSync(t *testing.T) {
 		})
 
 		Convey("Test sync with more contents", func() {
-			destPort := getFreePort()
-			destBaseURL := getBaseURL(destPort, false)
+			destPort := GetFreePort()
+			destBaseURL := GetBaseURL(destPort)
 
 			destConfig := config.New()
 			destConfig.HTTP.Port = destPort
@@ -625,8 +546,8 @@ func TestSyncPermsDenied(t *testing.T) {
 	Convey("Verify sync feature without perm on sync cache", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		srcPort := getFreePort()
-		srcBaseURL := getBaseURL(srcPort, false)
+		srcPort := GetFreePort()
+		srcBaseURL := GetBaseURL(srcPort)
 
 		srcConfig := config.New()
 		srcConfig.HTTP.Port = srcPort
@@ -638,7 +559,7 @@ func TestSyncPermsDenied(t *testing.T) {
 
 		defer os.RemoveAll(srcDir)
 
-		err = copyFiles("../../../test/data", srcDir)
+		err = CopyFiles("../../../test/data", srcDir)
 		if err != nil {
 			panic(err)
 		}
@@ -669,8 +590,8 @@ func TestSyncPermsDenied(t *testing.T) {
 			time.Sleep(100 * time.Millisecond)
 		}
 
-		destPort := getFreePort()
-		destBaseURL := getBaseURL(destPort, false)
+		destPort := GetFreePort()
+		destBaseURL := GetBaseURL(destPort)
 
 		destConfig := config.New()
 		destConfig.HTTP.Port = destPort
@@ -759,8 +680,8 @@ func TestSyncBadTLS(t *testing.T) {
 
 		updateDuration, _ := time.ParseDuration("1h")
 
-		srcPort := getFreePort()
-		srcBaseURL := getBaseURL(srcPort, true)
+		srcPort := GetFreePort()
+		srcBaseURL := GetSecureBaseURL(srcPort)
 
 		srcConfig := config.New()
 		srcConfig.HTTP.Port = srcPort
@@ -814,15 +735,15 @@ func TestSyncBadTLS(t *testing.T) {
 			panic(err)
 		}
 
-		err = copyFiles("../../../test/data", destDir)
+		err = CopyFiles("../../../test/data", destDir)
 		if err != nil {
 			panic(err)
 		}
 
 		defer os.RemoveAll(destDir)
 
-		destPort := getFreePort()
-		destBaseURL := getBaseURL(destPort, true)
+		destPort := GetFreePort()
+		destBaseURL := GetSecureBaseURL(destPort)
 		destConfig := config.New()
 		destConfig.HTTP.Port = destPort
 
@@ -906,8 +827,8 @@ func TestSyncTLS(t *testing.T) {
 
 		updateDuration, _ := time.ParseDuration("1h")
 
-		srcPort := getFreePort()
-		srcBaseURL := getBaseURL(srcPort, true)
+		srcPort := GetFreePort()
+		srcBaseURL := GetSecureBaseURL(srcPort)
 
 		srcConfig := config.New()
 		srcConfig.HTTP.Port = srcPort
@@ -925,7 +846,7 @@ func TestSyncTLS(t *testing.T) {
 
 		defer os.RemoveAll(srcDir)
 
-		err = copyFiles("../../../test/data", srcDir)
+		err = CopyFiles("../../../test/data", srcDir)
 		if err != nil {
 			panic(err)
 		}
@@ -971,8 +892,8 @@ func TestSyncTLS(t *testing.T) {
 			panic(err)
 		}
 
-		destPort := getFreePort()
-		destBaseURL := getBaseURL(destPort, true)
+		destPort := GetFreePort()
+		destBaseURL := GetSecureBaseURL(destPort)
 		destConfig := config.New()
 		destConfig.HTTP.Port = destPort
 
@@ -1090,13 +1011,13 @@ func TestSyncBasicAuth(t *testing.T) {
 	Convey("Verify sync basic auth", t, func() {
 		updateDuration, _ := time.ParseDuration("1h")
 
-		srcPort := getFreePort()
-		srcBaseURL := getBaseURL(srcPort, false)
+		srcPort := GetFreePort()
+		srcBaseURL := GetBaseURL(srcPort)
 
 		srcConfig := config.New()
 		srcConfig.HTTP.Port = srcPort
 
-		htpasswdPath := makeHtpasswdFile()
+		htpasswdPath := MakeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
 		srcConfig.HTTP.Auth = &config.AuthConfig{
@@ -1112,7 +1033,7 @@ func TestSyncBasicAuth(t *testing.T) {
 
 		defer os.RemoveAll(srcDir)
 
-		err = copyFiles("../../../test/data", srcDir)
+		err = CopyFiles("../../../test/data", srcDir)
 		if err != nil {
 			panic(err)
 		}
@@ -1145,8 +1066,8 @@ func TestSyncBasicAuth(t *testing.T) {
 		}
 
 		Convey("Verify sync basic auth with file credentials", func() {
-			destPort := getFreePort()
-			destBaseURL := getBaseURL(destPort, false)
+			destPort := GetFreePort()
+			destBaseURL := GetBaseURL(destPort)
 
 			destConfig := config.New()
 			destConfig.HTTP.Port = destPort
@@ -1243,8 +1164,8 @@ func TestSyncBasicAuth(t *testing.T) {
 		})
 
 		Convey("Verify sync basic auth with wrong file credentials", func() {
-			destPort := getFreePort()
-			destBaseURL := getBaseURL(destPort, false)
+			destPort := GetFreePort()
+			destBaseURL := GetBaseURL(destPort)
 
 			destConfig := config.New()
 			destConfig.HTTP.Port = destPort
@@ -1335,8 +1256,8 @@ func TestSyncBasicAuth(t *testing.T) {
 		})
 
 		Convey("Verify sync basic auth with bad file credentials", func() {
-			destPort := getFreePort()
-			destBaseURL := getBaseURL(destPort, false)
+			destPort := GetFreePort()
+			destBaseURL := GetBaseURL(destPort)
 
 			destConfig := config.New()
 			destConfig.HTTP.Port = destPort
@@ -1425,8 +1346,8 @@ func TestSyncBasicAuth(t *testing.T) {
 		})
 
 		Convey("Verify on demand sync with basic auth", func() {
-			destPort := getFreePort()
-			destBaseURL := getBaseURL(destPort, false)
+			destPort := GetFreePort()
+			destBaseURL := GetBaseURL(destPort)
 
 			destConfig := config.New()
 			destConfig.HTTP.Port = destPort
@@ -1552,8 +1473,8 @@ func TestSyncBadUrl(t *testing.T) {
 	Convey("Verify sync with bad url", t, func() {
 		updateDuration, _ := time.ParseDuration("1h")
 
-		destPort := getFreePort()
-		destBaseURL := getBaseURL(destPort, false)
+		destPort := GetFreePort()
+		destBaseURL := GetBaseURL(destPort)
 
 		destConfig := config.New()
 		destConfig.HTTP.Port = destPort
@@ -1627,8 +1548,8 @@ func TestSyncNoImagesByRegex(t *testing.T) {
 	Convey("Verify sync with no images on source based on regex", t, func() {
 		updateDuration, _ := time.ParseDuration("1h")
 
-		srcPort := getFreePort()
-		srcBaseURL := getBaseURL(srcPort, false)
+		srcPort := GetFreePort()
+		srcBaseURL := GetBaseURL(srcPort)
 
 		srcConfig := config.New()
 		srcConfig.HTTP.Port = srcPort
@@ -1638,7 +1559,7 @@ func TestSyncNoImagesByRegex(t *testing.T) {
 			panic(err)
 		}
 
-		err = copyFiles("../../../test/data", srcDir)
+		err = CopyFiles("../../../test/data", srcDir)
 		if err != nil {
 			panic(err)
 		}
@@ -1671,8 +1592,8 @@ func TestSyncNoImagesByRegex(t *testing.T) {
 			time.Sleep(100 * time.Millisecond)
 		}
 
-		destPort := getFreePort()
-		destBaseURL := getBaseURL(destPort, false)
+		destPort := GetFreePort()
+		destBaseURL := GetBaseURL(destPort)
 
 		destConfig := config.New()
 		destConfig.HTTP.Port = destPort
@@ -1758,8 +1679,8 @@ func TestSyncInvalidRegex(t *testing.T) {
 	Convey("Verify sync with invalid regex", t, func() {
 		updateDuration, _ := time.ParseDuration("1h")
 
-		srcPort := getFreePort()
-		srcBaseURL := getBaseURL(srcPort, false)
+		srcPort := GetFreePort()
+		srcBaseURL := GetBaseURL(srcPort)
 
 		srcConfig := config.New()
 		srcConfig.HTTP.Port = srcPort
@@ -1769,7 +1690,7 @@ func TestSyncInvalidRegex(t *testing.T) {
 			panic(err)
 		}
 
-		err = copyFiles("../../../test/data", srcDir)
+		err = CopyFiles("../../../test/data", srcDir)
 		if err != nil {
 			panic(err)
 		}
@@ -1802,8 +1723,8 @@ func TestSyncInvalidRegex(t *testing.T) {
 			time.Sleep(100 * time.Millisecond)
 		}
 
-		destPort := getFreePort()
-		destBaseURL := getBaseURL(destPort, false)
+		destPort := GetFreePort()
+		destBaseURL := GetBaseURL(destPort)
 
 		destConfig := config.New()
 		destConfig.HTTP.Port = destPort
@@ -1876,8 +1797,8 @@ func TestSyncNotSemver(t *testing.T) {
 	Convey("Verify sync feature semver compliant", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		srcPort := getFreePort()
-		srcBaseURL := getBaseURL(srcPort, false)
+		srcPort := GetFreePort()
+		srcBaseURL := GetBaseURL(srcPort)
 
 		srcConfig := config.New()
 		srcConfig.HTTP.Port = srcPort
@@ -1889,7 +1810,7 @@ func TestSyncNotSemver(t *testing.T) {
 
 		defer os.RemoveAll(srcDir)
 
-		err = copyFiles("../../../test/data", srcDir)
+		err = CopyFiles("../../../test/data", srcDir)
 		if err != nil {
 			panic(err)
 		}
@@ -1935,8 +1856,8 @@ func TestSyncNotSemver(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 201)
 
-		destPort := getFreePort()
-		destBaseURL := getBaseURL(destPort, false)
+		destPort := GetFreePort()
+		destBaseURL := GetBaseURL(destPort)
 
 		destConfig := config.New()
 		destConfig.HTTP.Port = destPort
@@ -2032,8 +1953,8 @@ func TestSyncInvalidCerts(t *testing.T) {
 		defer func() { client.SetTLSClientConfig(nil) }()
 		updateDuration, _ := time.ParseDuration("1h")
 
-		srcPort := getFreePort()
-		srcBaseURL := getBaseURL(srcPort, true)
+		srcPort := GetFreePort()
+		srcBaseURL := GetSecureBaseURL(srcPort)
 
 		srcConfig := config.New()
 		srcConfig.HTTP.Port = srcPort
@@ -2051,7 +1972,7 @@ func TestSyncInvalidCerts(t *testing.T) {
 
 		defer os.RemoveAll(srcDir)
 
-		err = copyFiles("../../../test/data", srcDir)
+		err = CopyFiles("../../../test/data", srcDir)
 		if err != nil {
 			panic(err)
 		}
@@ -2088,8 +2009,8 @@ func TestSyncInvalidCerts(t *testing.T) {
 			time.Sleep(100 * time.Millisecond)
 		}
 
-		destPort := getFreePort()
-		destBaseURL := getBaseURL(destPort, false)
+		destPort := GetFreePort()
+		destBaseURL := GetBaseURL(destPort)
 		destConfig := config.New()
 		destConfig.HTTP.Port = destPort
 
@@ -2208,8 +2129,8 @@ func TestSyncInvalidUrl(t *testing.T) {
 	Convey("Verify sync invalid url", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		destPort := getFreePort()
-		destBaseURL := getBaseURL(destPort, false)
+		destPort := GetFreePort()
+		destBaseURL := GetBaseURL(destPort)
 
 		destConfig := config.New()
 		destConfig.HTTP.Port = destPort
@@ -2283,8 +2204,8 @@ func TestSyncInvalidTags(t *testing.T) {
 	Convey("Verify sync invalid url", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		srcPort := getFreePort()
-		srcBaseURL := getBaseURL(srcPort, false)
+		srcPort := GetFreePort()
+		srcBaseURL := GetBaseURL(srcPort)
 
 		srcConfig := config.New()
 		srcConfig.HTTP.Port = srcPort
@@ -2296,7 +2217,7 @@ func TestSyncInvalidTags(t *testing.T) {
 
 		defer os.RemoveAll(srcDir)
 
-		err = copyFiles("../../../test/data", srcDir)
+		err = CopyFiles("../../../test/data", srcDir)
 		if err != nil {
 			panic(err)
 		}
@@ -2326,8 +2247,8 @@ func TestSyncInvalidTags(t *testing.T) {
 			time.Sleep(100 * time.Millisecond)
 		}
 
-		destPort := getFreePort()
-		destBaseURL := getBaseURL(destPort, false)
+		destPort := GetFreePort()
+		destBaseURL := GetBaseURL(destPort)
 
 		destConfig := config.New()
 		destConfig.HTTP.Port = destPort

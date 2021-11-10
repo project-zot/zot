@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"path"
@@ -15,6 +14,7 @@ import (
 	"github.com/anuvu/zot/pkg/extensions/monitoring"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
+	. "github.com/anuvu/zot/test"
 	"github.com/containers/image/v5/docker"
 	"github.com/containers/image/v5/docker/reference"
 	"github.com/containers/image/v5/types"
@@ -25,61 +25,11 @@ import (
 )
 
 const (
-	BaseURL    = "http://127.0.0.1:5001"
-	ServerCert = "../../../test/data/server.cert"
-	ServerKey  = "../../../test/data/server.key"
-	CACert     = "../../../test/data/ca.crt"
-
 	testImage    = "zot-test"
 	testImageTag = "0.0.1"
 
 	host = "127.0.0.1:45117"
 )
-
-func copyFiles(sourceDir string, destDir string) error {
-	sourceMeta, err := os.Stat(sourceDir)
-	if err != nil {
-		return err
-	}
-
-	if err := os.MkdirAll(destDir, sourceMeta.Mode()); err != nil {
-		return err
-	}
-
-	files, err := ioutil.ReadDir(sourceDir)
-	if err != nil {
-		return err
-	}
-
-	for _, file := range files {
-		sourceFilePath := path.Join(sourceDir, file.Name())
-		destFilePath := path.Join(destDir, file.Name())
-
-		if file.IsDir() {
-			if err = copyFiles(sourceFilePath, destFilePath); err != nil {
-				return err
-			}
-		} else {
-			sourceFile, err := os.Open(sourceFilePath)
-			if err != nil {
-				return err
-			}
-			defer sourceFile.Close()
-
-			destFile, err := os.Create(destFilePath)
-			if err != nil {
-				return err
-			}
-			defer destFile.Close()
-
-			if _, err = io.Copy(destFile, sourceFile); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
-}
 
 func TestSyncInternal(t *testing.T) {
 	Convey("Verify parseRepositoryReference func", t, func() {
@@ -135,13 +85,15 @@ func TestSyncInternal(t *testing.T) {
 
 		var tlsVerify bool
 		updateDuration := time.Microsecond
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
 		syncRegistryConfig := RegistryConfig{
 			Content: []Content{
 				{
 					Prefix: testImage,
 				},
 			},
-			URL:          BaseURL,
+			URL:          baseURL,
 			PollInterval: updateDuration,
 			TLSVerify:    &tlsVerify,
 			CertDir:      "",
@@ -243,7 +195,7 @@ func TestSyncInternal(t *testing.T) {
 			panic(err)
 		}
 
-		err = copyFiles("../../../test/data", testRootDir)
+		err = CopyFiles("../../../test/data", testRootDir)
 		if err != nil {
 			panic(err)
 		}

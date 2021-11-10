@@ -475,6 +475,15 @@ func TestStorageAPIs(t *testing.T) {
 							indexContent, err := il.GetIndexContent("test")
 							So(err, ShouldBeNil)
 
+							if testcase.storageType == "fs" {
+								err = os.Chmod(path.Join(il.RootDir(), "test", "index.json"), 0000)
+								So(err, ShouldBeNil)
+								_, err = il.GetIndexContent("test")
+								So(err, ShouldNotBeNil)
+								err = os.Chmod(path.Join(il.RootDir(), "test", "index.json"), 0644)
+								So(err, ShouldBeNil)
+							}
+
 							var index ispec.Index
 
 							err = json.Unmarshal(indexContent, &index)

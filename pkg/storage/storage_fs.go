@@ -62,16 +62,7 @@ func (is *ImageStoreFS) RootDir() string {
 }
 
 func (is *ImageStoreFS) DirExists(d string) bool {
-	fi, err := os.Stat(d)
-	if err != nil && os.IsNotExist(err) {
-		return false
-	}
-
-	if !fi.IsDir() {
-		return false
-	}
-
-	return true
+	return DirExists(d)
 }
 
 func getRoutePrefix(name string) string {
@@ -1340,4 +1331,17 @@ func ifOlderThan(is *ImageStoreFS, repo string, delay time.Duration) casext.GCPo
 
 		return true, nil
 	}
+}
+
+func DirExists(d string) bool {
+	fi, err := os.Stat(d)
+	if err != nil && os.IsNotExist(err) {
+		return false
+	}
+
+	if !fi.IsDir() {
+		return false
+	}
+
+	return true
 }

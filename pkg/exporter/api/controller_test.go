@@ -19,8 +19,8 @@ import (
 	zotcfg "github.com/anuvu/zot/pkg/api/config"
 	"github.com/anuvu/zot/pkg/exporter/api"
 	"github.com/anuvu/zot/pkg/extensions/monitoring"
+	. "github.com/anuvu/zot/test"
 	jsoniter "github.com/json-iterator/go"
-	"github.com/phayes/freeport"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	. "github.com/smartystreets/goconvey/convey"
@@ -28,7 +28,6 @@ import (
 )
 
 const (
-	BaseURL             = "http://127.0.0.1:%s"
 	SleepTime           = 50 * time.Millisecond
 	SecondToNanoseconds = 1000000000
 )
@@ -40,15 +39,6 @@ func getRandomLatencyN(maxNanoSeconds int64) time.Duration {
 
 func getRandomLatency() time.Duration {
 	return getRandomLatencyN(120 * SecondToNanoseconds) // a random latency (in nanoseconds) that can be up to 2 minutes
-}
-
-func getFreePort() string {
-	port, err := freeport.GetFreePort()
-	if err != nil {
-		panic(err)
-	}
-
-	return fmt.Sprint(port)
 }
 
 func TestNew(t *testing.T) {
@@ -91,8 +81,8 @@ func TestNewExporter(t *testing.T) {
 	Convey("Make an exporter controller", t, func() {
 		exporterConfig := api.DefaultConfig()
 		So(exporterConfig, ShouldNotBeNil)
-		exporterPort := getFreePort()
-		serverPort := getFreePort()
+		exporterPort := GetFreePort()
+		serverPort := GetFreePort()
 		exporterConfig.Exporter.Port = exporterPort
 		dir, _ := ioutil.TempDir("", "metrics")
 		exporterConfig.Exporter.Metrics.Path = strings.TrimPrefix(dir, "/tmp/")

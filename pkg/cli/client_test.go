@@ -8,20 +8,17 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
-	"path"
 	"path/filepath"
-
-	"gopkg.in/resty.v1"
-
 	"testing"
 	"time"
 
 	"github.com/anuvu/zot/pkg/api"
 	"github.com/anuvu/zot/pkg/api/config"
+	. "github.com/anuvu/zot/test"
 	. "github.com/smartystreets/goconvey/convey"
+	"gopkg.in/resty.v1"
 )
 
 const (
@@ -44,21 +41,6 @@ const (
 	certsDir1      = "/.config/containers/certs.d/127.0.0.1:8088/"
 )
 
-func makeHtpasswdFile() string {
-	f, err := ioutil.TempFile("", "htpasswd-")
-	if err != nil {
-		panic(err)
-	}
-
-	// bcrypt(username="test", passwd="test")
-	content := []byte("test:$2y$05$hlbSXDp6hzDLu6VwACS39ORvVRpr3OMR4RlJ31jtlaOEGnPjKZI1m\n")
-	if err := ioutil.WriteFile(f.Name(), content, 0600); err != nil {
-		panic(err)
-	}
-
-	return f.Name()
-}
-
 func TestTLSWithAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		caCert, err := ioutil.ReadFile(CACert)
@@ -70,7 +52,7 @@ func TestTLSWithAuth(t *testing.T) {
 		defer func() { resty.SetTLSClientConfig(nil) }()
 		conf := config.New()
 		conf.HTTP.Port = SecurePort1
-		htpasswdPath := makeHtpasswdFile()
+		htpasswdPath := MakeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
 		conf.HTTP.Auth = &config.AuthConfig{
@@ -119,7 +101,7 @@ func TestTLSWithAuth(t *testing.T) {
 
 			home := os.Getenv("HOME")
 			destCertsDir := filepath.Join(home, certsDir1)
-			if err = copyFiles(sourceCertsDir, destCertsDir); err != nil {
+			if err = CopyFiles(sourceCertsDir, destCertsDir); err != nil {
 				panic(err)
 			}
 			defer os.RemoveAll(destCertsDir)
@@ -218,7 +200,7 @@ func TestTLSWithoutAuth(t *testing.T) {
 
 			home := os.Getenv("HOME")
 			destCertsDir := filepath.Join(home, certsDir1)
-			if err = copyFiles(sourceCertsDir, destCertsDir); err != nil {
+			if err = CopyFiles(sourceCertsDir, destCertsDir); err != nil {
 				panic(err)
 			}
 			defer os.RemoveAll(destCertsDir)
@@ -358,49 +340,4 @@ func TestTLSBadCerts(t *testing.T) {
 			So(imageBuff.String(), ShouldContainSubstring, "certificate signed by unknown authority")
 		})
 	})
-}
-
-func copyFiles(sourceDir string, destDir string) error {
-	sourceMeta, err := os.Stat(sourceDir)
-	if err != nil {
-		return err
-	}
-
-	if err := os.MkdirAll(destDir, sourceMeta.Mode()); err != nil {
-		return err
-	}
-
-	files, err := ioutil.ReadDir(sourceDir)
-	if err != nil {
-		return err
-	}
-
-	for _, file := range files {
-		sourceFilePath := path.Join(sourceDir, file.Name())
-		destFilePath := path.Join(destDir, file.Name())
-
-		if file.IsDir() {
-			if err = copyFiles(sourceFilePath, destFilePath); err != nil {
-				return err
-			}
-		} else {
-			sourceFile, err := os.Open(sourceFilePath)
-			if err != nil {
-				return err
-			}
-			defer sourceFile.Close()
-
-			destFile, err := os.Create(destFilePath)
-			if err != nil {
-				return err
-			}
-			defer destFile.Close()
-
-			if _, err = io.Copy(destFile, sourceFile); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
 }

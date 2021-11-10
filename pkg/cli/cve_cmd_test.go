@@ -18,9 +18,9 @@ import (
 	"github.com/anuvu/zot/pkg/api"
 	"github.com/anuvu/zot/pkg/api/config"
 	extconf "github.com/anuvu/zot/pkg/extensions/config"
-	"gopkg.in/resty.v1"
-
+	. "github.com/anuvu/zot/test"
 	. "github.com/smartystreets/goconvey/convey"
+	"gopkg.in/resty.v1"
 )
 
 func TestSearchCVECmd(t *testing.T) {
@@ -285,8 +285,8 @@ func TestSearchCVECmd(t *testing.T) {
 }
 
 func TestServerCVEResponse(t *testing.T) {
-	port := getFreePort()
-	url := getBaseURL(port)
+	port := GetFreePort()
+	url := GetBaseURL(port)
 	conf := config.New()
 	conf.HTTP.Port = port
 	c := api.NewController(conf)
@@ -296,7 +296,7 @@ func TestServerCVEResponse(t *testing.T) {
 		panic(err)
 	}
 
-	err = copyFiles("../../test/data/zot-cve-test", path.Join(dir, "zot-cve-test"))
+	err = CopyFiles("../../test/data/zot-cve-test", path.Join(dir, "zot-cve-test"))
 	if err != nil {
 		panic(err)
 	}
