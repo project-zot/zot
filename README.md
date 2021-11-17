@@ -1,4 +1,4 @@
-# zot [![build-test](https://github.com/anuvu/zot/actions/workflows/ci-cd.yml/badge.svg?branch=master)](https://github.com/anuvu/zot/actions/workflows/ci-cd.yml) [![codecov.io](http://codecov.io/github/anuvu/zot/coverage.svg?branch=master)](http://codecov.io/github/anuvu/zot?branch=master) [![Conformance Results](https://github.com/anuvu/zot/workflows/conformance/badge.svg)](https://github.com/anuvu/zot/actions?query=workflow%3Aconformance)
+# zot [![build-test](https://github.com/anuvu/zot/actions/workflows/ci-cd.yml/badge.svg?branch=main)](https://github.com/anuvu/zot/actions/workflows/ci-cd.yml) [![codecov.io](http://codecov.io/github/anuvu/zot/coverage.svg?branch=main)](http://codecov.io/github/anuvu/zot?branch=main) [![Conformance Results](https://github.com/anuvu/zot/workflows/conformance/badge.svg)](https://github.com/anuvu/zot/actions?query=workflow%3Aconformance)
 
 **zot** is a vendor-neutral OCI image registry server purely based on 
 [OCI Distribution Specification](https://github.com/opencontainers/distribution-spec).
