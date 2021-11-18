@@ -2105,7 +2105,7 @@ func TestSyncInvalidCerts(t *testing.T) {
 		Convey("Test sync on POST request on /sync", func() {
 			resp, _ := resty.R().Post(destBaseURL + "/sync")
 			So(resp, ShouldNotBeNil)
-			So(string(resp.Body()), ShouldContainSubstring, "signed by unknown authority")
+			So(string(resp.Body()), ShouldContainSubstring, "bad certificate")
 			So(resp.StatusCode(), ShouldEqual, 500)
 		})
 	})

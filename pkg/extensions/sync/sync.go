@@ -106,6 +106,11 @@ func getUpstreamCatalog(regCfg *RegistryConfig, credentials Credentials, log log
 		client.SetCertificates(cert)
 	}
 
+	// nolint: gosec
+	if regCfg.TLSVerify != nil && !*regCfg.TLSVerify {
+		client.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true})
+	}
+
 	if credentials.Username != "" && credentials.Password != "" {
 		log.Debug().Msgf("sync: using basic auth")
 		client.SetBasicAuth(credentials.Username, credentials.Password)
