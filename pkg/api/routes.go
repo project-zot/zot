@@ -279,7 +279,7 @@ func (rh *RouteHandler) CheckManifest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, digest, mediaType, err := getImageManifest(rh, is, name, reference)
+	content, digest, mediaType, err := getImageManifest(rh, is, name, reference)
 	if err != nil {
 		switch err {
 		case errors.ErrRepoNotFound:
@@ -298,7 +298,7 @@ func (rh *RouteHandler) CheckManifest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set(DistContentDigestKey, digest)
-	w.Header().Set("Content-Length", "0")
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(content)))
 	w.Header().Set("Content-Type", mediaType)
 	w.WriteHeader(http.StatusOK)
 }
