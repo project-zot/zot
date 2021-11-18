@@ -87,6 +87,8 @@ func OneImage(cfg Config, log log.Logger,
 			return err
 		}
 
+		defer os.RemoveAll(path.Join(imageStore.RootDir(), imageName, SyncBlobUploadDir, uuid.String()))
+
 		localTaggedRepo := fmt.Sprintf("%s:%s", localRepo, tag)
 
 		localRef, err := layout.ParseReference(localTaggedRepo)
