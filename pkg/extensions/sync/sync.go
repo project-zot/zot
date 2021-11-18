@@ -382,6 +382,8 @@ func syncRegistry(regCfg RegistryConfig, storeController storage.StoreController
 			return err
 		}
 
+		defer os.RemoveAll(path.Join(imageStore.RootDir(), imageName, SyncBlobUploadDir, uuid))
+
 		upstreamTaggedRef := getTagFromRef(upstreamRef, log)
 
 		localTaggedRepo := fmt.Sprintf("%s:%s", localRepo, upstreamTaggedRef.Tag())
