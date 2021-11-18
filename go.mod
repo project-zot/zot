@@ -14,11 +14,12 @@ require (
 	github.com/aquasecurity/trivy-db v0.0.0-20210916043317-726b7b72a47b
 	github.com/briandowns/spinner v1.16.0
 	github.com/chartmuseum/auth v0.5.0
-	github.com/containerd/containerd v1.5.7 // indirect
+	github.com/containerd/containerd v1.5.8 // indirect
 	github.com/containers/common v0.44.3
 	github.com/containers/image/v5 v5.16.1
 	github.com/containers/ocicrypt v1.1.2 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.1 // indirect
+	github.com/docker/cli v20.10.10+incompatible // indirect
 	github.com/docker/distribution v2.7.1+incompatible
 	github.com/dustin/go-humanize v1.0.0
 	github.com/fsnotify/fsnotify v1.5.1
@@ -56,6 +57,7 @@ require (
 	github.com/vbauerster/mpb/v5 v5.3.0 // indirect
 	github.com/vektah/gqlparser/v2 v2.2.0
 	go.etcd.io/bbolt v1.3.6
+	go.opencensus.io v0.23.0 // indirect
 	golang.org/x/crypto v0.0.0-20211108221036-ceb1ce70b4fa
 	gopkg.in/resty.v1 v1.12.0
 	gopkg.in/yaml.v2 v2.4.0
@@ -65,5 +67,5 @@ replace (
 	github.com/aquasecurity/fanal => github.com/anuvu/fanal v0.0.0-20211007194926-d0c577a014df
 	github.com/aquasecurity/trivy => github.com/anuvu/trivy v0.9.2-0.20211013001708-27408aa50da3
 	github.com/aquasecurity/trivy-db => github.com/anuvu/trivy-db v0.0.0-20211007191113-44f7e57b689c
-	github.com/containers/image/v5 => github.com/anuvu/image/v5 v5.0.0-20211117201351-4c24aa76235c
+	github.com/containers/image/v5 => github.com/anuvu/image/v5 v5.0.0-20211118175920-feae9c2f0d91
 )
