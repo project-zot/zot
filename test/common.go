@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"time"
 
 	"github.com/phayes/freeport"
 	"gopkg.in/resty.v1"
@@ -14,6 +15,7 @@ import (
 const (
 	BaseURL       = "http://127.0.0.1:%s"
 	BaseSecureURL = "https://127.0.0.1:%s"
+	SleepTime     = 100 * time.Millisecond
 )
 
 func GetFreePort() string {
@@ -107,4 +109,15 @@ func CopyFiles(sourceDir string, destDir string) error {
 	}
 
 	return nil
+}
+
+func WaitTillServerReady(url string) {
+	for {
+		_, err := resty.R().Get(url)
+		if err == nil {
+			break
+		}
+
+		time.Sleep(SleepTime)
+	}
 }

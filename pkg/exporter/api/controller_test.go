@@ -28,7 +28,6 @@ import (
 )
 
 const (
-	SleepTime           = 50 * time.Millisecond
 	SecondToNanoseconds = 1000000000
 )
 
