@@ -131,26 +131,9 @@ func TestObjectStorageController(t *testing.T) {
 
 		c.Config.Storage.RootDirectory = "/"
 
-		go func(controller *api.Controller) {
-			// this blocks
-			if err := controller.Run(); err != nil {
-				return
-			}
-		}(c)
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(baseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		defer func(controller *api.Controller) {
-			ctx := context.Background()
-			_ = controller.Server.Shutdown(ctx)
-		}(c)
+		go startServer(c)
+		defer stopServer(c)
+		WaitTillServerReady(baseURL)
 	})
 }
 
@@ -186,24 +169,9 @@ func TestObjectStorageControllerSubPaths(t *testing.T) {
 		}
 		c.Config.Storage.SubPaths = subPathMap
 
-		go func(controller *api.Controller) {
-			// this blocks
-			if err := controller.Run(); err != nil {
-				return
-			}
-		}(c)
-
-		for {
-			_, err := resty.R().Get(baseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-		defer func(controller *api.Controller) {
-			ctx := context.Background()
-			_ = controller.Server.Shutdown(ctx)
-		}(c)
+		go startServer(c)
+		defer stopServer(c)
+		WaitTillServerReady(baseURL)
 	})
 }
 
@@ -236,24 +204,11 @@ func TestHtpasswdSingleCred(t *testing.T) {
 				}
 				defer os.RemoveAll(dir)
 				c.Config.Storage.RootDirectory = dir
-				go func(controller *api.Controller) {
-					// this blocks
-					if err := controller.Run(); err != nil {
-						return
-					}
-				}(c)
-				// wait till ready
-				for {
-					_, err := resty.R().Get(baseURL)
-					if err == nil {
-						break
-					}
-					time.Sleep(100 * time.Millisecond)
-				}
-				defer func(controller *api.Controller) {
-					ctx := context.Background()
-					_ = controller.Server.Shutdown(ctx)
-				}(c)
+
+				go startServer(c)
+				defer stopServer(c)
+				WaitTillServerReady(baseURL)
+
 				// with creds, should get expected status code
 				resp, _ := resty.R().SetBasicAuth(user, password).Get(baseURL + "/v2/")
 				So(resp, ShouldNotBeNil)
@@ -304,25 +259,11 @@ func TestHtpasswdTwoCreds(t *testing.T) {
 				}
 				defer os.RemoveAll(dir)
 				c.Config.Storage.RootDirectory = dir
-				go func(controller *api.Controller) {
-					// this blocks
-					if err := controller.Run(); err != nil {
-						return
-					}
-				}(c)
-				// wait till ready
-				for {
-					_, err := resty.R().Get(baseURL)
-					if err == nil {
-						break
-					}
-					time.Sleep(100 * time.Millisecond)
-				}
 
-				defer func(controller *api.Controller) {
-					ctx := context.Background()
-					_ = controller.Server.Shutdown(ctx)
-				}(c)
+				go startServer(c)
+				defer stopServer(c)
+				WaitTillServerReady(baseURL)
+
 				// with creds, should get expected status code
 				resp, _ := resty.R().SetBasicAuth(user1, password1).Get(baseURL + "/v2/")
 				So(resp, ShouldNotBeNil)
@@ -373,25 +314,11 @@ func TestHtpasswdFiveCreds(t *testing.T) {
 			}
 			defer os.RemoveAll(dir)
 			c.Config.Storage.RootDirectory = dir
-			go func(controller *api.Controller) {
-				// this blocks
-				if err := controller.Run(); err != nil {
-					return
-				}
-			}(c)
-			// wait till ready
-			for {
-				_, err := resty.R().Get(baseURL)
-				if err == nil {
-					break
-				}
-				time.Sleep(100 * time.Millisecond)
-			}
 
-			defer func(controller *api.Controller) {
-				ctx := context.Background()
-				_ = controller.Server.Shutdown(ctx)
-			}(c)
+			go startServer(c)
+			defer stopServer(c)
+			WaitTillServerReady(baseURL)
+
 			// with creds, should get expected status code
 			for key, val := range tests {
 				resp, _ := resty.R().SetBasicAuth(key, val).Get(baseURL + "/v2/")
@@ -427,26 +354,10 @@ func TestBasicAuth(t *testing.T) {
 		}
 		defer os.RemoveAll(dir)
 		c.Config.Storage.RootDirectory = dir
-		go func() {
-			// this blocks
-			if err := c.Run(); err != nil {
-				return
-			}
-		}()
 
-		// wait till ready
-		for {
-			_, err := resty.R().Get(baseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		defer func() {
-			ctx := context.Background()
-			_ = c.Server.Shutdown(ctx)
-		}()
+		go startServer(c)
+		defer stopServer(c)
+		WaitTillServerReady(baseURL)
 
 		// without creds, should get access error
 		resp, err := resty.R().Get(baseURL + "/v2/")
@@ -483,31 +394,13 @@ func TestInterruptedBlobUpload(t *testing.T) {
 
 		defer os.RemoveAll(dir)
 		c.Config.Storage.RootDirectory = dir
-		go func() {
-			// this blocks
-			if err := c.Run(); err != nil {
-				return
-			}
-		}()
+
+		go startServer(c)
+		defer stopServer(c)
+		WaitTillServerReady(baseURL)
 
 		client := resty.New()
-
-		// wait till ready
-		for {
-			_, err := client.R().Get(baseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		defer func() {
-			ctx := context.Background()
-			_ = c.Server.Shutdown(ctx)
-		}()
-
 		blob := make([]byte, 50*1024*1024)
-
 		digest := godigest.FromBytes(blob).String()
 
 		// nolint: dupl
@@ -743,25 +636,9 @@ func TestMultipleInstance(t *testing.T) {
 
 		subPathMap["/a"] = config.StorageConfig{RootDirectory: subDir}
 
-		go func() {
-			if err := c.Run(); err != nil {
-				return
-			}
-		}()
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(baseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		defer func() {
-			ctx := context.Background()
-			_ = c.Server.Shutdown(ctx)
-		}()
+		go startServer(c)
+		defer stopServer(c)
+		WaitTillServerReady(baseURL)
 
 		client := resty.New()
 
@@ -799,28 +676,11 @@ func TestMultipleInstance(t *testing.T) {
 
 		c.Config.Storage.RootDirectory = globalDir
 		subPathMap := make(map[string]config.StorageConfig)
-
 		subPathMap["/a"] = config.StorageConfig{RootDirectory: subDir}
-		go func() {
-			// this blocks
-			if err := c.Run(); err != nil {
-				return
-			}
-		}()
 
-		// wait till ready
-		for {
-			_, err := resty.R().Get(baseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		defer func() {
-			ctx := context.Background()
-			_ = c.Server.Shutdown(ctx)
-		}()
+		go startServer(c)
+		defer stopServer(c)
+		WaitTillServerReady(baseURL)
 
 		// without creds, should get access error
 		resp, err := resty.R().Get(baseURL + "/v2/")
@@ -876,26 +736,10 @@ func TestTLSWithBasicAuth(t *testing.T) {
 		}
 		defer os.RemoveAll(dir)
 		c.Config.Storage.RootDirectory = dir
-		go func() {
-			// this blocks
-			if err := c.Run(); err != nil {
-				return
-			}
-		}()
 
-		// wait till ready
-		for {
-			_, err := resty.R().Get(baseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		defer func() {
-			ctx := context.Background()
-			_ = c.Server.Shutdown(ctx)
-		}()
+		go startServer(c)
+		defer stopServer(c)
+		WaitTillServerReady(baseURL)
 
 		// accessing insecure HTTP site should fail
 		resp, err := resty.R().Get(baseURL)
@@ -958,26 +802,10 @@ func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 		}
 		defer os.RemoveAll(dir)
 		c.Config.Storage.RootDirectory = dir
-		go func() {
-			// this blocks
-			if err := c.Run(); err != nil {
-				return
-			}
-		}()
 
-		// wait till ready
-		for {
-			_, err := resty.R().Get(baseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		defer func() {
-			ctx := context.Background()
-			_ = c.Server.Shutdown(ctx)
-		}()
+		go startServer(c)
+		defer stopServer(c)
+		WaitTillServerReady(baseURL)
 
 		// accessing insecure HTTP site should fail
 		resp, err := resty.R().Get(baseURL)
@@ -1034,26 +862,10 @@ func TestTLSMutualAuth(t *testing.T) {
 		}
 		defer os.RemoveAll(dir)
 		c.Config.Storage.RootDirectory = dir
-		go func() {
-			// this blocks
-			if err := c.Run(); err != nil {
-				return
-			}
-		}()
 
-		// wait till ready
-		for {
-			_, err := resty.R().Get(baseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		defer func() {
-			ctx := context.Background()
-			_ = c.Server.Shutdown(ctx)
-		}()
+		go startServer(c)
+		defer stopServer(c)
+		WaitTillServerReady(baseURL)
 
 		// accessing insecure HTTP site should fail
 		resp, err := resty.R().Get(baseURL)
@@ -1123,26 +935,10 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 		}
 		defer os.RemoveAll(dir)
 		c.Config.Storage.RootDirectory = dir
-		go func() {
-			// this blocks
-			if err := c.Run(); err != nil {
-				return
-			}
-		}()
 
-		// wait till ready
-		for {
-			_, err := resty.R().Get(baseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		defer func() {
-			ctx := context.Background()
-			_ = c.Server.Shutdown(ctx)
-		}()
+		go startServer(c)
+		defer stopServer(c)
+		WaitTillServerReady(baseURL)
 
 		// accessing insecure HTTP site should fail
 		resp, err := resty.R().Get(baseURL)
@@ -1225,26 +1021,10 @@ func TestTLSMutualAndBasicAuth(t *testing.T) {
 		}
 		defer os.RemoveAll(dir)
 		c.Config.Storage.RootDirectory = dir
-		go func() {
-			// this blocks
-			if err := c.Run(); err != nil {
-				return
-			}
-		}()
 
-		// wait till ready
-		for {
-			_, err := resty.R().Get(baseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		defer func() {
-			ctx := context.Background()
-			_ = c.Server.Shutdown(ctx)
-		}()
+		go startServer(c)
+		defer stopServer(c)
+		WaitTillServerReady(baseURL)
 
 		// accessing insecure HTTP site should fail
 		resp, err := resty.R().Get(baseURL)
@@ -1324,26 +1104,10 @@ func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 		}
 		defer os.RemoveAll(dir)
 		c.Config.Storage.RootDirectory = dir
-		go func() {
-			// this blocks
-			if err := c.Run(); err != nil {
-				return
-			}
-		}()
 
-		// wait till ready
-		for {
-			_, err := resty.R().Get(baseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		defer func() {
-			ctx := context.Background()
-			_ = c.Server.Shutdown(ctx)
-		}()
+		go startServer(c)
+		defer stopServer(c)
+		WaitTillServerReady(baseURL)
 
 		// accessing insecure HTTP site should fail
 		resp, err := resty.R().Get(baseURL)
@@ -1497,26 +1261,10 @@ func TestBasicAuthWithLDAP(t *testing.T) {
 		}
 		defer os.RemoveAll(dir)
 		c.Config.Storage.RootDirectory = dir
-		go func() {
-			// this blocks
-			if err := c.Run(); err != nil {
-				return
-			}
-		}()
 
-		// wait till ready
-		for {
-			_, err := resty.R().Get(baseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		defer func() {
-			ctx := context.Background()
-			_ = c.Server.Shutdown(ctx)
-		}()
+		go startServer(c)
+		defer stopServer(c)
+		WaitTillServerReady(baseURL)
 
 		// without creds, should get access error
 		resp, err := resty.R().Get(baseURL + "/v2/")
@@ -1564,26 +1312,10 @@ func TestBearerAuth(t *testing.T) {
 		So(err, ShouldBeNil)
 		defer os.RemoveAll(dir)
 		c.Config.Storage.RootDirectory = dir
-		go func() {
-			// this blocks
-			if err := c.Run(); err != nil {
-				return
-			}
-		}()
 
-		// wait till ready
-		for {
-			_, err := resty.R().Get(baseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		defer func() {
-			ctx := context.Background()
-			_ = c.Server.Shutdown(ctx)
-		}()
+		go startServer(c)
+		defer stopServer(c)
+		WaitTillServerReady(baseURL)
 
 		blob := []byte("hello, blob!")
 		digest := godigest.FromBytes(blob).String()
@@ -1747,26 +1479,10 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		So(err, ShouldBeNil)
 		defer os.RemoveAll(dir)
 		c.Config.Storage.RootDirectory = dir
-		go func() {
-			// this blocks
-			if err := c.Run(); err != nil {
-				return
-			}
-		}()
 
-		// wait till ready
-		for {
-			_, err := resty.R().Get(baseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		defer func() {
-			ctx := context.Background()
-			_ = c.Server.Shutdown(ctx)
-		}()
+		go startServer(c)
+		defer stopServer(c)
+		WaitTillServerReady(baseURL)
 
 		blob := []byte("hello, blob!")
 		digest := godigest.FromBytes(blob).String()
@@ -2001,26 +1717,10 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 			panic(err)
 		}
 		c.Config.Storage.RootDirectory = dir
-		go func() {
-			// this blocks
-			if err := c.Run(); err != nil {
-				return
-			}
-		}()
 
-		// wait till ready
-		for {
-			_, err := resty.R().Get(baseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		defer func() {
-			ctx := context.Background()
-			_ = c.Server.Shutdown(ctx)
-		}()
+		go startServer(c)
+		defer stopServer(c)
+		WaitTillServerReady(baseURL)
 
 		blob := []byte("hello, blob!")
 		digest := godigest.FromBytes(blob).String()
@@ -2370,26 +2070,21 @@ func TestInvalidCases(t *testing.T) {
 			panic(err)
 		}
 
-		defer stopServer(c)
-
 		c.Config.Storage.RootDirectory = "oci-repo-test"
 
-		go func() {
-			// this blocks
-			if err := c.Run(); err != nil {
-				return
-			}
-		}()
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(baseURL)
-			if err == nil {
-				break
+		go startServer(c)
+		defer func(ctrl *api.Controller) {
+			err := ctrl.Server.Shutdown(context.Background())
+			if err != nil {
+				panic(err)
 			}
 
-			time.Sleep(100 * time.Millisecond)
-		}
+			err = os.RemoveAll(ctrl.Config.Storage.RootDirectory)
+			if err != nil {
+				panic(err)
+			}
+		}(c)
+		WaitTillServerReady(baseURL)
 
 		digest := "sha256:8dd57e171a61368ffcfde38045ddb6ed74a32950c271c1da93eaddfb66a77e78"
 		name := "zot-c-test"
@@ -2439,25 +2134,10 @@ func TestHTTPReadOnly(t *testing.T) {
 				}
 				defer os.RemoveAll(dir)
 				c.Config.Storage.RootDirectory = dir
-				go func(controller *api.Controller) {
-					// this blocks
-					if err := controller.Run(); err != nil {
-						return
-					}
-				}(c)
-				// wait till ready
-				for {
-					_, err := resty.R().Get(baseURL)
-					if err == nil {
-						break
-					}
-					time.Sleep(100 * time.Millisecond)
-				}
 
-				defer func(controller *api.Controller) {
-					ctx := context.Background()
-					_ = controller.Server.Shutdown(ctx)
-				}(c)
+				go startServer(c)
+				defer stopServer(c)
+				WaitTillServerReady(baseURL)
 
 				// with creds, should get expected status code
 				resp, _ := resty.R().SetBasicAuth(user, password).Get(baseURL + "/v2/")
@@ -2508,36 +2188,17 @@ func TestCrossRepoMount(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
-
 		defer os.RemoveAll(dir)
-
 		c.Config.Storage.RootDirectory = dir
 
-		go func() {
-			// this blocks
-			if err := c.Run(); err != nil {
-				return
-			}
-		}()
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(baseURL)
-			if err == nil {
-				break
-			}
-
-			time.Sleep(100 * time.Millisecond)
-		}
+		go startServer(c)
+		defer stopServer(c)
+		WaitTillServerReady(baseURL)
 
 		params := make(map[string]string)
-
 		digest := "sha256:63a795ca90aa6e7cca60941e826810a4cd0a2e73ea02bf458241df2a5c973e29"
-
 		d := godigest.Digest(digest)
-
 		name := "zot-cve-test"
-
 		params["mount"] = digest
 		params["from"] = name
 
@@ -2702,8 +2363,6 @@ func TestCrossRepoMount(t *testing.T) {
 
 		c := api.NewController(conf)
 
-		//defer stopServer(c)
-
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
@@ -2719,26 +2378,12 @@ func TestCrossRepoMount(t *testing.T) {
 		c.Config.Storage.Dedupe = false
 		c.Config.Storage.GC = false
 
-		go func() {
-			// this blocks
-			if err := c.Run(); err != nil {
-				return
-			}
-		}()
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(baseURL)
-			if err == nil {
-				break
-			}
-
-			time.Sleep(100 * time.Millisecond)
-		}
+		go startServer(c)
+		defer stopServer(c)
+		WaitTillServerReady(baseURL)
 
 		digest := "sha256:7a0437f04f83f084b7ed68ad9c4a4947e12fc4e1b006b38129bac89114ec3621"
 		name := "zot-c-test"
-
 		client := resty.New()
 		headResponse, err := client.R().SetBasicAuth(username, passphrase).
 			Head(fmt.Sprintf("%s/v2/%s/blobs/%s", baseURL, name, digest))
@@ -2879,25 +2524,10 @@ func TestParallelRequests(t *testing.T) {
 	subPaths["/b"] = config.StorageConfig{RootDirectory: secondSubDir}
 
 	c.Config.Storage.SubPaths = subPaths
-
 	c.Config.Storage.RootDirectory = dir
 
-	go func() {
-		// this blocks
-		if err := c.Run(); err != nil {
-			return
-		}
-	}()
-
-	// wait till ready
-	for {
-		_, err := resty.R().Get(baseURL)
-		if err == nil {
-			break
-		}
-
-		time.Sleep(100 * time.Millisecond)
-	}
+	go startServer(c)
+	WaitTillServerReady(baseURL)
 
 	// without creds, should get access error
 	for i, testcase := range testCases {
@@ -3067,15 +2697,6 @@ func TestParallelRequests(t *testing.T) {
 
 				assert.Equal(t, err, nil, "Should not be nil")
 				assert.NotEqual(t, getResponse.StatusCode(), 500, "response should return success code")
-
-				if i < 5 { // nolint: scopelint
-					deleteResponse, err := client.R().
-						SetBasicAuth(username, passphrase).
-						Delete(baseURL + "/v2/" + testcase.destImageName + "/blobs/sha256:" + blob)
-
-					assert.Equal(t, err, nil, "Should not be nil")
-					assert.Equal(t, deleteResponse.StatusCode(), 202, "response should return success code")
-				}
 			}
 
 			tagResponse, err = client.R().SetBasicAuth(username, passphrase).
@@ -3134,27 +2755,11 @@ func TestHardLink(t *testing.T) {
 		subPaths := make(map[string]config.StorageConfig)
 
 		subPaths["/a"] = config.StorageConfig{RootDirectory: subDir, Dedupe: true}
-
 		c.Config.Storage.SubPaths = subPaths
 
-		go func() {
-			// this blocks
-			if err := c.Run(); err != nil {
-				return
-			}
-		}()
-
-		time.Sleep(5 * time.Second)
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(baseURL)
-			if err == nil {
-				break
-			}
-
-			time.Sleep(100 * time.Millisecond)
-		}
+		go startServer(c)
+		defer stopServer(c)
+		WaitTillServerReady(baseURL)
 
 		err = os.Chmod(dir, 0644)
 		if err != nil {
@@ -3244,14 +2849,14 @@ func getAllManifests(imagePath string) []string {
 	return manifestList
 }
 
-func stopServer(ctrl *api.Controller) {
-	err := ctrl.Server.Shutdown(context.Background())
-	if err != nil {
-		panic(err)
+func startServer(c *api.Controller) {
+	// this blocks
+	if err := c.Run(); err != nil {
+		return
 	}
+}
 
-	err = os.RemoveAll(ctrl.Config.Storage.RootDirectory)
-	if err != nil {
-		panic(err)
-	}
+func stopServer(c *api.Controller) {
+	ctx := context.Background()
+	_ = c.Server.Shutdown(ctx)
 }
