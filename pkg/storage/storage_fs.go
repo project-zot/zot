@@ -994,7 +994,7 @@ retry:
 	}
 
 	if dstRecord == "" {
-		// cache record doesn't exist, so first disk and cache entry for this diges
+		// cache record doesn't exist, so first disk and cache entry for this digest
 		if err := is.cache.PutBlob(dstDigest.String(), dst); err != nil {
 			is.log.Error().Err(err).Str("blobPath", dst).Msg("dedupe: unable to insert blob record")
 

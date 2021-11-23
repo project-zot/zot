@@ -17,6 +17,7 @@ import (
 	zlog "github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
 	guuid "github.com/gofrs/uuid"
+	"github.com/opencontainers/go-digest"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/rs/zerolog"
@@ -26,18 +27,94 @@ import (
 	_ "github.com/docker/distribution/registry/storage/driver/s3-aws" // Load s3 driver
 )
 
+const (
+	actualBlobUploadDir = "/BLOBS/"
+	linkedBlobsFilePath = "/linked_blobs.json"
+)
+
+type LinkedBlobs struct {
+	Links map[string][]string `json:"links,omitempty"`
+}
+
 // ObjectStorage provides the image storage operations.
 type ObjectStorage struct {
 	rootDir     string
 	store       storageDriver.StorageDriver
 	lock        *sync.RWMutex
 	blobUploads map[string]storage.BlobUpload
+	dedupe      bool
 	log         zerolog.Logger
 	// We must keep track of multi part uploads to s3, because the lib
 	// which we are using doesn't cancel multiparts uploads
 	// see: https://github.com/distribution/distribution/blob/main/registry/storage/driver/s3-aws/s3.go#L545
 	isMultiPartUpload map[string]bool
 	metrics           monitoring.MetricServer
+}
+
+// because s3 doesn't support symlinks, we store the real blobs in actualBlobPath
+// and the images blobs are just files with content being the path to real blobs.
+// actualBlobPath returns the real repository path of a blob.
+func actualBlobPath(rootDir string, digest godigest.Digest) string {
+	return path.Join(rootDir, actualBlobUploadDir, digest.Algorithm().String(), digest.Encoded())
+}
+
+func newLinkedBlobs(is *ObjectStorage) error {
+	l := path.Join(is.rootDir, linkedBlobsFilePath)
+
+	err := is.store.PutContent(context.Background(), l, []byte{})
+	if err != nil {
+		is.log.Error().Err(err).Str("path", l).Msg("couldn't unmarshal linked blobs")
+		return err
+	}
+
+	return nil
+}
+
+func loadLinkedBlobs(is *ObjectStorage) (LinkedBlobs, error) {
+	l := path.Join(is.rootDir, linkedBlobsFilePath)
+
+	buf, err := is.store.GetContent(context.Background(), l)
+	if err != nil {
+		if isPathNotFoundErr(err) {
+			err = newLinkedBlobs(is)
+			if err != nil {
+				return LinkedBlobs{}, err
+			}
+
+			return LinkedBlobs{}, nil
+		}
+
+		is.log.Error().Err(err).Str("path", l).Msg("couldn't read linked blobs")
+
+		return LinkedBlobs{}, err
+	}
+
+	lb := LinkedBlobs{}
+
+	if err := json.Unmarshal(buf, &lb); err != nil {
+		is.log.Error().Err(err).Str("path", l).Msg("couldn't unmarshal linked blobs")
+		return LinkedBlobs{}, err
+	}
+
+	return lb, nil
+}
+
+func dumpLinkedBlobs(is *ObjectStorage, lb LinkedBlobs) error {
+	l := path.Join(is.rootDir, linkedBlobsFilePath)
+
+	buf, err := json.Marshal(lb)
+	if err != nil {
+		is.log.Error().Err(err).Msg("couldn't unmarhsal linked blobs")
+		return err
+	}
+
+	err = is.store.PutContent(context.Background(), l, buf)
+	if err != nil {
+		is.log.Error().Err(err).Str("path", l).Msg("couldn't unmarhsal linked blobs")
+		return err
+	}
+
+	return nil
 }
 
 func (is *ObjectStorage) RootDir() string {
@@ -60,6 +137,7 @@ func NewImageStore(rootDir string, gc bool, dedupe bool, log zlog.Logger, m moni
 		rootDir:           rootDir,
 		store:             store,
 		lock:              &sync.RWMutex{},
+		dedupe:            dedupe,
 		blobUploads:       make(map[string]storage.BlobUpload),
 		log:               log.With().Caller().Logger(),
 		isMultiPartUpload: make(map[string]bool),
@@ -91,10 +169,6 @@ func (is *ObjectStorage) Unlock() {
 
 func (is *ObjectStorage) initRepo(name string) error {
 	repoDir := path.Join(is.rootDir, name)
-
-	if fi, err := is.store.Stat(context.Background(), repoDir); err == nil && fi.IsDir() {
-		return nil
-	}
 
 	// "oci-layout" file - create if it doesn't exist
 	ilPath := path.Join(repoDir, ispec.ImageLayoutFile)
@@ -238,8 +312,7 @@ func (is *ObjectStorage) GetRepositories() ([]string, error) {
 	})
 
 	// if the root directory is not yet created then return an empty slice of repositories
-	_, ok := err.(storageDriver.PathNotFoundError)
-	if ok {
+	if isPathNotFoundErr(err) {
 		return stores, nil
 	}
 
@@ -845,7 +918,42 @@ func (is *ObjectStorage) FinishBlobUpload(repo string, uuid string, body io.Read
 
 	dst := is.BlobPath(repo, dstDigest)
 
-	if err := is.store.Move(context.Background(), src, dst); err != nil {
+	if is.dedupe {
+		actualdst := actualBlobPath(is.RootDir(), dstDigest)
+
+		// check if same file before continuing, otherwise rewrite file
+		_, err = is.store.Stat(context.Background(), actualdst)
+		if err != nil {
+			if !isPathNotFoundErr(err) {
+				return err
+			}
+
+			if err := is.store.Move(context.Background(), src, actualdst); err != nil {
+				is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
+					Str("dst", dst).Msg("unable to finish blob")
+				return err
+			}
+		} else {
+			err := is.store.Delete(context.Background(), src)
+			if err != nil {
+				is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
+					Msg("unable to remove blob upload")
+				return err
+			}
+		}
+
+		// write file containing the path to the actual blob
+		if err := is.store.PutContent(context.Background(), dst, []byte(actualdst)); err != nil {
+			is.log.Error().Err(err).Str("dst", dst).Msg("unable to write blob")
+			return err
+		}
+
+		err = is.putBlobsLink(dstDigest, dst)
+		if err != nil {
+			is.log.Error().Err(err).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("unable to store blob links info")
+			return err
+		}
+	} else if err := is.store.Move(context.Background(), src, dst); err != nil {
 		is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
 			Str("dst", dst).Msg("unable to finish blob")
 		return err
@@ -853,6 +961,71 @@ func (is *ObjectStorage) FinishBlobUpload(repo string, uuid string, body io.Read
 
 	// remove multipart upload, not needed anymore
 	delete(is.isMultiPartUpload, src)
+
+	return nil
+}
+
+func (is *ObjectStorage) deleteBlobsLink(actualBlobDigest godigest.Digest, blobPath string) error {
+	lb, err := loadLinkedBlobs(is)
+	if err != nil {
+		return err
+	}
+
+	d := actualBlobDigest.String()
+
+	linkedBlobs := lb.Links[d]
+
+	j := 0
+
+	for _, path := range linkedBlobs {
+		if blobPath != path {
+			linkedBlobs[j] = path
+			j++
+		}
+	}
+
+	linkedBlobs = linkedBlobs[:j]
+	lb.Links[d] = linkedBlobs
+
+	if len(lb.Links[d]) == 0 {
+		// remove entry
+		err := is.store.Delete(context.Background(), actualBlobPath(is.rootDir, actualBlobDigest))
+		if err != nil {
+			is.log.Error().Err(err).Str("path", actualBlobPath(is.rootDir, actualBlobDigest)).Msg("couldn't delete blob")
+			return err
+		}
+	}
+
+	err = dumpLinkedBlobs(is, lb)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (is *ObjectStorage) putBlobsLink(actualBlobDigest godigest.Digest, blobPath string) error {
+	lb, err := loadLinkedBlobs(is)
+	if err != nil {
+		return err
+	}
+
+	d := actualBlobDigest.String()
+
+	if len(lb.Links) == 0 {
+		lb.Links = make(map[string][]string)
+	}
+
+	if len(lb.Links[d]) == 0 {
+		lb.Links[d] = []string{blobPath}
+	} else {
+		lb.Links[d] = append(lb.Links[d], blobPath)
+	}
+
+	err = dumpLinkedBlobs(is, lb)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -912,7 +1085,42 @@ func (is *ObjectStorage) FullBlobUpload(repo string, body io.Reader, digest stri
 
 	dst := is.BlobPath(repo, dstDigest)
 
-	if err := is.store.Move(context.Background(), src, dst); err != nil {
+	if is.dedupe {
+		actualdst := actualBlobPath(is.RootDir(), dstDigest)
+
+		// check if same file before continuing, otherwise rewrite file
+		_, err = is.store.Stat(context.Background(), actualdst)
+		if err != nil {
+			if isPathNotFoundErr(err) {
+				if err := is.store.Move(context.Background(), src, actualdst); err != nil {
+					is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
+						Str("dst", dst).Msg("unable to finish blob")
+					return "", -1, err
+				}
+			} else {
+				return "", -1, err
+			}
+		} else {
+			err := is.store.Delete(context.Background(), src)
+			if err != nil {
+				is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
+					Msg("unable to remove blob upload")
+				return "", -1, err
+			}
+		}
+
+		// write file containing the path to the actual blob
+		if err := is.store.PutContent(context.Background(), dst, []byte(actualdst)); err != nil {
+			is.log.Error().Err(err).Str("dst", dst).Msg("unable to write blob")
+			return "", -1, err
+		}
+
+		err = is.putBlobsLink(dstDigest, dst)
+		if err != nil {
+			is.log.Error().Err(err).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("unable to store blobs links info")
+			return "", -1, err
+		}
+	} else if err := is.store.Move(context.Background(), src, dst); err != nil {
 		is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
 			Str("dst", dst).Msg("unable to finish blob")
 		return "", -1, err
@@ -941,12 +1149,84 @@ func (is *ObjectStorage) BlobPath(repo string, digest godigest.Digest) string {
 	return path.Join(is.rootDir, repo, "blobs", digest.Algorithm().String(), digest.Encoded())
 }
 
+func (is *ObjectStorage) checkDedupedBlob(repo string, d digest.Digest) (bool, int64, error) {
+	is.Lock()
+	defer is.Unlock()
+
+	if !is.dedupe {
+		return false, -1, errors.ErrBlobNotFound
+	}
+
+	blobPath := is.BlobPath(repo, d)
+
+	buf, err := is.store.GetContent(context.Background(), blobPath)
+	if err != nil {
+		if !isPathNotFoundErr(err) {
+			return false, -1, err
+		}
+
+		realBlobPath := actualBlobPath(is.rootDir, d)
+
+		// if  blob not found, we may find it in cache
+		blobInfo, err := is.store.Stat(context.Background(), realBlobPath)
+		if err != nil {
+			if isPathNotFoundErr(err) {
+				return false, -1, errors.ErrBlobNotFound
+			}
+
+			return false, -1, err
+		}
+
+		err = is.store.PutContent(context.Background(), blobPath, []byte(blobPath))
+		if err != nil {
+			return false, -1, err
+		}
+
+		err = is.putBlobsLink(d, blobPath)
+		if err != nil {
+			is.log.Error().Err(err).Str("dstDigest", d.String()).Str("dst", blobPath).Msg("unable to write liked blobs info")
+			return false, -1, err
+		}
+
+		return true, blobInfo.Size(), nil
+	}
+
+	realBlobPath := string(buf)
+
+	blobInfo, err := is.store.Stat(context.Background(), realBlobPath)
+	if err != nil {
+		if isPathNotFoundErr(err) {
+			// remove out-of-sync blobPath
+			err := is.store.Delete(context.Background(), blobPath)
+			if err != nil {
+				return false, -1, err
+			}
+
+			// remove out-of-sync link
+			err = is.deleteBlobsLink(d, blobPath)
+			if err != nil {
+				return false, -1, err
+			}
+
+			return false, -1, errors.ErrBlobNotFound
+		}
+
+		return false, -1, err
+	}
+
+	return true, blobInfo.Size(), nil
+}
+
 // CheckBlob verifies a blob and returns true if the blob is correct.
 func (is *ObjectStorage) CheckBlob(repo string, digest string) (bool, int64, error) {
 	d, err := godigest.Parse(digest)
 	if err != nil {
 		is.log.Error().Err(err).Str("digest", digest).Msg("failed to parse digest")
 		return false, -1, errors.ErrBadBlobDigest
+	}
+
+	if is.dedupe {
+		return is.checkDedupedBlob(repo, d)
 	}
 
 	blobPath := is.BlobPath(repo, d)
@@ -956,8 +1236,7 @@ func (is *ObjectStorage) CheckBlob(repo string, digest string) (bool, int64, err
 
 	blobInfo, err := is.store.Stat(context.Background(), blobPath)
 	if err != nil {
-		_, ok := err.(storageDriver.PathNotFoundError)
-		if ok {
+		if isPathNotFoundErr(err) {
 			return false, -1, errors.ErrBlobNotFound
 		}
 
@@ -985,6 +1264,42 @@ func (is *ObjectStorage) GetBlob(repo string, digest string, mediaType string) (
 
 	is.RLock()
 	defer is.RUnlock()
+
+	if is.dedupe {
+		buf, err := is.store.GetContent(context.Background(), blobPath)
+		if err != nil {
+			if isPathNotFoundErr(err) {
+				return nil, -1, errors.ErrBlobNotFound
+			}
+
+			return nil, -1, err
+		}
+
+		realBlobPath := string(buf)
+
+		blobInfo, err := is.store.Stat(context.Background(), realBlobPath)
+		if err != nil {
+			if isPathNotFoundErr(err) {
+				// remove blob which points to realBlob
+				err := is.store.Delete(context.Background(), blobPath)
+				if err != nil {
+					return nil, -1, err
+				}
+
+				return nil, -1, errors.ErrBlobNotFound
+			}
+
+			return nil, -1, err
+		}
+
+		blobReader, err := is.store.Reader(context.Background(), realBlobPath, 0)
+		if err != nil {
+			is.log.Error().Err(err).Str("blob", realBlobPath).Msg("failed to open blob")
+			return nil, -1, err
+		}
+
+		return blobReader, blobInfo.Size(), nil
+	}
 
 	blobInfo, err := is.store.Stat(context.Background(), blobPath)
 	if err != nil {
@@ -1054,6 +1369,12 @@ func (is *ObjectStorage) DeleteBlob(repo string, digest string) error {
 		return err
 	}
 
+	if is.dedupe {
+		if err := is.deleteBlobsLink(d, blobPath); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -1080,8 +1401,7 @@ func writeFile(store storageDriver.StorageDriver, filepath string, buf []byte) (
 }
 
 // Because we can not create an empty multipart upload, we store multi part uploads
-// so that we know when to create a fileWriter with append=true or with append=false
-// Trying and handling errors results in weird s3 api errors.
+// so that we know when to create a fileWriter with append=true or with append=false.
 func getMultipartFileWriter(is *ObjectStorage, filepath string) (storageDriver.FileWriter, error) {
 	var file storageDriver.FileWriter
 
@@ -1101,4 +1421,9 @@ func getMultipartFileWriter(is *ObjectStorage, filepath string) (storageDriver.F
 	}
 
 	return file, nil
+}
+
+func isPathNotFoundErr(err error) bool {
+	_, ok := err.(storageDriver.PathNotFoundError)
+	return ok
 }

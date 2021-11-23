@@ -101,13 +101,15 @@ func (c *Controller) Run() error {
 	c.StoreController = storage.StoreController{}
 
 	if c.Config.Storage.RootDirectory != "" {
-		if c.Config.Storage.Dedupe {
-			err := storage.ValidateHardLink(c.Config.Storage.RootDirectory)
-			if err != nil {
-				c.Log.Warn().Msg("input storage root directory filesystem does not supports hardlinking," +
-					"disabling dedupe functionality")
+		if len(c.Config.Storage.StorageDriver) == 0 {
+			if c.Config.Storage.Dedupe {
+				err := storage.ValidateHardLink(c.Config.Storage.RootDirectory)
+				if err != nil {
+					c.Log.Warn().Msg("input storage root directory filesystem does not supports hardlinking," +
+						"disabling dedupe functionality")
 
-				c.Config.Storage.Dedupe = false
+					c.Config.Storage.Dedupe = false
+				}
 			}
 		}
 
