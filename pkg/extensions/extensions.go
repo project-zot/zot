@@ -72,10 +72,14 @@ func EnableSyncExtension(config *config.Config, log log.Logger, storeController 
 	if config.Extensions.Sync != nil {
 		defaultPollInterval, _ := time.ParseDuration("1h")
 		for id, registryCfg := range config.Extensions.Sync.Registries {
-			if registryCfg.PollInterval < defaultPollInterval {
+			if registryCfg.Content != nil &&
+				len(registryCfg.Content) > 0 &&
+				registryCfg.PollInterval < defaultPollInterval {
 				config.Extensions.Sync.Registries[id].PollInterval = defaultPollInterval
 
-				log.Warn().Msg("Sync registries interval set to too-short interval < 1h, changing update duration to 1 hour and continuing.") // nolint: lll
+				log.Warn().Str("registry", registryCfg.URL).
+					Msg("Sync registries interval set to too-short interval < 1h," +
+						"changing update duration to 1 hour and continuing.")
 			}
 		}
 

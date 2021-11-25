@@ -48,6 +48,11 @@ func (h *PostHandler) Handler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, regCfg := range h.Cfg.Registries {
+		if len(regCfg.Content) == 0 {
+			h.Log.Info().Msgf("no content found for %s, will not run periodically sync", regCfg.URL)
+			continue
+		}
+
 		upstreamRegistryName := strings.Replace(strings.Replace(regCfg.URL, "http://", "", 1), "https://", "", 1)
 
 		if err := syncRegistry(regCfg, h.StoreController, h.Log, localCtx, policyCtx,

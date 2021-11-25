@@ -11,6 +11,7 @@ import (
 	"github.com/anuvu/zot/pkg/extensions/monitoring"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/anuvu/zot/pkg/storage"
+	glob "github.com/bmatcuk/doublestar/v4"
 	"github.com/containers/image/v5/docker/reference"
 	"github.com/containers/image/v5/types"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -42,44 +43,26 @@ func parseRepositoryReference(input string) (reference.Named, error) {
 }
 
 // filterRepos filters repos based on prefix given in the config.
-func filterRepos(repos []string, content []Content) map[int][]string {
-	// prefix: repo
+func filterRepos(repos []string, content []Content, log log.Logger) map[int][]string {
 	filtered := make(map[int][]string)
 
 	for _, repo := range repos {
-		matched := false
-		// we use contentID to figure out tags filtering
 		for contentID, c := range content {
-			// handle prefixes starting with '/'
 			var prefix string
+			// handle prefixes starting with '/'
 			if strings.HasPrefix(c.Prefix, "/") {
 				prefix = c.Prefix[1:]
 			} else {
 				prefix = c.Prefix
 			}
 
-			// split both prefix and repository and compare each part
-			splittedPrefix := strings.Split(prefix, "/")
-			// split at most n + 1
-			splittedRepo := strings.SplitN(repo, "/", len(splittedPrefix)+1)
-
-			// if prefix is longer than a repository, no match
-			if len(splittedPrefix) > len(splittedRepo) {
+			matched, err := glob.Match(prefix, repo)
+			if err != nil {
+				log.Error().Err(err).Str("pattern",
+					prefix).Msg("error while parsing glob pattern, skipping it...")
 				continue
 			}
 
-			// check if matched each part of prefix and repository
-			for i := 0; i < len(splittedPrefix); i++ {
-				if splittedRepo[i] == splittedPrefix[i] {
-					matched = true
-				} else {
-					// if a part doesn't match, check next prefix
-					matched = false
-					break
-				}
-			}
-
-			// if matched no need to check the next prefixes
 			if matched {
 				filtered[contentID] = append(filtered[contentID], repo)
 				break

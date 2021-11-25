@@ -168,6 +168,34 @@ func TestSyncInternal(t *testing.T) {
 		So(err, ShouldNotBeNil)
 	})
 
+	Convey("Test filterRepos()", t, func() {
+		repos := []string{"repo", "repo1", "repo2", "repo/repo2", "repo/repo2/repo3/repo4"}
+		contents := []Content{
+			{
+				Prefix: "repo",
+			},
+			{
+				Prefix: "/repo/**",
+			},
+			{
+				Prefix: "repo*",
+			},
+		}
+		filteredRepos := filterRepos(repos, contents, log.NewLogger("", ""))
+		So(filteredRepos[0], ShouldResemble, []string{"repo"})
+		So(filteredRepos[1], ShouldResemble, []string{"repo/repo2", "repo/repo2/repo3/repo4"})
+		So(filteredRepos[2], ShouldResemble, []string{"repo1", "repo2"})
+
+		contents = []Content{
+			{
+				Prefix: "[repo%#@",
+			},
+		}
+
+		filteredRepos = filterRepos(repos, contents, log.NewLogger("", ""))
+		So(len(filteredRepos), ShouldEqual, 0)
+	})
+
 	Convey("Verify pushSyncedLocalImage func", t, func() {
 		storageDir, err := ioutil.TempDir("", "oci-dest-repo-test")
 		if err != nil {
