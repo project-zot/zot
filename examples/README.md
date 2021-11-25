@@ -358,18 +358,21 @@ Configure each registry sync:
 				"url": "https://registry1:5000",
 				"onDemand": false,                  # pull any image which the local registry doesn't have
 				"pollInterval": "6h",               # polling interval
-				"tlsVerify": true,                  # wheather or not to verify tls
+				"tlsVerify": true,                  # whether or not to verify tls
 				"certDir": "/home/user/certs",      # use certificates at certDir path, if not specified then use the default certs dir
 				"content":[                         # which content to periodically pull
 					{
-						"prefix":"/repo1/repo",         # pull all images under /repo1/repo
+						"prefix":"/repo1/repo",         # pull image repo1/repo
 						"tags":{                        # filter by tags
 							"regex":"4.*",                # filter tags by regex
 							"semver":true                 # filter tags by semver compliance
 						}
 					},
 					{
-						"prefix":"/repo2/repo"          # pull all images under /repo2/repo
+						"prefix":"/repo2/repo*"         # pull all images that matches repo2/repo.*
+					},
+          {
+						"prefix":"/repo3/**"            # pull all images under repo3/ (matches recursively all repos under repo3/)
 					}
 				]
 			},
@@ -396,3 +399,4 @@ Configure each registry sync:
 		}
 ```
 
+Prefixes can be strings that exactly match repositories or they can be glob patterns.

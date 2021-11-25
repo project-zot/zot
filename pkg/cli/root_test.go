@@ -134,6 +134,23 @@ func TestVerify(t *testing.T) {
 		So(func() { _ = cli.NewRootCmd().Execute() }, ShouldPanic)
 	})
 
+	Convey("Test verify with bad sync prefixes", t, func(c C) {
+		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+							"extensions":{"sync": {"registries": [{"url":"localhost:9999",
+							"content": [{"prefix":"[repo%^&"}]}]}}}`)
+		_, err = tmpfile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpfile.Close()
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewRootCmd().Execute() }, ShouldPanic)
+	})
+
 	Convey("Test verify good config", t, func(c C) {
 		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
 		So(err, ShouldBeNil)

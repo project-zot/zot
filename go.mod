@@ -10,6 +10,7 @@ require (
 	github.com/apex/log v1.9.0
 	github.com/aquasecurity/trivy v0.0.0-00010101000000-000000000000
 	github.com/aquasecurity/trivy-db v0.0.0-20210916043317-726b7b72a47b
+	github.com/bmatcuk/doublestar/v4 v4.0.2
 	github.com/briandowns/spinner v1.16.0
 	github.com/chartmuseum/auth v0.5.0
 	github.com/containerd/containerd v1.5.8 // indirect

@@ -37,7 +37,7 @@ const (
 
 	testImage    = "zot-test"
 	testImageTag = "0.0.1"
-	testCveImage = "/zot-cve-test"
+	testCveImage = "zot-cve-test"
 )
 
 var errSync = errors.New("sync error, src oci repo differs from dest one")
@@ -71,68 +71,173 @@ func copyFile(sourceFilePath, destFilePath string) error {
 	return nil
 }
 
+func startUpstreamServer(secure, basicAuth bool) (*api.Controller, string, string, string, *resty.Client) {
+	srcPort := GetFreePort()
+
+	srcConfig := config.New()
+
+	client := resty.New()
+
+	var srcBaseURL string
+	if secure {
+		srcBaseURL = GetSecureBaseURL(srcPort)
+
+		srcConfig.HTTP.TLS = &config.TLSConfig{
+			Cert:   ServerCert,
+			Key:    ServerKey,
+			CACert: CACert,
+		}
+
+		caCert, err := ioutil.ReadFile(CACert)
+		if err != nil {
+			panic(err)
+		}
+
+		caCertPool := x509.NewCertPool()
+		caCertPool.AppendCertsFromPEM(caCert)
+
+		client.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
+
+		cert, err := tls.LoadX509KeyPair("../../../test/data/client.cert", "../../../test/data/client.key")
+		if err != nil {
+			panic(err)
+		}
+
+		client.SetCertificates(cert)
+	} else {
+		srcBaseURL = GetBaseURL(srcPort)
+	}
+
+	var htpasswdPath string
+	if basicAuth {
+		htpasswdPath = MakeHtpasswdFile()
+		srcConfig.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+		}
+	}
+
+	srcConfig.HTTP.Port = srcPort
+
+	srcDir, err := ioutil.TempDir("", "oci-src-repo-test")
+	if err != nil {
+		panic(err)
+	}
+
+	err = CopyFiles("../../../test/data", srcDir)
+	if err != nil {
+		panic(err)
+	}
+
+	srcConfig.Storage.RootDirectory = srcDir
+
+	sc := api.NewController(srcConfig)
+
+	go func() {
+		// this blocks
+		if err := sc.Run(); err != nil {
+			return
+		}
+	}()
+
+	// wait till ready
+	for {
+		_, err := client.R().Get(srcBaseURL)
+		if err == nil {
+			break
+		}
+
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	return sc, srcBaseURL, srcDir, htpasswdPath, client
+}
+
+func startDownstreamServer(secure bool, syncConfig *sync.Config) (*api.Controller, string, string, *resty.Client) {
+	destPort := GetFreePort()
+
+	destConfig := config.New()
+
+	client := resty.New()
+
+	var destBaseURL string
+	if secure {
+		destBaseURL = GetSecureBaseURL(destPort)
+
+		destConfig.HTTP.TLS = &config.TLSConfig{
+			Cert:   ServerCert,
+			Key:    ServerKey,
+			CACert: CACert,
+		}
+
+		caCert, err := ioutil.ReadFile(CACert)
+		if err != nil {
+			panic(err)
+		}
+
+		caCertPool := x509.NewCertPool()
+		caCertPool.AppendCertsFromPEM(caCert)
+
+		client.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
+
+		cert, err := tls.LoadX509KeyPair("../../../test/data/client.cert", "../../../test/data/client.key")
+		if err != nil {
+			panic(err)
+		}
+
+		client.SetCertificates(cert)
+	} else {
+		destBaseURL = GetBaseURL(destPort)
+	}
+
+	destConfig.HTTP.Port = destPort
+
+	destDir, err := ioutil.TempDir("", "oci-dest-repo-test")
+	if err != nil {
+		panic(err)
+	}
+
+	destConfig.Storage.RootDirectory = destDir
+
+	destConfig.Extensions = &extconf.ExtensionConfig{}
+	destConfig.Extensions.Search = nil
+	destConfig.Extensions.Sync = syncConfig
+
+	dc := api.NewController(destConfig)
+
+	go func() {
+		// this blocks
+		if err := dc.Run(); err != nil {
+			return
+		}
+	}()
+
+	// wait till ready
+	for {
+		_, err := client.R().Get(destBaseURL)
+		if err == nil {
+			break
+		}
+
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	return dc, destBaseURL, destDir, client
+}
+
 func TestSyncOnDemand(t *testing.T) {
 	Convey("Verify sync on demand feature", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		srcPort := GetFreePort()
-		srcBaseURL := GetBaseURL(srcPort)
-
-		srcConfig := config.New()
-		srcConfig.HTTP.Port = srcPort
-
-		srcDir, err := ioutil.TempDir("", "oci-src-repo-test")
-		if err != nil {
-			panic(err)
-		}
-
+		sc, srcBaseURL, srcDir, _, srcClient := startUpstreamServer(false, false)
 		defer os.RemoveAll(srcDir)
-
-		err = CopyFiles("../../../test/data", srcDir)
-		if err != nil {
-			panic(err)
-		}
-
-		srcConfig.Storage.RootDirectory = srcDir
-
-		sc := api.NewController(srcConfig)
-
-		go func() {
-			// this blocks
-			if err := sc.Run(); err != nil {
-				return
-			}
-		}()
 
 		defer func() {
 			ctx := context.Background()
 			_ = sc.Server.Shutdown(ctx)
 			time.Sleep(500 * time.Millisecond)
 		}()
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(srcBaseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		destPort := GetFreePort()
-		destBaseURL := GetBaseURL(destPort)
-
-		destConfig := config.New()
-		destConfig.HTTP.Port = destPort
-
-		destDir, err := ioutil.TempDir("", "oci-dest-repo-test")
-		if err != nil {
-			panic(err)
-		}
-
-		defer os.RemoveAll(destDir)
-
-		destConfig.Storage.RootDirectory = destDir
 
 		regex := ".*"
 		var semver bool
@@ -156,19 +261,11 @@ func TestSyncOnDemand(t *testing.T) {
 			OnDemand:     true,
 		}
 
-		destConfig.Extensions = &extconf.ExtensionConfig{}
-		destConfig.Extensions.Search = nil
-		destConfig.Extensions.Sync = &sync.Config{
+		syncConfig := &sync.Config{
 			Registries: []sync.RegistryConfig{syncRegistryConfig}}
 
-		dc := api.NewController(destConfig)
-
-		go func() {
-			// this blocks
-			if err := dc.Run(); err != nil {
-				return
-			}
-		}()
+		dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
+		defer os.RemoveAll(destDir)
 
 		defer func() {
 			ctx := context.Background()
@@ -176,32 +273,23 @@ func TestSyncOnDemand(t *testing.T) {
 			time.Sleep(500 * time.Millisecond)
 		}()
 
-		// wait till ready
-		for {
-			_, err := resty.R().Get(destBaseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
 		var srcTagsList TagsList
 		var destTagsList TagsList
 
-		resp, _ := resty.R().Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
+		resp, _ := srcClient.R().Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		err = json.Unmarshal(resp.Body(), &srcTagsList)
+		err := json.Unmarshal(resp.Body(), &srcTagsList)
 		if err != nil {
 			panic(err)
 		}
 
-		resp, err = resty.R().Get(destBaseURL + "/v2/" + "inexistent" + "/manifests/" + testImageTag)
+		resp, err = destClient.R().Get(destBaseURL + "/v2/" + "inexistent" + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 
-		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + "inexistent")
+		resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + "inexistent")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 
@@ -210,7 +298,7 @@ func TestSyncOnDemand(t *testing.T) {
 			panic(err)
 		}
 
-		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 500)
 
@@ -219,7 +307,7 @@ func TestSyncOnDemand(t *testing.T) {
 			panic(err)
 		}
 
-		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + "1.1.1")
+		resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + "1.1.1")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 
@@ -228,11 +316,11 @@ func TestSyncOnDemand(t *testing.T) {
 			panic(err)
 		}
 
-		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + "1.1.1")
+		resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + "1.1.1")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 
-		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 
@@ -246,7 +334,7 @@ func TestSyncOnDemand(t *testing.T) {
 			panic(err)
 		}
 
-		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 
@@ -255,11 +343,11 @@ func TestSyncOnDemand(t *testing.T) {
 			panic(err)
 		}
 
-		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/tags/list")
+		resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/tags/list")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -268,9 +356,7 @@ func TestSyncOnDemand(t *testing.T) {
 			panic(err)
 		}
 
-		if eq := reflect.DeepEqual(destTagsList.Tags, srcTagsList.Tags); eq == false {
-			panic(errSync)
-		}
+		So(destTagsList, ShouldResemble, srcTagsList)
 	})
 }
 
@@ -278,64 +364,14 @@ func TestSync(t *testing.T) {
 	Convey("Verify sync feature", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		srcPort := GetFreePort()
-		srcBaseURL := GetBaseURL(srcPort)
-
-		srcConfig := config.New()
-		srcConfig.HTTP.Port = srcPort
-
-		srcDir, err := ioutil.TempDir("", "oci-src-repo-test")
-		if err != nil {
-			panic(err)
-		}
-
+		sc, srcBaseURL, srcDir, _, srcClient := startUpstreamServer(false, false)
 		defer os.RemoveAll(srcDir)
-
-		err = CopyFiles("../../../test/data", srcDir)
-		if err != nil {
-			panic(err)
-		}
-
-		srcConfig.Storage.RootDirectory = srcDir
-
-		sc := api.NewController(srcConfig)
-
-		go func() {
-			// this blocks
-			if err := sc.Run(); err != nil {
-				return
-			}
-		}()
 
 		defer func() {
 			ctx := context.Background()
 			_ = sc.Server.Shutdown(ctx)
 			time.Sleep(500 * time.Millisecond)
 		}()
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(srcBaseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		destPort := GetFreePort()
-		destBaseURL := GetBaseURL(destPort)
-
-		destConfig := config.New()
-		destConfig.HTTP.Port = destPort
-
-		destDir, err := ioutil.TempDir("", "oci-dest-repo-test")
-		if err != nil {
-			panic(err)
-		}
-
-		defer os.RemoveAll(destDir)
-
-		destConfig.Storage.RootDirectory = destDir
 
 		regex := ".*"
 		semver := true
@@ -357,18 +393,10 @@ func TestSync(t *testing.T) {
 			CertDir:      "",
 		}
 
-		destConfig.Extensions = &extconf.ExtensionConfig{}
-		destConfig.Extensions.Search = nil
-		destConfig.Extensions.Sync = &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
 
-		dc := api.NewController(destConfig)
-
-		go func() {
-			// this blocks
-			if err := dc.Run(); err != nil {
-				return
-			}
-		}()
+		dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
+		defer os.RemoveAll(destDir)
 
 		defer func() {
 			ctx := context.Background()
@@ -376,29 +404,20 @@ func TestSync(t *testing.T) {
 			time.Sleep(500 * time.Millisecond)
 		}()
 
-		// wait till ready
-		for {
-			_, err := resty.R().Get(destBaseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
 		var srcTagsList TagsList
 		var destTagsList TagsList
 
-		resp, _ := resty.R().Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
+		resp, _ := srcClient.R().Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		err = json.Unmarshal(resp.Body(), &srcTagsList)
+		err := json.Unmarshal(resp.Body(), &srcTagsList)
 		if err != nil {
 			panic(err)
 		}
 
 		for {
-			resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/tags/list")
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/tags/list")
 			if err != nil {
 				panic(err)
 			}
@@ -415,32 +434,15 @@ func TestSync(t *testing.T) {
 			time.Sleep(500 * time.Millisecond)
 		}
 
-		if eq := reflect.DeepEqual(destTagsList.Tags, srcTagsList.Tags); eq == false {
-			panic(errSync)
-		}
+		So(destTagsList, ShouldResemble, srcTagsList)
 
 		Convey("Test sync on POST request on /sync", func() {
-			resp, _ := resty.R().Post(destBaseURL + "/sync")
+			resp, _ := destClient.R().Post(destBaseURL + "/sync")
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 		})
 
 		Convey("Test sync with more contents", func() {
-			destPort := GetFreePort()
-			destBaseURL := GetBaseURL(destPort)
-
-			destConfig := config.New()
-			destConfig.HTTP.Port = destPort
-
-			destDir, err := ioutil.TempDir("", "oci-dest-repo-test")
-			if err != nil {
-				panic(err)
-			}
-
-			defer os.RemoveAll(destDir)
-
-			destConfig.Storage.RootDirectory = destDir
-
 			regex := ".*"
 			semver := true
 
@@ -471,18 +473,10 @@ func TestSync(t *testing.T) {
 				CertDir:      "",
 			}
 
-			destConfig.Extensions = &extconf.ExtensionConfig{}
-			destConfig.Extensions.Search = nil
-			destConfig.Extensions.Sync = &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+			syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
 
-			dc := api.NewController(destConfig)
-
-			go func() {
-				// this blocks
-				if err := dc.Run(); err != nil {
-					return
-				}
-			}()
+			dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
+			defer os.RemoveAll(destDir)
 
 			defer func() {
 				ctx := context.Background()
@@ -490,19 +484,11 @@ func TestSync(t *testing.T) {
 				time.Sleep(500 * time.Millisecond)
 			}()
 
-			// wait till ready
-			for {
-				_, err := resty.R().Get(destBaseURL)
-				if err == nil {
-					break
-				}
-				time.Sleep(100 * time.Millisecond)
-			}
-
 			var srcTagsList TagsList
 			var destTagsList TagsList
 
-			resp, _ := resty.R().Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
+			resp, err := srcClient.R().Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
+			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -512,7 +498,7 @@ func TestSync(t *testing.T) {
 			}
 
 			for {
-				resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/tags/list")
+				resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/tags/list")
 				if err != nil {
 					panic(err)
 				}
@@ -529,12 +515,26 @@ func TestSync(t *testing.T) {
 				time.Sleep(500 * time.Millisecond)
 			}
 
-			if eq := reflect.DeepEqual(destTagsList.Tags, srcTagsList.Tags); eq == false {
-				panic(errSync)
-			}
+			So(destTagsList, ShouldResemble, srcTagsList)
+
+			// testCveImage should not be synced because of regex being "invalid", shouldn't match anything
+			resp, _ = srcClient.R().Get(srcBaseURL + "/v2/" + testCveImage + "/tags/list")
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			err = json.Unmarshal(resp.Body(), &srcTagsList)
+			So(err, ShouldBeNil)
+
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testCveImage + "/tags/list")
+			So(err, ShouldBeNil)
+
+			err = json.Unmarshal(resp.Body(), &destTagsList)
+			So(err, ShouldBeNil)
+
+			So(destTagsList, ShouldNotResemble, srcTagsList)
 
 			Convey("Test sync on POST request on /sync", func() {
-				resp, _ := resty.R().Post(destBaseURL + "/sync")
+				resp, _ := destClient.R().Post(destBaseURL + "/sync")
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, 200)
 			})
@@ -546,64 +546,14 @@ func TestSyncPermsDenied(t *testing.T) {
 	Convey("Verify sync feature without perm on sync cache", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		srcPort := GetFreePort()
-		srcBaseURL := GetBaseURL(srcPort)
-
-		srcConfig := config.New()
-		srcConfig.HTTP.Port = srcPort
-
-		srcDir, err := ioutil.TempDir("", "oci-src-repo-test")
-		if err != nil {
-			panic(err)
-		}
-
+		sc, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
 		defer os.RemoveAll(srcDir)
-
-		err = CopyFiles("../../../test/data", srcDir)
-		if err != nil {
-			panic(err)
-		}
-
-		srcConfig.Storage.RootDirectory = srcDir
-
-		sc := api.NewController(srcConfig)
-
-		go func() {
-			// this blocks
-			if err := sc.Run(); err != nil {
-				return
-			}
-		}()
 
 		defer func() {
 			ctx := context.Background()
 			_ = sc.Server.Shutdown(ctx)
 			time.Sleep(500 * time.Millisecond)
 		}()
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(srcBaseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		destPort := GetFreePort()
-		destBaseURL := GetBaseURL(destPort)
-
-		destConfig := config.New()
-		destConfig.HTTP.Port = destPort
-
-		destDir, err := ioutil.TempDir("", "oci-dest-repo-test")
-		if err != nil {
-			panic(err)
-		}
-
-		defer os.RemoveAll(destDir)
-
-		destConfig.Storage.RootDirectory = destDir
 
 		regex := ".*"
 		semver := true
@@ -625,18 +575,10 @@ func TestSyncPermsDenied(t *testing.T) {
 			CertDir:      "",
 		}
 
-		destConfig.Extensions = &extconf.ExtensionConfig{}
-		destConfig.Extensions.Search = nil
-		destConfig.Extensions.Sync = &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
 
-		dc := api.NewController(destConfig)
-
-		go func() {
-			// this blocks
-			if err := dc.Run(); err != nil {
-				return
-			}
-		}()
+		dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
+		defer os.RemoveAll(destDir)
 
 		defer func() {
 			ctx := context.Background()
@@ -644,22 +586,13 @@ func TestSyncPermsDenied(t *testing.T) {
 			time.Sleep(500 * time.Millisecond)
 		}()
 
-		// wait till ready
-		for {
-			_, err := resty.R().Get(destBaseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		err = os.Chmod(path.Join(destDir, testImage, sync.SyncBlobUploadDir), 0000)
+		err := os.Chmod(path.Join(destDir, testImage, sync.SyncBlobUploadDir), 0000)
 		if err != nil {
 			panic(err)
 		}
 
 		Convey("Test sync on POST request on /sync", func() {
-			resp, _ := resty.R().Post(destBaseURL + "/sync")
+			resp, _ := destClient.R().Post(destBaseURL + "/sync")
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, 500)
 		})
@@ -668,92 +601,16 @@ func TestSyncPermsDenied(t *testing.T) {
 
 func TestSyncBadTLS(t *testing.T) {
 	Convey("Verify sync TLS feature", t, func() {
-		caCert, err := ioutil.ReadFile(CACert)
-		So(err, ShouldBeNil)
-		caCertPool := x509.NewCertPool()
-		caCertPool.AppendCertsFromPEM(caCert)
+		updateDuration, _ := time.ParseDuration("30m")
 
-		client := resty.New()
-
-		client.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
-		defer func() { client.SetTLSClientConfig(nil) }()
-
-		updateDuration, _ := time.ParseDuration("1h")
-
-		srcPort := GetFreePort()
-		srcBaseURL := GetSecureBaseURL(srcPort)
-
-		srcConfig := config.New()
-		srcConfig.HTTP.Port = srcPort
-
-		srcConfig.HTTP.TLS = &config.TLSConfig{
-			Cert:   ServerCert,
-			Key:    ServerKey,
-			CACert: CACert,
-		}
-
-		srcDir, err := ioutil.TempDir("", "oci-src-repo-test")
-		if err != nil {
-			panic(err)
-		}
-
+		sc, srcBaseURL, srcDir, _, _ := startUpstreamServer(true, false)
 		defer os.RemoveAll(srcDir)
-
-		srcConfig.Storage.RootDirectory = srcDir
-
-		sc := api.NewController(srcConfig)
-
-		go func() {
-			// this blocks
-			if err := sc.Run(); err != nil {
-				return
-			}
-		}()
 
 		defer func() {
 			ctx := context.Background()
 			_ = sc.Server.Shutdown(ctx)
+			time.Sleep(500 * time.Millisecond)
 		}()
-
-		cert, err := tls.LoadX509KeyPair("../../../test/data/client.cert", "../../../test/data/client.key")
-		if err != nil {
-			panic(err)
-		}
-
-		client.SetCertificates(cert)
-		// wait till ready
-		for {
-			_, err := client.R().Get(srcBaseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		destDir, err := ioutil.TempDir("", "oci-dest-repo-test")
-		if err != nil {
-			panic(err)
-		}
-
-		err = CopyFiles("../../../test/data", destDir)
-		if err != nil {
-			panic(err)
-		}
-
-		defer os.RemoveAll(destDir)
-
-		destPort := GetFreePort()
-		destBaseURL := GetSecureBaseURL(destPort)
-		destConfig := config.New()
-		destConfig.HTTP.Port = destPort
-
-		destConfig.HTTP.TLS = &config.TLSConfig{
-			Cert:   ServerCert,
-			Key:    ServerKey,
-			CACert: CACert,
-		}
-
-		destConfig.Storage.RootDirectory = destDir
 
 		regex := ".*"
 		var semver bool
@@ -775,36 +632,29 @@ func TestSyncBadTLS(t *testing.T) {
 			TLSVerify:    &tlsVerify,
 		}
 
-		destConfig.Extensions = &extconf.ExtensionConfig{}
-		destConfig.Extensions.Search = nil
-		destConfig.Extensions.Sync = &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
 
-		dc := api.NewController(destConfig)
-
-		go func() {
-			// this blocks
-			if err := dc.Run(); err != nil {
-				return
-			}
-		}()
+		dc, destBaseURL, destDir, destClient := startDownstreamServer(true, syncConfig)
+		defer os.RemoveAll(destDir)
 
 		defer func() {
 			ctx := context.Background()
 			_ = dc.Server.Shutdown(ctx)
+			time.Sleep(500 * time.Millisecond)
 		}()
 
 		// give it time to set up sync
 		time.Sleep(2 * time.Second)
 
-		resp, _ := client.R().Post(destBaseURL + "/sync")
+		resp, _ := destClient.R().Post(destBaseURL + "/sync")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 500)
 
-		resp, _ = client.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + "invalid")
+		resp, _ = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + "invalid")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 
-		resp, _ = client.R().Get(destBaseURL + "/v2/" + "invalid" + "/manifests/" + testImageTag)
+		resp, _ = destClient.R().Get(destBaseURL + "/v2/" + "invalid" + "/manifests/" + testImageTag)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 	})
@@ -812,55 +662,10 @@ func TestSyncBadTLS(t *testing.T) {
 
 func TestSyncTLS(t *testing.T) {
 	Convey("Verify sync TLS feature", t, func() {
-		caCert, err := ioutil.ReadFile(CACert)
-		So(err, ShouldBeNil)
-		caCertPool := x509.NewCertPool()
-		caCertPool.AppendCertsFromPEM(caCert)
-
-		client := resty.New()
-
-		client.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
-		defer func() { client.SetTLSClientConfig(nil) }()
-
-		var srcIndex ispec.Index
-		var destIndex ispec.Index
-
 		updateDuration, _ := time.ParseDuration("1h")
 
-		srcPort := GetFreePort()
-		srcBaseURL := GetSecureBaseURL(srcPort)
-
-		srcConfig := config.New()
-		srcConfig.HTTP.Port = srcPort
-
-		srcConfig.HTTP.TLS = &config.TLSConfig{
-			Cert:   ServerCert,
-			Key:    ServerKey,
-			CACert: CACert,
-		}
-
-		srcDir, err := ioutil.TempDir("", "oci-src-repo-test")
-		if err != nil {
-			panic(err)
-		}
-
+		sc, srcBaseURL, srcDir, _, _ := startUpstreamServer(true, false)
 		defer os.RemoveAll(srcDir)
-
-		err = CopyFiles("../../../test/data", srcDir)
-		if err != nil {
-			panic(err)
-		}
-
-		srcConfig.Storage.RootDirectory = srcDir
-
-		sc := api.NewController(srcConfig)
-
-		go func() {
-			// this blocks
-			if err := sc.Run(); err != nil {
-				return
-			}
-		}()
 
 		defer func() {
 			ctx := context.Background()
@@ -868,20 +673,8 @@ func TestSyncTLS(t *testing.T) {
 			time.Sleep(500 * time.Millisecond)
 		}()
 
-		cert, err := tls.LoadX509KeyPair("../../../test/data/client.cert", "../../../test/data/client.key")
-		if err != nil {
-			panic(err)
-		}
-
-		client.SetCertificates(cert)
-		// wait till ready
-		for {
-			_, err := client.R().Get(srcBaseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
+		var srcIndex ispec.Index
+		var destIndex ispec.Index
 
 		srcBuf, err := ioutil.ReadFile(path.Join(srcDir, testImage, "index.json"))
 		if err != nil {
@@ -891,26 +684,6 @@ func TestSyncTLS(t *testing.T) {
 		if err := json.Unmarshal(srcBuf, &srcIndex); err != nil {
 			panic(err)
 		}
-
-		destPort := GetFreePort()
-		destBaseURL := GetSecureBaseURL(destPort)
-		destConfig := config.New()
-		destConfig.HTTP.Port = destPort
-
-		destConfig.HTTP.TLS = &config.TLSConfig{
-			Cert:   ServerCert,
-			Key:    ServerKey,
-			CACert: CACert,
-		}
-
-		destDir, err := ioutil.TempDir("", "oci-dest-repo-test")
-		if err != nil {
-			panic(err)
-		}
-
-		defer os.RemoveAll(destDir)
-
-		destConfig.Storage.RootDirectory = destDir
 
 		// copy upstream client certs, use them in sync config
 		destClientCertDir, err := ioutil.TempDir("", "destCerts")
@@ -958,18 +731,10 @@ func TestSyncTLS(t *testing.T) {
 			CertDir:      destClientCertDir,
 		}
 
-		destConfig.Extensions = &extconf.ExtensionConfig{}
-		destConfig.Extensions.Search = nil
-		destConfig.Extensions.Sync = &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
 
-		dc := api.NewController(destConfig)
-
-		go func() {
-			// this blocks
-			if err := dc.Run(); err != nil {
-				return
-			}
-		}()
+		dc, destBaseURL, destDir, destClient := startDownstreamServer(true, syncConfig)
+		defer os.RemoveAll(destDir)
 
 		defer func() {
 			ctx := context.Background()
@@ -999,55 +764,20 @@ func TestSyncTLS(t *testing.T) {
 		}
 
 		Convey("Test sync on POST request on /sync", func() {
-			resp, _ := client.R().SetBasicAuth("test", "test").Post(destBaseURL + "/sync")
+			resp, _ := destClient.R().SetBasicAuth("test", "test").Post(destBaseURL + "/sync")
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 		})
 	})
 }
 
-// nolint: gocyclo
 func TestSyncBasicAuth(t *testing.T) {
 	Convey("Verify sync basic auth", t, func() {
 		updateDuration, _ := time.ParseDuration("1h")
 
-		srcPort := GetFreePort()
-		srcBaseURL := GetBaseURL(srcPort)
-
-		srcConfig := config.New()
-		srcConfig.HTTP.Port = srcPort
-
-		htpasswdPath := MakeHtpasswdFile()
+		sc, srcBaseURL, srcDir, htpasswdPath, srcClient := startUpstreamServer(false, true)
 		defer os.Remove(htpasswdPath)
-
-		srcConfig.HTTP.Auth = &config.AuthConfig{
-			HTPasswd: config.AuthHTPasswd{
-				Path: htpasswdPath,
-			},
-		}
-
-		srcDir, err := ioutil.TempDir("", "oci-src-repo-test")
-		if err != nil {
-			panic(err)
-		}
-
 		defer os.RemoveAll(srcDir)
-
-		err = CopyFiles("../../../test/data", srcDir)
-		if err != nil {
-			panic(err)
-		}
-
-		srcConfig.Storage.RootDirectory = srcDir
-
-		sc := api.NewController(srcConfig)
-
-		go func() {
-			// this blocks
-			if err := sc.Run(); err != nil {
-				return
-			}
-		}()
 
 		defer func() {
 			ctx := context.Background()
@@ -1055,34 +785,8 @@ func TestSyncBasicAuth(t *testing.T) {
 			time.Sleep(500 * time.Millisecond)
 		}()
 
-		// wait till ready
-		for {
-			_, err := resty.R().Get(srcBaseURL)
-
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
 		Convey("Verify sync basic auth with file credentials", func() {
-			destPort := GetFreePort()
-			destBaseURL := GetBaseURL(destPort)
-
-			destConfig := config.New()
-			destConfig.HTTP.Port = destPort
-
-			destDir, err := ioutil.TempDir("", "oci-dest-repo-test")
-			if err != nil {
-				panic(err)
-			}
-
-			defer os.RemoveAll(destDir)
-
-			destConfig.Storage.RootDirectory = destDir
-
 			registryName := strings.Replace(strings.Replace(srcBaseURL, "http://", "", 1), "https://", "", 1)
-
 			credentialsFile := makeCredentialsFile(fmt.Sprintf(`{"%s":{"username": "test", "password": "test"}}`, registryName))
 
 			var tlsVerify bool
@@ -1099,19 +803,11 @@ func TestSyncBasicAuth(t *testing.T) {
 				CertDir:      "",
 			}
 
-			destConfig.Extensions = &extconf.ExtensionConfig{}
-			destConfig.Extensions.Search = nil
-			destConfig.Extensions.Sync = &sync.Config{CredentialsFile: credentialsFile,
+			syncConfig := &sync.Config{CredentialsFile: credentialsFile,
 				Registries: []sync.RegistryConfig{syncRegistryConfig}}
 
-			dc := api.NewController(destConfig)
-
-			go func() {
-				// this blocks
-				if err := dc.Run(); err != nil {
-					return
-				}
-			}()
+			dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
+			defer os.RemoveAll(destDir)
 
 			defer func() {
 				ctx := context.Background()
@@ -1119,29 +815,20 @@ func TestSyncBasicAuth(t *testing.T) {
 				time.Sleep(500 * time.Millisecond)
 			}()
 
-			// wait till ready
-			for {
-				_, err := resty.R().Get(destBaseURL)
-				if err == nil {
-					break
-				}
-				time.Sleep(100 * time.Millisecond)
-			}
-
 			var srcTagsList TagsList
 			var destTagsList TagsList
 
-			resp, _ := resty.R().SetBasicAuth("test", "test").Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
+			resp, _ := srcClient.R().SetBasicAuth("test", "test").Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			err = json.Unmarshal(resp.Body(), &srcTagsList)
+			err := json.Unmarshal(resp.Body(), &srcTagsList)
 			if err != nil {
 				panic(err)
 			}
 
 			for {
-				resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/tags/list")
+				resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/tags/list")
 				if err != nil {
 					panic(err)
 				}
@@ -1158,9 +845,7 @@ func TestSyncBasicAuth(t *testing.T) {
 				time.Sleep(500 * time.Millisecond)
 			}
 
-			if eq := reflect.DeepEqual(destTagsList.Tags, srcTagsList.Tags); eq == false {
-				panic(errSync)
-			}
+			So(destTagsList, ShouldResemble, srcTagsList)
 		})
 
 		Convey("Verify sync basic auth with wrong file credentials", func() {
@@ -1256,30 +941,12 @@ func TestSyncBasicAuth(t *testing.T) {
 		})
 
 		Convey("Verify sync basic auth with bad file credentials", func() {
-			destPort := GetFreePort()
-			destBaseURL := GetBaseURL(destPort)
-
-			destConfig := config.New()
-			destConfig.HTTP.Port = destPort
-
-			destDir, err := ioutil.TempDir("", "oci-dest-repo-test")
-			if err != nil {
-				panic(err)
-			}
-
-			defer os.RemoveAll(destDir)
-
-			destConfig.Storage.RootDirectory = destDir
-
-			regex := ".*"
-			var semver bool
-
 			registryName := strings.Replace(strings.Replace(srcBaseURL, "http://", "", 1), "https://", "", 1)
 
 			credentialsFile := makeCredentialsFile(fmt.Sprintf(`{"%s":{"username": "test", "password": "test"}}`,
 				registryName))
 
-			err = os.Chmod(credentialsFile, 0000)
+			err := os.Chmod(credentialsFile, 0000)
 			So(err, ShouldBeNil)
 
 			defer func() {
@@ -1287,6 +954,8 @@ func TestSyncBasicAuth(t *testing.T) {
 				So(os.RemoveAll(credentialsFile), ShouldBeNil)
 			}()
 
+			regex := ".*"
+			var semver bool
 			var tlsVerify bool
 
 			syncRegistryConfig := sync.RegistryConfig{
@@ -1305,40 +974,24 @@ func TestSyncBasicAuth(t *testing.T) {
 				CertDir:      "",
 			}
 
-			destConfig.Extensions = &extconf.ExtensionConfig{}
-			destConfig.Extensions.Search = nil
-			destConfig.Extensions.Sync = &sync.Config{CredentialsFile: credentialsFile,
+			syncConfig := &sync.Config{CredentialsFile: credentialsFile,
 				Registries: []sync.RegistryConfig{syncRegistryConfig}}
 
-			dc := api.NewController(destConfig)
-
-			go func() {
-				// this blocks
-				if err := dc.Run(); err != nil {
-					return
-				}
-			}()
+			dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
+			defer os.RemoveAll(destDir)
 
 			defer func() {
 				ctx := context.Background()
 				_ = dc.Server.Shutdown(ctx)
+				time.Sleep(500 * time.Millisecond)
 			}()
 
-			// wait till ready
-			for {
-				_, err := resty.R().Get(destBaseURL)
-				if err == nil {
-					break
-				}
-				time.Sleep(100 * time.Millisecond)
-			}
-
-			resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+			resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 404)
 
 			Convey("Test sync on POST request on /sync", func() {
-				resp, _ := resty.R().Post(destBaseURL + "/sync")
+				resp, _ := destClient.R().Post(destBaseURL + "/sync")
 				So(resp, ShouldNotBeNil)
 				So(string(resp.Body()), ShouldContainSubstring, "permission denied")
 				So(resp.StatusCode(), ShouldEqual, 500)
@@ -1346,21 +999,6 @@ func TestSyncBasicAuth(t *testing.T) {
 		})
 
 		Convey("Verify on demand sync with basic auth", func() {
-			destPort := GetFreePort()
-			destBaseURL := GetBaseURL(destPort)
-
-			destConfig := config.New()
-			destConfig.HTTP.Port = destPort
-
-			destDir, err := ioutil.TempDir("", "oci-dest-repo-test")
-			if err != nil {
-				panic(err)
-			}
-
-			defer os.RemoveAll(destDir)
-
-			destConfig.Storage.RootDirectory = destDir
-
 			registryName := strings.Replace(strings.Replace(srcBaseURL, "http://", "", 1), "https://", "", 1)
 			credentialsFile := makeCredentialsFile(fmt.Sprintf(`{"%s":{"username": "test", "password": "test"}}`, registryName))
 
@@ -1379,22 +1017,14 @@ func TestSyncBasicAuth(t *testing.T) {
 				OnDemand: false,
 			}
 
-			destConfig.Extensions = &extconf.ExtensionConfig{}
-			destConfig.Extensions.Search = nil
 			// add file path to the credentials
-			destConfig.Extensions.Sync = &sync.Config{CredentialsFile: credentialsFile,
+			syncConfig := &sync.Config{CredentialsFile: credentialsFile,
 				Registries: []sync.RegistryConfig{unreacheableSyncRegistryConfig1,
 					unreacheableSyncRegistryConfig2,
 					syncRegistryConfig}}
 
-			dc := api.NewController(destConfig)
-
-			go func() {
-				// this blocks
-				if err := dc.Run(); err != nil {
-					return
-				}
-			}()
+			dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
+			defer os.RemoveAll(destDir)
 
 			defer func() {
 				ctx := context.Background()
@@ -1402,51 +1032,42 @@ func TestSyncBasicAuth(t *testing.T) {
 				time.Sleep(500 * time.Millisecond)
 			}()
 
-			// wait till ready
-			for {
-				_, err := resty.R().Get(destBaseURL)
-				if err == nil {
-					break
-				}
-				time.Sleep(100 * time.Millisecond)
-			}
-
 			var srcTagsList TagsList
 			var destTagsList TagsList
 
-			resp, _ := resty.R().SetBasicAuth("test", "test").Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
+			resp, _ := srcClient.R().SetBasicAuth("test", "test").Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			err = json.Unmarshal(resp.Body(), &srcTagsList)
+			err := json.Unmarshal(resp.Body(), &srcTagsList)
 			if err != nil {
 				panic(err)
 			}
 
-			resp, err = resty.R().Get(destBaseURL + "/v2/" + "inexistent" + "/manifests/" + testImageTag)
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + "inexistent" + "/manifests/" + testImageTag)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 404)
 
-			resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + "inexistent")
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + "inexistent")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 404)
 
-			resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
 			err = dc.StoreController.DefaultStore.DeleteImageManifest(testImage, testImageTag)
 			So(err, ShouldBeNil)
 
-			resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + "1.1.1")
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + "1.1.1")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 404)
 
-			resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/tags/list")
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/tags/list")
 			if err != nil {
 				panic(err)
 			}
@@ -1456,12 +1077,10 @@ func TestSyncBasicAuth(t *testing.T) {
 				panic(err)
 			}
 
-			if eq := reflect.DeepEqual(destTagsList.Tags, srcTagsList.Tags); eq == false {
-				panic(errSync)
-			}
+			So(destTagsList, ShouldResemble, srcTagsList)
 
 			Convey("Test sync on POST request on /sync", func() {
-				resp, _ := resty.R().Post(destBaseURL + "/sync")
+				resp, _ := destClient.R().Post(destBaseURL + "/sync")
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, 200)
 			})
@@ -1469,24 +1088,9 @@ func TestSyncBasicAuth(t *testing.T) {
 	})
 }
 
-func TestSyncBadUrl(t *testing.T) {
+func TestSyncBadURL(t *testing.T) {
 	Convey("Verify sync with bad url", t, func() {
 		updateDuration, _ := time.ParseDuration("1h")
-
-		destPort := GetFreePort()
-		destBaseURL := GetBaseURL(destPort)
-
-		destConfig := config.New()
-		destConfig.HTTP.Port = destPort
-
-		destDir, err := ioutil.TempDir("", "oci-dest-repo-test")
-		if err != nil {
-			panic(err)
-		}
-
-		defer os.RemoveAll(destDir)
-
-		destConfig.Storage.RootDirectory = destDir
 
 		regex := ".*"
 		var semver bool
@@ -1508,17 +1112,10 @@ func TestSyncBadUrl(t *testing.T) {
 			CertDir:      "",
 		}
 
-		destConfig.Extensions = &extconf.ExtensionConfig{}
-		destConfig.Extensions.Search = nil
-		destConfig.Extensions.Sync = &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
-		dc := api.NewController(destConfig)
+		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
 
-		go func() {
-			// this blocks
-			if err := dc.Run(); err != nil {
-				return
-			}
-		}()
+		dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
+		defer os.RemoveAll(destDir)
 
 		defer func() {
 			ctx := context.Background()
@@ -1526,17 +1123,8 @@ func TestSyncBadUrl(t *testing.T) {
 			time.Sleep(500 * time.Millisecond)
 		}()
 
-		// wait till ready
-		for {
-			_, err := resty.R().Get(destBaseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
 		Convey("Test sync on POST request on /sync", func() {
-			resp, _ := resty.R().Post(destBaseURL + "/sync")
+			resp, _ := destClient.R().Post(destBaseURL + "/sync")
 			So(resp, ShouldNotBeNil)
 			So(string(resp.Body()), ShouldContainSubstring, "unsupported protocol scheme")
 			So(resp.StatusCode(), ShouldEqual, 500)
@@ -1548,64 +1136,14 @@ func TestSyncNoImagesByRegex(t *testing.T) {
 	Convey("Verify sync with no images on source based on regex", t, func() {
 		updateDuration, _ := time.ParseDuration("1h")
 
-		srcPort := GetFreePort()
-		srcBaseURL := GetBaseURL(srcPort)
-
-		srcConfig := config.New()
-		srcConfig.HTTP.Port = srcPort
-
-		srcDir, err := ioutil.TempDir("", "oci-src-repo-test")
-		if err != nil {
-			panic(err)
-		}
-
-		err = CopyFiles("../../../test/data", srcDir)
-		if err != nil {
-			panic(err)
-		}
-
+		sc, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
 		defer os.RemoveAll(srcDir)
-
-		srcConfig.Storage.RootDirectory = srcDir
-
-		sc := api.NewController(srcConfig)
-
-		go func() {
-			// this blocks
-			if err := sc.Run(); err != nil {
-				return
-			}
-		}()
 
 		defer func() {
 			ctx := context.Background()
 			_ = sc.Server.Shutdown(ctx)
 			time.Sleep(500 * time.Millisecond)
 		}()
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(srcBaseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		destPort := GetFreePort()
-		destBaseURL := GetBaseURL(destPort)
-
-		destConfig := config.New()
-		destConfig.HTTP.Port = destPort
-
-		destDir, err := ioutil.TempDir("", "oci-dest-repo-test")
-		if err != nil {
-			panic(err)
-		}
-
-		defer os.RemoveAll(destDir)
-
-		destConfig.Storage.RootDirectory = destDir
 
 		regex := "9.9.9"
 		var tlsVerify bool
@@ -1625,18 +1163,10 @@ func TestSyncNoImagesByRegex(t *testing.T) {
 			CertDir:      "",
 		}
 
-		destConfig.Extensions = &extconf.ExtensionConfig{}
-		destConfig.Extensions.Search = nil
-		destConfig.Extensions.Sync = &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
 
-		dc := api.NewController(destConfig)
-
-		go func() {
-			// this blocks
-			if err := dc.Run(); err != nil {
-				return
-			}
-		}()
+		dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
+		defer os.RemoveAll(destDir)
 
 		defer func() {
 			ctx := context.Background()
@@ -1644,25 +1174,16 @@ func TestSyncNoImagesByRegex(t *testing.T) {
 			time.Sleep(500 * time.Millisecond)
 		}()
 
-		// wait till ready
-		for {
-			_, err := resty.R().Get(destBaseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
 		Convey("Test sync on POST request on /sync", func() {
-			resp, _ := resty.R().Post(destBaseURL + "/sync")
+			resp, err := destClient.R().Post(destBaseURL + "/sync")
+			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
-			So(err, ShouldBeNil)
 
-			resp, err := resty.R().Get(destBaseURL + "/v2/_catalog")
-			if err != nil {
-				panic(err)
-			}
+			resp, err = destClient.R().Get(destBaseURL + "/v2/_catalog")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeEmpty)
+			So(resp.StatusCode(), ShouldEqual, 200)
 
 			var c catalog
 			err = json.Unmarshal(resp.Body(), &c)
@@ -1679,64 +1200,14 @@ func TestSyncInvalidRegex(t *testing.T) {
 	Convey("Verify sync with invalid regex", t, func() {
 		updateDuration, _ := time.ParseDuration("1h")
 
-		srcPort := GetFreePort()
-		srcBaseURL := GetBaseURL(srcPort)
-
-		srcConfig := config.New()
-		srcConfig.HTTP.Port = srcPort
-
-		srcDir, err := ioutil.TempDir("", "oci-src-repo-test")
-		if err != nil {
-			panic(err)
-		}
-
-		err = CopyFiles("../../../test/data", srcDir)
-		if err != nil {
-			panic(err)
-		}
-
+		sc, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
 		defer os.RemoveAll(srcDir)
-
-		srcConfig.Storage.RootDirectory = srcDir
-
-		sc := api.NewController(srcConfig)
-
-		go func() {
-			// this blocks
-			if err := sc.Run(); err != nil {
-				return
-			}
-		}()
 
 		defer func() {
 			ctx := context.Background()
 			_ = sc.Server.Shutdown(ctx)
 			time.Sleep(500 * time.Millisecond)
 		}()
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(srcBaseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		destPort := GetFreePort()
-		destBaseURL := GetBaseURL(destPort)
-
-		destConfig := config.New()
-		destConfig.HTTP.Port = destPort
-
-		destDir, err := ioutil.TempDir("", "oci-dest-repo-test")
-		if err != nil {
-			panic(err)
-		}
-
-		defer os.RemoveAll(destDir)
-
-		destConfig.Storage.RootDirectory = destDir
 
 		regex := "["
 		var tlsVerify bool
@@ -1756,18 +1227,10 @@ func TestSyncInvalidRegex(t *testing.T) {
 			CertDir:      "",
 		}
 
-		destConfig.Extensions = &extconf.ExtensionConfig{}
-		destConfig.Extensions.Search = nil
-		destConfig.Extensions.Sync = &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
 
-		dc := api.NewController(destConfig)
-
-		go func() {
-			// this blocks
-			if err := dc.Run(); err != nil {
-				return
-			}
-		}()
+		dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
+		defer os.RemoveAll(destDir)
 
 		defer func() {
 			ctx := context.Background()
@@ -1775,17 +1238,8 @@ func TestSyncInvalidRegex(t *testing.T) {
 			time.Sleep(500 * time.Millisecond)
 		}()
 
-		// wait till ready
-		for {
-			_, err := resty.R().Get(destBaseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
 		Convey("Test sync on POST request on /sync", func() {
-			resp, _ := resty.R().Post(destBaseURL + "/sync")
+			resp, _ := destClient.R().Post(destBaseURL + "/sync")
 			So(resp, ShouldNotBeNil)
 			So(string(resp.Body()), ShouldContainSubstring, "error parsing regexp")
 			So(resp.StatusCode(), ShouldEqual, 500)
@@ -1797,49 +1251,14 @@ func TestSyncNotSemver(t *testing.T) {
 	Convey("Verify sync feature semver compliant", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		srcPort := GetFreePort()
-		srcBaseURL := GetBaseURL(srcPort)
-
-		srcConfig := config.New()
-		srcConfig.HTTP.Port = srcPort
-
-		srcDir, err := ioutil.TempDir("", "oci-src-repo-test")
-		if err != nil {
-			panic(err)
-		}
-
+		sc, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
 		defer os.RemoveAll(srcDir)
-
-		err = CopyFiles("../../../test/data", srcDir)
-		if err != nil {
-			panic(err)
-		}
-
-		srcConfig.Storage.RootDirectory = srcDir
-
-		sc := api.NewController(srcConfig)
-
-		go func() {
-			// this blocks
-			if err := sc.Run(); err != nil {
-				return
-			}
-		}()
 
 		defer func() {
 			ctx := context.Background()
 			_ = sc.Server.Shutdown(ctx)
 			time.Sleep(500 * time.Millisecond)
 		}()
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(srcBaseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
 
 		// get manifest so we can update it with a semver non compliant tag
 		resp, err := resty.R().Get(srcBaseURL + "/v2/zot-test/manifests/0.0.1")
@@ -1855,21 +1274,6 @@ func TestSyncNotSemver(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 201)
-
-		destPort := GetFreePort()
-		destBaseURL := GetBaseURL(destPort)
-
-		destConfig := config.New()
-		destConfig.HTTP.Port = destPort
-
-		destDir, err := ioutil.TempDir("", "oci-dest-repo-test")
-		if err != nil {
-			panic(err)
-		}
-
-		defer os.RemoveAll(destDir)
-
-		destConfig.Storage.RootDirectory = destDir
 
 		semver := true
 		var tlsVerify bool
@@ -1889,18 +1293,10 @@ func TestSyncNotSemver(t *testing.T) {
 			CertDir:      "",
 		}
 
-		destConfig.Extensions = &extconf.ExtensionConfig{}
-		destConfig.Extensions.Search = nil
-		destConfig.Extensions.Sync = &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
 
-		dc := api.NewController(destConfig)
-
-		go func() {
-			// this blocks
-			if err := dc.Run(); err != nil {
-				return
-			}
-		}()
+		dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
+		defer os.RemoveAll(destDir)
 
 		defer func() {
 			ctx := context.Background()
@@ -1908,26 +1304,16 @@ func TestSyncNotSemver(t *testing.T) {
 			time.Sleep(500 * time.Millisecond)
 		}()
 
-		// wait till ready
-		for {
-			_, err := resty.R().Get(destBaseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
 		Convey("Test sync on POST request on /sync", func() {
-			resp, _ := resty.R().Post(destBaseURL + "/sync")
+			resp, _ := destClient.R().Post(destBaseURL + "/sync")
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
 			var destTagsList TagsList
 
-			resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/tags/list")
-			if err != nil {
-				panic(err)
-			}
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/tags/list")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
 
 			err = json.Unmarshal(resp.Body(), &destTagsList)
 			if err != nil {
@@ -1942,86 +1328,16 @@ func TestSyncNotSemver(t *testing.T) {
 
 func TestSyncInvalidCerts(t *testing.T) {
 	Convey("Verify sync with bad certs", t, func() {
-		caCert, err := ioutil.ReadFile(CACert)
-		So(err, ShouldBeNil)
-		caCertPool := x509.NewCertPool()
-		caCertPool.AppendCertsFromPEM(caCert)
-
-		client := resty.New()
-
-		client.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
-		defer func() { client.SetTLSClientConfig(nil) }()
 		updateDuration, _ := time.ParseDuration("1h")
 
-		srcPort := GetFreePort()
-		srcBaseURL := GetSecureBaseURL(srcPort)
-
-		srcConfig := config.New()
-		srcConfig.HTTP.Port = srcPort
-
-		srcConfig.HTTP.TLS = &config.TLSConfig{
-			Cert:   ServerCert,
-			Key:    ServerKey,
-			CACert: CACert,
-		}
-
-		srcDir, err := ioutil.TempDir("", "oci-src-repo-test")
-		if err != nil {
-			panic(err)
-		}
-
+		sc, srcBaseURL, srcDir, _, _ := startUpstreamServer(true, false)
 		defer os.RemoveAll(srcDir)
-
-		err = CopyFiles("../../../test/data", srcDir)
-		if err != nil {
-			panic(err)
-		}
-
-		srcConfig.Storage.RootDirectory = srcDir
-
-		sc := api.NewController(srcConfig)
-
-		go func() {
-			// this blocks
-			if err := sc.Run(); err != nil {
-				return
-			}
-		}()
 
 		defer func() {
 			ctx := context.Background()
 			_ = sc.Server.Shutdown(ctx)
 			time.Sleep(500 * time.Millisecond)
 		}()
-
-		cert, err := tls.LoadX509KeyPair("../../../test/data/client.cert", "../../../test/data/client.key")
-		if err != nil {
-			panic(err)
-		}
-
-		client.SetCertificates(cert)
-		// wait till ready
-		for {
-			_, err := client.R().Get(srcBaseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		destPort := GetFreePort()
-		destBaseURL := GetBaseURL(destPort)
-		destConfig := config.New()
-		destConfig.HTTP.Port = destPort
-
-		destDir, err := ioutil.TempDir("", "oci-dest-repo-test")
-		if err != nil {
-			panic(err)
-		}
-
-		defer os.RemoveAll(destDir)
-
-		destConfig.Storage.RootDirectory = destDir
 
 		// copy client certs, use them in sync config
 		clientCertDir, err := ioutil.TempDir("", "certs")
@@ -2074,18 +1390,10 @@ func TestSyncInvalidCerts(t *testing.T) {
 			CertDir:      clientCertDir,
 		}
 
-		destConfig.Extensions = &extconf.ExtensionConfig{}
-		destConfig.Extensions.Search = nil
-		destConfig.Extensions.Sync = &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
 
-		dc := api.NewController(destConfig)
-
-		go func() {
-			// this blocks
-			if err := dc.Run(); err != nil {
-				return
-			}
-		}()
+		dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
+		defer os.RemoveAll(destDir)
 
 		defer func() {
 			ctx := context.Background()
@@ -2093,17 +1401,8 @@ func TestSyncInvalidCerts(t *testing.T) {
 			time.Sleep(500 * time.Millisecond)
 		}()
 
-		// wait till ready
-		for {
-			_, err := resty.R().Get(destBaseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
 		Convey("Test sync on POST request on /sync", func() {
-			resp, _ := resty.R().Post(destBaseURL + "/sync")
+			resp, _ := destClient.R().Post(destBaseURL + "/sync")
 			So(resp, ShouldNotBeNil)
 			So(string(resp.Body()), ShouldContainSubstring, "bad certificate")
 			So(resp.StatusCode(), ShouldEqual, 500)
@@ -2128,22 +1427,6 @@ func makeCredentialsFile(fileContent string) string {
 func TestSyncInvalidUrl(t *testing.T) {
 	Convey("Verify sync invalid url", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
-
-		destPort := GetFreePort()
-		destBaseURL := GetBaseURL(destPort)
-
-		destConfig := config.New()
-		destConfig.HTTP.Port = destPort
-
-		destDir, err := ioutil.TempDir("", "oci-dest-repo-test")
-		if err != nil {
-			panic(err)
-		}
-
-		defer os.RemoveAll(destDir)
-
-		destConfig.Storage.RootDirectory = destDir
-
 		regex := ".*"
 		var semver bool
 		var tlsVerify bool
@@ -2166,101 +1449,35 @@ func TestSyncInvalidUrl(t *testing.T) {
 			OnDemand:     true,
 		}
 
-		destConfig.Extensions = &extconf.ExtensionConfig{}
-		destConfig.Extensions.Search = nil
-		destConfig.Extensions.Sync = &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
 
-		dc := api.NewController(destConfig)
-
-		go func() {
-			// this blocks
-			if err := dc.Run(); err != nil {
-				return
-			}
-		}()
+		dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
+		defer os.RemoveAll(destDir)
 
 		defer func() {
 			ctx := context.Background()
 			_ = dc.Server.Shutdown(ctx)
-			time.Sleep(1 * time.Second)
+			time.Sleep(500 * time.Millisecond)
 		}()
 
-		// wait till ready
-		for {
-			_, err := resty.R().Get(destBaseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 	})
 }
 
 func TestSyncInvalidTags(t *testing.T) {
-	Convey("Verify sync invalid url", t, func() {
+	Convey("Verify sync invalid tags", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		srcPort := GetFreePort()
-		srcBaseURL := GetBaseURL(srcPort)
-
-		srcConfig := config.New()
-		srcConfig.HTTP.Port = srcPort
-
-		srcDir, err := ioutil.TempDir("", "oci-src-repo-test")
-		if err != nil {
-			panic(err)
-		}
-
+		sc, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
 		defer os.RemoveAll(srcDir)
-
-		err = CopyFiles("../../../test/data", srcDir)
-		if err != nil {
-			panic(err)
-		}
-
-		srcConfig.Storage.RootDirectory = srcDir
-
-		sc := api.NewController(srcConfig)
-
-		go func() {
-			// this blocks
-			if err := sc.Run(); err != nil {
-				return
-			}
-		}()
 
 		defer func() {
 			ctx := context.Background()
 			_ = sc.Server.Shutdown(ctx)
+			time.Sleep(500 * time.Millisecond)
 		}()
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(srcBaseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		destPort := GetFreePort()
-		destBaseURL := GetBaseURL(destPort)
-
-		destConfig := config.New()
-		destConfig.HTTP.Port = destPort
-
-		destDir, err := ioutil.TempDir("", "oci-dest-repo-test")
-		if err != nil {
-			panic(err)
-		}
-
-		defer os.RemoveAll(destDir)
-
-		destConfig.Storage.RootDirectory = destDir
 
 		regex := ".*"
 		var semver bool
@@ -2284,35 +1501,19 @@ func TestSyncInvalidTags(t *testing.T) {
 			OnDemand:     true,
 		}
 
-		destConfig.Extensions = &extconf.ExtensionConfig{}
-		destConfig.Extensions.Search = nil
-		destConfig.Extensions.Sync = &sync.Config{
+		syncConfig := &sync.Config{
 			Registries: []sync.RegistryConfig{syncRegistryConfig}}
 
-		dc := api.NewController(destConfig)
-
-		go func() {
-			// this blocks
-			if err := dc.Run(); err != nil {
-				return
-			}
-		}()
+		dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
+		defer os.RemoveAll(destDir)
 
 		defer func() {
 			ctx := context.Background()
 			_ = dc.Server.Shutdown(ctx)
+			time.Sleep(500 * time.Millisecond)
 		}()
 
-		// wait till ready
-		for {
-			_, err := resty.R().Get(destBaseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + "invalid:tag")
+		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + "invalid:tag")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 	})

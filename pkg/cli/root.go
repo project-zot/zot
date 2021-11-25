@@ -5,6 +5,7 @@ import (
 	"github.com/anuvu/zot/pkg/api"
 	"github.com/anuvu/zot/pkg/api/config"
 	"github.com/anuvu/zot/pkg/storage"
+	glob "github.com/bmatcuk/doublestar/v4"
 	"github.com/fsnotify/fsnotify"
 	"github.com/mitchellh/mapstructure"
 	distspec "github.com/opencontainers/distribution-spec/specs-go"
@@ -185,6 +186,21 @@ func LoadConfiguration(config *config.Config, configPath string) {
 		if config.Extensions != nil && config.Extensions.Sync != nil {
 			log.Error().Err(errors.ErrBadConfig).Msg("sync supports only filesystem storage")
 			panic(errors.ErrBadConfig)
+		}
+	}
+
+	// check glob patterns in sync are compilable
+	if config.Extensions != nil && config.Extensions.Sync != nil {
+		for _, regCfg := range config.Extensions.Sync.Registries {
+			if regCfg.Content != nil {
+				for _, content := range regCfg.Content {
+					ok := glob.ValidatePattern(content.Prefix)
+					if !ok {
+						log.Error().Err(glob.ErrBadPattern).Str("pattern", content.Prefix).Msg("pattern could not be compiled")
+						panic(errors.ErrBadConfig)
+					}
+				}
+			}
 		}
 	}
 

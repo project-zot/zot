@@ -310,11 +310,6 @@ func getUpstreamContext(regCfg *RegistryConfig, credentials Credentials) *types.
 func syncRegistry(regCfg RegistryConfig, storeController storage.StoreController,
 	log log.Logger, localCtx *types.SystemContext,
 	policyCtx *signature.PolicyContext, credentials Credentials, uuid string) error {
-	if len(regCfg.Content) == 0 {
-		log.Info().Msgf("no content found for %s, will not run periodically sync", regCfg.URL)
-		return nil
-	}
-
 	log.Info().Msgf("syncing registry: %s", regCfg.URL)
 
 	var err error
@@ -341,9 +336,9 @@ func syncRegistry(regCfg RegistryConfig, storeController storage.StoreController
 
 	upstreamRegistryName := strings.Replace(strings.Replace(regCfg.URL, "http://", "", 1), "https://", "", 1)
 
-	log.Info().Msg("filtering repos based on sync prefixes")
+	log.Info().Msgf("filtering %d repos based on sync prefixes", len(catalog.Repositories))
 
-	repos := filterRepos(catalog.Repositories, regCfg.Content)
+	repos := filterRepos(catalog.Repositories, regCfg.Content, log)
 
 	log.Info().Msgf("got repos: %v", repos)
 
@@ -467,6 +462,11 @@ func Run(cfg Config, storeController storage.StoreController, logger log.Logger)
 
 	// for each upstream registry, start a go routine.
 	for _, regCfg := range cfg.Registries {
+		if len(regCfg.Content) == 0 {
+			logger.Info().Msgf("no content found for %s, will not run periodically sync", regCfg.URL)
+			continue
+		}
+
 		// schedule each registry sync
 		ticker := time.NewTicker(regCfg.PollInterval)
 
