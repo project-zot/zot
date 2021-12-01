@@ -21,9 +21,9 @@ storage:\n\
 # ---
 FROM scratch AS final
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-COPY --from=builder /go/src/github.com/anuvu/zot/bin/zot /zot
+COPY --from=builder /go/src/github.com/anuvu/zot/bin/zot /usr/bin/zot
 COPY --from=builder /go/src/github.com/anuvu/zot/config.yml /etc/zot/config.yml
-ENTRYPOINT ["/zot"]
+ENTRYPOINT ["/usr/bin/zot"]
 EXPOSE 5000
 VOLUME ["/var/lib/registry"]
 CMD ["serve", "/etc/zot/config.yml"]
