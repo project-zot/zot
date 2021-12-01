@@ -24,9 +24,9 @@ RUN echo '{\n\
 # ---
 FROM scratch AS final
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-COPY --from=builder /go/src/github.com/anuvu/zot/bin/zot-minimal /zot
+COPY --from=builder /go/src/github.com/anuvu/zot/bin/zot-minimal /usr/bin/zot
 COPY --from=builder /go/src/github.com/anuvu/zot/config.json /etc/zot/config.json
-ENTRYPOINT ["/zot"]
+ENTRYPOINT ["/usr/bin/zot"]
 EXPOSE 5000
 VOLUME ["/var/lib/registry"]
 CMD ["serve", "/etc/zot/config.json"]
