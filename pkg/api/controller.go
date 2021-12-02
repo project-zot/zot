@@ -1,12 +1,14 @@
 package api
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
 	"io/ioutil"
 	"net"
 	"net/http"
+	goSync "sync"
 	"time"
 
 	"github.com/gorilla/handlers"
@@ -34,6 +36,7 @@ type Controller struct {
 	Audit           *log.Logger
 	Server          *http.Server
 	Metrics         monitoring.MetricServer
+	wgShutDown      *goSync.WaitGroup // use it to gracefully shutdown goroutines
 }
 
 func NewController(config *config.Config) *Controller {
@@ -43,6 +46,7 @@ func NewController(config *config.Config) *Controller {
 
 	controller.Config = config
 	controller.Log = logger
+	controller.wgShutDown = new(goSync.WaitGroup)
 
 	if config.Log.Audit != "" {
 		audit := log.NewAuditLogger(config.Log.Level, config.Log.Audit)
@@ -195,7 +199,7 @@ func (c *Controller) Run() error {
 
 	// Enable extensions if extension config is provided
 	if c.Config.Extensions != nil && c.Config.Extensions.Sync != nil {
-		ext.EnableSyncExtension(c.Config, c.Log, c.StoreController)
+		ext.EnableSyncExtension(c.Config, c.wgShutDown, c.StoreController, c.Log)
 	}
 
 	monitoring.SetServerInfo(c.Metrics, c.Config.Commit, c.Config.BinaryType, c.Config.GoVersion, c.Config.Version)
@@ -246,4 +250,12 @@ func (c *Controller) Run() error {
 	}
 
 	return server.Serve(l)
+}
+
+func (c *Controller) Shutdown() {
+	// wait gracefully
+	c.wgShutDown.Wait()
+
+	ctx := context.Background()
+	_ = c.Server.Shutdown(ctx)
 }

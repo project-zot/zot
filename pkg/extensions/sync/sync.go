@@ -12,6 +12,7 @@ import (
 	"path"
 	"regexp"
 	"strings"
+	goSync "sync"
 	"time"
 
 	"github.com/Masterminds/semver"
@@ -438,7 +439,7 @@ func getLocalContexts(log log.Logger) (*types.SystemContext, *signature.PolicyCo
 	return localCtx, policyContext, nil
 }
 
-func Run(cfg Config, storeController storage.StoreController, logger log.Logger) error {
+func Run(cfg Config, storeController storage.StoreController, wg *goSync.WaitGroup, logger log.Logger) error {
 	var credentialsFile CredentialsFile
 
 	var err error
@@ -468,6 +469,9 @@ func Run(cfg Config, storeController storage.StoreController, logger log.Logger)
 			continue
 		}
 
+		// increment reference since will be busy, so shutdown has to wait
+		wg.Add(1)
+
 		// schedule each registry sync
 		ticker := time.NewTicker(regCfg.PollInterval)
 
@@ -484,6 +488,8 @@ func Run(cfg Config, storeController storage.StoreController, logger log.Logger)
 					l.Error().Err(err).Msg("sync exited with error, stopping it...")
 					ticker.Stop()
 				}
+				// mark as done after a single sync run
+				wg.Done()
 			}
 		}(regCfg, l)
 	}

@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	goSync "sync"
 	"testing"
 	"time"
 
@@ -101,7 +102,7 @@ func TestSyncInternal(t *testing.T) {
 
 		cfg := Config{Registries: []RegistryConfig{syncRegistryConfig}, CredentialsFile: "/invalid/path/to/file"}
 
-		So(Run(cfg, storage.StoreController{}, log.NewLogger("debug", "")), ShouldNotBeNil)
+		So(Run(cfg, storage.StoreController{}, new(goSync.WaitGroup), log.NewLogger("debug", "")), ShouldNotBeNil)
 
 		_, err = getFileCredentials("/invalid/path/to/file")
 		So(err, ShouldNotBeNil)

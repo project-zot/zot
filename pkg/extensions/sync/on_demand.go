@@ -17,8 +17,8 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 )
 
-func OneImage(cfg Config, log log.Logger,
-	storeController storage.StoreController, repo, tag string) error {
+func OneImage(cfg Config, storeController storage.StoreController,
+	repo, tag string, log log.Logger) error {
 	var credentialsFile CredentialsFile
 
 	if cfg.CredentialsFile != "" {

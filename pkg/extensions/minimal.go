@@ -4,6 +4,7 @@
 package extensions
 
 import (
+	goSync "sync"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -24,7 +25,8 @@ func EnableExtensions(config *config.Config, log log.Logger, rootDir string) {
 }
 
 // EnableSyncExtension ...
-func EnableSyncExtension(config *config.Config, log log.Logger, storeController storage.StoreController) {
+func EnableSyncExtension(config *config.Config, wg *goSync.WaitGroup,
+	storeController storage.StoreController, log log.Logger) {
 	log.Warn().Msg("skipping enabling sync extension because given zot binary doesn't support any extensions," +
 		"please build zot full binary for this feature")
 }
@@ -36,8 +38,8 @@ func SetupRoutes(conf *config.Config, router *mux.Router, storeController storag
 }
 
 // SyncOneImage ...
-func SyncOneImage(config *config.Config, log log.Logger, storeController storage.StoreController,
-	repoName, reference string) error {
+func SyncOneImage(config *config.Config, storeController storage.StoreController,
+	repoName, reference string, log log.Logger) error {
 	log.Warn().Msg("skipping syncing on demand because given zot binary doesn't support any extensions," +
 		"please build zot full binary for this feature")
 	return nil

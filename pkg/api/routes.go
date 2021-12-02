@@ -1271,7 +1271,7 @@ func getImageManifest(rh *RouteHandler, is storage.ImageStore, name,
 			if rh.c.Config.Extensions != nil && rh.c.Config.Extensions.Sync != nil {
 				rh.c.Log.Info().Msgf("image not found, trying to get image %s:%s by syncing on demand", name, reference)
 
-				errSync := ext.SyncOneImage(rh.c.Config, rh.c.Log, rh.c.StoreController, name, reference)
+				errSync := ext.SyncOneImage(rh.c.Config, rh.c.StoreController, name, reference, rh.c.Log)
 				if errSync != nil {
 					rh.c.Log.Err(errSync).Msgf("error encounter while syncing image %s:%s", name, reference)
 				} else {
@@ -1283,7 +1283,7 @@ func getImageManifest(rh *RouteHandler, is storage.ImageStore, name,
 			if rh.c.Config.Extensions != nil && rh.c.Config.Extensions.Sync != nil {
 				rh.c.Log.Info().Msgf("manifest not found, trying to get image %s:%s by syncing on demand", name, reference)
 
-				errSync := ext.SyncOneImage(rh.c.Config, rh.c.Log, rh.c.StoreController, name, reference)
+				errSync := ext.SyncOneImage(rh.c.Config, rh.c.StoreController, name, reference, rh.c.Log)
 				if errSync != nil {
 					rh.c.Log.Err(errSync).Msgf("error encounter while syncing image %s:%s", name, reference)
 				} else {
