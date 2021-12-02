@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/anuvu/zot/errors"
@@ -100,6 +101,8 @@ func (c *Controller) Run() error {
 	c.Metrics = monitoring.NewMetricsServer(enabled, c.Log)
 	c.StoreController = storage.StoreController{}
 
+	var wg sync.WaitGroup
+
 	if c.Config.Storage.RootDirectory != "" {
 		if c.Config.Storage.Dedupe {
 			err := storage.ValidateHardLink(c.Config.Storage.RootDirectory)
@@ -139,7 +142,8 @@ func (c *Controller) Run() error {
 			ext.EnableExtensions(c.Config, c.Log, c.Config.Storage.RootDirectory)
 
 			if c.Config.Extensions.Sync != nil {
-				ext.EnableSyncExtension(c.Config, c.Log, c.StoreController)
+				wg.Add(1)
+				ext.EnableSyncExtension(c.Config, c.Log, c.StoreController, wg)
 			}
 		}
 	} else {
@@ -206,6 +210,9 @@ func (c *Controller) Run() error {
 		Handler:     c.Router,
 		IdleTimeout: idleTimeout,
 	}
+
+	server.RegisterOnShutdown(func() { wg.Wait() })
+
 	c.Server = server
 
 	// Create the listener

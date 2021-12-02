@@ -4,6 +4,7 @@
 package extensions
 
 import (
+	goSync "sync"
 	"time"
 
 	gqlHandler "github.com/99designs/gqlgen/graphql/handler"
@@ -68,7 +69,7 @@ func EnableExtensions(config *config.Config, log log.Logger, rootDir string) {
 }
 
 // EnableSyncExtension enables sync extension.
-func EnableSyncExtension(config *config.Config, log log.Logger, storeController storage.StoreController) {
+func EnableSyncExtension(config *config.Config, log log.Logger, storeController storage.StoreController, wg goSync.WaitGroup) {
 	if config.Extensions.Sync != nil {
 		defaultPollInterval, _ := time.ParseDuration("1h")
 		for id, registryCfg := range config.Extensions.Sync.Registries {
@@ -83,7 +84,7 @@ func EnableSyncExtension(config *config.Config, log log.Logger, storeController 
 			}
 		}
 
-		if err := sync.Run(*config.Extensions.Sync, storeController, log); err != nil {
+		if err := sync.Run(*config.Extensions.Sync, storeController, log, wg); err != nil {
 			log.Error().Err(err).Msg("Error encountered while setting up syncing")
 		}
 	} else {

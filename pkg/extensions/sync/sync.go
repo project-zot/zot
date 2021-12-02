@@ -12,6 +12,7 @@ import (
 	"path"
 	"regexp"
 	"strings"
+	goSync "sync"
 	"time"
 
 	"github.com/Masterminds/semver"
@@ -437,7 +438,7 @@ func getLocalContexts(log log.Logger) (*types.SystemContext, *signature.PolicyCo
 	return localCtx, policyContext, nil
 }
 
-func Run(cfg Config, storeController storage.StoreController, logger log.Logger) error {
+func Run(cfg Config, storeController storage.StoreController, logger log.Logger, wg goSync.WaitGroup) error {
 	var credentialsFile CredentialsFile
 
 	var err error
@@ -482,6 +483,7 @@ func Run(cfg Config, storeController storage.StoreController, logger log.Logger)
 					credentialsFile[upstreamRegistry], uuid.String()); err != nil {
 					l.Error().Err(err).Msg("sync exited with error, stopping it...")
 					ticker.Stop()
+					wg.Done()
 				}
 			}
 		}(regCfg, l)
