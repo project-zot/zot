@@ -4,7 +4,6 @@
 package sync_test
 
 import (
-	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -235,9 +234,7 @@ func TestSyncOnDemand(t *testing.T) {
 		defer os.RemoveAll(srcDir)
 
 		defer func() {
-			ctx := context.Background()
-			_ = sc.Server.Shutdown(ctx)
-			time.Sleep(500 * time.Millisecond)
+			sc.Shutdown()
 		}()
 
 		regex := ".*"
@@ -269,9 +266,7 @@ func TestSyncOnDemand(t *testing.T) {
 		defer os.RemoveAll(destDir)
 
 		defer func() {
-			ctx := context.Background()
-			_ = dc.Server.Shutdown(ctx)
-			time.Sleep(500 * time.Millisecond)
+			dc.Shutdown()
 		}()
 
 		var srcTagsList TagsList
@@ -369,9 +364,7 @@ func TestSync(t *testing.T) {
 		defer os.RemoveAll(srcDir)
 
 		defer func() {
-			ctx := context.Background()
-			_ = sc.Server.Shutdown(ctx)
-			time.Sleep(500 * time.Millisecond)
+			sc.Shutdown()
 		}()
 
 		regex := ".*"
@@ -400,9 +393,7 @@ func TestSync(t *testing.T) {
 		defer os.RemoveAll(destDir)
 
 		defer func() {
-			ctx := context.Background()
-			_ = dc.Server.Shutdown(ctx)
-			time.Sleep(500 * time.Millisecond)
+			dc.Shutdown()
 		}()
 
 		var srcTagsList TagsList
@@ -480,9 +471,7 @@ func TestSync(t *testing.T) {
 			defer os.RemoveAll(destDir)
 
 			defer func() {
-				ctx := context.Background()
-				_ = dc.Server.Shutdown(ctx)
-				time.Sleep(500 * time.Millisecond)
+				dc.Shutdown()
 			}()
 
 			var srcTagsList TagsList
@@ -551,9 +540,7 @@ func TestSyncPermsDenied(t *testing.T) {
 		defer os.RemoveAll(srcDir)
 
 		defer func() {
-			ctx := context.Background()
-			_ = sc.Server.Shutdown(ctx)
-			time.Sleep(500 * time.Millisecond)
+			sc.Shutdown()
 		}()
 
 		regex := ".*"
@@ -582,9 +569,7 @@ func TestSyncPermsDenied(t *testing.T) {
 		defer os.RemoveAll(destDir)
 
 		defer func() {
-			ctx := context.Background()
-			_ = dc.Server.Shutdown(ctx)
-			time.Sleep(500 * time.Millisecond)
+			dc.Shutdown()
 		}()
 
 		err := os.Chmod(path.Join(destDir, testImage, sync.SyncBlobUploadDir), 0000)
@@ -608,9 +593,7 @@ func TestSyncBadTLS(t *testing.T) {
 		defer os.RemoveAll(srcDir)
 
 		defer func() {
-			ctx := context.Background()
-			_ = sc.Server.Shutdown(ctx)
-			time.Sleep(500 * time.Millisecond)
+			sc.Shutdown()
 		}()
 
 		regex := ".*"
@@ -639,9 +622,7 @@ func TestSyncBadTLS(t *testing.T) {
 		defer os.RemoveAll(destDir)
 
 		defer func() {
-			ctx := context.Background()
-			_ = dc.Server.Shutdown(ctx)
-			time.Sleep(500 * time.Millisecond)
+			dc.Shutdown()
 		}()
 
 		// give it time to set up sync
@@ -669,9 +650,7 @@ func TestSyncTLS(t *testing.T) {
 		defer os.RemoveAll(srcDir)
 
 		defer func() {
-			ctx := context.Background()
-			_ = sc.Server.Shutdown(ctx)
-			time.Sleep(500 * time.Millisecond)
+			sc.Shutdown()
 		}()
 
 		var srcIndex ispec.Index
@@ -738,9 +717,7 @@ func TestSyncTLS(t *testing.T) {
 		defer os.RemoveAll(destDir)
 
 		defer func() {
-			ctx := context.Background()
-			_ = dc.Server.Shutdown(ctx)
-			time.Sleep(500 * time.Millisecond)
+			dc.Shutdown()
 		}()
 
 		// wait till ready
@@ -781,9 +758,7 @@ func TestSyncBasicAuth(t *testing.T) {
 		defer os.RemoveAll(srcDir)
 
 		defer func() {
-			ctx := context.Background()
-			_ = sc.Server.Shutdown(ctx)
-			time.Sleep(500 * time.Millisecond)
+			sc.Shutdown()
 		}()
 
 		Convey("Verify sync basic auth with file credentials", func() {
@@ -811,9 +786,7 @@ func TestSyncBasicAuth(t *testing.T) {
 			defer os.RemoveAll(destDir)
 
 			defer func() {
-				ctx := context.Background()
-				_ = dc.Server.Shutdown(ctx)
-				time.Sleep(500 * time.Millisecond)
+				dc.Shutdown()
 			}()
 
 			var srcTagsList TagsList
@@ -915,9 +888,7 @@ func TestSyncBasicAuth(t *testing.T) {
 			}()
 
 			defer func() {
-				ctx := context.Background()
-				_ = dc.Server.Shutdown(ctx)
-				time.Sleep(500 * time.Millisecond)
+				dc.Shutdown()
 			}()
 
 			// wait till ready
@@ -982,9 +953,7 @@ func TestSyncBasicAuth(t *testing.T) {
 			defer os.RemoveAll(destDir)
 
 			defer func() {
-				ctx := context.Background()
-				_ = dc.Server.Shutdown(ctx)
-				time.Sleep(500 * time.Millisecond)
+				dc.Shutdown()
 			}()
 
 			resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
@@ -1028,9 +997,7 @@ func TestSyncBasicAuth(t *testing.T) {
 			defer os.RemoveAll(destDir)
 
 			defer func() {
-				ctx := context.Background()
-				_ = dc.Server.Shutdown(ctx)
-				time.Sleep(500 * time.Millisecond)
+				dc.Shutdown()
 			}()
 
 			var srcTagsList TagsList
@@ -1119,9 +1086,7 @@ func TestSyncBadURL(t *testing.T) {
 		defer os.RemoveAll(destDir)
 
 		defer func() {
-			ctx := context.Background()
-			_ = dc.Server.Shutdown(ctx)
-			time.Sleep(500 * time.Millisecond)
+			dc.Shutdown()
 		}()
 
 		Convey("Test sync on POST request on /sync", func() {
@@ -1141,9 +1106,7 @@ func TestSyncNoImagesByRegex(t *testing.T) {
 		defer os.RemoveAll(srcDir)
 
 		defer func() {
-			ctx := context.Background()
-			_ = sc.Server.Shutdown(ctx)
-			time.Sleep(500 * time.Millisecond)
+			sc.Shutdown()
 		}()
 
 		regex := "9.9.9"
@@ -1170,9 +1133,7 @@ func TestSyncNoImagesByRegex(t *testing.T) {
 		defer os.RemoveAll(destDir)
 
 		defer func() {
-			ctx := context.Background()
-			_ = dc.Server.Shutdown(ctx)
-			time.Sleep(500 * time.Millisecond)
+			dc.Shutdown()
 		}()
 
 		Convey("Test sync on POST request on /sync", func() {
@@ -1205,9 +1166,7 @@ func TestSyncInvalidRegex(t *testing.T) {
 		defer os.RemoveAll(srcDir)
 
 		defer func() {
-			ctx := context.Background()
-			_ = sc.Server.Shutdown(ctx)
-			time.Sleep(500 * time.Millisecond)
+			sc.Shutdown()
 		}()
 
 		regex := "["
@@ -1234,9 +1193,7 @@ func TestSyncInvalidRegex(t *testing.T) {
 		defer os.RemoveAll(destDir)
 
 		defer func() {
-			ctx := context.Background()
-			_ = dc.Server.Shutdown(ctx)
-			time.Sleep(500 * time.Millisecond)
+			dc.Shutdown()
 		}()
 
 		Convey("Test sync on POST request on /sync", func() {
@@ -1256,9 +1213,7 @@ func TestSyncNotSemver(t *testing.T) {
 		defer os.RemoveAll(srcDir)
 
 		defer func() {
-			ctx := context.Background()
-			_ = sc.Server.Shutdown(ctx)
-			time.Sleep(500 * time.Millisecond)
+			sc.Shutdown()
 		}()
 
 		// get manifest so we can update it with a semver non compliant tag
@@ -1300,9 +1255,7 @@ func TestSyncNotSemver(t *testing.T) {
 		defer os.RemoveAll(destDir)
 
 		defer func() {
-			ctx := context.Background()
-			_ = dc.Server.Shutdown(ctx)
-			time.Sleep(500 * time.Millisecond)
+			dc.Shutdown()
 		}()
 
 		Convey("Test sync on POST request on /sync", func() {
@@ -1335,9 +1288,7 @@ func TestSyncInvalidCerts(t *testing.T) {
 		defer os.RemoveAll(srcDir)
 
 		defer func() {
-			ctx := context.Background()
-			_ = sc.Server.Shutdown(ctx)
-			time.Sleep(500 * time.Millisecond)
+			sc.Shutdown()
 		}()
 
 		// copy client certs, use them in sync config
@@ -1397,9 +1348,7 @@ func TestSyncInvalidCerts(t *testing.T) {
 		defer os.RemoveAll(destDir)
 
 		defer func() {
-			ctx := context.Background()
-			_ = dc.Server.Shutdown(ctx)
-			time.Sleep(500 * time.Millisecond)
+			dc.Shutdown()
 		}()
 
 		Convey("Test sync on POST request on /sync", func() {
@@ -1456,9 +1405,7 @@ func TestSyncInvalidUrl(t *testing.T) {
 		defer os.RemoveAll(destDir)
 
 		defer func() {
-			ctx := context.Background()
-			_ = dc.Server.Shutdown(ctx)
-			time.Sleep(500 * time.Millisecond)
+			dc.Shutdown()
 		}()
 
 		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
@@ -1475,9 +1422,7 @@ func TestSyncInvalidTags(t *testing.T) {
 		defer os.RemoveAll(srcDir)
 
 		defer func() {
-			ctx := context.Background()
-			_ = sc.Server.Shutdown(ctx)
-			time.Sleep(500 * time.Millisecond)
+			sc.Shutdown()
 		}()
 
 		regex := ".*"
@@ -1509,9 +1454,7 @@ func TestSyncInvalidTags(t *testing.T) {
 		defer os.RemoveAll(destDir)
 
 		defer func() {
-			ctx := context.Background()
-			_ = dc.Server.Shutdown(ctx)
-			time.Sleep(500 * time.Millisecond)
+			dc.Shutdown()
 		}()
 
 		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + "invalid:tag")
@@ -1565,9 +1508,7 @@ func TestSyncSubPaths(t *testing.T) {
 		}
 
 		defer func() {
-			ctx := context.Background()
-			_ = sc.Server.Shutdown(ctx)
-			time.Sleep(500 * time.Millisecond)
+			sc.Shutdown()
 		}()
 
 		regex := ".*"
@@ -1646,8 +1587,7 @@ func TestSyncSubPaths(t *testing.T) {
 		}
 
 		defer func() {
-			ctx := context.Background()
-			_ = dc.Server.Shutdown(ctx)
+			dc.Shutdown()
 		}()
 
 		var destTagsList TagsList

@@ -4,6 +4,7 @@
 package extensions
 
 import (
+	goSync "sync"
 	"time"
 
 	gqlHandler "github.com/99designs/gqlgen/graphql/handler"
@@ -68,7 +69,8 @@ func EnableExtensions(config *config.Config, log log.Logger, rootDir string) {
 }
 
 // EnableSyncExtension enables sync extension.
-func EnableSyncExtension(config *config.Config, log log.Logger, storeController storage.StoreController) {
+func EnableSyncExtension(config *config.Config, wg *goSync.WaitGroup,
+	storeController storage.StoreController, log log.Logger) {
 	if config.Extensions.Sync != nil {
 		defaultPollInterval, _ := time.ParseDuration("1h")
 		for id, registryCfg := range config.Extensions.Sync.Registries {
@@ -83,7 +85,7 @@ func EnableSyncExtension(config *config.Config, log log.Logger, storeController 
 			}
 		}
 
-		if err := sync.Run(*config.Extensions.Sync, storeController, log); err != nil {
+		if err := sync.Run(*config.Extensions.Sync, storeController, wg, log); err != nil {
 			log.Error().Err(err).Msg("Error encountered while setting up syncing")
 		}
 	} else {
@@ -128,11 +130,11 @@ func SetupRoutes(config *config.Config, router *mux.Router, storeController stor
 }
 
 // SyncOneImage syncs one image.
-func SyncOneImage(config *config.Config, log log.Logger,
-	storeController storage.StoreController, repoName, reference string) error {
+func SyncOneImage(config *config.Config, storeController storage.StoreController,
+	repoName, reference string, log log.Logger) error {
 	log.Info().Msgf("syncing image %s:%s", repoName, reference)
 
-	err := sync.OneImage(*config.Extensions.Sync, log, storeController, repoName, reference)
+	err := sync.OneImage(*config.Extensions.Sync, storeController, repoName, reference, log)
 
 	return err
 }
