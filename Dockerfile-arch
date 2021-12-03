@@ -1,20 +1,24 @@
 # ---
 # Stage 1: Install certs, build binary, create default config file
 # ---
-FROM docker.io/golang:1.16-alpine AS builder
-RUN apk --update add git make ca-certificates
+FROM docker.io/golang:1.16 AS builder
+ARG ARCH
 RUN mkdir -p /go/src/github.com/anuvu/zot
 WORKDIR /go/src/github.com/anuvu/zot
 COPY . .
-RUN make clean binary
-RUN echo -e '# Default config file for zot server\n\
-http:\n\
-  address: 0.0.0.0\n\
-  port: 5000\n\
-storage:\n\
-  rootDirectory: /var/lib/registry\n\
-  gc: false\n\
-  dedupe: false' > config.yml && cat config.yml
+RUN make ARCH=$ARCH clean binary
+RUN echo '{\n\
+    "storage": {\n\
+        "rootDirectory": "/var/lib/registry"\n\
+    },\n\
+    "http": {\n\
+        "address": "0.0.0.0",\n\
+        "port": "5000"\n\
+    },\n\
+    "log": {\n\
+        "level": "debug"\n\
+    }\n\
+}\n' > config.json && cat config.json
 
 # ---
 # Stage 2: Final image with nothing but certs, binary, and default config file
@@ -22,8 +26,8 @@ storage:\n\
 FROM scratch AS final
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=builder /go/src/github.com/anuvu/zot/bin/zot /usr/bin/zot
-COPY --from=builder /go/src/github.com/anuvu/zot/config.yml /etc/zot/config.yml
+COPY --from=builder /go/src/github.com/anuvu/zot/config.json /etc/zot/config.json
 ENTRYPOINT ["/usr/bin/zot"]
 EXPOSE 5000
 VOLUME ["/var/lib/registry"]
-CMD ["serve", "/etc/zot/config.yml"]
+CMD ["serve", "/etc/zot/config.json"]

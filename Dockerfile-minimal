@@ -5,7 +5,7 @@ FROM docker.io/golang:1.16 AS builder
 RUN mkdir -p /go/src/github.com/anuvu/zot
 WORKDIR /go/src/github.com/anuvu/zot
 COPY . .
-RUN CGO_ENABLED=0 make clean binary-minimal
+RUN make clean binary-minimal
 RUN echo '{\n\
     "storage": {\n\
         "rootDirectory": "/var/lib/registry"\n\
