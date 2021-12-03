@@ -7,25 +7,27 @@ CONTAINER_RUNTIME := $(shell command -v podman 2> /dev/null || echo docker)
 PATH := bin:$(PATH)
 TMPDIR := $(shell mktemp -d)
 STACKER := $(shell which stacker)
+OS ?= linux
+ARCH ?= amd64
 
 .PHONY: all
 all: swagger binary binary-minimal exporter-minimal debug test test-clean check
 
 .PHONY: binary-minimal
 binary-minimal: swagger
-	go build -o bin/zot-minimal -tags minimal,containers_image_openpgp -v -trimpath -ldflags "-X  github.com/anuvu/zot/pkg/api/config.Commit=${COMMIT} -X github.com/anuvu/zot/pkg/api/config.BinaryType=minimal -X github.com/anuvu/zot/pkg/api/config.GoVersion=${GO_VERSION}" ./cmd/zot
+	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-minimal -tags minimal,containers_image_openpgp -v -trimpath -ldflags "-X  github.com/anuvu/zot/pkg/api/config.Commit=${COMMIT} -X github.com/anuvu/zot/pkg/api/config.BinaryType=minimal -X github.com/anuvu/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zot
 
 .PHONY: binary
 binary: swagger
-	go build -o bin/zot -tags extended,containers_image_openpgp -v -trimpath -ldflags "-X  github.com/anuvu/zot/pkg/api/config.Commit=${COMMIT} -X github.com/anuvu/zot/pkg/api/config.BinaryType=extended -X github.com/anuvu/zot/pkg/api/config.GoVersion=${GO_VERSION}" ./cmd/zot
+	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot -tags extended,containers_image_openpgp -v -trimpath -ldflags "-X  github.com/anuvu/zot/pkg/api/config.Commit=${COMMIT} -X github.com/anuvu/zot/pkg/api/config.BinaryType=extended -X github.com/anuvu/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zot
 
 .PHONY: debug
 debug: swagger
-	go build -o bin/zot-debug -tags extended,containers_image_openpgp -v -gcflags all='-N -l' -ldflags "-X  github.com/anuvu/zot/pkg/api/config.Commit=${COMMIT} -X github.com/anuvu/zot/pkg/api/config.BinaryType=extended -X github.com/anuvu/zot/pkg/api/config.GoVersion=${GO_VERSION}" ./cmd/zot
+	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-debug -tags extended,containers_image_openpgp -v -gcflags all='-N -l' -ldflags "-X  github.com/anuvu/zot/pkg/api/config.Commit=${COMMIT} -X github.com/anuvu/zot/pkg/api/config.BinaryType=extended -X github.com/anuvu/zot/pkg/api/config.GoVersion=${GO_VERSION}" ./cmd/zot
 
 .PHONY: exporter-minimal
 exporter-minimal: swagger
-	go build -o bin/zot-exporter -tags minimal,containers_image_openpgp -v -trimpath ./cmd/exporter
+	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-exporter -tags minimal,containers_image_openpgp -v -trimpath ./cmd/exporter
 
 .PHONY: test
 test:
