@@ -3,7 +3,6 @@ package storage
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,6 +18,7 @@ import (
 
 	apexlog "github.com/apex/log"
 	guuid "github.com/gofrs/uuid"
+	"github.com/minio/sha256-simd"
 	"github.com/notaryproject/notation-go-lib"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
