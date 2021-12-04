@@ -1,3 +1,4 @@
+//go:build extended
 // +build extended
 
 package test_test
@@ -8,8 +9,8 @@ import (
 	"path"
 	"testing"
 
-	. "github.com/anuvu/zot/test"
 	. "github.com/smartystreets/goconvey/convey"
+	. "zotregistry.io/zot/test"
 )
 
 func TestCopyFiles(t *testing.T) {

@@ -6,10 +6,10 @@ import (
 	"path"
 	"testing"
 
-	"github.com/anuvu/zot/pkg/api/config"
-	"github.com/anuvu/zot/pkg/cli"
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/spf13/viper"
+	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/cli"
 )
 
 func TestUsage(t *testing.T) {

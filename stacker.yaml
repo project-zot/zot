@@ -10,10 +10,10 @@ build:
     export HOME='/root'
     export PATH='/go/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
     go get -u github.com/swaggo/swag/cmd/swag
-    mkdir -p /go/src/github.com/anuvu
-    cd /go/src/github.com/anuvu
+    mkdir -p /go/src/github.com/project-zot
+    cd /go/src/github.com/project-zot
     git clone /zotcopy zot
-    cd /go/src/github.com/anuvu/zot
+    cd /go/src/github.com/project-zot/zot
     make binary
   build_only: true
 

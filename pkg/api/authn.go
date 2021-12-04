@@ -12,11 +12,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/anuvu/zot/errors"
-	"github.com/anuvu/zot/pkg/api/config"
 	"github.com/chartmuseum/auth"
 	"github.com/gorilla/mux"
 	"golang.org/x/crypto/bcrypt"
+	"zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/api/config"
 )
 
 const (

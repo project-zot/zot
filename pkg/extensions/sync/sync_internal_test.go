@@ -10,11 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/anuvu/zot/errors"
-	"github.com/anuvu/zot/pkg/extensions/monitoring"
-	"github.com/anuvu/zot/pkg/log"
-	"github.com/anuvu/zot/pkg/storage"
-	. "github.com/anuvu/zot/test"
 	"github.com/containers/image/v5/docker"
 	"github.com/containers/image/v5/docker/reference"
 	"github.com/containers/image/v5/types"
@@ -22,6 +17,11 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
+	"zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/extensions/monitoring"
+	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/storage"
+	. "zotregistry.io/zot/test"
 )
 
 const (

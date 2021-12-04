@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/anuvu/zot/errors"
-	zlog "github.com/anuvu/zot/pkg/log"
 	"go.etcd.io/bbolt"
+	"zotregistry.io/zot/errors"
+	zlog "zotregistry.io/zot/pkg/log"
 )
 
 const (

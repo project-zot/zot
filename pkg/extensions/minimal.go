@@ -1,3 +1,4 @@
+//go:build minimal
 // +build minimal
 
 package extensions
@@ -5,10 +6,10 @@ package extensions
 import (
 	"time"
 
-	"github.com/anuvu/zot/pkg/api/config"
-	"github.com/anuvu/zot/pkg/log"
-	"github.com/anuvu/zot/pkg/storage"
 	"github.com/gorilla/mux"
+	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/storage"
 )
 
 // nolint: deadcode,unused

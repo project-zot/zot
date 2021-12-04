@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/anuvu/zot/pkg/log"
-	"github.com/anuvu/zot/pkg/storage"
 	guuid "github.com/gofrs/uuid"
+	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/storage"
 )
 
 type PostHandler struct {

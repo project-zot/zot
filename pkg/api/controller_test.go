@@ -24,11 +24,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/anuvu/zot/errors"
-	"github.com/anuvu/zot/pkg/api"
-	"github.com/anuvu/zot/pkg/api/config"
-	"github.com/anuvu/zot/pkg/storage"
-	. "github.com/anuvu/zot/test"
 	"github.com/chartmuseum/auth"
 	"github.com/mitchellh/mapstructure"
 	vldap "github.com/nmcclain/ldap"
@@ -44,6 +39,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/resty.v1"
+	"zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/api"
+	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/storage"
+	. "zotregistry.io/zot/test"
 )
 
 const (

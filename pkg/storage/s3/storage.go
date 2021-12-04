@@ -12,15 +12,15 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/anuvu/zot/errors"
-	"github.com/anuvu/zot/pkg/extensions/monitoring"
-	zlog "github.com/anuvu/zot/pkg/log"
-	"github.com/anuvu/zot/pkg/storage"
 	guuid "github.com/gofrs/uuid"
 	"github.com/notaryproject/notation-go-lib"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/rs/zerolog"
+	"zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/extensions/monitoring"
+	zlog "zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/storage"
 
 	// Add s3 support
 	storageDriver "github.com/docker/distribution/registry/storage/driver"

@@ -1,3 +1,4 @@
+//go:build extended
 // +build extended
 
 package cli //nolint:testpackage
@@ -14,11 +15,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/anuvu/zot/pkg/api"
-	"github.com/anuvu/zot/pkg/api/config"
-	. "github.com/anuvu/zot/test"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
+	"zotregistry.io/zot/pkg/api"
+	"zotregistry.io/zot/pkg/api/config"
+	. "zotregistry.io/zot/test"
 )
 
 const (

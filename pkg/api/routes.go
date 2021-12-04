@@ -21,17 +21,17 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/anuvu/zot/errors"
-	ext "github.com/anuvu/zot/pkg/extensions"
-	"github.com/anuvu/zot/pkg/log"
-	"github.com/anuvu/zot/pkg/storage"
-	_ "github.com/anuvu/zot/swagger" // as required by swaggo
 	"github.com/gorilla/mux"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/notaryproject/notation-go-lib"
 	notreg "github.com/notaryproject/notation/pkg/registry"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	httpSwagger "github.com/swaggo/http-swagger"
+	"zotregistry.io/zot/errors"
+	ext "zotregistry.io/zot/pkg/extensions"
+	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/storage"
+	_ "zotregistry.io/zot/swagger" // as required by swaggo
 )
 
 const (

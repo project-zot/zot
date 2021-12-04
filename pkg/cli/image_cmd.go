@@ -1,3 +1,4 @@
+//go:build extended
 // +build extended
 
 package cli
@@ -8,9 +9,9 @@ import (
 	"strconv"
 	"time"
 
-	zotErrors "github.com/anuvu/zot/errors"
 	"github.com/briandowns/spinner"
 	"github.com/spf13/cobra"
+	zotErrors "zotregistry.io/zot/errors"
 )
 
 func NewImageCommand(searchService SearchService) *cobra.Command {

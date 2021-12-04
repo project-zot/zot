@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/anuvu/zot/pkg/cli"
+	"zotregistry.io/zot/pkg/cli"
 )
 
 func main() {

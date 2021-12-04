@@ -1,3 +1,4 @@
+//go:build extended
 // +build extended
 
 package cli
@@ -14,7 +15,7 @@ import (
 
 	jsoniter "github.com/json-iterator/go"
 
-	zotErrors "github.com/anuvu/zot/errors"
+	zotErrors "zotregistry.io/zot/errors"
 
 	"github.com/spf13/cobra"
 )

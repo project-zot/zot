@@ -6,7 +6,7 @@ binary-container:
 
 .PHONY: run-container
 run-container:
-	${CONTAINER_RUNTIME} run --rm --security-opt label=disable -v $$(pwd)/../..:/go/src/github.com/anuvu/zot \
+	${CONTAINER_RUNTIME} run --rm --security-opt label=disable -v $$(pwd)/../..:/go/src/github.com/project-zot/zot \
 		zot-build:latest
 
 .PHONY: binary-minimal-container
@@ -15,7 +15,7 @@ binary-minimal-container:
 
 .PHONY: run-minimal-container
 run-minimal-container:
-	${CONTAINER_RUNTIME} run --rm --security-opt label=disable -v $$(pwd)/../..:/go/src/github.com/anuvu/zot \
+	${CONTAINER_RUNTIME} run --rm --security-opt label=disable -v $$(pwd)/../..:/go/src/github.com/project-zot/zot \
 		zot-minimal:latest
 
 .PHONY: binary-exporter-container
@@ -24,5 +24,5 @@ binary-exporter-container:
 
 .PHONY: run-exporter-container
 run-exporter-container:
-	${CONTAINER_RUNTIME} run --rm --security-opt label=disable -v $$(pwd)/../..:/go/src/github.com/anuvu/zot \
+	${CONTAINER_RUNTIME} run --rm --security-opt label=disable -v $$(pwd)/../..:/go/src/github.com/project-zot/zot \
 		zot-exporter:latest

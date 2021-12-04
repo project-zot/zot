@@ -15,16 +15,16 @@ import (
 	//"strings"
 	"testing"
 
-	"github.com/anuvu/zot/pkg/extensions/monitoring"
-	"github.com/anuvu/zot/pkg/log"
-	"github.com/anuvu/zot/pkg/storage"
-	"github.com/anuvu/zot/pkg/storage/s3"
 	guuid "github.com/gofrs/uuid"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
+	"zotregistry.io/zot/pkg/extensions/monitoring"
+	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/s3"
 
 	// Add s3 support
 	"github.com/docker/distribution/registry/storage/driver"

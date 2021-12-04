@@ -1,10 +1,6 @@
 package cli
 
 import (
-	"github.com/anuvu/zot/errors"
-	"github.com/anuvu/zot/pkg/api"
-	"github.com/anuvu/zot/pkg/api/config"
-	"github.com/anuvu/zot/pkg/storage"
 	glob "github.com/bmatcuk/doublestar/v4"
 	"github.com/fsnotify/fsnotify"
 	"github.com/mitchellh/mapstructure"
@@ -12,6 +8,10 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/api"
+	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/storage"
 )
 
 // metadataConfig reports metadata after parsing, which we use to track

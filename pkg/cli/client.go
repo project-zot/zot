@@ -1,3 +1,4 @@
+//go:build extended
 // +build extended
 
 package cli
@@ -18,8 +19,8 @@ import (
 	"sync"
 	"time"
 
-	zotErrors "github.com/anuvu/zot/errors"
-	"github.com/anuvu/zot/pkg/storage"
+	zotErrors "zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/storage"
 )
 
 var httpClientsMap = make(map[string]*http.Client) //nolint: gochecknoglobals

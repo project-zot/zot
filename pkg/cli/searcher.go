@@ -1,3 +1,4 @@
+//go:build extended
 // +build extended
 
 package cli
@@ -11,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	zotErrors "github.com/anuvu/zot/errors"
 	"github.com/briandowns/spinner"
+	zotErrors "zotregistry.io/zot/errors"
 )
 
 func getImageSearchers() []searcher {

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/anuvu/zot/pkg/storage"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"zotregistry.io/zot/pkg/storage"
 )
 
 const (

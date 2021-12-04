@@ -1,3 +1,4 @@
+//go:build minimal
 // +build minimal
 
 package monitoring
@@ -8,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/anuvu/zot/pkg/log"
+	"zotregistry.io/zot/pkg/log"
 )
 
 const (

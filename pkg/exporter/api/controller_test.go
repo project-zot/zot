@@ -1,3 +1,4 @@
+//go:build minimal
 // +build minimal
 
 package api_test
@@ -15,16 +16,16 @@ import (
 	"testing"
 	"time"
 
-	zotapi "github.com/anuvu/zot/pkg/api"
-	zotcfg "github.com/anuvu/zot/pkg/api/config"
-	"github.com/anuvu/zot/pkg/exporter/api"
-	"github.com/anuvu/zot/pkg/extensions/monitoring"
-	. "github.com/anuvu/zot/test"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
+	zotapi "zotregistry.io/zot/pkg/api"
+	zotcfg "zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/exporter/api"
+	"zotregistry.io/zot/pkg/extensions/monitoring"
+	. "zotregistry.io/zot/test"
 )
 
 const (

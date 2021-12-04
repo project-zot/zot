@@ -7,14 +7,14 @@ import (
 	"path"
 	"strings"
 
-	"github.com/anuvu/zot/errors"
-	"github.com/anuvu/zot/pkg/extensions/monitoring"
-	"github.com/anuvu/zot/pkg/log"
-	"github.com/anuvu/zot/pkg/storage"
 	glob "github.com/bmatcuk/doublestar/v4"
 	"github.com/containers/image/v5/docker/reference"
 	"github.com/containers/image/v5/types"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/extensions/monitoring"
+	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/storage"
 )
 
 // getTagFromRef returns a tagged reference from an image reference.

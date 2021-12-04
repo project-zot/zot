@@ -2,10 +2,10 @@
 # Stage 1: Install certs, build binary, create default config file
 # ---
 FROM docker.io/golang:1.16 AS builder
-RUN mkdir -p /go/src/github.com/anuvu/zot
-WORKDIR /go/src/github.com/anuvu/zot
+RUN mkdir -p /go/src/github.com/project-zot/zot
+WORKDIR /go/src/github.com/project-zot/zot
 COPY . .
-RUN CGO_ENABLED=0 make clean binary
+RUN make clean binary
 RUN echo '{\n\
     "storage": {\n\
         "rootDirectory": "/var/lib/registry"\n\
@@ -32,8 +32,8 @@ RUN echo '{\n\
 # ---
 FROM scratch AS final
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-COPY --from=builder /go/src/github.com/anuvu/zot/bin/zot /zot
-COPY --from=builder /go/src/github.com/anuvu/zot/config.json /etc/zot/config.json
+COPY --from=builder /go/src/github.com/project-zot/zot/bin/zot /zot
+COPY --from=builder /go/src/github.com/project-zot/zot/config.json /etc/zot/config.json
 ENTRYPOINT ["/zot"]
 EXPOSE 5000
 VOLUME ["/var/lib/registry"]

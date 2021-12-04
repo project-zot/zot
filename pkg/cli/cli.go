@@ -1,3 +1,4 @@
+//go:build extended
 // +build extended
 
 package cli

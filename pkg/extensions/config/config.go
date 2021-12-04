@@ -3,7 +3,7 @@ package config
 import (
 	"time"
 
-	"github.com/anuvu/zot/pkg/extensions/sync"
+	"zotregistry.io/zot/pkg/extensions/sync"
 )
 
 type ExtensionConfig struct {

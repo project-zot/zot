@@ -3,8 +3,8 @@ package swagger_test
 import (
 	"testing"
 
-	"github.com/anuvu/zot/swagger"
 	. "github.com/smartystreets/goconvey/convey"
+	"zotregistry.io/zot/swagger"
 )
 
 func TestDocs(t *testing.T) {

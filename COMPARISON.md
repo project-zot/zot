@@ -25,6 +25,7 @@ Please see [documentation](./examples/README.md) for various configuration optio
 | **External contributions** | yes | yes |
 | **CNCF project** | yes [9] | no |
 | **dist-spec conformance** | pending 3.x release [10][11] | yes [12] |
+| **Image Signatures** | auxiliary [13] | built-in [14][15] |
 
 \* NOTE: "minimal build" criterion above means the ability to build a minimal
 distribution-spec compliant registry in order to reduce library dependencies
@@ -46,7 +47,7 @@ and the possible attack surface.
 
 [7] https://github.com/parabuzzle/craneoperator
 
-[8] https://github.com/anuvu/zot-ui
+[8] https://github.com/project-zot/zot-ui
 
 [9] https://www.docker.com/blog/donating-docker-distribution-to-the-cncf/
 
@@ -54,4 +55,10 @@ and the possible attack surface.
 
 [11] https://github.com/opencontainers/oci-conformance/tree/main/distribution-spec#distributiondistribution
 
-[12] https://github.com/opencontainers/oci-conformance/tree/main/distribution-spec#anuvuzot
+[12] https://github.com/opencontainers/oci-conformance/tree/main/distribution-spec#project-zotzot
+
+[13] https://docs.docker.com/engine/security/trust/
+
+[14] https://github.com/notaryproject/notation
+
+[15] https://github.com/sigstore/cosign

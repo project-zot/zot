@@ -2,20 +2,20 @@
 
 ## Fork Repository
 
-[Fork](https://github.com/anuvu/zot) the zot repository on GitHub to your personal account.
+[Fork](https://github.com/project-zot/zot) the zot repository on GitHub to your personal account.
 
 ```
 #Set golang environment
 export GOPATH=$HOME/go
-mkdir -p $GOPATH/src/github.com/anuvu
+mkdir -p $GOPATH/src/github.com/project-zot
 
 #Get code
-go get github.com/anuvu/zot
-cd $GOPATH/src/github.com/anuvu/zot
+go get github.com/project-zot/zot
+cd $GOPATH/src/github.com/project-zot/zot
 
 #Track repository under your personal account
-git config push.default nothing # Anything to avoid pushing to anuvu/zot by default
-git remote rename origin anuvu
+git config push.default nothing # Anything to avoid pushing to project-zot/zot by default
+git remote rename origin project-zot
 git remote add $USER git@github.com:$USER/zot.git
 git fetch $USER
 

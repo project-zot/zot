@@ -9,15 +9,15 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/anuvu/zot/errors"
-	"github.com/anuvu/zot/pkg/api/config"
-	ext "github.com/anuvu/zot/pkg/extensions"
-	"github.com/anuvu/zot/pkg/extensions/monitoring"
-	"github.com/anuvu/zot/pkg/log"
-	"github.com/anuvu/zot/pkg/storage"
-	"github.com/anuvu/zot/pkg/storage/s3"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
+	"zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/api/config"
+	ext "zotregistry.io/zot/pkg/extensions"
+	"zotregistry.io/zot/pkg/extensions/monitoring"
+	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/s3"
 
 	"github.com/docker/distribution/registry/storage/driver/factory"
 )

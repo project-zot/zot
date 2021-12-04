@@ -1,13 +1,13 @@
-# zot [![build-test](https://github.com/anuvu/zot/actions/workflows/ci-cd.yml/badge.svg?branch=main)](https://github.com/anuvu/zot/actions/workflows/ci-cd.yml) [![codecov.io](http://codecov.io/github/anuvu/zot/coverage.svg?branch=main)](http://codecov.io/github/anuvu/zot?branch=main) [![Conformance Results](https://github.com/anuvu/zot/workflows/conformance/badge.svg)](https://github.com/anuvu/zot/actions?query=workflow%3Aconformance)
+# zot [![build-test](https://github.com/project-zot/zot/actions/workflows/ci-cd.yml/badge.svg?branch=main)](https://github.com/project-zot/zot/actions/workflows/ci-cd.yml) [![codecov.io](http://codecov.io/github/project-zot/zot/coverage.svg?branch=main)](http://codecov.io/github/project-zot/zot?branch=main) [![Conformance Results](https://github.com/project-zot/zot/workflows/conformance/badge.svg)](https://github.com/project-zot/zot/actions?query=workflow%3Aconformance)
 
 **zot** is a vendor-neutral OCI image registry server purely based on 
 [OCI Distribution Specification](https://github.com/opencontainers/distribution-spec).
 
-https://anuvu.github.io/zot/
+https://zotregistry.io
 
-[```docker pull ghcr.io/anuvu/zot:latest```](https://github.com/anuvu/zot/pkgs/container/zot)
+[```docker pull ghcr.io/project-zot/zot:latest```](https://github.com/project-zot/zot/pkgs/container/zot)
 
-[```docker run -p 5000:5000 ghcr.io/anuvu/zot:latest```](https://github.com/anuvu/zot/pkgs/container/zot)
+[```docker run -p 5000:5000 ghcr.io/project-zot/zot:latest```](https://github.com/project-zot/zot/pkgs/container/zot)
 
 [**Why zot?**](COMPARISON.md)
 
@@ -38,13 +38,13 @@ https://anuvu.github.io/zot/
   * Automatic garbage collection of orphaned blobs
   * Layer deduplication using hard links when content is identical
 * Serve [multiple storage paths (and backends)](./examples/config-multiple.json) using a single zot server
-* Pull and synchronize with other zot registries [sync](#sync)
+* Pull and synchronize from other dist-spec conformant registries [sync](#sync)
 * Swagger based documentation
 * Single binary for _all_ the above features
 * Released under Apache 2.0 License
 * [Metrics](#metrics) with Prometheus
   * Using a node exporter in case of dist-spec-only zot
-* ```go get -u github.com/anuvu/zot/cmd/zot```
+* ```go get -u github.com/project-zot/zot/cmd/zot```
 
 # Presentations
 
@@ -53,7 +53,7 @@ https://anuvu.github.io/zot/
 # Build and install binary (using host's toolchain)
 
 ```
-go get -u github.com/anuvu/zot/cmd/zot
+go get -u github.com/project-zot/zot/cmd/zot
 ```
 
 # Full CI/CD Build
@@ -64,7 +64,7 @@ go get -u github.com/anuvu/zot/cmd/zot
 make binary-container
 ```
 
-* Alternatively, build inside a container using [stacker](https://github.com/anuvu/stacker) (preferred)
+* Alternatively, build inside a container using [stacker](https://github.com/project-stacker/stacker) (preferred)
 
 ```
 make binary-stacker

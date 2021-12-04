@@ -18,14 +18,14 @@ import (
 
 	"testing"
 
-	zerr "github.com/anuvu/zot/errors"
-	"github.com/anuvu/zot/pkg/extensions/monitoring"
-	"github.com/anuvu/zot/pkg/log"
-	"github.com/anuvu/zot/pkg/storage"
-	"github.com/anuvu/zot/pkg/storage/s3"
 	guuid "github.com/gofrs/uuid"
 	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
+	zerr "zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/extensions/monitoring"
+	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/s3"
 
 	// Add s3 support
 	storageDriver "github.com/docker/distribution/registry/storage/driver"

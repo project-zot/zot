@@ -17,9 +17,6 @@ import (
 
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 
-	"github.com/anuvu/zot/errors"
-	"github.com/anuvu/zot/pkg/extensions/monitoring"
-	zlog "github.com/anuvu/zot/pkg/log"
 	apexlog "github.com/apex/log"
 	guuid "github.com/gofrs/uuid"
 	"github.com/notaryproject/notation-go-lib"
@@ -28,6 +25,9 @@ import (
 	"github.com/opencontainers/umoci"
 	"github.com/opencontainers/umoci/oci/casext"
 	"github.com/rs/zerolog"
+	"zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/extensions/monitoring"
+	zlog "zotregistry.io/zot/pkg/log"
 )
 
 const (

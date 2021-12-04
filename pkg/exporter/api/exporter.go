@@ -1,3 +1,4 @@
+//go:build minimal
 // +build minimal
 
 package api
@@ -9,10 +10,10 @@ import (
 	"regexp"
 	"strconv"
 
-	"github.com/anuvu/zot/pkg/extensions/monitoring"
-	"github.com/anuvu/zot/pkg/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"zotregistry.io/zot/pkg/extensions/monitoring"
+	"zotregistry.io/zot/pkg/log"
 )
 
 type Collector struct {

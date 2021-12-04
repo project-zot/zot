@@ -1,3 +1,4 @@
+//go:build extended
 // +build extended
 
 // nolint: lll
@@ -13,18 +14,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/anuvu/zot/pkg/api"
-	"github.com/anuvu/zot/pkg/api/config"
-	extconf "github.com/anuvu/zot/pkg/extensions/config"
-	"github.com/anuvu/zot/pkg/extensions/monitoring"
-	"github.com/anuvu/zot/pkg/extensions/search/common"
-	cveinfo "github.com/anuvu/zot/pkg/extensions/search/cve"
-	"github.com/anuvu/zot/pkg/log"
-	"github.com/anuvu/zot/pkg/storage"
-	. "github.com/anuvu/zot/test"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
+	"zotregistry.io/zot/pkg/api"
+	"zotregistry.io/zot/pkg/api/config"
+	extconf "zotregistry.io/zot/pkg/extensions/config"
+	"zotregistry.io/zot/pkg/extensions/monitoring"
+	"zotregistry.io/zot/pkg/extensions/search/common"
+	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
+	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/storage"
+	. "zotregistry.io/zot/test"
 )
 
 // nolint:gochecknoglobals

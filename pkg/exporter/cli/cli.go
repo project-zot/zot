@@ -1,10 +1,11 @@
+//go:build minimal
 // +build minimal
 
 package cli
 
 import (
-	"github.com/anuvu/zot/errors"
-	"github.com/anuvu/zot/pkg/exporter/api"
+	"zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/exporter/api"
 
 	"github.com/mitchellh/mapstructure"
 	"github.com/rs/zerolog/log"
