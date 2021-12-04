@@ -3,7 +3,6 @@ package storage
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +17,7 @@ import (
 
 	apexlog "github.com/apex/log"
 	guuid "github.com/gofrs/uuid"
+	"github.com/minio/sha256-simd"
 	"github.com/notaryproject/notation-go-lib"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -912,14 +912,18 @@ func (is *ImageStoreFS) FinishBlobUpload(repo string, uuid string, body io.Reade
 		return zerr.ErrUploadNotFound
 	}
 
-	srcDigest, err := godigest.FromReader(blobFile)
-	blobFile.Close()
+	defer blobFile.Close()
 
+	digester := sha256.New()
+
+	_, err = io.Copy(digester, blobFile)
 	if err != nil {
-		is.log.Error().Err(err).Str("blob", src).Msg("failed to open blob")
+		is.log.Error().Err(err).Str("repo", repo).Str("blob", src).Str("digest", digest).Msg("unable to compute hash")
 
-		return zerr.ErrBadBlobDigest
+		return err
 	}
+
+	srcDigest := godigest.NewDigestFromEncoded(godigest.SHA256, fmt.Sprintf("%x", digester.Sum(nil)))
 
 	if srcDigest != dstDigest {
 		is.log.Error().Str("srcDigest", srcDigest.String()).
