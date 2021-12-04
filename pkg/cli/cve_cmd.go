@@ -1,3 +1,4 @@
+//go:build extended
 // +build extended
 
 package cli
@@ -7,7 +8,7 @@ import (
 	"os"
 	"path"
 
-	zotErrors "github.com/anuvu/zot/errors"
+	zotErrors "zotregistry.io/zot/errors"
 
 	"github.com/briandowns/spinner"
 	"github.com/spf13/cobra"

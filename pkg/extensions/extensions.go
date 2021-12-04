@@ -7,14 +7,14 @@ import (
 	"time"
 
 	gqlHandler "github.com/99designs/gqlgen/graphql/handler"
-	"github.com/anuvu/zot/pkg/api/config"
-	"github.com/anuvu/zot/pkg/extensions/search"
-	cveinfo "github.com/anuvu/zot/pkg/extensions/search/cve"
-	"github.com/anuvu/zot/pkg/extensions/sync"
-	"github.com/anuvu/zot/pkg/log"
-	"github.com/anuvu/zot/pkg/storage"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/extensions/search"
+	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
+	"zotregistry.io/zot/pkg/extensions/sync"
+	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/storage"
 )
 
 // DownloadTrivyDB ...

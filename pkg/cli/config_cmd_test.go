@@ -1,3 +1,4 @@
+//go:build extended
 // +build extended
 
 package cli //nolint:testpackage
@@ -10,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	zotErrors "github.com/anuvu/zot/errors"
+	zotErrors "zotregistry.io/zot/errors"
 
 	. "github.com/smartystreets/goconvey/convey"
 )

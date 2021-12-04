@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/anuvu/zot/pkg/api/config"
-	"github.com/anuvu/zot/pkg/log"
 	"github.com/gorilla/mux"
+	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/log"
 )
 
 type contextKey int

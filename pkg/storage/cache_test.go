@@ -6,10 +6,10 @@ import (
 	"path"
 	"testing"
 
-	"github.com/anuvu/zot/errors"
-	"github.com/anuvu/zot/pkg/log"
-	"github.com/anuvu/zot/pkg/storage"
 	. "github.com/smartystreets/goconvey/convey"
+	"zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/storage"
 )
 
 func TestCache(t *testing.T) {

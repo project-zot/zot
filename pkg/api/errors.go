@@ -1,7 +1,7 @@
 package api
 
 import (
-	"github.com/anuvu/zot/errors"
+	"zotregistry.io/zot/errors"
 )
 
 type Error struct {

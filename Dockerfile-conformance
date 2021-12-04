@@ -3,8 +3,8 @@
 # ---
 FROM docker.io/golang:1.16-alpine AS builder
 RUN apk --update add git make ca-certificates
-RUN mkdir -p /go/src/github.com/anuvu/zot
-WORKDIR /go/src/github.com/anuvu/zot
+RUN mkdir -p /go/src/github.com/project-zot/zot
+WORKDIR /go/src/github.com/project-zot/zot
 COPY . .
 RUN make clean binary
 RUN echo -e '# Default config file for zot server\n\
@@ -21,8 +21,8 @@ storage:\n\
 # ---
 FROM scratch AS final
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-COPY --from=builder /go/src/github.com/anuvu/zot/bin/zot /usr/bin/zot
-COPY --from=builder /go/src/github.com/anuvu/zot/config.yml /etc/zot/config.yml
+COPY --from=builder /go/src/github.com/project-zot/zot/bin/zot /usr/bin/zot
+COPY --from=builder /go/src/github.com/project-zot/zot/config.yml /etc/zot/config.yml
 ENTRYPOINT ["/usr/bin/zot"]
 EXPOSE 5000
 VOLUME ["/var/lib/registry"]

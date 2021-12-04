@@ -9,13 +9,13 @@ import (
 
 	goerrors "errors"
 
-	"github.com/anuvu/zot/errors"
-	"github.com/anuvu/zot/pkg/log"
-	"github.com/anuvu/zot/pkg/storage"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/types"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/storage"
 )
 
 // OciLayoutInfo ...

@@ -1,4 +1,4 @@
-module github.com/anuvu/zot
+module zotregistry.io/zot
 
 go 1.16
 

@@ -1,3 +1,4 @@
+//go:build extended
 // +build extended
 
 package cli
@@ -17,7 +18,7 @@ import (
 	"github.com/olekukonko/tablewriter"
 	"gopkg.in/yaml.v2"
 
-	zotErrors "github.com/anuvu/zot/errors"
+	zotErrors "zotregistry.io/zot/errors"
 )
 
 type SearchService interface {

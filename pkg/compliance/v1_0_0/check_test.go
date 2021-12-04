@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/anuvu/zot/pkg/api"
-	"github.com/anuvu/zot/pkg/api/config"
-	"github.com/anuvu/zot/pkg/compliance"
-	"github.com/anuvu/zot/pkg/compliance/v1_0_0"
-	. "github.com/anuvu/zot/test"
 	"gopkg.in/resty.v1"
+	"zotregistry.io/zot/pkg/api"
+	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/compliance"
+	"zotregistry.io/zot/pkg/compliance/v1_0_0"
+	. "zotregistry.io/zot/test"
 )
 
 // nolint: gochecknoglobals

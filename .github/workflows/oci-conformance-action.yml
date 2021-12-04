@@ -28,7 +28,7 @@ jobs:
       with:
         ref: ${{ github.event.pull_request.head.sha }}
         path: zot
-        repository: anuvu/zot
+        repository: project-zot/zot
     - name: start zot server
       run: |
           cd ./zot
@@ -36,7 +36,7 @@ jobs:
           echo "SERVER_URL=http://${IP}:5000" >> $GITHUB_ENV
           IMAGE_REF="local-zot:v$(date +%Y%m%d%H%M%S)"
           docker build -f ./Dockerfile-conformance -t "${IMAGE_REF}" .
-          docker run --rm -p 5000:5000 -v "$(pwd)":/go/src/github.com/anuvu/zot -idt "${IMAGE_REF}"
+          docker run --rm -p 5000:5000 -v "$(pwd)":/go/src/github.com/project-zot/zot -idt "${IMAGE_REF}"
     - name: Run OCI Distribution Spec conformance tests
       uses: opencontainers/distribution-spec@main
       env:

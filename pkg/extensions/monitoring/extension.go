@@ -1,3 +1,4 @@
+//go:build extended
 // +build extended
 
 package monitoring
@@ -7,9 +8,9 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/anuvu/zot/pkg/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"zotregistry.io/zot/pkg/log"
 )
 
 const metricsNamespace = "zot"

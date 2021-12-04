@@ -1,3 +1,4 @@
+//go:build minimal
 // +build minimal
 
 package main
@@ -5,7 +6,7 @@ package main
 import (
 	"os"
 
-	"github.com/anuvu/zot/pkg/exporter/cli"
+	"zotregistry.io/zot/pkg/exporter/cli"
 )
 
 func main() {

@@ -8,13 +8,13 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/anuvu/zot/pkg/log"
 	godigest "github.com/opencontainers/go-digest"
+	"zotregistry.io/zot/pkg/log"
 
-	"github.com/anuvu/zot/pkg/extensions/search/common"
-	cveinfo "github.com/anuvu/zot/pkg/extensions/search/cve"
-	digestinfo "github.com/anuvu/zot/pkg/extensions/search/digest"
-	"github.com/anuvu/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/extensions/search/common"
+	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
+	digestinfo "zotregistry.io/zot/pkg/extensions/search/digest"
+	"zotregistry.io/zot/pkg/storage"
 ) // THIS CODE IS A STARTING POINT ONLY. IT WILL NOT BE UPDATED WITH SCHEMA CHANGES.
 
 // Resolver ...

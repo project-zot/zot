@@ -1,6 +1,6 @@
 [Unit]
 Description=OCI Distribution Registry
-Documentation=https://github.com/anuvu/zot
+Documentation=https://github.com/project-zot/zot
 After=network.target auditd.service local-fs.target
 
 [Service]

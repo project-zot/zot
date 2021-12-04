@@ -11,14 +11,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/anuvu/zot/pkg/api"
-	"github.com/anuvu/zot/pkg/compliance"
-	. "github.com/anuvu/zot/test" // nolint:golint,stylecheck
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey" // nolint:golint,stylecheck
 	"github.com/smartystreets/goconvey/convey/reporting"
 	"gopkg.in/resty.v1"
+	"zotregistry.io/zot/pkg/api"
+	"zotregistry.io/zot/pkg/compliance"
+	. "zotregistry.io/zot/test" // nolint:golint,stylecheck
 )
 
 func CheckWorkflows(t *testing.T, config *compliance.Config) {

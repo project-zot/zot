@@ -6,15 +6,15 @@ import (
 	"path"
 	"strings"
 
-	"github.com/anuvu/zot/pkg/extensions/search/common"
-	"github.com/anuvu/zot/pkg/log"
-	"github.com/anuvu/zot/pkg/storage"
 	dbTypes "github.com/aquasecurity/trivy-db/pkg/types"
 	"github.com/aquasecurity/trivy/pkg/commands/artifact"
 	"github.com/aquasecurity/trivy/pkg/commands/operation"
 	"github.com/aquasecurity/trivy/pkg/report"
 	"github.com/aquasecurity/trivy/pkg/types"
 	"github.com/urfave/cli/v2"
+	"zotregistry.io/zot/pkg/extensions/search/common"
+	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/storage"
 )
 
 func getRoutePrefix(name string) string {

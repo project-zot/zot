@@ -3,10 +3,10 @@ package digestinfo
 import (
 	"strings"
 
-	"github.com/anuvu/zot/pkg/extensions/search/common"
-	"github.com/anuvu/zot/pkg/log"
-	"github.com/anuvu/zot/pkg/storage"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"zotregistry.io/zot/pkg/extensions/search/common"
+	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/storage"
 )
 
 // DigestInfo implements searching by manifes/config/layer digest.

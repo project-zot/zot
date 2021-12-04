@@ -3,12 +3,12 @@ package config
 import (
 	"fmt"
 
-	"github.com/anuvu/zot/errors"
-	extconf "github.com/anuvu/zot/pkg/extensions/config"
-	"github.com/anuvu/zot/pkg/log"
 	"github.com/getlantern/deepcopy"
 	distspec "github.com/opencontainers/distribution-spec/specs-go"
 	"github.com/spf13/viper"
+	"zotregistry.io/zot/errors"
+	extconf "zotregistry.io/zot/pkg/extensions/config"
+	"zotregistry.io/zot/pkg/log"
 )
 
 var (

@@ -3,8 +3,8 @@ package api_test
 import (
 	"testing"
 
-	"github.com/anuvu/zot/pkg/api"
 	. "github.com/smartystreets/goconvey/convey"
+	"zotregistry.io/zot/pkg/api"
 )
 
 func TestUnknownCodeError(t *testing.T) {

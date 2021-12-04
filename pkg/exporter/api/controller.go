@@ -1,9 +1,10 @@
+//go:build minimal
 // +build minimal
 
 package api
 
 import (
-	"github.com/anuvu/zot/pkg/log"
+	"zotregistry.io/zot/pkg/log"
 )
 
 type Controller struct {

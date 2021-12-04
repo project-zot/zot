@@ -10,11 +10,11 @@ import (
 	"crypto/x509"
 	"fmt"
 
-	"github.com/anuvu/zot/errors"
 	goldap "github.com/go-ldap/ldap/v3"
+	"zotregistry.io/zot/errors"
 
-	"github.com/anuvu/zot/pkg/log"
 	"github.com/go-ldap/ldap/v3"
+	"zotregistry.io/zot/pkg/log"
 )
 
 type LDAPClient struct {

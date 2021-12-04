@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/anuvu/zot/pkg/extensions/monitoring"
-	"github.com/anuvu/zot/pkg/log"
 	"github.com/gorilla/mux"
+	"zotregistry.io/zot/pkg/extensions/monitoring"
+	"zotregistry.io/zot/pkg/log"
 )
 
 type statusWriter struct {

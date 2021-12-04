@@ -11,7 +11,7 @@ on:
 name: build-test
 jobs:
   build-test:
-    name: Build and test zot
+    name: Build and test ZOT
     runs-on: ubuntu-latest
     services:
       s3mock:
