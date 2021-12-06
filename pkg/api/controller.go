@@ -137,10 +137,6 @@ func (c *Controller) Run() error {
 		// Enable extensions if extension config is provided
 		if c.Config != nil && c.Config.Extensions != nil {
 			ext.EnableExtensions(c.Config, c.Log, c.Config.Storage.RootDirectory)
-
-			if c.Config.Extensions.Sync != nil {
-				ext.EnableSyncExtension(c.Config, c.Log, c.StoreController)
-			}
 		}
 	} else {
 		// we can't proceed without global storage
@@ -195,6 +191,11 @@ func (c *Controller) Run() error {
 
 			c.StoreController.SubStore = subImageStore
 		}
+	}
+
+	// Enable extensions if extension config is provided
+	if c.Config.Extensions != nil && c.Config.Extensions.Sync != nil {
+		ext.EnableSyncExtension(c.Config, c.Log, c.StoreController)
 	}
 
 	monitoring.SetServerInfo(c.Metrics, c.Config.Commit, c.Config.BinaryType, c.Config.GoVersion, c.Config.Version)

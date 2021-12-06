@@ -1519,3 +1519,165 @@ func TestSyncInvalidTags(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, 404)
 	})
 }
+
+func TestSyncSubPaths(t *testing.T) {
+	Convey("Verify sync with storage subPaths", t, func() {
+		updateDuration, _ := time.ParseDuration("30m")
+
+		srcPort := GetFreePort()
+		srcConfig := config.New()
+		client := resty.New()
+		srcBaseURL := GetBaseURL(srcPort)
+
+		srcConfig.HTTP.Port = srcPort
+
+		srcDir, err := ioutil.TempDir("", "oci-src-repo-test")
+		if err != nil {
+			panic(err)
+		}
+
+		subpath := "/subpath"
+
+		err = CopyFiles("../../../test/data", path.Join(srcDir, subpath))
+		if err != nil {
+			panic(err)
+		}
+
+		srcConfig.Storage.RootDirectory = srcDir
+
+		sc := api.NewController(srcConfig)
+
+		go func() {
+			// this blocks
+			if err := sc.Run(); err != nil {
+				return
+			}
+		}()
+
+		// wait till ready
+		for {
+			_, err := client.R().Get(srcBaseURL)
+			if err == nil {
+				break
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		defer func() {
+			ctx := context.Background()
+			_ = sc.Server.Shutdown(ctx)
+			time.Sleep(500 * time.Millisecond)
+		}()
+
+		regex := ".*"
+		var semver bool
+		var tlsVerify bool
+
+		syncRegistryConfig := sync.RegistryConfig{
+			Content: []sync.Content{
+				{
+					Prefix: path.Join(subpath, testImage),
+					Tags: &sync.Tags{
+						Regex:  &regex,
+						Semver: &semver,
+					},
+				},
+			},
+			URL:          srcBaseURL,
+			PollInterval: updateDuration,
+			TLSVerify:    &tlsVerify,
+			CertDir:      "",
+			OnDemand:     true,
+		}
+
+		syncConfig := &sync.Config{
+			Registries: []sync.RegistryConfig{syncRegistryConfig}}
+
+		destPort := GetFreePort()
+		destConfig := config.New()
+
+		destDir, err := ioutil.TempDir("", "oci-dest-repo-test")
+		if err != nil {
+			panic(err)
+		}
+		defer os.RemoveAll(destDir)
+
+		subPathDestDir, err := ioutil.TempDir("", "oci-dest-subpath-repo-test")
+		if err != nil {
+			panic(err)
+		}
+		defer os.RemoveAll(subPathDestDir)
+
+		destConfig.Storage.RootDirectory = destDir
+
+		destConfig.Storage.SubPaths = map[string]config.StorageConfig{
+			subpath: {
+				RootDirectory: subPathDestDir,
+				GC:            true,
+				Dedupe:        true,
+			},
+		}
+
+		destBaseURL := GetBaseURL(destPort)
+		destConfig.HTTP.Port = destPort
+
+		destConfig.Extensions = &extconf.ExtensionConfig{}
+		destConfig.Extensions.Search = nil
+		destConfig.Extensions.Sync = syncConfig
+
+		dc := api.NewController(destConfig)
+
+		go func() {
+			// this blocks
+			if err := dc.Run(); err != nil {
+				return
+			}
+		}()
+
+		// wait till ready
+		for {
+			_, err := resty.R().Get(destBaseURL)
+			if err == nil {
+				break
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		defer func() {
+			ctx := context.Background()
+			_ = dc.Server.Shutdown(ctx)
+		}()
+
+		var destTagsList TagsList
+
+		for {
+			resp, err := resty.R().Get(destBaseURL + "/v2" + path.Join(subpath, testImage) + "/tags/list")
+			if err != nil {
+				panic(err)
+			}
+
+			err = json.Unmarshal(resp.Body(), &destTagsList)
+			if err != nil {
+				panic(err)
+			}
+
+			if len(destTagsList.Tags) > 0 {
+				break
+			}
+
+			time.Sleep(500 * time.Millisecond)
+		}
+
+		// synced image should get into subpath instead of rootDir
+		fi, err := os.Stat(path.Join(subPathDestDir, subpath, testImage, "blobs/sha256"))
+		So(fi, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+
+		// check rootDir is not populated with any image.
+		fi, err = os.Stat(path.Join(destDir, subpath))
+		So(fi, ShouldBeNil)
+		So(err, ShouldNotBeNil)
+	})
+}
