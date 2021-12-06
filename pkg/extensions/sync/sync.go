@@ -367,6 +367,7 @@ func syncRegistry(regCfg RegistryConfig, storeController storage.StoreController
 		upstreamRef := ref
 
 		imageName := strings.Replace(upstreamRef.DockerReference().Name(), upstreamRegistryName, "", 1)
+		imageName = strings.TrimPrefix(imageName, "/")
 
 		imageStore := storeController.GetImageStore(imageName)
 

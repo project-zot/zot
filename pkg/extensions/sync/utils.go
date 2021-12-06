@@ -22,7 +22,6 @@ func getTagFromRef(ref types.ImageReference, log log.Logger) reference.Tagged {
 	tagged, isTagged := ref.DockerReference().(reference.Tagged)
 	if !isTagged {
 		log.Warn().Msgf("internal server error, reference %s does not have a tag, skipping", ref.DockerReference())
-		return nil
 	}
 
 	return tagged
