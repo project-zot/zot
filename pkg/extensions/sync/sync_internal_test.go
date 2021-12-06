@@ -101,7 +101,7 @@ func TestSyncInternal(t *testing.T) {
 
 		cfg := Config{Registries: []RegistryConfig{syncRegistryConfig}, CredentialsFile: "/invalid/path/to/file"}
 
-		So(Run(cfg, storage.StoreController{}, log.NewLogger("debug", "")), ShouldNotBeNil)
+		So(Run(context.Background(), cfg, storage.StoreController{}, log.NewLogger("debug", "")), ShouldNotBeNil)
 
 		_, err = getFileCredentials("/invalid/path/to/file")
 		So(err, ShouldNotBeNil)

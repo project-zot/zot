@@ -4,6 +4,7 @@
 package extensions
 
 import (
+	"context"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -24,7 +25,8 @@ func EnableExtensions(config *config.Config, log log.Logger, rootDir string) {
 }
 
 // EnableSyncExtension ...
-func EnableSyncExtension(config *config.Config, log log.Logger, storeController storage.StoreController) {
+func EnableSyncExtension(ctx context.Context, config *config.Config, log log.Logger,
+	storeController storage.StoreController) {
 	log.Warn().Msg("skipping enabling sync extension because given zot binary doesn't support any extensions," +
 		"please build zot full binary for this feature")
 }

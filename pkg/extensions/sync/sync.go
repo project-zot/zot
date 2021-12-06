@@ -307,7 +307,7 @@ func getUpstreamContext(regCfg *RegistryConfig, credentials Credentials) *types.
 	return upstreamCtx
 }
 
-func syncRegistry(regCfg RegistryConfig, storeController storage.StoreController,
+func syncRegistry(ctx context.Context, regCfg RegistryConfig, storeController storage.StoreController,
 	log log.Logger, localCtx *types.SystemContext,
 	policyCtx *signature.PolicyContext, credentials Credentials, uuid string) error {
 	log.Info().Msgf("syncing registry: %s", regCfg.URL)
@@ -347,14 +347,19 @@ func syncRegistry(regCfg RegistryConfig, storeController storage.StoreController
 	for contentID, repos := range repos {
 		r := repos
 		id := contentID
-
-		if err = retry.RetryIfNecessary(context.Background(), func() error {
-			refs, err := imagesToCopyFromUpstream(upstreamRegistryName, r, upstreamCtx, regCfg.Content[id], log)
-			images = append(images, refs...)
-			return err
-		}, retryOptions); err != nil {
-			log.Error().Err(err).Msg("error while getting images references from upstream, retrying...")
-			return err
+		select {
+		case <-ctx.Done():
+			log.Info().Msg("sync context canceled")
+			return ctx.Err()
+		default:
+			if err = retry.RetryIfNecessary(context.Background(), func() error {
+				refs, err := imagesToCopyFromUpstream(upstreamRegistryName, r, upstreamCtx, regCfg.Content[id], log)
+				images = append(images, refs...)
+				return err
+			}, retryOptions); err != nil {
+				log.Error().Err(err).Msg("error while getting images references from upstream, retrying...")
+				return err
+			}
 		}
 	}
 
@@ -364,50 +369,56 @@ func syncRegistry(regCfg RegistryConfig, storeController storage.StoreController
 	}
 
 	for _, ref := range images {
-		upstreamRef := ref
+		select {
+		case <-ctx.Done():
+			log.Info().Msg("sync context canceled")
+			return ctx.Err()
+		default:
+			upstreamRef := ref
 
-		imageName := strings.Replace(upstreamRef.DockerReference().Name(), upstreamRegistryName, "", 1)
+			imageName := strings.Replace(upstreamRef.DockerReference().Name(), upstreamRegistryName, "", 1)
 
-		imageStore := storeController.GetImageStore(imageName)
+			imageStore := storeController.GetImageStore(imageName)
 
-		localRepo := path.Join(imageStore.RootDir(), imageName, SyncBlobUploadDir, uuid, imageName)
+			localRepo := path.Join(imageStore.RootDir(), imageName, SyncBlobUploadDir, uuid, imageName)
 
-		if err = os.MkdirAll(localRepo, 0755); err != nil {
-			log.Error().Err(err).Str("dir", localRepo).Msg("couldn't create temporary dir")
-			return err
-		}
+			if err = os.MkdirAll(localRepo, 0755); err != nil {
+				log.Error().Err(err).Str("dir", localRepo).Msg("couldn't create temporary dir")
+				return err
+			}
 
-		defer os.RemoveAll(path.Join(imageStore.RootDir(), imageName, SyncBlobUploadDir, uuid))
+			defer os.RemoveAll(path.Join(imageStore.RootDir(), imageName, SyncBlobUploadDir, uuid))
 
-		upstreamTaggedRef := getTagFromRef(upstreamRef, log)
+			upstreamTaggedRef := getTagFromRef(upstreamRef, log)
 
-		localTaggedRepo := fmt.Sprintf("%s:%s", localRepo, upstreamTaggedRef.Tag())
+			localTaggedRepo := fmt.Sprintf("%s:%s", localRepo, upstreamTaggedRef.Tag())
 
-		localRef, err := layout.ParseReference(localTaggedRepo)
-		if err != nil {
-			log.Error().Err(err).Msgf("Cannot obtain a valid image reference for reference %q", localTaggedRepo)
-			return err
-		}
+			localRef, err := layout.ParseReference(localTaggedRepo)
+			if err != nil {
+				log.Error().Err(err).Msgf("Cannot obtain a valid image reference for reference %q", localTaggedRepo)
+				return err
+			}
 
-		log.Info().Msgf("copying image %s:%s to %s", upstreamRef.DockerReference().Name(),
-			upstreamTaggedRef.Tag(), localTaggedRepo)
+			log.Info().Msgf("copying image %s:%s to %s", upstreamRef.DockerReference().Name(),
+				upstreamTaggedRef.Tag(), localTaggedRepo)
 
-		if err = retry.RetryIfNecessary(context.Background(), func() error {
-			_, err = copy.Image(context.Background(), policyCtx, localRef, upstreamRef, &options)
-			return err
-		}, retryOptions); err != nil {
-			log.Error().Err(err).Msgf("error while copying image %s:%s to %s",
-				upstreamRef.DockerReference().Name(), upstreamTaggedRef.Tag(), localTaggedRepo)
-			return err
-		}
+			if err = retry.RetryIfNecessary(context.Background(), func() error {
+				_, err = copy.Image(context.Background(), policyCtx, localRef, upstreamRef, &options)
+				return err
+			}, retryOptions); err != nil {
+				log.Error().Err(err).Msgf("error while copying image %s:%s to %s",
+					upstreamRef.DockerReference().Name(), upstreamTaggedRef.Tag(), localTaggedRepo)
+				return err
+			}
 
-		log.Info().Msgf("successfully synced %s:%s", upstreamRef.DockerReference().Name(), upstreamTaggedRef.Tag())
+			log.Info().Msgf("successfully synced %s:%s", upstreamRef.DockerReference().Name(), upstreamTaggedRef.Tag())
 
-		err = pushSyncedLocalImage(imageName, upstreamTaggedRef.Tag(), uuid, storeController, log)
-		if err != nil {
-			log.Error().Err(err).Msgf("error while pushing synced cached image %s",
-				localTaggedRepo)
-			return err
+			err = pushSyncedLocalImage(imageName, upstreamTaggedRef.Tag(), uuid, storeController, log)
+			if err != nil {
+				log.Error().Err(err).Msgf("error while pushing synced cached image %s",
+					localTaggedRepo)
+				return err
+			}
 		}
 	}
 
@@ -437,7 +448,7 @@ func getLocalContexts(log log.Logger) (*types.SystemContext, *signature.PolicyCo
 	return localCtx, policyContext, nil
 }
 
-func Run(cfg Config, storeController storage.StoreController, logger log.Logger) error {
+func Run(ctx context.Context, cfg Config, storeController storage.StoreController, logger log.Logger) error {
 	var credentialsFile CredentialsFile
 
 	var err error
@@ -478,7 +489,7 @@ func Run(cfg Config, storeController storage.StoreController, logger log.Logger)
 		go func(regCfg RegistryConfig, l log.Logger) {
 			// run on intervals
 			for ; true; <-ticker.C {
-				if err := syncRegistry(regCfg, storeController, l, localCtx, policyCtx,
+				if err := syncRegistry(ctx, regCfg, storeController, l, localCtx, policyCtx,
 					credentialsFile[upstreamRegistry], uuid.String()); err != nil {
 					l.Error().Err(err).Msg("sync exited with error, stopping it...")
 					ticker.Stop()

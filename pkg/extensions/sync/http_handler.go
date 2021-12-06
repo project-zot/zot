@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -55,7 +56,7 @@ func (h *PostHandler) Handler(w http.ResponseWriter, r *http.Request) {
 
 		upstreamRegistryName := strings.Replace(strings.Replace(regCfg.URL, "http://", "", 1), "https://", "", 1)
 
-		if err := syncRegistry(regCfg, h.StoreController, h.Log, localCtx, policyCtx,
+		if err := syncRegistry(context.Background(), regCfg, h.StoreController, h.Log, localCtx, policyCtx,
 			credentialsFile[upstreamRegistryName], uuid.String()); err != nil {
 			h.Log.Err(err).Msg("sync http handler: error while syncing in")
 			WriteData(w, http.StatusInternalServerError, err.Error())

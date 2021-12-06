@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -73,6 +74,9 @@ func (c *Controller) Run() error {
 		return err
 	}
 
+	syncCtx, cancelSync := context.WithCancel(context.Background())
+	defer cancelSync()
+
 	// print the current configuration, but strip secrets
 	c.Log.Info().Interface("params", c.Config.Sanitize()).Msg("configuration settings")
 
@@ -139,7 +143,7 @@ func (c *Controller) Run() error {
 			ext.EnableExtensions(c.Config, c.Log, c.Config.Storage.RootDirectory)
 
 			if c.Config.Extensions.Sync != nil {
-				ext.EnableSyncExtension(c.Config, c.Log, c.StoreController)
+				ext.EnableSyncExtension(syncCtx, c.Config, c.Log, c.StoreController)
 			}
 		}
 	} else {
