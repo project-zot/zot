@@ -21,6 +21,7 @@ https://zotregistry.io
 * Supports container image signatures - [cosign](https://github.com/sigstore/cosign) and [notation](https://github.com/notaryproject/notation)
 * Supports [helm charts](https://helm.sh/docs/topics/registries/)
 * Behavior controlled via [configuration](./examples/README.md)
+* Supports `amd64` (Intel, AMD, etc) and `arm64` (ARM servers, Raspberry PI 4, etc) architectures
 * Supports image deletion by tag
 * Currently suitable for on-prem deployments (e.g. colocated with Kubernetes)
 * Compatible with ecosystem tools such as [skopeo](#skopeo) and [cri-o](#cri-o)
