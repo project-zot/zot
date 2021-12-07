@@ -159,8 +159,23 @@ func (is *ImageStoreFS) Unlock() {
 
 func (is *ImageStoreFS) initRepo(name string) error {
 	repoDir := path.Join(is.rootDir, name)
+
+	absRepoDir, err := filepath.Abs(repoDir)
+
+	if err != nil {
+		is.log.Error().Err(err).Msg("error trying to get absolute path of repo")
+
+		return err
+	}
+
+	if (is.rootDir + "/" + name) != absRepoDir {
+		is.log.Error().Err(err).Msg("error joining rootDir with repo name")
+
+		return errors.ErrBadJoin
+	}
+
 	// create "blobs" subdir
-	err := ensureDir(path.Join(repoDir, "blobs"), is.log)
+	err = ensureDir(path.Join(repoDir, "blobs"), is.log)
 	if err != nil {
 		is.log.Error().Err(err).Msg("error creating blobs subdir")
 

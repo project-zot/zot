@@ -45,4 +45,5 @@ var (
 	ErrInvalidRepositoryName   = errors.New("routes: not a repository name")
 	ErrSyncMissingCatalog      = errors.New("sync: couldn't fetch upstream registry's catalog")
 	ErrMethodNotSupported      = errors.New("storage: method not supported")
+	ErrBadJoin                 = errors.New("repository: can't join root with repo name")
 )

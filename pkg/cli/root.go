@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"path/filepath"
+
 	glob "github.com/bmatcuk/doublestar/v4"
 	"github.com/fsnotify/fsnotify"
 	"github.com/mitchellh/mapstructure"
@@ -161,6 +163,19 @@ func LoadConfiguration(config *config.Config, configPath string) {
 		panic(err)
 	}
 
+	// check if config's rootDir is absolute path
+	absRootDir, err := filepath.Abs(config.Storage.RootDirectory)
+
+	if err != nil {
+		log.Error().Err(err).Msg("error getting absolute path of root directory")
+		panic(err)
+	}
+
+	if absRootDir != config.Storage.RootDirectory {
+		log.Error().Err(err).Msg("error: config's root directory is not absolute path")
+		panic(errors.ErrBadConfig)
+	}
+
 	if len(md.Keys) == 0 || len(md.Unused) > 0 {
 		log.Error().Err(errors.ErrBadConfig).Msg("bad configuration, retry writing it")
 		panic(errors.ErrBadConfig)
@@ -221,7 +236,7 @@ func LoadConfiguration(config *config.Config, configPath string) {
 		}
 	}
 
-	err := config.LoadAccessControlConfig()
+	err = config.LoadAccessControlConfig()
 	if err != nil {
 		log.Error().Err(errors.ErrBadConfig).Msg("unable to unmarshal http.accessControl.key.policies")
 		panic(err)
