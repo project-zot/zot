@@ -9,6 +9,7 @@ TOOLSDIR := hack/tools
 PATH := bin:$(TOOLSDIR)/bin:$(PATH)
 STACKER := $(shell which stacker)
 GOLINTER := $(TOOLSDIR)/bin/golangci-lint
+NOTATION := $(TOOLSDIR)/bin/notation
 OS ?= linux
 ARCH ?= amd64
 
@@ -40,9 +41,9 @@ exporter-minimal: swagger
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-exporter -tags minimal,containers_image_openpgp -v -trimpath ./cmd/exporter
 
 .PHONY: test
-test:
+test: check-skopeo $(NOTATION)
 	$(shell mkdir -p test/data;  cd test/data; ../scripts/gen_certs.sh; cd ${TOP_LEVEL}; sudo skopeo --insecure-policy copy -q docker://public.ecr.aws/t0x7q1g8/centos:7 oci:${TOP_LEVEL}/test/data/zot-test:0.0.1;sudo skopeo --insecure-policy copy -q docker://public.ecr.aws/t0x7q1g8/centos:8 oci:${TOP_LEVEL}/test/data/zot-cve-test:0.0.1)
-	$(shell sudo mkdir -p /etc/containers/certs.d/127.0.0.1:8089/; sudo cp test/data/client.* /etc/containers/certs.d/127.0.0.1:8089/; sudo cp test/data/ca.* /etc/containers/certs.d/127.0.0.1:8089/;)
+	$(shell sudo mkdir -p /etc/containers/certs.d/127.0.0.1:8089/; sudo cp test/data/client.* test/data/ca.* /etc/containers/certs.d/127.0.0.1:8089/;)
 	$(shell sudo chmod a=rwx /etc/containers/certs.d/127.0.0.1:8089/*.key)
 	go test -tags extended,containers_image_openpgp -v -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-extended.txt -covermode=atomic ./...
 	go test -tags minimal,containers_image_openpgp -v -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-minimal.txt -covermode=atomic ./...
@@ -50,6 +51,16 @@ test:
 .PHONY: test-clean
 test-clean:
 	$(shell sudo rm -rf /etc/containers/certs.d/127.0.0.1:8089/)
+
+.PHONY: check-skopeo
+check-skopeo:
+	skopeo -v || (echo "You need skopeo to be installed in order to run tests"; exit 1)
+
+$(NOTATION):
+	mkdir -p $(TOOLSDIR)/bin
+	curl -Lo notation.tar.gz https://github.com/notaryproject/notation/releases/download/v0.7.1-alpha.1/notation_0.7.1-alpha.1_linux_amd64.tar.gz
+	tar xvzf notation.tar.gz -C $(TOOLSDIR)/bin  notation
+	rm notation.tar.gz
 
 .PHONY: covhtml
 covhtml:
