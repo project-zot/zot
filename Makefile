@@ -11,19 +11,19 @@ OS ?= linux
 ARCH ?= amd64
 
 .PHONY: all
-all: swagger binary binary-minimal exporter-minimal debug test test-clean check
+all: swagger binary binary-minimal binary-debug exporter-minimal test test-clean check
 
 .PHONY: binary-minimal
 binary-minimal: swagger
-	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-minimal -tags minimal,containers_image_openpgp -v -trimpath -ldflags "-X  github.com/project-zot/zot/pkg/api/config.Commit=${COMMIT} -X github.com/project-zot/zot/pkg/api/config.BinaryType=minimal -X github.com/project-zot/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zot
+	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-minimal -tags minimal,containers_image_openpgp -v -trimpath -ldflags "-X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=minimal -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zot
 
 .PHONY: binary
 binary: swagger
-	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot -tags extended,containers_image_openpgp -v -trimpath -ldflags "-X  github.com/project-zot/zot/pkg/api/config.Commit=${COMMIT} -X github.com/project-zot/zot/pkg/api/config.BinaryType=extended -X github.com/project-zot/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zot
+	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot -tags extended,containers_image_openpgp -v -trimpath -ldflags "-X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=extended -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zot
 
-.PHONY: debug
-debug: swagger
-	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-debug -tags extended,containers_image_openpgp -v -gcflags all='-N -l' -ldflags "-X  github.com/project-zot/zot/pkg/api/config.Commit=${COMMIT} -X github.com/project-zot/zot/pkg/api/config.BinaryType=extended -X github.com/project-zot/zot/pkg/api/config.GoVersion=${GO_VERSION}" ./cmd/zot
+.PHONY: binary-debug
+binary-debug: swagger
+	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-debug -tags extended,containers_image_openpgp -v -gcflags all='-N -l' -ldflags "-X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=extended -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION}" ./cmd/zot
 
 .PHONY: exporter-minimal
 exporter-minimal: swagger

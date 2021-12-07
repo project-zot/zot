@@ -129,7 +129,7 @@ func NewRootCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			if showVersion {
 				log.Info().Str("distribution-spec", distspec.Version).Str("commit", config.Commit).
-					Str("binary-type", config.BinaryType).Msg("version")
+					Str("binary-type", config.BinaryType).Str("go version", config.GoVersion).Msg("version")
 			}
 			_ = cmd.Usage()
 			cmd.SilenceErrors = false
