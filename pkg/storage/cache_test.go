@@ -37,6 +37,9 @@ func TestCache(t *testing.T) {
 		err = cache.PutBlob("key", path.Join(dir, "value"))
 		So(err, ShouldBeNil)
 
+		err = cache.PutBlob("key", "value")
+		So(err, ShouldNotBeNil)
+
 		exists = cache.HasBlob("key", "value")
 		So(exists, ShouldBeTrue)
 

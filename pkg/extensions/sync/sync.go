@@ -2,12 +2,9 @@ package sync
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path"
 	"regexp"
@@ -75,49 +72,10 @@ type Tags struct {
 }
 
 // getUpstreamCatalog gets all repos from a registry.
-func getUpstreamCatalog(regCfg *RegistryConfig, credentials Credentials, log log.Logger) (catalog, error) {
+func getUpstreamCatalog(client *resty.Client, regCfg *RegistryConfig, log log.Logger) (catalog, error) {
 	var c catalog
 
 	registryCatalogURL := fmt.Sprintf("%s%s", regCfg.URL, "/v2/_catalog")
-	client := resty.New()
-
-	if regCfg.CertDir != "" {
-		log.Debug().Msgf("sync: using certs directory: %s", regCfg.CertDir)
-		clientCert := path.Join(regCfg.CertDir, "client.cert")
-		clientKey := path.Join(regCfg.CertDir, "client.key")
-		caCertPath := path.Join(regCfg.CertDir, "ca.crt")
-
-		caCert, err := ioutil.ReadFile(caCertPath)
-		if err != nil {
-			log.Error().Err(err).Msg("couldn't read CA certificate")
-
-			return c, err
-		}
-
-		caCertPool := x509.NewCertPool()
-		caCertPool.AppendCertsFromPEM(caCert)
-
-		client.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
-
-		cert, err := tls.LoadX509KeyPair(clientCert, clientKey)
-		if err != nil {
-			log.Error().Err(err).Msg("couldn't read certificates key pairs")
-
-			return c, err
-		}
-
-		client.SetCertificates(cert)
-	}
-
-	// nolint: gosec
-	if regCfg.TLSVerify != nil && !*regCfg.TLSVerify {
-		client.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true})
-	}
-
-	if credentials.Username != "" && credentials.Password != "" {
-		log.Debug().Msgf("sync: using basic auth")
-		client.SetBasicAuth(credentials.Username, credentials.Password)
-	}
 
 	resp, err := client.R().SetHeader("Content-Type", "application/json").Get(registryCatalogURL)
 	if err != nil {
@@ -247,6 +205,12 @@ func imagesToCopyFromUpstream(registryName string, repos []string, upstreamCtx *
 		}
 
 		for _, tag := range tags {
+			// don't copy cosign signature, containers/image doesn't support it
+			// we will copy it manually later
+			if isCosignTag(tag) {
+				continue
+			}
+
 			taggedRef, err := reference.WithTag(repoRef, tag)
 			if err != nil {
 				log.Err(err).Msgf("error creating a reference for repository %s and tag %q", repoRef.Name(), tag)
@@ -283,11 +247,10 @@ func imagesToCopyFromUpstream(registryName string, repos []string, upstreamCtx *
 
 func getCopyOptions(upstreamCtx, localCtx *types.SystemContext) copy.Options {
 	options := copy.Options{
-		DestinationCtx: localCtx,
-		SourceCtx:      upstreamCtx,
-		ReportWriter:   io.Discard,
-		// force only oci manifest MIME type
-		ForceManifestMIMEType: ispec.MediaTypeImageManifest,
+		DestinationCtx:        localCtx,
+		SourceCtx:             upstreamCtx,
+		ReportWriter:          io.Discard,
+		ForceManifestMIMEType: ispec.MediaTypeImageManifest, // force only oci manifest MIME type
 	}
 
 	return options
@@ -295,7 +258,6 @@ func getCopyOptions(upstreamCtx, localCtx *types.SystemContext) copy.Options {
 
 func getUpstreamContext(regCfg *RegistryConfig, credentials Credentials) *types.SystemContext {
 	upstreamCtx := &types.SystemContext{}
-
 	upstreamCtx.DockerCertPath = regCfg.CertDir
 	upstreamCtx.DockerDaemonCertPath = regCfg.CertDir
 
@@ -336,8 +298,13 @@ func syncRegistry(regCfg RegistryConfig, storeController storage.StoreController
 
 	var catalog catalog
 
+	httpClient, err := getHTTPClient(&regCfg, credentials, log)
+	if err != nil {
+		return err
+	}
+
 	if err = retry.RetryIfNecessary(context.Background(), func() error {
-		catalog, err = getUpstreamCatalog(&regCfg, credentials, log)
+		catalog, err = getUpstreamCatalog(httpClient, &regCfg, log)
 
 		return err
 	}, retryOptions); err != nil {
@@ -430,6 +397,16 @@ func syncRegistry(regCfg RegistryConfig, storeController storage.StoreController
 
 			return err
 		}
+
+		if err = retry.RetryIfNecessary(context.Background(), func() error {
+			err = syncSignatures(httpClient, storeController, regCfg.URL, imageName, upstreamTaggedRef.Tag(), log)
+
+			return err
+		}, retryOptions); err != nil {
+			log.Error().Err(err).Msgf("Couldn't copy image signature %s", upstreamRef.DockerReference().Name())
+
+			return err
+		}
 	}
 
 	log.Info().Msgf("finished syncing %s", regCfg.URL)
@@ -445,6 +422,8 @@ func getLocalContexts(log log.Logger) (*types.SystemContext, *signature.PolicyCo
 	var err error
 
 	localCtx := &types.SystemContext{}
+	// preserve compression
+	localCtx.OCIAcceptUncompressedLayers = true
 
 	// accept any image with or without signature
 	policy = &signature.Policy{Default: []signature.PolicyRequirement{signature.NewPRInsecureAcceptAnything()}}

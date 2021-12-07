@@ -21,6 +21,12 @@ func OneImage(cfg Config, storeController storage.StoreController,
 	repo, tag string, log log.Logger) error {
 	var credentialsFile CredentialsFile
 
+	/* don't copy cosign signature, containers/image doesn't support it
+	we will copy it manually later */
+	if isCosignTag(tag) {
+		return nil
+	}
+
 	if cfg.CredentialsFile != "" {
 		var err error
 
@@ -46,7 +52,8 @@ func OneImage(cfg Config, storeController storage.StoreController,
 		return err
 	}
 
-	for _, regCfg := range cfg.Registries {
+	for _, registryCfg := range cfg.Registries {
+		regCfg := registryCfg
 		if !regCfg.OnDemand {
 			log.Info().Msgf("skipping syncing on demand from %s, onDemand flag is false", regCfg.URL)
 
@@ -127,9 +134,9 @@ func OneImage(cfg Config, storeController storage.StoreController,
 		if err = retry.RetryIfNecessary(context.Background(), func() error {
 			_, copyErr = copy.Image(context.Background(), policyCtx, localRef, upstreamRef, &options)
 
-			return err
-		}, retryOptions); copyErr != nil {
-			log.Error().Err(copyErr).Msgf("error while copying image %s to %s",
+			return copyErr
+		}, retryOptions); err != nil {
+			log.Error().Err(err).Msgf("error while copying image %s to %s",
 				upstreamRef.DockerReference().Name(), localTaggedRepo)
 		} else {
 			log.Info().Msgf("successfully synced %s", upstreamRef.DockerReference().Name())
@@ -138,6 +145,21 @@ func OneImage(cfg Config, storeController storage.StoreController,
 			if err != nil {
 				log.Error().Err(err).Msgf("error while pushing synced cached image %s",
 					localTaggedRepo)
+
+				return err
+			}
+
+			httpClient, err := getHTTPClient(&regCfg, credentialsFile[upstreamRegistryName], log)
+			if err != nil {
+				return err
+			}
+
+			if err = retry.RetryIfNecessary(context.Background(), func() error {
+				err = syncSignatures(httpClient, storeController, regCfg.URL, imageName, upstreamTaggedRef.Tag(), log)
+
+				return err
+			}, retryOptions); err != nil {
+				log.Error().Err(err).Msgf("Couldn't copy image signature %s", upstreamRef.DockerReference().Name())
 
 				return err
 			}

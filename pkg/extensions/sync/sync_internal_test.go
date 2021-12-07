@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net/url"
 	"os"
 	"path"
 	goSync "sync"
@@ -18,6 +19,7 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
+	"gopkg.in/resty.v1"
 	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
@@ -123,11 +125,11 @@ func TestSyncInternal(t *testing.T) {
 			CertDir:      "/tmp/missing_certs/a/b/c/d/z",
 		}
 
-		_, err := getUpstreamCatalog(&syncRegistryConfig, Credentials{}, log.NewLogger("debug", ""))
+		_, err := getUpstreamCatalog(resty.New(), &syncRegistryConfig, log.NewLogger("debug", ""))
 		So(err, ShouldNotBeNil)
 	})
 
-	Convey("Test getUpstreamCatalog() with bad certs", t, func() {
+	Convey("Test getHttpClient() with bad certs", t, func() {
 		badCertsDir, err := ioutil.TempDir("", "bad_certs*")
 		if err != nil {
 			panic(err)
@@ -153,7 +155,10 @@ func TestSyncInternal(t *testing.T) {
 			CertDir:      badCertsDir,
 		}
 
-		_, err = getUpstreamCatalog(&syncRegistryConfig, Credentials{}, log.NewLogger("debug", ""))
+		_, err = getHTTPClient(&syncRegistryConfig, Credentials{}, log.NewLogger("debug", ""))
+		So(err, ShouldNotBeNil)
+		syncRegistryConfig.CertDir = "/path/to/invalid/cert"
+		_, err = getHTTPClient(&syncRegistryConfig, Credentials{}, log.NewLogger("debug", ""))
 		So(err, ShouldNotBeNil)
 	})
 
@@ -166,6 +171,26 @@ func TestSyncInternal(t *testing.T) {
 
 		_, err = imagesToCopyFromUpstream("docker://localhost:4566", repos, upstreamCtx,
 			Content{}, log.NewLogger("debug", ""))
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("Test OneImage() skips cosign signatures", t, func() {
+		err := OneImage(Config{}, storage.StoreController{}, "repo", "sha256-.sig", log.NewLogger("", ""))
+		So(err, ShouldBeNil)
+	})
+
+	Convey("Test syncSignatures()", t, func() {
+		log := log.NewLogger("", "")
+		err := syncSignatures(resty.New(), storage.StoreController{}, "%", "repo", "tag", log)
+		So(err, ShouldNotBeNil)
+		err = syncSignatures(resty.New(), storage.StoreController{}, "http://zot", "repo", "tag", log)
+		So(err, ShouldNotBeNil)
+		err = syncSignatures(resty.New(), storage.StoreController{}, "https://google.com", "repo", "tag", log)
+		So(err, ShouldNotBeNil)
+		url, _ := url.Parse("invalid")
+		err = syncCosignSignature(resty.New(), storage.StoreController{}, *url, "repo", "tag", log)
+		So(err, ShouldNotBeNil)
+		err = syncNotarySignature(resty.New(), storage.StoreController{}, *url, "repo", "tag", log)
 		So(err, ShouldNotBeNil)
 	})
 
