@@ -96,6 +96,7 @@ jobs:
         with:
           build-args: ARCH=arm64
           push: true
+          file: Dockerfile-arch
           tags: |
             ghcr.io/${{ github.repository }}-arm64:${{ github.event.release.tag_name }}
             ghcr.io/${{ github.repository }}-arm64:latest
@@ -104,7 +105,7 @@ jobs:
         with:
           build-args: ARCH=arm64
           push: true
-          file: Dockerfile-minimal
+          file: Dockerfile-arch-minimal
           tags: |
             ghcr.io/${{ github.repository }}-arm64-minimal:${{ github.event.release.tag_name }}
             ghcr.io/${{ github.repository }}-arm64-minimal:latest
