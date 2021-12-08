@@ -34,6 +34,7 @@ require (
 	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20211026153258-b3f631f25f1a
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.0.2-0.20211117181255-693428a734f5
+	github.com/opencontainers/runc v1.0.3
 	github.com/opencontainers/umoci v0.4.8-0.20210922062158-e60a0cc726e6
 	github.com/oras-project/artifacts-spec v1.0.0-draft.1
 	github.com/phayes/freeport v0.0.0-20180830031419-95f893ade6f2
