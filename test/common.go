@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net/url"
 	"os"
 	"path"
 	"time"
@@ -65,7 +66,17 @@ func Location(baseURL string, resp *resty.Response) string {
 	// return the former - this needs to be clarified
 	loc := resp.Header().Get("Location")
 
-	return baseURL + loc
+	uloc, err := url.Parse(loc)
+	if err != nil {
+		return ""
+	}
+
+	path := uloc.Path
+	if query := uloc.RawQuery; query != "" {
+		path += "?" + query
+	}
+
+	return baseURL + path
 }
 
 func CopyFiles(sourceDir string, destDir string) error {
