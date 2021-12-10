@@ -4,3 +4,4 @@ ignore:
     - "./pkg/extensions/search/generated.go"
     - "./pkg/extensions/minimal.go"
     - "./pkg/cli/minimal.go"
+    - "./cmd/zb/*.go"
