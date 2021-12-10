@@ -14,7 +14,7 @@ OS ?= linux
 ARCH ?= amd64
 
 .PHONY: all
-all: swagger binary binary-minimal binary-debug binary-arch binary-arch-minimal cli cli-arch exporter-minimal verify-config test test-clean check
+all: swagger binary binary-minimal binary-debug binary-arch binary-arch-minimal cli cli-arch bench bench-arch exporter-minimal verify-config test test-clean check
 
 .PHONY: binary-minimal
 binary-minimal: swagger
@@ -41,8 +41,16 @@ cli:
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zli -tags extended,containers_image_openpgp -v -trimpath -ldflags "-X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=extended -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zli
 
 .PHONY: cli-arch
-cli-arch: swagger
+cli-arch: 
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zli-$(ARCH) -tags extended,containers_image_openpgp -v -trimpath -ldflags "-X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=extended -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zli
+
+.PHONY: bench
+bench:
+	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zb -tags extended,containers_image_openpgp -v -trimpath -ldflags "-X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=extended -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zb
+
+.PHONY: bench-arch
+bench-arch: 
+	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zb-$(ARCH) -tags extended,containers_image_openpgp -v -trimpath -ldflags "-X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=extended -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zb
 
 .PHONY: exporter-minimal
 exporter-minimal: swagger
@@ -100,7 +108,7 @@ update-licenses:
 
 .PHONY: clean
 clean:
-	rm -f bin/zot*
+	rm -f bin/z*
 	rm -rf hack
 
 .PHONY: run
