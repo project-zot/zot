@@ -33,27 +33,31 @@ func NewCache(rootDir string, name string, log zlog.Logger) *Cache {
 		Timeout:      dbCacheLockCheckTimeout,
 		FreelistType: bbolt.FreelistArrayType,
 	}
-	db, err := bbolt.Open(dbPath, 0600, dbOpts)
 
+	cacheDB, err := bbolt.Open(dbPath, 0o600, dbOpts) //nolint:gomnd
 	if err != nil {
 		log.Error().Err(err).Str("dbPath", dbPath).Msg("unable to create cache db")
+
 		return nil
 	}
 
-	if err := db.Update(func(tx *bbolt.Tx) error {
+	if err := cacheDB.Update(func(tx *bbolt.Tx) error {
 		if _, err := tx.CreateBucketIfNotExists([]byte(BlobsCache)); err != nil {
 			// this is a serious failure
 			log.Error().Err(err).Str("dbPath", dbPath).Msg("unable to create a root bucket")
+
 			return err
 		}
+
 		return nil
 	}); err != nil {
 		// something went wrong
 		log.Error().Err(err).Msg("unable to create a cache")
+
 		return nil
 	}
 
-	return &Cache{rootDir: rootDir, db: db, log: log}
+	return &Cache{rootDir: rootDir, db: cacheDB, log: log}
 }
 
 func (c *Cache) PutBlob(digest string, path string) error {
@@ -75,18 +79,24 @@ func (c *Cache) PutBlob(digest string, path string) error {
 			// this is a serious failure
 			err := errors.ErrCacheRootBucket
 			c.log.Error().Err(err).Msg("unable to access root bucket")
+
 			return err
 		}
-		b, err := root.CreateBucketIfNotExists([]byte(digest))
+
+		bucket, err := root.CreateBucketIfNotExists([]byte(digest))
 		if err != nil {
 			// this is a serious failure
 			c.log.Error().Err(err).Str("bucket", digest).Msg("unable to create a bucket")
+
 			return err
 		}
-		if err := b.Put([]byte(relp), nil); err != nil {
+
+		if err := bucket.Put([]byte(relp), nil); err != nil {
 			c.log.Error().Err(err).Str("bucket", digest).Str("value", relp).Msg("unable to put record")
+
 			return err
 		}
+
 		return nil
 	}); err != nil {
 		return err
@@ -104,6 +114,7 @@ func (c *Cache) GetBlob(digest string) (string, error) {
 			// this is a serious failure
 			err := errors.ErrCacheRootBucket
 			c.log.Error().Err(err).Msg("unable to access root bucket")
+
 			return err
 		}
 
@@ -113,6 +124,7 @@ func (c *Cache) GetBlob(digest string) (string, error) {
 			c := b.Cursor()
 			k, _ := c.First()
 			blobPath.WriteString(string(k))
+
 			return nil
 		}
 
@@ -131,6 +143,7 @@ func (c *Cache) HasBlob(digest string, blob string) bool {
 			// this is a serious failure
 			err := errors.ErrCacheRootBucket
 			c.log.Error().Err(err).Msg("unable to access root bucket")
+
 			return err
 		}
 
@@ -138,6 +151,7 @@ func (c *Cache) HasBlob(digest string, blob string) bool {
 		if b == nil {
 			return errors.ErrCacheMiss
 		}
+
 		if b.Get([]byte(blob)) == nil {
 			return errors.ErrCacheMiss
 		}
@@ -163,26 +177,29 @@ func (c *Cache) DeleteBlob(digest string, path string) error {
 			// this is a serious failure
 			err := errors.ErrCacheRootBucket
 			c.log.Error().Err(err).Msg("unable to access root bucket")
+
 			return err
 		}
 
-		b := root.Bucket([]byte(digest))
-		if b == nil {
+		bucket := root.Bucket([]byte(digest))
+		if bucket == nil {
 			return errors.ErrCacheMiss
 		}
 
-		if err := b.Delete([]byte(relp)); err != nil {
+		if err := bucket.Delete([]byte(relp)); err != nil {
 			c.log.Error().Err(err).Str("digest", digest).Str("path", relp).Msg("unable to delete")
+
 			return err
 		}
 
-		cur := b.Cursor()
-		k, _ := cur.First()
+		cur := bucket.Cursor()
 
+		k, _ := cur.First()
 		if k == nil {
 			c.log.Debug().Str("digest", digest).Str("path", relp).Msg("deleting empty bucket")
 			if err := root.DeleteBucket([]byte(digest)); err != nil {
 				c.log.Error().Err(err).Str("digest", digest).Str("path", relp).Msg("unable to delete")
+
 				return err
 			}
 		}

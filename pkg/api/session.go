@@ -35,20 +35,20 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 }
 
 // SessionLogger logs session details.
-func SessionLogger(c *Controller) mux.MiddlewareFunc {
-	l := c.Log.With().Str("module", "http").Logger()
+func SessionLogger(ctlr *Controller) mux.MiddlewareFunc {
+	logger := ctlr.Log.With().Str("module", "http").Logger()
 
 	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 			// Start timer
 			start := time.Now()
-			path := r.URL.Path
-			raw := r.URL.RawQuery
+			path := request.URL.Path
+			raw := request.URL.RawQuery
 
-			sw := statusWriter{ResponseWriter: w}
+			stwr := statusWriter{ResponseWriter: response}
 
 			// Process request
-			next.ServeHTTP(&sw, r)
+			next.ServeHTTP(&stwr, request)
 
 			// Stop timer
 			end := time.Now()
@@ -57,22 +57,20 @@ func SessionLogger(c *Controller) mux.MiddlewareFunc {
 				// Truncate in a golang < 1.8 safe way
 				latency -= latency % time.Second
 			}
-			clientIP := r.RemoteAddr
-			method := r.Method
+			clientIP := request.RemoteAddr
+			method := request.Method
 			headers := map[string][]string{}
-			username := ""
-			log := l.Info()
-			for key, value := range r.Header {
+			log := logger.Info()
+			for key, value := range request.Header {
 				if key == "Authorization" { // anonymize from logs
-					s := strings.SplitN(value[0], " ", 2)
+					s := strings.SplitN(value[0], " ", 2) //nolint:gomnd
 					if len(s) == 2 && strings.EqualFold(s[0], "basic") {
 						b, err := base64.StdEncoding.DecodeString(s[1])
 						if err == nil {
-							pair := strings.SplitN(string(b), ":", 2)
+							pair := strings.SplitN(string(b), ":", 2) //nolint:gomnd
 							// nolint:gomnd
 							if len(pair) == 2 {
-								username = pair[0]
-								log = log.Str("username", username)
+								log = log.Str("username", pair[0])
 							}
 						}
 					}
@@ -80,8 +78,8 @@ func SessionLogger(c *Controller) mux.MiddlewareFunc {
 				}
 				headers[key] = value
 			}
-			statusCode := sw.status
-			bodySize := sw.length
+			statusCode := stwr.status
+			bodySize := stwr.length
 			if raw != "" {
 				path = path + "?" + raw
 			}
@@ -89,9 +87,9 @@ func SessionLogger(c *Controller) mux.MiddlewareFunc {
 			if path != "/v2/metrics" {
 				// In order to test metrics feture,the instrumentation related to node exporter
 				// should be handled by node exporter itself (ex: latency)
-				monitoring.IncHTTPConnRequests(c.Metrics, method, strconv.Itoa(statusCode))
-				monitoring.ObserveHTTPRepoLatency(c.Metrics, path, latency)     // summary
-				monitoring.ObserveHTTPMethodLatency(c.Metrics, method, latency) // histogram
+				monitoring.IncHTTPConnRequests(ctlr.Metrics, method, strconv.Itoa(statusCode))
+				monitoring.ObserveHTTPRepoLatency(ctlr.Metrics, path, latency)     // summary
+				monitoring.ObserveHTTPMethodLatency(ctlr.Metrics, method, latency) // histogram
 			}
 
 			log.Str("clientIP", clientIP).
@@ -108,28 +106,27 @@ func SessionLogger(c *Controller) mux.MiddlewareFunc {
 
 func SessionAuditLogger(audit *log.Logger) mux.MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			path := r.URL.Path
-			raw := r.URL.RawQuery
+		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+			path := request.URL.Path
+			raw := request.URL.RawQuery
 
-			sw := statusWriter{ResponseWriter: w}
+			statusWr := statusWriter{ResponseWriter: response}
 
 			// Process request
-			next.ServeHTTP(&sw, r)
+			next.ServeHTTP(&statusWr, request)
 
-			clientIP := r.RemoteAddr
-			method := r.Method
+			clientIP := request.RemoteAddr
+			method := request.Method
 			username := ""
 
-			for key, value := range r.Header {
+			for key, value := range request.Header {
 				if key == "Authorization" { // anonymize from logs
-					s := strings.SplitN(value[0], " ", 2)
+					s := strings.SplitN(value[0], " ", 2) //nolint:gomnd
 					if len(s) == 2 && strings.EqualFold(s[0], "basic") {
 						b, err := base64.StdEncoding.DecodeString(s[1])
 						if err == nil {
-							pair := strings.SplitN(string(b), ":", 2)
-							// nolint:gomnd
-							if len(pair) == 2 {
+							pair := strings.SplitN(string(b), ":", 2) //nolint:gomnd
+							if len(pair) == 2 {                       //nolint:gomnd
 								username = pair[0]
 							}
 						}
@@ -137,7 +134,7 @@ func SessionAuditLogger(audit *log.Logger) mux.MiddlewareFunc {
 				}
 			}
 
-			statusCode := sw.status
+			statusCode := statusWr.status
 			if raw != "" {
 				path = path + "?" + raw
 			}

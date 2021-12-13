@@ -49,7 +49,7 @@ func TestTLSWithAuth(t *testing.T) {
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
 
-		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
+		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
 		defer func() { resty.SetTLSClientConfig(nil) }()
 		conf := config.New()
 		conf.HTTP.Port = SecurePort1
@@ -68,16 +68,16 @@ func TestTLSWithAuth(t *testing.T) {
 			CACert: CACert,
 		}
 
-		c := api.NewController(conf)
+		ctlr := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
 		}
 		defer os.RemoveAll(dir)
-		c.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.RootDirectory = dir
 		go func() {
 			// this blocks
-			if err := c.Run(); err != nil {
+			if err := ctlr.Run(); err != nil {
 				return
 			}
 		}()
@@ -93,7 +93,7 @@ func TestTLSWithAuth(t *testing.T) {
 
 		defer func() {
 			ctx := context.Background()
-			_ = c.Server.Shutdown(ctx)
+			_ = ctlr.Server.Shutdown(ctx)
 		}()
 
 		Convey("Test with htpassw auth", func() {
@@ -155,7 +155,7 @@ func TestTLSWithoutAuth(t *testing.T) {
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
 
-		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
+		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
 		defer func() { resty.SetTLSClientConfig(nil) }()
 		conf := config.New()
 		conf.HTTP.Port = SecurePort1
@@ -165,16 +165,16 @@ func TestTLSWithoutAuth(t *testing.T) {
 			CACert: CACert,
 		}
 
-		c := api.NewController(conf)
+		ctlr := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
 		}
 		defer os.RemoveAll(dir)
-		c.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.RootDirectory = dir
 		go func() {
 			// this blocks
-			if err := c.Run(); err != nil {
+			if err := ctlr.Run(); err != nil {
 				return
 			}
 		}()
@@ -190,7 +190,7 @@ func TestTLSWithoutAuth(t *testing.T) {
 
 		defer func() {
 			ctx := context.Background()
-			_ = c.Server.Shutdown(ctx)
+			_ = ctlr.Server.Shutdown(ctx)
 		}()
 
 		Convey("Certs in user's home", func() {
@@ -223,7 +223,7 @@ func TestTLSWithoutAuth(t *testing.T) {
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
 
-		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
+		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
 		defer func() { resty.SetTLSClientConfig(nil) }()
 		conf := config.New()
 		conf.HTTP.Port = SecurePort2
@@ -233,16 +233,16 @@ func TestTLSWithoutAuth(t *testing.T) {
 			CACert: CACert,
 		}
 
-		c := api.NewController(conf)
+		ctlr := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
 		}
 		defer os.RemoveAll(dir)
-		c.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.RootDirectory = dir
 		go func() {
 			// this blocks
-			if err := c.Run(); err != nil {
+			if err := ctlr.Run(); err != nil {
 				return
 			}
 		}()
@@ -258,7 +258,7 @@ func TestTLSWithoutAuth(t *testing.T) {
 
 		defer func() {
 			ctx := context.Background()
-			_ = c.Server.Shutdown(ctx)
+			_ = ctlr.Server.Shutdown(ctx)
 		}()
 
 		Convey("Certs in privileged path", func() {
@@ -286,7 +286,7 @@ func TestTLSBadCerts(t *testing.T) {
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
 
-		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
+		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
 		defer func() { resty.SetTLSClientConfig(nil) }()
 		conf := config.New()
 		conf.HTTP.Port = SecurePort3
@@ -296,16 +296,16 @@ func TestTLSBadCerts(t *testing.T) {
 			CACert: CACert,
 		}
 
-		c := api.NewController(conf)
+		ctlr := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
 		}
 		defer os.RemoveAll(dir)
-		c.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.RootDirectory = dir
 		go func() {
 			// this blocks
-			if err := c.Run(); err != nil {
+			if err := ctlr.Run(); err != nil {
 				return
 			}
 		}()
@@ -321,7 +321,7 @@ func TestTLSBadCerts(t *testing.T) {
 
 		defer func() {
 			ctx := context.Background()
-			_ = c.Server.Shutdown(ctx)
+			_ = ctlr.Server.Shutdown(ctx)
 		}()
 
 		Convey("Test with system certs", func() {

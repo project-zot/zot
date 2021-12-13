@@ -90,17 +90,19 @@ func getUpstreamCatalog(regCfg *RegistryConfig, credentials Credentials, log log
 		caCert, err := ioutil.ReadFile(caCertPath)
 		if err != nil {
 			log.Error().Err(err).Msg("couldn't read CA certificate")
+
 			return c, err
 		}
 
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
 
-		client.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
+		client.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
 
 		cert, err := tls.LoadX509KeyPair(clientCert, clientKey)
 		if err != nil {
 			log.Error().Err(err).Msg("couldn't read certificates key pairs")
+
 			return c, err
 		}
 
@@ -120,18 +122,21 @@ func getUpstreamCatalog(regCfg *RegistryConfig, credentials Credentials, log log
 	resp, err := client.R().SetHeader("Content-Type", "application/json").Get(registryCatalogURL)
 	if err != nil {
 		log.Err(err).Msgf("couldn't query %s", registryCatalogURL)
+
 		return c, err
 	}
 
 	if resp.IsError() {
 		log.Error().Msgf("couldn't query %s, status code: %d, body: %s", registryCatalogURL,
 			resp.StatusCode(), resp.Body())
+
 		return c, errors.ErrSyncMissingCatalog
 	}
 
 	err = json.Unmarshal(resp.Body(), &c)
 	if err != nil {
 		log.Err(err).Str("body", string(resp.Body())).Msg("couldn't unmarshal registry's catalog")
+
 		return c, err
 	}
 
@@ -171,19 +176,19 @@ func filterImagesByTagRegex(upstreamReferences *[]types.ImageReference, content 
 			return err
 		}
 
-		n := 0
+		numTags := 0
 
 		for _, ref := range refs {
 			tagged := getTagFromRef(ref, log)
 			if tagged != nil {
 				if tagReg.MatchString(tagged.Tag()) {
-					refs[n] = ref
-					n++
+					refs[numTags] = ref
+					numTags++
 				}
 			}
 		}
 
-		refs = refs[:n]
+		refs = refs[:numTags]
 	}
 
 	*upstreamReferences = refs
@@ -202,20 +207,20 @@ func filterImagesBySemver(upstreamReferences *[]types.ImageReference, content Co
 	if content.Tags.Semver != nil && *content.Tags.Semver {
 		log.Info().Msg("start filtering using semver compliant rule")
 
-		n := 0
+		numTags := 0
 
 		for _, ref := range refs {
 			tagged := getTagFromRef(ref, log)
 			if tagged != nil {
 				_, ok := semver.NewVersion(tagged.Tag())
 				if ok == nil {
-					refs[n] = ref
-					n++
+					refs[numTags] = ref
+					numTags++
 				}
 			}
 		}
 
-		refs = refs[:n]
+		refs = refs[:numTags]
 	}
 
 	*upstreamReferences = refs
@@ -230,12 +235,14 @@ func imagesToCopyFromUpstream(registryName string, repos []string, upstreamCtx *
 		repoRef, err := parseRepositoryReference(fmt.Sprintf("%s/%s", registryName, repoName))
 		if err != nil {
 			log.Error().Err(err).Msgf("couldn't parse repository reference: %s", repoRef)
+
 			return nil, err
 		}
 
 		tags, err := getImageTags(context.Background(), upstreamCtx, repoRef)
 		if err != nil {
 			log.Error().Err(err).Msgf("couldn't fetch tags for %s", repoRef)
+
 			return nil, err
 		}
 
@@ -243,6 +250,7 @@ func imagesToCopyFromUpstream(registryName string, repos []string, upstreamCtx *
 			taggedRef, err := reference.WithTag(repoRef, tag)
 			if err != nil {
 				log.Err(err).Msgf("error creating a reference for repository %s and tag %q", repoRef.Name(), tag)
+
 				return nil, err
 			}
 
@@ -250,6 +258,7 @@ func imagesToCopyFromUpstream(registryName string, repos []string, upstreamCtx *
 			if err != nil {
 				log.Err(err).Msgf("cannot obtain a valid image reference for transport %q and reference %s",
 					docker.Transport.Name(), taggedRef.String())
+
 				return nil, err
 			}
 
@@ -329,9 +338,11 @@ func syncRegistry(regCfg RegistryConfig, storeController storage.StoreController
 
 	if err = retry.RetryIfNecessary(context.Background(), func() error {
 		catalog, err = getUpstreamCatalog(&regCfg, credentials, log)
+
 		return err
 	}, retryOptions); err != nil {
 		log.Error().Err(err).Msg("error while getting upstream catalog, retrying...")
+
 		return err
 	}
 
@@ -352,15 +363,18 @@ func syncRegistry(regCfg RegistryConfig, storeController storage.StoreController
 		if err = retry.RetryIfNecessary(context.Background(), func() error {
 			refs, err := imagesToCopyFromUpstream(upstreamRegistryName, r, upstreamCtx, regCfg.Content[id], log)
 			images = append(images, refs...)
+
 			return err
 		}, retryOptions); err != nil {
 			log.Error().Err(err).Msg("error while getting images references from upstream, retrying...")
+
 			return err
 		}
 	}
 
 	if len(images) == 0 {
 		log.Info().Msg("no images to copy, no need to sync")
+
 		return nil
 	}
 
@@ -374,8 +388,9 @@ func syncRegistry(regCfg RegistryConfig, storeController storage.StoreController
 
 		localRepo := path.Join(imageStore.RootDir(), imageName, SyncBlobUploadDir, uuid, imageName)
 
-		if err = os.MkdirAll(localRepo, 0755); err != nil {
+		if err = os.MkdirAll(localRepo, storage.DefaultDirPerms); err != nil {
 			log.Error().Err(err).Str("dir", localRepo).Msg("couldn't create temporary dir")
+
 			return err
 		}
 
@@ -388,6 +403,7 @@ func syncRegistry(regCfg RegistryConfig, storeController storage.StoreController
 		localRef, err := layout.ParseReference(localTaggedRepo)
 		if err != nil {
 			log.Error().Err(err).Msgf("Cannot obtain a valid image reference for reference %q", localTaggedRepo)
+
 			return err
 		}
 
@@ -396,10 +412,12 @@ func syncRegistry(regCfg RegistryConfig, storeController storage.StoreController
 
 		if err = retry.RetryIfNecessary(context.Background(), func() error {
 			_, err = copy.Image(context.Background(), policyCtx, localRef, upstreamRef, &options)
+
 			return err
 		}, retryOptions); err != nil {
 			log.Error().Err(err).Msgf("error while copying image %s:%s to %s",
 				upstreamRef.DockerReference().Name(), upstreamTaggedRef.Tag(), localTaggedRepo)
+
 			return err
 		}
 
@@ -409,6 +427,7 @@ func syncRegistry(regCfg RegistryConfig, storeController storage.StoreController
 		if err != nil {
 			log.Error().Err(err).Msgf("error while pushing synced cached image %s",
 				localTaggedRepo)
+
 			return err
 		}
 	}
@@ -433,13 +452,14 @@ func getLocalContexts(log log.Logger) (*types.SystemContext, *signature.PolicyCo
 	policyContext, err := signature.NewPolicyContext(policy)
 	if err != nil {
 		log.Error().Err(err).Msg("couldn't create policy context")
+
 		return &types.SystemContext{}, &signature.PolicyContext{}, err
 	}
 
 	return localCtx, policyContext, nil
 }
 
-func Run(cfg Config, storeController storage.StoreController, wg *goSync.WaitGroup, logger log.Logger) error {
+func Run(cfg Config, storeController storage.StoreController, wtgrp *goSync.WaitGroup, logger log.Logger) error {
 	var credentialsFile CredentialsFile
 
 	var err error
@@ -448,6 +468,7 @@ func Run(cfg Config, storeController storage.StoreController, wg *goSync.WaitGro
 		credentialsFile, err = getFileCredentials(cfg.CredentialsFile)
 		if err != nil {
 			logger.Error().Err(err).Msgf("couldn't get registry credentials from %s", cfg.CredentialsFile)
+
 			return err
 		}
 	}
@@ -467,38 +488,40 @@ func Run(cfg Config, storeController storage.StoreController, wg *goSync.WaitGro
 		// if content not provided, don't run periodically sync
 		if len(regCfg.Content) == 0 {
 			logger.Info().Msgf("sync config content not configured for %s, will not run periodically sync", regCfg.URL)
+
 			continue
 		}
 
 		// if pollInterval is not provided, don't run periodically sync
 		if regCfg.PollInterval == 0 {
 			logger.Warn().Msgf("sync config PollInterval not configured for %s, will not run periodically sync", regCfg.URL)
+
 			continue
 		}
 
 		ticker := time.NewTicker(regCfg.PollInterval)
 
 		// fork a new zerolog child to avoid data race
-		l := log.Logger{Logger: logger.With().Caller().Timestamp().Logger()}
+		tlogger := log.Logger{Logger: logger.With().Caller().Timestamp().Logger()}
 
 		upstreamRegistry := strings.Replace(strings.Replace(regCfg.URL, "http://", "", 1), "https://", "", 1)
 
 		// schedule each registry sync
-		go func(regCfg RegistryConfig, l log.Logger) {
+		go func(regCfg RegistryConfig, logger log.Logger) {
 			// run on intervals
 			for ; true; <-ticker.C {
 				// increment reference since will be busy, so shutdown has to wait
-				wg.Add(1)
+				wtgrp.Add(1)
 
-				if err := syncRegistry(regCfg, storeController, l, localCtx, policyCtx,
+				if err := syncRegistry(regCfg, storeController, logger, localCtx, policyCtx,
 					credentialsFile[upstreamRegistry], uuid.String()); err != nil {
-					l.Error().Err(err).Msg("sync exited with error, stopping it...")
+					logger.Error().Err(err).Msg("sync exited with error, stopping it...")
 					ticker.Stop()
 				}
 				// mark as done after a single sync run
-				wg.Done()
+				wtgrp.Done()
 			}
-		}(regCfg, l)
+		}(regCfg, tlogger)
 	}
 
 	logger.Info().Msg("finished setting up sync")

@@ -1,6 +1,7 @@
 package monitoring
 
 import (
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -28,8 +29,9 @@ func getDirSize(path string) (int64, error) {
 		if !info.IsDir() {
 			size += info.Size()
 		}
+
 		return err
 	})
 
-	return size, err
+	return size, fmt.Errorf("getDirSize: %w", err)
 }

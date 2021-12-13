@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       s3mock:
-        image: localstack/localstack-full
+        image: ghcr.io/project-zot/localstack/localstack:0.13.2
         env:
           SERVICES: s3
         ports:

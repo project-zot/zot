@@ -24,34 +24,34 @@ func TestCache(t *testing.T) {
 
 		So(storage.NewCache("/deadBEEF", "cache_test", log), ShouldBeNil)
 
-		c := storage.NewCache(dir, "cache_test", log)
-		So(c, ShouldNotBeNil)
+		cache := storage.NewCache(dir, "cache_test", log)
+		So(cache, ShouldNotBeNil)
 
-		v, err := c.GetBlob("key")
+		val, err := cache.GetBlob("key")
 		So(err, ShouldEqual, errors.ErrCacheMiss)
-		So(v, ShouldBeEmpty)
+		So(val, ShouldBeEmpty)
 
-		b := c.HasBlob("key", "value")
-		So(b, ShouldBeFalse)
+		exists := cache.HasBlob("key", "value")
+		So(exists, ShouldBeFalse)
 
-		err = c.PutBlob("key", path.Join(dir, "value"))
+		err = cache.PutBlob("key", path.Join(dir, "value"))
 		So(err, ShouldBeNil)
 
-		b = c.HasBlob("key", "value")
-		So(b, ShouldBeTrue)
+		exists = cache.HasBlob("key", "value")
+		So(exists, ShouldBeTrue)
 
-		v, err = c.GetBlob("key")
+		val, err = cache.GetBlob("key")
 		So(err, ShouldBeNil)
-		So(v, ShouldNotBeEmpty)
+		So(val, ShouldNotBeEmpty)
 
-		err = c.DeleteBlob("bogusKey", "bogusValue")
+		err = cache.DeleteBlob("bogusKey", "bogusValue")
 		So(err, ShouldEqual, errors.ErrCacheMiss)
 
-		err = c.DeleteBlob("key", "bogusValue")
+		err = cache.DeleteBlob("key", "bogusValue")
 		So(err, ShouldBeNil)
 
 		// try to insert empty path
-		err = c.PutBlob("key", "")
+		err = cache.PutBlob("key", "")
 		So(err, ShouldNotBeNil)
 		So(err, ShouldEqual, errors.ErrEmptyValue)
 	})

@@ -27,6 +27,7 @@ var (
 	ErrCacheMiss               = errors.New("cache: miss")
 	ErrRequireCred             = errors.New("ldap: bind credentials required")
 	ErrInvalidCred             = errors.New("ldap: invalid credentials")
+	ErrEmptyJSON               = errors.New("cli: config json is empty")
 	ErrInvalidArgs             = errors.New("cli: Invalid Arguments")
 	ErrInvalidFlagsCombination = errors.New("cli: Invalid combination of flags")
 	ErrInvalidURL              = errors.New("cli: invalid URL format")
@@ -45,4 +46,5 @@ var (
 	ErrInvalidRepositoryName   = errors.New("routes: not a repository name")
 	ErrSyncMissingCatalog      = errors.New("sync: couldn't fetch upstream registry's catalog")
 	ErrMethodNotSupported      = errors.New("storage: method not supported")
+	ErrInvalidMetric           = errors.New("metrics: invalid metric func")
 )

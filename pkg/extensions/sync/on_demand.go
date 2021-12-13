@@ -27,6 +27,7 @@ func OneImage(cfg Config, storeController storage.StoreController,
 		credentialsFile, err = getFileCredentials(cfg.CredentialsFile)
 		if err != nil {
 			log.Error().Err(err).Msgf("couldn't get registry credentials from %s", cfg.CredentialsFile)
+
 			return err
 		}
 	}
@@ -48,6 +49,7 @@ func OneImage(cfg Config, storeController storage.StoreController,
 	for _, regCfg := range cfg.Registries {
 		if !regCfg.OnDemand {
 			log.Info().Msgf("skipping syncing on demand from %s, onDemand flag is false", regCfg.URL)
+
 			continue
 		}
 
@@ -57,6 +59,7 @@ func OneImage(cfg Config, storeController storage.StoreController,
 			if len(repos) == 0 {
 				log.Info().Msgf("skipping syncing on demand %s from %s registry because it's filtered out by content config",
 					repo, regCfg.URL)
+
 				continue
 			}
 		}
@@ -71,6 +74,7 @@ func OneImage(cfg Config, storeController storage.StoreController,
 		upstreamRepoRef, err := parseRepositoryReference(fmt.Sprintf("%s/%s", upstreamRegistryName, repo))
 		if err != nil {
 			log.Error().Err(err).Msgf("error parsing repository reference %s/%s", upstreamRegistryName, repo)
+
 			return err
 		}
 
@@ -78,6 +82,7 @@ func OneImage(cfg Config, storeController storage.StoreController,
 		if err != nil {
 			log.Error().Err(err).Msgf("error creating a reference for repository %s and tag %q",
 				upstreamRepoRef.Name(), tag)
+
 			return err
 		}
 
@@ -85,6 +90,7 @@ func OneImage(cfg Config, storeController storage.StoreController,
 		if err != nil {
 			log.Error().Err(err).Msgf("error creating docker reference for repository %s and tag %q",
 				upstreamRepoRef.Name(), tag)
+
 			return err
 		}
 
@@ -92,8 +98,9 @@ func OneImage(cfg Config, storeController storage.StoreController,
 
 		localRepo := path.Join(imageStore.RootDir(), imageName, SyncBlobUploadDir, uuid.String(), imageName)
 
-		if err = os.MkdirAll(localRepo, 0755); err != nil {
+		if err = os.MkdirAll(localRepo, storage.DefaultDirPerms); err != nil {
 			log.Error().Err(err).Str("dir", localRepo).Msg("couldn't create temporary dir")
+
 			return err
 		}
 
@@ -104,6 +111,7 @@ func OneImage(cfg Config, storeController storage.StoreController,
 		localRef, err := layout.ParseReference(localTaggedRepo)
 		if err != nil {
 			log.Error().Err(err).Msgf("cannot obtain a valid image reference for reference %q", localRepo)
+
 			return err
 		}
 
@@ -118,6 +126,7 @@ func OneImage(cfg Config, storeController storage.StoreController,
 
 		if err = retry.RetryIfNecessary(context.Background(), func() error {
 			_, copyErr = copy.Image(context.Background(), policyCtx, localRef, upstreamRef, &options)
+
 			return err
 		}, retryOptions); copyErr != nil {
 			log.Error().Err(copyErr).Msgf("error while copying image %s to %s",
@@ -129,6 +138,7 @@ func OneImage(cfg Config, storeController storage.StoreController,
 			if err != nil {
 				log.Error().Err(err).Msgf("error while pushing synced cached image %s",
 					localTaggedRepo)
+
 				return err
 			}
 

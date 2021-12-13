@@ -32,7 +32,7 @@ const (
 
 type AuditLog struct {
 	Level    string `json:"level"`
-	ClientIP string `json:"clientIP"`
+	ClientIP string `json:"clientIP"` //nolint:tagliatelle // keep IP
 	Subject  string `json:"subject"`
 	Action   string `json:"action"`
 	Object   string `json:"object"`
@@ -71,11 +71,11 @@ func TestAuditLogMessages(t *testing.T) {
 			},
 		}
 
-		c := api.NewController(conf)
-		c.Config.Storage.RootDirectory = dir
+		ctlr := api.NewController(conf)
+		ctlr.Config.Storage.RootDirectory = dir
 		go func() {
 			// this blocks
-			if err := c.Run(); err != nil {
+			if err := ctlr.Run(); err != nil {
 				return
 			}
 		}()
@@ -91,7 +91,7 @@ func TestAuditLogMessages(t *testing.T) {
 
 		defer func() {
 			ctx := context.Background()
-			_ = c.Server.Shutdown(ctx)
+			_ = ctlr.Server.Shutdown(ctx)
 		}()
 
 		Convey("Open auditLog file", func() {

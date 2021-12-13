@@ -1,7 +1,7 @@
 //go:build extended
 // +build extended
 
-// nolint: lll
+// nolint:lll,gosimple
 package cveinfo_test
 
 import (
@@ -48,10 +48,12 @@ type ImgWithFixedCVE struct {
 	ImgResults ImgResults `json:"data"`
 }
 
+//nolint:tagliatelle // graphQL schema
 type ImgResults struct {
 	ImgResultForFixedCVE ImgResultForFixedCVE `json:"ImgResultForFixedCVE"`
 }
 
+//nolint:tagliatelle // graphQL schema
 type ImgResultForFixedCVE struct {
 	Tags []TagInfo `json:"Tags"`
 }
@@ -61,15 +63,18 @@ type TagInfo struct {
 	Timestamp time.Time
 }
 
+//nolint:tagliatelle // graphQL schema
 type ImgList struct {
 	CVEResultForImage CVEResultForImage `json:"CVEListForImage"`
 }
 
+//nolint:tagliatelle // graphQL schema
 type CVEResultForImage struct {
 	Tag     string `json:"Tag"`
 	CVEList []CVE  `json:"CVEList"`
 }
 
+//nolint:tagliatelle // graphQL schema
 type CVE struct {
 	ID          string `json:"Id"`
 	Description string `json:"Description"`
@@ -108,12 +113,12 @@ func testSetup() error {
 
 func generateTestData() error { // nolint: gocyclo
 	// Image dir with no files
-	err := os.Mkdir(path.Join(dbDir, "zot-noindex-test"), 0755)
+	err := os.Mkdir(path.Join(dbDir, "zot-noindex-test"), 0o755)
 	if err != nil {
 		return err
 	}
 
-	err = os.Mkdir(path.Join(dbDir, "zot-nonreadable-test"), 0755)
+	err = os.Mkdir(path.Join(dbDir, "zot-nonreadable-test"), 0o755)
 	if err != nil {
 		return err
 	}
@@ -126,17 +131,17 @@ func generateTestData() error { // nolint: gocyclo
 		return err
 	}
 
-	if err = ioutil.WriteFile(path.Join(dbDir, "zot-nonreadable-test", "index.json"), buf, 0111); err != nil {
+	if err = ioutil.WriteFile(path.Join(dbDir, "zot-nonreadable-test", "index.json"), buf, 0o111); err != nil {
 		return err
 	}
 
 	// Image dir with invalid index.json
-	err = os.Mkdir(path.Join(dbDir, "zot-squashfs-invalid-index"), 0755)
+	err = os.Mkdir(path.Join(dbDir, "zot-squashfs-invalid-index"), 0o755)
 	if err != nil {
 		return err
 	}
 
-	content := fmt.Sprintf(`{"schemaVersion": 2,"manifests"[{"mediaType": "application/vnd.oci.image.manifest.v1+json","digest": "sha256:2a9b097b4e4c613dd8185eba55163201a221909f3d430f8df87cd3639afc5929","size": 1240,"annotations": {"org.opencontainers.image.ref.name": "commit-aaa7c6e7-squashfs"},"platform": {"architecture": "amd64","os": "linux"}}]}`)
+	content := `{"schemaVersion": 2,"manifests"[{"mediaType": "application/vnd.oci.image.manifest.v1+json","digest": "sha256:2a9b097b4e4c613dd8185eba55163201a221909f3d430f8df87cd3639afc5929","size": 1240,"annotations": {"org.opencontainers.image.ref.name": "commit-aaa7c6e7-squashfs"},"platform": {"architecture": "amd64","os": "linux"}}]}`
 
 	err = makeTestFile(path.Join(dbDir, "zot-squashfs-invalid-index", "index.json"), content)
 	if err != nil {
@@ -144,13 +149,12 @@ func generateTestData() error { // nolint: gocyclo
 	}
 
 	// Image dir with no blobs
-	err = os.Mkdir(path.Join(dbDir, "zot-squashfs-noblobs"), 0755)
+	err = os.Mkdir(path.Join(dbDir, "zot-squashfs-noblobs"), 0o755)
 	if err != nil {
 		return err
 	}
 
-	content = fmt.Sprintf(`{"schemaVersion":2,"manifests":[{"mediaType":"application/vnd.oci.image.manifest.v1+json","digest":"sha256:2a9b097b4e4c613dd8185eba55163201a221909f3d430f8df87cd3639afc5929","size":1240,"annotations":{"org.opencontainers.image.ref.name":"commit-aaa7c6e7-squashfs"},"platform":{"architecture":"amd64","os":"linux"}}]}
-	`)
+	content = `{"schemaVersion":2,"manifests":[{"mediaType":"application/vnd.oci.image.manifest.v1+json","digest":"sha256:2a9b097b4e4c613dd8185eba55163201a221909f3d430f8df87cd3639afc5929","size":1240,"annotations":{"org.opencontainers.image.ref.name":"commit-aaa7c6e7-squashfs"},"platform":{"architecture":"amd64","os":"linux"}}]}`
 
 	err = makeTestFile(path.Join(dbDir, "zot-squashfs-noblobs", "index.json"), content)
 	if err != nil {
@@ -158,7 +162,7 @@ func generateTestData() error { // nolint: gocyclo
 	}
 
 	// Image dir with invalid blob
-	err = os.MkdirAll(path.Join(dbDir, "zot-squashfs-invalid-blob", "blobs/sha256"), 0755)
+	err = os.MkdirAll(path.Join(dbDir, "zot-squashfs-invalid-blob", "blobs/sha256"), 0o755)
 	if err != nil {
 		return err
 	}
@@ -181,7 +185,7 @@ func generateTestData() error { // nolint: gocyclo
 
 	// Create a squashfs image
 
-	err = os.MkdirAll(path.Join(dbDir, "zot-squashfs-test", "blobs/sha256"), 0755)
+	err = os.MkdirAll(path.Join(dbDir, "zot-squashfs-test", "blobs/sha256"), 0o755)
 	if err != nil {
 		return err
 	}
@@ -193,11 +197,11 @@ func generateTestData() error { // nolint: gocyclo
 		return err
 	}
 
-	if err = ioutil.WriteFile(path.Join(dbDir, "zot-squashfs-test", "oci-layout"), buf, 0644); err != nil { //nolint: gosec
+	if err = ioutil.WriteFile(path.Join(dbDir, "zot-squashfs-test", "oci-layout"), buf, 0o644); err != nil { //nolint: gosec
 		return err
 	}
 
-	err = os.Mkdir(path.Join(dbDir, "zot-squashfs-test", ".uploads"), 0755)
+	err = os.Mkdir(path.Join(dbDir, "zot-squashfs-test", ".uploads"), 0o755)
 	if err != nil {
 		return err
 	}
@@ -253,7 +257,7 @@ func generateTestData() error { // nolint: gocyclo
 
 	// Create a image with invalid layer blob
 
-	err = os.MkdirAll(path.Join(dbDir, "zot-invalid-layer", "blobs/sha256"), 0755)
+	err = os.MkdirAll(path.Join(dbDir, "zot-invalid-layer", "blobs/sha256"), 0o755)
 	if err != nil {
 		return err
 	}
@@ -281,7 +285,7 @@ func generateTestData() error { // nolint: gocyclo
 
 	// Create a image with no layer blob
 
-	err = os.MkdirAll(path.Join(dbDir, "zot-no-layer", "blobs/sha256"), 0755)
+	err = os.MkdirAll(path.Join(dbDir, "zot-no-layer", "blobs/sha256"), 0o755)
 	if err != nil {
 		return err
 	}
@@ -311,7 +315,7 @@ func generateTestData() error { // nolint: gocyclo
 }
 
 func makeTestFile(fileName string, content string) error {
-	if err := ioutil.WriteFile(fileName, []byte(content), 0600); err != nil {
+	if err := ioutil.WriteFile(fileName, []byte(content), 0o600); err != nil {
 		panic(err)
 	}
 
@@ -390,8 +394,9 @@ func TestCVESearch(t *testing.T) {
 				Path: htpasswdPath,
 			},
 		}
-		c := api.NewController(conf)
-		c.Config.Storage.RootDirectory = dbDir
+
+		ctlr := api.NewController(conf)
+		ctlr.Config.Storage.RootDirectory = dbDir
 		cveConfig := &extconf.CVEConfig{
 			UpdateInterval: updateDuration,
 		}
@@ -399,12 +404,12 @@ func TestCVESearch(t *testing.T) {
 			CVE:    cveConfig,
 			Enable: true,
 		}
-		c.Config.Extensions = &extconf.ExtensionConfig{
+		ctlr.Config.Extensions = &extconf.ExtensionConfig{
 			Search: searchConfig,
 		}
 		go func() {
 			// this blocks
-			if err := c.Run(); err != nil {
+			if err := ctlr.Run(); err != nil {
 				return
 			}
 		}()
@@ -423,7 +428,7 @@ func TestCVESearch(t *testing.T) {
 
 		defer func() {
 			ctx := context.Background()
-			_ = c.Server.Shutdown(ctx)
+			_ = ctlr.Server.Shutdown(ctx)
 		}()
 
 		// without creds, should get access error
@@ -464,9 +469,9 @@ func TestCVESearch(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(cveResult.ImgList.CVEResultForImage.CVEList), ShouldNotBeZeroValue)
 
-		id := cveResult.ImgList.CVEResultForImage.CVEList[0].ID
+		cvid := cveResult.ImgList.CVEResultForImage.CVEList[0].ID
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={ImageListWithCVEFixed(id:\"" + id + "\",image:\"zot-test\"){Tags{Name%20Timestamp}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={ImageListWithCVEFixed(id:\"" + cvid + "\",image:\"zot-test\"){Tags{Name%20Timestamp}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -475,7 +480,7 @@ func TestCVESearch(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(imgFixedCVEResult.ImgResults.ImgResultForFixedCVE.Tags), ShouldEqual, 0)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={ImageListWithCVEFixed(id:\"" + id + "\",image:\"zot-cve-test\"){Tags{Name%20Timestamp}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={ImageListWithCVEFixed(id:\"" + cvid + "\",image:\"zot-cve-test\"){Tags{Name%20Timestamp}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -483,7 +488,7 @@ func TestCVESearch(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(imgFixedCVEResult.ImgResults.ImgResultForFixedCVE.Tags), ShouldEqual, 0)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={ImageListWithCVEFixed(id:\"" + id + "\",image:\"zot-test\"){Tags{Name%20Timestamp}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={ImageListWithCVEFixed(id:\"" + cvid + "\",image:\"zot-test\"){Tags{Name%20Timestamp}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -500,7 +505,7 @@ func TestCVESearch(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={ImageListWithCVEFixed(id:\"" + id + "\",image:\"zot-squashfs-noindex\"){Tags{Name%20Timestamp}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={ImageListWithCVEFixed(id:\"" + cvid + "\",image:\"zot-squashfs-noindex\"){Tags{Name%20Timestamp}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -508,7 +513,7 @@ func TestCVESearch(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={ImageListWithCVEFixed(id:\"" + id + "\",image:\"zot-squashfs-invalid-index\"){Tags{Name%20Timestamp}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={ImageListWithCVEFixed(id:\"" + cvid + "\",image:\"zot-squashfs-invalid-index\"){Tags{Name%20Timestamp}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -516,11 +521,11 @@ func TestCVESearch(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={ImageListWithCVEFixed(id:\"" + id + "\",image:\"zot-squashfs-noblob\"){Tags{Name%20Timestamp}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={ImageListWithCVEFixed(id:\"" + cvid + "\",image:\"zot-squashfs-noblob\"){Tags{Name%20Timestamp}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={ImageListWithCVEFixed(id:\"" + id + "\",image:\"zot-squashfs-test\"){Tags{Name%20Timestamp}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={ImageListWithCVEFixed(id:\"" + cvid + "\",image:\"zot-squashfs-test\"){Tags{Name%20Timestamp}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -528,7 +533,7 @@ func TestCVESearch(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={ImageListWithCVEFixed(id:\"" + id + "\",image:\"zot-squashfs-invalid-blob\"){Tags{Name%20Timestamp}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={ImageListWithCVEFixed(id:\"" + cvid + "\",image:\"zot-squashfs-invalid-blob\"){Tags{Name%20Timestamp}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -597,7 +602,7 @@ func TestCVESearch(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 422)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={ImageListForCVE(id:\"" + id + "\"){Name%20Tags}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/query?query={ImageListForCVE(id:\"" + cvid + "\"){Name%20Tags}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 	})
@@ -617,7 +622,9 @@ func TestCVEConfig(t *testing.T) {
 				Path: htpasswdPath,
 			},
 		}
-		c := api.NewController(conf)
+
+		ctlr := api.NewController(conf)
+
 		firstDir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
@@ -635,16 +642,17 @@ func TestCVEConfig(t *testing.T) {
 			panic(err)
 		}
 
-		c.Config.Storage.RootDirectory = firstDir
+		ctlr.Config.Storage.RootDirectory = firstDir
 		subPaths := make(map[string]config.StorageConfig)
 		subPaths["/a"] = config.StorageConfig{
 			RootDirectory: secondDir,
 		}
-		c.Config.Storage.SubPaths = subPaths
+
+		ctlr.Config.Storage.SubPaths = subPaths
 
 		go func() {
 			// this blocks
-			if err := c.Run(); err != nil {
+			if err := ctlr.Run(); err != nil {
 				return
 			}
 		}()
@@ -676,7 +684,7 @@ func TestCVEConfig(t *testing.T) {
 
 		defer func() {
 			ctx := context.Background()
-			_ = c.Server.Shutdown(ctx)
+			_ = ctlr.Server.Shutdown(ctx)
 		}()
 	})
 }

@@ -14,6 +14,7 @@ type Controller struct {
 
 func NewController(cfg *Config) *Controller {
 	logger := log.NewLogger(cfg.Exporter.Log.Level, cfg.Exporter.Log.Output)
+
 	return &Controller{Config: cfg, Log: logger}
 }
 

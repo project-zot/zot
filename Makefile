@@ -4,9 +4,11 @@ COMMIT_HASH=$(shell git describe --always --tags --long)
 GO_VERSION=$(shell go version | awk '{print $$3}')
 COMMIT ?= $(if $(shell git status --porcelain --untracked-files=no),$(COMMIT_HASH)-dirty,$(COMMIT_HASH))
 CONTAINER_RUNTIME := $(shell command -v podman 2> /dev/null || echo docker)
-PATH := bin:$(PATH)
 TMPDIR := $(shell mktemp -d)
+TOOLSDIR := hack/tools
+PATH := bin:$(TOOLSDIR)/bin:$(PATH)
 STACKER := $(shell which stacker)
+GOLINTER := $(TOOLSDIR)/bin/golangci-lint
 OS ?= linux
 ARCH ?= amd64
 
@@ -55,11 +57,15 @@ covhtml:
 	cat coverage-extended.txt coverage-minimal.txt > coverage.txt
 	go tool cover -html=coverage.txt -o coverage.html
 
+$(GOLINTER):
+	mkdir -p $(TOOLSDIR)/bin
+	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(TOOLSDIR)/bin v1.43.0
+	$(GOLINTER) version
+
 .PHONY: check
-check: ./golangcilint.yaml
-	golangci-lint --version || curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.26.0
-	golangci-lint --config ./golangcilint.yaml run --enable-all --build-tags extended,containers_image_openpgp ./...
-	golangci-lint --config ./golangcilint.yaml run --enable-all --build-tags minimal,containers_image_openpgp ./...
+check: ./golangcilint.yaml $(GOLINTER)
+	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags minimal,containers_image_openpgp ./...
+	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags extended,containers_image_openpgp ./...
 
 swagger/docs.go: 
 	swag -v || go install github.com/swaggo/swag/cmd/swag
@@ -76,6 +82,7 @@ update-licenses:
 .PHONY: clean
 clean:
 	rm -f bin/zot*
+	rm -rf hack
 
 .PHONY: run
 run: binary test

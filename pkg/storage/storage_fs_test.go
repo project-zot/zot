@@ -2,16 +2,16 @@ package storage_test
 
 import (
 	"bytes"
+	"crypto/rand"
 	_ "crypto/sha256"
 	"encoding/json"
 	"io/ioutil"
-	"math/rand"
+	"math/big"
 	"os"
 	"os/exec"
 	"path"
 	"strings"
 	"testing"
-	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -33,73 +33,73 @@ func TestStorageFSAPIs(t *testing.T) {
 
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
-	il := storage.NewImageStore(dir, true, true, log, metrics)
+	imgStore := storage.NewImageStore(dir, true, true, log, metrics)
 
 	Convey("Repo layout", t, func(c C) {
 		repoName := "test"
 
 		Convey("Bad image manifest", func() {
-			v, err := il.NewBlobUpload("test")
+			upload, err := imgStore.NewBlobUpload("test")
 			So(err, ShouldBeNil)
-			So(v, ShouldNotBeEmpty)
+			So(upload, ShouldNotBeEmpty)
 
 			content := []byte("test-data1")
 			buf := bytes.NewBuffer(content)
-			l := buf.Len()
-			d := godigest.FromBytes(content)
+			buflen := buf.Len()
+			digest := godigest.FromBytes(content)
 
-			b, err := il.PutBlobChunk(repoName, v, 0, int64(l), buf)
+			blob, err := imgStore.PutBlobChunk(repoName, upload, 0, int64(buflen), buf)
 			So(err, ShouldBeNil)
-			So(b, ShouldEqual, l)
+			So(blob, ShouldEqual, buflen)
 
-			err = il.FinishBlobUpload("test", v, buf, d.String())
+			err = imgStore.FinishBlobUpload("test", upload, buf, digest.String())
 			So(err, ShouldBeNil)
 
 			annotationsMap := make(map[string]string)
 			annotationsMap[ispec.AnnotationRefName] = "1.0"
-			m := ispec.Manifest{
+			manifest := ispec.Manifest{
 				Config: ispec.Descriptor{
-					Digest: d,
-					Size:   int64(l),
+					Digest: digest,
+					Size:   int64(buflen),
 				},
 				Layers: []ispec.Descriptor{
 					{
 						MediaType: "application/vnd.oci.image.layer.v1.tar",
-						Digest:    d,
-						Size:      int64(l),
+						Digest:    digest,
+						Size:      int64(buflen),
 					},
 				},
 				Annotations: annotationsMap,
 			}
 
-			m.SchemaVersion = 2
-			mb, _ := json.Marshal(m)
-			d = godigest.FromBytes(mb)
+			manifest.SchemaVersion = 2
+			manifestBuf, _ := json.Marshal(manifest)
+			digest = godigest.FromBytes(manifestBuf)
 
-			err = os.Chmod(path.Join(il.RootDir(), repoName, "index.json"), 0000)
+			err = os.Chmod(path.Join(imgStore.RootDir(), repoName, "index.json"), 0o000)
 			if err != nil {
 				panic(err)
 			}
 
-			_, err = il.PutImageManifest(repoName, "1.0", ispec.MediaTypeImageManifest, mb)
+			_, err = imgStore.PutImageManifest(repoName, "1.0", ispec.MediaTypeImageManifest, manifestBuf)
 			So(err, ShouldNotBeNil)
 
-			err = os.Chmod(path.Join(il.RootDir(), repoName, "index.json"), 0755)
+			err = os.Chmod(path.Join(imgStore.RootDir(), repoName, "index.json"), 0o755)
 			if err != nil {
 				panic(err)
 			}
 
-			_, err = il.PutImageManifest(repoName, "1.0", ispec.MediaTypeImageManifest, mb)
+			_, err = imgStore.PutImageManifest(repoName, "1.0", ispec.MediaTypeImageManifest, manifestBuf)
 			So(err, ShouldBeNil)
 
-			manifestPath := path.Join(il.RootDir(), repoName, "blobs", d.Algorithm().String(), d.Encoded())
+			manifestPath := path.Join(imgStore.RootDir(), repoName, "blobs", digest.Algorithm().String(), digest.Encoded())
 
-			err = os.Chmod(manifestPath, 0000)
+			err = os.Chmod(manifestPath, 0o000)
 			if err != nil {
 				panic(err)
 			}
 
-			_, _, _, err = il.GetImageManifest(repoName, d.String())
+			_, _, _, err = imgStore.GetImageManifest(repoName, digest.String())
 			So(err, ShouldNotBeNil)
 
 			err = os.Remove(manifestPath)
@@ -107,42 +107,42 @@ func TestStorageFSAPIs(t *testing.T) {
 				panic(err)
 			}
 
-			_, _, _, err = il.GetImageManifest(repoName, d.String())
+			_, _, _, err = imgStore.GetImageManifest(repoName, digest.String())
 			So(err, ShouldNotBeNil)
 
-			err = os.Chmod(path.Join(il.RootDir(), repoName), 0000)
+			err = os.Chmod(path.Join(imgStore.RootDir(), repoName), 0o000)
 			if err != nil {
 				panic(err)
 			}
 
-			_, err = il.PutImageManifest(repoName, "2.0", ispec.MediaTypeImageManifest, mb)
+			_, err = imgStore.PutImageManifest(repoName, "2.0", ispec.MediaTypeImageManifest, manifestBuf)
 			So(err, ShouldNotBeNil)
-			err = os.Chmod(path.Join(il.RootDir(), repoName), 0755)
+			err = os.Chmod(path.Join(imgStore.RootDir(), repoName), 0o755)
 			if err != nil {
 				panic(err)
 			}
 
 			// invalid GetReferrers
-			_, err = il.GetReferrers("invalid", "invalid", "invalid")
+			_, err = imgStore.GetReferrers("invalid", "invalid", "invalid")
 			So(err, ShouldNotBeNil)
 
-			_, err = il.GetReferrers(repoName, "invalid", "invalid")
+			_, err = imgStore.GetReferrers(repoName, "invalid", "invalid")
 			So(err, ShouldNotBeNil)
 
-			_, err = il.GetReferrers(repoName, d.String(), "invalid")
+			_, err = imgStore.GetReferrers(repoName, digest.String(), "invalid")
 			So(err, ShouldNotBeNil)
 
 			// invalid DeleteImageManifest
-			indexPath := path.Join(il.RootDir(), repoName, "index.json")
-			err = os.Chmod(indexPath, 0000)
+			indexPath := path.Join(imgStore.RootDir(), repoName, "index.json")
+			err = os.Chmod(indexPath, 0o000)
 			if err != nil {
 				panic(err)
 			}
 
-			err = il.DeleteImageManifest(repoName, d.String())
+			err = imgStore.DeleteImageManifest(repoName, digest.String())
 			So(err, ShouldNotBeNil)
 
-			err = os.RemoveAll(path.Join(il.RootDir(), repoName))
+			err = os.RemoveAll(path.Join(imgStore.RootDir(), repoName))
 			if err != nil {
 				panic(err)
 			}
@@ -160,108 +160,105 @@ func TestDedupeLinks(t *testing.T) {
 
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
-	il := storage.NewImageStore(dir, true, true, log, metrics)
+	imgStore := storage.NewImageStore(dir, true, true, log, metrics)
 
 	Convey("Dedupe", t, func(c C) {
-		blobDigest1 := ""
-		blobDigest2 := ""
-
 		// manifest1
-		v, err := il.NewBlobUpload("dedupe1")
+		upload, err := imgStore.NewBlobUpload("dedupe1")
 		So(err, ShouldBeNil)
-		So(v, ShouldNotBeEmpty)
+		So(upload, ShouldNotBeEmpty)
 
 		content := []byte("test-data3")
 		buf := bytes.NewBuffer(content)
-		l := buf.Len()
-		d := godigest.FromBytes(content)
-		b, err := il.PutBlobChunkStreamed("dedupe1", v, buf)
+		buflen := buf.Len()
+		digest := godigest.FromBytes(content)
+		blob, err := imgStore.PutBlobChunkStreamed("dedupe1", upload, buf)
 		So(err, ShouldBeNil)
-		So(b, ShouldEqual, l)
-		blobDigest1 = strings.Split(d.String(), ":")[1]
+		So(blob, ShouldEqual, buflen)
+		blobDigest1 := strings.Split(digest.String(), ":")[1]
 		So(blobDigest1, ShouldNotBeEmpty)
 
-		err = il.FinishBlobUpload("dedupe1", v, buf, d.String())
+		err = imgStore.FinishBlobUpload("dedupe1", upload, buf, digest.String())
 		So(err, ShouldBeNil)
-		So(b, ShouldEqual, l)
+		So(blob, ShouldEqual, buflen)
 
-		_, _, err = il.CheckBlob("dedupe1", d.String())
-		So(err, ShouldBeNil)
-
-		_, _, err = il.GetBlob("dedupe1", d.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
+		_, _, err = imgStore.CheckBlob("dedupe1", digest.String())
 		So(err, ShouldBeNil)
 
-		m := ispec.Manifest{}
-		m.SchemaVersion = 2
-		m = ispec.Manifest{
+		_, _, err = imgStore.GetBlob("dedupe1", digest.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
+		So(err, ShouldBeNil)
+
+		manifest := ispec.Manifest{}
+		manifest.SchemaVersion = 2
+		manifest = ispec.Manifest{
 			Config: ispec.Descriptor{
-				Digest: d,
-				Size:   int64(l),
+				Digest: digest,
+				Size:   int64(buflen),
 			},
 			Layers: []ispec.Descriptor{
 				{
 					MediaType: "application/vnd.oci.image.layer.v1.tar",
-					Digest:    d,
-					Size:      int64(l),
+					Digest:    digest,
+					Size:      int64(buflen),
 				},
 			},
 		}
-		m.SchemaVersion = 2
-		mb, _ := json.Marshal(m)
-		d = godigest.FromBytes(mb)
-		_, err = il.PutImageManifest("dedupe1", d.String(), ispec.MediaTypeImageManifest, mb)
+		manifest.SchemaVersion = 2
+		manifestBuf, _ := json.Marshal(manifest)
+		digest = godigest.FromBytes(manifestBuf)
+		_, err = imgStore.PutImageManifest("dedupe1", digest.String(), ispec.MediaTypeImageManifest, manifestBuf)
 		So(err, ShouldBeNil)
 
-		_, _, _, err = il.GetImageManifest("dedupe1", d.String())
+		_, _, _, err = imgStore.GetImageManifest("dedupe1", digest.String())
 		So(err, ShouldBeNil)
 
 		// manifest2
-		v, err = il.NewBlobUpload("dedupe2")
+		upload, err = imgStore.NewBlobUpload("dedupe2")
 		So(err, ShouldBeNil)
-		So(v, ShouldNotBeEmpty)
+		So(upload, ShouldNotBeEmpty)
 
 		content = []byte("test-data3")
 		buf = bytes.NewBuffer(content)
-		l = buf.Len()
-		d = godigest.FromBytes(content)
-		b, err = il.PutBlobChunkStreamed("dedupe2", v, buf)
+		buflen = buf.Len()
+		digest = godigest.FromBytes(content)
+		blob, err = imgStore.PutBlobChunkStreamed("dedupe2", upload, buf)
 		So(err, ShouldBeNil)
-		So(b, ShouldEqual, l)
-		blobDigest2 = strings.Split(d.String(), ":")[1]
+		So(blob, ShouldEqual, buflen)
+		blobDigest2 := strings.Split(digest.String(), ":")[1]
 		So(blobDigest2, ShouldNotBeEmpty)
 
-		err = il.FinishBlobUpload("dedupe2", v, buf, d.String())
+		err = imgStore.FinishBlobUpload("dedupe2", upload, buf, digest.String())
 		So(err, ShouldBeNil)
-		So(b, ShouldEqual, l)
+		So(blob, ShouldEqual, buflen)
 
-		_, _, err = il.CheckBlob("dedupe2", d.String())
-		So(err, ShouldBeNil)
-
-		_, _, err = il.GetBlob("dedupe2", d.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
+		_, _, err = imgStore.CheckBlob("dedupe2", digest.String())
 		So(err, ShouldBeNil)
 
-		m = ispec.Manifest{}
-		m.SchemaVersion = 2
-		m = ispec.Manifest{
+		_, _, err = imgStore.GetBlob("dedupe2", digest.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
+		So(err, ShouldBeNil)
+
+		manifest = ispec.Manifest{}
+		manifest.SchemaVersion = 2
+		manifest = ispec.Manifest{
 			Config: ispec.Descriptor{
-				Digest: d,
-				Size:   int64(l),
+				Digest: digest,
+				Size:   int64(buflen),
 			},
 			Layers: []ispec.Descriptor{
 				{
 					MediaType: "application/vnd.oci.image.layer.v1.tar",
-					Digest:    d,
-					Size:      int64(l),
+					Digest:    digest,
+					Size:      int64(buflen),
 				},
 			},
 		}
-		m.SchemaVersion = 2
-		mb, _ = json.Marshal(m)
-		d = godigest.FromBytes(mb)
-		_, err = il.PutImageManifest("dedupe2", "1.0", ispec.MediaTypeImageManifest, mb)
+		manifest.SchemaVersion = 2
+		manifestBuf, _ = json.Marshal(manifest)
+		digest = godigest.FromBytes(manifestBuf)
+		_, err = imgStore.PutImageManifest("dedupe2", "1.0", ispec.MediaTypeImageManifest, manifestBuf)
 		So(err, ShouldBeNil)
 
-		_, _, _, err = il.GetImageManifest("dedupe2", d.String())
+		_, _, _, err = imgStore.GetImageManifest("dedupe2", digest.String())
 		So(err, ShouldBeNil)
 
 		// verify that dedupe with hard links happened
@@ -323,33 +320,33 @@ func TestNegativeCases(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
-		il := storage.NewImageStore(dir, true, true, log, metrics)
+		imgStore := storage.NewImageStore(dir, true, true, log, metrics)
 
-		err = os.Chmod(dir, 0000) // remove all perms
+		err = os.Chmod(dir, 0o000) // remove all perms
 		if err != nil {
 			panic(err)
 		}
 
 		if os.Geteuid() != 0 {
-			err = il.InitRepo("test")
+			err = imgStore.InitRepo("test")
 			So(err, ShouldNotBeNil)
 		}
 
-		err = os.Chmod(dir, 0755)
+		err = os.Chmod(dir, 0o755)
 		if err != nil {
 			panic(err)
 		}
 
 		// Init repo should fail if repo is a file.
-		err = ioutil.WriteFile(path.Join(dir, "file-test"), []byte("this is test file"), 0755) // nolint:gosec
+		err = ioutil.WriteFile(path.Join(dir, "file-test"), []byte("this is test file"), 0o755) // nolint:gosec
 		So(err, ShouldBeNil)
-		err = il.InitRepo("file-test")
+		err = imgStore.InitRepo("file-test")
 		So(err, ShouldNotBeNil)
 
-		err = os.Mkdir(path.Join(dir, "test-dir"), 0755)
+		err = os.Mkdir(path.Join(dir, "test-dir"), 0o755)
 		So(err, ShouldBeNil)
 
-		err = il.InitRepo("test-dir")
+		err = imgStore.InitRepo("test-dir")
 		So(err, ShouldBeNil)
 	})
 
@@ -362,43 +359,43 @@ func TestNegativeCases(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
-		il := storage.NewImageStore(dir, true, true, log, metrics)
+		imgStore := storage.NewImageStore(dir, true, true, log, metrics)
 
-		So(il, ShouldNotBeNil)
-		So(il.InitRepo("test"), ShouldBeNil)
+		So(imgStore, ShouldNotBeNil)
+		So(imgStore.InitRepo("test"), ShouldBeNil)
 
-		err = os.MkdirAll(path.Join(dir, "invalid-test"), 0755)
+		err = os.MkdirAll(path.Join(dir, "invalid-test"), 0o755)
 		So(err, ShouldBeNil)
 
-		err = os.Chmod(path.Join(dir, "invalid-test"), 0000) // remove all perms
+		err = os.Chmod(path.Join(dir, "invalid-test"), 0o000) // remove all perms
 		if err != nil {
 			panic(err)
 		}
-		_, err = il.ValidateRepo("invalid-test")
+		_, err = imgStore.ValidateRepo("invalid-test")
 		So(err, ShouldNotBeNil)
 		So(err, ShouldEqual, errors.ErrRepoNotFound)
 
-		err = os.Chmod(path.Join(dir, "invalid-test"), 0755) // remove all perms
+		err = os.Chmod(path.Join(dir, "invalid-test"), 0o755) // remove all perms
 		if err != nil {
 			panic(err)
 		}
 
-		err = ioutil.WriteFile(path.Join(dir, "invalid-test", "blobs"), []byte{}, 0755) // nolint: gosec
+		err = ioutil.WriteFile(path.Join(dir, "invalid-test", "blobs"), []byte{}, 0o755) // nolint: gosec
 		if err != nil {
 			panic(err)
 		}
 
-		err = ioutil.WriteFile(path.Join(dir, "invalid-test", "index.json"), []byte{}, 0755) // nolint: gosec
+		err = ioutil.WriteFile(path.Join(dir, "invalid-test", "index.json"), []byte{}, 0o755) // nolint: gosec
 		if err != nil {
 			panic(err)
 		}
 
-		err = ioutil.WriteFile(path.Join(dir, "invalid-test", ispec.ImageLayoutFile), []byte{}, 0755) // nolint: gosec
+		err = ioutil.WriteFile(path.Join(dir, "invalid-test", ispec.ImageLayoutFile), []byte{}, 0o755) // nolint: gosec
 		if err != nil {
 			panic(err)
 		}
 
-		isValid, err := il.ValidateRepo("invalid-test")
+		isValid, err := imgStore.ValidateRepo("invalid-test")
 		So(err, ShouldBeNil)
 		So(isValid, ShouldEqual, false)
 
@@ -406,20 +403,20 @@ func TestNegativeCases(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
-		err = os.Mkdir(path.Join(dir, "invalid-test", "blobs"), 0755)
+		err = os.Mkdir(path.Join(dir, "invalid-test", "blobs"), 0o755)
 		if err != nil {
 			panic(err)
 		}
-		isValid, err = il.ValidateRepo("invalid-test")
+		isValid, err = imgStore.ValidateRepo("invalid-test")
 		So(err, ShouldNotBeNil)
 		So(isValid, ShouldEqual, false)
 
-		err = ioutil.WriteFile(path.Join(dir, "invalid-test", ispec.ImageLayoutFile), []byte("{}"), 0755) // nolint: gosec
+		err = ioutil.WriteFile(path.Join(dir, "invalid-test", ispec.ImageLayoutFile), []byte("{}"), 0o755) // nolint: gosec
 		if err != nil {
 			panic(err)
 		}
 
-		isValid, err = il.ValidateRepo("invalid-test")
+		isValid, err = imgStore.ValidateRepo("invalid-test")
 		So(err, ShouldNotBeNil)
 		So(err, ShouldEqual, errors.ErrRepoBadVersion)
 		So(isValid, ShouldEqual, false)
@@ -433,7 +430,7 @@ func TestNegativeCases(t *testing.T) {
 			os.Remove(path.Join(dir, "test", f.Name()))
 		}
 
-		_, err = il.ValidateRepo("test")
+		_, err = imgStore.ValidateRepo("test")
 		So(err, ShouldNotBeNil)
 
 		err = os.RemoveAll(path.Join(dir, "test"))
@@ -441,19 +438,19 @@ func TestNegativeCases(t *testing.T) {
 			panic(err)
 		}
 
-		_, err = il.ValidateRepo("test")
+		_, err = imgStore.ValidateRepo("test")
 		So(err, ShouldNotBeNil)
 
-		err = os.Chmod(dir, 0000) // remove all perms
+		err = os.Chmod(dir, 0o000) // remove all perms
 		if err != nil {
 			panic(err)
 		}
 
 		if os.Geteuid() != 0 {
-			So(func() { _, _ = il.ValidateRepo("test") }, ShouldPanic)
+			So(func() { _, _ = imgStore.ValidateRepo("test") }, ShouldPanic)
 		}
 
-		err = os.Chmod(dir, 0755) // remove all perms
+		err = os.Chmod(dir, 0o755) // remove all perms
 		if err != nil {
 			panic(err)
 		}
@@ -463,7 +460,7 @@ func TestNegativeCases(t *testing.T) {
 			panic(err)
 		}
 
-		_, err = il.GetRepositories()
+		_, err = imgStore.GetRepositories()
 		So(err, ShouldNotBeNil)
 	})
 
@@ -480,17 +477,17 @@ func TestNegativeCases(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
-		il := storage.NewImageStore(dir, true, true, log, metrics)
+		imgStore := storage.NewImageStore(dir, true, true, log, metrics)
 
-		So(il, ShouldNotBeNil)
-		So(il.InitRepo("test"), ShouldBeNil)
+		So(imgStore, ShouldNotBeNil)
+		So(imgStore.InitRepo("test"), ShouldBeNil)
 		So(os.Remove(path.Join(dir, "test", "index.json")), ShouldBeNil)
-		_, err = il.GetImageTags("test")
+		_, err = imgStore.GetImageTags("test")
 		So(err, ShouldNotBeNil)
 		So(os.RemoveAll(path.Join(dir, "test")), ShouldBeNil)
-		So(il.InitRepo("test"), ShouldBeNil)
-		So(ioutil.WriteFile(path.Join(dir, "test", "index.json"), []byte{}, 0600), ShouldBeNil)
-		_, err = il.GetImageTags("test")
+		So(imgStore.InitRepo("test"), ShouldBeNil)
+		So(ioutil.WriteFile(path.Join(dir, "test", "index.json"), []byte{}, 0o600), ShouldBeNil)
+		_, err = imgStore.GetImageTags("test")
 		So(err, ShouldNotBeNil)
 	})
 
@@ -507,17 +504,17 @@ func TestNegativeCases(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
-		il := storage.NewImageStore(dir, true, true, log, metrics)
+		imgStore := storage.NewImageStore(dir, true, true, log, metrics)
 
-		So(il, ShouldNotBeNil)
-		So(il.InitRepo("test"), ShouldBeNil)
+		So(imgStore, ShouldNotBeNil)
+		So(imgStore.InitRepo("test"), ShouldBeNil)
 
-		err = os.Chmod(path.Join(dir, "test", "index.json"), 0000)
+		err = os.Chmod(path.Join(dir, "test", "index.json"), 0o000)
 		if err != nil {
 			panic(err)
 		}
 
-		_, _, _, err = il.GetImageManifest("test", "")
+		_, _, _, err = imgStore.GetImageManifest("test", "")
 		So(err, ShouldNotBeNil)
 
 		err = os.Remove(path.Join(dir, "test", "index.json"))
@@ -525,7 +522,7 @@ func TestNegativeCases(t *testing.T) {
 			panic(err)
 		}
 
-		_, _, _, err = il.GetImageManifest("test", "")
+		_, _, _, err = imgStore.GetImageManifest("test", "")
 		So(err, ShouldNotBeNil)
 
 		err = os.RemoveAll(path.Join(dir, "test"))
@@ -533,13 +530,13 @@ func TestNegativeCases(t *testing.T) {
 			panic(err)
 		}
 
-		So(il.InitRepo("test"), ShouldBeNil)
+		So(imgStore.InitRepo("test"), ShouldBeNil)
 
-		err = ioutil.WriteFile(path.Join(dir, "test", "index.json"), []byte{}, 0600)
+		err = ioutil.WriteFile(path.Join(dir, "test", "index.json"), []byte{}, 0o600)
 		if err != nil {
 			panic(err)
 		}
-		_, _, _, err = il.GetImageManifest("test", "")
+		_, _, _, err = imgStore.GetImageManifest("test", "")
 		So(err, ShouldNotBeNil)
 	})
 
@@ -552,45 +549,45 @@ func TestNegativeCases(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
-		il := storage.NewImageStore(dir, true, true, log, metrics)
+		imgStore := storage.NewImageStore(dir, true, true, log, metrics)
 
-		So(il, ShouldNotBeNil)
-		So(il.InitRepo("test"), ShouldBeNil)
+		So(imgStore, ShouldNotBeNil)
+		So(imgStore.InitRepo("test"), ShouldBeNil)
 
-		err = os.Chmod(path.Join(dir, "test", ".uploads"), 0000)
+		err = os.Chmod(path.Join(dir, "test", ".uploads"), 0o000)
 		if err != nil {
 			panic(err)
 		}
-		_, err = il.NewBlobUpload("test")
+		_, err = imgStore.NewBlobUpload("test")
 		So(err, ShouldNotBeNil)
 
-		err = os.Chmod(path.Join(dir, "test"), 0000)
+		err = os.Chmod(path.Join(dir, "test"), 0o000)
 		if err != nil {
 			panic(err)
 		}
 
-		_, err = il.NewBlobUpload("test")
+		_, err = imgStore.NewBlobUpload("test")
 		So(err, ShouldNotBeNil)
 
-		err = os.Chmod(path.Join(dir, "test"), 0755)
+		err = os.Chmod(path.Join(dir, "test"), 0o755)
 		if err != nil {
 			panic(err)
 		}
 
-		So(il.InitRepo("test"), ShouldBeNil)
+		So(imgStore.InitRepo("test"), ShouldBeNil)
 
-		_, err = il.NewBlobUpload("test")
+		_, err = imgStore.NewBlobUpload("test")
 		So(err, ShouldNotBeNil)
 
-		err = os.Chmod(path.Join(dir, "test", ".uploads"), 0755)
+		err = os.Chmod(path.Join(dir, "test", ".uploads"), 0o755)
 		if err != nil {
 			panic(err)
 		}
 
-		v, err := il.NewBlobUpload("test")
+		upload, err := imgStore.NewBlobUpload("test")
 		So(err, ShouldBeNil)
 
-		err = os.Chmod(path.Join(dir, "test", ".uploads"), 0000)
+		err = os.Chmod(path.Join(dir, "test", ".uploads"), 0o000)
 		if err != nil {
 			panic(err)
 		}
@@ -598,10 +595,10 @@ func TestNegativeCases(t *testing.T) {
 		content := []byte("test-data3")
 		buf := bytes.NewBuffer(content)
 		l := buf.Len()
-		_, err = il.PutBlobChunkStreamed("test", v, buf)
+		_, err = imgStore.PutBlobChunkStreamed("test", upload, buf)
 		So(err, ShouldNotBeNil)
 
-		_, err = il.PutBlobChunk("test", v, 0, int64(l), buf)
+		_, err = imgStore.PutBlobChunk("test", upload, 0, int64(l), buf)
 		So(err, ShouldNotBeNil)
 	})
 
@@ -614,52 +611,52 @@ func TestNegativeCases(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
-		il := storage.NewImageStore(dir, true, true, log, metrics)
+		imgStore := storage.NewImageStore(dir, true, true, log, metrics)
 
-		v, err := il.NewBlobUpload("dedupe1")
+		upload, err := imgStore.NewBlobUpload("dedupe1")
 		So(err, ShouldBeNil)
-		So(v, ShouldNotBeEmpty)
+		So(upload, ShouldNotBeEmpty)
 
 		content := []byte("test-data3")
 		buf := bytes.NewBuffer(content)
-		l := buf.Len()
-		d := godigest.FromBytes(content)
-		b, err := il.PutBlobChunkStreamed("dedupe1", v, buf)
+		buflen := buf.Len()
+		digest := godigest.FromBytes(content)
+		blob, err := imgStore.PutBlobChunkStreamed("dedupe1", upload, buf)
 		So(err, ShouldBeNil)
-		So(b, ShouldEqual, l)
+		So(blob, ShouldEqual, buflen)
 
-		blobDigest1 := strings.Split(d.String(), ":")[1]
+		blobDigest1 := strings.Split(digest.String(), ":")[1]
 		So(blobDigest1, ShouldNotBeEmpty)
 
-		err = il.FinishBlobUpload("dedupe1", v, buf, d.String())
+		err = imgStore.FinishBlobUpload("dedupe1", upload, buf, digest.String())
 		So(err, ShouldBeNil)
-		So(b, ShouldEqual, l)
+		So(blob, ShouldEqual, buflen)
 
 		// Create a file at the same place where FinishBlobUpload will create
-		err = il.InitRepo("dedupe2")
+		err = imgStore.InitRepo("dedupe2")
 		So(err, ShouldBeNil)
 
-		err = os.MkdirAll(path.Join(dir, "dedupe2", "blobs/sha256"), 0755)
+		err = os.MkdirAll(path.Join(dir, "dedupe2", "blobs/sha256"), 0o755)
 		if err != nil {
 			panic(err)
 		}
 
-		err = ioutil.WriteFile(path.Join(dir, "dedupe2", "blobs/sha256", blobDigest1), content, 0755) // nolint: gosec
+		err = ioutil.WriteFile(path.Join(dir, "dedupe2", "blobs/sha256", blobDigest1), content, 0o755) // nolint: gosec
 		if err != nil {
 			panic(err)
 		}
 
-		v, err = il.NewBlobUpload("dedupe2")
+		upload, err = imgStore.NewBlobUpload("dedupe2")
 		So(err, ShouldBeNil)
-		So(v, ShouldNotBeEmpty)
+		So(upload, ShouldNotBeEmpty)
 
 		content = []byte("test-data3")
 		buf = bytes.NewBuffer(content)
-		l = buf.Len()
-		d = godigest.FromBytes(content)
-		b, err = il.PutBlobChunkStreamed("dedupe2", v, buf)
+		buflen = buf.Len()
+		digest = godigest.FromBytes(content)
+		blob, err = imgStore.PutBlobChunkStreamed("dedupe2", upload, buf)
 		So(err, ShouldBeNil)
-		So(b, ShouldEqual, l)
+		So(blob, ShouldEqual, buflen)
 
 		cmd := exec.Command("sudo", "chattr", "+i", path.Join(dir, "dedupe2", "blobs/sha256", blobDigest1)) // nolint: gosec
 		_, err = cmd.Output()
@@ -667,9 +664,9 @@ func TestNegativeCases(t *testing.T) {
 			panic(err)
 		}
 
-		err = il.FinishBlobUpload("dedupe2", v, buf, d.String())
+		err = imgStore.FinishBlobUpload("dedupe2", upload, buf, digest.String())
 		So(err, ShouldNotBeNil)
-		So(b, ShouldEqual, l)
+		So(blob, ShouldEqual, buflen)
 
 		cmd = exec.Command("sudo", "chattr", "-i", path.Join(dir, "dedupe2", "blobs/sha256", blobDigest1)) // nolint: gosec
 		_, err = cmd.Output()
@@ -677,9 +674,9 @@ func TestNegativeCases(t *testing.T) {
 			panic(err)
 		}
 
-		err = il.FinishBlobUpload("dedupe2", v, buf, d.String())
+		err = imgStore.FinishBlobUpload("dedupe2", upload, buf, digest.String())
 		So(err, ShouldBeNil)
-		So(b, ShouldEqual, l)
+		So(blob, ShouldEqual, buflen)
 	})
 
 	Convey("DirExists call with a filename as argument", t, func(c C) {
@@ -690,7 +687,7 @@ func TestNegativeCases(t *testing.T) {
 		defer os.RemoveAll(dir)
 
 		filePath := path.Join(dir, "file.txt")
-		err = ioutil.WriteFile(filePath, []byte("some dummy file content"), 0644) //nolint: gosec
+		err = ioutil.WriteFile(filePath, []byte("some dummy file content"), 0o644) //nolint: gosec
 		if err != nil {
 			panic(err)
 		}
@@ -704,10 +701,12 @@ func TestHardLink(t *testing.T) {
 	Convey("Test that ValidateHardLink creates rootDir if it does not exist", t, func() {
 		var randomDir string
 
-		rand.Seed(time.Now().UnixNano())
 		for {
-			randomLen := rand.Intn(100)
-			randomDir = "/tmp/" + randSeq(randomLen)
+			nBig, err := rand.Int(rand.Reader, big.NewInt(100))
+			if err != nil {
+				panic(err)
+			}
+			randomDir = "/tmp/" + randSeq(int(nBig.Int64()))
 
 			if _, err := os.Stat(randomDir); os.IsNotExist(err) {
 				break
@@ -726,7 +725,7 @@ func TestHardLink(t *testing.T) {
 		defer os.RemoveAll(dir)
 
 		filePath := path.Join(dir, "file.txt")
-		err = ioutil.WriteFile(filePath, []byte("some dummy file content"), 0644) //nolint: gosec
+		err = ioutil.WriteFile(filePath, []byte("some dummy file content"), 0o644) //nolint: gosec
 		if err != nil {
 			panic(err)
 		}
@@ -744,12 +743,12 @@ func TestHardLink(t *testing.T) {
 		err = storage.ValidateHardLink(dir)
 		So(err, ShouldBeNil)
 
-		err = ioutil.WriteFile(path.Join(dir, "hardtest.txt"), []byte("testing hard link code"), 0644) //nolint: gosec
+		err = ioutil.WriteFile(path.Join(dir, "hardtest.txt"), []byte("testing hard link code"), 0o644) //nolint: gosec
 		if err != nil {
 			panic(err)
 		}
 
-		err = os.Chmod(dir, 0400)
+		err = os.Chmod(dir, 0o400)
 		if err != nil {
 			panic(err)
 		}
@@ -757,7 +756,7 @@ func TestHardLink(t *testing.T) {
 		err = os.Link(path.Join(dir, "hardtest.txt"), path.Join(dir, "duphardtest.txt"))
 		So(err, ShouldNotBeNil)
 
-		err = os.Chmod(dir, 0644)
+		err = os.Chmod(dir, 0o644)
 		if err != nil {
 			panic(err)
 		}
@@ -765,12 +764,17 @@ func TestHardLink(t *testing.T) {
 }
 
 func randSeq(n int) string {
-	var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+	letters := []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
-	b := make([]rune, n)
-	for i := range b {
-		b[i] = letters[rand.Intn(len(letters))]
+	buf := make([]rune, n)
+	for index := range buf {
+		nBig, err := rand.Int(rand.Reader, big.NewInt(int64(len(letters))))
+		if err != nil {
+			panic(err)
+		}
+
+		buf[index] = letters[int(nBig.Int64())]
 	}
 
-	return string(b)
+	return string(buf)
 }

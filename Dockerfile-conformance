@@ -1,14 +1,14 @@
 # ---
 # Stage 1: Install certs, build binary, create default config file
 # ---
-FROM docker.io/golang:1.16-alpine AS builder
+FROM ghcr.io/project-zot/golang:1.16 AS builder
 ARG COMMIT
-RUN apk --update add git make ca-certificates
+RUN apt-get update && apt-get install -y git make ca-certificates
 RUN mkdir -p /go/src/github.com/project-zot/zot
 WORKDIR /go/src/github.com/project-zot/zot
 COPY . .
 RUN make COMMIT=$COMMIT clean binary
-RUN echo -e '# Default config file for zot server\n\
+RUN echo '# Default config file for zot server\n\
 http:\n\
   address: 0.0.0.0\n\
   port: 5000\n\

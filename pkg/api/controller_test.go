@@ -60,7 +60,7 @@ const (
 
 type (
 	accessTokenResponse struct {
-		AccessToken string `json:"access_token"`
+		AccessToken string `json:"access_token"` //nolint:tagliatelle // token format
 	}
 
 	authHeader struct {
@@ -82,6 +82,8 @@ func getCredString(username, password string) string {
 }
 
 func skipIt(t *testing.T) {
+	t.Helper()
+
 	if os.Getenv("S3MOCK_ENDPOINT") == "" {
 		t.Skip("Skipping testing without AWS S3 mock server")
 	}
@@ -102,7 +104,7 @@ func TestRunAlreadyRunningServer(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 
-		c := api.NewController(conf)
+		ctlr := api.NewController(conf)
 
 		globalDir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
@@ -110,10 +112,10 @@ func TestRunAlreadyRunningServer(t *testing.T) {
 		}
 		defer os.RemoveAll(globalDir)
 
-		c.Config.Storage.RootDirectory = globalDir
+		ctlr.Config.Storage.RootDirectory = globalDir
 
 		go func() {
-			if err := c.Run(); err != nil {
+			if err := ctlr.Run(); err != nil {
 				return
 			}
 		}()
@@ -129,10 +131,10 @@ func TestRunAlreadyRunningServer(t *testing.T) {
 		}
 		defer func() {
 			ctx := context.Background()
-			_ = c.Server.Shutdown(ctx)
+			_ = ctlr.Server.Shutdown(ctx)
 		}()
 
-		err = c.Run()
+		err = ctlr.Run()
 		So(err, ShouldNotBeNil)
 	})
 }
@@ -148,12 +150,12 @@ func TestObjectStorageController(t *testing.T) {
 			"name":    storage.S3StorageDriverName,
 		}
 		conf.Storage.StorageDriver = storageDriverParams
-		c := api.NewController(conf)
-		So(c, ShouldNotBeNil)
+		ctlr := api.NewController(conf)
+		So(ctlr, ShouldNotBeNil)
 
-		c.Config.Storage.RootDirectory = "zot"
+		ctlr.Config.Storage.RootDirectory = "zot"
 
-		err := c.Run()
+		err := ctlr.Run()
 		So(err, ShouldNotBeNil)
 	})
 
@@ -176,13 +178,13 @@ func TestObjectStorageController(t *testing.T) {
 			"skipverify":     false,
 		}
 		conf.Storage.StorageDriver = storageDriverParams
-		c := api.NewController(conf)
-		So(c, ShouldNotBeNil)
+		ctlr := api.NewController(conf)
+		So(ctlr, ShouldNotBeNil)
 
-		c.Config.Storage.RootDirectory = "/"
+		ctlr.Config.Storage.RootDirectory = "/"
 
-		go startServer(c)
-		defer stopServer(c)
+		go startServer(ctlr)
+		defer stopServer(ctlr)
 		WaitTillServerReady(baseURL)
 	})
 }
@@ -208,19 +210,19 @@ func TestObjectStorageControllerSubPaths(t *testing.T) {
 			"skipverify":     false,
 		}
 		conf.Storage.StorageDriver = storageDriverParams
-		c := api.NewController(conf)
-		So(c, ShouldNotBeNil)
+		ctlr := api.NewController(conf)
+		So(ctlr, ShouldNotBeNil)
 
-		c.Config.Storage.RootDirectory = "zot"
+		ctlr.Config.Storage.RootDirectory = "zot"
 		subPathMap := make(map[string]config.StorageConfig)
 		subPathMap["/a"] = config.StorageConfig{
 			RootDirectory: "/a",
 			StorageDriver: storageDriverParams,
 		}
-		c.Config.Storage.SubPaths = subPathMap
+		ctlr.Config.Storage.SubPaths = subPathMap
 
-		go startServer(c)
-		defer stopServer(c)
+		go startServer(ctlr)
+		defer stopServer(ctlr)
 		WaitTillServerReady(baseURL)
 	})
 }
@@ -247,16 +249,16 @@ func TestHtpasswdSingleCred(t *testing.T) {
 						Path: htpasswdPath,
 					},
 				}
-				c := api.NewController(conf)
+				ctlr := api.NewController(conf)
 				dir, err := ioutil.TempDir("", "oci-repo-test")
 				if err != nil {
 					panic(err)
 				}
 				defer os.RemoveAll(dir)
-				c.Config.Storage.RootDirectory = dir
+				ctlr.Config.Storage.RootDirectory = dir
 
-				go startServer(c)
-				defer stopServer(c)
+				go startServer(ctlr)
+				defer stopServer(ctlr)
 				WaitTillServerReady(baseURL)
 
 				// with creds, should get expected status code
@@ -264,7 +266,7 @@ func TestHtpasswdSingleCred(t *testing.T) {
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, 200)
 
-				//with invalid creds, it should fail
+				// with invalid creds, it should fail
 				resp, _ = resty.R().SetBasicAuth("chuck", "chuck").Get(baseURL + "/v2/")
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, 401)
@@ -302,16 +304,16 @@ func TestHtpasswdTwoCreds(t *testing.T) {
 						Path: htpasswdPath,
 					},
 				}
-				c := api.NewController(conf)
+				ctlr := api.NewController(conf)
 				dir, err := ioutil.TempDir("", "oci-repo-test")
 				if err != nil {
 					panic(err)
 				}
 				defer os.RemoveAll(dir)
-				c.Config.Storage.RootDirectory = dir
+				ctlr.Config.Storage.RootDirectory = dir
 
-				go startServer(c)
-				defer stopServer(c)
+				go startServer(ctlr)
+				defer stopServer(ctlr)
 				WaitTillServerReady(baseURL)
 
 				// with creds, should get expected status code
@@ -323,7 +325,7 @@ func TestHtpasswdTwoCreds(t *testing.T) {
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, 200)
 
-				//with invalid creds, it should fail
+				// with invalid creds, it should fail
 				resp, _ = resty.R().SetBasicAuth("chuck", "chuck").Get(baseURL + "/v2/")
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, 401)
@@ -331,6 +333,7 @@ func TestHtpasswdTwoCreds(t *testing.T) {
 		}
 	})
 }
+
 func TestHtpasswdFiveCreds(t *testing.T) {
 	Convey("Five creds", t, func() {
 		tests := map[string]string{
@@ -357,16 +360,16 @@ func TestHtpasswdFiveCreds(t *testing.T) {
 					Path: htpasswdPath,
 				},
 			}
-			c := api.NewController(conf)
+			ctlr := api.NewController(conf)
 			dir, err := ioutil.TempDir("", "oci-repo-test")
 			if err != nil {
 				panic(err)
 			}
 			defer os.RemoveAll(dir)
-			c.Config.Storage.RootDirectory = dir
+			ctlr.Config.Storage.RootDirectory = dir
 
-			go startServer(c)
-			defer stopServer(c)
+			go startServer(ctlr)
+			defer stopServer(ctlr)
 			WaitTillServerReady(baseURL)
 
 			// with creds, should get expected status code
@@ -376,13 +379,14 @@ func TestHtpasswdFiveCreds(t *testing.T) {
 				So(resp.StatusCode(), ShouldEqual, 200)
 			}
 
-			//with invalid creds, it should fail
+			// with invalid creds, it should fail
 			resp, _ := resty.R().SetBasicAuth("chuck", "chuck").Get(baseURL + "/v2/")
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, 401)
 		}()
 	})
 }
+
 func TestBasicAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		port := GetFreePort()
@@ -397,16 +401,16 @@ func TestBasicAuth(t *testing.T) {
 				Path: htpasswdPath,
 			},
 		}
-		c := api.NewController(conf)
+		ctlr := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
 		}
 		defer os.RemoveAll(dir)
-		c.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.RootDirectory = dir
 
-		go startServer(c)
-		defer stopServer(c)
+		go startServer(ctlr)
+		defer stopServer(ctlr)
 		WaitTillServerReady(baseURL)
 
 		// without creds, should get access error
@@ -436,17 +440,17 @@ func TestInterruptedBlobUpload(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 
-		c := api.NewController(conf)
+		ctlr := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
 		}
 
 		defer os.RemoveAll(dir)
-		c.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.RootDirectory = dir
 
-		go startServer(c)
-		defer stopServer(c)
+		go startServer(ctlr)
+		defer stopServer(ctlr)
 		WaitTillServerReady(baseURL)
 
 		client := resty.New()
@@ -484,11 +488,13 @@ func TestInterruptedBlobUpload(t *testing.T) {
 
 			// if the blob upload has started then interrupt by running cancel()
 			for {
-				n, err := c.StoreController.DefaultStore.GetBlobUpload(AuthorizedNamespace, sessionID)
+				n, err := ctlr.StoreController.DefaultStore.GetBlobUpload(AuthorizedNamespace, sessionID)
 				if n > 0 && err == nil {
 					cancel()
+
 					break
 				}
+
 				time.Sleep(100 * time.Millisecond)
 			}
 
@@ -531,14 +537,16 @@ func TestInterruptedBlobUpload(t *testing.T) {
 
 			// if the blob upload has started then interrupt by running cancel()
 			for {
-				n, err := c.StoreController.DefaultStore.GetBlobUpload(AuthorizedNamespace, sessionID)
+				n, err := ctlr.StoreController.DefaultStore.GetBlobUpload(AuthorizedNamespace, sessionID)
 				if n > 0 && err == nil {
 					// cleaning blob uploads, so that zot fails to clean up, +code coverage
-					err = c.StoreController.DefaultStore.DeleteBlobUpload(AuthorizedNamespace, sessionID)
+					err = ctlr.StoreController.DefaultStore.DeleteBlobUpload(AuthorizedNamespace, sessionID)
 					So(err, ShouldBeNil)
 					cancel()
+
 					break
 				}
+
 				time.Sleep(100 * time.Millisecond)
 			}
 
@@ -582,11 +590,13 @@ func TestInterruptedBlobUpload(t *testing.T) {
 
 			// if the blob upload has started then interrupt by running cancel()
 			for {
-				n, err := c.StoreController.DefaultStore.GetBlobUpload(AuthorizedNamespace, sessionID)
+				n, err := ctlr.StoreController.DefaultStore.GetBlobUpload(AuthorizedNamespace, sessionID)
 				if n > 0 && err == nil {
 					cancel()
+
 					break
 				}
+
 				time.Sleep(100 * time.Millisecond)
 			}
 
@@ -629,14 +639,16 @@ func TestInterruptedBlobUpload(t *testing.T) {
 
 			// if the blob upload has started then interrupt by running cancel()
 			for {
-				n, err := c.StoreController.DefaultStore.GetBlobUpload(AuthorizedNamespace, sessionID)
+				n, err := ctlr.StoreController.DefaultStore.GetBlobUpload(AuthorizedNamespace, sessionID)
 				if n > 0 && err == nil {
 					// cleaning blob uploads, so that zot fails to clean up, +code coverage
-					err = c.StoreController.DefaultStore.DeleteBlobUpload(AuthorizedNamespace, sessionID)
+					err = ctlr.StoreController.DefaultStore.DeleteBlobUpload(AuthorizedNamespace, sessionID)
 					So(err, ShouldBeNil)
 					cancel()
+
 					break
 				}
+
 				time.Sleep(100 * time.Millisecond)
 			}
 
@@ -665,8 +677,8 @@ func TestMultipleInstance(t *testing.T) {
 				Path: htpasswdPath,
 			},
 		}
-		c := api.NewController(conf)
-		err := c.Run()
+		ctlr := api.NewController(conf)
+		err := ctlr.Run()
 		So(err, ShouldEqual, errors.ErrImgStoreNotFound)
 
 		globalDir, err := ioutil.TempDir("", "oci-repo-test")
@@ -681,13 +693,13 @@ func TestMultipleInstance(t *testing.T) {
 		}
 		defer os.RemoveAll(subDir)
 
-		c.Config.Storage.RootDirectory = globalDir
+		ctlr.Config.Storage.RootDirectory = globalDir
 		subPathMap := make(map[string]config.StorageConfig)
 
 		subPathMap["/a"] = config.StorageConfig{RootDirectory: subDir}
 
-		go startServer(c)
-		defer stopServer(c)
+		go startServer(ctlr)
+		defer stopServer(ctlr)
 		WaitTillServerReady(baseURL)
 
 		client := resty.New()
@@ -711,7 +723,7 @@ func TestMultipleInstance(t *testing.T) {
 				Path: htpasswdPath,
 			},
 		}
-		c := api.NewController(conf)
+		ctlr := api.NewController(conf)
 		globalDir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
@@ -724,12 +736,12 @@ func TestMultipleInstance(t *testing.T) {
 		}
 		defer os.RemoveAll(subDir)
 
-		c.Config.Storage.RootDirectory = globalDir
+		ctlr.Config.Storage.RootDirectory = globalDir
 		subPathMap := make(map[string]config.StorageConfig)
 		subPathMap["/a"] = config.StorageConfig{RootDirectory: subDir}
 
-		go startServer(c)
-		defer stopServer(c)
+		go startServer(ctlr)
+		defer stopServer(ctlr)
 		WaitTillServerReady(baseURL)
 
 		// without creds, should get access error
@@ -765,7 +777,7 @@ func TestTLSWithBasicAuth(t *testing.T) {
 		baseURL := GetBaseURL(port)
 		secureBaseURL := GetSecureBaseURL(port)
 
-		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
+		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
 		defer func() { resty.SetTLSClientConfig(nil) }()
 		conf := config.New()
 		conf.HTTP.Port = port
@@ -779,16 +791,16 @@ func TestTLSWithBasicAuth(t *testing.T) {
 			},
 		}
 
-		c := api.NewController(conf)
+		ctlr := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
 		}
 		defer os.RemoveAll(dir)
-		c.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.RootDirectory = dir
 
-		go startServer(c)
-		defer stopServer(c)
+		go startServer(ctlr)
+		defer stopServer(ctlr)
 		WaitTillServerReady(baseURL)
 
 		// accessing insecure HTTP site should fail
@@ -830,7 +842,7 @@ func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 		baseURL := GetBaseURL(port)
 		secureBaseURL := GetSecureBaseURL(port)
 
-		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
+		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
 		defer func() { resty.SetTLSClientConfig(nil) }()
 		conf := config.New()
 		conf.HTTP.Port = port
@@ -845,16 +857,16 @@ func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 		}
 		conf.HTTP.AllowReadAccess = true
 
-		c := api.NewController(conf)
+		ctlr := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
 		}
 		defer os.RemoveAll(dir)
-		c.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.RootDirectory = dir
 
-		go startServer(c)
-		defer stopServer(c)
+		go startServer(ctlr)
+		defer stopServer(ctlr)
 		WaitTillServerReady(baseURL)
 
 		// accessing insecure HTTP site should fail
@@ -895,7 +907,7 @@ func TestTLSMutualAuth(t *testing.T) {
 		baseURL := GetBaseURL(port)
 		secureBaseURL := GetSecureBaseURL(port)
 
-		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
+		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
 		defer func() { resty.SetTLSClientConfig(nil) }()
 		conf := config.New()
 		conf.HTTP.Port = port
@@ -905,16 +917,16 @@ func TestTLSMutualAuth(t *testing.T) {
 			CACert: CACert,
 		}
 
-		c := api.NewController(conf)
+		ctlr := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
 		}
 		defer os.RemoveAll(dir)
-		c.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.RootDirectory = dir
 
-		go startServer(c)
-		defer stopServer(c)
+		go startServer(ctlr)
+		defer stopServer(ctlr)
 		WaitTillServerReady(baseURL)
 
 		// accessing insecure HTTP site should fail
@@ -967,7 +979,7 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 		baseURL := GetBaseURL(port)
 		secureBaseURL := GetSecureBaseURL(port)
 
-		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
+		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
 		defer func() { resty.SetTLSClientConfig(nil) }()
 		conf := config.New()
 		conf.HTTP.Port = port
@@ -978,16 +990,16 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 		}
 		conf.HTTP.AllowReadAccess = true
 
-		c := api.NewController(conf)
+		ctlr := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
 		}
 		defer os.RemoveAll(dir)
-		c.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.RootDirectory = dir
 
-		go startServer(c)
-		defer stopServer(c)
+		go startServer(ctlr)
+		defer stopServer(ctlr)
 		WaitTillServerReady(baseURL)
 
 		// accessing insecure HTTP site should fail
@@ -1049,7 +1061,7 @@ func TestTLSMutualAndBasicAuth(t *testing.T) {
 		baseURL := GetBaseURL(port)
 		secureBaseURL := GetSecureBaseURL(port)
 
-		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
+		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
 		defer func() { resty.SetTLSClientConfig(nil) }()
 		conf := config.New()
 		conf.HTTP.Port = port
@@ -1064,16 +1076,16 @@ func TestTLSMutualAndBasicAuth(t *testing.T) {
 			CACert: CACert,
 		}
 
-		c := api.NewController(conf)
+		ctlr := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
 		}
 		defer os.RemoveAll(dir)
-		c.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.RootDirectory = dir
 
-		go startServer(c)
-		defer stopServer(c)
+		go startServer(ctlr)
+		defer stopServer(ctlr)
 		WaitTillServerReady(baseURL)
 
 		// accessing insecure HTTP site should fail
@@ -1131,7 +1143,7 @@ func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 		baseURL := GetBaseURL(port)
 		secureBaseURL := GetSecureBaseURL(port)
 
-		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
+		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
 		defer func() { resty.SetTLSClientConfig(nil) }()
 		conf := config.New()
 		conf.HTTP.Port = port
@@ -1147,16 +1159,16 @@ func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 		}
 		conf.HTTP.AllowReadAccess = true
 
-		c := api.NewController(conf)
+		ctlr := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
 		}
 		defer os.RemoveAll(dir)
-		c.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.RootDirectory = dir
 
-		go startServer(c)
-		defer stopServer(c)
+		go startServer(ctlr)
+		defer stopServer(ctlr)
 		WaitTillServerReady(baseURL)
 
 		// accessing insecure HTTP site should fail
@@ -1219,16 +1231,16 @@ type testLDAPServer struct {
 }
 
 func newTestLDAPServer() *testLDAPServer {
-	l := &testLDAPServer{}
+	ldaps := &testLDAPServer{}
 	quitCh := make(chan bool)
 	server := vldap.NewServer()
 	server.QuitChannel(quitCh)
-	server.BindFunc("", l)
-	server.SearchFunc("", l)
-	l.server = server
-	l.quitCh = quitCh
+	server.BindFunc("", ldaps)
+	server.SearchFunc("", ldaps)
+	ldaps.server = server
+	ldaps.quitCh = quitCh
 
-	return l
+	return ldaps
 }
 
 func (l *testLDAPServer) Start() {
@@ -1304,16 +1316,16 @@ func TestBasicAuthWithLDAP(t *testing.T) {
 				UserAttribute: "uid",
 			},
 		}
-		c := api.NewController(conf)
+		ctlr := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
 		}
 		defer os.RemoveAll(dir)
-		c.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.RootDirectory = dir
 
-		go startServer(c)
-		defer stopServer(c)
+		go startServer(ctlr)
+		defer stopServer(ctlr)
 		WaitTillServerReady(baseURL)
 
 		// without creds, should get access error
@@ -1347,24 +1359,24 @@ func TestBearerAuth(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 
-		u, err := url.Parse(authTestServer.URL)
+		aurl, err := url.Parse(authTestServer.URL)
 		So(err, ShouldBeNil)
 
 		conf.HTTP.Auth = &config.AuthConfig{
 			Bearer: &config.BearerConfig{
 				Cert:    ServerCert,
 				Realm:   authTestServer.URL + "/auth/token",
-				Service: u.Host,
+				Service: aurl.Host,
 			},
 		}
-		c := api.NewController(conf)
+		ctlr := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		So(err, ShouldBeNil)
 		defer os.RemoveAll(dir)
-		c.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.RootDirectory = dir
 
-		go startServer(c)
-		defer stopServer(c)
+		go startServer(ctlr)
+		defer stopServer(ctlr)
 		WaitTillServerReady(baseURL)
 
 		blob := []byte("hello, blob!")
@@ -1513,25 +1525,25 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 
-		u, err := url.Parse(authTestServer.URL)
+		aurl, err := url.Parse(authTestServer.URL)
 		So(err, ShouldBeNil)
 
 		conf.HTTP.Auth = &config.AuthConfig{
 			Bearer: &config.BearerConfig{
 				Cert:    ServerCert,
 				Realm:   authTestServer.URL + "/auth/token",
-				Service: u.Host,
+				Service: aurl.Host,
 			},
 		}
 		conf.HTTP.AllowReadAccess = true
-		c := api.NewController(conf)
+		ctlr := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		So(err, ShouldBeNil)
 		defer os.RemoveAll(dir)
-		c.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.RootDirectory = dir
 
-		go startServer(c)
-		defer stopServer(c)
+		go startServer(ctlr)
+		defer stopServer(ctlr)
 		WaitTillServerReady(baseURL)
 
 		blob := []byte("hello, blob!")
@@ -1680,8 +1692,8 @@ func makeAuthTestServer() *httptest.Server {
 		panic(err)
 	}
 
-	authTestServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		scope := r.URL.Query().Get("scope")
+	authTestServer := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		scope := request.URL.Query().Get("scope")
 		parts := strings.Split(scope, ":")
 		name := parts[1]
 		actions := strings.Split(parts[2], ",")
@@ -1699,8 +1711,8 @@ func makeAuthTestServer() *httptest.Server {
 		if err != nil {
 			panic(err)
 		}
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"access_token": "%s"}`, token)
+		response.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(response, `{"access_token": "%s"}`, token)
 	}))
 
 	return authTestServer
@@ -1709,14 +1721,14 @@ func makeAuthTestServer() *httptest.Server {
 func parseBearerAuthHeader(authHeaderRaw string) *authHeader {
 	re := regexp.MustCompile(`([a-zA-z]+)="(.+?)"`)
 	matches := re.FindAllStringSubmatch(authHeaderRaw, -1)
-	m := make(map[string]string)
+	matchmap := make(map[string]string)
 
 	for i := 0; i < len(matches); i++ {
-		m[matches[i][1]] = matches[i][2]
+		matchmap[matches[i][1]] = matches[i][2]
 	}
 
 	var h authHeader
-	if err := mapstructure.Decode(m, &h); err != nil {
+	if err := mapstructure.Decode(matchmap, &h); err != nil {
 		panic(err)
 	}
 
@@ -1756,7 +1768,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 			},
 		}
 
-		c := api.NewController(conf)
+		ctlr := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
@@ -1766,10 +1778,10 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
-		c.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.RootDirectory = dir
 
-		go startServer(c)
-		defer stopServer(c)
+		go startServer(ctlr)
+		defer stopServer(ctlr)
 		WaitTillServerReady(baseURL)
 
 		blob := []byte("hello, blob!")
@@ -1988,7 +2000,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 202)
 
-		//remove per repo policy
+		// remove per repo policy
 		repoPolicy = conf.AccessControl.Repositories[AuthorizationNamespace]
 		repoPolicy.Policies = []config.Policy{}
 		repoPolicy.DefaultPolicy = []string{}
@@ -2113,16 +2125,16 @@ func TestInvalidCases(t *testing.T) {
 			},
 		}
 
-		c := api.NewController(conf)
+		ctlr := api.NewController(conf)
 
-		err := os.Mkdir("oci-repo-test", 0000)
+		err := os.Mkdir("oci-repo-test", 0o000)
 		if err != nil {
 			panic(err)
 		}
 
-		c.Config.Storage.RootDirectory = "oci-repo-test"
+		ctlr.Config.Storage.RootDirectory = "oci-repo-test"
 
-		go startServer(c)
+		go startServer(ctlr)
 		defer func(ctrl *api.Controller) {
 			err := ctrl.Server.Shutdown(context.Background())
 			if err != nil {
@@ -2133,7 +2145,7 @@ func TestInvalidCases(t *testing.T) {
 			if err != nil {
 				panic(err)
 			}
-		}(c)
+		}(ctlr)
 		WaitTillServerReady(baseURL)
 
 		digest := "sha256:8dd57e171a61368ffcfde38045ddb6ed74a32950c271c1da93eaddfb66a77e78"
@@ -2152,6 +2164,7 @@ func TestInvalidCases(t *testing.T) {
 		So(postResponse.StatusCode(), ShouldEqual, 500)
 	})
 }
+
 func TestHTTPReadOnly(t *testing.T) {
 	Convey("Single cred", t, func() {
 		singleCredtests := []string{}
@@ -2177,16 +2190,16 @@ func TestHTTPReadOnly(t *testing.T) {
 						Path: htpasswdPath,
 					},
 				}
-				c := api.NewController(conf)
+				ctlr := api.NewController(conf)
 				dir, err := ioutil.TempDir("", "oci-repo-test")
 				if err != nil {
 					panic(err)
 				}
 				defer os.RemoveAll(dir)
-				c.Config.Storage.RootDirectory = dir
+				ctlr.Config.Storage.RootDirectory = dir
 
-				go startServer(c)
-				defer stopServer(c)
+				go startServer(ctlr)
+				defer stopServer(ctlr)
 				WaitTillServerReady(baseURL)
 
 				// with creds, should get expected status code
@@ -2201,7 +2214,7 @@ func TestHTTPReadOnly(t *testing.T) {
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, 405)
 
-				//with invalid creds, it should fail
+				// with invalid creds, it should fail
 				resp, _ = resty.R().SetBasicAuth("chuck", "chuck").Get(baseURL + "/v2/")
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, 401)
@@ -2227,7 +2240,7 @@ func TestCrossRepoMount(t *testing.T) {
 			},
 		}
 
-		c := api.NewController(conf)
+		ctlr := api.NewController(conf)
 
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
@@ -2239,15 +2252,15 @@ func TestCrossRepoMount(t *testing.T) {
 			panic(err)
 		}
 		defer os.RemoveAll(dir)
-		c.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.RootDirectory = dir
 
-		go startServer(c)
-		defer stopServer(c)
+		go startServer(ctlr)
+		defer stopServer(ctlr)
 		WaitTillServerReady(baseURL)
 
 		params := make(map[string]string)
 		digest := "sha256:63a795ca90aa6e7cca60941e826810a4cd0a2e73ea02bf458241df2a5c973e29"
-		d := godigest.Digest(digest)
+		dgst := godigest.Digest(digest)
 		name := "zot-cve-test"
 		params["mount"] = digest
 		params["from"] = name
@@ -2320,7 +2333,7 @@ func TestCrossRepoMount(t *testing.T) {
 
 		blob := "63a795ca90aa6e7cca60941e826810a4cd0a2e73ea02bf458241df2a5c973e29"
 
-		buf, err := ioutil.ReadFile(path.Join(c.Config.Storage.RootDirectory, "zot-cve-test/blobs/sha256/"+blob))
+		buf, err := ioutil.ReadFile(path.Join(ctlr.Config.Storage.RootDirectory, "zot-cve-test/blobs/sha256/"+blob))
 		if err != nil {
 			panic(err)
 		}
@@ -2343,12 +2356,12 @@ func TestCrossRepoMount(t *testing.T) {
 		So(postResponse.StatusCode(), ShouldEqual, 201)
 
 		// Check os.SameFile here
-		cachePath := path.Join(c.Config.Storage.RootDirectory, "zot-d-test", "blobs/sha256", d.Hex())
+		cachePath := path.Join(ctlr.Config.Storage.RootDirectory, "zot-d-test", "blobs/sha256", dgst.Hex())
 
 		cacheFi, err := os.Stat(cachePath)
 		So(err, ShouldBeNil)
 
-		linkPath := path.Join(c.Config.Storage.RootDirectory, "zot-mount-test", "blobs/sha256", d.Hex())
+		linkPath := path.Join(ctlr.Config.Storage.RootDirectory, "zot-mount-test", "blobs/sha256", dgst.Hex())
 
 		linkFi, err := os.Stat(linkPath)
 		So(err, ShouldBeNil)
@@ -2365,7 +2378,7 @@ func TestCrossRepoMount(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(postResponse.StatusCode(), ShouldEqual, 201)
 
-		linkPath = path.Join(c.Config.Storage.RootDirectory, "zot-mount1-test", "blobs/sha256", d.Hex())
+		linkPath = path.Join(ctlr.Config.Storage.RootDirectory, "zot-mount1-test", "blobs/sha256", dgst.Hex())
 
 		linkFi, err = os.Stat(linkPath)
 		So(err, ShouldBeNil)
@@ -2411,7 +2424,7 @@ func TestCrossRepoMount(t *testing.T) {
 			},
 		}
 
-		c := api.NewController(conf)
+		ctlr := api.NewController(conf)
 
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
@@ -2424,12 +2437,12 @@ func TestCrossRepoMount(t *testing.T) {
 		}
 		defer os.RemoveAll(dir)
 
-		c.Config.Storage.RootDirectory = dir
-		c.Config.Storage.Dedupe = false
-		c.Config.Storage.GC = false
+		ctlr.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.Dedupe = false
+		ctlr.Config.Storage.GC = false
 
-		go startServer(c)
-		defer stopServer(c)
+		go startServer(ctlr)
+		defer stopServer(ctlr)
 		WaitTillServerReady(baseURL)
 
 		digest := "sha256:7a0437f04f83f084b7ed68ad9c4a4947e12fc4e1b006b38129bac89114ec3621"
@@ -2443,6 +2456,8 @@ func TestCrossRepoMount(t *testing.T) {
 }
 
 func TestParallelRequests(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		srcImageName  string
 		srcImageTag   string
@@ -2551,7 +2566,7 @@ func TestParallelRequests(t *testing.T) {
 		},
 	}
 
-	c := api.NewController(conf)
+	ctlr := api.NewController(conf)
 
 	dir, err := ioutil.TempDir("", "oci-repo-test")
 	if err != nil {
@@ -2573,16 +2588,16 @@ func TestParallelRequests(t *testing.T) {
 	subPaths["/a"] = config.StorageConfig{RootDirectory: firstSubDir}
 	subPaths["/b"] = config.StorageConfig{RootDirectory: secondSubDir}
 
-	c.Config.Storage.SubPaths = subPaths
-	c.Config.Storage.RootDirectory = dir
+	ctlr.Config.Storage.SubPaths = subPaths
+	ctlr.Config.Storage.RootDirectory = dir
 
-	go startServer(c)
+	go startServer(ctlr)
 	WaitTillServerReady(baseURL)
 
 	// without creds, should get access error
 	for i, testcase := range testCases {
 		testcase := testcase
-		j := i
+		run := i
 
 		t.Run(testcase.testCaseName, func(t *testing.T) {
 			t.Parallel()
@@ -2642,8 +2657,7 @@ func TestParallelRequests(t *testing.T) {
 				assert.NotEqual(t, postResponse.StatusCode(), 500, "response status code should not return 500")
 
 				// Post request with query parameter
-
-				if j%2 == 0 {
+				if run%2 == 0 {
 					postResponse, err = client.R().
 						SetHeader("Content-type", "application/octet-stream").
 						SetBasicAuth(username, passphrase).
@@ -2673,12 +2687,12 @@ func TestParallelRequests(t *testing.T) {
 
 					reader := bufio.NewReader(file)
 
-					b := make([]byte, 5*1024*1024)
+					buf := make([]byte, 5*1024*1024)
 
-					if j%4 == 0 {
+					if run%4 == 0 {
 						readContent := 0
 						for {
-							n, err := reader.Read(b)
+							nbytes, err := reader.Read(buf)
 							if err != nil {
 								if err == io.EOF {
 									break
@@ -2688,21 +2702,21 @@ func TestParallelRequests(t *testing.T) {
 							// Patch request of blob
 
 							patchResponse, err := client.R().
-								SetBody(b[0:n]).
+								SetBody(buf[0:nbytes]).
 								SetHeader("Content-Type", "application/octet-stream").
-								SetHeader("Content-Length", fmt.Sprintf("%d", n)).
-								SetHeader("Content-Range", fmt.Sprintf("%d", readContent)+"-"+fmt.Sprintf("%d", readContent+n-1)).
+								SetHeader("Content-Length", fmt.Sprintf("%d", nbytes)).
+								SetHeader("Content-Range", fmt.Sprintf("%d", readContent)+"-"+fmt.Sprintf("%d", readContent+nbytes-1)).
 								SetBasicAuth(username, passphrase).
 								Patch(baseURL + "/v2/" + testcase.destImageName + "/blobs/uploads/" + sessionID)
 
 							assert.Equal(t, err, nil, "Error should be nil")
 							assert.NotEqual(t, patchResponse.StatusCode(), 500, "response status code should not return 500")
 
-							readContent += n
+							readContent += nbytes
 						}
 					} else {
 						for {
-							n, err := reader.Read(b)
+							nbytes, err := reader.Read(buf)
 							if err != nil {
 								if err == io.EOF {
 									break
@@ -2711,10 +2725,9 @@ func TestParallelRequests(t *testing.T) {
 							}
 							// Patch request of blob
 
-							patchResponse, err := client.R().SetBody(b[0:n]).SetHeader("Content-type", "application/octet-stream").
+							patchResponse, err := client.R().SetBody(buf[0:nbytes]).SetHeader("Content-type", "application/octet-stream").
 								SetBasicAuth(username, passphrase).
 								Patch(baseURL + "/v2/" + testcase.destImageName + "/blobs/uploads/" + sessionID)
-
 							if err != nil {
 								panic(err)
 							}
@@ -2777,7 +2790,7 @@ func TestHardLink(t *testing.T) {
 			},
 		}
 
-		c := api.NewController(conf)
+		ctlr := api.NewController(conf)
 
 		dir, err := ioutil.TempDir("", "hard-link-test")
 		if err != nil {
@@ -2785,7 +2798,7 @@ func TestHardLink(t *testing.T) {
 		}
 		defer os.RemoveAll(dir)
 
-		err = os.Chmod(dir, 0400)
+		err = os.Chmod(dir, 0o400)
 		if err != nil {
 			panic(err)
 		}
@@ -2796,32 +2809,32 @@ func TestHardLink(t *testing.T) {
 		}
 		defer os.RemoveAll(subDir)
 
-		err = os.Chmod(subDir, 0400)
+		err = os.Chmod(subDir, 0o400)
 		if err != nil {
 			panic(err)
 		}
 
-		c.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.RootDirectory = dir
 		subPaths := make(map[string]config.StorageConfig)
 
 		subPaths["/a"] = config.StorageConfig{RootDirectory: subDir, Dedupe: true}
-		c.Config.Storage.SubPaths = subPaths
+		ctlr.Config.Storage.SubPaths = subPaths
 
-		go startServer(c)
-		defer stopServer(c)
+		go startServer(ctlr)
+		defer stopServer(ctlr)
 		WaitTillServerReady(baseURL)
 
-		err = os.Chmod(dir, 0644)
+		err = os.Chmod(dir, 0o644)
 		if err != nil {
 			panic(err)
 		}
 
-		err = os.Chmod(subDir, 0644)
+		err = os.Chmod(subDir, 0o644)
 		if err != nil {
 			panic(err)
 		}
 
-		So(c.Config.Storage.Dedupe, ShouldEqual, false)
+		So(ctlr.Config.Storage.Dedupe, ShouldEqual, false)
 	})
 }
 
@@ -2834,19 +2847,19 @@ func TestImageSignatures(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 
-		c := api.NewController(conf)
+		ctlr := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
 		}
 		defer os.RemoveAll(dir)
-		c.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.RootDirectory = dir
 		go func(controller *api.Controller) {
 			// this blocks
 			if err := controller.Run(); err != nil {
 				return
 			}
-		}(c)
+		}(ctlr)
 		// wait till ready
 		for {
 			_, err := resty.R().Get(baseURL)
@@ -2858,7 +2871,7 @@ func TestImageSignatures(t *testing.T) {
 		defer func(controller *api.Controller) {
 			ctx := context.Background()
 			_ = controller.Server.Shutdown(ctx)
-		}(c)
+		}(ctlr)
 
 		repoName := "signed-repo"
 
@@ -2886,7 +2899,7 @@ func TestImageSignatures(t *testing.T) {
 		So(resp.Header().Get(api.DistContentDigestKey), ShouldNotBeEmpty)
 
 		// create a manifest
-		m := ispec.Manifest{
+		manifest := ispec.Manifest{
 			Config: ispec.Descriptor{
 				Digest: digest,
 				Size:   int64(len(content)),
@@ -2899,8 +2912,8 @@ func TestImageSignatures(t *testing.T) {
 				},
 			},
 		}
-		m.SchemaVersion = 2
-		content, err = json.Marshal(m)
+		manifest.SchemaVersion = 2
+		content, err = json.Marshal(manifest)
 		So(err, ShouldBeNil)
 		digest = godigest.FromBytes(content)
 		So(digest, ShouldNotBeNil)
@@ -2936,42 +2949,42 @@ func TestImageSignatures(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// verify the image
-			a := &options.AnnotationOptions{Annotations: []string{"tag=1.0"}}
-			amap, err := a.AnnotationsMap()
+			aopts := &options.AnnotationOptions{Annotations: []string{"tag=1.0"}}
+			amap, err := aopts.AnnotationsMap()
 			So(err, ShouldBeNil)
-			v := verify.VerifyCommand{
+			vrfy := verify.VerifyCommand{
 				RegistryOptions: options.RegistryOptions{AllowInsecure: true},
 				CheckClaims:     true,
 				KeyRef:          path.Join(tdir, "cosign.pub"),
 				Annotations:     amap,
 			}
-			err = v.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", port, repoName, "1.0")})
+			err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", port, repoName, "1.0")})
 			So(err, ShouldBeNil)
 
 			// verify the image with incorrect tag
-			a = &options.AnnotationOptions{Annotations: []string{"tag=2.0"}}
-			amap, err = a.AnnotationsMap()
+			aopts = &options.AnnotationOptions{Annotations: []string{"tag=2.0"}}
+			amap, err = aopts.AnnotationsMap()
 			So(err, ShouldBeNil)
-			v = verify.VerifyCommand{
+			vrfy = verify.VerifyCommand{
 				RegistryOptions: options.RegistryOptions{AllowInsecure: true},
 				CheckClaims:     true,
 				KeyRef:          path.Join(tdir, "cosign.pub"),
 				Annotations:     amap,
 			}
-			err = v.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", port, repoName, "1.0")})
+			err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", port, repoName, "1.0")})
 			So(err, ShouldNotBeNil)
 
 			// verify the image with incorrect key
-			a = &options.AnnotationOptions{Annotations: []string{"tag=1.0"}}
-			amap, err = a.AnnotationsMap()
+			aopts = &options.AnnotationOptions{Annotations: []string{"tag=1.0"}}
+			amap, err = aopts.AnnotationsMap()
 			So(err, ShouldBeNil)
-			v = verify.VerifyCommand{
+			vrfy = verify.VerifyCommand{
 				CheckClaims:     true,
 				RegistryOptions: options.RegistryOptions{AllowInsecure: true},
 				KeyRef:          path.Join(tdir, "cosign.key"),
 				Annotations:     amap,
 			}
-			err = v.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", port, repoName, "1.0")})
+			err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", port, repoName, "1.0")})
 			So(err, ShouldNotBeNil)
 
 			// generate another keypair
@@ -2985,16 +2998,16 @@ func TestImageSignatures(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// verify the image with incorrect key
-			a = &options.AnnotationOptions{Annotations: []string{"tag=1.0"}}
-			amap, err = a.AnnotationsMap()
+			aopts = &options.AnnotationOptions{Annotations: []string{"tag=1.0"}}
+			amap, err = aopts.AnnotationsMap()
 			So(err, ShouldBeNil)
-			v = verify.VerifyCommand{
+			vrfy = verify.VerifyCommand{
 				CheckClaims:     true,
 				RegistryOptions: options.RegistryOptions{AllowInsecure: true},
 				KeyRef:          path.Join(tdir, "cosign.pub"),
 				Annotations:     amap,
 			}
-			err = v.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", port, repoName, "1.0")})
+			err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", port, repoName, "1.0")})
 			So(err, ShouldNotBeNil)
 		})
 
@@ -3069,7 +3082,7 @@ func TestImageSignatures(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(len(refs.References), ShouldEqual, 1)
 				err = ioutil.WriteFile(path.Join(dir, repoName, "blobs",
-					strings.ReplaceAll(refs.References[0].Digest.String(), ":", "/")), []byte("corrupt"), 0600)
+					strings.ReplaceAll(refs.References[0].Digest.String(), ":", "/")), []byte("corrupt"), 0o600)
 				So(err, ShouldBeNil)
 				resp, err = resty.R().SetQueryParam("artifactType", notreg.ArtifactTypeNotation).Get(
 					fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers", baseURL, repoName, digest.String()))
@@ -3145,7 +3158,6 @@ func getAllBlobs(imagePath string) []string {
 	}
 
 	buf, err := ioutil.ReadFile(path.Join(imagePath, "index.json"))
-
 	if err != nil {
 		panic(err)
 	}
@@ -3191,7 +3203,6 @@ func getAllManifests(imagePath string) []string {
 	}
 
 	buf, err := ioutil.ReadFile(path.Join(imagePath, "index.json"))
-
 	if err != nil {
 		panic(err)
 	}

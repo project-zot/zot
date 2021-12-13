@@ -289,20 +289,20 @@ func TestServerResponse(t *testing.T) {
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: &extconf.SearchConfig{Enable: true},
 		}
-		c := api.NewController(conf)
+		ctlr := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)
 		}
 		defer os.RemoveAll(dir)
 
-		c.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.RootDirectory = dir
 		go func(controller *api.Controller) {
 			// this blocks
 			if err := controller.Run(); err != nil {
 				return
 			}
-		}(c)
+		}(ctlr)
 		// wait till ready
 		for {
 			_, err := resty.R().Get(url)
@@ -315,7 +315,7 @@ func TestServerResponse(t *testing.T) {
 		defer func(controller *api.Controller) {
 			ctx := context.Background()
 			_ = controller.Server.Shutdown(ctx)
-		}(c)
+		}(ctlr)
 
 		uploadManifest(url)
 
@@ -470,7 +470,7 @@ func uploadManifest(url string) {
 		SetHeader("Content-Type", "application/octet-stream").SetBody(content).Put(loc)
 
 	// create a manifest
-	m := ispec.Manifest{
+	manifest := ispec.Manifest{
 		Config: ispec.Descriptor{
 			Digest: digest,
 			Size:   int64(len(content)),
@@ -483,15 +483,15 @@ func uploadManifest(url string) {
 			},
 		},
 	}
-	m.SchemaVersion = 2
-	content, _ = json.Marshal(m)
+	manifest.SchemaVersion = 2
+	content, _ = json.Marshal(manifest)
 	_, _ = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
 		SetBody(content).Put(url + "/v2/repo7/manifests/test:1.0")
 
 	content = []byte("this is a blob5")
 	digest = godigest.FromBytes(content)
 	// create a manifest with same blob but a different tag
-	m = ispec.Manifest{
+	manifest = ispec.Manifest{
 		Config: ispec.Descriptor{
 			Digest: digest,
 			Size:   int64(len(content)),
@@ -504,8 +504,8 @@ func uploadManifest(url string) {
 			},
 		},
 	}
-	m.SchemaVersion = 2
-	content, _ = json.Marshal(m)
+	manifest.SchemaVersion = 2
+	content, _ = json.Marshal(manifest)
 	_, _ = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
 		SetBody(content).Put(url + "/v2/repo7/manifests/test:2.0")
 }
@@ -513,8 +513,8 @@ func uploadManifest(url string) {
 type mockService struct{}
 
 func (service mockService) getAllImages(ctx context.Context, config searchConfig, username, password string,
-	channel chan stringResult, wg *sync.WaitGroup) {
-	defer wg.Done()
+	channel chan stringResult, wtgrp *sync.WaitGroup) {
+	defer wtgrp.Done()
 	defer close(channel)
 
 	image := &imageStruct{}
@@ -530,14 +530,16 @@ func (service mockService) getAllImages(ctx context.Context, config searchConfig
 	str, err := image.string(*config.outputFormat)
 	if err != nil {
 		channel <- stringResult{"", err}
+
 		return
 	}
+
 	channel <- stringResult{str, nil}
 }
 
 func (service mockService) getImageByName(ctx context.Context, config searchConfig,
-	username, password, imageName string, channel chan stringResult, wg *sync.WaitGroup) {
-	defer wg.Done()
+	username, password, imageName string, channel chan stringResult, wtgrp *sync.WaitGroup) {
+	defer wtgrp.Done()
 	defer close(channel)
 
 	image := &imageStruct{}
@@ -553,15 +555,17 @@ func (service mockService) getImageByName(ctx context.Context, config searchConf
 	str, err := image.string(*config.outputFormat)
 	if err != nil {
 		channel <- stringResult{"", err}
+
 		return
 	}
+
 	channel <- stringResult{str, nil}
 }
 
 func (service mockService) getCveByImage(ctx context.Context, config searchConfig, username, password,
-	imageName string, c chan stringResult, wg *sync.WaitGroup) {
-	defer wg.Done()
-	defer close(c)
+	imageName string, rch chan stringResult, wtgrp *sync.WaitGroup) {
+	defer wtgrp.Done()
+	defer close(rch)
 
 	cveRes := &cveResult{}
 	cveRes.Data = cveData{
@@ -587,43 +591,45 @@ func (service mockService) getCveByImage(ctx context.Context, config searchConfi
 
 	str, err := cveRes.string(*config.outputFormat)
 	if err != nil {
-		c <- stringResult{"", err}
+		rch <- stringResult{"", err}
+
 		return
 	}
-	c <- stringResult{str, nil}
+
+	rch <- stringResult{str, nil}
 }
 
-func (service mockService) getImagesByCveID(ctx context.Context, config searchConfig, username, password, cveID string,
-	c chan stringResult, wg *sync.WaitGroup) {
-	service.getImageByName(ctx, config, username, password, "anImage", c, wg)
+func (service mockService) getImagesByCveID(ctx context.Context, config searchConfig, username, password, cvid string,
+	rch chan stringResult, wtgrp *sync.WaitGroup) {
+	service.getImageByName(ctx, config, username, password, "anImage", rch, wtgrp)
 }
 
 func (service mockService) getImagesByDigest(ctx context.Context, config searchConfig, username,
-	password, digest string, c chan stringResult, wg *sync.WaitGroup) {
-	service.getImageByName(ctx, config, username, password, "anImage", c, wg)
+	password, digest string, rch chan stringResult, wtgrp *sync.WaitGroup) {
+	service.getImageByName(ctx, config, username, password, "anImage", rch, wtgrp)
 }
 
 func (service mockService) getImageByNameAndCVEID(ctx context.Context, config searchConfig, username,
-	password, imageName, cveID string, c chan stringResult, wg *sync.WaitGroup) {
-	service.getImageByName(ctx, config, username, password, imageName, c, wg)
+	password, imageName, cvid string, rch chan stringResult, wtgrp *sync.WaitGroup) {
+	service.getImageByName(ctx, config, username, password, imageName, rch, wtgrp)
 }
 
 func (service mockService) getFixedTagsForCVE(ctx context.Context, config searchConfig,
-	username, password, imageName, cveID string, c chan stringResult, wg *sync.WaitGroup) {
-	service.getImageByName(ctx, config, username, password, imageName, c, wg)
+	username, password, imageName, cvid string, rch chan stringResult, wtgrp *sync.WaitGroup) {
+	service.getImageByName(ctx, config, username, password, imageName, rch, wtgrp)
 }
 
 func makeConfigFile(content string) string {
 	os.Setenv("HOME", os.TempDir())
-	home, err := os.UserHomeDir()
 
+	home, err := os.UserHomeDir()
 	if err != nil {
 		panic(err)
 	}
 
 	configPath := path.Join(home + "/.zot")
 
-	if err := ioutil.WriteFile(configPath, []byte(content), 0600); err != nil {
+	if err := ioutil.WriteFile(configPath, []byte(content), 0o600); err != nil {
 		panic(err)
 	}
 

@@ -36,10 +36,12 @@ type ImgResponseForDigest struct {
 	Errors           []ErrorGQL       `json:"errors"`
 }
 
+//nolint:tagliatelle // graphQL schema
 type ImgListForDigest struct {
 	Images []ImgInfo `json:"ImageListForDigest"`
 }
 
+//nolint:tagliatelle // graphQL schema
 type ImgInfo struct {
 	Name string   `json:"Name"`
 	Tags []string `json:"Tags"`
@@ -51,8 +53,7 @@ type ErrorGQL struct {
 }
 
 func init() {
-	err := testSetup()
-	if err != nil {
+	if err := testSetup(); err != nil {
 		panic(err)
 	}
 }
@@ -79,7 +80,7 @@ func testSetup() error {
 	// zot-cve-test  0.0.1                     63a795ca  8dd57e17            75MB
 	//                                                             7a0437f0  75MB
 
-	err = os.Mkdir(subDir+"/a", 0700)
+	err = os.Mkdir(subDir+"/a", 0o700)
 	if err != nil {
 		return err
 	}
@@ -146,11 +147,11 @@ func TestDigestSearchHTTP(t *testing.T) {
 			Search: &extconf.SearchConfig{Enable: true},
 		}
 
-		c := api.NewController(conf)
+		ctlr := api.NewController(conf)
 
 		go func() {
 			// this blocks
-			if err := c.Run(); err != nil {
+			if err := ctlr.Run(); err != nil {
 				return
 			}
 		}()
@@ -167,7 +168,7 @@ func TestDigestSearchHTTP(t *testing.T) {
 		// shut down server
 		defer func() {
 			ctx := context.Background()
-			_ = c.Server.Shutdown(ctx)
+			_ = ctlr.Server.Shutdown(ctx)
 		}()
 
 		resp, err := resty.R().Get(baseURL + "/v2/")
@@ -273,7 +274,7 @@ func TestDigestSearchHTTPSubPaths(t *testing.T) {
 			Search: &extconf.SearchConfig{Enable: true},
 		}
 
-		c := api.NewController(conf)
+		ctlr := api.NewController(conf)
 
 		globalDir, err := ioutil.TempDir("", "digest_test")
 		if err != nil {
@@ -281,17 +282,17 @@ func TestDigestSearchHTTPSubPaths(t *testing.T) {
 		}
 		defer os.RemoveAll(globalDir)
 
-		c.Config.Storage.RootDirectory = globalDir
+		ctlr.Config.Storage.RootDirectory = globalDir
 
 		subPathMap := make(map[string]config.StorageConfig)
 
 		subPathMap["/a"] = config.StorageConfig{RootDirectory: subRootDir}
 
-		c.Config.Storage.SubPaths = subPathMap
+		ctlr.Config.Storage.SubPaths = subPathMap
 
 		go func() {
 			// this blocks
-			if err := c.Run(); err != nil {
+			if err := ctlr.Run(); err != nil {
 				return
 			}
 		}()
@@ -308,7 +309,7 @@ func TestDigestSearchHTTPSubPaths(t *testing.T) {
 		// shut down server
 		defer func() {
 			ctx := context.Background()
-			_ = c.Server.Shutdown(ctx)
+			_ = ctlr.Server.Shutdown(ctx)
 		}()
 
 		resp, err := resty.R().Get(baseURL + "/v2/")
@@ -347,11 +348,11 @@ func TestDigestSearchDisabled(t *testing.T) {
 			Search: &extconf.SearchConfig{Enable: false},
 		}
 
-		c := api.NewController(conf)
+		ctlr := api.NewController(conf)
 
 		go func() {
 			// this blocks
-			if err := c.Run(); err != nil {
+			if err := ctlr.Run(); err != nil {
 				return
 			}
 		}()
@@ -368,7 +369,7 @@ func TestDigestSearchDisabled(t *testing.T) {
 		// shut down server
 		defer func() {
 			ctx := context.Background()
-			_ = c.Server.Shutdown(ctx)
+			_ = ctlr.Server.Shutdown(ctx)
 		}()
 
 		resp, err := resty.R().Get(baseURL + "/v2/")

@@ -36,20 +36,20 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 
 	metrics := monitoring.NewMetricsServer(false, log)
 
-	il := storage.NewImageStore(dir, true, true, log, metrics)
+	imgStore := storage.NewImageStore(dir, true, true, log, metrics)
 
 	Convey("Scrub only one repo", t, func(c C) {
 		// initialize repo
-		err = il.InitRepo(repoName)
+		err = imgStore.InitRepo(repoName)
 		So(err, ShouldBeNil)
-		ok := il.DirExists(path.Join(il.RootDir(), repoName))
+		ok := imgStore.DirExists(path.Join(imgStore.RootDir(), repoName))
 		So(ok, ShouldBeTrue)
 		storeController := storage.StoreController{}
-		storeController.DefaultStore = il
-		So(storeController.GetImageStore(repoName), ShouldResemble, il)
+		storeController.DefaultStore = imgStore
+		So(storeController.GetImageStore(repoName), ShouldResemble, imgStore)
 
-		sc := storage.StoreController{}
-		sc.DefaultStore = il
+		storeCtlr := storage.StoreController{}
+		storeCtlr.DefaultStore = imgStore
 
 		const tag = "1.0"
 
@@ -60,15 +60,15 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 		// create layer digest
 		body := []byte("this is a blob")
 		buf := bytes.NewBuffer(body)
-		l := buf.Len()
-		d := godigest.FromBytes(body)
-		u, n, err := il.FullBlobUpload(repoName, buf, d.String())
+		buflen := buf.Len()
+		digest := godigest.FromBytes(body)
+		upload, n, err := imgStore.FullBlobUpload(repoName, buf, digest.String())
 		So(err, ShouldBeNil)
 		So(n, ShouldEqual, len(body))
-		So(u, ShouldNotBeEmpty)
-		layer = d.String()
+		So(upload, ShouldNotBeEmpty)
+		layer = digest.String()
 
-		//create config digest
+		// create config digest
 		created := time.Now().Format("2006-01-02T15:04:05Z")
 		configBody := []byte(fmt.Sprintf(`{
 				"created":      "%v",
@@ -96,7 +96,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 		configBuf := bytes.NewBuffer(configBody)
 		configLen := configBuf.Len()
 		configDigest := godigest.FromBytes(configBody)
-		uConfig, nConfig, err := il.FullBlobUpload(repoName, configBuf, configDigest.String())
+		uConfig, nConfig, err := imgStore.FullBlobUpload(repoName, configBuf, configDigest.String())
 		So(err, ShouldBeNil)
 		So(nConfig, ShouldEqual, len(configBody))
 		So(uConfig, ShouldNotBeEmpty)
@@ -105,7 +105,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 		// create manifest and add it to the repository
 		annotationsMap := make(map[string]string)
 		annotationsMap[ispec.AnnotationRefName] = tag
-		m := ispec.Manifest{
+		mnfst := ispec.Manifest{
 			Config: ispec.Descriptor{
 				MediaType: "application/vnd.oci.image.config.v1+json",
 				Digest:    configDigest,
@@ -114,23 +114,23 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 			Layers: []ispec.Descriptor{
 				{
 					MediaType: "application/vnd.oci.image.layer.v1.tar",
-					Digest:    d,
-					Size:      int64(l),
+					Digest:    digest,
+					Size:      int64(buflen),
 				},
 			},
 			Annotations: annotationsMap,
 		}
 
-		m.SchemaVersion = 2
-		mb, _ := json.Marshal(m)
+		mnfst.SchemaVersion = 2
+		mb, _ := json.Marshal(mnfst)
 
-		manifest, err = il.PutImageManifest(repoName, tag, ispec.MediaTypeImageManifest, mb)
+		manifest, err = imgStore.PutImageManifest(repoName, tag, ispec.MediaTypeImageManifest, mb)
 		So(err, ShouldBeNil)
 
 		Convey("Blobs integrity not affected", func() {
 			buff := bytes.NewBufferString("")
 
-			res, err := sc.CheckAllBlobsIntegrity()
+			res, err := storeCtlr.CheckAllBlobsIntegrity()
 			res.PrintScrubResults(buff)
 			So(err, ShouldBeNil)
 
@@ -143,18 +143,18 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 
 		Convey("Manifest integrity affected", func() {
 			// get content of manifest file
-			content, _, _, err := il.GetImageManifest(repoName, manifest)
+			content, _, _, err := imgStore.GetImageManifest(repoName, manifest)
 			So(err, ShouldBeNil)
 
 			// delete content of manifest file
 			manifest = strings.ReplaceAll(manifest, "sha256:", "")
-			manifestFile := path.Join(il.RootDir(), repoName, "/blobs/sha256", manifest)
+			manifestFile := path.Join(imgStore.RootDir(), repoName, "/blobs/sha256", manifest)
 			err = os.Truncate(manifestFile, 0)
 			So(err, ShouldBeNil)
 
 			buff := bytes.NewBufferString("")
 
-			res, err := sc.CheckAllBlobsIntegrity()
+			res, err := storeCtlr.CheckAllBlobsIntegrity()
 			res.PrintScrubResults(buff)
 			So(err, ShouldBeNil)
 
@@ -166,24 +166,24 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 			So(actual, ShouldContainSubstring, "test 1.0 affected parse application/vnd.oci.image.manifest.v1+json")
 
 			// put manifest content back to file
-			err = ioutil.WriteFile(manifestFile, content, 0600)
+			err = ioutil.WriteFile(manifestFile, content, 0o600)
 			So(err, ShouldBeNil)
 		})
 
 		Convey("Config integrity affected", func() {
 			// get content of config file
-			content, err := il.GetBlobContent(repoName, config)
+			content, err := imgStore.GetBlobContent(repoName, config)
 			So(err, ShouldBeNil)
 
 			// delete content of config file
 			config = strings.ReplaceAll(config, "sha256:", "")
-			configFile := path.Join(il.RootDir(), repoName, "/blobs/sha256", config)
+			configFile := path.Join(imgStore.RootDir(), repoName, "/blobs/sha256", config)
 			err = os.Truncate(configFile, 0)
 			So(err, ShouldBeNil)
 
 			buff := bytes.NewBufferString("")
 
-			res, err := sc.CheckAllBlobsIntegrity()
+			res, err := storeCtlr.CheckAllBlobsIntegrity()
 			res.PrintScrubResults(buff)
 			So(err, ShouldBeNil)
 
@@ -194,24 +194,24 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 			So(actual, ShouldContainSubstring, "test 1.0 affected stat: parse application/vnd.oci.image.config.v1+json")
 
 			// put config content back to file
-			err = ioutil.WriteFile(configFile, content, 0600)
+			err = ioutil.WriteFile(configFile, content, 0o600)
 			So(err, ShouldBeNil)
 		})
 
 		Convey("Layers integrity affected", func() {
 			// get content of layer
-			content, err := il.GetBlobContent(repoName, layer)
+			content, err := imgStore.GetBlobContent(repoName, layer)
 			So(err, ShouldBeNil)
 
 			// delete content of layer file
 			layer = strings.ReplaceAll(layer, "sha256:", "")
-			layerFile := path.Join(il.RootDir(), repoName, "/blobs/sha256", layer)
+			layerFile := path.Join(imgStore.RootDir(), repoName, "/blobs/sha256", layer)
 			err = os.Truncate(layerFile, 0)
 			So(err, ShouldBeNil)
 
 			buff := bytes.NewBufferString("")
 
-			res, err := sc.CheckAllBlobsIntegrity()
+			res, err := storeCtlr.CheckAllBlobsIntegrity()
 			res.PrintScrubResults(buff)
 			So(err, ShouldBeNil)
 
@@ -222,20 +222,20 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 			So(actual, ShouldContainSubstring, "test 1.0 affected blob: bad blob digest")
 
 			// put layer content back to file
-			err = ioutil.WriteFile(layerFile, content, 0600)
+			err = ioutil.WriteFile(layerFile, content, 0o600)
 			So(err, ShouldBeNil)
 		})
 
 		Convey("Layer not found", func() {
 			// delete layer file
 			layer = strings.ReplaceAll(layer, "sha256:", "")
-			layerFile := path.Join(il.RootDir(), repoName, "/blobs/sha256", layer)
+			layerFile := path.Join(imgStore.RootDir(), repoName, "/blobs/sha256", layer)
 			err = os.Remove(layerFile)
 			So(err, ShouldBeNil)
 
 			buff := bytes.NewBufferString("")
 
-			res, err := sc.CheckAllBlobsIntegrity()
+			res, err := storeCtlr.CheckAllBlobsIntegrity()
 			res.PrintScrubResults(buff)
 			So(err, ShouldBeNil)
 

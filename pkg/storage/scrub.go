@@ -31,14 +31,14 @@ const (
 )
 
 type ScrubImageResult struct {
-	ImageName string `json:"image_name"`
+	ImageName string `json:"imageName"`
 	Tag       string `json:"tag"`
 	Status    string `json:"status"`
 	Error     string `json:"error"`
 }
 
 type ScrubResults struct {
-	ScrubResults []ScrubImageResult `json:"scrub_results"`
+	ScrubResults []ScrubImageResult `json:"scrubResults"`
 }
 
 func (sc StoreController) CheckAllBlobsIntegrity() (ScrubResults, error) {
@@ -51,16 +51,14 @@ func (sc StoreController) CheckAllBlobsIntegrity() (ScrubResults, error) {
 
 	imageStoreList[""] = sc.DefaultStore
 
-	for _, is := range imageStoreList {
-		images, err := is.GetRepositories()
-
+	for _, imgStore := range imageStoreList {
+		images, err := imgStore.GetRepositories()
 		if err != nil {
 			return results, err
 		}
 
 		for _, repo := range images {
-			imageResults, err := checkImage(repo, is)
-
+			imageResults, err := checkImage(repo, imgStore)
 			if err != nil {
 				return results, err
 			}
@@ -72,11 +70,11 @@ func (sc StoreController) CheckAllBlobsIntegrity() (ScrubResults, error) {
 	return results, nil
 }
 
-func checkImage(imageName string, is ImageStore) ([]ScrubImageResult, error) {
+func checkImage(imageName string, imgStore ImageStore) ([]ScrubImageResult, error) {
 	results := []ScrubImageResult{}
 
-	dir := path.Join(is.RootDir(), imageName)
-	if !is.DirExists(dir) {
+	dir := path.Join(imgStore.RootDir(), imageName)
+	if !imgStore.DirExists(dir) {
 		return results, errors.ErrRepoNotFound
 	}
 
@@ -89,11 +87,10 @@ func checkImage(imageName string, is ImageStore) ([]ScrubImageResult, error) {
 
 	defer oci.Close()
 
-	is.RLock()
-	defer is.RUnlock()
+	imgStore.RLock()
+	defer imgStore.RUnlock()
 
 	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
-
 	if err != nil {
 		return results, err
 	}
@@ -137,25 +134,29 @@ func checkIntegrity(ctx context.Context, imageName, tagName string, oci casext.E
 			_, err = os.Stat(layerPath)
 			if err != nil {
 				imageRes = getResult(imageName, tagName, errors.ErrBlobNotFound)
+
 				break
 			}
 
-			f, err := os.Open(layerPath)
+			layerFh, err := os.Open(layerPath)
 			if err != nil {
 				imageRes = getResult(imageName, tagName, errors.ErrBlobNotFound)
+
 				break
 			}
 
-			computedDigest, err := godigest.FromReader(f)
-			f.Close()
+			computedDigest, err := godigest.FromReader(layerFh)
+			layerFh.Close()
 
 			if err != nil {
 				imageRes = getResult(imageName, tagName, errors.ErrBadBlobDigest)
+
 				break
 			}
 
 			if computedDigest != layer.Digest {
 				imageRes = getResult(imageName, tagName, errors.ErrBadBlobDigest)
+
 				break
 			}
 
@@ -209,10 +210,12 @@ func getScrubTableWriter(writer io.Writer) *tablewriter.Table {
 	return table
 }
 
+const tableCols = 4
+
 func printScrubTableHeader(writer io.Writer) {
 	table := getScrubTableWriter(writer)
 
-	row := make([]string, 4)
+	row := make([]string, tableCols)
 
 	row[colImageNameIndex] = "IMAGE NAME"
 	row[colTagIndex] = "TAG"
@@ -232,7 +235,7 @@ func printImageResult(imageResult ScrubImageResult) string {
 	table.SetColMinWidth(colStatusIndex, statusWidth)
 	table.SetColMinWidth(colErrorIndex, errorWidth)
 
-	row := make([]string, 4)
+	row := make([]string, tableCols)
 
 	row[colImageNameIndex] = imageResult.ImageName
 	row[colTagIndex] = imageResult.Tag

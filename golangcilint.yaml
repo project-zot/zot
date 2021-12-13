@@ -5,15 +5,33 @@ run:
 
 linters:
   enable-all: true
-  disable: funlen,godox,gocognit
-
-output:
-  format: colored-line-number
+  disable: funlen,gocognit,exhaustivestruct,paralleltest,forbidigo,ireturn,wrapcheck,exhaustive
 
 linters-settings:
   dupl:
-    # tokens count to trigger issue, 150 by default
     threshold: 200
   nestif:
-    # their are various nested if else, therefore specifying complexity as 26
     min-complexity: 26
+  cyclop:
+    max-complexity: 40
+    skip-tests: true
+  varnamelen:
+    check-return: true
+    ignore-type-assert-ok: true
+    ignore-map-index-ok: true
+    ignore-chan-recv-ok: true
+    ignore-names:
+      - err
+      - ok
+      - gc
+  gomnd:
+    settings:
+      mnd:
+        checks: argument,case,condition,operation,return,assign
+        ignored-numbers: 10,64
+  gomoddirectives:
+    replace-allow-list:
+      - github.com/aquasecurity/fanal
+      - github.com/aquasecurity/trivy
+      - github.com/aquasecurity/trivy-db
+      - github.com/containers/image/v5

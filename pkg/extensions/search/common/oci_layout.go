@@ -3,11 +3,10 @@ package common
 
 import (
 	"encoding/json"
+	goerrors "errors"
 	"path"
 	"strings"
 	"time"
-
-	goerrors "errors"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/types"
@@ -32,8 +31,8 @@ func NewOciLayoutUtils(storeController storage.StoreController, log log.Logger) 
 // Below method will return image path including root dir, root dir is determined by splitting.
 func (olu OciLayoutUtils) GetImageManifests(image string) ([]ispec.Descriptor, error) {
 	imageStore := olu.StoreController.GetImageStore(image)
-	buf, err := imageStore.GetIndexContent(image)
 
+	buf, err := imageStore.GetIndexContent(image)
 	if err != nil {
 		if goerrors.Is(errors.ErrRepoNotFound, err) {
 			olu.Log.Error().Err(err).Msg("index.json doesn't exist")
@@ -50,6 +49,7 @@ func (olu OciLayoutUtils) GetImageManifests(image string) ([]ispec.Descriptor, e
 
 	if err := json.Unmarshal(buf, &index); err != nil {
 		olu.Log.Error().Err(err).Str("dir", path.Join(imageStore.RootDir(), image)).Msg("invalid JSON")
+
 		return nil, errors.ErrRepoNotFound
 	}
 
@@ -108,14 +108,14 @@ func (olu OciLayoutUtils) IsValidImageFormat(image string) (bool, error) {
 		return false, err
 	}
 
-	for _, m := range manifests {
-		tag, ok := m.Annotations[ispec.AnnotationRefName]
+	for _, manifest := range manifests {
+		tag, ok := manifest.Annotations[ispec.AnnotationRefName]
 
 		if ok && inputTag != "" && tag != inputTag {
 			continue
 		}
 
-		blobManifest, err := olu.GetImageBlobManifest(imageDir, m.Digest)
+		blobManifest, err := olu.GetImageBlobManifest(imageDir, manifest.Digest)
 		if err != nil {
 			return false, err
 		}
@@ -129,6 +129,7 @@ func (olu OciLayoutUtils) IsValidImageFormat(image string) (bool, error) {
 
 			default:
 				olu.Log.Debug().Msg("image media type not supported for scanning")
+
 				return false, errors.ErrScanNotSupported
 			}
 		}
@@ -151,7 +152,7 @@ func (olu OciLayoutUtils) GetImageTagsWithTimestamp(repo string) ([]TagInfo, err
 	for _, manifest := range manifests {
 		digest := manifest.Digest
 
-		v, ok := manifest.Annotations[ispec.AnnotationRefName]
+		val, ok := manifest.Annotations[ispec.AnnotationRefName]
 		if ok {
 			imageBlobManifest, err := olu.GetImageBlobManifest(repo, digest)
 			if err != nil {
@@ -175,7 +176,7 @@ func (olu OciLayoutUtils) GetImageTagsWithTimestamp(repo string) ([]TagInfo, err
 				timeStamp = time.Time{}
 			}
 
-			tagsInfo = append(tagsInfo, TagInfo{Name: v, Timestamp: timeStamp, Digest: digest.String()})
+			tagsInfo = append(tagsInfo, TagInfo{Name: val, Timestamp: timeStamp, Digest: digest.String()})
 		}
 	}
 

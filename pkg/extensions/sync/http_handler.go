@@ -16,7 +16,7 @@ type PostHandler struct {
 	Log             log.Logger
 }
 
-func (h *PostHandler) Handler(w http.ResponseWriter, r *http.Request) {
+func (h *PostHandler) Handler(response http.ResponseWriter, request *http.Request) {
 	var credentialsFile CredentialsFile
 
 	var err error
@@ -25,7 +25,7 @@ func (h *PostHandler) Handler(w http.ResponseWriter, r *http.Request) {
 		credentialsFile, err = getFileCredentials(h.Cfg.CredentialsFile)
 		if err != nil {
 			h.Log.Error().Err(err).Msgf("sync http handler: couldn't get registry credentials from %s", h.Cfg.CredentialsFile)
-			WriteData(w, http.StatusInternalServerError, err.Error())
+			WriteData(response, http.StatusInternalServerError, err.Error())
 
 			return
 		}
@@ -33,7 +33,7 @@ func (h *PostHandler) Handler(w http.ResponseWriter, r *http.Request) {
 
 	localCtx, policyCtx, err := getLocalContexts(h.Log)
 	if err != nil {
-		WriteData(w, http.StatusInternalServerError, err.Error())
+		WriteData(response, http.StatusInternalServerError, err.Error())
 
 		return
 	}
@@ -42,7 +42,7 @@ func (h *PostHandler) Handler(w http.ResponseWriter, r *http.Request) {
 
 	uuid, err := guuid.NewV4()
 	if err != nil {
-		WriteData(w, http.StatusInternalServerError, err.Error())
+		WriteData(response, http.StatusInternalServerError, err.Error())
 
 		return
 	}
@@ -51,12 +51,14 @@ func (h *PostHandler) Handler(w http.ResponseWriter, r *http.Request) {
 		// if content not provided, don't run periodically sync
 		if len(regCfg.Content) == 0 {
 			h.Log.Info().Msgf("sync config content not configured for %s, will not run periodically sync", regCfg.URL)
+
 			continue
 		}
 
 		// if pollInterval is not provided, don't run periodically sync
 		if regCfg.PollInterval == 0 {
 			h.Log.Warn().Msgf("sync config PollInterval not configured for %s, will not run periodically sync", regCfg.URL)
+
 			continue
 		}
 
@@ -65,13 +67,13 @@ func (h *PostHandler) Handler(w http.ResponseWriter, r *http.Request) {
 		if err := syncRegistry(regCfg, h.StoreController, h.Log, localCtx, policyCtx,
 			credentialsFile[upstreamRegistryName], uuid.String()); err != nil {
 			h.Log.Err(err).Msg("sync http handler: error while syncing in")
-			WriteData(w, http.StatusInternalServerError, err.Error())
+			WriteData(response, http.StatusInternalServerError, err.Error())
 
 			return
 		}
 	}
 
-	WriteData(w, http.StatusOK, "")
+	WriteData(response, http.StatusOK, "")
 }
 
 func WriteData(w http.ResponseWriter, status int, msg string) {

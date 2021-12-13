@@ -21,7 +21,7 @@ func NewImageCommand(searchService SearchService) *cobra.Command {
 
 	var isSpinner, verifyTLS, verbose bool
 
-	var imageCmd = &cobra.Command{
+	imageCmd := &cobra.Command{
 		Use:   "images [config-name]",
 		Short: "List hosted images",
 		Long:  `List images hosted on zot`,
@@ -37,11 +37,14 @@ func NewImageCommand(searchService SearchService) *cobra.Command {
 					urlFromConfig, err := getConfigValue(configPath, args[0], "url")
 					if err != nil {
 						cmd.SilenceUsage = true
+
 						return err
 					}
+
 					if urlFromConfig == "" {
 						return zotErrors.ErrNoURLProvided
 					}
+
 					servURL = urlFromConfig
 				} else {
 					return zotErrors.ErrNoURLProvided
@@ -53,11 +56,14 @@ func NewImageCommand(searchService SearchService) *cobra.Command {
 				isSpinner, err = parseBooleanConfig(configPath, args[0], showspinnerConfig)
 				if err != nil {
 					cmd.SilenceUsage = true
+
 					return err
 				}
+
 				verifyTLS, err = parseBooleanConfig(configPath, args[0], verifyTLSConfig)
 				if err != nil {
 					cmd.SilenceUsage = true
+
 					return err
 				}
 			}
@@ -81,6 +87,7 @@ func NewImageCommand(searchService SearchService) *cobra.Command {
 
 			if err != nil {
 				cmd.SilenceUsage = true
+
 				return err
 			}
 

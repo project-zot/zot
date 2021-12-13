@@ -129,22 +129,22 @@ func New() *Config {
 
 // Sanitize makes a sanitized copy of the config removing any secrets.
 func (c *Config) Sanitize() *Config {
-	s := &Config{}
-	if err := deepcopy.Copy(s, c); err != nil {
+	sanitizedConfig := &Config{}
+	if err := deepcopy.Copy(sanitizedConfig, c); err != nil {
 		panic(err)
 	}
 
 	if c.HTTP.Auth != nil && c.HTTP.Auth.LDAP != nil && c.HTTP.Auth.LDAP.BindPassword != "" {
-		s.HTTP.Auth.LDAP = &LDAPConfig{}
+		sanitizedConfig.HTTP.Auth.LDAP = &LDAPConfig{}
 
-		if err := deepcopy.Copy(s.HTTP.Auth.LDAP, c.HTTP.Auth.LDAP); err != nil {
+		if err := deepcopy.Copy(sanitizedConfig.HTTP.Auth.LDAP, c.HTTP.Auth.LDAP); err != nil {
 			panic(err)
 		}
 
-		s.HTTP.Auth.LDAP.BindPassword = "******"
+		sanitizedConfig.HTTP.Auth.LDAP.BindPassword = "******"
 	}
 
-	return s
+	return sanitizedConfig
 }
 
 func (c *Config) Validate(log log.Logger) error {
@@ -153,6 +153,7 @@ func (c *Config) Validate(log log.Logger) error {
 		l := c.HTTP.Auth.LDAP
 		if l.UserAttribute == "" {
 			log.Error().Str("userAttribute", l.UserAttribute).Msg("invalid LDAP configuration")
+
 			return errors.ErrLDAPConfig
 		}
 	}
@@ -169,12 +170,12 @@ func (c *Config) LoadAccessControlConfig() error {
 	c.AccessControl = &AccessControlConfig{}
 	c.AccessControl.Repositories = make(map[string]PolicyGroup)
 
-	for k := range c.HTTP.RawAccessControl {
+	for policy := range c.HTTP.RawAccessControl {
 		var policies []Policy
 
 		var policyGroup PolicyGroup
 
-		if k == "adminpolicy" {
+		if policy == "adminpolicy" {
 			adminPolicy := viper.GetStringMapStringSlice("http.accessControl.adminPolicy")
 			c.AccessControl.AdminPolicy.Actions = adminPolicy["actions"]
 			c.AccessControl.AdminPolicy.Users = adminPolicy["users"]
@@ -182,15 +183,15 @@ func (c *Config) LoadAccessControlConfig() error {
 			continue
 		}
 
-		err := viper.UnmarshalKey(fmt.Sprintf("http.accessControl.%s.policies", k), &policies)
+		err := viper.UnmarshalKey(fmt.Sprintf("http.accessControl.%s.policies", policy), &policies)
 		if err != nil {
 			return err
 		}
 
-		defaultPolicy := viper.GetStringSlice(fmt.Sprintf("http.accessControl.%s.defaultPolicy", k))
+		defaultPolicy := viper.GetStringSlice(fmt.Sprintf("http.accessControl.%s.defaultPolicy", policy))
 		policyGroup.Policies = policies
 		policyGroup.DefaultPolicy = defaultPolicy
-		c.AccessControl.Repositories[k] = policyGroup
+		c.AccessControl.Repositories[policy] = policyGroup
 	}
 
 	return nil
