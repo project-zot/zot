@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -15,8 +16,6 @@ import (
 	"sync"
 	"time"
 
-	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
-
 	apexlog "github.com/apex/log"
 	guuid "github.com/gofrs/uuid"
 	"github.com/notaryproject/notation-go-lib"
@@ -24,17 +23,20 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opencontainers/umoci"
 	"github.com/opencontainers/umoci/oci/casext"
+	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/rs/zerolog"
-	"zotregistry.io/zot/errors"
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	zlog "zotregistry.io/zot/pkg/log"
 )
 
 const (
 	// BlobUploadDir defines the upload directory for blob uploads.
-	BlobUploadDir = ".uploads"
-	SchemaVersion = 2
-	gcDelay       = 1 * time.Hour
+	BlobUploadDir    = ".uploads"
+	SchemaVersion    = 2
+	gcDelay          = 1 * time.Hour
+	DefaultFilePerms = 0o600
+	DefaultDirPerms  = 0o700
 )
 
 // BlobUpload models and upload request.
@@ -69,9 +71,9 @@ func (is *ImageStoreFS) DirExists(d string) bool {
 }
 
 func getRoutePrefix(name string) string {
-	names := strings.SplitN(name, "/", 2)
+	names := strings.SplitN(name, "/", 2) //nolint:gomnd
 
-	if len(names) != 2 { // nolint: gomnd
+	if len(names) != 2 { //nolint:gomnd
 		// it means route is of global storage e.g "centos:latest"
 		if len(names) == 1 {
 			return "/"
@@ -98,26 +100,27 @@ func (sc StoreController) GetImageStore(name string) ImageStore {
 }
 
 // NewImageStore returns a new image store backed by a file storage.
-func NewImageStore(rootDir string, gc bool, dedupe bool, log zlog.Logger, m monitoring.MetricServer) ImageStore {
+func NewImageStore(rootDir string, gc bool, dedupe bool, log zlog.Logger, metrics monitoring.MetricServer) ImageStore {
 	if _, err := os.Stat(rootDir); os.IsNotExist(err) {
-		if err := os.MkdirAll(rootDir, 0700); err != nil {
+		if err := os.MkdirAll(rootDir, DefaultDirPerms); err != nil {
 			log.Error().Err(err).Str("rootDir", rootDir).Msg("unable to create root dir")
+
 			return nil
 		}
 	}
 
-	is := &ImageStoreFS{
+	imgStore := &ImageStoreFS{
 		rootDir:     rootDir,
 		lock:        &sync.RWMutex{},
 		blobUploads: make(map[string]BlobUpload),
 		gc:          gc,
 		dedupe:      dedupe,
 		log:         log.With().Caller().Logger(),
-		metrics:     m,
+		metrics:     metrics,
 	}
 
 	if dedupe {
-		is.cache = NewCache(rootDir, "cache", log)
+		imgStore.cache = NewCache(rootDir, "cache", log)
 	}
 
 	if gc {
@@ -130,11 +133,12 @@ func NewImageStore(rootDir string, gc bool, dedupe bool, log zlog.Logger, m moni
 				e = e.Interface(k, v)
 			}
 			e.Msg(entry.Message)
+
 			return nil
 		}))
 	}
 
-	return is
+	return imgStore
 }
 
 // RLock read-lock.
@@ -178,14 +182,15 @@ func (is *ImageStoreFS) initRepo(name string) error {
 	ilPath := path.Join(repoDir, ispec.ImageLayoutFile)
 	if _, err := os.Stat(ilPath); err != nil {
 		il := ispec.ImageLayout{Version: ispec.ImageLayoutVersion}
-		buf, err := json.Marshal(il)
 
+		buf, err := json.Marshal(il)
 		if err != nil {
 			is.log.Panic().Err(err).Msg("unable to marshal JSON")
 		}
 
-		if err := ioutil.WriteFile(ilPath, buf, 0644); err != nil { //nolint: gosec
+		if err := ioutil.WriteFile(ilPath, buf, DefaultFilePerms); err != nil {
 			is.log.Error().Err(err).Str("file", ilPath).Msg("unable to write file")
+
 			return err
 		}
 	}
@@ -195,14 +200,15 @@ func (is *ImageStoreFS) initRepo(name string) error {
 	if _, err := os.Stat(indexPath); err != nil {
 		index := ispec.Index{}
 		index.SchemaVersion = 2
-		buf, err := json.Marshal(index)
 
+		buf, err := json.Marshal(index)
 		if err != nil {
 			is.log.Panic().Err(err).Msg("unable to marshal JSON")
 		}
 
-		if err := ioutil.WriteFile(indexPath, buf, 0644); err != nil { //nolint: gosec
+		if err := ioutil.WriteFile(indexPath, buf, DefaultFilePerms); err != nil {
 			is.log.Error().Err(err).Str("file", indexPath).Msg("unable to write file")
+
 			return err
 		}
 	}
@@ -225,17 +231,18 @@ func (is *ImageStoreFS) ValidateRepo(name string) (bool, error) {
 	// and an additional/optional BlobUploadDir in each image store
 	dir := path.Join(is.rootDir, name)
 	if !is.DirExists(dir) {
-		return false, errors.ErrRepoNotFound
+		return false, zerr.ErrRepoNotFound
 	}
 
 	files, err := ioutil.ReadDir(dir)
 	if err != nil {
 		is.log.Error().Err(err).Str("dir", dir).Msg("unable to read directory")
-		return false, errors.ErrRepoNotFound
+
+		return false, zerr.ErrRepoNotFound
 	}
-	// nolint:gomnd
-	if len(files) < 3 {
-		return false, errors.ErrRepoBadVersion
+
+	if len(files) < 3 { // nolint:gomnd
+		return false, zerr.ErrRepoBadVersion
 	}
 
 	found := map[string]bool{
@@ -269,7 +276,7 @@ func (is *ImageStoreFS) ValidateRepo(name string) (bool, error) {
 	}
 
 	if il.Version != ispec.ImageLayoutVersion {
-		return false, errors.ErrRepoBadVersion
+		return false, zerr.ErrRepoBadVersion
 	}
 
 	return true, nil
@@ -285,6 +292,7 @@ func (is *ImageStoreFS) GetRepositories() ([]string, error) {
 	_, err := ioutil.ReadDir(dir)
 	if err != nil {
 		is.log.Error().Err(err).Msg("failure walking storage root-dir")
+
 		return nil, err
 	}
 
@@ -300,14 +308,14 @@ func (is *ImageStoreFS) GetRepositories() ([]string, error) {
 
 		rel, err := filepath.Rel(is.rootDir, path)
 		if err != nil {
-			return nil
+			return nil // nolint:nilerr // ignore paths not relative to root dir
 		}
 
 		if ok, err := is.ValidateRepo(rel); !ok || err != nil {
-			return nil
+			return nil // nolint:nilerr // ignore invalid repos
 		}
 
-		//is.log.Debug().Str("dir", path).Str("name", info.Name()).Msg("found image store")
+		// is.log.Debug().Str("dir", path).Str("name", info.Name()).Msg("found image store")
 		stores = append(stores, rel)
 
 		return nil
@@ -320,7 +328,7 @@ func (is *ImageStoreFS) GetRepositories() ([]string, error) {
 func (is *ImageStoreFS) GetImageTags(repo string) ([]string, error) {
 	dir := path.Join(is.rootDir, repo)
 	if !is.DirExists(dir) {
-		return nil, errors.ErrRepoNotFound
+		return nil, zerr.ErrRepoNotFound
 	}
 
 	is.RLock()
@@ -329,13 +337,15 @@ func (is *ImageStoreFS) GetImageTags(repo string) ([]string, error) {
 	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
 	if err != nil {
 		is.log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
-		return nil, errors.ErrRepoNotFound
+
+		return nil, zerr.ErrRepoNotFound
 	}
 
 	var index ispec.Index
 	if err := json.Unmarshal(buf, &index); err != nil {
 		is.log.Error().Err(err).Str("dir", dir).Msg("invalid JSON")
-		return nil, errors.ErrRepoNotFound
+
+		return nil, zerr.ErrRepoNotFound
 	}
 
 	tags := make([]string, 0)
@@ -354,19 +364,18 @@ func (is *ImageStoreFS) GetImageTags(repo string) ([]string, error) {
 func (is *ImageStoreFS) GetImageManifest(repo string, reference string) ([]byte, string, string, error) {
 	dir := path.Join(is.rootDir, repo)
 	if !is.DirExists(dir) {
-		return nil, "", "", errors.ErrRepoNotFound
+		return nil, "", "", zerr.ErrRepoNotFound
 	}
 
 	is.RLock()
 	defer is.RUnlock()
 
 	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
-
 	if err != nil {
 		is.log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
 
 		if os.IsNotExist(err) {
-			return nil, "", "", errors.ErrRepoNotFound
+			return nil, "", "", zerr.ErrRepoNotFound
 		}
 
 		return nil, "", "", err
@@ -375,6 +384,7 @@ func (is *ImageStoreFS) GetImageManifest(repo string, reference string) ([]byte,
 	var index ispec.Index
 	if err := json.Unmarshal(buf, &index); err != nil {
 		is.log.Error().Err(err).Str("dir", dir).Msg("invalid JSON")
+
 		return nil, "", "", err
 	}
 
@@ -384,19 +394,19 @@ func (is *ImageStoreFS) GetImageManifest(repo string, reference string) ([]byte,
 
 	mediaType := ""
 
-	for _, m := range index.Manifests {
-		if reference == m.Digest.String() {
-			digest = m.Digest
-			mediaType = m.MediaType
+	for _, manifest := range index.Manifests {
+		if reference == manifest.Digest.String() {
+			digest = manifest.Digest
+			mediaType = manifest.MediaType
 			found = true
 
 			break
 		}
 
-		v, ok := m.Annotations[ispec.AnnotationRefName]
+		v, ok := manifest.Annotations[ispec.AnnotationRefName]
 		if ok && v == reference {
-			digest = m.Digest
-			mediaType = m.MediaType
+			digest = manifest.Digest
+			mediaType = manifest.MediaType
 			found = true
 
 			break
@@ -404,7 +414,7 @@ func (is *ImageStoreFS) GetImageManifest(repo string, reference string) ([]byte,
 	}
 
 	if !found {
-		return nil, "", "", errors.ErrManifestNotFound
+		return nil, "", "", zerr.ErrManifestNotFound
 	}
 
 	p := path.Join(dir, "blobs", digest.Algorithm().String(), digest.Encoded())
@@ -415,7 +425,7 @@ func (is *ImageStoreFS) GetImageManifest(repo string, reference string) ([]byte,
 		is.log.Error().Err(err).Str("blob", p).Msg("failed to read manifest")
 
 		if os.IsNotExist(err) {
-			return nil, "", "", errors.ErrManifestNotFound
+			return nil, "", "", zerr.ErrManifestNotFound
 		}
 
 		return nil, "", "", err
@@ -424,6 +434,7 @@ func (is *ImageStoreFS) GetImageManifest(repo string, reference string) ([]byte,
 	var manifest ispec.Manifest
 	if err := json.Unmarshal(buf, &manifest); err != nil {
 		is.log.Error().Err(err).Str("dir", dir).Msg("invalid JSON")
+
 		return nil, "", "", err
 	}
 
@@ -437,30 +448,35 @@ func (is *ImageStoreFS) PutImageManifest(repo string, reference string, mediaTyp
 	body []byte) (string, error) {
 	if err := is.InitRepo(repo); err != nil {
 		is.log.Debug().Err(err).Msg("init repo")
+
 		return "", err
 	}
 
 	if !IsSupportedMediaType(mediaType) {
 		is.log.Debug().Interface("actual", mediaType).
 			Interface("expected", ispec.MediaTypeImageManifest).Msg("bad manifest media type")
-		return "", errors.ErrBadManifest
+
+		return "", zerr.ErrBadManifest
 	}
 
 	if len(body) == 0 {
 		is.log.Debug().Int("len", len(body)).Msg("invalid body length")
-		return "", errors.ErrBadManifest
+
+		return "", zerr.ErrBadManifest
 	}
 
 	if mediaType == ispec.MediaTypeImageManifest {
 		var m ispec.Manifest
 		if err := json.Unmarshal(body, &m); err != nil {
 			is.log.Error().Err(err).Msg("unable to unmarshal JSON")
-			return "", errors.ErrBadManifest
+
+			return "", zerr.ErrBadManifest
 		}
 
 		if m.SchemaVersion != SchemaVersion {
 			is.log.Error().Int("SchemaVersion", m.SchemaVersion).Msg("invalid manifest")
-			return "", errors.ErrBadManifest
+
+			return "", zerr.ErrBadManifest
 		}
 
 		for _, l := range m.Layers {
@@ -470,14 +486,16 @@ func (is *ImageStoreFS) PutImageManifest(repo string, reference string, mediaTyp
 
 			if _, err := os.Stat(blobPath); err != nil {
 				is.log.Error().Err(err).Str("blobPath", blobPath).Msg("unable to find blob")
-				return digest.String(), errors.ErrBlobNotFound
+
+				return digest.String(), zerr.ErrBlobNotFound
 			}
 		}
 	} else if mediaType == artifactspec.MediaTypeArtifactManifest {
 		var m notation.Descriptor
 		if err := json.Unmarshal(body, &m); err != nil {
 			is.log.Error().Err(err).Msg("unable to unmarshal JSON")
-			return "", errors.ErrBadManifest
+
+			return "", zerr.ErrBadManifest
 		}
 	}
 
@@ -489,7 +507,8 @@ func (is *ImageStoreFS) PutImageManifest(repo string, reference string, mediaTyp
 		if d.String() != mDigest.String() {
 			is.log.Error().Str("actual", mDigest.String()).Str("expected", d.String()).
 				Msg("manifest digest is not valid")
-			return "", errors.ErrBadManifest
+
+			return "", zerr.ErrBadManifest
 		}
 
 		refIsDigest = true
@@ -499,41 +518,45 @@ func (is *ImageStoreFS) PutImageManifest(repo string, reference string, mediaTyp
 	defer is.Unlock()
 
 	dir := path.Join(is.rootDir, repo)
-	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
 
+	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
 	if err != nil {
 		is.log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
+
 		return "", err
 	}
 
 	var index ispec.Index
 	if err := json.Unmarshal(buf, &index); err != nil {
 		is.log.Error().Err(err).Str("dir", dir).Msg("invalid JSON")
-		return "", errors.ErrRepoBadVersion
+
+		return "", zerr.ErrRepoBadVersion
 	}
 
 	updateIndex := true
 	// create a new descriptor
-	desc := ispec.Descriptor{MediaType: mediaType, Size: int64(len(body)), Digest: mDigest,
-		Platform: &ispec.Platform{Architecture: "amd64", OS: "linux"}}
+	desc := ispec.Descriptor{
+		MediaType: mediaType, Size: int64(len(body)), Digest: mDigest,
+		Platform: &ispec.Platform{Architecture: "amd64", OS: "linux"},
+	}
 	if !refIsDigest {
 		desc.Annotations = map[string]string{ispec.AnnotationRefName: reference}
 	}
 
-	for i, m := range index.Manifests {
-		if reference == m.Digest.String() {
+	for midx, manifest := range index.Manifests {
+		if reference == manifest.Digest.String() {
 			// nothing changed, so don't update
-			desc = m
+			desc = manifest
 			updateIndex = false
 
 			break
 		}
 
-		v, ok := m.Annotations[ispec.AnnotationRefName]
+		v, ok := manifest.Annotations[ispec.AnnotationRefName]
 		if ok && v == reference {
-			if m.Digest.String() == mDigest.String() {
+			if manifest.Digest.String() == mDigest.String() {
 				// nothing changed, so don't update
-				desc = m
+				desc = manifest
 				updateIndex = false
 
 				break
@@ -547,11 +570,11 @@ func (is *ImageStoreFS) PutImageManifest(repo string, reference string, mediaTyp
 				Str("new digest", mDigest.String()).
 				Msg("updating existing tag with new manifest contents")
 
-			desc = m
+			desc = manifest
 			desc.Size = int64(len(body))
 			desc.Digest = mDigest
 
-			index.Manifests = append(index.Manifests[:i], index.Manifests[i+1:]...)
+			index.Manifests = append(index.Manifests[:midx], index.Manifests[midx+1:]...)
 
 			break
 		}
@@ -566,8 +589,9 @@ func (is *ImageStoreFS) PutImageManifest(repo string, reference string, mediaTyp
 	_ = ensureDir(dir, is.log)
 	file := path.Join(dir, mDigest.Encoded())
 
-	if err := ioutil.WriteFile(file, body, 0600); err != nil {
+	if err := ioutil.WriteFile(file, body, DefaultFilePerms); err != nil {
 		is.log.Error().Err(err).Str("file", file).Msg("unable to write")
+
 		return "", err
 	}
 
@@ -579,11 +603,13 @@ func (is *ImageStoreFS) PutImageManifest(repo string, reference string, mediaTyp
 
 	if err != nil {
 		is.log.Error().Err(err).Str("file", file).Msg("unable to marshal JSON")
+
 		return "", err
 	}
 
-	if err := ioutil.WriteFile(file, buf, 0644); err != nil { //nolint: gosec
+	if err := ioutil.WriteFile(file, buf, DefaultFilePerms); err != nil {
 		is.log.Error().Err(err).Str("file", file).Msg("unable to write")
+
 		return "", err
 	}
 
@@ -609,7 +635,7 @@ func (is *ImageStoreFS) PutImageManifest(repo string, reference string, mediaTyp
 func (is *ImageStoreFS) DeleteImageManifest(repo string, reference string) error {
 	dir := path.Join(is.rootDir, repo)
 	if !is.DirExists(dir) {
-		return errors.ErrRepoNotFound
+		return zerr.ErrRepoNotFound
 	}
 
 	isTag := false
@@ -626,49 +652,51 @@ func (is *ImageStoreFS) DeleteImageManifest(repo string, reference string) error
 	defer is.Unlock()
 
 	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
-
 	if err != nil {
 		is.log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
+
 		return err
 	}
 
 	var index ispec.Index
 	if err := json.Unmarshal(buf, &index); err != nil {
 		is.log.Error().Err(err).Str("dir", dir).Msg("invalid JSON")
+
 		return err
 	}
 
 	found := false
 
-	var m ispec.Descriptor
+	var manifest ispec.Descriptor
 
 	// we are deleting, so keep only those manifests that don't match
 	outIndex := index
 	outIndex.Manifests = []ispec.Descriptor{}
 
-	for _, m = range index.Manifests {
+	for _, manifest = range index.Manifests {
 		if isTag {
-			tag, ok := m.Annotations[ispec.AnnotationRefName]
+			tag, ok := manifest.Annotations[ispec.AnnotationRefName]
 			if ok && tag == reference {
 				is.log.Debug().Str("deleting tag", tag).Msg("")
 
-				digest = m.Digest
+				digest = manifest.Digest
 
 				found = true
 
 				continue
 			}
-		} else if reference == m.Digest.String() {
+		} else if reference == manifest.Digest.String() {
 			is.log.Debug().Str("deleting reference", reference).Msg("")
 			found = true
+
 			continue
 		}
 
-		outIndex.Manifests = append(outIndex.Manifests, m)
+		outIndex.Manifests = append(outIndex.Manifests, manifest)
 	}
 
 	if !found {
-		return errors.ErrManifestNotFound
+		return zerr.ErrManifestNotFound
 	}
 
 	// now update "index.json"
@@ -680,7 +708,7 @@ func (is *ImageStoreFS) DeleteImageManifest(repo string, reference string) error
 		return err
 	}
 
-	if err := ioutil.WriteFile(file, buf, 0644); err != nil { //nolint: gosec
+	if err := ioutil.WriteFile(file, buf, DefaultFilePerms); err != nil {
 		return err
 	}
 
@@ -700,9 +728,10 @@ func (is *ImageStoreFS) DeleteImageManifest(repo string, reference string) error
 	// e.g. 1.0.1 & 1.0.2 have same blob digest so if we delete 1.0.1, blob should not be removed.
 	toDelete := true
 
-	for _, m = range outIndex.Manifests {
-		if digest.String() == m.Digest.String() {
+	for _, manifest = range outIndex.Manifests {
+		if digest.String() == manifest.Digest.String() {
 			toDelete = false
+
 			break
 		}
 	}
@@ -739,33 +768,33 @@ func (is *ImageStoreFS) NewBlobUpload(repo string) (string, error) {
 		return "", err
 	}
 
-	u := uuid.String()
+	uid := uuid.String()
 
-	blobUploadPath := is.BlobUploadPath(repo, u)
+	blobUploadPath := is.BlobUploadPath(repo, uid)
 
-	file, err := os.OpenFile(blobUploadPath, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0600)
+	file, err := os.OpenFile(blobUploadPath, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, DefaultFilePerms)
 	if err != nil {
-		return "", errors.ErrRepoNotFound
+		return "", zerr.ErrRepoNotFound
 	}
 	defer file.Close()
 
-	return u, nil
+	return uid, nil
 }
 
 // GetBlobUpload returns the current size of a blob upload.
 func (is *ImageStoreFS) GetBlobUpload(repo string, uuid string) (int64, error) {
 	blobUploadPath := is.BlobUploadPath(repo, uuid)
-	fi, err := os.Stat(blobUploadPath)
 
+	binfo, err := os.Stat(blobUploadPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return -1, errors.ErrUploadNotFound
+			return -1, zerr.ErrUploadNotFound
 		}
 
 		return -1, err
 	}
 
-	return fi.Size(), nil
+	return binfo.Size(), nil
 }
 
 // PutBlobChunkStreamed appends another chunk of data to the specified blob. It returns
@@ -779,13 +808,13 @@ func (is *ImageStoreFS) PutBlobChunkStreamed(repo string, uuid string, body io.R
 
 	_, err := os.Stat(blobUploadPath)
 	if err != nil {
-		return -1, errors.ErrUploadNotFound
+		return -1, zerr.ErrUploadNotFound
 	}
 
 	file, err := os.OpenFile(
 		blobUploadPath,
 		os.O_WRONLY|os.O_CREATE,
-		0600,
+		DefaultFilePerms,
 	)
 	if err != nil {
 		is.log.Fatal().Err(err).Msg("failed to open file")
@@ -811,21 +840,22 @@ func (is *ImageStoreFS) PutBlobChunk(repo string, uuid string, from int64, to in
 
 	blobUploadPath := is.BlobUploadPath(repo, uuid)
 
-	fi, err := os.Stat(blobUploadPath)
+	binfo, err := os.Stat(blobUploadPath)
 	if err != nil {
-		return -1, errors.ErrUploadNotFound
+		return -1, zerr.ErrUploadNotFound
 	}
 
-	if from != fi.Size() {
-		is.log.Error().Int64("expected", from).Int64("actual", fi.Size()).
+	if from != binfo.Size() {
+		is.log.Error().Int64("expected", from).Int64("actual", binfo.Size()).
 			Msg("invalid range start for blob upload")
-		return -1, errors.ErrBadUploadRange
+
+		return -1, zerr.ErrBadUploadRange
 	}
 
 	file, err := os.OpenFile(
 		blobUploadPath,
 		os.O_WRONLY|os.O_CREATE,
-		0600,
+		DefaultFilePerms,
 	)
 	if err != nil {
 		is.log.Fatal().Err(err).Msg("failed to open file")
@@ -844,14 +874,15 @@ func (is *ImageStoreFS) PutBlobChunk(repo string, uuid string, from int64, to in
 // BlobUploadInfo returns the current blob size in bytes.
 func (is *ImageStoreFS) BlobUploadInfo(repo string, uuid string) (int64, error) {
 	blobUploadPath := is.BlobUploadPath(repo, uuid)
-	fi, err := os.Stat(blobUploadPath)
 
+	binfo, err := os.Stat(blobUploadPath)
 	if err != nil {
 		is.log.Error().Err(err).Str("blob", blobUploadPath).Msg("failed to stat blob")
+
 		return -1, err
 	}
 
-	size := fi.Size()
+	size := binfo.Size()
 
 	return size, nil
 }
@@ -861,7 +892,8 @@ func (is *ImageStoreFS) FinishBlobUpload(repo string, uuid string, body io.Reade
 	dstDigest, err := godigest.Parse(digest)
 	if err != nil {
 		is.log.Error().Err(err).Str("digest", digest).Msg("failed to parse digest")
-		return errors.ErrBadBlobDigest
+
+		return zerr.ErrBadBlobDigest
 	}
 
 	src := is.BlobUploadPath(repo, uuid)
@@ -869,27 +901,31 @@ func (is *ImageStoreFS) FinishBlobUpload(repo string, uuid string, body io.Reade
 	_, err = os.Stat(src)
 	if err != nil {
 		is.log.Error().Err(err).Str("blob", src).Msg("failed to stat blob")
-		return errors.ErrUploadNotFound
+
+		return zerr.ErrUploadNotFound
 	}
 
-	f, err := os.Open(src)
+	blobFile, err := os.Open(src)
 	if err != nil {
 		is.log.Error().Err(err).Str("blob", src).Msg("failed to open blob")
-		return errors.ErrUploadNotFound
+
+		return zerr.ErrUploadNotFound
 	}
 
-	srcDigest, err := godigest.FromReader(f)
-	f.Close()
+	srcDigest, err := godigest.FromReader(blobFile)
+	blobFile.Close()
 
 	if err != nil {
 		is.log.Error().Err(err).Str("blob", src).Msg("failed to open blob")
-		return errors.ErrBadBlobDigest
+
+		return zerr.ErrBadBlobDigest
 	}
 
 	if srcDigest != dstDigest {
 		is.log.Error().Str("srcDigest", srcDigest.String()).
 			Str("dstDigest", dstDigest.String()).Msg("actual digest not equal to expected digest")
-		return errors.ErrBadBlobDigest
+
+		return zerr.ErrBadBlobDigest
 	}
 
 	dir := path.Join(is.rootDir, repo, "blobs", dstDigest.Algorithm().String())
@@ -910,12 +946,14 @@ func (is *ImageStoreFS) FinishBlobUpload(repo string, uuid string, body io.Reade
 		if err := is.DedupeBlob(src, dstDigest, dst); err != nil {
 			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
 				Str("dst", dst).Msg("unable to dedupe blob")
+
 			return err
 		}
 	} else {
 		if err := os.Rename(src, dst); err != nil {
 			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
 				Str("dst", dst).Msg("unable to finish blob")
+
 			return err
 		}
 	}
@@ -932,7 +970,8 @@ func (is *ImageStoreFS) FullBlobUpload(repo string, body io.Reader, digest strin
 	dstDigest, err := godigest.Parse(digest)
 	if err != nil {
 		is.log.Error().Err(err).Str("digest", digest).Msg("failed to parse digest")
-		return "", -1, errors.ErrBadBlobDigest
+
+		return "", -1, zerr.ErrBadBlobDigest
 	}
 
 	u, err := guuid.NewV4()
@@ -944,18 +983,19 @@ func (is *ImageStoreFS) FullBlobUpload(repo string, body io.Reader, digest strin
 
 	src := is.BlobUploadPath(repo, uuid)
 
-	f, err := os.Create(src)
+	blobFile, err := os.Create(src)
 	if err != nil {
 		is.log.Error().Err(err).Str("blob", src).Msg("failed to open blob")
-		return "", -1, errors.ErrUploadNotFound
+
+		return "", -1, zerr.ErrUploadNotFound
 	}
 
-	defer f.Close()
+	defer blobFile.Close()
 
 	digester := sha256.New()
-	mw := io.MultiWriter(f, digester)
-	n, err := io.Copy(mw, body)
+	mw := io.MultiWriter(blobFile, digester)
 
+	nbytes, err := io.Copy(mw, body)
 	if err != nil {
 		return "", -1, err
 	}
@@ -964,7 +1004,8 @@ func (is *ImageStoreFS) FullBlobUpload(repo string, body io.Reader, digest strin
 	if srcDigest != dstDigest {
 		is.log.Error().Str("srcDigest", srcDigest.String()).
 			Str("dstDigest", dstDigest.String()).Msg("actual digest not equal to expected digest")
-		return "", -1, errors.ErrBadBlobDigest
+
+		return "", -1, zerr.ErrBadBlobDigest
 	}
 
 	dir := path.Join(is.rootDir, repo, "blobs", dstDigest.Algorithm().String())
@@ -979,17 +1020,19 @@ func (is *ImageStoreFS) FullBlobUpload(repo string, body io.Reader, digest strin
 		if err := is.DedupeBlob(src, dstDigest, dst); err != nil {
 			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
 				Str("dst", dst).Msg("unable to dedupe blob")
+
 			return "", -1, err
 		}
 	} else {
 		if err := os.Rename(src, dst); err != nil {
 			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
 				Str("dst", dst).Msg("unable to finish blob")
+
 			return "", -1, err
 		}
 	}
 
-	return uuid, n, nil
+	return uuid, nbytes, nil
 }
 
 func (is *ImageStoreFS) DedupeBlob(src string, dstDigest godigest.Digest, dst string) error {
@@ -998,9 +1041,9 @@ retry:
 
 	dstRecord, err := is.cache.GetBlob(dstDigest.String())
 
-	// nolint:goerr113
-	if err != nil && err != errors.ErrCacheMiss {
+	if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
 		is.log.Error().Err(err).Str("blobPath", dst).Msg("dedupe: unable to lookup blob record")
+
 		return err
 	}
 
@@ -1035,6 +1078,7 @@ retry:
 
 				return err
 			}
+
 			goto retry
 		}
 
@@ -1049,6 +1093,7 @@ retry:
 			// blob lookup cache out of sync with actual disk contents
 			if err := os.Remove(dst); err != nil && !os.IsNotExist(err) {
 				is.log.Error().Err(err).Str("dst", dst).Msg("dedupe: unable to remove blob")
+
 				return err
 			}
 
@@ -1063,8 +1108,10 @@ retry:
 
 		if err := os.Remove(src); err != nil {
 			is.log.Error().Err(err).Str("src", src).Msg("dedupe: uname to remove blob")
+
 			return err
 		}
+
 		is.log.Debug().Str("src", src).Msg("dedupe: remove")
 	}
 
@@ -1076,6 +1123,7 @@ func (is *ImageStoreFS) DeleteBlobUpload(repo string, uuid string) error {
 	blobUploadPath := is.BlobUploadPath(repo, uuid)
 	if err := os.Remove(blobUploadPath); err != nil {
 		is.log.Error().Err(err).Str("blobUploadPath", blobUploadPath).Msg("error deleting blob upload")
+
 		return err
 	}
 
@@ -1089,13 +1137,14 @@ func (is *ImageStoreFS) BlobPath(repo string, digest godigest.Digest) string {
 
 // CheckBlob verifies a blob and returns true if the blob is correct.
 func (is *ImageStoreFS) CheckBlob(repo string, digest string) (bool, int64, error) {
-	d, err := godigest.Parse(digest)
+	parsedDigest, err := godigest.Parse(digest)
 	if err != nil {
 		is.log.Error().Err(err).Str("digest", digest).Msg("failed to parse digest")
-		return false, -1, errors.ErrBadBlobDigest
+
+		return false, -1, zerr.ErrBadBlobDigest
 	}
 
-	blobPath := is.BlobPath(repo, d)
+	blobPath := is.BlobPath(repo, parsedDigest)
 
 	if is.dedupe && is.cache != nil {
 		is.Lock()
@@ -1105,11 +1154,11 @@ func (is *ImageStoreFS) CheckBlob(repo string, digest string) (bool, int64, erro
 		defer is.RUnlock()
 	}
 
-	blobInfo, err := os.Stat(blobPath)
+	binfo, err := os.Stat(blobPath)
 	if err == nil {
 		is.log.Debug().Str("blob path", blobPath).Msg("blob path found")
 
-		return true, blobInfo.Size(), nil
+		return true, binfo.Size(), nil
 	}
 
 	is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
@@ -1119,13 +1168,13 @@ func (is *ImageStoreFS) CheckBlob(repo string, digest string) (bool, int64, erro
 	if err != nil {
 		is.log.Error().Err(err).Str("digest", digest).Msg("cache: not found")
 
-		return false, -1, errors.ErrBlobNotFound
+		return false, -1, zerr.ErrBlobNotFound
 	}
 
 	// If found copy to location
 	blobSize, err := is.copyBlob(repo, blobPath, dstRecord)
 	if err != nil {
-		return false, -1, errors.ErrBlobNotFound
+		return false, -1, zerr.ErrBlobNotFound
 	}
 
 	if err := is.cache.PutBlob(digest, blobPath); err != nil {
@@ -1139,7 +1188,7 @@ func (is *ImageStoreFS) CheckBlob(repo string, digest string) (bool, int64, erro
 
 func (is *ImageStoreFS) checkCacheBlob(digest string) (string, error) {
 	if !is.dedupe || is.cache == nil {
-		return "", errors.ErrBlobNotFound
+		return "", zerr.ErrBlobNotFound
 	}
 
 	dstRecord, err := is.cache.GetBlob(digest)
@@ -1157,6 +1206,7 @@ func (is *ImageStoreFS) checkCacheBlob(digest string) (string, error) {
 func (is *ImageStoreFS) copyBlob(repo string, blobPath string, dstRecord string) (int64, error) {
 	if err := is.initRepo(repo); err != nil {
 		is.log.Error().Err(err).Str("repo", repo).Msg("unable to initialize an empty repo")
+
 		return -1, err
 	}
 
@@ -1165,45 +1215,47 @@ func (is *ImageStoreFS) copyBlob(repo string, blobPath string, dstRecord string)
 	if err := os.Link(dstRecord, blobPath); err != nil {
 		is.log.Error().Err(err).Str("blobPath", blobPath).Str("link", dstRecord).Msg("dedupe: unable to hard link")
 
-		return -1, errors.ErrBlobNotFound
+		return -1, zerr.ErrBlobNotFound
 	}
 
-	blobInfo, err := os.Stat(blobPath)
+	binfo, err := os.Stat(blobPath)
 	if err == nil {
-		return blobInfo.Size(), nil
+		return binfo.Size(), nil
 	}
 
-	return -1, errors.ErrBlobNotFound
+	return -1, zerr.ErrBlobNotFound
 }
 
 // GetBlob returns a stream to read the blob.
-// FIXME: we should probably parse the manifest and use (digest, mediaType) as a
 // blob selector instead of directly downloading the blob.
 func (is *ImageStoreFS) GetBlob(repo string, digest string, mediaType string) (io.Reader, int64, error) {
-	d, err := godigest.Parse(digest)
+	parsedDigest, err := godigest.Parse(digest)
 	if err != nil {
 		is.log.Error().Err(err).Str("digest", digest).Msg("failed to parse digest")
-		return nil, -1, errors.ErrBadBlobDigest
+
+		return nil, -1, zerr.ErrBadBlobDigest
 	}
 
-	blobPath := is.BlobPath(repo, d)
+	blobPath := is.BlobPath(repo, parsedDigest)
 
 	is.RLock()
 	defer is.RUnlock()
 
-	blobInfo, err := os.Stat(blobPath)
+	binfo, err := os.Stat(blobPath)
 	if err != nil {
 		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
-		return nil, -1, errors.ErrBlobNotFound
+
+		return nil, -1, zerr.ErrBlobNotFound
 	}
 
 	blobReader, err := os.Open(blobPath)
 	if err != nil {
 		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to open blob")
+
 		return nil, -1, err
 	}
 
-	return blobReader, blobInfo.Size(), nil
+	return blobReader, binfo.Size(), nil
 }
 
 func (is *ImageStoreFS) GetBlobContent(repo string, digest string) ([]byte, error) {
@@ -1217,6 +1269,7 @@ func (is *ImageStoreFS) GetBlobContent(repo string, digest string) ([]byte, erro
 	_, err = buf.ReadFrom(blob)
 	if err != nil {
 		is.log.Error().Err(err).Str("digest", digest).Msg("failed to read blob")
+
 		return []byte{}, err
 	}
 
@@ -1230,7 +1283,8 @@ func (is *ImageStoreFS) GetIndexContent(repo string) ([]byte, error) {
 	if err != nil {
 		if os.IsNotExist(err) {
 			is.log.Error().Err(err).Str("dir", dir).Msg("index.json doesn't exist")
-			return []byte{}, errors.ErrRepoNotFound
+
+			return []byte{}, zerr.ErrRepoNotFound
 		}
 
 		is.log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
@@ -1243,13 +1297,14 @@ func (is *ImageStoreFS) GetIndexContent(repo string) ([]byte, error) {
 
 // DeleteBlob removes the blob from the repository.
 func (is *ImageStoreFS) DeleteBlob(repo string, digest string) error {
-	d, err := godigest.Parse(digest)
+	dgst, err := godigest.Parse(digest)
 	if err != nil {
 		is.log.Error().Err(err).Str("digest", digest).Msg("failed to parse digest")
-		return errors.ErrBlobNotFound
+
+		return zerr.ErrBlobNotFound
 	}
 
-	blobPath := is.BlobPath(repo, d)
+	blobPath := is.BlobPath(repo, dgst)
 
 	is.Lock()
 	defer is.Unlock()
@@ -1257,18 +1312,21 @@ func (is *ImageStoreFS) DeleteBlob(repo string, digest string) error {
 	_, err = os.Stat(blobPath)
 	if err != nil {
 		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
-		return errors.ErrBlobNotFound
+
+		return zerr.ErrBlobNotFound
 	}
 
 	if is.cache != nil {
 		if err := is.cache.DeleteBlob(digest, blobPath); err != nil {
 			is.log.Error().Err(err).Str("digest", digest).Str("blobPath", blobPath).Msg("unable to remove blob path from cache")
+
 			return err
 		}
 	}
 
 	if err := os.Remove(blobPath); err != nil {
 		is.log.Error().Err(err).Str("blobPath", blobPath).Msg("unable to remove blob path")
+
 		return err
 	}
 
@@ -1278,25 +1336,25 @@ func (is *ImageStoreFS) DeleteBlob(repo string, digest string) error {
 func (is *ImageStoreFS) GetReferrers(repo, digest string, mediaType string) ([]notation.Descriptor, error) {
 	dir := path.Join(is.rootDir, repo)
 	if !is.DirExists(dir) {
-		return nil, errors.ErrRepoNotFound
+		return nil, zerr.ErrRepoNotFound
 	}
 
 	gdigest, err := godigest.Parse(digest)
 	if err != nil {
 		is.log.Error().Err(err).Str("digest", digest).Msg("failed to parse digest")
-		return nil, errors.ErrBadBlobDigest
+
+		return nil, zerr.ErrBadBlobDigest
 	}
 
 	is.RLock()
 	defer is.RUnlock()
 
 	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
-
 	if err != nil {
 		is.log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
 
 		if os.IsNotExist(err) {
-			return nil, errors.ErrRepoNotFound
+			return nil, zerr.ErrRepoNotFound
 		}
 
 		return nil, err
@@ -1305,6 +1363,7 @@ func (is *ImageStoreFS) GetReferrers(repo, digest string, mediaType string) ([]n
 	var index ispec.Index
 	if err := json.Unmarshal(buf, &index); err != nil {
 		is.log.Error().Err(err).Str("dir", dir).Msg("invalid JSON")
+
 		return nil, err
 	}
 
@@ -1312,12 +1371,12 @@ func (is *ImageStoreFS) GetReferrers(repo, digest string, mediaType string) ([]n
 
 	result := []notation.Descriptor{}
 
-	for _, m := range index.Manifests {
-		if m.MediaType != artifactspec.MediaTypeArtifactManifest {
+	for _, manifest := range index.Manifests {
+		if manifest.MediaType != artifactspec.MediaTypeArtifactManifest {
 			continue
 		}
 
-		p := path.Join(dir, "blobs", m.Digest.Algorithm().String(), m.Digest.Encoded())
+		p := path.Join(dir, "blobs", manifest.Digest.Algorithm().String(), manifest.Digest.Encoded())
 
 		buf, err = ioutil.ReadFile(p)
 
@@ -1325,30 +1384,33 @@ func (is *ImageStoreFS) GetReferrers(repo, digest string, mediaType string) ([]n
 			is.log.Error().Err(err).Str("blob", p).Msg("failed to read manifest")
 
 			if os.IsNotExist(err) {
-				return nil, errors.ErrManifestNotFound
+				return nil, zerr.ErrManifestNotFound
 			}
 
 			return nil, err
 		}
 
-		var manifest artifactspec.Manifest
-		if err := json.Unmarshal(buf, &manifest); err != nil {
+		var artManifest artifactspec.Manifest
+		if err := json.Unmarshal(buf, &artManifest); err != nil {
 			is.log.Error().Err(err).Str("dir", dir).Msg("invalid JSON")
+
 			return nil, err
 		}
 
-		if mediaType != manifest.ArtifactType || gdigest != manifest.Subject.Digest {
+		if mediaType != artManifest.ArtifactType || gdigest != artManifest.Subject.Digest {
 			continue
 		}
 
-		result = append(result, notation.Descriptor{MediaType: m.MediaType,
-			Digest: m.Digest, Size: m.Size, Annotations: m.Annotations})
+		result = append(result, notation.Descriptor{
+			MediaType: manifest.MediaType,
+			Digest:    manifest.Digest, Size: manifest.Size, Annotations: manifest.Annotations,
+		})
 
 		found = true
 	}
 
 	if !found {
-		return nil, errors.ErrManifestNotFound
+		return nil, zerr.ErrManifestNotFound
 	}
 
 	return result, nil
@@ -1359,23 +1421,15 @@ func IsSupportedMediaType(mediaType string) bool {
 		mediaType == artifactspec.MediaTypeArtifactManifest
 }
 
-// garbage collection
-
-// Scrub will clean up all unreferenced blobs.
-// TODO.
-func Scrub(dir string, fix bool) error {
-	return nil
-}
-
 // utility routines
 
 func ValidateHardLink(rootDir string) error {
-	if err := os.MkdirAll(rootDir, 0700); err != nil {
+	if err := os.MkdirAll(rootDir, DefaultDirPerms); err != nil {
 		return err
 	}
 
-	err := ioutil.WriteFile(path.Join(rootDir, "hardlinkcheck.txt"), //nolint: gosec
-		[]byte("check whether hardlinks work on filesystem"), 0644)
+	err := ioutil.WriteFile(path.Join(rootDir, "hardlinkcheck.txt"),
+		[]byte("check whether hardlinks work on filesystem"), DefaultFilePerms)
 	if err != nil {
 		return err
 	}
@@ -1400,7 +1454,7 @@ func ValidateHardLink(rootDir string) error {
 }
 
 func ensureDir(dir string, log zerolog.Logger) error {
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, DefaultDirPerms); err != nil {
 		log.Error().Err(err).Str("dir", dir).Msg("unable to create dir")
 
 		return err
@@ -1409,11 +1463,11 @@ func ensureDir(dir string, log zerolog.Logger) error {
 	return nil
 }
 
-func ifOlderThan(is *ImageStoreFS, repo string, delay time.Duration) casext.GCPolicy {
+func ifOlderThan(imgStore *ImageStoreFS, repo string, delay time.Duration) casext.GCPolicy {
 	return func(ctx context.Context, digest godigest.Digest) (bool, error) {
-		blobPath := is.BlobPath(repo, digest)
-		fi, err := os.Stat(blobPath)
+		blobPath := imgStore.BlobPath(repo, digest)
 
+		fi, err := os.Stat(blobPath)
 		if err != nil {
 			return false, err
 		}
@@ -1422,7 +1476,7 @@ func ifOlderThan(is *ImageStoreFS, repo string, delay time.Duration) casext.GCPo
 			return false, nil
 		}
 
-		is.log.Info().Str("digest", digest.String()).Str("blobPath", blobPath).Msg("perform GC on blob")
+		imgStore.log.Info().Str("digest", digest.String()).Str("blobPath", blobPath).Msg("perform GC on blob")
 
 		return true, nil
 	}

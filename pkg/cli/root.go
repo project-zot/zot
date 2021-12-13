@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
@@ -25,10 +26,7 @@ func metadataConfig(md *mapstructure.Metadata) viper.DecoderConfigOption {
 	}
 }
 
-func NewRootCmd() *cobra.Command {
-	showVersion := false
-	conf := config.New()
-
+func newServeCmd(conf *config.Config) *cobra.Command {
 	// "serve"
 	serveCmd := &cobra.Command{
 		Use:     "serve <config>",
@@ -39,7 +37,8 @@ func NewRootCmd() *cobra.Command {
 			if len(args) > 0 {
 				LoadConfiguration(conf, args[0])
 			}
-			c := api.NewController(conf)
+
+			ctlr := api.NewController(conf)
 
 			// creates a new file watcher
 			watcher, err := fsnotify.NewWatcher()
@@ -60,7 +59,7 @@ func NewRootCmd() *cobra.Command {
 								log.Info().Msg("config file changed, trying to reload accessControl config")
 								newConfig := config.New()
 								LoadConfiguration(newConfig, args[0])
-								c.Config.AccessControl = newConfig.AccessControl
+								ctlr.Config.AccessControl = newConfig.AccessControl
 							}
 						// watch for errors
 						case err := <-watcher.Errors:
@@ -77,12 +76,16 @@ func NewRootCmd() *cobra.Command {
 				<-done
 			}()
 
-			if err := c.Run(); err != nil {
+			if err := ctlr.Run(); err != nil {
 				panic(err)
 			}
 		},
 	}
 
+	return serveCmd
+}
+
+func newScrubCmd(conf *config.Config) *cobra.Command {
 	// "scrub"
 	scrubCmd := &cobra.Command{
 		Use:     "scrub <config>",
@@ -90,33 +93,40 @@ func NewRootCmd() *cobra.Command {
 		Short:   "`scrub` checks manifest/blob integrity",
 		Long:    "`scrub` checks manifest/blob integrity",
 		Run: func(cmd *cobra.Command, args []string) {
-			configuration := config.New()
-
 			if len(args) > 0 {
-				LoadConfiguration(configuration, args[0])
+				LoadConfiguration(conf, args[0])
 			} else {
 				if err := cmd.Usage(); err != nil {
 					panic(err)
 				}
+
 				return
 			}
 
 			// checking if the server is  already running
-			response, err := http.Get(fmt.Sprintf("http://%s:%s/v2", configuration.HTTP.Address, configuration.HTTP.Port))
+			req, err := http.NewRequestWithContext(context.Background(),
+				http.MethodGet,
+				fmt.Sprintf("http://%s:%s/v2", conf.HTTP.Address, conf.HTTP.Port),
+				nil)
+			if err != nil {
+				log.Error().Err(err).Msg("unable to create a new http request")
+				panic(err)
+			}
 
+			response, err := http.DefaultClient.Do(req)
 			if err == nil {
 				response.Body.Close()
 				log.Info().Msg("The server is running, in order to perform the scrub command the server should be shut down")
 				panic("Error: server is running")
 			} else {
 				// server is down
-				c := api.NewController(configuration)
+				ctlr := api.NewController(conf)
 
-				if err := c.InitImageStore(); err != nil {
+				if err := ctlr.InitImageStore(); err != nil {
 					panic(err)
 				}
 
-				result, err := c.StoreController.CheckAllBlobsIntegrity()
+				result, err := ctlr.StoreController.CheckAllBlobsIntegrity()
 				if err != nil {
 					panic(err)
 				}
@@ -126,6 +136,11 @@ func NewRootCmd() *cobra.Command {
 		},
 	}
 
+	return scrubCmd
+}
+
+func newVerifyCmd(conf *config.Config) *cobra.Command {
+	// verify
 	verifyCmd := &cobra.Command{
 		Use:     "verify <config>",
 		Aliases: []string{"verify"},
@@ -133,40 +148,18 @@ func NewRootCmd() *cobra.Command {
 		Long:    "`verify` validates a zot config file",
 		Run: func(cmd *cobra.Command, args []string) {
 			if len(args) > 0 {
-				config := config.New()
-				LoadConfiguration(config, args[0])
+				LoadConfiguration(conf, args[0])
 				log.Info().Msgf("Config file %s is valid", args[0])
 			}
 		},
 	}
 
-	// "garbage-collect"
-	gcDelUntagged := false
-	gcDryRun := false
+	return verifyCmd
+}
 
-	gcCmd := &cobra.Command{
-		Use:     "garbage-collect <config>",
-		Aliases: []string{"gc"},
-		Short:   "`garbage-collect` deletes layers not referenced by any manifests",
-		Long:    "`garbage-collect` deletes layers not referenced by any manifests",
-		Run: func(cmd *cobra.Command, args []string) {
-			log.Info().Interface("values", conf).Msg("configuration settings")
-			if conf.Storage.RootDirectory != "" {
-				if err := storage.Scrub(conf.Storage.RootDirectory, gcDryRun); err != nil {
-					panic(err)
-				}
-			}
-		},
-	}
-
-	gcCmd.Flags().StringVarP(&conf.Storage.RootDirectory, "storage-root-dir", "r", "",
-		"Use specified directory for filestore backing image data")
-
-	_ = gcCmd.MarkFlagRequired("storage-root-dir")
-	gcCmd.Flags().BoolVarP(&gcDelUntagged, "delete-untagged", "m", false,
-		"delete manifests that are not currently referenced via tag")
-	gcCmd.Flags().BoolVarP(&gcDryRun, "dry-run", "d", false,
-		"do everything except remove the blobs")
+func NewRootCmd() *cobra.Command {
+	showVersion := false
+	conf := config.New()
 
 	rootCmd := &cobra.Command{
 		Use:   "zot",
@@ -182,10 +175,9 @@ func NewRootCmd() *cobra.Command {
 		},
 	}
 
-	rootCmd.AddCommand(serveCmd)
-	rootCmd.AddCommand(scrubCmd)
-	rootCmd.AddCommand(gcCmd)
-	rootCmd.AddCommand(verifyCmd)
+	rootCmd.AddCommand(newServeCmd(conf))
+	rootCmd.AddCommand(newScrubCmd(conf))
+	rootCmd.AddCommand(newVerifyCmd(conf))
 
 	enableCli(rootCmd)
 
@@ -202,13 +194,13 @@ func LoadConfiguration(config *config.Config, configPath string) {
 		panic(err)
 	}
 
-	md := &mapstructure.Metadata{}
-	if err := viper.Unmarshal(&config, metadataConfig(md)); err != nil {
+	metaData := &mapstructure.Metadata{}
+	if err := viper.Unmarshal(&config, metadataConfig(metaData)); err != nil {
 		log.Error().Err(err).Msg("error while unmarshalling new config")
 		panic(err)
 	}
 
-	if len(md.Keys) == 0 || len(md.Unused) > 0 {
+	if len(metaData.Keys) == 0 || len(metaData.Unused) > 0 {
 		log.Error().Err(errors.ErrBadConfig).Msg("bad configuration, retry writing it")
 		panic(errors.ErrBadConfig)
 	}

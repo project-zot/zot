@@ -56,8 +56,8 @@ func GetRootDir(image string, storeController storage.StoreController) string {
 
 func GetRepo(image string) string {
 	if strings.Contains(image, ":") {
-		splitString := strings.SplitN(image, ":", 2)
-		if len(splitString) != 2 { //nolint: gomnd
+		splitString := strings.SplitN(image, ":", 2) //nolint:gomnd
+		if len(splitString) != 2 {                   //nolint:gomnd
 			return image
 		}
 
@@ -100,9 +100,9 @@ func GetLatestTag(allTags []TagInfo) TagInfo {
 }
 
 func GetRoutePrefix(name string) string {
-	names := strings.SplitN(name, "/", 2)
+	names := strings.SplitN(name, "/", 2) //nolint:gomnd
 
-	if len(names) != 2 { // nolint: gomnd
+	if len(names) != 2 { // nolint:gomnd
 		// it means route is of global storage e.g "centos:latest"
 		if len(names) == 1 {
 			return "/"

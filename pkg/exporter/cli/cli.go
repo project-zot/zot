@@ -4,13 +4,12 @@
 package cli
 
 import (
-	"zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/exporter/api"
-
 	"github.com/mitchellh/mapstructure"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/exporter/api"
 )
 
 // metadataConfig reports metadata after parsing, which we use to track
@@ -64,13 +63,13 @@ func loadConfiguration(config *api.Config, configPath string) {
 		panic(err)
 	}
 
-	md := &mapstructure.Metadata{}
-	if err := viper.Unmarshal(&config, metadataConfig(md)); err != nil {
+	metaData := &mapstructure.Metadata{}
+	if err := viper.Unmarshal(&config, metadataConfig(metaData)); err != nil {
 		log.Error().Err(err).Msg("Error while unmarshalling new config")
 		panic(err)
 	}
 
-	if len(md.Keys) == 0 || len(md.Unused) > 0 {
+	if len(metaData.Keys) == 0 || len(metaData.Unused) > 0 {
 		log.Error().Err(errors.ErrBadConfig).Msg("Bad configuration, retry writing it")
 		panic(errors.ErrBadConfig)
 	}

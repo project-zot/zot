@@ -36,6 +36,7 @@ type ImgResponsWithLatestTag struct {
 	Errors               []ErrorGQL           `json:"errors"`
 }
 
+//nolint:tagliatelle // graphQL schema
 type ImgListWithLatestTag struct {
 	Images []ImageInfo `json:"ImageListWithLatestTag"`
 }
@@ -87,18 +88,26 @@ func testSetup() error {
 func getTags() ([]common.TagInfo, []common.TagInfo) {
 	tags := make([]common.TagInfo, 0)
 
-	firstTag := common.TagInfo{Name: "1.0.0",
+	firstTag := common.TagInfo{
+		Name:      "1.0.0",
 		Digest:    "sha256:eca04f027f414362596f2632746d8a178362170b9ac9af772011fedcc3877ebb",
-		Timestamp: time.Now()}
-	secondTag := common.TagInfo{Name: "1.0.1",
+		Timestamp: time.Now(),
+	}
+	secondTag := common.TagInfo{
+		Name:      "1.0.1",
 		Digest:    "sha256:eca04f027f414362596f2632746d8a179362170b9ac9af772011fedcc3877ebb",
-		Timestamp: time.Now()}
-	thirdTag := common.TagInfo{Name: "1.0.2",
+		Timestamp: time.Now(),
+	}
+	thirdTag := common.TagInfo{
+		Name:      "1.0.2",
 		Digest:    "sha256:eca04f027f414362596f2632746d8a170362170b9ac9af772011fedcc3877ebb",
-		Timestamp: time.Now()}
-	fourthTag := common.TagInfo{Name: "1.0.3",
+		Timestamp: time.Now(),
+	}
+	fourthTag := common.TagInfo{
+		Name:      "1.0.3",
 		Digest:    "sha256:eca04f027f414362596f2632746d8a171362170b9ac9af772011fedcc3877ebb",
-		Timestamp: time.Now()}
+		Timestamp: time.Now(),
+	}
 
 	tags = append(tags, firstTag, secondTag, thirdTag, fourthTag)
 
@@ -183,11 +192,11 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 
 		conf.Extensions.Search.CVE = nil
 
-		c := api.NewController(conf)
+		ctlr := api.NewController(conf)
 
 		go func() {
 			// this blocks
-			if err := c.Run(); err != nil {
+			if err := ctlr.Run(); err != nil {
 				return
 			}
 		}()
@@ -204,7 +213,7 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 		// shut down server
 		defer func() {
 			ctx := context.Background()
-			_ = c.Server.Shutdown(ctx)
+			_ = ctlr.Server.Shutdown(ctx)
 		}()
 
 		resp, err := resty.R().Get(baseURL + "/v2/")
@@ -234,7 +243,7 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
-		err = os.Chmod(rootDir, 0000)
+		err = os.Chmod(rootDir, 0o000)
 		if err != nil {
 			panic(err)
 		}
@@ -248,7 +257,7 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(responseStruct.ImgListWithLatestTag.Images), ShouldEqual, 0)
 
-		err = os.Chmod(rootDir, 0755)
+		err = os.Chmod(rootDir, 0o755)
 		if err != nil {
 			panic(err)
 		}

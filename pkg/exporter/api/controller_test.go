@@ -5,10 +5,11 @@ package api_test
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"math/rand"
+	"math/big"
 	"net/http"
 	"os"
 	"strings"
@@ -33,8 +34,12 @@ const (
 )
 
 func getRandomLatencyN(maxNanoSeconds int64) time.Duration {
-	rand.Seed(time.Now().UnixNano())
-	return time.Duration(rand.Int63n(maxNanoSeconds))
+	nBig, err := rand.Int(rand.Reader, big.NewInt(maxNanoSeconds))
+	if err != nil {
+		panic(err)
+	}
+
+	return time.Duration(nBig.Int64())
 }
 
 func getRandomLatency() time.Duration {
@@ -59,20 +64,20 @@ func isChannelDrained(ch chan prometheus.Metric) bool {
 	}
 }
 
-func readDefaultMetrics(zc *api.Collector, ch chan prometheus.Metric) {
+func readDefaultMetrics(collector *api.Collector, chMetric chan prometheus.Metric) {
 	var metric dto.Metric
 
-	pm := <-ch
-	So(pm.Desc().String(), ShouldEqual, zc.MetricsDesc["zot_up"].String())
+	pmMetric := <-chMetric
+	So(pmMetric.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_up"].String())
 
-	err := pm.Write(&metric)
+	err := pmMetric.Write(&metric)
 	So(err, ShouldBeNil)
 	So(*metric.Gauge.Value, ShouldEqual, 1)
 
-	pm = <-ch
-	So(pm.Desc().String(), ShouldEqual, zc.MetricsDesc["zot_info"].String())
+	pmMetric = <-chMetric
+	So(pmMetric.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_info"].String())
 
-	err = pm.Write(&metric)
+	err = pmMetric.Write(&metric)
 	So(err, ShouldBeNil)
 	So(*metric.Gauge.Value, ShouldEqual, 0)
 }
@@ -97,17 +102,17 @@ func TestNewExporter(t *testing.T) {
 			}()
 			time.Sleep(SleepTime)
 
-			zc := api.GetCollector(exporterController)
-			ch := make(chan prometheus.Metric)
+			collector := api.GetCollector(exporterController)
+			chMetric := make(chan prometheus.Metric)
 
 			Convey("When zot server not running", func() {
 				go func() {
 					// this blocks
-					zc.Collect(ch)
+					collector.Collect(chMetric)
 				}()
 				// Read from the channel expected values
-				pm := <-ch
-				So(pm.Desc().String(), ShouldEqual, zc.MetricsDesc["zot_up"].String())
+				pm := <-chMetric
+				So(pm.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_up"].String())
 
 				var metric dto.Metric
 				err := pm.Write(&metric)
@@ -115,7 +120,7 @@ func TestNewExporter(t *testing.T) {
 				So(*metric.Gauge.Value, ShouldEqual, 0) // "zot_up=0" means zot server is not running
 
 				// Check that no more data was written to the channel
-				So(isChannelDrained(ch), ShouldEqual, true)
+				So(isChannelDrained(chMetric), ShouldEqual, true)
 			})
 			Convey("When zot server is running", func() {
 				servercConfig := zotcfg.New()
@@ -156,54 +161,58 @@ func TestNewExporter(t *testing.T) {
 				Convey("Collecting data: default metrics", func() {
 					go func() {
 						// this blocks
-						zc.Collect(ch)
+						collector.Collect(chMetric)
 					}()
-					readDefaultMetrics(zc, ch)
-					So(isChannelDrained(ch), ShouldEqual, true)
+					readDefaultMetrics(collector, chMetric)
+					So(isChannelDrained(chMetric), ShouldEqual, true)
 				})
 
 				Convey("Collecting data: Test init value & that increment works on Counters", func() {
-					//Testing initial value of the counter to be 1 after first incrementation call
+					// Testing initial value of the counter to be 1 after first incrementation call
 					monitoring.IncUploadCounter(serverController.Metrics, "testrepo")
 					time.Sleep(SleepTime)
 
 					go func() {
 						// this blocks
-						zc.Collect(ch)
+						collector.Collect(chMetric)
 					}()
-					readDefaultMetrics(zc, ch)
+					readDefaultMetrics(collector, chMetric)
 
-					pm := <-ch
-					So(pm.Desc().String(), ShouldEqual, zc.MetricsDesc["zot_repo_uploads_total"].String())
+					pmMetric := <-chMetric
+					So(pmMetric.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_repo_uploads_total"].String())
 
 					var metric dto.Metric
-					err := pm.Write(&metric)
+					err := pmMetric.Write(&metric)
 					So(err, ShouldBeNil)
 					So(*metric.Counter.Value, ShouldEqual, 1)
 
-					So(isChannelDrained(ch), ShouldEqual, true)
+					So(isChannelDrained(chMetric), ShouldEqual, true)
 
-					//Testing that counter is incremented by 1
+					// Testing that counter is incremented by 1
 					monitoring.IncUploadCounter(serverController.Metrics, "testrepo")
 					time.Sleep(SleepTime)
 
 					go func() {
 						// this blocks
-						zc.Collect(ch)
+						collector.Collect(chMetric)
 					}()
-					readDefaultMetrics(zc, ch)
+					readDefaultMetrics(collector, chMetric)
 
-					pm = <-ch
-					So(pm.Desc().String(), ShouldEqual, zc.MetricsDesc["zot_repo_uploads_total"].String())
+					pmMetric = <-chMetric
+					So(pmMetric.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_repo_uploads_total"].String())
 
-					err = pm.Write(&metric)
+					err = pmMetric.Write(&metric)
 					So(err, ShouldBeNil)
 					So(*metric.Counter.Value, ShouldEqual, 2)
 
-					So(isChannelDrained(ch), ShouldEqual, true)
+					So(isChannelDrained(chMetric), ShouldEqual, true)
 				})
 				Convey("Collecting data: Test that concurent Counter increment requests works properly", func() {
-					reqsSize := rand.Intn(1000)
+					nBig, err := rand.Int(rand.Reader, big.NewInt(1000))
+					if err != nil {
+						panic(err)
+					}
+					reqsSize := int(nBig.Int64())
 					for i := 0; i < reqsSize; i++ {
 						monitoring.IncDownloadCounter(serverController.Metrics, "dummyrepo")
 					}
@@ -211,79 +220,83 @@ func TestNewExporter(t *testing.T) {
 
 					go func() {
 						// this blocks
-						zc.Collect(ch)
+						collector.Collect(chMetric)
 					}()
-					readDefaultMetrics(zc, ch)
-					pm := <-ch
-					So(pm.Desc().String(), ShouldEqual, zc.MetricsDesc["zot_repo_downloads_total"].String())
+					readDefaultMetrics(collector, chMetric)
+					pm := <-chMetric
+					So(pm.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_repo_downloads_total"].String())
 
 					var metric dto.Metric
-					err := pm.Write(&metric)
+					err = pm.Write(&metric)
 					So(err, ShouldBeNil)
 					So(*metric.Counter.Value, ShouldEqual, reqsSize)
 
-					So(isChannelDrained(ch), ShouldEqual, true)
+					So(isChannelDrained(chMetric), ShouldEqual, true)
 				})
 				Convey("Collecting data: Test init value & that observe works on Summaries", func() {
-					//Testing initial value of the summary counter to be 1 after first observation call
+					// Testing initial value of the summary counter to be 1 after first observation call
 					var latency1, latency2 time.Duration
 					latency1 = getRandomLatency()
 					monitoring.ObserveHTTPRepoLatency(serverController.Metrics, "/v2/testrepo/blogs/dummydigest", latency1)
 					time.Sleep(SleepTime)
 
 					go func() {
-						//this blocks
-						zc.Collect(ch)
+						// this blocks
+						collector.Collect(chMetric)
 					}()
-					readDefaultMetrics(zc, ch)
+					readDefaultMetrics(collector, chMetric)
 
-					pm := <-ch
-					So(pm.Desc().String(), ShouldEqual, zc.MetricsDesc["zot_http_repo_latency_seconds_count"].String())
+					pmMetric := <-chMetric
+					So(pmMetric.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_http_repo_latency_seconds_count"].String())
 
 					var metric dto.Metric
-					err := pm.Write(&metric)
+					err := pmMetric.Write(&metric)
 					So(err, ShouldBeNil)
 					So(*metric.Counter.Value, ShouldEqual, 1)
 
-					pm = <-ch
-					So(pm.Desc().String(), ShouldEqual, zc.MetricsDesc["zot_http_repo_latency_seconds_sum"].String())
+					pmMetric = <-chMetric
+					So(pmMetric.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_http_repo_latency_seconds_sum"].String())
 
-					err = pm.Write(&metric)
+					err = pmMetric.Write(&metric)
 					So(err, ShouldBeNil)
 					So(*metric.Counter.Value, ShouldEqual, latency1.Seconds())
 
-					So(isChannelDrained(ch), ShouldEqual, true)
+					So(isChannelDrained(chMetric), ShouldEqual, true)
 
-					//Testing that summary counter is incremented by 1 and summary sum is  properly updated
+					// Testing that summary counter is incremented by 1 and summary sum is  properly updated
 					latency2 = getRandomLatency()
 					monitoring.ObserveHTTPRepoLatency(serverController.Metrics, "/v2/testrepo/blogs/dummydigest", latency2)
 					time.Sleep(SleepTime)
 
 					go func() {
 						// this blocks
-						zc.Collect(ch)
+						collector.Collect(chMetric)
 					}()
-					readDefaultMetrics(zc, ch)
+					readDefaultMetrics(collector, chMetric)
 
-					pm = <-ch
-					So(pm.Desc().String(), ShouldEqual, zc.MetricsDesc["zot_http_repo_latency_seconds_count"].String())
+					pmMetric = <-chMetric
+					So(pmMetric.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_http_repo_latency_seconds_count"].String())
 
-					err = pm.Write(&metric)
+					err = pmMetric.Write(&metric)
 					So(err, ShouldBeNil)
 					So(*metric.Counter.Value, ShouldEqual, 2)
 
-					pm = <-ch
-					So(pm.Desc().String(), ShouldEqual, zc.MetricsDesc["zot_http_repo_latency_seconds_sum"].String())
+					pmMetric = <-chMetric
+					So(pmMetric.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_http_repo_latency_seconds_sum"].String())
 
-					err = pm.Write(&metric)
+					err = pmMetric.Write(&metric)
 					So(err, ShouldBeNil)
 					So(*metric.Counter.Value, ShouldEqual, (latency1.Seconds())+(latency2.Seconds()))
 
-					So(isChannelDrained(ch), ShouldEqual, true)
+					So(isChannelDrained(chMetric), ShouldEqual, true)
 				})
 				Convey("Collecting data: Test that concurent Summary observation requests works properly", func() {
 					var latencySum float64
-					reqsSize := rand.Intn(1000)
+					nBig, err := rand.Int(rand.Reader, big.NewInt(1000))
+					if err != nil {
+						panic(err)
+					}
+					reqsSize := int(nBig.Int64())
 					for i := 0; i < reqsSize; i++ {
 						latency := getRandomLatency()
 						latencySum += latency.Seconds()
@@ -293,59 +306,60 @@ func TestNewExporter(t *testing.T) {
 
 					go func() {
 						// this blocks
-						zc.Collect(ch)
+						collector.Collect(chMetric)
 					}()
-					readDefaultMetrics(zc, ch)
+					readDefaultMetrics(collector, chMetric)
 
-					pm := <-ch
-					So(pm.Desc().String(), ShouldEqual, zc.MetricsDesc["zot_http_repo_latency_seconds_count"].String())
+					pmMetric := <-chMetric
+					So(pmMetric.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_http_repo_latency_seconds_count"].String())
 
 					var metric dto.Metric
-					err := pm.Write(&metric)
+					err = pmMetric.Write(&metric)
 					So(err, ShouldBeNil)
 					So(*metric.Counter.Value, ShouldEqual, reqsSize)
 
-					pm = <-ch
-					So(pm.Desc().String(), ShouldEqual, zc.MetricsDesc["zot_http_repo_latency_seconds_sum"].String())
+					pmMetric = <-chMetric
+					So(pmMetric.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_http_repo_latency_seconds_sum"].String())
 
-					err = pm.Write(&metric)
+					err = pmMetric.Write(&metric)
 					So(err, ShouldBeNil)
 					So(*metric.Counter.Value, ShouldEqual, latencySum)
 
-					So(isChannelDrained(ch), ShouldEqual, true)
+					So(isChannelDrained(chMetric), ShouldEqual, true)
 				})
 				Convey("Collecting data: Test init value & that observe works on Histogram buckets", func() {
-					//Testing initial value of the histogram counter to be 1 after first observation call
+					// Testing initial value of the histogram counter to be 1 after first observation call
 					latency := getRandomLatency()
 					monitoring.ObserveHTTPMethodLatency(serverController.Metrics, "GET", latency)
 					time.Sleep(SleepTime)
 
 					go func() {
-						//this blocks
-						zc.Collect(ch)
+						// this blocks
+						collector.Collect(chMetric)
 					}()
-					readDefaultMetrics(zc, ch)
+					readDefaultMetrics(collector, chMetric)
 
-					pm := <-ch
-					So(pm.Desc().String(), ShouldEqual, zc.MetricsDesc["zot_http_method_latency_seconds_count"].String())
+					pmMetric := <-chMetric
+					So(pmMetric.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_http_method_latency_seconds_count"].String())
 
 					var metric dto.Metric
-					err := pm.Write(&metric)
+					err := pmMetric.Write(&metric)
 					So(err, ShouldBeNil)
 					So(*metric.Counter.Value, ShouldEqual, 1)
 
-					pm = <-ch
-					So(pm.Desc().String(), ShouldEqual, zc.MetricsDesc["zot_http_method_latency_seconds_sum"].String())
+					pmMetric = <-chMetric
+					So(pmMetric.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_http_method_latency_seconds_sum"].String())
 
-					err = pm.Write(&metric)
+					err = pmMetric.Write(&metric)
 					So(err, ShouldBeNil)
 					So(*metric.Counter.Value, ShouldEqual, latency.Seconds())
 
 					for _, fvalue := range monitoring.GetDefaultBuckets() {
-						pm = <-ch
-						So(pm.Desc().String(), ShouldEqual, zc.MetricsDesc["zot_http_method_latency_seconds_bucket"].String())
+						pmMetric = <-chMetric
+						So(pmMetric.Desc().String(), ShouldEqual,
+							collector.MetricsDesc["zot_http_method_latency_seconds_bucket"].String())
 
-						err = pm.Write(&metric)
+						err = pmMetric.Write(&metric)
 						So(err, ShouldBeNil)
 						if latency.Seconds() < fvalue {
 							So(*metric.Counter.Value, ShouldEqual, 1)
@@ -354,21 +368,21 @@ func TestNewExporter(t *testing.T) {
 						}
 					}
 
-					So(isChannelDrained(ch), ShouldEqual, true)
+					So(isChannelDrained(chMetric), ShouldEqual, true)
 				})
 				Convey("Collecting data: Test init Histogram buckets \n", func() {
-					//Generate a random  latency within each bucket and finally test
+					// Generate a random  latency within each bucket and finally test
 					// that "higher" rank bucket counter is incremented by 1
 					var latencySum float64
 
 					dBuckets := monitoring.GetDefaultBuckets()
-					for i, fvalue := range dBuckets {
+					for index, fvalue := range dBuckets {
 						var latency time.Duration
-						if i == 0 {
-							//first bucket value
+						if index == 0 {
+							// first bucket value
 							latency = getRandomLatencyN(int64(fvalue * SecondToNanoseconds))
 						} else {
-							pvalue := dBuckets[i-1] // previous bucket value
+							pvalue := dBuckets[index-1] // previous bucket value
 							latency = time.Duration(pvalue*SecondToNanoseconds) +
 								getRandomLatencyN(int64(dBuckets[0]*SecondToNanoseconds))
 						}
@@ -378,36 +392,38 @@ func TestNewExporter(t *testing.T) {
 					time.Sleep(SleepTime)
 
 					go func() {
-						//this blocks
-						zc.Collect(ch)
+						// this blocks
+						collector.Collect(chMetric)
 					}()
-					readDefaultMetrics(zc, ch)
+					readDefaultMetrics(collector, chMetric)
 
-					pm := <-ch
-					So(pm.Desc().String(), ShouldEqual, zc.MetricsDesc["zot_http_method_latency_seconds_count"].String())
+					pmMetric := <-chMetric
+					So(pmMetric.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_http_method_latency_seconds_count"].String())
 
 					var metric dto.Metric
-					err := pm.Write(&metric)
+					err := pmMetric.Write(&metric)
 					So(err, ShouldBeNil)
 					So(*metric.Counter.Value, ShouldEqual, len(dBuckets))
 
-					pm = <-ch
-					So(pm.Desc().String(), ShouldEqual, zc.MetricsDesc["zot_http_method_latency_seconds_sum"].String())
+					pmMetric = <-chMetric
+					So(pmMetric.Desc().String(), ShouldEqual,
+						collector.MetricsDesc["zot_http_method_latency_seconds_sum"].String())
 
-					err = pm.Write(&metric)
+					err = pmMetric.Write(&metric)
 					So(err, ShouldBeNil)
 					So(*metric.Counter.Value, ShouldEqual, latencySum)
 
-					for i := range dBuckets {
-						pm = <-ch
-						So(pm.Desc().String(), ShouldEqual, zc.MetricsDesc["zot_http_method_latency_seconds_bucket"].String())
+					for index := range dBuckets {
+						pmMetric = <-chMetric
+						So(pmMetric.Desc().String(), ShouldEqual,
+							collector.MetricsDesc["zot_http_method_latency_seconds_bucket"].String())
 
-						err = pm.Write(&metric)
+						err = pmMetric.Write(&metric)
 						So(err, ShouldBeNil)
-						So(*metric.Counter.Value, ShouldEqual, i+1)
+						So(*metric.Counter.Value, ShouldEqual, index+1)
 					}
 
-					So(isChannelDrained(ch), ShouldEqual, true)
+					So(isChannelDrained(chMetric), ShouldEqual, true)
 				})
 				Convey("Negative testing: Send unknown metric type to MetricServer", func() {
 					serverController.Metrics.SendMetric(getRandomLatency())
@@ -415,13 +431,17 @@ func TestNewExporter(t *testing.T) {
 				Convey("Concurrent metrics scrape", func() {
 					var wg sync.WaitGroup
 
-					workersSize := rand.Intn(100)
+					nBig, err := rand.Int(rand.Reader, big.NewInt(100))
+					if err != nil {
+						panic(err)
+					}
+					workersSize := int(nBig.Int64())
 					for i := 0; i < workersSize; i++ {
 						wg.Add(1)
 						go func() {
 							defer wg.Done()
 							m := serverController.Metrics.ReceiveMetrics()
-							var json = jsoniter.ConfigCompatibleWithStandardLibrary
+							json := jsoniter.ConfigCompatibleWithStandardLibrary
 
 							_, err := json.Marshal(m)
 							if err != nil {

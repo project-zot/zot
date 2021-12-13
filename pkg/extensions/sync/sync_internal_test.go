@@ -54,17 +54,17 @@ func TestSyncInternal(t *testing.T) {
 		_, err = getFileCredentials("/path/to/inexistent/file")
 		So(err, ShouldNotBeNil)
 
-		f, err := ioutil.TempFile("", "sync-credentials-")
+		tempFile, err := ioutil.TempFile("", "sync-credentials-")
 		if err != nil {
 			panic(err)
 		}
 
 		content := []byte(`{`)
-		if err := ioutil.WriteFile(f.Name(), content, 0600); err != nil {
+		if err := ioutil.WriteFile(tempFile.Name(), content, 0o600); err != nil {
 			panic(err)
 		}
 
-		_, err = getFileCredentials(f.Name())
+		_, err = getFileCredentials(tempFile.Name())
 		So(err, ShouldNotBeNil)
 
 		srcCtx := &types.SystemContext{}
@@ -80,7 +80,7 @@ func TestSyncInternal(t *testing.T) {
 		dockerRef, err := docker.NewReference(taggedRef)
 		So(err, ShouldBeNil)
 
-		//tag := getTagFromRef(dockerRef, log.NewLogger("", ""))
+		// tag := getTagFromRef(dockerRef, log.NewLogger("", ""))
 
 		So(getTagFromRef(dockerRef, log.NewLogger("debug", "")), ShouldNotBeNil)
 
@@ -133,7 +133,7 @@ func TestSyncInternal(t *testing.T) {
 			panic(err)
 		}
 
-		if err := os.WriteFile(path.Join(badCertsDir, "ca.crt"), []byte("certificate"), 0755); err != nil {
+		if err := os.WriteFile(path.Join(badCertsDir, "ca.crt"), []byte("certificate"), 0o600); err != nil {
 			panic(err)
 		}
 
@@ -217,9 +217,9 @@ func TestSyncInternal(t *testing.T) {
 		So(err, ShouldNotBeNil)
 
 		testRootDir := path.Join(imageStore.RootDir(), testImage, SyncBlobUploadDir)
-		//testImagePath := path.Join(testRootDir, testImage)
+		// testImagePath := path.Join(testRootDir, testImage)
 
-		err = os.MkdirAll(testRootDir, 0755)
+		err = os.MkdirAll(testRootDir, 0o755)
 		if err != nil {
 			panic(err)
 		}
@@ -239,7 +239,7 @@ func TestSyncInternal(t *testing.T) {
 			panic(err)
 		}
 
-		if err := os.Chmod(storageDir, 0000); err != nil {
+		if err := os.Chmod(storageDir, 0o000); err != nil {
 			panic(err)
 		}
 
@@ -250,12 +250,12 @@ func TestSyncInternal(t *testing.T) {
 				ShouldPanic)
 		}
 
-		if err := os.Chmod(storageDir, 0755); err != nil {
+		if err := os.Chmod(storageDir, 0o755); err != nil {
 			panic(err)
 		}
 
 		if err := os.Chmod(path.Join(testRootDir, testImage, "blobs", "sha256",
-			manifest.Layers[0].Digest.Hex()), 0000); err != nil {
+			manifest.Layers[0].Digest.Hex()), 0o000); err != nil {
 			panic(err)
 		}
 
@@ -263,25 +263,25 @@ func TestSyncInternal(t *testing.T) {
 		So(err, ShouldNotBeNil)
 
 		if err := os.Chmod(path.Join(testRootDir, testImage, "blobs", "sha256",
-			manifest.Layers[0].Digest.Hex()), 0755); err != nil {
+			manifest.Layers[0].Digest.Hex()), 0o755); err != nil {
 			panic(err)
 		}
 
 		cachedManifestConfigPath := path.Join(imageStore.RootDir(), testImage, SyncBlobUploadDir,
 			testImage, "blobs", "sha256", manifest.Config.Digest.Hex())
-		if err := os.Chmod(cachedManifestConfigPath, 0000); err != nil {
+		if err := os.Chmod(cachedManifestConfigPath, 0o000); err != nil {
 			panic(err)
 		}
 
 		err = pushSyncedLocalImage(testImage, testImageTag, "", storeController, log)
 		So(err, ShouldNotBeNil)
 
-		if err := os.Chmod(cachedManifestConfigPath, 0755); err != nil {
+		if err := os.Chmod(cachedManifestConfigPath, 0o755); err != nil {
 			panic(err)
 		}
 
 		manifestConfigPath := path.Join(imageStore.RootDir(), testImage, "blobs", "sha256", manifest.Config.Digest.Hex())
-		if err := os.MkdirAll(manifestConfigPath, 0000); err != nil {
+		if err := os.MkdirAll(manifestConfigPath, 0o000); err != nil {
 			panic(err)
 		}
 
@@ -295,7 +295,7 @@ func TestSyncInternal(t *testing.T) {
 		mDigest := godigest.FromBytes(manifestContent)
 
 		manifestPath := path.Join(imageStore.RootDir(), testImage, "blobs", mDigest.Algorithm().String(), mDigest.Encoded())
-		if err := os.MkdirAll(manifestPath, 0000); err != nil {
+		if err := os.MkdirAll(manifestPath, 0o000); err != nil {
 			panic(err)
 		}
 

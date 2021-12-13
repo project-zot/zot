@@ -20,6 +20,7 @@ type CveTrivyController struct {
 	DefaultCveConfig *TrivyCtx
 	SubCveConfig     map[string]*TrivyCtx
 }
+
 type TrivyCtx struct {
 	Input string
 	Ctx   *cli.Context

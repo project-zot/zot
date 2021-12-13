@@ -11,6 +11,7 @@ import (
 	goSync "sync"
 	"time"
 
+	"github.com/docker/distribution/registry/storage/driver/factory"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"zotregistry.io/zot/errors"
@@ -20,8 +21,6 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/s3"
-
-	"github.com/docker/distribution/registry/storage/driver/factory"
 )
 
 const (
@@ -58,13 +57,13 @@ func NewController(config *config.Config) *Controller {
 
 func DefaultHeaders() mux.MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 			// CORS
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+			response.Header().Set("Access-Control-Allow-Origin", "*")
+			response.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
 
 			// handle the request
-			next.ServeHTTP(w, r)
+			next.ServeHTTP(response, request)
 		})
 	}
 }
@@ -73,6 +72,7 @@ func (c *Controller) Run() error {
 	// validate configuration
 	if err := c.Config.Validate(c.Log); err != nil {
 		c.Log.Error().Err(err).Msg("configuration validation failed")
+
 		return err
 	}
 
@@ -118,7 +118,7 @@ func (c *Controller) Run() error {
 	c.Server = server
 
 	// Create the listener
-	l, err := net.Listen("tcp", addr)
+	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
 	}
@@ -147,13 +147,13 @@ func (c *Controller) Run() error {
 				PreferServerCipherSuites: true,
 				MinVersion:               tls.VersionTLS12,
 			}
-			server.TLSConfig.BuildNameToCertificate() // nolint: staticcheck
+			server.TLSConfig.BuildNameToCertificate()
 		}
 
-		return server.ServeTLS(l, c.Config.HTTP.TLS.Cert, c.Config.HTTP.TLS.Key)
+		return server.ServeTLS(listener, c.Config.HTTP.TLS.Cert, c.Config.HTTP.TLS.Key)
 	}
 
-	return server.Serve(l)
+	return server.Serve(listener)
 }
 
 func (c *Controller) InitImageStore() error {
@@ -184,6 +184,7 @@ func (c *Controller) InitImageStore() error {
 			store, err := factory.Create(storeName, c.Config.Storage.StorageDriver)
 			if err != nil {
 				c.Log.Error().Err(err).Str("rootDir", c.Config.Storage.RootDirectory).Msg("unable to create s3 service")
+
 				return err
 			}
 
@@ -235,6 +236,7 @@ func (c *Controller) InitImageStore() error {
 					store, err := factory.Create(storeName, storageConfig.StorageDriver)
 					if err != nil {
 						c.Log.Error().Err(err).Str("rootDir", storageConfig.RootDirectory).Msg("Unable to create s3 service")
+
 						return err
 					}
 

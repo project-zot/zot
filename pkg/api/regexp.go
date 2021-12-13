@@ -29,19 +29,19 @@ var (
 )
 
 // match compiles the string to a regular expression.
-// nolint (gochecknoglobals)
+// nolint: gochecknoglobals
 var match = regexp.MustCompile
 
 // literal compiles s into a literal regular expression, escaping any regexp
 // reserved characters.
 func literal(s string) *regexp.Regexp {
-	re := match(regexp.QuoteMeta(s))
+	regx := match(regexp.QuoteMeta(s))
 
-	if _, complete := re.LiteralPrefix(); !complete {
+	if _, complete := regx.LiteralPrefix(); !complete {
 		panic("must be a literal")
 	}
 
-	return re
+	return regx
 }
 
 // expression defines a full expression, where each regular expression must

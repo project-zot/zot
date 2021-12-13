@@ -84,7 +84,7 @@ func (search allImagesSearcher) search(config searchConfig) (bool, error) {
 	go config.searchService.getAllImages(ctx, config, username, password, imageErr, &wg)
 	wg.Add(1)
 
-	var errCh chan error = make(chan error, 1)
+	errCh := make(chan error, 1)
 
 	go collectResults(config, &wg, imageErr, cancel, printImageTableHeader, errCh)
 	wg.Wait()
@@ -115,7 +115,7 @@ func (search imageByNameSearcher) search(config searchConfig) (bool, error) {
 		*config.params["imageName"], imageErr, &wg)
 	wg.Add(1)
 
-	var errCh chan error = make(chan error, 1)
+	errCh := make(chan error, 1)
 	go collectResults(config, &wg, imageErr, cancel, printImageTableHeader, errCh)
 
 	wg.Wait()
@@ -147,7 +147,7 @@ func (search imagesByDigestSearcher) search(config searchConfig) (bool, error) {
 		*config.params["digest"], imageErr, &wg)
 	wg.Add(1)
 
-	var errCh chan error = make(chan error, 1)
+	errCh := make(chan error, 1)
 	go collectResults(config, &wg, imageErr, cancel, printImageTableHeader, errCh)
 
 	wg.Wait()
@@ -182,7 +182,7 @@ func (search cveByImageSearcher) search(config searchConfig) (bool, error) {
 	go config.searchService.getCveByImage(ctx, config, username, password, *config.params["imageName"], strErr, &wg)
 	wg.Add(1)
 
-	var errCh chan error = make(chan error, 1)
+	errCh := make(chan error, 1)
 	go collectResults(config, &wg, strErr, cancel, printCVETableHeader, errCh)
 
 	wg.Wait()
@@ -198,7 +198,7 @@ func (search cveByImageSearcher) search(config searchConfig) (bool, error) {
 type imagesByCVEIDSearcher struct{}
 
 func (search imagesByCVEIDSearcher) search(config searchConfig) (bool, error) {
-	if !canSearch(config.params, newSet("cveID")) || *config.fixedFlag {
+	if !canSearch(config.params, newSet("cvid")) || *config.fixedFlag {
 		return false, nil
 	}
 
@@ -210,10 +210,10 @@ func (search imagesByCVEIDSearcher) search(config searchConfig) (bool, error) {
 
 	wg.Add(1)
 
-	go config.searchService.getImagesByCveID(ctx, config, username, password, *config.params["cveID"], strErr, &wg)
+	go config.searchService.getImagesByCveID(ctx, config, username, password, *config.params["cvid"], strErr, &wg)
 	wg.Add(1)
 
-	var errCh chan error = make(chan error, 1)
+	errCh := make(chan error, 1)
 	go collectResults(config, &wg, strErr, cancel, printImageTableHeader, errCh)
 
 	wg.Wait()
@@ -229,7 +229,7 @@ func (search imagesByCVEIDSearcher) search(config searchConfig) (bool, error) {
 type tagsByImageNameAndCVEIDSearcher struct{}
 
 func (search tagsByImageNameAndCVEIDSearcher) search(config searchConfig) (bool, error) {
-	if !canSearch(config.params, newSet("cveID", "imageName")) || *config.fixedFlag {
+	if !canSearch(config.params, newSet("cvid", "imageName")) || *config.fixedFlag {
 		return false, nil
 	}
 
@@ -246,10 +246,10 @@ func (search tagsByImageNameAndCVEIDSearcher) search(config searchConfig) (bool,
 	wg.Add(1)
 
 	go config.searchService.getImageByNameAndCVEID(ctx, config, username, password, *config.params["imageName"],
-		*config.params["cveID"], strErr, &wg)
+		*config.params["cvid"], strErr, &wg)
 	wg.Add(1)
 
-	var errCh chan error = make(chan error, 1)
+	errCh := make(chan error, 1)
 	go collectResults(config, &wg, strErr, cancel, printImageTableHeader, errCh)
 
 	wg.Wait()
@@ -265,7 +265,7 @@ func (search tagsByImageNameAndCVEIDSearcher) search(config searchConfig) (bool,
 type fixedTagsSearcher struct{}
 
 func (search fixedTagsSearcher) search(config searchConfig) (bool, error) {
-	if !canSearch(config.params, newSet("cveID", "imageName")) || !*config.fixedFlag {
+	if !canSearch(config.params, newSet("cvid", "imageName")) || !*config.fixedFlag {
 		return false, nil
 	}
 
@@ -282,10 +282,10 @@ func (search fixedTagsSearcher) search(config searchConfig) (bool, error) {
 	wg.Add(1)
 
 	go config.searchService.getFixedTagsForCVE(ctx, config, username, password, *config.params["imageName"],
-		*config.params["cveID"], strErr, &wg)
+		*config.params["cvid"], strErr, &wg)
 	wg.Add(1)
 
-	var errCh chan error = make(chan error, 1)
+	errCh := make(chan error, 1)
 	go collectResults(config, &wg, strErr, cancel, printImageTableHeader, errCh)
 
 	wg.Wait()
@@ -312,6 +312,7 @@ func collectResults(config searchConfig, wg *sync.WaitGroup, imageErr chan strin
 
 			if !ok {
 				cancel()
+
 				return
 			}
 
@@ -346,6 +347,7 @@ func collectResults(config searchConfig, wg *sync.WaitGroup, imageErr chan strin
 func getUsernameAndPassword(user string) (string, string) {
 	if strings.Contains(user, ":") {
 		split := strings.Split(user, ":")
+
 		return split[0], split[1]
 	}
 
@@ -394,18 +396,19 @@ func getEmptyStruct() struct{} {
 }
 
 func newSet(initialValues ...string) *set {
-	s := &set{}
-	s.m = make(map[string]struct{})
+	ret := &set{}
+	ret.m = make(map[string]struct{})
 
 	for _, val := range initialValues {
-		s.m[val] = getEmptyStruct()
+		ret.m[val] = getEmptyStruct()
 	}
 
-	return s
+	return ret
 }
 
 func (s *set) contains(value string) bool {
 	_, c := s.m[value]
+
 	return c
 }
 
@@ -434,7 +437,7 @@ func printImageTableHeader(writer io.Writer, verbose bool) {
 		table.SetColMinWidth(colLayersIndex, layersWidth)
 	}
 
-	row := make([]string, 6)
+	row := make([]string, 6) //nolint:gomnd
 
 	row[colImageNameIndex] = "IMAGE NAME"
 	row[colTagIndex] = "TAG"
@@ -452,7 +455,7 @@ func printImageTableHeader(writer io.Writer, verbose bool) {
 
 func printCVETableHeader(writer io.Writer, verbose bool) {
 	table := getCVETableWriter(writer)
-	row := make([]string, 3)
+	row := make([]string, 3) //nolint:gomnd
 	row[colCVEIDIndex] = "ID"
 	row[colCVESeverityIndex] = "SEVERITY"
 	row[colCVETitleIndex] = "TITLE"

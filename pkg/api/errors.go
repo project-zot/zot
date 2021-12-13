@@ -17,7 +17,7 @@ type ErrorList struct {
 
 type ErrorCode int
 
-// nolint: golint, stylecheck
+// nolint: golint, stylecheck, revive
 const (
 	BLOB_UNKNOWN ErrorCode = iota
 	BLOB_UPLOAD_INVALID
@@ -37,7 +37,7 @@ const (
 )
 
 func (e ErrorCode) String() string {
-	m := map[ErrorCode]string{
+	errMap := map[ErrorCode]string{
 		BLOB_UNKNOWN:          "BLOB_UNKNOWN",
 		BLOB_UPLOAD_INVALID:   "BLOB_UPLOAD_INVALID",
 		BLOB_UPLOAD_UNKNOWN:   "BLOB_UPLOAD_UNKNOWN",
@@ -55,11 +55,11 @@ func (e ErrorCode) String() string {
 		UNSUPPORTED:           "UNSUPPORTED",
 	}
 
-	return m[e]
+	return errMap[e]
 }
 
 func NewError(code ErrorCode, detail ...interface{}) Error { //nolint: interfacer
-	var errMap = map[ErrorCode]Error{
+	errMap := map[ErrorCode]Error{
 		BLOB_UNKNOWN: {
 			Message: "blob unknown to registry",
 			Description: "blob unknown to registry 	This error MAY be returned when a blob is unknown " +
@@ -154,25 +154,25 @@ func NewError(code ErrorCode, detail ...interface{}) Error { //nolint: interface
 		},
 	}
 
-	e, ok := errMap[code]
+	err, ok := errMap[code]
 	if !ok {
 		panic(errors.ErrUnknownCode)
 	}
 
-	e.Code = code.String()
-	e.Detail = detail
+	err.Code = code.String()
+	err.Detail = detail
 
-	return e
+	return err
 }
 
 func NewErrorList(errors ...Error) ErrorList {
-	el := make([]*Error, 0)
-	er := Error{}
+	errList := make([]*Error, 0)
+	err := Error{}
 
 	for _, e := range errors {
-		er = e
-		el = append(el, &er)
+		err = e
+		errList = append(errList, &err)
 	}
 
-	return ErrorList{el}
+	return ErrorList{errList}
 }

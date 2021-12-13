@@ -38,22 +38,23 @@ func GetSecureBaseURL(port string) string {
 func MakeHtpasswdFile() string {
 	// bcrypt(username="test", passwd="test")
 	content := "test:$2y$05$hlbSXDp6hzDLu6VwACS39ORvVRpr3OMR4RlJ31jtlaOEGnPjKZI1m\n"
+
 	return MakeHtpasswdFileFromString(content)
 }
 
 func MakeHtpasswdFileFromString(fileContent string) string {
-	f, err := ioutil.TempFile("", "htpasswd-")
+	htpasswdFile, err := ioutil.TempFile("", "htpasswd-")
 	if err != nil {
 		panic(err)
 	}
 
 	// bcrypt(username="test", passwd="test")
 	content := []byte(fileContent)
-	if err := ioutil.WriteFile(f.Name(), content, 0600); err != nil {
+	if err := ioutil.WriteFile(htpasswdFile.Name(), content, 0o600); err != nil { //nolint:gomnd
 		panic(err)
 	}
 
-	return f.Name()
+	return htpasswdFile.Name()
 }
 
 func Location(baseURL string, resp *resty.Response) string {
@@ -63,22 +64,23 @@ func Location(baseURL string, resp *resty.Response) string {
 	// zot implements the latter as per the spec, but some registries appear to
 	// return the former - this needs to be clarified
 	loc := resp.Header().Get("Location")
+
 	return baseURL + loc
 }
 
 func CopyFiles(sourceDir string, destDir string) error {
 	sourceMeta, err := os.Stat(sourceDir)
 	if err != nil {
-		return err
+		return fmt.Errorf("CopyFiles os.Stat failed: %w", err)
 	}
 
 	if err := os.MkdirAll(destDir, sourceMeta.Mode()); err != nil {
-		return err
+		return fmt.Errorf("CopyFiles os.MkdirAll failed: %w", err)
 	}
 
 	files, err := ioutil.ReadDir(sourceDir)
 	if err != nil {
-		return err
+		return fmt.Errorf("CopyFiles ioutil.ReadDir failed: %w", err)
 	}
 
 	for _, file := range files {
@@ -92,18 +94,18 @@ func CopyFiles(sourceDir string, destDir string) error {
 		} else {
 			sourceFile, err := os.Open(sourceFilePath)
 			if err != nil {
-				return err
+				return fmt.Errorf("CopyFiles os.Open failed: %w", err)
 			}
 			defer sourceFile.Close()
 
 			destFile, err := os.Create(destFilePath)
 			if err != nil {
-				return err
+				return fmt.Errorf("CopyFiles os.Create failed: %w", err)
 			}
 			defer destFile.Close()
 
 			if _, err = io.Copy(destFile, sourceFile); err != nil {
-				return err
+				return fmt.Errorf("io.Copy failed: %w", err)
 			}
 		}
 	}

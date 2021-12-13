@@ -4,8 +4,10 @@
 package monitoring
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -66,21 +68,20 @@ func (mc *MetricsClient) GetMetrics() (*MetricsInfo, error) {
 }
 
 func (mc *MetricsClient) makeGETRequest(url string, resultsPtr interface{}) (http.Header, error) {
-	req, err := http.NewRequest("GET", url, nil)
-
+	req, err := http.NewRequestWithContext(context.Background(), "GET", url, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("metric scraping: %w", err)
 	}
 
 	resp, err := mc.config.HTTPClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("metric scraping error: %w", err)
 	}
 
 	defer resp.Body.Close()
 
 	if err := json.NewDecoder(resp.Body).Decode(resultsPtr); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("metric scraping failed: %w", err)
 	}
 
 	return resp.Header, nil

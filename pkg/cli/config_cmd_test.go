@@ -11,9 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	zotErrors "zotregistry.io/zot/errors"
-
 	. "github.com/smartystreets/goconvey/convey"
+	zotErrors "zotregistry.io/zot/errors"
 )
 
 func TestConfigCmdBasics(t *testing.T) {

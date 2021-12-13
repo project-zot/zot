@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"path"
@@ -12,25 +13,26 @@ import (
 	"strings"
 	"sync"
 
+	// Add s3 support.
+	"github.com/docker/distribution/registry/storage/driver"
+
+	// Load s3 driver.
+	_ "github.com/docker/distribution/registry/storage/driver/s3-aws"
 	guuid "github.com/gofrs/uuid"
 	"github.com/notaryproject/notation-go-lib"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/rs/zerolog"
-	"zotregistry.io/zot/errors"
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	zlog "zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
-
-	// Add s3 support
-	storageDriver "github.com/docker/distribution/registry/storage/driver"
-	_ "github.com/docker/distribution/registry/storage/driver/s3-aws" // Load s3 driver
 )
 
 // ObjectStorage provides the image storage operations.
 type ObjectStorage struct {
 	rootDir     string
-	store       storageDriver.StorageDriver
+	store       driver.StorageDriver
 	lock        *sync.RWMutex
 	blobUploads map[string]storage.BlobUpload
 	log         zerolog.Logger
@@ -55,19 +57,19 @@ func (is *ObjectStorage) DirExists(d string) bool {
 
 // NewObjectStorage returns a new image store backed by cloud storages.
 // see https://github.com/docker/docker.github.io/tree/master/registry/storage-drivers
-func NewImageStore(rootDir string, gc bool, dedupe bool, log zlog.Logger, m monitoring.MetricServer,
-	store storageDriver.StorageDriver) storage.ImageStore {
-	is := &ObjectStorage{
+func NewImageStore(rootDir string, gc bool, dedupe bool, log zlog.Logger, metrics monitoring.MetricServer,
+	store driver.StorageDriver) storage.ImageStore {
+	imgStore := &ObjectStorage{
 		rootDir:           rootDir,
 		store:             store,
 		lock:              &sync.RWMutex{},
 		blobUploads:       make(map[string]storage.BlobUpload),
 		log:               log.With().Caller().Logger(),
 		isMultiPartUpload: make(map[string]bool),
-		metrics:           m,
+		metrics:           metrics,
 	}
 
-	return is
+	return imgStore
 }
 
 // RLock read-lock.
@@ -101,15 +103,17 @@ func (is *ObjectStorage) initRepo(name string) error {
 	ilPath := path.Join(repoDir, ispec.ImageLayoutFile)
 	if _, err := is.store.Stat(context.Background(), ilPath); err != nil {
 		il := ispec.ImageLayout{Version: ispec.ImageLayoutVersion}
-		buf, err := json.Marshal(il)
 
+		buf, err := json.Marshal(il)
 		if err != nil {
 			is.log.Error().Err(err).Msg("unable to marshal JSON")
+
 			return err
 		}
 
 		if _, err := writeFile(is.store, ilPath, buf); err != nil {
 			is.log.Error().Err(err).Str("file", ilPath).Msg("unable to write file")
+
 			return err
 		}
 	}
@@ -119,15 +123,17 @@ func (is *ObjectStorage) initRepo(name string) error {
 	if _, err := is.store.Stat(context.Background(), indexPath); err != nil {
 		index := ispec.Index{}
 		index.SchemaVersion = 2
-		buf, err := json.Marshal(index)
 
+		buf, err := json.Marshal(index)
 		if err != nil {
 			is.log.Error().Err(err).Msg("unable to marshal JSON")
+
 			return err
 		}
 
 		if _, err := writeFile(is.store, indexPath, buf); err != nil {
 			is.log.Error().Err(err).Str("file", ilPath).Msg("unable to write file")
+
 			return err
 		}
 	}
@@ -151,18 +157,19 @@ func (is *ObjectStorage) ValidateRepo(name string) (bool, error) {
 	// for objects storage we can not create empty dirs, so we check only against index.json and oci-layout
 	dir := path.Join(is.rootDir, name)
 	if fi, err := is.store.Stat(context.Background(), dir); err != nil || !fi.IsDir() {
-		return false, errors.ErrRepoNotFound
+		return false, zerr.ErrRepoNotFound
 	}
 
 	files, err := is.store.List(context.Background(), dir)
 	if err != nil {
 		is.log.Error().Err(err).Str("dir", dir).Msg("unable to read directory")
-		return false, errors.ErrRepoNotFound
+
+		return false, zerr.ErrRepoNotFound
 	}
 
 	// nolint:gomnd
 	if len(files) < 2 {
-		return false, errors.ErrRepoBadVersion
+		return false, zerr.ErrRepoBadVersion
 	}
 
 	found := map[string]bool{
@@ -205,7 +212,7 @@ func (is *ObjectStorage) ValidateRepo(name string) (bool, error) {
 	}
 
 	if il.Version != ispec.ImageLayoutVersion {
-		return false, errors.ErrRepoBadVersion
+		return false, zerr.ErrRepoBadVersion
 	}
 
 	return true, nil
@@ -219,18 +226,18 @@ func (is *ObjectStorage) GetRepositories() ([]string, error) {
 	defer is.RUnlock()
 
 	stores := make([]string, 0)
-	err := is.store.Walk(context.Background(), dir, func(fileInfo storageDriver.FileInfo) error {
+	err := is.store.Walk(context.Background(), dir, func(fileInfo driver.FileInfo) error {
 		if !fileInfo.IsDir() {
 			return nil
 		}
 
 		rel, err := filepath.Rel(is.rootDir, fileInfo.Path())
 		if err != nil {
-			return nil
+			return nil //nolint:nilerr // ignore paths that are not under root dir
 		}
 
 		if ok, err := is.ValidateRepo(rel); !ok || err != nil {
-			return nil
+			return nil //nolint:nilerr // ignore invalid repos
 		}
 
 		stores = append(stores, rel)
@@ -239,8 +246,8 @@ func (is *ObjectStorage) GetRepositories() ([]string, error) {
 	})
 
 	// if the root directory is not yet created then return an empty slice of repositories
-	_, ok := err.(storageDriver.PathNotFoundError)
-	if ok {
+	var perr driver.PathNotFoundError
+	if errors.As(err, &perr) {
 		return stores, nil
 	}
 
@@ -251,7 +258,7 @@ func (is *ObjectStorage) GetRepositories() ([]string, error) {
 func (is *ObjectStorage) GetImageTags(repo string) ([]string, error) {
 	dir := path.Join(is.rootDir, repo)
 	if fi, err := is.store.Stat(context.Background(), dir); err != nil || !fi.IsDir() {
-		return nil, errors.ErrRepoNotFound
+		return nil, zerr.ErrRepoNotFound
 	}
 
 	is.RLock()
@@ -265,7 +272,8 @@ func (is *ObjectStorage) GetImageTags(repo string) ([]string, error) {
 	var index ispec.Index
 	if err := json.Unmarshal(buf, &index); err != nil {
 		is.log.Error().Err(err).Str("dir", dir).Msg("invalid JSON")
-		return nil, errors.ErrRepoNotFound
+
+		return nil, zerr.ErrRepoNotFound
 	}
 
 	tags := make([]string, 0)
@@ -284,7 +292,7 @@ func (is *ObjectStorage) GetImageTags(repo string) ([]string, error) {
 func (is *ObjectStorage) GetImageManifest(repo string, reference string) ([]byte, string, string, error) {
 	dir := path.Join(is.rootDir, repo)
 	if fi, err := is.store.Stat(context.Background(), dir); err != nil || !fi.IsDir() {
-		return nil, "", "", errors.ErrRepoNotFound
+		return nil, "", "", zerr.ErrRepoNotFound
 	}
 
 	is.RLock()
@@ -298,6 +306,7 @@ func (is *ObjectStorage) GetImageManifest(repo string, reference string) ([]byte
 	var index ispec.Index
 	if err := json.Unmarshal(buf, &index); err != nil {
 		is.log.Error().Err(err).Str("dir", dir).Msg("invalid JSON")
+
 		return nil, "", "", err
 	}
 
@@ -307,19 +316,19 @@ func (is *ObjectStorage) GetImageManifest(repo string, reference string) ([]byte
 
 	mediaType := ""
 
-	for _, m := range index.Manifests {
-		if reference == m.Digest.String() {
-			digest = m.Digest
-			mediaType = m.MediaType
+	for _, manifest := range index.Manifests {
+		if reference == manifest.Digest.String() {
+			digest = manifest.Digest
+			mediaType = manifest.MediaType
 			found = true
 
 			break
 		}
 
-		v, ok := m.Annotations[ispec.AnnotationRefName]
+		v, ok := manifest.Annotations[ispec.AnnotationRefName]
 		if ok && v == reference {
-			digest = m.Digest
-			mediaType = m.MediaType
+			digest = manifest.Digest
+			mediaType = manifest.MediaType
 			found = true
 
 			break
@@ -327,7 +336,7 @@ func (is *ObjectStorage) GetImageManifest(repo string, reference string) ([]byte
 	}
 
 	if !found {
-		return nil, "", "", errors.ErrManifestNotFound
+		return nil, "", "", zerr.ErrManifestNotFound
 	}
 
 	p := path.Join(dir, "blobs", digest.Algorithm().String(), digest.Encoded())
@@ -335,12 +344,14 @@ func (is *ObjectStorage) GetImageManifest(repo string, reference string) ([]byte
 	buf, err = is.store.GetContent(context.Background(), p)
 	if err != nil {
 		is.log.Error().Err(err).Str("blob", p).Msg("failed to read manifest")
+
 		return nil, "", "", err
 	}
 
 	var manifest ispec.Manifest
 	if err := json.Unmarshal(buf, &manifest); err != nil {
 		is.log.Error().Err(err).Str("dir", dir).Msg("invalid JSON")
+
 		return nil, "", "", err
 	}
 
@@ -354,29 +365,34 @@ func (is *ObjectStorage) PutImageManifest(repo string, reference string, mediaTy
 	body []byte) (string, error) {
 	if err := is.InitRepo(repo); err != nil {
 		is.log.Debug().Err(err).Msg("init repo")
+
 		return "", err
 	}
 
 	if mediaType != ispec.MediaTypeImageManifest {
 		is.log.Debug().Interface("actual", mediaType).
 			Interface("expected", ispec.MediaTypeImageManifest).Msg("bad manifest media type")
-		return "", errors.ErrBadManifest
+
+		return "", zerr.ErrBadManifest
 	}
 
 	if len(body) == 0 {
 		is.log.Debug().Int("len", len(body)).Msg("invalid body length")
-		return "", errors.ErrBadManifest
+
+		return "", zerr.ErrBadManifest
 	}
 
 	var m ispec.Manifest
 	if err := json.Unmarshal(body, &m); err != nil {
 		is.log.Error().Err(err).Msg("unable to unmarshal JSON")
-		return "", errors.ErrBadManifest
+
+		return "", zerr.ErrBadManifest
 	}
 
 	if m.SchemaVersion != storage.SchemaVersion {
 		is.log.Error().Int("SchemaVersion", m.SchemaVersion).Msg("invalid manifest")
-		return "", errors.ErrBadManifest
+
+		return "", zerr.ErrBadManifest
 	}
 
 	for _, l := range m.Layers {
@@ -386,19 +402,21 @@ func (is *ObjectStorage) PutImageManifest(repo string, reference string, mediaTy
 
 		if _, err := is.store.Stat(context.Background(), blobPath); err != nil {
 			is.log.Error().Err(err).Str("blobPath", blobPath).Msg("unable to find blob")
-			return digest.String(), errors.ErrBlobNotFound
+
+			return digest.String(), zerr.ErrBlobNotFound
 		}
 	}
 
 	mDigest := godigest.FromBytes(body)
 	refIsDigest := false
-	d, err := godigest.Parse(reference)
+	dgst, err := godigest.Parse(reference)
 
 	if err == nil {
-		if d.String() != mDigest.String() {
-			is.log.Error().Str("actual", mDigest.String()).Str("expected", d.String()).
+		if dgst.String() != mDigest.String() {
+			is.log.Error().Str("actual", mDigest.String()).Str("expected", dgst.String()).
 				Msg("manifest digest is not valid")
-			return "", errors.ErrBadManifest
+
+			return "", zerr.ErrBadManifest
 		}
 
 		refIsDigest = true
@@ -417,31 +435,34 @@ func (is *ObjectStorage) PutImageManifest(repo string, reference string, mediaTy
 	var index ispec.Index
 	if err := json.Unmarshal(buf, &index); err != nil {
 		is.log.Error().Err(err).Str("dir", dir).Msg("invalid JSON")
-		return "", errors.ErrRepoBadVersion
+
+		return "", zerr.ErrRepoBadVersion
 	}
 
 	updateIndex := true
 	// create a new descriptor
-	desc := ispec.Descriptor{MediaType: mediaType, Size: int64(len(body)), Digest: mDigest,
-		Platform: &ispec.Platform{Architecture: "amd64", OS: "linux"}}
+	desc := ispec.Descriptor{
+		MediaType: mediaType, Size: int64(len(body)), Digest: mDigest,
+		Platform: &ispec.Platform{Architecture: "amd64", OS: "linux"},
+	}
 	if !refIsDigest {
 		desc.Annotations = map[string]string{ispec.AnnotationRefName: reference}
 	}
 
-	for i, m := range index.Manifests {
-		if reference == m.Digest.String() {
+	for midx, manifest := range index.Manifests {
+		if reference == manifest.Digest.String() {
 			// nothing changed, so don't update
-			desc = m
+			desc = manifest
 			updateIndex = false
 
 			break
 		}
 
-		v, ok := m.Annotations[ispec.AnnotationRefName]
+		v, ok := manifest.Annotations[ispec.AnnotationRefName]
 		if ok && v == reference {
-			if m.Digest.String() == mDigest.String() {
+			if manifest.Digest.String() == mDigest.String() {
 				// nothing changed, so don't update
-				desc = m
+				desc = manifest
 				updateIndex = false
 
 				break
@@ -455,11 +476,11 @@ func (is *ObjectStorage) PutImageManifest(repo string, reference string, mediaTy
 				Str("new digest", mDigest.String()).
 				Msg("updating existing tag with new manifest contents")
 
-			desc = m
+			desc = manifest
 			desc.Size = int64(len(body))
 			desc.Digest = mDigest
 
-			index.Manifests = append(index.Manifests[:i], index.Manifests[i+1:]...)
+			index.Manifests = append(index.Manifests[:midx], index.Manifests[midx+1:]...)
 
 			break
 		}
@@ -475,6 +496,7 @@ func (is *ObjectStorage) PutImageManifest(repo string, reference string, mediaTy
 
 	if err = is.store.PutContent(context.Background(), manifestPath, body); err != nil {
 		is.log.Error().Err(err).Str("file", manifestPath).Msg("unable to write")
+
 		return "", err
 	}
 
@@ -486,11 +508,13 @@ func (is *ObjectStorage) PutImageManifest(repo string, reference string, mediaTy
 
 	if err != nil {
 		is.log.Error().Err(err).Str("file", indexPath).Msg("unable to marshal JSON")
+
 		return "", err
 	}
 
 	if err = is.store.PutContent(context.Background(), indexPath, buf); err != nil {
 		is.log.Error().Err(err).Str("file", manifestPath).Msg("unable to write")
+
 		return "", err
 	}
 
@@ -504,13 +528,13 @@ func (is *ObjectStorage) PutImageManifest(repo string, reference string, mediaTy
 func (is *ObjectStorage) DeleteImageManifest(repo string, reference string) error {
 	dir := path.Join(is.rootDir, repo)
 	if fi, err := is.store.Stat(context.Background(), dir); err != nil || !fi.IsDir() {
-		return errors.ErrRepoNotFound
+		return zerr.ErrRepoNotFound
 	}
 
 	isTag := false
 
 	// as per spec "reference" can only be a digest and not a tag
-	digest, err := godigest.Parse(reference)
+	dgst, err := godigest.Parse(reference)
 	if err != nil {
 		is.log.Debug().Str("invalid digest: ", reference).Msg("storage: assuming tag")
 
@@ -528,40 +552,42 @@ func (is *ObjectStorage) DeleteImageManifest(repo string, reference string) erro
 	var index ispec.Index
 	if err := json.Unmarshal(buf, &index); err != nil {
 		is.log.Error().Err(err).Str("dir", dir).Msg("invalid JSON")
+
 		return err
 	}
 
 	found := false
 
-	var m ispec.Descriptor
+	var manifest ispec.Descriptor
 
 	// we are deleting, so keep only those manifests that don't match
 	outIndex := index
 	outIndex.Manifests = []ispec.Descriptor{}
 
-	for _, m = range index.Manifests {
+	for _, manifest = range index.Manifests {
 		if isTag {
-			tag, ok := m.Annotations[ispec.AnnotationRefName]
+			tag, ok := manifest.Annotations[ispec.AnnotationRefName]
 			if ok && tag == reference {
 				is.log.Debug().Str("deleting tag", tag).Msg("")
 
-				digest = m.Digest
+				dgst = manifest.Digest
 
 				found = true
 
 				continue
 			}
-		} else if reference == m.Digest.String() {
+		} else if reference == manifest.Digest.String() {
 			is.log.Debug().Str("deleting reference", reference).Msg("")
 			found = true
+
 			continue
 		}
 
-		outIndex.Manifests = append(outIndex.Manifests, m)
+		outIndex.Manifests = append(outIndex.Manifests, manifest)
 	}
 
 	if !found {
-		return errors.ErrManifestNotFound
+		return zerr.ErrManifestNotFound
 	}
 
 	// now update "index.json"
@@ -575,6 +601,7 @@ func (is *ObjectStorage) DeleteImageManifest(repo string, reference string) erro
 
 	if _, err := writeFile(is.store, file, buf); err != nil {
 		is.log.Debug().Str("deleting reference", reference).Msg("")
+
 		return err
 	}
 
@@ -582,15 +609,16 @@ func (is *ObjectStorage) DeleteImageManifest(repo string, reference string) erro
 	// e.g. 1.0.1 & 1.0.2 have same blob digest so if we delete 1.0.1, blob should not be removed.
 	toDelete := true
 
-	for _, m = range outIndex.Manifests {
-		if digest.String() == m.Digest.String() {
+	for _, manifest = range outIndex.Manifests {
+		if dgst.String() == manifest.Digest.String() {
 			toDelete = false
+
 			break
 		}
 	}
 
 	if toDelete {
-		p := path.Join(dir, "blobs", digest.Algorithm().String(), digest.Encoded())
+		p := path.Join(dir, "blobs", dgst.Algorithm().String(), dgst.Encoded())
 
 		err = is.store.Delete(context.Background(), p)
 		if err != nil {
@@ -624,18 +652,18 @@ func (is *ObjectStorage) NewBlobUpload(repo string) (string, error) {
 		return "", err
 	}
 
-	u := uuid.String()
+	uid := uuid.String()
 
-	blobUploadPath := is.BlobUploadPath(repo, u)
+	blobUploadPath := is.BlobUploadPath(repo, uid)
 
 	// here we should create an empty multi part upload, but that's not possible
 	// so we just create a regular empty file which will be overwritten by FinishBlobUpload
 	err = is.store.PutContent(context.Background(), blobUploadPath, []byte{})
 	if err != nil {
-		return "", errors.ErrRepoNotFound
+		return "", zerr.ErrRepoNotFound
 	}
 
-	return u, nil
+	return uid, nil
 }
 
 // GetBlobUpload returns the current size of a blob upload.
@@ -648,17 +676,17 @@ func (is *ObjectStorage) GetBlobUpload(repo string, uuid string) (int64, error) 
 	// created by NewBlobUpload, it should have 0 size every time
 	isMultiPartStarted, ok := is.isMultiPartUpload[blobUploadPath]
 	if !isMultiPartStarted || !ok {
-		fi, err := is.store.Stat(context.Background(), blobUploadPath)
+		binfo, err := is.store.Stat(context.Background(), blobUploadPath)
 		if err != nil {
-			_, ok := err.(storageDriver.PathNotFoundError)
-			if ok {
-				return -1, errors.ErrUploadNotFound
+			var perr driver.PathNotFoundError
+			if errors.As(err, &perr) {
+				return -1, zerr.ErrUploadNotFound
 			}
 
 			return -1, err
 		}
 
-		fileSize = fi.Size()
+		fileSize = binfo.Size()
 	} else {
 		// otherwise get the size of multi parts upload
 		fi, err := getMultipartFileWriter(is, blobUploadPath)
@@ -683,12 +711,13 @@ func (is *ObjectStorage) PutBlobChunkStreamed(repo string, uuid string, body io.
 
 	_, err := is.store.Stat(context.Background(), blobUploadPath)
 	if err != nil {
-		return -1, errors.ErrUploadNotFound
+		return -1, zerr.ErrUploadNotFound
 	}
 
 	file, err := getMultipartFileWriter(is, blobUploadPath)
 	if err != nil {
 		is.log.Error().Err(err).Msg("failed to create multipart upload")
+
 		return -1, err
 	}
 
@@ -699,16 +728,18 @@ func (is *ObjectStorage) PutBlobChunkStreamed(repo string, uuid string, body io.
 	_, err = buf.ReadFrom(body)
 	if err != nil {
 		is.log.Error().Err(err).Msg("failed to read blob")
+
 		return -1, err
 	}
 
-	n, err := file.Write(buf.Bytes())
+	nbytes, err := file.Write(buf.Bytes())
 	if err != nil {
 		is.log.Error().Err(err).Msg("failed to append to file")
+
 		return -1, err
 	}
 
-	return int64(n), err
+	return int64(nbytes), err
 }
 
 // PutBlobChunk writes another chunk of data to the specified blob. It returns
@@ -723,12 +754,13 @@ func (is *ObjectStorage) PutBlobChunk(repo string, uuid string, from int64, to i
 
 	_, err := is.store.Stat(context.Background(), blobUploadPath)
 	if err != nil {
-		return -1, errors.ErrUploadNotFound
+		return -1, zerr.ErrUploadNotFound
 	}
 
 	file, err := getMultipartFileWriter(is, blobUploadPath)
 	if err != nil {
 		is.log.Error().Err(err).Msg("failed to create multipart upload")
+
 		return -1, err
 	}
 
@@ -739,13 +771,14 @@ func (is *ObjectStorage) PutBlobChunk(repo string, uuid string, from int64, to i
 		err := file.Cancel()
 		if err != nil {
 			is.log.Error().Err(err).Msg("failed to cancel multipart upload")
+
 			return -1, err
 		}
 
 		is.log.Error().Int64("expected", from).Int64("actual", file.Size()).
 			Msg("invalid range start for blob upload")
 
-		return -1, errors.ErrBadUploadRange
+		return -1, zerr.ErrBadUploadRange
 	}
 
 	buf := new(bytes.Buffer)
@@ -753,18 +786,20 @@ func (is *ObjectStorage) PutBlobChunk(repo string, uuid string, from int64, to i
 	_, err = buf.ReadFrom(body)
 	if err != nil {
 		is.log.Error().Err(err).Msg("failed to read blob")
+
 		return -1, err
 	}
 
-	n, err := file.Write(buf.Bytes())
+	nbytes, err := file.Write(buf.Bytes())
 	if err != nil {
 		is.log.Error().Err(err).Msg("failed to append to file")
+
 		return -1, err
 	}
 
 	is.isMultiPartUpload[blobUploadPath] = true
 
-	return int64(n), err
+	return int64(nbytes), err
 }
 
 // BlobUploadInfo returns the current blob size in bytes.
@@ -777,22 +812,24 @@ func (is *ObjectStorage) BlobUploadInfo(repo string, uuid string) (int64, error)
 	// created by NewBlobUpload, it should have 0 size every time
 	isMultiPartStarted, ok := is.isMultiPartUpload[blobUploadPath]
 	if !isMultiPartStarted || !ok {
-		fi, err := is.store.Stat(context.Background(), blobUploadPath)
+		uploadInfo, err := is.store.Stat(context.Background(), blobUploadPath)
 		if err != nil {
 			is.log.Error().Err(err).Str("blob", blobUploadPath).Msg("failed to stat blob")
+
 			return -1, err
 		}
 
-		fileSize = fi.Size()
+		fileSize = uploadInfo.Size()
 	} else {
 		// otherwise get the size of multi parts upload
-		fi, err := getMultipartFileWriter(is, blobUploadPath)
+		binfo, err := getMultipartFileWriter(is, blobUploadPath)
 		if err != nil {
 			is.log.Error().Err(err).Str("blob", blobUploadPath).Msg("failed to stat blob")
+
 			return -1, err
 		}
 
-		fileSize = fi.Size()
+		fileSize = binfo.Size()
 	}
 
 	return fileSize, nil
@@ -803,7 +840,8 @@ func (is *ObjectStorage) FinishBlobUpload(repo string, uuid string, body io.Read
 	dstDigest, err := godigest.Parse(digest)
 	if err != nil {
 		is.log.Error().Err(err).Str("digest", digest).Msg("failed to parse digest")
-		return errors.ErrBadBlobDigest
+
+		return zerr.ErrBadBlobDigest
 	}
 
 	src := is.BlobUploadPath(repo, uuid)
@@ -812,11 +850,13 @@ func (is *ObjectStorage) FinishBlobUpload(repo string, uuid string, body io.Read
 	fileWriter, err := is.store.Writer(context.Background(), src, true)
 	if err != nil {
 		is.log.Error().Err(err).Str("blob", src).Msg("failed to open blob")
-		return errors.ErrBadBlobDigest
+
+		return zerr.ErrBadBlobDigest
 	}
 
 	if err := fileWriter.Commit(); err != nil {
 		is.log.Error().Err(err).Msg("failed to commit file")
+
 		return err
 	}
 
@@ -827,19 +867,22 @@ func (is *ObjectStorage) FinishBlobUpload(repo string, uuid string, body io.Read
 	fileReader, err := is.store.Reader(context.Background(), src, 0)
 	if err != nil {
 		is.log.Error().Err(err).Str("blob", src).Msg("failed to open file")
-		return errors.ErrUploadNotFound
+
+		return zerr.ErrUploadNotFound
 	}
 
 	srcDigest, err := godigest.FromReader(fileReader)
 	if err != nil {
 		is.log.Error().Err(err).Str("blob", src).Msg("failed to open blob")
-		return errors.ErrBadBlobDigest
+
+		return zerr.ErrBadBlobDigest
 	}
 
 	if srcDigest != dstDigest {
 		is.log.Error().Str("srcDigest", srcDigest.String()).
 			Str("dstDigest", dstDigest.String()).Msg("actual digest not equal to expected digest")
-		return errors.ErrBadBlobDigest
+
+		return zerr.ErrBadBlobDigest
 	}
 
 	fileReader.Close()
@@ -849,6 +892,7 @@ func (is *ObjectStorage) FinishBlobUpload(repo string, uuid string, body io.Read
 	if err := is.store.Move(context.Background(), src, dst); err != nil {
 		is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
 			Str("dst", dst).Msg("unable to finish blob")
+
 		return err
 	}
 
@@ -867,7 +911,8 @@ func (is *ObjectStorage) FullBlobUpload(repo string, body io.Reader, digest stri
 	dstDigest, err := godigest.Parse(digest)
 	if err != nil {
 		is.log.Error().Err(err).Str("digest", digest).Msg("failed to parse digest")
-		return "", -1, errors.ErrBadBlobDigest
+
+		return "", -1, zerr.ErrBadBlobDigest
 	}
 
 	u, err := guuid.NewV4()
@@ -886,18 +931,21 @@ func (is *ObjectStorage) FullBlobUpload(repo string, body io.Reader, digest stri
 	_, err = buf.ReadFrom(body)
 	if err != nil {
 		is.log.Error().Err(err).Msg("failed to read blob")
+
 		return "", -1, err
 	}
 
-	n, err := writeFile(is.store, src, buf.Bytes())
+	nbytes, err := writeFile(is.store, src, buf.Bytes())
 	if err != nil {
 		is.log.Error().Err(err).Msg("failed to write blob")
+
 		return "", -1, err
 	}
 
 	_, err = digester.Write(buf.Bytes())
 	if err != nil {
 		is.log.Error().Err(err).Msg("digester failed to write")
+
 		return "", -1, err
 	}
 
@@ -905,7 +953,8 @@ func (is *ObjectStorage) FullBlobUpload(repo string, body io.Reader, digest stri
 	if srcDigest != dstDigest {
 		is.log.Error().Str("srcDigest", srcDigest.String()).
 			Str("dstDigest", dstDigest.String()).Msg("actual digest not equal to expected digest")
-		return "", -1, errors.ErrBadBlobDigest
+
+		return "", -1, zerr.ErrBadBlobDigest
 	}
 
 	is.Lock()
@@ -916,10 +965,11 @@ func (is *ObjectStorage) FullBlobUpload(repo string, body io.Reader, digest stri
 	if err := is.store.Move(context.Background(), src, dst); err != nil {
 		is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
 			Str("dst", dst).Msg("unable to finish blob")
+
 		return "", -1, err
 	}
 
-	return uuid, int64(n), nil
+	return uuid, int64(nbytes), nil
 }
 
 func (is *ObjectStorage) DedupeBlob(src string, dstDigest godigest.Digest, dst string) error {
@@ -931,6 +981,7 @@ func (is *ObjectStorage) DeleteBlobUpload(repo string, uuid string) error {
 	blobUploadPath := is.BlobUploadPath(repo, uuid)
 	if err := is.store.Delete(context.Background(), blobUploadPath); err != nil {
 		is.log.Error().Err(err).Str("blobUploadPath", blobUploadPath).Msg("error deleting blob upload")
+
 		return err
 	}
 
@@ -944,22 +995,23 @@ func (is *ObjectStorage) BlobPath(repo string, digest godigest.Digest) string {
 
 // CheckBlob verifies a blob and returns true if the blob is correct.
 func (is *ObjectStorage) CheckBlob(repo string, digest string) (bool, int64, error) {
-	d, err := godigest.Parse(digest)
+	dgst, err := godigest.Parse(digest)
 	if err != nil {
 		is.log.Error().Err(err).Str("digest", digest).Msg("failed to parse digest")
-		return false, -1, errors.ErrBadBlobDigest
+
+		return false, -1, zerr.ErrBadBlobDigest
 	}
 
-	blobPath := is.BlobPath(repo, d)
+	blobPath := is.BlobPath(repo, dgst)
 
 	is.RLock()
 	defer is.RUnlock()
 
-	blobInfo, err := is.store.Stat(context.Background(), blobPath)
+	binfo, err := is.store.Stat(context.Background(), blobPath)
 	if err != nil {
-		_, ok := err.(storageDriver.PathNotFoundError)
-		if ok {
-			return false, -1, errors.ErrBlobNotFound
+		var perr driver.PathNotFoundError
+		if errors.As(err, &perr) {
+			return false, -1, zerr.ErrBlobNotFound
 		}
 
 		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
@@ -969,37 +1021,39 @@ func (is *ObjectStorage) CheckBlob(repo string, digest string) (bool, int64, err
 
 	is.log.Debug().Str("blob path", blobPath).Msg("blob path found")
 
-	return true, blobInfo.Size(), nil
+	return true, binfo.Size(), nil
 }
 
 // GetBlob returns a stream to read the blob.
-// FIXME: we should probably parse the manifest and use (digest, mediaType) as a
 // blob selector instead of directly downloading the blob.
 func (is *ObjectStorage) GetBlob(repo string, digest string, mediaType string) (io.Reader, int64, error) {
-	d, err := godigest.Parse(digest)
+	dgst, err := godigest.Parse(digest)
 	if err != nil {
 		is.log.Error().Err(err).Str("digest", digest).Msg("failed to parse digest")
-		return nil, -1, errors.ErrBadBlobDigest
+
+		return nil, -1, zerr.ErrBadBlobDigest
 	}
 
-	blobPath := is.BlobPath(repo, d)
+	blobPath := is.BlobPath(repo, dgst)
 
 	is.RLock()
 	defer is.RUnlock()
 
-	blobInfo, err := is.store.Stat(context.Background(), blobPath)
+	binfo, err := is.store.Stat(context.Background(), blobPath)
 	if err != nil {
 		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
-		return nil, -1, errors.ErrBlobNotFound
+
+		return nil, -1, zerr.ErrBlobNotFound
 	}
 
 	blobReader, err := is.store.Reader(context.Background(), blobPath, 0)
 	if err != nil {
 		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to open blob")
+
 		return nil, -1, err
 	}
 
-	return blobReader, blobInfo.Size(), nil
+	return blobReader, binfo.Size(), nil
 }
 
 func (is *ObjectStorage) GetBlobContent(repo string, digest string) ([]byte, error) {
@@ -1013,6 +1067,7 @@ func (is *ObjectStorage) GetBlobContent(repo string, digest string) ([]byte, err
 	_, err = buf.ReadFrom(blob)
 	if err != nil {
 		is.log.Error().Err(err).Msg("failed to read blob")
+
 		return []byte{}, err
 	}
 
@@ -1020,7 +1075,7 @@ func (is *ObjectStorage) GetBlobContent(repo string, digest string) ([]byte, err
 }
 
 func (is *ObjectStorage) GetReferrers(repo, digest string, mediaType string) ([]notation.Descriptor, error) {
-	return nil, errors.ErrMethodNotSupported
+	return nil, zerr.ErrMethodNotSupported
 }
 
 func (is *ObjectStorage) GetIndexContent(repo string) ([]byte, error) {
@@ -1029,7 +1084,8 @@ func (is *ObjectStorage) GetIndexContent(repo string) ([]byte, error) {
 	buf, err := is.store.GetContent(context.Background(), path.Join(dir, "index.json"))
 	if err != nil {
 		is.log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
-		return []byte{}, errors.ErrRepoNotFound
+
+		return []byte{}, zerr.ErrRepoNotFound
 	}
 
 	return buf, nil
@@ -1037,13 +1093,14 @@ func (is *ObjectStorage) GetIndexContent(repo string) ([]byte, error) {
 
 // DeleteBlob removes the blob from the repository.
 func (is *ObjectStorage) DeleteBlob(repo string, digest string) error {
-	d, err := godigest.Parse(digest)
+	dgst, err := godigest.Parse(digest)
 	if err != nil {
 		is.log.Error().Err(err).Str("digest", digest).Msg("failed to parse digest")
-		return errors.ErrBlobNotFound
+
+		return zerr.ErrBlobNotFound
 	}
 
-	blobPath := is.BlobPath(repo, d)
+	blobPath := is.BlobPath(repo, dgst)
 
 	is.Lock()
 	defer is.Unlock()
@@ -1051,11 +1108,13 @@ func (is *ObjectStorage) DeleteBlob(repo string, digest string) error {
 	_, err = is.store.Stat(context.Background(), blobPath)
 	if err != nil {
 		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
-		return errors.ErrBlobNotFound
+
+		return zerr.ErrBlobNotFound
 	}
 
 	if err := is.store.Delete(context.Background(), blobPath); err != nil {
 		is.log.Error().Err(err).Str("blobPath", blobPath).Msg("unable to remove blob path")
+
 		return err
 	}
 
@@ -1064,17 +1123,17 @@ func (is *ObjectStorage) DeleteBlob(repo string, digest string) error {
 
 // Do not use for multipart upload, buf must not be empty.
 // If you want to create an empty file use is.store.PutContent().
-func writeFile(store storageDriver.StorageDriver, filepath string, buf []byte) (int, error) {
+func writeFile(store driver.StorageDriver, filepath string, buf []byte) (int, error) {
 	var n int
 
-	if fw, err := store.Writer(context.Background(), filepath, false); err == nil {
-		defer fw.Close()
+	if stwr, err := store.Writer(context.Background(), filepath, false); err == nil {
+		defer stwr.Close()
 
-		if n, err = fw.Write(buf); err != nil {
+		if n, err = stwr.Write(buf); err != nil {
 			return -1, err
 		}
 
-		if err := fw.Commit(); err != nil {
+		if err := stwr.Commit(); err != nil {
 			return -1, err
 		}
 	} else {
@@ -1087,19 +1146,19 @@ func writeFile(store storageDriver.StorageDriver, filepath string, buf []byte) (
 // Because we can not create an empty multipart upload, we store multi part uploads
 // so that we know when to create a fileWriter with append=true or with append=false
 // Trying and handling errors results in weird s3 api errors.
-func getMultipartFileWriter(is *ObjectStorage, filepath string) (storageDriver.FileWriter, error) {
-	var file storageDriver.FileWriter
+func getMultipartFileWriter(imgStore *ObjectStorage, filepath string) (driver.FileWriter, error) {
+	var file driver.FileWriter
 
 	var err error
 
-	isMultiPartStarted, ok := is.isMultiPartUpload[filepath]
+	isMultiPartStarted, ok := imgStore.isMultiPartUpload[filepath]
 	if !isMultiPartStarted || !ok {
-		file, err = is.store.Writer(context.Background(), filepath, false)
+		file, err = imgStore.store.Writer(context.Background(), filepath, false)
 		if err != nil {
 			return file, err
 		}
 	} else {
-		file, err = is.store.Writer(context.Background(), filepath, true)
+		file, err = imgStore.store.Writer(context.Background(), filepath, true)
 		if err != nil {
 			return file, err
 		}

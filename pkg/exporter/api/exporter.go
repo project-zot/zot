@@ -1,6 +1,7 @@
 //go:build minimal
 // +build minimal
 
+// nolint: varnamelen
 package api
 
 import (
@@ -32,9 +33,8 @@ func (zc Collector) Describe(ch chan<- *prometheus.Desc) {
 // Implements prometheus.Collector interface.
 func (zc Collector) Collect(ch chan<- prometheus.Metric) {
 	metrics, err := zc.Client.GetMetrics()
-
 	if err != nil {
-		fmt.Println(err)
+		fmt.Printf("error getting metrics: %v\n", err)
 		ch <- prometheus.MustNewConstMetric(zc.MetricsDesc["zot_up"], prometheus.GaugeValue, 0)
 
 		return
@@ -54,15 +54,15 @@ func (zc Collector) Collect(ch chan<- prometheus.Metric) {
 			zc.MetricsDesc[name], prometheus.CounterValue, float64(c.Count), c.LabelValues...)
 	}
 
-	for _, s := range metrics.Summaries {
-		mname := zc.invalidChars.ReplaceAllLiteralString(s.Name, "_")
+	for _, summary := range metrics.Summaries {
+		mname := zc.invalidChars.ReplaceAllLiteralString(summary.Name, "_")
 		name := mname + "_count"
 		ch <- prometheus.MustNewConstMetric(
-			zc.MetricsDesc[name], prometheus.CounterValue, float64(s.Count), s.LabelValues...)
+			zc.MetricsDesc[name], prometheus.CounterValue, float64(summary.Count), summary.LabelValues...)
 
 		name = mname + "_sum"
 		ch <- prometheus.MustNewConstMetric(
-			zc.MetricsDesc[name], prometheus.CounterValue, s.Sum, s.LabelValues...)
+			zc.MetricsDesc[name], prometheus.CounterValue, summary.Sum, summary.LabelValues...)
 	}
 
 	for _, h := range metrics.Histograms {
@@ -99,7 +99,7 @@ func panicOnDuplicateMetricName(m map[string]*prometheus.Desc, name string, log 
 }
 
 func GetCollector(c *Controller) *Collector {
-	//compute all metrics description map
+	// compute all metrics description map
 	MetricsDesc := map[string]*prometheus.Desc{
 		"zot_up": prometheus.NewDesc(
 			"zot_up",

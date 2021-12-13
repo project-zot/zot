@@ -69,7 +69,7 @@ func (ac *AccessController) can(username, action, repository string) bool {
 		can = isPermitted(username, action, pg)
 	}
 
-	//check admins based policy
+	// check admins based policy
 	if !can {
 		if ac.isAdmin(username) && contains(ac.Config.AdminPolicy.Actions, action) {
 			can = true
@@ -85,7 +85,7 @@ func (ac *AccessController) isAdmin(username string) bool {
 }
 
 // getContext builds ac context(allowed to read repos and if user is admin) and returns it.
-func (ac *AccessController) getContext(username string, r *http.Request) context.Context {
+func (ac *AccessController) getContext(username string, request *http.Request) context.Context {
 	userAllowedRepos := ac.getReadRepos(username)
 	acCtx := AccessControlContext{userAllowedRepos: userAllowedRepos}
 
@@ -95,25 +95,26 @@ func (ac *AccessController) getContext(username string, r *http.Request) context
 		acCtx.isAdmin = false
 	}
 
-	ctx := context.WithValue(r.Context(), authzCtxKey, acCtx)
+	ctx := context.WithValue(request.Context(), authzCtxKey, acCtx)
 
 	return ctx
 }
 
 // isPermitted returns true if username can do action on a repository policy.
-func isPermitted(username, action string, pg config.PolicyGroup) bool {
+func isPermitted(username, action string, policyGroup config.PolicyGroup) bool {
 	var result bool
 	// check repo/system based policies
-	for _, p := range pg.Policies {
+	for _, p := range policyGroup.Policies {
 		if contains(p.Users, username) && contains(p.Actions, action) {
 			result = true
+
 			break
 		}
 	}
 
 	// check defaultPolicy
 	if !result {
-		if contains(pg.DefaultPolicy, action) {
+		if contains(policyGroup.DefaultPolicy, action) {
 			result = true
 		}
 	}
@@ -141,33 +142,34 @@ func containsRepo(slice []string, item string) bool {
 	return false
 }
 
-func AuthzHandler(c *Controller) mux.MiddlewareFunc {
+func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			vars := mux.Vars(r)
+		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+			vars := mux.Vars(request)
 			resource := vars["name"]
 			reference, ok := vars["reference"]
 
-			ac := NewAccessController(c.Config)
-			username := getUsername(r)
-			ctx := ac.getContext(username, r)
+			acCtrlr := NewAccessController(ctlr.Config)
+			username := getUsername(request)
+			ctx := acCtrlr.getContext(username, request)
 
-			if r.RequestURI == "/v2/_catalog" || r.RequestURI == "/v2/" {
-				next.ServeHTTP(w, r.WithContext(ctx))
+			if request.RequestURI == "/v2/_catalog" || request.RequestURI == "/v2/" {
+				next.ServeHTTP(response, request.WithContext(ctx))
+
 				return
 			}
 
 			var action string
-			if r.Method == http.MethodGet || r.Method == http.MethodHead {
+			if request.Method == http.MethodGet || request.Method == http.MethodHead {
 				action = READ
 			}
 
-			if r.Method == http.MethodPut || r.Method == http.MethodPatch || r.Method == http.MethodPost {
+			if request.Method == http.MethodPut || request.Method == http.MethodPatch || request.Method == http.MethodPost {
 				// assume user wants to create
 				action = CREATE
 				// if we get a reference (tag)
 				if ok {
-					is := c.StoreController.GetImageStore(resource)
+					is := ctlr.StoreController.GetImageStore(resource)
 					tags, err := is.GetImageTags(resource)
 					// if repo exists and request's tag doesn't exist yet then action is UPDATE
 					if err == nil && contains(tags, reference) && reference != "latest" {
@@ -176,15 +178,15 @@ func AuthzHandler(c *Controller) mux.MiddlewareFunc {
 				}
 			}
 
-			if r.Method == http.MethodDelete {
+			if request.Method == http.MethodDelete {
 				action = DELETE
 			}
 
-			can := ac.can(username, action, resource)
+			can := acCtrlr.can(username, action, resource)
 			if !can {
-				authzFail(w, c.Config.HTTP.Realm, c.Config.HTTP.Auth.FailDelay)
+				authzFail(response, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
 			} else {
-				next.ServeHTTP(w, r.WithContext(ctx))
+				next.ServeHTTP(response, request.WithContext(ctx))
 			}
 		})
 	}
@@ -193,9 +195,9 @@ func AuthzHandler(c *Controller) mux.MiddlewareFunc {
 func getUsername(r *http.Request) string {
 	// this should work because it worked in auth middleware
 	basicAuth := r.Header.Get("Authorization")
-	s := strings.SplitN(basicAuth, " ", 2)
+	s := strings.SplitN(basicAuth, " ", 2) //nolint:gomnd
 	b, _ := base64.StdEncoding.DecodeString(s[1])
-	pair := strings.SplitN(string(b), ":", 2)
+	pair := strings.SplitN(string(b), ":", 2) //nolint:gomnd
 
 	return pair[0]
 }

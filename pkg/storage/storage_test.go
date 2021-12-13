@@ -11,10 +11,12 @@ import (
 	"path"
 	"strings"
 	"sync"
-
-	//"strings"
 	"testing"
 
+	// Add s3 support.
+	"github.com/docker/distribution/registry/storage/driver"
+	"github.com/docker/distribution/registry/storage/driver/factory"
+	_ "github.com/docker/distribution/registry/storage/driver/s3-aws"
 	guuid "github.com/gofrs/uuid"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -25,25 +27,21 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/s3"
-
-	// Add s3 support
-	"github.com/docker/distribution/registry/storage/driver"
-	storageDriver "github.com/docker/distribution/registry/storage/driver"
-	"github.com/docker/distribution/registry/storage/driver/factory"
-	_ "github.com/docker/distribution/registry/storage/driver/s3-aws"
 )
 
-func cleanupStorage(store storageDriver.StorageDriver, name string) {
+func cleanupStorage(store driver.StorageDriver, name string) {
 	_ = store.Delete(context.Background(), name)
 }
 
 func skipIt(t *testing.T) {
+	t.Helper()
+
 	if os.Getenv("S3MOCK_ENDPOINT") == "" {
 		t.Skip("Skipping testing without AWS S3 mock server")
 	}
 }
 
-func createObjectsStore(rootDir string) (storageDriver.StorageDriver, storage.ImageStore, error) {
+func createObjectsStore(rootDir string) (driver.StorageDriver, storage.ImageStore, error) {
 	bucket := "zot-storage-test"
 	endpoint := os.Getenv("S3MOCK_ENDPOINT")
 	storageDriverParams := map[string]interface{}{
@@ -96,7 +94,7 @@ func TestStorageAPIs(t *testing.T) {
 	for _, testcase := range testCases {
 		testcase := testcase
 		t.Run(testcase.testCaseName, func(t *testing.T) {
-			var il storage.ImageStore
+			var imgStore storage.ImageStore
 			if testcase.storageType == "s3" {
 				skipIt(t)
 
@@ -108,7 +106,7 @@ func TestStorageAPIs(t *testing.T) {
 				testDir := path.Join("/oci-repo-test", uuid.String())
 
 				var store driver.StorageDriver
-				store, il, _ = createObjectsStore(testDir)
+				store, imgStore, _ = createObjectsStore(testDir)
 				defer cleanupStorage(store, testDir)
 			} else {
 				dir, err := ioutil.TempDir("", "oci-repo-test")
@@ -120,44 +118,44 @@ func TestStorageAPIs(t *testing.T) {
 
 				log := log.Logger{Logger: zerolog.New(os.Stdout)}
 				metrics := monitoring.NewMetricsServer(false, log)
-				il = storage.NewImageStore(dir, true, true, log, metrics)
+				imgStore = storage.NewImageStore(dir, true, true, log, metrics)
 			}
 
 			Convey("Repo layout", t, func(c C) {
 				repoName := "test"
 
 				Convey("Validate repo without initialization", func() {
-					v, err := il.ValidateRepo(repoName)
+					v, err := imgStore.ValidateRepo(repoName)
 					So(v, ShouldEqual, false)
 					So(err, ShouldNotBeNil)
-					ok := il.DirExists(path.Join(il.RootDir(), repoName))
+					ok := imgStore.DirExists(path.Join(imgStore.RootDir(), repoName))
 					So(ok, ShouldBeFalse)
 				})
 
 				Convey("Initialize repo", func() {
-					err := il.InitRepo(repoName)
+					err := imgStore.InitRepo(repoName)
 					So(err, ShouldBeNil)
-					ok := il.DirExists(path.Join(il.RootDir(), repoName))
+					ok := imgStore.DirExists(path.Join(imgStore.RootDir(), repoName))
 					So(ok, ShouldBeTrue)
 					storeController := storage.StoreController{}
-					storeController.DefaultStore = il
-					So(storeController.GetImageStore("test"), ShouldResemble, il)
+					storeController.DefaultStore = imgStore
+					So(storeController.GetImageStore("test"), ShouldResemble, imgStore)
 				})
 
 				Convey("Validate repo", func() {
-					v, err := il.ValidateRepo(repoName)
+					v, err := imgStore.ValidateRepo(repoName)
 					So(err, ShouldBeNil)
 					So(v, ShouldEqual, true)
 				})
 
 				Convey("Get repos", func() {
-					v, err := il.GetRepositories()
+					v, err := imgStore.GetRepositories()
 					So(err, ShouldBeNil)
 					So(v, ShouldNotBeEmpty)
 				})
 
 				Convey("Get image tags", func() {
-					v, err := il.GetImageTags("test")
+					v, err := imgStore.GetImageTags("test")
 					So(err, ShouldBeNil)
 					So(v, ShouldBeEmpty)
 				})
@@ -165,37 +163,37 @@ func TestStorageAPIs(t *testing.T) {
 				Convey("Full blob upload", func() {
 					body := []byte("this is a blob")
 					buf := bytes.NewBuffer(body)
-					d := godigest.FromBytes(body)
-					u, n, err := il.FullBlobUpload("test", buf, d.String())
+					digest := godigest.FromBytes(body)
+					upload, n, err := imgStore.FullBlobUpload("test", buf, digest.String())
 					So(err, ShouldBeNil)
 					So(n, ShouldEqual, len(body))
-					So(u, ShouldNotBeEmpty)
+					So(upload, ShouldNotBeEmpty)
 				})
 
 				Convey("New blob upload", func() {
-					v, err := il.NewBlobUpload("test")
+					upload, err := imgStore.NewBlobUpload("test")
 					So(err, ShouldBeNil)
-					So(v, ShouldNotBeEmpty)
+					So(upload, ShouldNotBeEmpty)
 
-					err = il.DeleteBlobUpload("test", v)
+					err = imgStore.DeleteBlobUpload("test", upload)
 					So(err, ShouldBeNil)
 
-					v, err = il.NewBlobUpload("test")
+					upload, err = imgStore.NewBlobUpload("test")
 					So(err, ShouldBeNil)
-					So(v, ShouldNotBeEmpty)
+					So(upload, ShouldNotBeEmpty)
 
 					Convey("Get blob upload", func() {
-						b, err := il.GetBlobUpload("test", "invalid")
+						bupload, err := imgStore.GetBlobUpload("test", "invalid")
 						So(err, ShouldNotBeNil)
-						So(b, ShouldEqual, -1)
+						So(bupload, ShouldEqual, -1)
 
-						b, err = il.GetBlobUpload("test", v)
+						bupload, err = imgStore.GetBlobUpload("test", upload)
 						So(err, ShouldBeNil)
-						So(b, ShouldBeGreaterThanOrEqualTo, 0)
+						So(bupload, ShouldBeGreaterThanOrEqualTo, 0)
 
-						b, err = il.BlobUploadInfo("test", v)
+						bupload, err = imgStore.BlobUploadInfo("test", upload)
 						So(err, ShouldBeNil)
-						So(b, ShouldBeGreaterThanOrEqualTo, 0)
+						So(bupload, ShouldBeGreaterThanOrEqualTo, 0)
 
 						content := []byte("test-data1")
 						firstChunkContent := []byte("test")
@@ -206,281 +204,285 @@ func TestStorageAPIs(t *testing.T) {
 						secondChunkLen := secondChunkBuf.Len()
 
 						buf := bytes.NewBuffer(content)
-						l := buf.Len()
-						d := godigest.FromBytes(content)
-						blobDigest := d
+						buflen := buf.Len()
+						digest := godigest.FromBytes(content)
+						blobDigest := digest
 
 						// invalid chunk range
-						_, err = il.PutBlobChunk("test", v, 10, int64(l), buf)
+						_, err = imgStore.PutBlobChunk("test", upload, 10, int64(buflen), buf)
 						So(err, ShouldNotBeNil)
 
-						b, err = il.PutBlobChunk("test", v, 0, int64(firstChunkLen), firstChunkBuf)
+						bupload, err = imgStore.PutBlobChunk("test", upload, 0, int64(firstChunkLen), firstChunkBuf)
 						So(err, ShouldBeNil)
-						So(b, ShouldEqual, firstChunkLen)
+						So(bupload, ShouldEqual, firstChunkLen)
 
-						b, err = il.GetBlobUpload("test", v)
+						bupload, err = imgStore.GetBlobUpload("test", upload)
 						So(err, ShouldBeNil)
-						So(b, ShouldEqual, int64(firstChunkLen))
+						So(bupload, ShouldEqual, int64(firstChunkLen))
 
-						b, err = il.BlobUploadInfo("test", v)
+						bupload, err = imgStore.BlobUploadInfo("test", upload)
 						So(err, ShouldBeNil)
-						So(b, ShouldEqual, int64(firstChunkLen))
+						So(bupload, ShouldEqual, int64(firstChunkLen))
 
-						b, err = il.PutBlobChunk("test", v, int64(firstChunkLen), int64(l), secondChunkBuf)
+						bupload, err = imgStore.PutBlobChunk("test", upload, int64(firstChunkLen), int64(buflen), secondChunkBuf)
 						So(err, ShouldBeNil)
-						So(b, ShouldEqual, secondChunkLen)
+						So(bupload, ShouldEqual, secondChunkLen)
 
-						err = il.FinishBlobUpload("test", v, buf, d.String())
-						So(err, ShouldBeNil)
-
-						_, _, err = il.CheckBlob("test", d.String())
+						err = imgStore.FinishBlobUpload("test", upload, buf, digest.String())
 						So(err, ShouldBeNil)
 
-						_, _, err = il.GetBlob("test", d.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
+						_, _, err = imgStore.CheckBlob("test", digest.String())
 						So(err, ShouldBeNil)
 
-						m := ispec.Manifest{}
-						m.SchemaVersion = 2
-						mb, _ := json.Marshal(m)
+						_, _, err = imgStore.GetBlob("test", digest.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
+						So(err, ShouldBeNil)
+
+						manifest := ispec.Manifest{}
+						manifest.SchemaVersion = 2
+						manifestBuf, _ := json.Marshal(manifest)
 
 						Convey("Bad image manifest", func() {
-							_, err = il.PutImageManifest("test", d.String(), "application/json", mb)
+							_, err = imgStore.PutImageManifest("test", digest.String(), "application/json",
+								manifestBuf)
 							So(err, ShouldNotBeNil)
 
-							_, err = il.PutImageManifest("test", d.String(), ispec.MediaTypeImageManifest, []byte{})
+							_, err = imgStore.PutImageManifest("test", digest.String(), ispec.MediaTypeImageManifest,
+								[]byte{})
 							So(err, ShouldNotBeNil)
 
-							_, err = il.PutImageManifest("test", d.String(), ispec.MediaTypeImageManifest, []byte(`{"test":true}`))
+							_, err = imgStore.PutImageManifest("test", digest.String(), ispec.MediaTypeImageManifest,
+								[]byte(`{"test":true}`))
 							So(err, ShouldNotBeNil)
 
-							_, err = il.PutImageManifest("test", d.String(), ispec.MediaTypeImageManifest, mb)
+							_, err = imgStore.PutImageManifest("test", digest.String(), ispec.MediaTypeImageManifest,
+								manifestBuf)
 							So(err, ShouldNotBeNil)
 
-							_, _, _, err = il.GetImageManifest("test", d.String())
+							_, _, _, err = imgStore.GetImageManifest("test", digest.String())
 							So(err, ShouldNotBeNil)
 
-							_, _, _, err = il.GetImageManifest("inexistent", d.String())
+							_, _, _, err = imgStore.GetImageManifest("inexistent", digest.String())
 							So(err, ShouldNotBeNil)
 						})
 
 						Convey("Good image manifest", func() {
 							annotationsMap := make(map[string]string)
 							annotationsMap[ispec.AnnotationRefName] = "1.0"
-							m := ispec.Manifest{
+							manifest := ispec.Manifest{
 								Config: ispec.Descriptor{
-									Digest: d,
-									Size:   int64(l),
+									Digest: digest,
+									Size:   int64(buflen),
 								},
 								Layers: []ispec.Descriptor{
 									{
 										MediaType: "application/vnd.oci.image.layer.v1.tar",
-										Digest:    d,
-										Size:      int64(l),
+										Digest:    digest,
+										Size:      int64(buflen),
 									},
 								},
 								Annotations: annotationsMap,
 							}
 
-							m.SchemaVersion = 2
-							mb, _ = json.Marshal(m)
-							d := godigest.FromBytes(mb)
+							manifest.SchemaVersion = 2
+							manifestBuf, _ = json.Marshal(manifest)
+							digest := godigest.FromBytes(manifestBuf)
 
 							// bad manifest
-							m.Layers[0].Digest = godigest.FromBytes([]byte("inexistent"))
-							badMb, _ := json.Marshal(m)
+							manifest.Layers[0].Digest = godigest.FromBytes([]byte("inexistent"))
+							badMb, _ := json.Marshal(manifest)
 
-							_, err = il.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, badMb)
+							_, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, badMb)
 							So(err, ShouldNotBeNil)
 
-							_, err = il.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, mb)
+							_, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, manifestBuf)
 							So(err, ShouldBeNil)
 
 							// same manifest for coverage
-							_, err = il.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, mb)
+							_, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, manifestBuf)
 							So(err, ShouldBeNil)
 
-							_, err = il.PutImageManifest("test", "2.0", ispec.MediaTypeImageManifest, mb)
+							_, err = imgStore.PutImageManifest("test", "2.0", ispec.MediaTypeImageManifest, manifestBuf)
 							So(err, ShouldBeNil)
 
-							_, err := il.PutImageManifest("test", "3.0", ispec.MediaTypeImageManifest, mb)
+							_, err := imgStore.PutImageManifest("test", "3.0", ispec.MediaTypeImageManifest, manifestBuf)
 							So(err, ShouldBeNil)
 
-							_, err = il.GetImageTags("inexistent")
+							_, err = imgStore.GetImageTags("inexistent")
 							So(err, ShouldNotBeNil)
 
 							// total tags should be 3 but they have same reference.
-							tags, err := il.GetImageTags("test")
+							tags, err := imgStore.GetImageTags("test")
 							So(err, ShouldBeNil)
 							So(len(tags), ShouldEqual, 3)
 
-							_, _, _, err = il.GetImageManifest("test", d.String())
+							_, _, _, err = imgStore.GetImageManifest("test", digest.String())
 							So(err, ShouldBeNil)
 
-							_, _, _, err = il.GetImageManifest("test", "3.0")
+							_, _, _, err = imgStore.GetImageManifest("test", "3.0")
 							So(err, ShouldBeNil)
 
-							err = il.DeleteImageManifest("test", "1.0")
+							err = imgStore.DeleteImageManifest("test", "1.0")
 							So(err, ShouldBeNil)
 
-							tags, err = il.GetImageTags("test")
+							tags, err = imgStore.GetImageTags("test")
 							So(err, ShouldBeNil)
 							So(len(tags), ShouldEqual, 2)
 
 							// We deleted only one tag, make sure blob should not be removed.
-							hasBlob, _, err := il.CheckBlob("test", d.String())
+							hasBlob, _, err := imgStore.CheckBlob("test", digest.String())
 							So(err, ShouldBeNil)
 							So(hasBlob, ShouldEqual, true)
 
 							// If we pass reference all manifest with input reference should be deleted.
-							err = il.DeleteImageManifest("test", d.String())
+							err = imgStore.DeleteImageManifest("test", digest.String())
 							So(err, ShouldBeNil)
 
-							tags, err = il.GetImageTags("test")
+							tags, err = imgStore.GetImageTags("test")
 							So(err, ShouldBeNil)
 							So(len(tags), ShouldEqual, 0)
 
 							// All tags/references are deleted, blob should not be present in disk.
-							hasBlob, _, err = il.CheckBlob("test", d.String())
+							hasBlob, _, err = imgStore.CheckBlob("test", digest.String())
 							So(err, ShouldNotBeNil)
 							So(hasBlob, ShouldEqual, false)
 
-							err = il.DeleteBlob("test", "inexistent")
+							err = imgStore.DeleteBlob("test", "inexistent")
 							So(err, ShouldNotBeNil)
 
-							err = il.DeleteBlob("test", godigest.FromBytes([]byte("inexistent")).String())
+							err = imgStore.DeleteBlob("test", godigest.FromBytes([]byte("inexistent")).String())
 							So(err, ShouldNotBeNil)
 
-							err = il.DeleteBlob("test", blobDigest.String())
+							err = imgStore.DeleteBlob("test", blobDigest.String())
 							So(err, ShouldBeNil)
 
-							_, _, _, err = il.GetImageManifest("test", d.String())
+							_, _, _, err = imgStore.GetImageManifest("test", digest.String())
 							So(err, ShouldNotBeNil)
 						})
 					})
 
-					err = il.DeleteBlobUpload("test", v)
+					err = imgStore.DeleteBlobUpload("test", upload)
 					So(err, ShouldNotBeNil)
 				})
 
 				Convey("New blob upload streamed", func() {
-					v, err := il.NewBlobUpload("test")
+					bupload, err := imgStore.NewBlobUpload("test")
 					So(err, ShouldBeNil)
-					So(v, ShouldNotBeEmpty)
+					So(bupload, ShouldNotBeEmpty)
 
 					Convey("Get blob upload", func() {
-						err = il.FinishBlobUpload("test", v, bytes.NewBuffer([]byte{}), "inexistent")
+						err = imgStore.FinishBlobUpload("test", bupload, bytes.NewBuffer([]byte{}), "inexistent")
 						So(err, ShouldNotBeNil)
 
-						b, err := il.GetBlobUpload("test", "invalid")
+						upload, err := imgStore.GetBlobUpload("test", "invalid")
 						So(err, ShouldNotBeNil)
-						So(b, ShouldEqual, -1)
+						So(upload, ShouldEqual, -1)
 
-						b, err = il.GetBlobUpload("test", v)
+						upload, err = imgStore.GetBlobUpload("test", bupload)
 						So(err, ShouldBeNil)
-						So(b, ShouldBeGreaterThanOrEqualTo, 0)
+						So(upload, ShouldBeGreaterThanOrEqualTo, 0)
 
-						_, err = il.BlobUploadInfo("test", "inexistent")
+						_, err = imgStore.BlobUploadInfo("test", "inexistent")
 						So(err, ShouldNotBeNil)
 
-						b, err = il.BlobUploadInfo("test", v)
+						upload, err = imgStore.BlobUploadInfo("test", bupload)
 						So(err, ShouldBeNil)
-						So(b, ShouldBeGreaterThanOrEqualTo, 0)
+						So(upload, ShouldBeGreaterThanOrEqualTo, 0)
 
 						content := []byte("test-data2")
 						buf := bytes.NewBuffer(content)
-						l := buf.Len()
-						d := godigest.FromBytes(content)
-						b, err = il.PutBlobChunkStreamed("test", v, buf)
+						buflen := buf.Len()
+						digest := godigest.FromBytes(content)
+						upload, err = imgStore.PutBlobChunkStreamed("test", bupload, buf)
 						So(err, ShouldBeNil)
-						So(b, ShouldEqual, l)
+						So(upload, ShouldEqual, buflen)
 
-						_, err = il.PutBlobChunkStreamed("test", "inexistent", buf)
+						_, err = imgStore.PutBlobChunkStreamed("test", "inexistent", buf)
 						So(err, ShouldNotBeNil)
 
-						err = il.FinishBlobUpload("test", "inexistent", buf, d.String())
+						err = imgStore.FinishBlobUpload("test", "inexistent", buf, digest.String())
 						So(err, ShouldNotBeNil)
 
-						err = il.FinishBlobUpload("test", v, buf, d.String())
+						err = imgStore.FinishBlobUpload("test", bupload, buf, digest.String())
 						So(err, ShouldBeNil)
 
-						_, _, err = il.CheckBlob("test", d.String())
+						_, _, err = imgStore.CheckBlob("test", digest.String())
 						So(err, ShouldBeNil)
 
-						_, _, err = il.GetBlob("test", "inexistent", "application/vnd.oci.image.layer.v1.tar+gzip")
+						_, _, err = imgStore.GetBlob("test", "inexistent", "application/vnd.oci.image.layer.v1.tar+gzip")
 						So(err, ShouldNotBeNil)
 
-						_, _, err = il.GetBlob("test", d.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
+						_, _, err = imgStore.GetBlob("test", digest.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
 						So(err, ShouldBeNil)
 
-						blobContent, err := il.GetBlobContent("test", d.String())
+						blobContent, err := imgStore.GetBlobContent("test", digest.String())
 						So(err, ShouldBeNil)
 						So(content, ShouldResemble, blobContent)
 
-						_, err = il.GetBlobContent("inexistent", d.String())
+						_, err = imgStore.GetBlobContent("inexistent", digest.String())
 						So(err, ShouldNotBeNil)
 
-						m := ispec.Manifest{}
-						m.SchemaVersion = 2
-						mb, _ := json.Marshal(m)
+						manifest := ispec.Manifest{}
+						manifest.SchemaVersion = 2
+						manifestBuf, _ := json.Marshal(manifest)
 
 						Convey("Bad digests", func() {
-							_, _, err := il.FullBlobUpload("test", bytes.NewBuffer([]byte{}), "inexistent")
+							_, _, err := imgStore.FullBlobUpload("test", bytes.NewBuffer([]byte{}), "inexistent")
 							So(err, ShouldNotBeNil)
 
-							_, _, err = il.CheckBlob("test", "inexistent")
+							_, _, err = imgStore.CheckBlob("test", "inexistent")
 							So(err, ShouldNotBeNil)
 						})
 
 						Convey("Bad image manifest", func() {
-							_, err = il.PutImageManifest("test", d.String(), ispec.MediaTypeImageManifest, mb)
+							_, err = imgStore.PutImageManifest("test", digest.String(), ispec.MediaTypeImageManifest, manifestBuf)
 							So(err, ShouldNotBeNil)
 
-							_, err = il.PutImageManifest("test", d.String(), ispec.MediaTypeImageManifest, []byte("bad json"))
+							_, err = imgStore.PutImageManifest("test", digest.String(), ispec.MediaTypeImageManifest, []byte("bad json"))
 							So(err, ShouldNotBeNil)
 
-							_, _, _, err = il.GetImageManifest("test", d.String())
+							_, _, _, err = imgStore.GetImageManifest("test", digest.String())
 							So(err, ShouldNotBeNil)
 						})
 
 						Convey("Good image manifest", func() {
-							m := ispec.Manifest{
+							manifest := ispec.Manifest{
 								Config: ispec.Descriptor{
-									Digest: d,
-									Size:   int64(l),
+									Digest: digest,
+									Size:   int64(buflen),
 								},
 								Layers: []ispec.Descriptor{
 									{
 										MediaType: "application/vnd.oci.image.layer.v1.tar",
-										Digest:    d,
-										Size:      int64(l),
+										Digest:    digest,
+										Size:      int64(buflen),
 									},
 								},
 							}
-							m.SchemaVersion = 2
-							mb, _ = json.Marshal(m)
-							d := godigest.FromBytes(mb)
-							_, err = il.PutImageManifest("test", d.String(), ispec.MediaTypeImageManifest, mb)
+							manifest.SchemaVersion = 2
+							manifestBuf, _ = json.Marshal(manifest)
+							digest := godigest.FromBytes(manifestBuf)
+							_, err = imgStore.PutImageManifest("test", digest.String(), ispec.MediaTypeImageManifest, manifestBuf)
 							So(err, ShouldBeNil)
 
 							// same manifest for coverage
-							_, err = il.PutImageManifest("test", d.String(), ispec.MediaTypeImageManifest, mb)
+							_, err = imgStore.PutImageManifest("test", digest.String(), ispec.MediaTypeImageManifest, manifestBuf)
 							So(err, ShouldBeNil)
 
-							_, _, _, err = il.GetImageManifest("test", d.String())
+							_, _, _, err = imgStore.GetImageManifest("test", digest.String())
 							So(err, ShouldBeNil)
 
-							_, err = il.GetIndexContent("inexistent")
+							_, err = imgStore.GetIndexContent("inexistent")
 							So(err, ShouldNotBeNil)
 
-							indexContent, err := il.GetIndexContent("test")
+							indexContent, err := imgStore.GetIndexContent("test")
 							So(err, ShouldBeNil)
 
 							if testcase.storageType == "fs" {
-								err = os.Chmod(path.Join(il.RootDir(), "test", "index.json"), 0000)
+								err = os.Chmod(path.Join(imgStore.RootDir(), "test", "index.json"), 0o000)
 								So(err, ShouldBeNil)
-								_, err = il.GetIndexContent("test")
+								_, err = imgStore.GetIndexContent("test")
 								So(err, ShouldNotBeNil)
-								err = os.Chmod(path.Join(il.RootDir(), "test", "index.json"), 0644)
+								err = os.Chmod(path.Join(imgStore.RootDir(), "test", "index.json"), 0o644)
 								So(err, ShouldBeNil)
 							}
 
@@ -490,104 +492,104 @@ func TestStorageAPIs(t *testing.T) {
 							So(err, ShouldBeNil)
 
 							So(len(index.Manifests), ShouldEqual, 1)
-							err = il.DeleteImageManifest("test", "1.0")
+							err = imgStore.DeleteImageManifest("test", "1.0")
 							So(err, ShouldNotBeNil)
 
-							err = il.DeleteImageManifest("inexistent", "1.0")
+							err = imgStore.DeleteImageManifest("inexistent", "1.0")
 							So(err, ShouldNotBeNil)
 
-							err = il.DeleteImageManifest("test", d.String())
+							err = imgStore.DeleteImageManifest("test", digest.String())
 							So(err, ShouldBeNil)
 
-							_, _, _, err = il.GetImageManifest("test", d.String())
+							_, _, _, err = imgStore.GetImageManifest("test", digest.String())
 							So(err, ShouldNotBeNil)
 						})
 					})
 
-					err = il.DeleteBlobUpload("test", v)
+					err = imgStore.DeleteBlobUpload("test", bupload)
 					So(err, ShouldNotBeNil)
 				})
 
 				Convey("Modify manifest in-place", func() {
 					// original blob
-					v, err := il.NewBlobUpload("replace")
+					upload, err := imgStore.NewBlobUpload("replace")
 					So(err, ShouldBeNil)
-					So(v, ShouldNotBeEmpty)
+					So(upload, ShouldNotBeEmpty)
 
 					content := []byte("test-data-replace-1")
 					buf := bytes.NewBuffer(content)
-					l := buf.Len()
-					d := godigest.FromBytes(content)
-					b, err := il.PutBlobChunkStreamed("replace", v, buf)
+					buflen := buf.Len()
+					digest := godigest.FromBytes(content)
+					blob, err := imgStore.PutBlobChunkStreamed("replace", upload, buf)
 					So(err, ShouldBeNil)
-					So(b, ShouldEqual, l)
-					blobDigest1 := strings.Split(d.String(), ":")[1]
+					So(blob, ShouldEqual, buflen)
+					blobDigest1 := strings.Split(digest.String(), ":")[1]
 					So(blobDigest1, ShouldNotBeEmpty)
 
-					err = il.FinishBlobUpload("replace", v, buf, d.String())
+					err = imgStore.FinishBlobUpload("replace", upload, buf, digest.String())
 					So(err, ShouldBeNil)
-					So(b, ShouldEqual, l)
+					So(blob, ShouldEqual, buflen)
 
-					m := ispec.Manifest{}
-					m.SchemaVersion = 2
-					m = ispec.Manifest{
+					manifest := ispec.Manifest{}
+					manifest.SchemaVersion = 2
+					manifest = ispec.Manifest{
 						Config: ispec.Descriptor{
-							Digest: d,
-							Size:   int64(l),
+							Digest: digest,
+							Size:   int64(buflen),
 						},
 						Layers: []ispec.Descriptor{
 							{
 								MediaType: "application/vnd.oci.image.layer.v1.tar",
-								Digest:    d,
-								Size:      int64(l),
+								Digest:    digest,
+								Size:      int64(buflen),
 							},
 						},
 					}
-					m.SchemaVersion = 2
-					mb, _ := json.Marshal(m)
-					d = godigest.FromBytes(mb)
-					_, err = il.PutImageManifest("replace", "1.0", ispec.MediaTypeImageManifest, mb)
+					manifest.SchemaVersion = 2
+					manifestBuf, _ := json.Marshal(manifest)
+					digest = godigest.FromBytes(manifestBuf)
+					_, err = imgStore.PutImageManifest("replace", "1.0", ispec.MediaTypeImageManifest, manifestBuf)
 					So(err, ShouldBeNil)
 
-					_, _, _, err = il.GetImageManifest("replace", d.String())
+					_, _, _, err = imgStore.GetImageManifest("replace", digest.String())
 					So(err, ShouldBeNil)
 
 					// new blob to replace
-					v, err = il.NewBlobUpload("replace")
+					upload, err = imgStore.NewBlobUpload("replace")
 					So(err, ShouldBeNil)
-					So(v, ShouldNotBeEmpty)
+					So(upload, ShouldNotBeEmpty)
 
 					content = []byte("test-data-replace-2")
 					buf = bytes.NewBuffer(content)
-					l = buf.Len()
-					d = godigest.FromBytes(content)
-					b, err = il.PutBlobChunkStreamed("replace", v, buf)
+					buflen = buf.Len()
+					digest = godigest.FromBytes(content)
+					blob, err = imgStore.PutBlobChunkStreamed("replace", upload, buf)
 					So(err, ShouldBeNil)
-					So(b, ShouldEqual, l)
-					blobDigest2 := strings.Split(d.String(), ":")[1]
+					So(blob, ShouldEqual, buflen)
+					blobDigest2 := strings.Split(digest.String(), ":")[1]
 					So(blobDigest2, ShouldNotBeEmpty)
 
-					err = il.FinishBlobUpload("replace", v, buf, d.String())
+					err = imgStore.FinishBlobUpload("replace", upload, buf, digest.String())
 					So(err, ShouldBeNil)
-					So(b, ShouldEqual, l)
+					So(blob, ShouldEqual, buflen)
 
-					m = ispec.Manifest{
+					manifest = ispec.Manifest{
 						Config: ispec.Descriptor{
-							Digest: d,
-							Size:   int64(l),
+							Digest: digest,
+							Size:   int64(buflen),
 						},
 						Layers: []ispec.Descriptor{
 							{
 								MediaType: "application/vnd.oci.image.layer.v1.tar",
-								Digest:    d,
-								Size:      int64(l),
+								Digest:    digest,
+								Size:      int64(buflen),
 							},
 						},
 					}
-					m.SchemaVersion = 2
-					mb, _ = json.Marshal(m)
-					_ = godigest.FromBytes(mb)
-					_, err = il.PutImageManifest("replace", "1.0", ispec.MediaTypeImageManifest, mb)
+					manifest.SchemaVersion = 2
+					manifestBuf, _ = json.Marshal(manifest)
+					_ = godigest.FromBytes(manifestBuf)
+					_, err = imgStore.PutImageManifest("replace", "1.0", ispec.MediaTypeImageManifest, manifestBuf)
 					So(err, ShouldBeNil)
 				})
 
@@ -598,15 +600,15 @@ func TestStorageAPIs(t *testing.T) {
 						wg.Add(2)
 						go func() {
 							defer wg.Done()
-							il.Lock()
+							imgStore.Lock()
 							func() {}()
-							il.Unlock()
+							imgStore.Unlock()
 						}()
 						go func() {
 							defer wg.Done()
-							il.RLock()
+							imgStore.RLock()
 							func() {}()
-							il.RUnlock()
+							imgStore.RUnlock()
 						}()
 					}
 					wg.Wait()
@@ -690,17 +692,17 @@ func TestStorageHandler(t *testing.T) {
 
 				storeController.SubStore = subStore
 
-				is := storeController.GetImageStore("zot-x-test")
-				So(is.RootDir(), ShouldEqual, firstRootDir)
+				imgStore := storeController.GetImageStore("zot-x-test")
+				So(imgStore.RootDir(), ShouldEqual, firstRootDir)
 
-				is = storeController.GetImageStore("a/zot-a-test")
-				So(is.RootDir(), ShouldEqual, secondRootDir)
+				imgStore = storeController.GetImageStore("a/zot-a-test")
+				So(imgStore.RootDir(), ShouldEqual, secondRootDir)
 
-				is = storeController.GetImageStore("b/zot-b-test")
-				So(is.RootDir(), ShouldEqual, thirdRootDir)
+				imgStore = storeController.GetImageStore("b/zot-b-test")
+				So(imgStore.RootDir(), ShouldEqual, thirdRootDir)
 
-				is = storeController.GetImageStore("c/zot-c-test")
-				So(is.RootDir(), ShouldEqual, firstRootDir)
+				imgStore = storeController.GetImageStore("c/zot-c-test")
+				So(imgStore.RootDir(), ShouldEqual, firstRootDir)
 			})
 		})
 	}

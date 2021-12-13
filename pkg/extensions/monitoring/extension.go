@@ -10,6 +10,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/log"
 )
 
@@ -90,14 +91,26 @@ func NewMetricsServer(enabled bool, log log.Logger) MetricServer {
 // implementing the MetricServer interface.
 func (ms *metricServer) SendMetric(mfunc interface{}) {
 	if ms.enabled {
-		fn := mfunc.(func())
-		fn()
+		mfn, ok := mfunc.(func())
+		if !ok {
+			ms.log.Error().Err(errors.ErrInvalidMetric).Msg("type conversion")
+
+			return
+		}
+
+		mfn()
 	}
 }
 
 func (ms *metricServer) ForceSendMetric(mfunc interface{}) {
-	fn := mfunc.(func())
-	fn()
+	mfn, ok := mfunc.(func())
+	if !ok {
+		ms.log.Error().Err(errors.ErrInvalidMetric).Msg("type conversion")
+
+		return
+	}
+
+	mfn()
 }
 
 func (ms *metricServer) ReceiveMetrics() interface{} {

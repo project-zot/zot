@@ -40,7 +40,7 @@ func TestCopyFiles(t *testing.T) {
 		}
 		defer os.RemoveAll(dir)
 
-		err = os.Chmod(dir, 0300)
+		err = os.Chmod(dir, 0o300)
 		So(err, ShouldBeNil)
 
 		err = CopyFiles(dir, os.TempDir())
@@ -54,7 +54,7 @@ func TestCopyFiles(t *testing.T) {
 		defer os.RemoveAll(dir)
 
 		sdir := "subdir"
-		err = os.Mkdir(path.Join(dir, sdir), 0300)
+		err = os.Mkdir(path.Join(dir, sdir), 0o300)
 		So(err, ShouldBeNil)
 
 		err = CopyFiles(dir, os.TempDir())
@@ -68,12 +68,12 @@ func TestCopyFiles(t *testing.T) {
 		defer os.RemoveAll(dir)
 
 		filePath := path.Join(dir, "file.txt")
-		err = ioutil.WriteFile(filePath, []byte("some dummy file content"), 0644) //nolint: gosec
+		err = ioutil.WriteFile(filePath, []byte("some dummy file content"), 0o644) //nolint: gosec
 		if err != nil {
 			panic(err)
 		}
 
-		err = os.Chmod(filePath, 0300)
+		err = os.Chmod(filePath, 0o300)
 		So(err, ShouldBeNil)
 
 		err = CopyFiles(dir, os.TempDir())

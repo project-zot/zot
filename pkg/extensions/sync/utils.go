@@ -42,28 +42,30 @@ func parseRepositoryReference(input string) (reference.Named, error) {
 }
 
 // filterRepos filters repos based on prefix given in the config.
-func filterRepos(repos []string, content []Content, log log.Logger) map[int][]string {
+func filterRepos(repos []string, contentList []Content, log log.Logger) map[int][]string {
 	filtered := make(map[int][]string)
 
 	for _, repo := range repos {
-		for contentID, c := range content {
+		for contentID, content := range contentList {
 			var prefix string
 			// handle prefixes starting with '/'
-			if strings.HasPrefix(c.Prefix, "/") {
-				prefix = c.Prefix[1:]
+			if strings.HasPrefix(content.Prefix, "/") {
+				prefix = content.Prefix[1:]
 			} else {
-				prefix = c.Prefix
+				prefix = content.Prefix
 			}
 
 			matched, err := glob.Match(prefix, repo)
 			if err != nil {
 				log.Error().Err(err).Str("pattern",
 					prefix).Msg("error while parsing glob pattern, skipping it...")
+
 				continue
 			}
 
 			if matched {
 				filtered[contentID] = append(filtered[contentID], repo)
+
 				break
 			}
 		}
@@ -74,14 +76,14 @@ func filterRepos(repos []string, content []Content, log log.Logger) map[int][]st
 
 // Get sync.FileCredentials from file.
 func getFileCredentials(filepath string) (CredentialsFile, error) {
-	f, err := ioutil.ReadFile(filepath)
+	credsFile, err := ioutil.ReadFile(filepath)
 	if err != nil {
 		return nil, err
 	}
 
 	var creds CredentialsFile
 
-	err = json.Unmarshal(f, &creds)
+	err = json.Unmarshal(credsFile, &creds)
 	if err != nil {
 		return nil, err
 	}
@@ -102,6 +104,7 @@ func pushSyncedLocalImage(repo, tag, uuid string,
 	manifestContent, _, _, err := cacheImageStore.GetImageManifest(repo, tag)
 	if err != nil {
 		log.Error().Err(err).Str("dir", path.Join(cacheImageStore.RootDir(), repo)).Msg("couldn't find index.json")
+
 		return err
 	}
 
@@ -109,6 +112,7 @@ func pushSyncedLocalImage(repo, tag, uuid string,
 
 	if err := json.Unmarshal(manifestContent, &manifest); err != nil {
 		log.Error().Err(err).Str("dir", path.Join(cacheImageStore.RootDir(), repo)).Msg("invalid JSON")
+
 		return err
 	}
 
@@ -117,12 +121,14 @@ func pushSyncedLocalImage(repo, tag, uuid string,
 		if err != nil {
 			log.Error().Err(err).Str("dir", path.Join(cacheImageStore.RootDir(),
 				repo)).Str("blob digest", blob.Digest.String()).Msg("couldn't read blob")
+
 			return err
 		}
 
 		_, _, err = imageStore.FullBlobUpload(repo, blobReader, blob.Digest.String())
 		if err != nil {
 			log.Error().Err(err).Str("blob digest", blob.Digest.String()).Msg("couldn't upload blob")
+
 			return err
 		}
 	}
@@ -131,18 +137,21 @@ func pushSyncedLocalImage(repo, tag, uuid string,
 	if err != nil {
 		log.Error().Err(err).Str("dir", path.Join(cacheImageStore.RootDir(),
 			repo)).Str("blob digest", manifest.Config.Digest.String()).Msg("couldn't read config blob")
+
 		return err
 	}
 
 	_, _, err = imageStore.FullBlobUpload(repo, blobReader, manifest.Config.Digest.String())
 	if err != nil {
 		log.Error().Err(err).Str("blob digest", manifest.Config.Digest.String()).Msg("couldn't upload config blob")
+
 		return err
 	}
 
 	_, err = imageStore.PutImageManifest(repo, tag, ispec.MediaTypeImageManifest, manifestContent)
 	if err != nil {
 		log.Error().Err(err).Msg("couldn't upload manifest")
+
 		return err
 	}
 
@@ -150,6 +159,7 @@ func pushSyncedLocalImage(repo, tag, uuid string,
 
 	if err := os.RemoveAll(path.Join(cacheImageStore.RootDir(), repo)); err != nil {
 		log.Error().Err(err).Msg("couldn't remove locally cached sync repo")
+
 		return err
 	}
 

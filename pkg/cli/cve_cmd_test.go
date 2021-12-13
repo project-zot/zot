@@ -290,7 +290,7 @@ func TestServerCVEResponse(t *testing.T) {
 	url := GetBaseURL(port)
 	conf := config.New()
 	conf.HTTP.Port = port
-	c := api.NewController(conf)
+	ctlr := api.NewController(conf)
 
 	dir, err := ioutil.TempDir("", "oci-repo-test")
 	if err != nil {
@@ -304,7 +304,7 @@ func TestServerCVEResponse(t *testing.T) {
 
 	defer os.RemoveAll(dir)
 
-	c.Config.Storage.RootDirectory = dir
+	ctlr.Config.Storage.RootDirectory = dir
 	cveConfig := &extconf.CVEConfig{
 		UpdateInterval: 2,
 	}
@@ -312,7 +312,7 @@ func TestServerCVEResponse(t *testing.T) {
 		CVE:    cveConfig,
 		Enable: true,
 	}
-	c.Config.Extensions = &extconf.ExtensionConfig{
+	ctlr.Config.Extensions = &extconf.ExtensionConfig{
 		Search: searchConfig,
 	}
 
@@ -321,7 +321,7 @@ func TestServerCVEResponse(t *testing.T) {
 		if err := controller.Run(); err != nil {
 			return
 		}
-	}(c)
+	}(ctlr)
 	// wait till ready
 	for {
 		res, err := resty.R().Get(url + "/query")
@@ -336,7 +336,7 @@ func TestServerCVEResponse(t *testing.T) {
 	defer func(controller *api.Controller) {
 		ctx := context.Background()
 		_ = controller.Server.Shutdown(ctx)
-	}(c)
+	}(ctlr)
 
 	Convey("Test CVE by image name", t, func() {
 		args := []string{"cvetest", "--image", "zot-cve-test:0.0.1"}

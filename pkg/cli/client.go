@@ -23,8 +23,10 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 )
 
-var httpClientsMap = make(map[string]*http.Client) //nolint: gochecknoglobals
-var httpClientLock sync.Mutex                      //nolint: gochecknoglobals
+var (
+	httpClientsMap = make(map[string]*http.Client) //nolint: gochecknoglobals
+	httpClientLock sync.Mutex                      //nolint: gochecknoglobals
+)
 
 const (
 	httpTimeout        = 5 * time.Minute
@@ -36,13 +38,13 @@ const (
 )
 
 func createHTTPClient(verifyTLS bool, host string) *http.Client {
-	var tr = http.DefaultTransport.(*http.Transport).Clone()
+	htr := http.DefaultTransport.(*http.Transport).Clone()
 	if !verifyTLS {
-		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint: gosec
+		htr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint: gosec
 
 		return &http.Client{
 			Timeout:   httpTimeout,
-			Transport: tr,
+			Transport: htr,
 		}
 	}
 
@@ -51,20 +53,20 @@ func createHTTPClient(verifyTLS bool, host string) *http.Client {
 
 	tlsConfig := loadPerHostCerts(caCertPool, host)
 	if tlsConfig == nil {
-		tlsConfig = &tls.Config{RootCAs: caCertPool}
+		tlsConfig = &tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12}
 	}
 
-	tr = &http.Transport{TLSClientConfig: tlsConfig}
+	htr = &http.Transport{TLSClientConfig: tlsConfig}
 
 	return &http.Client{
 		Timeout:   httpTimeout,
-		Transport: tr,
+		Transport: htr,
 	}
 }
 
-func makeGETRequest(url, username, password string, verifyTLS bool, resultsPtr interface{}) (http.Header, error) {
-	req, err := http.NewRequest("GET", url, nil)
-
+func makeGETRequest(ctx context.Context, url, username, password string,
+	verifyTLS bool, resultsPtr interface{}) (http.Header, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -74,9 +76,9 @@ func makeGETRequest(url, username, password string, verifyTLS bool, resultsPtr i
 	return doHTTPRequest(req, verifyTLS, resultsPtr)
 }
 
-func makeGraphQLRequest(url, query, username,
+func makeGraphQLRequest(ctx context.Context, url, query, username,
 	password string, verifyTLS bool, resultsPtr interface{}) error {
-	req, err := http.NewRequest("GET", url, bytes.NewBufferString(query))
+	req, err := http.NewRequestWithContext(ctx, "GET", url, bytes.NewBufferString(query))
 	if err != nil {
 		return err
 	}
@@ -184,20 +186,22 @@ func getTLSConfig(certsPath string, caCertPool *x509.CertPool) (*tls.Config, err
 	return &tls.Config{
 		Certificates: []tls.Certificate{cert},
 		RootCAs:      caCertPool,
+		MinVersion:   tls.VersionTLS12,
 	}, nil
 }
 
 func isURL(str string) bool {
 	u, err := url.Parse(str)
+
 	return err == nil && u.Scheme != "" && u.Host != ""
 } // from https://stackoverflow.com/a/55551215
 
 type requestsPool struct {
-	jobs      chan *manifestJob
-	done      chan struct{}
-	waitGroup *sync.WaitGroup
-	outputCh  chan stringResult
-	context   context.Context
+	jobs     chan *manifestJob
+	done     chan struct{}
+	wtgrp    *sync.WaitGroup
+	outputCh chan stringResult
+	context  context.Context
 }
 
 type manifestJob struct {
@@ -212,30 +216,30 @@ type manifestJob struct {
 
 const rateLimiterBuffer = 5000
 
-func newSmoothRateLimiter(ctx context.Context, wg *sync.WaitGroup, op chan stringResult) *requestsPool {
+func newSmoothRateLimiter(ctx context.Context, wtgrp *sync.WaitGroup, opch chan stringResult) *requestsPool {
 	ch := make(chan *manifestJob, rateLimiterBuffer)
 
 	return &requestsPool{
-		jobs:      ch,
-		done:      make(chan struct{}),
-		waitGroup: wg,
-		outputCh:  op,
-		context:   ctx,
+		jobs:     ch,
+		done:     make(chan struct{}),
+		wtgrp:    wtgrp,
+		outputCh: opch,
+		context:  ctx,
 	}
 }
 
 // block every "rateLimit" time duration.
 const rateLimit = 100 * time.Millisecond
 
-func (p *requestsPool) startRateLimiter() {
-	p.waitGroup.Done()
+func (p *requestsPool) startRateLimiter(ctx context.Context) {
+	p.wtgrp.Done()
 
 	throttle := time.NewTicker(rateLimit).C
 
 	for {
 		select {
 		case job := <-p.jobs:
-			go p.doJob(job)
+			go p.doJob(ctx, job)
 		case <-p.done:
 			return
 		}
@@ -243,12 +247,13 @@ func (p *requestsPool) startRateLimiter() {
 	}
 }
 
-func (p *requestsPool) doJob(job *manifestJob) {
-	defer p.waitGroup.Done()
+func (p *requestsPool) doJob(ctx context.Context, job *manifestJob) {
+	defer p.wtgrp.Done()
 
-	header, err := makeGETRequest(job.url, job.username, job.password, *job.config.verifyTLS, &job.manifestResp)
+	header, err := makeGETRequest(ctx, job.url, job.username, job.password,
+		*job.config.verifyTLS, &job.manifestResp)
 	if err != nil {
-		if isContextDone(p.context) {
+		if isContextDone(ctx) {
 			return
 		}
 		p.outputCh <- stringResult{"", err}
@@ -291,7 +296,7 @@ func (p *requestsPool) doJob(job *manifestJob) {
 
 	str, err := image.string(*job.config.outputFormat)
 	if err != nil {
-		if isContextDone(p.context) {
+		if isContextDone(ctx) {
 			return
 		}
 		p.outputCh <- stringResult{"", err}
@@ -299,7 +304,7 @@ func (p *requestsPool) doJob(job *manifestJob) {
 		return
 	}
 
-	if isContextDone(p.context) {
+	if isContextDone(ctx) {
 		return
 	}
 

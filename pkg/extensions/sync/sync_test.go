@@ -96,7 +96,7 @@ func startUpstreamServer(secure, basicAuth bool) (*api.Controller, string, strin
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
 
-		client.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
+		client.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
 
 		cert, err := tls.LoadX509KeyPair("../../../test/data/client.cert", "../../../test/data/client.key")
 		if err != nil {
@@ -132,11 +132,11 @@ func startUpstreamServer(secure, basicAuth bool) (*api.Controller, string, strin
 
 	srcConfig.Storage.RootDirectory = srcDir
 
-	sc := api.NewController(srcConfig)
+	sctlr := api.NewController(srcConfig)
 
 	go func() {
 		// this blocks
-		if err := sc.Run(); err != nil {
+		if err := sctlr.Run(); err != nil {
 			return
 		}
 	}()
@@ -151,7 +151,7 @@ func startUpstreamServer(secure, basicAuth bool) (*api.Controller, string, strin
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	return sc, srcBaseURL, srcDir, htpasswdPath, client
+	return sctlr, srcBaseURL, srcDir, htpasswdPath, client
 }
 
 func startDownstreamServer(secure bool, syncConfig *sync.Config) (*api.Controller, string, string, *resty.Client) {
@@ -179,7 +179,7 @@ func startDownstreamServer(secure bool, syncConfig *sync.Config) (*api.Controlle
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
 
-		client.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
+		client.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
 
 		cert, err := tls.LoadX509KeyPair("../../../test/data/client.cert", "../../../test/data/client.key")
 		if err != nil {
@@ -204,11 +204,11 @@ func startDownstreamServer(secure bool, syncConfig *sync.Config) (*api.Controlle
 	destConfig.Extensions.Search = nil
 	destConfig.Extensions.Sync = syncConfig
 
-	dc := api.NewController(destConfig)
+	dctlr := api.NewController(destConfig)
 
 	go func() {
 		// this blocks
-		if err := dc.Run(); err != nil {
+		if err := dctlr.Run(); err != nil {
 			return
 		}
 	}()
@@ -223,7 +223,7 @@ func startDownstreamServer(secure bool, syncConfig *sync.Config) (*api.Controlle
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	return dc, destBaseURL, destDir, client
+	return dctlr, destBaseURL, destDir, client
 }
 
 func TestSyncOnDemand(t *testing.T) {
@@ -257,13 +257,14 @@ func TestSyncOnDemand(t *testing.T) {
 		}
 
 		syncConfig := &sync.Config{
-			Registries: []sync.RegistryConfig{syncRegistryConfig}}
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
 
-		dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
+		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
 		defer os.RemoveAll(destDir)
 
 		defer func() {
-			dc.Shutdown()
+			dctlr.Shutdown()
 		}()
 
 		var srcTagsList TagsList
@@ -286,7 +287,7 @@ func TestSyncOnDemand(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 
-		err = os.Chmod(path.Join(destDir, testImage), 0000)
+		err = os.Chmod(path.Join(destDir, testImage), 0o000)
 		if err != nil {
 			panic(err)
 		}
@@ -295,7 +296,7 @@ func TestSyncOnDemand(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 500)
 
-		err = os.Chmod(path.Join(destDir, testImage), 0755)
+		err = os.Chmod(path.Join(destDir, testImage), 0o755)
 		if err != nil {
 			panic(err)
 		}
@@ -304,7 +305,7 @@ func TestSyncOnDemand(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 
-		err = os.Chmod(path.Join(destDir, testImage, sync.SyncBlobUploadDir), 0000)
+		err = os.Chmod(path.Join(destDir, testImage, sync.SyncBlobUploadDir), 0o000)
 		if err != nil {
 			panic(err)
 		}
@@ -317,12 +318,12 @@ func TestSyncOnDemand(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 
-		err = os.Chmod(path.Join(destDir, testImage, sync.SyncBlobUploadDir), 0755)
+		err = os.Chmod(path.Join(destDir, testImage, sync.SyncBlobUploadDir), 0o755)
 		if err != nil {
 			panic(err)
 		}
 
-		err = os.MkdirAll(path.Join(destDir, testImage, "blobs"), 0000)
+		err = os.MkdirAll(path.Join(destDir, testImage, "blobs"), 0o000)
 		if err != nil {
 			panic(err)
 		}
@@ -331,7 +332,7 @@ func TestSyncOnDemand(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 
-		err = os.Chmod(path.Join(destDir, testImage, "blobs"), 0755)
+		err = os.Chmod(path.Join(destDir, testImage, "blobs"), 0o755)
 		if err != nil {
 			panic(err)
 		}
@@ -357,11 +358,11 @@ func TestSync(t *testing.T) {
 	Convey("Verify sync feature", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		sc, srcBaseURL, srcDir, _, srcClient := startUpstreamServer(false, false)
+		sctlr, srcBaseURL, srcDir, _, srcClient := startUpstreamServer(false, false)
 		defer os.RemoveAll(srcDir)
 
 		defer func() {
-			sc.Shutdown()
+			sctlr.Shutdown()
 		}()
 
 		regex := ".*"
@@ -569,7 +570,7 @@ func TestSyncPermsDenied(t *testing.T) {
 			dc.Shutdown()
 		}()
 
-		err := os.Chmod(path.Join(destDir, testImage, sync.SyncBlobUploadDir), 0000)
+		err := os.Chmod(path.Join(destDir, testImage, sync.SyncBlobUploadDir), 0o000)
 		if err != nil {
 			panic(err)
 		}
@@ -776,8 +777,10 @@ func TestSyncBasicAuth(t *testing.T) {
 				CertDir:      "",
 			}
 
-			syncConfig := &sync.Config{CredentialsFile: credentialsFile,
-				Registries: []sync.RegistryConfig{syncRegistryConfig}}
+			syncConfig := &sync.Config{
+				CredentialsFile: credentialsFile,
+				Registries:      []sync.RegistryConfig{syncRegistryConfig},
+			}
 
 			dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
 			defer os.RemoveAll(destDir)
@@ -872,20 +875,22 @@ func TestSyncBasicAuth(t *testing.T) {
 
 			destConfig.Extensions = &extconf.ExtensionConfig{}
 			destConfig.Extensions.Search = nil
-			destConfig.Extensions.Sync = &sync.Config{CredentialsFile: credentialsFile,
-				Registries: []sync.RegistryConfig{syncRegistryConfig}}
+			destConfig.Extensions.Sync = &sync.Config{
+				CredentialsFile: credentialsFile,
+				Registries:      []sync.RegistryConfig{syncRegistryConfig},
+			}
 
-			dc := api.NewController(destConfig)
+			dctlr := api.NewController(destConfig)
 
 			go func() {
 				// this blocks
-				if err := dc.Run(); err != nil {
+				if err := dctlr.Run(); err != nil {
 					return
 				}
 			}()
 
 			defer func() {
-				dc.Shutdown()
+				dctlr.Shutdown()
 			}()
 
 			// wait till ready
@@ -915,11 +920,11 @@ func TestSyncBasicAuth(t *testing.T) {
 			credentialsFile := makeCredentialsFile(fmt.Sprintf(`{"%s":{"username": "test", "password": "test"}}`,
 				registryName))
 
-			err := os.Chmod(credentialsFile, 0000)
+			err := os.Chmod(credentialsFile, 0o000)
 			So(err, ShouldBeNil)
 
 			defer func() {
-				So(os.Chmod(credentialsFile, 0755), ShouldBeNil)
+				So(os.Chmod(credentialsFile, 0o755), ShouldBeNil)
 				So(os.RemoveAll(credentialsFile), ShouldBeNil)
 			}()
 
@@ -943,8 +948,10 @@ func TestSyncBasicAuth(t *testing.T) {
 				CertDir:      "",
 			}
 
-			syncConfig := &sync.Config{CredentialsFile: credentialsFile,
-				Registries: []sync.RegistryConfig{syncRegistryConfig}}
+			syncConfig := &sync.Config{
+				CredentialsFile: credentialsFile,
+				Registries:      []sync.RegistryConfig{syncRegistryConfig},
+			}
 
 			dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
 			defer os.RemoveAll(destDir)
@@ -985,16 +992,20 @@ func TestSyncBasicAuth(t *testing.T) {
 			}
 
 			// add file path to the credentials
-			syncConfig := &sync.Config{CredentialsFile: credentialsFile,
-				Registries: []sync.RegistryConfig{unreacheableSyncRegistryConfig1,
+			syncConfig := &sync.Config{
+				CredentialsFile: credentialsFile,
+				Registries: []sync.RegistryConfig{
+					unreacheableSyncRegistryConfig1,
 					unreacheableSyncRegistryConfig2,
-					syncRegistryConfig}}
+					syncRegistryConfig,
+				},
+			}
 
-			dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
+			dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
 			defer os.RemoveAll(destDir)
 
 			defer func() {
-				dc.Shutdown()
+				dctlr.Shutdown()
 			}()
 
 			var srcTagsList TagsList
@@ -1021,7 +1032,7 @@ func TestSyncBasicAuth(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			err = dc.StoreController.DefaultStore.DeleteImageManifest(testImage, testImageTag)
+			err = dctlr.StoreController.DefaultStore.DeleteImageManifest(testImage, testImageTag)
 			So(err, ShouldBeNil)
 
 			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + "1.1.1")
@@ -1300,14 +1311,14 @@ func TestSyncInvalidCerts(t *testing.T) {
 			panic(err)
 		}
 
-		f, err := os.OpenFile(destFilePath, os.O_TRUNC|os.O_WRONLY|os.O_CREATE, 0600)
+		dstfile, err := os.OpenFile(destFilePath, os.O_TRUNC|os.O_WRONLY|os.O_CREATE, 0o600)
 		if err != nil {
 			panic(err)
 		}
 
-		defer f.Close()
+		defer dstfile.Close()
 
-		if _, err = f.WriteString("Add Invalid Text In Cert"); err != nil {
+		if _, err = dstfile.WriteString("Add Invalid Text In Cert"); err != nil {
 			panic(err)
 		}
 
@@ -1358,17 +1369,17 @@ func TestSyncInvalidCerts(t *testing.T) {
 }
 
 func makeCredentialsFile(fileContent string) string {
-	f, err := ioutil.TempFile("", "sync-credentials-")
+	tmpfile, err := ioutil.TempFile("", "sync-credentials-")
 	if err != nil {
 		panic(err)
 	}
 
 	content := []byte(fileContent)
-	if err := ioutil.WriteFile(f.Name(), content, 0600); err != nil {
+	if err := ioutil.WriteFile(tmpfile.Name(), content, 0o600); err != nil {
 		panic(err)
 	}
 
-	return f.Name()
+	return tmpfile.Name()
 }
 
 func TestSyncInvalidUrl(t *testing.T) {
@@ -1445,7 +1456,8 @@ func TestSyncInvalidTags(t *testing.T) {
 		}
 
 		syncConfig := &sync.Config{
-			Registries: []sync.RegistryConfig{syncRegistryConfig}}
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
 
 		dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
 		defer os.RemoveAll(destDir)
@@ -1485,11 +1497,11 @@ func TestSyncSubPaths(t *testing.T) {
 
 		srcConfig.Storage.RootDirectory = srcDir
 
-		sc := api.NewController(srcConfig)
+		sctlr := api.NewController(srcConfig)
 
 		go func() {
 			// this blocks
-			if err := sc.Run(); err != nil {
+			if err := sctlr.Run(); err != nil {
 				return
 			}
 		}()
@@ -1505,7 +1517,7 @@ func TestSyncSubPaths(t *testing.T) {
 		}
 
 		defer func() {
-			sc.Shutdown()
+			sctlr.Shutdown()
 		}()
 
 		regex := ".*"
@@ -1530,7 +1542,8 @@ func TestSyncSubPaths(t *testing.T) {
 		}
 
 		syncConfig := &sync.Config{
-			Registries: []sync.RegistryConfig{syncRegistryConfig}}
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
 
 		destPort := GetFreePort()
 		destConfig := config.New()
@@ -1564,11 +1577,11 @@ func TestSyncSubPaths(t *testing.T) {
 		destConfig.Extensions.Search = nil
 		destConfig.Extensions.Sync = syncConfig
 
-		dc := api.NewController(destConfig)
+		dctlr := api.NewController(destConfig)
 
 		go func() {
 			// this blocks
-			if err := dc.Run(); err != nil {
+			if err := dctlr.Run(); err != nil {
 				return
 			}
 		}()
@@ -1584,7 +1597,7 @@ func TestSyncSubPaths(t *testing.T) {
 		}
 
 		defer func() {
-			dc.Shutdown()
+			dctlr.Shutdown()
 		}()
 
 		var destTagsList TagsList
@@ -1608,13 +1621,13 @@ func TestSyncSubPaths(t *testing.T) {
 		}
 
 		// synced image should get into subpath instead of rootDir
-		fi, err := os.Stat(path.Join(subPathDestDir, subpath, testImage, "blobs/sha256"))
-		So(fi, ShouldNotBeNil)
+		binfo, err := os.Stat(path.Join(subPathDestDir, subpath, testImage, "blobs/sha256"))
+		So(binfo, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
 		// check rootDir is not populated with any image.
-		fi, err = os.Stat(path.Join(destDir, subpath))
-		So(fi, ShouldBeNil)
+		binfo, err = os.Stat(path.Join(destDir, subpath))
+		So(binfo, ShouldBeNil)
 		So(err, ShouldNotBeNil)
 	})
 }
@@ -1636,7 +1649,7 @@ func TestSyncOnDemandContentFiltering(t *testing.T) {
 			syncRegistryConfig := sync.RegistryConfig{
 				Content: []sync.Content{
 					{
-						//should be filtered out
+						// should be filtered out
 						Prefix: "dummy",
 						Tags: &sync.Tags{
 							Regex:  &regex,
