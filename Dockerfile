@@ -2,10 +2,11 @@
 # Stage 1: Install certs, build binary, create default config file
 # ---
 FROM docker.io/golang:1.16 AS builder
+ARG COMMIT
 RUN mkdir -p /go/src/github.com/project-zot/zot
 WORKDIR /go/src/github.com/project-zot/zot
 COPY . .
-RUN make clean binary
+RUN make COMMIT=$COMMIT clean binary
 RUN echo '{\n\
     "storage": {\n\
         "rootDirectory": "/var/lib/registry"\n\
