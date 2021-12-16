@@ -1,7 +1,7 @@
 {
     "version": "0.1.0-dev",
     "storage": {
-        "rootDirectory": "/tmp/zot"
+        "rootDirectory": "/home/ijigau/Downloads/zot-repo"
     },
     "http": {
         "address": "127.0.0.1",
@@ -9,7 +9,6 @@
         "ReadOnly": false
     },
     "log": {
-        "level": "debug",
-        "output": "/tmp/zot.log"
+        "level": "debug"
     }
 }

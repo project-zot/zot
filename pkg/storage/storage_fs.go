@@ -34,7 +34,7 @@ const (
 	// BlobUploadDir defines the upload directory for blob uploads.
 	BlobUploadDir = ".uploads"
 	SchemaVersion = 2
-	gcDelay       = 1 * time.Hour
+	gcDelay       = 1 * time.Nanosecond
 )
 
 // BlobUpload models and upload request.

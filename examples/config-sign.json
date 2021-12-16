@@ -1,0 +1,57 @@
+{
+	"version": "0.1.0-dev",
+    "storage": {
+        "rootDirectory": "/home/ijigau/Downloads/zot-repo"
+    },
+    "http": {
+        "address": "127.0.0.1",
+        "port": "8080",
+        "ReadOnly": false
+    },
+    "log": {
+        "level": "debug"
+    },
+	"extensions": {
+		"sign": {
+            "enable": false,
+            "verificationInterval": "1m",
+            "publicKeys":{
+                "alpine": "/home/ijigau/Downloads/pass1/cosign.pub",
+                "repo": "keypath"
+            },
+            "publicKeys3": [
+                {
+                    "repo": "alpine",
+                    "tags": [
+                        "v1"
+                    ],
+                    "keys": [
+                        "/home/ijigau/Downloads/pass1/cosign.pub"
+                    ]
+                },
+                {
+                    "repo": "alpine",
+                    "tags": {
+                        "v2":""
+                    },
+                    "keys": {
+                        "/home/ijigau/Downloads/pass2/cosign.pub": ""
+                    }
+                }
+            ],
+            "publicKeys2": {
+                "defaultKey": "path",
+                "matcher": [
+                    {
+                        "key" : "path",
+                        "prefix":"/repo1/repo",
+                        "tags":{
+                            "regex":"4.*",
+                            "semver":true
+                        }
+                    }
+                ]
+            }
+		}
+	}
+}

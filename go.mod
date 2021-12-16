@@ -41,6 +41,7 @@ require (
 	github.com/prometheus/client_model v0.2.0
 	github.com/rs/zerolog v1.26.0
 	github.com/sigstore/cosign v1.3.1
+	github.com/sigstore/sigstore v1.0.1 // indirect
 	github.com/smartystreets/goconvey v1.7.2
 	github.com/spf13/cobra v1.2.1
 	github.com/spf13/viper v1.9.0

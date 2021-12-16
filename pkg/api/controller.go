@@ -141,6 +141,9 @@ func (c *Controller) Run() error {
 			if c.Config.Extensions.Sync != nil {
 				ext.EnableSyncExtension(c.Config, c.Log, c.StoreController)
 			}
+			if c.Config.Extensions.Sign != nil {
+				ext.EnableSignExtension(c.Config, c.Log, c.StoreController.DefaultStore)
+			}
 		}
 	} else {
 		// we can't proceed without global storage

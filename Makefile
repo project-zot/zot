@@ -19,7 +19,7 @@ binary-minimal: swagger
 
 .PHONY: binary
 binary: swagger
-	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot -tags extended,containers_image_openpgp -v -trimpath -ldflags "-X  github.com/project-zot/zot/pkg/api/config.Commit=${COMMIT} -X github.com/project-zot/zot/pkg/api/config.BinaryType=extended -X github.com/project-zot/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zot
+	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot -tags extended,containers_image_openpgp -v -trimpath -ldflags "-X  github.com/project-zot/zot/pkg/api/config.Commit=${COMMIT} -X github.com/project-zot/zot/pkg/api/config.BinaryType=extended -X github.com/project-zot/zot/pkg/api/config.GoVersion=${GO_VERSION}" ./cmd/zot
 
 .PHONY: debug
 debug: swagger
