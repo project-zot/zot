@@ -555,8 +555,8 @@ func TestPeriodically(t *testing.T) {
 	})
 }
 
-func TestPermsDenied(t *testing.T) {
-	Convey("Verify sync feature without perm on sync cache", t, func() {
+func TestOnDemandPermsDenied(t *testing.T) {
+	Convey("Verify sync on demand feature without perm on sync cache", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
 		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
@@ -593,19 +593,58 @@ func TestPermsDenied(t *testing.T) {
 			Registries: []sync.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
+		destPort := test.GetFreePort()
+		destConfig := config.New()
+		destBaseURL := test.GetBaseURL(destPort)
+
+		destConfig.HTTP.Port = destPort
+
+		destDir, err := ioutil.TempDir("", "oci-dest-repo-test")
+		if err != nil {
+			panic(err)
+		}
+
 		defer os.RemoveAll(destDir)
+
+		destConfig.Storage.RootDirectory = destDir
+
+		destConfig.Extensions = &extconf.ExtensionConfig{}
+		destConfig.Extensions.Search = nil
+		destConfig.Extensions.Sync = syncConfig
+
+		dctlr := api.NewController(destConfig)
 
 		defer func() {
 			dctlr.Shutdown()
 		}()
 
-		err := os.Chmod(path.Join(destDir, testImage, sync.SyncBlobUploadDir), 0o000)
-		if err != nil {
-			panic(err)
+		go func() {
+			// this blocks
+			if err := dctlr.Run(); err != nil {
+				return
+			}
+		}()
+
+		for {
+			err = os.Chmod(path.Join(destDir, testImage, sync.SyncBlobUploadDir), 0o000)
+			if err != nil {
+				continue
+			}
+
+			break
 		}
 
-		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		// wait till ready
+		for {
+			_, err := resty.R().Get(destBaseURL)
+			if err == nil {
+				break
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 
@@ -613,6 +652,101 @@ func TestPermsDenied(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
+	})
+}
+
+func TestPeriodicallyPermsDenied(t *testing.T) {
+	Convey("Verify periodically sync feature without perm on sync cache", t, func() {
+		updateDuration, _ := time.ParseDuration("30m")
+
+		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
+		defer os.RemoveAll(srcDir)
+
+		defer func() {
+			sctlr.Shutdown()
+		}()
+
+		regex := ".*"
+		semver := true
+		var tlsVerify bool
+
+		syncRegistryConfig := sync.RegistryConfig{
+			Content: []sync.Content{
+				{
+					Prefix: testImage,
+					Tags: &sync.Tags{
+						Regex:  &regex,
+						Semver: &semver,
+					},
+				},
+			},
+			URLs:         []string{srcBaseURL},
+			PollInterval: updateDuration,
+			TLSVerify:    &tlsVerify,
+			CertDir:      "",
+			OnDemand:     true,
+		}
+
+		defaultVal := true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
+
+		destPort := test.GetFreePort()
+		destConfig := config.New()
+		destBaseURL := test.GetBaseURL(destPort)
+
+		destConfig.HTTP.Port = destPort
+
+		destDir, err := ioutil.TempDir("", "oci-dest-repo-test")
+		if err != nil {
+			panic(err)
+		}
+
+		defer os.RemoveAll(destDir)
+
+		destConfig.Storage.RootDirectory = destDir
+
+		destConfig.Extensions = &extconf.ExtensionConfig{}
+		destConfig.Extensions.Search = nil
+		destConfig.Extensions.Sync = syncConfig
+
+		dctlr := api.NewController(destConfig)
+
+		go func() {
+			// this blocks
+			if err := dctlr.Run(); err != nil {
+				return
+			}
+		}()
+
+		for {
+			err = os.Chmod(path.Join(destDir, testImage, sync.SyncBlobUploadDir), 0o000)
+			if err != nil {
+				continue
+			}
+
+			break
+		}
+
+		// wait till ready
+		for {
+			_, err := resty.R().Get(destBaseURL)
+			if err == nil {
+				break
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		defer func() {
+			dctlr.Shutdown()
+			err := os.Chmod(path.Join(destDir, testImage, sync.SyncBlobUploadDir), 0o755)
+			if err != nil {
+				panic(err)
+			}
+		}()
 	})
 }
 
@@ -2295,6 +2429,109 @@ func TestPeriodicallySignatures(t *testing.T) {
 	})
 }
 
+func TestPeriodicallySignaturesErr(t *testing.T) {
+	Convey("Verify sync signatures gives error", t, func() {
+		updateDuration, _ := time.ParseDuration("30m")
+
+		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
+		defer os.RemoveAll(srcDir)
+
+		defer func() {
+			sctlr.Shutdown()
+		}()
+
+		// create repo, push and sign it
+		repoName := testSignedImage
+		var digest godigest.Digest
+		So(func() { digest = pushRepo(srcBaseURL, repoName) }, ShouldNotPanic)
+
+		splittedURL := strings.SplitAfter(srcBaseURL, ":")
+		srcPort := splittedURL[len(splittedURL)-1]
+
+		cwd, err := os.Getwd()
+		So(err, ShouldBeNil)
+
+		defer func() { _ = os.Chdir(cwd) }()
+		tdir, err := ioutil.TempDir("", "sigs")
+		So(err, ShouldBeNil)
+		defer os.RemoveAll(tdir)
+		_ = os.Chdir(tdir)
+		generateKeyPairs(tdir)
+
+		So(func() { signImage(tdir, srcPort, repoName, digest) }, ShouldNotPanic)
+
+		regex := ".*"
+		var semver bool
+		var tlsVerify bool
+
+		syncRegistryConfig := sync.RegistryConfig{
+			Content: []sync.Content{
+				{
+					Prefix: repoName,
+					Tags: &sync.Tags{
+						Regex:  &regex,
+						Semver: &semver,
+					},
+				},
+			},
+			URLs:         []string{srcBaseURL},
+			PollInterval: updateDuration,
+			TLSVerify:    &tlsVerify,
+			CertDir:      "",
+			OnDemand:     true,
+		}
+
+		defaultVal := true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
+
+		// test negative cases (trigger errors)
+		// test notary signatures errors
+
+		// based on manifest digest get referrers
+		getReferrersURL := srcBaseURL + path.Join("/oras/artifacts/v1/", repoName, "manifests", digest.String(), "referrers")
+
+		resp, err := resty.R().
+			SetHeader("Content-Type", "application/json").
+			SetQueryParam("artifactType", "application/vnd.cncf.notary.v2.signature").
+			Get(getReferrersURL)
+
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeEmpty)
+
+		var referrers ReferenceList
+
+		err = json.Unmarshal(resp.Body(), &referrers)
+		So(err, ShouldBeNil)
+
+		// read manifest
+		var nm artifactspec.Manifest
+		for _, ref := range referrers.References {
+			refPath := path.Join(srcDir, repoName, "blobs", string(ref.Digest.Algorithm()), ref.Digest.Hex())
+			body, err := ioutil.ReadFile(refPath)
+			So(err, ShouldBeNil)
+
+			err = json.Unmarshal(body, &nm)
+			So(err, ShouldBeNil)
+
+			// triggers perm denied on sig blobs
+			for _, blob := range nm.Blobs {
+				blobPath := path.Join(srcDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Hex())
+				err := os.Chmod(blobPath, 0o000)
+				So(err, ShouldBeNil)
+			}
+		}
+
+		dctlr, _, destDir, _ := startDownstreamServer(false, syncConfig)
+		defer func() {
+			dctlr.Shutdown()
+			defer os.RemoveAll(destDir)
+		}()
+	})
+}
+
 func TestOnDemandRetryGoroutine(t *testing.T) {
 	Convey("Verify ondemand sync retries in background on error", t, func() {
 		srcPort := test.GetFreePort()
@@ -2914,6 +3151,277 @@ func TestOnlySignaturesOnDemand(t *testing.T) {
 
 		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")})
 		So(err, ShouldBeNil)
+	})
+}
+
+func TestSyncOnlyDiff(t *testing.T) {
+	Convey("Verify sync only difference between local and upstream", t, func() {
+		updateDuration, _ := time.ParseDuration("30m")
+
+		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
+		defer os.RemoveAll(srcDir)
+
+		defer func() {
+			sctlr.Shutdown()
+		}()
+
+		var tlsVerify bool
+
+		syncRegistryConfig := sync.RegistryConfig{
+			Content: []sync.Content{
+				{
+					Prefix: "**",
+				},
+			},
+			URLs:         []string{srcBaseURL},
+			PollInterval: updateDuration,
+			TLSVerify:    &tlsVerify,
+			CertDir:      "",
+			OnDemand:     false,
+		}
+
+		defaultVal := true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
+
+		destPort := test.GetFreePort()
+		destConfig := config.New()
+		destBaseURL := test.GetBaseURL(destPort)
+		destConfig.HTTP.Port = destPort
+
+		destDir, err := ioutil.TempDir("", "oci-dest-repo-test")
+		if err != nil {
+			panic(err)
+		}
+
+		// copy images so we have them before syncing, sync should not pull them again
+		err = test.CopyFiles("../../../test/data", destDir)
+		if err != nil {
+			panic(err)
+		}
+
+		destConfig.Storage.RootDirectory = destDir
+		destConfig.Storage.Dedupe = false
+		destConfig.Storage.GC = false
+
+		destConfig.Extensions = &extconf.ExtensionConfig{}
+		destConfig.Extensions.Search = nil
+		destConfig.Extensions.Sync = syncConfig
+
+		dctlr := api.NewController(destConfig)
+
+		go func() {
+			// this blocks
+			if err := dctlr.Run(); err != nil {
+				return
+			}
+		}()
+
+		// wait till ready
+		for {
+			_, err := resty.R().Get(destBaseURL)
+			if err == nil {
+				break
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		defer func() {
+			dctlr.Shutdown()
+			os.RemoveAll(destDir)
+		}()
+
+		// watch .sync subdir, shouldn't be populated
+		done := make(chan bool)
+		var isPopulated bool
+		go func() {
+			for {
+				select {
+				case <-done:
+					return
+				default:
+					_, err := os.ReadDir(path.Join(destDir, testImage, ".sync"))
+					if err == nil {
+						isPopulated = true
+					}
+					time.Sleep(200 * time.Millisecond)
+				}
+			}
+		}()
+
+		resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		time.Sleep(2 * time.Second)
+
+		done <- true
+		So(isPopulated, ShouldBeFalse)
+	})
+}
+
+func TestSyncWithDiffDigest(t *testing.T) {
+	Convey("Verify sync correctly detects changes in upstream images", t, func() {
+		updateDuration, _ := time.ParseDuration("30m")
+
+		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
+		defer os.RemoveAll(srcDir)
+
+		defer func() {
+			sctlr.Shutdown()
+		}()
+
+		var tlsVerify bool
+
+		syncRegistryConfig := sync.RegistryConfig{
+			Content: []sync.Content{
+				{
+					Prefix: "**",
+				},
+			},
+			URLs:         []string{srcBaseURL},
+			PollInterval: updateDuration,
+			TLSVerify:    &tlsVerify,
+			CertDir:      "",
+			OnDemand:     false,
+		}
+
+		defaultVal := true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
+
+		destPort := test.GetFreePort()
+		destConfig := config.New()
+		destBaseURL := test.GetBaseURL(destPort)
+		destConfig.HTTP.Port = destPort
+
+		destDir, err := ioutil.TempDir("", "oci-dest-repo-test")
+		if err != nil {
+			panic(err)
+		}
+
+		// copy images so we have them before syncing, sync should not pull them again
+		err = test.CopyFiles("../../../test/data", destDir)
+		if err != nil {
+			panic(err)
+		}
+
+		destConfig.Storage.RootDirectory = destDir
+		destConfig.Storage.Dedupe = false
+		destConfig.Storage.GC = false
+
+		destConfig.Extensions = &extconf.ExtensionConfig{}
+		destConfig.Extensions.Search = nil
+		destConfig.Extensions.Sync = syncConfig
+
+		dctlr := api.NewController(destConfig)
+
+		// before starting downstream server, let's modify an image manifest so that sync should pull it
+		// change digest of the manifest so that sync should happen
+		size := 5 * 1024 * 1024
+		blob := make([]byte, size)
+		digest := godigest.FromBytes(blob)
+
+		resp, err := resty.R().Get(srcBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		manifestBlob := resp.Body()
+
+		var manifest ispec.Manifest
+
+		err = json.Unmarshal(manifestBlob, &manifest)
+		So(err, ShouldBeNil)
+
+		resp, err = resty.R().Post(srcBaseURL + "/v2/" + testImage + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+		loc := resp.Header().Get("Location")
+
+		resp, err = resty.R().
+			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", digest.String()).
+			SetBody(blob).
+			Put(srcBaseURL + loc)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+
+		newLayer := ispec.Descriptor{
+			MediaType: ispec.MediaTypeImageLayer,
+			Digest:    digest,
+			Size:      int64(size),
+		}
+
+		manifest.Layers = append(manifest.Layers, newLayer)
+
+		manifestBody, err := json.Marshal(manifest)
+		if err != nil {
+			panic(err)
+		}
+
+		resp, err = resty.R().SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
+			SetBody(manifestBody).
+			Put(srcBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 201)
+
+		go func() {
+			// this blocks
+			if err := dctlr.Run(); err != nil {
+				return
+			}
+		}()
+
+		// watch .sync subdir, shouldn't be populated
+		done := make(chan bool)
+		var isPopulated bool
+		go func() {
+			for {
+				select {
+				case <-done:
+					return
+				default:
+					_, err := os.ReadDir(path.Join(destDir, testImage, ".sync"))
+					if err == nil {
+						isPopulated = true
+					}
+					time.Sleep(200 * time.Millisecond)
+				}
+			}
+		}()
+
+		defer func() {
+			dctlr.Shutdown()
+			os.RemoveAll(destDir)
+		}()
+
+		// wait till ready
+		for {
+			_, err := resty.R().Get(destBaseURL)
+			if err == nil {
+				break
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		time.Sleep(5 * time.Second)
+
+		done <- true
+		So(isPopulated, ShouldBeTrue)
 	})
 }
 

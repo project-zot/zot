@@ -1,9 +1,11 @@
 package sync
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/url"
@@ -21,7 +23,7 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"gopkg.in/resty.v1"
-	"zotregistry.io/zot/errors"
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
@@ -58,7 +60,7 @@ func parseRepositoryReference(input string) (reference.Named, error) {
 	}
 
 	if !reference.IsNameOnly(ref) {
-		return nil, errors.ErrInvalidRepositoryName
+		return nil, zerr.ErrInvalidRepositoryName
 	}
 
 	return ref, nil
@@ -119,7 +121,7 @@ func getHTTPClient(regCfg *RegistryConfig, upstreamURL string, credentials Crede
 	client := resty.New()
 
 	if !common.Contains(regCfg.URLs, upstreamURL) {
-		return nil, errors.ErrSyncInvalidUpstreamURL
+		return nil, zerr.ErrSyncInvalidUpstreamURL
 	}
 
 	registryURL, err := url.Parse(upstreamURL)
@@ -227,7 +229,7 @@ func syncCosignSignature(client *resty.Client, storeController storage.StoreCont
 		if resp.IsError() {
 			log.Info().Msgf("couldn't find cosign blob from %s, status code: %d", getBlobURL.String(), resp.StatusCode())
 
-			return errors.ErrBadBlobDigest
+			return zerr.ErrBadBlobDigest
 		}
 
 		defer resp.RawBody().Close()
@@ -256,7 +258,7 @@ func syncCosignSignature(client *resty.Client, storeController storage.StoreCont
 	if resp.IsError() {
 		log.Info().Msgf("couldn't find cosign config blob from %s, status code: %d", getBlobURL.String(), resp.StatusCode())
 
-		return errors.ErrBadBlobDigest
+		return zerr.ErrBadBlobDigest
 	}
 
 	defer resp.RawBody().Close()
@@ -360,7 +362,7 @@ func syncNotarySignature(client *resty.Client, storeController storage.StoreCont
 				log.Info().Msgf("couldn't find notary blob from %s, status code: %d",
 					getBlobURL.String(), resp.StatusCode())
 
-				return errors.ErrBadBlobDigest
+				return zerr.ErrBadBlobDigest
 			}
 
 			_, _, err = imageStore.FullBlobUpload(repo, resp.RawBody(), blob.Digest.String())
@@ -407,17 +409,17 @@ func syncSignatures(client *resty.Client, storeController storage.StoreControlle
 
 	digests, ok := resp.Header()["Docker-Content-Digest"]
 	if !ok {
-		log.Error().Err(errors.ErrBadBlobDigest).Str("url", getManifestURL.String()).
+		log.Error().Err(zerr.ErrBadBlobDigest).Str("url", getManifestURL.String()).
 			Msgf("couldn't get digest for manifest: %s:%s", repo, tag)
 
-		return errors.ErrBadBlobDigest
+		return zerr.ErrBadBlobDigest
 	}
 
 	if len(digests) != 1 {
-		log.Error().Err(errors.ErrBadBlobDigest).Str("url", getManifestURL.String()).
+		log.Error().Err(zerr.ErrBadBlobDigest).Str("url", getManifestURL.String()).
 			Msgf("multiple digests found for: %s:%s", repo, tag)
 
-		return errors.ErrBadBlobDigest
+		return zerr.ErrBadBlobDigest
 	}
 
 	err = syncNotarySignature(client, storeController, *regURL, repo, digests[0], log)
@@ -572,4 +574,35 @@ func getLocalImageRef(localCachePath, repo, tag string) (types.ImageReference, e
 	}
 
 	return localImageRef, nil
+}
+
+// canSkipImage returns whether or not the image can be skipped from syncing.
+func canSkipImage(repo, tag string, upstreamRef types.ImageReference,
+	imageStore storage.ImageStore, upstreamCtx *types.SystemContext, log log.Logger) (bool, error) {
+	// filter already pulled images
+	_, localImageDigest, _, err := imageStore.GetImageManifest(repo, tag)
+	if err != nil {
+		if errors.Is(err, zerr.ErrRepoNotFound) || errors.Is(err, zerr.ErrManifestNotFound) {
+			return false, nil
+		}
+
+		log.Error().Err(err).Msgf("couldn't get local image %s:%s manifest", repo, tag)
+
+		return false, err
+	}
+
+	upstreamImageDigest, err := docker.GetDigest(context.Background(), upstreamCtx, upstreamRef)
+	if err != nil {
+		log.Error().Err(err).Msgf("couldn't get upstream image %s manifest", upstreamRef.DockerReference())
+
+		return false, err
+	}
+
+	if localImageDigest == string(upstreamImageDigest) {
+		log.Info().Msgf("skipping syncing %s:%s, image already synced", repo, tag)
+
+		return true, nil
+	}
+
+	return false, nil
 }
