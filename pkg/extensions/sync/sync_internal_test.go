@@ -24,7 +24,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
-	. "zotregistry.io/zot/pkg/test"
+	"zotregistry.io/zot/pkg/test"
 )
 
 const (
@@ -88,8 +88,8 @@ func TestSyncInternal(t *testing.T) {
 
 		var tlsVerify bool
 		updateDuration := time.Microsecond
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
 		syncRegistryConfig := RegistryConfig{
 			Content: []Content{
 				{
@@ -119,14 +119,14 @@ func TestSyncInternal(t *testing.T) {
 					Prefix: testImage,
 				},
 			},
-			URLs:         []string{BaseURL},
+			URLs:         []string{test.BaseURL},
 			PollInterval: updateDuration,
 			TLSVerify:    &tlsVerify,
 			CertDir:      "/tmp/missing_certs/a/b/c/d/z",
 		}
 
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
 
 		httpClient, err := getHTTPClient(&syncRegistryConfig, baseURL, Credentials{}, log.NewLogger("debug", ""))
 		So(err, ShouldNotBeNil)
@@ -149,9 +149,9 @@ func TestSyncInternal(t *testing.T) {
 
 		var tlsVerify bool
 		updateDuration := time.Microsecond
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
-		baseSecureURL := GetSecureBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		baseSecureURL := test.GetSecureBaseURL(port)
 
 		syncRegistryConfig := RegistryConfig{
 			Content: []Content{
@@ -187,7 +187,7 @@ func TestSyncInternal(t *testing.T) {
 		_, err = getUpstreamCatalog(httpClient, "http://invalid:5000", log.NewLogger("debug", ""))
 		So(err, ShouldNotBeNil)
 
-		syncRegistryConfig.URLs = []string{BaseURL}
+		syncRegistryConfig.URLs = []string{test.BaseURL}
 		httpClient, err = getHTTPClient(&syncRegistryConfig, baseSecureURL, Credentials{}, log.NewLogger("debug", ""))
 		So(err, ShouldNotBeNil)
 		So(httpClient, ShouldBeNil)
@@ -227,6 +227,51 @@ func TestSyncInternal(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		err = syncNotarySignature(resty.New(), storage.StoreController{}, *url, "repo", "tag", log)
 		So(err, ShouldNotBeNil)
+	})
+
+	Convey("Test canSkipImage()", t, func() {
+		storageDir, err := ioutil.TempDir("", "oci-dest-repo-test")
+		if err != nil {
+			panic(err)
+		}
+
+		err = test.CopyFiles("../../../test/data", storageDir)
+		if err != nil {
+			panic(err)
+		}
+
+		defer os.RemoveAll(storageDir)
+
+		log := log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, log)
+
+		imageStore := storage.NewImageStore(storageDir, false, false, false, log, metrics)
+
+		repoRefStr := fmt.Sprintf("%s/%s", host, testImage)
+		repoRef, err := parseRepositoryReference(repoRefStr)
+		So(err, ShouldBeNil)
+		So(repoRef, ShouldNotBeNil)
+
+		taggedRef, err := reference.WithTag(repoRef, testImageTag)
+		So(err, ShouldBeNil)
+		So(taggedRef, ShouldNotBeNil)
+
+		upstreamRef, err := docker.NewReference(taggedRef)
+		So(err, ShouldBeNil)
+		So(taggedRef, ShouldNotBeNil)
+
+		canBeSkipped, err := canSkipImage(testImage, testImageTag, upstreamRef, imageStore, &types.SystemContext{}, log)
+		So(err, ShouldNotBeNil)
+		So(canBeSkipped, ShouldBeFalse)
+
+		err = os.Chmod(path.Join(imageStore.RootDir(), testImage, "index.json"), 0o000)
+		if err != nil {
+			panic(err)
+		}
+
+		canBeSkipped, err = canSkipImage(testImage, testImageTag, upstreamRef, imageStore, &types.SystemContext{}, log)
+		So(err, ShouldNotBeNil)
+		So(canBeSkipped, ShouldBeFalse)
 	})
 
 	Convey("Test filterRepos()", t, func() {
@@ -284,7 +329,7 @@ func TestSyncInternal(t *testing.T) {
 			panic(err)
 		}
 
-		err = CopyFiles("../../../test/data", testRootDir)
+		err = test.CopyFiles("../../../test/data", testRootDir)
 		if err != nil {
 			panic(err)
 		}

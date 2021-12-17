@@ -354,6 +354,16 @@ func syncRegistry(regCfg RegistryConfig, upstreamURL string, storeController sto
 
 		imageStore := storeController.GetImageStore(repo)
 
+		canBeSkipped, err := canSkipImage(repo, tag, upstreamImageRef, imageStore, upstreamCtx, log)
+		if err != nil {
+			log.Error().Err(err).Msgf("couldn't check if the upstream image %s can be skipped",
+				upstreamImageRef.DockerReference())
+		}
+
+		if canBeSkipped {
+			continue
+		}
+
 		localCachePath, err := getLocalCachePath(imageStore, repo)
 		if err != nil {
 			log.Error().Err(err).Str("dir", localCachePath).Msg("couldn't create temporary dir")
@@ -371,15 +381,15 @@ func syncRegistry(regCfg RegistryConfig, upstreamURL string, storeController sto
 			return err
 		}
 
-		log.Info().Msgf("copying image %s:%s to %s", upstreamImageRef.DockerReference(), tag, localCachePath)
+		log.Info().Msgf("copying image %s to %s", upstreamImageRef.DockerReference(), localCachePath)
 
 		if err = retry.RetryIfNecessary(context.Background(), func() error {
 			_, err = copy.Image(context.Background(), policyCtx, localImageRef, upstreamImageRef, &options)
 
 			return err
 		}, retryOptions); err != nil {
-			log.Error().Err(err).Msgf("error while copying image %s:%s to %s",
-				upstreamImageRef.DockerReference(), tag, localCachePath)
+			log.Error().Err(err).Msgf("error while copying image %s to %s",
+				upstreamImageRef.DockerReference(), localCachePath)
 
 			return err
 		}
@@ -397,7 +407,7 @@ func syncRegistry(regCfg RegistryConfig, upstreamURL string, storeController sto
 
 			return err
 		}, retryOptions); err != nil {
-			log.Error().Err(err).Msgf("couldn't copy image signature %s:%s", upstreamImageRef.DockerReference(), tag)
+			log.Error().Err(err).Msgf("couldn't copy image signature %s", upstreamImageRef.DockerReference())
 		}
 	}
 
