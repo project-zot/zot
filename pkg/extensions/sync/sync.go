@@ -477,9 +477,6 @@ func Run(cfg Config, storeController storage.StoreController, wg *goSync.WaitGro
 			continue
 		}
 
-		// increment reference since will be busy, so shutdown has to wait
-		wg.Add(1)
-
 		ticker := time.NewTicker(regCfg.PollInterval)
 
 		// fork a new zerolog child to avoid data race
@@ -491,6 +488,9 @@ func Run(cfg Config, storeController storage.StoreController, wg *goSync.WaitGro
 		go func(regCfg RegistryConfig, l log.Logger) {
 			// run on intervals
 			for ; true; <-ticker.C {
+				// increment reference since will be busy, so shutdown has to wait
+				wg.Add(1)
+
 				if err := syncRegistry(regCfg, storeController, l, localCtx, policyCtx,
 					credentialsFile[upstreamRegistry], uuid.String()); err != nil {
 					l.Error().Err(err).Msg("sync exited with error, stopping it...")
