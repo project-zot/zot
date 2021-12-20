@@ -71,7 +71,7 @@ func EnableExtensions(config *config.Config, log log.Logger, rootDir string) {
 // EnableSyncExtension enables sync extension.
 func EnableSyncExtension(config *config.Config, wg *goSync.WaitGroup,
 	storeController storage.StoreController, log log.Logger) {
-	if config.Extensions.Sync != nil {
+	if config.Extensions.Sync != nil && config.Extensions.Sync.Enable {
 		if err := sync.Run(*config.Extensions.Sync, storeController, wg, log); err != nil {
 			log.Error().Err(err).Msg("Error encountered while setting up syncing")
 		}
@@ -100,7 +100,7 @@ func SetupRoutes(config *config.Config, router *mux.Router, storeController stor
 			Handler(gqlHandler.NewDefaultServer(search.NewExecutableSchema(resConfig)))
 	}
 
-	if config.Extensions.Sync != nil {
+	if config.Extensions.Sync != nil && config.Extensions.Sync.Enable {
 		postSyncer := sync.PostHandler{
 			Cfg:             *config.Extensions.Sync,
 			Log:             log,

@@ -12,6 +12,7 @@
 	},
 	"extensions":{
 		"sync": {
+			"enable": true,
 			"credentialsFile": "./examples/sync-auth-filepath.json",
 			"registries": [{
 				"url": "https://registry1:5000",

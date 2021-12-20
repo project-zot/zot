@@ -1324,7 +1324,8 @@ func getImageManifest(routeHandler *RouteHandler, imgStore storage.ImageStore, n
 	content, digest, mediaType, err := imgStore.GetImageManifest(name, reference)
 	if err != nil {
 		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
-			if routeHandler.c.Config.Extensions != nil && routeHandler.c.Config.Extensions.Sync != nil {
+			if routeHandler.c.Config.Extensions != nil && routeHandler.c.Config.Extensions.Sync != nil &&
+				routeHandler.c.Config.Extensions.Sync.Enable {
 				routeHandler.c.Log.Info().Msgf("image not found, trying to get image %s:%s by syncing on demand",
 					name, reference)
 
@@ -1338,7 +1339,8 @@ func getImageManifest(routeHandler *RouteHandler, imgStore storage.ImageStore, n
 				}
 			}
 		} else if errors.Is(err, zerr.ErrManifestNotFound) {
-			if routeHandler.c.Config.Extensions != nil && routeHandler.c.Config.Extensions.Sync != nil {
+			if routeHandler.c.Config.Extensions != nil && routeHandler.c.Config.Extensions.Sync != nil &&
+				routeHandler.c.Config.Extensions.Sync.Enable {
 				routeHandler.c.Log.Info().Msgf("manifest not found, trying to get image %s:%s by syncing on demand",
 					name, reference)
 

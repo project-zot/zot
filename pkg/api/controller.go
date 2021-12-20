@@ -255,7 +255,7 @@ func (c *Controller) InitImageStore() error {
 	}
 
 	// Enable extensions if extension config is provided
-	if c.Config.Extensions != nil && c.Config.Extensions.Sync != nil {
+	if c.Config.Extensions != nil && c.Config.Extensions.Sync != nil && c.Config.Extensions.Sync.Enable {
 		ext.EnableSyncExtension(c.Config, c.wgShutDown, c.StoreController, c.Log)
 	}
 

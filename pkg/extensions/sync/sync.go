@@ -51,6 +51,7 @@ type Credentials struct {
 }
 
 type Config struct {
+	Enable          bool
 	CredentialsFile string
 	Registries      []RegistryConfig
 }

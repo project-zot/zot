@@ -229,7 +229,7 @@ func LoadConfiguration(config *config.Config, configPath string) {
 	}
 
 	// check glob patterns in sync are compilable
-	if config.Extensions != nil && config.Extensions.Sync != nil {
+	if config.Extensions != nil && config.Extensions.Sync != nil && config.Extensions.Sync.Enable {
 		for _, regCfg := range config.Extensions.Sync.Registries {
 			if regCfg.Content != nil {
 				for _, content := range regCfg.Content {
