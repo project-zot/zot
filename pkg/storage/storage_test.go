@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	// Add s3 support.
 	"github.com/docker/distribution/registry/storage/driver"
@@ -599,16 +600,18 @@ func TestStorageAPIs(t *testing.T) {
 					for i := 0; i < 1000; i++ {
 						wg.Add(2)
 						go func() {
+							var lockLatency time.Time
 							defer wg.Done()
-							imgStore.Lock()
+							imgStore.Lock(&lockLatency)
 							func() {}()
-							imgStore.Unlock()
+							imgStore.Unlock(&lockLatency)
 						}()
 						go func() {
+							var lockLatency time.Time
 							defer wg.Done()
-							imgStore.RLock()
+							imgStore.RLock(&lockLatency)
 							func() {}()
-							imgStore.RUnlock()
+							imgStore.RUnlock(&lockLatency)
 						}()
 					}
 					wg.Wait()

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	// Add s3 support.
 	"github.com/docker/distribution/registry/storage/driver"
@@ -27,6 +28,11 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	zlog "zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+)
+
+const (
+	RLOCK  = "RLock"
+	RWLOCK = "RWLock"
 )
 
 // ObjectStorage provides the image storage operations.
@@ -73,23 +79,37 @@ func NewImageStore(rootDir string, gc bool, dedupe bool, log zlog.Logger, metric
 }
 
 // RLock read-lock.
-func (is *ObjectStorage) RLock() {
+func (is *ObjectStorage) RLock(lockStart *time.Time) {
+	*lockStart = time.Now()
+
 	is.lock.RLock()
 }
 
 // RUnlock read-unlock.
-func (is *ObjectStorage) RUnlock() {
+func (is *ObjectStorage) RUnlock(lockStart *time.Time) {
 	is.lock.RUnlock()
+
+	lockEnd := time.Now()
+	// includes time spent in acquiring and holding a lock
+	latency := lockEnd.Sub(*lockStart)
+	monitoring.ObserveStorageLockLatency(is.metrics, latency, is.RootDir(), RLOCK) // histogram
 }
 
 // Lock write-lock.
-func (is *ObjectStorage) Lock() {
+func (is *ObjectStorage) Lock(lockStart *time.Time) {
+	*lockStart = time.Now()
+
 	is.lock.Lock()
 }
 
 // Unlock write-unlock.
-func (is *ObjectStorage) Unlock() {
+func (is *ObjectStorage) Unlock(lockStart *time.Time) {
 	is.lock.Unlock()
+
+	lockEnd := time.Now()
+	// includes time spent in acquiring and holding a lock
+	latency := lockEnd.Sub(*lockStart)
+	monitoring.ObserveStorageLockLatency(is.metrics, latency, is.RootDir(), RWLOCK) // histogram
 }
 
 func (is *ObjectStorage) initRepo(name string) error {
@@ -143,8 +163,10 @@ func (is *ObjectStorage) initRepo(name string) error {
 
 // InitRepo creates an image repository under this store.
 func (is *ObjectStorage) InitRepo(name string) error {
-	is.Lock()
-	defer is.Unlock()
+	var lockLatency time.Time
+
+	is.Lock(&lockLatency)
+	defer is.Unlock(&lockLatency)
 
 	return is.initRepo(name)
 }
@@ -220,10 +242,12 @@ func (is *ObjectStorage) ValidateRepo(name string) (bool, error) {
 
 // GetRepositories returns a list of all the repositories under this store.
 func (is *ObjectStorage) GetRepositories() ([]string, error) {
+	var lockLatency time.Time
+
 	dir := is.rootDir
 
-	is.RLock()
-	defer is.RUnlock()
+	is.RLock(&lockLatency)
+	defer is.RUnlock(&lockLatency)
 
 	stores := make([]string, 0)
 	err := is.store.Walk(context.Background(), dir, func(fileInfo driver.FileInfo) error {
@@ -256,13 +280,15 @@ func (is *ObjectStorage) GetRepositories() ([]string, error) {
 
 // GetImageTags returns a list of image tags available in the specified repository.
 func (is *ObjectStorage) GetImageTags(repo string) ([]string, error) {
+	var lockLatency time.Time
+
 	dir := path.Join(is.rootDir, repo)
 	if fi, err := is.store.Stat(context.Background(), dir); err != nil || !fi.IsDir() {
 		return nil, zerr.ErrRepoNotFound
 	}
 
-	is.RLock()
-	defer is.RUnlock()
+	is.RLock(&lockLatency)
+	defer is.RUnlock(&lockLatency)
 
 	buf, err := is.GetIndexContent(repo)
 	if err != nil {
@@ -290,13 +316,15 @@ func (is *ObjectStorage) GetImageTags(repo string) ([]string, error) {
 
 // GetImageManifest returns the image manifest of an image in the specific repository.
 func (is *ObjectStorage) GetImageManifest(repo string, reference string) ([]byte, string, string, error) {
+	var lockLatency time.Time
+
 	dir := path.Join(is.rootDir, repo)
 	if fi, err := is.store.Stat(context.Background(), dir); err != nil || !fi.IsDir() {
 		return nil, "", "", zerr.ErrRepoNotFound
 	}
 
-	is.RLock()
-	defer is.RUnlock()
+	is.RLock(&lockLatency)
+	defer is.RUnlock(&lockLatency)
 
 	buf, err := is.GetIndexContent(repo)
 	if err != nil {
@@ -422,8 +450,10 @@ func (is *ObjectStorage) PutImageManifest(repo string, reference string, mediaTy
 		refIsDigest = true
 	}
 
-	is.Lock()
-	defer is.Unlock()
+	var lockLatency time.Time
+
+	is.Lock(&lockLatency)
+	defer is.Unlock(&lockLatency)
 
 	dir := path.Join(is.rootDir, repo)
 
@@ -526,6 +556,8 @@ func (is *ObjectStorage) PutImageManifest(repo string, reference string, mediaTy
 
 // DeleteImageManifest deletes the image manifest from the repository.
 func (is *ObjectStorage) DeleteImageManifest(repo string, reference string) error {
+	var lockLatency time.Time
+
 	dir := path.Join(is.rootDir, repo)
 	if fi, err := is.store.Stat(context.Background(), dir); err != nil || !fi.IsDir() {
 		return zerr.ErrRepoNotFound
@@ -541,8 +573,8 @@ func (is *ObjectStorage) DeleteImageManifest(repo string, reference string) erro
 		isTag = true
 	}
 
-	is.Lock()
-	defer is.Unlock()
+	is.Lock(&lockLatency)
+	defer is.Unlock(&lockLatency)
 
 	buf, err := is.GetIndexContent(repo)
 	if err != nil {
@@ -921,11 +953,8 @@ func (is *ObjectStorage) FullBlobUpload(repo string, body io.Reader, digest stri
 	}
 
 	uuid := u.String()
-
 	src := is.BlobUploadPath(repo, uuid)
-
 	digester := sha256.New()
-
 	buf := new(bytes.Buffer)
 
 	_, err = buf.ReadFrom(body)
@@ -957,8 +986,10 @@ func (is *ObjectStorage) FullBlobUpload(repo string, body io.Reader, digest stri
 		return "", -1, zerr.ErrBadBlobDigest
 	}
 
-	is.Lock()
-	defer is.Unlock()
+	var lockLatency time.Time
+
+	is.Lock(&lockLatency)
+	defer is.Unlock(&lockLatency)
 
 	dst := is.BlobPath(repo, dstDigest)
 
@@ -995,6 +1026,8 @@ func (is *ObjectStorage) BlobPath(repo string, digest godigest.Digest) string {
 
 // CheckBlob verifies a blob and returns true if the blob is correct.
 func (is *ObjectStorage) CheckBlob(repo string, digest string) (bool, int64, error) {
+	var lockLatency time.Time
+
 	dgst, err := godigest.Parse(digest)
 	if err != nil {
 		is.log.Error().Err(err).Str("digest", digest).Msg("failed to parse digest")
@@ -1004,8 +1037,8 @@ func (is *ObjectStorage) CheckBlob(repo string, digest string) (bool, int64, err
 
 	blobPath := is.BlobPath(repo, dgst)
 
-	is.RLock()
-	defer is.RUnlock()
+	is.RLock(&lockLatency)
+	defer is.RUnlock(&lockLatency)
 
 	binfo, err := is.store.Stat(context.Background(), blobPath)
 	if err != nil {
@@ -1027,6 +1060,8 @@ func (is *ObjectStorage) CheckBlob(repo string, digest string) (bool, int64, err
 // GetBlob returns a stream to read the blob.
 // blob selector instead of directly downloading the blob.
 func (is *ObjectStorage) GetBlob(repo string, digest string, mediaType string) (io.Reader, int64, error) {
+	var lockLatency time.Time
+
 	dgst, err := godigest.Parse(digest)
 	if err != nil {
 		is.log.Error().Err(err).Str("digest", digest).Msg("failed to parse digest")
@@ -1036,8 +1071,8 @@ func (is *ObjectStorage) GetBlob(repo string, digest string, mediaType string) (
 
 	blobPath := is.BlobPath(repo, dgst)
 
-	is.RLock()
-	defer is.RUnlock()
+	is.RLock(&lockLatency)
+	defer is.RUnlock(&lockLatency)
 
 	binfo, err := is.store.Stat(context.Background(), blobPath)
 	if err != nil {
@@ -1093,6 +1128,8 @@ func (is *ObjectStorage) GetIndexContent(repo string) ([]byte, error) {
 
 // DeleteBlob removes the blob from the repository.
 func (is *ObjectStorage) DeleteBlob(repo string, digest string) error {
+	var lockLatency time.Time
+
 	dgst, err := godigest.Parse(digest)
 	if err != nil {
 		is.log.Error().Err(err).Str("digest", digest).Msg("failed to parse digest")
@@ -1102,8 +1139,8 @@ func (is *ObjectStorage) DeleteBlob(repo string, digest string) error {
 
 	blobPath := is.BlobPath(repo, dgst)
 
-	is.Lock()
-	defer is.Unlock()
+	is.Lock(&lockLatency)
+	defer is.Unlock(&lockLatency)
 
 	_, err = is.store.Stat(context.Background(), blobPath)
 	if err != nil {
