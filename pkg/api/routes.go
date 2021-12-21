@@ -32,6 +32,7 @@ import (
 	ext "zotregistry.io/zot/pkg/extensions"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/test"
 
 	// as required by swaggo.
 	_ "zotregistry.io/zot/swagger"
@@ -165,7 +166,7 @@ func (rh *RouteHandler) ListTags(response http.ResponseWriter, request *http.Req
 
 	name, ok := vars["name"]
 
-	if !ok || name == "" {
+	if !test.Ok(ok) || name == "" {
 		response.WriteHeader(http.StatusNotFound)
 
 		return
@@ -287,7 +288,7 @@ func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *htt
 	vars := mux.Vars(request)
 	name, ok := vars["name"]
 
-	if !ok || name == "" {
+	if !test.Ok(ok) || name == "" {
 		response.WriteHeader(http.StatusNotFound)
 
 		return
@@ -296,7 +297,7 @@ func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *htt
 	imgStore := rh.getImageStore(name)
 
 	reference, ok := vars["reference"]
-	if !ok || reference == "" {
+	if !test.Ok(ok) || reference == "" {
 		WriteJSON(response,
 			http.StatusNotFound,
 			NewErrorList(NewError(MANIFEST_INVALID, map[string]string{"reference": reference})))

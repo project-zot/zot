@@ -43,6 +43,7 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/test"
 	. "zotregistry.io/zot/test"
 )
 
@@ -2083,6 +2084,29 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		Convey("Hard to reach cases", func() {
+			injected := test.InjectFailure(0)
+
+			// get tags with read access should get 200
+			conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions =
+				append(conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions, "read")
+			resp, err = resty.R().SetBasicAuth(username, passphrase).
+				Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			if injected {
+				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			} else {
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			}
+		})
+
 		// head blob should get 200 now
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Head(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
@@ -2837,6 +2861,24 @@ func TestParallelRequests(t *testing.T) {
 					Head(baseURL + "/v2/" + testcase.destImageName + "/manifests/" + manifest)
 				assert.Equal(t, err, nil, "Error should be nil")
 				assert.Equal(t, headResponse.StatusCode(), http.StatusNotFound, "response status code should return 404")
+
+				Convey("Hard to reach cases", t, func() {
+					_ = test.InjectFailure(0)
+
+					headResponse, err := client.R().SetBasicAuth(username, passphrase).
+						Head(baseURL + "/v2/" + testcase.destImageName + "/manifests/test:1.0")
+					assert.Equal(t, err, nil, "Error should be nil")
+					assert.Equal(t, headResponse.StatusCode(), http.StatusNotFound, "response status code should return 404")
+				})
+
+				Convey("Hard to reach cases", t, func() {
+					_ = test.InjectFailure(1)
+
+					headResponse, err := client.R().SetBasicAuth(username, passphrase).
+						Head(baseURL + "/v2/" + testcase.destImageName + "/manifests/test:1.0")
+					assert.Equal(t, err, nil, "Error should be nil")
+					assert.Equal(t, headResponse.StatusCode(), http.StatusNotFound, "response status code should return 404")
+				})
 
 				getResponse, err := client.R().SetBasicAuth(username, passphrase).
 					Get(baseURL + "/v2/" + testcase.destImageName + "/manifests/" + manifest)

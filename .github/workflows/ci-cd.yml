@@ -44,7 +44,7 @@ jobs:
           go get github.com/wadey/gocovmerge
 
       - name: Run build and test
-        timeout-minutes: 30
+        timeout-minutes: 60
         run: |
           cd $GITHUB_WORKSPACE && make && make ARCH=arm64 binary-arch-minimal && make ARCH=arm64 binary-arch
         env:

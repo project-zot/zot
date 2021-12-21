@@ -670,7 +670,23 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
+			resp, err = resty.R().Get(baseURL + "/v2/page0/tags/list?n= ")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+
+			resp, err = resty.R().Get(baseURL + "/v2/page0/tags/list?n=a")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+
 			resp, err = resty.R().Get(baseURL + "/v2/page0/tags/list?n=0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, err = resty.R().Get(baseURL + "/v2/page0/tags/list?n=0&last=100")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			resp, err = resty.R().Get(baseURL + "/v2/page0/tags/list?n=0&last=test:0.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 

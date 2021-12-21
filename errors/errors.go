@@ -47,4 +47,5 @@ var (
 	ErrSyncMissingCatalog      = errors.New("sync: couldn't fetch upstream registry's catalog")
 	ErrMethodNotSupported      = errors.New("storage: method not supported")
 	ErrInvalidMetric           = errors.New("metrics: invalid metric func")
+	ErrInjected                = errors.New("test: injected failure")
 )
