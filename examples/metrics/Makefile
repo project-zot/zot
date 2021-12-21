@@ -1,4 +1,4 @@
-CONTAINER_RUNTIME := $(shell command -v podman 2> /dev/null || echo docker)
+CONTAINER_RUNTIME := docker
 
 .PHONY: binary-container
 binary-container:

@@ -76,7 +76,7 @@ func (zc Collector) Collect(ch chan<- prometheus.Metric) {
 			zc.MetricsDesc[name], prometheus.CounterValue, h.Sum, h.LabelValues...)
 
 		if h.Buckets != nil {
-			for _, fvalue := range monitoring.GetDefaultBuckets() {
+			for _, fvalue := range monitoring.GetBuckets(h.Name) {
 				var svalue string
 				if fvalue == math.MaxFloat64 {
 					svalue = "+Inf"

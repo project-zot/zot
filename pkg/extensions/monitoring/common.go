@@ -2,7 +2,6 @@ package monitoring
 
 import (
 	"fmt"
-	"math"
 	"os"
 	"path/filepath"
 )
@@ -13,10 +12,6 @@ type MetricServer interface {
 	ForceSendMetric(interface{})
 	ReceiveMetrics() interface{}
 	IsEnabled() bool
-}
-
-func GetDefaultBuckets() []float64 {
-	return []float64{.05, .5, 1, 5, 30, 60, 600, math.MaxFloat64}
 }
 
 func getDirSize(path string) (int64, error) {

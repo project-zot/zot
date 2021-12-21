@@ -370,6 +370,49 @@ func TestNewExporter(t *testing.T) {
 
 					So(isChannelDrained(chMetric), ShouldEqual, true)
 				})
+				Convey("Collecting data: Test init value & that observe works on Histogram buckets (lock latency)", func() {
+					// Testing initial value of the histogram counter to be 1 after first observation call
+					latency := getRandomLatency()
+					monitoring.ObserveStorageLockLatency(serverController.Metrics, latency, "/tmp/zot", "RWLock")
+					time.Sleep(SleepTime)
+
+					go func() {
+						// this blocks
+						collector.Collect(chMetric)
+					}()
+					readDefaultMetrics(collector, chMetric)
+
+					pmMetric := <-chMetric
+					So(pmMetric.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_storage_lock_latency_seconds_count"].String())
+
+					var metric dto.Metric
+					err := pmMetric.Write(&metric)
+					So(err, ShouldBeNil)
+					So(*metric.Counter.Value, ShouldEqual, 1)
+
+					pmMetric = <-chMetric
+					So(pmMetric.Desc().String(), ShouldEqual, collector.MetricsDesc["zot_storage_lock_latency_seconds_sum"].String())
+
+					err = pmMetric.Write(&metric)
+					So(err, ShouldBeNil)
+					So(*metric.Counter.Value, ShouldEqual, latency.Seconds())
+
+					for _, fvalue := range monitoring.GetBuckets("zot.storage.lock.latency.seconds") {
+						pmMetric = <-chMetric
+						So(pmMetric.Desc().String(), ShouldEqual,
+							collector.MetricsDesc["zot_storage_lock_latency_seconds_bucket"].String())
+
+						err = pmMetric.Write(&metric)
+						So(err, ShouldBeNil)
+						if latency.Seconds() < fvalue {
+							So(*metric.Counter.Value, ShouldEqual, 1)
+						} else {
+							So(*metric.Counter.Value, ShouldEqual, 0)
+						}
+					}
+
+					So(isChannelDrained(chMetric), ShouldEqual, true)
+				})
 				Convey("Collecting data: Test init Histogram buckets \n", func() {
 					// Generate a random  latency within each bucket and finally test
 					// that "higher" rank bucket counter is incremented by 1

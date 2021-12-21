@@ -74,11 +74,28 @@ var (
 		},
 		[]string{"commit", "binaryType", "goVersion", "version"},
 	)
+	storageLockLatency = promauto.NewHistogramVec( // nolint: gochecknoglobals
+		prometheus.HistogramOpts{
+			Namespace: metricsNamespace,
+			Name:      "storage_lock_latency_seconds",
+			Help:      "Latency of serving HTTP requests",
+			Buckets:   GetStorageLatencyBuckets(),
+		},
+		[]string{"storageName", "lockType"},
+	)
 )
 
 type metricServer struct {
 	enabled bool
 	log     log.Logger
+}
+
+func GetDefaultBuckets() []float64 {
+	return []float64{.05, .5, 1, 5, 30, 60, 600}
+}
+
+func GetStorageLatencyBuckets() []float64 {
+	return []float64{.001, .01, 0.1, 1, 5, 10, 15, 30, 60}
 }
 
 func NewMetricsServer(enabled bool, log log.Logger) MetricServer {
@@ -172,5 +189,11 @@ func IncUploadCounter(ms MetricServer, repo string) {
 func SetServerInfo(ms MetricServer, lvalues ...string) {
 	ms.ForceSendMetric(func() {
 		serverInfo.WithLabelValues(lvalues...).Set(0)
+	})
+}
+
+func ObserveStorageLockLatency(ms MetricServer, latency time.Duration, storageName, lockType string) {
+	ms.SendMetric(func() {
+		storageLockLatency.WithLabelValues(storageName, lockType).Observe(latency.Seconds())
 	})
 }

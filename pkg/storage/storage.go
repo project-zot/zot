@@ -2,6 +2,7 @@ package storage
 
 import (
 	"io"
+	"time"
 
 	"github.com/notaryproject/notation-go-lib"
 	"github.com/opencontainers/go-digest"
@@ -14,10 +15,10 @@ const (
 type ImageStore interface {
 	DirExists(d string) bool
 	RootDir() string
-	RLock()
-	RUnlock()
-	Lock()
-	Unlock()
+	RLock(*time.Time)
+	RUnlock(*time.Time)
+	Lock(*time.Time)
+	Unlock(*time.Time)
 	InitRepo(name string) error
 	ValidateRepo(name string) (bool, error)
 	GetRepositories() ([]string, error)

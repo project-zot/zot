@@ -27,7 +27,8 @@ const (
 	// Summary.
 	httpRepoLatencySeconds = metricsNamespace + ".http.repo.latency.seconds"
 	// Histogram.
-	httpMethodLatencySeconds = metricsNamespace + ".http.method.latency.seconds"
+	httpMethodLatencySeconds  = metricsNamespace + ".http.method.latency.seconds"
+	storageLockLatencySeconds = metricsNamespace + ".storage.lock.latency.seconds"
 
 	metricsScrapeTimeout       = 2 * time.Minute
 	metricsScrapeCheckInterval = 30 * time.Second
@@ -85,6 +86,14 @@ type HistogramValue struct {
 	Buckets     map[string]int
 	LabelNames  []string
 	LabelValues []string
+}
+
+func GetDefaultBuckets() []float64 {
+	return []float64{.05, .5, 1, 5, 30, 60, 600, math.MaxFloat64}
+}
+
+func GetStorageLatencyBuckets() []float64 {
+	return []float64{.001, .01, 0.1, 1, 5, 10, 15, 30, 60, math.MaxFloat64}
 }
 
 // implements the MetricServer interface.
@@ -172,7 +181,7 @@ func NewMetricsServer(enabled bool, log log.Logger) MetricServer {
 	// convert to a map for returning easily the string corresponding to a bucket
 	bucketsFloat2String := map[float64]string{}
 
-	for _, fvalue := range GetDefaultBuckets() {
+	for _, fvalue := range append(GetDefaultBuckets(), GetStorageLatencyBuckets()...) {
 		if fvalue == math.MaxFloat64 {
 			bucketsFloat2String[fvalue] = "+Inf"
 		} else {
@@ -219,7 +228,8 @@ func GetSummaries() map[string][]string {
 
 func GetHistograms() map[string][]string {
 	return map[string][]string{
-		httpMethodLatencySeconds: {"method"},
+		httpMethodLatencySeconds:  {"method"},
+		storageLockLatencySeconds: {"storageName", "lockType"},
 	}
 }
 
@@ -366,7 +376,7 @@ func (ms *metricServer) HistogramObserve(hv *HistogramValue) {
 		// The HistogramValue not found: add it
 		buckets := make(map[string]int)
 
-		for _, fvalue := range GetDefaultBuckets() {
+		for _, fvalue := range GetBuckets(hv.Name) {
 			if hv.Sum <= fvalue {
 				buckets[ms.bucketsF2S[fvalue]] = 1
 			} else {
@@ -381,7 +391,7 @@ func (ms *metricServer) HistogramObserve(hv *HistogramValue) {
 		cachedH := ms.cache.Histograms[index]
 		cachedH.Count++
 		cachedH.Sum += hv.Sum
-		for _, fvalue := range GetDefaultBuckets() {
+		for _, fvalue := range GetBuckets(hv.Name) {
 			if hv.Sum <= fvalue {
 				cachedH.Buckets[ms.bucketsF2S[fvalue]]++
 			}
@@ -497,6 +507,25 @@ func SetServerInfo(ms MetricServer, lvs ...string) {
 	ms.ForceSendMetric(info)
 }
 
+func ObserveStorageLockLatency(ms MetricServer, latency time.Duration, storageName, lockType string) {
+	h := HistogramValue{
+		Name:        storageLockLatencySeconds,
+		Sum:         latency.Seconds(), // convenient temporary store for Histogram latency value
+		LabelNames:  []string{"storageName", "lockType"},
+		LabelValues: []string{storageName, lockType},
+	}
+	ms.SendMetric(h)
+}
+
 func GetMaxIdleScrapeInterval() time.Duration {
 	return metricsScrapeTimeout + metricsScrapeCheckInterval
+}
+
+func GetBuckets(metricName string) []float64 {
+	switch metricName {
+	case storageLockLatencySeconds:
+		return GetStorageLatencyBuckets()
+	default:
+		return GetDefaultBuckets()
+	}
 }

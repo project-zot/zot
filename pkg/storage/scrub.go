@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/olekukonko/tablewriter"
 	godigest "github.com/opencontainers/go-digest"
@@ -84,11 +85,12 @@ func checkImage(imageName string, imgStore ImageStore) ([]ScrubImageResult, erro
 	if err != nil {
 		return results, err
 	}
-
 	defer oci.Close()
 
-	imgStore.RLock()
-	defer imgStore.RUnlock()
+	var lockLatency time.Time
+
+	imgStore.RLock(&lockLatency)
+	defer imgStore.RUnlock(&lockLatency)
 
 	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
 	if err != nil {
