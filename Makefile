@@ -68,6 +68,9 @@ test: check-skopeo $(NOTATION)
 	$(shell sudo chmod a=rwx /etc/containers/certs.d/127.0.0.1:8089/*.key)
 	go test -tags extended,containers_image_openpgp -v -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-extended.txt -covermode=atomic ./...
 	go test -tags minimal,containers_image_openpgp -v -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-minimal.txt -covermode=atomic ./...
+	# development-mode unit tests possibly using failure injection
+	go test -tags dev,extended,containers_image_openpgp -v -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-dev-extended.txt -covermode=atomic ./pkg/api/... ./pkg/test/...
+	go test -tags dev,minimal,containers_image_openpgp -v -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-dev-minimal.txt -covermode=atomic ./pkg/api/... ./pkg/test/...
 
 .PHONY: run-bench
 run-bench: binary bench
@@ -92,8 +95,8 @@ $(NOTATION):
 
 .PHONY: covhtml
 covhtml:
-	tail -n +2 coverage-minimal.txt > tmp.txt && mv tmp.txt coverage-minimal.txt
-	cat coverage-extended.txt coverage-minimal.txt > coverage.txt
+	go install github.com/wadey/gocovmerge@latest
+	gocovmerge coverage-minimal.txt coverage-extended.txt coverage-dev-minimal.txt coverage-dev-extended.txt > coverage.txt
 	go tool cover -html=coverage.txt -o coverage.html
 
 $(GOLINTER):
@@ -105,6 +108,8 @@ $(GOLINTER):
 check: ./golangcilint.yaml $(GOLINTER)
 	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags minimal,containers_image_openpgp ./...
 	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags extended,containers_image_openpgp ./...
+	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags dev,minimal,containers_image_openpgp ./...
+	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags dev,extended,containers_image_openpgp ./...
 
 swagger/docs.go: 
 	swag -v || go install github.com/swaggo/swag/cmd/swag
