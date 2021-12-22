@@ -15,6 +15,7 @@ import (
 	"path"
 	"reflect"
 	"strings"
+	goSync "sync"
 	"testing"
 	"time"
 
@@ -1629,6 +1630,94 @@ func TestSyncSubPaths(t *testing.T) {
 		binfo, err = os.Stat(path.Join(destDir, subpath))
 		So(binfo, ShouldBeNil)
 		So(err, ShouldNotBeNil)
+	})
+}
+
+func TestSyncOnDemandPullOnce(t *testing.T) {
+	Convey("Verify sync on demand pulls only one time", t, func(c C) {
+		sc, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
+		defer os.RemoveAll(srcDir)
+
+		defer func() {
+			sc.Shutdown()
+		}()
+
+		regex := ".*"
+		semver := true
+		var tlsVerify bool
+
+		syncRegistryConfig := sync.RegistryConfig{
+			Content: []sync.Content{
+				{
+					Prefix: testImage,
+					Tags: &sync.Tags{
+						Regex:  &regex,
+						Semver: &semver,
+					},
+				},
+			},
+			URL:       srcBaseURL,
+			TLSVerify: &tlsVerify,
+			CertDir:   "",
+			OnDemand:  true,
+		}
+
+		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+
+		dc, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
+		defer os.RemoveAll(destDir)
+
+		defer func() {
+			dc.Shutdown()
+		}()
+
+		var wg goSync.WaitGroup
+
+		wg.Add(1)
+		go func() {
+			_, _ = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+			wg.Done()
+		}()
+
+		wg.Add(1)
+		go func() {
+			_, _ = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+			wg.Done()
+		}()
+
+		wg.Add(1)
+		go func() {
+			_, _ = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+			wg.Done()
+		}()
+
+		done := make(chan bool)
+
+		var maxLen int
+		syncBlobUploadDir := path.Join(destDir, testImage, sync.SyncBlobUploadDir)
+
+		go func() {
+			for {
+				select {
+				case <-done:
+					return
+				default:
+					dirs, err := ioutil.ReadDir(syncBlobUploadDir)
+					if err != nil {
+						continue
+					}
+					// check how many .sync/uuid/ dirs are created, if just one then on demand pulled only once
+					if len(dirs) > maxLen {
+						maxLen = len(dirs)
+					}
+				}
+			}
+		}()
+
+		wg.Wait()
+		done <- true
+
+		So(maxLen, ShouldEqual, 1)
 	})
 }
 

@@ -21,6 +21,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/gorilla/mux"
 	jsoniter "github.com/json-iterator/go"
@@ -47,11 +48,12 @@ const (
 )
 
 type RouteHandler struct {
-	c *Controller
+	c              *Controller
+	demandedImages sync.Map
 }
 
 func NewRouteHandler(c *Controller) *RouteHandler {
-	rh := &RouteHandler{c: c}
+	rh := &RouteHandler{c: c, demandedImages: sync.Map{}}
 	rh.SetupRoutes()
 
 	return rh
@@ -1323,32 +1325,38 @@ func getImageManifest(routeHandler *RouteHandler, imgStore storage.ImageStore, n
 	reference string) ([]byte, string, string, error) {
 	content, digest, mediaType, err := imgStore.GetImageManifest(name, reference)
 	if err != nil {
-		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
+		if errors.Is(err, zerr.ErrRepoNotFound) || errors.Is(err, zerr.ErrManifestNotFound) {
+			// if sync enabled
 			if routeHandler.c.Config.Extensions != nil && routeHandler.c.Config.Extensions.Sync != nil {
 				routeHandler.c.Log.Info().Msgf("image not found, trying to get image %s:%s by syncing on demand",
 					name, reference)
 
-				errSync := ext.SyncOneImage(routeHandler.c.Config, routeHandler.c.StoreController,
-					name, reference, routeHandler.c.Log)
-				if errSync != nil {
-					routeHandler.c.Log.Err(errSync).Msgf("error encounter while syncing image %s:%s",
-						name, reference)
-				} else {
-					content, digest, mediaType, err = imgStore.GetImageManifest(name, reference)
-				}
-			}
-		} else if errors.Is(err, zerr.ErrManifestNotFound) {
-			if routeHandler.c.Config.Extensions != nil && routeHandler.c.Config.Extensions.Sync != nil {
-				routeHandler.c.Log.Info().Msgf("manifest not found, trying to get image %s:%s by syncing on demand",
-					name, reference)
+				image := fmt.Sprintf("%s:%s", name, reference)
 
-				errSync := ext.SyncOneImage(routeHandler.c.Config, routeHandler.c.StoreController,
-					name, reference, routeHandler.c.Log)
-				if errSync != nil {
-					routeHandler.c.Log.Err(errSync).Msgf("error encounter while syncing image %s:%s",
-						name, reference)
+				// loadOrStore image-based channel
+				value, found := routeHandler.demandedImages.LoadOrStore(image, make(chan bool))
+				imageChan, _ := value.(chan bool)
+
+				if found {
+					// download already started by another goroutine
+					// wait to finish image download
+					res, ok := <-imageChan
+					// if value received or channel closed sync finished
+					if res || !ok {
+						content, digest, mediaType, err = imgStore.GetImageManifest(name, reference)
+					}
 				} else {
-					content, digest, mediaType, err = imgStore.GetImageManifest(name, reference)
+					defer routeHandler.demandedImages.Delete(image)
+					// start downloading image
+					go syncImage(routeHandler, name, reference)
+					// wait to get result
+					res, ok := <-imageChan
+					// close channel
+					close(imageChan)
+					if res || !ok {
+						// sync was successful
+						content, digest, mediaType, err = imgStore.GetImageManifest(name, reference)
+					}
 				}
 			}
 		} else {
@@ -1424,4 +1432,21 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 	rs := ReferenceList{References: refs}
 
 	WriteJSON(response, http.StatusOK, rs)
+}
+
+func syncImage(routeHandler *RouteHandler, name, reference string) {
+	err := ext.SyncOneImage(routeHandler.c.Config, routeHandler.c.StoreController,
+		name, reference, routeHandler.c.Log)
+
+	// get image-based channel
+	value, _ := routeHandler.demandedImages.Load(fmt.Sprintf("%s:%s", name, reference))
+	imageChan, _ := value.(chan bool)
+
+	// if there is an error then return false
+	if err != nil {
+		routeHandler.c.Log.Error().Err(err).Msgf("error encounter while syncing image %s:%s", name, reference)
+		imageChan <- false
+	} else {
+		imageChan <- true
+	}
 }
