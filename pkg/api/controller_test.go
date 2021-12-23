@@ -264,12 +264,12 @@ func TestHtpasswdSingleCred(t *testing.T) {
 				// with creds, should get expected status code
 				resp, _ := resty.R().SetBasicAuth(user, password).Get(baseURL + "/v2/")
 				So(resp, ShouldNotBeNil)
-				So(resp.StatusCode(), ShouldEqual, 200)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 				// with invalid creds, it should fail
 				resp, _ = resty.R().SetBasicAuth("chuck", "chuck").Get(baseURL + "/v2/")
 				So(resp, ShouldNotBeNil)
-				So(resp.StatusCode(), ShouldEqual, 401)
+				So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 			}()
 		}
 	})
@@ -319,16 +319,16 @@ func TestHtpasswdTwoCreds(t *testing.T) {
 				// with creds, should get expected status code
 				resp, _ := resty.R().SetBasicAuth(user1, password1).Get(baseURL + "/v2/")
 				So(resp, ShouldNotBeNil)
-				So(resp.StatusCode(), ShouldEqual, 200)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 				resp, _ = resty.R().SetBasicAuth(user2, password2).Get(baseURL + "/v2/")
 				So(resp, ShouldNotBeNil)
-				So(resp.StatusCode(), ShouldEqual, 200)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 				// with invalid creds, it should fail
 				resp, _ = resty.R().SetBasicAuth("chuck", "chuck").Get(baseURL + "/v2/")
 				So(resp, ShouldNotBeNil)
-				So(resp.StatusCode(), ShouldEqual, 401)
+				So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 			}()
 		}
 	})
@@ -376,13 +376,13 @@ func TestHtpasswdFiveCreds(t *testing.T) {
 			for key, val := range tests {
 				resp, _ := resty.R().SetBasicAuth(key, val).Get(baseURL + "/v2/")
 				So(resp, ShouldNotBeNil)
-				So(resp.StatusCode(), ShouldEqual, 200)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 			}
 
 			// with invalid creds, it should fail
 			resp, _ := resty.R().SetBasicAuth("chuck", "chuck").Get(baseURL + "/v2/")
 			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, 401)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 		}()
 	})
 }
@@ -417,7 +417,7 @@ func TestBasicAuth(t *testing.T) {
 		resp, err := resty.R().Get(baseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 401)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 		var e api.Error
 		err = json.Unmarshal(resp.Body(), &e)
 		So(err, ShouldBeNil)
@@ -425,11 +425,11 @@ func TestBasicAuth(t *testing.T) {
 		// with creds, should get expected status code
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 404)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 	})
 }
 
@@ -462,7 +462,7 @@ func TestInterruptedBlobUpload(t *testing.T) {
 			resp, err := client.R().Post(baseURL + "/v2/" + AuthorizedNamespace + "/blobs/uploads/")
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, 202)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 
 			loc := resp.Header().Get("Location")
 			splittedLoc := strings.Split(loc, "/")
@@ -504,14 +504,14 @@ func TestInterruptedBlobUpload(t *testing.T) {
 			resp, err = client.R().Get(baseURL + "/v2/" + AuthorizedNamespace + "/blobs/uploads/" + sessionID)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, 404)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 		})
 
 		Convey("Test negative interrupt PATCH blob upload", func() {
 			resp, err := client.R().Post(baseURL + "/v2/" + AuthorizedNamespace + "/blobs/uploads/")
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, 202)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 
 			loc := resp.Header().Get("Location")
 			splittedLoc := strings.Split(loc, "/")
@@ -556,7 +556,7 @@ func TestInterruptedBlobUpload(t *testing.T) {
 			resp, err = client.R().Get(baseURL + "/v2/" + AuthorizedNamespace + "/blobs/uploads/" + sessionID)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, 404)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 		})
 
 		// nolint: dupl
@@ -564,7 +564,7 @@ func TestInterruptedBlobUpload(t *testing.T) {
 			resp, err := client.R().Post(baseURL + "/v2/" + AuthorizedNamespace + "/blobs/uploads/")
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, 202)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 
 			loc := resp.Header().Get("Location")
 			splittedLoc := strings.Split(loc, "/")
@@ -606,14 +606,14 @@ func TestInterruptedBlobUpload(t *testing.T) {
 			resp, err = client.R().Get(baseURL + "/v2/" + AuthorizedNamespace + "/blobs/uploads/" + sessionID)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, 404)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 		})
 
 		Convey("Test negative interrupt PUT blob upload", func() {
 			resp, err := client.R().Post(baseURL + "/v2/" + AuthorizedNamespace + "/blobs/uploads/")
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, 202)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 
 			loc := resp.Header().Get("Location")
 			splittedLoc := strings.Split(loc, "/")
@@ -658,7 +658,7 @@ func TestInterruptedBlobUpload(t *testing.T) {
 			resp, err = client.R().Get(baseURL + "/v2/" + AuthorizedNamespace + "/blobs/uploads/" + sessionID)
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, 404)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 		})
 	})
 }
@@ -707,7 +707,7 @@ func TestMultipleInstance(t *testing.T) {
 		tagResponse, err := client.R().SetBasicAuth(username, passphrase).
 			Get(baseURL + "/v2/zot-test/tags/list")
 		So(err, ShouldBeNil)
-		So(tagResponse.StatusCode(), ShouldEqual, 404)
+		So(tagResponse.StatusCode(), ShouldEqual, http.StatusNotFound)
 	})
 
 	Convey("Test zot multiple instance", t, func() {
@@ -748,7 +748,7 @@ func TestMultipleInstance(t *testing.T) {
 		resp, err := resty.R().Get(baseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 401)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 		var e api.Error
 		err = json.Unmarshal(resp.Body(), &e)
 		So(err, ShouldBeNil)
@@ -756,11 +756,11 @@ func TestMultipleInstance(t *testing.T) {
 		// with creds, should get expected status code
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 404)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 	})
 }
 
@@ -807,13 +807,13 @@ func TestTLSWithBasicAuth(t *testing.T) {
 		resp, err := resty.R().Get(baseURL)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 400)
+		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
 
 		// without creds, should get access error
 		resp, err = resty.R().Get(secureBaseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 401)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 		var e api.Error
 		err = json.Unmarshal(resp.Body(), &e)
 		So(err, ShouldBeNil)
@@ -821,11 +821,11 @@ func TestTLSWithBasicAuth(t *testing.T) {
 		// with creds, should get expected status code
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(secureBaseURL)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 404)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(secureBaseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 	})
 }
 
@@ -873,26 +873,26 @@ func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 		resp, err := resty.R().Get(baseURL)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 400)
+		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
 
 		// without creds, should still be allowed to access
 		resp, err = resty.R().Get(secureBaseURL + "/v2/")
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		// with creds, should get expected status code
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(secureBaseURL)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 404)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(secureBaseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		// without creds, writes should fail
 		resp, err = resty.R().Post(secureBaseURL + "/v2/repo/blobs/uploads/")
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 401)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 	})
 }
 
@@ -933,7 +933,7 @@ func TestTLSMutualAuth(t *testing.T) {
 		resp, err := resty.R().Get(baseURL)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 400)
+		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
 
 		// without client certs and creds, should get conn error
 		_, err = resty.R().Get(secureBaseURL)
@@ -954,17 +954,17 @@ func TestTLSMutualAuth(t *testing.T) {
 		resp, err = resty.R().Get(secureBaseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		// with client certs and creds, should get expected status code
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(secureBaseURL)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 404)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 		// with client certs, creds shouldn't matter
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(secureBaseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 	})
 }
 
@@ -1006,22 +1006,22 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 		resp, err := resty.R().Get(baseURL)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 400)
+		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
 
 		// without client certs and creds, reads are allowed
 		resp, err = resty.R().Get(secureBaseURL + "/v2/")
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		// with creds but without certs, reads are allowed
 		resp, err = resty.R().SetBasicAuth(username, passphrase).Get(secureBaseURL + "/v2/")
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		// without creds, writes should fail
 		resp, err = resty.R().Post(secureBaseURL + "/v2/repo/blobs/uploads/")
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 401)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 		// setup TLS mutual auth
 		cert, err := tls.LoadX509KeyPair("../../test/data/client.cert", "../../test/data/client.key")
@@ -1034,17 +1034,17 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 		resp, err = resty.R().Get(secureBaseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		// with client certs and creds, should get expected status code
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(secureBaseURL)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 404)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 		// with client certs, creds shouldn't matter
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(secureBaseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 	})
 }
 
@@ -1092,19 +1092,19 @@ func TestTLSMutualAndBasicAuth(t *testing.T) {
 		resp, err := resty.R().Get(baseURL)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 400)
+		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
 
 		// without client certs and creds, should fail
 		_, err = resty.R().Get(secureBaseURL)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 400)
+		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
 
 		// with creds but without certs, should succeed
 		_, err = resty.R().SetBasicAuth(username, passphrase).Get(secureBaseURL)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 400)
+		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
 
 		// setup TLS mutual auth
 		cert, err := tls.LoadX509KeyPair("../../test/data/client.cert", "../../test/data/client.key")
@@ -1117,16 +1117,16 @@ func TestTLSMutualAndBasicAuth(t *testing.T) {
 		resp, err = resty.R().Get(secureBaseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 401)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 		// with client certs and creds, should get expected status code
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(secureBaseURL)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 404)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(secureBaseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 	})
 }
 
@@ -1175,19 +1175,19 @@ func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 		resp, err := resty.R().Get(baseURL)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 400)
+		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
 
 		// without client certs and creds, should fail
 		_, err = resty.R().Get(secureBaseURL)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 400)
+		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
 
 		// with creds but without certs, should succeed
 		_, err = resty.R().SetBasicAuth(username, passphrase).Get(secureBaseURL)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 400)
+		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
 
 		// setup TLS mutual auth
 		cert, err := tls.LoadX509KeyPair("../../test/data/client.cert", "../../test/data/client.key")
@@ -1199,21 +1199,21 @@ func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 		// with client certs but without creds, reads should succeed
 		resp, err = resty.R().Get(secureBaseURL + "/v2/")
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		// with only client certs, writes should fail
 		resp, err = resty.R().Post(secureBaseURL + "/v2/repo/blobs/uploads/")
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 401)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 		// with client certs and creds, should get expected status code
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(secureBaseURL)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 404)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(secureBaseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 	})
 }
 
@@ -1332,7 +1332,7 @@ func TestBasicAuthWithLDAP(t *testing.T) {
 		resp, err := resty.R().Get(baseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 401)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 		var e api.Error
 		err = json.Unmarshal(resp.Body(), &e)
 		So(err, ShouldBeNil)
@@ -1340,11 +1340,11 @@ func TestBasicAuthWithLDAP(t *testing.T) {
 		// with creds, should get expected status code
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 404)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 	})
 }
 
@@ -1385,7 +1385,7 @@ func TestBearerAuth(t *testing.T) {
 		resp, err := resty.R().Get(baseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 401)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 		authorizationHeader := parseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
 		resp, err = resty.R().
@@ -1394,7 +1394,7 @@ func TestBearerAuth(t *testing.T) {
 			Get(authorizationHeader.Realm)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 		var goodToken accessTokenResponse
 		err = json.Unmarshal(resp.Body(), &goodToken)
 		So(err, ShouldBeNil)
@@ -1404,12 +1404,12 @@ func TestBearerAuth(t *testing.T) {
 			Get(baseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		resp, err = resty.R().Post(baseURL + "/v2/" + AuthorizedNamespace + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 401)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 		authorizationHeader = parseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
 		resp, err = resty.R().
@@ -1418,7 +1418,7 @@ func TestBearerAuth(t *testing.T) {
 			Get(authorizationHeader.Realm)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 		err = json.Unmarshal(resp.Body(), &goodToken)
 		So(err, ShouldBeNil)
 
@@ -1427,7 +1427,7 @@ func TestBearerAuth(t *testing.T) {
 			Post(baseURL + "/v2/" + AuthorizedNamespace + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 202)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 		loc := resp.Header().Get("Location")
 
 		resp, err = resty.R().
@@ -1438,7 +1438,7 @@ func TestBearerAuth(t *testing.T) {
 			Put(baseURL + loc)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 401)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 		authorizationHeader = parseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
 		resp, err = resty.R().
@@ -1447,7 +1447,7 @@ func TestBearerAuth(t *testing.T) {
 			Get(authorizationHeader.Realm)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 		err = json.Unmarshal(resp.Body(), &goodToken)
 		So(err, ShouldBeNil)
 
@@ -1460,14 +1460,14 @@ func TestBearerAuth(t *testing.T) {
 			Put(baseURL + loc)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 201)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
 		resp, err = resty.R().
 			SetHeader("Authorization", fmt.Sprintf("Bearer %s", goodToken.AccessToken)).
 			Get(baseURL + "/v2/" + AuthorizedNamespace + "/tags/list")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 401)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 		authorizationHeader = parseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
 		resp, err = resty.R().
@@ -1476,7 +1476,7 @@ func TestBearerAuth(t *testing.T) {
 			Get(authorizationHeader.Realm)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 		err = json.Unmarshal(resp.Body(), &goodToken)
 		So(err, ShouldBeNil)
 
@@ -1485,13 +1485,13 @@ func TestBearerAuth(t *testing.T) {
 			Get(baseURL + "/v2/" + AuthorizedNamespace + "/tags/list")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		resp, err = resty.R().
 			Post(baseURL + "/v2/" + UnauthorizedNamespace + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 401)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 		authorizationHeader = parseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
 		resp, err = resty.R().
@@ -1500,7 +1500,7 @@ func TestBearerAuth(t *testing.T) {
 			Get(authorizationHeader.Realm)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 		var badToken accessTokenResponse
 		err = json.Unmarshal(resp.Body(), &badToken)
 		So(err, ShouldBeNil)
@@ -1510,7 +1510,7 @@ func TestBearerAuth(t *testing.T) {
 			Post(baseURL + "/v2/" + UnauthorizedNamespace + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 401)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 	})
 }
 
@@ -1552,7 +1552,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		resp, err := resty.R().Get(baseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 401)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 		authorizationHeader := parseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
 		resp, err = resty.R().
@@ -1561,7 +1561,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 			Get(authorizationHeader.Realm)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 		var goodToken accessTokenResponse
 		err = json.Unmarshal(resp.Body(), &goodToken)
 		So(err, ShouldBeNil)
@@ -1571,12 +1571,12 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 			Get(baseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		resp, err = resty.R().Post(baseURL + "/v2/" + AuthorizedNamespace + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 401)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 		authorizationHeader = parseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
 		resp, err = resty.R().
@@ -1585,7 +1585,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 			Get(authorizationHeader.Realm)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 		err = json.Unmarshal(resp.Body(), &goodToken)
 		So(err, ShouldBeNil)
 
@@ -1594,7 +1594,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 			Post(baseURL + "/v2/" + AuthorizedNamespace + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 202)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 		loc := resp.Header().Get("Location")
 
 		resp, err = resty.R().
@@ -1605,7 +1605,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 			Put(baseURL + loc)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 401)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 		authorizationHeader = parseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
 		resp, err = resty.R().
@@ -1614,7 +1614,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 			Get(authorizationHeader.Realm)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 		err = json.Unmarshal(resp.Body(), &goodToken)
 		So(err, ShouldBeNil)
 
@@ -1627,14 +1627,14 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 			Put(baseURL + loc)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 201)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
 		resp, err = resty.R().
 			SetHeader("Authorization", fmt.Sprintf("Bearer %s", goodToken.AccessToken)).
 			Get(baseURL + "/v2/" + AuthorizedNamespace + "/tags/list")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 401)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 		authorizationHeader = parseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
 		resp, err = resty.R().
@@ -1643,7 +1643,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 			Get(authorizationHeader.Realm)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 		err = json.Unmarshal(resp.Body(), &goodToken)
 		So(err, ShouldBeNil)
 
@@ -1652,13 +1652,13 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 			Get(baseURL + "/v2/" + AuthorizedNamespace + "/tags/list")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		resp, err = resty.R().
 			Post(baseURL + "/v2/" + UnauthorizedNamespace + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 401)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
 		authorizationHeader = parseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
 		resp, err = resty.R().
@@ -1667,7 +1667,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 			Get(authorizationHeader.Realm)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 		var badToken accessTokenResponse
 		err = json.Unmarshal(resp.Body(), &badToken)
 		So(err, ShouldBeNil)
@@ -1677,7 +1677,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 			Post(baseURL + "/v2/" + UnauthorizedNamespace + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 401)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 	})
 }
 
@@ -1792,14 +1792,14 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 			Get(baseURL + "/v2/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		// everybody should have access to /v2/_catalog
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Get(baseURL + "/v2/_catalog")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 		var e api.Error
 		err = json.Unmarshal(resp.Body(), &e)
 		So(err, ShouldBeNil)
@@ -1810,7 +1810,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 403)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 		// add test user to repo's policy with create perm
 		conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Users =
@@ -1823,7 +1823,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 202)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 		loc := resp.Header().Get("Location")
 
 		// uploading blob should get 201
@@ -1835,28 +1835,28 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 			Put(baseURL + loc)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 201)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
 		// head blob should get 403 with read perm
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Head(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 403)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 		// get blob should get 403 without read perm
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Get(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 403)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 		// get tags without read access should get 403
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 403)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 		// get tags with read access should get 200
 		conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions =
@@ -1865,28 +1865,28 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		// head blob should get 200 now
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Head(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		// get blob should get 200 now
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Get(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		// delete blob should get 403 without delete perm
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Delete(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 403)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 		// add delete perm on repo
 		conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions =
@@ -1897,14 +1897,14 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 			Delete(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 202)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 
 		// get manifest should get 403, we don't have perm at all on this repo
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Get(baseURL + "/v2/zot-test/manifests/0.0.1")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 403)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 		// add read perm on repo
 		conf.AccessControl.Repositories["zot-test"] = config.PolicyGroup{Policies: []config.Policy{
@@ -1919,7 +1919,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 			Get(baseURL + "/v2/zot-test/manifests/0.0.1")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		manifestBlob := resp.Body()
 
@@ -1928,7 +1928,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 403)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 		// add create perm on repo
 		conf.AccessControl.Repositories["zot-test"].Policies[0].Actions =
@@ -1941,14 +1941,14 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 201)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
 		// update manifest should get 403 without update perm
 		resp, err = resty.R().SetBasicAuth(username, passphrase).SetBody(manifestBlob).
 			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 403)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 		// add update perm on repo
 		conf.AccessControl.Repositories["zot-test"].Policies[0].Actions =
@@ -1961,7 +1961,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 201)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
 		// now use default repo policy
 		conf.AccessControl.Repositories["zot-test"].Policies[0].Actions = []string{}
@@ -1976,7 +1976,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 201)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
 		// with default read on repo should still get 200
 		conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions = []string{}
@@ -1988,7 +1988,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		// upload blob without user create but with default create should get 200
 		repoPolicy.DefaultPolicy = append(repoPolicy.DefaultPolicy, "create")
@@ -1998,7 +1998,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 202)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 
 		// remove per repo policy
 		repoPolicy = conf.AccessControl.Repositories[AuthorizationNamespace]
@@ -2010,7 +2010,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 403)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 		// let's use admin policy
 		// remove all repo based policy
@@ -2022,7 +2022,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 403)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 		// add read perm
 		conf.AccessControl.AdminPolicy.Users = append(conf.AccessControl.AdminPolicy.Users, "test")
@@ -2032,14 +2032,14 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		// without create perm should 403
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 403)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 		// add create perm
 		conf.AccessControl.AdminPolicy.Actions = append(conf.AccessControl.AdminPolicy.Actions, "create")
@@ -2048,7 +2048,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 202)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 		loc = resp.Header().Get("Location")
 
 		// uploading blob should get 201
@@ -2060,30 +2060,30 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 			Put(baseURL + loc)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 201)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
 		// without delete perm should 403
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Delete(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 403)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 		// add delete perm
 		conf.AccessControl.AdminPolicy.Actions = append(conf.AccessControl.AdminPolicy.Actions, "delete")
-		// with delete perm should get 202
+		// with delete perm should get http.StatusAccepted
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Delete(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 202)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 
 		// without update perm should 403
 		resp, err = resty.R().SetBasicAuth(username, passphrase).SetBody(manifestBlob).
 			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 403)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 		// add update perm
 		conf.AccessControl.AdminPolicy.Actions = append(conf.AccessControl.AdminPolicy.Actions, "update")
@@ -2094,7 +2094,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 201)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
 		conf.AccessControl = &config.AccessControlConfig{}
 
@@ -2104,7 +2104,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 403)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 	})
 }
 
@@ -2161,7 +2161,7 @@ func TestInvalidCases(t *testing.T) {
 			SetBasicAuth(username, passphrase).SetQueryParams(params).
 			Post(fmt.Sprintf("%s/v2/%s/blobs/uploads/", baseURL, name))
 		So(err, ShouldBeNil)
-		So(postResponse.StatusCode(), ShouldEqual, 500)
+		So(postResponse.StatusCode(), ShouldEqual, http.StatusInternalServerError)
 	})
 }
 
@@ -2205,19 +2205,19 @@ func TestHTTPReadOnly(t *testing.T) {
 				// with creds, should get expected status code
 				resp, _ := resty.R().SetBasicAuth(user, password).Get(baseURL + "/v2/")
 				So(resp, ShouldNotBeNil)
-				So(resp.StatusCode(), ShouldEqual, 200)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 				// with creds, any modifications should still fail on read-only mode
 				resp, err = resty.R().SetBasicAuth(user, password).
 					Post(baseURL + "/v2/" + AuthorizedNamespace + "/blobs/uploads/")
 				So(err, ShouldBeNil)
 				So(resp, ShouldNotBeNil)
-				So(resp.StatusCode(), ShouldEqual, 405)
+				So(resp.StatusCode(), ShouldEqual, http.StatusMethodNotAllowed)
 
 				// with invalid creds, it should fail
 				resp, _ = resty.R().SetBasicAuth("chuck", "chuck").Get(baseURL + "/v2/")
 				So(resp, ShouldNotBeNil)
-				So(resp.StatusCode(), ShouldEqual, 401)
+				So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 			}()
 		}
 	})
@@ -2269,7 +2269,7 @@ func TestCrossRepoMount(t *testing.T) {
 		headResponse, err := client.R().SetBasicAuth(username, passphrase).
 			Head(fmt.Sprintf("%s/v2/%s/blobs/%s", baseURL, name, digest))
 		So(err, ShouldBeNil)
-		So(headResponse.StatusCode(), ShouldEqual, 200)
+		So(headResponse.StatusCode(), ShouldEqual, http.StatusOK)
 
 		// All invalid request of mount should return 202.
 		params["mount"] = "sha:"
@@ -2278,7 +2278,7 @@ func TestCrossRepoMount(t *testing.T) {
 			SetBasicAuth(username, passphrase).SetQueryParams(params).
 			Post(baseURL + "/v2/zot-c-test/blobs/uploads/")
 		So(err, ShouldBeNil)
-		So(postResponse.StatusCode(), ShouldEqual, 202)
+		So(postResponse.StatusCode(), ShouldEqual, http.StatusAccepted)
 
 		incorrectParams := make(map[string]string)
 		incorrectParams["mount"] = "sha256:63a795ca90aa6e7dda60941e826810a4cd0a2e73ea02bf458241df2a5c973e29"
@@ -2288,7 +2288,7 @@ func TestCrossRepoMount(t *testing.T) {
 			SetBasicAuth(username, passphrase).SetQueryParams(incorrectParams).
 			Post(baseURL + "/v2/zot-y-test/blobs/uploads/")
 		So(err, ShouldBeNil)
-		So(postResponse.StatusCode(), ShouldEqual, 202)
+		So(postResponse.StatusCode(), ShouldEqual, http.StatusAccepted)
 
 		// Use correct request
 		// This is correct request but it will return 202 because blob is not present in cache.
@@ -2297,37 +2297,37 @@ func TestCrossRepoMount(t *testing.T) {
 			SetBasicAuth(username, passphrase).SetQueryParams(params).
 			Post(baseURL + "/v2/zot-c-test/blobs/uploads/")
 		So(err, ShouldBeNil)
-		So(postResponse.StatusCode(), ShouldEqual, 202)
+		So(postResponse.StatusCode(), ShouldEqual, http.StatusAccepted)
 
 		// Send same request again
 		postResponse, err = client.R().
 			SetBasicAuth(username, passphrase).SetQueryParams(params).
 			Post(baseURL + "/v2/zot-c-test/blobs/uploads/")
 		So(err, ShouldBeNil)
-		So(postResponse.StatusCode(), ShouldEqual, 202)
+		So(postResponse.StatusCode(), ShouldEqual, http.StatusAccepted)
 
 		// Valid requests
 		postResponse, err = client.R().
 			SetBasicAuth(username, passphrase).SetQueryParams(params).
 			Post(baseURL + "/v2/zot-d-test/blobs/uploads/")
 		So(err, ShouldBeNil)
-		So(postResponse.StatusCode(), ShouldEqual, 202)
+		So(postResponse.StatusCode(), ShouldEqual, http.StatusAccepted)
 
 		headResponse, err = client.R().SetBasicAuth(username, passphrase).
 			Head(fmt.Sprintf("%s/v2/zot-cv-test/blobs/%s", baseURL, digest))
 		So(err, ShouldBeNil)
-		So(headResponse.StatusCode(), ShouldEqual, 404)
+		So(headResponse.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 		postResponse, err = client.R().
 			SetBasicAuth(username, passphrase).SetQueryParams(params).Post(baseURL + "/v2/zot-c-test/blobs/uploads/")
 		So(err, ShouldBeNil)
-		So(postResponse.StatusCode(), ShouldEqual, 202)
+		So(postResponse.StatusCode(), ShouldEqual, http.StatusAccepted)
 
 		postResponse, err = client.R().
 			SetBasicAuth(username, passphrase).SetQueryParams(params).
 			Post(baseURL + "/v2/ /blobs/uploads/")
 		So(err, ShouldBeNil)
-		So(postResponse.StatusCode(), ShouldEqual, 404)
+		So(postResponse.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 		digest = "sha256:63a795ca90aa6e7cca60941e826810a4cd0a2e73ea02bf458241df2a5c973e29"
 
@@ -2342,7 +2342,7 @@ func TestCrossRepoMount(t *testing.T) {
 			SetBasicAuth(username, passphrase).SetQueryParam("digest", "sha256:"+blob).
 			SetBody(buf).Post(baseURL + "/v2/zot-d-test/blobs/uploads/")
 		So(err, ShouldBeNil)
-		So(postResponse.StatusCode(), ShouldEqual, 201)
+		So(postResponse.StatusCode(), ShouldEqual, http.StatusCreated)
 
 		// We have uploaded a blob and since we have provided digest it should be full blob upload and there should be entry
 		// in cache, now try mount blob request status and it should be 201 because now blob is present in cache
@@ -2353,7 +2353,7 @@ func TestCrossRepoMount(t *testing.T) {
 			SetBasicAuth(username, passphrase).SetQueryParams(params).
 			Post(baseURL + "/v2/zot-mount-test/blobs/uploads/")
 		So(err, ShouldBeNil)
-		So(postResponse.StatusCode(), ShouldEqual, 201)
+		So(postResponse.StatusCode(), ShouldEqual, http.StatusCreated)
 
 		// Check os.SameFile here
 		cachePath := path.Join(ctlr.Config.Storage.RootDirectory, "zot-d-test", "blobs/sha256", dgst.Hex())
@@ -2376,7 +2376,7 @@ func TestCrossRepoMount(t *testing.T) {
 			SetBasicAuth(username, passphrase).SetQueryParams(params).
 			Post(baseURL + "/v2/zot-mount1-test/blobs/uploads/")
 		So(err, ShouldBeNil)
-		So(postResponse.StatusCode(), ShouldEqual, 201)
+		So(postResponse.StatusCode(), ShouldEqual, http.StatusCreated)
 
 		linkPath = path.Join(ctlr.Config.Storage.RootDirectory, "zot-mount1-test", "blobs/sha256", dgst.Hex())
 
@@ -2388,7 +2388,7 @@ func TestCrossRepoMount(t *testing.T) {
 		headResponse, err = client.R().SetBasicAuth(username, passphrase).
 			Head(fmt.Sprintf("%s/v2/zot-cv-test/blobs/%s", baseURL, digest))
 		So(err, ShouldBeNil)
-		So(headResponse.StatusCode(), ShouldEqual, 200)
+		So(headResponse.StatusCode(), ShouldEqual, http.StatusOK)
 
 		// Invalid request
 		params = make(map[string]string)
@@ -2397,7 +2397,7 @@ func TestCrossRepoMount(t *testing.T) {
 			SetBasicAuth(username, passphrase).SetQueryParams(params).
 			Post(baseURL + "/v2/zot-mount-test/blobs/uploads/")
 		So(err, ShouldBeNil)
-		So(postResponse.StatusCode(), ShouldEqual, 405)
+		So(postResponse.StatusCode(), ShouldEqual, http.StatusMethodNotAllowed)
 
 		params = make(map[string]string)
 		params["from"] = "zot-cve-test"
@@ -2405,7 +2405,7 @@ func TestCrossRepoMount(t *testing.T) {
 			SetBasicAuth(username, passphrase).SetQueryParams(params).
 			Post(baseURL + "/v2/zot-mount-test/blobs/uploads/")
 		So(err, ShouldBeNil)
-		So(postResponse.StatusCode(), ShouldEqual, 405)
+		So(postResponse.StatusCode(), ShouldEqual, http.StatusMethodNotAllowed)
 	})
 
 	Convey("Disable dedupe and cache", t, func() {
@@ -2451,7 +2451,7 @@ func TestCrossRepoMount(t *testing.T) {
 		headResponse, err := client.R().SetBasicAuth(username, passphrase).
 			Head(fmt.Sprintf("%s/v2/%s/blobs/%s", baseURL, name, digest))
 		So(err, ShouldBeNil)
-		So(headResponse.StatusCode(), ShouldEqual, 404)
+		So(headResponse.StatusCode(), ShouldEqual, http.StatusNotFound)
 	})
 }
 
@@ -2606,7 +2606,7 @@ func TestParallelRequests(t *testing.T) {
 			tagResponse, err := client.R().SetBasicAuth(username, passphrase).
 				Get(baseURL + "/v2/" + testcase.destImageName + "/tags/list")
 			assert.Equal(t, err, nil, "Error should be nil")
-			assert.NotEqual(t, tagResponse.StatusCode(), 400, "bad request")
+			assert.NotEqual(t, tagResponse.StatusCode(), http.StatusBadRequest, "bad request")
 
 			manifestList := getAllManifests(path.Join("../../test/data", testcase.srcImageName))
 
@@ -2614,12 +2614,12 @@ func TestParallelRequests(t *testing.T) {
 				headResponse, err := client.R().SetBasicAuth(username, passphrase).
 					Head(baseURL + "/v2/" + testcase.destImageName + "/manifests/" + manifest)
 				assert.Equal(t, err, nil, "Error should be nil")
-				assert.Equal(t, headResponse.StatusCode(), 404, "response status code should return 404")
+				assert.Equal(t, headResponse.StatusCode(), http.StatusNotFound, "response status code should return 404")
 
 				getResponse, err := client.R().SetBasicAuth(username, passphrase).
 					Get(baseURL + "/v2/" + testcase.destImageName + "/manifests/" + manifest)
 				assert.Equal(t, err, nil, "Error should be nil")
-				assert.Equal(t, getResponse.StatusCode(), 404, "response status code should return 404")
+				assert.Equal(t, getResponse.StatusCode(), http.StatusNotFound, "response status code should return 404")
 			}
 
 			blobList := getAllBlobs(path.Join("../../test/data", testcase.srcImageName))
@@ -2631,14 +2631,16 @@ func TestParallelRequests(t *testing.T) {
 					Head(baseURL + "/v2/" + testcase.destImageName + "/blobs/sha256:" + blob)
 
 				assert.Equal(t, err, nil, "Should not be nil")
-				assert.NotEqual(t, headResponse.StatusCode(), 500, "internal server error should not occurred")
+				assert.NotEqual(t, headResponse.StatusCode(), http.StatusInternalServerError,
+					"internal server error should not occurred")
 
 				getResponse, err := client.R().
 					SetBasicAuth(username, passphrase).
 					Get(baseURL + "/v2/" + testcase.destImageName + "/blobs/sha256:" + blob)
 
 				assert.Equal(t, err, nil, "Should not be nil")
-				assert.NotEqual(t, getResponse.StatusCode(), 500, "internal server error should not occurred")
+				assert.NotEqual(t, getResponse.StatusCode(), http.StatusInternalServerError,
+					"internal server error should not occurred")
 
 				blobPath := path.Join("../../test/data", testcase.srcImageName, "blobs/sha256", blob)
 
@@ -2654,7 +2656,8 @@ func TestParallelRequests(t *testing.T) {
 					SetBody(buf).Post(baseURL + "/v2/" + testcase.destImageName + "/blobs/uploads/")
 
 				assert.Equal(t, err, nil, "Error should be nil")
-				assert.NotEqual(t, postResponse.StatusCode(), 500, "response status code should not return 500")
+				assert.NotEqual(t, postResponse.StatusCode(), http.StatusInternalServerError,
+					"response status code should not return 500")
 
 				// Post request with query parameter
 				if run%2 == 0 {
@@ -2665,7 +2668,8 @@ func TestParallelRequests(t *testing.T) {
 						Post(baseURL + "/v2/" + testcase.destImageName + "/blobs/uploads/")
 
 					assert.Equal(t, err, nil, "Error should be nil")
-					assert.NotEqual(t, postResponse.StatusCode(), 500, "response status code should not return 500")
+					assert.NotEqual(t, postResponse.StatusCode(), http.StatusInternalServerError,
+						"response status code should not return 500")
 
 					var sessionID string
 					sessionIDList := postResponse.Header().Values("Blob-Upload-UUID")
@@ -2710,7 +2714,8 @@ func TestParallelRequests(t *testing.T) {
 								Patch(baseURL + "/v2/" + testcase.destImageName + "/blobs/uploads/" + sessionID)
 
 							assert.Equal(t, err, nil, "Error should be nil")
-							assert.NotEqual(t, patchResponse.StatusCode(), 500, "response status code should not return 500")
+							assert.NotEqual(t, patchResponse.StatusCode(), http.StatusInternalServerError,
+								"response status code should not return 500")
 
 							readContent += nbytes
 						}
@@ -2733,7 +2738,8 @@ func TestParallelRequests(t *testing.T) {
 							}
 
 							assert.Equal(t, err, nil, "Error should be nil")
-							assert.NotEqual(t, patchResponse.StatusCode(), 500, "response status code should not return 500")
+							assert.NotEqual(t, patchResponse.StatusCode(), http.StatusInternalServerError,
+								"response status code should not return 500")
 						}
 					}
 				} else {
@@ -2744,7 +2750,8 @@ func TestParallelRequests(t *testing.T) {
 						Post(baseURL + "/v2/" + testcase.destImageName + "/blobs/uploads/")
 
 					assert.Equal(t, err, nil, "Error should be nil")
-					assert.NotEqual(t, postResponse.StatusCode(), 500, "response status code should not return 500")
+					assert.NotEqual(t, postResponse.StatusCode(), http.StatusInternalServerError,
+						"response status code should not return 500")
 				}
 
 				headResponse, err = client.R().
@@ -2752,25 +2759,25 @@ func TestParallelRequests(t *testing.T) {
 					Head(baseURL + "/v2/" + testcase.destImageName + "/blobs/sha256:" + blob)
 
 				assert.Equal(t, err, nil, "Should not be nil")
-				assert.NotEqual(t, headResponse.StatusCode(), 500, "response should return success code")
+				assert.NotEqual(t, headResponse.StatusCode(), http.StatusInternalServerError, "response should return success code")
 
 				getResponse, err = client.R().
 					SetBasicAuth(username, passphrase).
 					Get(baseURL + "/v2/" + testcase.destImageName + "/blobs/sha256:" + blob)
 
 				assert.Equal(t, err, nil, "Should not be nil")
-				assert.NotEqual(t, getResponse.StatusCode(), 500, "response should return success code")
+				assert.NotEqual(t, getResponse.StatusCode(), http.StatusInternalServerError, "response should return success code")
 			}
 
 			tagResponse, err = client.R().SetBasicAuth(username, passphrase).
 				Get(baseURL + "/v2/" + testcase.destImageName + "/tags/list")
 			assert.Equal(t, err, nil, "Error should be nil")
-			assert.Equal(t, tagResponse.StatusCode(), 200, "response status code should return success code")
+			assert.Equal(t, tagResponse.StatusCode(), http.StatusOK, "response status code should return success code")
 
 			repoResponse, err := client.R().SetBasicAuth(username, passphrase).
 				Get(baseURL + "/v2/_catalog")
 			assert.Equal(t, err, nil, "Error should be nil")
-			assert.Equal(t, repoResponse.StatusCode(), 200, "response status code should return success code")
+			assert.Equal(t, repoResponse.StatusCode(), http.StatusOK, "response status code should return success code")
 		})
 	}
 }
@@ -2878,7 +2885,7 @@ func TestImageSignatures(t *testing.T) {
 		// create a blob/layer
 		resp, err := resty.R().Post(baseURL + fmt.Sprintf("/v2/%s/blobs/uploads/", repoName))
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 202)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 		loc := Location(baseURL, resp)
 		So(loc, ShouldNotBeEmpty)
 
@@ -2892,7 +2899,7 @@ func TestImageSignatures(t *testing.T) {
 		resp, err = resty.R().SetQueryParam("digest", digest.String()).
 			SetHeader("Content-Type", "application/octet-stream").SetBody(content).Put(loc)
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 201)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 		blobLoc := resp.Header().Get("Location")
 		So(blobLoc, ShouldNotBeEmpty)
 		So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
@@ -2920,7 +2927,7 @@ func TestImageSignatures(t *testing.T) {
 		resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
 			SetBody(content).Put(baseURL + fmt.Sprintf("/v2/%s/manifests/1.0", repoName))
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 201)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 		d := resp.Header().Get(api.DistContentDigestKey)
 		So(d, ShouldNotBeEmpty)
 		So(d, ShouldEqual, digest.String())
@@ -3063,13 +3070,13 @@ func TestImageSignatures(t *testing.T) {
 			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.unsupported.image.manifest.v1+json").
 				SetBody(content).Put(baseURL + fmt.Sprintf("/v2/%s/manifests/1.0", repoName))
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, 415)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnsupportedMediaType)
 
 			// check invalid content with artifact media type
 			resp, err = resty.R().SetHeader("Content-Type", artifactspec.MediaTypeArtifactManifest).
 				SetBody([]byte("bogus")).Put(baseURL + fmt.Sprintf("/v2/%s/manifests/1.0", repoName))
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, 400)
+			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
 
 			Convey("Validate corrupted signature", func() {
 				// verify with corrupted signature
