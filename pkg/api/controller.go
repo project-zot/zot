@@ -45,7 +45,6 @@ func NewController(config *config.Config) *Controller {
 	var controller Controller
 
 	logger := log.NewLogger(config.Log.Level, config.Log.Output)
-
 	controller.Config = config
 	controller.Log = logger
 	controller.wgShutDown = new(goSync.WaitGroup)
@@ -137,7 +136,7 @@ func (c *Controller) Run() error {
 	if c.Config != nil &&
 		c.Config.Extensions != nil &&
 		c.Config.Extensions.Metrics != nil &&
-		c.Config.Extensions.Metrics.Enable {
+		*c.Config.Extensions.Metrics.Enable {
 		enabled = true
 	}
 
@@ -296,7 +295,7 @@ func (c *Controller) InitImageStore() error {
 	}
 
 	// Enable extensions if extension config is provided
-	if c.Config.Extensions != nil && c.Config.Extensions.Sync != nil {
+	if c.Config.Extensions != nil && c.Config.Extensions.Sync != nil && *c.Config.Extensions.Sync.Enable {
 		ext.EnableSyncExtension(c.Config, c.wgShutDown, c.StoreController, c.Log)
 	}
 

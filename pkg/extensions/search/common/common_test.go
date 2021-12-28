@@ -186,8 +186,9 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 		conf.Storage.RootDirectory = rootDir
 		conf.Storage.SubPaths = make(map[string]config.StorageConfig)
 		conf.Storage.SubPaths["/a"] = config.StorageConfig{RootDirectory: subRootDir}
+		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{Enable: true},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
 		conf.Extensions.Search.CVE = nil

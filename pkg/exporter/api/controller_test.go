@@ -29,12 +29,8 @@ import (
 	. "zotregistry.io/zot/pkg/test"
 )
 
-const (
-	SecondToNanoseconds = 1000000000
-)
-
-func getRandomLatencyN(maxNanoSeconds int64) time.Duration {
-	nBig, err := rand.Int(rand.Reader, big.NewInt(maxNanoSeconds))
+func getRandomLatencyN(max int64) time.Duration {
+	nBig, err := rand.Int(rand.Reader, big.NewInt(max))
 	if err != nil {
 		panic(err)
 	}
@@ -43,7 +39,7 @@ func getRandomLatencyN(maxNanoSeconds int64) time.Duration {
 }
 
 func getRandomLatency() time.Duration {
-	return getRandomLatencyN(120 * SecondToNanoseconds) // a random latency (in nanoseconds) that can be up to 2 minutes
+	return getRandomLatencyN(int64(2 * time.Minute)) // a random latency (in nanoseconds) that can be up to 2 minutes
 }
 
 func TestNew(t *testing.T) {
@@ -423,11 +419,11 @@ func TestNewExporter(t *testing.T) {
 						var latency time.Duration
 						if index == 0 {
 							// first bucket value
-							latency = getRandomLatencyN(int64(fvalue * SecondToNanoseconds))
+							latency = getRandomLatencyN(int64(fvalue * float64(time.Second)))
 						} else {
 							pvalue := dBuckets[index-1] // previous bucket value
-							latency = time.Duration(pvalue*SecondToNanoseconds) +
-								getRandomLatencyN(int64(dBuckets[0]*SecondToNanoseconds))
+							latency = time.Duration(pvalue*float64(time.Second)) +
+								getRandomLatencyN(int64(dBuckets[0]*float64(time.Second)))
 						}
 						latencySum += latency.Seconds()
 						monitoring.ObserveHTTPMethodLatency(serverController.Metrics, "GET", latency)

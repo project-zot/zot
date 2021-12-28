@@ -119,7 +119,7 @@ func startUpstreamServer(secure, basicAuth bool) (*api.Controller, string, strin
 
 		client.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
 
-		cert, err := tls.LoadX509KeyPair("../../../test/data/client.cert", "../../../test/data/client.key")
+		cert, err := tls.LoadX509KeyPair(ClientCert, ClientKey)
 		if err != nil {
 			panic(err)
 		}
@@ -202,7 +202,7 @@ func startDownstreamServer(secure bool, syncConfig *sync.Config) (*api.Controlle
 
 		client.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
 
-		cert, err := tls.LoadX509KeyPair("../../../test/data/client.cert", "../../../test/data/client.key")
+		cert, err := tls.LoadX509KeyPair(ClientCert, ClientKey)
 		if err != nil {
 			panic(err)
 		}
@@ -279,7 +279,9 @@ func TestOnDemand(t *testing.T) {
 			OnDemand:  true,
 		}
 
+		defaultVal := true
 		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
 			Registries: []sync.RegistryConfig{syncRegistryConfig},
 		}
 
@@ -413,7 +415,11 @@ func TestPeriodically(t *testing.T) {
 			RetryDelay:   &delay,
 		}
 
-		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+		defaultVal := true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
 
 		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
 		defer os.RemoveAll(destDir)
@@ -485,7 +491,10 @@ func TestPeriodically(t *testing.T) {
 				CertDir:      "",
 			}
 
-			syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+			syncConfig := &sync.Config{
+				Enable:     &defaultVal,
+				Registries: []sync.RegistryConfig{syncRegistryConfig},
+			}
 
 			dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
 			defer os.RemoveAll(destDir)
@@ -578,7 +587,11 @@ func TestPermsDenied(t *testing.T) {
 			OnDemand:     true,
 		}
 
-		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+		defaultVal := true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
 
 		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
 		defer os.RemoveAll(destDir)
@@ -634,7 +647,11 @@ func TestBadTLS(t *testing.T) {
 			TLSVerify:    &tlsVerify,
 		}
 
-		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+		defaultVal := true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
 
 		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(true, syncConfig)
 		defer os.RemoveAll(destDir)
@@ -729,7 +746,11 @@ func TestTLS(t *testing.T) {
 			CertDir:      destClientCertDir,
 		}
 
-		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+		defaultVal := true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
 
 		dctlr, _, destDir, _ := startDownstreamServer(true, syncConfig)
 		defer os.RemoveAll(destDir)
@@ -791,7 +812,9 @@ func TestBasicAuth(t *testing.T) {
 				CertDir:      "",
 			}
 
+			defaultVal := true
 			syncConfig := &sync.Config{
+				Enable:          &defaultVal,
 				CredentialsFile: credentialsFile,
 				Registries:      []sync.RegistryConfig{syncRegistryConfig},
 			}
@@ -896,8 +919,9 @@ func TestBasicAuth(t *testing.T) {
 			}
 
 			destConfig.Extensions = &extconf.ExtensionConfig{}
-			destConfig.Extensions.Search = nil
+			defaultVal := true
 			destConfig.Extensions.Sync = &sync.Config{
+				Enable:          &defaultVal,
 				CredentialsFile: credentialsFile,
 				Registries:      []sync.RegistryConfig{syncRegistryConfig},
 			}
@@ -973,7 +997,9 @@ func TestBasicAuth(t *testing.T) {
 				CertDir:      "",
 			}
 
+			defaultVal := true
 			syncConfig := &sync.Config{
+				Enable:          &defaultVal,
 				CredentialsFile: credentialsFile,
 				Registries:      []sync.RegistryConfig{syncRegistryConfig},
 			}
@@ -1019,8 +1045,10 @@ func TestBasicAuth(t *testing.T) {
 				OnDemand: false,
 			}
 
+			defaultVal := true
 			// add file path to the credentials
 			syncConfig := &sync.Config{
+				Enable:          &defaultVal,
 				CredentialsFile: credentialsFile,
 				Registries: []sync.RegistryConfig{
 					unreacheableSyncRegistryConfig1,
@@ -1115,7 +1143,11 @@ func TestBadURL(t *testing.T) {
 			OnDemand:     true,
 		}
 
-		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+		defaultVal := true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
 
 		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
 		defer os.RemoveAll(destDir)
@@ -1159,7 +1191,11 @@ func TestNoImagesByRegex(t *testing.T) {
 			CertDir:      "",
 		}
 
-		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+		defaultVal := true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
 
 		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
 		defer os.RemoveAll(destDir)
@@ -1217,7 +1253,11 @@ func TestInvalidRegex(t *testing.T) {
 			OnDemand:     true,
 		}
 
-		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+		defaultVal := true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
 
 		dctlr, _, destDir, _ := startDownstreamServer(false, syncConfig)
 		defer os.RemoveAll(destDir)
@@ -1272,7 +1312,11 @@ func TestNotSemver(t *testing.T) {
 			CertDir:      "",
 		}
 
-		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+		defaultVal := true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
 
 		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
 		defer os.RemoveAll(destDir)
@@ -1367,7 +1411,11 @@ func TestInvalidCerts(t *testing.T) {
 			OnDemand:     true,
 		}
 
-		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+		defaultVal := true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
 
 		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
 		defer os.RemoveAll(destDir)
@@ -1421,7 +1469,11 @@ func TestInvalidUrl(t *testing.T) {
 			OnDemand:     true,
 		}
 
-		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+		defaultVal := true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
 
 		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
 		defer os.RemoveAll(destDir)
@@ -1469,7 +1521,9 @@ func TestInvalidTags(t *testing.T) {
 			OnDemand:     true,
 		}
 
+		defaultVal := true
 		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
 			Registries: []sync.RegistryConfig{syncRegistryConfig},
 		}
 
@@ -1555,7 +1609,9 @@ func TestSubPaths(t *testing.T) {
 			OnDemand:     true,
 		}
 
+		defaultVal := true
 		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
 			Registries: []sync.RegistryConfig{syncRegistryConfig},
 		}
 
@@ -1662,7 +1718,11 @@ func TestOnDemandRepoErr(t *testing.T) {
 			OnDemand:  true,
 		}
 
-		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+		defaultVal := true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
 
 		dctlr, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
 		defer os.RemoveAll(destDir)
@@ -1708,7 +1768,11 @@ func TestOnDemandContentFiltering(t *testing.T) {
 				OnDemand:  true,
 			}
 
-			syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+			defaultVal := true
+			syncConfig := &sync.Config{
+				Enable:     &defaultVal,
+				Registries: []sync.RegistryConfig{syncRegistryConfig},
+			}
 
 			dctlr, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
 			defer os.RemoveAll(destDir)
@@ -1744,7 +1808,11 @@ func TestOnDemandContentFiltering(t *testing.T) {
 				OnDemand:  true,
 			}
 
-			syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+			defaultVal := true
+			syncConfig := &sync.Config{
+				Enable:     &defaultVal,
+				Registries: []sync.RegistryConfig{syncRegistryConfig},
+			}
 
 			dctlr, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
 			defer os.RemoveAll(destDir)
@@ -1790,7 +1858,11 @@ func TestConfigRules(t *testing.T) {
 				OnDemand:  false,
 			}
 
-			syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+			defaultVal := true
+			syncConfig := &sync.Config{
+				Enable:     &defaultVal,
+				Registries: []sync.RegistryConfig{syncRegistryConfig},
+			}
 
 			dctlr, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
 			defer os.RemoveAll(destDir)
@@ -1817,7 +1889,11 @@ func TestConfigRules(t *testing.T) {
 				OnDemand:     false,
 			}
 
-			syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+			defaultVal := true
+			syncConfig := &sync.Config{
+				Enable:     &defaultVal,
+				Registries: []sync.RegistryConfig{syncRegistryConfig},
+			}
 
 			dctlr, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
 			defer os.RemoveAll(destDir)
@@ -1841,7 +1917,11 @@ func TestConfigRules(t *testing.T) {
 				OnDemand:  false,
 			}
 
-			syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+			defaultVal := true
+			syncConfig := &sync.Config{
+				Enable:     &defaultVal,
+				Registries: []sync.RegistryConfig{syncRegistryConfig},
+			}
 
 			dctlr, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
 			defer os.RemoveAll(destDir)
@@ -1888,7 +1968,11 @@ func TestMultipleURLs(t *testing.T) {
 			CertDir:      "",
 		}
 
-		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+		defaultVal := true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
 
 		dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
 		defer os.RemoveAll(destDir)
@@ -1983,7 +2067,9 @@ func TestPeriodicallySignatures(t *testing.T) {
 			OnDemand:     true,
 		}
 
+		defaultVal := true
 		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
 			Registries: []sync.RegistryConfig{syncRegistryConfig},
 		}
 
@@ -2258,7 +2344,11 @@ func TestOnDemandRetryGoroutine(t *testing.T) {
 		syncRegistryConfig.MaxRetries = &maxRetries
 		syncRegistryConfig.RetryDelay = &delay
 
-		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+		defaultVal := true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
 
 		dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
 		defer os.RemoveAll(destDir)
@@ -2336,7 +2426,11 @@ func TestOnDemandMultipleRetries(t *testing.T) {
 		syncRegistryConfig.MaxRetries = &maxRetries
 		syncRegistryConfig.RetryDelay = &delay
 
-		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+		defaultVal := true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
 
 		dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
 		defer os.RemoveAll(destDir)
@@ -2446,7 +2540,11 @@ func TestOnDemandPullsOnce(t *testing.T) {
 			OnDemand:  true,
 		}
 
-		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+		defaultVal := true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
 
 		dc, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
 		defer os.RemoveAll(destDir)
@@ -2542,7 +2640,11 @@ func TestError(t *testing.T) {
 			CertDir:      "",
 		}
 
-		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+		defaultVal := true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
 
 		dctlr, destBaseURL, destDir, client := startDownstreamServer(false, syncConfig)
 		defer os.RemoveAll(destDir)
@@ -2601,7 +2703,11 @@ func TestSignaturesOnDemand(t *testing.T) {
 			OnDemand:  true,
 		}
 
-		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+		defaultVal := true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
 
 		dctlr, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
 		defer os.RemoveAll(destDir)
@@ -2737,7 +2843,11 @@ func TestOnlySignaturesOnDemand(t *testing.T) {
 			OnDemand:  true,
 		}
 
-		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncBadRegistryConfig, syncRegistryConfig}}
+		defaultVal := true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncBadRegistryConfig, syncRegistryConfig},
+		}
 
 		dctlr, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
 		defer os.RemoveAll(destDir)

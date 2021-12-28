@@ -13,9 +13,7 @@
 
 bin/
 bazel-*
-coverage.txt
-coverage-extended.txt
-coverage-minimal.txt
+coverage*.txt
 test/data/
 *.orig
 .idea/

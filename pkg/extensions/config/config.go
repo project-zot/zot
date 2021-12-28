@@ -15,7 +15,7 @@ type ExtensionConfig struct {
 type SearchConfig struct {
 	// CVE search
 	CVE    *CVEConfig
-	Enable bool
+	Enable *bool
 }
 
 type CVEConfig struct {
@@ -23,7 +23,7 @@ type CVEConfig struct {
 }
 
 type MetricsConfig struct {
-	Enable     bool
+	Enable     *bool
 	Prometheus *PrometheusConfig
 }
 

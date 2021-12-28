@@ -290,7 +290,6 @@ func TestServerCVEResponse(t *testing.T) {
 	url := test.GetBaseURL(port)
 	conf := config.New()
 	conf.HTTP.Port = port
-	ctlr := api.NewController(conf)
 
 	dir, err := ioutil.TempDir("", "oci-repo-test")
 	if err != nil {
@@ -304,17 +303,20 @@ func TestServerCVEResponse(t *testing.T) {
 
 	defer os.RemoveAll(dir)
 
-	ctlr.Config.Storage.RootDirectory = dir
+	conf.Storage.RootDirectory = dir
 	cveConfig := &extconf.CVEConfig{
 		UpdateInterval: 2,
 	}
+	defaultVal := true
 	searchConfig := &extconf.SearchConfig{
 		CVE:    cveConfig,
-		Enable: true,
+		Enable: &defaultVal,
 	}
-	ctlr.Config.Extensions = &extconf.ExtensionConfig{
+	conf.Extensions = &extconf.ExtensionConfig{
 		Search: searchConfig,
 	}
+
+	ctlr := api.NewController(conf)
 
 	go func(controller *api.Controller) {
 		// this blocks
