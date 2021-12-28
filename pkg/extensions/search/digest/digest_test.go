@@ -145,8 +145,9 @@ func TestDigestSearchHTTP(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 		conf.Storage.RootDirectory = rootDir
+		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{Enable: true},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
 		ctlr := api.NewController(conf)
@@ -272,8 +273,9 @@ func TestDigestSearchHTTPSubPaths(t *testing.T) {
 		baseURL := GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
+		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{Enable: true},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
 		ctlr := api.NewController(conf)
@@ -339,6 +341,7 @@ func TestDigestSearchHTTPSubPaths(t *testing.T) {
 
 func TestDigestSearchDisabled(t *testing.T) {
 	Convey("Test disabling image search", t, func() {
+		var disabled bool
 		dir, err := ioutil.TempDir("", "digest_test")
 		So(err, ShouldBeNil)
 		port := GetFreePort()
@@ -347,7 +350,7 @@ func TestDigestSearchDisabled(t *testing.T) {
 		conf.HTTP.Port = port
 		conf.Storage.RootDirectory = dir
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{Enable: false},
+			Search: &extconf.SearchConfig{Enable: &disabled},
 		}
 
 		ctlr := api.NewController(conf)

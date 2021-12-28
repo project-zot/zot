@@ -380,7 +380,7 @@ func TestDownloadDB(t *testing.T) {
 }
 
 func TestCVESearch(t *testing.T) {
-	Convey("Test image vulenrability scanning", t, func() {
+	Convey("Test image vulnerability scanning", t, func() {
 		updateDuration, _ = time.ParseDuration("1h")
 		port := GetFreePort()
 		baseURL := GetBaseURL(port)
@@ -395,18 +395,21 @@ func TestCVESearch(t *testing.T) {
 			},
 		}
 
-		ctlr := api.NewController(conf)
-		ctlr.Config.Storage.RootDirectory = dbDir
+		conf.Storage.RootDirectory = dbDir
 		cveConfig := &extconf.CVEConfig{
 			UpdateInterval: updateDuration,
 		}
+		defaultVal := true
 		searchConfig := &extconf.SearchConfig{
+			Enable: &defaultVal,
 			CVE:    cveConfig,
-			Enable: true,
 		}
-		ctlr.Config.Extensions = &extconf.ExtensionConfig{
+		conf.Extensions = &extconf.ExtensionConfig{
 			Search: searchConfig,
 		}
+
+		ctlr := api.NewController(conf)
+
 		go func() {
 			// this blocks
 			if err := ctlr.Run(); err != nil {

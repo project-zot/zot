@@ -35,13 +35,13 @@ func downloadTrivyDB(dbDir string, log log.Logger, updateInterval time.Duration)
 }
 
 func EnableExtensions(config *config.Config, log log.Logger, rootDir string) {
-	if config.Extensions.Search != nil && config.Extensions.Search.Enable && config.Extensions.Search.CVE != nil {
+	if config.Extensions.Search != nil && *config.Extensions.Search.Enable && config.Extensions.Search.CVE != nil {
 		defaultUpdateInterval, _ := time.ParseDuration("2h")
 
 		if config.Extensions.Search.CVE.UpdateInterval < defaultUpdateInterval {
 			config.Extensions.Search.CVE.UpdateInterval = defaultUpdateInterval
 
-			log.Warn().Msg("CVE update interval set to too-short interval <= 1, changing update duration to 2 hours and continuing.") // nolint: lll
+			log.Warn().Msg("CVE update interval set to too-short interval < 2h, changing update duration to 2 hours and continuing.") // nolint: lll
 		}
 
 		go func() {
@@ -56,7 +56,7 @@ func EnableExtensions(config *config.Config, log log.Logger, rootDir string) {
 	}
 
 	if config.Extensions.Metrics != nil &&
-		config.Extensions.Metrics.Enable &&
+		*config.Extensions.Metrics.Enable &&
 		config.Extensions.Metrics.Prometheus != nil {
 		if config.Extensions.Metrics.Prometheus.Path == "" {
 			config.Extensions.Metrics.Prometheus.Path = "/metrics"
@@ -71,7 +71,7 @@ func EnableExtensions(config *config.Config, log log.Logger, rootDir string) {
 // EnableSyncExtension enables sync extension.
 func EnableSyncExtension(config *config.Config, wg *goSync.WaitGroup,
 	storeController storage.StoreController, log log.Logger) {
-	if config.Extensions.Sync != nil {
+	if config.Extensions.Sync != nil && *config.Extensions.Sync.Enable {
 		if err := sync.Run(*config.Extensions.Sync, storeController, wg, log); err != nil {
 			log.Error().Err(err).Msg("Error encountered while setting up syncing")
 		}
@@ -87,7 +87,7 @@ func SetupRoutes(config *config.Config, router *mux.Router, storeController stor
 	log := log.Logger{Logger: l.With().Caller().Timestamp().Logger()}
 	log.Info().Msg("setting up extensions routes")
 
-	if config.Extensions.Search != nil && config.Extensions.Search.Enable {
+	if config.Extensions.Search != nil && *config.Extensions.Search.Enable {
 		var resConfig search.Config
 
 		if config.Extensions.Search.CVE != nil {
@@ -100,7 +100,7 @@ func SetupRoutes(config *config.Config, router *mux.Router, storeController stor
 			Handler(gqlHandler.NewDefaultServer(search.NewExecutableSchema(resConfig)))
 	}
 
-	if config.Extensions.Metrics != nil && config.Extensions.Metrics.Enable {
+	if config.Extensions.Metrics != nil && *config.Extensions.Metrics.Enable {
 		router.PathPrefix(config.Extensions.Metrics.Prometheus.Path).
 			Handler(promhttp.Handler())
 	}

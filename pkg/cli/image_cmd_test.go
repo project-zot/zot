@@ -286,8 +286,9 @@ func TestServerResponse(t *testing.T) {
 		url := test.GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
+		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{Enable: true},
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 		ctlr := api.NewController(conf)
 		dir, err := ioutil.TempDir("", "oci-repo-test")

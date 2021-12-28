@@ -1324,7 +1324,9 @@ func getImageManifest(routeHandler *RouteHandler, imgStore storage.ImageStore, n
 	content, digest, mediaType, err := imgStore.GetImageManifest(name, reference)
 	if err != nil {
 		if errors.Is(err, zerr.ErrRepoNotFound) || errors.Is(err, zerr.ErrManifestNotFound) {
-			if routeHandler.c.Config.Extensions != nil && routeHandler.c.Config.Extensions.Sync != nil {
+			if routeHandler.c.Config.Extensions != nil &&
+				routeHandler.c.Config.Extensions.Sync != nil &&
+				*routeHandler.c.Config.Extensions.Sync.Enable {
 				routeHandler.c.Log.Info().Msgf("image not found, trying to get image %s:%s by syncing on demand",
 					name, reference)
 
@@ -1350,7 +1352,9 @@ func getReferrers(routeHandler *RouteHandler, imgStore storage.ImageStore, name,
 	artifactType string) ([]artifactspec.Descriptor, error) {
 	refs, err := imgStore.GetReferrers(name, digest, artifactType)
 	if err != nil {
-		if routeHandler.c.Config.Extensions != nil && routeHandler.c.Config.Extensions.Sync != nil {
+		if routeHandler.c.Config.Extensions != nil &&
+			routeHandler.c.Config.Extensions.Sync != nil &&
+			*routeHandler.c.Config.Extensions.Sync.Enable {
 			routeHandler.c.Log.Info().Msgf("signature not found, trying to get signature %s:%s by syncing on demand",
 				name, digest)
 

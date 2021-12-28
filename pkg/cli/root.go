@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	glob "github.com/bmatcuk/doublestar/v4"
 	"github.com/fsnotify/fsnotify"
@@ -15,6 +16,7 @@ import (
 	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
+	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/storage"
 )
@@ -293,6 +295,64 @@ func validateConfiguration(config *config.Config) {
 	}
 }
 
+func applyDefaultValues(config *config.Config, viperInstance *viper.Viper) {
+	defaultVal := true
+
+	if config.Extensions == nil && viperInstance.Get("extensions") != nil {
+		config.Extensions = &extconf.ExtensionConfig{}
+
+		extMap := viperInstance.GetStringMap("extensions")
+		_, ok := extMap["metrics"]
+
+		if ok {
+			// we found a config like `"extensions": {"metrics": {}}`
+			// Note: In case metrics is not empty the config.Extensions will not be nil and we will not reach here
+			config.Extensions.Metrics = &extconf.MetricsConfig{}
+		}
+
+		_, ok = extMap["search"]
+		if ok {
+			// we found a config like `"extensions": {"search": {}}`
+			// Note: In case search is not empty the config.Extensions will not be nil and we will not reach here
+			config.Extensions.Search = &extconf.SearchConfig{}
+		}
+	}
+
+	if config.Extensions != nil {
+		if config.Extensions.Sync != nil {
+			if config.Extensions.Sync.Enable == nil {
+				config.Extensions.Sync.Enable = &defaultVal
+			}
+
+			for id, regCfg := range config.Extensions.Sync.Registries {
+				if regCfg.TLSVerify == nil {
+					config.Extensions.Sync.Registries[id].TLSVerify = &defaultVal
+				}
+			}
+		}
+
+		if config.Extensions.Search != nil {
+			if config.Extensions.Search.Enable == nil {
+				config.Extensions.Search.Enable = &defaultVal
+			}
+
+			if config.Extensions.Search.CVE == nil {
+				config.Extensions.Search.CVE = &extconf.CVEConfig{UpdateInterval: 24 * time.Hour} // nolint: gomnd
+			}
+		}
+
+		if config.Extensions.Metrics != nil {
+			if config.Extensions.Metrics.Enable == nil {
+				config.Extensions.Metrics.Enable = &defaultVal
+			}
+
+			if config.Extensions.Metrics.Prometheus == nil {
+				config.Extensions.Metrics.Prometheus = &extconf.PrometheusConfig{Path: "/metrics"}
+			}
+		}
+	}
+}
+
 func LoadConfiguration(config *config.Config, configPath string) {
 	// Default is dot (.) but because we allow glob patterns in authz
 	// we need another key delimiter.
@@ -322,17 +382,9 @@ func LoadConfiguration(config *config.Config, configPath string) {
 		panic(err)
 	}
 
+	// defaults
+	applyDefaultValues(config, viperInstance)
+
 	// various config checks
 	validateConfiguration(config)
-
-	// defaults
-	defaultTLSVerify := true
-
-	if config.Extensions != nil && config.Extensions.Sync != nil {
-		for id, regCfg := range config.Extensions.Sync.Registries {
-			if regCfg.TLSVerify == nil {
-				config.Extensions.Sync.Registries[id].TLSVerify = &defaultTLSVerify
-			}
-		}
-	}
 }

@@ -388,7 +388,7 @@ Configure each registry sync:
 				"pollInterval": "6h",               # polling interval, if not set then periodically polling will not run
 				"tlsVerify": true,                  # whether or not to verify tls (default is true)
 				"certDir": "/home/user/certs",      # use certificates at certDir path, if not specified then use the default certs dir
-        "maxRetries": 5,                    # mandatory option! maxRetries in case of temporary errors
+				"maxRetries": 5,                    # mandatory option! maxRetries in case of temporary errors
 				"retryDelay": "10m",                # mandatory option! delay between retries, retry options are applied for both on demand and periodically sync.
 				"content":[                         # which content to periodically pull, also it's used for filtering ondemand images, if not set then periodically polling will not run
 					{
@@ -401,7 +401,7 @@ Configure each registry sync:
 					{
 						"prefix":"/repo2/repo*"         # pull all images that matches repo2/repo.*
 					},
-          {
+					{
 						"prefix":"/repo3/**"            # pull all images under repo3/ (matches recursively all repos under repo3/)
 					}
 				]
@@ -411,7 +411,7 @@ Configure each registry sync:
 				"pollInterval": "12h",
 				"tlsVerify": false,
 				"onDemand": false,
-        "maxRetries": 5,
+				"maxRetries": 5,
 				"retryDelay": "10m",
 				"content":[
 					{
@@ -426,8 +426,8 @@ Configure each registry sync:
 				"urls": ["https://docker.io/library"],
 				"onDemand": true,                     # doesn't have content, don't periodically pull, pull just on demand.
 				"tlsVerify": true,
-        "maxRetries": 3,                      
-        "retryDelay": "15m"
+				"maxRetries": 3,
+				"retryDelay": "15m"
 			}
 		]
 		}
