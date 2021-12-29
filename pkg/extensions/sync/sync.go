@@ -53,7 +53,7 @@ type Config struct {
 }
 
 type RegistryConfig struct {
-	URL          string
+	URLs         []string
 	PollInterval time.Duration
 	Content      []Content
 	TLSVerify    *bool
@@ -72,10 +72,10 @@ type Tags struct {
 }
 
 // getUpstreamCatalog gets all repos from a registry.
-func getUpstreamCatalog(client *resty.Client, regCfg *RegistryConfig, log log.Logger) (catalog, error) {
+func getUpstreamCatalog(client *resty.Client, upstreamURL string, log log.Logger) (catalog, error) {
 	var c catalog
 
-	registryCatalogURL := fmt.Sprintf("%s%s", regCfg.URL, "/v2/_catalog")
+	registryCatalogURL := fmt.Sprintf("%s%s", upstreamURL, "/v2/_catalog")
 
 	resp, err := client.R().SetHeader("Content-Type", "application/json").Get(registryCatalogURL)
 	if err != nil {
@@ -279,10 +279,10 @@ func getUpstreamContext(regCfg *RegistryConfig, credentials Credentials) *types.
 	return upstreamCtx
 }
 
-func syncRegistry(regCfg RegistryConfig, storeController storage.StoreController,
-	log log.Logger, localCtx *types.SystemContext,
-	policyCtx *signature.PolicyContext, credentials Credentials, uuid string) error {
-	log.Info().Msgf("syncing registry: %s", regCfg.URL)
+func syncRegistry(regCfg RegistryConfig, upstreamURL string, storeController storage.StoreController,
+	localCtx *types.SystemContext, policyCtx *signature.PolicyContext, credentials Credentials,
+	uuid string, log log.Logger) error {
+	log.Info().Msgf("syncing registry: %s", upstreamURL)
 
 	var err error
 
@@ -298,13 +298,13 @@ func syncRegistry(regCfg RegistryConfig, storeController storage.StoreController
 
 	var catalog catalog
 
-	httpClient, err := getHTTPClient(&regCfg, credentials, log)
+	httpClient, err := getHTTPClient(&regCfg, upstreamURL, credentials, log)
 	if err != nil {
 		return err
 	}
 
 	if err = retry.RetryIfNecessary(context.Background(), func() error {
-		catalog, err = getUpstreamCatalog(httpClient, &regCfg, log)
+		catalog, err = getUpstreamCatalog(httpClient, upstreamURL, log)
 
 		return err
 	}, retryOptions); err != nil {
@@ -312,8 +312,6 @@ func syncRegistry(regCfg RegistryConfig, storeController storage.StoreController
 
 		return err
 	}
-
-	upstreamRegistryName := strings.Replace(strings.Replace(regCfg.URL, "http://", "", 1), "https://", "", 1)
 
 	log.Info().Msgf("filtering %d repos based on sync prefixes", len(catalog.Repositories))
 
@@ -323,12 +321,14 @@ func syncRegistry(regCfg RegistryConfig, storeController storage.StoreController
 
 	var images []types.ImageReference
 
+	upstreamAddr := StripRegistryTransport(upstreamURL)
+
 	for contentID, repos := range repos {
 		r := repos
 		id := contentID
 
 		if err = retry.RetryIfNecessary(context.Background(), func() error {
-			refs, err := imagesToCopyFromUpstream(upstreamRegistryName, r, upstreamCtx, regCfg.Content[id], log)
+			refs, err := imagesToCopyFromUpstream(upstreamAddr, r, upstreamCtx, regCfg.Content[id], log)
 			images = append(images, refs...)
 
 			return err
@@ -348,7 +348,7 @@ func syncRegistry(regCfg RegistryConfig, storeController storage.StoreController
 	for _, ref := range images {
 		upstreamRef := ref
 
-		imageName := strings.Replace(upstreamRef.DockerReference().Name(), upstreamRegistryName, "", 1)
+		imageName := strings.Replace(upstreamRef.DockerReference().Name(), upstreamAddr, "", 1)
 		imageName = strings.TrimPrefix(imageName, "/")
 
 		imageStore := storeController.GetImageStore(imageName)
@@ -399,7 +399,7 @@ func syncRegistry(regCfg RegistryConfig, storeController storage.StoreController
 		}
 
 		if err = retry.RetryIfNecessary(context.Background(), func() error {
-			err = syncSignatures(httpClient, storeController, regCfg.URL, imageName, upstreamTaggedRef.Tag(), log)
+			err = syncSignatures(httpClient, storeController, upstreamURL, imageName, upstreamTaggedRef.Tag(), log)
 
 			return err
 		}, retryOptions); err != nil {
@@ -409,7 +409,7 @@ func syncRegistry(regCfg RegistryConfig, storeController storage.StoreController
 		}
 	}
 
-	log.Info().Msgf("finished syncing %s", regCfg.URL)
+	log.Info().Msgf("finished syncing %s", upstreamAddr)
 
 	return nil
 }
@@ -466,14 +466,14 @@ func Run(cfg Config, storeController storage.StoreController, wtgrp *goSync.Wait
 	for _, regCfg := range cfg.Registries {
 		// if content not provided, don't run periodically sync
 		if len(regCfg.Content) == 0 {
-			logger.Info().Msgf("sync config content not configured for %s, will not run periodically sync", regCfg.URL)
+			logger.Info().Msgf("sync config content not configured for %v, will not run periodically sync", regCfg.URLs)
 
 			continue
 		}
 
 		// if pollInterval is not provided, don't run periodically sync
 		if regCfg.PollInterval == 0 {
-			logger.Warn().Msgf("sync config PollInterval not configured for %s, will not run periodically sync", regCfg.URL)
+			logger.Warn().Msgf("sync config PollInterval not configured for %v, will not run periodically sync", regCfg.URLs)
 
 			continue
 		}
@@ -483,8 +483,6 @@ func Run(cfg Config, storeController storage.StoreController, wtgrp *goSync.Wait
 		// fork a new zerolog child to avoid data race
 		tlogger := log.Logger{Logger: logger.With().Caller().Timestamp().Logger()}
 
-		upstreamRegistry := strings.Replace(strings.Replace(regCfg.URL, "http://", "", 1), "https://", "", 1)
-
 		// schedule each registry sync
 		go func(regCfg RegistryConfig, logger log.Logger) {
 			// run on intervals
@@ -492,10 +490,17 @@ func Run(cfg Config, storeController storage.StoreController, wtgrp *goSync.Wait
 				// increment reference since will be busy, so shutdown has to wait
 				wtgrp.Add(1)
 
-				if err := syncRegistry(regCfg, storeController, logger, localCtx, policyCtx,
-					credentialsFile[upstreamRegistry], uuid.String()); err != nil {
-					logger.Error().Err(err).Msg("sync exited with error, stopping it...")
-					ticker.Stop()
+				for _, upstreamURL := range regCfg.URLs {
+					upstreamAddr := StripRegistryTransport(upstreamURL)
+					// first try syncing main registry
+					if err := syncRegistry(regCfg, upstreamURL, storeController, localCtx, policyCtx,
+						credentialsFile[upstreamAddr], uuid.String(), logger); err != nil {
+						logger.Error().Err(err).Str("registry", upstreamURL).
+							Msg("sync exited with error, falling back to auxiliary registries")
+					} else {
+						// if success fall back to main registry
+						break
+					}
 				}
 				// mark as done after a single sync run
 				wtgrp.Done()

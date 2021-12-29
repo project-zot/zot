@@ -14,7 +14,7 @@
 		"sync": {
 			"credentialsFile": "./examples/sync-auth-filepath.json",
 			"registries": [{
-				"url": "https://registry1:5000",
+				"urls": ["https://registry1:5000"],
 				"onDemand": false,
 				"pollInterval": "6h",
 				"tlsVerify": true,
@@ -33,7 +33,7 @@
 				]
 			},
 			{
-				"url": "https://registry2:5000",
+				"urls": ["https://registry2:5000", "https://registry3:5000"],
 				"pollInterval": "12h",
 				"tlsVerify": false,
 				"onDemand": false,
@@ -47,7 +47,7 @@
 				]
 			},
 			{
-				"url": "https://docker.io/library",
+				"urls": ["https://docker.io/library"],
 				"onDemand": true,
 				"tlsVerify": true
 			}

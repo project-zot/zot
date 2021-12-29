@@ -241,7 +241,7 @@ func startDownstreamServer(secure bool, syncConfig *sync.Config) (*api.Controlle
 	return dctlr, destBaseURL, destDir, client
 }
 
-func TestSyncOnDemand(t *testing.T) {
+func TestOnDemand(t *testing.T) {
 	Convey("Verify sync on demand feature", t, func() {
 		sctlr, srcBaseURL, srcDir, _, srcClient := startUpstreamServer(false, false)
 		defer os.RemoveAll(srcDir)
@@ -265,7 +265,7 @@ func TestSyncOnDemand(t *testing.T) {
 					},
 				},
 			},
-			URL:       srcBaseURL,
+			URLs:      []string{srcBaseURL},
 			TLSVerify: &tlsVerify,
 			CertDir:   "",
 			OnDemand:  true,
@@ -369,7 +369,7 @@ func TestSyncOnDemand(t *testing.T) {
 	})
 }
 
-func TestSync(t *testing.T) {
+func TestPeriodically(t *testing.T) {
 	Convey("Verify sync feature", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
@@ -394,7 +394,7 @@ func TestSync(t *testing.T) {
 					},
 				},
 			},
-			URL:          srcBaseURL,
+			URLs:         []string{srcBaseURL},
 			PollInterval: updateDuration,
 			TLSVerify:    &tlsVerify,
 			CertDir:      "",
@@ -466,7 +466,7 @@ func TestSync(t *testing.T) {
 						},
 					},
 				},
-				URL:          srcBaseURL,
+				URLs:         []string{srcBaseURL},
 				PollInterval: updateDuration,
 				TLSVerify:    &tlsVerify,
 				CertDir:      "",
@@ -533,7 +533,7 @@ func TestSync(t *testing.T) {
 	})
 }
 
-func TestSyncPermsDenied(t *testing.T) {
+func TestPermsDenied(t *testing.T) {
 	Convey("Verify sync feature without perm on sync cache", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
@@ -558,7 +558,7 @@ func TestSyncPermsDenied(t *testing.T) {
 					},
 				},
 			},
-			URL:          srcBaseURL,
+			URLs:         []string{srcBaseURL},
 			PollInterval: updateDuration,
 			TLSVerify:    &tlsVerify,
 			CertDir:      "",
@@ -590,7 +590,7 @@ func TestSyncPermsDenied(t *testing.T) {
 	})
 }
 
-func TestSyncBadTLS(t *testing.T) {
+func TestBadTLS(t *testing.T) {
 	Convey("Verify sync TLS feature", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
@@ -615,7 +615,7 @@ func TestSyncBadTLS(t *testing.T) {
 					},
 				},
 			},
-			URL:          srcBaseURL,
+			URLs:         []string{srcBaseURL},
 			OnDemand:     true,
 			PollInterval: updateDuration,
 			TLSVerify:    &tlsVerify,
@@ -647,7 +647,7 @@ func TestSyncBadTLS(t *testing.T) {
 	})
 }
 
-func TestSyncTLS(t *testing.T) {
+func TestTLS(t *testing.T) {
 	Convey("Verify sync TLS feature", t, func() {
 		updateDuration, _ := time.ParseDuration("1h")
 
@@ -710,7 +710,7 @@ func TestSyncTLS(t *testing.T) {
 					},
 				},
 			},
-			URL:          srcBaseURL,
+			URLs:         []string{srcBaseURL},
 			PollInterval: updateDuration,
 			TLSVerify:    &tlsVerify,
 			CertDir:      destClientCertDir,
@@ -748,7 +748,7 @@ func TestSyncTLS(t *testing.T) {
 	})
 }
 
-func TestSyncBasicAuth(t *testing.T) {
+func TestBasicAuth(t *testing.T) {
 	Convey("Verify sync basic auth", t, func() {
 		updateDuration, _ := time.ParseDuration("1h")
 
@@ -761,7 +761,7 @@ func TestSyncBasicAuth(t *testing.T) {
 		}()
 
 		Convey("Verify sync basic auth with file credentials", func() {
-			registryName := strings.Replace(strings.Replace(srcBaseURL, "http://", "", 1), "https://", "", 1)
+			registryName := sync.StripRegistryTransport(srcBaseURL)
 			credentialsFile := makeCredentialsFile(fmt.Sprintf(`{"%s":{"username": "test", "password": "test"}}`, registryName))
 
 			var tlsVerify bool
@@ -772,7 +772,7 @@ func TestSyncBasicAuth(t *testing.T) {
 						Prefix: testImage,
 					},
 				},
-				URL:          srcBaseURL,
+				URLs:         []string{srcBaseURL},
 				PollInterval: updateDuration,
 				TLSVerify:    &tlsVerify,
 				CertDir:      "",
@@ -850,7 +850,7 @@ func TestSyncBasicAuth(t *testing.T) {
 			regex := ".*"
 			var semver bool
 
-			registryName := strings.Replace(strings.Replace(srcBaseURL, "http://", "", 1), "https://", "", 1)
+			registryName := sync.StripRegistryTransport(srcBaseURL)
 
 			credentialsFile := makeCredentialsFile(fmt.Sprintf(`{"%s":{"username": "test", "password": "invalid"}}`,
 				registryName))
@@ -867,7 +867,7 @@ func TestSyncBasicAuth(t *testing.T) {
 						},
 					},
 				},
-				URL:          srcBaseURL,
+				URLs:         []string{srcBaseURL},
 				PollInterval: updateDuration,
 				TLSVerify:    &tlsVerify,
 				CertDir:      "",
@@ -911,7 +911,7 @@ func TestSyncBasicAuth(t *testing.T) {
 		})
 
 		Convey("Verify sync basic auth with bad file credentials", func() {
-			registryName := strings.Replace(strings.Replace(srcBaseURL, "http://", "", 1), "https://", "", 1)
+			registryName := sync.StripRegistryTransport(srcBaseURL)
 
 			credentialsFile := makeCredentialsFile(fmt.Sprintf(`{"%s":{"username": "test", "password": "test"}}`,
 				registryName))
@@ -938,7 +938,7 @@ func TestSyncBasicAuth(t *testing.T) {
 						},
 					},
 				},
-				URL:          srcBaseURL,
+				URLs:         []string{srcBaseURL},
 				PollInterval: updateDuration,
 				TLSVerify:    &tlsVerify,
 				CertDir:      "",
@@ -964,21 +964,21 @@ func TestSyncBasicAuth(t *testing.T) {
 		})
 
 		Convey("Verify on demand sync with basic auth", func() {
-			registryName := strings.Replace(strings.Replace(srcBaseURL, "http://", "", 1), "https://", "", 1)
+			registryName := sync.StripRegistryTransport(srcBaseURL)
 			credentialsFile := makeCredentialsFile(fmt.Sprintf(`{"%s":{"username": "test", "password": "test"}}`, registryName))
 
 			syncRegistryConfig := sync.RegistryConfig{
-				URL:      srcBaseURL,
+				URLs:     []string{srcBaseURL},
 				OnDemand: true,
 			}
 
 			unreacheableSyncRegistryConfig1 := sync.RegistryConfig{
-				URL:      "localhost:999999",
+				URLs:     []string{"localhost:9999"},
 				OnDemand: true,
 			}
 
 			unreacheableSyncRegistryConfig2 := sync.RegistryConfig{
-				URL:      "localhost:999999",
+				URLs:     []string{"localhost:9999"},
 				OnDemand: false,
 			}
 
@@ -1034,6 +1034,10 @@ func TestSyncBasicAuth(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + "inexistent")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 404)
+
 			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/tags/list")
 			if err != nil {
 				panic(err)
@@ -1049,7 +1053,7 @@ func TestSyncBasicAuth(t *testing.T) {
 	})
 }
 
-func TestSyncBadURL(t *testing.T) {
+func TestBadURL(t *testing.T) {
 	Convey("Verify sync with bad url", t, func() {
 		updateDuration, _ := time.ParseDuration("1h")
 
@@ -1067,7 +1071,7 @@ func TestSyncBadURL(t *testing.T) {
 					},
 				},
 			},
-			URL:          "bad-registry-url",
+			URLs:         []string{"bad-registry-url"},
 			PollInterval: updateDuration,
 			TLSVerify:    &tlsVerify,
 			CertDir:      "",
@@ -1089,7 +1093,7 @@ func TestSyncBadURL(t *testing.T) {
 	})
 }
 
-func TestSyncNoImagesByRegex(t *testing.T) {
+func TestNoImagesByRegex(t *testing.T) {
 	Convey("Verify sync with no images on source based on regex", t, func() {
 		updateDuration, _ := time.ParseDuration("1h")
 
@@ -1112,7 +1116,7 @@ func TestSyncNoImagesByRegex(t *testing.T) {
 					},
 				},
 			},
-			URL:          srcBaseURL,
+			URLs:         []string{srcBaseURL},
 			TLSVerify:    &tlsVerify,
 			PollInterval: updateDuration,
 			CertDir:      "",
@@ -1146,7 +1150,7 @@ func TestSyncNoImagesByRegex(t *testing.T) {
 	})
 }
 
-func TestSyncInvalidRegex(t *testing.T) {
+func TestInvalidRegex(t *testing.T) {
 	Convey("Verify sync with invalid regex", t, func() {
 		updateDuration, _ := time.ParseDuration("1h")
 
@@ -1169,7 +1173,7 @@ func TestSyncInvalidRegex(t *testing.T) {
 					},
 				},
 			},
-			URL:          srcBaseURL,
+			URLs:         []string{srcBaseURL},
 			TLSVerify:    &tlsVerify,
 			PollInterval: updateDuration,
 			CertDir:      "",
@@ -1187,7 +1191,7 @@ func TestSyncInvalidRegex(t *testing.T) {
 	})
 }
 
-func TestSyncNotSemver(t *testing.T) {
+func TestNotSemver(t *testing.T) {
 	Convey("Verify sync feature semver compliant", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
@@ -1225,7 +1229,7 @@ func TestSyncNotSemver(t *testing.T) {
 					},
 				},
 			},
-			URL:          srcBaseURL,
+			URLs:         []string{srcBaseURL},
 			PollInterval: updateDuration,
 			TLSVerify:    &tlsVerify,
 			CertDir:      "",
@@ -1263,7 +1267,7 @@ func TestSyncNotSemver(t *testing.T) {
 	})
 }
 
-func TestSyncInvalidCerts(t *testing.T) {
+func TestInvalidCerts(t *testing.T) {
 	Convey("Verify sync with bad certs", t, func() {
 		updateDuration, _ := time.ParseDuration("1h")
 
@@ -1319,7 +1323,7 @@ func TestSyncInvalidCerts(t *testing.T) {
 					Prefix: "",
 				},
 			},
-			URL:          srcBaseURL,
+			URLs:         []string{srcBaseURL},
 			PollInterval: updateDuration,
 			TLSVerify:    &tlsVerify,
 			CertDir:      clientCertDir,
@@ -1355,7 +1359,7 @@ func makeCredentialsFile(fileContent string) string {
 	return tmpfile.Name()
 }
 
-func TestSyncInvalidUrl(t *testing.T) {
+func TestInvalidUrl(t *testing.T) {
 	Convey("Verify sync invalid url", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 		regex := ".*"
@@ -1373,7 +1377,7 @@ func TestSyncInvalidUrl(t *testing.T) {
 					},
 				},
 			},
-			URL:          "http://invalid.invalid/invalid/",
+			URLs:         []string{"http://invalid.invalid/invalid/"},
 			PollInterval: updateDuration,
 			TLSVerify:    &tlsVerify,
 			CertDir:      "",
@@ -1395,7 +1399,7 @@ func TestSyncInvalidUrl(t *testing.T) {
 	})
 }
 
-func TestSyncInvalidTags(t *testing.T) {
+func TestInvalidTags(t *testing.T) {
 	Convey("Verify sync invalid tags", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
@@ -1421,7 +1425,7 @@ func TestSyncInvalidTags(t *testing.T) {
 					},
 				},
 			},
-			URL:          srcBaseURL,
+			URLs:         []string{srcBaseURL},
 			PollInterval: updateDuration,
 			TLSVerify:    &tlsVerify,
 			CertDir:      "",
@@ -1445,7 +1449,7 @@ func TestSyncInvalidTags(t *testing.T) {
 	})
 }
 
-func TestSyncSubPaths(t *testing.T) {
+func TestSubPaths(t *testing.T) {
 	Convey("Verify sync with storage subPaths", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
@@ -1507,7 +1511,7 @@ func TestSyncSubPaths(t *testing.T) {
 					},
 				},
 			},
-			URL:          srcBaseURL,
+			URLs:         []string{srcBaseURL},
 			PollInterval: updateDuration,
 			TLSVerify:    &tlsVerify,
 			CertDir:      "",
@@ -1615,7 +1619,7 @@ func TestSyncOnDemandRepoErr(t *testing.T) {
 					Prefix: testImage,
 				},
 			},
-			URL:       "docker://invalid",
+			URLs:      []string{"docker://invalid"},
 			TLSVerify: &tlsVerify,
 			CertDir:   "",
 			OnDemand:  true,
@@ -1636,7 +1640,7 @@ func TestSyncOnDemandRepoErr(t *testing.T) {
 	})
 }
 
-func TestSyncOnDemandContentFiltering(t *testing.T) {
+func TestOnDemandContentFiltering(t *testing.T) {
 	Convey("Verify sync on demand feature", t, func() {
 		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
 		defer os.RemoveAll(srcDir)
@@ -1661,7 +1665,7 @@ func TestSyncOnDemandContentFiltering(t *testing.T) {
 						},
 					},
 				},
-				URL:       srcBaseURL,
+				URLs:      []string{srcBaseURL},
 				TLSVerify: &tlsVerify,
 				CertDir:   "",
 				OnDemand:  true,
@@ -1697,7 +1701,7 @@ func TestSyncOnDemandContentFiltering(t *testing.T) {
 						},
 					},
 				},
-				URL:       srcBaseURL,
+				URLs:      []string{srcBaseURL},
 				TLSVerify: &tlsVerify,
 				CertDir:   "",
 				OnDemand:  true,
@@ -1719,7 +1723,7 @@ func TestSyncOnDemandContentFiltering(t *testing.T) {
 	})
 }
 
-func TestSyncConfigRules(t *testing.T) {
+func TestConfigRules(t *testing.T) {
 	Convey("Verify sync config rules", t, func() {
 		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
 		defer os.RemoveAll(srcDir)
@@ -1743,7 +1747,7 @@ func TestSyncConfigRules(t *testing.T) {
 						},
 					},
 				},
-				URL:       srcBaseURL,
+				URLs:      []string{srcBaseURL},
 				TLSVerify: &tlsVerify,
 				CertDir:   "",
 				OnDemand:  false,
@@ -1770,7 +1774,7 @@ func TestSyncConfigRules(t *testing.T) {
 
 			syncRegistryConfig := sync.RegistryConfig{
 				PollInterval: updateDuration,
-				URL:          srcBaseURL,
+				URLs:         []string{srcBaseURL},
 				TLSVerify:    &tlsVerify,
 				CertDir:      "",
 				OnDemand:     false,
@@ -1794,7 +1798,7 @@ func TestSyncConfigRules(t *testing.T) {
 			var tlsVerify bool
 
 			syncRegistryConfig := sync.RegistryConfig{
-				URL:       srcBaseURL,
+				URLs:      []string{srcBaseURL},
 				TLSVerify: &tlsVerify,
 				CertDir:   "",
 				OnDemand:  false,
@@ -1813,6 +1817,80 @@ func TestSyncConfigRules(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 404)
 		})
+	})
+}
+
+func TestMultipleURLs(t *testing.T) {
+	Convey("Verify sync feature", t, func() {
+		updateDuration, _ := time.ParseDuration("30m")
+
+		sctlr, srcBaseURL, srcDir, _, srcClient := startUpstreamServer(false, false)
+		defer os.RemoveAll(srcDir)
+
+		defer func() {
+			sctlr.Shutdown()
+		}()
+
+		regex := ".*"
+		semver := true
+		var tlsVerify bool
+
+		syncRegistryConfig := sync.RegistryConfig{
+			Content: []sync.Content{
+				{
+					Prefix: testImage,
+					Tags: &sync.Tags{
+						Regex:  &regex,
+						Semver: &semver,
+					},
+				},
+			},
+			URLs:         []string{"badURL", "http://invalid.invalid/invalid/", srcBaseURL},
+			PollInterval: updateDuration,
+			TLSVerify:    &tlsVerify,
+			CertDir:      "",
+		}
+
+		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
+
+		dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
+		defer os.RemoveAll(destDir)
+
+		defer func() {
+			dc.Shutdown()
+		}()
+
+		var srcTagsList TagsList
+		var destTagsList TagsList
+
+		resp, _ := srcClient.R().Get(srcBaseURL + "/v2/" + testImage + "/tags/list")
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		err := json.Unmarshal(resp.Body(), &srcTagsList)
+		if err != nil {
+			panic(err)
+		}
+
+		for {
+			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/tags/list")
+			if err != nil {
+				panic(err)
+			}
+
+			err = json.Unmarshal(resp.Body(), &destTagsList)
+			if err != nil {
+				panic(err)
+			}
+
+			if len(destTagsList.Tags) > 0 {
+				break
+			}
+
+			time.Sleep(500 * time.Millisecond)
+		}
+
+		So(destTagsList, ShouldResemble, srcTagsList)
 	})
 }
 
@@ -1861,7 +1939,7 @@ func TestSyncSignatures(t *testing.T) {
 					},
 				},
 			},
-			URL:          srcBaseURL,
+			URLs:         []string{srcBaseURL},
 			PollInterval: updateDuration,
 			TLSVerify:    &tlsVerify,
 			CertDir:      "",
@@ -1909,11 +1987,14 @@ func TestSyncSignatures(t *testing.T) {
 			panic(err)
 		}
 
+		time.Sleep(1 * time.Second)
+
 		// notation verify the image
 		image := fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")
 		cmd := exec.Command("notation", "verify", "--cert", "good", "--plain-http", image)
 		out, err := cmd.CombinedOutput()
 		So(err, ShouldBeNil)
+
 		msg := string(out)
 		So(msg, ShouldNotBeEmpty)
 		So(strings.Contains(msg, "verification failure"), ShouldBeFalse)
@@ -1970,9 +2051,10 @@ func TestSyncSignatures(t *testing.T) {
 		// 	panic(err)
 		// }
 
-		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		// sync on demand
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 404)
+		So(resp.StatusCode(), ShouldEqual, 200)
 
 		for _, blob := range nm.Blobs {
 			srcBlobPath := path.Join(srcDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Hex())
@@ -1986,9 +2068,14 @@ func TestSyncSignatures(t *testing.T) {
 			So(err, ShouldBeNil)
 		}
 
-		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		// // remove already synced image
+		// err = os.RemoveAll(path.Join(destDir, repoName))
+		// So(err, ShouldBeNil)
+
+		// sync on demand
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 404)
+		So(resp.StatusCode(), ShouldEqual, 200)
 
 		// clean
 		for _, blob := range nm.Blobs {
@@ -2018,9 +2105,14 @@ func TestSyncSignatures(t *testing.T) {
 			So(err, ShouldBeNil)
 		}
 
-		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		// remove already synced image
+		err = os.RemoveAll(path.Join(destDir, repoName))
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 404)
+
+		// sync on demand
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
 
 		for _, blob := range cm.Layers {
 			srcBlobPath := path.Join(srcDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Hex())
@@ -2028,15 +2120,19 @@ func TestSyncSignatures(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			destBlobPath := path.Join(destDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Hex())
-			err = os.Remove(destBlobPath)
-			So(err, ShouldBeNil)
+
 			err = os.MkdirAll(destBlobPath, 0o000)
 			So(err, ShouldBeNil)
 		}
 
-		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		// remove already synced image
+		err = os.RemoveAll(path.Join(destDir, repoName))
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 404)
+
+		// sync on demand
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
 
 		for _, blob := range cm.Layers {
 			destBlobPath := path.Join(destDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Hex())
@@ -2052,23 +2148,33 @@ func TestSyncSignatures(t *testing.T) {
 		err = os.Chmod(srcConfigBlobPath, 0o000)
 		So(err, ShouldBeNil)
 
-		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		// remove already synced image
+		err = os.RemoveAll(path.Join(destDir, repoName))
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 404)
+
+		// sync on demand
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
 
 		err = os.Chmod(srcConfigBlobPath, 0o755)
 		So(err, ShouldBeNil)
 
 		destConfigBlobPath := path.Join(destDir, repoName, "blobs", string(cm.Config.Digest.Algorithm()),
 			cm.Config.Digest.Hex())
-		err = os.Remove(destConfigBlobPath)
-		So(err, ShouldBeNil)
+		// err = os.Remove(destConfigBlobPath)
+		// So(err, ShouldBeNil)
 		err = os.MkdirAll(destConfigBlobPath, 0o000)
 		So(err, ShouldBeNil)
 
-		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		// remove already synced image
+		err = os.RemoveAll(path.Join(destDir, repoName))
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 404)
+
+		// sync on demand
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
 	})
 }
 
@@ -2097,7 +2203,7 @@ func TestSyncError(t *testing.T) {
 					},
 				},
 			},
-			URL:          srcBaseURL,
+			URLs:         []string{srcBaseURL},
 			PollInterval: updateDuration,
 			TLSVerify:    &tlsVerify,
 			CertDir:      "",
@@ -2154,7 +2260,7 @@ func TestSyncSignaturesOnDemand(t *testing.T) {
 		var tlsVerify bool
 
 		syncRegistryConfig := sync.RegistryConfig{
-			URL:       srcBaseURL,
+			URLs:      []string{srcBaseURL},
 			TLSVerify: &tlsVerify,
 			CertDir:   "",
 			OnDemand:  true,
@@ -2214,7 +2320,8 @@ func TestSyncSignaturesOnDemand(t *testing.T) {
 		err = json.Unmarshal(mResp.Body(), &cm)
 		So(err, ShouldBeNil)
 
-		// trigger error on config blob
+		// trigger errors on cosign blobs
+		// trigger error on cosign config blob
 		srcConfigBlobPath := path.Join(srcDir, repoName, "blobs", string(cm.Config.Digest.Algorithm()),
 			cm.Config.Digest.Hex())
 		err = os.Chmod(srcConfigBlobPath, 0o000)
@@ -2227,7 +2334,29 @@ func TestSyncSignaturesOnDemand(t *testing.T) {
 		// sync on demand
 		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 404)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		// trigger error on cosign layer blob
+		srcSignatureBlobPath := path.Join(srcDir, repoName, "blobs", string(cm.Layers[0].Digest.Algorithm()),
+			cm.Layers[0].Digest.Hex())
+
+		err = os.Chmod(srcConfigBlobPath, 0o755)
+		So(err, ShouldBeNil)
+
+		err = os.Chmod(srcSignatureBlobPath, 0o000)
+		So(err, ShouldBeNil)
+
+		// remove already synced image
+		err = os.RemoveAll(path.Join(destDir, repoName))
+		So(err, ShouldBeNil)
+
+		// sync on demand
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		err = os.Chmod(srcSignatureBlobPath, 0o755)
+		So(err, ShouldBeNil)
 	})
 }
 
