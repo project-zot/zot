@@ -383,7 +383,7 @@ Configure each registry sync:
 
 ```
 			"registries": [{
-				"url": "https://registry1:5000",
+				"urls": ["https://registry1:5000"],
 				"onDemand": false,                  # pull any image which the local registry doesn't have
 				"pollInterval": "6h",               # polling interval, if not set then periodically polling will not run
 				"tlsVerify": true,                  # whether or not to verify tls
@@ -405,7 +405,7 @@ Configure each registry sync:
 				]
 			},
 			{
-				"url": "https://registry2:5000",
+				"urls": ["https://registry2:5000", "https://registry3:5000"], // specify multiple URLs in case first encounters an error
 				"pollInterval": "12h",
 				"tlsVerify": false,
 				"onDemand": false,
@@ -419,7 +419,7 @@ Configure each registry sync:
 				]
 			},
 			{
-				"url": "https://docker.io/library",
+				"urls": ["https://docker.io/library"],
 				"onDemand": true,                   # doesn't have content, don't periodically pull, pull just on demand.
 				"tlsVerify": true
 			}

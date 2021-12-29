@@ -179,7 +179,7 @@ func TestVerify(t *testing.T) {
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot", "storageDriver": {"name": "s3"}},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
-							"extensions":{"sync": {"registries": [{"url":"localhost:9999"}]}}}`)
+							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"]}]}}}`)
 		_, err = tmpfile.Write(content)
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
@@ -195,7 +195,7 @@ func TestVerify(t *testing.T) {
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
-							"extensions":{"sync": {"registries": [{"url":"localhost:9999"}]}}}`)
+							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"]}]}}}`)
 		_, err = tmpfile.Write(content)
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
@@ -211,7 +211,7 @@ func TestVerify(t *testing.T) {
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
-							"extensions":{"sync": {"registries": [{"url":"localhost:9999",
+							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
 							"content": [{"prefix":"[repo%^&"}]}]}}}`)
 		_, err = tmpfile.Write(content)
 		So(err, ShouldBeNil)
@@ -244,7 +244,7 @@ func TestVerify(t *testing.T) {
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
-							"extensions":{"sync": {"registries": [{"url":"localhost:9999",
+							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
 							"content": [{"prefix":"repo**"}]}]}}}`)
 		_, err = tmpfile.Write(content)
 		So(err, ShouldBeNil)

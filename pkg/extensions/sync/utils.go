@@ -18,6 +18,7 @@ import (
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"gopkg.in/resty.v1"
 	"zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
@@ -101,12 +102,17 @@ func getFileCredentials(filepath string) (CredentialsFile, error) {
 	return creds, nil
 }
 
-func getHTTPClient(regCfg *RegistryConfig, credentials Credentials, log log.Logger) (*resty.Client, error) {
+func getHTTPClient(regCfg *RegistryConfig, upstreamURL string, credentials Credentials,
+	log log.Logger) (*resty.Client, error) {
 	client := resty.New()
 
-	registryURL, err := url.Parse(regCfg.URL)
+	if !common.Contains(regCfg.URLs, upstreamURL) {
+		return nil, errors.ErrSyncInvalidUpstreamURL
+	}
+
+	registryURL, err := url.Parse(upstreamURL)
 	if err != nil {
-		log.Error().Err(err).Str("url", regCfg.URL).Msg("couldn't parse url")
+		log.Error().Err(err).Str("url", upstreamURL).Msg("couldn't parse url")
 
 		return nil, err
 	}
@@ -413,6 +419,7 @@ func syncSignatures(client *resty.Client, storeController storage.StoreControlle
 	return nil
 }
 
+// copy from temporary oci repository to local registry.
 func pushSyncedLocalImage(repo, tag, uuid string,
 	storeController storage.StoreController, log log.Logger) error {
 	log.Info().Msgf("pushing synced local image %s:%s to local registry", repo, tag)
@@ -496,4 +503,10 @@ func isCosignTag(tag string) bool {
 	}
 
 	return false
+}
+
+// sync needs transport to be stripped to not be wrongly interpreted as an image reference
+// at a non-fully qualified registry (hostname as image and port as tag).
+func StripRegistryTransport(url string) string {
+	return strings.Replace(strings.Replace(url, "http://", "", 1), "https://", "", 1)
 }

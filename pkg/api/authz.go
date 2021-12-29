@@ -10,6 +10,7 @@ import (
 	glob "github.com/bmatcuk/doublestar/v4"
 	"github.com/gorilla/mux"
 	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/log"
 )
 
@@ -52,12 +53,12 @@ func (ac *AccessController) getReadGlobPatterns(username string) map[string]bool
 
 	for pattern, policyGroup := range ac.Config.Repositories {
 		// check default policy
-		if contains(policyGroup.DefaultPolicy, READ) {
+		if common.Contains(policyGroup.DefaultPolicy, READ) {
 			globPatterns[pattern] = true
 		}
 		// check user based policy
 		for _, p := range policyGroup.Policies {
-			if contains(p.Users, username) && contains(p.Actions, READ) {
+			if common.Contains(p.Users, username) && common.Contains(p.Actions, READ) {
 				globPatterns[pattern] = true
 			}
 		}
@@ -94,7 +95,7 @@ func (ac *AccessController) can(username, action, repository string) bool {
 
 	// check admins based policy
 	if !can {
-		if ac.isAdmin(username) && contains(ac.Config.AdminPolicy.Actions, action) {
+		if ac.isAdmin(username) && common.Contains(ac.Config.AdminPolicy.Actions, action) {
 			can = true
 		}
 	}
@@ -104,7 +105,7 @@ func (ac *AccessController) can(username, action, repository string) bool {
 
 // isAdmin .
 func (ac *AccessController) isAdmin(username string) bool {
-	return contains(ac.Config.AdminPolicy.Users, username)
+	return common.Contains(ac.Config.AdminPolicy.Users, username)
 }
 
 // getContext builds ac context(allowed to read repos and if user is admin) and returns it.
@@ -128,7 +129,7 @@ func isPermitted(username, action string, policyGroup config.PolicyGroup) bool {
 	var result bool
 	// check repo/system based policies
 	for _, p := range policyGroup.Policies {
-		if contains(p.Users, username) && contains(p.Actions, action) {
+		if common.Contains(p.Users, username) && common.Contains(p.Actions, action) {
 			result = true
 
 			break
@@ -137,22 +138,12 @@ func isPermitted(username, action string, policyGroup config.PolicyGroup) bool {
 
 	// check defaultPolicy
 	if !result {
-		if contains(policyGroup.DefaultPolicy, action) {
+		if common.Contains(policyGroup.DefaultPolicy, action) {
 			result = true
 		}
 	}
 
 	return result
-}
-
-func contains(slice []string, item string) bool {
-	for _, v := range slice {
-		if item == v {
-			return true
-		}
-	}
-
-	return false
 }
 
 // returns either a user has or not rights on 'repository'.
@@ -212,7 +203,7 @@ func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 					is := ctlr.StoreController.GetImageStore(resource)
 					tags, err := is.GetImageTags(resource)
 					// if repo exists and request's tag doesn't exist yet then action is UPDATE
-					if err == nil && contains(tags, reference) && reference != "latest" {
+					if err == nil && common.Contains(tags, reference) && reference != "latest" {
 						action = UPDATE
 					}
 				}

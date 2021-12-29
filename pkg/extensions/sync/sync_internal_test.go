@@ -96,7 +96,7 @@ func TestSyncInternal(t *testing.T) {
 					Prefix: testImage,
 				},
 			},
-			URL:          baseURL,
+			URLs:         []string{baseURL},
 			PollInterval: updateDuration,
 			TLSVerify:    &tlsVerify,
 			CertDir:      "",
@@ -119,14 +119,20 @@ func TestSyncInternal(t *testing.T) {
 					Prefix: testImage,
 				},
 			},
-			URL:          BaseURL,
+			URLs:         []string{BaseURL},
 			PollInterval: updateDuration,
 			TLSVerify:    &tlsVerify,
 			CertDir:      "/tmp/missing_certs/a/b/c/d/z",
 		}
 
-		_, err := getUpstreamCatalog(resty.New(), &syncRegistryConfig, log.NewLogger("debug", ""))
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+
+		httpClient, err := getHTTPClient(&syncRegistryConfig, baseURL, Credentials{}, log.NewLogger("debug", ""))
 		So(err, ShouldNotBeNil)
+		So(httpClient, ShouldBeNil)
+		// _, err = getUpstreamCatalog(httpClient, baseURL, log.NewLogger("debug", ""))
+		// So(err, ShouldNotBeNil)
 	})
 
 	Convey("Test getHttpClient() with bad certs", t, func() {
@@ -153,28 +159,42 @@ func TestSyncInternal(t *testing.T) {
 					Prefix: testImage,
 				},
 			},
-			URL:          baseURL,
+			URLs:         []string{baseURL, "invalidUrl]"},
 			PollInterval: updateDuration,
 			TLSVerify:    &tlsVerify,
 			CertDir:      badCertsDir,
 		}
 
-		_, err = getHTTPClient(&syncRegistryConfig, Credentials{}, log.NewLogger("debug", ""))
+		httpClient, err := getHTTPClient(&syncRegistryConfig, baseURL, Credentials{}, log.NewLogger("debug", ""))
 		So(err, ShouldNotBeNil)
-		syncRegistryConfig.CertDir = "/path/to/invalid/cert"
+		So(httpClient, ShouldBeNil)
 
-		_, err = getHTTPClient(&syncRegistryConfig, Credentials{}, log.NewLogger("debug", ""))
+		syncRegistryConfig.CertDir = "/path/to/invalid/cert"
+		httpClient, err = getHTTPClient(&syncRegistryConfig, baseURL, Credentials{}, log.NewLogger("debug", ""))
 		So(err, ShouldNotBeNil)
+		So(httpClient, ShouldBeNil)
 
 		syncRegistryConfig.CertDir = ""
-		syncRegistryConfig.URL = baseSecureURL
+		syncRegistryConfig.URLs = []string{baseSecureURL}
 
-		_, err = getHTTPClient(&syncRegistryConfig, Credentials{}, log.NewLogger("debug", ""))
+		httpClient, err = getHTTPClient(&syncRegistryConfig, baseSecureURL, Credentials{}, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
+		So(httpClient, ShouldNotBeNil)
 
-		syncRegistryConfig.URL = BaseURL
-		_, err = getHTTPClient(&syncRegistryConfig, Credentials{}, log.NewLogger("debug", ""))
+		_, err = getUpstreamCatalog(httpClient, baseURL, log.NewLogger("debug", ""))
 		So(err, ShouldNotBeNil)
+
+		_, err = getUpstreamCatalog(httpClient, "http://invalid:5000", log.NewLogger("debug", ""))
+		So(err, ShouldNotBeNil)
+
+		syncRegistryConfig.URLs = []string{BaseURL}
+		httpClient, err = getHTTPClient(&syncRegistryConfig, baseSecureURL, Credentials{}, log.NewLogger("debug", ""))
+		So(err, ShouldNotBeNil)
+		So(httpClient, ShouldBeNil)
+
+		httpClient, err = getHTTPClient(&syncRegistryConfig, "invalidUrl]", Credentials{}, log.NewLogger("debug", ""))
+		So(err, ShouldNotBeNil)
+		So(httpClient, ShouldBeNil)
 	})
 
 	Convey("Test imagesToCopyFromUpstream()", t, func() {
