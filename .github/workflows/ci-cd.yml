@@ -1,6 +1,6 @@
 on:
   push:
-    branches: 
+    branches:
       - main
   pull_request:
     branches:
@@ -25,7 +25,7 @@ jobs:
       - name: Install go
         uses: actions/setup-go@v2
         with:
-          go-version: 1.16.x
+          go-version: 1.17.x
 
       - name: Check out source code
         uses: actions/checkout@v1
