@@ -13,7 +13,7 @@ require (
 	github.com/bmatcuk/doublestar/v4 v4.0.2
 	github.com/briandowns/spinner v1.16.0
 	github.com/chartmuseum/auth v0.5.0
-	github.com/containerd/containerd v1.5.8 // indirect
+	github.com/containerd/containerd v1.5.9 // indirect
 	github.com/containers/common v0.44.3
 	github.com/containers/image/v5 v5.16.1
 	github.com/docker/distribution v2.7.1+incompatible
@@ -34,7 +34,7 @@ require (
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20211026153258-b3f631f25f1a
 	github.com/opencontainers/go-digest v1.0.0
-	github.com/opencontainers/image-spec v1.0.2-0.20211117181255-693428a734f5
+	github.com/opencontainers/image-spec v1.0.2
 	github.com/opencontainers/runc v1.0.3 // indirect
 	github.com/opencontainers/umoci v0.4.8-0.20210922062158-e60a0cc726e6
 	github.com/oras-project/artifacts-spec v1.0.0-draft.1
@@ -62,4 +62,5 @@ replace (
 	github.com/aquasecurity/trivy => github.com/anuvu/trivy v0.9.2-0.20211013001708-27408aa50da3
 	github.com/aquasecurity/trivy-db => github.com/anuvu/trivy-db v0.0.0-20211007191113-44f7e57b689c
 	github.com/containers/image/v5 => github.com/anuvu/image/v5 v5.0.0-20211118175920-feae9c2f0d91
+	github.com/opencontainers/image-spec => github.com/opencontainers/image-spec v1.0.2-0.20211117181255-693428a734f5
 )
