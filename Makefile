@@ -14,7 +14,7 @@ OS ?= linux
 ARCH ?= amd64
 
 .PHONY: all
-all: swagger binary binary-minimal binary-debug binary-arch binary-arch-minimal exporter-minimal test test-clean check
+all: swagger binary binary-minimal binary-debug binary-arch binary-arch-minimal exporter-minimal verify-config test test-clean check
 
 .PHONY: binary-minimal
 binary-minimal: swagger
@@ -98,6 +98,10 @@ clean:
 .PHONY: run
 run: binary test
 	./bin/zot serve examples/config-test.json
+
+.PHONY: verify-config
+verify-config: binary
+	$(foreach file, $(wildcard examples/config-*), ./bin/zot verify $(file) || exit 1;)
 
 .PHONY: binary-container
 binary-container:
