@@ -242,7 +242,6 @@ Supports:
   - Tags regex filtering
   - Tags semver compliance filtering (the 'v' prefix is optional)
   - BASIC auth
-  - Trigger sync with a POST call to http://registry:port/sync
 
 
 # Ecosystem

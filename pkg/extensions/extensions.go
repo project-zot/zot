@@ -100,16 +100,6 @@ func SetupRoutes(config *config.Config, router *mux.Router, storeController stor
 			Handler(gqlHandler.NewDefaultServer(search.NewExecutableSchema(resConfig)))
 	}
 
-	if config.Extensions.Sync != nil {
-		postSyncer := sync.PostHandler{
-			Cfg:             *config.Extensions.Sync,
-			Log:             log,
-			StoreController: storeController,
-		}
-
-		router.HandleFunc("/sync", postSyncer.Handler).Methods("POST")
-	}
-
 	if config.Extensions.Metrics != nil && config.Extensions.Metrics.Enable {
 		router.PathPrefix(config.Extensions.Metrics.Prometheus.Path).
 			Handler(promhttp.Handler())

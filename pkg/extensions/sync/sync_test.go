@@ -243,11 +243,11 @@ func startDownstreamServer(secure bool, syncConfig *sync.Config) (*api.Controlle
 
 func TestSyncOnDemand(t *testing.T) {
 	Convey("Verify sync on demand feature", t, func() {
-		sc, srcBaseURL, srcDir, _, srcClient := startUpstreamServer(false, false)
+		sctlr, srcBaseURL, srcDir, _, srcClient := startUpstreamServer(false, false)
 		defer os.RemoveAll(srcDir)
 
 		defer func() {
-			sc.Shutdown()
+			sctlr.Shutdown()
 		}()
 
 		var tlsVerify bool
@@ -402,11 +402,11 @@ func TestSync(t *testing.T) {
 
 		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
 
-		dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
+		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
 		defer os.RemoveAll(destDir)
 
 		defer func() {
-			dc.Shutdown()
+			dctlr.Shutdown()
 		}()
 
 		var srcTagsList TagsList
@@ -441,12 +441,6 @@ func TestSync(t *testing.T) {
 
 		So(destTagsList, ShouldResemble, srcTagsList)
 
-		Convey("Test sync on POST request on /sync", func() {
-			resp, _ := destClient.R().Post(destBaseURL + "/sync")
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, 200)
-		})
-
 		Convey("Test sync with more contents", func() {
 			regex := ".*"
 			semver := true
@@ -480,11 +474,11 @@ func TestSync(t *testing.T) {
 
 			syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
 
-			dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
+			dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
 			defer os.RemoveAll(destDir)
 
 			defer func() {
-				dc.Shutdown()
+				dctlr.Shutdown()
 			}()
 
 			var srcTagsList TagsList
@@ -535,12 +529,6 @@ func TestSync(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			So(destTagsList, ShouldNotResemble, srcTagsList)
-
-			Convey("Test sync on POST request on /sync", func() {
-				resp, _ := destClient.R().Post(destBaseURL + "/sync")
-				So(resp, ShouldNotBeNil)
-				So(resp.StatusCode(), ShouldEqual, 200)
-			})
 		})
 	})
 }
@@ -549,11 +537,11 @@ func TestSyncPermsDenied(t *testing.T) {
 	Convey("Verify sync feature without perm on sync cache", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		sc, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
+		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
 		defer os.RemoveAll(srcDir)
 
 		defer func() {
-			sc.Shutdown()
+			sctlr.Shutdown()
 		}()
 
 		regex := ".*"
@@ -574,15 +562,16 @@ func TestSyncPermsDenied(t *testing.T) {
 			PollInterval: updateDuration,
 			TLSVerify:    &tlsVerify,
 			CertDir:      "",
+			OnDemand:     true,
 		}
 
 		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
 
-		dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
+		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
 		defer os.RemoveAll(destDir)
 
 		defer func() {
-			dc.Shutdown()
+			dctlr.Shutdown()
 		}()
 
 		err := os.Chmod(path.Join(destDir, testImage, sync.SyncBlobUploadDir), 0o000)
@@ -590,11 +579,14 @@ func TestSyncPermsDenied(t *testing.T) {
 			panic(err)
 		}
 
-		Convey("Test sync on POST request on /sync", func() {
-			resp, _ := destClient.R().Post(destBaseURL + "/sync")
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, 500)
-		})
+		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 404)
+
+		err = os.Chmod(path.Join(destDir, testImage, sync.SyncBlobUploadDir), 0o755)
+		if err != nil {
+			panic(err)
+		}
 	})
 }
 
@@ -602,11 +594,11 @@ func TestSyncBadTLS(t *testing.T) {
 	Convey("Verify sync TLS feature", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		sc, srcBaseURL, srcDir, _, _ := startUpstreamServer(true, false)
+		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(true, false)
 		defer os.RemoveAll(srcDir)
 
 		defer func() {
-			sc.Shutdown()
+			sctlr.Shutdown()
 		}()
 
 		regex := ".*"
@@ -631,26 +623,26 @@ func TestSyncBadTLS(t *testing.T) {
 
 		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
 
-		dc, destBaseURL, destDir, destClient := startDownstreamServer(true, syncConfig)
+		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(true, syncConfig)
 		defer os.RemoveAll(destDir)
 
 		defer func() {
-			dc.Shutdown()
+			dctlr.Shutdown()
 		}()
 
 		// give it time to set up sync
 		time.Sleep(2 * time.Second)
 
-		resp, _ := destClient.R().Post(destBaseURL + "/sync")
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 500)
-
-		resp, _ = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + "invalid")
+		resp, _ := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + "invalid")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 
 		resp, _ = destClient.R().Get(destBaseURL + "/v2/" + "invalid" + "/manifests/" + testImageTag)
 		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 404)
+
+		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 	})
 }
@@ -659,11 +651,11 @@ func TestSyncTLS(t *testing.T) {
 	Convey("Verify sync TLS feature", t, func() {
 		updateDuration, _ := time.ParseDuration("1h")
 
-		sc, srcBaseURL, srcDir, _, _ := startUpstreamServer(true, false)
+		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(true, false)
 		defer os.RemoveAll(srcDir)
 
 		defer func() {
-			sc.Shutdown()
+			sctlr.Shutdown()
 		}()
 
 		var srcIndex ispec.Index
@@ -726,11 +718,11 @@ func TestSyncTLS(t *testing.T) {
 
 		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
 
-		dc, destBaseURL, destDir, destClient := startDownstreamServer(true, syncConfig)
+		dctlr, _, destDir, _ := startDownstreamServer(true, syncConfig)
 		defer os.RemoveAll(destDir)
 
 		defer func() {
-			dc.Shutdown()
+			dctlr.Shutdown()
 		}()
 
 		// wait till ready
@@ -753,12 +745,6 @@ func TestSyncTLS(t *testing.T) {
 		if !found {
 			panic(errSync)
 		}
-
-		Convey("Test sync on POST request on /sync", func() {
-			resp, _ := destClient.R().SetBasicAuth("test", "test").Post(destBaseURL + "/sync")
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, 200)
-		})
 	})
 }
 
@@ -766,12 +752,12 @@ func TestSyncBasicAuth(t *testing.T) {
 	Convey("Verify sync basic auth", t, func() {
 		updateDuration, _ := time.ParseDuration("1h")
 
-		sc, srcBaseURL, srcDir, htpasswdPath, srcClient := startUpstreamServer(false, true)
+		sctlr, srcBaseURL, srcDir, htpasswdPath, srcClient := startUpstreamServer(false, true)
 		defer os.Remove(htpasswdPath)
 		defer os.RemoveAll(srcDir)
 
 		defer func() {
-			sc.Shutdown()
+			sctlr.Shutdown()
 		}()
 
 		Convey("Verify sync basic auth with file credentials", func() {
@@ -797,11 +783,11 @@ func TestSyncBasicAuth(t *testing.T) {
 				Registries:      []sync.RegistryConfig{syncRegistryConfig},
 			}
 
-			dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
+			dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
 			defer os.RemoveAll(destDir)
 
 			defer func() {
-				dc.Shutdown()
+				dctlr.Shutdown()
 			}()
 
 			var srcTagsList TagsList
@@ -917,16 +903,11 @@ func TestSyncBasicAuth(t *testing.T) {
 				time.Sleep(100 * time.Millisecond)
 			}
 
+			time.Sleep(2 * time.Second)
+
 			resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 404)
-
-			Convey("Test sync on POST request on /sync", func() {
-				resp, _ := resty.R().Post(destBaseURL + "/sync")
-				So(resp, ShouldNotBeNil)
-				So(string(resp.Body()), ShouldContainSubstring, "sync: couldn't fetch upstream registry's catalog")
-				So(resp.StatusCode(), ShouldEqual, 500)
-			})
 		})
 
 		Convey("Verify sync basic auth with bad file credentials", func() {
@@ -968,23 +949,18 @@ func TestSyncBasicAuth(t *testing.T) {
 				Registries:      []sync.RegistryConfig{syncRegistryConfig},
 			}
 
-			dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
+			dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
 			defer os.RemoveAll(destDir)
 
 			defer func() {
-				dc.Shutdown()
+				dctlr.Shutdown()
 			}()
+
+			time.Sleep(2 * time.Second)
 
 			resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 404)
-
-			Convey("Test sync on POST request on /sync", func() {
-				resp, _ := destClient.R().Post(destBaseURL + "/sync")
-				So(resp, ShouldNotBeNil)
-				So(string(resp.Body()), ShouldContainSubstring, "permission denied")
-				So(resp.StatusCode(), ShouldEqual, 500)
-			})
 		})
 
 		Convey("Verify on demand sync with basic auth", func() {
@@ -1069,12 +1045,6 @@ func TestSyncBasicAuth(t *testing.T) {
 			}
 
 			So(destTagsList, ShouldResemble, srcTagsList)
-
-			Convey("Test sync on POST request on /sync", func() {
-				resp, _ := destClient.R().Post(destBaseURL + "/sync")
-				So(resp, ShouldNotBeNil)
-				So(resp.StatusCode(), ShouldEqual, 200)
-			})
 		})
 	})
 }
@@ -1101,23 +1071,21 @@ func TestSyncBadURL(t *testing.T) {
 			PollInterval: updateDuration,
 			TLSVerify:    &tlsVerify,
 			CertDir:      "",
+			OnDemand:     true,
 		}
 
 		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
 
-		dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
+		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
 		defer os.RemoveAll(destDir)
 
-		defer func() {
-			dc.Shutdown()
-		}()
+		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 404)
 
-		Convey("Test sync on POST request on /sync", func() {
-			resp, _ := destClient.R().Post(destBaseURL + "/sync")
-			So(resp, ShouldNotBeNil)
-			So(string(resp.Body()), ShouldContainSubstring, "unsupported protocol scheme")
-			So(resp.StatusCode(), ShouldEqual, 500)
-		})
+		defer func() {
+			dctlr.Shutdown()
+		}()
 	})
 }
 
@@ -1125,11 +1093,11 @@ func TestSyncNoImagesByRegex(t *testing.T) {
 	Convey("Verify sync with no images on source based on regex", t, func() {
 		updateDuration, _ := time.ParseDuration("1h")
 
-		sc, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
+		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
 		defer os.RemoveAll(srcDir)
 
 		defer func() {
-			sc.Shutdown()
+			sctlr.Shutdown()
 		}()
 
 		regex := "9.9.9"
@@ -1152,32 +1120,29 @@ func TestSyncNoImagesByRegex(t *testing.T) {
 
 		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
 
-		dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
+		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
 		defer os.RemoveAll(destDir)
 
 		defer func() {
-			dc.Shutdown()
+			dctlr.Shutdown()
 		}()
 
-		Convey("Test sync on POST request on /sync", func() {
-			resp, err := destClient.R().Post(destBaseURL + "/sync")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, 200)
+		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 404)
 
-			resp, err = destClient.R().Get(destBaseURL + "/v2/_catalog")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeEmpty)
-			So(resp.StatusCode(), ShouldEqual, 200)
+		resp, err = destClient.R().Get(destBaseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeEmpty)
+		So(resp.StatusCode(), ShouldEqual, 200)
 
-			var c catalog
-			err = json.Unmarshal(resp.Body(), &c)
-			if err != nil {
-				panic(err)
-			}
+		var c catalog
+		err = json.Unmarshal(resp.Body(), &c)
+		if err != nil {
+			panic(err)
+		}
 
-			So(c.Repositories, ShouldResemble, []string{})
-		})
+		So(c.Repositories, ShouldResemble, []string{})
 	})
 }
 
@@ -1185,11 +1150,11 @@ func TestSyncInvalidRegex(t *testing.T) {
 	Convey("Verify sync with invalid regex", t, func() {
 		updateDuration, _ := time.ParseDuration("1h")
 
-		sc, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
+		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
 		defer os.RemoveAll(srcDir)
 
 		defer func() {
-			sc.Shutdown()
+			sctlr.Shutdown()
 		}()
 
 		regex := "["
@@ -1208,23 +1173,17 @@ func TestSyncInvalidRegex(t *testing.T) {
 			TLSVerify:    &tlsVerify,
 			PollInterval: updateDuration,
 			CertDir:      "",
+			OnDemand:     true,
 		}
 
 		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
 
-		dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
+		dctlr, _, destDir, _ := startDownstreamServer(false, syncConfig)
 		defer os.RemoveAll(destDir)
 
 		defer func() {
-			dc.Shutdown()
+			dctlr.Shutdown()
 		}()
-
-		Convey("Test sync on POST request on /sync", func() {
-			resp, _ := destClient.R().Post(destBaseURL + "/sync")
-			So(resp, ShouldNotBeNil)
-			So(string(resp.Body()), ShouldContainSubstring, "error parsing regexp")
-			So(resp.StatusCode(), ShouldEqual, 500)
-		})
 	})
 }
 
@@ -1232,11 +1191,11 @@ func TestSyncNotSemver(t *testing.T) {
 	Convey("Verify sync feature semver compliant", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		sc, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
+		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
 		defer os.RemoveAll(srcDir)
 
 		defer func() {
-			sc.Shutdown()
+			sctlr.Shutdown()
 		}()
 
 		// get manifest so we can update it with a semver non compliant tag
@@ -1274,20 +1233,16 @@ func TestSyncNotSemver(t *testing.T) {
 
 		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
 
-		dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
+		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
 		defer os.RemoveAll(destDir)
 
 		defer func() {
-			dc.Shutdown()
+			dctlr.Shutdown()
 		}()
 
-		Convey("Test sync on POST request on /sync", func() {
-			resp, _ := destClient.R().Post(destBaseURL + "/sync")
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, 200)
+		var destTagsList TagsList
 
-			var destTagsList TagsList
-
+		for {
 			resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/tags/list")
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
@@ -1296,10 +1251,15 @@ func TestSyncNotSemver(t *testing.T) {
 			if err != nil {
 				panic(err)
 			}
+			if len(destTagsList.Tags) > 0 {
+				break
+			}
 
-			So(len(destTagsList.Tags), ShouldEqual, 1)
-			So(destTagsList.Tags[0], ShouldEqual, testImageTag)
-		})
+			time.Sleep(500 * time.Millisecond)
+		}
+
+		So(len(destTagsList.Tags), ShouldEqual, 1)
+		So(destTagsList.Tags[0], ShouldEqual, testImageTag)
 	})
 }
 
@@ -1307,11 +1267,11 @@ func TestSyncInvalidCerts(t *testing.T) {
 	Convey("Verify sync with bad certs", t, func() {
 		updateDuration, _ := time.ParseDuration("1h")
 
-		sc, srcBaseURL, srcDir, _, _ := startUpstreamServer(true, false)
+		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(true, false)
 		defer os.RemoveAll(srcDir)
 
 		defer func() {
-			sc.Shutdown()
+			sctlr.Shutdown()
 		}()
 
 		// copy client certs, use them in sync config
@@ -1363,23 +1323,21 @@ func TestSyncInvalidCerts(t *testing.T) {
 			PollInterval: updateDuration,
 			TLSVerify:    &tlsVerify,
 			CertDir:      clientCertDir,
+			OnDemand:     true,
 		}
 
 		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
 
-		dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
+		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
 		defer os.RemoveAll(destDir)
 
-		defer func() {
-			dc.Shutdown()
-		}()
+		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 404)
 
-		Convey("Test sync on POST request on /sync", func() {
-			resp, _ := destClient.R().Post(destBaseURL + "/sync")
-			So(resp, ShouldNotBeNil)
-			So(string(resp.Body()), ShouldContainSubstring, "bad certificate")
-			So(resp.StatusCode(), ShouldEqual, 500)
-		})
+		defer func() {
+			dctlr.Shutdown()
+		}()
 	})
 }
 
@@ -1424,11 +1382,11 @@ func TestSyncInvalidUrl(t *testing.T) {
 
 		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
 
-		dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
+		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
 		defer os.RemoveAll(destDir)
 
 		defer func() {
-			dc.Shutdown()
+			dctlr.Shutdown()
 		}()
 
 		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
@@ -1441,11 +1399,11 @@ func TestSyncInvalidTags(t *testing.T) {
 	Convey("Verify sync invalid tags", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		sc, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
+		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
 		defer os.RemoveAll(srcDir)
 
 		defer func() {
-			sc.Shutdown()
+			sctlr.Shutdown()
 		}()
 
 		regex := ".*"
@@ -1474,11 +1432,11 @@ func TestSyncInvalidTags(t *testing.T) {
 			Registries: []sync.RegistryConfig{syncRegistryConfig},
 		}
 
-		dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
+		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
 		defer os.RemoveAll(destDir)
 
 		defer func() {
-			dc.Shutdown()
+			dctlr.Shutdown()
 		}()
 
 		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + "invalid:tag")
@@ -1665,11 +1623,11 @@ func TestSyncOnDemandRepoErr(t *testing.T) {
 
 		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
 
-		dc, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
+		dctlr, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
 		defer os.RemoveAll(destDir)
 
 		defer func() {
-			dc.Shutdown()
+			dctlr.Shutdown()
 		}()
 
 		resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
@@ -1680,11 +1638,11 @@ func TestSyncOnDemandRepoErr(t *testing.T) {
 
 func TestSyncOnDemandContentFiltering(t *testing.T) {
 	Convey("Verify sync on demand feature", t, func() {
-		sc, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
+		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
 		defer os.RemoveAll(srcDir)
 
 		defer func() {
-			sc.Shutdown()
+			sctlr.Shutdown()
 		}()
 
 		Convey("Test image is filtered out by content", func() {
@@ -1711,11 +1669,11 @@ func TestSyncOnDemandContentFiltering(t *testing.T) {
 
 			syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
 
-			dc, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
+			dctlr, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
 			defer os.RemoveAll(destDir)
 
 			defer func() {
-				dc.Shutdown()
+				dctlr.Shutdown()
 			}()
 
 			resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
@@ -1747,11 +1705,11 @@ func TestSyncOnDemandContentFiltering(t *testing.T) {
 
 			syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
 
-			dc, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
+			dctlr, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
 			defer os.RemoveAll(destDir)
 
 			defer func() {
-				dc.Shutdown()
+				dctlr.Shutdown()
 			}()
 
 			resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
@@ -1763,11 +1721,11 @@ func TestSyncOnDemandContentFiltering(t *testing.T) {
 
 func TestSyncConfigRules(t *testing.T) {
 	Convey("Verify sync config rules", t, func() {
-		sc, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
+		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
 		defer os.RemoveAll(srcDir)
 
 		defer func() {
-			sc.Shutdown()
+			sctlr.Shutdown()
 		}()
 
 		Convey("Test periodically sync is disabled when pollInterval is not set", func() {
@@ -1793,17 +1751,12 @@ func TestSyncConfigRules(t *testing.T) {
 
 			syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
 
-			dc, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
+			dctlr, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
 			defer os.RemoveAll(destDir)
 
 			defer func() {
-				dc.Shutdown()
+				dctlr.Shutdown()
 			}()
-
-			// trigger sync, this way we can be sure periodically sync ran
-			resp, _ := resty.R().Post(destBaseURL + "/sync")
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, 200)
 
 			// image should not be synced
 			resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
@@ -1825,17 +1778,12 @@ func TestSyncConfigRules(t *testing.T) {
 
 			syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
 
-			dc, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
+			dctlr, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
 			defer os.RemoveAll(destDir)
 
 			defer func() {
-				dc.Shutdown()
+				dctlr.Shutdown()
 			}()
-
-			// trigger sync, this way we can be sure periodically sync ran
-			resp, _ := resty.R().Post(destBaseURL + "/sync")
-			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, 200)
 
 			resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 			So(err, ShouldBeNil)
@@ -1854,11 +1802,11 @@ func TestSyncConfigRules(t *testing.T) {
 
 			syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
 
-			dc, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
+			dctlr, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
 			defer os.RemoveAll(destDir)
 
 			defer func() {
-				dc.Shutdown()
+				dctlr.Shutdown()
 			}()
 
 			resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
@@ -1872,11 +1820,11 @@ func TestSyncSignatures(t *testing.T) {
 	Convey("Verify sync signatures", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		sc, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
+		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
 		defer os.RemoveAll(srcDir)
 
 		defer func() {
-			sc.Shutdown()
+			sctlr.Shutdown()
 		}()
 
 		// create repo, push and sign it
@@ -1924,11 +1872,11 @@ func TestSyncSignatures(t *testing.T) {
 			Registries: []sync.RegistryConfig{syncRegistryConfig},
 		}
 
-		dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
+		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
 		defer os.RemoveAll(destDir)
 
 		defer func() {
-			dc.Shutdown()
+			dctlr.Shutdown()
 		}()
 
 		// wait for sync
@@ -2022,9 +1970,9 @@ func TestSyncSignatures(t *testing.T) {
 		// 	panic(err)
 		// }
 
-		resp, _ = resty.R().Post(destBaseURL + "/sync")
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 500)
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 404)
 
 		for _, blob := range nm.Blobs {
 			srcBlobPath := path.Join(srcDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Hex())
@@ -2038,9 +1986,9 @@ func TestSyncSignatures(t *testing.T) {
 			So(err, ShouldBeNil)
 		}
 
-		resp, _ = resty.R().Post(destBaseURL + "/sync")
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 500)
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 404)
 
 		// clean
 		for _, blob := range nm.Blobs {
@@ -2070,9 +2018,9 @@ func TestSyncSignatures(t *testing.T) {
 			So(err, ShouldBeNil)
 		}
 
-		resp, _ = resty.R().Post(destBaseURL + "/sync")
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 500)
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 404)
 
 		for _, blob := range cm.Layers {
 			srcBlobPath := path.Join(srcDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Hex())
@@ -2086,9 +2034,9 @@ func TestSyncSignatures(t *testing.T) {
 			So(err, ShouldBeNil)
 		}
 
-		resp, _ = resty.R().Post(destBaseURL + "/sync")
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 500)
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 404)
 
 		for _, blob := range cm.Layers {
 			destBlobPath := path.Join(destDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Hex())
@@ -2104,9 +2052,9 @@ func TestSyncSignatures(t *testing.T) {
 		err = os.Chmod(srcConfigBlobPath, 0o000)
 		So(err, ShouldBeNil)
 
-		resp, _ = resty.R().Post(destBaseURL + "/sync")
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 500)
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 404)
 
 		err = os.Chmod(srcConfigBlobPath, 0o755)
 		So(err, ShouldBeNil)
@@ -2118,9 +2066,9 @@ func TestSyncSignatures(t *testing.T) {
 		err = os.MkdirAll(destConfigBlobPath, 0o000)
 		So(err, ShouldBeNil)
 
-		resp, _ = resty.R().Post(destBaseURL + "/sync")
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 500)
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 404)
 	})
 }
 
@@ -2128,11 +2076,11 @@ func TestSyncError(t *testing.T) {
 	Convey("Verify periodically sync pushSyncedLocalImage() error", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		sc, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
+		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
 		defer os.RemoveAll(srcDir)
 
 		defer func() {
-			sc.Shutdown()
+			sctlr.Shutdown()
 		}()
 
 		regex := ".*"
@@ -2157,11 +2105,11 @@ func TestSyncError(t *testing.T) {
 
 		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
 
-		dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
+		dctlr, destBaseURL, destDir, client := startDownstreamServer(false, syncConfig)
 		defer os.RemoveAll(destDir)
 
 		defer func() {
-			dc.Shutdown()
+			dctlr.Shutdown()
 		}()
 
 		// give permission denied on pushSyncedLocalImage()
@@ -2169,19 +2117,19 @@ func TestSyncError(t *testing.T) {
 		err := os.MkdirAll(localRepoPath, 0o000)
 		So(err, ShouldBeNil)
 
-		resp, _ := destClient.R().Post(destBaseURL + "/sync")
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 500)
+		resp, err := client.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 404)
 	})
 }
 
 func TestSyncSignaturesOnDemand(t *testing.T) {
 	Convey("Verify sync signatures on demand feature", t, func() {
-		sc, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
+		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
 		defer os.RemoveAll(srcDir)
 
 		defer func() {
-			sc.Shutdown()
+			sctlr.Shutdown()
 		}()
 
 		// create repo, push and sign it
@@ -2214,11 +2162,11 @@ func TestSyncSignaturesOnDemand(t *testing.T) {
 
 		syncConfig := &sync.Config{Registries: []sync.RegistryConfig{syncRegistryConfig}}
 
-		dc, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
+		dctlr, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
 		defer os.RemoveAll(destDir)
 
 		defer func() {
-			dc.Shutdown()
+			dctlr.Shutdown()
 		}()
 
 		// sync on demand
