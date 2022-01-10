@@ -39,7 +39,7 @@ func SetupRoutes(conf *config.Config, router *mux.Router, storeController storag
 
 // SyncOneImage ...
 func SyncOneImage(config *config.Config, storeController storage.StoreController,
-	repoName, reference string, log log.Logger) error {
+	repoName, reference string, isArtifact bool, log log.Logger) error {
 	log.Warn().Msg("skipping syncing on demand because given zot binary doesn't support any extensions," +
 		"please build zot full binary for this feature")
 

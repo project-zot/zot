@@ -108,10 +108,10 @@ func SetupRoutes(config *config.Config, router *mux.Router, storeController stor
 
 // SyncOneImage syncs one image.
 func SyncOneImage(config *config.Config, storeController storage.StoreController,
-	repoName, reference string, log log.Logger) error {
+	repoName, reference string, isArtifact bool, log log.Logger) error {
 	log.Info().Msgf("syncing image %s:%s", repoName, reference)
 
-	err := sync.OneImage(*config.Extensions.Sync, storeController, repoName, reference, log)
+	err := sync.OneImage(*config.Extensions.Sync, storeController, repoName, reference, isArtifact, log)
 
 	return err
 }

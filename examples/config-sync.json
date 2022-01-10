@@ -19,6 +19,8 @@
 				"pollInterval": "6h",
 				"tlsVerify": true,
 				"certDir": "/home/user/certs",
+				"maxRetries": 3,
+				"retryDelay": "5m",
 				"content":[
 					{
 						"prefix":"/repo1/repo",
@@ -37,6 +39,8 @@
 				"pollInterval": "12h",
 				"tlsVerify": false,
 				"onDemand": false,
+				"maxRetries": 5,
+				"retryDelay": "10m",
 				"content":[
 					{
 						"prefix":"/repo2",
@@ -49,7 +53,9 @@
 			{
 				"urls": ["https://docker.io/library"],
 				"onDemand": true,
-				"tlsVerify": true
+				"tlsVerify": true,
+				"maxRetries": 6,
+				"retryDelay": "5m"
 			}
 		]
 		}

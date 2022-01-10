@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net/url"
 	"os"
@@ -11,8 +12,11 @@ import (
 	"strings"
 
 	glob "github.com/bmatcuk/doublestar/v4"
+	"github.com/containers/image/v5/docker"
 	"github.com/containers/image/v5/docker/reference"
+	"github.com/containers/image/v5/oci/layout"
 	"github.com/containers/image/v5/types"
+	guuid "github.com/gofrs/uuid"
 	"github.com/notaryproject/notation-go-lib"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
@@ -36,6 +40,14 @@ func getTagFromRef(ref types.ImageReference, log log.Logger) reference.Tagged {
 	}
 
 	return tagged
+}
+
+// getRepoFromRef returns repo name from a registry ImageReference.
+func getRepoFromRef(ref types.ImageReference, registryDomain string) string {
+	imageName := strings.Replace(ref.DockerReference().Name(), registryDomain, "", 1)
+	imageName = strings.TrimPrefix(imageName, "/")
+
+	return imageName
 }
 
 // parseRepositoryReference parses input into a reference.Named, and verifies that it names a repository, not an image.
@@ -164,14 +176,18 @@ func syncCosignSignature(client *resty.Client, storeController storage.StoreCont
 
 	getCosignManifestURL := regURL
 
-	cosignEncodedDigest := strings.Replace(digest, ":", "-", 1) + ".sig"
-	getCosignManifestURL.Path = path.Join(getCosignManifestURL.Path, "v2", repo, "manifests", cosignEncodedDigest)
+	if !isCosignTag(digest) {
+		digest = strings.Replace(digest, ":", "-", 1) + ".sig"
+	}
+
+	getCosignManifestURL.Path = path.Join(getCosignManifestURL.Path, "v2", repo, "manifests", digest)
+
 	getCosignManifestURL.RawQuery = getCosignManifestURL.Query().Encode()
 
 	mResp, err := client.R().Get(getCosignManifestURL.String())
 	if err != nil {
 		log.Error().Err(err).Str("url", getCosignManifestURL.String()).
-			Msgf("couldn't get cosign manifest: %s", cosignEncodedDigest)
+			Msgf("couldn't get cosign manifest: %s", digest)
 
 		return err
 	}
@@ -188,7 +204,7 @@ func syncCosignSignature(client *resty.Client, storeController storage.StoreCont
 	err = json.Unmarshal(mResp.Body(), &m)
 	if err != nil {
 		log.Error().Err(err).Str("url", getCosignManifestURL.String()).
-			Msgf("couldn't unmarshal cosign manifest %s", cosignEncodedDigest)
+			Msgf("couldn't unmarshal cosign manifest %s", digest)
 
 		return err
 	}
@@ -254,7 +270,7 @@ func syncCosignSignature(client *resty.Client, storeController storage.StoreCont
 	}
 
 	// push manifest
-	_, err = imageStore.PutImageManifest(repo, cosignEncodedDigest, ispec.MediaTypeImageManifest, mResp.Body())
+	_, err = imageStore.PutImageManifest(repo, digest, ispec.MediaTypeImageManifest, mResp.Body())
 	if err != nil {
 		log.Error().Err(err).Msg("couldn't upload cosing manifest")
 
@@ -269,7 +285,6 @@ func syncNotarySignature(client *resty.Client, storeController storage.StoreCont
 	log.Info().Msg("syncing notary signatures")
 
 	getReferrersURL := regURL
-	getRefManifestURL := regURL
 
 	// based on manifest digest get referrers
 	getReferrersURL.Path = path.Join(getReferrersURL.Path, "oras/artifacts/v1/", repo, "manifests", digest, "referrers")
@@ -305,6 +320,7 @@ func syncNotarySignature(client *resty.Client, storeController storage.StoreCont
 
 	for _, ref := range referrers.References {
 		// get referrer manifest
+		getRefManifestURL := regURL
 		getRefManifestURL.Path = path.Join(getRefManifestURL.Path, "v2", repo, "manifests", ref.Digest.String())
 		getRefManifestURL.RawQuery = getRefManifestURL.Query().Encode()
 
@@ -368,7 +384,7 @@ func syncNotarySignature(client *resty.Client, storeController storage.StoreCont
 
 func syncSignatures(client *resty.Client, storeController storage.StoreController,
 	registryURL, repo, tag string, log log.Logger) error {
-	log.Info().Msg("syncing signatures")
+	log.Info().Msgf("syncing signatures from %s/%s:%s", registryURL, repo, tag)
 	// get manifest and find out its digest
 	regURL, err := url.Parse(registryURL)
 	if err != nil {
@@ -414,21 +430,19 @@ func syncSignatures(client *resty.Client, storeController storage.StoreControlle
 		return err
 	}
 
-	log.Info().Msg("successfully synced signatures")
+	log.Info().Msgf("successfully synced %s/%s:%s signatures", registryURL, repo, tag)
 
 	return nil
 }
 
-// copy from temporary oci repository to local registry.
-func pushSyncedLocalImage(repo, tag, uuid string,
+func pushSyncedLocalImage(repo, tag, localCachePath string,
 	storeController storage.StoreController, log log.Logger) error {
-	log.Info().Msgf("pushing synced local image %s:%s to local registry", repo, tag)
+	log.Info().Msgf("pushing synced local image %s/%s:%s to local registry", localCachePath, repo, tag)
 
 	imageStore := storeController.GetImageStore(repo)
 
 	metrics := monitoring.NewMetricsServer(false, log)
-	cacheImageStore := storage.NewImageStore(path.Join(imageStore.RootDir(), repo, SyncBlobUploadDir, uuid),
-		false, false, log, metrics)
+	cacheImageStore := storage.NewImageStore(localCachePath, false, false, log, metrics)
 
 	manifestContent, _, _, err := cacheImageStore.GetImageManifest(repo, tag)
 	if err != nil {
@@ -486,7 +500,7 @@ func pushSyncedLocalImage(repo, tag, uuid string,
 
 	log.Info().Msgf("removing temporary cached synced repo %s", path.Join(cacheImageStore.RootDir(), repo))
 
-	if err := os.RemoveAll(path.Join(cacheImageStore.RootDir(), repo)); err != nil {
+	if err := os.RemoveAll(cacheImageStore.RootDir()); err != nil {
 		log.Error().Err(err).Msg("couldn't remove locally cached sync repo")
 
 		return err
@@ -509,4 +523,53 @@ func isCosignTag(tag string) bool {
 // at a non-fully qualified registry (hostname as image and port as tag).
 func StripRegistryTransport(url string) string {
 	return strings.Replace(strings.Replace(url, "http://", "", 1), "https://", "", 1)
+}
+
+// get a .sync subdir used for temporary store one synced image.
+func getLocalCachePath(imageStore storage.ImageStore, repo string) (string, error) {
+	uuid, err := guuid.NewV4()
+	if err != nil {
+		return "", err
+	}
+
+	localCachePath := path.Join(imageStore.RootDir(), repo, SyncBlobUploadDir, uuid.String())
+
+	if err = os.MkdirAll(path.Join(localCachePath, repo), storage.DefaultDirPerms); err != nil {
+		return "", err
+	}
+
+	return localCachePath, nil
+}
+
+// get an ImageReference given the registry, repo and tag.
+func getImageRef(registryDomain, repo, tag string) (types.ImageReference, error) {
+	repoRef, err := parseRepositoryReference(fmt.Sprintf("%s/%s", registryDomain, repo))
+	if err != nil {
+		return nil, err
+	}
+
+	taggedRepoRef, err := reference.WithTag(repoRef, tag)
+	if err != nil {
+		return nil, err
+	}
+
+	imageRef, err := docker.NewReference(taggedRepoRef)
+	if err != nil {
+		return nil, err
+	}
+
+	return imageRef, err
+}
+
+// get a local ImageReference used to temporary store one synced image.
+func getLocalImageRef(localCachePath, repo, tag string) (types.ImageReference, error) {
+	localRepo := path.Join(localCachePath, repo)
+	localTaggedRepo := fmt.Sprintf("%s:%s", localRepo, tag)
+
+	localImageRef, err := layout.ParseReference(localTaggedRepo)
+	if err != nil {
+		return nil, err
+	}
+
+	return localImageRef, nil
 }

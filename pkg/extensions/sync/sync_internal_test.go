@@ -209,13 +209,13 @@ func TestSyncInternal(t *testing.T) {
 		So(err, ShouldNotBeNil)
 	})
 
-	Convey("Test OneImage() skips cosign signatures", t, func() {
-		err := OneImage(Config{}, storage.StoreController{}, "repo", "sha256-.sig", log.NewLogger("", ""))
-		So(err, ShouldBeNil)
-	})
+	// Convey("Test OneImage() skips cosign signatures", t, func() {
+	// 	err := OneImage(Config{}, storage.StoreController{}, "repo", "sha256-.sig", log.NewLogger("", ""))
+	// 	So(err, ShouldBeNil)
+	// })
 
 	Convey("Test syncSignatures()", t, func() {
-		log := log.NewLogger("", "")
+		log := log.NewLogger("debug", "")
 		err := syncSignatures(resty.New(), storage.StoreController{}, "%", "repo", "tag", log)
 		So(err, ShouldNotBeNil)
 		err = syncSignatures(resty.New(), storage.StoreController{}, "http://zot", "repo", "tag", log)
@@ -273,11 +273,11 @@ func TestSyncInternal(t *testing.T) {
 		storeController := storage.StoreController{}
 		storeController.DefaultStore = imageStore
 
-		err = pushSyncedLocalImage(testImage, testImageTag, "", storeController, log)
-		So(err, ShouldNotBeNil)
-
 		testRootDir := path.Join(imageStore.RootDir(), testImage, SyncBlobUploadDir)
 		// testImagePath := path.Join(testRootDir, testImage)
+
+		err = pushSyncedLocalImage(testImage, testImageTag, testRootDir, storeController, log)
+		So(err, ShouldNotBeNil)
 
 		err = os.MkdirAll(testRootDir, 0o755)
 		if err != nil {
@@ -305,9 +305,8 @@ func TestSyncInternal(t *testing.T) {
 
 		if os.Geteuid() != 0 {
 			So(func() {
-				_ = pushSyncedLocalImage(testImage, testImageTag, "", storeController, log)
-			},
-				ShouldPanic)
+				_ = pushSyncedLocalImage(testImage, testImageTag, testRootDir, storeController, log)
+			}, ShouldPanic)
 		}
 
 		if err := os.Chmod(storageDir, 0o755); err != nil {
@@ -319,7 +318,7 @@ func TestSyncInternal(t *testing.T) {
 			panic(err)
 		}
 
-		err = pushSyncedLocalImage(testImage, testImageTag, "", storeController, log)
+		err = pushSyncedLocalImage(testImage, testImageTag, testRootDir, storeController, log)
 		So(err, ShouldNotBeNil)
 
 		if err := os.Chmod(path.Join(testRootDir, testImage, "blobs", "sha256",
@@ -333,7 +332,7 @@ func TestSyncInternal(t *testing.T) {
 			panic(err)
 		}
 
-		err = pushSyncedLocalImage(testImage, testImageTag, "", storeController, log)
+		err = pushSyncedLocalImage(testImage, testImageTag, testRootDir, storeController, log)
 		So(err, ShouldNotBeNil)
 
 		if err := os.Chmod(cachedManifestConfigPath, 0o755); err != nil {
@@ -345,7 +344,7 @@ func TestSyncInternal(t *testing.T) {
 			panic(err)
 		}
 
-		err = pushSyncedLocalImage(testImage, testImageTag, "", storeController, log)
+		err = pushSyncedLocalImage(testImage, testImageTag, testRootDir, storeController, log)
 		So(err, ShouldNotBeNil)
 
 		if err := os.Remove(manifestConfigPath); err != nil {
@@ -359,7 +358,7 @@ func TestSyncInternal(t *testing.T) {
 			panic(err)
 		}
 
-		err = pushSyncedLocalImage(testImage, testImageTag, "", storeController, log)
+		err = pushSyncedLocalImage(testImage, testImageTag, testRootDir, storeController, log)
 		So(err, ShouldNotBeNil)
 	})
 }
