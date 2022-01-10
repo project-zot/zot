@@ -1324,27 +1324,13 @@ func getImageManifest(routeHandler *RouteHandler, imgStore storage.ImageStore, n
 	reference string) ([]byte, string, string, error) {
 	content, digest, mediaType, err := imgStore.GetImageManifest(name, reference)
 	if err != nil {
-		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
+		if errors.Is(err, zerr.ErrRepoNotFound) || errors.Is(err, zerr.ErrManifestNotFound) {
 			if routeHandler.c.Config.Extensions != nil && routeHandler.c.Config.Extensions.Sync != nil {
 				routeHandler.c.Log.Info().Msgf("image not found, trying to get image %s:%s by syncing on demand",
 					name, reference)
 
 				errSync := ext.SyncOneImage(routeHandler.c.Config, routeHandler.c.StoreController,
-					name, reference, routeHandler.c.Log)
-				if errSync != nil {
-					routeHandler.c.Log.Err(errSync).Msgf("error encounter while syncing image %s:%s",
-						name, reference)
-				} else {
-					content, digest, mediaType, err = imgStore.GetImageManifest(name, reference)
-				}
-			}
-		} else if errors.Is(err, zerr.ErrManifestNotFound) {
-			if routeHandler.c.Config.Extensions != nil && routeHandler.c.Config.Extensions.Sync != nil {
-				routeHandler.c.Log.Info().Msgf("manifest not found, trying to get image %s:%s by syncing on demand",
-					name, reference)
-
-				errSync := ext.SyncOneImage(routeHandler.c.Config, routeHandler.c.StoreController,
-					name, reference, routeHandler.c.Log)
+					name, reference, false, routeHandler.c.Log)
 				if errSync != nil {
 					routeHandler.c.Log.Err(errSync).Msgf("error encounter while syncing image %s:%s",
 						name, reference)
@@ -1358,6 +1344,30 @@ func getImageManifest(routeHandler *RouteHandler, imgStore storage.ImageStore, n
 	}
 
 	return content, digest, mediaType, err
+}
+
+// will sync referrers on demand if they are not found, in case sync extensions is enabled.
+func getReferrers(routeHandler *RouteHandler, imgStore storage.ImageStore, name, digest,
+	artifactType string) ([]artifactspec.Descriptor, error) {
+	refs, err := imgStore.GetReferrers(name, digest, artifactType)
+	if err != nil {
+		if routeHandler.c.Config.Extensions != nil && routeHandler.c.Config.Extensions.Sync != nil {
+			routeHandler.c.Log.Info().Msgf("signature not found, trying to get signature %s:%s by syncing on demand",
+				name, digest)
+
+			errSync := ext.SyncOneImage(routeHandler.c.Config, routeHandler.c.StoreController,
+				name, digest, true, routeHandler.c.Log)
+			if errSync != nil {
+				routeHandler.c.Log.Error().Err(err).Str("name", name).Str("digest", digest).Msg("unable to get references")
+
+				return []artifactspec.Descriptor{}, err
+			}
+
+			refs, err = imgStore.GetReferrers(name, digest, artifactType)
+		}
+	}
+
+	return refs, err
 }
 
 type ReferenceList struct {
@@ -1414,7 +1424,7 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 
 	rh.c.Log.Info().Str("digest", digest).Str("artifactType", artifactType).Msg("getting manifest")
 
-	refs, err := imgStore.GetReferrers(name, digest, artifactType)
+	refs, err := getReferrers(rh, imgStore, name, digest, artifactType)
 	if err != nil {
 		rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest).Msg("unable to get references")
 		response.WriteHeader(http.StatusBadRequest)

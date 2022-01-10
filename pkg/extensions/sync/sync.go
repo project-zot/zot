@@ -6,9 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path"
 	"regexp"
-	"strings"
 	goSync "sync"
 	"time"
 
@@ -17,10 +15,8 @@ import (
 	"github.com/containers/image/v5/copy"
 	"github.com/containers/image/v5/docker"
 	"github.com/containers/image/v5/docker/reference"
-	"github.com/containers/image/v5/oci/layout"
 	"github.com/containers/image/v5/signature"
 	"github.com/containers/image/v5/types"
-	guuid "github.com/gofrs/uuid"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"gopkg.in/resty.v1"
 	"zotregistry.io/zot/errors"
@@ -29,8 +25,6 @@ import (
 )
 
 const (
-	maxRetries        = 3
-	delay             = 5 * time.Minute
 	SyncBlobUploadDir = ".sync"
 )
 
@@ -59,6 +53,8 @@ type RegistryConfig struct {
 	TLSVerify    *bool
 	OnDemand     bool
 	CertDir      string
+	MaxRetries   *int
+	RetryDelay   *time.Duration
 }
 
 type Content struct {
@@ -238,6 +234,7 @@ func imagesToCopyFromUpstream(registryName string, repos []string, upstreamCtx *
 	}
 
 	log.Debug().Msgf("remaining upstream refs to be copied: %v", upstreamReferences)
+
 	filterImagesBySemver(&upstreamReferences, content, log)
 
 	log.Debug().Msgf("remaining upstream refs to be copied: %v", upstreamReferences)
@@ -280,8 +277,7 @@ func getUpstreamContext(regCfg *RegistryConfig, credentials Credentials) *types.
 }
 
 func syncRegistry(regCfg RegistryConfig, upstreamURL string, storeController storage.StoreController,
-	localCtx *types.SystemContext, policyCtx *signature.PolicyContext, credentials Credentials,
-	uuid string, log log.Logger) error {
+	localCtx *types.SystemContext, policyCtx *signature.PolicyContext, credentials Credentials, log log.Logger) error {
 	log.Info().Msgf("syncing registry: %s", upstreamURL)
 
 	var err error
@@ -291,9 +287,13 @@ func syncRegistry(regCfg RegistryConfig, upstreamURL string, storeController sto
 	upstreamCtx := getUpstreamContext(&regCfg, credentials)
 	options := getCopyOptions(upstreamCtx, localCtx)
 
-	retryOptions := &retry.RetryOptions{
-		MaxRetry: maxRetries,
-		Delay:    delay,
+	retryOptions := &retry.RetryOptions{}
+
+	if regCfg.MaxRetries != nil {
+		retryOptions.MaxRetry = *regCfg.MaxRetries
+		if regCfg.RetryDelay != nil {
+			retryOptions.Delay = *regCfg.RetryDelay
+		}
 	}
 
 	var catalog catalog
@@ -346,66 +346,57 @@ func syncRegistry(regCfg RegistryConfig, upstreamURL string, storeController sto
 	}
 
 	for _, ref := range images {
-		upstreamRef := ref
+		upstreamImageRef := ref
 
-		imageName := strings.Replace(upstreamRef.DockerReference().Name(), upstreamAddr, "", 1)
-		imageName = strings.TrimPrefix(imageName, "/")
+		repo := getRepoFromRef(upstreamImageRef, upstreamAddr)
+		tag := getTagFromRef(upstreamImageRef, log).Tag()
 
-		imageStore := storeController.GetImageStore(imageName)
+		imageStore := storeController.GetImageStore(repo)
 
-		localRepo := path.Join(imageStore.RootDir(), imageName, SyncBlobUploadDir, uuid, imageName)
-
-		if err = os.MkdirAll(localRepo, storage.DefaultDirPerms); err != nil {
-			log.Error().Err(err).Str("dir", localRepo).Msg("couldn't create temporary dir")
-
-			return err
-		}
-
-		defer os.RemoveAll(path.Join(imageStore.RootDir(), imageName, SyncBlobUploadDir, uuid))
-
-		upstreamTaggedRef := getTagFromRef(upstreamRef, log)
-
-		localTaggedRepo := fmt.Sprintf("%s:%s", localRepo, upstreamTaggedRef.Tag())
-
-		localRef, err := layout.ParseReference(localTaggedRepo)
+		localCachePath, err := getLocalCachePath(imageStore, repo)
 		if err != nil {
-			log.Error().Err(err).Msgf("Cannot obtain a valid image reference for reference %q", localTaggedRepo)
+			log.Error().Err(err).Str("dir", localCachePath).Msg("couldn't create temporary dir")
 
 			return err
 		}
 
-		log.Info().Msgf("copying image %s:%s to %s", upstreamRef.DockerReference().Name(),
-			upstreamTaggedRef.Tag(), localTaggedRepo)
+		defer os.RemoveAll(localCachePath)
+
+		localImageRef, err := getLocalImageRef(localCachePath, repo, tag)
+		if err != nil {
+			log.Error().Err(err).Msgf("couldn't obtain a valid image reference for reference %s/%s:%s",
+				localCachePath, repo, tag)
+
+			return err
+		}
+
+		log.Info().Msgf("copying image %s:%s to %s", upstreamImageRef.DockerReference(), tag, localCachePath)
 
 		if err = retry.RetryIfNecessary(context.Background(), func() error {
-			_, err = copy.Image(context.Background(), policyCtx, localRef, upstreamRef, &options)
+			_, err = copy.Image(context.Background(), policyCtx, localImageRef, upstreamImageRef, &options)
 
 			return err
 		}, retryOptions); err != nil {
 			log.Error().Err(err).Msgf("error while copying image %s:%s to %s",
-				upstreamRef.DockerReference().Name(), upstreamTaggedRef.Tag(), localTaggedRepo)
+				upstreamImageRef.DockerReference(), tag, localCachePath)
 
 			return err
 		}
 
-		log.Info().Msgf("successfully synced %s:%s", upstreamRef.DockerReference().Name(), upstreamTaggedRef.Tag())
-
-		err = pushSyncedLocalImage(imageName, upstreamTaggedRef.Tag(), uuid, storeController, log)
+		err = pushSyncedLocalImage(repo, tag, localCachePath, storeController, log)
 		if err != nil {
 			log.Error().Err(err).Msgf("error while pushing synced cached image %s",
-				localTaggedRepo)
+				fmt.Sprintf("%s/%s:%s", localCachePath, repo, tag))
 
 			return err
 		}
 
 		if err = retry.RetryIfNecessary(context.Background(), func() error {
-			err = syncSignatures(httpClient, storeController, upstreamURL, imageName, upstreamTaggedRef.Tag(), log)
+			err = syncSignatures(httpClient, storeController, upstreamURL, repo, tag, log)
 
 			return err
 		}, retryOptions); err != nil {
-			log.Error().Err(err).Msgf("Couldn't copy image signature %s", upstreamRef.DockerReference().Name())
-
-			return err
+			log.Error().Err(err).Msgf("couldn't copy image signature %s:%s", upstreamImageRef.DockerReference(), tag)
 		}
 	}
 
@@ -457,11 +448,6 @@ func Run(cfg Config, storeController storage.StoreController, wtgrp *goSync.Wait
 		return err
 	}
 
-	uuid, err := guuid.NewV4()
-	if err != nil {
-		return err
-	}
-
 	// for each upstream registry, start a go routine.
 	for _, regCfg := range cfg.Registries {
 		// if content not provided, don't run periodically sync
@@ -494,7 +480,7 @@ func Run(cfg Config, storeController storage.StoreController, wtgrp *goSync.Wait
 					upstreamAddr := StripRegistryTransport(upstreamURL)
 					// first try syncing main registry
 					if err := syncRegistry(regCfg, upstreamURL, storeController, localCtx, policyCtx,
-						credentialsFile[upstreamAddr], uuid.String(), logger); err != nil {
+						credentialsFile[upstreamAddr], logger); err != nil {
 						logger.Error().Err(err).Str("registry", upstreamURL).
 							Msg("sync exited with error, falling back to auxiliary registries")
 					} else {

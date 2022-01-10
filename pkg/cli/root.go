@@ -245,6 +245,13 @@ func validateConfiguration(config *config.Config) {
 	// check glob patterns in sync config are compilable
 	if config.Extensions != nil && config.Extensions.Sync != nil {
 		for _, regCfg := range config.Extensions.Sync.Registries {
+			// check retry options are configured for sync
+			if regCfg.MaxRetries == nil || regCfg.RetryDelay == nil {
+				log.Error().Err(errors.ErrBadConfig).Msg("extensions.sync.registries[].MaxRetries" +
+					"and extensions.sync.registries[].RetryDelay fields are mandatory")
+				panic(errors.ErrBadConfig)
+			}
+
 			if regCfg.Content != nil {
 				for _, content := range regCfg.Content {
 					ok := glob.ValidatePattern(content.Prefix)
