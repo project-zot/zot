@@ -17,20 +17,38 @@ import (
 	. "zotregistry.io/zot/test"
 )
 
-func TestUsage(t *testing.T) {
+func TestServerUsage(t *testing.T) {
 	oldArgs := os.Args
 
 	defer func() { os.Args = oldArgs }()
 
 	Convey("Test usage", t, func(c C) {
 		os.Args = []string{"cli_test", "help"}
-		err := cli.NewRootCmd().Execute()
+		err := cli.NewServerRootCmd().Execute()
 		So(err, ShouldBeNil)
 	})
 
 	Convey("Test version", t, func(c C) {
 		os.Args = []string{"cli_test", "--version"}
-		err := cli.NewRootCmd().Execute()
+		err := cli.NewServerRootCmd().Execute()
+		So(err, ShouldBeNil)
+	})
+}
+
+func TestCliUsage(t *testing.T) {
+	oldArgs := os.Args
+
+	defer func() { os.Args = oldArgs }()
+
+	Convey("Test usage", t, func(c C) {
+		os.Args = []string{"cli_test", "help"}
+		err := cli.NewCliRootCmd().Execute()
+		So(err, ShouldBeNil)
+	})
+
+	Convey("Test version", t, func(c C) {
+		os.Args = []string{"cli_test", "--version"}
+		err := cli.NewCliRootCmd().Execute()
 		So(err, ShouldBeNil)
 	})
 }
@@ -42,19 +60,19 @@ func TestServe(t *testing.T) {
 
 	Convey("Test serve help", t, func(c C) {
 		os.Args = []string{"cli_test", "serve", "-h"}
-		err := cli.NewRootCmd().Execute()
+		err := cli.NewServerRootCmd().Execute()
 		So(err, ShouldBeNil)
 	})
 
 	Convey("Test serve config", t, func(c C) {
 		Convey("unknown config", func(c C) {
 			os.Args = []string{"cli_test", "serve", path.Join(os.TempDir(), "/x")}
-			So(func() { _ = cli.NewRootCmd().Execute() }, ShouldPanic)
+			So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 		})
 
 		Convey("non-existent config", func(c C) {
 			os.Args = []string{"cli_test", "serve", path.Join(os.TempDir(), "/x.yaml")}
-			So(func() { _ = cli.NewRootCmd().Execute() }, ShouldPanic)
+			So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 		})
 
 		Convey("bad config", func(c C) {
@@ -67,7 +85,7 @@ func TestServe(t *testing.T) {
 			err = tmpfile.Close()
 			So(err, ShouldBeNil)
 			os.Args = []string{"cli_test", "serve", tmpfile.Name()}
-			So(func() { _ = cli.NewRootCmd().Execute() }, ShouldPanic)
+			So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 		})
 	})
 }
@@ -87,7 +105,7 @@ func TestVerify(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewRootCmd().Execute() }, ShouldPanic)
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 	})
 
 	Convey("Test verify storage driver different than s3", t, func(c C) {
@@ -102,7 +120,7 @@ func TestVerify(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewRootCmd().Execute() }, ShouldPanic)
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 	})
 
 	Convey("Test verify subpath storage driver different than s3", t, func(c C) {
@@ -118,7 +136,7 @@ func TestVerify(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewRootCmd().Execute() }, ShouldPanic)
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 	})
 
 	Convey("Test verify w/ authorization and w/o authentication", t, func(c C) {
@@ -134,7 +152,7 @@ func TestVerify(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewRootCmd().Execute() }, ShouldPanic)
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 	})
 
 	Convey("Test verify w/ authorization and w/ authentication", t, func(c C) {
@@ -151,7 +169,7 @@ func TestVerify(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewRootCmd().Execute() }, ShouldNotPanic)
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldNotPanic)
 	})
 
 	Convey("Test verify w/ sync and w/o filesystem storage", t, func(c C) {
@@ -167,7 +185,7 @@ func TestVerify(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewRootCmd().Execute() }, ShouldPanic)
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 	})
 
 	Convey("Test verify with bad sync prefixes", t, func(c C) {
@@ -184,7 +202,7 @@ func TestVerify(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewRootCmd().Execute() }, ShouldPanic)
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 	})
 
 	Convey("Test verify with bad authorization repo patterns", t, func(c C) {
@@ -200,7 +218,7 @@ func TestVerify(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewRootCmd().Execute() }, ShouldPanic)
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 	})
 
 	Convey("Test verify sync config default tls value", t, func(c C) {
@@ -217,7 +235,7 @@ func TestVerify(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		err = cli.NewRootCmd().Execute()
+		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldBeNil)
 	})
 
@@ -233,7 +251,7 @@ func TestVerify(t *testing.T) {
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		err = cli.NewRootCmd().Execute()
+		err = cli.NewServerRootCmd().Execute()
 		So(err, ShouldBeNil)
 	})
 }
@@ -252,19 +270,19 @@ func TestScrub(t *testing.T) {
 
 	Convey("Test scrub help", t, func(c C) {
 		os.Args = []string{"cli_test", "scrub", "-h"}
-		err := cli.NewRootCmd().Execute()
+		err := cli.NewServerRootCmd().Execute()
 		So(err, ShouldBeNil)
 	})
 
 	Convey("Test scrub config", t, func(c C) {
 		Convey("non-existent config", func(c C) {
 			os.Args = []string{"cli_test", "scrub", path.Join(os.TempDir(), "/x.yaml")}
-			So(func() { _ = cli.NewRootCmd().Execute() }, ShouldPanic)
+			So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 		})
 
 		Convey("unknown config", func(c C) {
 			os.Args = []string{"cli_test", "scrub", path.Join(os.TempDir(), "/x")}
-			So(func() { _ = cli.NewRootCmd().Execute() }, ShouldPanic)
+			So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 		})
 
 		Convey("bad config", func(c C) {
@@ -277,7 +295,7 @@ func TestScrub(t *testing.T) {
 			err = tmpfile.Close()
 			So(err, ShouldBeNil)
 			os.Args = []string{"cli_test", "scrub", tmpfile.Name()}
-			So(func() { _ = cli.NewRootCmd().Execute() }, ShouldPanic)
+			So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 		})
 
 		Convey("server is running", func(c C) {
@@ -331,7 +349,7 @@ func TestScrub(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			os.Args = []string{"cli_test", "scrub", tmpfile.Name()}
-			So(func() { _ = cli.NewRootCmd().Execute() }, ShouldPanic)
+			So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 
 			defer func(controller *api.Controller) {
 				ctx := context.Background()
@@ -362,7 +380,7 @@ func TestScrub(t *testing.T) {
 			err = tmpfile.Close()
 			So(err, ShouldBeNil)
 			os.Args = []string{"cli_test", "scrub", tmpfile.Name()}
-			So(func() { _ = cli.NewRootCmd().Execute() }, ShouldPanic)
+			So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 		})
 
 		Convey("bad index.json", func(c C) {
@@ -420,7 +438,7 @@ func TestScrub(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			os.Args = []string{"cli_test", "scrub", tmpfile.Name()}
-			So(func() { _ = cli.NewRootCmd().Execute() }, ShouldPanic)
+			So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 		})
 	})
 }

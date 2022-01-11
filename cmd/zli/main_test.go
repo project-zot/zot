@@ -15,7 +15,7 @@ func TestIntegration(t *testing.T) {
 		c := api.NewController(conf)
 		So(c, ShouldNotBeNil)
 
-		cl := cli.NewServerRootCmd()
+		cl := cli.NewCliRootCmd()
 		So(cl, ShouldNotBeNil)
 
 		So(cl.Execute(), ShouldBeNil)

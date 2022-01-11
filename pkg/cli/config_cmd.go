@@ -31,8 +31,8 @@ func NewConfigCommand() *cobra.Command {
 	configCmd := &cobra.Command{
 		Use:     "config <config-name> [variable] [value]",
 		Example: examples,
-		Short:   "Configure zot CLI",
-		Long:    `Configure default parameters for CLI`,
+		Short:   "Configure zot registry parameters for CLI",
+		Long:    `Configure zot registry parameters for CLI`,
 		Args:    cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			home, err := os.UserHomeDir()
@@ -104,8 +104,8 @@ func NewConfigCommand() *cobra.Command {
 func NewConfigAddCommand() *cobra.Command {
 	configAddCmd := &cobra.Command{
 		Use:   "add <config-name> <url>",
-		Short: "Add configuration for a zot URL",
-		Long:  `Configure CLI for interaction with a zot server`,
+		Short: "Add configuration for a zot registry",
+		Long:  "Add configuration for a zot registry",
 		Args:  cobra.ExactArgs(twoArgs),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			home, err := os.UserHomeDir()
@@ -405,16 +405,16 @@ func configNameExists(configs []interface{}, configName string) bool {
 }
 
 const (
-	examples = `  zot config add main https://zot-foo.com:8080
-  zot config main url
-  zot config main --list
-  zot config --list`
+	examples = `  zli config add main https://zot-foo.com:8080
+  zli config main url
+  zli config main --list
+  zli config --list`
 
 	supportedOptions = `
 Useful variables:
   url		zot server URL
   showspinner	show spinner while loading data [true/false]
-  verify-tls	verify TLS Certificate verification of the server [default: true]`
+  verify-tls	enable TLS certificate verification of the server [default: true]`
 
 	nameKey = "_name"
 

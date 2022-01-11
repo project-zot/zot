@@ -23,8 +23,8 @@ func NewImageCommand(searchService SearchService) *cobra.Command {
 
 	imageCmd := &cobra.Command{
 		Use:   "images [config-name]",
-		Short: "List hosted images",
-		Long:  `List images hosted on zot`,
+		Short: "List images hosted on the zot registry",
+		Long:  `List images hosted on the zot registry`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			home, err := os.UserHomeDir()
 			if err != nil {
@@ -145,6 +145,6 @@ func searchImage(searchConfig searchConfig) error {
 const (
 	spinnerDuration = 150 * time.Millisecond
 	usageFooter     = `
-Run 'zot config -h' for details on [config-name] argument
+Run 'zli config -h' for details on [config-name] argument
 `
 )

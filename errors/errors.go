@@ -34,7 +34,7 @@ var (
 	ErrUnauthorizedAccess      = errors.New("cli: unauthorized access. check credentials")
 	ErrCannotResetConfigKey    = errors.New("cli: cannot reset given config key")
 	ErrConfigNotFound          = errors.New("cli: config with the given name does not exist")
-	ErrNoURLProvided           = errors.New("cli: no URL provided in argument or via config. see 'zot config -h'")
+	ErrNoURLProvided           = errors.New("cli: no URL provided in argument or via config")
 	ErrIllegalConfigKey        = errors.New("cli: given config key is not allowed")
 	ErrScanNotSupported        = errors.New("search: scanning of image media type not supported")
 	ErrCLITimeout              = errors.New("cli: Query timed out while waiting for results")
