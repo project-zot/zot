@@ -157,7 +157,8 @@ func newVerifyCmd(conf *config.Config) *cobra.Command {
 	return verifyCmd
 }
 
-func NewRootCmd() *cobra.Command {
+// "zot" - registry server.
+func NewServerRootCmd() *cobra.Command {
 	showVersion := false
 	conf := config.New()
 
@@ -175,12 +176,39 @@ func NewRootCmd() *cobra.Command {
 		},
 	}
 
+	// "serve"
 	rootCmd.AddCommand(newServeCmd(conf))
-	rootCmd.AddCommand(newScrubCmd(conf))
+	// "verify"
 	rootCmd.AddCommand(newVerifyCmd(conf))
+	// "scrub"
+	rootCmd.AddCommand(newScrubCmd(conf))
+	// "version"
+	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "show the version and exit")
 
+	return rootCmd
+}
+
+// "zli" - client-side cli.
+func NewCliRootCmd() *cobra.Command {
+	showVersion := false
+
+	rootCmd := &cobra.Command{
+		Use:   "zli",
+		Short: "`zli`",
+		Long:  "`zli`",
+		Run: func(cmd *cobra.Command, args []string) {
+			if showVersion {
+				log.Info().Str("distribution-spec", distspec.Version).Str("commit", config.Commit).
+					Str("binary-type", config.BinaryType).Str("go version", config.GoVersion).Msg("version")
+			}
+			_ = cmd.Usage()
+			cmd.SilenceErrors = false
+		},
+	}
+
+	// additional cmds
 	enableCli(rootCmd)
-
+	// "version"
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "show the version and exit")
 
 	return rootCmd

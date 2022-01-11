@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	if err := cli.NewServerRootCmd().Execute(); err != nil {
+	if err := cli.NewCliRootCmd().Execute(); err != nil {
 		os.Exit(1)
 	}
 }

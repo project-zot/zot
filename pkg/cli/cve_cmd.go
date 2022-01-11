@@ -22,8 +22,8 @@ func NewCveCommand(searchService SearchService) *cobra.Command {
 
 	cveCmd := &cobra.Command{
 		Use:   "cve [config-name]",
-		Short: "Lookup CVEs in images hosted on zot",
-		Long:  `List CVEs (Common Vulnerabilities and Exposures) of images hosted on a zot instance`,
+		Short: "Lookup CVEs in images hosted on the zot registry",
+		Long:  `List CVEs (Common Vulnerabilities and Exposures) of images hosted on the zot registry`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			home, err := os.UserHomeDir()
 			if err != nil {
