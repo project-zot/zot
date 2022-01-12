@@ -170,9 +170,10 @@ func NewServerRootCmd() *cobra.Command {
 			if showVersion {
 				log.Info().Str("distribution-spec", distspec.Version).Str("commit", config.Commit).
 					Str("binary-type", config.BinaryType).Str("go version", config.GoVersion).Msg("version")
+			} else {
+				_ = cmd.Usage()
+				cmd.SilenceErrors = false
 			}
-			_ = cmd.Usage()
-			cmd.SilenceErrors = false
 		},
 	}
 
@@ -200,9 +201,10 @@ func NewCliRootCmd() *cobra.Command {
 			if showVersion {
 				log.Info().Str("distribution-spec", distspec.Version).Str("commit", config.Commit).
 					Str("binary-type", config.BinaryType).Str("go version", config.GoVersion).Msg("version")
+			} else {
+				_ = cmd.Usage()
+				cmd.SilenceErrors = false
 			}
-			_ = cmd.Usage()
-			cmd.SilenceErrors = false
 		},
 	}
 
