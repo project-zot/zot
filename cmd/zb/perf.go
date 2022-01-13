@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -33,6 +34,7 @@ const (
 	smallBlob            = 1 * MiB
 	mediumBlob           = 10 * MiB
 	largeBlob            = 100 * MiB
+	cicdFmt              = "ci-cd"
 )
 
 // helper routines
@@ -198,7 +200,17 @@ func updateStats(summary *statsSummary, record statsRecord) {
 	summary.latencies = append(summary.latencies, record.latency)
 }
 
-func printStats(requests int, summary *statsSummary) {
+type cicdTestSummary struct {
+	Name  string      `json:"name"`
+	Unit  string      `json:"unit"`
+	Value interface{} `json:"value"`
+	Range string      `json:"range,omitempty"`
+}
+
+//nolint:gochecknoglobals // used only in this test
+var cicdSummary = []cicdTestSummary{}
+
+func printStats(requests int, summary *statsSummary, outFmt string) {
 	log.Printf("============\n")
 	log.Printf("Test name:\t%s", summary.name)
 	log.Printf("Time taken for tests:\t%v", summary.total)
@@ -219,6 +231,18 @@ func printStats(requests int, summary *statsSummary) {
 	log.Printf("%s:\t%v", "p90", summary.latencies[requests*9/10])
 	log.Printf("%s:\t%v", "p99", summary.latencies[requests*99/100])
 	log.Printf("\n")
+
+	// ci/cd
+	if outFmt == cicdFmt {
+		cicdSummary = append(cicdSummary,
+			cicdTestSummary{
+				Name:  summary.name,
+				Unit:  "requests per sec",
+				Value: summary.rps,
+				Range: "3",
+			},
+		)
+	}
 }
 
 // test suites/funcs.
@@ -644,7 +668,7 @@ var testSuite = []testConfig{ // nolint:gochecknoglobals // used only in this te
 	},
 }
 
-func Perf(workdir, url, auth, repo string, concurrency int, requests int) {
+func Perf(workdir, url, auth, repo string, concurrency int, requests int, outFmt string) {
 	// logging
 	log.SetFlags(0)
 	log.SetOutput(tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.TabIndent))
@@ -691,6 +715,17 @@ func Perf(workdir, url, auth, repo string, concurrency int, requests int) {
 
 		sort.Sort(Durations(summary.latencies))
 
-		printStats(requests, &summary)
+		printStats(requests, &summary, outFmt)
+	}
+
+	if outFmt == cicdFmt {
+		jsonOut, err := json.Marshal(cicdSummary)
+		if err != nil {
+			log.Fatal(err) //nolint:gocritic // file closed on exit
+		}
+
+		if err := ioutil.WriteFile(fmt.Sprintf("%s.json", outFmt), jsonOut, defaultFilePerms); err != nil {
+			log.Fatal(err)
+		}
 	}
 }
