@@ -13,7 +13,7 @@ import (
 func NewPerfRootCmd() *cobra.Command {
 	showVersion := false
 
-	var auth, workdir, repo, output string
+	var auth, workdir, repo, outFmt string
 
 	var concurrency, requests int
 
@@ -45,7 +45,7 @@ func NewPerfRootCmd() *cobra.Command {
 
 			requests = concurrency * (requests / concurrency)
 
-			Perf(workdir, url, auth, repo, concurrency, requests)
+			Perf(workdir, url, auth, repo, concurrency, requests, outFmt)
 		},
 	}
 
@@ -59,8 +59,8 @@ func NewPerfRootCmd() *cobra.Command {
 		"Number of multiple requests to make at a time")
 	rootCmd.Flags().IntVarP(&requests, "requests", "n", 1,
 		"Number of requests to perform")
-	rootCmd.Flags().StringVarP(&output, "output-format", "o", "",
-		"Output format of test results [default: stdout]")
+	rootCmd.Flags().StringVarP(&outFmt, "output-format", "o", "",
+		"Output format of test results: stdout (default), json, ci-cd")
 
 	// "version"
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "show the version and exit")

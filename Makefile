@@ -12,6 +12,7 @@ GOLINTER := $(TOOLSDIR)/bin/golangci-lint
 NOTATION := $(TOOLSDIR)/bin/notation
 OS ?= linux
 ARCH ?= amd64
+BENCH_OUTPUT ?= stdout
 
 .PHONY: all
 all: swagger binary binary-minimal binary-debug binary-arch binary-arch-minimal cli cli-arch bench bench-arch exporter-minimal verify-config test test-clean check
@@ -63,6 +64,13 @@ test: check-skopeo $(NOTATION)
 	$(shell sudo chmod a=rwx /etc/containers/certs.d/127.0.0.1:8089/*.key)
 	go test -tags extended,containers_image_openpgp -v -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-extended.txt -covermode=atomic ./...
 	go test -tags minimal,containers_image_openpgp -v -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-minimal.txt -covermode=atomic ./...
+
+.PHONY: run-bench
+run-bench: binary bench
+	bin/zot serve examples/config-minimal.json &
+	sleep 5
+	bin/zb -c 10 -n 100 -o $(BENCH_OUTPUT) http://localhost:8080
+	killall zot
 
 .PHONY: test-clean
 test-clean:
