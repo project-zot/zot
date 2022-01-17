@@ -41,9 +41,9 @@ func NewExporterCmd() *cobra.Command {
 
 	// "node_exporter"
 	exporterCmd := &cobra.Command{
-		Use:   "zot_exporter",
-		Short: "`zot_exporter`",
-		Long:  "`zot_exporter`",
+		Use:   "zxp",
+		Short: "`zxp`",
+		Long:  "`zxp`",
 		Run: func(cmd *cobra.Command, args []string) {
 			_ = cmd.Usage()
 			cmd.SilenceErrors = false

@@ -20,9 +20,8 @@ run-minimal-container:
 
 .PHONY: binary-exporter-container
 binary-exporter-container:
-	${CONTAINER_RUNTIME} build -f Dockerfile-exporter -t zot-exporter:latest ../../.
+	${CONTAINER_RUNTIME} build -f Dockerfile-zxp -t zxp:latest ../../.
 
 .PHONY: run-exporter-container
 run-exporter-container:
-	${CONTAINER_RUNTIME} run --rm --security-opt label=disable -v $$(pwd)/../..:/go/src/github.com/project-zot/zot \
-		zot-exporter:latest
+	${CONTAINER_RUNTIME} run --rm --security-opt label=disable zxp:latest

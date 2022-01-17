@@ -1,5 +1,5 @@
 # ---
-# Stage 1: Install certs, build binary, create default config file
+# Stage 1: Build binary, create default config file
 # ---
 FROM ghcr.io/project-zot/golang:1.17 AS builder
 RUN mkdir -p /go/src/github.com/project-zot/zot
@@ -21,12 +21,11 @@ RUN echo '{\n\
 }\n' > config.json && cat config.json
 
 # ---
-# Stage 2: Final image with nothing but certs, binary, and default config file
+# Stage 2: Final image with nothing but binary and default config file
 # ---
 FROM scratch AS final
-COPY --from=builder /go/src/github.com/project-zot/zot/bin/zot-exporter /zot-exporter
-COPY --from=builder /go/src/github.com/project-zot/zot/config.json /etc/zot/config.json
-ENTRYPOINT ["/zot-exporter"]
+COPY --from=builder /go/src/github.com/project-zot/zot/bin/zxp /zxp
+COPY --from=builder /go/src/github.com/project-zot/zot/config.json /etc/zxp/config.json
+ENTRYPOINT ["/zxp"]
 EXPOSE 5051
-VOLUME ["/var/lib/registry"]
-CMD ["config", "/etc/zot/config.json"]
+CMD ["config", "/etc/zxp/config.json"]

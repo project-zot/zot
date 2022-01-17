@@ -280,7 +280,7 @@ The dist-spec-only zot exposes internal metrics into a Prometheus format through
 The configuration of node exporter contains connection details for the zot server it is intend to scrape metrics from. See a [configuration example](./examples/metrics/exporter/config-minimal.json). The metrics are automatically enabled in the zot server on first scrape from the Node Exporter (no extra configuration option is needed). Similarly, the metrics are automatically disabled when Node Exporter did not perform any scrapings in a while.
 
 ```
-bin/zot-exporter config _config-file_
+bin/zxp config _config-file_
 ```
 
 ## Enable Metrics

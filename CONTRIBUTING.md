@@ -68,7 +68,7 @@ make binary-container
 .
 ...
 ├── cmd/zot             # Source code contains the main logic
-├── cmd/exporter        # Source code contains the main logic for node exporter
+├── cmd/zxp             # Source code contains the main logic for node exporter
 ├── docs                # Source code for Swagger docs
 ├── errors              # Source code for errors
 ├── examples            # Configuration examples to enable various features

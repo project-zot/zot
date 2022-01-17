@@ -54,8 +54,12 @@ bench-arch:
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zb-$(ARCH) -tags extended,containers_image_openpgp -v -trimpath -ldflags "-X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=extended -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zb
 
 .PHONY: exporter-minimal
-exporter-minimal: swagger
-	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-exporter -tags minimal,containers_image_openpgp -v -trimpath ./cmd/exporter
+exporter-minimal:
+	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zxp -tags minimal,containers_image_openpgp -v -trimpath ./cmd/zxp
+
+.PHONY: exporter-arch-minimal
+exporter-arch-minimal:
+	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zxp-$(ARCH) -tags minimal,containers_image_openpgp -v -trimpath ./cmd/zxp
 
 .PHONY: test
 test: check-skopeo $(NOTATION)
