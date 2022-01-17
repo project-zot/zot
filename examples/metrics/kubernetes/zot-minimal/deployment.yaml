@@ -22,7 +22,7 @@ spec:
         - name: zot-minimal
           containerPort: 5050
       - name: zot-exporter
-        image: zot-exporter:latest
+        image: zxp:latest
         imagePullPolicy: IfNotPresent
         ports:
         - name: zot-exporter

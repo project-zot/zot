@@ -97,6 +97,27 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository }}-minimal:${{ github.event.release.tag_name }}
             ghcr.io/${{ github.repository }}-minimal:latest
+      - name: Build zot-exporter container image
+        uses: docker/build-push-action@v2
+        with:
+          build-args: |
+            COMMIT=${{ github.event.release.tag_name }}-${{ github.sha }}
+          push: true
+          file: Dockerfile-zxp
+          tags: |
+            ghcr.io/${{ github.repository }}-zxp:${{ github.event.release.tag_name }}
+            ghcr.io/${{ github.repository }}-zxp:latest
+      - name: Build zot-exporter container image (arm64)
+        uses: docker/build-push-action@v2
+        with:
+          build-args: |
+            COMMIT=${{ github.event.release.tag_name }}-${{ github.sha }}
+            ARCH=arm64
+          push: true
+          file: Dockerfile-arch-zxp
+          tags: |
+            ghcr.io/${{ github.repository }}-arm64-zxp:${{ github.event.release.tag_name }}
+            ghcr.io/${{ github.repository }}-arm64-zxp:latest
       - name: Build container image (arm64)
         uses: docker/build-push-action@v2
         with:

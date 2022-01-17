@@ -24,5 +24,5 @@ At the end of the script below ports are locally available (using *kubectl port-
  * 9090 - for accessing Prometheus server
  * 5000 - for zot with all extensions enabled
  * 5050 - for accessing dist-spec-only zot server
- * 5051 - for zot-exporter access (a Prometheus Node exporter)
+ * 5051 - for zxp access (a Prometheus Node exporter)
 

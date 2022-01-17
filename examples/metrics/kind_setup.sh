@@ -40,14 +40,14 @@ kind load docker-image quay.io/prometheus-operator/prometheus-operator:v0.51.2 -
 kind load docker-image quay.io/prometheus-operator/prometheus-config-reloader:v0.51.2 --name ${CLUSTER_NAME}
 kind load docker-image quay.io/prometheus/prometheus:v2.22.1 --name ${CLUSTER_NAME}
 
-## Build zot & zot-exporter related images
+## Build zot & zxp images
 make binary-container
 make binary-minimal-container
 make binary-exporter-container
 
 kind load docker-image zot-build:latest --name ${CLUSTER_NAME}
 kind load docker-image zot-minimal:latest --name ${CLUSTER_NAME}
-kind load docker-image zot-exporter:latest --name ${CLUSTER_NAME}
+kind load docker-image zxp:latest --name ${CLUSTER_NAME}
 
 ## Deploy prometheus operator
 kubectl create -f kubernetes/prometheus/bundle.yaml
