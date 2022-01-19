@@ -10,12 +10,12 @@ import (
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
-	. "zotregistry.io/zot/test"
+	"zotregistry.io/zot/pkg/test"
 )
 
 func TestCopyFiles(t *testing.T) {
 	Convey("sourceDir does not exist", t, func() {
-		err := CopyFiles("/path/to/some/unexisting/directory", os.TempDir())
+		err := test.CopyFiles("/path/to/some/unexisting/directory", os.TempDir())
 		So(err, ShouldNotBeNil)
 	})
 	Convey("destDir is a file", t, func() {
@@ -24,13 +24,13 @@ func TestCopyFiles(t *testing.T) {
 			panic(err)
 		}
 
-		err = CopyFiles("data", dir)
+		err = test.CopyFiles("../../test/data", dir)
 		if err != nil {
 			panic(err)
 		}
 
 		defer os.RemoveAll(dir)
-		err = CopyFiles(dir, "/etc/passwd")
+		err = test.CopyFiles(dir, "/etc/passwd")
 		So(err, ShouldNotBeNil)
 	})
 	Convey("sourceDir does not have read permissions", t, func() {
@@ -43,7 +43,7 @@ func TestCopyFiles(t *testing.T) {
 		err = os.Chmod(dir, 0o300)
 		So(err, ShouldBeNil)
 
-		err = CopyFiles(dir, os.TempDir())
+		err = test.CopyFiles(dir, os.TempDir())
 		So(err, ShouldNotBeNil)
 	})
 	Convey("sourceDir has a subfolder that does not have read permissions", t, func() {
@@ -57,7 +57,7 @@ func TestCopyFiles(t *testing.T) {
 		err = os.Mkdir(path.Join(dir, sdir), 0o300)
 		So(err, ShouldBeNil)
 
-		err = CopyFiles(dir, os.TempDir())
+		err = test.CopyFiles(dir, os.TempDir())
 		So(err, ShouldNotBeNil)
 	})
 	Convey("sourceDir has a file that does not have read permissions", t, func() {
@@ -76,7 +76,7 @@ func TestCopyFiles(t *testing.T) {
 		err = os.Chmod(filePath, 0o300)
 		So(err, ShouldBeNil)
 
-		err = CopyFiles(dir, os.TempDir())
+		err = test.CopyFiles(dir, os.TempDir())
 		So(err, ShouldNotBeNil)
 	})
 }

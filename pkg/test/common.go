@@ -1,13 +1,20 @@
 package test
 
 import (
+	"crypto/rand"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
+	"math/big"
+	"net/url"
 	"os"
 	"path"
 	"time"
 
+	godigest "github.com/opencontainers/go-digest"
+	imagespec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/phayes/freeport"
 	"gopkg.in/resty.v1"
 )
@@ -65,7 +72,17 @@ func Location(baseURL string, resp *resty.Response) string {
 	// return the former - this needs to be clarified
 	loc := resp.Header().Get("Location")
 
-	return baseURL + loc
+	uloc, err := url.Parse(loc)
+	if err != nil {
+		return ""
+	}
+
+	path := uloc.Path
+	if query := uloc.RawQuery; query != "" {
+		path += "?" + query
+	}
+
+	return baseURL + path
 }
 
 func CopyFiles(sourceDir string, destDir string) error {
@@ -122,4 +139,68 @@ func WaitTillServerReady(url string) {
 
 		time.Sleep(SleepTime)
 	}
+}
+
+// Adapted from https://gist.github.com/dopey/c69559607800d2f2f90b1b1ed4e550fb
+func randomString(n int) string {
+	const letters = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-"
+
+	ret := make([]byte, n)
+
+	for count := 0; count < n; count++ {
+		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(letters))))
+		if err != nil {
+			panic(err)
+		}
+
+		ret[count] = letters[num.Int64()]
+	}
+
+	return string(ret)
+}
+
+func GetRandomImageConfig() ([]byte, godigest.Digest) {
+	const maxLen = 16
+
+	randomAuthor := randomString(maxLen)
+
+	config := imagespec.Image{
+		Architecture: "amd64",
+		OS:           "linux",
+		RootFS: imagespec.RootFS{
+			Type:    "layers",
+			DiffIDs: []godigest.Digest{},
+		},
+		Author: randomAuthor,
+	}
+
+	configBlobContent, err := json.MarshalIndent(&config, "", "\t")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	configBlobDigestRaw := godigest.FromBytes(configBlobContent)
+
+	return configBlobContent, configBlobDigestRaw
+}
+
+func GetImageConfig() ([]byte, godigest.Digest) {
+	config := imagespec.Image{
+		Architecture: "amd64",
+		OS:           "linux",
+		RootFS: imagespec.RootFS{
+			Type:    "layers",
+			DiffIDs: []godigest.Digest{},
+		},
+		Author: "some author",
+	}
+
+	configBlobContent, err := json.MarshalIndent(&config, "", "\t")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	configBlobDigestRaw := godigest.FromBytes(configBlobContent)
+
+	return configBlobContent, configBlobDigestRaw
 }

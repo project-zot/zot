@@ -14,7 +14,7 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/cli"
-	. "zotregistry.io/zot/test"
+	. "zotregistry.io/zot/pkg/test"
 )
 
 func TestServerUsage(t *testing.T) {

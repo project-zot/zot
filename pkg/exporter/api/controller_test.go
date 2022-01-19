@@ -26,7 +26,7 @@ import (
 	zotcfg "zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/exporter/api"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
-	. "zotregistry.io/zot/test"
+	. "zotregistry.io/zot/pkg/test"
 )
 
 const (

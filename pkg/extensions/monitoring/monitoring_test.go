@@ -18,13 +18,13 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
-	. "zotregistry.io/zot/test"
+	"zotregistry.io/zot/pkg/test"
 )
 
 func TestExtensionMetrics(t *testing.T) {
 	Convey("Make a new controller with explicitly enabled metrics", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
 
@@ -46,7 +46,7 @@ func TestExtensionMetrics(t *testing.T) {
 
 		go startServer(ctlr)
 		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		test.WaitTillServerReady(baseURL)
 
 		// improve code coverage
 		ctlr.Metrics.SendMetric(baseURL)
@@ -60,7 +60,7 @@ func TestExtensionMetrics(t *testing.T) {
 		monitoring.IncDownloadCounter(ctlr.Metrics, "alpine")
 		monitoring.IncUploadCounter(ctlr.Metrics, "alpine")
 
-		err = CopyFiles("../../../test/data/zot-test", path.Join(rootDir, "alpine"))
+		err = test.CopyFiles("../../../test/data/zot-test", path.Join(rootDir, "alpine"))
 		if err != nil {
 			panic(err)
 		}
@@ -82,8 +82,8 @@ func TestExtensionMetrics(t *testing.T) {
 		So(respStr, ShouldContainSubstring, "zot_storage_lock_latency_seconds_bucket")
 	})
 	Convey("Make a new controller with disabled metrics extension", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
 
@@ -102,7 +102,7 @@ func TestExtensionMetrics(t *testing.T) {
 
 		go startServer(ctlr)
 		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		test.WaitTillServerReady(baseURL)
 
 		So(ctlr.Metrics.IsEnabled(), ShouldBeFalse)
 

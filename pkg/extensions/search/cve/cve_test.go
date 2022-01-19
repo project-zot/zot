@@ -25,7 +25,7 @@ import (
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
-	. "zotregistry.io/zot/test"
+	. "zotregistry.io/zot/pkg/test"
 )
 
 // nolint:gochecknoglobals

@@ -19,7 +19,7 @@ import (
 	"gopkg.in/resty.v1"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
-	. "zotregistry.io/zot/test"
+	"zotregistry.io/zot/pkg/test"
 )
 
 const (
@@ -53,7 +53,7 @@ func TestTLSWithAuth(t *testing.T) {
 		defer func() { resty.SetTLSClientConfig(nil) }()
 		conf := config.New()
 		conf.HTTP.Port = SecurePort1
-		htpasswdPath := MakeHtpasswdFile()
+		htpasswdPath := test.MakeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
 		conf.HTTP.Auth = &config.AuthConfig{
@@ -102,7 +102,7 @@ func TestTLSWithAuth(t *testing.T) {
 
 			home := os.Getenv("HOME")
 			destCertsDir := filepath.Join(home, certsDir1)
-			if err = CopyFiles(sourceCertsDir, destCertsDir); err != nil {
+			if err = test.CopyFiles(sourceCertsDir, destCertsDir); err != nil {
 				panic(err)
 			}
 			defer os.RemoveAll(destCertsDir)
@@ -201,7 +201,7 @@ func TestTLSWithoutAuth(t *testing.T) {
 
 			home := os.Getenv("HOME")
 			destCertsDir := filepath.Join(home, certsDir1)
-			if err = CopyFiles(sourceCertsDir, destCertsDir); err != nil {
+			if err = test.CopyFiles(sourceCertsDir, destCertsDir); err != nil {
 				panic(err)
 			}
 			defer os.RemoveAll(destCertsDir)

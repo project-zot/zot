@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"os/exec"
 	"path"
@@ -24,6 +25,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
+	perr "github.com/pkg/errors"
 	"github.com/sigstore/cosign/cmd/cosign/cli/generate"
 	"github.com/sigstore/cosign/cmd/cosign/cli/options"
 	"github.com/sigstore/cosign/cmd/cosign/cli/sign"
@@ -34,7 +36,7 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/sync"
-	. "zotregistry.io/zot/test"
+	"zotregistry.io/zot/pkg/test"
 )
 
 const (
@@ -49,7 +51,10 @@ const (
 	testCveImage = "zot-cve-test"
 )
 
-var errSync = errors.New("sync error, src oci repo differs from dest one")
+var (
+	errSync      = errors.New("sync error, src oci repo differs from dest one")
+	errBadStatus = errors.New("bad http status")
+)
 
 type TagsList struct {
 	Name string
@@ -85,7 +90,7 @@ func copyFile(sourceFilePath, destFilePath string) error {
 }
 
 func startUpstreamServer(secure, basicAuth bool) (*api.Controller, string, string, string, *resty.Client) {
-	srcPort := GetFreePort()
+	srcPort := test.GetFreePort()
 
 	srcConfig := config.New()
 
@@ -93,7 +98,7 @@ func startUpstreamServer(secure, basicAuth bool) (*api.Controller, string, strin
 
 	var srcBaseURL string
 	if secure {
-		srcBaseURL = GetSecureBaseURL(srcPort)
+		srcBaseURL = test.GetSecureBaseURL(srcPort)
 
 		srcConfig.HTTP.TLS = &config.TLSConfig{
 			Cert:   ServerCert,
@@ -118,12 +123,12 @@ func startUpstreamServer(secure, basicAuth bool) (*api.Controller, string, strin
 
 		client.SetCertificates(cert)
 	} else {
-		srcBaseURL = GetBaseURL(srcPort)
+		srcBaseURL = test.GetBaseURL(srcPort)
 	}
 
 	var htpasswdPath string
 	if basicAuth {
-		htpasswdPath = MakeHtpasswdFile()
+		htpasswdPath = test.MakeHtpasswdFile()
 		srcConfig.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{
 				Path: htpasswdPath,
@@ -138,7 +143,7 @@ func startUpstreamServer(secure, basicAuth bool) (*api.Controller, string, strin
 		panic(err)
 	}
 
-	err = CopyFiles("../../../test/data", srcDir)
+	err = test.CopyFiles("../../../test/data", srcDir)
 	if err != nil {
 		panic(err)
 	}
@@ -168,7 +173,7 @@ func startUpstreamServer(secure, basicAuth bool) (*api.Controller, string, strin
 }
 
 func startDownstreamServer(secure bool, syncConfig *sync.Config) (*api.Controller, string, string, *resty.Client) {
-	destPort := GetFreePort()
+	destPort := test.GetFreePort()
 
 	destConfig := config.New()
 
@@ -176,7 +181,7 @@ func startDownstreamServer(secure bool, syncConfig *sync.Config) (*api.Controlle
 
 	var destBaseURL string
 	if secure {
-		destBaseURL = GetSecureBaseURL(destPort)
+		destBaseURL = test.GetSecureBaseURL(destPort)
 
 		destConfig.HTTP.TLS = &config.TLSConfig{
 			Cert:   ServerCert,
@@ -201,7 +206,7 @@ func startDownstreamServer(secure bool, syncConfig *sync.Config) (*api.Controlle
 
 		client.SetCertificates(cert)
 	} else {
-		destBaseURL = GetBaseURL(destPort)
+		destBaseURL = test.GetBaseURL(destPort)
 	}
 
 	destConfig.HTTP.Port = destPort
@@ -824,8 +829,8 @@ func TestBasicAuth(t *testing.T) {
 		})
 
 		Convey("Verify sync basic auth with wrong file credentials", func() {
-			destPort := GetFreePort()
-			destBaseURL := GetBaseURL(destPort)
+			destPort := test.GetFreePort()
+			destBaseURL := test.GetBaseURL(destPort)
 
 			destConfig := config.New()
 			destConfig.HTTP.Port = destPort
@@ -1453,10 +1458,10 @@ func TestSubPaths(t *testing.T) {
 	Convey("Verify sync with storage subPaths", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		srcPort := GetFreePort()
+		srcPort := test.GetFreePort()
 		srcConfig := config.New()
 		client := resty.New()
-		srcBaseURL := GetBaseURL(srcPort)
+		srcBaseURL := test.GetBaseURL(srcPort)
 
 		srcConfig.HTTP.Port = srcPort
 
@@ -1467,7 +1472,7 @@ func TestSubPaths(t *testing.T) {
 
 		subpath := "/subpath"
 
-		err = CopyFiles("../../../test/data", path.Join(srcDir, subpath))
+		err = test.CopyFiles("../../../test/data", path.Join(srcDir, subpath))
 		if err != nil {
 			panic(err)
 		}
@@ -1522,7 +1527,7 @@ func TestSubPaths(t *testing.T) {
 			Registries: []sync.RegistryConfig{syncRegistryConfig},
 		}
 
-		destPort := GetFreePort()
+		destPort := test.GetFreePort()
 		destConfig := config.New()
 
 		destDir, err := ioutil.TempDir("", "oci-dest-repo-test")
@@ -1547,7 +1552,7 @@ func TestSubPaths(t *testing.T) {
 			},
 		}
 
-		destBaseURL := GetBaseURL(destPort)
+		destBaseURL := test.GetBaseURL(destPort)
 		destConfig.HTTP.Port = destPort
 
 		destConfig.Extensions = &extconf.ExtensionConfig{}
@@ -2443,7 +2448,7 @@ func pushRepo(url, repoName string) godigest.Digest {
 		panic(err)
 	}
 
-	loc := Location(url, resp)
+	loc := test.Location(url, resp)
 
 	_, err = resty.R().Get(loc)
 	if err != nil {
@@ -2459,11 +2464,41 @@ func pushRepo(url, repoName string) godigest.Digest {
 		panic(err)
 	}
 
+	// upload image config blob
+	resp, err = resty.R().
+		Post(fmt.Sprintf("%s/v2/%s/blobs/uploads/", url, repoName))
+	if err != nil {
+		panic(err)
+	}
+
+	if resp.StatusCode() != http.StatusAccepted {
+		panic(perr.Wrapf(errBadStatus, "invalid status code: %d", resp.StatusCode()))
+	}
+
+	loc = test.Location(url, resp)
+	cblob, cdigest := test.GetRandomImageConfig()
+
+	resp, err = resty.R().
+		SetContentLength(true).
+		SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+		SetHeader("Content-Type", "application/octet-stream").
+		SetQueryParam("digest", cdigest.String()).
+		SetBody(cblob).
+		Put(loc)
+	if err != nil {
+		panic(err)
+	}
+
+	if resp.StatusCode() != http.StatusCreated {
+		panic(perr.Wrapf(errBadStatus, "invalid status code: %d", resp.StatusCode()))
+	}
+
 	// create a manifest
 	manifest := ispec.Manifest{
 		Config: ispec.Descriptor{
-			Digest: digest,
-			Size:   int64(len(content)),
+			MediaType: "application/vnd.oci.image.config.v1+json",
+			Digest:    cdigest,
+			Size:      int64(len(cblob)),
 		},
 		Layers: []ispec.Descriptor{
 			{
