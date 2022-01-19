@@ -1,0 +1,17 @@
+# ---
+# Stage 1: Install certs, build binary, create default config file
+# ---
+FROM ghcr.io/project-zot/golang:1.17 AS builder
+ARG COMMIT
+ARG ARCH
+RUN mkdir -p /go/src/github.com/project-zot/zot
+WORKDIR /go/src/github.com/project-zot/zot
+COPY . .
+RUN make COMMIT=$COMMIT ARCH=$ARCH clean bench
+
+# ---
+# Stage 2: Final image with nothing but certs, binary, and default config file
+# ---
+FROM scratch AS final
+COPY --from=builder /go/src/github.com/project-zot/zot/bin/zb /usr/bin/zb
+ENTRYPOINT ["/usr/bin/zb"]

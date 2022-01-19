@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 	"path"
 	"sort"
@@ -17,10 +16,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	jsoniter "github.com/json-iterator/go"
 	godigest "github.com/opencontainers/go-digest"
 	imeta "github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"gopkg.in/resty.v1"
+	"zotregistry.io/zot/pkg/test"
 )
 
 const (
@@ -36,29 +37,6 @@ const (
 	largeBlob            = 100 * MiB
 	cicdFmt              = "ci-cd"
 )
-
-// helper routines
-
-func location(baseURL string, resp *resty.Response) string {
-	// For some API responses, the Location header is set and is supposed to
-	// indicate an opaque value. However, it is not clear if this value is an
-	// absolute URL (https://server:port/v2/...) or just a path (/v2/...)
-	// zot implements the latter as per the spec, but some registries appear to
-	// return the former - this needs to be clarified
-	loc := resp.Header().Get("Location")
-
-	uloc, err := url.Parse(loc)
-	if err != nil {
-		return ""
-	}
-
-	path := uloc.Path
-	if query := uloc.RawQuery; query != "" {
-		path += "?" + query
-	}
-
-	return baseURL + path
-}
 
 //nolint:gochecknoglobals // used only in this test
 var blobHash map[string]godigest.Digest = map[string]godigest.Digest{}
@@ -344,7 +322,8 @@ func PushMonolithStreamed(workdir, url, auth, trepo string, requests int,
 			}
 
 			// create a new upload
-			resp, err := resty.R().Post(fmt.Sprintf("%s/v2/%s/blobs/uploads/", url, repo))
+			resp, err := resty.R().
+				Post(fmt.Sprintf("%s/v2/%s/blobs/uploads/", url, repo))
 
 			latency = time.Since(start)
 
@@ -362,7 +341,7 @@ func PushMonolithStreamed(workdir, url, auth, trepo string, requests int,
 				return
 			}
 
-			loc := location(url, resp)
+			loc := test.Location(url, resp)
 
 			size := config.size
 			blob := path.Join(workdir, fmt.Sprintf("%d.blob", size))
@@ -381,9 +360,57 @@ func PushMonolithStreamed(workdir, url, auth, trepo string, requests int,
 
 			resp, err = client.R().
 				SetContentLength(true).
-				SetQueryParam("digest", digest.String()).
 				SetHeader("Content-Length", fmt.Sprintf("%d", size)).
-				SetHeader("Content-Type", "application/octet-stream").SetBody(fhandle).Put(loc)
+				SetHeader("Content-Type", "application/octet-stream").
+				SetQueryParam("digest", digest.String()).
+				SetBody(fhandle).
+				Put(loc)
+
+			latency = time.Since(start)
+
+			if err != nil {
+				isConnFail = true
+
+				return
+			}
+
+			// request specific check
+			statusCode = resp.StatusCode()
+			if statusCode != http.StatusCreated {
+				isErr = true
+
+				return
+			}
+
+			// upload image config blob
+			resp, err = resty.R().
+				Post(fmt.Sprintf("%s/v2/%s/blobs/uploads/", url, repo))
+
+			latency = time.Since(start)
+
+			if err != nil {
+				isConnFail = true
+
+				return
+			}
+
+			// request specific check
+			statusCode = resp.StatusCode()
+			if statusCode != http.StatusAccepted {
+				isErr = true
+
+				return
+			}
+
+			loc = test.Location(url, resp)
+			cblob, cdigest := test.GetRandomImageConfig()
+			resp, err = client.R().
+				SetContentLength(true).
+				SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+				SetHeader("Content-Type", "application/octet-stream").
+				SetQueryParam("digest", cdigest.String()).
+				SetBody(cblob).
+				Put(loc)
 
 			latency = time.Since(start)
 
@@ -407,8 +434,9 @@ func PushMonolithStreamed(workdir, url, auth, trepo string, requests int,
 					SchemaVersion: defaultSchemaVersion,
 				},
 				Config: ispec.Descriptor{
-					Digest: digest,
-					Size:   int64(size),
+					MediaType: "application/vnd.oci.image.config.v1+json",
+					Digest:    cdigest,
+					Size:      int64(len(cblob)),
 				},
 				Layers: []ispec.Descriptor{
 					{
@@ -419,15 +447,16 @@ func PushMonolithStreamed(workdir, url, auth, trepo string, requests int,
 				},
 			}
 
-			content, err := json.Marshal(manifest)
+			content, err := json.MarshalIndent(&manifest, "", "\t")
 			if err != nil {
 				log.Fatal(err)
 			}
 
-			digest = godigest.FromBytes(content)
-
-			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
-				SetBody(content).Put(fmt.Sprintf("%s/v2/%s/manifests/%s", url, repo, digest.String()))
+			resp, err = resty.R().
+				SetContentLength(true).
+				SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+				SetBody(content).
+				Put(fmt.Sprintf("%s/v2/%s/manifests/%s", url, repo, fmt.Sprintf("tag%d", count)))
 
 			latency = time.Since(start)
 
@@ -493,7 +522,8 @@ func PushChunkStreamed(workdir, url, auth, trepo string, requests int,
 			}
 
 			// create a new upload
-			resp, err := resty.R().Post(fmt.Sprintf("%s/v2/%s/blobs/uploads/", url, repo))
+			resp, err := resty.R().
+				Post(fmt.Sprintf("%s/v2/%s/blobs/uploads/", url, repo))
 
 			latency = time.Since(start)
 
@@ -511,7 +541,7 @@ func PushChunkStreamed(workdir, url, auth, trepo string, requests int,
 				return
 			}
 
-			loc := location(url, resp)
+			loc := test.Location(url, resp)
 
 			size := config.size
 			blob := path.Join(workdir, fmt.Sprintf("%d.blob", size))
@@ -530,7 +560,9 @@ func PushChunkStreamed(workdir, url, auth, trepo string, requests int,
 			// upload blob
 			resp, err = client.R().
 				SetContentLength(true).
-				SetHeader("Content-Type", "application/octet-stream").SetBody(fhandle).Patch(loc)
+				SetHeader("Content-Type", "application/octet-stream").
+				SetBody(fhandle).
+				Patch(loc)
 
 			latency = time.Since(start)
 
@@ -540,7 +572,7 @@ func PushChunkStreamed(workdir, url, auth, trepo string, requests int,
 				return
 			}
 
-			loc = location(url, resp)
+			loc = test.Location(url, resp)
 
 			// request specific check
 			statusCode = resp.StatusCode()
@@ -553,9 +585,101 @@ func PushChunkStreamed(workdir, url, auth, trepo string, requests int,
 			// finish upload
 			resp, err = client.R().
 				SetContentLength(true).
-				SetQueryParam("digest", digest.String()).
 				SetHeader("Content-Length", fmt.Sprintf("%d", size)).
-				SetHeader("Content-Type", "application/octet-stream").Put(loc)
+				SetHeader("Content-Type", "application/octet-stream").
+				SetQueryParam("digest", digest.String()).
+				Put(loc)
+
+			latency = time.Since(start)
+
+			if err != nil {
+				isConnFail = true
+
+				return
+			}
+
+			// request specific check
+			statusCode = resp.StatusCode()
+			if statusCode != http.StatusCreated {
+				isErr = true
+
+				return
+			}
+
+			// upload image config blob
+			resp, err = resty.R().
+				Post(fmt.Sprintf("%s/v2/%s/blobs/uploads/", url, repo))
+
+			latency = time.Since(start)
+
+			if err != nil {
+				isConnFail = true
+
+				return
+			}
+
+			// request specific check
+			statusCode = resp.StatusCode()
+			if statusCode != http.StatusAccepted {
+				isErr = true
+
+				return
+			}
+
+			loc = test.Location(url, resp)
+			cblob, cdigest := test.GetRandomImageConfig()
+			resp, err = client.R().
+				SetContentLength(true).
+				SetHeader("Content-Type", "application/octet-stream").
+				SetBody(fhandle).
+				Patch(loc)
+
+			if err != nil {
+				isConnFail = true
+
+				return
+			}
+
+			// request specific check
+			statusCode = resp.StatusCode()
+			if statusCode != http.StatusAccepted {
+				isErr = true
+
+				return
+			}
+
+			// upload blob
+			resp, err = client.R().
+				SetContentLength(true).
+				SetHeader("Content-Type", "application/octet-stream").
+				SetBody(cblob).
+				Patch(loc)
+
+			latency = time.Since(start)
+
+			if err != nil {
+				isConnFail = true
+
+				return
+			}
+
+			loc = test.Location(url, resp)
+
+			// request specific check
+			statusCode = resp.StatusCode()
+			if statusCode != http.StatusAccepted {
+				isErr = true
+
+				return
+			}
+
+			// finish upload
+			resp, err = client.R().
+				SetContentLength(true).
+				SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+				SetHeader("Content-Type", "application/octet-stream").
+				SetQueryParam("digest", cdigest.String()).
+				Put(loc)
 
 			latency = time.Since(start)
 
@@ -579,8 +703,9 @@ func PushChunkStreamed(workdir, url, auth, trepo string, requests int,
 					SchemaVersion: defaultSchemaVersion,
 				},
 				Config: ispec.Descriptor{
-					Digest: digest,
-					Size:   int64(size),
+					MediaType: "application/vnd.oci.image.config.v1+json",
+					Digest:    cdigest,
+					Size:      int64(len(cblob)),
 				},
 				Layers: []ispec.Descriptor{
 					{
@@ -596,10 +721,11 @@ func PushChunkStreamed(workdir, url, auth, trepo string, requests int,
 				log.Fatal(err)
 			}
 
-			digest = godigest.FromBytes(content)
-
-			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
-				SetBody(content).Put(fmt.Sprintf("%s/v2/%s/manifests/%s", url, repo, digest.String()))
+			resp, err = resty.R().
+				SetContentLength(true).
+				SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+				SetBody(content).
+				Put(fmt.Sprintf("%s/v2/%s/manifests/%s", url, repo, fmt.Sprintf("tag%d", count)))
 
 			latency = time.Since(start)
 
@@ -669,6 +795,7 @@ var testSuite = []testConfig{ // nolint:gochecknoglobals // used only in this te
 }
 
 func Perf(workdir, url, auth, repo string, concurrency int, requests int, outFmt string) {
+	json := jsoniter.ConfigCompatibleWithStandardLibrary
 	// logging
 	log.SetFlags(0)
 	log.SetOutput(tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.TabIndent))
@@ -682,6 +809,7 @@ func Perf(workdir, url, auth, repo string, concurrency int, requests int, outFmt
 	log.Printf("\n")
 	log.Printf("Concurrency Level:\t%v", concurrency)
 	log.Printf("Total requests:\t%v", requests)
+	log.Printf("Working dir:\t%v", workdir)
 	log.Printf("\n")
 
 	for _, tconfig := range testSuite {
