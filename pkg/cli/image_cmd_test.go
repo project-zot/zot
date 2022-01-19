@@ -25,7 +25,7 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
-	. "zotregistry.io/zot/test"
+	"zotregistry.io/zot/pkg/test"
 )
 
 func TestSearchImageCmd(t *testing.T) {
@@ -282,8 +282,8 @@ func TestOutputFormat(t *testing.T) {
 
 func TestServerResponse(t *testing.T) {
 	Convey("Test from real server", t, func() {
-		port := GetFreePort()
-		url := GetBaseURL(port)
+		port := test.GetFreePort()
+		url := test.GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
 		conf.Extensions = &extconf.ExtensionConfig{
@@ -334,8 +334,8 @@ func TestServerResponse(t *testing.T) {
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIZE")
-			So(actual, ShouldContainSubstring, "repo7 test:2.0 a0ca253b 15B")
-			So(actual, ShouldContainSubstring, "repo7 test:1.0 a0ca253b 15B")
+			So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 15B")
+			So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 15B")
 		})
 
 		Convey("Test all images verbose", func() {
@@ -359,8 +359,8 @@ func TestServerResponse(t *testing.T) {
 			// repo7         test:1.0  a0ca253b  b8781e88            15B
 			//                                             b8781e88  15B
 			So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST CONFIG LAYERS SIZE")
-			So(actual, ShouldContainSubstring, "repo7 test:2.0 a0ca253b b8781e88 15B b8781e88 15B")
-			So(actual, ShouldContainSubstring, "repo7 test:1.0 a0ca253b b8781e88 15B b8781e88 15B")
+			So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 3a1d2d0c 15B b8781e88 15B")
+			So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 3a1d2d0c 15B b8781e88 15B")
 		})
 
 		Convey("Test image by name config url", func() {
@@ -378,8 +378,8 @@ func TestServerResponse(t *testing.T) {
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIZE")
-			So(actual, ShouldContainSubstring, "repo7 test:2.0 a0ca253b 15B")
-			So(actual, ShouldContainSubstring, "repo7 test:1.0 a0ca253b 15B")
+			So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 15B")
+			So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 15B")
 
 			Convey("with shorthand", func() {
 				args := []string{"imagetest", "-n", "repo7"}
@@ -396,13 +396,13 @@ func TestServerResponse(t *testing.T) {
 				str := space.ReplaceAllString(buff.String(), " ")
 				actual := strings.TrimSpace(str)
 				So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIZE")
-				So(actual, ShouldContainSubstring, "repo7 test:2.0 a0ca253b 15B")
-				So(actual, ShouldContainSubstring, "repo7 test:1.0 a0ca253b 15B")
+				So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 15B")
+				So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 15B")
 			})
 		})
 
 		Convey("Test image by digest", func() {
-			args := []string{"imagetest", "--digest", "a0ca253b"}
+			args := []string{"imagetest", "--digest", "883fc0c5"}
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 			defer os.Remove(configPath)
 			cmd := NewImageCommand(new(searchService))
@@ -420,10 +420,10 @@ func TestServerResponse(t *testing.T) {
 			// repo7         test:2.0  a0ca253b  15B
 			// repo7         test:1.0  a0ca253b  15B
 			So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIZE")
-			So(actual, ShouldContainSubstring, "repo7 test:2.0 a0ca253b 15B")
-			So(actual, ShouldContainSubstring, "repo7 test:1.0 a0ca253b 15B")
+			So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 15B")
+			So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 15B")
 			Convey("with shorthand", func() {
-				args := []string{"imagetest", "-d", "a0ca253b"}
+				args := []string{"imagetest", "-d", "883fc0c5"}
 				configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 				defer os.Remove(configPath)
 				cmd := NewImageCommand(new(searchService))
@@ -437,8 +437,8 @@ func TestServerResponse(t *testing.T) {
 				str := space.ReplaceAllString(buff.String(), " ")
 				actual := strings.TrimSpace(str)
 				So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIZE")
-				So(actual, ShouldContainSubstring, "repo7 test:2.0 a0ca253b 15B")
-				So(actual, ShouldContainSubstring, "repo7 test:1.0 a0ca253b 15B")
+				So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 15B")
+				So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 15B")
 			})
 		})
 
@@ -462,18 +462,32 @@ func TestServerResponse(t *testing.T) {
 func uploadManifest(url string) {
 	// create a blob/layer
 	resp, _ := resty.R().Post(url + "/v2/repo7/blobs/uploads/")
-	loc := Location(url, resp)
+	loc := test.Location(url, resp)
 
 	content := []byte("this is a blob5")
 	digest := godigest.FromBytes(content)
 	_, _ = resty.R().SetQueryParam("digest", digest.String()).
 		SetHeader("Content-Type", "application/octet-stream").SetBody(content).Put(loc)
 
+	// upload image config blob
+	resp, _ = resty.R().Post(url + "/v2/repo7/blobs/uploads/")
+	loc = test.Location(url, resp)
+	cblob, cdigest := test.GetImageConfig()
+
+	_, _ = resty.R().
+		SetContentLength(true).
+		SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+		SetHeader("Content-Type", "application/octet-stream").
+		SetQueryParam("digest", cdigest.String()).
+		SetBody(cblob).
+		Put(loc)
+
 	// create a manifest
 	manifest := ispec.Manifest{
 		Config: ispec.Descriptor{
-			Digest: digest,
-			Size:   int64(len(content)),
+			MediaType: "application/vnd.oci.image.config.v1+json",
+			Digest:    cdigest,
+			Size:      int64(len(cblob)),
 		},
 		Layers: []ispec.Descriptor{
 			{
@@ -493,8 +507,9 @@ func uploadManifest(url string) {
 	// create a manifest with same blob but a different tag
 	manifest = ispec.Manifest{
 		Config: ispec.Descriptor{
-			Digest: digest,
-			Size:   int64(len(content)),
+			MediaType: "application/vnd.oci.image.config.v1+json",
+			Digest:    cdigest,
+			Size:      int64(len(cblob)),
 		},
 		Layers: []ispec.Descriptor{
 			{

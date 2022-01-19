@@ -28,6 +28,7 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/s3"
+	"zotregistry.io/zot/pkg/test"
 )
 
 func cleanupStorage(store driver.StorageDriver, name string) {
@@ -267,12 +268,21 @@ func TestStorageAPIs(t *testing.T) {
 						})
 
 						Convey("Good image manifest", func() {
+							cblob, cdigest := test.GetRandomImageConfig()
+							_, clen, err := imgStore.FullBlobUpload("test", bytes.NewReader(cblob), cdigest.String())
+							So(err, ShouldBeNil)
+							So(clen, ShouldEqual, len(cblob))
+							hasBlob, _, err := imgStore.CheckBlob("test", cdigest.String())
+							So(err, ShouldBeNil)
+							So(hasBlob, ShouldEqual, true)
+
 							annotationsMap := make(map[string]string)
 							annotationsMap[ispec.AnnotationRefName] = "1.0"
 							manifest := ispec.Manifest{
 								Config: ispec.Descriptor{
-									Digest: digest,
-									Size:   int64(buflen),
+									MediaType: "application/vnd.oci.image.config.v1+json",
+									Digest:    cdigest,
+									Size:      int64(len(cblob)),
 								},
 								Layers: []ispec.Descriptor{
 									{
@@ -305,7 +315,7 @@ func TestStorageAPIs(t *testing.T) {
 							_, err = imgStore.PutImageManifest("test", "2.0", ispec.MediaTypeImageManifest, manifestBuf)
 							So(err, ShouldBeNil)
 
-							_, err := imgStore.PutImageManifest("test", "3.0", ispec.MediaTypeImageManifest, manifestBuf)
+							_, err = imgStore.PutImageManifest("test", "3.0", ispec.MediaTypeImageManifest, manifestBuf)
 							So(err, ShouldBeNil)
 
 							_, err = imgStore.GetImageTags("inexistent")
@@ -330,7 +340,7 @@ func TestStorageAPIs(t *testing.T) {
 							So(len(tags), ShouldEqual, 2)
 
 							// We deleted only one tag, make sure blob should not be removed.
-							hasBlob, _, err := imgStore.CheckBlob("test", digest.String())
+							hasBlob, _, err = imgStore.CheckBlob("test", digest.String())
 							So(err, ShouldBeNil)
 							So(hasBlob, ShouldEqual, true)
 
@@ -446,10 +456,19 @@ func TestStorageAPIs(t *testing.T) {
 						})
 
 						Convey("Good image manifest", func() {
+							cblob, cdigest := test.GetRandomImageConfig()
+							_, clen, err := imgStore.FullBlobUpload("test", bytes.NewReader(cblob), cdigest.String())
+							So(err, ShouldBeNil)
+							So(clen, ShouldEqual, len(cblob))
+							hasBlob, _, err := imgStore.CheckBlob("test", cdigest.String())
+							So(err, ShouldBeNil)
+							So(hasBlob, ShouldEqual, true)
+
 							manifest := ispec.Manifest{
 								Config: ispec.Descriptor{
-									Digest: digest,
-									Size:   int64(buflen),
+									MediaType: "application/vnd.oci.image.config.v1+json",
+									Digest:    cdigest,
+									Size:      int64(len(cblob)),
 								},
 								Layers: []ispec.Descriptor{
 									{
@@ -531,12 +550,19 @@ func TestStorageAPIs(t *testing.T) {
 					So(err, ShouldBeNil)
 					So(blob, ShouldEqual, buflen)
 
-					manifest := ispec.Manifest{}
-					manifest.SchemaVersion = 2
-					manifest = ispec.Manifest{
+					cblob, cdigest := test.GetRandomImageConfig()
+					_, clen, err := imgStore.FullBlobUpload("replace", bytes.NewReader(cblob), cdigest.String())
+					So(err, ShouldBeNil)
+					So(clen, ShouldEqual, len(cblob))
+					hasBlob, _, err := imgStore.CheckBlob("replace", cdigest.String())
+					So(err, ShouldBeNil)
+					So(hasBlob, ShouldEqual, true)
+
+					manifest := ispec.Manifest{
 						Config: ispec.Descriptor{
-							Digest: digest,
-							Size:   int64(buflen),
+							MediaType: "application/vnd.oci.image.config.v1+json",
+							Digest:    cdigest,
+							Size:      int64(len(cblob)),
 						},
 						Layers: []ispec.Descriptor{
 							{
@@ -574,10 +600,19 @@ func TestStorageAPIs(t *testing.T) {
 					So(err, ShouldBeNil)
 					So(blob, ShouldEqual, buflen)
 
+					cblob, cdigest = test.GetRandomImageConfig()
+					_, clen, err = imgStore.FullBlobUpload("replace", bytes.NewReader(cblob), cdigest.String())
+					So(err, ShouldBeNil)
+					So(clen, ShouldEqual, len(cblob))
+					hasBlob, _, err = imgStore.CheckBlob("replace", cdigest.String())
+					So(err, ShouldBeNil)
+					So(hasBlob, ShouldEqual, true)
+
 					manifest = ispec.Manifest{
 						Config: ispec.Descriptor{
-							Digest: digest,
-							Size:   int64(buflen),
+							MediaType: "application/vnd.oci.image.config.v1+json",
+							Digest:    cdigest,
+							Size:      int64(len(cblob)),
 						},
 						Layers: []ispec.Descriptor{
 							{

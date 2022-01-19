@@ -466,6 +466,60 @@ func (is *ImageStoreFS) GetImageManifest(repo string, reference string) ([]byte,
 	return buf, digest.String(), mediaType, nil
 }
 
+func (is *ImageStoreFS) validateOCIManifest(repo string, reference string, manifest *ispec.Manifest) (string, error) {
+	if manifest.SchemaVersion != SchemaVersion {
+		is.log.Error().Int("SchemaVersion", manifest.SchemaVersion).Msg("invalid manifest")
+
+		return "", zerr.ErrBadManifest
+	}
+
+	// validate image config
+	config := manifest.Config
+	if config.MediaType != ispec.MediaTypeImageConfig {
+		return "", zerr.ErrBadManifest
+	}
+
+	digest := config.Digest
+
+	blobPath := is.BlobPath(repo, digest)
+	if _, err := os.Stat(blobPath); err != nil {
+		is.log.Error().Err(err).Str("blobPath", blobPath).Msg("unable to find blob")
+
+		return digest.String(), zerr.ErrBlobNotFound
+	}
+
+	blobFile, err := os.Open(blobPath)
+	if err != nil {
+		is.log.Error().Err(err).Str("blobPath", blobPath).Msg("unable to find blob")
+
+		return digest.String(), zerr.ErrBlobNotFound
+	}
+
+	defer blobFile.Close()
+
+	dec := json.NewDecoder(blobFile)
+
+	var cspec ispec.Image
+	if err := dec.Decode(&cspec); err != nil {
+		return "", zerr.ErrBadManifest
+	}
+
+	// validate the layers
+	for _, l := range manifest.Layers {
+		digest = l.Digest
+		blobPath = is.BlobPath(repo, digest)
+		is.log.Info().Str("blobPath", blobPath).Str("reference", reference).Msg("manifest layers")
+
+		if _, err := os.Stat(blobPath); err != nil {
+			is.log.Error().Err(err).Str("blobPath", blobPath).Msg("unable to find blob")
+
+			return digest.String(), zerr.ErrBlobNotFound
+		}
+	}
+
+	return "", nil
+}
+
 // PutImageManifest adds an image manifest to the repository.
 func (is *ImageStoreFS) PutImageManifest(repo string, reference string, mediaType string,
 	body []byte) (string, error) {
@@ -475,6 +529,7 @@ func (is *ImageStoreFS) PutImageManifest(repo string, reference string, mediaTyp
 		return "", err
 	}
 
+	// validate the manifest
 	if !IsSupportedMediaType(mediaType) {
 		is.log.Debug().Interface("actual", mediaType).
 			Interface("expected", ispec.MediaTypeImageManifest).Msg("bad manifest media type")
@@ -489,29 +544,16 @@ func (is *ImageStoreFS) PutImageManifest(repo string, reference string, mediaTyp
 	}
 
 	if mediaType == ispec.MediaTypeImageManifest {
-		var m ispec.Manifest
-		if err := json.Unmarshal(body, &m); err != nil {
+		var manifest ispec.Manifest
+		if err := json.Unmarshal(body, &manifest); err != nil {
 			is.log.Error().Err(err).Msg("unable to unmarshal JSON")
 
 			return "", zerr.ErrBadManifest
 		}
 
-		if m.SchemaVersion != SchemaVersion {
-			is.log.Error().Int("SchemaVersion", m.SchemaVersion).Msg("invalid manifest")
-
-			return "", zerr.ErrBadManifest
-		}
-
-		for _, l := range m.Layers {
-			digest := l.Digest
-			blobPath := is.BlobPath(repo, digest)
-			is.log.Info().Str("blobPath", blobPath).Str("reference", reference).Msg("manifest layers")
-
-			if _, err := os.Stat(blobPath); err != nil {
-				is.log.Error().Err(err).Str("blobPath", blobPath).Msg("unable to find blob")
-
-				return digest.String(), zerr.ErrBlobNotFound
-			}
+		digest, err := is.validateOCIManifest(repo, reference, &manifest)
+		if err != nil {
+			return digest, err
 		}
 	} else if mediaType == artifactspec.MediaTypeArtifactManifest {
 		var m notation.Descriptor

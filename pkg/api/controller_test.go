@@ -44,7 +44,6 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test"
-	. "zotregistry.io/zot/test"
 )
 
 const (
@@ -101,8 +100,8 @@ func TestNew(t *testing.T) {
 
 func TestRunAlreadyRunningServer(t *testing.T) {
 	Convey("Run server on unavailable port", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
 
@@ -144,7 +143,7 @@ func TestRunAlreadyRunningServer(t *testing.T) {
 func TestObjectStorageController(t *testing.T) {
 	skipIt(t)
 	Convey("Negative make a new object storage controller", t, func() {
-		port := GetFreePort()
+		port := test.GetFreePort()
 		conf := config.New()
 		conf.HTTP.Port = port
 		storageDriverParams := map[string]interface{}{
@@ -162,8 +161,8 @@ func TestObjectStorageController(t *testing.T) {
 	})
 
 	Convey("Make a new object storage controller", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
 
@@ -187,15 +186,15 @@ func TestObjectStorageController(t *testing.T) {
 
 		go startServer(ctlr)
 		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		test.WaitTillServerReady(baseURL)
 	})
 }
 
 func TestObjectStorageControllerSubPaths(t *testing.T) {
 	skipIt(t)
 	Convey("Make a new object storage controller", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
 
@@ -225,14 +224,14 @@ func TestObjectStorageControllerSubPaths(t *testing.T) {
 
 		go startServer(ctlr)
 		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		test.WaitTillServerReady(baseURL)
 	})
 }
 
 func TestHtpasswdSingleCred(t *testing.T) {
 	Convey("Single cred", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
 		singleCredtests := []string{}
 		user := ALICE
 		password := ALICE
@@ -244,7 +243,7 @@ func TestHtpasswdSingleCred(t *testing.T) {
 				conf := config.New()
 				conf.HTTP.Port = port
 
-				htpasswdPath := MakeHtpasswdFileFromString(testString)
+				htpasswdPath := test.MakeHtpasswdFileFromString(testString)
 				defer os.Remove(htpasswdPath)
 				conf.HTTP.Auth = &config.AuthConfig{
 					HTPasswd: config.AuthHTPasswd{
@@ -261,7 +260,7 @@ func TestHtpasswdSingleCred(t *testing.T) {
 
 				go startServer(ctlr)
 				defer stopServer(ctlr)
-				WaitTillServerReady(baseURL)
+				test.WaitTillServerReady(baseURL)
 
 				// with creds, should get expected status code
 				resp, _ := resty.R().SetBasicAuth(user, password).Get(baseURL + "/v2/")
@@ -295,11 +294,11 @@ func TestHtpasswdTwoCreds(t *testing.T) {
 
 		for _, testString := range twoCredTests {
 			func() {
-				port := GetFreePort()
-				baseURL := GetBaseURL(port)
+				port := test.GetFreePort()
+				baseURL := test.GetBaseURL(port)
 				conf := config.New()
 				conf.HTTP.Port = port
-				htpasswdPath := MakeHtpasswdFileFromString(testString)
+				htpasswdPath := test.MakeHtpasswdFileFromString(testString)
 				defer os.Remove(htpasswdPath)
 				conf.HTTP.Auth = &config.AuthConfig{
 					HTPasswd: config.AuthHTPasswd{
@@ -316,7 +315,7 @@ func TestHtpasswdTwoCreds(t *testing.T) {
 
 				go startServer(ctlr)
 				defer stopServer(ctlr)
-				WaitTillServerReady(baseURL)
+				test.WaitTillServerReady(baseURL)
 
 				// with creds, should get expected status code
 				resp, _ := resty.R().SetBasicAuth(user1, password1).Get(baseURL + "/v2/")
@@ -351,11 +350,11 @@ func TestHtpasswdFiveCreds(t *testing.T) {
 		}
 
 		func() {
-			port := GetFreePort()
-			baseURL := GetBaseURL(port)
+			port := test.GetFreePort()
+			baseURL := test.GetBaseURL(port)
 			conf := config.New()
 			conf.HTTP.Port = port
-			htpasswdPath := MakeHtpasswdFileFromString(credString.String())
+			htpasswdPath := test.MakeHtpasswdFileFromString(credString.String())
 			defer os.Remove(htpasswdPath)
 			conf.HTTP.Auth = &config.AuthConfig{
 				HTPasswd: config.AuthHTPasswd{
@@ -372,7 +371,7 @@ func TestHtpasswdFiveCreds(t *testing.T) {
 
 			go startServer(ctlr)
 			defer stopServer(ctlr)
-			WaitTillServerReady(baseURL)
+			test.WaitTillServerReady(baseURL)
 
 			// with creds, should get expected status code
 			for key, val := range tests {
@@ -391,8 +390,8 @@ func TestHtpasswdFiveCreds(t *testing.T) {
 
 func TestRatelimit(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
 
@@ -410,7 +409,7 @@ func TestRatelimit(t *testing.T) {
 
 		go startServer(ctlr)
 		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		test.WaitTillServerReady(baseURL)
 
 		Convey("Ratelimit", func() {
 			client := resty.New()
@@ -428,8 +427,8 @@ func TestRatelimit(t *testing.T) {
 	})
 
 	Convey("Make a new controller", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
 
@@ -451,7 +450,7 @@ func TestRatelimit(t *testing.T) {
 
 		go startServer(ctlr)
 		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		test.WaitTillServerReady(baseURL)
 		Convey("Method Ratelimit", func() {
 			client := resty.New()
 			// first request should succeed
@@ -468,8 +467,8 @@ func TestRatelimit(t *testing.T) {
 	})
 
 	Convey("Make a new controller", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
 
@@ -493,7 +492,7 @@ func TestRatelimit(t *testing.T) {
 
 		go startServer(ctlr)
 		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		test.WaitTillServerReady(baseURL)
 		Convey("Global and Method Ratelimit", func() {
 			client := resty.New()
 			// first request should succeed
@@ -512,11 +511,11 @@ func TestRatelimit(t *testing.T) {
 
 func TestBasicAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
-		htpasswdPath := MakeHtpasswdFile()
+		htpasswdPath := test.MakeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
 		conf.HTTP.Auth = &config.AuthConfig{
@@ -534,7 +533,7 @@ func TestBasicAuth(t *testing.T) {
 
 		go startServer(ctlr)
 		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		test.WaitTillServerReady(baseURL)
 
 		// without creds, should get access error
 		resp, err := resty.R().Get(baseURL + "/v2/")
@@ -558,8 +557,8 @@ func TestBasicAuth(t *testing.T) {
 
 func TestInterruptedBlobUpload(t *testing.T) {
 	Convey("Successfully cleaning interrupted blob uploads", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
 
@@ -574,7 +573,7 @@ func TestInterruptedBlobUpload(t *testing.T) {
 
 		go startServer(ctlr)
 		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		test.WaitTillServerReady(baseURL)
 
 		client := resty.New()
 		blob := make([]byte, 50*1024*1024)
@@ -788,11 +787,11 @@ func TestInterruptedBlobUpload(t *testing.T) {
 
 func TestMultipleInstance(t *testing.T) {
 	Convey("Negative test zot multiple instance", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
-		htpasswdPath := MakeHtpasswdFile()
+		htpasswdPath := test.MakeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
 		conf.HTTP.Auth = &config.AuthConfig{
@@ -823,7 +822,7 @@ func TestMultipleInstance(t *testing.T) {
 
 		go startServer(ctlr)
 		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		test.WaitTillServerReady(baseURL)
 
 		client := resty.New()
 
@@ -834,11 +833,11 @@ func TestMultipleInstance(t *testing.T) {
 	})
 
 	Convey("Test zot multiple instance", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
-		htpasswdPath := MakeHtpasswdFile()
+		htpasswdPath := test.MakeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
 		conf.HTTP.Auth = &config.AuthConfig{
@@ -865,7 +864,7 @@ func TestMultipleInstance(t *testing.T) {
 
 		go startServer(ctlr)
 		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		test.WaitTillServerReady(baseURL)
 
 		// without creds, should get access error
 		resp, err := resty.R().Get(baseURL + "/v2/")
@@ -893,12 +892,12 @@ func TestTLSWithBasicAuth(t *testing.T) {
 		So(err, ShouldBeNil)
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
-		htpasswdPath := MakeHtpasswdFile()
+		htpasswdPath := test.MakeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
-		secureBaseURL := GetSecureBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		secureBaseURL := test.GetSecureBaseURL(port)
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
 		defer func() { resty.SetTLSClientConfig(nil) }()
@@ -924,7 +923,7 @@ func TestTLSWithBasicAuth(t *testing.T) {
 
 		go startServer(ctlr)
 		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		test.WaitTillServerReady(baseURL)
 
 		// accessing insecure HTTP site should fail
 		resp, err := resty.R().Get(baseURL)
@@ -958,12 +957,12 @@ func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 		So(err, ShouldBeNil)
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
-		htpasswdPath := MakeHtpasswdFile()
+		htpasswdPath := test.MakeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
-		secureBaseURL := GetSecureBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		secureBaseURL := test.GetSecureBaseURL(port)
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
 		defer func() { resty.SetTLSClientConfig(nil) }()
@@ -990,7 +989,7 @@ func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 
 		go startServer(ctlr)
 		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		test.WaitTillServerReady(baseURL)
 
 		// accessing insecure HTTP site should fail
 		resp, err := resty.R().Get(baseURL)
@@ -1026,9 +1025,9 @@ func TestTLSMutualAuth(t *testing.T) {
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
 
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
-		secureBaseURL := GetSecureBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		secureBaseURL := test.GetSecureBaseURL(port)
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
 		defer func() { resty.SetTLSClientConfig(nil) }()
@@ -1050,7 +1049,7 @@ func TestTLSMutualAuth(t *testing.T) {
 
 		go startServer(ctlr)
 		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		test.WaitTillServerReady(baseURL)
 
 		// accessing insecure HTTP site should fail
 		resp, err := resty.R().Get(baseURL)
@@ -1098,9 +1097,9 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
 
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
-		secureBaseURL := GetSecureBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		secureBaseURL := test.GetSecureBaseURL(port)
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
 		defer func() { resty.SetTLSClientConfig(nil) }()
@@ -1123,7 +1122,7 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 
 		go startServer(ctlr)
 		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		test.WaitTillServerReady(baseURL)
 
 		// accessing insecure HTTP site should fail
 		resp, err := resty.R().Get(baseURL)
@@ -1177,12 +1176,12 @@ func TestTLSMutualAndBasicAuth(t *testing.T) {
 		So(err, ShouldBeNil)
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
-		htpasswdPath := MakeHtpasswdFile()
+		htpasswdPath := test.MakeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
-		secureBaseURL := GetSecureBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		secureBaseURL := test.GetSecureBaseURL(port)
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
 		defer func() { resty.SetTLSClientConfig(nil) }()
@@ -1209,7 +1208,7 @@ func TestTLSMutualAndBasicAuth(t *testing.T) {
 
 		go startServer(ctlr)
 		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		test.WaitTillServerReady(baseURL)
 
 		// accessing insecure HTTP site should fail
 		resp, err := resty.R().Get(baseURL)
@@ -1259,12 +1258,12 @@ func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 		So(err, ShouldBeNil)
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
-		htpasswdPath := MakeHtpasswdFile()
+		htpasswdPath := test.MakeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
-		secureBaseURL := GetSecureBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		secureBaseURL := test.GetSecureBaseURL(port)
 
 		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
 		defer func() { resty.SetTLSClientConfig(nil) }()
@@ -1292,7 +1291,7 @@ func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 
 		go startServer(ctlr)
 		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		test.WaitTillServerReady(baseURL)
 
 		// accessing insecure HTTP site should fail
 		resp, err := resty.R().Get(baseURL)
@@ -1423,8 +1422,8 @@ func TestBasicAuthWithLDAP(t *testing.T) {
 		l.Start()
 		defer l.Stop()
 
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
 
 		conf := config.New()
 		conf.HTTP.Port = port
@@ -1449,7 +1448,7 @@ func TestBasicAuthWithLDAP(t *testing.T) {
 
 		go startServer(ctlr)
 		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		test.WaitTillServerReady(baseURL)
 
 		// without creds, should get access error
 		resp, err := resty.R().Get(baseURL + "/v2/")
@@ -1476,8 +1475,8 @@ func TestBearerAuth(t *testing.T) {
 		authTestServer := makeAuthTestServer()
 		defer authTestServer.Close()
 
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
 
 		conf := config.New()
 		conf.HTTP.Port = port
@@ -1500,7 +1499,7 @@ func TestBearerAuth(t *testing.T) {
 
 		go startServer(ctlr)
 		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		test.WaitTillServerReady(baseURL)
 
 		blob := []byte("hello, blob!")
 		digest := godigest.FromBytes(blob).String()
@@ -1642,8 +1641,8 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		authTestServer := makeAuthTestServer()
 		defer authTestServer.Close()
 
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
 
 		conf := config.New()
 		conf.HTTP.Port = port
@@ -1667,7 +1666,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 
 		go startServer(ctlr)
 		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		test.WaitTillServerReady(baseURL)
 
 		blob := []byte("hello, blob!")
 		digest := godigest.FromBytes(blob).String()
@@ -1860,12 +1859,12 @@ func parseBearerAuthHeader(authHeaderRaw string) *authHeader {
 
 func TestAuthorizationWithBasicAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
 
 		conf := config.New()
 		conf.HTTP.Port = port
-		htpasswdPath := MakeHtpasswdFile()
+		htpasswdPath := test.MakeHtpasswdFile()
 		defer os.Remove(htpasswdPath)
 
 		conf.HTTP.Auth = &config.AuthConfig{
@@ -1897,7 +1896,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 			panic(err)
 		}
 		defer os.RemoveAll(dir)
-		err = CopyFiles("../../test/data", dir)
+		err = test.CopyFiles("../../test/data", dir)
 		if err != nil {
 			panic(err)
 		}
@@ -1905,7 +1904,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 
 		go startServer(ctlr)
 		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		test.WaitTillServerReady(baseURL)
 
 		blob := []byte("hello, blob!")
 		digest := godigest.FromBytes(blob).String()
@@ -2356,12 +2355,12 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 
 func TestInvalidCases(t *testing.T) {
 	Convey("Invalid repo dir", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
 
 		conf := config.New()
 		conf.HTTP.Port = port
-		htpasswdPath := MakeHtpasswdFileFromString(getCredString(username, passphrase))
+		htpasswdPath := test.MakeHtpasswdFileFromString(getCredString(username, passphrase))
 
 		defer os.Remove(htpasswdPath)
 
@@ -2392,7 +2391,7 @@ func TestInvalidCases(t *testing.T) {
 				panic(err)
 			}
 		}(ctlr)
-		WaitTillServerReady(baseURL)
+		test.WaitTillServerReady(baseURL)
 
 		digest := "sha256:8dd57e171a61368ffcfde38045ddb6ed74a32950c271c1da93eaddfb66a77e78"
 		name := "zot-c-test"
@@ -2419,8 +2418,8 @@ func TestHTTPReadOnly(t *testing.T) {
 		singleCredtests = append(singleCredtests, getCredString(user, password))
 		singleCredtests = append(singleCredtests, getCredString(user, password)+"\n")
 
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
 
 		for _, testString := range singleCredtests {
 			func() {
@@ -2429,7 +2428,7 @@ func TestHTTPReadOnly(t *testing.T) {
 				// enable read-only mode
 				conf.HTTP.ReadOnly = true
 
-				htpasswdPath := MakeHtpasswdFileFromString(testString)
+				htpasswdPath := test.MakeHtpasswdFileFromString(testString)
 				defer os.Remove(htpasswdPath)
 				conf.HTTP.Auth = &config.AuthConfig{
 					HTPasswd: config.AuthHTPasswd{
@@ -2446,7 +2445,7 @@ func TestHTTPReadOnly(t *testing.T) {
 
 				go startServer(ctlr)
 				defer stopServer(ctlr)
-				WaitTillServerReady(baseURL)
+				test.WaitTillServerReady(baseURL)
 
 				// with creds, should get expected status code
 				resp, _ := resty.R().SetBasicAuth(user, password).Get(baseURL + "/v2/")
@@ -2471,12 +2470,12 @@ func TestHTTPReadOnly(t *testing.T) {
 
 func TestCrossRepoMount(t *testing.T) {
 	Convey("Cross Repo Mount", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
 
 		conf := config.New()
 		conf.HTTP.Port = port
-		htpasswdPath := MakeHtpasswdFileFromString(getCredString(username, passphrase))
+		htpasswdPath := test.MakeHtpasswdFileFromString(getCredString(username, passphrase))
 
 		defer os.Remove(htpasswdPath)
 
@@ -2493,7 +2492,7 @@ func TestCrossRepoMount(t *testing.T) {
 			panic(err)
 		}
 
-		err = CopyFiles("../../test/data", dir)
+		err = test.CopyFiles("../../test/data", dir)
 		if err != nil {
 			panic(err)
 		}
@@ -2502,7 +2501,7 @@ func TestCrossRepoMount(t *testing.T) {
 
 		go startServer(ctlr)
 		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		test.WaitTillServerReady(baseURL)
 
 		params := make(map[string]string)
 		digest := "sha256:63a795ca90aa6e7cca60941e826810a4cd0a2e73ea02bf458241df2a5c973e29"
@@ -2655,12 +2654,12 @@ func TestCrossRepoMount(t *testing.T) {
 	})
 
 	Convey("Disable dedupe and cache", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
 
 		conf := config.New()
 		conf.HTTP.Port = port
-		htpasswdPath := MakeHtpasswdFileFromString(getCredString(username, passphrase))
+		htpasswdPath := test.MakeHtpasswdFileFromString(getCredString(username, passphrase))
 
 		defer os.Remove(htpasswdPath)
 
@@ -2677,7 +2676,7 @@ func TestCrossRepoMount(t *testing.T) {
 			panic(err)
 		}
 
-		err = CopyFiles("../../test/data", dir)
+		err = test.CopyFiles("../../test/data", dir)
 		if err != nil {
 			panic(err)
 		}
@@ -2689,7 +2688,7 @@ func TestCrossRepoMount(t *testing.T) {
 
 		go startServer(ctlr)
 		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		test.WaitTillServerReady(baseURL)
 
 		digest := "sha256:7a0437f04f83f084b7ed68ad9c4a4947e12fc4e1b006b38129bac89114ec3621"
 		name := "zot-c-test"
@@ -2799,12 +2798,12 @@ func TestParallelRequests(t *testing.T) {
 		},
 	}
 
-	port := GetFreePort()
-	baseURL := GetBaseURL(port)
+	port := test.GetFreePort()
+	baseURL := test.GetBaseURL(port)
 
 	conf := config.New()
 	conf.HTTP.Port = port
-	htpasswdPath := MakeHtpasswdFileFromString(getCredString(username, passphrase))
+	htpasswdPath := test.MakeHtpasswdFileFromString(getCredString(username, passphrase))
 
 	conf.HTTP.Auth = &config.AuthConfig{
 		HTPasswd: config.AuthHTPasswd{
@@ -2838,7 +2837,7 @@ func TestParallelRequests(t *testing.T) {
 	ctlr.Config.Storage.RootDirectory = dir
 
 	go startServer(ctlr)
-	WaitTillServerReady(baseURL)
+	test.WaitTillServerReady(baseURL)
 
 	// without creds, should get access error
 	for i, testcase := range testCases {
@@ -3048,12 +3047,12 @@ func TestParallelRequests(t *testing.T) {
 
 func TestHardLink(t *testing.T) {
 	Convey("Validate hard link", t, func() {
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
 
 		conf := config.New()
 		conf.HTTP.Port = port
-		htpasswdPath := MakeHtpasswdFileFromString(getCredString(username, passphrase))
+		htpasswdPath := test.MakeHtpasswdFileFromString(getCredString(username, passphrase))
 
 		conf.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{
@@ -3093,7 +3092,7 @@ func TestHardLink(t *testing.T) {
 
 		go startServer(ctlr)
 		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		test.WaitTillServerReady(baseURL)
 
 		err = os.Chmod(dir, 0o644)
 		if err != nil {
@@ -3112,8 +3111,8 @@ func TestHardLink(t *testing.T) {
 func TestImageSignatures(t *testing.T) {
 	Convey("Validate signatures", t, func() {
 		// start a new server
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
 
 		conf := config.New()
 		conf.HTTP.Port = port
@@ -3150,7 +3149,7 @@ func TestImageSignatures(t *testing.T) {
 		resp, err := resty.R().Post(baseURL + fmt.Sprintf("/v2/%s/blobs/uploads/", repoName))
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-		loc := Location(baseURL, resp)
+		loc := test.Location(baseURL, resp)
 		So(loc, ShouldNotBeEmpty)
 
 		resp, err = resty.R().Get(loc)
@@ -3169,11 +3168,29 @@ func TestImageSignatures(t *testing.T) {
 		So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
 		So(resp.Header().Get(api.DistContentDigestKey), ShouldNotBeEmpty)
 
+		// upload image config blob
+		resp, err = resty.R().Post(baseURL + fmt.Sprintf("/v2/%s/blobs/uploads/", repoName))
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+		loc = test.Location(baseURL, resp)
+		cblob, cdigest := test.GetRandomImageConfig()
+
+		resp, err = resty.R().
+			SetContentLength(true).
+			SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", cdigest.String()).
+			SetBody(cblob).
+			Put(loc)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
 		// create a manifest
 		manifest := ispec.Manifest{
 			Config: ispec.Descriptor{
-				Digest: digest,
-				Size:   int64(len(content)),
+				MediaType: "application/vnd.oci.image.config.v1+json",
+				Digest:    cdigest,
+				Size:      int64(len(cblob)),
 			},
 			Layers: []ispec.Descriptor{
 				{

@@ -20,7 +20,7 @@ import (
 	"gopkg.in/resty.v1"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
-	. "zotregistry.io/zot/test"
+	. "zotregistry.io/zot/pkg/test"
 )
 
 const (

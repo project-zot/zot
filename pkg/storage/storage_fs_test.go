@@ -21,6 +21,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/test"
 )
 
 func TestStorageFSAPIs(t *testing.T) {
@@ -57,10 +58,20 @@ func TestStorageFSAPIs(t *testing.T) {
 
 			annotationsMap := make(map[string]string)
 			annotationsMap[ispec.AnnotationRefName] = "1.0"
+
+			cblob, cdigest := test.GetRandomImageConfig()
+			_, clen, err := imgStore.FullBlobUpload("test", bytes.NewReader(cblob), cdigest.String())
+			So(err, ShouldBeNil)
+			So(clen, ShouldEqual, len(cblob))
+			hasBlob, _, err := imgStore.CheckBlob("test", cdigest.String())
+			So(err, ShouldBeNil)
+			So(hasBlob, ShouldEqual, true)
+
 			manifest := ispec.Manifest{
 				Config: ispec.Descriptor{
-					Digest: digest,
-					Size:   int64(buflen),
+					MediaType: "application/vnd.oci.image.config.v1+json",
+					Digest:    cdigest,
+					Size:      int64(len(cblob)),
 				},
 				Layers: []ispec.Descriptor{
 					{
@@ -188,12 +199,19 @@ func TestDedupeLinks(t *testing.T) {
 		_, _, err = imgStore.GetBlob("dedupe1", digest.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
 		So(err, ShouldBeNil)
 
-		manifest := ispec.Manifest{}
-		manifest.SchemaVersion = 2
-		manifest = ispec.Manifest{
+		cblob, cdigest := test.GetRandomImageConfig()
+		_, clen, err := imgStore.FullBlobUpload("dedupe1", bytes.NewReader(cblob), cdigest.String())
+		So(err, ShouldBeNil)
+		So(clen, ShouldEqual, len(cblob))
+		hasBlob, _, err := imgStore.CheckBlob("dedupe1", cdigest.String())
+		So(err, ShouldBeNil)
+		So(hasBlob, ShouldEqual, true)
+
+		manifest := ispec.Manifest{
 			Config: ispec.Descriptor{
-				Digest: digest,
-				Size:   int64(buflen),
+				MediaType: "application/vnd.oci.image.config.v1+json",
+				Digest:    cdigest,
+				Size:      int64(len(cblob)),
 			},
 			Layers: []ispec.Descriptor{
 				{
@@ -237,12 +255,19 @@ func TestDedupeLinks(t *testing.T) {
 		_, _, err = imgStore.GetBlob("dedupe2", digest.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
 		So(err, ShouldBeNil)
 
-		manifest = ispec.Manifest{}
-		manifest.SchemaVersion = 2
+		cblob, cdigest = test.GetRandomImageConfig()
+		_, clen, err = imgStore.FullBlobUpload("dedupe2", bytes.NewReader(cblob), cdigest.String())
+		So(err, ShouldBeNil)
+		So(clen, ShouldEqual, len(cblob))
+		hasBlob, _, err = imgStore.CheckBlob("dedupe2", cdigest.String())
+		So(err, ShouldBeNil)
+		So(hasBlob, ShouldEqual, true)
+
 		manifest = ispec.Manifest{
 			Config: ispec.Descriptor{
-				Digest: digest,
-				Size:   int64(buflen),
+				MediaType: "application/vnd.oci.image.config.v1+json",
+				Digest:    cdigest,
+				Size:      int64(len(cblob)),
 			},
 			Layers: []ispec.Descriptor{
 				{

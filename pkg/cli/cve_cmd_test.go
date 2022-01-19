@@ -21,7 +21,7 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
-	. "zotregistry.io/zot/test"
+	"zotregistry.io/zot/pkg/test"
 )
 
 func TestSearchCVECmd(t *testing.T) {
@@ -286,8 +286,8 @@ func TestSearchCVECmd(t *testing.T) {
 }
 
 func TestServerCVEResponse(t *testing.T) {
-	port := GetFreePort()
-	url := GetBaseURL(port)
+	port := test.GetFreePort()
+	url := test.GetBaseURL(port)
 	conf := config.New()
 	conf.HTTP.Port = port
 	ctlr := api.NewController(conf)
@@ -297,7 +297,7 @@ func TestServerCVEResponse(t *testing.T) {
 		panic(err)
 	}
 
-	err = CopyFiles("../../test/data/zot-cve-test", path.Join(dir, "zot-cve-test"))
+	err = test.CopyFiles("../../test/data/zot-cve-test", path.Join(dir, "zot-cve-test"))
 	if err != nil {
 		panic(err)
 	}
