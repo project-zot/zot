@@ -3,6 +3,8 @@ package digestinfo
 import (
 	"strings"
 
+	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	"zotregistry.io/zot/pkg/log"
@@ -15,6 +17,12 @@ type DigestInfo struct {
 	LayoutUtils *common.BaseOciLayoutUtils
 }
 
+type ImageInfoByDigest struct {
+	Tag      string
+	Digest   digest.Digest
+	Manifest v1.Manifest
+}
+
 // NewDigestInfo initializes a new DigestInfo object.
 func NewDigestInfo(storeController storage.StoreController, log log.Logger) *DigestInfo {
 	layoutUtils := common.NewBaseOciLayoutUtils(storeController, log)
@@ -23,14 +31,14 @@ func NewDigestInfo(storeController storage.StoreController, log log.Logger) *Dig
 }
 
 // FilterImagesByDigest returns a list of image tags in a repository matching a specific divest.
-func (digestinfo DigestInfo) GetImageTagsByDigest(repo, digest string) ([]*string, error) {
-	uniqueTags := []*string{}
+func (digestinfo DigestInfo) GetImageTagsByDigest(repo, digest string) ([]ImageInfoByDigest, error) {
+	imageTags := []ImageInfoByDigest{}
 
 	manifests, err := digestinfo.LayoutUtils.GetImageManifests(repo)
 	if err != nil {
 		digestinfo.Log.Error().Err(err).Msg("unable to read image manifests")
 
-		return uniqueTags, err
+		return imageTags, err
 	}
 
 	for _, manifest := range manifests {
@@ -42,7 +50,7 @@ func (digestinfo DigestInfo) GetImageTagsByDigest(repo, digest string) ([]*strin
 			if err != nil {
 				digestinfo.Log.Error().Err(err).Msg("unable to read image blob manifest")
 
-				return uniqueTags, err
+				return imageTags, err
 			}
 
 			tags := []*string{}
@@ -71,12 +79,12 @@ func (digestinfo DigestInfo) GetImageTagsByDigest(repo, digest string) ([]*strin
 
 			for _, entry := range tags {
 				if _, value := keys[*entry]; !value {
-					uniqueTags = append(uniqueTags, entry)
+					imageTags = append(imageTags, ImageInfoByDigest{Tag: *entry, Digest: imageDigest, Manifest: imageBlobManifest})
 					keys[*entry] = true
 				}
 			}
 		}
 	}
 
-	return uniqueTags, nil
+	return imageTags, nil
 }

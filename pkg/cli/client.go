@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -283,16 +284,12 @@ func (p *requestsPool) doJob(ctx context.Context, job *manifestJob) {
 
 	image := &imageStruct{}
 	image.verbose = *job.config.verbose
-	image.Name = job.imageName
-	image.Tags = []tags{
-		{
-			Name:         job.tagName,
-			Digest:       digest,
-			Size:         size,
-			ConfigDigest: configDigest,
-			Layers:       layers,
-		},
-	}
+	image.RepoName = job.imageName
+	image.Tag = job.tagName
+	image.Digest = digest
+	image.Size = strconv.Itoa(int(size))
+	image.ConfigDigest = configDigest
+	image.Layers = layers
 
 	str, err := image.string(*job.config.outputFormat)
 	if err != nil {

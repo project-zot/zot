@@ -11,6 +11,7 @@ import (
 	"github.com/aquasecurity/trivy/pkg/commands/operation"
 	"github.com/aquasecurity/trivy/pkg/report"
 	"github.com/aquasecurity/trivy/pkg/types"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/urfave/cli/v2"
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	"zotregistry.io/zot/pkg/log"
@@ -141,19 +142,21 @@ func (cveinfo CveInfo) GetTrivyContext(image string) *TrivyCtx {
 
 func (cveinfo CveInfo) GetImageListForCVE(repo, cvid string, imgStore storage.ImageStore,
 	trivyCtx *TrivyCtx,
-) ([]*string, error) {
-	tags := make([]*string, 0)
-
-	tagList, err := imgStore.GetImageTags(repo)
-	if err != nil {
-		cveinfo.Log.Error().Err(err).Msg("unable to get list of image tag")
-
-		return tags, err
-	}
+) ([]ImageInfoByCVE, error) {
+	imgList := make([]ImageInfoByCVE, 0)
 
 	rootDir := imgStore.RootDir()
 
-	for _, tag := range tagList {
+	manifests, err := cveinfo.LayoutUtils.GetImageManifests(repo)
+	if err != nil {
+		cveinfo.Log.Error().Err(err).Msg("unable to get list of image tag")
+
+		return imgList, err
+	}
+
+	for _, manifest := range manifests {
+		tag := manifest.Annotations[ispec.AnnotationRefName]
+
 		image := fmt.Sprintf("%s:%s", repo, tag)
 
 		trivyCtx.Input = path.Join(rootDir, image)
@@ -177,8 +180,20 @@ func (cveinfo CveInfo) GetImageListForCVE(repo, cvid string, imgStore storage.Im
 		for _, result := range report.Results {
 			for _, vulnerability := range result.Vulnerabilities {
 				if vulnerability.VulnerabilityID == cvid {
-					copyImgTag := tag
-					tags = append(tags, &copyImgTag)
+					digest := manifest.Digest
+
+					imageBlobManifest, err := cveinfo.LayoutUtils.GetImageBlobManifest(repo, digest)
+					if err != nil {
+						cveinfo.Log.Error().Err(err).Msg("unable to read image blob manifest")
+
+						return []ImageInfoByCVE{}, err
+					}
+
+					imgList = append(imgList, ImageInfoByCVE{
+						Tag:      tag,
+						Digest:   digest,
+						Manifest: imageBlobManifest,
+					})
 
 					break
 				}
@@ -186,5 +201,5 @@ func (cveinfo CveInfo) GetImageListForCVE(repo, cvid string, imgStore storage.Im
 		}
 	}
 
-	return tags, nil
+	return imgList, nil
 }

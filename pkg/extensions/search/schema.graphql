@@ -1,123 +1,91 @@
 scalar Time
 
 type CVEResultForImage {
-     Tag: String 
-     CVEList: [CVE]
+    Tag: String 
+    CVEList: [CVE]
 }
 
 type CVE {
-     Id: String 
-     Title: String
-     Description: String
-     Severity: String
-     PackageList: [PackageInfo]
+    Id: String 
+    Title: String
+    Description: String
+    Severity: String
+    PackageList: [PackageInfo]
 }
 
 type PackageInfo {
-     Name: String 
-     InstalledVersion: String 
-     FixedVersion: String 
-}
-
-type ImgResultForCVE {
-     Name: String 
-     Tags: [String]
-}
-
-type ImgResultForFixedCVE {
-     Tags: [TagInfo]
-}
-
-type ImgResultForDigest {
-     Name: String
-     Tags: [String]
-}
-
-type TagInfo {
-     Name: String
-     Digest: String
-     Timestamp: Time
-}
-
-type ImageInfo {
-     Name: String
-     Latest: String
-     LastUpdated: Time
-     Description: String
-     Licenses: String
-     Vendor: String
-     Size: String
-     Labels: String
+    Name: String 
+    InstalledVersion: String 
+    FixedVersion: String 
 }
 
 type RepoInfo {
-     Manifests: [ManifestInfo]
-     Summary: RepoSummary
-}
-
-type ManifestInfo {
-     Digest: String
-     Tag: String
-     IsSigned: Boolean
-     Layers: [LayerInfo]
-}
-
-type LayerInfo {
-     Size: String # Int64 is not supported.
-     Digest: String
+    Images: [ImageSummary]
+    Summary: RepoSummary
 }
 
 # Search results in all repos/images/layers
 # There will be other more structures for more detailed information
 type GlobalSearchResult {
-     Images: [ImageSummary]
-     Repos: [RepoSummary]
-     Layers: [LayerSummary]
+    Images: [ImageSummary]
+    Repos: [RepoSummary]
+    Layers: [LayerSummary]
 }
 
 # Brief on a specific image to be used in queries returning a list of images
 # We define an image as a pairing or a repo and a tag belonging to that repo
 type ImageSummary {
-     RepoName: String
-     Tag: String
-     LastUpdated: Time
-     IsSigned: Boolean
-     Size: String
-     Platform: OsArch
-     Vendor: String
-     Score: Int
+    RepoName: String
+    Tag: String
+    Digest: String
+    ConfigDigest: String
+    LastUpdated: Time
+    IsSigned: Boolean
+    Size: String
+    Platform: OsArch
+    Vendor: String
+    Score: Int
+    DownloadCount: Int
+    Layers: [LayerSummary]
+    Description: String
+    Licenses: String
+    Labels: String
 }
 
 # Brief on a specific repo to be used in queries returning a list of repos
 type RepoSummary {
-     Name: String
-     LastUpdated: Time
-     Size: String
-     Platforms: [OsArch]
-     Vendors: [String]
-     Score: Int
-     NewestTag: ImageSummary
+    Name: String
+    LastUpdated: Time
+    Size: String
+    Platforms: [OsArch]
+    Vendors: [String]
+    Score: Int
+    NewestImage: ImageSummary
+    DownloadCount: Int
+    StarCount: Int
+    IsBookmarked: Boolean
 }
 
 # Currently the same as LayerInfo, we can refactor later
 # For detailed information on the layer a ImageListForDigest call can be made
 type LayerSummary {
-     Size: String # Int64 is not supported.
-     Digest: String
-     Score: Int
+    Size: String  # Int64 is not supported.
+    Digest: String
+    Score: Int
 }
 
 type OsArch {
-     Os: String
-     Arch: String
+    Os: String
+    Arch: String
 }
 
 type Query {
-  CVEListForImage(image: String!) :CVEResultForImage 
-  ImageListForCVE(id: String!) :[ImgResultForCVE]
-  ImageListWithCVEFixed(id: String!, image: String!) :ImgResultForFixedCVE
-  ImageListForDigest(id: String!) :[ImgResultForDigest]
-  ImageListWithLatestTag:[ImageInfo]
-  ExpandedRepoInfo(repo: String!):RepoInfo
-  GlobalSearch(query: String!): GlobalSearchResult
+    CVEListForImage(image: String!): CVEResultForImage!
+    ImageListForCVE(id: String!): [ImageSummary!]
+    ImageListWithCVEFixed(id: String!, image: String!): [ImageSummary!]
+    ImageListForDigest(id: String!): [ImageSummary!]
+    ImageListWithLatestTag: [ImageSummary!]
+    ImageList(repo: String!): [ImageSummary!]
+    ExpandedRepoInfo(repo: String!): RepoInfo!
+    GlobalSearch(query: String!): GlobalSearchResult!
 }

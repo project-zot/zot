@@ -2,7 +2,6 @@ package common
 
 import (
 	"fmt"
-	"path"
 	"sort"
 	"strings"
 	"time"
@@ -23,14 +22,6 @@ type TagInfo struct {
 	Name      string
 	Digest    string
 	Timestamp time.Time
-}
-
-func GetImageRepoPath(image string, storeController storage.StoreController) string {
-	rootDir := GetRootDir(image, storeController)
-
-	repo := GetRepo(image)
-
-	return path.Join(rootDir, repo)
 }
 
 func GetRootDir(image string, storeController storage.StoreController) string {

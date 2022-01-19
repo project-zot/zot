@@ -50,6 +50,7 @@ linters-settings:
       - github.com/containers/image/v5
       - github.com/opencontainers/image-spec
       - github.com/open-policy-agent/opa
+      - github.com/vektah/gqlparser/v2
       - go.opentelemetry.io/otel
       - go.opentelemetry.io/otel/exporters/otlp
       - go.opentelemetry.io/otel/metric

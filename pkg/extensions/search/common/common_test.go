@@ -97,7 +97,7 @@ type RepoSummary struct {
 	Platforms   []OsArch     `json:"platforms"`
 	Vendors     []string     `json:"vendors"`
 	Score       int          `json:"score"`
-	NewestTag   ImageSummary `json:"newestTag"`
+	NewestImage ImageSummary `json:"newestImage"`
 }
 
 type LayerSummary struct {
@@ -126,8 +126,8 @@ type ErrorGQL struct {
 }
 
 type ImageInfo struct {
-	Name        string
-	Latest      string
+	RepoName    string
+	Tag         string
 	LastUpdated time.Time
 	Description string
 	Licenses    string
@@ -377,7 +377,7 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 422)
 
-		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query={ImageListWithLatestTag(){Name%20Latest}}")
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query={ImageListWithLatestTag(){RepoName%20Tag}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -388,9 +388,9 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 		So(len(responseStruct.ImgListWithLatestTag.Images), ShouldEqual, 4)
 
 		images := responseStruct.ImgListWithLatestTag.Images
-		So(images[0].Latest, ShouldEqual, "0.0.1")
+		So(images[0].Tag, ShouldEqual, "0.0.1")
 
-		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query={ImageListWithLatestTag(){Name%20Latest}}")
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query={ImageListWithLatestTag(){RepoName%20Tag}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
@@ -399,7 +399,7 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 			panic(err)
 		}
 
-		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query={ImageListWithLatestTag(){Name%20Latest}}")
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query={ImageListWithLatestTag(){RepoName%20Tag}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -423,7 +423,7 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 			panic(err)
 		}
 
-		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query={ImageListWithLatestTag(){Name%20Latest}}")
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query={ImageListWithLatestTag(){RepoName%20Tag}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -434,7 +434,7 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 			panic(err)
 		}
 
-		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query={ImageListWithLatestTag(){Name%20Latest}}")
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query={ImageListWithLatestTag(){RepoName%20Tag}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -444,7 +444,7 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 			panic(err)
 		}
 
-		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query={ImageListWithLatestTag(){Name%20Latest}}")
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query={ImageListWithLatestTag(){RepoName%20Tag}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -455,7 +455,7 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 			panic(err)
 		}
 
-		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query={ImageListWithLatestTag(){Name%20Latest}}")
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query={ImageListWithLatestTag(){RepoName%20Tag}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -532,7 +532,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(responseStruct.ExpandedRepoInfo.RepoInfo.Summary.Name, ShouldEqual, "zot-cve-test")
 		So(responseStruct.ExpandedRepoInfo.RepoInfo.Summary.Score, ShouldEqual, -1)
 
-		query = "{ExpandedRepoInfo(repo:\"zot-cve-test\"){Manifests%20{Digest%20IsSigned%20Tag%20Layers%20{Size%20Digest}}}}"
+		query = "{ExpandedRepoInfo(repo:\"zot-cve-test\"){Images%20{Digest%20IsSigned%20Tag%20Layers%20{Size%20Digest}}}}"
 
 		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + query)
 		So(resp, ShouldNotBeNil)
@@ -543,10 +543,10 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
-		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Manifests), ShouldNotEqual, 0)
-		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Manifests[0].Layers), ShouldNotEqual, 0)
+		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Images), ShouldNotEqual, 0)
+		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Images[0].Layers), ShouldNotEqual, 0)
 		found := false
-		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.Manifests {
+		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.Images {
 			if m.Digest == "63a795ca90aa6e7cca60941e826810a4cd0a2e73ea02bf458241df2a5c973e29" {
 				found = true
 				So(m.IsSigned, ShouldEqual, false)
@@ -564,10 +564,10 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
-		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Manifests), ShouldNotEqual, 0)
-		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Manifests[0].Layers), ShouldNotEqual, 0)
+		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Images), ShouldNotEqual, 0)
+		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Images[0].Layers), ShouldNotEqual, 0)
 		found = false
-		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.Manifests {
+		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.Images {
 			if m.Digest == "63a795ca90aa6e7cca60941e826810a4cd0a2e73ea02bf458241df2a5c973e29" {
 				found = true
 				So(m.IsSigned, ShouldEqual, true)
@@ -575,14 +575,14 @@ func TestExpandedRepoInfo(t *testing.T) {
 		}
 		So(found, ShouldEqual, true)
 
-		query = "{ExpandedRepoInfo(repo:\"\"){Manifests%20{Digest%20Tag%20IsSigned%20Layers%20{Size%20Digest}}}}"
+		query = "{ExpandedRepoInfo(repo:\"\"){Images%20{Digest%20Tag%20IsSigned%20Layers%20{Size%20Digest}}}}"
 
 		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + query)
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		query = "{ExpandedRepoInfo(repo:\"zot-test\"){Manifests%20{Digest%20Tag%20IsSigned%20Layers%20{Size%20Digest}}}}"
+		query = "{ExpandedRepoInfo(repo:\"zot-test\"){Images%20{Digest%20Tag%20IsSigned%20Layers%20{Size%20Digest}}}}"
 		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + query)
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
@@ -590,10 +590,10 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
-		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Manifests), ShouldNotEqual, 0)
-		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Manifests[0].Layers), ShouldNotEqual, 0)
+		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Images), ShouldNotEqual, 0)
+		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Images[0].Layers), ShouldNotEqual, 0)
 		found = false
-		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.Manifests {
+		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.Images {
 			if m.Digest == "2bacca16b9df395fc855c14ccf50b12b58d35d468b8e7f25758aff90f89bf396" {
 				found = true
 				So(m.IsSigned, ShouldEqual, false)
@@ -611,10 +611,10 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
-		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Manifests), ShouldNotEqual, 0)
-		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Manifests[0].Layers), ShouldNotEqual, 0)
+		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Images), ShouldNotEqual, 0)
+		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Images[0].Layers), ShouldNotEqual, 0)
 		found = false
-		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.Manifests {
+		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.Images {
 			if m.Digest == "2bacca16b9df395fc855c14ccf50b12b58d35d468b8e7f25758aff90f89bf396" {
 				found = true
 				So(m.IsSigned, ShouldEqual, true)
@@ -832,7 +832,7 @@ func TestGlobalSearch(t *testing.T) {
       					}
       					Vendors
 						Score
-						NewestTag {
+						NewestImage {
 							RepoName
 							Tag
 							LastUpdated
@@ -911,14 +911,14 @@ func TestGlobalSearch(t *testing.T) {
 			So(repo.Vendors[0], ShouldEqual, image.Vendor)
 			So(repo.Platforms[0].Os, ShouldEqual, image.Platform.Os)
 			So(repo.Platforms[0].Arch, ShouldEqual, image.Platform.Arch)
-			So(repo.NewestTag.RepoName, ShouldEqual, image.RepoName)
-			So(repo.NewestTag.Tag, ShouldEqual, image.Tag)
-			So(repo.NewestTag.LastUpdated, ShouldEqual, image.LastUpdated)
-			So(repo.NewestTag.Size, ShouldEqual, image.Size)
-			So(repo.NewestTag.IsSigned, ShouldEqual, image.IsSigned)
-			So(repo.NewestTag.Vendor, ShouldEqual, image.Vendor)
-			So(repo.NewestTag.Platform.Os, ShouldEqual, image.Platform.Os)
-			So(repo.NewestTag.Platform.Arch, ShouldEqual, image.Platform.Arch)
+			So(repo.NewestImage.RepoName, ShouldEqual, image.RepoName)
+			So(repo.NewestImage.Tag, ShouldEqual, image.Tag)
+			So(repo.NewestImage.LastUpdated, ShouldEqual, image.LastUpdated)
+			So(repo.NewestImage.Size, ShouldEqual, image.Size)
+			So(repo.NewestImage.IsSigned, ShouldEqual, image.IsSigned)
+			So(repo.NewestImage.Vendor, ShouldEqual, image.Vendor)
+			So(repo.NewestImage.Platform.Os, ShouldEqual, image.Platform.Os)
+			So(repo.NewestImage.Platform.Arch, ShouldEqual, image.Platform.Arch)
 		}
 
 		// GetRepositories fail

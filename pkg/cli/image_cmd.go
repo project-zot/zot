@@ -129,7 +129,15 @@ func setupImageFlags(imageCmd *cobra.Command, searchImageParams map[string]*stri
 }
 
 func searchImage(searchConfig searchConfig) error {
-	for _, searcher := range getImageSearchers() {
+	var searchers []searcher
+
+	if checkExtEndPoint(*searchConfig.servURL) {
+		searchers = getImageSearchersGQL()
+	} else {
+		searchers = getImageSearchers()
+	}
+
+	for _, searcher := range searchers {
 		found, err := searcher.search(searchConfig)
 		if found {
 			if err != nil {
