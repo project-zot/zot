@@ -13,7 +13,6 @@ import (
 	"path"
 	"regexp"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -26,6 +25,10 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/test"
+)
+
+const (
+	BaseURL = "http://127.0.0.1:%s"
 )
 
 func TestSearchImageCmd(t *testing.T) {
@@ -220,8 +223,8 @@ func TestOutputFormat(t *testing.T) {
 		err := cmd.Execute()
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
-		So(strings.TrimSpace(str), ShouldEqual, `{ "name": "dummyImageName", "tags": [ { "name":`+
-			` "tag", "size": 123445, "digest": "DigestsAreReallyLong", "configDigest": "", "layerDigests": null } ] }`)
+		So(strings.TrimSpace(str), ShouldEqual, `{ "name": "dummyImageName", "tag":`+
+			` "tag", "configDigest": "", "digest": "DigestsAreReallyLong", "layers": null, "size": "123445" }`)
 		So(err, ShouldBeNil)
 	})
 
@@ -239,14 +242,21 @@ func TestOutputFormat(t *testing.T) {
 		err := cmd.Execute()
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
-		So(strings.TrimSpace(str), ShouldEqual, `name: dummyImageName tags: -`+
-			` name: tag size: 123445 digest: DigestsAreReallyLong configdigest: "" layers: []`)
+		So(
+			strings.TrimSpace(str),
+			ShouldEqual,
+			`name: dummyImageName tag: tag configdigest: "" `+
+				`digest: DigestsAreReallyLong layers: [] size: "123445"`,
+		)
 		So(err, ShouldBeNil)
 
 		Convey("Test yml", func() {
 			args := []string{"imagetest", "--name", "dummyImageName", "-o", "yml"}
 
-			configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","url":"https://test-url.com","showspinner":false}]}`)
+			configPath := makeConfigFile(
+				`{"configs":[{"_name":"imagetest",` +
+					`"url":"https://test-url.com","showspinner":false}]}`,
+			)
 			defer os.Remove(configPath)
 
 			cmd := NewImageCommand(new(mockService))
@@ -257,8 +267,12 @@ func TestOutputFormat(t *testing.T) {
 			err := cmd.Execute()
 			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
-			So(strings.TrimSpace(str), ShouldEqual, `name: dummyImageName tags: -`+
-				` name: tag size: 123445 digest: DigestsAreReallyLong configdigest: "" layers: []`)
+			So(
+				strings.TrimSpace(str),
+				ShouldEqual,
+				`name: dummyImageName tag: tag configdigest: "" `+
+					`digest: DigestsAreReallyLong layers: [] size: "123445"`,
+			)
 			So(err, ShouldBeNil)
 		})
 	})
@@ -329,8 +343,8 @@ func TestServerResponse(t *testing.T) {
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIZE")
-			So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 15B")
-			So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 15B")
+			So(actual, ShouldContainSubstring, "repo7 test:2.0 fdf5f251 243B")
+			So(actual, ShouldContainSubstring, "repo7 test:1.0 9beeea29 243B")
 		})
 
 		Convey("Test all images verbose", func() {
@@ -354,8 +368,8 @@ func TestServerResponse(t *testing.T) {
 			// repo7         test:1.0  a0ca253b  b8781e88            15B
 			//                                             b8781e88  15B
 			So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST CONFIG LAYERS SIZE")
-			So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 3a1d2d0c 15B b8781e88 15B")
-			So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 3a1d2d0c 15B b8781e88 15B")
+			So(actual, ShouldContainSubstring, "repo7 test:2.0 fdf5f251 dae17351 243B 2f2284ba 243B")
+			So(actual, ShouldContainSubstring, "repo7 test:1.0 9beeea29 a09bf3b5 243B 58f98639 243B")
 		})
 
 		Convey("Test image by name config url", func() {
@@ -373,8 +387,8 @@ func TestServerResponse(t *testing.T) {
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIZE")
-			So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 15B")
-			So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 15B")
+			So(actual, ShouldContainSubstring, "repo7 test:2.0 fdf5f251 243B")
+			So(actual, ShouldContainSubstring, "repo7 test:1.0 9beeea29 243B")
 
 			Convey("with shorthand", func() {
 				args := []string{"imagetest", "-n", "repo7"}
@@ -391,13 +405,13 @@ func TestServerResponse(t *testing.T) {
 				str := space.ReplaceAllString(buff.String(), " ")
 				actual := strings.TrimSpace(str)
 				So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIZE")
-				So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 15B")
-				So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 15B")
+				So(actual, ShouldContainSubstring, "repo7 test:2.0 fdf5f251 243B")
+				So(actual, ShouldContainSubstring, "repo7 test:1.0 9beeea29 243B")
 			})
 		})
 
 		Convey("Test image by digest", func() {
-			args := []string{"imagetest", "--digest", "883fc0c5"}
+			args := []string{"imagetest", "--digest", "fdf5f251"}
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 			defer os.Remove(configPath)
 			cmd := NewImageCommand(new(searchService))
@@ -415,10 +429,9 @@ func TestServerResponse(t *testing.T) {
 			// repo7         test:2.0  a0ca253b  15B
 			// repo7         test:1.0  a0ca253b  15B
 			So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIZE")
-			So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 15B")
-			So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 15B")
+			So(actual, ShouldContainSubstring, "repo7 test:2.0 fdf5f251 243B")
 			Convey("with shorthand", func() {
-				args := []string{"imagetest", "-d", "883fc0c5"}
+				args := []string{"imagetest", "-d", "fdf5f251"}
 				configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 				defer os.Remove(configPath)
 				cmd := NewImageCommand(new(searchService))
@@ -432,8 +445,7 @@ func TestServerResponse(t *testing.T) {
 				str := space.ReplaceAllString(buff.String(), " ")
 				actual := strings.TrimSpace(str)
 				So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIZE")
-				So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 15B")
-				So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 15B")
+				So(actual, ShouldContainSubstring, "repo7 test:2.0 fdf5f251 243B")
 			})
 		})
 
@@ -459,35 +471,43 @@ func uploadManifest(url string) {
 	resp, _ := resty.R().Post(url + "/v2/repo7/blobs/uploads/")
 	loc := test.Location(url, resp)
 
-	content := []byte("this is a blob5")
-	digest := godigest.FromBytes(content)
-	_, _ = resty.R().SetQueryParam("digest", digest.String()).
+	content := []byte("this is a blob")
+	layerDigest := godigest.FromBytes(content)
+	_, _ = resty.R().SetQueryParam("digest", layerDigest.String()).
 		SetHeader("Content-Type", "application/octet-stream").SetBody(content).Put(loc)
 
-	// upload image config blob
+	creationTime1, _ := time.Parse(time.RFC3339, "2021-09-14:45:26.371Z")
+	imageConf := ispec.Image{
+		Created:      &creationTime1,
+		Author:       "",
+		Architecture: "amd64",
+		OS:           "linux",
+		Config:       ispec.ImageConfig{},
+		RootFS: ispec.RootFS{
+			Type:    "layers",
+			DiffIDs: []godigest.Digest{layerDigest},
+		},
+		History: []ispec.History{{Created: &creationTime1}},
+	}
+
 	resp, _ = resty.R().Post(url + "/v2/repo7/blobs/uploads/")
 	loc = test.Location(url, resp)
-	cblob, cdigest := test.GetImageConfig()
 
-	_, _ = resty.R().
-		SetContentLength(true).
-		SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
-		SetHeader("Content-Type", "application/octet-stream").
-		SetQueryParam("digest", cdigest.String()).
-		SetBody(cblob).
-		Put(loc)
+	content, _ = json.Marshal(imageConf)
+	imageConfDigest := godigest.FromBytes(content)
+	_, _ = resty.R().SetQueryParam("digest", imageConfDigest.String()).
+		SetHeader("Content-Type", "application/octet-stream").SetBody(content).Put(loc)
 
 	// create a manifest
 	manifest := ispec.Manifest{
 		Config: ispec.Descriptor{
-			MediaType: "application/vnd.oci.image.config.v1+json",
-			Digest:    cdigest,
-			Size:      int64(len(cblob)),
+			Digest: imageConfDigest,
+			Size:   int64(len(content)),
 		},
 		Layers: []ispec.Descriptor{
 			{
 				MediaType: "application/vnd.oci.image.layer.v1.tar",
-				Digest:    digest,
+				Digest:    layerDigest,
 				Size:      int64(len(content)),
 			},
 		},
@@ -497,19 +517,46 @@ func uploadManifest(url string) {
 	_, _ = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
 		SetBody(content).Put(url + "/v2/repo7/manifests/test:1.0")
 
-	content = []byte("this is a blob5")
-	digest = godigest.FromBytes(content)
-	// create a manifest with same blob but a different tag
+	// upload another image
+	resp, _ = resty.R().Post(url + "/v2/repo7/blobs/uploads/")
+	loc = test.Location(url, resp)
+
+	content = []byte("this is a another blob")
+	layerDigest = godigest.FromBytes(content)
+	_, _ = resty.R().SetQueryParam("digest", layerDigest.String()).
+		SetHeader("Content-Type", "application/octet-stream").SetBody(content).Put(loc)
+
+	creationTime2, _ := time.Parse(time.RFC3339, "2021-09-15:45:26.371Z")
+	imageConf = ispec.Image{
+		Created:      &creationTime2,
+		Author:       "",
+		Architecture: "amd64",
+		OS:           "linux",
+		Config:       ispec.ImageConfig{},
+		RootFS: ispec.RootFS{
+			Type:    "layers",
+			DiffIDs: []godigest.Digest{layerDigest},
+		},
+		History: []ispec.History{{Created: &creationTime2}},
+	}
+
+	resp, _ = resty.R().Post(url + "/v2/repo7/blobs/uploads/")
+	loc = test.Location(url, resp)
+
+	content, _ = json.Marshal(imageConf)
+	imageConfDigest = godigest.FromBytes(content)
+	_, _ = resty.R().SetQueryParam("digest", imageConfDigest.String()).
+		SetHeader("Content-Type", "application/octet-stream").SetBody(content).Put(loc)
+
 	manifest = ispec.Manifest{
 		Config: ispec.Descriptor{
-			MediaType: "application/vnd.oci.image.config.v1+json",
-			Digest:    cdigest,
-			Size:      int64(len(cblob)),
+			Digest: imageConfDigest,
+			Size:   int64(len(content)),
 		},
 		Layers: []ispec.Descriptor{
 			{
 				MediaType: "application/vnd.oci.image.layer.v1.tar",
-				Digest:    digest,
+				Digest:    layerDigest,
 				Size:      int64(len(content)),
 			},
 		},
@@ -522,61 +569,51 @@ func uploadManifest(url string) {
 
 type mockService struct{}
 
-func (service mockService) getAllImages(ctx context.Context, config searchConfig, username, password string,
-	channel chan stringResult, wtgrp *sync.WaitGroup) {
-	defer wtgrp.Done()
-	defer close(channel)
-
-	image := &imageStruct{}
-	image.Name = "randomimageName"
-	image.Tags = []tags{
+func (service mockService) getImagesByDigest(ctx context.Context, config searchConfig, username, password string,
+	digest string,
+) (*imageListStructForDigestGQL, error) {
+	imageListGQLResponse := &imageListStructForDigestGQL{}
+	imageListGQLResponse.Data.ImageList = []imageStructGQL{
 		{
-			Name:   "tag",
+			Name:   "randomimageName",
+			Tag:    "tag",
 			Digest: "DigestsAreReallyLong",
-			Size:   123445,
+			Size:   "123445",
 		},
 	}
 
-	str, err := image.string(*config.outputFormat)
-	if err != nil {
-		channel <- stringResult{"", err}
-
-		return
-	}
-
-	channel <- stringResult{str, nil}
+	return imageListGQLResponse, nil
 }
 
-func (service mockService) getImageByName(ctx context.Context, config searchConfig,
-	username, password, imageName string, channel chan stringResult, wtgrp *sync.WaitGroup) {
-	defer wtgrp.Done()
-	defer close(channel)
-
-	image := &imageStruct{}
-	image.Name = imageName
-	image.Tags = []tags{
+func (service mockService) getImages(ctx context.Context, config searchConfig, username, password string,
+	imageName string,
+) (*imageListStructGQL, error) {
+	imageListGQLResponse := &imageListStructGQL{}
+	imageListGQLResponse.Data.ImageList = []imageStructGQL{
 		{
-			Name:   "tag",
+			Name:   "dummyImageName",
+			Tag:    "tag",
 			Digest: "DigestsAreReallyLong",
-			Size:   123445,
+			Size:   "123445",
 		},
 	}
 
-	str, err := image.string(*config.outputFormat)
-	if err != nil {
-		channel <- stringResult{"", err}
+	return imageListGQLResponse, nil
+}
 
-		return
-	}
+func (service mockService) getMockedImageByName(imageName string) imageStructGQL {
+	image := imageStructGQL{}
+	image.Name = imageName
+	image.Tag = "tag"
+	image.Digest = "DigestsAreReallyLong"
+	image.Size = "123445"
 
-	channel <- stringResult{str, nil}
+	return image
 }
 
 func (service mockService) getCveByImage(ctx context.Context, config searchConfig, username, password,
-	imageName string, rch chan stringResult, wtgrp *sync.WaitGroup) {
-	defer wtgrp.Done()
-	defer close(rch)
-
+	imageName string,
+) (*cveResult, error) {
 	cveRes := &cveResult{}
 	cveRes.Data = cveData{
 		CVEListForImage: cveListForImage{
@@ -599,34 +636,43 @@ func (service mockService) getCveByImage(ctx context.Context, config searchConfi
 		},
 	}
 
-	str, err := cveRes.string(*config.outputFormat)
-	if err != nil {
-		rch <- stringResult{"", err}
+	return cveRes, nil
+}
 
-		return
+func (service mockService) getImagesByCveID(ctx context.Context, config searchConfig, username, password string,
+	digest string,
+) (*imagesForCveGQL, error) {
+	imagesForCVEGQL := &imagesForCveGQL{
+		Errors: nil,
+		Data: struct {
+			ImageListForCVE []imageStructGQL `json:"ImageListForCVE"` // nolint:tagliatelle
+		}{},
 	}
 
-	rch <- stringResult{str, nil}
+	imagesForCVEGQL.Errors = nil
+
+	mockedImage := service.getMockedImageByName("anImage")
+	imagesForCVEGQL.Data.ImageListForCVE = []imageStructGQL{mockedImage}
+
+	return imagesForCVEGQL, nil
 }
 
-func (service mockService) getImagesByCveID(ctx context.Context, config searchConfig, username, password, cvid string,
-	rch chan stringResult, wtgrp *sync.WaitGroup) {
-	service.getImageByName(ctx, config, username, password, "anImage", rch, wtgrp)
-}
+func (service mockService) getTagsForCVE(ctx context.Context, config searchConfig, username, password,
+	imageName, cveID string, getFixed bool,
+) (*tagsForCVE, error) {
+	fixedTags := &tagsForCVE{
+		Errors: nil,
+		Data: struct {
+			TagListForCve []imageStructGQL `json:"TagListForCve"` // nolint:tagliatelle
+		}{},
+	}
 
-func (service mockService) getImagesByDigest(ctx context.Context, config searchConfig, username,
-	password, digest string, rch chan stringResult, wtgrp *sync.WaitGroup) {
-	service.getImageByName(ctx, config, username, password, "anImage", rch, wtgrp)
-}
+	fixedTags.Errors = nil
 
-func (service mockService) getImageByNameAndCVEID(ctx context.Context, config searchConfig, username,
-	password, imageName, cvid string, rch chan stringResult, wtgrp *sync.WaitGroup) {
-	service.getImageByName(ctx, config, username, password, imageName, rch, wtgrp)
-}
+	mockedImage := service.getMockedImageByName(imageName)
+	fixedTags.Data.TagListForCve = []imageStructGQL{mockedImage}
 
-func (service mockService) getFixedTagsForCVE(ctx context.Context, config searchConfig,
-	username, password, imageName, cvid string, rch chan stringResult, wtgrp *sync.WaitGroup) {
-	service.getImageByName(ctx, config, username, password, imageName, rch, wtgrp)
+	return fixedTags, nil
 }
 
 func makeConfigFile(content string) string {

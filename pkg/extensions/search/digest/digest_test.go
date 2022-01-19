@@ -109,30 +109,30 @@ func testSetup() error {
 func TestDigestInfo(t *testing.T) {
 	Convey("Test image tag", t, func() {
 		// Search by manifest digest
-		imageTags, err := digestInfo.GetImageTagsByDigest("zot-cve-test", "63a795ca")
+		imageTags, err := digestInfo.GetRepoInfoByDigest("zot-cve-test", "63a795ca")
 		So(err, ShouldBeNil)
 		So(len(imageTags), ShouldEqual, 1)
-		So(*imageTags[0], ShouldEqual, "0.0.1")
+		So(imageTags[0].TagName, ShouldEqual, "0.0.1")
 
 		// Search by config digest
-		imageTags, err = digestInfo.GetImageTagsByDigest("zot-test", "adf3bb6c")
+		imageTags, err = digestInfo.GetRepoInfoByDigest("zot-test", "adf3bb6c")
 		So(err, ShouldBeNil)
 		So(len(imageTags), ShouldEqual, 1)
-		So(*imageTags[0], ShouldEqual, "0.0.1")
+		So(imageTags[0].TagName, ShouldEqual, "0.0.1")
 
 		// Search by layer digest
-		imageTags, err = digestInfo.GetImageTagsByDigest("zot-cve-test", "7a0437f0")
+		imageTags, err = digestInfo.GetRepoInfoByDigest("zot-cve-test", "7a0437f0")
 		So(err, ShouldBeNil)
 		So(len(imageTags), ShouldEqual, 1)
-		So(*imageTags[0], ShouldEqual, "0.0.1")
+		So(imageTags[0].TagName, ShouldEqual, "0.0.1")
 
 		// Search by non-existent image
-		imageTags, err = digestInfo.GetImageTagsByDigest("zot-tes", "63a795ca")
+		imageTags, err = digestInfo.GetRepoInfoByDigest("zot-tes", "63a795ca")
 		So(err, ShouldNotBeNil)
 		So(len(imageTags), ShouldEqual, 0)
 
 		// Search by non-existent digest
-		imageTags, err = digestInfo.GetImageTagsByDigest("zot-test", "111")
+		imageTags, err = digestInfo.GetRepoInfoByDigest("zot-test", "111")
 		So(err, ShouldBeNil)
 		So(len(imageTags), ShouldEqual, 0)
 	})

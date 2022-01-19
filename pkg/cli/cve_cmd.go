@@ -68,7 +68,8 @@ func NewCveCommand(searchService SearchService) *cobra.Command {
 			}
 
 			spin := spinner.New(spinner.CharSets[39], spinnerDuration, spinner.WithWriter(cmd.ErrOrStderr()))
-			spin.Prefix = fmt.Sprintf("Fetching from %s.. ", servURL)
+			spin.Prefix = fmt.Sprintf("Fetching from %s..", servURL)
+			spin.Suffix = "\n\b"
 
 			verbose = false
 
@@ -113,6 +114,7 @@ func NewCveCommand(searchService SearchService) *cobra.Command {
 func setupCveFlags(cveCmd *cobra.Command, variables cveFlagVariables) {
 	variables.searchCveParams["imageName"] = cveCmd.Flags().StringP("image", "I", "", "List CVEs by IMAGENAME[:TAG]")
 	variables.searchCveParams["cvid"] = cveCmd.Flags().StringP("cve-id", "i", "", "List images affected by a CVE")
+	variables.searchCveParams["gql"] = cveCmd.Flags().StringP("gql", "g", "", "Use graphql")
 
 	cveCmd.Flags().StringVar(variables.servURL, "url", "", "Specify zot server URL if config-name is not mentioned")
 	cveCmd.Flags().StringVarP(variables.user, "user", "u", "", `User Credentials of `+

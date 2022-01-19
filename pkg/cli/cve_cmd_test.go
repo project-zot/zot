@@ -461,7 +461,7 @@ func TestServerCVEResponse(t *testing.T) {
 		str := space.ReplaceAllString(buff.String(), " ")
 		So(err, ShouldBeNil)
 		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIZE zot-cve-test 0.0.1 63a795ca 75MB")
-		Convey("invalidname and CVE ID", func() {
+		Convey("invalid name and CVE ID", func() {
 			args := []string{"cvetest", "--image", "test", "--cve-id", "CVE-20807"}
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
 			defer os.Remove(configPath)
@@ -473,7 +473,7 @@ func TestServerCVEResponse(t *testing.T) {
 			err := cveCmd.Execute()
 			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
-			So(err, ShouldBeNil)
+			So(err, ShouldNotBeNil)
 			So(strings.TrimSpace(str), ShouldNotContainSubstring, "IMAGE NAME TAG DIGEST SIZE")
 		})
 	})

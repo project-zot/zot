@@ -19,6 +19,7 @@ import (
 	"gopkg.in/resty.v1"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
+	extConf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/test"
 )
 
@@ -68,6 +69,11 @@ func TestTLSWithAuth(t *testing.T) {
 			CACert: CACert,
 		}
 
+		enable := true
+		conf.Extensions = &extConf.ExtensionConfig{
+			Search: &extConf.SearchConfig{Enable: &enable},
+		}
+
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 		go func() {
@@ -114,7 +120,7 @@ func TestTLSWithAuth(t *testing.T) {
 
 			args = []string{"imagetest"}
 			configPath = makeConfigFile(
-				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s/v2/_catalog","showspinner":false}]}`,
+				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
 					BaseSecureURL1))
 			defer os.Remove(configPath)
 			imageCmd = NewImageCommand(new(searchService))
@@ -129,7 +135,7 @@ func TestTLSWithAuth(t *testing.T) {
 			user := fmt.Sprintf("%s:%s", username, passphrase)
 			args = []string{"imagetest", "-u", user}
 			configPath = makeConfigFile(
-				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s/v2/_catalog","showspinner":false}]}`,
+				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
 					BaseSecureURL1))
 			defer os.Remove(configPath)
 			imageCmd = NewImageCommand(new(searchService))
@@ -160,6 +166,11 @@ func TestTLSWithoutAuth(t *testing.T) {
 			CACert: CACert,
 		}
 
+		enable := true
+		conf.Extensions = &extConf.ExtensionConfig{
+			Search: &extConf.SearchConfig{Enable: &enable},
+		}
+
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 		go func() {
@@ -185,7 +196,7 @@ func TestTLSWithoutAuth(t *testing.T) {
 
 		Convey("Certs in user's home", func() {
 			configPath := makeConfigFile(
-				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s/v2/_catalog","showspinner":false}]}`,
+				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
 					BaseSecureURL1))
 			defer os.Remove(configPath)
 
@@ -223,6 +234,11 @@ func TestTLSWithoutAuth(t *testing.T) {
 			CACert: CACert,
 		}
 
+		enable := true
+		conf.Extensions = &extConf.ExtensionConfig{
+			Search: &extConf.SearchConfig{Enable: &enable},
+		}
+
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 		go func() {
@@ -248,7 +264,7 @@ func TestTLSWithoutAuth(t *testing.T) {
 
 		Convey("Certs in privileged path", func() {
 			configPath := makeConfigFile(
-				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s/v2/_catalog","showspinner":false}]}`,
+				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
 					BaseSecureURL2))
 			defer os.Remove(configPath)
 
@@ -306,7 +322,7 @@ func TestTLSBadCerts(t *testing.T) {
 
 		Convey("Test with system certs", func() {
 			configPath := makeConfigFile(
-				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s/v2/_catalog","showspinner":false}]}`,
+				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
 					BaseSecureURL3))
 			defer os.Remove(configPath)
 
