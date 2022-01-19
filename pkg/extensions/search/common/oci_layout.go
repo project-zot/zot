@@ -261,6 +261,11 @@ func (olu OciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error) {
 	return repo, nil
 }
 
+func (olu OciLayoutUtils) DirExists(storeController storage.StoreController, d string) bool {
+	imageStore := storeController.GetImageStore(d)
+	return imageStore.DirExists(d)
+}
+
 func GetImageDirAndTag(imageName string) (string, string) {
 	var imageDir string
 

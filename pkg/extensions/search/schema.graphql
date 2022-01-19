@@ -39,15 +39,24 @@ type TagInfo {
      Timestamp: Time
 }
 
+type Layer {
+    Size: String,
+    Digest: String
+}
+
 type ImageInfo {
-     Name: String
-     Latest: String
-     LastUpdated: Time
-     Description: String
-     Licenses: String
-     Vendor: String
-     Size: String
-     Labels: String
+    Name: String
+    Tag: String
+    ConfigDigest: String
+    Digest: String
+    Latest: String
+    Layers: [Layer]
+    LastUpdated: Time
+    Description: String
+    Licenses: String
+    Vendor: String
+    Size: String
+    Labels: String
 }
 
 type RepoInfo {
@@ -67,10 +76,11 @@ type LayerInfo {
 }
 
 type Query {
-  CVEListForImage(image: String!) :CVEResultForImage 
-  ImageListForCVE(id: String!) :[ImgResultForCVE]
-  ImageListWithCVEFixed(id: String!, image: String!) :ImgResultForFixedCVE
-  ImageListForDigest(id: String!) :[ImgResultForDigest]
-  ImageListWithLatestTag:[ImageInfo]
-  ExpandedRepoInfo(repo: String!):RepoInfo
+     CVEListForImage(image: String!) :CVEResultForImage
+     ImageListForCVE(id: String!) :[ImageInfo]
+     TagListForCve(id: String!, image: String!, getFixed: Boolean) :[ImageInfo]
+     ImageListForDigest(digest: String!) :[ImageInfo]
+     ImageListWithLatestTag:[ImageInfo]
+     ImageList(imageName: String) :[ImageInfo]
+     ExpandedRepoInfo(repo: String!):RepoInfo
 }
