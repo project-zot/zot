@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	godigest "github.com/opencontainers/go-digest"
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
@@ -101,8 +102,8 @@ func (r *queryResolver) CVEListForImage(ctx context.Context, image string) (*gql
 }
 
 // ImageListForCve is the resolver for the ImageListForCVE field.
-func (r *queryResolver) ImageListForCve(ctx context.Context, id string) ([]*gql_generated.ImgResultForCve, error) {
-	finalCveResult := []*gql_generated.ImgResultForCve{}
+func (r *queryResolver) ImageListForCve(ctx context.Context, id string) ([]*gql_generated.ImageSummary, error) {
+	finalCveResult := []*gql_generated.ImageSummary{}
 
 	r.log.Info().Msg("extracting repositories")
 
@@ -154,8 +155,8 @@ func (r *queryResolver) ImageListForCve(ctx context.Context, id string) ([]*gql_
 }
 
 // ImageListWithCVEFixed is the resolver for the ImageListWithCVEFixed field.
-func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, image string) (*gql_generated.ImgResultForFixedCve, error) {
-	imgResultForFixedCVE := &gql_generated.ImgResultForFixedCve{}
+func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, image string) ([]*gql_generated.ImageSummary, error) {
+	tagListForCVE := []*gql_generated.ImageSummary{}
 
 	r.log.Info().Str("image", image).Msg("extracting list of tags available in image")
 
@@ -163,7 +164,7 @@ func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, im
 	if err != nil {
 		r.log.Error().Err(err).Msg("unable to read image tags")
 
-		return imgResultForFixedCVE, err
+		return tagListForCVE, err
 	}
 
 	infectedTags := make([]common.TagInfo, 0)
@@ -213,28 +214,34 @@ func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, im
 		}
 	}
 
-	var finalTagList []*gql_generated.TagInfo
-
 	if len(infectedTags) != 0 {
 		r.log.Info().Msg("comparing fixed tags timestamp")
 
-		fixedTags := common.GetFixedTags(tagsInfo, infectedTags)
-
-		finalTagList = getGraphqlCompatibleTags(fixedTags)
+		tagsInfo = common.GetFixedTags(tagsInfo, infectedTags)
 	} else {
 		r.log.Info().Str("image", image).Str("cve-id", id).Msg("image does not contain any tag that have given cve")
-
-		finalTagList = getGraphqlCompatibleTags(tagsInfo)
 	}
 
-	imgResultForFixedCVE = &gql_generated.ImgResultForFixedCve{Tags: finalTagList}
+	for _, tag := range tagsInfo {
+		digest := godigest.Digest(tag.Digest)
 
-	return imgResultForFixedCVE, nil
+		manifest, err := r.cveInfo.LayoutUtils.GetImageBlobManifest(image, digest)
+		if err != nil {
+			r.log.Error().Err(err).Msg("extension api: error reading manifest")
+
+			return []*gql_generated.ImageSummary{}, err
+		}
+
+		imageInfo := buildImageInfo(image, tag.Name, digest, manifest)
+		tagListForCVE = append(tagListForCVE, imageInfo)
+	}
+
+	return tagListForCVE, nil
 }
 
 // ImageListForDigest is the resolver for the ImageListForDigest field.
-func (r *queryResolver) ImageListForDigest(ctx context.Context, id string) ([]*gql_generated.ImgResultForDigest, error) {
-	imgResultForDigest := []*gql_generated.ImgResultForDigest{}
+func (r *queryResolver) ImageListForDigest(ctx context.Context, id string) ([]*gql_generated.ImageSummary, error) {
+	imgResultForDigest := []*gql_generated.ImageSummary{}
 
 	r.log.Info().Msg("extracting repositories")
 
@@ -281,10 +288,10 @@ func (r *queryResolver) ImageListForDigest(ctx context.Context, id string) ([]*g
 }
 
 // ImageListWithLatestTag is the resolver for the ImageListWithLatestTag field.
-func (r *queryResolver) ImageListWithLatestTag(ctx context.Context) ([]*gql_generated.ImageInfo, error) {
+func (r *queryResolver) ImageListWithLatestTag(ctx context.Context) ([]*gql_generated.ImageSummary, error) {
 	r.log.Info().Msg("extension api: finding image list")
 
-	imageList := make([]*gql_generated.ImageInfo, 0)
+	imageList := make([]*gql_generated.ImageSummary, 0)
 
 	defaultStore := r.storeController.DefaultStore
 
@@ -317,6 +324,43 @@ func (r *queryResolver) ImageListWithLatestTag(ctx context.Context) ([]*gql_gene
 	return imageList, nil
 }
 
+// ImageList is the resolver for the ImageList field.
+func (r *queryResolver) ImageList(ctx context.Context, repo string) ([]*gql_generated.ImageSummary, error) {
+	r.log.Info().Msg("extension api: getting a list of all images")
+
+	imageList := make([]*gql_generated.ImageSummary, 0)
+
+	defaultStore := r.storeController.DefaultStore
+
+	dsImageList, err := r.getImageList(defaultStore, repo)
+	if err != nil {
+		r.log.Error().Err(err).Msg("extension api: error extracting default store image list")
+
+		return imageList, err
+	}
+
+	if len(dsImageList) != 0 {
+		imageList = append(imageList, dsImageList...)
+	}
+
+	subStore := r.storeController.SubStore
+
+	for _, store := range subStore {
+		ssImageList, err := r.getImageList(store, repo)
+		if err != nil {
+			r.log.Error().Err(err).Msg("extension api: error extracting substore image list")
+
+			return imageList, err
+		}
+
+		if len(ssImageList) != 0 {
+			imageList = append(imageList, ssImageList...)
+		}
+	}
+
+	return imageList, nil
+}
+
 // ExpandedRepoInfo is the resolver for the ExpandedRepoInfo field.
 func (r *queryResolver) ExpandedRepoInfo(ctx context.Context, repo string) (*gql_generated.RepoInfo, error) {
 	olu := common.NewBaseOciLayoutUtils(r.storeController, r.log)
@@ -331,7 +375,7 @@ func (r *queryResolver) ExpandedRepoInfo(ctx context.Context, repo string) (*gql
 	// repos type is of common deep copy this to search
 	repoInfo := &gql_generated.RepoInfo{}
 
-	manifests := make([]*gql_generated.ManifestInfo, 0)
+	images := make([]*gql_generated.ImageSummary, 0)
 
 	summary := &gql_generated.RepoSummary{}
 
@@ -358,34 +402,34 @@ func (r *queryResolver) ExpandedRepoInfo(ctx context.Context, repo string) (*gql
 	score := -1 // score not relevant for this query
 	summary.Score = &score
 
-	for _, manifest := range origRepoInfo.Manifests {
-		tag := manifest.Tag
+	for _, image := range origRepoInfo.Images {
+		tag := image.Tag
 
-		digest := manifest.Digest
+		digest := image.Digest
 
-		isSigned := manifest.IsSigned
+		isSigned := image.IsSigned
 
-		manifestInfo := &gql_generated.ManifestInfo{Tag: &tag, Digest: &digest, IsSigned: &isSigned}
+		imageSummary := &gql_generated.ImageSummary{Tag: &tag, Digest: &digest, IsSigned: &isSigned}
 
-		layers := make([]*gql_generated.LayerInfo, 0)
+		layers := make([]*gql_generated.LayerSummary, 0)
 
-		for _, l := range manifest.Layers {
+		for _, l := range image.Layers {
 			size := l.Size
 
 			digest := l.Digest
 
-			layerInfo := &gql_generated.LayerInfo{Digest: &digest, Size: &size}
+			layerInfo := &gql_generated.LayerSummary{Digest: &digest, Size: &size}
 
 			layers = append(layers, layerInfo)
 		}
 
-		manifestInfo.Layers = layers
+		imageSummary.Layers = layers
 
-		manifests = append(manifests, manifestInfo)
+		images = append(images, imageSummary)
 	}
 
 	repoInfo.Summary = summary
-	repoInfo.Manifests = manifests
+	repoInfo.Images = images
 
 	return repoInfo, nil
 }

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	v1 "github.com/google/go-containerregistry/pkg/v1"
 	godigest "github.com/opencontainers/go-digest"
 	"zotregistry.io/zot/pkg/log" // nolint: gci
 
@@ -60,60 +61,56 @@ func GetResolverConfig(log log.Logger, storeController storage.StoreController, 
 
 func (r *queryResolver) getImageListForCVE(repoList []string, cvid string, imgStore storage.ImageStore,
 	trivyCtx *cveinfo.TrivyCtx,
-) ([]*gql_generated.ImgResultForCve, error) {
-	cveResult := []*gql_generated.ImgResultForCve{}
+) ([]*gql_generated.ImageSummary, error) {
+	cveResult := []*gql_generated.ImageSummary{}
 
 	for _, repo := range repoList {
 		r.log.Info().Str("repo", repo).Msg("extracting list of tags available in image repo")
 
-		name := repo
-
-		tags, err := r.cveInfo.GetImageListForCVE(repo, cvid, imgStore, trivyCtx)
+		imageListByCVE, err := r.cveInfo.GetImageListForCVE(repo, cvid, imgStore, trivyCtx)
 		if err != nil {
 			r.log.Error().Err(err).Msg("error getting tag")
 
 			return cveResult, err
 		}
 
-		if len(tags) != 0 {
-			cveResult = append(cveResult, &gql_generated.ImgResultForCve{Name: &name, Tags: tags})
+		for _, imageByCVE := range imageListByCVE {
+			cveResult = append(
+				cveResult,
+				buildImageInfo(repo, imageByCVE.Tag, imageByCVE.Digest, imageByCVE.Manifest),
+			)
 		}
 	}
 
 	return cveResult, nil
 }
 
-func (r *queryResolver) getImageListForDigest(repoList []string,
-	digest string,
-) ([]*gql_generated.ImgResultForDigest, error) {
-	imgResultForDigest := []*gql_generated.ImgResultForDigest{}
+func (r *queryResolver) getImageListForDigest(repoList []string, digest string) ([]*gql_generated.ImageSummary, error) {
+	imgResultForDigest := []*gql_generated.ImageSummary{}
 
 	var errResult error
 
 	for _, repo := range repoList {
 		r.log.Info().Str("repo", repo).Msg("filtering list of tags in image repo by digest")
 
-		tags, err := r.digestInfo.GetImageTagsByDigest(repo, digest)
+		imgTags, err := r.digestInfo.GetImageTagsByDigest(repo, digest)
 		if err != nil {
 			r.log.Error().Err(err).Msg("unable to get filtered list of image tags")
 
-			errResult = err
-
-			continue
+			return []*gql_generated.ImageSummary{}, err
 		}
 
-		if len(tags) != 0 {
-			name := repo
-
-			imgResultForDigest = append(imgResultForDigest, &gql_generated.ImgResultForDigest{Name: &name, Tags: tags})
+		for _, imageInfo := range imgTags {
+			imageInfo := buildImageInfo(repo, imageInfo.Tag, imageInfo.Digest, imageInfo.Manifest)
+			imgResultForDigest = append(imgResultForDigest, imageInfo)
 		}
 	}
 
 	return imgResultForDigest, errResult
 }
 
-func (r *queryResolver) getImageListWithLatestTag(store storage.ImageStore) ([]*gql_generated.ImageInfo, error) {
-	results := make([]*gql_generated.ImageInfo, 0)
+func (r *queryResolver) getImageListWithLatestTag(store storage.ImageStore) ([]*gql_generated.ImageSummary, error) {
+	results := make([]*gql_generated.ImageSummary, 0)
 
 	repoList, err := store.GetRepositories()
 	if err != nil {
@@ -167,7 +164,6 @@ func (r *queryResolver) getImageListWithLatestTag(store storage.ImageStore) ([]*
 		labels := imageConfig.Config.Labels
 
 		// Read Description
-
 		desc := common.GetDescription(labels)
 
 		// Read licenses
@@ -179,8 +175,8 @@ func (r *queryResolver) getImageListWithLatestTag(store storage.ImageStore) ([]*
 		// Read categories
 		categories := common.GetCategories(labels)
 
-		results = append(results, &gql_generated.ImageInfo{
-			Name: &name, Latest: &latestTag.Name,
+		results = append(results, &gql_generated.ImageSummary{
+			RepoName: &name, Tag: &latestTag.Name,
 			Description: &desc, Licenses: &license, Vendor: &vendor,
 			Labels: &categories, Size: &size, LastUpdated: &latestTag.Timestamp,
 		})
@@ -336,7 +332,7 @@ func globalSearch(repoList []string, name, tag string, olu common.OciLayoutUtils
 				Platforms:   repoPlatforms,
 				Vendors:     repoVendors,
 				Score:       &index,
-				NewestTag:   &lastUpdatedImageSummary,
+				NewestImage: &lastUpdatedImageSummary,
 			})
 		}
 	}
@@ -382,15 +378,94 @@ func calculateImageMatchingScore(artefactName string, index int, matchesTag bool
 	return score
 }
 
-func getGraphqlCompatibleTags(fixedTags []common.TagInfo) []*gql_generated.TagInfo {
-	finalTagList := make([]*gql_generated.TagInfo, 0)
+func (r *queryResolver) getImageList(store storage.ImageStore, imageName string) (
+	[]*gql_generated.ImageSummary, error,
+) {
+	results := make([]*gql_generated.ImageSummary, 0)
 
-	for _, tag := range fixedTags {
-		fixTag := tag
+	repoList, err := store.GetRepositories()
+	if err != nil {
+		r.log.Error().Err(err).Msg("extension api: error extracting repositories list")
 
-		finalTagList = append(finalTagList,
-			&gql_generated.TagInfo{Name: &fixTag.Name, Digest: &fixTag.Digest, Timestamp: &fixTag.Timestamp})
+		return results, err
 	}
 
-	return finalTagList
+	layoutUtils := common.NewBaseOciLayoutUtils(r.storeController, r.log)
+
+	for _, repo := range repoList {
+		if (imageName != "" && repo == imageName) || imageName == "" {
+			tagsInfo, err := layoutUtils.GetImageTagsWithTimestamp(repo)
+			if err != nil {
+				r.log.Error().Err(err).Msg("extension api: error getting tag timestamp info")
+
+				return results, nil
+			}
+
+			if len(tagsInfo) == 0 {
+				r.log.Info().Str("no tagsinfo found for repo", repo).Msg(" continuing traversing")
+
+				continue
+			}
+
+			for i := range tagsInfo {
+				// using a loop variable called tag would be reassigned after each iteration, using the same memory address
+				// directly access the value at the current index in the slice as ImageInfo requires pointers to tag fields
+				tag := tagsInfo[i]
+
+				digest := godigest.Digest(tag.Digest)
+
+				manifest, err := layoutUtils.GetImageBlobManifest(repo, digest)
+				if err != nil {
+					r.log.Error().Err(err).Msg("extension api: error reading manifest")
+
+					return results, err
+				}
+
+				imageInfo := buildImageInfo(repo, tag.Name, digest, manifest)
+
+				results = append(results, imageInfo)
+			}
+		}
+	}
+
+	if len(results) == 0 {
+		r.log.Info().Msg("no repositories found")
+	}
+
+	return results, nil
+}
+
+func buildImageInfo(repo string, tag string, tagDigest godigest.Digest,
+	manifest v1.Manifest,
+) *gql_generated.ImageSummary {
+	layers := []*gql_generated.LayerSummary{}
+	size := int64(0)
+
+	for _, entry := range manifest.Layers {
+		size += entry.Size
+		digest := entry.Digest.Hex
+		layerSize := strconv.FormatInt(entry.Size, 10)
+
+		layers = append(
+			layers,
+			&gql_generated.LayerSummary{
+				Size:   &layerSize,
+				Digest: &digest,
+			},
+		)
+	}
+
+	formattedSize := strconv.FormatInt(size, 10)
+	formattedTagDigest := tagDigest.Hex()
+
+	imageInfo := &gql_generated.ImageSummary{
+		RepoName:     &repo,
+		Tag:          &tag,
+		Digest:       &formattedTagDigest,
+		ConfigDigest: &manifest.Config.Digest.Hex,
+		Size:         &formattedSize,
+		Layers:       layers,
+	}
+
+	return imageInfo
 }

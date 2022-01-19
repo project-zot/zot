@@ -20,6 +20,7 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
+	extConf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/test"
 )
 
@@ -67,6 +68,11 @@ func TestTLSWithAuth(t *testing.T) {
 			Cert:   ServerCert,
 			Key:    ServerKey,
 			CACert: CACert,
+		}
+
+		enable := true
+		conf.Extensions = &extConf.ExtensionConfig{
+			Search: &extConf.SearchConfig{Enable: &enable},
 		}
 
 		ctlr := api.NewController(conf)
@@ -159,6 +165,11 @@ func TestTLSWithoutAuth(t *testing.T) {
 			Cert:   ServerCert,
 			Key:    ServerKey,
 			CACert: CACert,
+		}
+
+		enable := true
+		conf.Extensions = &extConf.ExtensionConfig{
+			Search: &extConf.SearchConfig{Enable: &enable},
 		}
 
 		ctlr := api.NewController(conf)

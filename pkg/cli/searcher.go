@@ -37,6 +37,27 @@ func getCveSearchers() []searcher {
 	return searchers
 }
 
+func getImageSearchersGQL() []searcher {
+	searchers := []searcher{
+		new(allImagesSearcherGQL),
+		new(imageByNameSearcherGQL),
+		new(imagesByDigestSearcherGQL),
+	}
+
+	return searchers
+}
+
+func getCveSearchersGQL() []searcher {
+	searchers := []searcher{
+		new(cveByImageSearcherGQL),
+		new(imagesByCVEIDSearcherGQL),
+		new(tagsByImageNameAndCVEIDSearcherGQL),
+		new(fixedTagsSearcherGQL),
+	}
+
+	return searchers
+}
+
 type searcher interface {
 	search(searchConfig searchConfig) (bool, error)
 }
@@ -96,6 +117,18 @@ func (search allImagesSearcher) search(config searchConfig) (bool, error) {
 	}
 }
 
+type allImagesSearcherGQL struct{}
+
+func (search allImagesSearcherGQL) search(config searchConfig) (bool, error) {
+	if !canSearch(config.params, newSet("")) {
+		return false, nil
+	}
+
+	err := getImages(config)
+
+	return true, err
+}
+
 type imageByNameSearcher struct{}
 
 func (search imageByNameSearcher) search(config searchConfig) (bool, error) {
@@ -128,6 +161,32 @@ func (search imageByNameSearcher) search(config searchConfig) (bool, error) {
 	}
 }
 
+type imageByNameSearcherGQL struct{}
+
+func (search imageByNameSearcherGQL) search(config searchConfig) (bool, error) {
+	if !canSearch(config.params, newSet("imageName")) {
+		return false, nil
+	}
+
+	err := getImages(config)
+
+	return true, err
+}
+
+func getImages(config searchConfig) error {
+	username, password := getUsernameAndPassword(*config.user)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	defer cancel()
+
+	imageList, err := config.searchService.getImagesGQL(ctx, config, username, password, *config.params["imageName"])
+	if err != nil {
+		return err
+	}
+
+	return printResult(config, imageList.Data.ImageList)
+}
+
 type imagesByDigestSearcher struct{}
 
 func (search imagesByDigestSearcher) search(config searchConfig) (bool, error) {
@@ -158,6 +217,32 @@ func (search imagesByDigestSearcher) search(config searchConfig) (bool, error) {
 	default:
 		return true, nil
 	}
+}
+
+type imagesByDigestSearcherGQL struct{}
+
+func (search imagesByDigestSearcherGQL) search(config searchConfig) (bool, error) {
+	if !canSearch(config.params, newSet("digest")) {
+		return false, nil
+	}
+
+	// var builder strings.Builder
+
+	username, password := getUsernameAndPassword(*config.user)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	defer cancel()
+
+	imageList, err := config.searchService.getImagesByDigestGQL(ctx, config, username, password, *config.params["digest"])
+	if err != nil {
+		return true, err
+	}
+
+	if err := printResult(config, imageList.Data.ImageList); err != nil {
+		return true, err
+	}
+
+	return true, nil
 }
 
 type cveByImageSearcher struct{}
@@ -195,10 +280,49 @@ func (search cveByImageSearcher) search(config searchConfig) (bool, error) {
 	}
 }
 
+type cveByImageSearcherGQL struct{}
+
+func (search cveByImageSearcherGQL) search(config searchConfig) (bool, error) {
+	if !canSearch(config.params, newSet("imageName")) || *config.fixedFlag {
+		return false, nil
+	}
+
+	if !validateImageNameTag(*config.params["imageName"]) {
+		return true, errInvalidImageNameAndTag
+	}
+
+	var builder strings.Builder
+
+	username, password := getUsernameAndPassword(*config.user)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	defer cancel()
+
+	cveList, err := config.searchService.getCveByImageGQL(ctx, config, username, password, *config.params["imageName"])
+	if err != nil {
+		return true, err
+	}
+
+	if len(cveList.Data.CVEListForImage.CVEList) > 0 &&
+		(*config.outputFormat == defaultOutoutFormat || *config.outputFormat == "") {
+		printCVETableHeader(&builder, *config.verbose)
+		fmt.Fprint(config.resultWriter, builder.String())
+	}
+
+	out, err := cveList.string(*config.outputFormat)
+	if err != nil {
+		return true, err
+	}
+
+	fmt.Fprint(config.resultWriter, out)
+
+	return true, nil
+}
+
 type imagesByCVEIDSearcher struct{}
 
 func (search imagesByCVEIDSearcher) search(config searchConfig) (bool, error) {
-	if !canSearch(config.params, newSet("cvid")) || *config.fixedFlag {
+	if !canSearch(config.params, newSet("cveID")) || *config.fixedFlag {
 		return false, nil
 	}
 
@@ -210,7 +334,7 @@ func (search imagesByCVEIDSearcher) search(config searchConfig) (bool, error) {
 
 	wg.Add(1)
 
-	go config.searchService.getImagesByCveID(ctx, config, username, password, *config.params["cvid"], strErr, &wg)
+	go config.searchService.getImagesByCveID(ctx, config, username, password, *config.params["cveID"], strErr, &wg)
 	wg.Add(1)
 
 	errCh := make(chan error, 1)
@@ -226,10 +350,34 @@ func (search imagesByCVEIDSearcher) search(config searchConfig) (bool, error) {
 	}
 }
 
+type imagesByCVEIDSearcherGQL struct{}
+
+func (search imagesByCVEIDSearcherGQL) search(config searchConfig) (bool, error) {
+	if !canSearch(config.params, newSet("cveID")) || *config.fixedFlag {
+		return false, nil
+	}
+
+	username, password := getUsernameAndPassword(*config.user)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	defer cancel()
+
+	imageList, err := config.searchService.getImagesByCveIDGQL(ctx, config, username, password, *config.params["cveID"])
+	if err != nil {
+		return true, err
+	}
+
+	if err := printResult(config, imageList.Data.ImageList); err != nil {
+		return true, err
+	}
+
+	return true, nil
+}
+
 type tagsByImageNameAndCVEIDSearcher struct{}
 
 func (search tagsByImageNameAndCVEIDSearcher) search(config searchConfig) (bool, error) {
-	if !canSearch(config.params, newSet("cvid", "imageName")) || *config.fixedFlag {
+	if !canSearch(config.params, newSet("cveID", "imageName")) || *config.fixedFlag {
 		return false, nil
 	}
 
@@ -246,7 +394,7 @@ func (search tagsByImageNameAndCVEIDSearcher) search(config searchConfig) (bool,
 	wg.Add(1)
 
 	go config.searchService.getImageByNameAndCVEID(ctx, config, username, password, *config.params["imageName"],
-		*config.params["cvid"], strErr, &wg)
+		*config.params["cveID"], strErr, &wg)
 	wg.Add(1)
 
 	errCh := make(chan error, 1)
@@ -262,10 +410,38 @@ func (search tagsByImageNameAndCVEIDSearcher) search(config searchConfig) (bool,
 	}
 }
 
+type tagsByImageNameAndCVEIDSearcherGQL struct{}
+
+func (search tagsByImageNameAndCVEIDSearcherGQL) search(config searchConfig) (bool, error) {
+	if !canSearch(config.params, newSet("cveID", "imageName")) || *config.fixedFlag {
+		return false, nil
+	}
+
+	if strings.Contains(*config.params["imageName"], ":") {
+		return true, errInvalidImageName
+	}
+
+	err := getTagsByCVE(config)
+
+	return true, err
+}
+
+type fixedTagsSearcherGQL struct{}
+
+func (search fixedTagsSearcherGQL) search(config searchConfig) (bool, error) {
+	if !canSearch(config.params, newSet("cveID", "imageName")) || !*config.fixedFlag {
+		return false, nil
+	}
+
+	err := getTagsByCVE(config)
+
+	return true, err
+}
+
 type fixedTagsSearcher struct{}
 
 func (search fixedTagsSearcher) search(config searchConfig) (bool, error) {
-	if !canSearch(config.params, newSet("cvid", "imageName")) || !*config.fixedFlag {
+	if !canSearch(config.params, newSet("cveID", "imageName")) || !*config.fixedFlag {
 		return false, nil
 	}
 
@@ -282,7 +458,7 @@ func (search fixedTagsSearcher) search(config searchConfig) (bool, error) {
 	wg.Add(1)
 
 	go config.searchService.getFixedTagsForCVE(ctx, config, username, password, *config.params["imageName"],
-		*config.params["cvid"], strErr, &wg)
+		*config.params["cveID"], strErr, &wg)
 	wg.Add(1)
 
 	errCh := make(chan error, 1)
@@ -296,6 +472,39 @@ func (search fixedTagsSearcher) search(config searchConfig) (bool, error) {
 	default:
 		return true, nil
 	}
+}
+
+func getTagsByCVE(config searchConfig) error {
+	if strings.Contains(*config.params["imageName"], ":") {
+		return errInvalidImageName
+	}
+
+	username, password := getUsernameAndPassword(*config.user)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	defer cancel()
+
+	var imageList []imageStruct
+
+	if *config.fixedFlag {
+		fixedTags, err := config.searchService.getFixedTagsForCVEGQL(ctx, config, username, password,
+			*config.params["imageName"], *config.params["cveID"])
+		if err != nil {
+			return err
+		}
+
+		imageList = fixedTags.Data.ImageList
+	} else {
+		tags, err := config.searchService.getTagsForCVEGQL(ctx, config, username, password,
+			*config.params["imageName"], *config.params["cveID"])
+		if err != nil {
+			return err
+		}
+
+		imageList = tags.Data.ImageList
+	}
+
+	return printResult(config, imageList)
 }
 
 func collectResults(config searchConfig, wg *sync.WaitGroup, imageErr chan stringResult,
@@ -376,12 +585,14 @@ type spinnerState struct {
 	enabled bool
 }
 
+// nolint
 func (spinner *spinnerState) startSpinner() {
 	if spinner.enabled {
 		spinner.spinner.Start()
 	}
 }
 
+// nolint
 func (spinner *spinnerState) stopSpinner() {
 	if spinner.enabled && spinner.spinner.Active() {
 		spinner.spinner.Stop()
@@ -397,14 +608,14 @@ func getEmptyStruct() struct{} {
 }
 
 func newSet(initialValues ...string) *set {
-	ret := &set{}
-	ret.m = make(map[string]struct{})
+	setValues := &set{}
+	setValues.m = make(map[string]struct{})
 
 	for _, val := range initialValues {
-		ret.m[val] = getEmptyStruct()
+		setValues.m[val] = getEmptyStruct()
 	}
 
-	return ret
+	return setValues
 }
 
 func (s *set) contains(value string) bool {
@@ -412,6 +623,10 @@ func (s *set) contains(value string) bool {
 
 	return c
 }
+
+const (
+	waitTimeout = httpTimeout + 5*time.Second
+)
 
 var (
 	ErrCannotSearch        = errors.New("cannot search with these parameters")
@@ -438,7 +653,7 @@ func printImageTableHeader(writer io.Writer, verbose bool) {
 		table.SetColMinWidth(colLayersIndex, layersWidth)
 	}
 
-	row := make([]string, 6) //nolint:gomnd
+	row := make([]string, 6) // nolint:gomnd
 
 	row[colImageNameIndex] = "IMAGE NAME"
 	row[colTagIndex] = "TAG"
@@ -465,9 +680,28 @@ func printCVETableHeader(writer io.Writer, verbose bool) {
 	table.Render()
 }
 
-const (
-	waitTimeout = httpTimeout + 5*time.Second
-)
+func printResult(config searchConfig, imageList []imageStruct) error {
+	var builder strings.Builder
+
+	if len(imageList) > 0 {
+		printImageTableHeader(&builder, *config.verbose)
+		fmt.Fprint(config.resultWriter, builder.String())
+	}
+
+	for i := range imageList {
+		img := imageList[i]
+		img.verbose = *config.verbose
+
+		out, err := img.string(*config.outputFormat)
+		if err != nil {
+			return err
+		}
+
+		fmt.Fprint(config.resultWriter, out)
+	}
+
+	return nil
+}
 
 var (
 	errInvalidImageNameAndTag = errors.New("cli: Invalid input format. Expected IMAGENAME:TAG")

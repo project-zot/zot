@@ -15,6 +15,7 @@ import (
 	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/spf13/cobra"
 	"gopkg.in/resty.v1"
 	zotErrors "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api"
@@ -51,6 +52,7 @@ func TestSearchCVECmd(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 	})
+
 	Convey("Test CVE no url", t, func() {
 		args := []string{"cvetest", "-i", "cveIdRandom"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"cvetest","showspinner":false}]}`)
@@ -136,10 +138,8 @@ func TestSearchCVECmd(t *testing.T) {
 
 	Convey("Test CVE url from config", t, func() {
 		args := []string{"cvetest", "--image", "dummyImageName:tag"}
-
 		configPath := makeConfigFile(`{"configs":[{"_name":"cvetest","url":"https://test-url.com","showspinner":false}]}`)
 		defer os.Remove(configPath)
-
 		cmd := NewCveCommand(new(mockService))
 		buff := bytes.NewBufferString("")
 		cmd.SetOut(buff)
@@ -162,10 +162,10 @@ func TestSearchCVECmd(t *testing.T) {
 		cveCmd.SetErr(buff)
 		cveCmd.SetArgs(args)
 		err := cveCmd.Execute()
+		So(err, ShouldBeNil)
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
 		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIZE dummyImageName tag DigestsA 123kB")
-		So(err, ShouldBeNil)
 		Convey("using shorthand", func() {
 			args := []string{"cvetest", "-I", "dummyImageName", "--cve-id", "aCVEID", "--url", "someURL"}
 			buff := bytes.NewBufferString("")
@@ -176,11 +176,10 @@ func TestSearchCVECmd(t *testing.T) {
 			cveCmd.SetErr(buff)
 			cveCmd.SetArgs(args)
 			err := cveCmd.Execute()
-
+			So(err, ShouldBeNil)
 			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
 			So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIZE dummyImageName tag DigestsA 123kB")
-			So(err, ShouldBeNil)
 		})
 	})
 
@@ -266,6 +265,34 @@ func TestSearchCVECmd(t *testing.T) {
 		str := space.ReplaceAllString(buff.String(), " ")
 		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIZE anImage tag DigestsA 123kB")
 		So(err, ShouldBeNil)
+
+		Convey("invalid CVE ID", func() {
+			args := []string{"cvetest", "--cve-id", "invalidCVEID"}
+			configPath := makeConfigFile(`{"configs":[{"_name":"cvetest","showspinner":false}]}`)
+			defer os.Remove(configPath)
+			cveCmd := NewCveCommand(new(mockService))
+			buff := bytes.NewBufferString("")
+			cveCmd.SetOut(buff)
+			cveCmd.SetErr(buff)
+			cveCmd.SetArgs(args)
+			err := cveCmd.Execute()
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("invalid url", func() {
+			args := []string{"cvetest", "--cve-id", "aCVEID", "--url", "invalidURL"}
+			configPath := makeConfigFile(`{"configs":[{"_name":"cvetest","showspinner":false}]}`)
+			defer os.Remove(configPath)
+			cveCmd := NewCveCommand(NewSearchService())
+			buff := bytes.NewBufferString("")
+			cveCmd.SetOut(buff)
+			cveCmd.SetErr(buff)
+			cveCmd.SetArgs(args)
+			err := cveCmd.Execute()
+			So(err, ShouldNotBeNil)
+			So(err, ShouldEqual, zotErrors.ErrInvalidURL)
+			So(buff.String(), ShouldContainSubstring, "invalid URL format")
+		})
 	})
 
 	Convey("Test fixed tags by and image name CVE ID", t, func() {
@@ -282,10 +309,24 @@ func TestSearchCVECmd(t *testing.T) {
 		str := space.ReplaceAllString(buff.String(), " ")
 		So(err, ShouldBeNil)
 		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIZE fixedImage tag DigestsA 123kB")
+
+		Convey("invalid image name", func() {
+			args := []string{"cvetest", "--cve-id", "aCVEID", "--image", "invalidImageName"}
+			configPath := makeConfigFile(`{"configs":[{"_name":"cvetest","showspinner":false}]}`)
+			defer os.Remove(configPath)
+			cveCmd := NewCveCommand(NewSearchService())
+			buff := bytes.NewBufferString("")
+			cveCmd.SetOut(buff)
+			cveCmd.SetErr(buff)
+			cveCmd.SetArgs(args)
+			err := cveCmd.Execute()
+			So(err, ShouldNotBeNil)
+		})
 	})
 }
 
-func TestServerCVEResponse(t *testing.T) {
+// nolint: dupl // GQL
+func TestServerCVEResponseGQL(t *testing.T) {
 	port := test.GetFreePort()
 	url := test.GetBaseURL(port)
 	conf := config.New()
@@ -351,6 +392,7 @@ func TestServerCVEResponse(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(str, ShouldContainSubstring, "ID SEVERITY TITLE")
 		So(str, ShouldContainSubstring, "CVE")
+
 		Convey("invalid image", func() {
 			args := []string{"cvetest", "--image", "invalid:0.0.1"}
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
@@ -362,6 +404,33 @@ func TestServerCVEResponse(t *testing.T) {
 			cveCmd.SetArgs(args)
 			err = cveCmd.Execute()
 			So(err, ShouldNotBeNil)
+		})
+
+		Convey("invalid image name and tag", func() {
+			args := []string{"cvetest", "--image", "invalid:"}
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
+			defer os.Remove(configPath)
+			cveCmd := NewCveCommand(new(searchService))
+			buff := bytes.NewBufferString("")
+			cveCmd.SetOut(buff)
+			cveCmd.SetErr(buff)
+			cveCmd.SetArgs(args)
+			err = cveCmd.Execute()
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("invalid output format", func() {
+			args := []string{"cvetest", "--image", "zot-cve-test:0.0.1", "-o", "random"}
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
+			defer os.Remove(configPath)
+			cveCmd := NewCveCommand(new(searchService))
+			buff := bytes.NewBufferString("")
+			cveCmd.SetOut(buff)
+			cveCmd.SetErr(buff)
+			cveCmd.SetArgs(args)
+			err = cveCmd.Execute()
+			So(err, ShouldNotBeNil)
+			So(buff.String(), ShouldContainSubstring, "invalid output format")
 		})
 	})
 
@@ -380,6 +449,7 @@ func TestServerCVEResponse(t *testing.T) {
 		str = strings.TrimSpace(str)
 		So(err, ShouldBeNil)
 		So(str, ShouldEqual, "IMAGE NAME TAG DIGEST SIZE zot-cve-test 0.0.1 63a795ca 75MB")
+
 		Convey("invalid CVE ID", func() {
 			args := []string{"cvetest", "--cve-id", "invalid"}
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
@@ -395,6 +465,20 @@ func TestServerCVEResponse(t *testing.T) {
 			str = strings.TrimSpace(str)
 			So(err, ShouldBeNil)
 			So(str, ShouldNotContainSubstring, "IMAGE NAME TAG DIGEST SIZE")
+		})
+
+		Convey("invalid output format", func() {
+			args := []string{"cvetest", "--cve-id", "CVE-2019-9923", "-o", "random"}
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
+			defer os.Remove(configPath)
+			cveCmd := NewCveCommand(new(searchService))
+			buff := bytes.NewBufferString("")
+			cveCmd.SetOut(buff)
+			cveCmd.SetErr(buff)
+			cveCmd.SetArgs(args)
+			err = cveCmd.Execute()
+			So(err, ShouldNotBeNil)
+			So(buff.String(), ShouldContainSubstring, "invalid output format")
 		})
 	})
 
@@ -413,6 +497,7 @@ func TestServerCVEResponse(t *testing.T) {
 		str = strings.TrimSpace(str)
 		So(err, ShouldBeNil)
 		So(str, ShouldEqual, "")
+
 		Convey("random cve", func() {
 			args := []string{"cvetest", "--cve-id", "random", "--image", "zot-cve-test", "--fixed"}
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
@@ -430,8 +515,25 @@ func TestServerCVEResponse(t *testing.T) {
 			So(strings.TrimSpace(str), ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIZE")
 		})
 
-		Convey("invalid image", func() {
+		Convey("random image", func() {
 			args := []string{"cvetest", "--cve-id", "CVE-2019-20807", "--image", "zot-cv-test", "--fixed"}
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
+			defer os.Remove(configPath)
+			cveCmd := NewCveCommand(new(searchService))
+			buff := bytes.NewBufferString("")
+			cveCmd.SetOut(buff)
+			cveCmd.SetErr(buff)
+			cveCmd.SetArgs(args)
+			err := cveCmd.Execute()
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			str = strings.TrimSpace(str)
+			So(err, ShouldNotBeNil)
+			So(strings.TrimSpace(str), ShouldNotContainSubstring, "IMAGE NAME TAG DIGEST SIZE")
+		})
+
+		Convey("invalid image", func() {
+			args := []string{"cvetest", "--cve-id", "CVE-2019-20807", "--image", "zot-cv-test:tag", "--fixed"}
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
 			defer os.Remove(configPath)
 			cveCmd := NewCveCommand(new(searchService))
@@ -462,7 +564,8 @@ func TestServerCVEResponse(t *testing.T) {
 		str := space.ReplaceAllString(buff.String(), " ")
 		So(err, ShouldBeNil)
 		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIZE zot-cve-test 0.0.1 63a795ca 75MB")
-		Convey("invalidname and CVE ID", func() {
+
+		Convey("invalid name and CVE ID", func() {
 			args := []string{"cvetest", "--image", "test", "--cve-id", "CVE-20807"}
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
 			defer os.Remove(configPath)
@@ -477,5 +580,451 @@ func TestServerCVEResponse(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(strings.TrimSpace(str), ShouldNotContainSubstring, "IMAGE NAME TAG DIGEST SIZE")
 		})
+
+		Convey("invalid output format", func() {
+			args := []string{"cvetest", "--image", "zot-cve-test", "--cve-id", "CVE-2019-9923", "-o", "random"}
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
+			defer os.Remove(configPath)
+			cveCmd := NewCveCommand(new(searchService))
+			buff := bytes.NewBufferString("")
+			cveCmd.SetOut(buff)
+			cveCmd.SetErr(buff)
+			cveCmd.SetArgs(args)
+			err = cveCmd.Execute()
+			So(err, ShouldNotBeNil)
+			So(buff.String(), ShouldContainSubstring, "invalid output format")
+		})
 	})
+}
+
+func TestNegativeServerResponse(t *testing.T) {
+	Convey("Test from real server without search endpoint", t, func() {
+		port := test.GetFreePort()
+		url := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		dir := t.TempDir()
+
+		err := test.CopyFiles("../../test/data/zot-cve-test", path.Join(dir, "zot-cve-test"))
+		if err != nil {
+			panic(err)
+		}
+
+		conf.Storage.RootDirectory = dir
+		cveConfig := &extconf.CVEConfig{
+			UpdateInterval: 2,
+		}
+		defaultVal := false
+		searchConfig := &extconf.SearchConfig{
+			CVE:    cveConfig,
+			Enable: &defaultVal,
+		}
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: searchConfig,
+		}
+
+		ctlr := api.NewController(conf)
+
+		go func(controller *api.Controller) {
+			// this blocks
+			if err := controller.Run(context.Background()); err != nil {
+				return
+			}
+		}(ctlr)
+		// wait till ready
+		for {
+			res, err := resty.R().Get(url)
+			if err == nil && res.StatusCode() == 404 {
+				break
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+		time.Sleep(90 * time.Second)
+
+		defer func(controller *api.Controller) {
+			ctx := context.Background()
+			_ = controller.Server.Shutdown(ctx)
+		}(ctlr)
+
+		Convey("Status Code Not Found", func() {
+			args := []string{"cvetest", "--image", "zot-cve-test:0.0.1"}
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
+			defer os.Remove(configPath)
+			cveCmd := NewCveCommand(new(searchService))
+			buff := bytes.NewBufferString("")
+			cveCmd.SetOut(buff)
+			cveCmd.SetErr(buff)
+			cveCmd.SetArgs(args)
+			err = cveCmd.Execute()
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			str = strings.TrimSpace(str)
+			So(err, ShouldNotBeNil)
+			So(str, ShouldContainSubstring, "404 page not found")
+		})
+	})
+
+	Convey("Test non-existing manifest blob", t, func() {
+		port := test.GetFreePort()
+		url := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		dir := t.TempDir()
+
+		err := test.CopyFiles("../../test/data/zot-cve-test", path.Join(dir, "zot-cve-test"))
+		if err != nil {
+			panic(err)
+		}
+
+		err = os.RemoveAll(path.Join(dir, "zot-cve-test/blobs"))
+		if err != nil {
+			panic(err)
+		}
+
+		conf.Storage.RootDirectory = dir
+		cveConfig := &extconf.CVEConfig{
+			UpdateInterval: 2,
+		}
+		defaultVal := true
+		searchConfig := &extconf.SearchConfig{
+			CVE:    cveConfig,
+			Enable: &defaultVal,
+		}
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: searchConfig,
+		}
+
+		ctlr := api.NewController(conf)
+
+		go func(controller *api.Controller) {
+			// this blocks
+			if err := controller.Run(context.Background()); err != nil {
+				return
+			}
+		}(ctlr)
+		// wait till ready
+		for {
+			res, err := resty.R().Get(url)
+			if err == nil && res.StatusCode() == 404 {
+				break
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+		time.Sleep(90 * time.Second)
+
+		defer func(controller *api.Controller) {
+			ctx := context.Background()
+			_ = controller.Server.Shutdown(ctx)
+		}(ctlr)
+
+		args := []string{"cvetest", "--cve-id", "CVE-2019-9923", "--image", "zot-cve-test", "--fixed"}
+		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
+		defer os.Remove(configPath)
+		cveCmd := NewCveCommand(new(searchService))
+		buff := bytes.NewBufferString("")
+		cveCmd.SetOut(buff)
+		cveCmd.SetErr(buff)
+		cveCmd.SetArgs(args)
+		err = cveCmd.Execute()
+		So(err, ShouldNotBeNil)
+	})
+}
+
+// nolint: dupl
+func TestServerCVEResponse(t *testing.T) {
+	port := test.GetFreePort()
+	url := test.GetBaseURL(port)
+	conf := config.New()
+	conf.HTTP.Port = port
+
+	dir := t.TempDir()
+
+	err := test.CopyFiles("../../test/data/zot-cve-test", path.Join(dir, "zot-cve-test"))
+	if err != nil {
+		panic(err)
+	}
+
+	conf.Storage.RootDirectory = dir
+	cveConfig := &extconf.CVEConfig{
+		UpdateInterval: 2,
+	}
+	defaultVal := true
+	searchConfig := &extconf.SearchConfig{
+		CVE:    cveConfig,
+		Enable: &defaultVal,
+	}
+	conf.Extensions = &extconf.ExtensionConfig{
+		Search: searchConfig,
+	}
+
+	ctlr := api.NewController(conf)
+
+	go func(controller *api.Controller) {
+		// this blocks
+		if err := controller.Run(context.Background()); err != nil {
+			return
+		}
+	}(ctlr)
+	// wait till ready
+	for {
+		res, err := resty.R().Get(url + constants.ExtSearchPrefix)
+		if err == nil && res.StatusCode() == 422 {
+			break
+		}
+
+		time.Sleep(100 * time.Millisecond)
+	}
+	time.Sleep(90 * time.Second)
+
+	defer func(controller *api.Controller) {
+		ctx := context.Background()
+		_ = controller.Server.Shutdown(ctx)
+	}(ctlr)
+
+	Convey("Test CVE by image name", t, func() {
+		args := []string{"cvetest", "--image", "zot-cve-test:0.0.1"}
+		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
+		defer os.Remove(configPath)
+		cveCmd := MockNewCveCommand(new(searchService))
+		buff := bytes.NewBufferString("")
+		cveCmd.SetOut(buff)
+		cveCmd.SetErr(buff)
+		cveCmd.SetArgs(args)
+		err = cveCmd.Execute()
+		space := regexp.MustCompile(`\s+`)
+		str := space.ReplaceAllString(buff.String(), " ")
+		str = strings.TrimSpace(str)
+		So(err, ShouldBeNil)
+		So(str, ShouldContainSubstring, "ID SEVERITY TITLE")
+		So(str, ShouldContainSubstring, "CVE")
+		Convey("invalid image", func() {
+			args := []string{"cvetest", "--image", "invalid:0.0.1"}
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
+			defer os.Remove(configPath)
+			cveCmd := MockNewCveCommand(new(searchService))
+			buff := bytes.NewBufferString("")
+			cveCmd.SetOut(buff)
+			cveCmd.SetErr(buff)
+			cveCmd.SetArgs(args)
+			err = cveCmd.Execute()
+			So(err, ShouldNotBeNil)
+		})
+	})
+
+	Convey("Test images by CVE ID", t, func() {
+		args := []string{"cvetest", "--cve-id", "CVE-2019-9923"}
+		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
+		defer os.Remove(configPath)
+		cveCmd := MockNewCveCommand(new(searchService))
+		buff := bytes.NewBufferString("")
+		cveCmd.SetOut(buff)
+		cveCmd.SetErr(buff)
+		cveCmd.SetArgs(args)
+		err := cveCmd.Execute()
+		space := regexp.MustCompile(`\s+`)
+		str := space.ReplaceAllString(buff.String(), " ")
+		str = strings.TrimSpace(str)
+		So(err, ShouldBeNil)
+		So(str, ShouldEqual, "IMAGE NAME TAG DIGEST SIZE zot-cve-test 0.0.1 63a795ca 75MB")
+		Convey("invalid CVE ID", func() {
+			args := []string{"cvetest", "--cve-id", "invalid"}
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
+			defer os.Remove(configPath)
+			cveCmd := MockNewCveCommand(new(searchService))
+			buff := bytes.NewBufferString("")
+			cveCmd.SetOut(buff)
+			cveCmd.SetErr(buff)
+			cveCmd.SetArgs(args)
+			err := cveCmd.Execute()
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			str = strings.TrimSpace(str)
+			So(err, ShouldBeNil)
+			So(str, ShouldNotContainSubstring, "IMAGE NAME TAG DIGEST SIZE")
+		})
+	})
+
+	Convey("Test fixed tags by and image name CVE ID", t, func() {
+		args := []string{"cvetest", "--cve-id", "CVE-2019-9923", "--image", "zot-cve-test", "--fixed"}
+		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
+		defer os.Remove(configPath)
+		cveCmd := MockNewCveCommand(new(searchService))
+		buff := bytes.NewBufferString("")
+		cveCmd.SetOut(buff)
+		cveCmd.SetErr(buff)
+		cveCmd.SetArgs(args)
+		err := cveCmd.Execute()
+		space := regexp.MustCompile(`\s+`)
+		str := space.ReplaceAllString(buff.String(), " ")
+		str = strings.TrimSpace(str)
+		So(err, ShouldBeNil)
+		So(str, ShouldEqual, "")
+		Convey("random cve", func() {
+			args := []string{"cvetest", "--cve-id", "random", "--image", "zot-cve-test", "--fixed"}
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
+			defer os.Remove(configPath)
+			cveCmd := MockNewCveCommand(new(searchService))
+			buff := bytes.NewBufferString("")
+			cveCmd.SetOut(buff)
+			cveCmd.SetErr(buff)
+			cveCmd.SetArgs(args)
+			err := cveCmd.Execute()
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			str = strings.TrimSpace(str)
+			So(err, ShouldBeNil)
+			So(strings.TrimSpace(str), ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIZE")
+		})
+
+		Convey("invalid image", func() {
+			args := []string{"cvetest", "--cve-id", "CVE-2019-20807", "--image", "zot-cv-test", "--fixed"}
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
+			defer os.Remove(configPath)
+			cveCmd := MockNewCveCommand(new(searchService))
+			buff := bytes.NewBufferString("")
+			cveCmd.SetOut(buff)
+			cveCmd.SetErr(buff)
+			cveCmd.SetArgs(args)
+			err := cveCmd.Execute()
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			str = strings.TrimSpace(str)
+			So(err, ShouldNotBeNil)
+			So(strings.TrimSpace(str), ShouldNotContainSubstring, "IMAGE NAME TAG DIGEST SIZE")
+		})
+	})
+
+	Convey("Test CVE by name and CVE ID", t, func() {
+		args := []string{"cvetest", "--image", "zot-cve-test", "--cve-id", "CVE-2019-9923"}
+		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
+		defer os.Remove(configPath)
+		cveCmd := MockNewCveCommand(new(searchService))
+		buff := bytes.NewBufferString("")
+		cveCmd.SetOut(buff)
+		cveCmd.SetErr(buff)
+		cveCmd.SetArgs(args)
+		err := cveCmd.Execute()
+		space := regexp.MustCompile(`\s+`)
+		str := space.ReplaceAllString(buff.String(), " ")
+		So(err, ShouldBeNil)
+		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIZE zot-cve-test 0.0.1 63a795ca 75MB")
+		Convey("invalid name and CVE ID", func() {
+			args := []string{"cvetest", "--image", "test", "--cve-id", "CVE-20807"}
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
+			defer os.Remove(configPath)
+			cveCmd := MockNewCveCommand(new(searchService))
+			buff := bytes.NewBufferString("")
+			cveCmd.SetOut(buff)
+			cveCmd.SetErr(buff)
+			cveCmd.SetArgs(args)
+			err := cveCmd.Execute()
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			So(err, ShouldBeNil)
+			So(strings.TrimSpace(str), ShouldNotContainSubstring, "IMAGE NAME TAG DIGEST SIZE")
+		})
+	})
+}
+
+func MockNewCveCommand(searchService SearchService) *cobra.Command {
+	searchCveParams := make(map[string]*string)
+
+	var servURL, user, outputFormat string
+
+	var verifyTLS, fixedFlag, verbose bool
+
+	cveCmd := &cobra.Command{
+		RunE: func(cmd *cobra.Command, args []string) error {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				panic(err)
+			}
+
+			configPath := path.Join(home + "/.zot")
+			if len(args) > 0 {
+				urlFromConfig, err := getConfigValue(configPath, args[0], "url")
+				if err != nil {
+					cmd.SilenceUsage = true
+
+					return err
+				}
+
+				if urlFromConfig == "" {
+					return zotErrors.ErrNoURLProvided
+				}
+
+				servURL = urlFromConfig
+			} else {
+				return zotErrors.ErrNoURLProvided
+			}
+
+			if len(args) > 0 {
+				var err error
+
+				verifyTLS, err = parseBooleanConfig(configPath, args[0], verifyTLSConfig)
+				if err != nil {
+					cmd.SilenceUsage = true
+
+					return err
+				}
+			}
+
+			verbose = false
+
+			searchConfig := searchConfig{
+				params:        searchCveParams,
+				searchService: searchService,
+				servURL:       &servURL,
+				user:          &user,
+				outputFormat:  &outputFormat,
+				fixedFlag:     &fixedFlag,
+				verifyTLS:     &verifyTLS,
+				verbose:       &verbose,
+				resultWriter:  cmd.OutOrStdout(),
+			}
+
+			err = MockSearchCve(searchConfig)
+
+			if err != nil {
+				cmd.SilenceUsage = true
+
+				return err
+			}
+
+			return nil
+		},
+	}
+
+	vars := cveFlagVariables{
+		searchCveParams: searchCveParams,
+		servURL:         &servURL,
+		user:            &user,
+		outputFormat:    &outputFormat,
+		fixedFlag:       &fixedFlag,
+	}
+
+	setupCveFlags(cveCmd, vars)
+
+	return cveCmd
+}
+
+func MockSearchCve(searchConfig searchConfig) error {
+	searchers := getCveSearchers()
+
+	for _, searcher := range searchers {
+		found, err := searcher.search(searchConfig)
+		if found {
+			if err != nil {
+				return err
+			}
+
+			return nil
+		}
+	}
+
+	return zotErrors.ErrInvalidFlagsCombination
 }

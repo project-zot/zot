@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/dustin/go-humanize"
 	jsoniter "github.com/json-iterator/go"
@@ -22,9 +22,20 @@ import (
 )
 
 type SearchService interface {
+	getImagesGQL(ctx context.Context, config searchConfig, username, password string,
+		imageName string) (*imageListStructGQL, error)
+	getImagesByDigestGQL(ctx context.Context, config searchConfig, username, password string,
+		digest string) (*imageListStructForDigestGQL, error)
+	getCveByImageGQL(ctx context.Context, config searchConfig, username, password,
+		imageName string) (*cveResult, error)
+	getImagesByCveIDGQL(ctx context.Context, config searchConfig, username, password string,
+		digest string) (*imagesForCve, error)
+	getTagsForCVEGQL(ctx context.Context, config searchConfig, username, password, imageName,
+		cveID string) (*imagesForCve, error)
+	getFixedTagsForCVEGQL(ctx context.Context, config searchConfig, username, password, imageName,
+		cveID string) (*fixedTags, error)
+
 	getAllImages(ctx context.Context, config searchConfig, username, password string,
-		channel chan stringResult, wtgrp *sync.WaitGroup)
-	getImageByName(ctx context.Context, config searchConfig, username, password, imageName string,
 		channel chan stringResult, wtgrp *sync.WaitGroup)
 	getCveByImage(ctx context.Context, config searchConfig, username, password, imageName string,
 		channel chan stringResult, wtgrp *sync.WaitGroup)
@@ -32,11 +43,13 @@ type SearchService interface {
 		channel chan stringResult, wtgrp *sync.WaitGroup)
 	getImagesByDigest(ctx context.Context, config searchConfig, username, password, digest string,
 		channel chan stringResult, wtgrp *sync.WaitGroup)
-	getImageByNameAndCVEID(ctx context.Context, config searchConfig, username, password, imageName, cvid string,
-		channel chan stringResult, wtgrp *sync.WaitGroup)
 	getFixedTagsForCVE(ctx context.Context, config searchConfig, username, password, imageName, cvid string,
 		channel chan stringResult, wtgrp *sync.WaitGroup)
 	getRepos(ctx context.Context, config searchConfig, username, password string,
+		channel chan stringResult, wtgrp *sync.WaitGroup)
+	getImageByName(ctx context.Context, config searchConfig, username, password, imageName string,
+		channel chan stringResult, wtgrp *sync.WaitGroup)
+	getImageByNameAndCVEID(ctx context.Context, config searchConfig, username, password, imageName, cvid string,
 		channel chan stringResult, wtgrp *sync.WaitGroup)
 }
 
@@ -44,6 +57,116 @@ type searchService struct{}
 
 func NewSearchService() SearchService {
 	return searchService{}
+}
+
+func (service searchService) getImagesGQL(ctx context.Context, config searchConfig, username, password string,
+	imageName string,
+) (*imageListStructGQL, error) {
+	query := fmt.Sprintf(`{ImageList(repo: "%s") {`+`
+									RepoName Tag Digest ConfigDigest Size Layers {Size Digest}}
+							  }`,
+		imageName)
+	result := &imageListStructGQL{}
+
+	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
+
+	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
+		return nil, errResult
+	}
+
+	return result, nil
+}
+
+func (service searchService) getImagesByDigestGQL(ctx context.Context, config searchConfig, username, password string,
+	digest string,
+) (*imageListStructForDigestGQL, error) {
+	query := fmt.Sprintf(`{ImageListForDigest(id: "%s") {`+`
+									RepoName Tag Digest ConfigDigest Size Layers {Size Digest}}
+							  }`,
+		digest)
+	result := &imageListStructForDigestGQL{}
+
+	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
+
+	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
+		return nil, errResult
+	}
+
+	return result, nil
+}
+
+func (service searchService) getImagesByCveIDGQL(ctx context.Context, config searchConfig, username,
+	password, cveID string,
+) (*imagesForCve, error) {
+	query := fmt.Sprintf(`{ImageListForCVE(id: "%s") {`+`
+								RepoName Tag Digest Size}
+						  }`,
+		cveID)
+	result := &imagesForCve{}
+
+	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
+
+	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
+		return nil, errResult
+	}
+
+	return result, nil
+}
+
+func (service searchService) getCveByImageGQL(ctx context.Context, config searchConfig, username, password,
+	imageName string,
+) (*cveResult, error) {
+	query := fmt.Sprintf(`{ CVEListForImage (image:"%s")`+
+		` { Tag CVEList { Id Title Severity Description `+
+		`PackageList {Name InstalledVersion FixedVersion}} } }`, imageName)
+	result := &cveResult{}
+
+	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
+
+	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
+		return nil, errResult
+	}
+
+	result.Data.CVEListForImage.CVEList = groupCVEsBySeverity(result.Data.CVEListForImage.CVEList)
+
+	return result, nil
+}
+
+func (service searchService) getTagsForCVEGQL(ctx context.Context, config searchConfig,
+	username, password, imageName, cveID string,
+) (*imagesForCve, error) {
+	query := fmt.Sprintf(`{ImageListForCVE(id: "%s") {`+`
+							RepoName Tag Digest Size}
+						}`,
+		cveID)
+	result := &imagesForCve{}
+
+	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
+
+	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
+		return nil, errResult
+	}
+
+	return result, nil
+}
+
+func (service searchService) getFixedTagsForCVEGQL(ctx context.Context, config searchConfig,
+	username, password, imageName, cveID string,
+) (*fixedTags, error) {
+	query := fmt.Sprintf(`{ImageListWithCVEFixed(id: "%s", image: "%s") {`+`
+							RepoName Tag Digest Size}
+	  					}`,
+		cveID, imageName)
+
+	result := &fixedTags{}
+
+	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
+
+	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
+		return nil, errResult
+	}
+
+	return result, nil
 }
 
 func (service searchService) getImageByName(ctx context.Context, config searchConfig,
@@ -126,8 +249,8 @@ func getImage(ctx context.Context, config searchConfig, username, password, imag
 		return
 	}
 
-	tagsList := &tagListResp{}
-	_, err = makeGETRequest(ctx, tagListEndpoint, username, password, *config.verifyTLS, &tagsList)
+	tagList := &tagListResp{}
+	_, err = makeGETRequest(ctx, tagListEndpoint, username, password, *config.verifyTLS, &tagList)
 
 	if err != nil {
 		if isContextDone(ctx) {
@@ -138,7 +261,7 @@ func getImage(ctx context.Context, config searchConfig, username, password, imag
 		return
 	}
 
-	for _, tag := range tagsList.Tags {
+	for _, tag := range tagList.Tags {
 		wtgrp.Add(1)
 
 		go addManifestCallToPool(ctx, config, pool, username, password, imageName, tag, rch, wtgrp)
@@ -152,7 +275,7 @@ func (service searchService) getImagesByCveID(ctx context.Context, config search
 	defer close(rch)
 
 	query := fmt.Sprintf(`{ImageListForCVE(id: "%s") {`+`
-								Name Tags }
+								RepoName Tag Digest Size}
 						  }`,
 		cvid)
 	result := &imagesForCve{}
@@ -189,12 +312,10 @@ func (service searchService) getImagesByCveID(ctx context.Context, config search
 
 	go rlim.startRateLimiter(ctx)
 
-	for _, image := range result.Data.ImageListForCVE {
-		for _, tag := range image.Tags {
-			localWg.Add(1)
+	for _, image := range result.Data.ImageList {
+		localWg.Add(1)
 
-			go addManifestCallToPool(ctx, config, rlim, username, password, image.Name, tag, rch, &localWg)
-		}
+		go addManifestCallToPool(ctx, config, rlim, username, password, image.RepoName, image.Tag, rch, &localWg)
 	}
 
 	localWg.Wait()
@@ -207,7 +328,7 @@ func (service searchService) getImagesByDigest(ctx context.Context, config searc
 	defer close(rch)
 
 	query := fmt.Sprintf(`{ImageListForDigest(id: "%s") {`+`
-									Name Tags }
+								RepoName Tag Digest ConfigDigest Size Layers {Size Digest}}
 							  }`,
 		digest)
 	result := &imagesForDigest{}
@@ -244,12 +365,10 @@ func (service searchService) getImagesByDigest(ctx context.Context, config searc
 
 	go rlim.startRateLimiter(ctx)
 
-	for _, image := range result.Data.ImageListForDigest {
-		for _, tag := range image.Tags {
-			localWg.Add(1)
+	for _, image := range result.Data.ImageList {
+		localWg.Add(1)
 
-			go addManifestCallToPool(ctx, config, rlim, username, password, image.Name, tag, rch, &localWg)
-		}
+		go addManifestCallToPool(ctx, config, rlim, username, password, image.RepoName, image.Tag, rch, &localWg)
 	}
 
 	localWg.Wait()
@@ -262,7 +381,7 @@ func (service searchService) getImageByNameAndCVEID(ctx context.Context, config 
 	defer close(rch)
 
 	query := fmt.Sprintf(`{ImageListForCVE(id: "%s") {`+`
-									Name Tags }
+							RepoName Tag Digest ConfigDigest Size Layers {Size Digest}}
 							  }`,
 		cvid)
 	result := &imagesForCve{}
@@ -299,16 +418,14 @@ func (service searchService) getImageByNameAndCVEID(ctx context.Context, config 
 
 	go rlim.startRateLimiter(ctx)
 
-	for _, image := range result.Data.ImageListForCVE {
-		if !strings.EqualFold(imageName, image.Name) {
+	for _, image := range result.Data.ImageList {
+		if !strings.EqualFold(imageName, image.RepoName) {
 			continue
 		}
 
-		for _, tag := range image.Tags {
-			localWg.Add(1)
+		localWg.Add(1)
 
-			go addManifestCallToPool(ctx, config, rlim, username, password, image.Name, tag, rch, &localWg)
-		}
+		go addManifestCallToPool(ctx, config, rlim, username, password, image.RepoName, image.Tag, rch, &localWg)
 	}
 
 	localWg.Wait()
@@ -368,6 +485,59 @@ func (service searchService) getCveByImage(ctx context.Context, config searchCon
 	rch <- stringResult{str, nil}
 }
 
+func (service searchService) getFixedTagsForCVE(ctx context.Context, config searchConfig,
+	username, password, imageName, cvid string, rch chan stringResult, wtgrp *sync.WaitGroup,
+) {
+	defer wtgrp.Done()
+	defer close(rch)
+
+	query := fmt.Sprintf(`{ImageListWithCVEFixed (id: "%s", image: "%s") {`+`
+							RepoName Tag Digest Size}
+							  }`,
+		cvid, imageName)
+	result := &fixedTags{}
+
+	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
+	if err != nil {
+		if isContextDone(ctx) {
+			return
+		}
+		rch <- stringResult{"", err}
+
+		return
+	}
+
+	if result.Errors != nil {
+		var errBuilder strings.Builder
+
+		for _, err := range result.Errors {
+			fmt.Fprintln(&errBuilder, err.Message)
+		}
+
+		if isContextDone(ctx) {
+			return
+		}
+		rch <- stringResult{"", errors.New(errBuilder.String())} //nolint: goerr113
+
+		return
+	}
+
+	var localWg sync.WaitGroup
+
+	rlim := newSmoothRateLimiter(&localWg, rch)
+	localWg.Add(1)
+
+	go rlim.startRateLimiter(ctx)
+
+	for _, img := range result.Data.ImageList {
+		localWg.Add(1)
+
+		go addManifestCallToPool(ctx, config, rlim, username, password, imageName, img.Tag, rch, &localWg)
+	}
+
+	localWg.Wait()
+}
+
 func groupCVEsBySeverity(cveList []cve) []cve {
 	var (
 		unknown  = make([]cve, 0)
@@ -421,63 +591,10 @@ func isContextDone(ctx context.Context) bool {
 	}
 }
 
-func (service searchService) getFixedTagsForCVE(ctx context.Context, config searchConfig,
-	username, password, imageName, cvid string, rch chan stringResult, wtgrp *sync.WaitGroup,
-) {
-	defer wtgrp.Done()
-	defer close(rch)
-
-	query := fmt.Sprintf(`{ImageListWithCVEFixed (id: "%s", image: "%s") {`+`
-								 Tags {Name Timestamp} }
-							  }`,
-		cvid, imageName)
-	result := &fixedTags{}
-
-	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
-	if err != nil {
-		if isContextDone(ctx) {
-			return
-		}
-		rch <- stringResult{"", err}
-
-		return
-	}
-
-	if result.Errors != nil {
-		var errBuilder strings.Builder
-
-		for _, err := range result.Errors {
-			fmt.Fprintln(&errBuilder, err.Message)
-		}
-
-		if isContextDone(ctx) {
-			return
-		}
-		rch <- stringResult{"", errors.New(errBuilder.String())} //nolint: goerr113
-
-		return
-	}
-
-	var localWg sync.WaitGroup
-
-	rlim := newSmoothRateLimiter(&localWg, rch)
-	localWg.Add(1)
-
-	go rlim.startRateLimiter(ctx)
-
-	for _, imgTag := range result.Data.ImageListWithCVEFixed.Tags {
-		localWg.Add(1)
-
-		go addManifestCallToPool(ctx, config, rlim, username, password, imageName, imgTag.Name, rch, &localWg)
-	}
-
-	localWg.Wait()
-}
-
 // Query using JQL, the query string is passed as a parameter
 // errors are returned in the stringResult channel, the unmarshalled payload is in resultPtr.
-func (service searchService) makeGraphQLQuery(ctx context.Context, config searchConfig,
-	username, password, query string,
+func (service searchService) makeGraphQLQuery(ctx context.Context,
+	config searchConfig, username, password, query string,
 	resultPtr interface{},
 ) error {
 	endPoint, err := combineServerAndEndpointURL(*config.servURL, constants.ExtSearchPrefix)
@@ -488,6 +605,34 @@ func (service searchService) makeGraphQLQuery(ctx context.Context, config search
 	err = makeGraphQLRequest(ctx, endPoint, query, username, password, *config.verifyTLS, resultPtr)
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func checkResultGraphQLQuery(ctx context.Context, err error, resultErrors []errorGraphQL,
+) error {
+	if err != nil {
+		if isContextDone(ctx) {
+			return nil // nolint:nilnil
+		}
+
+		return err
+	}
+
+	if resultErrors != nil {
+		var errBuilder strings.Builder
+
+		for _, error := range resultErrors {
+			fmt.Fprintln(&errBuilder, error.Message)
+		}
+
+		if isContextDone(ctx) {
+			return nil
+		}
+
+		// nolint: goerr113
+		return errors.New(errBuilder.String())
 	}
 
 	return nil
@@ -531,6 +676,11 @@ type cveResult struct {
 type errorGraphQL struct {
 	Message string   `json:"message"`
 	Path    []string `json:"path"`
+}
+
+type tagListResp struct {
+	Name string   `json:"name"`
+	Tags []string `json:"tags"`
 }
 
 //nolint:tagliatelle // graphQL schema
@@ -579,7 +729,7 @@ func (cve cveResult) stringPlainText() (string, error) {
 	table := getCVETableWriter(&builder)
 
 	for _, c := range cve.Data.CVEListForImage.CVEList {
-		id := ellipsize(c.ID, cvidWidth, ellipsis)
+		id := ellipsize(c.ID, cveIDWidth, ellipsis)
 		title := ellipsize(c.Title, cveTitleWidth, ellipsis)
 		severity := ellipsize(c.Severity, cveSeverityWidth, ellipsis)
 		row := make([]string, 3) //nolint:gomnd
@@ -618,51 +768,50 @@ func (cve cveResult) stringYAML() (string, error) {
 type fixedTags struct {
 	Errors []errorGraphQL `json:"errors"`
 	Data   struct {
-		//nolint:tagliatelle // graphQL schema
-		ImageListWithCVEFixed struct {
-			Tags []struct {
-				Name      string    `json:"Name"`
-				Timestamp time.Time `json:"Timestamp"`
-			} `json:"Tags"`
-		} `json:"ImageListWithCVEFixed"`
+		ImageList []imageStruct `json:"ImageListWithCVEFixed"` //nolint:tagliatelle // graphQL schema
 	} `json:"data"`
 }
 
 type imagesForCve struct {
 	Errors []errorGraphQL `json:"errors"`
 	Data   struct {
-		ImageListForCVE []tagListResp `json:"ImageListForCVE"` //nolint:tagliatelle // graphQL schema
+		ImageList []imageStruct `json:"ImageListForCVE"` //nolint:tagliatelle // graphQL schema
+	} `json:"data"`
+}
+
+type imageStruct struct {
+	RepoName     string  `json:"repoName"`
+	Tag          string  `json:"tag"`
+	ConfigDigest string  `json:"configDigest"`
+	Digest       string  `json:"digest"`
+	Layers       []layer `json:"layers"`
+	Size         string  `json:"size"`
+	verbose      bool
+}
+
+type imageListStructGQL struct {
+	Errors []errorGraphQL `json:"errors"`
+	Data   struct {
+		ImageList []imageStruct `json:"ImageList"` // nolint:tagliatelle
+	} `json:"data"`
+}
+
+type imageListStructForDigestGQL struct {
+	Errors []errorGraphQL `json:"errors"`
+	Data   struct {
+		ImageList []imageStruct `json:"ImageListForDigest"` // nolint:tagliatelle
 	} `json:"data"`
 }
 
 type imagesForDigest struct {
 	Errors []errorGraphQL `json:"errors"`
 	Data   struct {
-		ImageListForDigest []tagListResp `json:"ImageListForDigest"` //nolint:tagliatelle // graphQL schema
+		ImageList []imageStruct `json:"ImageListForDigest"` //nolint:tagliatelle // graphQL schema
 	} `json:"data"`
 }
 
-type tagListResp struct {
-	Name string   `json:"name"`
-	Tags []string `json:"tags"`
-}
-
-type imageStruct struct {
-	Name    string `json:"name"`
-	Tags    []tags `json:"tags"`
-	verbose bool
-}
-
-type tags struct {
-	Name         string  `json:"name"`
-	Size         uint64  `json:"size"`
-	Digest       string  `json:"digest"`
-	ConfigDigest string  `json:"configDigest"`
-	Layers       []layer `json:"layerDigests"`
-}
-
 type layer struct {
-	Size   uint64 `json:"size"`
+	Size   uint64 `json:"size,string"`
 	Digest string `json:"digest"`
 }
 
@@ -693,41 +842,41 @@ func (img imageStruct) stringPlainText() (string, error) {
 		table.SetColMinWidth(colLayersIndex, layersWidth)
 	}
 
-	for _, tag := range img.Tags {
-		imageName := ellipsize(img.Name, imageNameWidth, ellipsis)
-		tagName := ellipsize(tag.Name, tagWidth, ellipsis)
-		digest := ellipsize(tag.Digest, digestWidth, "")
-		size := ellipsize(strings.ReplaceAll(humanize.Bytes(tag.Size), " ", ""), sizeWidth, ellipsis)
-		config := ellipsize(tag.ConfigDigest, configWidth, "")
-		row := make([]string, 6) //nolint:gomnd
+	imageName := ellipsize(img.RepoName, imageNameWidth, ellipsis)
+	tagName := ellipsize(img.Tag, tagWidth, ellipsis)
+	digest := ellipsize(img.Digest, digestWidth, "")
+	imgSize, _ := strconv.ParseUint(img.Size, 10, 64)
+	size := ellipsize(strings.ReplaceAll(humanize.Bytes(imgSize), " ", ""), sizeWidth, ellipsis)
+	config := ellipsize(img.ConfigDigest, configWidth, "")
+	row := make([]string, 6) // nolint:gomnd
 
-		row[colImageNameIndex] = imageName
-		row[colTagIndex] = tagName
-		row[colDigestIndex] = digest
-		row[colSizeIndex] = size
+	row[colImageNameIndex] = imageName
+	row[colTagIndex] = tagName
+	row[colDigestIndex] = digest
+	row[colSizeIndex] = size
 
-		if img.verbose {
-			row[colConfigIndex] = config
-			row[colLayersIndex] = ""
-		}
+	if img.verbose {
+		row[colConfigIndex] = config
+		row[colLayersIndex] = ""
+	}
 
-		table.Append(row)
+	table.Append(row)
 
-		if img.verbose {
-			for _, entry := range tag.Layers {
-				layerSize := ellipsize(strings.ReplaceAll(humanize.Bytes(entry.Size), " ", ""), sizeWidth, ellipsis)
-				layerDigest := ellipsize(entry.Digest, digestWidth, "")
+	if img.verbose {
+		for _, entry := range img.Layers {
+			layerSize := entry.Size
+			size := ellipsize(strings.ReplaceAll(humanize.Bytes(layerSize), " ", ""), sizeWidth, ellipsis)
+			layerDigest := ellipsize(entry.Digest, digestWidth, "")
 
-				layerRow := make([]string, 6) //nolint:gomnd
-				layerRow[colImageNameIndex] = ""
-				layerRow[colTagIndex] = ""
-				layerRow[colDigestIndex] = ""
-				layerRow[colSizeIndex] = layerSize
-				layerRow[colConfigIndex] = ""
-				layerRow[colLayersIndex] = layerDigest
+			layerRow := make([]string, 6) // nolint:gomnd
+			layerRow[colImageNameIndex] = ""
+			layerRow[colTagIndex] = ""
+			layerRow[colDigestIndex] = ""
+			layerRow[colSizeIndex] = size
+			layerRow[colConfigIndex] = ""
+			layerRow[colLayersIndex] = layerDigest
 
-				table.Append(layerRow)
-			}
+			table.Append(layerRow)
 		}
 	}
 
@@ -760,6 +909,7 @@ type catalogResponse struct {
 	Repositories []string `json:"repositories"`
 }
 
+//nolint:tagliatelle
 type manifestResponse struct {
 	Layers []struct {
 		MediaType string `json:"mediaType"`
@@ -767,8 +917,8 @@ type manifestResponse struct {
 		Size      uint64 `json:"size"`
 	} `json:"layers"`
 	Annotations struct {
-		WsTychoStackerStackerYaml string `json:"ws.tycho.stacker.stacker_yaml"` //nolint:tagliatelle // custom annotation
-		WsTychoStackerGitVersion  string `json:"ws.tycho.stacker.git_version"`  //nolint:tagliatelle // custom annotation
+		WsTychoStackerStackerYaml string `json:"ws.tycho.stacker.stacker_yaml"`
+		WsTychoStackerGitVersion  string `json:"ws.tycho.stacker.git_version"`
 	} `json:"annotations"`
 	Config struct {
 		Size      int    `json:"size"`
@@ -836,7 +986,7 @@ func getCVETableWriter(writer io.Writer) *tablewriter.Table {
 	table.SetBorder(false)
 	table.SetTablePadding("  ")
 	table.SetNoWhiteSpace(true)
-	table.SetColMinWidth(colCVEIDIndex, cvidWidth)
+	table.SetColMinWidth(colCVEIDIndex, cveIDWidth)
 	table.SetColMinWidth(colCVESeverityIndex, cveSeverityWidth)
 	table.SetColMinWidth(colCVETitleIndex, cveTitleWidth)
 
@@ -895,7 +1045,7 @@ const (
 	colLayersIndex    = 4
 	colSizeIndex      = 5
 
-	cvidWidth        = 16
+	cveIDWidth       = 16
 	cveSeverityWidth = 8
 	cveTitleWidth    = 48
 

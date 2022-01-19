@@ -43,11 +43,11 @@ type BaseOciLayoutUtils struct {
 }
 
 type RepoInfo struct {
-	Manifests []Manifest `json:"manifests"`
-	Summary   RepoSummary
+	Summary RepoSummary
+	Images  []Image `json:"images"`
 }
 
-type Manifest struct {
+type Image struct {
 	Tag      string  `json:"tag"`
 	Digest   string  `json:"digest"`
 	IsSigned bool    `json:"isSigned"`
@@ -358,7 +358,7 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error)
 	// made up of all manifests, configs and image layers
 	repoSize := int64(0)
 
-	manifests := make([]Manifest, 0)
+	manifests := make([]Image, 0)
 
 	tagsInfo, err := olu.GetImageTagsWithTimestamp(name)
 	if err != nil {
@@ -376,7 +376,7 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error)
 	repoVendors := make([]string, 0, len(manifestList))
 
 	for _, man := range manifestList {
-		manifestInfo := Manifest{}
+		manifestInfo := Image{}
 
 		manifestInfo.Digest = man.Digest.Encoded()
 
@@ -441,7 +441,7 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error)
 		manifests = append(manifests, manifestInfo)
 	}
 
-	repo.Manifests = manifests
+	repo.Images = manifests
 
 	lastUpdate, err := olu.GetRepoLastUpdated(name)
 	if err != nil {

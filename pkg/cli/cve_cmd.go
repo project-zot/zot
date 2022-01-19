@@ -4,13 +4,18 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/url"
 	"os"
 	"path"
 
 	"github.com/briandowns/spinner"
 	"github.com/spf13/cobra"
+	"gopkg.in/resty.v1"
 	zotErrors "zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/api/constants"
 )
 
 func NewCveCommand(searchService SearchService) *cobra.Command {
@@ -68,7 +73,8 @@ func NewCveCommand(searchService SearchService) *cobra.Command {
 			}
 
 			spin := spinner.New(spinner.CharSets[39], spinnerDuration, spinner.WithWriter(cmd.ErrOrStderr()))
-			spin.Prefix = fmt.Sprintf("Fetching from %s.. ", servURL)
+			spin.Prefix = fmt.Sprintf("Fetching from %s..", servURL)
+			spin.Suffix = "\n\b"
 
 			verbose = false
 
@@ -112,7 +118,7 @@ func NewCveCommand(searchService SearchService) *cobra.Command {
 
 func setupCveFlags(cveCmd *cobra.Command, variables cveFlagVariables) {
 	variables.searchCveParams["imageName"] = cveCmd.Flags().StringP("image", "I", "", "List CVEs by IMAGENAME[:TAG]")
-	variables.searchCveParams["cvid"] = cveCmd.Flags().StringP("cve-id", "i", "", "List images affected by a CVE")
+	variables.searchCveParams["cveID"] = cveCmd.Flags().StringP("cve-id", "i", "", "List images affected by a CVE")
 
 	cveCmd.Flags().StringVar(variables.servURL, "url", "", "Specify zot server URL if config-name is not mentioned")
 	cveCmd.Flags().StringVarP(variables.user, "user", "u", "", `User Credentials of `+
@@ -131,8 +137,80 @@ type cveFlagVariables struct {
 	fixedFlag       *bool
 }
 
+type field struct {
+	Name string `json:"name"`
+}
+
+type schemaList struct {
+	Data struct {
+		Schema struct {
+			QueryType struct {
+				Fields []field `json:"fields"`
+			} `json:"queryType"` //nolint:tagliatelle // graphQL schema
+		} `json:"__schema"` //nolint:tagliatelle // graphQL schema
+	} `json:"data"`
+}
+
+func containsGQLQuery(queryList []field, query string) bool {
+	for _, q := range queryList {
+		if q.Name == query {
+			return true
+		}
+	}
+
+	return false
+}
+
+func checkExtEndPoint(serverURL string) bool {
+	client := resty.New()
+
+	extEndPoint, err := combineServerAndEndpointURL(serverURL, fmt.Sprintf("%s%s",
+		constants.RoutePrefix, constants.ExtOciDiscoverPrefix))
+	if err != nil {
+		return false
+	}
+
+	// nolint: gosec
+	resp, err := client.R().Get(extEndPoint)
+	if err != nil || resp.StatusCode() != http.StatusOK {
+		return false
+	}
+
+	searchEndPoint, _ := combineServerAndEndpointURL(serverURL, constants.ExtSearchPrefix)
+
+	query := `
+        {
+            __schema() {
+                queryType {
+                    fields {
+                        name
+                    }
+                }
+            }
+        }`
+
+	resp, err = client.R().Get(searchEndPoint + "?query=" + url.QueryEscape(query))
+	if err != nil || resp.StatusCode() != http.StatusOK {
+		return false
+	}
+
+	queryList := &schemaList{}
+
+	_ = json.Unmarshal(resp.Body(), queryList)
+
+	return containsGQLQuery(queryList.Data.Schema.QueryType.Fields, "ImageList")
+}
+
 func searchCve(searchConfig searchConfig) error {
-	for _, searcher := range getCveSearchers() {
+	var searchers []searcher
+
+	if checkExtEndPoint(*searchConfig.servURL) {
+		searchers = getCveSearchersGQL()
+	} else {
+		searchers = getCveSearchers()
+	}
+
+	for _, searcher := range searchers {
 		found, err := searcher.search(searchConfig)
 		if found {
 			if err != nil {
