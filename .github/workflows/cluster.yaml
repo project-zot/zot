@@ -136,7 +136,7 @@ jobs:
             ./bin/zot-linux-amd64 serve test/cluster/config-minio3.json &
             sleep 10
             # run zb
-            bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd http://localhost:8080
+            bin/zb-linux-amd64 -c 10 -n 50 -o ci-cd http://localhost:8080
         env:
           AWS_ACCESS_KEY_ID: minioadmin
           AWS_SECRET_ACCESS_KEY: minioadmin
