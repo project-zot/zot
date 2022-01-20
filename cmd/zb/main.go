@@ -63,7 +63,7 @@ func NewPerfRootCmd() *cobra.Command {
 		"Output format of test results: stdout (default), json, ci-cd")
 
 	// "version"
-	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "show the version and exit")
+	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "Show the version and exit")
 
 	return rootCmd
 }
