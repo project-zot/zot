@@ -843,12 +843,16 @@ func (is *ImageStoreFS) PutBlobChunkStreamed(repo string, uuid string, body io.R
 		DefaultFilePerms,
 	)
 	if err != nil {
-		is.log.Fatal().Err(err).Msg("failed to open file")
+		is.log.Error().Err(err).Msg("failed to open file")
+
+		return -1, err
 	}
 	defer file.Close()
 
 	if _, err := file.Seek(0, io.SeekEnd); err != nil {
-		is.log.Fatal().Err(err).Msg("failed to seek file")
+		is.log.Error().Err(err).Msg("failed to seek file")
+
+		return -1, err
 	}
 
 	n, err := io.Copy(file, body)
@@ -884,12 +888,16 @@ func (is *ImageStoreFS) PutBlobChunk(repo string, uuid string, from int64, to in
 		DefaultFilePerms,
 	)
 	if err != nil {
-		is.log.Fatal().Err(err).Msg("failed to open file")
+		is.log.Error().Err(err).Msg("failed to open file")
+
+		return -1, err
 	}
 	defer file.Close()
 
 	if _, err := file.Seek(from, io.SeekStart); err != nil {
-		is.log.Fatal().Err(err).Msg("failed to seek file")
+		is.log.Error().Err(err).Msg("failed to seek file")
+
+		return -1, err
 	}
 
 	n, err := io.Copy(file, body)
