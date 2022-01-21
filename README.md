@@ -40,6 +40,7 @@ https://zotregistry.io
   * Layer deduplication using hard links when content is identical
 * Serve [multiple storage paths (and backends)](./examples/config-multiple.json) using a single zot server
 * Pull and synchronize from other dist-spec conformant registries [sync](#sync)
+* Supports ratelimiting including per HTTP method
 * Swagger based documentation
 * Single binary for _all_ the above features
 * Released under Apache 2.0 License
