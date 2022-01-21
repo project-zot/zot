@@ -388,6 +388,45 @@ func TestHtpasswdFiveCreds(t *testing.T) {
 	})
 }
 
+func TestRatelimit(t *testing.T) {
+	Convey("Make a new controller", t, func() {
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		conf.HTTP.Ratelimit = &config.RatelimitConfig{
+			Rate:  1,
+			Burst: 1,
+		}
+		ctlr := api.NewController(conf)
+		dir, err := ioutil.TempDir("", "oci-repo-test")
+		if err != nil {
+			panic(err)
+		}
+		defer os.RemoveAll(dir)
+		ctlr.Config.Storage.RootDirectory = dir
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		WaitTillServerReady(baseURL)
+
+		Convey("Ratelimit", func() {
+			client := resty.New()
+			// first request should succeed
+			resp, err := client.R().Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			// second request back-to-back should fail
+			resp, err = client.R().Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusTooManyRequests)
+		})
+	})
+}
+
 func TestBasicAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		port := GetFreePort()

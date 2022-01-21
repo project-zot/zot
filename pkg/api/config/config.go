@@ -47,6 +47,11 @@ type BearerConfig struct {
 	Cert    string
 }
 
+type RatelimitConfig struct {
+	Rate  int
+	Burst int
+}
+
 type HTTPConfig struct {
 	Address          string
 	Port             string
@@ -54,8 +59,9 @@ type HTTPConfig struct {
 	Auth             *AuthConfig
 	RawAccessControl map[string]interface{} `mapstructure:"accessControl,omitempty"`
 	Realm            string
-	AllowReadAccess  bool `mapstructure:",omitempty"`
-	ReadOnly         bool `mapstructure:",omitempty"`
+	AllowReadAccess  bool             `mapstructure:",omitempty"`
+	ReadOnly         bool             `mapstructure:",omitempty"`
+	Ratelimit        *RatelimitConfig `mapstructure:",omitempty"`
 }
 
 type LDAPConfig struct {

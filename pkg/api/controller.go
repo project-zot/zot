@@ -8,7 +8,10 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"runtime"
+	"strings"
 	goSync "sync"
+	"syscall"
 	"time"
 
 	"github.com/docker/distribution/registry/storage/driver/factory"
@@ -68,6 +71,27 @@ func DefaultHeaders() mux.MiddlewareFunc {
 	}
 }
 
+func DumpRuntimeParams(log log.Logger) {
+	var rLimit syscall.Rlimit
+
+	evt := log.Info().Int("cpus", runtime.NumCPU())
+
+	err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit)
+	if err == nil {
+		evt = evt.Uint64("max. open files", rLimit.Cur)
+	}
+
+	if content, err := ioutil.ReadFile("/proc/sys/net/core/somaxconn"); err == nil {
+		evt = evt.Str("listen backlog", strings.TrimSuffix(string(content), "\n"))
+	}
+
+	if content, err := ioutil.ReadFile("/proc/sys/user/max_inotify_watches"); err == nil {
+		evt = evt.Str("max. inotify watches", strings.TrimSuffix(string(content), "\n"))
+	}
+
+	evt.Msg("runtime params")
+}
+
 func (c *Controller) Run() error {
 	// validate configuration
 	if err := c.Config.Validate(c.Log); err != nil {
@@ -79,8 +103,19 @@ func (c *Controller) Run() error {
 	// print the current configuration, but strip secrets
 	c.Log.Info().Interface("params", c.Config.Sanitize()).Msg("configuration settings")
 
+	// print the current runtime environment
+	DumpRuntimeParams(c.Log)
+
+	// setup HTTP API router
 	engine := mux.NewRouter()
-	engine.Use(DefaultHeaders(),
+
+	// rate-limit HTTP requests if enabled
+	if c.Config.HTTP.Ratelimit != nil {
+		engine.Use(RateLimiter(c, c.Config.HTTP.Ratelimit.Rate, c.Config.HTTP.Ratelimit.Burst))
+	}
+
+	engine.Use(
+		DefaultHeaders(),
 		SessionLogger(c),
 		handlers.RecoveryHandler(handlers.RecoveryLogger(c.Log),
 			handlers.PrintRecoveryStack(false)))

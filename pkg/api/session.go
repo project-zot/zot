@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"golang.org/x/time/rate"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 )
@@ -25,13 +26,32 @@ func (w *statusWriter) WriteHeader(status int) {
 
 func (w *statusWriter) Write(b []byte) (int, error) {
 	if w.status == 0 {
-		w.status = 200
+		w.status = http.StatusOK
 	}
 
 	n, err := w.ResponseWriter.Write(b)
 	w.length += n
 
 	return n, err
+}
+
+// RateLimiter limits handling of incoming requests.
+func RateLimiter(ctlr *Controller, max, burst int) mux.MiddlewareFunc {
+	ctlr.Log.Info().Int("max rate", max).Int("burst", burst).Msg("ratelimiter enabled")
+
+	limiter := rate.NewLimiter(rate.Limit(max), burst)
+
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+			if !limiter.Allow() {
+				http.Error(response, http.StatusText(http.StatusTooManyRequests), http.StatusTooManyRequests)
+
+				return
+			}
+
+			next.ServeHTTP(response, request)
+		})
+	}
 }
 
 // SessionLogger logs session details.
