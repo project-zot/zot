@@ -63,7 +63,7 @@ func (is *ObjectStorage) DirExists(d string) bool {
 
 // NewObjectStorage returns a new image store backed by cloud storages.
 // see https://github.com/docker/docker.github.io/tree/master/registry/storage-drivers
-func NewImageStore(rootDir string, gc bool, dedupe bool, log zlog.Logger, metrics monitoring.MetricServer,
+func NewImageStore(rootDir string, gc, dedupe, commit bool, log zlog.Logger, metrics monitoring.MetricServer,
 	store driver.StorageDriver) storage.ImageStore {
 	imgStore := &ObjectStorage{
 		rootDir:           rootDir,

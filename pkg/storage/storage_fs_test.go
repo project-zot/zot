@@ -34,7 +34,7 @@ func TestStorageFSAPIs(t *testing.T) {
 
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
-	imgStore := storage.NewImageStore(dir, true, true, log, metrics)
+	imgStore := storage.NewImageStore(dir, true, true, true, log, metrics)
 
 	Convey("Repo layout", t, func(c C) {
 		repoName := "test"
@@ -171,7 +171,7 @@ func TestDedupeLinks(t *testing.T) {
 
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
-	imgStore := storage.NewImageStore(dir, true, true, log, metrics)
+	imgStore := storage.NewImageStore(dir, true, true, true, log, metrics)
 
 	Convey("Dedupe", t, func(c C) {
 		// manifest1
@@ -311,7 +311,7 @@ func TestDedupe(t *testing.T) {
 
 			log := log.Logger{Logger: zerolog.New(os.Stdout)}
 			metrics := monitoring.NewMetricsServer(false, log)
-			il := storage.NewImageStore(dir, true, true, log, metrics)
+			il := storage.NewImageStore(dir, true, true, true, log, metrics)
 
 			So(il.DedupeBlob("", "", ""), ShouldNotBeNil)
 		})
@@ -330,9 +330,9 @@ func TestNegativeCases(t *testing.T) {
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
 
-		So(storage.NewImageStore(dir, true, true, log, metrics), ShouldNotBeNil)
+		So(storage.NewImageStore(dir, true, true, true, log, metrics), ShouldNotBeNil)
 		if os.Geteuid() != 0 {
-			So(storage.NewImageStore("/deadBEEF", true, true, log, metrics), ShouldBeNil)
+			So(storage.NewImageStore("/deadBEEF", true, true, true, log, metrics), ShouldBeNil)
 		}
 	})
 
@@ -345,7 +345,7 @@ func TestNegativeCases(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
-		imgStore := storage.NewImageStore(dir, true, true, log, metrics)
+		imgStore := storage.NewImageStore(dir, true, true, true, log, metrics)
 
 		err = os.Chmod(dir, 0o000) // remove all perms
 		if err != nil {
@@ -384,7 +384,7 @@ func TestNegativeCases(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
-		imgStore := storage.NewImageStore(dir, true, true, log, metrics)
+		imgStore := storage.NewImageStore(dir, true, true, true, log, metrics)
 
 		So(imgStore, ShouldNotBeNil)
 		So(imgStore.InitRepo("test"), ShouldBeNil)
@@ -502,7 +502,7 @@ func TestNegativeCases(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
-		imgStore := storage.NewImageStore(dir, true, true, log, metrics)
+		imgStore := storage.NewImageStore(dir, true, true, true, log, metrics)
 
 		So(imgStore, ShouldNotBeNil)
 		So(imgStore.InitRepo("test"), ShouldBeNil)
@@ -529,7 +529,7 @@ func TestNegativeCases(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
-		imgStore := storage.NewImageStore(dir, true, true, log, metrics)
+		imgStore := storage.NewImageStore(dir, true, true, true, log, metrics)
 
 		So(imgStore, ShouldNotBeNil)
 		So(imgStore.InitRepo("test"), ShouldBeNil)
@@ -574,7 +574,7 @@ func TestNegativeCases(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
-		imgStore := storage.NewImageStore(dir, true, true, log, metrics)
+		imgStore := storage.NewImageStore(dir, true, true, true, log, metrics)
 
 		So(imgStore, ShouldNotBeNil)
 		So(imgStore.InitRepo("test"), ShouldBeNil)
@@ -636,7 +636,7 @@ func TestNegativeCases(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
-		imgStore := storage.NewImageStore(dir, true, true, log, metrics)
+		imgStore := storage.NewImageStore(dir, true, true, true, log, metrics)
 
 		upload, err := imgStore.NewBlobUpload("dedupe1")
 		So(err, ShouldBeNil)
@@ -785,6 +785,55 @@ func TestHardLink(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
+	})
+}
+
+func TestWriteFile(t *testing.T) {
+	Convey("writeFile with commit", t, func() {
+		dir, err := ioutil.TempDir("", "oci-repo-test")
+		So(err, ShouldBeNil)
+		defer os.RemoveAll(dir)
+
+		log := log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, log)
+		imgStore := storage.NewImageStore(dir, true, true, true, log, metrics)
+
+		Convey("Failure path1", func() {
+			injected := test.InjectFailure(0)
+
+			err := imgStore.InitRepo("repo1")
+			if injected {
+				So(err, ShouldNotBeNil)
+			} else {
+				So(err, ShouldBeNil)
+			}
+		})
+
+		Convey("Failure path2", func() {
+			injected := test.InjectFailure(1)
+
+			err := imgStore.InitRepo("repo2")
+			if injected {
+				So(err, ShouldNotBeNil)
+			} else {
+				So(err, ShouldBeNil)
+			}
+		})
+	})
+
+	Convey("writeFile without commit", t, func() {
+		dir, err := ioutil.TempDir("", "oci-repo-test")
+		So(err, ShouldBeNil)
+		defer os.RemoveAll(dir)
+
+		log := log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, log)
+		imgStore := storage.NewImageStore(dir, true, true, false, log, metrics)
+
+		Convey("Failure path not reached", func() {
+			err := imgStore.InitRepo("repo1")
+			So(err, ShouldBeNil)
+		})
 	})
 }
 

@@ -68,8 +68,8 @@ func NewAuditLogger(level string, audit string) *Logger {
 	return &Logger{Logger: auditLog.With().Timestamp().Logger()}
 }
 
-// goroutineID adds goroutine-id to logs to help debug concurrency issues.
-func goroutineID() int {
+// GoroutineID adds goroutine-id to logs to help debug concurrency issues.
+func GoroutineID() int {
 	var buf [64]byte
 	n := runtime.Stack(buf[:], false)
 	idField := strings.Fields(strings.TrimPrefix(string(buf[:n]), "goroutine "))[0]
@@ -86,6 +86,6 @@ type goroutineHook struct{}
 
 func (h goroutineHook) Run(e *zerolog.Event, level zerolog.Level, msg string) {
 	if level != zerolog.NoLevel {
-		e.Int("goroutine", goroutineID())
+		e.Int("goroutine", GoroutineID())
 	}
 }

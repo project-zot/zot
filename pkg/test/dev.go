@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	zerr "zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/log"
 )
 
 func Ok(ok bool) bool {
@@ -42,40 +43,49 @@ func Error(err error) error {
  **/
 
 type inject struct {
-	skip    int
-	enabled bool
+	skip int
 }
 
 //nolint:gochecknoglobals // only used by test code
-var (
-	injlock sync.Mutex
-	injst   = inject{}
-)
+var injMap sync.Map
 
 func InjectFailure(skip int) bool {
-	injlock.Lock()
-	injst = inject{enabled: true, skip: skip}
-	injlock.Unlock()
+	gid := log.GoroutineID()
+	if gid < 0 {
+		panic("invalid goroutine id")
+	}
+
+	if _, ok := injMap.Load(gid); ok {
+		panic("prior incomplete fault injection")
+	}
+
+	injst := inject{skip: skip}
+	injMap.Store(gid, injst)
 
 	return true
 }
 
 func injectedFailure() bool {
-	injlock.Lock()
-	defer injlock.Unlock()
+	gid := log.GoroutineID()
 
-	if !injst.enabled {
+	val, ok := injMap.Load(gid)
+	if !ok {
 		return false
 	}
 
+	injst, ok := val.(inject)
+	if !ok {
+		panic("invalid type")
+	}
+
 	if injst.skip == 0 {
-		// disable the injection point
-		injst.enabled = false
+		injMap.Delete(gid)
 
 		return true
 	}
 
 	injst.skip--
+	injMap.Store(gid, injst)
 
 	return false
 }

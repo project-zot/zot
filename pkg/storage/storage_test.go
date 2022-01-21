@@ -72,7 +72,7 @@ func createObjectsStore(rootDir string) (driver.StorageDriver, storage.ImageStor
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
 
-	il := s3.NewImageStore(rootDir, false, false, log, metrics, store)
+	il := s3.NewImageStore(rootDir, false, false, false, log, metrics, store)
 
 	return store, il, err
 }
@@ -120,7 +120,7 @@ func TestStorageAPIs(t *testing.T) {
 
 				log := log.Logger{Logger: zerolog.New(os.Stdout)}
 				metrics := monitoring.NewMetricsServer(false, log)
-				imgStore = storage.NewImageStore(dir, true, true, log, metrics)
+				imgStore = storage.NewImageStore(dir, true, true, true, log, metrics)
 			}
 
 			Convey("Repo layout", t, func(c C) {
@@ -711,11 +711,11 @@ func TestStorageHandler(t *testing.T) {
 				metrics := monitoring.NewMetricsServer(false, log)
 
 				// Create ImageStore
-				firstStore = storage.NewImageStore(firstRootDir, false, false, log, metrics)
+				firstStore = storage.NewImageStore(firstRootDir, false, false, false, log, metrics)
 
-				secondStore = storage.NewImageStore(secondRootDir, false, false, log, metrics)
+				secondStore = storage.NewImageStore(secondRootDir, false, false, false, log, metrics)
 
-				thirdStore = storage.NewImageStore(thirdRootDir, false, false, log, metrics)
+				thirdStore = storage.NewImageStore(thirdRootDir, false, false, false, log, metrics)
 			}
 
 			Convey("Test storage handler", t, func() {

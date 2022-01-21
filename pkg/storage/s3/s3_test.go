@@ -53,7 +53,7 @@ func skipIt(t *testing.T) {
 func createMockStorage(rootDir string, store driver.StorageDriver) storage.ImageStore {
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
-	il := s3.NewImageStore(rootDir, false, false, log, metrics, store)
+	il := s3.NewImageStore(rootDir, false, false, false, log, metrics, store)
 
 	return il
 }
@@ -86,7 +86,7 @@ func createObjectsStore(rootDir string) (driver.StorageDriver, storage.ImageStor
 
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
-	il := s3.NewImageStore(rootDir, false, false, log, metrics, store)
+	il := s3.NewImageStore(rootDir, false, false, false, log, metrics, store)
 
 	return store, il, err
 }
