@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/didip/tollbooth/v6"
 	"github.com/gorilla/mux"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
@@ -25,13 +26,42 @@ func (w *statusWriter) WriteHeader(status int) {
 
 func (w *statusWriter) Write(b []byte) (int, error) {
 	if w.status == 0 {
-		w.status = 200
+		w.status = http.StatusOK
 	}
 
 	n, err := w.ResponseWriter.Write(b)
 	w.length += n
 
 	return n, err
+}
+
+// RateLimiter limits handling of incoming requests.
+func RateLimiter(ctlr *Controller, rate int) mux.MiddlewareFunc {
+	ctlr.Log.Info().Int("rate", rate).Msg("ratelimiter enabled")
+
+	limiter := tollbooth.NewLimiter(float64(rate), nil)
+	limiter.SetMessage(http.StatusText(http.StatusTooManyRequests)).
+		SetStatusCode(http.StatusTooManyRequests).
+		SetOnLimitReached(nil)
+
+	return func(next http.Handler) http.Handler {
+		return tollbooth.LimitHandler(limiter, next)
+	}
+}
+
+// MethodRateLimiter limits handling of incoming requests.
+func MethodRateLimiter(ctlr *Controller, method string, rate int) mux.MiddlewareFunc {
+	ctlr.Log.Info().Str("method", method).Int("rate", rate).Msg("per-method ratelimiter enabled")
+
+	limiter := tollbooth.NewLimiter(float64(rate), nil)
+	limiter.SetMethods([]string{method}).
+		SetMessage(http.StatusText(http.StatusTooManyRequests)).
+		SetStatusCode(http.StatusTooManyRequests).
+		SetOnLimitReached(nil)
+
+	return func(next http.Handler) http.Handler {
+		return tollbooth.LimitHandler(limiter, next)
+	}
 }
 
 // SessionLogger logs session details.

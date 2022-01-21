@@ -16,6 +16,7 @@ require (
 	github.com/containerd/containerd v1.5.9 // indirect
 	github.com/containers/common v0.44.3
 	github.com/containers/image/v5 v5.16.1
+	github.com/didip/tollbooth/v6 v6.1.1
 	github.com/docker/distribution v2.7.1+incompatible
 	github.com/dustin/go-humanize v1.0.0
 	github.com/fsnotify/fsnotify v1.5.1
@@ -167,6 +168,7 @@ require (
 	github.com/go-openapi/swag v0.19.15 // indirect
 	github.com/go-openapi/validate v0.20.3 // indirect
 	github.com/go-piv/piv-go v1.9.0 // indirect
+	github.com/go-pkgz/expirable-cache v0.0.3 // indirect
 	github.com/go-playground/locales v0.13.0 // indirect
 	github.com/go-playground/universal-translator v0.17.0 // indirect
 	github.com/go-playground/validator v9.31.0+incompatible // indirect
