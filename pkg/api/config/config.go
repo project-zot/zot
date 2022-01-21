@@ -21,6 +21,7 @@ type StorageConfig struct {
 	RootDirectory string
 	GC            bool
 	Dedupe        bool
+	Commit        bool
 	StorageDriver map[string]interface{} `mapstructure:",omitempty"`
 }
 
@@ -90,9 +91,10 @@ type LogConfig struct {
 }
 
 type GlobalStorageConfig struct {
-	RootDirectory string
 	Dedupe        bool
 	GC            bool
+	Commit        bool
+	RootDirectory string
 	StorageDriver map[string]interface{} `mapstructure:",omitempty"`
 	SubPaths      map[string]StorageConfig
 }

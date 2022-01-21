@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/chartmuseum/auth"
+	"github.com/gorilla/mux"
 	"github.com/mitchellh/mapstructure"
 	vldap "github.com/nmcclain/ldap"
 	notreg "github.com/notaryproject/notation/pkg/registry"
@@ -2089,23 +2090,6 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-		Convey("Hard to reach cases", func() {
-			injected := test.InjectFailure(0)
-
-			// get tags with read access should get 200
-			conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions =
-				append(conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions, "read")
-			resp, err = resty.R().SetBasicAuth(username, passphrase).
-				Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
-			So(err, ShouldBeNil)
-			So(resp, ShouldNotBeNil)
-			if injected {
-				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
-			} else {
-				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-			}
-		})
-
 		// head blob should get 200 now
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Head(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
@@ -2818,15 +2802,27 @@ func TestParallelRequests(t *testing.T) {
 		panic(err)
 	}
 
+	t.Cleanup(func() {
+		os.RemoveAll(dir)
+	})
+
 	firstSubDir, err := ioutil.TempDir("", "oci-sub-dir")
 	if err != nil {
 		panic(err)
 	}
 
+	t.Cleanup(func() {
+		os.RemoveAll(firstSubDir)
+	})
+
 	secondSubDir, err := ioutil.TempDir("", "oci-sub-dir")
 	if err != nil {
 		panic(err)
 	}
+
+	t.Cleanup(func() {
+		os.RemoveAll(secondSubDir)
+	})
 
 	subPaths := make(map[string]config.StorageConfig)
 
@@ -2860,24 +2856,6 @@ func TestParallelRequests(t *testing.T) {
 					Head(baseURL + "/v2/" + testcase.destImageName + "/manifests/" + manifest)
 				assert.Equal(t, err, nil, "Error should be nil")
 				assert.Equal(t, headResponse.StatusCode(), http.StatusNotFound, "response status code should return 404")
-
-				Convey("Hard to reach cases", t, func() {
-					_ = test.InjectFailure(0)
-
-					headResponse, err := client.R().SetBasicAuth(username, passphrase).
-						Head(baseURL + "/v2/" + testcase.destImageName + "/manifests/test:1.0")
-					assert.Equal(t, err, nil, "Error should be nil")
-					assert.Equal(t, headResponse.StatusCode(), http.StatusNotFound, "response status code should return 404")
-				})
-
-				Convey("Hard to reach cases", t, func() {
-					_ = test.InjectFailure(1)
-
-					headResponse, err := client.R().SetBasicAuth(username, passphrase).
-						Head(baseURL + "/v2/" + testcase.destImageName + "/manifests/test:1.0")
-					assert.Equal(t, err, nil, "Error should be nil")
-					assert.Equal(t, headResponse.StatusCode(), http.StatusNotFound, "response status code should return 404")
-				})
 
 				getResponse, err := client.R().SetBasicAuth(username, passphrase).
 					Get(baseURL + "/v2/" + testcase.destImageName + "/manifests/" + manifest)
@@ -3158,6 +3136,7 @@ func TestImageSignatures(t *testing.T) {
 		content := []byte("this is a blob")
 		digest := godigest.FromBytes(content)
 		So(digest, ShouldNotBeNil)
+
 		// monolithic blob upload: success
 		resp, err = resty.R().SetQueryParam("digest", digest.String()).
 			SetHeader("Content-Type", "application/octet-stream").SetBody(content).Put(loc)
@@ -3443,6 +3422,413 @@ func TestImageSignatures(t *testing.T) {
 				fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers", baseURL, "badRepo", digest.String()))
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+		})
+	})
+}
+
+func TestRouteFailures(t *testing.T) {
+	Convey("Make a new controller", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		ctlr := api.NewController(conf)
+		dir, err := ioutil.TempDir("", "oci-repo-test")
+		if err != nil {
+			panic(err)
+		}
+		defer os.RemoveAll(dir)
+		ctlr.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.Commit = true
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		test.WaitTillServerReady(baseURL)
+
+		rthdlr := api.NewRouteHandler(ctlr)
+
+		Convey("List tags", func() {
+			request, _ := http.NewRequestWithContext(context.TODO(), "GET", baseURL+"/v2/foo/tags/list", nil)
+			mux.SetURLVars(request, map[string]string{})
+			response := httptest.NewRecorder()
+
+			rthdlr.ListTags(response, request)
+
+			resp := response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+
+			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL+"/v2/foo/tags/list", nil)
+			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
+			response = httptest.NewRecorder()
+
+			rthdlr.ListTags(response, request)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+
+			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL+"/v2/foo/tags/list", nil)
+			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
+			qparm := request.URL.Query()
+			qparm.Add("n", "a")
+			request.URL.RawQuery = qparm.Encode()
+			response = httptest.NewRecorder()
+
+			rthdlr.ListTags(response, request)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
+
+			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL+"/v2/foo/tags/list", nil)
+			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
+			qparm = request.URL.Query()
+			qparm.Add("n", "abc")
+			request.URL.RawQuery = qparm.Encode()
+			response = httptest.NewRecorder()
+
+			rthdlr.ListTags(response, request)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
+
+			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL+"/v2/foo/tags/list", nil)
+			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
+			qparm = request.URL.Query()
+			qparm.Add("n", "a")
+			qparm.Add("n", "abc")
+			request.URL.RawQuery = qparm.Encode()
+			response = httptest.NewRecorder()
+
+			rthdlr.ListTags(response, request)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
+
+			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL+"/v2/foo/tags/list", nil)
+			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
+			qparm = request.URL.Query()
+			qparm.Add("n", "0")
+			request.URL.RawQuery = qparm.Encode()
+			response = httptest.NewRecorder()
+
+			rthdlr.ListTags(response, request)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+
+			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL+"/v2/foo/tags/list", nil)
+			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
+			qparm = request.URL.Query()
+			qparm.Add("n", "1")
+			qparm.Add("last", "")
+			request.URL.RawQuery = qparm.Encode()
+			response = httptest.NewRecorder()
+
+			rthdlr.ListTags(response, request)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+
+			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL+"/v2/foo/tags/list", nil)
+			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
+			qparm = request.URL.Query()
+			qparm.Add("n", "1")
+			qparm.Add("last", "a")
+			request.URL.RawQuery = qparm.Encode()
+			response = httptest.NewRecorder()
+
+			rthdlr.ListTags(response, request)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+
+			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL+"/v2/foo/tags/list", nil)
+			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
+			qparm = request.URL.Query()
+			qparm.Add("n", "1")
+			qparm.Add("last", "a")
+			qparm.Add("last", "abc")
+			request.URL.RawQuery = qparm.Encode()
+			response = httptest.NewRecorder()
+
+			rthdlr.ListTags(response, request)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
+		})
+
+		Convey("Check manifest", func() {
+			request, _ := http.NewRequestWithContext(context.TODO(), "HEAD", baseURL+"/v2/foo/manifests/test:1.0", nil)
+			request = mux.SetURLVars(request, map[string]string{})
+			response := httptest.NewRecorder()
+
+			rthdlr.CheckManifest(response, request)
+
+			resp := response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+
+			request, _ = http.NewRequestWithContext(context.TODO(), "HEAD", baseURL+"/v2/foo/manifests/test:1.0", nil)
+			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
+			response = httptest.NewRecorder()
+
+			rthdlr.CheckManifest(response, request)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+
+			request, _ = http.NewRequestWithContext(context.TODO(), "HEAD", baseURL+"/v2/foo/manifests/test:1.0", nil)
+			request = mux.SetURLVars(request, map[string]string{"name": "foo", "reference": ""})
+			response = httptest.NewRecorder()
+
+			rthdlr.CheckManifest(response, request)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+		})
+	})
+}
+
+func TestStorageCommit(t *testing.T) {
+	Convey("Make a new controller", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		ctlr := api.NewController(conf)
+		dir, err := ioutil.TempDir("", "oci-repo-test")
+		if err != nil {
+			panic(err)
+		}
+		defer os.RemoveAll(dir)
+		ctlr.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.Commit = true
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		test.WaitTillServerReady(baseURL)
+
+		Convey("Manifests", func() {
+			_, _ = Print("\nManifests")
+			// create a blob/layer
+			resp, err := resty.R().Post(baseURL + "/v2/repo7/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+			loc := test.Location(baseURL, resp)
+			So(loc, ShouldNotBeEmpty)
+
+			// since we are not specifying any prefix i.e provided in config while starting server,
+			// so it should store repo7 to global root dir
+			_, err = os.Stat(path.Join(dir, "repo7"))
+			So(err, ShouldBeNil)
+
+			resp, err = resty.R().Get(loc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
+			content := []byte("this is a blob5")
+			digest := godigest.FromBytes(content)
+			So(digest, ShouldNotBeNil)
+			// monolithic blob upload: success
+			resp, err = resty.R().SetQueryParam("digest", digest.String()).
+				SetHeader("Content-Type", "application/octet-stream").SetBody(content).Put(loc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+			blobLoc := resp.Header().Get("Location")
+			So(blobLoc, ShouldNotBeEmpty)
+			So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
+			So(resp.Header().Get(api.DistContentDigestKey), ShouldNotBeEmpty)
+
+			// check a non-existent manifest
+			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+				SetBody(content).Head(baseURL + "/v2/unknown/manifests/test:1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			// upload image config blob
+			resp, err = resty.R().Post(baseURL + "/v2/repo7/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+			loc = test.Location(baseURL, resp)
+			cblob, cdigest := test.GetRandomImageConfig()
+
+			resp, err = resty.R().
+				SetContentLength(true).
+				SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+				SetHeader("Content-Type", "application/octet-stream").
+				SetQueryParam("digest", cdigest.String()).
+				SetBody(cblob).
+				Put(loc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+			// create a manifest
+			manifest := ispec.Manifest{
+				Config: ispec.Descriptor{
+					MediaType: "application/vnd.oci.image.config.v1+json",
+					Digest:    cdigest,
+					Size:      int64(len(cblob)),
+				},
+				Layers: []ispec.Descriptor{
+					{
+						MediaType: "application/vnd.oci.image.layer.v1.tar",
+						Digest:    digest,
+						Size:      int64(len(content)),
+					},
+				},
+			}
+			manifest.SchemaVersion = 2
+			content, err = json.Marshal(manifest)
+			So(err, ShouldBeNil)
+			digest = godigest.FromBytes(content)
+			So(digest, ShouldNotBeNil)
+			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+				SetBody(content).Put(baseURL + "/v2/repo7/manifests/test:1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+			digestHdr := resp.Header().Get(api.DistContentDigestKey)
+			So(digestHdr, ShouldNotBeEmpty)
+			So(digestHdr, ShouldEqual, digest.String())
+
+			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+				SetBody(content).Put(baseURL + "/v2/repo7/manifests/test:1.0.1")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+			digestHdr = resp.Header().Get(api.DistContentDigestKey)
+			So(digestHdr, ShouldNotBeEmpty)
+			So(digestHdr, ShouldEqual, digest.String())
+
+			content = []byte("this is a blob5")
+			digest = godigest.FromBytes(content)
+			So(digest, ShouldNotBeNil)
+
+			// upload image config blob
+			resp, err = resty.R().Post(baseURL + "/v2/repo7/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+			loc = test.Location(baseURL, resp)
+			cblob, cdigest = test.GetRandomImageConfig()
+
+			resp, err = resty.R().
+				SetContentLength(true).
+				SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+				SetHeader("Content-Type", "application/octet-stream").
+				SetQueryParam("digest", cdigest.String()).
+				SetBody(cblob).
+				Put(loc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+			// create a manifest with same blob but a different tag
+			manifest = ispec.Manifest{
+				Config: ispec.Descriptor{
+					MediaType: "application/vnd.oci.image.config.v1+json",
+					Digest:    cdigest,
+					Size:      int64(len(cblob)),
+				},
+				Layers: []ispec.Descriptor{
+					{
+						MediaType: "application/vnd.oci.image.layer.v1.tar",
+						Digest:    digest,
+						Size:      int64(len(content)),
+					},
+				},
+			}
+			manifest.SchemaVersion = 2
+			content, err = json.Marshal(manifest)
+			So(err, ShouldBeNil)
+			digest = godigest.FromBytes(content)
+			So(digest, ShouldNotBeNil)
+			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+				SetBody(content).Put(baseURL + "/v2/repo7/manifests/test:2.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+			digestHdr = resp.Header().Get(api.DistContentDigestKey)
+			So(digestHdr, ShouldNotBeEmpty)
+			So(digestHdr, ShouldEqual, digest.String())
+
+			// check/get by tag
+			resp, err = resty.R().Head(baseURL + "/v2/repo7/manifests/test:1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
+			resp, err = resty.R().Get(baseURL + "/v2/repo7/manifests/test:1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(resp.Body(), ShouldNotBeEmpty)
+			// check/get by reference
+			resp, err = resty.R().Head(baseURL + "/v2/repo7/manifests/" + digest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
+			resp, err = resty.R().Get(baseURL + "/v2/repo7/manifests/" + digest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(resp.Body(), ShouldNotBeEmpty)
+
+			// delete manifest by tag should pass
+			resp, err = resty.R().Delete(baseURL + "/v2/repo7/manifests/test:1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+			// delete manifest by digest (1.0 deleted but 1.0.1 has same reference)
+			resp, err = resty.R().Delete(baseURL + "/v2/repo7/manifests/" + digest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+			// delete manifest by digest
+			resp, err = resty.R().Delete(baseURL + "/v2/repo7/manifests/" + digest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			// delete again should fail
+			resp, err = resty.R().Delete(baseURL + "/v2/repo7/manifests/" + digest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			// check/get by tag
+			resp, err = resty.R().Head(baseURL + "/v2/repo7/manifests/test:1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			resp, err = resty.R().Get(baseURL + "/v2/repo7/manifests/test:1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			So(resp.Body(), ShouldNotBeEmpty)
+			resp, err = resty.R().Head(baseURL + "/v2/repo7/manifests/test:2.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			resp, err = resty.R().Get(baseURL + "/v2/repo7/manifests/test:2.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			So(resp.Body(), ShouldNotBeEmpty)
+			// check/get by reference
+			resp, err = resty.R().Head(baseURL + "/v2/repo7/manifests/" + digest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			resp, err = resty.R().Get(baseURL + "/v2/repo7/manifests/" + digest.String())
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			So(resp.Body(), ShouldNotBeEmpty)
 		})
 	})
 }

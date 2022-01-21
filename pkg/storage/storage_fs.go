@@ -29,6 +29,7 @@ import (
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	zlog "zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/test"
 )
 
 const (
@@ -61,6 +62,7 @@ type ImageStoreFS struct {
 	cache       *Cache
 	gc          bool
 	dedupe      bool
+	commit      bool
 	log         zerolog.Logger
 	metrics     monitoring.MetricServer
 }
@@ -103,7 +105,8 @@ func (sc StoreController) GetImageStore(name string) ImageStore {
 }
 
 // NewImageStore returns a new image store backed by a file storage.
-func NewImageStore(rootDir string, gc bool, dedupe bool, log zlog.Logger, metrics monitoring.MetricServer) ImageStore {
+func NewImageStore(rootDir string, gc, dedupe, commit bool,
+	log zlog.Logger, metrics monitoring.MetricServer) ImageStore {
 	if _, err := os.Stat(rootDir); os.IsNotExist(err) {
 		if err := os.MkdirAll(rootDir, DefaultDirPerms); err != nil {
 			log.Error().Err(err).Str("rootDir", rootDir).Msg("unable to create root dir")
@@ -118,6 +121,7 @@ func NewImageStore(rootDir string, gc bool, dedupe bool, log zlog.Logger, metric
 		blobUploads: make(map[string]BlobUpload),
 		gc:          gc,
 		dedupe:      dedupe,
+		commit:      commit,
 		log:         log.With().Caller().Logger(),
 		metrics:     metrics,
 	}
@@ -203,7 +207,7 @@ func (is *ImageStoreFS) initRepo(name string) error {
 			is.log.Panic().Err(err).Msg("unable to marshal JSON")
 		}
 
-		if err := ioutil.WriteFile(ilPath, buf, DefaultFilePerms); err != nil {
+		if err := is.writeFile(ilPath, buf); err != nil {
 			is.log.Error().Err(err).Str("file", ilPath).Msg("unable to write file")
 
 			return err
@@ -221,7 +225,7 @@ func (is *ImageStoreFS) initRepo(name string) error {
 			is.log.Panic().Err(err).Msg("unable to marshal JSON")
 		}
 
-		if err := ioutil.WriteFile(indexPath, buf, DefaultFilePerms); err != nil {
+		if err := is.writeFile(indexPath, buf); err != nil {
 			is.log.Error().Err(err).Str("file", indexPath).Msg("unable to write file")
 
 			return err
@@ -660,7 +664,7 @@ func (is *ImageStoreFS) PutImageManifest(repo string, reference string, mediaTyp
 	_ = ensureDir(dir, is.log)
 	file := path.Join(dir, mDigest.Encoded())
 
-	if err := ioutil.WriteFile(file, body, DefaultFilePerms); err != nil {
+	if err := is.writeFile(file, body); err != nil {
 		is.log.Error().Err(err).Str("file", file).Msg("unable to write")
 
 		return "", err
@@ -678,7 +682,7 @@ func (is *ImageStoreFS) PutImageManifest(repo string, reference string, mediaTyp
 		return "", err
 	}
 
-	if err := ioutil.WriteFile(file, buf, DefaultFilePerms); err != nil {
+	if err := is.writeFile(file, buf); err != nil {
 		is.log.Error().Err(err).Str("file", file).Msg("unable to write")
 
 		return "", err
@@ -781,7 +785,7 @@ func (is *ImageStoreFS) DeleteImageManifest(repo string, reference string) error
 		return err
 	}
 
-	if err := ioutil.WriteFile(file, buf, DefaultFilePerms); err != nil {
+	if err := is.writeFile(file, buf); err != nil {
 		return err
 	}
 
@@ -884,17 +888,20 @@ func (is *ImageStoreFS) PutBlobChunkStreamed(repo string, uuid string, body io.R
 		return -1, zerr.ErrUploadNotFound
 	}
 
-	file, err := os.OpenFile(
-		blobUploadPath,
-		os.O_WRONLY|os.O_CREATE,
-		DefaultFilePerms,
-	)
+	file, err := os.OpenFile(blobUploadPath, os.O_WRONLY|os.O_CREATE, DefaultFilePerms)
 	if err != nil {
 		is.log.Error().Err(err).Msg("failed to open file")
 
 		return -1, err
 	}
-	defer file.Close()
+
+	defer func() {
+		if is.commit {
+			_ = file.Sync()
+		}
+
+		_ = file.Close()
+	}()
 
 	if _, err := file.Seek(0, io.SeekEnd); err != nil {
 		is.log.Error().Err(err).Msg("failed to seek file")
@@ -929,17 +936,20 @@ func (is *ImageStoreFS) PutBlobChunk(repo string, uuid string, from int64, to in
 		return -1, zerr.ErrBadUploadRange
 	}
 
-	file, err := os.OpenFile(
-		blobUploadPath,
-		os.O_WRONLY|os.O_CREATE,
-		DefaultFilePerms,
-	)
+	file, err := os.OpenFile(blobUploadPath, os.O_WRONLY|os.O_CREATE, DefaultFilePerms)
 	if err != nil {
 		is.log.Error().Err(err).Msg("failed to open file")
 
 		return -1, err
 	}
-	defer file.Close()
+
+	defer func() {
+		if is.commit {
+			_ = file.Sync()
+		}
+
+		_ = file.Close()
+	}()
 
 	if _, err := file.Seek(from, io.SeekStart); err != nil {
 		is.log.Error().Err(err).Msg("failed to seek file")
@@ -1077,7 +1087,13 @@ func (is *ImageStoreFS) FullBlobUpload(repo string, body io.Reader, digest strin
 		return "", -1, zerr.ErrUploadNotFound
 	}
 
-	defer blobFile.Close()
+	defer func() {
+		if is.commit {
+			_ = blobFile.Sync()
+		}
+
+		_ = blobFile.Close()
+	}()
 
 	digester := sha256.New()
 	mw := io.MultiWriter(blobFile, digester)
@@ -1512,6 +1528,30 @@ func (is *ImageStoreFS) GetReferrers(repo, digest string, mediaType string) ([]a
 	}
 
 	return result, nil
+}
+
+func (is *ImageStoreFS) writeFile(filename string, data []byte) error {
+	if !is.commit {
+		return ioutil.WriteFile(filename, data, DefaultFilePerms)
+	}
+
+	fhandle, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, DefaultFilePerms)
+	if err != nil {
+		return err
+	}
+
+	_, err = fhandle.Write(data)
+
+	if err1 := test.Error(fhandle.Sync()); err1 != nil && err == nil {
+		err = err1
+		is.log.Error().Err(err).Str("filename", filename).Msg("unable to sync file")
+	}
+
+	if err1 := test.Error(fhandle.Close()); err1 != nil && err == nil {
+		err = err1
+	}
+
+	return err
 }
 
 func IsSupportedMediaType(mediaType string) bool {

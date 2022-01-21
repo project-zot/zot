@@ -117,4 +117,9 @@ func TestInject(t *testing.T) {
 		ok := alwaysNotOk()
 		So(test.Ok(ok), ShouldBeFalse)
 	})
+
+	Convey("Incomplete injected failure", t, func(c C) {
+		test.InjectFailure(0) // inject a failure
+		So(func() { test.InjectFailure(0) }, ShouldPanic)
+	})
 }
