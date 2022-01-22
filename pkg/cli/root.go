@@ -15,6 +15,7 @@ import (
 	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/storage"
 )
 
@@ -121,6 +122,7 @@ func newScrubCmd(conf *config.Config) *cobra.Command {
 			} else {
 				// server is down
 				ctlr := api.NewController(conf)
+				ctlr.Metrics = monitoring.NewMetricsServer(false, ctlr.Log)
 
 				if err := ctlr.InitImageStore(); err != nil {
 					panic(err)
