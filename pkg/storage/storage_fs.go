@@ -677,13 +677,14 @@ func (is *ImageStoreFS) PutImageManifest(repo string, reference string, mediaTyp
 	file = path.Join(dir, "index.json")
 	buf, err = json.Marshal(index)
 
-	if err != nil {
+	if err := test.Error(err); err != nil {
 		is.log.Error().Err(err).Str("file", file).Msg("unable to marshal JSON")
 
 		return "", err
 	}
 
-	if err := is.writeFile(file, buf); err != nil {
+	err = is.writeFile(file, buf)
+	if err := test.Error(err); err != nil {
 		is.log.Error().Err(err).Str("file", file).Msg("unable to write")
 
 		return "", err
@@ -691,12 +692,13 @@ func (is *ImageStoreFS) PutImageManifest(repo string, reference string, mediaTyp
 
 	if is.gc {
 		oci, err := umoci.OpenLayout(dir)
-		if err != nil {
+		if err := test.Error(err); err != nil {
 			return "", err
 		}
 		defer oci.Close()
 
-		if err := oci.GC(context.Background(), ifOlderThan(is, repo, is.gcDelay)); err != nil {
+		err = oci.GC(context.Background(), ifOlderThan(is, repo, is.gcDelay))
+		if err := test.Error(err); err != nil {
 			return "", err
 		}
 	}
@@ -1041,7 +1043,8 @@ func (is *ImageStoreFS) FinishBlobUpload(repo string, uuid string, body io.Reade
 	dst := is.BlobPath(repo, dstDigest)
 
 	if is.dedupe && is.cache != nil {
-		if err := is.DedupeBlob(src, dstDigest, dst); err != nil {
+		err = is.DedupeBlob(src, dstDigest, dst)
+		if err := test.Error(err); err != nil {
 			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
 				Str("dst", dst).Msg("unable to dedupe blob")
 

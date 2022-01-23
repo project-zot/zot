@@ -33,6 +33,7 @@ import (
 	ext "zotregistry.io/zot/pkg/extensions"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/test"
 
 	// as required by swaggo.
 	_ "zotregistry.io/zot/swagger"
@@ -428,7 +429,9 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 	}
 
 	body, err := ioutil.ReadAll(request.Body)
-	if err != nil {
+	// hard to reach test case, injected error (simulates an interrupted image manifest upload)
+	// err could be io.ErrUnexpectedEOF
+	if err := test.Error(err); err != nil {
 		rh.c.Log.Error().Err(err).Msg("unexpected error")
 		response.WriteHeader(http.StatusInternalServerError)
 
@@ -449,8 +452,20 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 		} else if errors.Is(err, zerr.ErrBlobNotFound) {
 			WriteJSON(response, http.StatusBadRequest,
 				NewErrorList(NewError(BLOB_UNKNOWN, map[string]string{"blob": digest})))
+		} else if errors.Is(err, zerr.ErrRepoBadVersion) {
+			WriteJSON(response, http.StatusInternalServerError,
+				NewErrorList(NewError(INVALID_INDEX, map[string]string{"name": name})))
 		} else {
-			rh.c.Log.Error().Err(err).Msg("unexpected error")
+			// could be syscall.EMFILE (Err:0x18 too many opened files), etc
+			rh.c.Log.Error().Err(err).Msg("unexpected error: performing cleanup")
+
+			if err = imgStore.DeleteImageManifest(name, reference); err != nil {
+				// deletion of image manifest is important, but not critical for image repo consistancy
+				// in the worst scenario a partial manifest file written to disk will not affect the repo because
+				// the new manifest was not added to "index.json" file (it is possible that GC will take care of it)
+				rh.c.Log.Error().Err(err).Msgf("couldn't remove image manifest %s in repo %s", reference, name)
+			}
+
 			response.WriteHeader(http.StatusInternalServerError)
 		}
 
@@ -954,15 +969,7 @@ func (rh *RouteHandler) PatchBlobUpload(response http.ResponseWriter, request *h
 	}
 
 	if err != nil {
-		if errors.Is(err, io.ErrUnexpectedEOF) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
-			rh.c.Log.Warn().Msg("received unexpected EOF, removing .uploads/ files")
-
-			if err = imgStore.DeleteBlobUpload(name, sessionID); err != nil {
-				rh.c.Log.Error().Err(err).Msgf("couldn't remove blobUpload %s in repo %s", sessionID, name)
-			}
-
-			response.WriteHeader(http.StatusInternalServerError)
-		} else if errors.Is(err, zerr.ErrBadUploadRange) {
+		if errors.Is(err, zerr.ErrBadUploadRange) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 			WriteJSON(response, http.StatusRequestedRangeNotSatisfiable,
 				NewErrorList(NewError(BLOB_UPLOAD_INVALID, map[string]string{"session_id": sessionID})))
 		} else if errors.Is(err, zerr.ErrRepoNotFound) {
@@ -972,7 +979,12 @@ func (rh *RouteHandler) PatchBlobUpload(response http.ResponseWriter, request *h
 			WriteJSON(response, http.StatusNotFound,
 				NewErrorList(NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"session_id": sessionID})))
 		} else {
-			rh.c.Log.Error().Err(err).Msg("unexpected error")
+			// could be io.ErrUnexpectedEOF, syscall.EMFILE (Err:0x18 too many opened files), etc
+			rh.c.Log.Error().Err(err).Msg("unexpected error: removing .uploads/ files")
+
+			if err = imgStore.DeleteBlobUpload(name, sessionID); err != nil {
+				rh.c.Log.Error().Err(err).Msgf("couldn't remove blobUpload %s in repo %s", sessionID, name)
+			}
 			response.WriteHeader(http.StatusInternalServerError)
 		}
 
@@ -1071,15 +1083,7 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 
 		_, err = imgStore.PutBlobChunk(name, sessionID, from, to, request.Body)
 		if err != nil {
-			if errors.Is(err, io.ErrUnexpectedEOF) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
-				rh.c.Log.Warn().Msg("received unexpected EOF, removing .uploads/ files")
-
-				if err = imgStore.DeleteBlobUpload(name, sessionID); err != nil {
-					rh.c.Log.Error().Err(err).Msgf("couldn't remove blobUpload %s in repo %s", sessionID, name)
-				}
-
-				response.WriteHeader(http.StatusInternalServerError)
-			} else if errors.Is(err, zerr.ErrBadUploadRange) {
+			if errors.Is(err, zerr.ErrBadUploadRange) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 				WriteJSON(response, http.StatusBadRequest,
 					NewErrorList(NewError(BLOB_UPLOAD_INVALID, map[string]string{"session_id": sessionID})))
 			} else if errors.Is(err, zerr.ErrRepoNotFound) {
@@ -1089,7 +1093,12 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 				WriteJSON(response, http.StatusNotFound,
 					NewErrorList(NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"session_id": sessionID})))
 			} else {
-				rh.c.Log.Error().Err(err).Msg("unexpected error")
+				// could be io.ErrUnexpectedEOF, syscall.EMFILE (Err:0x18 too many opened files), etc
+				rh.c.Log.Error().Err(err).Msg("unexpected error: removing .uploads/ files")
+
+				if err = imgStore.DeleteBlobUpload(name, sessionID); err != nil {
+					rh.c.Log.Error().Err(err).Msgf("couldn't remove blobUpload %s in repo %s", sessionID, name)
+				}
 				response.WriteHeader(http.StatusInternalServerError)
 			}
 
@@ -1113,7 +1122,12 @@ finish:
 			WriteJSON(response, http.StatusNotFound,
 				NewErrorList(NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"session_id": sessionID})))
 		} else {
-			rh.c.Log.Error().Err(err).Msg("unexpected error")
+			// could be io.ErrUnexpectedEOF, syscall.EMFILE (Err:0x18 too many opened files), etc
+			rh.c.Log.Error().Err(err).Msg("unexpected error: removing .uploads/ files")
+
+			if err = imgStore.DeleteBlobUpload(name, sessionID); err != nil {
+				rh.c.Log.Error().Err(err).Msgf("couldn't remove blobUpload %s in repo %s", sessionID, name)
+			}
 			response.WriteHeader(http.StatusInternalServerError)
 		}
 

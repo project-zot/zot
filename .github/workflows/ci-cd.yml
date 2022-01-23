@@ -43,15 +43,18 @@ jobs:
       - name: Install dependencies
         run: |
           cd $GITHUB_WORKSPACE
-          go get -u github.com/swaggo/swag/cmd/swag
+          go install github.com/swaggo/swag/cmd/swag@latest
           go mod download
           sudo apt-get update
           sudo apt-get install rpm
-          sudo apt install snapd
-          sudo apt-get install skopeo
+          sudo apt-get install snapd
+          sudo apt-get install libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev pkg-config
+          git clone https://github.com/containers/skopeo -b v1.6.1 $GITHUB_WORKSPACE/src/github.com/containers/skopeo
+          cd $GITHUB_WORKSPACE/src/github.com/containers/skopeo && make bin/skopeo
+          cd $GITHUB_WORKSPACE
           curl -Lo notation.tar.gz https://github.com/notaryproject/notation/releases/download/v0.7.1-alpha.1/notation_0.7.1-alpha.1_linux_amd64.tar.gz
           sudo tar xvzf notation.tar.gz -C /usr/bin notation
-          go get github.com/wadey/gocovmerge
+          go install github.com/wadey/gocovmerge@latest
       - name: Run build and test
         timeout-minutes: 60
         run: |
