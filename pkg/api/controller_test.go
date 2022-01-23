@@ -5,6 +5,7 @@ package api_test
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -4120,6 +4121,353 @@ func TestStorageCommit(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 			So(resp.Body(), ShouldNotBeEmpty)
+		})
+	})
+}
+
+func TestInjectInterruptedImageManifest(t *testing.T) {
+	Convey("Make a new controller", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		ctlr := api.NewController(conf)
+		dir := t.TempDir()
+		ctlr.Config.Storage.RootDirectory = dir
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		test.WaitTillServerReady(baseURL)
+
+		rthdlr := api.NewRouteHandler(ctlr)
+
+		Convey("Upload a blob & a config blob; Create an image manifest", func() {
+			// create a blob/layer
+			resp, err := resty.R().Post(baseURL + "/v2/repotest/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+			loc := test.Location(baseURL, resp)
+			So(loc, ShouldNotBeEmpty)
+
+			// since we are not specifying any prefix i.e provided in config while starting server,
+			// so it should store repotest to global root dir
+			_, err = os.Stat(path.Join(dir, "repotest"))
+			So(err, ShouldBeNil)
+
+			resp, err = resty.R().Get(loc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
+			content := []byte("this is a dummy blob")
+			digest := godigest.FromBytes(content)
+			So(digest, ShouldNotBeNil)
+			// monolithic blob upload: success
+			resp, err = resty.R().SetQueryParam("digest", digest.String()).
+				SetHeader("Content-Type", "application/octet-stream").SetBody(content).Put(loc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+			blobLoc := resp.Header().Get("Location")
+			So(blobLoc, ShouldNotBeEmpty)
+			So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
+			So(resp.Header().Get(constants.DistContentDigestKey), ShouldNotBeEmpty)
+
+			// upload image config blob
+			resp, err = resty.R().Post(baseURL + "/v2/repotest/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+			loc = test.Location(baseURL, resp)
+			cblob, cdigest := test.GetRandomImageConfig()
+
+			resp, err = resty.R().
+				SetContentLength(true).
+				SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+				SetHeader("Content-Type", "application/octet-stream").
+				SetQueryParam("digest", cdigest.String()).
+				SetBody(cblob).
+				Put(loc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+			// create a manifest
+			manifest := ispec.Manifest{
+				Config: ispec.Descriptor{
+					MediaType: "application/vnd.oci.image.config.v1+json",
+					Digest:    cdigest,
+					Size:      int64(len(cblob)),
+				},
+				Layers: []ispec.Descriptor{
+					{
+						MediaType: "application/vnd.oci.image.layer.v1.tar",
+						Digest:    digest,
+						Size:      int64(len(content)),
+					},
+				},
+			}
+			manifest.SchemaVersion = 2
+			content, err = json.Marshal(manifest)
+			So(err, ShouldBeNil)
+			digest = godigest.FromBytes(content)
+			So(digest, ShouldNotBeNil)
+
+			// Testing router path:  @Router /v2/{name}/manifests/{reference} [put]
+			Convey("Uploading an image manifest blob (when injected simulates an interrupted image manifest upload)", func() {
+				injected := test.InjectFailure(0)
+
+				request, _ := http.NewRequestWithContext(context.TODO(), "PUT", baseURL, bytes.NewReader(content))
+				request = mux.SetURLVars(request, map[string]string{"name": "repotest", "reference": "1.0"})
+				request.Header.Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
+				response := httptest.NewRecorder()
+
+				rthdlr.UpdateManifest(response, request)
+
+				resp := response.Result()
+				defer resp.Body.Close()
+
+				So(resp, ShouldNotBeNil)
+
+				if injected {
+					So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+				} else {
+					So(resp.StatusCode, ShouldEqual, http.StatusCreated)
+				}
+			})
+		})
+	})
+}
+
+func TestInjectTooManyOpenFiles(t *testing.T) {
+	Convey("Make a new controller", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		ctlr := api.NewController(conf)
+		dir := t.TempDir()
+		ctlr.Config.Storage.RootDirectory = dir
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		test.WaitTillServerReady(baseURL)
+
+		rthdlr := api.NewRouteHandler(ctlr)
+
+		// create a blob/layer
+		resp, err := resty.R().Post(baseURL + "/v2/repotest/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+		loc := test.Location(baseURL, resp)
+		So(loc, ShouldNotBeEmpty)
+
+		// since we are not specifying any prefix i.e provided in config while starting server,
+		// so it should store repotest to global root dir
+		_, err = os.Stat(path.Join(dir, "repotest"))
+		So(err, ShouldBeNil)
+
+		resp, err = resty.R().Get(loc)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
+		content := []byte("this is a dummy blob")
+		digest := godigest.FromBytes(content)
+		So(digest, ShouldNotBeNil)
+
+		// monolithic blob upload
+		injected := test.InjectFailure(0)
+		if injected {
+			request, _ := http.NewRequestWithContext(context.TODO(), "PUT", loc, bytes.NewReader(content))
+			tokens := strings.Split(loc, "/")
+			request = mux.SetURLVars(request, map[string]string{"name": "repotest", "session_id": tokens[len(tokens)-1]})
+			q := request.URL.Query()
+			q.Add("digest", digest.String())
+			request.URL.RawQuery = q.Encode()
+			request.Header.Set("Content-Type", "application/octet-stream")
+			request.Header.Set("Content-Length", fmt.Sprintf("%d", len(content)))
+			response := httptest.NewRecorder()
+
+			rthdlr.UpdateBlobUpload(response, request)
+
+			resp := response.Result()
+			defer resp.Body.Close()
+
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+		} else {
+			resp, err = resty.R().SetQueryParam("digest", digest.String()).
+				SetHeader("Content-Type", "application/octet-stream").
+				SetBody(content).Put(loc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+			blobLoc := resp.Header().Get("Location")
+			So(blobLoc, ShouldNotBeEmpty)
+			So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
+			So(resp.Header().Get(constants.DistContentDigestKey), ShouldNotBeEmpty)
+		}
+
+		// upload image config blob
+		resp, err = resty.R().Post(baseURL + "/v2/repotest/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+		loc = test.Location(baseURL, resp)
+		cblob, cdigest := test.GetRandomImageConfig()
+
+		resp, err = resty.R().
+			SetContentLength(true).
+			SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", cdigest.String()).
+			SetBody(cblob).
+			Put(loc)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		// create a manifest
+		manifest := ispec.Manifest{
+			Config: ispec.Descriptor{
+				MediaType: "application/vnd.oci.image.config.v1+json",
+				Digest:    cdigest,
+				Size:      int64(len(cblob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    digest,
+					Size:      int64(len(content)),
+				},
+			},
+		}
+		manifest.SchemaVersion = 2
+		content, err = json.Marshal(manifest)
+		So(err, ShouldBeNil)
+		digest = godigest.FromBytes(content)
+		So(digest, ShouldNotBeNil)
+
+		// Testing router path:  @Router /v2/{name}/manifests/{reference} [put]
+		// nolint: lll
+		Convey("Uploading an image manifest blob (when injected simulates that PutImageManifest failed due to 'too many open files' error)", func() {
+			injected := test.InjectFailure(1)
+
+			request, _ := http.NewRequestWithContext(context.TODO(), "PUT", baseURL, bytes.NewReader(content))
+			request = mux.SetURLVars(request, map[string]string{"name": "repotest", "reference": "1.0"})
+			request.Header.Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
+			response := httptest.NewRecorder()
+
+			rthdlr.UpdateManifest(response, request)
+
+			resp := response.Result()
+			So(resp, ShouldNotBeNil)
+			defer resp.Body.Close()
+
+			if injected {
+				So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+			} else {
+				So(resp.StatusCode, ShouldEqual, http.StatusCreated)
+			}
+		})
+		Convey("when injected simulates a `too many open files` error inside PutImageManifest method of img store", func() {
+			injected := test.InjectFailure(2)
+
+			request, _ := http.NewRequestWithContext(context.TODO(), "PUT", baseURL, bytes.NewReader(content))
+			request = mux.SetURLVars(request, map[string]string{"name": "repotest", "reference": "1.0"})
+			request.Header.Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
+			response := httptest.NewRecorder()
+
+			rthdlr.UpdateManifest(response, request)
+
+			resp := response.Result()
+			defer resp.Body.Close()
+
+			So(resp, ShouldNotBeNil)
+
+			if injected {
+				So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+			} else {
+				So(resp.StatusCode, ShouldEqual, http.StatusCreated)
+			}
+		})
+		Convey("code coverage: error inside PutImageManifest method of img store (unable to marshal JSON)", func() {
+			injected := test.InjectFailure(1)
+
+			request, _ := http.NewRequestWithContext(context.TODO(), "PUT", baseURL, bytes.NewReader(content))
+			request = mux.SetURLVars(request, map[string]string{"name": "repotest", "reference": "1.0"})
+			request.Header.Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
+			response := httptest.NewRecorder()
+
+			rthdlr.UpdateManifest(response, request)
+
+			resp := response.Result()
+			defer resp.Body.Close()
+
+			So(resp, ShouldNotBeNil)
+
+			if injected {
+				So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+			} else {
+				So(resp.StatusCode, ShouldEqual, http.StatusCreated)
+			}
+		})
+		Convey("code coverage: error inside PutImageManifest method of img store (umoci.OpenLayout error)", func() {
+			injected := test.InjectFailure(3)
+
+			request, _ := http.NewRequestWithContext(context.TODO(), "PUT", baseURL, bytes.NewReader(content))
+			request = mux.SetURLVars(request, map[string]string{"name": "repotest", "reference": "1.0"})
+			request.Header.Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
+			response := httptest.NewRecorder()
+
+			rthdlr.UpdateManifest(response, request)
+
+			resp := response.Result()
+			defer resp.Body.Close()
+
+			So(resp, ShouldNotBeNil)
+
+			if injected {
+				So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+			} else {
+				So(resp.StatusCode, ShouldEqual, http.StatusCreated)
+			}
+		})
+		Convey("code coverage: error inside PutImageManifest method of img store (oci.GC)", func() {
+			injected := test.InjectFailure(4)
+
+			request, _ := http.NewRequestWithContext(context.TODO(), "PUT", baseURL, bytes.NewReader(content))
+			request = mux.SetURLVars(request, map[string]string{"name": "repotest", "reference": "1.0"})
+			request.Header.Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
+			response := httptest.NewRecorder()
+
+			rthdlr.UpdateManifest(response, request)
+
+			resp := response.Result()
+			defer resp.Body.Close()
+
+			So(resp, ShouldNotBeNil)
+
+			if injected {
+				So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+			} else {
+				So(resp.StatusCode, ShouldEqual, http.StatusCreated)
+			}
+		})
+		Convey("when index.json is not in json format", func() {
+			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+				SetBody(content).Put(baseURL + "/v2/repotest/manifests/v1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+			digestHdr := resp.Header().Get(constants.DistContentDigestKey)
+			So(digestHdr, ShouldNotBeEmpty)
+			So(digestHdr, ShouldEqual, digest.String())
+
+			indexFile := path.Join(dir, "repotest", "index.json")
+			_, err = os.Stat(indexFile)
+			So(err, ShouldBeNil)
+			indexContent := []byte(`not a JSON content`)
+			err = ioutil.WriteFile(indexFile, indexContent, 0o600)
+			So(err, ShouldBeNil)
+
+			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+				SetBody(content).Put(baseURL + "/v2/repotest/manifests/v1.1")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
 		})
 	})
 }

@@ -34,6 +34,7 @@ const (
 	UNAUTHORIZED
 	DENIED
 	UNSUPPORTED
+	INVALID_INDEX
 )
 
 func (e ErrorCode) String() string {
@@ -53,6 +54,7 @@ func (e ErrorCode) String() string {
 		UNAUTHORIZED:          "UNAUTHORIZED",
 		DENIED:                "DENIED",
 		UNSUPPORTED:           "UNSUPPORTED",
+		INVALID_INDEX:         "INVALID_INDEX",
 	}
 
 	return errMap[e]
@@ -151,6 +153,11 @@ func NewError(code ErrorCode, detail ...interface{}) Error { //nolint: interface
 			Message: "The operation is unsupported.",
 			Description: `The operation was unsupported due to a missing
 			implementation or invalid set of parameters.`,
+		},
+
+		INVALID_INDEX: {
+			Message:     "Invalid format of index.json file of the repo",
+			Description: "index.json file does not contain data in json format",
 		},
 	}
 
