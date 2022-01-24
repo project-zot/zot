@@ -120,8 +120,36 @@ swagger: swagger/docs.go
 
 .PHONY: update-licenses
 update-licenses:
-	go get github.com/google/go-licenses
-	$(shell echo "Module | License URL | License" > THIRD-PARTY-LICENSES.md; echo "---|---|---" >> THIRD-PARTY-LICENSES.md; for i in $$(cat go.sum  | awk '{print $$1}'); do l=$$(go-licenses csv $$i 2>/dev/null); if [ $$? -ne 0 ]; then continue; fi; echo $$l | tr \, \| | tr ' ' '\n'; done | sort -u >> THIRD-PARTY-LICENSES.md)
+	@echo "Detecting and updating licenses ... please be patient!"
+	go install github.com/google/go-licenses@latest
+	$(shell echo "Module | License URL | License" > THIRD-PARTY-LICENSES.md; echo "---|---|---" >> THIRD-PARTY-LICENSES.md; for i in $$(go list -m all  | awk '{print $$1}'); do l=$$(go-licenses csv $$i 2>/dev/null); if [ $$? -ne 0 ]; then continue; fi; echo $$l | tr \, \| | tr ' ' '\n'; done | sort -u >> THIRD-PARTY-LICENSES.md)
+
+.PHONY: check-licenses
+check-licenses:
+	go install github.com/google/go-licenses@latest
+	@for tag in "extended,containers_image_openpgp" "minimal,containers_image_openpgp"; do \
+		echo Evaluating tag: $$tag;\
+		for mod in $$(go list -m -f '{{if not (or .Indirect .Main)}}{{.Path}}{{end}}' all); do \
+			while [ x$$mod != x ]; do \
+				echo -n "Checking $$mod ... "; \
+				result=$$(GOFLAGS="-tags=$${tag}" go-licenses check $$mod 2>&1); \
+				if [ $$? -eq 0 ]; then \
+					echo OK; \
+					break; \
+				fi; \
+				echo "$${result}" | grep -q "Forbidden"; \
+				if [ $$? -eq 0 ]; then \
+					echo FAIL; \
+					exit 1; \
+				fi; \
+				echo "$${result}" | egrep -q "missing go.sum entry|no required module provides package|build constraints exclude all|updates to go.mod needed"; \
+				if [ $$? -eq 0 ]; then \
+					echo UNKNOWN; \
+					break; \
+				fi; \
+			done; \
+		 done; \
+	 done
 
 .PHONY: clean
 clean:
