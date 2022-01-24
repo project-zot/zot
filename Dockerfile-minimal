@@ -3,10 +3,12 @@
 # ---
 FROM ghcr.io/project-zot/golang:1.17 AS builder
 ARG COMMIT
+ARG OS
+ARG ARCH
 RUN mkdir -p /go/src/github.com/project-zot/zot
 WORKDIR /go/src/github.com/project-zot/zot
 COPY . .
-RUN make COMMIT=$COMMIT clean binary-minimal
+RUN make COMMIT=$COMMIT OS=$OS ARCH=$ARCH clean binary-minimal
 RUN echo '{\n\
     "storage": {\n\
         "rootDirectory": "/var/lib/registry"\n\
@@ -25,7 +27,7 @@ RUN echo '{\n\
 # ---
 FROM scratch AS final
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-COPY --from=builder /go/src/github.com/project-zot/zot/bin/zot-minimal /usr/bin/zot
+COPY --from=builder /go/src/github.com/project-zot/zot/bin/zot-$OS-$ARCH-minimal /usr/bin/zot
 COPY --from=builder /go/src/github.com/project-zot/zot/config.json /etc/zot/config.json
 ENTRYPOINT ["/usr/bin/zot"]
 EXPOSE 5000
