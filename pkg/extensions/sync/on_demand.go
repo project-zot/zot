@@ -160,8 +160,8 @@ func OneImage(cfg Config, storeController storage.StoreController,
 				return err
 			}, retryOptions); err != nil {
 				log.Error().Err(err).Msgf("Couldn't copy image signature %s", upstreamRef.DockerReference().Name())
-
-				return err
+				// nolint: nilerr
+				return nil
 			}
 
 			return nil
