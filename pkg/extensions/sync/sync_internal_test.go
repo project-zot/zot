@@ -143,13 +143,17 @@ func TestSyncInternal(t *testing.T) {
 
 		var tlsVerify bool
 		updateDuration := time.Microsecond
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		baseSecureURL := GetSecureBaseURL(port)
+
 		syncRegistryConfig := RegistryConfig{
 			Content: []Content{
 				{
 					Prefix: testImage,
 				},
 			},
-			URL:          BaseURL,
+			URL:          baseURL,
 			PollInterval: updateDuration,
 			TLSVerify:    &tlsVerify,
 			CertDir:      badCertsDir,
@@ -158,6 +162,17 @@ func TestSyncInternal(t *testing.T) {
 		_, err = getHTTPClient(&syncRegistryConfig, Credentials{}, log.NewLogger("debug", ""))
 		So(err, ShouldNotBeNil)
 		syncRegistryConfig.CertDir = "/path/to/invalid/cert"
+
+		_, err = getHTTPClient(&syncRegistryConfig, Credentials{}, log.NewLogger("debug", ""))
+		So(err, ShouldNotBeNil)
+
+		syncRegistryConfig.CertDir = ""
+		syncRegistryConfig.URL = baseSecureURL
+
+		_, err = getHTTPClient(&syncRegistryConfig, Credentials{}, log.NewLogger("debug", ""))
+		So(err, ShouldBeNil)
+
+		syncRegistryConfig.URL = BaseURL
 		_, err = getHTTPClient(&syncRegistryConfig, Credentials{}, log.NewLogger("debug", ""))
 		So(err, ShouldNotBeNil)
 	})
