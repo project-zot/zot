@@ -104,6 +104,13 @@ func getFileCredentials(filepath string) (CredentialsFile, error) {
 func getHTTPClient(regCfg *RegistryConfig, credentials Credentials, log log.Logger) (*resty.Client, error) {
 	client := resty.New()
 
+	registryURL, err := url.Parse(regCfg.URL)
+	if err != nil {
+		log.Error().Err(err).Str("url", regCfg.URL).Msg("couldn't parse url")
+
+		return nil, err
+	}
+
 	if regCfg.CertDir != "" {
 		log.Debug().Msgf("sync: using certs directory: %s", regCfg.CertDir)
 		clientCert := path.Join(regCfg.CertDir, "client.cert")
@@ -133,7 +140,7 @@ func getHTTPClient(regCfg *RegistryConfig, credentials Credentials, log log.Logg
 	}
 
 	// nolint: gosec
-	if regCfg.TLSVerify != nil && !*regCfg.TLSVerify {
+	if regCfg.TLSVerify != nil && !*regCfg.TLSVerify && registryURL.Scheme == "https" {
 		client.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true})
 	}
 
