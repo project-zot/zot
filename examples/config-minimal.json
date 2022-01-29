@@ -9,7 +9,6 @@
         "ReadOnly": false
     },
     "log": {
-        "level": "debug",
-        "output": "/tmp/zot.log"
+        "level": "debug"
     }
 }
