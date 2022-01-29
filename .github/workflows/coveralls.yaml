@@ -1,0 +1,74 @@
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  release:
+    types:
+      - published
+
+name: build-test-with-coveralls
+
+jobs:
+  build-test:
+    name: Build and test zot (with coveralls)
+    runs-on: ubuntu-latest
+    services:
+      s3mock:
+        image: ghcr.io/project-zot/localstack/localstack:0.13.2
+        env:
+          SERVICES: s3
+        ports:
+          - 4563-4599:4563-4599
+          - 9090:8080
+    steps:
+      - name: Install go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.17.x
+
+      - name: Check out source code
+        uses: actions/checkout@v1
+
+      - name: Install dependencies
+        run: |
+          cd $GITHUB_WORKSPACE
+          go install github.com/swaggo/swag/cmd/swag@latest
+          go mod download
+          sudo apt-get update
+          sudo apt-get install rpm
+          sudo apt install snapd
+          sudo snap install skopeo --edge --devmode
+          curl -Lo notation.tar.gz https://github.com/notaryproject/notation/releases/download/v0.7.1-alpha.1/notation_0.7.1-alpha.1_linux_amd64.tar.gz
+          sudo tar xvzf notation.tar.gz -C /usr/bin notation
+          go install github.com/wadey/gocovmerge@latest
+          go install github.com/jandelgado/gcov2lcov@latest
+
+      - name: Run build and test
+        timeout-minutes: 60
+        run: |
+          cd $GITHUB_WORKSPACE && make && make ARCH=arm64 binary-arch-minimal && make ARCH=arm64 binary-arch
+          make cover
+          gcov2lcov -infile=coverage.txt -outfile=coverage.lcov
+        env:
+          S3MOCK_ENDPOINT: localhost:4566
+          AWS_ACCESS_KEY_ID: fake
+          AWS_SECRET_ACCESS_KEY: fake
+
+      - name: Coveralls
+        uses: coverallsapp/github-action@master
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path-to-lcov: coverage.lcov
+
+  finish:
+    needs: build-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Coveralls Finished
+        uses: coverallsapp/github-action@master
+        with:
+          github-token: ${{ secrets.github_token }}
+          parallel-finished: true

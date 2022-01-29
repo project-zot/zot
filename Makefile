@@ -93,6 +93,11 @@ $(NOTATION):
 	tar xvzf notation.tar.gz -C $(TOOLSDIR)/bin  notation
 	rm notation.tar.gz
 
+.PHONY: cover
+cover:
+	go install github.com/wadey/gocovmerge@latest
+	gocovmerge coverage-minimal.txt coverage-extended.txt coverage-dev-minimal.txt coverage-dev-extended.txt > coverage.txt
+
 .PHONY: covhtml
 covhtml:
 	go install github.com/wadey/gocovmerge@latest
@@ -112,7 +117,7 @@ check: ./golangcilint.yaml $(GOLINTER)
 	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags dev,extended,containers_image_openpgp ./...
 
 swagger/docs.go: 
-	swag -v || go install github.com/swaggo/swag/cmd/swag
+	swag -v || go install github.com/swaggo/swag/cmd/swag@latest
 	swag init -o swagger -g pkg/api/routes.go
 
 .PHONY: swagger
@@ -120,7 +125,7 @@ swagger: swagger/docs.go
 
 .PHONY: update-licenses
 update-licenses:
-	go get github.com/google/go-licenses
+	go install github.com/google/go-licenses@latest
 	$(shell echo "Module | License URL | License" > THIRD-PARTY-LICENSES.md; echo "---|---|---" >> THIRD-PARTY-LICENSES.md; for i in $$(cat go.sum  | awk '{print $$1}'); do l=$$(go-licenses csv $$i 2>/dev/null); if [ $$? -ne 0 ]; then continue; fi; echo $$l | tr \, \| | tr ' ' '\n'; done | sort -u >> THIRD-PARTY-LICENSES.md)
 
 .PHONY: clean
