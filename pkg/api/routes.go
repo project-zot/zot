@@ -24,9 +24,9 @@ import (
 
 	"github.com/gorilla/mux"
 	jsoniter "github.com/json-iterator/go"
-	"github.com/notaryproject/notation-go-lib"
 	notreg "github.com/notaryproject/notation/pkg/registry"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	httpSwagger "github.com/swaggo/http-swagger"
 	zerr "zotregistry.io/zot/errors"
 	ext "zotregistry.io/zot/pkg/extensions"
@@ -1361,7 +1361,7 @@ func getImageManifest(routeHandler *RouteHandler, imgStore storage.ImageStore, n
 }
 
 type ReferenceList struct {
-	References []notation.Descriptor `json:"references"`
+	References []artifactspec.Descriptor `json:"references"`
 }
 
 // GetReferrers godoc

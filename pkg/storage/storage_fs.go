@@ -19,6 +19,7 @@ import (
 	guuid "github.com/gofrs/uuid"
 	"github.com/minio/sha256-simd"
 	"github.com/notaryproject/notation-go-lib"
+	notreg "github.com/notaryproject/notation/pkg/registry"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opencontainers/umoci"
@@ -1381,7 +1382,7 @@ func (is *ImageStoreFS) DeleteBlob(repo string, digest string) error {
 	return nil
 }
 
-func (is *ImageStoreFS) GetReferrers(repo, digest string, mediaType string) ([]notation.Descriptor, error) {
+func (is *ImageStoreFS) GetReferrers(repo, digest string, mediaType string) ([]artifactspec.Descriptor, error) {
 	var lockLatency time.Time
 
 	dir := path.Join(is.rootDir, repo)
@@ -1419,7 +1420,7 @@ func (is *ImageStoreFS) GetReferrers(repo, digest string, mediaType string) ([]n
 
 	found := false
 
-	result := []notation.Descriptor{}
+	result := []artifactspec.Descriptor{}
 
 	for _, manifest := range index.Manifests {
 		if manifest.MediaType != artifactspec.MediaTypeArtifactManifest {
@@ -1451,9 +1452,10 @@ func (is *ImageStoreFS) GetReferrers(repo, digest string, mediaType string) ([]n
 			continue
 		}
 
-		result = append(result, notation.Descriptor{
-			MediaType: manifest.MediaType,
-			Digest:    manifest.Digest, Size: manifest.Size, Annotations: manifest.Annotations,
+		result = append(result, artifactspec.Descriptor{
+			MediaType:    manifest.MediaType,
+			ArtifactType: notreg.ArtifactTypeNotation,
+			Digest:       manifest.Digest, Size: manifest.Size, Annotations: manifest.Annotations,
 		})
 
 		found = true

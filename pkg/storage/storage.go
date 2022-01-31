@@ -4,8 +4,8 @@ import (
 	"io"
 	"time"
 
-	"github.com/notaryproject/notation-go-lib"
 	"github.com/opencontainers/go-digest"
+	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 )
 
 const (
@@ -42,5 +42,5 @@ type ImageStore interface {
 	DeleteBlob(repo string, digest string) error
 	GetIndexContent(repo string) ([]byte, error)
 	GetBlobContent(repo, digest string) ([]byte, error)
-	GetReferrers(repo, digest string, mediaType string) ([]notation.Descriptor, error)
+	GetReferrers(repo, digest string, mediaType string) ([]artifactspec.Descriptor, error)
 }
