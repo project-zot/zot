@@ -3322,6 +3322,15 @@ func TestImageSignatures(t *testing.T) {
 			So(msg, ShouldNotBeEmpty)
 			So(strings.Contains(msg, "verification failure"), ShouldBeFalse)
 
+			// check list
+			cmd = exec.Command("notation", "list", "--plain-http", image)
+			out, err = cmd.CombinedOutput()
+			So(err, ShouldBeNil)
+			msg = strings.TrimSuffix(string(out), "\n")
+			So(msg, ShouldNotBeEmpty)
+			_, err = godigest.Parse(msg)
+			So(err, ShouldBeNil)
+
 			// verify the image with incorrect key
 			cmd = exec.Command("notation", "verify", "--cert", "bad", "--plain-http", image)
 			out, err = cmd.CombinedOutput()

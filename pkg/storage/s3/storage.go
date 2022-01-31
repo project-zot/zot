@@ -20,9 +20,9 @@ import (
 	// Load s3 driver.
 	_ "github.com/docker/distribution/registry/storage/driver/s3-aws"
 	guuid "github.com/gofrs/uuid"
-	"github.com/notaryproject/notation-go-lib"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/rs/zerolog"
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
@@ -1109,7 +1109,7 @@ func (is *ObjectStorage) GetBlobContent(repo string, digest string) ([]byte, err
 	return buf.Bytes(), nil
 }
 
-func (is *ObjectStorage) GetReferrers(repo, digest string, mediaType string) ([]notation.Descriptor, error) {
+func (is *ObjectStorage) GetReferrers(repo, digest string, mediaType string) ([]artifactspec.Descriptor, error) {
 	return nil, zerr.ErrMethodNotSupported
 }
 
