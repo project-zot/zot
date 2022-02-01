@@ -1,11 +1,12 @@
 package main
 
 import (
-	"crypto/rand"
+	crand "crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
+	mrand "math/rand"
 	"net/http"
 	"os"
 	"path"
@@ -36,6 +37,9 @@ const (
 	mediumBlob           = 10 * MiB
 	largeBlob            = 100 * MiB
 	cicdFmt              = "ci-cd"
+	smallSizeIdx         = 0
+	mediumSizeIdx        = 1
+	largeSizeIdx         = 2
 )
 
 //nolint:gochecknoglobals // used only in this test
@@ -68,7 +72,7 @@ func setup(workingDir string) {
 
 		// write a random first page so every test run has different blob content
 		rnd := make([]byte, rndPageSize)
-		if _, err := rand.Read(rnd); err != nil {
+		if _, err := crand.Read(rnd); err != nil {
 			log.Fatal(err)
 		}
 
@@ -223,6 +227,40 @@ func printStats(requests int, summary *statsSummary, outFmt string) {
 	}
 }
 
+// nolint:gosec
+func flipTestSize(probabilityRange []float64) int {
+	mrand.Seed(time.Now().UTC().UnixNano())
+	toss := mrand.Float64()
+
+	for idx, r := range probabilityRange {
+		if toss < r {
+			return idx
+		}
+	}
+
+	return len(probabilityRange) - 1
+}
+
+// pbty - probabilities.
+func normalizeProbabilityRange(pbty []float64) []float64 {
+	dim := len(pbty)
+
+	// npd - normalized probability density
+	npd := make([]float64, dim)
+
+	for idx := range pbty {
+		npd[idx] = 0.0
+	}
+
+	// [0.2, 0.7, 0.1] -> [0.2, 0.9, 1]
+	npd[0] = pbty[0]
+	for i := 1; i < dim; i++ {
+		npd[i] = npd[i-1] + pbty[i]
+	}
+
+	return npd
+}
+
 // test suites/funcs.
 
 type testFunc func(workdir, url, auth, repo string, requests int, config testConfig, statsCh chan statsRecord) error
@@ -288,6 +326,8 @@ func PushMonolithStreamed(workdir, url, auth, trepo string, requests int,
 		client.SetBasicAuth(creds[0], creds[1])
 	}
 
+	var repos []string
+
 	for count := 0; count < requests; count++ {
 		func() {
 			start := time.Now()
@@ -321,6 +361,8 @@ func PushMonolithStreamed(workdir, url, auth, trepo string, requests int,
 				repo = ruid.String()
 			}
 
+			repos = append(repos, repo)
+
 			// create a new upload
 			resp, err := resty.R().
 				Post(fmt.Sprintf("%s/v2/%s/blobs/uploads/", url, repo))
@@ -343,7 +385,25 @@ func PushMonolithStreamed(workdir, url, auth, trepo string, requests int,
 
 			loc := test.Location(url, resp)
 
-			size := config.size
+			var size int
+
+			if config.mixedSize {
+				idx := flipTestSize(config.probabilityRange)
+
+				switch idx {
+				case smallSizeIdx:
+					size = smallBlob
+				case mediumSizeIdx:
+					size = mediumBlob
+				case largeSizeIdx:
+					size = largeBlob
+				default:
+					size = config.size
+				}
+			} else {
+				size = config.size
+			}
+
 			blob := path.Join(workdir, fmt.Sprintf("%d.blob", size))
 
 			fhandle, err := os.OpenFile(blob, os.O_RDONLY, defaultFilePerms)
@@ -452,11 +512,13 @@ func PushMonolithStreamed(workdir, url, auth, trepo string, requests int,
 				log.Fatal(err)
 			}
 
+			manifestTag := fmt.Sprintf("tag%d", count)
+
 			resp, err = resty.R().
 				SetContentLength(true).
 				SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
 				SetBody(content).
-				Put(fmt.Sprintf("%s/v2/%s/manifests/%s", url, repo, fmt.Sprintf("tag%d", count)))
+				Put(fmt.Sprintf("%s/v2/%s/manifests/%s", url, repo, manifestTag))
 
 			latency = time.Since(start)
 
@@ -476,6 +538,12 @@ func PushMonolithStreamed(workdir, url, auth, trepo string, requests int,
 		}()
 	}
 
+	// clean up
+	err := deleteTestRepo(repos, url, client)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -487,6 +555,8 @@ func PushChunkStreamed(workdir, url, auth, trepo string, requests int,
 		creds := strings.Split(auth, ":")
 		client.SetBasicAuth(creds[0], creds[1])
 	}
+
+	var repos []string
 
 	for count := 0; count < requests; count++ {
 		func() {
@@ -521,6 +591,8 @@ func PushChunkStreamed(workdir, url, auth, trepo string, requests int,
 				repo = ruid.String()
 			}
 
+			repos = append(repos, repo)
+
 			// create a new upload
 			resp, err := resty.R().
 				Post(fmt.Sprintf("%s/v2/%s/blobs/uploads/", url, repo))
@@ -543,7 +615,25 @@ func PushChunkStreamed(workdir, url, auth, trepo string, requests int,
 
 			loc := test.Location(url, resp)
 
-			size := config.size
+			var size int
+
+			if config.mixedSize {
+				idx := flipTestSize(config.probabilityRange)
+
+				switch idx {
+				case smallSizeIdx:
+					size = smallBlob
+				case mediumSizeIdx:
+					size = mediumBlob
+				case largeSizeIdx:
+					size = largeBlob
+				default:
+					size = config.size
+				}
+			} else {
+				size = config.size
+			}
+
 			blob := path.Join(workdir, fmt.Sprintf("%d.blob", size))
 
 			fhandle, err := os.OpenFile(blob, os.O_RDONLY, defaultFilePerms)
@@ -721,11 +811,13 @@ func PushChunkStreamed(workdir, url, auth, trepo string, requests int,
 				log.Fatal(err)
 			}
 
+			manifestTag := fmt.Sprintf("tag%d", count)
+
 			resp, err = resty.R().
 				SetContentLength(true).
 				SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
 				SetBody(content).
-				Put(fmt.Sprintf("%s/v2/%s/manifests/%s", url, repo, fmt.Sprintf("tag%d", count)))
+				Put(fmt.Sprintf("%s/v2/%s/manifests/%s", url, repo, manifestTag))
 
 			latency = time.Since(start)
 
@@ -745,6 +837,12 @@ func PushChunkStreamed(workdir, url, auth, trepo string, requests int,
 		}()
 	}
 
+	// clean up
+	err := deleteTestRepo(repos, url, client)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -754,7 +852,9 @@ type testConfig struct {
 	name  string
 	tfunc testFunc
 	// test-specific params
-	size int
+	size             int
+	probabilityRange []float64
+	mixedSize        bool
 }
 
 var testSuite = []testConfig{ // nolint:gochecknoglobals // used only in this test
@@ -791,6 +891,18 @@ var testSuite = []testConfig{ // nolint:gochecknoglobals // used only in this te
 		name:  "Push Chunk Streamed 100MB",
 		tfunc: PushChunkStreamed,
 		size:  largeBlob,
+	},
+	{
+		name:             "Push Monolith Mixed 28% 1MB, 70% 10MB, 2% 100MB",
+		tfunc:            PushMonolithStreamed,
+		probabilityRange: normalizeProbabilityRange([]float64{0.28, 0.7, 0.02}),
+		mixedSize:        true,
+	},
+	{
+		name:             "Push Chunk Mixed 33% 1MB, 33% 10MB, 33% 100MB",
+		tfunc:            PushChunkStreamed,
+		probabilityRange: normalizeProbabilityRange([]float64{0.33, 0.33, 0.33}),
+		mixedSize:        true,
 	},
 }
 
