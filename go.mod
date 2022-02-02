@@ -41,6 +41,7 @@ require (
 	github.com/opencontainers/umoci v0.4.8-0.20210922062158-e60a0cc726e6
 	github.com/oras-project/artifacts-spec v1.0.0-draft.1
 	github.com/phayes/freeport v0.0.0-20180830031419-95f893ade6f2
+	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.11.0
 	github.com/prometheus/client_model v0.2.0
 	github.com/rs/zerolog v1.26.0
@@ -271,7 +272,6 @@ require (
 	github.com/owenrumney/squealer v0.2.28 // indirect
 	github.com/pelletier/go-toml v1.9.4 // indirect
 	github.com/pierrec/lz4 v2.6.1+incompatible // indirect
-	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/prometheus/common v0.31.1 // indirect
 	github.com/prometheus/procfs v0.7.3 // indirect

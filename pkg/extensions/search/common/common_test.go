@@ -36,6 +36,15 @@ type ImgResponsWithLatestTag struct {
 	Errors               []ErrorGQL           `json:"errors"`
 }
 
+type ExpandedRepoInfoResp struct {
+	ExpandedRepoInfo ExpandedRepoInfo `json:"data"`
+	Errors           []ErrorGQL       `json:"errors"`
+}
+
+type ExpandedRepoInfo struct {
+	RepoInfo common.RepoInfo `json:"expandedRepoInfo"`
+}
+
 //nolint:tagliatelle // graphQL schema
 type ImgListWithLatestTag struct {
 	Images []ImageInfo `json:"ImageListWithLatestTag"`
@@ -308,6 +317,110 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
+	})
+}
+
+func TestExpandedRepoInfo(t *testing.T) {
+	Convey("Test expanded repo info", t, func() {
+		err := testSetup()
+		if err != nil {
+			panic(err)
+		}
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = rootDir
+		conf.Storage.SubPaths = make(map[string]config.StorageConfig)
+		conf.Storage.SubPaths["/a"] = config.StorageConfig{RootDirectory: subRootDir}
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
+		}
+
+		conf.Extensions.Search.CVE = nil
+
+		ctlr := api.NewController(conf)
+
+		go func() {
+			// this blocks
+			if err := ctlr.Run(); err != nil {
+				return
+			}
+		}()
+
+		// wait till ready
+		for {
+			_, err := resty.R().Get(baseURL)
+			if err == nil {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		// shut down server
+		defer func() {
+			ctx := context.Background()
+			_ = ctlr.Server.Shutdown(ctx)
+		}()
+
+		resp, err := resty.R().Get(baseURL + "/v2/")
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		resp, err = resty.R().Get(baseURL + "/query")
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		query := "{ExpandedRepoInfo(repo:\"zot-test\"){Manifests%20{Digest%20IsSigned%20Tag%20Layers%20{Size%20Digest}}}}"
+
+		resp, err = resty.R().Get(baseURL + "/query?query=" + query)
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		responseStruct := &ExpandedRepoInfoResp{}
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Manifests), ShouldNotEqual, 0)
+		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Manifests[0].Layers), ShouldNotEqual, 0)
+
+		query = "{ExpandedRepoInfo(repo:\"\"){Manifests%20{Digest%20Tag%20IsSigned%20Layers%20{Size%20Digest}}}}"
+
+		resp, err = resty.R().Get(baseURL + "/query?query=" + query)
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		query = "{ExpandedRepoInfo(repo:\"a/zot-test\"){Manifests%20{Digest%20Tag%20IsSigned%20%Layers%20{Size%20Digest}}}}"
+		resp, err = resty.R().Get(baseURL + "/query?query=" + query)
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Manifests), ShouldNotEqual, 0)
+		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Manifests[0].Layers), ShouldNotEqual, 0)
+
+		err = os.Remove(path.Join(rootDir, "zot-test/blobs/sha256",
+			"2bacca16b9df395fc855c14ccf50b12b58d35d468b8e7f25758aff90f89bf396"))
+		if err != nil {
+			panic(err)
+		}
+
+		query = "{ExpandedRepoInfo(repo:\"zot-test\"){Manifests%20{Digest%20Tag%20IsSigned%20%Layers%20{Size%20Digest}}}}"
+
+		resp, err = resty.R().Get(baseURL + "/query?query=" + query)
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
 	})
 }
 
