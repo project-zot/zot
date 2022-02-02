@@ -82,6 +82,18 @@ type ComplexityRoot struct {
 		Tags func(childComplexity int) int
 	}
 
+	LayerInfo struct {
+		Digest func(childComplexity int) int
+		Size   func(childComplexity int) int
+	}
+
+	ManifestInfo struct {
+		Digest   func(childComplexity int) int
+		IsSigned func(childComplexity int) int
+		Layers   func(childComplexity int) int
+		Tag      func(childComplexity int) int
+	}
+
 	PackageInfo struct {
 		FixedVersion     func(childComplexity int) int
 		InstalledVersion func(childComplexity int) int
@@ -90,10 +102,15 @@ type ComplexityRoot struct {
 
 	Query struct {
 		CVEListForImage        func(childComplexity int, image string) int
+		ExpandedRepoInfo       func(childComplexity int, repo string) int
 		ImageListForCve        func(childComplexity int, id string) int
 		ImageListForDigest     func(childComplexity int, id string) int
 		ImageListWithCVEFixed  func(childComplexity int, id string, image string) int
 		ImageListWithLatestTag func(childComplexity int) int
+	}
+
+	RepoInfo struct {
+		Manifests func(childComplexity int) int
 	}
 
 	TagInfo struct {
@@ -109,6 +126,7 @@ type QueryResolver interface {
 	ImageListWithCVEFixed(ctx context.Context, id string, image string) (*ImgResultForFixedCve, error)
 	ImageListForDigest(ctx context.Context, id string) ([]*ImgResultForDigest, error)
 	ImageListWithLatestTag(ctx context.Context) ([]*ImageInfo, error)
+	ExpandedRepoInfo(ctx context.Context, repo string) (*RepoInfo, error)
 }
 
 type executableSchema struct {
@@ -266,6 +284,48 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.ImgResultForFixedCve.Tags(childComplexity), true
 
+	case "LayerInfo.Digest":
+		if e.complexity.LayerInfo.Digest == nil {
+			break
+		}
+
+		return e.complexity.LayerInfo.Digest(childComplexity), true
+
+	case "LayerInfo.Size":
+		if e.complexity.LayerInfo.Size == nil {
+			break
+		}
+
+		return e.complexity.LayerInfo.Size(childComplexity), true
+
+	case "ManifestInfo.Digest":
+		if e.complexity.ManifestInfo.Digest == nil {
+			break
+		}
+
+		return e.complexity.ManifestInfo.Digest(childComplexity), true
+
+	case "ManifestInfo.IsSigned":
+		if e.complexity.ManifestInfo.IsSigned == nil {
+			break
+		}
+
+		return e.complexity.ManifestInfo.IsSigned(childComplexity), true
+
+	case "ManifestInfo.Layers":
+		if e.complexity.ManifestInfo.Layers == nil {
+			break
+		}
+
+		return e.complexity.ManifestInfo.Layers(childComplexity), true
+
+	case "ManifestInfo.Tag":
+		if e.complexity.ManifestInfo.Tag == nil {
+			break
+		}
+
+		return e.complexity.ManifestInfo.Tag(childComplexity), true
+
 	case "PackageInfo.FixedVersion":
 		if e.complexity.PackageInfo.FixedVersion == nil {
 			break
@@ -298,6 +358,18 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Query.CVEListForImage(childComplexity, args["image"].(string)), true
+
+	case "Query.ExpandedRepoInfo":
+		if e.complexity.Query.ExpandedRepoInfo == nil {
+			break
+		}
+
+		args, err := ec.field_Query_ExpandedRepoInfo_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.ExpandedRepoInfo(childComplexity, args["repo"].(string)), true
 
 	case "Query.ImageListForCVE":
 		if e.complexity.Query.ImageListForCve == nil {
@@ -341,6 +413,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Query.ImageListWithLatestTag(childComplexity), true
+
+	case "RepoInfo.Manifests":
+		if e.complexity.RepoInfo.Manifests == nil {
+			break
+		}
+
+		return e.complexity.RepoInfo.Manifests(childComplexity), true
 
 	case "TagInfo.Digest":
 		if e.complexity.TagInfo.Digest == nil {
@@ -465,12 +544,29 @@ type ImageInfo {
      Labels: String
 }
 
+type RepoInfo {
+     Manifests: [ManifestInfo]
+}
+
+type ManifestInfo {
+     Digest: String
+     Tag: String
+     IsSigned: Boolean
+     Layers: [LayerInfo]
+}
+
+type LayerInfo {
+     Size: String # Int64 is not supported.
+     Digest: String
+}
+
 type Query {
   CVEListForImage(image: String!) :CVEResultForImage 
   ImageListForCVE(id: String!) :[ImgResultForCVE]
   ImageListWithCVEFixed(id: String!, image: String!) :ImgResultForFixedCVE
   ImageListForDigest(id: String!) :[ImgResultForDigest]
   ImageListWithLatestTag:[ImageInfo]
+  ExpandedRepoInfo(repo: String!):RepoInfo
 }
 `, BuiltIn: false},
 }
@@ -537,6 +633,21 @@ func (ec *executionContext) field_Query_CVEListForImage_args(ctx context.Context
 		}
 	}
 	args["image"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_ExpandedRepoInfo_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 string
+	if tmp, ok := rawArgs["repo"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("repo"))
+		arg0, err = ec.unmarshalNString2string(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["repo"] = arg0
 	return args, nil
 }
 
@@ -831,7 +942,7 @@ func (ec *executionContext) _CVE_PackageList(ctx context.Context, field graphql.
 	}
 	res := resTmp.([]*PackageInfo)
 	fc.Result = res
-	return ec.marshalOPackageInfo2ᚕᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐPackageInfo(ctx, field.Selections, res)
+	return ec.marshalOPackageInfo2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐPackageInfo(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _CVEResultForImage_Tag(ctx context.Context, field graphql.CollectedField, obj *CVEResultForImage) (ret graphql.Marshaler) {
@@ -889,7 +1000,7 @@ func (ec *executionContext) _CVEResultForImage_CVEList(ctx context.Context, fiel
 	}
 	res := resTmp.([]*Cve)
 	fc.Result = res
-	return ec.marshalOCVE2ᚕᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐCve(ctx, field.Selections, res)
+	return ec.marshalOCVE2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐCve(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _ImageInfo_Name(ctx context.Context, field graphql.CollectedField, obj *ImageInfo) (ret graphql.Marshaler) {
@@ -1266,7 +1377,181 @@ func (ec *executionContext) _ImgResultForFixedCVE_Tags(ctx context.Context, fiel
 	}
 	res := resTmp.([]*TagInfo)
 	fc.Result = res
-	return ec.marshalOTagInfo2ᚕᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐTagInfo(ctx, field.Selections, res)
+	return ec.marshalOTagInfo2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐTagInfo(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _LayerInfo_Size(ctx context.Context, field graphql.CollectedField, obj *LayerInfo) (ret graphql.Marshaler) {
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	fc := &graphql.FieldContext{
+		Object:     "LayerInfo",
+		Field:      field,
+		Args:       nil,
+		IsMethod:   false,
+		IsResolver: false,
+	}
+
+	ctx = graphql.WithFieldContext(ctx, fc)
+	resTmp := ec._fieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Size, nil
+	})
+
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _LayerInfo_Digest(ctx context.Context, field graphql.CollectedField, obj *LayerInfo) (ret graphql.Marshaler) {
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	fc := &graphql.FieldContext{
+		Object:     "LayerInfo",
+		Field:      field,
+		Args:       nil,
+		IsMethod:   false,
+		IsResolver: false,
+	}
+
+	ctx = graphql.WithFieldContext(ctx, fc)
+	resTmp := ec._fieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Digest, nil
+	})
+
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _ManifestInfo_Digest(ctx context.Context, field graphql.CollectedField, obj *ManifestInfo) (ret graphql.Marshaler) {
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	fc := &graphql.FieldContext{
+		Object:     "ManifestInfo",
+		Field:      field,
+		Args:       nil,
+		IsMethod:   false,
+		IsResolver: false,
+	}
+
+	ctx = graphql.WithFieldContext(ctx, fc)
+	resTmp := ec._fieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Digest, nil
+	})
+
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _ManifestInfo_Tag(ctx context.Context, field graphql.CollectedField, obj *ManifestInfo) (ret graphql.Marshaler) {
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	fc := &graphql.FieldContext{
+		Object:     "ManifestInfo",
+		Field:      field,
+		Args:       nil,
+		IsMethod:   false,
+		IsResolver: false,
+	}
+
+	ctx = graphql.WithFieldContext(ctx, fc)
+	resTmp := ec._fieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Tag, nil
+	})
+
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _ManifestInfo_IsSigned(ctx context.Context, field graphql.CollectedField, obj *ManifestInfo) (ret graphql.Marshaler) {
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	fc := &graphql.FieldContext{
+		Object:     "ManifestInfo",
+		Field:      field,
+		Args:       nil,
+		IsMethod:   false,
+		IsResolver: false,
+	}
+
+	ctx = graphql.WithFieldContext(ctx, fc)
+	resTmp := ec._fieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.IsSigned, nil
+	})
+
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*bool)
+	fc.Result = res
+	return ec.marshalOBoolean2ᚖbool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _ManifestInfo_Layers(ctx context.Context, field graphql.CollectedField, obj *ManifestInfo) (ret graphql.Marshaler) {
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	fc := &graphql.FieldContext{
+		Object:     "ManifestInfo",
+		Field:      field,
+		Args:       nil,
+		IsMethod:   false,
+		IsResolver: false,
+	}
+
+	ctx = graphql.WithFieldContext(ctx, fc)
+	resTmp := ec._fieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Layers, nil
+	})
+
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.([]*LayerInfo)
+	fc.Result = res
+	return ec.marshalOLayerInfo2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐLayerInfo(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _PackageInfo_Name(ctx context.Context, field graphql.CollectedField, obj *PackageInfo) (ret graphql.Marshaler) {
@@ -1389,7 +1674,7 @@ func (ec *executionContext) _Query_CVEListForImage(ctx context.Context, field gr
 	}
 	res := resTmp.(*CVEResultForImage)
 	fc.Result = res
-	return ec.marshalOCVEResultForImage2ᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐCVEResultForImage(ctx, field.Selections, res)
+	return ec.marshalOCVEResultForImage2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐCVEResultForImage(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _Query_ImageListForCVE(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
@@ -1425,7 +1710,7 @@ func (ec *executionContext) _Query_ImageListForCVE(ctx context.Context, field gr
 	}
 	res := resTmp.([]*ImgResultForCve)
 	fc.Result = res
-	return ec.marshalOImgResultForCVE2ᚕᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐImgResultForCve(ctx, field.Selections, res)
+	return ec.marshalOImgResultForCVE2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐImgResultForCve(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _Query_ImageListWithCVEFixed(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
@@ -1461,7 +1746,7 @@ func (ec *executionContext) _Query_ImageListWithCVEFixed(ctx context.Context, fi
 	}
 	res := resTmp.(*ImgResultForFixedCve)
 	fc.Result = res
-	return ec.marshalOImgResultForFixedCVE2ᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐImgResultForFixedCve(ctx, field.Selections, res)
+	return ec.marshalOImgResultForFixedCVE2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐImgResultForFixedCve(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _Query_ImageListForDigest(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
@@ -1497,7 +1782,7 @@ func (ec *executionContext) _Query_ImageListForDigest(ctx context.Context, field
 	}
 	res := resTmp.([]*ImgResultForDigest)
 	fc.Result = res
-	return ec.marshalOImgResultForDigest2ᚕᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐImgResultForDigest(ctx, field.Selections, res)
+	return ec.marshalOImgResultForDigest2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐImgResultForDigest(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _Query_ImageListWithLatestTag(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
@@ -1526,7 +1811,43 @@ func (ec *executionContext) _Query_ImageListWithLatestTag(ctx context.Context, f
 	}
 	res := resTmp.([]*ImageInfo)
 	fc.Result = res
-	return ec.marshalOImageInfo2ᚕᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐImageInfo(ctx, field.Selections, res)
+	return ec.marshalOImageInfo2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐImageInfo(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Query_ExpandedRepoInfo(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	fc := &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		Args:       nil,
+		IsMethod:   true,
+		IsResolver: true,
+	}
+
+	ctx = graphql.WithFieldContext(ctx, fc)
+	rawArgs := field.ArgumentMap(ec.Variables)
+	args, err := ec.field_Query_ExpandedRepoInfo_args(ctx, rawArgs)
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	fc.Args = args
+	resTmp := ec._fieldMiddleware(ctx, nil, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Query().ExpandedRepoInfo(rctx, args["repo"].(string))
+	})
+
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*RepoInfo)
+	fc.Result = res
+	return ec.marshalORepoInfo2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐRepoInfo(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _Query___type(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
@@ -1592,6 +1913,35 @@ func (ec *executionContext) _Query___schema(ctx context.Context, field graphql.C
 	res := resTmp.(*introspection.Schema)
 	fc.Result = res
 	return ec.marshalO__Schema2ᚖgithubᚗcomᚋ99designsᚋgqlgenᚋgraphqlᚋintrospectionᚐSchema(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _RepoInfo_Manifests(ctx context.Context, field graphql.CollectedField, obj *RepoInfo) (ret graphql.Marshaler) {
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	fc := &graphql.FieldContext{
+		Object:     "RepoInfo",
+		Field:      field,
+		Args:       nil,
+		IsMethod:   false,
+		IsResolver: false,
+	}
+
+	ctx = graphql.WithFieldContext(ctx, fc)
+	resTmp := ec._fieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Manifests, nil
+	})
+
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.([]*ManifestInfo)
+	fc.Result = res
+	return ec.marshalOManifestInfo2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐManifestInfo(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _TagInfo_Name(ctx context.Context, field graphql.CollectedField, obj *TagInfo) (ret graphql.Marshaler) {
@@ -1804,6 +2154,38 @@ func (ec *executionContext) ___Directive_args(ctx context.Context, field graphql
 	res := resTmp.([]introspection.InputValue)
 	fc.Result = res
 	return ec.marshalN__InputValue2ᚕgithubᚗcomᚋ99designsᚋgqlgenᚋgraphqlᚋintrospectionᚐInputValueᚄ(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) ___Directive_isRepeatable(ctx context.Context, field graphql.CollectedField, obj *introspection.Directive) (ret graphql.Marshaler) {
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	fc := &graphql.FieldContext{
+		Object:     "__Directive",
+		Field:      field,
+		Args:       nil,
+		IsMethod:   false,
+		IsResolver: false,
+	}
+
+	ctx = graphql.WithFieldContext(ctx, fc)
+	resTmp := ec._fieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.IsRepeatable, nil
+	})
+
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	fc.Result = res
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) ___EnumValue_name(ctx context.Context, field graphql.CollectedField, obj *introspection.EnumValue) (ret graphql.Marshaler) {
@@ -2852,6 +3234,62 @@ func (ec *executionContext) _ImgResultForFixedCVE(ctx context.Context, sel ast.S
 	return out
 }
 
+var layerInfoImplementors = []string{"LayerInfo"}
+
+func (ec *executionContext) _LayerInfo(ctx context.Context, sel ast.SelectionSet, obj *LayerInfo) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, layerInfoImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	var invalids uint32
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("LayerInfo")
+		case "Size":
+			out.Values[i] = ec._LayerInfo_Size(ctx, field, obj)
+		case "Digest":
+			out.Values[i] = ec._LayerInfo_Digest(ctx, field, obj)
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch()
+	if invalids > 0 {
+		return graphql.Null
+	}
+	return out
+}
+
+var manifestInfoImplementors = []string{"ManifestInfo"}
+
+func (ec *executionContext) _ManifestInfo(ctx context.Context, sel ast.SelectionSet, obj *ManifestInfo) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, manifestInfoImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	var invalids uint32
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("ManifestInfo")
+		case "Digest":
+			out.Values[i] = ec._ManifestInfo_Digest(ctx, field, obj)
+		case "Tag":
+			out.Values[i] = ec._ManifestInfo_Tag(ctx, field, obj)
+		case "IsSigned":
+			out.Values[i] = ec._ManifestInfo_IsSigned(ctx, field, obj)
+		case "Layers":
+			out.Values[i] = ec._ManifestInfo_Layers(ctx, field, obj)
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch()
+	if invalids > 0 {
+		return graphql.Null
+	}
+	return out
+}
+
 var packageInfoImplementors = []string{"PackageInfo"}
 
 func (ec *executionContext) _PackageInfo(ctx context.Context, sel ast.SelectionSet, obj *PackageInfo) graphql.Marshaler {
@@ -2950,10 +3388,45 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 				res = ec._Query_ImageListWithLatestTag(ctx, field)
 				return res
 			})
+		case "ExpandedRepoInfo":
+			field := field
+			out.Concurrently(i, func() (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_ExpandedRepoInfo(ctx, field)
+				return res
+			})
 		case "__type":
 			out.Values[i] = ec._Query___type(ctx, field)
 		case "__schema":
 			out.Values[i] = ec._Query___schema(ctx, field)
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch()
+	if invalids > 0 {
+		return graphql.Null
+	}
+	return out
+}
+
+var repoInfoImplementors = []string{"RepoInfo"}
+
+func (ec *executionContext) _RepoInfo(ctx context.Context, sel ast.SelectionSet, obj *RepoInfo) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, repoInfoImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	var invalids uint32
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("RepoInfo")
+		case "Manifests":
+			out.Values[i] = ec._RepoInfo_Manifests(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -3018,6 +3491,11 @@ func (ec *executionContext) ___Directive(ctx context.Context, sel ast.SelectionS
 			}
 		case "args":
 			out.Values[i] = ec.___Directive_args(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				invalids++
+			}
+		case "isRepeatable":
+			out.Values[i] = ec.___Directive_isRepeatable(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				invalids++
 			}
@@ -3306,6 +3784,13 @@ func (ec *executionContext) marshalN__Directive2ᚕgithubᚗcomᚋ99designsᚋgq
 
 	}
 	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
 	return ret
 }
 
@@ -3379,6 +3864,13 @@ func (ec *executionContext) marshalN__DirectiveLocation2ᚕstringᚄ(ctx context
 
 	}
 	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
 	return ret
 }
 
@@ -3428,6 +3920,13 @@ func (ec *executionContext) marshalN__InputValue2ᚕgithubᚗcomᚋ99designsᚋg
 
 	}
 	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
 	return ret
 }
 
@@ -3469,6 +3968,13 @@ func (ec *executionContext) marshalN__Type2ᚕgithubᚗcomᚋ99designsᚋgqlgen�
 
 	}
 	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
 	return ret
 }
 
@@ -3521,7 +4027,7 @@ func (ec *executionContext) marshalOBoolean2ᚖbool(ctx context.Context, sel ast
 	return graphql.MarshalBoolean(*v)
 }
 
-func (ec *executionContext) marshalOCVE2ᚕᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐCve(ctx context.Context, sel ast.SelectionSet, v []*Cve) graphql.Marshaler {
+func (ec *executionContext) marshalOCVE2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐCve(ctx context.Context, sel ast.SelectionSet, v []*Cve) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
@@ -3548,7 +4054,7 @@ func (ec *executionContext) marshalOCVE2ᚕᚖgithubᚗcomᚋanuvuᚋzotᚋpkg�
 			if !isLen1 {
 				defer wg.Done()
 			}
-			ret[i] = ec.marshalOCVE2ᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐCve(ctx, sel, v[i])
+			ret[i] = ec.marshalOCVE2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐCve(ctx, sel, v[i])
 		}
 		if isLen1 {
 			f(i)
@@ -3558,24 +4064,25 @@ func (ec *executionContext) marshalOCVE2ᚕᚖgithubᚗcomᚋanuvuᚋzotᚋpkg�
 
 	}
 	wg.Wait()
+
 	return ret
 }
 
-func (ec *executionContext) marshalOCVE2ᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐCve(ctx context.Context, sel ast.SelectionSet, v *Cve) graphql.Marshaler {
+func (ec *executionContext) marshalOCVE2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐCve(ctx context.Context, sel ast.SelectionSet, v *Cve) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._CVE(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalOCVEResultForImage2ᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐCVEResultForImage(ctx context.Context, sel ast.SelectionSet, v *CVEResultForImage) graphql.Marshaler {
+func (ec *executionContext) marshalOCVEResultForImage2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐCVEResultForImage(ctx context.Context, sel ast.SelectionSet, v *CVEResultForImage) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._CVEResultForImage(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalOImageInfo2ᚕᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐImageInfo(ctx context.Context, sel ast.SelectionSet, v []*ImageInfo) graphql.Marshaler {
+func (ec *executionContext) marshalOImageInfo2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐImageInfo(ctx context.Context, sel ast.SelectionSet, v []*ImageInfo) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
@@ -3602,7 +4109,7 @@ func (ec *executionContext) marshalOImageInfo2ᚕᚖgithubᚗcomᚋanuvuᚋzot�
 			if !isLen1 {
 				defer wg.Done()
 			}
-			ret[i] = ec.marshalOImageInfo2ᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐImageInfo(ctx, sel, v[i])
+			ret[i] = ec.marshalOImageInfo2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐImageInfo(ctx, sel, v[i])
 		}
 		if isLen1 {
 			f(i)
@@ -3612,17 +4119,18 @@ func (ec *executionContext) marshalOImageInfo2ᚕᚖgithubᚗcomᚋanuvuᚋzot�
 
 	}
 	wg.Wait()
+
 	return ret
 }
 
-func (ec *executionContext) marshalOImageInfo2ᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐImageInfo(ctx context.Context, sel ast.SelectionSet, v *ImageInfo) graphql.Marshaler {
+func (ec *executionContext) marshalOImageInfo2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐImageInfo(ctx context.Context, sel ast.SelectionSet, v *ImageInfo) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._ImageInfo(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalOImgResultForCVE2ᚕᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐImgResultForCve(ctx context.Context, sel ast.SelectionSet, v []*ImgResultForCve) graphql.Marshaler {
+func (ec *executionContext) marshalOImgResultForCVE2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐImgResultForCve(ctx context.Context, sel ast.SelectionSet, v []*ImgResultForCve) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
@@ -3649,7 +4157,7 @@ func (ec *executionContext) marshalOImgResultForCVE2ᚕᚖgithubᚗcomᚋanuvu�
 			if !isLen1 {
 				defer wg.Done()
 			}
-			ret[i] = ec.marshalOImgResultForCVE2ᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐImgResultForCve(ctx, sel, v[i])
+			ret[i] = ec.marshalOImgResultForCVE2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐImgResultForCve(ctx, sel, v[i])
 		}
 		if isLen1 {
 			f(i)
@@ -3659,17 +4167,18 @@ func (ec *executionContext) marshalOImgResultForCVE2ᚕᚖgithubᚗcomᚋanuvu�
 
 	}
 	wg.Wait()
+
 	return ret
 }
 
-func (ec *executionContext) marshalOImgResultForCVE2ᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐImgResultForCve(ctx context.Context, sel ast.SelectionSet, v *ImgResultForCve) graphql.Marshaler {
+func (ec *executionContext) marshalOImgResultForCVE2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐImgResultForCve(ctx context.Context, sel ast.SelectionSet, v *ImgResultForCve) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._ImgResultForCVE(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalOImgResultForDigest2ᚕᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐImgResultForDigest(ctx context.Context, sel ast.SelectionSet, v []*ImgResultForDigest) graphql.Marshaler {
+func (ec *executionContext) marshalOImgResultForDigest2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐImgResultForDigest(ctx context.Context, sel ast.SelectionSet, v []*ImgResultForDigest) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
@@ -3696,7 +4205,7 @@ func (ec *executionContext) marshalOImgResultForDigest2ᚕᚖgithubᚗcomᚋanuv
 			if !isLen1 {
 				defer wg.Done()
 			}
-			ret[i] = ec.marshalOImgResultForDigest2ᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐImgResultForDigest(ctx, sel, v[i])
+			ret[i] = ec.marshalOImgResultForDigest2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐImgResultForDigest(ctx, sel, v[i])
 		}
 		if isLen1 {
 			f(i)
@@ -3706,24 +4215,25 @@ func (ec *executionContext) marshalOImgResultForDigest2ᚕᚖgithubᚗcomᚋanuv
 
 	}
 	wg.Wait()
+
 	return ret
 }
 
-func (ec *executionContext) marshalOImgResultForDigest2ᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐImgResultForDigest(ctx context.Context, sel ast.SelectionSet, v *ImgResultForDigest) graphql.Marshaler {
+func (ec *executionContext) marshalOImgResultForDigest2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐImgResultForDigest(ctx context.Context, sel ast.SelectionSet, v *ImgResultForDigest) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._ImgResultForDigest(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalOImgResultForFixedCVE2ᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐImgResultForFixedCve(ctx context.Context, sel ast.SelectionSet, v *ImgResultForFixedCve) graphql.Marshaler {
+func (ec *executionContext) marshalOImgResultForFixedCVE2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐImgResultForFixedCve(ctx context.Context, sel ast.SelectionSet, v *ImgResultForFixedCve) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._ImgResultForFixedCVE(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalOPackageInfo2ᚕᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐPackageInfo(ctx context.Context, sel ast.SelectionSet, v []*PackageInfo) graphql.Marshaler {
+func (ec *executionContext) marshalOLayerInfo2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐLayerInfo(ctx context.Context, sel ast.SelectionSet, v []*LayerInfo) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
@@ -3750,7 +4260,7 @@ func (ec *executionContext) marshalOPackageInfo2ᚕᚖgithubᚗcomᚋanuvuᚋzot
 			if !isLen1 {
 				defer wg.Done()
 			}
-			ret[i] = ec.marshalOPackageInfo2ᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐPackageInfo(ctx, sel, v[i])
+			ret[i] = ec.marshalOLayerInfo2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐLayerInfo(ctx, sel, v[i])
 		}
 		if isLen1 {
 			f(i)
@@ -3760,14 +4270,118 @@ func (ec *executionContext) marshalOPackageInfo2ᚕᚖgithubᚗcomᚋanuvuᚋzot
 
 	}
 	wg.Wait()
+
 	return ret
 }
 
-func (ec *executionContext) marshalOPackageInfo2ᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐPackageInfo(ctx context.Context, sel ast.SelectionSet, v *PackageInfo) graphql.Marshaler {
+func (ec *executionContext) marshalOLayerInfo2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐLayerInfo(ctx context.Context, sel ast.SelectionSet, v *LayerInfo) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._LayerInfo(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalOManifestInfo2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐManifestInfo(ctx context.Context, sel ast.SelectionSet, v []*ManifestInfo) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalOManifestInfo2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐManifestInfo(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	return ret
+}
+
+func (ec *executionContext) marshalOManifestInfo2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐManifestInfo(ctx context.Context, sel ast.SelectionSet, v *ManifestInfo) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._ManifestInfo(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalOPackageInfo2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐPackageInfo(ctx context.Context, sel ast.SelectionSet, v []*PackageInfo) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalOPackageInfo2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐPackageInfo(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	return ret
+}
+
+func (ec *executionContext) marshalOPackageInfo2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐPackageInfo(ctx context.Context, sel ast.SelectionSet, v *PackageInfo) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._PackageInfo(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalORepoInfo2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐRepoInfo(ctx context.Context, sel ast.SelectionSet, v *RepoInfo) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._RepoInfo(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalOString2string(ctx context.Context, v interface{}) (string, error) {
@@ -3830,7 +4444,7 @@ func (ec *executionContext) marshalOString2ᚖstring(ctx context.Context, sel as
 	return graphql.MarshalString(*v)
 }
 
-func (ec *executionContext) marshalOTagInfo2ᚕᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐTagInfo(ctx context.Context, sel ast.SelectionSet, v []*TagInfo) graphql.Marshaler {
+func (ec *executionContext) marshalOTagInfo2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐTagInfo(ctx context.Context, sel ast.SelectionSet, v []*TagInfo) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
@@ -3857,7 +4471,7 @@ func (ec *executionContext) marshalOTagInfo2ᚕᚖgithubᚗcomᚋanuvuᚋzotᚋp
 			if !isLen1 {
 				defer wg.Done()
 			}
-			ret[i] = ec.marshalOTagInfo2ᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐTagInfo(ctx, sel, v[i])
+			ret[i] = ec.marshalOTagInfo2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐTagInfo(ctx, sel, v[i])
 		}
 		if isLen1 {
 			f(i)
@@ -3867,10 +4481,11 @@ func (ec *executionContext) marshalOTagInfo2ᚕᚖgithubᚗcomᚋanuvuᚋzotᚋp
 
 	}
 	wg.Wait()
+
 	return ret
 }
 
-func (ec *executionContext) marshalOTagInfo2ᚖgithubᚗcomᚋanuvuᚋzotᚋpkgᚋextensionsᚋsearchᚐTagInfo(ctx context.Context, sel ast.SelectionSet, v *TagInfo) graphql.Marshaler {
+func (ec *executionContext) marshalOTagInfo2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚐTagInfo(ctx context.Context, sel ast.SelectionSet, v *TagInfo) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
@@ -3929,6 +4544,13 @@ func (ec *executionContext) marshalO__EnumValue2ᚕgithubᚗcomᚋ99designsᚋgq
 
 	}
 	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
 	return ret
 }
 
@@ -3969,6 +4591,13 @@ func (ec *executionContext) marshalO__Field2ᚕgithubᚗcomᚋ99designsᚋgqlgen
 
 	}
 	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
 	return ret
 }
 
@@ -4009,6 +4638,13 @@ func (ec *executionContext) marshalO__InputValue2ᚕgithubᚗcomᚋ99designsᚋg
 
 	}
 	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
 	return ret
 }
 
@@ -4056,6 +4692,13 @@ func (ec *executionContext) marshalO__Type2ᚕgithubᚗcomᚋ99designsᚋgqlgen�
 
 	}
 	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
 	return ret
 }
 

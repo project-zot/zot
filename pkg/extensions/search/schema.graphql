@@ -50,10 +50,27 @@ type ImageInfo {
      Labels: String
 }
 
+type RepoInfo {
+     Manifests: [ManifestInfo]
+}
+
+type ManifestInfo {
+     Digest: String
+     Tag: String
+     IsSigned: Boolean
+     Layers: [LayerInfo]
+}
+
+type LayerInfo {
+     Size: String # Int64 is not supported.
+     Digest: String
+}
+
 type Query {
   CVEListForImage(image: String!) :CVEResultForImage 
   ImageListForCVE(id: String!) :[ImgResultForCVE]
   ImageListWithCVEFixed(id: String!, image: String!) :ImgResultForFixedCVE
   ImageListForDigest(id: String!) :[ImgResultForDigest]
   ImageListWithLatestTag:[ImageInfo]
+  ExpandedRepoInfo(repo: String!):RepoInfo
 }

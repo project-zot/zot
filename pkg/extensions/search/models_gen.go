@@ -44,10 +44,26 @@ type ImgResultForFixedCve struct {
 	Tags []*TagInfo `json:"Tags"`
 }
 
+type LayerInfo struct {
+	Size   *string `json:"Size"`
+	Digest *string `json:"Digest"`
+}
+
+type ManifestInfo struct {
+	Digest   *string      `json:"Digest"`
+	Tag      *string      `json:"Tag"`
+	IsSigned *bool        `json:"IsSigned"`
+	Layers   []*LayerInfo `json:"Layers"`
+}
+
 type PackageInfo struct {
 	Name             *string `json:"Name"`
 	InstalledVersion *string `json:"InstalledVersion"`
 	FixedVersion     *string `json:"FixedVersion"`
+}
+
+type RepoInfo struct {
+	Manifests []*ManifestInfo `json:"Manifests"`
 }
 
 type TagInfo struct {

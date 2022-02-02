@@ -62,6 +62,52 @@ func GetResolverConfig(log log.Logger, storeController storage.StoreController, 
 	}
 }
 
+func (r *queryResolver) ExpandedRepoInfo(ctx context.Context, name string) (*RepoInfo, error) {
+	olu := common.NewOciLayoutUtils(r.storeController, r.log)
+
+	repo, err := olu.GetExpandedRepoInfo(name)
+	if err != nil {
+		r.log.Error().Err(err).Msg("error getting repos")
+
+		return &RepoInfo{}, err
+	}
+
+	// repos type is of common deep copy this to search
+	repoInfo := &RepoInfo{}
+
+	manifests := make([]*ManifestInfo, 0)
+
+	for _, manifest := range repo.Manifests {
+		tag := manifest.Tag
+
+		digest := manifest.Digest
+
+		isSigned := manifest.IsSigned
+
+		manifestInfo := &ManifestInfo{Tag: &tag, Digest: &digest, IsSigned: &isSigned}
+
+		layers := make([]*LayerInfo, 0)
+
+		for _, l := range manifest.Layers {
+			size := l.Size
+
+			digest := l.Digest
+
+			layerInfo := &LayerInfo{Digest: &digest, Size: &size}
+
+			layers = append(layers, layerInfo)
+		}
+
+		manifestInfo.Layers = layers
+
+		manifests = append(manifests, manifestInfo)
+	}
+
+	repoInfo.Manifests = manifests
+
+	return repoInfo, nil
+}
+
 func (r *queryResolver) CVEListForImage(ctx context.Context, image string) (*CVEResultForImage, error) {
 	trivyCtx := r.cveInfo.GetTrivyContext(image)
 

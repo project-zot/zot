@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	goerrors "errors"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,10 +18,28 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 )
 
+const cosignedAnnotation = "dev.cosign.signature.baseimage"
+
 // OciLayoutInfo ...
 type OciLayoutUtils struct {
 	Log             log.Logger
 	StoreController storage.StoreController
+}
+
+type RepoInfo struct {
+	Manifests []Manifest `json:"manifests"`
+}
+
+type Manifest struct {
+	Tag      string  `json:"tag"`
+	Digest   string  `json:"digest"`
+	IsSigned bool    `json:"isSigned"`
+	Layers   []Layer `json:"layers"`
+}
+
+type Layer struct {
+	Size   string `json:"size"`
+	Digest string `json:"digest"`
 }
 
 // NewOciLayoutUtils initializes a new OciLayoutUtils object.
@@ -181,6 +200,65 @@ func (olu OciLayoutUtils) GetImageTagsWithTimestamp(repo string) ([]TagInfo, err
 	}
 
 	return tagsInfo, nil
+}
+
+func (olu OciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error) {
+	repo := RepoInfo{}
+
+	manifests := make([]Manifest, 0)
+
+	manifestList, err := olu.GetImageManifests(name)
+	if err != nil {
+		olu.Log.Error().Err(err).Msg("error getting image manifests")
+
+		return RepoInfo{}, err
+	}
+
+	for _, manifest := range manifestList {
+		manifestInfo := Manifest{}
+
+		manifestInfo.Digest = manifest.Digest.Encoded()
+
+		manifestInfo.IsSigned = false
+
+		tag, ok := manifest.Annotations[ispec.AnnotationRefName]
+		if !ok {
+			tag = "latest"
+		}
+
+		manifestInfo.Tag = tag
+
+		manifest, err := olu.GetImageBlobManifest(name, manifest.Digest)
+		if err != nil {
+			olu.Log.Error().Err(err).Msg("error getting image manifest blob")
+
+			return RepoInfo{}, err
+		}
+
+		layers := make([]Layer, 0)
+
+		for _, layer := range manifest.Layers {
+			layerInfo := Layer{}
+
+			layerInfo.Digest = layer.Digest.Hex
+
+			layerInfo.Size = strconv.FormatInt(layer.Size, 10)
+
+			layers = append(layers, layerInfo)
+
+			if _, ok := layer.Annotations[cosignedAnnotation]; ok {
+				manifestInfo.IsSigned = true
+			}
+		}
+
+		manifestInfo.Layers = layers
+
+		manifests = append(manifests, manifestInfo)
+	}
+
+	repo.Manifests = manifests
+
+	return repo, nil
 }
 
 func GetImageDirAndTag(imageName string) (string, string) {
