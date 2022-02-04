@@ -2827,6 +2827,7 @@ func TestParallelRequests(t *testing.T) {
 	conf := config.New()
 	conf.HTTP.Port = port
 	htpasswdPath := test.MakeHtpasswdFileFromString(getCredString(username, passphrase))
+	defer os.Remove(htpasswdPath)
 
 	conf.HTTP.Auth = &config.AuthConfig{
 		HTPasswd: config.AuthHTPasswd{
@@ -2840,6 +2841,7 @@ func TestParallelRequests(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
+	defer os.RemoveAll(dir)
 
 	t.Cleanup(func() {
 		os.RemoveAll(dir)
@@ -2849,6 +2851,7 @@ func TestParallelRequests(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
+	defer os.RemoveAll(firstSubDir)
 
 	t.Cleanup(func() {
 		os.RemoveAll(firstSubDir)
@@ -2858,6 +2861,7 @@ func TestParallelRequests(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
+	defer os.RemoveAll(secondSubDir)
 
 	t.Cleanup(func() {
 		os.RemoveAll(secondSubDir)
@@ -3070,6 +3074,7 @@ func TestHardLink(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 		htpasswdPath := test.MakeHtpasswdFileFromString(getCredString(username, passphrase))
+		defer os.Remove(htpasswdPath)
 
 		conf.HTTP.Auth = &config.AuthConfig{
 			HTPasswd: config.AuthHTPasswd{

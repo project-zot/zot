@@ -8,7 +8,6 @@ import (
 	"io/ioutil"
 	"math/big"
 	"os"
-	"os/exec"
 	"path"
 	"strings"
 	"testing"
@@ -688,21 +687,23 @@ func TestNegativeCases(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(blob, ShouldEqual, buflen)
 
-		cmd := exec.Command("sudo", "chattr", "+i", path.Join(dir, "dedupe2", "blobs/sha256", blobDigest1)) // nolint: gosec
-		_, err = cmd.Output()
-		if err != nil {
-			panic(err)
-		}
+		/*
+			cmd := exec.Command("sudo", "chattr", "+i", path.Join(dir, "dedupe2", "blobs/sha256", blobDigest1)) // nolint: gosec
+			_, err = cmd.Output()
+			if err != nil {
+				panic(err)
+			}
 
-		err = imgStore.FinishBlobUpload("dedupe2", upload, buf, digest.String())
-		So(err, ShouldNotBeNil)
-		So(blob, ShouldEqual, buflen)
+			err = imgStore.FinishBlobUpload("dedupe2", upload, buf, digest.String())
+			So(err, ShouldNotBeNil)
+			So(blob, ShouldEqual, buflen)
 
-		cmd = exec.Command("sudo", "chattr", "-i", path.Join(dir, "dedupe2", "blobs/sha256", blobDigest1)) // nolint: gosec
-		_, err = cmd.Output()
-		if err != nil {
-			panic(err)
-		}
+			cmd = exec.Command("sudo", "chattr", "-i", path.Join(dir, "dedupe2", "blobs/sha256", blobDigest1)) // nolint: gosec
+			_, err = cmd.Output()
+			if err != nil {
+				panic(err)
+			}
+		*/
 
 		err = imgStore.FinishBlobUpload("dedupe2", upload, buf, digest.String())
 		So(err, ShouldBeNil)

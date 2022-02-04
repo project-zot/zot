@@ -43,9 +43,9 @@ exporter-minimal:
 
 .PHONY: test
 test: check-skopeo $(NOTATION)
-	$(shell mkdir -p test/data;  cd test/data; ../scripts/gen_certs.sh; cd ${TOP_LEVEL}; sudo skopeo --insecure-policy copy -q docker://public.ecr.aws/t0x7q1g8/centos:7 oci:${TOP_LEVEL}/test/data/zot-test:0.0.1;sudo skopeo --insecure-policy copy -q docker://public.ecr.aws/t0x7q1g8/centos:8 oci:${TOP_LEVEL}/test/data/zot-cve-test:0.0.1)
-	$(shell sudo mkdir -p /etc/containers/certs.d/127.0.0.1:8089/; sudo cp test/data/client.* test/data/ca.* /etc/containers/certs.d/127.0.0.1:8089/;)
-	$(shell sudo chmod a=rwx /etc/containers/certs.d/127.0.0.1:8089/*.key)
+	$(shell mkdir -p test/data;  cd test/data; ../scripts/gen_certs.sh; cd ${TOP_LEVEL}; skopeo --insecure-policy copy -q docker://public.ecr.aws/t0x7q1g8/centos:7 oci:${TOP_LEVEL}/test/data/zot-test:0.0.1;skopeo --insecure-policy copy -q docker://public.ecr.aws/t0x7q1g8/centos:8 oci:${TOP_LEVEL}/test/data/zot-cve-test:0.0.1)
+	$(shell mkdir -p $$HOME/.config/containers/certs.d/127.0.0.1:8089/; cp test/data/client.* test/data/ca.* $$HOME/.config/containers/certs.d/127.0.0.1:8089/;)
+	$(shell chmod a=rwx $$HOME/.config/containers/certs.d/127.0.0.1:8089/*.key)
 	go test -tags extended,containers_image_openpgp -v -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-extended.txt -covermode=atomic ./...
 	go test -tags minimal,containers_image_openpgp -v -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-minimal.txt -covermode=atomic ./...
 	# development-mode unit tests possibly using failure injection
@@ -83,7 +83,7 @@ push-pull: binary check-skopeo
 
 .PHONY: test-clean
 test-clean:
-	$(shell sudo rm -rf /etc/containers/certs.d/127.0.0.1:8089/)
+	$(shell rm -rf $$HOME/.config/containers/certs.d/127.0.0.1:8089/)
 
 .PHONY: check-skopeo
 check-skopeo:
