@@ -1,0 +1,46 @@
+name: "Ecosystem client tools"
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches: [main]
+  release:
+    types:
+      - published
+
+jobs:
+  client-tools:
+    name: Check client tools
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-go@v2
+        with:
+          go-version: 1.17.x
+      - name: Install dependencies
+        run: |
+          cd $GITHUB_WORKSPACE
+          go get -u github.com/swaggo/swag/cmd/swag
+          go mod download
+          sudo apt-get update
+          sudo apt-get -y install rpm uidmap
+          # install skopeo
+          . /etc/os-release
+          echo "deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_${VERSION_ID}/ /" | sudo tee /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list
+          curl -L https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_${VERSION_ID}/Release.key | sudo apt-key add -
+          sudo apt-get update
+          sudo apt-get -y upgrade
+          sudo apt-get -y install skopeo
+          # install notation
+          curl -Lo notation.tar.gz https://github.com/notaryproject/notation/releases/download/v0.7.1-alpha.1/notation_0.7.1-alpha.1_linux_amd64.tar.gz
+          sudo tar xvzf notation.tar.gz -C /usr/bin notation
+          # install oras
+          curl -LO https://github.com/oras-project/oras/releases/download/v0.12.0/oras_0.12.0_linux_amd64.tar.gz
+          mkdir -p oras-install/
+          tar -zxf oras_0.12.0_*.tar.gz -C oras-install/
+          sudo mv oras-install/oras /usr/bin/
+          rm -rf oras_0.12.0_*.tar.gz oras-install/
+      - name: Run push-pull tests
+        run: |
+            make push-pull
