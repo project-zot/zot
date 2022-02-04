@@ -15,7 +15,7 @@ ARCH ?= amd64
 BENCH_OUTPUT ?= stdout
 
 .PHONY: all
-all: swagger binary binary-minimal binary-debug binary-arch binary-arch-minimal cli cli-arch bench bench-arch exporter-minimal verify-config test test-clean check
+all: swagger binary binary-minimal binary-debug binary-arch binary-arch-minimal cli cli-arch bench bench-arch exporter-minimal verify-config test covhtml test-clean check
 
 .PHONY: binary-minimal
 binary-minimal: swagger
@@ -77,6 +77,28 @@ run-bench: binary bench
 	bin/zot serve examples/config-minimal.json &
 	sleep 5
 	bin/zb -c 10 -n 100 -o $(BENCH_OUTPUT) http://localhost:8080
+	killall zot
+
+.PHONY: push-pull
+push-pull: binary check-skopeo
+	bin/zot serve examples/config-minimal.json &
+	sleep 5
+	# skopeo push/pull
+	skopeo --debug copy --format=oci --dest-tls-verify=false docker://ghcr.io/project-zot/golang:1.17 docker://localhost:8080/golang:1.17
+	skopeo --debug copy --src-tls-verify=false docker://localhost:8080/golang:1.17 oci:golang:1.17
+	# oras artifacts
+	echo "{\"name\":\"foo\",\"value\":\"bar\"}" > config.json
+	echo "hello world" > artifact.txt
+	oras push localhost:8080/hello-artifact:v2 \
+	    --manifest-config config.json:application/vnd.acme.rocket.config.v1+json \
+		      artifact.txt:text/plain -d -v
+	rm -f artifact.txt # first delete the file
+	oras pull localhost:8080/hello-artifact:v2 -d -v -a
+	grep -q "hello world" artifact.txt  # should print "hello world"
+	if [ $? -ne 0 ]; then \
+		killall zot; \
+		exit 1; \
+	fi
 	killall zot
 
 .PHONY: test-clean

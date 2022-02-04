@@ -551,9 +551,13 @@ func (is *ImageStoreFS) PutImageManifest(repo string, reference string, mediaTyp
 			return "", zerr.ErrBadManifest
 		}
 
-		digest, err := is.validateOCIManifest(repo, reference, &manifest)
-		if err != nil {
-			return digest, err
+		if manifest.Config.MediaType == ispec.MediaTypeImageConfig {
+			digest, err := is.validateOCIManifest(repo, reference, &manifest)
+			if err != nil {
+				is.log.Error().Err(err).Msg("invalid oci image manifest")
+
+				return digest, err
+			}
 		}
 	} else if mediaType == artifactspec.MediaTypeArtifactManifest {
 		var m notation.Descriptor
