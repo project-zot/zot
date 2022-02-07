@@ -1471,6 +1471,39 @@ func TestBasicAuthWithLDAP(t *testing.T) {
 	})
 }
 
+func TestLDAPFailures(t *testing.T) {
+	Convey("Make a LDAP conn", t, func() {
+		l := newTestLDAPServer()
+		l.Start()
+		defer l.Stop()
+
+		Convey("Empty config", func() {
+			lc := &api.LDAPClient{}
+			err := lc.Connect()
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Basic connectivity config", func() {
+			lc := &api.LDAPClient{
+				Host: LDAPAddress,
+				Port: LDAPPort,
+			}
+			err := lc.Connect()
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Basic TLS connectivity config", func() {
+			lc := &api.LDAPClient{
+				Host:   LDAPAddress,
+				Port:   LDAPPort,
+				UseSSL: true,
+			}
+			err := lc.Connect()
+			So(err, ShouldNotBeNil)
+		})
+	})
+}
+
 func TestBearerAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		authTestServer := makeAuthTestServer()
@@ -3426,6 +3459,7 @@ func TestImageSignatures(t *testing.T) {
 	})
 }
 
+//nolint:dupl // duplicated test code
 func TestRouteFailures(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		port := test.GetFreePort()
@@ -3448,8 +3482,11 @@ func TestRouteFailures(t *testing.T) {
 
 		rthdlr := api.NewRouteHandler(ctlr)
 
+		// NOTE: the url or method itself doesn't matter below since we are calling the handlers directly,
+		// so path routing is bypassed
+
 		Convey("List tags", func() {
-			request, _ := http.NewRequestWithContext(context.TODO(), "GET", baseURL+"/v2/foo/tags/list", nil)
+			request, _ := http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
 			mux.SetURLVars(request, map[string]string{})
 			response := httptest.NewRecorder()
 
@@ -3460,7 +3497,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL+"/v2/foo/tags/list", nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
 			response = httptest.NewRecorder()
 
@@ -3471,7 +3508,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL+"/v2/foo/tags/list", nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
 			qparm := request.URL.Query()
 			qparm.Add("n", "a")
@@ -3485,7 +3522,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL+"/v2/foo/tags/list", nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
 			qparm = request.URL.Query()
 			qparm.Add("n", "abc")
@@ -3499,7 +3536,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL+"/v2/foo/tags/list", nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
 			qparm = request.URL.Query()
 			qparm.Add("n", "a")
@@ -3514,7 +3551,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL+"/v2/foo/tags/list", nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
 			qparm = request.URL.Query()
 			qparm.Add("n", "0")
@@ -3528,7 +3565,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL+"/v2/foo/tags/list", nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
 			qparm = request.URL.Query()
 			qparm.Add("n", "1")
@@ -3543,7 +3580,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL+"/v2/foo/tags/list", nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
 			qparm = request.URL.Query()
 			qparm.Add("n", "1")
@@ -3558,7 +3595,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL+"/v2/foo/tags/list", nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
 			qparm = request.URL.Query()
 			qparm.Add("n", "1")
@@ -3576,7 +3613,7 @@ func TestRouteFailures(t *testing.T) {
 		})
 
 		Convey("Check manifest", func() {
-			request, _ := http.NewRequestWithContext(context.TODO(), "HEAD", baseURL+"/v2/foo/manifests/test:1.0", nil)
+			request, _ := http.NewRequestWithContext(context.TODO(), "HEAD", baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{})
 			response := httptest.NewRecorder()
 
@@ -3587,7 +3624,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "HEAD", baseURL+"/v2/foo/manifests/test:1.0", nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), "HEAD", baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
 			response = httptest.NewRecorder()
 
@@ -3598,7 +3635,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "HEAD", baseURL+"/v2/foo/manifests/test:1.0", nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), "HEAD", baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo", "reference": ""})
 			response = httptest.NewRecorder()
 
@@ -3608,6 +3645,404 @@ func TestRouteFailures(t *testing.T) {
 			defer resp.Body.Close()
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+		})
+
+		Convey("Get manifest", func() {
+			request, _ := http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{})
+			response := httptest.NewRecorder()
+
+			rthdlr.GetManifest(response, request)
+
+			resp := response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+
+			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
+			response = httptest.NewRecorder()
+
+			rthdlr.GetManifest(response, request)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+
+			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{"name": "foo", "reference": ""})
+			response = httptest.NewRecorder()
+
+			rthdlr.GetManifest(response, request)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+		})
+
+		Convey("Update manifest", func() {
+			request, _ := http.NewRequestWithContext(context.TODO(), "PUT", baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{})
+			response := httptest.NewRecorder()
+
+			rthdlr.UpdateManifest(response, request)
+
+			resp := response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+
+			request, _ = http.NewRequestWithContext(context.TODO(), "PUT", baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
+			response = httptest.NewRecorder()
+
+			rthdlr.UpdateManifest(response, request)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+
+			request, _ = http.NewRequestWithContext(context.TODO(), "PUT", baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{"name": "foo", "reference": ""})
+			response = httptest.NewRecorder()
+
+			rthdlr.UpdateManifest(response, request)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+		})
+
+		Convey("Delete manifest", func() {
+			request, _ := http.NewRequestWithContext(context.TODO(), "DELETE", baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{})
+			response := httptest.NewRecorder()
+
+			rthdlr.DeleteManifest(response, request)
+
+			resp := response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+
+			request, _ = http.NewRequestWithContext(context.TODO(), "DELETE", baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
+			response = httptest.NewRecorder()
+
+			rthdlr.DeleteManifest(response, request)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+
+			request, _ = http.NewRequestWithContext(context.TODO(), "DELETE", baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{"name": "foo", "reference": ""})
+			response = httptest.NewRecorder()
+
+			rthdlr.DeleteManifest(response, request)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+		})
+
+		Convey("Check blob", func() {
+			request, _ := http.NewRequestWithContext(context.TODO(), "HEAD", baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{})
+			response := httptest.NewRecorder()
+
+			rthdlr.CheckBlob(response, request)
+
+			resp := response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+
+			request, _ = http.NewRequestWithContext(context.TODO(), "HEAD", baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
+			response = httptest.NewRecorder()
+
+			rthdlr.CheckBlob(response, request)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+
+			request, _ = http.NewRequestWithContext(context.TODO(), "HEAD", baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{"name": "foo", "digest": ""})
+			response = httptest.NewRecorder()
+
+			rthdlr.CheckBlob(response, request)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+		})
+
+		Convey("Get blob", func() {
+			request, _ := http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{})
+			response := httptest.NewRecorder()
+
+			rthdlr.GetBlob(response, request)
+
+			resp := response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+
+			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
+			response = httptest.NewRecorder()
+
+			rthdlr.GetBlob(response, request)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+
+			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{"name": "foo", "digest": ""})
+			response = httptest.NewRecorder()
+
+			rthdlr.GetBlob(response, request)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+		})
+
+		Convey("Delete blob", func() {
+			request, _ := http.NewRequestWithContext(context.TODO(), "DELETE", baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{})
+			response := httptest.NewRecorder()
+
+			rthdlr.DeleteBlob(response, request)
+
+			resp := response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+
+			request, _ = http.NewRequestWithContext(context.TODO(), "DELETE", baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
+			response = httptest.NewRecorder()
+
+			rthdlr.DeleteBlob(response, request)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+
+			request, _ = http.NewRequestWithContext(context.TODO(), "DELETE", baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{"name": "foo", "digest": ""})
+			response = httptest.NewRecorder()
+
+			rthdlr.DeleteBlob(response, request)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+		})
+
+		Convey("Create blob upload", func() {
+			request, _ := http.NewRequestWithContext(context.TODO(), "POST", baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{})
+			response := httptest.NewRecorder()
+
+			rthdlr.CreateBlobUpload(response, request)
+
+			resp := response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+
+			request, _ = http.NewRequestWithContext(context.TODO(), "POST", baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
+			qparm := request.URL.Query()
+			qparm.Add("mount", "a")
+			qparm.Add("mount", "abc")
+			request.URL.RawQuery = qparm.Encode()
+			response = httptest.NewRecorder()
+
+			rthdlr.CreateBlobUpload(response, request)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
+
+			request, _ = http.NewRequestWithContext(context.TODO(), "POST", baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
+			qparm = request.URL.Query()
+			qparm.Add("mount", "a")
+			request.URL.RawQuery = qparm.Encode()
+			response = httptest.NewRecorder()
+
+			rthdlr.CreateBlobUpload(response, request)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusMethodNotAllowed)
+		})
+
+		Convey("Get blob upload", func() {
+			request, _ := http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{})
+			response := httptest.NewRecorder()
+
+			rthdlr.GetBlobUpload(response, request)
+
+			resp := response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+
+			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
+			response = httptest.NewRecorder()
+
+			rthdlr.GetBlobUpload(response, request)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+		})
+
+		Convey("Patch blob upload", func() {
+			request, _ := http.NewRequestWithContext(context.TODO(), "PATCH", baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{})
+			response := httptest.NewRecorder()
+
+			rthdlr.PatchBlobUpload(response, request)
+
+			resp := response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+
+			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
+			response = httptest.NewRecorder()
+
+			rthdlr.PatchBlobUpload(response, request)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+		})
+
+		Convey("Update blob upload", func() {
+			request, _ := http.NewRequestWithContext(context.TODO(), "PUT", baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{})
+			response := httptest.NewRecorder()
+
+			rthdlr.UpdateBlobUpload(response, request)
+
+			resp := response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+
+			request, _ = http.NewRequestWithContext(context.TODO(), "PUT", baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
+			response = httptest.NewRecorder()
+
+			rthdlr.UpdateBlobUpload(response, request)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+
+			request, _ = http.NewRequestWithContext(context.TODO(), "PUT", baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{"name": "foo", "session_id": "bar"})
+			response = httptest.NewRecorder()
+
+			rthdlr.UpdateBlobUpload(response, request)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
+
+			request, _ = http.NewRequestWithContext(context.TODO(), "PUT", baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{"name": "foo", "session_id": "bar"})
+			qparm := request.URL.Query()
+			qparm.Add("digest", "a")
+			qparm.Add("digest", "abc")
+			request.URL.RawQuery = qparm.Encode()
+			response = httptest.NewRecorder()
+
+			rthdlr.UpdateBlobUpload(response, request)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
+		})
+
+		Convey("Delete blob upload", func() {
+			request, _ := http.NewRequestWithContext(context.TODO(), "DELETE", baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{})
+			response := httptest.NewRecorder()
+
+			rthdlr.DeleteBlobUpload(response, request)
+
+			resp := response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+
+			request, _ = http.NewRequestWithContext(context.TODO(), "DELETE", baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
+			response = httptest.NewRecorder()
+
+			rthdlr.DeleteBlobUpload(response, request)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+		})
+
+		Convey("Get referrers", func() {
+			request, _ := http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{})
+			response := httptest.NewRecorder()
+
+			rthdlr.GetReferrers(response, request)
+
+			resp := response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+
+			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
+			response = httptest.NewRecorder()
+
+			rthdlr.GetReferrers(response, request)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
 		})
 	})
 }
