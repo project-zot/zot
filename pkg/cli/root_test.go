@@ -267,7 +267,7 @@ func TestVerify(t *testing.T) {
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
 							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
-							"content": [{"prefix":"repo**"}]}]}}}`)
+							"maxRetries": 10, "content": [{"prefix":"repo**"}]}]}}}`)
 		_, err = tmpfile.Write(content)
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()

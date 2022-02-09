@@ -40,8 +40,6 @@
 				"pollInterval": "12h",
 				"tlsVerify": false,
 				"onDemand": false,
-				"maxRetries": 5,
-				"retryDelay": "10m",
 				"content":[
 					{
 						"prefix":"/repo2",

@@ -388,8 +388,8 @@ Configure each registry sync:
 				"pollInterval": "6h",               # polling interval, if not set then periodically polling will not run
 				"tlsVerify": true,                  # whether or not to verify tls (default is true)
 				"certDir": "/home/user/certs",      # use certificates at certDir path, if not specified then use the default certs dir
-				"maxRetries": 5,                    # mandatory option! maxRetries in case of temporary errors
-				"retryDelay": "10m",                # mandatory option! delay between retries, retry options are applied for both on demand and periodically sync.
+				"maxRetries": 5,                    # maxRetries in case of temporary errors (default: no retries)
+				"retryDelay": "10m",                # delay between retries, retry options are applied for both on demand and periodically sync and retryDelay is mandatory when using maxRetries.
 				"content":[                         # which content to periodically pull, also it's used for filtering ondemand images, if not set then periodically polling will not run
 					{
 						"prefix":"/repo1/repo",         # pull image repo1/repo
@@ -411,8 +411,6 @@ Configure each registry sync:
 				"pollInterval": "12h",
 				"tlsVerify": false,
 				"onDemand": false,
-				"maxRetries": 5,
-				"retryDelay": "10m",
 				"content":[
 					{
 						"prefix":"/repo2",
@@ -426,11 +424,11 @@ Configure each registry sync:
 				"urls": ["https://docker.io/library"],
 				"onDemand": true,                     # doesn't have content, don't periodically pull, pull just on demand.
 				"tlsVerify": true,
-				"maxRetries": 3,
+				"maxRetries": 3,                      
 				"retryDelay": "15m"
 			}
 		]
 		}
 ```
 
-Prefixes can be strings that exactly match repositories or they can be glob patterns.
+Prefixes can be strings that exactly match repositories or they can be [glob](https://en.wikipedia.org/wiki/Glob_(programming)) patterns.
