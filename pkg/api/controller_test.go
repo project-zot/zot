@@ -20,6 +20,7 @@ import (
 	"os/exec"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1342,7 +1343,6 @@ func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 
 const (
 	LDAPAddress      = "127.0.0.1"
-	LDAPPort         = 9636
 	LDAPBaseDN       = "ou=test"
 	LDAPBindDN       = "cn=reader," + LDAPBaseDN
 	LDAPBindPassword = "bindPassword"
@@ -1366,8 +1366,8 @@ func newTestLDAPServer() *testLDAPServer {
 	return ldaps
 }
 
-func (l *testLDAPServer) Start() {
-	addr := fmt.Sprintf("%s:%d", LDAPAddress, LDAPPort)
+func (l *testLDAPServer) Start(port int) {
+	addr := fmt.Sprintf("%s:%d", LDAPAddress, port)
 
 	go func() {
 		if err := l.server.ListenAndServe(addr); err != nil {
@@ -1420,10 +1420,13 @@ func (l *testLDAPServer) Search(boundDN string, req vldap.SearchRequest,
 func TestBasicAuthWithLDAP(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		l := newTestLDAPServer()
-		l.Start()
+		port := test.GetFreePort()
+		ldapPort, err := strconv.Atoi(port)
+		So(err, ShouldBeNil)
+		l.Start(ldapPort)
 		defer l.Stop()
 
-		port := test.GetFreePort()
+		port = test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
 
 		conf := config.New()
@@ -1432,7 +1435,7 @@ func TestBasicAuthWithLDAP(t *testing.T) {
 			LDAP: &config.LDAPConfig{
 				Insecure:      true,
 				Address:       LDAPAddress,
-				Port:          LDAPPort,
+				Port:          ldapPort,
 				BindDN:        LDAPBindDN,
 				BindPassword:  LDAPBindPassword,
 				BaseDN:        LDAPBaseDN,
@@ -1474,7 +1477,10 @@ func TestBasicAuthWithLDAP(t *testing.T) {
 func TestLDAPFailures(t *testing.T) {
 	Convey("Make a LDAP conn", t, func() {
 		l := newTestLDAPServer()
-		l.Start()
+		port := test.GetFreePort()
+		ldapPort, err := strconv.Atoi(port)
+		So(err, ShouldBeNil)
+		l.Start(ldapPort)
 		defer l.Stop()
 
 		Convey("Empty config", func() {
@@ -1486,7 +1492,7 @@ func TestLDAPFailures(t *testing.T) {
 		Convey("Basic connectivity config", func() {
 			lc := &api.LDAPClient{
 				Host: LDAPAddress,
-				Port: LDAPPort,
+				Port: ldapPort,
 			}
 			err := lc.Connect()
 			So(err, ShouldNotBeNil)
@@ -1495,7 +1501,7 @@ func TestLDAPFailures(t *testing.T) {
 		Convey("Basic TLS connectivity config", func() {
 			lc := &api.LDAPClient{
 				Host:   LDAPAddress,
-				Port:   LDAPPort,
+				Port:   ldapPort,
 				UseSSL: true,
 			}
 			err := lc.Connect()
