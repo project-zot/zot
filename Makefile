@@ -164,7 +164,7 @@ run: binary test
 
 .PHONY: verify-config
 verify-config: binary
-	$(foreach file, $(wildcard examples/config-*), ./bin/zot verify $(file) || exit 1;)
+	$(foreach file, $(wildcard examples/config-*), ./bin/zot-$(OS)-$(ARCH) verify $(file) || exit 1;)
 
 .PHONY: binary-container
 binary-container:

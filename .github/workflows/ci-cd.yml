@@ -57,7 +57,7 @@ jobs:
         run: |
           echo "Building for $OS:$ARCH"
           cd $GITHUB_WORKSPACE
-          if [ "${OS}" == "linux" && "${ARCH}" == "amd64" ]; then
+          if [[ $OS == "linux" && $ARCH == "amd64" ]]; then
             make OS=$OS ARCH=$ARCH
           else
             make OS=$OS ARCH=$ARCH binary binary-minimal binary-debug cli bench exporter-minimal
