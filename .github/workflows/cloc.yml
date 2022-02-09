@@ -1,0 +1,34 @@
+name: "Lines of code statistics"
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  release:
+    types:
+      - published
+jobs:
+  loc:
+    name: Lines of code
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.17.x
+      - name: Check out source code
+        uses: actions/checkout@v1
+      - name: Install dependencies
+        run: |
+          cd $GITHUB_WORKSPACE
+          go install github.com/hhatto/gocloc/cmd/gocloc@latest
+      - name: All sources
+        run: |
+          cd $GITHUB_WORKSPACE
+          gocloc .
+      - name: All sources (except tests)
+        run: |
+          cd $GITHUB_WORKSPACE
+          gocloc --not-match='.*_test.go' .
