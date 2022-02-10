@@ -4,6 +4,7 @@
 package extensions
 
 import (
+	"context"
 	goSync "sync"
 	"time"
 
@@ -69,14 +70,14 @@ func EnableExtensions(config *config.Config, log log.Logger, rootDir string) {
 }
 
 // EnableSyncExtension enables sync extension.
-func EnableSyncExtension(config *config.Config, wg *goSync.WaitGroup,
+func EnableSyncExtension(ctx context.Context, config *config.Config, wg *goSync.WaitGroup,
 	storeController storage.StoreController, log log.Logger) {
 	if config.Extensions.Sync != nil && *config.Extensions.Sync.Enable {
-		if err := sync.Run(*config.Extensions.Sync, storeController, wg, log); err != nil {
+		if err := sync.Run(ctx, *config.Extensions.Sync, storeController, wg, log); err != nil {
 			log.Error().Err(err).Msg("Error encountered while setting up syncing")
 		}
 	} else {
-		log.Info().Msg("Sync registries config not provided, skipping sync")
+		log.Info().Msg("Sync registries config not provided or disabled, skipping sync")
 	}
 }
 

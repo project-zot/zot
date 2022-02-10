@@ -234,7 +234,7 @@ func TestVerify(t *testing.T) {
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1},
-							"accessControl":{"\|":{"policies":[],"defaultPolicy":[]}}}}`)
+							"accessControl":{"[":{"policies":[],"defaultPolicy":[]}}}}`)
 		_, err = tmpfile.Write(content)
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
@@ -299,16 +299,19 @@ func TestVerify(t *testing.T) {
 func TestLoadConfig(t *testing.T) {
 	Convey("Test viper load config", t, func(c C) {
 		config := config.New()
-		So(func() { cli.LoadConfiguration(config, "../../examples/config-policy.json") }, ShouldNotPanic)
+		err := cli.LoadConfiguration(config, "../../examples/config-policy.json")
+		So(err, ShouldBeNil)
 	})
 }
 
 func TestGC(t *testing.T) {
 	Convey("Test GC config", t, func(c C) {
 		config := config.New()
-		So(func() { cli.LoadConfiguration(config, "../../examples/config-multiple.json") }, ShouldNotPanic)
+		err := cli.LoadConfiguration(config, "../../examples/config-multiple.json")
+		So(err, ShouldBeNil)
 		So(config.Storage.GCDelay, ShouldEqual, storage.DefaultGCDelay)
-		So(func() { cli.LoadConfiguration(config, "../../examples/config-gc.json") }, ShouldNotPanic)
+		err = cli.LoadConfiguration(config, "../../examples/config-gc.json")
+		So(err, ShouldBeNil)
 		So(config.Storage.GCDelay, ShouldNotEqual, storage.DefaultGCDelay)
 	})
 
@@ -330,7 +333,8 @@ func TestGC(t *testing.T) {
 
 			err = ioutil.WriteFile(file.Name(), contents, 0o600)
 			So(err, ShouldBeNil)
-			So(func() { cli.LoadConfiguration(config, file.Name()) }, ShouldNotPanic)
+			err = cli.LoadConfiguration(config, file.Name())
+			So(err, ShouldBeNil)
 		})
 
 		Convey("Negative GC delay", func() {
@@ -347,7 +351,8 @@ func TestGC(t *testing.T) {
 
 			err = ioutil.WriteFile(file.Name(), contents, 0o600)
 			So(err, ShouldBeNil)
-			So(func() { cli.LoadConfiguration(config, file.Name()) }, ShouldPanic)
+			err = cli.LoadConfiguration(config, file.Name())
+			So(err, ShouldNotBeNil)
 		})
 	})
 }
@@ -547,7 +552,8 @@ func TestApplyDefaultValues(t *testing.T) {
 			err = os.Chmod(file.Name(), 0o777)
 			So(err, ShouldBeNil)
 
-			cli.LoadConfiguration(oldConfig, file.Name())
+			err = cli.LoadConfiguration(oldConfig, file.Name())
+			So(err, ShouldBeNil)
 
 			configContent, err = ioutil.ReadFile(file.Name())
 			So(err, ShouldBeNil)
@@ -563,7 +569,8 @@ func TestApplyDefaultValues(t *testing.T) {
 			err = os.Chmod(file.Name(), 0o444)
 			So(err, ShouldBeNil)
 
-			cli.LoadConfiguration(oldConfig, file.Name())
+			err = cli.LoadConfiguration(oldConfig, file.Name())
+			So(err, ShouldBeNil)
 
 			configContent, err = ioutil.ReadFile(file.Name())
 			So(err, ShouldBeNil)

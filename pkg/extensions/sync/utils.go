@@ -574,7 +574,7 @@ func getLocalImageRef(imageStore storage.ImageStore, repo, tag string) (types.Im
 }
 
 // canSkipImage returns whether or not the image can be skipped from syncing.
-func canSkipImage(repo, tag string, upstreamRef types.ImageReference,
+func canSkipImage(ctx context.Context, repo, tag string, upstreamRef types.ImageReference,
 	imageStore storage.ImageStore, upstreamCtx *types.SystemContext, log log.Logger) (bool, error) {
 	// filter already pulled images
 	_, localImageDigest, _, err := imageStore.GetImageManifest(repo, tag)
@@ -588,7 +588,7 @@ func canSkipImage(repo, tag string, upstreamRef types.ImageReference,
 		return false, err
 	}
 
-	upstreamImageDigest, err := docker.GetDigest(context.Background(), upstreamCtx, upstreamRef)
+	upstreamImageDigest, err := docker.GetDigest(ctx, upstreamCtx, upstreamRef)
 	if err != nil {
 		log.Error().Err(err).Msgf("couldn't get upstream image %s manifest", upstreamRef.DockerReference())
 

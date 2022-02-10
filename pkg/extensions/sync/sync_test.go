@@ -35,6 +35,7 @@ import (
 	"gopkg.in/resty.v1"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/cli"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/sync"
 	"zotregistry.io/zot/pkg/storage"
@@ -639,6 +640,126 @@ func TestOnDemandPermsDenied(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
+	})
+}
+
+func TestConfigReloader(t *testing.T) {
+	Convey("Verify periodically sync config reloader works", t, func() {
+		duration, _ := time.ParseDuration("3s")
+
+		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(t, false, false)
+		defer os.RemoveAll(srcDir)
+
+		defer func() {
+			sctlr.Shutdown()
+		}()
+
+		var tlsVerify bool
+
+		syncRegistryConfig := sync.RegistryConfig{
+			Content: []sync.Content{
+				{
+					Prefix: testImage,
+				},
+			},
+			URLs:         []string{srcBaseURL},
+			PollInterval: duration,
+			TLSVerify:    &tlsVerify,
+			CertDir:      "",
+			OnDemand:     true,
+		}
+
+		defaultVal := true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
+
+		destPort := test.GetFreePort()
+		destConfig := config.New()
+		destBaseURL := test.GetBaseURL(destPort)
+
+		destConfig.HTTP.Port = destPort
+
+		destDir, err := ioutil.TempDir("", "oci-dest-repo-test")
+		if err != nil {
+			panic(err)
+		}
+
+		defer os.RemoveAll(destDir)
+
+		destConfig.Storage.RootDirectory = destDir
+
+		destConfig.Extensions = &extconf.ExtensionConfig{}
+		destConfig.Extensions.Search = nil
+		destConfig.Extensions.Sync = syncConfig
+
+		logFile, err := ioutil.TempFile("", "zot-log*.txt")
+		So(err, ShouldBeNil)
+
+		defer os.Remove(logFile.Name()) // clean up
+
+		destConfig.Log.Output = logFile.Name()
+
+		dctlr := api.NewController(destConfig)
+
+		defer func() {
+			dctlr.Shutdown()
+		}()
+
+		go func() {
+			// this blocks
+			if err := dctlr.Run(); err != nil {
+				return
+			}
+		}()
+
+		// wait till ready
+		for {
+			_, err := resty.R().Get(destBaseURL)
+			if err == nil {
+				break
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		content := fmt.Sprintf(`{"distSpecVersion": "0.1.0-dev", "storage": {"rootDirectory": "%s"},
+							"http": {"address": "127.0.0.1", "port": "%s", "ReadOnly": false},
+							"log": {"level": "debug", "output": "%s"}}`, destDir, destPort, logFile.Name())
+
+		cfgfile, err := ioutil.TempFile("", "zot-test*.json")
+		So(err, ShouldBeNil)
+
+		defer os.Remove(cfgfile.Name()) // clean up
+
+		_, err = cfgfile.Write([]byte(content))
+		So(err, ShouldBeNil)
+
+		hotReloader, err := cli.NewHotReloader(dctlr, cfgfile.Name())
+		So(err, ShouldBeNil)
+
+		hotReloader.Start()
+
+		// let it sync
+		time.Sleep(3 * time.Second)
+
+		// modify config
+		_, err = cfgfile.WriteString(" ")
+		So(err, ShouldBeNil)
+
+		err = cfgfile.Close()
+		So(err, ShouldBeNil)
+
+		time.Sleep(2 * time.Second)
+
+		data, err := os.ReadFile(logFile.Name())
+		t.Logf("downstream log: %s", string(data))
+		So(err, ShouldBeNil)
+		So(string(data), ShouldContainSubstring, "reloaded params")
+		So(string(data), ShouldContainSubstring, "new configuration settings")
+		So(string(data), ShouldContainSubstring, "\"Sync\":null")
+		So(string(data), ShouldNotContainSubstring, "sync:")
 	})
 }
 
@@ -2501,7 +2622,7 @@ func TestOnDemandMultipleRetries(t *testing.T) {
 		done := make(chan bool)
 		go func() {
 			/* watch .sync local cache, make sure just one .sync/subdir is populated with image
-			the lock from ondemand should prevent spawning multiple go routines for the same image*/
+			the channel from ondemand should prevent spawning multiple go routines for the same image*/
 			for {
 				time.Sleep(250 * time.Millisecond)
 				select {
