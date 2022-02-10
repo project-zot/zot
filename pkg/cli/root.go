@@ -7,7 +7,6 @@ import (
 	"time"
 
 	glob "github.com/bmatcuk/doublestar/v4"
-	"github.com/fsnotify/fsnotify"
 	"github.com/mitchellh/mapstructure"
 	distspec "github.com/opencontainers/distribution-spec/specs-go"
 	"github.com/rs/zerolog/log"
@@ -38,46 +37,19 @@ func newServeCmd(conf *config.Config) *cobra.Command {
 		Long:    "`serve` stores and distributes OCI images",
 		Run: func(cmd *cobra.Command, args []string) {
 			if len(args) > 0 {
-				LoadConfiguration(conf, args[0])
+				if err := LoadConfiguration(conf, args[0]); err != nil {
+					panic(err)
+				}
 			}
 
 			ctlr := api.NewController(conf)
 
-			// creates a new file watcher
-			watcher, err := fsnotify.NewWatcher()
+			hotReloader, err := NewHotReloader(ctlr, args[0])
 			if err != nil {
 				panic(err)
 			}
-			defer watcher.Close()
 
-			done := make(chan bool)
-			// run watcher
-			go func() {
-				go func() {
-					for {
-						select {
-						// watch for events
-						case event := <-watcher.Events:
-							if event.Op == fsnotify.Write {
-								log.Info().Msg("config file changed, trying to reload accessControl config")
-								newConfig := config.New()
-								LoadConfiguration(newConfig, args[0])
-								ctlr.Config.AccessControl = newConfig.AccessControl
-							}
-						// watch for errors
-						case err := <-watcher.Errors:
-							log.Error().Err(err).Msgf("FsNotify error while watching config %s", args[0])
-							panic(err)
-						}
-					}
-				}()
-
-				if err := watcher.Add(args[0]); err != nil {
-					log.Error().Err(err).Msgf("error adding config file %s to FsNotify watcher", args[0])
-					panic(err)
-				}
-				<-done
-			}()
+			hotReloader.Start()
 
 			if err := ctlr.Run(); err != nil {
 				panic(err)
@@ -97,7 +69,9 @@ func newScrubCmd(conf *config.Config) *cobra.Command {
 		Long:    "`scrub` checks manifest/blob integrity",
 		Run: func(cmd *cobra.Command, args []string) {
 			if len(args) > 0 {
-				LoadConfiguration(conf, args[0])
+				if err := LoadConfiguration(conf, args[0]); err != nil {
+					panic(err)
+				}
 			} else {
 				if err := cmd.Usage(); err != nil {
 					panic(err)
@@ -152,7 +126,10 @@ func newVerifyCmd(conf *config.Config) *cobra.Command {
 		Long:    "`verify` validates a zot config file",
 		Run: func(cmd *cobra.Command, args []string) {
 			if len(args) > 0 {
-				LoadConfiguration(conf, args[0])
+				if err := LoadConfiguration(conf, args[0]); err != nil {
+					panic(err)
+				}
+
 				log.Info().Msgf("Config file %s is valid", args[0])
 			}
 		},
@@ -220,12 +197,13 @@ func NewCliRootCmd() *cobra.Command {
 	return rootCmd
 }
 
-func validateConfiguration(config *config.Config) {
+func validateConfiguration(config *config.Config) error {
 	// enforce GC params
 	if config.Storage.GCDelay < 0 {
 		log.Error().Err(errors.ErrBadConfig).
 			Msgf("invalid garbage-collect delay %v specified", config.Storage.GCDelay)
-		panic(errors.ErrBadConfig)
+
+		return errors.ErrBadConfig
 	}
 
 	if !config.Storage.GC && config.Storage.GCDelay != 0 {
@@ -238,7 +216,8 @@ func validateConfiguration(config *config.Config) {
 		if config.HTTP.Auth == nil || (config.HTTP.Auth.HTPasswd.Path == "" && config.HTTP.Auth.LDAP == nil) {
 			log.Error().Err(errors.ErrBadConfig).
 				Msg("access control config requires httpasswd or ldap authentication to be enabled")
-			panic(errors.ErrBadConfig)
+
+			return errors.ErrBadConfig
 		}
 	}
 
@@ -246,13 +225,15 @@ func validateConfiguration(config *config.Config) {
 		// enforce s3 driver in case of using storage driver
 		if config.Storage.StorageDriver["name"] != storage.S3StorageDriverName {
 			log.Error().Err(errors.ErrBadConfig).Msgf("unsupported storage driver: %s", config.Storage.StorageDriver["name"])
-			panic(errors.ErrBadConfig)
+
+			return errors.ErrBadConfig
 		}
 
 		// enforce filesystem storage in case sync feature is enabled
 		if config.Extensions != nil && config.Extensions.Sync != nil {
 			log.Error().Err(errors.ErrBadConfig).Msg("sync supports only filesystem storage")
-			panic(errors.ErrBadConfig)
+
+			return errors.ErrBadConfig
 		}
 	}
 
@@ -263,7 +244,8 @@ func validateConfiguration(config *config.Config) {
 			if regCfg.MaxRetries != nil && regCfg.RetryDelay == nil {
 				log.Error().Err(errors.ErrBadConfig).Msgf("extensions.sync.registries[%d].retryDelay"+
 					" is required when using extensions.sync.registries[%d].maxRetries", id, id)
-				panic(errors.ErrBadConfig)
+
+				return errors.ErrBadConfig
 			}
 
 			if regCfg.Content != nil {
@@ -271,7 +253,8 @@ func validateConfiguration(config *config.Config) {
 					ok := glob.ValidatePattern(content.Prefix)
 					if !ok {
 						log.Error().Err(glob.ErrBadPattern).Str("pattern", content.Prefix).Msg("sync pattern could not be compiled")
-						panic(errors.ErrBadConfig)
+
+						return glob.ErrBadPattern
 					}
 				}
 			}
@@ -288,7 +271,8 @@ func validateConfiguration(config *config.Config) {
 					if storageConfig.StorageDriver["name"] != storage.S3StorageDriverName {
 						log.Error().Err(errors.ErrBadConfig).Str("subpath",
 							route).Msgf("unsupported storage driver: %s", storageConfig.StorageDriver["name"])
-						panic(errors.ErrBadConfig)
+
+						return errors.ErrBadConfig
 					}
 				}
 			}
@@ -301,10 +285,13 @@ func validateConfiguration(config *config.Config) {
 			ok := glob.ValidatePattern(pattern)
 			if !ok {
 				log.Error().Err(glob.ErrBadPattern).Str("pattern", pattern).Msg("authorization pattern could not be compiled")
-				panic(errors.ErrBadConfig)
+
+				return glob.ErrBadPattern
 			}
 		}
 	}
+
+	return nil
 }
 
 func applyDefaultValues(config *config.Config, viperInstance *viper.Viper) {
@@ -382,7 +369,7 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper) {
 	}
 }
 
-func LoadConfiguration(config *config.Config, configPath string) {
+func LoadConfiguration(config *config.Config, configPath string) error {
 	// Default is dot (.) but because we allow glob patterns in authz
 	// we need another key delimiter.
 	viperInstance := viper.NewWithOptions(viper.KeyDelimiter("::"))
@@ -391,29 +378,37 @@ func LoadConfiguration(config *config.Config, configPath string) {
 
 	if err := viperInstance.ReadInConfig(); err != nil {
 		log.Error().Err(err).Msg("error while reading configuration")
-		panic(err)
+
+		return err
 	}
 
 	metaData := &mapstructure.Metadata{}
 	if err := viperInstance.Unmarshal(&config, metadataConfig(metaData)); err != nil {
 		log.Error().Err(err).Msg("error while unmarshalling new config")
-		panic(err)
+
+		return err
 	}
 
 	if len(metaData.Keys) == 0 || len(metaData.Unused) > 0 {
 		log.Error().Err(errors.ErrBadConfig).Msg("bad configuration, retry writing it")
-		panic(errors.ErrBadConfig)
+
+		return errors.ErrBadConfig
 	}
 
 	err := config.LoadAccessControlConfig(viperInstance)
 	if err != nil {
 		log.Error().Err(err).Msg("unable to unmarshal config's accessControl")
-		panic(err)
+
+		return err
 	}
 
 	// defaults
 	applyDefaultValues(config, viperInstance)
 
 	// various config checks
-	validateConfiguration(config)
+	if err := validateConfiguration(config); err != nil {
+		return err
+	}
+
+	return nil
 }

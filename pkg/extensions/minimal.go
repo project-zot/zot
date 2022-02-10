@@ -4,6 +4,7 @@
 package extensions
 
 import (
+	"context"
 	goSync "sync"
 	"time"
 
@@ -25,7 +26,7 @@ func EnableExtensions(config *config.Config, log log.Logger, rootDir string) {
 }
 
 // EnableSyncExtension ...
-func EnableSyncExtension(config *config.Config, wg *goSync.WaitGroup,
+func EnableSyncExtension(ctx context.Context, config *config.Config, wg *goSync.WaitGroup,
 	storeController storage.StoreController, log log.Logger) {
 	log.Warn().Msg("skipping enabling sync extension because given zot binary doesn't support any extensions," +
 		"please build zot full binary for this feature")

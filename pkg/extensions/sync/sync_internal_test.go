@@ -139,9 +139,15 @@ func TestSyncInternal(t *testing.T) {
 			CertDir:      "",
 		}
 
-		cfg := Config{Registries: []RegistryConfig{syncRegistryConfig}, CredentialsFile: "/invalid/path/to/file"}
+		defaultValue := true
+		cfg := Config{
+			Registries:      []RegistryConfig{syncRegistryConfig},
+			Enable:          &defaultValue,
+			CredentialsFile: "/invalid/path/to/file",
+		}
+		ctx := context.Background()
 
-		So(Run(cfg, storage.StoreController{}, new(goSync.WaitGroup), log.NewLogger("debug", "")), ShouldNotBeNil)
+		So(Run(ctx, cfg, storage.StoreController{}, new(goSync.WaitGroup), log.NewLogger("debug", "")), ShouldNotBeNil)
 
 		_, err = getFileCredentials("/invalid/path/to/file")
 		So(err, ShouldNotBeNil)
@@ -248,10 +254,11 @@ func TestSyncInternal(t *testing.T) {
 		repos := []string{"repo1"}
 		upstreamCtx := &types.SystemContext{}
 
-		_, err := imagesToCopyFromUpstream("localhost:4566", repos, upstreamCtx, Content{}, log.NewLogger("debug", ""))
+		_, err := imagesToCopyFromUpstream(context.Background(), "localhost:4566", repos, upstreamCtx,
+			Content{}, log.NewLogger("debug", ""))
 		So(err, ShouldNotBeNil)
 
-		_, err = imagesToCopyFromUpstream("docker://localhost:4566", repos, upstreamCtx,
+		_, err = imagesToCopyFromUpstream(context.Background(), "docker://localhost:4566", repos, upstreamCtx,
 			Content{}, log.NewLogger("debug", ""))
 		So(err, ShouldNotBeNil)
 	})
@@ -302,7 +309,8 @@ func TestSyncInternal(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(taggedRef, ShouldNotBeNil)
 
-		canBeSkipped, err := canSkipImage(testImage, testImageTag, upstreamRef, imageStore, &types.SystemContext{}, log)
+		canBeSkipped, err := canSkipImage(context.Background(), testImage, testImageTag, upstreamRef,
+			imageStore, &types.SystemContext{}, log)
 		So(err, ShouldNotBeNil)
 		So(canBeSkipped, ShouldBeFalse)
 
@@ -311,7 +319,8 @@ func TestSyncInternal(t *testing.T) {
 			panic(err)
 		}
 
-		canBeSkipped, err = canSkipImage(testImage, testImageTag, upstreamRef, imageStore, &types.SystemContext{}, log)
+		canBeSkipped, err = canSkipImage(context.Background(), testImage, testImageTag, upstreamRef,
+			imageStore, &types.SystemContext{}, log)
 		So(err, ShouldNotBeNil)
 		So(canBeSkipped, ShouldBeFalse)
 	})

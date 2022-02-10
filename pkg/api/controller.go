@@ -31,14 +31,16 @@ const (
 )
 
 type Controller struct {
-	Config          *config.Config
-	Router          *mux.Router
-	StoreController storage.StoreController
-	Log             log.Logger
-	Audit           *log.Logger
-	Server          *http.Server
-	Metrics         monitoring.MetricServer
-	wgShutDown      *goSync.WaitGroup // use it to gracefully shutdown goroutines
+	Config             *config.Config
+	Router             *mux.Router
+	StoreController    storage.StoreController
+	Log                log.Logger
+	Audit              *log.Logger
+	Server             *http.Server
+	Metrics            monitoring.MetricServer
+	wgShutDown         *goSync.WaitGroup  // use it to gracefully shutdown goroutines
+	reloadCtx          context.Context    // use it to gracefully reload goroutines with new configuration
+	cancelOnReloadFunc context.CancelFunc // use it to stop goroutines
 }
 
 func NewController(config *config.Config) *Controller {
@@ -48,6 +50,9 @@ func NewController(config *config.Config) *Controller {
 	controller.Config = config
 	controller.Log = logger
 	controller.wgShutDown = new(goSync.WaitGroup)
+	/* context used to cancel go routines so that
+	we can change their config on the fly (restart routines with different config) */
+	controller.reloadCtx, controller.cancelOnReloadFunc = context.WithCancel(context.Background())
 
 	if config.Log.Audit != "" {
 		audit := log.NewAuditLogger(config.Log.Level, config.Log.Audit)
@@ -321,10 +326,33 @@ func (c *Controller) InitImageStore() error {
 
 	// Enable extensions if extension config is provided
 	if c.Config.Extensions != nil && c.Config.Extensions.Sync != nil && *c.Config.Extensions.Sync.Enable {
-		ext.EnableSyncExtension(c.Config, c.wgShutDown, c.StoreController, c.Log)
+		ext.EnableSyncExtension(c.reloadCtx, c.Config, c.wgShutDown, c.StoreController, c.Log)
 	}
 
 	return nil
+}
+
+func (c *Controller) LoadNewConfig(config *config.Config) {
+	// cancel go routines context so we can reload configuration
+	c.cancelOnReloadFunc()
+
+	// reload access control config
+	c.Config.AccessControl = config.AccessControl
+	c.Config.HTTP.RawAccessControl = config.HTTP.RawAccessControl
+
+	// create new context for the next config reload
+	c.reloadCtx, c.cancelOnReloadFunc = context.WithCancel(context.Background())
+
+	// Enable extensions if extension config is provided
+	if config.Extensions != nil && config.Extensions.Sync != nil {
+		// reload sync config
+		c.Config.Extensions.Sync = config.Extensions.Sync
+		ext.EnableSyncExtension(c.reloadCtx, c.Config, c.wgShutDown, c.StoreController, c.Log)
+	} else if c.Config.Extensions != nil {
+		c.Config.Extensions.Sync = nil
+	}
+
+	c.Log.Info().Interface("reloaded params", c.Config.Sanitize()).Msg("new configuration settings")
 }
 
 func (c *Controller) Shutdown() {
