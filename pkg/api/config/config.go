@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/getlantern/deepcopy"
 	distspec "github.com/opencontainers/distribution-spec/specs-go"
@@ -9,6 +10,7 @@ import (
 	"zotregistry.io/zot/errors"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/storage"
 )
 
 var (
@@ -22,6 +24,7 @@ type StorageConfig struct {
 	GC            bool
 	Dedupe        bool
 	Commit        bool
+	GCDelay       time.Duration
 	StorageDriver map[string]interface{} `mapstructure:",omitempty"`
 }
 
@@ -94,6 +97,7 @@ type GlobalStorageConfig struct {
 	Dedupe        bool
 	GC            bool
 	Commit        bool
+	GCDelay       time.Duration
 	RootDirectory string
 	StorageDriver map[string]interface{} `mapstructure:",omitempty"`
 	SubPaths      map[string]StorageConfig
@@ -134,7 +138,7 @@ func New() *Config {
 		GoVersion:  GoVersion,
 		Commit:     Commit,
 		BinaryType: BinaryType,
-		Storage:    GlobalStorageConfig{GC: true, Dedupe: true},
+		Storage:    GlobalStorageConfig{GC: true, GCDelay: storage.DefaultGCDelay, Dedupe: true},
 		HTTP:       HTTPConfig{Address: "127.0.0.1", Port: "8080"},
 		Log:        &LogConfig{Level: "debug"},
 	}

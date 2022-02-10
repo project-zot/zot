@@ -213,7 +213,7 @@ func (c *Controller) InitImageStore() error {
 		var defaultStore storage.ImageStore
 		if len(c.Config.Storage.StorageDriver) == 0 {
 			defaultStore = storage.NewImageStore(c.Config.Storage.RootDirectory,
-				c.Config.Storage.GC, c.Config.Storage.Dedupe, c.Config.Storage.Commit, c.Log, c.Metrics)
+				c.Config.Storage.GC, c.Config.Storage.GCDelay, c.Config.Storage.Dedupe, c.Config.Storage.Commit, c.Log, c.Metrics)
 		} else {
 			storeName := fmt.Sprintf("%v", c.Config.Storage.StorageDriver["name"])
 			if storeName != storage.S3StorageDriverName {
@@ -229,7 +229,8 @@ func (c *Controller) InitImageStore() error {
 			}
 
 			defaultStore = s3.NewImageStore(c.Config.Storage.RootDirectory,
-				c.Config.Storage.GC, c.Config.Storage.Dedupe, c.Config.Storage.Commit, c.Log, c.Metrics, store)
+				c.Config.Storage.GC, c.Config.Storage.GCDelay, c.Config.Storage.Dedupe,
+				c.Config.Storage.Commit, c.Log, c.Metrics, store)
 		}
 
 		c.StoreController.DefaultStore = defaultStore
@@ -265,7 +266,7 @@ func (c *Controller) InitImageStore() error {
 
 				if len(storageConfig.StorageDriver) == 0 {
 					subImageStore[route] = storage.NewImageStore(storageConfig.RootDirectory,
-						storageConfig.GC, storageConfig.Dedupe, storageConfig.Commit, c.Log, c.Metrics)
+						storageConfig.GC, storageConfig.GCDelay, storageConfig.Dedupe, storageConfig.Commit, c.Log, c.Metrics)
 				} else {
 					storeName := fmt.Sprintf("%v", storageConfig.StorageDriver["name"])
 					if storeName != storage.S3StorageDriverName {
@@ -281,7 +282,7 @@ func (c *Controller) InitImageStore() error {
 					}
 
 					subImageStore[route] = s3.NewImageStore(storageConfig.RootDirectory,
-						storageConfig.GC, storageConfig.Dedupe, storageConfig.Commit, c.Log, c.Metrics, store)
+						storageConfig.GC, storageConfig.GCDelay, storageConfig.Dedupe, storageConfig.Commit, c.Log, c.Metrics, store)
 				}
 
 				// Enable extensions if extension config is provided

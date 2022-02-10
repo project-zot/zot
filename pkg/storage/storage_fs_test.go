@@ -12,6 +12,7 @@ import (
 	"path"
 	"strings"
 	"testing"
+	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -24,6 +25,10 @@ import (
 	"zotregistry.io/zot/pkg/test"
 )
 
+const (
+	tag = "1.0"
+)
+
 func TestStorageFSAPIs(t *testing.T) {
 	dir, err := ioutil.TempDir("", "oci-repo-test")
 	if err != nil {
@@ -34,7 +39,7 @@ func TestStorageFSAPIs(t *testing.T) {
 
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
-	imgStore := storage.NewImageStore(dir, true, true, true, log, metrics)
+	imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics)
 
 	Convey("Repo layout", t, func(c C) {
 		repoName := "test"
@@ -57,7 +62,7 @@ func TestStorageFSAPIs(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			annotationsMap := make(map[string]string)
-			annotationsMap[ispec.AnnotationRefName] = "1.0"
+			annotationsMap[ispec.AnnotationRefName] = tag
 
 			cblob, cdigest := test.GetRandomImageConfig()
 			_, clen, err := imgStore.FullBlobUpload("test", bytes.NewReader(cblob), cdigest.String())
@@ -171,7 +176,7 @@ func TestDedupeLinks(t *testing.T) {
 
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
-	imgStore := storage.NewImageStore(dir, true, true, true, log, metrics)
+	imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics)
 
 	Convey("Dedupe", t, func(c C) {
 		// manifest1
@@ -311,7 +316,7 @@ func TestDedupe(t *testing.T) {
 
 			log := log.Logger{Logger: zerolog.New(os.Stdout)}
 			metrics := monitoring.NewMetricsServer(false, log)
-			il := storage.NewImageStore(dir, true, true, true, log, metrics)
+			il := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics)
 
 			So(il.DedupeBlob("", "", ""), ShouldNotBeNil)
 		})
@@ -330,9 +335,9 @@ func TestNegativeCases(t *testing.T) {
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
 
-		So(storage.NewImageStore(dir, true, true, true, log, metrics), ShouldNotBeNil)
+		So(storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics), ShouldNotBeNil)
 		if os.Geteuid() != 0 {
-			So(storage.NewImageStore("/deadBEEF", true, true, true, log, metrics), ShouldBeNil)
+			So(storage.NewImageStore("/deadBEEF", true, storage.DefaultGCDelay, true, true, log, metrics), ShouldBeNil)
 		}
 	})
 
@@ -345,7 +350,7 @@ func TestNegativeCases(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
-		imgStore := storage.NewImageStore(dir, true, true, true, log, metrics)
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics)
 
 		err = os.Chmod(dir, 0o000) // remove all perms
 		if err != nil {
@@ -384,7 +389,7 @@ func TestNegativeCases(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
-		imgStore := storage.NewImageStore(dir, true, true, true, log, metrics)
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics)
 
 		So(imgStore, ShouldNotBeNil)
 		So(imgStore.InitRepo("test"), ShouldBeNil)
@@ -502,7 +507,7 @@ func TestNegativeCases(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
-		imgStore := storage.NewImageStore(dir, true, true, true, log, metrics)
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics)
 
 		So(imgStore, ShouldNotBeNil)
 		So(imgStore.InitRepo("test"), ShouldBeNil)
@@ -529,7 +534,7 @@ func TestNegativeCases(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
-		imgStore := storage.NewImageStore(dir, true, true, true, log, metrics)
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics)
 
 		So(imgStore, ShouldNotBeNil)
 		So(imgStore.InitRepo("test"), ShouldBeNil)
@@ -574,7 +579,7 @@ func TestNegativeCases(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
-		imgStore := storage.NewImageStore(dir, true, true, true, log, metrics)
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics)
 
 		So(imgStore, ShouldNotBeNil)
 		So(imgStore.InitRepo("test"), ShouldBeNil)
@@ -636,7 +641,7 @@ func TestNegativeCases(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
-		imgStore := storage.NewImageStore(dir, true, true, true, log, metrics)
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics)
 
 		upload, err := imgStore.NewBlobUpload("dedupe1")
 		So(err, ShouldBeNil)
@@ -796,7 +801,7 @@ func TestWriteFile(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
-		imgStore := storage.NewImageStore(dir, true, true, true, log, metrics)
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics)
 
 		Convey("Failure path1", func() {
 			injected := test.InjectFailure(0)
@@ -828,11 +833,185 @@ func TestWriteFile(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
-		imgStore := storage.NewImageStore(dir, true, true, false, log, metrics)
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, false, log, metrics)
 
 		Convey("Failure path not reached", func() {
 			err := imgStore.InitRepo("repo1")
 			So(err, ShouldBeNil)
+		})
+	})
+}
+
+func TestGarbageCollect(t *testing.T) {
+	Convey("Repo layout", t, func(c C) {
+		dir, err := ioutil.TempDir("", "oci-gc-test")
+		if err != nil {
+			panic(err)
+		}
+
+		defer os.RemoveAll(dir)
+
+		log := log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, log)
+
+		Convey("Garbage collect with default/long delay", func() {
+			imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics)
+			repoName := "gc-long"
+
+			upload, err := imgStore.NewBlobUpload(repoName)
+			So(err, ShouldBeNil)
+			So(upload, ShouldNotBeEmpty)
+
+			content := []byte("test-data1")
+			buf := bytes.NewBuffer(content)
+			buflen := buf.Len()
+			bdigest := godigest.FromBytes(content)
+
+			blob, err := imgStore.PutBlobChunk(repoName, upload, 0, int64(buflen), buf)
+			So(err, ShouldBeNil)
+			So(blob, ShouldEqual, buflen)
+
+			err = imgStore.FinishBlobUpload(repoName, upload, buf, bdigest.String())
+			So(err, ShouldBeNil)
+
+			annotationsMap := make(map[string]string)
+			annotationsMap[ispec.AnnotationRefName] = tag
+
+			cblob, cdigest := test.GetRandomImageConfig()
+			_, clen, err := imgStore.FullBlobUpload(repoName, bytes.NewReader(cblob), cdigest.String())
+			So(err, ShouldBeNil)
+			So(clen, ShouldEqual, len(cblob))
+			hasBlob, _, err := imgStore.CheckBlob(repoName, cdigest.String())
+			So(err, ShouldBeNil)
+			So(hasBlob, ShouldEqual, true)
+
+			manifest := ispec.Manifest{
+				Config: ispec.Descriptor{
+					MediaType: "application/vnd.oci.image.config.v1+json",
+					Digest:    cdigest,
+					Size:      int64(len(cblob)),
+				},
+				Layers: []ispec.Descriptor{
+					{
+						MediaType: "application/vnd.oci.image.layer.v1.tar",
+						Digest:    bdigest,
+						Size:      int64(buflen),
+					},
+				},
+				Annotations: annotationsMap,
+			}
+
+			manifest.SchemaVersion = 2
+			manifestBuf, _ := json.Marshal(manifest)
+			digest := godigest.FromBytes(manifestBuf)
+
+			_, err = imgStore.PutImageManifest(repoName, tag, ispec.MediaTypeImageManifest, manifestBuf)
+			So(err, ShouldBeNil)
+
+			hasBlob, _, err = imgStore.CheckBlob(repoName, bdigest.String())
+			So(err, ShouldBeNil)
+			So(hasBlob, ShouldEqual, true)
+
+			err = imgStore.DeleteImageManifest(repoName, digest.String())
+			So(err, ShouldBeNil)
+
+			hasBlob, _, err = imgStore.CheckBlob(repoName, bdigest.String())
+			So(err, ShouldBeNil)
+			So(hasBlob, ShouldEqual, true)
+		})
+
+		Convey("Garbage collect with short delay", func() {
+			imgStore := storage.NewImageStore(dir, true, 1*time.Second, true, true, log, metrics)
+			repoName := "gc-short"
+
+			// upload orphan blob
+			upload, err := imgStore.NewBlobUpload(repoName)
+			So(err, ShouldBeNil)
+			So(upload, ShouldNotBeEmpty)
+
+			content := []byte("test-data1")
+			buf := bytes.NewBuffer(content)
+			buflen := buf.Len()
+			odigest := godigest.FromBytes(content)
+
+			blob, err := imgStore.PutBlobChunk(repoName, upload, 0, int64(buflen), buf)
+			So(err, ShouldBeNil)
+			So(blob, ShouldEqual, buflen)
+
+			err = imgStore.FinishBlobUpload(repoName, upload, buf, odigest.String())
+			So(err, ShouldBeNil)
+
+			// sleep so orphan blob can be GC'ed
+			time.Sleep(5 * time.Second)
+
+			// upload blob
+			upload, err = imgStore.NewBlobUpload(repoName)
+			So(err, ShouldBeNil)
+			So(upload, ShouldNotBeEmpty)
+
+			content = []byte("test-data2")
+			buf = bytes.NewBuffer(content)
+			buflen = buf.Len()
+			bdigest := godigest.FromBytes(content)
+
+			blob, err = imgStore.PutBlobChunk(repoName, upload, 0, int64(buflen), buf)
+			So(err, ShouldBeNil)
+			So(blob, ShouldEqual, buflen)
+
+			err = imgStore.FinishBlobUpload(repoName, upload, buf, bdigest.String())
+			So(err, ShouldBeNil)
+
+			annotationsMap := make(map[string]string)
+			annotationsMap[ispec.AnnotationRefName] = tag
+
+			cblob, cdigest := test.GetRandomImageConfig()
+			_, clen, err := imgStore.FullBlobUpload(repoName, bytes.NewReader(cblob), cdigest.String())
+			So(err, ShouldBeNil)
+			So(clen, ShouldEqual, len(cblob))
+			hasBlob, _, err := imgStore.CheckBlob(repoName, cdigest.String())
+			So(err, ShouldBeNil)
+			So(hasBlob, ShouldEqual, true)
+
+			manifest := ispec.Manifest{
+				Config: ispec.Descriptor{
+					MediaType: "application/vnd.oci.image.config.v1+json",
+					Digest:    cdigest,
+					Size:      int64(len(cblob)),
+				},
+				Layers: []ispec.Descriptor{
+					{
+						MediaType: "application/vnd.oci.image.layer.v1.tar",
+						Digest:    bdigest,
+						Size:      int64(buflen),
+					},
+				},
+				Annotations: annotationsMap,
+			}
+
+			manifest.SchemaVersion = 2
+			manifestBuf, _ := json.Marshal(manifest)
+			digest := godigest.FromBytes(manifestBuf)
+
+			_, err = imgStore.PutImageManifest(repoName, tag, ispec.MediaTypeImageManifest, manifestBuf)
+			So(err, ShouldBeNil)
+
+			hasBlob, _, err = imgStore.CheckBlob(repoName, odigest.String())
+			So(err, ShouldNotBeNil)
+			So(hasBlob, ShouldEqual, false)
+
+			hasBlob, _, err = imgStore.CheckBlob(repoName, bdigest.String())
+			So(err, ShouldBeNil)
+			So(hasBlob, ShouldEqual, true)
+
+			// sleep so orphan blob can be GC'ed
+			time.Sleep(5 * time.Second)
+
+			err = imgStore.DeleteImageManifest(repoName, digest.String())
+			So(err, ShouldBeNil)
+
+			hasBlob, _, err = imgStore.CheckBlob(repoName, bdigest.String())
+			So(err, ShouldNotBeNil)
+			So(hasBlob, ShouldEqual, false)
 		})
 	})
 }

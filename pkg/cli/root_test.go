@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/cli"
+	"zotregistry.io/zot/pkg/storage"
 	. "zotregistry.io/zot/pkg/test"
 )
 
@@ -297,6 +299,55 @@ func TestLoadConfig(t *testing.T) {
 	Convey("Test viper load config", t, func(c C) {
 		config := config.New()
 		So(func() { cli.LoadConfiguration(config, "../../examples/config-policy.json") }, ShouldNotPanic)
+	})
+}
+
+func TestGC(t *testing.T) {
+	Convey("Test GC config", t, func(c C) {
+		config := config.New()
+		So(func() { cli.LoadConfiguration(config, "../../examples/config-multiple.json") }, ShouldNotPanic)
+		So(config.Storage.GCDelay, ShouldEqual, storage.DefaultGCDelay)
+		So(func() { cli.LoadConfiguration(config, "../../examples/config-gc.json") }, ShouldNotPanic)
+		So(config.Storage.GCDelay, ShouldNotEqual, storage.DefaultGCDelay)
+	})
+
+	Convey("Test GC config corner cases", t, func(c C) {
+		contents, err := ioutil.ReadFile("../../examples/config-gc.json")
+		So(err, ShouldBeNil)
+
+		Convey("GC delay without GC", func() {
+			config := config.New()
+			err = json.Unmarshal(contents, config)
+			config.Storage.GC = false
+
+			file, err := ioutil.TempFile("", "gc-config-*.json")
+			So(err, ShouldBeNil)
+			defer os.Remove(file.Name())
+
+			contents, err = json.MarshalIndent(config, "", " ")
+			So(err, ShouldBeNil)
+
+			err = ioutil.WriteFile(file.Name(), contents, 0o600)
+			So(err, ShouldBeNil)
+			So(func() { cli.LoadConfiguration(config, file.Name()) }, ShouldNotPanic)
+		})
+
+		Convey("Negative GC delay", func() {
+			config := config.New()
+			err = json.Unmarshal(contents, config)
+			config.Storage.GCDelay = -1 * time.Second
+
+			file, err := ioutil.TempFile("", "gc-config-*.json")
+			So(err, ShouldBeNil)
+			defer os.Remove(file.Name())
+
+			contents, err = json.MarshalIndent(config, "", " ")
+			So(err, ShouldBeNil)
+
+			err = ioutil.WriteFile(file.Name(), contents, 0o600)
+			So(err, ShouldBeNil)
+			So(func() { cli.LoadConfiguration(config, file.Name()) }, ShouldPanic)
+		})
 	})
 }
 

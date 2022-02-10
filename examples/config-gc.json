@@ -1,0 +1,16 @@
+{
+    "version": "0.1.0-dev",
+    "storage": {
+        "rootDirectory": "/tmp/zot",
+        "gc": true,
+        "gcDelay": "1s"
+    },
+    "http": {
+        "address": "127.0.0.1",
+        "port": "8080",
+        "ReadOnly": false
+    },
+    "log": {
+        "level": "debug"
+    }
+}

@@ -36,7 +36,6 @@ const (
 	// BlobUploadDir defines the upload directory for blob uploads.
 	BlobUploadDir    = ".uploads"
 	SchemaVersion    = 2
-	gcDelay          = 1 * time.Hour
 	DefaultFilePerms = 0o600
 	DefaultDirPerms  = 0o700
 	RLOCK            = "RLock"
@@ -63,6 +62,7 @@ type ImageStoreFS struct {
 	gc          bool
 	dedupe      bool
 	commit      bool
+	gcDelay     time.Duration
 	log         zerolog.Logger
 	metrics     monitoring.MetricServer
 }
@@ -105,7 +105,7 @@ func (sc StoreController) GetImageStore(name string) ImageStore {
 }
 
 // NewImageStore returns a new image store backed by a file storage.
-func NewImageStore(rootDir string, gc, dedupe, commit bool,
+func NewImageStore(rootDir string, gc bool, gcDelay time.Duration, dedupe, commit bool,
 	log zlog.Logger, metrics monitoring.MetricServer) ImageStore {
 	if _, err := os.Stat(rootDir); os.IsNotExist(err) {
 		if err := os.MkdirAll(rootDir, DefaultDirPerms); err != nil {
@@ -120,6 +120,7 @@ func NewImageStore(rootDir string, gc, dedupe, commit bool,
 		lock:        &sync.RWMutex{},
 		blobUploads: make(map[string]BlobUpload),
 		gc:          gc,
+		gcDelay:     gcDelay,
 		dedupe:      dedupe,
 		commit:      commit,
 		log:         log.With().Caller().Logger(),
@@ -695,7 +696,7 @@ func (is *ImageStoreFS) PutImageManifest(repo string, reference string, mediaTyp
 		}
 		defer oci.Close()
 
-		if err := oci.GC(context.Background(), ifOlderThan(is, repo, gcDelay)); err != nil {
+		if err := oci.GC(context.Background(), ifOlderThan(is, repo, is.gcDelay)); err != nil {
 			return "", err
 		}
 	}
@@ -796,7 +797,7 @@ func (is *ImageStoreFS) DeleteImageManifest(repo string, reference string) error
 		}
 		defer oci.Close()
 
-		if err := oci.GC(context.Background(), ifOlderThan(is, repo, gcDelay)); err != nil {
+		if err := oci.GC(context.Background(), ifOlderThan(is, repo, is.gcDelay)); err != nil {
 			return err
 		}
 	}
@@ -1142,7 +1143,7 @@ func (is *ImageStoreFS) FullBlobUpload(repo string, body io.Reader, digest strin
 
 func (is *ImageStoreFS) DedupeBlob(src string, dstDigest godigest.Digest, dst string) error {
 retry:
-	is.log.Debug().Str("src", src).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe: ENTER")
+	is.log.Debug().Str("src", src).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe: enter")
 
 	dstRecord, err := is.cache.GetBlob(dstDigest.String())
 

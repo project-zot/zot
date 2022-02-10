@@ -221,6 +221,18 @@ func NewCliRootCmd() *cobra.Command {
 }
 
 func validateConfiguration(config *config.Config) {
+	// enforce GC params
+	if config.Storage.GCDelay < 0 {
+		log.Error().Err(errors.ErrBadConfig).
+			Msgf("invalid garbage-collect delay %v specified", config.Storage.GCDelay)
+		panic(errors.ErrBadConfig)
+	}
+
+	if !config.Storage.GC && config.Storage.GCDelay != 0 {
+		log.Warn().Err(errors.ErrBadConfig).
+			Msg("garbage-collect delay specified without enabling garbage-collect, will be ignored")
+	}
+
 	// check authorization config, it should have basic auth enabled or ldap
 	if config.HTTP.RawAccessControl != nil {
 		if config.HTTP.Auth == nil || (config.HTTP.Auth.HTPasswd.Path == "" && config.HTTP.Auth.LDAP == nil) {
