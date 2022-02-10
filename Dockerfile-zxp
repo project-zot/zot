@@ -27,6 +27,8 @@ RUN echo '{\n\
 # Stage 2: Final image with nothing but binary and default config file
 # ---
 FROM scratch AS final
+ARG OS
+ARG ARCH
 COPY --from=builder /go/src/github.com/project-zot/zot/bin/zxp-$OS-$ARCH /zxp
 COPY --from=builder /go/src/github.com/project-zot/zot/config.json /etc/zxp/config.json
 ENTRYPOINT ["/zxp"]
