@@ -26,6 +26,8 @@ RUN echo '{\n\
 # Stage 2: Final image with nothing but certs, binary, and default config file
 # ---
 FROM scratch AS final
+ARG OS
+ARG ARCH
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=builder /go/src/github.com/project-zot/zot/bin/zot-$OS-$ARCH-minimal /usr/bin/zot
 COPY --from=builder /go/src/github.com/project-zot/zot/config.json /etc/zot/config.json
