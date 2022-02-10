@@ -98,7 +98,7 @@ func testSetup() error {
 	log := log.NewLogger("debug", "")
 	metrics := monitoring.NewMetricsServer(false, log)
 	storeController := storage.StoreController{
-		DefaultStore: storage.NewImageStore(rootDir, false, false, false, log, metrics),
+		DefaultStore: storage.NewImageStore(rootDir, false, storage.DefaultGCDelay, false, false, log, metrics),
 	}
 
 	digestInfo = digestinfo.NewDigestInfo(storeController, log)

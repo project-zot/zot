@@ -10,6 +10,7 @@ import (
 
 const (
 	S3StorageDriverName = "s3"
+	DefaultGCDelay      = 1 * time.Hour
 )
 
 type ImageStore interface {

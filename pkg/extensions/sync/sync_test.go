@@ -37,6 +37,7 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/sync"
+	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test"
 )
 
@@ -1017,6 +1018,7 @@ func TestBasicAuth(t *testing.T) {
 				"a": {
 					RootDirectory: destDir,
 					GC:            true,
+					GCDelay:       storage.DefaultGCDelay,
 					Dedupe:        true,
 				},
 			}
@@ -1770,6 +1772,7 @@ func TestSubPaths(t *testing.T) {
 			subpath: {
 				RootDirectory: subPathDestDir,
 				GC:            true,
+				GCDelay:       storage.DefaultGCDelay,
 				Dedupe:        true,
 			},
 		}

@@ -245,7 +245,7 @@ func TestSyncInternal(t *testing.T) {
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
 
-		imageStore := storage.NewImageStore(storageDir, false, false, false, log, metrics)
+		imageStore := storage.NewImageStore(storageDir, false, storage.DefaultGCDelay, false, false, log, metrics)
 
 		repoRefStr := fmt.Sprintf("%s/%s", host, testImage)
 		repoRef, err := parseRepositoryReference(repoRefStr)
@@ -313,7 +313,7 @@ func TestSyncInternal(t *testing.T) {
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
 
-		imageStore := storage.NewImageStore(storageDir, false, false, false, log, metrics)
+		imageStore := storage.NewImageStore(storageDir, false, storage.DefaultGCDelay, false, false, log, metrics)
 
 		storeController := storage.StoreController{}
 		storeController.DefaultStore = imageStore
@@ -334,7 +334,7 @@ func TestSyncInternal(t *testing.T) {
 			panic(err)
 		}
 
-		testImageStore := storage.NewImageStore(testRootDir, false, false, false, log, metrics)
+		testImageStore := storage.NewImageStore(testRootDir, false, storage.DefaultGCDelay, false, false, log, metrics)
 		manifestContent, _, _, err := testImageStore.GetImageManifest(testImage, testImageTag)
 		So(err, ShouldBeNil)
 

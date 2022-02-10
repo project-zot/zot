@@ -132,7 +132,7 @@ func TestImageFormat(t *testing.T) {
 		dbDir := "../../../../test/data"
 
 		metrics := monitoring.NewMetricsServer(false, log)
-		defaultStore := storage.NewImageStore(dbDir, false, false, false, log, metrics)
+		defaultStore := storage.NewImageStore(dbDir, false, storage.DefaultGCDelay, false, false, log, metrics)
 		storeController := storage.StoreController{DefaultStore: defaultStore}
 		olu := common.NewOciLayoutUtils(storeController, log)
 
@@ -525,9 +525,9 @@ func TestUtilsMethod(t *testing.T) {
 		defer os.RemoveAll(subRootDir)
 
 		metrics := monitoring.NewMetricsServer(false, log)
-		defaultStore := storage.NewImageStore(rootDir, false, false, false, log, metrics)
+		defaultStore := storage.NewImageStore(rootDir, false, storage.DefaultGCDelay, false, false, log, metrics)
 
-		subStore := storage.NewImageStore(subRootDir, false, false, false, log, metrics)
+		subStore := storage.NewImageStore(subRootDir, false, storage.DefaultGCDelay, false, false, log, metrics)
 
 		subStoreMap := make(map[string]storage.ImageStore)
 
