@@ -26,6 +26,7 @@ import (
 	"github.com/opencontainers/umoci/oci/casext"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/rs/zerolog"
+	"golang.org/x/sys/unix"
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	zlog "zotregistry.io/zot/pkg/log"
@@ -1203,7 +1204,7 @@ retry:
 				return err
 			}
 
-			is.log.Debug().Str("blobPath", dst).Msg("dedupe: creating hard link")
+			is.log.Debug().Str("blobPath", dst).Str("dstRecord", dstRecord).Msg("dedupe: creating hard link")
 
 			if err := os.Link(dstRecord, dst); err != nil {
 				is.log.Error().Err(err).Str("blobPath", dst).Str("link", dstRecord).Msg("dedupe: unable to hard link")
@@ -1271,7 +1272,7 @@ func (is *ImageStoreFS) CheckBlob(repo string, digest string) (bool, int64, erro
 
 	is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
 
-	// Check blobs in cache
+	// check blobs in cache
 	dstRecord, err := is.checkCacheBlob(digest)
 	if err != nil {
 		is.log.Error().Err(err).Str("digest", digest).Msg("cache: not found")
@@ -1279,7 +1280,7 @@ func (is *ImageStoreFS) CheckBlob(repo string, digest string) (bool, int64, erro
 		return false, -1, zerr.ErrBlobNotFound
 	}
 
-	// If found copy to location
+	// if found copy to location
 	blobSize, err := is.copyBlob(repo, blobPath, dstRecord)
 	if err != nil {
 		return false, -1, zerr.ErrBlobNotFound
@@ -1611,12 +1612,16 @@ func ifOlderThan(imgStore *ImageStoreFS, repo string, delay time.Duration) casex
 	return func(ctx context.Context, digest godigest.Digest) (bool, error) {
 		blobPath := imgStore.BlobPath(repo, digest)
 
-		fi, err := os.Stat(blobPath)
+		var fi unix.Stat_t
+
+		err := unix.Stat(blobPath, &fi)
 		if err != nil {
 			return false, err
 		}
 
-		if fi.ModTime().Add(delay).After(time.Now()) {
+		ctim := time.Unix(fi.Ctim.Sec, fi.Ctim.Nsec)
+
+		if ctim.Add(delay).After(time.Now()) {
 			return false, nil
 		}
 
