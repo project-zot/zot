@@ -45,6 +45,11 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+			if request.Method == http.MethodOptions {
+				response.WriteHeader(http.StatusNoContent)
+
+				return
+			}
 			vars := mux.Vars(request)
 			name := vars["name"]
 			header := request.Header.Get("Authorization")
@@ -72,6 +77,37 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 	}
 }
 
+func noPasswdAuth(realm string, config *config.Config) mux.MiddlewareFunc {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+			if request.Method == http.MethodOptions {
+				response.WriteHeader(http.StatusNoContent)
+
+				return
+			}
+
+			if config.HTTP.AllowReadAccess &&
+				config.HTTP.TLS.CACert != "" &&
+				request.TLS.VerifiedChains == nil &&
+				request.Method != http.MethodGet && request.Method != http.MethodHead {
+				authFail(response, realm, 5) //nolint:gomnd
+
+				return
+			}
+
+			if (request.Method != http.MethodGet && request.Method != http.MethodHead) && config.HTTP.ReadOnly {
+				// Reject modification requests in read-only mode
+				response.WriteHeader(http.StatusMethodNotAllowed)
+
+				return
+			}
+
+			// Process request
+			next.ServeHTTP(response, request)
+		})
+	}
+}
+
 // nolint:gocyclo  // we use closure making this a complex subroutine
 func basicAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 	realm := ctlr.Config.HTTP.Realm
@@ -84,28 +120,7 @@ func basicAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 	// no password based authN, if neither LDAP nor HTTP BASIC is enabled
 	if ctlr.Config.HTTP.Auth == nil ||
 		(ctlr.Config.HTTP.Auth.HTPasswd.Path == "" && ctlr.Config.HTTP.Auth.LDAP == nil) {
-		return func(next http.Handler) http.Handler {
-			return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-				if ctlr.Config.HTTP.AllowReadAccess &&
-					ctlr.Config.HTTP.TLS.CACert != "" &&
-					request.TLS.VerifiedChains == nil &&
-					request.Method != http.MethodGet && request.Method != http.MethodHead {
-					authFail(response, realm, 5) //nolint:gomnd
-
-					return
-				}
-
-				if (request.Method != http.MethodGet && request.Method != http.MethodHead) && ctlr.Config.HTTP.ReadOnly {
-					// Reject modification requests in read-only mode
-					response.WriteHeader(http.StatusMethodNotAllowed)
-
-					return
-				}
-
-				// Process request
-				next.ServeHTTP(response, request)
-			})
-		}
+		return noPasswdAuth(realm, ctlr.Config)
 	}
 
 	credMap := make(map[string]string)
@@ -177,6 +192,11 @@ func basicAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+			if request.Method == http.MethodOptions {
+				response.WriteHeader(http.StatusNoContent)
+
+				return
+			}
 			if (request.Method == http.MethodGet || request.Method == http.MethodHead) && ctlr.Config.HTTP.AllowReadAccess {
 				// Process request
 				next.ServeHTTP(response, request)
@@ -185,7 +205,6 @@ func basicAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 			}
 
 			if (request.Method != http.MethodGet && request.Method != http.MethodHead) && ctlr.Config.HTTP.ReadOnly {
-				// Reject modification requests in read-only mode
 				response.WriteHeader(http.StatusMethodNotAllowed)
 
 				return

@@ -64,6 +64,7 @@ type RatelimitConfig struct {
 type HTTPConfig struct {
 	Address          string
 	Port             string
+	AllowOrigin      string // comma separated
 	TLS              *TLSConfig
 	Auth             *AuthConfig
 	RawAccessControl map[string]interface{} `mapstructure:"accessControl,omitempty"`

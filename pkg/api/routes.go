@@ -57,6 +57,10 @@ func NewRouteHandler(c *Controller) *RouteHandler {
 	return rh
 }
 
+func allowedMethods(method string) []string {
+	return []string{http.MethodOptions, method}
+}
+
 func (rh *RouteHandler) SetupRoutes() {
 	rh.c.Router.Use(AuthHandler(rh.c))
 	// authz is being enabled because authn is found
@@ -68,11 +72,11 @@ func (rh *RouteHandler) SetupRoutes() {
 	prefixedRouter := rh.c.Router.PathPrefix(RoutePrefix).Subrouter()
 	{
 		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/tags/list", NameRegexp.String()),
-			rh.ListTags).Methods("GET")
+			rh.ListTags).Methods(allowedMethods("GET")...)
 		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", NameRegexp.String()),
-			rh.CheckManifest).Methods("HEAD")
+			rh.CheckManifest).Methods(allowedMethods("HEAD")...)
 		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", NameRegexp.String()),
-			rh.GetManifest).Methods("GET")
+			rh.GetManifest).Methods(allowedMethods("GET")...)
 		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", NameRegexp.String()),
 			rh.UpdateManifest).Methods("PUT")
 		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", NameRegexp.String()),
@@ -94,9 +98,9 @@ func (rh *RouteHandler) SetupRoutes() {
 		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/{session_id}", NameRegexp.String()),
 			rh.DeleteBlobUpload).Methods("DELETE")
 		prefixedRouter.HandleFunc("/_catalog",
-			rh.ListRepositories).Methods("GET")
+			rh.ListRepositories).Methods(allowedMethods("GET")...)
 		prefixedRouter.HandleFunc("/",
-			rh.CheckVersionSupport).Methods("GET")
+			rh.CheckVersionSupport).Methods(allowedMethods("GET")...)
 	}
 
 	// support for oras artifact reference types (alpha 1) - image signature use case

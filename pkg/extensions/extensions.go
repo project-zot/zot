@@ -96,7 +96,7 @@ func SetupRoutes(config *config.Config, router *mux.Router, storeController stor
 			resConfig = search.GetResolverConfig(log, storeController, false)
 		}
 
-		router.PathPrefix("/query").Methods("GET", "POST").
+		router.PathPrefix("/query").Methods("GET", "POST", "OPTIONS").
 			Handler(gqlHandler.NewDefaultServer(search.NewExecutableSchema(resConfig)))
 	}
 
