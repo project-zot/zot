@@ -25,7 +25,7 @@ RUN echo '{\n\
 # ---
 # Stage 2: Final image with nothing but certs, binary, and default config file
 # ---
-FROM scratch AS final
+FROM gcr.io/distroless/base AS final
 ARG OS
 ARG ARCH
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
