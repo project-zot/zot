@@ -252,6 +252,9 @@ func TestHtpasswdSingleCred(t *testing.T) {
 						Path: htpasswdPath,
 					},
 				}
+
+				conf.HTTP.AllowOrigin = conf.HTTP.Address
+
 				ctlr := api.NewController(conf)
 				dir, err := ioutil.TempDir("", "oci-repo-test")
 				if err != nil {
@@ -268,6 +271,14 @@ func TestHtpasswdSingleCred(t *testing.T) {
 				resp, _ := resty.R().SetBasicAuth(user, password).Get(baseURL + "/v2/")
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+				header := []string{"Authorization"}
+
+				resp, _ = resty.R().SetBasicAuth(user, password).Options(baseURL + "/v2/")
+				So(resp, ShouldNotBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+				So(len(resp.Header()), ShouldEqual, 5)
+				So(resp.Header()["Access-Control-Allow-Headers"], ShouldResemble, header)
 
 				// with invalid creds, it should fail
 				resp, _ = resty.R().SetBasicAuth("chuck", "chuck").Get(baseURL + "/v2/")

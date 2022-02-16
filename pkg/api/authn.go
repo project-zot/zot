@@ -45,6 +45,11 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+			if request.Method == http.MethodOptions {
+				response.WriteHeader(http.StatusOK)
+
+				return
+			}
 			vars := mux.Vars(request)
 			name := vars["name"]
 			header := request.Header.Get("Authorization")
@@ -86,6 +91,12 @@ func basicAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 		(ctlr.Config.HTTP.Auth.HTPasswd.Path == "" && ctlr.Config.HTTP.Auth.LDAP == nil) {
 		return func(next http.Handler) http.Handler {
 			return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+				if request.Method == http.MethodOptions {
+					response.WriteHeader(http.StatusOK)
+
+					return
+				}
+
 				if ctlr.Config.HTTP.AllowReadAccess &&
 					ctlr.Config.HTTP.TLS.CACert != "" &&
 					request.TLS.VerifiedChains == nil &&
@@ -177,6 +188,11 @@ func basicAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+			if request.Method == http.MethodOptions {
+				response.WriteHeader(http.StatusOK)
+
+				return
+			}
 			if (request.Method == http.MethodGet || request.Method == http.MethodHead) && ctlr.Config.HTTP.AllowReadAccess {
 				// Process request
 				next.ServeHTTP(response, request)
@@ -185,7 +201,6 @@ func basicAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 			}
 
 			if (request.Method != http.MethodGet && request.Method != http.MethodHead) && ctlr.Config.HTTP.ReadOnly {
-				// Reject modification requests in read-only mode
 				response.WriteHeader(http.StatusMethodNotAllowed)
 
 				return

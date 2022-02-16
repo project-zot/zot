@@ -13,7 +13,7 @@ linters-settings:
   nestif:
     min-complexity: 26
   cyclop:
-    max-complexity: 40
+    max-complexity: 45
     skip-tests: true
   varnamelen:
     check-return: true
