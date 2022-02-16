@@ -36,7 +36,7 @@ func (digestInfo DigestInfo) GetRepoInfoByDigest(repo string, digest string) ([]
 	repoManifests := []ImageInfoByDigest{}
 
 	imagePath := common.GetImageRepoPath(digestInfo.LayoutUtils.StoreController, repo)
-	if !digestInfo.LayoutUtils.DirExists(digestInfo.LayoutUtils.StoreController, imagePath) {
+	if !digestInfo.LayoutUtils.DirExists(imagePath) {
 		return nil, errors.ErrRepoNotFound
 	}
 

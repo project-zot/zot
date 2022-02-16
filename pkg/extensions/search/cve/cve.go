@@ -145,7 +145,7 @@ func (cveinfo CveInfo) GetImageListForCVE(repo string, cvid string, trivyCtx *Tr
 	imageList := make([]ImageInfoByCVE, 0)
 
 	imagePath := common.GetImageRepoPath(cveinfo.StoreController, repo)
-	if !cveinfo.LayoutUtils.DirExists(cveinfo.StoreController, imagePath) {
+	if !cveinfo.LayoutUtils.DirExists(imagePath) {
 		return nil, errors.ErrRepoNotFound
 	}
 
