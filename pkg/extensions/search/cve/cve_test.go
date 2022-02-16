@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"path"
 	"testing"
@@ -662,6 +663,67 @@ func TestCVEConfig(t *testing.T) {
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/v2/zot-test/tags/list")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
+
+		defer func() {
+			ctx := context.Background()
+			_ = ctlr.Server.Shutdown(ctx)
+		}()
+	})
+}
+
+func TestHTTPOptionsResponse(t *testing.T) {
+	Convey("Test http options response", t, func() {
+		conf := config.New()
+		port := GetFreePort()
+		conf.HTTP.Port = port
+		baseURL := GetBaseURL(port)
+
+		ctlr := api.NewController(conf)
+
+		firstDir, err := ioutil.TempDir("", "oci-repo-test")
+		if err != nil {
+			panic(err)
+		}
+
+		secondDir, err := ioutil.TempDir("", "oci-repo-test")
+		if err != nil {
+			panic(err)
+		}
+		defer os.RemoveAll(firstDir)
+		defer os.RemoveAll(secondDir)
+
+		err = CopyFiles("../../../../test/data", path.Join(secondDir, "a"))
+		if err != nil {
+			panic(err)
+		}
+
+		ctlr.Config.Storage.RootDirectory = firstDir
+		subPaths := make(map[string]config.StorageConfig)
+		subPaths["/a"] = config.StorageConfig{
+			RootDirectory: secondDir,
+		}
+
+		ctlr.Config.Storage.SubPaths = subPaths
+
+		go func() {
+			// this blocks
+			if err := ctlr.Run(); err != nil {
+				return
+			}
+		}()
+
+		// wait till ready
+		for {
+			_, err := resty.R().Get(baseURL)
+			if err == nil {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		resp, _ := resty.R().Options(baseURL + "/v2/_catalog")
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
 
 		defer func() {
 			ctx := context.Background()

@@ -248,6 +248,9 @@ func TestHtpasswdSingleCred(t *testing.T) {
 						Path: htpasswdPath,
 					},
 				}
+
+				conf.HTTP.AllowOrigin = conf.HTTP.Address
+
 				ctlr := api.NewController(conf)
 				ctlr.Config.Storage.RootDirectory = t.TempDir()
 
@@ -259,6 +262,14 @@ func TestHtpasswdSingleCred(t *testing.T) {
 				resp, _ := resty.R().SetBasicAuth(user, password).Get(baseURL + "/v2/")
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+				header := []string{"Authorization"}
+
+				resp, _ = resty.R().SetBasicAuth(user, password).Options(baseURL + "/v2/")
+				So(resp, ShouldNotBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
+				So(len(resp.Header()), ShouldEqual, 4)
+				So(resp.Header()["Access-Control-Allow-Headers"], ShouldResemble, header)
 
 				// with invalid creds, it should fail
 				resp, _ = resty.R().SetBasicAuth("chuck", "chuck").Get(baseURL + "/v2/")
@@ -1466,6 +1477,12 @@ func TestBearerAuth(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		resp, err = resty.R().SetHeader("Authorization",
+			fmt.Sprintf("Bearer %s", goodToken.AccessToken)).Options(baseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
 
 		resp, err = resty.R().Post(baseURL + "/v2/" + AuthorizedNamespace + "/blobs/uploads/")
 		So(err, ShouldBeNil)

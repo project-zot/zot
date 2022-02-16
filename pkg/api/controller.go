@@ -57,17 +57,27 @@ func NewController(config *config.Config) *Controller {
 	return &controller
 }
 
-func DefaultHeaders() mux.MiddlewareFunc {
+func (c *Controller) CORSHeaders() mux.MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 			// CORS
-			response.Header().Set("Access-Control-Allow-Origin", "*")
-			response.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+			c.CORSHandler(response, request)
 
-			// handle the request
 			next.ServeHTTP(response, request)
 		})
 	}
+}
+
+func (c *Controller) CORSHandler(response http.ResponseWriter, request *http.Request) {
+	// allow origin as specified in config if not accept request from anywhere.
+	if c.Config.HTTP.AllowOrigin == "" {
+		response.Header().Set("Access-Control-Allow-Origin", "*")
+	} else {
+		response.Header().Set("Access-Control-Allow-Origin", c.Config.HTTP.AllowOrigin)
+	}
+
+	response.Header().Set("Access-Control-Allow-Methods", "HEAD,GET,POST,OPTIONS")
+	response.Header().Set("Access-Control-Allow-Headers", "Authorization")
 }
 
 func DumpRuntimeParams(log log.Logger) {
@@ -120,7 +130,7 @@ func (c *Controller) Run() error {
 	}
 
 	engine.Use(
-		DefaultHeaders(),
+		c.CORSHeaders(),
 		SessionLogger(c),
 		handlers.RecoveryHandler(handlers.RecoveryLogger(c.Log),
 			handlers.PrintRecoveryStack(false)))
