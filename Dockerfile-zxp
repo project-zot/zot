@@ -26,7 +26,7 @@ RUN echo '{\n\
 # ---
 # Stage 2: Final image with nothing but binary and default config file
 # ---
-FROM scratch AS final
+FROM gcr.io/distroless/base AS final
 ARG OS
 ARG ARCH
 COPY --from=builder /go/src/github.com/project-zot/zot/bin/zxp-$OS-$ARCH /zxp
