@@ -50,7 +50,7 @@ type ImageInfo {
     ConfigDigest: String
     Digest: String
     Latest: String
-    Layers: [Layer]
+    Layers: [LayerInfo]
     LastUpdated: Time
     Description: String
     Licenses: String

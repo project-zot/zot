@@ -20,18 +20,18 @@ type CVEResultForImage struct {
 }
 
 type ImageInfo struct {
-	Name         *string    `json:"Name"`
-	Tag          *string    `json:"Tag"`
-	ConfigDigest *string    `json:"ConfigDigest"`
-	Digest       *string    `json:"Digest"`
-	Latest       *string    `json:"Latest"`
-	Layers       []*LayerInfo   `json:"Layers"`
-	LastUpdated  *time.Time `json:"LastUpdated"`
-	Description  *string    `json:"Description"`
-	Licenses     *string    `json:"Licenses"`
-	Vendor       *string    `json:"Vendor"`
-	Size         *string    `json:"Size"`
-	Labels       *string    `json:"Labels"`
+	Name         *string      `json:"Name"`
+	Tag          *string      `json:"Tag"`
+	ConfigDigest *string      `json:"ConfigDigest"`
+	Digest       *string      `json:"Digest"`
+	Latest       *string      `json:"Latest"`
+	Layers       []*LayerInfo `json:"Layers"`
+	LastUpdated  *time.Time   `json:"LastUpdated"`
+	Description  *string      `json:"Description"`
+	Licenses     *string      `json:"Licenses"`
+	Vendor       *string      `json:"Vendor"`
+	Size         *string      `json:"Size"`
+	Labels       *string      `json:"Labels"`
 }
 
 type ImgResultForCve struct {
@@ -46,6 +46,11 @@ type ImgResultForDigest struct {
 
 type ImgResultForFixedCve struct {
 	Tags []*TagInfo `json:"Tags"`
+}
+
+type Layer struct {
+	Size   *string `json:"Size"`
+	Digest *string `json:"Digest"`
 }
 
 type LayerInfo struct {

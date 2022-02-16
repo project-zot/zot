@@ -204,7 +204,7 @@ func (search cveByImageSearcher) search(config searchConfig) (bool, error) {
 type imagesByCVEIDSearcher struct{}
 
 func (search imagesByCVEIDSearcher) search(config searchConfig) (bool, error) {
-	if !canSearch(config.params, newSet("cveID")) || *config.fixedFlag {
+	if !canSearch(config.params, newSet("cvid")) || *config.fixedFlag {
 		return false, nil
 	}
 
@@ -215,7 +215,7 @@ func (search imagesByCVEIDSearcher) search(config searchConfig) (bool, error) {
 
 	defer cancel()
 
-	imageList, err := config.searchService.getImagesByCveID(ctx, config, username, password, *config.params["cveID"])
+	imageList, err := config.searchService.getImagesByCveID(ctx, config, username, password, *config.params["cvid"])
 
 	if err != nil {
 		return true, err

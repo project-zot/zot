@@ -631,7 +631,7 @@ func (r *queryResolver) getImageList(store storage.ImageStore, imageName *string
 }
 
 func buildImageInfo(repo string, tag string, tagDigest godigest.Digest, manifest v1.Manifest) *ImageInfo {
-	layers := []*Layer{}
+	layers := []*LayerInfo{}
 	size := int64(0)
 
 	for _, entry := range manifest.Layers {
@@ -641,7 +641,7 @@ func buildImageInfo(repo string, tag string, tagDigest godigest.Digest, manifest
 
 		layers = append(
 			layers,
-			&Layer{
+			&LayerInfo{
 				Size:   &layerSize,
 				Digest: &digest,
 			},
