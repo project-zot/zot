@@ -69,8 +69,9 @@ func TestTLSWithAuth(t *testing.T) {
 			CACert: CACert,
 		}
 
+		enable := true
 		conf.Extensions = &extConf.ExtensionConfig{
-			Search: &extConf.SearchConfig{Enable: true},
+			Search: &extConf.SearchConfig{Enable: &enable},
 		}
 
 		ctlr := api.NewController(conf)
@@ -170,8 +171,9 @@ func TestTLSWithoutAuth(t *testing.T) {
 			CACert: CACert,
 		}
 
+		enable := true
 		conf.Extensions = &extConf.ExtensionConfig{
-			Search: &extConf.SearchConfig{Enable: true},
+			Search: &extConf.SearchConfig{Enable: &enable},
 		}
 
 		ctlr := api.NewController(conf)
@@ -242,8 +244,9 @@ func TestTLSWithoutAuth(t *testing.T) {
 			CACert: CACert,
 		}
 
+		enable := true
 		conf.Extensions = &extConf.ExtensionConfig{
-			Search: &extConf.SearchConfig{Enable: true},
+			Search: &extConf.SearchConfig{Enable: &enable},
 		}
 
 		ctlr := api.NewController(conf)
@@ -339,7 +342,7 @@ func TestTLSBadCerts(t *testing.T) {
 
 		Convey("Test with system certs", func() {
 			configPath := makeConfigFile(
-				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s/v2/_catalog","showspinner":false}]}`,
+				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`,
 					BaseSecureURL3))
 			defer os.Remove(configPath)
 
