@@ -22,6 +22,7 @@ import (
 	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/test"
 )
 
 const (
@@ -102,7 +103,8 @@ func getUpstreamCatalog(client *resty.Client, upstreamURL string, log log.Logger
 // It returns a string slice of tags and any error encountered.
 func getImageTags(ctx context.Context, sysCtx *types.SystemContext, repoRef reference.Named) ([]string, error) {
 	dockerRef, err := docker.NewReference(reference.TagNameOnly(repoRef))
-	if err != nil {
+	// hard to reach test case, injected error, see pkg/test/dev.go
+	if err = test.Error(err); err != nil {
 		return nil, err // Should never happen for a reference with tag and no digest
 	}
 
@@ -364,22 +366,15 @@ func syncRegistry(regCfg RegistryConfig, upstreamURL string, storeController sto
 			continue
 		}
 
-		localCachePath, err := getLocalCachePath(imageStore, repo)
-		if err != nil {
-			log.Error().Err(err).Str("dir", localCachePath).Msg("couldn't create temporary dir")
-
-			return err
-		}
-
-		defer os.RemoveAll(localCachePath)
-
-		localImageRef, err := getLocalImageRef(localCachePath, repo, tag)
+		localImageRef, localCachePath, err := getLocalImageRef(imageStore, repo, tag)
 		if err != nil {
 			log.Error().Err(err).Msgf("couldn't obtain a valid image reference for reference %s/%s:%s",
 				localCachePath, repo, tag)
 
 			return err
 		}
+
+		defer os.RemoveAll(localCachePath)
 
 		log.Info().Msgf("copying image %s to %s", upstreamImageRef.DockerReference(), localCachePath)
 
@@ -431,7 +426,7 @@ func getLocalContexts(log log.Logger) (*types.SystemContext, *signature.PolicyCo
 	policy = &signature.Policy{Default: []signature.PolicyRequirement{signature.NewPRInsecureAcceptAnything()}}
 
 	policyContext, err := signature.NewPolicyContext(policy)
-	if err != nil {
+	if err := test.Error(err); err != nil {
 		log.Error().Err(err).Msg("couldn't create policy context")
 
 		return &types.SystemContext{}, &signature.PolicyContext{}, err

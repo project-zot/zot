@@ -194,16 +194,7 @@ func syncOneImage(imageChannel chan error, cfg Config, storeController storage.S
 				return
 			}
 
-			localCachePath, err := getLocalCachePath(imageStore, repo)
-			if err != nil {
-				log.Error().Err(err).Str("dir", localCachePath).Msg("couldn't create temporary dir")
-
-				imageChannel <- err
-
-				return
-			}
-
-			localImageRef, err := getLocalImageRef(localCachePath, repo, tag)
+			localImageRef, localCachePath, err := getLocalImageRef(imageStore, repo, tag)
 			if err != nil {
 				log.Error().Err(err).Msgf("couldn't obtain a valid image reference for reference %s/%s:%s",
 					localCachePath, repo, tag)

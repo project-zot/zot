@@ -28,6 +28,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/test"
 )
 
 type ReferenceList struct {
@@ -527,22 +528,6 @@ func StripRegistryTransport(url string) string {
 	return strings.Replace(strings.Replace(url, "http://", "", 1), "https://", "", 1)
 }
 
-// get a .sync subdir used for temporary store one synced image.
-func getLocalCachePath(imageStore storage.ImageStore, repo string) (string, error) {
-	uuid, err := guuid.NewV4()
-	if err != nil {
-		return "", err
-	}
-
-	localCachePath := path.Join(imageStore.RootDir(), repo, SyncBlobUploadDir, uuid.String())
-
-	if err = os.MkdirAll(path.Join(localCachePath, repo), storage.DefaultDirPerms); err != nil {
-		return "", err
-	}
-
-	return localCachePath, nil
-}
-
 // get an ImageReference given the registry, repo and tag.
 func getImageRef(registryDomain, repo, tag string) (types.ImageReference, error) {
 	repoRef, err := parseRepositoryReference(fmt.Sprintf("%s/%s", registryDomain, repo))
@@ -564,16 +549,28 @@ func getImageRef(registryDomain, repo, tag string) (types.ImageReference, error)
 }
 
 // get a local ImageReference used to temporary store one synced image.
-func getLocalImageRef(localCachePath, repo, tag string) (types.ImageReference, error) {
+func getLocalImageRef(imageStore storage.ImageStore, repo, tag string) (types.ImageReference, string, error) {
+	uuid, err := guuid.NewV4()
+	// hard to reach test case, injected error, see pkg/test/dev.go
+	if err := test.Error(err); err != nil {
+		return nil, "", err
+	}
+
+	localCachePath := path.Join(imageStore.RootDir(), repo, SyncBlobUploadDir, uuid.String())
+
+	if err = os.MkdirAll(path.Join(localCachePath, repo), storage.DefaultDirPerms); err != nil {
+		return nil, "", err
+	}
+
 	localRepo := path.Join(localCachePath, repo)
 	localTaggedRepo := fmt.Sprintf("%s:%s", localRepo, tag)
 
 	localImageRef, err := layout.ParseReference(localTaggedRepo)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
-	return localImageRef, nil
+	return localImageRef, localCachePath, nil
 }
 
 // canSkipImage returns whether or not the image can be skipped from syncing.

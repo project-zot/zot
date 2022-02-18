@@ -793,7 +793,7 @@ func TestHardLink(t *testing.T) {
 	})
 }
 
-func TestWriteFile(t *testing.T) {
+func TestInjectWriteFile(t *testing.T) {
 	Convey("writeFile with commit", t, func() {
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		So(err, ShouldBeNil)
