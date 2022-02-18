@@ -626,14 +626,13 @@ func TestOnDemandPermsDenied(t *testing.T) {
 			}
 		}()
 
-		for {
-			err = os.Chmod(path.Join(destDir, testImage, sync.SyncBlobUploadDir), 0o000)
-			if err != nil {
-				continue
-			}
+		syncSubDir := path.Join(destDir, testImage, sync.SyncBlobUploadDir)
 
-			break
-		}
+		err = os.MkdirAll(syncSubDir, 0o755)
+		So(err, ShouldBeNil)
+
+		err = os.Chmod(syncSubDir, 0o000)
+		So(err, ShouldBeNil)
 
 		// wait till ready
 		for {
@@ -649,105 +648,10 @@ func TestOnDemandPermsDenied(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 
-		err = os.Chmod(path.Join(destDir, testImage, sync.SyncBlobUploadDir), 0o755)
+		err = os.Chmod(syncSubDir, 0o755)
 		if err != nil {
 			panic(err)
 		}
-	})
-}
-
-func TestPeriodicallyPermsDenied(t *testing.T) {
-	Convey("Verify periodically sync feature without perm on sync cache", t, func() {
-		updateDuration, _ := time.ParseDuration("30m")
-
-		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
-		defer os.RemoveAll(srcDir)
-
-		defer func() {
-			sctlr.Shutdown()
-		}()
-
-		regex := ".*"
-		semver := true
-		var tlsVerify bool
-
-		syncRegistryConfig := sync.RegistryConfig{
-			Content: []sync.Content{
-				{
-					Prefix: testImage,
-					Tags: &sync.Tags{
-						Regex:  &regex,
-						Semver: &semver,
-					},
-				},
-			},
-			URLs:         []string{srcBaseURL},
-			PollInterval: updateDuration,
-			TLSVerify:    &tlsVerify,
-			CertDir:      "",
-			OnDemand:     true,
-		}
-
-		defaultVal := true
-		syncConfig := &sync.Config{
-			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
-		}
-
-		destPort := test.GetFreePort()
-		destConfig := config.New()
-		destBaseURL := test.GetBaseURL(destPort)
-
-		destConfig.HTTP.Port = destPort
-
-		destDir, err := ioutil.TempDir("", "oci-dest-repo-test")
-		if err != nil {
-			panic(err)
-		}
-
-		defer os.RemoveAll(destDir)
-
-		destConfig.Storage.RootDirectory = destDir
-
-		destConfig.Extensions = &extconf.ExtensionConfig{}
-		destConfig.Extensions.Search = nil
-		destConfig.Extensions.Sync = syncConfig
-
-		dctlr := api.NewController(destConfig)
-
-		go func() {
-			// this blocks
-			if err := dctlr.Run(); err != nil {
-				return
-			}
-		}()
-
-		for {
-			err = os.Chmod(path.Join(destDir, testImage, sync.SyncBlobUploadDir), 0o000)
-			if err != nil {
-				continue
-			}
-
-			break
-		}
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(destBaseURL)
-			if err == nil {
-				break
-			}
-
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		defer func() {
-			dctlr.Shutdown()
-			err := os.Chmod(path.Join(destDir, testImage, sync.SyncBlobUploadDir), 0o755)
-			if err != nil {
-				panic(err)
-			}
-		}()
 	})
 }
 
@@ -2895,7 +2799,10 @@ func TestError(t *testing.T) {
 
 		// give permission denied on pushSyncedLocalImage()
 		localRepoPath := path.Join(destDir, testImage, "blobs")
-		err := os.MkdirAll(localRepoPath, 0o000)
+		err := os.MkdirAll(localRepoPath, 0o755)
+		So(err, ShouldBeNil)
+
+		err = os.Chmod(localRepoPath, 0o000)
 		So(err, ShouldBeNil)
 
 		resp, err := client.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)

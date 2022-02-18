@@ -34,6 +34,52 @@ const (
 	host = "127.0.0.1:45117"
 )
 
+func TestInjectSyncUtils(t *testing.T) {
+	Convey("Inject errors in utils functions", t, func() {
+		repositoryReference := fmt.Sprintf("%s/%s", host, testImage)
+		ref, err := parseRepositoryReference(repositoryReference)
+		So(err, ShouldBeNil)
+		So(ref.Name(), ShouldEqual, repositoryReference)
+
+		taggedRef, err := reference.WithTag(ref, "tag")
+		So(err, ShouldBeNil)
+
+		injected := test.InjectFailure(0)
+		if injected {
+			_, err = getImageTags(context.Background(), &types.SystemContext{}, taggedRef)
+			So(err, ShouldNotBeNil)
+		}
+
+		injected = test.InjectFailure(0)
+		_, _, err = getLocalContexts(log.NewLogger("debug", ""))
+		if injected {
+			So(err, ShouldNotBeNil)
+		} else {
+			So(err, ShouldBeNil)
+		}
+
+		storageDir, err := ioutil.TempDir("", "oci-dest-repo-test")
+		if err != nil {
+			panic(err)
+		}
+
+		defer os.RemoveAll(storageDir)
+
+		log := log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, log)
+
+		imageStore := storage.NewImageStore(storageDir, false, storage.DefaultGCDelay, false, false, log, metrics)
+
+		injected = test.InjectFailure(0)
+		_, _, err = getLocalImageRef(imageStore, testImage, testImageTag)
+		if injected {
+			So(err, ShouldNotBeNil)
+		} else {
+			So(err, ShouldBeNil)
+		}
+	})
+}
+
 func TestSyncInternal(t *testing.T) {
 	Convey("Verify parseRepositoryReference func", t, func() {
 		repositoryReference := fmt.Sprintf("%s/%s", host, testImage)
@@ -82,8 +128,6 @@ func TestSyncInternal(t *testing.T) {
 		dockerRef, err := docker.NewReference(taggedRef)
 		So(err, ShouldBeNil)
 
-		// tag := getTagFromRef(dockerRef, log.NewLogger("", ""))
-
 		So(getTagFromRef(dockerRef, log.NewLogger("debug", "")), ShouldNotBeNil)
 
 		var tlsVerify bool
@@ -107,6 +151,32 @@ func TestSyncInternal(t *testing.T) {
 		So(Run(cfg, storage.StoreController{}, new(goSync.WaitGroup), log.NewLogger("debug", "")), ShouldNotBeNil)
 
 		_, err = getFileCredentials("/invalid/path/to/file")
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("Verify getLocalImageRef()", t, func() {
+		storageDir, err := ioutil.TempDir("", "oci-dest-repo-test")
+		if err != nil {
+			panic(err)
+		}
+
+		defer os.RemoveAll(storageDir)
+
+		log := log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, log)
+
+		imageStore := storage.NewImageStore(storageDir, false, storage.DefaultGCDelay, false, false, log, metrics)
+
+		err = os.Chmod(imageStore.RootDir(), 0o000)
+		So(err, ShouldBeNil)
+
+		_, _, err = getLocalImageRef(imageStore, testImage, testImageTag)
+		So(err, ShouldNotBeNil)
+
+		err = os.Chmod(imageStore.RootDir(), 0o755)
+		So(err, ShouldBeNil)
+
+		_, _, err = getLocalImageRef(imageStore, "zot][]321", "tag_tag][]")
 		So(err, ShouldNotBeNil)
 	})
 
@@ -189,10 +259,6 @@ func TestSyncInternal(t *testing.T) {
 
 		syncRegistryConfig.URLs = []string{test.BaseURL}
 		httpClient, err = getHTTPClient(&syncRegistryConfig, baseSecureURL, Credentials{}, log.NewLogger("debug", ""))
-		So(err, ShouldNotBeNil)
-		So(httpClient, ShouldBeNil)
-
-		httpClient, err = getHTTPClient(&syncRegistryConfig, "invalidUrl]", Credentials{}, log.NewLogger("debug", ""))
 		So(err, ShouldNotBeNil)
 		So(httpClient, ShouldBeNil)
 	})
