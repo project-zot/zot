@@ -6,13 +6,19 @@ package common_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io/ioutil"
 	"os"
+	"os/exec"
 	"path"
 	"testing"
 	"time"
 
 	"github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/sigstore/cosign/cmd/cosign/cli/generate"
+	"github.com/sigstore/cosign/cmd/cosign/cli/options"
+	"github.com/sigstore/cosign/cmd/cosign/cli/sign"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 	"zotregistry.io/zot/pkg/api"
@@ -71,7 +77,7 @@ type ImageInfo struct {
 	Labels      string
 }
 
-func testSetup(t *testing.T) error {
+func testSetup(t *testing.T, subpath string) error {
 	t.Helper()
 	dir := t.TempDir()
 
@@ -79,19 +85,89 @@ func testSetup(t *testing.T) error {
 
 	rootDir = dir
 
-	subRootDir = subDir
+	subRootDir = path.Join(subDir, subpath)
 
 	err := CopyFiles("../../../../test/data", rootDir)
 	if err != nil {
 		return err
 	}
 
-	err = CopyFiles("../../../../test/data", subDir)
+	return CopyFiles("../../../../test/data", subRootDir)
+}
+
+func signUsingCosign(port string) error {
+	cwd, err := os.Getwd()
+	So(err, ShouldBeNil)
+
+	defer func() { _ = os.Chdir(cwd) }()
+
+	tdir, err := ioutil.TempDir("", "cosign")
 	if err != nil {
 		return err
 	}
 
-	return nil
+	defer os.RemoveAll(tdir)
+
+	_ = os.Chdir(tdir)
+
+	// generate a keypair
+	os.Setenv("COSIGN_PASSWORD", "")
+
+	err = generate.GenerateKeyPairCmd(context.TODO(), "", nil)
+	if err != nil {
+		return err
+	}
+
+	imageURL := fmt.Sprintf("localhost:%s/%s@%s", port, "zot-cve-test",
+		"sha256:63a795ca90aa6e7cca60941e826810a4cd0a2e73ea02bf458241df2a5c973e29")
+
+	// sign the image
+	return sign.SignCmd(&options.RootOptions{Verbose: true, Timeout: 1 * time.Minute},
+		options.KeyOpts{KeyRef: path.Join(tdir, "cosign.key"), PassFunc: generate.GetPass},
+		options.RegistryOptions{AllowInsecure: true},
+		map[string]interface{}{"tag": "1.0"},
+		[]string{imageURL},
+		"", "", true, "", "", "", false, false, "")
+}
+
+func signUsingNotary(port string) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+
+	defer func() { _ = os.Chdir(cwd) }()
+
+	tdir, err := ioutil.TempDir("", "notation")
+	if err != nil {
+		return err
+	}
+
+	defer os.RemoveAll(tdir)
+
+	_ = os.Chdir(tdir)
+
+	_, err = exec.LookPath("notation")
+	if err != nil {
+		return err
+	}
+
+	os.Setenv("XDG_CONFIG_HOME", tdir)
+
+	// generate a keypair
+	cmd := exec.Command("notation", "cert", "generate-test", "--trust", "notation-sign-test")
+
+	err = cmd.Run()
+	if err != nil {
+		return err
+	}
+
+	// sign the image
+	image := fmt.Sprintf("localhost:%s/%s:%s", port, "zot-cve-test", "0.0.1")
+
+	cmd = exec.Command("notation", "sign", "--key", "notation-sign-test", "--plain-http", image)
+
+	return cmd.Run()
 }
 
 func getTags() ([]common.TagInfo, []common.TagInfo) {
@@ -184,7 +260,8 @@ func TestImageFormat(t *testing.T) {
 
 func TestLatestTagSearchHTTP(t *testing.T) {
 	Convey("Test latest image search by timestamp", t, func() {
-		err := testSetup(t)
+		subpath := "/a"
+		err := testSetup(t, subpath)
 		if err != nil {
 			panic(err)
 		}
@@ -194,7 +271,7 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 		conf.HTTP.Port = port
 		conf.Storage.RootDirectory = rootDir
 		conf.Storage.SubPaths = make(map[string]config.StorageConfig)
-		conf.Storage.SubPaths["/a"] = config.StorageConfig{RootDirectory: subRootDir}
+		conf.Storage.SubPaths[subpath] = config.StorageConfig{RootDirectory: subRootDir}
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: &extconf.SearchConfig{Enable: &defaultVal},
@@ -323,7 +400,8 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 
 func TestExpandedRepoInfo(t *testing.T) {
 	Convey("Test expanded repo info", t, func() {
-		err := testSetup(t)
+		subpath := "/a"
+		err := testSetup(t, subpath)
 		if err != nil {
 			panic(err)
 		}
@@ -333,7 +411,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		conf.HTTP.Port = port
 		conf.Storage.RootDirectory = rootDir
 		conf.Storage.SubPaths = make(map[string]config.StorageConfig)
-		conf.Storage.SubPaths["/a"] = config.StorageConfig{RootDirectory: subRootDir}
+		conf.Storage.SubPaths[subpath] = config.StorageConfig{RootDirectory: subRootDir}
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: &extconf.SearchConfig{Enable: &defaultVal},
@@ -375,7 +453,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		query := "{ExpandedRepoInfo(repo:\"zot-test\"){Manifests%20{Digest%20IsSigned%20Tag%20Layers%20{Size%20Digest}}}}"
+		query := "{ExpandedRepoInfo(repo:\"zot-cve-test\"){Manifests%20{Digest%20IsSigned%20Tag%20Layers%20{Size%20Digest}}}}"
 
 		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + query)
 		So(resp, ShouldNotBeNil)
@@ -388,15 +466,15 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Manifests), ShouldNotEqual, 0)
 		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Manifests[0].Layers), ShouldNotEqual, 0)
+		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.Manifests {
+			if m.Digest == "63a795ca90aa6e7cca60941e826810a4cd0a2e73ea02bf458241df2a5c973e29" {
+				So(m.IsSigned, ShouldEqual, false)
+			}
+		}
 
-		query = "{ExpandedRepoInfo(repo:\"\"){Manifests%20{Digest%20Tag%20IsSigned%20Layers%20{Size%20Digest}}}}"
-
-		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + query)
-		So(resp, ShouldNotBeNil)
+		err = signUsingCosign(port)
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
 
-		query = "{ExpandedRepoInfo(repo:\"a/zot-test\"){Manifests%20{Digest%20Tag%20IsSigned%20%Layers%20{Size%20Digest}}}}"
 		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + query)
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
@@ -406,16 +484,58 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Manifests), ShouldNotEqual, 0)
 		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Manifests[0].Layers), ShouldNotEqual, 0)
+		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.Manifests {
+			if m.Digest == "63a795ca90aa6e7cca60941e826810a4cd0a2e73ea02bf458241df2a5c973e29" {
+				So(m.IsSigned, ShouldEqual, true)
+			}
+		}
+
+		query = "{ExpandedRepoInfo(repo:\"\"){Manifests%20{Digest%20Tag%20IsSigned%20Layers%20{Size%20Digest}}}}"
+
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + query)
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		query = "{ExpandedRepoInfo(repo:\"zot-test\"){Manifests%20{Digest%20Tag%20IsSigned%20%Layers%20{Size%20Digest}}}}"
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + query)
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Manifests), ShouldNotEqual, 0)
+		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Manifests[0].Layers), ShouldNotEqual, 0)
+		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.Manifests {
+			if m.Digest == "2bacca16b9df395fc855c14ccf50b12b58d35d468b8e7f25758aff90f89bf396" {
+				So(m.IsSigned, ShouldEqual, false)
+			}
+		}
+
+		err = signUsingNotary(port)
+		So(err, ShouldBeNil)
+
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "/query?query=" + query)
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Manifests), ShouldNotEqual, 0)
+		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Manifests[0].Layers), ShouldNotEqual, 0)
+		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.Manifests {
+			if m.Digest == "2bacca16b9df395fc855c14ccf50b12b58d35d468b8e7f25758aff90f89bf396" {
+				So(m.IsSigned, ShouldEqual, true)
+			}
+		}
 
 		var manifestDigest digest.Digest
 		manifestDigest, _, _ = GetOciLayoutDigests("../../../../test/data/zot-test")
 
 		err = os.Remove(path.Join(rootDir, "zot-test/blobs/sha256", manifestDigest.Encoded()))
-		if err != nil {
-			panic(err)
-		}
-
-		query = "{ExpandedRepoInfo(repo:\"zot-test\"){Manifests%20{Digest%20Tag%20IsSigned%20%Layers%20{Size%20Digest}}}}"
+		So(err, ShouldBeNil)
 
 		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + query)
 		So(resp, ShouldNotBeNil)

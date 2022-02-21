@@ -4,6 +4,7 @@ package common
 import (
 	"encoding/json"
 	goerrors "errors"
+	"fmt"
 	"path"
 	"strconv"
 	"strings"
@@ -17,8 +18,6 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 )
-
-const cosignedAnnotation = "dev.cosign.signature.baseimage"
 
 // OciLayoutInfo ...
 type OciLayoutUtils struct {
@@ -202,6 +201,51 @@ func (olu OciLayoutUtils) GetImageTagsWithTimestamp(repo string) ([]TagInfo, err
 	return tagsInfo, nil
 }
 
+// check notary signature corresponding to repo name, manifest digest and mediatype.
+func (olu OciLayoutUtils) checkNotarySignature(name, digest, mediaType string) bool {
+	imageStore := olu.StoreController.GetImageStore(name)
+
+	_, err := imageStore.GetReferrers(name, digest, mediaType)
+	if err != nil {
+		olu.Log.Info().Str("repo", name).Str("digest",
+			digest).Str("mediatype", mediaType).Msg("invalid notary signature")
+
+		return false
+	}
+
+	return true
+}
+
+// check cosign signature corresponding to  manifest.
+func (olu OciLayoutUtils) checkCosignSignature(name, digest string) bool {
+	imageStore := olu.StoreController.GetImageStore(name)
+
+	// if manifest is signed using cosign mechanism, cosign adds a new manifest.
+	// new manifest is tagged as sha256-<manifest-digest>.sig.
+	reference := fmt.Sprintf("sha256-%s.sig", digest)
+
+	_, _, _, err := imageStore.GetImageManifest(name, reference) // nolint: dogsled
+	if err != nil {
+		olu.Log.Info().Str("repo", name).Str("digest",
+			digest).Msg("invalid cosign signature")
+
+		return false
+	}
+
+	return true
+}
+
+// checks if manifest is signed or not
+// checks for notary or cosign signature
+// if cosign signature found it does not looks for notary signature.
+func (olu OciLayoutUtils) checkManifestSignature(name, digest, mediaType string) bool {
+	if !olu.checkCosignSignature(name, digest) {
+		return olu.checkNotarySignature(name, digest, mediaType)
+	}
+
+	return true
+}
+
 func (olu OciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error) {
 	repo := RepoInfo{}
 
@@ -214,26 +258,28 @@ func (olu OciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error) {
 		return RepoInfo{}, err
 	}
 
-	for _, manifest := range manifestList {
+	for _, man := range manifestList {
 		manifestInfo := Manifest{}
 
-		manifestInfo.Digest = manifest.Digest.Encoded()
+		manifestInfo.Digest = man.Digest.Encoded()
 
 		manifestInfo.IsSigned = false
 
-		tag, ok := manifest.Annotations[ispec.AnnotationRefName]
+		tag, ok := man.Annotations[ispec.AnnotationRefName]
 		if !ok {
 			tag = "latest"
 		}
 
 		manifestInfo.Tag = tag
 
-		manifest, err := olu.GetImageBlobManifest(name, manifest.Digest)
+		manifest, err := olu.GetImageBlobManifest(name, man.Digest)
 		if err != nil {
 			olu.Log.Error().Err(err).Msg("error getting image manifest blob")
 
 			return RepoInfo{}, err
 		}
+
+		manifestInfo.IsSigned = olu.checkManifestSignature(name, man.Digest.Encoded(), man.MediaType)
 
 		layers := make([]Layer, 0)
 
@@ -245,10 +291,6 @@ func (olu OciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error) {
 			layerInfo.Size = strconv.FormatInt(layer.Size, 10)
 
 			layers = append(layers, layerInfo)
-
-			if _, ok := layer.Annotations[cosignedAnnotation]; ok {
-				manifestInfo.IsSigned = true
-			}
 		}
 
 		manifestInfo.Layers = layers
