@@ -38,7 +38,7 @@ import (
 )
 
 const (
-	RoutePrefix          = "/v2"
+	RoutePrefix          = string("/v2")
 	DistAPIVersion       = "Docker-Distribution-API-Version"
 	DistContentDigestKey = "Docker-Content-Digest"
 	BlobUploadUUID       = "Blob-Upload-UUID"
@@ -112,7 +112,7 @@ func (rh *RouteHandler) SetupRoutes() {
 			prefixedRouter.HandleFunc("/metrics", rh.GetMetrics).Methods("GET")
 		} else {
 			// extended build
-			ext.SetupRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
+			ext.SetupRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, RoutePrefix, rh.c.Log)
 		}
 	}
 }

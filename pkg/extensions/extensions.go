@@ -4,6 +4,7 @@
 package extensions
 
 import (
+	"fmt"
 	goSync "sync"
 	"time"
 
@@ -82,7 +83,7 @@ func EnableSyncExtension(config *config.Config, wg *goSync.WaitGroup,
 
 // SetupRoutes ...
 func SetupRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
-	l log.Logger) {
+	pathPrefix string, l log.Logger) {
 	// fork a new zerolog child to avoid data race
 	log := log.Logger{Logger: l.With().Caller().Timestamp().Logger()}
 	log.Info().Msg("setting up extensions routes")
@@ -96,7 +97,7 @@ func SetupRoutes(config *config.Config, router *mux.Router, storeController stor
 			resConfig = search.GetResolverConfig(log, storeController, false)
 		}
 
-		router.PathPrefix("/query").Methods("GET", "POST").
+		router.PathPrefix(fmt.Sprintf("%s/_ext/query", pathPrefix)).Methods("GET", "POST").
 			Handler(gqlHandler.NewDefaultServer(search.NewExecutableSchema(resConfig)))
 	}
 

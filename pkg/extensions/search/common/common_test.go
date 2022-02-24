@@ -25,6 +25,10 @@ import (
 	. "zotregistry.io/zot/pkg/test"
 )
 
+const (
+	graphqlQueryPrefix = "/v2/_search/"
+)
+
 // nolint:gochecknoglobals
 var (
 	rootDir    string
@@ -231,12 +235,12 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, err = resty.R().Get(baseURL + "/query")
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, err = resty.R().Get(baseURL + "/query?query={ImageListWithLatestTag(){Name%20Latest}}")
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query={ImageListWithLatestTag(){Name%20Latest}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -249,7 +253,7 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 		images := responseStruct.ImgListWithLatestTag.Images
 		So(images[0].Latest, ShouldEqual, "0.0.1")
 
-		resp, err = resty.R().Get(baseURL + "/query?query={ImageListWithLatestTag(){Name%20Latest}}")
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query={ImageListWithLatestTag(){Name%20Latest}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
@@ -258,7 +262,7 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 			panic(err)
 		}
 
-		resp, err = resty.R().Get(baseURL + "/query?query={ImageListWithLatestTag(){Name%20Latest}}")
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query={ImageListWithLatestTag(){Name%20Latest}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -279,7 +283,7 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 			panic(err)
 		}
 
-		resp, err = resty.R().Get(baseURL + "/query?query={ImageListWithLatestTag(){Name%20Latest}}")
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query={ImageListWithLatestTag(){Name%20Latest}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -290,7 +294,7 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 			panic(err)
 		}
 
-		resp, err = resty.R().Get(baseURL + "/query?query={ImageListWithLatestTag(){Name%20Latest}}")
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query={ImageListWithLatestTag(){Name%20Latest}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -301,7 +305,7 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 			panic(err)
 		}
 
-		resp, err = resty.R().Get(baseURL + "/query?query={ImageListWithLatestTag(){Name%20Latest}}")
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query={ImageListWithLatestTag(){Name%20Latest}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -313,7 +317,7 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 			panic(err)
 		}
 
-		resp, err = resty.R().Get(baseURL + "/query?query={ImageListWithLatestTag(){Name%20Latest}}")
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query={ImageListWithLatestTag(){Name%20Latest}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -369,14 +373,14 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, err = resty.R().Get(baseURL + "/query")
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
 		query := "{ExpandedRepoInfo(repo:\"zot-test\"){Manifests%20{Digest%20IsSigned%20Tag%20Layers%20{Size%20Digest}}}}"
 
-		resp, err = resty.R().Get(baseURL + "/query?query=" + query)
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + query)
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -390,13 +394,13 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		query = "{ExpandedRepoInfo(repo:\"\"){Manifests%20{Digest%20Tag%20IsSigned%20Layers%20{Size%20Digest}}}}"
 
-		resp, err = resty.R().Get(baseURL + "/query?query=" + query)
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + query)
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
 		query = "{ExpandedRepoInfo(repo:\"a/zot-test\"){Manifests%20{Digest%20Tag%20IsSigned%20%Layers%20{Size%20Digest}}}}"
-		resp, err = resty.R().Get(baseURL + "/query?query=" + query)
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + query)
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -414,7 +418,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		query = "{ExpandedRepoInfo(repo:\"zot-test\"){Manifests%20{Digest%20Tag%20IsSigned%20%Layers%20{Size%20Digest}}}}"
 
-		resp, err = resty.R().Get(baseURL + "/query?query=" + query)
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + query)
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
