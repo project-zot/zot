@@ -16,6 +16,7 @@ import (
 	"gopkg.in/resty.v1"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/api/constants"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	digestinfo "zotregistry.io/zot/pkg/extensions/search/digest"
@@ -179,13 +180,14 @@ func TestDigestSearchHTTP(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, err = resty.R().Get(baseURL + "/query")
+		resp, err = resty.R().Get(baseURL + constants.ExtSearchPrefix)
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
 		// "sha" should match all digests in all images
-		resp, err = resty.R().Get(baseURL + "/query?query={ImageListForDigest(id:\"sha\"){Name%20Tags}}")
+		resp, err = resty.R().Get(baseURL + constants.ExtSearchPrefix +
+			"?query={ImageListForDigest(id:\"sha\"){Name%20Tags}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -200,7 +202,8 @@ func TestDigestSearchHTTP(t *testing.T) {
 
 		// Call should return {"data":{"ImageListForDigest":[{"Name":"zot-test","Tags":["0.0.1"]}]}}
 		// "2bacca16" should match the manifest of 1 image
-		resp, err = resty.R().Get(baseURL + "/query?query={ImageListForDigest(id:\"2bacca16\"){Name%20Tags}}")
+		resp, err = resty.R().Get(baseURL + constants.ExtSearchPrefix +
+			"?query={ImageListForDigest(id:\"2bacca16\"){Name%20Tags}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -215,7 +218,8 @@ func TestDigestSearchHTTP(t *testing.T) {
 
 		// Call should return {"data":{"ImageListForDigest":[{"Name":"zot-test","Tags":["0.0.1"]}]}}
 		// "adf3bb6c" should match the config of 1 image
-		resp, err = resty.R().Get(baseURL + "/query?query={ImageListForDigest(id:\"adf3bb6c\"){Name%20Tags}}")
+		resp, err = resty.R().Get(baseURL + constants.ExtSearchPrefix +
+			"?query={ImageListForDigest(id:\"adf3bb6c\"){Name%20Tags}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -230,7 +234,8 @@ func TestDigestSearchHTTP(t *testing.T) {
 
 		// Call should return {"data":{"ImageListForDigest":[{"Name":"zot-cve-test","Tags":["0.0.1"]}]}}
 		// "7a0437f0" should match the layer of 1 image
-		resp, err = resty.R().Get(baseURL + "/query?query={ImageListForDigest(id:\"7a0437f0\"){Name%20Tags}}")
+		resp, err = resty.R().Get(baseURL + constants.ExtSearchPrefix +
+			"?query={ImageListForDigest(id:\"7a0437f0\"){Name%20Tags}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -245,7 +250,8 @@ func TestDigestSearchHTTP(t *testing.T) {
 
 		// Call should return {"data":{"ImageListForDigest":[]}}
 		// "1111111" should match 0 images
-		resp, err = resty.R().Get(baseURL + "/query?query={ImageListForDigest(id:\"1111111\"){Name%20Tags}}")
+		resp, err = resty.R().Get(baseURL + constants.ExtSearchPrefix +
+			"?query={ImageListForDigest(id:\"1111111\"){Name%20Tags}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -256,7 +262,8 @@ func TestDigestSearchHTTP(t *testing.T) {
 		So(len(responseStruct.ImgListForDigest.Images), ShouldEqual, 0)
 
 		// Call should return {"errors": [{....}]", data":null}}
-		resp, err = resty.R().Get(baseURL + "/query?query={ImageListForDigest(id:\"1111111\"){Name%20Tag343s}}")
+		resp, err = resty.R().Get(baseURL + constants.ExtSearchPrefix +
+			"?query={ImageListForDigest(id:\"1111111\"){Name%20Tag343s}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 422)
@@ -321,12 +328,13 @@ func TestDigestSearchHTTPSubPaths(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, err = resty.R().Get(baseURL + "/query")
+		resp, err = resty.R().Get(baseURL + constants.ExtSearchPrefix)
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, err = resty.R().Get(baseURL + "/query?query={ImageListForDigest(id:\"sha\"){Name%20Tags}}")
+		resp, err = resty.R().Get(baseURL + constants.ExtSearchPrefix +
+			"?query={ImageListForDigest(id:\"sha\"){Name%20Tags}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -380,7 +388,7 @@ func TestDigestSearchDisabled(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, err = resty.R().Get(baseURL + "/query")
+		resp, err = resty.R().Get(baseURL + constants.ExtSearchPrefix)
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)

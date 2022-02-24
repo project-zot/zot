@@ -5,13 +5,16 @@ package extensions
 
 import (
 	"context"
+	"fmt"
 	goSync "sync"
 	"time"
 
 	gqlHandler "github.com/99designs/gqlgen/graphql/handler"
 	"github.com/gorilla/mux"
+	distext "github.com/opencontainers/distribution-spec/specs-go/v1/extensions"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/api/constants"
 	"zotregistry.io/zot/pkg/extensions/scrub"
 	"zotregistry.io/zot/pkg/extensions/search"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
@@ -61,9 +64,10 @@ func EnableExtensions(config *config.Config, log log.Logger, rootDir string) {
 		*config.Extensions.Metrics.Enable &&
 		config.Extensions.Metrics.Prometheus != nil {
 		if config.Extensions.Metrics.Prometheus.Path == "" {
-			config.Extensions.Metrics.Prometheus.Path = "/metrics"
+			config.Extensions.Metrics.Prometheus.Path = constants.DefaultMetricsExtensionRoute
 
-			log.Warn().Msg("Prometheus instrumentation Path not set, changing to '/metrics'.")
+			log.Warn().Msg(fmt.Sprintf("Prometheus instrumentation Path not set, changing to %s.",
+				constants.DefaultMetricsExtensionRoute))
 		}
 	} else {
 		log.Info().Msg("Metrics config not provided, skipping Metrics config update")
@@ -108,9 +112,34 @@ func EnableScrubExtension(config *config.Config, storeController storage.StoreCo
 	}
 }
 
+func getExtension(name, url, description string) distext.Extension {
+	return distext.Extension{
+		Name:        name,
+		URL:         url,
+		Description: description,
+	}
+}
+
+func GetExtensions(config *config.Config) distext.ExtensionList {
+	extensionList := distext.ExtensionList{}
+
+	extensions := make([]distext.Extension, 0)
+
+	if config.Extensions != nil && config.Extensions.Search != nil {
+		searchExt := getExtension("search",
+			"https://github.com/project-zot/zot/tree/main/pkg/extensions/search/_search.md",
+			"search extension to provide various search feature e.g cve")
+
+		extensions = append(extensions, searchExt)
+	}
+
+	extensionList.Extensions = extensions
+
+	return extensionList
+}
+
 // SetupRoutes ...
-func SetupRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
-	l log.Logger,
+func SetupRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController, l log.Logger,
 ) {
 	// fork a new zerolog child to avoid data race
 	log := log.Logger{Logger: l.With().Caller().Timestamp().Logger()}
@@ -125,7 +154,7 @@ func SetupRoutes(config *config.Config, router *mux.Router, storeController stor
 			resConfig = search.GetResolverConfig(log, storeController, false)
 		}
 
-		router.PathPrefix("/query").Methods("GET", "POST", "OPTIONS").
+		router.PathPrefix(constants.ExtSearchPrefix).Methods("OPTIONS", "GET", "POST").
 			Handler(gqlHandler.NewDefaultServer(search.NewExecutableSchema(resConfig)))
 	}
 

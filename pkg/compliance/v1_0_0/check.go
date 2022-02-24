@@ -50,14 +50,14 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 	Convey("Make API calls to the controller", t, func(c C) {
 		Convey("Check version", func() {
 			_, _ = Print("\nCheck version")
-			resp, err := resty.R().Get(baseURL + "/v2/")
+			resp, err := resty.R().Get(baseURL + constants.RoutePrefix + "/")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 		})
 
 		Convey("Get repository catalog", func() {
 			_, _ = Print("\nGet repository catalog")
-			resp, err := resty.R().Get(baseURL + "/v2/_catalog")
+			resp, err := resty.R().Get(baseURL + constants.RoutePrefix + constants.ExtCatalogPrefix)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 			So(resp.String(), ShouldNotBeEmpty)
@@ -77,7 +77,8 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 
-			resp, err = resty.R().SetResult(&api.RepositoryList{}).Get(baseURL + "/v2/_catalog")
+			resp, err = resty.R().SetResult(&api.RepositoryList{}).Get(baseURL +
+				constants.RoutePrefix + constants.ExtCatalogPrefix)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 			So(resp.String(), ShouldNotBeEmpty)

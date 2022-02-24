@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	distext "github.com/opencontainers/distribution-spec/specs-go/v1/extensions"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
@@ -23,6 +24,11 @@ func downloadTrivyDB(dbDir string, log log.Logger, updateInterval time.Duration)
 func EnableExtensions(config *config.Config, log log.Logger, rootDir string) {
 	log.Warn().Msg("skipping enabling extensions because given zot binary doesn't support " +
 		"any extensions, please build zot full binary for this feature")
+}
+
+// GetExtensions...
+func GetExtensions(config *config.Config) distext.ExtensionList {
+	return distext.ExtensionList{}
 }
 
 // EnableSyncExtension ...
@@ -42,7 +48,8 @@ func EnableScrubExtension(config *config.Config, storeController storage.StoreCo
 }
 
 // SetupRoutes ...
-func SetupRoutes(conf *config.Config, router *mux.Router, storeController storage.StoreController, log log.Logger) {
+func SetupRoutes(conf *config.Config, router *mux.Router, storeController storage.StoreController, log log.Logger,
+) {
 	log.Warn().Msg("skipping setting up extensions routes because given zot binary doesn't support " +
 		"any extensions, please build zot full binary for this feature")
 }

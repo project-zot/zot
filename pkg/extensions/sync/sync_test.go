@@ -37,6 +37,7 @@ import (
 	"gopkg.in/resty.v1"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/api/constants"
 	"zotregistry.io/zot/pkg/cli"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/sync"
@@ -1315,11 +1316,11 @@ func TestNoImagesByRegex(t *testing.T) {
 			dctlr.Shutdown()
 		}()
 
-		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		resp, err := destClient.R().Get(destBaseURL + constants.RoutePrefix + testImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 
-		resp, err = destClient.R().Get(destBaseURL + "/v2/_catalog")
+		resp, err = destClient.R().Get(destBaseURL + constants.RoutePrefix + constants.ExtCatalogPrefix)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeEmpty)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -1743,7 +1744,7 @@ func TestSubPaths(t *testing.T) {
 		var destTagsList TagsList
 
 		for {
-			resp, err := resty.R().Get(destBaseURL + "/v2" + path.Join(subpath, testImage) + "/tags/list")
+			resp, err := resty.R().Get(destBaseURL + constants.RoutePrefix + path.Join(subpath, testImage) + "/tags/list")
 			if err != nil {
 				panic(err)
 			}
@@ -2169,7 +2170,7 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 			cosignTag := string(imageManifestDigest.Algorithm()) + "-" + imageManifestDigest.Hex() +
 				"." + remote.SignatureTagSuffix
 
-			getCosignManifestURL := srcBaseURL + path.Join("/v2", repoName, "manifests", cosignTag)
+			getCosignManifestURL := srcBaseURL + path.Join(constants.RoutePrefix, repoName, "manifests", cosignTag)
 			mResp, err := resty.R().Get(getCosignManifestURL)
 			So(err, ShouldBeNil)
 
@@ -2444,7 +2445,7 @@ func TestSignatures(t *testing.T) {
 		// test cosign signatures errors
 		// based on manifest digest get cosign manifest
 		cosignEncodedDigest := strings.Replace(digest.String(), ":", "-", 1) + ".sig"
-		getCosignManifestURL := srcBaseURL + path.Join("/v2", repoName, "manifests", cosignEncodedDigest)
+		getCosignManifestURL := srcBaseURL + path.Join(constants.RoutePrefix, repoName, "manifests", cosignEncodedDigest)
 
 		mResp, err := resty.R().Get(getCosignManifestURL)
 		So(err, ShouldBeNil)
@@ -3057,7 +3058,7 @@ func TestSignaturesOnDemand(t *testing.T) {
 
 		// test negative case
 		cosignEncodedDigest := strings.Replace(digest.String(), ":", "-", 1) + ".sig"
-		getCosignManifestURL := srcBaseURL + path.Join("/v2", repoName, "manifests", cosignEncodedDigest)
+		getCosignManifestURL := srcBaseURL + path.Join(constants.RoutePrefix, repoName, "manifests", cosignEncodedDigest)
 
 		mResp, err := resty.R().Get(getCosignManifestURL)
 		So(err, ShouldBeNil)

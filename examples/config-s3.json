@@ -1,5 +1,5 @@
 {
-    "distSpecVersion": "1.0.1",
+    "distSpecVersion": "1.0.1-dev",
     "storage": {
         "rootDirectory": "/zot",
         "storageDriver": {

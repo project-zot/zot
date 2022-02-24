@@ -25,6 +25,7 @@ import (
 	"github.com/gorilla/mux"
 	jsoniter "github.com/json-iterator/go"
 	notreg "github.com/notaryproject/notation/pkg/registry"
+	"github.com/opencontainers/distribution-spec/specs-go/v1/extensions"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	httpSwagger "github.com/swaggo/http-swagger"
@@ -69,6 +70,7 @@ func (rh *RouteHandler) SetupRoutes() {
 		rh.c.Router.Use(AuthzHandler(rh.c))
 	}
 
+	// https://github.com/opencontainers/distribution-spec/blob/main/spec.md#endpoints
 	prefixedRouter := rh.c.Router.PathPrefix(constants.RoutePrefix).Subrouter()
 	{
 		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/tags/list", NameRegexp.String()),
@@ -97,8 +99,10 @@ func (rh *RouteHandler) SetupRoutes() {
 			rh.UpdateBlobUpload).Methods("PUT")
 		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/{session_id}", NameRegexp.String()),
 			rh.DeleteBlobUpload).Methods("DELETE")
-		prefixedRouter.HandleFunc("/_catalog",
+		prefixedRouter.HandleFunc(constants.ExtCatalogPrefix,
 			rh.ListRepositories).Methods(allowedMethods("GET")...)
+		prefixedRouter.HandleFunc(constants.ExtOciDiscoverPrefix,
+			rh.ListExtensions).Methods(allowedMethods("GET")...)
 		prefixedRouter.HandleFunc("/",
 			rh.CheckVersionSupport).Methods(allowedMethods("GET")...)
 	}
@@ -334,6 +338,10 @@ func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *htt
 // NOTE: https://github.com/swaggo/swag/issues/387.
 type ImageManifest struct {
 	ispec.Manifest
+}
+
+type ExtensionList struct {
+	extensions.ExtensionList
 }
 
 // GetManifest godoc
@@ -1247,6 +1255,19 @@ func (rh *RouteHandler) ListRepositories(response http.ResponseWriter, request *
 	is := RepositoryList{Repositories: repos}
 
 	WriteJSON(response, http.StatusOK, is)
+}
+
+// ListExtensions godoc
+// @Summary List Registry level extensions
+// @Description List all extensions present on registry
+// @Accept  json
+// @Produce json
+// @Success 200 {object} 	api.ExtensionList
+// @Router /v2/_oci/ext/discover [get].
+func (rh *RouteHandler) ListExtensions(w http.ResponseWriter, r *http.Request) {
+	extensionList := ext.GetExtensions(rh.c.Config)
+
+	WriteJSON(w, http.StatusOK, extensionList)
 }
 
 func (rh *RouteHandler) GetMetrics(w http.ResponseWriter, r *http.Request) {

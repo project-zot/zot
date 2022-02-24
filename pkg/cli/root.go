@@ -16,6 +16,7 @@ import (
 	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/api/constants"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/storage"
@@ -332,7 +333,7 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper) {
 			}
 
 			if config.Extensions.Metrics.Prometheus == nil {
-				config.Extensions.Metrics.Prometheus = &extconf.PrometheusConfig{Path: "/metrics"}
+				config.Extensions.Metrics.Prometheus = &extconf.PrometheusConfig{Path: constants.DefaultMetricsExtensionRoute}
 			}
 		}
 	}

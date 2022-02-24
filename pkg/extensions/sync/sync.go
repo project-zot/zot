@@ -21,6 +21,7 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"gopkg.in/resty.v1"
 	zerr "zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/api/constants"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test"
@@ -77,7 +78,7 @@ type Tags struct {
 func getUpstreamCatalog(client *resty.Client, upstreamURL string, log log.Logger) (catalog, error) {
 	var catalog catalog
 
-	registryCatalogURL := fmt.Sprintf("%s%s", upstreamURL, "/v2/_catalog")
+	registryCatalogURL := fmt.Sprintf("%s%s%s", upstreamURL, constants.RoutePrefix, constants.ExtCatalogPrefix)
 
 	resp, err := client.R().SetHeader("Content-Type", "application/json").Get(registryCatalogURL)
 	if err != nil {

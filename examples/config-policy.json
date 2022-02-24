@@ -1,5 +1,5 @@
 {
-  "distSpecVersion": "1.0.1",
+  "distSpecVersion": "1.0.1-dev",
   "storage": {
     "rootDirectory": "/tmp/zot"
   },
@@ -17,44 +17,91 @@
       "**": {
         "policies": [
           {
-            "users": ["charlie"],
-            "actions": ["read", "create", "update"]
+            "users": [
+              "charlie"
+            ],
+            "actions": [
+              "read",
+              "create",
+              "update"
+            ]
           }
         ],
-        "defaultPolicy": ["read", "create"] 
+        "defaultPolicy": [
+          "read",
+          "create"
+        ]
       },
       "tmp/**": {
-        "defaultPolicy": ["read", "create", "update"]
+        "defaultPolicy": [
+          "read",
+          "create",
+          "update"
+        ]
       },
       "infra/**": {
         "policies": [
           {
-            "users": ["alice", "bob"],
-            "actions": ["create", "read", "update", "delete"]
+            "users": [
+              "alice",
+              "bob"
+            ],
+            "actions": [
+              "create",
+              "read",
+              "update",
+              "delete"
+            ]
           },
           {
-            "users": ["mallory"],
-            "actions": ["create", "read"]
+            "users": [
+              "mallory"
+            ],
+            "actions": [
+              "create",
+              "read"
+            ]
           }
         ],
-        "defaultPolicy": ["read"]
+        "defaultPolicy": [
+          "read"
+        ]
       },
       "repos2/repo": {
         "policies": [
           {
-            "users": ["charlie"],
-            "actions": ["read", "create"]
+            "users": [
+              "charlie"
+            ],
+            "actions": [
+              "read",
+              "create"
+            ]
           },
           {
-            "users": ["mallory"],
-            "actions": ["create", "read"]
+            "users": [
+              "mallory"
+            ],
+            "actions": [
+              "create",
+              "read"
+            ]
           }
         ],
-        "defaultPolicy": ["read"]
+        "defaultPolicy": [
+          "read"
+        ]
       },
       "adminPolicy": {
-          "users": ["admin"],
-          "actions": ["read", "create", "update", "delete"]
+        "users": [
+          "admin"
+        ],
+        "actions": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
       }
     }
   },
@@ -63,4 +110,3 @@
     "output": "/tmp/zot.log"
   }
 }
-

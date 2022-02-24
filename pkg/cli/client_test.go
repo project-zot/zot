@@ -19,6 +19,7 @@ import (
 	"gopkg.in/resty.v1"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/api/constants"
 	"zotregistry.io/zot/pkg/test"
 )
 
@@ -114,8 +115,8 @@ func TestTLSWithAuth(t *testing.T) {
 
 			args = []string{"imagetest"}
 			configPath = makeConfigFile(
-				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s/v2/_catalog","showspinner":false}]}`,
-					BaseSecureURL1))
+				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s%s%s","showspinner":false}]}`,
+					BaseSecureURL1, constants.RoutePrefix, constants.ExtCatalogPrefix))
 			defer os.Remove(configPath)
 			imageCmd = NewImageCommand(new(searchService))
 			imageBuff = bytes.NewBufferString("")
@@ -129,8 +130,8 @@ func TestTLSWithAuth(t *testing.T) {
 			user := fmt.Sprintf("%s:%s", username, passphrase)
 			args = []string{"imagetest", "-u", user}
 			configPath = makeConfigFile(
-				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s/v2/_catalog","showspinner":false}]}`,
-					BaseSecureURL1))
+				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s%s%s","showspinner":false}]}`,
+					BaseSecureURL1, constants.RoutePrefix, constants.ExtCatalogPrefix))
 			defer os.Remove(configPath)
 			imageCmd = NewImageCommand(new(searchService))
 			imageBuff = bytes.NewBufferString("")
@@ -185,8 +186,8 @@ func TestTLSWithoutAuth(t *testing.T) {
 
 		Convey("Certs in user's home", func() {
 			configPath := makeConfigFile(
-				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s/v2/_catalog","showspinner":false}]}`,
-					BaseSecureURL1))
+				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s%s%s","showspinner":false}]}`,
+					BaseSecureURL1, constants.RoutePrefix, constants.ExtCatalogPrefix))
 			defer os.Remove(configPath)
 
 			home := os.Getenv("HOME")
@@ -250,8 +251,8 @@ func TestTLSBadCerts(t *testing.T) {
 
 		Convey("Test with system certs", func() {
 			configPath := makeConfigFile(
-				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s/v2/_catalog","showspinner":false}]}`,
-					BaseSecureURL3))
+				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s%s%s","showspinner":false}]}`,
+					BaseSecureURL3, constants.RoutePrefix, constants.ExtCatalogPrefix))
 			defer os.Remove(configPath)
 
 			args := []string{"imagetest"}
