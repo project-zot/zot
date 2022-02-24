@@ -5,7 +5,6 @@ package cli //nolint:testpackage
 
 import (
 	"bytes"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"strings"
@@ -216,8 +215,6 @@ func TestConfigCmdMain(t *testing.T) {
 			cmd.SetArgs(args)
 			err := cmd.Execute()
 			So(err, ShouldNotBeNil)
-			fmt.Println(err)
-			fmt.Println(buff.String())
 			So(buff.String(), ShouldContainSubstring, "does not exist")
 		})
 	})
@@ -254,8 +251,6 @@ func TestConfigCmdMain(t *testing.T) {
 			cmd.SetArgs(args)
 			err := cmd.Execute()
 			So(err, ShouldNotBeNil)
-			fmt.Println(err)
-			fmt.Println(buff.String())
 			So(buff.String(), ShouldContainSubstring, "does not exist")
 		})
 	})

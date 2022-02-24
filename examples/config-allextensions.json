@@ -1,5 +1,5 @@
 {
-	"distSpecVersion": "1.0.1",
+	"distSpecVersion": "1.0.1-dev",
 	"storage": {
 		"rootDirectory": "/tmp/zot"
 	},
@@ -11,31 +11,34 @@
 		"level": "debug"
 	},
 	"extensions": {
-		"metrics": {
-		},
+		"metrics": {},
 		"sync": {
 			"credentialsFile": "./examples/sync-auth-filepath.json",
-			"registries": [{
-				"urls": ["https://registry1:5000"],
-				"onDemand": false,
-				"pollInterval": "6h",
-				"tlsVerify": true,
-				"certDir": "/home/user/certs",
-				"maxRetries": 3,
-				"retryDelay": "15m",
-				"content":[
-					{
-						"prefix":"/repo1/repo",
-						"tags":{
-							"regex":"4.*",
-							"semver":true
+			"registries": [
+				{
+					"urls": [
+						"https://registry1:5000"
+					],
+					"onDemand": false,
+					"pollInterval": "6h",
+					"tlsVerify": true,
+					"certDir": "/home/user/certs",
+					"maxRetries": 3,
+					"retryDelay": "15m",
+					"content": [
+						{
+							"prefix": "/repo1/repo",
+							"tags": {
+								"regex": "4.*",
+								"semver": true
+							}
+						},
+						{
+							"prefix": "/repo2/repo"
 						}
-					},
-					{
-						"prefix":"/repo2/repo"
-					}
-				]
-			}]
+					]
+				}
+			]
 		},
 		"search": {
 			"cve": {

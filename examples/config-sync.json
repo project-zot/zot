@@ -1,68 +1,76 @@
 {
-	"distSpecVersion":"1.0.1",
-	"storage":{
-		"rootDirectory":"/tmp/zot"
+	"distSpecVersion": "1.0.1-dev",
+	"storage": {
+		"rootDirectory": "/tmp/zot"
 	},
-	"http":{
-		"address":"127.0.0.1",
-		"port":"8080"
+	"http": {
+		"address": "127.0.0.1",
+		"port": "8080"
 	},
-	"log":{
-		"level":"debug"
+	"log": {
+		"level": "debug"
 	},
-	"extensions":{
+	"extensions": {
 		"sync": {
 			"enable": true,
 			"credentialsFile": "./examples/sync-auth-filepath.json",
-			"registries": [{
-				"urls": ["https://registry1:5000"],
-				"onDemand": false,
-				"pollInterval": "6h",
-				"tlsVerify": true,
-				"certDir": "/home/user/certs",
-				"maxRetries": 3,
-				"retryDelay": "5m",
-				"onlySigned": true,
-				"content":[
-					{
-						"prefix":"/repo1/repo",
-						"tags":{
-							"regex":"4.*",
-							"semver":true
+			"registries": [
+				{
+					"urls": [
+						"https://registry1:5000"
+					],
+					"onDemand": false,
+					"pollInterval": "6h",
+					"tlsVerify": true,
+					"certDir": "/home/user/certs",
+					"maxRetries": 3,
+					"retryDelay": "5m",
+					"onlySigned": true,
+					"content": [
+						{
+							"prefix": "/repo1/repo",
+							"tags": {
+								"regex": "4.*",
+								"semver": true
+							}
+						},
+						{
+							"prefix": "/repo1/repo",
+							"destination": "/repo",
+							"stripPrefix": true
+						},
+						{
+							"prefix": "/repo2/repo"
 						}
-					},
-					{
-						"prefix":"/repo1/repo",
-						"destination": "/repo",
-						"stripPrefix": true
-					},
-					{
-						"prefix":"/repo2/repo"
-					}
-				]
-			},
-			{
-				"urls": ["https://registry2:5000", "https://registry3:5000"],
-				"pollInterval": "12h",
-				"tlsVerify": false,
-				"onDemand": false,
-				"content":[
-					{
-						"prefix":"/repo2",
-						"tags":{
-							"semver":true
+					]
+				},
+				{
+					"urls": [
+						"https://registry2:5000",
+						"https://registry3:5000"
+					],
+					"pollInterval": "12h",
+					"tlsVerify": false,
+					"onDemand": false,
+					"content": [
+						{
+							"prefix": "/repo2",
+							"tags": {
+								"semver": true
+							}
 						}
-					}
-				]
-			},
-			{
-				"urls": ["https://docker.io/library"],
-				"onDemand": true,
-				"tlsVerify": true,
-				"maxRetries": 6,
-				"retryDelay": "5m"
-			}
-		]
+					]
+				},
+				{
+					"urls": [
+						"https://docker.io/library"
+					],
+					"onDemand": true,
+					"tlsVerify": true,
+					"maxRetries": 6,
+					"retryDelay": "5m"
+				}
+			]
 		}
 	}
 }

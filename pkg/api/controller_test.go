@@ -32,6 +32,7 @@ import (
 	"github.com/mitchellh/mapstructure"
 	vldap "github.com/nmcclain/ldap"
 	notreg "github.com/notaryproject/notation/pkg/registry"
+	distext "github.com/opencontainers/distribution-spec/specs-go/v1/extensions"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
@@ -47,6 +48,7 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
+	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test"
 )
@@ -1878,7 +1880,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 
 		// everybody should have access to /v2/_catalog
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Get(baseURL + "/v2/_catalog")
+			Get(baseURL + constants.RoutePrefix + constants.ExtCatalogPrefix)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
@@ -3195,7 +3197,7 @@ func TestParallelRequests(t *testing.T) {
 			assert.Equal(t, tagResponse.StatusCode(), http.StatusOK, "response status code should return success code")
 
 			repoResponse, err := client.R().SetBasicAuth(username, passphrase).
-				Get(baseURL + "/v2/_catalog")
+				Get(baseURL + constants.RoutePrefix + constants.ExtCatalogPrefix)
 			assert.Equal(t, err, nil, "Error should be nil")
 			assert.Equal(t, repoResponse.StatusCode(), http.StatusOK, "response status code should return success code")
 		})
@@ -4809,6 +4811,80 @@ func TestPeriodicGC(t *testing.T) {
 			fmt.Sprintf("\"SubPaths\":{\"/a\":{\"RootDirectory\":\"%s\",\"GC\":true,\"Dedupe\":false,\"Commit\":false,\"GCDelay\":1000000000,\"GCInterval\":86400000000000", subDir)) //nolint:lll // gofumpt conflicts with lll
 		So(string(data), ShouldContainSubstring,
 			fmt.Sprintf("executing GC of orphaned blobs for %s", ctlr.StoreController.SubStore["/a"].RootDir()))
+	})
+}
+
+func TestDistSpecExtensions(t *testing.T) {
+	Convey("start zot server with search extension", t, func(c C) {
+		conf := config.New()
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+
+		conf.HTTP.Port = port
+
+		defaultVal := true
+
+		searchConfig := &extconf.SearchConfig{
+			Enable: &defaultVal,
+		}
+
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: searchConfig,
+		}
+
+		logFile, err := ioutil.TempFile("", "zot-log*.txt")
+		So(err, ShouldBeNil)
+		conf.Log.Output = logFile.Name()
+		defer os.Remove(logFile.Name()) // clean up
+
+		ctlr := api.NewController(conf)
+
+		ctlr.Config.Storage.RootDirectory = t.TempDir()
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		test.WaitTillServerReady(baseURL)
+
+		var extensionList distext.ExtensionList
+
+		resp, err := resty.R().Get(baseURL + constants.RoutePrefix + constants.ExtOciDiscoverPrefix)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+		err = json.Unmarshal(resp.Body(), &extensionList)
+		So(err, ShouldBeNil)
+		So(len(extensionList.Extensions), ShouldEqual, 1)
+	})
+
+	Convey("start minimal zot server", t, func(c C) {
+		conf := config.New()
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+
+		conf.HTTP.Port = port
+
+		logFile, err := ioutil.TempFile("", "zot-log*.txt")
+		So(err, ShouldBeNil)
+		conf.Log.Output = logFile.Name()
+		defer os.Remove(logFile.Name()) // clean up
+
+		ctlr := api.NewController(conf)
+
+		ctlr.Config.Storage.RootDirectory = t.TempDir()
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		test.WaitTillServerReady(baseURL)
+
+		var extensionList distext.ExtensionList
+		resp, err := resty.R().Get(baseURL + constants.RoutePrefix + constants.ExtOciDiscoverPrefix)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		err = json.Unmarshal(resp.Body(), &extensionList)
+		So(err, ShouldBeNil)
+		So(len(extensionList.Extensions), ShouldEqual, 0)
 	})
 }
 

@@ -18,6 +18,7 @@ import (
 	"github.com/olekukonko/tablewriter"
 	"gopkg.in/yaml.v2"
 	zotErrors "zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/api/constants"
 )
 
 type SearchService interface {
@@ -70,7 +71,8 @@ func (service searchService) getAllImages(ctx context.Context, config searchConf
 
 	catalog := &catalogResponse{}
 
-	catalogEndPoint, err := combineServerAndEndpointURL(*config.servURL, "/v2/_catalog")
+	catalogEndPoint, err := combineServerAndEndpointURL(*config.servURL, fmt.Sprintf("%s%s",
+		constants.RoutePrefix, constants.ExtCatalogPrefix))
 	if err != nil {
 		if isContextDone(ctx) {
 			return
@@ -453,7 +455,7 @@ func (service searchService) makeGraphQLQuery(ctx context.Context, config search
 	username, password, query string,
 	resultPtr interface{},
 ) error {
-	endPoint, err := combineServerAndEndpointURL(*config.servURL, "/query")
+	endPoint, err := combineServerAndEndpointURL(*config.servURL, constants.ExtSearchPrefix)
 	if err != nil {
 		return err
 	}

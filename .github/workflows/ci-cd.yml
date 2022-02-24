@@ -56,7 +56,7 @@ jobs:
       - name: Install other dependencies
         run: |
           cd $GITHUB_WORKSPACE
-          go install github.com/swaggo/swag/cmd/swag@latest
+          go install github.com/swaggo/swag/cmd/swag@v1.6.3
           sudo apt-get update
           sudo apt-get install rpm
           sudo apt-get install snapd

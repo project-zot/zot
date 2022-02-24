@@ -20,6 +20,7 @@ import (
 	"gopkg.in/resty.v1"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/api/constants"
 )
 
 func TestElevatedPrivilegesTLSNewControllerPrivilegedCert(t *testing.T) {
@@ -106,8 +107,8 @@ func TestElevatedPrivilegesTLSNewControllerPrivilegedCert(t *testing.T) {
 
 		Convey("Certs in privileged path", func() {
 			configPath := makeConfigFile(
-				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s/v2/_catalog","showspinner":false}]}`,
-					BaseSecureURL2))
+				fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s%s%s","showspinner":false}]}`,
+					BaseSecureURL2, constants.RoutePrefix, constants.ExtCatalogPrefix))
 			defer os.Remove(configPath)
 
 			args := []string{"imagetest"}

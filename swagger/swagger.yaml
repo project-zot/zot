@@ -1,5 +1,6 @@
-basePath: '{{.BasePath}}'
 definitions:
+  api.ExtensionList:
+    type: object
   api.ImageManifest:
     type: object
   api.ImageTags:
@@ -18,7 +19,6 @@ definitions:
           type: string
         type: array
     type: object
-host: '{{.Host}}'
 info:
   contact:
     email: support@swagger.io
@@ -31,6 +31,43 @@ info:
   title: Open Container Initiative Distribution Specification
   version: v0.1.0-dev
 paths:
+  /oras/artifacts/v1/{name:
+    get:
+      consumes:
+      - application/json
+      description: Get references for an image given a digest and artifact type
+      parameters:
+      - description: repository name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: image digest
+        in: path
+        name: digest
+        required: true
+        type: string
+      - description: artifact type
+        in: query
+        name: artifactType
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: ok
+          schema:
+            type: string
+        "404":
+          description: not found
+          schema:
+            type: string
+        "500":
+          description: internal server error
+          schema:
+            type: string
+      summary: Get references for an image
   /v2/:
     get:
       consumes:
@@ -40,7 +77,7 @@ paths:
       - application/json
       responses:
         "200":
-          description: ok
+          description: ok".
           schema:
             type: string
       summary: Check API support
@@ -56,12 +93,24 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/api.RepositoryList'
-            type: object
         "500":
           description: internal server error
           schema:
             type: string
       summary: List image repositories
+  /v2/_oci/ext/discover:
+    get:
+      consumes:
+      - application/json
+      description: List all extensions present on registry
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.ExtensionList'
+      summary: List Registry level extensions
   /v2/{name}/blobs/{digest}:
     delete:
       consumes:
@@ -108,7 +157,6 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/api.ImageManifest'
-            type: object
       summary: Get image blob/layer
     head:
       consumes:
@@ -131,12 +179,11 @@ paths:
         "200":
           description: OK
           headers:
-            api.DistContentDigestKey:
+            constants.DistContentDigestKey:
               description: OK
               type: object
           schema:
             $ref: '#/definitions/api.ImageManifest'
-            type: object
       summary: Check image blob/layer
   /v2/{name}/blobs/uploads:
     post:
@@ -156,7 +203,7 @@ paths:
           description: accepted
           headers:
             Location:
-              description: /v2/{name}/blobs/uploads/{uuid}
+              description: /v2/{name}/blobs/uploads/{session_id}
               type: string
             Range:
               description: bytes=0-0
@@ -172,7 +219,7 @@ paths:
           schema:
             type: string
       summary: Create image blob/layer upload
-  /v2/{name}/blobs/uploads/{uuid}:
+  /v2/{name}/blobs/uploads/{session_id}:
     delete:
       consumes:
       - application/json
@@ -183,9 +230,9 @@ paths:
         name: name
         required: true
         type: string
-      - description: upload uuid
+      - description: upload session_id
         in: path
-        name: uuid
+        name: session_id
         required: true
         type: string
       produces:
@@ -207,16 +254,16 @@ paths:
     get:
       consumes:
       - application/json
-      description: Get an image's blob/layer upload given a uuid
+      description: Get an image's blob/layer upload given a session_id
       parameters:
       - description: repository name
         in: path
         name: name
         required: true
         type: string
-      - description: upload uuid
+      - description: upload session_id
         in: path
-        name: uuid
+        name: session_id
         required: true
         type: string
       produces:
@@ -238,16 +285,16 @@ paths:
     patch:
       consumes:
       - application/json
-      description: Resume an image's blob/layer upload given an uuid
+      description: Resume an image's blob/layer upload given an session_id
       parameters:
       - description: repository name
         in: path
         name: name
         required: true
         type: string
-      - description: upload uuid
+      - description: upload session_id
         in: path
-        name: uuid
+        name: session_id
         required: true
         type: string
       produces:
@@ -257,7 +304,7 @@ paths:
           description: accepted
           headers:
             Location:
-              description: /v2/{name}/blobs/uploads/{uuid}
+              description: /v2/{name}/blobs/uploads/{session_id}
               type: string
             Range:
               description: bytes=0-128
@@ -291,9 +338,9 @@ paths:
         name: name
         required: true
         type: string
-      - description: upload uuid
+      - description: upload session_id
         in: path
-        name: uuid
+        name: session_id
         required: true
         type: string
       - description: blob/layer digest
@@ -362,12 +409,11 @@ paths:
         "200":
           description: OK
           headers:
-            api.DistContentDigestKey:
+            constants.DistContentDigestKey:
               description: OK
               type: object
           schema:
             $ref: '#/definitions/api.ImageManifest'
-            type: object
         "404":
           description: not found
           schema:
@@ -398,7 +444,7 @@ paths:
         "200":
           description: ok
           headers:
-            api.DistContentDigestKey:
+            cosntants.DistContentDigestKey:
               description: OK
               type: object
           schema:
@@ -408,7 +454,7 @@ paths:
           schema:
             type: string
         "500":
-          description: internal server error
+          description: internal server error".
           schema:
             type: string
       summary: Check image manifest
@@ -458,6 +504,16 @@ paths:
         name: name
         required: true
         type: string
+      - description: limit entries for pagination
+        in: query
+        name: "n"
+        required: true
+        type: integer
+      - description: last tag value for pagination
+        in: query
+        name: last
+        required: true
+        type: string
       produces:
       - application/json
       responses:
@@ -465,7 +521,10 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/api.ImageTags'
-            type: object
+        "400":
+          description: bad request".
+          schema:
+            type: string
         "404":
           description: not found
           schema:

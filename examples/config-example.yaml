@@ -1,4 +1,4 @@
-distspecversion: 1.0.1
+distspecversion: 1.0.1-dev
 http:
   address: 127.0.0.1
   allowreadaccess: false

@@ -102,11 +102,11 @@ check: ./golangcilint.yaml $(GOLINTER)
 	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags stress,extended,containers_image_openpgp ./...
 
 swagger/docs.go: 
-	swag -v || go install github.com/swaggo/swag/cmd/swag
+	swag -v || go install github.com/swaggo/swag/cmd/swag@1.6.3
 	swag init -o swagger -g pkg/api/routes.go
 
 .PHONY: swagger
-swagger: swagger/docs.go
+swagger: swagger/docs.go pkg/api/routes.go
 
 .PHONY: update-licenses
 update-licenses:

@@ -14,9 +14,62 @@
         },
         "version": "v0.1.0-dev"
     },
-    "host": "{{.Host}}",
-    "basePath": "{{.BasePath}}",
     "paths": {
+        "/oras/artifacts/v1/{name": {
+            "get": {
+                "description": "Get references for an image given a digest and artifact type",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Get references for an image",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "repository name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "image digest",
+                        "name": "digest",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "artifact type",
+                        "name": "artifactType",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ok",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/v2/": {
             "get": {
                 "description": "Check if this API version is supported",
@@ -29,7 +82,7 @@
                 "summary": "Check API support",
                 "responses": {
                     "200": {
-                        "description": "ok",
+                        "description": "ok\".",
                         "schema": {
                             "type": "string"
                         }
@@ -51,7 +104,6 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "object",
                             "$ref": "#/definitions/api.RepositoryList"
                         }
                     },
@@ -59,6 +111,26 @@
                         "description": "internal server error",
                         "schema": {
                             "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/v2/_oci/ext/discover": {
+            "get": {
+                "description": "List all extensions present on registry",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "List Registry level extensions",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.ExtensionList"
                         }
                     }
                 }
@@ -92,7 +164,7 @@
                         "headers": {
                             "Location": {
                                 "type": "string",
-                                "description": "/v2/{name}/blobs/uploads/{uuid}"
+                                "description": "/v2/{name}/blobs/uploads/{session_id}"
                             },
                             "Range": {
                                 "type": "string",
@@ -115,9 +187,9 @@
                 }
             }
         },
-        "/v2/{name}/blobs/uploads/{uuid}": {
+        "/v2/{name}/blobs/uploads/{session_id}": {
             "get": {
-                "description": "Get an image's blob/layer upload given a uuid",
+                "description": "Get an image's blob/layer upload given a session_id",
                 "consumes": [
                     "application/json"
                 ],
@@ -135,8 +207,8 @@
                     },
                     {
                         "type": "string",
-                        "description": "upload uuid",
-                        "name": "uuid",
+                        "description": "upload session_id",
+                        "name": "session_id",
                         "in": "path",
                         "required": true
                     }
@@ -181,8 +253,8 @@
                     },
                     {
                         "type": "string",
-                        "description": "upload uuid",
-                        "name": "uuid",
+                        "description": "upload session_id",
+                        "name": "session_id",
                         "in": "path",
                         "required": true
                     },
@@ -234,8 +306,8 @@
                     },
                     {
                         "type": "string",
-                        "description": "upload uuid",
-                        "name": "uuid",
+                        "description": "upload session_id",
+                        "name": "session_id",
                         "in": "path",
                         "required": true
                     }
@@ -262,7 +334,7 @@
                 }
             },
             "patch": {
-                "description": "Resume an image's blob/layer upload given an uuid",
+                "description": "Resume an image's blob/layer upload given an session_id",
                 "consumes": [
                     "application/json"
                 ],
@@ -280,8 +352,8 @@
                     },
                     {
                         "type": "string",
-                        "description": "upload uuid",
-                        "name": "uuid",
+                        "description": "upload session_id",
+                        "name": "session_id",
                         "in": "path",
                         "required": true
                     }
@@ -295,7 +367,7 @@
                         "headers": {
                             "Location": {
                                 "type": "string",
-                                "description": "/v2/{name}/blobs/uploads/{uuid}"
+                                "description": "/v2/{name}/blobs/uploads/{session_id}"
                             },
                             "Range": {
                                 "type": "string",
@@ -360,7 +432,6 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "object",
                             "$ref": "#/definitions/api.ImageManifest"
                         }
                     }
@@ -429,11 +500,10 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "object",
                             "$ref": "#/definitions/api.ImageManifest"
                         },
                         "headers": {
-                            "api.DistContentDigestKey": {
+                            "constants.DistContentDigestKey": {
                                 "type": "object",
                                 "description": "OK"
                             }
@@ -472,11 +542,10 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "object",
                             "$ref": "#/definitions/api.ImageManifest"
                         },
                         "headers": {
-                            "api.DistContentDigestKey": {
+                            "constants.DistContentDigestKey": {
                                 "type": "object",
                                 "description": "OK"
                             }
@@ -614,7 +683,7 @@
                             "type": "string"
                         },
                         "headers": {
-                            "api.DistContentDigestKey": {
+                            "cosntants.DistContentDigestKey": {
                                 "type": "object",
                                 "description": "OK"
                             }
@@ -627,7 +696,7 @@
                         }
                     },
                     "500": {
-                        "description": "internal server error",
+                        "description": "internal server error\".",
                         "schema": {
                             "type": "string"
                         }
@@ -652,14 +721,33 @@
                         "name": "name",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "limit entries for pagination",
+                        "name": "n",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "last tag value for pagination",
+                        "name": "last",
+                        "in": "query",
+                        "required": true
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "object",
                             "$ref": "#/definitions/api.ImageTags"
+                        }
+                    },
+                    "400": {
+                        "description": "bad request\".",
+                        "schema": {
+                            "type": "string"
                         }
                     },
                     "404": {
@@ -673,6 +761,9 @@
         }
     },
     "definitions": {
+        "api.ExtensionList": {
+            "type": "object"
+        },
         "api.ImageManifest": {
             "type": "object"
         },

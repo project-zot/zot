@@ -20,6 +20,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	godigest "github.com/opencontainers/go-digest"
 	"gopkg.in/resty.v1"
+	"zotregistry.io/zot/pkg/api/constants"
 )
 
 const (
@@ -323,7 +324,7 @@ func GetCatalog(workdir, url, auth, repo string, requests int, config testConfig
 			}()
 
 			// send request and get response
-			resp, err := client.R().Get(url + "/v2/_catalog")
+			resp, err := client.R().Get(url + constants.RoutePrefix + constants.ExtCatalogPrefix)
 
 			latency = time.Since(start)
 
