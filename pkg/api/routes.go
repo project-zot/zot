@@ -34,6 +34,7 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test" // nolint: goimports
+
 	// as required by swaggo.
 	_ "zotregistry.io/zot/swagger"
 )
@@ -56,7 +57,9 @@ func allowedMethods(method string) []string {
 
 // nolint: contextcheck
 func (rh *RouteHandler) SetupRoutes() {
-	rh.c.Router.Use(AuthHandler(rh.c))
+	prefixedRouter := rh.c.Router.PathPrefix(RoutePrefix).Subrouter()
+	prefixedRouter.Use(AuthHandler(rh.c))
+
 	// authz is being enabled if AccessControl is specified
 	// if Authn is not present AccessControl will have only default policies
 	if rh.c.Config.AccessControl != nil && !isBearerAuthEnabled(rh.c.Config) {
@@ -66,10 +69,9 @@ func (rh *RouteHandler) SetupRoutes() {
 			rh.c.Log.Info().Msg("default policy only access control is being enabled")
 		}
 
-		rh.c.Router.Use(AuthzHandler(rh.c))
+		prefixedRouter.Use(AuthzHandler(rh.c))
 	}
 
-	prefixedRouter := rh.c.Router.PathPrefix(constants.RoutePrefix).Subrouter()
 	{
 		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/tags/list", NameRegexp.String()),
 			rh.ListTags).Methods(allowedMethods("GET")...)
@@ -108,7 +110,10 @@ func (rh *RouteHandler) SetupRoutes() {
 		constants.ArtifactSpecRoutePrefix, NameRegexp.String()), rh.GetReferrers).Methods("GET")
 
 	// swagger swagger "/swagger/v2/index.html"
-	rh.c.Router.PathPrefix("/swagger/v2/").Methods("GET").Handler(httpSwagger.WrapHandler)
+	swgRouter := rh.c.Router.PathPrefix("/swagger/v2/").Subrouter()
+	swgRouter.Use(AuthHandler(rh.c))
+	swgRouter.Methods("GET").Handler(httpSwagger.WrapHandler)
+
 	// Setup Extensions Routes
 	if rh.c.Config != nil {
 		if rh.c.Config.Extensions == nil {
@@ -116,7 +121,7 @@ func (rh *RouteHandler) SetupRoutes() {
 			prefixedRouter.HandleFunc("/metrics", rh.GetMetrics).Methods("GET")
 		} else {
 			// extended build
-			ext.SetupRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
+			ext.SetupRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, AuthHandler(rh.c), rh.c.Log)
 		}
 	}
 }

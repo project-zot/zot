@@ -42,7 +42,8 @@ func EnableScrubExtension(config *config.Config, storeController storage.StoreCo
 }
 
 // SetupRoutes ...
-func SetupRoutes(conf *config.Config, router *mux.Router, storeController storage.StoreController, log log.Logger) {
+func SetupRoutes(conf *config.Config, router *mux.Router, storeController storage.StoreController,
+	authFunc mux.MiddlewareFunc, log log.Logger) {
 	log.Warn().Msg("skipping setting up extensions routes because given zot binary doesn't support " +
 		"any extensions, please build zot full binary for this feature")
 }

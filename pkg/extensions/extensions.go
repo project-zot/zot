@@ -5,6 +5,8 @@ package extensions
 
 import (
 	"context"
+	"net/http"
+	"path/filepath"
 	goSync "sync"
 	"time"
 
@@ -110,8 +112,7 @@ func EnableScrubExtension(config *config.Config, storeController storage.StoreCo
 
 // SetupRoutes ...
 func SetupRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
-	l log.Logger,
-) {
+	authFunc mux.MiddlewareFunc, l log.Logger) {
 	// fork a new zerolog child to avoid data race
 	log := log.Logger{Logger: l.With().Caller().Timestamp().Logger()}
 	log.Info().Msg("setting up extensions routes")
@@ -125,13 +126,30 @@ func SetupRoutes(config *config.Config, router *mux.Router, storeController stor
 			resConfig = search.GetResolverConfig(log, storeController, false)
 		}
 
-		router.PathPrefix("/query").Methods("GET", "POST", "OPTIONS").
+		extRouter := router.PathPrefix("/query").Subrouter()
+		extRouter.Use(authFunc)
+		extRouter.Methods("GET", "POST", "OPTIONS").
 			Handler(gqlHandler.NewDefaultServer(search.NewExecutableSchema(resConfig)))
 	}
 
 	if config.Extensions.Metrics != nil && *config.Extensions.Metrics.Enable {
-		router.PathPrefix(config.Extensions.Metrics.Prometheus.Path).
-			Handler(promhttp.Handler())
+		metricsRouter := router.PathPrefix(config.Extensions.Metrics.Prometheus.Path).Subrouter()
+		metricsRouter.Use(authFunc)
+		metricsRouter.Methods("GET", "OPTIONS").Handler(promhttp.Handler())
+	}
+
+	if config.Extensions.UI != nil && config.Extensions.UI.Path != "" {
+		uiPath := config.Extensions.UI.Path
+
+		router.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
+			http.ServeFile(w, r, filepath.Join(uiPath, "index.html"))
+		})
+
+		router.HandleFunc("/home", func(w http.ResponseWriter, r *http.Request) {
+			http.ServeFile(w, r, filepath.Join(uiPath, "index.html"))
+		})
+
+		router.PathPrefix("/").Handler(http.FileServer(http.Dir(uiPath)))
 	}
 }
 

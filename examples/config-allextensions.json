@@ -44,6 +44,9 @@
 		},
 		"scrub": {
 			"interval": "24h"
-		}
+		},
+        "ui": {
+            "path": "./build"
+        }
 	}
 }

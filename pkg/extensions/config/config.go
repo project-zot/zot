@@ -11,6 +11,7 @@ type ExtensionConfig struct {
 	Sync    *sync.Config
 	Metrics *MetricsConfig
 	Scrub   *ScrubConfig
+	UI      *UIConfig
 }
 
 type SearchConfig struct {
@@ -34,4 +35,8 @@ type PrometheusConfig struct {
 
 type ScrubConfig struct {
 	Interval time.Duration
+}
+
+type UIConfig struct {
+	Path string
 }
