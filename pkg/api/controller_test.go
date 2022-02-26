@@ -3251,7 +3251,7 @@ func TestImageSignatures(t *testing.T) {
 				options.RegistryOptions{AllowInsecure: true},
 				map[string]interface{}{"tag": "1.0"},
 				[]string{fmt.Sprintf("localhost:%s/%s@%s", port, repoName, digest.String())},
-				"", true, "", false, false, "")
+				"", true, "", "", "", false, false, "")
 			So(err, ShouldBeNil)
 
 			// verify the image
