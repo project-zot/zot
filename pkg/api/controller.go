@@ -164,6 +164,23 @@ func (c *Controller) Run() error {
 	}
 
 	if c.Config.HTTP.TLS != nil && c.Config.HTTP.TLS.Key != "" && c.Config.HTTP.TLS.Cert != "" {
+		server.TLSConfig = &tls.Config{
+			CipherSuites: []uint16{
+				tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+				tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+				tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
+				tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
+				tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+				tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+			},
+			CurvePreferences: []tls.CurveID{
+				tls.CurveP256,
+				tls.X25519,
+			},
+			PreferServerCipherSuites: true,
+			MinVersion:               tls.VersionTLS12,
+		}
+
 		if c.Config.HTTP.TLS.CACert != "" {
 			clientAuth := tls.VerifyClientCertIfGiven
 			if (c.Config.HTTP.Auth == nil || c.Config.HTTP.Auth.HTPasswd.Path == "") && !c.Config.HTTP.AllowReadAccess {
@@ -181,13 +198,8 @@ func (c *Controller) Run() error {
 				panic(errors.ErrBadCACert)
 			}
 
-			server.TLSConfig = &tls.Config{
-				ClientAuth:               clientAuth,
-				ClientCAs:                caCertPool,
-				PreferServerCipherSuites: true,
-				MinVersion:               tls.VersionTLS12,
-			}
-			server.TLSConfig.BuildNameToCertificate()
+			server.TLSConfig.ClientAuth = clientAuth
+			server.TLSConfig.ClientCAs = caCertPool
 		}
 
 		return server.ServeTLS(listener, c.Config.HTTP.TLS.Cert, c.Config.HTTP.TLS.Key)
