@@ -1,0 +1,47 @@
+name: "TLS protocol scan"
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    # The branches below must be a subset of the branches above
+    branches: [main]
+
+jobs:
+  tls-check:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [linux]
+        arch: [amd64]
+    name: TLS check
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-go@v2
+        with:
+          go-version: 1.17.x
+      - name: Install dependencies
+        run: |
+          cd $GITHUB_WORKSPACE
+          sudo apt-get update
+          sudo apt-get install -y apache2-utils openssl
+          mkdir -p test/data
+          cd test/data
+          ../scripts/gen_certs.sh
+          htpasswd -bBn test test123 > htpasswd
+      - name: Check for TLS settings
+        continue-on-error: true
+        run: |
+          cd $GITHUB_WORKSPACE
+          make OS=$OS ARCH=$ARCH binary
+          bin/zot-$OS-$ARCH serve examples/config-tls.json &
+          sleep 5
+          curl -kv --tls-max 1.0 -0  https://localhost:8080/v2/
+          if [[ "$?" -eq 0 ]]; then echo "TLSv1.0 detected"; exit 1; fi
+          curl -kv --tls-max 1.1 -0  https://localhost:8080/v2/
+          if [[ "$?" -eq 0 ]]; then echo "TLSv1.1 detected"; exit 1; fi
+          curl -kv --tls-max 1.2 -0  https://localhost:8080/v2/
+          if [[ "$?" -ne 0 ]]; then echo "TLSv1.2 missing"; exit 1; fi
+        env:
+          OS: ${{ matrix.os }}
+          ARCH: ${{ matrix.arch }}
