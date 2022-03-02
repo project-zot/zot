@@ -1,0 +1,162 @@
+name: "Clustering test"
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches: [main]
+  release:
+    types:
+      - published
+
+jobs:
+  client-tools:
+    name: Stateless zot with shared reliable storage
+    runs-on: ubuntu-latest
+    # services:
+    #   minio:
+    #     image: minio/minio:edge-cicd
+    #     env:
+    #       MINIO_ROOT_USER: minioadmin
+    #       MINIO_ROOT_PASSWORD: minioadmin
+    #     ports:
+    #       - 9000:9000
+    #     volumes:
+    #       - /tmp/data:/data
+    #     options: --name=minio --health-cmd "curl http://localhost:9000/minio/health/live"
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-go@v2
+        with:
+          go-version: 1.17.x
+      - name: Install dependencies
+        run: |
+          cd $GITHUB_WORKSPACE
+          go get -u github.com/swaggo/swag/cmd/swag
+          go mod download
+          sudo apt-get update
+          sudo apt-get -y install rpm uidmap
+          # install skopeo
+          . /etc/os-release
+          echo "deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_${VERSION_ID}/ /" | sudo tee /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list
+          curl -L https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_${VERSION_ID}/Release.key | sudo apt-key add -
+          sudo apt-get update
+          sudo apt-get -y upgrade
+          sudo apt-get -y install skopeo
+          # install notation
+          curl -Lo notation.tar.gz https://github.com/notaryproject/notation/releases/download/v0.7.1-alpha.1/notation_0.7.1-alpha.1_linux_amd64.tar.gz
+          sudo tar xvzf notation.tar.gz -C /usr/bin notation
+          # install oras
+          curl -LO https://github.com/oras-project/oras/releases/download/v0.12.0/oras_0.12.0_linux_amd64.tar.gz
+          mkdir -p oras-install/
+          tar -zxf oras_0.12.0_*.tar.gz -C oras-install/
+          sudo mv oras-install/oras /usr/bin/
+          rm -rf oras_0.12.0_*.tar.gz oras-install/
+
+          # install haproxy
+          sudo apt-get install haproxy
+
+      - name: Setup minio service
+        run: |
+            docker run -d -p 9000:9000 --name minio \
+                -e "MINIO_ACCESS_KEY=minioadmin" \
+                -e "MINIO_SECRET_KEY=minioadmin" \
+                -v /tmp/data:/data \
+                -v /tmp/config:/root/.minio \
+                --health-cmd "curl http://localhost:9000/minio/health/live" \
+                minio/minio:edge-cicd server /data
+
+      - name: Install py minio
+        run: pip3 install minio
+      - name: Create minio bucket
+        run: |
+            python3 - <<'EOF'
+            from minio import Minio
+
+            try:
+                minio = Minio(
+                    'localhost:9000',
+                    access_key='minioadmin',
+                    secret_key='minioadmin',
+                    secure=False
+                )
+            except Exception as ex:
+                raise
+
+            minio.make_bucket('zot-storage')
+            print(f'{minio.list_buckets()}')
+            EOF
+
+      - name: Run haproxy
+        run: |
+            sudo haproxy -d -f examples/cluster/haproxy.cfg -D
+            sleep 10
+      
+      - name: Prepare configuration files
+        run: |
+            cp test/cluster/config-minio.json test/cluster/config-minio1.json
+            sed -i 's/8081/8082/g' test/cluster/config-minio.json
+            cp test/cluster/config-minio.json test/cluster/config-minio2.json
+            sed -i 's/8082/8083/g' test/cluster/config-minio.json
+            cp test/cluster/config-minio.json test/cluster/config-minio3.json
+            
+      - name: Run push-pull tests
+        run: |
+            make binary
+            ./bin/zot-linux-amd64 serve test/cluster/config-minio1.json &
+            ./bin/zot-linux-amd64 serve test/cluster/config-minio2.json &
+            ./bin/zot-linux-amd64 serve test/cluster/config-minio3.json &
+            sleep 10
+            # run tests
+            skopeo --debug copy --format=oci --dest-tls-verify=false docker://ghcr.io/project-zot/golang:1.17 docker://localhost:8080/golang:1.17
+            skopeo --debug copy --src-tls-verify=false docker://localhost:8080/golang:1.17 oci:golang:1.17
+            echo "{\"name\":\"foo\",\"value\":\"bar\"}" > config.json
+            echo "hello world" > artifact.txt
+            oras push localhost:8080/hello-artifact:v2 \
+                --manifest-config config.json:application/vnd.acme.rocket.config.v1+json \
+                    artifact.txt:text/plain -d -v
+            rm -f artifact.txt # first delete the file
+            oras pull localhost:8080/hello-artifact:v2 -d -v -a
+            grep -q "hello world" artifact.txt  # should print "hello world"
+            if [ $? -ne 0 ]; then \
+              killall -r zot-*; \
+              exit 1; \
+            fi
+
+            killall -r zot-*
+        env:
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
+      
+      - name: Run benchmark
+        run: |
+            make bench
+            ./bin/zot-linux-amd64 serve test/cluster/config-minio1.json &
+            ./bin/zot-linux-amd64 serve test/cluster/config-minio2.json &
+            ./bin/zot-linux-amd64 serve test/cluster/config-minio3.json &
+            sleep 10
+            # run zb
+            bin/zb-linux-amd64 -c 10 -n 100 -o ci-cd http://localhost:8080
+        env:
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
+  
+      # Download previous benchmark result from cache (if exists)
+      - name: Download previous benchmark data
+        uses: actions/cache@v1
+        with:
+          path: ./cache
+          key: ${{ runner.os }}-benchmark-stateless-cluster
+      # Run `github-action-benchmark` action
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1.11.3
+        with:
+          # What benchmark tool the output.txt came from
+          tool: 'customBiggerIsBetter'
+          # Where the output from the benchmark tool is stored
+          output-file-path: ci-cd.json
+          # Where the previous data file is stored
+          external-data-json-path: ./cache/benchmark-data.json
+          # Workflow will fail when an alert happens
+          fail-on-alert: true
+      # Upload the updated cache file for the next job by actions/cache

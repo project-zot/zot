@@ -15,6 +15,7 @@ https://zotregistry.io
 ## What's new?
 * Supports container image signatures - [cosign](https://github.com/sigstore/cosign) and [notation](https://github.com/notaryproject/notation)
 * Multi-arch support
+* Clustering support
 
 # Features
 * Conforms to [OCI distribution spec](https://github.com/opencontainers/distribution-spec) APIs
@@ -367,6 +368,13 @@ bin/zxp config _config-file_
 
 ## Enable Metrics
 In the zot with all extensions case see [configuration example](./examples/config-metrics.json) for enabling metrics
+
+## Clustering
+
+zot supports clustering by using multiple stateless zot with shared s3 storage and a haproxy (with sticky session) in front of them.
+
+- haproxy [configuration example](./examples/cluster/haproxy.cfg)
+- zot s3 [configuration example](./examples/config-s3.json)
 
 # Contributing
 
