@@ -1387,7 +1387,12 @@ func (is *ImageStoreFS) GetBlobContent(repo string, digest string) ([]byte, erro
 }
 
 func (is *ImageStoreFS) GetIndexContent(repo string) ([]byte, error) {
+	var lockLatency time.Time
+
 	dir := path.Join(is.rootDir, repo)
+
+	is.RLock(&lockLatency)
+	defer is.RUnlock(&lockLatency)
 
 	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
 	if err != nil {
