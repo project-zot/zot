@@ -3366,7 +3366,7 @@ func generateKeyPairs(tdir string) {
 func signImage(tdir, port, repoName string, digest godigest.Digest) {
 	// push signatures to upstream server so that we can sync them later
 	// sign the image
-	err := sign.SignCmd(context.TODO(),
+	err := sign.SignCmd(&options.RootOptions{Verbose: true, Timeout: 1 * time.Minute},
 		sign.KeyOpts{KeyRef: path.Join(tdir, "cosign.key"), PassFunc: generate.GetPass},
 		options.RegistryOptions{AllowInsecure: true},
 		map[string]interface{}{"tag": "1.0"},

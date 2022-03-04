@@ -3246,7 +3246,7 @@ func TestImageSignatures(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// sign the image
-			err = sign.SignCmd(context.TODO(),
+			err = sign.SignCmd(&options.RootOptions{Verbose: true, Timeout: 1 * time.Minute},
 				sign.KeyOpts{KeyRef: path.Join(tdir, "cosign.key"), PassFunc: generate.GetPass},
 				options.RegistryOptions{AllowInsecure: true},
 				map[string]interface{}{"tag": "1.0"},
