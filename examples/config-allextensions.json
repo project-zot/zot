@@ -41,6 +41,9 @@
 			"cve": {
 				"updateInterval": "2h"
 			}
+		},
+		"scrub": {
+			"interval": "24h"
 		}
 	}
 }

@@ -10,6 +10,7 @@ type ExtensionConfig struct {
 	Search  *SearchConfig
 	Sync    *sync.Config
 	Metrics *MetricsConfig
+	Scrub   *ScrubConfig
 }
 
 type SearchConfig struct {
@@ -29,4 +30,8 @@ type MetricsConfig struct {
 
 type PrometheusConfig struct {
 	Path string // default is "/metrics"
+}
+
+type ScrubConfig struct {
+	Interval time.Duration
 }

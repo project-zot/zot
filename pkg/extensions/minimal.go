@@ -32,6 +32,13 @@ func EnableSyncExtension(ctx context.Context, config *config.Config, wg *goSync.
 		"please build zot full binary for this feature")
 }
 
+// EnableScrubExtension ...
+func EnableScrubExtension(config *config.Config, storeController storage.StoreController,
+	log log.Logger) {
+	log.Warn().Msg("skipping enabling scrub extension because given zot binary doesn't support any extensions," +
+		"please build zot full binary for this feature")
+}
+
 // SetupRoutes ...
 func SetupRoutes(conf *config.Config, router *mux.Router, storeController storage.StoreController, log log.Logger) {
 	log.Warn().Msg("skipping setting up extensions routes because given zot binary doesn't support " +

@@ -53,25 +53,38 @@ func (sc StoreController) CheckAllBlobsIntegrity() (ScrubResults, error) {
 	imageStoreList[""] = sc.DefaultStore
 
 	for _, imgStore := range imageStoreList {
-		images, err := imgStore.GetRepositories()
+		imgStoreResults, err := CheckImageStoreBlobsIntegrity(imgStore)
 		if err != nil {
 			return results, err
 		}
 
-		for _, repo := range images {
-			imageResults, err := checkImage(repo, imgStore)
-			if err != nil {
-				return results, err
-			}
-
-			results.ScrubResults = append(results.ScrubResults, imageResults...)
-		}
+		results.ScrubResults = append(results.ScrubResults, imgStoreResults...)
 	}
 
 	return results, nil
 }
 
-func checkImage(imageName string, imgStore ImageStore) ([]ScrubImageResult, error) {
+func CheckImageStoreBlobsIntegrity(imgStore ImageStore) ([]ScrubImageResult, error) {
+	results := []ScrubImageResult{}
+
+	repos, err := imgStore.GetRepositories()
+	if err != nil {
+		return results, err
+	}
+
+	for _, repo := range repos {
+		imageResults, err := checkRepo(repo, imgStore)
+		if err != nil {
+			return results, err
+		}
+
+		results = append(results, imageResults...)
+	}
+
+	return results, nil
+}
+
+func checkRepo(imageName string, imgStore ImageStore) ([]ScrubImageResult, error) {
 	results := []ScrubImageResult{}
 
 	dir := path.Join(imgStore.RootDir(), imageName)
