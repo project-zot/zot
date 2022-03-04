@@ -96,7 +96,7 @@ func newScrubCmd(conf *config.Config) *cobra.Command {
 			response, err := http.DefaultClient.Do(req)
 			if err == nil {
 				response.Body.Close()
-				log.Info().Msg("The server is running, in order to perform the scrub command the server should be shut down")
+				log.Warn().Msg("The server is running, in order to perform the scrub command the server should be shut down")
 				panic("Error: server is running")
 			} else {
 				// server is down

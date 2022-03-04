@@ -102,7 +102,7 @@ func TestServeExtensions(t *testing.T) {
 		WaitTillServerReady(baseURL)
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
-		So(string(data), ShouldContainSubstring, "\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null")
+		So(string(data), ShouldContainSubstring, "\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":null") // nolint:lll
 	})
 }
 
@@ -143,7 +143,7 @@ func testWithMetricsEnabled(cfgContentFormat string) {
 	data, err := os.ReadFile(logFile.Name())
 	So(err, ShouldBeNil)
 	So(string(data), ShouldContainSubstring,
-		"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":{\"Enable\":true,\"Prometheus\":{\"Path\":\"/metrics\"}}}") // nolint:lll
+		"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":{\"Enable\":true,\"Prometheus\":{\"Path\":\"/metrics\"}},\"Scrub\":null}") // nolint:lll
 }
 
 func TestServeMetricsExtension(t *testing.T) {
@@ -267,7 +267,7 @@ func TestServeMetricsExtension(t *testing.T) {
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
 		So(string(data), ShouldContainSubstring,
-			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":{\"Enable\":false,\"Prometheus\":{\"Path\":\"/metrics\"}}}") // nolint:lll
+			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":{\"Enable\":false,\"Prometheus\":{\"Path\":\"/metrics\"}},\"Scrub\":null}") // nolint:lll
 	})
 }
 
@@ -458,6 +458,112 @@ func TestServeSyncExtension(t *testing.T) {
 	})
 }
 
+func TestServeScrubExtension(t *testing.T) {
+	oldArgs := os.Args
+
+	defer func() { os.Args = oldArgs }()
+
+	Convey("scrub enabled by scrub interval param set", t, func(c C) {
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		logFile, err := ioutil.TempFile("", "zot-log*.txt")
+		So(err, ShouldBeNil)
+		defer os.Remove(logFile.Name()) // clean up
+
+		content := fmt.Sprintf(`{
+					"storage": {
+						"rootDirectory": "/tmp/zot"
+					},
+					"http": {
+						"address": "127.0.0.1",
+						"port": "%s"
+					},
+					"log": {
+						"level": "debug",
+						"output": "%s"
+					},
+					"extensions": {
+						"scrub": {
+							"interval": "1h"
+						}
+					}
+				}`, port, logFile.Name())
+
+		cfgfile, err := ioutil.TempFile("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(cfgfile.Name()) // clean up
+		_, err = cfgfile.Write([]byte(content))
+		So(err, ShouldBeNil)
+		err = cfgfile.Close()
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "serve", cfgfile.Name()}
+		go func() {
+			err = cli.NewServerRootCmd().Execute()
+			So(err, ShouldBeNil)
+		}()
+		WaitTillServerReady(baseURL)
+
+		data, err := os.ReadFile(logFile.Name())
+		So(err, ShouldBeNil)
+		// Even if in config we specified scrub interval=1h, the minimum interval is 2h
+		So(string(data), ShouldContainSubstring,
+			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":{\"Interval\":3600000000000}") // nolint:lll
+		So(string(data), ShouldContainSubstring, "executing scrub to check manifest/blob integrity")
+		So(string(data), ShouldContainSubstring,
+			"Scrub interval set to too-short interval < 2h, changing scrub duration to 2 hours and continuing.")
+	})
+
+	Convey("scrub not enabled - scrub interval param not set", t, func(c C) {
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		logFile, err := ioutil.TempFile("", "zot-log*.txt")
+		So(err, ShouldBeNil)
+		defer os.Remove(logFile.Name()) // clean up
+
+		content := fmt.Sprintf(`{
+				"storage": {
+					"rootDirectory": "/tmp/zot"
+				},
+				"http": {
+					"address": "127.0.0.1",
+					"port": "%s"
+				},
+				"log": {
+					"level": "debug",
+					"output": "%s"
+				},
+				"extensions": {
+					"scrub": {
+					}
+				}
+			}`, port, logFile.Name())
+
+		cfgfile, err := ioutil.TempFile("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(cfgfile.Name()) // clean up
+		_, err = cfgfile.Write([]byte(content))
+		So(err, ShouldBeNil)
+		err = cfgfile.Close()
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "serve", cfgfile.Name()}
+		go func() {
+			err = cli.NewServerRootCmd().Execute()
+			So(err, ShouldBeNil)
+		}()
+		WaitTillServerReady(baseURL)
+
+		data, err := os.ReadFile(logFile.Name())
+		So(err, ShouldBeNil)
+		So(string(data), ShouldContainSubstring,
+			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":null}")
+		So(string(data), ShouldContainSubstring, "Scrub config not provided, skipping scrub")
+		So(string(data), ShouldNotContainSubstring,
+			"Scrub interval set to too-short interval < 2h, changing scrub duration to 2 hours and continuing.")
+	})
+}
+
 func TestServeSearchExtension(t *testing.T) {
 	oldArgs := os.Args
 
@@ -506,7 +612,7 @@ func TestServeSearchExtension(t *testing.T) {
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
 		So(string(data), ShouldContainSubstring,
-			"\"Extensions\":{\"Search\":{\"CVE\":{\"UpdateInterval\":86400000000000},\"Enable\":true},\"Sync\":null,\"Metrics\":null}") // nolint:lll
+			"\"Extensions\":{\"Search\":{\"CVE\":{\"UpdateInterval\":86400000000000},\"Enable\":true},\"Sync\":null,\"Metrics\":null,\"Scrub\":null}") // nolint:lll
 		So(string(data), ShouldContainSubstring, "updating the CVE database")
 	})
 
@@ -557,7 +663,7 @@ func TestServeSearchExtension(t *testing.T) {
 		So(err, ShouldBeNil)
 		// Even if in config we specified updateInterval=1h, the minimum interval is 2h
 		So(string(data), ShouldContainSubstring,
-			"\"Extensions\":{\"Search\":{\"CVE\":{\"UpdateInterval\":3600000000000},\"Enable\":true},\"Sync\":null,\"Metrics\":null}") // nolint:lll
+			"\"Extensions\":{\"Search\":{\"CVE\":{\"UpdateInterval\":3600000000000},\"Enable\":true},\"Sync\":null,\"Metrics\":null,\"Scrub\":null}") // nolint:lll
 		So(string(data), ShouldContainSubstring, "updating the CVE database")
 		So(string(data), ShouldContainSubstring,
 			"CVE update interval set to too-short interval < 2h, changing update duration to 2 hours and continuing.")
@@ -607,7 +713,7 @@ func TestServeSearchExtension(t *testing.T) {
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
 		So(string(data), ShouldContainSubstring,
-			"\"Extensions\":{\"Search\":{\"CVE\":{\"UpdateInterval\":86400000000000},\"Enable\":true},\"Sync\":null,\"Metrics\":null}") // nolint:lll
+			"\"Extensions\":{\"Search\":{\"CVE\":{\"UpdateInterval\":86400000000000},\"Enable\":true},\"Sync\":null,\"Metrics\":null,\"Scrub\":null}") // nolint:lll
 		So(string(data), ShouldContainSubstring, "updating the CVE database")
 	})
 
@@ -658,7 +764,7 @@ func TestServeSearchExtension(t *testing.T) {
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
 		So(string(data), ShouldContainSubstring,
-			"\"Extensions\":{\"Search\":{\"CVE\":{\"UpdateInterval\":10800000000000},\"Enable\":false},\"Sync\":null,\"Metrics\":null}") // nolint:lll
+			"\"Extensions\":{\"Search\":{\"CVE\":{\"UpdateInterval\":10800000000000},\"Enable\":false},\"Sync\":null,\"Metrics\":null,\"Scrub\":null}") // nolint:lll
 		So(string(data), ShouldContainSubstring, "CVE config not provided, skipping CVE update")
 		So(string(data), ShouldNotContainSubstring,
 			"CVE update interval set to too-short interval < 2h, changing update duration to 2 hours and continuing.")

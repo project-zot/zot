@@ -325,6 +325,10 @@ func (c *Controller) InitImageStore(reloadCtx context.Context) error {
 		ext.EnableSyncExtension(reloadCtx, c.Config, c.wgShutDown, c.StoreController, c.Log)
 	}
 
+	if c.Config.Extensions != nil {
+		ext.EnableScrubExtension(c.Config, c.StoreController, c.Log)
+	}
+
 	return nil
 }
 
