@@ -716,13 +716,6 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 			return
 		}
 
-		from, ok := request.URL.Query()["from"]
-		if !ok || len(from) != 1 {
-			response.WriteHeader(http.StatusMethodNotAllowed)
-
-			return
-		}
-
 		// zot does not support cross mounting directly and do a workaround creating using hard link.
 		// check blob looks for actual path (name+mountDigests[0]) first then look for cache and
 		// if found in cache, will do hard link and if fails we will start new upload.

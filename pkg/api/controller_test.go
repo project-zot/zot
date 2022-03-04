@@ -2665,7 +2665,7 @@ func TestCrossRepoMount(t *testing.T) {
 			SetBasicAuth(username, passphrase).SetQueryParams(params).
 			Post(baseURL + "/v2/zot-mount-test/blobs/uploads/")
 		So(err, ShouldBeNil)
-		So(postResponse.StatusCode(), ShouldEqual, http.StatusMethodNotAllowed)
+		So(postResponse.StatusCode(), ShouldEqual, http.StatusAccepted)
 
 		params = make(map[string]string)
 		params["from"] = "zot-cve-test"
@@ -3902,7 +3902,7 @@ func TestRouteFailures(t *testing.T) {
 			resp = response.Result()
 			defer resp.Body.Close()
 			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode, ShouldEqual, http.StatusMethodNotAllowed)
+			So(resp.StatusCode, ShouldEqual, http.StatusAccepted)
 		})
 
 		Convey("Get blob upload", func() {
