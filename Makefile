@@ -186,3 +186,11 @@ binary-stacker:
 .PHONY: image
 image:
 	${CONTAINER_RUNTIME} build ${BUILD_ARGS} -f Dockerfile -t zot:latest .
+
+.PHONY: blackbox-tests
+blackbox-tests:
+	bats --trace --print-output-on-failure test/blackbox
+
+.PHONY: blackbox-tests-verbose
+blackbox-tests-verbose:
+	bats --trace --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox

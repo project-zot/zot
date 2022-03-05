@@ -1,0 +1,51 @@
+name: Run blackbox tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-blackbox-tests:
+    name: Build and test ZOT
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [linux]
+        arch: [amd64]
+    steps:
+      - name: Install go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.17.x
+      - name: Check out source code
+        uses: actions/checkout@v1
+      - name: Install dependencies
+        run: |
+          cd $GITHUB_WORKSPACE
+          go get -u github.com/swaggo/swag/cmd/swag
+          go mod download
+          sudo apt-get update
+          sudo apt install snapd jq curl skopeo
+          git clone https://github.com/bats-core/bats-core.git
+          cd bats-core
+          sudo ./install.sh /usr/local
+      - name: Build binaries
+        run: |
+          echo "Building for $OS:$ARCH"
+          cd $GITHUB_WORKSPACE
+          make OS=$OS ARCH=$ARCH binary binary-minimal cli
+        env:
+          OS: ${{ matrix.os }}
+          ARCH: ${{ matrix.arch }}
+      - name: Execute blackbox tests
+        run: |
+          echo "Running tests for $OS:$ARCH"
+          cd $GITHUB_WORKSPACE
+          make OS=$OS ARCH=$ARCH blackbox-tests
+        env:
+          OS: ${{ matrix.os }}
+          ARCH: ${{ matrix.arch }}
