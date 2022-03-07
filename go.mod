@@ -33,7 +33,6 @@ require (
 	github.com/notaryproject/notation v0.7.0-alpha.1
 	github.com/notaryproject/notation-go-lib v1.0.0-alpha-1
 	github.com/olekukonko/tablewriter v0.0.5
-	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20220217185014-dd38b7ed8a99
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.0.3-0.20220114050600-8b9d41f48198
 	github.com/opencontainers/umoci v0.4.8-0.20210922062158-e60a0cc726e6
@@ -287,6 +286,7 @@ require (
 	github.com/oklog/run v1.1.0 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/open-policy-agent/opa v0.37.0 // indirect
+	github.com/opencontainers/distribution-spec v1.0.0
 	github.com/opencontainers/runc v1.1.0 // indirect
 	github.com/opencontainers/runtime-spec v1.0.3-0.20210326190908-1c3f411f0417 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect

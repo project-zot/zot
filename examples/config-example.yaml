@@ -1,5 +1,5 @@
 ---
-version:
+distSpecVersion:
   0.1.0-dev
 storage:
   rootDirectory: /tmp/zot
