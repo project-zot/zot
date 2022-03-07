@@ -390,6 +390,7 @@ Configure each registry sync:
 				"certDir": "/home/user/certs",      # use certificates at certDir path, if not specified then use the default certs dir
 				"maxRetries": 5,                    # maxRetries in case of temporary errors (default: no retries)
 				"retryDelay": "10m",                # delay between retries, retry options are applied for both on demand and periodically sync and retryDelay is mandatory when using maxRetries.
+				"onlySigned": true,                 # sync only signed images (either notary or cosign)
 				"content":[                         # which content to periodically pull, also it's used for filtering ondemand images, if not set then periodically polling will not run
 					{
 						"prefix":"/repo1/repo",         # pull image repo1/repo

@@ -17,6 +17,7 @@ import (
 	"github.com/containers/image/v5/types"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
@@ -190,9 +191,10 @@ func TestSyncInternal(t *testing.T) {
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
 
-		httpClient, err := getHTTPClient(&syncRegistryConfig, baseURL, Credentials{}, log.NewLogger("debug", ""))
+		httpClient, registryURL, err := getHTTPClient(&syncRegistryConfig, baseURL, Credentials{}, log.NewLogger("debug", ""))
 		So(err, ShouldNotBeNil)
 		So(httpClient, ShouldBeNil)
+		So(registryURL, ShouldBeNil)
 		// _, err = getUpstreamCatalog(httpClient, baseURL, log.NewLogger("debug", ""))
 		// So(err, ShouldNotBeNil)
 	})
@@ -222,21 +224,24 @@ func TestSyncInternal(t *testing.T) {
 			CertDir:      badCertsDir,
 		}
 
-		httpClient, err := getHTTPClient(&syncRegistryConfig, baseURL, Credentials{}, log.NewLogger("debug", ""))
+		httpClient, _, err := getHTTPClient(&syncRegistryConfig, baseURL, Credentials{}, log.NewLogger("debug", ""))
 		So(err, ShouldNotBeNil)
 		So(httpClient, ShouldBeNil)
 
 		syncRegistryConfig.CertDir = "/path/to/invalid/cert"
-		httpClient, err = getHTTPClient(&syncRegistryConfig, baseURL, Credentials{}, log.NewLogger("debug", ""))
+
+		httpClient, _, err = getHTTPClient(&syncRegistryConfig, baseURL, Credentials{}, log.NewLogger("debug", ""))
 		So(err, ShouldNotBeNil)
 		So(httpClient, ShouldBeNil)
 
 		syncRegistryConfig.CertDir = ""
 		syncRegistryConfig.URLs = []string{baseSecureURL}
 
-		httpClient, err = getHTTPClient(&syncRegistryConfig, baseSecureURL, Credentials{}, log.NewLogger("debug", ""))
+		httpClient, registryURL, err := getHTTPClient(&syncRegistryConfig, baseSecureURL,
+			Credentials{}, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
 		So(httpClient, ShouldNotBeNil)
+		So(registryURL.String(), ShouldEqual, baseSecureURL)
 
 		_, err = getUpstreamCatalog(httpClient, baseURL, log.NewLogger("debug", ""))
 		So(err, ShouldNotBeNil)
@@ -245,7 +250,12 @@ func TestSyncInternal(t *testing.T) {
 		So(err, ShouldNotBeNil)
 
 		syncRegistryConfig.URLs = []string{test.BaseURL}
-		httpClient, err = getHTTPClient(&syncRegistryConfig, baseSecureURL, Credentials{}, log.NewLogger("debug", ""))
+		httpClient, _, err = getHTTPClient(&syncRegistryConfig, baseSecureURL, Credentials{}, log.NewLogger("debug", ""))
+		So(err, ShouldNotBeNil)
+		So(httpClient, ShouldBeNil)
+
+		syncRegistryConfig.URLs = []string{"%"}
+		httpClient, _, err = getHTTPClient(&syncRegistryConfig, "%", Credentials{}, log.NewLogger("debug", ""))
 		So(err, ShouldNotBeNil)
 		So(httpClient, ShouldBeNil)
 	})
@@ -263,23 +273,37 @@ func TestSyncInternal(t *testing.T) {
 		So(err, ShouldNotBeNil)
 	})
 
-	// Convey("Test OneImage() skips cosign signatures", t, func() {
-	// 	err := OneImage(Config{}, storage.StoreController{}, "repo", "sha256-.sig", log.NewLogger("", ""))
-	// 	So(err, ShouldBeNil)
-	// })
-
-	Convey("Test syncSignatures()", t, func() {
+	Convey("Test signatures", t, func() {
 		log := log.NewLogger("debug", "")
-		err := syncSignatures(resty.New(), storage.StoreController{}, "%", "repo", "repo", "tag", log)
+
+		client := resty.New()
+
+		regURL, err := url.Parse("http://zot")
+		So(err, ShouldBeNil)
+		So(regURL, ShouldNotBeNil)
+
+		ref := artifactspec.Descriptor{
+			Digest: "fakeDigest",
+		}
+
+		desc := ispec.Descriptor{
+			Digest: "fakeDigest",
+		}
+
+		manifest := ispec.Manifest{
+			Layers: []ispec.Descriptor{desc},
+		}
+
+		err = syncCosignSignature(client, &storage.ImageStoreFS{}, *regURL, testImage, testImage,
+			testImageTag, &ispec.Manifest{}, log)
 		So(err, ShouldNotBeNil)
-		err = syncSignatures(resty.New(), storage.StoreController{}, "http://zot", "repo", "repo", "tag", log)
+
+		err = syncCosignSignature(client, &storage.ImageStoreFS{}, *regURL, testImage, testImage,
+			testImageTag, &manifest, log)
 		So(err, ShouldNotBeNil)
-		err = syncSignatures(resty.New(), storage.StoreController{}, "https://google.com", "repo", "repo", "tag", log)
-		So(err, ShouldNotBeNil)
-		url, _ := url.Parse("invalid")
-		err = syncCosignSignature(resty.New(), storage.StoreController{}, *url, "repo", "repo", "tag", log)
-		So(err, ShouldNotBeNil)
-		err = syncNotarySignature(resty.New(), storage.StoreController{}, *url, "repo", "repo", "tag", log)
+
+		err = syncNotarySignature(client, &storage.ImageStoreFS{}, *regURL, testImage, testImage,
+			"invalidDigest", ReferenceList{[]artifactspec.Descriptor{ref}}, log)
 		So(err, ShouldNotBeNil)
 	})
 
@@ -296,32 +320,49 @@ func TestSyncInternal(t *testing.T) {
 
 		imageStore := storage.NewImageStore(storageDir, false, storage.DefaultGCDelay, false, false, log, metrics)
 
-		repoRefStr := fmt.Sprintf("%s/%s", host, testImage)
-		repoRef, err := parseRepositoryReference(repoRefStr)
-		So(err, ShouldBeNil)
-		So(repoRef, ShouldNotBeNil)
+		refs := ReferenceList{[]artifactspec.Descriptor{
+			{
+				Digest: "fakeDigest",
+			},
+		}}
 
-		taggedRef, err := reference.WithTag(repoRef, testImageTag)
+		err = os.Chmod(path.Join(imageStore.RootDir(), testImage, "index.json"), 0o000)
 		So(err, ShouldBeNil)
-		So(taggedRef, ShouldNotBeNil)
 
-		upstreamRef, err := docker.NewReference(taggedRef)
-		So(err, ShouldBeNil)
-		So(taggedRef, ShouldNotBeNil)
-
-		canBeSkipped, err := canSkipImage(context.Background(), testImage, testImageTag, upstreamRef,
-			imageStore, &types.SystemContext{}, log)
+		canBeSkipped, err := canSkipImage(testImage, testImageTag, "fakeDigest", imageStore, log)
 		So(err, ShouldNotBeNil)
 		So(canBeSkipped, ShouldBeFalse)
 
+		err = os.Chmod(path.Join(imageStore.RootDir(), testImage, "index.json"), 0o755)
+		So(err, ShouldBeNil)
+
+		_, testImageManifestDigest, _, err := imageStore.GetImageManifest(testImage, testImageTag)
+		So(err, ShouldBeNil)
+		So(testImageManifestDigest, ShouldNotBeEmpty)
+
+		canBeSkipped, err = canSkipNotarySignature(testImage, testImageTag,
+			testImageManifestDigest, refs, imageStore, log)
+		So(err, ShouldBeNil)
+		So(canBeSkipped, ShouldBeFalse)
+
 		err = os.Chmod(path.Join(imageStore.RootDir(), testImage, "index.json"), 0o000)
-		if err != nil {
-			panic(err)
+		So(err, ShouldBeNil)
+
+		canBeSkipped, err = canSkipNotarySignature(testImage, testImageTag,
+			testImageManifestDigest, refs, imageStore, log)
+		So(err, ShouldNotBeNil)
+		So(canBeSkipped, ShouldBeFalse)
+
+		cosignManifest := ispec.Manifest{
+			Layers: []ispec.Descriptor{{Digest: "fakeDigest"}},
 		}
 
-		canBeSkipped, err = canSkipImage(context.Background(), testImage, testImageTag, upstreamRef,
-			imageStore, &types.SystemContext{}, log)
-		So(err, ShouldNotBeNil)
+		err = os.Chmod(path.Join(imageStore.RootDir(), testImage, "index.json"), 0o755)
+		So(err, ShouldBeNil)
+
+		canBeSkipped, err = canSkipCosignSignature(testImage, testImageTag,
+			testImageManifestDigest, &cosignManifest, imageStore, log)
+		So(err, ShouldBeNil)
 		So(canBeSkipped, ShouldBeFalse)
 	})
 
@@ -367,7 +408,7 @@ func TestSyncInternal(t *testing.T) {
 		testRootDir := path.Join(imageStore.RootDir(), testImage, SyncBlobUploadDir)
 		// testImagePath := path.Join(testRootDir, testImage)
 
-		err := pushSyncedLocalImage(testImage, testImageTag, testRootDir, storeController, log)
+		err := pushSyncedLocalImage(testImage, testImageTag, testRootDir, imageStore, log)
 		So(err, ShouldNotBeNil)
 
 		err = os.MkdirAll(testRootDir, 0o755)
@@ -396,7 +437,7 @@ func TestSyncInternal(t *testing.T) {
 
 		if os.Geteuid() != 0 {
 			So(func() {
-				_ = pushSyncedLocalImage(testImage, testImageTag, testRootDir, storeController, log)
+				_ = pushSyncedLocalImage(testImage, testImageTag, testRootDir, imageStore, log)
 			}, ShouldPanic)
 		}
 
@@ -409,7 +450,7 @@ func TestSyncInternal(t *testing.T) {
 			panic(err)
 		}
 
-		err = pushSyncedLocalImage(testImage, testImageTag, testRootDir, storeController, log)
+		err = pushSyncedLocalImage(testImage, testImageTag, testRootDir, imageStore, log)
 		So(err, ShouldNotBeNil)
 
 		if err := os.Chmod(path.Join(testRootDir, testImage, "blobs", "sha256",
@@ -423,7 +464,7 @@ func TestSyncInternal(t *testing.T) {
 			panic(err)
 		}
 
-		err = pushSyncedLocalImage(testImage, testImageTag, testRootDir, storeController, log)
+		err = pushSyncedLocalImage(testImage, testImageTag, testRootDir, imageStore, log)
 		So(err, ShouldNotBeNil)
 
 		if err := os.Chmod(cachedManifestConfigPath, 0o755); err != nil {
@@ -435,7 +476,7 @@ func TestSyncInternal(t *testing.T) {
 			panic(err)
 		}
 
-		err = pushSyncedLocalImage(testImage, testImageTag, testRootDir, storeController, log)
+		err = pushSyncedLocalImage(testImage, testImageTag, testRootDir, imageStore, log)
 		So(err, ShouldNotBeNil)
 
 		if err := os.Remove(manifestConfigPath); err != nil {
@@ -449,7 +490,7 @@ func TestSyncInternal(t *testing.T) {
 			panic(err)
 		}
 
-		err = pushSyncedLocalImage(testImage, testImageTag, testRootDir, storeController, log)
+		err = pushSyncedLocalImage(testImage, testImageTag, testRootDir, imageStore, log)
 		So(err, ShouldNotBeNil)
 	})
 }

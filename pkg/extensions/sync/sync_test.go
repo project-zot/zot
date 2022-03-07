@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/notaryproject/notation-go-lib"
+	notreg "github.com/notaryproject/notation/pkg/registry"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
@@ -31,6 +32,7 @@ import (
 	"github.com/sigstore/cosign/cmd/cosign/cli/options"
 	"github.com/sigstore/cosign/cmd/cosign/cli/sign"
 	"github.com/sigstore/cosign/cmd/cosign/cli/verify"
+	"github.com/sigstore/cosign/pkg/cosign"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 	"zotregistry.io/zot/pkg/api"
@@ -310,7 +312,7 @@ func TestOnDemand(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 
-		err = os.Chmod(path.Join(destDir, testImage), 0o000)
+		err = os.MkdirAll(path.Join(destDir, testImage), 0o000)
 		if err != nil {
 			panic(err)
 		}
@@ -328,7 +330,7 @@ func TestOnDemand(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 
-		err = os.Chmod(path.Join(destDir, testImage, sync.SyncBlobUploadDir), 0o000)
+		err = os.MkdirAll(path.Join(destDir, testImage, sync.SyncBlobUploadDir), 0o000)
 		if err != nil {
 			panic(err)
 		}
@@ -614,6 +616,8 @@ func TestOnDemandPermsDenied(t *testing.T) {
 			}
 		}()
 
+		test.WaitTillServerReady(destBaseURL)
+
 		syncSubDir := path.Join(destDir, testImage, sync.SyncBlobUploadDir)
 
 		err := os.MkdirAll(syncSubDir, 0o755)
@@ -621,16 +625,6 @@ func TestOnDemandPermsDenied(t *testing.T) {
 
 		err = os.Chmod(syncSubDir, 0o000)
 		So(err, ShouldBeNil)
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(destBaseURL)
-			if err == nil {
-				break
-			}
-
-			time.Sleep(100 * time.Millisecond)
-		}
 
 		resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
@@ -806,7 +800,7 @@ func TestBadTLS(t *testing.T) {
 		}()
 
 		// give it time to set up sync
-		time.Sleep(2 * time.Second)
+		time.Sleep(3 * time.Second)
 
 		resp, _ := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + "invalid")
 		So(resp, ShouldNotBeNil)
@@ -1070,16 +1064,9 @@ func TestBasicAuth(t *testing.T) {
 				dctlr.Shutdown()
 			}()
 
-			// wait till ready
-			for {
-				_, err := resty.R().Get(destBaseURL)
-				if err == nil {
-					break
-				}
-				time.Sleep(100 * time.Millisecond)
-			}
+			test.WaitTillServerReady(destBaseURL)
 
-			time.Sleep(2 * time.Second)
+			time.Sleep(3 * time.Second)
 
 			resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 			So(err, ShouldBeNil)
@@ -1140,7 +1127,7 @@ func TestBasicAuth(t *testing.T) {
 				dctlr.Shutdown()
 			}()
 
-			time.Sleep(2 * time.Second)
+			time.Sleep(3 * time.Second)
 
 			resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 			So(err, ShouldBeNil)
@@ -1263,7 +1250,7 @@ func TestBadURL(t *testing.T) {
 					},
 				},
 			},
-			URLs:         []string{"bad-registry-url]"},
+			URLs:         []string{"bad-registry-url]", "%"},
 			PollInterval: updateDuration,
 			TLSVerify:    &tlsVerify,
 			CertDir:      "",
@@ -1656,7 +1643,6 @@ func TestSubPaths(t *testing.T) {
 
 		srcPort := test.GetFreePort()
 		srcConfig := config.New()
-		client := resty.New()
 		srcBaseURL := test.GetBaseURL(srcPort)
 
 		srcConfig.HTTP.Port = srcPort
@@ -1681,15 +1667,7 @@ func TestSubPaths(t *testing.T) {
 			}
 		}()
 
-		// wait till ready
-		for {
-			_, err := client.R().Get(srcBaseURL)
-			if err == nil {
-				break
-			}
-
-			time.Sleep(100 * time.Millisecond)
-		}
+		test.WaitTillServerReady(srcBaseURL)
 
 		defer func() {
 			sctlr.Shutdown()
@@ -1756,15 +1734,7 @@ func TestSubPaths(t *testing.T) {
 			}
 		}()
 
-		// wait till ready
-		for {
-			_, err := resty.R().Get(destBaseURL)
-			if err == nil {
-				break
-			}
-
-			time.Sleep(100 * time.Millisecond)
-		}
+		test.WaitTillServerReady(destBaseURL)
 
 		defer func() {
 			dctlr.Shutdown()
@@ -2065,10 +2035,11 @@ func TestMultipleURLs(t *testing.T) {
 			Registries: []sync.RegistryConfig{syncRegistryConfig},
 		}
 
-		dc, destBaseURL, _, destClient := startDownstreamServer(t, false, syncConfig)
+		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(t, false, syncConfig)
+		defer os.RemoveAll(destDir)
 
 		defer func() {
-			dc.Shutdown()
+			dctlr.Shutdown()
 		}()
 
 		var srcTagsList TagsList
@@ -2105,7 +2076,175 @@ func TestMultipleURLs(t *testing.T) {
 	})
 }
 
-func TestPeriodicallySignatures(t *testing.T) {
+func TestPeriodicallySignaturesErr(t *testing.T) {
+	Convey("Verify sync periodically signatures errors", t, func() {
+		updateDuration, _ := time.ParseDuration("30m")
+
+		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(t, false, false)
+
+		defer func() {
+			sctlr.Shutdown()
+		}()
+
+		// create repo, push and sign it
+		repoName := testSignedImage
+		var digest godigest.Digest
+		So(func() { digest = pushRepo(srcBaseURL, repoName) }, ShouldNotPanic)
+
+		splittedURL := strings.SplitAfter(srcBaseURL, ":")
+		srcPort := splittedURL[len(splittedURL)-1]
+
+		cwd, err := os.Getwd()
+		So(err, ShouldBeNil)
+
+		defer func() { _ = os.Chdir(cwd) }()
+		tdir := t.TempDir()
+		_ = os.Chdir(tdir)
+		generateKeyPairs(tdir)
+
+		So(func() { signImage(tdir, srcPort, repoName, digest) }, ShouldNotPanic)
+
+		regex := ".*"
+		var semver bool
+		var tlsVerify bool
+
+		syncRegistryConfig := sync.RegistryConfig{
+			Content: []sync.Content{
+				{
+					Prefix: repoName,
+					Tags: &sync.Tags{
+						Regex:  &regex,
+						Semver: &semver,
+					},
+				},
+			},
+			URLs:         []string{srcBaseURL},
+			PollInterval: updateDuration,
+			TLSVerify:    &tlsVerify,
+			CertDir:      "",
+			OnDemand:     true,
+		}
+
+		defaultVal := true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
+
+		// trigger permission denied on upstream manifest
+		var srcIndex ispec.Index
+
+		srcBuf, err := ioutil.ReadFile(path.Join(srcDir, repoName, "index.json"))
+		if err != nil {
+			panic(err)
+		}
+
+		if err := json.Unmarshal(srcBuf, &srcIndex); err != nil {
+			panic(err)
+		}
+
+		imageManifestDigest := srcIndex.Manifests[0].Digest
+
+		Convey("Trigger error on image manifest", func() {
+			// trigger permission denied on image manifest
+			manifestPath := path.Join(srcDir, repoName, "blobs",
+				string(imageManifestDigest.Algorithm()), imageManifestDigest.Hex())
+			err = os.Chmod(manifestPath, 0o000)
+			So(err, ShouldBeNil)
+
+			dctlr, destBaseURL, _, _ := startDownstreamServer(t, false, syncConfig)
+			defer dctlr.Shutdown()
+
+			time.Sleep(2 * time.Second)
+
+			// should not be synced nor sync on demand
+			resp, err := resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 404)
+		})
+
+		Convey("Trigger error on cosign signature", func() {
+			// trigger permission error on cosign signature on upstream
+			cosignTag := string(imageManifestDigest.Algorithm()) + "-" + imageManifestDigest.Hex() + cosign.SignatureTagSuffix
+
+			getCosignManifestURL := srcBaseURL + path.Join("/v2", repoName, "manifests", cosignTag)
+			mResp, err := resty.R().Get(getCosignManifestURL)
+			So(err, ShouldBeNil)
+
+			var cm ispec.Manifest
+
+			err = json.Unmarshal(mResp.Body(), &cm)
+			So(err, ShouldBeNil)
+
+			for _, blob := range cm.Layers {
+				blobPath := path.Join(srcDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Hex())
+				err := os.Chmod(blobPath, 0o000)
+				So(err, ShouldBeNil)
+			}
+
+			// start downstream server
+			dctlr, destBaseURL, _, _ := startDownstreamServer(t, false, syncConfig)
+			defer dctlr.Shutdown()
+
+			time.Sleep(2 * time.Second)
+
+			// should not be synced nor sync on demand
+			resp, err := resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/" + cosignTag)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 404)
+		})
+
+		Convey("Trigger error on notary signature", func() {
+			// trigger permission error on cosign signature on upstream
+			notaryURLPath := path.Join("/oras/artifacts/v1/", repoName, "manifests", imageManifestDigest.String(), "referrers")
+
+			// based on image manifest digest get referrers
+			resp, err := resty.R().
+				SetHeader("Content-Type", "application/json").
+				SetQueryParam("artifactType", "application/vnd.cncf.notary.v2.signature").
+				Get(srcBaseURL + notaryURLPath)
+
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeEmpty)
+
+			var referrers ReferenceList
+
+			err = json.Unmarshal(resp.Body(), &referrers)
+			So(err, ShouldBeNil)
+
+			// read manifest
+			var nm artifactspec.Manifest
+			for _, ref := range referrers.References {
+				refPath := path.Join(srcDir, repoName, "blobs", string(ref.Digest.Algorithm()), ref.Digest.Hex())
+				body, err := ioutil.ReadFile(refPath)
+				So(err, ShouldBeNil)
+
+				err = json.Unmarshal(body, &nm)
+				So(err, ShouldBeNil)
+
+				// triggers perm denied on sig blobs
+				for _, blob := range nm.Blobs {
+					blobPath := path.Join(srcDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Hex())
+					err := os.Chmod(blobPath, 0o000)
+					So(err, ShouldBeNil)
+				}
+			}
+
+			// start downstream server
+			dctlr, destBaseURL, _, _ := startDownstreamServer(t, false, syncConfig)
+			defer dctlr.Shutdown()
+
+			time.Sleep(2 * time.Second)
+
+			// should not be synced nor sync on demand
+			resp, err = resty.R().Get(destBaseURL + notaryURLPath)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 400)
+		})
+	})
+}
+
+func TestSignatures(t *testing.T) {
 	Convey("Verify sync signatures", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
@@ -2215,6 +2354,7 @@ func TestPeriodicallySignatures(t *testing.T) {
 			KeyRef:          path.Join(tdir, "cosign.pub"),
 			Annotations:     amap,
 		}
+
 		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")})
 		So(err, ShouldBeNil)
 
@@ -2237,7 +2377,10 @@ func TestPeriodicallySignatures(t *testing.T) {
 		err = json.Unmarshal(resp.Body(), &referrers)
 		So(err, ShouldBeNil)
 
-		// read manifest
+		// remove already synced image
+		err = os.RemoveAll(path.Join(destDir, repoName))
+		So(err, ShouldBeNil)
+
 		var nm artifactspec.Manifest
 		for _, ref := range referrers.References {
 			refPath := path.Join(srcDir, repoName, "blobs", string(ref.Digest.Algorithm()), ref.Digest.Hex())
@@ -2247,12 +2390,44 @@ func TestPeriodicallySignatures(t *testing.T) {
 			err = json.Unmarshal(body, &nm)
 			So(err, ShouldBeNil)
 
-			// triggers perm denied on sig blobs
+			// triggers perm denied on notary sig blobs on downstream
 			for _, blob := range nm.Blobs {
-				blobPath := path.Join(srcDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Hex())
-				err := os.Chmod(blobPath, 0o000)
+				blobPath := path.Join(destDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Hex())
+				err := os.MkdirAll(blobPath, 0o755)
+				So(err, ShouldBeNil)
+				err = os.Chmod(blobPath, 0o000)
 				So(err, ShouldBeNil)
 			}
+		}
+
+		// sync on demand
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		// remove already synced image
+		err = os.RemoveAll(path.Join(destDir, repoName))
+		So(err, ShouldBeNil)
+
+		// triggers perm denied on notary manifest on downstream
+		for _, ref := range referrers.References {
+			refPath := path.Join(destDir, repoName, "blobs", string(ref.Digest.Algorithm()), ref.Digest.Hex())
+			err := os.MkdirAll(refPath, 0o755)
+			So(err, ShouldBeNil)
+			err = os.Chmod(refPath, 0o000)
+			So(err, ShouldBeNil)
+		}
+
+		// sync on demand
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		// triggers perm denied on sig blobs
+		for _, blob := range nm.Blobs {
+			blobPath := path.Join(srcDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Hex())
+			err := os.Chmod(blobPath, 0o000)
+			So(err, ShouldBeNil)
 		}
 
 		// remove already synced image
@@ -2263,31 +2438,6 @@ func TestPeriodicallySignatures(t *testing.T) {
 		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
-
-		for _, blob := range nm.Blobs {
-			srcBlobPath := path.Join(srcDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Hex())
-			err := os.Chmod(srcBlobPath, 0o755)
-			So(err, ShouldBeNil)
-
-			destBlobPath := path.Join(destDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Hex())
-			_ = os.Remove(destBlobPath)
-			err = os.MkdirAll(destBlobPath, 0o000)
-			So(err, ShouldBeNil)
-		}
-
-		// sync on demand
-		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
-
-		// clean
-		for _, blob := range nm.Blobs {
-			destBlobPath := path.Join(destDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Hex())
-			err = os.Chmod(destBlobPath, 0o755)
-			So(err, ShouldBeNil)
-			err = os.Remove(destBlobPath)
-			So(err, ShouldBeNil)
-		}
 
 		// test cosign signatures errors
 		// based on manifest digest get cosign manifest
@@ -2301,6 +2451,23 @@ func TestPeriodicallySignatures(t *testing.T) {
 
 		err = json.Unmarshal(mResp.Body(), &cm)
 		So(err, ShouldBeNil)
+
+		downstreaamCosignManifest := ispec.Manifest{
+			MediaType: cm.MediaType,
+			Config: ispec.Descriptor{
+				MediaType:   cm.Config.MediaType,
+				Size:        cm.Config.Size,
+				Digest:      cm.Config.Digest,
+				Annotations: cm.Config.Annotations,
+			},
+			Layers:      cm.Layers,
+			Versioned:   cm.Versioned,
+			Annotations: cm.Annotations,
+		}
+
+		buf, err := json.Marshal(downstreaamCosignManifest)
+		So(err, ShouldBeNil)
+		cosignManifestDigest := godigest.FromBytes(buf)
 
 		for _, blob := range cm.Layers {
 			blobPath := path.Join(srcDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Hex())
@@ -2317,20 +2484,21 @@ func TestPeriodicallySignatures(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
+		// remove already synced image
+		err = os.RemoveAll(path.Join(destDir, repoName))
+		So(err, ShouldBeNil)
+
 		for _, blob := range cm.Layers {
 			srcBlobPath := path.Join(srcDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Hex())
 			err := os.Chmod(srcBlobPath, 0o755)
 			So(err, ShouldBeNil)
 
 			destBlobPath := path.Join(destDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Hex())
-
-			err = os.MkdirAll(destBlobPath, 0o000)
+			err = os.MkdirAll(destBlobPath, 0o755)
+			So(err, ShouldBeNil)
+			err = os.Chmod(destBlobPath, 0o755)
 			So(err, ShouldBeNil)
 		}
-
-		// remove already synced image
-		err = os.RemoveAll(path.Join(destDir, repoName))
-		So(err, ShouldBeNil)
 
 		// sync on demand
 		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
@@ -2345,7 +2513,7 @@ func TestPeriodicallySignatures(t *testing.T) {
 			So(err, ShouldBeNil)
 		}
 
-		// trigger error on config blob
+		// trigger error on upstream config blob
 		srcConfigBlobPath := path.Join(srcDir, repoName, "blobs", string(cm.Config.Digest.Algorithm()),
 			cm.Config.Digest.Hex())
 		err = os.Chmod(srcConfigBlobPath, 0o000)
@@ -2363,120 +2531,40 @@ func TestPeriodicallySignatures(t *testing.T) {
 		err = os.Chmod(srcConfigBlobPath, 0o755)
 		So(err, ShouldBeNil)
 
-		destConfigBlobPath := path.Join(destDir, repoName, "blobs", string(cm.Config.Digest.Algorithm()),
-			cm.Config.Digest.Hex())
-		// err = os.Remove(destConfigBlobPath)
-		// So(err, ShouldBeNil)
-		err = os.MkdirAll(destConfigBlobPath, 0o000)
-		So(err, ShouldBeNil)
-
+		// trigger error on upstream config blob
 		// remove already synced image
 		err = os.RemoveAll(path.Join(destDir, repoName))
+		So(err, ShouldBeNil)
+
+		destConfigBlobPath := path.Join(destDir, repoName, "blobs", string(cm.Config.Digest.Algorithm()),
+			cm.Config.Digest.Hex())
+
+		err = os.MkdirAll(destConfigBlobPath, 0o755)
+		So(err, ShouldBeNil)
+		err = os.Chmod(destConfigBlobPath, 0o000)
 		So(err, ShouldBeNil)
 
 		// sync on demand
 		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
-	})
-}
 
-func TestPeriodicallySignaturesErr(t *testing.T) {
-	Convey("Verify sync signatures gives error", t, func() {
-		updateDuration, _ := time.ParseDuration("30m")
-
-		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(t, false, false)
-
-		defer func() {
-			sctlr.Shutdown()
-		}()
-
-		// create repo, push and sign it
-		repoName := testSignedImage
-		var digest godigest.Digest
-		So(func() { digest = pushRepo(srcBaseURL, repoName) }, ShouldNotPanic)
-
-		splittedURL := strings.SplitAfter(srcBaseURL, ":")
-		srcPort := splittedURL[len(splittedURL)-1]
-
-		cwd, err := os.Getwd()
+		// remove already synced image
+		err = os.RemoveAll(path.Join(destDir, repoName))
 		So(err, ShouldBeNil)
 
-		defer func() { _ = os.Chdir(cwd) }()
-		tdir := t.TempDir()
-		_ = os.Chdir(tdir)
-		generateKeyPairs(tdir)
-
-		So(func() { signImage(tdir, srcPort, repoName, digest) }, ShouldNotPanic)
-
-		regex := ".*"
-		var semver bool
-		var tlsVerify bool
-
-		syncRegistryConfig := sync.RegistryConfig{
-			Content: []sync.Content{
-				{
-					Prefix: repoName,
-					Tags: &sync.Tags{
-						Regex:  &regex,
-						Semver: &semver,
-					},
-				},
-			},
-			URLs:         []string{srcBaseURL},
-			PollInterval: updateDuration,
-			TLSVerify:    &tlsVerify,
-			CertDir:      "",
-			OnDemand:     true,
-		}
-
-		defaultVal := true
-		syncConfig := &sync.Config{
-			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
-		}
-
-		// test negative cases (trigger errors)
-		// test notary signatures errors
-
-		// based on manifest digest get referrers
-		getReferrersURL := srcBaseURL + path.Join("/oras/artifacts/v1/", repoName, "manifests", digest.String(), "referrers")
-
-		resp, err := resty.R().
-			SetHeader("Content-Type", "application/json").
-			SetQueryParam("artifactType", "application/vnd.cncf.notary.v2.signature").
-			Get(getReferrersURL)
-
+		// trigger error on downstream manifest
+		destManifestPath := path.Join(destDir, repoName, "blobs", string(cosignManifestDigest.Algorithm()),
+			cosignManifestDigest.Hex())
+		err = os.MkdirAll(destManifestPath, 0o755)
 		So(err, ShouldBeNil)
-		So(resp, ShouldNotBeEmpty)
-
-		var referrers ReferenceList
-
-		err = json.Unmarshal(resp.Body(), &referrers)
+		err = os.Chmod(destManifestPath, 0o000)
 		So(err, ShouldBeNil)
 
-		// read manifest
-		var nm artifactspec.Manifest
-		for _, ref := range referrers.References {
-			refPath := path.Join(srcDir, repoName, "blobs", string(ref.Digest.Algorithm()), ref.Digest.Hex())
-			body, err := ioutil.ReadFile(refPath)
-			So(err, ShouldBeNil)
-
-			err = json.Unmarshal(body, &nm)
-			So(err, ShouldBeNil)
-
-			// triggers perm denied on sig blobs
-			for _, blob := range nm.Blobs {
-				blobPath := path.Join(srcDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Hex())
-				err := os.Chmod(blobPath, 0o000)
-				So(err, ShouldBeNil)
-			}
-		}
-
-		dctlr, _, _, _ := startDownstreamServer(t, false, syncConfig)
-		defer func() {
-			dctlr.Shutdown()
-		}()
+		// sync on demand
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
 	})
 }
 
@@ -2530,10 +2618,11 @@ func TestOnDemandRetryGoroutine(t *testing.T) {
 			Registries: []sync.RegistryConfig{syncRegistryConfig},
 		}
 
-		dc, destBaseURL, destDir, destClient := startDownstreamServer(t, false, syncConfig)
+		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(t, false, syncConfig)
+		defer os.RemoveAll(destDir)
 
 		defer func() {
-			dc.Shutdown()
+			dctlr.Shutdown()
 		}()
 
 		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
@@ -2564,6 +2653,59 @@ func TestOnDemandRetryGoroutine(t *testing.T) {
 		resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
+	})
+}
+
+func TestOnDemandRetryGoroutineErr(t *testing.T) {
+	Convey("Verify ondemand sync retries in background on error", t, func() {
+		regex := ".*"
+		semver := true
+		var tlsVerify bool
+
+		syncRegistryConfig := sync.RegistryConfig{
+			Content: []sync.Content{
+				{
+					Prefix: testImage,
+					Tags: &sync.Tags{
+						Regex:  &regex,
+						Semver: &semver,
+					},
+				},
+			},
+			URLs:      []string{"http://127.0.0.1"},
+			OnDemand:  true,
+			TLSVerify: &tlsVerify,
+			CertDir:   "",
+		}
+
+		maxRetries := 1
+		delay := 1 * time.Second
+		syncRegistryConfig.MaxRetries = &maxRetries
+		syncRegistryConfig.RetryDelay = &delay
+
+		defaultVal := true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
+
+		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(t, false, syncConfig)
+		defer os.RemoveAll(destDir)
+
+		defer func() {
+			dctlr.Shutdown()
+		}()
+
+		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 404)
+
+		// in the meantime ondemand should retry syncing and finish with error
+		time.Sleep(3 * time.Second)
+
+		resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 404)
 	})
 }
 
@@ -2606,10 +2748,11 @@ func TestOnDemandMultipleRetries(t *testing.T) {
 			Registries: []sync.RegistryConfig{syncRegistryConfig},
 		}
 
-		dc, destBaseURL, destDir, destClient := startDownstreamServer(t, false, syncConfig)
+		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(t, false, syncConfig)
+		defer os.RemoveAll(destDir)
 
 		defer func() {
-			dc.Shutdown()
+			dctlr.Shutdown()
 		}()
 
 		callsNo := 5
@@ -2652,15 +2795,7 @@ func TestOnDemandMultipleRetries(t *testing.T) {
 			}
 		}()
 
-		// wait till ready
-		for {
-			_, err := resty.R().Get(destBaseURL)
-			if err == nil {
-				break
-			}
-
-			time.Sleep(100 * time.Millisecond)
-		}
+		test.WaitTillServerReady(srcBaseURL)
 
 		defer func() {
 			sctlr.Shutdown()
@@ -2678,7 +2813,7 @@ func TestOnDemandMultipleRetries(t *testing.T) {
 			time.Sleep(500 * time.Millisecond)
 		}
 
-		waitSyncOndemand(destDir, testImage)
+		waitSync(destDir, testImage)
 
 		So(len(populatedDirs), ShouldEqual, 1)
 	})
@@ -2718,10 +2853,11 @@ func TestOnDemandPullsOnce(t *testing.T) {
 			Registries: []sync.RegistryConfig{syncRegistryConfig},
 		}
 
-		dc, destBaseURL, destDir, _ := startDownstreamServer(t, false, syncConfig)
+		dctlr, destBaseURL, destDir, _ := startDownstreamServer(t, false, syncConfig)
+		defer os.RemoveAll(destDir)
 
 		defer func() {
-			dc.Shutdown()
+			dctlr.Shutdown()
 		}()
 
 		var wg goSync.WaitGroup
@@ -3142,15 +3278,7 @@ func TestSyncOnlyDiff(t *testing.T) {
 			}
 		}()
 
-		// wait till ready
-		for {
-			_, err := resty.R().Get(destBaseURL)
-			if err == nil {
-				break
-			}
-
-			time.Sleep(100 * time.Millisecond)
-		}
+		test.WaitTillServerReady(destBaseURL)
 
 		defer func() {
 			dctlr.Shutdown()
@@ -3178,7 +3306,7 @@ func TestSyncOnlyDiff(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		time.Sleep(2 * time.Second)
+		time.Sleep(3 * time.Second)
 
 		done <- true
 		So(isPopulated, ShouldBeFalse)
@@ -3299,7 +3427,7 @@ func TestSyncWithDiffDigest(t *testing.T) {
 			}
 		}()
 
-		// watch .sync subdir, shouldn't be populated
+		// watch .sync subdir, should be populated
 		done := make(chan bool)
 		var isPopulated bool
 		go func() {
@@ -3321,24 +3449,306 @@ func TestSyncWithDiffDigest(t *testing.T) {
 			dctlr.Shutdown()
 		}()
 
-		// wait till ready
-		for {
-			_, err := resty.R().Get(destBaseURL)
-			if err == nil {
-				break
-			}
-
-			time.Sleep(100 * time.Millisecond)
-		}
+		test.WaitTillServerReady(destBaseURL)
 
 		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		time.Sleep(5 * time.Second)
+		waitSync(destDir, testImage)
 
 		done <- true
 		So(isPopulated, ShouldBeTrue)
+	})
+}
+
+func TestSyncSignaturesDiff(t *testing.T) {
+	Convey("Verify sync detects changes in the upstream signatures", t, func() {
+		updateDuration, _ := time.ParseDuration("10s")
+
+		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(t, false, false)
+		defer os.RemoveAll(srcDir)
+
+		defer func() {
+			sctlr.Shutdown()
+		}()
+
+		// create repo, push and sign it
+		repoName := testSignedImage
+		var digest godigest.Digest
+		So(func() { digest = pushRepo(srcBaseURL, repoName) }, ShouldNotPanic)
+
+		splittedURL := strings.SplitAfter(srcBaseURL, ":")
+		srcPort := splittedURL[len(splittedURL)-1]
+
+		cwd, err := os.Getwd()
+		So(err, ShouldBeNil)
+
+		defer func() { _ = os.Chdir(cwd) }()
+		tdir, err := ioutil.TempDir("", "sigs")
+		So(err, ShouldBeNil)
+		defer os.RemoveAll(tdir)
+		_ = os.Chdir(tdir)
+		generateKeyPairs(tdir)
+
+		So(func() { signImage(tdir, srcPort, repoName, digest) }, ShouldNotPanic)
+
+		regex := ".*"
+		var semver bool
+		var tlsVerify bool
+
+		syncRegistryConfig := sync.RegistryConfig{
+			Content: []sync.Content{
+				{
+					Prefix: repoName,
+					Tags: &sync.Tags{
+						Regex:  &regex,
+						Semver: &semver,
+					},
+				},
+			},
+			URLs:         []string{srcBaseURL},
+			PollInterval: updateDuration,
+			TLSVerify:    &tlsVerify,
+			CertDir:      "",
+			OnDemand:     false,
+		}
+
+		defaultVal := true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
+
+		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(t, false, syncConfig)
+		defer func() {
+			os.RemoveAll(destDir)
+			dctlr.Shutdown()
+		}()
+
+		// wait for sync
+		var destTagsList TagsList
+
+		for {
+			resp, err := destClient.R().Get(destBaseURL + "/v2/" + repoName + "/tags/list")
+			if err != nil {
+				panic(err)
+			}
+
+			err = json.Unmarshal(resp.Body(), &destTagsList)
+			if err != nil {
+				panic(err)
+			}
+
+			if len(destTagsList.Tags) > 0 {
+				break
+			}
+
+			time.Sleep(500 * time.Millisecond)
+		}
+
+		splittedURL = strings.SplitAfter(destBaseURL, ":")
+		destPort := splittedURL[len(splittedURL)-1]
+
+		a := &options.AnnotationOptions{Annotations: []string{"tag=1.0"}}
+		amap, err := a.AnnotationsMap()
+		if err != nil {
+			panic(err)
+		}
+
+		// notation verify the image
+		image := fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")
+		cmd := exec.Command("notation", "verify", "--cert", "good", "--plain-http", image)
+		out, err := cmd.CombinedOutput()
+		So(err, ShouldBeNil)
+
+		msg := string(out)
+		So(msg, ShouldNotBeEmpty)
+		So(strings.Contains(msg, "verification failure"), ShouldBeFalse)
+
+		// cosign verify the image
+		vrfy := verify.VerifyCommand{
+			RegistryOptions: options.RegistryOptions{AllowInsecure: true},
+			CheckClaims:     true,
+			KeyRef:          path.Join(tdir, "cosign.pub"),
+			Annotations:     amap,
+		}
+		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")})
+		So(err, ShouldBeNil)
+
+		// now add signatures to upstream and let sync detect that upstream signatures changed and pull them
+		So(func() { signImage(tdir, srcPort, repoName, digest) }, ShouldNotPanic)
+
+		// wait for signatures
+		time.Sleep(10 * time.Second)
+
+		// notation verify the image
+		image = fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")
+		cmd = exec.Command("notation", "verify", "--cert", "good", "--plain-http", image)
+		out, err = cmd.CombinedOutput()
+		So(err, ShouldBeNil)
+
+		msg = string(out)
+		So(msg, ShouldNotBeEmpty)
+		So(strings.Contains(msg, "verification failure"), ShouldBeFalse)
+
+		// cosign verify the image
+		vrfy = verify.VerifyCommand{
+			RegistryOptions: options.RegistryOptions{AllowInsecure: true},
+			CheckClaims:     true,
+			KeyRef:          path.Join(tdir, "cosign.pub"),
+			Annotations:     amap,
+		}
+		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")})
+		So(err, ShouldBeNil)
+
+		// compare signatures
+		var srcIndex ispec.Index
+		var destIndex ispec.Index
+
+		srcBuf, err := ioutil.ReadFile(path.Join(srcDir, repoName, "index.json"))
+		if err != nil {
+			panic(err)
+		}
+
+		if err := json.Unmarshal(srcBuf, &srcIndex); err != nil {
+			panic(err)
+		}
+
+		destBuf, err := ioutil.ReadFile(path.Join(destDir, repoName, "index.json"))
+		if err != nil {
+			panic(err)
+		}
+
+		if err := json.Unmarshal(destBuf, &destIndex); err != nil {
+			panic(err)
+		}
+
+		// find image manifest digest (signed-repo) and upstream notary digests
+		var upstreamRefsDigests []string
+		var downstreamRefsDigests []string
+
+		var manifestDigest string
+		for _, manifestDesc := range srcIndex.Manifests {
+			if manifestDesc.Annotations[ispec.AnnotationRefName] == "1.0" {
+				manifestDigest = string(manifestDesc.Digest)
+			} else if manifestDesc.MediaType == notreg.ArtifactTypeNotation {
+				upstreamRefsDigests = append(upstreamRefsDigests, manifestDesc.Digest.String())
+			}
+		}
+
+		for _, manifestDesc := range destIndex.Manifests {
+			if manifestDesc.MediaType == notreg.ArtifactTypeNotation {
+				downstreamRefsDigests = append(downstreamRefsDigests, manifestDesc.Digest.String())
+			}
+		}
+
+		// compare notary signatures
+		So(upstreamRefsDigests, ShouldResemble, downstreamRefsDigests)
+
+		cosignManifestTag := strings.Replace(manifestDigest, ":", "-", 1) + ".sig"
+
+		// get synced cosign manifest from downstream
+		resp, err := resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/" + cosignManifestTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		var syncedCosignManifest ispec.Manifest
+
+		err = json.Unmarshal(resp.Body(), &syncedCosignManifest)
+		So(err, ShouldBeNil)
+
+		// get cosign manifest from upstream
+		resp, err = resty.R().Get(srcBaseURL + "/v2/" + repoName + "/manifests/" + cosignManifestTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		var cosignManifest ispec.Manifest
+
+		err = json.Unmarshal(resp.Body(), &cosignManifest)
+		So(err, ShouldBeNil)
+
+		// compare cosign signatures
+		So(reflect.DeepEqual(cosignManifest, syncedCosignManifest), ShouldEqual, true)
+
+		// let it sync one more time
+		time.Sleep(10 * time.Second)
+	})
+}
+
+func TestOnlySignedFlag(t *testing.T) {
+	updateDuration, _ := time.ParseDuration("30m")
+
+	sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(t, false, false)
+	defer os.RemoveAll(srcDir)
+
+	defer func() {
+		sctlr.Shutdown()
+	}()
+
+	regex := ".*"
+	semver := true
+	onlySigned := true
+
+	var tlsVerify bool
+
+	syncRegistryConfig := sync.RegistryConfig{
+		Content: []sync.Content{
+			{
+				Prefix: testImage,
+				Tags: &sync.Tags{
+					Regex:  &regex,
+					Semver: &semver,
+				},
+			},
+		},
+		URLs:         []string{srcBaseURL},
+		PollInterval: updateDuration,
+		TLSVerify:    &tlsVerify,
+		CertDir:      "",
+		OnlySigned:   &onlySigned,
+	}
+
+	defaultVal := true
+
+	Convey("Verify sync revokes unsigned images", t, func() {
+		syncRegistryConfig.OnDemand = false
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
+
+		dctlr, destBaseURL, destDir, client := startDownstreamServer(t, false, syncConfig)
+		defer os.RemoveAll(destDir)
+
+		defer func() {
+			dctlr.Shutdown()
+		}()
+
+		time.Sleep(3 * time.Second)
+
+		resp, err := client.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 404)
+	})
+
+	Convey("Verify sync ondemand revokes unsigned images", t, func() {
+		syncRegistryConfig.OnDemand = true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
+
+		dctlr, destBaseURL, destDir, client := startDownstreamServer(t, false, syncConfig)
+		defer os.RemoveAll(destDir)
+
+		defer func() {
+			dctlr.Shutdown()
+		}()
+
+		resp, err := client.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 404)
 	})
 }
 
@@ -3508,7 +3918,7 @@ func pushRepo(url, repoName string) godigest.Digest {
 	return digest
 }
 
-func waitSyncOndemand(rootDir, repoName string) {
+func waitSync(rootDir, repoName string) {
 	// wait for .sync subdirs to be removed
 	for {
 		dirs, err := os.ReadDir(path.Join(rootDir, repoName, sync.SyncBlobUploadDir))
