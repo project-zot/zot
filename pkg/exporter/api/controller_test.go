@@ -8,10 +8,8 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"math/big"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -85,8 +83,7 @@ func TestNewExporter(t *testing.T) {
 		exporterPort := GetFreePort()
 		serverPort := GetFreePort()
 		exporterConfig.Exporter.Port = exporterPort
-		dir, _ := ioutil.TempDir("", "metrics")
-		exporterConfig.Exporter.Metrics.Path = strings.TrimPrefix(dir, "/tmp/")
+		exporterConfig.Exporter.Metrics.Path = strings.TrimPrefix(t.TempDir(), "/tmp/")
 		exporterConfig.Server.Port = serverPort
 		exporterController := api.NewController(exporterConfig)
 
@@ -126,9 +123,7 @@ func TestNewExporter(t *testing.T) {
 				serverController := zotapi.NewController(servercConfig)
 				So(serverController, ShouldNotBeNil)
 
-				dir, err := ioutil.TempDir("", "exporter-test")
-				So(err, ShouldBeNil)
-				defer os.RemoveAll(dir)
+				dir := t.TempDir()
 				serverController.Config.Storage.RootDirectory = dir
 				go func(c *zotapi.Controller) {
 					// this blocks

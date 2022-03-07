@@ -398,12 +398,7 @@ func TestScrub(t *testing.T) {
 			config.HTTP.Port = port
 			controller := api.NewController(config)
 
-			dir, err := ioutil.TempDir("", "scrub-test")
-			if err != nil {
-				panic(err)
-			}
-
-			defer os.RemoveAll(dir)
+			dir := t.TempDir()
 
 			controller.Config.Storage.RootDirectory = dir
 			go func(controller *api.Controller) {
@@ -480,11 +475,7 @@ func TestScrub(t *testing.T) {
 		Convey("bad index.json", func(c C) {
 			port := GetFreePort()
 
-			dir, err := ioutil.TempDir("", "scrub-test")
-			if err != nil {
-				panic(err)
-			}
-			defer os.RemoveAll(dir)
+			dir := t.TempDir()
 
 			repoName := "badIndex"
 

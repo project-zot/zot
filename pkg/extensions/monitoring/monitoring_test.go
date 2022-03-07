@@ -5,9 +5,7 @@ package monitoring_test
 
 import (
 	"context"
-	"io/ioutil"
 	"net/http"
-	"os"
 	"path"
 	"testing"
 	"time"
@@ -28,11 +26,7 @@ func TestExtensionMetrics(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 
-		rootDir, err := ioutil.TempDir("", "metrics-test")
-		if err != nil {
-			panic(err)
-		}
-		defer os.RemoveAll(rootDir)
+		rootDir := t.TempDir()
 
 		conf.Storage.RootDirectory = rootDir
 		conf.Extensions = &extconf.ExtensionConfig{}
@@ -61,7 +55,7 @@ func TestExtensionMetrics(t *testing.T) {
 		monitoring.IncDownloadCounter(ctlr.Metrics, "alpine")
 		monitoring.IncUploadCounter(ctlr.Metrics, "alpine")
 
-		err = test.CopyFiles("../../../test/data/zot-test", path.Join(rootDir, "alpine"))
+		err := test.CopyFiles("../../../test/data/zot-test", path.Join(rootDir, "alpine"))
 		if err != nil {
 			panic(err)
 		}
@@ -88,13 +82,7 @@ func TestExtensionMetrics(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 
-		rootDir, err := ioutil.TempDir("", "metrics-test")
-		if err != nil {
-			panic(err)
-		}
-		defer os.RemoveAll(rootDir)
-
-		conf.Storage.RootDirectory = rootDir
+		conf.Storage.RootDirectory = t.TempDir()
 		conf.Extensions = &extconf.ExtensionConfig{}
 		var disabled bool
 		conf.Extensions.Metrics = &extconf.MetricsConfig{Enable: &disabled}

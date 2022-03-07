@@ -2,7 +2,6 @@ package v1_0_0_test
 
 import (
 	"context"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"testing"
@@ -25,7 +24,7 @@ var (
 )
 
 func TestWorkflows(t *testing.T) {
-	ctrl, randomPort := startServer()
+	ctrl, randomPort := startServer(t)
 	defer stopServer(ctrl)
 
 	storageInfo := []string{defaultDir, firstDir, secondDir}
@@ -38,7 +37,7 @@ func TestWorkflows(t *testing.T) {
 }
 
 func TestWorkflowsOutputJSON(t *testing.T) {
-	ctrl, randomPort := startServer()
+	ctrl, randomPort := startServer(t)
 	defer stopServer(ctrl)
 
 	storageInfo := []string{defaultDir, firstDir, secondDir}
@@ -52,7 +51,9 @@ func TestWorkflowsOutputJSON(t *testing.T) {
 }
 
 // start local server on random open port.
-func startServer() (*api.Controller, string) {
+func startServer(t *testing.T) (*api.Controller, string) {
+	t.Helper()
+
 	port := GetFreePort()
 	baseURL := GetBaseURL(port)
 	conf := config.New()
@@ -60,25 +61,13 @@ func startServer() (*api.Controller, string) {
 	conf.HTTP.Port = port
 	ctrl := api.NewController(conf)
 
-	dir, err := ioutil.TempDir("", "oci-repo-test")
-	if err != nil {
-		panic(err)
-	}
-
+	dir := t.TempDir()
 	defaultDir = dir
 
-	firstSubDir, err := ioutil.TempDir("", "oci-repo-test")
-	if err != nil {
-		panic(err)
-	}
-
+	firstSubDir := t.TempDir()
 	firstDir = firstSubDir
 
-	secondSubDir, err := ioutil.TempDir("", "oci-repo-test")
-	if err != nil {
-		panic(err)
-	}
-
+	secondSubDir := t.TempDir()
 	secondDir = secondSubDir
 
 	subPaths := make(map[string]config.StorageConfig)

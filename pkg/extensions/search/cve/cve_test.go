@@ -325,23 +325,9 @@ func makeTestFile(fileName string, content string) error {
 func TestMultipleStoragePath(t *testing.T) {
 	Convey("Test multiple storage path", t, func() {
 		// Create temporary directory
-		firstRootDir, err := ioutil.TempDir("", "util_test")
-		if err != nil {
-			panic(err)
-		}
-		defer os.RemoveAll(firstRootDir)
-
-		secondRootDir, err := ioutil.TempDir("", "util_test")
-		if err != nil {
-			panic(err)
-		}
-		defer os.RemoveAll(secondRootDir)
-
-		thirdRootDir, err := ioutil.TempDir("", "util_test")
-		if err != nil {
-			panic(err)
-		}
-		defer os.RemoveAll(thirdRootDir)
+		firstRootDir := t.TempDir()
+		secondRootDir := t.TempDir()
+		thirdRootDir := t.TempDir()
 
 		log := log.NewLogger("debug", "")
 		metrics := monitoring.NewMetricsServer(false, log)
@@ -628,19 +614,11 @@ func TestCVEConfig(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		firstDir, err := ioutil.TempDir("", "oci-repo-test")
-		if err != nil {
-			panic(err)
-		}
+		firstDir := t.TempDir()
 
-		secondDir, err := ioutil.TempDir("", "oci-repo-test")
-		if err != nil {
-			panic(err)
-		}
-		defer os.RemoveAll(firstDir)
-		defer os.RemoveAll(secondDir)
+		secondDir := t.TempDir()
 
-		err = CopyFiles("../../../../test/data", path.Join(secondDir, "a"))
+		err := CopyFiles("../../../../test/data", path.Join(secondDir, "a"))
 		if err != nil {
 			panic(err)
 		}

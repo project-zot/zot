@@ -43,12 +43,8 @@ type AuditLog struct {
 
 func TestAuditLogMessages(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		dir, err := ioutil.TempDir("", "oci-repo-test")
-		if err != nil {
-			panic(err)
-		}
-		defer os.RemoveAll(dir)
-		err = CopyFiles("../../test/data", dir)
+		dir := t.TempDir()
+		err := CopyFiles("../../test/data", dir)
 		if err != nil {
 			panic(err)
 		}

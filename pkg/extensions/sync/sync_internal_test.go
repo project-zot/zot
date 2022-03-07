@@ -58,17 +58,10 @@ func TestInjectSyncUtils(t *testing.T) {
 			So(err, ShouldBeNil)
 		}
 
-		storageDir, err := ioutil.TempDir("", "oci-dest-repo-test")
-		if err != nil {
-			panic(err)
-		}
-
-		defer os.RemoveAll(storageDir)
-
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
 
-		imageStore := storage.NewImageStore(storageDir, false, storage.DefaultGCDelay, false, false, log, metrics)
+		imageStore := storage.NewImageStore(t.TempDir(), false, storage.DefaultGCDelay, false, false, log, metrics)
 
 		injected = test.InjectFailure(0)
 		_, _, err = getLocalImageRef(imageStore, testImage, testImageTag)
@@ -155,19 +148,12 @@ func TestSyncInternal(t *testing.T) {
 	})
 
 	Convey("Verify getLocalImageRef()", t, func() {
-		storageDir, err := ioutil.TempDir("", "oci-dest-repo-test")
-		if err != nil {
-			panic(err)
-		}
-
-		defer os.RemoveAll(storageDir)
-
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
 
-		imageStore := storage.NewImageStore(storageDir, false, storage.DefaultGCDelay, false, false, log, metrics)
+		imageStore := storage.NewImageStore(t.TempDir(), false, storage.DefaultGCDelay, false, false, log, metrics)
 
-		err = os.Chmod(imageStore.RootDir(), 0o000)
+		err := os.Chmod(imageStore.RootDir(), 0o000)
 		So(err, ShouldBeNil)
 
 		_, _, err = getLocalImageRef(imageStore, testImage, testImageTag)
@@ -206,16 +192,11 @@ func TestSyncInternal(t *testing.T) {
 	})
 
 	Convey("Test getHttpClient() with bad certs", t, func() {
-		badCertsDir, err := ioutil.TempDir("", "bad_certs*")
-		if err != nil {
-			panic(err)
-		}
+		badCertsDir := t.TempDir()
 
 		if err := os.WriteFile(path.Join(badCertsDir, "ca.crt"), []byte("certificate"), 0o600); err != nil {
 			panic(err)
 		}
-
-		defer os.RemoveAll(badCertsDir)
 
 		var tlsVerify bool
 		updateDuration := time.Microsecond
@@ -296,17 +277,12 @@ func TestSyncInternal(t *testing.T) {
 	})
 
 	Convey("Test canSkipImage()", t, func() {
-		storageDir, err := ioutil.TempDir("", "oci-dest-repo-test")
+		storageDir := t.TempDir()
+
+		err := test.CopyFiles("../../../test/data", storageDir)
 		if err != nil {
 			panic(err)
 		}
-
-		err = test.CopyFiles("../../../test/data", storageDir)
-		if err != nil {
-			panic(err)
-		}
-
-		defer os.RemoveAll(storageDir)
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
@@ -369,12 +345,7 @@ func TestSyncInternal(t *testing.T) {
 	})
 
 	Convey("Verify pushSyncedLocalImage func", t, func() {
-		storageDir, err := ioutil.TempDir("", "oci-dest-repo-test")
-		if err != nil {
-			panic(err)
-		}
-
-		defer os.RemoveAll(storageDir)
+		storageDir := t.TempDir()
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
@@ -387,7 +358,7 @@ func TestSyncInternal(t *testing.T) {
 		testRootDir := path.Join(imageStore.RootDir(), testImage, SyncBlobUploadDir)
 		// testImagePath := path.Join(testRootDir, testImage)
 
-		err = pushSyncedLocalImage(testImage, testImageTag, testRootDir, storeController, log)
+		err := pushSyncedLocalImage(testImage, testImageTag, testRootDir, storeController, log)
 		So(err, ShouldNotBeNil)
 
 		err = os.MkdirAll(testRootDir, 0o755)

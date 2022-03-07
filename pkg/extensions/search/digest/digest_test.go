@@ -342,13 +342,11 @@ func TestDigestSearchHTTPSubPaths(t *testing.T) {
 func TestDigestSearchDisabled(t *testing.T) {
 	Convey("Test disabling image search", t, func() {
 		var disabled bool
-		dir, err := ioutil.TempDir("", "digest_test")
-		So(err, ShouldBeNil)
 		port := GetFreePort()
 		baseURL := GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
-		conf.Storage.RootDirectory = dir
+		conf.Storage.RootDirectory = t.TempDir()
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: &extconf.SearchConfig{Enable: &disabled},
 		}

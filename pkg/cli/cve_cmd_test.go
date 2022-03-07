@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"regexp"
@@ -291,17 +290,12 @@ func TestServerCVEResponse(t *testing.T) {
 	conf := config.New()
 	conf.HTTP.Port = port
 
-	dir, err := ioutil.TempDir("", "oci-repo-test")
+	dir := t.TempDir()
+
+	err := test.CopyFiles("../../test/data/zot-cve-test", path.Join(dir, "zot-cve-test"))
 	if err != nil {
 		panic(err)
 	}
-
-	err = test.CopyFiles("../../test/data/zot-cve-test", path.Join(dir, "zot-cve-test"))
-	if err != nil {
-		panic(err)
-	}
-
-	defer os.RemoveAll(dir)
 
 	conf.Storage.RootDirectory = dir
 	cveConfig := &extconf.CVEConfig{
