@@ -10,10 +10,25 @@ import (
 
 	"github.com/containers/common/pkg/retry"
 	"github.com/containers/image/v5/copy"
+	"github.com/containers/image/v5/docker"
+	"github.com/containers/image/v5/signature"
+	"github.com/containers/image/v5/types"
 	"gopkg.in/resty.v1"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 )
+
+type syncContextUtils struct {
+	imageStore   storage.ImageStore
+	policyCtx    *signature.PolicyContext
+	localCtx     *types.SystemContext
+	upstreamCtx  *types.SystemContext
+	client       *resty.Client
+	url          *url.URL
+	upstreamAddr string
+	retryOptions *retry.RetryOptions
+	copyOptions  copy.Options
+}
 
 // nolint: gochecknoglobals
 var demandedImgs demandedImages
@@ -89,8 +104,6 @@ func syncOneImage(imageChannel chan error, cfg Config, storeController storage.S
 		}
 	}
 
-	var copyErr error
-
 	localCtx, policyCtx, err := getLocalContexts(log)
 	if err != nil {
 		imageChannel <- err
@@ -139,42 +152,50 @@ func syncOneImage(imageChannel chan error, cfg Config, storeController storage.S
 
 			upstreamAddr := StripRegistryTransport(upstreamURL)
 
-			httpClient, err := getHTTPClient(&regCfg, upstreamURL, credentialsFile[upstreamAddr], log)
+			httpClient, registryURL, err := getHTTPClient(&regCfg, upstreamURL, credentialsFile[upstreamAddr], log)
 			if err != nil {
 				imageChannel <- err
 
 				return
 			}
 
+			// it's an image
+			upstreamCtx := getUpstreamContext(&regCfg, credentialsFile[upstreamAddr])
+			options := getCopyOptions(upstreamCtx, localCtx)
+
 			// demanded 'image' is a signature
-			if isCosignTag(tag) || isArtifact {
+			if isCosignTag(tag) {
 				// at tis point we should already have images synced, but not their signatures.
-				regURL, err := url.Parse(upstreamURL)
-				if err != nil {
-					log.Error().Err(err).Msgf("couldn't parse registry URL: %s", upstreamURL)
-
-					imageChannel <- err
-
-					return
-				}
-
-				// is notary signature
-				if isArtifact {
-					err = syncNotarySignature(httpClient, storeController, *regURL, remoteRepo, localRepo, tag, log)
-					if err != nil {
-						log.Error().Err(err).Msgf("couldn't copy image signature %s/%s:%s", upstreamURL, localRepo, tag)
-
-						continue
-					}
-
-					imageChannel <- nil
-
-					return
-				}
 				// is cosign signature
-				err = syncCosignSignature(httpClient, storeController, *regURL, remoteRepo, localRepo, tag, log)
+				cosignManifest, err := getCosignManifest(httpClient, *registryURL, remoteRepo, tag, log)
 				if err != nil {
-					log.Error().Err(err).Msgf("couldn't copy image signature %s/%s:%s", upstreamURL, localRepo, tag)
+					log.Error().Err(err).Msgf("couldn't get upstream image %s:%s:%s cosign manifest", upstreamURL, remoteRepo, tag)
+
+					continue
+				}
+
+				err = syncCosignSignature(httpClient, imageStore, *registryURL, localRepo, remoteRepo, tag, cosignManifest, log)
+				if err != nil {
+					log.Error().Err(err).Msgf("couldn't copy upstream image cosign signature %s/%s:%s", upstreamURL, remoteRepo, tag)
+
+					continue
+				}
+
+				imageChannel <- nil
+
+				return
+			} else if isArtifact {
+				// is notary signature
+				refs, err := getNotaryRefs(httpClient, *registryURL, remoteRepo, tag, log)
+				if err != nil {
+					log.Error().Err(err).Msgf("couldn't get upstream image %s/%s:%s notary references", upstreamURL, remoteRepo, tag)
+
+					continue
+				}
+
+				err = syncNotarySignature(httpClient, imageStore, *registryURL, localRepo, remoteRepo, tag, refs, log)
+				if err != nil {
+					log.Error().Err(err).Msgf("couldn't copy image signature %s/%s:%s", upstreamURL, remoteRepo, tag)
 
 					continue
 				}
@@ -184,43 +205,35 @@ func syncOneImage(imageChannel chan error, cfg Config, storeController storage.S
 				return
 			}
 
-			// it's an image
-			upstreamCtx := getUpstreamContext(&regCfg, credentialsFile[upstreamAddr])
-			options := getCopyOptions(upstreamCtx, localCtx)
-
-			upstreamImageRef, err := getImageRef(upstreamAddr, remoteRepo, tag)
-			if err != nil {
-				log.Error().Err(err).Msgf("error creating docker reference for repository %s/%s:%s",
-					upstreamAddr, remoteRepo, tag)
-
-				imageChannel <- err
-
-				return
+			syncContextUtils := syncContextUtils{
+				imageStore:   imageStore,
+				policyCtx:    policyCtx,
+				localCtx:     localCtx,
+				upstreamCtx:  upstreamCtx,
+				client:       httpClient,
+				url:          registryURL,
+				upstreamAddr: upstreamAddr,
+				retryOptions: retryOptions,
+				copyOptions:  options,
 			}
 
-			localImageRef, localCachePath, err := getLocalImageRef(imageStore, localRepo, tag)
-			if err != nil {
-				log.Error().Err(err).Msgf("couldn't obtain a valid image reference for reference %s/%s:%s",
-					localCachePath, localRepo, tag)
-
-				imageChannel <- err
-
-				return
+			skipped, copyErr := syncRun(regCfg, localRepo, remoteRepo, tag, syncContextUtils, log)
+			if skipped {
+				continue
 			}
 
-			log.Info().Msgf("copying image %s to %s", upstreamImageRef.DockerReference(), localCachePath)
-
+			// key used to check if we already have a go routine syncing this image
 			demandedImageRef := fmt.Sprintf("%s/%s:%s", upstreamAddr, remoteRepo, tag)
 
-			_, copyErr = copy.Image(context.Background(), policyCtx, localImageRef, upstreamImageRef, &options)
 			if copyErr != nil {
-				log.Error().Err(err).Msgf("error encountered while syncing on demand %s to %s",
-					upstreamImageRef.DockerReference(), localCachePath)
+				// don't retry in background if maxretry is 0
+				if retryOptions.MaxRetry == 0 {
+					continue
+				}
 
 				_, found := demandedImgs.loadOrStoreStr(demandedImageRef, "")
-				if found || retryOptions.MaxRetry == 0 {
-					defer os.RemoveAll(localCachePath)
-					log.Info().Msgf("image %s already demanded in background or sync.registries[].MaxRetries == 0", demandedImageRef)
+				if found {
+					log.Info().Msgf("image %s already demanded in background", demandedImageRef)
 					/* we already have a go routine spawned for this image
 					or retryOptions is not configured */
 					continue
@@ -230,8 +243,6 @@ func syncOneImage(imageChannel chan error, cfg Config, storeController storage.S
 				go func() {
 					// remove image after syncing
 					defer func() {
-						_ = os.RemoveAll(localCachePath)
-
 						demandedImgs.delete(demandedImageRef)
 						log.Info().Msgf("sync routine: %s exited", demandedImageRef)
 					}()
@@ -241,52 +252,105 @@ func syncOneImage(imageChannel chan error, cfg Config, storeController storage.S
 					time.Sleep(retryOptions.Delay)
 
 					if err = retry.RetryIfNecessary(context.Background(), func() error {
-						_, err := copy.Image(context.Background(), policyCtx, localImageRef, upstreamImageRef, &options)
+						_, err := syncRun(regCfg, localRepo, remoteRepo, tag, syncContextUtils, log)
 
 						return err
 					}, retryOptions); err != nil {
-						log.Error().Err(err).Msgf("sync routine: error while copying image %s to %s",
-							demandedImageRef, localCachePath)
-					} else {
-						_ = finishSyncing(localRepo, remoteRepo, tag, localCachePath, upstreamURL, storeController,
-							retryOptions, httpClient, log)
+						log.Error().Err(err).Msgf("sync routine: error while copying image %s", demandedImageRef)
 					}
 				}()
-			} else {
-				err := finishSyncing(localRepo, remoteRepo, tag, localCachePath, upstreamURL, storeController,
-					retryOptions, httpClient, log)
-
-				imageChannel <- err
-
-				return
 			}
 		}
 	}
 
-	imageChannel <- err
+	imageChannel <- nil
 }
 
-// push the local image into the storage, sync signatures.
-func finishSyncing(localRepo, remoteRepo, tag, localCachePath, upstreamURL string,
-	storeController storage.StoreController, retryOptions *retry.RetryOptions,
-	httpClient *resty.Client, log log.Logger) error {
-	err := pushSyncedLocalImage(localRepo, tag, localCachePath, storeController, log)
+func syncRun(regCfg RegistryConfig, localRepo, remoteRepo, tag string, utils syncContextUtils,
+	log log.Logger) (bool, error) {
+	upstreamImageRef, err := getImageRef(utils.upstreamAddr, remoteRepo, tag)
+	if err != nil {
+		log.Error().Err(err).Msgf("error creating docker reference for repository %s/%s:%s",
+			utils.upstreamAddr, remoteRepo, tag)
+
+		return false, err
+	}
+
+	upstreamImageDigest, err := docker.GetDigest(context.Background(), utils.upstreamCtx, upstreamImageRef)
+	if err != nil {
+		log.Error().Err(err).Msgf("couldn't get upstream image %s manifest", upstreamImageRef.DockerReference())
+
+		return false, err
+	}
+
+	// get upstream signatures
+	cosignManifest, err := getCosignManifest(utils.client, *utils.url, remoteRepo,
+		upstreamImageDigest.String(), log)
+	if err != nil {
+		log.Error().Err(err).Msgf("couldn't get upstream image %s cosign manifest", upstreamImageRef.DockerReference())
+	}
+
+	refs, err := getNotaryRefs(utils.client, *utils.url, remoteRepo, upstreamImageDigest.String(), log)
+	if err != nil {
+		log.Error().Err(err).Msgf("couldn't get upstream image %s notary references", upstreamImageRef.DockerReference())
+	}
+
+	// check if upstream image is signed
+	if cosignManifest == nil && len(refs.References) == 0 {
+		// upstream image not signed
+		if regCfg.OnlySigned != nil && *regCfg.OnlySigned {
+			// skip unsigned images
+			log.Info().Msgf("skipping image without signature %s", upstreamImageRef.DockerReference())
+
+			return true, nil
+		}
+	}
+
+	localImageRef, localCachePath, err := getLocalImageRef(utils.imageStore, localRepo, tag)
+	if err != nil {
+		log.Error().Err(err).Msgf("couldn't obtain a valid image reference for reference %s/%s:%s",
+			localCachePath, localRepo, tag)
+
+		return false, err
+	}
+
+	defer os.RemoveAll(localCachePath)
+
+	log.Info().Msgf("copying image %s to %s", upstreamImageRef.DockerReference(), localCachePath)
+
+	_, err = copy.Image(context.Background(), utils.policyCtx, localImageRef, upstreamImageRef, &utils.copyOptions)
+	if err != nil {
+		log.Error().Err(err).Msgf("error encountered while syncing on demand %s to %s",
+			upstreamImageRef.DockerReference(), localCachePath)
+
+		return false, err
+	}
+
+	err = pushSyncedLocalImage(localRepo, tag, localCachePath, utils.imageStore, log)
 	if err != nil {
 		log.Error().Err(err).Msgf("error while pushing synced cached image %s",
 			fmt.Sprintf("%s/%s:%s", localCachePath, localRepo, tag))
 
-		return err
+		return false, err
 	}
 
-	if err = retry.RetryIfNecessary(context.Background(), func() error {
-		err = syncSignatures(httpClient, storeController, upstreamURL, remoteRepo, localRepo, tag, log)
+	err = syncCosignSignature(utils.client, utils.imageStore, *utils.url, localRepo, remoteRepo,
+		upstreamImageDigest.String(), cosignManifest, log)
+	if err != nil {
+		log.Error().Err(err).Msgf("couldn't copy image cosign signature %s/%s:%s", utils.upstreamAddr, remoteRepo, tag)
 
-		return err
-	}, retryOptions); err != nil {
-		log.Error().Err(err).Msgf("couldn't copy image signature for %s/%s:%s", upstreamURL, remoteRepo, tag)
+		return false, err
 	}
 
-	log.Info().Msgf("successfully synced %s/%s:%s", upstreamURL, remoteRepo, tag)
+	err = syncNotarySignature(utils.client, utils.imageStore, *utils.url, localRepo, remoteRepo,
+		upstreamImageDigest.String(), refs, log)
+	if err != nil {
+		log.Error().Err(err).Msgf("couldn't copy image notary signature %s/%s:%s", utils.upstreamAddr, remoteRepo, tag)
 
-	return nil
+		return false, err
+	}
+
+	log.Info().Msgf("successfully synced %s/%s:%s", utils.upstreamAddr, remoteRepo, tag)
+
+	return false, nil
 }

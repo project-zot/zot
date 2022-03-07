@@ -22,6 +22,7 @@
 				"certDir": "/home/user/certs",
 				"maxRetries": 3,
 				"retryDelay": "5m",
+				"onlySigned": true,
 				"content":[
 					{
 						"prefix":"/repo1/repo",

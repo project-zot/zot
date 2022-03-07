@@ -495,6 +495,7 @@ func (is *ObjectStorage) PutImageManifest(repo string, reference string, mediaTy
 			}
 			// manifest contents have changed for the same tag,
 			// so update index.json descriptor
+
 			is.log.Info().
 				Int64("old size", desc.Size).
 				Int64("new size", int64(len(body))).

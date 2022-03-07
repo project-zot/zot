@@ -50,4 +50,6 @@ var (
 	ErrInjected                = errors.New("test: injected failure")
 	ErrSyncInvalidUpstreamURL  = errors.New("sync: upstream url not found in sync config")
 	ErrRegistryNoContent       = errors.New("sync: could not find a Content that matches localRepo")
+	ErrSyncSignatureNotFound   = errors.New("sync: couldn't find any upstream notary/cosign signatures")
+	ErrSyncSignature           = errors.New("sync: couldn't get upstream notary/cosign signatures")
 )
