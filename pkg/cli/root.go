@@ -363,6 +363,23 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper) {
 			}
 		}
 	}
+
+	if config.DistSpecVersion != distspec.Version {
+		log.Warn().Err(errors.ErrBadConfig).
+			Msgf("config dist-spec version: %s differs from version actually used: %s, will be corrected automatically",
+				config.DistSpecVersion, distspec.Version)
+
+		// rewrite the config file
+		viperInstance.Set("distSpecVersion", distspec.Version)
+
+		err := viperInstance.WriteConfig()
+		if err != nil {
+			log.Warn().Err(errors.ErrBadConfig).
+				Msg("can't rewrite the config file")
+		}
+
+		config.DistSpecVersion = distspec.Version
+	}
 }
 
 func LoadConfiguration(config *config.Config, configPath string) {

@@ -122,26 +122,26 @@ type Policy struct {
 }
 
 type Config struct {
-	Version       string
-	GoVersion     string
-	Commit        string
-	BinaryType    string
-	AccessControl *AccessControlConfig
-	Storage       GlobalStorageConfig
-	HTTP          HTTPConfig
-	Log           *LogConfig
-	Extensions    *extconf.ExtensionConfig
+	DistSpecVersion string `json:"distSpecVersion" mapstructure:"distSpecVersion"`
+	GoVersion       string
+	Commit          string
+	BinaryType      string
+	AccessControl   *AccessControlConfig
+	Storage         GlobalStorageConfig
+	HTTP            HTTPConfig
+	Log             *LogConfig
+	Extensions      *extconf.ExtensionConfig
 }
 
 func New() *Config {
 	return &Config{
-		Version:    distspec.Version,
-		GoVersion:  GoVersion,
-		Commit:     Commit,
-		BinaryType: BinaryType,
-		Storage:    GlobalStorageConfig{GC: true, GCDelay: storage.DefaultGCDelay, Dedupe: true},
-		HTTP:       HTTPConfig{Address: "127.0.0.1", Port: "8080"},
-		Log:        &LogConfig{Level: "debug"},
+		DistSpecVersion: distspec.Version,
+		GoVersion:       GoVersion,
+		Commit:          Commit,
+		BinaryType:      BinaryType,
+		Storage:         GlobalStorageConfig{GC: true, GCDelay: storage.DefaultGCDelay, Dedupe: true},
+		HTTP:            HTTPConfig{Address: "127.0.0.1", Port: "8080"},
+		Log:             &LogConfig{Level: "debug"},
 	}
 }
 

@@ -156,7 +156,9 @@ func (c *Controller) Run() error {
 		return err
 	}
 
-	monitoring.SetServerInfo(c.Metrics, c.Config.Commit, c.Config.BinaryType, c.Config.GoVersion, c.Config.Version)
+	monitoring.SetServerInfo(c.Metrics, c.Config.Commit, c.Config.BinaryType, c.Config.GoVersion,
+		c.Config.DistSpecVersion)
+
 	_ = NewRouteHandler(c)
 
 	addr := fmt.Sprintf("%s:%s", c.Config.HTTP.Address, c.Config.HTTP.Port)

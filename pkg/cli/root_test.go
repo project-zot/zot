@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	distspec "github.com/opencontainers/distribution-spec/specs-go"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 	"zotregistry.io/zot/pkg/api"
@@ -282,7 +283,7 @@ func TestVerify(t *testing.T) {
 		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
-		content := []byte(`{"version": "0.1.0-dev", "storage": {"rootDirectory": "/tmp/zot"},
+		content := []byte(`{"distSpecVersion": "1.0.0", "storage": {"rootDirectory": "/tmp/zot"},
 							"http": {"address": "127.0.0.1", "port": "8080", "ReadOnly": false},
 							"log": {"level": "debug"}}`)
 		_, err = tmpfile.Write(content)
@@ -524,6 +525,54 @@ func TestScrub(t *testing.T) {
 
 			os.Args = []string{"cli_test", "scrub", tmpfile.Name()}
 			So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		})
+	})
+}
+
+func TestApplyDefaultValues(t *testing.T) {
+	Convey("Test rewriting of config file if version is wrong", t, func() {
+		configContent := []byte(`{"distSpecVersion": "1.0.0555", "storage": {"rootDirectory": "/tmp/zot"},
+		"http": {"address": "127.0.0.1", "port": "8080", "ReadOnly": false},
+		"log": {"level": "debug"}}
+		`)
+		oldConfig := config.New()
+
+		file, err := ioutil.TempFile("", "default-val-test-config*.json")
+		So(err, ShouldBeNil)
+
+		defer os.Remove(file.Name())
+		_, err = file.Write(configContent)
+		So(err, ShouldBeNil)
+		Convey("The file can be rewritten", func() {
+			err = os.Chmod(file.Name(), 0o777)
+			So(err, ShouldBeNil)
+
+			cli.LoadConfiguration(oldConfig, file.Name())
+
+			configContent, err = ioutil.ReadFile(file.Name())
+			So(err, ShouldBeNil)
+
+			newConfig := config.New()
+			err = json.Unmarshal(configContent, newConfig)
+			So(err, ShouldBeNil)
+			So(newConfig.DistSpecVersion, ShouldEqual, distspec.Version)
+			So(newConfig.DistSpecVersion, ShouldEqual, distspec.Version)
+		})
+
+		Convey("The file can't be rewritten", func() {
+			err = os.Chmod(file.Name(), 0o444)
+			So(err, ShouldBeNil)
+
+			cli.LoadConfiguration(oldConfig, file.Name())
+
+			configContent, err = ioutil.ReadFile(file.Name())
+			So(err, ShouldBeNil)
+
+			newConfig := config.New()
+			err = json.Unmarshal(configContent, newConfig)
+			So(err, ShouldBeNil)
+			So(newConfig.DistSpecVersion, ShouldEqual, "1.0.0555")
+			So(oldConfig.DistSpecVersion, ShouldEqual, distspec.Version)
 		})
 	})
 }
