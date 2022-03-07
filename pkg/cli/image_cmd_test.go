@@ -291,13 +291,7 @@ func TestServerResponse(t *testing.T) {
 			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 		ctlr := api.NewController(conf)
-		dir, err := ioutil.TempDir("", "oci-repo-test")
-		if err != nil {
-			panic(err)
-		}
-		defer os.RemoveAll(dir)
-
-		ctlr.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.RootDirectory = t.TempDir()
 		go func(controller *api.Controller) {
 			// this blocks
 			if err := controller.Run(); err != nil {
@@ -329,7 +323,7 @@ func TestServerResponse(t *testing.T) {
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
 			cmd.SetArgs(args)
-			err = cmd.Execute()
+			err := cmd.Execute()
 			So(err, ShouldBeNil)
 			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
@@ -348,7 +342,7 @@ func TestServerResponse(t *testing.T) {
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
 			cmd.SetArgs(args)
-			err = cmd.Execute()
+			err := cmd.Execute()
 			So(err, ShouldBeNil)
 			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
@@ -373,7 +367,7 @@ func TestServerResponse(t *testing.T) {
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
 			cmd.SetArgs(args)
-			err = cmd.Execute()
+			err := cmd.Execute()
 			So(err, ShouldBeNil)
 			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
@@ -411,7 +405,7 @@ func TestServerResponse(t *testing.T) {
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
 			cmd.SetArgs(args)
-			err = cmd.Execute()
+			err := cmd.Execute()
 			So(err, ShouldBeNil)
 			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
@@ -452,7 +446,7 @@ func TestServerResponse(t *testing.T) {
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
 			cmd.SetArgs(args)
-			err = cmd.Execute()
+			err := cmd.Execute()
 			So(err, ShouldNotBeNil)
 			actual := buff.String()
 			So(actual, ShouldContainSubstring, "unknown")

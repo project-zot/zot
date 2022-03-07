@@ -1,8 +1,6 @@
 package storage_test
 
 import (
-	"io/ioutil"
-	"os"
 	"path"
 	"testing"
 
@@ -14,10 +12,7 @@ import (
 
 func TestCache(t *testing.T) {
 	Convey("Make a new cache", t, func() {
-		dir, err := ioutil.TempDir("", "cache_test")
-		So(err, ShouldBeNil)
-		So(dir, ShouldNotBeEmpty)
-		defer os.RemoveAll(dir)
+		dir := t.TempDir()
 
 		log := log.NewLogger("debug", "")
 		So(log, ShouldNotBeNil)

@@ -6,7 +6,6 @@ package common_test
 import (
 	"context"
 	"encoding/json"
-	"io/ioutil"
 	"os"
 	"path"
 	"testing"
@@ -66,22 +65,17 @@ type ImageInfo struct {
 	Labels      string
 }
 
-func testSetup() error {
-	dir, err := ioutil.TempDir("", "search_test")
-	if err != nil {
-		return err
-	}
+func testSetup(t *testing.T) error {
+	t.Helper()
+	dir := t.TempDir()
 
-	subDir, err := ioutil.TempDir("", "sub_search_test")
-	if err != nil {
-		return err
-	}
+	subDir := t.TempDir()
 
 	rootDir = dir
 
 	subRootDir = subDir
 
-	err = CopyFiles("../../../../test/data", rootDir)
+	err := CopyFiles("../../../../test/data", rootDir)
 	if err != nil {
 		return err
 	}
@@ -184,7 +178,7 @@ func TestImageFormat(t *testing.T) {
 
 func TestLatestTagSearchHTTP(t *testing.T) {
 	Convey("Test latest image search by timestamp", t, func() {
-		err := testSetup()
+		err := testSetup(t)
 		if err != nil {
 			panic(err)
 		}
@@ -322,7 +316,7 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 
 func TestExpandedRepoInfo(t *testing.T) {
 	Convey("Test expanded repo info", t, func() {
-		err := testSetup()
+		err := testSetup(t)
 		if err != nil {
 			panic(err)
 		}
@@ -512,17 +506,9 @@ func TestUtilsMethod(t *testing.T) {
 
 		log := log.NewLogger("debug", "")
 
-		rootDir, err := ioutil.TempDir("", "common_utils_test")
-		if err != nil {
-			panic(err)
-		}
-		defer os.RemoveAll(rootDir)
+		rootDir := t.TempDir()
 
-		subRootDir, err := ioutil.TempDir("", "common_utils_test")
-		if err != nil {
-			panic(err)
-		}
-		defer os.RemoveAll(subRootDir)
+		subRootDir := t.TempDir()
 
 		metrics := monitoring.NewMetricsServer(false, log)
 		defaultStore := storage.NewImageStore(rootDir, false, storage.DefaultGCDelay, false, false, log, metrics)

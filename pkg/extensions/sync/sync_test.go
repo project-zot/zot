@@ -93,11 +93,13 @@ func copyFile(sourceFilePath, destFilePath string) error {
 	return nil
 }
 
-func startUpstreamServer(secure, basicAuth bool) (*api.Controller, string, string, string, *resty.Client) {
+func startUpstreamServer(
+	t *testing.T, secure, basicAuth bool,
+) (*api.Controller, string, string, string, *resty.Client) {
+	t.Helper()
+
 	srcPort := test.GetFreePort()
-
 	srcConfig := config.New()
-
 	client := resty.New()
 
 	var srcBaseURL string
@@ -142,12 +144,9 @@ func startUpstreamServer(secure, basicAuth bool) (*api.Controller, string, strin
 
 	srcConfig.HTTP.Port = srcPort
 
-	srcDir, err := ioutil.TempDir("", "oci-src-repo-test")
-	if err != nil {
-		panic(err)
-	}
+	srcDir := t.TempDir()
 
-	err = test.CopyFiles("../../../test/data", srcDir)
+	err := test.CopyFiles("../../../test/data", srcDir)
 	if err != nil {
 		panic(err)
 	}
@@ -176,11 +175,13 @@ func startUpstreamServer(secure, basicAuth bool) (*api.Controller, string, strin
 	return sctlr, srcBaseURL, srcDir, htpasswdPath, client
 }
 
-func startDownstreamServer(secure bool, syncConfig *sync.Config) (*api.Controller, string, string, *resty.Client) {
+func startDownstreamServer(
+	t *testing.T, secure bool, syncConfig *sync.Config,
+) (*api.Controller, string, string, *resty.Client) {
+	t.Helper()
+
 	destPort := test.GetFreePort()
-
 	destConfig := config.New()
-
 	client := resty.New()
 
 	var destBaseURL string
@@ -215,10 +216,7 @@ func startDownstreamServer(secure bool, syncConfig *sync.Config) (*api.Controlle
 
 	destConfig.HTTP.Port = destPort
 
-	destDir, err := ioutil.TempDir("", "oci-dest-repo-test")
-	if err != nil {
-		panic(err)
-	}
+	destDir := t.TempDir()
 
 	destConfig.Storage.RootDirectory = destDir
 	destConfig.Storage.Dedupe = false
@@ -252,8 +250,7 @@ func startDownstreamServer(secure bool, syncConfig *sync.Config) (*api.Controlle
 
 func TestOnDemand(t *testing.T) {
 	Convey("Verify sync on demand feature", t, func() {
-		sctlr, srcBaseURL, srcDir, _, srcClient := startUpstreamServer(false, false)
-		defer os.RemoveAll(srcDir)
+		sctlr, srcBaseURL, _, _, srcClient := startUpstreamServer(t, false, false)
 
 		defer func() {
 			sctlr.Shutdown()
@@ -286,8 +283,7 @@ func TestOnDemand(t *testing.T) {
 			Registries: []sync.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
-		defer os.RemoveAll(destDir)
+		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(t, false, syncConfig)
 
 		defer func() {
 			dctlr.Shutdown()
@@ -384,8 +380,7 @@ func TestPeriodically(t *testing.T) {
 	Convey("Verify sync feature", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		sctlr, srcBaseURL, srcDir, _, srcClient := startUpstreamServer(false, false)
-		defer os.RemoveAll(srcDir)
+		sctlr, srcBaseURL, _, _, srcClient := startUpstreamServer(t, false, false)
 
 		defer func() {
 			sctlr.Shutdown()
@@ -422,8 +417,7 @@ func TestPeriodically(t *testing.T) {
 			Registries: []sync.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
-		defer os.RemoveAll(destDir)
+		dctlr, destBaseURL, _, destClient := startDownstreamServer(t, false, syncConfig)
 
 		defer func() {
 			dctlr.Shutdown()
@@ -497,8 +491,7 @@ func TestPeriodically(t *testing.T) {
 				Registries: []sync.RegistryConfig{syncRegistryConfig},
 			}
 
-			dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
-			defer os.RemoveAll(destDir)
+			dctlr, destBaseURL, _, destClient := startDownstreamServer(t, false, syncConfig)
 
 			defer func() {
 				dctlr.Shutdown()
@@ -560,8 +553,7 @@ func TestOnDemandPermsDenied(t *testing.T) {
 	Convey("Verify sync on demand feature without perm on sync cache", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
-		defer os.RemoveAll(srcDir)
+		sctlr, srcBaseURL, _, _, _ := startUpstreamServer(t, false, false)
 
 		defer func() {
 			sctlr.Shutdown()
@@ -600,12 +592,7 @@ func TestOnDemandPermsDenied(t *testing.T) {
 
 		destConfig.HTTP.Port = destPort
 
-		destDir, err := ioutil.TempDir("", "oci-dest-repo-test")
-		if err != nil {
-			panic(err)
-		}
-
-		defer os.RemoveAll(destDir)
+		destDir := t.TempDir()
 
 		destConfig.Storage.RootDirectory = destDir
 
@@ -628,7 +615,7 @@ func TestOnDemandPermsDenied(t *testing.T) {
 
 		syncSubDir := path.Join(destDir, testImage, sync.SyncBlobUploadDir)
 
-		err = os.MkdirAll(syncSubDir, 0o755)
+		err := os.MkdirAll(syncSubDir, 0o755)
 		So(err, ShouldBeNil)
 
 		err = os.Chmod(syncSubDir, 0o000)
@@ -659,8 +646,7 @@ func TestBadTLS(t *testing.T) {
 	Convey("Verify sync TLS feature", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(true, false)
-		defer os.RemoveAll(srcDir)
+		sctlr, srcBaseURL, _, _, _ := startUpstreamServer(t, true, false)
 
 		defer func() {
 			sctlr.Shutdown()
@@ -692,8 +678,7 @@ func TestBadTLS(t *testing.T) {
 			Registries: []sync.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(true, syncConfig)
-		defer os.RemoveAll(destDir)
+		dctlr, destBaseURL, _, destClient := startDownstreamServer(t, true, syncConfig)
 
 		defer func() {
 			dctlr.Shutdown()
@@ -720,8 +705,7 @@ func TestTLS(t *testing.T) {
 	Convey("Verify sync TLS feature", t, func() {
 		updateDuration, _ := time.ParseDuration("1h")
 
-		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(true, false)
-		defer os.RemoveAll(srcDir)
+		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(t, true, false)
 
 		defer func() {
 			sctlr.Shutdown()
@@ -740,10 +724,7 @@ func TestTLS(t *testing.T) {
 		}
 
 		// copy upstream client certs, use them in sync config
-		destClientCertDir, err := ioutil.TempDir("", "destCerts")
-		if err != nil {
-			panic(err)
-		}
+		destClientCertDir := t.TempDir()
 
 		destFilePath := path.Join(destClientCertDir, "ca.crt")
 		err = copyFile(CACert, destFilePath)
@@ -762,8 +743,6 @@ func TestTLS(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
-
-		defer os.RemoveAll(destClientCertDir)
 
 		regex := ".*"
 		var semver bool
@@ -791,8 +770,7 @@ func TestTLS(t *testing.T) {
 			Registries: []sync.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, _, destDir, _ := startDownstreamServer(true, syncConfig)
-		defer os.RemoveAll(destDir)
+		dctlr, _, destDir, _ := startDownstreamServer(t, true, syncConfig)
 
 		defer func() {
 			dctlr.Shutdown()
@@ -826,9 +804,8 @@ func TestBasicAuth(t *testing.T) {
 		updateDuration, _ := time.ParseDuration("1h")
 
 		Convey("Verify sync basic auth with file credentials", func() {
-			sctlr, srcBaseURL, srcDir, htpasswdPath, srcClient := startUpstreamServer(false, true)
+			sctlr, srcBaseURL, _, htpasswdPath, srcClient := startUpstreamServer(t, false, true)
 			defer os.Remove(htpasswdPath)
-			defer os.RemoveAll(srcDir)
 
 			defer func() {
 				sctlr.Shutdown()
@@ -858,8 +835,7 @@ func TestBasicAuth(t *testing.T) {
 				Registries:      []sync.RegistryConfig{syncRegistryConfig},
 			}
 
-			dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
-			defer os.RemoveAll(destDir)
+			dctlr, destBaseURL, _, destClient := startDownstreamServer(t, false, syncConfig)
 
 			defer func() {
 				dctlr.Shutdown()
@@ -899,9 +875,8 @@ func TestBasicAuth(t *testing.T) {
 		})
 
 		Convey("Verify sync basic auth with wrong file credentials", func() {
-			sctlr, srcBaseURL, srcDir, htpasswdPath, _ := startUpstreamServer(false, true)
+			sctlr, srcBaseURL, _, htpasswdPath, _ := startUpstreamServer(t, false, true)
 			defer os.Remove(htpasswdPath)
-			defer os.RemoveAll(srcDir)
 
 			defer func() {
 				sctlr.Shutdown()
@@ -913,10 +888,7 @@ func TestBasicAuth(t *testing.T) {
 			destConfig := config.New()
 			destConfig.HTTP.Port = destPort
 
-			destDir, err := ioutil.TempDir("", "oci-dest-repo-test")
-			if err != nil {
-				panic(err)
-			}
+			destDir := t.TempDir()
 
 			destConfig.Storage.SubPaths = map[string]config.StorageConfig{
 				"a": {
@@ -926,8 +898,6 @@ func TestBasicAuth(t *testing.T) {
 					Dedupe:        true,
 				},
 			}
-
-			defer os.RemoveAll(destDir)
 
 			destConfig.Storage.RootDirectory = destDir
 
@@ -996,9 +966,8 @@ func TestBasicAuth(t *testing.T) {
 		})
 
 		Convey("Verify sync basic auth with bad file credentials", func() {
-			sctlr, srcBaseURL, srcDir, htpasswdPath, _ := startUpstreamServer(false, true)
+			sctlr, srcBaseURL, _, htpasswdPath, _ := startUpstreamServer(t, false, true)
 			defer os.Remove(htpasswdPath)
-			defer os.RemoveAll(srcDir)
 
 			defer func() {
 				sctlr.Shutdown()
@@ -1044,8 +1013,7 @@ func TestBasicAuth(t *testing.T) {
 				Registries:      []sync.RegistryConfig{syncRegistryConfig},
 			}
 
-			dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
-			defer os.RemoveAll(destDir)
+			dctlr, destBaseURL, _, destClient := startDownstreamServer(t, false, syncConfig)
 
 			defer func() {
 				dctlr.Shutdown()
@@ -1059,9 +1027,8 @@ func TestBasicAuth(t *testing.T) {
 		})
 
 		Convey("Verify on demand sync with basic auth", func() {
-			sctlr, srcBaseURL, srcDir, htpasswdPath, srcClient := startUpstreamServer(false, true)
+			sctlr, srcBaseURL, _, htpasswdPath, srcClient := startUpstreamServer(t, false, true)
 			defer os.Remove(htpasswdPath)
-			defer os.RemoveAll(srcDir)
 
 			defer func() {
 				sctlr.Shutdown()
@@ -1097,8 +1064,7 @@ func TestBasicAuth(t *testing.T) {
 				},
 			}
 
-			dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
-			defer os.RemoveAll(destDir)
+			dctlr, destBaseURL, _, destClient := startDownstreamServer(t, false, syncConfig)
 
 			defer func() {
 				dctlr.Shutdown()
@@ -1189,8 +1155,7 @@ func TestBadURL(t *testing.T) {
 			Registries: []sync.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
-		defer os.RemoveAll(destDir)
+		dctlr, destBaseURL, _, destClient := startDownstreamServer(t, false, syncConfig)
 
 		defer func() {
 			dctlr.Shutdown()
@@ -1206,8 +1171,7 @@ func TestNoImagesByRegex(t *testing.T) {
 	Convey("Verify sync with no images on source based on regex", t, func() {
 		updateDuration, _ := time.ParseDuration("1h")
 
-		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
-		defer os.RemoveAll(srcDir)
+		sctlr, srcBaseURL, _, _, _ := startUpstreamServer(t, false, false)
 
 		defer func() {
 			sctlr.Shutdown()
@@ -1237,8 +1201,7 @@ func TestNoImagesByRegex(t *testing.T) {
 			Registries: []sync.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
-		defer os.RemoveAll(destDir)
+		dctlr, destBaseURL, _, destClient := startDownstreamServer(t, false, syncConfig)
 
 		defer func() {
 			dctlr.Shutdown()
@@ -1267,8 +1230,7 @@ func TestInvalidRegex(t *testing.T) {
 	Convey("Verify sync with invalid regex", t, func() {
 		updateDuration, _ := time.ParseDuration("1h")
 
-		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
-		defer os.RemoveAll(srcDir)
+		sctlr, srcBaseURL, _, _, _ := startUpstreamServer(t, false, false)
 
 		defer func() {
 			sctlr.Shutdown()
@@ -1299,8 +1261,7 @@ func TestInvalidRegex(t *testing.T) {
 			Registries: []sync.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, _, destDir, _ := startDownstreamServer(false, syncConfig)
-		defer os.RemoveAll(destDir)
+		dctlr, _, _, _ := startDownstreamServer(t, false, syncConfig)
 
 		defer func() {
 			dctlr.Shutdown()
@@ -1312,8 +1273,7 @@ func TestNotSemver(t *testing.T) {
 	Convey("Verify sync feature semver compliant", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
-		defer os.RemoveAll(srcDir)
+		sctlr, srcBaseURL, _, _, _ := startUpstreamServer(t, false, false)
 
 		defer func() {
 			sctlr.Shutdown()
@@ -1358,8 +1318,7 @@ func TestNotSemver(t *testing.T) {
 			Registries: []sync.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
-		defer os.RemoveAll(destDir)
+		dctlr, destBaseURL, _, destClient := startDownstreamServer(t, false, syncConfig)
 
 		defer func() {
 			dctlr.Shutdown()
@@ -1392,21 +1351,17 @@ func TestInvalidCerts(t *testing.T) {
 	Convey("Verify sync with bad certs", t, func() {
 		updateDuration, _ := time.ParseDuration("1h")
 
-		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(true, false)
-		defer os.RemoveAll(srcDir)
+		sctlr, srcBaseURL, _, _, _ := startUpstreamServer(t, true, false)
 
 		defer func() {
 			sctlr.Shutdown()
 		}()
 
 		// copy client certs, use them in sync config
-		clientCertDir, err := ioutil.TempDir("", "certs")
-		if err != nil {
-			panic(err)
-		}
+		clientCertDir := t.TempDir()
 
 		destFilePath := path.Join(clientCertDir, "ca.crt")
-		err = copyFile(CACert, destFilePath)
+		err := copyFile(CACert, destFilePath)
 		if err != nil {
 			panic(err)
 		}
@@ -1434,8 +1389,6 @@ func TestInvalidCerts(t *testing.T) {
 			panic(err)
 		}
 
-		defer os.RemoveAll(clientCertDir)
-
 		var tlsVerify bool
 
 		syncRegistryConfig := sync.RegistryConfig{
@@ -1457,8 +1410,7 @@ func TestInvalidCerts(t *testing.T) {
 			Registries: []sync.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
-		defer os.RemoveAll(destDir)
+		dctlr, destBaseURL, _, destClient := startDownstreamServer(t, false, syncConfig)
 
 		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
@@ -1515,8 +1467,7 @@ func TestInvalidUrl(t *testing.T) {
 			Registries: []sync.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
-		defer os.RemoveAll(destDir)
+		dctlr, destBaseURL, _, destClient := startDownstreamServer(t, false, syncConfig)
 
 		defer func() {
 			dctlr.Shutdown()
@@ -1532,8 +1483,7 @@ func TestInvalidTags(t *testing.T) {
 	Convey("Verify sync invalid tags", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
-		defer os.RemoveAll(srcDir)
+		sctlr, srcBaseURL, _, _, _ := startUpstreamServer(t, false, false)
 
 		defer func() {
 			sctlr.Shutdown()
@@ -1567,8 +1517,7 @@ func TestInvalidTags(t *testing.T) {
 			Registries: []sync.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
-		defer os.RemoveAll(destDir)
+		dctlr, destBaseURL, _, destClient := startDownstreamServer(t, false, syncConfig)
 
 		defer func() {
 			dctlr.Shutdown()
@@ -1591,14 +1540,11 @@ func TestSubPaths(t *testing.T) {
 
 		srcConfig.HTTP.Port = srcPort
 
-		srcDir, err := ioutil.TempDir("", "oci-src-repo-test")
-		if err != nil {
-			panic(err)
-		}
+		srcDir := t.TempDir()
 
 		subpath := "/subpath"
 
-		err = test.CopyFiles("../../../test/data", path.Join(srcDir, subpath))
+		err := test.CopyFiles("../../../test/data", path.Join(srcDir, subpath))
 		if err != nil {
 			panic(err)
 		}
@@ -1658,17 +1604,9 @@ func TestSubPaths(t *testing.T) {
 		destPort := test.GetFreePort()
 		destConfig := config.New()
 
-		destDir, err := ioutil.TempDir("", "oci-dest-repo-test")
-		if err != nil {
-			panic(err)
-		}
-		defer os.RemoveAll(destDir)
+		destDir := t.TempDir()
 
-		subPathDestDir, err := ioutil.TempDir("", "oci-dest-subpath-repo-test")
-		if err != nil {
-			panic(err)
-		}
-		defer os.RemoveAll(subPathDestDir)
+		subPathDestDir := t.TempDir()
 
 		destConfig.Storage.RootDirectory = destDir
 
@@ -1765,8 +1703,7 @@ func TestOnDemandRepoErr(t *testing.T) {
 			Registries: []sync.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
-		defer os.RemoveAll(destDir)
+		dctlr, destBaseURL, _, _ := startDownstreamServer(t, false, syncConfig)
 
 		defer func() {
 			dctlr.Shutdown()
@@ -1780,8 +1717,7 @@ func TestOnDemandRepoErr(t *testing.T) {
 
 func TestOnDemandContentFiltering(t *testing.T) {
 	Convey("Verify sync on demand feature", t, func() {
-		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
-		defer os.RemoveAll(srcDir)
+		sctlr, srcBaseURL, _, _, _ := startUpstreamServer(t, false, false)
 
 		defer func() {
 			sctlr.Shutdown()
@@ -1815,8 +1751,7 @@ func TestOnDemandContentFiltering(t *testing.T) {
 				Registries: []sync.RegistryConfig{syncRegistryConfig},
 			}
 
-			dctlr, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
-			defer os.RemoveAll(destDir)
+			dctlr, destBaseURL, _, _ := startDownstreamServer(t, false, syncConfig)
 
 			defer func() {
 				dctlr.Shutdown()
@@ -1855,8 +1790,7 @@ func TestOnDemandContentFiltering(t *testing.T) {
 				Registries: []sync.RegistryConfig{syncRegistryConfig},
 			}
 
-			dctlr, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
-			defer os.RemoveAll(destDir)
+			dctlr, destBaseURL, _, _ := startDownstreamServer(t, false, syncConfig)
 
 			defer func() {
 				dctlr.Shutdown()
@@ -1871,8 +1805,7 @@ func TestOnDemandContentFiltering(t *testing.T) {
 
 func TestConfigRules(t *testing.T) {
 	Convey("Verify sync config rules", t, func() {
-		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
-		defer os.RemoveAll(srcDir)
+		sctlr, srcBaseURL, _, _, _ := startUpstreamServer(t, false, false)
 
 		defer func() {
 			sctlr.Shutdown()
@@ -1905,8 +1838,7 @@ func TestConfigRules(t *testing.T) {
 				Registries: []sync.RegistryConfig{syncRegistryConfig},
 			}
 
-			dctlr, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
-			defer os.RemoveAll(destDir)
+			dctlr, destBaseURL, _, _ := startDownstreamServer(t, false, syncConfig)
 
 			defer func() {
 				dctlr.Shutdown()
@@ -1936,8 +1868,7 @@ func TestConfigRules(t *testing.T) {
 				Registries: []sync.RegistryConfig{syncRegistryConfig},
 			}
 
-			dctlr, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
-			defer os.RemoveAll(destDir)
+			dctlr, destBaseURL, _, _ := startDownstreamServer(t, false, syncConfig)
 
 			defer func() {
 				dctlr.Shutdown()
@@ -1964,8 +1895,7 @@ func TestConfigRules(t *testing.T) {
 				Registries: []sync.RegistryConfig{syncRegistryConfig},
 			}
 
-			dctlr, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
-			defer os.RemoveAll(destDir)
+			dctlr, destBaseURL, _, _ := startDownstreamServer(t, false, syncConfig)
 
 			defer func() {
 				dctlr.Shutdown()
@@ -1982,8 +1912,7 @@ func TestMultipleURLs(t *testing.T) {
 	Convey("Verify sync feature", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		sctlr, srcBaseURL, srcDir, _, srcClient := startUpstreamServer(false, false)
-		defer os.RemoveAll(srcDir)
+		sctlr, srcBaseURL, _, _, srcClient := startUpstreamServer(t, false, false)
 
 		defer func() {
 			sctlr.Shutdown()
@@ -2015,8 +1944,7 @@ func TestMultipleURLs(t *testing.T) {
 			Registries: []sync.RegistryConfig{syncRegistryConfig},
 		}
 
-		dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
-		defer os.RemoveAll(destDir)
+		dc, destBaseURL, _, destClient := startDownstreamServer(t, false, syncConfig)
 
 		defer func() {
 			dc.Shutdown()
@@ -2060,8 +1988,7 @@ func TestPeriodicallySignatures(t *testing.T) {
 	Convey("Verify sync signatures", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
-		defer os.RemoveAll(srcDir)
+		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(t, false, false)
 
 		defer func() {
 			sctlr.Shutdown()
@@ -2079,9 +2006,7 @@ func TestPeriodicallySignatures(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		defer func() { _ = os.Chdir(cwd) }()
-		tdir, err := ioutil.TempDir("", "sigs")
-		So(err, ShouldBeNil)
-		defer os.RemoveAll(tdir)
+		tdir := t.TempDir()
 		_ = os.Chdir(tdir)
 		generateKeyPairs(tdir)
 
@@ -2114,8 +2039,7 @@ func TestPeriodicallySignatures(t *testing.T) {
 			Registries: []sync.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
-		defer os.RemoveAll(destDir)
+		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(t, false, syncConfig)
 
 		defer func() {
 			dctlr.Shutdown()
@@ -2340,8 +2264,7 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 	Convey("Verify sync signatures gives error", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
-		defer os.RemoveAll(srcDir)
+		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(t, false, false)
 
 		defer func() {
 			sctlr.Shutdown()
@@ -2359,9 +2282,7 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		defer func() { _ = os.Chdir(cwd) }()
-		tdir, err := ioutil.TempDir("", "sigs")
-		So(err, ShouldBeNil)
-		defer os.RemoveAll(tdir)
+		tdir := t.TempDir()
 		_ = os.Chdir(tdir)
 		generateKeyPairs(tdir)
 
@@ -2431,10 +2352,9 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 			}
 		}
 
-		dctlr, _, destDir, _ := startDownstreamServer(false, syncConfig)
+		dctlr, _, _, _ := startDownstreamServer(t, false, syncConfig)
 		defer func() {
 			dctlr.Shutdown()
-			defer os.RemoveAll(destDir)
 		}()
 	})
 }
@@ -2447,12 +2367,9 @@ func TestOnDemandRetryGoroutine(t *testing.T) {
 
 		srcConfig.HTTP.Port = srcPort
 
-		srcDir, err := ioutil.TempDir("", "oci-src-repo-test")
-		if err != nil {
-			panic(err)
-		}
+		srcDir := t.TempDir()
 
-		err = test.CopyFiles("../../../test/data", srcDir)
+		err := test.CopyFiles("../../../test/data", srcDir)
 		if err != nil {
 			panic(err)
 		}
@@ -2460,8 +2377,6 @@ func TestOnDemandRetryGoroutine(t *testing.T) {
 		srcConfig.Storage.RootDirectory = srcDir
 
 		sctlr := api.NewController(srcConfig)
-
-		defer os.RemoveAll(srcDir)
 
 		regex := ".*"
 		semver := true
@@ -2494,8 +2409,7 @@ func TestOnDemandRetryGoroutine(t *testing.T) {
 			Registries: []sync.RegistryConfig{syncRegistryConfig},
 		}
 
-		dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
-		defer os.RemoveAll(destDir)
+		dc, destBaseURL, destDir, destClient := startDownstreamServer(t, false, syncConfig)
 
 		defer func() {
 			dc.Shutdown()
@@ -2540,12 +2454,9 @@ func TestOnDemandMultipleRetries(t *testing.T) {
 
 		srcConfig.HTTP.Port = srcPort
 
-		srcDir, err := ioutil.TempDir("", "oci-src-repo-test")
-		if err != nil {
-			panic(err)
-		}
+		srcDir := t.TempDir()
 
-		err = test.CopyFiles("../../../test/data", srcDir)
+		err := test.CopyFiles("../../../test/data", srcDir)
 		if err != nil {
 			panic(err)
 		}
@@ -2553,8 +2464,6 @@ func TestOnDemandMultipleRetries(t *testing.T) {
 		srcConfig.Storage.RootDirectory = srcDir
 
 		sctlr := api.NewController(srcConfig)
-
-		defer os.RemoveAll(srcDir)
 
 		var tlsVerify bool
 
@@ -2576,8 +2485,7 @@ func TestOnDemandMultipleRetries(t *testing.T) {
 			Registries: []sync.RegistryConfig{syncRegistryConfig},
 		}
 
-		dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
-		defer os.RemoveAll(destDir)
+		dc, destBaseURL, destDir, destClient := startDownstreamServer(t, false, syncConfig)
 
 		defer func() {
 			dc.Shutdown()
@@ -2657,8 +2565,7 @@ func TestOnDemandMultipleRetries(t *testing.T) {
 
 func TestOnDemandPullsOnce(t *testing.T) {
 	Convey("Verify sync on demand pulls only one time", t, func(conv C) {
-		sc, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
-		defer os.RemoveAll(srcDir)
+		sc, srcBaseURL, _, _, _ := startUpstreamServer(t, false, false)
 
 		defer func() {
 			sc.Shutdown()
@@ -2690,8 +2597,7 @@ func TestOnDemandPullsOnce(t *testing.T) {
 			Registries: []sync.RegistryConfig{syncRegistryConfig},
 		}
 
-		dc, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
-		defer os.RemoveAll(destDir)
+		dc, destBaseURL, destDir, _ := startDownstreamServer(t, false, syncConfig)
 
 		defer func() {
 			dc.Shutdown()
@@ -2757,8 +2663,7 @@ func TestError(t *testing.T) {
 	Convey("Verify periodically sync pushSyncedLocalImage() error", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
-		defer os.RemoveAll(srcDir)
+		sctlr, srcBaseURL, _, _, _ := startUpstreamServer(t, false, false)
 
 		defer func() {
 			sctlr.Shutdown()
@@ -2790,8 +2695,7 @@ func TestError(t *testing.T) {
 			Registries: []sync.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, destDir, client := startDownstreamServer(false, syncConfig)
-		defer os.RemoveAll(destDir)
+		dctlr, destBaseURL, destDir, client := startDownstreamServer(t, false, syncConfig)
 
 		defer func() {
 			dctlr.Shutdown()
@@ -2813,8 +2717,7 @@ func TestError(t *testing.T) {
 
 func TestSignaturesOnDemand(t *testing.T) {
 	Convey("Verify sync signatures on demand feature", t, func() {
-		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
-		defer os.RemoveAll(srcDir)
+		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(t, false, false)
 
 		defer func() {
 			sctlr.Shutdown()
@@ -2832,9 +2735,7 @@ func TestSignaturesOnDemand(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		defer func() { _ = os.Chdir(cwd) }()
-		tdir, err := ioutil.TempDir("", "sigs")
-		So(err, ShouldBeNil)
-		defer os.RemoveAll(tdir)
+		tdir := t.TempDir()
 		_ = os.Chdir(tdir)
 
 		generateKeyPairs(tdir)
@@ -2856,8 +2757,7 @@ func TestSignaturesOnDemand(t *testing.T) {
 			Registries: []sync.RegistryConfig{syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
-		defer os.RemoveAll(destDir)
+		dctlr, destBaseURL, destDir, _ := startDownstreamServer(t, false, syncConfig)
 
 		defer func() {
 			dctlr.Shutdown()
@@ -2950,8 +2850,7 @@ func TestSignaturesOnDemand(t *testing.T) {
 
 func TestOnlySignaturesOnDemand(t *testing.T) {
 	Convey("Verify sync signatures on demand feature when we already have the image", t, func() {
-		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
-		defer os.RemoveAll(srcDir)
+		sctlr, srcBaseURL, _, _, _ := startUpstreamServer(t, false, false)
 
 		defer func() {
 			sctlr.Shutdown()
@@ -2969,9 +2868,7 @@ func TestOnlySignaturesOnDemand(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		defer func() { _ = os.Chdir(cwd) }()
-		tdir, err := ioutil.TempDir("", "sigs")
-		So(err, ShouldBeNil)
-		defer os.RemoveAll(tdir)
+		tdir := t.TempDir()
 		_ = os.Chdir(tdir)
 
 		var tlsVerify bool
@@ -2996,8 +2893,7 @@ func TestOnlySignaturesOnDemand(t *testing.T) {
 			Registries: []sync.RegistryConfig{syncBadRegistryConfig, syncRegistryConfig},
 		}
 
-		dctlr, destBaseURL, destDir, _ := startDownstreamServer(false, syncConfig)
-		defer os.RemoveAll(destDir)
+		dctlr, destBaseURL, _, _ := startDownstreamServer(t, false, syncConfig)
 
 		defer func() {
 			dctlr.Shutdown()
@@ -3068,8 +2964,7 @@ func TestSyncOnlyDiff(t *testing.T) {
 	Convey("Verify sync only difference between local and upstream", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
-		defer os.RemoveAll(srcDir)
+		sctlr, srcBaseURL, _, _, _ := startUpstreamServer(t, false, false)
 
 		defer func() {
 			sctlr.Shutdown()
@@ -3101,13 +2996,10 @@ func TestSyncOnlyDiff(t *testing.T) {
 		destBaseURL := test.GetBaseURL(destPort)
 		destConfig.HTTP.Port = destPort
 
-		destDir, err := ioutil.TempDir("", "oci-dest-repo-test")
-		if err != nil {
-			panic(err)
-		}
+		destDir := t.TempDir()
 
 		// copy images so we have them before syncing, sync should not pull them again
-		err = test.CopyFiles("../../../test/data", destDir)
+		err := test.CopyFiles("../../../test/data", destDir)
 		if err != nil {
 			panic(err)
 		}
@@ -3141,7 +3033,6 @@ func TestSyncOnlyDiff(t *testing.T) {
 
 		defer func() {
 			dctlr.Shutdown()
-			os.RemoveAll(destDir)
 		}()
 
 		// watch .sync subdir, shouldn't be populated
@@ -3177,8 +3068,7 @@ func TestSyncWithDiffDigest(t *testing.T) {
 	Convey("Verify sync correctly detects changes in upstream images", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
-		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(false, false)
-		defer os.RemoveAll(srcDir)
+		sctlr, srcBaseURL, _, _, _ := startUpstreamServer(t, false, false)
 
 		defer func() {
 			sctlr.Shutdown()
@@ -3210,13 +3100,10 @@ func TestSyncWithDiffDigest(t *testing.T) {
 		destBaseURL := test.GetBaseURL(destPort)
 		destConfig.HTTP.Port = destPort
 
-		destDir, err := ioutil.TempDir("", "oci-dest-repo-test")
-		if err != nil {
-			panic(err)
-		}
+		destDir := t.TempDir()
 
 		// copy images so we have them before syncing, sync should not pull them again
-		err = test.CopyFiles("../../../test/data", destDir)
+		err := test.CopyFiles("../../../test/data", destDir)
 		if err != nil {
 			panic(err)
 		}
@@ -3311,7 +3198,6 @@ func TestSyncWithDiffDigest(t *testing.T) {
 
 		defer func() {
 			dctlr.Shutdown()
-			os.RemoveAll(destDir)
 		}()
 
 		// wait till ready

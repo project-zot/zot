@@ -25,12 +25,7 @@ const (
 )
 
 func TestCheckAllBlobsIntegrity(t *testing.T) {
-	dir, err := ioutil.TempDir("", "scrub-test")
-	if err != nil {
-		panic(err)
-	}
-
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 
 	log := log.NewLogger("debug", "")
 
@@ -40,7 +35,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 
 	Convey("Scrub only one repo", t, func(c C) {
 		// initialize repo
-		err = imgStore.InitRepo(repoName)
+		err := imgStore.InitRepo(repoName)
 		So(err, ShouldBeNil)
 		ok := imgStore.DirExists(path.Join(imgStore.RootDir(), repoName))
 		So(ok, ShouldBeTrue)

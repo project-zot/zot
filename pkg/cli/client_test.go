@@ -69,12 +69,7 @@ func TestTLSWithAuth(t *testing.T) {
 		}
 
 		ctlr := api.NewController(conf)
-		dir, err := ioutil.TempDir("", "oci-repo-test")
-		if err != nil {
-			panic(err)
-		}
-		defer os.RemoveAll(dir)
-		ctlr.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.RootDirectory = t.TempDir()
 		go func() {
 			// this blocks
 			if err := ctlr.Run(); err != nil {
@@ -166,12 +161,7 @@ func TestTLSWithoutAuth(t *testing.T) {
 		}
 
 		ctlr := api.NewController(conf)
-		dir, err := ioutil.TempDir("", "oci-repo-test")
-		if err != nil {
-			panic(err)
-		}
-		defer os.RemoveAll(dir)
-		ctlr.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.RootDirectory = t.TempDir()
 		go func() {
 			// this blocks
 			if err := ctlr.Run(); err != nil {
@@ -234,12 +224,7 @@ func TestTLSWithoutAuth(t *testing.T) {
 		}
 
 		ctlr := api.NewController(conf)
-		dir, err := ioutil.TempDir("", "oci-repo-test")
-		if err != nil {
-			panic(err)
-		}
-		defer os.RemoveAll(dir)
-		ctlr.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.RootDirectory = t.TempDir()
 		go func() {
 			// this blocks
 			if err := ctlr.Run(); err != nil {
@@ -297,12 +282,7 @@ func TestTLSBadCerts(t *testing.T) {
 		}
 
 		ctlr := api.NewController(conf)
-		dir, err := ioutil.TempDir("", "oci-repo-test")
-		if err != nil {
-			panic(err)
-		}
-		defer os.RemoveAll(dir)
-		ctlr.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.RootDirectory = t.TempDir()
 		go func() {
 			// this blocks
 			if err := ctlr.Run(); err != nil {

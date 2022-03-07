@@ -30,12 +30,7 @@ const (
 )
 
 func TestStorageFSAPIs(t *testing.T) {
-	dir, err := ioutil.TempDir("", "oci-repo-test")
-	if err != nil {
-		panic(err)
-	}
-
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
@@ -167,12 +162,7 @@ func TestStorageFSAPIs(t *testing.T) {
 }
 
 func TestDedupeLinks(t *testing.T) {
-	dir, err := ioutil.TempDir("", "oci-repo-test")
-	if err != nil {
-		panic(err)
-	}
-
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
@@ -308,11 +298,7 @@ func TestDedupe(t *testing.T) {
 		})
 
 		Convey("Valid ImageStore", func() {
-			dir, err := ioutil.TempDir("", "oci-repo-test")
-			if err != nil {
-				panic(err)
-			}
-			defer os.RemoveAll(dir)
+			dir := t.TempDir()
 
 			log := log.Logger{Logger: zerolog.New(os.Stdout)}
 			metrics := monitoring.NewMetricsServer(false, log)
@@ -326,11 +312,7 @@ func TestDedupe(t *testing.T) {
 // nolint: gocyclo
 func TestNegativeCases(t *testing.T) {
 	Convey("Invalid root dir", t, func(c C) {
-		dir, err := ioutil.TempDir("", "oci-repo-test")
-		if err != nil {
-			panic(err)
-		}
-		os.RemoveAll(dir)
+		dir := t.TempDir()
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
@@ -342,17 +324,13 @@ func TestNegativeCases(t *testing.T) {
 	})
 
 	Convey("Invalid init repo", t, func(c C) {
-		dir, err := ioutil.TempDir("", "oci-repo-test")
-		if err != nil {
-			panic(err)
-		}
-		defer os.RemoveAll(dir)
+		dir := t.TempDir()
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
 		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics)
 
-		err = os.Chmod(dir, 0o000) // remove all perms
+		err := os.Chmod(dir, 0o000) // remove all perms
 		if err != nil {
 			panic(err)
 		}
@@ -381,11 +359,7 @@ func TestNegativeCases(t *testing.T) {
 	})
 
 	Convey("Invalid validate repo", t, func(c C) {
-		dir, err := ioutil.TempDir("", "oci-repo-test")
-		if err != nil {
-			panic(err)
-		}
-		defer os.RemoveAll(dir)
+		dir := t.TempDir()
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
@@ -394,7 +368,7 @@ func TestNegativeCases(t *testing.T) {
 		So(imgStore, ShouldNotBeNil)
 		So(imgStore.InitRepo("test"), ShouldBeNil)
 
-		err = os.MkdirAll(path.Join(dir, "invalid-test"), 0o755)
+		err := os.MkdirAll(path.Join(dir, "invalid-test"), 0o755)
 		So(err, ShouldBeNil)
 
 		err = os.Chmod(path.Join(dir, "invalid-test"), 0o000) // remove all perms
@@ -499,11 +473,7 @@ func TestNegativeCases(t *testing.T) {
 		_, err := ilfs.GetImageTags("test")
 		So(err, ShouldNotBeNil)
 
-		dir, err := ioutil.TempDir("", "oci-repo-test")
-		if err != nil {
-			panic(err)
-		}
-		defer os.RemoveAll(dir)
+		dir := t.TempDir()
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
@@ -526,11 +496,7 @@ func TestNegativeCases(t *testing.T) {
 		_, _, _, err := ilfs.GetImageManifest("test", "")
 		So(err, ShouldNotBeNil)
 
-		dir, err := ioutil.TempDir("", "oci-repo-test")
-		if err != nil {
-			panic(err)
-		}
-		defer os.RemoveAll(dir)
+		dir := t.TempDir()
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
@@ -571,11 +537,7 @@ func TestNegativeCases(t *testing.T) {
 	})
 
 	Convey("Invalid new blob upload", t, func(c C) {
-		dir, err := ioutil.TempDir("", "oci-repo-test")
-		if err != nil {
-			panic(err)
-		}
-		defer os.RemoveAll(dir)
+		dir := t.TempDir()
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
@@ -584,7 +546,7 @@ func TestNegativeCases(t *testing.T) {
 		So(imgStore, ShouldNotBeNil)
 		So(imgStore.InitRepo("test"), ShouldBeNil)
 
-		err = os.Chmod(path.Join(dir, "test", ".uploads"), 0o000)
+		err := os.Chmod(path.Join(dir, "test", ".uploads"), 0o000)
 		if err != nil {
 			panic(err)
 		}
@@ -621,6 +583,12 @@ func TestNegativeCases(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
+		t.Cleanup(func() {
+			err = os.Chmod(path.Join(dir, "test", ".uploads"), 0o700)
+			if err != nil {
+				panic(err)
+			}
+		})
 
 		content := []byte("test-data3")
 		buf := bytes.NewBuffer(content)
@@ -633,11 +601,7 @@ func TestNegativeCases(t *testing.T) {
 	})
 
 	Convey("Invalid dedupe scenarios", t, func() {
-		dir, err := ioutil.TempDir("", "oci-repo-test")
-		if err != nil {
-			panic(err)
-		}
-		defer os.RemoveAll(dir)
+		dir := t.TempDir()
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
@@ -710,14 +674,10 @@ func TestNegativeCases(t *testing.T) {
 	})
 
 	Convey("DirExists call with a filename as argument", t, func(c C) {
-		dir, err := ioutil.TempDir("", "oci-repo-test")
-		if err != nil {
-			panic(err)
-		}
-		defer os.RemoveAll(dir)
+		dir := t.TempDir()
 
 		filePath := path.Join(dir, "file.txt")
-		err = ioutil.WriteFile(filePath, []byte("some dummy file content"), 0o644) //nolint: gosec
+		err := ioutil.WriteFile(filePath, []byte("some dummy file content"), 0o644) //nolint: gosec
 		if err != nil {
 			panic(err)
 		}
@@ -748,14 +708,10 @@ func TestHardLink(t *testing.T) {
 		So(err, ShouldBeNil)
 	})
 	Convey("Test that ValidateHardLink returns error if rootDir is a file", t, func() {
-		dir, err := ioutil.TempDir("", "storage-hard-test")
-		if err != nil {
-			panic(err)
-		}
-		defer os.RemoveAll(dir)
+		dir := t.TempDir()
 
 		filePath := path.Join(dir, "file.txt")
-		err = ioutil.WriteFile(filePath, []byte("some dummy file content"), 0o644) //nolint: gosec
+		err := ioutil.WriteFile(filePath, []byte("some dummy file content"), 0o644) //nolint: gosec
 		if err != nil {
 			panic(err)
 		}
@@ -764,13 +720,9 @@ func TestHardLink(t *testing.T) {
 		So(err, ShouldNotBeNil)
 	})
 	Convey("Test if filesystem supports hardlink", t, func() {
-		dir, err := ioutil.TempDir("", "storage-hard-test")
-		if err != nil {
-			panic(err)
-		}
-		defer os.RemoveAll(dir)
+		dir := t.TempDir()
 
-		err = storage.ValidateHardLink(dir)
+		err := storage.ValidateHardLink(dir)
 		So(err, ShouldBeNil)
 
 		err = ioutil.WriteFile(path.Join(dir, "hardtest.txt"), []byte("testing hard link code"), 0o644) //nolint: gosec
@@ -782,6 +734,13 @@ func TestHardLink(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
+		// Allow hardtest.txt to be cleaned up by t.TempDir()
+		t.Cleanup(func() {
+			err = os.Chmod(dir, 0o700)
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
 
 		err = os.Link(path.Join(dir, "hardtest.txt"), path.Join(dir, "duphardtest.txt"))
 		So(err, ShouldNotBeNil)
@@ -795,9 +754,7 @@ func TestHardLink(t *testing.T) {
 
 func TestInjectWriteFile(t *testing.T) {
 	Convey("writeFile with commit", t, func() {
-		dir, err := ioutil.TempDir("", "oci-repo-test")
-		So(err, ShouldBeNil)
-		defer os.RemoveAll(dir)
+		dir := t.TempDir()
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
@@ -827,9 +784,7 @@ func TestInjectWriteFile(t *testing.T) {
 	})
 
 	Convey("writeFile without commit", t, func() {
-		dir, err := ioutil.TempDir("", "oci-repo-test")
-		So(err, ShouldBeNil)
-		defer os.RemoveAll(dir)
+		dir := t.TempDir()
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
@@ -844,12 +799,7 @@ func TestInjectWriteFile(t *testing.T) {
 
 func TestGarbageCollect(t *testing.T) {
 	Convey("Repo layout", t, func(c C) {
-		dir, err := ioutil.TempDir("", "oci-gc-test")
-		if err != nil {
-			panic(err)
-		}
-
-		defer os.RemoveAll(dir)
+		dir := t.TempDir()
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)

@@ -19,56 +19,40 @@ func TestCopyFiles(t *testing.T) {
 		So(err, ShouldNotBeNil)
 	})
 	Convey("destDir is a file", t, func() {
-		dir, err := ioutil.TempDir("", "copy-files-test")
+		dir := t.TempDir()
+
+		err := test.CopyFiles("../../test/data", dir)
 		if err != nil {
 			panic(err)
 		}
 
-		err = test.CopyFiles("../../test/data", dir)
-		if err != nil {
-			panic(err)
-		}
-
-		defer os.RemoveAll(dir)
 		err = test.CopyFiles(dir, "/etc/passwd")
 		So(err, ShouldNotBeNil)
 	})
 	Convey("sourceDir does not have read permissions", t, func() {
-		dir, err := ioutil.TempDir("", "copy-files-test")
-		if err != nil {
-			panic(err)
-		}
-		defer os.RemoveAll(dir)
+		dir := t.TempDir()
 
-		err = os.Chmod(dir, 0o300)
+		err := os.Chmod(dir, 0o300)
 		So(err, ShouldBeNil)
 
 		err = test.CopyFiles(dir, os.TempDir())
 		So(err, ShouldNotBeNil)
 	})
 	Convey("sourceDir has a subfolder that does not have read permissions", t, func() {
-		dir, err := ioutil.TempDir("", "copy-files-test")
-		if err != nil {
-			panic(err)
-		}
-		defer os.RemoveAll(dir)
+		dir := t.TempDir()
 
 		sdir := "subdir"
-		err = os.Mkdir(path.Join(dir, sdir), 0o300)
+		err := os.Mkdir(path.Join(dir, sdir), 0o300)
 		So(err, ShouldBeNil)
 
 		err = test.CopyFiles(dir, os.TempDir())
 		So(err, ShouldNotBeNil)
 	})
 	Convey("sourceDir has a file that does not have read permissions", t, func() {
-		dir, err := ioutil.TempDir("", "copy-files-test")
-		if err != nil {
-			panic(err)
-		}
-		defer os.RemoveAll(dir)
+		dir := t.TempDir()
 
 		filePath := path.Join(dir, "file.txt")
-		err = ioutil.WriteFile(filePath, []byte("some dummy file content"), 0o644) //nolint: gosec
+		err := ioutil.WriteFile(filePath, []byte("some dummy file content"), 0o644) //nolint: gosec
 		if err != nil {
 			panic(err)
 		}
