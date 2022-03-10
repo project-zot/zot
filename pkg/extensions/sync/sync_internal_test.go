@@ -270,16 +270,16 @@ func TestSyncInternal(t *testing.T) {
 
 	Convey("Test syncSignatures()", t, func() {
 		log := log.NewLogger("debug", "")
-		err := syncSignatures(resty.New(), storage.StoreController{}, "%", "repo", "tag", log)
+		err := syncSignatures(resty.New(), storage.StoreController{}, "%", "repo", "repo", "tag", log)
 		So(err, ShouldNotBeNil)
-		err = syncSignatures(resty.New(), storage.StoreController{}, "http://zot", "repo", "tag", log)
+		err = syncSignatures(resty.New(), storage.StoreController{}, "http://zot", "repo", "repo", "tag", log)
 		So(err, ShouldNotBeNil)
-		err = syncSignatures(resty.New(), storage.StoreController{}, "https://google.com", "repo", "tag", log)
+		err = syncSignatures(resty.New(), storage.StoreController{}, "https://google.com", "repo", "repo", "tag", log)
 		So(err, ShouldNotBeNil)
 		url, _ := url.Parse("invalid")
-		err = syncCosignSignature(resty.New(), storage.StoreController{}, *url, "repo", "tag", log)
+		err = syncCosignSignature(resty.New(), storage.StoreController{}, *url, "repo", "repo", "tag", log)
 		So(err, ShouldNotBeNil)
-		err = syncNotarySignature(resty.New(), storage.StoreController{}, *url, "repo", "tag", log)
+		err = syncNotarySignature(resty.New(), storage.StoreController{}, *url, "repo", "repo", "tag", log)
 		So(err, ShouldNotBeNil)
 	})
 
@@ -451,5 +451,160 @@ func TestSyncInternal(t *testing.T) {
 
 		err = pushSyncedLocalImage(testImage, testImageTag, testRootDir, storeController, log)
 		So(err, ShouldNotBeNil)
+	})
+}
+
+func TestURLHelperFunctions(t *testing.T) {
+	testCases := []struct {
+		repo     string
+		content  Content
+		expected string
+	}{
+		{
+			repo:     "alpine/zot-fold/alpine",
+			content:  Content{Prefix: "zot-fold/alpine", Destination: "/alpine", StripPrefix: false},
+			expected: "zot-fold/alpine",
+		},
+		{
+			repo:     "zot-fold/alpine",
+			content:  Content{Prefix: "zot-fold/alpine", Destination: "/", StripPrefix: false},
+			expected: "zot-fold/alpine",
+		},
+		{
+			repo:     "alpine",
+			content:  Content{Prefix: "zot-fold/alpine", Destination: "/alpine", StripPrefix: true},
+			expected: "zot-fold/alpine",
+		},
+		{
+			repo:     "/",
+			content:  Content{Prefix: "zot-fold/alpine", Destination: "/", StripPrefix: true},
+			expected: "zot-fold/alpine",
+		},
+		{
+			repo:     "/",
+			content:  Content{Prefix: "/", Destination: "/", StripPrefix: true},
+			expected: "/",
+		},
+		{
+			repo:     "alpine",
+			content:  Content{Prefix: "zot-fold/alpine", Destination: "/alpine", StripPrefix: true},
+			expected: "zot-fold/alpine",
+		},
+		{
+			repo:     "alpine",
+			content:  Content{Prefix: "zot-fold/*", Destination: "/", StripPrefix: true},
+			expected: "zot-fold/alpine",
+		},
+		{
+			repo:     "alpine",
+			content:  Content{Prefix: "zot-fold/**", Destination: "/", StripPrefix: true},
+			expected: "zot-fold/alpine",
+		},
+		{
+			repo:     "zot-fold/alpine",
+			content:  Content{Prefix: "zot-fold/**", Destination: "/", StripPrefix: false},
+			expected: "zot-fold/alpine",
+		},
+	}
+
+	Convey("Test getRepoDestination()", t, func() {
+		for _, test := range testCases {
+			actualResult := getRepoDestination(test.expected, test.content)
+			So(actualResult, ShouldEqual, test.repo)
+		}
+	})
+
+	// this is the inverse function of getRepoDestination()
+	Convey("Test getRepoSource()", t, func() {
+		for _, test := range testCases {
+			actualResult := getRepoSource(test.repo, test.content)
+			So(actualResult, ShouldEqual, test.expected)
+		}
+	})
+}
+
+func TestFindRepoMatchingContentID(t *testing.T) {
+	testCases := []struct {
+		repo     string
+		content  []Content
+		expected struct {
+			contentID int
+			err       error
+		}
+	}{
+		{
+			repo: "alpine/zot-fold/alpine",
+			content: []Content{
+				{Prefix: "zot-fold/alpine/", Destination: "/alpine", StripPrefix: true},
+				{Prefix: "zot-fold/alpine", Destination: "/alpine", StripPrefix: false},
+			},
+			expected: struct {
+				contentID int
+				err       error
+			}{contentID: 1, err: nil},
+		},
+		{
+			repo: "alpine/zot-fold/alpine",
+			content: []Content{
+				{Prefix: "zot-fold/*", Destination: "/alpine", StripPrefix: false},
+				{Prefix: "zot-fold/alpine", Destination: "/alpine", StripPrefix: true},
+			},
+			expected: struct {
+				contentID int
+				err       error
+			}{contentID: 0, err: nil},
+		},
+		{
+			repo: "myFold/zot-fold/internal/alpine",
+			content: []Content{
+				{Prefix: "zot-fold/alpine", Destination: "/alpine", StripPrefix: true},
+				{Prefix: "zot-fold/**", Destination: "/myFold", StripPrefix: false},
+			},
+			expected: struct {
+				contentID int
+				err       error
+			}{contentID: 1, err: nil},
+		},
+		{
+			repo: "alpine",
+			content: []Content{
+				{Prefix: "zot-fold/*", Destination: "/alpine", StripPrefix: true},
+				{Prefix: "zot-fold/alpine", Destination: "/", StripPrefix: true},
+			},
+			expected: struct {
+				contentID int
+				err       error
+			}{contentID: -1, err: errors.ErrRegistryNoContent},
+		},
+		{
+			repo: "alpine",
+			content: []Content{
+				{Prefix: "zot-fold/*", Destination: "/alpine", StripPrefix: true},
+				{Prefix: "zot-fold/*", Destination: "/", StripPrefix: true},
+			},
+			expected: struct {
+				contentID int
+				err       error
+			}{contentID: 1, err: nil},
+		},
+		{
+			repo: "alpine/alpine",
+			content: []Content{
+				{Prefix: "zot-fold/*", Destination: "/alpine", StripPrefix: true},
+				{Prefix: "zot-fold/*", Destination: "/", StripPrefix: true},
+			},
+			expected: struct {
+				contentID int
+				err       error
+			}{contentID: 0, err: nil},
+		},
+	}
+
+	Convey("Test findRepoMatchingContentID()", t, func() {
+		for _, test := range testCases {
+			actualResult, err := findRepoMatchingContentID(test.repo, test.content)
+			So(actualResult, ShouldEqual, test.expected.contentID)
+			So(err, ShouldResemble, test.expected.err)
+		}
 	})
 }
