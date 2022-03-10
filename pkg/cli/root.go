@@ -231,10 +231,8 @@ func validateConfiguration(config *config.Config) error {
 	// check authorization config, it should have basic auth enabled or ldap
 	if config.HTTP.RawAccessControl != nil {
 		if config.HTTP.Auth == nil || (config.HTTP.Auth.HTPasswd.Path == "" && config.HTTP.Auth.LDAP == nil) {
-			log.Error().Err(errors.ErrBadConfig).
-				Msg("access control config requires httpasswd or ldap authentication to be enabled")
-
-			return errors.ErrBadConfig
+			// checking for default policy only authorization config: no users, no policies but default policy
+			checkForDefaultPolicyConfig(config)
 		}
 	}
 
@@ -309,6 +307,15 @@ func validateConfiguration(config *config.Config) error {
 	}
 
 	return nil
+}
+
+func checkForDefaultPolicyConfig(config *config.Config) {
+	if !isDefaultPolicyConfig(config) {
+		log.Error().Err(errors.ErrBadConfig).
+			Msg("access control config requires httpasswd, ldap authentication " +
+				"or using only 'defaultPolicy' policies")
+		panic(errors.ErrBadConfig)
+	}
 }
 
 func applyDefaultValues(config *config.Config, viperInstance *viper.Viper) {
@@ -430,4 +437,31 @@ func LoadConfiguration(config *config.Config, configPath string) error {
 	updateDistSpecVersion(config)
 
 	return nil
+}
+
+func isDefaultPolicyConfig(cfg *config.Config) bool {
+	adminPolicy := cfg.AccessControl.AdminPolicy
+
+	log.Info().Msg("checking if default authorization is possible")
+
+	if len(adminPolicy.Actions)+len(adminPolicy.Users) > 0 {
+		log.Info().Msg("admin policy detected, default authorization disabled")
+
+		return false
+	}
+
+	for _, repository := range cfg.AccessControl.Repositories {
+		for _, policy := range repository.Policies {
+			if len(policy.Actions)+len(policy.Users) > 0 {
+				log.Info().Interface("repository", repository).
+					Msg("repository with non-empty policy detected, default authorization disabled")
+
+				return false
+			}
+		}
+	}
+
+	log.Info().Msg("default authorization detected")
+
+	return true
 }

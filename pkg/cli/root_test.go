@@ -174,6 +174,62 @@ func TestVerify(t *testing.T) {
 		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldNotPanic)
 	})
 
+	Convey("Test verify default authorization", t, func(c C) {
+		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
+		 					"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							 "accessControl":{"**":{"defaultPolicy": ["read", "create"]},
+							 "/repo":{"defaultPolicy": ["read", "create"]}
+							 }}}`)
+		_, err = tmpfile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpfile.Close()
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldNotPanic)
+	})
+
+	Convey("Test verify default authorization fail", t, func(c C) {
+		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
+		 					"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							 "accessControl":{"**":{"defaultPolicy": ["read", "create"]},
+							 "/repo":{"defaultPolicy": ["read", "create"]},
+							 "adminPolicy":{"users":["admin"],
+							 "actions":["read","create","update","delete"]}
+							 }}}`)
+		_, err = tmpfile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpfile.Close()
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+	})
+
+	Convey("Test verify default authorization fail", t, func(c C) {
+		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"accessControl":{"**":{"defaultPolicy": ["read", "create"]},
+							"/repo":{"defaultPolicy": ["read", "create"]},
+							"/repo2":{"policies": [{
+								 "users": ["charlie"],
+								 "actions": ["read", "create", "update"]}]}
+							}}}`)
+		_, err = tmpfile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpfile.Close()
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+	})
+
 	Convey("Test verify w/ sync and w/o filesystem storage", t, func(c C) {
 		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
 		So(err, ShouldBeNil)

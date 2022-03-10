@@ -180,7 +180,14 @@ func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 			}
 
 			acCtrlr := NewAccessController(ctlr.Config)
-			username := getUsername(request)
+
+			// allow anonymous authz if no authn present and only default policies are present
+			username := ""
+
+			if isAuthnEnabled(ctlr.Config) {
+				username = getUsername(request)
+			}
+
 			ctx := acCtrlr.getContext(username, request)
 
 			// will return only repos on which client is authorized to read
@@ -202,7 +209,7 @@ func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 				if ok {
 					is := ctlr.StoreController.GetImageStore(resource)
 					tags, err := is.GetImageTags(resource)
-					// if repo exists and request's tag doesn't exist yet then action is UPDATE
+					// if repo exists and request's tag exists then action is UPDATE
 					if err == nil && common.Contains(tags, reference) && reference != "latest" {
 						action = UPDATE
 					}
