@@ -60,8 +60,10 @@ type RegistryConfig struct {
 }
 
 type Content struct {
-	Prefix string
-	Tags   *Tags
+	Prefix      string
+	Tags        *Tags
+	Destination string `mapstructure:",omitempty"`
+	StripPrefix bool
 }
 
 type Tags struct {
@@ -323,17 +325,28 @@ func syncRegistry(ctx context.Context, regCfg RegistryConfig, upstreamURL string
 
 	log.Info().Msgf("got repos: %v", repos)
 
-	var images []types.ImageReference
+	var images []struct {
+		ref     types.ImageReference
+		content Content
+	}
 
 	upstreamAddr := StripRegistryTransport(upstreamURL)
 
 	for contentID, repos := range repos {
 		r := repos
-		id := contentID
+		contentID := contentID
 
 		if err = retry.RetryIfNecessary(ctx, func() error {
-			refs, err := imagesToCopyFromUpstream(ctx, upstreamAddr, r, upstreamCtx, regCfg.Content[id], log)
-			images = append(images, refs...)
+			refs, err := imagesToCopyFromUpstream(ctx, upstreamAddr, r, upstreamCtx, regCfg.Content[contentID], log)
+			for _, ref := range refs {
+				images = append(images, struct {
+					ref     types.ImageReference
+					content Content
+				}{
+					ref:     ref,
+					content: regCfg.Content[contentID],
+				})
+			}
 
 			return err
 		}, retryOptions); err != nil {
@@ -350,14 +363,15 @@ func syncRegistry(ctx context.Context, regCfg RegistryConfig, upstreamURL string
 	}
 
 	for _, ref := range images {
-		upstreamImageRef := ref
+		upstreamImageRef := ref.ref
 
-		repo := getRepoFromRef(upstreamImageRef, upstreamAddr)
+		remoteRepo := getRepoFromRef(upstreamImageRef, upstreamAddr)
+		localRepo := getRepoDestination(remoteRepo, ref.content)
 		tag := getTagFromRef(upstreamImageRef, log).Tag()
 
-		imageStore := storeController.GetImageStore(repo)
+		imageStore := storeController.GetImageStore(localRepo)
 
-		canBeSkipped, err := canSkipImage(ctx, repo, tag, upstreamImageRef, imageStore, upstreamCtx, log)
+		canBeSkipped, err := canSkipImage(ctx, localRepo, tag, upstreamImageRef, imageStore, upstreamCtx, log)
 		if err != nil {
 			log.Error().Err(err).Msgf("couldn't check if the upstream image %s can be skipped",
 				upstreamImageRef.DockerReference())
@@ -367,10 +381,10 @@ func syncRegistry(ctx context.Context, regCfg RegistryConfig, upstreamURL string
 			continue
 		}
 
-		localImageRef, localCachePath, err := getLocalImageRef(imageStore, repo, tag)
+		localImageRef, localCachePath, err := getLocalImageRef(imageStore, localRepo, tag)
 		if err != nil {
 			log.Error().Err(err).Msgf("couldn't obtain a valid image reference for reference %s/%s:%s",
-				localCachePath, repo, tag)
+				localCachePath, localRepo, tag)
 
 			return err
 		}
@@ -390,16 +404,16 @@ func syncRegistry(ctx context.Context, regCfg RegistryConfig, upstreamURL string
 			return err
 		}
 
-		err = pushSyncedLocalImage(repo, tag, localCachePath, storeController, log)
+		err = pushSyncedLocalImage(localRepo, tag, localCachePath, storeController, log)
 		if err != nil {
 			log.Error().Err(err).Msgf("error while pushing synced cached image %s",
-				fmt.Sprintf("%s/%s:%s", localCachePath, repo, tag))
+				fmt.Sprintf("%s/%s:%s", localCachePath, localRepo, tag))
 
 			return err
 		}
 
 		if err = retry.RetryIfNecessary(ctx, func() error {
-			err = syncSignatures(httpClient, storeController, upstreamURL, repo, tag, log)
+			err = syncSignatures(httpClient, storeController, upstreamURL, remoteRepo, localRepo, tag, log)
 
 			return err
 		}, retryOptions); err != nil {

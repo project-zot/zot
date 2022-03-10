@@ -100,6 +100,95 @@ func filterRepos(repos []string, contentList []Content, log log.Logger) map[int]
 	return filtered
 }
 
+// findRepoContentID return the contentID that maches the localRepo path for a given RegistryConfig in the config file.
+func findRepoMatchingContentID(localRepo string, contentList []Content) (int, error) {
+	contentID := -1
+	localRepo = strings.Trim(localRepo, "/")
+
+	for cID, content := range contentList {
+		// make sure prefix ends in "/" to extract the meta characters
+		prefix := strings.Trim(content.Prefix, "/") + "/"
+		destination := strings.Trim(content.Destination, "/")
+
+		var patternSlice []string
+
+		if content.StripPrefix {
+			_, metaCharacters := glob.SplitPattern(prefix)
+			patternSlice = append(patternSlice, destination, metaCharacters)
+		} else {
+			patternSlice = append(patternSlice, destination, prefix)
+		}
+
+		pattern := strings.Trim(strings.Join(patternSlice, "/"), "/")
+
+		matched, err := glob.Match(pattern, localRepo)
+		if err != nil {
+			continue
+		}
+
+		if matched {
+			contentID = cID
+
+			break
+		}
+	}
+
+	if contentID == -1 {
+		return -1, zerr.ErrRegistryNoContent
+	}
+
+	return contentID, nil
+}
+
+func getRepoSource(localRepo string, content Content) string {
+	localRepo = strings.Trim(localRepo, "/")
+	destination := strings.Trim(content.Destination, "/")
+	prefix := strings.Trim(content.Prefix, "/*")
+
+	var localRepoSlice []string
+
+	localRepo = strings.TrimPrefix(localRepo, destination)
+	localRepo = strings.Trim(localRepo, "/")
+
+	if content.StripPrefix {
+		localRepoSlice = append([]string{prefix}, localRepo)
+	} else {
+		localRepoSlice = []string{localRepo}
+	}
+
+	repoSource := strings.Join(localRepoSlice, "/")
+	if repoSource == "/" {
+		return repoSource
+	}
+
+	return strings.Trim(repoSource, "/")
+}
+
+// getRepoDestination returns the local storage path of the synced repo based on the specified destination.
+func getRepoDestination(remoteRepo string, content Content) string {
+	remoteRepo = strings.Trim(remoteRepo, "/")
+	destination := strings.Trim(content.Destination, "/")
+	prefix := strings.Trim(content.Prefix, "/*")
+
+	var repoDestSlice []string
+
+	if content.StripPrefix {
+		remoteRepo = strings.TrimPrefix(remoteRepo, prefix)
+		remoteRepo = strings.Trim(remoteRepo, "/")
+		repoDestSlice = append(repoDestSlice, destination, remoteRepo)
+	} else {
+		repoDestSlice = append(repoDestSlice, destination, remoteRepo)
+	}
+
+	repoDestination := strings.Join(repoDestSlice, "/")
+
+	if repoDestination == "/" {
+		return "/"
+	}
+
+	return strings.Trim(repoDestination, "/")
+}
+
 // Get sync.FileCredentials from file.
 func getFileCredentials(filepath string) (CredentialsFile, error) {
 	credsFile, err := ioutil.ReadFile(filepath)
@@ -174,7 +263,7 @@ func getHTTPClient(regCfg *RegistryConfig, upstreamURL string, credentials Crede
 }
 
 func syncCosignSignature(client *resty.Client, storeController storage.StoreController,
-	regURL url.URL, repo, digest string, log log.Logger) error {
+	regURL url.URL, remoteRepo, localRepo, digest string, log log.Logger) error {
 	log.Info().Msg("syncing cosign signatures")
 
 	getCosignManifestURL := regURL
@@ -183,7 +272,7 @@ func syncCosignSignature(client *resty.Client, storeController storage.StoreCont
 		digest = strings.Replace(digest, ":", "-", 1) + ".sig"
 	}
 
-	getCosignManifestURL.Path = path.Join(getCosignManifestURL.Path, "v2", repo, "manifests", digest)
+	getCosignManifestURL.Path = path.Join(getCosignManifestURL.Path, "v2", remoteRepo, "manifests", digest)
 
 	getCosignManifestURL.RawQuery = getCosignManifestURL.Query().Encode()
 
@@ -212,12 +301,12 @@ func syncCosignSignature(client *resty.Client, storeController storage.StoreCont
 		return err
 	}
 
-	imageStore := storeController.GetImageStore(repo)
+	imageStore := storeController.GetImageStore(localRepo)
 
 	for _, blob := range m.Layers {
 		// get blob
 		getBlobURL := regURL
-		getBlobURL.Path = path.Join(getBlobURL.Path, "v2", repo, "blobs", blob.Digest.String())
+		getBlobURL.Path = path.Join(getBlobURL.Path, "v2", remoteRepo, "blobs", blob.Digest.String())
 		getBlobURL.RawQuery = getBlobURL.Query().Encode()
 
 		resp, err := client.R().SetDoNotParseResponse(true).Get(getBlobURL.String())
@@ -236,7 +325,7 @@ func syncCosignSignature(client *resty.Client, storeController storage.StoreCont
 		defer resp.RawBody().Close()
 
 		// push blob
-		_, _, err = imageStore.FullBlobUpload(repo, resp.RawBody(), blob.Digest.String())
+		_, _, err = imageStore.FullBlobUpload(localRepo, resp.RawBody(), blob.Digest.String())
 		if err != nil {
 			log.Error().Err(err).Msg("couldn't upload cosign blob")
 
@@ -246,7 +335,7 @@ func syncCosignSignature(client *resty.Client, storeController storage.StoreCont
 
 	// get config blob
 	getBlobURL := regURL
-	getBlobURL.Path = path.Join(getBlobURL.Path, "v2", repo, "blobs", m.Config.Digest.String())
+	getBlobURL.Path = path.Join(getBlobURL.Path, "v2", remoteRepo, "blobs", m.Config.Digest.String())
 	getBlobURL.RawQuery = getBlobURL.Query().Encode()
 
 	resp, err := client.R().SetDoNotParseResponse(true).Get(getBlobURL.String())
@@ -265,7 +354,7 @@ func syncCosignSignature(client *resty.Client, storeController storage.StoreCont
 	defer resp.RawBody().Close()
 
 	// push config blob
-	_, _, err = imageStore.FullBlobUpload(repo, resp.RawBody(), m.Config.Digest.String())
+	_, _, err = imageStore.FullBlobUpload(localRepo, resp.RawBody(), m.Config.Digest.String())
 	if err != nil {
 		log.Error().Err(err).Msg("couldn't upload cosign blob")
 
@@ -273,7 +362,7 @@ func syncCosignSignature(client *resty.Client, storeController storage.StoreCont
 	}
 
 	// push manifest
-	_, err = imageStore.PutImageManifest(repo, digest, ispec.MediaTypeImageManifest, mResp.Body())
+	_, err = imageStore.PutImageManifest(localRepo, digest, ispec.MediaTypeImageManifest, mResp.Body())
 	if err != nil {
 		log.Error().Err(err).Msg("couldn't upload cosing manifest")
 
@@ -284,13 +373,14 @@ func syncCosignSignature(client *resty.Client, storeController storage.StoreCont
 }
 
 func syncNotarySignature(client *resty.Client, storeController storage.StoreController,
-	regURL url.URL, repo, digest string, log log.Logger) error {
+	regURL url.URL, remoteRepo, localRepo, digest string, log log.Logger) error {
 	log.Info().Msg("syncing notary signatures")
 
 	getReferrersURL := regURL
 
 	// based on manifest digest get referrers
-	getReferrersURL.Path = path.Join(getReferrersURL.Path, "oras/artifacts/v1/", repo, "manifests", digest, "referrers")
+	getReferrersURL.Path = path.Join(getReferrersURL.Path, "oras/artifacts/v1/",
+		remoteRepo, "manifests", digest, "referrers")
 	getReferrersURL.RawQuery = getReferrersURL.Query().Encode()
 
 	resp, err := client.R().
@@ -319,12 +409,12 @@ func syncNotarySignature(client *resty.Client, storeController storage.StoreCont
 		return err
 	}
 
-	imageStore := storeController.GetImageStore(repo)
+	imageStore := storeController.GetImageStore(localRepo)
 
 	for _, ref := range referrers.References {
 		// get referrer manifest
 		getRefManifestURL := regURL
-		getRefManifestURL.Path = path.Join(getRefManifestURL.Path, "v2", repo, "manifests", ref.Digest.String())
+		getRefManifestURL.Path = path.Join(getRefManifestURL.Path, "v2", remoteRepo, "manifests", ref.Digest.String())
 		getRefManifestURL.RawQuery = getRefManifestURL.Query().Encode()
 
 		resp, err := client.R().
@@ -347,7 +437,7 @@ func syncNotarySignature(client *resty.Client, storeController storage.StoreCont
 
 		for _, blob := range m.Blobs {
 			getBlobURL := regURL
-			getBlobURL.Path = path.Join(getBlobURL.Path, "v2", repo, "blobs", blob.Digest.String())
+			getBlobURL.Path = path.Join(getBlobURL.Path, "v2", remoteRepo, "blobs", blob.Digest.String())
 			getBlobURL.RawQuery = getBlobURL.Query().Encode()
 
 			resp, err := client.R().SetDoNotParseResponse(true).Get(getBlobURL.String())
@@ -366,7 +456,7 @@ func syncNotarySignature(client *resty.Client, storeController storage.StoreCont
 				return zerr.ErrBadBlobDigest
 			}
 
-			_, _, err = imageStore.FullBlobUpload(repo, resp.RawBody(), blob.Digest.String())
+			_, _, err = imageStore.FullBlobUpload(localRepo, resp.RawBody(), blob.Digest.String())
 			if err != nil {
 				log.Error().Err(err).Msg("couldn't upload notary sig blob")
 
@@ -374,7 +464,8 @@ func syncNotarySignature(client *resty.Client, storeController storage.StoreCont
 			}
 		}
 
-		_, err = imageStore.PutImageManifest(repo, ref.Digest.String(), artifactspec.MediaTypeArtifactManifest, resp.Body())
+		_, err = imageStore.PutImageManifest(localRepo, ref.Digest.String(), artifactspec.MediaTypeArtifactManifest,
+			resp.Body())
 		if err != nil {
 			log.Error().Err(err).Msg("couldn't upload notary sig manifest")
 
@@ -386,8 +477,8 @@ func syncNotarySignature(client *resty.Client, storeController storage.StoreCont
 }
 
 func syncSignatures(client *resty.Client, storeController storage.StoreController,
-	registryURL, repo, tag string, log log.Logger) error {
-	log.Info().Msgf("syncing signatures from %s/%s:%s", registryURL, repo, tag)
+	registryURL, remoteRepo, localRepo, tag string, log log.Logger) error {
+	log.Info().Msgf("syncing signatures from %s/%s:%s", registryURL, remoteRepo, tag)
 	// get manifest and find out its digest
 	regURL, err := url.Parse(registryURL)
 	if err != nil {
@@ -398,7 +489,7 @@ func syncSignatures(client *resty.Client, storeController storage.StoreControlle
 
 	getManifestURL := *regURL
 
-	getManifestURL.Path = path.Join(getManifestURL.Path, "v2", repo, "manifests", tag)
+	getManifestURL.Path = path.Join(getManifestURL.Path, "v2", remoteRepo, "manifests", tag)
 
 	resp, err := client.R().SetHeader("Content-Type", "application/json").Head(getManifestURL.String())
 	if err != nil {
@@ -408,48 +499,42 @@ func syncSignatures(client *resty.Client, storeController storage.StoreControlle
 		return err
 	}
 
-	digests, ok := resp.Header()["Docker-Content-Digest"]
-	if !ok {
+	digest := resp.Header().Get("Docker-Content-Digest")
+	if digest == "" {
 		log.Error().Err(zerr.ErrBadBlobDigest).Str("url", getManifestURL.String()).
-			Msgf("couldn't get digest for manifest: %s:%s", repo, tag)
+			Msgf("couldn't get digest for manifest: %s:%s", remoteRepo, tag)
 
 		return zerr.ErrBadBlobDigest
 	}
 
-	if len(digests) != 1 {
-		log.Error().Err(zerr.ErrBadBlobDigest).Str("url", getManifestURL.String()).
-			Msgf("multiple digests found for: %s:%s", repo, tag)
-
-		return zerr.ErrBadBlobDigest
-	}
-
-	err = syncNotarySignature(client, storeController, *regURL, repo, digests[0], log)
+	err = syncNotarySignature(client, storeController, *regURL, remoteRepo, localRepo, digest, log)
 	if err != nil {
 		return err
 	}
 
-	err = syncCosignSignature(client, storeController, *regURL, repo, digests[0], log)
+	err = syncCosignSignature(client, storeController, *regURL, remoteRepo, localRepo, digest, log)
 	if err != nil {
 		return err
 	}
 
-	log.Info().Msgf("successfully synced %s/%s:%s signatures", registryURL, repo, tag)
+	log.Info().Msgf("successfully synced %s/%s:%s signatures", registryURL, remoteRepo, tag)
 
 	return nil
 }
 
-func pushSyncedLocalImage(repo, tag, localCachePath string,
+func pushSyncedLocalImage(localRepo, tag, localCachePath string,
 	storeController storage.StoreController, log log.Logger) error {
-	log.Info().Msgf("pushing synced local image %s/%s:%s to local registry", localCachePath, repo, tag)
+	log.Info().Msgf("pushing synced local image %s/%s:%s to local registry", localCachePath, localRepo, tag)
 
-	imageStore := storeController.GetImageStore(repo)
+	imageStore := storeController.GetImageStore(localRepo)
 
 	metrics := monitoring.NewMetricsServer(false, log)
 	cacheImageStore := storage.NewImageStore(localCachePath, false, storage.DefaultGCDelay, false, false, log, metrics)
 
-	manifestContent, _, _, err := cacheImageStore.GetImageManifest(repo, tag)
+	manifestContent, _, _, err := cacheImageStore.GetImageManifest(localRepo, tag)
 	if err != nil {
-		log.Error().Err(err).Str("dir", path.Join(cacheImageStore.RootDir(), repo)).Msg("couldn't find index.json")
+		log.Error().Err(err).Str("dir", path.Join(cacheImageStore.RootDir(), localRepo)).
+			Msg("couldn't find index.json")
 
 		return err
 	}
@@ -457,21 +542,22 @@ func pushSyncedLocalImage(repo, tag, localCachePath string,
 	var manifest ispec.Manifest
 
 	if err := json.Unmarshal(manifestContent, &manifest); err != nil {
-		log.Error().Err(err).Str("dir", path.Join(cacheImageStore.RootDir(), repo)).Msg("invalid JSON")
+		log.Error().Err(err).Str("dir", path.Join(cacheImageStore.RootDir(), localRepo)).
+			Msg("invalid JSON")
 
 		return err
 	}
 
 	for _, blob := range manifest.Layers {
-		blobReader, _, err := cacheImageStore.GetBlob(repo, blob.Digest.String(), blob.MediaType)
+		blobReader, _, err := cacheImageStore.GetBlob(localRepo, blob.Digest.String(), blob.MediaType)
 		if err != nil {
 			log.Error().Err(err).Str("dir", path.Join(cacheImageStore.RootDir(),
-				repo)).Str("blob digest", blob.Digest.String()).Msg("couldn't read blob")
+				localRepo)).Str("blob digest", blob.Digest.String()).Msg("couldn't read blob")
 
 			return err
 		}
 
-		_, _, err = imageStore.FullBlobUpload(repo, blobReader, blob.Digest.String())
+		_, _, err = imageStore.FullBlobUpload(localRepo, blobReader, blob.Digest.String())
 		if err != nil {
 			log.Error().Err(err).Str("blob digest", blob.Digest.String()).Msg("couldn't upload blob")
 
@@ -479,29 +565,29 @@ func pushSyncedLocalImage(repo, tag, localCachePath string,
 		}
 	}
 
-	blobReader, _, err := cacheImageStore.GetBlob(repo, manifest.Config.Digest.String(), manifest.Config.MediaType)
+	blobReader, _, err := cacheImageStore.GetBlob(localRepo, manifest.Config.Digest.String(), manifest.Config.MediaType)
 	if err != nil {
 		log.Error().Err(err).Str("dir", path.Join(cacheImageStore.RootDir(),
-			repo)).Str("blob digest", manifest.Config.Digest.String()).Msg("couldn't read config blob")
+			localRepo)).Str("blob digest", manifest.Config.Digest.String()).Msg("couldn't read config blob")
 
 		return err
 	}
 
-	_, _, err = imageStore.FullBlobUpload(repo, blobReader, manifest.Config.Digest.String())
+	_, _, err = imageStore.FullBlobUpload(localRepo, blobReader, manifest.Config.Digest.String())
 	if err != nil {
 		log.Error().Err(err).Str("blob digest", manifest.Config.Digest.String()).Msg("couldn't upload config blob")
 
 		return err
 	}
 
-	_, err = imageStore.PutImageManifest(repo, tag, ispec.MediaTypeImageManifest, manifestContent)
+	_, err = imageStore.PutImageManifest(localRepo, tag, ispec.MediaTypeImageManifest, manifestContent)
 	if err != nil {
 		log.Error().Err(err).Msg("couldn't upload manifest")
 
 		return err
 	}
 
-	log.Info().Msgf("removing temporary cached synced repo %s", path.Join(cacheImageStore.RootDir(), repo))
+	log.Info().Msgf("removing temporary cached synced repo %s", path.Join(cacheImageStore.RootDir(), localRepo))
 
 	if err := os.RemoveAll(cacheImageStore.RootDir()); err != nil {
 		log.Error().Err(err).Msg("couldn't remove locally cached sync repo")

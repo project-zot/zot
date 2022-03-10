@@ -403,7 +403,17 @@ Configure each registry sync:
 					},
 					{
 						"prefix":"/repo3/**"            # pull all images under repo3/ (matches recursively all repos under repo3/)
-					}
+					},
+          {
+            "prefix":"/repo1/repo",          # pull /repo1/repo
+            "destination":"/localrepo",      # put /repo1/repo under /localrepo
+            "stripPrefix":true               # strip the path specified in "prefix", if true resulting /localpath, if false resulting /localrepo/repo1/repo"
+          }
+          {
+            "prefix":"/repo1/**",           # pull all images under repo1/ (matches recursively all repos under repo1/)
+            "destination":"/localrepo",     # put all images found under /localrepo.
+            "stripPrefix":true              # strip the path specified in "prefix" until meta-characters like "**". If we match /repo1/repo the local repo will be /localrepo/repo.
+          }
 				]
 			},
 			{

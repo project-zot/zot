@@ -49,4 +49,5 @@ var (
 	ErrInvalidMetric           = errors.New("metrics: invalid metric func")
 	ErrInjected                = errors.New("test: injected failure")
 	ErrSyncInvalidUpstreamURL  = errors.New("sync: upstream url not found in sync config")
+	ErrRegistryNoContent       = errors.New("sync: could not find a Content that matches localRepo")
 )
