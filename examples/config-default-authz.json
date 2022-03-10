@@ -1,0 +1,30 @@
+{
+    "distSpecVersion": "1.0.1",
+    "storage": {
+      "rootDirectory": "/tmp/zot"
+    },
+    "http": {
+      "address": "127.0.0.1",
+      "port": "8080",
+      "realm": "zot",
+      "accessControl": {
+        "**": {
+          "defaultPolicy": ["read", "create"] 
+        },
+        "tmp/**": {
+          "defaultPolicy": ["read", "create", "update"]
+        },
+        "infra/**": {
+          "defaultPolicy": ["read"]
+        },
+        "repos2/repo": {
+          "defaultPolicy": ["read"]
+        }
+      }
+    },
+    "log": {
+      "level": "debug"
+    }
+  }
+  
+  

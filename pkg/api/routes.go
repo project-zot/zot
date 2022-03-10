@@ -57,9 +57,15 @@ func allowedMethods(method string) []string {
 // nolint: contextcheck
 func (rh *RouteHandler) SetupRoutes() {
 	rh.c.Router.Use(AuthHandler(rh.c))
-	// authz is being enabled because authn is found
-	if rh.c.Config.AccessControl != nil && !isBearerAuthEnabled(rh.c.Config) && isAuthnEnabled(rh.c.Config) {
-		rh.c.Log.Info().Msg("access control is being enabled")
+	// authz is being enabled if AccessControl is specified
+	// if Authn is not present AccessControl will have only default policies
+	if rh.c.Config.AccessControl != nil && !isBearerAuthEnabled(rh.c.Config) {
+		if isAuthnEnabled(rh.c.Config) {
+			rh.c.Log.Info().Msg("access control is being enabled")
+		} else {
+			rh.c.Log.Info().Msg("default policy only access control is being enabled")
+		}
+
 		rh.c.Router.Use(AuthzHandler(rh.c))
 	}
 

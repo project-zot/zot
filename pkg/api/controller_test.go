@@ -2096,6 +2096,9 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		manifestBlob := resp.Body()
+		var manifest ispec.Manifest
+		err = json.Unmarshal(manifestBlob, &manifest)
+		So(err, ShouldBeNil)
 
 		// put manifest should get 403 without create perm
 		resp, err = resty.R().SetBasicAuth(username, passphrase).SetBody(manifestBlob).
@@ -2116,12 +2119,79 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
+		// create update config and post it.
+		cblob, cdigest := test.GetRandomImageConfig()
+
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Post(baseURL + "/v2/zot-test/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+		loc = test.Location(baseURL, resp)
+
+		// uploading blob should get 201
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", cdigest.String()).
+			SetBody(cblob).
+			Put(loc)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		// create updated layer and post it
+		updateBlob := []byte("Hello, blob update!")
+
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Post(baseURL + "/v2/zot-test/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+		loc = test.Location(baseURL, resp)
+		// uploading blob should get 201
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			SetHeader("Content-Length", fmt.Sprintf("%d", len(updateBlob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", string(godigest.FromBytes(updateBlob))).
+			SetBody(updateBlob).
+			Put(loc)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		updatedManifest := ispec.Manifest{
+			Config: ispec.Descriptor{
+				MediaType: "application/vnd.oci.image.config.v1+json",
+				Digest:    cdigest,
+				Size:      int64(len(cblob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    godigest.FromBytes(updateBlob),
+					Size:      int64(len(updateBlob)),
+				},
+			},
+		}
+		updatedManifest.SchemaVersion = 2
+		updatedManifestBlob, err := json.Marshal(updatedManifest)
+		So(err, ShouldBeNil)
+
 		// update manifest should get 403 without update perm
-		resp, err = resty.R().SetBasicAuth(username, passphrase).SetBody(manifestBlob).
+		resp, err = resty.R().SetBasicAuth(username, passphrase).SetBody(updatedManifestBlob).
 			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+		// get the manifest and check if it's the old one
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Get(baseURL + "/v2/zot-test/manifests/0.0.2")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(resp.Body(), ShouldResemble, manifestBlob)
 
 		// add update perm on repo
 		conf.AccessControl.Repositories["zot-test"].Policies[0].Actions = append(conf.AccessControl.Repositories["zot-test"].Policies[0].Actions, "update") //nolint:lll // gofumpt conflicts with lll
@@ -2129,11 +2199,19 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		// update manifest should get 201 with update perm
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
-			SetBody(manifestBlob).
+			SetBody(updatedManifestBlob).
 			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		// get the manifest and check if it's the new updated one
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Get(baseURL + "/v2/zot-test/manifests/0.0.2")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(resp.Body(), ShouldResemble, updatedManifestBlob)
 
 		// now use default repo policy
 		conf.AccessControl.Repositories["zot-test"].Policies[0].Actions = []string{}
@@ -2277,6 +2355,200 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+	})
+}
+
+func TestAuthorizationWithOnlyDefaultPolicy(t *testing.T) {
+	Convey("Make a new controller", t, func() {
+		const TestRepo = "my-repos/repo"
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.HTTP.Auth = &config.AuthConfig{}
+		conf.AccessControl = &config.AccessControlConfig{
+			Repositories: config.Repositories{
+				TestRepo: config.PolicyGroup{
+					DefaultPolicy: []string{},
+				},
+			},
+		}
+
+		ctlr := api.NewController(conf)
+		dir := t.TempDir()
+		ctlr.Config.Storage.RootDirectory = dir
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		test.WaitTillServerReady(baseURL)
+
+		blob := []byte("hello, blob!")
+		digest := godigest.FromBytes(blob).String()
+
+		resp, err := resty.R().Get(baseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		resp, err = resty.R().Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		var e api.Error
+		err = json.Unmarshal(resp.Body(), &e)
+		So(err, ShouldBeNil)
+
+		// should get 403 without create
+		resp, err = resty.R().Post(baseURL + "/v2/" + TestRepo + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+		if entry, ok := conf.AccessControl.Repositories[TestRepo]; ok {
+			entry.DefaultPolicy = []string{"create", "read"}
+			conf.AccessControl.Repositories[TestRepo] = entry
+		}
+
+		// now it should get 202
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Post(baseURL + "/v2/" + TestRepo + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+		loc := resp.Header().Get("Location")
+
+		// uploading blob should get 201
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", digest).
+			SetBody(blob).
+			Put(baseURL + loc)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		cblob, cdigest := test.GetRandomImageConfig()
+
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Post(baseURL + "/v2/" + TestRepo + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+		loc = test.Location(baseURL, resp)
+
+		// uploading blob should get 201
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", cdigest.String()).
+			SetBody(cblob).
+			Put(loc)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		manifest := ispec.Manifest{
+			Config: ispec.Descriptor{
+				MediaType: "application/vnd.oci.image.config.v1+json",
+				Digest:    cdigest,
+				Size:      int64(len(cblob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    godigest.FromBytes(blob),
+					Size:      int64(len(blob)),
+				},
+			},
+		}
+		manifest.SchemaVersion = 2
+		manifestBlob, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+
+		resp, err = resty.R().
+			SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
+			SetBody(manifestBlob).
+			Put(baseURL + "/v2/" + TestRepo + "/manifests/0.0.2")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		updateBlob := []byte("Hello, blob update!")
+
+		resp, err = resty.R().
+			Post(baseURL + "/v2/" + TestRepo + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+		loc = test.Location(baseURL, resp)
+		// uploading blob should get 201
+		resp, err = resty.R().
+			SetHeader("Content-Length", fmt.Sprintf("%d", len(updateBlob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", string(godigest.FromBytes(updateBlob))).
+			SetBody(updateBlob).
+			Put(loc)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		updatedManifest := ispec.Manifest{
+			Config: ispec.Descriptor{
+				MediaType: "application/vnd.oci.image.config.v1+json",
+				Digest:    cdigest,
+				Size:      int64(len(cblob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    godigest.FromBytes(updateBlob),
+					Size:      int64(len(updateBlob)),
+				},
+			},
+		}
+		updatedManifest.SchemaVersion = 2
+		updatedManifestBlob, err := json.Marshal(updatedManifest)
+		So(err, ShouldBeNil)
+
+		// update manifest should get 403 without update perm
+		resp, err = resty.R().SetBody(updatedManifestBlob).
+			Put(baseURL + "/v2/" + TestRepo + "/manifests/0.0.2")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+		// get the manifest and check if it's the old one
+		resp, err = resty.R().
+			Get(baseURL + "/v2/" + TestRepo + "/manifests/0.0.2")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(resp.Body(), ShouldResemble, manifestBlob)
+
+		// add update perm on repo
+		if entry, ok := conf.AccessControl.Repositories[TestRepo]; ok {
+			entry.DefaultPolicy = []string{"create", "read", "update"}
+			conf.AccessControl.Repositories[TestRepo] = entry
+		}
+
+		// update manifest should get 201 with update perm
+		resp, err = resty.R().
+			SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
+			SetBody(updatedManifestBlob).
+			Put(baseURL + "/v2/" + TestRepo + "/manifests/0.0.2")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		// get the manifest and check if it's the new updated one
+		resp, err = resty.R().
+			Get(baseURL + "/v2/" + TestRepo + "/manifests/0.0.2")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(resp.Body(), ShouldResemble, updatedManifestBlob)
 	})
 }
 
