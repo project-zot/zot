@@ -145,3 +145,19 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository }}-zb-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}
             ghcr.io/${{ github.repository }}-zb-${{ matrix.os }}-${{ matrix.arch }}:latest
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'ghcr.io/${{ github.repository }}-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+      - name: Run Trivy vulnerability scanner (minimal)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'ghcr.io/${{ github.repository }}-minimal-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v1
+        with:
+          sarif_file: 'trivy-results.sarif'
