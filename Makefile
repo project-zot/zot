@@ -11,12 +11,13 @@ STACKER := $(shell which stacker)
 GOLINTER := $(TOOLSDIR)/bin/golangci-lint
 NOTATION := $(TOOLSDIR)/bin/notation
 BATS := $(TOOLSDIR)/bin/bats
+TESTDATA := $(TOP_LEVEL)/test/data
 OS ?= linux
 ARCH ?= amd64
 BENCH_OUTPUT ?= stdout
 
 .PHONY: all
-all: modcheck swagger binary binary-minimal binary-debug cli bench exporter-minimal verify-config test covhtml test-clean check
+all: modcheck swagger binary binary-minimal binary-debug cli bench exporter-minimal verify-config test covhtml check
 
 .PHONY: modcheck
 modcheck:
@@ -47,10 +48,7 @@ exporter-minimal: modcheck
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zxp-$(OS)-$(ARCH) -buildmode=pie -tags minimal,containers_image_openpgp -v -trimpath ./cmd/zxp
 
 .PHONY: test
-test: check-skopeo $(NOTATION)
-	$(shell mkdir -p test/data;  cd test/data; ../scripts/gen_certs.sh; cd ${TOP_LEVEL}; skopeo --insecure-policy copy -q docker://public.ecr.aws/t0x7q1g8/centos:7 oci:${TOP_LEVEL}/test/data/zot-test:0.0.1;skopeo --insecure-policy copy -q docker://public.ecr.aws/t0x7q1g8/centos:8 oci:${TOP_LEVEL}/test/data/zot-cve-test:0.0.1)
-	$(shell sudo mkdir -p /etc/containers/certs.d/127.0.0.1:8089/; sudo cp test/data/client.* test/data/ca.* /etc/containers/certs.d/127.0.0.1:8089/;)
-	$(shell sudo chmod a=rwx /etc/containers/certs.d/127.0.0.1:8089/*.key)
+test: check-skopeo $(TESTDATA) $(NOTATION)
 	go test -tags extended,containers_image_openpgp -v -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-extended.txt -covermode=atomic ./...
 	go test -tags minimal,containers_image_openpgp -v -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-minimal.txt -covermode=atomic ./...
 	# development-mode unit tests possibly using failure injection
@@ -58,16 +56,20 @@ test: check-skopeo $(NOTATION)
 	go test -tags dev,minimal,containers_image_openpgp -v -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-dev-minimal.txt -covermode=atomic ./pkg/test/... ./pkg/storage/... ./pkg/extensions/sync/... -run ^TestInject
 	go test -tags stress,extended,containers_image_openpgp -v -trimpath -race -timeout 15m ./pkg/cli/stress_test.go
 
+.PHONY: privileged-test
+privileged-test: check-skopeo $(TESTDATA) $(NOTATION)
+	go test -tags needprivileges,extended,containers_image_openpgp -v -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-dev-needprivileges.txt -covermode=atomic ./pkg/storage/... ./pkg/cli/... -run ^TestElevatedPrivileges
+
+$(TESTDATA): check-skopeo
+	$(shell mkdir -p ${TESTDATA}; cd ${TESTDATA}; ../scripts/gen_certs.sh; cd ${TOP_LEVEL}; skopeo --insecure-policy copy -q docker://public.ecr.aws/t0x7q1g8/centos:7 oci:${TESTDATA}/zot-test:0.0.1;skopeo --insecure-policy copy -q docker://public.ecr.aws/t0x7q1g8/centos:8 oci:${TESTDATA}/zot-cve-test:0.0.1)
+	$(shell chmod -R a=rwx ${TESTDATA})
+
 .PHONY: run-bench
 run-bench: binary bench
 	bin/zot-$(OS)-$(ARCH) serve examples/config-bench.json &
 	sleep 5
 	bin/zb-$(OS)-$(ARCH) -c 10 -n 100 -o $(BENCH_OUTPUT) http://localhost:8080
 	killall -r zot-*
-
-.PHONY: test-clean
-test-clean:
-	$(shell sudo rm -rf /etc/containers/certs.d/127.0.0.1:8089/)
 
 .PHONY: check-skopeo
 check-skopeo:
@@ -82,7 +84,7 @@ $(NOTATION):
 .PHONY: covhtml
 covhtml:
 	go install github.com/wadey/gocovmerge@latest
-	gocovmerge coverage-minimal.txt coverage-extended.txt coverage-dev-minimal.txt coverage-dev-extended.txt > coverage.txt
+	gocovmerge coverage*.txt > coverage.txt
 	go tool cover -html=coverage.txt -o coverage.html
 
 $(GOLINTER):
