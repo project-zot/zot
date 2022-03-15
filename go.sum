@@ -2023,8 +2023,8 @@ github.com/open-policy-agent/opa v0.32.0/go.mod h1:5sJdtc+1/U8zy/j30njpQl6u9rM4M
 github.com/open-policy-agent/opa v0.35.0/go.mod h1:xEmekKlk6/c+so5HF9wtPnGPXDfBuBsrMGhSHOHEF+U=
 github.com/open-policy-agent/opa v0.37.0 h1:OUXB+RAcxQpmXeNW2BN1wYzQQvVCPF1T9zv+QXGr9Wg=
 github.com/open-policy-agent/opa v0.37.0/go.mod h1:xX3NUCZuXK8f0CNhFQvhm4495mZLptf94pIkWRLaFqo=
-github.com/opencontainers/distribution-spec v1.0.0 h1:3qi5mXdKrXCacBYm8y46okmGmCR0pSgfaEd2/T0QXWE=
-github.com/opencontainers/distribution-spec v1.0.0/go.mod h1:copR2flp+jTEvQIFMb6MIx45OkrxzqyjszPDT3hx/5Q=
+github.com/opencontainers/distribution-spec v1.0.1 h1:hT6tF6uKZAQh+HH3BrJqn7/xHhMoDHzahIg4KxD2DqM=
+github.com/opencontainers/distribution-spec v1.0.1/go.mod h1:copR2flp+jTEvQIFMb6MIx45OkrxzqyjszPDT3hx/5Q=
 github.com/opencontainers/go-digest v0.0.0-20170106003457-a6d0ee40d420/go.mod h1:cMLVZDEM3+U2I4VmLI6N8jQYUd2OVphdqWwCJHrFt2s=
 github.com/opencontainers/go-digest v0.0.0-20180430190053-c9281466c8b2/go.mod h1:cMLVZDEM3+U2I4VmLI6N8jQYUd2OVphdqWwCJHrFt2s=
 github.com/opencontainers/go-digest v1.0.0-rc1/go.mod h1:cMLVZDEM3+U2I4VmLI6N8jQYUd2OVphdqWwCJHrFt2s=
