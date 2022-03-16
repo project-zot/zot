@@ -445,7 +445,7 @@ func pushSyncedLocalImage(repo, tag, localCachePath string,
 	imageStore := storeController.GetImageStore(repo)
 
 	metrics := monitoring.NewMetricsServer(false, log)
-	cacheImageStore := storage.NewImageStore(localCachePath, false, storage.DefaultGCDelay, false, false, log, metrics)
+	cacheImageStore := storage.NewImageStore(localCachePath, false, storage.DefaultGCDelay, false, false, 0, log, metrics)
 
 	manifestContent, _, _, err := cacheImageStore.GetImageManifest(repo, tag)
 	if err != nil {

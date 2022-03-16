@@ -84,6 +84,14 @@ to wasted storage, and background garbage collection can be enabled with:
         "gc": true,
 ```
 
+When the registry is backed by a filesystem and is under heavy load it can
+reach maximum file descriptor limit, and it will get "too many open files" error.
+Maximum go routines which can use the storage can be configured with:
+
+```
+        "maxThreads": 4096,
+```
+
 It is also possible to store and serve images from multiple filesystems with
 their own repository paths, dedupe and garbage collection settings with:
 

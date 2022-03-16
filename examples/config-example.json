@@ -1,7 +1,8 @@
 {
   "distSpecVersion":"1.0.1",
   "storage":{
-    "rootDirectory":"/tmp/zot"
+    "rootDirectory":"/tmp/zot",
+    "maxThreads": 4096
   },
   "http": {
     "address":"127.0.0.1",

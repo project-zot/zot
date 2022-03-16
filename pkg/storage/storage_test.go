@@ -114,7 +114,7 @@ func TestStorageAPIs(t *testing.T) {
 
 				log := log.Logger{Logger: zerolog.New(os.Stdout)}
 				metrics := monitoring.NewMetricsServer(false, log)
-				imgStore = storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics)
+				imgStore = storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, 0, log, metrics)
 			}
 
 			Convey("Repo layout", t, func(c C) {
@@ -689,11 +689,11 @@ func TestStorageHandler(t *testing.T) {
 				metrics := monitoring.NewMetricsServer(false, log)
 
 				// Create ImageStore
-				firstStore = storage.NewImageStore(firstRootDir, false, storage.DefaultGCDelay, false, false, log, metrics)
+				firstStore = storage.NewImageStore(firstRootDir, false, storage.DefaultGCDelay, false, false, 0, log, metrics)
 
-				secondStore = storage.NewImageStore(secondRootDir, false, storage.DefaultGCDelay, false, false, log, metrics)
+				secondStore = storage.NewImageStore(secondRootDir, false, storage.DefaultGCDelay, false, false, 0, log, metrics)
 
-				thirdStore = storage.NewImageStore(thirdRootDir, false, storage.DefaultGCDelay, false, false, log, metrics)
+				thirdStore = storage.NewImageStore(thirdRootDir, false, storage.DefaultGCDelay, false, false, 0, log, metrics)
 			}
 
 			Convey("Test storage handler", t, func() {

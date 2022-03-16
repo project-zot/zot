@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	apexlog "github.com/apex/log"
@@ -34,12 +35,13 @@ import (
 
 const (
 	// BlobUploadDir defines the upload directory for blob uploads.
-	BlobUploadDir    = ".uploads"
-	SchemaVersion    = 2
-	DefaultFilePerms = 0o600
-	DefaultDirPerms  = 0o700
-	RLOCK            = "RLock"
-	RWLOCK           = "RWLock"
+	BlobUploadDir     = ".uploads"
+	SchemaVersion     = 2
+	DefaultFilePerms  = 0o600
+	DefaultDirPerms   = 0o700
+	RLOCK             = "RLock"
+	RWLOCK            = "RWLock"
+	defaultMaxThreads = 1024
 )
 
 // BlobUpload models and upload request.
@@ -104,8 +106,23 @@ func (sc StoreController) GetImageStore(name string) ImageStore {
 	return sc.DefaultStore
 }
 
+// ulimit -n equivalent.
+func getOSMaxFileDescriptors(log zlog.Logger) uint64 {
+	var rlimit syscall.Rlimit
+
+	err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rlimit)
+	if err != nil {
+		log.Error().Err(err).
+			Msgf("couldn't get maximum open file descriptor ulimit, changing it to default %d", defaultMaxThreads)
+
+		return defaultMaxThreads
+	}
+
+	return rlimit.Cur
+}
+
 // NewImageStore returns a new image store backed by a file storage.
-func NewImageStore(rootDir string, gc bool, gcDelay time.Duration, dedupe, commit bool,
+func NewImageStore(rootDir string, gc bool, gcDelay time.Duration, dedupe, commit bool, maxThreads uint64,
 	log zlog.Logger, metrics monitoring.MetricServer) ImageStore {
 	if _, err := os.Stat(rootDir); os.IsNotExist(err) {
 		if err := os.MkdirAll(rootDir, DefaultDirPerms); err != nil {
@@ -146,7 +163,15 @@ func NewImageStore(rootDir string, gc bool, gcDelay time.Duration, dedupe, commi
 		}))
 	}
 
-	return imgStore
+	if maxThreads == 0 {
+		maxThreads = getOSMaxFileDescriptors(log)
+		log.Info().Msgf("storage maxThreads not configured, using underlying OS ulimit -n: %d", maxThreads)
+	}
+
+	log.Info().Msgf("storage maximum threads: %d", maxThreads)
+	regulatedImgStore := NewRegulator(imgStore, maxThreads)
+
+	return regulatedImgStore
 }
 
 // RLock read-lock.
