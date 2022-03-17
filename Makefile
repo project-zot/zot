@@ -46,7 +46,7 @@ exporter-minimal: modcheck
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zxp-$(OS)-$(ARCH) -tags minimal,containers_image_openpgp -v -trimpath ./cmd/zxp
 
 .PHONY: test
-test: check-skopeo $(NOTATION)
+test: check-skopeo check-notation
 	$(shell mkdir -p test/data;  cd test/data; ../scripts/gen_certs.sh; cd ${TOP_LEVEL}; skopeo --insecure-policy copy -q docker://public.ecr.aws/t0x7q1g8/centos:7 oci:${TOP_LEVEL}/test/data/zot-test:0.0.1;skopeo --insecure-policy copy -q docker://public.ecr.aws/t0x7q1g8/centos:8 oci:${TOP_LEVEL}/test/data/zot-cve-test:0.0.1)
 	$(shell sudo mkdir -p /etc/containers/certs.d/127.0.0.1:8089/; sudo cp test/data/client.* test/data/ca.* /etc/containers/certs.d/127.0.0.1:8089/;)
 	$(shell sudo chmod a=rwx /etc/containers/certs.d/127.0.0.1:8089/*.key)
@@ -98,6 +98,12 @@ $(NOTATION):
 	curl -Lo notation.tar.gz https://github.com/notaryproject/notation/releases/download/v0.7.1-alpha.1/notation_0.7.1-alpha.1_linux_amd64.tar.gz
 	tar xvzf notation.tar.gz -C $(TOOLSDIR)/bin  notation
 	rm notation.tar.gz
+
+.PHONY: check-notation
+check-notation: $(NOTATION)
+	echo "$(shell notation -v)" | grep notation || (echo "You need notation binary to be installed in order to run tests"; \
+	echo "To install it, please copy $(TOOLSDIR)/bin/notation to /usr/bin"; \
+	echo "Or add the notation binary to PATH"; exit 1)
 
 .PHONY: covhtml
 covhtml:

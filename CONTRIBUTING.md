@@ -32,19 +32,28 @@ produced under bin/
 
 ## Using host's toolchain
 
-For fully-featured zot,
+For **fully-featured zot**, which will also run tests, there are some **prerequisites: *skopeo* and *notation***.
 
+Install skopeo with your favorite package manager.
+
+To install notation, please run
+```
+make check-notation
+```
+This will download the binary and will point you to further instructions.
+
+Now you can run fully-featured zot:
 ```
 make
 ```
 
-For a minimal dist-spec only zot,
+For a **minimal dist-spec only zot**,
 
 ```
 make binary-minimal
 ```
 
-For a node exporter used by minimal dist-spec only zot,
+For a **node exporter used by minimal dist-spec only zot**,
 
 ```
 make exporter-minimal
