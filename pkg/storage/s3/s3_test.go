@@ -255,6 +255,86 @@ func (s *StorageDriverMock) Walk(ctx context.Context, path string, f driver.Walk
 	return nil
 }
 
+func TestStorageDriverStatFunction(t *testing.T) {
+	skipIt(t)
+
+	uuid, err := guuid.NewV4()
+	if err != nil {
+		panic(err)
+	}
+
+	testDir := path.Join("/oci-repo-test", uuid.String())
+
+	storeDriver, imgStore, _ := createObjectsStore(testDir)
+	defer cleanupStorage(storeDriver, testDir)
+
+	/* There is an issue with storageDriver.Stat() that returns a storageDriver.FileInfo()
+	which falsely reports isDir() as true for paths under certain circumstances
+	for example:
+	1) create a file, eg: repo/testImageA/file
+	2) run storageDriver.Stat() on a partial path, eg: storageDriver.Stat("repo/testImage") - without 'A' char
+	3) the returned storageDriver.FileInfo will report that isDir() is true.
+	*/
+	Convey("Validate storageDriver.Stat() and isDir() functions with zot storage API", t, func(c C) {
+		repo1 := "repo/testImageA"
+		repo2 := "repo/testImage"
+
+		So(imgStore, ShouldNotBeNil)
+
+		err = imgStore.InitRepo(repo1)
+		So(err, ShouldBeNil)
+
+		isValid, err := imgStore.ValidateRepo(repo1)
+		So(err, ShouldBeNil)
+		So(isValid, ShouldBeTrue)
+
+		err = imgStore.InitRepo(repo2)
+		So(err, ShouldBeNil)
+
+		isValid, err = imgStore.ValidateRepo(repo2)
+		So(err, ShouldBeNil)
+		So(isValid, ShouldBeTrue)
+	})
+
+	Convey("Validate storageDriver.Stat() and isDir() functions with storageDriver API", t, func(c C) {
+		testFile := "/ab/cd/file"
+
+		shouldBeDirectoryPath1 := "/ab/cd"
+		shouldBeDirectoryPath2 := "/ab"
+
+		shouldNotBeDirectoryPath1 := "/ab/c"
+		shouldNotBeDirectoryPath2 := "/a"
+
+		err := storeDriver.PutContent(context.Background(), testFile, []byte("file contents"))
+		So(err, ShouldBeNil)
+
+		fileInfo, err := storeDriver.Stat(context.Background(), testFile)
+		So(err, ShouldBeNil)
+
+		So(fileInfo.IsDir(), ShouldBeFalse)
+
+		fileInfo, err = storeDriver.Stat(context.Background(), shouldBeDirectoryPath1)
+		So(err, ShouldBeNil)
+		So(fileInfo.IsDir(), ShouldBeTrue)
+
+		fileInfo, err = storeDriver.Stat(context.Background(), shouldBeDirectoryPath2)
+		So(err, ShouldBeNil)
+		So(fileInfo.IsDir(), ShouldBeTrue)
+
+		fileInfo, err = storeDriver.Stat(context.Background(), shouldNotBeDirectoryPath1)
+		// err should actually be storageDriver.PathNotFoundError but it's nil
+		So(err, ShouldBeNil)
+		// should be false instead
+		So(fileInfo.IsDir(), ShouldBeTrue)
+
+		fileInfo, err = storeDriver.Stat(context.Background(), shouldNotBeDirectoryPath2)
+		// err should actually be storageDriver.PathNotFoundError but it's nils
+		So(err, ShouldBeNil)
+		// should be false instead
+		So(fileInfo.IsDir(), ShouldBeTrue)
+	})
+}
+
 func TestNegativeCasesObjectsStorage(t *testing.T) {
 	skipIt(t)
 
