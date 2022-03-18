@@ -116,10 +116,6 @@ func (is *ObjectStorage) Unlock(lockStart *time.Time) {
 func (is *ObjectStorage) initRepo(name string) error {
 	repoDir := path.Join(is.rootDir, name)
 
-	if fi, err := is.store.Stat(context.Background(), repoDir); err == nil && fi.IsDir() {
-		return nil
-	}
-
 	// "oci-layout" file - create if it doesn't exist
 	ilPath := path.Join(repoDir, ispec.ImageLayoutFile)
 	if _, err := is.store.Stat(context.Background(), ilPath); err != nil {
