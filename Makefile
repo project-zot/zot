@@ -7,6 +7,7 @@ CONTAINER_RUNTIME := $(shell command -v podman 2> /dev/null || echo docker)
 TMPDIR := $(shell mktemp -d)
 TOOLSDIR := hack/tools
 PATH := bin:$(TOOLSDIR)/bin:$(PATH)
+export PATH := bin:$(TOOLSDIR)/bin:$(PATH)
 STACKER := $(shell which stacker)
 GOLINTER := $(TOOLSDIR)/bin/golangci-lint
 NOTATION := $(TOOLSDIR)/bin/notation
