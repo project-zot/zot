@@ -409,9 +409,9 @@ require (
 )
 
 replace (
-	github.com/aquasecurity/fanal => github.com/anuvu/fanal v0.0.0-20211007194926-d0c577a014df
-	github.com/aquasecurity/trivy => github.com/anuvu/trivy v0.9.2-0.20211013001708-27408aa50da3
-	github.com/aquasecurity/trivy-db => github.com/anuvu/trivy-db v0.0.0-20211007191113-44f7e57b689c
+	github.com/aquasecurity/fanal => github.com/project-zot/fanal v0.0.0-20211007194926-d0c577a014df
+	github.com/aquasecurity/trivy => github.com/project-zot/trivy v0.9.2-0.20211013001708-27408aa50da3
+	github.com/aquasecurity/trivy-db => github.com/project-zot/trivy-db v0.0.0-20211007191113-44f7e57b689c
 	github.com/containers/image/v5 => github.com/anuvu/image/v5 v5.0.0-20211118175920-feae9c2f0d91
 	github.com/opencontainers/image-spec => github.com/opencontainers/image-spec v1.0.2-0.20211117181255-693428a734f5
 	go.opentelemetry.io/otel => go.opentelemetry.io/otel v0.20.0
