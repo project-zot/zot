@@ -9,6 +9,7 @@ TOOLSDIR := hack/tools
 PATH := bin:$(shell pwd)/$(TOOLSDIR)/bin:$(PATH)
 STACKER := $(shell which stacker)
 GOLINTER := $(TOOLSDIR)/bin/golangci-lint
+GOLINTER_VERSION := v1.45.0
 NOTATION := $(TOOLSDIR)/bin/notation
 OS ?= linux
 ARCH ?= amd64
@@ -107,7 +108,7 @@ covhtml:
 
 $(GOLINTER):
 	mkdir -p $(TOOLSDIR)/bin
-	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(TOOLSDIR)/bin v1.43.0
+	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(TOOLSDIR)/bin $(GOLINTER_VERSION)
 	$(GOLINTER) version
 
 .PHONY: check
