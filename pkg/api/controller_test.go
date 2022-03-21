@@ -9,6 +9,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -38,10 +39,10 @@ import (
 	"github.com/sigstore/cosign/cmd/cosign/cli/sign"
 	"github.com/sigstore/cosign/cmd/cosign/cli/verify"
 	. "github.com/smartystreets/goconvey/convey"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/resty.v1"
-	"zotregistry.io/zot/errors"
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/storage"
@@ -769,7 +770,7 @@ func TestMultipleInstance(t *testing.T) {
 		}
 		ctlr := api.NewController(conf)
 		err := ctlr.Run()
-		So(err, ShouldEqual, errors.ErrImgStoreNotFound)
+		So(err, ShouldEqual, zerr.ErrImgStoreNotFound)
 
 		globalDir := t.TempDir()
 		subDir := t.TempDir()
@@ -1309,7 +1310,7 @@ func (l *testLDAPServer) Stop() {
 
 func (l *testLDAPServer) Bind(bindDN, bindSimplePw string, conn net.Conn) (vldap.LDAPResultCode, error) {
 	if bindDN == "" || bindSimplePw == "" {
-		return vldap.LDAPResultInappropriateAuthentication, errors.ErrRequireCred
+		return vldap.LDAPResultInappropriateAuthentication, zerr.ErrRequireCred
 	}
 
 	if (bindDN == LDAPBindDN && bindSimplePw == LDAPBindPassword) ||
@@ -1317,7 +1318,7 @@ func (l *testLDAPServer) Bind(bindDN, bindSimplePw string, conn net.Conn) (vldap
 		return vldap.LDAPResultSuccess, nil
 	}
 
-	return vldap.LDAPResultInvalidCredentials, errors.ErrInvalidCred
+	return vldap.LDAPResultInvalidCredentials, zerr.ErrInvalidCred
 }
 
 func (l *testLDAPServer) Search(boundDN string, req vldap.SearchRequest,
@@ -2620,8 +2621,6 @@ func TestCrossRepoMount(t *testing.T) {
 }
 
 func TestParallelRequests(t *testing.T) {
-	t.Parallel()
-
 	testCases := []struct {
 		srcImageName  string
 		srcImageTag   string
@@ -2745,7 +2744,12 @@ func TestParallelRequests(t *testing.T) {
 	ctlr.Config.Storage.RootDirectory = dir
 
 	go startServer(ctlr)
+	t.Cleanup(func() {
+		stopServer(ctlr)
+	})
 	test.WaitTillServerReady(baseURL)
+
+	t.Parallel()
 
 	// without creds, should get access error
 	for i, testcase := range testCases {
@@ -2754,25 +2758,28 @@ func TestParallelRequests(t *testing.T) {
 
 		t.Run(testcase.testCaseName, func(t *testing.T) {
 			t.Parallel()
+
+			assert := require.New(t)
+
 			client := resty.New()
 
 			tagResponse, err := client.R().SetBasicAuth(username, passphrase).
 				Get(baseURL + "/v2/" + testcase.destImageName + "/tags/list")
-			assert.Equal(t, err, nil, "Error should be nil")
-			assert.NotEqual(t, tagResponse.StatusCode(), http.StatusBadRequest, "bad request")
+			assert.Equal(err, nil, "Error should be nil")
+			assert.NotEqual(tagResponse.StatusCode(), http.StatusBadRequest, "bad request")
 
 			manifestList := getAllManifests(path.Join("../../test/data", testcase.srcImageName))
 
 			for _, manifest := range manifestList {
 				headResponse, err := client.R().SetBasicAuth(username, passphrase).
 					Head(baseURL + "/v2/" + testcase.destImageName + "/manifests/" + manifest)
-				assert.Equal(t, err, nil, "Error should be nil")
-				assert.Equal(t, headResponse.StatusCode(), http.StatusNotFound, "response status code should return 404")
+				assert.Equal(err, nil, "Error should be nil")
+				assert.Equal(headResponse.StatusCode(), http.StatusNotFound, "response status code should return 404")
 
 				getResponse, err := client.R().SetBasicAuth(username, passphrase).
 					Get(baseURL + "/v2/" + testcase.destImageName + "/manifests/" + manifest)
-				assert.Equal(t, err, nil, "Error should be nil")
-				assert.Equal(t, getResponse.StatusCode(), http.StatusNotFound, "response status code should return 404")
+				assert.Equal(err, nil, "Error should be nil")
+				assert.Equal(getResponse.StatusCode(), http.StatusNotFound, "response status code should return 404")
 			}
 
 			blobList := getAllBlobs(path.Join("../../test/data", testcase.srcImageName))
@@ -2783,24 +2790,22 @@ func TestParallelRequests(t *testing.T) {
 					SetBasicAuth(username, passphrase).
 					Head(baseURL + "/v2/" + testcase.destImageName + "/blobs/sha256:" + blob)
 
-				assert.Equal(t, err, nil, "Should not be nil")
-				assert.NotEqual(t, headResponse.StatusCode(), http.StatusInternalServerError,
+				assert.Equal(err, nil, "Should not be nil")
+				assert.NotEqual(headResponse.StatusCode(), http.StatusInternalServerError,
 					"internal server error should not occurred")
 
 				getResponse, err := client.R().
 					SetBasicAuth(username, passphrase).
 					Get(baseURL + "/v2/" + testcase.destImageName + "/blobs/sha256:" + blob)
 
-				assert.Equal(t, err, nil, "Should not be nil")
-				assert.NotEqual(t, getResponse.StatusCode(), http.StatusInternalServerError,
+				assert.Equal(err, nil, "Should not be nil")
+				assert.NotEqual(getResponse.StatusCode(), http.StatusInternalServerError,
 					"internal server error should not occurred")
 
 				blobPath := path.Join("../../test/data", testcase.srcImageName, "blobs/sha256", blob)
 
 				buf, err := ioutil.ReadFile(blobPath)
-				if err != nil {
-					panic(err)
-				}
+				assert.Equal(err, nil, "Should be nil")
 
 				// Post request of blob
 				postResponse, err := client.R().
@@ -2808,8 +2813,8 @@ func TestParallelRequests(t *testing.T) {
 					SetBasicAuth(username, passphrase).
 					SetBody(buf).Post(baseURL + "/v2/" + testcase.destImageName + "/blobs/uploads/")
 
-				assert.Equal(t, err, nil, "Error should be nil")
-				assert.NotEqual(t, postResponse.StatusCode(), http.StatusInternalServerError,
+				assert.Equal(err, nil, "Error should be nil")
+				assert.NotEqual(postResponse.StatusCode(), http.StatusInternalServerError,
 					"response status code should not return 500")
 
 				// Post request with query parameter
@@ -2820,8 +2825,8 @@ func TestParallelRequests(t *testing.T) {
 						SetBody(buf).
 						Post(baseURL + "/v2/" + testcase.destImageName + "/blobs/uploads/")
 
-					assert.Equal(t, err, nil, "Error should be nil")
-					assert.NotEqual(t, postResponse.StatusCode(), http.StatusInternalServerError,
+					assert.Equal(err, nil, "Error should be nil")
+					assert.NotEqual(postResponse.StatusCode(), http.StatusInternalServerError,
 						"response status code should not return 500")
 
 					var sessionID string
@@ -2836,9 +2841,7 @@ func TestParallelRequests(t *testing.T) {
 					}
 
 					file, err := os.Open(blobPath)
-					if err != nil {
-						panic(err)
-					}
+					assert.Equal(err, nil, "Should be nil")
 
 					defer file.Close()
 
@@ -2850,11 +2853,11 @@ func TestParallelRequests(t *testing.T) {
 						readContent := 0
 						for {
 							nbytes, err := reader.Read(buf)
-							if err != nil {
-								if err == io.EOF {
+							if errors.Is(err, nil) {
+								if errors.Is(err, io.EOF) {
 									break
 								}
-								panic(err)
+								assert.Equal(err, nil, "Should be nil")
 							}
 							// Patch request of blob
 
@@ -2866,8 +2869,8 @@ func TestParallelRequests(t *testing.T) {
 								SetBasicAuth(username, passphrase).
 								Patch(baseURL + "/v2/" + testcase.destImageName + "/blobs/uploads/" + sessionID)
 
-							assert.Equal(t, err, nil, "Error should be nil")
-							assert.NotEqual(t, patchResponse.StatusCode(), http.StatusInternalServerError,
+							assert.Equal(err, nil, "Error should be nil")
+							assert.NotEqual(patchResponse.StatusCode(), http.StatusInternalServerError,
 								"response status code should not return 500")
 
 							readContent += nbytes
@@ -2876,22 +2879,18 @@ func TestParallelRequests(t *testing.T) {
 						for {
 							nbytes, err := reader.Read(buf)
 							if err != nil {
-								if err == io.EOF {
+								if errors.Is(err, io.EOF) {
 									break
 								}
-								panic(err)
+								assert.Equal(err, nil, "Should be nil")
 							}
 							// Patch request of blob
 
 							patchResponse, err := client.R().SetBody(buf[0:nbytes]).SetHeader("Content-type", "application/octet-stream").
 								SetBasicAuth(username, passphrase).
 								Patch(baseURL + "/v2/" + testcase.destImageName + "/blobs/uploads/" + sessionID)
-							if err != nil {
-								panic(err)
-							}
-
-							assert.Equal(t, err, nil, "Error should be nil")
-							assert.NotEqual(t, patchResponse.StatusCode(), http.StatusInternalServerError,
+							assert.Equal(err, nil, "Should be nil")
+							assert.NotEqual(patchResponse.StatusCode(), http.StatusInternalServerError,
 								"response status code should not return 500")
 						}
 					}
@@ -2902,8 +2901,8 @@ func TestParallelRequests(t *testing.T) {
 						SetBody(buf).SetQueryParam("digest", "sha256:"+blob).
 						Post(baseURL + "/v2/" + testcase.destImageName + "/blobs/uploads/")
 
-					assert.Equal(t, err, nil, "Error should be nil")
-					assert.NotEqual(t, postResponse.StatusCode(), http.StatusInternalServerError,
+					assert.Equal(err, nil, "Error should be nil")
+					assert.NotEqual(postResponse.StatusCode(), http.StatusInternalServerError,
 						"response status code should not return 500")
 				}
 
@@ -2911,26 +2910,26 @@ func TestParallelRequests(t *testing.T) {
 					SetBasicAuth(username, passphrase).
 					Head(baseURL + "/v2/" + testcase.destImageName + "/blobs/sha256:" + blob)
 
-				assert.Equal(t, err, nil, "Should not be nil")
-				assert.NotEqual(t, headResponse.StatusCode(), http.StatusInternalServerError, "response should return success code")
+				assert.Equal(err, nil, "Should not be nil")
+				assert.NotEqual(headResponse.StatusCode(), http.StatusInternalServerError, "response should return success code")
 
 				getResponse, err = client.R().
 					SetBasicAuth(username, passphrase).
 					Get(baseURL + "/v2/" + testcase.destImageName + "/blobs/sha256:" + blob)
 
-				assert.Equal(t, err, nil, "Should not be nil")
-				assert.NotEqual(t, getResponse.StatusCode(), http.StatusInternalServerError, "response should return success code")
+				assert.Equal(err, nil, "Should not be nil")
+				assert.NotEqual(getResponse.StatusCode(), http.StatusInternalServerError, "response should return success code")
 			}
 
 			tagResponse, err = client.R().SetBasicAuth(username, passphrase).
 				Get(baseURL + "/v2/" + testcase.destImageName + "/tags/list")
-			assert.Equal(t, err, nil, "Error should be nil")
-			assert.Equal(t, tagResponse.StatusCode(), http.StatusOK, "response status code should return success code")
+			assert.Equal(err, nil, "Error should be nil")
+			assert.Equal(tagResponse.StatusCode(), http.StatusOK, "response status code should return success code")
 
 			repoResponse, err := client.R().SetBasicAuth(username, passphrase).
 				Get(baseURL + "/v2/_catalog")
-			assert.Equal(t, err, nil, "Error should be nil")
-			assert.Equal(t, repoResponse.StatusCode(), http.StatusOK, "response status code should return success code")
+			assert.Equal(err, nil, "Error should be nil")
+			assert.Equal(repoResponse.StatusCode(), http.StatusOK, "response status code should return success code")
 		})
 	}
 }
