@@ -43,7 +43,7 @@ func EnableExtensions(config *config.Config, log log.Logger, rootDir string) {
 		if config.Extensions.Search.CVE.UpdateInterval < defaultUpdateInterval {
 			config.Extensions.Search.CVE.UpdateInterval = defaultUpdateInterval
 
-			log.Warn().Msg("CVE update interval set to too-short interval < 2h, changing update duration to 2 hours and continuing.") // nolint: lll
+			log.Warn().Msg("CVE update interval set to too-short interval < 2h, changing update duration to 2 hours and continuing.") //nolint:lll // gofumpt conflicts with lll
 		}
 
 		go func() {
@@ -72,7 +72,8 @@ func EnableExtensions(config *config.Config, log log.Logger, rootDir string) {
 
 // EnableSyncExtension enables sync extension.
 func EnableSyncExtension(ctx context.Context, config *config.Config, wg *goSync.WaitGroup,
-	storeController storage.StoreController, log log.Logger) {
+	storeController storage.StoreController, log log.Logger,
+) {
 	if config.Extensions.Sync != nil && *config.Extensions.Sync.Enable {
 		if err := sync.Run(ctx, *config.Extensions.Sync, storeController, wg, log); err != nil {
 			log.Error().Err(err).Msg("Error encountered while setting up syncing")
@@ -84,7 +85,8 @@ func EnableSyncExtension(ctx context.Context, config *config.Config, wg *goSync.
 
 // EnableScrubExtension enables scrub extension.
 func EnableScrubExtension(config *config.Config, storeController storage.StoreController,
-	log log.Logger) {
+	log log.Logger,
+) {
 	if config.Extensions.Scrub != nil &&
 		config.Extensions.Scrub.Interval != 0 {
 		minScrubInterval, _ := time.ParseDuration("2h")
@@ -92,7 +94,7 @@ func EnableScrubExtension(config *config.Config, storeController storage.StoreCo
 		if config.Extensions.Scrub.Interval < minScrubInterval {
 			config.Extensions.Scrub.Interval = minScrubInterval
 
-			log.Warn().Msg("Scrub interval set to too-short interval < 2h, changing scrub duration to 2 hours and continuing.") // nolint: lll
+			log.Warn().Msg("Scrub interval set to too-short interval < 2h, changing scrub duration to 2 hours and continuing.") //nolint:lll // gofumpt conflicts with lll
 		}
 
 		go func() {
@@ -108,7 +110,8 @@ func EnableScrubExtension(config *config.Config, storeController storage.StoreCo
 
 // SetupRoutes ...
 func SetupRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
-	l log.Logger) {
+	l log.Logger,
+) {
 	// fork a new zerolog child to avoid data race
 	log := log.Logger{Logger: l.With().Caller().Timestamp().Logger()}
 	log.Info().Msg("setting up extensions routes")
@@ -134,7 +137,8 @@ func SetupRoutes(config *config.Config, router *mux.Router, storeController stor
 
 // SyncOneImage syncs one image.
 func SyncOneImage(config *config.Config, storeController storage.StoreController,
-	repoName, reference string, isArtifact bool, log log.Logger) error {
+	repoName, reference string, isArtifact bool, log log.Logger,
+) error {
 	log.Info().Msgf("syncing image %s:%s", repoName, reference)
 
 	err := sync.OneImage(*config.Extensions.Sync, storeController, repoName, reference, isArtifact, log)

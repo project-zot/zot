@@ -27,14 +27,16 @@ func EnableExtensions(config *config.Config, log log.Logger, rootDir string) {
 
 // EnableSyncExtension ...
 func EnableSyncExtension(ctx context.Context, config *config.Config, wg *goSync.WaitGroup,
-	storeController storage.StoreController, log log.Logger) {
+	storeController storage.StoreController, log log.Logger,
+) {
 	log.Warn().Msg("skipping enabling sync extension because given zot binary doesn't support any extensions," +
 		"please build zot full binary for this feature")
 }
 
 // EnableScrubExtension ...
 func EnableScrubExtension(config *config.Config, storeController storage.StoreController,
-	log log.Logger) {
+	log log.Logger,
+) {
 	log.Warn().Msg("skipping enabling scrub extension because given zot binary doesn't support any extensions," +
 		"please build zot full binary for this feature")
 }
@@ -47,7 +49,8 @@ func SetupRoutes(conf *config.Config, router *mux.Router, storeController storag
 
 // SyncOneImage ...
 func SyncOneImage(config *config.Config, storeController storage.StoreController,
-	repoName, reference string, isArtifact bool, log log.Logger) error {
+	repoName, reference string, isArtifact bool, log log.Logger,
+) error {
 	log.Warn().Msg("skipping syncing on demand because given zot binary doesn't support any extensions," +
 		"please build zot full binary for this feature")
 

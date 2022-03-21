@@ -299,7 +299,8 @@ func (search fixedTagsSearcher) search(config searchConfig) (bool, error) {
 }
 
 func collectResults(config searchConfig, wg *sync.WaitGroup, imageErr chan stringResult,
-	cancel context.CancelFunc, printHeader printHeader, errCh chan error) {
+	cancel context.CancelFunc, printHeader printHeader, errCh chan error,
+) {
 	var foundResult bool
 
 	defer wg.Done()

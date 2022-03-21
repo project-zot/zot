@@ -206,7 +206,8 @@ func getFileCredentials(filepath string) (CredentialsFile, error) {
 }
 
 func getHTTPClient(regCfg *RegistryConfig, upstreamURL string, credentials Credentials,
-	log log.Logger) (*resty.Client, *url.URL, error) {
+	log log.Logger,
+) (*resty.Client, *url.URL, error) {
 	client := resty.New()
 
 	if !common.Contains(regCfg.URLs, upstreamURL) {
@@ -262,7 +263,8 @@ func getHTTPClient(regCfg *RegistryConfig, upstreamURL string, credentials Crede
 }
 
 func pushSyncedLocalImage(localRepo, tag, localCachePath string,
-	imageStore storage.ImageStore, log log.Logger) error {
+	imageStore storage.ImageStore, log log.Logger,
+) error {
 	log.Info().Msgf("pushing synced local image %s/%s:%s to local registry", localCachePath, localRepo, tag)
 
 	metrics := monitoring.NewMetricsServer(false, log)

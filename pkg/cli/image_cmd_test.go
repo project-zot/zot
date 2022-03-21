@@ -312,14 +312,18 @@ func TestServerResponse(t *testing.T) {
 			_ = controller.Server.Shutdown(ctx)
 		}(ctlr)
 
-		uploadManifest(url)
+		err := uploadManifest(url)
+		t.Logf("%s", ctlr.Config.Storage.RootDirectory)
+		So(err, ShouldBeNil)
 
 		Convey("Test all images config url", func() {
+			t.Logf("%s", ctlr.Config.Storage.RootDirectory)
 			args := []string{"imagetest"}
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 			defer os.Remove(configPath)
 			cmd := NewImageCommand(new(searchService))
-			buff := bytes.NewBufferString("")
+			// buff := bytes.NewBufferString("")
+			buff := &bytes.Buffer{}
 			cmd.SetOut(buff)
 			cmd.SetErr(buff)
 			cmd.SetArgs(args)
@@ -454,7 +458,7 @@ func TestServerResponse(t *testing.T) {
 	})
 }
 
-func uploadManifest(url string) {
+func uploadManifest(url string) error {
 	// create a blob/layer
 	resp, _ := resty.R().Post(url + "/v2/repo7/blobs/uploads/")
 	loc := test.Location(url, resp)
@@ -493,7 +497,12 @@ func uploadManifest(url string) {
 		},
 	}
 	manifest.SchemaVersion = 2
-	content, _ = json.Marshal(manifest)
+
+	content, err := json.Marshal(manifest)
+	if err != nil {
+		return err
+	}
+
 	_, _ = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
 		SetBody(content).Put(url + "/v2/repo7/manifests/test:1.0")
 
@@ -515,15 +524,22 @@ func uploadManifest(url string) {
 		},
 	}
 	manifest.SchemaVersion = 2
-	content, _ = json.Marshal(manifest)
+
+	content, err = json.Marshal(manifest)
+	if err != nil {
+		return err
+	}
 	_, _ = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
 		SetBody(content).Put(url + "/v2/repo7/manifests/test:2.0")
+
+	return nil
 }
 
 type mockService struct{}
 
 func (service mockService) getAllImages(ctx context.Context, config searchConfig, username, password string,
-	channel chan stringResult, wtgrp *sync.WaitGroup) {
+	channel chan stringResult, wtgrp *sync.WaitGroup,
+) {
 	defer wtgrp.Done()
 	defer close(channel)
 
@@ -548,7 +564,8 @@ func (service mockService) getAllImages(ctx context.Context, config searchConfig
 }
 
 func (service mockService) getImageByName(ctx context.Context, config searchConfig,
-	username, password, imageName string, channel chan stringResult, wtgrp *sync.WaitGroup) {
+	username, password, imageName string, channel chan stringResult, wtgrp *sync.WaitGroup,
+) {
 	defer wtgrp.Done()
 	defer close(channel)
 
@@ -573,7 +590,8 @@ func (service mockService) getImageByName(ctx context.Context, config searchConf
 }
 
 func (service mockService) getCveByImage(ctx context.Context, config searchConfig, username, password,
-	imageName string, rch chan stringResult, wtgrp *sync.WaitGroup) {
+	imageName string, rch chan stringResult, wtgrp *sync.WaitGroup,
+) {
 	defer wtgrp.Done()
 	defer close(rch)
 
@@ -610,22 +628,26 @@ func (service mockService) getCveByImage(ctx context.Context, config searchConfi
 }
 
 func (service mockService) getImagesByCveID(ctx context.Context, config searchConfig, username, password, cvid string,
-	rch chan stringResult, wtgrp *sync.WaitGroup) {
+	rch chan stringResult, wtgrp *sync.WaitGroup,
+) {
 	service.getImageByName(ctx, config, username, password, "anImage", rch, wtgrp)
 }
 
 func (service mockService) getImagesByDigest(ctx context.Context, config searchConfig, username,
-	password, digest string, rch chan stringResult, wtgrp *sync.WaitGroup) {
+	password, digest string, rch chan stringResult, wtgrp *sync.WaitGroup,
+) {
 	service.getImageByName(ctx, config, username, password, "anImage", rch, wtgrp)
 }
 
 func (service mockService) getImageByNameAndCVEID(ctx context.Context, config searchConfig, username,
-	password, imageName, cvid string, rch chan stringResult, wtgrp *sync.WaitGroup) {
+	password, imageName, cvid string, rch chan stringResult, wtgrp *sync.WaitGroup,
+) {
 	service.getImageByName(ctx, config, username, password, imageName, rch, wtgrp)
 }
 
 func (service mockService) getFixedTagsForCVE(ctx context.Context, config searchConfig,
-	username, password, imageName, cvid string, rch chan stringResult, wtgrp *sync.WaitGroup) {
+	username, password, imageName, cvid string, rch chan stringResult, wtgrp *sync.WaitGroup,
+) {
 	service.getImageByName(ctx, config, username, password, imageName, rch, wtgrp)
 }
 

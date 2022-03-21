@@ -44,7 +44,7 @@ func (di *demandedImages) loadOrStoreChan(key string, value chan error) (chan er
 	return errChannel, found
 }
 
-func (di *demandedImages) loadOrStoreStr(key string, value string) (string, bool) {
+func (di *demandedImages) loadOrStoreStr(key, value string) (string, bool) {
 	val, found := di.syncedMap.LoadOrStore(key, value)
 	str, _ := val.(string)
 
@@ -56,7 +56,8 @@ func (di *demandedImages) delete(key string) {
 }
 
 func OneImage(cfg Config, storeController storage.StoreController,
-	repo, tag string, isArtifact bool, log log.Logger) error {
+	repo, tag string, isArtifact bool, log log.Logger,
+) error {
 	// guard against multiple parallel requests
 	demandedImage := fmt.Sprintf("%s:%s", repo, tag)
 	// loadOrStore image-based channel
@@ -88,7 +89,8 @@ func OneImage(cfg Config, storeController storage.StoreController,
 }
 
 func syncOneImage(imageChannel chan error, cfg Config, storeController storage.StoreController,
-	localRepo, tag string, isArtifact bool, log log.Logger) {
+	localRepo, tag string, isArtifact bool, log log.Logger,
+) {
 	var credentialsFile CredentialsFile
 
 	if cfg.CredentialsFile != "" {
@@ -267,7 +269,8 @@ func syncOneImage(imageChannel chan error, cfg Config, storeController storage.S
 }
 
 func syncRun(regCfg RegistryConfig, localRepo, remoteRepo, tag string, utils syncContextUtils,
-	log log.Logger) (bool, error) {
+	log log.Logger,
+) (bool, error) {
 	upstreamImageRef, err := getImageRef(utils.upstreamAddr, remoteRepo, tag)
 	if err != nil {
 		log.Error().Err(err).Msgf("error creating docker reference for repository %s/%s:%s",

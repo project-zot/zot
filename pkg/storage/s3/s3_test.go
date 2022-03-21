@@ -166,7 +166,7 @@ type StorageDriverMock struct {
 	writerFn     func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error)
 	statFn       func(ctx context.Context, path string) (driver.FileInfo, error)
 	listFn       func(ctx context.Context, path string) ([]string, error)
-	moveFn       func(ctx context.Context, sourcePath string, destPath string) error
+	moveFn       func(ctx context.Context, sourcePath, destPath string) error
 	deleteFn     func(ctx context.Context, path string) error
 	walkFn       func(ctx context.Context, path string, f driver.WalkFn) error
 }
@@ -227,7 +227,7 @@ func (s *StorageDriverMock) List(ctx context.Context, path string) ([]string, er
 	return []string{"a"}, nil
 }
 
-func (s *StorageDriverMock) Move(ctx context.Context, sourcePath string, destPath string) error {
+func (s *StorageDriverMock) Move(ctx context.Context, sourcePath, destPath string) error {
 	if s != nil && s.moveFn != nil {
 		return s.moveFn(ctx, sourcePath, destPath)
 	}

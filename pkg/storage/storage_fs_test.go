@@ -84,7 +84,8 @@ func TestStorageFSAPIs(t *testing.T) {
 			}
 
 			manifest.SchemaVersion = 2
-			manifestBuf, _ := json.Marshal(manifest)
+			manifestBuf, err := json.Marshal(manifest)
+			So(err, ShouldBeNil)
 			digest = godigest.FromBytes(manifestBuf)
 
 			err = os.Chmod(path.Join(imgStore.RootDir(), repoName, "index.json"), 0o000)
@@ -217,7 +218,8 @@ func TestDedupeLinks(t *testing.T) {
 			},
 		}
 		manifest.SchemaVersion = 2
-		manifestBuf, _ := json.Marshal(manifest)
+		manifestBuf, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
 		digest = godigest.FromBytes(manifestBuf)
 		_, err = imgStore.PutImageManifest("dedupe1", digest.String(), ispec.MediaTypeImageManifest, manifestBuf)
 		So(err, ShouldBeNil)
@@ -273,7 +275,8 @@ func TestDedupeLinks(t *testing.T) {
 			},
 		}
 		manifest.SchemaVersion = 2
-		manifestBuf, _ = json.Marshal(manifest)
+		manifestBuf, err = json.Marshal(manifest)
+		So(err, ShouldBeNil)
 		digest = godigest.FromBytes(manifestBuf)
 		_, err = imgStore.PutImageManifest("dedupe2", "1.0", ispec.MediaTypeImageManifest, manifestBuf)
 		So(err, ShouldBeNil)
@@ -779,7 +782,8 @@ func TestGarbageCollect(t *testing.T) {
 			}
 
 			manifest.SchemaVersion = 2
-			manifestBuf, _ := json.Marshal(manifest)
+			manifestBuf, err := json.Marshal(manifest)
+			So(err, ShouldBeNil)
 			digest := godigest.FromBytes(manifestBuf)
 
 			_, err = imgStore.PutImageManifest(repoName, tag, ispec.MediaTypeImageManifest, manifestBuf)
@@ -866,7 +870,8 @@ func TestGarbageCollect(t *testing.T) {
 			}
 
 			manifest.SchemaVersion = 2
-			manifestBuf, _ := json.Marshal(manifest)
+			manifestBuf, err := json.Marshal(manifest)
+			So(err, ShouldBeNil)
 			digest := godigest.FromBytes(manifestBuf)
 
 			_, err = imgStore.PutImageManifest(repoName, tag, ispec.MediaTypeImageManifest, manifestBuf)
@@ -945,7 +950,8 @@ func TestGarbageCollect(t *testing.T) {
 			}
 
 			manifest.SchemaVersion = 2
-			manifestBuf, _ := json.Marshal(manifest)
+			manifestBuf, err := json.Marshal(manifest)
+			So(err, ShouldBeNil)
 
 			_, err = imgStore.PutImageManifest(repo1Name, tag, ispec.MediaTypeImageManifest, manifestBuf)
 			So(err, ShouldBeNil)
@@ -1007,7 +1013,8 @@ func TestGarbageCollect(t *testing.T) {
 			}
 
 			manifest.SchemaVersion = 2
-			manifestBuf, _ = json.Marshal(manifest)
+			manifestBuf, err = json.Marshal(manifest)
+			So(err, ShouldBeNil)
 
 			_, err = imgStore.PutImageManifest(repo2Name, tag, ispec.MediaTypeImageManifest, manifestBuf)
 			So(err, ShouldBeNil)
@@ -1062,7 +1069,8 @@ func TestGarbageCollect(t *testing.T) {
 			}
 
 			manifest.SchemaVersion = 2
-			manifestBuf, _ = json.Marshal(manifest)
+			manifestBuf, err = json.Marshal(manifest)
+			So(err, ShouldBeNil)
 			digest := godigest.FromBytes(manifestBuf)
 
 			_, err = imgStore.PutImageManifest(repo2Name, tag, ispec.MediaTypeImageManifest, manifestBuf)

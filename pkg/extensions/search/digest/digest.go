@@ -23,7 +23,7 @@ func NewDigestInfo(storeController storage.StoreController, log log.Logger) *Dig
 }
 
 // FilterImagesByDigest returns a list of image tags in a repository matching a specific divest.
-func (digestinfo DigestInfo) GetImageTagsByDigest(repo string, digest string) ([]*string, error) {
+func (digestinfo DigestInfo) GetImageTagsByDigest(repo, digest string) ([]*string, error) {
 	uniqueTags := []*string{}
 
 	manifests, err := digestinfo.LayoutUtils.GetImageManifests(repo)

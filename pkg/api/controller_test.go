@@ -10,6 +10,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	goerrors "errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -1324,7 +1325,8 @@ func (l *testLDAPServer) Bind(bindDN, bindSimplePw string, conn net.Conn) (vldap
 }
 
 func (l *testLDAPServer) Search(boundDN string, req vldap.SearchRequest,
-	conn net.Conn) (vldap.ServerSearchResult, error) {
+	conn net.Conn,
+) (vldap.ServerSearchResult, error) {
 	check := fmt.Sprintf("(uid=%s)", username)
 	if check == req.Filter {
 		return vldap.ServerSearchResult{
@@ -1893,11 +1895,9 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 
 		// first let's use global based policies
 		// add test user to global policy with create perm
-		conf.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Users =
-			append(conf.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Users, "test")
+		conf.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Users = append(conf.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Users, "test") //nolint:lll // gofumpt conflicts with lll
 
-		conf.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions =
-			append(conf.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions, "create")
+		conf.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions = append(conf.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions, "create") //nolint:lll // gofumpt conflicts with lll
 
 		// now it should get 202
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
@@ -1933,8 +1933,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 		// get tags with read access should get 200
-		conf.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions =
-			append(conf.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions, "read")
+		conf.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions = append(conf.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions, "read") //nolint:lll // gofumpt conflicts with lll
 
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
@@ -1964,8 +1963,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 		// add delete perm on repo
-		conf.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions =
-			append(conf.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions, "delete")
+		conf.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions = append(conf.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions, "delete") //nolint:lll // gofumpt conflicts with lll
 
 		// delete blob should get 202
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
@@ -1987,10 +1985,8 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 			DefaultPolicy: []string{},
 		}
 
-		conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Users =
-			append(conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Users, "test")
-		conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions =
-			append(conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions, "create")
+		conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Users = append(conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Users, "test")       //nolint:lll // gofumpt conflicts with lll
+		conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions = append(conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions, "create") //nolint:lll // gofumpt conflicts with lll
 
 		// now it should get 202
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
@@ -2026,8 +2022,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 		// get tags with read access should get 200
-		conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions =
-			append(conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions, "read")
+		conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions = append(conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions, "read") //nolint:lll // gofumpt conflicts with lll
 
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
@@ -2063,8 +2058,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 		// add delete perm on repo
-		conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions =
-			append(conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions, "delete")
+		conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions = append(conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions, "delete") //nolint:lll // gofumpt conflicts with lll
 
 		// delete blob should get 202
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
@@ -2111,8 +2105,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 		// add create perm on repo
-		conf.AccessControl.Repositories["zot-test"].Policies[0].Actions =
-			append(conf.AccessControl.Repositories["zot-test"].Policies[0].Actions, "create")
+		conf.AccessControl.Repositories["zot-test"].Policies[0].Actions = append(conf.AccessControl.Repositories["zot-test"].Policies[0].Actions, "create") //nolint:lll // gofumpt conflicts with lll
 
 		// should get 201 with create perm
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
@@ -2131,8 +2124,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 		// add update perm on repo
-		conf.AccessControl.Repositories["zot-test"].Policies[0].Actions =
-			append(conf.AccessControl.Repositories["zot-test"].Policies[0].Actions, "update")
+		conf.AccessControl.Repositories["zot-test"].Policies[0].Actions = append(conf.AccessControl.Repositories["zot-test"].Policies[0].Actions, "update") //nolint:lll // gofumpt conflicts with lll
 
 		// update manifest should get 201 with update perm
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
@@ -2854,7 +2846,7 @@ func TestParallelRequests(t *testing.T) {
 						for {
 							nbytes, err := reader.Read(buf)
 							if err != nil {
-								if err == io.EOF {
+								if goerrors.Is(err, io.EOF) {
 									break
 								}
 								panic(err)
@@ -2879,7 +2871,7 @@ func TestParallelRequests(t *testing.T) {
 						for {
 							nbytes, err := reader.Read(buf)
 							if err != nil {
-								if err == io.EOF {
+								if goerrors.Is(err, io.EOF) {
 									break
 								}
 								panic(err)
@@ -4343,7 +4335,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 		So(digest, ShouldNotBeNil)
 
 		// Testing router path:  @Router /v2/{name}/manifests/{reference} [put]
-		// nolint: lll
+		//nolint:lll // gofumpt conflicts with lll
 		Convey("Uploading an image manifest blob (when injected simulates that PutImageManifest failed due to 'too many open files' error)", func() {
 			injected := test.InjectFailure(1)
 
@@ -4526,7 +4518,7 @@ func TestPeriodicGC(t *testing.T) {
 
 		subPaths := make(map[string]config.StorageConfig)
 
-		subPaths["/a"] = config.StorageConfig{RootDirectory: subDir, GC: true, GCDelay: 1 * time.Second, GCInterval: 24 * time.Hour} // nolint:lll
+		subPaths["/a"] = config.StorageConfig{RootDirectory: subDir, GC: true, GCDelay: 1 * time.Second, GCInterval: 24 * time.Hour} //nolint:lll // gofumpt conflicts with lll
 
 		ctlr.Config.Storage.SubPaths = subPaths
 		ctlr.Config.Storage.RootDirectory = dir
@@ -4542,7 +4534,7 @@ func TestPeriodicGC(t *testing.T) {
 			"\"GCDelay\":3600000000000,\"GCInterval\":0,\"RootDirectory\":\""+dir+"\"")
 		// periodic GC is enabled for sub store
 		So(string(data), ShouldContainSubstring,
-			fmt.Sprintf("\"SubPaths\":{\"/a\":{\"RootDirectory\":\"%s\",\"GC\":true,\"Dedupe\":false,\"Commit\":false,\"GCDelay\":1000000000,\"GCInterval\":86400000000000", subDir)) // nolint:lll
+			fmt.Sprintf("\"SubPaths\":{\"/a\":{\"RootDirectory\":\"%s\",\"GC\":true,\"Dedupe\":false,\"Commit\":false,\"GCDelay\":1000000000,\"GCInterval\":86400000000000", subDir)) //nolint:lll // gofumpt conflicts with lll
 		So(string(data), ShouldContainSubstring,
 			fmt.Sprintf("executing GC of orphaned blobs for %s", ctlr.StoreController.SubStore["/a"].RootDir()))
 	})

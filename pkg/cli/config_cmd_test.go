@@ -79,6 +79,19 @@ func TestConfigCmdMain(t *testing.T) {
 		So(actualStr, ShouldContainSubstring, "https://test-url.com")
 	})
 
+	Convey("Test add config with invalid format", t, func() {
+		args := []string{"--list"}
+		configPath := makeConfigFile(`{"configs":{"_name":"configtest","url":"https://test-url.com","showspinner":false}}`)
+		defer os.Remove(configPath)
+		cmd := NewConfigCommand()
+		buff := bytes.NewBufferString("")
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err := cmd.Execute()
+		So(err, ShouldEqual, zotErrors.ErrCliBadConfig)
+	})
+
 	Convey("Test add config with invalid URL", t, func() {
 		args := []string{"add", "configtest1", "test..com"}
 		file := makeConfigFile("")

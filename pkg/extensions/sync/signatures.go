@@ -20,8 +20,9 @@ import (
 )
 
 func getCosignManifest(client *resty.Client, regURL url.URL, repo, digest string,
-	log log.Logger) (*ispec.Manifest, error) {
-	var m ispec.Manifest
+	log log.Logger,
+) (*ispec.Manifest, error) {
+	var cosignManifest ispec.Manifest
 
 	cosignTag := getCosignTagFromImageDigest(digest)
 
@@ -51,7 +52,7 @@ func getCosignManifest(client *resty.Client, regURL url.URL, repo, digest string
 		return nil, zerr.ErrSyncSignature
 	}
 
-	err = json.Unmarshal(resp.Body(), &m)
+	err = json.Unmarshal(resp.Body(), &cosignManifest)
 	if err != nil {
 		log.Error().Err(err).Str("url", getCosignManifestURL.String()).
 			Msgf("couldn't unmarshal cosign manifest %s", cosignTag)
@@ -59,7 +60,7 @@ func getCosignManifest(client *resty.Client, regURL url.URL, repo, digest string
 		return nil, err
 	}
 
-	return &m, nil
+	return &cosignManifest, nil
 }
 
 func getNotaryRefs(client *resty.Client, regURL url.URL, repo, digest string, log log.Logger) (ReferenceList, error) {
@@ -195,7 +196,8 @@ func syncCosignSignature(client *resty.Client, imageStore storage.ImageStore,
 }
 
 func syncNotarySignature(client *resty.Client, imageStore storage.ImageStore,
-	regURL url.URL, localRepo, remoteRepo, digest string, referrers ReferenceList, log log.Logger) error {
+	regURL url.URL, localRepo, remoteRepo, digest string, referrers ReferenceList, log log.Logger,
+) error {
 	if len(referrers.References) == 0 {
 		return nil
 	}
@@ -217,16 +219,16 @@ func syncNotarySignature(client *resty.Client, imageStore storage.ImageStore,
 		}
 
 		// read manifest
-		var m artifactspec.Manifest
+		var artifactManifest artifactspec.Manifest
 
-		err = json.Unmarshal(resp.Body(), &m)
+		err = json.Unmarshal(resp.Body(), &artifactManifest)
 		if err != nil {
 			log.Error().Err(err).Msgf("couldn't unmarshal notary manifest: %s", getRefManifestURL.String())
 
 			return err
 		}
 
-		for _, blob := range m.Blobs {
+		for _, blob := range artifactManifest.Blobs {
 			getBlobURL := regURL
 			getBlobURL.Path = path.Join(getBlobURL.Path, "v2", remoteRepo, "blobs", blob.Digest.String())
 			getBlobURL.RawQuery = getBlobURL.Query().Encode()
@@ -270,7 +272,8 @@ func syncNotarySignature(client *resty.Client, imageStore storage.ImageStore,
 }
 
 func canSkipNotarySignature(repo, tag, digest string, refs ReferenceList, imageStore storage.ImageStore,
-	log log.Logger) (bool, error) {
+	log log.Logger,
+) (bool, error) {
 	// check notary signature already synced
 	if len(refs.References) > 0 {
 		localRefs, err := imageStore.GetReferrers(repo, digest, notreg.ArtifactTypeNotation)
@@ -297,7 +300,8 @@ func canSkipNotarySignature(repo, tag, digest string, refs ReferenceList, imageS
 }
 
 func canSkipCosignSignature(repo, tag, digest string, cosignManifest *ispec.Manifest, imageStore storage.ImageStore,
-	log log.Logger) (bool, error) {
+	log log.Logger,
+) (bool, error) {
 	// check cosign signature already synced
 	if cosignManifest != nil {
 		var localCosignManifest ispec.Manifest
