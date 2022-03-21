@@ -2749,8 +2749,6 @@ func TestParallelRequests(t *testing.T) {
 	})
 	test.WaitTillServerReady(baseURL)
 
-	t.Parallel()
-
 	// without creds, should get access error
 	for i, testcase := range testCases {
 		testcase := testcase
