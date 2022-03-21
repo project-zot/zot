@@ -38,7 +38,7 @@ type MetricsClient struct {
 }
 
 func newHTTPMetricsClient() *http.Client {
-	defaultTransport := http.DefaultTransport.(*http.Transport).Clone()
+	defaultTransport := http.DefaultTransport.(*http.Transport).Clone()      //nolint: forcetypeassert
 	defaultTransport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint: gosec
 
 	return &http.Client{

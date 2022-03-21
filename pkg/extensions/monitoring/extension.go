@@ -169,7 +169,7 @@ func IncDownloadCounter(ms MetricServer, repo string) {
 	})
 }
 
-func SetStorageUsage(ms MetricServer, rootDir string, repo string) {
+func SetStorageUsage(ms MetricServer, rootDir, repo string) {
 	ms.SendMetric(func() {
 		dir := path.Join(rootDir, repo)
 		repoSize, err := getDirSize(dir)

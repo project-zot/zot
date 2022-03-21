@@ -150,7 +150,12 @@ func getConfigMapFromFile(filePath string) ([]interface{}, error) {
 		return nil, zerr.ErrEmptyJSON
 	}
 
-	return jsonMap["configs"].([]interface{}), nil
+	configs, ok := jsonMap["configs"].([]interface{})
+	if !ok {
+		return nil, zerr.ErrCliBadConfig
+	}
+
+	return configs, nil
 }
 
 func saveConfigMapToFile(filePath string, configMap []interface{}) error {

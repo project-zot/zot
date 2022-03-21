@@ -38,7 +38,8 @@ func deleteTestRepo(repos []string, url string, client *resty.Client) error {
 }
 
 func pullAndCollect(url string, repos []string, manifestItem manifestStruct,
-	config testConfig, client *resty.Client, statsCh chan statsRecord) []string {
+	config testConfig, client *resty.Client, statsCh chan statsRecord,
+) []string {
 	manifestHash := manifestItem.manifestHash
 	manifestBySizeHash := manifestItem.manifestBySizeHash
 
@@ -252,7 +253,8 @@ func pullAndCollect(url string, repos []string, manifestItem manifestStruct,
 }
 
 func pushMonolithImage(workdir, url, trepo string, repos []string, size int,
-	client *resty.Client) (map[string]string, []string, error) {
+	client *resty.Client,
+) (map[string]string, []string, error) {
 	var statusCode int
 
 	// key: repository name. value: manifest name
@@ -398,7 +400,8 @@ func pushMonolithImage(workdir, url, trepo string, repos []string, size int,
 
 func pushMonolithAndCollect(workdir, url, trepo string, count int,
 	repos []string, config testConfig, client *resty.Client,
-	statsCh chan statsRecord) []string {
+	statsCh chan statsRecord,
+) []string {
 	func() {
 		start := time.Now()
 
@@ -618,7 +621,8 @@ func pushMonolithAndCollect(workdir, url, trepo string, count int,
 
 func pushChunkAndCollect(workdir, url, trepo string, count int,
 	repos []string, config testConfig, client *resty.Client,
-	statsCh chan statsRecord) []string {
+	statsCh chan statsRecord,
+) []string {
 	func() {
 		start := time.Now()
 

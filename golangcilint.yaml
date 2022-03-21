@@ -5,7 +5,7 @@ run:
 
 linters:
   enable-all: true
-  disable: funlen,gocognit,exhaustivestruct,paralleltest,forbidigo,ireturn,wrapcheck,exhaustive
+  disable: funlen,gocognit,exhaustivestruct,paralleltest,forbidigo,ireturn,wrapcheck,exhaustive,maintidx
 
 linters-settings:
   dupl:
@@ -24,6 +24,19 @@ linters-settings:
       - err
       - ok
       - gc
+      - wg
+    ignore-decls:
+      - n int
+      - i int
+      - r *os.File
+      - w *os.File
+      - to int64
+      - l *ldap.Conn
+  wsl:
+    allow-assign-and-anything: true
+    enforce-err-cuddling: true
+  nolintlint:
+    allow-unused: true
   gomnd:
     settings:
       mnd:

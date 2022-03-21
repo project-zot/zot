@@ -4,6 +4,7 @@ import "errors"
 
 var (
 	ErrBadConfig               = errors.New("config: invalid config")
+	ErrCliBadConfig            = errors.New("cli: bad config")
 	ErrRepoNotFound            = errors.New("repository: not found")
 	ErrRepoIsNotDir            = errors.New("repository: not a directory")
 	ErrRepoBadVersion          = errors.New("repository: unsupported layout version")

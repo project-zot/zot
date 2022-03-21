@@ -67,7 +67,7 @@ func GetRepo(image string) string {
 	return image
 }
 
-func GetFixedTags(allTags []TagInfo, infectedTags []TagInfo) []TagInfo {
+func GetFixedTags(allTags, infectedTags []TagInfo) []TagInfo {
 	sort.Slice(allTags, func(i, j int) bool {
 		return allTags[i].Timestamp.Before(allTags[j].Timestamp)
 	})

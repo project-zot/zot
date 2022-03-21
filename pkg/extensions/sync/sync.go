@@ -75,7 +75,7 @@ type Tags struct {
 
 // getUpstreamCatalog gets all repos from a registry.
 func getUpstreamCatalog(client *resty.Client, upstreamURL string, log log.Logger) (catalog, error) {
-	var c catalog
+	var catalog catalog
 
 	registryCatalogURL := fmt.Sprintf("%s%s", upstreamURL, "/v2/_catalog")
 
@@ -83,24 +83,24 @@ func getUpstreamCatalog(client *resty.Client, upstreamURL string, log log.Logger
 	if err != nil {
 		log.Err(err).Msgf("couldn't query %s", registryCatalogURL)
 
-		return c, err
+		return catalog, err
 	}
 
 	if resp.IsError() {
 		log.Error().Msgf("couldn't query %s, status code: %d, body: %s", registryCatalogURL,
 			resp.StatusCode(), resp.Body())
 
-		return c, zerr.ErrSyncMissingCatalog
+		return catalog, zerr.ErrSyncMissingCatalog
 	}
 
-	err = json.Unmarshal(resp.Body(), &c)
+	err = json.Unmarshal(resp.Body(), &catalog)
 	if err != nil {
 		log.Err(err).Str("body", string(resp.Body())).Msg("couldn't unmarshal registry's catalog")
 
-		return c, err
+		return catalog, err
 	}
 
-	return c, nil
+	return catalog, nil
 }
 
 // getImageTags lists all tags in a repository.
@@ -189,7 +189,8 @@ func filterImagesBySemver(upstreamReferences *[]types.ImageReference, content Co
 
 // imagesToCopyFromRepos lists all images given a registry name and its repos.
 func imagesToCopyFromUpstream(ctx context.Context, registryName string, repos []string,
-	upstreamCtx *types.SystemContext, content Content, log log.Logger) ([]types.ImageReference, error) {
+	upstreamCtx *types.SystemContext, content Content, log log.Logger,
+) ([]types.ImageReference, error) {
 	var upstreamReferences []types.ImageReference
 
 	for _, repoName := range repos {
@@ -286,7 +287,8 @@ func getUpstreamContext(regCfg *RegistryConfig, credentials Credentials) *types.
 func syncRegistry(ctx context.Context, regCfg RegistryConfig, upstreamURL string,
 	storeController storage.StoreController, localCtx *types.SystemContext,
 	policyCtx *signature.PolicyContext, credentials Credentials,
-	retryOptions *retry.RetryOptions, log log.Logger) error {
+	retryOptions *retry.RetryOptions, log log.Logger,
+) error {
 	log.Info().Msgf("syncing registry: %s", upstreamURL)
 
 	var err error
@@ -532,7 +534,8 @@ func getLocalContexts(log log.Logger) (*types.SystemContext, *signature.PolicyCo
 }
 
 func Run(ctx context.Context, cfg Config, storeController storage.StoreController,
-	wtgrp *goSync.WaitGroup, logger log.Logger) error {
+	wtgrp *goSync.WaitGroup, logger log.Logger,
+) error {
 	var credentialsFile CredentialsFile
 
 	var err error

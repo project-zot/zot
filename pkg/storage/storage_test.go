@@ -235,7 +235,8 @@ func TestStorageAPIs(t *testing.T) {
 
 						manifest := ispec.Manifest{}
 						manifest.SchemaVersion = 2
-						manifestBuf, _ := json.Marshal(manifest)
+						manifestBuf, err := json.Marshal(manifest)
+						So(err, ShouldBeNil)
 
 						Convey("Bad image manifest", func() {
 							_, err = imgStore.PutImageManifest("test", digest.String(), "application/json",
@@ -289,12 +290,14 @@ func TestStorageAPIs(t *testing.T) {
 							}
 
 							manifest.SchemaVersion = 2
-							manifestBuf, _ = json.Marshal(manifest)
+							manifestBuf, err = json.Marshal(manifest)
+							So(err, ShouldBeNil)
 							digest := godigest.FromBytes(manifestBuf)
 
 							// bad manifest
 							manifest.Layers[0].Digest = godigest.FromBytes([]byte("inexistent"))
-							badMb, _ := json.Marshal(manifest)
+							badMb, err := json.Marshal(manifest)
+							So(err, ShouldBeNil)
 
 							_, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, badMb)
 							So(err, ShouldNotBeNil)
@@ -428,7 +431,8 @@ func TestStorageAPIs(t *testing.T) {
 
 						manifest := ispec.Manifest{}
 						manifest.SchemaVersion = 2
-						manifestBuf, _ := json.Marshal(manifest)
+						manifestBuf, err := json.Marshal(manifest)
+						So(err, ShouldBeNil)
 
 						Convey("Bad digests", func() {
 							_, _, err := imgStore.FullBlobUpload("test", bytes.NewBuffer([]byte{}), "inexistent")
@@ -473,7 +477,8 @@ func TestStorageAPIs(t *testing.T) {
 								},
 							}
 							manifest.SchemaVersion = 2
-							manifestBuf, _ = json.Marshal(manifest)
+							manifestBuf, err = json.Marshal(manifest)
+							So(err, ShouldBeNil)
 							digest := godigest.FromBytes(manifestBuf)
 							_, err = imgStore.PutImageManifest("test", digest.String(), ispec.MediaTypeImageManifest, manifestBuf)
 							So(err, ShouldBeNil)
@@ -567,7 +572,9 @@ func TestStorageAPIs(t *testing.T) {
 						},
 					}
 					manifest.SchemaVersion = 2
-					manifestBuf, _ := json.Marshal(manifest)
+					manifestBuf, err := json.Marshal(manifest)
+					So(err, ShouldBeNil)
+
 					digest = godigest.FromBytes(manifestBuf)
 					_, err = imgStore.PutImageManifest("replace", "1.0", ispec.MediaTypeImageManifest, manifestBuf)
 					So(err, ShouldBeNil)
@@ -617,7 +624,8 @@ func TestStorageAPIs(t *testing.T) {
 						},
 					}
 					manifest.SchemaVersion = 2
-					manifestBuf, _ = json.Marshal(manifest)
+					manifestBuf, err = json.Marshal(manifest)
+					So(err, ShouldBeNil)
 					_ = godigest.FromBytes(manifestBuf)
 					_, err = imgStore.PutImageManifest("replace", "1.0", ispec.MediaTypeImageManifest, manifestBuf)
 					So(err, ShouldBeNil)

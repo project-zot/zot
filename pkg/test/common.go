@@ -85,7 +85,7 @@ func Location(baseURL string, resp *resty.Response) string {
 	return baseURL + path
 }
 
-func CopyFiles(sourceDir string, destDir string) error {
+func CopyFiles(sourceDir, destDir string) error {
 	sourceMeta, err := os.Stat(sourceDir)
 	if err != nil {
 		return fmt.Errorf("CopyFiles os.Stat failed: %w", err)

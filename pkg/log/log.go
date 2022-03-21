@@ -21,7 +21,7 @@ func (l Logger) Println(v ...interface{}) {
 	l.Logger.Error().Msg("panic recovered")
 }
 
-func NewLogger(level string, output string) Logger {
+func NewLogger(level, output string) Logger {
 	zerolog.TimeFieldFormat = time.RFC3339Nano
 
 	lvl, err := zerolog.ParseLevel(level)
@@ -46,7 +46,7 @@ func NewLogger(level string, output string) Logger {
 	return Logger{Logger: log.Hook(goroutineHook{}).With().Caller().Timestamp().Logger()}
 }
 
-func NewAuditLogger(level string, audit string) *Logger {
+func NewAuditLogger(level, audit string) *Logger {
 	zerolog.TimeFieldFormat = time.RFC3339Nano
 
 	lvl, err := zerolog.ParseLevel(level)

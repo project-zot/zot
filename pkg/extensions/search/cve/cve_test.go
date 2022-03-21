@@ -315,7 +315,7 @@ func generateTestData() error { // nolint: gocyclo
 	return nil
 }
 
-func makeTestFile(fileName string, content string) error {
+func makeTestFile(fileName, content string) error {
 	if err := ioutil.WriteFile(fileName, []byte(content), 0o600); err != nil {
 		panic(err)
 	}
@@ -426,15 +426,15 @@ func TestCVESearch(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 401)
-		var e api.Error
-		err = json.Unmarshal(resp.Body(), &e)
+		var apiErr api.Error
+		err = json.Unmarshal(resp.Body(), &apiErr)
 		So(err, ShouldBeNil)
 
 		resp, err = resty.R().Get(baseURL + "/query/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 401)
-		err = json.Unmarshal(resp.Body(), &e)
+		err = json.Unmarshal(resp.Body(), &apiErr)
 		So(err, ShouldBeNil)
 
 		// with creds, should get expected status code

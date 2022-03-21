@@ -13,8 +13,7 @@ import (
 	"testing"
 
 	godigest "github.com/opencontainers/go-digest"
-	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-
+	ispec "github.com/opencontainers/image-spec/specs-go/v1" // nolint: goimports
 	// nolint:golint,stylecheck,revive
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/smartystreets/goconvey/convey/reporting"
@@ -1105,14 +1104,14 @@ func outputJSONExit() {
 }
 
 func validateMinifyRawJSON(rawJSON string) string {
-	var j interface{}
+	var jsonData interface{}
 
-	err := json.Unmarshal([]byte(rawJSON), &j)
+	err := json.Unmarshal([]byte(rawJSON), &jsonData)
 	if err != nil {
 		panic(err)
 	}
 
-	rawJSONBytesMinified, err := json.Marshal(j)
+	rawJSONBytesMinified, err := json.Marshal(jsonData)
 	if err != nil {
 		panic(err)
 	}

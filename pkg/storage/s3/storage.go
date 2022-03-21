@@ -16,7 +16,6 @@ import (
 
 	// Add s3 support.
 	"github.com/docker/distribution/registry/storage/driver"
-
 	// Load s3 driver.
 	_ "github.com/docker/distribution/registry/storage/driver/s3-aws"
 	guuid "github.com/gofrs/uuid"
@@ -65,7 +64,8 @@ func (is *ObjectStorage) DirExists(d string) bool {
 // see https://github.com/docker/docker.github.io/tree/master/registry/storage-drivers
 func NewImageStore(rootDir string, gc bool, gcDelay time.Duration, dedupe, commit bool,
 	log zlog.Logger, metrics monitoring.MetricServer,
-	store driver.StorageDriver) storage.ImageStore {
+	store driver.StorageDriver,
+) storage.ImageStore {
 	imgStore := &ObjectStorage{
 		rootDir:          rootDir,
 		store:            store,
@@ -307,7 +307,7 @@ func (is *ObjectStorage) GetImageTags(repo string) ([]string, error) {
 }
 
 // GetImageManifest returns the image manifest of an image in the specific repository.
-func (is *ObjectStorage) GetImageManifest(repo string, reference string) ([]byte, string, string, error) {
+func (is *ObjectStorage) GetImageManifest(repo, reference string) ([]byte, string, string, error) {
 	var lockLatency time.Time
 
 	dir := path.Join(is.rootDir, repo)
@@ -381,8 +381,9 @@ func (is *ObjectStorage) GetImageManifest(repo string, reference string) ([]byte
 }
 
 // PutImageManifest adds an image manifest to the repository.
-func (is *ObjectStorage) PutImageManifest(repo string, reference string, mediaType string,
-	body []byte) (string, error) {
+func (is *ObjectStorage) PutImageManifest(repo, reference, mediaType string,
+	body []byte,
+) (string, error) {
 	if err := is.InitRepo(repo); err != nil {
 		is.log.Debug().Err(err).Msg("init repo")
 
@@ -402,20 +403,20 @@ func (is *ObjectStorage) PutImageManifest(repo string, reference string, mediaTy
 		return "", zerr.ErrBadManifest
 	}
 
-	var m ispec.Manifest
-	if err := json.Unmarshal(body, &m); err != nil {
+	var imageManifest ispec.Manifest
+	if err := json.Unmarshal(body, &imageManifest); err != nil {
 		is.log.Error().Err(err).Msg("unable to unmarshal JSON")
 
 		return "", zerr.ErrBadManifest
 	}
 
-	if m.SchemaVersion != storage.SchemaVersion {
-		is.log.Error().Int("SchemaVersion", m.SchemaVersion).Msg("invalid manifest")
+	if imageManifest.SchemaVersion != storage.SchemaVersion {
+		is.log.Error().Int("SchemaVersion", imageManifest.SchemaVersion).Msg("invalid manifest")
 
 		return "", zerr.ErrBadManifest
 	}
 
-	for _, l := range m.Layers {
+	for _, l := range imageManifest.Layers {
 		digest := l.Digest
 		blobPath := is.BlobPath(repo, digest)
 		is.log.Info().Str("blobPath", blobPath).Str("reference", reference).Msg("manifest layers")
@@ -548,7 +549,7 @@ func (is *ObjectStorage) PutImageManifest(repo string, reference string, mediaTy
 }
 
 // DeleteImageManifest deletes the image manifest from the repository.
-func (is *ObjectStorage) DeleteImageManifest(repo string, reference string) error {
+func (is *ObjectStorage) DeleteImageManifest(repo, reference string) error {
 	var lockLatency time.Time
 
 	dir := path.Join(is.rootDir, repo)
@@ -657,7 +658,7 @@ func (is *ObjectStorage) DeleteImageManifest(repo string, reference string) erro
 }
 
 // BlobUploadPath returns the upload path for a blob in this store.
-func (is *ObjectStorage) BlobUploadPath(repo string, uuid string) string {
+func (is *ObjectStorage) BlobUploadPath(repo, uuid string) string {
 	dir := path.Join(is.rootDir, repo)
 	blobUploadPath := path.Join(dir, storage.BlobUploadDir, uuid)
 
@@ -692,7 +693,7 @@ func (is *ObjectStorage) NewBlobUpload(repo string) (string, error) {
 }
 
 // GetBlobUpload returns the current size of a blob upload.
-func (is *ObjectStorage) GetBlobUpload(repo string, uuid string) (int64, error) {
+func (is *ObjectStorage) GetBlobUpload(repo, uuid string) (int64, error) {
 	var fileSize int64
 
 	blobUploadPath := is.BlobUploadPath(repo, uuid)
@@ -727,7 +728,7 @@ func (is *ObjectStorage) GetBlobUpload(repo string, uuid string) (int64, error) 
 
 // PutBlobChunkStreamed appends another chunk of data to the specified blob. It returns
 // the number of actual bytes to the blob.
-func (is *ObjectStorage) PutBlobChunkStreamed(repo string, uuid string, body io.Reader) (int64, error) {
+func (is *ObjectStorage) PutBlobChunkStreamed(repo, uuid string, body io.Reader) (int64, error) {
 	if err := is.InitRepo(repo); err != nil {
 		return -1, err
 	}
@@ -769,8 +770,9 @@ func (is *ObjectStorage) PutBlobChunkStreamed(repo string, uuid string, body io.
 
 // PutBlobChunk writes another chunk of data to the specified blob. It returns
 // the number of actual bytes to the blob.
-func (is *ObjectStorage) PutBlobChunk(repo string, uuid string, from int64, to int64,
-	body io.Reader) (int64, error) {
+func (is *ObjectStorage) PutBlobChunk(repo, uuid string, from, to int64,
+	body io.Reader,
+) (int64, error) {
 	if err := is.InitRepo(repo); err != nil {
 		return -1, err
 	}
@@ -828,7 +830,7 @@ func (is *ObjectStorage) PutBlobChunk(repo string, uuid string, from int64, to i
 }
 
 // BlobUploadInfo returns the current blob size in bytes.
-func (is *ObjectStorage) BlobUploadInfo(repo string, uuid string) (int64, error) {
+func (is *ObjectStorage) BlobUploadInfo(repo, uuid string) (int64, error) {
 	var fileSize int64
 
 	blobUploadPath := is.BlobUploadPath(repo, uuid)
@@ -861,7 +863,7 @@ func (is *ObjectStorage) BlobUploadInfo(repo string, uuid string) (int64, error)
 }
 
 // FinishBlobUpload finalizes the blob upload and moves blob the repository.
-func (is *ObjectStorage) FinishBlobUpload(repo string, uuid string, body io.Reader, digest string) error {
+func (is *ObjectStorage) FinishBlobUpload(repo, uuid string, body io.Reader, digest string) error {
 	dstDigest, err := godigest.Parse(digest)
 	if err != nil {
 		is.log.Error().Err(err).Str("digest", digest).Msg("failed to parse digest")
@@ -1010,7 +1012,7 @@ func (is *ObjectStorage) RunGCPeriodically(gcInterval time.Duration) {
 }
 
 // DeleteBlobUpload deletes an existing blob upload that is currently in progress.
-func (is *ObjectStorage) DeleteBlobUpload(repo string, uuid string) error {
+func (is *ObjectStorage) DeleteBlobUpload(repo, uuid string) error {
 	blobUploadPath := is.BlobUploadPath(repo, uuid)
 	if err := is.store.Delete(context.Background(), blobUploadPath); err != nil {
 		is.log.Error().Err(err).Str("blobUploadPath", blobUploadPath).Msg("error deleting blob upload")
@@ -1027,7 +1029,7 @@ func (is *ObjectStorage) BlobPath(repo string, digest godigest.Digest) string {
 }
 
 // CheckBlob verifies a blob and returns true if the blob is correct.
-func (is *ObjectStorage) CheckBlob(repo string, digest string) (bool, int64, error) {
+func (is *ObjectStorage) CheckBlob(repo, digest string) (bool, int64, error) {
 	var lockLatency time.Time
 
 	dgst, err := godigest.Parse(digest)
@@ -1061,7 +1063,7 @@ func (is *ObjectStorage) CheckBlob(repo string, digest string) (bool, int64, err
 
 // GetBlob returns a stream to read the blob.
 // blob selector instead of directly downloading the blob.
-func (is *ObjectStorage) GetBlob(repo string, digest string, mediaType string) (io.Reader, int64, error) {
+func (is *ObjectStorage) GetBlob(repo, digest, mediaType string) (io.Reader, int64, error) {
 	var lockLatency time.Time
 
 	dgst, err := godigest.Parse(digest)
@@ -1093,7 +1095,7 @@ func (is *ObjectStorage) GetBlob(repo string, digest string, mediaType string) (
 	return blobReader, binfo.Size(), nil
 }
 
-func (is *ObjectStorage) GetBlobContent(repo string, digest string) ([]byte, error) {
+func (is *ObjectStorage) GetBlobContent(repo, digest string) ([]byte, error) {
 	blob, _, err := is.GetBlob(repo, digest, ispec.MediaTypeImageManifest)
 	if err != nil {
 		return []byte{}, err
@@ -1111,7 +1113,7 @@ func (is *ObjectStorage) GetBlobContent(repo string, digest string) ([]byte, err
 	return buf.Bytes(), nil
 }
 
-func (is *ObjectStorage) GetReferrers(repo, digest string, mediaType string) ([]artifactspec.Descriptor, error) {
+func (is *ObjectStorage) GetReferrers(repo, digest, mediaType string) ([]artifactspec.Descriptor, error) {
 	return nil, zerr.ErrMethodNotSupported
 }
 
@@ -1134,7 +1136,7 @@ func (is *ObjectStorage) GetIndexContent(repo string) ([]byte, error) {
 }
 
 // DeleteBlob removes the blob from the repository.
-func (is *ObjectStorage) DeleteBlob(repo string, digest string) error {
+func (is *ObjectStorage) DeleteBlob(repo, digest string) error {
 	var lockLatency time.Time
 
 	dgst, err := godigest.Parse(digest)

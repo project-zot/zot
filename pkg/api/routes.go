@@ -33,8 +33,7 @@ import (
 	ext "zotregistry.io/zot/pkg/extensions"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
-	"zotregistry.io/zot/pkg/test"
-
+	"zotregistry.io/zot/pkg/test" // nolint: goimports
 	// as required by swaggo.
 	_ "zotregistry.io/zot/swagger"
 )
@@ -184,17 +183,17 @@ func (rh *RouteHandler) ListTags(response http.ResponseWriter, request *http.Req
 			return
 		}
 
-		var n1 int64
+		var nQuery1 int64
 
 		var err error
 
-		if n1, err = strconv.ParseInt(nQuery[0], 10, 0); err != nil {
+		if nQuery1, err = strconv.ParseInt(nQuery[0], 10, 0); err != nil {
 			response.WriteHeader(http.StatusBadRequest)
 
 			return
 		}
 
-		numTags = int(n1)
+		numTags = int(nQuery1)
 		paginate = true
 	}
 
@@ -1298,7 +1297,8 @@ func WriteData(w http.ResponseWriter, status int, mediaType string, data []byte)
 }
 
 func WriteDataFromReader(response http.ResponseWriter, status int, length int64, mediaType string,
-	reader io.Reader, logger log.Logger) {
+	reader io.Reader, logger log.Logger,
+) {
 	response.Header().Set("Content-Type", mediaType)
 	response.Header().Set("Content-Length", strconv.FormatInt(length, 10))
 	response.WriteHeader(status)
@@ -1325,7 +1325,8 @@ func (rh *RouteHandler) getImageStore(name string) storage.ImageStore {
 
 // will sync on demand if an image is not found, in case sync extensions is enabled.
 func getImageManifest(routeHandler *RouteHandler, imgStore storage.ImageStore, name,
-	reference string) ([]byte, string, string, error) {
+	reference string,
+) ([]byte, string, string, error) {
 	content, digest, mediaType, err := imgStore.GetImageManifest(name, reference)
 	if err != nil {
 		if errors.Is(err, zerr.ErrRepoNotFound) || errors.Is(err, zerr.ErrManifestNotFound) {
@@ -1354,7 +1355,8 @@ func getImageManifest(routeHandler *RouteHandler, imgStore storage.ImageStore, n
 
 // will sync referrers on demand if they are not found, in case sync extensions is enabled.
 func getReferrers(routeHandler *RouteHandler, imgStore storage.ImageStore, name, digest,
-	artifactType string) ([]artifactspec.Descriptor, error) {
+	artifactType string,
+) ([]artifactspec.Descriptor, error) {
 	refs, err := imgStore.GetReferrers(name, digest, artifactType)
 	if err != nil {
 		if routeHandler.c.Config.Extensions != nil &&

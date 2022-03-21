@@ -139,8 +139,9 @@ func (cveinfo CveInfo) GetTrivyContext(image string) *TrivyCtx {
 	return trivyCtx
 }
 
-func (cveinfo CveInfo) GetImageListForCVE(repo string, cvid string, imgStore storage.ImageStore,
-	trivyCtx *TrivyCtx) ([]*string, error) {
+func (cveinfo CveInfo) GetImageListForCVE(repo, cvid string, imgStore storage.ImageStore,
+	trivyCtx *TrivyCtx,
+) ([]*string, error) {
 	tags := make([]*string, 0)
 
 	tagList, err := imgStore.GetImageTags(repo)

@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	godigest "github.com/opencontainers/go-digest"
-	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/log" // nolint: gci
 
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
@@ -247,7 +247,8 @@ func (r *queryResolver) ImageListForCve(ctx context.Context, cvid string) ([]*Im
 }
 
 func (r *queryResolver) getImageListForCVE(repoList []string, cvid string, imgStore storage.ImageStore,
-	trivyCtx *cveinfo.TrivyCtx) ([]*ImgResultForCve, error) {
+	trivyCtx *cveinfo.TrivyCtx,
+) ([]*ImgResultForCve, error) {
 	cveResult := []*ImgResultForCve{}
 
 	for _, repo := range repoList {
@@ -270,7 +271,7 @@ func (r *queryResolver) getImageListForCVE(repoList []string, cvid string, imgSt
 	return cveResult, nil
 }
 
-func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, cvid string, image string) (*ImgResultForFixedCve, error) { // nolint: lll
+func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, cvid, image string) (*ImgResultForFixedCve, error) { // nolint: lll
 	imgResultForFixedCVE := &ImgResultForFixedCve{}
 
 	r.log.Info().Str("image", image).Msg("extracting list of tags available in image")
@@ -396,7 +397,8 @@ func (r *queryResolver) ImageListForDigest(ctx context.Context, digestID string)
 }
 
 func (r *queryResolver) getImageListForDigest(repoList []string,
-	digest string) ([]*ImgResultForDigest, error) {
+	digest string,
+) ([]*ImgResultForDigest, error) {
 	imgResultForDigest := []*ImgResultForDigest{}
 
 	var errResult error

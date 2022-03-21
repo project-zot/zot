@@ -38,7 +38,7 @@ const (
 )
 
 func createHTTPClient(verifyTLS bool, host string) *http.Client {
-	htr := http.DefaultTransport.(*http.Transport).Clone()
+	htr := http.DefaultTransport.(*http.Transport).Clone() //nolint: forcetypeassert
 	if !verifyTLS {
 		htr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint: gosec
 
@@ -65,7 +65,8 @@ func createHTTPClient(verifyTLS bool, host string) *http.Client {
 }
 
 func makeGETRequest(ctx context.Context, url, username, password string,
-	verifyTLS bool, resultsPtr interface{}) (http.Header, error) {
+	verifyTLS bool, resultsPtr interface{},
+) (http.Header, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, err
@@ -77,7 +78,8 @@ func makeGETRequest(ctx context.Context, url, username, password string,
 }
 
 func makeGraphQLRequest(ctx context.Context, url, query, username,
-	password string, verifyTLS bool, resultsPtr interface{}) error {
+	password string, verifyTLS bool, resultsPtr interface{},
+) error {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, bytes.NewBufferString(query))
 	if err != nil {
 		return err
@@ -201,7 +203,6 @@ type requestsPool struct {
 	done     chan struct{}
 	wtgrp    *sync.WaitGroup
 	outputCh chan stringResult
-	context  context.Context
 }
 
 type manifestJob struct {
@@ -216,7 +217,7 @@ type manifestJob struct {
 
 const rateLimiterBuffer = 5000
 
-func newSmoothRateLimiter(ctx context.Context, wtgrp *sync.WaitGroup, opch chan stringResult) *requestsPool {
+func newSmoothRateLimiter(wtgrp *sync.WaitGroup, opch chan stringResult) *requestsPool {
 	ch := make(chan *manifestJob, rateLimiterBuffer)
 
 	return &requestsPool{
@@ -224,7 +225,6 @@ func newSmoothRateLimiter(ctx context.Context, wtgrp *sync.WaitGroup, opch chan 
 		done:     make(chan struct{}),
 		wtgrp:    wtgrp,
 		outputCh: opch,
-		context:  ctx,
 	}
 }
 

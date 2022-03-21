@@ -27,7 +27,7 @@ type Blob struct {
 	Path string
 }
 
-func NewCache(rootDir string, name string, log zlog.Logger) *Cache {
+func NewCache(rootDir, name string, log zlog.Logger) *Cache {
 	dbPath := path.Join(rootDir, name+".db")
 	dbOpts := &bbolt.Options{
 		Timeout:      dbCacheLockCheckTimeout,
@@ -60,7 +60,7 @@ func NewCache(rootDir string, name string, log zlog.Logger) *Cache {
 	return &Cache{rootDir: rootDir, db: cacheDB, log: log}
 }
 
-func (c *Cache) PutBlob(digest string, path string) error {
+func (c *Cache) PutBlob(digest, path string) error {
 	if path == "" {
 		c.log.Error().Err(errors.ErrEmptyValue).Str("digest", digest).Msg("empty path provided")
 
@@ -136,7 +136,7 @@ func (c *Cache) GetBlob(digest string) (string, error) {
 	return blobPath.String(), nil
 }
 
-func (c *Cache) HasBlob(digest string, blob string) bool {
+func (c *Cache) HasBlob(digest, blob string) bool {
 	if err := c.db.View(func(tx *bbolt.Tx) error {
 		root := tx.Bucket([]byte(BlobsCache))
 		if root == nil {
@@ -164,7 +164,7 @@ func (c *Cache) HasBlob(digest string, blob string) bool {
 	return true
 }
 
-func (c *Cache) DeleteBlob(digest string, path string) error {
+func (c *Cache) DeleteBlob(digest, path string) error {
 	// use only relative (to rootDir) paths on blobs
 	relp, err := filepath.Rel(c.rootDir, path)
 	if err != nil {

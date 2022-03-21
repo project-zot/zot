@@ -117,7 +117,8 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 		}
 
 		mnfst.SchemaVersion = 2
-		mb, _ := json.Marshal(mnfst)
+		mb, err := json.Marshal(mnfst)
+		So(err, ShouldBeNil)
 
 		manifest, err = imgStore.PutImageManifest(repoName, tag, ispec.MediaTypeImageManifest, mb)
 		So(err, ShouldBeNil)
