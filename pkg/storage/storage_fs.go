@@ -691,14 +691,7 @@ func (is *ImageStoreFS) PutImageManifest(repo string, reference string, mediaTyp
 	}
 
 	if is.gc {
-		oci, err := umoci.OpenLayout(dir)
-		if err := test.Error(err); err != nil {
-			return "", err
-		}
-		defer oci.Close()
-
-		err = oci.GC(context.Background(), ifOlderThan(is, repo, is.gcDelay))
-		if err := test.Error(err); err != nil {
+		if err := is.garbageCollect(dir, repo); err != nil {
 			return "", err
 		}
 	}
@@ -793,13 +786,7 @@ func (is *ImageStoreFS) DeleteImageManifest(repo string, reference string) error
 	}
 
 	if is.gc {
-		oci, err := umoci.OpenLayout(dir)
-		if err != nil {
-			return err
-		}
-		defer oci.Close()
-
-		if err := oci.GC(context.Background(), ifOlderThan(is, repo, is.gcDelay)); err != nil {
+		if err := is.garbageCollect(dir, repo); err != nil {
 			return err
 		}
 	}
@@ -1610,6 +1597,21 @@ func ensureDir(dir string, log zerolog.Logger) error {
 	return nil
 }
 
+func (is *ImageStoreFS) garbageCollect(dir string, repo string) error {
+	oci, err := umoci.OpenLayout(dir)
+	if err := test.Error(err); err != nil {
+		return err
+	}
+	defer oci.Close()
+
+	err = oci.GC(context.Background(), ifOlderThan(is, repo, is.gcDelay))
+	if err := test.Error(err); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func ifOlderThan(imgStore *ImageStoreFS, repo string, delay time.Duration) casext.GCPolicy {
 	return func(ctx context.Context, digest godigest.Digest) (bool, error) {
 		blobPath := imgStore.BlobPath(repo, digest)
@@ -1640,4 +1642,49 @@ func DirExists(d string) bool {
 	}
 
 	return true
+}
+
+func gcAllRepos(imgStore *ImageStoreFS) error {
+	repos, err := imgStore.GetRepositories()
+	if err != nil {
+		return err
+	}
+
+	for _, repo := range repos {
+		dir := path.Join(imgStore.RootDir(), repo)
+
+		var lockLatency time.Time
+
+		imgStore.Lock(&lockLatency)
+
+		err := imgStore.garbageCollect(dir, repo)
+
+		imgStore.Unlock(&lockLatency)
+
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (is *ImageStoreFS) RunGCPeriodically(gcInterval time.Duration) {
+	go func() {
+		for {
+			execMessage := fmt.Sprintf("executing GC of orphaned blobs for %s", is.RootDir())
+			is.log.Info().Msg(execMessage)
+
+			err := gcAllRepos(is)
+			if err != nil {
+				errMessage := fmt.Sprintf("error while running GC for %s", is.RootDir())
+				is.log.Error().Err(err).Msg(errMessage)
+			}
+
+			completedMessage := fmt.Sprintf("GC completed for %s, next GC scheduled after", is.RootDir())
+			is.log.Info().Str(completedMessage, gcInterval.String()).Msg("")
+
+			time.Sleep(gcInterval)
+		}
+	}()
 }

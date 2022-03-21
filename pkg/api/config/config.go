@@ -25,6 +25,7 @@ type StorageConfig struct {
 	Dedupe        bool
 	Commit        bool
 	GCDelay       time.Duration
+	GCInterval    time.Duration
 	StorageDriver map[string]interface{} `mapstructure:",omitempty"`
 }
 
@@ -99,6 +100,7 @@ type GlobalStorageConfig struct {
 	GC            bool
 	Commit        bool
 	GCDelay       time.Duration
+	GCInterval    time.Duration
 	RootDirectory string
 	StorageDriver map[string]interface{} `mapstructure:",omitempty"`
 	SubPaths      map[string]StorageConfig

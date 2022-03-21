@@ -1006,6 +1006,9 @@ func (is *ObjectStorage) DedupeBlob(src string, dstDigest godigest.Digest, dst s
 	return nil
 }
 
+func (is *ObjectStorage) RunGCPeriodically(gcInterval time.Duration) {
+}
+
 // DeleteBlobUpload deletes an existing blob upload that is currently in progress.
 func (is *ObjectStorage) DeleteBlobUpload(repo string, uuid string) error {
 	blobUploadPath := is.BlobUploadPath(repo, uuid)

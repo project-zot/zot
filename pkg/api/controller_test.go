@@ -4472,6 +4472,82 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 	})
 }
 
+func TestPeriodicGC(t *testing.T) {
+	Convey("Periodic gc enabled for default store", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		logFile, err := ioutil.TempFile("", "zot-log*.txt")
+		So(err, ShouldBeNil)
+		conf.Log.Level = "debug"
+		conf.Log.Output = logFile.Name()
+		defer os.Remove(logFile.Name()) // clean up
+
+		ctlr := api.NewController(conf)
+		dir := t.TempDir()
+		ctlr.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.GC = true
+		ctlr.Config.Storage.GCInterval = 1 * time.Hour
+		ctlr.Config.Storage.GCDelay = 1 * time.Second
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		test.WaitTillServerReady(baseURL)
+
+		data, err := os.ReadFile(logFile.Name())
+		So(err, ShouldBeNil)
+		So(string(data), ShouldContainSubstring,
+			"\"GC\":true,\"Commit\":false,\"GCDelay\":1000000000,\"GCInterval\":3600000000000")
+		So(string(data), ShouldContainSubstring,
+			fmt.Sprintf("executing GC of orphaned blobs for %s", ctlr.StoreController.DefaultStore.RootDir()))
+		So(string(data), ShouldNotContainSubstring,
+			fmt.Sprintf("error while running GC for %s", ctlr.StoreController.DefaultStore.RootDir()))
+		So(string(data), ShouldContainSubstring,
+			fmt.Sprintf("GC completed for %s, next GC scheduled after", ctlr.StoreController.DefaultStore.RootDir()))
+	})
+
+	Convey("Periodic GC enabled for substore", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		logFile, err := ioutil.TempFile("", "zot-log*.txt")
+		So(err, ShouldBeNil)
+		conf.Log.Level = "debug"
+		conf.Log.Output = logFile.Name()
+		defer os.Remove(logFile.Name()) // clean up
+
+		ctlr := api.NewController(conf)
+		dir := t.TempDir()
+		subDir := t.TempDir()
+
+		subPaths := make(map[string]config.StorageConfig)
+
+		subPaths["/a"] = config.StorageConfig{RootDirectory: subDir, GC: true, GCDelay: 1 * time.Second, GCInterval: 24 * time.Hour} // nolint:lll
+
+		ctlr.Config.Storage.SubPaths = subPaths
+		ctlr.Config.Storage.RootDirectory = dir
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		test.WaitTillServerReady(baseURL)
+
+		data, err := os.ReadFile(logFile.Name())
+		So(err, ShouldBeNil)
+		// periodic GC is not enabled for default store
+		So(string(data), ShouldContainSubstring,
+			"\"GCDelay\":3600000000000,\"GCInterval\":0,\"RootDirectory\":\""+dir+"\"")
+		// periodic GC is enabled for sub store
+		So(string(data), ShouldContainSubstring,
+			fmt.Sprintf("\"SubPaths\":{\"/a\":{\"RootDirectory\":\"%s\",\"GC\":true,\"Dedupe\":false,\"Commit\":false,\"GCDelay\":1000000000,\"GCInterval\":86400000000000", subDir)) // nolint:lll
+		So(string(data), ShouldContainSubstring,
+			fmt.Sprintf("executing GC of orphaned blobs for %s", ctlr.StoreController.SubStore["/a"].RootDir()))
+	})
+}
+
 func getAllBlobs(imagePath string) []string {
 	blobList := make([]string, 0)
 

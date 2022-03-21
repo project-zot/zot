@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	_ "crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"math/big"
 	"os"
@@ -1075,6 +1076,69 @@ func TestGarbageCollect(t *testing.T) {
 
 			_, _, _, err = imgStore.GetImageManifest(repo2Name, digest.String())
 			So(err, ShouldBeNil)
+		})
+	})
+}
+
+func TestGarbageCollectForImageStore(t *testing.T) {
+	Convey("Garbage collect for all repos from an ImageStore", t, func(c C) {
+		dir := t.TempDir()
+
+		Convey("Garbage collect error for repo with config removed", func() {
+			logFile, _ := ioutil.TempFile("", "zot-log*.txt")
+
+			defer os.Remove(logFile.Name()) // clean up
+
+			log := log.NewLogger("debug", logFile.Name())
+			metrics := monitoring.NewMetricsServer(false, log)
+			imgStore := storage.NewImageStore(dir, true, 1*time.Second, true, true, log, metrics)
+			repoName := "gc-all-repos-short"
+
+			err := test.CopyFiles("../../test/data/zot-test", path.Join(dir, repoName))
+			if err != nil {
+				panic(err)
+			}
+
+			err = os.Remove(path.Join(dir, repoName, "blobs/sha256",
+				"2bacca16b9df395fc855c14ccf50b12b58d35d468b8e7f25758aff90f89bf396"))
+			if err != nil {
+				panic(err)
+			}
+
+			imgStore.RunGCPeriodically(24 * time.Hour)
+
+			time.Sleep(500 * time.Millisecond)
+
+			data, err := os.ReadFile(logFile.Name())
+			So(err, ShouldBeNil)
+			So(string(data), ShouldContainSubstring, fmt.Sprintf("error while running GC for %s", imgStore.RootDir()))
+		})
+
+		Convey("Garbage collect error - not enough permissions to access index.json", func() {
+			logFile, _ := ioutil.TempFile("", "zot-log*.txt")
+
+			defer os.Remove(logFile.Name()) // clean up
+
+			log := log.NewLogger("debug", logFile.Name())
+			metrics := monitoring.NewMetricsServer(false, log)
+			imgStore := storage.NewImageStore(dir, true, 1*time.Second, true, true, log, metrics)
+			repoName := "gc-all-repos-short"
+
+			err := test.CopyFiles("../../test/data/zot-test", path.Join(dir, repoName))
+			if err != nil {
+				panic(err)
+			}
+
+			So(os.Chmod(path.Join(dir, repoName, "index.json"), 0o000), ShouldBeNil)
+
+			imgStore.RunGCPeriodically(24 * time.Hour)
+
+			time.Sleep(500 * time.Millisecond)
+
+			data, err := os.ReadFile(logFile.Name())
+			So(err, ShouldBeNil)
+			So(string(data), ShouldContainSubstring, fmt.Sprintf("error while running GC for %s", imgStore.RootDir()))
+			So(os.Chmod(path.Join(dir, repoName, "index.json"), 0o755), ShouldBeNil)
 		})
 	})
 }

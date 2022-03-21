@@ -44,4 +44,5 @@ type ImageStore interface {
 	GetIndexContent(repo string) ([]byte, error)
 	GetBlobContent(repo, digest string) ([]byte, error)
 	GetReferrers(repo, digest string, mediaType string) ([]artifactspec.Descriptor, error)
+	RunGCPeriodically(gcInterval time.Duration)
 }

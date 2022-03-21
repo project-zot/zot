@@ -259,11 +259,6 @@ func (c *Controller) InitImageStore(reloadCtx context.Context) error {
 		}
 
 		c.StoreController.DefaultStore = defaultStore
-
-		// Enable extensions if extension config is provided
-		if c.Config != nil && c.Config.Extensions != nil {
-			ext.EnableExtensions(c.Config, c.Log, c.Config.Storage.RootDirectory)
-		}
 	} else {
 		// we can't proceed without global storage
 		c.Log.Error().Err(errors.ErrImgStoreNotFound).Msg("controller: no storage config provided")
@@ -309,25 +304,13 @@ func (c *Controller) InitImageStore(reloadCtx context.Context) error {
 					subImageStore[route] = s3.NewImageStore(storageConfig.RootDirectory,
 						storageConfig.GC, storageConfig.GCDelay, storageConfig.Dedupe, storageConfig.Commit, c.Log, c.Metrics, store)
 				}
-
-				// Enable extensions if extension config is provided
-				if c.Config != nil && c.Config.Extensions != nil {
-					ext.EnableExtensions(c.Config, c.Log, storageConfig.RootDirectory)
-				}
 			}
 
 			c.StoreController.SubStore = subImageStore
 		}
 	}
 
-	// Enable extensions if extension config is provided
-	if c.Config.Extensions != nil && c.Config.Extensions.Sync != nil && *c.Config.Extensions.Sync.Enable {
-		ext.EnableSyncExtension(reloadCtx, c.Config, c.wgShutDown, c.StoreController, c.Log)
-	}
-
-	if c.Config.Extensions != nil {
-		ext.EnableScrubExtension(c.Config, c.StoreController, c.Log)
-	}
+	c.StartBackgroundTasks(reloadCtx)
 
 	return nil
 }
@@ -355,4 +338,41 @@ func (c *Controller) Shutdown() {
 
 	ctx := context.Background()
 	_ = c.Server.Shutdown(ctx)
+}
+
+func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
+	// Enable running garbage-collect periodically for DefaultStore
+	if c.Config.Storage.GC && c.Config.Storage.GCInterval != 0 {
+		c.StoreController.DefaultStore.RunGCPeriodically(c.Config.Storage.GCInterval)
+	}
+
+	// Enable extensions if extension config is provided for DefaultStore
+	if c.Config != nil && c.Config.Extensions != nil {
+		ext.EnableExtensions(c.Config, c.Log, c.Config.Storage.RootDirectory)
+	}
+
+	if c.Config.Storage.SubPaths != nil {
+		for route, storageConfig := range c.Config.Storage.SubPaths {
+			// Enable running garbage-collect periodically for subImageStore
+			if storageConfig.GC && storageConfig.GCInterval != 0 {
+				c.StoreController.SubStore[route].RunGCPeriodically(storageConfig.GCInterval)
+			}
+
+			// Enable extensions if extension config is provided for subImageStore
+			if c.Config != nil && c.Config.Extensions != nil {
+				ext.EnableExtensions(c.Config, c.Log, storageConfig.RootDirectory)
+			}
+		}
+	}
+
+	// Enable extensions if extension config is provided for storeController
+	if c.Config.Extensions != nil {
+		if c.Config.Extensions.Sync != nil && *c.Config.Extensions.Sync.Enable {
+			ext.EnableSyncExtension(reloadCtx, c.Config, c.wgShutDown, c.StoreController, c.Log)
+		}
+	}
+
+	if c.Config.Extensions != nil {
+		ext.EnableScrubExtension(c.Config, c.StoreController, c.Log)
+	}
 }
