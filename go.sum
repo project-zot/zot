@@ -349,14 +349,8 @@ github.com/andybalholm/brotli v1.0.0/go.mod h1:loMXtMfwqflxFJPmdbJO0a3KNoPuLBgiu
 github.com/anmitsu/go-shlex v0.0.0-20161002113705-648efa622239 h1:kFOfPq6dUM1hTo4JG6LR5AXSUEsOjtdm0kw0FtQtMJA=
 github.com/anmitsu/go-shlex v0.0.0-20161002113705-648efa622239/go.mod h1:2FmKhYUyUczH0OGQWaF5ceTx0UBShxjsH6f8oGKYe2c=
 github.com/antihax/optional v1.0.0/go.mod h1:uupD/76wgC+ih3iEmQUL+0Ugr19nfwCT1kdvxnR2qWY=
-github.com/anuvu/fanal v0.0.0-20211007194926-d0c577a014df h1:fq3+E3RolIKi+QRxASNEzCXTDMEHRl0PORQipfEyiTo=
-github.com/anuvu/fanal v0.0.0-20211007194926-d0c577a014df/go.mod h1:nXdCM1C89phZEkn/sHQ6S5IjcvxdTnXLSKcftmhFodg=
 github.com/anuvu/image/v5 v5.0.0-20211118175920-feae9c2f0d91 h1:NIyqedA0qwCdOJxOu9FDHK3TyW2CiO7TEE6miojNYbM=
 github.com/anuvu/image/v5 v5.0.0-20211118175920-feae9c2f0d91/go.mod h1:GnYVusVRFPMMTAAUkrcS8NNSpBp8oyrjOUe04AAmRr4=
-github.com/anuvu/trivy v0.9.2-0.20211013001708-27408aa50da3 h1:XpCWTtU94xfLX/Stjx60MoCSW8uGjndLJ6ONBqkXXKQ=
-github.com/anuvu/trivy v0.9.2-0.20211013001708-27408aa50da3/go.mod h1:AxK9ngsc2DchN5ayVETGZ6Cmne0SPsjsFIIL6AxHFKM=
-github.com/anuvu/trivy-db v0.0.0-20211007191113-44f7e57b689c h1:LTN7B8PyGULa/w3/8VY/rGAlrMsqan6zLN5uk2MZTQ4=
-github.com/anuvu/trivy-db v0.0.0-20211007191113-44f7e57b689c/go.mod h1:5h8GV7Qxp/SMJ4awWHs0KRxwVkKzcwOnRkORWOnCXRU=
 github.com/aokoli/goutils v1.0.1/go.mod h1:SijmP0QR8LtwsmDs8Yii5Z/S4trXFGFC2oO5g9DP+DQ=
 github.com/apache/beam v2.28.0+incompatible/go.mod h1:/8NX3Qi8vGstDLLaeaU7+lzVEu/ACaQhYjeefzQ0y1o=
 github.com/apache/beam v2.32.0+incompatible/go.mod h1:/8NX3Qi8vGstDLLaeaU7+lzVEu/ACaQhYjeefzQ0y1o=
@@ -2135,6 +2129,12 @@ github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZN
 github.com/posener/complete v1.1.1/go.mod h1:em0nMJCgc9GFtwrmVmEMR/ZL6WyhyjMBndrE9hABlRI=
 github.com/posener/complete v1.2.3/go.mod h1:WZIdtGGp+qx0sLrYKtIRAruyNpv6hFCicSgv7Sy7s/s=
 github.com/pquerna/cachecontrol v0.0.0-20171018203845-0dec1b30a021/go.mod h1:prYjPmNq4d1NPVmpShWobRqXY3q7Vp+80DqgxxUrUIA=
+github.com/project-zot/fanal v0.0.0-20211007194926-d0c577a014df h1:Nigw7WGn+k1s1XYVRCOkjI+LdPSn/OS5dpD3/7uUSFM=
+github.com/project-zot/fanal v0.0.0-20211007194926-d0c577a014df/go.mod h1:nXdCM1C89phZEkn/sHQ6S5IjcvxdTnXLSKcftmhFodg=
+github.com/project-zot/trivy v0.9.2-0.20211013001708-27408aa50da3 h1:kG19HOslG9mq9j8nVVh61Z0wiwE1dEzcsQr2jj7uwso=
+github.com/project-zot/trivy v0.9.2-0.20211013001708-27408aa50da3/go.mod h1:AxK9ngsc2DchN5ayVETGZ6Cmne0SPsjsFIIL6AxHFKM=
+github.com/project-zot/trivy-db v0.0.0-20211007191113-44f7e57b689c h1:cRDnko12ReNCIeKu9SmYNrnFPorgz+UpHglzIqrc4hU=
+github.com/project-zot/trivy-db v0.0.0-20211007191113-44f7e57b689c/go.mod h1:5h8GV7Qxp/SMJ4awWHs0KRxwVkKzcwOnRkORWOnCXRU=
 github.com/prometheus/client_golang v0.0.0-20180209125602-c332b6f63c06/go.mod h1:7SWBe2y4D6OKWSNQJUaRYU/AaXPKyh/dDVn+NZz0KFw=
 github.com/prometheus/client_golang v0.8.0/go.mod h1:7SWBe2y4D6OKWSNQJUaRYU/AaXPKyh/dDVn+NZz0KFw=
 github.com/prometheus/client_golang v0.9.1/go.mod h1:7SWBe2y4D6OKWSNQJUaRYU/AaXPKyh/dDVn+NZz0KFw=
