@@ -209,9 +209,23 @@ func validateConfiguration(config *config.Config) error {
 		return errors.ErrBadConfig
 	}
 
-	if !config.Storage.GC && config.Storage.GCDelay != 0 {
-		log.Warn().Err(errors.ErrBadConfig).
-			Msg("garbage-collect delay specified without enabling garbage-collect, will be ignored")
+	if config.Storage.GCInterval < 0 {
+		log.Error().Err(errors.ErrBadConfig).
+			Msgf("invalid garbage-collect interval %v specified", config.Storage.GCInterval)
+
+		return errors.ErrBadConfig
+	}
+
+	if !config.Storage.GC {
+		if config.Storage.GCDelay != 0 {
+			log.Warn().Err(errors.ErrBadConfig).
+				Msg("garbage-collect delay specified without enabling garbage-collect, will be ignored")
+		}
+
+		if config.Storage.GCInterval != 0 {
+			log.Warn().Err(errors.ErrBadConfig).
+				Msg("periodic garbage-collect interval specified without enabling garbage-collect, will be ignored")
+		}
 	}
 
 	// check authorization config, it should have basic auth enabled or ldap

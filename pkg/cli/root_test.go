@@ -312,6 +312,8 @@ func TestGC(t *testing.T) {
 		err = cli.LoadConfiguration(config, "../../examples/config-gc.json")
 		So(err, ShouldBeNil)
 		So(config.Storage.GCDelay, ShouldNotEqual, storage.DefaultGCDelay)
+		err = cli.LoadConfiguration(config, "../../examples/config-gc-periodic.json")
+		So(err, ShouldBeNil)
 	})
 
 	Convey("Test GC config corner cases", t, func(c C) {
@@ -322,6 +324,26 @@ func TestGC(t *testing.T) {
 			config := config.New()
 			err = json.Unmarshal(contents, config)
 			config.Storage.GC = false
+
+			file, err := ioutil.TempFile("", "gc-config-*.json")
+			So(err, ShouldBeNil)
+			defer os.Remove(file.Name())
+
+			contents, err = json.MarshalIndent(config, "", " ")
+			So(err, ShouldBeNil)
+
+			err = ioutil.WriteFile(file.Name(), contents, 0o600)
+			So(err, ShouldBeNil)
+			err = cli.LoadConfiguration(config, file.Name())
+			So(err, ShouldBeNil)
+		})
+
+		Convey("GC interval without GC", func() {
+			config := config.New()
+			err = json.Unmarshal(contents, config)
+			config.Storage.GC = false
+			config.Storage.GCDelay = 0
+			config.Storage.GCInterval = 24 * time.Hour
 
 			file, err := ioutil.TempFile("", "gc-config-*.json")
 			So(err, ShouldBeNil)
@@ -370,6 +392,24 @@ func TestGC(t *testing.T) {
 			err = cli.LoadConfiguration(config, file.Name())
 			So(err, ShouldBeNil)
 			So(config.Storage.GCDelay, ShouldEqual, 0)
+		})
+
+		Convey("Negative GC interval", func() {
+			config := config.New()
+			err = json.Unmarshal(contents, config)
+			config.Storage.GCInterval = -1 * time.Second
+
+			file, err := ioutil.TempFile("", "gc-config-*.json")
+			So(err, ShouldBeNil)
+			defer os.Remove(file.Name())
+
+			contents, err = json.MarshalIndent(config, "", " ")
+			So(err, ShouldBeNil)
+
+			err = ioutil.WriteFile(file.Name(), contents, 0o600)
+			So(err, ShouldBeNil)
+			err = cli.LoadConfiguration(config, file.Name())
+			So(err, ShouldNotBeNil)
 		})
 	})
 }
