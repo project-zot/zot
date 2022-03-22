@@ -5,11 +5,12 @@ GO_VERSION=$(shell go version | awk '{print $$3}')
 COMMIT ?= $(if $(shell git status --porcelain --untracked-files=no),$(COMMIT_HASH)-dirty,$(COMMIT_HASH))
 CONTAINER_RUNTIME := $(shell command -v podman 2> /dev/null || echo docker)
 TMPDIR := $(shell mktemp -d)
-TOOLSDIR := hack/tools
-PATH := bin:$(shell pwd)/$(TOOLSDIR)/bin:$(PATH)
+TOOLSDIR := $(shell pwd)/hack/tools
+PATH := bin:$(TOOLSDIR)/bin:$(PATH)
 STACKER := $(shell which stacker)
 GOLINTER := $(TOOLSDIR)/bin/golangci-lint
 NOTATION := $(TOOLSDIR)/bin/notation
+BATS := $(TOOLSDIR)/bin/bats
 OS ?= linux
 ARCH ?= amd64
 BENCH_OUTPUT ?= stdout
@@ -61,28 +62,6 @@ run-bench: binary bench
 	bin/zot-$(OS)-$(ARCH) serve examples/config-minimal.json &
 	sleep 5
 	bin/zb-$(OS)-$(ARCH) -c 10 -n 100 -o $(BENCH_OUTPUT) http://localhost:8080
-	killall -r zot-*
-
-.PHONY: push-pull
-push-pull: binary check-skopeo
-	bin/zot-$(OS)-$(ARCH) serve examples/config-minimal.json &
-	sleep 5
-	# skopeo push/pull
-	skopeo --debug copy --format=oci --dest-tls-verify=false docker://ghcr.io/project-zot/golang:1.17 docker://localhost:8080/golang:1.17
-	skopeo --debug copy --src-tls-verify=false docker://localhost:8080/golang:1.17 oci:golang:1.17
-	# oras artifacts
-	echo "{\"name\":\"foo\",\"value\":\"bar\"}" > config.json
-	echo "hello world" > artifact.txt
-	oras push localhost:8080/hello-artifact:v2 \
-	    --manifest-config config.json:application/vnd.acme.rocket.config.v1+json \
-		      artifact.txt:text/plain -d -v
-	rm -f artifact.txt # first delete the file
-	oras pull localhost:8080/hello-artifact:v2 -d -v -a
-	grep -q "hello world" artifact.txt  # should print "hello world"
-	if [ $? -ne 0 ]; then \
-		killall -r zot-*; \
-		exit 1; \
-	fi
 	killall -r zot-*
 
 .PHONY: test-clean
@@ -186,3 +165,17 @@ binary-stacker:
 .PHONY: image
 image:
 	${CONTAINER_RUNTIME} build ${BUILD_ARGS} -f Dockerfile -t zot:latest .
+
+$(BATS):
+	rm -rf bats-core; \
+	git clone https://github.com/bats-core/bats-core.git; \
+	cd bats-core; ./install.sh $(TOOLSDIR); cd ..; \
+	rm -rf bats-core
+
+.PHONY: push-pull
+push-pull: binary check-skopeo $(BATS)
+	$(BATS) --trace --print-output-on-failure test/blackbox
+
+.PHONY: push-pull-verbose
+push-pull-verbose: binary check-skopeo $(BATS)
+	$(BATS) --trace --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox
