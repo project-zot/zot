@@ -399,7 +399,7 @@ func TestCVESearch(t *testing.T) {
 
 		go func() {
 			// this blocks
-			if err := ctlr.Run(); err != nil {
+			if err := ctlr.Run(context.Background()); err != nil {
 				return
 			}
 		}()
@@ -634,7 +634,7 @@ func TestCVEConfig(t *testing.T) {
 
 		go func() {
 			// this blocks
-			if err := ctlr.Run(); err != nil {
+			if err := ctlr.Run(context.Background()); err != nil {
 				return
 			}
 		}()
@@ -707,7 +707,7 @@ func TestHTTPOptionsResponse(t *testing.T) {
 
 		go func() {
 			// this blocks
-			if err := ctlr.Run(); err != nil {
+			if err := ctlr.Run(context.Background()); err != nil {
 				return
 			}
 		}()

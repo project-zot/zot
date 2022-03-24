@@ -294,7 +294,7 @@ func TestServerResponse(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 		go func(controller *api.Controller) {
 			// this blocks
-			if err := controller.Run(); err != nil {
+			if err := controller.Run(context.Background()); err != nil {
 				return
 			}
 		}(ctlr)

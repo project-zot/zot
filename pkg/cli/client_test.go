@@ -72,7 +72,7 @@ func TestTLSWithAuth(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 		go func() {
 			// this blocks
-			if err := ctlr.Run(); err != nil {
+			if err := ctlr.Run(context.Background()); err != nil {
 				return
 			}
 		}()
@@ -164,7 +164,7 @@ func TestTLSWithoutAuth(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 		go func() {
 			// this blocks
-			if err := ctlr.Run(); err != nil {
+			if err := ctlr.Run(context.Background()); err != nil {
 				return
 			}
 		}()
@@ -227,7 +227,7 @@ func TestTLSWithoutAuth(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 		go func() {
 			// this blocks
-			if err := ctlr.Run(); err != nil {
+			if err := ctlr.Run(context.Background()); err != nil {
 				return
 			}
 		}()
@@ -285,7 +285,7 @@ func TestTLSBadCerts(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 		go func() {
 			// this blocks
-			if err := ctlr.Run(); err != nil {
+			if err := ctlr.Run(context.Background()); err != nil {
 				return
 			}
 		}()

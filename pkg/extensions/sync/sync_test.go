@@ -160,7 +160,7 @@ func startUpstreamServer(
 
 	go func() {
 		// this blocks
-		if err := sctlr.Run(); err != nil {
+		if err := sctlr.Run(context.Background()); err != nil {
 			return
 		}
 	}()
@@ -233,7 +233,7 @@ func startDownstreamServer(
 
 	go func() {
 		// this blocks
-		if err := dctlr.Run(); err != nil {
+		if err := dctlr.Run(context.Background()); err != nil {
 			return
 		}
 	}()
@@ -611,7 +611,7 @@ func TestOnDemandPermsDenied(t *testing.T) {
 
 		go func() {
 			// this blocks
-			if err := dctlr.Run(); err != nil {
+			if err := dctlr.Run(context.Background()); err != nil {
 				return
 			}
 		}()
@@ -701,9 +701,26 @@ func TestConfigReloader(t *testing.T) {
 			dctlr.Shutdown()
 		}()
 
+		content := fmt.Sprintf(`{"distSpecVersion": "0.1.0-dev", "storage": {"rootDirectory": "%s"},
+		"http": {"address": "127.0.0.1", "port": "%s", "ReadOnly": false},
+		"log": {"level": "debug", "output": "%s"}}`, destDir, destPort, logFile.Name())
+
+		cfgfile, err := ioutil.TempFile("", "zot-test*.json")
+		So(err, ShouldBeNil)
+
+		defer os.Remove(cfgfile.Name()) // clean up
+
+		_, err = cfgfile.Write([]byte(content))
+		So(err, ShouldBeNil)
+
+		hotReloader, err := cli.NewHotReloader(dctlr, cfgfile.Name())
+		So(err, ShouldBeNil)
+
+		reloadCtx := hotReloader.Start()
+
 		go func() {
 			// this blocks
-			if err := dctlr.Run(); err != nil {
+			if err := dctlr.Run(reloadCtx); err != nil {
 				return
 			}
 		}()
@@ -717,23 +734,6 @@ func TestConfigReloader(t *testing.T) {
 
 			time.Sleep(100 * time.Millisecond)
 		}
-
-		content := fmt.Sprintf(`{"distSpecVersion": "0.1.0-dev", "storage": {"rootDirectory": "%s"},
-							"http": {"address": "127.0.0.1", "port": "%s", "ReadOnly": false},
-							"log": {"level": "debug", "output": "%s"}}`, destDir, destPort, logFile.Name())
-
-		cfgfile, err := ioutil.TempFile("", "zot-test*.json")
-		So(err, ShouldBeNil)
-
-		defer os.Remove(cfgfile.Name()) // clean up
-
-		_, err = cfgfile.Write([]byte(content))
-		So(err, ShouldBeNil)
-
-		hotReloader, err := cli.NewHotReloader(dctlr, cfgfile.Name())
-		So(err, ShouldBeNil)
-
-		hotReloader.Start()
 
 		// let it sync
 		time.Sleep(3 * time.Second)
@@ -1055,7 +1055,7 @@ func TestBasicAuth(t *testing.T) {
 
 			go func() {
 				// this blocks
-				if err := dctlr.Run(); err != nil {
+				if err := dctlr.Run(context.Background()); err != nil {
 					return
 				}
 			}()
@@ -1662,7 +1662,7 @@ func TestSubPaths(t *testing.T) {
 
 		go func() {
 			// this blocks
-			if err := sctlr.Run(); err != nil {
+			if err := sctlr.Run(context.Background()); err != nil {
 				return
 			}
 		}()
@@ -1729,7 +1729,7 @@ func TestSubPaths(t *testing.T) {
 
 		go func() {
 			// this blocks
-			if err := dctlr.Run(); err != nil {
+			if err := dctlr.Run(context.Background()); err != nil {
 				return
 			}
 		}()
@@ -2099,7 +2099,8 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 
 		defer func() { _ = os.Chdir(cwd) }()
 		tdir := t.TempDir()
-		_ = os.Chdir(tdir)
+		err = os.Chdir(tdir)
+		So(err, ShouldBeNil)
 		generateKeyPairs(tdir)
 
 		So(func() { signImage(tdir, srcPort, repoName, digest) }, ShouldNotPanic)
@@ -2632,7 +2633,7 @@ func TestOnDemandRetryGoroutine(t *testing.T) {
 		// start upstream server
 		go func() {
 			// this blocks
-			if err := sctlr.Run(); err != nil {
+			if err := sctlr.Run(context.Background()); err != nil {
 				return
 			}
 		}()
@@ -2790,7 +2791,7 @@ func TestOnDemandMultipleRetries(t *testing.T) {
 		// start upstream server
 		go func() {
 			// this blocks
-			if err := sctlr.Run(); err != nil {
+			if err := sctlr.Run(context.Background()); err != nil {
 				return
 			}
 		}()
@@ -3273,7 +3274,7 @@ func TestSyncOnlyDiff(t *testing.T) {
 
 		go func() {
 			// this blocks
-			if err := dctlr.Run(); err != nil {
+			if err := dctlr.Run(context.Background()); err != nil {
 				return
 			}
 		}()
@@ -3422,7 +3423,7 @@ func TestSyncWithDiffDigest(t *testing.T) {
 
 		go func() {
 			// this blocks
-			if err := dctlr.Run(); err != nil {
+			if err := dctlr.Run(context.Background()); err != nil {
 				return
 			}
 		}()

@@ -44,14 +44,17 @@ func newServeCmd(conf *config.Config) *cobra.Command {
 
 			ctlr := api.NewController(conf)
 
+			// config reloader
 			hotReloader, err := NewHotReloader(ctlr, args[0])
 			if err != nil {
 				panic(err)
 			}
 
-			hotReloader.Start()
+			/* context used to cancel go routines so that
+			we can change their config on the fly (restart routines with different config) */
+			reloaderCtx := hotReloader.Start()
 
-			if err := ctlr.Run(); err != nil {
+			if err := ctlr.Run(reloaderCtx); err != nil {
 				panic(err)
 			}
 		},
@@ -100,7 +103,7 @@ func newScrubCmd(conf *config.Config) *cobra.Command {
 				ctlr := api.NewController(conf)
 				ctlr.Metrics = monitoring.NewMetricsServer(false, ctlr.Log)
 
-				if err := ctlr.InitImageStore(); err != nil {
+				if err := ctlr.InitImageStore(context.Background()); err != nil {
 					panic(err)
 				}
 
