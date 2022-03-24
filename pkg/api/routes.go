@@ -42,6 +42,7 @@ type RouteHandler struct {
 	c *Controller
 }
 
+// nolint: contextcheck
 func NewRouteHandler(c *Controller) *RouteHandler {
 	rh := &RouteHandler{c: c}
 	rh.SetupRoutes()
@@ -53,6 +54,7 @@ func allowedMethods(method string) []string {
 	return []string{http.MethodOptions, method}
 }
 
+// nolint: contextcheck
 func (rh *RouteHandler) SetupRoutes() {
 	rh.c.Router.Use(AuthHandler(rh.c))
 	// authz is being enabled because authn is found

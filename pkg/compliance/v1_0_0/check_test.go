@@ -81,7 +81,7 @@ func startServer(t *testing.T) (*api.Controller, string) {
 
 	go func() {
 		// this blocks
-		if err := ctrl.Run(); err != nil {
+		if err := ctrl.Run(context.Background()); err != nil {
 			return
 		}
 	}()

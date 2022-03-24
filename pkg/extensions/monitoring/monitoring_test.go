@@ -105,7 +105,7 @@ func TestExtensionMetrics(t *testing.T) {
 
 func startServer(c *api.Controller) {
 	// this blocks
-	if err := c.Run(); err != nil {
+	if err := c.Run(context.Background()); err != nil {
 		return
 	}
 }

@@ -154,7 +154,7 @@ func TestDigestSearchHTTP(t *testing.T) {
 
 		go func() {
 			// this blocks
-			if err := ctlr.Run(); err != nil {
+			if err := ctlr.Run(context.Background()); err != nil {
 				return
 			}
 		}()
@@ -296,7 +296,7 @@ func TestDigestSearchHTTPSubPaths(t *testing.T) {
 
 		go func() {
 			// this blocks
-			if err := ctlr.Run(); err != nil {
+			if err := ctlr.Run(context.Background()); err != nil {
 				return
 			}
 		}()
@@ -355,7 +355,7 @@ func TestDigestSearchDisabled(t *testing.T) {
 
 		go func() {
 			// this blocks
-			if err := ctlr.Run(); err != nil {
+			if err := ctlr.Run(context.Background()); err != nil {
 				return
 			}
 		}()

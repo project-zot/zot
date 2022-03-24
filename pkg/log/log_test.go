@@ -72,7 +72,7 @@ func TestAuditLogMessages(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = dir
 		go func() {
 			// this blocks
-			if err := ctlr.Run(); err != nil {
+			if err := ctlr.Run(context.Background()); err != nil {
 				return
 			}
 		}()
