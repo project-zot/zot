@@ -59,7 +59,7 @@ test: check-skopeo $(NOTATION)
 
 .PHONY: run-bench
 run-bench: binary bench
-	bin/zot-$(OS)-$(ARCH) serve examples/config-minimal.json &
+	bin/zot-$(OS)-$(ARCH) serve examples/config-bench.json &
 	sleep 5
 	bin/zb-$(OS)-$(ARCH) -c 10 -n 100 -o $(BENCH_OUTPUT) http://localhost:8080
 	killall -r zot-*
