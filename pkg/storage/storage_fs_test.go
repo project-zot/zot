@@ -963,6 +963,193 @@ func TestGarbageCollect(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(hasBlob, ShouldEqual, false)
 		})
+
+		Convey("Garbage collect with dedupe", func() {
+			// garbage-collect is repo-local and dedupe is global and they can interact in strange ways
+			imgStore := storage.NewImageStore(dir, true, 5*time.Second, true, true, log, metrics)
+
+			// first upload an image to the first repo and wait for GC timeout
+
+			repo1Name := "gc1"
+
+			// upload blob
+			upload, err := imgStore.NewBlobUpload(repo1Name)
+			So(err, ShouldBeNil)
+			So(upload, ShouldNotBeEmpty)
+
+			content := []byte("test-data")
+			buf := bytes.NewBuffer(content)
+			buflen := buf.Len()
+			bdigest := godigest.FromBytes(content)
+			tdigest := bdigest
+
+			blob, err := imgStore.PutBlobChunk(repo1Name, upload, 0, int64(buflen), buf)
+			So(err, ShouldBeNil)
+			So(blob, ShouldEqual, buflen)
+
+			err = imgStore.FinishBlobUpload(repo1Name, upload, buf, bdigest.String())
+			So(err, ShouldBeNil)
+
+			annotationsMap := make(map[string]string)
+			annotationsMap[ispec.AnnotationRefName] = tag
+
+			cblob, cdigest := test.GetRandomImageConfig()
+			_, clen, err := imgStore.FullBlobUpload(repo1Name, bytes.NewReader(cblob), cdigest.String())
+			So(err, ShouldBeNil)
+			So(clen, ShouldEqual, len(cblob))
+			hasBlob, _, err := imgStore.CheckBlob(repo1Name, cdigest.String())
+			So(err, ShouldBeNil)
+			So(hasBlob, ShouldEqual, true)
+
+			manifest := ispec.Manifest{
+				Config: ispec.Descriptor{
+					MediaType: "application/vnd.oci.image.config.v1+json",
+					Digest:    cdigest,
+					Size:      int64(len(cblob)),
+				},
+				Layers: []ispec.Descriptor{
+					{
+						MediaType: "application/vnd.oci.image.layer.v1.tar",
+						Digest:    bdigest,
+						Size:      int64(buflen),
+					},
+				},
+				Annotations: annotationsMap,
+			}
+
+			manifest.SchemaVersion = 2
+			manifestBuf, _ := json.Marshal(manifest)
+
+			_, err = imgStore.PutImageManifest(repo1Name, tag, ispec.MediaTypeImageManifest, manifestBuf)
+			So(err, ShouldBeNil)
+
+			hasBlob, _, err = imgStore.CheckBlob(repo1Name, tdigest.String())
+			So(err, ShouldBeNil)
+			So(hasBlob, ShouldEqual, true)
+
+			// sleep so past GC timeout
+			time.Sleep(10 * time.Second)
+
+			hasBlob, _, err = imgStore.CheckBlob(repo1Name, tdigest.String())
+			So(err, ShouldBeNil)
+			So(hasBlob, ShouldEqual, true)
+
+			// upload another image into a second repo with the same blob contents so dedupe is triggered
+
+			repo2Name := "gc2"
+
+			upload, err = imgStore.NewBlobUpload(repo2Name)
+			So(err, ShouldBeNil)
+			So(upload, ShouldNotBeEmpty)
+
+			buf = bytes.NewBuffer(content)
+			buflen = buf.Len()
+
+			blob, err = imgStore.PutBlobChunk(repo2Name, upload, 0, int64(buflen), buf)
+			So(err, ShouldBeNil)
+			So(blob, ShouldEqual, buflen)
+
+			err = imgStore.FinishBlobUpload(repo2Name, upload, buf, bdigest.String())
+			So(err, ShouldBeNil)
+
+			annotationsMap = make(map[string]string)
+			annotationsMap[ispec.AnnotationRefName] = tag
+
+			cblob, cdigest = test.GetRandomImageConfig()
+			_, clen, err = imgStore.FullBlobUpload(repo2Name, bytes.NewReader(cblob), cdigest.String())
+			So(err, ShouldBeNil)
+			So(clen, ShouldEqual, len(cblob))
+			hasBlob, _, err = imgStore.CheckBlob(repo2Name, cdigest.String())
+			So(err, ShouldBeNil)
+			So(hasBlob, ShouldEqual, true)
+
+			manifest = ispec.Manifest{
+				Config: ispec.Descriptor{
+					MediaType: "application/vnd.oci.image.config.v1+json",
+					Digest:    cdigest,
+					Size:      int64(len(cblob)),
+				},
+				Layers: []ispec.Descriptor{
+					{
+						MediaType: "application/vnd.oci.image.layer.v1.tar",
+						Digest:    bdigest,
+						Size:      int64(buflen),
+					},
+				},
+				Annotations: annotationsMap,
+			}
+
+			manifest.SchemaVersion = 2
+			manifestBuf, _ = json.Marshal(manifest)
+
+			_, err = imgStore.PutImageManifest(repo2Name, tag, ispec.MediaTypeImageManifest, manifestBuf)
+			So(err, ShouldBeNil)
+
+			hasBlob, _, err = imgStore.CheckBlob(repo2Name, bdigest.String())
+			So(err, ShouldBeNil)
+			So(hasBlob, ShouldEqual, true)
+
+			// immediately upload any other image to second repo which should invoke GC inline, but expect layers to persist
+
+			upload, err = imgStore.NewBlobUpload(repo2Name)
+			So(err, ShouldBeNil)
+			So(upload, ShouldNotBeEmpty)
+
+			content = []byte("test-data-more")
+			buf = bytes.NewBuffer(content)
+			buflen = buf.Len()
+			bdigest = godigest.FromBytes(content)
+
+			blob, err = imgStore.PutBlobChunk(repo2Name, upload, 0, int64(buflen), buf)
+			So(err, ShouldBeNil)
+			So(blob, ShouldEqual, buflen)
+
+			err = imgStore.FinishBlobUpload(repo2Name, upload, buf, bdigest.String())
+			So(err, ShouldBeNil)
+
+			annotationsMap = make(map[string]string)
+			annotationsMap[ispec.AnnotationRefName] = tag
+
+			cblob, cdigest = test.GetRandomImageConfig()
+			_, clen, err = imgStore.FullBlobUpload(repo2Name, bytes.NewReader(cblob), cdigest.String())
+			So(err, ShouldBeNil)
+			So(clen, ShouldEqual, len(cblob))
+			hasBlob, _, err = imgStore.CheckBlob(repo2Name, cdigest.String())
+			So(err, ShouldBeNil)
+			So(hasBlob, ShouldEqual, true)
+
+			manifest = ispec.Manifest{
+				Config: ispec.Descriptor{
+					MediaType: "application/vnd.oci.image.config.v1+json",
+					Digest:    cdigest,
+					Size:      int64(len(cblob)),
+				},
+				Layers: []ispec.Descriptor{
+					{
+						MediaType: "application/vnd.oci.image.layer.v1.tar",
+						Digest:    bdigest,
+						Size:      int64(buflen),
+					},
+				},
+				Annotations: annotationsMap,
+			}
+
+			manifest.SchemaVersion = 2
+			manifestBuf, _ = json.Marshal(manifest)
+			digest := godigest.FromBytes(manifestBuf)
+
+			_, err = imgStore.PutImageManifest(repo2Name, tag, ispec.MediaTypeImageManifest, manifestBuf)
+			So(err, ShouldBeNil)
+
+			// original blob should exist
+
+			hasBlob, _, err = imgStore.CheckBlob(repo2Name, tdigest.String())
+			So(err, ShouldBeNil)
+			So(hasBlob, ShouldEqual, true)
+
+			_, _, _, err = imgStore.GetImageManifest(repo2Name, digest.String())
+			So(err, ShouldBeNil)
+		})
 	})
 }
 

@@ -1203,7 +1203,7 @@ retry:
 				return err
 			}
 
-			is.log.Debug().Str("blobPath", dst).Msg("dedupe: creating hard link")
+			is.log.Debug().Str("blobPath", dst).Str("dstRecord", dstRecord).Msg("dedupe: creating hard link")
 
 			if err := os.Link(dstRecord, dst); err != nil {
 				is.log.Error().Err(err).Str("blobPath", dst).Str("link", dstRecord).Msg("dedupe: unable to hard link")
