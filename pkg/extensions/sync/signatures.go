@@ -14,6 +14,7 @@ import (
 	"github.com/sigstore/cosign/pkg/cosign"
 	"gopkg.in/resty.v1"
 	zerr "zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/api/constants"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 )
@@ -67,7 +68,9 @@ func getNotaryRefs(client *resty.Client, regURL url.URL, repo, digest string, lo
 	getReferrersURL := regURL
 
 	// based on manifest digest get referrers
-	getReferrersURL.Path = path.Join(getReferrersURL.Path, "oras/artifacts/v1/", repo, "manifests", digest, "referrers")
+	getReferrersURL.Path = path.Join(getReferrersURL.Path, constants.ArtifactSpecRoutePrefix,
+		repo, "manifests", digest, "referrers")
+
 	getReferrersURL.RawQuery = getReferrersURL.Query().Encode()
 
 	resp, err := client.R().

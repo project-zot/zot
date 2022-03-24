@@ -20,6 +20,7 @@ import (
 	"github.com/smartystreets/goconvey/convey/reporting"
 	"gopkg.in/resty.v1"
 	"zotregistry.io/zot/pkg/api"
+	"zotregistry.io/zot/pkg/api/constants"
 	"zotregistry.io/zot/pkg/compliance"
 	"zotregistry.io/zot/pkg/test"
 )
@@ -59,7 +60,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 			So(resp.String(), ShouldNotBeEmpty)
-			So(resp.Header().Get("Content-Type"), ShouldEqual, api.DefaultMediaType)
+			So(resp.Header().Get("Content-Type"), ShouldEqual, constants.DefaultMediaType)
 			var repoList api.RepositoryList
 			err = json.Unmarshal(resp.Body(), &repoList)
 			So(err, ShouldBeNil)
@@ -155,7 +156,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			blobLoc := test.Location(baseURL, resp)
 			So(blobLoc, ShouldNotBeEmpty)
 			So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
-			So(resp.Header().Get(api.DistContentDigestKey), ShouldNotBeEmpty)
+			So(resp.Header().Get(constants.DistContentDigestKey), ShouldNotBeEmpty)
 			// upload reference should now be removed
 			resp, err = resty.R().Get(loc)
 			So(err, ShouldBeNil)
@@ -248,7 +249,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			blobLoc := test.Location(baseURL, resp)
 			So(blobLoc, ShouldNotBeEmpty)
 			So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
-			So(resp.Header().Get(api.DistContentDigestKey), ShouldNotBeEmpty)
+			So(resp.Header().Get(constants.DistContentDigestKey), ShouldNotBeEmpty)
 			// upload reference should now be removed
 			resp, err = resty.R().Get(loc)
 			So(err, ShouldBeNil)
@@ -316,7 +317,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 			So(blobLoc, ShouldNotBeEmpty)
 			So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
-			So(resp.Header().Get(api.DistContentDigestKey), ShouldNotBeEmpty)
+			So(resp.Header().Get(constants.DistContentDigestKey), ShouldNotBeEmpty)
 			// upload reference should now be removed
 			resp, err = resty.R().Get(loc)
 			So(err, ShouldBeNil)
@@ -384,7 +385,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 			So(blobLoc, ShouldNotBeEmpty)
 			So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
-			So(resp.Header().Get(api.DistContentDigestKey), ShouldNotBeEmpty)
+			So(resp.Header().Get(constants.DistContentDigestKey), ShouldNotBeEmpty)
 			// upload reference should now be removed
 			resp, err = resty.R().Get(loc)
 			So(err, ShouldBeNil)
@@ -429,7 +430,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 			blobLoc := test.Location(baseURL, resp)
 			So(blobLoc, ShouldNotBeEmpty)
-			So(resp.Header().Get(api.DistContentDigestKey), ShouldNotBeEmpty)
+			So(resp.Header().Get(constants.DistContentDigestKey), ShouldNotBeEmpty)
 
 			// delete this blob
 			resp, err = resty.R().Delete(blobLoc)
@@ -474,7 +475,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			blobLoc := resp.Header().Get("Location")
 			So(blobLoc, ShouldNotBeEmpty)
 			So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
-			So(resp.Header().Get(api.DistContentDigestKey), ShouldNotBeEmpty)
+			So(resp.Header().Get(constants.DistContentDigestKey), ShouldNotBeEmpty)
 
 			// check a non-existent manifest
 			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
@@ -523,7 +524,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 				SetBody(content).Put(baseURL + "/v2/repo7/manifests/test:1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-			digestHdr := resp.Header().Get(api.DistContentDigestKey)
+			digestHdr := resp.Header().Get(constants.DistContentDigestKey)
 			So(digestHdr, ShouldNotBeEmpty)
 			So(digestHdr, ShouldEqual, digest.String())
 
@@ -531,7 +532,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 				SetBody(content).Put(baseURL + "/v2/repo7/manifests/test:1.0.1")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-			digestHdr = resp.Header().Get(api.DistContentDigestKey)
+			digestHdr = resp.Header().Get(constants.DistContentDigestKey)
 			So(digestHdr, ShouldNotBeEmpty)
 			So(digestHdr, ShouldEqual, digest.String())
 
@@ -563,7 +564,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 				SetBody(content).Put(baseURL + "/v2/repo7/manifests/test:2.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-			digestHdr = resp.Header().Get(api.DistContentDigestKey)
+			digestHdr = resp.Header().Get(constants.DistContentDigestKey)
 			So(digestHdr, ShouldNotBeEmpty)
 			So(digestHdr, ShouldEqual, digest.String())
 
@@ -654,7 +655,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 				blobLoc := resp.Header().Get("Location")
 				So(blobLoc, ShouldNotBeEmpty)
 				So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
-				So(resp.Header().Get(api.DistContentDigestKey), ShouldNotBeEmpty)
+				So(resp.Header().Get(constants.DistContentDigestKey), ShouldNotBeEmpty)
 
 				// upload image config blob
 				resp, err = resty.R().Post(baseURL + "/v2/page0/blobs/uploads/")
@@ -697,7 +698,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 					SetBody(content).Put(baseURL + fmt.Sprintf("/v2/page0/manifests/test:%d.0", index))
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-				d := resp.Header().Get(api.DistContentDigestKey)
+				d := resp.Header().Get(constants.DistContentDigestKey)
 				So(d, ShouldNotBeEmpty)
 				So(d, ShouldEqual, digest.String())
 			}
@@ -796,7 +797,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			firstblobLoc := resp.Header().Get("Location")
 			So(firstblobLoc, ShouldNotBeEmpty)
 			So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
-			So(resp.Header().Get(api.DistContentDigestKey), ShouldNotBeEmpty)
+			So(resp.Header().Get(constants.DistContentDigestKey), ShouldNotBeEmpty)
 
 			// second test
 			resp, err = resty.R().SetQueryParam("digest", digest.String()).
@@ -806,7 +807,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			secondblobLoc := resp.Header().Get("Location")
 			So(secondblobLoc, ShouldNotBeEmpty)
 			So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
-			So(resp.Header().Get(api.DistContentDigestKey), ShouldNotBeEmpty)
+			So(resp.Header().Get(constants.DistContentDigestKey), ShouldNotBeEmpty)
 
 			// check a non-existent manifest
 			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
@@ -882,7 +883,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 				SetBody(content).Put(baseURL + "/v2/firsttest/first/manifests/test:1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-			digestHdr := resp.Header().Get(api.DistContentDigestKey)
+			digestHdr := resp.Header().Get(constants.DistContentDigestKey)
 			So(digestHdr, ShouldNotBeEmpty)
 			So(digestHdr, ShouldEqual, digest.String())
 
@@ -891,7 +892,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 				SetBody(content).Put(baseURL + "/v2/secondtest/second/manifests/test:1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-			digestHdr = resp.Header().Get(api.DistContentDigestKey)
+			digestHdr = resp.Header().Get(constants.DistContentDigestKey)
 			So(digestHdr, ShouldNotBeEmpty)
 			So(digestHdr, ShouldEqual, digest.String())
 
@@ -925,7 +926,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 				SetBody(content).Put(baseURL + "/v2/firsttest/first/manifests/test:2.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-			digestHdr = resp.Header().Get(api.DistContentDigestKey)
+			digestHdr = resp.Header().Get(constants.DistContentDigestKey)
 			So(digestHdr, ShouldNotBeEmpty)
 			So(digestHdr, ShouldEqual, digest.String())
 
@@ -934,7 +935,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 				SetBody(content).Put(baseURL + "/v2/secondtest/second/manifests/test:2.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-			digestHdr = resp.Header().Get(api.DistContentDigestKey)
+			digestHdr = resp.Header().Get(constants.DistContentDigestKey)
 			So(digestHdr, ShouldNotBeEmpty)
 			So(digestHdr, ShouldEqual, digest.String())
 

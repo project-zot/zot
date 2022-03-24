@@ -29,21 +29,13 @@ import (
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	httpSwagger "github.com/swaggo/http-swagger"
 	zerr "zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/api/constants"
 	ext "zotregistry.io/zot/pkg/extensions"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 
 	// as required by swaggo.
 	_ "zotregistry.io/zot/swagger"
-)
-
-const (
-	RoutePrefix          = "/v2"
-	DistAPIVersion       = "Docker-Distribution-API-Version"
-	DistContentDigestKey = "Docker-Content-Digest"
-	BlobUploadUUID       = "Blob-Upload-UUID"
-	DefaultMediaType     = "application/json"
-	BinaryMediaType      = "application/octet-stream"
 )
 
 type RouteHandler struct {
@@ -69,7 +61,7 @@ func (rh *RouteHandler) SetupRoutes() {
 		rh.c.Router.Use(AuthzHandler(rh.c))
 	}
 
-	prefixedRouter := rh.c.Router.PathPrefix(RoutePrefix).Subrouter()
+	prefixedRouter := rh.c.Router.PathPrefix(constants.RoutePrefix).Subrouter()
 	{
 		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/tags/list", NameRegexp.String()),
 			rh.ListTags).Methods(allowedMethods("GET")...)
@@ -104,8 +96,8 @@ func (rh *RouteHandler) SetupRoutes() {
 	}
 
 	// support for oras artifact reference types (alpha 1) - image signature use case
-	rh.c.Router.HandleFunc(fmt.Sprintf("/oras/artifacts/v1/{name:%s}/manifests/{digest}/referrers", NameRegexp.String()),
-		rh.GetReferrers).Methods("GET")
+	rh.c.Router.HandleFunc(fmt.Sprintf("%s/{name:%s}/manifests/{digest}/referrers",
+		constants.ArtifactSpecRoutePrefix, NameRegexp.String()), rh.GetReferrers).Methods("GET")
 
 	// swagger swagger "/swagger/v2/index.html"
 	rh.c.Router.PathPrefix("/swagger/v2/").Methods("GET").Handler(httpSwagger.WrapHandler)
@@ -131,7 +123,7 @@ func (rh *RouteHandler) SetupRoutes() {
 // @Produce json
 // @Success 200 {string} string	"ok".
 func (rh *RouteHandler) CheckVersionSupport(response http.ResponseWriter, request *http.Request) {
-	response.Header().Set(DistAPIVersion, "registry/2.0")
+	response.Header().Set(constants.DistAPIVersion, "registry/2.0")
 	// NOTE: compatibility workaround - return this header in "allowed-read" mode to allow for clients to
 	// work correctly
 	if rh.c.Config.HTTP.AllowReadAccess {
@@ -284,7 +276,7 @@ func (rh *RouteHandler) ListTags(response http.ResponseWriter, request *http.Req
 // @Param   name     			path    string     true        "repository name"
 // @Param   reference     path    string     true        "image reference or digest"
 // @Success 200 {string} string	"ok"
-// @Header  200 {object} api.DistContentDigestKey
+// @Header  200 {object} cosntants.DistContentDigestKey
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error".
 func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *http.Request) {
@@ -325,7 +317,7 @@ func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *htt
 		return
 	}
 
-	response.Header().Set(DistContentDigestKey, digest)
+	response.Header().Set(constants.DistContentDigestKey, digest)
 	response.Header().Set("Content-Length", fmt.Sprintf("%d", len(content)))
 	response.Header().Set("Content-Type", mediaType)
 	response.WriteHeader(http.StatusOK)
@@ -344,7 +336,7 @@ type ImageManifest struct {
 // @Param   name     			path    string     true        "repository name"
 // @Param   reference     path    string     true        "image reference or digest"
 // @Success 200 {object} 	api.ImageManifest
-// @Header  200 {object} api.DistContentDigestKey
+// @Header  200 {object} constants.DistContentDigestKey
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/manifests/{reference} [get].
@@ -388,7 +380,7 @@ func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.
 		return
 	}
 
-	response.Header().Set(DistContentDigestKey, digest)
+	response.Header().Set(constants.DistContentDigestKey, digest)
 	WriteData(response, http.StatusOK, mediaType, content)
 }
 
@@ -399,7 +391,7 @@ func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.
 // @Produce json
 // @Param   name     			path    string     true        "repository name"
 // @Param   reference     path    string     true        "image reference or digest"
-// @Header  201 {object} api.DistContentDigestKey
+// @Header  201 {object} constants.DistContentDigestKey
 // @Success 201 {string} string	"created"
 // @Failure 400 {string} string "bad request"
 // @Failure 404 {string} string "not found"
@@ -464,7 +456,7 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 	}
 
 	response.Header().Set("Location", fmt.Sprintf("/v2/%s/manifests/%s", name, digest))
-	response.Header().Set(DistContentDigestKey, digest)
+	response.Header().Set(constants.DistContentDigestKey, digest)
 	response.WriteHeader(http.StatusCreated)
 }
 
@@ -526,7 +518,7 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 // @Param   name				path    string     true        "repository name"
 // @Param   digest     	path    string     true        "blob/layer digest"
 // @Success 200 {object} api.ImageManifest
-// @Header  200 {object} api.DistContentDigestKey
+// @Header  200 {object} constants.DistContentDigestKey
 // @Router /v2/{name}/blobs/{digest} [head].
 func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Request) {
 	vars := mux.Vars(request)
@@ -572,7 +564,7 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 	}
 
 	response.Header().Set("Content-Length", fmt.Sprintf("%d", blen))
-	response.Header().Set(DistContentDigestKey, digest)
+	response.Header().Set(constants.DistContentDigestKey, digest)
 	response.WriteHeader(http.StatusOK)
 }
 
@@ -583,7 +575,7 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 // @Produce application/vnd.oci.image.layer.v1.tar+gzip
 // @Param   name				path    string     true        "repository name"
 // @Param   digest     	path    string     true        "blob/layer digest"
-// @Header  200 {object} api.DistContentDigestKey
+// @Header  200 {object} constants.DistContentDigestKey
 // @Success 200 {object} api.ImageManifest
 // @Router /v2/{name}/blobs/{digest} [get].
 func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Request) {
@@ -630,7 +622,7 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 	}
 
 	response.Header().Set("Content-Length", fmt.Sprintf("%d", blen))
-	response.Header().Set(DistContentDigestKey, digest)
+	response.Header().Set(constants.DistContentDigestKey, digest)
 	// return the blob data
 	WriteDataFromReader(response, http.StatusOK, blen, mediaType, repo, rh.c.Log)
 }
@@ -767,8 +759,8 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 
 		digest := digests[0]
 
-		if contentType := request.Header.Get("Content-Type"); contentType != BinaryMediaType {
-			rh.c.Log.Warn().Str("actual", contentType).Str("expected", BinaryMediaType).Msg("invalid media type")
+		if contentType := request.Header.Get("Content-Type"); contentType != constants.BinaryMediaType {
+			rh.c.Log.Warn().Str("actual", contentType).Str("expected", constants.BinaryMediaType).Msg("invalid media type")
 			response.WriteHeader(http.StatusUnsupportedMediaType)
 
 			return
@@ -805,7 +797,7 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 		}
 
 		response.Header().Set("Location", fmt.Sprintf("/v2/%s/blobs/%s", name, digest))
-		response.Header().Set(BlobUploadUUID, sessionID)
+		response.Header().Set(constants.BlobUploadUUID, sessionID)
 		response.WriteHeader(http.StatusCreated)
 
 		return
@@ -988,7 +980,7 @@ func (rh *RouteHandler) PatchBlobUpload(response http.ResponseWriter, request *h
 	response.Header().Set("Location", request.URL.String())
 	response.Header().Set("Range", fmt.Sprintf("bytes=0-%d", clen-1))
 	response.Header().Set("Content-Length", "0")
-	response.Header().Set(BlobUploadUUID, sessionID)
+	response.Header().Set(constants.BlobUploadUUID, sessionID)
 	response.WriteHeader(http.StatusAccepted)
 }
 
@@ -1002,7 +994,7 @@ func (rh *RouteHandler) PatchBlobUpload(response http.ResponseWriter, request *h
 // @Param 	digest	 query 	 string 		true				"blob/layer digest"
 // @Success 201 {string} string	"created"
 // @Header  202 {string} Location "/v2/{name}/blobs/uploads/{digest}"
-// @Header  200 {object} api.DistContentDigestKey
+// @Header  200 {object} constants.DistContentDigestKey
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/blobs/uploads/{session_id} [put].
@@ -1128,7 +1120,7 @@ finish:
 
 	response.Header().Set("Location", fmt.Sprintf("/v2/%s/blobs/%s", name, digest))
 	response.Header().Set("Content-Length", "0")
-	response.Header().Set(DistContentDigestKey, digest)
+	response.Header().Set(constants.DistContentDigestKey, digest)
 	response.WriteHeader(http.StatusCreated)
 }
 
@@ -1280,7 +1272,7 @@ func WriteJSON(response http.ResponseWriter, status int, data interface{}) {
 		panic(err)
 	}
 
-	WriteData(response, status, DefaultMediaType, body)
+	WriteData(response, status, constants.DefaultMediaType, body)
 }
 
 func WriteData(w http.ResponseWriter, status int, mediaType string, data []byte) {
