@@ -20,6 +20,7 @@ import (
 	"gopkg.in/resty.v1"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/api/constants"
 	. "zotregistry.io/zot/pkg/test"
 )
 
@@ -181,7 +182,7 @@ func TestAuditLogMessages(t *testing.T) {
 				So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 				blobLoc := Location(baseURL, resp)
 				So(blobLoc, ShouldNotBeEmpty)
-				So(resp.Header().Get(api.DistContentDigestKey), ShouldNotBeEmpty)
+				So(resp.Header().Get(constants.DistContentDigestKey), ShouldNotBeEmpty)
 
 				// wait until the file is populated
 				byteValue, _ = ioutil.ReadAll(auditFile)

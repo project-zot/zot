@@ -44,6 +44,7 @@ import (
 	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/api/constants"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test"
 )
@@ -128,6 +129,7 @@ func TestRunAlreadyRunningServer(t *testing.T) {
 
 			time.Sleep(100 * time.Millisecond)
 		}
+
 		defer func() {
 			ctx := context.Background()
 			_ = ctlr.Server.Shutdown(ctx)
@@ -3045,7 +3047,7 @@ func TestImageSignatures(t *testing.T) {
 		blobLoc := resp.Header().Get("Location")
 		So(blobLoc, ShouldNotBeEmpty)
 		So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
-		So(resp.Header().Get(api.DistContentDigestKey), ShouldNotBeEmpty)
+		So(resp.Header().Get(constants.DistContentDigestKey), ShouldNotBeEmpty)
 
 		// upload image config blob
 		resp, err = resty.R().Post(baseURL + fmt.Sprintf("/v2/%s/blobs/uploads/", repoName))
@@ -3088,7 +3090,7 @@ func TestImageSignatures(t *testing.T) {
 			SetBody(content).Put(baseURL + fmt.Sprintf("/v2/%s/manifests/1.0", repoName))
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-		d := resp.Header().Get(api.DistContentDigestKey)
+		d := resp.Header().Get(constants.DistContentDigestKey)
 		So(d, ShouldNotBeEmpty)
 		So(d, ShouldEqual, digest.String())
 
@@ -3949,7 +3951,7 @@ func TestStorageCommit(t *testing.T) {
 			blobLoc := resp.Header().Get("Location")
 			So(blobLoc, ShouldNotBeEmpty)
 			So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
-			So(resp.Header().Get(api.DistContentDigestKey), ShouldNotBeEmpty)
+			So(resp.Header().Get(constants.DistContentDigestKey), ShouldNotBeEmpty)
 
 			// check a non-existent manifest
 			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
@@ -3998,7 +4000,7 @@ func TestStorageCommit(t *testing.T) {
 				SetBody(content).Put(baseURL + "/v2/repo7/manifests/test:1.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-			digestHdr := resp.Header().Get(api.DistContentDigestKey)
+			digestHdr := resp.Header().Get(constants.DistContentDigestKey)
 			So(digestHdr, ShouldNotBeEmpty)
 			So(digestHdr, ShouldEqual, digest.String())
 
@@ -4006,7 +4008,7 @@ func TestStorageCommit(t *testing.T) {
 				SetBody(content).Put(baseURL + "/v2/repo7/manifests/test:1.0.1")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-			digestHdr = resp.Header().Get(api.DistContentDigestKey)
+			digestHdr = resp.Header().Get(constants.DistContentDigestKey)
 			So(digestHdr, ShouldNotBeEmpty)
 			So(digestHdr, ShouldEqual, digest.String())
 
@@ -4055,7 +4057,7 @@ func TestStorageCommit(t *testing.T) {
 				SetBody(content).Put(baseURL + "/v2/repo7/manifests/test:2.0")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-			digestHdr = resp.Header().Get(api.DistContentDigestKey)
+			digestHdr = resp.Header().Get(constants.DistContentDigestKey)
 			So(digestHdr, ShouldNotBeEmpty)
 			So(digestHdr, ShouldEqual, digest.String())
 
