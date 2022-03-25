@@ -1,5 +1,5 @@
-//go:build extended && needsudo
-// +build extended,needsudo
+//go:build extended && needprivileges
+// +build extended,needprivileges
 
 package cli //nolint:testpackage
 
@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"testing"
 	"time"
 
@@ -20,8 +21,26 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 )
 
-func TestSudoTLSNewControllerPrivilegedCert(t *testing.T) {
+func TestElevatedPrivilegesTLSNewControllerPrivilegedCert(t *testing.T) {
 	Convey("Privileged certs - Make a new controller", t, func() {
+		cmd := exec.Command("mkdir", "-p", "/etc/containers/certs.d/127.0.0.1:8089/") // nolint: gosec
+		_, err := cmd.Output()
+		if err != nil {
+			panic(err)
+		}
+
+		cmd = exec.Command("cp", "../../test/data/client.*", "../../test/data/ca.*", "/etc/containers/certs.d/127.0.0.1:8089/")
+		_, err = cmd.Output()
+		if err != nil {
+			panic(err)
+		}
+
+		cmd = exec.Command("chmod", "a=rwx", "/etc/containers/certs.d/127.0.0.1:8089/*.key")
+		_, err = cmd.Output()
+		if err != nil {
+			panic(err)
+		}
+
 		caCert, err := ioutil.ReadFile(CACert)
 		So(err, ShouldBeNil)
 		caCertPool := x509.NewCertPool()
@@ -41,7 +60,7 @@ func TestSudoTLSNewControllerPrivilegedCert(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 		go func() {
 			// this blocks
-			if err := ctlr.Run(); err != nil {
+			if err := ctlr.Run(context.Background()); err != nil {
 				return
 			}
 		}()
@@ -75,5 +94,11 @@ func TestSudoTLSNewControllerPrivilegedCert(t *testing.T) {
 			err := imageCmd.Execute()
 			So(err, ShouldBeNil)
 		})
+
+		cmd = exec.Command("rm", "-rf", "/etc/containers/certs.d/127.0.0.1:8089/")
+		_, err = cmd.Output()
+		if err != nil {
+			panic(err)
+		}
 	})
 }

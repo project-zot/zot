@@ -1,5 +1,5 @@
-//go:build needsudo
-// +build needsudo
+//go:build needprivileges
+// +build needprivileges
 
 package storage_test
 
@@ -21,7 +21,7 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 )
 
-func TestSudoInvalidDedupe(t *testing.T) {
+func TestElevatedPrivilegesInvalidDedupe(t *testing.T) {
 	Convey("Invalid dedupe scenarios", t, func() {
 		dir := t.TempDir()
 
@@ -74,7 +74,7 @@ func TestSudoInvalidDedupe(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(blob, ShouldEqual, buflen)
 
-		cmd := exec.Command("sudo", "chattr", "+i", path.Join(dir, "dedupe2", "blobs/sha256", blobDigest1)) // nolint: gosec
+		cmd := exec.Command("chattr", "+i", path.Join(dir, "dedupe2", "blobs/sha256", blobDigest1)) // nolint: gosec
 		_, err = cmd.Output()
 		if err != nil {
 			panic(err)
@@ -84,7 +84,7 @@ func TestSudoInvalidDedupe(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		So(blob, ShouldEqual, buflen)
 
-		cmd = exec.Command("sudo", "chattr", "-i", path.Join(dir, "dedupe2", "blobs/sha256", blobDigest1)) // nolint: gosec
+		cmd = exec.Command("chattr", "-i", path.Join(dir, "dedupe2", "blobs/sha256", blobDigest1)) // nolint: gosec
 		_, err = cmd.Output()
 		if err != nil {
 			panic(err)
