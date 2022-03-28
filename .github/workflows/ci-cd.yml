@@ -58,7 +58,7 @@ jobs:
           echo "Building for $OS:$ARCH"
           cd $GITHUB_WORKSPACE
           if [[ $OS == "linux" && $ARCH == "amd64" ]]; then
-            make OS=$OS ARCH=$ARCH -o covhtml
+            make OS=$OS ARCH=$ARCH
             sudo env "PATH=$PATH" make privileged-test
             make covhtml
           else

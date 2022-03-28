@@ -12,6 +12,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -29,17 +30,39 @@ func TestElevatedPrivilegesTLSNewControllerPrivilegedCert(t *testing.T) {
 			panic(err)
 		}
 
-		cmd = exec.Command("cp", "../../test/data/client.*", "../../test/data/ca.*", "/etc/containers/certs.d/127.0.0.1:8089/")
-		_, err = cmd.Output()
-		if err != nil {
-			panic(err)
+		wd, _ := os.Getwd()
+		os.Chdir("../../test/data")
+		
+		clientGlob, _ := filepath.Glob("client.*")
+		caGlob, _ := filepath.Glob("ca.*")
+		
+		for _, file := range clientGlob {
+			cmd = exec.Command("cp", file, "/etc/containers/certs.d/127.0.0.1:8089/")
+			res, err := cmd.CombinedOutput()
+			if err != nil {
+				panic(string(res))
+			}
 		}
 
-		cmd = exec.Command("chmod", "a=rwx", "/etc/containers/certs.d/127.0.0.1:8089/*.key")
-		_, err = cmd.Output()
-		if err != nil {
-			panic(err)
+		for _, file := range caGlob {
+			cmd = exec.Command("cp", file, "/etc/containers/certs.d/127.0.0.1:8089/")
+			res, err := cmd.CombinedOutput()
+			if err != nil {
+				panic(string(res))
+			}
 		}
+
+		allGlob, _ := filepath.Glob("/etc/containers/certs.d/127.0.0.1:8089/*.key")
+
+		for _, file := range allGlob {
+			cmd = exec.Command("chmod", "a=rwx", file)
+			res, err := cmd.CombinedOutput()
+			if err != nil {
+				panic(string(res))
+			}
+		}
+		
+		os.Chdir(wd)
 
 		caCert, err := ioutil.ReadFile(CACert)
 		So(err, ShouldBeNil)
