@@ -294,11 +294,13 @@ func pushSyncedLocalImage(localRepo, tag, localCachePath string,
 			return err
 		}
 
-		_, _, err = imageStore.FullBlobUpload(localRepo, blobReader, blob.Digest.String())
-		if err != nil {
-			log.Error().Err(err).Str("blob digest", blob.Digest.String()).Msg("couldn't upload blob")
+		if found, _, _ := imageStore.CheckBlob(localRepo, blob.Digest.String()); !found {
+			_, _, err = imageStore.FullBlobUpload(localRepo, blobReader, blob.Digest.String())
+			if err != nil {
+				log.Error().Err(err).Str("blob digest", blob.Digest.String()).Msg("couldn't upload blob")
 
-			return err
+				return err
+			}
 		}
 	}
 
@@ -310,11 +312,13 @@ func pushSyncedLocalImage(localRepo, tag, localCachePath string,
 		return err
 	}
 
-	_, _, err = imageStore.FullBlobUpload(localRepo, blobReader, manifest.Config.Digest.String())
-	if err != nil {
-		log.Error().Err(err).Str("blob digest", manifest.Config.Digest.String()).Msg("couldn't upload config blob")
+	if found, _, _ := imageStore.CheckBlob(localRepo, manifest.Config.Digest.String()); !found {
+		_, _, err = imageStore.FullBlobUpload(localRepo, blobReader, manifest.Config.Digest.String())
+		if err != nil {
+			log.Error().Err(err).Str("blob digest", manifest.Config.Digest.String()).Msg("couldn't upload config blob")
 
-		return err
+			return err
+		}
 	}
 
 	_, err = imageStore.PutImageManifest(localRepo, tag, ispec.MediaTypeImageManifest, manifestContent)

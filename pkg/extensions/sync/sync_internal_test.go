@@ -471,15 +471,41 @@ func TestSyncInternal(t *testing.T) {
 			panic(err)
 		}
 
-		manifestConfigPath := path.Join(imageStore.RootDir(), testImage, "blobs", "sha256", manifest.Config.Digest.Hex())
-		if err := os.MkdirAll(manifestConfigPath, 0o000); err != nil {
+		cachedManifestBackup, err := os.ReadFile(cachedManifestConfigPath)
+		if err != nil {
+			panic(err)
+		}
+
+		configDigestBackup := manifest.Config.Digest
+		manifest.Config.Digest = "not what it needs to be"
+		manifestBuf, err := json.Marshal(manifest)
+		if err != nil {
+			panic(err)
+		}
+
+		if err = os.WriteFile(cachedManifestConfigPath, manifestBuf, 0o600); err != nil {
+			panic(err)
+		}
+
+		if err = os.Chmod(cachedManifestConfigPath, 0o755); err != nil {
 			panic(err)
 		}
 
 		err = pushSyncedLocalImage(testImage, testImageTag, testRootDir, imageStore, log)
 		So(err, ShouldNotBeNil)
 
-		if err := os.Remove(manifestConfigPath); err != nil {
+		manifest.Config.Digest = configDigestBackup
+		manifestBuf = cachedManifestBackup
+
+		if err := os.Remove(cachedManifestConfigPath); err != nil {
+			panic(err)
+		}
+
+		if err = os.WriteFile(cachedManifestConfigPath, manifestBuf, 0o600); err != nil {
+			panic(err)
+		}
+
+		if err = os.Chmod(cachedManifestConfigPath, 0o755); err != nil {
 			panic(err)
 		}
 
