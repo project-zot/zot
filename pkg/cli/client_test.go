@@ -1,5 +1,5 @@
-//go:build extended || needprivileges
-// +build extended needprivileges
+//go:build extended
+// +build extended
 
 package cli //nolint:testpackage
 
