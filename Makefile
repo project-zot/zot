@@ -150,8 +150,31 @@ run: binary test
 	./bin/zot-$(OS)-$(ARCH) serve examples/config-test.json
 
 .PHONY: verify-config
-verify-config: binary
-	$(foreach file, $(wildcard examples/config-*), ./bin/zot-$(OS)-$(ARCH) verify $(file) || exit 1;)
+verify-config: _verify-config verify-config-warnings verify-config-commited
+
+.PHONY: _verify-config
+_verify-config: binary
+	rm -f output.txt	
+	$(foreach file, $(wildcard examples/config-*), ./bin/zot-$(OS)-$(ARCH) verify $(file) 2>&1 | tee -a output.txt || exit 1;)
+
+.PHONY: verify-config-warnings
+verify-config-warnings: _verify-config
+	$(eval WARNINGS = $(shell cat output.txt | grep -c '"warn"'))
+	$(eval ERRORS = $(shell cat output.txt | grep -c '"error"'))
+	@if [ $(WARNINGS) != 0 ] || [ $(ERRORS) != 0 ]; then \
+		echo "verify-config-warnings: warnings or errors found while verifying configs"; \
+		rm output.txt; \
+		exit 1; \
+	fi
+	rm -f output.txt
+
+.PHONY: verify-config-commited
+verify-config-commited: _verify-config
+	$(eval UNCOMMITED_FILES = $(shell git status --porcelain | grep -c examples/config-))
+	@if [ $(UNCOMMITED_FILES) != 0 ]; then \
+		echo "Uncommited config files, make sure all config files are commited. Verify might have changed a config file.";\
+		exit 1;\
+	fi; \
 
 .PHONY: binary-container
 binary-container:
