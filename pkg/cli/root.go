@@ -354,22 +354,21 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper) {
 		}
 	}
 
-	if config.DistSpecVersion != distspec.Version {
-		log.Warn().Err(errors.ErrBadConfig).
-			Msgf("config dist-spec version: %s differs from version actually used: %s, will be corrected automatically",
-				config.DistSpecVersion, distspec.Version)
-
-		// rewrite the config file
-		viperInstance.Set("distSpecVersion", distspec.Version)
-
-		err := viperInstance.WriteConfig()
-		if err != nil {
-			log.Warn().Err(errors.ErrBadConfig).
-				Msg("can't rewrite the config file")
-		}
-
-		config.DistSpecVersion = distspec.Version
+	if !config.Storage.GC && viperInstance.Get("storage::gcdelay") == nil {
+		config.Storage.GCDelay = 0
 	}
+}
+
+func updateDistSpecVersion(config *config.Config) {
+	if config.DistSpecVersion == distspec.Version {
+		return
+	}
+
+	log.Warn().
+		Msgf("config dist-spec version: %s differs from version actually used: %s",
+			config.DistSpecVersion, distspec.Version)
+
+	config.DistSpecVersion = distspec.Version
 }
 
 func LoadConfiguration(config *config.Config, configPath string) error {
@@ -412,6 +411,9 @@ func LoadConfiguration(config *config.Config, configPath string) error {
 	if err := validateConfiguration(config); err != nil {
 		return err
 	}
+
+	// update distSpecVersion
+	updateDistSpecVersion(config)
 
 	return nil
 }
