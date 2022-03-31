@@ -609,6 +609,14 @@ func TestOnDemandPermsDenied(t *testing.T) {
 			dctlr.Shutdown()
 		}()
 
+		syncSubDir := path.Join(destDir, testImage, sync.SyncBlobUploadDir)
+
+		err := os.MkdirAll(syncSubDir, 0o755)
+		So(err, ShouldBeNil)
+
+		err = os.Chmod(syncSubDir, 0o000)
+		So(err, ShouldBeNil)
+
 		go func() {
 			// this blocks
 			if err := dctlr.Run(context.Background()); err != nil {
@@ -617,14 +625,6 @@ func TestOnDemandPermsDenied(t *testing.T) {
 		}()
 
 		test.WaitTillServerReady(destBaseURL)
-
-		syncSubDir := path.Join(destDir, testImage, sync.SyncBlobUploadDir)
-
-		err := os.MkdirAll(syncSubDir, 0o755)
-		So(err, ShouldBeNil)
-
-		err = os.Chmod(syncSubDir, 0o000)
-		So(err, ShouldBeNil)
 
 		resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
