@@ -10,6 +10,8 @@ https://zotregistry.io
 
 **Check the [package repository](https://github.com/orgs/project-zot/packages?repo_name=zot) for your os/arch**
 
+**See [demos](demos/README.md)**
+
 ## [**Why zot?**](COMPARISON.md)
 
 ## What's new?
