@@ -171,7 +171,7 @@ image:
 $(BATS):
 	rm -rf bats-core; \
 	git clone https://github.com/bats-core/bats-core.git; \
-	cd bats-core; ./install.sh $(TOOLSDIR); cd ..; \
+	cd bats-core; ./install.sh $(TOOLSDIR); cd ..;\
 	rm -rf bats-core
 
 .PHONY: push-pull
