@@ -44,14 +44,6 @@ func getTagFromRef(ref types.ImageReference, log log.Logger) reference.Tagged {
 	return tagged
 }
 
-// getRepoFromRef returns repo name from a registry ImageReference.
-func getRepoFromRef(ref types.ImageReference, registryDomain string) string {
-	imageName := strings.Replace(ref.DockerReference().Name(), registryDomain, "", 1)
-	imageName = strings.TrimPrefix(imageName, "/")
-
-	return imageName
-}
-
 // parseRepositoryReference parses input into a reference.Named, and verifies that it names a repository, not an image.
 func parseRepositoryReference(input string) (reference.Named, error) {
 	ref, err := reference.ParseNormalizedNamed(input)
@@ -296,11 +288,13 @@ func pushSyncedLocalImage(localRepo, tag, localCachePath string,
 			return err
 		}
 
-		_, _, err = imageStore.FullBlobUpload(localRepo, blobReader, blob.Digest.String())
-		if err != nil {
-			log.Error().Err(err).Str("blob digest", blob.Digest.String()).Msg("couldn't upload blob")
+		if found, _, _ := imageStore.CheckBlob(localRepo, blob.Digest.String()); !found {
+			_, _, err = imageStore.FullBlobUpload(localRepo, blobReader, blob.Digest.String())
+			if err != nil {
+				log.Error().Err(err).Str("blob digest", blob.Digest.String()).Msg("couldn't upload blob")
 
-			return err
+				return err
+			}
 		}
 	}
 
@@ -312,24 +306,18 @@ func pushSyncedLocalImage(localRepo, tag, localCachePath string,
 		return err
 	}
 
-	_, _, err = imageStore.FullBlobUpload(localRepo, blobReader, manifest.Config.Digest.String())
-	if err != nil {
-		log.Error().Err(err).Str("blob digest", manifest.Config.Digest.String()).Msg("couldn't upload config blob")
+	if found, _, _ := imageStore.CheckBlob(localRepo, manifest.Config.Digest.String()); !found {
+		_, _, err = imageStore.FullBlobUpload(localRepo, blobReader, manifest.Config.Digest.String())
+		if err != nil {
+			log.Error().Err(err).Str("blob digest", manifest.Config.Digest.String()).Msg("couldn't upload config blob")
 
-		return err
+			return err
+		}
 	}
 
 	_, err = imageStore.PutImageManifest(localRepo, tag, ispec.MediaTypeImageManifest, manifestContent)
 	if err != nil {
 		log.Error().Err(err).Msg("couldn't upload manifest")
-
-		return err
-	}
-
-	log.Info().Msgf("removing temporary cached synced repo %s", path.Join(cacheImageStore.RootDir(), localRepo))
-
-	if err := os.RemoveAll(cacheImageStore.RootDir()); err != nil {
-		log.Error().Err(err).Msg("couldn't remove locally cached sync repo")
 
 		return err
 	}
@@ -364,17 +352,9 @@ func getImageRef(registryDomain, repo, tag string) (types.ImageReference, error)
 }
 
 // get a local ImageReference used to temporary store one synced image.
-func getLocalImageRef(imageStore storage.ImageStore, repo, tag string) (types.ImageReference, string, error) {
-	uuid, err := guuid.NewV4()
-	// hard to reach test case, injected error, see pkg/test/dev.go
-	if err := test.Error(err); err != nil {
-		return nil, "", err
-	}
-
-	localCachePath := path.Join(imageStore.RootDir(), repo, SyncBlobUploadDir, uuid.String())
-
-	if err = os.MkdirAll(path.Join(localCachePath, repo), storage.DefaultDirPerms); err != nil {
-		return nil, "", err
+func getLocalImageRef(localCachePath, repo, tag string) (types.ImageReference, error) {
+	if _, err := os.ReadDir(localCachePath); err != nil {
+		return nil, err
 	}
 
 	localRepo := path.Join(localCachePath, repo)
@@ -382,10 +362,42 @@ func getLocalImageRef(imageStore storage.ImageStore, repo, tag string) (types.Im
 
 	localImageRef, err := layout.ParseReference(localTaggedRepo)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 
-	return localImageRef, localCachePath, nil
+	return localImageRef, nil
+}
+
+// Returns the localCachePath with an UUID at the end. Only to be called once per repo.
+func getLocalCachePath(imageStore storage.ImageStore, repo string) (string, error) {
+	localRepoPath := path.Join(imageStore.RootDir(), repo, SyncBlobUploadDir)
+	// check if SyncBlobUploadDir exists, create if not
+	var err error
+	if _, err = os.ReadDir(localRepoPath); os.IsNotExist(err) {
+		if err = os.MkdirAll(localRepoPath, storage.DefaultDirPerms); err != nil {
+			return "", err
+		}
+	}
+
+	if err != nil {
+		return "", err
+	}
+
+	// create uuid folder
+	uuid, err := guuid.NewV4()
+	// hard to reach test case, injected error, see pkg/test/dev.go
+	if err := test.Error(err); err != nil {
+		return "", err
+	}
+
+	localCachePath := path.Join(localRepoPath, uuid.String())
+
+	cachedRepoPath := path.Join(localCachePath, repo)
+	if err = os.MkdirAll(cachedRepoPath, storage.DefaultDirPerms); err != nil {
+		return "", err
+	}
+
+	return localCachePath, nil
 }
 
 // canSkipImage returns whether or not we already synced this image.

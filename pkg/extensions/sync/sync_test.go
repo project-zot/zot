@@ -3295,8 +3295,8 @@ func TestSyncOnlyDiff(t *testing.T) {
 				case <-done:
 					return
 				default:
-					_, err := os.ReadDir(path.Join(destDir, testImage, ".sync"))
-					if err == nil {
+					fileList, _ := os.ReadDir(path.Join(destDir, testImage, ".sync"))
+					if len(fileList) > 0 {
 						isPopulated = true
 					}
 					time.Sleep(200 * time.Millisecond)
