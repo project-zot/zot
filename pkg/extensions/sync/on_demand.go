@@ -309,7 +309,12 @@ func syncRun(regCfg RegistryConfig, localRepo, remoteRepo, tag string, utils syn
 		}
 	}
 
-	localImageRef, localCachePath, err := getLocalImageRef(utils.imageStore, localRepo, tag)
+	localCachePath, err := getLocalCachePath(utils.imageStore, localRepo)
+	if err != nil {
+		log.Error().Err(err).Msgf("couldn't get localCachePath for %s", localRepo)
+	}
+
+	localImageRef, err := getLocalImageRef(localCachePath, localRepo, tag)
 	if err != nil {
 		log.Error().Err(err).Msgf("couldn't obtain a valid image reference for reference %s/%s:%s",
 			localCachePath, localRepo, tag)

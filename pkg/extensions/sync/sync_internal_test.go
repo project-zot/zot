@@ -61,11 +61,10 @@ func TestInjectSyncUtils(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
-
 		imageStore := storage.NewImageStore(t.TempDir(), false, storage.DefaultGCDelay, false, false, log, metrics)
-
 		injected = test.InjectFailure(0)
-		_, _, err = getLocalImageRef(imageStore, testImage, testImageTag)
+
+		_, err = getLocalCachePath(imageStore, testImage)
 		if injected {
 			So(err, ShouldNotBeNil)
 		} else {
@@ -154,7 +153,7 @@ func TestSyncInternal(t *testing.T) {
 		So(err, ShouldNotBeNil)
 	})
 
-	Convey("Verify getLocalImageRef()", t, func() {
+	Convey("Verify getLocalImageRef() and getLocalCachePath()", t, func() {
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
 
@@ -163,13 +162,36 @@ func TestSyncInternal(t *testing.T) {
 		err := os.Chmod(imageStore.RootDir(), 0o000)
 		So(err, ShouldBeNil)
 
-		_, _, err = getLocalImageRef(imageStore, testImage, testImageTag)
+		localCachePath, err := getLocalCachePath(imageStore, testImage)
+		So(err, ShouldNotBeNil)
+
+		_, err = getLocalImageRef(localCachePath, testImage, testImageTag)
+		So(err, ShouldNotBeNil)
+
+		err = os.Chmod(imageStore.RootDir(), 0o544)
+		So(err, ShouldBeNil)
+
+		_, err = getLocalCachePath(imageStore, testImage)
 		So(err, ShouldNotBeNil)
 
 		err = os.Chmod(imageStore.RootDir(), 0o755)
 		So(err, ShouldBeNil)
 
-		_, _, err = getLocalImageRef(imageStore, "zot][]321", "tag_tag][]")
+		localCachePath, err = getLocalCachePath(imageStore, testImage)
+		So(err, ShouldBeNil)
+
+		testPath, _ := path.Split(localCachePath)
+
+		err = os.Chmod(testPath, 0o544)
+		So(err, ShouldBeNil)
+
+		_, err = getLocalCachePath(imageStore, testImage)
+		So(err, ShouldNotBeNil)
+
+		err = os.Chmod(testPath, 0o755)
+		So(err, ShouldBeNil)
+
+		_, err = getLocalImageRef(localCachePath, "zot][]321", "tag_tag][]")
 		So(err, ShouldNotBeNil)
 	})
 
@@ -471,15 +493,41 @@ func TestSyncInternal(t *testing.T) {
 			panic(err)
 		}
 
-		manifestConfigPath := path.Join(imageStore.RootDir(), testImage, "blobs", "sha256", manifest.Config.Digest.Hex())
-		if err := os.MkdirAll(manifestConfigPath, 0o000); err != nil {
+		cachedManifestBackup, err := os.ReadFile(cachedManifestConfigPath)
+		if err != nil {
+			panic(err)
+		}
+
+		configDigestBackup := manifest.Config.Digest
+		manifest.Config.Digest = "not what it needs to be"
+		manifestBuf, err := json.Marshal(manifest)
+		if err != nil {
+			panic(err)
+		}
+
+		if err = os.WriteFile(cachedManifestConfigPath, manifestBuf, 0o600); err != nil {
+			panic(err)
+		}
+
+		if err = os.Chmod(cachedManifestConfigPath, 0o755); err != nil {
 			panic(err)
 		}
 
 		err = pushSyncedLocalImage(testImage, testImageTag, testRootDir, imageStore, log)
 		So(err, ShouldNotBeNil)
 
-		if err := os.Remove(manifestConfigPath); err != nil {
+		manifest.Config.Digest = configDigestBackup
+		manifestBuf = cachedManifestBackup
+
+		if err := os.Remove(cachedManifestConfigPath); err != nil {
+			panic(err)
+		}
+
+		if err = os.WriteFile(cachedManifestConfigPath, manifestBuf, 0o600); err != nil {
+			panic(err)
+		}
+
+		if err = os.Chmod(cachedManifestConfigPath, 0o755); err != nil {
 			panic(err)
 		}
 
