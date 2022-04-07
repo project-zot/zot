@@ -86,7 +86,7 @@ jobs:
 
   push-image:
     if: github.event_name == 'release' && github.event.action== 'published'
-    name: Push Docker image to GitHub Packages
+    name: Push OCI images to GitHub Packages
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -101,66 +101,141 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build zot container image
-        uses: docker/build-push-action@v2
+      - name: Build and push zot container image
+        uses: project-stacker/stacker-build-push-action@main
         with:
+          file: 'stacker.yaml'
           build-args: |
             COMMIT=${{ github.event.release.tag_name }}-${{ github.sha }}
             OS=${{ matrix.os }}
             ARCH=${{ matrix.arch }}
-          push: true
-          file: Dockerfile
-          tags: |
-            ghcr.io/${{ github.repository }}-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}
-            ghcr.io/${{ github.repository }}-${{ matrix.os }}-${{ matrix.arch }}:latest
-      - name: Build zot-minimal container image
-        uses: docker/build-push-action@v2
+            REPO_NAME=zot-${{ matrix.os }}-${{ matrix.arch }}
+          url: docker://ghcr.io/${{ github.repository_owner }}
+          tags: ${{ github.event.release.tag_name }} latest
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run zot container image with docker
+        run: |
+          if [[ $OS == "linux" && $ARCH == "amd64" ]]; then
+            docker run -d ghcr.io/${{ github.repository_owner }}/zot-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}
+          fi
+        env:
+          OS: ${{ matrix.os }}
+          ARCH: ${{ matrix.arch }}
+      - name: Run zot container image with podman
+        run: |
+          if [[ $OS == "linux" && $ARCH == "amd64" ]]; then
+            podman run -d ghcr.io/${{ github.repository_owner }}/zot-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}
+          fi
+        env:
+          OS: ${{ matrix.os }}
+          ARCH: ${{ matrix.arch }}
+      - name: Build and push zot-minimal container image
+        uses: project-stacker/stacker-build-push-action@main
         with:
+          file: 'stacker.yaml'
           build-args: |
             COMMIT=${{ github.event.release.tag_name }}-${{ github.sha }}
             OS=${{ matrix.os }}
             ARCH=${{ matrix.arch }}
-          push: true
-          file: Dockerfile-minimal
-          tags: |
-            ghcr.io/${{ github.repository }}-minimal-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}
-            ghcr.io/${{ github.repository }}-minimal-${{ matrix.os }}-${{ matrix.arch }}:latest
-      - name: Build zot-exporter container image
-        uses: docker/build-push-action@v2
+            EXT=-minimal
+            REPO_NAME=zot-minimal-${{ matrix.os }}-${{ matrix.arch }}
+          url: docker://ghcr.io/${{ github.repository_owner }}
+          tags: ${{ github.event.release.tag_name }} latest
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run zot-minimal container image with docker
+        run: |
+          if [[ $OS == "linux" && $ARCH == "amd64" ]]; then
+            docker run -d ghcr.io/${{ github.repository_owner }}/zot-minimal-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}
+          fi
+        env:
+          OS: ${{ matrix.os }}
+          ARCH: ${{ matrix.arch }}
+      - name: Run zot-minimal container image with podman
+        run: |
+          if [[ $OS == "linux" && $ARCH == "amd64" ]]; then
+            podman run -d ghcr.io/${{ github.repository_owner }}/zot-minimal-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}
+          fi
+        env:
+          OS: ${{ matrix.os }}
+          ARCH: ${{ matrix.arch }}
+      - name: Build and push zot-exporter container image
+        uses: project-stacker/stacker-build-push-action@main
         with:
+          file: 'stacker-zxp.yaml'
           build-args: |
             COMMIT=${{ github.event.release.tag_name }}-${{ github.sha }}
             OS=${{ matrix.os }}
             ARCH=${{ matrix.arch }}
-          push: true
-          file: Dockerfile-zxp
-          tags: |
-            ghcr.io/${{ github.repository }}-zxp-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}
-            ghcr.io/${{ github.repository }}-zxp-${{ matrix.os }}-${{ matrix.arch }}:latest
-      - name: Build zb container image
-        uses: docker/build-push-action@v2
+            REPO_NAME=zxp-${{ matrix.os }}-${{ matrix.arch }}
+          url: docker://ghcr.io/${{ github.repository_owner }}
+          tags: ${{ github.event.release.tag_name }} latest
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run zot-exporter container image with docker
+        run: |
+          if [[ $OS == "linux" && $ARCH == "amd64" ]]; then
+            docker run -d ghcr.io/${{ github.repository_owner }}/zxp-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}
+          fi
+        env:
+          OS: ${{ matrix.os }}
+          ARCH: ${{ matrix.arch }}
+      - name: Run zot-exporter container image with podman
+        run: |
+          if [[ $OS == "linux" && $ARCH == "amd64" ]]; then
+            podman run -d ghcr.io/${{ github.repository_owner }}/zxp-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}
+          fi
+        env:
+          OS: ${{ matrix.os }}
+          ARCH: ${{ matrix.arch }}
+      - name: Build and push zb container image
+        uses: project-stacker/stacker-build-push-action@main
         with:
+          file: 'stacker-zb.yaml'
           build-args: |
             COMMIT=${{ github.event.release.tag_name }}-${{ github.sha }}
             OS=${{ matrix.os }}
             ARCH=${{ matrix.arch }}
-          push: true
-          file: Dockerfile-zb
-          tags: |
-            ghcr.io/${{ github.repository }}-zb-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}
-            ghcr.io/${{ github.repository }}-zb-${{ matrix.os }}-${{ matrix.arch }}:latest
+            REPO_NAME=zb-${{ matrix.os }}-${{ matrix.arch }}
+          url: docker://ghcr.io/${{ github.repository_owner }}
+          tags: ${{ github.event.release.tag_name }} latest
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run zb container image with docker
+        run: |
+          if [[ $OS == "linux" && $ARCH == "amd64" ]]; then
+            docker run -d ghcr.io/${{ github.repository_owner }}/zb-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}
+          fi
+        env:
+          OS: ${{ matrix.os }}
+          ARCH: ${{ matrix.arch }}
+      - name: Run zb container image with podman
+        run: |
+          if [[ $OS == "linux" && $ARCH == "amd64" ]]; then
+            podman run -d ghcr.io/${{ github.repository_owner }}/zb-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}
+          fi
+        env:
+          OS: ${{ matrix.os }}
+          ARCH: ${{ matrix.arch }}
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: 'ghcr.io/${{ github.repository }}-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}'
           format: 'sarif'
           output: 'trivy-results.sarif'
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
       - name: Run Trivy vulnerability scanner (minimal)
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: 'ghcr.io/${{ github.repository }}-minimal-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}'
           format: 'sarif'
           output: 'trivy-results.sarif'
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload Trivy scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v1
         with:

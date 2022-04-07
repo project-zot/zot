@@ -1,0 +1,52 @@
+build:
+  from:
+    type: docker
+    url: docker://ghcr.io/project-zot/golang:1.17
+  binds:
+    - . -> /zotcopy
+  run: |
+    export GO111MODULE=on 
+    export GOPATH='/go'
+    export HOME='/root'
+    export PATH='/go/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+    mkdir -p /go/src/github.com/project-zot
+    cd /go/src/github.com/project-zot
+    git clone /zotcopy zot
+    cd /go/src/github.com/project-zot/zot
+    make COMMIT=${{COMMIT}} OS=${{OS}} ARCH=${{ARCH}} clean exporter-minimal
+
+    cat > config.json << EOF
+    {
+      "Server":{
+          "protocol":"http",
+          "host": "127.0.0.1",
+          "port": "5000"
+      },
+      "Exporter":{
+          "port":"5001",
+          "log":{
+            "level":"debug"
+          }
+      }
+    }
+    EOF
+
+    cat config.json
+  build_only: true
+
+"${{REPO_NAME:zxp}}":
+  from:
+    type: docker
+    url: docker://centos:latest
+  import:
+    - stacker://build/go/src/github.com/project-zot/zot/bin/zxp-${{OS}}-${{ARCH}}
+    - stacker://build/go/src/github.com/project-zot/zot/config.json
+  run: |
+    cp /stacker/zxp-${{OS}}-${{ARCH}} /usr/bin/zxp
+    mkdir -p /etc/zxp
+    cp /stacker/config.json /etc/zxp/config.json
+  entrypoint:
+    - /usr/bin/zxp
+  cmd:
+    - config
+    - /etc/zxp/config.json
