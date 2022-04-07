@@ -18,13 +18,20 @@ Examples of working configurations for various use cases are available [here](..
 
 # Configuration Parameters
 
-* [Network](#network)
-* [Storage](#storage)
-* [Authentication](#authentication)
-* [Identity-based Authorization](#identity-based-authorization)
-* [Logging](#logging)
-* [Metrics](#metrics)
-* [Sync](#sync)
+- [Configuration Parameters](#configuration-parameters)
+  - [Network](#network)
+  - [Storage](#storage)
+  - [Authentication](#authentication)
+    - [TLS Mutual Authentication](#tls-mutual-authentication)
+    - [Passphrase Authentication](#passphrase-authentication)
+      - [Authentication Failures](#authentication-failures)
+  - [Identity-based Authorization](#identity-based-authorization)
+  - [Logging](#logging)
+  - [Metrics](#metrics)
+  - [Storage Drivers](#storage-drivers)
+    - [Specifying S3 credentials](#specifying-s3-credentials)
+    - [Specifying S3 redirect option](#specifying-s3-redirect-option)
+  - [Sync](#sync)
 
 
 ## Network
@@ -322,7 +329,8 @@ zot also supports different storage drivers for each subpath.
             "secure": true,
             "skipverify": false,
             "accesskey": "<YOUR_ACCESS_KEY_ID>",
-            "secretkey": "<YOUR_SECRET_ACCESS_KEY>"
+            "secretkey": "<YOUR_SECRET_ACCESS_KEY>",
+            "redirect": false
         }
 ```
 
@@ -361,13 +369,15 @@ The [default] heading defines credentials for the default profile, which the SDK
 
 To specify a profile use AWS_PROFILE environment variable:
 
+
 ```
 AWS_PROFILE=test-account
 ```
 
 For more details see https://docs.aws.amazon.com/sdk-for-go/v1/developer-guide/configuring-sdk.html#specifying-credentials
 
-
+### Specifying S3 redirect option
+With `redirect` field set to true in `storageDriver` Zot will serve a redirect link towards the s3 blob, for the client to download directly. Otherwise it will serve normally the requested blob.
 
 ## Sync
 

@@ -1313,6 +1313,12 @@ func (is *ObjectStorage) GetReferrers(repo, digest, mediaType string) ([]artifac
 	return nil, zerr.ErrMethodNotSupported
 }
 
+func (is *ObjectStorage) URLForPath(path string) (string, error) {
+	remotePath, err := is.store.URLFor(context.Background(), path, map[string]interface{}{})
+
+	return remotePath, err
+}
+
 func (is *ObjectStorage) GetIndexContent(repo string) ([]byte, error) {
 	var lockLatency time.Time
 

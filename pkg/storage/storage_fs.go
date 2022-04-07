@@ -1529,6 +1529,10 @@ func (is *ImageStoreFS) GetReferrers(repo, digest, mediaType string) ([]artifact
 	return result, nil
 }
 
+func (is *ImageStoreFS) URLForPath(path string) (string, error) {
+	return "", zerr.ErrMethodNotSupported
+}
+
 func (is *ImageStoreFS) writeFile(filename string, data []byte) error {
 	if !is.commit {
 		return ioutil.WriteFile(filename, data, DefaultFilePerms)

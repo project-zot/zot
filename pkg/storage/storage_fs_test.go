@@ -160,6 +160,11 @@ func TestStorageFSAPIs(t *testing.T) {
 				panic(err)
 			}
 		})
+		Convey("URLForPath", func() {
+			path, err := imgStore.URLForPath("alpine")
+			So(path, ShouldResemble, "")
+			So(err, ShouldNotBeNil)
+		})
 	})
 }
 

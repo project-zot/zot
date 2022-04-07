@@ -183,6 +183,7 @@ type StorageDriverMock struct {
 	moveFn       func(ctx context.Context, sourcePath, destPath string) error
 	deleteFn     func(ctx context.Context, path string) error
 	walkFn       func(ctx context.Context, path string, f driver.WalkFn) error
+	urlFor       func(ctx context.Context, path string, options map[string]interface{}) (string, error)
 }
 
 func (s *StorageDriverMock) Name() string {
@@ -258,6 +259,10 @@ func (s *StorageDriverMock) Delete(ctx context.Context, path string) error {
 }
 
 func (s *StorageDriverMock) URLFor(ctx context.Context, path string, options map[string]interface{}) (string, error) {
+	if s != nil && s.urlFor != nil {
+		return s.urlFor(ctx, path, options)
+	}
+
 	return "", nil
 }
 
@@ -822,6 +827,16 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 		_, err := imgStore.GetReferrers(testImage, d.String(), "application/image")
 		So(err, ShouldNotBeNil)
 		So(err, ShouldEqual, zerr.ErrMethodNotSupported)
+	})
+	Convey("Test URLForPath", t, func(c C) {
+		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
+			urlFor: func(ctx context.Context, path string, options map[string]interface{}) (string, error) {
+				return fmt.Sprintf("address/ %s", path), nil
+			},
+		})
+		path, err := imgStore.URLForPath("repo")
+		So(path, ShouldNotResemble, "")
+		So(err, ShouldBeNil)
 	})
 }
 

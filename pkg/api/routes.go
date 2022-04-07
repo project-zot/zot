@@ -26,6 +26,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	notreg "github.com/notaryproject/notation/pkg/registry"
 	"github.com/opencontainers/distribution-spec/specs-go/v1/extensions"
+	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	httpSwagger "github.com/swaggo/http-swagger"
@@ -628,6 +629,35 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 	}
 
 	mediaType := request.Header.Get("Accept")
+
+	digestObj, err := godigest.Parse(digest)
+	if err != nil {
+		WriteJSON(response,
+			http.StatusBadRequest,
+			NewErrorList(NewError(DIGEST_INVALID, map[string]string{"digest": digest})))
+	}
+
+	if rh.c.Config.Storage.StorageDriver != nil {
+		redirect, ok := rh.c.Config.Storage.StorageDriver["redirect"].(bool)
+
+		if ok && redirect {
+			path := imgStore.BlobPath(name, digestObj)
+
+			url, err := imgStore.URLForPath(path)
+			if err != nil {
+				rh.c.Log.Error().Err(err).Msgf("can't fetch the url for the given path: %v", path)
+				WriteJSON(response,
+					http.StatusInternalServerError,
+					NewErrorList(NewError(REDIRECT_URL_FAIL, map[string]string{"path": path})))
+
+				return
+			}
+
+			http.Redirect(response, request, url, http.StatusSeeOther)
+
+			return
+		}
+	}
 
 	repo, blen, err := imgStore.GetBlob(name, digest, mediaType)
 	if err != nil {

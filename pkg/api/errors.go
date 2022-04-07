@@ -35,6 +35,7 @@ const (
 	DENIED
 	UNSUPPORTED
 	INVALID_INDEX
+	REDIRECT_URL_FAIL
 )
 
 func (e ErrorCode) String() string {
@@ -55,6 +56,7 @@ func (e ErrorCode) String() string {
 		DENIED:                "DENIED",
 		UNSUPPORTED:           "UNSUPPORTED",
 		INVALID_INDEX:         "INVALID_INDEX",
+		REDIRECT_URL_FAIL:     "REDIRECT_URL_FAIL",
 	}
 
 	return errMap[e]
@@ -158,6 +160,11 @@ func NewError(code ErrorCode, detail ...interface{}) Error { //nolint: interface
 		INVALID_INDEX: {
 			Message:     "Invalid format of index.json file of the repo",
 			Description: "index.json file does not contain data in json format",
+		},
+
+		REDIRECT_URL_FAIL: {
+			Message:     "Can't procure the URL for the requested s3 resource.",
+			Description: `The URL for the given path can't be found.`,
 		},
 	}
 

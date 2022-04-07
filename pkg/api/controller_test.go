@@ -3948,6 +3948,21 @@ func TestRouteFailures(t *testing.T) {
 			defer resp.Body.Close()
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
+
+			// send invalid digest format
+			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{
+				"name":   "foo",
+				"digest": "sha2567173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc",
+			})
+			response = httptest.NewRecorder()
+
+			rthdlr.GetBlob(response, request)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
 		})
 
 		Convey("Delete blob", func() {
