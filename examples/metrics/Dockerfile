@@ -30,11 +30,11 @@ RUN echo '{\n\
 # ---
 # Stage 2: Final image with nothing but certs, binary, and default config file
 # ---
-FROM scratch AS final
+FROM gcr.io/distroless/base AS final
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-COPY --from=builder /go/src/github.com/project-zot/zot/bin/zot /zot
+COPY --from=builder /go/src/github.com/project-zot/zot/bin/zot-linux-amd64 /usr/bin/zot
 COPY --from=builder /go/src/github.com/project-zot/zot/config.json /etc/zot/config.json
-ENTRYPOINT ["/zot"]
+ENTRYPOINT ["/usr/bin/zot"]
 EXPOSE 5000
 VOLUME ["/var/lib/registry"]
 CMD ["serve", "/etc/zot/config.json"]
