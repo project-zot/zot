@@ -23,9 +23,9 @@ RUN echo '{\n\
 # ---
 # Stage 2: Final image with nothing but binary and default config file
 # ---
-FROM scratch AS final
-COPY --from=builder /go/src/github.com/project-zot/zot/bin/zxp /zxp
+FROM gcr.io/distroless/base AS final
+COPY --from=builder /go/src/github.com/project-zot/zot/bin/zxp-linux-amd64 /usr/bin/zxp
 COPY --from=builder /go/src/github.com/project-zot/zot/config.json /etc/zxp/config.json
-ENTRYPOINT ["/zxp"]
+ENTRYPOINT ["/usr/bin/zxp"]
 EXPOSE 5051
 CMD ["config", "/etc/zxp/config.json"]
