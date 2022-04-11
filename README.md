@@ -10,14 +10,14 @@ https://zotregistry.io
 
 **Check the [package repository](https://github.com/orgs/project-zot/packages?repo_name=zot) for your os/arch**
 
-**See [demos](demos/README.md)**
-
 ## [**Why zot?**](COMPARISON.md)
 
 ## What's new?
 * Supports container image signatures - [cosign](https://github.com/sigstore/cosign) and [notation](https://github.com/notaryproject/notation)
 * Multi-arch support
 * Clustering support
+
+## [Demos](demos/README.md)
 
 # Features
 * Conforms to [OCI distribution spec](https://github.com/opencontainers/distribution-spec) APIs
