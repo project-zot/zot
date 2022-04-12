@@ -129,7 +129,7 @@ func NewImageStore(rootDir string, gc bool, gcDelay time.Duration, dedupe, commi
 	}
 
 	if dedupe {
-		imgStore.cache = NewCache(rootDir, "cache", log)
+		imgStore.cache = NewCache(rootDir, "cache", true, log)
 	}
 
 	if gc {

@@ -308,13 +308,15 @@ zot also supports different storage drivers for each subpath.
 
 ### Specifying S3 credentials
 
-There are multiple ways to specify S3 credentials:
-
 - Config file: 
 
 ```
+    "storage": {
+        "rootDirectory": "/tmp/zot",  # local path used to store dedupe cache database
+        "dedupe": true,
         "storageDriver": {
             "name": "s3",
+            "rootdirectory": "/zot",  # this is a prefix that is applied to all S3 keys to allow you to segment data in your bucket if necessary.
             "region": "us-east-2",
             "bucket": "zot-storage",
             "secure": true,
@@ -323,6 +325,8 @@ There are multiple ways to specify S3 credentials:
             "secretkey": "<YOUR_SECRET_ACCESS_KEY>"
         }
 ```
+
+There are multiple ways to specify S3 credentials besides config file:
 
 - Environment variables:
 

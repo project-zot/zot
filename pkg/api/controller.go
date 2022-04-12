@@ -218,7 +218,8 @@ func (c *Controller) InitImageStore(reloadCtx context.Context) error {
 	c.StoreController = storage.StoreController{}
 
 	if c.Config.Storage.RootDirectory != "" {
-		if c.Config.Storage.Dedupe {
+		// no need to validate hard links work on s3
+		if c.Config.Storage.Dedupe && c.Config.Storage.StorageDriver == nil {
 			err := storage.ValidateHardLink(c.Config.Storage.RootDirectory)
 			if err != nil {
 				c.Log.Warn().Msg("input storage root directory filesystem does not supports hardlinking," +
@@ -229,7 +230,7 @@ func (c *Controller) InitImageStore(reloadCtx context.Context) error {
 		}
 
 		var defaultStore storage.ImageStore
-		if len(c.Config.Storage.StorageDriver) == 0 {
+		if c.Config.Storage.StorageDriver == nil {
 			defaultStore = storage.NewImageStore(c.Config.Storage.RootDirectory,
 				c.Config.Storage.GC, c.Config.Storage.GCDelay, c.Config.Storage.Dedupe, c.Config.Storage.Commit, c.Log, c.Metrics)
 		} else {
@@ -246,7 +247,14 @@ func (c *Controller) InitImageStore(reloadCtx context.Context) error {
 				return err
 			}
 
-			defaultStore = s3.NewImageStore(c.Config.Storage.RootDirectory,
+			/* in the case of s3 c.Config.Storage.RootDirectory is used for caching blobs locally and
+			c.Config.Storage.StorageDriver["rootdirectory"] is the actual rootDir in s3 */
+			rootDir := "/"
+			if c.Config.Storage.StorageDriver["rootdirectory"] != nil {
+				rootDir = fmt.Sprintf("%v", c.Config.Storage.StorageDriver["rootdirectory"])
+			}
+
+			defaultStore = s3.NewImageStore(rootDir, c.Config.Storage.RootDirectory,
 				c.Config.Storage.GC, c.Config.Storage.GCDelay, c.Config.Storage.Dedupe,
 				c.Config.Storage.Commit, c.Log, c.Metrics, store)
 		}
@@ -267,7 +275,8 @@ func (c *Controller) InitImageStore(reloadCtx context.Context) error {
 
 			// creating image store per subpaths
 			for route, storageConfig := range subPaths {
-				if storageConfig.Dedupe {
+				// no need to validate hard links work on s3
+				if storageConfig.Dedupe && storageConfig.StorageDriver == nil {
 					err := storage.ValidateHardLink(storageConfig.RootDirectory)
 					if err != nil {
 						c.Log.Warn().Msg("input storage root directory filesystem does not supports hardlinking, " +
@@ -277,7 +286,7 @@ func (c *Controller) InitImageStore(reloadCtx context.Context) error {
 					}
 				}
 
-				if len(storageConfig.StorageDriver) == 0 {
+				if storageConfig.StorageDriver == nil {
 					subImageStore[route] = storage.NewImageStore(storageConfig.RootDirectory,
 						storageConfig.GC, storageConfig.GCDelay, storageConfig.Dedupe, storageConfig.Commit, c.Log, c.Metrics)
 				} else {
@@ -294,7 +303,14 @@ func (c *Controller) InitImageStore(reloadCtx context.Context) error {
 						return err
 					}
 
-					subImageStore[route] = s3.NewImageStore(storageConfig.RootDirectory,
+					/* in the case of s3 c.Config.Storage.RootDirectory is used for caching blobs locally and
+					c.Config.Storage.StorageDriver["rootdirectory"] is the actual rootDir in s3 */
+					rootDir := "/"
+					if c.Config.Storage.StorageDriver["rootdirectory"] != nil {
+						rootDir = fmt.Sprintf("%v", c.Config.Storage.StorageDriver["rootdirectory"])
+					}
+
+					subImageStore[route] = s3.NewImageStore(rootDir, storageConfig.RootDirectory,
 						storageConfig.GC, storageConfig.GCDelay, storageConfig.Dedupe, storageConfig.Commit, c.Log, c.Metrics, store)
 				}
 			}

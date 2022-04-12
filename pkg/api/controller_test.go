@@ -151,8 +151,8 @@ func TestObjectStorageController(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 		storageDriverParams := map[string]interface{}{
-			"rootDir": "zot",
-			"name":    storage.S3StorageDriverName,
+			"rootdirectory": "zot",
+			"name":          storage.S3StorageDriverName,
 		}
 		conf.Storage.StorageDriver = storageDriverParams
 		ctlr := api.NewController(conf)
@@ -174,7 +174,7 @@ func TestObjectStorageController(t *testing.T) {
 		endpoint := os.Getenv("S3MOCK_ENDPOINT")
 
 		storageDriverParams := map[string]interface{}{
-			"rootDir":        "zot",
+			"rootdirectory":  "zot",
 			"name":           storage.S3StorageDriverName,
 			"region":         "us-east-2",
 			"bucket":         bucket,
@@ -206,7 +206,7 @@ func TestObjectStorageControllerSubPaths(t *testing.T) {
 		endpoint := os.Getenv("S3MOCK_ENDPOINT")
 
 		storageDriverParams := map[string]interface{}{
-			"rootDir":        "zot",
+			"rootdirectory":  "zot",
 			"name":           storage.S3StorageDriverName,
 			"region":         "us-east-2",
 			"bucket":         bucket,

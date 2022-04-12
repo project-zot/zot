@@ -1,9 +1,11 @@
 {
     "distSpecVersion": "1.0.1-dev",
     "storage": {
-        "rootDirectory": "/zot",
+        "rootDirectory": "/tmp/zot",
+        "dedupe": true,
         "storageDriver": {
             "name": "s3",
+            "rootdirectory": "/zot",
             "region": "us-east-2",
             "bucket": "zot-storage",
             "secure": true,
@@ -11,9 +13,11 @@
         },
         "subPaths": {
             "/a": {
-                "rootDirectory": "/zot-a",
+                "rootDirectory": "/tmp/zot1",
+                "dedupe": false,
                 "storageDriver": {
                     "name": "s3",
+                    "rootdirectory": "/zot-a",
                     "region": "us-east-2",
                     "bucket": "zot-storage",
                     "secure": true,
@@ -21,9 +25,11 @@
                 }
             },
             "/b": {
-                "rootDirectory": "/zot-b",
+                "rootDirectory": "/tmp/zot2",
+                "dedupe": true,
                 "storageDriver": {
                     "name": "s3",
+                    "rootdirectory": "/zot-b",
                     "region": "us-east-2",
                     "bucket": "zot-storage",
                     "secure": true,
@@ -31,9 +37,11 @@
                 }
             },
             "/c": {
-                "rootDirectory": "/zot-c",
+                "rootDirectory": "/tmp/zot3",
+                "dedupe": true,
                 "storageDriver": {
                     "name": "s3",
+                    "rootdirectory": "/zot-c",
                     "region": "us-east-2",
                     "bucket": "zot-storage",
                     "secure": false,

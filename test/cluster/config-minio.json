@@ -1,11 +1,12 @@
 {
-    "distSpecVersion": "1.0.0",
+    "distSpecVersion": "1.0.1",
     "storage": {
-        "rootDirectory": "/zot",
+        "rootDirectory": "/tmp/zot",
         "gc": false,
         "dedupe": false,
         "storageDriver": {
             "name": "s3",
+            "rootdirectory": "/zot",
             "region": "us-east-2",
             "bucket": "zot-storage",
             "regionendpoint": "http://localhost:9000",
