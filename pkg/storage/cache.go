@@ -13,13 +13,15 @@ import (
 
 const (
 	BlobsCache              = "blobs"
+	DBExtensionName         = ".db"
 	dbCacheLockCheckTimeout = 10 * time.Second
 )
 
 type Cache struct {
-	rootDir string
-	db      *bbolt.DB
-	log     zlog.Logger
+	rootDir     string
+	db          *bbolt.DB
+	log         zlog.Logger
+	useRelPaths bool // weather or not to use relative paths, should be true for filesystem and false for s3
 }
 
 // Blob is a blob record.
@@ -27,8 +29,8 @@ type Blob struct {
 	Path string
 }
 
-func NewCache(rootDir, name string, log zlog.Logger) *Cache {
-	dbPath := path.Join(rootDir, name+".db")
+func NewCache(rootDir string, name string, useRelPaths bool, log zlog.Logger) *Cache {
+	dbPath := path.Join(rootDir, name+DBExtensionName)
 	dbOpts := &bbolt.Options{
 		Timeout:      dbCacheLockCheckTimeout,
 		FreelistType: bbolt.FreelistArrayType,
@@ -57,7 +59,7 @@ func NewCache(rootDir, name string, log zlog.Logger) *Cache {
 		return nil
 	}
 
-	return &Cache{rootDir: rootDir, db: cacheDB, log: log}
+	return &Cache{rootDir: rootDir, db: cacheDB, useRelPaths: useRelPaths, log: log}
 }
 
 func (c *Cache) PutBlob(digest, path string) error {
@@ -68,9 +70,12 @@ func (c *Cache) PutBlob(digest, path string) error {
 	}
 
 	// use only relative (to rootDir) paths on blobs
-	relp, err := filepath.Rel(c.rootDir, path)
-	if err != nil {
-		c.log.Error().Err(err).Str("path", path).Msg("unable to get relative path")
+	var err error
+	if c.useRelPaths {
+		path, err = filepath.Rel(c.rootDir, path)
+		if err != nil {
+			c.log.Error().Err(err).Str("path", path).Msg("unable to get relative path")
+		}
 	}
 
 	if err := c.db.Update(func(tx *bbolt.Tx) error {
@@ -91,8 +96,8 @@ func (c *Cache) PutBlob(digest, path string) error {
 			return err
 		}
 
-		if err := bucket.Put([]byte(relp), nil); err != nil {
-			c.log.Error().Err(err).Str("bucket", digest).Str("value", relp).Msg("unable to put record")
+		if err := bucket.Put([]byte(path), nil); err != nil {
+			c.log.Error().Err(err).Str("bucket", digest).Str("value", path).Msg("unable to put record")
 
 			return err
 		}
@@ -166,9 +171,12 @@ func (c *Cache) HasBlob(digest, blob string) bool {
 
 func (c *Cache) DeleteBlob(digest, path string) error {
 	// use only relative (to rootDir) paths on blobs
-	relp, err := filepath.Rel(c.rootDir, path)
-	if err != nil {
-		c.log.Error().Err(err).Str("path", path).Msg("unable to get relative path")
+	var err error
+	if c.useRelPaths {
+		path, err = filepath.Rel(c.rootDir, path)
+		if err != nil {
+			c.log.Error().Err(err).Str("path", path).Msg("unable to get relative path")
+		}
 	}
 
 	if err := c.db.Update(func(tx *bbolt.Tx) error {
@@ -186,8 +194,8 @@ func (c *Cache) DeleteBlob(digest, path string) error {
 			return errors.ErrCacheMiss
 		}
 
-		if err := bucket.Delete([]byte(relp)); err != nil {
-			c.log.Error().Err(err).Str("digest", digest).Str("path", relp).Msg("unable to delete")
+		if err := bucket.Delete([]byte(path)); err != nil {
+			c.log.Error().Err(err).Str("digest", digest).Str("path", path).Msg("unable to delete")
 
 			return err
 		}
@@ -196,9 +204,9 @@ func (c *Cache) DeleteBlob(digest, path string) error {
 
 		k, _ := cur.First()
 		if k == nil {
-			c.log.Debug().Str("digest", digest).Str("path", relp).Msg("deleting empty bucket")
+			c.log.Debug().Str("digest", digest).Str("path", path).Msg("deleting empty bucket")
 			if err := root.DeleteBucket([]byte(digest)); err != nil {
-				c.log.Error().Err(err).Str("digest", digest).Str("path", relp).Msg("unable to delete")
+				c.log.Error().Err(err).Str("digest", digest).Str("path", path).Msg("unable to delete")
 
 				return err
 			}

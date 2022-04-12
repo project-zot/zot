@@ -42,7 +42,7 @@ func skipIt(t *testing.T) {
 	}
 }
 
-func createObjectsStore(rootDir string) (driver.StorageDriver, storage.ImageStore, error) {
+func createObjectsStore(rootDir string, cacheDir string) (driver.StorageDriver, storage.ImageStore, error) {
 	bucket := "zot-storage-test"
 	endpoint := os.Getenv("S3MOCK_ENDPOINT")
 	storageDriverParams := map[string]interface{}{
@@ -51,6 +51,8 @@ func createObjectsStore(rootDir string) (driver.StorageDriver, storage.ImageStor
 		"region":         "us-east-2",
 		"bucket":         bucket,
 		"regionendpoint": endpoint,
+		"accesskey":      "minioadmin",
+		"secretkey":      "minioadmin",
 		"secure":         false,
 		"skipverify":     false,
 	}
@@ -71,7 +73,7 @@ func createObjectsStore(rootDir string) (driver.StorageDriver, storage.ImageStor
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
 
-	il := s3.NewImageStore(rootDir, false, storage.DefaultGCDelay, false, false, log, metrics, store)
+	il := s3.NewImageStore(rootDir, cacheDir, false, storage.DefaultGCDelay, true, false, log, metrics, store)
 
 	return store, il, err
 }
@@ -105,9 +107,10 @@ func TestStorageAPIs(t *testing.T) {
 				}
 
 				testDir := path.Join("/oci-repo-test", uuid.String())
+				tdir := t.TempDir()
 
 				var store driver.StorageDriver
-				store, imgStore, _ = createObjectsStore(testDir)
+				store, imgStore, _ = createObjectsStore(testDir, tdir)
 				defer cleanupStorage(store, testDir)
 			} else {
 				dir := t.TempDir()
@@ -676,15 +679,15 @@ func TestStorageHandler(t *testing.T) {
 				var thirdStorageDriver driver.StorageDriver
 
 				firstRootDir = "/util_test1"
-				firstStorageDriver, firstStore, _ = createObjectsStore(firstRootDir)
+				firstStorageDriver, firstStore, _ = createObjectsStore(firstRootDir, t.TempDir())
 				defer cleanupStorage(firstStorageDriver, firstRootDir)
 
 				secondRootDir = "/util_test2"
-				secondStorageDriver, secondStore, _ = createObjectsStore(secondRootDir)
+				secondStorageDriver, secondStore, _ = createObjectsStore(secondRootDir, t.TempDir())
 				defer cleanupStorage(secondStorageDriver, secondRootDir)
 
 				thirdRootDir = "/util_test3"
-				thirdStorageDriver, thirdStore, _ = createObjectsStore(thirdRootDir)
+				thirdStorageDriver, thirdStore, _ = createObjectsStore(thirdRootDir, t.TempDir())
 				defer cleanupStorage(thirdStorageDriver, thirdRootDir)
 			} else {
 				// Create temporary directory

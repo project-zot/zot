@@ -17,9 +17,9 @@ func TestCache(t *testing.T) {
 		log := log.NewLogger("debug", "")
 		So(log, ShouldNotBeNil)
 
-		So(storage.NewCache("/deadBEEF", "cache_test", log), ShouldBeNil)
+		So(storage.NewCache("/deadBEEF", "cache_test", true, log), ShouldBeNil)
 
-		cache := storage.NewCache(dir, "cache_test", log)
+		cache := storage.NewCache(dir, "cache_test", true, log)
 		So(cache, ShouldNotBeNil)
 
 		val, err := cache.GetBlob("key")
