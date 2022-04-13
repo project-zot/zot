@@ -955,14 +955,6 @@ func (rh *RouteHandler) PatchBlobUpload(response http.ResponseWriter, request *h
 			return
 		}
 
-		contentRange := request.Header.Get("Content-Range")
-		if contentRange == "" {
-			rh.c.Log.Warn().Str("actual", request.Header.Get("Content-Range")).Msg("invalid content range")
-			response.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
-
-			return
-		}
-
 		var from, to int64
 		if from, to, err = getContentRange(request); err != nil || (to-from)+1 != contentLength {
 			response.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
