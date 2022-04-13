@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "zot.fullname" . }}
+  labels:
+    {{- include "zot.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: zot
+      protocol: TCP
+      name: zot
+  selector:
+    {{- include "zot.selectorLabels" . | nindent 4 }}

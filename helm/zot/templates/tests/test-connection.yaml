@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "zot.fullname" . }}-test-connection"
+  labels:
+    {{- include "zot.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+spec:
+  containers:
+    - name: wget
+      image: busybox
+      command: ['wget']
+      args: ['{{ include "zot.fullname" . }}:{{ .Values.service.port }}/v2/_catalog']
+  restartPolicy: Never
