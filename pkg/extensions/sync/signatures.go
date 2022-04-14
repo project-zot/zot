@@ -11,7 +11,7 @@ import (
 	notreg "github.com/notaryproject/notation/pkg/registry"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
-	"github.com/sigstore/cosign/pkg/cosign"
+	"github.com/sigstore/cosign/pkg/oci/remote"
 	"gopkg.in/resty.v1"
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/constants"
@@ -339,7 +339,7 @@ func canSkipCosignSignature(repo, tag, digest string, cosignManifest *ispec.Mani
 // sync feature will try to pull cosign signature because for sync cosign signature is just an image
 // this function will check if tag is a cosign tag.
 func isCosignTag(tag string) bool {
-	if strings.HasPrefix(tag, "sha256-") && strings.HasSuffix(tag, cosign.SignatureTagSuffix) {
+	if strings.HasPrefix(tag, "sha256-") && strings.HasSuffix(tag, remote.SignatureTagSuffix) {
 		return true
 	}
 
@@ -348,7 +348,7 @@ func isCosignTag(tag string) bool {
 
 func getCosignTagFromImageDigest(digest string) string {
 	if !isCosignTag(digest) {
-		return strings.Replace(digest, ":", "-", 1) + cosign.SignatureTagSuffix
+		return strings.Replace(digest, ":", "-", 1) + "." + remote.SignatureTagSuffix
 	}
 
 	return digest
