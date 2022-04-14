@@ -32,7 +32,7 @@ import (
 	"github.com/sigstore/cosign/cmd/cosign/cli/options"
 	"github.com/sigstore/cosign/cmd/cosign/cli/sign"
 	"github.com/sigstore/cosign/cmd/cosign/cli/verify"
-	"github.com/sigstore/cosign/pkg/cosign"
+	"github.com/sigstore/cosign/pkg/oci/remote"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 	"zotregistry.io/zot/pkg/api"
@@ -2166,7 +2166,8 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 
 		Convey("Trigger error on cosign signature", func() {
 			// trigger permission error on cosign signature on upstream
-			cosignTag := string(imageManifestDigest.Algorithm()) + "-" + imageManifestDigest.Hex() + cosign.SignatureTagSuffix
+			cosignTag := string(imageManifestDigest.Algorithm()) + "-" + imageManifestDigest.Hex() +
+				"." + remote.SignatureTagSuffix
 
 			getCosignManifestURL := srcBaseURL + path.Join("/v2", repoName, "manifests", cosignTag)
 			mResp, err := resty.R().Get(getCosignManifestURL)
@@ -3488,7 +3489,7 @@ func TestSyncSignaturesDiff(t *testing.T) {
 		defer func() { _ = os.Chdir(cwd) }()
 		tdir, err := ioutil.TempDir("", "sigs")
 		So(err, ShouldBeNil)
-		defer os.RemoveAll(tdir)
+
 		_ = os.Chdir(tdir)
 		generateKeyPairs(tdir)
 
@@ -3577,7 +3578,13 @@ func TestSyncSignaturesDiff(t *testing.T) {
 		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")})
 		So(err, ShouldBeNil)
 
-		// now add signatures to upstream and let sync detect that upstream signatures changed and pull them
+		// now add new signatures to upstream and let sync detect that upstream signatures changed and pull them
+		So(os.RemoveAll(tdir), ShouldBeNil)
+		tdir, err = ioutil.TempDir("", "sigs")
+		So(err, ShouldBeNil)
+		defer os.RemoveAll(tdir)
+		_ = os.Chdir(tdir)
+		generateKeyPairs(tdir)
 		So(func() { signImage(tdir, srcPort, repoName, digest) }, ShouldNotPanic)
 
 		// wait for signatures
@@ -3789,7 +3796,7 @@ func signImage(tdir, port, repoName string, digest godigest.Digest) {
 		options.RegistryOptions{AllowInsecure: true},
 		map[string]interface{}{"tag": "1.0"},
 		[]string{fmt.Sprintf("localhost:%s/%s@%s", port, repoName, digest.String())},
-		"", true, "", "", "", false, false, "")
+		"", "", true, "", "", "", false, false, "")
 	if err != nil {
 		panic(err)
 	}
