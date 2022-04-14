@@ -649,3 +649,246 @@ func TestFindRepoMatchingContentID(t *testing.T) {
 		}
 	})
 }
+
+func TestCompareManifest(t *testing.T) {
+	testCases := []struct {
+		manifest1 ispec.Manifest
+		manifest2 ispec.Manifest
+		expected  bool
+	}{
+		{
+			manifest1: ispec.Manifest{
+				Config: ispec.Descriptor{
+					Digest: "digest1",
+				},
+			},
+			manifest2: ispec.Manifest{
+				Config: ispec.Descriptor{
+					Digest: "digest2",
+				},
+			},
+			expected: false,
+		},
+		{
+			manifest1: ispec.Manifest{
+				Config: ispec.Descriptor{
+					Digest: "digest",
+				},
+			},
+			manifest2: ispec.Manifest{
+				Config: ispec.Descriptor{
+					Digest: "digest",
+				},
+			},
+			expected: true,
+		},
+		{
+			manifest1: ispec.Manifest{
+				Layers: []ispec.Descriptor{{
+					Digest: "digest",
+					Size:   1,
+				}},
+			},
+			manifest2: ispec.Manifest{
+				Layers: []ispec.Descriptor{{
+					Digest: "digest",
+					Size:   1,
+				}},
+			},
+			expected: true,
+		},
+		{
+			manifest1: ispec.Manifest{
+				Layers: []ispec.Descriptor{{
+					Digest: "digest1",
+					Size:   1,
+				}},
+			},
+			manifest2: ispec.Manifest{
+				Layers: []ispec.Descriptor{{
+					Digest: "digest2",
+					Size:   2,
+				}},
+			},
+			expected: false,
+		},
+		{
+			manifest1: ispec.Manifest{
+				Layers: []ispec.Descriptor{
+					{
+						Digest: "digest",
+						Size:   1,
+					},
+					{
+						Digest: "digest1",
+						Size:   1,
+					},
+				},
+			},
+			manifest2: ispec.Manifest{
+				Layers: []ispec.Descriptor{{
+					Digest: "digest",
+					Size:   1,
+				}},
+			},
+			expected: false,
+		},
+		{
+			manifest1: ispec.Manifest{
+				Layers: []ispec.Descriptor{
+					{
+						Digest: "digest1",
+						Size:   1,
+					},
+					{
+						Digest: "digest2",
+						Size:   2,
+					},
+				},
+			},
+			manifest2: ispec.Manifest{
+				Layers: []ispec.Descriptor{
+					{
+						Digest: "digest1",
+						Size:   1,
+					},
+					{
+						Digest: "digest2",
+						Size:   2,
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			manifest1: ispec.Manifest{
+				Layers: []ispec.Descriptor{
+					{
+						Digest: "digest",
+						Size:   1,
+					},
+					{
+						Digest: "digest1",
+						Size:   1,
+					},
+				},
+			},
+			manifest2: ispec.Manifest{
+				Layers: []ispec.Descriptor{
+					{
+						Digest: "digest",
+						Size:   1,
+					},
+					{
+						Digest: "digest2",
+						Size:   2,
+					},
+				},
+			},
+			expected: false,
+		},
+	}
+
+	Convey("Test manifestsEqual()", t, func() {
+		for _, test := range testCases {
+			actualResult := manifestsEqual(test.manifest1, test.manifest2)
+			So(actualResult, ShouldEqual, test.expected)
+		}
+	})
+}
+
+func TestCompareArtifactRefs(t *testing.T) {
+	testCases := []struct {
+		refs1    []artifactspec.Descriptor
+		refs2    []artifactspec.Descriptor
+		expected bool
+	}{
+		{
+			refs1: []artifactspec.Descriptor{
+				{
+					Digest: "digest1",
+				},
+			},
+			refs2: []artifactspec.Descriptor{
+				{
+					Digest: "digest2",
+				},
+			},
+			expected: false,
+		},
+		{
+			refs1: []artifactspec.Descriptor{
+				{
+					Digest: "digest",
+				},
+			},
+			refs2: []artifactspec.Descriptor{
+				{
+					Digest: "digest",
+				},
+			},
+			expected: true,
+		},
+		{
+			refs1: []artifactspec.Descriptor{
+				{
+					Digest: "digest",
+				},
+				{
+					Digest: "digest2",
+				},
+			},
+			refs2: []artifactspec.Descriptor{
+				{
+					Digest: "digest",
+				},
+			},
+			expected: false,
+		},
+		{
+			refs1: []artifactspec.Descriptor{
+				{
+					Digest: "digest1",
+				},
+				{
+					Digest: "digest2",
+				},
+			},
+			refs2: []artifactspec.Descriptor{
+				{
+					Digest: "digest1",
+				},
+				{
+					Digest: "digest2",
+				},
+			},
+			expected: true,
+		},
+		{
+			refs1: []artifactspec.Descriptor{
+				{
+					Digest: "digest",
+				},
+				{
+					Digest: "digest1",
+				},
+			},
+			refs2: []artifactspec.Descriptor{
+				{
+					Digest: "digest1",
+				},
+				{
+					Digest: "digest2",
+				},
+			},
+			expected: false,
+		},
+	}
+
+	Convey("Test manifestsEqual()", t, func() {
+		for _, test := range testCases {
+			actualResult := artifactDescriptorsEqual(test.refs1, test.refs2)
+			So(actualResult, ShouldEqual, test.expected)
+		}
+	})
+}
