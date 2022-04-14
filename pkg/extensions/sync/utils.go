@@ -412,9 +412,8 @@ func canSkipImage(repo, tag, digest string, imageStore storage.ImageStore, log l
 func manifestsEqual(manifest1, manifest2 ispec.Manifest) bool {
 	if manifest1.Config.Digest == manifest2.Config.Digest &&
 		manifest1.Config.MediaType == manifest2.Config.MediaType &&
-		manifest1.Config.Size == manifest2.Config.Size &&
-		len(manifest1.Layers) == len(manifest2.Layers) {
-		if descriptorEqual(manifest1.Layers, manifest2.Layers) {
+		manifest1.Config.Size == manifest2.Config.Size {
+		if descriptorsEqual(manifest1.Layers, manifest2.Layers) {
 			return true
 		}
 	}
@@ -423,31 +422,35 @@ func manifestsEqual(manifest1, manifest2 ispec.Manifest) bool {
 }
 
 func artifactDescriptorsEqual(desc1, desc2 []artifactspec.Descriptor) bool {
-	if len(desc1) == len(desc2) {
-		for id, desc := range desc1 {
-			if desc.Digest == desc2[id].Digest &&
-				desc.Size == desc2[id].Size &&
-				desc.MediaType == desc2[id].MediaType &&
-				desc.ArtifactType == desc2[id].ArtifactType {
-				return true
-			}
+	if len(desc1) != len(desc2) {
+		return false
+	}
+
+	for id, desc := range desc1 {
+		if desc.Digest != desc2[id].Digest ||
+			desc.Size != desc2[id].Size ||
+			desc.MediaType != desc2[id].MediaType ||
+			desc.ArtifactType != desc2[id].ArtifactType {
+			return false
 		}
 	}
 
-	return false
+	return true
 }
 
-func descriptorEqual(desc1, desc2 []ispec.Descriptor) bool {
-	if len(desc1) == len(desc2) {
-		for id, desc := range desc1 {
-			if desc.Digest == desc2[id].Digest &&
-				desc.Size == desc2[id].Size &&
-				desc.MediaType == desc2[id].MediaType &&
-				desc.Annotations[static.SignatureAnnotationKey] == desc2[id].Annotations[static.SignatureAnnotationKey] {
-				return true
-			}
+func descriptorsEqual(desc1, desc2 []ispec.Descriptor) bool {
+	if len(desc1) != len(desc2) {
+		return false
+	}
+
+	for id, desc := range desc1 {
+		if desc.Digest != desc2[id].Digest ||
+			desc.Size != desc2[id].Size ||
+			desc.MediaType != desc2[id].MediaType ||
+			desc.Annotations[static.SignatureAnnotationKey] != desc2[id].Annotations[static.SignatureAnnotationKey] {
+			return false
 		}
 	}
 
-	return false
+	return true
 }
