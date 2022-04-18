@@ -53,4 +53,6 @@ var (
 	ErrRegistryNoContent       = errors.New("sync: could not find a Content that matches localRepo")
 	ErrSyncSignatureNotFound   = errors.New("sync: couldn't find any upstream notary/cosign signatures")
 	ErrSyncSignature           = errors.New("sync: couldn't get upstream notary/cosign signatures")
+	ErrBadIntegrationPoint     = errors.New("plugins: integration point is not supported")
+	ErrImplementationConflict  = errors.New("plugins: a plugin is not allowed to overwrite other plugin implementation")
 )

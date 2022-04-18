@@ -19,6 +19,7 @@ import (
 	"zotregistry.io/zot/pkg/api/constants"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
+	"zotregistry.io/zot/pkg/plugins"
 	"zotregistry.io/zot/pkg/storage"
 )
 
@@ -148,6 +149,12 @@ func NewServerRootCmd() *cobra.Command {
 	showVersion := false
 	conf := config.New()
 
+	// specify a directory where the plugin configs are
+	err := plugins.PluginManager.LoadAll("examples/plugins")
+	if err != nil {
+		log.Info().Err(err).Msg("error loading plugins")
+	}
+
 	rootCmd := &cobra.Command{
 		Use:   "zot",
 		Short: "`zot`",
@@ -179,6 +186,11 @@ func NewServerRootCmd() *cobra.Command {
 func NewCliRootCmd() *cobra.Command {
 	showVersion := false
 
+	err := plugins.PluginManager.LoadAll("examples/plugins")
+	if err != nil {
+		log.Info().Err(err).Msg("can't load cli plugins")
+	}
+
 	rootCmd := &cobra.Command{
 		Use:   "zli",
 		Short: "`zli`",
@@ -196,10 +208,22 @@ func NewCliRootCmd() *cobra.Command {
 
 	// additional cmds
 	enableCli(rootCmd)
+
+	//additional plugins
+	enableCliPlugins(rootCmd)
+
 	// "version"
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "show the version and exit")
 
 	return rootCmd
+}
+
+func enableCliPlugins(cmd *cobra.Command) {
+	// init clients for each config
+	for k, p := range cliCommandManager.AllPlugins() {
+		fmt.Println("Adding plugin: ", k)
+		cmd.AddCommand(p.(CLICommand).Command())
+	}
 }
 
 func validateConfiguration(config *config.Config) error {

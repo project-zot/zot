@@ -10,6 +10,7 @@ import (
 
 // CveInfo ...
 type CveInfo struct {
+	VulnScanner
 	Log                log.Logger
 	CveTrivyController CveTrivyController
 	StoreController    storage.StoreController

@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+option go_package = "zoregistry.io/zot/pkg/plugins/clicommand";
+
+package clicommand;
+
+//  CLICommand service definition.
+service CLICommand {
+  rpc Command (CLIArgs) returns (CLIResponse) {}
+}
+
+message CLIArgs {
+  repeated string args = 1;
+}
+
+message CLIResponse {
+  string message = 1;
+}

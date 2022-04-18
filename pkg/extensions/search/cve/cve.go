@@ -1,6 +1,7 @@
 package cveinfo
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"path"
@@ -72,15 +73,25 @@ func NewTrivyContext(dir string) *TrivyCtx {
 	return trivyCtx
 }
 
-func ScanImage(ctx *cli.Context) (report.Report, error) {
+type CveScannerFs struct{}
+
+func (csf *CveScannerFs) ScanImage(ctx *cli.Context) (report.Report, error) {
 	return artifact.TrivyImageRun(ctx)
 }
 
 func GetCVEInfo(storeController storage.StoreController, log log.Logger) (*CveInfo, error) {
+	var vulnScanner VulnScanner
+
+	vulnScanner = &CveScannerFs{}
 	cveController := CveTrivyController{}
 	layoutUtils := common.NewOciLayoutUtils(storeController, log)
 
 	subCveConfig := make(map[string]*TrivyCtx)
+
+	// 
+	if impl := scanManager.GetImpl(); impl != nil {
+		vulnScanner = impl
+	}
 
 	if storeController.DefaultStore != nil {
 		imageStore := storeController.DefaultStore
@@ -106,7 +117,7 @@ func GetCVEInfo(storeController storage.StoreController, log log.Logger) (*CveIn
 
 	return &CveInfo{
 		Log: log, CveTrivyController: cveController, StoreController: storeController,
-		LayoutUtils: layoutUtils,
+		LayoutUtils: layoutUtils, VulnScanner: vulnScanner,
 	}, nil
 }
 
@@ -135,6 +146,7 @@ func (cveinfo CveInfo) GetTrivyContext(image string) *TrivyCtx {
 	}
 
 	trivyCtx.Input = path.Join(rootDir, image)
+	trivyCtx.Ctx.Context = context.WithValue(trivyCtx.Ctx.Context, "image", image)
 
 	return trivyCtx
 }
@@ -157,6 +169,11 @@ func (cveinfo CveInfo) GetImageListForCVE(repo, cvid string, imgStore storage.Im
 		image := fmt.Sprintf("%s:%s", repo, tag)
 
 		trivyCtx.Input = path.Join(rootDir, image)
+		err := trivyCtx.Ctx.Set("imageName", image)
+		if err != nil {
+			cveinfo.Log.Debug().Str("image", repo+":"+tag).Msg("can't configure trivy context with image name")
+			continue
+		}
 
 		isValidImage, _ := cveinfo.LayoutUtils.IsValidImageFormat(image)
 		if !isValidImage {
@@ -167,7 +184,7 @@ func (cveinfo CveInfo) GetImageListForCVE(repo, cvid string, imgStore storage.Im
 
 		cveinfo.Log.Info().Str("image", repo+":"+tag).Msg("scanning image")
 
-		report, err := ScanImage(trivyCtx.Ctx)
+		report, err := cveinfo.ScanImage(trivyCtx.Ctx)
 		if err != nil {
 			cveinfo.Log.Error().Err(err).Str("image", repo+":"+tag).Msg("unable to scan image")
 

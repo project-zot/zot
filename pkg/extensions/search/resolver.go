@@ -120,7 +120,7 @@ func (r *queryResolver) CVEListForImage(ctx context.Context, image string) (*CVE
 		return &CVEResultForImage{}, err
 	}
 
-	report, err := cveinfo.ScanImage(trivyCtx.Ctx)
+	report, err := r.cveInfo.ScanImage(trivyCtx.Ctx)
 	if err != nil {
 		r.log.Error().Err(err).Msg("unable to scan image repository")
 
@@ -305,7 +305,7 @@ func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, cvid, image s
 
 		r.cveInfo.Log.Info().Str("image", fmt.Sprintf("%s:%s", image, tag.Name)).Msg("scanning image")
 
-		report, err := cveinfo.ScanImage(trivyCtx.Ctx)
+		report, err := r.cveInfo.ScanImage(trivyCtx.Ctx)
 		if err != nil {
 			r.log.Error().Err(err).
 				Str("image", fmt.Sprintf("%s:%s", image, tag.Name)).Msg("unable to scan image")
