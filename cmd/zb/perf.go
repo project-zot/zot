@@ -289,11 +289,21 @@ func normalizeProbabilityRange(pbty []float64) []float64 {
 
 // test suites/funcs.
 
-type testFunc func(workdir, url, repo string, requests int, config testConfig,
-	statsCh chan statsRecord, client *resty.Client) error
+type testFunc func(
+	workdir, url, repo string,
+	requests int,
+	config testConfig,
+	statsCh chan statsRecord,
+	client *resty.Client,
+) error
 
-func GetCatalog(workdir, url, repo string, requests int, config testConfig,
-	statsCh chan statsRecord, client *resty.Client) error {
+func GetCatalog(
+	workdir, url, repo string,
+	requests int,
+	config testConfig,
+	statsCh chan statsRecord,
+	client *resty.Client,
+) error {
 	for count := 0; count < requests; count++ {
 		func() {
 			start := time.Now()
@@ -338,8 +348,13 @@ func GetCatalog(workdir, url, repo string, requests int, config testConfig,
 	return nil
 }
 
-func PushMonolithStreamed(workdir, url, trepo string, requests int, config testConfig,
-	statsCh chan statsRecord, client *resty.Client) error {
+func PushMonolithStreamed(
+	workdir, url, trepo string,
+	requests int,
+	config testConfig,
+	statsCh chan statsRecord,
+	client *resty.Client,
+) error {
 	var repos []string
 
 	if config.mixedSize {
@@ -360,8 +375,13 @@ func PushMonolithStreamed(workdir, url, trepo string, requests int, config testC
 	return nil
 }
 
-func PushChunkStreamed(workdir, url, trepo string, requests int, config testConfig,
-	statsCh chan statsRecord, client *resty.Client) error {
+func PushChunkStreamed(
+	workdir, url, trepo string,
+	requests int,
+	config testConfig,
+	statsCh chan statsRecord,
+	client *resty.Client,
+) error {
 	var repos []string
 
 	if config.mixedSize {
@@ -382,8 +402,13 @@ func PushChunkStreamed(workdir, url, trepo string, requests int, config testConf
 	return nil
 }
 
-func Pull(workdir, url, trepo string, requests int,
-	config testConfig, statsCh chan statsRecord, client *resty.Client) error {
+func Pull(
+	workdir, url, trepo string,
+	requests int,
+	config testConfig,
+	statsCh chan statsRecord,
+	client *resty.Client,
+) error {
 	var repos []string
 
 	var manifestHash map[string]string
@@ -453,8 +478,13 @@ func Pull(workdir, url, trepo string, requests int,
 	return nil
 }
 
-func MixedPullAndPush(workdir, url, trepo string, requests int,
-	config testConfig, statsCh chan statsRecord, client *resty.Client) error {
+func MixedPullAndPush(
+	workdir, url, trepo string,
+	requests int,
+	config testConfig,
+	statsCh chan statsRecord,
+	client *resty.Client,
+) error {
 	var repos []string
 
 	statusRequests = make(map[string]int)
@@ -595,8 +625,11 @@ var testSuite = []testConfig{ // nolint:gochecknoglobals // used only in this te
 	},
 }
 
-func Perf(workdir, url, auth, repo string, concurrency int, requests int, outFmt string,
-	srcIPs string, srcCIDR string) {
+func Perf(
+	workdir, url, auth, repo string,
+	concurrency int, requests int,
+	outFmt string, srcIPs string, srcCIDR string,
+) {
 	json := jsoniter.ConfigCompatibleWithStandardLibrary
 	// logging
 	log.SetFlags(0)
