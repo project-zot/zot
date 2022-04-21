@@ -136,15 +136,35 @@ jobs:
           AWS_ACCESS_KEY_ID: minioadmin
           AWS_SECRET_ACCESS_KEY: minioadmin
       
-      - name: Run benchmark
+      - name: Run benchmark with --src-cidr arg
         run: |
             make bench
             ./bin/zot-linux-amd64 serve test/cluster/config-minio1.json &
             ./bin/zot-linux-amd64 serve test/cluster/config-minio2.json &
             ./bin/zot-linux-amd64 serve test/cluster/config-minio3.json &
             sleep 10
-            # run zb
-            bin/zb-linux-amd64 -c 10 -n 50 -o ci-cd http://localhost:8080
+            # run zb with --src-cidr
+            bin/zb-linux-amd64 -c 10 -n 50 -o ci-cd --src-cidr 127.0.0.0/8 http://localhost:8080
+
+            killall -r zot-*
+
+            # clean zot storage
+            sudo rm -rf /tmp/data/zot-storage/zot
+        env:
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
+      
+      - name: Run benchmark with --src-ips arg
+        run: |
+            make bench
+            ./bin/zot-linux-amd64 serve test/cluster/config-minio1.json &
+            ./bin/zot-linux-amd64 serve test/cluster/config-minio2.json &
+            ./bin/zot-linux-amd64 serve test/cluster/config-minio3.json &
+            sleep 10
+            # run zb with --src-ips
+            bin/zb-linux-amd64 -c 10 -n 50 -o ci-cd --src-ips 127.0.0.2,127.0.0.3,127.0.0.4,127.0.0.5,127.0.0.6,127.0.12.5,127.0.12.6 http://localhost:8080
+  
+            killall -r zot-*
         env:
           AWS_ACCESS_KEY_ID: minioadmin
           AWS_SECRET_ACCESS_KEY: minioadmin
