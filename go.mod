@@ -47,7 +47,7 @@ require (
 	github.com/spf13/cobra v1.4.0
 	github.com/spf13/viper v1.11.0
 	github.com/stretchr/testify v1.7.1
-	github.com/swaggo/http-swagger v1.2.5
+	github.com/swaggo/http-swagger v1.2.6
 	github.com/swaggo/swag v1.8.1
 	github.com/urfave/cli/v2 v2.4.0
 	github.com/vektah/gqlparser/v2 v2.4.1
