@@ -63,7 +63,7 @@ func TestStorageFSAPIs(t *testing.T) {
 			_, clen, err := imgStore.FullBlobUpload("test", bytes.NewReader(cblob), cdigest.String())
 			So(err, ShouldBeNil)
 			So(clen, ShouldEqual, len(cblob))
-			hasBlob, _, err := imgStore.CheckBlob("test", cdigest.String())
+			hasBlob, _, err := imgStore.CheckBlob("test", cdigest.String(), false)
 			So(err, ShouldBeNil)
 			So(hasBlob, ShouldEqual, true)
 
@@ -188,7 +188,7 @@ func TestDedupeLinks(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(blob, ShouldEqual, buflen)
 
-		_, _, err = imgStore.CheckBlob("dedupe1", digest.String())
+		_, _, err = imgStore.CheckBlob("dedupe1", digest.String(), true)
 		So(err, ShouldBeNil)
 
 		_, _, err = imgStore.GetBlob("dedupe1", digest.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
@@ -198,7 +198,7 @@ func TestDedupeLinks(t *testing.T) {
 		_, clen, err := imgStore.FullBlobUpload("dedupe1", bytes.NewReader(cblob), cdigest.String())
 		So(err, ShouldBeNil)
 		So(clen, ShouldEqual, len(cblob))
-		hasBlob, _, err := imgStore.CheckBlob("dedupe1", cdigest.String())
+		hasBlob, _, err := imgStore.CheckBlob("dedupe1", cdigest.String(), true)
 		So(err, ShouldBeNil)
 		So(hasBlob, ShouldEqual, true)
 
@@ -244,7 +244,7 @@ func TestDedupeLinks(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(blob, ShouldEqual, buflen)
 
-		_, _, err = imgStore.CheckBlob("dedupe2", digest.String())
+		_, _, err = imgStore.CheckBlob("dedupe2", digest.String(), true)
 		So(err, ShouldBeNil)
 
 		_, _, err = imgStore.GetBlob("dedupe2", digest.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
@@ -254,7 +254,7 @@ func TestDedupeLinks(t *testing.T) {
 		_, clen, err = imgStore.FullBlobUpload("dedupe2", bytes.NewReader(cblob), cdigest.String())
 		So(err, ShouldBeNil)
 		So(clen, ShouldEqual, len(cblob))
-		hasBlob, _, err = imgStore.CheckBlob("dedupe2", cdigest.String())
+		hasBlob, _, err = imgStore.CheckBlob("dedupe2", cdigest.String(), true)
 		So(err, ShouldBeNil)
 		So(hasBlob, ShouldEqual, true)
 
@@ -758,7 +758,7 @@ func TestGarbageCollect(t *testing.T) {
 			_, clen, err := imgStore.FullBlobUpload(repoName, bytes.NewReader(cblob), cdigest.String())
 			So(err, ShouldBeNil)
 			So(clen, ShouldEqual, len(cblob))
-			hasBlob, _, err := imgStore.CheckBlob(repoName, cdigest.String())
+			hasBlob, _, err := imgStore.CheckBlob(repoName, cdigest.String(), true)
 			So(err, ShouldBeNil)
 			So(hasBlob, ShouldEqual, true)
 
@@ -785,14 +785,14 @@ func TestGarbageCollect(t *testing.T) {
 			_, err = imgStore.PutImageManifest(repoName, tag, ispec.MediaTypeImageManifest, manifestBuf)
 			So(err, ShouldBeNil)
 
-			hasBlob, _, err = imgStore.CheckBlob(repoName, bdigest.String())
+			hasBlob, _, err = imgStore.CheckBlob(repoName, bdigest.String(), true)
 			So(err, ShouldBeNil)
 			So(hasBlob, ShouldEqual, true)
 
 			err = imgStore.DeleteImageManifest(repoName, digest.String())
 			So(err, ShouldBeNil)
 
-			hasBlob, _, err = imgStore.CheckBlob(repoName, bdigest.String())
+			hasBlob, _, err = imgStore.CheckBlob(repoName, bdigest.String(), true)
 			So(err, ShouldBeNil)
 			So(hasBlob, ShouldEqual, true)
 		})
@@ -845,7 +845,7 @@ func TestGarbageCollect(t *testing.T) {
 			_, clen, err := imgStore.FullBlobUpload(repoName, bytes.NewReader(cblob), cdigest.String())
 			So(err, ShouldBeNil)
 			So(clen, ShouldEqual, len(cblob))
-			hasBlob, _, err := imgStore.CheckBlob(repoName, cdigest.String())
+			hasBlob, _, err := imgStore.CheckBlob(repoName, cdigest.String(), true)
 			So(err, ShouldBeNil)
 			So(hasBlob, ShouldEqual, true)
 
@@ -872,11 +872,11 @@ func TestGarbageCollect(t *testing.T) {
 			_, err = imgStore.PutImageManifest(repoName, tag, ispec.MediaTypeImageManifest, manifestBuf)
 			So(err, ShouldBeNil)
 
-			hasBlob, _, err = imgStore.CheckBlob(repoName, odigest.String())
+			hasBlob, _, err = imgStore.CheckBlob(repoName, odigest.String(), true)
 			So(err, ShouldNotBeNil)
 			So(hasBlob, ShouldEqual, false)
 
-			hasBlob, _, err = imgStore.CheckBlob(repoName, bdigest.String())
+			hasBlob, _, err = imgStore.CheckBlob(repoName, bdigest.String(), true)
 			So(err, ShouldBeNil)
 			So(hasBlob, ShouldEqual, true)
 
@@ -886,7 +886,7 @@ func TestGarbageCollect(t *testing.T) {
 			err = imgStore.DeleteImageManifest(repoName, digest.String())
 			So(err, ShouldBeNil)
 
-			hasBlob, _, err = imgStore.CheckBlob(repoName, bdigest.String())
+			hasBlob, _, err = imgStore.CheckBlob(repoName, bdigest.String(), true)
 			So(err, ShouldNotBeNil)
 			So(hasBlob, ShouldEqual, false)
 		})
@@ -924,7 +924,7 @@ func TestGarbageCollect(t *testing.T) {
 			_, clen, err := imgStore.FullBlobUpload(repo1Name, bytes.NewReader(cblob), cdigest.String())
 			So(err, ShouldBeNil)
 			So(clen, ShouldEqual, len(cblob))
-			hasBlob, _, err := imgStore.CheckBlob(repo1Name, cdigest.String())
+			hasBlob, _, err := imgStore.CheckBlob(repo1Name, cdigest.String(), true)
 			So(err, ShouldBeNil)
 			So(hasBlob, ShouldEqual, true)
 
@@ -950,14 +950,14 @@ func TestGarbageCollect(t *testing.T) {
 			_, err = imgStore.PutImageManifest(repo1Name, tag, ispec.MediaTypeImageManifest, manifestBuf)
 			So(err, ShouldBeNil)
 
-			hasBlob, _, err = imgStore.CheckBlob(repo1Name, tdigest.String())
+			hasBlob, _, err = imgStore.CheckBlob(repo1Name, tdigest.String(), true)
 			So(err, ShouldBeNil)
 			So(hasBlob, ShouldEqual, true)
 
 			// sleep so past GC timeout
 			time.Sleep(10 * time.Second)
 
-			hasBlob, _, err = imgStore.CheckBlob(repo1Name, tdigest.String())
+			hasBlob, _, err = imgStore.CheckBlob(repo1Name, tdigest.String(), true)
 			So(err, ShouldBeNil)
 			So(hasBlob, ShouldEqual, true)
 
@@ -986,7 +986,7 @@ func TestGarbageCollect(t *testing.T) {
 			_, clen, err = imgStore.FullBlobUpload(repo2Name, bytes.NewReader(cblob), cdigest.String())
 			So(err, ShouldBeNil)
 			So(clen, ShouldEqual, len(cblob))
-			hasBlob, _, err = imgStore.CheckBlob(repo2Name, cdigest.String())
+			hasBlob, _, err = imgStore.CheckBlob(repo2Name, cdigest.String(), true)
 			So(err, ShouldBeNil)
 			So(hasBlob, ShouldEqual, true)
 
@@ -1012,7 +1012,7 @@ func TestGarbageCollect(t *testing.T) {
 			_, err = imgStore.PutImageManifest(repo2Name, tag, ispec.MediaTypeImageManifest, manifestBuf)
 			So(err, ShouldBeNil)
 
-			hasBlob, _, err = imgStore.CheckBlob(repo2Name, bdigest.String())
+			hasBlob, _, err = imgStore.CheckBlob(repo2Name, bdigest.String(), true)
 			So(err, ShouldBeNil)
 			So(hasBlob, ShouldEqual, true)
 
@@ -1041,7 +1041,7 @@ func TestGarbageCollect(t *testing.T) {
 			_, clen, err = imgStore.FullBlobUpload(repo2Name, bytes.NewReader(cblob), cdigest.String())
 			So(err, ShouldBeNil)
 			So(clen, ShouldEqual, len(cblob))
-			hasBlob, _, err = imgStore.CheckBlob(repo2Name, cdigest.String())
+			hasBlob, _, err = imgStore.CheckBlob(repo2Name, cdigest.String(), true)
 			So(err, ShouldBeNil)
 			So(hasBlob, ShouldEqual, true)
 
@@ -1070,7 +1070,7 @@ func TestGarbageCollect(t *testing.T) {
 
 			// original blob should exist
 
-			hasBlob, _, err = imgStore.CheckBlob(repo2Name, tdigest.String())
+			hasBlob, _, err = imgStore.CheckBlob(repo2Name, tdigest.String(), true)
 			So(err, ShouldBeNil)
 			So(hasBlob, ShouldEqual, true)
 

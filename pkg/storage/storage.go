@@ -38,7 +38,7 @@ type ImageStore interface {
 	DedupeBlob(src string, dstDigest digest.Digest, dst string) error
 	DeleteBlobUpload(repo string, uuid string) error
 	BlobPath(repo string, digest digest.Digest) string
-	CheckBlob(repo string, digest string) (bool, int64, error)
+	CheckBlob(repo string, digest string, linkIfDupe bool) (bool, int64, error)
 	GetBlob(repo string, digest string, mediaType string) (io.Reader, int64, error)
 	DeleteBlob(repo string, digest string) error
 	GetIndexContent(repo string) ([]byte, error)

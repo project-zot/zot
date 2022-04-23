@@ -556,7 +556,7 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 		return
 	}
 
-	ok, blen, err := imgStore.CheckBlob(name, digest)
+	ok, blen, err := imgStore.CheckBlob(name, digest, false)
 	if err != nil {
 		if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 			WriteJSON(response,
@@ -732,7 +732,7 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 		// zot does not support cross mounting directly and do a workaround creating using hard link.
 		// check blob looks for actual path (name+mountDigests[0]) first then look for cache and
 		// if found in cache, will do hard link and if fails we will start new upload.
-		_, _, err := imgStore.CheckBlob(name, mountDigests[0])
+		_, _, err := imgStore.CheckBlob(name, mountDigests[0], true)
 		if err != nil {
 			upload, err := imgStore.NewBlobUpload(name)
 			if err != nil {

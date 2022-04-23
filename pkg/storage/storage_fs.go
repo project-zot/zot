@@ -1232,7 +1232,7 @@ func (is *ImageStoreFS) BlobPath(repo string, digest godigest.Digest) string {
 }
 
 // CheckBlob verifies a blob and returns true if the blob is correct.
-func (is *ImageStoreFS) CheckBlob(repo string, digest string) (bool, int64, error) {
+func (is *ImageStoreFS) CheckBlob(repo string, digest string, linkIfDupe bool) (bool, int64, error) {
 	var lockLatency time.Time
 
 	parsedDigest, err := godigest.Parse(digest)
@@ -1269,19 +1269,29 @@ func (is *ImageStoreFS) CheckBlob(repo string, digest string) (bool, int64, erro
 		return false, -1, zerr.ErrBlobNotFound
 	}
 
-	// If found copy to location
-	blobSize, err := is.copyBlob(repo, blobPath, dstRecord)
+	// Get size of blob in cache
+	cachedBlobInfo, err := os.Stat(dstRecord)
 	if err != nil {
+		is.log.Error().Err(err).Str("dstRecord", digest).Msg("cached blob not found in storage")
+
 		return false, -1, zerr.ErrBlobNotFound
 	}
 
-	if err := is.cache.PutBlob(digest, blobPath); err != nil {
-		is.log.Error().Err(err).Str("blobPath", blobPath).Msg("dedupe: unable to insert blob record")
+	if linkIfDupe {
+		// If required, copy to requested repository
+		_, err := is.copyBlob(repo, blobPath, dstRecord)
+		if err != nil {
+			return false, -1, zerr.ErrBlobNotFound
+		}
 
-		return false, -1, err
+		if err := is.cache.PutBlob(digest, blobPath); err != nil {
+			is.log.Error().Err(err).Str("blobPath", blobPath).Msg("dedupe: unable to insert blob record")
+
+			return false, -1, err
+		}
 	}
 
-	return true, blobSize, nil
+	return true, cachedBlobInfo.Size(), nil
 }
 
 func (is *ImageStoreFS) checkCacheBlob(digest string) (string, error) {

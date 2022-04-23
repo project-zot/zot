@@ -1027,7 +1027,7 @@ func (is *ObjectStorage) BlobPath(repo string, digest godigest.Digest) string {
 }
 
 // CheckBlob verifies a blob and returns true if the blob is correct.
-func (is *ObjectStorage) CheckBlob(repo string, digest string) (bool, int64, error) {
+func (is *ObjectStorage) CheckBlob(repo string, digest string, linkIfDupe bool) (bool, int64, error) {
 	var lockLatency time.Time
 
 	dgst, err := godigest.Parse(digest)

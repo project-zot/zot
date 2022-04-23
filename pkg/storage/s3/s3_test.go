@@ -522,7 +522,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 		_, _, err = imgStore.FullBlobUpload(testImage, bytes.NewBuffer([]byte{}), "inexistent")
 		So(err, ShouldNotBeNil)
 
-		_, _, err = imgStore.CheckBlob(testImage, digest.String())
+		_, _, err = imgStore.CheckBlob(testImage, digest.String(), true)
 		So(err, ShouldNotBeNil)
 	})
 
