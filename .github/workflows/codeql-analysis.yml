@@ -28,7 +28,6 @@ jobs:
       actions: read
       contents: read
       security-events: write
-
     strategy:
       fail-fast: false
       matrix:
@@ -36,14 +35,49 @@ jobs:
         # CodeQL supports [ 'cpp', 'csharp', 'go', 'java', 'javascript', 'python' ]
         # Learn more:
         # https://docs.github.com/en/free-pro-team@latest/github/finding-security-vulnerabilities-and-errors-in-your-code/configuring-code-scanning#changing-the-languages-that-are-analyzed
+    env:
+      CGO_ENABLED: 0
+      GOFLAGS: "-tags=extended,containers_image_openpgp"
 
     steps:
     - name: Checkout repository
       uses: actions/checkout@v2
 
+    - name: Install go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.17.x
+
+    - name: Install dependencies
+      run: |
+        cd $GITHUB_WORKSPACE
+        go install github.com/swaggo/swag/cmd/swag@latest
+        go mod download
+        go install github.com/wadey/gocovmerge@latest
+        go get -u github.com/swaggo/swag/cmd/swag
+        go mod download
+        sudo apt-get update
+        sudo apt-get -y install rpm uidmap
+        # install skopeo
+        . /etc/os-release
+        echo "deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_${VERSION_ID}/ /" | sudo tee /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list
+        curl -L https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_${VERSION_ID}/Release.key | sudo apt-key add -
+        sudo apt-get update
+        sudo apt-get -y upgrade
+        sudo apt-get -y install skopeo
+        # install notation
+        curl -Lo notation.tar.gz https://github.com/notaryproject/notation/releases/download/v0.7.1-alpha.1/notation_0.7.1-alpha.1_linux_amd64.tar.gz
+        sudo tar xvzf notation.tar.gz -C /usr/bin notation
+        # install oras
+        curl -LO https://github.com/oras-project/oras/releases/download/v0.12.0/oras_0.12.0_linux_amd64.tar.gz
+        mkdir -p oras-install/
+        tar -zxf oras_0.12.0_*.tar.gz -C oras-install/
+        sudo mv oras-install/oras /usr/bin/
+        rm -rf oras_0.12.0_*.tar.gz oras-install/
+
     # Initializes the CodeQL tools for scanning.
     - name: Initialize CodeQL
-      uses: github/codeql-action/init@v1
+      uses: github/codeql-action/init@v2
       with:
         languages: ${{ matrix.language }}
         # If you wish to specify custom queries, you can do so here or in a config file.
@@ -54,7 +88,7 @@ jobs:
     # Autobuild attempts to build any compiled languages  (C/C++, C#, or Java).
     # If this step fails, then you should remove it and run the build manually (see below)
     - name: Autobuild
-      uses: github/codeql-action/autobuild@v1
+      uses: github/codeql-action/autobuild@v2
 
     # ℹ️ Command-line programs to run using the OS shell.
     # 📚 https://git.io/JvXDl
@@ -62,10 +96,9 @@ jobs:
     # ✏️ If the Autobuild fails above, remove it and uncomment the following three lines
     #    and modify them (or add more) to build your code if your project
     #    uses a compiled language
-
     #- run: |
     #   make bootstrap
     #   make release
 
     - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v1
+      uses: github/codeql-action/analyze@v2
