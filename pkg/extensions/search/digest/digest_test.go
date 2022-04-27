@@ -1,5 +1,5 @@
-//go:build extended
-// +build extended
+//go:build search
+// +build search
 
 // nolint: gochecknoinits
 package digestinfo_test

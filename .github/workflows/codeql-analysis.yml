@@ -37,7 +37,7 @@ jobs:
         # https://docs.github.com/en/free-pro-team@latest/github/finding-security-vulnerabilities-and-errors-in-your-code/configuring-code-scanning#changing-the-languages-that-are-analyzed
     env:
       CGO_ENABLED: 0
-      GOFLAGS: "-tags=extended,containers_image_openpgp"
+      GOFLAGS: "-tags=sync,search,scrub,metrics,ui_base,containers_image_openpgp"
 
     steps:
     - name: Checkout repository

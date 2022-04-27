@@ -1,5 +1,5 @@
-//go:build minimal
-// +build minimal
+//go:build !metrics
+// +build !metrics
 
 // nolint: varnamelen
 package api

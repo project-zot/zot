@@ -1,5 +1,5 @@
-//go:build extended
-// +build extended
+//go:build metrics
+// +build metrics
 
 package monitoring_test
 

@@ -44,6 +44,15 @@ For a minimal dist-spec only zot,
 make binary-minimal
 ```
 
+For a zot that includes only the extensions that you specify,
+the available extensions that can be used at the moment are: sync, scrub, metrics, search, ui_base .
+
+NOTES: When multiple extensions are used, they should be enlisted in the above presented order.
+
+```
+make binary EXTENSIONS=a,b,c
+```
+
 For a node exporter used by minimal dist-spec only zot,
 
 ```

@@ -4,36 +4,24 @@ OS="${OS:-linux}"
 ARCH="${ARCH:-amd64}"
 ZOT_PATH=${ROOT_DIR}/bin/zot-${OS}-${ARCH}
 
-mkdir -p ${TEST_DATA_DIR}
-
-function verify_prerequisites {
+function verify_prerequisites() {
     if [ ! -f ${BATS_RUN_TMPDIR}/.firstrun ]; then
         env | grep proxy >&3
         touch ${BATS_RUN_TMPDIR}/.firstrun
     fi
 
-    if [ ! -f ${ZOT_PATH} ]; then
-        echo "you need to build ${ZOT_PATH} before running the tests" >&3
-        return 1
-    fi
-
-    if [ ! command -v curl &> /dev/null ]; then
+    if [ ! command -v curl ] &>/dev/null; then
         echo "you need to install curl as a prerequisite to running the tests" >&3
         return 1
     fi
 
-    if [ ! command -v jq &> /dev/null ]; then
+    if [ ! command -v jq ] &>/dev/null; then
         echo "you need to install jq as a prerequisite to running the tests" >&3
         return 1
     fi
 
-    if [ ! command -v skopeo &> /dev/null ]; then
+    if [ ! command -v skopeo ] &>/dev/null; then
         echo "you need to install skopeo as a prerequisite to running the tests" >&3
-        return 1
-    fi
-
-    if [ ! command -v oras &> /dev/null ]; then
-        echo "you need to install oras as a prerequisite to running the tests" >&3
         return 1
     fi
     return 0
@@ -44,11 +32,12 @@ function zot_serve() {
     local config_file=${2}
     local pid_dir=${3}
     ${zot_path} serve ${config_file} &
-    echo $! > ${pid_dir}/zot.pid
+    echo $! >>${pid_dir}/zot.pid
 }
 
 function zot_stop() {
     local pid_dir=${1}
+    cat ${pid_dir}/zot.pid
     kill $(cat ${pid_dir}/zot.pid)
     rm ${pid_dir}/zot.pid
 }

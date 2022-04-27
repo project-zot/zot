@@ -1,5 +1,5 @@
-//go:build extended
-// +build extended
+//go:build scrub
+// +build scrub
 
 package scrub_test
 

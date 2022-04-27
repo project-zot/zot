@@ -1,5 +1,5 @@
-//go:build extended
-// +build extended
+//go:build search
+// +build search
 
 package common_test
 

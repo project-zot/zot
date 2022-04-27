@@ -44,3 +44,15 @@ jobs:
       - name: Run push-pull tests
         run: |
             make push-pull
+      - name: Run metrics tests
+        run: |
+            make bats-metrics
+      - name: Run cve tests
+        run: |
+            make bats-cve
+      - name: Run sync test
+        run: |
+            make bats-sync
+      - name: Run scrub tests
+        run: |
+            make bats-scrub
