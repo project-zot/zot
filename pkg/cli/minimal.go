@@ -1,5 +1,4 @@
-//go:build minimal
-// +build minimal
+// +build minimal sync scrub metrics
 
 package cli
 

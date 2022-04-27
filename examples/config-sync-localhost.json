@@ -1,0 +1,37 @@
+{
+    "distspecversion":"1.0.1",
+    "storage": {
+        "rootDirectory": "/tmp/zot_to_sync",
+        "dedupe": false,
+        "gc": false
+    },
+    "http": {
+        "address": "127.0.0.1",
+        "port": "8081"
+    },
+    "log": {
+        "level": "debug"
+    },
+    "extensions": {
+        "sync": {
+            "registries": [
+                {
+                    "urls": [
+                        "http://localhost:8080"
+                    ],
+                    "onDemand": true,
+                    "tlsVerify": false,
+                    "PollInterval": "30s",
+                    "content": [
+                        {
+                            "prefix": "**"
+                        }
+                    ]
+                }
+            ]
+        },
+        "scrub": {
+            "interval": "24h"
+        }
+    }
+}

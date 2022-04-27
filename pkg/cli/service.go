@@ -1,5 +1,4 @@
-//go:build extended
-// +build extended
+// +build ui_base extended search
 
 package cli
 

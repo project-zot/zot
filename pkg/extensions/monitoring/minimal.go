@@ -1,5 +1,5 @@
-//go:build minimal
-// +build minimal
+// +build minimal sync scrub search ui_base
+// +build !metrics
 
 // nolint: varnamelen,forcetypeassert
 package monitoring

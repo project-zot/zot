@@ -1,5 +1,4 @@
-//go:build extended
-// +build extended
+// +build extended search
 
 // nolint:lll,gosimple
 package cveinfo_test
