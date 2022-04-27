@@ -1,5 +1,5 @@
-//go:build extended
-// +build extended
+//go:build search || ui_base
+// +build search ui_base
 
 package cli
 

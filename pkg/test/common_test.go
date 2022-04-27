@@ -1,5 +1,5 @@
-//go:build extended
-// +build extended
+//go:build sync && scrub && metrics && search && ui_base
+// +build sync,scrub,metrics,search,ui_base
 
 package test_test
 

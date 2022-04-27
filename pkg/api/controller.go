@@ -353,21 +353,23 @@ func (c *Controller) Shutdown() {
 func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 	// Enable extensions if extension config is provided for DefaultStore
 	if c.Config != nil && c.Config.Extensions != nil {
-		ext.EnableExtensions(c.Config, c.Log, c.Config.Storage.RootDirectory)
+		ext.EnableMetricsExtension(c.Config, c.Log, c.Config.Storage.RootDirectory)
+		ext.EnableSearchExtension(c.Config, c.Log, c.Config.Storage.RootDirectory)
 	}
 
 	if c.Config.Storage.SubPaths != nil {
 		for _, storageConfig := range c.Config.Storage.SubPaths {
 			// Enable extensions if extension config is provided for subImageStore
 			if c.Config != nil && c.Config.Extensions != nil {
-				ext.EnableExtensions(c.Config, c.Log, storageConfig.RootDirectory)
+				ext.EnableMetricsExtension(c.Config, c.Log, storageConfig.RootDirectory)
+				ext.EnableSearchExtension(c.Config, c.Log, storageConfig.RootDirectory)
 			}
 		}
 	}
 
 	// Enable extensions if extension config is provided for storeController
 	if c.Config.Extensions != nil {
-		if c.Config.Extensions.Sync != nil && *c.Config.Extensions.Sync.Enable {
+		if c.Config.Extensions.Sync != nil {
 			ext.EnableSyncExtension(reloadCtx, c.Config, c.wgShutDown, c.StoreController, c.Log)
 		}
 	}

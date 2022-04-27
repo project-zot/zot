@@ -1,5 +1,5 @@
-//go:build minimal
-// +build minimal
+//go:build !search && !ui_base
+// +build !search,!ui_base
 
 package cli
 

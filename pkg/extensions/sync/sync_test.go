@@ -1,5 +1,5 @@
-//go:build extended
-// +build extended
+//go:build sync
+// +build sync
 
 package sync_test
 

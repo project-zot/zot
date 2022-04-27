@@ -10,9 +10,13 @@ https://zotregistry.io
 
 **Check the [package repository](https://github.com/orgs/project-zot/packages?repo_name=zot) for your os/arch**
 
+The following document refers on the **core dist-spec**, see also the [zot-specific extensions spec](pkg/extensions/README.md)
+
+
 ## [**Why zot?**](COMPARISON.md)
 
 ## What's new?
+* Selectively add extensions on top of minimal build
 * Supports container image signatures - [cosign](https://github.com/sigstore/cosign) and [notation](https://github.com/notaryproject/notation)
 * Multi-arch support
 * Clustering support
@@ -94,6 +98,12 @@ make binary-stacker
 
 ```
 make
+```
+
+* Build zot with specified extensions
+```
+make binary EXTENSIONS=extension1,extension2,extension3
+# e.g. make binary EXTENSIONS=sync,search,metrics,scrub
 ```
 
 Build artifacts are in bin/
