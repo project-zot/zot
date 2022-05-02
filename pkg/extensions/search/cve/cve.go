@@ -10,11 +10,12 @@ import (
 	dbTypes "github.com/aquasecurity/trivy-db/pkg/types"
 	"github.com/aquasecurity/trivy/pkg/commands/artifact"
 	"github.com/aquasecurity/trivy/pkg/commands/operation"
-	"github.com/aquasecurity/trivy/pkg/report"
 	"github.com/aquasecurity/trivy/pkg/types"
 	"github.com/urfave/cli/v2"
 	"zotregistry.io/zot/pkg/extensions/search/common"
+	"zotregistry.io/zot/pkg/extensions/search/cve/convert"
 	"zotregistry.io/zot/pkg/log"
+	scanPlugin "zotregistry.io/zot/pkg/plugins/scan"
 	"zotregistry.io/zot/pkg/storage"
 )
 
@@ -75,8 +76,13 @@ func NewTrivyContext(dir string) *TrivyCtx {
 
 type CveScannerFs struct{}
 
-func (csf *CveScannerFs) ScanImage(ctx *cli.Context) (report.Report, error) {
-	return artifact.TrivyImageRun(ctx)
+func (csf *CveScannerFs) ScanImage(ctx *cli.Context) (*scanPlugin.ScanReport, error) {
+	report, err := artifact.TrivyImageRun(ctx)
+	if err != nil {
+		return &scanPlugin.ScanReport{}, err
+	}
+
+	return convert.ToRPCScanReport(report), nil
 }
 
 func GetCVEInfo(storeController storage.StoreController, log log.Logger) (*CveInfo, error) {
@@ -88,7 +94,6 @@ func GetCVEInfo(storeController storage.StoreController, log log.Logger) (*CveIn
 
 	subCveConfig := make(map[string]*TrivyCtx)
 
-	// 
 	if impl := scanManager.GetImpl(); impl != nil {
 		vulnScanner = impl
 	}
@@ -167,11 +172,12 @@ func (cveinfo CveInfo) GetImageListForCVE(repo, cvid string, imgStore storage.Im
 
 	for _, tag := range tagList {
 		image := fmt.Sprintf("%s:%s", repo, tag)
-
 		trivyCtx.Input = path.Join(rootDir, image)
+
 		err := trivyCtx.Ctx.Set("imageName", image)
 		if err != nil {
 			cveinfo.Log.Debug().Str("image", repo+":"+tag).Msg("can't configure trivy context with image name")
+
 			continue
 		}
 
@@ -191,14 +197,12 @@ func (cveinfo CveInfo) GetImageListForCVE(repo, cvid string, imgStore storage.Im
 			continue
 		}
 
-		for _, result := range report.Results {
-			for _, vulnerability := range result.Vulnerabilities {
-				if vulnerability.VulnerabilityID == cvid {
-					copyImgTag := tag
-					tags = append(tags, &copyImgTag)
+		for _, vulnerability := range report.Vulnerabilities {
+			if vulnerability.VulnerabilityId == cvid {
+				copyImgTag := tag
+				tags = append(tags, &copyImgTag)
 
-					break
-				}
+				break
 			}
 		}
 	}

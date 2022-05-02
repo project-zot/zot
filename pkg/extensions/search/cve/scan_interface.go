@@ -4,57 +4,60 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/aquasecurity/trivy/pkg/report"
 	"github.com/urfave/cli/v2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"zotregistry.io/zot/pkg/extensions/search/cve/convert"
 	"zotregistry.io/zot/pkg/plugins"
 	scanPlugin "zotregistry.io/zot/pkg/plugins/scan"
 )
 
-// interface
 type VulnScanner interface {
-	ScanImage(ctx *cli.Context) (report.Report, error)
+	ScanImage(ctx *cli.Context) (*scanPlugin.ScanReport, error)
 }
 
-// struct that implements the interface and calls on the client for operations
-type RpcScanner struct {
+// RPCScanner implements VulnScanner and calls on the gRPC client for
+// the needed logic (that takes place remotely).
+type RPCScanner struct {
+	name    string
 	options plugins.Options
 	client  scanPlugin.ScanClient
 }
 
-func (rs RpcScanner) ScanImage(ctx *cli.Context) (report.Report, error) {
+func (rs RPCScanner) ScanImage(ctx *cli.Context) (*scanPlugin.ScanReport, error) {
+	image, ok := ctx.Context.Value("image").(string)
+	if !ok {
+		return &scanPlugin.ScanReport{}, nil // TODO return error.
+	}
+
+	url, ok := rs.options["zot-addr"].(string)
+	if !ok {
+		return &scanPlugin.ScanReport{}, nil // TODO return error.
+	}
+
 	response, err := rs.client.Scan(context.Background(),
 		&scanPlugin.ScanRequest{
-			ImageName:    ctx.Context.Value("image").(string),
-			ServerAdress: rs.options["zot-addr"].(string),
+			Image: image,
+			Registry: &scanPlugin.Registry{
+				Url: url,
+			},
 		})
 
-	results := convert.FromRPCResults(response.Results)
-
-	return report.Report{
-		Results: results,
-	}, err
-}
-
-var scanManager rpcScanManager = rpcScanManager{
-	impl: &struct {
-		Name            string
-		VulnScannerImpl plugins.Plugin
-	}{},
+	return response.Report, err
 }
 
 type rpcScanBuilder struct{}
 
-func (sb rpcScanBuilder) Build(addr, port string, options plugins.Options) plugins.Plugin {
+func (sb rpcScanBuilder) Build(name, addr, port string, options plugins.Options) plugins.Plugin {
 	address := fmt.Sprintf("%s:%s", addr, port)
+
 	conn, err := grpc.Dial(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		fmt.Println("Can't connect")
 	}
+
 	c := scanPlugin.NewScanClient(conn)
-	return RpcScanner{client: c, options: options}
+
+	return RPCScanner{name: name, client: c, options: options}
 }
 
 // This manager follows the "driver" pattern:
@@ -65,6 +68,13 @@ type rpcScanManager struct {
 		Name            string
 		VulnScannerImpl plugins.Plugin
 	}
+}
+
+var scanManager = rpcScanManager{
+	impl: &struct {
+		Name            string
+		VulnScannerImpl plugins.Plugin
+	}{},
 }
 
 func (rsm rpcScanManager) RegisterImplementation(name string, plugin interface{}) error {
@@ -81,13 +91,28 @@ func (rsm rpcScanManager) AllPlugins() map[string]plugins.Plugin {
 }
 
 func (rsm rpcScanManager) GetImpl() VulnScanner {
-	return rsm.impl.VulnScannerImpl.(VulnScanner)
+	impl := rsm.impl.VulnScannerImpl
+	if impl == nil {
+		return nil
+	}
+
+	im, ok := impl.(VulnScanner)
+	if !ok {
+		return nil
+	}
+
+	return im
 }
 
 func (rsm rpcScanManager) GetImplName() string {
+	impl := rsm.impl.VulnScannerImpl
+	if impl == nil {
+		return ""
+	}
+
 	return rsm.impl.Name
 }
 
 func init() {
-	plugins.PluginManager.RegisterInterface("VulnScanner", scanManager, rpcScanBuilder{})
+	plugins.Manager().RegisterInterface("VulnScanner", scanManager, rpcScanBuilder{})
 }

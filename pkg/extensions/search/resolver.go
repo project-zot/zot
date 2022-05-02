@@ -135,41 +135,41 @@ func (r *queryResolver) CVEListForImage(ctx context.Context, image string) (*CVE
 
 	cveidMap := make(map[string]cveDetail)
 
-	for _, result := range report.Results {
-		for _, vulnerability := range result.Vulnerabilities {
-			pkgName := vulnerability.PkgName
+	for _, vulnerability := range report.Vulnerabilities {
+		pkgName := vulnerability.Pkg
 
-			installedVersion := vulnerability.InstalledVersion
+		installedVersion := vulnerability.Version
 
-			var fixedVersion string
-			if vulnerability.FixedVersion != "" {
-				fixedVersion = vulnerability.FixedVersion
-			} else {
-				fixedVersion = "Not Specified"
-			}
+		var fixedVersion string
+		if vulnerability.FixedVersion != "" {
+			fixedVersion = vulnerability.FixedVersion
+		} else {
+			fixedVersion = "Not Specified"
+		}
 
-			_, ok := cveidMap[vulnerability.VulnerabilityID]
-			if ok {
-				cveDetailStruct := cveidMap[vulnerability.VulnerabilityID]
+		_, ok := cveidMap[vulnerability.VulnerabilityId]
+		if ok {
+			cveDetailStruct := cveidMap[vulnerability.VulnerabilityId]
 
-				pkgList := cveDetailStruct.PackageList
+			pkgList := cveDetailStruct.PackageList
 
-				pkgList = append(pkgList,
-					&PackageInfo{Name: &pkgName, InstalledVersion: &installedVersion, FixedVersion: &fixedVersion})
+			pkgList = append(pkgList,
+				&PackageInfo{Name: &pkgName, InstalledVersion: &installedVersion, FixedVersion: &fixedVersion})
 
-				cveDetailStruct.PackageList = pkgList
+			cveDetailStruct.PackageList = pkgList
 
-				cveidMap[vulnerability.VulnerabilityID] = cveDetailStruct
-			} else {
-				newPkgList := make([]*PackageInfo, 0)
+			cveidMap[vulnerability.VulnerabilityId] = cveDetailStruct
+		} else {
+			newPkgList := make([]*PackageInfo, 0)
 
-				newPkgList = append(newPkgList,
-					&PackageInfo{Name: &pkgName, InstalledVersion: &installedVersion, FixedVersion: &fixedVersion})
+			newPkgList = append(newPkgList,
+				&PackageInfo{Name: &pkgName, InstalledVersion: &installedVersion, FixedVersion: &fixedVersion})
 
-				cveidMap[vulnerability.VulnerabilityID] = cveDetail{
-					Title:       vulnerability.Title,
-					Description: vulnerability.Description, Severity: vulnerability.Severity, PackageList: newPkgList,
-				}
+			cveidMap[vulnerability.VulnerabilityId] = cveDetail{
+				Title:       vulnerability.Title,
+				Description: vulnerability.Description,
+				Severity:    vulnerability.Severity.String(),
+				PackageList: newPkgList,
 			}
 		}
 	}
@@ -315,13 +315,11 @@ func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, cvid, image s
 
 		hasCVE = false
 
-		for _, result := range report.Results {
-			for _, vulnerability := range result.Vulnerabilities {
-				if vulnerability.VulnerabilityID == cvid {
-					hasCVE = true
+		for _, vulnerability := range report.Vulnerabilities {
+			if vulnerability.VulnerabilityId == cvid {
+				hasCVE = true
 
-					break
-				}
+				break
 			}
 		}
 

@@ -11,39 +11,55 @@ import (
 	"zotregistry.io/zot/pkg/log"
 )
 
-// A plugin is defined by an interface and a gRPC communication protocol. 
+// A plugin is defined by an interface and a gRPC communication protocol.
 // Each definition must come with an implementation that uses the gRPC client,
 // a Builder that knows how to build a plugin implementation,
 // a InterfaceManager that stores and dispenses implementations for the plugin.
 type Plugin interface{}
 
-// PluginManager is responsable for storing for each plugin
-// it's implementation manager(called InterfaceManager)
-var PluginManager pluginManager = pluginManager{
-	InterfaceManagers: map[string]InterfaceManager{},
-	builders:          map[string]PluginBuilder{},
+// PluginManager is responsible of storing for each plugin
+// it's implementation manager(called InterfaceManager).
+var pluginManagerSingleton *PluginManager
+
+// TODO make it thread safe: https://refactoring.guru/design-patterns/singleton/go/example.
+func Manager() *PluginManager {
+	if pluginManagerSingleton == nil {
+		pluginManagerSingleton = &PluginManager{
+			InterfaceManagers: map[string]InterfaceManager{},
+			builders:          map[string]PluginBuilder{},
+		}
+
+		return pluginManagerSingleton
+	}
+
+	return pluginManagerSingleton
 }
 
-type pluginManager struct {
+type PluginManager struct {
 	InterfaceManagers map[string]InterfaceManager
 	builders          map[string]PluginBuilder
 	log               log.Logger
 }
 
-func (pm *pluginManager) GetBuilder(interfaceName string) (PluginBuilder, error) {
+// GetBuilder returns the PluginBuilder object for a registered integration point.
+func (pm *PluginManager) GetBuilder(interfaceName string) (PluginBuilder, error) {
 	if pm.builders[interfaceName] == nil {
-		return nil, fmt.Errorf("interface `%s` is not supported", interfaceName)
+		return nil, zerr.ErrBadIntegrationPoint
 	}
 
 	return pm.builders[interfaceName], nil
 }
 
-func (pm *pluginManager) LoadAll(pluginsDir string) error {
+// LoadAll given a directory path will search for plugin config files
+// and try to initialize and hook plugins by creating a gRPC connection
+// and registering the implementation.
+func (pm *PluginManager) LoadAll(pluginsDir string) error {
 	pm.log.Info().Msgf("loading all plugins from %v", pluginsDir)
 
 	pluginConfigs, err := os.ReadDir(pluginsDir)
 	if err != nil {
 		pm.log.Error().Err(err).Msg("can't read plugins dir")
+
 		return err
 	}
 
@@ -51,45 +67,57 @@ func (pm *pluginManager) LoadAll(pluginsDir string) error {
 		if d.IsDir() {
 			continue
 		}
+
 		config, err := loadConfig(filepath.Join(pluginsDir, d.Name()))
 		if err != nil {
 			pm.log.Error().Err(err).Msg("can't load plugin config")
+
 			continue
 		}
-		for _, ip := range config.IntegrationPoints {
-			builder, err := pm.GetBuilder(ip.Interface)
+
+		for _, intPoint := range config.IntegrationPoints {
+			builder, err := pm.GetBuilder(intPoint.Interface)
 			if err != nil {
-				pm.log.Warn().Err(err).Msgf("can't get builder for %v", ip.Interface)
+				pm.log.Warn().Err(err).Msgf("can't get builder for %v", intPoint.Interface)
+
 				continue
 			}
 
 			pluginClient := builder.Build(
-				ip.GrpcConnection.Addr,
-				ip.GrpcConnection.Port,
-				ip.Options,
+				config.Name,
+				intPoint.GrpcConnection.Addr,
+				intPoint.GrpcConnection.Port,
+				intPoint.Options,
 			)
 
-			err = pm.RegisterImplementation(ip.Interface, config.Name, pluginClient)
+			err = pm.RegisterImplementation(intPoint.Interface, config.Name, pluginClient)
 			if err != nil {
-				pm.log.Warn().Err(err).Msgf("can't register implementation for %v", ip.Interface)
+				pm.log.Warn().Err(err).Msgf("can't register implementation for %v", intPoint.Interface)
 			}
 		}
 	}
+
 	return nil
 }
 
-func (pm *pluginManager) RegisterInterface(name string, interfaceManager InterfaceManager, pluginBuilder PluginBuilder) {
+// RegisterInterface makes the given interface name recognised as supported by Zot.
+func (pm *PluginManager) RegisterInterface(
+	name string,
+	interfaceManager InterfaceManager,
+	pluginBuilder PluginBuilder,
+) {
 	pm.InterfaceManagers[name] = interfaceManager
 	pm.builders[name] = pluginBuilder
 }
 
-func (pm *pluginManager) RegisterImplementation(interfaceName string, implName string, plugin interface{}) error {
+// RegisterImplementation hooks the implementation to the InterfaceManager. This
+// allows Zot to find and use the implementation.
+func (pm *PluginManager) RegisterImplementation(interfaceName string, implName string, plugin Plugin) error {
 	if pm.InterfaceManagers[interfaceName] == nil {
 		return zerr.ErrBadIntegrationPoint
 	}
 
 	err := pm.InterfaceManagers[interfaceName].RegisterImplementation(implName, plugin)
-
 	if err != nil {
 		return err
 	}
@@ -115,8 +143,7 @@ func loadConfig(configPath string) (*Config, error) {
 	}
 
 	if len(metaData.Keys) == 0 || len(metaData.Unused) > 0 {
-
-		return nil, nil
+		return &Config{}, nil
 	}
 
 	return &config, nil

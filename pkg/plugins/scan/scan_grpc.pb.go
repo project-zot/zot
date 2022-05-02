@@ -22,7 +22,6 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ScanClient interface {
-	// Sends a greeting
 	Scan(ctx context.Context, in *ScanRequest, opts ...grpc.CallOption) (*ScanResponse, error)
 }
 
@@ -47,7 +46,6 @@ func (c *scanClient) Scan(ctx context.Context, in *ScanRequest, opts ...grpc.Cal
 // All implementations must embed UnimplementedScanServer
 // for forward compatibility
 type ScanServer interface {
-	// Sends a greeting
 	Scan(context.Context, *ScanRequest) (*ScanResponse, error)
 	mustEmbedUnimplementedScanServer()
 }

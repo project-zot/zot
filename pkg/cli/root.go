@@ -150,7 +150,7 @@ func NewServerRootCmd() *cobra.Command {
 	conf := config.New()
 
 	// specify a directory where the plugin configs are
-	err := plugins.PluginManager.LoadAll("examples/plugins")
+	err := plugins.Manager().LoadAll("/home/laur/zot/examples/plugins")
 	if err != nil {
 		log.Info().Err(err).Msg("error loading plugins")
 	}
@@ -186,7 +186,7 @@ func NewServerRootCmd() *cobra.Command {
 func NewCliRootCmd() *cobra.Command {
 	showVersion := false
 
-	err := plugins.PluginManager.LoadAll("examples/plugins")
+	err := plugins.Manager().LoadAll("examples/plugins")
 	if err != nil {
 		log.Info().Err(err).Msg("can't load cli plugins")
 	}
@@ -209,7 +209,7 @@ func NewCliRootCmd() *cobra.Command {
 	// additional cmds
 	enableCli(rootCmd)
 
-	//additional plugins
+	// additional plugins
 	enableCliPlugins(rootCmd)
 
 	// "version"
@@ -220,9 +220,14 @@ func NewCliRootCmd() *cobra.Command {
 
 func enableCliPlugins(cmd *cobra.Command) {
 	// init clients for each config
-	for k, p := range cliCommandManager.AllPlugins() {
-		fmt.Println("Adding plugin: ", k)
-		cmd.AddCommand(p.(CLICommand).Command())
+	for name, plugin := range cliCommandManager.AllPlugins() {
+		command, ok := plugin.(Command)
+		if !ok {
+			log.Warn().Msgf("Can't add plugin: %v", name)
+		}
+
+		log.Info().Msgf("Adding plugin: %v", name)
+		cmd.AddCommand(command.GetCommand())
 	}
 }
 
