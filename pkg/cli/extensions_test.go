@@ -578,7 +578,7 @@ func TestServeSearchExtension(t *testing.T) {
 
 		content := fmt.Sprintf(`{
 					"storage": {
-						"rootDirectory": "/tmp/zot"
+						"rootDirectory": "%s"
 					},
 					"http": {
 						"address": "127.0.0.1",
@@ -592,7 +592,7 @@ func TestServeSearchExtension(t *testing.T) {
 						"search": {
 						}
 					}
-				}`, port, logFile.Name())
+				}`, t.TempDir(), port, logFile.Name())
 
 		cfgfile, err := ioutil.TempFile("", "zot-test*.json")
 		So(err, ShouldBeNil)
@@ -625,7 +625,7 @@ func TestServeSearchExtension(t *testing.T) {
 
 		content := fmt.Sprintf(`{
 					"storage": {
-						"rootDirectory": "/tmp/zot"
+						"rootDirectory": "%s"
 					},
 					"http": {
 						"address": "127.0.0.1",
@@ -642,7 +642,7 @@ func TestServeSearchExtension(t *testing.T) {
 							}
 						}
 					}
-				}`, port, logFile.Name())
+				}`, t.TempDir(), port, logFile.Name())
 
 		cfgfile, err := ioutil.TempFile("", "zot-test*.json")
 		So(err, ShouldBeNil)
@@ -678,7 +678,7 @@ func TestServeSearchExtension(t *testing.T) {
 
 		content := fmt.Sprintf(`{
 				"storage": {
-					"rootDirectory": "/tmp/zot"
+					"rootDirectory": "%s"
 				},
 				"http": {
 					"address": "127.0.0.1",
@@ -693,7 +693,7 @@ func TestServeSearchExtension(t *testing.T) {
 						"enable": true
 					}
 				}
-			}`, port, logFile.Name())
+			}`, t.TempDir(), port, logFile.Name())
 
 		cfgfile, err := ioutil.TempFile("", "zot-test*.json")
 		So(err, ShouldBeNil)
@@ -726,7 +726,7 @@ func TestServeSearchExtension(t *testing.T) {
 
 		content := fmt.Sprintf(`{
 				"storage": {
-					"rootDirectory": "/tmp/zot"
+					"rootDirectory": "%s"
 				},
 				"http": {
 					"address": "127.0.0.1",
@@ -744,7 +744,7 @@ func TestServeSearchExtension(t *testing.T) {
 						}
 					}
 				}
-			}`, port, logFile.Name())
+			}`, t.TempDir(), port, logFile.Name())
 
 		cfgfile, err := ioutil.TempFile("", "zot-test*.json")
 		So(err, ShouldBeNil)
