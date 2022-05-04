@@ -1,0 +1,22 @@
+# This is a comment.
+# Each line is a file pattern followed by one or more owners.
+
+*                 @rchincha @andaaron @peusebiu
+
+/pkg/storage/                   @peusebiu
+
+/pkg/exporter/                  @adodon2go
+
+/pkg/extensions/search/         @shimish2
+
+/pkg/extensions/scrub/          @Andreea-Lupu
+
+/pkg/extensions/sync/           @peusebiu
+
+/pkg/extensions/monitoring/     @adodon2go
+
+/cmd/zxp/                       @adodon2go
+
+/cmd/zb/                        @roxanaN
+
+
