@@ -54,7 +54,7 @@ func init() {
 
 			log.Info().Str("DB update completed, next update scheduled after", updateInterval.String()).Msg("")
 
-			log.Warn().Msg("CVE update interval set to too-short interval < 2h, changing update duration to 2 hours and continuing.") //nolint:lll // gofumpt conflicts with lll
+			time.Sleep(updateInterval)
 		}
 	}
 
@@ -65,7 +65,7 @@ func init() {
 			if config.Extensions.Search.CVE.UpdateInterval < defaultUpdateInterval {
 				config.Extensions.Search.CVE.UpdateInterval = defaultUpdateInterval
 
-				log.Warn().Msg("CVE update interval set to too-short interval < 2h, changing update duration to 2 hours and continuing.") // nolint: lll
+				log.Warn().Msg("CVE update interval set to too-short interval < 2h, changing update duration to 2 hours and continuing.") //nolint:lll // gofumpt conflicts with lll
 			}
 
 			go func() {
