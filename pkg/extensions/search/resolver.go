@@ -10,6 +10,7 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	"zotregistry.io/zot/pkg/log" // nolint: gci
+	"zotregistry.io/zot/pkg/plugins"
 
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
@@ -40,13 +41,15 @@ type cveDetail struct {
 }
 
 // GetResolverConfig ...
-func GetResolverConfig(log log.Logger, storeController storage.StoreController, enableCVE bool) Config {
+func GetResolverConfig(log log.Logger, storeController storage.StoreController,
+	pluginManager plugins.PluginManager, enableCVE bool,
+) Config {
 	var cveInfo *cveinfo.CveInfo
 
 	var err error
 
 	if enableCVE {
-		cveInfo, err = cveinfo.GetCVEInfo(storeController, log)
+		cveInfo, err = cveinfo.GetCVEInfo(storeController, pluginManager.GetImplManager(plugins.VulnScanner), log)
 		if err != nil {
 			panic(err)
 		}
@@ -120,7 +123,7 @@ func (r *queryResolver) CVEListForImage(ctx context.Context, image string) (*CVE
 		return &CVEResultForImage{}, err
 	}
 
-	report, err := r.cveInfo.ScanImage(trivyCtx.Ctx)
+	report, err := r.cveInfo.ScanImage(trivyCtx.Ctx, image)
 	if err != nil {
 		r.log.Error().Err(err).Msg("unable to scan image repository")
 
@@ -305,7 +308,7 @@ func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, cvid, image s
 
 		r.cveInfo.Log.Info().Str("image", fmt.Sprintf("%s:%s", image, tag.Name)).Msg("scanning image")
 
-		report, err := r.cveInfo.ScanImage(trivyCtx.Ctx)
+		report, err := r.cveInfo.ScanImage(trivyCtx.Ctx, image)
 		if err != nil {
 			r.log.Error().Err(err).
 				Str("image", fmt.Sprintf("%s:%s", image, tag.Name)).Msg("unable to scan image")

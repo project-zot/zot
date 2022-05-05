@@ -23,6 +23,7 @@ import (
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/plugins"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/s3"
 )
@@ -33,6 +34,7 @@ const (
 
 type Controller struct {
 	Config          *config.Config
+	PluginManager   plugins.PluginManager
 	Router          *mux.Router
 	StoreController storage.StoreController
 	Log             log.Logger
@@ -42,7 +44,7 @@ type Controller struct {
 	wgShutDown      *goSync.WaitGroup // use it to gracefully shutdown goroutines
 }
 
-func NewController(config *config.Config) *Controller {
+func NewController(config *config.Config, pluginManager plugins.PluginManager) *Controller {
 	var controller Controller
 
 	logger := log.NewLogger(config.Log.Level, config.Log.Output)
@@ -54,6 +56,8 @@ func NewController(config *config.Config) *Controller {
 		audit := log.NewAuditLogger(config.Log.Level, config.Log.Audit)
 		controller.Audit = audit
 	}
+
+	controller.PluginManager = pluginManager
 
 	return &controller
 }

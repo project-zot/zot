@@ -28,6 +28,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/plugins"
 	"zotregistry.io/zot/pkg/storage"
 	. "zotregistry.io/zot/pkg/test"
 )
@@ -279,7 +280,7 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 
 		conf.Extensions.Search.CVE = nil
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 
 		go func() {
 			// this blocks
@@ -419,7 +420,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		conf.Extensions.Search.CVE = nil
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 
 		go func() {
 			// this blocks

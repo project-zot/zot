@@ -20,6 +20,8 @@ import (
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/plugins"
+	cliPlugin "zotregistry.io/zot/pkg/plugins/cli"
+	scanPlugin "zotregistry.io/zot/pkg/plugins/scan"
 	"zotregistry.io/zot/pkg/storage"
 )
 
@@ -31,7 +33,7 @@ func metadataConfig(md *mapstructure.Metadata) viper.DecoderConfigOption {
 	}
 }
 
-func newServeCmd(conf *config.Config) *cobra.Command {
+func newServeCmd(conf *config.Config, pluginManager plugins.PluginManager) *cobra.Command {
 	// "serve"
 	serveCmd := &cobra.Command{
 		Use:     "serve <config>",
@@ -45,7 +47,7 @@ func newServeCmd(conf *config.Config) *cobra.Command {
 				}
 			}
 
-			ctlr := api.NewController(conf)
+			ctlr := api.NewController(conf, pluginManager)
 
 			// config reloader
 			hotReloader, err := NewHotReloader(ctlr, args[0])
@@ -66,7 +68,7 @@ func newServeCmd(conf *config.Config) *cobra.Command {
 	return serveCmd
 }
 
-func newScrubCmd(conf *config.Config) *cobra.Command {
+func newScrubCmd(conf *config.Config, pluginManager plugins.PluginManager) *cobra.Command {
 	// "scrub"
 	scrubCmd := &cobra.Command{
 		Use:     "scrub <config>",
@@ -103,7 +105,7 @@ func newScrubCmd(conf *config.Config) *cobra.Command {
 				panic("Error: server is running")
 			} else {
 				// server is down
-				ctlr := api.NewController(conf)
+				ctlr := api.NewController(conf, pluginManager)
 				ctlr.Metrics = monitoring.NewMetricsServer(false, ctlr.Log)
 
 				if err := ctlr.InitImageStore(context.Background()); err != nil {
@@ -149,10 +151,15 @@ func NewServerRootCmd() *cobra.Command {
 	showVersion := false
 	conf := config.New()
 
+	// init the PluginManager here.
 	// specify a directory where the plugin configs are
-	err := plugins.Manager().LoadAll("/home/laur/zot/examples/plugins")
+	pluginManager := plugins.NewManager()
+
+	registerAllIntegrationPoints(&pluginManager)
+
+	err := pluginManager.LoadAll("zot/examples/plugins")
 	if err != nil {
-		log.Info().Err(err).Msg("error loading plugins")
+		log.Info().Msg("can't load cli plugins")
 	}
 
 	rootCmd := &cobra.Command{
@@ -171,11 +178,11 @@ func NewServerRootCmd() *cobra.Command {
 	}
 
 	// "serve"
-	rootCmd.AddCommand(newServeCmd(conf))
+	rootCmd.AddCommand(newServeCmd(conf, pluginManager))
 	// "verify"
 	rootCmd.AddCommand(newVerifyCmd(conf))
 	// "scrub"
-	rootCmd.AddCommand(newScrubCmd(conf))
+	rootCmd.AddCommand(newScrubCmd(conf, pluginManager))
 	// "version"
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "show the version and exit")
 
@@ -185,8 +192,11 @@ func NewServerRootCmd() *cobra.Command {
 // "zli" - client-side cli.
 func NewCliRootCmd() *cobra.Command {
 	showVersion := false
+	pluginManager := plugins.NewManager()
 
-	err := plugins.Manager().LoadAll("examples/plugins")
+	registerAllIntegrationPoints(pluginManager)
+
+	err := pluginManager.LoadAll("zot/examples/plugins")
 	if err != nil {
 		log.Info().Err(err).Msg("can't load cli plugins")
 	}
@@ -210,7 +220,7 @@ func NewCliRootCmd() *cobra.Command {
 	enableCli(rootCmd)
 
 	// additional plugins
-	enableCliPlugins(rootCmd)
+	enableCliPlugins(rootCmd, pluginManager)
 
 	// "version"
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "show the version and exit")
@@ -218,10 +228,10 @@ func NewCliRootCmd() *cobra.Command {
 	return rootCmd
 }
 
-func enableCliPlugins(cmd *cobra.Command) {
+func enableCliPlugins(cmd *cobra.Command, pm plugins.PluginManager) {
 	// init clients for each config
-	for name, plugin := range cliCommandManager.AllPlugins() {
-		command, ok := plugin.(Command)
+	for name, plugin := range pm.GetImplManager(plugins.VulnScanner).AllPlugins() {
+		command, ok := plugin.(cliPlugin.Command)
 		if !ok {
 			log.Warn().Msgf("Can't add plugin: %v", name)
 		}
@@ -550,4 +560,23 @@ func validateSync(config *config.Config) error {
 	}
 
 	return nil
+func registerAllIntegrationPoints(pluginManager plugins.PluginManager) {
+	pluginManager.RegisterInterface(
+		"VulnScanner",
+		scanPlugin.RPCScanManager{
+			Impl: &struct {
+				Name            string
+				VulnScannerImpl plugins.Plugin
+			}{},
+		},
+		scanPlugin.RPCScanBuilder{},
+	)
+
+	pluginManager.RegisterInterface(
+		"CLICommand",
+		cliPlugin.Manager{
+			Implementations: map[string]plugins.Plugin{},
+		},
+		cliPlugin.Builder{},
+	)
 }

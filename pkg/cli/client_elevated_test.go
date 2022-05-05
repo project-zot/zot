@@ -82,7 +82,7 @@ func TestElevatedPrivilegesTLSNewControllerPrivilegedCert(t *testing.T) {
 			CACert: CACert,
 		}
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 		go func() {
 			// this blocks

@@ -20,6 +20,7 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
+	"zotregistry.io/zot/pkg/plugins"
 	"zotregistry.io/zot/pkg/test"
 )
 
@@ -69,7 +70,7 @@ func TestTLSWithAuth(t *testing.T) {
 			CACert: CACert,
 		}
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 		go func() {
 			// this blocks
@@ -161,7 +162,7 @@ func TestTLSWithoutAuth(t *testing.T) {
 			CACert: CACert,
 		}
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 		go func() {
 			// this blocks
@@ -226,7 +227,7 @@ func TestTLSBadCerts(t *testing.T) {
 			CACert: CACert,
 		}
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 		go func() {
 			// this blocks

@@ -17,32 +17,32 @@ import (
 // a InterfaceManager that stores and dispenses implementations for the plugin.
 type Plugin interface{}
 
-// PluginManager is responsible of storing for each plugin
-// it's implementation manager(called InterfaceManager).
-var pluginManagerSingleton *PluginManager
+// make it thread safe: https://refactoring.guru/design-patterns/singleton/go/example.
 
-// TODO make it thread safe: https://refactoring.guru/design-patterns/singleton/go/example.
-func Manager() *PluginManager {
-	if pluginManagerSingleton == nil {
-		pluginManagerSingleton = &PluginManager{
-			InterfaceManagers: map[string]InterfaceManager{},
-			builders:          map[string]PluginBuilder{},
-		}
-
-		return pluginManagerSingleton
-	}
-
-	return pluginManagerSingleton
+type PluginManager interface {
+	GetImplManager(name string) ImplementationManager
+	GetBuilder(interfaceName string) (PluginBuilder, error)
+	LoadAll(pluginsDir string) error
+	RegisterInterface(name string, implManager ImplementationManager, pluginBuilder PluginBuilder)
+	RegisterImplementation(interfaceName string, implName string, plugin Plugin) error
 }
 
-type PluginManager struct {
-	InterfaceManagers map[string]InterfaceManager
-	builders          map[string]PluginBuilder
-	log               log.Logger
+type DefaultPluginManager struct {
+	ImplManagers map[string]ImplementationManager
+	builders     map[string]PluginBuilder
+	log          log.Logger
+}
+
+func NewManager() DefaultPluginManager {
+	return DefaultPluginManager{
+		ImplManagers: map[string]ImplementationManager{},
+		builders:     map[string]PluginBuilder{},
+		log:          log.Logger{},
+	}
 }
 
 // GetBuilder returns the PluginBuilder object for a registered integration point.
-func (pm *PluginManager) GetBuilder(interfaceName string) (PluginBuilder, error) {
+func (pm DefaultPluginManager) GetBuilder(interfaceName string) (PluginBuilder, error) {
 	if pm.builders[interfaceName] == nil {
 		return nil, zerr.ErrBadIntegrationPoint
 	}
@@ -53,7 +53,7 @@ func (pm *PluginManager) GetBuilder(interfaceName string) (PluginBuilder, error)
 // LoadAll given a directory path will search for plugin config files
 // and try to initialize and hook plugins by creating a gRPC connection
 // and registering the implementation.
-func (pm *PluginManager) LoadAll(pluginsDir string) error {
+func (pm DefaultPluginManager) LoadAll(pluginsDir string) error {
 	pm.log.Info().Msgf("loading all plugins from %v", pluginsDir)
 
 	pluginConfigs, err := os.ReadDir(pluginsDir)
@@ -101,28 +101,30 @@ func (pm *PluginManager) LoadAll(pluginsDir string) error {
 }
 
 // RegisterInterface makes the given interface name recognised as supported by Zot.
-func (pm *PluginManager) RegisterInterface(
-	name string,
-	interfaceManager InterfaceManager,
+func (pm DefaultPluginManager) RegisterInterface(name string, interfaceManager ImplementationManager,
 	pluginBuilder PluginBuilder,
 ) {
-	pm.InterfaceManagers[name] = interfaceManager
+	pm.ImplManagers[name] = interfaceManager
 	pm.builders[name] = pluginBuilder
 }
 
 // RegisterImplementation hooks the implementation to the InterfaceManager. This
 // allows Zot to find and use the implementation.
-func (pm *PluginManager) RegisterImplementation(interfaceName string, implName string, plugin Plugin) error {
-	if pm.InterfaceManagers[interfaceName] == nil {
+func (pm DefaultPluginManager) RegisterImplementation(interfaceName string, implName string, plugin Plugin) error {
+	if pm.ImplManagers[interfaceName] == nil {
 		return zerr.ErrBadIntegrationPoint
 	}
 
-	err := pm.InterfaceManagers[interfaceName].RegisterImplementation(implName, plugin)
+	err := pm.ImplManagers[interfaceName].RegisterImplementation(implName, plugin)
 	if err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func (pm DefaultPluginManager) GetImplManager(name string) ImplementationManager {
+	return pm.ImplManagers[name]
 }
 
 func loadConfig(configPath string) (*Config, error) {

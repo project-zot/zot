@@ -18,6 +18,7 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/cli"
+	"zotregistry.io/zot/pkg/plugins"
 	"zotregistry.io/zot/pkg/test"
 )
 
@@ -60,7 +61,7 @@ func TestSressTooManyOpenFiles(t *testing.T) {
 		fmt.Println("Log file is: ", logFile.Name())
 		conf.Log.Output = logFile.Name()
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		dir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
 			panic(err)

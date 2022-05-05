@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-option go_package = "zoregistry.io/zot/pkg/plugins/clicommand";
+option go_package = "zoregistry.io/zot/pkg/plugins/cli";
 
-package clicommand;
+package cli;
 
 //  CLICommand service definition.
 service CLICommand {

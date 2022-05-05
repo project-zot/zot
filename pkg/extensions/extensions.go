@@ -20,6 +20,7 @@ import (
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	"zotregistry.io/zot/pkg/extensions/sync"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/plugins"
 	"zotregistry.io/zot/pkg/storage"
 )
 
@@ -137,7 +138,8 @@ func GetExtensions(config *config.Config) distext.ExtensionList {
 }
 
 // SetupRoutes ...
-func SetupRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController, l log.Logger,
+func SetupRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
+	pluginManager plugins.PluginManager, l log.Logger,
 ) {
 	// fork a new zerolog child to avoid data race
 	log := log.Logger{Logger: l.With().Caller().Timestamp().Logger()}
@@ -147,9 +149,9 @@ func SetupRoutes(config *config.Config, router *mux.Router, storeController stor
 		var resConfig search.Config
 
 		if config.Extensions.Search.CVE != nil {
-			resConfig = search.GetResolverConfig(log, storeController, true)
+			resConfig = search.GetResolverConfig(log, storeController, pluginManager, true)
 		} else {
-			resConfig = search.GetResolverConfig(log, storeController, false)
+			resConfig = search.GetResolverConfig(log, storeController, pluginManager, false)
 		}
 
 		router.PathPrefix(constants.ExtSearchPrefix).Methods("OPTIONS", "GET", "POST").

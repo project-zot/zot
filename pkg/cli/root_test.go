@@ -15,6 +15,7 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/cli"
+	"zotregistry.io/zot/pkg/plugins"
 	"zotregistry.io/zot/pkg/storage"
 	. "zotregistry.io/zot/pkg/test"
 )
@@ -578,7 +579,7 @@ func TestScrub(t *testing.T) {
 			port := GetFreePort()
 			config := config.New()
 			config.HTTP.Port = port
-			controller := api.NewController(config)
+			controller := api.NewController(config, plugins.NewManager())
 
 			dir := t.TempDir()
 

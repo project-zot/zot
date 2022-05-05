@@ -16,6 +16,7 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
+	"zotregistry.io/zot/pkg/plugins"
 	"zotregistry.io/zot/pkg/test"
 )
 
@@ -36,7 +37,7 @@ func TestExtensionMetrics(t *testing.T) {
 			Prometheus: &extconf.PrometheusConfig{Path: "/metrics"},
 		}
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		So(ctlr, ShouldNotBeNil)
 
 		go startServer(ctlr)
@@ -87,7 +88,7 @@ func TestExtensionMetrics(t *testing.T) {
 		var disabled bool
 		conf.Extensions.Metrics = &extconf.MetricsConfig{Enable: &disabled}
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		So(ctlr, ShouldNotBeNil)
 
 		go startServer(ctlr)

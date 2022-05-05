@@ -5,12 +5,13 @@ import (
 	"github.com/urfave/cli/v2"
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/plugins/scan"
 	"zotregistry.io/zot/pkg/storage"
 )
 
 // CveInfo ...
 type CveInfo struct {
-	VulnScanner
+	scan.VulnScanner
 	Log                log.Logger
 	CveTrivyController CveTrivyController
 	StoreController    storage.StoreController

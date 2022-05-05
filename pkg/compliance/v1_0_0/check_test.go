@@ -12,6 +12,7 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/compliance"
 	"zotregistry.io/zot/pkg/compliance/v1_0_0"
+	"zotregistry.io/zot/pkg/plugins"
 	. "zotregistry.io/zot/pkg/test"
 )
 
@@ -59,7 +60,7 @@ func startServer(t *testing.T) (*api.Controller, string) {
 	conf := config.New()
 	conf.HTTP.Address = listenAddress
 	conf.HTTP.Port = port
-	ctrl := api.NewController(conf)
+	ctrl := api.NewController(conf, plugins.NewManager())
 
 	dir := t.TempDir()
 	defaultDir = dir

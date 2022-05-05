@@ -18,7 +18,7 @@
 // 	protoc        v3.6.1
 // source: plugins/clicommand/clicommand.proto
 
-package clicommand
+package cli
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"

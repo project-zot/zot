@@ -49,6 +49,7 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
+	"zotregistry.io/zot/pkg/plugins"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test"
 )
@@ -101,7 +102,7 @@ func TestNew(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		conf := config.New()
 		So(conf, ShouldNotBeNil)
-		So(api.NewController(conf), ShouldNotBeNil)
+		So(api.NewController(conf, plugins.NewManager()), ShouldNotBeNil)
 	})
 }
 
@@ -112,7 +113,7 @@ func TestRunAlreadyRunningServer(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 
 		globalDir := t.TempDir()
 
@@ -155,7 +156,7 @@ func TestObjectStorageController(t *testing.T) {
 			"name":          storage.S3StorageDriverName,
 		}
 		conf.Storage.StorageDriver = storageDriverParams
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		So(ctlr, ShouldNotBeNil)
 
 		ctlr.Config.Storage.RootDirectory = "zot"
@@ -183,7 +184,7 @@ func TestObjectStorageController(t *testing.T) {
 			"skipverify":     false,
 		}
 		conf.Storage.StorageDriver = storageDriverParams
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		So(ctlr, ShouldNotBeNil)
 
 		ctlr.Config.Storage.RootDirectory = "/"
@@ -215,7 +216,7 @@ func TestObjectStorageControllerSubPaths(t *testing.T) {
 			"skipverify":     false,
 		}
 		conf.Storage.StorageDriver = storageDriverParams
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		So(ctlr, ShouldNotBeNil)
 
 		ctlr.Config.Storage.RootDirectory = "zot"
@@ -257,7 +258,7 @@ func TestHtpasswdSingleCred(t *testing.T) {
 
 				conf.HTTP.AllowOrigin = conf.HTTP.Address
 
-				ctlr := api.NewController(conf)
+				ctlr := api.NewController(conf, plugins.NewManager())
 				ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 				go startServer(ctlr)
@@ -315,7 +316,7 @@ func TestHtpasswdTwoCreds(t *testing.T) {
 						Path: htpasswdPath,
 					},
 				}
-				ctlr := api.NewController(conf)
+				ctlr := api.NewController(conf, plugins.NewManager())
 				ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 				go startServer(ctlr)
@@ -366,7 +367,7 @@ func TestHtpasswdFiveCreds(t *testing.T) {
 					Path: htpasswdPath,
 				},
 			}
-			ctlr := api.NewController(conf)
+			ctlr := api.NewController(conf, plugins.NewManager())
 			ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 			go startServer(ctlr)
@@ -399,7 +400,7 @@ func TestRatelimit(t *testing.T) {
 		conf.HTTP.Ratelimit = &config.RatelimitConfig{
 			Rate: &rate,
 		}
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		go startServer(ctlr)
@@ -435,7 +436,7 @@ func TestRatelimit(t *testing.T) {
 				},
 			},
 		}
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		go startServer(ctlr)
@@ -472,7 +473,7 @@ func TestRatelimit(t *testing.T) {
 				},
 			},
 		}
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		go startServer(ctlr)
@@ -508,7 +509,7 @@ func TestBasicAuth(t *testing.T) {
 				Path: htpasswdPath,
 			},
 		}
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		go startServer(ctlr)
@@ -542,7 +543,7 @@ func TestInterruptedBlobUpload(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		go startServer(ctlr)
@@ -773,7 +774,7 @@ func TestMultipleInstance(t *testing.T) {
 				Path: htpasswdPath,
 			},
 		}
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		err := ctlr.Run(context.Background())
 		So(err, ShouldEqual, errors.ErrImgStoreNotFound)
 
@@ -810,7 +811,7 @@ func TestMultipleInstance(t *testing.T) {
 				Path: htpasswdPath,
 			},
 		}
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		globalDir := t.TempDir()
 		subDir := t.TempDir()
 
@@ -869,7 +870,7 @@ func TestTLSWithBasicAuth(t *testing.T) {
 			},
 		}
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		go startServer(ctlr)
@@ -930,7 +931,7 @@ func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 		}
 		conf.HTTP.AllowReadAccess = true
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		go startServer(ctlr)
@@ -985,7 +986,7 @@ func TestTLSMutualAuth(t *testing.T) {
 			CACert: CACert,
 		}
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		go startServer(ctlr)
@@ -1053,7 +1054,7 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 		}
 		conf.HTTP.AllowReadAccess = true
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		go startServer(ctlr)
@@ -1134,7 +1135,7 @@ func TestTLSMutualAndBasicAuth(t *testing.T) {
 			CACert: CACert,
 		}
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		go startServer(ctlr)
@@ -1212,7 +1213,7 @@ func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 		}
 		conf.HTTP.AllowReadAccess = true
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		go startServer(ctlr)
@@ -1367,7 +1368,7 @@ func TestBasicAuthWithLDAP(t *testing.T) {
 				UserAttribute: "uid",
 			},
 		}
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		go startServer(ctlr)
@@ -1451,7 +1452,7 @@ func TestBearerAuth(t *testing.T) {
 				Service: aurl.Host,
 			},
 		}
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		go startServer(ctlr)
@@ -1621,7 +1622,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 			},
 		}
 		conf.HTTP.AllowReadAccess = true
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		go startServer(ctlr)
@@ -1850,7 +1851,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 			},
 		}
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		dir := t.TempDir()
 		err := test.CopyFiles("../../test/data", dir)
 		if err != nil {
@@ -2377,7 +2378,7 @@ func TestAuthorizationWithOnlyDefaultPolicy(t *testing.T) {
 			},
 		}
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		dir := t.TempDir()
 		ctlr.Config.Storage.RootDirectory = dir
 
@@ -2571,7 +2572,7 @@ func TestInvalidCases(t *testing.T) {
 			},
 		}
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 
 		err := os.Mkdir("oci-repo-test", 0o000)
 		if err != nil {
@@ -2636,7 +2637,7 @@ func TestHTTPReadOnly(t *testing.T) {
 						Path: htpasswdPath,
 					},
 				}
-				ctlr := api.NewController(conf)
+				ctlr := api.NewController(conf, plugins.NewManager())
 				ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 				go startServer(ctlr)
@@ -2681,7 +2682,7 @@ func TestCrossRepoMount(t *testing.T) {
 			},
 		}
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 
 		dir := t.TempDir()
 
@@ -2862,7 +2863,7 @@ func TestCrossRepoMount(t *testing.T) {
 			},
 		}
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 
 		dir := t.TempDir()
 
@@ -3000,7 +3001,7 @@ func TestParallelRequests(t *testing.T) {
 		},
 	}
 
-	ctlr := api.NewController(conf)
+	ctlr := api.NewController(conf, plugins.NewManager())
 
 	dir := t.TempDir()
 	firstSubDir := t.TempDir()
@@ -3220,7 +3221,7 @@ func TestHardLink(t *testing.T) {
 			},
 		}
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 
 		dir := t.TempDir()
 
@@ -3269,7 +3270,7 @@ func TestImageSignatures(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		dir := t.TempDir()
 		ctlr.Config.Storage.RootDirectory = dir
 		go func(controller *api.Controller) {
@@ -3600,7 +3601,7 @@ func TestRouteFailures(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 		ctlr.Config.Storage.Commit = true
 
@@ -4182,7 +4183,7 @@ func TestStorageCommit(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		dir := t.TempDir()
 		ctlr.Config.Storage.RootDirectory = dir
 		ctlr.Config.Storage.Commit = true
@@ -4399,7 +4400,7 @@ func TestInjectInterruptedImageManifest(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		dir := t.TempDir()
 		ctlr.Config.Storage.RootDirectory = dir
 
@@ -4509,7 +4510,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		dir := t.TempDir()
 		ctlr.Config.Storage.RootDirectory = dir
 
@@ -4753,7 +4754,7 @@ func TestPeriodicGC(t *testing.T) {
 		conf.Log.Output = logFile.Name()
 		defer os.Remove(logFile.Name()) // clean up
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		dir := t.TempDir()
 		ctlr.Config.Storage.RootDirectory = dir
 		ctlr.Config.Storage.GC = true
@@ -4796,7 +4797,7 @@ func TestPeriodicGC(t *testing.T) {
 		conf.Log.Output = logFile.Name()
 		defer os.Remove(logFile.Name()) // clean up
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		dir := t.TempDir()
 		subDir := t.TempDir()
 

@@ -26,6 +26,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/plugins"
 	"zotregistry.io/zot/pkg/storage"
 	. "zotregistry.io/zot/pkg/test"
 )
@@ -324,6 +325,36 @@ func makeTestFile(fileName, content string) error {
 	return nil
 }
 
+type MockImplementationManager struct {
+	registerImplementationFn func(implName string, plugin interface{}) error
+	allPluginsFn             func() map[string]plugins.Plugin
+	getImplFn                func(name string) plugins.Plugin
+}
+
+func (mim MockImplementationManager) RegisterImplementation(implName string, plugin interface{}) error {
+	if mim.registerImplementationFn != nil {
+		return mim.registerImplementationFn(implName, plugin)
+	}
+
+	return nil
+}
+
+func (mim MockImplementationManager) AllPlugins() map[string]plugins.Plugin {
+	if mim.allPluginsFn != nil {
+		return mim.allPluginsFn()
+	}
+
+	return map[string]plugins.Plugin{}
+}
+
+func (mim MockImplementationManager) GetImpl(name string) plugins.Plugin {
+	if mim.getImplFn != nil {
+		return mim.GetImpl(name)
+	}
+
+	return nil
+}
+
 func TestMultipleStoragePath(t *testing.T) {
 	Convey("Test multiple storage path", t, func() {
 		// Create temporary directory
@@ -352,7 +383,11 @@ func TestMultipleStoragePath(t *testing.T) {
 
 		storeController.SubStore = subStore
 
-		cveInfo, err := cveinfo.GetCVEInfo(storeController, log)
+		cveInfo, err := cveinfo.GetCVEInfo(
+			storeController,
+			MockImplementationManager{},
+			log,
+		)
 
 		So(err, ShouldBeNil)
 		So(cveInfo.StoreController.DefaultStore, ShouldNotBeNil)
@@ -396,7 +431,7 @@ func TestCVESearch(t *testing.T) {
 			Search: searchConfig,
 		}
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 
 		go func() {
 			// this blocks
@@ -614,7 +649,7 @@ func TestCVEConfig(t *testing.T) {
 			},
 		}
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 
 		firstDir := t.TempDir()
 
@@ -679,7 +714,7 @@ func TestHTTPOptionsResponse(t *testing.T) {
 		conf.HTTP.Port = port
 		baseURL := GetBaseURL(port)
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 
 		firstDir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
