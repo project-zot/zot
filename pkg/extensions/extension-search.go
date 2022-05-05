@@ -1,3 +1,4 @@
+//go:build search || ui_base
 // +build search ui_base
 
 package extensions

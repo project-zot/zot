@@ -1,3 +1,4 @@
+//go:build (ui_base && needprivileges) || (extended && needprivileges)
 // +build ui_base,needprivileges extended,needprivileges
 
 package cli //nolint:testpackage

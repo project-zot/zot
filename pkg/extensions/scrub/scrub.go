@@ -1,3 +1,4 @@
+//go:build extended || scrub
 // +build extended scrub
 
 package scrub

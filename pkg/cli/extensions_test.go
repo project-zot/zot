@@ -1,3 +1,4 @@
+//go:build ui_base || extended
 // +build ui_base extended
 
 package cli_test

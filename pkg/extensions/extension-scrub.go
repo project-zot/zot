@@ -12,7 +12,7 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 )
 
-func init(){
+func init() {
 	EnableScrubExtension = func(config *config.Config, storeController storage.StoreController,
 		log log.Logger) {
 		if config.Extensions.Scrub != nil &&

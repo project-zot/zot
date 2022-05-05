@@ -1,3 +1,4 @@
+//go:build extended || search
 // +build extended search
 
 // nolint:lll,gosimple

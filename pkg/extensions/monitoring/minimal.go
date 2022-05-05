@@ -1,3 +1,4 @@
+//go:build (minimal || sync || scrub || search || ui_base) && !metrics
 // +build minimal sync scrub search ui_base
 // +build !metrics
 

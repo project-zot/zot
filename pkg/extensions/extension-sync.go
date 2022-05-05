@@ -14,7 +14,7 @@ import (
 )
 
 func init() {
-	 EnableSyncExtension = func(ctx context.Context, config *config.Config, wg *goSync.WaitGroup,
+	EnableSyncExtension = func(ctx context.Context, config *config.Config, wg *goSync.WaitGroup,
 		storeController storage.StoreController, log log.Logger,
 	) {
 		if config.Extensions.Sync != nil && *config.Extensions.Sync.Enable {

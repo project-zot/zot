@@ -1,3 +1,4 @@
+//go:build extended || search
 // +build extended search
 
 package common_test
