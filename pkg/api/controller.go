@@ -102,13 +102,6 @@ func DumpRuntimeParams(log log.Logger) {
 }
 
 func (c *Controller) Run(reloadCtx context.Context) error {
-	// validate configuration
-	if err := c.Config.Validate(c.Log); err != nil {
-		c.Log.Error().Err(err).Msg("configuration validation failed")
-
-		return err
-	}
-
 	// print the current configuration, but strip secrets
 	c.Log.Info().Interface("params", c.Config.Sanitize()).Msg("configuration settings")
 

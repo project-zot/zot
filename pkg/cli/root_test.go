@@ -334,6 +334,69 @@ func TestVerify(t *testing.T) {
 		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 	})
 
+	Convey("Test verify config with unknown keys", t, func(c C) {
+		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := []byte(`{"distSpecVersion": "1.0.0", "storage": {"rootDirectory": "/tmp/zot"},
+							"http": {"url": "127.0.0.1", "port": "8080", "ReadOnly": false},
+							"log": {"level": "debug"}}`)
+		_, err = tmpfile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpfile.Close()
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+	})
+
+	Convey("Test verify config with missing basedn key", t, func(c C) {
+		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := []byte(`{"distSpecVersion": "1.0.0", "storage": {"rootDirectory": "/tmp/zot"},
+							"http": {"auth": {"ldap": {"address": "ldap", "userattribute": "uid"}},
+							"address": "127.0.0.1", "port": "8080", "ReadOnly": false},
+							"log": {"level": "debug"}}`)
+		_, err = tmpfile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpfile.Close()
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+	})
+
+	Convey("Test verify config with missing address key", t, func(c C) {
+		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := []byte(`{"distSpecVersion": "1.0.0", "storage": {"rootDirectory": "/tmp/zot"},
+							"http": {"auth": {"ldap": {"basedn": "ou=Users,dc=example,dc=org", "userattribute": "uid"}},
+							"address": "127.0.0.1", "port": "8080", "ReadOnly": false},
+							"log": {"level": "debug"}}`)
+		_, err = tmpfile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpfile.Close()
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+	})
+
+	Convey("Test verify config with missing userattribute key", t, func(c C) {
+		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := []byte(`{"distSpecVersion": "1.0.0", "storage": {"rootDirectory": "/tmp/zot"},
+							"http": {"auth": {"ldap": {"basedn": "ou=Users,dc=example,dc=org", "address": "ldap"}},
+							"address": "127.0.0.1", "port": "8080", "ReadOnly": false},
+							"log": {"level": "debug"}}`)
+		_, err = tmpfile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpfile.Close()
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+	})
+
 	Convey("Test verify good config", t, func(c C) {
 		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
 		So(err, ShouldBeNil)
