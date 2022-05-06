@@ -201,31 +201,16 @@ func NewCliRootCmd() *cobra.Command {
 }
 
 func validateConfiguration(config *config.Config) error {
-	// enforce GC params
-	if config.Storage.GCDelay < 0 {
-		log.Error().Err(errors.ErrBadConfig).
-			Msgf("invalid garbage-collect delay %v specified", config.Storage.GCDelay)
-
-		return errors.ErrBadConfig
+	if err := validateGC(config); err != nil {
+		return err
 	}
 
-	if config.Storage.GCInterval < 0 {
-		log.Error().Err(errors.ErrBadConfig).
-			Msgf("invalid garbage-collect interval %v specified", config.Storage.GCInterval)
-
-		return errors.ErrBadConfig
+	if err := validateLDAP(config); err != nil {
+		return err
 	}
 
-	if !config.Storage.GC {
-		if config.Storage.GCDelay != 0 {
-			log.Warn().Err(errors.ErrBadConfig).
-				Msg("garbage-collect delay specified without enabling garbage-collect, will be ignored")
-		}
-
-		if config.Storage.GCInterval != 0 {
-			log.Warn().Err(errors.ErrBadConfig).
-				Msg("periodic garbage-collect interval specified without enabling garbage-collect, will be ignored")
-		}
+	if err := validateSync(config); err != nil {
+		return err
 	}
 
 	// check authorization config, it should have basic auth enabled or ldap
@@ -249,30 +234,6 @@ func validateConfiguration(config *config.Config) error {
 			log.Error().Err(errors.ErrBadConfig).Msg("sync supports only filesystem storage")
 
 			return errors.ErrBadConfig
-		}
-	}
-
-	// check glob patterns in sync config are compilable
-	if config.Extensions != nil && config.Extensions.Sync != nil {
-		for id, regCfg := range config.Extensions.Sync.Registries {
-			// check retry options are configured for sync
-			if regCfg.MaxRetries != nil && regCfg.RetryDelay == nil {
-				log.Error().Err(errors.ErrBadConfig).Msgf("extensions.sync.registries[%d].retryDelay"+
-					" is required when using extensions.sync.registries[%d].maxRetries", id, id)
-
-				return errors.ErrBadConfig
-			}
-
-			if regCfg.Content != nil {
-				for _, content := range regCfg.Content {
-					ok := glob.ValidatePattern(content.Prefix)
-					if !ok {
-						log.Error().Err(glob.ErrBadPattern).Str("pattern", content.Prefix).Msg("sync pattern could not be compiled")
-
-						return glob.ErrBadPattern
-					}
-				}
-			}
 		}
 	}
 
@@ -412,8 +373,14 @@ func LoadConfiguration(config *config.Config, configPath string) error {
 		return err
 	}
 
-	if len(metaData.Keys) == 0 || len(metaData.Unused) > 0 {
-		log.Error().Err(errors.ErrBadConfig).Msg("bad configuration, retry writing it")
+	if len(metaData.Keys) == 0 {
+		log.Error().Err(errors.ErrBadConfig).Msgf("config doesn't contain any key:value pair")
+
+		return errors.ErrBadConfig
+	}
+
+	if len(metaData.Unused) > 0 {
+		log.Error().Err(errors.ErrBadConfig).Msgf("unknown keys: %v", metaData.Unused)
 
 		return errors.ErrBadConfig
 	}
@@ -464,4 +431,92 @@ func isDefaultPolicyConfig(cfg *config.Config) bool {
 	log.Info().Msg("default authorization detected")
 
 	return true
+}
+
+func validateLDAP(config *config.Config) error {
+	// LDAP mandatory configuration
+	if config.HTTP.Auth != nil && config.HTTP.Auth.LDAP != nil {
+		ldap := config.HTTP.Auth.LDAP
+		if ldap.UserAttribute == "" {
+			log.Error().Str("userAttribute", ldap.UserAttribute).
+				Msg("invalid LDAP configuration, missing mandatory key: userAttribute")
+
+			return errors.ErrLDAPConfig
+		}
+
+		if ldap.Address == "" {
+			log.Error().Str("address", ldap.Address).
+				Msg("invalid LDAP configuration, missing mandatory key: address")
+
+			return errors.ErrLDAPConfig
+		}
+
+		if ldap.BaseDN == "" {
+			log.Error().Str("basedn", ldap.BaseDN).
+				Msg("invalid LDAP configuration, missing mandatory key: basedn")
+
+			return errors.ErrLDAPConfig
+		}
+	}
+
+	return nil
+}
+
+func validateGC(config *config.Config) error {
+	// enforce GC params
+	if config.Storage.GCDelay < 0 {
+		log.Error().Err(errors.ErrBadConfig).
+			Msgf("invalid garbage-collect delay %v specified", config.Storage.GCDelay)
+
+		return errors.ErrBadConfig
+	}
+
+	if config.Storage.GCInterval < 0 {
+		log.Error().Err(errors.ErrBadConfig).
+			Msgf("invalid garbage-collect interval %v specified", config.Storage.GCInterval)
+
+		return errors.ErrBadConfig
+	}
+
+	if !config.Storage.GC {
+		if config.Storage.GCDelay != 0 {
+			log.Warn().Err(errors.ErrBadConfig).
+				Msg("garbage-collect delay specified without enabling garbage-collect, will be ignored")
+		}
+
+		if config.Storage.GCInterval != 0 {
+			log.Warn().Err(errors.ErrBadConfig).
+				Msg("periodic garbage-collect interval specified without enabling garbage-collect, will be ignored")
+		}
+	}
+
+	return nil
+}
+
+func validateSync(config *config.Config) error {
+	// check glob patterns in sync config are compilable
+	if config.Extensions != nil && config.Extensions.Sync != nil {
+		for id, regCfg := range config.Extensions.Sync.Registries {
+			// check retry options are configured for sync
+			if regCfg.MaxRetries != nil && regCfg.RetryDelay == nil {
+				log.Error().Err(errors.ErrBadConfig).Msgf("extensions.sync.registries[%d].retryDelay"+
+					" is required when using extensions.sync.registries[%d].maxRetries", id, id)
+
+				return errors.ErrBadConfig
+			}
+
+			if regCfg.Content != nil {
+				for _, content := range regCfg.Content {
+					ok := glob.ValidatePattern(content.Prefix)
+					if !ok {
+						log.Error().Err(glob.ErrBadPattern).Str("pattern", content.Prefix).Msg("sync pattern could not be compiled")
+
+						return glob.ErrBadPattern
+					}
+				}
+			}
+		}
+	}
+
+	return nil
 }
