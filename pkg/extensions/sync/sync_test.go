@@ -252,6 +252,109 @@ func startDownstreamServer(
 	return dctlr, destBaseURL, destDir, client
 }
 
+func TestORAS(t *testing.T) {
+	Convey("Verify sync on demand for oras objects", t, func() {
+		sctlr, srcBaseURL, _, _, srcClient := startUpstreamServer(t, false, false)
+
+		test.WaitTillServerReady(srcBaseURL)
+
+		defer func() {
+			sctlr.Shutdown()
+		}()
+
+		content := []byte("{\"name\":\"foo\",\"value\":\"bar\"}")
+
+		fileDir := t.TempDir()
+
+		err := os.WriteFile(path.Join(fileDir, "config.json"), content, 0o600)
+		if err != nil {
+			panic(err)
+		}
+
+		content = []byte("helloworld")
+
+		err = os.WriteFile(path.Join(fileDir, "artifact.txt"), content, 0o600)
+		if err != nil {
+			panic(err)
+		}
+
+		cmd := exec.Command("oras", "version")
+
+		err = cmd.Run()
+		if err != nil {
+			panic(err)
+		}
+
+		fmt.Println(fileDir)
+
+		srcURL := strings.Join([]string{sctlr.Server.Addr, "/oras-artifact:v2"}, "")
+
+		cmd = exec.Command("oras", "push", srcURL, "--manifest-config",
+			"config.json:application/vnd.acme.rocket.config.v1+json", "artifact.txt:text/plain", "-d", "-v")
+		cmd.Dir = fileDir
+
+		// Pushing ORAS artifact to upstream
+		err = cmd.Run()
+		So(err, ShouldBeNil)
+
+		var tlsVerify bool
+
+		regex := ".*"
+
+		syncRegistryConfig := sync.RegistryConfig{
+			Content: []sync.Content{
+				{
+					Prefix: "oras-artifact",
+					Tags: &sync.Tags{
+						Regex: &regex,
+					},
+				},
+			},
+			URLs:      []string{srcBaseURL},
+			TLSVerify: &tlsVerify,
+			CertDir:   "",
+			OnDemand:  true,
+		}
+
+		defaultVal := true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
+
+		dctlr, destBaseURL, _, destClient := startDownstreamServer(t, false, syncConfig)
+
+		test.WaitTillServerReady(destBaseURL)
+
+		defer func() {
+			dctlr.Shutdown()
+		}()
+
+		resp, _ := srcClient.R().Get(srcBaseURL + "/v2/" + "oras-artifact" + "/manifests/v2")
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		resp, err = destClient.R().Get(destBaseURL + "/v2/" + "oras-artifact" + "/manifests/v2")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		destURL := strings.Join([]string{dctlr.Server.Addr, "/oras-artifact:v2"}, "")
+		cmd = exec.Command("oras", "pull", destURL, "-d", "-v", "-a")
+		destDir := t.TempDir()
+		cmd.Dir = destDir
+		// pulling oras artifact from dest server
+		err = cmd.Run()
+		So(err, ShouldBeNil)
+
+		cmd = exec.Command("grep", "helloworld", "artifact.txt")
+		cmd.Dir = destDir
+		output, err := cmd.CombinedOutput()
+
+		So(err, ShouldBeNil)
+		So(string(output), ShouldContainSubstring, "helloworld")
+	})
+}
+
 func TestOnDemand(t *testing.T) {
 	Convey("Verify sync on demand feature", t, func() {
 		sctlr, srcBaseURL, _, _, srcClient := startUpstreamServer(t, false, false)
