@@ -18,7 +18,7 @@ func NewPerfRootCmd() *cobra.Command {
 	var concurrency, requests int
 
 	rootCmd := &cobra.Command{
-		Use:   "zb [options] <url>",
+		Use:   "zb <url>",
 		Short: "`zb`",
 		Long:  "`zb`",
 		Run: func(cmd *cobra.Command, args []string) {
