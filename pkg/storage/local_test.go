@@ -472,7 +472,7 @@ func TestNegativeCases(t *testing.T) {
 	})
 
 	Convey("Invalid get image tags", t, func(c C) {
-		var ilfs storage.ImageStoreFS
+		var ilfs storage.ImageStoreLocal
 		_, err := ilfs.GetImageTags("test")
 		So(err, ShouldNotBeNil)
 
@@ -495,7 +495,7 @@ func TestNegativeCases(t *testing.T) {
 	})
 
 	Convey("Invalid get image manifest", t, func(c C) {
-		var ilfs storage.ImageStoreFS
+		var ilfs storage.ImageStoreLocal
 		_, _, _, err := ilfs.GetImageManifest("test", "")
 		So(err, ShouldNotBeNil)
 

@@ -53,8 +53,8 @@ type StoreController struct {
 	SubStore     map[string]ImageStore
 }
 
-// ImageStoreFS provides the image storage operations.
-type ImageStoreFS struct {
+// ImageStoreLocal provides the image storage operations.
+type ImageStoreLocal struct {
 	rootDir     string
 	lock        *sync.RWMutex
 	blobUploads map[string]BlobUpload
@@ -67,11 +67,11 @@ type ImageStoreFS struct {
 	metrics     monitoring.MetricServer
 }
 
-func (is *ImageStoreFS) RootDir() string {
+func (is *ImageStoreLocal) RootDir() string {
 	return is.rootDir
 }
 
-func (is *ImageStoreFS) DirExists(d string) bool {
+func (is *ImageStoreLocal) DirExists(d string) bool {
 	return DirExists(d)
 }
 
@@ -116,7 +116,7 @@ func NewImageStore(rootDir string, gc bool, gcDelay time.Duration, dedupe, commi
 		}
 	}
 
-	imgStore := &ImageStoreFS{
+	imgStore := &ImageStoreLocal{
 		rootDir:     rootDir,
 		lock:        &sync.RWMutex{},
 		blobUploads: make(map[string]BlobUpload),
@@ -151,14 +151,14 @@ func NewImageStore(rootDir string, gc bool, gcDelay time.Duration, dedupe, commi
 }
 
 // RLock read-lock.
-func (is *ImageStoreFS) RLock(lockStart *time.Time) {
+func (is *ImageStoreLocal) RLock(lockStart *time.Time) {
 	*lockStart = time.Now()
 
 	is.lock.RLock()
 }
 
 // RUnlock read-unlock.
-func (is *ImageStoreFS) RUnlock(lockStart *time.Time) {
+func (is *ImageStoreLocal) RUnlock(lockStart *time.Time) {
 	is.lock.RUnlock()
 
 	lockEnd := time.Now()
@@ -167,14 +167,14 @@ func (is *ImageStoreFS) RUnlock(lockStart *time.Time) {
 }
 
 // Lock write-lock.
-func (is *ImageStoreFS) Lock(lockStart *time.Time) {
+func (is *ImageStoreLocal) Lock(lockStart *time.Time) {
 	*lockStart = time.Now()
 
 	is.lock.Lock()
 }
 
 // Unlock write-unlock.
-func (is *ImageStoreFS) Unlock(lockStart *time.Time) {
+func (is *ImageStoreLocal) Unlock(lockStart *time.Time) {
 	is.lock.Unlock()
 
 	lockEnd := time.Now()
@@ -182,7 +182,7 @@ func (is *ImageStoreFS) Unlock(lockStart *time.Time) {
 	monitoring.ObserveStorageLockLatency(is.metrics, latency, is.RootDir(), RWLOCK) // histogram
 }
 
-func (is *ImageStoreFS) initRepo(name string) error {
+func (is *ImageStoreLocal) initRepo(name string) error {
 	repoDir := path.Join(is.rootDir, name)
 	// create "blobs" subdir
 	err := ensureDir(path.Join(repoDir, "blobs"), is.log)
@@ -238,7 +238,7 @@ func (is *ImageStoreFS) initRepo(name string) error {
 }
 
 // InitRepo creates an image repository under this store.
-func (is *ImageStoreFS) InitRepo(name string) error {
+func (is *ImageStoreLocal) InitRepo(name string) error {
 	var lockLatency time.Time
 
 	is.Lock(&lockLatency)
@@ -248,7 +248,7 @@ func (is *ImageStoreFS) InitRepo(name string) error {
 }
 
 // ValidateRepo validates that the repository layout is complaint with the OCI repo layout.
-func (is *ImageStoreFS) ValidateRepo(name string) (bool, error) {
+func (is *ImageStoreLocal) ValidateRepo(name string) (bool, error) {
 	// https://github.com/opencontainers/image-spec/blob/master/image-layout.md#content
 	// at least, expect at least 3 entries - ["blobs", "oci-layout", "index.json"]
 	// and an additional/optional BlobUploadDir in each image store
@@ -306,7 +306,7 @@ func (is *ImageStoreFS) ValidateRepo(name string) (bool, error) {
 }
 
 // GetRepositories returns a list of all the repositories under this store.
-func (is *ImageStoreFS) GetRepositories() ([]string, error) {
+func (is *ImageStoreLocal) GetRepositories() ([]string, error) {
 	var lockLatency time.Time
 
 	dir := is.rootDir
@@ -350,7 +350,7 @@ func (is *ImageStoreFS) GetRepositories() ([]string, error) {
 }
 
 // GetImageTags returns a list of image tags available in the specified repository.
-func (is *ImageStoreFS) GetImageTags(repo string) ([]string, error) {
+func (is *ImageStoreLocal) GetImageTags(repo string) ([]string, error) {
 	var lockLatency time.Time
 
 	dir := path.Join(is.rootDir, repo)
@@ -388,7 +388,7 @@ func (is *ImageStoreFS) GetImageTags(repo string) ([]string, error) {
 }
 
 // GetImageManifest returns the image manifest of an image in the specific repository.
-func (is *ImageStoreFS) GetImageManifest(repo, reference string) ([]byte, string, string, error) {
+func (is *ImageStoreLocal) GetImageManifest(repo, reference string) ([]byte, string, string, error) {
 	var lockLatency time.Time
 
 	dir := path.Join(is.rootDir, repo)
@@ -472,7 +472,7 @@ func (is *ImageStoreFS) GetImageManifest(repo, reference string) ([]byte, string
 	return buf, digest.String(), mediaType, nil
 }
 
-func (is *ImageStoreFS) validateOCIManifest(repo, reference string, manifest *ispec.Manifest) (string, error) {
+func (is *ImageStoreLocal) validateOCIManifest(repo, reference string, manifest *ispec.Manifest) (string, error) {
 	if manifest.SchemaVersion != SchemaVersion {
 		is.log.Error().Int("SchemaVersion", manifest.SchemaVersion).Msg("invalid manifest")
 
@@ -527,7 +527,7 @@ func (is *ImageStoreFS) validateOCIManifest(repo, reference string, manifest *is
 }
 
 // PutImageManifest adds an image manifest to the repository.
-func (is *ImageStoreFS) PutImageManifest(repo, reference, mediaType string,
+func (is *ImageStoreLocal) PutImageManifest(repo, reference, mediaType string,
 	body []byte,
 ) (string, error) {
 	if err := is.InitRepo(repo); err != nil {
@@ -705,7 +705,7 @@ func (is *ImageStoreFS) PutImageManifest(repo, reference, mediaType string,
 }
 
 // DeleteImageManifest deletes the image manifest from the repository.
-func (is *ImageStoreFS) DeleteImageManifest(repo, reference string) error {
+func (is *ImageStoreLocal) DeleteImageManifest(repo, reference string) error {
 	var lockLatency time.Time
 
 	dir := path.Join(is.rootDir, repo)
@@ -817,7 +817,7 @@ func (is *ImageStoreFS) DeleteImageManifest(repo, reference string) error {
 }
 
 // BlobUploadPath returns the upload path for a blob in this store.
-func (is *ImageStoreFS) BlobUploadPath(repo, uuid string) string {
+func (is *ImageStoreLocal) BlobUploadPath(repo, uuid string) string {
 	dir := path.Join(is.rootDir, repo)
 	blobUploadPath := path.Join(dir, BlobUploadDir, uuid)
 
@@ -825,7 +825,7 @@ func (is *ImageStoreFS) BlobUploadPath(repo, uuid string) string {
 }
 
 // NewBlobUpload returns the unique ID for an upload in progress.
-func (is *ImageStoreFS) NewBlobUpload(repo string) (string, error) {
+func (is *ImageStoreLocal) NewBlobUpload(repo string) (string, error) {
 	if err := is.InitRepo(repo); err != nil {
 		is.log.Error().Err(err).Msg("error initializing repo")
 
@@ -851,7 +851,7 @@ func (is *ImageStoreFS) NewBlobUpload(repo string) (string, error) {
 }
 
 // GetBlobUpload returns the current size of a blob upload.
-func (is *ImageStoreFS) GetBlobUpload(repo, uuid string) (int64, error) {
+func (is *ImageStoreLocal) GetBlobUpload(repo, uuid string) (int64, error) {
 	blobUploadPath := is.BlobUploadPath(repo, uuid)
 
 	binfo, err := os.Stat(blobUploadPath)
@@ -868,7 +868,7 @@ func (is *ImageStoreFS) GetBlobUpload(repo, uuid string) (int64, error) {
 
 // PutBlobChunkStreamed appends another chunk of data to the specified blob. It returns
 // the number of actual bytes to the blob.
-func (is *ImageStoreFS) PutBlobChunkStreamed(repo, uuid string, body io.Reader) (int64, error) {
+func (is *ImageStoreLocal) PutBlobChunkStreamed(repo, uuid string, body io.Reader) (int64, error) {
 	if err := is.InitRepo(repo); err != nil {
 		return -1, err
 	}
@@ -908,7 +908,7 @@ func (is *ImageStoreFS) PutBlobChunkStreamed(repo, uuid string, body io.Reader) 
 
 // PutBlobChunk writes another chunk of data to the specified blob. It returns
 // the number of actual bytes to the blob.
-func (is *ImageStoreFS) PutBlobChunk(repo, uuid string, from, to int64,
+func (is *ImageStoreLocal) PutBlobChunk(repo, uuid string, from, to int64,
 	body io.Reader,
 ) (int64, error) {
 	if err := is.InitRepo(repo); err != nil {
@@ -956,7 +956,7 @@ func (is *ImageStoreFS) PutBlobChunk(repo, uuid string, from, to int64,
 }
 
 // BlobUploadInfo returns the current blob size in bytes.
-func (is *ImageStoreFS) BlobUploadInfo(repo, uuid string) (int64, error) {
+func (is *ImageStoreLocal) BlobUploadInfo(repo, uuid string) (int64, error) {
 	blobUploadPath := is.BlobUploadPath(repo, uuid)
 
 	binfo, err := os.Stat(blobUploadPath)
@@ -972,7 +972,7 @@ func (is *ImageStoreFS) BlobUploadInfo(repo, uuid string) (int64, error) {
 }
 
 // FinishBlobUpload finalizes the blob upload and moves blob the repository.
-func (is *ImageStoreFS) FinishBlobUpload(repo, uuid string, body io.Reader, digest string) error {
+func (is *ImageStoreLocal) FinishBlobUpload(repo, uuid string, body io.Reader, digest string) error {
 	dstDigest, err := godigest.Parse(digest)
 	if err != nil {
 		is.log.Error().Err(err).Str("digest", digest).Msg("failed to parse digest")
@@ -1053,7 +1053,7 @@ func (is *ImageStoreFS) FinishBlobUpload(repo, uuid string, body io.Reader, dige
 }
 
 // FullBlobUpload handles a full blob upload, and no partial session is created.
-func (is *ImageStoreFS) FullBlobUpload(repo string, body io.Reader, digest string) (string, int64, error) {
+func (is *ImageStoreLocal) FullBlobUpload(repo string, body io.Reader, digest string) (string, int64, error) {
 	if err := is.InitRepo(repo); err != nil {
 		return "", -1, err
 	}
@@ -1134,7 +1134,7 @@ func (is *ImageStoreFS) FullBlobUpload(repo string, body io.Reader, digest strin
 	return uuid, nbytes, nil
 }
 
-func (is *ImageStoreFS) DedupeBlob(src string, dstDigest godigest.Digest, dst string) error {
+func (is *ImageStoreLocal) DedupeBlob(src string, dstDigest godigest.Digest, dst string) error {
 retry:
 	is.log.Debug().Str("src", src).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe: enter")
 
@@ -1218,7 +1218,7 @@ retry:
 }
 
 // DeleteBlobUpload deletes an existing blob upload that is currently in progress.
-func (is *ImageStoreFS) DeleteBlobUpload(repo, uuid string) error {
+func (is *ImageStoreLocal) DeleteBlobUpload(repo, uuid string) error {
 	blobUploadPath := is.BlobUploadPath(repo, uuid)
 	if err := os.Remove(blobUploadPath); err != nil {
 		is.log.Error().Err(err).Str("blobUploadPath", blobUploadPath).Msg("error deleting blob upload")
@@ -1230,12 +1230,12 @@ func (is *ImageStoreFS) DeleteBlobUpload(repo, uuid string) error {
 }
 
 // BlobPath returns the repository path of a blob.
-func (is *ImageStoreFS) BlobPath(repo string, digest godigest.Digest) string {
+func (is *ImageStoreLocal) BlobPath(repo string, digest godigest.Digest) string {
 	return path.Join(is.rootDir, repo, "blobs", digest.Algorithm().String(), digest.Encoded())
 }
 
 // CheckBlob verifies a blob and returns true if the blob is correct.
-func (is *ImageStoreFS) CheckBlob(repo, digest string) (bool, int64, error) {
+func (is *ImageStoreLocal) CheckBlob(repo, digest string) (bool, int64, error) {
 	var lockLatency time.Time
 
 	parsedDigest, err := godigest.Parse(digest)
@@ -1287,7 +1287,7 @@ func (is *ImageStoreFS) CheckBlob(repo, digest string) (bool, int64, error) {
 	return true, blobSize, nil
 }
 
-func (is *ImageStoreFS) checkCacheBlob(digest string) (string, error) {
+func (is *ImageStoreLocal) checkCacheBlob(digest string) (string, error) {
 	if !is.dedupe || is.cache == nil {
 		return "", zerr.ErrBlobNotFound
 	}
@@ -1304,7 +1304,7 @@ func (is *ImageStoreFS) checkCacheBlob(digest string) (string, error) {
 	return dstRecord, nil
 }
 
-func (is *ImageStoreFS) copyBlob(repo, blobPath, dstRecord string) (int64, error) {
+func (is *ImageStoreLocal) copyBlob(repo, blobPath, dstRecord string) (int64, error) {
 	if err := is.initRepo(repo); err != nil {
 		is.log.Error().Err(err).Str("repo", repo).Msg("unable to initialize an empty repo")
 
@@ -1329,7 +1329,7 @@ func (is *ImageStoreFS) copyBlob(repo, blobPath, dstRecord string) (int64, error
 
 // GetBlob returns a stream to read the blob.
 // blob selector instead of directly downloading the blob.
-func (is *ImageStoreFS) GetBlob(repo, digest, mediaType string) (io.Reader, int64, error) {
+func (is *ImageStoreLocal) GetBlob(repo, digest, mediaType string) (io.Reader, int64, error) {
 	var lockLatency time.Time
 
 	parsedDigest, err := godigest.Parse(digest)
@@ -1361,7 +1361,7 @@ func (is *ImageStoreFS) GetBlob(repo, digest, mediaType string) (io.Reader, int6
 	return blobReader, binfo.Size(), nil
 }
 
-func (is *ImageStoreFS) GetBlobContent(repo, digest string) ([]byte, error) {
+func (is *ImageStoreLocal) GetBlobContent(repo, digest string) ([]byte, error) {
 	blob, _, err := is.GetBlob(repo, digest, ispec.MediaTypeImageManifest)
 	if err != nil {
 		return []byte{}, err
@@ -1379,7 +1379,7 @@ func (is *ImageStoreFS) GetBlobContent(repo, digest string) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (is *ImageStoreFS) GetIndexContent(repo string) ([]byte, error) {
+func (is *ImageStoreLocal) GetIndexContent(repo string) ([]byte, error) {
 	var lockLatency time.Time
 
 	dir := path.Join(is.rootDir, repo)
@@ -1404,7 +1404,7 @@ func (is *ImageStoreFS) GetIndexContent(repo string) ([]byte, error) {
 }
 
 // DeleteBlob removes the blob from the repository.
-func (is *ImageStoreFS) DeleteBlob(repo, digest string) error {
+func (is *ImageStoreLocal) DeleteBlob(repo, digest string) error {
 	var lockLatency time.Time
 
 	dgst, err := godigest.Parse(digest)
@@ -1443,7 +1443,7 @@ func (is *ImageStoreFS) DeleteBlob(repo, digest string) error {
 	return nil
 }
 
-func (is *ImageStoreFS) GetReferrers(repo, digest, mediaType string) ([]artifactspec.Descriptor, error) {
+func (is *ImageStoreLocal) GetReferrers(repo, digest, mediaType string) ([]artifactspec.Descriptor, error) {
 	var lockLatency time.Time
 
 	dir := path.Join(is.rootDir, repo)
@@ -1529,7 +1529,7 @@ func (is *ImageStoreFS) GetReferrers(repo, digest, mediaType string) ([]artifact
 	return result, nil
 }
 
-func (is *ImageStoreFS) writeFile(filename string, data []byte) error {
+func (is *ImageStoreLocal) writeFile(filename string, data []byte) error {
 	if !is.commit {
 		return ioutil.WriteFile(filename, data, DefaultFilePerms)
 	}
@@ -1600,7 +1600,7 @@ func ensureDir(dir string, log zerolog.Logger) error {
 	return nil
 }
 
-func (is *ImageStoreFS) garbageCollect(dir string, repo string) error {
+func (is *ImageStoreLocal) garbageCollect(dir string, repo string) error {
 	oci, err := umoci.OpenLayout(dir)
 	if err := test.Error(err); err != nil {
 		return err
@@ -1615,7 +1615,7 @@ func (is *ImageStoreFS) garbageCollect(dir string, repo string) error {
 	return nil
 }
 
-func ifOlderThan(imgStore *ImageStoreFS, repo string, delay time.Duration) casext.GCPolicy {
+func ifOlderThan(imgStore *ImageStoreLocal, repo string, delay time.Duration) casext.GCPolicy {
 	return func(ctx context.Context, digest godigest.Digest) (bool, error) {
 		blobPath := imgStore.BlobPath(repo, digest)
 
@@ -1647,7 +1647,7 @@ func DirExists(d string) bool {
 	return true
 }
 
-func gcAllRepos(imgStore *ImageStoreFS) error {
+func gcAllRepos(imgStore *ImageStoreLocal) error {
 	repos, err := imgStore.GetRepositories()
 	if err != nil {
 		return err
@@ -1672,7 +1672,7 @@ func gcAllRepos(imgStore *ImageStoreFS) error {
 	return nil
 }
 
-func (is *ImageStoreFS) RunGCPeriodically(gcInterval time.Duration) {
+func (is *ImageStoreLocal) RunGCPeriodically(gcInterval time.Duration) {
 	go func() {
 		for {
 			execMessage := fmt.Sprintf("executing GC of orphaned blobs for %s", is.RootDir())
