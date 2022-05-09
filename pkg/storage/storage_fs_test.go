@@ -1090,7 +1090,7 @@ func TestGarbageCollect(t *testing.T) {
 }
 
 func TestGarbageCollectForImageStore(t *testing.T) {
-	Convey("Garbage collect for all repos from an ImageStore", t, func(c C) {
+	Convey("Garbage collect for a specific repo from an ImageStore", t, func(c C) {
 		dir := t.TempDir()
 
 		Convey("Garbage collect error for repo with config removed", func() {
@@ -1115,13 +1115,14 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 				panic(err)
 			}
 
-			imgStore.RunGCPeriodically(24 * time.Hour)
+			imgStore.RunGCRepo(repoName)
 
 			time.Sleep(500 * time.Millisecond)
 
 			data, err := os.ReadFile(logFile.Name())
 			So(err, ShouldBeNil)
-			So(string(data), ShouldContainSubstring, fmt.Sprintf("error while running GC for %s", imgStore.RootDir()))
+			So(string(data), ShouldContainSubstring,
+				fmt.Sprintf("error while running GC for %s", path.Join(imgStore.RootDir(), repoName)))
 		})
 
 		Convey("Garbage collect error - not enough permissions to access index.json", func() {
@@ -1141,13 +1142,14 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 
 			So(os.Chmod(path.Join(dir, repoName, "index.json"), 0o000), ShouldBeNil)
 
-			imgStore.RunGCPeriodically(24 * time.Hour)
+			imgStore.RunGCRepo(repoName)
 
 			time.Sleep(500 * time.Millisecond)
 
 			data, err := os.ReadFile(logFile.Name())
 			So(err, ShouldBeNil)
-			So(string(data), ShouldContainSubstring, fmt.Sprintf("error while running GC for %s", imgStore.RootDir()))
+			So(string(data), ShouldContainSubstring,
+				fmt.Sprintf("error while running GC for %s", path.Join(imgStore.RootDir(), repoName)))
 			So(os.Chmod(path.Join(dir, repoName, "index.json"), 0o755), ShouldBeNil)
 		})
 	})

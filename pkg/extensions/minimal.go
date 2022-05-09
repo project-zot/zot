@@ -40,9 +40,7 @@ func EnableSyncExtension(ctx context.Context, config *config.Config, wg *goSync.
 }
 
 // EnableScrubExtension ...
-func EnableScrubExtension(config *config.Config, storeController storage.StoreController,
-	log log.Logger,
-) {
+func EnableScrubExtension(config *config.Config, log log.Logger, run bool, imgStore storage.ImageStore, repo string) {
 	log.Warn().Msg("skipping enabling scrub extension because given zot binary doesn't support any extensions," +
 		"please build zot full binary for this feature")
 }

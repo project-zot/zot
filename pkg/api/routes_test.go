@@ -56,7 +56,7 @@ type MockedImageStore struct {
 	getBlobContentFn       func(repo, digest string) ([]byte, error)
 	getReferrersFn         func(repo, digest string, mediaType string) ([]artifactspec.Descriptor, error)
 	urlForPathFn           func(path string) (string, error)
-	runGCPeriodicallyFn    func(gcInterval time.Duration)
+	runGCRepoFn            func(repo string)
 }
 
 func (is *MockedImageStore) Lock(t *time.Time) {
@@ -302,9 +302,9 @@ func (is *MockedImageStore) URLForPath(path string) (string, error) {
 	return "", nil
 }
 
-func (is *MockedImageStore) RunGCPeriodically(gcInterval time.Duration) {
-	if is != nil && is.runGCPeriodicallyFn != nil {
-		is.runGCPeriodicallyFn(gcInterval)
+func (is *MockedImageStore) RunGCRepo(repo string) {
+	if is != nil && is.runGCRepoFn != nil {
+		is.runGCRepoFn(repo)
 	}
 }
 

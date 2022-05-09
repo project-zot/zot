@@ -1647,47 +1647,31 @@ func DirExists(d string) bool {
 	return true
 }
 
-func gcAllRepos(imgStore *ImageStoreFS) error {
-	repos, err := imgStore.GetRepositories()
+func (is *ImageStoreFS) gcRepo(repo string) error {
+	dir := path.Join(is.RootDir(), repo)
+
+	var lockLatency time.Time
+
+	is.Lock(&lockLatency)
+
+	err := is.garbageCollect(dir, repo)
+
+	is.Unlock(&lockLatency)
+
 	if err != nil {
 		return err
-	}
-
-	for _, repo := range repos {
-		dir := path.Join(imgStore.RootDir(), repo)
-
-		var lockLatency time.Time
-
-		imgStore.Lock(&lockLatency)
-
-		err := imgStore.garbageCollect(dir, repo)
-
-		imgStore.Unlock(&lockLatency)
-
-		if err != nil {
-			return err
-		}
 	}
 
 	return nil
 }
 
-func (is *ImageStoreFS) RunGCPeriodically(gcInterval time.Duration) {
-	go func() {
-		for {
-			execMessage := fmt.Sprintf("executing GC of orphaned blobs for %s", is.RootDir())
-			is.log.Info().Msg(execMessage)
+func (is *ImageStoreFS) RunGCRepo(repo string) {
+	is.log.Info().Msg(fmt.Sprintf("executing GC of orphaned blobs for %s", path.Join(is.RootDir(), repo)))
 
-			err := gcAllRepos(is)
-			if err != nil {
-				errMessage := fmt.Sprintf("error while running GC for %s", is.RootDir())
-				is.log.Error().Err(err).Msg(errMessage)
-			}
+	if err := is.gcRepo(repo); err != nil {
+		errMessage := fmt.Sprintf("error while running GC for %s", path.Join(is.RootDir(), repo))
+		is.log.Error().Err(err).Msg(errMessage)
+	}
 
-			completedMessage := fmt.Sprintf("GC completed for %s, next GC scheduled after", is.RootDir())
-			is.log.Info().Str(completedMessage, gcInterval.String()).Msg("")
-
-			time.Sleep(gcInterval)
-		}
-	}()
+	is.log.Info().Msg(fmt.Sprintf("GC completed for %s", path.Join(is.RootDir(), repo)))
 }

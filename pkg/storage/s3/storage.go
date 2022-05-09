@@ -1117,7 +1117,7 @@ retry:
 	return nil
 }
 
-func (is *ObjectStorage) RunGCPeriodically(gcInterval time.Duration) {
+func (is *ObjectStorage) RunGCRepo(repo string) {
 }
 
 // DeleteBlobUpload deletes an existing blob upload that is currently in progress.
