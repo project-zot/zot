@@ -4741,6 +4741,8 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 
 func TestPeriodicGC(t *testing.T) {
 	Convey("Periodic gc enabled for default store", t, func() {
+		repoName := "test"
+
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
 		conf := config.New()
@@ -4748,7 +4750,6 @@ func TestPeriodicGC(t *testing.T) {
 
 		logFile, err := ioutil.TempFile("", "zot-log*.txt")
 		So(err, ShouldBeNil)
-		conf.Log.Level = "debug"
 		conf.Log.Output = logFile.Name()
 		defer os.Remove(logFile.Name()) // clean up
 
@@ -4759,20 +4760,29 @@ func TestPeriodicGC(t *testing.T) {
 		ctlr.Config.Storage.GCInterval = 1 * time.Hour
 		ctlr.Config.Storage.GCDelay = 1 * time.Second
 
+		err = test.CopyFiles("../../test/data/zot-test", path.Join(dir, repoName))
+		if err != nil {
+			panic(err)
+		}
+
 		go startServer(ctlr)
 		defer stopServer(ctlr)
 		test.WaitTillServerReady(baseURL)
+
+		time.Sleep(500 * time.Millisecond)
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
 		So(string(data), ShouldContainSubstring,
 			"\"GC\":true,\"Commit\":false,\"GCDelay\":1000000000,\"GCInterval\":3600000000000")
 		So(string(data), ShouldContainSubstring,
-			fmt.Sprintf("executing GC of orphaned blobs for %s", ctlr.StoreController.DefaultStore.RootDir()))
+			fmt.Sprintf("Starting periodic background tasks for %s", ctlr.StoreController.DefaultStore.RootDir())) //nolint:lll
 		So(string(data), ShouldNotContainSubstring,
-			fmt.Sprintf("error while running GC for %s", ctlr.StoreController.DefaultStore.RootDir()))
+			fmt.Sprintf("error while running background task for %s", ctlr.StoreController.DefaultStore.RootDir()))
 		So(string(data), ShouldContainSubstring,
-			fmt.Sprintf("GC completed for %s, next GC scheduled after", ctlr.StoreController.DefaultStore.RootDir()))
+			fmt.Sprintf("executing GC of orphaned blobs for %s", path.Join(ctlr.StoreController.DefaultStore.RootDir(), repoName))) //nolint:lll
+		So(string(data), ShouldContainSubstring,
+			fmt.Sprintf("GC completed for %s", path.Join(ctlr.StoreController.DefaultStore.RootDir(), repoName))) //nolint:lll
 	})
 
 	Convey("Periodic GC enabled for substore", t, func() {
@@ -4783,7 +4793,6 @@ func TestPeriodicGC(t *testing.T) {
 
 		logFile, err := ioutil.TempFile("", "zot-log*.txt")
 		So(err, ShouldBeNil)
-		conf.Log.Level = "debug"
 		conf.Log.Output = logFile.Name()
 		defer os.Remove(logFile.Name()) // clean up
 
@@ -4811,7 +4820,81 @@ func TestPeriodicGC(t *testing.T) {
 		So(string(data), ShouldContainSubstring,
 			fmt.Sprintf("\"SubPaths\":{\"/a\":{\"RootDirectory\":\"%s\",\"GC\":true,\"Dedupe\":false,\"Commit\":false,\"GCDelay\":1000000000,\"GCInterval\":86400000000000", subDir)) //nolint:lll // gofumpt conflicts with lll
 		So(string(data), ShouldContainSubstring,
-			fmt.Sprintf("executing GC of orphaned blobs for %s", ctlr.StoreController.SubStore["/a"].RootDir()))
+			fmt.Sprintf("Starting periodic background tasks for %s", ctlr.StoreController.SubStore["/a"].RootDir())) //nolint:lll
+	})
+}
+
+func TestPeriodicTasks(t *testing.T) {
+	Convey("Both periodic gc and periodic scrub enabled for default store with scrubInterval < gcInterval", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		logFile, err := ioutil.TempFile("", "zot-log*.txt")
+		So(err, ShouldBeNil)
+		conf.Log.Output = logFile.Name()
+		defer os.Remove(logFile.Name()) // clean up
+
+		ctlr := api.NewController(conf)
+		dir := t.TempDir()
+		ctlr.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.GC = true
+		ctlr.Config.Storage.GCInterval = 12 * time.Hour
+		ctlr.Config.Storage.GCDelay = 1 * time.Second
+		ctlr.Config.Extensions = &extconf.ExtensionConfig{Scrub: &extconf.ScrubConfig{Interval: 8 * time.Hour}}
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		test.WaitTillServerReady(baseURL)
+
+		data, err := os.ReadFile(logFile.Name())
+		So(err, ShouldBeNil)
+		So(string(data), ShouldContainSubstring,
+			fmt.Sprintf("Starting periodic background tasks for %s", ctlr.StoreController.DefaultStore.RootDir())) //nolint:lll
+		So(string(data), ShouldNotContainSubstring,
+			fmt.Sprintf("error while running background task for %s", ctlr.StoreController.DefaultStore.RootDir()))
+		So(string(data), ShouldContainSubstring,
+			fmt.Sprintf("Finishing periodic background tasks for %s", ctlr.StoreController.DefaultStore.RootDir())) //nolint:lll
+		So(string(data), ShouldContainSubstring,
+			fmt.Sprintf("Periodic interval for %s set to %s",
+				ctlr.StoreController.DefaultStore.RootDir(), ctlr.Config.Extensions.Scrub.Interval))
+	})
+
+	Convey("Both periodic gc and periodic scrub enabled for default store with gcInterval < scrubInterval", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		logFile, err := ioutil.TempFile("", "zot-log*.txt")
+		So(err, ShouldBeNil)
+		conf.Log.Output = logFile.Name()
+		defer os.Remove(logFile.Name()) // clean up
+
+		ctlr := api.NewController(conf)
+		dir := t.TempDir()
+		ctlr.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.GC = true
+		ctlr.Config.Storage.GCInterval = 8 * time.Hour
+		ctlr.Config.Storage.GCDelay = 1 * time.Second
+		ctlr.Config.Extensions = &extconf.ExtensionConfig{Scrub: &extconf.ScrubConfig{Interval: 12 * time.Hour}}
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		test.WaitTillServerReady(baseURL)
+
+		data, err := os.ReadFile(logFile.Name())
+		So(err, ShouldBeNil)
+		So(string(data), ShouldContainSubstring,
+			fmt.Sprintf("Starting periodic background tasks for %s", ctlr.StoreController.DefaultStore.RootDir())) //nolint:lll
+		So(string(data), ShouldNotContainSubstring,
+			fmt.Sprintf("error while running background task for %s", ctlr.StoreController.DefaultStore.RootDir()))
+		So(string(data), ShouldContainSubstring,
+			fmt.Sprintf("Finishing periodic background tasks for %s", ctlr.StoreController.DefaultStore.RootDir())) //nolint:lll
+		So(string(data), ShouldContainSubstring,
+			fmt.Sprintf("Periodic interval for %s set to %s",
+				ctlr.StoreController.DefaultStore.RootDir(), ctlr.Config.Storage.GCInterval))
 	})
 }
 

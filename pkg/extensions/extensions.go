@@ -88,27 +88,22 @@ func EnableSyncExtension(ctx context.Context, config *config.Config, wg *goSync.
 }
 
 // EnableScrubExtension enables scrub extension.
-func EnableScrubExtension(config *config.Config, storeController storage.StoreController,
-	log log.Logger,
-) {
-	if config.Extensions.Scrub != nil &&
-		config.Extensions.Scrub.Interval != 0 {
-		minScrubInterval, _ := time.ParseDuration("2h")
+func EnableScrubExtension(config *config.Config, log log.Logger, run bool, imgStore storage.ImageStore, repo string) {
+	if !run {
+		if config.Extensions.Scrub != nil &&
+			config.Extensions.Scrub.Interval != 0 {
+			minScrubInterval, _ := time.ParseDuration("2h")
 
-		if config.Extensions.Scrub.Interval < minScrubInterval {
-			config.Extensions.Scrub.Interval = minScrubInterval
+			if config.Extensions.Scrub.Interval < minScrubInterval {
+				config.Extensions.Scrub.Interval = minScrubInterval
 
-			log.Warn().Msg("Scrub interval set to too-short interval < 2h, changing scrub duration to 2 hours and continuing.") //nolint:lll // gofumpt conflicts with lll
-		}
-
-		go func() {
-			err := scrub.Run(log, config.Extensions.Scrub.Interval, storeController)
-			if err != nil {
-				log.Error().Err(err).Msg("error while trying to scrub")
+				log.Warn().Msg("Scrub interval set to too-short interval < 2h, changing scrub duration to 2 hours and continuing.") //nolint:lll // gofumpt conflicts with lll
 			}
-		}()
+		} else {
+			log.Info().Msg("Scrub config not provided, skipping scrub")
+		}
 	} else {
-		log.Info().Msg("Scrub config not provided, skipping scrub")
+		scrub.RunScrubRepo(imgStore, repo, log)
 	}
 }
 

@@ -5,6 +5,7 @@ package scrub_test
 
 import (
 	"context"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path"
@@ -17,6 +18,10 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
+	"zotregistry.io/zot/pkg/extensions/monitoring"
+	"zotregistry.io/zot/pkg/extensions/scrub"
+	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test"
 )
 
@@ -148,7 +153,7 @@ func TestScrubExtension(t *testing.T) {
 		So(string(data), ShouldContainSubstring, "scrub: blobs/manifest affected")
 	})
 
-	Convey("CheckAllBlobsIntegrity error - not enough permissions to access root directory", t, func(c C) {
+	Convey("RunBackgroundTasks error - not enough permissions to access root directory", t, func(c C) {
 		port := test.GetFreePort()
 		url := test.GetBaseURL(port)
 
@@ -205,8 +210,91 @@ func TestScrubExtension(t *testing.T) {
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
-		So(string(data), ShouldContainSubstring, "error while trying to scrub")
+		So(string(data), ShouldContainSubstring,
+			fmt.Sprintf("error while running background task for %s", ctlr.StoreController.DefaultStore.RootDir()))
 
+		So(os.Chmod(path.Join(dir, repoName), 0o755), ShouldBeNil)
+	})
+}
+
+func TestRunScrubRepo(t *testing.T) {
+	Convey("Blobs integrity not affected", t, func(c C) {
+		logFile, err := ioutil.TempFile("", "zot-log*.txt")
+		So(err, ShouldBeNil)
+
+		defer os.Remove(logFile.Name()) // clean up
+
+		dir := t.TempDir()
+		log := log.NewLogger("debug", logFile.Name())
+		metrics := monitoring.NewMetricsServer(false, log)
+		imgStore := storage.NewImageStore(dir, true, 1*time.Second, true, true, log, metrics)
+
+		err = test.CopyFiles("../../../test/data/zot-test", path.Join(dir, repoName))
+		if err != nil {
+			panic(err)
+		}
+
+		scrub.RunScrubRepo(imgStore, repoName, log)
+
+		data, err := os.ReadFile(logFile.Name())
+		So(err, ShouldBeNil)
+		So(string(data), ShouldContainSubstring, "scrub: blobs/manifest ok")
+	})
+
+	Convey("Blobs integrity affected", t, func(c C) {
+		logFile, err := ioutil.TempFile("", "zot-log*.txt")
+		So(err, ShouldBeNil)
+
+		defer os.Remove(logFile.Name()) // clean up
+
+		dir := t.TempDir()
+		log := log.NewLogger("debug", logFile.Name())
+		metrics := monitoring.NewMetricsServer(false, log)
+		imgStore := storage.NewImageStore(dir, true, 1*time.Second, true, true, log, metrics)
+
+		err = test.CopyFiles("../../../test/data/zot-test", path.Join(dir, repoName))
+		if err != nil {
+			panic(err)
+		}
+		var manifestDigest digest.Digest
+		manifestDigest, _, _ = test.GetOciLayoutDigests("../../../test/data/zot-test")
+
+		err = os.Remove(path.Join(dir, repoName, "blobs/sha256", manifestDigest.Encoded()))
+		if err != nil {
+			panic(err)
+		}
+
+		scrub.RunScrubRepo(imgStore, repoName, log)
+
+		data, err := os.ReadFile(logFile.Name())
+		So(err, ShouldBeNil)
+		So(string(data), ShouldContainSubstring, "scrub: blobs/manifest affected")
+	})
+
+	Convey("CheckRepo error - not enough permissions to access root directory", t, func(c C) {
+		logFile, err := ioutil.TempFile("", "zot-log*.txt")
+		So(err, ShouldBeNil)
+
+		defer os.Remove(logFile.Name()) // clean up
+
+		dir := t.TempDir()
+		log := log.NewLogger("debug", logFile.Name())
+		metrics := monitoring.NewMetricsServer(false, log)
+		imgStore := storage.NewImageStore(dir, true, 1*time.Second, true, true, log, metrics)
+
+		err = test.CopyFiles("../../../test/data/zot-test", path.Join(dir, repoName))
+		if err != nil {
+			panic(err)
+		}
+
+		So(os.Chmod(path.Join(dir, repoName), 0o000), ShouldBeNil)
+
+		scrub.RunScrubRepo(imgStore, repoName, log)
+
+		data, err := os.ReadFile(logFile.Name())
+		So(err, ShouldBeNil)
+		So(string(data), ShouldContainSubstring,
+			fmt.Sprintf("error while running scrub for %s", imgStore.RootDir()))
 		So(os.Chmod(path.Join(dir, repoName), 0o755), ShouldBeNil)
 	})
 }

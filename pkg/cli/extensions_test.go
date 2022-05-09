@@ -509,9 +509,10 @@ func TestServeScrubExtension(t *testing.T) {
 		// Even if in config we specified scrub interval=1h, the minimum interval is 2h
 		So(string(data), ShouldContainSubstring,
 			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":{\"Interval\":3600000000000}") //nolint:lll // gofumpt conflicts with lll
-		So(string(data), ShouldContainSubstring, "executing scrub to check manifest/blob integrity")
 		So(string(data), ShouldContainSubstring,
 			"Scrub interval set to too-short interval < 2h, changing scrub duration to 2 hours and continuing.")
+		So(string(data), ShouldContainSubstring, "Starting periodic background tasks for")
+		So(string(data), ShouldContainSubstring, "Finishing periodic background tasks for")
 	})
 
 	Convey("scrub not enabled - scrub interval param not set", t, func(c C) {
