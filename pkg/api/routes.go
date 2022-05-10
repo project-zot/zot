@@ -18,6 +18,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"path"
+	// "reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -34,6 +35,7 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test" // nolint: goimports
+
 	// as required by swaggo.
 	_ "zotregistry.io/zot/swagger"
 )
@@ -115,6 +117,7 @@ func (rh *RouteHandler) SetupRoutes() {
 			// minimal build
 			prefixedRouter.HandleFunc("/metrics", rh.GetMetrics).Methods("GET")
 		} else {
+<<<<<<< HEAD
 			// metrics build
 			ext.SetupMetricsRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
 
@@ -123,6 +126,13 @@ func (rh *RouteHandler) SetupRoutes() {
 
 			// // extended build
 			// ext.SetupRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
+=======
+			// extended build
+			// ext.SetupMetricsRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
+			(&ext.Ext).Invoke(&ext.Ext, "SetupMetricsRoutes", rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
+			// ext.Ext.SetupSearchRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
+			(&ext.Ext).Invoke(&ext.Ext, "SetupSearchRoutes", rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
+>>>>>>> 6056e2c... started managing extensions with the reflect package
 		}
 	}
 }

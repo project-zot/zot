@@ -1,34 +1,58 @@
 package extensions
 
 import (
+	// "context"
 	"context"
+	"fmt"
+	"reflect"
 	goSync "sync"
-	"time"
+	// "time"
 
+	// gqlHandler "github.com/99designs/gqlgen/graphql/handler"
 	"github.com/gorilla/mux"
 	"zotregistry.io/zot/pkg/api/config"
+	// "zotregistry.io/zot/pkg/extensions/scrub"
+
+	// "zotregistry.io/zot/pkg/extensions/search"
+
+	// "zotregistry.io/zot/pkg/extensions/sync"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 )
 
-// DownloadTrivyDB ...
-var DownloadTrivyDB = func(dbDir string, log log.Logger, // nolint: gochecknoglobals
-	updateInterval time.Duration,
-) error {
-	return nil
+type Extensions struct{
+}
+var Ext Extensions = Extensions{}
+
+func(e *Extensions) Invoke(obj interface{}, meth string, args... interface{}){
+	inputs := make([]reflect.Value, len(args))
+	for i, _ := range args {
+		inputs[i] = reflect.ValueOf(args[i])
+	}
+	fmt.Printf("The value of reflect is %v\n", reflect.ValueOf(obj))
+	reflect.ValueOf(obj).MethodByName(meth).Call(inputs)
 }
 
-// EnableMetricsExtension ...
-var EnableMetricsExtension = func(config *config.Config, log log.Logger, rootDir string) { // nolint: gochecknoglobals
-	log.Warn().Msg("skipping enabling metrics extension because given zot binary doesn't support " +
-		"this extension, please build a binary that includes this feature")
-}
+
+// // EnableMetricsExtension ...
+// var EnableMetricsExtension = func(config *config.Config, log log.Logger, rootDir string) { // nolint: gochecknoglobals
+// 	log.Warn().Msg("skipping enabling metrics extension because given zot binary doesn't support " +
+// 		"this extension, please build a binary that includes this feature")
+// }
 
 // EnableSearchExtension ...
 var EnableSearchExtension = func(config *config.Config, log log.Logger, rootDir string) { // nolint: gochecknoglobals
 	log.Warn().Msg("skipping enabling search extension because given zot binary doesn't support " +
 		"this extension, please build a binary that includes this feature")
 }
+
+// var EnableSearchExtension = func(config *config.Config, log log.Logger, rootDir string) { // nolint: gochecknoglobals
+
+// 	log.Warn().Msg("skipping enabling search extension because given zot binary doesn't support " +
+
+// 		"this extension, please build a binary that includes this feature")
+
+// }
 
 // EnableSyncExtension ...
 var EnableSyncExtension = func(ctx context.Context, // nolint: gochecknoglobals

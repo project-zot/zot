@@ -349,7 +349,7 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 	// Enable extensions if extension config is provided for DefaultStore
 	if c.Config != nil && c.Config.Extensions != nil {
 		ext.EnableMetricsExtension(c.Config, c.Log, c.Config.Storage.RootDirectory)
-		ext.EnableSearchExtension(c.Config, c.Log, c.Config.Storage.RootDirectory)
+		ext.Ext.EnableSearchExtension(c.Config, c.Log, c.Config.Storage.RootDirectory)
 	}
 
 	if c.Config.Storage.SubPaths != nil {
@@ -366,7 +366,7 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 				}
 
 				if c.Config.Extensions.Search != nil {
-					ext.EnableSearchExtension(c.Config, c.Log, storageConfig.RootDirectory)
+					ext.Ext.EnableSearchExtension(c.Config, c.Log, storageConfig.RootDirectory)
 				}
 			}
 		}
