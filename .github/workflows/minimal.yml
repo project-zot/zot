@@ -1,0 +1,64 @@
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+name: minimal-check
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  minimal-check:
+    name: Build and test ZOT
+    runs-on: ubuntu-latest
+    services:
+      s3mock:
+        image: ghcr.io/project-zot/localstack/localstack:0.13.2
+        env:
+          SERVICES: s3
+        ports:
+          - 4563-4599:4563-4599
+          - 9090:8080
+    steps:
+      - name: Install go
+        uses: actions/setup-go@v3
+        with:
+          go-version: 1.18.x
+      - name: Check out source code
+        uses: actions/checkout@v3
+      - name: Install dependencies
+        run: |
+          cd $GITHUB_WORKSPACE
+          go install github.com/swaggo/swag/cmd/swag@latest
+          go mod download
+          sudo apt-get update
+          sudo apt-get install rpm
+          sudo apt-get install snapd
+          sudo apt-get install libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev pkg-config
+          git clone https://github.com/containers/skopeo -b v1.6.1 $GITHUB_WORKSPACE/src/github.com/containers/skopeo
+          cd $GITHUB_WORKSPACE/src/github.com/containers/skopeo && make bin/skopeo
+          cd $GITHUB_WORKSPACE
+          curl -Lo notation.tar.gz https://github.com/notaryproject/notation/releases/download/v0.7.1-alpha.1/notation_0.7.1-alpha.1_linux_amd64.tar.gz
+          sudo tar xvzf notation.tar.gz -C /usr/bin notation
+          go install github.com/wadey/gocovmerge@latest
+      - name: Run build and test minimally
+        timeout-minutes: 60
+        run: |
+          echo "Building for $OS:$ARCH"
+          cd $GITHUB_WORKSPACE
+          if [[ $OS == "linux" && $ARCH == "amd64" ]]; then
+            make OS=$OS ARCH=$ARCH minimal-check
+            sudo env "PATH=$PATH" make privileged-test
+          fi
+        env:
+          S3MOCK_ENDPOINT: localhost:4566
+          AWS_ACCESS_KEY_ID: fake
+          AWS_SECRET_ACCESS_KEY: fake
+          OS: linux
+          ARCH: amd64
+      - name: Upload code coverage
+        uses: codecov/codecov-action@v2

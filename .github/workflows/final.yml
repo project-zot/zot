@@ -1,30 +1,25 @@
 on:
-  push:
-    branches:
-      - main
   pull_request:
     branches:
       - main
+    types: [ labeled, synchronize ]
+  push:
+    branches:
+      - main
+    types: [ labeled, synchronize ]
   release:
     types:
       - published
-name: build-test
 
+name: complete-check
 
 permissions:
   contents: read
   packages: write
 
 jobs:
-  build-test:
-    name: Build and test ZOT
-    runs-on: ubuntu-latest
-    steps:
-      - name: Run build and test
-        timeout-minutes: 60
-        run: |
-            echo "job deprecated"
-  build-test-arch:
+  complete-check:
+    if: contains(github.event.pull_request.labels.*.name, 'final_stage')
     name: Build and test ZOT
     runs-on: ubuntu-latest
     strategy:
@@ -79,8 +74,7 @@ jobs:
           echo "Building for $OS:$ARCH"
           cd $GITHUB_WORKSPACE
           if [[ $OS == "linux" && $ARCH == "amd64" ]]; then
-            make OS=$OS ARCH=$ARCH
-            sudo env "PATH=$PATH" make privileged-test
+            make OS=$OS ARCH=$ARCH complete-check
           else
             make OS=$OS ARCH=$ARCH binary binary-minimal binary-debug cli bench exporter-minimal
           fi
@@ -90,8 +84,6 @@ jobs:
           AWS_SECRET_ACCESS_KEY: fake
           OS: ${{ matrix.os }}
           ARCH: ${{ matrix.arch }}
-      - name: Upload code coverage
-        uses: codecov/codecov-action@v3
       - if: github.event_name == 'release' && github.event.action == 'published'
         name: Publish artifacts on releases
         uses: svenstaro/upload-release-action@v2
