@@ -11,8 +11,8 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 )
 
-func init() {
-	SetupMetricsRoutes = func(config *config.Config, router *mux.Router, storeController storage.StoreController,
+// func init() {
+	func (e *Extensions) SetupMetricsRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
 		l log.Logger,
 	) {
 		// fork a new zerolog child to avoid data race
@@ -25,7 +25,7 @@ func init() {
 		}
 	}
 
-	EnableMetricsExtension = func(config *config.Config, log log.Logger, rootDir string) {
+	func (e *Extensions) EnableMetricsExtension(config *config.Config, log log.Logger, rootDir string) {
 		if config.Extensions.Metrics != nil &&
 			*config.Extensions.Metrics.Enable &&
 			config.Extensions.Metrics.Prometheus != nil {
@@ -38,4 +38,4 @@ func init() {
 			log.Info().Msg("Metrics config not provided, skipping Metrics config update")
 		}
 	}
-}
+// }

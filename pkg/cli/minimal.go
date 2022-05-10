@@ -1,5 +1,7 @@
-//go:build minimal || sync || scrub || metrics
+//go:build (minimal || sync || scrub || metrics) && !search && !ui_base
 // +build minimal sync scrub metrics
+// +build !search
+// +build !ui_base
 
 package cli
 

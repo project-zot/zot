@@ -13,10 +13,14 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 )
 
-func init() {
-	EnableSyncExtension = func(ctx context.Context, config *config.Config, wg *goSync.WaitGroup,
+// func init() {
+	func(e *Extensions) EnableSyncExtension(ctx context.Context, config *config.Config, wg *goSync.WaitGroup,
 		storeController storage.StoreController, log log.Logger,
 	) {
+		// e.activated = append(e.activated, "EnableSyncExtension")
+		// if _,ok := e.activated["EnableSyncExtension"]; !ok {
+		// 	e.activated["EnableSyncExtension"] = true
+		// }
 		if config.Extensions.Sync != nil && *config.Extensions.Sync.Enable {
 			if err := sync.Run(ctx, *config.Extensions.Sync, storeController, wg, log); err != nil {
 				log.Error().Err(err).Msg("Error encountered while setting up syncing")
@@ -26,16 +30,19 @@ func init() {
 		}
 	}
 
-	SyncOneImage = func(config *config.Config, storeController storage.StoreController,
+	func(e *Extensions) SyncOneImage(config *config.Config, storeController storage.StoreController,
 		repoName, reference string, isArtifact bool, log log.Logger,
 	) error {
+		// if _,ok := e.activated["SyncOneImage"]; !ok {
+		// 	e.activated["SyncOneImage"] = true
+		// }
 		log.Info().Msgf("syncing image %s:%s", repoName, reference)
 
 		err := sync.OneImage(*config.Extensions.Sync, storeController, repoName, reference, isArtifact, log)
 
 		return err
 	}
-}
+// }
 
 // // nolint: deadcode,unused
 // func downloadTrivyDB(dbDir string, log log.Logger, updateInterval time.Duration) error {

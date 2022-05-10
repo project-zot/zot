@@ -18,6 +18,8 @@ import (
 	"io/ioutil"
 	"net/http"
 	"path"
+	"reflect"
+
 	// "reflect"
 	"sort"
 	"strconv"
@@ -117,22 +119,11 @@ func (rh *RouteHandler) SetupRoutes() {
 			// minimal build
 			prefixedRouter.HandleFunc("/metrics", rh.GetMetrics).Methods("GET")
 		} else {
-<<<<<<< HEAD
-			// metrics build
-			ext.SetupMetricsRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
-
-			// search build
-			ext.SetupSearchRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
-
-			// // extended build
-			// ext.SetupRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
-=======
 			// extended build
 			// ext.SetupMetricsRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
-			(&ext.Ext).Invoke(&ext.Ext, "SetupMetricsRoutes", rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
+			ext.Ext.Invoke("SetupMetricsRoutes", rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
 			// ext.Ext.SetupSearchRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
-			(&ext.Ext).Invoke(&ext.Ext, "SetupSearchRoutes", rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
->>>>>>> 6056e2c... started managing extensions with the reflect package
+			ext.Ext.Invoke("SetupSearchRoutes", rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
 		}
 	}
 }
@@ -1358,14 +1349,24 @@ func getImageManifest(routeHandler *RouteHandler, imgStore storage.ImageStore, n
 				routeHandler.c.Log.Info().Msgf("image not found, trying to get image %s:%s by syncing on demand",
 					name, reference)
 
-				errSync := ext.SyncOneImage(routeHandler.c.Config, routeHandler.c.StoreController,
+				// errSync := ext.Ext.SyncOneImage(routeHandler.c.Config, routeHandler.c.StoreController,
+				// 	name, reference, false, routeHandler.c.Log)
+				errorsSync := ext.Ext.Invoke("SyncOneImage", routeHandler.c.Config, routeHandler.c.StoreController,
 					name, reference, false, routeHandler.c.Log)
-				if errSync != nil {
-					routeHandler.c.Log.Err(errSync).Msgf("error encounter while syncing image %s:%s",
+				for _,errSync := range errorsSync{
+					if !reflect.ValueOf(err).IsZero(){
+						routeHandler.c.Log.Err(reflect.ValueOf(errSync).Interface().(error)).Msgf("error encounter while syncing image %s:%s",
 						name, reference)
-				} else {
-					content, digest, mediaType, err = imgStore.GetImageManifest(name, reference)
+					}else {
+						content, digest, mediaType, err = imgStore.GetImageManifest(name, reference)
+					}
 				}
+				// if errSync != nil {
+				// 	routeHandler.c.Log.Err(errSync).Msgf("error encounter while syncing image %s:%s",
+				// 		name, reference)
+				// } else {
+				// 	content, digest, mediaType, err = imgStore.GetImageManifest(name, reference)
+				// }
 			}
 		} else {
 			return []byte{}, "", "", err
@@ -1387,12 +1388,20 @@ func getReferrers(routeHandler *RouteHandler, imgStore storage.ImageStore, name,
 			routeHandler.c.Log.Info().Msgf("signature not found, trying to get signature %s:%s by syncing on demand",
 				name, digest)
 
-			errSync := ext.SyncOneImage(routeHandler.c.Config, routeHandler.c.StoreController,
-				name, digest, true, routeHandler.c.Log)
-			if errSync != nil {
-				routeHandler.c.Log.Error().Err(err).Str("name", name).Str("digest", digest).Msg("unable to get references")
+			// errSync := ext.Ext.SyncOneImage(routeHandler.c.Config, routeHandler.c.StoreController,
+			// 	name, digest, true, routeHandler.c.Log)
+			// if errSync != nil {
+			// 	routeHandler.c.Log.Error().Err(err).Str("name", name).Str("digest", digest).Msg("unable to get references")
 
-				return []artifactspec.Descriptor{}, err
+			// 	return []artifactspec.Descriptor{}, err
+			// }
+			errorsSync := ext.Ext.Invoke("SyncOneImage", routeHandler.c.Config, routeHandler.c.StoreController,
+					name, digest, true, routeHandler.c.Log)
+			for _,errSync := range errorsSync{
+				if !reflect.ValueOf(errSync).IsZero(){
+					routeHandler.c.Log.Error().Err(reflect.ValueOf(errSync).Interface().(error)).Str("name", name).Str("digest", digest).Msg("unable to get references")
+					return []artifactspec.Descriptor{}, err
+				}
 			}
 
 			refs, err = imgStore.GetReferrers(name, digest, artifactType)
