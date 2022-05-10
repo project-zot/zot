@@ -34,6 +34,7 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test" // nolint: goimports
+
 	// as required by swaggo.
 	_ "zotregistry.io/zot/swagger"
 )
@@ -940,10 +941,7 @@ func (rh *RouteHandler) PatchBlobUpload(response http.ResponseWriter, request *h
 
 	var err error
 
-	if request.Header.Get("Content-Length") == "" || request.Header.Get("Content-Range") == "" {
-		// streamed blob upload
-		clen, err = imgStore.PutBlobChunkStreamed(name, sessionID, request.Body)
-	} else {
+	if request.Header.Get("Content-Length") != "" && request.Header.Get("Content-Range") != "" {
 		// chunked blob upload
 
 		var contentLength int64
@@ -971,6 +969,9 @@ func (rh *RouteHandler) PatchBlobUpload(response http.ResponseWriter, request *h
 		}
 
 		clen, err = imgStore.PutBlobChunk(name, sessionID, from, to, request.Body)
+	} else {
+		// streamed blob upload
+		clen, err = imgStore.PutBlobChunkStreamed(name, sessionID, request.Body)
 	}
 
 	if err != nil {
