@@ -1108,8 +1108,9 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 				panic(err)
 			}
 
-			err = os.Remove(path.Join(dir, repoName, "blobs/sha256",
-				"2bacca16b9df395fc855c14ccf50b12b58d35d468b8e7f25758aff90f89bf396"))
+			var manifestDigest godigest.Digest
+			manifestDigest, _, _ = test.GetOciLayoutDigests("../../test/data/zot-test")
+			err = os.Remove(path.Join(dir, repoName, "blobs/sha256", manifestDigest.Encoded()))
 			if err != nil {
 				panic(err)
 			}

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
@@ -271,9 +272,12 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 			panic(err)
 		}
 
+		var manifestDigest digest.Digest
+		var configDigest digest.Digest
+		manifestDigest, configDigest, _ = GetOciLayoutDigests("../../../../test/data/zot-test")
+
 		// Delete config blob and try.
-		err = os.Remove(path.Join(subRootDir, "zot-test/blobs/sha256",
-			"adf3bb6cc81f8bd6a9d5233be5f0c1a4f1e3ed1cf5bbdfad7708cc8d4099b741"))
+		err = os.Remove(path.Join(subRootDir, "zot-test/blobs/sha256", configDigest.Encoded()))
 		if err != nil {
 			panic(err)
 		}
@@ -284,7 +288,7 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, 200)
 
 		err = os.Remove(path.Join(subRootDir, "zot-test/blobs/sha256",
-			"2bacca16b9df395fc855c14ccf50b12b58d35d468b8e7f25758aff90f89bf396"))
+			manifestDigest.Encoded()))
 		if err != nil {
 			panic(err)
 		}
@@ -294,8 +298,7 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		err = os.Remove(path.Join(rootDir, "zot-test/blobs/sha256",
-			"adf3bb6cc81f8bd6a9d5233be5f0c1a4f1e3ed1cf5bbdfad7708cc8d4099b741"))
+		err = os.Remove(path.Join(rootDir, "zot-test/blobs/sha256", configDigest.Encoded()))
 		if err != nil {
 			panic(err)
 		}
@@ -306,8 +309,7 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, 200)
 
 		// Delete manifest blob also and try
-		err = os.Remove(path.Join(rootDir, "zot-test/blobs/sha256",
-			"2bacca16b9df395fc855c14ccf50b12b58d35d468b8e7f25758aff90f89bf396"))
+		err = os.Remove(path.Join(rootDir, "zot-test/blobs/sha256", manifestDigest.Encoded()))
 		if err != nil {
 			panic(err)
 		}
@@ -405,8 +407,10 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Manifests), ShouldNotEqual, 0)
 		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Manifests[0].Layers), ShouldNotEqual, 0)
 
-		err = os.Remove(path.Join(rootDir, "zot-test/blobs/sha256",
-			"2bacca16b9df395fc855c14ccf50b12b58d35d468b8e7f25758aff90f89bf396"))
+		var manifestDigest digest.Digest
+		manifestDigest, _, _ = GetOciLayoutDigests("../../../../test/data/zot-test")
+
+		err = os.Remove(path.Join(rootDir, "zot-test/blobs/sha256", manifestDigest.Encoded()))
 		if err != nil {
 			panic(err)
 		}

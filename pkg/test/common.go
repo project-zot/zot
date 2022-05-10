@@ -1,6 +1,7 @@
 package test
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	imagespec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/opencontainers/umoci"
 	"github.com/phayes/freeport"
 	"gopkg.in/resty.v1"
 )
@@ -203,4 +205,55 @@ func GetImageConfig() ([]byte, godigest.Digest) {
 	configBlobDigestRaw := godigest.FromBytes(configBlobContent)
 
 	return configBlobContent, configBlobDigestRaw
+}
+
+func GetOciLayoutDigests(imagePath string) (godigest.Digest, godigest.Digest, godigest.Digest) {
+	var (
+		manifestDigest godigest.Digest
+		configDigest   godigest.Digest
+		layerDigest    godigest.Digest
+	)
+
+	oci, err := umoci.OpenLayout(imagePath)
+	if err != nil {
+		panic(err)
+	}
+
+	defer oci.Close()
+
+	ctxUmoci := context.Background()
+
+	index, err := oci.GetIndex(ctxUmoci)
+	if err != nil {
+		panic(err)
+	}
+
+	for _, manifest := range index.Manifests {
+		manifestDigest = manifest.Digest
+
+		manifestBlob, err := oci.GetBlob(ctxUmoci, manifest.Digest)
+		if err != nil {
+			panic(err)
+		}
+
+		manifestBuf, err := ioutil.ReadAll(manifestBlob)
+		if err != nil {
+			panic(err)
+		}
+
+		var manifest imagespec.Manifest
+
+		err = json.Unmarshal(manifestBuf, &manifest)
+		if err != nil {
+			panic(err)
+		}
+
+		configDigest = manifest.Config.Digest
+
+		for _, layer := range manifest.Layers {
+			layerDigest = layer.Digest
+		}
+	}
+
+	return manifestDigest, configDigest, layerDigest
 }

@@ -145,6 +145,8 @@ check-licenses:
 clean:
 	rm -f bin/z*
 	rm -rf hack
+	rm -rf test/data/zot-test
+	rm -rf test/data/zot-cve-test
 
 .PHONY: run
 run: binary test
