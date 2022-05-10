@@ -1,4 +1,4 @@
-package plugins
+package common
 
 const (
 	CLICommand  = "CLICommand"

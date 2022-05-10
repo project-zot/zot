@@ -11,6 +11,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	"zotregistry.io/zot/pkg/log" // nolint: gci
 	"zotregistry.io/zot/pkg/plugins"
+	pluginsCommon "zotregistry.io/zot/pkg/plugins/common"
 
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
@@ -49,7 +50,7 @@ func GetResolverConfig(log log.Logger, storeController storage.StoreController,
 	var err error
 
 	if enableCVE {
-		cveInfo, err = cveinfo.GetCVEInfo(storeController, pluginManager.GetImplManager(plugins.VulnScanner), log)
+		cveInfo, err = cveinfo.GetCVEInfo(storeController, pluginManager.GetImplManager(pluginsCommon.VulnScanner), log)
 		if err != nil {
 			panic(err)
 		}

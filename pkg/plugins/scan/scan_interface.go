@@ -7,7 +7,7 @@ import (
 	"github.com/urfave/cli/v2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"zotregistry.io/zot/pkg/plugins"
+	"zotregistry.io/zot/pkg/plugins/common"
 )
 
 type VulnScanner interface {
@@ -18,7 +18,7 @@ type VulnScanner interface {
 // the needed logic (that takes place remotely).
 type RPCScanner struct {
 	name    string
-	options plugins.Options
+	options common.Options
 	client  ScanClient
 }
 
@@ -41,7 +41,7 @@ func (rs RPCScanner) ScanImage(ctx *cli.Context, image string) (*ScanReport, err
 
 type RPCScanBuilder struct{}
 
-func (sb RPCScanBuilder) Build(name, addr, port string, options plugins.Options) plugins.Plugin {
+func (sb RPCScanBuilder) Build(name, addr, port string, options common.Options) common.Plugin {
 	address := fmt.Sprintf("%s:%s", addr, port)
 
 	conn, err := grpc.Dial(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -60,7 +60,7 @@ func (sb RPCScanBuilder) Build(name, addr, port string, options plugins.Options)
 type RPCScanManager struct {
 	Impl *struct {
 		Name            string
-		VulnScannerImpl plugins.Plugin
+		VulnScannerImpl common.Plugin
 	}
 }
 
@@ -71,13 +71,13 @@ func (rsm RPCScanManager) RegisterImplementation(name string, plugin interface{}
 	return nil
 }
 
-func (rsm RPCScanManager) AllPlugins() map[string]plugins.Plugin {
-	return map[string]plugins.Plugin{
+func (rsm RPCScanManager) AllPlugins() map[string]common.Plugin {
+	return map[string]common.Plugin{
 		rsm.Impl.Name: rsm.Impl.VulnScannerImpl,
 	}
 }
 
-func (rsm RPCScanManager) GetImpl(name string) plugins.Plugin {
+func (rsm RPCScanManager) GetImpl(name string) common.Plugin {
 	if rsm.Impl.Name != name && name != "default" {
 		return nil
 	}

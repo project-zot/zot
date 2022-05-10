@@ -21,7 +21,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/plugins"
 	cliPlugin "zotregistry.io/zot/pkg/plugins/cli"
-	scanPlugin "zotregistry.io/zot/pkg/plugins/scan"
+	pluginsCommon "zotregistry.io/zot/pkg/plugins/common"
 	"zotregistry.io/zot/pkg/storage"
 )
 
@@ -155,9 +155,7 @@ func NewServerRootCmd() *cobra.Command {
 	// specify a directory where the plugin configs are
 	pluginManager := plugins.NewManager()
 
-	registerAllIntegrationPoints(&pluginManager)
-
-	err := pluginManager.LoadAll("zot/examples/plugins")
+	err := pluginManager.LoadAll("/home/laur/zot/examples/plugins")
 	if err != nil {
 		log.Info().Msg("can't load cli plugins")
 	}
@@ -194,9 +192,7 @@ func NewCliRootCmd() *cobra.Command {
 	showVersion := false
 	pluginManager := plugins.NewManager()
 
-	registerAllIntegrationPoints(pluginManager)
-
-	err := pluginManager.LoadAll("zot/examples/plugins")
+	err := pluginManager.LoadAll("/home/laur/zot/examples/plugins")
 	if err != nil {
 		log.Info().Err(err).Msg("can't load cli plugins")
 	}
@@ -230,10 +226,14 @@ func NewCliRootCmd() *cobra.Command {
 
 func enableCliPlugins(cmd *cobra.Command, pm plugins.PluginManager) {
 	// init clients for each config
-	for name, plugin := range pm.GetImplManager(plugins.VulnScanner).AllPlugins() {
+	implManager := pm.GetImplManager(pluginsCommon.CLICommand)
+
+	for name, plugin := range implManager.AllPlugins() {
 		command, ok := plugin.(cliPlugin.Command)
 		if !ok {
 			log.Warn().Msgf("Can't add plugin: %v", name)
+
+			continue
 		}
 
 		log.Info().Msgf("Adding plugin: %v", name)

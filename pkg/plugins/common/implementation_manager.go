@@ -1,4 +1,4 @@
-package plugins
+package common
 
 // ImplementationManager manages implementations for a certain Plugin.
 // Plugins may be invoked in 3 different ways so a manager should

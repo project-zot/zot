@@ -9,40 +9,62 @@ import (
 	"github.com/spf13/viper"
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/log"
+	cliPlugin "zotregistry.io/zot/pkg/plugins/cli"
+	"zotregistry.io/zot/pkg/plugins/common"
+	scanPlugin "zotregistry.io/zot/pkg/plugins/scan"
 )
-
-// A plugin is defined by an interface and a gRPC communication protocol.
-// Each definition must come with an implementation that uses the gRPC client,
-// a Builder that knows how to build a plugin implementation,
-// a InterfaceManager that stores and dispenses implementations for the plugin.
-type Plugin interface{}
 
 // make it thread safe: https://refactoring.guru/design-patterns/singleton/go/example.
 
 type PluginManager interface {
-	GetImplManager(name string) ImplementationManager
-	GetBuilder(interfaceName string) (PluginBuilder, error)
+	GetImplManager(name string) common.ImplementationManager
+	GetBuilder(interfaceName string) (common.PluginBuilder, error)
 	LoadAll(pluginsDir string) error
-	RegisterInterface(name string, implManager ImplementationManager, pluginBuilder PluginBuilder)
-	RegisterImplementation(interfaceName string, implName string, plugin Plugin) error
+	RegisterInterface(name string, implManager common.ImplementationManager, pluginBuilder common.PluginBuilder)
+	RegisterImplementation(interfaceName string, implName string, plugin common.Plugin) error
 }
 
 type DefaultPluginManager struct {
-	ImplManagers map[string]ImplementationManager
-	builders     map[string]PluginBuilder
+	ImplManagers map[string]common.ImplementationManager
+	builders     map[string]common.PluginBuilder
 	log          log.Logger
 }
 
 func NewManager() DefaultPluginManager {
-	return DefaultPluginManager{
-		ImplManagers: map[string]ImplementationManager{},
-		builders:     map[string]PluginBuilder{},
+	pluginManager := DefaultPluginManager{
+		ImplManagers: map[string]common.ImplementationManager{},
+		builders:     map[string]common.PluginBuilder{},
 		log:          log.Logger{},
 	}
+
+	registerAllIntegrationPoints(&pluginManager)
+
+	return pluginManager
+}
+
+func registerAllIntegrationPoints(pluginManager PluginManager) {
+	pluginManager.RegisterInterface(
+		"VulnScanner",
+		scanPlugin.RPCScanManager{
+			Impl: &struct {
+				Name            string
+				VulnScannerImpl common.Plugin
+			}{},
+		},
+		scanPlugin.RPCScanBuilder{},
+	)
+
+	pluginManager.RegisterInterface(
+		"CLICommand",
+		cliPlugin.Manager{
+			Implementations: map[string]common.Plugin{},
+		},
+		cliPlugin.Builder{},
+	)
 }
 
 // GetBuilder returns the PluginBuilder object for a registered integration point.
-func (pm DefaultPluginManager) GetBuilder(interfaceName string) (PluginBuilder, error) {
+func (pm DefaultPluginManager) GetBuilder(interfaceName string) (common.PluginBuilder, error) {
 	if pm.builders[interfaceName] == nil {
 		return nil, zerr.ErrBadIntegrationPoint
 	}
@@ -101,8 +123,8 @@ func (pm DefaultPluginManager) LoadAll(pluginsDir string) error {
 }
 
 // RegisterInterface makes the given interface name recognised as supported by Zot.
-func (pm DefaultPluginManager) RegisterInterface(name string, interfaceManager ImplementationManager,
-	pluginBuilder PluginBuilder,
+func (pm DefaultPluginManager) RegisterInterface(name string, interfaceManager common.ImplementationManager,
+	pluginBuilder common.PluginBuilder,
 ) {
 	pm.ImplManagers[name] = interfaceManager
 	pm.builders[name] = pluginBuilder
@@ -110,7 +132,9 @@ func (pm DefaultPluginManager) RegisterInterface(name string, interfaceManager I
 
 // RegisterImplementation hooks the implementation to the InterfaceManager. This
 // allows Zot to find and use the implementation.
-func (pm DefaultPluginManager) RegisterImplementation(interfaceName string, implName string, plugin Plugin) error {
+func (pm DefaultPluginManager) RegisterImplementation(interfaceName string, implName string,
+	plugin common.Plugin,
+) error {
 	if pm.ImplManagers[interfaceName] == nil {
 		return zerr.ErrBadIntegrationPoint
 	}
@@ -123,12 +147,12 @@ func (pm DefaultPluginManager) RegisterImplementation(interfaceName string, impl
 	return nil
 }
 
-func (pm DefaultPluginManager) GetImplManager(name string) ImplementationManager {
+func (pm DefaultPluginManager) GetImplManager(name string) common.ImplementationManager {
 	return pm.ImplManagers[name]
 }
 
-func loadConfig(configPath string) (*Config, error) {
-	var config Config
+func loadConfig(configPath string) (*common.Config, error) {
+	var config common.Config
 
 	viperInstance := viper.NewWithOptions(viper.KeyDelimiter("::"))
 	viperInstance.SetConfigFile(configPath)
@@ -145,7 +169,7 @@ func loadConfig(configPath string) (*Config, error) {
 	}
 
 	if len(metaData.Keys) == 0 || len(metaData.Unused) > 0 {
-		return &Config{}, nil
+		return &common.Config{}, nil
 	}
 
 	return &config, nil

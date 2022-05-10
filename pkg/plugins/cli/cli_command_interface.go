@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/plugins"
+	plugins "zotregistry.io/zot/pkg/plugins/common"
 )
 
 type Command interface {
@@ -28,7 +28,7 @@ type CommandImpl struct {
 	Log     log.Logger
 }
 
-func (cci CommandImpl) Command() *cobra.Command {
+func (cci CommandImpl) GetCommand() *cobra.Command {
 	use, err := getField(cci.options["use"])
 	if err != nil {
 		cci.Log.Err(err).Msgf("CLI plugin config for %v needs to provide 'use' in options field", cci.name)

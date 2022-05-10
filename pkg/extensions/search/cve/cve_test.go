@@ -27,6 +27,7 @@ import (
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/plugins"
+	pluginsCommon "zotregistry.io/zot/pkg/plugins/common"
 	"zotregistry.io/zot/pkg/storage"
 	. "zotregistry.io/zot/pkg/test"
 )
@@ -327,8 +328,8 @@ func makeTestFile(fileName, content string) error {
 
 type MockImplementationManager struct {
 	registerImplementationFn func(implName string, plugin interface{}) error
-	allPluginsFn             func() map[string]plugins.Plugin
-	getImplFn                func(name string) plugins.Plugin
+	allPluginsFn             func() map[string]pluginsCommon.Plugin
+	getImplFn                func(name string) pluginsCommon.Plugin
 }
 
 func (mim MockImplementationManager) RegisterImplementation(implName string, plugin interface{}) error {
@@ -339,15 +340,15 @@ func (mim MockImplementationManager) RegisterImplementation(implName string, plu
 	return nil
 }
 
-func (mim MockImplementationManager) AllPlugins() map[string]plugins.Plugin {
+func (mim MockImplementationManager) AllPlugins() map[string]pluginsCommon.Plugin {
 	if mim.allPluginsFn != nil {
 		return mim.allPluginsFn()
 	}
 
-	return map[string]plugins.Plugin{}
+	return map[string]pluginsCommon.Plugin{}
 }
 
-func (mim MockImplementationManager) GetImpl(name string) plugins.Plugin {
+func (mim MockImplementationManager) GetImpl(name string) pluginsCommon.Plugin {
 	if mim.getImplFn != nil {
 		return mim.GetImpl(name)
 	}

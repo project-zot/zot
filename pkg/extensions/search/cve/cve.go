@@ -14,7 +14,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	"zotregistry.io/zot/pkg/extensions/search/cve/convert"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/plugins"
+	pluginsCommon "zotregistry.io/zot/pkg/plugins/common"
 	"zotregistry.io/zot/pkg/plugins/scan"
 	"zotregistry.io/zot/pkg/storage"
 )
@@ -85,7 +85,7 @@ func (csf *CveScannerFs) ScanImage(ctx *cli.Context, image string) (*scan.ScanRe
 	return convert.ToRPCScanReport(report), nil
 }
 
-func GetCVEInfo(storeController storage.StoreController, implManager plugins.ImplementationManager,
+func GetCVEInfo(storeController storage.StoreController, implManager pluginsCommon.ImplementationManager,
 	log log.Logger,
 ) (*CveInfo, error) {
 	var vulnScanner scan.VulnScanner
@@ -173,14 +173,8 @@ func (cveinfo CveInfo) GetImageListForCVE(repo, cvid string, imgStore storage.Im
 
 	for _, tag := range tagList {
 		image := fmt.Sprintf("%s:%s", repo, tag)
+
 		trivyCtx.Input = path.Join(rootDir, image)
-
-		err := trivyCtx.Ctx.Set("imageName", image)
-		if err != nil {
-			cveinfo.Log.Debug().Str("image", repo+":"+tag).Msg("can't configure trivy context with image name")
-
-			continue
-		}
 
 		isValidImage, _ := cveinfo.LayoutUtils.IsValidImageFormat(image)
 		if !isValidImage {

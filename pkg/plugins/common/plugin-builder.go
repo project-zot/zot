@@ -1,4 +1,4 @@
-package plugins
+package common
 
 // PluginBuilder construct the plugin implementation, initializing
 // the gRPC client with connection details and other options.
