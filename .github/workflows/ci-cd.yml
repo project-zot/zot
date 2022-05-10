@@ -40,11 +40,23 @@ jobs:
           go-version: 1.17.x
       - name: Check out source code
         uses: actions/checkout@v1
-      - name: Install dependencies
+      - name: Cache go dependencies
+        id: cache-go-dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+      - name: Install go dependencies
+        if: steps.cache-go-dependencies.outputs.cache-hit != 'true'
+        run: go mod download
+      - name: Install other dependencies
         run: |
           cd $GITHUB_WORKSPACE
           go install github.com/swaggo/swag/cmd/swag@latest
-          go mod download
           sudo apt-get update
           sudo apt-get install rpm
           sudo apt-get install snapd
