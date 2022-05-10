@@ -325,18 +325,18 @@ func TestLogErrors(t *testing.T) {
 	})
 }
 
-func TestAuditLogErrors(t *testing.T) {
-	Convey("Get error with unknown log level", t, func() {
+func TestNewAuditLogger(t *testing.T) {
+	Convey("Get error with unknown audit log level", t, func() {
 		So(func() { _ = log.NewAuditLogger("invalid", "test.out") }, ShouldPanic)
 	})
 
-	Convey("Get error when opening log file", t, func() {
+	Convey("Get error when opening audit file", t, func() {
 		dir := t.TempDir()
-		auditLogPath := path.Join(dir, "auditLogFile")
-		err := ioutil.WriteFile(auditLogPath, []byte{}, 0o000)
+		logPath := path.Join(dir, "logFile")
+		err := ioutil.WriteFile(logPath, []byte{}, 0o000)
 		So(err, ShouldBeNil)
 		So(func() {
-			_ = log.NewAuditLogger(zerolog.DebugLevel.String(), auditLogPath)
+			_ = log.NewAuditLogger(zerolog.DebugLevel.String(), logPath)
 		}, ShouldPanic)
 	})
 }

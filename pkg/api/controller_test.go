@@ -2696,15 +2696,18 @@ func TestCrossRepoMount(t *testing.T) {
 		test.WaitTillServerReady(baseURL)
 
 		params := make(map[string]string)
-		digest := "sha256:63a795ca90aa6e7cca60941e826810a4cd0a2e73ea02bf458241df2a5c973e29"
-		dgst := godigest.Digest(digest)
+
+		var manifestDigest godigest.Digest
+		manifestDigest, _, _ = test.GetOciLayoutDigests("../../test/data/zot-cve-test")
+
+		dgst := manifestDigest
 		name := "zot-cve-test"
-		params["mount"] = digest
+		params["mount"] = string(manifestDigest)
 		params["from"] = name
 
 		client := resty.New()
 		headResponse, err := client.R().SetBasicAuth(username, passphrase).
-			Head(fmt.Sprintf("%s/v2/%s/blobs/%s", baseURL, name, digest))
+			Head(fmt.Sprintf("%s/v2/%s/blobs/%s", baseURL, name, manifestDigest))
 		So(err, ShouldBeNil)
 		So(headResponse.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -2729,7 +2732,7 @@ func TestCrossRepoMount(t *testing.T) {
 
 		// Use correct request
 		// This is correct request but it will return 202 because blob is not present in cache.
-		params["mount"] = digest
+		params["mount"] = string(manifestDigest)
 		postResponse, err = client.R().
 			SetBasicAuth(username, passphrase).SetQueryParams(params).
 			Post(baseURL + "/v2/zot-c-test/blobs/uploads/")
@@ -2751,7 +2754,7 @@ func TestCrossRepoMount(t *testing.T) {
 		So(postResponse.StatusCode(), ShouldEqual, http.StatusAccepted)
 
 		headResponse, err = client.R().SetBasicAuth(username, passphrase).
-			Head(fmt.Sprintf("%s/v2/zot-cv-test/blobs/%s", baseURL, digest))
+			Head(fmt.Sprintf("%s/v2/zot-cv-test/blobs/%s", baseURL, manifestDigest))
 		So(err, ShouldBeNil)
 		So(headResponse.StatusCode(), ShouldEqual, http.StatusNotFound)
 
@@ -2766,9 +2769,7 @@ func TestCrossRepoMount(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(postResponse.StatusCode(), ShouldEqual, http.StatusNotFound)
 
-		digest = "sha256:63a795ca90aa6e7cca60941e826810a4cd0a2e73ea02bf458241df2a5c973e29"
-
-		blob := "63a795ca90aa6e7cca60941e826810a4cd0a2e73ea02bf458241df2a5c973e29"
+		blob := manifestDigest.Encoded()
 
 		buf, err := ioutil.ReadFile(path.Join(ctlr.Config.Storage.RootDirectory, "zot-cve-test/blobs/sha256/"+blob))
 		if err != nil {
@@ -2785,7 +2786,7 @@ func TestCrossRepoMount(t *testing.T) {
 		// in cache, now try mount blob request status and it should be 201 because now blob is present in cache
 		// and it should do hard link.
 
-		params["mount"] = digest
+		params["mount"] = string(manifestDigest)
 		postResponse, err = client.R().
 			SetBasicAuth(username, passphrase).SetQueryParams(params).
 			Post(baseURL + "/v2/zot-mount-test/blobs/uploads/")
@@ -2807,7 +2808,7 @@ func TestCrossRepoMount(t *testing.T) {
 
 		// Now try another mount request and this time it should be from above uploaded repo i.e zot-mount-test
 		// mount request should pass and should return 201.
-		params["mount"] = digest
+		params["mount"] = string(manifestDigest)
 		params["from"] = "zot-mount-test"
 		postResponse, err = client.R().
 			SetBasicAuth(username, passphrase).SetQueryParams(params).
@@ -2823,7 +2824,7 @@ func TestCrossRepoMount(t *testing.T) {
 		So(os.SameFile(cacheFi, linkFi), ShouldEqual, true)
 
 		headResponse, err = client.R().SetBasicAuth(username, passphrase).
-			Head(fmt.Sprintf("%s/v2/zot-cv-test/blobs/%s", baseURL, digest))
+			Head(fmt.Sprintf("%s/v2/zot-cv-test/blobs/%s", baseURL, manifestDigest))
 		So(err, ShouldBeNil)
 		So(headResponse.StatusCode(), ShouldEqual, http.StatusOK)
 
