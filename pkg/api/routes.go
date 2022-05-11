@@ -1349,8 +1349,9 @@ func getImageManifest(routeHandler *RouteHandler, imgStore storage.ImageStore, n
 					name, reference, false, routeHandler.c.Log)
 				for _, errSync := range errorsSync {
 					fmt.Printf("the type of errSync is %v\n", errSync.Kind())
+
 					if !errSync.IsZero() {
-						errSync, ok :=errSync.Interface().(error)
+						errSync, ok := errSync.Interface().(error)
 						if ok {
 							routeHandler.c.Log.Err(errSync).Msgf(
 								"error encounter while syncing image %s:%s", name, reference)
