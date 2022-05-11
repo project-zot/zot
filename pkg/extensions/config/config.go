@@ -38,5 +38,6 @@ type ScrubConfig struct {
 }
 
 type UIConfig struct {
-	Path string
+	Path   *string
+	Enable *bool
 }

@@ -5,8 +5,9 @@ package extensions
 
 import (
 	"context"
+	"embed"
+	"io/fs"
 	"net/http"
-	"path/filepath"
 	goSync "sync"
 	"time"
 
@@ -21,6 +22,10 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 )
+
+// content is our static web server content.
+//go:embed build/*
+var content embed.FS
 
 // DownloadTrivyDB ...
 func downloadTrivyDB(dbDir string, log log.Logger, updateInterval time.Duration) error {
@@ -138,18 +143,19 @@ func SetupRoutes(config *config.Config, router *mux.Router, storeController stor
 		metricsRouter.Methods("GET", "OPTIONS").Handler(promhttp.Handler())
 	}
 
-	if config.Extensions.UI != nil && config.Extensions.UI.Path != "" {
-		uiPath := config.Extensions.UI.Path
-
+	if config.Extensions.UI != nil {
+		fsub, _ := fs.Sub(content, "build")
 		router.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
-			http.ServeFile(w, r, filepath.Join(uiPath, "index.html"))
+			buf, _ := content.ReadFile("build/index.html")
+			w.Write(buf)
 		})
 
 		router.HandleFunc("/home", func(w http.ResponseWriter, r *http.Request) {
-			http.ServeFile(w, r, filepath.Join(uiPath, "index.html"))
+			buf, _ := content.ReadFile("build/index.html")
+			w.Write(buf)
 		})
 
-		router.PathPrefix("/").Handler(http.FileServer(http.Dir(uiPath)))
+		router.PathPrefix("/").Handler(http.FileServer(http.FS(fsub)))
 	}
 }
 

@@ -57,7 +57,7 @@ func allowedMethods(method string) []string {
 
 // nolint: contextcheck
 func (rh *RouteHandler) SetupRoutes() {
-	prefixedRouter := rh.c.Router.PathPrefix(RoutePrefix).Subrouter()
+	prefixedRouter := rh.c.Router.PathPrefix(constants.RoutePrefix).Subrouter()
 	prefixedRouter.Use(AuthHandler(rh.c))
 
 	// authz is being enabled if AccessControl is specified

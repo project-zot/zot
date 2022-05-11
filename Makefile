@@ -207,3 +207,19 @@ push-pull: binary check-skopeo $(BATS)
 .PHONY: push-pull-verbose
 push-pull-verbose: binary check-skopeo $(BATS)
 	$(BATS) --trace --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox
+
+.PHONY: ui
+ui:
+	pwd=$$(pwd);\
+	tdir=$$(mktemp -d); \
+	cd $$tdir;\
+	git clone https://github.com/project-zot/zui.git;\
+	cd zui;\
+	npm install;\
+	npm run build;\
+	cd $$pwd; \
+	cp -R $$tdir/zui/build ./; 
+
+.PHONY: binary-ui
+binary-ui: ui
+	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH) -buildmode=pie -tags extended,containers_image_openpgp -v -trimpath -ldflags "-X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=extended -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zot
