@@ -1,6 +1,6 @@
-# this workflow runs only when the 'enhancement' label is added, and not subsequently
-name: enhancement-label
-on: 
+# this workflow runs every time a new push is made
+name: cicd-label
+on:
   push:
     branches:
       - main
@@ -10,8 +10,8 @@ on:
     types: [ labeled ]
 jobs:
   enhancement-specific-stuff:
-    if: ${{ github.event.label.name == 'enhancement' }}
-    name: Enhancement Checks
+    if: contains(github.event.pull_request.labels.*.name, 'ci/cd')
+    name: CI-CD Checks
     runs-on: ubuntu-latest
     steps:
       - name: Step 1
