@@ -11,7 +11,7 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 )
 
-// func init() {
+
 	func (e *Extensions) SetupMetricsRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
 		l log.Logger,
 	) {
@@ -38,4 +38,3 @@ import (
 			log.Info().Msg("Metrics config not provided, skipping Metrics config update")
 		}
 	}
-// }
