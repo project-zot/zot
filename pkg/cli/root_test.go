@@ -11,11 +11,15 @@ import (
 	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/spf13/cobra"
+	"google.golang.org/grpc"
 	"gopkg.in/resty.v1"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/cli"
 	"zotregistry.io/zot/pkg/plugins"
+	cliPlugin "zotregistry.io/zot/pkg/plugins/cli"
+	"zotregistry.io/zot/pkg/plugins/common"
 	"zotregistry.io/zot/pkg/storage"
 	. "zotregistry.io/zot/pkg/test"
 )
@@ -709,4 +713,24 @@ func TestScrub(t *testing.T) {
 			So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 		})
 	})
+}
+
+type mockCliClient struct{}
+
+func (f *mockCliClient) Command(ctx context.Context, in *cliPlugin.CLIArgs, opts ...grpc.CallOption,
+) (*cliPlugin.CLIResponse, error) {
+	return &cliPlugin.CLIResponse{}, nil
+}
+
+func TestEnableCLIPlugins(t *testing.T) {
+	cmd := cobra.Command{}
+	pluginManager := plugins.NewManager()
+
+	goodCLIPluginImpl := cliPlugin.BaseCommand{
+		Name: "Test",
+		Options: common.Options{},
+		Client: &mockCliClient{},
+	}
+	pluginManager.RegisterImplementation(plugins.CLICommand, "Test", goodCLIPluginImpl)
+
 }

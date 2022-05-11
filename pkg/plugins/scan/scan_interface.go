@@ -41,17 +41,20 @@ func (rs RPCScanner) ScanImage(ctx *cli.Context, image string) (*ScanReport, err
 
 type RPCScanBuilder struct{}
 
-func (sb RPCScanBuilder) Build(name, addr, port string, options common.Options) common.Plugin {
+func (sb RPCScanBuilder) Build(name, addr, port string, options common.Options,
+) (common.Plugin, error) {
 	address := fmt.Sprintf("%s:%s", addr, port)
 
 	conn, err := grpc.Dial(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		fmt.Println("Can't connect")
+
+		return nil, err
 	}
 
 	c := NewScanClient(conn)
 
-	return RPCScanner{name: name, client: c, options: options}
+	return RPCScanner{name: name, client: c, options: options}, nil
 }
 
 // This manager follows the "driver" pattern:

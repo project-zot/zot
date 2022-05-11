@@ -105,12 +105,18 @@ func (pm DefaultPluginManager) LoadAll(pluginsDir string) error {
 				continue
 			}
 
-			pluginClient := builder.Build(
+			pluginClient, err := builder.Build(
 				config.Name,
 				intPoint.GrpcConnection.Addr,
 				intPoint.GrpcConnection.Port,
 				intPoint.Options,
 			)
+			if err != nil {
+				pm.log.Warn().Err(err).Msgf("can't build implementation for %v, name: %v",
+					intPoint.Interface, config.Name)
+
+				continue
+			}
 
 			err = pm.RegisterImplementation(intPoint.Interface, config.Name, pluginClient)
 			if err != nil {

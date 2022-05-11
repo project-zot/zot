@@ -21,28 +21,28 @@ type Command interface {
 
 // Object that implements CLICommand and calls on the remote plugin using
 // the gRPC client.
-type CommandImpl struct {
-	name    string
-	options plugins.Options
-	client  CLICommandClient
+type BaseCommand struct {
+	Name    string
+	Options plugins.Options
+	Client  CLICommandClient
 	Log     log.Logger
 }
 
-func (cci CommandImpl) GetCommand() *cobra.Command {
-	use, err := getField(cci.options["use"])
+func (cci BaseCommand) GetCommand() *cobra.Command {
+	use, err := getField(cci.Options["use"])
 	if err != nil {
-		cci.Log.Err(err).Msgf("CLI plugin config for %v needs to provide 'use' in options field", cci.name)
+		cci.Log.Err(err).Msgf("CLI plugin config for %v needs to provide 'use' in options field", cci.Name)
 		panic(err)
 	}
 
-	short, err := getField(cci.options["short"])
+	short, err := getField(cci.Options["short"])
 	if err != nil {
-		cci.Log.Info().Msgf("No short description provided for %v CLI plugin", cci.name)
+		cci.Log.Info().Msgf("No short description provided for %v CLI plugin", cci.Name)
 	}
 
-	long, err := getField(cci.options["long"])
+	long, err := getField(cci.Options["long"])
 	if err != nil {
-		cci.Log.Info().Msgf("No long description provided for %v CLI plugin", cci.name)
+		cci.Log.Info().Msgf("No long description provided for %v CLI plugin", cci.Name)
 	}
 
 	return &cobra.Command{
@@ -51,13 +51,13 @@ func (cci CommandImpl) GetCommand() *cobra.Command {
 		Short:   short,
 		Long:    long,
 		Run: func(cmd *cobra.Command, args []string) {
-			response, err := cci.client.Command(
+			response, err := cci.Client.Command(
 				context.Background(),
 				&CLIArgs{
 					Args: args,
 				})
 			if err != nil {
-				fmt.Println(err.Error())
+				panic(err)
 			}
 
 			fmt.Println(response.GetMessage())
@@ -80,17 +80,20 @@ func getField(option interface{}) (string, error) {
 
 type Builder struct{}
 
-func (clib Builder) Build(name, addr, port string, options plugins.Options) plugins.Plugin {
+func (clib Builder) Build(name, addr, port string, options plugins.Options,
+) (plugins.Plugin, error) {
 	address := fmt.Sprintf("%s:%s", addr, port)
 
 	conn, err := grpc.Dial(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		fmt.Println("Can't connect")
+		fmt.Println("Can't dial")
+
+		return nil, err
 	}
 
 	c := NewCLICommandClient(conn)
 
-	return CommandImpl{name: name, client: c, options: options}
+	return BaseCommand{Name: name, Client: c, Options: options}, nil
 }
 
 type Manager struct {
@@ -99,7 +102,7 @@ type Manager struct {
 
 func (clm Manager) RegisterImplementation(implName string, plugin interface{}) error {
 	if _, ok := clm.Implementations[implName]; ok {
-		return zerr.ErrImplementationConflict
+		return zerr.ErrImplNameCollision
 	}
 
 	clm.Implementations[implName] = plugin

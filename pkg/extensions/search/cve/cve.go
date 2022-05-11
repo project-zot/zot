@@ -76,7 +76,7 @@ func NewTrivyContext(dir string) *TrivyCtx {
 
 type CveScannerFs struct{}
 
-func (csf *CveScannerFs) ScanImage(ctx *cli.Context, image string) (*scan.ScanReport, error) {
+func (csf CveScannerFs) ScanImage(ctx *cli.Context, image string) (*scan.ScanReport, error) {
 	report, err := artifact.TrivyImageRun(ctx)
 	if err != nil {
 		return &scan.ScanReport{}, err

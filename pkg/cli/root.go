@@ -21,7 +21,6 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/plugins"
 	cliPlugin "zotregistry.io/zot/pkg/plugins/cli"
-	pluginsCommon "zotregistry.io/zot/pkg/plugins/common"
 	"zotregistry.io/zot/pkg/storage"
 )
 
@@ -226,7 +225,7 @@ func NewCliRootCmd() *cobra.Command {
 
 func enableCliPlugins(cmd *cobra.Command, pm plugins.PluginManager) {
 	// init clients for each config
-	implManager := pm.GetImplManager(pluginsCommon.CLICommand)
+	implManager := pm.GetImplManager(plugins.CLICommand)
 
 	for name, plugin := range implManager.AllPlugins() {
 		command, ok := plugin.(cliPlugin.Command)

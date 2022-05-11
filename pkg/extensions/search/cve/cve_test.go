@@ -7,6 +7,7 @@ package cveinfo_test
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/urfave/cli/v2"
 	"gopkg.in/resty.v1"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
@@ -350,7 +352,7 @@ func (mim MockImplementationManager) AllPlugins() map[string]pluginsCommon.Plugi
 
 func (mim MockImplementationManager) GetImpl(name string) pluginsCommon.Plugin {
 	if mim.getImplFn != nil {
-		return mim.GetImpl(name)
+		return mim.getImplFn(name)
 	}
 
 	return nil
@@ -766,5 +768,41 @@ func TestHTTPOptionsResponse(t *testing.T) {
 			ctx := context.Background()
 			_ = ctlr.Server.Shutdown(ctx)
 		}()
+	})
+}
+
+func TestCveScannerFs(t *testing.T) {
+	scanner := cveinfo.CveScannerFs{}
+
+	Convey("Scan error", t, func() {
+		r, err := scanner.ScanImage(
+			cli.NewContext(
+				&cli.App{},
+				&flag.FlagSet{},
+				&cli.Context{},
+			),
+			"TestImage",
+		)
+	
+		So(r, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+	})
+}
+func TestCVEInfo(t *testing.T) {
+	//scanner := cveinfo.CveScannerFs{}
+
+	Convey("GetCVEInfo init with another vulnerability scanner", t, func() {
+		cv, err := cveinfo.GetCVEInfo(
+			storage.StoreController{},
+			MockImplementationManager{
+				getImplFn: func(name string) pluginsCommon.Plugin {
+					return cveinfo.CveScannerFs{}
+				},
+			},
+			log.Logger{},
+		)
+
+		So(cv, ShouldNotBeNil)
+		So(err, ShouldBeNil)
 	})
 }
