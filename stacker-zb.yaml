@@ -19,7 +19,7 @@ build:
 "${{REPO_NAME:zb}}":
   from:
     type: docker
-    url: docker://centos:latest
+    url: docker://gcr.io/distroless/base
   import:
     - stacker://build/go/src/github.com/project-zot/zot/bin/zb-${{OS}}-${{ARCH}}
   run: |
