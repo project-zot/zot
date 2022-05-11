@@ -18,7 +18,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"path"
-	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -1349,8 +1348,9 @@ func getImageManifest(routeHandler *RouteHandler, imgStore storage.ImageStore, n
 				errorsSync := ext.Ext.Invoke("SyncOneImage", routeHandler.c.Config, routeHandler.c.StoreController,
 					name, reference, false, routeHandler.c.Log)
 				for _, errSync := range errorsSync {
-					if !reflect.ValueOf(errSync).IsZero() {
-						errSync, ok := reflect.ValueOf(errSync).Interface().(error)
+					fmt.Printf("the type of errSync is %v\n", errSync.Kind())
+					if !errSync.IsZero() {
+						errSync, ok :=errSync.Interface().(error)
 						if ok {
 							routeHandler.c.Log.Err(errSync).Msgf(
 								"error encounter while syncing image %s:%s", name, reference)
@@ -1390,8 +1390,8 @@ func getReferrers(routeHandler *RouteHandler, imgStore storage.ImageStore, name,
 			errorsSync := ext.Ext.Invoke("SyncOneImage", routeHandler.c.Config, routeHandler.c.StoreController,
 				name, digest, true, routeHandler.c.Log)
 			for _, errSync := range errorsSync {
-				if !reflect.ValueOf(errSync).IsZero() {
-					errSync, ok := reflect.ValueOf(errSync).Interface().(error)
+				if !errSync.IsZero() {
+					errSync, ok := errSync.Interface().(error)
 					if ok {
 						routeHandler.c.Log.Error().Err(errSync).Str("name", name).Str(
 							"digest", digest).Msg("unable to get references")
