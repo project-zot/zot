@@ -11,30 +11,29 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 )
 
+func (e *Extensions) SetupMetricsRoutes(config *config.Config, router *mux.Router,
+	storeController storage.StoreController, l log.Logger,
+) {
+	// fork a new zerolog child to avoid data race
+	log := log.Logger{Logger: l.With().Caller().Timestamp().Logger()}
+	log.Info().Msg("setting up metrics routes")
 
-	func (e *Extensions) SetupMetricsRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
-		l log.Logger,
-	) {
-		// fork a new zerolog child to avoid data race
-		log := log.Logger{Logger: l.With().Caller().Timestamp().Logger()}
-		log.Info().Msg("setting up metrics routes")
-
-		if config.Extensions.Metrics != nil && *config.Extensions.Metrics.Enable {
-			router.PathPrefix(config.Extensions.Metrics.Prometheus.Path).
-				Handler(promhttp.Handler())
-		}
+	if config.Extensions.Metrics != nil && *config.Extensions.Metrics.Enable {
+		router.PathPrefix(config.Extensions.Metrics.Prometheus.Path).
+			Handler(promhttp.Handler())
 	}
+}
 
-	func (e *Extensions) EnableMetricsExtension(config *config.Config, log log.Logger, rootDir string) {
-		if config.Extensions.Metrics != nil &&
-			*config.Extensions.Metrics.Enable &&
-			config.Extensions.Metrics.Prometheus != nil {
-			if config.Extensions.Metrics.Prometheus.Path == "" {
-				config.Extensions.Metrics.Prometheus.Path = "/metrics"
+func (e *Extensions) EnableMetricsExtension(config *config.Config, log log.Logger, rootDir string) {
+	if config.Extensions.Metrics != nil &&
+		*config.Extensions.Metrics.Enable &&
+		config.Extensions.Metrics.Prometheus != nil {
+		if config.Extensions.Metrics.Prometheus.Path == "" {
+			config.Extensions.Metrics.Prometheus.Path = "/metrics"
 
-				log.Warn().Msg("Prometheus instrumentation Path not set, changing to '/metrics'.")
-			}
-		} else {
-			log.Info().Msg("Metrics config not provided, skipping Metrics config update")
+			log.Warn().Msg("Prometheus instrumentation Path not set, changing to '/metrics'.")
 		}
+	} else {
+		log.Info().Msg("Metrics config not provided, skipping Metrics config update")
 	}
+}

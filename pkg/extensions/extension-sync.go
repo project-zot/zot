@@ -13,29 +13,24 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 )
 
-// func init() {
-	func(e *Extensions) EnableSyncExtension(ctx context.Context, config *config.Config, wg *goSync.WaitGroup,
-		storeController storage.StoreController, log log.Logger,
-	) {
-		if config.Extensions.Sync != nil && *config.Extensions.Sync.Enable {
-			if err := sync.Run(ctx, *config.Extensions.Sync, storeController, wg, log); err != nil {
-				log.Error().Err(err).Msg("Error encountered while setting up syncing")
-			}
-		} else {
-			log.Info().Msg("Sync registries config not provided or disabled, skipping sync")
+func (e *Extensions) EnableSyncExtension(ctx context.Context, config *config.Config, wg *goSync.WaitGroup,
+	storeController storage.StoreController, log log.Logger,
+) {
+	if config.Extensions.Sync != nil && *config.Extensions.Sync.Enable {
+		if err := sync.Run(ctx, *config.Extensions.Sync, storeController, wg, log); err != nil {
+			log.Error().Err(err).Msg("Error encountered while setting up syncing")
 		}
+	} else {
+		log.Info().Msg("Sync registries config not provided or disabled, skipping sync")
 	}
+}
 
-	func(e *Extensions) SyncOneImage(config *config.Config, storeController storage.StoreController,
-		repoName, reference string, isArtifact bool, log log.Logger,
-	) error {
-		// if _,ok := e.activated["SyncOneImage"]; !ok {
-		// 	e.activated["SyncOneImage"] = true
-		// }
-		log.Info().Msgf("syncing image %s:%s", repoName, reference)
+func (e *Extensions) SyncOneImage(config *config.Config, storeController storage.StoreController,
+	repoName, reference string, isArtifact bool, log log.Logger,
+) error {
+	log.Info().Msgf("syncing image %s:%s", repoName, reference)
 
-		err := sync.OneImage(*config.Extensions.Sync, storeController, repoName, reference, isArtifact, log)
+	err := sync.OneImage(*config.Extensions.Sync, storeController, repoName, reference, isArtifact, log)
 
-		return err
-	}
-
+	return err
+}

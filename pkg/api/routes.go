@@ -19,8 +19,6 @@ import (
 	"net/http"
 	"path"
 	"reflect"
-
-	// "reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -37,7 +35,6 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test" // nolint: goimports
-
 	// as required by swaggo.
 	_ "zotregistry.io/zot/swagger"
 )
@@ -1349,24 +1346,19 @@ func getImageManifest(routeHandler *RouteHandler, imgStore storage.ImageStore, n
 				routeHandler.c.Log.Info().Msgf("image not found, trying to get image %s:%s by syncing on demand",
 					name, reference)
 
-				// errSync := ext.Ext.SyncOneImage(routeHandler.c.Config, routeHandler.c.StoreController,
-				// 	name, reference, false, routeHandler.c.Log)
 				errorsSync := ext.Ext.Invoke("SyncOneImage", routeHandler.c.Config, routeHandler.c.StoreController,
 					name, reference, false, routeHandler.c.Log)
-				for _,errSync := range errorsSync{
-					if !reflect.ValueOf(err).IsZero(){
-						routeHandler.c.Log.Err(reflect.ValueOf(errSync).Interface().(error)).Msgf("error encounter while syncing image %s:%s",
-						name, reference)
-					}else {
+				for _, errSync := range errorsSync {
+					if !reflect.ValueOf(errSync).IsZero() {
+						errSync, ok := reflect.ValueOf(errSync).Interface().(error)
+						if ok {
+							routeHandler.c.Log.Err(errSync).Msgf(
+								"error encounter while syncing image %s:%s", name, reference)
+						}
+					} else {
 						content, digest, mediaType, err = imgStore.GetImageManifest(name, reference)
 					}
 				}
-				// if errSync != nil {
-				// 	routeHandler.c.Log.Err(errSync).Msgf("error encounter while syncing image %s:%s",
-				// 		name, reference)
-				// } else {
-				// 	content, digest, mediaType, err = imgStore.GetImageManifest(name, reference)
-				// }
 			}
 		} else {
 			return []byte{}, "", "", err
@@ -1396,10 +1388,15 @@ func getReferrers(routeHandler *RouteHandler, imgStore storage.ImageStore, name,
 			// 	return []artifactspec.Descriptor{}, err
 			// }
 			errorsSync := ext.Ext.Invoke("SyncOneImage", routeHandler.c.Config, routeHandler.c.StoreController,
-					name, digest, true, routeHandler.c.Log)
-			for _,errSync := range errorsSync{
-				if !reflect.ValueOf(errSync).IsZero(){
-					routeHandler.c.Log.Error().Err(reflect.ValueOf(errSync).Interface().(error)).Str("name", name).Str("digest", digest).Msg("unable to get references")
+				name, digest, true, routeHandler.c.Log)
+			for _, errSync := range errorsSync {
+				if !reflect.ValueOf(errSync).IsZero() {
+					errSync, ok := reflect.ValueOf(errSync).Interface().(error)
+					if ok {
+						routeHandler.c.Log.Error().Err(errSync).Str("name", name).Str(
+							"digest", digest).Msg("unable to get references")
+					}
+
 					return []artifactspec.Descriptor{}, err
 				}
 			}

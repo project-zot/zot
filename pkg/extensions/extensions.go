@@ -109,7 +109,7 @@ func (e *Extensions) EnableSearchExtension(config *config.Config, log log.Logger
 		}
 
 		go func() {
-			err := DownloadTrivyDB(rootDir, log,
+			err := downloadTrivyDB(rootDir, log,
 
 				config.Extensions.Search.CVE.UpdateInterval)
 			if err != nil {
@@ -122,7 +122,7 @@ func (e *Extensions) EnableSearchExtension(config *config.Config, log log.Logger
 	}
 }
 
-var DownloadTrivyDB = func(dbDir string, log log.Logger, updateInterval time.Duration) error {
+func downloadTrivyDB(dbDir string, log log.Logger, updateInterval time.Duration) error {
 	for {
 		log.Info().Msg("updating the CVE database")
 
