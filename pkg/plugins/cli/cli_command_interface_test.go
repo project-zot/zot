@@ -23,6 +23,7 @@ func (f *mockCliClient) Command(ctx context.Context, in *CLIArgs, opts ...grpc.C
 
 	return &CLIResponse{}, nil
 }
+
 func TestBaseCommand(t *testing.T) {
 	Convey("GetCommand, options are absent.", t, func() {
 		baseCommand := BaseCommand{
@@ -121,14 +122,17 @@ func TestCLIImplManager(t *testing.T) {
 			Implementations: map[string]common.Plugin{},
 		}
 
-		cliImplManager.RegisterImplementation(
+		err := cliImplManager.RegisterImplementation(
 			"TestCliImpl1",
 			BaseCommand{},
 		)
-		cliImplManager.RegisterImplementation(
+		So(err, ShouldBeNil)
+
+		err = cliImplManager.RegisterImplementation(
 			"TestCliImpl2",
 			BaseCommand{},
 		)
+		So(err, ShouldBeNil)
 
 		So(len(cliImplManager.AllPlugins()), ShouldEqual, 2)
 		So(cliImplManager.GetImpl("TestCliImpl1"), ShouldNotBeNil)

@@ -775,7 +775,7 @@ func TestCveScannerFs(t *testing.T) {
 	scanner := cveinfo.CveScannerFs{}
 
 	Convey("Scan error", t, func() {
-		r, err := scanner.ScanImage(
+		report, err := scanner.ScanImage(
 			cli.NewContext(
 				&cli.App{},
 				&flag.FlagSet{},
@@ -783,16 +783,15 @@ func TestCveScannerFs(t *testing.T) {
 			),
 			"TestImage",
 		)
-	
-		So(r, ShouldNotBeNil)
-		So(err, ShouldBeNil)
+
+		So(report, ShouldNotBeNil)
+		So(err, ShouldNotBeNil)
 	})
 }
-func TestCVEInfo(t *testing.T) {
-	//scanner := cveinfo.CveScannerFs{}
 
+func TestCVEInfo(t *testing.T) {
 	Convey("GetCVEInfo init with another vulnerability scanner", t, func() {
-		cv, err := cveinfo.GetCVEInfo(
+		cve, err := cveinfo.GetCVEInfo(
 			storage.StoreController{},
 			MockImplementationManager{
 				getImplFn: func(name string) pluginsCommon.Plugin {
@@ -802,7 +801,7 @@ func TestCVEInfo(t *testing.T) {
 			log.Logger{},
 		)
 
-		So(cv, ShouldNotBeNil)
+		So(cve, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 	})
 }

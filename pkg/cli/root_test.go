@@ -11,7 +11,6 @@ import (
 	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
-	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
 	"gopkg.in/resty.v1"
 	"zotregistry.io/zot/pkg/api"
@@ -723,14 +722,15 @@ func (f *mockCliClient) Command(ctx context.Context, in *cliPlugin.CLIArgs, opts
 }
 
 func TestEnableCLIPlugins(t *testing.T) {
-	cmd := cobra.Command{}
-	pluginManager := plugins.NewManager()
+	Convey("", t, func() {
+		pluginManager := plugins.NewManager()
+		goodCLIPluginImpl := cliPlugin.BaseCommand{
+			Name:    "Test",
+			Options: common.Options{},
+			Client:  &mockCliClient{},
+		}
 
-	goodCLIPluginImpl := cliPlugin.BaseCommand{
-		Name: "Test",
-		Options: common.Options{},
-		Client: &mockCliClient{},
-	}
-	pluginManager.RegisterImplementation(plugins.CLICommand, "Test", goodCLIPluginImpl)
-
+		err := pluginManager.RegisterImplementation(plugins.CLICommand, "Test", goodCLIPluginImpl)
+		So(err, ShouldBeNil)
+	})
 }

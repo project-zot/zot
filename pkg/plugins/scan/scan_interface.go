@@ -68,6 +68,10 @@ type RPCScanManager struct {
 }
 
 func (rsm RPCScanManager) RegisterImplementation(name string, plugin interface{}) error {
+	if rsm.Impl.VulnScannerImpl != nil {
+		return fmt.Errorf("multiple implementations for VulnScanner detected Ilegal")
+	}
+
 	rsm.Impl.Name = name
 	rsm.Impl.VulnScannerImpl = plugin
 

@@ -8,10 +8,10 @@ import (
 	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/viper"
 	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/log"
 	cliPlugin "zotregistry.io/zot/pkg/plugins/cli"
 	"zotregistry.io/zot/pkg/plugins/common"
 	scanPlugin "zotregistry.io/zot/pkg/plugins/scan"
+	"github.com/rs/zerolog/log"
 )
 
 // make it thread safe: https://refactoring.guru/design-patterns/singleton/go/example.
@@ -27,14 +27,12 @@ type PluginManager interface {
 type DefaultPluginManager struct {
 	ImplManagers map[string]common.ImplementationManager
 	builders     map[string]common.PluginBuilder
-	log          log.Logger
 }
 
 func NewManager() DefaultPluginManager {
 	pluginManager := DefaultPluginManager{
 		ImplManagers: map[string]common.ImplementationManager{},
 		builders:     map[string]common.PluginBuilder{},
-		log:          log.Logger{},
 	}
 
 	registerAllIntegrationPoints(&pluginManager)
@@ -76,11 +74,11 @@ func (pm DefaultPluginManager) GetBuilder(interfaceName string) (common.PluginBu
 // and try to initialize and hook plugins by creating a gRPC connection
 // and registering the implementation.
 func (pm DefaultPluginManager) LoadAll(pluginsDir string) error {
-	pm.log.Info().Msgf("loading all plugins from %v", pluginsDir)
+	log.Info().Msgf("loading all plugins from %v", pluginsDir)
 
 	pluginConfigs, err := os.ReadDir(pluginsDir)
 	if err != nil {
-		pm.log.Error().Err(err).Msg("can't read plugins dir")
+		log.Error().Err(err).Msg("can't read plugins dir")
 
 		return err
 	}
@@ -92,7 +90,7 @@ func (pm DefaultPluginManager) LoadAll(pluginsDir string) error {
 
 		config, err := loadConfig(filepath.Join(pluginsDir, d.Name()))
 		if err != nil {
-			pm.log.Error().Err(err).Msg("can't load plugin config")
+			log.Error().Err(err).Msg("can't load plugin config")
 
 			continue
 		}
@@ -100,7 +98,7 @@ func (pm DefaultPluginManager) LoadAll(pluginsDir string) error {
 		for _, intPoint := range config.IntegrationPoints {
 			builder, err := pm.GetBuilder(intPoint.Interface)
 			if err != nil {
-				pm.log.Warn().Err(err).Msgf("can't get builder for %v", intPoint.Interface)
+				log.Warn().Err(err).Msgf("can't get builder for %v", intPoint.Interface)
 
 				continue
 			}
@@ -112,7 +110,7 @@ func (pm DefaultPluginManager) LoadAll(pluginsDir string) error {
 				intPoint.Options,
 			)
 			if err != nil {
-				pm.log.Warn().Err(err).Msgf("can't build implementation for %v, name: %v",
+				log.Warn().Err(err).Msgf("can't build implementation for %v, name: %v",
 					intPoint.Interface, config.Name)
 
 				continue
@@ -120,7 +118,7 @@ func (pm DefaultPluginManager) LoadAll(pluginsDir string) error {
 
 			err = pm.RegisterImplementation(intPoint.Interface, config.Name, pluginClient)
 			if err != nil {
-				pm.log.Warn().Err(err).Msgf("can't register implementation for %v", intPoint.Interface)
+				log.Warn().Err(err).Msgf("can't register implementation for %v", intPoint.Interface)
 			}
 		}
 	}
@@ -129,10 +127,10 @@ func (pm DefaultPluginManager) LoadAll(pluginsDir string) error {
 }
 
 // RegisterInterface makes the given interface name recognised as supported by Zot.
-func (pm DefaultPluginManager) RegisterInterface(name string, interfaceManager common.ImplementationManager,
+func (pm DefaultPluginManager) RegisterInterface(name string, implManager common.ImplementationManager,
 	pluginBuilder common.PluginBuilder,
 ) {
-	pm.ImplManagers[name] = interfaceManager
+	pm.ImplManagers[name] = implManager
 	pm.builders[name] = pluginBuilder
 }
 

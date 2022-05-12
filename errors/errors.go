@@ -55,4 +55,5 @@ var (
 	ErrSyncSignature           = errors.New("sync: couldn't get upstream notary/cosign signatures")
 	ErrBadIntegrationPoint     = errors.New("plugins: integration point is not supported")
 	ErrImplNameCollision       = errors.New("plugins: two plugins can't have the same implementation name")
+	ErrInterfaceNameCollision  = errors.New("plugins: two integration points can't have the same name")
 )

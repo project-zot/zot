@@ -154,7 +154,7 @@ func NewServerRootCmd() *cobra.Command {
 	// specify a directory where the plugin configs are
 	pluginManager := plugins.NewManager()
 
-	err := pluginManager.LoadAll("/home/laur/zot/examples/plugins")
+	err := pluginManager.LoadAll("/home/laur/zot/examples/plugins/pluginsTest")
 	if err != nil {
 		log.Info().Msg("can't load cli plugins")
 	}
@@ -191,7 +191,7 @@ func NewCliRootCmd() *cobra.Command {
 	showVersion := false
 	pluginManager := plugins.NewManager()
 
-	err := pluginManager.LoadAll("/home/laur/zot/examples/plugins")
+	err := pluginManager.LoadAll("/home/laur/zot/examples/plugins/pluginsTest")
 	if err != nil {
 		log.Info().Err(err).Msg("can't load cli plugins")
 	}

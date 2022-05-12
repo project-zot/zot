@@ -1,0 +1,15 @@
+{
+    "name": "TrivyPlugin",
+    "integrationPoints": [
+        {
+            "interface": "VulnScanner",
+            "grpcConnection": {
+                "addr": "localhost",
+                "port": 9100
+            },
+            "options": {
+                "zot-addr": "localhost:8080"
+            }
+        }
+    ]
+}
