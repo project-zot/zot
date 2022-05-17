@@ -65,9 +65,17 @@ jobs:
                 -v /tmp/config:/root/.minio \
                 --health-cmd "curl http://localhost:9000/minio/health/live" \
                 minio/minio:edge-cicd server /data
-
       - name: Install py minio
         run: pip3 install minio
+        
+      - name: Wait for minio to come up
+        run: |
+          curl --connect-timeout 5 \
+            --max-time 10 \
+            --retry 12 \
+            --retry-max-time 120 \
+            'http://localhost:9000/minio/health/live'
+          
       - name: Create minio bucket
         run: |
             python3 - <<'EOF'
