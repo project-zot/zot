@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"path"
@@ -13,7 +14,8 @@ import (
 	"testing"
 
 	godigest "github.com/opencontainers/go-digest"
-	ispec "github.com/opencontainers/image-spec/specs-go/v1" // nolint: goimports
+	// nolint: goimports
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	// nolint:golint,stylecheck,revive
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/smartystreets/goconvey/convey/reporting"
@@ -37,7 +39,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 		defer outputJSONExit()
 	}
 
-	baseURL := fmt.Sprintf("http://%s:%s", config.Address, config.Port)
+	baseURL := fmt.Sprintf("http://%s", net.JoinHostPort(config.Address, config.Port))
 
 	storageInfo := config.StorageInfo
 
