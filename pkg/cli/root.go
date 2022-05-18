@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"time"
 
@@ -86,7 +87,7 @@ func newScrubCmd(conf *config.Config) *cobra.Command {
 			// checking if the server is  already running
 			req, err := http.NewRequestWithContext(context.Background(),
 				http.MethodGet,
-				fmt.Sprintf("http://%s:%s/v2", conf.HTTP.Address, conf.HTTP.Port),
+				fmt.Sprintf("http://%s/v2", net.JoinHostPort(conf.HTTP.Address, conf.HTTP.Port)),
 				nil)
 			if err != nil {
 				log.Error().Err(err).Msg("unable to create a new http request")
