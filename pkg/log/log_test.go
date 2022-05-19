@@ -11,16 +11,19 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"path"
 	"strings"
 	"testing"
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
+	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
+	"zotregistry.io/zot/pkg/log"
 	. "zotregistry.io/zot/pkg/test"
 )
 
@@ -303,5 +306,37 @@ func TestAuditLogMessages(t *testing.T) {
 				So(auditLog.Object, ShouldEqual, patchPath)
 			})
 		})
+	})
+}
+
+func TestLogErrors(t *testing.T) {
+	Convey("Get error with unknown log level", t, func() {
+		So(func() { _ = log.NewLogger("invalid", "test.out") }, ShouldPanic)
+	})
+
+	Convey("Get error when opening log file", t, func() {
+		dir := t.TempDir()
+		logPath := path.Join(dir, "logFile")
+		err := ioutil.WriteFile(logPath, []byte{}, 0o000)
+		So(err, ShouldBeNil)
+		So(func() {
+			_ = log.NewLogger(zerolog.DebugLevel.String(), logPath)
+		}, ShouldPanic)
+	})
+}
+
+func TestAuditLogErrors(t *testing.T) {
+	Convey("Get error with unknown log level", t, func() {
+		So(func() { _ = log.NewAuditLogger("invalid", "test.out") }, ShouldPanic)
+	})
+
+	Convey("Get error when opening log file", t, func() {
+		dir := t.TempDir()
+		auditLogPath := path.Join(dir, "auditLogFile")
+		err := ioutil.WriteFile(auditLogPath, []byte{}, 0o000)
+		So(err, ShouldBeNil)
+		So(func() {
+			_ = log.NewAuditLogger(zerolog.DebugLevel.String(), auditLogPath)
+		}, ShouldPanic)
 	})
 }

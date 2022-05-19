@@ -6,6 +6,7 @@ import (
 	_ "crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"math/big"
 	"os"
@@ -1165,4 +1166,77 @@ func randSeq(n int) string {
 	}
 
 	return string(buf)
+}
+
+func TestInitRepo(t *testing.T) {
+	Convey("Get error when creating BlobUploadDir subdir on initRepo", t, func() {
+		dir := t.TempDir()
+
+		log := log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, log)
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics)
+
+		err := os.Mkdir(path.Join(dir, "test-dir"), 0o000)
+		So(err, ShouldBeNil)
+
+		err = imgStore.InitRepo("test-dir")
+		So(err, ShouldNotBeNil)
+	})
+}
+
+func TestValidateRepo(t *testing.T) {
+	Convey("Get error when unable to read directory", t, func() {
+		dir := t.TempDir()
+
+		log := log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, log)
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics)
+
+		err := os.Mkdir(path.Join(dir, "test-dir"), 0o000)
+		So(err, ShouldBeNil)
+
+		_, err = imgStore.ValidateRepo("test-dir")
+		So(err, ShouldNotBeNil)
+	})
+}
+
+func TestGetRepositoriesError(t *testing.T) {
+	Convey("Get error when returning relative path", t, func() {
+		dir := t.TempDir()
+
+		log := log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, log)
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics)
+
+		// create valid directory with permissions
+		err := os.Mkdir(path.Join(dir, "test-dir"), 0o755)
+		So(err, ShouldBeNil)
+
+		err = ioutil.WriteFile(path.Join(dir, "test-dir/test-file"), []byte("this is test file"), 0o000)
+		So(err, ShouldBeNil)
+
+		_, err = imgStore.GetRepositories()
+		So(err, ShouldBeNil)
+	})
+}
+
+func TestPutBlobChunkStreamed(t *testing.T) {
+	Convey("Get error on opening file", t, func() {
+		dir := t.TempDir()
+
+		log := log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, log)
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics)
+
+		uuid, err := imgStore.NewBlobUpload("test")
+		So(err, ShouldBeNil)
+
+		var reader io.Reader
+		blobPath := imgStore.BlobUploadPath("test", uuid)
+		err = os.Chmod(blobPath, 0o000)
+		So(err, ShouldBeNil)
+
+		_, err = imgStore.PutBlobChunkStreamed("test", uuid, reader)
+		So(err, ShouldNotBeNil)
+	})
 }
