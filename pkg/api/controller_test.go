@@ -1817,11 +1817,374 @@ func parseBearerAuthHeader(authHeaderRaw string) *authHeader {
 	return &h
 }
 
+func TestAPIKeysOpenDBError(t *testing.T) {
+	Convey("Test API keys - unable to create database", t, func() {
+		conf := config.New()
+		htpasswdPath := test.MakeHtpasswdFile()
+		defer os.Remove(htpasswdPath)
+
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+			APIKeys: true,
+		}
+
+		ctlr := api.NewController(conf)
+		dir := t.TempDir()
+
+		err := os.Chmod(dir, 0o000)
+		So(err, ShouldBeNil)
+
+		ctlr.Config.Storage.RootDirectory = dir
+
+		err = ctlr.Run(context.Background())
+		So(err, ShouldNotBeNil)
+	})
+}
+
+func TestAPIKeys(t *testing.T) {
+	port := test.GetFreePort()
+	baseURL := test.GetBaseURL(port)
+
+	conf := config.New()
+	conf.HTTP.Port = port
+
+	htpasswdPath := test.MakeHtpasswdFile()
+	defer os.Remove(htpasswdPath)
+
+	conf.HTTP.Auth = &config.AuthConfig{
+		HTPasswd: config.AuthHTPasswd{
+			Path: htpasswdPath,
+		},
+		APIKeys: true,
+	}
+
+	ctlr := api.NewController(conf)
+	dir := t.TempDir()
+
+	err := test.CopyFiles("../../test/data", dir)
+	if err != nil {
+		panic(err)
+	}
+	ctlr.Config.Storage.RootDirectory = dir
+
+	go startServer(ctlr)
+	defer stopServer(ctlr)
+	test.WaitTillServerReady(baseURL)
+
+	Convey("Test API keys - authorization disabled", t, func() {
+		resp, err := resty.R().SetBasicAuth(username, passphrase).
+			Get(baseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// Create API key
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Post(baseURL + "/api/security/apiKey")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		// get API key from REST API response
+		var apiKeyResponse map[string]string
+		err = json.Unmarshal(resp.Body(), &apiKeyResponse)
+		So(err, ShouldBeNil)
+		apiKey, ok := apiKeyResponse["apiKey"]
+		So(ok, ShouldBeTrue)
+		So(apiKey, ShouldNotBeEmpty)
+
+		// make sure password still works
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// make sure API key works
+		resp, err = resty.R().SetBasicAuth(username, apiKey).
+			Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// Create API key when one already exists, should give error
+		resp, err = resty.R().SetBasicAuth(username, apiKey).
+			Post(baseURL + "/api/security/apiKey")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusConflict)
+		var e api.Error
+		err = json.Unmarshal(resp.Body(), &e)
+		So(e, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+
+		// Revoke API key
+		resp, err = resty.R().SetBasicAuth(username, apiKey).
+			Delete(baseURL + "/api/security/apiKey")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// make sure the API key doesn't work anymore
+		resp, err = resty.R().SetBasicAuth(username, apiKey).
+			Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
+		// Create API key
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Post(baseURL + "/api/security/apiKey")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		// Regenerate API key
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Put(baseURL + "/api/security/apiKey")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		// get API key from REST API response
+		err = json.Unmarshal(resp.Body(), &apiKeyResponse)
+		So(err, ShouldBeNil)
+		regeneratedAPIKey, ok := apiKeyResponse["apiKey"]
+		So(ok, ShouldBeTrue)
+		So(regeneratedAPIKey, ShouldNotBeEmpty)
+
+		// make sure regenerated API key works
+		resp, err = resty.R().SetBasicAuth(username, regeneratedAPIKey).
+			Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// make sure the previous API key doesn't work anymore
+		resp, err = resty.R().SetBasicAuth(username, apiKey).
+			Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
+		// make sure elevated calls don't work without authorization enabled, either by API key or password.
+
+		// Revoke another user API key
+		resp, err = resty.R().SetBasicAuth(username, regeneratedAPIKey).
+			Delete(baseURL + "/api/security/apiKey/username")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Delete(baseURL + "/api/security/apiKey/username")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+		// Revoke all API keys
+		resp, err = resty.R().SetBasicAuth(username, regeneratedAPIKey).
+			Delete(baseURL + "/api/security/apiKey?deleteAll=1")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Delete(baseURL + "/api/security/apiKey?deleteAll=1")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+	})
+}
+
+func TestAPIKeysWithAutorization(t *testing.T) {
+	port := test.GetFreePort()
+	baseURL := test.GetBaseURL(port)
+
+	conf := config.New()
+	conf.HTTP.Port = port
+
+	htpasswdPath := test.MakeHtpasswdFileFromString(getCredString(username, passphrase) +
+		"\n" + getCredString("admin", "admin"))
+	defer os.Remove(htpasswdPath)
+
+	conf.HTTP.Auth = &config.AuthConfig{
+		HTPasswd: config.AuthHTPasswd{
+			Path: htpasswdPath,
+		},
+		APIKeys: true,
+	}
+
+	conf.AccessControl = &config.AccessControlConfig{
+		AdminPolicy: config.Policy{
+			Users:   []string{"admin"},
+			Actions: []string{},
+		},
+	}
+
+	ctlr := api.NewController(conf)
+	dir := t.TempDir()
+
+	err := test.CopyFiles("../../test/data", dir)
+	if err != nil {
+		panic(err)
+	}
+
+	ctlr.Config.Storage.RootDirectory = dir
+
+	go startServer(ctlr)
+	defer stopServer(ctlr)
+	test.WaitTillServerReady(baseURL)
+
+	Convey("Test API keys - authorization enabled", t, func() {
+		resp, err := resty.R().SetBasicAuth(username, passphrase).
+			Get(baseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// Create API key
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Post(baseURL + "/api/security/apiKey")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		// get API key from REST API response
+		var apiKeyResponse map[string]string
+		err = json.Unmarshal(resp.Body(), &apiKeyResponse)
+		So(err, ShouldBeNil)
+		apiKey, ok := apiKeyResponse["apiKey"]
+		So(ok, ShouldBeTrue)
+		So(apiKey, ShouldNotBeEmpty)
+
+		// make sure password still works
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// make sure API key works
+		resp, err = resty.R().SetBasicAuth(username, apiKey).
+			Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// Revoke another user API key
+		resp, err = resty.R().SetBasicAuth("admin", "admin").
+			Delete(baseURL + "/api/security/apiKey/" + username)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// make sure API doesn't work anymore
+		resp, err = resty.R().SetBasicAuth(username, apiKey).
+			Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
+		// Create API key
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Post(baseURL + "/api/security/apiKey")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		// get API key from REST API response
+		err = json.Unmarshal(resp.Body(), &apiKeyResponse)
+		So(err, ShouldBeNil)
+		apiKey, ok = apiKeyResponse["apiKey"]
+		So(ok, ShouldBeTrue)
+		So(apiKey, ShouldNotBeEmpty)
+
+		// make sure API key works
+		resp, err = resty.R().SetBasicAuth(username, apiKey).
+			Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// Revoke all API keys
+		resp, err = resty.R().SetBasicAuth("admin", "admin").
+			Delete(baseURL + "/api/security/apiKey?deleteAll=1")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// make sure API doesn't work anymore
+		resp, err = resty.R().SetBasicAuth(username, apiKey).
+			Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
+		// make sure elevated calls don't work without admin rights either by API key or password
+
+		conf.AccessControl.AdminPolicy.Users = []string{}
+		// Revoke another user API key
+		resp, err = resty.R().SetBasicAuth("admin", "admin").
+			Delete(baseURL + "/api/security/apiKey/" + username)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+		resp, err = resty.R().SetBasicAuth("admin", "admin").
+			Delete(baseURL + "/api/security/apiKey/" + username)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+		// Revoke all API keys
+		resp, err = resty.R().SetBasicAuth("admin", "admin").
+			Delete(baseURL + "/api/security/apiKey?deleteAll=1")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+		resp, err = resty.R().SetBasicAuth("admin", "admin").
+			Delete(baseURL + "/api/security/apiKey?deleteAll=1")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+	})
+
+	Convey("Test API keys - authorization enabled with mocked database", t, func() {
+		ctlr.APIKeysDB = &MockedDabatase{
+			deleteAllFn: func() error {
+				return ErrUnexpectedError
+			},
+			deleteFn: func(key string) error {
+				return ErrUnexpectedError
+			},
+		}
+
+		conf.AccessControl.AdminPolicy.Users = []string{"admin"}
+
+		// Revoke another user API key
+		resp, err := resty.R().SetBasicAuth("admin", "admin").
+			Delete(baseURL + "/api/security/apiKey/" + username)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+
+		// Revoke all API keys
+		resp, err = resty.R().SetBasicAuth("admin", "admin").
+			Delete(baseURL + "/api/security/apiKey?deleteAll=1")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+	})
+}
+
 func TestAuthorizationWithBasicAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
-
 		conf := config.New()
 		conf.HTTP.Port = port
 		htpasswdPath := test.MakeHtpasswdFile()

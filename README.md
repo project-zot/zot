@@ -48,6 +48,7 @@ https://zotregistry.io
   * TLS mutual authentication
   * HTTP *Basic* (local _htpasswd_ and LDAP)
   * HTTP *Bearer* token
+  * [API keys](README_APIkeys.md)
 * Supports Identity-Based Access Control
 * Supports live modifications on the config file while zot is running (Authorization config only)
 * Doesn't require _root_ privileges

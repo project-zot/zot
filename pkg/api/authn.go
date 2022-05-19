@@ -243,7 +243,18 @@ func basicAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 			username := pair[0]
 			passphrase := pair[1]
 
-			// first, HTTPPassword authN (which is local)
+			// first, API key authn, db lookup
+			if ctlr.Config.HTTP.Auth.APIKeys {
+				if apiKey, err := ctlr.APIKeysDB.Get(username); err == nil && apiKey != "" {
+					if hashUUID(passphrase) == apiKey {
+						next.ServeHTTP(response, request)
+
+						return
+					}
+				}
+			}
+
+			// second, HTTPPassword authN (which is local)
 			passphraseHash, ok := credMap[username]
 			if ok {
 				if err := bcrypt.CompareHashAndPassword([]byte(passphraseHash), []byte(passphrase)); err == nil {
@@ -273,6 +284,14 @@ func basicAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 func isAuthnEnabled(config *config.Config) bool {
 	if config.HTTP.Auth != nil &&
 		(config.HTTP.Auth.HTPasswd.Path != "" || config.HTTP.Auth.LDAP != nil) {
+		return true
+	}
+
+	return false
+}
+
+func isAPIKeyEnabled(config *config.Config) bool {
+	if isAuthnEnabled(config) && config.HTTP.Auth.APIKeys {
 		return true
 	}
 

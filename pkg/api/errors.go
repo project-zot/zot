@@ -35,6 +35,7 @@ const (
 	DENIED
 	UNSUPPORTED
 	INVALID_INDEX
+	APIKEY_EXISTS
 )
 
 func (e ErrorCode) String() string {
@@ -55,6 +56,7 @@ func (e ErrorCode) String() string {
 		DENIED:                "DENIED",
 		UNSUPPORTED:           "UNSUPPORTED",
 		INVALID_INDEX:         "INVALID_INDEX",
+		APIKEY_EXISTS:         "APIKEY_EXISTS",
 	}
 
 	return errMap[e]
@@ -158,6 +160,11 @@ func NewError(code ErrorCode, detail ...interface{}) Error { //nolint: interface
 		INVALID_INDEX: {
 			Message:     "Invalid format of index.json file of the repo",
 			Description: "index.json file does not contain data in json format",
+		},
+
+		APIKEY_EXISTS: {
+			Message:     "API key already exists",
+			Description: "API key for this username already exists, use regenerate API key instead",
 		},
 	}
 

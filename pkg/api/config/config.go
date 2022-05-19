@@ -42,6 +42,7 @@ type AuthConfig struct {
 	HTPasswd  AuthHTPasswd
 	LDAP      *LDAPConfig
 	Bearer    *BearerConfig
+	APIKeys   bool `mapstructure:",omitempty"`
 }
 
 type BearerConfig struct {
@@ -60,6 +61,7 @@ type RatelimitConfig struct {
 	Methods []MethodRatelimitConfig `mapstructure:",omitempty"`
 }
 
+// nolint: maligned
 type HTTPConfig struct {
 	Address          string
 	Port             string

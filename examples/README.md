@@ -179,6 +179,16 @@ Should authentication fail, to prevent automated attacks, a delayed response can
       "failDelay": 5
 ```
 
+#### API keys
+
+Use it to activate API keys, boltdb database is stored in root directory
+
+```
+  "http": {
+    "auth": {
+      "apikeys": true
+```
+
 ## Identity-based Authorization
 
 Allowing actions on one or more repository paths can be tied to user

@@ -26,7 +26,8 @@
       "htpasswd": {
         "path": "test/data/htpasswd"
       },
-      "failDelay": 5
+      "failDelay": 5,
+      "apikeys": true
     },
     "allowReadAccess": false
   },

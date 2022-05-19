@@ -23,7 +23,6 @@ require (
 	github.com/gofrs/uuid v4.2.0+incompatible
 	github.com/google/go-containerregistry v0.9.0
 	github.com/google/uuid v1.3.0
-	github.com/gorilla/handlers v1.5.1
 	github.com/gorilla/mux v1.8.0
 	github.com/json-iterator/go v1.1.12
 	github.com/minio/sha256-simd v1.0.0
@@ -57,6 +56,7 @@ require (
 require github.com/open-policy-agent/opa v0.37.0 // indirect
 
 require (
+	github.com/gorilla/handlers v1.5.1
 	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20220217185014-dd38b7ed8a99
 	github.com/sigstore/cosign v1.9.0
 	github.com/swaggo/http-swagger v1.2.8

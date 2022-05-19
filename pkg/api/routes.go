@@ -11,7 +11,9 @@
 
 package api
 
+// nolint: gci
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -23,10 +25,12 @@ import (
 	"strconv"
 	"strings"
 
+	guuid "github.com/gofrs/uuid"
 	"github.com/gorilla/mux"
 	jsoniter "github.com/json-iterator/go"
 	notreg "github.com/notaryproject/notation/pkg/registry"
 	"github.com/opencontainers/distribution-spec/specs-go/v1/extensions"
+	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	httpSwagger "github.com/swaggo/http-swagger"
@@ -36,6 +40,7 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test" // nolint: goimports
+
 	// as required by swaggo.
 	_ "zotregistry.io/zot/swagger"
 )
@@ -69,6 +74,24 @@ func (rh *RouteHandler) SetupRoutes() {
 		}
 
 		rh.c.Router.Use(AuthzHandler(rh.c))
+	}
+
+	// API keys router
+	if isAPIKeyEnabled(rh.c.Config) {
+		apiPrefixedRouter := rh.c.Router.PathPrefix("/api").Subrouter()
+		{
+			apiPrefixedRouter.HandleFunc("/security/apiKey",
+				rh.CreateAPIKey).Methods(allowedMethods("POST")...)
+			apiPrefixedRouter.HandleFunc("/security/apiKey",
+				rh.RegenerateAPIKey).Methods(allowedMethods("PUT")...)
+			apiPrefixedRouter.HandleFunc("/security/apiKey",
+				rh.RevokeAllAPIKeys).Methods(allowedMethods("DELETE")...).
+				Queries("deleteAll", "{deleteAll}")
+			apiPrefixedRouter.HandleFunc("/security/apiKey",
+				rh.RevokeAPIKey).Methods(allowedMethods("DELETE")...)
+			apiPrefixedRouter.HandleFunc("/security/apiKey/{username}",
+				rh.RevokeUserAPIKey).Methods(allowedMethods("DELETE")...)
+		}
 	}
 
 	// https://github.com/opencontainers/distribution-spec/blob/main/spec.md#endpoints
@@ -1271,6 +1294,202 @@ func (rh *RouteHandler) ListExtensions(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, extensionList)
 }
 
+func hashUUID(uuid string) string {
+	digester := sha256.New()
+	digester.Write([]byte(uuid))
+
+	return godigest.NewDigestFromEncoded(godigest.SHA256, fmt.Sprintf("%x", digester.Sum(nil))).Encoded()
+}
+
+// CreateAPIKey godoc
+// @Summary Create an API key for the current user
+// @Description Returns an error if API key already exists - use regenerate API key instead.
+// @Accept  json
+// @Produce json
+// @Success 201 {string} string "created"
+// @Failure 405 {string} string "conflict"
+// @Failure 500 {string} string "internal server error"
+// @Router /v2/api/security/apiKey [post].
+func (rh *RouteHandler) CreateAPIKey(response http.ResponseWriter, request *http.Request) {
+	username := getUsername(request)
+
+	if ok := rh.c.APIKeysDB.Has(username); ok {
+		rh.c.Log.Error().Msg("API key already exists")
+
+		WriteJSON(response,
+			http.StatusConflict,
+			NewErrorList(NewError(APIKEY_EXISTS, map[string]string{"username": username})),
+		)
+
+		return
+	}
+
+	uuid, err := guuid.NewV4()
+	if err != nil {
+		response.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	apiKey := strings.ReplaceAll(uuid.String(), "-", "")
+
+	hashedAPIKey := hashUUID(apiKey)
+
+	err = rh.c.APIKeysDB.Put(username, hashedAPIKey)
+	if err != nil {
+		rh.c.Log.Error().Err(err).Str("username", username).Msg("error storing API key")
+		response.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	m := make(map[string]string)
+	m["apiKey"] = apiKey
+
+	WriteJSON(response, http.StatusCreated, m)
+}
+
+// RegenerateAPIKey godoc
+// @Summary Regenerate an API key for the current user
+// @Description Regenerate an API key for the current user, use when the user already has an API key
+// @Accept  json
+// @Produce json
+// @Success 201 {string} string "created"
+// @Failure 500 {string} string "internal server error"
+// @Router /v2/api/security/apiKey [put].
+func (rh *RouteHandler) RegenerateAPIKey(response http.ResponseWriter, request *http.Request) {
+	username := getUsername(request)
+
+	err := rh.c.APIKeysDB.Delete(username)
+	if err != nil {
+		rh.c.Log.Error().Err(err).Str("username", username).Msg("error deleting API key")
+		response.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	uuid, err := guuid.NewV4()
+	if err != nil {
+		response.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	apiKey := strings.ReplaceAll(uuid.String(), "-", "")
+
+	hashedAPIKey := hashUUID(apiKey)
+
+	err = rh.c.APIKeysDB.Put(username, hashedAPIKey)
+	if err != nil {
+		rh.c.Log.Error().Err(err).Str("username", username).Msg("error storing API key")
+		response.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	m := make(map[string]string)
+	m["apiKey"] = apiKey
+
+	WriteJSON(response, http.StatusCreated, m)
+}
+
+// RevokeAPIKey godoc
+// @Summary Revokes the current user's API key
+// @Description Revokes the current user's API key
+// @Accept  json
+// @Produce json
+// @Success 200 {string} string "ok"
+// @Failure 500 {string} string "internal server error"
+// @Router /v2/api/security/apiKey [delete].
+func (rh *RouteHandler) RevokeAPIKey(response http.ResponseWriter, request *http.Request) {
+	username := getUsername(request)
+
+	err := rh.c.APIKeysDB.Delete(username)
+	if err != nil {
+		rh.c.Log.Error().Err(err).Str("username", username).Msg("error deleting API key")
+		response.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	response.WriteHeader(http.StatusOK)
+}
+
+// RevokeUserAPIKey godoc
+// @Summary Revokes another user's API key
+// @Description Revokes another user's API key, requires a privileged user (Admin only)
+// @Accept  json
+// @Produce json
+// @Success 200 {string} string "ok"
+// @Failure 403 {string} string "forbidden"
+// @Failure 500 {string} string "internal server error"
+// @Router /v2/api/security/apiKey/{username} [delete].
+func (rh *RouteHandler) RevokeUserAPIKey(response http.ResponseWriter, request *http.Request) {
+	vars := mux.Vars(request)
+
+	username, ok := vars["username"]
+	if !ok || len(username) == 0 {
+		rh.c.Log.Error().Str("username", username).Msg("apikey: invalid username")
+		response.WriteHeader(http.StatusBadRequest)
+
+		return
+	}
+
+	if !isCurrentUserAdmin(request) {
+		WriteJSON(response, http.StatusForbidden, NewErrorList(NewError(DENIED)))
+
+		return
+	}
+
+	err := rh.c.APIKeysDB.Delete(username)
+	if err != nil {
+		rh.c.Log.Error().Err(err).Str("username", username).Msg("error deleting api key")
+		response.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	response.WriteHeader(http.StatusOK)
+}
+
+// RevokeAllAPIKeys godoc
+// @Summary Revokes all API keys
+// @Description Revokes all API keys, requires a privileged user (Admin only)
+// @Accept  json
+// @Produce json
+// @Success 200 {string} string "ok"
+// @Failure 403 {string} string "forbidden"
+// @Failure 500 {string} string "internal server error"
+// @Router /v2/api/security/apiKey?deleteAll={0,1} [delete].
+func (rh *RouteHandler) RevokeAllAPIKeys(response http.ResponseWriter, request *http.Request) {
+	deleteAll := request.FormValue("deleteAll")
+	if deleteAll == "0" {
+		response.WriteHeader(http.StatusNotModified)
+
+		return
+	} else if deleteAll != "1" {
+		response.WriteHeader(http.StatusBadRequest)
+
+		return
+	}
+
+	if !isCurrentUserAdmin(request) {
+		WriteJSON(response, http.StatusForbidden, NewErrorList(NewError(DENIED)))
+
+		return
+	}
+
+	err := rh.c.APIKeysDB.DeleteAll()
+	if err != nil {
+		rh.c.Log.Error().Err(err).Msg("error deleting all API keys")
+		response.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	response.WriteHeader(http.StatusOK)
+}
+
 func (rh *RouteHandler) GetMetrics(w http.ResponseWriter, r *http.Request) {
 	m := rh.c.Metrics.ReceiveMetrics()
 	WriteJSON(w, http.StatusOK, m)
@@ -1493,4 +1712,20 @@ func getBlobUploadLocation(url *url.URL, name, digest string) string {
 	}
 
 	return url.String()
+}
+
+// returns whether or not current user is admin.
+func isCurrentUserAdmin(request *http.Request) bool {
+	// get passed context from authzHandler and check if current user is admin
+	if authzCtx := request.Context().Value(authzCtxKey); authzCtx != nil {
+		acCtx, ok := authzCtx.(AccessControlContext)
+		if !ok || !acCtx.isAdmin {
+			return false
+		}
+	} else {
+		// authz not enabled
+		return false
+	}
+
+	return true
 }

@@ -28,6 +28,54 @@ import (
 
 var ErrUnexpectedError = errors.New("error: unexpected error")
 
+type MockedDabatase struct {
+	getFn       func(key string) (string, error)
+	putFn       func(key, value string) error
+	hasFn       func(key string) bool
+	deleteFn    func(key string) error
+	deleteAllFn func() error
+}
+
+func (db *MockedDabatase) Get(key string) (string, error) {
+	if db != nil && db.getFn != nil {
+		return db.getFn(key)
+	}
+
+	return "", nil
+}
+
+func (db *MockedDabatase) Put(key, value string) error {
+	if db != nil && db.putFn != nil {
+		return db.putFn(key, value)
+	}
+
+	return nil
+}
+
+func (db *MockedDabatase) Has(key string) bool {
+	if db != nil && db.hasFn != nil {
+		return db.hasFn(key)
+	}
+
+	return true
+}
+
+func (db *MockedDabatase) Delete(key string) error {
+	if db != nil && db.deleteFn != nil {
+		return db.deleteFn(key)
+	}
+
+	return nil
+}
+
+func (db *MockedDabatase) DeleteAll() error {
+	if db != nil && db.deleteFn != nil {
+		return db.deleteAllFn()
+	}
+
+	return nil
+}
+
 type MockedImageStore struct {
 	dirExistsFn            func(d string) bool
 	rootDirFn              func() string
@@ -1544,6 +1592,113 @@ func TestRoutes(t *testing.T) {
 			defer resp.Body.Close()
 
 			So(resp.StatusCode, ShouldEqual, http.StatusOK)
+		})
+
+		Convey("CreateAPIKey", func() {
+			ctlr.APIKeysDB = &MockedDabatase{
+				putFn: func(key, value string) error {
+					return ErrUnexpectedError
+				},
+				hasFn: func(key string) bool {
+					return false
+				},
+			}
+			request, _ := http.NewRequestWithContext(context.TODO(), "POST", baseURL, nil)
+			request.Header.Add("Authorization", "Basic "+getCredString("test", "test"))
+
+			response := httptest.NewRecorder()
+
+			rthdlr.CreateAPIKey(response, request)
+
+			resp := response.Result()
+			defer resp.Body.Close()
+
+			So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+		})
+
+		Convey("RegenerateAPIKey", func() {
+			testRegenerateAPIKey := func(mdb *MockedDabatase) int {
+				ctlr.APIKeysDB = mdb
+				request, _ := http.NewRequestWithContext(context.TODO(), "PUT", baseURL, nil)
+				request.Header.Add("Authorization", "Basic "+getCredString("test", "test"))
+
+				response := httptest.NewRecorder()
+
+				rthdlr.RegenerateAPIKey(response, request)
+
+				resp := response.Result()
+				defer resp.Body.Close()
+
+				return resp.StatusCode
+			}
+			statusCode := testRegenerateAPIKey(&MockedDabatase{
+				deleteFn: func(key string) error {
+					return ErrUnexpectedError
+				},
+			})
+			So(statusCode, ShouldEqual, http.StatusInternalServerError)
+
+			statusCode = testRegenerateAPIKey(&MockedDabatase{
+				putFn: func(key, value string) error {
+					return ErrUnexpectedError
+				},
+			})
+			So(statusCode, ShouldEqual, http.StatusInternalServerError)
+		})
+
+		Convey("RevokeAPIKey", func() {
+			ctlr.APIKeysDB = &MockedDabatase{deleteFn: func(key string) error {
+				return ErrUnexpectedError
+			}}
+			request, _ := http.NewRequestWithContext(context.TODO(), "DELETE", baseURL, nil)
+			request.Header.Add("Authorization", "Basic "+getCredString("test", "test"))
+
+			response := httptest.NewRecorder()
+
+			rthdlr.RevokeAPIKey(response, request)
+
+			resp := response.Result()
+			defer resp.Body.Close()
+
+			So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+		})
+
+		Convey("RevokeUserAPIKey", func() {
+			request, _ := http.NewRequestWithContext(context.TODO(), "DELETE", baseURL, nil)
+
+			response := httptest.NewRecorder()
+
+			rthdlr.RevokeUserAPIKey(response, request)
+
+			resp := response.Result()
+			defer resp.Body.Close()
+
+			So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
+		})
+
+		Convey("RevokeAllAPIKeys", func() {
+			testRevokeAllAPIKeys := func(deleteAll string) int {
+				request, _ := http.NewRequestWithContext(context.TODO(), "DELETE", baseURL, nil)
+
+				response := httptest.NewRecorder()
+
+				q := request.URL.Query()
+				q.Add("deleteAll", deleteAll) // noop
+				request.URL.RawQuery = q.Encode()
+
+				rthdlr.RevokeAllAPIKeys(response, request)
+
+				resp := response.Result()
+				defer resp.Body.Close()
+
+				return resp.StatusCode
+			}
+
+			statusCode := testRevokeAllAPIKeys("0") // noop
+			So(statusCode, ShouldEqual, http.StatusNotModified)
+
+			statusCode = testRevokeAllAPIKeys("3") // invalid
+			So(statusCode, ShouldEqual, http.StatusBadRequest)
 		})
 
 		Convey("Helper functions", func() {

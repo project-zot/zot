@@ -24,6 +24,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/database"
 	"zotregistry.io/zot/pkg/storage/s3"
 )
 
@@ -40,6 +41,9 @@ type Controller struct {
 	Server          *http.Server
 	Metrics         monitoring.MetricServer
 	wgShutDown      *goSync.WaitGroup // use it to gracefully shutdown goroutines
+	/* API keys database
+	storing hashed API keys so we only show it to the user at creation time */
+	APIKeysDB database.Database
 }
 
 func NewController(config *config.Config) *Controller {
@@ -127,7 +131,8 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 		c.CORSHeaders(),
 		SessionLogger(c),
 		handlers.RecoveryHandler(handlers.RecoveryLogger(c.Log),
-			handlers.PrintRecoveryStack(false)))
+			handlers.PrintRecoveryStack(false)),
+	)
 
 	if c.Audit != nil {
 		engine.Use(SessionAuditLogger(c.Audit))
@@ -163,6 +168,15 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 		IdleTimeout: idleTimeout,
 	}
 	c.Server = server
+
+	if isAuthnEnabled(c.Config) && c.Config.HTTP.Auth.APIKeys {
+		var err error
+		// init API keys database
+		c.APIKeysDB, err = database.New(c.Config.Storage.RootDirectory, "apikeys", "apikeys", c.Log)
+		if err != nil {
+			return err
+		}
+	}
 
 	// Create the listener
 	listener, err := net.Listen("tcp", addr)

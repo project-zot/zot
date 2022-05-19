@@ -14,7 +14,7 @@ import (
 const (
 	BlobsCache              = "blobs"
 	DBExtensionName         = ".db"
-	dbCacheLockCheckTimeout = 10 * time.Second
+	DBCacheLockCheckTimeout = 10 * time.Second
 )
 
 type Cache struct {
@@ -24,15 +24,10 @@ type Cache struct {
 	useRelPaths bool // weather or not to use relative paths, should be true for filesystem and false for s3
 }
 
-// Blob is a blob record.
-type Blob struct {
-	Path string
-}
-
 func NewCache(rootDir string, name string, useRelPaths bool, log zlog.Logger) *Cache {
 	dbPath := path.Join(rootDir, name+DBExtensionName)
 	dbOpts := &bbolt.Options{
-		Timeout:      dbCacheLockCheckTimeout,
+		Timeout:      DBCacheLockCheckTimeout,
 		FreelistType: bbolt.FreelistArrayType,
 	}
 
