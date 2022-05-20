@@ -38,7 +38,7 @@ build:
 "${{REPO_NAME:zot}}":
   from:
     type: docker
-    url: docker://gcr.io/distroless/base
+    url: docker://alpine:3
   import:
     - stacker://build/go/src/github.com/project-zot/zot/bin/zot-${{OS}}-${{ARCH}}
     - stacker://build/go/src/github.com/project-zot/zot/config.json

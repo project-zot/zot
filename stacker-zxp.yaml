@@ -37,7 +37,7 @@ build:
 "${{REPO_NAME:zxp}}":
   from:
     type: docker
-    url: docker://gcr.io/distroless/base
+    url: docker://alpine:3
   import:
     - stacker://build/go/src/github.com/project-zot/zot/bin/zxp-${{OS}}-${{ARCH}}
     - stacker://build/go/src/github.com/project-zot/zot/config.json
