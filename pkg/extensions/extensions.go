@@ -112,11 +112,12 @@ func EnableScrubExtension(config *config.Config, storeController storage.StoreCo
 	}
 }
 
-func getExtension(name, url, description string) distext.Extension {
+func getExtension(name, url, description string, endpoints []string) distext.Extension {
 	return distext.Extension{
 		Name:        name,
 		URL:         url,
 		Description: description,
+		Endpoints:   endpoints,
 	}
 }
 
@@ -126,9 +127,10 @@ func GetExtensions(config *config.Config) distext.ExtensionList {
 	extensions := make([]distext.Extension, 0)
 
 	if config.Extensions != nil && config.Extensions.Search != nil {
-		searchExt := getExtension("search",
-			"https://github.com/project-zot/zot/tree/main/pkg/extensions/search/_search.md",
-			"search extension to provide various search feature e.g cve")
+		endpoints := []string{fmt.Sprintf("%s%s", constants.RoutePrefix, constants.ExtSearchPrefix)}
+		searchExt := getExtension("zot",
+			"https://github.com/project-zot/zot/tree/main/pkg/extensions/_zot.md",
+			"zot extension provide various components e.g search that provides various search capabilities", endpoints)
 
 		extensions = append(extensions, searchExt)
 	}
