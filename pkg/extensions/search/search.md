@@ -1,12 +1,7 @@
-`search` extension
-===
+# `search` 
 
-`search` extension provides efficient and enhanced registry search capabilities using graphQL backend.
-
-
-Table of Contents
-===
-
+`search` component provides efficient and enhanced registry search capabilities using graphQL backend.
+	
 | Supported queries | Input | Ouput | Description | graphQL query |
 | --- | --- | --- | --- | --- |
 | [Search images by digest](#search-images-by-digest) | digest | image list | Search all repositories in the registry and return list of images that matches given digest (manifest, config or layers) | ImageListForDigest |
@@ -92,7 +87,7 @@ curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ CVEListFo
 			}]
 			}
 		}
-    }
+	}
 ```
 # List images not affected by a given CVE id
 
@@ -189,6 +184,3 @@ curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ExpandedR
 	}
 }
 ```
-
-# References
-[1] https://github.com/opencontainers/distribution-spec/tree/main/extensions
