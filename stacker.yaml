@@ -46,6 +46,8 @@ build:
     cp /stacker/zot-${{OS}}-${{ARCH}}${{EXT:}} /usr/bin/zot
     mkdir -p /etc/zot
     cp /stacker/config.json /etc/zot/config.json
+    # pie mode binaries need a runtime
+    apk add --no-cache libc6-compat
   entrypoint:
     - /usr/bin/zot
   volumes:

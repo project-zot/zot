@@ -45,6 +45,8 @@ build:
     cp /stacker/zxp-${{OS}}-${{ARCH}} /usr/bin/zxp
     mkdir -p /etc/zxp
     cp /stacker/config.json /etc/zxp/config.json
+    # pie mode binaries need a runtime
+    apk add --no-cache libc6-compat
   entrypoint:
     - /usr/bin/zxp
   cmd:

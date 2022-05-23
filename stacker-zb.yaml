@@ -24,5 +24,7 @@ build:
     - stacker://build/go/src/github.com/project-zot/zot/bin/zb-${{OS}}-${{ARCH}}
   run: |
     cp /stacker/zb-${{OS}}-${{ARCH}} /usr/bin/zb
+    # pie mode binaries need a runtime
+    apk add --no-cache libc6-compat
   entrypoint:
     - /usr/bin/zb
