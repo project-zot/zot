@@ -3375,7 +3375,7 @@ func TestImageSignatures(t *testing.T) {
 
 			// sign the image
 			err = sign.SignCmd(&options.RootOptions{Verbose: true, Timeout: 1 * time.Minute},
-				sign.KeyOpts{KeyRef: path.Join(tdir, "cosign.key"), PassFunc: generate.GetPass},
+				options.KeyOpts{KeyRef: path.Join(tdir, "cosign.key"), PassFunc: generate.GetPass},
 				options.RegistryOptions{AllowInsecure: true},
 				map[string]interface{}{"tag": "1.0"},
 				[]string{fmt.Sprintf("localhost:%s/%s@%s", port, repoName, digest.String())},
