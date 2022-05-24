@@ -55,3 +55,4 @@ linters-settings:
       - go.opentelemetry.io/otel/metric
       - go.opentelemetry.io/otel/sdk
       - github.com/hashicorp/go-getter
+      - github.com/opencontainers/runc

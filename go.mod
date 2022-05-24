@@ -402,6 +402,7 @@ replace (
 	github.com/containers/image/v5 => github.com/anuvu/image/v5 v5.0.0-20211118175920-feae9c2f0d91
 	github.com/hashicorp/go-getter => github.com/hashicorp/go-getter v1.5.11
 	github.com/opencontainers/image-spec => github.com/opencontainers/image-spec v1.0.2-0.20211117181255-693428a734f5
+	github.com/opencontainers/runc => github.com/opencontainers/runc v1.1.2
 	go.opentelemetry.io/otel => go.opentelemetry.io/otel v0.20.0
 	go.opentelemetry.io/otel/exporters/otlp => go.opentelemetry.io/otel/exporters/otlp v0.20.0
 	go.opentelemetry.io/otel/metric => go.opentelemetry.io/otel/metric v0.20.0
