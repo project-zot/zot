@@ -14,7 +14,7 @@ build:
     cd /go/src/github.com/project-zot
     git clone /zotcopy zot
     cd /go/src/github.com/project-zot/zot
-    make COMMIT=${{COMMIT}} OS=${{OS}} ARCH=${{ARCH}} binary
+    make COMMIT=${{COMMIT}} clean binary
     cat > config.json << EOF
     {
       "storage":{
@@ -33,25 +33,28 @@ build:
     EOF
 
     cat config.json
+
+    mkdir -p /zotcopy/build/binary
+    mkdir -p /zotcopy/build/cert
+    mkdir -p /zotcopy/build/config
+    cp /go/src/github.com/project-zot/zot/bin/zot-linux-amd64 /zotcopy/build/binary
+    cp /go/src/github.com/project-zot/zot/config.json /zotcopy/build/config
+    cp /etc/ssl/certs/ca-certificates.crt /zotcopy/build/cert
   build_only: true
 
 "${{REPO_NAME:zot}}":
   from:
     type: docker
-    url: docker://alpine:3
-  import:
-    - stacker://build/go/src/github.com/project-zot/zot/bin/zot-${{OS}}-${{ARCH}}
-    - stacker://build/go/src/github.com/project-zot/zot/config.json
-    - stacker://build/etc/ssl/certs/ca-certificates.crt
-  run: |
-    cp /stacker/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-    cp /stacker/zot-${{OS}}-${{ARCH}} /usr/bin/zot
-    mkdir -p /etc/zot
-    cp /stacker/config.json /etc/zot/config.json
-    # pie mode binaries need a runtime
-    apk add --no-cache libc6-compat
+    url: docker://gcr.io/distroless/base
+  overlay_dirs:
+    - source: ./build/binary
+      dest: /usr/local/bin
+    - source: ./build/cert
+      dest: /etc/ssl/certs
+    - source: ./build/config
+      dest: /etc/zot
   entrypoint:
-    - /usr/bin/zot
+    - /usr/bin/zot-linux-amd64
   volumes:
     - /var/lib/registry
   cmd:

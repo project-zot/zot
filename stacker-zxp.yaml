@@ -32,23 +32,24 @@ build:
     EOF
 
     cat config.json
+
+    mkdir -p /zotcopy/build/binary
+    mkdir -p /zotcopy/build/config
+    cp /go/src/github.com/project-zot/zot/bin/zxp-${{OS}}-${{ARCH}} /zotcopy/build/binary
+    cp /go/src/github.com/project-zot/zot/config.json /zotcopy/build/config
   build_only: true
 
 "${{REPO_NAME:zxp}}":
   from:
     type: docker
-    url: docker://alpine:3
-  import:
-    - stacker://build/go/src/github.com/project-zot/zot/bin/zxp-${{OS}}-${{ARCH}}
-    - stacker://build/go/src/github.com/project-zot/zot/config.json
-  run: |
-    cp /stacker/zxp-${{OS}}-${{ARCH}} /usr/bin/zxp
-    mkdir -p /etc/zxp
-    cp /stacker/config.json /etc/zxp/config.json
-    # pie mode binaries need a runtime
-    apk add --no-cache libc6-compat
+    url: docker://gcr.io/distroless/base
+  overlay_dirs:
+    - source: ./build/binary
+      dest: /usr/local/bin
+    - source: ./build/config
+      dest: /etc/zxp
   entrypoint:
-    - /usr/bin/zxp
+    - /usr/local/bin/zxp-${{OS}}-${{ARCH}}
   cmd:
     - config
     - /etc/zxp/config.json
