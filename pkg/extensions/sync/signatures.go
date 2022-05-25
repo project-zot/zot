@@ -32,7 +32,9 @@ func getCosignManifest(client *resty.Client, regURL url.URL, repo, digest string
 
 	getCosignManifestURL.RawQuery = getCosignManifestURL.Query().Encode()
 
-	resp, err := client.R().Get(getCosignManifestURL.String())
+	resp, err := client.R().
+		SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+		Get(getCosignManifestURL.String())
 	if err != nil {
 		log.Error().Err(err).Str("url", getCosignManifestURL.String()).
 			Msgf("couldn't get cosign manifest: %s", cosignTag)
