@@ -28,7 +28,8 @@ import (
 )
 
 const (
-	SyncBlobUploadDir = ".sync"
+	SyncBlobUploadDir     = ".sync"
+	httpMaxRedirectsCount = 15
 )
 
 // /v2/_catalog struct.

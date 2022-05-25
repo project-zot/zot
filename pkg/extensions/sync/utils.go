@@ -251,6 +251,8 @@ func getHTTPClient(regCfg *RegistryConfig, upstreamURL string, credentials Crede
 		client.SetBasicAuth(credentials.Username, credentials.Password)
 	}
 
+	client.SetRedirectPolicy(resty.FlexibleRedirectPolicy(httpMaxRedirectsCount))
+
 	return client, registryURL, nil
 }
 
