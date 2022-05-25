@@ -129,7 +129,15 @@ jobs:
       - name: Run zot container image with docker
         run: |
           if [[ $OS == "linux" && $ARCH == "amd64" ]]; then
-            docker run -d ghcr.io/${{ github.repository_owner }}/zot-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}
+            docker run -d -p 5000:5000 ghcr.io/${{ github.repository_owner }}/zot-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}
+            sleep 2
+            curl --connect-timeout 5 \
+              --max-time 10 \
+              --retry 12 \
+              --retry-max-time 360 \
+              --retry-connrefused \
+              'http://localhost:5000/v2/'
+            docker kill $(docker ps -q)
           fi
         env:
           OS: ${{ matrix.os }}
@@ -137,7 +145,15 @@ jobs:
       - name: Run zot container image with podman
         run: |
           if [[ $OS == "linux" && $ARCH == "amd64" ]]; then
-            podman run -d ghcr.io/${{ github.repository_owner }}/zot-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}
+            podman run -d -p 5000:5000 ghcr.io/${{ github.repository_owner }}/zot-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}
+            sleep 2
+            curl --connect-timeout 5 \
+              --max-time 10 \
+              --retry 12 \
+              --retry-max-time 360 \
+              --retry-connrefused \
+              'http://localhost:5000/v2/'
+            podman kill --all
           fi
         env:
           OS: ${{ matrix.os }}
@@ -159,7 +175,15 @@ jobs:
       - name: Run zot-minimal container image with docker
         run: |
           if [[ $OS == "linux" && $ARCH == "amd64" ]]; then
-            docker run -d ghcr.io/${{ github.repository_owner }}/zot-minimal-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}
+            docker run -d -p 5000:5000 ghcr.io/${{ github.repository_owner }}/zot-minimal-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}
+            sleep 2
+            curl --connect-timeout 5 \
+              --max-time 10 \
+              --retry 12 \
+              --retry-max-time 360 \
+              --retry-connrefused \
+              'http://localhost:5000/v2/'
+            docker kill $(docker ps -q)
           fi
         env:
           OS: ${{ matrix.os }}
@@ -167,7 +191,15 @@ jobs:
       - name: Run zot-minimal container image with podman
         run: |
           if [[ $OS == "linux" && $ARCH == "amd64" ]]; then
-            podman run -d ghcr.io/${{ github.repository_owner }}/zot-minimal-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}
+            podman run -d -p 5000:5000 ghcr.io/${{ github.repository_owner }}/zot-minimal-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}
+            sleep 2
+            curl --connect-timeout 5 \
+              --max-time 10 \
+              --retry 12 \
+              --retry-max-time 360 \
+              --retry-connrefused \
+              'http://localhost:5000/v2/'
+            podman kill --all
           fi
         env:
           OS: ${{ matrix.os }}
@@ -188,7 +220,15 @@ jobs:
       - name: Run zot-exporter container image with docker
         run: |
           if [[ $OS == "linux" && $ARCH == "amd64" ]]; then
-            docker run -d ghcr.io/${{ github.repository_owner }}/zxp-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}
+            docker run -d -p 5001:5001 ghcr.io/${{ github.repository_owner }}/zxp-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}
+            sleep 2
+            curl --connect-timeout 5 \
+              --max-time 10 \
+              --retry 12 \
+              --retry-max-time 360 \
+              --retry-connrefused \
+              'http://localhost:5001/metrics'
+            docker kill $(docker ps -q)
           fi
         env:
           OS: ${{ matrix.os }}
@@ -196,7 +236,15 @@ jobs:
       - name: Run zot-exporter container image with podman
         run: |
           if [[ $OS == "linux" && $ARCH == "amd64" ]]; then
-            podman run -d ghcr.io/${{ github.repository_owner }}/zxp-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}
+            podman run -d -p 5001:5001 ghcr.io/${{ github.repository_owner }}/zxp-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}
+            sleep 2
+            curl --connect-timeout 5 \
+              --max-time 10 \
+              --retry 12 \
+              --retry-max-time 360 \
+              --retry-connrefused \
+              'http://localhost:5001/metrics'
+            podman kill --all
           fi
         env:
           OS: ${{ matrix.os }}
@@ -217,7 +265,7 @@ jobs:
       - name: Run zb container image with docker
         run: |
           if [[ $OS == "linux" && $ARCH == "amd64" ]]; then
-            docker run -d ghcr.io/${{ github.repository_owner }}/zb-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}
+            docker run ghcr.io/${{ github.repository_owner }}/zb-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }} --help
           fi
         env:
           OS: ${{ matrix.os }}
@@ -225,7 +273,7 @@ jobs:
       - name: Run zb container image with podman
         run: |
           if [[ $OS == "linux" && $ARCH == "amd64" ]]; then
-            podman run -d ghcr.io/${{ github.repository_owner }}/zb-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }}
+            podman run ghcr.io/${{ github.repository_owner }}/zb-${{ matrix.os }}-${{ matrix.arch }}:${{ github.event.release.tag_name }} --help
           fi
         env:
           OS: ${{ matrix.os }}
