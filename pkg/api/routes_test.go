@@ -22,6 +22,7 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
+	"zotregistry.io/zot/pkg/plugins"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test"
 )
@@ -315,7 +316,7 @@ func TestRoutes(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 		ctlr.Config.Storage.Commit = true

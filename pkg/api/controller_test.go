@@ -4922,7 +4922,7 @@ func TestDistSpecExtensions(t *testing.T) {
 		conf.Log.Output = logFile.Name()
 		defer os.Remove(logFile.Name()) // clean up
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
@@ -4958,7 +4958,7 @@ func TestDistSpecExtensions(t *testing.T) {
 		conf.Log.Output = logFile.Name()
 		defer os.Remove(logFile.Name()) // clean up
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 

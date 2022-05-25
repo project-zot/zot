@@ -65,7 +65,7 @@ require (
 require (
 	github.com/aquasecurity/fanal v0.0.0-20211005172059-69527b46560c // indirect
 	github.com/golang/protobuf v1.5.2
-	google.golang.org/grpc v1.45.0
+	google.golang.org/grpc v1.46.0
 	google.golang.org/protobuf v1.28.0
 )
 
