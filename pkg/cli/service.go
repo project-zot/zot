@@ -367,12 +367,20 @@ func (service searchService) getCveByImage(ctx context.Context, config searchCon
 }
 
 func groupCVEsBySeverity(cveList []cve) []cve {
-	high := make([]cve, 0)
-	med := make([]cve, 0)
-	low := make([]cve, 0)
+	var (
+		unknown  = make([]cve, 0)
+		none     = make([]cve, 0)
+		high     = make([]cve, 0)
+		med      = make([]cve, 0)
+		low      = make([]cve, 0)
+		critical = make([]cve, 0)
+	)
 
 	for _, cve := range cveList {
 		switch cve.Severity {
+		case "NONE":
+			none = append(none, cve)
+
 		case "LOW":
 			low = append(low, cve)
 
@@ -381,10 +389,25 @@ func groupCVEsBySeverity(cveList []cve) []cve {
 
 		case "HIGH":
 			high = append(high, cve)
+
+		case "CRITICAL":
+			critical = append(critical, cve)
+
+		default:
+			unknown = append(unknown, cve)
 		}
 	}
+	vulnsCount := len(unknown) + len(none) + len(high) + len(med) + len(low) + len(critical)
+	vulns := make([]cve, 0, vulnsCount)
 
-	return append(append(high, med...), low...)
+	vulns = append(vulns, critical...)
+	vulns = append(vulns, high...)
+	vulns = append(vulns, med...)
+	vulns = append(vulns, low...)
+	vulns = append(vulns, none...)
+	vulns = append(vulns, unknown...)
+
+	return vulns
 }
 
 func isContextDone(ctx context.Context) bool {
