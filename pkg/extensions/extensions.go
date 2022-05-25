@@ -127,10 +127,11 @@ func GetExtensions(config *config.Config) distext.ExtensionList {
 	extensions := make([]distext.Extension, 0)
 
 	if config.Extensions != nil && config.Extensions.Search != nil {
-		endpoints := []string{fmt.Sprintf("%s%s", constants.RoutePrefix, constants.ExtSearchPrefix)}
-		searchExt := getExtension("zot",
+		endpoints := []string{constants.ExtSearchPrefix}
+		searchExt := getExtension("_zot",
 			"https://github.com/project-zot/zot/tree/main/pkg/extensions/_zot.md",
-			"zot extension provide various components e.g search that provides various search capabilities", endpoints)
+			"zot registry extension",
+			endpoints)
 
 		extensions = append(extensions, searchExt)
 	}

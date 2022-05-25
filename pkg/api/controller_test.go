@@ -4855,10 +4855,10 @@ func TestDistSpecExtensions(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(extensionList.Extensions), ShouldEqual, 1)
 		So(len(extensionList.Extensions[0].Endpoints), ShouldEqual, 1)
-		So(extensionList.Extensions[0].Name, ShouldEqual, "zot")
+		So(extensionList.Extensions[0].Name, ShouldEqual, "_zot")
 		So(extensionList.Extensions[0].URL, ShouldContainSubstring, "_zot.md")
 		So(extensionList.Extensions[0].Description, ShouldNotBeEmpty)
-		So(extensionList.Extensions[0].Endpoints[0], ShouldEqual, constants.RoutePrefix+constants.ExtSearchPrefix)
+		So(extensionList.Extensions[0].Endpoints[0], ShouldEqual, constants.ExtSearchPrefix)
 	})
 
 	Convey("start minimal zot server", t, func(c C) {
