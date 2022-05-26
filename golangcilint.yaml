@@ -57,3 +57,4 @@ linters-settings:
       - github.com/hashicorp/go-getter
       - github.com/opencontainers/runc
       - github.com/theupdateframework/go-tuf
+      - github.com/vektah/gqlparser/v2
