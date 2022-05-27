@@ -507,9 +507,6 @@ func TestUtilsMethod(t *testing.T) {
 
 		allTags, infectedTags := getTags()
 
-		latestTag := common.GetLatestTag(allTags)
-		So(latestTag.Name, ShouldEqual, "1.0.3")
-
 		fixedTags := common.GetFixedTags(allTags, infectedTags)
 		So(len(fixedTags), ShouldEqual, 2)
 

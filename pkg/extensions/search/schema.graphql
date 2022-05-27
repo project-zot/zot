@@ -52,6 +52,7 @@ type ImageInfo {
 
 type RepoInfo {
      Manifests: [ManifestInfo]
+     LastUpdated: Time
 }
 
 type ManifestInfo {
@@ -64,6 +65,8 @@ type ManifestInfo {
 type LayerInfo {
      Size: String # Int64 is not supported.
      Digest: String
+     Os: String
+     Arch: String
 }
 
 type Query {

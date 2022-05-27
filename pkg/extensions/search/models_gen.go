@@ -47,6 +47,8 @@ type ImgResultForFixedCve struct {
 type LayerInfo struct {
 	Size   *string `json:"Size"`
 	Digest *string `json:"Digest"`
+	Os     *string `json:"Os"`
+	Arch   *string `json:"Arch"`
 }
 
 type ManifestInfo struct {

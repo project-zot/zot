@@ -91,14 +91,6 @@ func GetFixedTags(allTags, infectedTags []TagInfo) []TagInfo {
 	return fixedTags
 }
 
-func GetLatestTag(allTags []TagInfo) TagInfo {
-	sort.Slice(allTags, func(i, j int) bool {
-		return allTags[i].Timestamp.Before(allTags[j].Timestamp)
-	})
-
-	return allTags[len(allTags)-1]
-}
-
 func GetRoutePrefix(name string) string {
 	names := strings.SplitN(name, "/", 2) //nolint:gomnd
 

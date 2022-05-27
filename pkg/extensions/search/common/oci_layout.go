@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	goerrors "errors"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -27,7 +28,8 @@ type OciLayoutUtils struct {
 }
 
 type RepoInfo struct {
-	Manifests []Manifest `json:"manifests"`
+	Manifests   []Manifest `json:"manifests"`
+	LastUpdated time.Time
 }
 
 type Manifest struct {
@@ -40,6 +42,8 @@ type Manifest struct {
 type Layer struct {
 	Size   string `json:"size"`
 	Digest string `json:"digest"`
+	Os     string `json:"os"`
+	Arch   string `json:"arch"`
 }
 
 // NewOciLayoutUtils initializes a new OciLayoutUtils object.
@@ -180,26 +184,38 @@ func (olu OciLayoutUtils) GetImageTagsWithTimestamp(repo string) ([]TagInfo, err
 				return tagsInfo, err
 			}
 
-			imageInfo, err := olu.GetImageInfo(repo, imageBlobManifest.Config.Digest)
+			tagInfo, err := olu.GetManifestTagInfo(repo, val, imageBlobManifest.Config.Digest)
 			if err != nil {
-				olu.Log.Error().Err(err).Msg("unable to read image info")
+				olu.Log.Error().Err(err).Str("repo", repo).Str("manifest", val).Msg("unable to get tag info")
 
 				return tagsInfo, err
 			}
 
-			var timeStamp time.Time
-
-			if len(imageInfo.History) != 0 {
-				timeStamp = *imageInfo.History[0].Created
-			} else {
-				timeStamp = time.Time{}
-			}
-
-			tagsInfo = append(tagsInfo, TagInfo{Name: val, Timestamp: timeStamp, Digest: digest.String()})
+			tagsInfo = append(tagsInfo, tagInfo)
 		}
 	}
 
 	return tagsInfo, nil
+}
+
+// GetManifestTagInfo will return TagInfo(name,timestamp and digest)...
+func (olu OciLayoutUtils) GetManifestTagInfo(repo, name string, digest v1.Hash) (TagInfo, error) {
+	imageInfo, err := olu.GetImageInfo(repo, digest)
+	if err != nil {
+		olu.Log.Error().Err(err).Msg("unable to read image info")
+
+		return TagInfo{}, err
+	}
+
+	var timeStamp time.Time
+
+	if len(imageInfo.History) != 0 {
+		timeStamp = *imageInfo.History[0].Created
+	} else {
+		timeStamp = time.Time{}
+	}
+
+	return TagInfo{Name: name, Timestamp: timeStamp, Digest: digest.String()}, nil
 }
 
 func (olu OciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error) {
@@ -213,6 +229,8 @@ func (olu OciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error) {
 
 		return RepoInfo{}, err
 	}
+
+	latestTag := TagInfo{}
 
 	for _, manifest := range manifestList {
 		manifestInfo := Manifest{}
@@ -235,6 +253,17 @@ func (olu OciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error) {
 			return RepoInfo{}, err
 		}
 
+		tagInfo, err := olu.GetManifestTagInfo(name, tag, manifest.Config.Digest)
+		if err != nil {
+			olu.Log.Error().Err(err).Msg("error getting tag info")
+
+			return RepoInfo{}, err
+		}
+
+		if tagInfo.Timestamp.After(latestTag.Timestamp) {
+			latestTag = tagInfo
+		}
+
 		layers := make([]Layer, 0)
 
 		for _, layer := range manifest.Layers {
@@ -243,6 +272,14 @@ func (olu OciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error) {
 			layerInfo.Digest = layer.Digest.Hex
 
 			layerInfo.Size = strconv.FormatInt(layer.Size, 10)
+
+			if layer.Platform != nil {
+				layerInfo.Os = layer.Platform.OS
+
+				layerInfo.Arch = layer.Platform.Architecture
+			} else {
+				olu.Log.Debug().Str("layer", layer.Digest.String()).Msg("platform field not present")
+			}
 
 			layers = append(layers, layerInfo)
 
@@ -258,7 +295,31 @@ func (olu OciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error) {
 
 	repo.Manifests = manifests
 
+	repo.LastUpdated = latestTag.Timestamp
+
 	return repo, nil
+}
+
+// GetLatestTag will return latest tag present in repo based on timestamp...
+func (olu OciLayoutUtils) GetLatestTag(repo string) (TagInfo, error) {
+	tagsInfo, err := olu.GetImageTagsWithTimestamp(repo)
+	if err != nil {
+		olu.Log.Error().Err(err).Msg("extension api: error getting tag timestamp info")
+
+		return TagInfo{}, err
+	}
+
+	if len(tagsInfo) == 0 {
+		olu.Log.Info().Str("no tagsinfo found for repo", repo).Msg(" continuing traversing")
+
+		return TagInfo{}, errors.ErrEmptyValue
+	}
+
+	sort.Slice(tagsInfo, func(i, j int) bool {
+		return tagsInfo[i].Timestamp.Before(tagsInfo[j].Timestamp)
+	})
+
+	return tagsInfo[len(tagsInfo)-1], nil
 }
 
 func GetImageDirAndTag(imageName string) (string, string) {

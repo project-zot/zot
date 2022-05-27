@@ -88,12 +88,16 @@ func (r *queryResolver) ExpandedRepoInfo(ctx context.Context, name string) (*Rep
 
 		layers := make([]*LayerInfo, 0)
 
-		for _, l := range manifest.Layers {
-			size := l.Size
+		for _, layer := range manifest.Layers {
+			size := layer.Size
 
-			digest := l.Digest
+			digest := layer.Digest
 
-			layerInfo := &LayerInfo{Digest: &digest, Size: &size}
+			layerOs := layer.Os
+
+			arch := layer.Arch
+
+			layerInfo := &LayerInfo{Digest: &digest, Size: &size, Os: &layerOs, Arch: &arch}
 
 			layers = append(layers, layerInfo)
 		}
@@ -491,7 +495,12 @@ func (r *queryResolver) getImageListWithLatestTag(store storage.ImageStore) ([]*
 			continue
 		}
 
-		latestTag := common.GetLatestTag(tagsInfo)
+		latestTag, err := layoutUtils.GetLatestTag(repo)
+		if err != nil {
+			r.log.Error().Err(err).Str("error getting latest tag for ", repo).Msg(" continuing traversing")
+
+			return results, err
+		}
 
 		digest := godigest.Digest(latestTag.Digest)
 

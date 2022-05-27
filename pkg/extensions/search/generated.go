@@ -83,7 +83,9 @@ type ComplexityRoot struct {
 	}
 
 	LayerInfo struct {
+		Arch   func(childComplexity int) int
 		Digest func(childComplexity int) int
+		Os     func(childComplexity int) int
 		Size   func(childComplexity int) int
 	}
 
@@ -284,12 +286,26 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.ImgResultForFixedCve.Tags(childComplexity), true
 
+	case "LayerInfo.Arch":
+		if e.complexity.LayerInfo.Arch == nil {
+			break
+		}
+
+		return e.complexity.LayerInfo.Arch(childComplexity), true
+
 	case "LayerInfo.Digest":
 		if e.complexity.LayerInfo.Digest == nil {
 			break
 		}
 
 		return e.complexity.LayerInfo.Digest(childComplexity), true
+
+	case "LayerInfo.Os":
+		if e.complexity.LayerInfo.Os == nil {
+			break
+		}
+
+		return e.complexity.LayerInfo.Os(childComplexity), true
 
 	case "LayerInfo.Size":
 		if e.complexity.LayerInfo.Size == nil {
@@ -558,6 +574,8 @@ type ManifestInfo {
 type LayerInfo {
      Size: String # Int64 is not supported.
      Digest: String
+     Os: String
+     Arch: String
 }
 
 type Query {
@@ -1428,6 +1446,64 @@ func (ec *executionContext) _LayerInfo_Digest(ctx context.Context, field graphql
 	resTmp := ec._fieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
 		return obj.Digest, nil
+	})
+
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _LayerInfo_Os(ctx context.Context, field graphql.CollectedField, obj *LayerInfo) (ret graphql.Marshaler) {
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	fc := &graphql.FieldContext{
+		Object:     "LayerInfo",
+		Field:      field,
+		Args:       nil,
+		IsMethod:   false,
+		IsResolver: false,
+	}
+
+	ctx = graphql.WithFieldContext(ctx, fc)
+	resTmp := ec._fieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Os, nil
+	})
+
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _LayerInfo_Arch(ctx context.Context, field graphql.CollectedField, obj *LayerInfo) (ret graphql.Marshaler) {
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	fc := &graphql.FieldContext{
+		Object:     "LayerInfo",
+		Field:      field,
+		Args:       nil,
+		IsMethod:   false,
+		IsResolver: false,
+	}
+
+	ctx = graphql.WithFieldContext(ctx, fc)
+	resTmp := ec._fieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Arch, nil
 	})
 
 	if resTmp == nil {
@@ -3249,6 +3325,10 @@ func (ec *executionContext) _LayerInfo(ctx context.Context, sel ast.SelectionSet
 			out.Values[i] = ec._LayerInfo_Size(ctx, field, obj)
 		case "Digest":
 			out.Values[i] = ec._LayerInfo_Digest(ctx, field, obj)
+		case "Os":
+			out.Values[i] = ec._LayerInfo_Os(ctx, field, obj)
+		case "Arch":
+			out.Values[i] = ec._LayerInfo_Arch(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
