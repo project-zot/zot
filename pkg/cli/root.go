@@ -21,8 +21,6 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/plugins"
 	cliPlugin "zotregistry.io/zot/pkg/plugins/cli"
-	pluginCommon "zotregistry.io/zot/pkg/plugins/common"
-	scanPlugin "zotregistry.io/zot/pkg/plugins/scan"
 	"zotregistry.io/zot/pkg/storage"
 )
 
@@ -561,25 +559,4 @@ func validateSync(config *config.Config) error {
 	}
 
 	return nil
-}
-
-func registerAllIntegrationPoints(pluginManager plugins.PluginManager) {
-	pluginManager.RegisterInterface(
-		"VulnScanner",
-		scanPlugin.RPCScanManager{
-			Impl: &struct {
-				Name            string
-				VulnScannerImpl pluginCommon.Plugin
-			}{},
-		},
-		scanPlugin.RPCScanBuilder{},
-	)
-
-	pluginManager.RegisterInterface(
-		"CLICommand",
-		cliPlugin.Manager{
-			Implementations: map[string]pluginCommon.Plugin{},
-		},
-		cliPlugin.Builder{},
-	)
 }

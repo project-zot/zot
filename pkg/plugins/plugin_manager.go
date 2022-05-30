@@ -6,12 +6,12 @@ import (
 	"path/filepath"
 
 	"github.com/mitchellh/mapstructure"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	zerr "zotregistry.io/zot/errors"
 	cliPlugin "zotregistry.io/zot/pkg/plugins/cli"
 	"zotregistry.io/zot/pkg/plugins/common"
 	scanPlugin "zotregistry.io/zot/pkg/plugins/scan"
-	"github.com/rs/zerolog/log"
 )
 
 // make it thread safe: https://refactoring.guru/design-patterns/singleton/go/example.
@@ -24,13 +24,13 @@ type PluginManager interface {
 	RegisterImplementation(interfaceName string, implName string, plugin common.Plugin) error
 }
 
-type DefaultPluginManager struct {
+type BasePluginManager struct {
 	ImplManagers map[string]common.ImplementationManager
 	builders     map[string]common.PluginBuilder
 }
 
-func NewManager() DefaultPluginManager {
-	pluginManager := DefaultPluginManager{
+func NewManager() BasePluginManager {
+	pluginManager := BasePluginManager{
 		ImplManagers: map[string]common.ImplementationManager{},
 		builders:     map[string]common.PluginBuilder{},
 	}
@@ -62,7 +62,7 @@ func registerAllIntegrationPoints(pluginManager PluginManager) {
 }
 
 // GetBuilder returns the PluginBuilder object for a registered integration point.
-func (pm DefaultPluginManager) GetBuilder(interfaceName string) (common.PluginBuilder, error) {
+func (pm BasePluginManager) GetBuilder(interfaceName string) (common.PluginBuilder, error) {
 	if pm.builders[interfaceName] == nil {
 		return nil, zerr.ErrBadIntegrationPoint
 	}
@@ -73,7 +73,7 @@ func (pm DefaultPluginManager) GetBuilder(interfaceName string) (common.PluginBu
 // LoadAll given a directory path will search for plugin config files
 // and try to initialize and hook plugins by creating a gRPC connection
 // and registering the implementation.
-func (pm DefaultPluginManager) LoadAll(pluginsDir string) error {
+func (pm BasePluginManager) LoadAll(pluginsDir string) error {
 	log.Info().Msgf("loading all plugins from %v", pluginsDir)
 
 	pluginConfigs, err := os.ReadDir(pluginsDir)
@@ -127,7 +127,7 @@ func (pm DefaultPluginManager) LoadAll(pluginsDir string) error {
 }
 
 // RegisterInterface makes the given interface name recognised as supported by Zot.
-func (pm DefaultPluginManager) RegisterInterface(name string, implManager common.ImplementationManager,
+func (pm BasePluginManager) RegisterInterface(name string, implManager common.ImplementationManager,
 	pluginBuilder common.PluginBuilder,
 ) {
 	pm.ImplManagers[name] = implManager
@@ -136,7 +136,7 @@ func (pm DefaultPluginManager) RegisterInterface(name string, implManager common
 
 // RegisterImplementation hooks the implementation to the InterfaceManager. This
 // allows Zot to find and use the implementation.
-func (pm DefaultPluginManager) RegisterImplementation(interfaceName string, implName string,
+func (pm BasePluginManager) RegisterImplementation(interfaceName string, implName string,
 	plugin common.Plugin,
 ) error {
 	if pm.ImplManagers[interfaceName] == nil {
@@ -151,7 +151,7 @@ func (pm DefaultPluginManager) RegisterImplementation(interfaceName string, impl
 	return nil
 }
 
-func (pm DefaultPluginManager) GetImplManager(name string) common.ImplementationManager {
+func (pm BasePluginManager) GetImplManager(name string) common.ImplementationManager {
 	return pm.ImplManagers[name]
 }
 

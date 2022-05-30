@@ -39,6 +39,10 @@ func (rs RPCScanner) ScanImage(ctx *cli.Context, image string) (*ScanReport, err
 	return response.Report, err
 }
 
+// We need to define 2 more types:
+//   - a builder type that knows how to construct the plugin scanner
+//   - a manager that knows how to store and dispense implementations of VulnScanner
+
 type RPCScanBuilder struct{}
 
 func (sb RPCScanBuilder) Build(name, addr, port string, options common.Options,
@@ -68,10 +72,9 @@ type RPCScanManager struct {
 }
 
 func (rsm RPCScanManager) RegisterImplementation(name string, plugin interface{}) error {
-	if rsm.Impl.VulnScannerImpl != nil {
-		return fmt.Errorf("multiple implementations for VulnScanner detected Ilegal")
-	}
-
+	// if rsm.Impl.VulnScannerImpl != nil {
+	// 		warning implementation overwrite
+	// }
 	rsm.Impl.Name = name
 	rsm.Impl.VulnScannerImpl = plugin
 
