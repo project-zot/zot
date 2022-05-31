@@ -50,12 +50,12 @@ exporter-minimal: modcheck
 
 .PHONY: test
 test: check-skopeo $(TESTDATA) $(NOTATION)
-	go test -failfast -tags extended,containers_image_openpgp -v -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-extended.txt -covermode=atomic ./...
-	go test -failfast -tags minimal,containers_image_openpgp -v -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-minimal.txt -covermode=atomic ./...
-	# development-mode unit tests possibly using failure injection
-	go test -failfast -tags dev,extended,containers_image_openpgp -v -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-dev-extended.txt -covermode=atomic ./pkg/test/... ./pkg/api/... ./pkg/storage/... ./pkg/extensions/sync/... -run ^TestInject
-	go test -failfast -tags dev,minimal,containers_image_openpgp -v -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-dev-minimal.txt -covermode=atomic ./pkg/test/... ./pkg/storage/... ./pkg/extensions/sync/... -run ^TestInject
-	go test -failfast -tags stress,extended,containers_image_openpgp -v -trimpath -race -timeout 15m ./pkg/cli/stress_test.go
+	env GODEBUG=gocachetest=1 go test  -tags extended,containers_image_openpgp -v -trimpath -race -timeout 15m -cover -coverpkg ./...  -covermode=atomic ./...
+	# env GODEBUG=gocachetest=1 go test -failfast -tags minimal,containers_image_openpgp -v -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-minimal.txt -covermode=atomic ./...
+	# # development-mode unit tests possibly using failure injection
+	# env GODEBUG=gocachetest=1 go test -failfast -tags dev,extended,containers_image_openpgp -v -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-dev-extended.txt -covermode=atomic ./pkg/test/... ./pkg/api/... ./pkg/storage/... ./pkg/extensions/sync/... -run ^TestInject
+	# env GODEBUG=gocachetest=1 go test -failfast -tags dev,minimal,containers_image_openpgp -v -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-dev-minimal.txt -covermode=atomic ./pkg/test/... ./pkg/storage/... ./pkg/extensions/sync/... -run ^TestInject
+	# env GODEBUG=gocachetest=1 go test -failfast -tags stress,extended,containers_image_openpgp -v -trimpath -race -timeout 15m ./pkg/cli/stress_test.go
 
 .PHONY: privileged-test
 privileged-test: check-skopeo $(TESTDATA) $(NOTATION)
