@@ -36,6 +36,8 @@ type SearchService interface {
 		channel chan stringResult, wtgrp *sync.WaitGroup)
 	getFixedTagsForCVE(ctx context.Context, config searchConfig, username, password, imageName, cvid string,
 		channel chan stringResult, wtgrp *sync.WaitGroup)
+	getRepos(ctx context.Context, config searchConfig, username, password string,
+		channel chan stringResult, wtgrp *sync.WaitGroup)
 }
 
 type searchService struct{}
@@ -839,6 +841,42 @@ func getCVETableWriter(writer io.Writer) *tablewriter.Table {
 	table.SetColMinWidth(colCVETitleIndex, cveTitleWidth)
 
 	return table
+}
+
+func (service searchService) getRepos(ctx context.Context, config searchConfig, username, password string,
+	rch chan stringResult, wtgrp *sync.WaitGroup,
+) {
+	defer wtgrp.Done()
+	defer close(rch)
+
+	catalog := &catalogResponse{}
+
+	catalogEndPoint, err := combineServerAndEndpointURL(*config.servURL, fmt.Sprintf("%s%s",
+		constants.RoutePrefix, constants.ExtCatalogPrefix))
+	if err != nil {
+		if isContextDone(ctx) {
+			return
+		}
+		rch <- stringResult{"", err}
+
+		return
+	}
+
+	_, err = makeGETRequest(ctx, catalogEndPoint, username, password, *config.verifyTLS, catalog)
+	if err != nil {
+		if isContextDone(ctx) {
+			return
+		}
+		rch <- stringResult{"", err}
+
+		return
+	}
+
+	fmt.Fprintln(config.resultWriter, "\n\nREPOSITORY NAME")
+
+	for _, repo := range catalog.Repositories {
+		fmt.Fprintln(config.resultWriter, repo)
+	}
 }
 
 const (
