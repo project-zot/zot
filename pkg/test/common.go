@@ -80,9 +80,6 @@ func Location(baseURL string, resp *resty.Response) string {
 	}
 
 	path := uloc.Path
-	if query := uloc.RawQuery; query != "" {
-		path += "?" + query
-	}
 
 	return baseURL + path
 }
