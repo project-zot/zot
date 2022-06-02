@@ -2719,6 +2719,10 @@ func TestCrossRepoMount(t *testing.T) {
 			Post(baseURL + "/v2/zot-c-test/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(postResponse.StatusCode(), ShouldEqual, http.StatusAccepted)
+		location, err := postResponse.RawResponse.Location()
+		So(err, ShouldBeNil)
+		So(location.String(), ShouldStartWith, fmt.Sprintf("%s%s/zot-c-test/%s/%s",
+			baseURL, constants.RoutePrefix, constants.Blobs, constants.Uploads))
 
 		incorrectParams := make(map[string]string)
 		incorrectParams["mount"] = "sha256:63a795ca90aa6e7dda60941e826810a4cd0a2e73ea02bf458241df2a5c973e29"
@@ -2729,6 +2733,8 @@ func TestCrossRepoMount(t *testing.T) {
 			Post(baseURL + "/v2/zot-y-test/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(postResponse.StatusCode(), ShouldEqual, http.StatusAccepted)
+		So(test.Location(baseURL, postResponse), ShouldStartWith, fmt.Sprintf("%s%s/zot-y-test/%s/%s",
+			baseURL, constants.RoutePrefix, constants.Blobs, constants.Uploads))
 
 		// Use correct request
 		// This is correct request but it will return 202 because blob is not present in cache.
@@ -2738,6 +2744,8 @@ func TestCrossRepoMount(t *testing.T) {
 			Post(baseURL + "/v2/zot-c-test/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(postResponse.StatusCode(), ShouldEqual, http.StatusAccepted)
+		So(test.Location(baseURL, postResponse), ShouldStartWith, fmt.Sprintf("%s%s/zot-c-test/%s/%s",
+			baseURL, constants.RoutePrefix, constants.Blobs, constants.Uploads))
 
 		// Send same request again
 		postResponse, err = client.R().
@@ -2792,6 +2800,8 @@ func TestCrossRepoMount(t *testing.T) {
 			Post(baseURL + "/v2/zot-mount-test/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(postResponse.StatusCode(), ShouldEqual, http.StatusCreated)
+		So(test.Location(baseURL, postResponse), ShouldEqual, fmt.Sprintf("%s%s/zot-mount-test/%s/%s:%s",
+			baseURL, constants.RoutePrefix, constants.Blobs, godigest.SHA256, blob))
 
 		// Check os.SameFile here
 		cachePath := path.Join(ctlr.Config.Storage.RootDirectory, "zot-d-test", "blobs/sha256", dgst.Hex())
@@ -2815,6 +2825,8 @@ func TestCrossRepoMount(t *testing.T) {
 			Post(baseURL + "/v2/zot-mount1-test/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(postResponse.StatusCode(), ShouldEqual, http.StatusCreated)
+		So(test.Location(baseURL, postResponse), ShouldEqual, fmt.Sprintf("%s%s/zot-mount1-test/%s/%s:%s",
+			baseURL, constants.RoutePrefix, constants.Blobs, godigest.SHA256, blob))
 
 		linkPath = path.Join(ctlr.Config.Storage.RootDirectory, "zot-mount1-test", "blobs/sha256", dgst.Hex())
 

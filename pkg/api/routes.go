@@ -17,6 +17,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"path"
 	"sort"
 	"strconv"
@@ -759,14 +760,14 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 				return
 			}
 
-			response.Header().Set("Location", path.Join(request.URL.String(), upload))
+			response.Header().Set("Location", getBlobUploadSessionLocation(request.URL, upload))
 			response.Header().Set("Range", "bytes=0-0")
 			response.WriteHeader(http.StatusAccepted)
 
 			return
 		}
 
-		response.Header().Set("Location", fmt.Sprintf("/v2/%s/blobs/%s", name, mountDigests[0]))
+		response.Header().Set("Location", getBlobUploadLocation(request.URL, name, mountDigests[0]))
 		response.WriteHeader(http.StatusCreated)
 
 		return
@@ -826,7 +827,7 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 			return
 		}
 
-		response.Header().Set("Location", fmt.Sprintf("/v2/%s/blobs/%s", name, digest))
+		response.Header().Set("Location", getBlobUploadLocation(request.URL, name, digest))
 		response.Header().Set(constants.BlobUploadUUID, sessionID)
 		response.WriteHeader(http.StatusCreated)
 
@@ -845,7 +846,7 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 		return
 	}
 
-	response.Header().Set("Location", path.Join(request.URL.String(), upload))
+	response.Header().Set("Location", getBlobUploadSessionLocation(request.URL, upload))
 	response.Header().Set("Range", "bytes=0-0")
 	response.WriteHeader(http.StatusAccepted)
 }
@@ -904,7 +905,7 @@ func (rh *RouteHandler) GetBlobUpload(response http.ResponseWriter, request *htt
 		return
 	}
 
-	response.Header().Set("Location", path.Join(request.URL.String(), sessionID))
+	response.Header().Set("Location", getBlobUploadSessionLocation(request.URL, sessionID))
 	response.Header().Set("Range", fmt.Sprintf("bytes=0-%d", size-1))
 	response.WriteHeader(http.StatusNoContent)
 }
@@ -996,7 +997,7 @@ func (rh *RouteHandler) PatchBlobUpload(response http.ResponseWriter, request *h
 		return
 	}
 
-	response.Header().Set("Location", request.URL.String())
+	response.Header().Set("Location", getBlobUploadSessionLocation(request.URL, sessionID))
 	response.Header().Set("Range", fmt.Sprintf("bytes=0-%d", clen-1))
 	response.Header().Set("Content-Length", "0")
 	response.Header().Set(constants.BlobUploadUUID, sessionID)
@@ -1139,7 +1140,7 @@ finish:
 		return
 	}
 
-	response.Header().Set("Location", fmt.Sprintf("/v2/%s/blobs/%s", name, digest))
+	response.Header().Set("Location", getBlobUploadLocation(request.URL, name, digest))
 	response.Header().Set("Content-Length", "0")
 	response.Header().Set(constants.DistContentDigestKey, digest)
 	response.WriteHeader(http.StatusCreated)
@@ -1464,4 +1465,32 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 	rs := ReferenceList{References: refs}
 
 	WriteJSON(response, http.StatusOK, rs)
+}
+
+// GetBlobUploadSessionLocation returns actual blob location to start/resume uploading blobs.
+// e.g. /v2/<name>/blobs/uploads/<session-id>.
+func getBlobUploadSessionLocation(url *url.URL, sessionID string) string {
+	url.RawQuery = ""
+
+	if !strings.Contains(url.Path, sessionID) {
+		url.Path = path.Join(url.Path, sessionID)
+	}
+
+	return url.String()
+}
+
+// GetBlobUploadLocation returns actual blob location on registry
+// e.g /v2/<name>/blobs/<digest>.
+func getBlobUploadLocation(url *url.URL, name, digest string) string {
+	url.RawQuery = ""
+
+	// we are relying on request URL to set location and
+	// if request URL contains uploads either we are resuming blob upload or starting a new blob upload.
+	// getBlobUploadLocation will be called only when blob upload is completed and
+	// location should be set as blob url <v2/<name>/blobs/<digest>>.
+	if strings.Contains(url.Path, "uploads") {
+		url.Path = path.Join(constants.RoutePrefix, name, constants.Blobs, digest)
+	}
+
+	return url.String()
 }
