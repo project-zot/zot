@@ -6,6 +6,7 @@ package cli //nolint:testpackage
 import (
 	"bytes"
 	"io/ioutil"
+	"log"
 	"os"
 	"strings"
 	"testing"
@@ -76,6 +77,62 @@ func TestConfigCmdMain(t *testing.T) {
 		actualStr := string(actual)
 		So(actualStr, ShouldContainSubstring, "configtest1")
 		So(actualStr, ShouldContainSubstring, "https://test-url.com")
+	})
+
+	Convey("Test error on home directory", t, func() {
+		args := []string{"add", "configtest1", "https://test-url.com"}
+		file := makeConfigFile("")
+		defer os.Remove(file)
+
+		err := os.Setenv("HOME", "nonExistentDirectory")
+		if err != nil {
+			panic(err)
+		}
+
+		cmd := NewConfigCommand()
+		buff := bytes.NewBufferString("")
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err = cmd.Execute()
+		So(err, ShouldNotBeNil)
+
+		home, err := os.UserHomeDir()
+		if err != nil {
+			panic(err)
+		}
+		err = os.Setenv("HOME", home)
+		if err != nil {
+			log.Fatal(err)
+		}
+	})
+
+	Convey("Test error on home directory at new add config", t, func() {
+		args := []string{"add", "configtest1", "https://test-url.com"}
+		file := makeConfigFile("")
+		defer os.Remove(file)
+
+		err := os.Setenv("HOME", "nonExistentDirectory")
+		if err != nil {
+			panic(err)
+		}
+
+		cmd := NewConfigAddCommand()
+		buff := bytes.NewBufferString("")
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err = cmd.Execute()
+		So(err, ShouldNotBeNil)
+
+		home, err := os.UserHomeDir()
+		if err != nil {
+			panic(err)
+		}
+		err = os.Setenv("HOME", home)
+		if err != nil {
+			log.Fatal(err)
+		}
 	})
 
 	Convey("Test add config with invalid format", t, func() {
