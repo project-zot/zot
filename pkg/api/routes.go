@@ -35,6 +35,7 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test" // nolint: goimports
+
 	// as required by swaggo.
 	_ "zotregistry.io/zot/swagger"
 )
@@ -759,7 +760,10 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 				return
 			}
 
-			response.Header().Set("Location", path.Join(request.URL.String(), upload))
+			u := request.URL
+			u.Path = path.Join(u.Path, upload)
+			u.RawQuery = ""
+			response.Header().Set("Location", u.String())
 			response.Header().Set("Range", "bytes=0-0")
 			response.WriteHeader(http.StatusAccepted)
 
