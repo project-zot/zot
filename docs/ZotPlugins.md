@@ -6,11 +6,11 @@ Here we'll propose the implementation of a flexible plugin management system tha
 
 Zot should be able to implement additional features outside the OCI specification. These features may vary widely in terms of functionality but also scalability. The growing complexity and scalability concerns put strains on the current inline way of implementing extensions thus a all purpose, flexible and distributed system for plugins would solve these problems.
 
-Some invariants about a plugins may be:
+Some invariants about a plugins may be that:
 * they communicate exclusively though gRPC and Zot's API
 * they don't interact with zot internally or with it's resources directly (Q: We might want a plugin to interact with zot's storage in the future?)
 * they are configurable
-* they can expect to run in an environment where they can execute certain binaries
+* they can depend on external binaries (expected to be found in the environment they run)
 * they can be deployed on different machines than Zot
 * they are developed by a 3rd party and implementation details are not Zot's concern. 
 
@@ -18,22 +18,26 @@ Some of the features we are currently interested in are related to scanning for 
 * CVEs (Trivy)
 * Malware (ClamAv)
 
-For this reason this proposal will focus on a plugin management system that focuses on adding new scanners. We'll replace the Trivy scanner with an extension point Vulnerability Scanner (VulnScanner).
+For this reason this proposal will focus on a plugin management system that focuses on adding new scanners. We'll replace the Trivy scanner with an extension point Vulnerability Scanner (VulnScanner) and see how new Scanner Plugins can be added.
 
 ## Proposal
 
-We propose to introduce a generic plugin system that will allow the definition of extension/pluggable points (such as vulnerability scanner, authentication, etc.). An extension point is described by an interface that allows the plugin to integrate with Zot. The general flow when adding a new extension point would be like this:
+We propose to introduce a generic plugin system that will allow the definition of extension/pluggable points (such as vulnerability scanner, authentication, etc). Conceptually we think of a extension point as "usefull extensability" and not as full extensability, something that we would like the community to be able to extend. 
+
+An extension point is described by an interface that allows the plugin to integrate with Zot. The gRPC API will reflect this inteface, each endpoint corresponding a method. A adapter pattern is used to discribe the implementation of this interface in order to add more flexibility and hide connection calls or coversion between types details. The general flow when adding a new extension point would be like this:
 
 1. Define the extension point's interface and it's methods
 2. Define the communication protocol between Zot and the plugin using protobuf. Generate the gRPC client and server.
 3. Define the auxiliary classes:
-	* **Plugin Client**: Is a facade of the gRPC client. It handles call parameters and doing the actual RPC request. It implements the interface defined at 1.
+	* **RPC Client Adapter**: Is an adapter of the raw gRPC client. It handles call parameters, configuration and doing the actual RPC request. It implements the interface defined at 1.
 	* **Plugin Builder**: Builds new Plugin Clients given connection details and different options.
 	* **Implementations Manager**: Is responsible for storing all implementations of the current extension point and also dispense required implementation when needed.
 4. Register the new extension point to the Plugin Manager. 
 5. Integrate the extension point in the Zot codebase by implement the general plugin logic using the defined interface at 1 and hook different implementations by calling the Plugin Manager.
 
 Now the Plugin Manager will be able to register new extension points, create and dispense implementations for them.
+
+![alt text](plugins_diagrams.png?raw=true)
 
 So each plugin involves of 2 components:
 
