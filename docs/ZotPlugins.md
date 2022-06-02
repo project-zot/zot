@@ -1,88 +1,184 @@
 # Zot Plugins
-
+ 
 Here we'll propose the implementation of a flexible plugin management system that will allow anyone to extend Zot features without changing the core Zot project.
-
+ 
 ## Background
-
+ 
 Zot should be able to implement additional features outside the OCI specification. These features may vary widely in terms of functionality but also scalability. The growing complexity and scalability concerns put strains on the current inline way of implementing extensions thus a all purpose, flexible and distributed system for plugins would solve these problems.
-
+ 
 Some invariants about a plugins may be that:
 * they communicate exclusively though gRPC and Zot's API
-* they don't interact with zot internally or with it's resources directly (Q: We might want a plugin to interact with zot's storage in the future?)
+* they don't interact with zot internally or with its resources directly (Q: We might want a plugin to interact with zot's storage in the future?)
 * they are configurable
 * they can depend on external binaries (expected to be found in the environment they run)
 * they can be deployed on different machines than Zot
-* they are developed by a 3rd party and implementation details are not Zot's concern. 
-
+* they are developed by a 3rd party and implementation details are not Zot's concern.
+ 
 Some of the features we are currently interested in are related to scanning for various vulnerabilities like:
 * CVEs (Trivy)
 * Malware (ClamAv)
-
+ 
 For this reason this proposal will focus on a plugin management system that focuses on adding new scanners. We'll replace the Trivy scanner with an extension point Vulnerability Scanner (VulnScanner) and see how new Scanner Plugins can be added.
-
+ 
 ## Proposal
-
-We propose to introduce a generic plugin system that will allow the definition of extension/pluggable points (such as vulnerability scanner, authentication, etc). Conceptually we think of a extension point as "usefull extensability" and not as full extensability, something that we would like the community to be able to extend. 
-
-An extension point is described by an interface that allows the plugin to integrate with Zot. The gRPC API will reflect this inteface, each endpoint corresponding a method. A adapter pattern is used to discribe the implementation of this interface in order to add more flexibility and hide connection calls or coversion between types details. The general flow when adding a new extension point would be like this:
-
+ 
+We propose to introduce a generic plugin system that will allow the definition of extension/pluggable points (such as vulnerability scanner, authentication, etc). Conceptually we think of an extension point as "useful extensibility" and not as full extensibility, something that we would like the community to be able to extend.
+ 
+An extension point is described by an interface that allows the plugin to integrate with Zot. The gRPC API will reflect this interface, each endpoint corresponding to a method. An adapter pattern is used to describe the implementation of this interface in order to add more flexibility and hide connection calls or conversion between types details. The general flow when adding a new extension point would be like this:
+ 
 1. Define the extension point's interface and it's methods
 2. Define the communication protocol between Zot and the plugin using protobuf. Generate the gRPC client and server.
 3. Define the auxiliary classes:
-	* **RPC Client Adapter**: Is an adapter of the raw gRPC client. It handles call parameters, configuration and doing the actual RPC request. It implements the interface defined at 1.
-	* **Plugin Builder**: Builds new Plugin Clients given connection details and different options.
-	* **Implementations Manager**: Is responsible for storing all implementations of the current extension point and also dispense required implementation when needed.
-4. Register the new extension point to the Plugin Manager. 
-5. Integrate the extension point in the Zot codebase by implement the general plugin logic using the defined interface at 1 and hook different implementations by calling the Plugin Manager.
-
+    * **RPC Client Adapter**: Is an adapter of the raw gRPC client. It handles call parameters, configuration and doing the actual RPC request. It implements the interface defined at 1.
+    * **Plugin Builder**: Builds new Plugin Clients given connection details and different options.
+    * **Implementations Manager**: Is responsible for storing all implementations of the current extension point and also dispenses required implementation when needed.
+4. Register the new extension point to the Plugin Manager.
+5. Integrate the extension point in the Zot codebase by implementing the general plugin logic using the defined interface at 1 and hook different implementations by calling the Plugin Manager.
+ 
 Now the Plugin Manager will be able to register new extension points, create and dispense implementations for them.
-
+ 
 ![alt text](plugins_diagrams.png?raw=true)
-
+ 
 So each plugin involves of 2 components:
-
+ 
 1. The plugin provider (server)
-	* Is implemented and run outside of Zot.
-	* Implements the gRPC protocol generated by Zot for each extension point that it implements.
-	* Zot assumes that if the service is referenced in it's plugin configuration it is available. It will not manage any deployment or configuration of the service.
+    * Is implemented and run outside of Zot.
+    * Implements the gRPC protocol generated by Zot for each extension point that it implements.
+    * Zot assumes that if the service is referenced in its plugin configuration it is available. It will not manage any deployment or configuration of the service.
 2. The plugin consumer (client):
-	* Is implemented and used by Zot internally as described earlier.
-
+    * Is implemented and used by Zot internally as described earlier.
+ 
 ### The Vulnerability Scanner Plugin
 For this proposal we'll focus on the scanning API and we'll analyze how to add the new extension point for vulnerability scanning.
-
+ 
 In order to achieve this we'll describe the new components that will allow us to add new scanners.
-
+ 
 ### **Plugin Manager**
 * An internal component (part of Zot) that manages the lifecycle and access to the plugin client.
-* Processes plugin configuration info. Creates and initialized plugin clients. Dispenses references to currently used clients.
-  
+* Processes plugin configuration info. Creates and initializes plugin clients. Dispenses references to currently used clients.
+ 
 ```go
 type PluginManager interface {
-	GetImplManager(name string) ImplementationManager
-	GetBuilder(interfaceName string) (PluginBuilder, error)
-	LoadAll(pluginsDir string) error
-	RegisterInterface(name string, implManager ImplementationManager, pluginBuilder PluginBuilder)
-	RegisterImplementation(interfaceName string, implName string, plugin Plugin) error
+    GetImplManager(name string) ImplementationManager
+    GetBuilder(interfaceName string) (PluginBuilder, error)
+    LoadAll(pluginsDir string) error
+    RegisterInterface(name string, implManager ImplementationManager, pluginBuilder PluginBuilder)
+    RegisterImplementation(interfaceName string, implName string, plugin Plugin) error
 }
-
+ 
 type BasePluginManager struct {
-	ImplManagers map[string]ImplementationManager
-	builders     map[string]PluginBuilder
+    ImplManagers map[string]ImplementationManager
+    builders     map[string]PluginBuilder
 }
 ```
+
+#### Plugin initialization
+1. Zot will know what plugins are available by reading a configuration file. This file should be located in a standard location such as `/home/user/.zot/plugin_config.json` so that Zot can allways read it.
+```json
+{
+    "name": "ClamAV",
+    "integrationPoints": [
+        {
+            "interface": "VulnScanner",
+            "grpcConnection": {
+                "addr": "localhost",
+                "port": 9100
+            },
+            "options": {
+                "zot-addr": "localhost:8080"
+            }
+        }
+    ]
+}
+```
+2. The Plugin Manager will parse through all integration points the plugin implements
+3. For each valid integration point a new RPC Client Adapter (corresponding to the current interface) is registered with the name specified.
+
+### Scanner Interface
+```go
+type VulnScanner interface {
+    ScanImage(ctx *cli.Context, image string) (*ScanReport, error)
+}
+```
+* `image` might be of the format `alpine:latest`
+ 
+### **Scanning API**
+* gRPC based
+* Oriented towards vulnerability scanning, not 100% general.
+* Versioned?
+* Maintained by Zot
+ 
+```proto3
+// the gRPC service
+service Scan {
+  rpc ScanImage (ScanRequest) returns (ScanResponse) {}
+}
+ 
+message ScanRequest {
+  string   image         = 1;
+  Registry registry      = 2;
+}
+ 
+message ScanResponse {
+  ScanReport report = 1;
+}
+ 
+message ScanReport {
+  Image    image   = 1;
+  Scanner  scanner = 2;
+  repeated ScanVulnerability vulnerabilities = 3;
+}
+```
+ScanVulnerability follows the CVE model of vulnerability.
+ 
+### **Scanner Plugin**
+* Program that provides the functionality of the scanner by implementing the scanning API and listening for requests from clients. 
+* Follows the Adapter pattern to provide the functionality of a scanner. It might call the scanner binary or use it as a library.
+* Deployed outside of Zot and is independent of all of Zot internal state or resources (otherwise this would create more coupling)
+ 
+Example [here](https://github.com/laurentiuNiculae/zot-clamav-plugin)
+ 
+### **RPC Client Adapter**
+* An internal component that consumes the functionality provided by the plugin adapter
+* It is part of zot and facilitates communication with the adapter.
+ 
+```go
+type RPCScanner struct {
+    name    string
+    options common.Options
+    client  ScanClient
+}
+ 
+func (rs RPCScanner) ScanImage(ctx *cli.Context, image string) (*ScanReport, error) {
+    url, ok := rs.options["zot-addr"].(string)
+    if !ok {
+        return &ScanReport{}, nil // Needs to return error.
+    }
+ 
+    response, err := rs.client.Scan(context.Background(),
+        &ScanRequest{
+            Image: image,
+            Registry: &Registry{
+                Url: url,
+            },
+        })
+ 
+    return response.Report, err
+}
+```
+* The **ScanClient** object is generated automatically, it reprezents the gRPC client. It is initialized with connection details when the RPCScanner is created
 ### **Implementations Manager**
 * A component of the Plugin Manager.
 * It is responsible for storing and dispensing implementations.
 * Each extension point, when registered, initializes his own implementations manager
 * (Should it be thread safe?)
 * Can follow different [invocation patters](https://docs.openstack.org/stevedore/latest/user/essays/pycon2013.html#:~:text=implementation%20is%20complete.-,Invocation%C2%B6,-And%20the%20final): driver, dispatcher, iterator
-
+ 
 ```go
 type ImplementationManager interface {
-	RegisterImplementation(implName string, plugin interface{}) error
-	AllPlugins() map[string]Plugin
-	GetImpl(name string) Plugin
+    RegisterImplementation(implName string, plugin interface{}) error
+    AllPlugins() map[string]Plugin
+    GetImpl(name string) Plugin
 }
 ```
 
@@ -91,159 +187,90 @@ type ImplementationManager interface {
   `map[string]interface{}`.
 ```go
 type PluginBuilder interface {
-	Build(name, addr, port string, options Options) (Plugin, error)
+    Build(name, addr, port string, options Options) (Plugin, error)
 }
 ```
-### Scanner Interface 
-```go
-type VulnScanner interface {
-	ScanImage(ctx *cli.Context, image string) (*ScanReport, error)
-}
-```
-* `image` might be of the format `alpine:latest`
-
-### **Scanning API**
-* gRPC based
-* Oriented towards vulnerability scanning, not 100% general. 
-* Versioned?
-* Maintained by Zot
-
-```proto3
-service Scan {
-  rpc Scan (ScanRequest) returns (ScanResponse) {}
-}
-
-message ScanRequest {
-  string   image         = 1;
-  Registry registry      = 2;
-}
-
-message ScanResponse {
-  ScanReport report = 1;
-}
-
-message ScanReport {
-  Image    image   = 1;
-  Scanner  scanner = 2;
-  repeated ScanVulnerability vulnerabilities = 3;
-}
-```
-ScanVulnerability follows the CVE model of vulnerability.
-
-### **Scanner Adapter Plugin**
-* Program that provides the functionality of the scanner by implementing the scanning API and listening for requests from clients. It might call the scanner binary or use it as a library.
-* Deployed outside of Zot and is independent of all of Zot internal state or resources (otherwise this would create more coupling)
-  
-Example [here](https://github.com/laurentiuNiculae/zot-clamav-plugin)
-
-### **Plugin Client**
-* An internal component that consumes the functionality provided by the plugin adapter
-* It is part of zot and facilitates the communication with the adapter. 
-
-```go
-type RPCScanner struct {
-	name    string
-	options common.Options
-	client  ScanClient
-}
-
-func (rs RPCScanner) ScanImage(ctx *cli.Context, image string) (*ScanReport, error) {
-	url, ok := rs.options["zot-addr"].(string)
-	if !ok {
-		return &ScanReport{}, nil // Needs to return error.
-	}
-
-	response, err := rs.client.Scan(context.Background(),
-		&ScanRequest{
-			Image: image,
-			Registry: &Registry{
-				Url: url,
-			},
-		})
-
-	return response.Report, err
-}
-```
-* the ScanClient object is initialized with connection details when the RPCScanner facade is created
 ### Data Access
-In order to keep all components decoupled any Scanner Adapter (or any plugin provider) will use the Zot API in order to download the images it needs to scan. (Zot might provide utilitarian package to help with this task). Any other data processing should be done by the Scanner Adapter (like unpacking)
-
+In order to keep all components decoupled any Scanner Adapter (or any plugin provider) will use the Zot API in order to download the images it needs to scan. (Zot might provide a utilitarian package to help with this task). Any other data processing should be done by the Scanner Adapter (like unpacking)
+ 
 ### Integration with Zot
-In order to take advantage of multiple scanner we have to replace the inline implementation of Trivy CVE scanner with a more generic implementation based on the VulnScanner interface.
-
-In the following example just the changed linea have been shown. The GetCVEInfo function returns a CveInfo object that has scanning cababilities
-
+In order to take advantage of multiple scanners we have to replace the inline implementation of Trivy CVE scanner with a more generic implementation based on the VulnScanner interface.
+ 
+In the following example just the changed linea have been shown. The GetCVEInfo function returns a CveInfo object that has scanning capabilities
+ 
 ```go
 type CveInfo struct {
-	scan.VulnScanner   // !
-	Log                log.Logger
-	CveTrivyController CveTrivyController
-	StoreController    storage.StoreController
-	LayoutUtils        *common.OciLayoutUtils
+    scan.VulnScanner   // !
+    Log                log.Logger
+    CveTrivyController CveTrivyController
+    StoreController    storage.StoreController
+    LayoutUtils        *common.OciLayoutUtils
 }
 ```
-
-The ImplementationManager the Vulnerability Scanner extension point uses follows the driver model so it stores just 1 implementation and it is called "default". 
-
-When we initiate this Scaning utilitary we hook what plugin has been loaded from the config into this object. From now on, our plugin will be used to scan images.
+ 
+The ImplementationManager the Vulnerability Scanner extension point follows the driver model so it stores just 1 implementation and it is called "default".
+ 
+When we initiate this Scanning utilitary we hook what plugin has been loaded from the config into this object. From now on, our plugin will be used to scan images.
 ```go
 func GetCVEInfo(storeController storage.StoreController, implManager ImplementationManager,
-	log log.Logger,
+    log log.Logger,
 ) (*CveInfo, error) {
-	var vulnScanner scan.VulnScanner
-
-	vulnScanner = &CveScannerFs{}
-	
-	if impl, ok := implManager.GetImpl("default").(scan.VulnScanner); impl != nil && ok {
-		vulnScanner = impl
-	}
-
+    var vulnScanner scan.VulnScanner
+ 
+    vulnScanner = &CveScannerFs{}
+   
+    if impl, ok := implManager.GetImpl("default").(scan.VulnScanner); impl != nil && ok {
+        vulnScanner = impl
+    }
+ 
     ...
-
+ 
     return &CveInfo{
-		Log: log, CveTrivyController: cveController, StoreController: storeController,
-		LayoutUtils: layoutUtils, VulnScanner: vulnScanner,
-	}, nil
+        Log: log, CveTrivyController: cveController, StoreController: storeController,
+        LayoutUtils: layoutUtils, VulnScanner: vulnScanner,
+    }, nil
 ```
-
+ 
 ### Scanning an image using a plugin
-
-Zot has been updated to allow changing the 
-
+ 
+Zot has been updated to allow changing the implementation of a scanner by replacing the CveInfo structure with an interface (VulnScanner).
+ 
 We need to make the following assumptions:
-
+ 
 * Zot was started with the search function enabled and the ClamAv Adapter is specified in the plugin config. The default scanner becomes ClamAv (replacing Trivy):
 ```json
 {
 "name": "ClamAV",
-	"integrationPoints": [
-		{
-			"interface": "VulnScanner",
-			"grpcConnection": {
-				"addr": "localhost",
-				"port": 9100
-			},
-			"options": {
-			"zot-addr": "localhost:8080" // connection details about zot
-			}
-		}
-	]
+    "integrationPoints": [
+        {
+            "interface": "VulnScanner",
+            "grpcConnection": {
+                "addr": "localhost",
+                "port": 9100
+            },
+            "options": {
+            "zot-addr": "localhost:8080" // connection details about zot
+            }
+        }
+    ]
 }
 ```
-* A instance of the Clamd Scanner Adapter is running and configured to talk with the clamd service.
-* A instance of Clamd is running and listening for scan requests.
-
+* An instance of the Clamd Scanner Adapter is running and configured to talk with the clamd service.
+* An instance of Clamd is running and listening for scan requests.
+ 
 The following flow will occur:
-
+ 
 1. Scan is initiated from zli
 2. The search service in zot asks the Plugin Manager for the default Vulnerably Scanner.
 3. Calls the Scan() method on the default scanner and waits for the scan report.
 4. The adapter will download the image that needs to be scanned using connection data/credentials provided in the request.
 5. The adapter calls the scanning abilities of the clamd service using the provided client `clamdscan`.
-6. The adapter parses the results and converts them to a RPC response object and sends the it back to Zot.
+6. The adapter parses the results and converts them to a RPC response object and sends it back to Zot.
 7. Converts the RPC message to GraphQL and returns the scan result to zli.
-
+ 
 ## Compatibility
 How can we keep version compatibility and handle breaking changes?
-
+ 
 ## Cashing scanning results
+ 
+
