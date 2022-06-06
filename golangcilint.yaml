@@ -57,3 +57,6 @@ linters-settings:
       - github.com/hashicorp/go-getter
       - github.com/opencontainers/runc
       - github.com/theupdateframework/go-tuf
+      - go.etcd.io/etcd/v3
+      - go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc
+      - go.opentelemetry.io/otel/exporters/otlp/otlptrace
