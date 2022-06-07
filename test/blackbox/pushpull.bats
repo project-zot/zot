@@ -6,7 +6,7 @@ function setup_file() {
         exit 1
     fi
     # Download test data to folder common for the entire suite, not just this file
-    skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.17 oci:${TEST_DATA_DIR}/golang:1.17
+    skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.18 oci:${TEST_DATA_DIR}/golang:1.18
     # Setup zot server
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
@@ -43,26 +43,26 @@ function teardown_file() {
 
 @test "push image" {
     run skopeo --insecure-policy copy --dest-tls-verify=false \
-        oci:${TEST_DATA_DIR}/golang:1.17 \
-        docker://127.0.0.1:8080/golang:1.17
+        oci:${TEST_DATA_DIR}/golang:1.18 \
+        docker://127.0.0.1:8080/golang:1.18
     [ "$status" -eq 0 ]
     run curl http://127.0.0.1:8080/v2/_catalog
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.repositories[]') = '"golang"' ]
     run curl http://127.0.0.1:8080/v2/golang/tags/list
     [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.17"' ]
+    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.18"' ]
 }
 
 @test "pull image" {
     local oci_data_dir=${BATS_FILE_TMPDIR}/oci
     run skopeo --insecure-policy copy --src-tls-verify=false \
-        docker://127.0.0.1:8080/golang:1.17 \
-        oci:${oci_data_dir}/golang:1.17
+        docker://127.0.0.1:8080/golang:1.18 \
+        oci:${oci_data_dir}/golang:1.18
     [ "$status" -eq 0 ]
     run cat ${BATS_FILE_TMPDIR}/oci/golang/index.json
     [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.manifests[].annotations."org.opencontainers.image.ref.name"') = '"1.17"' ]
+    [ $(echo "${lines[-1]}" | jq '.manifests[].annotations."org.opencontainers.image.ref.name"') = '"1.18"' ]
 }
 
 @test "push oras artifact" {
