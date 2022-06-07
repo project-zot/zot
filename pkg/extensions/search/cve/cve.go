@@ -9,9 +9,9 @@ import (
 	dbTypes "github.com/aquasecurity/trivy-db/pkg/types"
 	"github.com/aquasecurity/trivy/pkg/commands/artifact"
 	"github.com/aquasecurity/trivy/pkg/commands/operation"
-	"github.com/aquasecurity/trivy/pkg/report"
 	"github.com/aquasecurity/trivy/pkg/types"
 	"github.com/urfave/cli/v2"
+	"zotregistry.io/zot/pkg/api/constants"
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
@@ -32,7 +32,7 @@ func getRoutePrefix(name string) string {
 
 // UpdateCVEDb ...
 func UpdateCVEDb(dbDir string, log log.Logger) error {
-	return operation.DownloadDB("dev", dbDir, false, false, false)
+	return operation.DownloadDB("dev", dbDir, constants.TrivyOciRepo, false, false)
 }
 
 // NewTrivyContext set some trivy configuration value and return a context.
@@ -72,8 +72,29 @@ func NewTrivyContext(dir string) *TrivyCtx {
 	return trivyCtx
 }
 
-func ScanImage(ctx *cli.Context) (report.Report, error) {
-	return artifact.TrivyImageRun(ctx)
+func ScanImage(ctx *cli.Context) (types.Report, error) {
+	opt, err := artifact.InitOption(ctx)
+	if err != nil {
+		return types.Report{}, err
+	}
+
+	runner, err := artifact.NewRunner(opt)
+	if err != nil {
+		return types.Report{}, err
+	}
+	defer runner.Close()
+
+	report, err := runner.ScanImage(ctx.Context, opt)
+	if err != nil {
+		return types.Report{}, err
+	}
+
+	report, err = runner.Filter(ctx.Context, opt, report)
+	if err != nil {
+		return types.Report{}, err
+	}
+
+	return report, nil
 }
 
 func GetCVEInfo(storeController storage.StoreController, log log.Logger) (*CveInfo, error) {
