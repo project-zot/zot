@@ -16,7 +16,7 @@
 **Sample request**
 
 ```
-curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageListForDigest (id:\"63a795ca90aa6e7cca60941e826810a4cd0a2e73ea02bf458241df2a5c973e29\") { Name Tags } }" }' http://localhost:8080/v2/_search
+curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageListForDigest (id:\"63a795ca90aa6e7cca60941e826810a4cd0a2e73ea02bf458241df2a5c973e29\") { Name Tags } }" }' http://localhost:8080/v2/_zot/ext/search
 ```
 
 **Sample response** 
@@ -40,7 +40,7 @@ curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList
 **Sample request**
 
 ```
-curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageListForCVE (id:\"CVE-2002-1119\") { Name Tags } }" }' http://localhost:8080/v2/_search
+curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageListForCVE (id:\"CVE-2002-1119\") { Name Tags } }" }' http://localhost:8080/v2/_zot/ext/search
 ```
 
 **Sample response** 
@@ -64,7 +64,7 @@ curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList
 
 	
 ```
-curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ CVEListForImage (image:\"centos\" ) { Tag CVEList { Id Title Description Severity PackageList {Name InstalledVersion FixedVersion } } } }" }' http://localhost:8080/v2/_search
+curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ CVEListForImage (image:\"centos\" ) { Tag CVEList { Id Title Description Severity PackageList {Name InstalledVersion FixedVersion } } } }" }' http://localhost:8080/v2/_zot/ext/search
 ```
 	
 **Sample response**
@@ -94,7 +94,7 @@ curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ CVEListFo
 **Sample request** 
 
 ```
-curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageListWithCVEFixed (id:\"CVE-2021-3713\",image:\"centos\") { Tags {Name Digest Timestamp} } }" }' http://localhost:8080/v2/_search
+curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageListWithCVEFixed (id:\"CVE-2021-3713\",image:\"centos\") { Tags {Name Digest Timestamp} } }" }' http://localhost:8080/v2/_zot/ext/search
 ```
 
 **Sample response** 
@@ -118,7 +118,7 @@ curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList
 **Sample request** 
 
 ```
-curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageListWithLatestTag () { Name Latest LastUpdated Description Licenses Vendor Size Labels} }" }' http://localhost:8080/v2/_search
+curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageListWithLatestTag () { Name Latest LastUpdated Description Licenses Vendor Size Labels} }" }' http://localhost:8080/v2/_zot/ext/search
 ```
 
 **Sample response** 
@@ -154,7 +154,7 @@ curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList
 Sample request 
 
 ```
-curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ExpandedRepoInfo (repo:\"v2/centos\") { Manifests {Digest Tag IsSigned Layers {Size Digest}}} }" }' http://localhost:8080/v2/_search
+curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ExpandedRepoInfo (repo:\"v2/centos\") { Manifests {Digest Tag IsSigned Layers {Size Digest}}} }" }' http://localhost:8080/v2/_zot/ext/search
 ```
 
 **Sample response** 
