@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v2
       - uses: actions/setup-go@v2
         with:
-          go-version: 1.17.x
+          go-version: 1.18.x
       # Run benchmark with `go test -bench` and stores the output to a file
       - name: Run benchmark
         run: make BENCH_OUTPUT=ci-cd run-bench

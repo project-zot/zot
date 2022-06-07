@@ -1,7 +1,7 @@
 # ---
 # Stage 1: Build binary, create default config file
 # ---
-FROM ghcr.io/project-zot/golang:1.17 AS builder
+FROM ghcr.io/project-zot/golang:1.18 AS builder
 RUN mkdir -p /go/src/github.com/project-zot/zot
 WORKDIR /go/src/github.com/project-zot/zot
 COPY . .
