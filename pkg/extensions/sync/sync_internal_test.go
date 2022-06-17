@@ -316,15 +316,15 @@ func TestSyncInternal(t *testing.T) {
 			Layers: []ispec.Descriptor{desc},
 		}
 
-		err = syncCosignSignature(client, &storage.ImageStoreFS{}, *regURL, testImage, testImage,
+		err = syncCosignSignature(client, &storage.ImageStoreLocal{}, *regURL, testImage, testImage,
 			testImageTag, &ispec.Manifest{}, log)
 		So(err, ShouldNotBeNil)
 
-		err = syncCosignSignature(client, &storage.ImageStoreFS{}, *regURL, testImage, testImage,
+		err = syncCosignSignature(client, &storage.ImageStoreLocal{}, *regURL, testImage, testImage,
 			testImageTag, &manifest, log)
 		So(err, ShouldNotBeNil)
 
-		err = syncNotarySignature(client, &storage.ImageStoreFS{}, *regURL, testImage, testImage,
+		err = syncNotarySignature(client, &storage.ImageStoreLocal{}, *regURL, testImage, testImage,
 			"invalidDigest", ReferenceList{[]artifactspec.Descriptor{ref}}, log)
 		So(err, ShouldNotBeNil)
 	})
