@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -71,11 +72,14 @@ func pullAndCollect(url string, repos []string, manifestItem manifestStruct,
 
 			switch idx {
 			case smallSizeIdx:
-				statusRequests["1MB"]++
+				current := loadOrStore(&statusRequests, "1MB", 0)
+				statusRequests.Store("1MB", current+1)
 			case mediumSizeIdx:
-				statusRequests["10MB"]++
+				current := loadOrStore(&statusRequests, "10MB", 0)
+				statusRequests.Store("10MB", current+1)
 			case largeSizeIdx:
-				statusRequests["100MB"]++
+				current := loadOrStore(&statusRequests, "100MB", 0)
+				statusRequests.Store("100MB", current+1)
 			}
 
 			manifestHash = manifestBySizeHash[idx]
@@ -469,13 +473,16 @@ func pushMonolithAndCollect(workdir, url, trepo string, count int,
 			switch idx {
 			case smallSizeIdx:
 				size = smallBlob
-				statusRequests["1MB"]++
+				current := loadOrStore(&statusRequests, "1MB", 0)
+				statusRequests.Store("1MB", current+1)
 			case mediumSizeIdx:
 				size = mediumBlob
-				statusRequests["10MB"]++
+				current := loadOrStore(&statusRequests, "10MB", 0)
+				statusRequests.Store("10MB", current+1)
 			case largeSizeIdx:
 				size = largeBlob
-				statusRequests["100MB"]++
+				current := loadOrStore(&statusRequests, "100MB", 0)
+				statusRequests.Store("100MB", current+1)
 			default:
 				size = config.size
 			}
@@ -690,14 +697,16 @@ func pushChunkAndCollect(workdir, url, trepo string, count int,
 			switch idx {
 			case smallSizeIdx:
 				size = smallBlob
-				statusRequests["1MB"]++
+				current := loadOrStore(&statusRequests, "1MB", 0)
+				statusRequests.Store("1MB", current+1)
 			case mediumSizeIdx:
 				size = mediumBlob
-				statusRequests["10MB"]++
+				current := loadOrStore(&statusRequests, "10MB", 0)
+				statusRequests.Store("10MB", current+1)
 			case largeSizeIdx:
 				size = largeBlob
-				statusRequests["100MB"]++
-
+				current := loadOrStore(&statusRequests, "100MB", 0)
+				statusRequests.Store("100MB", current+1)
 			default:
 				size = config.size
 			}
@@ -909,4 +918,15 @@ func pushChunkAndCollect(workdir, url, trepo string, count int,
 	}()
 
 	return repos
+}
+
+func loadOrStore(statusRequests *sync.Map, key string, value int) int {
+	val, _ := statusRequests.LoadOrStore(key, value)
+
+	intValue, ok := val.(int)
+	if !ok {
+		log.Fatalf("invalid type: %#v, should be int", val)
+	}
+
+	return intValue
 }
