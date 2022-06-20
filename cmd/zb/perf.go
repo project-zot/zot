@@ -48,7 +48,7 @@ const (
 var blobHash map[string]godigest.Digest = map[string]godigest.Digest{}
 
 // nolint:gochecknoglobals // used only in this test
-var statusRequests map[string]int
+var statusRequests sync.Map
 
 func setup(workingDir string) {
 	_ = os.MkdirAll(workingDir, defaultDirPerms)
@@ -215,15 +215,25 @@ func printStats(requests int, summary *statsSummary, outFmt string) {
 	log.Printf("\n")
 
 	if summary.mixedSize {
-		log.Printf("1MB:\t%v", statusRequests["1MB"])
-		log.Printf("10MB:\t%v", statusRequests["10MB"])
-		log.Printf("100MB:\t%v", statusRequests["100MB"])
+		current := loadOrStore(&statusRequests, "1MB", 0)
+		log.Printf("1MB:\t%v", current)
+
+		current = loadOrStore(&statusRequests, "10MB", 0)
+		log.Printf("10MB:\t%v", current)
+
+		current = loadOrStore(&statusRequests, "100MB", 0)
+		log.Printf("100MB:\t%v", current)
+
 		log.Printf("\n")
 	}
 
 	if summary.mixedType {
-		log.Printf("Pull:\t%v", statusRequests["Pull"])
-		log.Printf("Push:\t%v", statusRequests["Push"])
+		pull := loadOrStore(&statusRequests, "Pull", 0)
+		log.Printf("Pull:\t%v", pull)
+
+		push := loadOrStore(&statusRequests, "Push", 0)
+		log.Printf("Push:\t%v", push)
+
 		log.Printf("\n")
 	}
 
@@ -358,7 +368,7 @@ func PushMonolithStreamed(
 	var repos []string
 
 	if config.mixedSize {
-		statusRequests = make(map[string]int)
+		statusRequests = sync.Map{}
 	}
 
 	for count := 0; count < requests; count++ {
@@ -385,7 +395,7 @@ func PushChunkStreamed(
 	var repos []string
 
 	if config.mixedSize {
-		statusRequests = make(map[string]int)
+		statusRequests = sync.Map{}
 	}
 
 	for count := 0; count < requests; count++ {
@@ -416,7 +426,7 @@ func Pull(
 	manifestBySizeHash := make(map[int](map[string]string))
 
 	if config.mixedSize {
-		statusRequests = make(map[string]int)
+		statusRequests = sync.Map{}
 	}
 
 	if config.mixedSize {
@@ -487,7 +497,7 @@ func MixedPullAndPush(
 ) error {
 	var repos []string
 
-	statusRequests = make(map[string]int)
+	statusRequests = sync.Map{}
 
 	// Push blob given size
 	manifestHash, repos, err := pushMonolithImage(workdir, url, trepo, repos, config.size, client)
@@ -507,10 +517,12 @@ func MixedPullAndPush(
 
 		if idx == readTestIdx {
 			repos = pullAndCollect(url, repos, manifestItem, config, client, statsCh)
-			statusRequests["Pull"]++
+			current := loadOrStore(&statusRequests, "Pull", 0)
+			statusRequests.Store("Pull", current+1)
 		} else if idx == writeTestIdx {
 			repos = pushMonolithAndCollect(workdir, url, trepo, count, repos, config, client, statsCh)
-			statusRequests["Push"]++
+			current := loadOrStore(&statusRequests, "Push", 0)
+			statusRequests.Store("Pull", current+1)
 		}
 	}
 
