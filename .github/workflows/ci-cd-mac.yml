@@ -53,7 +53,7 @@ jobs:
           brew update
           brew install rpm
           brew install snap
-          brew install libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev pkg-config
+          brew install gpgme libassuan btrfs device-mapper pkg-config
           git clone https://github.com/containers/skopeo -b v1.6.1 $GITHUB_WORKSPACE/src/github.com/containers/skopeo
           cd $GITHUB_WORKSPACE/src/github.com/containers/skopeo && make bin/skopeo
           cd $GITHUB_WORKSPACE
