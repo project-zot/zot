@@ -24,6 +24,7 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/plugins"
 	. "zotregistry.io/zot/pkg/test"
 )
 
@@ -71,7 +72,7 @@ func TestAuditLogMessages(t *testing.T) {
 			},
 		}
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		ctlr.Config.Storage.RootDirectory = dir
 		go func() {
 			// this blocks

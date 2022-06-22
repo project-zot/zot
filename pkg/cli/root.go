@@ -19,6 +19,8 @@ import (
 	"zotregistry.io/zot/pkg/api/constants"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
+	"zotregistry.io/zot/pkg/plugins"
+	cliPlugin "zotregistry.io/zot/pkg/plugins/cli"
 	"zotregistry.io/zot/pkg/storage"
 )
 
@@ -30,7 +32,7 @@ func metadataConfig(md *mapstructure.Metadata) viper.DecoderConfigOption {
 	}
 }
 
-func newServeCmd(conf *config.Config) *cobra.Command {
+func newServeCmd(conf *config.Config, pluginManager plugins.PluginManager) *cobra.Command {
 	// "serve"
 	serveCmd := &cobra.Command{
 		Use:     "serve <config>",
@@ -44,7 +46,7 @@ func newServeCmd(conf *config.Config) *cobra.Command {
 				}
 			}
 
-			ctlr := api.NewController(conf)
+			ctlr := api.NewController(conf, pluginManager)
 
 			// config reloader
 			hotReloader, err := NewHotReloader(ctlr, args[0])
@@ -65,7 +67,7 @@ func newServeCmd(conf *config.Config) *cobra.Command {
 	return serveCmd
 }
 
-func newScrubCmd(conf *config.Config) *cobra.Command {
+func newScrubCmd(conf *config.Config, pluginManager plugins.PluginManager) *cobra.Command {
 	// "scrub"
 	scrubCmd := &cobra.Command{
 		Use:     "scrub <config>",
@@ -102,7 +104,7 @@ func newScrubCmd(conf *config.Config) *cobra.Command {
 				panic("Error: server is running")
 			} else {
 				// server is down
-				ctlr := api.NewController(conf)
+				ctlr := api.NewController(conf, pluginManager)
 				ctlr.Metrics = monitoring.NewMetricsServer(false, ctlr.Log)
 
 				if err := ctlr.InitImageStore(context.Background()); err != nil {
@@ -148,6 +150,15 @@ func NewServerRootCmd() *cobra.Command {
 	showVersion := false
 	conf := config.New()
 
+	// init the PluginManager here.
+	// specify a directory where the plugin configs are
+	pluginManager := plugins.NewManager()
+
+	err := pluginManager.LoadAll("/home/laur/zot/examples/plugins/pluginsTest")
+	if err != nil {
+		log.Info().Msg("can't load cli plugins")
+	}
+
 	rootCmd := &cobra.Command{
 		Use:   "zot",
 		Short: "`zot`",
@@ -164,11 +175,11 @@ func NewServerRootCmd() *cobra.Command {
 	}
 
 	// "serve"
-	rootCmd.AddCommand(newServeCmd(conf))
+	rootCmd.AddCommand(newServeCmd(conf, pluginManager))
 	// "verify"
 	rootCmd.AddCommand(newVerifyCmd(conf))
 	// "scrub"
-	rootCmd.AddCommand(newScrubCmd(conf))
+	rootCmd.AddCommand(newScrubCmd(conf, pluginManager))
 	// "version"
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "show the version and exit")
 
@@ -178,6 +189,12 @@ func NewServerRootCmd() *cobra.Command {
 // "zli" - client-side cli.
 func NewCliRootCmd() *cobra.Command {
 	showVersion := false
+	pluginManager := plugins.NewManager()
+
+	err := pluginManager.LoadAll("/home/laur/zot/examples/plugins/pluginsTest")
+	if err != nil {
+		log.Info().Err(err).Msg("can't load cli plugins")
+	}
 
 	rootCmd := &cobra.Command{
 		Use:   "zli",
@@ -196,10 +213,31 @@ func NewCliRootCmd() *cobra.Command {
 
 	// additional cmds
 	enableCli(rootCmd)
+
+	// additional plugins
+	enableCliPlugins(rootCmd, pluginManager)
+
 	// "version"
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "show the version and exit")
 
 	return rootCmd
+}
+
+func enableCliPlugins(cmd *cobra.Command, pm plugins.PluginManager) {
+	// init clients for each config
+	implManager := pm.GetImplManager(plugins.CLICommand)
+
+	for name, plugin := range implManager.AllPlugins() {
+		command, ok := plugin.(cliPlugin.Command)
+		if !ok {
+			log.Warn().Msgf("Can't add plugin: %v", name)
+
+			continue
+		}
+
+		log.Info().Msgf("Adding plugin: %v", name)
+		cmd.AddCommand(command.GetCommand())
+	}
 }
 
 func validateConfiguration(config *config.Config) error {

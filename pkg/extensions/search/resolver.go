@@ -10,6 +10,7 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	"zotregistry.io/zot/pkg/log" // nolint: gci
+	"zotregistry.io/zot/pkg/plugins"
 
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
@@ -40,13 +41,15 @@ type cveDetail struct {
 }
 
 // GetResolverConfig ...
-func GetResolverConfig(log log.Logger, storeController storage.StoreController, enableCVE bool) Config {
+func GetResolverConfig(log log.Logger, storeController storage.StoreController,
+	pluginManager plugins.PluginManager, enableCVE bool,
+) Config {
 	var cveInfo *cveinfo.CveInfo
 
 	var err error
 
 	if enableCVE {
-		cveInfo, err = cveinfo.GetCVEInfo(storeController, log)
+		cveInfo, err = cveinfo.GetCVEInfo(storeController, pluginManager.GetImplManager(plugins.VulnScanner), log)
 		if err != nil {
 			panic(err)
 		}
@@ -120,7 +123,7 @@ func (r *queryResolver) CVEListForImage(ctx context.Context, image string) (*CVE
 		return &CVEResultForImage{}, err
 	}
 
-	report, err := cveinfo.ScanImage(trivyCtx.Ctx)
+	report, err := r.cveInfo.ScanImage(trivyCtx.Ctx, image)
 	if err != nil {
 		r.log.Error().Err(err).Msg("unable to scan image repository")
 
@@ -135,41 +138,41 @@ func (r *queryResolver) CVEListForImage(ctx context.Context, image string) (*CVE
 
 	cveidMap := make(map[string]cveDetail)
 
-	for _, result := range report.Results {
-		for _, vulnerability := range result.Vulnerabilities {
-			pkgName := vulnerability.PkgName
+	for _, vulnerability := range report.Vulnerabilities {
+		pkgName := vulnerability.Pkg
 
-			installedVersion := vulnerability.InstalledVersion
+		installedVersion := vulnerability.Version
 
-			var fixedVersion string
-			if vulnerability.FixedVersion != "" {
-				fixedVersion = vulnerability.FixedVersion
-			} else {
-				fixedVersion = "Not Specified"
-			}
+		var fixedVersion string
+		if vulnerability.FixedVersion != "" {
+			fixedVersion = vulnerability.FixedVersion
+		} else {
+			fixedVersion = "Not Specified"
+		}
 
-			_, ok := cveidMap[vulnerability.VulnerabilityID]
-			if ok {
-				cveDetailStruct := cveidMap[vulnerability.VulnerabilityID]
+		_, ok := cveidMap[vulnerability.VulnerabilityId]
+		if ok {
+			cveDetailStruct := cveidMap[vulnerability.VulnerabilityId]
 
-				pkgList := cveDetailStruct.PackageList
+			pkgList := cveDetailStruct.PackageList
 
-				pkgList = append(pkgList,
-					&PackageInfo{Name: &pkgName, InstalledVersion: &installedVersion, FixedVersion: &fixedVersion})
+			pkgList = append(pkgList,
+				&PackageInfo{Name: &pkgName, InstalledVersion: &installedVersion, FixedVersion: &fixedVersion})
 
-				cveDetailStruct.PackageList = pkgList
+			cveDetailStruct.PackageList = pkgList
 
-				cveidMap[vulnerability.VulnerabilityID] = cveDetailStruct
-			} else {
-				newPkgList := make([]*PackageInfo, 0)
+			cveidMap[vulnerability.VulnerabilityId] = cveDetailStruct
+		} else {
+			newPkgList := make([]*PackageInfo, 0)
 
-				newPkgList = append(newPkgList,
-					&PackageInfo{Name: &pkgName, InstalledVersion: &installedVersion, FixedVersion: &fixedVersion})
+			newPkgList = append(newPkgList,
+				&PackageInfo{Name: &pkgName, InstalledVersion: &installedVersion, FixedVersion: &fixedVersion})
 
-				cveidMap[vulnerability.VulnerabilityID] = cveDetail{
-					Title:       vulnerability.Title,
-					Description: vulnerability.Description, Severity: vulnerability.Severity, PackageList: newPkgList,
-				}
+			cveidMap[vulnerability.VulnerabilityId] = cveDetail{
+				Title:       vulnerability.Title,
+				Description: vulnerability.Description,
+				Severity:    vulnerability.Severity.String(),
+				PackageList: newPkgList,
 			}
 		}
 	}
@@ -305,7 +308,7 @@ func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, cvid, image s
 
 		r.cveInfo.Log.Info().Str("image", fmt.Sprintf("%s:%s", image, tag.Name)).Msg("scanning image")
 
-		report, err := cveinfo.ScanImage(trivyCtx.Ctx)
+		report, err := r.cveInfo.ScanImage(trivyCtx.Ctx, image)
 		if err != nil {
 			r.log.Error().Err(err).
 				Str("image", fmt.Sprintf("%s:%s", image, tag.Name)).Msg("unable to scan image")
@@ -315,13 +318,11 @@ func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, cvid, image s
 
 		hasCVE = false
 
-		for _, result := range report.Results {
-			for _, vulnerability := range result.Vulnerabilities {
-				if vulnerability.VulnerabilityID == cvid {
-					hasCVE = true
+		for _, vulnerability := range report.Vulnerabilities {
+			if vulnerability.VulnerabilityId == cvid {
+				hasCVE = true
 
-					break
-				}
+				break
 			}
 		}
 

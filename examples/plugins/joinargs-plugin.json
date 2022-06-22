@@ -1,0 +1,24 @@
+{
+    "name": "JoinArgsPlugin",
+    "integrationPoints": [
+        {
+            "interface": "CLICommand",
+            "grpcConnection": {
+                "addr": "localhost",
+                "port": 9000
+            },
+            "options": {
+                "use": "join",
+                "short": "Join the arguments given.",
+                "long": "This joings the arguments given using the '|' character."
+            }
+        },
+        {
+            "interface": "CustomEndpoint",
+            "grpcConnection": {
+                "addr": "localhost",
+                "port": 9005
+            }
+        }
+    ]
+}

@@ -63,6 +63,13 @@ require (
 )
 
 require (
+	github.com/aquasecurity/fanal v0.0.0-20211005172059-69527b46560c // indirect
+	github.com/golang/protobuf v1.5.2
+	google.golang.org/grpc v1.46.2
+	google.golang.org/protobuf v1.28.0
+)
+
+require (
 	bitbucket.org/creachadair/shell v0.0.6 // indirect
 	cloud.google.com/go v0.100.2 // indirect
 	cloud.google.com/go/compute v1.6.1 // indirect
@@ -98,7 +105,6 @@ require (
 	github.com/agnivade/levenshtein v1.1.1 // indirect
 	github.com/apparentlymart/go-cidr v1.1.0 // indirect
 	github.com/apparentlymart/go-textseg/v13 v13.0.0 // indirect
-	github.com/aquasecurity/fanal v0.0.0-20211005172059-69527b46560c // indirect
 	github.com/aquasecurity/go-dep-parser v0.0.0-20210919151457-76db061b9305 // indirect
 	github.com/aquasecurity/go-gem-version v0.0.0-20201115065557-8eed6fe000ce // indirect
 	github.com/aquasecurity/go-npm-version v0.0.0-20201110091526-0b796d180798 // indirect
@@ -198,7 +204,6 @@ require (
 	github.com/golang/glog v1.0.0 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/mock v1.6.0 // indirect
-	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/btree v1.0.1 // indirect
 	github.com/google/certificate-transparency-go v1.1.2 // indirect
@@ -374,8 +379,6 @@ require (
 	google.golang.org/api v0.81.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20220519153652-3a47de7e79bd // indirect
-	google.golang.org/grpc v1.46.2 // indirect
-	google.golang.org/protobuf v1.28.0 // indirect
 	gopkg.in/cheggaaa/pb.v1 v1.0.28 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/ini.v1 v1.66.4 // indirect

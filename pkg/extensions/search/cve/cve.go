@@ -9,11 +9,13 @@ import (
 	dbTypes "github.com/aquasecurity/trivy-db/pkg/types"
 	"github.com/aquasecurity/trivy/pkg/commands/artifact"
 	"github.com/aquasecurity/trivy/pkg/commands/operation"
-	"github.com/aquasecurity/trivy/pkg/report"
 	"github.com/aquasecurity/trivy/pkg/types"
 	"github.com/urfave/cli/v2"
 	"zotregistry.io/zot/pkg/extensions/search/common"
+	"zotregistry.io/zot/pkg/extensions/search/cve/convert"
 	"zotregistry.io/zot/pkg/log"
+	pluginsCommon "zotregistry.io/zot/pkg/plugins/common"
+	"zotregistry.io/zot/pkg/plugins/scan"
 	"zotregistry.io/zot/pkg/storage"
 )
 
@@ -72,15 +74,31 @@ func NewTrivyContext(dir string) *TrivyCtx {
 	return trivyCtx
 }
 
-func ScanImage(ctx *cli.Context) (report.Report, error) {
-	return artifact.TrivyImageRun(ctx)
+type CveScannerFs struct{}
+
+func (csf CveScannerFs) ScanImage(ctx *cli.Context, image string) (*scan.ScanReport, error) {
+	report, err := artifact.TrivyImageRun(ctx)
+	if err != nil {
+		return &scan.ScanReport{}, err
+	}
+
+	return convert.ToRPCScanReport(report), nil
 }
 
-func GetCVEInfo(storeController storage.StoreController, log log.Logger) (*CveInfo, error) {
+func GetCVEInfo(storeController storage.StoreController, implManager pluginsCommon.ImplementationManager,
+	log log.Logger,
+) (*CveInfo, error) {
+	var vulnScanner scan.VulnScanner
+
+	vulnScanner = &CveScannerFs{}
 	cveController := CveTrivyController{}
 	layoutUtils := common.NewOciLayoutUtils(storeController, log)
 
 	subCveConfig := make(map[string]*TrivyCtx)
+
+	if impl, ok := implManager.GetImpl("default").(scan.VulnScanner); impl != nil && ok {
+		vulnScanner = impl
+	}
 
 	if storeController.DefaultStore != nil {
 		imageStore := storeController.DefaultStore
@@ -106,7 +124,7 @@ func GetCVEInfo(storeController storage.StoreController, log log.Logger) (*CveIn
 
 	return &CveInfo{
 		Log: log, CveTrivyController: cveController, StoreController: storeController,
-		LayoutUtils: layoutUtils,
+		LayoutUtils: layoutUtils, VulnScanner: vulnScanner,
 	}, nil
 }
 
@@ -167,21 +185,19 @@ func (cveinfo CveInfo) GetImageListForCVE(repo, cvid string, imgStore storage.Im
 
 		cveinfo.Log.Info().Str("image", repo+":"+tag).Msg("scanning image")
 
-		report, err := ScanImage(trivyCtx.Ctx)
+		report, err := cveinfo.ScanImage(trivyCtx.Ctx, image)
 		if err != nil {
 			cveinfo.Log.Error().Err(err).Str("image", repo+":"+tag).Msg("unable to scan image")
 
 			continue
 		}
 
-		for _, result := range report.Results {
-			for _, vulnerability := range result.Vulnerabilities {
-				if vulnerability.VulnerabilityID == cvid {
-					copyImgTag := tag
-					tags = append(tags, &copyImgTag)
+		for _, vulnerability := range report.Vulnerabilities {
+			if vulnerability.VulnerabilityId == cvid {
+				copyImgTag := tag
+				tags = append(tags, &copyImgTag)
 
-					break
-				}
+				break
 			}
 		}
 	}

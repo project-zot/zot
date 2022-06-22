@@ -26,6 +26,7 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
+	"zotregistry.io/zot/pkg/plugins"
 	"zotregistry.io/zot/pkg/test"
 )
 
@@ -459,7 +460,7 @@ func TestServerResponse(t *testing.T) {
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 		go func(controller *api.Controller) {
 			// this blocks

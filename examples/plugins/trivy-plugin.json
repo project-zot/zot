@@ -1,0 +1,27 @@
+{
+    "name": "TrivyPlugin",
+    "integrationPoints": [
+        {
+            "interface": "CLICommand",
+            "grpcConnection": {
+                "addr": "localhost",
+                "port": 8081
+            },
+            "options": {
+                "use": "scan",
+                "short": "Scans the image from zot.",
+                "long": ""
+            }
+        },
+        {
+            "interface": "VulnScanner",
+            "grpcConnection": {
+                "addr": "localhost",
+                "port": 9010
+            },
+            "options": {
+                "zot-addr": "localhost:8080"
+            }
+        }
+    ]
+}

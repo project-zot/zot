@@ -24,6 +24,7 @@ import (
 	zotcfg "zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/exporter/api"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
+	"zotregistry.io/zot/pkg/plugins"
 	. "zotregistry.io/zot/pkg/test"
 )
 
@@ -120,7 +121,7 @@ func TestNewExporter(t *testing.T) {
 				So(servercConfig, ShouldNotBeNil)
 				baseURL := fmt.Sprintf(BaseURL, serverPort)
 				servercConfig.HTTP.Port = serverPort
-				serverController := zotapi.NewController(servercConfig)
+				serverController := zotapi.NewController(servercConfig, plugins.NewManager())
 				So(serverController, ShouldNotBeNil)
 
 				dir := t.TempDir()

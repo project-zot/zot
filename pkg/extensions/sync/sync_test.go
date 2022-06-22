@@ -41,6 +41,7 @@ import (
 	"zotregistry.io/zot/pkg/cli"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/sync"
+	"zotregistry.io/zot/pkg/plugins"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test"
 )
@@ -157,7 +158,7 @@ func startUpstreamServer(
 
 	srcConfig.Storage.RootDirectory = srcDir
 
-	sctlr := api.NewController(srcConfig)
+	sctlr := api.NewController(srcConfig, plugins.NewManager())
 
 	go func() {
 		// this blocks
@@ -230,7 +231,7 @@ func startDownstreamServer(
 	destConfig.Extensions.Search = nil
 	destConfig.Extensions.Sync = syncConfig
 
-	dctlr := api.NewController(destConfig)
+	dctlr := api.NewController(destConfig, plugins.NewManager())
 
 	go func() {
 		// this blocks
@@ -707,7 +708,7 @@ func TestOnDemandPermsDenied(t *testing.T) {
 		destConfig.Extensions.Search = nil
 		destConfig.Extensions.Sync = syncConfig
 
-		dctlr := api.NewController(destConfig)
+		dctlr := api.NewController(destConfig, plugins.NewManager())
 
 		defer func() {
 			dctlr.Shutdown()
@@ -799,7 +800,7 @@ func TestConfigReloader(t *testing.T) {
 
 		destConfig.Log.Output = logFile.Name()
 
-		dctlr := api.NewController(destConfig)
+		dctlr := api.NewController(destConfig, plugins.NewManager())
 
 		defer func() {
 			dctlr.Shutdown()
@@ -1155,7 +1156,7 @@ func TestBasicAuth(t *testing.T) {
 				Registries:      []sync.RegistryConfig{syncRegistryConfig},
 			}
 
-			dctlr := api.NewController(destConfig)
+			dctlr := api.NewController(destConfig, plugins.NewManager())
 
 			go func() {
 				// this blocks
@@ -1762,7 +1763,7 @@ func TestSubPaths(t *testing.T) {
 
 		srcConfig.Storage.RootDirectory = srcDir
 
-		sctlr := api.NewController(srcConfig)
+		sctlr := api.NewController(srcConfig, plugins.NewManager())
 
 		go func() {
 			// this blocks
@@ -1829,7 +1830,7 @@ func TestSubPaths(t *testing.T) {
 		destConfig.Extensions.Search = nil
 		destConfig.Extensions.Sync = syncConfig
 
-		dctlr := api.NewController(destConfig)
+		dctlr := api.NewController(destConfig, plugins.NewManager())
 
 		go func() {
 			// this blocks
@@ -2691,7 +2692,7 @@ func TestOnDemandRetryGoroutine(t *testing.T) {
 
 		srcConfig.Storage.RootDirectory = srcDir
 
-		sctlr := api.NewController(srcConfig)
+		sctlr := api.NewController(srcConfig, plugins.NewManager())
 
 		regex := ".*"
 		semver := true
@@ -2832,7 +2833,7 @@ func TestOnDemandMultipleRetries(t *testing.T) {
 
 		srcConfig.Storage.RootDirectory = srcDir
 
-		sctlr := api.NewController(srcConfig)
+		sctlr := api.NewController(srcConfig, plugins.NewManager())
 
 		var tlsVerify bool
 
@@ -3375,7 +3376,7 @@ func TestSyncOnlyDiff(t *testing.T) {
 		destConfig.Extensions.Search = nil
 		destConfig.Extensions.Sync = syncConfig
 
-		dctlr := api.NewController(destConfig)
+		dctlr := api.NewController(destConfig, plugins.NewManager())
 
 		go func() {
 			// this blocks
@@ -3471,7 +3472,7 @@ func TestSyncWithDiffDigest(t *testing.T) {
 		destConfig.Extensions.Search = nil
 		destConfig.Extensions.Sync = syncConfig
 
-		dctlr := api.NewController(destConfig)
+		dctlr := api.NewController(destConfig, plugins.NewManager())
 
 		// before starting downstream server, let's modify an image manifest so that sync should pull it
 		// change digest of the manifest so that sync should happen

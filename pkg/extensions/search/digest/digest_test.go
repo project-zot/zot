@@ -22,6 +22,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	digestinfo "zotregistry.io/zot/pkg/extensions/search/digest"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/plugins"
 	"zotregistry.io/zot/pkg/storage"
 	. "zotregistry.io/zot/pkg/test"
 )
@@ -162,7 +163,7 @@ func TestDigestSearchHTTP(t *testing.T) {
 			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 
 		go func() {
 			// this blocks
@@ -301,7 +302,7 @@ func TestDigestSearchHTTPSubPaths(t *testing.T) {
 			Search: &extconf.SearchConfig{Enable: &defaultVal},
 		}
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 
 		globalDir, err := ioutil.TempDir("", "digest_test")
 		if err != nil {
@@ -375,7 +376,7 @@ func TestDigestSearchDisabled(t *testing.T) {
 			Search: &extconf.SearchConfig{Enable: &disabled},
 		}
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 
 		go func() {
 			// this blocks

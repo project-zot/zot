@@ -22,6 +22,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/scrub"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/plugins"
 	"zotregistry.io/zot/pkg/test"
 )
 
@@ -53,7 +54,7 @@ func TestScrubExtension(t *testing.T) {
 			Scrub: scrubConfig,
 		}
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 
 		err = test.CopyFiles("../../../test/data/zot-test", path.Join(dir, repoName))
 		if err != nil {
@@ -111,7 +112,7 @@ func TestScrubExtension(t *testing.T) {
 			Scrub: scrubConfig,
 		}
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 
 		err = test.CopyFiles("../../../test/data/zot-test", path.Join(dir, repoName))
 		if err != nil {
@@ -176,7 +177,7 @@ func TestScrubExtension(t *testing.T) {
 			Scrub: scrubConfig,
 		}
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 
 		err = test.CopyFiles("../../../test/data/zot-test", path.Join(dir, repoName))
 		if err != nil {

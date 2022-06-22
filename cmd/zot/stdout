@@ -1,0 +1,3 @@
+{"level":"info","goroutine":1,"caller":"/home/laur/zot/pkg/plugins/plugin_manager.go:79","time":"2022-05-20T11:42:56.5421464+03:00","message":"loading all plugins from /home/laur/zot/examples/plugins"}
+{"level":"warn","error":"plugins: integration point is not supported","goroutine":1,"caller":"/home/laur/zot/pkg/plugins/plugin_manager.go:103","time":"2022-05-20T11:43:02.5701399+03:00","message":"can't get builder for CustomEndpoint"}
+{"level":"warn","error":"multiple implementations for VulnScanner detected Ilegal","goroutine":1,"caller":"/home/laur/zot/pkg/plugins/plugin_manager.go:123","time":"2022-05-20T11:43:07.1968241+03:00","message":"can't register implementation for VulnScanner"}

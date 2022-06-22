@@ -21,6 +21,7 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
+	"zotregistry.io/zot/pkg/plugins"
 	"zotregistry.io/zot/pkg/test"
 )
 
@@ -311,7 +312,7 @@ func TestServerCVEResponse(t *testing.T) {
 		Search: searchConfig,
 	}
 
-	ctlr := api.NewController(conf)
+	ctlr := api.NewController(conf, plugins.NewManager())
 
 	go func(controller *api.Controller) {
 		// this blocks

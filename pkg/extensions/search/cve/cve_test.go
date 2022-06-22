@@ -7,6 +7,7 @@ package cveinfo_test
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/urfave/cli/v2"
 	"gopkg.in/resty.v1"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
@@ -26,6 +28,8 @@ import (
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/plugins"
+	pluginsCommon "zotregistry.io/zot/pkg/plugins/common"
 	"zotregistry.io/zot/pkg/storage"
 	. "zotregistry.io/zot/pkg/test"
 )
@@ -324,6 +328,36 @@ func makeTestFile(fileName, content string) error {
 	return nil
 }
 
+type MockImplementationManager struct {
+	registerImplementationFn func(implName string, plugin interface{}) error
+	allPluginsFn             func() map[string]pluginsCommon.Plugin
+	getImplFn                func(name string) pluginsCommon.Plugin
+}
+
+func (mim MockImplementationManager) RegisterImplementation(implName string, plugin interface{}) error {
+	if mim.registerImplementationFn != nil {
+		return mim.registerImplementationFn(implName, plugin)
+	}
+
+	return nil
+}
+
+func (mim MockImplementationManager) AllPlugins() map[string]pluginsCommon.Plugin {
+	if mim.allPluginsFn != nil {
+		return mim.allPluginsFn()
+	}
+
+	return map[string]pluginsCommon.Plugin{}
+}
+
+func (mim MockImplementationManager) GetImpl(name string) pluginsCommon.Plugin {
+	if mim.getImplFn != nil {
+		return mim.getImplFn(name)
+	}
+
+	return nil
+}
+
 func TestMultipleStoragePath(t *testing.T) {
 	Convey("Test multiple storage path", t, func() {
 		// Create temporary directory
@@ -352,7 +386,11 @@ func TestMultipleStoragePath(t *testing.T) {
 
 		storeController.SubStore = subStore
 
-		cveInfo, err := cveinfo.GetCVEInfo(storeController, log)
+		cveInfo, err := cveinfo.GetCVEInfo(
+			storeController,
+			MockImplementationManager{},
+			log,
+		)
 
 		So(err, ShouldBeNil)
 		So(cveInfo.StoreController.DefaultStore, ShouldNotBeNil)
@@ -396,7 +434,7 @@ func TestCVESearch(t *testing.T) {
 			Search: searchConfig,
 		}
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 
 		go func() {
 			// this blocks
@@ -614,7 +652,7 @@ func TestCVEConfig(t *testing.T) {
 			},
 		}
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 
 		firstDir := t.TempDir()
 
@@ -679,7 +717,7 @@ func TestHTTPOptionsResponse(t *testing.T) {
 		conf.HTTP.Port = port
 		baseURL := GetBaseURL(port)
 
-		ctlr := api.NewController(conf)
+		ctlr := api.NewController(conf, plugins.NewManager())
 
 		firstDir, err := ioutil.TempDir("", "oci-repo-test")
 		if err != nil {
@@ -730,5 +768,40 @@ func TestHTTPOptionsResponse(t *testing.T) {
 			ctx := context.Background()
 			_ = ctlr.Server.Shutdown(ctx)
 		}()
+	})
+}
+
+func TestCveScannerFs(t *testing.T) {
+	scanner := cveinfo.CveScannerFs{}
+
+	Convey("Scan error", t, func() {
+		report, err := scanner.ScanImage(
+			cli.NewContext(
+				&cli.App{},
+				&flag.FlagSet{},
+				&cli.Context{},
+			),
+			"TestImage",
+		)
+
+		So(report, ShouldNotBeNil)
+		So(err, ShouldNotBeNil)
+	})
+}
+
+func TestCVEInfo(t *testing.T) {
+	Convey("GetCVEInfo init with another vulnerability scanner", t, func() {
+		cve, err := cveinfo.GetCVEInfo(
+			storage.StoreController{},
+			MockImplementationManager{
+				getImplFn: func(name string) pluginsCommon.Plugin {
+					return cveinfo.CveScannerFs{}
+				},
+			},
+			log.Logger{},
+		)
+
+		So(cve, ShouldNotBeNil)
+		So(err, ShouldBeNil)
 	})
 }

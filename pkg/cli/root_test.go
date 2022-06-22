@@ -11,10 +11,14 @@ import (
 	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
+	"google.golang.org/grpc"
 	"gopkg.in/resty.v1"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/cli"
+	"zotregistry.io/zot/pkg/plugins"
+	cliPlugin "zotregistry.io/zot/pkg/plugins/cli"
+	"zotregistry.io/zot/pkg/plugins/common"
 	"zotregistry.io/zot/pkg/storage"
 	. "zotregistry.io/zot/pkg/test"
 )
@@ -578,7 +582,7 @@ func TestScrub(t *testing.T) {
 			port := GetFreePort()
 			config := config.New()
 			config.HTTP.Port = port
-			controller := api.NewController(config)
+			controller := api.NewController(config, plugins.NewManager())
 
 			dir := t.TempDir()
 
@@ -707,5 +711,26 @@ func TestScrub(t *testing.T) {
 			os.Args = []string{"cli_test", "scrub", tmpfile.Name()}
 			So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 		})
+	})
+}
+
+type mockCliClient struct{}
+
+func (f *mockCliClient) Command(ctx context.Context, in *cliPlugin.CLIArgs, opts ...grpc.CallOption,
+) (*cliPlugin.CLIResponse, error) {
+	return &cliPlugin.CLIResponse{}, nil
+}
+
+func TestEnableCLIPlugins(t *testing.T) {
+	Convey("", t, func() {
+		pluginManager := plugins.NewManager()
+		goodCLIPluginImpl := cliPlugin.BaseCommand{
+			Name:    "Test",
+			Options: common.Options{},
+			Client:  &mockCliClient{},
+		}
+
+		err := pluginManager.RegisterImplementation(plugins.CLICommand, "Test", goodCLIPluginImpl)
+		So(err, ShouldBeNil)
 	})
 }

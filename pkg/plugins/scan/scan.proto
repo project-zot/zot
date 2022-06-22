@@ -1,0 +1,78 @@
+syntax = "proto3";
+
+option go_package = "zoregistry.io/zot/pkg/plugins/scan";
+
+import "google/protobuf/any.proto";
+
+package scan;
+
+// Scan service definition. This is the contract between the 
+// client(Zot) and the server(the plugin process)
+service Scan {
+  rpc Scan (ScanRequest) returns (ScanResponse) {}
+}
+
+message ScanRequest {
+  string   image         = 1;
+  Registry registry      = 2;
+}
+
+message ScanResponse {
+  ScanReport report = 1;
+}
+
+message Registry {
+  string url           = 1;
+  string authorization = 2;
+}
+
+message Image {
+  string name = 1;
+}
+
+message ScanReport {
+  Image    image   = 1;
+  Scanner  scanner = 2;
+  repeated ScanVulnerability vulnerabilities = 3;
+}
+
+message Scanner {
+  string name     = 1;
+	string vendor   = 2;
+	string version  = 3;
+}
+
+message ScanVulnerability {
+  string                          vulnerability_id   = 1;
+  string                          pkg                = 2;
+  string                          version            = 3;
+  string                          fixed_version      = 4;
+  string                          title              = 5;
+  Severity                        severity           = 6;
+  string                          description        = 7;
+  repeated string                 references         = 8;
+  Layer                           layer              = 10;
+  map<string, CVSS>               cvss               = 12;
+  repeated string                 cwe_ids            = 13;
+  map<string,google.protobuf.Any> vendor_attributes  = 14;
+}
+
+message Layer {
+  string digest  = 1;
+  string diff_id = 2;
+}
+
+message CVSS {
+  string v2_vector = 1;
+  string v3_vector = 2;
+  double v2_score  = 3;
+  double v3_score  = 4;
+}
+
+enum Severity {
+  UNKNOWN  = 0;
+  LOW      = 1;
+  MEDIUM   = 2;
+  HIGH     = 3;
+  CRITICAL = 4;
+}
