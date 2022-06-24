@@ -224,10 +224,15 @@ func TestRunScrubRepo(t *testing.T) {
 
 		defer os.Remove(logFile.Name()) // clean up
 
+		conf := config.New()
+		conf.Extensions = &extconf.ExtensionConfig{}
+		conf.Extensions.Lint = &extconf.LintConfig{}
+
 		dir := t.TempDir()
 		log := log.NewLogger("debug", logFile.Name())
 		metrics := monitoring.NewMetricsServer(false, log)
-		imgStore := storage.NewImageStore(dir, true, 1*time.Second, true, true, log, metrics)
+		imgStore := storage.NewImageStore(dir, true, 1*time.Second, true,
+			true, log, metrics, nil)
 
 		err = test.CopyFiles("../../../test/data/zot-test", path.Join(dir, repoName))
 		if err != nil {
@@ -247,10 +252,16 @@ func TestRunScrubRepo(t *testing.T) {
 
 		defer os.Remove(logFile.Name()) // clean up
 
+		conf := config.New()
+
+		conf.Extensions = &extconf.ExtensionConfig{}
+		conf.Extensions.Lint = &extconf.LintConfig{}
+
 		dir := t.TempDir()
 		log := log.NewLogger("debug", logFile.Name())
 		metrics := monitoring.NewMetricsServer(false, log)
-		imgStore := storage.NewImageStore(dir, true, 1*time.Second, true, true, log, metrics)
+		imgStore := storage.NewImageStore(dir, true, 1*time.Second, true,
+			true, log, metrics, nil)
 
 		err = test.CopyFiles("../../../test/data/zot-test", path.Join(dir, repoName))
 		if err != nil {
@@ -277,10 +288,15 @@ func TestRunScrubRepo(t *testing.T) {
 
 		defer os.Remove(logFile.Name()) // clean up
 
+		conf := config.New()
+		conf.Extensions = &extconf.ExtensionConfig{}
+		conf.Extensions.Lint = &extconf.LintConfig{}
+
 		dir := t.TempDir()
 		log := log.NewLogger("debug", logFile.Name())
 		metrics := monitoring.NewMetricsServer(false, log)
-		imgStore := storage.NewImageStore(dir, true, 1*time.Second, true, true, log, metrics)
+		imgStore := storage.NewImageStore(dir, true, 1*time.Second,
+			true, true, log, metrics, nil)
 
 		err = test.CopyFiles("../../../test/data/zot-test", path.Join(dir, repoName))
 		if err != nil {

@@ -264,8 +264,13 @@ func TestImageFormat(t *testing.T) {
 		log := log.NewLogger("debug", "")
 		dbDir := "../../../../test/data"
 
+		conf := config.New()
+		conf.Extensions = &extconf.ExtensionConfig{}
+		conf.Extensions.Lint = &extconf.LintConfig{}
+
 		metrics := monitoring.NewMetricsServer(false, log)
-		defaultStore := storage.NewImageStore(dbDir, false, storage.DefaultGCDelay, false, false, log, metrics)
+		defaultStore := storage.NewImageStore(dbDir, false, storage.DefaultGCDelay,
+			false, false, log, metrics, nil)
 		storeController := storage.StoreController{DefaultStore: defaultStore}
 		olu := common.NewBaseOciLayoutUtils(storeController, log)
 
@@ -708,10 +713,16 @@ func TestUtilsMethod(t *testing.T) {
 
 		subRootDir := t.TempDir()
 
-		metrics := monitoring.NewMetricsServer(false, log)
-		defaultStore := storage.NewImageStore(rootDir, false, storage.DefaultGCDelay, false, false, log, metrics)
+		conf := config.New()
+		conf.Extensions = &extconf.ExtensionConfig{}
+		conf.Extensions.Lint = &extconf.LintConfig{}
 
-		subStore := storage.NewImageStore(subRootDir, false, storage.DefaultGCDelay, false, false, log, metrics)
+		metrics := monitoring.NewMetricsServer(false, log)
+		defaultStore := storage.NewImageStore(rootDir, false,
+			storage.DefaultGCDelay, false, false, log, metrics, nil)
+
+		subStore := storage.NewImageStore(subRootDir, false,
+			storage.DefaultGCDelay, false, false, log, metrics, nil)
 
 		subStoreMap := make(map[string]storage.ImageStore)
 

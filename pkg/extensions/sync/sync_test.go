@@ -862,6 +862,107 @@ func TestConfigReloader(t *testing.T) {
 	})
 }
 
+func TestMandatoryAnnotations(t *testing.T) {
+	Convey("Verify mandatory annotations failing - on demand disabled", t, func() {
+		updateDuration, _ := time.ParseDuration("30m")
+
+		sctlr, srcBaseURL, _, _, _ := startUpstreamServer(t, false, false)
+
+		defer func() {
+			sctlr.Shutdown()
+		}()
+
+		regex := ".*"
+		var semver bool
+		tlsVerify := false
+
+		syncRegistryConfig := sync.RegistryConfig{
+			Content: []sync.Content{
+				{
+					Prefix: testImage,
+					Tags: &sync.Tags{
+						Regex:  &regex,
+						Semver: &semver,
+					},
+				},
+			},
+			URLs:         []string{srcBaseURL},
+			OnDemand:     false,
+			PollInterval: updateDuration,
+			TLSVerify:    &tlsVerify,
+		}
+
+		defaultVal := true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
+
+		destPort := test.GetFreePort()
+		destConfig := config.New()
+		destClient := resty.New()
+
+		destBaseURL := test.GetBaseURL(destPort)
+
+		destConfig.HTTP.Port = destPort
+
+		destDir := t.TempDir()
+
+		destConfig.Storage.RootDirectory = destDir
+		destConfig.Storage.Dedupe = false
+		destConfig.Storage.GC = false
+
+		destConfig.Extensions = &extconf.ExtensionConfig{}
+		destConfig.Extensions.Sync = syncConfig
+
+		logFile, err := ioutil.TempFile("", "zot-log*.txt")
+		So(err, ShouldBeNil)
+
+		destConfig.Log.Output = logFile.Name()
+
+		lintEnabled := true
+		destConfig.Extensions.Lint = &extconf.LintConfig{}
+		destConfig.Extensions.Lint.Enabled = &lintEnabled
+		destConfig.Extensions.Lint.MandatoryAnnotations = []string{"annot1", "annot2", "annot3"}
+
+		dctlr := api.NewController(destConfig)
+
+		go func() {
+			// this blocks
+			if err := dctlr.Run(context.Background()); err != nil {
+				return
+			}
+		}()
+
+		// wait till ready
+		for {
+			_, err := destClient.R().Get(destBaseURL)
+			if err == nil {
+				break
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		defer func() {
+			dctlr.Shutdown()
+		}()
+
+		// give it time to set up sync
+		time.Sleep(3 * time.Second)
+
+		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifest/0.0.1")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 404)
+
+		data, err := os.ReadFile(logFile.Name())
+		t.Logf("downstream log: %s", string(data))
+		So(err, ShouldBeNil)
+		So(string(data), ShouldContainSubstring, "couldn't upload manifest because of missing annotations")
+	})
+}
+
 func TestBadTLS(t *testing.T) {
 	Convey("Verify sync TLS feature", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")

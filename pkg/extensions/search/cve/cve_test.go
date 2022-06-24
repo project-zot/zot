@@ -92,7 +92,11 @@ func testSetup() error {
 	log := log.NewLogger("debug", "")
 	metrics := monitoring.NewMetricsServer(false, log)
 
-	storeController := storage.StoreController{DefaultStore: storage.NewImageStore(dir, false, storage.DefaultGCDelay, false, false, log, metrics)}
+	conf := config.New()
+	conf.Extensions = &extconf.ExtensionConfig{}
+	conf.Extensions.Lint = &extconf.LintConfig{}
+
+	storeController := storage.StoreController{DefaultStore: storage.NewImageStore(dir, false, storage.DefaultGCDelay, false, false, log, metrics, nil)}
 
 	layoutUtils := common.NewBaseOciLayoutUtils(storeController, log)
 
@@ -334,12 +338,16 @@ func TestMultipleStoragePath(t *testing.T) {
 		log := log.NewLogger("debug", "")
 		metrics := monitoring.NewMetricsServer(false, log)
 
+		conf := config.New()
+		conf.Extensions = &extconf.ExtensionConfig{}
+		conf.Extensions.Lint = &extconf.LintConfig{}
+
 		// Create ImageStore
-		firstStore := storage.NewImageStore(firstRootDir, false, storage.DefaultGCDelay, false, false, log, metrics)
+		firstStore := storage.NewImageStore(firstRootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil)
 
-		secondStore := storage.NewImageStore(secondRootDir, false, storage.DefaultGCDelay, false, false, log, metrics)
+		secondStore := storage.NewImageStore(secondRootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil)
 
-		thirdStore := storage.NewImageStore(thirdRootDir, false, storage.DefaultGCDelay, false, false, log, metrics)
+		thirdStore := storage.NewImageStore(thirdRootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil)
 
 		storeController := storage.StoreController{}
 

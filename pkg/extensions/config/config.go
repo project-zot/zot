@@ -11,6 +11,12 @@ type ExtensionConfig struct {
 	Sync    *sync.Config
 	Metrics *MetricsConfig
 	Scrub   *ScrubConfig
+	Lint    *LintConfig
+}
+
+type LintConfig struct {
+	Enabled              *bool
+	MandatoryAnnotations []string
 }
 
 type SearchConfig struct {
