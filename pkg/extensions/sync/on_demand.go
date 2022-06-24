@@ -274,7 +274,8 @@ func syncOneImage(imageChannel chan error, cfg Config, storeController storage.S
 	imageChannel <- nil
 }
 
-func syncRun(regCfg RegistryConfig, localRepo, remoteRepo, tag string, utils syncContextUtils,
+func syncRun(regCfg RegistryConfig,
+	localRepo, remoteRepo, tag string, utils syncContextUtils,
 	log log.Logger,
 ) (bool, error) {
 	upstreamImageRef, err := getImageRef(utils.upstreamAddr, remoteRepo, tag)

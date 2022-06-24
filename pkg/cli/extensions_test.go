@@ -102,7 +102,7 @@ func TestServeExtensions(t *testing.T) {
 		WaitTillServerReady(baseURL)
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
-		So(string(data), ShouldContainSubstring, "\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":null") //nolint:lll // gofumpt conflicts with lll
+		So(string(data), ShouldContainSubstring, "\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":null") //nolint:lll // gofumpt conflicts with lll
 	})
 }
 
@@ -143,7 +143,7 @@ func testWithMetricsEnabled(cfgContentFormat string) {
 	data, err := os.ReadFile(logFile.Name())
 	So(err, ShouldBeNil)
 	So(string(data), ShouldContainSubstring,
-		"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":{\"Enable\":true,\"Prometheus\":{\"Path\":\"/metrics\"}},\"Scrub\":null}") //nolint:lll // gofumpt conflicts with lll
+		"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":{\"Enable\":true,\"Prometheus\":{\"Path\":\"/metrics\"}},\"Scrub\":null,\"Lint\":null}") //nolint:lll // gofumpt conflicts with lll
 }
 
 func TestServeMetricsExtension(t *testing.T) {
@@ -267,7 +267,7 @@ func TestServeMetricsExtension(t *testing.T) {
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
 		So(string(data), ShouldContainSubstring,
-			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":{\"Enable\":false,\"Prometheus\":{\"Path\":\"/metrics\"}},\"Scrub\":null}") //nolint:lll // gofumpt conflicts with lll
+			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":{\"Enable\":false,\"Prometheus\":{\"Path\":\"/metrics\"}},\"Scrub\":null,\"Lint\":null}}") //nolint:lll // gofumpt conflicts with lll
 	})
 }
 
@@ -424,7 +424,7 @@ func TestServeScrubExtension(t *testing.T) {
 		So(err, ShouldBeNil)
 		// Even if in config we specified scrub interval=1h, the minimum interval is 2h
 		So(data, ShouldContainSubstring,
-			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":{\"Interval\":3600000000000}") //nolint:lll // gofumpt conflicts with lll
+			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":{\"Interval\":3600000000000},\"Lint\":null") //nolint:lll // gofumpt conflicts with lll
 		So(data, ShouldContainSubstring,
 			"Scrub interval set to too-short interval < 2h, changing scrub duration to 2 hours and continuing.")
 		So(data, ShouldContainSubstring, "Starting periodic background tasks for")
@@ -453,10 +453,69 @@ func TestServeScrubExtension(t *testing.T) {
 		data, err := runCLIWithConfig(t.TempDir(), content)
 		So(err, ShouldBeNil)
 		So(data, ShouldContainSubstring,
-			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":null}")
+			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":null}")
 		So(data, ShouldContainSubstring, "Scrub config not provided, skipping scrub")
 		So(data, ShouldNotContainSubstring,
 			"Scrub interval set to too-short interval < 2h, changing scrub duration to 2 hours and continuing.")
+	})
+}
+
+func TestServeLintExtension(t *testing.T) {
+	oldArgs := os.Args
+
+	defer func() { os.Args = oldArgs }()
+
+	Convey("lint enabled", t, func(c C) {
+		content := `{
+					"storage": {
+						"rootDirectory": "%s"
+					},
+					"http": {
+						"address": "127.0.0.1",
+						"port": "%s"
+					},
+					"log": {
+						"level": "debug",
+						"output": "%s"
+					},
+					"extensions": {
+						"lint": {
+							"enabled": "true",
+							"mandatoryAnnotations": ["annot1"]
+						}
+					}
+				}`
+
+		data, err := runCLIWithConfig(t.TempDir(), content)
+		So(err, ShouldBeNil)
+		So(data, ShouldContainSubstring,
+			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":{\"Enabled\":true,\"MandatoryAnnotations\":") //nolint:lll // gofumpt conflicts with lll
+	})
+
+	Convey("lint enabled", t, func(c C) {
+		content := `{
+					"storage": {
+						"rootDirectory": "%s"
+					},
+					"http": {
+						"address": "127.0.0.1",
+						"port": "%s"
+					},
+					"log": {
+						"level": "debug",
+						"output": "%s"
+					},
+					"extensions": {
+						"lint": {
+							"enabled": "false"
+						}
+					}
+				}`
+
+		data, err := runCLIWithConfig(t.TempDir(), content)
+		So(err, ShouldBeNil)
+		So(data, ShouldContainSubstring,
+			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":{\"Enabled\":false,\"MandatoryAnnotations\":null}") //nolint:lll // gofumpt conflicts with lll
 	})
 }
 
@@ -490,7 +549,7 @@ func TestServeSearchEnabled(t *testing.T) {
 		WaitTillTrivyDBDownloadStarted(tempDir)
 		So(err, ShouldBeNil)
 		So(data, ShouldContainSubstring,
-			"\"Extensions\":{\"Search\":{\"CVE\":{\"UpdateInterval\":86400000000000},\"Enable\":true},\"Sync\":null,\"Metrics\":null,\"Scrub\":null}") //nolint:lll // gofumpt conflicts with lll
+			"\"Extensions\":{\"Search\":{\"CVE\":{\"UpdateInterval\":86400000000000},\"Enable\":true},\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":null}") //nolint:lll // gofumpt conflicts with lll
 		So(data, ShouldContainSubstring, "updating the CVE database")
 	})
 }
@@ -529,7 +588,7 @@ func TestServeSearchEnabledCVE(t *testing.T) {
 		So(err, ShouldBeNil)
 		// Even if in config we specified updateInterval=1h, the minimum interval is 2h
 		So(data, ShouldContainSubstring,
-			"\"Extensions\":{\"Search\":{\"CVE\":{\"UpdateInterval\":3600000000000},\"Enable\":true},\"Sync\":null,\"Metrics\":null,\"Scrub\":null}") //nolint:lll // gofumpt conflicts with lll
+			"\"Extensions\":{\"Search\":{\"CVE\":{\"UpdateInterval\":3600000000000},\"Enable\":true},\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":null}") //nolint:lll // gofumpt conflicts with lll
 		So(data, ShouldContainSubstring, "updating the CVE database")
 		So(data, ShouldContainSubstring,
 			"CVE update interval set to too-short interval < 2h, changing update duration to 2 hours and continuing.")
@@ -567,7 +626,7 @@ func TestServeSearchEnabledNoCVE(t *testing.T) {
 		WaitTillTrivyDBDownloadStarted(tempDir)
 		So(err, ShouldBeNil)
 		So(data, ShouldContainSubstring,
-			"\"Extensions\":{\"Search\":{\"CVE\":{\"UpdateInterval\":86400000000000},\"Enable\":true},\"Sync\":null,\"Metrics\":null,\"Scrub\":null}") //nolint:lll // gofumpt conflicts with lll
+			"\"Extensions\":{\"Search\":{\"CVE\":{\"UpdateInterval\":86400000000000},\"Enable\":true},\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":null}") //nolint:lll // gofumpt conflicts with lll
 		So(data, ShouldContainSubstring, "updating the CVE database")
 	})
 }
@@ -605,7 +664,7 @@ func TestServeSearchDisabled(t *testing.T) {
 
 		So(err, ShouldBeNil)
 		So(data, ShouldContainSubstring,
-			"\"Extensions\":{\"Search\":{\"CVE\":{\"UpdateInterval\":10800000000000},\"Enable\":false},\"Sync\":null,\"Metrics\":null,\"Scrub\":null}") //nolint:lll // gofumpt conflicts with lll
+			"\"Extensions\":{\"Search\":{\"CVE\":{\"UpdateInterval\":10800000000000},\"Enable\":false},\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":null}") //nolint:lll // gofumpt conflicts with lll
 		So(data, ShouldContainSubstring, "CVE config not provided, skipping CVE update")
 		So(data, ShouldNotContainSubstring,
 			"CVE update interval set to too-short interval < 2h, changing update duration to 2 hours and continuing.")

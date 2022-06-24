@@ -25,6 +25,7 @@ import (
 	"github.com/opencontainers/umoci/oci/casext"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/rs/zerolog"
+	"github.com/sigstore/cosign/pkg/oci/remote"
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	zlog "zotregistry.io/zot/pkg/log"
@@ -64,6 +65,7 @@ type ImageStoreLocal struct {
 	gcDelay     time.Duration
 	log         zerolog.Logger
 	metrics     monitoring.MetricServer
+	linter      Lint
 }
 
 func (is *ImageStoreLocal) RootDir() string {
@@ -105,7 +107,7 @@ func (sc StoreController) GetImageStore(name string) ImageStore {
 
 // NewImageStore returns a new image store backed by a file storage.
 func NewImageStore(rootDir string, gc bool, gcDelay time.Duration, dedupe, commit bool,
-	log zlog.Logger, metrics monitoring.MetricServer,
+	log zlog.Logger, metrics monitoring.MetricServer, linter Lint,
 ) ImageStore {
 	if _, err := os.Stat(rootDir); os.IsNotExist(err) {
 		if err := os.MkdirAll(rootDir, DefaultDirPerms); err != nil {
@@ -125,6 +127,7 @@ func NewImageStore(rootDir string, gc bool, gcDelay time.Duration, dedupe, commi
 		commit:      commit,
 		log:         log.With().Caller().Logger(),
 		metrics:     metrics,
+		linter:      linter,
 	}
 
 	if dedupe {
@@ -549,29 +552,9 @@ func (is *ImageStoreLocal) PutImageManifest(repo, reference, mediaType string,
 		return "", zerr.ErrBadManifest
 	}
 
-	if mediaType == ispec.MediaTypeImageManifest {
-		var manifest ispec.Manifest
-		if err := json.Unmarshal(body, &manifest); err != nil {
-			is.log.Error().Err(err).Msg("unable to unmarshal JSON")
-
-			return "", zerr.ErrBadManifest
-		}
-
-		if manifest.Config.MediaType == ispec.MediaTypeImageConfig {
-			digest, err := is.validateOCIManifest(repo, reference, &manifest)
-			if err != nil {
-				is.log.Error().Err(err).Msg("invalid oci image manifest")
-
-				return digest, err
-			}
-		}
-	} else if mediaType == artifactspec.MediaTypeArtifactManifest {
-		var m notation.Descriptor
-		if err := json.Unmarshal(body, &m); err != nil {
-			is.log.Error().Err(err).Msg("unable to unmarshal JSON")
-
-			return "", zerr.ErrBadManifest
-		}
+	dig, err := validateManifest(is, repo, reference, mediaType, body)
+	if err != nil {
+		return dig, err
 	}
 
 	mDigest := godigest.FromBytes(body)
@@ -666,6 +649,7 @@ func (is *ImageStoreLocal) PutImageManifest(repo, reference, mediaType string,
 	_ = ensureDir(dir, is.log)
 	file := path.Join(dir, mDigest.Encoded())
 
+	// in case the linter will not pass, it will be garbage collected
 	if err := is.writeFile(file, body); err != nil {
 		is.log.Error().Err(err).Str("file", file).Msg("unable to write")
 
@@ -682,6 +666,28 @@ func (is *ImageStoreLocal) PutImageManifest(repo, reference, mediaType string,
 		is.log.Error().Err(err).Str("file", file).Msg("unable to marshal JSON")
 
 		return "", err
+	}
+
+	// apply linter only on images, not signatures
+	if is.linter != nil {
+		if mediaType == ispec.MediaTypeImageManifest &&
+			// check that image manifest is not cosign signature
+			!strings.HasPrefix(reference, "sha256-") &&
+			!strings.HasSuffix(reference, remote.SignatureTagSuffix) {
+			// lint new index with new manifest before writing to disk
+			is.Unlock(&lockLatency)
+			pass, err := is.linter.Lint(repo, mDigest, is)
+			is.Lock(&lockLatency)
+			if err != nil {
+				is.log.Error().Err(err).Msg("linter error")
+
+				return "", err
+			}
+
+			if !pass {
+				return "", zerr.ErrImageLintAnnotations
+			}
+		}
 	}
 
 	err = is.writeFile(file, buf)
@@ -1614,6 +1620,37 @@ func (is *ImageStoreLocal) garbageCollect(dir string, repo string) error {
 	}
 
 	return nil
+}
+
+func validateManifest(imgStore *ImageStoreLocal, repo, reference,
+	mediaType string, body []byte,
+) (string, error) {
+	if mediaType == ispec.MediaTypeImageManifest {
+		var manifest ispec.Manifest
+		if err := json.Unmarshal(body, &manifest); err != nil {
+			imgStore.log.Error().Err(err).Msg("unable to unmarshal JSON")
+
+			return "", zerr.ErrBadManifest
+		}
+
+		if manifest.Config.MediaType == ispec.MediaTypeImageConfig {
+			digest, err := imgStore.validateOCIManifest(repo, reference, &manifest)
+			if err != nil {
+				imgStore.log.Error().Err(err).Msg("invalid oci image manifest")
+
+				return digest, err
+			}
+		}
+	} else if mediaType == artifactspec.MediaTypeArtifactManifest {
+		var m notation.Descriptor
+		if err := json.Unmarshal(body, &m); err != nil {
+			imgStore.log.Error().Err(err).Msg("unable to unmarshal JSON")
+
+			return "", zerr.ErrBadManifest
+		}
+	}
+
+	return "", nil
 }
 
 func ifOlderThan(imgStore *ImageStoreLocal, repo string, delay time.Duration) casext.GCPolicy {

@@ -196,7 +196,8 @@ func syncCosignSignature(client *resty.Client, imageStore storage.ImageStore,
 	}
 
 	// push manifest
-	_, err = imageStore.PutImageManifest(localRepo, cosignTag, ispec.MediaTypeImageManifest, cosignManifestBuf)
+	_, err = imageStore.PutImageManifest(localRepo, cosignTag,
+		ispec.MediaTypeImageManifest, cosignManifestBuf)
 	if err != nil {
 		log.Error().Str("errorType", TypeOf(err)).
 			Err(err).Msg("couldn't upload cosign manifest")

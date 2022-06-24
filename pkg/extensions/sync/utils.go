@@ -270,7 +270,9 @@ func pushSyncedLocalImage(localRepo, tag, localCachePath string,
 	log.Info().Msgf("pushing synced local image %s/%s:%s to local registry", localCachePath, localRepo, tag)
 
 	metrics := monitoring.NewMetricsServer(false, log)
-	cacheImageStore := storage.NewImageStore(localCachePath, false, storage.DefaultGCDelay, false, false, log, metrics)
+
+	cacheImageStore := storage.NewImageStore(localCachePath, false,
+		storage.DefaultGCDelay, false, false, log, metrics, nil)
 
 	manifestContent, _, _, err := cacheImageStore.GetImageManifest(localRepo, tag)
 	if err != nil {
@@ -331,8 +333,16 @@ func pushSyncedLocalImage(localRepo, tag, localCachePath string,
 		}
 	}
 
-	_, err = imageStore.PutImageManifest(localRepo, tag, ispec.MediaTypeImageManifest, manifestContent)
+	_, err = imageStore.PutImageManifest(localRepo, tag,
+		ispec.MediaTypeImageManifest, manifestContent)
 	if err != nil {
+		if errors.Is(err, zerr.ErrImageLintAnnotations) {
+			log.Error().Str("errorType", TypeOf(err)).
+				Err(err).Msg("couldn't upload manifest because of missing annotations")
+
+			return nil
+		}
+
 		log.Error().Str("errorType", TypeOf(err)).
 			Err(err).Msg("couldn't upload manifest")
 

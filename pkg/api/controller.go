@@ -218,6 +218,8 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 func (c *Controller) InitImageStore(reloadCtx context.Context) error {
 	c.StoreController = storage.StoreController{}
 
+	linter := ext.GetLinter(c.Config, c.Log)
+
 	if c.Config.Storage.RootDirectory != "" {
 		// no need to validate hard links work on s3
 		if c.Config.Storage.Dedupe && c.Config.Storage.StorageDriver == nil {
@@ -232,8 +234,12 @@ func (c *Controller) InitImageStore(reloadCtx context.Context) error {
 
 		var defaultStore storage.ImageStore
 		if c.Config.Storage.StorageDriver == nil {
+			// false positive lint - linter does not implement Lint method
+			// nolint: typecheck
 			defaultStore = storage.NewImageStore(c.Config.Storage.RootDirectory,
-				c.Config.Storage.GC, c.Config.Storage.GCDelay, c.Config.Storage.Dedupe, c.Config.Storage.Commit, c.Log, c.Metrics)
+				c.Config.Storage.GC, c.Config.Storage.GCDelay,
+				c.Config.Storage.Dedupe, c.Config.Storage.Commit, c.Log, c.Metrics, linter,
+			)
 		} else {
 			storeName := fmt.Sprintf("%v", c.Config.Storage.StorageDriver["name"])
 			if storeName != storage.S3StorageDriverName {
@@ -255,9 +261,11 @@ func (c *Controller) InitImageStore(reloadCtx context.Context) error {
 				rootDir = fmt.Sprintf("%v", c.Config.Storage.StorageDriver["rootdirectory"])
 			}
 
+			// false positive lint - linter does not implement Lint method
+			// nolint: typecheck
 			defaultStore = s3.NewImageStore(rootDir, c.Config.Storage.RootDirectory,
 				c.Config.Storage.GC, c.Config.Storage.GCDelay, c.Config.Storage.Dedupe,
-				c.Config.Storage.Commit, c.Log, c.Metrics, store)
+				c.Config.Storage.Commit, c.Log, c.Metrics, linter, store)
 		}
 
 		c.StoreController.DefaultStore = defaultStore
@@ -288,8 +296,10 @@ func (c *Controller) InitImageStore(reloadCtx context.Context) error {
 				}
 
 				if storageConfig.StorageDriver == nil {
+					// false positive lint - linter does not implement Lint method
+					// nolint: typecheck
 					subImageStore[route] = storage.NewImageStore(storageConfig.RootDirectory,
-						storageConfig.GC, storageConfig.GCDelay, storageConfig.Dedupe, storageConfig.Commit, c.Log, c.Metrics)
+						storageConfig.GC, storageConfig.GCDelay, storageConfig.Dedupe, storageConfig.Commit, c.Log, c.Metrics, linter)
 				} else {
 					storeName := fmt.Sprintf("%v", storageConfig.StorageDriver["name"])
 					if storeName != storage.S3StorageDriverName {
@@ -311,8 +321,12 @@ func (c *Controller) InitImageStore(reloadCtx context.Context) error {
 						rootDir = fmt.Sprintf("%v", c.Config.Storage.StorageDriver["rootdirectory"])
 					}
 
+					// false positive lint - linter does not implement Lint method
+					// nolint: typecheck
 					subImageStore[route] = s3.NewImageStore(rootDir, storageConfig.RootDirectory,
-						storageConfig.GC, storageConfig.GCDelay, storageConfig.Dedupe, storageConfig.Commit, c.Log, c.Metrics, store)
+						storageConfig.GC, storageConfig.GCDelay,
+						storageConfig.Dedupe, storageConfig.Commit, c.Log, c.Metrics, linter, store,
+					)
 				}
 			}
 

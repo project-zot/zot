@@ -20,6 +20,7 @@ The following document refers on the **core dist-spec**, see also the [zot-speci
 * Supports container image signatures - [cosign](https://github.com/sigstore/cosign) and [notation](https://github.com/notaryproject/notation)
 * Multi-arch support
 * Clustering support
+* Image linting support
 
 ## [Demos](demos/README.md)
 
@@ -380,6 +381,11 @@ bin/zxp config _config-file_
 
 ## Enable Metrics
 In the zot with all extensions case see [configuration example](./examples/config-metrics.json) for enabling metrics
+
+## Image linting
+
+# Mandatory Annotations
+When pushing an image, if the mandatory annotations option is enabled, linter will verify if the mandatory annotations list present in the config is also found in the manifest's annotations list. If there are any missing annotations, the push will not take place.
 
 ## Clustering
 

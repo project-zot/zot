@@ -296,7 +296,8 @@ func getUpstreamContext(regCfg *RegistryConfig, credentials Credentials) *types.
 }
 
 // nolint:gocyclo  // offloading some of the functionalities from here would make the code harder to follow
-func syncRegistry(ctx context.Context, regCfg RegistryConfig, upstreamURL string,
+func syncRegistry(ctx context.Context, regCfg RegistryConfig,
+	upstreamURL string,
 	storeController storage.StoreController, localCtx *types.SystemContext,
 	policyCtx *signature.PolicyContext, credentials Credentials,
 	retryOptions *retry.RetryOptions, log log.Logger,
@@ -509,7 +510,6 @@ func syncRegistry(ctx context.Context, regCfg RegistryConfig, upstreamURL string
 			}
 			// push from cache to repo
 			err = pushSyncedLocalImage(localRepo, tag, localCachePath, imageStore, log)
-
 			if err != nil {
 				log.Error().Str("errorType", TypeOf(err)).
 					Err(err).Msgf("error while pushing synced cached image %s",
@@ -573,7 +573,8 @@ func getLocalContexts(log log.Logger) (*types.SystemContext, *signature.PolicyCo
 	return localCtx, policyContext, nil
 }
 
-func Run(ctx context.Context, cfg Config, storeController storage.StoreController,
+func Run(ctx context.Context, cfg Config,
+	storeController storage.StoreController,
 	wtgrp *goSync.WaitGroup, logger log.Logger,
 ) error {
 	var credentialsFile CredentialsFile
