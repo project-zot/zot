@@ -289,7 +289,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
 			r := resp.Header().Get("Range")
 			So(r, ShouldNotBeEmpty)
-			So(r, ShouldEqual, "bytes="+contentRange)
+			So(r, ShouldEqual, contentRange)
 
 			// write same chunk should fail
 			contentRange = fmt.Sprintf("%d-%d", 0, len(chunk1)-1)
@@ -357,7 +357,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
 			r := resp.Header().Get("Range")
 			So(r, ShouldNotBeEmpty)
-			So(r, ShouldEqual, "bytes="+contentRange)
+			So(r, ShouldEqual, contentRange)
 
 			// write same chunk should fail
 			contentRange = fmt.Sprintf("%d-%d", 0, len(chunk1)-1)

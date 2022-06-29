@@ -206,7 +206,7 @@ paths:
               description: /v2/{name}/blobs/uploads/{session_id}
               type: string
             Range:
-              description: bytes=0-0
+              description: 0-0
               type: string
           schema:
             type: string
@@ -307,7 +307,7 @@ paths:
               description: /v2/{name}/blobs/uploads/{session_id}
               type: string
             Range:
-              description: bytes=0-128
+              description: 0-128
               type: string
           schema:
             type: string
