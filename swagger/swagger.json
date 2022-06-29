@@ -168,7 +168,7 @@
                             },
                             "Range": {
                                 "type": "string",
-                                "description": "bytes=0-0"
+                                "description": "0-0"
                             }
                         }
                     },
@@ -371,7 +371,7 @@
                             },
                             "Range": {
                                 "type": "string",
-                                "description": "bytes=0-128"
+                                "description": "0-128"
                             }
                         }
                     },
