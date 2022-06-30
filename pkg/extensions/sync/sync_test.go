@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -3374,6 +3375,7 @@ func TestSyncOnlyDiff(t *testing.T) {
 		destConfig.Extensions = &extconf.ExtensionConfig{}
 		destConfig.Extensions.Search = nil
 		destConfig.Extensions.Sync = syncConfig
+		destConfig.Log.Output = path.Join(destDir, "sync.log")
 
 		dctlr := api.NewController(destConfig)
 
@@ -3390,32 +3392,18 @@ func TestSyncOnlyDiff(t *testing.T) {
 			dctlr.Shutdown()
 		}()
 
-		// watch .sync subdir, shouldn't be populated
-		done := make(chan bool)
-		var isPopulated bool
-		go func() {
-			for {
-				select {
-				case <-done:
-					return
-				default:
-					fileList, _ := os.ReadDir(path.Join(destDir, testImage, ".sync"))
-					if len(fileList) > 0 {
-						isPopulated = true
-					}
-					time.Sleep(200 * time.Millisecond)
-				}
-			}
-		}()
-
 		resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
 		time.Sleep(3 * time.Second)
 
-		done <- true
-		So(isPopulated, ShouldBeFalse)
+		body, err := ioutil.ReadFile(path.Join(destDir, "sync.log"))
+		if err != nil {
+			log.Fatalf("unable to read file: %v", err)
+		}
+
+		So(string(body), ShouldContainSubstring, "already synced image")
 	})
 }
 
