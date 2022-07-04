@@ -9,7 +9,6 @@ build:
     export GOPATH='/go'
     export HOME='/root'
     export PATH='/go/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
-    go get -u github.com/swaggo/swag/cmd/swag
     mkdir -p /go/src/github.com/project-zot
     cd /go/src/github.com/project-zot
     git clone /zotcopy zot
