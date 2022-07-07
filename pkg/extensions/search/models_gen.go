@@ -19,6 +19,12 @@ type CVEResultForImage struct {
 	CVEList []*Cve  `json:"CVEList"`
 }
 
+type GlobalSearchResult struct {
+	Images []*ImageSummary `json:"Images"`
+	Repos  []*RepoSummary  `json:"Repos"`
+	Layers []*LayerSummary `json:"Layers"`
+}
+
 type ImageInfo struct {
 	Name        *string    `json:"Name"`
 	Latest      *string    `json:"Latest"`
@@ -28,6 +34,16 @@ type ImageInfo struct {
 	Vendor      *string    `json:"Vendor"`
 	Size        *string    `json:"Size"`
 	Labels      *string    `json:"Labels"`
+}
+
+type ImageSummary struct {
+	RepoName    *string    `json:"RepoName"`
+	Tag         *string    `json:"Tag"`
+	LastUpdated *time.Time `json:"LastUpdated"`
+	Size        *string    `json:"Size"`
+	Platform    *OsArch    `json:"Platform"`
+	Vendor      *string    `json:"Vendor"`
+	Score       *int       `json:"Score"`
 }
 
 type ImgResultForCve struct {
@@ -49,11 +65,22 @@ type LayerInfo struct {
 	Digest *string `json:"Digest"`
 }
 
+type LayerSummary struct {
+	Size   *string `json:"Size"`
+	Digest *string `json:"Digest"`
+	Score  *int    `json:"Score"`
+}
+
 type ManifestInfo struct {
 	Digest   *string      `json:"Digest"`
 	Tag      *string      `json:"Tag"`
 	IsSigned *bool        `json:"IsSigned"`
 	Layers   []*LayerInfo `json:"Layers"`
+}
+
+type OsArch struct {
+	Os   *string `json:"Os"`
+	Arch *string `json:"Arch"`
 }
 
 type PackageInfo struct {
@@ -64,6 +91,15 @@ type PackageInfo struct {
 
 type RepoInfo struct {
 	Manifests []*ManifestInfo `json:"Manifests"`
+}
+
+type RepoSummary struct {
+	Name        *string    `json:"Name"`
+	LastUpdated *time.Time `json:"LastUpdated"`
+	Size        *string    `json:"Size"`
+	Platforms   []*OsArch  `json:"Platforms"`
+	Vendors     []*string  `json:"Vendors"`
+	Score       *int       `json:"Score"`
 }
 
 type TagInfo struct {

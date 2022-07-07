@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net/url"
 	"os"
 	"os/exec"
 	"path"
@@ -50,6 +51,50 @@ type ImgResponsWithLatestTag struct {
 type ExpandedRepoInfoResp struct {
 	ExpandedRepoInfo ExpandedRepoInfo `json:"data"`
 	Errors           []ErrorGQL       `json:"errors"`
+}
+
+type GlobalSearchResultResp struct {
+	GlobalSearchResult GlobalSearchResult `json:"data"`
+	Errors             []ErrorGQL         `json:"errors"`
+}
+
+type GlobalSearchResult struct {
+	GlobalSearch GlobalSearch `json:"globalSearch"`
+}
+type GlobalSearch struct {
+	Images []ImageSummary `json:"images"`
+	Repos  []RepoSummary  `json:"repos"`
+	Layers []LayerSummary `json:"layers"`
+}
+
+type ImageSummary struct {
+	RepoName    string    `json:"repoName"`
+	Tag         string    `json:"tag"`
+	LastUpdated time.Time `json:"lastUpdated"`
+	Size        string    `json:"size"`
+	Platform    OsArch    `json:"platform"`
+	Vendor      string    `json:"vendor"`
+	Score       int       `json:"score"`
+}
+
+type RepoSummary struct {
+	Name        string    `json:"name"`
+	LastUpdated time.Time `json:"lastUpdated"`
+	Size        string    `json:"size"`
+	Platforms   []OsArch  `json:"platforms"`
+	Vendors     []string  `json:"vendors"`
+	Score       int       `json:"score"`
+}
+
+type LayerSummary struct {
+	Size   string `json:"size"`
+	Digest string `json:"digest"`
+	Score  int    `json:"score"`
+}
+
+type OsArch struct {
+	Os   string `json:"os"`
+	Arch string `json:"arch"`
 }
 
 type ExpandedRepoInfo struct {
@@ -657,5 +702,98 @@ func TestUtilsMethod(t *testing.T) {
 		dir = common.GetRootDir("b/zot-cve-test", storeController)
 
 		So(dir, ShouldEqual, subRootDir)
+	})
+}
+
+func TestGlobalSearch(t *testing.T) {
+	Convey("Test utils", t, func() {
+		subpath := "/a"
+
+		err := testSetup(t, subpath)
+		if err != nil {
+			panic(err)
+		}
+
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = rootDir
+		conf.Storage.SubPaths = make(map[string]config.StorageConfig)
+		conf.Storage.SubPaths[subpath] = config.StorageConfig{RootDirectory: subRootDir}
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
+		}
+
+		conf.Extensions.Search.CVE = nil
+
+		ctlr := api.NewController(conf)
+
+		go func() {
+			// this blocks
+			if err := ctlr.Run(context.Background()); err != nil {
+				return
+			}
+		}()
+
+		// wait till ready
+		for {
+			_, err := resty.R().Get(baseURL)
+			if err == nil {
+				break
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		// shut down server
+
+		defer func() {
+			ctx := context.Background()
+			_ = ctlr.Server.Shutdown(ctx)
+		}()
+
+		query := `
+			{
+				GlobalSearch(id:""){
+					Images {
+						RepoName
+						Tag
+						LastUpdated
+						Size
+						Score
+					}
+					Repos {
+						Name
+      					LastUpdated
+      					Size
+      					Platforms {
+      					  Os
+      					  Arch
+      					}
+      					Vendors
+						Score
+					}
+					Layers {
+						Digest
+						Size
+					}
+				}
+			}`
+		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		responseStruct := &GlobalSearchResultResp{}
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+
+		So(responseStruct.GlobalSearchResult.GlobalSearch.Images, ShouldNotBeNil)
+		So(len(responseStruct.GlobalSearchResult.GlobalSearch.Images), ShouldNotBeEmpty)
+		So(len(responseStruct.GlobalSearchResult.GlobalSearch.Repos), ShouldNotBeEmpty)
+		So(len(responseStruct.GlobalSearchResult.GlobalSearch.Layers), ShouldNotBeEmpty)
 	})
 }

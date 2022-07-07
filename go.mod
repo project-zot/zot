@@ -3,7 +3,6 @@ module zotregistry.io/zot
 go 1.18
 
 require (
-	github.com/99designs/gqlgen v0.17.2
 	github.com/Masterminds/semver v1.5.0
 	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
 	github.com/apex/log v1.9.0
@@ -57,6 +56,8 @@ require (
 require github.com/open-policy-agent/opa v0.37.0 // indirect
 
 require (
+	github.com/99designs/gqlgen v0.14.0
+	github.com/agnivade/levenshtein v1.1.1
 	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20220217185014-dd38b7ed8a99
 	github.com/sigstore/cosign v1.9.0
 	github.com/swaggo/http-swagger v1.2.8
@@ -95,7 +96,6 @@ require (
 	github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d // indirect
 	github.com/acomagu/bufpipe v1.0.3 // indirect
 	github.com/agext/levenshtein v1.2.2 // indirect
-	github.com/agnivade/levenshtein v1.1.1 // indirect
 	github.com/apparentlymart/go-cidr v1.1.0 // indirect
 	github.com/apparentlymart/go-textseg/v13 v13.0.0 // indirect
 	github.com/aquasecurity/fanal v0.0.0-20211005172059-69527b46560c // indirect

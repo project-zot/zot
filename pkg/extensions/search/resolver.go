@@ -5,6 +5,7 @@ package search
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -536,6 +537,206 @@ func (r *queryResolver) getImageListWithLatestTag(store storage.ImageStore) ([]*
 	}
 
 	return results, nil
+}
+
+func cleanQuerry(query string) string {
+	query = strings.ToLower(query)
+	query = strings.Replace(query, ":", " ", 1)
+
+	return query
+}
+
+func (r *queryResolver) GlobalSearch(ctx context.Context, query string) (*GlobalSearchResult, error) {
+	query = cleanQuerry(query)
+	defaultStore := r.storeController.DefaultStore
+	olu := common.NewOciLayoutUtils(r.storeController, r.log)
+
+	var name, tag string
+
+	_, err := fmt.Sscanf(query, "%s %s", &name, &tag)
+	if err != nil {
+		name = query
+	}
+
+	repoList, err := defaultStore.GetRepositories()
+	if err != nil {
+		r.log.Error().Err(err).Msg("unable to search repositories")
+
+		return &GlobalSearchResult{}, err
+	}
+
+	repos, images, layers := globalSearch(repoList, name, tag, olu, r.log)
+
+	return &GlobalSearchResult{
+		Images: images,
+		Repos:  repos,
+		Layers: layers,
+	}, nil
+}
+
+func globalSearch(repoList []string, name, tag string, olu *common.OciLayoutUtils, log log.Logger) (
+	[]*RepoSummary, []*ImageSummary, []*LayerSummary,
+) {
+	repos := []*RepoSummary{}
+	images := []*ImageSummary{}
+	layers := []*LayerSummary{}
+
+	for _, repo := range repoList {
+		repo := repo
+
+		// map used for dedube if 2 images reference the same blob
+		repoLayerBlob2Size := make(map[string]int64, 10)
+
+		// made up of all manifests, configs and image layers
+		repoSize := int64(0)
+
+		lastUpdate, err := olu.GetRepoLastUpdated(repo)
+		if err != nil {
+			log.Error().Err(err).Msgf("can't find latest update timestamp for repo: %s", repo)
+		}
+
+		tagsInfo, err := olu.GetImageTagsWithTimestamp(repo)
+		if err != nil {
+			log.Error().Err(err).Msgf("can't get tags info for repo: %s", repo)
+
+			continue
+		}
+
+		repoInfo, err := olu.GetExpandedRepoInfo(repo)
+		if err != nil {
+			log.Error().Err(err).Msgf("can't get repo info for repo: %s", repo)
+
+			continue
+		}
+
+		repoPlatforms := make([]*OsArch, 0, len(tagsInfo))
+		repoVendors := make([]*string, 0, len(repoInfo.Manifests))
+
+		for i, manifest := range repoInfo.Manifests {
+			imageLayersSize := int64(0)
+			manifestSize := olu.GetImageManifestSize(repo, godigest.Digest(tagsInfo[i].Digest))
+			configSize := olu.GetImageConfigSize(repo, godigest.Digest(tagsInfo[i].Digest))
+
+			for _, layer := range manifest.Layers {
+				layer := layer
+
+				layerSize, err := strconv.ParseInt(layer.Size, 10, 64)
+				if err != nil {
+					olu.Log.Error().Err(err).Msg("invalid layer size")
+
+					continue
+				}
+
+				repoLayerBlob2Size[layer.Digest] = layerSize
+				imageLayersSize += layerSize
+
+				// if we have a tag we won't match a layer
+				if tag != "" {
+					continue
+				}
+
+				if index := strings.Index(layer.Digest, name); index != -1 {
+					layers = append(layers, &LayerSummary{
+						Digest: &layer.Digest,
+						Size:   &layer.Size,
+						Score:  &index,
+					})
+				}
+			}
+
+			imageSize := imageLayersSize + manifestSize + configSize
+			repoSize += manifestSize + configSize
+
+			index := strings.Index(repo, name)
+			matchesTag := strings.HasPrefix(manifest.Tag, tag)
+
+			if index != -1 {
+				tag := manifest.Tag
+				size := strconv.Itoa(int(imageSize))
+				vendor := olu.GetImageVendor(repo, godigest.Digest(tagsInfo[i].Digest))
+				lastUpdated := olu.GetImageLastUpdated(repo, godigest.Digest(tagsInfo[i].Digest))
+
+				// update matching score
+				score := calculateImageMatchingScore(repo, index, matchesTag)
+
+				os, arch := olu.GetImagePlatform(repo, godigest.Digest(tagsInfo[i].Digest))
+				osArch := &OsArch{
+					Os:   &os,
+					Arch: &arch,
+				}
+
+				repoPlatforms = append(repoPlatforms, osArch)
+				repoVendors = append(repoVendors, &vendor)
+
+				images = append(images, &ImageSummary{
+					RepoName:    &repo,
+					Tag:         &tag,
+					LastUpdated: &lastUpdated,
+					Size:        &size,
+					Platform:    osArch,
+					Vendor:      &vendor,
+					Score:       &score,
+				})
+			}
+		}
+
+		for layerBlob := range repoLayerBlob2Size {
+			repoSize += repoLayerBlob2Size[layerBlob]
+		}
+
+		if index := strings.Index(repo, name); index != -1 {
+			repoSize := strconv.FormatInt(repoSize, 10)
+
+			repos = append(repos, &RepoSummary{
+				Name:        &repo,
+				LastUpdated: &lastUpdate,
+				Size:        &repoSize,
+				Platforms:   repoPlatforms,
+				Vendors:     repoVendors,
+				Score:       &index,
+			})
+		}
+	}
+
+	sort.Slice(repos, func(i, j int) bool {
+		return *repos[i].Score < *repos[j].Score
+	})
+
+	sort.Slice(images, func(i, j int) bool {
+		return *images[i].Score < *images[j].Score
+	})
+
+	sort.Slice(layers, func(i, j int) bool {
+		return *layers[i].Score < *layers[j].Score
+	})
+
+	return repos, images, layers
+}
+
+// calcalculateImageMatchingScore iterated from the index of the matched string in the
+// artifact name until the beginning of the string or until delimitator "/".
+// The distance represents the score of the match.
+//
+// Example:
+// 	query: image
+// 	repos: repo/test/myimage
+// Score will be 2.
+func calculateImageMatchingScore(artefactName string, index int, matchesTag bool) int {
+	score := 0
+
+	for index > 1 {
+		if artefactName[index-1] == '/' {
+			break
+		}
+		index--
+		score++
+	}
+
+	if !matchesTag {
+		score += 10
+	}
+
+	return score
 }
 
 func getGraphqlCompatibleTags(fixedTags []common.TagInfo) []*TagInfo {

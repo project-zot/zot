@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agnivade/levenshtein"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"zotregistry.io/zot/pkg/storage"
 )
@@ -152,4 +153,18 @@ func GetCategories(labels map[string]string) string {
 	categories := labels[AnnotationLabels]
 
 	return categories
+}
+
+func HasFuzzyPrefix(str, prefix string, tolerance int) bool {
+	distance := levenshtein.ComputeDistance(str[:min(len(prefix), len(str))], prefix)
+
+	return distance <= tolerance
+}
+
+func min(x, y int) int {
+	if x < y {
+		return x
+	}
+
+	return y
 }

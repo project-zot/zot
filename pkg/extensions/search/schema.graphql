@@ -66,6 +66,49 @@ type LayerInfo {
      Digest: String
 }
 
+# Search results in all repos/images/layers
+# There will be other more structures for more detailed information
+type GlobalSearchResult {
+     Images: [ImageSummary]
+     Repos: [RepoSummary]
+     Layers: [LayerSummary]
+}
+
+# Brief on a specific image to be used in queries returning a list of images
+# We define an image as a pairing or a repo and a tag belonging to that repo
+type ImageSummary {
+     RepoName: String
+     Tag: String
+     LastUpdated: Time
+     Size: String
+     Platform: OsArch
+     Vendor: String
+     Score: Int
+}
+
+# Brief on a specific repo to be used in queries returning a list of repos
+type RepoSummary {
+     Name: String
+     LastUpdated: Time
+     Size: String
+     Platforms: [OsArch]
+     Vendors: [String]
+     Score: Int
+}
+
+# Currently the same as LayerInfo, we can refactor later
+# For detailed information on the layer a ImageListForDigest call can be made
+type LayerSummary {
+     Size: String # Int64 is not supported.
+     Digest: String
+     Score: Int
+}
+
+type OsArch {
+     Os: String
+     Arch: String
+}
+
 type Query {
   CVEListForImage(image: String!) :CVEResultForImage 
   ImageListForCVE(id: String!) :[ImgResultForCVE]
@@ -73,4 +116,5 @@ type Query {
   ImageListForDigest(id: String!) :[ImgResultForDigest]
   ImageListWithLatestTag:[ImageInfo]
   ExpandedRepoInfo(repo: String!):RepoInfo
+  GlobalSearch(id: String!): GlobalSearchResult
 }

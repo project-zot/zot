@@ -246,6 +246,111 @@ func (olu OciLayoutUtils) checkManifestSignature(name, digest, mediaType string)
 	return true
 }
 
+func (olu OciLayoutUtils) GetImageLastUpdated(repo string, manifestDigest godigest.Digest) time.Time {
+	imageBlobManifest, err := olu.GetImageBlobManifest(repo, manifestDigest)
+	if err != nil {
+		olu.Log.Error().Err(err).Msg("unable to read image blob")
+
+		return time.Time{}
+	}
+
+	imageInfo, err := olu.GetImageInfo(repo, imageBlobManifest.Config.Digest)
+	if err != nil {
+		olu.Log.Error().Err(err).Msg("unable to read image info")
+
+		return time.Time{}
+	}
+
+	var timeStamp time.Time
+
+	if len(imageInfo.History) != 0 {
+		timeStamp = *imageInfo.History[0].Created
+	} else {
+		timeStamp = time.Time{}
+	}
+
+	return timeStamp
+}
+
+func (olu OciLayoutUtils) GetImagePlatform(repo string, manifestDigest godigest.Digest) (
+	string, string,
+) {
+	imageBlobManifest, err := olu.GetImageBlobManifest(repo, manifestDigest)
+	if err != nil {
+		olu.Log.Error().Err(err).Msg("can't get image blob manifest")
+
+		return "", ""
+	}
+
+	imageConfig, err := olu.GetImageInfo(repo, imageBlobManifest.Config.Digest)
+	if err != nil {
+		olu.Log.Error().Err(err).Msg("extension api: error reading image config")
+
+		return "", ""
+	}
+
+	return imageConfig.OS, imageConfig.Architecture
+}
+
+func (olu OciLayoutUtils) GetImageVendor(repo string, manifestDigest godigest.Digest) string {
+	imageBlobManifest, err := olu.GetImageBlobManifest(repo, manifestDigest)
+	if err != nil {
+		olu.Log.Error().Err(err).Msg("can't get image blob manifest")
+
+		return ""
+	}
+
+	imageConfig, err := olu.GetImageInfo(repo, imageBlobManifest.Config.Digest)
+	if err != nil {
+		olu.Log.Error().Err(err).Msg("extension api: error reading image config")
+
+		return ""
+	}
+
+	return imageConfig.Config.Labels["vendor"]
+}
+
+func (olu OciLayoutUtils) GetImageManifestSize(repo string, manifestDigest godigest.Digest) int64 {
+	imageBlobManifest, err := olu.GetImageBlobManifest(repo, manifestDigest)
+	if err != nil {
+		olu.Log.Error().Err(err).Msg("can't get image blob manifest")
+
+		return 0
+	}
+
+	return imageBlobManifest.Config.Size
+}
+
+func (olu OciLayoutUtils) GetImageConfigSize(repo string, manifestDigest godigest.Digest) int64 {
+	imageBlobManifest, err := olu.GetImageBlobManifest(repo, manifestDigest)
+	if err != nil {
+		olu.Log.Error().Err(err).Msg("can't get image blob manifest")
+
+		return 0
+	}
+	imageStore := olu.StoreController.GetImageStore(repo)
+
+	buf, err := imageStore.GetBlobContent(repo, imageBlobManifest.Config.Digest.String())
+	if err != nil {
+		olu.Log.Error().Err(err).Msg("error when getting blob content")
+
+		return int64(len(buf))
+	}
+
+	return int64(len(buf))
+}
+
+func (olu OciLayoutUtils) GetRepoLastUpdated(repo string) (time.Time, error) {
+	tagsInfo, err := olu.GetImageTagsWithTimestamp(repo)
+	if err != nil || len(tagsInfo) == 0 {
+		return time.Time{}, err
+	}
+
+	latestTag := GetLatestTag(tagsInfo)
+
+	return latestTag.Timestamp, nil
+}
+
 func (olu OciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error) {
 	repo := RepoInfo{}
 
