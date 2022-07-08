@@ -300,3 +300,45 @@ jobs:
         uses: github/codeql-action/upload-sarif@v2
         with:
           sarif_file: 'trivy-results.sarif'
+
+  update-helm-chart:
+    if: github.event_name == 'release' && github.event.action== 'published'
+    name: Update Helm Chart
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          ref: main
+          fetch-depth: '0'
+
+      - name: Checkout project-zot/helm-charts
+        uses: actions/checkout@v2
+        with:
+          repository: project-zot/helm-charts
+          ref: main
+          fetch-depth: '0'
+          token: ${{ secrets.PUSH_TOKEN }}
+          path: ./helm-charts
+
+      - name: Configure Git
+        run: |
+          git config --global user.name 'github-actions'
+          git config --global user.email 'github-actions@users.noreply.github.com'
+      - name: Update appVersion
+        uses: mikefarah/yq@master
+        with:
+          cmd: yq -i '.appVersion = "${{ github.event.release.tag_name }}"' 'helm-charts/charts/zot/Chart.yaml'
+      - name: Update image tag
+        uses: mikefarah/yq@master
+        with:
+          cmd: yq -i '.image.tag = "${{ github.event.release.tag_name }}"' 'helm-charts/charts/zot/values.yaml'
+      - name: Update version
+        run: |
+          sudo apt-get install pip
+          pip install pybump
+          pybump bump --file helm-charts/charts/zot/Chart.yaml --level patch
+      - name: Push changes to project-zot/helm-charts
+        run: |
+          cd ./helm-charts
+          git commit -am "Automated update of Helm Chart"
+          git push
