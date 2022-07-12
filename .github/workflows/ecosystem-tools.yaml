@@ -32,15 +32,6 @@ jobs:
           sudo apt-get update
           sudo apt-get -y upgrade
           sudo apt-get -y install skopeo
-          # install notation
-          curl -Lo notation.tar.gz https://github.com/notaryproject/notation/releases/download/v0.7.1-alpha.1/notation_0.7.1-alpha.1_linux_amd64.tar.gz
-          sudo tar xvzf notation.tar.gz -C /usr/bin notation
-          # install oras
-          curl -LO https://github.com/oras-project/oras/releases/download/v0.12.0/oras_0.12.0_linux_amd64.tar.gz
-          mkdir -p oras-install/
-          tar -zxf oras_0.12.0_*.tar.gz -C oras-install/
-          sudo mv oras-install/oras /usr/bin/
-          rm -rf oras_0.12.0_*.tar.gz oras-install/
       - name: Run push-pull tests
         run: |
             make push-pull

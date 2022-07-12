@@ -43,15 +43,6 @@ jobs:
           sudo apt-get update
           sudo apt-get -y upgrade
           sudo apt-get -y install skopeo
-          # install notation
-          curl -Lo notation.tar.gz https://github.com/notaryproject/notation/releases/download/v0.7.1-alpha.1/notation_0.7.1-alpha.1_linux_amd64.tar.gz
-          sudo tar xvzf notation.tar.gz -C /usr/bin notation
-          # install oras
-          curl -LO https://github.com/oras-project/oras/releases/download/v0.12.0/oras_0.12.0_linux_amd64.tar.gz
-          mkdir -p oras-install/
-          tar -zxf oras_0.12.0_*.tar.gz -C oras-install/
-          sudo mv oras-install/oras /usr/bin/
-          rm -rf oras_0.12.0_*.tar.gz oras-install/
 
           # install haproxy
           sudo apt-get install haproxy
@@ -120,11 +111,11 @@ jobs:
             skopeo --debug copy --src-tls-verify=false docker://localhost:8080/golang:1.18 oci:golang:1.18
             echo "{\"name\":\"foo\",\"value\":\"bar\"}" > config.json
             echo "hello world" > artifact.txt
-            oras push localhost:8080/hello-artifact:v2 \
+            oras push --plain-http localhost:8080/hello-artifact:v2 \
                 --manifest-config config.json:application/vnd.acme.rocket.config.v1+json \
                     artifact.txt:text/plain -d -v
             rm -f artifact.txt # first delete the file
-            oras pull localhost:8080/hello-artifact:v2 -d -v -a
+            oras pull --plain-http localhost:8080/hello-artifact:v2 -d -v
             grep -q "hello world" artifact.txt  # should print "hello world"
             if [ $? -ne 0 ]; then \
               killall -r zot-*; \
