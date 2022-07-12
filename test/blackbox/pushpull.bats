@@ -29,6 +29,7 @@ function setup_file() {
     }
 }
 EOF
+    git -C ${BATS_FILE_TMPDIR} clone https://github.com/project-zot/helm-charts.git
     setup_zot_file_level ${zot_config_file}
     wait_zot_reachable "http://127.0.0.1:8080/v2/_catalog"
 }
@@ -78,4 +79,13 @@ function teardown_file() {
     oras pull --plain-http 127.0.0.1:8080/hello-artifact:v2 -d -v
     grep -q "hello world" artifact.txt
     rm -f artifact.txt
+}
+
+@test "push helm chart" {
+    helm package ${BATS_FILE_TMPDIR}/helm-charts/charts/zot
+    helm push zot-0.1.0.tgz oci://localhost:8080/zot-chart
+}
+
+@test "pull helm chart" {
+    helm pull oci://localhost:8080/zot-chart/zot --version 0.1.0
 }
