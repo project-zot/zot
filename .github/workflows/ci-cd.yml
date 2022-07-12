@@ -317,7 +317,7 @@ jobs:
           repository: project-zot/helm-charts
           ref: main
           fetch-depth: '0'
-          token: ${{ secrets.PUSH_TOKEN }}
+          token: ${{ secrets.HELM_PUSH_TOKEN }}
           path: ./helm-charts
 
       - name: Configure Git
