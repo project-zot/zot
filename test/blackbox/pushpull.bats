@@ -68,14 +68,14 @@ function teardown_file() {
 @test "push oras artifact" {
     echo "{\"name\":\"foo\",\"value\":\"bar\"}" > config.json
     echo "hello world" > artifact.txt
-    oras push 127.0.0.1:8080/hello-artifact:v2 \
+    oras push --plain-http 127.0.0.1:8080/hello-artifact:v2 \
         --manifest-config config.json:application/vnd.acme.rocket.config.v1+json artifact.txt:text/plain -d -v
 	rm -f artifact.txt
     rm -f config.json
 }
 
 @test "pull oras artifact" {
-    oras pull 127.0.0.1:8080/hello-artifact:v2 -d -v -a
+    oras pull --plain-http 127.0.0.1:8080/hello-artifact:v2 -d -v
     grep -q "hello world" artifact.txt
     rm -f artifact.txt
 }

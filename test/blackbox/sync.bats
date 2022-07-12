@@ -40,7 +40,7 @@ function setup_file() {
                     ],
                     "onDemand": true,
                     "tlsVerify": false,
-                    "PollInterval": "30s",
+                    "PollInterval": "20s",
                     "content": [
                         {
                             "prefix": "**"
