@@ -13,7 +13,7 @@ type CveInfo struct {
 	Log                log.Logger
 	CveTrivyController CveTrivyController
 	StoreController    storage.StoreController
-	LayoutUtils        *common.OciLayoutUtils
+	LayoutUtils        *common.BaseOciLayoutUtils
 }
 
 type CveTrivyController struct {

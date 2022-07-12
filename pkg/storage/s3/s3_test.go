@@ -101,8 +101,8 @@ func createObjectsStore(rootDir string, cacheDir string, dedupe bool) (
 }
 
 type FileInfoMock struct {
-	isDirFn func() bool
-	sizeFn  func() int64
+	IsDirFn func() bool
+	SizeFn  func() int64
 }
 
 func (f *FileInfoMock) Path() string {
@@ -110,8 +110,8 @@ func (f *FileInfoMock) Path() string {
 }
 
 func (f *FileInfoMock) Size() int64 {
-	if f != nil && f.sizeFn != nil {
-		return f.sizeFn()
+	if f != nil && f.SizeFn != nil {
+		return f.SizeFn()
 	}
 
 	return int64(fileInfoSize)
@@ -122,18 +122,18 @@ func (f *FileInfoMock) ModTime() time.Time {
 }
 
 func (f *FileInfoMock) IsDir() bool {
-	if f != nil && f.isDirFn != nil {
-		return f.isDirFn()
+	if f != nil && f.IsDirFn != nil {
+		return f.IsDirFn()
 	}
 
 	return true
 }
 
 type FileWriterMock struct {
-	writeFn  func([]byte) (int, error)
-	cancelFn func() error
-	commitFn func() error
-	closeFn  func() error
+	WriteFn  func([]byte) (int, error)
+	CancelFn func() error
+	CommitFn func() error
+	CloseFn  func() error
 }
 
 func (f *FileWriterMock) Size() int64 {
@@ -141,117 +141,117 @@ func (f *FileWriterMock) Size() int64 {
 }
 
 func (f *FileWriterMock) Cancel() error {
-	if f != nil && f.cancelFn != nil {
-		return f.cancelFn()
+	if f != nil && f.CancelFn != nil {
+		return f.CancelFn()
 	}
 
 	return nil
 }
 
 func (f *FileWriterMock) Commit() error {
-	if f != nil && f.commitFn != nil {
-		return f.commitFn()
+	if f != nil && f.CommitFn != nil {
+		return f.CommitFn()
 	}
 
 	return nil
 }
 
 func (f *FileWriterMock) Write(p []byte) (int, error) {
-	if f != nil && f.writeFn != nil {
-		return f.writeFn(p)
+	if f != nil && f.WriteFn != nil {
+		return f.WriteFn(p)
 	}
 
 	return 10, nil
 }
 
 func (f *FileWriterMock) Close() error {
-	if f != nil && f.closeFn != nil {
-		return f.closeFn()
+	if f != nil && f.CloseFn != nil {
+		return f.CloseFn()
 	}
 
 	return nil
 }
 
 type StorageDriverMock struct {
-	nameFn       func() string
-	getContentFn func(ctx context.Context, path string) ([]byte, error)
-	putContentFn func(ctx context.Context, path string, content []byte) error
-	readerFn     func(ctx context.Context, path string, offset int64) (io.ReadCloser, error)
-	writerFn     func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error)
-	statFn       func(ctx context.Context, path string) (driver.FileInfo, error)
-	listFn       func(ctx context.Context, path string) ([]string, error)
-	moveFn       func(ctx context.Context, sourcePath, destPath string) error
-	deleteFn     func(ctx context.Context, path string) error
-	walkFn       func(ctx context.Context, path string, f driver.WalkFn) error
+	NameFn       func() string
+	GetContentFn func(ctx context.Context, path string) ([]byte, error)
+	PutContentFn func(ctx context.Context, path string, content []byte) error
+	ReaderFn     func(ctx context.Context, path string, offset int64) (io.ReadCloser, error)
+	WriterFn     func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error)
+	StatFn       func(ctx context.Context, path string) (driver.FileInfo, error)
+	ListFn       func(ctx context.Context, path string) ([]string, error)
+	MoveFn       func(ctx context.Context, sourcePath, destPath string) error
+	DeleteFn     func(ctx context.Context, path string) error
+	WalkFn       func(ctx context.Context, path string, f driver.WalkFn) error
 }
 
 func (s *StorageDriverMock) Name() string {
-	if s != nil && s.nameFn != nil {
-		return s.nameFn()
+	if s != nil && s.NameFn != nil {
+		return s.NameFn()
 	}
 
 	return ""
 }
 
 func (s *StorageDriverMock) GetContent(ctx context.Context, path string) ([]byte, error) {
-	if s != nil && s.getContentFn != nil {
-		return s.getContentFn(ctx, path)
+	if s != nil && s.GetContentFn != nil {
+		return s.GetContentFn(ctx, path)
 	}
 
 	return []byte{}, nil
 }
 
 func (s *StorageDriverMock) PutContent(ctx context.Context, path string, content []byte) error {
-	if s != nil && s.putContentFn != nil {
-		return s.putContentFn(ctx, path, content)
+	if s != nil && s.PutContentFn != nil {
+		return s.PutContentFn(ctx, path, content)
 	}
 
 	return nil
 }
 
 func (s *StorageDriverMock) Reader(ctx context.Context, path string, offset int64) (io.ReadCloser, error) {
-	if s != nil && s.readerFn != nil {
-		return s.readerFn(ctx, path, offset)
+	if s != nil && s.ReaderFn != nil {
+		return s.ReaderFn(ctx, path, offset)
 	}
 
 	return ioutil.NopCloser(strings.NewReader("")), nil
 }
 
 func (s *StorageDriverMock) Writer(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
-	if s != nil && s.writerFn != nil {
-		return s.writerFn(ctx, path, isAppend)
+	if s != nil && s.WriterFn != nil {
+		return s.WriterFn(ctx, path, isAppend)
 	}
 
 	return &FileWriterMock{}, nil
 }
 
 func (s *StorageDriverMock) Stat(ctx context.Context, path string) (driver.FileInfo, error) {
-	if s != nil && s.statFn != nil {
-		return s.statFn(ctx, path)
+	if s != nil && s.StatFn != nil {
+		return s.StatFn(ctx, path)
 	}
 
 	return &FileInfoMock{}, nil
 }
 
 func (s *StorageDriverMock) List(ctx context.Context, path string) ([]string, error) {
-	if s != nil && s.listFn != nil {
-		return s.listFn(ctx, path)
+	if s != nil && s.ListFn != nil {
+		return s.ListFn(ctx, path)
 	}
 
 	return []string{"a"}, nil
 }
 
 func (s *StorageDriverMock) Move(ctx context.Context, sourcePath, destPath string) error {
-	if s != nil && s.moveFn != nil {
-		return s.moveFn(ctx, sourcePath, destPath)
+	if s != nil && s.MoveFn != nil {
+		return s.MoveFn(ctx, sourcePath, destPath)
 	}
 
 	return nil
 }
 
 func (s *StorageDriverMock) Delete(ctx context.Context, path string) error {
-	if s != nil && s.deleteFn != nil {
-		return s.deleteFn(ctx, path)
+	if s != nil && s.DeleteFn != nil {
+		return s.DeleteFn(ctx, path)
 	}
 
 	return nil
@@ -262,8 +262,8 @@ func (s *StorageDriverMock) URLFor(ctx context.Context, path string, options map
 }
 
 func (s *StorageDriverMock) Walk(ctx context.Context, path string, f driver.WalkFn) error {
-	if s != nil && s.walkFn != nil {
-		return s.walkFn(ctx, path, f)
+	if s != nil && s.WalkFn != nil {
+		return s.WalkFn(ctx, path, f)
 	}
 
 	return nil
@@ -458,31 +458,31 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 
 	Convey("Test storage driver errors", t, func(c C) {
 		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			listFn: func(ctx context.Context, path string) ([]string, error) {
+			ListFn: func(ctx context.Context, path string) ([]string, error) {
 				return []string{testImage}, errS3
 			},
-			moveFn: func(ctx context.Context, sourcePath, destPath string) error {
+			MoveFn: func(ctx context.Context, sourcePath, destPath string) error {
 				return errS3
 			},
-			getContentFn: func(ctx context.Context, path string) ([]byte, error) {
+			GetContentFn: func(ctx context.Context, path string) ([]byte, error) {
 				return []byte{}, errS3
 			},
-			putContentFn: func(ctx context.Context, path string, content []byte) error {
+			PutContentFn: func(ctx context.Context, path string, content []byte) error {
 				return errS3
 			},
-			writerFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
+			WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
 				return &FileWriterMock{}, errS3
 			},
-			readerFn: func(ctx context.Context, path string, offset int64) (io.ReadCloser, error) {
+			ReaderFn: func(ctx context.Context, path string, offset int64) (io.ReadCloser, error) {
 				return ioutil.NopCloser(strings.NewReader("")), errS3
 			},
-			walkFn: func(ctx context.Context, path string, f driver.WalkFn) error {
+			WalkFn: func(ctx context.Context, path string, f driver.WalkFn) error {
 				return errS3
 			},
-			statFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				return &FileInfoMock{}, errS3
 			},
-			deleteFn: func(ctx context.Context, path string) error {
+			DeleteFn: func(ctx context.Context, path string) error {
 				return errS3
 			},
 		})
@@ -532,7 +532,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 		tdir := t.TempDir()
 
 		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			listFn: func(ctx context.Context, path string) ([]string, error) {
+			ListFn: func(ctx context.Context, path string) ([]string, error) {
 				return []string{testImage, testImage}, errS3
 			},
 		})
@@ -541,10 +541,10 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 		So(err, ShouldNotBeNil)
 
 		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			listFn: func(ctx context.Context, path string) ([]string, error) {
+			ListFn: func(ctx context.Context, path string) ([]string, error) {
 				return []string{testImage, testImage}, nil
 			},
-			statFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				return nil, errS3
 			},
 		})
@@ -555,10 +555,10 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 
 	Convey("Test ValidateRepo2", t, func(c C) {
 		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			listFn: func(ctx context.Context, path string) ([]string, error) {
+			ListFn: func(ctx context.Context, path string) ([]string, error) {
 				return []string{"test/test/oci-layout", "test/test/index.json"}, nil
 			},
-			statFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				return &FileInfoMock{}, nil
 			},
 		})
@@ -568,13 +568,13 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 
 	Convey("Test ValidateRepo3", t, func(c C) {
 		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			listFn: func(ctx context.Context, path string) ([]string, error) {
+			ListFn: func(ctx context.Context, path string) ([]string, error) {
 				return []string{"test/test/oci-layout", "test/test/index.json"}, nil
 			},
-			statFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				return &FileInfoMock{}, nil
 			},
-			getContentFn: func(ctx context.Context, path string) ([]byte, error) {
+			GetContentFn: func(ctx context.Context, path string) ([]byte, error) {
 				return []byte{}, errS3
 			},
 		})
@@ -585,13 +585,13 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 	Convey("Test ValidateRepo4", t, func(c C) {
 		ociLayout := []byte(`{"imageLayoutVersion": "9.9.9"}`)
 		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			listFn: func(ctx context.Context, path string) ([]string, error) {
+			ListFn: func(ctx context.Context, path string) ([]string, error) {
 				return []string{"test/test/oci-layout", "test/test/index.json"}, nil
 			},
-			statFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				return &FileInfoMock{}, nil
 			},
-			getContentFn: func(ctx context.Context, path string) ([]byte, error) {
+			GetContentFn: func(ctx context.Context, path string) ([]byte, error) {
 				return ociLayout, nil
 			},
 		})
@@ -601,7 +601,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 
 	Convey("Test GetRepositories", t, func(c C) {
 		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			walkFn: func(ctx context.Context, path string, f driver.WalkFn) error {
+			WalkFn: func(ctx context.Context, path string, f driver.WalkFn) error {
 				return f(new(FileInfoMock))
 			},
 		})
@@ -612,7 +612,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 
 	Convey("Test DeleteImageManifest", t, func(c C) {
 		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			getContentFn: func(ctx context.Context, path string) ([]byte, error) {
+			GetContentFn: func(ctx context.Context, path string) ([]byte, error) {
 				return []byte{}, errS3
 			},
 		})
@@ -628,7 +628,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 
 	Convey("Test NewBlobUpload", t, func(c C) {
 		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			putContentFn: func(ctx context.Context, path string, content []byte) error {
+			PutContentFn: func(ctx context.Context, path string, content []byte) error {
 				return errS3
 			},
 		})
@@ -638,7 +638,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 
 	Convey("Test GetBlobUpload", t, func(c C) {
 		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			statFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				return &FileInfoMock{}, errS3
 			},
 		})
@@ -648,7 +648,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 
 	Convey("Test PutBlobChunkStreamed", t, func(c C) {
 		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			writerFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
+			WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
 				return &FileWriterMock{}, errS3
 			},
 		})
@@ -658,8 +658,8 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 
 	Convey("Test PutBlobChunkStreamed2", t, func(c C) {
 		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			writerFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
-				return &FileWriterMock{writeFn: func(b []byte) (int, error) {
+			WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
+				return &FileWriterMock{WriteFn: func(b []byte) (int, error) {
 					return 0, errS3
 				}}, nil
 			},
@@ -670,7 +670,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 
 	Convey("Test PutBlobChunk", t, func(c C) {
 		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			writerFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
+			WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
 				return &FileWriterMock{}, errS3
 			},
 		})
@@ -680,12 +680,12 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 
 	Convey("Test PutBlobChunk2", t, func(c C) {
 		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			writerFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
+			WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
 				return &FileWriterMock{
-					writeFn: func(b []byte) (int, error) {
+					WriteFn: func(b []byte) (int, error) {
 						return 0, errS3
 					},
-					cancelFn: func() error {
+					CancelFn: func() error {
 						return errS3
 					},
 				}, nil
@@ -697,9 +697,9 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 
 	Convey("Test PutBlobChunk3", t, func(c C) {
 		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			writerFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
+			WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
 				return &FileWriterMock{
-					writeFn: func(b []byte) (int, error) {
+					WriteFn: func(b []byte) (int, error) {
 						return 0, errS3
 					},
 				}, nil
@@ -711,9 +711,9 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 
 	Convey("Test FinishBlobUpload", t, func(c C) {
 		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			writerFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
+			WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
 				return &FileWriterMock{
-					commitFn: func() error {
+					CommitFn: func() error {
 						return errS3
 					},
 				}, nil
@@ -726,9 +726,9 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 
 	Convey("Test FinishBlobUpload2", t, func(c C) {
 		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			writerFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
+			WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
 				return &FileWriterMock{
-					closeFn: func() error {
+					CloseFn: func() error {
 						return errS3
 					},
 				}, nil
@@ -741,7 +741,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 
 	Convey("Test FinishBlobUpload3", t, func(c C) {
 		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			readerFn: func(ctx context.Context, path string, offset int64) (io.ReadCloser, error) {
+			ReaderFn: func(ctx context.Context, path string, offset int64) (io.ReadCloser, error) {
 				return nil, errS3
 			},
 		})
@@ -752,7 +752,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 
 	Convey("Test FinishBlobUpload4", t, func(c C) {
 		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			moveFn: func(ctx context.Context, sourcePath, destPath string) error {
+			MoveFn: func(ctx context.Context, sourcePath, destPath string) error {
 				return errS3
 			},
 		})
@@ -763,7 +763,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 
 	Convey("Test FullBlobUpload", t, func(c C) {
 		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			writerFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
+			WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
 				return &FileWriterMock{}, errS3
 			},
 		})
@@ -781,7 +781,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 
 	Convey("Test FullBlobUpload3", t, func(c C) {
 		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			moveFn: func(ctx context.Context, sourcePath, destPath string) error {
+			MoveFn: func(ctx context.Context, sourcePath, destPath string) error {
 				return errS3
 			},
 		})
@@ -792,7 +792,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 
 	Convey("Test GetBlob", t, func(c C) {
 		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			readerFn: func(ctx context.Context, path string, offset int64) (io.ReadCloser, error) {
+			ReaderFn: func(ctx context.Context, path string, offset int64) (io.ReadCloser, error) {
 				return ioutil.NopCloser(strings.NewReader("")), errS3
 			},
 		})
@@ -803,7 +803,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 
 	Convey("Test DeleteBlob", t, func(c C) {
 		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			deleteFn: func(ctx context.Context, path string) error {
+			DeleteFn: func(ctx context.Context, path string) error {
 				return errS3
 			},
 		})
@@ -814,7 +814,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 
 	Convey("Test GetReferrers", t, func(c C) {
 		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			deleteFn: func(ctx context.Context, path string) error {
+			DeleteFn: func(ctx context.Context, path string) error {
 				return errS3
 			},
 		})
@@ -1128,10 +1128,10 @@ func TestS3DedupeErr(t *testing.T) {
 		So(err, ShouldNotBeNil)
 
 		imgStore = createMockStorage(testDir, tdir, true, &StorageDriverMock{
-			moveFn: func(ctx context.Context, sourcePath string, destPath string) error {
+			MoveFn: func(ctx context.Context, sourcePath string, destPath string) error {
 				return errS3
 			},
-			statFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				return driver.FileInfoInternal{}, errS3
 			},
 		})
@@ -1148,7 +1148,7 @@ func TestS3DedupeErr(t *testing.T) {
 	Convey("Test DedupeBlob - error on second store.Stat()", t, func(c C) {
 		tdir := t.TempDir()
 		imgStore = createMockStorage(testDir, tdir, true, &StorageDriverMock{
-			statFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				if path == "dst2" {
 					return driver.FileInfoInternal{}, errS3
 				}
@@ -1168,10 +1168,10 @@ func TestS3DedupeErr(t *testing.T) {
 	Convey("Test DedupeBlob - error on store.PutContent()", t, func(c C) {
 		tdir := t.TempDir()
 		imgStore = createMockStorage(testDir, tdir, true, &StorageDriverMock{
-			putContentFn: func(ctx context.Context, path string, content []byte) error {
+			PutContentFn: func(ctx context.Context, path string, content []byte) error {
 				return errS3
 			},
-			statFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				return nil, nil
 			},
 		})
@@ -1187,10 +1187,10 @@ func TestS3DedupeErr(t *testing.T) {
 	Convey("Test DedupeBlob - error on store.Delete()", t, func(c C) {
 		tdir := t.TempDir()
 		imgStore = createMockStorage(testDir, tdir, true, &StorageDriverMock{
-			deleteFn: func(ctx context.Context, path string) error {
+			DeleteFn: func(ctx context.Context, path string) error {
 				return errS3
 			},
-			statFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				return nil, nil
 			},
 		})
@@ -1206,13 +1206,13 @@ func TestS3DedupeErr(t *testing.T) {
 	Convey("Test copyBlob() - error on initRepo()", t, func(c C) {
 		tdir := t.TempDir()
 		imgStore = createMockStorage(testDir, tdir, true, &StorageDriverMock{
-			putContentFn: func(ctx context.Context, path string, content []byte) error {
+			PutContentFn: func(ctx context.Context, path string, content []byte) error {
 				return errS3
 			},
-			statFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				return driver.FileInfoInternal{}, errS3
 			},
-			writerFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
+			WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
 				return &FileWriterMock{}, errS3
 			},
 		})
@@ -1230,10 +1230,10 @@ func TestS3DedupeErr(t *testing.T) {
 	Convey("Test copyBlob() - error on store.PutContent()", t, func(c C) {
 		tdir := t.TempDir()
 		imgStore = createMockStorage(testDir, tdir, true, &StorageDriverMock{
-			putContentFn: func(ctx context.Context, path string, content []byte) error {
+			PutContentFn: func(ctx context.Context, path string, content []byte) error {
 				return errS3
 			},
-			statFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				return driver.FileInfoInternal{}, errS3
 			},
 		})
@@ -1251,7 +1251,7 @@ func TestS3DedupeErr(t *testing.T) {
 	Convey("Test copyBlob() - error on store.Stat()", t, func(c C) {
 		tdir := t.TempDir()
 		imgStore = createMockStorage(testDir, tdir, true, &StorageDriverMock{
-			statFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				return driver.FileInfoInternal{}, errS3
 			},
 		})
@@ -1290,7 +1290,7 @@ func TestS3DedupeErr(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		imgStore = createMockStorage(testDir, tdir, true, &StorageDriverMock{
-			statFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				if strings.Contains(path, "repo1/dst1") {
 					return driver.FileInfoInternal{}, driver.PathNotFoundError{}
 				}
@@ -1327,14 +1327,14 @@ func TestS3DedupeErr(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		imgStore = createMockStorage(testDir, tdir, true, &StorageDriverMock{
-			statFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				return &FileInfoMock{
-					sizeFn: func() int64 {
+					SizeFn: func() int64 {
 						return 0
 					},
 				}, nil
 			},
-			readerFn: func(ctx context.Context, path string, offset int64) (io.ReadCloser, error) {
+			ReaderFn: func(ctx context.Context, path string, offset int64) (io.ReadCloser, error) {
 				if strings.Contains(path, "repo1/dst1") {
 					return ioutil.NopCloser(strings.NewReader("")), errS3
 				}
@@ -1356,14 +1356,14 @@ func TestS3DedupeErr(t *testing.T) {
 		blobPath := path.Join(testDir, "repo/blobs/sha256", hash)
 
 		imgStore = createMockStorage(testDir, tdir, true, &StorageDriverMock{
-			moveFn: func(ctx context.Context, sourcePath, destPath string) error {
+			MoveFn: func(ctx context.Context, sourcePath, destPath string) error {
 				if destPath == blobPath {
 					return nil
 				}
 
 				return errS3
 			},
-			statFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				if path != blobPath {
 					return nil, errS3
 				}
@@ -1385,7 +1385,7 @@ func TestS3DedupeErr(t *testing.T) {
 	Convey("Test FullBlobUpload", t, func(c C) {
 		tdir := t.TempDir()
 		imgStore = createMockStorage(testDir, tdir, true, &StorageDriverMock{
-			moveFn: func(ctx context.Context, sourcePath, destPath string) error {
+			MoveFn: func(ctx context.Context, sourcePath, destPath string) error {
 				return errS3
 			},
 		})
@@ -1397,7 +1397,7 @@ func TestS3DedupeErr(t *testing.T) {
 	Convey("Test FinishBlobUpload", t, func(c C) {
 		tdir := t.TempDir()
 		imgStore = createMockStorage(testDir, tdir, true, &StorageDriverMock{
-			moveFn: func(ctx context.Context, sourcePath, destPath string) error {
+			MoveFn: func(ctx context.Context, sourcePath, destPath string) error {
 				return errS3
 			},
 		})
@@ -1419,7 +1419,7 @@ func TestInjectDedupe(t *testing.T) {
 
 	Convey("Inject errors in DedupeBlob function", t, func() {
 		imgStore := createMockStorage(testDir, tdir, true, &StorageDriverMock{
-			statFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
 				return &FileInfoMock{}, errS3
 			},
 		})

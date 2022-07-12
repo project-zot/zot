@@ -6,8 +6,10 @@ package common_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
+	"net/url"
 	"os"
 	"os/exec"
 	"path"
@@ -30,11 +32,14 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	. "zotregistry.io/zot/pkg/test"
+	"zotregistry.io/zot/pkg/test/mocks"
 )
 
 const (
 	graphqlQueryPrefix = constants.ExtSearchPrefix
 )
+
+var ErrTestError = errors.New("test error")
 
 // nolint:gochecknoglobals
 var (
@@ -50,6 +55,50 @@ type ImgResponsWithLatestTag struct {
 type ExpandedRepoInfoResp struct {
 	ExpandedRepoInfo ExpandedRepoInfo `json:"data"`
 	Errors           []ErrorGQL       `json:"errors"`
+}
+
+type GlobalSearchResultResp struct {
+	GlobalSearchResult GlobalSearchResult `json:"data"`
+	Errors             []ErrorGQL         `json:"errors"`
+}
+
+type GlobalSearchResult struct {
+	GlobalSearch GlobalSearch `json:"globalSearch"`
+}
+type GlobalSearch struct {
+	Images []ImageSummary `json:"images"`
+	Repos  []RepoSummary  `json:"repos"`
+	Layers []LayerSummary `json:"layers"`
+}
+
+type ImageSummary struct {
+	RepoName    string    `json:"repoName"`
+	Tag         string    `json:"tag"`
+	LastUpdated time.Time `json:"lastUpdated"`
+	Size        string    `json:"size"`
+	Platform    OsArch    `json:"platform"`
+	Vendor      string    `json:"vendor"`
+	Score       int       `json:"score"`
+}
+
+type RepoSummary struct {
+	Name        string    `json:"name"`
+	LastUpdated time.Time `json:"lastUpdated"`
+	Size        string    `json:"size"`
+	Platforms   []OsArch  `json:"platforms"`
+	Vendors     []string  `json:"vendors"`
+	Score       int       `json:"score"`
+}
+
+type LayerSummary struct {
+	Size   string `json:"size"`
+	Digest string `json:"digest"`
+	Score  int    `json:"score"`
+}
+
+type OsArch struct {
+	Os   string `json:"os"`
+	Arch string `json:"arch"`
 }
 
 type ExpandedRepoInfo struct {
@@ -210,7 +259,7 @@ func TestImageFormat(t *testing.T) {
 		metrics := monitoring.NewMetricsServer(false, log)
 		defaultStore := storage.NewImageStore(dbDir, false, storage.DefaultGCDelay, false, false, log, metrics)
 		storeController := storage.StoreController{DefaultStore: defaultStore}
-		olu := common.NewOciLayoutUtils(storeController, log)
+		olu := common.NewBaseOciLayoutUtils(storeController, log)
 
 		isValidImage, err := olu.IsValidImageFormat("zot-test")
 		So(err, ShouldBeNil)
@@ -669,5 +718,406 @@ func TestUtilsMethod(t *testing.T) {
 		dir = common.GetRootDir("b/zot-cve-test", storeController)
 
 		So(dir, ShouldEqual, subRootDir)
+	})
+}
+
+func TestGlobalSearch(t *testing.T) {
+	Convey("Test utils", t, func() {
+		subpath := "/a"
+
+		err := testSetup(t, subpath)
+		if err != nil {
+			panic(err)
+		}
+
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = rootDir
+		conf.Storage.SubPaths = make(map[string]config.StorageConfig)
+		conf.Storage.SubPaths[subpath] = config.StorageConfig{RootDirectory: subRootDir}
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
+		}
+
+		conf.Extensions.Search.CVE = nil
+
+		ctlr := api.NewController(conf)
+
+		go func() {
+			// this blocks
+			if err := ctlr.Run(context.Background()); err != nil {
+				return
+			}
+		}()
+
+		// wait till ready
+		for {
+			_, err := resty.R().Get(baseURL)
+			if err == nil {
+				break
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		// shut down server
+
+		defer func() {
+			ctx := context.Background()
+			_ = ctlr.Server.Shutdown(ctx)
+		}()
+
+		query := `
+			{
+				GlobalSearch(query:""){
+					Images {
+						RepoName
+						Tag
+						LastUpdated
+						Size
+						Score
+					}
+					Repos {
+						Name
+      					LastUpdated
+      					Size
+      					Platforms {
+      					  Os
+      					  Arch
+      					}
+      					Vendors
+						Score
+					}
+					Layers {
+						Digest
+						Size
+					}
+				}
+			}`
+		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		responseStruct := &GlobalSearchResultResp{}
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+
+		So(responseStruct.GlobalSearchResult.GlobalSearch.Images, ShouldNotBeNil)
+		So(len(responseStruct.GlobalSearchResult.GlobalSearch.Images), ShouldNotBeEmpty)
+		So(len(responseStruct.GlobalSearchResult.GlobalSearch.Repos), ShouldNotBeEmpty)
+		So(len(responseStruct.GlobalSearchResult.GlobalSearch.Layers), ShouldNotBeEmpty)
+
+		// GetRepositories fail
+
+		err = os.Chmod(rootDir, 0o333)
+		So(err, ShouldBeNil)
+
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		responseStruct = &GlobalSearchResultResp{}
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+
+		So(responseStruct.Errors, ShouldNotBeEmpty)
+		err = os.Chmod(rootDir, 0o777)
+		So(err, ShouldBeNil)
+	})
+}
+
+func TestBaseOciLayoutUtils(t *testing.T) {
+	manifestDigest := "sha256:adf3bb6cc81f8bd6a9d5233be5f0c1a4f1e3ed1cf5bbdfad7708cc8d4099b741"
+
+	Convey("GetImageManifestSize fail", t, func() {
+		mockStoreController := mocks.MockedImageStore{
+			GetBlobContentFn: func(repo, digest string) ([]byte, error) {
+				return []byte{}, ErrTestError
+			},
+		}
+
+		storeController := storage.StoreController{DefaultStore: mockStoreController}
+		olu := common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+
+		size := olu.GetImageManifestSize("", "")
+		So(size, ShouldBeZeroValue)
+	})
+
+	Convey("GetImageConfigSize: fail GetImageBlobManifest", t, func() {
+		mockStoreController := mocks.MockedImageStore{
+			GetBlobContentFn: func(repo, digest string) ([]byte, error) {
+				return []byte{}, ErrTestError
+			},
+		}
+
+		storeController := storage.StoreController{DefaultStore: mockStoreController}
+		olu := common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+
+		size := olu.GetImageConfigSize("", "")
+		So(size, ShouldBeZeroValue)
+	})
+
+	Convey("GetImageConfigSize: config GetBlobContent fail", t, func() {
+		mockStoreController := mocks.MockedImageStore{
+			GetBlobContentFn: func(repo, digest string) ([]byte, error) {
+				if digest == manifestDigest {
+					return []byte{}, ErrTestError
+				}
+
+				return []byte(
+					`
+				{
+					"schemaVersion": 2,
+					"mediaType": "application/vnd.oci.image.manifest.v1+json",
+					"config": {
+						"mediaType": "application/vnd.oci.image.config.v1+json",
+						"digest": manifestDigest,
+						"size": 1476
+					},
+					"layers": [
+						{
+							"mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+							"digest": "sha256:2d473b07cdd5f0912cd6f1a703352c82b512407db6b05b43f2553732b55df3bc",
+							"size": 76097157
+						}
+					]
+				}`), nil
+			},
+		}
+
+		storeController := storage.StoreController{DefaultStore: mockStoreController}
+		olu := common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+
+		size := olu.GetImageConfigSize("", "")
+		So(size, ShouldBeZeroValue)
+	})
+
+	Convey("GetRepoLastUpdated: config GetBlobContent fail", t, func() {
+		mockStoreController := mocks.MockedImageStore{
+			GetIndexContentFn: func(repo string) ([]byte, error) {
+				return []byte{}, ErrTestError
+			},
+		}
+
+		storeController := storage.StoreController{DefaultStore: mockStoreController}
+		olu := common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+
+		_, err := olu.GetRepoLastUpdated("")
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("GetImageLastUpdated: GetImageBlobManifest fails", t, func() {
+		mockStoreController := mocks.MockedImageStore{
+			GetBlobContentFn: func(repo, digest string) ([]byte, error) {
+				return []byte{}, ErrTestError
+			},
+		}
+
+		storeController := storage.StoreController{DefaultStore: mockStoreController}
+		olu := common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+
+		time := olu.GetImageLastUpdated("", "")
+		So(time, ShouldBeZeroValue)
+	})
+
+	Convey("GetImageLastUpdated: GetImageInfo fails", t, func() {
+		mockStoreController := mocks.MockedImageStore{
+			GetBlobContentFn: func(repo, digest string) ([]byte, error) {
+				if digest == manifestDigest {
+					return []byte{}, ErrTestError
+				}
+
+				return []byte(
+					`
+				{
+					"schemaVersion": 2,
+					"mediaType": "application/vnd.oci.image.manifest.v1+json",
+					"config": {
+						"mediaType": "application/vnd.oci.image.config.v1+json",
+						"digest": manifestDigest,
+						"size": 1476
+					},
+					"layers": [
+						{
+							"mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+							"digest": "sha256:2d473b07cdd5f0912cd6f1a703352c82b512407db6b05b43f2553732b55df3bc",
+							"size": 76097157
+						}
+					]
+				}`), nil
+			},
+		}
+
+		storeController := storage.StoreController{DefaultStore: mockStoreController}
+		olu := common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+
+		time := olu.GetImageLastUpdated("", "")
+		So(time, ShouldBeZeroValue)
+	})
+
+	Convey("GetImageLastUpdated: GetImageInfo history is empty", t, func() {
+		mockStoreController := mocks.MockedImageStore{
+			GetBlobContentFn: func(repo, digest string) ([]byte, error) {
+				if digest == manifestDigest {
+					return []byte(
+						`
+						{
+							"created": "2020-11-14T00:20:04.644613188Z",
+							"architecture": "amd64",
+							"os": "linux",
+							"config": {
+								"Env": [
+									"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+								],
+								"Cmd": [
+									"/bin/bash"
+								],
+								"Labels": {
+								}
+							},
+							"rootfs": {
+								"type": "layers",
+								"diff_ids": [
+									"sha256:174f5685490326fc0a1c0f5570b8663732189b327007e47ff13d2ca59673db02"
+								]
+							},
+							"history": [
+							]
+						}
+						`), nil
+				}
+
+				return []byte(
+					`
+				{
+					"schemaVersion": 2,
+					"mediaType": "application/vnd.oci.image.manifest.v1+json",
+					"config": {
+						"mediaType": "application/vnd.oci.image.config.v1+json",
+						"digest": manifestDigest,
+						"size": 1476
+					},
+					"layers": [
+						{
+							"mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+							"digest": "sha256:2d473b07cdd5f0912cd6f1a703352c82b512407db6b05b43f2553732b55df3bc",
+							"size": 76097157
+						}
+					]
+				}`), nil
+			},
+		}
+
+		storeController := storage.StoreController{DefaultStore: mockStoreController}
+		olu := common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+
+		time := olu.GetImageLastUpdated("", "")
+		So(time, ShouldBeZeroValue)
+	})
+
+	Convey("GetImagePlatform: GetImageBlobManifest fails", t, func() {
+		mockStoreController := mocks.MockedImageStore{
+			GetBlobContentFn: func(repo, digest string) ([]byte, error) {
+				return []byte{}, ErrTestError
+			},
+		}
+
+		storeController := storage.StoreController{DefaultStore: mockStoreController}
+		olu := common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+
+		os, arch := olu.GetImagePlatform("", "")
+		So(os, ShouldBeZeroValue)
+		So(arch, ShouldBeZeroValue)
+	})
+
+	Convey("GetImagePlatform: GetImageInfo fails", t, func() {
+		mockStoreController := mocks.MockedImageStore{
+			GetBlobContentFn: func(repo, digest string) ([]byte, error) {
+				if digest == manifestDigest {
+					return []byte{}, ErrTestError
+				}
+
+				return []byte(
+					`
+				{
+					"schemaVersion": 2,
+					"mediaType": "application/vnd.oci.image.manifest.v1+json",
+					"config": {
+						"mediaType": "application/vnd.oci.image.config.v1+json",
+						"digest": manifestDigest,
+						"size": 1476
+					},
+					"layers": [
+						{
+							"mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+							"digest": "sha256:2d473b07cdd5f0912cd6f1a703352c82b512407db6b05b43f2553732b55df3bc",
+							"size": 76097157
+						}
+					]
+				}`), nil
+			},
+		}
+
+		storeController := storage.StoreController{DefaultStore: mockStoreController}
+		olu := common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+
+		os, arch := olu.GetImagePlatform("", "")
+		So(os, ShouldBeZeroValue)
+		So(arch, ShouldBeZeroValue)
+	})
+
+	Convey("GetImageVendor: GetImageBlobManifest fails", t, func() {
+		mockStoreController := mocks.MockedImageStore{
+			GetBlobContentFn: func(repo, digest string) ([]byte, error) {
+				return []byte{}, ErrTestError
+			},
+		}
+
+		storeController := storage.StoreController{DefaultStore: mockStoreController}
+		olu := common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+
+		vendor := olu.GetImageVendor("", "")
+		So(vendor, ShouldBeZeroValue)
+	})
+
+	Convey("GetImageVendor: GetImageInfo fails", t, func() {
+		mockStoreController := mocks.MockedImageStore{
+			GetBlobContentFn: func(repo, digest string) ([]byte, error) {
+				if digest == manifestDigest {
+					return []byte{}, ErrTestError
+				}
+
+				return []byte(
+					`
+				{
+					"schemaVersion": 2,
+					"mediaType": "application/vnd.oci.image.manifest.v1+json",
+					"config": {
+						"mediaType": "application/vnd.oci.image.config.v1+json",
+						"digest": manifestDigest,
+						"size": 1476
+					},
+					"layers": [
+						{
+							"mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+							"digest": "sha256:2d473b07cdd5f0912cd6f1a703352c82b512407db6b05b43f2553732b55df3bc",
+							"size": 76097157
+						}
+					]
+				}`), nil
+			},
+		}
+
+		storeController := storage.StoreController{DefaultStore: mockStoreController}
+		olu := common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+
+		vendor := olu.GetImageVendor("", "")
+		So(vendor, ShouldBeZeroValue)
 	})
 }

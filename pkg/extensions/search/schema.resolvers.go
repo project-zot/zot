@@ -319,7 +319,7 @@ func (r *queryResolver) ImageListWithLatestTag(ctx context.Context) ([]*gql_gene
 
 // ExpandedRepoInfo is the resolver for the ExpandedRepoInfo field.
 func (r *queryResolver) ExpandedRepoInfo(ctx context.Context, repo string) (*gql_generated.RepoInfo, error) {
-	olu := common.NewOciLayoutUtils(r.storeController, r.log)
+	olu := common.NewBaseOciLayoutUtils(r.storeController, r.log)
 
 	origRepoInfo, err := olu.GetExpandedRepoInfo(repo)
 	if err != nil {
@@ -362,6 +362,35 @@ func (r *queryResolver) ExpandedRepoInfo(ctx context.Context, repo string) (*gql
 	repoInfo.Manifests = manifests
 
 	return repoInfo, nil
+}
+
+// GlobalSearch is the resolver for the GlobalSearch field.
+func (r *queryResolver) GlobalSearch(ctx context.Context, query string) (*gql_generated.GlobalSearchResult, error) {
+	query = cleanQuerry(query)
+	defaultStore := r.storeController.DefaultStore
+	olu := common.NewBaseOciLayoutUtils(r.storeController, r.log)
+
+	var name, tag string
+
+	_, err := fmt.Sscanf(query, "%s %s", &name, &tag)
+	if err != nil {
+		name = query
+	}
+
+	repoList, err := defaultStore.GetRepositories()
+	if err != nil {
+		r.log.Error().Err(err).Msg("unable to search repositories")
+
+		return &gql_generated.GlobalSearchResult{}, err
+	}
+
+	repos, images, layers := globalSearch(repoList, name, tag, olu, r.log)
+
+	return &gql_generated.GlobalSearchResult{
+		Images: images,
+		Repos:  repos,
+		Layers: layers,
+	}, nil
 }
 
 // Query returns gql_generated.QueryResolver implementation.

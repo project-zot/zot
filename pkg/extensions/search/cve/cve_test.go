@@ -94,7 +94,7 @@ func testSetup() error {
 
 	storeController := storage.StoreController{DefaultStore: storage.NewImageStore(dir, false, storage.DefaultGCDelay, false, false, log, metrics)}
 
-	layoutUtils := common.NewOciLayoutUtils(storeController, log)
+	layoutUtils := common.NewBaseOciLayoutUtils(storeController, log)
 
 	cve = &cveinfo.CveInfo{Log: log, StoreController: storeController, LayoutUtils: layoutUtils}
 
