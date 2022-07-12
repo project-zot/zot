@@ -78,7 +78,7 @@ func ScanImage(ctx *cli.Context) (report.Report, error) {
 
 func GetCVEInfo(storeController storage.StoreController, log log.Logger) (*CveInfo, error) {
 	cveController := CveTrivyController{}
-	layoutUtils := common.NewOciLayoutUtils(storeController, log)
+	layoutUtils := common.NewBaseOciLayoutUtils(storeController, log)
 
 	subCveConfig := make(map[string]*TrivyCtx)
 

@@ -20,8 +20,23 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 )
 
+type OciLayoutUtils interface {
+	GetImageManifests(image string) ([]ispec.Descriptor, error)
+	GetImageBlobManifest(imageDir string, digest godigest.Digest) (v1.Manifest, error)
+	GetImageInfo(imageDir string, hash v1.Hash) (ispec.Image, error)
+	IsValidImageFormat(image string) (bool, error)
+	GetImageTagsWithTimestamp(repo string) ([]TagInfo, error)
+	GetImageLastUpdated(repo string, manifestDigest godigest.Digest) time.Time
+	GetImagePlatform(repo string, manifestDigest godigest.Digest) (string, string)
+	GetImageVendor(repo string, manifestDigest godigest.Digest) string
+	GetImageManifestSize(repo string, manifestDigest godigest.Digest) int64
+	GetImageConfigSize(repo string, manifestDigest godigest.Digest) int64
+	GetRepoLastUpdated(repo string) (time.Time, error)
+	GetExpandedRepoInfo(name string) (RepoInfo, error)
+}
+
 // OciLayoutInfo ...
-type OciLayoutUtils struct {
+type BaseOciLayoutUtils struct {
 	Log             log.Logger
 	StoreController storage.StoreController
 }
@@ -42,13 +57,13 @@ type Layer struct {
 	Digest string `json:"digest"`
 }
 
-// NewOciLayoutUtils initializes a new OciLayoutUtils object.
-func NewOciLayoutUtils(storeController storage.StoreController, log log.Logger) *OciLayoutUtils {
-	return &OciLayoutUtils{Log: log, StoreController: storeController}
+// NewBaseOciLayoutUtils initializes a new OciLayoutUtils object.
+func NewBaseOciLayoutUtils(storeController storage.StoreController, log log.Logger) *BaseOciLayoutUtils {
+	return &BaseOciLayoutUtils{Log: log, StoreController: storeController}
 }
 
 // Below method will return image path including root dir, root dir is determined by splitting.
-func (olu OciLayoutUtils) GetImageManifests(image string) ([]ispec.Descriptor, error) {
+func (olu BaseOciLayoutUtils) GetImageManifests(image string) ([]ispec.Descriptor, error) {
 	imageStore := olu.StoreController.GetImageStore(image)
 
 	buf, err := imageStore.GetIndexContent(image)
@@ -76,7 +91,7 @@ func (olu OciLayoutUtils) GetImageManifests(image string) ([]ispec.Descriptor, e
 }
 
 //nolint: interfacer
-func (olu OciLayoutUtils) GetImageBlobManifest(imageDir string, digest godigest.Digest) (v1.Manifest, error) {
+func (olu BaseOciLayoutUtils) GetImageBlobManifest(imageDir string, digest godigest.Digest) (v1.Manifest, error) {
 	var blobIndex v1.Manifest
 
 	imageStore := olu.StoreController.GetImageStore(imageDir)
@@ -98,7 +113,7 @@ func (olu OciLayoutUtils) GetImageBlobManifest(imageDir string, digest godigest.
 }
 
 //nolint: interfacer
-func (olu OciLayoutUtils) GetImageInfo(imageDir string, hash v1.Hash) (ispec.Image, error) {
+func (olu BaseOciLayoutUtils) GetImageInfo(imageDir string, hash v1.Hash) (ispec.Image, error) {
 	var imageInfo ispec.Image
 
 	imageStore := olu.StoreController.GetImageStore(imageDir)
@@ -119,7 +134,7 @@ func (olu OciLayoutUtils) GetImageInfo(imageDir string, hash v1.Hash) (ispec.Ima
 	return imageInfo, err
 }
 
-func (olu OciLayoutUtils) IsValidImageFormat(image string) (bool, error) {
+func (olu BaseOciLayoutUtils) IsValidImageFormat(image string) (bool, error) {
 	imageDir, inputTag := GetImageDirAndTag(image)
 
 	manifests, err := olu.GetImageManifests(imageDir)
@@ -158,7 +173,7 @@ func (olu OciLayoutUtils) IsValidImageFormat(image string) (bool, error) {
 }
 
 // GetImageTagsWithTimestamp returns a list of image tags with timestamp available in the specified repository.
-func (olu OciLayoutUtils) GetImageTagsWithTimestamp(repo string) ([]TagInfo, error) {
+func (olu BaseOciLayoutUtils) GetImageTagsWithTimestamp(repo string) ([]TagInfo, error) {
 	tagsInfo := make([]TagInfo, 0)
 
 	manifests, err := olu.GetImageManifests(repo)
@@ -203,7 +218,7 @@ func (olu OciLayoutUtils) GetImageTagsWithTimestamp(repo string) ([]TagInfo, err
 }
 
 // check notary signature corresponding to repo name, manifest digest and mediatype.
-func (olu OciLayoutUtils) checkNotarySignature(name string, digest godigest.Digest) bool {
+func (olu BaseOciLayoutUtils) checkNotarySignature(name string, digest godigest.Digest) bool {
 	imageStore := olu.StoreController.GetImageStore(name)
 	mediaType := notreg.ArtifactTypeNotation
 
@@ -219,7 +234,7 @@ func (olu OciLayoutUtils) checkNotarySignature(name string, digest godigest.Dige
 }
 
 // check cosign signature corresponding to  manifest.
-func (olu OciLayoutUtils) checkCosignSignature(name string, digest godigest.Digest) bool {
+func (olu BaseOciLayoutUtils) checkCosignSignature(name string, digest godigest.Digest) bool {
 	imageStore := olu.StoreController.GetImageStore(name)
 
 	// if manifest is signed using cosign mechanism, cosign adds a new manifest.
@@ -240,7 +255,7 @@ func (olu OciLayoutUtils) checkCosignSignature(name string, digest godigest.Dige
 // checks if manifest is signed or not
 // checks for notary or cosign signature
 // if cosign signature found it does not looks for notary signature.
-func (olu OciLayoutUtils) checkManifestSignature(name string, digest godigest.Digest) bool {
+func (olu BaseOciLayoutUtils) checkManifestSignature(name string, digest godigest.Digest) bool {
 	if !olu.checkCosignSignature(name, digest) {
 		return olu.checkNotarySignature(name, digest)
 	}
@@ -248,7 +263,112 @@ func (olu OciLayoutUtils) checkManifestSignature(name string, digest godigest.Di
 	return true
 }
 
-func (olu OciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error) {
+func (olu BaseOciLayoutUtils) GetImageLastUpdated(repo string, manifestDigest godigest.Digest) time.Time {
+	imageBlobManifest, err := olu.GetImageBlobManifest(repo, manifestDigest)
+	if err != nil {
+		olu.Log.Error().Err(err).Msg("unable to read image blob")
+
+		return time.Time{}
+	}
+
+	imageInfo, err := olu.GetImageInfo(repo, imageBlobManifest.Config.Digest)
+	if err != nil {
+		olu.Log.Error().Err(err).Msg("unable to read image info")
+
+		return time.Time{}
+	}
+
+	var timeStamp time.Time
+
+	if len(imageInfo.History) != 0 {
+		timeStamp = *imageInfo.History[0].Created
+	} else {
+		timeStamp = time.Time{}
+	}
+
+	return timeStamp
+}
+
+func (olu BaseOciLayoutUtils) GetImagePlatform(repo string, manifestDigest godigest.Digest) (
+	string, string,
+) {
+	imageBlobManifest, err := olu.GetImageBlobManifest(repo, manifestDigest)
+	if err != nil {
+		olu.Log.Error().Err(err).Msg("can't get image blob manifest")
+
+		return "", ""
+	}
+
+	imageConfig, err := olu.GetImageInfo(repo, imageBlobManifest.Config.Digest)
+	if err != nil {
+		olu.Log.Error().Err(err).Msg("extension api: error reading image config")
+
+		return "", ""
+	}
+
+	return imageConfig.OS, imageConfig.Architecture
+}
+
+func (olu BaseOciLayoutUtils) GetImageVendor(repo string, manifestDigest godigest.Digest) string {
+	imageBlobManifest, err := olu.GetImageBlobManifest(repo, manifestDigest)
+	if err != nil {
+		olu.Log.Error().Err(err).Msg("can't get image blob manifest")
+
+		return ""
+	}
+
+	imageConfig, err := olu.GetImageInfo(repo, imageBlobManifest.Config.Digest)
+	if err != nil {
+		olu.Log.Error().Err(err).Msg("extension api: error reading image config")
+
+		return ""
+	}
+
+	return imageConfig.Config.Labels["vendor"]
+}
+
+func (olu BaseOciLayoutUtils) GetImageManifestSize(repo string, manifestDigest godigest.Digest) int64 {
+	imageBlobManifest, err := olu.GetImageBlobManifest(repo, manifestDigest)
+	if err != nil {
+		olu.Log.Error().Err(err).Msg("can't get image blob manifest")
+
+		return 0
+	}
+
+	return imageBlobManifest.Config.Size
+}
+
+func (olu BaseOciLayoutUtils) GetImageConfigSize(repo string, manifestDigest godigest.Digest) int64 {
+	imageBlobManifest, err := olu.GetImageBlobManifest(repo, manifestDigest)
+	if err != nil {
+		olu.Log.Error().Err(err).Msg("can't get image blob manifest")
+
+		return 0
+	}
+	imageStore := olu.StoreController.GetImageStore(repo)
+
+	buf, err := imageStore.GetBlobContent(repo, imageBlobManifest.Config.Digest.String())
+	if err != nil {
+		olu.Log.Error().Err(err).Msg("error when getting blob content")
+
+		return int64(len(buf))
+	}
+
+	return int64(len(buf))
+}
+
+func (olu BaseOciLayoutUtils) GetRepoLastUpdated(repo string) (time.Time, error) {
+	tagsInfo, err := olu.GetImageTagsWithTimestamp(repo)
+	if err != nil || len(tagsInfo) == 0 {
+		return time.Time{}, err
+	}
+
+	latestTag := GetLatestTag(tagsInfo)
+
+	return latestTag.Timestamp, nil
+}
+
+func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error) {
 	repo := RepoInfo{}
 
 	manifests := make([]Manifest, 0)

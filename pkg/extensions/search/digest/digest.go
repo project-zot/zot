@@ -12,12 +12,12 @@ import (
 // DigestInfo implements searching by manifes/config/layer digest.
 type DigestInfo struct {
 	Log         log.Logger
-	LayoutUtils *common.OciLayoutUtils
+	LayoutUtils *common.BaseOciLayoutUtils
 }
 
 // NewDigestInfo initializes a new DigestInfo object.
 func NewDigestInfo(storeController storage.StoreController, log log.Logger) *DigestInfo {
-	layoutUtils := common.NewOciLayoutUtils(storeController, log)
+	layoutUtils := common.NewBaseOciLayoutUtils(storeController, log)
 
 	return &DigestInfo{Log: log, LayoutUtils: layoutUtils}
 }
