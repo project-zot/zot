@@ -39,7 +39,7 @@ jobs:
         with:
           go-version: 1.18.x
       - name: Check out source code
-        uses: actions/checkout@v1
+        uses: actions/checkout@v3
       - name: Cache go dependencies
         id: cache-go-dependencies
         uses: actions/cache@v3
@@ -106,7 +106,7 @@ jobs:
         arch: [amd64, arm64]
     steps:
       - name: Check out the repo
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - name: Log in to GitHub Docker Registry
         uses: docker/login-action@v1
         with:
@@ -306,13 +306,13 @@ jobs:
     name: Update Helm Chart
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           ref: main
           fetch-depth: '0'
 
       - name: Checkout project-zot/helm-charts
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           repository: project-zot/helm-charts
           ref: main
