@@ -550,6 +550,67 @@ func (is *ImageStoreLocal) PutImageManifest(repo, reference, mediaType string,
 		return "", zerr.ErrBadManifest
 	}
 
+	if mediaType == ispec.MediaTypeImageIndex {
+		var index ispec.Index
+		if err := json.Unmarshal(body, &index); err != nil {
+			is.log.Error().Err(err).Msg("unable to unmarshal JSON")
+
+			return "", zerr.ErrBadManifest
+		}
+
+		for _, manifest := range index.Manifests {
+			mbytes, err := json.Marshal(manifest)
+			if err != nil {
+				is.log.Error().Err(err).Msg("unable to marshal JSON")
+
+				return "", zerr.ErrBadManifest
+			}
+
+			_, err = is.putImageManifest(repo, reference, manifest.MediaType, mbytes)
+			if err != nil {
+				is.log.Error().Err(err).Msg("unable to marshal JSON")
+
+				return "", zerr.ErrBadManifest
+			}
+		}
+
+		return reference, nil
+	} else {
+		loc, err := is.putImageManifest(repo, reference, mediaType, body)
+		if err != nil {
+			is.log.Error().Err(err).Msg("unable to marshal JSON")
+
+			return "", zerr.ErrBadManifest
+		}
+
+		return loc, nil
+	}
+}
+
+// PutImageManifest adds an image manifest to the repository.
+func (is *ImageStoreLocal) putImageManifest(repo, reference, mediaType string,
+	body []byte,
+) (string, error) {
+	if err := is.InitRepo(repo); err != nil {
+		is.log.Debug().Err(err).Msg("init repo")
+
+		return "", err
+	}
+
+	// validate the manifest
+	if !IsSupportedMediaType(mediaType) {
+		is.log.Debug().Interface("actual", mediaType).
+			Interface("expected", ispec.MediaTypeImageManifest).Msg("bad manifest media type")
+
+		return "", zerr.ErrBadManifest
+	}
+
+	if len(body) == 0 {
+		is.log.Debug().Int("len", len(body)).Msg("invalid body length")
+
+		return "", zerr.ErrBadManifest
+	}
+
 	if mediaType == ispec.MediaTypeImageManifest {
 		var manifest ispec.Manifest
 		if err := json.Unmarshal(body, &manifest); err != nil {
@@ -1554,7 +1615,8 @@ func (is *ImageStoreLocal) writeFile(filename string, data []byte) error {
 }
 
 func IsSupportedMediaType(mediaType string) bool {
-	return mediaType == ispec.MediaTypeImageManifest ||
+	return mediaType == ispec.MediaTypeImageIndex ||
+		mediaType == ispec.MediaTypeImageManifest ||
 		mediaType == artifactspec.MediaTypeArtifactManifest
 }
 
