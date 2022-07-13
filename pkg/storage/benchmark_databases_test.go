@@ -17,6 +17,7 @@ const (
 	region        string = "us-east-2"
 	localEndpoint string = "http://localhost:4566"
 	awsEndpoint   string = "https://dynamodb.us-east-2.amazonaws.com"
+	datasetSize   int    = 5000
 )
 
 func generateRandomString() string {
@@ -78,7 +79,7 @@ func helperGetAll(cache database.Driver, testData map[string]string) {
 }
 
 func helperMix(cache database.Driver, testData map[string]string, digestSlice []string) {
-	// The test data contains 5000 entries by default, and each set of operations uses 5 entries
+	// The test data contains datasetSize entries by default, and each set of operations uses 5 entries
 	for i := 0; i < 1000; i++ {
 		_ = cache.PutBlob(digestSlice[i*5], testData[digestSlice[i*5]])
 		_ = cache.PutBlob(digestSlice[i*5+1], testData[digestSlice[i*5+1]])
@@ -104,7 +105,7 @@ func BenchmarkPutLocal(b *testing.B) {
 	dir := b.TempDir()
 	log := log.NewLogger("error", "")
 	cache, _ := database.Create("boltdb", storage.BoltDBDriverParameters{dir, "cache_test", false}, log)
-	testData := generateData(5000)
+	testData := generateData(datasetSize)
 
 	b.ResetTimer()
 
@@ -115,7 +116,7 @@ func BenchmarkDeleteLocal(b *testing.B) {
 	dir := b.TempDir()
 	log := log.NewLogger("error", "")
 	cache, _ := database.Create("boltdb", storage.BoltDBDriverParameters{dir, "cache_test", false}, log)
-	testData := generateData(5000)
+	testData := generateData(datasetSize)
 
 	for digest, path := range testData {
 		_ = cache.PutBlob(digest, path)
@@ -130,7 +131,7 @@ func BenchmarkHasLocal(b *testing.B) {
 	dir := b.TempDir()
 	log := log.NewLogger("error", "")
 	cache, _ := database.Create("boltdb", storage.BoltDBDriverParameters{dir, "cache_test", false}, log)
-	testData := generateData(5000)
+	testData := generateData(datasetSize)
 
 	for digest, path := range testData {
 		_ = cache.PutBlob(digest, path)
@@ -145,7 +146,7 @@ func BenchmarkGetLocal(b *testing.B) {
 	dir := b.TempDir()
 	log := log.NewLogger("error", "")
 	cache, _ := database.Create("boltdb", storage.BoltDBDriverParameters{dir, "cache_test", false}, log)
-	testData := generateData(5000)
+	testData := generateData(datasetSize)
 	previousDigest := ""
 	counter := 1
 
@@ -169,8 +170,8 @@ func BenchmarkMixLocal(b *testing.B) {
 	dir := b.TempDir()
 	log := log.NewLogger("error", "")
 	cache, _ := database.Create("boltdb", storage.BoltDBDriverParameters{dir, "cache_test", false}, log)
-	testData := generateData(5000)
-	digestSlice := make([]string, 5000)
+	testData := generateData(datasetSize)
+	digestSlice := make([]string, datasetSize)
 	counter := 0
 
 	for key := range testData {
@@ -203,7 +204,7 @@ func BenchmarkPutLocalstack(b *testing.B) {
 		Region:    region,
 		TableName: tableName,
 	}, log)
-	testData := generateData(5000)
+	testData := generateData(datasetSize)
 
 	b.ResetTimer()
 
@@ -228,7 +229,7 @@ func BenchmarkDeleteLocalstack(b *testing.B) {
 		Region:    region,
 		TableName: tableName,
 	}, log)
-	testData := generateData(5000)
+	testData := generateData(datasetSize)
 
 	for digest, path := range testData {
 		_ = cache.PutBlob(digest, path)
@@ -257,7 +258,7 @@ func BenchmarkHasLocalstack(b *testing.B) {
 		Region:    region,
 		TableName: tableName,
 	}, log)
-	testData := generateData(5000)
+	testData := generateData(datasetSize)
 
 	for digest, path := range testData {
 		_ = cache.PutBlob(digest, path)
@@ -286,7 +287,7 @@ func BenchmarkGetLocalstack(b *testing.B) {
 		Region:    region,
 		TableName: tableName,
 	}, log)
-	testData := generateData(5000)
+	testData := generateData(datasetSize)
 	previousDigest := ""
 	counter := 1
 
@@ -324,8 +325,8 @@ func BenchmarkMixLocalstack(b *testing.B) {
 		Region:    region,
 		TableName: tableName,
 	}, log)
-	testData := generateData(5000)
-	digestSlice := make([]string, 5000)
+	testData := generateData(datasetSize)
+	digestSlice := make([]string, datasetSize)
 	counter := 0
 
 	for key := range testData {
@@ -360,7 +361,7 @@ func BenchmarkPutAWS(b *testing.B) {
 		Region:    region,
 		TableName: tableName,
 	}, log)
-	testData := generateData(5000)
+	testData := generateData(datasetSize)
 
 	b.ResetTimer()
 
@@ -385,7 +386,7 @@ func BenchmarkDeleteAWS(b *testing.B) {
 		Region:    region,
 		TableName: tableName,
 	}, log)
-	testData := generateData(5000)
+	testData := generateData(datasetSize)
 
 	for digest, path := range testData {
 		_ = cache.PutBlob(digest, path)
@@ -414,7 +415,7 @@ func BenchmarkHasAWS(b *testing.B) {
 		Region:    region,
 		TableName: tableName,
 	}, log)
-	testData := generateData(5000)
+	testData := generateData(datasetSize)
 
 	for digest, path := range testData {
 		_ = cache.PutBlob(digest, path)
@@ -443,7 +444,7 @@ func BenchmarkGetAWS(b *testing.B) {
 		Region:    region,
 		TableName: tableName,
 	}, log)
-	testData := generateData(5000)
+	testData := generateData(datasetSize)
 	previousDigest := ""
 	counter := 1
 
@@ -481,8 +482,8 @@ func BenchmarkMixAWS(b *testing.B) {
 		Region:    region,
 		TableName: tableName,
 	}, log)
-	testData := generateData(5000)
-	digestSlice := make([]string, 5000)
+	testData := generateData(datasetSize)
+	digestSlice := make([]string, datasetSize)
 	counter := 0
 
 	for key := range testData {
