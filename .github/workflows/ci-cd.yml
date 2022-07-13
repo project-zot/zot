@@ -35,7 +35,7 @@ jobs:
           - 9090:8080
     steps:
       - name: Install go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
           go-version: 1.18.x
       - name: Check out source code
