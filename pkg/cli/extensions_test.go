@@ -608,21 +608,19 @@ func runCLIWithConfig(tempDir string, config string) (string, error) {
 	port := GetFreePort()
 	baseURL := GetBaseURL(port)
 
-	logFile, err := ioutil.TempFile("", "zot-log*.txt")
+	logFile, err := ioutil.TempFile(tempDir, "zot-log*.txt")
 	if err != nil {
 		return "", err
 	}
 
 	defer os.Remove(logFile.Name()) // clean up
 
-	cfgfile, err := ioutil.TempFile("", "zot-test*.json")
+	cfgfile, err := ioutil.TempFile(tempDir, "zot-test*.json")
 	if err != nil {
 		return "", err
 	}
 
 	config = fmt.Sprintf(config, tempDir, port, logFile.Name())
-
-	defer os.Remove(cfgfile.Name()) // clean up
 
 	_, err = cfgfile.Write([]byte(config))
 	if err != nil {
