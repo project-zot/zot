@@ -17,6 +17,7 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
 	"zotregistry.io/zot/errors"
@@ -160,6 +161,55 @@ func TestStorageFSAPIs(t *testing.T) {
 				panic(err)
 			}
 		})
+	})
+}
+
+func TestGetReferrers(t *testing.T) {
+	dir := t.TempDir()
+
+	log := log.Logger{Logger: zerolog.New(os.Stdout)}
+	metrics := monitoring.NewMetricsServer(false, log)
+	imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics)
+
+	Convey("Get referrers", t, func(c C) {
+		err := test.CopyFiles("../../test/data/zot-test", path.Join(dir, "zot-test"))
+		So(err, ShouldBeNil)
+		body := []byte("this is a blob")
+		digest := godigest.FromBytes(body)
+		buf := bytes.NewBuffer(body)
+		buflen := buf.Len()
+		err = ioutil.WriteFile(path.Join(imgStore.RootDir(), //nolint: gosec
+			"zot-test", "blobs", digest.Algorithm().String(), digest.Encoded()),
+			buf.Bytes(), 0o644)
+		So(err, ShouldBeNil)
+		_, n, err := imgStore.FullBlobUpload("zot-test", buf, digest.String())
+		So(err, ShouldBeNil)
+		So(n, ShouldEqual, buflen)
+
+		artifactManifest := artifactspec.Manifest{}
+		artifactManifest.ArtifactType = "signature-example"
+		artifactManifest.Subject = artifactspec.Descriptor{
+			MediaType: ispec.MediaTypeImageManifest,
+			Digest:    digest,
+			Size:      int64(buflen),
+		}
+		artifactManifest.Blobs = []artifactspec.Descriptor{}
+
+		manBuf, err := json.Marshal(artifactManifest)
+		manBufLen := len(manBuf)
+		So(err, ShouldBeNil)
+		manDigest := godigest.FromBytes(manBuf)
+		_, err = imgStore.PutImageManifest("zot-test", manDigest.Encoded(), artifactspec.MediaTypeArtifactManifest, manBuf)
+		So(err, ShouldBeNil)
+
+		So(err, ShouldBeNil)
+		descriptors, err := imgStore.GetReferrers("zot-test", digest.String(), "signature-example")
+		So(err, ShouldBeNil)
+		So(descriptors, ShouldNotBeEmpty)
+		So(descriptors[0].ArtifactType, ShouldEqual, "signature-example")
+		So(descriptors[0].MediaType, ShouldEqual, artifactspec.MediaTypeArtifactManifest)
+		So(descriptors[0].Size, ShouldEqual, manBufLen)
+		So(descriptors[0].Digest, ShouldEqual, manDigest)
 	})
 }
 
