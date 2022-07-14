@@ -217,9 +217,9 @@ func validateConfiguration(config *config.Config) error {
 
 	// check authorization config, it should have basic auth enabled or ldap
 	if config.HTTP.RawAccessControl != nil {
-		if config.HTTP.Auth == nil || (config.HTTP.Auth.HTPasswd.Path == "" && config.HTTP.Auth.LDAP == nil) {
-			// checking for default policy only authorization config: no users, no policies but default policy
-			checkForDefaultPolicyConfig(config)
+		// checking for anonymous policy only authorization config: no users, no policies but anonymous policy
+		if err := validateAuthzPolicies(config); err != nil {
+			return err
 		}
 	}
 
@@ -272,13 +272,17 @@ func validateConfiguration(config *config.Config) error {
 	return nil
 }
 
-func checkForDefaultPolicyConfig(config *config.Config) {
-	if !isDefaultPolicyConfig(config) {
+func validateAuthzPolicies(config *config.Config) error {
+	if (config.HTTP.Auth == nil || (config.HTTP.Auth.HTPasswd.Path == "" && config.HTTP.Auth.LDAP == nil)) &&
+		!authzContainsOnlyAnonymousPolicy(config) {
 		log.Error().Err(errors.ErrBadConfig).
 			Msg("access control config requires httpasswd, ldap authentication " +
-				"or using only 'defaultPolicy' policies")
-		panic(errors.ErrBadConfig)
+				"or using only 'anonymousPolicy' policies")
+
+		return errors.ErrBadConfig
 	}
+
+	return nil
 }
 
 func applyDefaultValues(config *config.Config, viperInstance *viper.Viper) {
@@ -408,31 +412,44 @@ func LoadConfiguration(config *config.Config, configPath string) error {
 	return nil
 }
 
-func isDefaultPolicyConfig(cfg *config.Config) bool {
+func authzContainsOnlyAnonymousPolicy(cfg *config.Config) bool {
 	adminPolicy := cfg.AccessControl.AdminPolicy
+	anonymousPolicyPresent := false
 
-	log.Info().Msg("checking if default authorization is possible")
+	log.Info().Msg("checking if anonymous authorization is the only type of authorization policy configured")
 
 	if len(adminPolicy.Actions)+len(adminPolicy.Users) > 0 {
-		log.Info().Msg("admin policy detected, default authorization disabled")
+		log.Info().Msg("admin policy detected, anonymous authorization is not the only authorization policy configured")
 
 		return false
 	}
 
 	for _, repository := range cfg.AccessControl.Repositories {
+		if len(repository.DefaultPolicy) > 0 {
+			log.Info().Interface("repository", repository).
+				Msg("default policy detected, anonymous authorization is not the only authorization policy configured")
+
+			return false
+		}
+
+		if len(repository.AnonymousPolicy) > 0 {
+			log.Info().Msg("anonymous authorization detected")
+
+			anonymousPolicyPresent = true
+		}
+
 		for _, policy := range repository.Policies {
 			if len(policy.Actions)+len(policy.Users) > 0 {
 				log.Info().Interface("repository", repository).
-					Msg("repository with non-empty policy detected, default authorization disabled")
+					Msg("repository with non-empty policy detected, " +
+						"anonymous authorization is not the only authorization policy configured")
 
 				return false
 			}
 		}
 	}
 
-	log.Info().Msg("default authorization detected")
-
-	return true
+	return anonymousPolicyPresent
 }
 
 func validateLDAP(config *config.Config) error {

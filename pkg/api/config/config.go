@@ -68,8 +68,6 @@ type HTTPConfig struct {
 	Auth             *AuthConfig
 	RawAccessControl map[string]interface{} `mapstructure:"accessControl,omitempty"`
 	Realm            string
-	AllowReadAccess  bool             `mapstructure:",omitempty"`
-	ReadOnly         bool             `mapstructure:",omitempty"`
 	Ratelimit        *RatelimitConfig `mapstructure:",omitempty"`
 }
 
@@ -112,8 +110,9 @@ type AccessControlConfig struct {
 type Repositories map[string]PolicyGroup
 
 type PolicyGroup struct {
-	Policies      []Policy
-	DefaultPolicy []string
+	Policies        []Policy
+	DefaultPolicy   []string
+	AnonymousPolicy []string
 }
 
 type Policy struct {
@@ -193,8 +192,11 @@ func (c *Config) LoadAccessControlConfig(viperInstance *viper.Viper) error {
 		}
 
 		defaultPolicy := viperInstance.GetStringSlice(fmt.Sprintf("http::accessControl::%s::defaultPolicy", policy))
-		policyGroup.Policies = policies
 		policyGroup.DefaultPolicy = defaultPolicy
+
+		anonymousPolicy := viperInstance.GetStringSlice(fmt.Sprintf("http::accessControl::%s::anonymousPolicy", policy))
+		policyGroup.Policies = policies
+		policyGroup.AnonymousPolicy = anonymousPolicy
 		c.AccessControl.Repositories[policy] = policyGroup
 	}
 

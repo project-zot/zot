@@ -27,8 +27,7 @@
         "path": "test/data/htpasswd"
       },
       "failDelay": 5
-    },
-    "allowReadAccess": false
+    }
   },
   "log": {
     "level": "debug",

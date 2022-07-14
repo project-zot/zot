@@ -315,3 +315,7 @@ fuzz-all:
 	rm -rf test-data; \
 	bash test/scripts/fuzzAll.sh ${fuzztime}; \
 	rm -rf pkg/storage/testdata; \
+
+.PHONY: anonymous-push-pull
+anonymous-push-pull: binary check-skopeo $(BATS)
+	$(BATS) --trace --print-output-on-failure test/blackbox/anonymous_policiy.bats

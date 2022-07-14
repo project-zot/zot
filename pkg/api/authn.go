@@ -86,22 +86,6 @@ func noPasswdAuth(realm string, config *config.Config) mux.MiddlewareFunc {
 				return
 			}
 
-			if config.HTTP.AllowReadAccess &&
-				config.HTTP.TLS.CACert != "" &&
-				request.TLS.VerifiedChains == nil &&
-				request.Method != http.MethodGet && request.Method != http.MethodHead {
-				authFail(response, realm, 5) //nolint:gomnd
-
-				return
-			}
-
-			if (request.Method != http.MethodGet && request.Method != http.MethodHead) && config.HTTP.ReadOnly {
-				// Reject modification requests in read-only mode
-				response.WriteHeader(http.StatusMethodNotAllowed)
-
-				return
-			}
-
 			// Process request
 			next.ServeHTTP(response, request)
 		})
@@ -197,51 +181,29 @@ func basicAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 				return
 			}
-			if (request.Method == http.MethodGet || request.Method == http.MethodHead) && ctlr.Config.HTTP.AllowReadAccess {
+			if request.Header.Get("Authorization") == "" && anonymousPolicyExists(ctlr.Config.AccessControl) {
 				// Process request
 				next.ServeHTTP(response, request)
 
 				return
 			}
 
-			if (request.Method != http.MethodGet && request.Method != http.MethodHead) && ctlr.Config.HTTP.ReadOnly {
-				response.WriteHeader(http.StatusMethodNotAllowed)
-
-				return
-			}
-
-			basicAuth := request.Header.Get("Authorization")
-			if basicAuth == "" {
-				authFail(response, realm, delay)
-
-				return
-			}
-
-			splitStr := strings.SplitN(basicAuth, " ", 2) //nolint:gomnd
-
-			if len(splitStr) != 2 || strings.ToLower(splitStr[0]) != "basic" {
-				authFail(response, realm, delay)
-
-				return
-			}
-
-			decodedStr, err := base64.StdEncoding.DecodeString(splitStr[1])
+			username, passphrase, err := getUsernamePasswordBasicAuth(request)
 			if err != nil {
+				ctlr.Log.Error().Err(err).Msg("failed to parse authorization header")
 				authFail(response, realm, delay)
 
 				return
 			}
 
-			pair := strings.SplitN(string(decodedStr), ":", 2) //nolint:gomnd
-			// nolint:gomnd
-			if len(pair) != 2 {
-				authFail(response, realm, delay)
+			// some client tools might send Authorization: Basic Og== (decoded into ":")
+			// empty username and password
+			if username == "" && passphrase == "" && anonymousPolicyExists(ctlr.Config.AccessControl) {
+				// Process request
+				next.ServeHTTP(response, request)
 
 				return
 			}
-
-			username := pair[0]
-			passphrase := pair[1]
 
 			// first, HTTPPassword authN (which is local)
 			passphraseHash, ok := credMap[username]
@@ -296,4 +258,32 @@ func authFail(w http.ResponseWriter, realm string, delay int) {
 	w.Header().Set("WWW-Authenticate", realm)
 	w.Header().Set("Content-Type", "application/json")
 	WriteJSON(w, http.StatusUnauthorized, NewErrorList(NewError(UNAUTHORIZED)))
+}
+
+func getUsernamePasswordBasicAuth(request *http.Request) (string, string, error) {
+	basicAuth := request.Header.Get("Authorization")
+
+	if basicAuth == "" {
+		return "", "", errors.ErrParsingAuthHeader
+	}
+
+	splitStr := strings.SplitN(basicAuth, " ", 2) //nolint:gomnd
+	if len(splitStr) != 2 || strings.ToLower(splitStr[0]) != "basic" {
+		return "", "", errors.ErrParsingAuthHeader
+	}
+
+	decodedStr, err := base64.StdEncoding.DecodeString(splitStr[1])
+	if err != nil {
+		return "", "", err
+	}
+
+	pair := strings.SplitN(string(decodedStr), ":", 2) //nolint:gomnd
+	if len(pair) != 2 {                                //nolint:gomnd
+		return "", "", errors.ErrParsingAuthHeader
+	}
+
+	username := pair[0]
+	passphrase := pair[1]
+
+	return username, passphrase, nil
 }

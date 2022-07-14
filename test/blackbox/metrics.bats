@@ -25,8 +25,7 @@ function setup_file() {
     },
     "http": {
         "address": "0.0.0.0",
-        "port": "8080",
-        "ReadOnly": false
+        "port": "8080"
     },
     "log": {
         "level": "debug",

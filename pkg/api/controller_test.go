@@ -928,7 +928,14 @@ func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 			Cert: ServerCert,
 			Key:  ServerKey,
 		}
-		conf.HTTP.AllowReadAccess = true
+
+		conf.AccessControl = &config.AccessControlConfig{
+			Repositories: config.Repositories{
+				AuthorizationAllRepos: config.PolicyGroup{
+					AnonymousPolicy: []string{"read"},
+				},
+			},
+		}
 
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
@@ -960,7 +967,7 @@ func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 		// without creds, writes should fail
 		resp, err = resty.R().Post(secureBaseURL + "/v2/repo/blobs/uploads/")
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 	})
 }
 
@@ -1051,7 +1058,14 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 			Key:    ServerKey,
 			CACert: CACert,
 		}
-		conf.HTTP.AllowReadAccess = true
+
+		conf.AccessControl = &config.AccessControlConfig{
+			Repositories: config.Repositories{
+				AuthorizationAllRepos: config.PolicyGroup{
+					AnonymousPolicy: []string{"read"},
+				},
+			},
+		}
 
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
@@ -1079,7 +1093,7 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 		// without creds, writes should fail
 		resp, err = resty.R().Post(secureBaseURL + "/v2/repo/blobs/uploads/")
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 		// setup TLS mutual auth
 		cert, err := tls.LoadX509KeyPair("../../test/data/client.cert", "../../test/data/client.key")
@@ -1210,7 +1224,14 @@ func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 			Key:    ServerKey,
 			CACert: CACert,
 		}
-		conf.HTTP.AllowReadAccess = true
+
+		conf.AccessControl = &config.AccessControlConfig{
+			Repositories: config.Repositories{
+				AuthorizationAllRepos: config.PolicyGroup{
+					AnonymousPolicy: []string{"read"},
+				},
+			},
+		}
 
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
@@ -1252,7 +1273,7 @@ func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 		// with only client certs, writes should fail
 		resp, err = resty.R().Post(secureBaseURL + "/v2/repo/blobs/uploads/")
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 		// with client certs and creds, should get expected status code
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(secureBaseURL)
@@ -1620,9 +1641,16 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 				Service: aurl.Host,
 			},
 		}
-		conf.HTTP.AllowReadAccess = true
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
+
+		conf.AccessControl = &config.AccessControlConfig{
+			Repositories: config.Repositories{
+				AuthorizationAllRepos: config.PolicyGroup{
+					AnonymousPolicy: []string{"read"},
+				},
+			},
+		}
 
 		go startServer(ctlr)
 		defer stopServer(ctlr)
@@ -2360,7 +2388,60 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 	})
 }
 
-func TestAuthorizationWithOnlyDefaultPolicy(t *testing.T) {
+func TestGetUsername(t *testing.T) {
+	Convey("Make a new controller", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+
+		htpasswdPath := test.MakeHtpasswdFileFromString(getCredString(username, passphrase))
+		defer os.Remove(htpasswdPath)
+
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+		}
+
+		ctlr := api.NewController(conf)
+		dir := t.TempDir()
+		ctlr.Config.Storage.RootDirectory = dir
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		test.WaitTillServerReady(baseURL)
+
+		resp, err := resty.R().Get(baseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
+		// test base64 encode
+		resp, err = resty.R().SetHeader("Authorization", "Basic should fail").Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
+		// test "username:password" encoding
+		resp, err = resty.R().SetHeader("Authorization", "Basic dGVzdA==").Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
+		// failed parsing authorization header
+		resp, err = resty.R().SetHeader("Authorization", "Basic ").Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
+		var e api.Error
+		err = json.Unmarshal(resp.Body(), &e)
+		So(err, ShouldBeNil)
+	})
+}
+
+func TestAuthorizationWithOnlyAnonymousPolicy(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		const TestRepo = "my-repos/repo"
 		port := test.GetFreePort()
@@ -2372,7 +2453,7 @@ func TestAuthorizationWithOnlyDefaultPolicy(t *testing.T) {
 		conf.AccessControl = &config.AccessControlConfig{
 			Repositories: config.Repositories{
 				TestRepo: config.PolicyGroup{
-					DefaultPolicy: []string{},
+					AnonymousPolicy: []string{},
 				},
 			},
 		}
@@ -2408,21 +2489,19 @@ func TestAuthorizationWithOnlyDefaultPolicy(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 		if entry, ok := conf.AccessControl.Repositories[TestRepo]; ok {
-			entry.DefaultPolicy = []string{"create", "read"}
+			entry.AnonymousPolicy = []string{"create", "read"}
 			conf.AccessControl.Repositories[TestRepo] = entry
 		}
 
 		// now it should get 202
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Post(baseURL + "/v2/" + TestRepo + "/blobs/uploads/")
+		resp, err = resty.R().Post(baseURL + "/v2/" + TestRepo + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 		loc := resp.Header().Get("Location")
 
 		// uploading blob should get 201
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
+		resp, err = resty.R().SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
 			SetHeader("Content-Type", "application/octet-stream").
 			SetQueryParam("digest", digest).
 			SetBody(blob).
@@ -2433,16 +2512,14 @@ func TestAuthorizationWithOnlyDefaultPolicy(t *testing.T) {
 
 		cblob, cdigest := test.GetRandomImageConfig()
 
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			Post(baseURL + "/v2/" + TestRepo + "/blobs/uploads/")
+		resp, err = resty.R().Post(baseURL + "/v2/" + TestRepo + "/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 		loc = test.Location(baseURL, resp)
 
 		// uploading blob should get 201
-		resp, err = resty.R().SetBasicAuth(username, passphrase).
-			SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+		resp, err = resty.R().SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
 			SetHeader("Content-Type", "application/octet-stream").
 			SetQueryParam("digest", cdigest.String()).
 			SetBody(cblob).
@@ -2531,7 +2608,7 @@ func TestAuthorizationWithOnlyDefaultPolicy(t *testing.T) {
 
 		// add update perm on repo
 		if entry, ok := conf.AccessControl.Repositories[TestRepo]; ok {
-			entry.DefaultPolicy = []string{"create", "read", "update"}
+			entry.AnonymousPolicy = []string{"create", "read", "update"}
 			conf.AccessControl.Repositories[TestRepo] = entry
 		}
 
@@ -2551,6 +2628,160 @@ func TestAuthorizationWithOnlyDefaultPolicy(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 		So(resp.Body(), ShouldResemble, updatedManifestBlob)
+	})
+}
+
+func TestAuthorizationWithMultiplePolicies(t *testing.T) {
+	Convey("Make a new controller", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+
+		conf := config.New()
+		conf.HTTP.Port = port
+		// have two users: "test" user for  user Policy, and "bob" for default policy
+		htpasswdPath := test.MakeHtpasswdFileFromString(getCredString(username, passphrase) +
+			"\n" + getCredString("bob", passphrase))
+		defer os.Remove(htpasswdPath)
+
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+		}
+		// config with all policy types, to test that the correct one is applied in each case
+		conf.AccessControl = &config.AccessControlConfig{
+			Repositories: config.Repositories{
+				AuthorizationAllRepos: config.PolicyGroup{
+					Policies: []config.Policy{
+						{
+							Users:   []string{},
+							Actions: []string{},
+						},
+					},
+					DefaultPolicy:   []string{},
+					AnonymousPolicy: []string{},
+				},
+			},
+			AdminPolicy: config.Policy{
+				Users:   []string{},
+				Actions: []string{},
+			},
+		}
+
+		ctlr := api.NewController(conf)
+		dir := t.TempDir()
+		err := test.CopyFiles("../../test/data", dir)
+		if err != nil {
+			panic(err)
+		}
+		ctlr.Config.Storage.RootDirectory = dir
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		test.WaitTillServerReady(baseURL)
+
+		blob := []byte("hello, blob!")
+		digest := godigest.FromBytes(blob).String()
+
+		// unauthenticated clients should not have access to /v2/, no policy is applied since none exists
+		resp, err := resty.R().Get(baseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 401)
+
+		repoPolicy := conf.AccessControl.Repositories[AuthorizationAllRepos]
+		repoPolicy.AnonymousPolicy = append(repoPolicy.AnonymousPolicy, "read")
+		conf.AccessControl.Repositories[AuthorizationAllRepos] = repoPolicy
+
+		// should have access to /v2/, anonymous policy is applied, "read" allowed
+		resp, err = resty.R().Get(baseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// add "test" user to global policy with create permission
+		repoPolicy.Policies[0].Users = append(repoPolicy.Policies[0].Users, "test")
+		repoPolicy.Policies[0].Actions = append(repoPolicy.Policies[0].Actions, "create")
+
+		// now it should get 202, user has the permission set on "create"
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+		loc := resp.Header().Get("Location")
+
+		// uploading blob should get 201
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", digest).
+			SetBody(blob).
+			Put(baseURL + loc)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		// head blob should get 403 without read perm
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Head(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+		// get tags without read access should get 403
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+		repoPolicy.DefaultPolicy = append(repoPolicy.DefaultPolicy, "read")
+		conf.AccessControl.Repositories[AuthorizationAllRepos] = repoPolicy
+
+		// with read permission should get 200, because default policy allows reading now
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// get tags with default read access should be ok, since the user is now "bob" and default policy is applied
+		resp, err = resty.R().SetBasicAuth("bob", passphrase).
+			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// get tags with default policy read access
+		resp, err = resty.R().Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// get tags with anonymous read access should be ok
+		resp, err = resty.R().Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// without create permission should get 403, since "bob" can only read(default policy applied)
+		resp, err = resty.R().SetBasicAuth("bob", passphrase).
+			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+		// add read permission to user "bob"
+		conf.AccessControl.AdminPolicy.Users = append(conf.AccessControl.AdminPolicy.Users, "bob")
+		conf.AccessControl.AdminPolicy.Actions = append(conf.AccessControl.AdminPolicy.Actions, "create")
+
+		// added create permission to user "bob", should be allowed now
+		resp, err = resty.R().SetBasicAuth("bob", passphrase).
+			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 	})
 }
 
@@ -2627,7 +2858,13 @@ func TestHTTPReadOnly(t *testing.T) {
 				conf := config.New()
 				conf.HTTP.Port = port
 				// enable read-only mode
-				conf.HTTP.ReadOnly = true
+				conf.AccessControl = &config.AccessControlConfig{
+					Repositories: config.Repositories{
+						AuthorizationAllRepos: config.PolicyGroup{
+							DefaultPolicy: []string{"read"},
+						},
+					},
+				}
 
 				htpasswdPath := test.MakeHtpasswdFileFromString(testString)
 				defer os.Remove(htpasswdPath)
@@ -2653,7 +2890,7 @@ func TestHTTPReadOnly(t *testing.T) {
 					Post(baseURL + "/v2/" + AuthorizedNamespace + "/blobs/uploads/")
 				So(err, ShouldBeNil)
 				So(resp, ShouldNotBeNil)
-				So(resp.StatusCode(), ShouldEqual, http.StatusMethodNotAllowed)
+				So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 				// with invalid creds, it should fail
 				resp, _ = resty.R().SetBasicAuth("chuck", "chuck").Get(baseURL + "/v2/")

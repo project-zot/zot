@@ -49,3 +49,6 @@ jobs:
       - name: Run scrub tests
         run: |
             make bats-scrub
+      - name: Run anonymous-push-pull tests
+        run: |
+            make anonymous-push-pull
