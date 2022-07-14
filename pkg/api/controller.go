@@ -190,7 +190,8 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 
 		if c.Config.HTTP.TLS.CACert != "" {
 			clientAuth := tls.VerifyClientCertIfGiven
-			if (c.Config.HTTP.Auth == nil || c.Config.HTTP.Auth.HTPasswd.Path == "") && !c.Config.HTTP.AllowReadAccess {
+			if (c.Config.HTTP.Auth == nil || c.Config.HTTP.Auth.HTPasswd.Path == "") &&
+				!anonymousPolicyExists(c.Config.AccessControl) {
 				clientAuth = tls.RequireAndVerifyClientCert
 			}
 

@@ -807,7 +807,7 @@ func TestConfigReloader(t *testing.T) {
 		}()
 
 		content := fmt.Sprintf(`{"distSpecVersion": "0.1.0-dev", "storage": {"rootDirectory": "%s"},
-		"http": {"address": "127.0.0.1", "port": "%s", "ReadOnly": false},
+		"http": {"address": "127.0.0.1", "port": "%s"},
 		"log": {"level": "debug", "output": "%s"}}`, destDir, destPort, logFile.Name())
 
 		cfgfile, err := ioutil.TempFile("", "zot-test*.json")

@@ -2,10 +2,8 @@ package api
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	glob "github.com/bmatcuk/doublestar/v4"
@@ -140,7 +138,14 @@ func isPermitted(username, action string, policyGroup config.PolicyGroup) bool {
 
 	// check defaultPolicy
 	if !result {
-		if common.Contains(policyGroup.DefaultPolicy, action) {
+		if common.Contains(policyGroup.DefaultPolicy, action) && username != "" {
+			result = true
+		}
+	}
+
+	// check anonymousPolicy
+	if !result {
+		if common.Contains(policyGroup.AnonymousPolicy, action) && username == "" {
 			result = true
 		}
 	}
@@ -184,10 +189,19 @@ func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 			acCtrlr := NewAccessController(ctlr.Config)
 
 			// allow anonymous authz if no authn present and only default policies are present
-			username := ""
+			var username string
+			var err error
 
-			if isAuthnEnabled(ctlr.Config) {
-				username = getUsername(request)
+			/* To be implemented: verify client certs and get its username(subject DN)
+			if request.TLS.VerifiedChains != nil, then get subject DN
+			issue: https: //github.com/project-zot/zot/issues/614 */
+
+			if isAuthnEnabled(ctlr.Config) && request.Header.Get("Authorization") != "" {
+				username, _, err = getUsernamePasswordBasicAuth(request)
+
+				if err != nil {
+					authFail(response, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
+				}
 			}
 
 			ctx := acCtrlr.getContext(username, request)
@@ -232,19 +246,23 @@ func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 	}
 }
 
-func getUsername(r *http.Request) string {
-	// this should work because it was already parsed in authn middleware
-	basicAuth := r.Header.Get("Authorization")
-	s := strings.SplitN(basicAuth, " ", 2) //nolint:gomnd
-	b, _ := base64.StdEncoding.DecodeString(s[1])
-	pair := strings.SplitN(string(b), ":", 2) //nolint:gomnd
-
-	return pair[0]
-}
-
 func authzFail(w http.ResponseWriter, realm string, delay int) {
 	time.Sleep(time.Duration(delay) * time.Second)
 	w.Header().Set("WWW-Authenticate", realm)
 	w.Header().Set("Content-Type", "application/json")
 	WriteJSON(w, http.StatusForbidden, NewErrorList(NewError(DENIED)))
+}
+
+func anonymousPolicyExists(config *config.AccessControlConfig) bool {
+	if config == nil {
+		return false
+	}
+
+	for _, repository := range config.Repositories {
+		if len(repository.AnonymousPolicy) > 0 {
+			return true
+		}
+	}
+
+	return false
 }

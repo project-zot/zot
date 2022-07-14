@@ -174,14 +174,14 @@ func TestVerify(t *testing.T) {
 		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldNotPanic)
 	})
 
-	Convey("Test verify default authorization", t, func(c C) {
+	Convey("Test verify anonymous authorization", t, func(c C) {
 		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 		 					"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							 "accessControl":{"**":{"defaultPolicy": ["read", "create"]},
-							 "/repo":{"defaultPolicy": ["read", "create"]}
+							 "accessControl":{"**":{"anonymousPolicy": ["read", "create"]},
+							 "/repo":{"anonymousPolicy": ["read", "create"]}
 							 }}}`)
 		_, err = tmpfile.Write(content)
 		So(err, ShouldBeNil)
@@ -198,7 +198,7 @@ func TestVerify(t *testing.T) {
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 		 					"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							 "accessControl":{"**":{"defaultPolicy": ["read", "create"]},
-							 "/repo":{"defaultPolicy": ["read", "create"]},
+							 "/repo":{"anonymousPolicy": ["read", "create"]},
 							 "adminPolicy":{"users":["admin"],
 							 "actions":["read","create","update","delete"]}
 							 }}}`)
@@ -217,7 +217,7 @@ func TestVerify(t *testing.T) {
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"accessControl":{"**":{"defaultPolicy": ["read", "create"]},
-							"/repo":{"defaultPolicy": ["read", "create"]},
+							"/repo":{"anonymousPolicy": ["read", "create"]},
 							"/repo2":{"policies": [{
 								 "users": ["charlie"],
 								 "actions": ["read", "create", "update"]}]}
@@ -289,7 +289,7 @@ func TestVerify(t *testing.T) {
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1},
-							"accessControl":{"[":{"policies":[],"defaultPolicy":[]}}}}`)
+							"accessControl":{"[":{"policies":[],"anonymousPolicy":[]}}}}`)
 		_, err = tmpfile.Write(content)
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
@@ -339,7 +339,7 @@ func TestVerify(t *testing.T) {
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"distSpecVersion": "1.0.0", "storage": {"rootDirectory": "/tmp/zot"},
-							"http": {"url": "127.0.0.1", "port": "8080", "ReadOnly": false},
+							"http": {"url": "127.0.0.1", "port": "8080"},
 							"log": {"level": "debug"}}`)
 		_, err = tmpfile.Write(content)
 		So(err, ShouldBeNil)
@@ -355,7 +355,7 @@ func TestVerify(t *testing.T) {
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"distSpecVersion": "1.0.0", "storage": {"rootDirectory": "/tmp/zot"},
 							"http": {"auth": {"ldap": {"address": "ldap", "userattribute": "uid"}},
-							"address": "127.0.0.1", "port": "8080", "ReadOnly": false},
+							"address": "127.0.0.1", "port": "8080"},
 							"log": {"level": "debug"}}`)
 		_, err = tmpfile.Write(content)
 		So(err, ShouldBeNil)
@@ -371,7 +371,7 @@ func TestVerify(t *testing.T) {
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"distSpecVersion": "1.0.0", "storage": {"rootDirectory": "/tmp/zot"},
 							"http": {"auth": {"ldap": {"basedn": "ou=Users,dc=example,dc=org", "userattribute": "uid"}},
-							"address": "127.0.0.1", "port": "8080", "ReadOnly": false},
+							"address": "127.0.0.1", "port": "8080"},
 							"log": {"level": "debug"}}`)
 		_, err = tmpfile.Write(content)
 		So(err, ShouldBeNil)
@@ -387,7 +387,7 @@ func TestVerify(t *testing.T) {
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"distSpecVersion": "1.0.0", "storage": {"rootDirectory": "/tmp/zot"},
 							"http": {"auth": {"ldap": {"basedn": "ou=Users,dc=example,dc=org", "address": "ldap"}},
-							"address": "127.0.0.1", "port": "8080", "ReadOnly": false},
+							"address": "127.0.0.1", "port": "8080"},
 							"log": {"level": "debug"}}`)
 		_, err = tmpfile.Write(content)
 		So(err, ShouldBeNil)
@@ -402,7 +402,7 @@ func TestVerify(t *testing.T) {
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"distSpecVersion": "1.0.0", "storage": {"rootDirectory": "/tmp/zot"},
-							"http": {"address": "127.0.0.1", "port": "8080", "ReadOnly": false},
+							"http": {"address": "127.0.0.1", "port": "8080"},
 							"log": {"level": "debug"}}`)
 		_, err = tmpfile.Write(content)
 		So(err, ShouldBeNil)
@@ -503,7 +503,7 @@ func TestGC(t *testing.T) {
 			defer os.Remove(file.Name())
 
 			content := []byte(`{"distSpecVersion": "1.0.0", "storage": {"rootDirectory": "/tmp/zot",
-			"gc": false}, "http": {"address": "127.0.0.1", "port": "8080", "ReadOnly": false},
+			"gc": false}, "http": {"address": "127.0.0.1", "port": "8080"},
 			"log": {"level": "debug"}}`)
 
 			err = ioutil.WriteFile(file.Name(), content, 0o600)

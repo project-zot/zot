@@ -15,6 +15,7 @@
     },
     "accessControl": {
       "**": {
+        "anonymousPolicy": ["read"],
         "policies": [
           {
             "users": [

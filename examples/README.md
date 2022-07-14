@@ -49,13 +49,6 @@ Additionally, TLS configuration can be specified with:
         },
 ```
 
-The registry can be deployed as a read-only service with:
-
-```
-        "ReadOnly": false
-    },
-```
-
 ## Storage
 
 Configure storage with:
@@ -209,7 +202,8 @@ create/update/delete can not be used without 'read' action, make sure read is al
           "actions": ["read", "create", "update"]
         }
       ],
-      "defaultPolicy": ["read", "create"]                      # default policy which is applied for all users => so all users can read/create repositories
+      "defaultPolicy": ["read", "create"],                     # default policy which is applied for authenticated users, other than "charlie"=> so these users can read/create repositories
+      "anonymousPolicy": ["read]                               # anonymous policy which is applied for unauthenticated users => so they can read repositories
     },
     "tmp/**": {                                                # matches all repos under tmp/ recursively
       "defaultPolicy": ["read", "create", "update"]            # so all users have read/create/update on all repos under tmp/ eg: tmp/infra/repo

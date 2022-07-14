@@ -9,25 +9,25 @@
     "realm": "zot",
     "accessControl": {
       "**": {
-        "defaultPolicy": [
+        "anonymousPolicy": [
           "read",
           "create"
         ]
       },
       "tmp/**": {
-        "defaultPolicy": [
+        "anonymousPolicy": [
           "read",
           "create",
           "update"
         ]
       },
       "infra/**": {
-        "defaultPolicy": [
+        "anonymousPolicy": [
           "read"
         ]
       },
       "repos2/repo": {
-        "defaultPolicy": [
+        "anonymousPolicy": [
           "read"
         ]
       }
