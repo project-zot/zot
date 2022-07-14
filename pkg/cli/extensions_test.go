@@ -484,7 +484,10 @@ func TestServeSearchEnabled(t *testing.T) {
 					}
 				}`
 
-		data, err := runCLIWithConfig(t.TempDir(), content)
+		tempDir := t.TempDir()
+		data, err := runCLIWithConfig(tempDir, content)
+		// to avoid data race when multiple go routines write to trivy DB instance.
+		WaitTillTrivyDBDownloadStarted(tempDir)
 		So(err, ShouldBeNil)
 		So(data, ShouldContainSubstring,
 			"\"Extensions\":{\"Search\":{\"CVE\":{\"UpdateInterval\":86400000000000},\"Enable\":true},\"Sync\":null,\"Metrics\":null,\"Scrub\":null}") //nolint:lll // gofumpt conflicts with lll
@@ -519,7 +522,10 @@ func TestServeSearchEnabledCVE(t *testing.T) {
 					}
 				}`
 
-		data, err := runCLIWithConfig(t.TempDir(), content)
+		tempDir := t.TempDir()
+		data, err := runCLIWithConfig(tempDir, content)
+		// to avoid data race when multiple go routines write to trivy DB instance.
+		WaitTillTrivyDBDownloadStarted(tempDir)
 		So(err, ShouldBeNil)
 		// Even if in config we specified updateInterval=1h, the minimum interval is 2h
 		So(data, ShouldContainSubstring,
@@ -555,7 +561,10 @@ func TestServeSearchEnabledNoCVE(t *testing.T) {
 				}
 			}`
 
-		data, err := runCLIWithConfig(t.TempDir(), content)
+		tempDir := t.TempDir()
+		data, err := runCLIWithConfig(tempDir, content)
+		// to avoid data race when multiple go routines write to trivy DB instance.
+		WaitTillTrivyDBDownloadStarted(tempDir)
 		So(err, ShouldBeNil)
 		So(data, ShouldContainSubstring,
 			"\"Extensions\":{\"Search\":{\"CVE\":{\"UpdateInterval\":86400000000000},\"Enable\":true},\"Sync\":null,\"Metrics\":null,\"Scrub\":null}") //nolint:lll // gofumpt conflicts with lll

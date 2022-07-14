@@ -140,6 +140,16 @@ func WaitTillServerReady(url string) {
 	}
 }
 
+func WaitTillTrivyDBDownloadStarted(rootDir string) {
+	for {
+		if _, err := os.Stat(path.Join(rootDir, "trivy.db")); err == nil {
+			break
+		}
+
+		time.Sleep(SleepTime)
+	}
+}
+
 // Adapted from https://gist.github.com/dopey/c69559607800d2f2f90b1b1ed4e550fb
 func randomString(n int) string {
 	const letters = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-"
