@@ -1115,6 +1115,457 @@ func TestS3Dedupe(t *testing.T) {
 	})
 }
 
+func TestS3ManifestImageIndex(t *testing.T) {
+	skipIt(t)
+
+	Convey("Test against s3 image store", t, func() {
+		uuid, err := guuid.NewV4()
+		if err != nil {
+			panic(err)
+		}
+
+		testDir := path.Join("/oci-repo-test", uuid.String())
+
+		storeDriver, imgStore, _ := createObjectsStore(testDir, t.TempDir(), true)
+		defer cleanupStorage(storeDriver, testDir)
+
+		// create a blob/layer
+		upload, err := imgStore.NewBlobUpload("index")
+		So(err, ShouldBeNil)
+		So(upload, ShouldNotBeEmpty)
+
+		content := []byte("this is a blob1")
+		buf := bytes.NewBuffer(content)
+		buflen := buf.Len()
+		digest := godigest.FromBytes(content)
+		So(digest, ShouldNotBeNil)
+		blob, err := imgStore.PutBlobChunkStreamed("index", upload, buf)
+		So(err, ShouldBeNil)
+		So(blob, ShouldEqual, buflen)
+		bdgst1 := digest
+		bsize1 := len(content)
+
+		err = imgStore.FinishBlobUpload("index", upload, buf, digest.String())
+		So(err, ShouldBeNil)
+		So(blob, ShouldEqual, buflen)
+
+		// upload image config blob
+		upload, err = imgStore.NewBlobUpload("index")
+		So(err, ShouldBeNil)
+		So(upload, ShouldNotBeEmpty)
+
+		cblob, cdigest := test.GetRandomImageConfig()
+		buf = bytes.NewBuffer(cblob)
+		buflen = buf.Len()
+		blob, err = imgStore.PutBlobChunkStreamed("index", upload, buf)
+		So(err, ShouldBeNil)
+		So(blob, ShouldEqual, buflen)
+
+		err = imgStore.FinishBlobUpload("index", upload, buf, cdigest.String())
+		So(err, ShouldBeNil)
+		So(blob, ShouldEqual, buflen)
+
+		// create a manifest
+		manifest := ispec.Manifest{
+			Config: ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageConfig,
+				Digest:    cdigest,
+				Size:      int64(len(cblob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageLayer,
+					Digest:    bdgst1,
+					Size:      int64(bsize1),
+				},
+			},
+		}
+		manifest.SchemaVersion = 2
+		content, err = json.Marshal(manifest)
+		So(err, ShouldBeNil)
+		digest = godigest.FromBytes(content)
+		So(digest, ShouldNotBeNil)
+		m1content := content
+		_, err = imgStore.PutImageManifest("index", "test:1.0", ispec.MediaTypeImageManifest, content)
+		So(err, ShouldBeNil)
+
+		// create another manifest but upload using its sha256 reference
+
+		// upload image config blob
+		upload, err = imgStore.NewBlobUpload("index")
+		So(err, ShouldBeNil)
+		So(upload, ShouldNotBeEmpty)
+
+		cblob, cdigest = test.GetRandomImageConfig()
+		buf = bytes.NewBuffer(cblob)
+		buflen = buf.Len()
+		blob, err = imgStore.PutBlobChunkStreamed("index", upload, buf)
+		So(err, ShouldBeNil)
+		So(blob, ShouldEqual, buflen)
+
+		err = imgStore.FinishBlobUpload("index", upload, buf, cdigest.String())
+		So(err, ShouldBeNil)
+		So(blob, ShouldEqual, buflen)
+
+		// create a manifest
+		manifest = ispec.Manifest{
+			Config: ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageConfig,
+				Digest:    cdigest,
+				Size:      int64(len(cblob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageLayer,
+					Digest:    bdgst1,
+					Size:      int64(bsize1),
+				},
+			},
+		}
+		manifest.SchemaVersion = 2
+		content, err = json.Marshal(manifest)
+		So(err, ShouldBeNil)
+		digest = godigest.FromBytes(content)
+		So(digest, ShouldNotBeNil)
+		m2dgst := digest
+		m2size := len(content)
+		_, err = imgStore.PutImageManifest("index", digest.String(), ispec.MediaTypeImageManifest, content)
+		So(err, ShouldBeNil)
+
+		Convey("Image index", func() {
+			// upload image config blob
+			upload, err = imgStore.NewBlobUpload("index")
+			So(err, ShouldBeNil)
+			So(upload, ShouldNotBeEmpty)
+
+			cblob, cdigest = test.GetRandomImageConfig()
+			buf = bytes.NewBuffer(cblob)
+			buflen = buf.Len()
+			blob, err = imgStore.PutBlobChunkStreamed("index", upload, buf)
+			So(err, ShouldBeNil)
+			So(blob, ShouldEqual, buflen)
+
+			err = imgStore.FinishBlobUpload("index", upload, buf, cdigest.String())
+			So(err, ShouldBeNil)
+			So(blob, ShouldEqual, buflen)
+
+			// create a manifest
+			manifest := ispec.Manifest{
+				Config: ispec.Descriptor{
+					MediaType: ispec.MediaTypeImageConfig,
+					Digest:    cdigest,
+					Size:      int64(len(cblob)),
+				},
+				Layers: []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageLayer,
+						Digest:    bdgst1,
+						Size:      int64(bsize1),
+					},
+				},
+			}
+			manifest.SchemaVersion = 2
+			content, err = json.Marshal(manifest)
+			So(err, ShouldBeNil)
+			digest = godigest.FromBytes(content)
+			So(digest, ShouldNotBeNil)
+			_, err = imgStore.PutImageManifest("index", digest.String(), ispec.MediaTypeImageManifest, content)
+			So(err, ShouldBeNil)
+
+			var index ispec.Index
+			index.SchemaVersion = 2
+			index.Manifests = []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageIndex,
+					Digest:    digest,
+					Size:      int64(len(content)),
+				},
+				{
+					MediaType: ispec.MediaTypeImageIndex,
+					Digest:    m2dgst,
+					Size:      int64(m2size),
+				},
+			}
+
+			content, err = json.Marshal(index)
+			So(err, ShouldBeNil)
+			digest = godigest.FromBytes(content)
+			So(digest, ShouldNotBeNil)
+			index1dgst := digest
+			_, err = imgStore.PutImageManifest("index", "test:index1", ispec.MediaTypeImageIndex, content)
+			So(err, ShouldBeNil)
+			_, _, _, err = imgStore.GetImageManifest("index", "test:index1")
+			So(err, ShouldBeNil)
+
+			// upload another image config blob
+			upload, err = imgStore.NewBlobUpload("index")
+			So(err, ShouldBeNil)
+			So(upload, ShouldNotBeEmpty)
+
+			cblob, cdigest = test.GetRandomImageConfig()
+			buf = bytes.NewBuffer(cblob)
+			buflen = buf.Len()
+			blob, err = imgStore.PutBlobChunkStreamed("index", upload, buf)
+			So(err, ShouldBeNil)
+			So(blob, ShouldEqual, buflen)
+
+			err = imgStore.FinishBlobUpload("index", upload, buf, cdigest.String())
+			So(err, ShouldBeNil)
+			So(blob, ShouldEqual, buflen)
+
+			// create another manifest
+			manifest = ispec.Manifest{
+				Config: ispec.Descriptor{
+					MediaType: ispec.MediaTypeImageConfig,
+					Digest:    cdigest,
+					Size:      int64(len(cblob)),
+				},
+				Layers: []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageLayer,
+						Digest:    bdgst1,
+						Size:      int64(bsize1),
+					},
+				},
+			}
+			manifest.SchemaVersion = 2
+			content, err = json.Marshal(manifest)
+			So(err, ShouldBeNil)
+			digest = godigest.FromBytes(content)
+			So(digest, ShouldNotBeNil)
+			m4dgst := digest
+			m4size := len(content)
+			_, err = imgStore.PutImageManifest("index", digest.String(), ispec.MediaTypeImageManifest, content)
+			So(err, ShouldBeNil)
+
+			index.SchemaVersion = 2
+			index.Manifests = []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageIndex,
+					Digest:    digest,
+					Size:      int64(len(content)),
+				},
+				{
+					MediaType: ispec.MediaTypeImageIndex,
+					Digest:    m2dgst,
+					Size:      int64(m2size),
+				},
+			}
+
+			content, err = json.Marshal(index)
+			So(err, ShouldBeNil)
+			digest = godigest.FromBytes(content)
+			So(digest, ShouldNotBeNil)
+			_, err = imgStore.PutImageManifest("index", "test:index2", ispec.MediaTypeImageIndex, content)
+			So(err, ShouldBeNil)
+			_, _, _, err = imgStore.GetImageManifest("index", "test:index2")
+			So(err, ShouldBeNil)
+
+			Convey("List tags", func() {
+				tags, err := imgStore.GetImageTags("index")
+				So(err, ShouldBeNil)
+				So(len(tags), ShouldEqual, 3)
+				So(tags, ShouldContain, "test:1.0")
+				So(tags, ShouldContain, "test:index1")
+				So(tags, ShouldContain, "test:index2")
+			})
+
+			Convey("Another index with same manifest", func() {
+				var index ispec.Index
+				index.SchemaVersion = 2
+				index.Manifests = []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageIndex,
+						Digest:    m4dgst,
+						Size:      int64(m4size),
+					},
+				}
+
+				content, err = json.Marshal(index)
+				So(err, ShouldBeNil)
+				digest = godigest.FromBytes(content)
+				So(digest, ShouldNotBeNil)
+				_, err = imgStore.PutImageManifest("index", "test:index3", ispec.MediaTypeImageIndex, content)
+				So(err, ShouldBeNil)
+				_, _, _, err = imgStore.GetImageManifest("index", "test:index3")
+				So(err, ShouldBeNil)
+			})
+
+			Convey("Another index using digest with same manifest", func() {
+				var index ispec.Index
+				index.SchemaVersion = 2
+				index.Manifests = []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageIndex,
+						Digest:    m4dgst,
+						Size:      int64(m4size),
+					},
+				}
+
+				content, err = json.Marshal(index)
+				So(err, ShouldBeNil)
+				digest = godigest.FromBytes(content)
+				So(digest, ShouldNotBeNil)
+				_, err = imgStore.PutImageManifest("index", digest.String(), ispec.MediaTypeImageIndex, content)
+				So(err, ShouldBeNil)
+				_, _, _, err = imgStore.GetImageManifest("index", digest.String())
+				So(err, ShouldBeNil)
+			})
+
+			Convey("Deleting an image index", func() {
+				// delete manifest by tag should pass
+				err := imgStore.DeleteImageManifest("index", "test:index3")
+				So(err, ShouldNotBeNil)
+				_, _, _, err = imgStore.GetImageManifest("index", "test:index3")
+				So(err, ShouldNotBeNil)
+
+				err = imgStore.DeleteImageManifest("index", "test:index1")
+				So(err, ShouldBeNil)
+				_, _, _, err = imgStore.GetImageManifest("index", "test:index1")
+				So(err, ShouldNotBeNil)
+
+				_, _, _, err = imgStore.GetImageManifest("index", "test:index2")
+				So(err, ShouldBeNil)
+			})
+
+			Convey("Deleting an image index by digest", func() {
+				// delete manifest by tag should pass
+				err := imgStore.DeleteImageManifest("index", "test:index3")
+				So(err, ShouldNotBeNil)
+				_, _, _, err = imgStore.GetImageManifest("index", "test:index3")
+				So(err, ShouldNotBeNil)
+
+				err = imgStore.DeleteImageManifest("index", index1dgst.String())
+				So(err, ShouldBeNil)
+				_, _, _, err = imgStore.GetImageManifest("index", "test:index1")
+				So(err, ShouldNotBeNil)
+
+				_, _, _, err = imgStore.GetImageManifest("index", "test:index2")
+				So(err, ShouldBeNil)
+			})
+
+			Convey("Update an index tag with different manifest", func() {
+				// create a blob/layer
+				upload, err := imgStore.NewBlobUpload("index")
+				So(err, ShouldBeNil)
+				So(upload, ShouldNotBeEmpty)
+
+				content := []byte("this is another blob")
+				buf := bytes.NewBuffer(content)
+				buflen := buf.Len()
+				digest := godigest.FromBytes(content)
+				So(digest, ShouldNotBeNil)
+				blob, err := imgStore.PutBlobChunkStreamed("index", upload, buf)
+				So(err, ShouldBeNil)
+				So(blob, ShouldEqual, buflen)
+
+				err = imgStore.FinishBlobUpload("index", upload, buf, digest.String())
+				So(err, ShouldBeNil)
+				So(blob, ShouldEqual, buflen)
+
+				// create a manifest with same blob but a different tag
+				manifest = ispec.Manifest{
+					Config: ispec.Descriptor{
+						MediaType: ispec.MediaTypeImageConfig,
+						Digest:    cdigest,
+						Size:      int64(len(cblob)),
+					},
+					Layers: []ispec.Descriptor{
+						{
+							MediaType: ispec.MediaTypeImageLayer,
+							Digest:    digest,
+							Size:      int64(len(content)),
+						},
+					},
+				}
+				manifest.SchemaVersion = 2
+				content, err = json.Marshal(manifest)
+				So(err, ShouldBeNil)
+				digest = godigest.FromBytes(content)
+				So(digest, ShouldNotBeNil)
+				_, err = imgStore.PutImageManifest("index", digest.String(), ispec.MediaTypeImageManifest, content)
+				So(err, ShouldBeNil)
+				_, _, _, err = imgStore.GetImageManifest("index", digest.String())
+				So(err, ShouldBeNil)
+
+				index.SchemaVersion = 2
+				index.Manifests = []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageIndex,
+						Digest:    digest,
+						Size:      int64(len(content)),
+					},
+				}
+
+				content, err = json.Marshal(index)
+				So(err, ShouldBeNil)
+				digest = godigest.FromBytes(content)
+				So(digest, ShouldNotBeNil)
+				_, err = imgStore.PutImageManifest("index", "test:index1", ispec.MediaTypeImageIndex, content)
+				So(err, ShouldBeNil)
+				_, _, _, err = imgStore.GetImageManifest("index", "test:index1")
+				So(err, ShouldBeNil)
+
+				err = imgStore.DeleteImageManifest("index", "test:index1")
+				So(err, ShouldBeNil)
+				_, _, _, err = imgStore.GetImageManifest("index", "test:index1")
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("Negative test cases", func() {
+				Convey("Delete index", func() {
+					cleanupStorage(storeDriver, path.Join(testDir, "index", "blobs",
+						index1dgst.Algorithm().String(), index1dgst.Encoded()))
+
+					err = imgStore.DeleteImageManifest("index", index1dgst.String())
+					So(err, ShouldNotBeNil)
+					_, _, _, err = imgStore.GetImageManifest("index", "test:index1")
+					So(err, ShouldNotBeNil)
+				})
+
+				Convey("Corrupt index", func() {
+					wrtr, err := storeDriver.Writer(context.Background(),
+						path.Join(testDir, "index", "blobs",
+							index1dgst.Algorithm().String(), index1dgst.Encoded()),
+						false)
+					So(err, ShouldBeNil)
+					_, err = wrtr.Write([]byte("deadbeef"))
+					So(err, ShouldBeNil)
+					wrtr.Close()
+					err = imgStore.DeleteImageManifest("index", index1dgst.String())
+					So(err, ShouldBeNil)
+					_, _, _, err = imgStore.GetImageManifest("index", "test:index1")
+					So(err, ShouldNotBeNil)
+				})
+
+				Convey("Change media-type", func() {
+					// previously a manifest, try writing an image index
+					var index ispec.Index
+					index.SchemaVersion = 2
+					index.Manifests = []ispec.Descriptor{
+						{
+							MediaType: ispec.MediaTypeImageIndex,
+							Digest:    m4dgst,
+							Size:      int64(m4size),
+						},
+					}
+
+					content, err = json.Marshal(index)
+					So(err, ShouldBeNil)
+					digest = godigest.FromBytes(content)
+					So(digest, ShouldNotBeNil)
+					_, err = imgStore.PutImageManifest("index", "test:1.0", ispec.MediaTypeImageIndex, content)
+					So(err, ShouldNotBeNil)
+
+					// previously an image index, try writing a manifest
+					_, err = imgStore.PutImageManifest("index", "test:index1", ispec.MediaTypeImageManifest, m1content)
+					So(err, ShouldNotBeNil)
+				})
+			})
+		})
+	})
+}
+
 func TestS3DedupeErr(t *testing.T) {
 	skipIt(t)
 

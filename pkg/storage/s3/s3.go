@@ -397,8 +397,102 @@ func (is *ObjectStorage) GetImageManifest(repo, reference string) ([]byte, strin
 	return buf, digest.String(), mediaType, nil
 }
 
+/**
+before an image index manifest is pushed to a repo, its constituent manifests
+are pushed first, so when updating/removing this image index manifest, we also
+need to determine if there are other image index manifests which refer to the
+same constitutent manifests so that they can be garbage-collected correctly
+
+pruneImageManifestsFromIndex is a helper routine to achieve this.
+*/
+func (is *ObjectStorage) pruneImageManifestsFromIndex(dir string, digest godigest.Digest, // nolint: gocyclo
+	outIndex ispec.Index, otherImgIndexes []ispec.Descriptor, log zerolog.Logger,
+) ([]ispec.Descriptor, error) {
+	indexPath := path.Join(dir, "blobs", digest.Algorithm().String(), digest.Encoded())
+
+	buf, err := is.store.GetContent(context.Background(), indexPath)
+	if err != nil {
+		log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
+
+		return nil, err
+	}
+
+	var imgIndex ispec.Index
+	if err := json.Unmarshal(buf, &imgIndex); err != nil {
+		log.Error().Err(err).Str("path", indexPath).Msg("invalid JSON")
+
+		return nil, err
+	}
+
+	inUse := map[string]uint{}
+
+	for _, manifest := range imgIndex.Manifests {
+		inUse[manifest.Digest.Encoded()]++
+	}
+
+	for _, otherIndex := range otherImgIndexes {
+		indexPath := path.Join(dir, "blobs", otherIndex.Digest.Algorithm().String(), otherIndex.Digest.Encoded())
+
+		buf, err := is.store.GetContent(context.Background(), indexPath)
+		if err != nil {
+			log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
+
+			return nil, err
+		}
+
+		var oindex ispec.Index
+		if err := json.Unmarshal(buf, &oindex); err != nil {
+			log.Error().Err(err).Str("path", indexPath).Msg("invalid JSON")
+
+			return nil, err
+		}
+
+		for _, omanifest := range oindex.Manifests {
+			_, ok := inUse[omanifest.Digest.Encoded()]
+			if ok {
+				inUse[omanifest.Digest.Encoded()]++
+			}
+		}
+	}
+
+	prunedManifests := []ispec.Descriptor{}
+
+	// for all manifests in the index, skip those that either have a tag or
+	// are used in other imgIndexes
+	for _, outManifest := range outIndex.Manifests {
+		if outManifest.MediaType != ispec.MediaTypeImageManifest {
+			prunedManifests = append(prunedManifests, outManifest)
+
+			continue
+		}
+
+		_, ok := outManifest.Annotations[ispec.AnnotationRefName]
+		if ok {
+			prunedManifests = append(prunedManifests, outManifest)
+
+			continue
+		}
+
+		count, ok := inUse[outManifest.Digest.Encoded()]
+		if !ok {
+			prunedManifests = append(prunedManifests, outManifest)
+
+			continue
+		}
+
+		if count != 1 {
+			// this manifest is in use in other image indexes
+			prunedManifests = append(prunedManifests, outManifest)
+
+			continue
+		}
+	}
+
+	return prunedManifests, nil
+}
+
 // PutImageManifest adds an image manifest to the repository.
-func (is *ObjectStorage) PutImageManifest(repo, reference, mediaType string,
+func (is *ObjectStorage) PutImageManifest(repo, reference, mediaType string, //nolint: gocyclo
 	body []byte) (string, error,
 ) {
 	if err := is.InitRepo(repo); err != nil {
@@ -407,9 +501,10 @@ func (is *ObjectStorage) PutImageManifest(repo, reference, mediaType string,
 		return "", err
 	}
 
-	if mediaType != ispec.MediaTypeImageManifest {
+	// validate the manifest
+	if !storage.IsSupportedMediaType(mediaType) {
 		is.log.Debug().Interface("actual", mediaType).
-			Interface("expected", ispec.MediaTypeImageManifest).Msg("bad manifest media type")
+			Msg("bad manifest media type")
 
 		return "", zerr.ErrBadManifest
 	}
@@ -489,6 +584,8 @@ func (is *ObjectStorage) PutImageManifest(repo, reference, mediaType string,
 		desc.Annotations = map[string]string{ispec.AnnotationRefName: reference}
 	}
 
+	var oldDgst godigest.Digest
+
 	for midx, manifest := range index.Manifests {
 		if reference == manifest.Digest.String() {
 			// nothing changed, so don't update
@@ -515,9 +612,22 @@ func (is *ObjectStorage) PutImageManifest(repo, reference, mediaType string,
 				Int64("new size", int64(len(body))).
 				Str("old digest", desc.Digest.String()).
 				Str("new digest", mDigest.String()).
+				Str("old digest", desc.Digest.String()).
+				Str("new digest", mDigest.String()).
 				Msg("updating existing tag with new manifest contents")
 
+			// changing media-type is disallowed!
+			if manifest.MediaType != mediaType {
+				err = zerr.ErrBadManifest
+				is.log.Error().Err(err).
+					Str("old mediaType", manifest.MediaType).
+					Str("new mediaType", mediaType).Msg("cannot change media-type")
+
+				return "", err
+			}
+
 			desc = manifest
+			oldDgst = manifest.Digest
 			desc.Size = int64(len(body))
 			desc.Digest = mDigest
 
@@ -539,6 +649,30 @@ func (is *ObjectStorage) PutImageManifest(repo, reference, mediaType string,
 		is.log.Error().Err(err).Str("file", manifestPath).Msg("unable to write")
 
 		return "", err
+	}
+
+	/* additionally, unmarshal an image index and for all manifests in that
+	index, ensure that they do not have a name or they are not in other
+	manifest indexes else GC can never clean them */
+	if (mediaType == ispec.MediaTypeImageIndex) && (oldDgst != "") {
+		otherImgIndexes := []ispec.Descriptor{}
+
+		for _, manifest := range index.Manifests {
+			if manifest.MediaType == ispec.MediaTypeImageIndex {
+				otherImgIndexes = append(otherImgIndexes, manifest)
+			}
+		}
+
+		otherImgIndexes = append(otherImgIndexes, desc)
+
+		dir := path.Join(is.rootDir, repo)
+
+		prunedManifests, err := is.pruneImageManifestsFromIndex(dir, oldDgst, index, otherImgIndexes, is.log)
+		if err != nil {
+			return "", err
+		}
+
+		index.Manifests = prunedManifests
 	}
 
 	// now update "index.json"
@@ -618,11 +752,15 @@ func (is *ObjectStorage) DeleteImageManifest(repo, reference string) error {
 
 	found := false
 
+	isImageIndex := false
+
 	var manifest ispec.Descriptor
 
 	// we are deleting, so keep only those manifests that don't match
 	outIndex := index
 	outIndex.Manifests = []ispec.Descriptor{}
+
+	otherImgIndexes := []ispec.Descriptor{}
 
 	for _, manifest = range index.Manifests {
 		if isTag {
@@ -634,16 +772,28 @@ func (is *ObjectStorage) DeleteImageManifest(repo, reference string) error {
 
 				found = true
 
+				if manifest.MediaType == ispec.MediaTypeImageIndex {
+					isImageIndex = true
+				}
+
 				continue
 			}
 		} else if reference == manifest.Digest.String() {
 			is.log.Debug().Str("deleting reference", reference).Msg("")
 			found = true
 
+			if manifest.MediaType == ispec.MediaTypeImageIndex {
+				isImageIndex = true
+			}
+
 			continue
 		}
 
 		outIndex.Manifests = append(outIndex.Manifests, manifest)
+
+		if manifest.MediaType == ispec.MediaTypeImageIndex {
+			otherImgIndexes = append(otherImgIndexes, manifest)
+		}
 	}
 
 	if !found {
@@ -652,6 +802,18 @@ func (is *ObjectStorage) DeleteImageManifest(repo, reference string) error {
 
 	is.Lock(&lockLatency)
 	defer is.Unlock(&lockLatency)
+
+	/* additionally, unmarshal an image index and for all manifests in that
+	index, ensure that they do not have a name or they are not in other
+	manifest indexes else GC can never clean them */
+	if isImageIndex {
+		prunedManifests, err := is.pruneImageManifestsFromIndex(dir, dgst, outIndex, otherImgIndexes, is.log)
+		if err != nil {
+			return err
+		}
+
+		outIndex.Manifests = prunedManifests
+	}
 
 	// now update "index.json"
 	dir = path.Join(is.rootDir, repo)
