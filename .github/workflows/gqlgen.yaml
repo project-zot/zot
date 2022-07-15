@@ -1,0 +1,36 @@
+name: "GQL generation"
+
+# Validate gqlgen works
+# Validate there are no uncommitted changes after running gqlgen
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches: [main]
+  release:
+    types:
+      - published
+
+permissions: read-all
+
+jobs:
+  gqlgen:
+    name: Check GQL generation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
+        with:
+          go-version: 1.18.x
+      - name: Install dependencies
+        run: |
+          cd $GITHUB_WORKSPACE
+          go mod download
+      - name: Run gqlgen
+        run: |
+            make gqlgen
+      - name: Verify uncommitted files
+        run: |
+            make verify-gql-committed

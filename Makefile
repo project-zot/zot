@@ -198,6 +198,21 @@ verify-config-commited: _verify-config
 		exit 1;\
 	fi; \
 
+.PHONY: gqlgen
+gqlgen:
+	cd pkg/extensions/search;\
+	go run github.com/99designs/gqlgen version;\
+	go run github.com/99designs/gqlgen generate
+
+.PHONY: verify-gql-committed
+verify-gql-committed:
+	$(eval UNCOMMITED_FILES = $(shell git status --porcelain | grep -c extensions/search))
+	@if [ $(UNCOMMITED_FILES) != 0 ]; then \
+		echo "Updated gql files uncommitted, make sure all gql files are committed:";\
+		git status;\
+		exit 1;\
+	fi; \
+
 .PHONY: binary-container
 binary-container:
 	${CONTAINER_RUNTIME} build ${BUILD_ARGS} -f Dockerfile -t zot-build:latest .

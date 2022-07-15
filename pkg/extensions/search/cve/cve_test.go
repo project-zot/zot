@@ -449,7 +449,7 @@ func TestCVESearch(t *testing.T) {
 
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.ExtSearchPrefix)
 		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, 422)
 
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.ExtSearchPrefix + "?query={CVEListForImage(image:\"zot-test:0.0.1\"){Tag%20CVEList{Id%20Description%20Severity%20PackageList{Name%20InstalledVersion%20FixedVersion}}}}")
 		So(resp, ShouldNotBeNil)

@@ -194,7 +194,7 @@ func TestDigestSearchHTTP(t *testing.T) {
 		resp, err = resty.R().Get(baseURL + constants.ExtSearchPrefix)
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, 422)
 
 		// "sha" should match all digests in all images
 		resp, err = resty.R().Get(baseURL + constants.ExtSearchPrefix +
@@ -347,7 +347,7 @@ func TestDigestSearchHTTPSubPaths(t *testing.T) {
 		resp, err = resty.R().Get(baseURL + constants.ExtSearchPrefix)
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, 422)
 
 		resp, err = resty.R().Get(baseURL + constants.ExtSearchPrefix +
 			"?query={ImageListForDigest(id:\"sha\"){Name%20Tags}}")

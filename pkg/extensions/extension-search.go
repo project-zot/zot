@@ -13,6 +13,7 @@ import (
 	"zotregistry.io/zot/pkg/api/constants"
 	"zotregistry.io/zot/pkg/extensions/search"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
+	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 )
@@ -62,7 +63,7 @@ func SetupSearchRoutes(config *config.Config, router *mux.Router, storeControlle
 	log.Info().Msg("setting up search routes")
 
 	if config.Extensions.Search != nil && *config.Extensions.Search.Enable {
-		var resConfig search.Config
+		var resConfig gql_generated.Config
 
 		if config.Extensions.Search.CVE != nil {
 			resConfig = search.GetResolverConfig(log, storeController, true)
@@ -71,7 +72,7 @@ func SetupSearchRoutes(config *config.Config, router *mux.Router, storeControlle
 		}
 
 		router.PathPrefix(constants.ExtSearchPrefix).Methods("OPTIONS", "GET", "POST").
-			Handler(gqlHandler.NewDefaultServer(search.NewExecutableSchema(resConfig)))
+			Handler(gqlHandler.NewDefaultServer(gql_generated.NewExecutableSchema(resConfig)))
 	}
 }
 
