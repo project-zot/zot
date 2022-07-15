@@ -9,7 +9,7 @@ require (
 	github.com/apex/log v1.9.0
 	github.com/aquasecurity/trivy v0.0.0-00010101000000-000000000000
 	github.com/aquasecurity/trivy-db v0.0.0-20210916043317-726b7b72a47b
-	github.com/bmatcuk/doublestar/v4 v4.0.2
+	github.com/bmatcuk/doublestar/v4 v4.2.0
 	github.com/briandowns/spinner v1.18.1
 	github.com/chartmuseum/auth v0.5.0
 	github.com/containers/common v0.48.0
@@ -45,7 +45,7 @@ require (
 	github.com/spf13/cobra v1.5.0
 	github.com/spf13/viper v1.12.0
 	github.com/stretchr/testify v1.8.0
-	github.com/swaggo/swag v1.8.2
+	github.com/swaggo/swag v1.8.3
 	github.com/urfave/cli/v2 v2.8.1
 	github.com/vektah/gqlparser/v2 v2.4.5
 	go.etcd.io/bbolt v1.3.6
@@ -59,7 +59,7 @@ require github.com/open-policy-agent/opa v0.37.0 // indirect
 require (
 	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20220217185014-dd38b7ed8a99
 	github.com/sigstore/cosign v1.9.0
-	github.com/swaggo/http-swagger v1.2.8
+	github.com/swaggo/http-swagger v1.3.0
 )
 
 require (
@@ -308,7 +308,7 @@ require (
 	github.com/stefanberger/go-pkcs11uri v0.0.0-20201008174630-78d3cae3a980 // indirect
 	github.com/stretchr/objx v0.4.0 // indirect
 	github.com/subosito/gotenv v1.3.0 // indirect
-	github.com/swaggo/files v0.0.0-20210815190702-a29dd2bc99b2 // indirect
+	github.com/swaggo/files v0.0.0-20220610200504-28940afbdbfe // indirect
 	github.com/syndtr/gocapability v0.0.0-20200815063812-42c35b437635 // indirect
 	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7 // indirect
 	github.com/tent/canonical-json-go v0.0.0-20130607151641-96e4ba3a7613 // indirect
