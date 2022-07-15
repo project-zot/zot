@@ -9,7 +9,7 @@ require (
 	github.com/apex/log v1.9.0
 	github.com/aquasecurity/trivy v0.0.0-00010101000000-000000000000
 	github.com/aquasecurity/trivy-db v0.0.0-20210916043317-726b7b72a47b
-	github.com/bmatcuk/doublestar/v4 v4.0.2
+	github.com/bmatcuk/doublestar/v4 v4.2.0
 	github.com/briandowns/spinner v1.18.1
 	github.com/chartmuseum/auth v0.5.0
 	github.com/containers/common v0.48.0
