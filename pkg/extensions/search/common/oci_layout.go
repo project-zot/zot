@@ -12,6 +12,7 @@ import (
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/types"
+	notreg "github.com/notaryproject/notation/pkg/registry"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"zotregistry.io/zot/errors"
@@ -202,13 +203,14 @@ func (olu OciLayoutUtils) GetImageTagsWithTimestamp(repo string) ([]TagInfo, err
 }
 
 // check notary signature corresponding to repo name, manifest digest and mediatype.
-func (olu OciLayoutUtils) checkNotarySignature(name, digest, mediaType string) bool {
+func (olu OciLayoutUtils) checkNotarySignature(name string, digest godigest.Digest) bool {
 	imageStore := olu.StoreController.GetImageStore(name)
+	mediaType := notreg.ArtifactTypeNotation
 
-	_, err := imageStore.GetReferrers(name, digest, mediaType)
+	_, err := imageStore.GetReferrers(name, digest.String(), mediaType)
 	if err != nil {
-		olu.Log.Info().Str("repo", name).Str("digest",
-			digest).Str("mediatype", mediaType).Msg("invalid notary signature")
+		olu.Log.Info().Err(err).Str("repo", name).Str("digest",
+			digest.String()).Str("mediatype", mediaType).Msg("invalid notary signature")
 
 		return false
 	}
@@ -217,17 +219,17 @@ func (olu OciLayoutUtils) checkNotarySignature(name, digest, mediaType string) b
 }
 
 // check cosign signature corresponding to  manifest.
-func (olu OciLayoutUtils) checkCosignSignature(name, digest string) bool {
+func (olu OciLayoutUtils) checkCosignSignature(name string, digest godigest.Digest) bool {
 	imageStore := olu.StoreController.GetImageStore(name)
 
 	// if manifest is signed using cosign mechanism, cosign adds a new manifest.
 	// new manifest is tagged as sha256-<manifest-digest>.sig.
-	reference := fmt.Sprintf("sha256-%s.sig", digest)
+	reference := fmt.Sprintf("sha256-%s.sig", digest.Encoded())
 
 	_, _, _, err := imageStore.GetImageManifest(name, reference) // nolint: dogsled
 	if err != nil {
-		olu.Log.Info().Str("repo", name).Str("digest",
-			digest).Msg("invalid cosign signature")
+		olu.Log.Info().Err(err).Str("repo", name).Str("digest",
+			digest.String()).Msg("invalid cosign signature")
 
 		return false
 	}
@@ -238,9 +240,9 @@ func (olu OciLayoutUtils) checkCosignSignature(name, digest string) bool {
 // checks if manifest is signed or not
 // checks for notary or cosign signature
 // if cosign signature found it does not looks for notary signature.
-func (olu OciLayoutUtils) checkManifestSignature(name, digest, mediaType string) bool {
+func (olu OciLayoutUtils) checkManifestSignature(name string, digest godigest.Digest) bool {
 	if !olu.checkCosignSignature(name, digest) {
-		return olu.checkNotarySignature(name, digest, mediaType)
+		return olu.checkNotarySignature(name, digest)
 	}
 
 	return true
@@ -279,7 +281,7 @@ func (olu OciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error) {
 			return RepoInfo{}, err
 		}
 
-		manifestInfo.IsSigned = olu.checkManifestSignature(name, man.Digest.Encoded(), man.MediaType)
+		manifestInfo.IsSigned = olu.checkManifestSignature(name, man.Digest)
 
 		layers := make([]Layer, 0)
 

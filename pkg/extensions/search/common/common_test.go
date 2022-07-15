@@ -163,7 +163,7 @@ func signUsingNotary(port string) error {
 	}
 
 	// sign the image
-	image := fmt.Sprintf("localhost:%s/%s:%s", port, "zot-cve-test", "0.0.1")
+	image := fmt.Sprintf("localhost:%s/%s:%s", port, "zot-test", "0.0.1")
 
 	cmd = exec.Command("notation", "sign", "--key", "notation-sign-test", "--plain-http", image)
 
@@ -311,7 +311,7 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix)
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, 422)
 
 		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query={ImageListWithLatestTag(){Name%20Latest}}")
 		So(resp, ShouldNotBeNil)
@@ -451,7 +451,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix)
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.StatusCode(), ShouldEqual, 422)
 
 		query := "{ExpandedRepoInfo(repo:\"zot-cve-test\"){Manifests%20{Digest%20IsSigned%20Tag%20Layers%20{Size%20Digest}}}}"
 
@@ -466,11 +466,14 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Manifests), ShouldNotEqual, 0)
 		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Manifests[0].Layers), ShouldNotEqual, 0)
+		found := false
 		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.Manifests {
 			if m.Digest == "63a795ca90aa6e7cca60941e826810a4cd0a2e73ea02bf458241df2a5c973e29" {
+				found = true
 				So(m.IsSigned, ShouldEqual, false)
 			}
 		}
+		So(found, ShouldEqual, true)
 
 		err = signUsingCosign(port)
 		So(err, ShouldBeNil)
@@ -484,11 +487,14 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Manifests), ShouldNotEqual, 0)
 		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Manifests[0].Layers), ShouldNotEqual, 0)
+		found = false
 		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.Manifests {
 			if m.Digest == "63a795ca90aa6e7cca60941e826810a4cd0a2e73ea02bf458241df2a5c973e29" {
+				found = true
 				So(m.IsSigned, ShouldEqual, true)
 			}
 		}
+		So(found, ShouldEqual, true)
 
 		query = "{ExpandedRepoInfo(repo:\"\"){Manifests%20{Digest%20Tag%20IsSigned%20Layers%20{Size%20Digest}}}}"
 
@@ -497,7 +503,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		query = "{ExpandedRepoInfo(repo:\"zot-test\"){Manifests%20{Digest%20Tag%20IsSigned%20%Layers%20{Size%20Digest}}}}"
+		query = "{ExpandedRepoInfo(repo:\"zot-test\"){Manifests%20{Digest%20Tag%20IsSigned%20Layers%20{Size%20Digest}}}}"
 		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + query)
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
@@ -507,11 +513,14 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Manifests), ShouldNotEqual, 0)
 		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Manifests[0].Layers), ShouldNotEqual, 0)
+		found = false
 		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.Manifests {
 			if m.Digest == "2bacca16b9df395fc855c14ccf50b12b58d35d468b8e7f25758aff90f89bf396" {
+				found = true
 				So(m.IsSigned, ShouldEqual, false)
 			}
 		}
+		So(found, ShouldEqual, true)
 
 		err = signUsingNotary(port)
 		So(err, ShouldBeNil)
@@ -525,11 +534,14 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Manifests), ShouldNotEqual, 0)
 		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Manifests[0].Layers), ShouldNotEqual, 0)
+		found = false
 		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.Manifests {
 			if m.Digest == "2bacca16b9df395fc855c14ccf50b12b58d35d468b8e7f25758aff90f89bf396" {
+				found = true
 				So(m.IsSigned, ShouldEqual, true)
 			}
 		}
+		So(found, ShouldEqual, true)
 
 		var manifestDigest digest.Digest
 		manifestDigest, _, _ = GetOciLayoutDigests("../../../../test/data/zot-test")

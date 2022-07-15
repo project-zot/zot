@@ -322,7 +322,7 @@ func TestServerCVEResponse(t *testing.T) {
 	// wait till ready
 	for {
 		res, err := resty.R().Get(url + constants.ExtSearchPrefix)
-		if err == nil && res.StatusCode() == 200 {
+		if err == nil && res.StatusCode() == 422 {
 			break
 		}
 

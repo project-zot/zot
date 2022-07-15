@@ -60,3 +60,10 @@ linters-settings:
       - go.etcd.io/etcd/v3
       - go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc
       - go.opentelemetry.io/otel/exporters/otlp/otlptrace
+
+issues:
+  exclude-rules:
+    - path: pkg/extensions/search/schema.resolvers.go
+      linters:
+        - lll
+        - varnamelen
