@@ -9,6 +9,10 @@ on:
 env:
   GOLANG_VERSION: 1.18
 
+permissions:
+  contents: read
+  packages: read | write
+
 jobs:
   sync-golang:
     name: 'sync'
