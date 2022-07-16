@@ -9,6 +9,8 @@ on:
     types:
       - published
 
+permissions: read-all
+
 jobs:
   client-tools:
     name: Check client tools

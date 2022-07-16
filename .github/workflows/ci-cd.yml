@@ -9,6 +9,12 @@ on:
     types:
       - published
 name: build-test
+
+
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   build-test:
     name: Build and test ZOT
