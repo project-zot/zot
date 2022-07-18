@@ -7,13 +7,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
+	"unicode/utf8"
 
 	apexlog "github.com/apex/log"
 	guuid "github.com/gofrs/uuid"
@@ -186,6 +189,13 @@ func (is *ImageStoreLocal) Unlock(lockStart *time.Time) {
 
 func (is *ImageStoreLocal) initRepo(name string) error {
 	repoDir := path.Join(is.rootDir, name)
+
+	if !utf8.ValidString(name) {
+		is.log.Error().Msg("input is not valid UTF-8")
+
+		return zerr.ErrInvalidRepositoryName
+	}
+
 	// create "blobs" subdir
 	err := ensureDir(path.Join(repoDir, "blobs"), is.log)
 	if err != nil {
@@ -850,6 +860,7 @@ func (is *ImageStoreLocal) NewBlobUpload(repo string) (string, error) {
 	if err != nil {
 		return "", zerr.ErrRepoNotFound
 	}
+
 	defer file.Close()
 
 	return uid, nil
@@ -858,6 +869,12 @@ func (is *ImageStoreLocal) NewBlobUpload(repo string) (string, error) {
 // GetBlobUpload returns the current size of a blob upload.
 func (is *ImageStoreLocal) GetBlobUpload(repo, uuid string) (int64, error) {
 	blobUploadPath := is.BlobUploadPath(repo, uuid)
+
+	if !utf8.ValidString(blobUploadPath) {
+		is.log.Error().Msg("input is not valid UTF-8")
+
+		return -1, zerr.ErrInvalidRepositoryName
+	}
 
 	binfo, err := os.Stat(blobUploadPath)
 	if err != nil {
@@ -1673,12 +1690,23 @@ func ifOlderThan(imgStore *ImageStoreLocal, repo string, delay time.Duration) ca
 }
 
 func DirExists(d string) bool {
-	fi, err := os.Stat(d)
+	if !utf8.ValidString(d) {
+		return false
+	}
+
+	fileInfo, err := os.Stat(d)
+	if err != nil {
+		if e, ok := err.(*fs.PathError); ok && errors.Is(e.Err, syscall.ENAMETOOLONG) || //nolint: errorlint
+			errors.Is(e.Err, syscall.EINVAL) {
+			return false
+		}
+	}
+
 	if err != nil && os.IsNotExist(err) {
 		return false
 	}
 
-	if !fi.IsDir() {
+	if !fileInfo.IsDir() {
 		return false
 	}
 

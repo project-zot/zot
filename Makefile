@@ -283,3 +283,14 @@ bats-metrics: binary check-skopeo $(BATS)
 bats-metrics-verbose: EXTENSIONS=metrics
 bats-metrics-verbose: binary check-skopeo $(BATS)
 	$(BATS) --trace -p --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/metrics.bats
+
+.PHONY: fuzz-all
+fuzz-all: fuzztime=${1}
+fuzz-all:
+	rm -rf test-data; \
+	rm -rf pkg/storage/testdata; \
+	git clone https://github.com/project-zot/test-data.git; \
+	mv test-data/storage pkg/storage/testdata; \
+	rm -rf test-data; \
+	bash test/scripts/fuzzAll.sh ${fuzztime}; \
+	rm -rf pkg/storage/testdata; \

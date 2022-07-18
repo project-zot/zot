@@ -5,22 +5,26 @@ import (
 	"crypto/rand"
 	_ "crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"io/ioutil"
 	"math/big"
 	"os"
 	"path"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
+	imeta "github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
-	"zotregistry.io/zot/errors"
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
@@ -40,10 +44,8 @@ func TestStorageFSAPIs(t *testing.T) {
 		true, log, metrics, nil)
 
 	Convey("Repo layout", t, func(c C) {
-		repoName := "test"
-
 		Convey("Bad image manifest", func() {
-			upload, err := imgStore.NewBlobUpload("test")
+			upload, err := imgStore.NewBlobUpload(repoName)
 			So(err, ShouldBeNil)
 			So(upload, ShouldNotBeEmpty)
 
@@ -56,17 +58,17 @@ func TestStorageFSAPIs(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(blob, ShouldEqual, buflen)
 
-			err = imgStore.FinishBlobUpload("test", upload, buf, digest.String())
+			err = imgStore.FinishBlobUpload(repoName, upload, buf, digest.String())
 			So(err, ShouldBeNil)
 
 			annotationsMap := make(map[string]string)
 			annotationsMap[ispec.AnnotationRefName] = tag
 
 			cblob, cdigest := test.GetRandomImageConfig()
-			_, clen, err := imgStore.FullBlobUpload("test", bytes.NewReader(cblob), cdigest.String())
+			_, clen, err := imgStore.FullBlobUpload(repoName, bytes.NewReader(cblob), cdigest.String())
 			So(err, ShouldBeNil)
 			So(clen, ShouldEqual, len(cblob))
-			hasBlob, _, err := imgStore.CheckBlob("test", cdigest.String())
+			hasBlob, _, err := imgStore.CheckBlob(repoName, cdigest.String())
 			So(err, ShouldBeNil)
 			So(hasBlob, ShouldEqual, true)
 
@@ -195,7 +197,6 @@ func TestGetReferrers(t *testing.T) {
 			Size:      int64(buflen),
 		}
 		artifactManifest.Blobs = []artifactspec.Descriptor{}
-
 		manBuf, err := json.Marshal(artifactManifest)
 		manBufLen := len(manBuf)
 		So(err, ShouldBeNil)
@@ -211,6 +212,711 @@ func TestGetReferrers(t *testing.T) {
 		So(descriptors[0].MediaType, ShouldEqual, artifactspec.MediaTypeArtifactManifest)
 		So(descriptors[0].Size, ShouldEqual, manBufLen)
 		So(descriptors[0].Digest, ShouldEqual, manDigest)
+	})
+}
+
+func FuzzNewBlobUpload(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data string) {
+		dir := t.TempDir()
+		defer os.RemoveAll(dir)
+		t.Logf("Input argument is %s", data)
+		log := log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, log)
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics, nil)
+
+		_, err := imgStore.NewBlobUpload(data)
+		if err != nil {
+			if isKnownErr(err) {
+				return
+			}
+
+			t.Error(err)
+		}
+	})
+}
+
+func FuzzPutBlobChunk(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data string) {
+		dir := t.TempDir()
+		defer os.RemoveAll(dir)
+		t.Logf("Input argument is %s", data)
+		log := log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, log)
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics, nil)
+
+		repoName := data
+		uuid, err := imgStore.NewBlobUpload(repoName)
+		if err != nil {
+			if isKnownErr(err) {
+				return
+			}
+
+			t.Error(err)
+		}
+
+		buf := bytes.NewBuffer([]byte(data))
+		buflen := buf.Len()
+		_, err = imgStore.PutBlobChunk(repoName, uuid, 0, int64(buflen), buf)
+		if err != nil {
+			t.Error(err)
+		}
+	})
+}
+
+func FuzzPutBlobChunkStreamed(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data string) {
+		dir := t.TempDir()
+		defer os.RemoveAll(dir)
+		t.Logf("Input argument is %s", data)
+		log := log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, log)
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics, nil)
+
+		repoName := data
+
+		uuid, err := imgStore.NewBlobUpload(repoName)
+		if err != nil {
+			if isKnownErr(err) {
+				return
+			}
+
+			t.Error(err)
+		}
+
+		buf := bytes.NewBuffer([]byte(data))
+		_, err = imgStore.PutBlobChunkStreamed(repoName, uuid, buf)
+		if err != nil {
+			t.Error(err)
+		}
+	})
+}
+
+func FuzzGetBlobUpload(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data1 string, data2 string) {
+		dir := t.TempDir()
+		defer os.RemoveAll(dir)
+		log := log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, log)
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics, nil)
+
+		_, err := imgStore.GetBlobUpload(data1, data2)
+		if err != nil {
+			if errors.Is(err, zerr.ErrUploadNotFound) || isKnownErr(err) {
+				return
+			}
+			t.Error(err)
+		}
+	})
+}
+
+func FuzzTestPutGetImageManifest(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data []byte) {
+		log := &log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, *log)
+
+		dir := t.TempDir()
+		defer os.RemoveAll(dir)
+
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+
+		cblob, cdigest := test.GetRandomImageConfig()
+
+		ldigest, lblob, err := newRandomBlobForFuzz(data)
+		if err != nil {
+			t.Errorf("error occurred while generating random blob, %v", err)
+		}
+
+		_, _, err = imgStore.FullBlobUpload(repoName, bytes.NewReader(cblob), cdigest.String())
+		if err != nil {
+			t.Error(err)
+		}
+		_, _, err = imgStore.FullBlobUpload(repoName, bytes.NewReader(lblob), ldigest.String())
+		if err != nil {
+			t.Error(err)
+		}
+
+		manifest, err := NewRandomImgManifest(data, cdigest, ldigest, cblob, lblob)
+		if err != nil {
+			t.Error(err)
+		}
+		manifestBuf, err := json.Marshal(manifest)
+		if err != nil {
+			t.Errorf("Error %v occurred while marshaling manifest", err)
+		}
+		mdigest := godigest.FromBytes(manifestBuf)
+		_, err = imgStore.PutImageManifest(repoName, mdigest.String(), ispec.MediaTypeImageManifest, manifestBuf)
+		if err != nil && errors.Is(err, zerr.ErrBadManifest) {
+			t.Errorf("the error that occurred is %v \n", err)
+		}
+		_, _, _, err = imgStore.GetImageManifest(repoName, mdigest.String())
+		if err != nil {
+			t.Errorf("the error that occurred is %v \n", err)
+		}
+	})
+}
+
+func FuzzTestPutDeleteImageManifest(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data []byte) {
+		log := &log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, *log)
+
+		dir := t.TempDir()
+		defer os.RemoveAll(dir)
+
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+
+		cblob, cdigest := test.GetRandomImageConfig()
+
+		ldigest, lblob, err := newRandomBlobForFuzz(data)
+		if err != nil {
+			t.Errorf("error occurred while generating random blob, %v", err)
+		}
+
+		_, _, err = imgStore.FullBlobUpload(repoName, bytes.NewReader(cblob), cdigest.String())
+		if err != nil {
+			t.Error(err)
+		}
+
+		_, _, err = imgStore.FullBlobUpload(repoName, bytes.NewReader(lblob), ldigest.String())
+		if err != nil {
+			t.Error(err)
+		}
+
+		manifest, err := NewRandomImgManifest(data, cdigest, ldigest, cblob, lblob)
+		if err != nil {
+			t.Error(err)
+		}
+
+		manifestBuf, err := json.Marshal(manifest)
+		if err != nil {
+			t.Errorf("Error %v occurred while marshaling manifest", err)
+		}
+		mdigest := godigest.FromBytes(manifestBuf)
+		_, err = imgStore.PutImageManifest(repoName, mdigest.String(), ispec.MediaTypeImageManifest, manifestBuf)
+		if err != nil && errors.Is(err, zerr.ErrBadManifest) {
+			t.Errorf("the error that occurred is %v \n", err)
+		}
+
+		err = imgStore.DeleteImageManifest(repoName, mdigest.String())
+		if err != nil {
+			if isKnownErr(err) {
+				return
+			}
+			t.Errorf("the error that occurred is %v \n", err)
+		}
+	})
+}
+
+// no integration with PutImageManifest, just throw fuzz data.
+func FuzzTestDeleteImageManifest(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data []byte) {
+		log := &log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, *log)
+
+		dir := t.TempDir()
+		defer os.RemoveAll(dir)
+
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+
+		digest, _, err := newRandomBlobForFuzz(data)
+		if err != nil {
+			return
+		}
+		err = imgStore.DeleteImageManifest(string(data), digest.String())
+		if err != nil {
+			if errors.Is(err, zerr.ErrRepoNotFound) || isKnownErr(err) {
+				return
+			}
+			t.Error(err)
+		}
+	})
+}
+
+func FuzzDirExists(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data string) { //nolint: unusedparams
+		_ = storage.DirExists(data)
+	})
+}
+
+func FuzzInitRepo(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data string) {
+		log := &log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, *log)
+
+		dir := t.TempDir()
+		defer os.RemoveAll(dir)
+
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+		err := imgStore.InitRepo(data)
+		if err != nil {
+			if isKnownErr(err) {
+				return
+			}
+			t.Error(err)
+		}
+	})
+}
+
+func FuzzInitValidateRepo(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data string) {
+		log := &log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, *log)
+
+		dir := t.TempDir()
+		defer os.RemoveAll(dir)
+
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+		err := imgStore.InitRepo(data)
+		if err != nil {
+			if isKnownErr(err) {
+				return
+			}
+			t.Error(err)
+		}
+		_, err = imgStore.ValidateRepo(data)
+		if err != nil {
+			if errors.Is(err, zerr.ErrRepoNotFound) || errors.Is(err, zerr.ErrRepoBadVersion) || isKnownErr(err) {
+				return
+			}
+			t.Error(err)
+		}
+	})
+}
+
+func FuzzGetImageTags(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data string) {
+		log := &log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, *log)
+
+		dir := t.TempDir()
+		defer os.RemoveAll(dir)
+
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+		_, err := imgStore.GetImageTags(data)
+		if err != nil {
+			if errors.Is(err, zerr.ErrRepoNotFound) || isKnownErr(err) {
+				return
+			}
+			t.Error(err)
+		}
+	})
+}
+
+func FuzzBlobUploadPath(f *testing.F) {
+	f.Fuzz(func(t *testing.T, repo, uuid string) {
+		log := &log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, *log)
+
+		dir := t.TempDir()
+		defer os.RemoveAll(dir)
+
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+
+		_ = imgStore.BlobUploadPath(repo, uuid)
+	})
+}
+
+func FuzzBlobUploadInfo(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data string, uuid string) {
+		log := &log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, *log)
+
+		dir := t.TempDir()
+		defer os.RemoveAll(dir)
+
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+		repo := data
+
+		_, err := imgStore.BlobUploadInfo(repo, uuid)
+		if err != nil {
+			if isKnownErr(err) {
+				return
+			}
+			t.Error(err)
+		}
+	})
+}
+
+func FuzzTestGetImageManifest(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data string) {
+		dir := t.TempDir()
+		defer os.RemoveAll(dir)
+
+		log := log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, log)
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics, nil)
+
+		repoName := data
+
+		digest := godigest.FromBytes([]byte(data))
+
+		_, _, _, err := imgStore.GetImageManifest(repoName, digest.String())
+		if err != nil {
+			if isKnownErr(err) {
+				return
+			}
+			t.Error(err)
+		}
+	})
+}
+
+func FuzzFinishBlobUpload(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data string) {
+		dir := t.TempDir()
+		defer os.RemoveAll(dir)
+
+		log := log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, log)
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics, nil)
+
+		repoName := data
+
+		upload, err := imgStore.NewBlobUpload(repoName)
+		if err != nil {
+			if isKnownErr(err) {
+				return
+			}
+			t.Error(err)
+		}
+
+		content := []byte(data)
+		buf := bytes.NewBuffer(content)
+		buflen := buf.Len()
+		digest := godigest.FromBytes(content)
+
+		_, err = imgStore.PutBlobChunk(repoName, upload, 0, int64(buflen), buf)
+		if err != nil {
+			if isKnownErr(err) {
+				return
+			}
+			t.Error(err)
+		}
+
+		err = imgStore.FinishBlobUpload(repoName, upload, buf, digest.String())
+		if err != nil {
+			if isKnownErr(err) {
+				return
+			}
+			t.Error(err)
+		}
+	})
+}
+
+func FuzzFullBlobUpload(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data []byte) {
+		log := &log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, *log)
+		repoName := "test"
+
+		dir := t.TempDir()
+		defer os.RemoveAll(dir)
+
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+
+		ldigest, lblob, err := newRandomBlobForFuzz(data)
+		if err != nil {
+			t.Errorf("error occurred while generating random blob, %v", err)
+		}
+
+		_, _, err = imgStore.FullBlobUpload(repoName, bytes.NewReader(lblob), ldigest.String())
+		if err != nil {
+			if isKnownErr(err) {
+				return
+			}
+			t.Error(err)
+		}
+	})
+}
+
+func FuzzDedupeBlob(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data string) {
+		log := &log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, *log)
+
+		dir := t.TempDir()
+		defer os.RemoveAll(dir)
+
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+
+		blobDigest := godigest.FromString(data)
+
+		// replacement for .uploads folder, usually retrieved from BlobUploadPath
+		src := path.Join(imgStore.RootDir(), "src")
+		blob := bytes.NewReader([]byte(data))
+
+		_, _, err := imgStore.FullBlobUpload("repoName", blob, blobDigest.String())
+		if err != nil {
+			t.Error(err)
+		}
+
+		dst := imgStore.BlobPath("repoName", blobDigest)
+
+		err = os.MkdirAll(src, 0o755)
+		if err != nil {
+			t.Error(err)
+		}
+
+		err = imgStore.DedupeBlob(src, blobDigest, dst)
+		if err != nil {
+			t.Error(err)
+		}
+	})
+}
+
+func FuzzDeleteBlobUpload(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data string) {
+		log := &log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, *log)
+		repoName := data
+
+		dir := t.TempDir()
+		defer os.RemoveAll(dir)
+
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+
+		uuid, err := imgStore.NewBlobUpload(repoName)
+		if err != nil {
+			if isKnownErr(err) {
+				return
+			}
+			t.Error(err)
+		}
+
+		err = imgStore.DeleteBlobUpload(repoName, uuid)
+		if err != nil {
+			t.Error(err)
+		}
+	})
+}
+
+func FuzzBlobPath(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data string) {
+		log := &log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, *log)
+		repoName := data
+
+		dir := t.TempDir()
+		defer os.RemoveAll(dir)
+
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+		digest := godigest.FromString(data)
+
+		_ = imgStore.BlobPath(repoName, digest)
+	})
+}
+
+func FuzzCheckBlob(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data string) {
+		log := &log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, *log)
+		repoName := data
+
+		dir := t.TempDir()
+		defer os.RemoveAll(dir)
+
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+		digest := godigest.FromString(data)
+
+		_, _, err := imgStore.FullBlobUpload(repoName, bytes.NewReader([]byte(data)), digest.String())
+		if err != nil {
+			if isKnownErr(err) {
+				return
+			}
+			t.Error(err)
+		}
+		_, _, err = imgStore.CheckBlob(repoName, digest.String())
+		if err != nil {
+			t.Error(err)
+		}
+	})
+}
+
+func FuzzGetBlob(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data string) {
+		log := &log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, *log)
+		repoName := data
+
+		dir := t.TempDir()
+		defer os.RemoveAll(dir)
+
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+		digest := godigest.FromString(data)
+
+		_, _, err := imgStore.FullBlobUpload(repoName, bytes.NewReader([]byte(data)), digest.String())
+		if err != nil {
+			if isKnownErr(err) {
+				return
+			}
+			t.Error(err)
+		}
+
+		_, _, err = imgStore.GetBlob(repoName, digest.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
+		if err != nil {
+			if isKnownErr(err) {
+				return
+			}
+			t.Error(err)
+		}
+	})
+}
+
+func FuzzDeleteBlob(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data string) {
+		log := &log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, *log)
+		repoName := data
+
+		dir := t.TempDir()
+		defer os.RemoveAll(dir)
+
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+		digest := godigest.FromString(data)
+
+		_, _, err := imgStore.FullBlobUpload(repoName, bytes.NewReader([]byte(data)), digest.String())
+		if err != nil {
+			if isKnownErr(err) {
+				return
+			}
+			t.Error(err)
+		}
+
+		err = imgStore.DeleteBlob(repoName, digest.String())
+		if err != nil {
+			if isKnownErr(err) {
+				return
+			}
+			t.Error(err)
+		}
+	})
+}
+
+func FuzzGetIndexContent(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data string) {
+		log := &log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, *log)
+		repoName := data
+
+		dir := t.TempDir()
+		defer os.RemoveAll(dir)
+
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+		digest := godigest.FromString(data)
+
+		_, _, err := imgStore.FullBlobUpload(repoName, bytes.NewReader([]byte(data)), digest.String())
+		if err != nil {
+			if isKnownErr(err) {
+				return
+			}
+			t.Error(err)
+		}
+
+		_, err = imgStore.GetIndexContent(repoName)
+		if err != nil {
+			if isKnownErr(err) {
+				return
+			}
+			t.Error(err)
+		}
+	})
+}
+
+func FuzzGetBlobContent(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data string) {
+		log := &log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, *log)
+		repoName := data
+
+		dir := t.TempDir()
+		defer os.RemoveAll(dir)
+
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+		digest := godigest.FromString(data)
+
+		_, _, err := imgStore.FullBlobUpload(repoName, bytes.NewReader([]byte(data)), digest.String())
+		if err != nil {
+			if isKnownErr(err) {
+				return
+			}
+			t.Error(err)
+		}
+
+		_, err = imgStore.GetBlobContent(repoName, digest.String())
+		if err != nil {
+			if isKnownErr(err) {
+				return
+			}
+			t.Error(err)
+		}
+	})
+}
+
+func FuzzGetReferrers(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data string) {
+		log := &log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, *log)
+
+		dir := t.TempDir()
+		defer os.RemoveAll(dir)
+
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+
+		err := test.CopyFiles("../../test/data/zot-test", path.Join(dir, "zot-test"))
+		if err != nil {
+			t.Error(err)
+		}
+		digest := godigest.FromBytes([]byte(data))
+		buf := bytes.NewBuffer([]byte(data))
+		buflen := buf.Len()
+		err = ioutil.WriteFile(path.Join(imgStore.RootDir(), //nolint: gosec
+			"zot-test", "blobs", digest.Algorithm().String(), digest.Encoded()),
+			buf.Bytes(), 0o644)
+		if err != nil {
+			t.Error(err)
+		}
+		_, _, err = imgStore.FullBlobUpload("zot-test", buf, digest.String())
+		if err != nil {
+			t.Error(err)
+		}
+
+		artifactManifest := artifactspec.Manifest{}
+		artifactManifest.ArtifactType = data
+		artifactManifest.Subject = artifactspec.Descriptor{
+			MediaType: ispec.MediaTypeImageManifest,
+			Digest:    digest,
+			Size:      int64(buflen),
+		}
+		artifactManifest.Blobs = []artifactspec.Descriptor{}
+
+		manBuf, err := json.Marshal(artifactManifest)
+		if err != nil {
+			t.Error(err)
+		}
+		manDigest := godigest.FromBytes(manBuf)
+		_, err = imgStore.PutImageManifest("zot-test", manDigest.Encoded(), artifactspec.MediaTypeArtifactManifest, manBuf)
+		if err != nil {
+			t.Error(err)
+		}
+		_, err = imgStore.GetReferrers("zot-test", digest.String(), data)
+		if err != nil {
+			if errors.Is(err, zerr.ErrManifestNotFound) || isKnownErr(err) {
+				return
+			}
+			t.Error(err)
+		}
+	})
+}
+
+func FuzzRunGCRepo(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data string) {
+		log := &log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, *log)
+		dir := t.TempDir()
+		defer os.RemoveAll(dir)
+
+		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+
+		imgStore.RunGCRepo(data)
 	})
 }
 
@@ -416,6 +1122,10 @@ func TestNegativeCases(t *testing.T) {
 
 		err = imgStore.InitRepo("test-dir")
 		So(err, ShouldBeNil)
+
+		// Init repo should fail if repo is invalid UTF-8
+		err = imgStore.InitRepo("hi \255")
+		So(err, ShouldNotBeNil)
 	})
 
 	Convey("Invalid validate repo", t, func(c C) {
@@ -438,7 +1148,7 @@ func TestNegativeCases(t *testing.T) {
 		}
 		_, err = imgStore.ValidateRepo("invalid-test")
 		So(err, ShouldNotBeNil)
-		So(err, ShouldEqual, errors.ErrRepoNotFound)
+		So(err, ShouldEqual, zerr.ErrRepoNotFound)
 
 		err = os.Chmod(path.Join(dir, "invalid-test"), 0o755) // remove all perms
 		if err != nil {
@@ -483,7 +1193,7 @@ func TestNegativeCases(t *testing.T) {
 
 		isValid, err = imgStore.ValidateRepo("invalid-test")
 		So(err, ShouldNotBeNil)
-		So(err, ShouldEqual, errors.ErrRepoBadVersion)
+		So(err, ShouldEqual, zerr.ErrRepoBadVersion)
 		So(isValid, ShouldEqual, false)
 
 		files, err := ioutil.ReadDir(path.Join(dir, "test"))
@@ -674,6 +1384,27 @@ func TestNegativeCases(t *testing.T) {
 		}
 
 		ok := storage.DirExists(filePath)
+		So(ok, ShouldBeFalse)
+	})
+
+	Convey("DirExists call with invalid UTF-8 as argument", t, func(c C) {
+		dir := t.TempDir()
+
+		filePath := path.Join(dir, "hi \255")
+		ok := storage.DirExists(filePath)
+		So(ok, ShouldBeFalse)
+	})
+
+	Convey("DirExists call with name too long as argument", t, func(c C) {
+		var builder strings.Builder
+		for i := 0; i < 1025; i++ {
+			_, err := builder.WriteString("0")
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		path := builder.String()
+		ok := storage.DirExists(path)
 		So(ok, ShouldBeFalse)
 	})
 }
@@ -1310,4 +2041,57 @@ func TestPutBlobChunkStreamed(t *testing.T) {
 		_, err = imgStore.PutBlobChunkStreamed("test", uuid, reader)
 		So(err, ShouldNotBeNil)
 	})
+}
+
+func NewRandomImgManifest(data []byte, cdigest, ldigest godigest.Digest, cblob, lblob []byte) (*ispec.Manifest, error) {
+	annotationsMap := make(map[string]string)
+
+	key := string(data)
+	val := string(data)
+	annotationsMap[key] = val
+
+	schemaVersion := 2
+
+	manifest := ispec.Manifest{
+		MediaType: "application/vnd.oci.image.manifest.v1+json",
+		Config: ispec.Descriptor{
+			MediaType: "application/vnd.oci.image.config.v1+json",
+			Digest:    cdigest,
+			Size:      int64(len(cblob)),
+		},
+		Layers: []ispec.Descriptor{
+			{
+				MediaType: "application/vnd.oci.image.layer.v1.tar",
+				Digest:    ldigest,
+				Size:      int64(len(lblob)),
+			},
+		},
+		Annotations: annotationsMap,
+		Versioned: imeta.Versioned{
+			SchemaVersion: schemaVersion,
+		},
+	}
+
+	return &manifest, nil
+}
+
+func newRandomBlobForFuzz(data []byte) (godigest.Digest, []byte, error) {
+	return godigest.FromBytes(data), data, nil
+}
+
+func isKnownErr(err error) bool {
+	if errors.Is(err, zerr.ErrInvalidRepositoryName) || errors.Is(err, zerr.ErrManifestNotFound) ||
+		errors.Is(err, zerr.ErrRepoNotFound) ||
+		errors.Is(err, zerr.ErrBadManifest) {
+		return true
+	}
+
+	if err, ok := err.(*fs.PathError); ok && errors.Is(err.Err, syscall.EACCES) || //nolint: errorlint
+		errors.Is(err.Err, syscall.ENAMETOOLONG) ||
+		errors.Is(err.Err, syscall.EINVAL) ||
+		errors.Is(err.Err, syscall.ENOENT) {
+		return true
+	}
+
+	return false
 }
