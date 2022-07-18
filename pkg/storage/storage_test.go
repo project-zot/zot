@@ -186,6 +186,10 @@ func TestStorageAPIs(t *testing.T) {
 						So(err, ShouldNotBeNil)
 						So(bupload, ShouldEqual, -1)
 
+						bupload, err = imgStore.GetBlobUpload("hi", " \255")
+						So(err, ShouldNotBeNil)
+						So(bupload, ShouldEqual, -1)
+
 						bupload, err = imgStore.GetBlobUpload("test", upload)
 						So(err, ShouldBeNil)
 						So(bupload, ShouldBeGreaterThanOrEqualTo, 0)
