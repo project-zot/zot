@@ -91,7 +91,7 @@ jobs:
           OS: ${{ matrix.os }}
           ARCH: ${{ matrix.arch }}
       - name: Upload code coverage
-        uses: codecov/codecov-action@v2
+        uses: codecov/codecov-action@v3
       - if: github.event_name == 'release' && github.event.action == 'published'
         name: Publish artifacts on releases
         uses: svenstaro/upload-release-action@v2
