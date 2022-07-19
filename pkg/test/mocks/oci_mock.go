@@ -15,13 +15,14 @@ type OciLayoutUtilsMock struct {
 	GetImageInfoFn              func(imageDir string, hash v1.Hash) (ispec.Image, error)
 	IsValidImageFormatFn        func(image string) (bool, error)
 	GetImageTagsWithTimestampFn func(repo string) ([]common.TagInfo, error)
-	GetImageLastUpdatedFn       func(repo string, manifestDigest godigest.Digest) time.Time
-	GetImagePlatformFn          func(repo string, manifestDigest godigest.Digest) (string, string)
-	GetImageVendorFn            func(repo string, manifestDigest godigest.Digest) string
+	GetImageLastUpdatedFn       func(imageInfo ispec.Image) time.Time
+	GetImagePlatformFn          func(imageInfo ispec.Image) (string, string)
+	GetImageVendorFn            func(imageInfo ispec.Image) string
 	GetImageManifestSizeFn      func(repo string, manifestDigest godigest.Digest) int64
 	GetImageConfigSizeFn        func(repo string, manifestDigest godigest.Digest) int64
 	GetRepoLastUpdatedFn        func(repo string) (time.Time, error)
 	GetExpandedRepoInfoFn       func(name string) (common.RepoInfo, error)
+	GetImageConfigInfoFn        func(repo string, manifestDigest godigest.Digest) (ispec.Image, error)
 }
 
 func (olum OciLayoutUtilsMock) GetImageManifests(image string) ([]ispec.Descriptor, error) {
@@ -64,25 +65,25 @@ func (olum OciLayoutUtilsMock) GetImageTagsWithTimestamp(repo string) ([]common.
 	return []common.TagInfo{}, nil
 }
 
-func (olum OciLayoutUtilsMock) GetImageLastUpdated(repo string, manifestDigest godigest.Digest) time.Time {
+func (olum OciLayoutUtilsMock) GetImageLastUpdated(imageInfo ispec.Image) time.Time {
 	if olum.GetImageLastUpdatedFn != nil {
-		return olum.GetImageLastUpdatedFn(repo, manifestDigest)
+		return olum.GetImageLastUpdatedFn(imageInfo)
 	}
 
 	return time.Time{}
 }
 
-func (olum OciLayoutUtilsMock) GetImagePlatform(repo string, manifestDigest godigest.Digest) (string, string) {
+func (olum OciLayoutUtilsMock) GetImagePlatform(imageInfo ispec.Image) (string, string) {
 	if olum.GetImagePlatformFn != nil {
-		return olum.GetImagePlatformFn(repo, manifestDigest)
+		return olum.GetImagePlatformFn(imageInfo)
 	}
 
 	return "", ""
 }
 
-func (olum OciLayoutUtilsMock) GetImageVendor(repo string, manifestDigest godigest.Digest) string {
+func (olum OciLayoutUtilsMock) GetImageVendor(imageInfo ispec.Image) string {
 	if olum.GetImageVendorFn != nil {
-		return olum.GetImageVendorFn(repo, manifestDigest)
+		return olum.GetImageVendorFn(imageInfo)
 	}
 
 	return ""
@@ -118,4 +119,12 @@ func (olum OciLayoutUtilsMock) GetExpandedRepoInfo(name string) (common.RepoInfo
 	}
 
 	return common.RepoInfo{}, nil
+}
+
+func (olum OciLayoutUtilsMock) GetImageConfigInfo(repo string, manifestDigest godigest.Digest) (ispec.Image, error) {
+	if olum.GetImageConfigInfoFn != nil {
+		return olum.GetImageConfigInfoFn(repo, manifestDigest)
+	}
+
+	return ispec.Image{}, nil
 }
