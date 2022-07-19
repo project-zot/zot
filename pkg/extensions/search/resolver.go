@@ -272,16 +272,23 @@ func globalSearch(repoList []string, name, tag string, olu common.OciLayoutUtils
 			matchesTag := strings.HasPrefix(manifest.Tag, tag)
 
 			if index != -1 {
+				imageConfigInfo, err := olu.GetImageConfigInfo(repo, godigest.Digest(tagsInfo[i].Digest))
+				if err != nil {
+					log.Error().Err(err).Msgf("can't retrieve config info for the image %s %s", repo, manifest.Tag)
+
+					continue
+				}
+
 				tag := manifest.Tag
 				size := strconv.Itoa(int(imageSize))
-				vendor := olu.GetImageVendor(repo, godigest.Digest(tagsInfo[i].Digest))
-				lastUpdated := olu.GetImageLastUpdated(repo, godigest.Digest(tagsInfo[i].Digest))
-
 				isSigned := manifest.IsSigned
+
 				// update matching score
 				score := calculateImageMatchingScore(repo, index, matchesTag)
 
-				os, arch := olu.GetImagePlatform(repo, godigest.Digest(tagsInfo[i].Digest))
+				vendor := olu.GetImageVendor(imageConfigInfo)
+				lastUpdated := olu.GetImageLastUpdated(imageConfigInfo)
+				os, arch := olu.GetImagePlatform(imageConfigInfo)
 				osArch := &gql_generated.OsArch{
 					Os:   &os,
 					Arch: &arch,
