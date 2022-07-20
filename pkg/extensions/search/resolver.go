@@ -206,7 +206,7 @@ func globalSearch(repoList []string, name, tag string, olu common.OciLayoutUtils
 		repo := repo
 
 		// map used for dedube if 2 images reference the same blob
-		repoLayerBlob2Size := make(map[string]int64, 10)
+		repoBlob2Size := make(map[string]int64, 10)
 
 		// made up of all manifests, configs and image layers
 		repoSize := int64(0)
@@ -235,8 +235,19 @@ func globalSearch(repoList []string, name, tag string, olu common.OciLayoutUtils
 
 		for i, manifest := range repoInfo.Manifests {
 			imageLayersSize := int64(0)
+
+			imageBlobManifest, err := olu.GetImageBlobManifest(repo, godigest.Digest(tagsInfo[i].Digest))
+			if err != nil {
+				log.Error().Err(err).Msgf("can't read manifest for repo %s %s", repo, manifest.Tag)
+
+				continue
+			}
+
 			manifestSize := olu.GetImageManifestSize(repo, godigest.Digest(tagsInfo[i].Digest))
-			configSize := olu.GetImageConfigSize(repo, godigest.Digest(tagsInfo[i].Digest))
+			configSize := imageBlobManifest.Config.Size
+
+			repoBlob2Size[tagsInfo[i].Digest] = manifestSize
+			repoBlob2Size[imageBlobManifest.Config.Digest.Hex] = configSize
 
 			for _, layer := range manifest.Layers {
 				layer := layer
@@ -248,7 +259,7 @@ func globalSearch(repoList []string, name, tag string, olu common.OciLayoutUtils
 					continue
 				}
 
-				repoLayerBlob2Size[layer.Digest] = layerSize
+				repoBlob2Size[layer.Digest] = layerSize
 				imageLayersSize += layerSize
 
 				// if we have a tag we won't match a layer
@@ -266,7 +277,6 @@ func globalSearch(repoList []string, name, tag string, olu common.OciLayoutUtils
 			}
 
 			imageSize := imageLayersSize + manifestSize + configSize
-			repoSize += manifestSize + configSize
 
 			index := strings.Index(repo, name)
 			matchesTag := strings.HasPrefix(manifest.Tag, tag)
@@ -310,8 +320,8 @@ func globalSearch(repoList []string, name, tag string, olu common.OciLayoutUtils
 			}
 		}
 
-		for layerBlob := range repoLayerBlob2Size {
-			repoSize += repoLayerBlob2Size[layerBlob]
+		for blob := range repoBlob2Size {
+			repoSize += repoBlob2Size[blob]
 		}
 
 		if index := strings.Index(repo, name); index != -1 {
