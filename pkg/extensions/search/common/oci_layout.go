@@ -30,7 +30,6 @@ type OciLayoutUtils interface {
 	GetImagePlatform(imageInfo ispec.Image) (string, string)
 	GetImageVendor(imageInfo ispec.Image) string
 	GetImageManifestSize(repo string, manifestDigest godigest.Digest) int64
-	GetImageConfigSize(repo string, manifestDigest godigest.Digest) int64
 	GetRepoLastUpdated(repo string) (time.Time, error)
 	GetExpandedRepoInfo(name string) (RepoInfo, error)
 	GetImageConfigInfo(repo string, manifestDigest godigest.Digest) (ispec.Image, error)
@@ -301,14 +300,16 @@ func (olu BaseOciLayoutUtils) GetImageVendor(imageConfig ispec.Image) string {
 }
 
 func (olu BaseOciLayoutUtils) GetImageManifestSize(repo string, manifestDigest godigest.Digest) int64 {
-	imageBlobManifest, err := olu.GetImageBlobManifest(repo, manifestDigest)
-	if err != nil {
-		olu.Log.Error().Err(err).Msg("can't get image blob manifest")
+	imageStore := olu.StoreController.GetImageStore(repo)
 
-		return 0
+	manifestBlob, err := imageStore.GetBlobContent(repo, manifestDigest.String())
+	if err != nil {
+		olu.Log.Error().Err(err).Msg("error when getting manifest blob content")
+
+		return int64(len(manifestBlob))
 	}
 
-	return imageBlobManifest.Config.Size
+	return int64(len(manifestBlob))
 }
 
 func (olu BaseOciLayoutUtils) GetImageConfigSize(repo string, manifestDigest godigest.Digest) int64 {
@@ -318,16 +319,8 @@ func (olu BaseOciLayoutUtils) GetImageConfigSize(repo string, manifestDigest god
 
 		return 0
 	}
-	imageStore := olu.StoreController.GetImageStore(repo)
 
-	buf, err := imageStore.GetBlobContent(repo, imageBlobManifest.Config.Digest.String())
-	if err != nil {
-		olu.Log.Error().Err(err).Msg("error when getting blob content")
-
-		return int64(len(buf))
-	}
-
-	return int64(len(buf))
+	return imageBlobManifest.Config.Size
 }
 
 func (olu BaseOciLayoutUtils) GetRepoLastUpdated(repo string) (time.Time, error) {

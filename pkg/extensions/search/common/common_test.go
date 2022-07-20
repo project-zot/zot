@@ -9,14 +9,17 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
 	"path"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/opencontainers/go-digest"
+	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/sigstore/cosign/cmd/cosign/cli/generate"
 	"github.com/sigstore/cosign/cmd/cosign/cli/options"
@@ -39,7 +42,12 @@ const (
 	graphqlQueryPrefix = constants.ExtSearchPrefix
 )
 
-var ErrTestError = errors.New("test error")
+var (
+	ErrTestError   = errors.New("test error")
+	ErrPutBlob     = errors.New("can't put blob")
+	ErrPostBlob    = errors.New("can't post blob")
+	ErrPutManifest = errors.New("can't put manifest")
+)
 
 // nolint:gochecknoglobals
 var (
@@ -911,4 +919,260 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		_, err := olu.GetRepoLastUpdated("")
 		So(err, ShouldNotBeNil)
 	})
+}
+
+func TestSearchSize(t *testing.T) {
+	Convey("Repo sizes", t, func() {
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+
+		conf := config.New()
+		conf.HTTP.Port = port
+		tr := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{Enable: &tr},
+		}
+
+		ctlr := api.NewController(conf)
+		dir := t.TempDir()
+		ctlr.Config.Storage.RootDirectory = dir
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		WaitTillServerReady(baseURL)
+
+		repoName := "testrepo"
+		config, layers, manifest, err := getImageComponents(10000)
+		So(err, ShouldBeNil)
+
+		configBlob, err := json.Marshal(config)
+		So(err, ShouldBeNil)
+		configSize := len(configBlob)
+
+		layersSize := 0
+		for _, l := range layers {
+			layersSize += len(l)
+		}
+
+		manifestBlob, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+		manifestSize := len(manifestBlob)
+
+		err = UploadImage(
+			uploadImage{
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+				Tag:      "latest",
+			},
+			baseURL,
+			repoName,
+		)
+		So(err, ShouldBeNil)
+
+		query := `
+			{
+				GlobalSearch(query:"test"){
+					Images { RepoName Tag LastUpdated Size Score }
+					Repos { 
+						Name LastUpdated Size Vendors Score
+      					Platforms {
+      					  Os
+      					  Arch
+      					}
+					}
+					Layers { Digest Size }
+				}
+			}`
+		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(err, ShouldBeNil)
+		So(configSize+layersSize+manifestSize, ShouldNotBeZeroValue)
+
+		responseStruct := &GlobalSearchResultResp{}
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+
+		image := responseStruct.GlobalSearchResult.GlobalSearch.Images[0]
+		So(image.Tag, ShouldResemble, "latest")
+
+		size, err := strconv.Atoi(image.Size)
+		So(err, ShouldBeNil)
+		So(size, ShouldAlmostEqual, configSize+layersSize+manifestSize)
+
+		repo := responseStruct.GlobalSearchResult.GlobalSearch.Repos[0]
+		size, err = strconv.Atoi(repo.Size)
+		So(err, ShouldBeNil)
+		So(size, ShouldAlmostEqual, configSize+layersSize+manifestSize)
+
+		// add the same image with different tag
+		err = UploadImage(
+			uploadImage{
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+				Tag:      "10.2.14",
+			},
+			baseURL,
+			repoName,
+		)
+		So(err, ShouldBeNil)
+
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(err, ShouldBeNil)
+		So(configSize+layersSize+manifestSize, ShouldNotBeZeroValue)
+
+		responseStruct = &GlobalSearchResultResp{}
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+
+		So(len(responseStruct.GlobalSearchResult.GlobalSearch.Images), ShouldEqual, 2)
+		// check that the repo size is the same
+		repo = responseStruct.GlobalSearchResult.GlobalSearch.Repos[0]
+		size, err = strconv.Atoi(repo.Size)
+		So(err, ShouldBeNil)
+		So(size, ShouldAlmostEqual, configSize+layersSize+manifestSize)
+	})
+}
+
+func getImageComponents(layerSize int) (ispec.Image, [][]byte, ispec.Manifest, error) {
+	config := ispec.Image{
+		Architecture: "amd64",
+		OS:           "linux",
+		RootFS: ispec.RootFS{
+			Type:    "layers",
+			DiffIDs: []digest.Digest{},
+		},
+		Author: "ZotUser",
+	}
+
+	configBlob, err := json.Marshal(config)
+	if err != nil {
+		return ispec.Image{}, [][]byte{}, ispec.Manifest{}, err
+	}
+
+	configDigest := digest.FromBytes(configBlob)
+
+	layers := [][]byte{
+		make([]byte, layerSize),
+	}
+
+	manifest := ispec.Manifest{
+		Versioned: specs.Versioned{
+			SchemaVersion: 2,
+		},
+		Config: ispec.Descriptor{
+			MediaType: "application/vnd.oci.image.config.v1+json",
+			Digest:    configDigest,
+			Size:      int64(len(configBlob)),
+		},
+		Layers: []ispec.Descriptor{
+			{
+				MediaType: "application/vnd.oci.image.layer.v1.tar",
+				Digest:    digest.FromBytes(layers[0]),
+				Size:      int64(len(layers[0])),
+			},
+		},
+	}
+
+	return config, layers, manifest, nil
+}
+
+type uploadImage struct {
+	Manifest ispec.Manifest
+	Config   ispec.Image
+	Layers   [][]byte
+	Tag      string
+}
+
+func UploadImage(img uploadImage, baseURL, repo string) error {
+	for _, blob := range img.Layers {
+		resp, err := resty.R().Post(baseURL + "/v2/" + repo + "/blobs/uploads/")
+		if err != nil {
+			return err
+		}
+
+		if resp.StatusCode() != http.StatusAccepted {
+			return ErrPostBlob
+		}
+
+		loc := resp.Header().Get("Location")
+
+		digest := digest.FromBytes(blob).String()
+
+		resp, err = resty.R().
+			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", digest).
+			SetBody(blob).
+			Put(baseURL + loc)
+
+		if resp.StatusCode() != http.StatusCreated {
+			return ErrPutBlob
+		}
+
+		if err != nil {
+			return err
+		}
+	}
+
+	// upload config
+	cblob, err := json.Marshal(img.Config)
+	if err != nil {
+		return err
+	}
+
+	cdigest := digest.FromBytes(cblob)
+
+	resp, err := resty.R().
+		Post(baseURL + "/v2/" + repo + "/blobs/uploads/")
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode() != http.StatusAccepted {
+		return ErrPostBlob
+	}
+
+	loc := Location(baseURL, resp)
+
+	// uploading blob should get 201
+	resp, err = resty.R().
+		SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+		SetHeader("Content-Type", "application/octet-stream").
+		SetQueryParam("digest", cdigest.String()).
+		SetBody(cblob).
+		Put(loc)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode() != http.StatusCreated {
+		return ErrPutBlob
+	}
+
+	// put manifest
+	manifestBlob, err := json.Marshal(img.Manifest)
+	if err != nil {
+		return err
+	}
+
+	_, err = resty.R().
+		SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
+		SetBody(manifestBlob).
+		Put(baseURL + "/v2/" + repo + "/manifests/" + img.Tag)
+
+	return err
+}
+
+func startServer(c *api.Controller) {
+	// this blocks
+	ctx := context.Background()
+	if err := c.Run(ctx); err != nil {
+		return
+	}
+}
+
+func stopServer(c *api.Controller) {
+	ctx := context.Background()
+	_ = c.Server.Shutdown(ctx)
 }
