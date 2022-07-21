@@ -57,7 +57,7 @@ func (rh *RouteHandler) SetupRoutes() {
 	rh.c.Router.Use(AuthHandler(rh.c))
 	// authz is being enabled if AccessControl is specified
 	// if Authn is not present AccessControl will have only default policies
-	if rh.c.Config.AccessControl != nil && !isBearerAuthEnabled(rh.c.Config) {
+	if rh.c.Config.HTTP.AccessControl != nil && !isBearerAuthEnabled(rh.c.Config) {
 		if isAuthnEnabled(rh.c.Config) {
 			rh.c.Log.Info().Msg("access control is being enabled")
 		} else {
@@ -121,6 +121,7 @@ func (rh *RouteHandler) SetupRoutes() {
 			ext.SetupMetricsRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
 			ext.SetupSearchRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
 			gqlPlayground.SetupGQLPlaygroundRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
+			ext.SetupConfigRoutes(rh.c.Config, rh.c.ConfigPath, rh.c.Router, rh.c.StoreController, rh.c.Log)
 		}
 	}
 }

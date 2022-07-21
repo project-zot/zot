@@ -89,6 +89,22 @@ func TestServe(t *testing.T) {
 			os.Args = []string{"cli_test", "serve", tmpfile.Name()}
 			So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 		})
+
+		Convey("wrong path to htpasswd", func(c C) {
+			tmpfile, err := os.CreateTemp("", "zot-test*.json")
+			So(err, ShouldBeNil)
+			defer os.Remove(tmpfile.Name()) // clean up
+			content := []byte(`{"distSpecVersion":"1.0.1-dev",
+				"http":{"address":"127.0.0.1","port":"8080",
+				"auth":{"htpasswd":{"path":"/A/B/C/htpasswd"}}},
+				"log":{"level":"debug"}}`)
+			_, err = tmpfile.Write(content)
+			So(err, ShouldBeNil)
+			err = tmpfile.Close()
+			So(err, ShouldBeNil)
+			os.Args = []string{"cli_test", "serve", tmpfile.Name()}
+			So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		})
 	})
 }
 
@@ -110,13 +126,67 @@ func TestVerify(t *testing.T) {
 		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 	})
 
+	Convey("Test verify unwritable rootDir", t, func() {
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := []byte(`{"storage":{"rootDirectory":"/a/b/c/d"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"../../test/data/htpasswd"},"failDelay":1}}}`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+
+		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
+							"subPaths": {"/a": {"rootDirectory": "/a/b/c/d"}}},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"../../test/data/htpasswd"},"failDelay":1}}}`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+	})
+
+	Convey("Test verify invalid certs", t, func() {
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := []byte(`{"distSpecVersion":"1.0.1-dev","storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"tls":{"cert":"server.cert"}},
+							"log":{"level":"debug"}}`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+
+		content = []byte(`{"distSpecVersion":"1.0.1-dev","storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"tls":{"cacert":"ca.crt"}},
+							"log":{"level":"debug"}}`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+
+		content = []byte(`{"distSpecVersion":"1.0.1-dev","storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"tls":{"key":"server.key"}},
+							"log":{"level":"debug"}}`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+	})
+
 	Convey("Test verify storage driver different than s3", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot", "storageDriver": {"name": "gcs"}},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+							"auth":{"htpasswd":{"path":"../../test/data/htpasswd"},"failDelay":1}}}`)
 		_, err = tmpfile.Write(content)
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
@@ -130,9 +200,9 @@ func TestVerify(t *testing.T) {
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot", "storageDriver": {"name": "s3"},
-							"subPaths": {"/a": {"rootDirectory": "/zot-a","storageDriver": {"name": "gcs"}}}},
+							"subPaths": {"/a": {"rootDirectory": "/tmp/zot-a","storageDriver": {"name": "gcs"}}}},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+							"auth":{"htpasswd":{"path":"../../test/data/htpasswd"},"failDelay":1}}}`)
 		_, err = tmpfile.Write(content)
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
@@ -146,9 +216,9 @@ func TestVerify(t *testing.T) {
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot",
-							"subPaths": {"/a": {"rootDirectory": "/zot-a"},"/b": {"rootDirectory": "/zot-a"}}},
+							"subPaths": {"/a": {"rootDirectory": "/tmp/zot-a"},"/b": {"rootDirectory": "/tmp/zot-a"}}},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+							"auth":{"htpasswd":{"path":"../../test/data/htpasswd"},"failDelay":1}}}`)
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
@@ -157,10 +227,10 @@ func TestVerify(t *testing.T) {
 
 		// sub paths that point to same directory should have same storage config.
 		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
-							"subPaths": {"/a": {"rootDirectory": "/zot-a","dedupe":"true"},
-							"/b": {{"rootDirectory": "/zot-a","dedupe":"false"}}}},
+							"subPaths": {"/a": {"rootDirectory": "/tmp/zot-a","dedupe":"true"},
+							"/b": {"rootDirectory": "/tmp/zot-a","dedupe":"false"}}},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+							"auth":{"htpasswd":{"path":"../../test/data/htpasswd"},"failDelay":1}}}`)
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
@@ -168,39 +238,39 @@ func TestVerify(t *testing.T) {
 
 		// sub paths that point to default root directory should not be allowed.
 		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
-							"subPaths": {"/a": {"rootDirectory": "/tmp/zot","dedupe":"true"},"/b": {{"rootDirectory": "/zot-a"}}}},
+							"subPaths": {"/a": {"rootDirectory": "/tmp/zot","dedupe":"true"},"/b": {"rootDirectory": "/tmp/zot-a"}}},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+							"auth":{"htpasswd":{"path":"../../test/data/htpasswd"},"failDelay":1}}}`)
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 
 		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
-							"subPaths": {"/a": {"rootDirectory": "/zot-a","dedupe":"true","gc":"true"},
-							"/b": {"rootDirectory": "/zot-a","dedupe":"true","gc":"false"}}}},
+							"subPaths": {"/a": {"rootDirectory": "/tmp/zot-a","dedupe":"true","gc":"true"},
+							"/b": {"rootDirectory": "/tmp/zot-a","dedupe":"true","gc":"false"}}},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+							"auth":{"htpasswd":{"path":"../../test/data/htpasswd"},"failDelay":1}}}`)
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 
 		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
-							"subPaths": {"/a": {"rootDirectory": "/zot-a","dedupe":"true","gc":"true"},
-							"/b": {"rootDirectory": "/zot-a","dedupe":"true","gc":"true","gcDelay":"1s"}}}},
+							"subPaths": {"/a": {"rootDirectory": "/tmp/zot-a","dedupe":"true","gc":"true"},
+							"/b": {"rootDirectory": "/tmp/zot-a","dedupe":"true","gc":"true","gcDelay":"1s"}}},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+							"auth":{"htpasswd":{"path":"../../test/data/htpasswd"},"failDelay":1}}}`)
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 
 		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
-							"subPaths": {"/a": {"rootDirectory": "/zot-a","dedupe":"true","gc":"true","gcDelay":"1s","gcInterval":"1s"},
-							"/b": {"rootDirectory": "/zot-a","dedupe":"true","gc":"true","gcDelay":"1s"}}}},
+							"subPaths": {"/a": {"rootDirectory": "/tmp/zot-a","dedupe":"true","gc":"true","gcDelay":"1s","gcInterval":"1s"},
+							"/b": {"rootDirectory": "/tmp/zot-a","dedupe":"true","gc":"true","gcDelay":"1s"}}},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+							"auth":{"htpasswd":{"path":"../../test/data/htpasswd"},"failDelay":1}}}`)
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
@@ -208,9 +278,9 @@ func TestVerify(t *testing.T) {
 
 		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
 							"subPaths": {"/a": {"rootDirectory": "/tmp/zot","dedupe":"true","gc":"true","gcDelay":"1s","gcInterval":"1s"},
-							"/b": {"rootDirectory": "/zot-a","dedupe":"true","gc":"true","gcDelay":"1s"}}}},
+							"/b": {"rootDirectory": "/tmp/zot-a","dedupe":"true","gc":"true","gcDelay":"1s"}}},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+							"auth":{"htpasswd":{"path":"../../test/data/htpasswd"},"failDelay":1}}}`)
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
 		So(err, ShouldBeNil)
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
@@ -239,7 +309,7 @@ func TestVerify(t *testing.T) {
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1},
+							"auth":{"htpasswd":{"path":"../../test/data/htpasswd"},"failDelay":1},
 							"accessControl":{"adminPolicy":{"users":["admin"],
 							"actions":["read","create","update","delete"]}}}}`)
 		_, err = tmpfile.Write(content)
@@ -256,8 +326,8 @@ func TestVerify(t *testing.T) {
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 		 					"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							 "accessControl":{"**":{"anonymousPolicy": ["read", "create"]},
-							 "/repo":{"anonymousPolicy": ["read", "create"]}
+							 "accessControl":{"repositories":{"**":{"anonymousPolicy": ["read", "create"]},
+							 "/repo":{"anonymousPolicy": ["read", "create"]}}
 							 }}}`)
 		_, err = tmpfile.Write(content)
 		So(err, ShouldBeNil)
@@ -274,8 +344,10 @@ func TestVerify(t *testing.T) {
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 		 					"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 								"accessControl":{
-									"**":{"defaultPolicy": ["read", "create"]},
-									"/repo":{"anonymousPolicy": ["read", "create"]},
+									"repositories":{
+										"**":{"defaultPolicy": ["read", "create"]},
+										"/repo":{"anonymousPolicy": ["read", "create"]}
+									},
 									"adminPolicy":{
 										"users":["admin"],
 										"actions":["read","create","update","delete"]
@@ -297,8 +369,10 @@ func TestVerify(t *testing.T) {
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 								"accessControl":{
-									"**":{"defaultPolicy": ["read", "create"]},
-									"/repo":{"anonymousPolicy": ["read", "create"]}
+									"repositories":{
+										"**":{"defaultPolicy": ["read", "create"]},
+										"/repo":{"anonymousPolicy": ["read", "create"]}
+									}
 								}
 							}}`)
 		_, err = tmpfile.Write(content)
@@ -316,15 +390,34 @@ func TestVerify(t *testing.T) {
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 								"accessControl":{
-									"/repo":{"anonymousPolicy": ["read", "create"]},
-									"/repo2":{
-										"policies": [{
-											"users": ["charlie"],
-											"actions": ["read", "create", "update"]
-										}]
+									"repositories":{
+										"/repo":{"anonymousPolicy": ["read", "create"]},
+										"/repo2":{
+											"policies": [{
+												"users": ["charlie"],
+												"actions": ["read", "create", "update"]
+											}]
+										}
 									}
 								}
 							}}`)
+		_, err = tmpfile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpfile.Close()
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+	})
+
+	Convey("Test verify anonymous-only authorization fail", t, func(c C) {
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"accessControl":{"repositories":{"**":{"defaultPolicy": ["read", "create"]},
+							"/repo":{"anonymousPolicy": ["read", "create"]}
+							}}}}`)
 		_, err = tmpfile.Write(content)
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
@@ -339,9 +432,27 @@ func TestVerify(t *testing.T) {
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot", "storageDriver": {"name": "s3"}},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+							"auth":{"htpasswd":{"path":"../../test/data/htpasswd"},"failDelay":1}},
 							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
 							"maxRetries": 1, "retryDelay": "10s"}]}}}`)
+		_, err = tmpfile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpfile.Close()
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+	})
+
+	Convey("Test verify sync with bad credentials file location", t, func(c C) {
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"../../test/data/htpasswd"},"failDelay":1}},
+							"extensions":{"sync": {"credentialsFile":"/path/to/credentialsFile",
+								"registries": [{"urls":["localhost:9999"],
+								"maxRetries": 1, "retryDelay": "10s"}]}}}`)
 		_, err = tmpfile.Write(content)
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
@@ -356,7 +467,7 @@ func TestVerify(t *testing.T) {
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+							"auth":{"htpasswd":{"path":"../../test/data/htpasswd"},"failDelay":1}},
 							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
 							"maxRetries": 1, "retryDelay": "10s"}]}}}`)
 		_, err = tmpfile.Write(content)
@@ -373,7 +484,7 @@ func TestVerify(t *testing.T) {
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+							"auth":{"htpasswd":{"path":"../../test/data/htpasswd"},"failDelay":1}},
 							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
 							"maxRetries": 1, "retryDelay": "10s",
 							"content": [{"prefix":"[repo%^&"}]}]}}}`)
@@ -391,7 +502,7 @@ func TestVerify(t *testing.T) {
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+							"auth":{"htpasswd":{"path":"../../test/data/htpasswd"},"failDelay":1}},
 							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
 							"maxRetries": 1, "retryDelay": "10s",
 							"content": [{"prefix":"zot-repo","stripPrefix":true,"destination":"/"}]}]}}}`)
@@ -409,7 +520,7 @@ func TestVerify(t *testing.T) {
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+							"auth":{"htpasswd":{"path":"../../test/data/htpasswd"},"failDelay":1}},
 							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
 							"maxRetries": 1, "retryDelay": "10s",
 							"content": [{"prefix":"zot-repo/*","stripPrefix":true,"destination":"/"}]}]}}}`)
@@ -428,8 +539,8 @@ func TestVerify(t *testing.T) {
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1},
-							"accessControl":{"[":{"policies":[],"anonymousPolicy":[]}}}}`)
+							"auth":{"htpasswd":{"path":"../../test/data/htpasswd"},"failDelay":1},
+							"accessControl":{"repositories":{"[":{"policies":[],"anonymousPolicy":[]}}}}}`)
 		_, err = tmpfile.Write(content)
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
@@ -444,7 +555,7 @@ func TestVerify(t *testing.T) {
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+							"auth":{"htpasswd":{"path":"../../test/data/htpasswd"},"failDelay":1}},
 							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
 							"maxRetries": 1, "retryDelay": "10s",
 							"content": [{"prefix":"repo**"}]}]}}}`)
@@ -463,7 +574,7 @@ func TestVerify(t *testing.T) {
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}},
+							"auth":{"htpasswd":{"path":"../../test/data/htpasswd"},"failDelay":1}},
 							"extensions":{"sync": {"registries": [{"urls":["localhost:9999"],
 							"maxRetries": 10, "content": [{"prefix":"repo**"}]}]}}}`)
 		_, err = tmpfile.Write(content)
@@ -537,6 +648,22 @@ func TestVerify(t *testing.T) {
 		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 	})
 
+	Convey("Test verify config extension w/o authz", t, func(c C) {
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot", "storageDriver": {"name": "s3"}},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"../../test/data/htpasswd"},"failDelay":1}},
+							"extensions":{"sysconfig":{"enable": true}}}`)
+		_, err = tmpfile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpfile.Close()
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+	})
+
 	Convey("Test verify good config", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
@@ -554,12 +681,11 @@ func TestVerify(t *testing.T) {
 	})
 }
 
+func loadConfiguration(cfg *config.Config, configPath string) error {
+	return config.LoadFromFile(configPath, cfg)
+}
+
 func TestLoadConfig(t *testing.T) {
-	Convey("Test viper load config", t, func(c C) {
-		config := config.New()
-		err := cli.LoadConfiguration(config, "../../examples/config-policy.json")
-		So(err, ShouldBeNil)
-	})
 	Convey("Test subpath config combination", t, func(c C) {
 		config := config.New()
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
@@ -567,42 +693,42 @@ func TestLoadConfig(t *testing.T) {
 		defer os.Remove(tmpfile.Name())
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot",
 							"subPaths": {"/a": {"rootDirectory": "/tmp/zot","dedupe":"true","gc":"true","gcDelay":"1s","gcInterval":"1s"},
-							"/b": {"rootDirectory": "/zot-a","dedupe":"true","gc":"true","gcDelay":"1s"}}},
+							"/b": {"rootDirectory": "/tmp/zot-a","dedupe":"true","gc":"true","gcDelay":"1s"}}},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+							"auth":{"htpasswd":{"path":"../../test/data/htpasswd"},"failDelay":1}}}`)
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
 		So(err, ShouldBeNil)
-		err = cli.LoadConfiguration(config, tmpfile.Name())
+		err = loadConfiguration(config, tmpfile.Name())
 		So(err, ShouldNotBeNil)
 
 		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
-							"subPaths": {"/a": {"rootDirectory": "/zot-a","dedupe":"true","gc":"true","gcDelay":"1s","gcInterval":"1s"},
-							"/b": {"rootDirectory": "/zot-a","dedupe":"true","gc":"true","gcDelay":"1s"}}},
+							"subPaths": {"/a": {"rootDirectory": "/tmp/zot-a","dedupe":"true","gc":"true","gcDelay":"1s","gcInterval":"1s"},
+							"/b": {"rootDirectory": "/tmp/zot-a","dedupe":"true","gc":"true","gcDelay":"1s"}}},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+							"auth":{"htpasswd":{"path":"../../test/data/htpasswd"},"failDelay":1}}}`)
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
 		So(err, ShouldBeNil)
-		err = cli.LoadConfiguration(config, tmpfile.Name())
+		err = loadConfiguration(config, tmpfile.Name())
 		So(err, ShouldNotBeNil)
 
 		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
-							"subPaths": {"/a": {"rootDirectory": "/zot-a","dedupe":"true"},
-							"/b": {"rootDirectory": "/zot-a","dedupe":"false"}}},
+							"subPaths": {"/a": {"rootDirectory": "/tmp/zot-a","dedupe":"true"},
+							"/b": {"rootDirectory": "/tmp/zot-a","dedupe":"false"}}},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+							"auth":{"htpasswd":{"path":"../../test/data/htpasswd"},"failDelay":1}}}`)
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
 		So(err, ShouldBeNil)
-		err = cli.LoadConfiguration(config, tmpfile.Name())
+		err = loadConfiguration(config, tmpfile.Name())
 		So(err, ShouldNotBeNil)
 
 		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
-							"subPaths": {"/a": {"rootDirectory": "/zot-a","dedupe":"true"},
-							"/b": {"rootDirectory": "/zot-a","dedupe":"true"}}},
+							"subPaths": {"/a": {"rootDirectory": "/tmp/zot-a","dedupe":"true"},
+							"/b": {"rootDirectory": "/tmp/zot-a","dedupe":"true"}}},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+							"auth":{"htpasswd":{"path":"../../test/data/htpasswd"},"failDelay":1}}}`)
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
 		So(err, ShouldBeNil)
-		err = cli.LoadConfiguration(config, tmpfile.Name())
+		err = loadConfiguration(config, tmpfile.Name())
 		So(err, ShouldBeNil)
 	})
 
@@ -613,33 +739,33 @@ func TestLoadConfig(t *testing.T) {
 		defer os.Remove(tmpfile.Name())
 
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot",
-							"subPaths": {"/a": {"rootDirectory": "/zot-a","dedupe":"true"},
-							"/b": {"rootDirectory": "/zot-a","dedupe":"true"}}},
+							"subPaths": {"/a": {"rootDirectory": "/tmp/zot-a","dedupe":"true"},
+							"/b": {"rootDirectory": "/tmp/zot-a","dedupe":"true"}}},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+							"auth":{"htpasswd":{"path":"../../test/data/htpasswd"},"failDelay":1}}}`)
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
 		So(err, ShouldBeNil)
-		err = cli.LoadConfiguration(config, tmpfile.Name())
+		err = loadConfiguration(config, tmpfile.Name())
 		So(err, ShouldBeNil)
 
 		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
-							"subPaths": {"/a": {"rootDirectory": "/zot-a","dedupe":"true"},
-							"/b": {"rootDirectory": "/zot-a","dedupe":"true"}}},
+							"subPaths": {"/a": {"rootDirectory": "/tmp/zot-a","dedupe":"true"},
+							"/b": {"rootDirectory": "/tmp/zot-a","dedupe":"true"}}},
 							"http":{"address":"127.0.0.1","port":"-1","realm":"zot",
-							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+							"auth":{"htpasswd":{"path":"../../test/data/htpasswd"},"failDelay":1}}}`)
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
 		So(err, ShouldBeNil)
-		err = cli.LoadConfiguration(config, tmpfile.Name())
+		err = loadConfiguration(config, tmpfile.Name())
 		So(err, ShouldNotBeNil)
 
 		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
-							"subPaths": {"/a": {"rootDirectory": "/zot-a","dedupe":"true"},
-							"/b": {"rootDirectory": "/zot-a","dedupe":"true"}}},
+							"subPaths": {"/a": {"rootDirectory": "/tmp/zot-a","dedupe":"true"},
+							"/b": {"rootDirectory": "/tmp/zot-a","dedupe":"true"}}},
 							"http":{"address":"127.0.0.1","port":"65536","realm":"zot",
-							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+							"auth":{"htpasswd":{"path":"../../test/data/htpasswd"},"failDelay":1}}}`)
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
 		So(err, ShouldBeNil)
-		err = cli.LoadConfiguration(config, tmpfile.Name())
+		err = loadConfiguration(config, tmpfile.Name())
 		So(err, ShouldNotBeNil)
 	})
 }
@@ -647,13 +773,13 @@ func TestLoadConfig(t *testing.T) {
 func TestGC(t *testing.T) {
 	Convey("Test GC config", t, func(c C) {
 		config := config.New()
-		err := cli.LoadConfiguration(config, "../../examples/config-multiple.json")
+		err := loadConfiguration(config, "../../examples/config-multiple.json")
 		So(err, ShouldBeNil)
 		So(config.Storage.GCDelay, ShouldEqual, storage.DefaultGCDelay)
-		err = cli.LoadConfiguration(config, "../../examples/config-gc.json")
+		err = loadConfiguration(config, "../../examples/config-gc.json")
 		So(err, ShouldBeNil)
 		So(config.Storage.GCDelay, ShouldNotEqual, storage.DefaultGCDelay)
-		err = cli.LoadConfiguration(config, "../../examples/config-gc-periodic.json")
+		err = loadConfiguration(config, "../../examples/config-gc-periodic.json")
 		So(err, ShouldBeNil)
 	})
 
@@ -675,7 +801,7 @@ func TestGC(t *testing.T) {
 
 			err = os.WriteFile(file.Name(), contents, 0o600)
 			So(err, ShouldBeNil)
-			err = cli.LoadConfiguration(config, file.Name())
+			err = loadConfiguration(config, file.Name())
 			So(err, ShouldBeNil)
 		})
 
@@ -695,7 +821,7 @@ func TestGC(t *testing.T) {
 
 			err = os.WriteFile(file.Name(), contents, 0o600)
 			So(err, ShouldBeNil)
-			err = cli.LoadConfiguration(config, file.Name())
+			err = loadConfiguration(config, file.Name())
 			So(err, ShouldBeNil)
 		})
 
@@ -713,7 +839,7 @@ func TestGC(t *testing.T) {
 
 			err = os.WriteFile(file.Name(), contents, 0o600)
 			So(err, ShouldBeNil)
-			err = cli.LoadConfiguration(config, file.Name())
+			err = loadConfiguration(config, file.Name())
 			So(err, ShouldNotBeNil)
 		})
 
@@ -730,7 +856,7 @@ func TestGC(t *testing.T) {
 
 			err = os.WriteFile(file.Name(), content, 0o600)
 			So(err, ShouldBeNil)
-			err = cli.LoadConfiguration(config, file.Name())
+			err = loadConfiguration(config, file.Name())
 			So(err, ShouldBeNil)
 			So(config.Storage.GCDelay, ShouldEqual, 0)
 		})
@@ -749,7 +875,7 @@ func TestGC(t *testing.T) {
 
 			err = os.WriteFile(file.Name(), contents, 0o600)
 			So(err, ShouldBeNil)
-			err = cli.LoadConfiguration(config, file.Name())
+			err = loadConfiguration(config, file.Name())
 			So(err, ShouldNotBeNil)
 		})
 	})

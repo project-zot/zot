@@ -21,7 +21,6 @@ require (
 	github.com/gofrs/uuid v4.3.0+incompatible
 	github.com/google/go-containerregistry v0.12.0
 	github.com/google/uuid v1.3.0
-	github.com/gorilla/handlers v1.5.1
 	github.com/gorilla/mux v1.8.0
 	github.com/json-iterator/go v1.1.12
 	github.com/minio/sha256-simd v1.0.0
@@ -53,6 +52,7 @@ require (
 require (
 	github.com/aquasecurity/trivy v0.0.0-00010101000000-000000000000
 	github.com/containers/image/v5 v5.23.0
+	github.com/gorilla/handlers v1.5.1
 	github.com/notaryproject/notation-go v0.11.0-alpha.4
 	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20220620172159-4ab4752c3b86
 	github.com/sigstore/cosign v1.13.0

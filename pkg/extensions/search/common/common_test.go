@@ -604,7 +604,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 			_ = ctlr.Server.Shutdown(ctx)
 		}()
 
-		substring := "\"Extensions\":{\"Search\":{\"Enable\":true,\"CVE\":{\"UpdateInterval\":3600000000000}},\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":null}" //nolint:lll // gofumpt conflicts with lll
+		substring := "\"Extensions\":{\"Search\":{\"Enable\":true,\"CVE\":{\"UpdateInterval\":3600000000000}},\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":null" //nolint:lll // gofumpt conflicts with lll
 		found, err := readFileAndSearchString(logPath, substring, 2*time.Minute)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
@@ -2239,7 +2239,7 @@ func TestGlobalSearch(t *testing.T) {
 		}()
 
 		// Wait for trivy db to download
-		substring := "\"Extensions\":{\"Search\":{\"Enable\":true,\"CVE\":{\"UpdateInterval\":3600000000000}},\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":null}" //nolint:lll // gofumpt conflicts with lll
+		substring := "\"Extensions\":{\"Search\":{\"Enable\":true,\"CVE\":{\"UpdateInterval\":3600000000000}},\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":null" //nolint:lll // gofumpt conflicts with lll
 		found, err := readFileAndSearchString(logPath, substring, 2*time.Minute)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)

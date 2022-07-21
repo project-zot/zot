@@ -250,7 +250,7 @@ func getRepoDestination(remoteRepo string, content Content) string {
 }
 
 // Get sync.FileCredentials from file.
-func getFileCredentials(filepath string) (CredentialsFile, error) {
+func GetFileCredentials(filepath string) (CredentialsFile, error) {
 	credsFile, err := os.ReadFile(filepath)
 	if err != nil {
 		return nil, err

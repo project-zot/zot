@@ -1042,7 +1042,7 @@ func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 			Key:  ServerKey,
 		}
 
-		conf.AccessControl = &config.AccessControlConfig{
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
 			Repositories: config.Repositories{
 				AuthorizationAllRepos: config.PolicyGroup{
 					AnonymousPolicy: []string{"read"},
@@ -1108,7 +1108,7 @@ func TestMutualTLSAuthWithUserPermissions(t *testing.T) {
 			CACert: CACert,
 		}
 
-		conf.AccessControl = &config.AccessControlConfig{
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
 			Repositories: config.Repositories{
 				AuthorizationAllRepos: config.PolicyGroup{
 					Policies: []config.Policy{
@@ -1133,7 +1133,7 @@ func TestMutualTLSAuthWithUserPermissions(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
 
-		repoPolicy := conf.AccessControl.Repositories[AuthorizationAllRepos]
+		repoPolicy := conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos]
 
 		// setup TLS mutual auth
 		cert, err := tls.LoadX509KeyPair("../../test/data/client.cert", "../../test/data/client.key")
@@ -1160,7 +1160,7 @@ func TestMutualTLSAuthWithUserPermissions(t *testing.T) {
 
 		// empty default authorization and give user the permission to create
 		repoPolicy.Policies[0].Actions = append(repoPolicy.Policies[0].Actions, "create")
-		conf.AccessControl.Repositories[AuthorizationAllRepos] = repoPolicy
+		conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos] = repoPolicy
 		resp, err = resty.R().Post(secureBaseURL + "/v2/repo/blobs/uploads/")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
@@ -1191,7 +1191,7 @@ func TestMutualTLSAuthWithoutCN(t *testing.T) {
 			CACert: "../../test/data/noidentity/ca.crt",
 		}
 
-		conf.AccessControl = &config.AccessControlConfig{
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
 			Repositories: config.Repositories{
 				AuthorizationAllRepos: config.PolicyGroup{
 					Policies: []config.Policy{
@@ -1312,7 +1312,7 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 			CACert: CACert,
 		}
 
-		conf.AccessControl = &config.AccessControlConfig{
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
 			Repositories: config.Repositories{
 				AuthorizationAllRepos: config.PolicyGroup{
 					AnonymousPolicy: []string{"read"},
@@ -1478,7 +1478,7 @@ func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 			CACert: CACert,
 		}
 
-		conf.AccessControl = &config.AccessControlConfig{
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
 			Repositories: config.Repositories{
 				AuthorizationAllRepos: config.PolicyGroup{
 					AnonymousPolicy: []string{"read"},
@@ -1897,7 +1897,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
-		conf.AccessControl = &config.AccessControlConfig{
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
 			Repositories: config.Repositories{
 				AuthorizationAllRepos: config.PolicyGroup{
 					AnonymousPolicy: []string{"read"},
@@ -2113,7 +2113,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 				Path: htpasswdPath,
 			},
 		}
-		conf.AccessControl = &config.AccessControlConfig{
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
 			Repositories: config.Repositories{
 				AuthorizationAllRepos: config.PolicyGroup{
 					Policies: []config.Policy{
@@ -2178,9 +2178,9 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 
 		// first let's use global based policies
 		// add test user to global policy with create perm
-		conf.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Users = append(conf.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Users, "test") //nolint:lll // gofumpt conflicts with lll
+		conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Users = append(conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Users, "test") //nolint:lll // gofumpt conflicts with lll
 
-		conf.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions = append(conf.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions, "create") //nolint:lll // gofumpt conflicts with lll
+		conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions = append(conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions, "create") //nolint:lll // gofumpt conflicts with lll
 
 		// now it should get 202
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
@@ -2216,7 +2216,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 		// get tags with read access should get 200
-		conf.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions = append(conf.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions, "read") //nolint:lll // gofumpt conflicts with lll
+		conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions = append(conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions, "read") //nolint:lll // gofumpt conflicts with lll
 
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
@@ -2246,7 +2246,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 		// add delete perm on repo
-		conf.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions = append(conf.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions, "delete") //nolint:lll // gofumpt conflicts with lll
+		conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions = append(conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos].Policies[0].Actions, "delete") //nolint:lll // gofumpt conflicts with lll
 
 		// delete blob should get 202
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
@@ -2258,7 +2258,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		// now let's use only repository based policies
 		// add test user to repo's policy with create perm
 		// longest path matching should match the repo and not **/*
-		conf.AccessControl.Repositories[AuthorizationNamespace] = config.PolicyGroup{
+		conf.HTTP.AccessControl.Repositories[AuthorizationNamespace] = config.PolicyGroup{
 			Policies: []config.Policy{
 				{
 					Users:   []string{},
@@ -2268,8 +2268,8 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 			DefaultPolicy: []string{},
 		}
 
-		conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Users = append(conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Users, "test")       //nolint:lll // gofumpt conflicts with lll
-		conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions = append(conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions, "create") //nolint:lll // gofumpt conflicts with lll
+		conf.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Users = append(conf.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Users, "test")       //nolint:lll // gofumpt conflicts with lll
+		conf.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions = append(conf.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions, "create") //nolint:lll // gofumpt conflicts with lll
 
 		// now it should get 202
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
@@ -2305,7 +2305,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 		// get tags with read access should get 200
-		conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions = append(conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions, "read") //nolint:lll // gofumpt conflicts with lll
+		conf.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions = append(conf.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions, "read") //nolint:lll // gofumpt conflicts with lll
 
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
@@ -2341,7 +2341,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 		// add delete perm on repo
-		conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions = append(conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions, "delete") //nolint:lll // gofumpt conflicts with lll
+		conf.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions = append(conf.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions, "delete") //nolint:lll // gofumpt conflicts with lll
 
 		// delete blob should get 202
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
@@ -2351,10 +2351,10 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 
 		// remove permissions on **/* so it will not interfere with zot-test namespace
-		repoPolicy := conf.AccessControl.Repositories[AuthorizationAllRepos]
+		repoPolicy := conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos]
 		repoPolicy.Policies = []config.Policy{}
 		repoPolicy.DefaultPolicy = []string{}
-		conf.AccessControl.Repositories[AuthorizationAllRepos] = repoPolicy
+		conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos] = repoPolicy
 
 		// get manifest should get 403, we don't have perm at all on this repo
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
@@ -2364,7 +2364,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 		// add read perm on repo
-		conf.AccessControl.Repositories["zot-test"] = config.PolicyGroup{Policies: []config.Policy{
+		conf.HTTP.AccessControl.Repositories["zot-test"] = config.PolicyGroup{Policies: []config.Policy{
 			{
 				Users:   []string{"test"},
 				Actions: []string{"read"},
@@ -2391,7 +2391,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 		// add create perm on repo
-		conf.AccessControl.Repositories["zot-test"].Policies[0].Actions = append(conf.AccessControl.Repositories["zot-test"].Policies[0].Actions, "create") //nolint:lll // gofumpt conflicts with lll
+		conf.HTTP.AccessControl.Repositories["zot-test"].Policies[0].Actions = append(conf.HTTP.AccessControl.Repositories["zot-test"].Policies[0].Actions, "create") //nolint:lll // gofumpt conflicts with lll
 
 		// should get 201 with create perm
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
@@ -2477,7 +2477,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.Body(), ShouldResemble, manifestBlob)
 
 		// add update perm on repo
-		conf.AccessControl.Repositories["zot-test"].Policies[0].Actions = append(conf.AccessControl.Repositories["zot-test"].Policies[0].Actions, "update") //nolint:lll // gofumpt conflicts with lll
+		conf.HTTP.AccessControl.Repositories["zot-test"].Policies[0].Actions = append(conf.HTTP.AccessControl.Repositories["zot-test"].Policies[0].Actions, "update") //nolint:lll // gofumpt conflicts with lll
 
 		// update manifest should get 201 with update perm
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
@@ -2497,10 +2497,10 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.Body(), ShouldResemble, updatedManifestBlob)
 
 		// now use default repo policy
-		conf.AccessControl.Repositories["zot-test"].Policies[0].Actions = []string{}
-		repoPolicy = conf.AccessControl.Repositories["zot-test"]
+		conf.HTTP.AccessControl.Repositories["zot-test"].Policies[0].Actions = []string{}
+		repoPolicy = conf.HTTP.AccessControl.Repositories["zot-test"]
 		repoPolicy.DefaultPolicy = []string{"update"}
-		conf.AccessControl.Repositories["zot-test"] = repoPolicy
+		conf.HTTP.AccessControl.Repositories["zot-test"] = repoPolicy
 
 		// update manifest should get 201 with update perm on repo's default policy
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
@@ -2512,10 +2512,10 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
 		// with default read on repo should still get 200
-		conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions = []string{}
-		repoPolicy = conf.AccessControl.Repositories[AuthorizationNamespace]
+		conf.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions = []string{}
+		repoPolicy = conf.HTTP.AccessControl.Repositories[AuthorizationNamespace]
 		repoPolicy.DefaultPolicy = []string{"read"}
-		conf.AccessControl.Repositories[AuthorizationNamespace] = repoPolicy
+		conf.HTTP.AccessControl.Repositories[AuthorizationNamespace] = repoPolicy
 
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
@@ -2525,7 +2525,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 
 		// upload blob without user create but with default create should get 200
 		repoPolicy.DefaultPolicy = append(repoPolicy.DefaultPolicy, "create")
-		conf.AccessControl.Repositories[AuthorizationNamespace] = repoPolicy
+		conf.HTTP.AccessControl.Repositories[AuthorizationNamespace] = repoPolicy
 
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
@@ -2534,15 +2534,15 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 
 		// remove per repo policy
-		repoPolicy = conf.AccessControl.Repositories[AuthorizationNamespace]
+		repoPolicy = conf.HTTP.AccessControl.Repositories[AuthorizationNamespace]
 		repoPolicy.Policies = []config.Policy{}
 		repoPolicy.DefaultPolicy = []string{}
-		conf.AccessControl.Repositories[AuthorizationNamespace] = repoPolicy
+		conf.HTTP.AccessControl.Repositories[AuthorizationNamespace] = repoPolicy
 
-		repoPolicy = conf.AccessControl.Repositories["zot-test"]
+		repoPolicy = conf.HTTP.AccessControl.Repositories["zot-test"]
 		repoPolicy.Policies = []config.Policy{}
 		repoPolicy.DefaultPolicy = []string{}
-		conf.AccessControl.Repositories["zot-test"] = repoPolicy
+		conf.HTTP.AccessControl.Repositories["zot-test"] = repoPolicy
 
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
@@ -2558,8 +2558,8 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 		// add read perm
-		conf.AccessControl.AdminPolicy.Users = append(conf.AccessControl.AdminPolicy.Users, "test")
-		conf.AccessControl.AdminPolicy.Actions = append(conf.AccessControl.AdminPolicy.Actions, "read")
+		conf.HTTP.AccessControl.AdminPolicy.Users = append(conf.HTTP.AccessControl.AdminPolicy.Users, "test")
+		conf.HTTP.AccessControl.AdminPolicy.Actions = append(conf.HTTP.AccessControl.AdminPolicy.Actions, "read")
 		// with read perm should get 200
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
@@ -2575,7 +2575,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 		// add create perm
-		conf.AccessControl.AdminPolicy.Actions = append(conf.AccessControl.AdminPolicy.Actions, "create")
+		conf.HTTP.AccessControl.AdminPolicy.Actions = append(conf.HTTP.AccessControl.AdminPolicy.Actions, "create")
 		// with create perm should get 202
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
@@ -2603,7 +2603,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 		// add delete perm
-		conf.AccessControl.AdminPolicy.Actions = append(conf.AccessControl.AdminPolicy.Actions, "delete")
+		conf.HTTP.AccessControl.AdminPolicy.Actions = append(conf.HTTP.AccessControl.AdminPolicy.Actions, "delete")
 		// with delete perm should get http.StatusAccepted
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Delete(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
@@ -2619,7 +2619,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 		// add update perm
-		conf.AccessControl.AdminPolicy.Actions = append(conf.AccessControl.AdminPolicy.Actions, "update")
+		conf.HTTP.AccessControl.AdminPolicy.Actions = append(conf.HTTP.AccessControl.AdminPolicy.Actions, "update")
 		// update manifest should get 201 with update perm
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
@@ -2629,7 +2629,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
-		conf.AccessControl = &config.AccessControlConfig{}
+		conf.HTTP.AccessControl = &config.AccessControlConfig{}
 
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
@@ -2703,7 +2703,7 @@ func TestAuthorizationWithOnlyAnonymousPolicy(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 		conf.HTTP.Auth = &config.AuthConfig{}
-		conf.AccessControl = &config.AccessControlConfig{
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
 			Repositories: config.Repositories{
 				TestRepo: config.PolicyGroup{
 					AnonymousPolicy: []string{},
@@ -2741,9 +2741,9 @@ func TestAuthorizationWithOnlyAnonymousPolicy(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
-		if entry, ok := conf.AccessControl.Repositories[TestRepo]; ok {
+		if entry, ok := conf.HTTP.AccessControl.Repositories[TestRepo]; ok {
 			entry.AnonymousPolicy = []string{"create", "read"}
-			conf.AccessControl.Repositories[TestRepo] = entry
+			conf.HTTP.AccessControl.Repositories[TestRepo] = entry
 		}
 
 		// now it should get 202
@@ -2860,9 +2860,9 @@ func TestAuthorizationWithOnlyAnonymousPolicy(t *testing.T) {
 		So(resp.Body(), ShouldResemble, manifestBlob)
 
 		// add update perm on repo
-		if entry, ok := conf.AccessControl.Repositories[TestRepo]; ok {
+		if entry, ok := conf.HTTP.AccessControl.Repositories[TestRepo]; ok {
 			entry.AnonymousPolicy = []string{"create", "read", "update"}
-			conf.AccessControl.Repositories[TestRepo] = entry
+			conf.HTTP.AccessControl.Repositories[TestRepo] = entry
 		}
 
 		// update manifest should get 201 with update perm
@@ -2902,7 +2902,7 @@ func TestAuthorizationWithMultiplePolicies(t *testing.T) {
 			},
 		}
 		// config with all policy types, to test that the correct one is applied in each case
-		conf.AccessControl = &config.AccessControlConfig{
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
 			Repositories: config.Repositories{
 				AuthorizationAllRepos: config.PolicyGroup{
 					Policies: []config.Policy{
@@ -2942,9 +2942,9 @@ func TestAuthorizationWithMultiplePolicies(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 401)
 
-		repoPolicy := conf.AccessControl.Repositories[AuthorizationAllRepos]
+		repoPolicy := conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos]
 		repoPolicy.AnonymousPolicy = append(repoPolicy.AnonymousPolicy, "read")
-		conf.AccessControl.Repositories[AuthorizationAllRepos] = repoPolicy
+		conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos] = repoPolicy
 
 		// should have access to /v2/, anonymous policy is applied, "read" allowed
 		resp, err = resty.R().Get(baseURL + "/v2/")
@@ -2990,7 +2990,7 @@ func TestAuthorizationWithMultiplePolicies(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 		repoPolicy.DefaultPolicy = append(repoPolicy.DefaultPolicy, "read")
-		conf.AccessControl.Repositories[AuthorizationAllRepos] = repoPolicy
+		conf.HTTP.AccessControl.Repositories[AuthorizationAllRepos] = repoPolicy
 
 		// with read permission should get 200, because default policy allows reading now
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
@@ -3026,8 +3026,8 @@ func TestAuthorizationWithMultiplePolicies(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 		// add read permission to user "bob"
-		conf.AccessControl.AdminPolicy.Users = append(conf.AccessControl.AdminPolicy.Users, "bob")
-		conf.AccessControl.AdminPolicy.Actions = append(conf.AccessControl.AdminPolicy.Actions, "create")
+		conf.HTTP.AccessControl.AdminPolicy.Users = append(conf.HTTP.AccessControl.AdminPolicy.Users, "bob")
+		conf.HTTP.AccessControl.AdminPolicy.Actions = append(conf.HTTP.AccessControl.AdminPolicy.Actions, "create")
 
 		// added create permission to user "bob", should be allowed now
 		resp, err = resty.R().SetBasicAuth("bob", passphrase).
@@ -3111,7 +3111,7 @@ func TestHTTPReadOnly(t *testing.T) {
 				conf := config.New()
 				conf.HTTP.Port = port
 				// enable read-only mode
-				conf.AccessControl = &config.AccessControlConfig{
+				conf.HTTP.AccessControl = &config.AccessControlConfig{
 					Repositories: config.Repositories{
 						AuthorizationAllRepos: config.PolicyGroup{
 							DefaultPolicy: []string{"read"},
@@ -6125,7 +6125,7 @@ func TestSearchRoutes(t *testing.T) {
 				Search: searchConfig,
 			}
 
-			conf.AccessControl = &config.AccessControlConfig{
+			conf.HTTP.AccessControl = &config.AccessControlConfig{
 				Repositories: config.Repositories{
 					repoName: config.PolicyGroup{
 						Policies: []config.Policy{

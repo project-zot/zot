@@ -91,7 +91,7 @@ func syncOneImage(imageChannel chan error, cfg Config, storeController storage.S
 	if cfg.CredentialsFile != "" {
 		var err error
 
-		credentialsFile, err = getFileCredentials(cfg.CredentialsFile)
+		credentialsFile, err = GetFileCredentials(cfg.CredentialsFile)
 		if err != nil {
 			log.Error().Str("errorType", TypeOf(err)).
 				Err(err).Msgf("couldn't get registry credentials from %s", cfg.CredentialsFile)

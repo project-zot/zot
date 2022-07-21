@@ -97,7 +97,7 @@ func TestSyncInternal(t *testing.T) {
 		_, err = parseRepositoryReference(repositoryReference)
 		So(err, ShouldNotBeNil)
 
-		_, err = getFileCredentials("/path/to/inexistent/file")
+		_, err = GetFileCredentials("/path/to/inexistent/file")
 		So(err, ShouldNotBeNil)
 
 		tempFile, err := os.CreateTemp("", "sync-credentials-")
@@ -110,7 +110,7 @@ func TestSyncInternal(t *testing.T) {
 			panic(err)
 		}
 
-		_, err = getFileCredentials(tempFile.Name())
+		_, err = GetFileCredentials(tempFile.Name())
 		So(err, ShouldNotBeNil)
 
 		srcCtx := &types.SystemContext{}
@@ -155,7 +155,7 @@ func TestSyncInternal(t *testing.T) {
 		So(Run(ctx, cfg, storage.StoreController{},
 			new(goSync.WaitGroup), log.NewLogger("debug", "")), ShouldNotBeNil)
 
-		_, err = getFileCredentials("/invalid/path/to/file")
+		_, err = GetFileCredentials("/invalid/path/to/file")
 		So(err, ShouldNotBeNil)
 	})
 
