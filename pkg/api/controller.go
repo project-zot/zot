@@ -249,14 +249,14 @@ func (c *Controller) CreateCacheDatabaseDriver(configOverride interface{}, log l
 				if tableNameVal, ok := c.Config.Storage.CacheDatabaseDriver[dynTableNameCfgVarName]; ok && len(tableNameVal) != 0 {
 					params.TableName = tableNameVal
 				} else {
-					panic(fmt.Sprintf("Incomplete config for %v, missing %v zot config var", val, dynEndpointCfgVarName))
+					panic(fmt.Sprintf("Incomplete config for %v, missing %v zot config var", val, dynTableNameCfgVarName))
 				}
 
 				if valRegion := os.Getenv("AWS_REGION"); valRegion == "" {
 					if regionVal, ok := c.Config.Storage.CacheDatabaseDriver[dynRegionCfgVarName]; ok && len(regionVal) != 0 {
 						params.Region = regionVal
 					} else {
-						panic(fmt.Sprintf("Incomplete config for %v, missing %v zot config var", val, dynEndpointCfgVarName))
+						panic(fmt.Sprintf("Incomplete config for %v, missing %v zot config var", val, dynRegionCfgVarName))
 					}
 				}
 
