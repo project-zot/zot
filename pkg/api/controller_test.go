@@ -49,6 +49,7 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
+	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
@@ -103,6 +104,33 @@ func TestNew(t *testing.T) {
 		conf := config.New()
 		So(conf, ShouldNotBeNil)
 		So(api.NewController(conf), ShouldNotBeNil)
+	})
+}
+
+func TestCreateCacheDatabaseDriver(t *testing.T) {
+	Convey("Test CreateCacheDatabaseDriver", t, func() {
+		log := log.NewLogger("debug", "")
+
+		// fail create db, no perm
+		dir := t.TempDir()
+		conf := config.New()
+		conf.Storage.RootDirectory = dir
+		conf.Storage.Dedupe = true
+		conf.Storage.RemoteCache = false
+
+		err := os.Chmod(dir, 0o000)
+		if err != nil {
+			panic(err)
+		}
+
+		driver := api.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
+		So(driver, ShouldBeNil)
+
+		conf.Storage.RemoteCache = true
+		conf.Storage.RootDirectory = t.TempDir()
+
+		driver = api.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
+		So(driver, ShouldBeNil)
 	})
 }
 
@@ -3180,6 +3208,7 @@ func TestCrossRepoMount(t *testing.T) {
 			panic(err)
 		}
 		ctlr.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.RemoteCache = false
 
 		go startServer(ctlr)
 		defer stopServer(ctlr)
@@ -5746,6 +5775,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 		ctlr := api.NewController(conf)
 		dir := t.TempDir()
 		ctlr.Config.Storage.RootDirectory = dir
+		conf.Storage.RemoteCache = false
 
 		go startServer(ctlr)
 		defer stopServer(ctlr)
@@ -5981,6 +6011,7 @@ func TestPeriodicGC(t *testing.T) {
 		baseURL := test.GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
+		conf.Storage.RemoteCache = false
 
 		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
@@ -6032,7 +6063,7 @@ func TestPeriodicGC(t *testing.T) {
 
 		subPaths := make(map[string]config.StorageConfig)
 
-		subPaths["/a"] = config.StorageConfig{RootDirectory: subDir, GC: true, GCDelay: 1 * time.Second, GCInterval: 24 * time.Hour} //nolint:lll // gofumpt conflicts with lll
+		subPaths["/a"] = config.StorageConfig{RootDirectory: subDir, GC: true, GCDelay: 1 * time.Second, GCInterval: 24 * time.Hour, RemoteCache: false} //nolint:lll // gofumpt conflicts with lll
 
 		ctlr.Config.Storage.SubPaths = subPaths
 		ctlr.Config.Storage.RootDirectory = dir
@@ -6045,10 +6076,10 @@ func TestPeriodicGC(t *testing.T) {
 		So(err, ShouldBeNil)
 		// periodic GC is not enabled for default store
 		So(string(data), ShouldContainSubstring,
-			"\"GCDelay\":3600000000000,\"GCInterval\":0,\"RootDirectory\":\""+dir+"\"")
+			"\"GCDelay\":3600000000000,\"GCInterval\":0,\"")
 		// periodic GC is enabled for sub store
 		So(string(data), ShouldContainSubstring,
-			fmt.Sprintf("\"SubPaths\":{\"/a\":{\"RootDirectory\":\"%s\",\"GC\":true,\"Dedupe\":false,\"Commit\":false,\"GCDelay\":1000000000,\"GCInterval\":86400000000000", subDir)) //nolint:lll // gofumpt conflicts with lll
+			fmt.Sprintf("\"SubPaths\":{\"/a\":{\"RootDirectory\":\"%s\",\"Dedupe\":false,\"RemoteCache\":false,\"GC\":true,\"Commit\":false,\"GCDelay\":1000000000,\"GCInterval\":86400000000000", subDir)) //nolint:lll // gofumpt conflicts with lll
 	})
 }
 

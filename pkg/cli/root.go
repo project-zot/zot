@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -23,6 +25,8 @@ import (
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/storage"
+	storageConstants "zotregistry.io/zot/pkg/storage/constants"
+	"zotregistry.io/zot/pkg/storage/s3"
 )
 
 // metadataConfig reports metadata after parsing, which we use to track
@@ -324,6 +328,7 @@ func validateAuthzPolicies(config *config.Config) error {
 	return nil
 }
 
+//nolint:gocyclo
 func applyDefaultValues(config *config.Config, viperInstance *viper.Viper) {
 	defaultVal := true
 
@@ -400,6 +405,51 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper) {
 
 	if !config.Storage.GC && viperInstance.Get("storage::gcdelay") == nil {
 		config.Storage.GCDelay = 0
+	}
+
+	// cache
+
+	// global storage
+
+	// if dedupe is true but remoteCache bool not set in config file
+	// for cloud based storage, remoteCache defaults to true
+	if config.Storage.Dedupe && !viperInstance.IsSet("storage::remotecache") && config.Storage.StorageDriver != nil {
+		config.Storage.RemoteCache = true
+	}
+
+	// s3 dedup=false, check for previous dedup usage and set to true if cachedb found
+	if !config.Storage.Dedupe && config.Storage.StorageDriver != nil {
+		cacheDir, _ := config.Storage.StorageDriver["rootdirectory"].(string)
+		cachePath := path.Join(cacheDir, s3.CacheDBName+storageConstants.DBExtensionName)
+
+		if _, err := os.Stat(cachePath); err == nil {
+			log.Info().Msg("Config: dedupe set to false for s3 driver but used to be true.")
+			log.Info().Str("cache path", cachePath).Msg("found cache database")
+
+			config.Storage.RemoteCache = false
+		}
+	}
+
+	// subpaths
+	for name, storageConfig := range config.Storage.SubPaths {
+		// if dedupe is true but remoteCache bool not set in config file
+		// for cloud based storage, remoteCache defaults to true
+		if storageConfig.Dedupe && !viperInstance.IsSet("storage::subpaths::"+name+"::remotecache") && storageConfig.StorageDriver != nil { //nolint:lll
+			storageConfig.RemoteCache = true
+		}
+
+		// s3 dedup=false, check for previous dedup usage and set to true if cachedb found
+		if !storageConfig.Dedupe && storageConfig.StorageDriver != nil {
+			subpathCacheDir, _ := storageConfig.StorageDriver["rootdirectory"].(string)
+			subpathCachePath := path.Join(subpathCacheDir, s3.CacheDBName+storageConstants.DBExtensionName)
+
+			if _, err := os.Stat(subpathCachePath); err == nil {
+				log.Info().Msg("Config: dedupe set to false for s3 driver but used to be true. ")
+				log.Info().Str("cache path", subpathCachePath).Msg("found cache database")
+
+				storageConfig.RemoteCache = false
+			}
+		}
 	}
 }
 

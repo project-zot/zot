@@ -28,6 +28,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/cache"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/storage/s3"
 	"zotregistry.io/zot/pkg/test"
@@ -77,8 +78,13 @@ func createObjectsStore(rootDir string, cacheDir string) (driver.StorageDriver, 
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
 
+	cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+		RootDir:     cacheDir,
+		Name:        "s3_cache",
+		UseRelPaths: false,
+	}, log)
 	il := s3.NewImageStore(rootDir, cacheDir, false, storage.DefaultGCDelay,
-		true, false, log, metrics, nil, store,
+		true, false, log, metrics, nil, store, cacheDriver,
 	)
 
 	return store, il, err
@@ -123,8 +129,13 @@ func TestStorageAPIs(t *testing.T) {
 
 				log := log.Logger{Logger: zerolog.New(os.Stdout)}
 				metrics := monitoring.NewMetricsServer(false, log)
+				cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+					RootDir:     dir,
+					Name:        "cache",
+					UseRelPaths: true,
+				}, log)
 				imgStore = local.NewImageStore(dir, true, storage.DefaultGCDelay, true,
-					true, log, metrics, nil)
+					true, log, metrics, nil, cacheDriver)
 			}
 
 			Convey("Repo layout", t, func(c C) {
@@ -705,18 +716,22 @@ func TestMandatoryAnnotations(t *testing.T) {
 						LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storage.ImageStore) (bool, error) {
 							return false, nil
 						},
-					}, store)
+					}, store, nil)
 
 				defer cleanupStorage(store, testDir)
 			} else {
 				tdir = t.TempDir()
-
+				cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+					RootDir:     tdir,
+					Name:        "cache",
+					UseRelPaths: true,
+				}, log)
 				imgStore = local.NewImageStore(tdir, true, storage.DefaultGCDelay, true,
 					true, log, metrics, &mocks.MockedLint{
 						LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storage.ImageStore) (bool, error) {
 							return false, nil
 						},
-					})
+					}, cacheDriver)
 			}
 
 			Convey("Setup manifest", t, func() {
@@ -769,15 +784,20 @@ func TestMandatoryAnnotations(t *testing.T) {
 									//nolint: goerr113
 									return false, errors.New("linter error")
 								},
-							}, store)
+							}, store, nil)
 					} else {
+						cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+							RootDir:     tdir,
+							Name:        "cache",
+							UseRelPaths: true,
+						}, log)
 						imgStore = local.NewImageStore(tdir, true, storage.DefaultGCDelay, true,
 							true, log, metrics, &mocks.MockedLint{
 								LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storage.ImageStore) (bool, error) {
 									//nolint: goerr113
 									return false, errors.New("linter error")
 								},
-							})
+							}, cacheDriver)
 					}
 
 					_, err = imgStore.PutImageManifest("test", "1.0.0", ispec.MediaTypeImageManifest, manifestBuf)
@@ -828,13 +848,13 @@ func TestStorageHandler(t *testing.T) {
 
 				// Create ImageStore
 				firstStore = local.NewImageStore(firstRootDir, false, storage.DefaultGCDelay,
-					false, false, log, metrics, nil)
+					false, false, log, metrics, nil, nil)
 
 				secondStore = local.NewImageStore(secondRootDir, false,
-					storage.DefaultGCDelay, false, false, log, metrics, nil)
+					storage.DefaultGCDelay, false, false, log, metrics, nil, nil)
 
 				thirdStore = local.NewImageStore(thirdRootDir, false, storage.DefaultGCDelay,
-					false, false, log, metrics, nil)
+					false, false, log, metrics, nil, nil)
 			}
 
 			Convey("Test storage handler", t, func() {

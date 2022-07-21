@@ -14,6 +14,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/cache"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
 )
@@ -24,8 +25,13 @@ func TestValidateManifest(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
 		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true,
-			true, log, metrics, nil)
+			true, log, metrics, nil, cacheDriver)
 
 		content := []byte("this is a blob")
 		digest := godigest.FromBytes(content)

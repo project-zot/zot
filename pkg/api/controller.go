@@ -26,6 +26,8 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/scheduler"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/cache"
+	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/storage/s3"
 )
@@ -270,6 +272,7 @@ func (c *Controller) InitImageStore(reloadCtx context.Context) error {
 			defaultStore = local.NewImageStore(c.Config.Storage.RootDirectory,
 				c.Config.Storage.GC, c.Config.Storage.GCDelay,
 				c.Config.Storage.Dedupe, c.Config.Storage.Commit, c.Log, c.Metrics, linter,
+				CreateCacheDatabaseDriver(c.Config.Storage.StorageConfig, c.Log),
 			)
 		} else {
 			storeName := fmt.Sprintf("%v", c.Config.Storage.StorageDriver["name"])
@@ -296,7 +299,8 @@ func (c *Controller) InitImageStore(reloadCtx context.Context) error {
 			//nolint: typecheck
 			defaultStore = s3.NewImageStore(rootDir, c.Config.Storage.RootDirectory,
 				c.Config.Storage.GC, c.Config.Storage.GCDelay, c.Config.Storage.Dedupe,
-				c.Config.Storage.Commit, c.Log, c.Metrics, linter, store)
+				c.Config.Storage.Commit, c.Log, c.Metrics, linter, store,
+				CreateCacheDatabaseDriver(c.Config.Storage.StorageConfig, c.Log))
 		}
 
 		c.StoreController.DefaultStore = defaultStore
@@ -374,7 +378,8 @@ func (c *Controller) getSubStore(subPaths map[string]config.StorageConfig,
 			// Create a new image store and assign it to imgStoreMap
 			if isUnique {
 				imgStoreMap[storageConfig.RootDirectory] = local.NewImageStore(storageConfig.RootDirectory,
-					storageConfig.GC, storageConfig.GCDelay, storageConfig.Dedupe, storageConfig.Commit, c.Log, c.Metrics, linter)
+					storageConfig.GC, storageConfig.GCDelay, storageConfig.Dedupe,
+					storageConfig.Commit, c.Log, c.Metrics, linter, CreateCacheDatabaseDriver(storageConfig, c.Log))
 
 				subImageStore[route] = imgStoreMap[storageConfig.RootDirectory]
 			}
@@ -404,6 +409,7 @@ func (c *Controller) getSubStore(subPaths map[string]config.StorageConfig,
 			subImageStore[route] = s3.NewImageStore(rootDir, storageConfig.RootDirectory,
 				storageConfig.GC, storageConfig.GCDelay,
 				storageConfig.Dedupe, storageConfig.Commit, c.Log, c.Metrics, linter, store,
+				CreateCacheDatabaseDriver(storageConfig, c.Log),
 			)
 		}
 	}
@@ -419,6 +425,29 @@ func compareImageStore(root1, root2 string) bool {
 	}
 
 	return isSameFile
+}
+
+func getUseRelPaths(storageConfig *config.StorageConfig) bool {
+	return storageConfig.StorageDriver == nil
+}
+
+func CreateCacheDatabaseDriver(storageConfig config.StorageConfig, log log.Logger) cache.Cache {
+	if storageConfig.Dedupe {
+		if !storageConfig.RemoteCache {
+			params := cache.BoltDBDriverParameters{}
+			params.RootDir = storageConfig.RootDirectory
+			params.Name = storageConstants.BoltdbName
+			params.UseRelPaths = getUseRelPaths(&storageConfig)
+
+			driver, _ := storage.Create("boltdb", params, log)
+
+			return driver
+		}
+		// used for tests, dynamodb when it comes
+		return nil
+	}
+
+	return nil
 }
 
 func (c *Controller) LoadNewConfig(reloadCtx context.Context, config *config.Config) {

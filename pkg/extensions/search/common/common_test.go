@@ -1029,10 +1029,10 @@ func TestUtilsMethod(t *testing.T) {
 
 		metrics := monitoring.NewMetricsServer(false, log)
 		defaultStore := local.NewImageStore(rootDir, false,
-			storage.DefaultGCDelay, false, false, log, metrics, nil)
+			storage.DefaultGCDelay, false, false, log, metrics, nil, nil)
 
 		subStore := local.NewImageStore(subRootDir, false,
-			storage.DefaultGCDelay, false, false, log, metrics, nil)
+			storage.DefaultGCDelay, false, false, log, metrics, nil, nil)
 
 		subStoreMap := make(map[string]storage.ImageStore)
 

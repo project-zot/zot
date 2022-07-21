@@ -266,7 +266,7 @@ func TestUserAvailableRepos(t *testing.T) {
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		dir := t.TempDir()
 		metrics := monitoring.NewMetricsServer(false, log)
-		defaultStore := local.NewImageStore(dir, false, 0, false, false, log, metrics, nil)
+		defaultStore := local.NewImageStore(dir, false, 0, false, false, log, metrics, nil, nil)
 
 		repoList, err := defaultStore.GetRepositories()
 		So(err, ShouldBeNil)

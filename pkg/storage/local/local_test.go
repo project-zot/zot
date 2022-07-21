@@ -28,6 +28,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/cache"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
 )
@@ -42,8 +43,13 @@ func TestStorageFSAPIs(t *testing.T) {
 
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
+	cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+		RootDir:     dir,
+		Name:        "cache",
+		UseRelPaths: true,
+	}, log)
 	imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true,
-		true, log, metrics, nil)
+		true, log, metrics, nil, cacheDriver)
 
 	Convey("Repo layout", t, func(c C) {
 		Convey("Bad image manifest", func() {
@@ -174,7 +180,12 @@ func TestGetReferrers(t *testing.T) {
 
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
-	imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics, nil)
+	cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+		RootDir:     dir,
+		Name:        "cache",
+		UseRelPaths: true,
+	}, log)
+	imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics, nil, cacheDriver)
 
 	Convey("Get referrers", t, func(c C) {
 		err := test.CopyFiles("../../../test/data/zot-test", path.Join(dir, "zot-test"))
@@ -224,7 +235,12 @@ func FuzzNewBlobUpload(f *testing.F) {
 		t.Logf("Input argument is %s", data)
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics, nil)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics, nil, cacheDriver)
 
 		_, err := imgStore.NewBlobUpload(data)
 		if err != nil {
@@ -244,7 +260,12 @@ func FuzzPutBlobChunk(f *testing.F) {
 		t.Logf("Input argument is %s", data)
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics, nil)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics, nil, cacheDriver)
 
 		repoName := data
 		uuid, err := imgStore.NewBlobUpload(repoName)
@@ -272,7 +293,12 @@ func FuzzPutBlobChunkStreamed(f *testing.F) {
 		t.Logf("Input argument is %s", data)
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics, nil)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics, nil, cacheDriver)
 
 		repoName := data
 
@@ -299,7 +325,12 @@ func FuzzGetBlobUpload(f *testing.F) {
 		defer os.RemoveAll(dir)
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics, nil)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics, nil, cacheDriver)
 
 		_, err := imgStore.GetBlobUpload(data1, data2)
 		if err != nil {
@@ -319,7 +350,12 @@ func FuzzTestPutGetImageManifest(f *testing.F) {
 		dir := t.TempDir()
 		defer os.RemoveAll(dir)
 
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, *log)
+		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
 
 		cblob, cdigest := test.GetRandomImageConfig()
 
@@ -365,7 +401,12 @@ func FuzzTestPutDeleteImageManifest(f *testing.F) {
 		dir := t.TempDir()
 		defer os.RemoveAll(dir)
 
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, *log)
+		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
 
 		cblob, cdigest := test.GetRandomImageConfig()
 
@@ -418,7 +459,12 @@ func FuzzTestDeleteImageManifest(f *testing.F) {
 		dir := t.TempDir()
 		defer os.RemoveAll(dir)
 
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, *log)
+		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
 
 		digest, _, err := newRandomBlobForFuzz(data)
 		if err != nil {
@@ -448,7 +494,12 @@ func FuzzInitRepo(f *testing.F) {
 		dir := t.TempDir()
 		defer os.RemoveAll(dir)
 
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, *log)
+		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
 		err := imgStore.InitRepo(data)
 		if err != nil {
 			if isKnownErr(err) {
@@ -467,7 +518,12 @@ func FuzzInitValidateRepo(f *testing.F) {
 		dir := t.TempDir()
 		defer os.RemoveAll(dir)
 
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, *log)
+		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
 		err := imgStore.InitRepo(data)
 		if err != nil {
 			if isKnownErr(err) {
@@ -493,7 +549,12 @@ func FuzzGetImageTags(f *testing.F) {
 		dir := t.TempDir()
 		defer os.RemoveAll(dir)
 
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, *log)
+		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
 		_, err := imgStore.GetImageTags(data)
 		if err != nil {
 			if errors.Is(err, zerr.ErrRepoNotFound) || isKnownErr(err) {
@@ -512,7 +573,12 @@ func FuzzBlobUploadPath(f *testing.F) {
 		dir := t.TempDir()
 		defer os.RemoveAll(dir)
 
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, *log)
+		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
 
 		_ = imgStore.BlobUploadPath(repo, uuid)
 	})
@@ -526,7 +592,12 @@ func FuzzBlobUploadInfo(f *testing.F) {
 		dir := t.TempDir()
 		defer os.RemoveAll(dir)
 
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, *log)
+		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
 		repo := data
 
 		_, err := imgStore.BlobUploadInfo(repo, uuid)
@@ -546,7 +617,12 @@ func FuzzTestGetImageManifest(f *testing.F) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics, nil)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics, nil, cacheDriver)
 
 		repoName := data
 
@@ -569,7 +645,12 @@ func FuzzFinishBlobUpload(f *testing.F) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics, nil)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics, nil, cacheDriver)
 
 		repoName := data
 
@@ -613,7 +694,12 @@ func FuzzFullBlobUpload(f *testing.F) {
 		dir := t.TempDir()
 		defer os.RemoveAll(dir)
 
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, *log)
+		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
 
 		ldigest, lblob, err := newRandomBlobForFuzz(data)
 		if err != nil {
@@ -638,7 +724,12 @@ func FuzzDedupeBlob(f *testing.F) {
 		dir := t.TempDir()
 		defer os.RemoveAll(dir)
 
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, *log)
+		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
 
 		blobDigest := godigest.FromString(data)
 
@@ -674,7 +765,12 @@ func FuzzDeleteBlobUpload(f *testing.F) {
 		dir := t.TempDir()
 		defer os.RemoveAll(dir)
 
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, *log)
+		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
 
 		uuid, err := imgStore.NewBlobUpload(repoName)
 		if err != nil {
@@ -700,7 +796,12 @@ func FuzzBlobPath(f *testing.F) {
 		dir := t.TempDir()
 		defer os.RemoveAll(dir)
 
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, *log)
+		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
 		digest := godigest.FromString(data)
 
 		_ = imgStore.BlobPath(repoName, digest)
@@ -716,7 +817,12 @@ func FuzzCheckBlob(f *testing.F) {
 		dir := t.TempDir()
 		defer os.RemoveAll(dir)
 
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, *log)
+		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
 		digest := godigest.FromString(data)
 
 		_, _, err := imgStore.FullBlobUpload(repoName, bytes.NewReader([]byte(data)), digest)
@@ -742,7 +848,12 @@ func FuzzGetBlob(f *testing.F) {
 		dir := t.TempDir()
 		defer os.RemoveAll(dir)
 
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, *log)
+		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
 		digest := godigest.FromString(data)
 
 		_, _, err := imgStore.FullBlobUpload(repoName, bytes.NewReader([]byte(data)), digest)
@@ -775,7 +886,12 @@ func FuzzDeleteBlob(f *testing.F) {
 		dir := t.TempDir()
 		defer os.RemoveAll(dir)
 
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, *log)
+		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
 		digest := godigest.FromString(data)
 
 		_, _, err := imgStore.FullBlobUpload(repoName, bytes.NewReader([]byte(data)), digest)
@@ -805,7 +921,12 @@ func FuzzGetIndexContent(f *testing.F) {
 		dir := t.TempDir()
 		defer os.RemoveAll(dir)
 
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, *log)
+		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
 		digest := godigest.FromString(data)
 
 		_, _, err := imgStore.FullBlobUpload(repoName, bytes.NewReader([]byte(data)), digest)
@@ -835,7 +956,12 @@ func FuzzGetBlobContent(f *testing.F) {
 		dir := t.TempDir()
 		defer os.RemoveAll(dir)
 
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, *log)
+		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
 		digest := godigest.FromString(data)
 
 		_, _, err := imgStore.FullBlobUpload(repoName, bytes.NewReader([]byte(data)), digest)
@@ -864,7 +990,12 @@ func FuzzGetReferrers(f *testing.F) {
 		dir := t.TempDir()
 		defer os.RemoveAll(dir)
 
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, *log)
+		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
 
 		err := test.CopyFiles("../../../test/data/zot-test", path.Join(dir, "zot-test"))
 		if err != nil {
@@ -919,7 +1050,12 @@ func FuzzRunGCRepo(f *testing.F) {
 		dir := t.TempDir()
 		defer os.RemoveAll(dir)
 
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, *log)
+		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil, cacheDriver)
 
 		if err := imgStore.RunGCRepo(data); err != nil {
 			t.Error(err)
@@ -932,8 +1068,13 @@ func TestDedupeLinks(t *testing.T) {
 
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
+	cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+		RootDir:     dir,
+		Name:        "cache",
+		UseRelPaths: true,
+	}, log)
 	imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay,
-		true, true, log, metrics, nil)
+		true, true, log, metrics, nil, cacheDriver)
 
 	Convey("Dedupe", t, func(c C) {
 		// manifest1
@@ -1104,7 +1245,12 @@ func TestDedupe(t *testing.T) {
 
 			log := log.Logger{Logger: zerolog.New(os.Stdout)}
 			metrics := monitoring.NewMetricsServer(false, log)
-			il := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics, nil)
+			cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+				RootDir:     dir,
+				Name:        "cache",
+				UseRelPaths: true,
+			}, log)
+			il := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics, nil, cacheDriver)
 
 			So(il.DedupeBlob("", "", ""), ShouldNotBeNil)
 		})
@@ -1118,12 +1264,21 @@ func TestNegativeCases(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
-
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
 		So(local.NewImageStore(dir, true, storage.DefaultGCDelay, true,
-			true, log, metrics, nil), ShouldNotBeNil)
+			true, log, metrics, nil, cacheDriver), ShouldNotBeNil)
 		if os.Geteuid() != 0 {
+			cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+				RootDir:     "/deadBEEF",
+				Name:        "cache",
+				UseRelPaths: true,
+			}, log)
 			So(local.NewImageStore("/deadBEEF", true, storage.DefaultGCDelay,
-				true, true, log, metrics, nil), ShouldBeNil)
+				true, true, log, metrics, nil, cacheDriver), ShouldBeNil)
 		}
 	})
 
@@ -1132,8 +1287,13 @@ func TestNegativeCases(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
 		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay,
-			true, true, log, metrics, nil)
+			true, true, log, metrics, nil, cacheDriver)
 
 		err := os.Chmod(dir, 0o000) // remove all perms
 		if err != nil {
@@ -1172,8 +1332,13 @@ func TestNegativeCases(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
 		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true,
-			true, log, metrics, nil)
+			true, log, metrics, nil, cacheDriver)
 
 		So(imgStore, ShouldNotBeNil)
 		So(imgStore.InitRepo("test"), ShouldBeNil)
@@ -1287,8 +1452,13 @@ func TestNegativeCases(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
 		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay,
-			true, true, log, metrics, nil)
+			true, true, log, metrics, nil, cacheDriver)
 
 		So(imgStore, ShouldNotBeNil)
 		So(imgStore.InitRepo("test"), ShouldBeNil)
@@ -1311,8 +1481,13 @@ func TestNegativeCases(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
 		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true,
-			true, log, metrics, nil)
+			true, log, metrics, nil, cacheDriver)
 
 		So(imgStore, ShouldNotBeNil)
 		So(imgStore.InitRepo("test"), ShouldBeNil)
@@ -1353,8 +1528,13 @@ func TestNegativeCases(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
 		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay,
-			true, true, log, metrics, nil)
+			true, true, log, metrics, nil, cacheDriver)
 
 		So(imgStore, ShouldNotBeNil)
 		So(imgStore.InitRepo("test"), ShouldBeNil)
@@ -1519,8 +1699,13 @@ func TestInjectWriteFile(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
 		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay,
-			true, true, log, metrics, nil)
+			true, true, log, metrics, nil, cacheDriver)
 
 		Convey("Failure path1", func() {
 			injected := test.InjectFailure(0)
@@ -1550,8 +1735,13 @@ func TestInjectWriteFile(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
 		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay,
-			true, false, log, metrics, nil)
+			true, false, log, metrics, nil, cacheDriver)
 
 		Convey("Failure path not reached", func() {
 			err := imgStore.InitRepo("repo1")
@@ -1568,8 +1758,13 @@ func TestGarbageCollect(t *testing.T) {
 		metrics := monitoring.NewMetricsServer(false, log)
 
 		Convey("Garbage collect with default/long delay", func() {
+			cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+				RootDir:     dir,
+				Name:        "cache",
+				UseRelPaths: true,
+			}, log)
 			imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay,
-				true, true, log, metrics, nil)
+				true, true, log, metrics, nil, cacheDriver)
 			repoName := "gc-long"
 
 			upload, err := imgStore.NewBlobUpload(repoName)
@@ -1636,7 +1831,12 @@ func TestGarbageCollect(t *testing.T) {
 		})
 
 		Convey("Garbage collect with short delay", func() {
-			imgStore := local.NewImageStore(dir, true, 1*time.Second, true, true, log, metrics, nil)
+			cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+				RootDir:     dir,
+				Name:        "cache",
+				UseRelPaths: true,
+			}, log)
+			imgStore := local.NewImageStore(dir, true, 1*time.Second, true, true, log, metrics, nil, cacheDriver)
 			repoName := "gc-short"
 
 			// upload orphan blob
@@ -1732,7 +1932,12 @@ func TestGarbageCollect(t *testing.T) {
 
 		Convey("Garbage collect with dedupe", func() {
 			// garbage-collect is repo-local and dedupe is global and they can interact in strange ways
-			imgStore := local.NewImageStore(dir, true, 5*time.Second, true, true, log, metrics, nil)
+			cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+				RootDir:     dir,
+				Name:        "cache",
+				UseRelPaths: true,
+			}, log)
+			imgStore := local.NewImageStore(dir, true, 5*time.Second, true, true, log, metrics, nil, cacheDriver)
 
 			// first upload an image to the first repo and wait for GC timeout
 
@@ -1933,7 +2138,12 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 
 			log := log.NewLogger("debug", logFile.Name())
 			metrics := monitoring.NewMetricsServer(false, log)
-			imgStore := local.NewImageStore(dir, true, 1*time.Second, true, true, log, metrics, nil)
+			cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+				RootDir:     dir,
+				Name:        "cache",
+				UseRelPaths: true,
+			}, log)
+			imgStore := local.NewImageStore(dir, true, 1*time.Second, true, true, log, metrics, nil, cacheDriver)
 			repoName := "gc-all-repos-short"
 
 			err := test.CopyFiles("../../../test/data/zot-test", path.Join(dir, repoName))
@@ -1966,7 +2176,12 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 
 			log := log.NewLogger("debug", logFile.Name())
 			metrics := monitoring.NewMetricsServer(false, log)
-			imgStore := local.NewImageStore(dir, true, 1*time.Second, true, true, log, metrics, nil)
+			cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+				RootDir:     dir,
+				Name:        "cache",
+				UseRelPaths: true,
+			}, log)
+			imgStore := local.NewImageStore(dir, true, 1*time.Second, true, true, log, metrics, nil, cacheDriver)
 			repoName := "gc-all-repos-short"
 
 			err := test.CopyFiles("../../../test/data/zot-test", path.Join(dir, repoName))
@@ -2012,8 +2227,13 @@ func TestInitRepo(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
 		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay,
-			true, true, log, metrics, nil)
+			true, true, log, metrics, nil, cacheDriver)
 
 		err := os.Mkdir(path.Join(dir, "test-dir"), 0o000)
 		So(err, ShouldBeNil)
@@ -2029,8 +2249,13 @@ func TestValidateRepo(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
 		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay,
-			true, true, log, metrics, nil)
+			true, true, log, metrics, nil, cacheDriver)
 
 		err := os.Mkdir(path.Join(dir, "test-dir"), 0o000)
 		So(err, ShouldBeNil)
@@ -2046,8 +2271,13 @@ func TestGetRepositoriesError(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
 		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay,
-			true, true, log, metrics, nil,
+			true, true, log, metrics, nil, cacheDriver,
 		)
 
 		// create valid directory with permissions
@@ -2066,8 +2296,13 @@ func TestGetNextRepository(t *testing.T) {
 	dir := t.TempDir()
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
+	cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+		RootDir:     dir,
+		Name:        "cache",
+		UseRelPaths: true,
+	}, log)
 	imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay,
-		true, true, log, metrics, nil,
+		true, true, log, metrics, nil, cacheDriver,
 	)
 	firstRepoName := "repo1"
 	secondRepoName := "repo2"
@@ -2103,8 +2338,13 @@ func TestPutBlobChunkStreamed(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
 		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay,
-			true, true, log, metrics, nil)
+			true, true, log, metrics, nil, cacheDriver)
 
 		uuid, err := imgStore.NewBlobUpload("test")
 		So(err, ShouldBeNil)
@@ -2127,8 +2367,13 @@ func TestPullRange(t *testing.T) {
 		metrics := monitoring.NewMetricsServer(false, log)
 
 		Convey("Negative cases", func() {
+			cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+				RootDir:     dir,
+				Name:        "cache",
+				UseRelPaths: true,
+			}, log)
 			imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay,
-				true, true, log, metrics, nil)
+				true, true, log, metrics, nil, cacheDriver)
 			repoName := "pull-range"
 
 			upload, err := imgStore.NewBlobUpload(repoName)

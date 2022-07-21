@@ -22,8 +22,9 @@ var (
 
 type StorageConfig struct {
 	RootDirectory string
-	GC            bool
 	Dedupe        bool
+	RemoteCache   bool
+	GC            bool
 	Commit        bool
 	GCDelay       time.Duration
 	GCInterval    time.Duration
@@ -95,13 +96,7 @@ type LogConfig struct {
 }
 
 type GlobalStorageConfig struct {
-	Dedupe        bool
-	GC            bool
-	Commit        bool
-	GCDelay       time.Duration
-	GCInterval    time.Duration
-	RootDirectory string
-	StorageDriver map[string]interface{} `mapstructure:",omitempty"`
+	StorageConfig `mapstructure:",squash"`
 	SubPaths      map[string]StorageConfig
 }
 
@@ -143,9 +138,11 @@ func New() *Config {
 		Commit:          Commit,
 		ReleaseTag:      ReleaseTag,
 		BinaryType:      BinaryType,
-		Storage:         GlobalStorageConfig{GC: true, GCDelay: storage.DefaultGCDelay, Dedupe: true},
-		HTTP:            HTTPConfig{Address: "127.0.0.1", Port: "8080", Auth: &AuthConfig{FailDelay: 0}},
-		Log:             &LogConfig{Level: "debug"},
+		Storage: GlobalStorageConfig{
+			StorageConfig: StorageConfig{GC: true, GCDelay: storage.DefaultGCDelay, Dedupe: true},
+		},
+		HTTP: HTTPConfig{Address: "127.0.0.1", Port: "8080", Auth: &AuthConfig{FailDelay: 0}},
+		Log:  &LogConfig{Level: "debug"},
 	}
 }
 

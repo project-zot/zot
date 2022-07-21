@@ -1,4 +1,4 @@
-package storage_test
+package cache_test
 
 import (
 	"path"
@@ -12,7 +12,7 @@ import (
 	"zotregistry.io/zot/pkg/storage/cache"
 )
 
-func TestCache(t *testing.T) {
+func TestBoltDBCache(t *testing.T) {
 	Convey("Make a new cache", t, func() {
 		dir := t.TempDir()
 
@@ -21,18 +21,10 @@ func TestCache(t *testing.T) {
 
 		So(func() { _, _ = storage.Create("boltdb", "failTypeAssertion", log) }, ShouldPanic)
 
-		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
-			RootDir:     "/deadBEEF",
-			Name:        "cache_test",
-			UseRelPaths: true,
-		}, log)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{"/deadBEEF", "cache_test", true}, log)
 		So(cacheDriver, ShouldBeNil)
 
-		cacheDriver, _ = storage.Create("boltdb", cache.BoltDBDriverParameters{
-			RootDir:     dir,
-			Name:        "cache_test",
-			UseRelPaths: true,
-		}, log)
+		cacheDriver, _ = storage.Create("boltdb", cache.BoltDBDriverParameters{dir, "cache_test", true}, log)
 		So(cacheDriver, ShouldNotBeNil)
 
 		name := cacheDriver.Name()

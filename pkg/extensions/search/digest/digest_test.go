@@ -85,7 +85,7 @@ func testSetup(t *testing.T) (string, string, *digestinfo.DigestInfo) {
 	log := log.NewLogger("debug", "")
 	metrics := monitoring.NewMetricsServer(false, log)
 	storeController := storage.StoreController{
-		DefaultStore: local.NewImageStore(rootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil),
+		DefaultStore: local.NewImageStore(rootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil, nil),
 	}
 
 	digestInfo := digestinfo.NewDigestInfo(storeController, log)

@@ -13,14 +13,7 @@ import (
 	"github.com/sigstore/cosign/pkg/oci/remote"
 
 	zerr "zotregistry.io/zot/errors"
-)
-
-const (
-	// BlobUploadDir defines the upload directory for blob uploads.
-	BlobUploadDir = ".uploads"
-	SchemaVersion = 2
-	RLOCK         = "RLock"
-	RWLOCK        = "RWLock"
+	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 )
 
 func GetTagsByIndex(index ispec.Index) []string {
@@ -101,7 +94,7 @@ func ValidateManifest(imgStore ImageStore, repo, reference, mediaType string, bo
 func validateOCIManifest(imgStore ImageStore, repo, reference string, manifest *ispec.Manifest, //nolint:unparam
 	log zerolog.Logger,
 ) (godigest.Digest, error) {
-	if manifest.SchemaVersion != SchemaVersion {
+	if manifest.SchemaVersion != storageConstants.SchemaVersion {
 		log.Error().Int("SchemaVersion", manifest.SchemaVersion).Msg("invalid manifest")
 
 		return "", zerr.ErrBadManifest

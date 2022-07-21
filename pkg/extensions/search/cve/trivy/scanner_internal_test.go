@@ -66,11 +66,11 @@ func TestMultipleStoragePath(t *testing.T) {
 		conf.Extensions.Lint = &extconf.LintConfig{}
 
 		// Create ImageStore
-		firstStore := local.NewImageStore(firstRootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil)
+		firstStore := local.NewImageStore(firstRootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil, nil)
 
-		secondStore := local.NewImageStore(secondRootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil)
+		secondStore := local.NewImageStore(secondRootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil, nil)
 
-		thirdStore := local.NewImageStore(thirdRootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil)
+		thirdStore := local.NewImageStore(thirdRootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil, nil)
 
 		storeController := storage.StoreController{}
 

@@ -18,6 +18,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/cache"
 	"zotregistry.io/zot/pkg/storage/local"
 )
 
@@ -31,9 +32,13 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 	log := log.NewLogger("debug", "")
 
 	metrics := monitoring.NewMetricsServer(false, log)
-
+	cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+		RootDir:     dir,
+		Name:        "cache",
+		UseRelPaths: true,
+	}, log)
 	imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay,
-		true, true, log, metrics, nil)
+		true, true, log, metrics, nil, cacheDriver)
 
 	Convey("Scrub only one repo", t, func(c C) {
 		// initialize repo

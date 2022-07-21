@@ -25,9 +25,13 @@ import (
 	"gopkg.in/resty.v1"
 
 	zerr "zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/api"
+	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/cache"
+	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/s3"
 	"zotregistry.io/zot/pkg/test"
 )
@@ -56,8 +60,19 @@ func skipIt(t *testing.T) {
 func createMockStorage(rootDir string, cacheDir string, dedupe bool, store driver.StorageDriver) storage.ImageStore {
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
+
+	var cacheDriver cache.Cache
+
+	// from pkg/cli/root.go/applyDefaultValues, s3 magic
+	if _, err := os.Stat(cacheDir); dedupe || (!dedupe && err == nil) {
+		cacheDriver, _ = storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     cacheDir,
+			Name:        "s3_cache",
+			UseRelPaths: false,
+		}, log)
+	}
 	il := s3.NewImageStore(rootDir, cacheDir, false, storage.DefaultGCDelay,
-		dedupe, false, log, metrics, nil, store,
+		dedupe, false, log, metrics, nil, store, cacheDriver,
 	)
 
 	return il
@@ -97,8 +112,19 @@ func createObjectsStore(rootDir string, cacheDir string, dedupe bool) (
 
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
+
+	var cacheDriver cache.Cache
+
+	// from pkg/cli/root.go/applyDefaultValues, s3 magic
+	if _, err := os.Stat(cacheDir); dedupe || (!dedupe && err == nil) {
+		cacheDriver, _ = storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     cacheDir,
+			Name:        "s3_cache",
+			UseRelPaths: false,
+		}, log)
+	}
 	il := s3.NewImageStore(rootDir, cacheDir, false, storage.DefaultGCDelay,
-		dedupe, false, log, metrics, nil, store)
+		dedupe, false, log, metrics, nil, store, cacheDriver)
 
 	return store, il, err
 }
@@ -379,6 +405,44 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 			_, err = imgStore.ValidateRepo(testImage)
 			So(err, ShouldNotBeNil)
 			_, err = imgStore.GetRepositories()
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Unable to create subpath cache db", func(c C) {
+			bucket := "zot-storage-test"
+			endpoint := os.Getenv("S3MOCK_ENDPOINT")
+
+			storageDriverParams := config.GlobalStorageConfig{
+				StorageConfig: config.StorageConfig{
+					Dedupe:        true,
+					RootDirectory: t.TempDir(),
+					RemoteCache:   false,
+				},
+				SubPaths: map[string]config.StorageConfig{
+					"/a": {
+						Dedupe:        true,
+						RootDirectory: t.TempDir(),
+						StorageDriver: map[string]interface{}{
+							"rootDir":        "/a",
+							"name":           "s3",
+							"region":         "us-east-2",
+							"bucket":         bucket,
+							"regionendpoint": endpoint,
+							"accesskey":      "minioadmin",
+							"secretkey":      "minioadmin",
+							"secure":         false,
+							"skipverify":     false,
+						},
+						RemoteCache: false,
+					},
+				},
+			}
+			conf := config.New()
+			conf.Storage = storageDriverParams
+			controller := api.NewController(conf)
+			So(controller, ShouldNotBeNil)
+
+			err = controller.InitImageStore(context.TODO())
 			So(err, ShouldBeNil)
 		})
 
@@ -1043,12 +1107,12 @@ func TestS3Dedupe(t *testing.T) {
 		Convey("Check backward compatibility - switch dedupe to false", func() {
 			/* copy cache to the new storage with dedupe false (doing this because we
 			already have a cache object holding the lock on cache db file) */
-			input, err := os.ReadFile(path.Join(tdir, s3.CacheDBName+storage.DBExtensionName))
+			input, err := os.ReadFile(path.Join(tdir, s3.CacheDBName+storageConstants.DBExtensionName))
 			So(err, ShouldBeNil)
 
 			tdir = t.TempDir()
 
-			err = os.WriteFile(path.Join(tdir, s3.CacheDBName+storage.DBExtensionName), input, 0o600)
+			err = os.WriteFile(path.Join(tdir, s3.CacheDBName+storageConstants.DBExtensionName), input, 0o600)
 			So(err, ShouldBeNil)
 
 			storeDriver, imgStore, _ := createObjectsStore(testDir, tdir, false)
@@ -1798,7 +1862,7 @@ func TestS3DedupeErr(t *testing.T) {
 
 		imgStore = createMockStorage(testDir, tdir, true, &StorageDriverMock{})
 
-		err = os.Remove(path.Join(tdir, s3.CacheDBName+storage.DBExtensionName))
+		err = os.Remove(path.Join(tdir, s3.CacheDBName+storageConstants.DBExtensionName))
 		digest := godigest.NewDigestFromEncoded(godigest.SHA256, "digest")
 
 		// trigger unable to insert blob record
@@ -1975,12 +2039,12 @@ func TestS3DedupeErr(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// copy cache db to the new imagestore
-		input, err := os.ReadFile(path.Join(tdir, s3.CacheDBName+storage.DBExtensionName))
+		input, err := os.ReadFile(path.Join(tdir, s3.CacheDBName+storageConstants.DBExtensionName))
 		So(err, ShouldBeNil)
 
 		tdir = t.TempDir()
 
-		err = os.WriteFile(path.Join(tdir, s3.CacheDBName+storage.DBExtensionName), input, 0o600)
+		err = os.WriteFile(path.Join(tdir, s3.CacheDBName+storageConstants.DBExtensionName), input, 0o600)
 		So(err, ShouldBeNil)
 
 		imgStore = createMockStorage(testDir, tdir, true, &StorageDriverMock{
@@ -2015,12 +2079,12 @@ func TestS3DedupeErr(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// copy cache db to the new imagestore
-		input, err := os.ReadFile(path.Join(tdir, s3.CacheDBName+storage.DBExtensionName))
+		input, err := os.ReadFile(path.Join(tdir, s3.CacheDBName+storageConstants.DBExtensionName))
 		So(err, ShouldBeNil)
 
 		tdir = t.TempDir()
 
-		err = os.WriteFile(path.Join(tdir, s3.CacheDBName+storage.DBExtensionName), input, 0o600)
+		err = os.WriteFile(path.Join(tdir, s3.CacheDBName+storageConstants.DBExtensionName), input, 0o600)
 		So(err, ShouldBeNil)
 
 		imgStore = createMockStorage(testDir, tdir, true, &StorageDriverMock{

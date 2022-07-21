@@ -21,6 +21,8 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/extensions/scrub"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/cache"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
 )
@@ -239,8 +241,13 @@ func TestRunScrubRepo(t *testing.T) {
 		dir := t.TempDir()
 		log := log.NewLogger("debug", logFile.Name())
 		metrics := monitoring.NewMetricsServer(false, log)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
 		imgStore := local.NewImageStore(dir, true, 1*time.Second, true,
-			true, log, metrics, nil)
+			true, log, metrics, nil, cacheDriver)
 
 		err = test.CopyFiles("../../../test/data/zot-test", path.Join(dir, repoName))
 		if err != nil {
@@ -269,8 +276,13 @@ func TestRunScrubRepo(t *testing.T) {
 		dir := t.TempDir()
 		log := log.NewLogger("debug", logFile.Name())
 		metrics := monitoring.NewMetricsServer(false, log)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
 		imgStore := local.NewImageStore(dir, true, 1*time.Second, true,
-			true, log, metrics, nil)
+			true, log, metrics, nil, cacheDriver)
 
 		err = test.CopyFiles("../../../test/data/zot-test", path.Join(dir, repoName))
 		if err != nil {
@@ -305,8 +317,14 @@ func TestRunScrubRepo(t *testing.T) {
 		dir := t.TempDir()
 		log := log.NewLogger("debug", logFile.Name())
 		metrics := monitoring.NewMetricsServer(false, log)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
 		imgStore := local.NewImageStore(dir, true, 1*time.Second,
-			true, true, log, metrics, nil)
+			true, true, log, metrics, nil, cacheDriver,
+		)
 
 		err = test.CopyFiles("../../../test/data/zot-test", path.Join(dir, repoName))
 		if err != nil {

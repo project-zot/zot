@@ -16,6 +16,8 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/cli"
 	"zotregistry.io/zot/pkg/storage"
+	storageConstants "zotregistry.io/zot/pkg/storage/constants"
+	"zotregistry.io/zot/pkg/storage/s3"
 	. "zotregistry.io/zot/pkg/test"
 )
 
@@ -106,6 +108,112 @@ func TestVerify(t *testing.T) {
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
 		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+	})
+
+	Convey("Test cached db config", t, func(c C) {
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+
+		// dedup true, can't parse database type
+		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot", "dedupe": true,
+							"cache": {"type": 123}},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+
+		// dedup true, wrong database type
+		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot", "dedupe": true,
+							"cache": {"type": "wrong"}},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+
+		// SubPaths
+		// dedup true, wrong database type
+		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot", "dedupe": false,
+							"subPaths": {"/a": {"rootDirectory": "/zot-a", "dedupe": true,
+							"cache": {"type": "wrong"}}}},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+
+		// dedup true, can't parse database type
+		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot", "dedupe": false,
+							"subPaths": {"/a": {"rootDirectory": "/zot-a", "dedupe": true,
+							"cache": {"type": 123}}}},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+	})
+
+	Convey("Test apply defaults cache db", t, func(c C) {
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+
+		// s3 dedup=false, check for previous dedup usage and set to true if cachedb found
+		cacheDir := t.TempDir()
+		existingDBPath := path.Join(cacheDir, s3.CacheDBName+storageConstants.DBExtensionName)
+		_, err = os.Create(existingDBPath)
+		So(err, ShouldBeNil)
+
+		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot", "dedupe": false,
+							"storageDriver": {"rootDirectory": "` + cacheDir + `"}},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+
+		// subpath s3 dedup=false, check for previous dedup usage and set to true if cachedb found
+		cacheDir = t.TempDir()
+		existingDBPath = path.Join(cacheDir, s3.CacheDBName+storageConstants.DBExtensionName)
+		_, err = os.Create(existingDBPath)
+		So(err, ShouldBeNil)
+
+		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot", "dedupe": true,
+							"subpaths": {"/a": {"rootDirectory":"/tmp/zot1", "dedupe": false,
+							"storageDriver": {"rootDirectory": "` + cacheDir + `"}}}},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+
+		// subpath s3 dedup=false, check for previous dedup usage and set to true if cachedb found
+		cacheDir = t.TempDir()
+
+		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot", "dedupe": true,
+							"subpaths": {"/a": {"rootDirectory":"/tmp/zot1", "dedupe": true,
+							"storageDriver": {"rootDirectory": "` + cacheDir + `"}}}},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 	})
