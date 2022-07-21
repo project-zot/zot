@@ -8,6 +8,7 @@ import (
 	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/database"
 )
 
 func TestCache(t *testing.T) {
@@ -17,10 +18,14 @@ func TestCache(t *testing.T) {
 		log := log.NewLogger("debug", "")
 		So(log, ShouldNotBeNil)
 
-		So(storage.NewCache("/deadBEEF", "cache_test", true, log), ShouldBeNil)
+		cache, _ := database.Create("boltdb", storage.BoltDBDriverParameters{"/deadBEEF", "cache_test", true}, log)
+		So(cache, ShouldBeNil)
 
-		cache := storage.NewCache(dir, "cache_test", true, log)
+		cache, _ = database.Create("boltdb", storage.BoltDBDriverParameters{dir, "cache_test", true}, log)
 		So(cache, ShouldNotBeNil)
+
+		name := cache.Name()
+		So(name, ShouldEqual, "boltdb")
 
 		val, err := cache.GetBlob("key")
 		So(err, ShouldEqual, errors.ErrCacheMiss)

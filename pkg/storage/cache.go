@@ -9,6 +9,7 @@ import (
 	"go.etcd.io/bbolt"
 	"zotregistry.io/zot/errors"
 	zlog "zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/storage/database"
 )
 
 const (
@@ -17,20 +18,63 @@ const (
 	dbCacheLockCheckTimeout = 10 * time.Second
 )
 
-type Cache struct {
+type Driver struct {
 	rootDir     string
 	db          *bbolt.DB
 	log         zlog.Logger
 	useRelPaths bool // weather or not to use relative paths, should be true for filesystem and false for s3
 }
 
-// Blob is a blob record.
-type Blob struct {
-	Path string
+type BoltDBDriverParameters struct {
+	RootDir, Name string
+	UseRelPaths   bool
 }
 
-func NewCache(rootDir string, name string, useRelPaths bool, log zlog.Logger) *Cache {
-	dbPath := path.Join(rootDir, name+DBExtensionName)
+const (
+	driverName         = "boltdb"
+	defaultRootDir     = "/tmp/zot/boltDB"
+	defaultName        = "cacheBoltDB"
+	defaultUseRelPaths = false
+)
+
+// Implements the storage.DatabaseDriverFactory interface.
+type boltDBDriverFactory struct{}
+
+func (factory *boltDBDriverFactory) Create(parameters interface{}, log zlog.Logger) (database.Driver, error) {
+	properParameters, ok := parameters.(BoltDBDriverParameters)
+	if !ok {
+		panic("Failed type assertion")
+	}
+
+	return FromParameters(properParameters, log)
+}
+
+// nolint:gochecknoinits
+func init() {
+	database.Register(driverName, &boltDBDriverFactory{})
+}
+
+func FromParameters(parameters BoltDBDriverParameters, log zlog.Logger) (*Driver, error) {
+	params := &BoltDBDriverParameters{
+		RootDir:     defaultRootDir,
+		Name:        defaultName,
+		UseRelPaths: defaultUseRelPaths,
+	}
+
+	if parameters.RootDir != "" {
+		params.RootDir = parameters.RootDir
+	}
+
+	if parameters.Name != "" {
+		params.Name = parameters.Name
+	}
+	params.UseRelPaths = parameters.UseRelPaths
+
+	return NewCache(*params, log), nil
+}
+
+func NewCache(parameters BoltDBDriverParameters, log zlog.Logger) *Driver {
+	dbPath := path.Join(parameters.RootDir, parameters.Name+DBExtensionName)
 	dbOpts := &bbolt.Options{
 		Timeout:      dbCacheLockCheckTimeout,
 		FreelistType: bbolt.FreelistArrayType,
@@ -59,31 +103,35 @@ func NewCache(rootDir string, name string, useRelPaths bool, log zlog.Logger) *C
 		return nil
 	}
 
-	return &Cache{rootDir: rootDir, db: cacheDB, useRelPaths: useRelPaths, log: log}
+	return &Driver{rootDir: parameters.RootDir, db: cacheDB, useRelPaths: parameters.UseRelPaths, log: log}
 }
 
-func (c *Cache) PutBlob(digest, path string) error {
+func (d *Driver) Name() string {
+	return "boltdb"
+}
+
+func (d *Driver) PutBlob(digest, path string) error {
 	if path == "" {
-		c.log.Error().Err(errors.ErrEmptyValue).Str("digest", digest).Msg("empty path provided")
+		d.log.Error().Err(errors.ErrEmptyValue).Str("digest", digest).Msg("empty path provided")
 
 		return errors.ErrEmptyValue
 	}
 
 	// use only relative (to rootDir) paths on blobs
 	var err error
-	if c.useRelPaths {
-		path, err = filepath.Rel(c.rootDir, path)
+	if d.useRelPaths {
+		path, err = filepath.Rel(d.rootDir, path)
 		if err != nil {
-			c.log.Error().Err(err).Str("path", path).Msg("unable to get relative path")
+			d.log.Error().Err(err).Str("path", path).Msg("unable to get relative path")
 		}
 	}
 
-	if err := c.db.Update(func(tx *bbolt.Tx) error {
+	if err := d.db.Update(func(tx *bbolt.Tx) error {
 		root := tx.Bucket([]byte(BlobsCache))
 		if root == nil {
 			// this is a serious failure
 			err := errors.ErrCacheRootBucket
-			c.log.Error().Err(err).Msg("unable to access root bucket")
+			d.log.Error().Err(err).Msg("unable to access root bucket")
 
 			return err
 		}
@@ -91,13 +139,13 @@ func (c *Cache) PutBlob(digest, path string) error {
 		bucket, err := root.CreateBucketIfNotExists([]byte(digest))
 		if err != nil {
 			// this is a serious failure
-			c.log.Error().Err(err).Str("bucket", digest).Msg("unable to create a bucket")
+			d.log.Error().Err(err).Str("bucket", digest).Msg("unable to create a bucket")
 
 			return err
 		}
 
 		if err := bucket.Put([]byte(path), nil); err != nil {
-			c.log.Error().Err(err).Str("bucket", digest).Str("value", path).Msg("unable to put record")
+			d.log.Error().Err(err).Str("bucket", digest).Str("value", path).Msg("unable to put record")
 
 			return err
 		}
@@ -110,15 +158,15 @@ func (c *Cache) PutBlob(digest, path string) error {
 	return nil
 }
 
-func (c *Cache) GetBlob(digest string) (string, error) {
+func (d *Driver) GetBlob(digest string) (string, error) {
 	var blobPath strings.Builder
 
-	if err := c.db.View(func(tx *bbolt.Tx) error {
+	if err := d.db.View(func(tx *bbolt.Tx) error {
 		root := tx.Bucket([]byte(BlobsCache))
 		if root == nil {
 			// this is a serious failure
 			err := errors.ErrCacheRootBucket
-			c.log.Error().Err(err).Msg("unable to access root bucket")
+			d.log.Error().Err(err).Msg("unable to access root bucket")
 
 			return err
 		}
@@ -141,13 +189,13 @@ func (c *Cache) GetBlob(digest string) (string, error) {
 	return blobPath.String(), nil
 }
 
-func (c *Cache) HasBlob(digest, blob string) bool {
-	if err := c.db.View(func(tx *bbolt.Tx) error {
+func (d *Driver) HasBlob(digest, blob string) bool {
+	if err := d.db.View(func(tx *bbolt.Tx) error {
 		root := tx.Bucket([]byte(BlobsCache))
 		if root == nil {
 			// this is a serious failure
 			err := errors.ErrCacheRootBucket
-			c.log.Error().Err(err).Msg("unable to access root bucket")
+			d.log.Error().Err(err).Msg("unable to access root bucket")
 
 			return err
 		}
@@ -169,22 +217,22 @@ func (c *Cache) HasBlob(digest, blob string) bool {
 	return true
 }
 
-func (c *Cache) DeleteBlob(digest, path string) error {
+func (d *Driver) DeleteBlob(digest, path string) error {
 	// use only relative (to rootDir) paths on blobs
 	var err error
-	if c.useRelPaths {
-		path, err = filepath.Rel(c.rootDir, path)
+	if d.useRelPaths {
+		path, err = filepath.Rel(d.rootDir, path)
 		if err != nil {
-			c.log.Error().Err(err).Str("path", path).Msg("unable to get relative path")
+			d.log.Error().Err(err).Str("path", path).Msg("unable to get relative path")
 		}
 	}
 
-	if err := c.db.Update(func(tx *bbolt.Tx) error {
+	if err := d.db.Update(func(tx *bbolt.Tx) error {
 		root := tx.Bucket([]byte(BlobsCache))
 		if root == nil {
 			// this is a serious failure
 			err := errors.ErrCacheRootBucket
-			c.log.Error().Err(err).Msg("unable to access root bucket")
+			d.log.Error().Err(err).Msg("unable to access root bucket")
 
 			return err
 		}
@@ -195,7 +243,7 @@ func (c *Cache) DeleteBlob(digest, path string) error {
 		}
 
 		if err := bucket.Delete([]byte(path)); err != nil {
-			c.log.Error().Err(err).Str("digest", digest).Str("path", path).Msg("unable to delete")
+			d.log.Error().Err(err).Str("digest", digest).Str("path", path).Msg("unable to delete")
 
 			return err
 		}
@@ -204,9 +252,9 @@ func (c *Cache) DeleteBlob(digest, path string) error {
 
 		k, _ := cur.First()
 		if k == nil {
-			c.log.Debug().Str("digest", digest).Str("path", path).Msg("deleting empty bucket")
+			d.log.Debug().Str("digest", digest).Str("path", path).Msg("deleting empty bucket")
 			if err := root.DeleteBucket([]byte(digest)); err != nil {
-				c.log.Error().Err(err).Str("digest", digest).Str("path", path).Msg("unable to delete")
+				d.log.Error().Err(err).Str("digest", digest).Str("path", path).Msg("unable to delete")
 
 				return err
 			}

@@ -94,14 +94,15 @@ type LogConfig struct {
 }
 
 type GlobalStorageConfig struct {
-	Dedupe        bool
-	GC            bool
-	Commit        bool
-	GCDelay       time.Duration
-	GCInterval    time.Duration
-	RootDirectory string
-	StorageDriver map[string]interface{} `mapstructure:",omitempty"`
-	SubPaths      map[string]StorageConfig
+	Dedupe              bool
+	GC                  bool
+	Commit              bool
+	GCDelay             time.Duration
+	GCInterval          time.Duration
+	RootDirectory       string
+	StorageDriver       map[string]interface{} `mapstructure:",omitempty"`
+	SubPaths            map[string]StorageConfig
+	CacheDatabaseDriver map[string]string `mapstructure:",omitempty"`
 }
 
 type AccessControlConfig struct {

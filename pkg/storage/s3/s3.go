@@ -27,6 +27,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	zlog "zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/database"
 	"zotregistry.io/zot/pkg/test"
 )
 
@@ -48,7 +49,7 @@ type ObjectStorage struct {
 	// see: https://github.com/distribution/distribution/blob/main/registry/storage/driver/s3-aws/s3.go#L545
 	multiPartUploads sync.Map
 	metrics          monitoring.MetricServer
-	cache            *storage.Cache
+	cache            database.Driver
 	dedupe           bool
 }
 
@@ -66,9 +67,9 @@ func (is *ObjectStorage) DirExists(d string) bool {
 
 // NewObjectStorage returns a new image store backed by cloud storages.
 // see https://github.com/docker/docker.github.io/tree/master/registry/storage-drivers
+// Use the last argument to properly set a cache database, or it will default to boltDB local storage.
 func NewImageStore(rootDir string, cacheDir string, gc bool, gcDelay time.Duration, dedupe, commit bool,
-	log zlog.Logger, metrics monitoring.MetricServer,
-	store driver.StorageDriver,
+	log zlog.Logger, metrics monitoring.MetricServer, store driver.StorageDriver, cacheDriver ...database.Driver,
 ) storage.ImageStore {
 	imgStore := &ObjectStorage{
 		rootDir:          rootDir,
@@ -81,15 +82,23 @@ func NewImageStore(rootDir string, cacheDir string, gc bool, gcDelay time.Durati
 		dedupe:           dedupe,
 	}
 
-	cachePath := path.Join(cacheDir, CacheDBName+storage.DBExtensionName)
-
-	if dedupe {
-		imgStore.cache = storage.NewCache(cacheDir, CacheDBName, false, log)
+	if len(cacheDriver) != 0 {
+		imgStore.cache = cacheDriver[0]
 	} else {
-		// if dedupe was used in previous runs use it to serve blobs correctly
-		if _, err := os.Stat(cachePath); err == nil {
-			log.Info().Str("cache path", cachePath).Msg("found cache database")
-			imgStore.cache = storage.NewCache(cacheDir, CacheDBName, false, log)
+		cachePath := path.Join(cacheDir, CacheDBName+storage.DBExtensionName)
+
+		if dedupe {
+			imgStore.cache, _ = database.Create("boltdb", storage.BoltDBDriverParameters{
+				RootDir: cacheDir, Name: CacheDBName, UseRelPaths: false,
+			}, log)
+		} else {
+			// if dedupe was used in previous runs use it to serve blobs correctly
+			if _, err := os.Stat(cachePath); err == nil {
+				log.Info().Str("cache path", cachePath).Msg("found cache database")
+				imgStore.cache, _ = database.Create("boltdb", storage.BoltDBDriverParameters{
+					RootDir: cacheDir, Name: CacheDBName, UseRelPaths: false,
+				}, log)
+			}
 		}
 	}
 
@@ -936,7 +945,7 @@ func (is *ObjectStorage) FinishBlobUpload(repo, uuid string, body io.Reader, dig
 	is.Lock(&lockLatency)
 	defer is.Unlock(&lockLatency)
 
-	if is.dedupe && is.cache != nil {
+	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
 		if err := is.DedupeBlob(src, dstDigest, dst); err != nil {
 			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
 				Str("dst", dst).Msg("unable to dedupe blob")
@@ -1016,7 +1025,7 @@ func (is *ObjectStorage) FullBlobUpload(repo string, body io.Reader, digest stri
 
 	dst := is.BlobPath(repo, dstDigest)
 
-	if is.dedupe && is.cache != nil {
+	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
 		if err := is.DedupeBlob(src, dstDigest, dst); err != nil {
 			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
 				Str("dst", dst).Msg("unable to dedupe blob")
@@ -1150,7 +1159,7 @@ func (is *ObjectStorage) CheckBlob(repo, digest string) (bool, int64, error) {
 
 	blobPath := is.BlobPath(repo, dgst)
 
-	if is.dedupe && is.cache != nil {
+	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
 		is.Lock(&lockLatency)
 		defer is.Unlock(&lockLatency)
 	} else {
@@ -1191,7 +1200,7 @@ func (is *ObjectStorage) CheckBlob(repo, digest string) (bool, int64, error) {
 }
 
 func (is *ObjectStorage) checkCacheBlob(digest string) (string, error) {
-	if is.cache == nil {
+	if fmt.Sprintf("%v", is.cache) == fmt.Sprintf("%v", nil) {
 		return "", zerr.ErrBlobNotFound
 	}
 
@@ -1259,7 +1268,7 @@ func (is *ObjectStorage) GetBlob(repo, digest, mediaType string) (io.Reader, int
 	}
 
 	// is a 'deduped' blob
-	if binfo.Size() == 0 && is.cache != nil {
+	if binfo.Size() == 0 && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
 		// Check blobs in cache
 		dstRecord, err := is.checkCacheBlob(digest)
 		if err == nil {
@@ -1354,7 +1363,7 @@ func (is *ObjectStorage) DeleteBlob(repo, digest string) error {
 		return zerr.ErrBlobNotFound
 	}
 
-	if is.cache != nil {
+	if fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
 		dstRecord, err := is.cache.GetBlob(digest)
 		if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
 			is.log.Error().Err(err).Str("blobPath", dstRecord).Msg("dedupe: unable to lookup blob record")

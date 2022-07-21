@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"runtime"
+	"strconv"
 	"strings"
 	goSync "sync"
 	"syscall"
@@ -24,6 +25,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/database"
 	"zotregistry.io/zot/pkg/storage/s3"
 )
 
@@ -215,8 +217,81 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 	return server.Serve(listener)
 }
 
+// Will create a cache database using the configuration file.
+// Pass a non-nil first argument to override the config (for testing purposes, mostly).
+func (c *Controller) CreateCacheDatabaseDriver(configOverride interface{}, log log.Logger) (database.Driver, error) {
+	if configOverride == nil {
+		c.Log.Info().Msg("Loading cache db config from zot config file")
+
+		if val, ok := c.Config.Storage.CacheDatabaseDriver["name"]; ok && len(c.Config.Storage.CacheDatabaseDriver) != 0 {
+			switch val {
+
+			case "boltdb":
+				params := storage.BoltDBDriverParameters{}
+				boltRootDirCfgVarName := "rootDirectory"
+				boltNameCfgVarName := "name"
+				boltbdUseRelCfg := "useRelPaths"
+
+				if rootDirVal, ok := c.Config.Storage.CacheDatabaseDriver[boltRootDirCfgVarName]; ok && len(rootDirVal) != 0 {
+					params.RootDir = rootDirVal
+				} else {
+					panic(fmt.Sprintf("Incomplete config for %v, missing %v zot config var", val, boltRootDirCfgVarName))
+				}
+
+				if nameVal, ok := c.Config.Storage.CacheDatabaseDriver[boltNameCfgVarName]; ok && len(nameVal) != 0 {
+					params.RootDir = nameVal
+				} else {
+					panic(fmt.Sprintf("Incomplete config for %v, missing %v zot config var", val, boltNameCfgVarName))
+				}
+
+				if useRelPathsVal, ok := c.Config.Storage.CacheDatabaseDriver[boltbdUseRelCfg]; ok && len(useRelPathsVal) != 0 {
+					boolVal, err := strconv.ParseBool(useRelPathsVal)
+					params.UseRelPaths = boolVal
+
+					if err != nil {
+						panic(fmt.Sprintf("Incorrect config for %v, unable to parse %v to a boolean", val, boltbdUseRelCfg))
+					}
+					params.UseRelPaths = boolVal
+				} else {
+					panic(fmt.Sprintf("Incomplete config for %v, missing %v zot config var", val, boltbdUseRelCfg))
+				}
+
+			default:
+				c.Log.Warn().Msgf("Cache DB driver not found for %v: defaulting to boltdb (local storage)", val)
+
+				return database.Create("boltdb", storage.BoltDBDriverParameters{
+					RootDir:     c.Config.Storage.RootDirectory,
+					Name:        "cache",
+					UseRelPaths: true,
+				}, log)
+			}
+		}
+
+		c.Log.Warn().Msg(`Something went wrong when reading the cachedb config. 
+		Did you set all necessary variables? Defaulting to local storage`)
+
+		return database.Create("boltdb", storage.BoltDBDriverParameters{
+			RootDir:     c.Config.Storage.RootDirectory,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+	}
+
+	// Type assertion for overridden configs
+	if boltParams, ok := configOverride.(storage.BoltDBDriverParameters); ok {
+		return database.Create("boltdb", boltParams, log)
+	}
+
+	return nil, errors.ErrBadConfig
+}
+
 func (c *Controller) InitImageStore(reloadCtx context.Context) error {
 	c.StoreController = storage.StoreController{}
+
+	cacheDriver, err := c.CreateCacheDatabaseDriver(nil, c.Log)
+	if err != nil {
+		c.Log.Error().Err(err).Msg("Failed to set up cache db")
+	}
 
 	if c.Config.Storage.RootDirectory != "" {
 		// no need to validate hard links work on s3
@@ -231,9 +306,11 @@ func (c *Controller) InitImageStore(reloadCtx context.Context) error {
 		}
 
 		var defaultStore storage.ImageStore
+
 		if c.Config.Storage.StorageDriver == nil {
 			defaultStore = storage.NewImageStore(c.Config.Storage.RootDirectory,
-				c.Config.Storage.GC, c.Config.Storage.GCDelay, c.Config.Storage.Dedupe, c.Config.Storage.Commit, c.Log, c.Metrics)
+				c.Config.Storage.GC, c.Config.Storage.GCDelay, c.Config.Storage.Dedupe,
+				c.Config.Storage.Commit, c.Log, c.Metrics, cacheDriver)
 		} else {
 			storeName := fmt.Sprintf("%v", c.Config.Storage.StorageDriver["name"])
 			if storeName != storage.S3StorageDriverName {
@@ -257,7 +334,7 @@ func (c *Controller) InitImageStore(reloadCtx context.Context) error {
 
 			defaultStore = s3.NewImageStore(rootDir, c.Config.Storage.RootDirectory,
 				c.Config.Storage.GC, c.Config.Storage.GCDelay, c.Config.Storage.Dedupe,
-				c.Config.Storage.Commit, c.Log, c.Metrics, store)
+				c.Config.Storage.Commit, c.Log, c.Metrics, store, cacheDriver)
 		}
 
 		c.StoreController.DefaultStore = defaultStore
@@ -289,7 +366,8 @@ func (c *Controller) InitImageStore(reloadCtx context.Context) error {
 
 				if storageConfig.StorageDriver == nil {
 					subImageStore[route] = storage.NewImageStore(storageConfig.RootDirectory,
-						storageConfig.GC, storageConfig.GCDelay, storageConfig.Dedupe, storageConfig.Commit, c.Log, c.Metrics)
+						storageConfig.GC, storageConfig.GCDelay, storageConfig.Dedupe,
+						storageConfig.Commit, c.Log, c.Metrics, cacheDriver)
 				} else {
 					storeName := fmt.Sprintf("%v", storageConfig.StorageDriver["name"])
 					if storeName != storage.S3StorageDriverName {
@@ -312,7 +390,8 @@ func (c *Controller) InitImageStore(reloadCtx context.Context) error {
 					}
 
 					subImageStore[route] = s3.NewImageStore(rootDir, storageConfig.RootDirectory,
-						storageConfig.GC, storageConfig.GCDelay, storageConfig.Dedupe, storageConfig.Commit, c.Log, c.Metrics, store)
+						storageConfig.GC, storageConfig.GCDelay, storageConfig.Dedupe,
+						storageConfig.Commit, c.Log, c.Metrics, store, cacheDriver)
 				}
 			}
 
