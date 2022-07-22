@@ -85,7 +85,7 @@ jobs:
             make OS=$OS ARCH=$ARCH
             sudo env "PATH=$PATH" make privileged-test
           else
-            make OS=$OS ARCH=$ARCH binary binary-minimal binary-debug cli bench exporter-minimal
+            make OS=$OS ARCH=$ARCH binary binary-minimal binary-debug binary-ui cli bench exporter-minimal
           fi
         env:
           S3MOCK_ENDPOINT: localhost:4566

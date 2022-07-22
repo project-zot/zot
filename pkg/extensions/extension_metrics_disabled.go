@@ -19,7 +19,7 @@ func EnableMetricsExtension(config *config.Config, log log.Logger, rootDir strin
 
 // SetupMetricsRoutes ...
 func SetupMetricsRoutes(conf *config.Config, router *mux.Router,
-	storeController storage.StoreController, log log.Logger,
+	storeController storage.StoreController, authFunc mux.MiddlewareFunc, log log.Logger,
 ) {
 	log.Warn().Msg("skipping setting up metrics routes because given zot binary doesn't include this feature," +
 		"please build a binary that does so")
