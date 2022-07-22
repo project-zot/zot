@@ -85,8 +85,9 @@ func SetupSearchRoutes(config *config.Config, router *mux.Router, storeControlle
 			resConfig = search.GetResolverConfig(log, storeController, searchDB, nil)
 		}
 
-		graphqlPrefix := router.PathPrefix(constants.FullSearchPrefix).Methods("OPTIONS", "GET", "POST")
-		graphqlPrefix.Handler(gqlHandler.NewDefaultServer(gql_generated.NewExecutableSchema(resConfig)))
+		extRouter := router.PathPrefix(constants.ExtSearchPrefix).Subrouter()
+		extRouter.Methods("GET", "POST", "OPTIONS").
+			Handler(gqlHandler.NewDefaultServer(gql_generated.NewExecutableSchema(resConfig)))
 	}
 }
 

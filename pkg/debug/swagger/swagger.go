@@ -17,9 +17,12 @@ import (
 	_ "zotregistry.io/zot/swagger"
 )
 
-func SetupSwaggerRoutes(conf *config.Config, router *mux.Router, log log.Logger,
+func SetupSwaggerRoutes(conf *config.Config, router *mux.Router, authFunc mux.MiddlewareFunc,
+	log log.Logger,
 ) {
 	log.Info().Msg("setting up swagger route")
 	// swagger swagger "/swagger/v2/index.html"
-	router.PathPrefix("/swagger/v2/").Methods("GET").Handler(httpSwagger.WrapHandler)
+	swgRouter := router.PathPrefix("/swagger/v2/").Subrouter()
+	swgRouter.Use(authFunc)
+	swgRouter.Methods("GET").Handler(httpSwagger.WrapHandler)
 }
