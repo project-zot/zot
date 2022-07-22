@@ -45,7 +45,7 @@ build-metadata:
 	go list -tags $(EXTENSIONS) -f '{{ join .GoFiles "\n" }}' ./... | sort -u
 
 .PHONY: binary
-binary: modcheck swagger create-name build-metadata
+binary: modcheck swagger create-name build-metadata ui
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH) -buildmode=pie -tags $(EXTENSIONS),containers_image_openpgp -v -trimpath -ldflags "-X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=$(extended-name) -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zot
 
 .PHONY: binary-debug
@@ -134,7 +134,7 @@ $(GOLINTER):
 	$(GOLINTER) version
 
 .PHONY: check
-check: ./golangcilint.yaml $(GOLINTER)
+check: ./golangcilint.yaml $(GOLINTER) ui
 	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags containers_image_openpgp ./...
 	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags $(EXTENSIONS),containers_image_openpgp ./...
 	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags dev,containers_image_openpgp ./...
@@ -187,6 +187,7 @@ clean:
 	rm -rf hack
 	rm -rf test/data/zot-test
 	rm -rf test/data/zot-cve-test
+	rm -rf pkg/extensions/build
 
 .PHONY: run
 run: binary test
@@ -319,3 +320,16 @@ fuzz-all:
 .PHONY: anonymous-push-pull
 anonymous-push-pull: binary check-skopeo $(BATS)
 	$(BATS) --trace --print-output-on-failure test/blackbox/anonymous_policiy.bats
+
+.PHONY: ui
+ui:
+	pwd=$$(pwd);\
+	tdir=$$(mktemp -d);\
+	cd $$tdir;\
+	git clone https://github.com/project-zot/zui.git;\
+	cd zui;\
+	npm install;\
+	npm run build;\
+	cd $$pwd;\
+	rm -rf ./pkg/extensions/build;\
+	cp -R $$tdir/zui/build ./pkg/extensions/;
