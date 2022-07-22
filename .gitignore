@@ -11,6 +11,9 @@
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
+# Output of the UI build
+pkg/extensions/build/
+
 # Tooling used for blackbox testing
 hack/
 .stacker/
