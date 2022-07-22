@@ -26,12 +26,13 @@ func EnableMetricsExtension(config *config.Config, log log.Logger, rootDir strin
 }
 
 func SetupMetricsRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
-	log log.Logger,
+	authFunc mux.MiddlewareFunc, log log.Logger,
 ) {
 	log.Info().Msg("setting up metrics routes")
 
 	if config.Extensions.Metrics != nil && *config.Extensions.Metrics.Enable {
-		router.PathPrefix(config.Extensions.Metrics.Prometheus.Path).
-			Handler(promhttp.Handler())
+		extRouter := router.PathPrefix(config.Extensions.Metrics.Prometheus.Path).Subrouter()
+		extRouter.Use(authFunc)
+		extRouter.Methods("GET").Handler(promhttp.Handler())
 	}
 }

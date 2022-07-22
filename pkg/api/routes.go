@@ -52,7 +52,8 @@ func allowedMethods(method string) []string {
 }
 
 func (rh *RouteHandler) SetupRoutes() {
-	rh.c.Router.Use(AuthHandler(rh.c))
+	prefixedRouter := rh.c.Router.PathPrefix(constants.RoutePrefix).Subrouter()
+	prefixedRouter.Use(AuthHandler(rh.c))
 	// authz is being enabled if AccessControl is specified
 	// if Authn is not present AccessControl will have only default policies
 	if rh.c.Config.AccessControl != nil && !isBearerAuthEnabled(rh.c.Config) {
@@ -62,11 +63,10 @@ func (rh *RouteHandler) SetupRoutes() {
 			rh.c.Log.Info().Msg("default policy only access control is being enabled")
 		}
 
-		rh.c.Router.Use(AuthzHandler(rh.c))
+		prefixedRouter.Use(AuthzHandler(rh.c))
 	}
 
 	// https://github.com/opencontainers/distribution-spec/blob/main/spec.md#endpoints
-	prefixedRouter := rh.c.Router.PathPrefix(constants.RoutePrefix).Subrouter()
 	{
 		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/tags/list", NameRegexp.String()),
 			rh.ListTags).Methods(allowedMethods("GET")...)
@@ -107,7 +107,7 @@ func (rh *RouteHandler) SetupRoutes() {
 		constants.ArtifactSpecRoutePrefix, NameRegexp.String()), rh.GetReferrers).Methods("GET")
 
 	// swagger
-	debug.SetupSwaggerRoutes(rh.c.Config, rh.c.Router, rh.c.Log)
+	debug.SetupSwaggerRoutes(rh.c.Config, rh.c.Router, AuthHandler(rh.c), rh.c.Log)
 
 	// Setup Extensions Routes
 	if rh.c.Config != nil {
@@ -116,9 +116,10 @@ func (rh *RouteHandler) SetupRoutes() {
 			prefixedRouter.HandleFunc("/metrics", rh.GetMetrics).Methods("GET")
 		} else {
 			// extended build
-			ext.SetupMetricsRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
-			ext.SetupSearchRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
-			gqlPlayground.SetupGQLPlaygroundRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
+			ext.SetupMetricsRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, AuthHandler(rh.c), rh.c.Log)
+			ext.SetupSearchRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, AuthHandler(rh.c), rh.c.Log)
+			gqlPlayground.SetupGQLPlaygroundRoutes(rh.c.Config, prefixedRouter, rh.c.StoreController, rh.c.Log)
+			ext.SetupUIRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
 		}
 	}
 }

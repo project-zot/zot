@@ -12,6 +12,7 @@ type ExtensionConfig struct {
 	Metrics *MetricsConfig
 	Scrub   *ScrubConfig
 	Lint    *LintConfig
+	UI      *UIConfig
 }
 
 type LintConfig struct {
@@ -41,4 +42,8 @@ type PrometheusConfig struct {
 type ScrubConfig struct {
 	Enable   *bool
 	Interval time.Duration
+}
+
+type UIConfig struct {
+	Enable *bool
 }
