@@ -56,7 +56,7 @@ func downloadTrivyDB(dbDir string, log log.Logger, updateInterval time.Duration)
 }
 
 func SetupSearchRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
-	l log.Logger,
+	authFunc mux.MiddlewareFunc, l log.Logger,
 ) {
 	// fork a new zerolog child to avoid data race
 	log := log.Logger{Logger: l.With().Caller().Timestamp().Logger()}
@@ -71,8 +71,10 @@ func SetupSearchRoutes(config *config.Config, router *mux.Router, storeControlle
 			resConfig = search.GetResolverConfig(log, storeController, false)
 		}
 
-		graphqlPrefix := router.PathPrefix(constants.ExtSearchPrefix).Methods("OPTIONS", "GET", "POST")
-		graphqlPrefix.Handler(gqlHandler.NewDefaultServer(gql_generated.NewExecutableSchema(resConfig)))
+		extRouter := router.PathPrefix(constants.ExtSearchPrefix).Subrouter()
+		extRouter.Use(authFunc)
+		extRouter.Methods("GET", "POST", "OPTIONS").
+			Handler(gqlHandler.NewDefaultServer(gql_generated.NewExecutableSchema(resConfig)))
 	}
 }
 
