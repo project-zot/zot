@@ -30,7 +30,7 @@ type OciLayoutUtils interface {
 	GetImagePlatform(imageInfo ispec.Image) (string, string)
 	GetImageVendor(imageInfo ispec.Image) string
 	GetImageManifestSize(repo string, manifestDigest godigest.Digest) int64
-	GetRepoLastUpdated(repo string) (time.Time, error)
+	GetRepoLastUpdated(repo string) (TagInfo, error)
 	GetExpandedRepoInfo(name string) (RepoInfo, error)
 	GetImageConfigInfo(repo string, manifestDigest godigest.Digest) (ispec.Image, error)
 }
@@ -323,15 +323,15 @@ func (olu BaseOciLayoutUtils) GetImageConfigSize(repo string, manifestDigest god
 	return imageBlobManifest.Config.Size
 }
 
-func (olu BaseOciLayoutUtils) GetRepoLastUpdated(repo string) (time.Time, error) {
+func (olu BaseOciLayoutUtils) GetRepoLastUpdated(repo string) (TagInfo, error) {
 	tagsInfo, err := olu.GetImageTagsWithTimestamp(repo)
 	if err != nil || len(tagsInfo) == 0 {
-		return time.Time{}, err
+		return TagInfo{}, err
 	}
 
 	latestTag := GetLatestTag(tagsInfo)
 
-	return latestTag.Timestamp, nil
+	return latestTag, nil
 }
 
 func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error) {

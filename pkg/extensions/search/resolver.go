@@ -211,9 +211,9 @@ func globalSearch(repoList []string, name, tag string, olu common.OciLayoutUtils
 		// made up of all manifests, configs and image layers
 		repoSize := int64(0)
 
-		lastUpdate, err := olu.GetRepoLastUpdated(repo)
+		lastUpdatedTag, err := olu.GetRepoLastUpdated(repo)
 		if err != nil {
-			log.Error().Err(err).Msgf("can't find latest update timestamp for repo: %s", repo)
+			log.Error().Err(err).Msgf("can't find latest updated tag for repo: %s", repo)
 		}
 
 		tagsInfo, err := olu.GetImageTagsWithTimestamp(repo)
@@ -229,6 +229,8 @@ func globalSearch(repoList []string, name, tag string, olu common.OciLayoutUtils
 
 			continue
 		}
+
+		var lastUpdatedImageSummary gql_generated.ImageSummary
 
 		repoPlatforms := make([]*gql_generated.OsArch, 0, len(tagsInfo))
 		repoVendors := make([]*string, 0, len(repoInfo.Manifests))
@@ -307,7 +309,7 @@ func globalSearch(repoList []string, name, tag string, olu common.OciLayoutUtils
 				repoPlatforms = append(repoPlatforms, osArch)
 				repoVendors = append(repoVendors, &vendor)
 
-				images = append(images, &gql_generated.ImageSummary{
+				imageSummary := gql_generated.ImageSummary{
 					RepoName:    &repo,
 					Tag:         &tag,
 					LastUpdated: &lastUpdated,
@@ -316,7 +318,13 @@ func globalSearch(repoList []string, name, tag string, olu common.OciLayoutUtils
 					Platform:    osArch,
 					Vendor:      &vendor,
 					Score:       &score,
-				})
+				}
+
+				if tagsInfo[i].Digest == lastUpdatedTag.Digest {
+					lastUpdatedImageSummary = imageSummary
+				}
+
+				images = append(images, &imageSummary)
 			}
 		}
 
@@ -329,11 +337,12 @@ func globalSearch(repoList []string, name, tag string, olu common.OciLayoutUtils
 
 			repos = append(repos, &gql_generated.RepoSummary{
 				Name:        &repo,
-				LastUpdated: &lastUpdate,
+				LastUpdated: &lastUpdatedTag.Timestamp,
 				Size:        &repoSize,
 				Platforms:   repoPlatforms,
 				Vendors:     repoVendors,
 				Score:       &index,
+				NewestTag:   &lastUpdatedImageSummary,
 			})
 		}
 	}

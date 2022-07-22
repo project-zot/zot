@@ -4,7 +4,6 @@ import (
 	"errors"
 	"strings"
 	"testing"
-	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 	. "github.com/smartystreets/goconvey/convey"
@@ -19,8 +18,8 @@ func TestGlobalSearch(t *testing.T) {
 	Convey("globalSearch", t, func() {
 		Convey("GetRepoLastUpdated fail", func() {
 			mockOlum := mocks.OciLayoutUtilsMock{
-				GetRepoLastUpdatedFn: func(repo string) (time.Time, error) {
-					return time.Time{}, ErrTestError
+				GetRepoLastUpdatedFn: func(repo string) (common.TagInfo, error) {
+					return common.TagInfo{}, ErrTestError
 				},
 			}
 
