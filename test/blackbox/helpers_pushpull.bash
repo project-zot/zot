@@ -36,6 +36,16 @@ function verify_prerequisites {
         echo "you need to install oras as a prerequisite to running the tests" >&3
         return 1
     fi
+
+    if [ ! command -v helm ] &>/dev/null; then
+        echo "you need to install helm as a prerequisite to running the tests" >&3
+        return 1
+    fi
+
+    if [ ! command -v regctl ] &>/dev/null; then
+        echo "you need to install regclient as a prerequisite to running the tests" >&3
+        return 1
+    fi
     return 0
 }
 
