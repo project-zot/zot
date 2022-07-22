@@ -11,6 +11,9 @@ STACKER := $(shell which stacker)
 GOLINTER := $(TOOLSDIR)/bin/golangci-lint
 GOLINTER_VERSION := v1.46.2
 NOTATION := $(TOOLSDIR)/bin/notation
+HELM := $(TOOLSDIR)/bin/helm
+ORAS := $(TOOLSDIR)/bin/oras
+REGCLIENT := $(TOOLSDIR)/bin/regctl
 BATS := $(TOOLSDIR)/bin/bats
 TESTDATA := $(TOP_LEVEL)/test/data
 OS ?= linux
@@ -100,6 +103,24 @@ $(NOTATION):
 	curl -Lo notation.tar.gz https://github.com/notaryproject/notation/releases/download/v0.7.1-alpha.1/notation_0.7.1-alpha.1_linux_amd64.tar.gz
 	tar xvzf notation.tar.gz -C $(TOOLSDIR)/bin  notation
 	rm notation.tar.gz
+
+$(ORAS):
+	mkdir -p $(TOOLSDIR)/bin
+	curl -Lo oras.tar.gz https://github.com/oras-project/oras/releases/download/v0.13.0/oras_0.13.0_linux_amd64.tar.gz
+	tar xvzf oras.tar.gz -C $(TOOLSDIR)/bin  oras
+	rm oras.tar.gz
+
+$(HELM):
+	mkdir -p $(TOOLSDIR)/bin
+	curl -Lo helm.tar.gz https://get.helm.sh/helm-v3.9.1-linux-amd64.tar.gz
+	tar xvzf helm.tar.gz -C $(TOOLSDIR)/bin linux-amd64/helm  --strip-components=1
+	rm helm.tar.gz
+
+$(REGCLIENT):
+	mkdir -p $(TOOLSDIR)/bin
+	curl -Lo regctl https://github.com/regclient/regclient/releases/download/v0.4.4/regctl-linux-amd64
+	cp regctl $(TOOLSDIR)/bin/regctl
+	chmod +x $(TOOLSDIR)/bin/regctl
 
 .PHONY: covhtml
 covhtml:
@@ -237,7 +258,7 @@ $(BATS):
 	rm -rf bats-core
 
 .PHONY: push-pull
-push-pull: binary check-skopeo $(BATS)
+push-pull: binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM)
 	$(BATS) --trace --print-output-on-failure test/blackbox/pushpull.bats
 
 .PHONY: push-pull-verbose

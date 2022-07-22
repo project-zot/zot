@@ -69,23 +69,83 @@ function teardown_file() {
 @test "push oras artifact" {
     echo "{\"name\":\"foo\",\"value\":\"bar\"}" > config.json
     echo "hello world" > artifact.txt
-    oras push --plain-http 127.0.0.1:8080/hello-artifact:v2 \
+    run oras push --plain-http 127.0.0.1:8080/hello-artifact:v2 \
         --manifest-config config.json:application/vnd.acme.rocket.config.v1+json artifact.txt:text/plain -d -v
-	rm -f artifact.txt
+    [ "$status" -eq 0 ]
+    rm -f artifact.txt
     rm -f config.json
 }
 
 @test "pull oras artifact" {
-    oras pull --plain-http 127.0.0.1:8080/hello-artifact:v2 -d -v
+    run oras pull --plain-http 127.0.0.1:8080/hello-artifact:v2 -d -v
+    [ "$status" -eq 0 ]
     grep -q "hello world" artifact.txt
     rm -f artifact.txt
 }
 
 @test "push helm chart" {
-    helm package ${BATS_FILE_TMPDIR}/helm-charts/charts/zot
-    helm push zot-0.1.0.tgz oci://localhost:8080/zot-chart
+    run helm package ${BATS_FILE_TMPDIR}/helm-charts/charts/zot
+    [ "$status" -eq 0 ]
+    run helm push zot-0.1.0.tgz oci://localhost:8080/zot-chart
+    [ "$status" -eq 0 ]
 }
 
 @test "pull helm chart" {
-    helm pull oci://localhost:8080/zot-chart/zot --version 0.1.0
+    run helm pull oci://localhost:8080/zot-chart/zot --version 0.1.0
+    [ "$status" -eq 0 ]
+}
+
+@test "copy image with regclient" {
+    run regctl registry set localhost:8080 --tls disabled
+    [ "$status" -eq 0 ]
+    run regctl image copy ocidir://${TEST_DATA_DIR}/golang:1.18 localhost:8080/test-regclient
+    [ "$status" -eq 0 ]
+}
+
+@test "list all images with regclient" {
+    run regctl repo ls localhost:8080
+    [ "$status" -eq 0 ]
+
+    found=0
+    for i in "${lines[@]}"
+    do
+
+        if [ "$i" = 'test-regclient' ]; then
+            found=1
+        fi
+    done
+    [ "$found" -eq 1 ]
+}
+
+@test "list tags with regclient" {
+    run regctl tag ls localhost:8080/test-regclient
+    [ "$status" -eq 0 ]
+
+    found=0
+    for i in "${lines[@]}"
+    do
+
+        if [ "$i" = 'latest' ]; then
+            found=1
+        fi
+    done
+    [ "$found" -eq 1 ]
+}
+
+@test "get and push manifest with regclient" {
+    manifest=$(regctl manifest get localhost:8080/test-regclient --format=raw-body)
+    run regctl manifest put localhost:8080/test-regclient:1.0.0 --format oci --content-type application/vnd.oci.image.manifest.v1+json --format oci <<EOF
+    $manifest
+EOF
+    [ "$status" -eq 0 ]
+}
+
+@test "get manifest with regclient" {
+    run regctl manifest get localhost:8080/test-regclient
+    [ "$status" -eq 0 ]
+}
+
+@test "pull image with regclient" {
+    run regctl image copy localhost:8080/test-regclient ocidir://${TEST_DATA_DIR}/golang:1.18
+    [ "$status" -eq 0 ]
 }
