@@ -33,7 +33,7 @@ func SetupGQLPlaygroundRoutes(conf *config.Config, router *mux.Router,
 	}
 
 	//nolint:lll
-	router.PathPrefix(constants.RoutePrefix + debugCst.GQLPlaygroundEndpoint).HandlerFunc(func(writer http.ResponseWriter, req *http.Request) {
+	router.PathPrefix(debugCst.GQLPlaygroundEndpoint).HandlerFunc(func(writer http.ResponseWriter, req *http.Request) {
 		writer.Header().Add("Content-Type", "text/html")
 
 		proto := ""

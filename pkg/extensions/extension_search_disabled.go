@@ -19,8 +19,8 @@ func EnableSearchExtension(config *config.Config, log log.Logger, storeControlle
 }
 
 // SetupSearchRoutes ...
-func SetupSearchRoutes(conf *config.Config, router *mux.Router,
-	storeController storage.StoreController, log log.Logger,
+func SetupSearchRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
+	log log.Logger,
 ) {
 	log.Warn().Msg("skipping setting up search routes because given zot binary doesn't include this feature," +
 		"please build a binary that does so")
