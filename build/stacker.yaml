@@ -43,7 +43,7 @@ build:
 "${{REPO_NAME:zot}}":
   from:
     type: docker
-    url: docker://gcr.io/distroless/base:latest-${{ARCH}}
+    url: docker://zothub.io/c3/base:jammy
   overlay_dirs:
     - source: ../.build/${{REPO_NAME}}/binary
       dest: /usr/local/bin
