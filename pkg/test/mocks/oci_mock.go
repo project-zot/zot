@@ -20,7 +20,7 @@ type OciLayoutUtilsMock struct {
 	GetImageVendorFn            func(imageInfo ispec.Image) string
 	GetImageManifestSizeFn      func(repo string, manifestDigest godigest.Digest) int64
 	GetImageConfigSizeFn        func(repo string, manifestDigest godigest.Digest) int64
-	GetRepoLastUpdatedFn        func(repo string) (time.Time, error)
+	GetRepoLastUpdatedFn        func(repo string) (common.TagInfo, error)
 	GetExpandedRepoInfoFn       func(name string) (common.RepoInfo, error)
 	GetImageConfigInfoFn        func(repo string, manifestDigest godigest.Digest) (ispec.Image, error)
 }
@@ -105,12 +105,12 @@ func (olum OciLayoutUtilsMock) GetImageConfigSize(repo string, manifestDigest go
 	return 0
 }
 
-func (olum OciLayoutUtilsMock) GetRepoLastUpdated(repo string) (time.Time, error) {
+func (olum OciLayoutUtilsMock) GetRepoLastUpdated(repo string) (common.TagInfo, error) {
 	if olum.GetRepoLastUpdatedFn != nil {
 		return olum.GetRepoLastUpdatedFn(repo)
 	}
 
-	return time.Time{}, nil
+	return common.TagInfo{}, nil
 }
 
 func (olum OciLayoutUtilsMock) GetExpandedRepoInfo(name string) (common.RepoInfo, error) {

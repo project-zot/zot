@@ -143,6 +143,7 @@ type ComplexityRoot struct {
 	RepoSummary struct {
 		LastUpdated func(childComplexity int) int
 		Name        func(childComplexity int) int
+		NewestTag   func(childComplexity int) int
 		Platforms   func(childComplexity int) int
 		Score       func(childComplexity int) int
 		Size        func(childComplexity int) int
@@ -596,6 +597,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.RepoSummary.Name(childComplexity), true
 
+	case "RepoSummary.NewestTag":
+		if e.complexity.RepoSummary.NewestTag == nil {
+			break
+		}
+
+		return e.complexity.RepoSummary.NewestTag(childComplexity), true
+
 	case "RepoSummary.Platforms":
 		if e.complexity.RepoSummary.Platforms == nil {
 			break
@@ -794,6 +802,7 @@ type RepoSummary {
      Platforms: [OsArch]
      Vendors: [String]
      Score: Int
+     NewestTag: ImageSummary
 }
 
 # Currently the same as LayerInfo, we can refactor later
@@ -1392,6 +1401,8 @@ func (ec *executionContext) fieldContext_GlobalSearchResult_Repos(ctx context.Co
 				return ec.fieldContext_RepoSummary_Vendors(ctx, field)
 			case "Score":
 				return ec.fieldContext_RepoSummary_Score(ctx, field)
+			case "NewestTag":
+				return ec.fieldContext_RepoSummary_NewestTag(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type RepoSummary", field.Name)
 		},
@@ -3735,6 +3746,65 @@ func (ec *executionContext) fieldContext_RepoSummary_Score(ctx context.Context, 
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _RepoSummary_NewestTag(ctx context.Context, field graphql.CollectedField, obj *RepoSummary) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_RepoSummary_NewestTag(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.NewestTag, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*ImageSummary)
+	fc.Result = res
+	return ec.marshalOImageSummary2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummary(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_RepoSummary_NewestTag(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "RepoSummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "RepoName":
+				return ec.fieldContext_ImageSummary_RepoName(ctx, field)
+			case "Tag":
+				return ec.fieldContext_ImageSummary_Tag(ctx, field)
+			case "LastUpdated":
+				return ec.fieldContext_ImageSummary_LastUpdated(ctx, field)
+			case "IsSigned":
+				return ec.fieldContext_ImageSummary_IsSigned(ctx, field)
+			case "Size":
+				return ec.fieldContext_ImageSummary_Size(ctx, field)
+			case "Platform":
+				return ec.fieldContext_ImageSummary_Platform(ctx, field)
+			case "Vendor":
+				return ec.fieldContext_ImageSummary_Vendor(ctx, field)
+			case "Score":
+				return ec.fieldContext_ImageSummary_Score(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
 	}
 	return fc, nil
@@ -6337,6 +6407,10 @@ func (ec *executionContext) _RepoSummary(ctx context.Context, sel ast.SelectionS
 		case "Score":
 
 			out.Values[i] = ec._RepoSummary_Score(ctx, field, obj)
+
+		case "NewestTag":
+
+			out.Values[i] = ec._RepoSummary_NewestTag(ctx, field, obj)
 
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))

@@ -95,12 +95,13 @@ type RepoInfo struct {
 }
 
 type RepoSummary struct {
-	Name        *string    `json:"Name"`
-	LastUpdated *time.Time `json:"LastUpdated"`
-	Size        *string    `json:"Size"`
-	Platforms   []*OsArch  `json:"Platforms"`
-	Vendors     []*string  `json:"Vendors"`
-	Score       *int       `json:"Score"`
+	Name        *string       `json:"Name"`
+	LastUpdated *time.Time    `json:"LastUpdated"`
+	Size        *string       `json:"Size"`
+	Platforms   []*OsArch     `json:"Platforms"`
+	Vendors     []*string     `json:"Vendors"`
+	Score       *int          `json:"Score"`
+	NewestTag   *ImageSummary `json:"NewestTag"`
 }
 
 type TagInfo struct {

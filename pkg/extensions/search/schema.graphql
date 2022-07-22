@@ -95,6 +95,7 @@ type RepoSummary {
      Platforms: [OsArch]
      Vendors: [String]
      Score: Int
+     NewestTag: ImageSummary
 }
 
 # Currently the same as LayerInfo, we can refactor later

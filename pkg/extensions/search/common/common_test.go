@@ -87,15 +87,17 @@ type ImageSummary struct {
 	Platform    OsArch    `json:"platform"`
 	Vendor      string    `json:"vendor"`
 	Score       int       `json:"score"`
+	IsSigned    bool      `json:"isSigned"`
 }
 
 type RepoSummary struct {
-	Name        string    `json:"name"`
-	LastUpdated time.Time `json:"lastUpdated"`
-	Size        string    `json:"size"`
-	Platforms   []OsArch  `json:"platforms"`
-	Vendors     []string  `json:"vendors"`
-	Score       int       `json:"score"`
+	Name        string       `json:"name"`
+	LastUpdated time.Time    `json:"lastUpdated"`
+	Size        string       `json:"size"`
+	Platforms   []OsArch     `json:"platforms"`
+	Vendors     []string     `json:"vendors"`
+	Score       int          `json:"score"`
+	NewestTag   ImageSummary `json:"newestTag"`
 }
 
 type LayerSummary struct {
@@ -797,18 +799,37 @@ func TestGlobalSearch(t *testing.T) {
 						Tag
 						LastUpdated
 						Size
+						IsSigned
+						Vendor
 						Score
+						Platform {
+							Os
+							Arch
+						}
 					}
 					Repos {
 						Name
       					LastUpdated
       					Size
       					Platforms {
-      					  Os
-      					  Arch
+      						Os
+      						Arch
       					}
       					Vendors
 						Score
+						NewestTag {
+							RepoName
+							Tag
+							LastUpdated
+							Size
+							IsSigned
+							Vendor
+							Score
+							Platform {
+								Os
+								Arch
+							}
+						}
 					}
 					Layers {
 						Digest
@@ -826,10 +847,64 @@ func TestGlobalSearch(t *testing.T) {
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
 
+		// There are 2 repos: zot-cve-test and zot-test, each having an image with tag 0.0.1
+		imageStore := ctlr.StoreController.DefaultStore
+
+		repos, err := imageStore.GetRepositories()
+		So(err, ShouldBeNil)
+		expectedRepoCount := len(repos)
+
+		allExpectedTagMap := make(map[string][]string, expectedRepoCount)
+		expectedImageCount := 0
+		for _, repo := range repos {
+			tags, err := imageStore.GetImageTags(repo)
+			So(err, ShouldBeNil)
+
+			allExpectedTagMap[repo] = tags
+			expectedImageCount += len(tags)
+		}
+
+		// Make sure the repo/image counts match before comparing actual content
 		So(responseStruct.GlobalSearchResult.GlobalSearch.Images, ShouldNotBeNil)
-		So(len(responseStruct.GlobalSearchResult.GlobalSearch.Images), ShouldNotBeEmpty)
-		So(len(responseStruct.GlobalSearchResult.GlobalSearch.Repos), ShouldNotBeEmpty)
+		t.Logf("returned images: %v", responseStruct.GlobalSearchResult.GlobalSearch.Images)
+		So(len(responseStruct.GlobalSearchResult.GlobalSearch.Images), ShouldEqual, expectedImageCount)
+		t.Logf("returned repos: %v", responseStruct.GlobalSearchResult.GlobalSearch.Repos)
+		So(len(responseStruct.GlobalSearchResult.GlobalSearch.Repos), ShouldEqual, expectedRepoCount)
+		t.Logf("returned layers: %v", responseStruct.GlobalSearchResult.GlobalSearch.Layers)
 		So(len(responseStruct.GlobalSearchResult.GlobalSearch.Layers), ShouldNotBeEmpty)
+
+		newestImageMap := make(map[string]ImageSummary)
+		for _, image := range responseStruct.GlobalSearchResult.GlobalSearch.Images {
+			// Make sure all returned results are supposed to be in the repo
+			So(allExpectedTagMap[image.RepoName], ShouldContain, image.Tag)
+			// Identify the newest image in each repo
+			if newestImage, ok := newestImageMap[image.RepoName]; ok {
+				if newestImage.LastUpdated.Before(image.LastUpdated) {
+					newestImageMap[image.RepoName] = image
+				}
+			} else {
+				newestImageMap[image.RepoName] = image
+			}
+		}
+		t.Logf("expected results for newest images in repos: %v", newestImageMap)
+
+		for _, repo := range responseStruct.GlobalSearchResult.GlobalSearch.Repos {
+			image := newestImageMap[repo.Name]
+			So(repo.Name, ShouldEqual, image.RepoName)
+			So(repo.LastUpdated, ShouldEqual, image.LastUpdated)
+			So(repo.Size, ShouldEqual, image.Size)
+			So(repo.Vendors[0], ShouldEqual, image.Vendor)
+			So(repo.Platforms[0].Os, ShouldEqual, image.Platform.Os)
+			So(repo.Platforms[0].Arch, ShouldEqual, image.Platform.Arch)
+			So(repo.NewestTag.RepoName, ShouldEqual, image.RepoName)
+			So(repo.NewestTag.Tag, ShouldEqual, image.Tag)
+			So(repo.NewestTag.LastUpdated, ShouldEqual, image.LastUpdated)
+			So(repo.NewestTag.Size, ShouldEqual, image.Size)
+			So(repo.NewestTag.IsSigned, ShouldEqual, image.IsSigned)
+			So(repo.NewestTag.Vendor, ShouldEqual, image.Vendor)
+			So(repo.NewestTag.Platform.Os, ShouldEqual, image.Platform.Os)
+			So(repo.NewestTag.Platform.Arch, ShouldEqual, image.Platform.Arch)
+		}
 
 		// GetRepositories fail
 
