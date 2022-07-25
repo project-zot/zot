@@ -9,6 +9,9 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"path"
+	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -106,9 +109,11 @@ func TestSressTooManyOpenFiles(t *testing.T) {
 		err = cfgfile.Close()
 		So(err, ShouldBeNil)
 
-		cmd := fmt.Sprintf("skopeo copy --format=oci --dest-tls-verify=false "+
-			"--insecure-policy docker://public.ecr.aws/zomato/alpine:3.11.3 dir:%s/alpine", dir)
-		out, err := exec.Command("bash", "-c", cmd).Output()
+		args := []string{
+			"copy", "--format=oci", "--dest-tls-verify=false", "--insecure-policy",
+			"docker://public.ecr.aws/zomato/alpine:3.11.3", path.Join("dir:", dir, "/alpine"),
+		}
+		out, err := exec.Command("skopeo", args...).Output()
 		if err != nil {
 			fmt.Printf("\nCopy skopeo docker image:\n%s\n", out)
 			fmt.Printf("\nerror on skopeo copy:\n%s\n", err)
@@ -128,6 +133,7 @@ func TestSressTooManyOpenFiles(t *testing.T) {
 			}()
 		}
 		wg.Wait()
+		time.Sleep(10 * time.Second)
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
@@ -163,11 +169,15 @@ func TestSressTooManyOpenFiles(t *testing.T) {
 
 func worker(id int, zotPort, rootDir string) {
 	start := time.Now()
-
-	for i := 0; ; i++ {
-		cmd := fmt.Sprintf("skopeo copy --format=oci --insecure-policy --dest-tls-verify=false "+
-			"dir:%s/alpine  docker://localhost:%s/client%d:%d", rootDir, zotPort, id, i)
-		err := exec.Command("bash", "-c", cmd).Run()
+	// fmt.Printf("\nstarting time is %v\n", start)
+	for i := 0; i < 10; i++ {
+		args := []string{
+			"copy", "--format=oci", "--dest-tls-verify=false", "--insecure-policy",
+			path.Join("dir:", rootDir, "/alpine"),
+			strings.Join([]string{"docker://localhost:", zotPort, "/client", strconv.Itoa(id), ":", strconv.Itoa(i)}, ""),
+		}
+		cmd := exec.Command("skopeo", args...)
+		err := cmd.Start()
 		if err != nil { // nolint: wsl
 			continue // we expect clients to receive errors due to FD limit reached on server
 		}
