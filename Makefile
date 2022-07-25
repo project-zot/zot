@@ -76,6 +76,10 @@ test: check-skopeo $(TESTDATA) $(NOTATION)
 	go test -failfast -tags dev,containers_image_openpgp -v -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-dev-minimal.txt -covermode=atomic ./pkg/test/... ./pkg/storage/... ./pkg/extensions/sync/... -run ^TestInject
 	go test -failfast -tags stress,$(EXTENSIONS),containers_image_openpgp -v -trimpath -race -timeout 15m ./pkg/cli/stress_test.go
 
+.PHONY: stress
+stress: check-skopeo $(TESTDATA) $(NOTATION)
+	go test -failfast -tags stress,$(EXTENSIONS),containers_image_openpgp -v -trimpath -race -timeout 15m ./pkg/cli/stress_test.go
+
 .PHONY: privileged-test
 privileged-test: check-skopeo $(TESTDATA) $(NOTATION)
 	go test -failfast -tags needprivileges,$(EXTENSIONS),containers_image_openpgp -v -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-dev-needprivileges.txt -covermode=atomic ./pkg/storage/... ./pkg/cli/... -run ^TestElevatedPrivileges

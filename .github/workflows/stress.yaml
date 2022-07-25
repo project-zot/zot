@@ -1,0 +1,33 @@
+name: "Stress test"
+on:
+  pull_request:
+    branches: [main]
+
+permissions: read-all
+
+jobs:
+  client-tools:
+    name: Check client tools
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
+        with:
+          go-version: 1.18.x
+      - name: Install dependencies
+        run: |
+          cd $GITHUB_WORKSPACE
+          go get -u github.com/swaggo/swag/cmd/swag
+          go mod download
+          sudo apt-get update
+          sudo apt-get -y install rpm uidmap
+          # install skopeo
+          . /etc/os-release
+          echo "deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_${VERSION_ID}/ /" | sudo tee /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list
+          curl -L https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_${VERSION_ID}/Release.key | sudo apt-key add -
+          sudo apt-get update
+          sudo apt-get -y upgrade
+          sudo apt-get -y install skopeo
+      - name: Run stress test
+        run: |
+            make stress
