@@ -843,6 +843,8 @@ func (is *ImageStoreLocal) NewBlobUpload(repo string) (string, error) {
 
 	file, err := os.OpenFile(blobUploadPath, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, DefaultFilePerms)
 	if err != nil {
+		is.log.Error().Err(err).Msg("failed to open file")
+		
 		return "", zerr.ErrRepoNotFound
 	}
 	defer file.Close()
