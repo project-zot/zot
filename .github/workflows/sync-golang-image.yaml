@@ -11,7 +11,7 @@ env:
 
 permissions:
   contents: read
-  packages: read | write
+  packages: read|write
 
 jobs:
   sync-golang:
