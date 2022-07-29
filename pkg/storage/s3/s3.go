@@ -1023,7 +1023,7 @@ func (is *ObjectStorage) checkCacheBlob(digest godigest.Digest) (string, error) 
 	return dstRecord, nil
 }
 
-func (is *ObjectStorage) copyBlob(repo string, blobPath string, dstRecord string) (int64, error) {
+func (is *ObjectStorage) copyBlob(repo string, blobPath, dstRecord string) (int64, error) {
 	if err := is.initRepo(repo); err != nil {
 		is.log.Error().Err(err).Str("repo", repo).Msg("unable to initialize an empty repo")
 

@@ -6,10 +6,10 @@ package search
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/vektah/gqlparser/v2/gqlerror"
 	"zotregistry.io/zot/pkg/extensions/search/common"
+	"zotregistry.io/zot/pkg/extensions/search/convert"
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
 )
 
@@ -95,7 +95,13 @@ func (r *queryResolver) ImageListForCve(ctx context.Context, id string) ([]*gql_
 			}
 
 			isSigned := olu.CheckManifestSignature(repo, imageByCVE.Digest)
-			imageInfo := BuildImageInfo(repo, imageByCVE.Tag, imageByCVE.Digest, imageByCVE.Manifest, imageConfig, isSigned)
+			imageInfo := convert.BuildImageInfo(
+				repo, imageByCVE.Tag,
+				imageByCVE.Digest,
+				imageByCVE.Manifest,
+				imageConfig,
+				isSigned,
+			)
 
 			affectedImages = append(
 				affectedImages,
@@ -135,7 +141,7 @@ func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, im
 		}
 
 		isSigned := olu.CheckManifestSignature(image, digest)
-		imageInfo := BuildImageInfo(image, tag.Name, digest, manifest, imageConfig, isSigned)
+		imageInfo := convert.BuildImageInfo(image, tag.Name, digest, manifest, imageConfig, isSigned)
 
 		unaffectedImages = append(unaffectedImages, imageInfo)
 	}
@@ -192,41 +198,12 @@ func (r *queryResolver) ImageListForDigest(ctx context.Context, id string) ([]*g
 }
 
 // RepoListWithNewestImage is the resolver for the RepoListWithNewestImage field.
-func (r *queryResolver) RepoListWithNewestImage(ctx context.Context) ([]*gql_generated.RepoSummary, error) {
+func (r *queryResolver) RepoListWithNewestImage(ctx context.Context, requestedPage *gql_generated.PageInput) ([]*gql_generated.RepoSummary, error) {
 	r.log.Info().Msg("extension api: finding image list")
 
-	olu := common.NewBaseOciLayoutUtils(r.storeController, r.log)
-
-	reposSummary := make([]*gql_generated.RepoSummary, 0)
-
-	repoList := []string{}
-
-	defaultRepoList, err := r.storeController.DefaultStore.GetRepositories()
+	reposSummary, err := repoListWithNewestImage(ctx, r.cveInfo, r.log, requestedPage, r.repoDB)
 	if err != nil {
-		r.log.Error().Err(err).Msg("extension api: error extracting default store repo list")
-
-		return reposSummary, err
-	}
-
-	if len(defaultRepoList) > 0 {
-		repoList = append(repoList, defaultRepoList...)
-	}
-
-	subStore := r.storeController.SubStore
-	for _, store := range subStore {
-		subRepoList, err := store.GetRepositories()
-		if err != nil {
-			r.log.Error().Err(err).Msg("extension api: error extracting substore repo list")
-
-			return reposSummary, err
-		}
-
-		repoList = append(repoList, subRepoList...)
-	}
-
-	reposSummary, err = repoListWithNewestImage(ctx, repoList, olu, r.cveInfo, r.log)
-	if err != nil {
-		r.log.Error().Err(err).Msg("extension api: error extracting substore image list")
+		r.log.Error().Err(err).Msg("unable to retrieve repo list")
 
 		return reposSummary, err
 	}
@@ -273,137 +250,27 @@ func (r *queryResolver) ImageList(ctx context.Context, repo string) ([]*gql_gene
 
 // ExpandedRepoInfo is the resolver for the ExpandedRepoInfo field.
 func (r *queryResolver) ExpandedRepoInfo(ctx context.Context, repo string) (*gql_generated.RepoInfo, error) {
-	olu := common.NewBaseOciLayoutUtils(r.storeController, r.log)
+	repoInfo, err := expandedRepoInfo(ctx, repo, r.repoDB, r.cveInfo, r.log)
 
-	origRepoInfo, err := olu.GetExpandedRepoInfo(repo)
-	if err != nil {
-		r.log.Error().Err(err).Msgf("error getting repo '%s'", repo)
-
-		return &gql_generated.RepoInfo{}, err
-	}
-
-	// repos type is of common deep copy this to search
-	repoInfo := &gql_generated.RepoInfo{}
-
-	images := make([]*gql_generated.ImageSummary, 0)
-
-	summary := &gql_generated.RepoSummary{}
-
-	summary.LastUpdated = &origRepoInfo.Summary.LastUpdated
-	summary.Name = &origRepoInfo.Summary.Name
-	summary.Platforms = []*gql_generated.OsArch{}
-	summary.NewestImage = &gql_generated.ImageSummary{
-		RepoName:     &origRepoInfo.Summary.NewestImage.RepoName,
-		Tag:          &origRepoInfo.Summary.NewestImage.Tag,
-		LastUpdated:  &origRepoInfo.Summary.NewestImage.LastUpdated,
-		Digest:       &origRepoInfo.Summary.NewestImage.Digest,
-		ConfigDigest: &origRepoInfo.Summary.NewestImage.ConfigDigest,
-		IsSigned:     &origRepoInfo.Summary.NewestImage.IsSigned,
-		Size:         &origRepoInfo.Summary.NewestImage.Size,
-		Platform: &gql_generated.OsArch{
-			Os:   &origRepoInfo.Summary.NewestImage.Platform.Os,
-			Arch: &origRepoInfo.Summary.NewestImage.Platform.Arch,
-		},
-		Vendor:        &origRepoInfo.Summary.NewestImage.Vendor,
-		Score:         &origRepoInfo.Summary.NewestImage.Score,
-		Description:   &origRepoInfo.Summary.NewestImage.Description,
-		Title:         &origRepoInfo.Summary.NewestImage.Title,
-		Documentation: &origRepoInfo.Summary.NewestImage.Documentation,
-		Licenses:      &origRepoInfo.Summary.NewestImage.Licenses,
-		Labels:        &origRepoInfo.Summary.NewestImage.Labels,
-		Source:        &origRepoInfo.Summary.NewestImage.Source,
-	}
-
-	for _, platform := range origRepoInfo.Summary.Platforms {
-		platform := platform
-
-		summary.Platforms = append(summary.Platforms, &gql_generated.OsArch{
-			Os:   &platform.Os,
-			Arch: &platform.Arch,
-		})
-	}
-
-	summary.Size = &origRepoInfo.Summary.Size
-
-	for _, vendor := range origRepoInfo.Summary.Vendors {
-		vendor := vendor
-		summary.Vendors = append(summary.Vendors, &vendor)
-	}
-
-	score := -1 // score not relevant for this query
-	summary.Score = &score
-
-	for _, image := range origRepoInfo.ImageSummaries {
-		tag := image.Tag
-		digest := image.Digest
-		configDigest := image.ConfigDigest
-		isSigned := image.IsSigned
-		size := image.Size
-
-		imageSummary := &gql_generated.ImageSummary{
-			Tag:          &tag,
-			Digest:       &digest,
-			ConfigDigest: &configDigest,
-			IsSigned:     &isSigned,
-			RepoName:     &repo,
-		}
-
-		layers := make([]*gql_generated.LayerSummary, 0)
-
-		for _, l := range image.Layers {
-			size := l.Size
-			digest := l.Digest
-
-			layerInfo := &gql_generated.LayerSummary{Digest: &digest, Size: &size}
-
-			layers = append(layers, layerInfo)
-		}
-
-		imageSummary.Layers = layers
-		imageSummary.Size = &size
-		images = append(images, imageSummary)
-	}
-
-	repoInfo.Summary = summary
-	repoInfo.Images = images
-
-	return repoInfo, nil
+	return repoInfo, err
 }
 
 // GlobalSearch is the resolver for the GlobalSearch field.
-func (r *queryResolver) GlobalSearch(ctx context.Context, query string) (*gql_generated.GlobalSearchResult, error) {
-	query = cleanQuerry(query)
-	defaultStore := r.storeController.DefaultStore
-	olu := common.NewBaseOciLayoutUtils(r.storeController, r.log)
-
-	var name, tag string
-
-	_, err := fmt.Sscanf(query, "%s %s", &name, &tag)
-	if err != nil {
-		name = query
-	}
-
-	repoList, err := defaultStore.GetRepositories()
-	if err != nil {
-		r.log.Error().Err(err).Msg("unable to search repositories")
-
+func (r *queryResolver) GlobalSearch(ctx context.Context, query string, filter *gql_generated.Filter, requestedPage *gql_generated.PageInput) (*gql_generated.GlobalSearchResult, error) {
+	if err := validateGlobalSearchInput(query, filter, requestedPage); err != nil {
 		return &gql_generated.GlobalSearchResult{}, err
 	}
 
-	availableRepos, err := userAvailableRepos(ctx, repoList)
-	if err != nil {
-		r.log.Error().Err(err).Msg("unable to filter user available repositories")
+	query = cleanQuery(query)
+	filter = cleanFilter(filter)
 
-		return &gql_generated.GlobalSearchResult{}, err
-	}
-
-	repos, images, layers := globalSearch(availableRepos, name, tag, olu, r.cveInfo, r.log)
+	repos, images, layers, err := globalSearch(ctx, query, r.repoDB, filter, requestedPage, r.cveInfo, r.log)
 
 	return &gql_generated.GlobalSearchResult{
 		Images: images,
 		Repos:  repos,
 		Layers: layers,
-	}, nil
+	}, err
 }
 
 // DependencyListForImage is the resolver for the DependencyListForImage field.
@@ -563,23 +430,12 @@ func (r *queryResolver) BaseImageList(ctx context.Context, image string) ([]*gql
 // Image is the resolver for the Image field.
 func (r *queryResolver) Image(ctx context.Context, image string) (*gql_generated.ImageSummary, error) {
 	repo, tag := common.GetImageDirAndTag(image)
-	layoutUtils := common.NewBaseOciLayoutUtils(r.storeController, r.log)
 
 	if tag == "" {
 		return &gql_generated.ImageSummary{}, gqlerror.Errorf("no reference provided")
 	}
 
-	digest, manifest, imageConfig, err := extractImageDetails(ctx, layoutUtils, repo, tag, r.log)
-	if err != nil {
-		r.log.Error().Err(err).Msg("unable to get image details")
-
-		return nil, err
-	}
-
-	isSigned := layoutUtils.CheckManifestSignature(repo, digest)
-	result := BuildImageInfo(repo, tag, digest, *manifest, *imageConfig, isSigned)
-
-	return result, nil
+	return getImageSummary(ctx, repo, tag, r.repoDB, r.cveInfo, r.log)
 }
 
 // Referrers is the resolver for the Referrers field.
