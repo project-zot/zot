@@ -5,7 +5,6 @@ package search
 
 import (
 	"context"
-	"fmt"
 
 	godigest "github.com/opencontainers/go-digest"
 	"zotregistry.io/zot/pkg/extensions/search/common"
@@ -358,39 +357,16 @@ func (r *queryResolver) ExpandedRepoInfo(ctx context.Context, repo string) (*gql
 }
 
 // GlobalSearch is the resolver for the GlobalSearch field.
-func (r *queryResolver) GlobalSearch(ctx context.Context, query string) (*gql_generated.GlobalSearchResult, error) {
+func (r *queryResolver) GlobalSearch(ctx context.Context, query string, filter *gql_generated.Filter, requestedPage *gql_generated.PageInput) (*gql_generated.GlobalSearchResult, error) {
 	query = cleanQuerry(query)
-	defaultStore := r.storeController.DefaultStore
-	olu := common.NewBaseOciLayoutUtils(r.storeController, r.log)
 
-	var name, tag string
-
-	_, err := fmt.Sscanf(query, "%s %s", &name, &tag)
-	if err != nil {
-		name = query
-	}
-
-	repoList, err := defaultStore.GetRepositories()
-	if err != nil {
-		r.log.Error().Err(err).Msg("unable to search repositories")
-
-		return &gql_generated.GlobalSearchResult{}, err
-	}
-
-	availableRepos, err := userAvailableRepos(ctx, repoList)
-	if err != nil {
-		r.log.Error().Err(err).Msg("unable to filter user available repositories")
-
-		return &gql_generated.GlobalSearchResult{}, err
-	}
-
-	repos, images, layers := globalSearch(availableRepos, name, tag, olu, r.cveInfo, r.log)
+	repos, images, layers, err := globalSearch(ctx, query, r.repoDB, filter, requestedPage, r.cveInfo, r.log)
 
 	return &gql_generated.GlobalSearchResult{
 		Images: images,
 		Repos:  repos,
 		Layers: layers,
-	}, nil
+	}, err
 }
 
 // DependencyListForImage is the resolver for the DependencyListForImage field.

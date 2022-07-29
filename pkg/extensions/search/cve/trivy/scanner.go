@@ -166,7 +166,7 @@ func (scanner Scanner) IsImageFormatScannable(image string) (bool, error) {
 
 		for _, imageLayer := range imageLayers {
 			switch imageLayer.MediaType {
-			case regTypes.OCILayer, regTypes.DockerLayer:
+			case regTypes.OCILayer, regTypes.OCIUncompressedLayer, regTypes.DockerLayer:
 				return true, nil
 
 			default:

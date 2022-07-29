@@ -27,6 +27,7 @@ type RepoInfo {
 # Search results in all repos/images/layers
 # There will be other more structures for more detailed information
 type GlobalSearchResult {
+    Page: PageInfo
     Images: [ImageSummary]
     Repos: [RepoSummary]
     Layers: [LayerSummary]
@@ -48,7 +49,7 @@ type ImageSummary {
     DownloadCount: Int
     Layers: [LayerSummary]
     Description: String
-    Licenses: String
+    Licenses: String  #  The value of the annotation if present, 'unknown' otherwise).
     Labels: String
     Title: String
     Source: String
@@ -70,10 +71,11 @@ type RepoSummary {
     Platforms: [OsArch]
     Vendors: [String]
     Score: Int
-    NewestImage: ImageSummary
+    NewestImage: ImageSummary # Newest based on created timestamp
     DownloadCount: Int
     StarCount: Int
     IsBookmarked: Boolean
+    IsStarred: Boolean
 }
 
 # Currently the same as LayerInfo, we can refactor later
@@ -114,6 +116,35 @@ type OsArch {
     Arch: String
 }
 
+enum SortCriteria {
+    RELEVANCE
+    UPDATE_TIME
+    ALPHABETIC_ASC
+    ALPHABETIC_DSC
+    STARS
+    DOWNLOADS
+}
+
+type PageInfo {
+    ObjectCount: Int!
+    PreviousPage: Int
+    NextPage: Int
+    Pages: Int
+}
+
+# Pagination parameters
+input PageInput {
+    limit: Int
+    offset: Int
+    sortBy: SortCriteria
+}
+
+input Filter {
+    Os: String
+    Arch: String
+    HasToBeSigned: Boolean
+}
+
 type Query {
     CVEListForImage(image: String!): CVEResultForImage!
     ImageListForCVE(id: String!): [ImageSummary!]
@@ -122,7 +153,7 @@ type Query {
     RepoListWithNewestImage: [RepoSummary!]!  # Newest based on created timestamp
     ImageList(repo: String!): [ImageSummary!]
     ExpandedRepoInfo(repo: String!): RepoInfo!
-    GlobalSearch(query: String!): GlobalSearchResult!
+    GlobalSearch(query: String!, filter: Filter, requestedPage: PageInput): GlobalSearchResult!  # Return all images/repos/layers which match the query
     DerivedImageList(image: String!): [ImageSummary!]
     BaseImageList(image: String!): [ImageSummary!]
 }

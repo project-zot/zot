@@ -389,8 +389,8 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error)
 		return RepoInfo{}, err
 	}
 
-	repoPlatforms := make([]OsArch, 0)
-	repoVendors := make([]string, 0, len(manifestList))
+	repoVendorsSet := make(map[string]bool, len(manifestList))
+	repoPlatformsSet := make(map[string]OsArch, len(manifestList))
 
 	var lastUpdatedImageSummary ImageSummary
 
@@ -427,13 +427,16 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error)
 			continue
 		}
 
-		os, arch := olu.GetImagePlatform(imageConfigInfo)
+		opSys, arch := olu.GetImagePlatform(imageConfigInfo)
 		osArch := OsArch{
-			Os:   os,
+			Os:   opSys,
 			Arch: arch,
 		}
 
-		repoPlatforms = append(repoPlatforms, osArch)
+		if opSys != "" || arch != "" {
+			osArchString := strings.TrimSpace(fmt.Sprintf("%s %s", opSys, arch))
+			repoPlatformsSet[osArchString] = osArch
+		}
 
 		layers := make([]Layer, 0)
 
@@ -456,7 +459,9 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error)
 		// get image info from manifest annotation, if not found get from image config labels.
 		annotations := GetAnnotations(manifest.Annotations, imageConfigInfo.Config.Labels)
 
-		repoVendors = append(repoVendors, annotations.Vendor)
+		if annotations.Vendor != "" {
+			repoVendorsSet[annotations.Vendor] = true
+		}
 
 		size := strconv.Itoa(int(imageSize))
 		manifestDigest := man.Digest.Hex()
@@ -498,6 +503,19 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error)
 	}
 
 	size := strconv.FormatInt(repoSize, 10)
+
+	repoPlatforms := make([]OsArch, 0, len(repoPlatformsSet))
+
+	for _, osArch := range repoPlatformsSet {
+		repoPlatforms = append(repoPlatforms, osArch)
+	}
+
+	repoVendors := make([]string, 0, len(repoVendorsSet))
+
+	for vendor := range repoVendorsSet {
+		vendor := vendor
+		repoVendors = append(repoVendors, vendor)
+	}
 
 	summary := RepoSummary{
 		Name:        name,

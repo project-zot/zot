@@ -26,6 +26,7 @@ type StorageConfig struct {
 	GCDelay       time.Duration
 	GCInterval    time.Duration
 	StorageDriver map[string]interface{} `mapstructure:",omitempty"`
+	RepoDBDriver  map[string]interface{} `mapstructure:",omitempty"`
 }
 
 type TLSConfig struct {
@@ -101,6 +102,7 @@ type GlobalStorageConfig struct {
 	RootDirectory string
 	StorageDriver map[string]interface{} `mapstructure:",omitempty"`
 	SubPaths      map[string]StorageConfig
+	RepoDBDriver  map[string]interface{} `mapstructure:",omitempty"`
 }
 
 type AccessControlConfig struct {

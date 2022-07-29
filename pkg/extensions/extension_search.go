@@ -16,6 +16,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/repodb"
 )
 
 // We need this object to be a singleton as read/writes in the CVE DB may
@@ -62,7 +63,7 @@ func downloadTrivyDB(log log.Logger, updateInterval time.Duration) error {
 }
 
 func SetupSearchRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
-	l log.Logger,
+	searchDB repodb.RepoDB, l log.Logger,
 ) {
 	// fork a new zerolog child to avoid data race
 	log := log.Logger{Logger: l.With().Caller().Timestamp().Logger()}
@@ -78,9 +79,9 @@ func SetupSearchRoutes(config *config.Config, router *mux.Router, storeControlle
 				cveInfo = cveinfo.NewCVEInfo(storeController, log)
 			}
 
-			resConfig = search.GetResolverConfig(log, storeController, cveInfo)
+			resConfig = search.GetResolverConfig(log, storeController, searchDB, cveInfo)
 		} else {
-			resConfig = search.GetResolverConfig(log, storeController, nil)
+			resConfig = search.GetResolverConfig(log, storeController, searchDB, nil)
 		}
 
 		graphqlPrefix := router.PathPrefix(constants.ExtSearchPrefix).Methods("OPTIONS", "GET", "POST")
