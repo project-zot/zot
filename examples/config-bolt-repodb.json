@@ -1,0 +1,25 @@
+{
+    "distSpecVersion": "1.0.1-dev",
+    "storage": {
+        "rootDirectory": "/tmp/zot",
+        "repoDBDriver": {
+            "name": "boltdb",
+            "rootDirectory": "/tmp/zot/cachedb"
+        }
+    },
+    "extensions": {
+        "search": {
+            "enable": true,
+            "cve": {
+                "updateInterval": "24h"
+            }
+        }
+    },
+    "http": {
+        "address": "127.0.0.1",
+        "port": "8080"
+    },
+    "log": {
+        "level": "debug"
+    }
+}
