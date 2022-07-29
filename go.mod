@@ -53,7 +53,8 @@ require (
 require (
 	github.com/aquasecurity/trivy v0.0.0-00010101000000-000000000000
 	github.com/containers/image/v5 v5.23.0
-	github.com/notaryproject/notation-go v0.11.0-alpha.4
+	github.com/gobwas/glob v0.2.3
+	github.com/notaryproject/notation-go v0.10.0-alpha.3
 	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20220620172159-4ab4752c3b86
 	github.com/sigstore/cosign v1.13.0
 	github.com/swaggo/http-swagger v1.3.3
@@ -198,7 +199,6 @@ require (
 	github.com/go-playground/validator/v10 v10.11.0 // indirect
 	github.com/go-redis/redis/v8 v8.11.5 // indirect
 	github.com/go-restruct/restruct v0.0.0-20191227155143-5734170a48a1 // indirect
-	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
 	github.com/golang-jwt/jwt/v4 v4.4.2 // indirect

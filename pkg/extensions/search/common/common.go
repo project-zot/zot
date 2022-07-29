@@ -12,10 +12,12 @@ import (
 
 const (
 	// See https://github.com/opencontainers/image-spec/blob/main/annotations.md#back-compatibility-with-label-schema
-	AnnotationLabels             = "org.label-schema.labels"
-	LabelAnnotationCreated       = "org.label-schema.build-date"
-	LabelAnnotationVendor        = "org.label-schema.vendor"
-	LabelAnnotationDescription   = "org.label-schema.description"
+	AnnotationLabels           = "org.label-schema.labels"
+	LabelAnnotationCreated     = "org.label-schema.build-date"
+	LabelAnnotationVendor      = "org.label-schema.vendor"
+	LabelAnnotationDescription = "org.label-schema.description"
+	// Q I don't see this in the compatibility table.
+	LabelAnnotationLicenses      = "org.label-schema.license"
 	LabelAnnotationTitle         = "org.label-schema.name"
 	LabelAnnotationDocumentation = "org.label-schema.usage"
 	LabelAnnotationSource        = "org.label-schema.vcs-url"
@@ -189,6 +191,10 @@ func GetDescription(annotations map[string]string) string {
 	return GetAnnotationValue(annotations, ispec.AnnotationDescription, LabelAnnotationDescription)
 }
 
+func GetLicenses(annotations map[string]string) string {
+	return GetAnnotationValue(annotations, ispec.AnnotationLicenses, LabelAnnotationLicenses)
+}
+
 func GetVendor(annotations map[string]string) string {
 	return GetAnnotationValue(annotations, ispec.AnnotationVendor, LabelAnnotationVendor)
 }
@@ -209,12 +215,6 @@ func GetCategories(labels map[string]string) string {
 	categories := labels[AnnotationLabels]
 
 	return categories
-}
-
-func GetLicenses(annotations map[string]string) string {
-	licenses := annotations[ispec.AnnotationLicenses]
-
-	return licenses
 }
 
 func GetAnnotations(annotations, labels map[string]string) ImageAnnotations {

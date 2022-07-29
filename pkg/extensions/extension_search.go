@@ -16,6 +16,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/repodb"
 )
 
 // We need this object to be a singleton as read/writes in the CVE DB may
@@ -62,7 +63,7 @@ func downloadTrivyDB(log log.Logger, updateInterval time.Duration) error {
 }
 
 func SetupSearchRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
-	authFunc mux.MiddlewareFunc, log log.Logger,
+	authFunc mux.MiddlewareFunc, searchDB repodb.RepoDB, log log.Logger,
 ) {
 	log.Info().Msg("setting up search routes")
 
@@ -76,9 +77,9 @@ func SetupSearchRoutes(config *config.Config, router *mux.Router, storeControlle
 				cveInfo = cveinfo.NewCVEInfo(storeController, log)
 			}
 
-			resConfig = search.GetResolverConfig(log, storeController, cveInfo)
+			resConfig = search.GetResolverConfig(log, storeController, searchDB, cveInfo)
 		} else {
-			resConfig = search.GetResolverConfig(log, storeController, nil)
+			resConfig = search.GetResolverConfig(log, storeController, searchDB, nil)
 		}
 
 		extRouter := router.PathPrefix(constants.ExtSearchPrefix).Subrouter()

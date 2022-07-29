@@ -9,9 +9,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"path"
 	"strconv"
 	"strings"
@@ -19,14 +19,14 @@ import (
 	"time"
 
 	dbTypes "github.com/aquasecurity/trivy-db/pkg/types"
+	"github.com/gobwas/glob"
 	"github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/sigstore/cosign/cmd/cosign/cli/generate"
-	"github.com/sigstore/cosign/cmd/cosign/cli/options"
-	"github.com/sigstore/cosign/cmd/cosign/cli/sign"
+	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
@@ -37,12 +37,14 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
+	"zotregistry.io/zot/pkg/storage/repodb"
 	. "zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
 
 const (
 	graphqlQueryPrefix = constants.ExtSearchPrefix
+	DBFileName         = "repo.db"
 )
 
 var (
@@ -129,79 +131,51 @@ func testSetup(t *testing.T, subpath string) error { //nolint:unparam
 	return CopyFiles("../../../../test/data", subRootDir)
 }
 
-func signUsingCosign(port string) error {
-	cwd, err := os.Getwd()
-	So(err, ShouldBeNil)
+// triggerUploadForTestImages is paired with testSetup and is supposed to trigger events when pushing an image
+// by pushing just the manifest.
+func triggerUploadForTestImages(port, baseURL string) error {
+	log := log.NewLogger("debug", "")
+	metrics := monitoring.NewMetricsServer(false, log)
+	storage := local.NewImageStore("../../../../test/data", false, storage.DefaultGCDelay,
+		false, false, log, metrics, nil)
 
-	defer func() { _ = os.Chdir(cwd) }()
-
-	tdir, err := os.MkdirTemp("", "cosign")
+	repos, err := storage.GetRepositories()
 	if err != nil {
 		return err
 	}
 
-	defer os.RemoveAll(tdir)
+	for _, repo := range repos {
+		indexBlob, err := storage.GetIndexContent(repo)
+		if err != nil {
+			return err
+		}
 
-	_ = os.Chdir(tdir)
+		var indexJSON ispec.Index
 
-	// generate a keypair
-	os.Setenv("COSIGN_PASSWORD", "")
+		err = json.Unmarshal(indexBlob, &indexJSON)
+		if err != nil {
+			return err
+		}
 
-	err = generate.GenerateKeyPairCmd(context.TODO(), "", nil)
-	if err != nil {
-		return err
+		for _, manifest := range indexJSON.Manifests {
+			tag := manifest.Annotations[ispec.AnnotationRefName]
+
+			manifestBlob, _, _, err := storage.GetImageManifest(repo, tag)
+			if err != nil {
+				return err
+			}
+
+			_, err = resty.R().
+				SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
+				SetBody(manifestBlob).
+				Put(baseURL + "/v2/" + repo + "/manifests/" + tag)
+			if err != nil {
+				return err
+			}
+		}
 	}
 
-	imageURL := fmt.Sprintf("localhost:%s/%s@%s", port, "zot-cve-test",
-		"sha256:63a795ca90aa6e7cca60941e826810a4cd0a2e73ea02bf458241df2a5c973e29")
-
-	// sign the image
-	return sign.SignCmd(&options.RootOptions{Verbose: true, Timeout: 1 * time.Minute},
-		options.KeyOpts{KeyRef: path.Join(tdir, "cosign.key"), PassFunc: generate.GetPass},
-		options.RegistryOptions{AllowInsecure: true},
-		map[string]interface{}{"tag": "1.0"},
-		[]string{imageURL},
-		"", "", true, "", "", "", false, false, "", true)
-}
-
-func signUsingNotary(port string) error {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-
-	defer func() { _ = os.Chdir(cwd) }()
-
-	tdir, err := os.MkdirTemp("", "notation")
-	if err != nil {
-		return err
-	}
-
-	defer os.RemoveAll(tdir)
-
-	_ = os.Chdir(tdir)
-
-	_, err = exec.LookPath("notation")
-	if err != nil {
-		return err
-	}
-
-	os.Setenv("XDG_CONFIG_HOME", tdir)
-
-	// generate a keypair
-	cmd := exec.Command("notation", "cert", "generate-test", "--trust", "notation-sign-test")
-
-	err = cmd.Run()
-	if err != nil {
-		return err
-	}
-
-	// sign the image
-	image := fmt.Sprintf("localhost:%s/%s:%s", port, "zot-test", "0.0.1")
-
-	cmd = exec.Command("notation", "sign", "--key", "notation-sign-test", "--plain-http", image)
-
-	return cmd.Run()
+	return nil
 }
 
 func getTags() ([]common.TagInfo, []common.TagInfo) {
@@ -289,27 +263,9 @@ func TestRepoListWithNewestImage(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		go func() {
-			// this blocks
-			if err := ctlr.Run(context.Background()); err != nil {
-				return
-			}
-		}()
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(baseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		// shut down server
-		defer func() {
-			ctx := context.Background()
-			_ = ctlr.Server.Shutdown(ctx)
-		}()
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		WaitTillServerReady(baseURL)
 
 		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix +
 			"?query={RepoListWithNewestImage{Name%20NewestImage{Tag}}}")
@@ -402,27 +358,12 @@ func TestRepoListWithNewestImage(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		go func() {
-			// this blocks
-			if err := ctlr.Run(context.Background()); err != nil {
-				return
-			}
-		}()
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		WaitTillServerReady(baseURL)
 
-		// wait till ready
-		for {
-			_, err := resty.R().Get(baseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		// shut down server
-		defer func() {
-			ctx := context.Background()
-			_ = ctlr.Server.Shutdown(ctx)
-		}()
+		err = triggerUploadForTestImages(port, GetBaseURL(port))
+		So(err, ShouldBeNil)
 
 		resp, err := resty.R().Get(baseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
@@ -602,7 +543,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 			_ = ctlr.Server.Shutdown(ctx)
 		}()
 
-		substring := "\"Extensions\":{\"Search\":{\"CVE\":{\"UpdateInterval\":3600000000000},\"Enable\":true},\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":null}" //nolint:lll // gofumpt conflicts with lll
+		substring := "{\"Search\":{\"CVE\":{\"UpdateInterval\":3600000000000},\"Enable\":true}"
 		found, err := readFileAndSearchString(logPath, substring, 2*time.Minute)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
@@ -798,6 +739,14 @@ func TestExpandedRepoInfo(t *testing.T) {
 			_ = ctlr.Server.Shutdown(ctx)
 		}()
 
+		err = triggerUploadForTestImages(port, GetBaseURL(port))
+		So(err, ShouldBeNil)
+
+		log := log.NewLogger("debug", "")
+		metrics := monitoring.NewMetricsServer(false, log)
+		testStorage := local.NewImageStore("../../../../test/data", false, storage.DefaultGCDelay,
+			false, false, log, metrics, nil)
+
 		resp, err := resty.R().Get(baseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
@@ -836,16 +785,22 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries), ShouldNotEqual, 0)
 		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries[0].Layers), ShouldNotEqual, 0)
+
+		_, mdigest, _, err := testStorage.GetImageManifest("zot-cve-test", "0.0.1")
+		So(err, ShouldBeNil)
+		testManifestDigest, err := digest.Parse(mdigest)
+		So(err, ShouldBeNil)
+
 		found := false
 		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries {
-			if m.Digest == "63a795ca90aa6e7cca60941e826810a4cd0a2e73ea02bf458241df2a5c973e29" {
+			if m.Digest == testManifestDigest.Encoded() {
 				found = true
 				So(m.IsSigned, ShouldEqual, false)
 			}
 		}
 		So(found, ShouldEqual, true)
 
-		err = signUsingCosign(port)
+		err = SignImageUsingCosign("zot-cve-test:0.0.1", port)
 		So(err, ShouldBeNil)
 
 		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + query)
@@ -857,9 +812,15 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries), ShouldNotEqual, 0)
 		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries[0].Layers), ShouldNotEqual, 0)
+
+		_, mdigest, _, err = testStorage.GetImageManifest("zot-cve-test", "0.0.1")
+		So(err, ShouldBeNil)
+		testManifestDigest, err = digest.Parse(mdigest)
+		So(err, ShouldBeNil)
+
 		found = false
 		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries {
-			if m.Digest == "63a795ca90aa6e7cca60941e826810a4cd0a2e73ea02bf458241df2a5c973e29" {
+			if m.Digest == testManifestDigest.Encoded() {
 				found = true
 				So(m.IsSigned, ShouldEqual, true)
 			}
@@ -883,16 +844,22 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries), ShouldNotEqual, 0)
 		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries[0].Layers), ShouldNotEqual, 0)
+
+		_, mdigest, _, err = testStorage.GetImageManifest("zot-test", "0.0.1")
+		So(err, ShouldBeNil)
+		testManifestDigest, err = digest.Parse(mdigest)
+		So(err, ShouldBeNil)
+
 		found = false
 		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries {
-			if m.Digest == "2bacca16b9df395fc855c14ccf50b12b58d35d468b8e7f25758aff90f89bf396" {
+			if m.Digest == testManifestDigest.Encoded() {
 				found = true
 				So(m.IsSigned, ShouldEqual, false)
 			}
 		}
 		So(found, ShouldEqual, true)
 
-		err = signUsingNotary(port)
+		err = SignImageUsingCosign("zot-test:0.0.1", port)
 		So(err, ShouldBeNil)
 
 		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "/query?query=" + query)
@@ -904,9 +871,15 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries), ShouldNotEqual, 0)
 		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries[0].Layers), ShouldNotEqual, 0)
+
+		_, mdigest, _, err = testStorage.GetImageManifest("zot-test", "0.0.1")
+		So(err, ShouldBeNil)
+		testManifestDigest, err = digest.Parse(mdigest)
+		So(err, ShouldBeNil)
+
 		found = false
 		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries {
-			if m.Digest == "2bacca16b9df395fc855c14ccf50b12b58d35d468b8e7f25758aff90f89bf396" {
+			if m.Digest == testManifestDigest.Encoded() {
 				found = true
 				So(m.IsSigned, ShouldEqual, true)
 			}
@@ -1978,20 +1951,21 @@ func TestGetRepositories(t *testing.T) {
 	})
 }
 
+//nolint:dupl // duplicated test code
 func TestGlobalSearch(t *testing.T) {
-	Convey("Test global search", t, func() {
+	Convey("Test searching for repos with vulnerabitity scanning disabled", t, func() {
 		subpath := "/a"
 
-		err := testSetup(t, subpath)
-		if err != nil {
-			panic(err)
-		}
+		dir := t.TempDir()
+		subDir := t.TempDir()
+
+		subRootDir = path.Join(subDir, subpath)
 
 		port := GetFreePort()
 		baseURL := GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
-		conf.Storage.RootDirectory = rootDir
+		conf.Storage.RootDirectory = dir
 		conf.Storage.SubPaths = make(map[string]config.StorageConfig)
 		conf.Storage.SubPaths[subpath] = config.StorageConfig{RootDirectory: subRootDir}
 		defaultVal := true
@@ -2027,58 +2001,118 @@ func TestGlobalSearch(t *testing.T) {
 			_ = ctlr.Server.Shutdown(ctx)
 		}()
 
+		// push test images to repo 1 image 1
+		config1, layers1, manifest1, err := GetImageComponents(100)
+		So(err, ShouldBeNil)
+		createdTime := time.Date(2010, 1, 1, 12, 0, 0, 0, time.UTC)
+		config1.History = append(config1.History, ispec.History{Created: &createdTime})
+		manifest1, err = updateManifestConfig(manifest1, config1)
+		So(err, ShouldBeNil)
+
+		layersSize1 := 0
+		for _, l := range layers1 {
+			layersSize1 += len(l)
+		}
+
+		err = UploadImage(
+			Image{
+				Manifest: manifest1,
+				Config:   config1,
+				Layers:   layers1,
+				Tag:      "1.0.1",
+			},
+			baseURL,
+			"repo1",
+		)
+		So(err, ShouldBeNil)
+
+		// push test images to repo 1 image 2
+		config2, layers2, manifest2, err := GetImageComponents(200)
+		So(err, ShouldBeNil)
+		createdTime2 := time.Date(2009, 1, 1, 12, 0, 0, 0, time.UTC)
+		config2.History = append(config2.History, ispec.History{Created: &createdTime2})
+		manifest2, err = updateManifestConfig(manifest2, config2)
+		So(err, ShouldBeNil)
+
+		layersSize2 := 0
+		for _, l := range layers2 {
+			layersSize2 += len(l)
+		}
+
+		err = UploadImage(
+			Image{
+				Manifest: manifest2,
+				Config:   config2,
+				Layers:   layers2,
+				Tag:      "1.0.2",
+			},
+			baseURL,
+			"repo1",
+		)
+		So(err, ShouldBeNil)
+
+		// push test images to repo 2 image 1
+		config3, layers3, manifest3, err := GetImageComponents(300)
+		So(err, ShouldBeNil)
+		createdTime3 := time.Date(2009, 2, 1, 12, 0, 0, 0, time.UTC)
+		config3.History = append(config3.History, ispec.History{Created: &createdTime3})
+		manifest3, err = updateManifestConfig(manifest3, config3)
+		So(err, ShouldBeNil)
+
+		layersSize3 := 0
+		for _, l := range layers3 {
+			layersSize3 += len(l)
+		}
+
+		err = UploadImage(
+			Image{
+				Manifest: manifest3,
+				Config:   config3,
+				Layers:   layers3,
+				Tag:      "1.0.0",
+			},
+			baseURL,
+			"repo2",
+		)
+		So(err, ShouldBeNil)
+
+		olu := common.NewBaseOciLayoutUtils(ctlr.StoreController, log.NewLogger("debug", ""))
+
+		// Initialize the objects containing the expected data
+		repos, err := olu.GetRepositories()
+		So(err, ShouldBeNil)
+
+		allExpectedRepoInfoMap := make(map[string]common.RepoInfo)
+		allExpectedImageSummaryMap := make(map[string]common.ImageSummary)
+		for _, repo := range repos {
+			repoInfo, err := olu.GetExpandedRepoInfo(repo)
+			So(err, ShouldBeNil)
+			allExpectedRepoInfoMap[repo] = repoInfo
+			for _, image := range repoInfo.ImageSummaries {
+				imageName := fmt.Sprintf("%s:%s", repo, image.Tag)
+				allExpectedImageSummaryMap[imageName] = image
+			}
+		}
+
 		query := `
 			{
-				GlobalSearch(query:""){
+				GlobalSearch(query:"repo"){
 					Images {
-						RepoName
-						Tag
-						LastUpdated
-						Size
-						IsSigned
-						Vendor
-						Score
-						Platform {
-							Os
-							Arch
-						}
-						Vulnerabilities {
-							Count
-							MaxSeverity
-						}
+						RepoName Tag LastUpdated Size IsSigned Vendor Score
+						Platform { Os Arch }
+						Vulnerabilities { Count MaxSeverity }
 					}
 					Repos {
-						Name
-						LastUpdated
-						Size
-						Platforms {
-							Os
-							Arch
-						}
-						Vendors
-						Score
+						Name LastUpdated Size
+      					Platforms { Os Arch }
+      					Vendors Score
 						NewestImage {
-							RepoName
-							Tag
-							LastUpdated
-							Size
-							IsSigned
-							Vendor
-							Score
-							Platform {
-								Os
-								Arch
-							}
-							Vulnerabilities {
-								Count
-								MaxSeverity
-							}
+							RepoName Tag LastUpdated Size IsSigned Vendor Score
+							Platform { Os Arch }
+							Vulnerabilities { Count MaxSeverity }
 						}
 					}
-					Layers {
-						Digest
-						Size
-					}
+					Layers { Digest Size }
 				}
 			}`
 		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
@@ -2091,71 +2125,85 @@ func TestGlobalSearch(t *testing.T) {
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
 
-		// There are 2 repos: zot-cve-test and zot-test, each having an image with tag 0.0.1
-		imageStore := ctlr.StoreController.DefaultStore
-
-		repos, err := imageStore.GetRepositories()
-		So(err, ShouldBeNil)
-		expectedRepoCount := len(repos)
-
-		allExpectedTagMap := make(map[string][]string, expectedRepoCount)
-		expectedImageCount := 0
-		for _, repo := range repos {
-			tags, err := imageStore.GetImageTags(repo)
-			So(err, ShouldBeNil)
-
-			allExpectedTagMap[repo] = tags
-			expectedImageCount += len(tags)
-		}
-
 		// Make sure the repo/image counts match before comparing actual content
 		So(responseStruct.GlobalSearchResult.GlobalSearch.Images, ShouldNotBeNil)
 		t.Logf("returned images: %v", responseStruct.GlobalSearchResult.GlobalSearch.Images)
-		So(len(responseStruct.GlobalSearchResult.GlobalSearch.Images), ShouldEqual, expectedImageCount)
+		So(responseStruct.GlobalSearchResult.GlobalSearch.Images, ShouldBeEmpty)
 		t.Logf("returned repos: %v", responseStruct.GlobalSearchResult.GlobalSearch.Repos)
-		So(len(responseStruct.GlobalSearchResult.GlobalSearch.Repos), ShouldEqual, expectedRepoCount)
+		So(len(responseStruct.GlobalSearchResult.GlobalSearch.Repos), ShouldEqual, 2)
 		t.Logf("returned layers: %v", responseStruct.GlobalSearchResult.GlobalSearch.Layers)
-		So(len(responseStruct.GlobalSearchResult.GlobalSearch.Layers), ShouldNotBeEmpty)
+		So(responseStruct.GlobalSearchResult.GlobalSearch.Layers, ShouldBeEmpty)
 
 		newestImageMap := make(map[string]common.ImageSummary)
-		for _, image := range responseStruct.GlobalSearchResult.GlobalSearch.Images {
-			// Make sure all returned results are supposed to be in the repo
-			So(allExpectedTagMap[image.RepoName], ShouldContain, image.Tag)
-			// Identify the newest image in each repo
-			if newestImage, ok := newestImageMap[image.RepoName]; ok {
-				if newestImage.LastUpdated.Before(image.LastUpdated) {
-					newestImageMap[image.RepoName] = image
-				}
-			} else {
-				newestImageMap[image.RepoName] = image
-			}
-		}
-		t.Logf("expected results for newest images in repos: %v", newestImageMap)
-
+		actualRepoMap := make(map[string]common.RepoSummary)
 		for _, repo := range responseStruct.GlobalSearchResult.GlobalSearch.Repos {
-			image := newestImageMap[repo.Name]
-			So(repo.Name, ShouldEqual, image.RepoName)
-			So(repo.LastUpdated, ShouldEqual, image.LastUpdated)
-			So(repo.Size, ShouldEqual, image.Size)
-			So(repo.Vendors[0], ShouldEqual, image.Vendor)
-			So(repo.Platforms[0].Os, ShouldEqual, image.Platform.Os)
-			So(repo.Platforms[0].Arch, ShouldEqual, image.Platform.Arch)
-			So(repo.NewestImage.RepoName, ShouldEqual, image.RepoName)
-			So(repo.NewestImage.Tag, ShouldEqual, image.Tag)
-			So(repo.NewestImage.LastUpdated, ShouldEqual, image.LastUpdated)
-			So(repo.NewestImage.Size, ShouldEqual, image.Size)
-			So(repo.NewestImage.IsSigned, ShouldEqual, image.IsSigned)
-			So(repo.NewestImage.Vendor, ShouldEqual, image.Vendor)
-			So(repo.NewestImage.Platform.Os, ShouldEqual, image.Platform.Os)
-			So(repo.NewestImage.Platform.Arch, ShouldEqual, image.Platform.Arch)
-			So(repo.NewestImage.Vulnerabilities.Count, ShouldEqual, 0)
-			So(repo.NewestImage.Vulnerabilities.MaxSeverity, ShouldEqual, "")
+			newestImageMap[repo.Name] = repo.NewestImage
+			actualRepoMap[repo.Name] = repo
 		}
 
-		// GetRepositories fail
+		// Tag 1.0.2 has a history entry which is older compare to 1.0.1
+		So(newestImageMap["repo1"].Tag, ShouldEqual, "1.0.1")
+		So(newestImageMap["repo1"].LastUpdated, ShouldEqual, time.Date(2010, 2, 1, 12, 0, 0, 0, time.UTC))
 
-		err = os.Chmod(rootDir, 0o333)
-		So(err, ShouldBeNil)
+		So(newestImageMap["repo2"].Tag, ShouldEqual, "1.0.0")
+		So(newestImageMap["repo2"].LastUpdated, ShouldEqual, time.Date(2009, 2, 1, 12, 0, 0, 0, time.UTC))
+
+		for repoName, repoSummary := range actualRepoMap {
+			// Check if data in NewestImage is consistent with the data in RepoSummary
+			So(repoName, ShouldEqual, repoSummary.NewestImage.RepoName)
+			So(repoSummary.Name, ShouldEqual, repoSummary.NewestImage.RepoName)
+			So(repoSummary.LastUpdated, ShouldEqual, repoSummary.NewestImage.LastUpdated)
+
+			// The data in the RepoSummary returned from the request matches the data returned from the disk
+			repoInfo := allExpectedRepoInfoMap[repoName]
+			So(repoSummary.Name, ShouldEqual, repoInfo.Summary.Name)
+			So(repoSummary.LastUpdated, ShouldEqual, repoInfo.Summary.LastUpdated)
+			So(repoSummary.Size, ShouldEqual, repoInfo.Summary.Size)
+			So(len(repoSummary.Vendors), ShouldEqual, len(repoInfo.Summary.Vendors))
+			for index, vendor := range repoSummary.Vendors {
+				So(vendor, ShouldEqual, repoInfo.Summary.Vendors[index])
+			}
+			So(len(repoSummary.Platforms), ShouldEqual, len(repoInfo.Summary.Platforms))
+			for index, platform := range repoSummary.Platforms {
+				So(platform.Os, ShouldEqual, repoInfo.Summary.Platforms[index].Os)
+				So(platform.Arch, ShouldEqual, repoInfo.Summary.Platforms[index].Arch)
+			}
+			So(repoSummary.NewestImage.Tag, ShouldEqual, repoInfo.Summary.NewestImage.Tag)
+			So(repoSummary.NewestImage.LastUpdated, ShouldEqual, repoInfo.Summary.NewestImage.LastUpdated)
+			So(repoSummary.NewestImage.Size, ShouldEqual, repoInfo.Summary.NewestImage.Size)
+			So(repoSummary.NewestImage.IsSigned, ShouldEqual, repoInfo.Summary.NewestImage.IsSigned)
+			So(repoSummary.NewestImage.Vendor, ShouldEqual, repoInfo.Summary.NewestImage.Vendor)
+			So(repoSummary.NewestImage.Platform.Os, ShouldEqual, repoInfo.Summary.NewestImage.Platform.Os)
+			So(repoSummary.NewestImage.Platform.Arch, ShouldEqual, repoInfo.Summary.NewestImage.Platform.Arch)
+
+			// RepoInfo object does not provide vulnerability information so we need to check differently
+			// No vulnerabilities should be detected since trivy is disabled
+			t.Logf("Found vulnerability summary %v", repoSummary.NewestImage.Vulnerabilities)
+			So(repoSummary.NewestImage.Vulnerabilities.Count, ShouldEqual, 0)
+			So(repoSummary.NewestImage.Vulnerabilities.MaxSeverity, ShouldEqual, "")
+		}
+
+		query = `
+		{
+			GlobalSearch(query:"repo1:1.0.1"){
+				Images {
+					RepoName Tag LastUpdated Size IsSigned Vendor Score
+					Platform { Os Arch }
+					Vulnerabilities { Count MaxSeverity }
+				}
+				Repos {
+					Name LastUpdated Size
+					Platforms { Os Arch }
+					Vendors Score
+					NewestImage {
+						RepoName Tag LastUpdated Size IsSigned Vendor Score
+						Platform { Os Arch }
+						Vulnerabilities { Count MaxSeverity }
+					}
+				}
+				Layers { Digest Size }
+			}
+		}`
 
 		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
 		So(resp, ShouldNotBeNil)
@@ -2163,27 +2211,48 @@ func TestGlobalSearch(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, 200)
 
 		responseStruct = &GlobalSearchResultResp{}
+
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
 
-		So(responseStruct.Errors, ShouldNotBeEmpty)
-		err = os.Chmod(rootDir, 0o777)
-		So(err, ShouldBeNil)
+		So(responseStruct.GlobalSearchResult.GlobalSearch.Images, ShouldNotBeEmpty)
+		So(responseStruct.GlobalSearchResult.GlobalSearch.Repos, ShouldBeEmpty)
+		So(responseStruct.GlobalSearchResult.GlobalSearch.Layers, ShouldBeEmpty)
+
+		So(len(responseStruct.GlobalSearchResult.GlobalSearch.Images), ShouldEqual, 1)
+		actualImageSummary := responseStruct.GlobalSearchResult.GlobalSearch.Images[0]
+		So(actualImageSummary.Tag, ShouldEqual, "1.0.1")
+
+		expectedImageSummary, ok := allExpectedImageSummaryMap["repo1:1.0.1"]
+		So(ok, ShouldEqual, true)
+		So(actualImageSummary.Tag, ShouldEqual, expectedImageSummary.Tag)
+		So(actualImageSummary.LastUpdated, ShouldEqual, expectedImageSummary.LastUpdated)
+		So(actualImageSummary.Size, ShouldEqual, expectedImageSummary.Size)
+		So(actualImageSummary.IsSigned, ShouldEqual, expectedImageSummary.IsSigned)
+		So(actualImageSummary.Vendor, ShouldEqual, expectedImageSummary.Vendor)
+		So(actualImageSummary.Platform.Os, ShouldEqual, expectedImageSummary.Platform.Os)
+		So(actualImageSummary.Platform.Arch, ShouldEqual, expectedImageSummary.Platform.Arch)
+
+		// RepoInfo object does not provide vulnerability information so we need to check differently
+		// 0 vulnerabilities should be detected since trivy is disabled
+		t.Logf("Found vulnerability summary %v", actualImageSummary.Vulnerabilities)
+		So(actualImageSummary.Vulnerabilities.Count, ShouldEqual, 0)
+		So(actualImageSummary.Vulnerabilities.MaxSeverity, ShouldEqual, "")
 	})
 
-	Convey("Test global search with vulnerabitity scanning enabled", t, func() {
+	Convey("Test global search with real images and vulnerabitity scanning enabled", t, func() {
 		subpath := "/a"
 
-		err := testSetup(t, subpath)
-		if err != nil {
-			panic(err)
-		}
+		dir := t.TempDir()
+		subDir := t.TempDir()
+
+		subRootDir = path.Join(subDir, subpath)
 
 		port := GetFreePort()
 		baseURL := GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
-		conf.Storage.RootDirectory = rootDir
+		conf.Storage.RootDirectory = dir
 		conf.Storage.SubPaths = make(map[string]config.StorageConfig)
 		conf.Storage.SubPaths[subpath] = config.StorageConfig{RootDirectory: subRootDir}
 		defaultVal := true
@@ -2237,7 +2306,7 @@ func TestGlobalSearch(t *testing.T) {
 		}()
 
 		// Wait for trivy db to download
-		substring := "\"Extensions\":{\"Search\":{\"CVE\":{\"UpdateInterval\":3600000000000},\"Enable\":true},\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":null}" //nolint:lll // gofumpt conflicts with lll
+		substring := "{\"Search\":{\"CVE\":{\"UpdateInterval\":3600000000000},\"Enable\":true}"
 		found, err := readFileAndSearchString(logPath, substring, 2*time.Minute)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
@@ -2250,58 +2319,118 @@ func TestGlobalSearch(t *testing.T) {
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 
+		// push test images to repo 1 image 1
+		config1, layers1, manifest1, err := GetImageComponents(100)
+		So(err, ShouldBeNil)
+		createdTime := time.Date(2010, 1, 1, 12, 0, 0, 0, time.UTC)
+		config1.History = append(config1.History, ispec.History{Created: &createdTime})
+		manifest1, err = updateManifestConfig(manifest1, config1)
+		So(err, ShouldBeNil)
+
+		layersSize1 := 0
+		for _, l := range layers1 {
+			layersSize1 += len(l)
+		}
+
+		err = UploadImage(
+			Image{
+				Manifest: manifest1,
+				Config:   config1,
+				Layers:   layers1,
+				Tag:      "1.0.1",
+			},
+			baseURL,
+			"repo1",
+		)
+		So(err, ShouldBeNil)
+
+		// push test images to repo 1 image 2
+		config2, layers2, manifest2, err := GetImageComponents(200)
+		So(err, ShouldBeNil)
+		createdTime2 := time.Date(2009, 1, 1, 12, 0, 0, 0, time.UTC)
+		config2.History = append(config2.History, ispec.History{Created: &createdTime2})
+		manifest2, err = updateManifestConfig(manifest2, config2)
+		So(err, ShouldBeNil)
+
+		layersSize2 := 0
+		for _, l := range layers2 {
+			layersSize2 += len(l)
+		}
+
+		err = UploadImage(
+			Image{
+				Manifest: manifest2,
+				Config:   config2,
+				Layers:   layers2,
+				Tag:      "1.0.2",
+			},
+			baseURL,
+			"repo1",
+		)
+		So(err, ShouldBeNil)
+
+		// push test images to repo 2 image 1
+		config3, layers3, manifest3, err := GetImageComponents(300)
+		So(err, ShouldBeNil)
+		createdTime3 := time.Date(2009, 2, 1, 12, 0, 0, 0, time.UTC)
+		config3.History = append(config3.History, ispec.History{Created: &createdTime3})
+		manifest3, err = updateManifestConfig(manifest3, config3)
+		So(err, ShouldBeNil)
+
+		layersSize3 := 0
+		for _, l := range layers3 {
+			layersSize3 += len(l)
+		}
+
+		err = UploadImage(
+			Image{
+				Manifest: manifest3,
+				Config:   config3,
+				Layers:   layers3,
+				Tag:      "1.0.0",
+			},
+			baseURL,
+			"repo2",
+		)
+		So(err, ShouldBeNil)
+
+		olu := common.NewBaseOciLayoutUtils(ctlr.StoreController, log.NewLogger("debug", ""))
+
+		// Initialize the objects containing the expected data
+		repos, err := olu.GetRepositories()
+		So(err, ShouldBeNil)
+
+		allExpectedRepoInfoMap := make(map[string]common.RepoInfo)
+		allExpectedImageSummaryMap := make(map[string]common.ImageSummary)
+		for _, repo := range repos {
+			repoInfo, err := olu.GetExpandedRepoInfo(repo)
+			So(err, ShouldBeNil)
+			allExpectedRepoInfoMap[repo] = repoInfo
+			for _, image := range repoInfo.ImageSummaries {
+				imageName := fmt.Sprintf("%s:%s", repo, image.Tag)
+				allExpectedImageSummaryMap[imageName] = image
+			}
+		}
+
 		query := `
 			{
-				GlobalSearch(query:""){
+				GlobalSearch(query:"repo"){
 					Images {
-						RepoName
-						Tag
-						LastUpdated
-						Size
-						IsSigned
-						Vendor
-						Score
-						Platform {
-							Os
-							Arch
-						}
-						Vulnerabilities {
-							Count
-							MaxSeverity
-						}
+						RepoName Tag LastUpdated Size IsSigned Vendor Score
+						Platform { Os Arch }
+						Vulnerabilities { Count MaxSeverity }
 					}
 					Repos {
-						Name
-						LastUpdated
-						Size
-						Platforms {
-							Os
-							Arch
-						}
-						Vendors
-						Score
+						Name LastUpdated Size
+      					Platforms { Os Arch }
+      					Vendors Score
 						NewestImage {
-							RepoName
-							Tag
-							LastUpdated
-							Size
-							IsSigned
-							Vendor
-							Score
-							Platform {
-								Os
-								Arch
-							}
-							Vulnerabilities {
-								Count
-								MaxSeverity
-							}
+							RepoName Tag LastUpdated Size IsSigned Vendor Score
+							Platform { Os Arch }
+							Vulnerabilities { Count MaxSeverity }
 						}
 					}
-					Layers {
-						Digest
-						Size
-					}
+					Layers { Digest Size }
 				}
 			}`
 		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
@@ -2314,75 +2443,85 @@ func TestGlobalSearch(t *testing.T) {
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
 
-		// There are 2 repos: zot-cve-test and zot-test, each having an image with tag 0.0.1
-		imageStore := ctlr.StoreController.DefaultStore
-
-		repos, err := imageStore.GetRepositories()
-		So(err, ShouldBeNil)
-		expectedRepoCount := len(repos)
-
-		allExpectedTagMap := make(map[string][]string, expectedRepoCount)
-		expectedImageCount := 0
-		for _, repo := range repos {
-			tags, err := imageStore.GetImageTags(repo)
-			So(err, ShouldBeNil)
-
-			allExpectedTagMap[repo] = tags
-			expectedImageCount += len(tags)
-		}
-
 		// Make sure the repo/image counts match before comparing actual content
 		So(responseStruct.GlobalSearchResult.GlobalSearch.Images, ShouldNotBeNil)
 		t.Logf("returned images: %v", responseStruct.GlobalSearchResult.GlobalSearch.Images)
-		So(len(responseStruct.GlobalSearchResult.GlobalSearch.Images), ShouldEqual, expectedImageCount)
+		So(responseStruct.GlobalSearchResult.GlobalSearch.Images, ShouldBeEmpty)
 		t.Logf("returned repos: %v", responseStruct.GlobalSearchResult.GlobalSearch.Repos)
-		So(len(responseStruct.GlobalSearchResult.GlobalSearch.Repos), ShouldEqual, expectedRepoCount)
+		So(len(responseStruct.GlobalSearchResult.GlobalSearch.Repos), ShouldEqual, 2)
 		t.Logf("returned layers: %v", responseStruct.GlobalSearchResult.GlobalSearch.Layers)
-		So(len(responseStruct.GlobalSearchResult.GlobalSearch.Layers), ShouldNotBeEmpty)
+		So(responseStruct.GlobalSearchResult.GlobalSearch.Layers, ShouldBeEmpty)
 
 		newestImageMap := make(map[string]common.ImageSummary)
-		for _, image := range responseStruct.GlobalSearchResult.GlobalSearch.Images {
-			// Make sure all returned results are supposed to be in the repo
-			So(allExpectedTagMap[image.RepoName], ShouldContain, image.Tag)
-			// Identify the newest image in each repo
-			if newestImage, ok := newestImageMap[image.RepoName]; ok {
-				if newestImage.LastUpdated.Before(image.LastUpdated) {
-					newestImageMap[image.RepoName] = image
-				}
-			} else {
-				newestImageMap[image.RepoName] = image
-			}
-		}
-		t.Logf("expected results for newest images in repos: %v", newestImageMap)
-
+		actualRepoMap := make(map[string]common.RepoSummary)
 		for _, repo := range responseStruct.GlobalSearchResult.GlobalSearch.Repos {
-			image := newestImageMap[repo.Name]
-			So(repo.Name, ShouldEqual, image.RepoName)
-			So(repo.LastUpdated, ShouldEqual, image.LastUpdated)
-			So(repo.Size, ShouldEqual, image.Size)
-			So(repo.Vendors[0], ShouldEqual, image.Vendor)
-			So(repo.Platforms[0].Os, ShouldEqual, image.Platform.Os)
-			So(repo.Platforms[0].Arch, ShouldEqual, image.Platform.Arch)
-			So(repo.NewestImage.RepoName, ShouldEqual, image.RepoName)
-			So(repo.NewestImage.Tag, ShouldEqual, image.Tag)
-			So(repo.NewestImage.LastUpdated, ShouldEqual, image.LastUpdated)
-			So(repo.NewestImage.Size, ShouldEqual, image.Size)
-			So(repo.NewestImage.IsSigned, ShouldEqual, image.IsSigned)
-			So(repo.NewestImage.Vendor, ShouldEqual, image.Vendor)
-			So(repo.NewestImage.Platform.Os, ShouldEqual, image.Platform.Os)
-			So(repo.NewestImage.Platform.Arch, ShouldEqual, image.Platform.Arch)
-			t.Logf("Found vulnerability summary %v", repo.NewestImage.Vulnerabilities)
-			So(repo.NewestImage.Vulnerabilities.Count, ShouldEqual, image.Vulnerabilities.Count)
-			So(repo.NewestImage.Vulnerabilities.Count, ShouldBeGreaterThan, 1)
-			So(repo.NewestImage.Vulnerabilities.MaxSeverity, ShouldEqual, image.Vulnerabilities.MaxSeverity)
-			// This really depends on the test data, but with the current test images it's CRITICAL
-			So(repo.NewestImage.Vulnerabilities.MaxSeverity, ShouldEqual, "CRITICAL")
+			newestImageMap[repo.Name] = repo.NewestImage
+			actualRepoMap[repo.Name] = repo
 		}
 
-		// GetRepositories fail
+		// Tag 1.0.2 has a history entry which is older compare to 1.0.1
+		So(newestImageMap["repo1"].Tag, ShouldEqual, "1.0.1")
+		So(newestImageMap["repo1"].LastUpdated, ShouldEqual, time.Date(2010, 1, 1, 12, 0, 0, 0, time.UTC))
 
-		err = os.Chmod(rootDir, 0o333)
-		So(err, ShouldBeNil)
+		So(newestImageMap["repo2"].Tag, ShouldEqual, "1.0.0")
+		So(newestImageMap["repo2"].LastUpdated, ShouldEqual, time.Date(2009, 2, 1, 12, 0, 0, 0, time.UTC))
+
+		for repoName, repoSummary := range actualRepoMap {
+			// Check if data in NewestImage is consistent with the data in RepoSummary
+			So(repoName, ShouldEqual, repoSummary.NewestImage.RepoName)
+			So(repoSummary.Name, ShouldEqual, repoSummary.NewestImage.RepoName)
+			So(repoSummary.LastUpdated, ShouldEqual, repoSummary.NewestImage.LastUpdated)
+
+			// The data in the RepoSummary returned from the request matches the data returned from the disk
+			repoInfo := allExpectedRepoInfoMap[repoName]
+			So(repoSummary.Name, ShouldEqual, repoInfo.Summary.Name)
+			So(repoSummary.LastUpdated, ShouldEqual, repoInfo.Summary.LastUpdated)
+			So(repoSummary.Size, ShouldEqual, repoInfo.Summary.Size)
+			So(len(repoSummary.Vendors), ShouldEqual, len(repoInfo.Summary.Vendors))
+			for index, vendor := range repoSummary.Vendors {
+				So(vendor, ShouldEqual, repoInfo.Summary.Vendors[index])
+			}
+			So(len(repoSummary.Platforms), ShouldEqual, len(repoInfo.Summary.Platforms))
+			for index, platform := range repoSummary.Platforms {
+				So(platform.Os, ShouldEqual, repoInfo.Summary.Platforms[index].Os)
+				So(platform.Arch, ShouldEqual, repoInfo.Summary.Platforms[index].Arch)
+			}
+			So(repoSummary.NewestImage.Tag, ShouldEqual, repoInfo.Summary.NewestImage.Tag)
+			So(repoSummary.NewestImage.LastUpdated, ShouldEqual, repoInfo.Summary.NewestImage.LastUpdated)
+			So(repoSummary.NewestImage.Size, ShouldEqual, repoInfo.Summary.NewestImage.Size)
+			So(repoSummary.NewestImage.IsSigned, ShouldEqual, repoInfo.Summary.NewestImage.IsSigned)
+			So(repoSummary.NewestImage.Vendor, ShouldEqual, repoInfo.Summary.NewestImage.Vendor)
+			So(repoSummary.NewestImage.Platform.Os, ShouldEqual, repoInfo.Summary.NewestImage.Platform.Os)
+			So(repoSummary.NewestImage.Platform.Arch, ShouldEqual, repoInfo.Summary.NewestImage.Platform.Arch)
+
+			// RepoInfo object does not provide vulnerability information so we need to check differently
+			t.Logf("Found vulnerability summary %v", repoSummary.NewestImage.Vulnerabilities)
+			So(repoSummary.NewestImage.Vulnerabilities.Count, ShouldEqual, 0)
+			// The score is UNKNOWN by default, as there are 0 vulnerabilities this data used in tests
+			So(repoSummary.NewestImage.Vulnerabilities.MaxSeverity, ShouldEqual, "UNKNOWN")
+		}
+
+		query = `
+		{
+			GlobalSearch(query:"repo1:1.0.1"){
+				Images {
+					RepoName Tag LastUpdated Size IsSigned Vendor Score
+					Platform { Os Arch }
+					Vulnerabilities { Count MaxSeverity }
+				}
+				Repos {
+					Name LastUpdated Size
+					Platforms { Os Arch }
+					Vendors Score
+					NewestImage {
+						RepoName Tag LastUpdated Size IsSigned Vendor Score
+						Platform { Os Arch }
+						Vulnerabilities { Count MaxSeverity }
+					}
+				}
+				Layers { Digest Size }
+			}
+		}`
 
 		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
 		So(resp, ShouldNotBeNil)
@@ -2390,12 +2529,33 @@ func TestGlobalSearch(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, 200)
 
 		responseStruct = &GlobalSearchResultResp{}
+
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
 
-		So(responseStruct.Errors, ShouldNotBeEmpty)
-		err = os.Chmod(rootDir, 0o777)
-		So(err, ShouldBeNil)
+		So(responseStruct.GlobalSearchResult.GlobalSearch.Images, ShouldNotBeEmpty)
+		So(responseStruct.GlobalSearchResult.GlobalSearch.Repos, ShouldBeEmpty)
+		So(responseStruct.GlobalSearchResult.GlobalSearch.Layers, ShouldBeEmpty)
+
+		So(len(responseStruct.GlobalSearchResult.GlobalSearch.Images), ShouldEqual, 1)
+		actualImageSummary := responseStruct.GlobalSearchResult.GlobalSearch.Images[0]
+		So(actualImageSummary.Tag, ShouldEqual, "1.0.1")
+
+		expectedImageSummary, ok := allExpectedImageSummaryMap["repo1:1.0.1"]
+		So(ok, ShouldEqual, true)
+		So(actualImageSummary.Tag, ShouldEqual, expectedImageSummary.Tag)
+		So(actualImageSummary.LastUpdated, ShouldEqual, expectedImageSummary.LastUpdated)
+		So(actualImageSummary.Size, ShouldEqual, expectedImageSummary.Size)
+		So(actualImageSummary.IsSigned, ShouldEqual, expectedImageSummary.IsSigned)
+		So(actualImageSummary.Vendor, ShouldEqual, expectedImageSummary.Vendor)
+		So(actualImageSummary.Platform.Os, ShouldEqual, expectedImageSummary.Platform.Os)
+		So(actualImageSummary.Platform.Arch, ShouldEqual, expectedImageSummary.Platform.Arch)
+
+		// RepoInfo object does not provide vulnerability information so we need to check differently
+		t.Logf("Found vulnerability summary %v", actualImageSummary.Vulnerabilities)
+		// The score is UNKNOWN by default, as there are 0 vulnerabilities this data used in tests
+		So(actualImageSummary.Vulnerabilities.Count, ShouldEqual, 0)
+		So(actualImageSummary.Vulnerabilities.MaxSeverity, ShouldEqual, "UNKNOWN")
 	})
 }
 
@@ -2697,6 +2857,741 @@ func TestBuildImageInfo(t *testing.T) {
 	})
 }
 
+func TestRepoDBWhenSigningImages(t *testing.T) {
+	Convey("SigningImages", t, func() {
+		subpath := "/a"
+
+		dir := t.TempDir()
+		subDir := t.TempDir()
+
+		subRootDir = path.Join(subDir, subpath)
+
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = dir
+		conf.Storage.SubPaths = make(map[string]config.StorageConfig)
+		conf.Storage.SubPaths[subpath] = config.StorageConfig{RootDirectory: subRootDir}
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
+		}
+
+		conf.Extensions.Search.CVE = nil
+
+		ctlr := api.NewController(conf)
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		WaitTillServerReady(baseURL)
+
+		// push test images to repo 1 image 1
+		config1, layers1, manifest1, err := GetImageComponents(100)
+		So(err, ShouldBeNil)
+		createdTime := time.Date(2010, 1, 1, 12, 0, 0, 0, time.UTC)
+		config1.History = append(config1.History, ispec.History{Created: &createdTime})
+		manifest1, err = updateManifestConfig(manifest1, config1)
+		So(err, ShouldBeNil)
+
+		layersSize1 := 0
+		for _, l := range layers1 {
+			layersSize1 += len(l)
+		}
+
+		err = UploadImage(
+			Image{
+				Manifest: manifest1,
+				Config:   config1,
+				Layers:   layers1,
+				Tag:      "1.0.1",
+			},
+			baseURL,
+			"repo1",
+		)
+		So(err, ShouldBeNil)
+
+		query := `
+		{
+			GlobalSearch(query:"repo1:1.0"){
+				Images {
+					RepoName Tag LastUpdated Size IsSigned Vendor Score
+					Platform { Os Arch }
+				}
+				Repos {
+					Name LastUpdated Size
+					Platforms { Os Arch }
+					Vendors Score
+					NewestImage {
+						RepoName Tag LastUpdated Size IsSigned Vendor Score
+						Platform {
+							Os
+							Arch
+						}
+					}
+				}
+				Layers {
+					Digest
+					Size
+				}
+			}
+		}`
+
+		Convey("Sign with cosign", func() {
+			err = SignImageUsingCosign("repo1:1.0.1", port)
+			So(err, ShouldBeNil)
+
+			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			responseStruct := &GlobalSearchResultResp{}
+
+			err = json.Unmarshal(resp.Body(), responseStruct)
+			So(err, ShouldBeNil)
+
+			So(responseStruct.GlobalSearchResult.GlobalSearch.Images[0].IsSigned, ShouldBeTrue)
+		})
+
+		Convey("Cover errors when signing with cosign", func() {
+			Convey("imageIsSignature fails", func() {
+				// make image store ignore the wrong format of the input
+				ctlr.StoreController.DefaultStore = mocks.MockedImageStore{
+					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (string, error) {
+						return "", nil
+					},
+					DeleteImageManifestFn: func(repo, reference string) error {
+						return ErrTestError
+					},
+				}
+
+				// push bad manifest blob
+				resp, err := resty.R().
+					SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
+					SetBody([]byte("unmashable manifest blob")).
+					Put(baseURL + "/v2/" + "repo" + "/manifests/" + "tag")
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+			})
+
+			Convey("image is a signature, AddManifestSignature fails", func() {
+				ctlr.RepoDB = mocks.RepoDBMock{
+					AddManifestSignatureFn: func(manifestDigest string, sm repodb.SignatureMetadata) error {
+						return ErrTestError
+					},
+				}
+
+				err := SignImageUsingCosign("repo1:1.0.1", port)
+				So(err, ShouldNotBeNil)
+			})
+		})
+
+		Convey("Sign with notation", func() {
+			err = SignImageUsingNotary("repo1:1.0.1", port)
+			So(err, ShouldBeNil)
+
+			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			responseStruct := &GlobalSearchResultResp{}
+
+			err = json.Unmarshal(resp.Body(), responseStruct)
+			So(err, ShouldBeNil)
+
+			So(responseStruct.GlobalSearchResult.GlobalSearch.Images[0].IsSigned, ShouldBeTrue)
+		})
+	})
+}
+
+func TestRepoDBWhenPushingImages(t *testing.T) {
+	Convey("Cover errors when pushing", t, func() {
+		dir := t.TempDir()
+
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = dir
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
+		}
+
+		ctlr := api.NewController(conf)
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		WaitTillServerReady(baseURL)
+
+		Convey("SetManifestMeta fails", func() {
+			ctlr.RepoDB = mocks.RepoDBMock{
+				SetManifestMetaFn: func(manifestDigest string, mm repodb.ManifestMetadata) error {
+					return ErrTestError
+				},
+			}
+			config1, layers1, manifest1, err := GetImageComponents(100)
+			So(err, ShouldBeNil)
+
+			configBlob, err := json.Marshal(config1)
+			So(err, ShouldBeNil)
+
+			ctlr.StoreController.DefaultStore = mocks.MockedImageStore{
+				NewBlobUploadFn: ctlr.StoreController.DefaultStore.NewBlobUpload,
+				PutBlobChunkFn:  ctlr.StoreController.DefaultStore.PutBlobChunk,
+				GetBlobContentFn: func(repo, digest string) ([]byte, error) {
+					return configBlob, nil
+				},
+				DeleteImageManifestFn: func(repo, reference string) error {
+					return ErrTestError
+				},
+			}
+
+			err = UploadImage(
+				Image{
+					Manifest: manifest1,
+					Config:   config1,
+					Layers:   layers1,
+					Tag:      "1.0.1",
+				},
+				baseURL,
+				"repo1",
+			)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("SetManifestMeta succeeds but SetRepoTag fails", func() {
+			ctlr.RepoDB = mocks.RepoDBMock{
+				SetRepoTagFn: func(repo, tag, manifestDigest string) error {
+					return ErrTestError
+				},
+			}
+
+			config1, layers1, manifest1, err := GetImageComponents(100)
+			So(err, ShouldBeNil)
+
+			configBlob, err := json.Marshal(config1)
+			So(err, ShouldBeNil)
+
+			ctlr.StoreController.DefaultStore = mocks.MockedImageStore{
+				NewBlobUploadFn: ctlr.StoreController.DefaultStore.NewBlobUpload,
+				PutBlobChunkFn:  ctlr.StoreController.DefaultStore.PutBlobChunk,
+				GetBlobContentFn: func(repo, digest string) ([]byte, error) {
+					return configBlob, nil
+				},
+			}
+
+			err = UploadImage(
+				Image{
+					Manifest: manifest1,
+					Config:   config1,
+					Layers:   layers1,
+					Tag:      "1.0.1",
+				},
+				baseURL,
+				"repo1",
+			)
+			So(err, ShouldBeNil)
+		})
+	})
+}
+
+func TestRepoDBWhenReadingImages(t *testing.T) {
+	Convey("Push test image", t, func() {
+		dir := t.TempDir()
+
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = dir
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
+		}
+
+		ctlr := api.NewController(conf)
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		WaitTillServerReady(baseURL)
+
+		config1, layers1, manifest1, err := GetImageComponents(100)
+		So(err, ShouldBeNil)
+
+		err = UploadImage(
+			Image{
+				Manifest: manifest1,
+				Config:   config1,
+				Layers:   layers1,
+				Tag:      "1.0.1",
+			},
+			baseURL,
+			"repo1",
+		)
+		So(err, ShouldBeNil)
+
+		Convey("Download 3 times", func() {
+			resp, err := resty.R().Get(baseURL + "/v2/" + "repo1" + "/manifests/" + "1.0.1")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, err = resty.R().Get(baseURL + "/v2/" + "repo1" + "/manifests/" + "1.0.1")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, err = resty.R().Get(baseURL + "/v2/" + "repo1" + "/manifests/" + "1.0.1")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			query := `
+			{
+				GlobalSearch(query:"repo1:1.0"){
+					Images {
+						RepoName Tag DownloadCount
+					}
+				}
+			}`
+
+			resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			responseStruct := &GlobalSearchResultResp{}
+
+			err = json.Unmarshal(resp.Body(), responseStruct)
+			So(err, ShouldBeNil)
+			So(responseStruct.GlobalSearchResult.GlobalSearch.Images, ShouldNotBeEmpty)
+			So(responseStruct.GlobalSearchResult.GlobalSearch.Images[0].DownloadCount, ShouldEqual, 3)
+		})
+
+		Convey("Error when incrementing", func() {
+			ctlr.RepoDB = mocks.RepoDBMock{
+				IncrementManifestDownloadsFn: func(manifestDigest string) error {
+					return ErrTestError
+				},
+			}
+
+			resp, err := resty.R().Get(baseURL + "/v2/" + "repo1" + "/manifests/" + "1.0.1")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+		})
+	})
+}
+
+func TestRepoDBWhenDeletingImages(t *testing.T) {
+	Convey("Setting up zot repo with test images", t, func() {
+		subpath := "/a"
+
+		dir := t.TempDir()
+		subDir := t.TempDir()
+
+		subRootDir = path.Join(subDir, subpath)
+
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = dir
+		conf.Storage.SubPaths = make(map[string]config.StorageConfig)
+		conf.Storage.SubPaths[subpath] = config.StorageConfig{RootDirectory: subRootDir}
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
+		}
+
+		conf.Extensions.Search.CVE = nil
+
+		ctlr := api.NewController(conf)
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		WaitTillServerReady(baseURL)
+
+		// push test images to repo 1 image 1
+		config1, layers1, manifest1, err := GetImageComponents(100)
+		So(err, ShouldBeNil)
+
+		layersSize1 := 0
+		for _, l := range layers1 {
+			layersSize1 += len(l)
+		}
+
+		err = UploadImage(
+			Image{
+				Manifest: manifest1,
+				Config:   config1,
+				Layers:   layers1,
+				Tag:      "1.0.1",
+			},
+			baseURL,
+			"repo1",
+		)
+		So(err, ShouldBeNil)
+
+		// push test images to repo 1 image 2
+		config2, layers2, manifest2, err := GetImageComponents(200)
+		So(err, ShouldBeNil)
+		createdTime2 := time.Date(2009, 1, 1, 12, 0, 0, 0, time.UTC)
+		config2.History = append(config2.History, ispec.History{Created: &createdTime2})
+		manifest2, err = updateManifestConfig(manifest2, config2)
+		So(err, ShouldBeNil)
+
+		layersSize2 := 0
+		for _, l := range layers2 {
+			layersSize2 += len(l)
+		}
+
+		err = UploadImage(
+			Image{
+				Manifest: manifest2,
+				Config:   config2,
+				Layers:   layers2,
+				Tag:      "1.0.2",
+			},
+			baseURL,
+			"repo1",
+		)
+		So(err, ShouldBeNil)
+
+		query := `
+		{
+			GlobalSearch(query:"repo1:1.0"){
+				Images {
+					RepoName Tag LastUpdated Size IsSigned Vendor Score
+					Platform { Os Arch }
+				}
+				Repos {
+					Name LastUpdated Size
+					Platforms { Os Arch }
+					Vendors Score
+					NewestImage {
+						RepoName Tag LastUpdated Size IsSigned Vendor Score
+						Platform {
+							Os
+							Arch
+						}
+					}
+				}
+				Layers {
+					Digest
+					Size
+				}
+			}
+		}`
+
+		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		responseStruct := &GlobalSearchResultResp{}
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+
+		So(len(responseStruct.GlobalSearchResult.GlobalSearch.Images), ShouldEqual, 2)
+
+		Convey("Delete a normal tag", func() {
+			resp, err := resty.R().Delete(baseURL + "/v2/" + "repo1" + "/manifests/" + "1.0.1")
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			responseStruct := &GlobalSearchResultResp{}
+
+			err = json.Unmarshal(resp.Body(), responseStruct)
+			So(err, ShouldBeNil)
+
+			So(len(responseStruct.GlobalSearchResult.GlobalSearch.Images), ShouldEqual, 1)
+			So(responseStruct.GlobalSearchResult.GlobalSearch.Images[0].Tag, ShouldEqual, "1.0.2")
+		})
+
+		Convey("Delete a cosign signature", func() {
+			repo := "repo1"
+			err := SignImageUsingCosign("repo1:1.0.1", port)
+			So(err, ShouldBeNil)
+
+			query := `
+			{
+				GlobalSearch(query:"repo1:1.0.1"){
+					Images {
+						RepoName Tag LastUpdated Size IsSigned Vendor Score
+						Platform { Os Arch }
+					}
+				}
+			}`
+
+			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			responseStruct := &GlobalSearchResultResp{}
+
+			err = json.Unmarshal(resp.Body(), responseStruct)
+			So(err, ShouldBeNil)
+
+			So(responseStruct.GlobalSearchResult.GlobalSearch.Images[0].IsSigned, ShouldBeTrue)
+
+			// get signatur digest
+			log := log.NewLogger("debug", "")
+			metrics := monitoring.NewMetricsServer(false, log)
+			storage := local.NewImageStore(dir, false, storage.DefaultGCDelay,
+				false, false, log, metrics, nil)
+
+			indexBlob, err := storage.GetIndexContent(repo)
+			So(err, ShouldBeNil)
+
+			var indexContent ispec.Index
+
+			err = json.Unmarshal(indexBlob, &indexContent)
+			So(err, ShouldBeNil)
+
+			signatureTag := ""
+
+			for _, manifest := range indexContent.Manifests {
+				tag := manifest.Annotations[ispec.AnnotationRefName]
+
+				cosignTagRule := glob.MustCompile("sha256-*.sig")
+
+				if cosignTagRule.Match(tag) {
+					signatureTag = tag
+				}
+			}
+
+			// delete the signature using the digest
+			resp, err = resty.R().Delete(baseURL + "/v2/" + "repo1" + "/manifests/" + signatureTag)
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			// verify isSigned again and it should be false
+			resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			responseStruct = &GlobalSearchResultResp{}
+
+			err = json.Unmarshal(resp.Body(), responseStruct)
+			So(err, ShouldBeNil)
+
+			So(responseStruct.GlobalSearchResult.GlobalSearch.Images[0].IsSigned, ShouldBeFalse)
+		})
+
+		Convey("Delete a notary signature", func() {
+			repo := "repo1"
+			err := SignImageUsingNotary("repo1:1.0.1", port)
+			So(err, ShouldBeNil)
+
+			query := `
+			{
+				GlobalSearch(query:"repo1:1.0.1"){
+					Images {
+						RepoName Tag LastUpdated Size IsSigned Vendor Score
+						Platform { Os Arch }
+					}
+				}
+			}`
+
+			// test if it's signed
+			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			responseStruct := &GlobalSearchResultResp{}
+
+			err = json.Unmarshal(resp.Body(), responseStruct)
+			So(err, ShouldBeNil)
+
+			So(responseStruct.GlobalSearchResult.GlobalSearch.Images[0].IsSigned, ShouldBeTrue)
+
+			// get signatur digest
+			log := log.NewLogger("debug", "")
+			metrics := monitoring.NewMetricsServer(false, log)
+			storage := local.NewImageStore(dir, false, storage.DefaultGCDelay,
+				false, false, log, metrics, nil)
+
+			indexBlob, err := storage.GetIndexContent(repo)
+			So(err, ShouldBeNil)
+
+			var indexContent ispec.Index
+
+			err = json.Unmarshal(indexBlob, &indexContent)
+			So(err, ShouldBeNil)
+
+			signatureRefference := ""
+
+			var sigManifestContent artifactspec.Manifest
+
+			for _, manifest := range indexContent.Manifests {
+				if manifest.MediaType == artifactspec.MediaTypeArtifactManifest {
+					signatureRefference = manifest.Digest.String()
+					manifestBlob, _, _, err := storage.GetImageManifest(repo, signatureRefference)
+					So(err, ShouldBeNil)
+					err = json.Unmarshal(manifestBlob, &sigManifestContent)
+					So(err, ShouldBeNil)
+				}
+			}
+
+			So(sigManifestContent, ShouldNotBeZeroValue)
+			// check notation signature
+			manifest1Blob, err := json.Marshal(manifest1)
+			So(err, ShouldBeNil)
+			manifest1Digest := digest.FromBytes(manifest1Blob)
+			So(sigManifestContent.Subject, ShouldNotBeNil)
+			So(sigManifestContent.Subject.Digest.String(), ShouldEqual, manifest1Digest.String())
+
+			// delete the signature using the digest
+			resp, err = resty.R().Delete(baseURL + "/v2/" + "repo1" + "/manifests/" + signatureRefference)
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			// verify isSigned again and it should be false
+			resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			responseStruct = &GlobalSearchResultResp{}
+
+			err = json.Unmarshal(resp.Body(), responseStruct)
+			So(err, ShouldBeNil)
+
+			So(responseStruct.GlobalSearchResult.GlobalSearch.Images[0].IsSigned, ShouldBeFalse)
+		})
+
+		Convey("Deleting causes errors", func() {
+			Convey("error while backing up the manifest", func() {
+				ctlr.StoreController.DefaultStore = mocks.MockedImageStore{
+					GetImageManifestFn: func(repo, reference string) ([]byte, string, string, error) {
+						return []byte{}, "", "", zerr.ErrRepoNotFound
+					},
+				}
+				resp, err = resty.R().Delete(baseURL + "/v2/" + "repo1" + "/manifests/" + "signatureRefference")
+				So(resp, ShouldNotBeNil)
+				So(err, ShouldBeNil)
+				ctlr.StoreController.DefaultStore = mocks.MockedImageStore{
+					GetImageManifestFn: func(repo, reference string) ([]byte, string, string, error) {
+						return []byte{}, "", "", zerr.ErrBadManifest
+					},
+				}
+				resp, err = resty.R().Delete(baseURL + "/v2/" + "repo1" + "/manifests/" + "signatureRefference")
+				So(resp, ShouldNotBeNil)
+				So(err, ShouldBeNil)
+
+				ctlr.StoreController.DefaultStore = mocks.MockedImageStore{
+					GetImageManifestFn: func(repo, reference string) ([]byte, string, string, error) {
+						return []byte{}, "", "", zerr.ErrRepoNotFound
+					},
+				}
+				resp, err = resty.R().Delete(baseURL + "/v2/" + "repo1" + "/manifests/" + "signatureRefference")
+				So(resp, ShouldNotBeNil)
+				So(err, ShouldBeNil)
+			})
+
+			Convey("imageIsSignature fails", func() {
+				ctlr.StoreController.DefaultStore = mocks.MockedImageStore{
+					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (string, error) {
+						return "", nil
+					},
+					DeleteImageManifestFn: func(repo, reference string) error {
+						return nil
+					},
+				}
+
+				resp, err = resty.R().Delete(baseURL + "/v2/" + "repo1" + "/manifests/" + "signatureRefference")
+				So(resp, ShouldNotBeNil)
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+			})
+
+			Convey("image is a signature, DeleteSignature fails", func() {
+				ctlr.StoreController.DefaultStore = mocks.MockedImageStore{
+					NewBlobUploadFn: ctlr.StoreController.DefaultStore.NewBlobUpload,
+					PutBlobChunkFn:  ctlr.StoreController.DefaultStore.PutBlobChunk,
+					GetBlobContentFn: func(repo, digest string) ([]byte, error) {
+						configBlob, err := json.Marshal(ispec.Image{})
+						So(err, ShouldBeNil)
+
+						return configBlob, nil
+					},
+					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (string, error) {
+						return "", nil
+					},
+					DeleteImageManifestFn: func(repo, reference string) error {
+						return nil
+					},
+					GetImageManifestFn: func(repo, reference string) ([]byte, string, string, error) {
+						return []byte("{}"), "1", "1", nil
+					},
+				}
+
+				resp, err = resty.R().Delete(baseURL + "/v2/" + "repo1" + "/manifests/" +
+					"sha256-343ebab94a7674da181c6ea3da013aee4f8cbe357870f8dcaf6268d5343c3474.sig")
+				So(resp, ShouldNotBeNil)
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+			})
+
+			Convey("image is a signature, PutImageManifest fails", func() {
+				ctlr.StoreController.DefaultStore = mocks.MockedImageStore{
+					NewBlobUploadFn: ctlr.StoreController.DefaultStore.NewBlobUpload,
+					PutBlobChunkFn:  ctlr.StoreController.DefaultStore.PutBlobChunk,
+					GetBlobContentFn: func(repo, digest string) ([]byte, error) {
+						configBlob, err := json.Marshal(ispec.Image{})
+						So(err, ShouldBeNil)
+
+						return configBlob, nil
+					},
+					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (string, error) {
+						return "", ErrTestError
+					},
+					DeleteImageManifestFn: func(repo, reference string) error {
+						return nil
+					},
+					GetImageManifestFn: func(repo, reference string) ([]byte, string, string, error) {
+						return []byte("{}"), "1", "1", nil
+					},
+				}
+
+				ctlr.RepoDB = mocks.RepoDBMock{
+					DeleteRepoTagFn: func(repo, tag string) error { return ErrTestError },
+				}
+
+				resp, err = resty.R().Delete(baseURL + "/v2/" + "repo1" + "/manifests/" +
+					"343ebab94a7674da181c6ea3da013aee4f8cbe357870f8dcaf6268d5343c3474.sig")
+				So(resp, ShouldNotBeNil)
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+			})
+		})
+	})
+}
+
+func updateManifestConfig(manifest ispec.Manifest, config ispec.Image) (ispec.Manifest, error) {
+	configBlob, err := json.Marshal(config)
+
+	configDigest := digest.FromBytes(configBlob)
+	configSize := len(configBlob)
+
+	manifest.Config.Digest = configDigest
+	manifest.Config.Size = int64(configSize)
+
+	return manifest, err
+}
+
 func TestBaseOciLayoutUtils(t *testing.T) {
 	manifestDigest := "sha256:adf3bb6cc81f8bd6a9d5233be5f0c1a4f1e3ed1cf5bbdfad7708cc8d4099b741"
 
@@ -2829,13 +3724,13 @@ func TestSearchSize(t *testing.T) {
 
 		query := `
 			{
-				GlobalSearch(query:"test"){
+				GlobalSearch(query:"testrepo:"){
 					Images { RepoName Tag LastUpdated Size Score }
 					Repos {
 						Name LastUpdated Size Vendors Score
       					Platforms {
-      					  Os
-      					  Arch
+      						Os
+      						Arch
       					}
 					}
 					Layers { Digest Size }
@@ -2854,12 +3749,34 @@ func TestSearchSize(t *testing.T) {
 
 		size, err := strconv.Atoi(image.Size)
 		So(err, ShouldBeNil)
-		So(size, ShouldAlmostEqual, configSize+layersSize+manifestSize)
+		So(size, ShouldEqual, configSize+layersSize+manifestSize)
+
+		query = `
+		{
+			GlobalSearch(query:"testrepo"){
+				Images { RepoName Tag LastUpdated Size Score }
+				Repos { 
+					Name LastUpdated Size Vendors Score
+						Platforms {
+							Os
+							Arch
+						}
+				}
+				Layers { Digest Size }
+			}
+		}`
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(err, ShouldBeNil)
+		So(configSize+layersSize+manifestSize, ShouldNotBeZeroValue)
+
+		responseStruct = &GlobalSearchResultResp{}
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
 
 		repo := responseStruct.GlobalSearchResult.GlobalSearch.Repos[0]
 		size, err = strconv.Atoi(repo.Size)
 		So(err, ShouldBeNil)
-		So(size, ShouldAlmostEqual, configSize+layersSize+manifestSize)
+		So(size, ShouldEqual, configSize+layersSize+manifestSize)
 
 		// add the same image with different tag
 		err = UploadImage(
@@ -2874,6 +3791,22 @@ func TestSearchSize(t *testing.T) {
 		)
 		So(err, ShouldBeNil)
 
+		// query for images
+		query = `
+		{
+			GlobalSearch(query:"testrepo:"){
+				Images { RepoName Tag LastUpdated Size Score }
+				Repos { 
+					Name LastUpdated Size Vendors Score
+					  Platforms {
+						Os
+						Arch
+					  }
+				}
+				Layers { Digest Size }
+			}
+		}`
+
 		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
 		So(err, ShouldBeNil)
 		So(configSize+layersSize+manifestSize, ShouldNotBeZeroValue)
@@ -2884,10 +3817,34 @@ func TestSearchSize(t *testing.T) {
 
 		So(len(responseStruct.GlobalSearchResult.GlobalSearch.Images), ShouldEqual, 2)
 		// check that the repo size is the same
+		// query for repos
+		query = `
+		{
+			GlobalSearch(query:"testrepo"){
+				Images { RepoName Tag LastUpdated Size Score }
+				Repos { 
+					Name LastUpdated Size Vendors Score
+					  Platforms {
+						Os
+						Arch
+					  }
+				}
+				Layers { Digest Size }
+			}
+		}`
+
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(err, ShouldBeNil)
+		So(configSize+layersSize+manifestSize, ShouldNotBeZeroValue)
+
+		responseStruct = &GlobalSearchResultResp{}
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+
 		repo = responseStruct.GlobalSearchResult.GlobalSearch.Repos[0]
 		size, err = strconv.Atoi(repo.Size)
 		So(err, ShouldBeNil)
-		So(size, ShouldAlmostEqual, configSize+layersSize+manifestSize)
+		So(size, ShouldEqual, configSize+layersSize+manifestSize)
 	})
 }
 

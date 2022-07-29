@@ -3,6 +3,9 @@
 package gql_generated
 
 import (
+	"fmt"
+	"io"
+	"strconv"
 	"time"
 )
 
@@ -21,8 +24,15 @@ type CVEResultForImage struct {
 	CVEList []*Cve  `json:"CVEList"`
 }
 
+type Filter struct {
+	Os            *string `json:"Os"`
+	Arch          *string `json:"Arch"`
+	HasToBeSigned *bool   `json:"HasToBeSigned"`
+}
+
 // Search everything. Can search Images, Repos and Layers
 type GlobalSearchResult struct {
+	Page   *PageInfo       `json:"Page"`
 	Images []*ImageSummary `json:"Images"`
 	Repos  []*RepoSummary  `json:"Repos"`
 	Layers []*LayerSummary `json:"Layers"`
@@ -94,6 +104,19 @@ type PackageInfo struct {
 	FixedVersion     *string `json:"FixedVersion"`
 }
 
+type PageInfo struct {
+	ObjectCount  int  `json:"ObjectCount"`
+	PreviousPage *int `json:"PreviousPage"`
+	NextPage     *int `json:"NextPage"`
+	Pages        *int `json:"Pages"`
+}
+
+type PageInput struct {
+	Limit  *int          `json:"limit"`
+	Offset *int          `json:"offset"`
+	SortBy *SortCriteria `json:"sortBy"`
+}
+
 // Contains details about the repo: a list of image summaries and a summary of the repo
 type RepoInfo struct {
 	Images  []*ImageSummary `json:"Images"`
@@ -112,4 +135,54 @@ type RepoSummary struct {
 	DownloadCount *int          `json:"DownloadCount"`
 	StarCount     *int          `json:"StarCount"`
 	IsBookmarked  *bool         `json:"IsBookmarked"`
+	IsStarred     *bool         `json:"IsStarred"`
+}
+
+type SortCriteria string
+
+const (
+	SortCriteriaRelevance     SortCriteria = "RELEVANCE"
+	SortCriteriaUpdateTime    SortCriteria = "UPDATE_TIME"
+	SortCriteriaAlphabeticAsc SortCriteria = "ALPHABETIC_ASC"
+	SortCriteriaAlphabeticDsc SortCriteria = "ALPHABETIC_DSC"
+	SortCriteriaStars         SortCriteria = "STARS"
+	SortCriteriaDownloads     SortCriteria = "DOWNLOADS"
+)
+
+var AllSortCriteria = []SortCriteria{
+	SortCriteriaRelevance,
+	SortCriteriaUpdateTime,
+	SortCriteriaAlphabeticAsc,
+	SortCriteriaAlphabeticDsc,
+	SortCriteriaStars,
+	SortCriteriaDownloads,
+}
+
+func (e SortCriteria) IsValid() bool {
+	switch e {
+	case SortCriteriaRelevance, SortCriteriaUpdateTime, SortCriteriaAlphabeticAsc, SortCriteriaAlphabeticDsc, SortCriteriaStars, SortCriteriaDownloads:
+		return true
+	}
+	return false
+}
+
+func (e SortCriteria) String() string {
+	return string(e)
+}
+
+func (e *SortCriteria) UnmarshalGQL(v interface{}) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = SortCriteria(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid SortCriteria", str)
+	}
+	return nil
+}
+
+func (e SortCriteria) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
 }
