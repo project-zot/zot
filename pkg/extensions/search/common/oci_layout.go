@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path"
 	"strconv"
+	"strings"
 
 	notreg "github.com/notaryproject/notation-go/registry"
 	godigest "github.com/opencontainers/go-digest"
@@ -21,7 +22,7 @@ type OciLayoutUtils interface { //nolint: interfacebloat
 	GetImageManifest(repo string, reference string) (ispec.Manifest, godigest.Digest, error)
 	GetImageManifests(repo string) ([]ispec.Descriptor, error)
 	GetImageBlobManifest(repo string, digest godigest.Digest) (ispec.Manifest, error)
-	GetImageInfo(repo string, digest godigest.Digest) (ispec.Image, error)
+	GetImageInfo(repo string, configDigest godigest.Digest) (ispec.Image, error)
 	GetImageTagsWithTimestamp(repo string) ([]TagInfo, error)
 	GetImagePlatform(imageInfo ispec.Image) (string, string)
 	GetImageManifestSize(repo string, manifestDigest godigest.Digest) int64
@@ -136,12 +137,12 @@ func (olu BaseOciLayoutUtils) GetImageBlobManifest(repo string, digest godigest.
 	return blobIndex, nil
 }
 
-func (olu BaseOciLayoutUtils) GetImageInfo(repo string, digest godigest.Digest) (ispec.Image, error) {
+func (olu BaseOciLayoutUtils) GetImageInfo(repo string, configDigest godigest.Digest) (ispec.Image, error) {
 	var imageInfo ispec.Image
 
 	imageStore := olu.StoreController.GetImageStore(repo)
 
-	blobBuf, err := imageStore.GetBlobContent(repo, digest)
+	blobBuf, err := imageStore.GetBlobContent(repo, configDigest)
 	if err != nil {
 		olu.Log.Error().Err(err).Msg("unable to open image layers file")
 
@@ -321,8 +322,8 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error)
 		return RepoInfo{}, err
 	}
 
-	repoPlatforms := make([]OsArch, 0)
-	repoVendors := make([]string, 0, len(manifestList))
+	repoVendorsSet := make(map[string]bool, len(manifestList))
+	repoPlatformsSet := make(map[string]OsArch, len(manifestList))
 
 	var lastUpdatedImageSummary ImageSummary
 
@@ -360,13 +361,16 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error)
 			continue
 		}
 
-		os, arch := olu.GetImagePlatform(imageConfigInfo)
+		opSys, arch := olu.GetImagePlatform(imageConfigInfo)
 		osArch := OsArch{
-			Os:   os,
+			Os:   opSys,
 			Arch: arch,
 		}
 
-		repoPlatforms = append(repoPlatforms, osArch)
+		if opSys != "" || arch != "" {
+			osArchString := strings.TrimSpace(fmt.Sprintf("%s %s", opSys, arch))
+			repoPlatformsSet[osArchString] = osArch
+		}
 
 		layers := make([]LayerSummary, 0)
 
@@ -389,7 +393,53 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error)
 		// get image info from manifest annotation, if not found get from image config labels.
 		annotations := GetAnnotations(manifest.Annotations, imageConfigInfo.Config.Labels)
 
-		repoVendors = append(repoVendors, annotations.Vendor)
+		if annotations.Vendor != "" {
+			repoVendorsSet[annotations.Vendor] = true
+		}
+
+		imageConfigHistory := imageConfigInfo.History
+		allHistory := []LayerHistory{}
+
+		if len(imageConfigHistory) == 0 {
+			for _, layer := range layers {
+				allHistory = append(allHistory, LayerHistory{
+					Layer:              layer,
+					HistoryDescription: HistoryDescription{},
+				})
+			}
+		} else {
+			// iterator over manifest layers
+			var layersIterator int
+			// since we are appending pointers, it is important to iterate with an index over slice
+			for i := range imageConfigHistory {
+				allHistory = append(allHistory, LayerHistory{
+					HistoryDescription: HistoryDescription{
+						Created:    *imageConfigHistory[i].Created,
+						CreatedBy:  imageConfigHistory[i].CreatedBy,
+						Author:     imageConfigHistory[i].Author,
+						Comment:    imageConfigHistory[i].Comment,
+						EmptyLayer: imageConfigHistory[i].EmptyLayer,
+					},
+				})
+
+				if imageConfigHistory[i].EmptyLayer {
+					continue
+				}
+
+				if layersIterator+1 > len(layers) {
+					olu.Log.Error().Err(errors.ErrBadLayerCount).
+						Msgf("error on creating layer history for imaeg %s %s", name, man.Digest)
+
+					break
+				}
+
+				allHistory[i].Layer = layers[layersIterator]
+
+				layersIterator++
+			}
+		}
+
+		olu.Log.Debug().Msgf("all history %v", allHistory)
 
 		size := strconv.Itoa(int(imageSize))
 		manifestDigest := man.Digest.String()
@@ -415,6 +465,7 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error)
 			Labels:        annotations.Labels,
 			Source:        annotations.Source,
 			Layers:        layers,
+			History:       allHistory,
 		}
 
 		imageSummaries = append(imageSummaries, imageSummary)
@@ -431,6 +482,19 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error)
 	}
 
 	size := strconv.FormatInt(repoSize, 10)
+
+	repoPlatforms := make([]OsArch, 0, len(repoPlatformsSet))
+
+	for _, osArch := range repoPlatformsSet {
+		repoPlatforms = append(repoPlatforms, osArch)
+	}
+
+	repoVendors := make([]string, 0, len(repoVendorsSet))
+
+	for vendor := range repoVendorsSet {
+		vendor := vendor
+		repoVendors = append(repoVendors, vendor)
+	}
 
 	summary := RepoSummary{
 		Name:        name,
