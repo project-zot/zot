@@ -29,6 +29,8 @@ import (
 	"zotregistry.io/zot/pkg/storage/cache"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
+	"zotregistry.io/zot/pkg/storage/repodb"
+	"zotregistry.io/zot/pkg/storage/repodb/repodbfactory"
 	"zotregistry.io/zot/pkg/storage/s3"
 )
 
@@ -40,6 +42,7 @@ const (
 type Controller struct {
 	Config          *config.Config
 	Router          *mux.Router
+	RepoDB          repodb.RepoDB
 	StoreController storage.StoreController
 	Log             log.Logger
 	Audit           *log.Logger
@@ -158,9 +161,15 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 
 	c.Metrics = monitoring.NewMetricsServer(enabled, c.Log)
 
-	if err := c.InitImageStore(reloadCtx); err != nil {
+	if err := c.InitImageStore(); err != nil {
 		return err
 	}
+
+	if err := c.InitRepoDB(reloadCtx); err != nil {
+		return err
+	}
+
+	c.StartBackgroundTasks(reloadCtx)
 
 	monitoring.SetServerInfo(c.Metrics, c.Config.Commit, c.Config.BinaryType, c.Config.GoVersion,
 		c.Config.DistSpecVersion)
@@ -248,7 +257,7 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 	return server.Serve(listener)
 }
 
-func (c *Controller) InitImageStore(reloadCtx context.Context) error {
+func (c *Controller) InitImageStore() error {
 	c.StoreController = storage.StoreController{}
 
 	linter := ext.GetLinter(c.Config, c.Log)
@@ -325,8 +334,6 @@ func (c *Controller) InitImageStore(reloadCtx context.Context) error {
 			c.StoreController.SubStore = subImageStore
 		}
 	}
-
-	c.StartBackgroundTasks(reloadCtx)
 
 	return nil
 }
@@ -450,6 +457,73 @@ func CreateCacheDatabaseDriver(storageConfig config.StorageConfig, log log.Logge
 	return nil
 }
 
+func (c *Controller) InitRepoDB(reloadCtx context.Context) error {
+	if c.Config.Extensions != nil && c.Config.Extensions.Search != nil && *c.Config.Extensions.Search.Enable {
+		driver, err := c.createRepoDBDriver(reloadCtx)
+		if err != nil {
+			return err
+		}
+
+		c.RepoDB = driver
+
+		err = repodb.SyncRepoDB(driver, c.StoreController, c.Log)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (c *Controller) createRepoDBDriver(reloadCtx context.Context) (repodb.RepoDB, error) { //nolint:unparam
+	repoDBConfig := c.Config.Storage.RepoDBDriver
+
+	if repoDBConfig != nil {
+		if val, ok := repoDBConfig["name"]; ok {
+			assertedDriverNameVal, okAssert := val.(string)
+			if !okAssert {
+				c.Log.Error().Err(errors.ErrTypeAssertionFailed).Msgf("Failed type assertion for %v to string",
+					"cacheDatabaseDriverName")
+
+				return nil, errors.ErrTypeAssertionFailed
+			}
+
+			switch assertedDriverNameVal {
+			case "boltdb":
+				params := repodb.BoltDBParameters{}
+				boltRootDirCfgVarName := "rootDirectory"
+
+				// default values
+				params.RootDir = c.StoreController.DefaultStore.RootDir()
+
+				if rootDirVal, ok := repoDBConfig[boltRootDirCfgVarName]; ok {
+					assertedRootDir, okAssert := rootDirVal.(string)
+					if !okAssert {
+						c.Log.Error().Err(errors.ErrTypeAssertionFailed).Msgf("Failed type assertion for %v to string", rootDirVal)
+
+						return nil, errors.ErrTypeAssertionFailed
+					}
+					params.RootDir = assertedRootDir
+				}
+
+				return repodbfactory.Create("boltdb", params)
+			default:
+				c.Log.Warn().Msgf("Cache DB driver not found for %v: defaulting to boltdb (local storage)", val)
+
+				return repodbfactory.Create("boltdb", repodb.BoltDBParameters{
+					RootDir: c.StoreController.DefaultStore.RootDir(),
+				})
+			}
+		}
+	}
+
+	c.Log.Warn().Msg(`Something went wrong when reading the cachedb config. Defulting to BoltDB`)
+
+	return repodbfactory.Create("boltdb", repodb.BoltDBParameters{
+		RootDir: c.StoreController.DefaultStore.RootDir(),
+	})
+}
+
 func (c *Controller) LoadNewConfig(reloadCtx context.Context, config *config.Config) {
 	// reload access control config
 	c.Config.AccessControl = config.AccessControl
@@ -487,7 +561,7 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 	// Enable extensions if extension config is provided for DefaultStore
 	if c.Config != nil && c.Config.Extensions != nil {
 		ext.EnableMetricsExtension(c.Config, c.Log, c.Config.Storage.RootDirectory)
-		ext.EnableSearchExtension(c.Config, c.Log, c.StoreController)
+		ext.EnableSearchExtension(c.Config, c.StoreController, c.RepoDB, c.Log)
 	}
 
 	if c.Config.Storage.SubPaths != nil {

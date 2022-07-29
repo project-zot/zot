@@ -6,41 +6,53 @@ package search
 
 import (
 	"context"
-	"fmt"
-	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/99designs/gqlgen/graphql"
 	glob "github.com/bmatcuk/doublestar/v4"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/pkg/errors"
 	"github.com/vektah/gqlparser/v2/gqlerror"
 
-	"zotregistry.io/zot/errors"
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/search/common"
+	"zotregistry.io/zot/pkg/extensions/search/convert"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	digestinfo "zotregistry.io/zot/pkg/extensions/search/digest"
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
 	"zotregistry.io/zot/pkg/log"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/repodb"
 ) // THIS CODE IS A STARTING POINT ONLY. IT WILL NOT BE UPDATED WITH SCHEMA CHANGES.
+
+const (
+	querySizeLimit = 256
+)
 
 // Resolver ...
 type Resolver struct {
 	cveInfo         cveinfo.CveInfo
+	repoDB          repodb.RepoDB
 	storeController storage.StoreController
 	digestInfo      *digestinfo.DigestInfo
 	log             log.Logger
 }
 
 // GetResolverConfig ...
-func GetResolverConfig(log log.Logger, storeController storage.StoreController, cveInfo cveinfo.CveInfo,
+func GetResolverConfig(log log.Logger, storeController storage.StoreController,
+	repoDB repodb.RepoDB, cveInfo cveinfo.CveInfo,
 ) gql_generated.Config {
 	digestInfo := digestinfo.NewDigestInfo(storeController, log)
 
-	resConfig := &Resolver{cveInfo: cveInfo, storeController: storeController, digestInfo: digestInfo, log: log}
+	resConfig := &Resolver{
+		cveInfo:         cveInfo,
+		repoDB:          repoDB,
+		storeController: storeController,
+		digestInfo:      digestInfo,
+		log:             log,
+	}
 
 	return gql_generated.Config{
 		Resolvers: resConfig, Directives: gql_generated.DirectiveRoot{},
@@ -71,7 +83,7 @@ func (r *queryResolver) getImageListForDigest(repoList []string, digest string) 
 			}
 
 			isSigned := olu.CheckManifestSignature(repo, imageInfo.Digest)
-			imageInfo := BuildImageInfo(repo, imageInfo.Tag, imageInfo.Digest,
+			imageInfo := convert.BuildImageInfo(repo, imageInfo.Tag, imageInfo.Digest,
 				imageInfo.Manifest, imageConfig, isSigned)
 
 			imgResultForDigest = append(imgResultForDigest, imageInfo)
@@ -81,418 +93,332 @@ func (r *queryResolver) getImageListForDigest(repoList []string, digest string) 
 	return imgResultForDigest, errResult
 }
 
-func repoListWithNewestImage(
-	ctx context.Context,
-	repoList []string,
-	olu common.OciLayoutUtils,
-	cveInfo cveinfo.CveInfo,
-	log log.Logger,
-) ([]*gql_generated.RepoSummary, error) { //nolint:unparam
-	reposSummary := []*gql_generated.RepoSummary{}
-
-	for _, repo := range repoList {
-		lastUpdatedTag, err := olu.GetRepoLastUpdated(repo)
-		if err != nil {
-			msg := fmt.Sprintf("can't get last updated manifest for repo: %s", repo)
-			log.Error().Err(err).Msg(msg)
-
-			graphql.AddError(ctx, gqlerror.Errorf(msg))
-
-			continue
-		}
-
-		repoSize := int64(0)
-		repoBlob2Size := make(map[string]int64, 10)
-
-		manifests, err := olu.GetImageManifests(repo)
-		if err != nil {
-			msg := fmt.Sprintf("can't get manifests for repo: %s", repo)
-
-			log.Error().Err(err).Msg(msg)
-			graphql.AddError(ctx, gqlerror.Errorf(msg))
-
-			continue
-		}
-
-		repoPlatforms := make([]*gql_generated.OsArch, 0)
-		repoVendors := make([]*string, 0, len(manifests))
-		repoName := repo
-
-		var lastUpdatedImageSummary gql_generated.ImageSummary
-
-		var brokenManifest bool
-
-		for _, manifest := range manifests {
-			imageLayersSize := int64(0)
-			manifestSize := olu.GetImageManifestSize(repo, manifest.Digest)
-
-			imageBlobManifest, err := olu.GetImageBlobManifest(repo, manifest.Digest)
-			if err != nil {
-				msg := fmt.Sprintf("reference not found for manifest %s", manifest.Digest)
-
-				log.Error().Err(err).Msg(msg)
-				graphql.AddError(ctx, gqlerror.Errorf(msg))
-
-				brokenManifest = true
-
-				continue
-			}
-
-			configSize := imageBlobManifest.Config.Size
-			repoBlob2Size[manifest.Digest.String()] = manifestSize
-			repoBlob2Size[imageBlobManifest.Config.Digest.String()] = configSize
-
-			for _, layer := range imageBlobManifest.Layers {
-				repoBlob2Size[layer.Digest.String()] = layer.Size
-				imageLayersSize += layer.Size
-			}
-
-			imageSize := imageLayersSize + manifestSize + configSize
-
-			imageConfigInfo, err := olu.GetImageConfigInfo(repo, manifest.Digest)
-			if err != nil {
-				msg := fmt.Sprintf("can't get image config for manifest %s", manifest.Digest)
-
-				log.Error().Err(err).Msg(msg)
-				graphql.AddError(ctx, gqlerror.Errorf(msg))
-
-				brokenManifest = true
-
-				continue
-			}
-
-			os, arch := olu.GetImagePlatform(imageConfigInfo)
-			osArch := &gql_generated.OsArch{
-				Os:   &os,
-				Arch: &arch,
-			}
-			repoPlatforms = append(repoPlatforms, osArch)
-
-			// get image info from manifest annotation, if not found get from image config labels.
-			annotations := common.GetAnnotations(imageBlobManifest.Annotations, imageConfigInfo.Config.Labels)
-
-			repoVendors = append(repoVendors, &annotations.Vendor)
-
-			manifestTag, ok := manifest.Annotations[ispec.AnnotationRefName]
-			if !ok {
-				msg := fmt.Sprintf("reference not found for manifest %s in repo %s",
-					manifest.Digest.String(), repoName)
-
-				log.Error().Msg(msg)
-				graphql.AddError(ctx, gqlerror.Errorf(msg))
-
-				brokenManifest = true
-
-				break
-			}
-
-			imageCveSummary := cveinfo.ImageCVESummary{}
-			// Check if vulnerability scanning is disabled
-			if cveInfo != nil {
-				imageName := fmt.Sprintf("%s:%s", repoName, manifestTag)
-				imageCveSummary, err = cveInfo.GetCVESummaryForImage(imageName)
-
-				if err != nil {
-					// Log the error, but we should still include the manifest in results
-					msg := fmt.Sprintf(
-						"unable to run vulnerability scan on tag %s in repo %s",
-						manifestTag,
-						repoName,
-					)
-
-					log.Error().Msg(msg)
-					graphql.AddError(ctx, gqlerror.Errorf(msg))
-				}
-			}
-
-			tag := manifestTag
-			size := strconv.Itoa(int(imageSize))
-			manifestDigest := manifest.Digest.String()
-			configDigest := imageBlobManifest.Config.Digest.String()
-			isSigned := olu.CheckManifestSignature(repo, manifest.Digest)
-			lastUpdated := common.GetImageLastUpdated(imageConfigInfo)
-			score := 0
-
-			imageSummary := gql_generated.ImageSummary{
-				RepoName:      &repoName,
-				Tag:           &tag,
-				LastUpdated:   &lastUpdated,
-				Digest:        &manifestDigest,
-				ConfigDigest:  &configDigest,
-				IsSigned:      &isSigned,
-				Size:          &size,
-				Platform:      osArch,
-				Vendor:        &annotations.Vendor,
-				Score:         &score,
-				Description:   &annotations.Description,
-				Title:         &annotations.Title,
-				Documentation: &annotations.Documentation,
-				Licenses:      &annotations.Licenses,
-				Labels:        &annotations.Labels,
-				Source:        &annotations.Source,
-				Vulnerabilities: &gql_generated.ImageVulnerabilitySummary{
-					MaxSeverity: &imageCveSummary.MaxSeverity,
-					Count:       &imageCveSummary.Count,
-				},
-			}
-
-			if manifest.Digest.String() == lastUpdatedTag.Digest.String() {
-				lastUpdatedImageSummary = imageSummary
-			}
-		}
-
-		if brokenManifest {
-			continue
-		}
-
-		for blob := range repoBlob2Size {
-			repoSize += repoBlob2Size[blob]
-		}
-
-		repoSizeStr := strconv.FormatInt(repoSize, 10)
-		index := 0
-
-		reposSummary = append(reposSummary, &gql_generated.RepoSummary{
-			Name:        &repoName,
-			LastUpdated: &lastUpdatedTag.Timestamp,
-			Size:        &repoSizeStr,
-			Platforms:   repoPlatforms,
-			Vendors:     repoVendors,
-			Score:       &index,
-			NewestImage: &lastUpdatedImageSummary,
-		})
+func getImageSummary(ctx context.Context, repo, tag string, repoDB repodb.RepoDB,
+	cveInfo cveinfo.CveInfo, log log.Logger, //nolint:unparam
+) (
+	*gql_generated.ImageSummary, error,
+) {
+	repoMeta, err := repoDB.GetRepoMeta(repo)
+	if err != nil {
+		return nil, err
 	}
 
-	return reposSummary, nil
+	manifestDigest, ok := repoMeta.Tags[tag]
+	if !ok {
+		return nil, gqlerror.Errorf("can't find image: %s:%s", repo, tag)
+	}
+
+	manifestMeta, err := repoDB.GetManifestMeta(godigest.Digest(manifestDigest))
+	if err != nil {
+		return nil, err
+	}
+
+	manifestMetaMap := map[string]repodb.ManifestMetadata{
+		manifestDigest: manifestMeta,
+	}
+
+	skip := convert.SkipQGLField{
+		Vulnerabilities: canSkipField(convert.GetPreloads(ctx), "Vulnerabilities"),
+	}
+
+	imageSummaries := convert.RepoMeta2ImageSummaries(ctx, repoMeta, manifestMetaMap, skip, cveInfo)
+
+	return imageSummaries[0], nil
 }
 
-func cleanQuerry(query string) string {
-	query = strings.ToLower(query)
-	query = strings.Replace(query, ":", " ", 1)
+func repoListWithNewestImage(
+	ctx context.Context,
+	cveInfo cveinfo.CveInfo,
+	log log.Logger, //nolint:unparam // may be used by devs for debugging
+	requestedPage *gql_generated.PageInput,
+	repoDB repodb.RepoDB,
+) ([]*gql_generated.RepoSummary, error) {
+	repos := []*gql_generated.RepoSummary{}
 
-	return query
+	if requestedPage == nil {
+		requestedPage = &gql_generated.PageInput{}
+	}
+
+	skip := convert.SkipQGLField{
+		Vulnerabilities: canSkipField(convert.GetPreloads(ctx), "NewestImage.Vulnerabilities"),
+	}
+
+	pageInput := repodb.PageInput{
+		Limit:  safeDerefferencing(requestedPage.Limit, 0),
+		Offset: safeDerefferencing(requestedPage.Offset, 0),
+		SortBy: repodb.SortCriteria(
+			safeDerefferencing(requestedPage.SortBy, gql_generated.SortCriteriaUpdateTime),
+		),
+	}
+
+	reposMeta, manifestMetaMap, err := repoDB.SearchRepos(ctx, "", repodb.Filter{}, pageInput)
+	if err != nil {
+		return []*gql_generated.RepoSummary{}, err
+	}
+
+	for _, repoMeta := range reposMeta {
+		repoSummary := convert.RepoMeta2RepoSummary(ctx, repoMeta, manifestMetaMap, skip, cveInfo)
+		repos = append(repos, repoSummary)
+	}
+
+	return repos, nil
 }
 
-func globalSearch(repoList []string, name, tag string, olu common.OciLayoutUtils,
-	cveInfo cveinfo.CveInfo, log log.Logger) (
-	[]*gql_generated.RepoSummary, []*gql_generated.ImageSummary, []*gql_generated.LayerSummary,
+func globalSearch(ctx context.Context, query string, repoDB repodb.RepoDB, filter *gql_generated.Filter,
+	requestedPage *gql_generated.PageInput, cveInfo cveinfo.CveInfo, log log.Logger, //nolint:unparam
+) ([]*gql_generated.RepoSummary, []*gql_generated.ImageSummary, []*gql_generated.LayerSummary, error,
 ) {
+	preloads := convert.GetPreloads(ctx)
 	repos := []*gql_generated.RepoSummary{}
 	images := []*gql_generated.ImageSummary{}
 	layers := []*gql_generated.LayerSummary{}
 
-	for _, repo := range repoList {
-		repo := repo
+	if requestedPage == nil {
+		requestedPage = &gql_generated.PageInput{}
+	}
 
-		// map used for dedube if 2 images reference the same blob
-		repoBlob2Size := make(map[string]int64, 10)
+	localFilter := repodb.Filter{}
+	if filter != nil {
+		localFilter = repodb.Filter{
+			Os:            filter.Os,
+			Arch:          filter.Arch,
+			HasToBeSigned: filter.HasToBeSigned,
+		}
+	}
 
-		// made up of all manifests, configs and image layers
-		repoSize := int64(0)
-
-		lastUpdatedTag, err := olu.GetRepoLastUpdated(repo)
-		if err != nil {
-			log.Error().Err(err).Msgf("can't find latest updated tag for repo: %s", repo)
+	if searchingForRepos(query) {
+		skip := convert.SkipQGLField{
+			Vulnerabilities: canSkipField(preloads, "Repos.NewestImage.Vulnerabilities"),
 		}
 
-		manifests, err := olu.GetImageManifests(repo)
+		pageInput := repodb.PageInput{
+			Limit:  safeDerefferencing(requestedPage.Limit, 0),
+			Offset: safeDerefferencing(requestedPage.Offset, 0),
+			SortBy: repodb.SortCriteria(
+				safeDerefferencing(requestedPage.SortBy, gql_generated.SortCriteriaRelevance),
+			),
+		}
+
+		reposMeta, manifestMetaMap, err := repoDB.SearchRepos(ctx, query, localFilter, pageInput)
 		if err != nil {
-			log.Error().Err(err).Msgf("can't get manifests for repo: %s", repo)
+			return []*gql_generated.RepoSummary{}, []*gql_generated.ImageSummary{}, []*gql_generated.LayerSummary{}, err
+		}
+
+		for _, repoMeta := range reposMeta {
+			repoSummary := convert.RepoMeta2RepoSummary(ctx, repoMeta, manifestMetaMap, skip, cveInfo)
+
+			repos = append(repos, repoSummary)
+		}
+	} else { // search for images
+		skip := convert.SkipQGLField{
+			Vulnerabilities: canSkipField(preloads, "Images.Vulnerabilities"),
+		}
+
+		pageInput := repodb.PageInput{
+			Limit:  safeDerefferencing(requestedPage.Limit, 0),
+			Offset: safeDerefferencing(requestedPage.Offset, 0),
+			SortBy: repodb.SortCriteria(
+				safeDerefferencing(requestedPage.SortBy, gql_generated.SortCriteriaRelevance),
+			),
+		}
+
+		reposMeta, manifestMetaMap, err := repoDB.SearchTags(ctx, query, localFilter, pageInput)
+		if err != nil {
+			return []*gql_generated.RepoSummary{}, []*gql_generated.ImageSummary{}, []*gql_generated.LayerSummary{}, err
+		}
+
+		for _, repoMeta := range reposMeta {
+			imageSummaries := convert.RepoMeta2ImageSummaries(ctx, repoMeta, manifestMetaMap, skip, cveInfo)
+
+			images = append(images, imageSummaries...)
+		}
+	}
+
+	return repos, images, layers, nil
+}
+
+func canSkipField(preloads map[string]bool, s string) bool {
+	fieldIsPresent := preloads[s]
+
+	return !fieldIsPresent
+}
+
+func validateGlobalSearchInput(query string, filter *gql_generated.Filter,
+	requestedPage *gql_generated.PageInput,
+) error {
+	if len(query) > querySizeLimit {
+		format := "global-search: max string size limit exeeded for query parameter. max=%d current=%d"
+
+		return errors.Wrapf(zerr.ErrInvalidRequestParams, format, querySizeLimit, len(query))
+	}
+
+	err := checkFilter(filter)
+	if err != nil {
+		return err
+	}
+
+	err = checkRequestedPage(requestedPage)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func checkFilter(filter *gql_generated.Filter) error {
+	if filter == nil {
+		return nil
+	}
+
+	for _, arch := range filter.Arch {
+		if len(*arch) > querySizeLimit {
+			format := "global-search: max string size limit exeeded for arch parameter. max=%d current=%d"
+
+			return errors.Wrapf(zerr.ErrInvalidRequestParams, format, querySizeLimit, len(*arch))
+		}
+	}
+
+	for _, osSys := range filter.Os {
+		if len(*osSys) > querySizeLimit {
+			format := "global-search: max string size limit exeeded for os parameter. max=%d current=%d"
+
+			return errors.Wrapf(zerr.ErrInvalidRequestParams, format, querySizeLimit, len(*osSys))
+		}
+	}
+
+	return nil
+}
+
+func checkRequestedPage(requestedPage *gql_generated.PageInput) error {
+	if requestedPage == nil {
+		return nil
+	}
+
+	if requestedPage.Limit != nil && *requestedPage.Limit < 0 {
+		format := "global-search: requested page limit parameter can't be negative"
+
+		return errors.Wrap(zerr.ErrInvalidRequestParams, format)
+	}
+
+	if requestedPage.Offset != nil && *requestedPage.Offset < 0 {
+		format := "global-search: requested page offset parameter can't be negative"
+
+		return errors.Wrap(zerr.ErrInvalidRequestParams, format)
+	}
+
+	return nil
+}
+
+func cleanQuery(query string) string {
+	query = strings.TrimSpace(query)
+	query = strings.Trim(query, "/")
+	query = strings.ToLower(query)
+
+	return query
+}
+
+func cleanFilter(filter *gql_generated.Filter) *gql_generated.Filter {
+	if filter == nil {
+		return nil
+	}
+
+	if filter.Arch != nil {
+		for i := range filter.Arch {
+			*filter.Arch[i] = strings.ToLower(*filter.Arch[i])
+			*filter.Arch[i] = strings.TrimSpace(*filter.Arch[i])
+		}
+
+		filter.Arch = deleteEmptyElements(filter.Arch)
+	}
+
+	if filter.Os != nil {
+		for i := range filter.Os {
+			*filter.Os[i] = strings.ToLower(*filter.Os[i])
+			*filter.Os[i] = strings.TrimSpace(*filter.Os[i])
+		}
+
+		filter.Os = deleteEmptyElements(filter.Os)
+	}
+
+	return filter
+}
+
+func deleteEmptyElements(slice []*string) []*string {
+	i := 0
+	for i < len(slice) {
+		if elementIsEmpty(*slice[i]) {
+			slice = deleteElementAt(slice, i)
+		} else {
+			i++
+		}
+	}
+
+	return slice
+}
+
+func elementIsEmpty(s string) bool {
+	return s == ""
+}
+
+func deleteElementAt(slice []*string, i int) []*string {
+	slice[i] = slice[len(slice)-1]
+	slice = slice[:len(slice)-1]
+
+	return slice
+}
+
+func expandedRepoInfo(ctx context.Context, repo string, repoDB repodb.RepoDB, cveInfo cveinfo.CveInfo, log log.Logger,
+) (*gql_generated.RepoInfo, error) {
+	if ok, err := localCtx.RepoIsUserAvailable(ctx, repo); !ok || err != nil {
+		log.Info().Err(err).Msgf("resolver: 'repo %s is user available' = %v", repo, ok)
+
+		return &gql_generated.RepoInfo{}, nil //nolint:nilerr // don't give details to a potential attacker
+	}
+
+	repoMeta, err := repoDB.GetRepoMeta(repo)
+	if err != nil {
+		log.Error().Err(err).Msgf("resolver: can't retrieve repoMeta for repo %s", repo)
+
+		return &gql_generated.RepoInfo{}, err
+	}
+
+	manifestMetaMap := map[string]repodb.ManifestMetadata{}
+
+	for tag, digest := range repoMeta.Tags {
+		if _, alreadyDownloaded := manifestMetaMap[digest]; alreadyDownloaded {
+			continue
+		}
+
+		manifestMeta, err := repoDB.GetManifestMeta(godigest.Digest(digest))
+		if err != nil {
+			graphql.AddError(ctx, errors.Wrapf(err,
+				"resolver: failed to get manifest meta for image %s:%s with manifest digest %s", repo, tag, digest))
 
 			continue
 		}
 
-		var lastUpdatedImageSummary gql_generated.ImageSummary
-
-		repoPlatforms := make([]*gql_generated.OsArch, 0, len(manifests))
-		repoVendors := make([]*string, 0, len(manifests))
-
-		for i, manifest := range manifests {
-			imageLayersSize := int64(0)
-
-			manifestTag, ok := manifest.Annotations[ispec.AnnotationRefName]
-			if !ok {
-				log.Error().Str("digest", manifest.Digest.String()).Msg("reference not found for this manifest")
-
-				continue
-			}
-
-			imageBlobManifest, err := olu.GetImageBlobManifest(repo, manifests[i].Digest)
-			if err != nil {
-				log.Error().Err(err).Msgf("can't read manifest for repo %s %s", repo, manifestTag)
-
-				continue
-			}
-
-			manifestSize := olu.GetImageManifestSize(repo, manifest.Digest)
-			configSize := imageBlobManifest.Config.Size
-
-			repoBlob2Size[manifest.Digest.String()] = manifestSize
-			repoBlob2Size[imageBlobManifest.Config.Digest.String()] = configSize
-
-			for _, layer := range imageBlobManifest.Layers {
-				layer := layer
-				layerDigest := layer.Digest.String()
-				layerSizeStr := strconv.Itoa(int(layer.Size))
-				repoBlob2Size[layer.Digest.String()] = layer.Size
-				imageLayersSize += layer.Size
-
-				// if we have a tag we won't match a layer
-				if tag != "" {
-					continue
-				}
-
-				if index := strings.Index(layerDigest, name); index != -1 {
-					layers = append(layers, &gql_generated.LayerSummary{
-						Digest: &layerDigest,
-						Size:   &layerSizeStr,
-						Score:  &index,
-					})
-				}
-			}
-
-			imageSize := imageLayersSize + manifestSize + configSize
-
-			index := strings.Index(repo, name)
-			matchesTag := strings.HasPrefix(manifestTag, tag)
-
-			if index != -1 {
-				imageConfigInfo, err := olu.GetImageConfigInfo(repo, manifests[i].Digest)
-				if err != nil {
-					log.Error().Err(err).Msgf("can't retrieve config info for the image %s %s", repo, manifestTag)
-
-					continue
-				}
-
-				size := strconv.Itoa(int(imageSize))
-				isSigned := olu.CheckManifestSignature(repo, manifests[i].Digest)
-
-				// update matching score
-				score := calculateImageMatchingScore(repo, index, matchesTag)
-
-				lastUpdated := common.GetImageLastUpdated(imageConfigInfo)
-				os, arch := olu.GetImagePlatform(imageConfigInfo)
-				osArch := &gql_generated.OsArch{
-					Os:   &os,
-					Arch: &arch,
-				}
-
-				// get image info from manifest annotation, if not found get from image config labels.
-				annotations := common.GetAnnotations(imageBlobManifest.Annotations, imageConfigInfo.Config.Labels)
-
-				manifestDigest := manifest.Digest.String()
-				configDigest := imageBlobManifest.Config.Digest.String()
-
-				repoPlatforms = append(repoPlatforms, osArch)
-				repoVendors = append(repoVendors, &annotations.Vendor)
-
-				imageCveSummary := cveinfo.ImageCVESummary{}
-				// Check if vulnerability scanning is disabled
-				if cveInfo != nil {
-					imageName := fmt.Sprintf("%s:%s", repo, manifestTag)
-					imageCveSummary, err = cveInfo.GetCVESummaryForImage(imageName)
-
-					if err != nil {
-						// Log the error, but we should still include the manifest in results
-						log.Error().Err(err).Msgf(
-							"unable to run vulnerability scan on tag %s in repo %s",
-							manifestTag,
-							repo,
-						)
-					}
-				}
-
-				imageSummary := gql_generated.ImageSummary{
-					RepoName:      &repo,
-					Tag:           &manifestTag,
-					LastUpdated:   &lastUpdated,
-					Digest:        &manifestDigest,
-					ConfigDigest:  &configDigest,
-					IsSigned:      &isSigned,
-					Size:          &size,
-					Platform:      osArch,
-					Vendor:        &annotations.Vendor,
-					Score:         &score,
-					Description:   &annotations.Description,
-					Title:         &annotations.Title,
-					Documentation: &annotations.Documentation,
-					Licenses:      &annotations.Licenses,
-					Labels:        &annotations.Labels,
-					Source:        &annotations.Source,
-					Vulnerabilities: &gql_generated.ImageVulnerabilitySummary{
-						MaxSeverity: &imageCveSummary.MaxSeverity,
-						Count:       &imageCveSummary.Count,
-					},
-				}
-
-				if manifest.Digest.String() == lastUpdatedTag.Digest.String() {
-					lastUpdatedImageSummary = imageSummary
-				}
-
-				images = append(images, &imageSummary)
-			}
-		}
-
-		for blob := range repoBlob2Size {
-			repoSize += repoBlob2Size[blob]
-		}
-
-		if index := strings.Index(repo, name); index != -1 {
-			repoSize := strconv.FormatInt(repoSize, 10)
-
-			repos = append(repos, &gql_generated.RepoSummary{
-				Name:        &repo,
-				LastUpdated: &lastUpdatedTag.Timestamp,
-				Size:        &repoSize,
-				Platforms:   repoPlatforms,
-				Vendors:     repoVendors,
-				Score:       &index,
-				NewestImage: &lastUpdatedImageSummary,
-			})
-		}
+		manifestMetaMap[digest] = manifestMeta
 	}
 
-	sort.Slice(repos, func(i, j int) bool {
-		return *repos[i].Score < *repos[j].Score
-	})
+	skip := convert.SkipQGLField{
+		Vulnerabilities: canSkipField(convert.GetPreloads(ctx), "Summary.NewestImage.Vulnerabilities"),
+	}
 
-	sort.Slice(images, func(i, j int) bool {
-		return *images[i].Score < *images[j].Score
-	})
+	repoSummary, imageSummaries := convert.RepoMeta2ExpandedRepoInfo(ctx, repoMeta, manifestMetaMap, skip, cveInfo)
 
-	sort.Slice(layers, func(i, j int) bool {
-		return *layers[i].Score < *layers[j].Score
-	})
-
-	return repos, images, layers
+	return &gql_generated.RepoInfo{Summary: repoSummary, Images: imageSummaries}, nil
 }
 
-// calcalculateImageMatchingScore iterated from the index of the matched string in the
-// artifact name until the beginning of the string or until delimitator "/".
-// The distance represents the score of the match.
-//
-// Example:
-//
-//	query: image
-//	repos: repo/test/myimage
-//
-// Score will be 2.
-func calculateImageMatchingScore(artefactName string, index int, matchesTag bool) int {
-	score := 0
-
-	for index >= 1 {
-		if artefactName[index-1] == '/' {
-			break
-		}
-		index--
-		score++
+func safeDerefferencing[T any](pointer *T, defaultVal T) T {
+	if pointer != nil {
+		return *pointer
 	}
 
-	if !matchesTag {
-		score += 10
-	}
+	return defaultVal
+}
 
-	return score
+func searchingForRepos(query string) bool {
+	return !strings.Contains(query, ":")
 }
 
 func (r *queryResolver) getImageList(store storage.ImageStore, imageName string) (
@@ -547,7 +473,7 @@ func (r *queryResolver) getImageList(store storage.ImageStore, imageName string)
 				tagPrefix := strings.HasPrefix(tag.Name, "sha256-")
 				tagSuffix := strings.HasSuffix(tag.Name, ".sig")
 
-				imageInfo := BuildImageInfo(repo, tag.Name, digest, manifest,
+				imageInfo := convert.BuildImageInfo(repo, tag.Name, digest, manifest,
 					imageConfig, isSigned)
 
 				// check if it's an image or a signature
@@ -563,163 +489,6 @@ func (r *queryResolver) getImageList(store storage.ImageStore, imageName string)
 	}
 
 	return results, nil
-}
-
-func BuildImageInfo(repo string, tag string, manifestDigest godigest.Digest,
-	manifest ispec.Manifest, imageConfig ispec.Image, isSigned bool,
-) *gql_generated.ImageSummary {
-	layers := []*gql_generated.LayerSummary{}
-	size := int64(0)
-	log := log.NewLogger("debug", "")
-	allHistory := []*gql_generated.LayerHistory{}
-	formattedManifestDigest := manifestDigest.String()
-	formattedConfigDigest := manifest.Config.Digest.String()
-	annotations := common.GetAnnotations(manifest.Annotations, imageConfig.Config.Labels)
-	lastUpdated := common.GetImageLastUpdated(imageConfig)
-
-	history := imageConfig.History
-	if len(history) == 0 {
-		for _, layer := range manifest.Layers {
-			size += layer.Size
-			digest := layer.Digest.String()
-			layerSize := strconv.FormatInt(layer.Size, 10)
-
-			layer := &gql_generated.LayerSummary{
-				Size:   &layerSize,
-				Digest: &digest,
-			}
-
-			layers = append(
-				layers,
-				layer,
-			)
-
-			allHistory = append(allHistory, &gql_generated.LayerHistory{
-				Layer:              layer,
-				HistoryDescription: &gql_generated.HistoryDescription{},
-			})
-		}
-
-		formattedSize := strconv.FormatInt(size, 10)
-
-		imageInfo := &gql_generated.ImageSummary{
-			RepoName:      &repo,
-			Tag:           &tag,
-			Digest:        &formattedManifestDigest,
-			ConfigDigest:  &formattedConfigDigest,
-			Size:          &formattedSize,
-			Layers:        layers,
-			History:       allHistory,
-			Vendor:        &annotations.Vendor,
-			Description:   &annotations.Description,
-			Title:         &annotations.Title,
-			Documentation: &annotations.Documentation,
-			Licenses:      &annotations.Licenses,
-			Labels:        &annotations.Labels,
-			Source:        &annotations.Source,
-			LastUpdated:   &lastUpdated,
-			IsSigned:      &isSigned,
-			Platform: &gql_generated.OsArch{
-				Os:   &imageConfig.OS,
-				Arch: &imageConfig.Architecture,
-			},
-		}
-
-		return imageInfo
-	}
-
-	// iterator over manifest layers
-	var layersIterator int
-	// since we are appending pointers, it is important to iterate with an index over slice
-	for i := range history {
-		allHistory = append(allHistory, &gql_generated.LayerHistory{
-			HistoryDescription: &gql_generated.HistoryDescription{
-				Created:    history[i].Created,
-				CreatedBy:  &history[i].CreatedBy,
-				Author:     &history[i].Author,
-				Comment:    &history[i].Comment,
-				EmptyLayer: &history[i].EmptyLayer,
-			},
-		})
-
-		if history[i].EmptyLayer {
-			continue
-		}
-
-		if layersIterator+1 > len(manifest.Layers) {
-			formattedSize := strconv.FormatInt(size, 10)
-
-			log.Error().Err(errors.ErrBadLayerCount).Msg("error on creating layer history for ImageSummary")
-
-			return &gql_generated.ImageSummary{
-				RepoName:      &repo,
-				Tag:           &tag,
-				Digest:        &formattedManifestDigest,
-				ConfigDigest:  &formattedConfigDigest,
-				Size:          &formattedSize,
-				Layers:        layers,
-				History:       allHistory,
-				Vendor:        &annotations.Vendor,
-				Description:   &annotations.Description,
-				Title:         &annotations.Title,
-				Documentation: &annotations.Documentation,
-				Licenses:      &annotations.Licenses,
-				Labels:        &annotations.Labels,
-				Source:        &annotations.Source,
-				LastUpdated:   &lastUpdated,
-				IsSigned:      &isSigned,
-				Platform: &gql_generated.OsArch{
-					Os:   &imageConfig.OS,
-					Arch: &imageConfig.Architecture,
-				},
-			}
-		}
-
-		size += manifest.Layers[layersIterator].Size
-		digest := manifest.Layers[layersIterator].Digest.String()
-		layerSize := strconv.FormatInt(manifest.Layers[layersIterator].Size, 10)
-
-		layer := &gql_generated.LayerSummary{
-			Size:   &layerSize,
-			Digest: &digest,
-		}
-
-		layers = append(
-			layers,
-			layer,
-		)
-
-		allHistory[i].Layer = layer
-
-		layersIterator++
-	}
-
-	formattedSize := strconv.FormatInt(size, 10)
-
-	imageInfo := &gql_generated.ImageSummary{
-		RepoName:      &repo,
-		Tag:           &tag,
-		Digest:        &formattedManifestDigest,
-		ConfigDigest:  &formattedConfigDigest,
-		Size:          &formattedSize,
-		Layers:        layers,
-		History:       allHistory,
-		Vendor:        &annotations.Vendor,
-		Description:   &annotations.Description,
-		Title:         &annotations.Title,
-		Documentation: &annotations.Documentation,
-		Licenses:      &annotations.Licenses,
-		Labels:        &annotations.Labels,
-		Source:        &annotations.Source,
-		LastUpdated:   &lastUpdated,
-		IsSigned:      &isSigned,
-		Platform: &gql_generated.OsArch{
-			Os:   &imageConfig.OS,
-			Arch: &imageConfig.Architecture,
-		},
-	}
-
-	return imageInfo
 }
 
 // returns either a user has or not rights on 'repository'.
@@ -749,7 +518,7 @@ func userAvailableRepos(ctx context.Context, repoList []string) ([]string, error
 	if authCtx := ctx.Value(authzCtxKey); authCtx != nil {
 		acCtx, ok := authCtx.(localCtx.AccessControlContext)
 		if !ok {
-			err := errors.ErrBadType
+			err := zerr.ErrBadType
 
 			return []string{}, err
 		}
@@ -769,7 +538,7 @@ func userAvailableRepos(ctx context.Context, repoList []string) ([]string, error
 func extractImageDetails(
 	ctx context.Context,
 	layoutUtils common.OciLayoutUtils,
-	repo, tag string,
+	repo, tag string, //nolint:unparam // function only called in the tests
 	log log.Logger) (
 	godigest.Digest, *ispec.Manifest, *ispec.Image, error,
 ) {
@@ -783,7 +552,7 @@ func extractImageDetails(
 	if len(validRepoList) == 0 {
 		log.Error().Err(err).Msg("user is not authorized")
 
-		return "", nil, nil, errors.ErrUnauthorizedAccess
+		return "", nil, nil, zerr.ErrUnauthorizedAccess
 	}
 
 	manifest, dig, err := layoutUtils.GetImageManifest(repo, tag)

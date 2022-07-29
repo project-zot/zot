@@ -17,6 +17,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/repodb"
 )
 
 // We need this object to be a singleton as read/writes in the CVE DB may
@@ -24,7 +25,9 @@ import (
 // The library doesn't seem to handle concurrency very well internally.
 var cveInfo cveinfo.CveInfo //nolint:gochecknoglobals
 
-func EnableSearchExtension(config *config.Config, log log.Logger, storeController storage.StoreController) {
+func EnableSearchExtension(config *config.Config, storeController storage.StoreController,
+	searchDB repodb.RepoDB, log log.Logger,
+) {
 	if config.Extensions.Search != nil && *config.Extensions.Search.Enable && config.Extensions.Search.CVE != nil {
 		defaultUpdateInterval, _ := time.ParseDuration("2h")
 
@@ -34,7 +37,7 @@ func EnableSearchExtension(config *config.Config, log log.Logger, storeControlle
 			log.Warn().Msg("CVE update interval set to too-short interval < 2h, changing update duration to 2 hours and continuing.") //nolint:lll // gofumpt conflicts with lll
 		}
 
-		cveInfo = cveinfo.NewCVEInfo(storeController, log)
+		cveInfo = cveinfo.NewCVEInfo(storeController, searchDB, log)
 
 		go func() {
 			err := downloadTrivyDB(log, config.Extensions.Search.CVE.UpdateInterval)
@@ -63,7 +66,7 @@ func downloadTrivyDB(log log.Logger, updateInterval time.Duration) error {
 }
 
 func SetupSearchRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
-	log log.Logger,
+	searchDB repodb.RepoDB, log log.Logger,
 ) {
 	log.Info().Msg("setting up search routes")
 
@@ -74,12 +77,12 @@ func SetupSearchRoutes(config *config.Config, router *mux.Router, storeControlle
 			// cveinfo should already be initialized by this time
 			// as EnableSearchExtension is supposed to be called earlier, but let's be sure
 			if cveInfo == nil {
-				cveInfo = cveinfo.NewCVEInfo(storeController, log)
+				cveInfo = cveinfo.NewCVEInfo(storeController, searchDB, log)
 			}
 
-			resConfig = search.GetResolverConfig(log, storeController, cveInfo)
+			resConfig = search.GetResolverConfig(log, storeController, searchDB, cveInfo)
 		} else {
-			resConfig = search.GetResolverConfig(log, storeController, nil)
+			resConfig = search.GetResolverConfig(log, storeController, searchDB, nil)
 		}
 
 		graphqlPrefix := router.PathPrefix(constants.FullSearchPrefix).Methods("OPTIONS", "GET", "POST")

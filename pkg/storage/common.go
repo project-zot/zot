@@ -2,9 +2,11 @@ package storage
 
 import (
 	"encoding/json"
+	"errors"
 	"path"
 	"strings"
 
+	"github.com/gobwas/glob"
 	"github.com/notaryproject/notation-go"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -424,4 +426,76 @@ func IsSupportedMediaType(mediaType string) bool {
 	return mediaType == ispec.MediaTypeImageIndex ||
 		mediaType == ispec.MediaTypeImageManifest ||
 		mediaType == artifactspec.MediaTypeArtifactManifest
+}
+
+// imageIsSignature checks if the given image (repo:tag) represents a signature. The function
+// returns:
+//
+// - bool: if the image is a signature or not
+//
+// - string: the type of signature
+//
+// - string: the digest of the image it signs
+//
+// - error: any errors that occur.
+func CheckIsImageSignature(repoName string, manifestBlob []byte, reference string,
+	storeController StoreController,
+) (bool, string, godigest.Digest, error) {
+	const cosign = "cosign"
+
+	var manifestContent artifactspec.Manifest
+
+	err := json.Unmarshal(manifestBlob, &manifestContent)
+	if err != nil {
+		return false, "", "", err
+	}
+
+	// check notation signature
+	if manifestContent.Subject != nil {
+		imgStore := storeController.GetImageStore(repoName)
+
+		_, signedImageManifestDigest, _, err := imgStore.GetImageManifest(repoName,
+			manifestContent.Subject.Digest.String())
+		if err != nil {
+			if errors.Is(err, zerr.ErrOrphanSignature) {
+				return true, "notation", signedImageManifestDigest, zerr.ErrOrphanSignature
+			}
+
+			return false, "", "", err
+		}
+
+		return true, "notation", signedImageManifestDigest, nil
+	}
+
+	// check cosign
+	cosignTagRule := glob.MustCompile("sha256-*.sig")
+
+	if tag := reference; cosignTagRule.Match(reference) {
+		prefixLen := len("sha256-")
+		digestLen := 64
+		signedImageManifestDigestEncoded := tag[prefixLen : prefixLen+digestLen]
+
+		signedImageManifestDigest := godigest.NewDigestFromEncoded(godigest.SHA256,
+			signedImageManifestDigestEncoded)
+
+		imgStore := storeController.GetImageStore(repoName)
+
+		_, signedImageManifestDigest, _, err := imgStore.GetImageManifest(repoName,
+			signedImageManifestDigest.String())
+		if err != nil {
+			if errors.Is(err, zerr.ErrManifestNotFound) {
+				return true, cosign, signedImageManifestDigest, zerr.ErrOrphanSignature
+			}
+
+			return false, "", "", err
+		}
+
+		if signedImageManifestDigest.String() == "" {
+			return true, cosign, signedImageManifestDigest, zerr.ErrOrphanSignature
+		}
+
+		return true, cosign, signedImageManifestDigest, nil
+	}
+
+	return false, "", "", nil
 }
