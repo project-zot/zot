@@ -705,7 +705,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 			controller := api.NewController(conf)
 			So(controller, ShouldNotBeNil)
 
-			err = controller.InitImageStore(context.TODO())
+			err = controller.InitImageStore()
 			So(err, ShouldBeNil)
 		})
 
