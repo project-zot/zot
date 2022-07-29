@@ -98,14 +98,14 @@ type ComplexityRoot struct {
 	}
 
 	Query struct {
-		CVEListForImage        func(childComplexity int, image string) int
-		ExpandedRepoInfo       func(childComplexity int, repo string) int
-		GlobalSearch           func(childComplexity int, query string) int
-		ImageList              func(childComplexity int, repo string) int
-		ImageListForCve        func(childComplexity int, id string) int
-		ImageListForDigest     func(childComplexity int, id string) int
-		ImageListWithCVEFixed  func(childComplexity int, id string, image string) int
-		ImageListWithLatestTag func(childComplexity int) int
+		CVEListForImage         func(childComplexity int, image string) int
+		ExpandedRepoInfo        func(childComplexity int, repo string) int
+		GlobalSearch            func(childComplexity int, query string) int
+		ImageList               func(childComplexity int, repo string) int
+		ImageListForCve         func(childComplexity int, id string) int
+		ImageListForDigest      func(childComplexity int, id string) int
+		ImageListWithCVEFixed   func(childComplexity int, id string, image string) int
+		RepoListWithNewestImage func(childComplexity int) int
 	}
 
 	RepoInfo struct {
@@ -132,7 +132,7 @@ type QueryResolver interface {
 	ImageListForCve(ctx context.Context, id string) ([]*ImageSummary, error)
 	ImageListWithCVEFixed(ctx context.Context, id string, image string) ([]*ImageSummary, error)
 	ImageListForDigest(ctx context.Context, id string) ([]*ImageSummary, error)
-	ImageListWithLatestTag(ctx context.Context) ([]*ImageSummary, error)
+	RepoListWithNewestImage(ctx context.Context) ([]*RepoSummary, error)
 	ImageList(ctx context.Context, repo string) ([]*ImageSummary, error)
 	ExpandedRepoInfo(ctx context.Context, repo string) (*RepoInfo, error)
 	GlobalSearch(ctx context.Context, query string) (*GlobalSearchResult, error)
@@ -468,12 +468,12 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Query.ImageListWithCVEFixed(childComplexity, args["id"].(string), args["image"].(string)), true
 
-	case "Query.ImageListWithLatestTag":
-		if e.complexity.Query.ImageListWithLatestTag == nil {
+	case "Query.RepoListWithNewestImage":
+		if e.complexity.Query.RepoListWithNewestImage == nil {
 			break
 		}
 
-		return e.complexity.Query.ImageListWithLatestTag(childComplexity), true
+		return e.complexity.Query.RepoListWithNewestImage(childComplexity), true
 
 	case "RepoInfo.Images":
 		if e.complexity.RepoInfo.Images == nil {
@@ -697,7 +697,7 @@ type Query {
     ImageListForCVE(id: String!): [ImageSummary!]
     ImageListWithCVEFixed(id: String!, image: String!): [ImageSummary!]
     ImageListForDigest(id: String!): [ImageSummary!]
-    ImageListWithLatestTag: [ImageSummary!]
+    RepoListWithNewestImage: [RepoSummary!]!  # Newest based on created timestamp
     ImageList(repo: String!): [ImageSummary!]
     ExpandedRepoInfo(repo: String!): RepoInfo!
     GlobalSearch(query: String!): GlobalSearchResult!
@@ -2639,8 +2639,8 @@ func (ec *executionContext) fieldContext_Query_ImageListForDigest(ctx context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Query_ImageListWithLatestTag(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Query_ImageListWithLatestTag(ctx, field)
+func (ec *executionContext) _Query_RepoListWithNewestImage(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Query_RepoListWithNewestImage(ctx, field)
 	if err != nil {
 		return graphql.Null
 	}
@@ -2653,21 +2653,24 @@ func (ec *executionContext) _Query_ImageListWithLatestTag(ctx context.Context, f
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().ImageListWithLatestTag(rctx)
+		return ec.resolvers.Query().RepoListWithNewestImage(rctx)
 	})
 	if err != nil {
 		ec.Error(ctx, err)
 		return graphql.Null
 	}
 	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
 		return graphql.Null
 	}
-	res := resTmp.([]*ImageSummary)
+	res := resTmp.([]*RepoSummary)
 	fc.Result = res
-	return ec.marshalOImageSummary2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummaryᚄ(ctx, field.Selections, res)
+	return ec.marshalNRepoSummary2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐRepoSummaryᚄ(ctx, field.Selections, res)
 }
 
-func (ec *executionContext) fieldContext_Query_ImageListWithLatestTag(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+func (ec *executionContext) fieldContext_Query_RepoListWithNewestImage(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "Query",
 		Field:      field,
@@ -2675,38 +2678,28 @@ func (ec *executionContext) fieldContext_Query_ImageListWithLatestTag(ctx contex
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
-			case "RepoName":
-				return ec.fieldContext_ImageSummary_RepoName(ctx, field)
-			case "Tag":
-				return ec.fieldContext_ImageSummary_Tag(ctx, field)
-			case "Digest":
-				return ec.fieldContext_ImageSummary_Digest(ctx, field)
-			case "ConfigDigest":
-				return ec.fieldContext_ImageSummary_ConfigDigest(ctx, field)
+			case "Name":
+				return ec.fieldContext_RepoSummary_Name(ctx, field)
 			case "LastUpdated":
-				return ec.fieldContext_ImageSummary_LastUpdated(ctx, field)
-			case "IsSigned":
-				return ec.fieldContext_ImageSummary_IsSigned(ctx, field)
+				return ec.fieldContext_RepoSummary_LastUpdated(ctx, field)
 			case "Size":
-				return ec.fieldContext_ImageSummary_Size(ctx, field)
-			case "Platform":
-				return ec.fieldContext_ImageSummary_Platform(ctx, field)
-			case "Vendor":
-				return ec.fieldContext_ImageSummary_Vendor(ctx, field)
+				return ec.fieldContext_RepoSummary_Size(ctx, field)
+			case "Platforms":
+				return ec.fieldContext_RepoSummary_Platforms(ctx, field)
+			case "Vendors":
+				return ec.fieldContext_RepoSummary_Vendors(ctx, field)
 			case "Score":
-				return ec.fieldContext_ImageSummary_Score(ctx, field)
+				return ec.fieldContext_RepoSummary_Score(ctx, field)
+			case "NewestImage":
+				return ec.fieldContext_RepoSummary_NewestImage(ctx, field)
 			case "DownloadCount":
-				return ec.fieldContext_ImageSummary_DownloadCount(ctx, field)
-			case "Layers":
-				return ec.fieldContext_ImageSummary_Layers(ctx, field)
-			case "Description":
-				return ec.fieldContext_ImageSummary_Description(ctx, field)
-			case "Licenses":
-				return ec.fieldContext_ImageSummary_Licenses(ctx, field)
-			case "Labels":
-				return ec.fieldContext_ImageSummary_Labels(ctx, field)
+				return ec.fieldContext_RepoSummary_DownloadCount(ctx, field)
+			case "StarCount":
+				return ec.fieldContext_RepoSummary_StarCount(ctx, field)
+			case "IsBookmarked":
+				return ec.fieldContext_RepoSummary_IsBookmarked(ctx, field)
 			}
-			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
+			return nil, fmt.Errorf("no field named %q was found under type RepoSummary", field.Name)
 		},
 	}
 	return fc, nil
@@ -5795,7 +5788,7 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			out.Concurrently(i, func() graphql.Marshaler {
 				return rrm(innerCtx)
 			})
-		case "ImageListWithLatestTag":
+		case "RepoListWithNewestImage":
 			field := field
 
 			innerFunc := func(ctx context.Context) (res graphql.Marshaler) {
@@ -5804,7 +5797,10 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 						ec.Error(ctx, ec.Recover(ctx, r))
 					}
 				}()
-				res = ec._Query_ImageListWithLatestTag(ctx, field)
+				res = ec._Query_RepoListWithNewestImage(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&invalids, 1)
+				}
 				return res
 			}
 
@@ -6377,6 +6373,60 @@ func (ec *executionContext) marshalNRepoInfo2ᚖzotregistryᚗioᚋzotᚋpkgᚋe
 		return graphql.Null
 	}
 	return ec._RepoInfo(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNRepoSummary2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐRepoSummaryᚄ(ctx context.Context, sel ast.SelectionSet, v []*RepoSummary) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNRepoSummary2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐRepoSummary(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNRepoSummary2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐRepoSummary(ctx context.Context, sel ast.SelectionSet, v *RepoSummary) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._RepoSummary(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNString2string(ctx context.Context, v interface{}) (string, error) {
