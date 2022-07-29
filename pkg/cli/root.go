@@ -108,7 +108,7 @@ func newScrubCmd(conf *config.Config) *cobra.Command {
 				ctlr := api.NewController(conf)
 				ctlr.Metrics = monitoring.NewMetricsServer(false, ctlr.Log)
 
-				if err := ctlr.InitImageStore(context.Background()); err != nil {
+				if err := ctlr.InitImageStore(); err != nil {
 					panic(err)
 				}
 

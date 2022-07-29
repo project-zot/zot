@@ -1,6 +1,7 @@
 package trivy
 
 import (
+	"encoding/json"
 	"flag"
 	"path"
 	"strings"
@@ -11,14 +12,16 @@ import (
 	"github.com/aquasecurity/trivy/pkg/commands/operation"
 	"github.com/aquasecurity/trivy/pkg/types"
 	regTypes "github.com/google/go-containerregistry/pkg/v1/types"
+	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/urfave/cli/v2"
 
-	"zotregistry.io/zot/errors"
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/repodb"
 )
 
 type trivyCtx struct {
@@ -69,7 +72,7 @@ type cveTrivyController struct {
 }
 
 type Scanner struct {
-	layoutUtils     common.OciLayoutUtils
+	repoDB          repodb.RepoDB
 	cveController   cveTrivyController
 	storeController storage.StoreController
 	log             log.Logger
@@ -77,7 +80,7 @@ type Scanner struct {
 }
 
 func NewScanner(storeController storage.StoreController,
-	layoutUtils common.OciLayoutUtils, log log.Logger,
+	repoDB repodb.RepoDB, log log.Logger,
 ) *Scanner {
 	cveController := cveTrivyController{}
 
@@ -107,7 +110,7 @@ func NewScanner(storeController storage.StoreController,
 
 	return &Scanner{
 		log:             log,
-		layoutUtils:     layoutUtils,
+		repoDB:          repoDB,
 		cveController:   cveController,
 		storeController: storeController,
 		dbLock:          &sync.Mutex{},
@@ -146,36 +149,44 @@ func (scanner Scanner) getTrivyContext(image string) *trivyCtx {
 func (scanner Scanner) IsImageFormatScannable(image string) (bool, error) {
 	imageDir, inputTag := common.GetImageDirAndTag(image)
 
-	manifests, err := scanner.layoutUtils.GetImageManifests(imageDir)
+	repoMeta, err := scanner.repoDB.GetRepoMeta(imageDir)
 	if err != nil {
 		return false, err
 	}
 
-	for _, manifest := range manifests {
-		tag, ok := manifest.Annotations[ispec.AnnotationRefName]
+	manifestDigestStr, ok := repoMeta.Tags[inputTag]
+	if !ok {
+		return false, zerr.ErrTagMetaNotFound
+	}
 
-		if ok && inputTag != "" && tag != inputTag {
-			continue
-		}
+	manifestDigest, err := godigest.Parse(manifestDigestStr)
+	if err != nil {
+		return false, err
+	}
 
-		blobManifest, err := scanner.layoutUtils.GetImageBlobManifest(imageDir, manifest.Digest)
-		if err != nil {
-			return false, err
-		}
+	manifestMeta, err := scanner.repoDB.GetManifestMeta(manifestDigest)
+	if err != nil {
+		return false, err
+	}
 
-		imageLayers := blobManifest.Layers
+	var manifestContent ispec.Manifest
 
-		for _, imageLayer := range imageLayers {
-			switch imageLayer.MediaType {
-			case ispec.MediaTypeImageLayer, ispec.MediaTypeImageLayerGzip, string(regTypes.DockerLayer):
-				return true, nil
+	err = json.Unmarshal(manifestMeta.ManifestBlob, &manifestContent)
+	if err != nil {
+		scanner.log.Error().Err(err).Str("image", image).Msg("unable to unmashal manifest blob")
 
-			default:
-				scanner.log.Debug().Str("image",
-					image).Msgf("image media type %s not supported for scanning", imageLayer.MediaType)
+		return false, zerr.ErrScanNotSupported
+	}
 
-				return false, errors.ErrScanNotSupported
-			}
+	for _, imageLayer := range manifestContent.Layers {
+		switch imageLayer.MediaType {
+		case ispec.MediaTypeImageLayerGzip, ispec.MediaTypeImageLayer, string(regTypes.DockerLayer):
+			return true, nil
+		default:
+			scanner.log.Debug().Str("image", image).
+				Msgf("image media type %s not supported for scanning", imageLayer.MediaType)
+
+			return false, zerr.ErrScanNotSupported
 		}
 	}
 
@@ -185,7 +196,7 @@ func (scanner Scanner) IsImageFormatScannable(image string) (bool, error) {
 func (scanner Scanner) ScanImage(image string) (map[string]cvemodel.CVE, error) {
 	cveidMap := make(map[string]cvemodel.CVE)
 
-	scanner.log.Info().Str("image", image).Msg("scanning image")
+	scanner.log.Debug().Str("image", image).Msg("scanning image")
 
 	tCtx := scanner.getTrivyContext(image)
 
