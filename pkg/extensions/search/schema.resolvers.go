@@ -287,41 +287,41 @@ func (r *queryResolver) ImageListForDigest(ctx context.Context, id string) ([]*g
 	return imgResultForDigest, nil
 }
 
-// ImageListWithLatestTag is the resolver for the ImageListWithLatestTag field.
-func (r *queryResolver) ImageListWithLatestTag(ctx context.Context) ([]*gql_generated.ImageSummary, error) {
+// RepoListWithNewestImage is the resolver for the RepoListWithNewestImage field.
+func (r *queryResolver) RepoListWithNewestImage(ctx context.Context) ([]*gql_generated.RepoSummary, error) {
 	r.log.Info().Msg("extension api: finding image list")
 
-	imageList := make([]*gql_generated.ImageSummary, 0)
+	repoList := make([]*gql_generated.RepoSummary, 0)
 
 	defaultStore := r.storeController.DefaultStore
 
-	dsImageList, err := r.getImageListWithLatestTag(defaultStore)
+	dsRepoList, err := r.repoListWithNewestImage(ctx, defaultStore)
 	if err != nil {
 		r.log.Error().Err(err).Msg("extension api: error extracting default store image list")
 
-		return imageList, err
+		return repoList, err
 	}
 
-	if len(dsImageList) != 0 {
-		imageList = append(imageList, dsImageList...)
+	if len(dsRepoList) != 0 {
+		repoList = append(repoList, dsRepoList...)
 	}
 
 	subStore := r.storeController.SubStore
 
 	for _, store := range subStore {
-		ssImageList, err := r.getImageListWithLatestTag(store)
+		ssRepoList, err := r.repoListWithNewestImage(ctx, store)
 		if err != nil {
-			r.log.Error().Err(err).Msg("extension api: error extracting default store image list")
+			r.log.Error().Err(err).Msg("extension api: error extracting substore image list")
 
-			return imageList, err
+			return repoList, err
 		}
 
-		if len(ssImageList) != 0 {
-			imageList = append(imageList, ssImageList...)
+		if len(ssRepoList) != 0 {
+			repoList = append(repoList, ssRepoList...)
 		}
 	}
 
-	return imageList, nil
+	return repoList, nil
 }
 
 // ImageList is the resolver for the ImageList field.

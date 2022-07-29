@@ -24,6 +24,7 @@ import (
 	"github.com/sigstore/cosign/cmd/cosign/cli/sign"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
@@ -51,9 +52,9 @@ var (
 	subRootDir string
 )
 
-type ImgResponsWithLatestTag struct {
-	ImgListWithLatestTag ImgListWithLatestTag `json:"data"`
-	Errors               []ErrorGQL           `json:"errors"`
+type RepoWithNewestImageResponse struct {
+	RepoListWithNewestImage RepoListWithNewestImage `json:"data"`
+	Errors                  []ErrorGQL              `json:"errors"`
 }
 
 type ExpandedRepoInfoResp struct {
@@ -112,8 +113,8 @@ type ExpandedRepoInfo struct {
 }
 
 //nolint:tagliatelle // graphQL schema
-type ImgListWithLatestTag struct {
-	Images []ImageInfo `json:"ImageListWithLatestTag"`
+type RepoListWithNewestImage struct {
+	Repos []RepoSummary `json:"RepoListWithNewestImage"`
 }
 
 type ErrorGQL struct {
@@ -318,8 +319,132 @@ func TestImageFormat(t *testing.T) {
 	})
 }
 
-func TestLatestTagSearchHTTP(t *testing.T) {
-	Convey("Test latest image search by timestamp", t, func() {
+func TestRepoListWithNewestImage(t *testing.T) {
+	Convey("Test repoListWithNewestImage AddError", t, func() {
+		subpath := "/a"
+		err := testSetup(t, subpath)
+		if err != nil {
+			panic(err)
+		}
+
+		err = os.RemoveAll(path.Join(rootDir, "zot-cve-test"))
+		if err != nil {
+			panic(err)
+		}
+
+		err = os.RemoveAll(path.Join(rootDir, subpath))
+		if err != nil {
+			panic(err)
+		}
+
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = rootDir
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
+		}
+
+		conf.Extensions.Search.CVE = nil
+
+		ctlr := api.NewController(conf)
+
+		go func() {
+			// this blocks
+			if err := ctlr.Run(context.Background()); err != nil {
+				return
+			}
+		}()
+
+		// wait till ready
+		for {
+			_, err := resty.R().Get(baseURL)
+			if err == nil {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		// shut down server
+		defer func() {
+			ctx := context.Background()
+			_ = ctlr.Server.Shutdown(ctx)
+		}()
+
+		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix +
+			"?query={RepoListWithNewestImage{Name%20NewestImage{Tag}}}")
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		err = os.Remove(path.Join(rootDir,
+			"zot-test/blobs/sha256/2bacca16b9df395fc855c14ccf50b12b58d35d468b8e7f25758aff90f89bf396"))
+		if err != nil {
+			panic(err)
+		}
+
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
+			"?query={RepoListWithNewestImage{Name%20NewestImage{Tag}}}")
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		errmsg := fmt.Sprint(zerr.ErrBlobNotFound)
+		body := string(resp.Body())
+		So(body, ShouldContainSubstring, errmsg)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		err = CopyFiles("../../../../test/data/zot-test", path.Join(rootDir, "zot-test"))
+		if err != nil {
+			panic(err)
+		}
+
+		err = os.Remove(path.Join(rootDir,
+			"zot-test/blobs/sha256/adf3bb6cc81f8bd6a9d5233be5f0c1a4f1e3ed1cf5bbdfad7708cc8d4099b741"))
+		if err != nil {
+			panic(err)
+		}
+
+		err = os.Remove(path.Join(rootDir,
+			"zot-test/blobs/sha256/2d473b07cdd5f0912cd6f1a703352c82b512407db6b05b43f2553732b55df3bc"))
+		if err != nil {
+			panic(err)
+		}
+
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
+			"?query={RepoListWithNewestImage{Name%20NewestImage{Tag}}}")
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		errmsg = fmt.Sprint(zerr.ErrBlobNotFound)
+		body = string(resp.Body())
+		So(body, ShouldContainSubstring, errmsg)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		err = CopyFiles("../../../../test/data/zot-test", path.Join(rootDir, "zot-test"))
+		if err != nil {
+			panic(err)
+		}
+
+		err = os.Remove(path.Join(rootDir, "zot-test/index.json"))
+		if err != nil {
+			panic(err)
+		}
+		//nolint: lll
+		manifestNoAnnotations := "{\"schemaVersion\":2,\"manifests\":[{\"mediaType\":\"application/vnd.oci.image.manifest.v1+json\",\"digest\":\"sha256:2bacca16b9df395fc855c14ccf50b12b58d35d468b8e7f25758aff90f89bf396\",\"size\":350}]}"
+		err = os.WriteFile(path.Join(rootDir, "zot-test/index.json"), []byte(manifestNoAnnotations), 0o600)
+		if err != nil {
+			panic(err)
+		}
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
+			"?query={RepoListWithNewestImage{Name%20NewestImage{Tag}}}")
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		body = string(resp.Body())
+		So(body, ShouldContainSubstring, "reference not found for this manifest")
+		So(resp.StatusCode(), ShouldEqual, 200)
+	})
+
+	Convey("Test repoListWithNewestImage by tag with HTTP", t, func() {
 		subpath := "/a"
 		err := testSetup(t, subpath)
 		if err != nil {
@@ -373,20 +498,22 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 422)
 
-		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query={ImageListWithLatestTag(){RepoName%20Tag}}")
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
+			"?query={RepoListWithNewestImage{Name%20NewestImage{Tag}}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		var responseStruct ImgResponsWithLatestTag
+		var responseStruct RepoWithNewestImageResponse
 		err = json.Unmarshal(resp.Body(), &responseStruct)
 		So(err, ShouldBeNil)
-		So(len(responseStruct.ImgListWithLatestTag.Images), ShouldEqual, 4)
+		So(len(responseStruct.RepoListWithNewestImage.Repos), ShouldEqual, 4)
 
-		images := responseStruct.ImgListWithLatestTag.Images
-		So(images[0].Tag, ShouldEqual, "0.0.1")
+		images := responseStruct.RepoListWithNewestImage.Repos
+		So(images[0].NewestImage.Tag, ShouldEqual, "0.0.1")
 
-		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query={ImageListWithLatestTag(){RepoName%20Tag}}")
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
+			"?query={RepoListWithNewestImage{Name%20NewestImage{Tag}}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
@@ -395,14 +522,15 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 			panic(err)
 		}
 
-		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query={ImageListWithLatestTag(){RepoName%20Tag}}")
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
+			"?query={RepoListWithNewestImage{Name%20NewestImage{Tag}}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
 		err = json.Unmarshal(resp.Body(), &responseStruct)
 		So(err, ShouldBeNil)
-		So(len(responseStruct.ImgListWithLatestTag.Images), ShouldEqual, 0)
+		So(responseStruct.Errors, ShouldNotBeNil)
 
 		err = os.Chmod(rootDir, 0o755)
 		if err != nil {
@@ -419,7 +547,8 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 			panic(err)
 		}
 
-		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query={ImageListWithLatestTag(){RepoName%20Tag}}")
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
+			"?query={RepoListWithNewestImage{Name%20NewestImage{Tag}}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -430,7 +559,8 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 			panic(err)
 		}
 
-		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query={ImageListWithLatestTag(){RepoName%20Tag}}")
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
+			"?query={RepoListWithNewestImage{Name%20NewestImage{Tag}}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -440,7 +570,8 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 			panic(err)
 		}
 
-		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query={ImageListWithLatestTag(){RepoName%20Tag}}")
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
+			"?query={RepoListWithNewestImage{Name%20NewestImage{Tag}}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -451,7 +582,8 @@ func TestLatestTagSearchHTTP(t *testing.T) {
 			panic(err)
 		}
 
-		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query={ImageListWithLatestTag(){RepoName%20Tag}}")
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
+			"?query={RepoListWithNewestImage{Name%20NewestImage{Tag}}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)

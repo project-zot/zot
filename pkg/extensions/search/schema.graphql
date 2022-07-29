@@ -84,7 +84,7 @@ type Query {
     ImageListForCVE(id: String!): [ImageSummary!]
     ImageListWithCVEFixed(id: String!, image: String!): [ImageSummary!]
     ImageListForDigest(id: String!): [ImageSummary!]
-    ImageListWithLatestTag: [ImageSummary!]
+    RepoListWithNewestImage: [RepoSummary!]!  # Newest based on created timestamp
     ImageList(repo: String!): [ImageSummary!]
     ExpandedRepoInfo(repo: String!): RepoInfo!
     GlobalSearch(query: String!): GlobalSearchResult!

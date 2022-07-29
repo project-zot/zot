@@ -11,10 +11,12 @@ import (
 	"strconv"
 	"strings"
 
-	glob "github.com/bmatcuk/doublestar/v4"
-	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/99designs/gqlgen/graphql"
+	glob "github.com/bmatcuk/doublestar/v4"            // nolint:gci
+	v1 "github.com/google/go-containerregistry/pkg/v1" // nolint:gci
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/vektah/gqlparser/v2/gqlerror"
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	digestinfo "zotregistry.io/zot/pkg/extensions/search/digest"
@@ -114,80 +116,125 @@ func (r *queryResolver) getImageListForDigest(repoList []string, digest string) 
 	return imgResultForDigest, errResult
 }
 
-func (r *queryResolver) getImageListWithLatestTag(store storage.ImageStore) ([]*gql_generated.ImageSummary, error) {
-	results := make([]*gql_generated.ImageSummary, 0)
+// nolint:lll
+func (r *queryResolver) repoListWithNewestImage(ctx context.Context, store storage.ImageStore) ([]*gql_generated.RepoSummary, error) {
+	repos := []*gql_generated.RepoSummary{}
+	olu := common.NewBaseOciLayoutUtils(r.storeController, r.log)
 
-	repoList, err := store.GetRepositories()
+	repoNames, err := store.GetRepositories()
 	if err != nil {
-		r.log.Error().Err(err).Msg("extension api: error extracting repositories list")
-
-		return results, err
+		return nil, err
 	}
 
-	if len(repoList) == 0 {
-		r.log.Info().Msg("no repositories found")
-	}
-
-	layoutUtils := common.NewBaseOciLayoutUtils(r.storeController, r.log)
-
-	for _, repo := range repoList {
-		tagsInfo, err := layoutUtils.GetImageTagsWithTimestamp(repo)
+	for _, repo := range repoNames {
+		lastUpdatedTag, err := olu.GetRepoLastUpdated(repo)
 		if err != nil {
-			r.log.Error().Err(err).Msg("extension api: error getting tag timestamp info")
-
-			return results, err
-		}
-
-		if len(tagsInfo) == 0 {
-			r.log.Info().Str("no tagsinfo found for repo", repo).Msg(" continuing traversing")
+			graphql.AddError(ctx, err)
 
 			continue
 		}
 
-		latestTag := common.GetLatestTag(tagsInfo)
+		repoSize := int64(0)
+		repoBlob2Size := make(map[string]int64, 10)
+		tagsInfo, _ := olu.GetImageTagsWithTimestamp(repo)
 
-		digest := godigest.Digest(latestTag.Digest)
-
-		manifest, err := layoutUtils.GetImageBlobManifest(repo, digest)
+		manifests, err := olu.GetImageManifests(repo)
 		if err != nil {
-			r.log.Error().Err(err).Msg("extension api: error reading manifest")
+			graphql.AddError(ctx, err)
 
-			return results, err
+			continue
 		}
 
-		size := strconv.FormatInt(manifest.Config.Size, 10)
+		repoPlatforms := make([]*gql_generated.OsArch, 0, len(tagsInfo))
+		repoVendors := make([]*string, 0, len(manifests))
+		repoName := repo
 
-		name := repo
+		var lastUpdatedImageSummary gql_generated.ImageSummary
 
-		imageConfig, err := layoutUtils.GetImageInfo(repo, manifest.Config.Digest)
-		if err != nil {
-			r.log.Error().Err(err).Msg("extension api: error reading image config")
+		var brokenManifest bool
 
-			return results, err
+		for i, manifest := range manifests {
+			imageLayersSize := int64(0)
+			manifestSize := olu.GetImageManifestSize(repo, manifests[i].Digest)
+
+			imageBlobManifest, _ := olu.GetImageBlobManifest(repo, manifests[i].Digest)
+
+			configSize := imageBlobManifest.Config.Size
+			repoBlob2Size[manifests[i].Digest.String()] = manifestSize
+			repoBlob2Size[imageBlobManifest.Config.Digest.Hex] = configSize
+
+			for _, layer := range imageBlobManifest.Layers {
+				repoBlob2Size[layer.Digest.String()] = layer.Size
+				imageLayersSize += layer.Size
+			}
+
+			imageSize := imageLayersSize + manifestSize + configSize
+
+			imageConfigInfo, _ := olu.GetImageConfigInfo(repo, manifests[i].Digest)
+
+			os, arch := olu.GetImagePlatform(imageConfigInfo)
+			osArch := &gql_generated.OsArch{
+				Os:   &os,
+				Arch: &arch,
+			}
+			repoPlatforms = append(repoPlatforms, osArch)
+
+			vendor := olu.GetImageVendor(imageConfigInfo)
+			repoVendors = append(repoVendors, &vendor)
+
+			manifestTag, ok := manifest.Annotations[ispec.AnnotationRefName]
+			if !ok {
+				graphql.AddError(ctx, gqlerror.Errorf("reference not found for this manifest"))
+				brokenManifest = true
+
+				break
+			}
+
+			tag := manifestTag
+			size := strconv.Itoa(int(imageSize))
+			isSigned := olu.CheckManifestSignature(repo, manifests[i].Digest)
+			lastUpdated := olu.GetImageLastUpdated(imageConfigInfo)
+			score := 0
+
+			imageSummary := gql_generated.ImageSummary{
+				RepoName:    &repoName,
+				Tag:         &tag,
+				LastUpdated: &lastUpdated,
+				IsSigned:    &isSigned,
+				Size:        &size,
+				Platform:    osArch,
+				Vendor:      &vendor,
+				Score:       &score,
+			}
+
+			if tagsInfo[i].Digest == lastUpdatedTag.Digest {
+				lastUpdatedImageSummary = imageSummary
+			}
 		}
 
-		labels := imageConfig.Config.Labels
+		if brokenManifest {
+			continue
+		}
 
-		// Read Description
-		desc := common.GetDescription(labels)
+		for blob := range repoBlob2Size {
+			repoSize += repoBlob2Size[blob]
+		}
 
-		// Read licenses
-		license := common.GetLicense(labels)
+		repoSizeStr := strconv.FormatInt(repoSize, 10)
+		index := 0
 
-		// Read vendor
-		vendor := common.GetVendor(labels)
-
-		// Read categories
-		categories := common.GetCategories(labels)
-
-		results = append(results, &gql_generated.ImageSummary{
-			RepoName: &name, Tag: &latestTag.Name,
-			Description: &desc, Licenses: &license, Vendor: &vendor,
-			Labels: &categories, Size: &size, LastUpdated: &latestTag.Timestamp,
+		repos = append(repos, &gql_generated.RepoSummary{
+			Name:        &repoName,
+			LastUpdated: &lastUpdatedTag.Timestamp,
+			Size:        &repoSizeStr,
+			Platforms:   repoPlatforms,
+			Vendors:     repoVendors,
+			Score:       &index,
+			NewestImage: &lastUpdatedImageSummary,
 		})
 	}
 
-	return results, nil
+	return repos, nil
 }
 
 func cleanQuerry(query string) string {
