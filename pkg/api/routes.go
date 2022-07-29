@@ -38,6 +38,7 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/repodb"
 	"zotregistry.io/zot/pkg/test" //nolint:goimports
 )
 
@@ -125,7 +126,7 @@ func (rh *RouteHandler) SetupRoutes() {
 		} else {
 			// extended build
 			ext.SetupMetricsRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
-			ext.SetupSearchRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
+			ext.SetupSearchRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.RepoDB, rh.c.Log)
 			gqlPlayground.SetupGQLPlaygroundRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
 		}
 	}
@@ -402,6 +403,32 @@ func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.
 		return
 	}
 
+	if rh.c.RepoDB != nil {
+		// check is image is a signature
+		isSignature, _, _, err := storage.CheckIsImageSignature(name, content, reference,
+			rh.c.StoreController)
+		if err != nil {
+			if errors.Is(err, zerr.ErrOrphanSignature) {
+				rh.c.Log.Warn().Err(err).Msg("image has signature format but it doesn't sign any image")
+			} else {
+				rh.c.Log.Error().Err(err).Msg("can't check if manifest is a signature or not")
+				response.WriteHeader(http.StatusInternalServerError)
+
+				return
+			}
+		}
+
+		if !isSignature {
+			err := rh.c.RepoDB.IncrementManifestDownloads(digest)
+			if err != nil {
+				rh.c.Log.Error().Err(err).Msg("unexpected error")
+				response.WriteHeader(http.StatusInternalServerError)
+
+				return
+			}
+		}
+	}
+
 	response.Header().Set(constants.DistContentDigestKey, digest.String())
 	WriteData(response, http.StatusOK, mediaType, content)
 }
@@ -595,9 +622,128 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 		return
 	}
 
+	if rh.c.RepoDB != nil {
+		// check is image is a signature
+		isSignature, signatureType, signedManifestDigest, err := storage.CheckIsImageSignature(name, body, reference,
+			rh.c.StoreController)
+		if err != nil {
+			if errors.Is(err, zerr.ErrOrphanSignature) {
+				rh.c.Log.Warn().Err(err).Msg("image has signature format but it doesn't sign any image")
+
+				response.Header().Set("Location", fmt.Sprintf("/v2/%s/manifests/%s", name, digest))
+				response.Header().Set(constants.DistContentDigestKey, digest.String())
+				response.WriteHeader(http.StatusCreated)
+
+				return
+			}
+
+			rh.c.Log.Error().Err(err).Msg("can't check if image is a signature or not")
+
+			if err = imgStore.DeleteImageManifest(name, reference); err != nil {
+				rh.c.Log.Error().Err(err).Msgf("couldn't remove image manifest %s in repo %s", reference, name)
+			}
+
+			response.WriteHeader(http.StatusInternalServerError)
+
+			return
+		}
+
+		metadataSuccessfullySet := true
+
+		if isSignature {
+			err := rh.c.RepoDB.AddManifestSignature(signedManifestDigest, repodb.SignatureMetadata{
+				SignatureType:   signatureType,
+				SignatureDigest: digest,
+			})
+			if err != nil {
+				rh.c.Log.Error().Err(err).Msg("repodb: error while putting repo meta")
+				metadataSuccessfullySet = false
+			}
+		} else {
+			imageMetadata, err := newManifestMeta(name, body, rh.c.StoreController)
+			if err == nil {
+				err := rh.c.RepoDB.SetManifestMeta(digest, imageMetadata)
+				if err != nil {
+					rh.c.Log.Error().Err(err).Msg("repodb: error while putting image meta")
+					metadataSuccessfullySet = false
+				} else {
+					// If SetManifestMeta is successful and SetRepoTag is not, the data inserted by SetManifestMeta
+					// will be garbage collected later
+					// Q: There will be a problem if we write a manifest without a tag
+					// Q: When will we write a manifest where the reference will be a digest?
+					err = rh.c.RepoDB.SetRepoTag(name, reference, digest)
+					if err != nil {
+						rh.c.Log.Error().Err(err).Msg("repodb: error while putting repo meta")
+						metadataSuccessfullySet = false
+					}
+				}
+			} else {
+				metadataSuccessfullySet = false
+			}
+		}
+
+		if !metadataSuccessfullySet {
+			rh.c.Log.Info().Msgf("uploding image meta was unsuccessful for tag %s in repo %s", reference, name)
+
+			if err = imgStore.DeleteImageManifest(name, reference); err != nil {
+				rh.c.Log.Error().Err(err).Msgf("couldn't remove image manifest %s in repo %s", reference, name)
+			}
+
+			response.WriteHeader(http.StatusInternalServerError)
+
+			return
+		}
+	}
+
 	response.Header().Set("Location", fmt.Sprintf("/v2/%s/manifests/%s", name, digest))
 	response.Header().Set(constants.DistContentDigestKey, digest.String())
 	response.WriteHeader(http.StatusCreated)
+}
+
+func newManifestMeta(repoName string, manifestBlob []byte,
+	storeController storage.StoreController,
+) (repodb.ManifestMetadata, error) {
+	const (
+		configCount   = 1
+		manifestCount = 1
+	)
+
+	var manifestMeta repodb.ManifestMetadata
+
+	var manifestContent ispec.Manifest
+
+	err := json.Unmarshal(manifestBlob, &manifestContent)
+	if err != nil {
+		return repodb.ManifestMetadata{}, err
+	}
+
+	imgStore := storeController.GetImageStore(repoName)
+
+	configBlob, err := imgStore.GetBlobContent(repoName, manifestContent.Config.Digest)
+	if err != nil {
+		return repodb.ManifestMetadata{}, err
+	}
+
+	var configContent ispec.Image
+
+	err = json.Unmarshal(configBlob, &configContent)
+	if err != nil {
+		return repodb.ManifestMetadata{}, err
+	}
+
+	manifestMeta.BlobsSize = len(configBlob) + len(manifestBlob)
+	for _, layer := range manifestContent.Layers {
+		manifestMeta.BlobsSize += int(layer.Size)
+	}
+
+	manifestMeta.BlobCount = configCount + manifestCount + len(manifestContent.Layers)
+	manifestMeta.ManifestBlob = manifestBlob
+	manifestMeta.ConfigBlob = configBlob
+
+	// manifestMeta.Dependants
+	// manifestMeta.Dependencies
+
+	return manifestMeta, nil
 }
 
 // DeleteManifest godoc
@@ -628,7 +774,8 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 		return
 	}
 
-	err := imgStore.DeleteImageManifest(name, reference)
+	// backupManifest
+	manifestBlob, manifestDigest, mediaType, err := imgStore.GetImageManifest(name, reference)
 	if err != nil {
 		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 			WriteJSON(response, http.StatusBadRequest,
@@ -645,6 +792,77 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 		}
 
 		return
+	}
+
+	err = imgStore.DeleteImageManifest(name, reference)
+	if err != nil {
+		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
+			WriteJSON(response, http.StatusBadRequest,
+				NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
+		} else if errors.Is(err, zerr.ErrManifestNotFound) {
+			WriteJSON(response, http.StatusNotFound,
+				NewErrorList(NewError(MANIFEST_UNKNOWN, map[string]string{"reference": reference})))
+		} else if errors.Is(err, zerr.ErrBadManifest) {
+			WriteJSON(response, http.StatusBadRequest,
+				NewErrorList(NewError(UNSUPPORTED, map[string]string{"reference": reference})))
+		} else {
+			rh.c.Log.Error().Err(err).Msg("unexpected error")
+			response.WriteHeader(http.StatusInternalServerError)
+		}
+
+		return
+	}
+
+	if rh.c.RepoDB != nil {
+		isSignature, signatureType, signedManifestDigest, err := storage.CheckIsImageSignature(name, manifestBlob,
+			reference, rh.c.StoreController)
+		if err != nil {
+			if errors.Is(err, zerr.ErrOrphanSignature) {
+				response.WriteHeader(http.StatusAccepted)
+
+				return
+			}
+
+			rh.c.Log.Error().Err(err).Msg("can't check if image is a signature or not")
+			response.WriteHeader(http.StatusInternalServerError)
+
+			return
+		}
+
+		manageRepoMetaSuccessfully := true
+
+		if isSignature {
+			err := rh.c.RepoDB.DeleteSignature(signedManifestDigest, repodb.SignatureMetadata{
+				SignatureDigest: manifestDigest,
+				SignatureType:   signatureType,
+			})
+			if err != nil {
+				rh.c.Log.Error().Err(err).Msg("repodb: can't check if image is a signature or not")
+				manageRepoMetaSuccessfully = false
+			}
+		} else {
+			// Q: Should this work with digests also? For now it accepts only tags
+			err := rh.c.RepoDB.DeleteRepoTag(name, reference)
+			if err != nil {
+				rh.c.Log.Info().Msg("repodb: restoring image store")
+
+				// restore image store
+				_, err = imgStore.PutImageManifest(name, reference, mediaType, manifestBlob)
+				if err != nil {
+					rh.c.Log.Error().Err(err).Msg("repodb: error while restoring image store, database is not consistent")
+				}
+
+				manageRepoMetaSuccessfully = false
+			}
+		}
+
+		if !manageRepoMetaSuccessfully {
+			rh.c.Log.Info().Msgf("repodb: deleting image meta was unsuccessful for tag %s in repo %s", reference, name)
+
+			response.WriteHeader(http.StatusInternalServerError)
+
+			return
+		}
 	}
 
 	response.WriteHeader(http.StatusAccepted)
