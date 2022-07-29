@@ -5,12 +5,19 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
 )
 
 const defaultPerms = 0o0600
+
+// nolint:gochecknoglobals
+var loggerSetTimeFormat sync.Once
+
+// nolint:gochecknoglobals
+var auditLoggerSetTimeFormat sync.Once
 
 // Logger extends zerolog's Logger.
 type Logger struct {
@@ -22,7 +29,9 @@ func (l Logger) Println(v ...interface{}) {
 }
 
 func NewLogger(level, output string) Logger {
-	zerolog.TimeFieldFormat = time.RFC3339Nano
+	loggerSetTimeFormat.Do(func() {
+		zerolog.TimeFieldFormat = time.RFC3339Nano
+	})
 
 	lvl, err := zerolog.ParseLevel(level)
 	if err != nil {
@@ -47,7 +56,9 @@ func NewLogger(level, output string) Logger {
 }
 
 func NewAuditLogger(level, audit string) *Logger {
-	zerolog.TimeFieldFormat = time.RFC3339Nano
+	auditLoggerSetTimeFormat.Do(func() {
+		zerolog.TimeFieldFormat = time.RFC3339Nano
+	})
 
 	lvl, err := zerolog.ParseLevel(level)
 	if err != nil {

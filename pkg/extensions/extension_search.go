@@ -16,6 +16,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/repodb"
 )
 
 func EnableSearchExtension(config *config.Config, log log.Logger, rootDir string) {
@@ -56,7 +57,7 @@ func downloadTrivyDB(dbDir string, log log.Logger, updateInterval time.Duration)
 }
 
 func SetupSearchRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
-	authFunc mux.MiddlewareFunc, l log.Logger,
+	authFunc mux.MiddlewareFunc, searchDB repodb.RepoDB, l log.Logger,
 ) {
 	// fork a new zerolog child to avoid data race
 	log := log.Logger{Logger: l.With().Caller().Timestamp().Logger()}
@@ -66,9 +67,9 @@ func SetupSearchRoutes(config *config.Config, router *mux.Router, storeControlle
 		var resConfig gql_generated.Config
 
 		if config.Extensions.Search.CVE != nil {
-			resConfig = search.GetResolverConfig(log, storeController, true)
+			resConfig = search.GetResolverConfig(log, storeController, searchDB, true)
 		} else {
-			resConfig = search.GetResolverConfig(log, storeController, false)
+			resConfig = search.GetResolverConfig(log, storeController, searchDB, false)
 		}
 
 		extRouter := router.PathPrefix(constants.ExtSearchPrefix).Subrouter()

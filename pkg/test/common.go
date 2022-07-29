@@ -7,11 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"math/big"
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path"
 	"time"
 
@@ -20,6 +22,9 @@ import (
 	imagespec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opencontainers/umoci"
 	"github.com/phayes/freeport"
+	"github.com/sigstore/cosign/cmd/cosign/cli/generate"
+	"github.com/sigstore/cosign/cmd/cosign/cli/options"
+	"github.com/sigstore/cosign/cmd/cosign/cli/sign"
 	"gopkg.in/resty.v1"
 )
 
@@ -368,7 +373,7 @@ func UploadImage(img Image, baseURL, repo string) error {
 		return err
 	}
 
-	if ErrStatusCode(resp.StatusCode()) != http.StatusAccepted && ErrStatusCode(resp.StatusCode()) == -1 {
+	if ErrStatusCode(resp.StatusCode()) != http.StatusAccepted || ErrStatusCode(resp.StatusCode()) == -1 {
 		return ErrPostBlob
 	}
 
@@ -385,7 +390,7 @@ func UploadImage(img Image, baseURL, repo string) error {
 		return err
 	}
 
-	if ErrStatusCode(resp.StatusCode()) != http.StatusCreated && ErrStatusCode(resp.StatusCode()) == -1 {
+	if ErrStatusCode(resp.StatusCode()) != http.StatusCreated || ErrStatusCode(resp.StatusCode()) == -1 {
 		return ErrPostBlob
 	}
 
@@ -401,4 +406,165 @@ func UploadImage(img Image, baseURL, repo string) error {
 		Put(baseURL + "/v2/" + repo + "/manifests/" + img.Tag)
 
 	return err
+}
+
+func UploadImageWithBasicAuth(img Image, baseURL, repo, user, password string) error {
+	for _, blob := range img.Layers {
+		resp, err := resty.R().
+			SetBasicAuth(user, password).
+			Post(baseURL + "/v2/" + repo + "/blobs/uploads/")
+		if err != nil {
+			return err
+		}
+
+		if resp.StatusCode() != http.StatusAccepted {
+			return ErrPostBlob
+		}
+
+		loc := resp.Header().Get("Location")
+
+		digest := godigest.FromBytes(blob).String()
+
+		resp, err = resty.R().
+			SetBasicAuth(user, password).
+			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", digest).
+			SetBody(blob).
+			Put(baseURL + loc)
+
+		if err != nil {
+			return err
+		}
+
+		if resp.StatusCode() != http.StatusCreated {
+			return ErrPutBlob
+		}
+	}
+	// upload config
+	cblob, err := json.Marshal(img.Config)
+	if err = Error(err); err != nil {
+		return err
+	}
+
+	cdigest := godigest.FromBytes(cblob)
+
+	resp, err := resty.R().
+		SetBasicAuth(user, password).
+		Post(baseURL + "/v2/" + repo + "/blobs/uploads/")
+	if err = Error(err); err != nil {
+		return err
+	}
+
+	if ErrStatusCode(resp.StatusCode()) != http.StatusAccepted || ErrStatusCode(resp.StatusCode()) == -1 {
+		return ErrPostBlob
+	}
+
+	loc := Location(baseURL, resp)
+
+	// uploading blob should get 201
+	resp, err = resty.R().
+		SetBasicAuth(user, password).
+		SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+		SetHeader("Content-Type", "application/octet-stream").
+		SetQueryParam("digest", cdigest.String()).
+		SetBody(cblob).
+		Put(loc)
+	if err = Error(err); err != nil {
+		return err
+	}
+
+	if ErrStatusCode(resp.StatusCode()) != http.StatusCreated || ErrStatusCode(resp.StatusCode()) == -1 {
+		return ErrPostBlob
+	}
+
+	// put manifest
+	manifestBlob, err := json.Marshal(img.Manifest)
+	if err = Error(err); err != nil {
+		return err
+	}
+
+	_, err = resty.R().
+		SetBasicAuth(user, password).
+		SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
+		SetBody(manifestBlob).
+		Put(baseURL + "/v2/" + repo + "/manifests/" + img.Tag)
+
+	return err
+}
+
+func SignImageUsingCosign(repoTag, port string) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+
+	defer func() { _ = os.Chdir(cwd) }()
+
+	tdir, err := ioutil.TempDir("", "cosign")
+	if err != nil {
+		return err
+	}
+
+	defer os.RemoveAll(tdir)
+
+	_ = os.Chdir(tdir)
+
+	// generate a keypair
+	os.Setenv("COSIGN_PASSWORD", "")
+
+	err = generate.GenerateKeyPairCmd(context.TODO(), "", nil)
+	if err != nil {
+		return err
+	}
+
+	imageURL := fmt.Sprintf("localhost:%s/%s", port, repoTag)
+
+	// sign the image
+	return sign.SignCmd(&options.RootOptions{Verbose: true, Timeout: 1 * time.Minute},
+		options.KeyOpts{KeyRef: path.Join(tdir, "cosign.key"), PassFunc: generate.GetPass},
+		options.RegistryOptions{AllowInsecure: true},
+		map[string]interface{}{"tag": "1.0"},
+		[]string{imageURL},
+		"", "", true, "", "", "", false, false, "", true)
+}
+
+func SignImageUsingNotary(repoTag, port string) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+
+	defer func() { _ = os.Chdir(cwd) }()
+
+	tdir, err := ioutil.TempDir("", "notation")
+	if err != nil {
+		return err
+	}
+
+	defer os.RemoveAll(tdir)
+
+	_ = os.Chdir(tdir)
+
+	_, err = exec.LookPath("notation")
+	if err != nil {
+		return err
+	}
+
+	os.Setenv("XDG_CONFIG_HOME", tdir)
+
+	// generate a keypair
+	cmd := exec.Command("notation", "cert", "generate-test", "--trust", "notation-sign-test")
+
+	err = cmd.Run()
+	if err != nil {
+		return err
+	}
+
+	// sign the image
+	image := fmt.Sprintf("localhost:%s/%s", port, repoTag)
+
+	cmd = exec.Command("notation", "sign", "--key", "notation-sign-test", "--plain-http", image)
+
+	return cmd.Run()
 }

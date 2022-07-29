@@ -26,6 +26,8 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/repodb"
+	"zotregistry.io/zot/pkg/storage/repodb/repodbfactory"
 	"zotregistry.io/zot/pkg/storage/s3"
 )
 
@@ -36,6 +38,7 @@ const (
 type Controller struct {
 	Config          *config.Config
 	Router          *mux.Router
+	RepoDB          repodb.RepoDB
 	StoreController storage.StoreController
 	Log             log.Logger
 	Audit           *log.Logger
@@ -155,6 +158,10 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 	c.Metrics = monitoring.NewMetricsServer(enabled, c.Log)
 
 	if err := c.InitImageStore(reloadCtx); err != nil {
+		return err
+	}
+
+	if err := c.InitRepoDB(reloadCtx); err != nil {
 		return err
 	}
 
@@ -416,6 +423,68 @@ func compareImageStore(root1, root2 string) bool {
 	}
 
 	return isSameFile
+}
+
+func (c *Controller) InitRepoDB(reloadCtx context.Context) error {
+	if c.Config.Extensions != nil && c.Config.Extensions.Search != nil && *c.Config.Extensions.Search.Enable {
+		driver, err := c.createRepoDBDriver(reloadCtx)
+		if err != nil {
+			return err
+		}
+
+		c.RepoDB = driver
+	}
+
+	return nil
+}
+
+func (c *Controller) createRepoDBDriver(reloadCtx context.Context) (repodb.RepoDB, error) {
+	repoDBConfig := c.Config.Storage.RepoDBDriver
+
+	if repoDBConfig != nil {
+		if val, ok := repoDBConfig["name"]; ok {
+			assertedDriverNameVal, okAssert := val.(string)
+			if !okAssert {
+				c.Log.Error().Err(errors.ErrTypeAssertionFailed).Msgf("Failed type assertion for %v to string",
+					"cacheDatabaseDriverName")
+
+				return nil, errors.ErrTypeAssertionFailed
+			}
+
+			switch assertedDriverNameVal {
+			case "boltdb":
+				params := repodb.BoltDBParameters{}
+				boltRootDirCfgVarName := "rootDirectory"
+
+				// default values
+				params.RootDir = c.StoreController.DefaultStore.RootDir()
+
+				if rootDirVal, ok := repoDBConfig[boltRootDirCfgVarName]; ok {
+					assertedRootDir, okAssert := rootDirVal.(string)
+					if !okAssert {
+						c.Log.Error().Err(errors.ErrTypeAssertionFailed).Msgf("Failed type assertion for %v to string", rootDirVal)
+
+						return nil, errors.ErrTypeAssertionFailed
+					}
+					params.RootDir = assertedRootDir
+				}
+
+				return repodbfactory.Create("boltdb", params)
+			default:
+				c.Log.Warn().Msgf("Cache DB driver not found for %v: defaulting to boltdb (local storage)", val)
+
+				return repodbfactory.Create("boltdb", repodb.BoltDBParameters{
+					RootDir: c.StoreController.DefaultStore.RootDir(),
+				})
+			}
+		}
+	}
+
+	c.Log.Warn().Msg(`Something went wrong when reading the cachedb config. Defulting to BoltDB`)
+
+	return repodbfactory.Create("boltdb", repodb.BoltDBParameters{
+		RootDir: c.StoreController.DefaultStore.RootDir(),
+	})
 }
 
 func (c *Controller) LoadNewConfig(reloadCtx context.Context, config *config.Config) {

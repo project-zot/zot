@@ -6,15 +6,19 @@ package search
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
-	"sort"
+	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/99designs/gqlgen/graphql"
 	glob "github.com/bmatcuk/doublestar/v4"            // nolint:gci
 	v1 "github.com/google/go-containerregistry/pkg/v1" // nolint:gci
 	godigest "github.com/opencontainers/go-digest"
+	"zotregistry.io/zot/pkg/storage/repodb"
+
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/vektah/gqlparser/v2/gqlerror"
 	"zotregistry.io/zot/pkg/extensions/search/common"
@@ -29,6 +33,7 @@ import (
 // Resolver ...
 type Resolver struct {
 	cveInfo         *cveinfo.CveInfo
+	repoDB          repodb.RepoDB
 	storeController storage.StoreController
 	digestInfo      *digestinfo.DigestInfo
 	log             log.Logger
@@ -44,7 +49,9 @@ type cveDetail struct {
 var ErrBadCtxFormat = errors.New("type assertion failed")
 
 // GetResolverConfig ...
-func GetResolverConfig(log log.Logger, storeController storage.StoreController, enableCVE bool) gql_generated.Config {
+func GetResolverConfig(log log.Logger, storeController storage.StoreController, repoDB repodb.RepoDB,
+	enableCVE bool,
+) gql_generated.Config {
 	var cveInfo *cveinfo.CveInfo
 
 	var err error
@@ -58,7 +65,13 @@ func GetResolverConfig(log log.Logger, storeController storage.StoreController, 
 
 	digestInfo := digestinfo.NewDigestInfo(storeController, log)
 
-	resConfig := &Resolver{cveInfo: cveInfo, storeController: storeController, digestInfo: digestInfo, log: log}
+	resConfig := &Resolver{
+		cveInfo:         cveInfo,
+		repoDB:          repoDB,
+		storeController: storeController,
+		digestInfo:      digestInfo,
+		log:             log,
+	}
 
 	return gql_generated.Config{
 		Resolvers: resConfig, Directives: gql_generated.DirectiveRoot{},
@@ -238,170 +251,380 @@ func (r *queryResolver) repoListWithNewestImage(ctx context.Context, store stora
 }
 
 func cleanQuerry(query string) string {
-	query = strings.ToLower(query)
-	query = strings.Replace(query, ":", " ", 1)
+	query = strings.TrimSpace(query)
 
 	return query
 }
 
-func globalSearch(repoList []string, name, tag string, olu common.OciLayoutUtils, log log.Logger) (
-	[]*gql_generated.RepoSummary, []*gql_generated.ImageSummary, []*gql_generated.LayerSummary,
+func globalSearch(ctx context.Context, query string, repoDB repodb.RepoDB, requestedPage *gql_generated.PageInput,
+	log log.Logger,
+) ([]*gql_generated.RepoSummary, []*gql_generated.ImageSummary, []*gql_generated.LayerSummary, error,
 ) {
 	repos := []*gql_generated.RepoSummary{}
 	images := []*gql_generated.ImageSummary{}
 	layers := []*gql_generated.LayerSummary{}
 
-	for _, repo := range repoList {
-		repo := repo
+	if requestedPage == nil {
+		requestedPage = &gql_generated.PageInput{}
+	}
 
-		// map used for dedube if 2 images reference the same blob
-		repoBlob2Size := make(map[string]int64, 10)
-
-		// made up of all manifests, configs and image layers
-		repoSize := int64(0)
-
-		lastUpdatedTag, err := olu.GetRepoLastUpdated(repo)
-		if err != nil {
-			log.Error().Err(err).Msgf("can't find latest updated tag for repo: %s", repo)
+	if searchingForRepos(query) {
+		limit := 0
+		if requestedPage.Limit != nil {
+			limit = *requestedPage.Limit
 		}
 
-		manifests, err := olu.GetImageManifests(repo)
+		offset := 0
+		if requestedPage.Offset != nil {
+			offset = *requestedPage.Offset
+		}
+
+		sortBy := gql_generated.SortCriteriaRelevance
+		if requestedPage.SortBy != nil {
+			sortBy = *requestedPage.SortBy
+		}
+
+		reposMeta, manifestMetaMap, err := repoDB.SearchRepos(ctx, query, repodb.PageInput{
+			Limit:  limit,
+			Offset: offset,
+			SortBy: repodb.SortCriteria(sortBy),
+		})
 		if err != nil {
-			log.Error().Err(err).Msgf("can't get manifests for repo: %s", repo)
+			return []*gql_generated.RepoSummary{}, []*gql_generated.ImageSummary{}, []*gql_generated.LayerSummary{}, err
+		}
+
+		for _, repoMeta := range reposMeta {
+			repoSummary := RepoMeta2RepoSummary(ctx, repoMeta, manifestMetaMap)
+
+			*repoSummary.Score = calculateImageMatchingScore(repoMeta.Name, strings.Index(repoMeta.Name, query))
+			repos = append(repos, repoSummary)
+		}
+	} else { // search for images
+		limit := 0
+		if requestedPage.Limit != nil {
+			limit = *requestedPage.Limit
+		}
+
+		offset := 0
+		if requestedPage.Offset != nil {
+			offset = *requestedPage.Offset
+		}
+
+		sortBy := gql_generated.SortCriteriaRelevance
+		if requestedPage.SortBy != nil {
+			sortBy = *requestedPage.SortBy
+		}
+		reposMeta, manifestMetaMap, err := repoDB.SearchTags(ctx, query, repodb.PageInput{
+			Limit:  limit,
+			Offset: offset,
+			SortBy: repodb.SortCriteria(sortBy),
+		})
+		if err != nil {
+			return []*gql_generated.RepoSummary{}, []*gql_generated.ImageSummary{}, []*gql_generated.LayerSummary{}, err
+		}
+
+		for _, repoMeta := range reposMeta {
+			imageSummaries := RepoMeta2ImageSummaries(ctx, repoMeta, manifestMetaMap)
+
+			images = append(images, imageSummaries...)
+		}
+	}
+
+	return repos, images, layers, nil
+}
+
+func RepoMeta2ImageSummaries(ctx context.Context, repoMeta repodb.RepoMetadata,
+	manifestMetaMap map[string]repodb.ManifestMetadata,
+) []*gql_generated.ImageSummary {
+	imageSummaries := make([]*gql_generated.ImageSummary, 0, len(repoMeta.Tags))
+
+	for tag, manifestDigest := range repoMeta.Tags {
+		var manifestContent ispec.Manifest
+
+		err := json.Unmarshal(manifestMetaMap[manifestDigest].ManifestBlob, &manifestContent)
+		if err != nil {
+			graphql.AddError(ctx, gqlerror.Errorf("can't unmarshal manifest blob for image: %s:%s, "+
+				"manifest digest: %s, error: %s", repoMeta.Name, tag, manifestDigest, err.Error()))
 
 			continue
 		}
 
-		var lastUpdatedImageSummary gql_generated.ImageSummary
+		var configContent ispec.Image
 
-		repoPlatforms := make([]*gql_generated.OsArch, 0, len(manifests))
-		repoVendors := make([]*string, 0, len(manifests))
+		err = json.Unmarshal(manifestMetaMap[manifestDigest].ConfigBlob, &configContent)
+		if err != nil {
+			graphql.AddError(ctx, gqlerror.Errorf("can't unmarshal config blob for image: %s:%s, "+
+				"manifest digest: %s, error: %s", repoMeta.Name, tag, manifestDigest, err.Error()))
 
-		for i, manifest := range manifests {
-			imageLayersSize := int64(0)
-
-			manifestTag, ok := manifest.Annotations[ispec.AnnotationRefName]
-			if !ok {
-				log.Error().Msg("reference not found for this manifest")
-
-				continue
-			}
-
-			imageBlobManifest, err := olu.GetImageBlobManifest(repo, manifests[i].Digest)
-			if err != nil {
-				log.Error().Err(err).Msgf("can't read manifest for repo %s %s", repo, manifestTag)
-
-				continue
-			}
-
-			manifestSize := olu.GetImageManifestSize(repo, manifests[i].Digest)
-			configSize := imageBlobManifest.Config.Size
-
-			repoBlob2Size[manifests[i].Digest.String()] = manifestSize
-			repoBlob2Size[imageBlobManifest.Config.Digest.Hex] = configSize
-
-			for _, layer := range imageBlobManifest.Layers {
-				layer := layer
-				layerDigest := layer.Digest.String()
-				layerSizeStr := strconv.Itoa(int(layer.Size))
-				repoBlob2Size[layer.Digest.String()] = layer.Size
-				imageLayersSize += layer.Size
-
-				// if we have a tag we won't match a layer
-				if tag != "" {
-					continue
-				}
-
-				if index := strings.Index(layerDigest, name); index != -1 {
-					layers = append(layers, &gql_generated.LayerSummary{
-						Digest: &layerDigest,
-						Size:   &layerSizeStr,
-						Score:  &index,
-					})
-				}
-			}
-
-			imageSize := imageLayersSize + manifestSize + configSize
-
-			index := strings.Index(repo, name)
-			matchesTag := strings.HasPrefix(manifestTag, tag)
-
-			if index != -1 {
-				imageConfigInfo, err := olu.GetImageConfigInfo(repo, manifests[i].Digest)
-				if err != nil {
-					log.Error().Err(err).Msgf("can't retrieve config info for the image %s %s", repo, manifestTag)
-
-					continue
-				}
-
-				size := strconv.Itoa(int(imageSize))
-				isSigned := olu.CheckManifestSignature(repo, manifests[i].Digest)
-
-				// update matching score
-				score := calculateImageMatchingScore(repo, index, matchesTag)
-
-				vendor := olu.GetImageVendor(imageConfigInfo)
-				lastUpdated := olu.GetImageLastUpdated(imageConfigInfo)
-				os, arch := olu.GetImagePlatform(imageConfigInfo)
-				osArch := &gql_generated.OsArch{
-					Os:   &os,
-					Arch: &arch,
-				}
-
-				repoPlatforms = append(repoPlatforms, osArch)
-				repoVendors = append(repoVendors, &vendor)
-
-				imageSummary := gql_generated.ImageSummary{
-					RepoName:    &repo,
-					Tag:         &manifestTag,
-					LastUpdated: &lastUpdated,
-					IsSigned:    &isSigned,
-					Size:        &size,
-					Platform:    osArch,
-					Vendor:      &vendor,
-					Score:       &score,
-				}
-
-				if manifests[i].Digest.String() == lastUpdatedTag.Digest {
-					lastUpdatedImageSummary = imageSummary
-				}
-
-				images = append(images, &imageSummary)
-			}
+			continue
 		}
 
-		for blob := range repoBlob2Size {
-			repoSize += repoBlob2Size[blob]
+		imgSize := int64(0)
+		imgSize += manifestContent.Config.Size
+		imgSize += int64(len(manifestMetaMap[manifestDigest].ManifestBlob))
+
+		for _, layer := range manifestContent.Layers {
+			imgSize += layer.Size
 		}
 
-		if index := strings.Index(repo, name); index != -1 {
-			repoSize := strconv.FormatInt(repoSize, 10)
+		var (
+			repoName         = repoMeta.Name
+			tag              = tag
+			manifestDigest   = manifestDigest
+			configDigest     = manifestContent.Config.Digest.String()
+			imageLastUpdated = getImageLastUpdated(configContent)
+			isSigned         = imageHasSignatures(manifestMetaMap[manifestDigest].Signatures)
+			imageSize        = strconv.FormatInt(imgSize, 10)
+			os               = configContent.OS
+			arch             = configContent.Architecture
+			osArch           = gql_generated.OsArch{Os: &os, Arch: &arch}
+			downloadCount    = manifestMetaMap[manifestDigest].DownloadCount
+		)
 
-			repos = append(repos, &gql_generated.RepoSummary{
-				Name:        &repo,
-				LastUpdated: &lastUpdatedTag.Timestamp,
-				Size:        &repoSize,
-				Platforms:   repoPlatforms,
-				Vendors:     repoVendors,
-				Score:       &index,
-				NewestImage: &lastUpdatedImageSummary,
-			})
+		annotations := common.GetAnnotations(manifestContent.Annotations, configContent.Config.Labels)
+
+		imageSummary := gql_generated.ImageSummary{
+			RepoName:      &repoName,
+			Tag:           &tag,
+			Digest:        &manifestDigest,
+			ConfigDigest:  &configDigest,
+			LastUpdated:   imageLastUpdated,
+			IsSigned:      &isSigned,
+			Size:          &imageSize,
+			Platform:      &osArch,
+			Vendor:        &annotations.Vendor,
+			DownloadCount: &downloadCount,
+			Layers:        getLayersSummary(manifestContent),
+			Description:   &annotations.Description,
+			Title:         &annotations.Title,
+			Documentation: &annotations.Documentation,
+			Licenses:      &annotations.Licenses,
+			Labels:        &annotations.Labels,
+			Source:        &annotations.Source,
+		}
+
+		imageSummaries = append(imageSummaries, &imageSummary)
+	}
+
+	return imageSummaries
+}
+
+func getLayersSummary(manifestContent ispec.Manifest) []*gql_generated.LayerSummary {
+	layers := make([]*gql_generated.LayerSummary, 0, len(manifestContent.Layers))
+
+	for _, layer := range manifestContent.Layers {
+		size := strconv.FormatInt(layer.Size, 10)
+		digest := layer.Digest.String()
+
+		layers = append(layers, &gql_generated.LayerSummary{
+			Size:   &size,
+			Digest: &digest,
+		})
+	}
+
+	return layers
+}
+
+func RepoMeta2RepoSummary(ctx context.Context, repoMeta repodb.RepoMetadata,
+	manifestMetaMap map[string]repodb.ManifestMetadata,
+) *gql_generated.RepoSummary {
+	var (
+		repoLastUpdatedTimestamp = time.Time{}
+		repoPlatformsSet         = map[string]*gql_generated.OsArch{}
+		repoVendorsSet           = map[string]bool{}
+		lastUpdatedImageSummary  *gql_generated.ImageSummary
+		repoStarCount            = repoMeta.Stars
+		isBookmarked             = false
+		isStarred                = false
+		repoDownloadCount        = 0
+		repoName                 = repoMeta.Name
+
+		// map used to keep track of all blobs of a repo without dublicates
+		// some images may have the same layers
+		repoBlob2Size = make(map[string]int64, 10)
+
+		// made up of all manifests, configs and image layers
+		size = int64(0)
+	)
+
+	for tag, manifestDigest := range repoMeta.Tags {
+		var manifestContent ispec.Manifest
+
+		err := json.Unmarshal(manifestMetaMap[manifestDigest].ManifestBlob, &manifestContent)
+		if err != nil {
+			graphql.AddError(ctx, gqlerror.Errorf("can't unmarshal manifest blob for image: %s:%s, manifest digest: %s, "+
+				"error: %s", repoMeta.Name, tag, manifestDigest, err.Error()))
+
+			continue
+		}
+
+		var configContent ispec.Image
+
+		err = json.Unmarshal(manifestMetaMap[manifestDigest].ConfigBlob, &configContent)
+		if err != nil {
+			graphql.AddError(ctx, gqlerror.Errorf("can't unmarshal config blob for image: %s:%s, manifest digest: %s, error: %s",
+				repoMeta.Name, tag, manifestDigest, err.Error()))
+
+			continue
+		}
+
+		var (
+			tag          = tag
+			isSigned     = len(manifestMetaMap[manifestDigest].Signatures) > 0
+			configDigest = manifestContent.Config.Digest.String()
+			configSize   = manifestContent.Config.Size
+			opSys        = configContent.OS
+			arch         = configContent.Architecture
+			osArch       = gql_generated.OsArch{Os: &opSys, Arch: &arch}
+
+			imageLastUpdated = getImageLastUpdated(configContent)
+
+			size = updateRepoBlobsMap(
+				manifestDigest, int64(len(manifestMetaMap[manifestDigest].ManifestBlob)),
+				configDigest, configSize,
+				manifestContent.Layers,
+				repoBlob2Size)
+			imageSize      = strconv.FormatInt(size, 10)
+			downloadCount  = manifestMetaMap[manifestDigest].DownloadCount
+			manifestDigest = manifestDigest
+		)
+
+		annotations := common.GetAnnotations(manifestContent.Annotations, configContent.Config.Labels)
+
+		imageSummary := gql_generated.ImageSummary{
+			RepoName:      &repoName,
+			Tag:           &tag,
+			Digest:        &manifestDigest,
+			ConfigDigest:  &configDigest,
+			LastUpdated:   imageLastUpdated,
+			IsSigned:      &isSigned,
+			Size:          &imageSize,
+			Platform:      &osArch,
+			Vendor:        &annotations.Vendor,
+			DownloadCount: &downloadCount,
+			Layers:        getLayersSummary(manifestContent),
+			Description:   &annotations.Description,
+			Title:         &annotations.Title,
+			Documentation: &annotations.Documentation,
+			Licenses:      &annotations.Licenses,
+			Labels:        &annotations.Labels,
+			Source:        &annotations.Source,
+		}
+
+		if annotations.Vendor != "" {
+			repoVendorsSet[annotations.Vendor] = true
+		}
+
+		if opSys != "" || arch != "" {
+			osArchString := strings.TrimSpace(fmt.Sprintf("%s %s", opSys, arch))
+			repoPlatformsSet[osArchString] = &gql_generated.OsArch{Os: &opSys, Arch: &arch}
+		}
+
+		if repoLastUpdatedTimestamp.Equal(time.Time{}) {
+			// initialize with first time value
+			if imageLastUpdated != nil {
+				repoLastUpdatedTimestamp = *imageLastUpdated
+			}
+
+			lastUpdatedImageSummary = &imageSummary
+		} else if imageLastUpdated != nil && repoLastUpdatedTimestamp.After(*imageLastUpdated) {
+			repoLastUpdatedTimestamp = *imageLastUpdated
+			lastUpdatedImageSummary = &imageSummary
+		}
+
+		repoDownloadCount += manifestMetaMap[manifestDigest].DownloadCount
+	}
+
+	// calculate repo size = sum all manifest, config and layer blobs sizes
+	for _, blobSize := range repoBlob2Size {
+		size += blobSize
+	}
+
+	repoSize := strconv.FormatInt(size, 10)
+	score := 0
+
+	repoPlatforms := make([]*gql_generated.OsArch, 0, len(repoPlatformsSet))
+	for _, osArch := range repoPlatformsSet {
+		repoPlatforms = append(repoPlatforms, osArch)
+	}
+
+	repoVendors := make([]*string, 0, len(repoVendorsSet))
+
+	for vendor := range repoVendorsSet {
+		vendor := vendor
+		repoVendors = append(repoVendors, &vendor)
+	}
+
+	return &gql_generated.RepoSummary{
+		Name:          &repoName,
+		LastUpdated:   &repoLastUpdatedTimestamp,
+		Size:          &repoSize,
+		Platforms:     repoPlatforms,
+		Vendors:       repoVendors,
+		Score:         &score,
+		NewestImage:   lastUpdatedImageSummary,
+		DownloadCount: &repoDownloadCount,
+		StarCount:     &repoStarCount,
+		IsBookmarked:  &isBookmarked,
+		IsStarred:     &isStarred,
+	}
+}
+
+func imageHasSignatures(signatures map[string][]string) bool {
+	// (sigType, signatures)
+	for _, sigs := range signatures {
+		if len(sigs) > 0 {
+			return true
 		}
 	}
 
-	sort.Slice(repos, func(i, j int) bool {
-		return *repos[i].Score < *repos[j].Score
-	})
+	return false
+}
 
-	sort.Slice(images, func(i, j int) bool {
-		return *images[i].Score < *images[j].Score
-	})
+func searchingForRepos(query string) bool {
+	return !strings.Contains(query, ":")
+}
 
-	sort.Slice(layers, func(i, j int) bool {
-		return *layers[i].Score < *layers[j].Score
-	})
+// updateRepoBlobsMap adds all the image blobs and their respective size to the repo blobs map
+// and returnes the total size of the image.
+func updateRepoBlobsMap(manifestDigest string, manifestSize int64, configDigest string, configSize int64,
+	layers []ispec.Descriptor, repoBlob2Size map[string]int64,
+) int64 {
+	imgSize := int64(0)
 
-	return repos, images, layers
+	// add config size
+	imgSize += configSize
+	repoBlob2Size[configDigest] = configSize
+
+	// add manifest size
+	imgSize += manifestSize
+	repoBlob2Size[manifestDigest] = manifestSize
+
+	// add layers size
+	for _, layer := range layers {
+		repoBlob2Size[layer.Digest.String()] = layer.Size
+		imgSize += layer.Size
+	}
+
+	return imgSize
+}
+
+func getImageLastUpdated(configContent ispec.Image) *time.Time {
+	var lastUpdated *time.Time
+
+	if configContent.Created != nil {
+		lastUpdated = configContent.Created
+	}
+
+	for _, update := range configContent.History {
+		if update.Created != nil {
+			lastUpdated = update.Created
+
+			break
+		}
+	}
+
+	return lastUpdated
 }
 
 // calcalculateImageMatchingScore iterated from the index of the matched string in the
@@ -412,7 +635,7 @@ func globalSearch(repoList []string, name, tag string, olu common.OciLayoutUtils
 // 	query: image
 // 	repos: repo/test/myimage
 // Score will be 2.
-func calculateImageMatchingScore(artefactName string, index int, matchesTag bool) int {
+func calculateImageMatchingScore(artefactName string, index int) int {
 	score := 0
 
 	for index >= 1 {
@@ -421,10 +644,6 @@ func calculateImageMatchingScore(artefactName string, index int, matchesTag bool
 		}
 		index--
 		score++
-	}
-
-	if !matchesTag {
-		score += 10
 	}
 
 	return score

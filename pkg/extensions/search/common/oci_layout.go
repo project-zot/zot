@@ -356,7 +356,7 @@ func (olu BaseOciLayoutUtils) GetImageConfigInfo(repo string, manifestDigest god
 }
 
 func (olu BaseOciLayoutUtils) GetImageVendor(imageConfig ispec.Image) string {
-	return imageConfig.Config.Labels["vendor"]
+	return imageConfig.Config.Labels[ispec.AnnotationVendor]
 }
 
 func (olu BaseOciLayoutUtils) GetImageManifestSize(repo string, manifestDigest godigest.Digest) int64 {

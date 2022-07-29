@@ -5971,48 +5971,9 @@ func TestPeriodicTasks(t *testing.T) {
 
 func TestSearchRoutes(t *testing.T) {
 	Convey("Upload image for test", t, func(c C) {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-		conf := config.New()
-		conf.HTTP.Port = port
 		tempDir := t.TempDir()
-
-		ctlr := api.NewController(conf)
-		ctlr.Config.Storage.RootDirectory = tempDir
-
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-
-		test.WaitTillServerReady(baseURL)
-
 		repoName := "testrepo"
 		inaccessibleRepo := "inaccessible"
-		cfg, layers, manifest, err := test.GetImageComponents(10000)
-		So(err, ShouldBeNil)
-
-		err = test.UploadImage(
-			test.Image{
-				Config:   cfg,
-				Layers:   layers,
-				Manifest: manifest,
-				Tag:      "latest",
-			}, baseURL, repoName)
-
-		So(err, ShouldBeNil)
-
-		// data for the inaccessible repo
-		cfg, layers, manifest, err = test.GetImageComponents(10000)
-		So(err, ShouldBeNil)
-
-		err = test.UploadImage(
-			test.Image{
-				Config:   cfg,
-				Layers:   layers,
-				Manifest: manifest,
-				Tag:      "latest",
-			}, baseURL, inaccessibleRepo)
-
-		So(err, ShouldBeNil)
 
 		Convey("GlobalSearch with authz enabled", func(c C) {
 			conf := config.New()
@@ -6048,7 +6009,7 @@ func TestSearchRoutes(t *testing.T) {
 						Policies: []config.Policy{
 							{
 								Users:   []string{user1},
-								Actions: []string{"read"},
+								Actions: []string{"read", "create"},
 							},
 						},
 						DefaultPolicy: []string{},
@@ -6056,8 +6017,8 @@ func TestSearchRoutes(t *testing.T) {
 					inaccessibleRepo: config.PolicyGroup{
 						Policies: []config.Policy{
 							{
-								Users:   []string{},
-								Actions: []string{},
+								Users:   []string{user1},
+								Actions: []string{"create"},
 							},
 						},
 						DefaultPolicy: []string{},
@@ -6077,9 +6038,38 @@ func TestSearchRoutes(t *testing.T) {
 			defer stopServer(ctlr)
 			test.WaitTillServerReady(baseURL)
 
+			cfg, layers, manifest, err := test.GetImageComponents(10000)
+			So(err, ShouldBeNil)
+
+			err = test.UploadImageWithBasicAuth(
+				test.Image{
+					Config:   cfg,
+					Layers:   layers,
+					Manifest: manifest,
+					Tag:      "latest",
+				}, baseURL, repoName,
+				user1, password1)
+
+			So(err, ShouldBeNil)
+
+			// data for the inaccessible repo
+			cfg, layers, manifest, err = test.GetImageComponents(10000)
+			So(err, ShouldBeNil)
+
+			err = test.UploadImageWithBasicAuth(
+				test.Image{
+					Config:   cfg,
+					Layers:   layers,
+					Manifest: manifest,
+					Tag:      "latest",
+				}, baseURL, inaccessibleRepo,
+				user1, password1)
+
+			So(err, ShouldBeNil)
+
 			query := `
 			{
-				GlobalSearch(query:""){
+				GlobalSearch(query:"testrepo"){
 					Repos {
 						Name
 						Score
@@ -6104,24 +6094,41 @@ func TestSearchRoutes(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-			// credentials for user unauthorized to access repo
-			user2 := "notWorking"
-			password2 := "notWorking"
-			testString2 := getCredString(user2, password2)
-			htpasswdPath2 := test.MakeHtpasswdFileFromString(testString2)
-			defer os.Remove(htpasswdPath2)
-
-			ctlr.Config.HTTP.Auth = &config.AuthConfig{
-				HTPasswd: config.AuthHTPasswd{
-					Path: htpasswdPath2,
+			conf.AccessControl = &config.AccessControlConfig{
+				Repositories: config.Repositories{
+					repoName: config.PolicyGroup{
+						Policies: []config.Policy{
+							{
+								Users:   []string{user1},
+								Actions: []string{},
+							},
+						},
+						DefaultPolicy: []string{},
+					},
+					inaccessibleRepo: config.PolicyGroup{
+						Policies: []config.Policy{
+							{
+								Users:   []string{},
+								Actions: []string{},
+							},
+						},
+						DefaultPolicy: []string{},
+					},
+				},
+				AdminPolicy: config.Policy{
+					Users:   []string{},
+					Actions: []string{},
 				},
 			}
+
 			// authenticated, but no access to resource
-			resp, err = resty.R().SetBasicAuth(user2, password2).Get(baseURL + constants.ExtSearchPrefix +
+			resp, err = resty.R().SetBasicAuth(user1, password1).Get(baseURL + constants.ExtSearchPrefix +
 				"?query=" + url.QueryEscape(query))
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(string(resp.Body()), ShouldNotContainSubstring, repoName)
+			So(string(resp.Body()), ShouldNotContainSubstring, inaccessibleRepo)
 		})
 	})
 }
