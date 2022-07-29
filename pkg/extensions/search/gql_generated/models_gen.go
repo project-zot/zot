@@ -92,6 +92,7 @@ type PackageInfo struct {
 
 type RepoInfo struct {
 	Manifests []*ManifestInfo `json:"Manifests"`
+	Summary   *RepoSummary    `json:"Summary"`
 }
 
 type RepoSummary struct {

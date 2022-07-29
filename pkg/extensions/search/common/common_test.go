@@ -517,7 +517,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 422)
 
-		query := "{ExpandedRepoInfo(repo:\"zot-cve-test\"){Manifests%20{Digest%20IsSigned%20Tag%20Layers%20{Size%20Digest}}}}"
+		query := "{ExpandedRepoInfo(repo:\"zot-cve-test\"){Summary%20{Name%20LastUpdated%20Size%20Platforms%20{Os%20Arch}%20Vendors%20Score}}}" // nolint: lll
 
 		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + query)
 		So(resp, ShouldNotBeNil)
@@ -525,6 +525,21 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, 200)
 
 		responseStruct := &ExpandedRepoInfoResp{}
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+		So(responseStruct.ExpandedRepoInfo.RepoInfo.Summary, ShouldNotBeEmpty)
+		So(responseStruct.ExpandedRepoInfo.RepoInfo.Summary.Name, ShouldEqual, "zot-cve-test")
+		So(responseStruct.ExpandedRepoInfo.RepoInfo.Summary.Score, ShouldEqual, -1)
+
+		query = "{ExpandedRepoInfo(repo:\"zot-cve-test\"){Manifests%20{Digest%20IsSigned%20Tag%20Layers%20{Size%20Digest}}}}"
+
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + query)
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		responseStruct = &ExpandedRepoInfoResp{}
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
