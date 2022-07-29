@@ -52,6 +52,7 @@ type ImageInfo {
 
 type RepoInfo {
      Manifests: [ManifestInfo]
+     Summary: RepoSummary
 }
 
 type ManifestInfo {

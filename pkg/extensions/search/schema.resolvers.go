@@ -333,6 +333,31 @@ func (r *queryResolver) ExpandedRepoInfo(ctx context.Context, repo string) (*gql
 
 	manifests := make([]*gql_generated.ManifestInfo, 0)
 
+	summary := &gql_generated.RepoSummary{}
+
+	summary.LastUpdated = &origRepoInfo.Summary.LastUpdated
+	summary.Name = &origRepoInfo.Summary.Name
+	summary.Platforms = []*gql_generated.OsArch{}
+
+	for _, platform := range origRepoInfo.Summary.Platforms {
+		platform := platform
+
+		summary.Platforms = append(summary.Platforms, &gql_generated.OsArch{
+			Os:   &platform.Os,
+			Arch: &platform.Arch,
+		})
+	}
+
+	summary.Size = &origRepoInfo.Summary.Size
+
+	for _, vendor := range origRepoInfo.Summary.Vendors {
+		vendor := vendor
+		summary.Vendors = append(summary.Vendors, &vendor)
+	}
+
+	score := -1 // score not relevant for this query
+	summary.Score = &score
+
 	for _, manifest := range origRepoInfo.Manifests {
 		tag := manifest.Tag
 
@@ -359,6 +384,7 @@ func (r *queryResolver) ExpandedRepoInfo(ctx context.Context, repo string) (*gql
 		manifests = append(manifests, manifestInfo)
 	}
 
+	repoInfo.Summary = summary
 	repoInfo.Manifests = manifests
 
 	return repoInfo, nil

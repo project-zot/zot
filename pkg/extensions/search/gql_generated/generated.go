@@ -138,6 +138,7 @@ type ComplexityRoot struct {
 
 	RepoInfo struct {
 		Manifests func(childComplexity int) int
+		Summary   func(childComplexity int) int
 	}
 
 	RepoSummary struct {
@@ -583,6 +584,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.RepoInfo.Manifests(childComplexity), true
 
+	case "RepoInfo.Summary":
+		if e.complexity.RepoInfo.Summary == nil {
+			break
+		}
+
+		return e.complexity.RepoInfo.Summary(childComplexity), true
+
 	case "RepoSummary.LastUpdated":
 		if e.complexity.RepoSummary.LastUpdated == nil {
 			break
@@ -759,6 +767,7 @@ type ImageInfo {
 
 type RepoInfo {
      Manifests: [ManifestInfo]
+     Summary: RepoSummary
 }
 
 type ManifestInfo {
@@ -3241,6 +3250,8 @@ func (ec *executionContext) fieldContext_Query_ExpandedRepoInfo(ctx context.Cont
 			switch field.Name {
 			case "Manifests":
 				return ec.fieldContext_RepoInfo_Manifests(ctx, field)
+			case "Summary":
+				return ec.fieldContext_RepoInfo_Summary(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type RepoInfo", field.Name)
 		},
@@ -3494,6 +3505,63 @@ func (ec *executionContext) fieldContext_RepoInfo_Manifests(ctx context.Context,
 				return ec.fieldContext_ManifestInfo_Layers(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ManifestInfo", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _RepoInfo_Summary(ctx context.Context, field graphql.CollectedField, obj *RepoInfo) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_RepoInfo_Summary(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Summary, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*RepoSummary)
+	fc.Result = res
+	return ec.marshalORepoSummary2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐRepoSummary(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_RepoInfo_Summary(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "RepoInfo",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "Name":
+				return ec.fieldContext_RepoSummary_Name(ctx, field)
+			case "LastUpdated":
+				return ec.fieldContext_RepoSummary_LastUpdated(ctx, field)
+			case "Size":
+				return ec.fieldContext_RepoSummary_Size(ctx, field)
+			case "Platforms":
+				return ec.fieldContext_RepoSummary_Platforms(ctx, field)
+			case "Vendors":
+				return ec.fieldContext_RepoSummary_Vendors(ctx, field)
+			case "Score":
+				return ec.fieldContext_RepoSummary_Score(ctx, field)
+			case "NewestTag":
+				return ec.fieldContext_RepoSummary_NewestTag(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type RepoSummary", field.Name)
 		},
 	}
 	return fc, nil
@@ -6362,6 +6430,10 @@ func (ec *executionContext) _RepoInfo(ctx context.Context, sel ast.SelectionSet,
 		case "Manifests":
 
 			out.Values[i] = ec._RepoInfo_Manifests(ctx, field, obj)
+
+		case "Summary":
+
+			out.Values[i] = ec._RepoInfo_Summary(ctx, field, obj)
 
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
