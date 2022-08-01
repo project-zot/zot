@@ -19,7 +19,7 @@ require (
 	github.com/dustin/go-humanize v1.0.0
 	github.com/fsnotify/fsnotify v1.5.4
 	github.com/getlantern/deepcopy v0.0.0-20160317154340-7f45deb8130a
-	github.com/go-ldap/ldap/v3 v3.4.3
+	github.com/go-ldap/ldap/v3 v3.4.4
 	github.com/gofrs/uuid v4.2.0+incompatible
 	github.com/google/go-containerregistry v0.11.0
 	github.com/google/uuid v1.3.0
@@ -49,7 +49,7 @@ require (
 	github.com/urfave/cli/v2 v2.11.0
 	github.com/vektah/gqlparser/v2 v2.4.7
 	go.etcd.io/bbolt v1.3.6
-	golang.org/x/crypto v0.0.0-20220525230936-793ad666bf5e
+	golang.org/x/crypto v0.0.0-20220622213112-05595931fe9d
 	gopkg.in/resty.v1 v1.12.0
 	gopkg.in/yaml.v2 v2.4.0
 )
@@ -79,7 +79,7 @@ require (
 	github.com/Azure/go-autorest/autorest/date v0.3.0 // indirect
 	github.com/Azure/go-autorest/logger v0.2.1 // indirect
 	github.com/Azure/go-autorest/tracing v0.6.0 // indirect
-	github.com/Azure/go-ntlmssp v0.0.0-20211209120228-48547f28849e // indirect
+	github.com/Azure/go-ntlmssp v0.0.0-20220621081337-cb9428e4ac1e // indirect
 	github.com/BurntSushi/toml v1.2.0 // indirect
 	github.com/GoogleCloudPlatform/docker-credential-gcr v1.5.0 // indirect
 	github.com/KyleBanks/depth v1.2.1 // indirect
