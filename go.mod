@@ -12,7 +12,7 @@ require (
 	github.com/bmatcuk/doublestar/v4 v4.2.0
 	github.com/briandowns/spinner v1.18.1
 	github.com/chartmuseum/auth v0.5.0
-	github.com/containers/common v0.49.0
+	github.com/containers/common v0.49.1
 	github.com/containers/image/v5 v5.22.0
 	github.com/didip/tollbooth/v6 v6.1.2
 	github.com/docker/distribution v2.8.1+incompatible
