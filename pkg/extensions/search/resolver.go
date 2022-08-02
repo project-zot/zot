@@ -12,6 +12,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	"zotregistry.io/zot/pkg/log" // nolint: gci
 
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	digestinfo "zotregistry.io/zot/pkg/extensions/search/digest"
@@ -216,63 +217,57 @@ func globalSearch(repoList []string, name, tag string, olu common.OciLayoutUtils
 			log.Error().Err(err).Msgf("can't find latest updated tag for repo: %s", repo)
 		}
 
-		tagsInfo, err := olu.GetImageTagsWithTimestamp(repo)
+		manifests, err := olu.GetImageManifests(repo)
 		if err != nil {
-			log.Error().Err(err).Msgf("can't get tags info for repo: %s", repo)
-
-			continue
-		}
-
-		repoInfo, err := olu.GetExpandedRepoInfo(repo)
-		if err != nil {
-			log.Error().Err(err).Msgf("can't get repo info for repo: %s", repo)
+			log.Error().Err(err).Msgf("can't get manifests for repo: %s", repo)
 
 			continue
 		}
 
 		var lastUpdatedImageSummary gql_generated.ImageSummary
 
-		repoPlatforms := make([]*gql_generated.OsArch, 0, len(tagsInfo))
-		repoVendors := make([]*string, 0, len(repoInfo.Manifests))
+		repoPlatforms := make([]*gql_generated.OsArch, 0, len(manifests))
+		repoVendors := make([]*string, 0, len(manifests))
 
-		for i, manifest := range repoInfo.Manifests {
+		for i, manifest := range manifests {
 			imageLayersSize := int64(0)
 
-			imageBlobManifest, err := olu.GetImageBlobManifest(repo, godigest.Digest(tagsInfo[i].Digest))
-			if err != nil {
-				log.Error().Err(err).Msgf("can't read manifest for repo %s %s", repo, manifest.Tag)
+			manifestTag, ok := manifest.Annotations[ispec.AnnotationRefName]
+			if !ok {
+				log.Error().Msg("reference not found for this manifest")
 
 				continue
 			}
 
-			manifestSize := olu.GetImageManifestSize(repo, godigest.Digest(tagsInfo[i].Digest))
+			imageBlobManifest, err := olu.GetImageBlobManifest(repo, manifests[i].Digest)
+			if err != nil {
+				log.Error().Err(err).Msgf("can't read manifest for repo %s %s", repo, manifestTag)
+
+				continue
+			}
+
+			manifestSize := olu.GetImageManifestSize(repo, manifests[i].Digest)
 			configSize := imageBlobManifest.Config.Size
 
-			repoBlob2Size[tagsInfo[i].Digest] = manifestSize
+			repoBlob2Size[manifests[i].Digest.String()] = manifestSize
 			repoBlob2Size[imageBlobManifest.Config.Digest.Hex] = configSize
 
-			for _, layer := range manifest.Layers {
+			for _, layer := range imageBlobManifest.Layers {
 				layer := layer
-
-				layerSize, err := strconv.ParseInt(layer.Size, 10, 64)
-				if err != nil {
-					log.Error().Err(err).Msg("invalid layer size")
-
-					continue
-				}
-
-				repoBlob2Size[layer.Digest] = layerSize
-				imageLayersSize += layerSize
+				layerDigest := layer.Digest.String()
+				layerSizeStr := strconv.Itoa(int(layer.Size))
+				repoBlob2Size[layer.Digest.String()] = layer.Size
+				imageLayersSize += layer.Size
 
 				// if we have a tag we won't match a layer
 				if tag != "" {
 					continue
 				}
 
-				if index := strings.Index(layer.Digest, name); index != -1 {
+				if index := strings.Index(layerDigest, name); index != -1 {
 					layers = append(layers, &gql_generated.LayerSummary{
-						Digest: &layer.Digest,
-						Size:   &layer.Size,
+						Digest: &layerDigest,
+						Size:   &layerSizeStr,
 						Score:  &index,
 					})
 				}
@@ -281,19 +276,18 @@ func globalSearch(repoList []string, name, tag string, olu common.OciLayoutUtils
 			imageSize := imageLayersSize + manifestSize + configSize
 
 			index := strings.Index(repo, name)
-			matchesTag := strings.HasPrefix(manifest.Tag, tag)
+			matchesTag := strings.HasPrefix(manifestTag, tag)
 
 			if index != -1 {
-				imageConfigInfo, err := olu.GetImageConfigInfo(repo, godigest.Digest(tagsInfo[i].Digest))
+				imageConfigInfo, err := olu.GetImageConfigInfo(repo, manifests[i].Digest)
 				if err != nil {
-					log.Error().Err(err).Msgf("can't retrieve config info for the image %s %s", repo, manifest.Tag)
+					log.Error().Err(err).Msgf("can't retrieve config info for the image %s %s", repo, manifestTag)
 
 					continue
 				}
 
-				tag := manifest.Tag
 				size := strconv.Itoa(int(imageSize))
-				isSigned := manifest.IsSigned
+				isSigned := olu.CheckManifestSignature(repo, manifests[i].Digest)
 
 				// update matching score
 				score := calculateImageMatchingScore(repo, index, matchesTag)
@@ -311,7 +305,7 @@ func globalSearch(repoList []string, name, tag string, olu common.OciLayoutUtils
 
 				imageSummary := gql_generated.ImageSummary{
 					RepoName:    &repo,
-					Tag:         &tag,
+					Tag:         &manifestTag,
 					LastUpdated: &lastUpdated,
 					IsSigned:    &isSigned,
 					Size:        &size,
@@ -320,7 +314,7 @@ func globalSearch(repoList []string, name, tag string, olu common.OciLayoutUtils
 					Score:       &score,
 				}
 
-				if tagsInfo[i].Digest == lastUpdatedTag.Digest {
+				if manifests[i].Digest.String() == lastUpdatedTag.Digest {
 					lastUpdatedImageSummary = imageSummary
 				}
 
