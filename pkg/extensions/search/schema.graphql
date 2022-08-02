@@ -601,7 +601,7 @@ type Query {
     ): GlobalSearchResult!
 
     """
-    List of images which use the argument image
+    List of images which use the argument image as a base image
     """
     DerivedImageList(
         "Image name in the format `repository:tag`"
@@ -611,7 +611,7 @@ type Query {
     ): PaginatedImagesResult!
 
     """
-    List of images on which the argument image depends on
+    List of images on which the argument image depends on as base images
     """
     BaseImageList(
         "Image name in the format `repository:tag`"
@@ -640,4 +640,51 @@ type Query {
         "Types of artifacts to return in the referrer list"
         type: [String!]
     ): [Referrer]!
+
+    """
+    Receive RepoSummaries of repos starred by current user
+    """
+    StarredRepos(
+        "Sets the parameters of the requested page"
+        requestedPage: PageInput
+    ): PaginatedReposResult!
+
+    """
+    Receive RepoSummaries of repos bookmarked by current user
+    """
+    BookmarkedRepos(
+        "Sets the parameters of the requested page"
+        requestedPage: PageInput
+    ): PaginatedReposResult!
+}
+
+"""
+Result of a mutation
+"""
+type MutationResult {
+    """
+    Outcome of the Mutation
+    """
+    success: Boolean!
+}
+
+"""
+Mutations supported by the zot server
+"""
+type Mutation {
+    """
+    Toggle add or remove a bookmark for repo for the current user (depending on current state)
+    """
+    ToggleBookmark(
+        "Name of the repository to apply the bookmark to"
+        repo: String!
+    ): MutationResult!  # Assuming the user is obtained from context object
+
+    """
+    Toggle add or remove star for repo for the current user (depending on current state)
+    """
+    ToggleStar(
+        "Name of the repository to apply the star to"
+        repo: String!
+    ): MutationResult!  # Assuming the user is obtained from context object
 }
