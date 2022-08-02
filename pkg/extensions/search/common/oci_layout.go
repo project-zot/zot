@@ -33,6 +33,7 @@ type OciLayoutUtils interface {
 	GetRepoLastUpdated(repo string) (TagInfo, error)
 	GetExpandedRepoInfo(name string) (RepoInfo, error)
 	GetImageConfigInfo(repo string, manifestDigest godigest.Digest) (ispec.Image, error)
+	CheckManifestSignature(name string, digest godigest.Digest) bool
 }
 
 // OciLayoutInfo ...
@@ -270,7 +271,7 @@ func (olu BaseOciLayoutUtils) checkCosignSignature(name string, digest godigest.
 // checks if manifest is signed or not
 // checks for notary or cosign signature
 // if cosign signature found it does not looks for notary signature.
-func (olu BaseOciLayoutUtils) checkManifestSignature(name string, digest godigest.Digest) bool {
+func (olu BaseOciLayoutUtils) CheckManifestSignature(name string, digest godigest.Digest) bool {
 	if !olu.checkCosignSignature(name, digest) {
 		return olu.checkNotarySignature(name, digest)
 	}
@@ -395,7 +396,7 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error)
 			return RepoInfo{}, err
 		}
 
-		manifestInfo.IsSigned = olu.checkManifestSignature(name, man.Digest)
+		manifestInfo.IsSigned = olu.CheckManifestSignature(name, man.Digest)
 
 		manifestSize := olu.GetImageManifestSize(name, man.Digest)
 		olu.Log.Debug().Msg(fmt.Sprintf("%v", man.Digest))
