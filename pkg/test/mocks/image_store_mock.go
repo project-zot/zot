@@ -6,6 +6,7 @@ import (
 
 	"github.com/opencontainers/go-digest"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
+	"zotregistry.io/zot/pkg/scheduler"
 )
 
 type MockedImageStore struct {
@@ -14,6 +15,7 @@ type MockedImageStore struct {
 	InitRepoFn             func(name string) error
 	ValidateRepoFn         func(name string) (bool, error)
 	GetRepositoriesFn      func() ([]string, error)
+	GetNextRepositoryFn    func(repo string) (string, error)
 	GetImageTagsFn         func(repo string) ([]string, error)
 	GetImageManifestFn     func(repo string, reference string) ([]byte, string, string, error)
 	PutImageManifestFn     func(repo string, reference string, mediaType string, body []byte) (string, error)
@@ -32,13 +34,14 @@ type MockedImageStore struct {
 	CheckBlobFn            func(repo string, digest string) (bool, int64, error)
 	GetBlobPartialFn       func(repo string, digest string, mediaType string, from, to int64,
 	) (io.ReadCloser, int64, int64, error)
-	GetBlobFn         func(repo string, digest string, mediaType string) (io.ReadCloser, int64, error)
-	DeleteBlobFn      func(repo string, digest string) error
-	GetIndexContentFn func(repo string) ([]byte, error)
-	GetBlobContentFn  func(repo, digest string) ([]byte, error)
-	GetReferrersFn    func(repo, digest string, mediaType string) ([]artifactspec.Descriptor, error)
-	URLForPathFn      func(path string) (string, error)
-	RunGCRepoFn       func(repo string)
+	GetBlobFn           func(repo string, digest string, mediaType string) (io.ReadCloser, int64, error)
+	DeleteBlobFn        func(repo string, digest string) error
+	GetIndexContentFn   func(repo string) ([]byte, error)
+	GetBlobContentFn    func(repo, digest string) ([]byte, error)
+	GetReferrersFn      func(repo, digest string, mediaType string) ([]artifactspec.Descriptor, error)
+	URLForPathFn        func(path string) (string, error)
+	RunGCRepoFn         func(repo string) error
+	RunGCPeriodicallyFn func(interval time.Duration, sch *scheduler.Scheduler)
 }
 
 func (is MockedImageStore) Lock(t *time.Time) {
@@ -91,6 +94,14 @@ func (is MockedImageStore) GetRepositories() ([]string, error) {
 	}
 
 	return []string{}, nil
+}
+
+func (is MockedImageStore) GetNextRepository(repo string) (string, error) {
+	if is.GetNextRepositoryFn != nil {
+		return is.GetNextRepositoryFn(repo)
+	}
+
+	return "", nil
 }
 
 func (is MockedImageStore) GetImageManifest(repo string, reference string) ([]byte, string, string, error) {
@@ -293,8 +304,16 @@ func (is MockedImageStore) URLForPath(path string) (string, error) {
 	return "", nil
 }
 
-func (is MockedImageStore) RunGCRepo(repo string) {
+func (is MockedImageStore) RunGCRepo(repo string) error {
 	if is.RunGCRepoFn != nil {
-		is.RunGCRepoFn(repo)
+		return is.RunGCRepoFn(repo)
+	}
+
+	return nil
+}
+
+func (is MockedImageStore) RunGCPeriodically(interval time.Duration, sch *scheduler.Scheduler) {
+	if is.RunGCPeriodicallyFn != nil {
+		is.RunGCPeriodicallyFn(interval, sch)
 	}
 }

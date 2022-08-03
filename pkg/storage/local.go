@@ -31,6 +31,7 @@ import (
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	zlog "zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/scheduler"
 	"zotregistry.io/zot/pkg/test"
 )
 
@@ -358,6 +359,65 @@ func (is *ImageStoreLocal) GetRepositories() ([]string, error) {
 	})
 
 	return stores, err
+}
+
+// GetNextRepository returns next repository under this store.
+func (is *ImageStoreLocal) GetNextRepository(repo string) (string, error) {
+	var lockLatency time.Time
+
+	dir := is.rootDir
+
+	is.RLock(&lockLatency)
+	defer is.RUnlock(&lockLatency)
+
+	_, err := os.ReadDir(dir)
+	if err != nil {
+		is.log.Error().Err(err).Msg("failure walking storage root-dir")
+
+		return "", err
+	}
+
+	found := false
+	store := ""
+	err = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if !info.IsDir() {
+			return nil
+		}
+
+		rel, err := filepath.Rel(is.rootDir, path)
+		if err != nil {
+			return nil // nolint:nilerr // ignore paths not relative to root dir
+		}
+
+		ok, err := is.ValidateRepo(rel)
+		if !ok || err != nil {
+			return nil // nolint:nilerr // ignore invalid repos
+		}
+
+		if repo == "" && ok && err == nil {
+			store = rel
+
+			return io.EOF
+		}
+
+		if found {
+			store = rel
+
+			return io.EOF
+		}
+
+		if rel == repo {
+			found = true
+		}
+
+		return nil
+	})
+
+	return store, err
 }
 
 // GetImageTags returns a list of image tags available in the specified repository.
@@ -1973,13 +2033,71 @@ func (is *ImageStoreLocal) gcRepo(repo string) error {
 	return nil
 }
 
-func (is *ImageStoreLocal) RunGCRepo(repo string) {
+func (is *ImageStoreLocal) RunGCRepo(repo string) error {
 	is.log.Info().Msg(fmt.Sprintf("executing GC of orphaned blobs for %s", path.Join(is.RootDir(), repo)))
 
 	if err := is.gcRepo(repo); err != nil {
 		errMessage := fmt.Sprintf("error while running GC for %s", path.Join(is.RootDir(), repo))
 		is.log.Error().Err(err).Msg(errMessage)
+		is.log.Info().Msg(fmt.Sprintf("GC unsuccessfully completed for %s", path.Join(is.RootDir(), repo)))
+
+		return err
 	}
 
-	is.log.Info().Msg(fmt.Sprintf("GC completed for %s", path.Join(is.RootDir(), repo)))
+	is.log.Info().Msg(fmt.Sprintf("GC successfully completed for %s", path.Join(is.RootDir(), repo)))
+
+	return nil
+}
+
+func (is *ImageStoreLocal) RunGCPeriodically(interval time.Duration, sch *scheduler.Scheduler) {
+	generator := &taskGenerator{
+		imgStore: is,
+	}
+	sch.SubmitGenerator(generator, interval, scheduler.MediumPriority)
+}
+
+type taskGenerator struct {
+	imgStore *ImageStoreLocal
+	lastRepo string
+	done     bool
+}
+
+func (gen *taskGenerator) GenerateTask() (scheduler.Task, error) {
+	repo, err := gen.imgStore.GetNextRepository(gen.lastRepo)
+
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, err
+	}
+
+	if repo == "" {
+		gen.done = true
+
+		return nil, nil
+	}
+
+	gen.lastRepo = repo
+
+	return newGCTask(gen.imgStore, repo), nil
+}
+
+func (gen *taskGenerator) IsDone() bool {
+	return gen.done
+}
+
+func (gen *taskGenerator) Reset() {
+	gen.lastRepo = ""
+	gen.done = false
+}
+
+type gcTask struct {
+	imgStore *ImageStoreLocal
+	repo     string
+}
+
+func newGCTask(imgStore *ImageStoreLocal, repo string) *gcTask {
+	return &gcTask{imgStore, repo}
+}
+
+func (gcT *gcTask) DoWork() error {
+	return gcT.imgStore.RunGCRepo(gcT.repo)
 }

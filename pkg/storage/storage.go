@@ -6,6 +6,7 @@ import (
 
 	"github.com/opencontainers/go-digest"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
+	"zotregistry.io/zot/pkg/scheduler"
 )
 
 const (
@@ -23,6 +24,7 @@ type ImageStore interface {
 	InitRepo(name string) error
 	ValidateRepo(name string) (bool, error)
 	GetRepositories() ([]string, error)
+	GetNextRepository(repo string) (string, error)
 	GetImageTags(repo string) ([]string, error)
 	GetImageManifest(repo, reference string) ([]byte, string, string, error)
 	PutImageManifest(repo, reference, mediaType string, body []byte) (string, error)
@@ -45,5 +47,6 @@ type ImageStore interface {
 	GetIndexContent(repo string) ([]byte, error)
 	GetBlobContent(repo, digest string) ([]byte, error)
 	GetReferrers(repo, digest string, mediaType string) ([]artifactspec.Descriptor, error)
-	RunGCRepo(repo string)
+	RunGCRepo(repo string) error
+	RunGCPeriodically(interval time.Duration, sch *scheduler.Scheduler)
 }

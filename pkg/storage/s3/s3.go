@@ -28,6 +28,7 @@ import (
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	zlog "zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/scheduler"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test"
 )
@@ -290,6 +291,11 @@ func (is *ObjectStorage) GetRepositories() ([]string, error) {
 	}
 
 	return stores, err
+}
+
+// GetNextRepository returns next repository under this store.
+func (is *ObjectStorage) GetNextRepository(repo string) (string, error) {
+	return "", nil
 }
 
 // GetImageTags returns a list of image tags available in the specified repository.
@@ -1303,7 +1309,11 @@ retry:
 	return nil
 }
 
-func (is *ObjectStorage) RunGCRepo(repo string) {
+func (is *ObjectStorage) RunGCRepo(repo string) error {
+	return nil
+}
+
+func (is *ObjectStorage) RunGCPeriodically(interval time.Duration, sch *scheduler.Scheduler) {
 }
 
 // DeleteBlobUpload deletes an existing blob upload that is currently in progress.

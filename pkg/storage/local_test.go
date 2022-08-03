@@ -918,7 +918,9 @@ func FuzzRunGCRepo(f *testing.F) {
 
 		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, *log, metrics, nil)
 
-		imgStore.RunGCRepo(data)
+		if err := imgStore.RunGCRepo(data); err != nil {
+			t.Error(err)
+		}
 	})
 }
 
@@ -1943,7 +1945,8 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 				panic(err)
 			}
 
-			imgStore.RunGCRepo(repoName)
+			err = imgStore.RunGCRepo(repoName)
+			So(err, ShouldNotBeNil)
 
 			time.Sleep(500 * time.Millisecond)
 
@@ -1970,7 +1973,8 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 
 			So(os.Chmod(path.Join(dir, repoName, "index.json"), 0o000), ShouldBeNil)
 
-			imgStore.RunGCRepo(repoName)
+			err = imgStore.RunGCRepo(repoName)
+			So(err, ShouldNotBeNil)
 
 			time.Sleep(500 * time.Millisecond)
 
@@ -2052,6 +2056,41 @@ func TestGetRepositoriesError(t *testing.T) {
 
 		_, err = imgStore.GetRepositories()
 		So(err, ShouldBeNil)
+	})
+}
+
+func TestGetNextRepository(t *testing.T) {
+	dir := t.TempDir()
+	log := log.Logger{Logger: zerolog.New(os.Stdout)}
+	metrics := monitoring.NewMetricsServer(false, log)
+	imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay,
+		true, true, log, metrics, nil,
+	)
+	firstRepoName := "repo1"
+	secondRepoName := "repo2"
+
+	err := test.CopyFiles("../../test/data/zot-test", path.Join(dir, firstRepoName))
+	if err != nil {
+		panic(err)
+	}
+
+	err = test.CopyFiles("../../test/data/zot-test", path.Join(dir, secondRepoName))
+	if err != nil {
+		panic(err)
+	}
+
+	Convey("Return first repository", t, func() {
+		firstRepo, err := imgStore.GetNextRepository("")
+		So(firstRepo, ShouldEqual, firstRepoName)
+		So(err, ShouldNotBeNil)
+		So(err, ShouldEqual, io.EOF)
+	})
+
+	Convey("Return second repository", t, func() {
+		secondRepo, err := imgStore.GetNextRepository(firstRepoName)
+		So(secondRepo, ShouldEqual, secondRepoName)
+		So(err, ShouldNotBeNil)
+		So(err, ShouldEqual, io.EOF)
 	})
 }
 
