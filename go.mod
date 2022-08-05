@@ -10,7 +10,7 @@ require (
 	github.com/aquasecurity/trivy v0.0.0-00010101000000-000000000000
 	github.com/aquasecurity/trivy-db v0.0.0-20210916043317-726b7b72a47b
 	github.com/bmatcuk/doublestar/v4 v4.2.0
-	github.com/briandowns/spinner v1.18.1
+	github.com/briandowns/spinner v1.19.0
 	github.com/chartmuseum/auth v0.5.0
 	github.com/containers/common v0.49.1
 	github.com/containers/image/v5 v5.22.0
@@ -59,7 +59,7 @@ require github.com/open-policy-agent/opa v0.37.0 // indirect
 require (
 	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20220217185014-dd38b7ed8a99
 	github.com/sigstore/cosign v1.9.0
-	github.com/swaggo/http-swagger v1.3.0
+	github.com/swaggo/http-swagger v1.3.1
 )
 
 require (
