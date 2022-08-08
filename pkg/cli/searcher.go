@@ -42,6 +42,7 @@ func getImageSearchersGQL() []searcher {
 		new(allImagesSearcherGQL),
 		new(imageByNameSearcherGQL),
 		new(imagesByDigestSearcherGQL),
+		new(derivedImageListSearcherGQL),
 		new(baseImageListSearcherGQL),
 	}
 
@@ -218,6 +219,31 @@ func (search imagesByDigestSearcher) search(config searchConfig) (bool, error) {
 	default:
 		return true, nil
 	}
+}
+
+type derivedImageListSearcherGQL struct{}
+
+func (search derivedImageListSearcherGQL) search(config searchConfig) (bool, error) {
+	if !canSearch(config.params, newSet("derivedImage")) {
+		return false, nil
+	}
+
+	username, password := getUsernameAndPassword(*config.user)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	defer cancel()
+
+	imageList, err := config.searchService.getDerivedImageListGQL(ctx, config, username,
+		password, *config.params["derivedImage"])
+	if err != nil {
+		return true, err
+	}
+
+	if err := printResult(config, imageList.Data.ImageList); err != nil {
+		return true, err
+	}
+
+	return true, nil
 }
 
 type baseImageListSearcherGQL struct{}

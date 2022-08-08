@@ -117,6 +117,7 @@ type ComplexityRoot struct {
 	Query struct {
 		BaseImageList           func(childComplexity int, image string) int
 		CVEListForImage         func(childComplexity int, image string) int
+		DerivedImageList        func(childComplexity int, image string) int
 		ExpandedRepoInfo        func(childComplexity int, repo string) int
 		GlobalSearch            func(childComplexity int, query string) int
 		ImageList               func(childComplexity int, repo string) int
@@ -154,6 +155,7 @@ type QueryResolver interface {
 	ImageList(ctx context.Context, repo string) ([]*ImageSummary, error)
 	ExpandedRepoInfo(ctx context.Context, repo string) (*RepoInfo, error)
 	GlobalSearch(ctx context.Context, query string) (*GlobalSearchResult, error)
+	DerivedImageList(ctx context.Context, image string) ([]*ImageSummary, error)
 	BaseImageList(ctx context.Context, image string) ([]*ImageSummary, error)
 }
 
@@ -504,6 +506,18 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Query.CVEListForImage(childComplexity, args["image"].(string)), true
 
+	case "Query.DerivedImageList":
+		if e.complexity.Query.DerivedImageList == nil {
+			break
+		}
+
+		args, err := ec.field_Query_DerivedImageList_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.DerivedImageList(childComplexity, args["image"].(string)), true
+
 	case "Query.ExpandedRepoInfo":
 		if e.complexity.Query.ExpandedRepoInfo == nil {
 			break
@@ -838,6 +852,7 @@ type Query {
     ImageList(repo: String!): [ImageSummary!]
     ExpandedRepoInfo(repo: String!): RepoInfo!
     GlobalSearch(query: String!): GlobalSearchResult!
+    DerivedImageList(image: String!): [ImageSummary!]
     BaseImageList(image: String!): [ImageSummary!]
 }`, BuiltIn: false},
 }
@@ -863,6 +878,21 @@ func (ec *executionContext) field_Query_BaseImageList_args(ctx context.Context, 
 }
 
 func (ec *executionContext) field_Query_CVEListForImage_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 string
+	if tmp, ok := rawArgs["image"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("image"))
+		arg0, err = ec.unmarshalNString2string(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["image"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_DerivedImageList_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
 	var arg0 string
@@ -3576,6 +3606,98 @@ func (ec *executionContext) fieldContext_Query_GlobalSearch(ctx context.Context,
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Query_GlobalSearch_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_DerivedImageList(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Query_DerivedImageList(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Query().DerivedImageList(rctx, fc.Args["image"].(string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.([]*ImageSummary)
+	fc.Result = res
+	return ec.marshalOImageSummary2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummaryᚄ(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Query_DerivedImageList(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "RepoName":
+				return ec.fieldContext_ImageSummary_RepoName(ctx, field)
+			case "Tag":
+				return ec.fieldContext_ImageSummary_Tag(ctx, field)
+			case "Digest":
+				return ec.fieldContext_ImageSummary_Digest(ctx, field)
+			case "ConfigDigest":
+				return ec.fieldContext_ImageSummary_ConfigDigest(ctx, field)
+			case "LastUpdated":
+				return ec.fieldContext_ImageSummary_LastUpdated(ctx, field)
+			case "IsSigned":
+				return ec.fieldContext_ImageSummary_IsSigned(ctx, field)
+			case "Size":
+				return ec.fieldContext_ImageSummary_Size(ctx, field)
+			case "Platform":
+				return ec.fieldContext_ImageSummary_Platform(ctx, field)
+			case "Vendor":
+				return ec.fieldContext_ImageSummary_Vendor(ctx, field)
+			case "Score":
+				return ec.fieldContext_ImageSummary_Score(ctx, field)
+			case "DownloadCount":
+				return ec.fieldContext_ImageSummary_DownloadCount(ctx, field)
+			case "Layers":
+				return ec.fieldContext_ImageSummary_Layers(ctx, field)
+			case "Description":
+				return ec.fieldContext_ImageSummary_Description(ctx, field)
+			case "Licenses":
+				return ec.fieldContext_ImageSummary_Licenses(ctx, field)
+			case "Labels":
+				return ec.fieldContext_ImageSummary_Labels(ctx, field)
+			case "Title":
+				return ec.fieldContext_ImageSummary_Title(ctx, field)
+			case "Source":
+				return ec.fieldContext_ImageSummary_Source(ctx, field)
+			case "Documentation":
+				return ec.fieldContext_ImageSummary_Documentation(ctx, field)
+			case "History":
+				return ec.fieldContext_ImageSummary_History(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_DerivedImageList_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return
 	}
@@ -6730,6 +6852,26 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 				if res == graphql.Null {
 					atomic.AddUint32(&invalids, 1)
 				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx, innerFunc)
+			}
+
+			out.Concurrently(i, func() graphql.Marshaler {
+				return rrm(innerCtx)
+			})
+		case "DerivedImageList":
+			field := field
+
+			innerFunc := func(ctx context.Context) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_DerivedImageList(ctx, field)
 				return res
 			}
 
