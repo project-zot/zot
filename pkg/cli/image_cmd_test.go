@@ -250,6 +250,99 @@ func TestSearchImageCmd(t *testing.T) {
 	})
 }
 
+func TestBaseImageList(t *testing.T) {
+	Convey("Test from real server", t, func() {
+		port := test.GetFreePort()
+		url := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
+		}
+		ctlr := api.NewController(conf)
+		ctlr.Config.Storage.RootDirectory = t.TempDir()
+
+		go func(controller *api.Controller) {
+			// this blocks
+			if err := controller.Run(context.Background()); err != nil {
+				return
+			}
+		}(ctlr)
+		// wait till ready
+		for {
+			_, err := resty.R().Get(url)
+			if err == nil {
+				break
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+		defer func(controller *api.Controller) {
+			ctx := context.Background()
+			_ = controller.Server.Shutdown(ctx)
+		}(ctlr)
+
+		err := uploadManifest(url)
+		So(err, ShouldBeNil)
+		t.Logf("rootDir: %s", ctlr.Config.Storage.RootDirectory)
+
+		Convey("Test base images list working", func() {
+			t.Logf("%s", ctlr.Config.Storage.RootDirectory)
+			args := []string{"imagetest", "--base-images", "repo7:test:1.0"}
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
+			defer os.Remove(configPath)
+			cmd := NewImageCommand(new(searchService))
+			buff := &bytes.Buffer{}
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err := cmd.Execute()
+			So(err, ShouldBeNil)
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			actual := strings.TrimSpace(str)
+			So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIZE")
+			So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 15B")
+		})
+
+		Convey("Test base images fail", func() {
+			t.Logf("%s", ctlr.Config.Storage.RootDirectory)
+			err = os.Chmod(ctlr.Config.Storage.RootDirectory, 0o000)
+			So(err, ShouldBeNil)
+
+			defer func() {
+				err := os.Chmod(ctlr.Config.Storage.RootDirectory, 0o755)
+				So(err, ShouldBeNil)
+			}()
+			args := []string{"imagetest", "--base-images", "repo7:test:1.0"}
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
+			defer os.Remove(configPath)
+			cmd := NewImageCommand(new(searchService))
+			buff := &bytes.Buffer{}
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Test base images list cannot print", func() {
+			t.Logf("%s", ctlr.Config.Storage.RootDirectory)
+			args := []string{"imagetest", "--base-images", "repo7:test:1.0", "-o", "random"}
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
+			defer os.Remove(configPath)
+			cmd := NewImageCommand(new(searchService))
+			buff := &bytes.Buffer{}
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err := cmd.Execute()
+			So(err, ShouldNotBeNil)
+		})
+	})
+}
+
 func TestListRepos(t *testing.T) {
 	Convey("Test listing repositories", t, func() {
 		args := []string{"config-test"}
@@ -308,7 +401,7 @@ func TestListRepos(t *testing.T) {
 	})
 
 	Convey("Test unable to get config value", t, func() {
-		args := []string{"config-test-inexistent"}
+		args := []string{"config-test-nonexistent"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"config-test","url":"https://test-url.com","showspinner":false}]}`)
 		defer os.Remove(configPath)
 		cmd := NewRepoCommand(new(mockService))
@@ -1170,6 +1263,22 @@ func (service mockService) getRepos(ctx context.Context, config searchConfig, us
 	catalog[2] = "hello-world"
 
 	channel <- stringResult{"", nil}
+}
+
+func (service mockService) getBaseImageListGQL(ctx context.Context, config searchConfig, username, password string,
+	derivedImage string,
+) (*imageListStructForBaseImagesGQL, error) {
+	imageListGQLResponse := &imageListStructForBaseImagesGQL{}
+	imageListGQLResponse.Data.ImageList = []imageStruct{
+		{
+			RepoName: "dummyImageName",
+			Tag:      "tag",
+			Digest:   "DigestsAreReallyLong",
+			Size:     "123445",
+		},
+	}
+
+	return imageListGQLResponse, nil
 }
 
 func (service mockService) getImagesGQL(ctx context.Context, config searchConfig, username, password string,

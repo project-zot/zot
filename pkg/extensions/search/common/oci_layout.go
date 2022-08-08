@@ -33,6 +33,7 @@ type OciLayoutUtils interface {
 	GetExpandedRepoInfo(name string) (RepoInfo, error)
 	GetImageConfigInfo(repo string, manifestDigest godigest.Digest) (ispec.Image, error)
 	CheckManifestSignature(name string, digest godigest.Digest) bool
+	GetRepositories() ([]string, error)
 }
 
 // OciLayoutInfo ...
@@ -42,15 +43,8 @@ type BaseOciLayoutUtils struct {
 }
 
 type RepoInfo struct {
-	Summary RepoSummary
-	Images  []Image `json:"images"`
-}
-
-type Image struct {
-	Tag      string  `json:"tag"`
-	Digest   string  `json:"digest"`
-	IsSigned bool    `json:"isSigned"`
-	Layers   []Layer `json:"layers"`
+	Summary        RepoSummary
+	ImageSummaries []ImageSummary `json:"images"`
 }
 
 type RepoSummary struct {
@@ -81,6 +75,7 @@ type ImageSummary struct {
 	Title         string    `json:"title"`
 	Source        string    `json:"source"`
 	Documentation string    `json:"documentation"`
+	Layers        []Layer   `json:"layers"`
 }
 
 type OsArch struct {
@@ -96,6 +91,49 @@ type Layer struct {
 // NewBaseOciLayoutUtils initializes a new OciLayoutUtils object.
 func NewBaseOciLayoutUtils(storeController storage.StoreController, log log.Logger) *BaseOciLayoutUtils {
 	return &BaseOciLayoutUtils{Log: log, StoreController: storeController}
+}
+
+func (olu BaseOciLayoutUtils) GetImageManifest(repo string, reference string) (ispec.Manifest, error) {
+	imageStore := olu.StoreController.GetImageStore(repo)
+
+	if reference == "" {
+		reference = "latest"
+	}
+
+	buf, _, _, err := imageStore.GetImageManifest(repo, reference)
+	if err != nil {
+		return ispec.Manifest{}, err
+	}
+
+	var manifest ispec.Manifest
+
+	err = json.Unmarshal(buf, &manifest)
+	if err != nil {
+		return ispec.Manifest{}, err
+	}
+
+	return manifest, nil
+}
+
+func (olu BaseOciLayoutUtils) GetRepositories() ([]string, error) {
+	defaultStore := olu.StoreController.DefaultStore
+	substores := olu.StoreController.SubStore
+
+	repoList, err := defaultStore.GetRepositories()
+	if err != nil {
+		return []string{}, err
+	}
+
+	for _, sub := range substores {
+		repoListForSubstore, err := sub.GetRepositories()
+		if err != nil {
+			return []string{}, err
+		}
+
+		repoList = append(repoList, repoListForSubstore...)
+	}
+
+	return repoList, nil
 }
 
 // Below method will return image path including root dir, root dir is determined by splitting.
@@ -374,7 +412,7 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error)
 	// made up of all manifests, configs and image layers
 	repoSize := int64(0)
 
-	manifests := make([]Image, 0)
+	imageSummaries := make([]ImageSummary, 0)
 
 	manifestList, err := olu.GetImageManifests(name)
 	if err != nil {
@@ -398,20 +436,12 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error)
 	for _, man := range manifestList {
 		imageLayersSize := int64(0)
 
-		manifestInfo := Image{}
-
-		manifestInfo.Digest = man.Digest.Encoded()
-
-		manifestInfo.IsSigned = false
-
 		tag, ok := man.Annotations[ispec.AnnotationRefName]
 		if !ok {
 			olu.Log.Info().Msgf("skipping manifest with digest %s because it doesn't have a tag", string(man.Digest))
 
 			continue
 		}
-
-		manifestInfo.Tag = tag
 
 		manifest, err := olu.GetImageBlobManifest(name, man.Digest)
 		if err != nil {
@@ -421,7 +451,6 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error)
 		}
 
 		isSigned := olu.CheckManifestSignature(name, man.Digest)
-		manifestInfo.IsSigned = isSigned
 
 		manifestSize := olu.GetImageManifestSize(name, man.Digest)
 		olu.Log.Debug().Msg(fmt.Sprintf("%v", man.Digest))
@@ -463,10 +492,6 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error)
 
 		imageSize := imageLayersSize + manifestSize + configSize
 
-		manifestInfo.Layers = layers
-
-		manifests = append(manifests, manifestInfo)
-
 		// get image info from manifest annotation, if not found get from image config labels.
 		annotations := GetAnnotations(manifest.Annotations, imageConfigInfo.Config.Labels)
 
@@ -495,14 +520,17 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error)
 			Licenses:      annotations.Licenses,
 			Labels:        annotations.Labels,
 			Source:        annotations.Source,
+			Layers:        layers,
 		}
+
+		imageSummaries = append(imageSummaries, imageSummary)
 
 		if man.Digest.String() == lastUpdatedTag.Digest {
 			lastUpdatedImageSummary = imageSummary
 		}
 	}
 
-	repo.Images = manifests
+	repo.ImageSummaries = imageSummaries
 
 	for blob := range repoBlob2Size {
 		repoSize += repoBlob2Size[blob]
@@ -531,9 +559,7 @@ func GetImageDirAndTag(imageName string) (string, string) {
 	var imageTag string
 
 	if strings.Contains(imageName, ":") {
-		splitImageName := strings.Split(imageName, ":")
-		imageDir = splitImageName[0]
-		imageTag = splitImageName[1]
+		imageDir, imageTag, _ = strings.Cut(imageName, ":")
 	} else {
 		imageDir = imageName
 	}

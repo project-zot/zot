@@ -24,6 +24,15 @@ type OciLayoutUtilsMock struct {
 	GetExpandedRepoInfoFn       func(name string) (common.RepoInfo, error)
 	GetImageConfigInfoFn        func(repo string, manifestDigest godigest.Digest) (ispec.Image, error)
 	CheckManifestSignatureFn    func(name string, digest godigest.Digest) bool
+	GetRepositoriesFn           func() ([]string, error)
+}
+
+func (olum OciLayoutUtilsMock) GetRepositories() ([]string, error) {
+	if olum.GetImageManifestsFn != nil {
+		return olum.GetRepositoriesFn()
+	}
+
+	return []string{}, nil
 }
 
 func (olum OciLayoutUtilsMock) GetImageManifests(image string) ([]ispec.Descriptor, error) {
