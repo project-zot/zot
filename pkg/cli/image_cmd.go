@@ -121,6 +121,8 @@ func setupImageFlags(imageCmd *cobra.Command, searchImageParams map[string]*stri
 	searchImageParams["imageName"] = imageCmd.Flags().StringP("name", "n", "", "List image details by name")
 	searchImageParams["digest"] = imageCmd.Flags().StringP("digest", "d", "",
 		"List images containing a specific manifest, config, or layer digest")
+	searchImageParams["derivedImage"] = imageCmd.Flags().StringP("derived-images", "D", "",
+		"List images that are derived from given image")
 
 	imageCmd.Flags().StringVar(servURL, "url", "", "Specify zot server URL if config-name is not mentioned")
 	imageCmd.Flags().StringVarP(user, "user", "u", "", `User Credentials of zot server in "username:password" format`)

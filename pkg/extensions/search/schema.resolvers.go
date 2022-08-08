@@ -6,6 +6,7 @@ package search
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	godigest "github.com/opencontainers/go-digest"
@@ -468,6 +469,77 @@ func (r *queryResolver) GlobalSearch(ctx context.Context, query string) (*gql_ge
 		Repos:  repos,
 		Layers: layers,
 	}, nil
+}
+
+// DependencyListForImage is the resolver for the DependencyListForImage field.
+func (r *queryResolver) DerivedImageList(ctx context.Context, image string) ([]*gql_generated.ImageSummary, error) {
+	layoutUtils := common.NewBaseOciLayoutUtils(r.storeController, r.log)
+	imageList := make([]*gql_generated.ImageSummary, 0)
+
+	repoList, err := layoutUtils.GetRepositories()
+	if err != nil {
+		r.log.Error().Err(err).Msg("unable to get repositories list")
+
+		return nil, err
+	}
+
+	if len(repoList) == 0 {
+		r.log.Info().Msg("no repositories found")
+
+		return imageList, nil
+	}
+
+	imageDir, imageTag := common.GetImageDirAndTag(image)
+
+	imageManifest, err := layoutUtils.GetImageManifest(imageDir, imageTag)
+	if err != nil {
+		r.log.Info().Str("image", image).Msg("image not found")
+
+		return imageList, err
+	}
+
+	imageLayers := imageManifest.Layers
+
+	for _, repo := range repoList {
+		repoInfo, err := r.ExpandedRepoInfo(ctx, repo)
+		if err != nil {
+			r.log.Error().Err(err).Msg("unable to get image list")
+
+			return nil, err
+		}
+
+		manifests := repoInfo.Images
+
+		// verify every image
+		for _, manifest := range manifests {
+			layers := manifest.Layers
+
+			sameLayer := 0
+			imageSize := 0
+
+			for _, l := range imageLayers {
+				for _, k := range layers {
+					if *k.Digest == l.Digest.Encoded() {
+						sameLayer++
+						layerSize, _ := strconv.Atoi(*k.Size)
+						imageSize += layerSize
+					}
+				}
+			}
+
+			// if all layers are the same
+			if sameLayer == len(imageLayers) {
+				// add to returned list
+				name := repo
+				manifest.RepoName = &name
+				size := strconv.Itoa(imageSize)
+				manifest.Size = &size
+				imageList = append(imageList, manifest)
+			}
+		}
+	}
+
+	return imageList, nil
 }
 
 // Query returns gql_generated.QueryResolver implementation.

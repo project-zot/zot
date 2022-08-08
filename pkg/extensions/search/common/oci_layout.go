@@ -34,6 +34,7 @@ type OciLayoutUtils interface {
 	GetExpandedRepoInfo(name string) (RepoInfo, error)
 	GetImageConfigInfo(repo string, manifestDigest godigest.Digest) (ispec.Image, error)
 	CheckManifestSignature(name string, digest godigest.Digest) bool
+	GetRepositories() ([]string, error)
 }
 
 // OciLayoutInfo ...
@@ -76,6 +77,49 @@ type Layer struct {
 // NewBaseOciLayoutUtils initializes a new OciLayoutUtils object.
 func NewBaseOciLayoutUtils(storeController storage.StoreController, log log.Logger) *BaseOciLayoutUtils {
 	return &BaseOciLayoutUtils{Log: log, StoreController: storeController}
+}
+
+func (olu BaseOciLayoutUtils) GetImageManifest(repo string, reference string) (ispec.Manifest, error) {
+	imageStore := olu.StoreController.GetImageStore(repo)
+
+	if reference == "" {
+		reference = "latest"
+	}
+
+	buf, _, _, err := imageStore.GetImageManifest(repo, reference)
+	if err != nil {
+		return ispec.Manifest{}, err
+	}
+
+	var manifest ispec.Manifest
+
+	err = json.Unmarshal(buf, &manifest)
+	if err != nil {
+		return ispec.Manifest{}, err
+	}
+
+	return manifest, nil
+}
+
+func (olu BaseOciLayoutUtils) GetRepositories() ([]string, error) {
+	defaultStore := olu.StoreController.DefaultStore
+	substores := olu.StoreController.SubStore
+
+	repoList, err := defaultStore.GetRepositories()
+	if err != nil {
+		return []string{}, err
+	}
+
+	for _, sub := range substores {
+		repoListForSubstore, err := sub.GetRepositories()
+		if err != nil {
+			return []string{}, err
+		}
+
+		repoList = append(repoList, repoListForSubstore...)
+	}
+
+	return repoList, nil
 }
 
 // Below method will return image path including root dir, root dir is determined by splitting.
@@ -476,9 +520,7 @@ func GetImageDirAndTag(imageName string) (string, string) {
 	var imageTag string
 
 	if strings.Contains(imageName, ":") {
-		splitImageName := strings.Split(imageName, ":")
-		imageDir = splitImageName[0]
-		imageTag = splitImageName[1]
+		imageDir, imageTag, _ = strings.Cut(imageName, ":")
 	} else {
 		imageDir = imageName
 	}
