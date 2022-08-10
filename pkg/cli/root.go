@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	glob "github.com/bmatcuk/doublestar/v4"
@@ -202,6 +203,34 @@ func NewCliRootCmd() *cobra.Command {
 	return rootCmd
 }
 
+func validateStorageConfig(cfg *config.Config) error {
+	expConfigMap := make(map[string]config.StorageConfig, 0)
+
+	defaultRootDir := cfg.Storage.RootDirectory
+
+	for _, storageConfig := range cfg.Storage.SubPaths {
+		if strings.EqualFold(defaultRootDir, storageConfig.RootDirectory) {
+			log.Error().Err(errors.ErrBadConfig).Msg("storage subpaths cannot use default storage root directory")
+
+			return errors.ErrBadConfig
+		}
+
+		expConfig, ok := expConfigMap[storageConfig.RootDirectory]
+		if ok {
+			equal := expConfig.ParamsEqual(storageConfig)
+			if !equal {
+				log.Error().Err(errors.ErrBadConfig).Msg("storage config with same root directory should have same parameters")
+
+				return errors.ErrBadConfig
+			}
+		} else {
+			expConfigMap[storageConfig.RootDirectory] = storageConfig
+		}
+	}
+
+	return nil
+}
+
 func validateConfiguration(config *config.Config) error {
 	if err := validateGC(config); err != nil {
 		return err
@@ -212,6 +241,10 @@ func validateConfiguration(config *config.Config) error {
 	}
 
 	if err := validateSync(config); err != nil {
+		return err
+	}
+
+	if err := validateStorageConfig(config); err != nil {
 		return err
 	}
 
