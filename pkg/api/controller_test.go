@@ -839,6 +839,70 @@ func TestMultipleInstance(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 	})
+
+	Convey("Test zot multiple subpath with same root directory", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		htpasswdPath := test.MakeHtpasswdFile()
+		defer os.Remove(htpasswdPath)
+
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+		}
+		ctlr := api.NewController(conf)
+		globalDir := t.TempDir()
+		subDir := t.TempDir()
+
+		ctlr.Config.Storage.RootDirectory = globalDir
+		subPathMap := make(map[string]config.StorageConfig)
+		subPathMap["/a"] = config.StorageConfig{RootDirectory: globalDir, Dedupe: true, GC: true}
+		subPathMap["/b"] = config.StorageConfig{RootDirectory: subDir, Dedupe: true, GC: true}
+
+		ctlr.Config.Storage.SubPaths = subPathMap
+
+		err := ctlr.Run(context.Background())
+		So(err, ShouldNotBeNil)
+
+		// subpath root directory does not exist.
+		subPathMap["/a"] = config.StorageConfig{RootDirectory: globalDir, Dedupe: true, GC: true}
+		subPathMap["/b"] = config.StorageConfig{RootDirectory: subDir, Dedupe: false, GC: true}
+
+		ctlr.Config.Storage.SubPaths = subPathMap
+
+		err = ctlr.Run(context.Background())
+		So(err, ShouldNotBeNil)
+
+		subPathMap["/a"] = config.StorageConfig{RootDirectory: subDir, Dedupe: true, GC: true}
+		subPathMap["/b"] = config.StorageConfig{RootDirectory: subDir, Dedupe: true, GC: true}
+
+		ctlr.Config.Storage.SubPaths = subPathMap
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		test.WaitTillServerReady(baseURL)
+
+		// without creds, should get access error
+		resp, err := resty.R().Get(baseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		var e api.Error
+		err = json.Unmarshal(resp.Body(), &e)
+		So(err, ShouldBeNil)
+
+		// with creds, should get expected status code
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/v2/")
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+	})
 }
 
 func TestTLSWithBasicAuth(t *testing.T) {

@@ -21,6 +21,7 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	ext "zotregistry.io/zot/pkg/extensions"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
+	"zotregistry.io/zot/pkg/extensions/lint"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
@@ -281,54 +282,11 @@ func (c *Controller) InitImageStore(reloadCtx context.Context) error {
 		if len(c.Config.Storage.SubPaths) > 0 {
 			subPaths := c.Config.Storage.SubPaths
 
-			subImageStore := make(map[string]storage.ImageStore)
+			subImageStore, err := c.getSubStore(subPaths, linter)
+			if err != nil {
+				c.Log.Error().Err(err).Msg("controller: error getting sub image store")
 
-			// creating image store per subpaths
-			for route, storageConfig := range subPaths {
-				// no need to validate hard links work on s3
-				if storageConfig.Dedupe && storageConfig.StorageDriver == nil {
-					err := storage.ValidateHardLink(storageConfig.RootDirectory)
-					if err != nil {
-						c.Log.Warn().Msg("input storage root directory filesystem does not supports hardlinking, " +
-							"disabling dedupe functionality")
-
-						storageConfig.Dedupe = false
-					}
-				}
-
-				if storageConfig.StorageDriver == nil {
-					// false positive lint - linter does not implement Lint method
-					// nolint: typecheck
-					subImageStore[route] = storage.NewImageStore(storageConfig.RootDirectory,
-						storageConfig.GC, storageConfig.GCDelay, storageConfig.Dedupe, storageConfig.Commit, c.Log, c.Metrics, linter)
-				} else {
-					storeName := fmt.Sprintf("%v", storageConfig.StorageDriver["name"])
-					if storeName != storage.S3StorageDriverName {
-						c.Log.Fatal().Err(errors.ErrBadConfig).Msgf("unsupported storage driver: %s", storageConfig.StorageDriver["name"])
-					}
-
-					// Init a Storager from connection string.
-					store, err := factory.Create(storeName, storageConfig.StorageDriver)
-					if err != nil {
-						c.Log.Error().Err(err).Str("rootDir", storageConfig.RootDirectory).Msg("Unable to create s3 service")
-
-						return err
-					}
-
-					/* in the case of s3 c.Config.Storage.RootDirectory is used for caching blobs locally and
-					c.Config.Storage.StorageDriver["rootdirectory"] is the actual rootDir in s3 */
-					rootDir := "/"
-					if c.Config.Storage.StorageDriver["rootdirectory"] != nil {
-						rootDir = fmt.Sprintf("%v", c.Config.Storage.StorageDriver["rootdirectory"])
-					}
-
-					// false positive lint - linter does not implement Lint method
-					// nolint: typecheck
-					subImageStore[route] = s3.NewImageStore(rootDir, storageConfig.RootDirectory,
-						storageConfig.GC, storageConfig.GCDelay,
-						storageConfig.Dedupe, storageConfig.Commit, c.Log, c.Metrics, linter, store,
-					)
-				}
+				return err
 			}
 
 			c.StoreController.SubStore = subImageStore
@@ -338,6 +296,100 @@ func (c *Controller) InitImageStore(reloadCtx context.Context) error {
 	c.StartBackgroundTasks(reloadCtx)
 
 	return nil
+}
+
+func (c *Controller) getSubStore(subPaths map[string]config.StorageConfig,
+	linter *lint.Linter,
+) (map[string]storage.ImageStore, error) {
+	imgStoreMap := make(map[string]storage.ImageStore, 0)
+
+	subImageStore := make(map[string]storage.ImageStore)
+
+	// creating image store per subpaths
+	for route, storageConfig := range subPaths {
+		// no need to validate hard links work on s3
+		if storageConfig.Dedupe && storageConfig.StorageDriver == nil {
+			err := storage.ValidateHardLink(storageConfig.RootDirectory)
+			if err != nil {
+				c.Log.Warn().Msg("input storage root directory filesystem does not supports hardlinking, " +
+					"disabling dedupe functionality")
+
+				storageConfig.Dedupe = false
+			}
+		}
+
+		if storageConfig.StorageDriver == nil {
+			// Compare if subpath root dir is same as default root dir
+			isSame, _ := config.SameFile(c.Config.Storage.RootDirectory, storageConfig.RootDirectory)
+
+			if isSame {
+				c.Log.Error().Err(errors.ErrBadConfig).Msg("sub path storage directory is same as root directory")
+
+				return nil, errors.ErrBadConfig
+			}
+
+			isUnique := true
+
+			// Compare subpath unique files
+			for file := range imgStoreMap {
+				// We already have image storage for this file
+				if compareImageStore(file, storageConfig.RootDirectory) {
+					subImageStore[route] = imgStoreMap[file]
+
+					isUnique = true
+				}
+			}
+
+			// subpath root directory is unique
+			// add it to uniqueSubFiles
+			// Create a new image store and assign it to imgStoreMap
+			if isUnique {
+				imgStoreMap[storageConfig.RootDirectory] = storage.NewImageStore(storageConfig.RootDirectory,
+					storageConfig.GC, storageConfig.GCDelay, storageConfig.Dedupe, storageConfig.Commit, c.Log, c.Metrics, linter)
+
+				subImageStore[route] = imgStoreMap[storageConfig.RootDirectory]
+			}
+		} else {
+			storeName := fmt.Sprintf("%v", storageConfig.StorageDriver["name"])
+			if storeName != storage.S3StorageDriverName {
+				c.Log.Fatal().Err(errors.ErrBadConfig).Msgf("unsupported storage driver: %s", storageConfig.StorageDriver["name"])
+			}
+
+			// Init a Storager from connection string.
+			store, err := factory.Create(storeName, storageConfig.StorageDriver)
+			if err != nil {
+				c.Log.Error().Err(err).Str("rootDir", storageConfig.RootDirectory).Msg("Unable to create s3 service")
+
+				return nil, err
+			}
+
+			/* in the case of s3 c.Config.Storage.RootDirectory is used for caching blobs locally and
+			c.Config.Storage.StorageDriver["rootdirectory"] is the actual rootDir in s3 */
+			rootDir := "/"
+			if c.Config.Storage.StorageDriver["rootdirectory"] != nil {
+				rootDir = fmt.Sprintf("%v", c.Config.Storage.StorageDriver["rootdirectory"])
+			}
+
+			// false positive lint - linter does not implement Lint method
+			// nolint: typecheck
+			subImageStore[route] = s3.NewImageStore(rootDir, storageConfig.RootDirectory,
+				storageConfig.GC, storageConfig.GCDelay,
+				storageConfig.Dedupe, storageConfig.Commit, c.Log, c.Metrics, linter, store,
+			)
+		}
+	}
+
+	return subImageStore, nil
+}
+
+func compareImageStore(root1, root2 string) bool {
+	isSameFile, err := config.SameFile(root1, root2)
+	// This error is path error that means either of root directory doesn't exist, in that case do string match
+	if err != nil {
+		return strings.EqualFold(root1, root2)
+	}
+
+	return isSameFile
 }
 
 func (c *Controller) LoadNewConfig(reloadCtx context.Context, config *config.Config) {

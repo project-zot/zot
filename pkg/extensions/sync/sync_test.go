@@ -286,8 +286,6 @@ func TestORAS(t *testing.T) {
 			panic(err)
 		}
 
-		fmt.Println(fileDir)
-
 		srcURL := strings.Join([]string{sctlr.Server.Addr, "/oras-artifact:v2"}, "")
 
 		cmd = exec.Command("oras", "push", "--plain-http", srcURL, "--config",
@@ -1220,7 +1218,9 @@ func TestBasicAuth(t *testing.T) {
 				},
 			}
 
-			destConfig.Storage.RootDirectory = destDir
+			rootDir := t.TempDir()
+
+			destConfig.Storage.RootDirectory = rootDir
 
 			regex := ".*"
 			var semver bool

@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/getlantern/deepcopy"
@@ -142,6 +143,27 @@ func New() *Config {
 		HTTP:            HTTPConfig{Address: "127.0.0.1", Port: "8080", Auth: &AuthConfig{FailDelay: 0}},
 		Log:             &LogConfig{Level: "debug"},
 	}
+}
+
+func (expConfig StorageConfig) ParamsEqual(actConfig StorageConfig) bool {
+	return expConfig.GC == actConfig.GC && expConfig.Dedupe == actConfig.Dedupe &&
+		expConfig.GCDelay == actConfig.GCDelay && expConfig.GCInterval == actConfig.GCInterval
+}
+
+// SameFile compare two files.
+// This method will first do the stat of two file and compare using os.SameFile method.
+func SameFile(str1, str2 string) (bool, error) {
+	sFile, err := os.Stat(str1)
+	if err != nil {
+		return false, err
+	}
+
+	tFile, err := os.Stat(str2)
+	if err != nil {
+		return false, err
+	}
+
+	return os.SameFile(sFile, tFile), nil
 }
 
 // Sanitize makes a sanitized copy of the config removing any secrets.
