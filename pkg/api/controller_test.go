@@ -144,6 +144,54 @@ func TestRunAlreadyRunningServer(t *testing.T) {
 	})
 }
 
+func TestAutoPortSelection(t *testing.T) {
+	Convey("Run server with specifying a port", t, func() {
+		conf := config.New()
+		conf.HTTP.Port = "0"
+
+		logFile, err := ioutil.TempFile("", "zot-log*.txt")
+		So(err, ShouldBeNil)
+		conf.Log.Output = logFile.Name()
+		defer os.Remove(logFile.Name()) // clean up
+
+		ctlr := api.NewController(conf)
+		ctlr.Config.Storage.RootDirectory = t.TempDir()
+
+		go startServer(ctlr)
+		time.Sleep(1000 * time.Millisecond)
+		defer stopServer(ctlr)
+
+		file, err := os.Open(logFile.Name())
+		So(err, ShouldBeNil)
+		defer file.Close()
+
+		scanner := bufio.NewScanner(file)
+
+		var contents bytes.Buffer
+		start := time.Now()
+
+		for scanner.Scan() {
+			if time.Since(start) < time.Second*30 {
+				t.Logf("Exhausted: Controller did not print the expected log within 30 seconds")
+			}
+			text := scanner.Text()
+			contents.WriteString(text)
+			if strings.Contains(text, "Port unspecified") {
+				break
+			}
+			t.Logf(scanner.Text())
+		}
+		So(scanner.Err(), ShouldBeNil)
+		So(
+			contents.String(), 
+			ShouldContainSubstring, 
+			"Port is unspecified. zot will listen on an available port chosen by the kernel."
+		)
+		So(contents.String(), ShouldContainSubstring, "\"address\":\"127.0.0.1\"")
+		So(contents.String(), ShouldContainSubstring, "\"port\":")
+	})
+}
+
 func TestObjectStorageController(t *testing.T) {
 	skipIt(t)
 	Convey("Negative make a new object storage controller", t, func() {

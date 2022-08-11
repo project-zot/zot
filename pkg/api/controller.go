@@ -170,6 +170,13 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 		return err
 	}
 
+	if c.Config.HTTP.Port == "0" || c.Config.HTTP.Port == "" {
+		chosenAddr := listener.Addr().(*net.TCPAddr)
+		c.Log.Info().Int("port", chosenAddr.Port).IPAddr("address", chosenAddr.IP).Msg(
+			"Port is unspecified. zot will listen on an available port chosen by the kernel.",
+		)
+	}
+
 	if c.Config.HTTP.TLS != nil && c.Config.HTTP.TLS.Key != "" && c.Config.HTTP.TLS.Cert != "" {
 		server.TLSConfig = &tls.Config{
 			CipherSuites: []uint16{
