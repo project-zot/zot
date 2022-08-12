@@ -971,6 +971,146 @@ func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 	})
 }
 
+func TestMutualTLSAuthWithUserPermissions(t *testing.T) {
+	Convey("Make a new controller", t, func() {
+		caCert, err := ioutil.ReadFile(CACert)
+		So(err, ShouldBeNil)
+		caCertPool := x509.NewCertPool()
+		caCertPool.AppendCertsFromPEM(caCert)
+		htpasswdPath := test.MakeHtpasswdFile()
+		defer os.Remove(htpasswdPath)
+
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		secureBaseURL := test.GetSecureBaseURL(port)
+
+		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
+		defer func() { resty.SetTLSClientConfig(nil) }()
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		conf.HTTP.TLS = &config.TLSConfig{
+			Cert:   ServerCert,
+			Key:    ServerKey,
+			CACert: CACert,
+		}
+
+		conf.AccessControl = &config.AccessControlConfig{
+			Repositories: config.Repositories{
+				AuthorizationAllRepos: config.PolicyGroup{
+					Policies: []config.Policy{
+						{
+							Users:   []string{"*"},
+							Actions: []string{"read"},
+						},
+					},
+				},
+			},
+		}
+
+		ctlr := api.NewController(conf)
+		ctlr.Config.Storage.RootDirectory = t.TempDir()
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		test.WaitTillServerReady(baseURL)
+
+		resp, err := resty.R().Get(baseURL)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+
+		repoPolicy := conf.AccessControl.Repositories[AuthorizationAllRepos]
+
+		// setup TLS mutual auth
+		cert, err := tls.LoadX509KeyPair("../../test/data/client.cert", "../../test/data/client.key")
+		So(err, ShouldBeNil)
+
+		resty.SetCertificates(cert)
+		defer func() { resty.SetCertificates(tls.Certificate{}) }()
+
+		// with client certs but without creds, should succeed
+		resp, err = resty.R().Get(secureBaseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		// with creds, should get expected status code
+		resp, _ = resty.R().Get(secureBaseURL)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+		// without creds, writes should fail
+		resp, err = resty.R().Post(secureBaseURL + "/v2/repo/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
+		// empty default authorization and give user the permission to create
+		repoPolicy.Policies[0].Actions = append(repoPolicy.Policies[0].Actions, "create")
+		conf.AccessControl.Repositories[AuthorizationAllRepos] = repoPolicy
+		resp, err = resty.R().Post(secureBaseURL + "/v2/repo/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+	})
+}
+
+func TestMutualTLSAuthWithoutCN(t *testing.T) {
+	Convey("Make a new controller", t, func() {
+		caCert, err := ioutil.ReadFile("../../test/data/noidentity/ca.crt")
+		So(err, ShouldBeNil)
+		caCertPool := x509.NewCertPool()
+		caCertPool.AppendCertsFromPEM(caCert)
+		htpasswdPath := test.MakeHtpasswdFile()
+		defer os.Remove(htpasswdPath)
+
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		secureBaseURL := test.GetSecureBaseURL(port)
+
+		resty.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
+		defer func() { resty.SetTLSClientConfig(nil) }()
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		conf.HTTP.TLS = &config.TLSConfig{
+			Cert:   "../../test/data/noidentity/server.cert",
+			Key:    "../../test/data/noidentity/server.key",
+			CACert: "../../test/data/noidentity/ca.crt",
+		}
+
+		conf.AccessControl = &config.AccessControlConfig{
+			Repositories: config.Repositories{
+				AuthorizationAllRepos: config.PolicyGroup{
+					Policies: []config.Policy{
+						{
+							Users:   []string{"*"},
+							Actions: []string{"read"},
+						},
+					},
+				},
+			},
+		}
+
+		ctlr := api.NewController(conf)
+		ctlr.Config.Storage.RootDirectory = t.TempDir()
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		test.WaitTillServerReady(baseURL)
+
+		// setup TLS mutual auth
+		cert, err := tls.LoadX509KeyPair("../../test/data/noidentity/client.cert", "../../test/data/noidentity/client.key")
+		So(err, ShouldBeNil)
+
+		resty.SetCertificates(cert)
+		defer func() { resty.SetCertificates(tls.Certificate{}) }()
+
+		// with client certs but without TLS mutual auth setup should get certificate error
+		resp, _ := resty.R().Get(secureBaseURL + "/v2/_catalog")
+		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+	})
+}
+
 func TestTLSMutualAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		caCert, err := ioutil.ReadFile(CACert)

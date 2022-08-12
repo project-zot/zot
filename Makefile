@@ -84,7 +84,7 @@ privileged-test: check-skopeo $(TESTDATA) $(NOTATION)
 	go test -failfast -tags needprivileges,$(EXTENSIONS),containers_image_openpgp -v -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-dev-needprivileges.txt -covermode=atomic ./pkg/storage/... ./pkg/cli/... -run ^TestElevatedPrivileges
 
 $(TESTDATA): check-skopeo
-	$(shell mkdir -p ${TESTDATA}; cd ${TESTDATA}; ../scripts/gen_certs.sh; cd ${TOP_LEVEL}; skopeo --insecure-policy copy -q docker://public.ecr.aws/t0x7q1g8/centos:7 oci:${TESTDATA}/zot-test:0.0.1;skopeo --insecure-policy copy -q docker://public.ecr.aws/t0x7q1g8/centos:8 oci:${TESTDATA}/zot-cve-test:0.0.1)
+	$(shell mkdir -p ${TESTDATA}; cd ${TESTDATA}; mkdir -p noidentity; ../scripts/gen_certs.sh; cd ${TESTDATA}/noidentity; ../../scripts/gen_nameless_certs.sh; cd ${TOP_LEVEL}; skopeo --insecure-policy copy -q docker://public.ecr.aws/t0x7q1g8/centos:7 oci:${TESTDATA}/zot-test:0.0.1;skopeo --insecure-policy copy -q docker://public.ecr.aws/t0x7q1g8/centos:8 oci:${TESTDATA}/zot-cve-test:0.0.1)
 	$(shell chmod -R a=rwx ${TESTDATA})
 
 .PHONY: run-bench

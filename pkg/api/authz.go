@@ -189,22 +189,36 @@ func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 			acCtrlr := NewAccessController(ctlr.Config)
 
 			// allow anonymous authz if no authn present and only default policies are present
-			var username string
+			var identity string
 			var err error
 
-			/* To be implemented: verify client certs and get its username(subject DN)
-			if request.TLS.VerifiedChains != nil, then get subject DN
-			issue: https: //github.com/project-zot/zot/issues/614 */
-
+			// allow anonymous authz if no authn present and only default policies are present
+			identity = ""
 			if isAuthnEnabled(ctlr.Config) && request.Header.Get("Authorization") != "" {
-				username, _, err = getUsernamePasswordBasicAuth(request)
+				identity, _, err = getUsernamePasswordBasicAuth(request)
 
 				if err != nil {
 					authFail(response, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
 				}
 			}
 
-			ctx := acCtrlr.getContext(username, request)
+			if request.TLS != nil {
+				verifiedChains := request.TLS.VerifiedChains
+				// still no identity, get it from TLS certs
+				if identity == "" && verifiedChains != nil &&
+					len(verifiedChains) > 0 && len(verifiedChains[0]) > 0 {
+					for _, cert := range request.TLS.PeerCertificates {
+						identity = cert.Subject.CommonName
+					}
+					// if we still don't have an identity
+					if identity == "" {
+						acCtrlr.Log.Info().Msg("couldn't get identity from TLS certificate")
+						authFail(response, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
+					}
+				}
+			}
+
+			ctx := acCtrlr.getContext(identity, request)
 
 			// will return only repos on which client is authorized to read
 			if request.RequestURI == fmt.Sprintf("%s%s", constants.RoutePrefix, constants.ExtCatalogPrefix) {
@@ -236,7 +250,7 @@ func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 				action = DELETE
 			}
 
-			can := acCtrlr.can(username, action, resource)
+			can := acCtrlr.can(identity, action, resource)
 			if !can {
 				authzFail(response, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
 			} else {
