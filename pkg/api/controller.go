@@ -78,7 +78,7 @@ func (c *Controller) CORSHandler(response http.ResponseWriter, request *http.Req
 	}
 
 	response.Header().Set("Access-Control-Allow-Methods", "HEAD,GET,POST,OPTIONS")
-	response.Header().Set("Access-Control-Allow-Headers", "Authorization")
+	response.Header().Set("Access-Control-Allow-Headers", "Authorization,content-type")
 }
 
 func DumpRuntimeParams(log log.Logger) {

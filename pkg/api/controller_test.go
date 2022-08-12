@@ -269,7 +269,7 @@ func TestHtpasswdSingleCred(t *testing.T) {
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-				header := []string{"Authorization"}
+				header := []string{"Authorization,content-type"}
 
 				resp, _ = resty.R().SetBasicAuth(user, password).Options(baseURL + "/v2/")
 				So(resp, ShouldNotBeNil)
