@@ -186,7 +186,7 @@ func signUsingCosign(port string) error {
 		options.RegistryOptions{AllowInsecure: true},
 		map[string]interface{}{"tag": "1.0"},
 		[]string{imageURL},
-		"", "", true, "", "", "", false, false, "")
+		"", "", true, "", "", "", false, false, "", true)
 }
 
 func signUsingNotary(port string) error {

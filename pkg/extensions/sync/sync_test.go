@@ -3989,7 +3989,7 @@ func signImage(tdir, port, repoName string, digest godigest.Digest) {
 		options.RegistryOptions{AllowInsecure: true},
 		map[string]interface{}{"tag": "1.0"},
 		[]string{fmt.Sprintf("localhost:%s/%s@%s", port, repoName, digest.String())},
-		"", "", true, "", "", "", false, false, "")
+		"", "", true, "", "", "", false, false, "", true)
 	if err != nil {
 		panic(err)
 	}
