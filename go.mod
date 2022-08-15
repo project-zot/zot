@@ -59,7 +59,7 @@ require github.com/open-policy-agent/opa v0.43.0 // indirect
 require (
 	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20220217185014-dd38b7ed8a99
 	github.com/sigstore/cosign v1.10.1
-	github.com/swaggo/http-swagger v1.3.1
+	github.com/swaggo/http-swagger v1.3.3
 )
 
 require (
