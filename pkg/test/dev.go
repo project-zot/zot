@@ -6,6 +6,7 @@
 package test
 
 import (
+	"net/http"
 	"sync"
 
 	zerr "zotregistry.io/zot/errors"
@@ -34,6 +35,20 @@ func Error(err error) error {
 	}
 
 	return nil
+}
+
+// Used to inject error status codes for coverage purposes.
+// -1 will be returned in case of successful failure injection.
+func ErrStatusCode(status int) int {
+	if !injectedFailure() {
+		if status == http.StatusAccepted || status == http.StatusCreated {
+			return status
+		}
+
+		return 0
+	}
+
+	return -1
 }
 
 /**

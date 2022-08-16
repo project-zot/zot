@@ -4,17 +4,20 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
 	"math/big"
+	"net/http"
 	"net/url"
 	"os"
 	"path"
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
+	"github.com/opencontainers/image-spec/specs-go"
 	imagespec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opencontainers/umoci"
 	"github.com/phayes/freeport"
@@ -26,6 +29,18 @@ const (
 	BaseSecureURL = "https://127.0.0.1:%s"
 	SleepTime     = 100 * time.Millisecond
 )
+
+var (
+	ErrPostBlob = errors.New("can't post blob")
+	ErrPutBlob  = errors.New("can't put blob")
+)
+
+type Image struct {
+	Manifest imagespec.Manifest
+	Config   imagespec.Image
+	Layers   [][]byte
+	Tag      string
+}
 
 func GetFreePort() string {
 	port, err := freeport.GetFreePort()
@@ -263,4 +278,128 @@ func GetOciLayoutDigests(imagePath string) (godigest.Digest, godigest.Digest, go
 	}
 
 	return manifestDigest, configDigest, layerDigest
+}
+
+func GetImageComponents(layerSize int) (imagespec.Image, [][]byte, imagespec.Manifest, error) {
+	config := imagespec.Image{
+		Architecture: "amd64",
+		OS:           "linux",
+		RootFS: imagespec.RootFS{
+			Type:    "layers",
+			DiffIDs: []godigest.Digest{},
+		},
+		Author: "ZotUser",
+	}
+
+	configBlob, err := json.Marshal(config)
+	if err = Error(err); err != nil {
+		return imagespec.Image{}, [][]byte{}, imagespec.Manifest{}, err
+	}
+
+	configDigest := godigest.FromBytes(configBlob)
+
+	layers := [][]byte{
+		make([]byte, layerSize),
+	}
+
+	schemaVersion := 2
+
+	manifest := imagespec.Manifest{
+		Versioned: specs.Versioned{
+			SchemaVersion: schemaVersion,
+		},
+		Config: imagespec.Descriptor{
+			MediaType: "application/vnd.oci.image.config.v1+json",
+			Digest:    configDigest,
+			Size:      int64(len(configBlob)),
+		},
+		Layers: []imagespec.Descriptor{
+			{
+				MediaType: "application/vnd.oci.image.layer.v1.tar",
+				Digest:    godigest.FromBytes(layers[0]),
+				Size:      int64(len(layers[0])),
+			},
+		},
+	}
+
+	return config, layers, manifest, nil
+}
+
+func UploadImage(img Image, baseURL, repo string) error {
+	for _, blob := range img.Layers {
+		resp, err := resty.R().Post(baseURL + "/v2/" + repo + "/blobs/uploads/")
+		if err != nil {
+			return err
+		}
+
+		if resp.StatusCode() != http.StatusAccepted {
+			return ErrPostBlob
+		}
+
+		loc := resp.Header().Get("Location")
+
+		digest := godigest.FromBytes(blob).String()
+
+		resp, err = resty.R().
+			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", digest).
+			SetBody(blob).
+			Put(baseURL + loc)
+
+		if err != nil {
+			return err
+		}
+
+		if resp.StatusCode() != http.StatusCreated {
+			return ErrPutBlob
+		}
+	}
+	// upload config
+	cblob, err := json.Marshal(img.Config)
+	if err = Error(err); err != nil {
+		return err
+	}
+
+	cdigest := godigest.FromBytes(cblob)
+
+	resp, err := resty.R().
+		Post(baseURL + "/v2/" + repo + "/blobs/uploads/")
+	if err = Error(err); err != nil {
+		return err
+	}
+
+	if ErrStatusCode(resp.StatusCode()) != http.StatusAccepted && ErrStatusCode(resp.StatusCode()) == -1 {
+		return ErrPostBlob
+	}
+
+	loc := Location(baseURL, resp)
+
+	// uploading blob should get 201
+	resp, err = resty.R().
+		SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+		SetHeader("Content-Type", "application/octet-stream").
+		SetQueryParam("digest", cdigest.String()).
+		SetBody(cblob).
+		Put(loc)
+	if err = Error(err); err != nil {
+		return err
+	}
+
+	if ErrStatusCode(resp.StatusCode()) != http.StatusCreated && ErrStatusCode(resp.StatusCode()) == -1 {
+		return ErrPostBlob
+	}
+
+	// put manifest
+	manifestBlob, err := json.Marshal(img.Manifest)
+	if err = Error(err); err != nil {
+		return err
+	}
+
+	_, err = resty.R().
+		SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
+		SetBody(manifestBlob).
+		Put(baseURL + "/v2/" + repo + "/manifests/" + img.Tag)
+
+	return err
 }

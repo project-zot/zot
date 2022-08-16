@@ -59,6 +59,18 @@ func bar() error {
 	return nil
 }
 
+func baz() error {
+	if test.ErrStatusCode(0) != 0 {
+		return errCall1
+	}
+
+	if test.ErrStatusCode(0) != 0 {
+		return errCall2
+	}
+
+	return nil
+}
+
 func alwaysErr() error {
 	return errNotZero
 }
@@ -104,6 +116,22 @@ func TestInject(t *testing.T) {
 			Convey("With skipping", func() {
 				test.InjectFailure(1) // inject a failure but skip first one
 				err := bar()          // should be a failure
+				So(errors.Is(err, errCall1), ShouldBeFalse)
+				So(errors.Is(err, errCall2), ShouldBeTrue)
+			})
+		})
+
+		Convey("Check ErrStatusCode", func() {
+			Convey("Without skipping", func() {
+				test.InjectFailure(0)   // inject a failure
+				err := baz()            // should be a failure
+				So(err, ShouldNotBeNil) // should be a failure
+				So(errors.Is(err, errCall1), ShouldBeTrue)
+			})
+
+			Convey("With skipping", func() {
+				test.InjectFailure(1) // inject a failure but skip first one
+				err := baz()          // should be a failure
 				So(errors.Is(err, errCall1), ShouldBeFalse)
 				So(errors.Is(err, errCall2), ShouldBeTrue)
 			})

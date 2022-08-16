@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
@@ -19,7 +18,6 @@ import (
 	"time"
 
 	"github.com/opencontainers/go-digest"
-	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/sigstore/cosign/cmd/cosign/cli/generate"
 	"github.com/sigstore/cosign/cmd/cosign/cli/options"
@@ -44,8 +42,6 @@ const (
 
 var (
 	ErrTestError   = errors.New("test error")
-	ErrPutBlob     = errors.New("can't put blob")
-	ErrPostBlob    = errors.New("can't post blob")
 	ErrPutManifest = errors.New("can't put manifest")
 )
 
@@ -1043,7 +1039,7 @@ func TestSearchSize(t *testing.T) {
 		WaitTillServerReady(baseURL)
 
 		repoName := "testrepo"
-		config, layers, manifest, err := getImageComponents(10000)
+		config, layers, manifest, err := GetImageComponents(10000)
 		So(err, ShouldBeNil)
 
 		configBlob, err := json.Marshal(config)
@@ -1060,7 +1056,7 @@ func TestSearchSize(t *testing.T) {
 		manifestSize := len(manifestBlob)
 
 		err = UploadImage(
-			uploadImage{
+			Image{
 				Manifest: manifest,
 				Config:   config,
 				Layers:   layers,
@@ -1107,7 +1103,7 @@ func TestSearchSize(t *testing.T) {
 
 		// add the same image with different tag
 		err = UploadImage(
-			uploadImage{
+			Image{
 				Manifest: manifest,
 				Config:   config,
 				Layers:   layers,
@@ -1133,136 +1129,6 @@ func TestSearchSize(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(size, ShouldAlmostEqual, configSize+layersSize+manifestSize)
 	})
-}
-
-func getImageComponents(layerSize int) (ispec.Image, [][]byte, ispec.Manifest, error) {
-	config := ispec.Image{
-		Architecture: "amd64",
-		OS:           "linux",
-		RootFS: ispec.RootFS{
-			Type:    "layers",
-			DiffIDs: []digest.Digest{},
-		},
-		Author: "ZotUser",
-	}
-
-	configBlob, err := json.Marshal(config)
-	if err != nil {
-		return ispec.Image{}, [][]byte{}, ispec.Manifest{}, err
-	}
-
-	configDigest := digest.FromBytes(configBlob)
-
-	layers := [][]byte{
-		make([]byte, layerSize),
-	}
-
-	manifest := ispec.Manifest{
-		Versioned: specs.Versioned{
-			SchemaVersion: 2,
-		},
-		Config: ispec.Descriptor{
-			MediaType: "application/vnd.oci.image.config.v1+json",
-			Digest:    configDigest,
-			Size:      int64(len(configBlob)),
-		},
-		Layers: []ispec.Descriptor{
-			{
-				MediaType: "application/vnd.oci.image.layer.v1.tar",
-				Digest:    digest.FromBytes(layers[0]),
-				Size:      int64(len(layers[0])),
-			},
-		},
-	}
-
-	return config, layers, manifest, nil
-}
-
-type uploadImage struct {
-	Manifest ispec.Manifest
-	Config   ispec.Image
-	Layers   [][]byte
-	Tag      string
-}
-
-func UploadImage(img uploadImage, baseURL, repo string) error {
-	for _, blob := range img.Layers {
-		resp, err := resty.R().Post(baseURL + "/v2/" + repo + "/blobs/uploads/")
-		if err != nil {
-			return err
-		}
-
-		if resp.StatusCode() != http.StatusAccepted {
-			return ErrPostBlob
-		}
-
-		loc := resp.Header().Get("Location")
-
-		digest := digest.FromBytes(blob).String()
-
-		resp, err = resty.R().
-			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
-			SetHeader("Content-Type", "application/octet-stream").
-			SetQueryParam("digest", digest).
-			SetBody(blob).
-			Put(baseURL + loc)
-
-		if resp.StatusCode() != http.StatusCreated {
-			return ErrPutBlob
-		}
-
-		if err != nil {
-			return err
-		}
-	}
-
-	// upload config
-	cblob, err := json.Marshal(img.Config)
-	if err != nil {
-		return err
-	}
-
-	cdigest := digest.FromBytes(cblob)
-
-	resp, err := resty.R().
-		Post(baseURL + "/v2/" + repo + "/blobs/uploads/")
-	if err != nil {
-		return err
-	}
-
-	if resp.StatusCode() != http.StatusAccepted {
-		return ErrPostBlob
-	}
-
-	loc := Location(baseURL, resp)
-
-	// uploading blob should get 201
-	resp, err = resty.R().
-		SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
-		SetHeader("Content-Type", "application/octet-stream").
-		SetQueryParam("digest", cdigest.String()).
-		SetBody(cblob).
-		Put(loc)
-	if err != nil {
-		return err
-	}
-
-	if resp.StatusCode() != http.StatusCreated {
-		return ErrPutBlob
-	}
-
-	// put manifest
-	manifestBlob, err := json.Marshal(img.Manifest)
-	if err != nil {
-		return err
-	}
-
-	_, err = resty.R().
-		SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
-		SetBody(manifestBlob).
-		Put(baseURL + "/v2/" + repo + "/manifests/" + img.Tag)
-
-	return err
 }
 
 func startServer(c *api.Controller) {

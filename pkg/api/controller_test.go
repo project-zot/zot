@@ -317,7 +317,6 @@ func TestHtpasswdTwoCreds(t *testing.T) {
 				}
 				ctlr := api.NewController(conf)
 				ctlr.Config.Storage.RootDirectory = t.TempDir()
-
 				go startServer(ctlr)
 				defer stopServer(ctlr)
 				test.WaitTillServerReady(baseURL)
@@ -5701,7 +5700,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 
 func TestPeriodicGC(t *testing.T) {
 	Convey("Periodic gc enabled for default store", t, func() {
-		repoName := "test"
+		repoName := "testRepo"
 
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
@@ -5855,6 +5854,163 @@ func TestPeriodicTasks(t *testing.T) {
 		So(string(data), ShouldContainSubstring,
 			fmt.Sprintf("Periodic interval for %s set to %s",
 				ctlr.StoreController.DefaultStore.RootDir(), ctlr.Config.Storage.GCInterval))
+	})
+}
+
+func TestSearchRoutes(t *testing.T) {
+	Convey("Upload image for test", t, func(c C) {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		tempDir := t.TempDir()
+
+		ctlr := api.NewController(conf)
+		ctlr.Config.Storage.RootDirectory = tempDir
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+
+		test.WaitTillServerReady(baseURL)
+
+		repoName := "testrepo"
+		inaccessibleRepo := "inaccessible"
+		cfg, layers, manifest, err := test.GetImageComponents(10000)
+		So(err, ShouldBeNil)
+
+		err = test.UploadImage(
+			test.Image{
+				Config:   cfg,
+				Layers:   layers,
+				Manifest: manifest,
+				Tag:      "latest",
+			}, baseURL, repoName)
+
+		So(err, ShouldBeNil)
+
+		// data for the inaccessible repo
+		cfg, layers, manifest, err = test.GetImageComponents(10000)
+		So(err, ShouldBeNil)
+
+		err = test.UploadImage(
+			test.Image{
+				Config:   cfg,
+				Layers:   layers,
+				Manifest: manifest,
+				Tag:      "latest",
+			}, baseURL, inaccessibleRepo)
+
+		So(err, ShouldBeNil)
+
+		Convey("GlobalSearch with authz enabled", func(c C) {
+			conf := config.New()
+			port := test.GetFreePort()
+			baseURL := test.GetBaseURL(port)
+
+			user1 := "test"
+			password1 := "test"
+			testString1 := getCredString(user1, password1)
+			htpasswdPath := test.MakeHtpasswdFileFromString(testString1)
+			defer os.Remove(htpasswdPath)
+			conf.HTTP.Auth = &config.AuthConfig{
+				HTPasswd: config.AuthHTPasswd{
+					Path: htpasswdPath,
+				},
+			}
+
+			conf.HTTP.Port = port
+
+			defaultVal := true
+
+			searchConfig := &extconf.SearchConfig{
+				Enable: &defaultVal,
+			}
+
+			conf.Extensions = &extconf.ExtensionConfig{
+				Search: searchConfig,
+			}
+
+			conf.AccessControl = &config.AccessControlConfig{
+				Repositories: config.Repositories{
+					repoName: config.PolicyGroup{
+						Policies: []config.Policy{
+							{
+								Users:   []string{user1},
+								Actions: []string{"read"},
+							},
+						},
+						DefaultPolicy: []string{},
+					},
+					inaccessibleRepo: config.PolicyGroup{
+						Policies: []config.Policy{
+							{
+								Users:   []string{},
+								Actions: []string{},
+							},
+						},
+						DefaultPolicy: []string{},
+					},
+				},
+				AdminPolicy: config.Policy{
+					Users:   []string{},
+					Actions: []string{},
+				},
+			}
+
+			ctlr := api.NewController(conf)
+
+			ctlr.Config.Storage.RootDirectory = tempDir
+
+			go startServer(ctlr)
+			defer stopServer(ctlr)
+			test.WaitTillServerReady(baseURL)
+
+			query := `
+			{
+				GlobalSearch(query:""){
+					Repos {
+						Name
+						Score
+						NewestImage {
+							RepoName
+							Tag
+						}
+					}
+				}
+			}`
+			resp, err := resty.R().SetBasicAuth(user1, password1).Get(baseURL + constants.ExtSearchPrefix +
+				"?query=" + url.QueryEscape(query))
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			So(string(resp.Body()), ShouldContainSubstring, repoName)
+			So(string(resp.Body()), ShouldNotContainSubstring, inaccessibleRepo)
+
+			resp, err = resty.R().Get(baseURL + constants.ExtSearchPrefix + "?query=" + url.QueryEscape(query))
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+
+			// credentials for user unauthorized to access repo
+			user2 := "notWorking"
+			password2 := "notWorking"
+			testString2 := getCredString(user2, password2)
+			htpasswdPath2 := test.MakeHtpasswdFileFromString(testString2)
+			defer os.Remove(htpasswdPath2)
+
+			ctlr.Config.HTTP.Auth = &config.AuthConfig{
+				HTPasswd: config.AuthHTPasswd{
+					Path: htpasswdPath2,
+				},
+			}
+			// authenticated, but no access to resource
+			resp, err = resty.R().SetBasicAuth(user2, password2).Get(baseURL + constants.ExtSearchPrefix +
+				"?query=" + url.QueryEscape(query))
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		})
 	})
 }
 

@@ -454,7 +454,14 @@ func (r *queryResolver) GlobalSearch(ctx context.Context, query string) (*gql_ge
 		return &gql_generated.GlobalSearchResult{}, err
 	}
 
-	repos, images, layers := globalSearch(repoList, name, tag, olu, r.log)
+	availableRepos, err := userAvailableRepos(ctx, repoList)
+	if err != nil {
+		r.log.Error().Err(err).Msg("unable to filter user available repositories")
+
+		return &gql_generated.GlobalSearchResult{}, err
+	}
+
+	repos, images, layers := globalSearch(availableRepos, name, tag, olu, r.log)
 
 	return &gql_generated.GlobalSearchResult{
 		Images: images,
