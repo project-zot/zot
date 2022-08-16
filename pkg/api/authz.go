@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	glob "github.com/bmatcuk/doublestar/v4"
@@ -12,9 +13,8 @@ import (
 	"zotregistry.io/zot/pkg/api/constants"
 	"zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/log"
+	localCtx "zotregistry.io/zot/pkg/requestcontext"
 )
-
-type contextKey int
 
 const (
 	// actions.
@@ -22,21 +22,12 @@ const (
 	READ   = "read"
 	UPDATE = "update"
 	DELETE = "delete"
-
-	// request-local context key.
-	authzCtxKey contextKey = 0
 )
 
 // AccessController authorizes users to act on resources.
 type AccessController struct {
 	Config *config.AccessControlConfig
 	Log    log.Logger
-}
-
-// AccessControlContext context passed down to http.Handlers.
-type AccessControlContext struct {
-	globPatterns map[string]bool
-	isAdmin      bool
 }
 
 func NewAccessController(config *config.Config) *AccessController {
@@ -111,14 +102,18 @@ func (ac *AccessController) isAdmin(username string) bool {
 // getContext builds ac context(allowed to read repos and if user is admin) and returns it.
 func (ac *AccessController) getContext(username string, request *http.Request) context.Context {
 	readGlobPatterns := ac.getReadGlobPatterns(username)
-	acCtx := AccessControlContext{globPatterns: readGlobPatterns}
-
-	if ac.isAdmin(username) {
-		acCtx.isAdmin = true
-	} else {
-		acCtx.isAdmin = false
+	acCtx := localCtx.AccessControlContext{
+		GlobPatterns: readGlobPatterns,
+		Username:     username,
 	}
 
+	if ac.isAdmin(username) {
+		acCtx.IsAdmin = true
+	} else {
+		acCtx.IsAdmin = false
+	}
+
+	authzCtxKey := localCtx.GetContextKey()
 	ctx := context.WithValue(request.Context(), authzCtxKey, acCtx)
 
 	return ctx
@@ -222,6 +217,12 @@ func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 			// will return only repos on which client is authorized to read
 			if request.RequestURI == fmt.Sprintf("%s%s", constants.RoutePrefix, constants.ExtCatalogPrefix) {
+				next.ServeHTTP(response, request.WithContext(ctx))
+
+				return
+			}
+
+			if strings.Contains(request.RequestURI, constants.ExtSearchPrefix) {
 				next.ServeHTTP(response, request.WithContext(ctx))
 
 				return

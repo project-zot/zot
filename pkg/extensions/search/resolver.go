@@ -5,19 +5,22 @@ package search
 // It serves as dependency injection for your app, add any dependencies you require here.
 
 import (
+	"context"
+	"errors"
 	"sort"
 	"strconv"
 	"strings"
 
+	glob "github.com/bmatcuk/doublestar/v4"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	godigest "github.com/opencontainers/go-digest"
-	"zotregistry.io/zot/pkg/log" // nolint: gci
-
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	digestinfo "zotregistry.io/zot/pkg/extensions/search/digest"
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
+	"zotregistry.io/zot/pkg/log" // nolint: gci
+	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/storage"
 ) // THIS CODE IS A STARTING POINT ONLY. IT WILL NOT BE UPDATED WITH SCHEMA CHANGES.
 
@@ -35,6 +38,8 @@ type cveDetail struct {
 	Severity    string
 	PackageList []*gql_generated.PackageInfo
 }
+
+var ErrBadCtxFormat = errors.New("type assertion failed")
 
 // GetResolverConfig ...
 func GetResolverConfig(log log.Logger, storeController storage.StoreController, enableCVE bool) gql_generated.Config {
@@ -468,4 +473,48 @@ func buildImageInfo(repo string, tag string, tagDigest godigest.Digest,
 	}
 
 	return imageInfo
+}
+
+// returns either a user has or not rights on 'repository'.
+func matchesRepo(globPatterns map[string]bool, repository string) bool {
+	var longestMatchedPattern string
+
+	// because of the longest path matching rule, we need to check all patterns from config
+	for pattern := range globPatterns {
+		matched, err := glob.Match(pattern, repository)
+		if err == nil {
+			if matched && len(pattern) > len(longestMatchedPattern) {
+				longestMatchedPattern = pattern
+			}
+		}
+	}
+
+	allowed := globPatterns[longestMatchedPattern]
+
+	return allowed
+}
+
+// get passed context from authzHandler and filter out repos based on permissions.
+func userAvailableRepos(ctx context.Context, repoList []string) ([]string, error) {
+	var availableRepos []string
+
+	authzCtxKey := localCtx.GetContextKey()
+	if authCtx := ctx.Value(authzCtxKey); authCtx != nil {
+		acCtx, ok := authCtx.(localCtx.AccessControlContext)
+		if !ok {
+			err := ErrBadCtxFormat
+
+			return []string{}, err
+		}
+
+		for _, r := range repoList {
+			if acCtx.IsAdmin || matchesRepo(acCtx.GlobPatterns, r) {
+				availableRepos = append(availableRepos, r)
+			}
+		}
+	} else {
+		availableRepos = repoList
+	}
+
+	return availableRepos, nil
 }

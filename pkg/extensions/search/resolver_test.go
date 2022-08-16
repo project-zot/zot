@@ -1,16 +1,22 @@
 package search //nolint
 
 import (
+	"context"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
+	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	"zotregistry.io/zot/pkg/log"
+	localCtx "zotregistry.io/zot/pkg/requestcontext"
+	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
 
@@ -169,6 +175,28 @@ func TestGlobalSearch(t *testing.T) {
 			}
 			globalSearch([]string{"repo1"}, "name", "tag", mockOlum, log.NewLogger("debug", ""))
 		})
+	})
+}
+
+func TestUserAvailableRepos(t *testing.T) {
+	Convey("Type assertion fails", t, func() {
+		var invalid struct{}
+
+		log := log.Logger{Logger: zerolog.New(os.Stdout)}
+		dir := t.TempDir()
+		metrics := monitoring.NewMetricsServer(false, log)
+		defaultStore := storage.NewImageStore(dir, false, 0, false, false, log, metrics, nil)
+
+		repoList, err := defaultStore.GetRepositories()
+		So(err, ShouldBeNil)
+
+		ctx := context.TODO()
+		key := localCtx.GetContextKey()
+		ctx = context.WithValue(ctx, key, invalid)
+
+		repos, err := userAvailableRepos(ctx, repoList)
+		So(err, ShouldNotBeNil)
+		So(repos, ShouldBeEmpty)
 	})
 }
 

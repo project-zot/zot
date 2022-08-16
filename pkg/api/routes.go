@@ -34,6 +34,7 @@ import (
 	"zotregistry.io/zot/pkg/api/constants"
 	ext "zotregistry.io/zot/pkg/extensions"
 	"zotregistry.io/zot/pkg/log"
+	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test" // nolint:goimports
 	// as required by swaggo.
@@ -1240,9 +1241,11 @@ func (rh *RouteHandler) ListRepositories(response http.ResponseWriter, request *
 	}
 
 	var repos []string
+	authzCtxKey := localCtx.GetContextKey()
+
 	// get passed context from authzHandler and filter out repos based on permissions
 	if authCtx := request.Context().Value(authzCtxKey); authCtx != nil {
-		acCtx, ok := authCtx.(AccessControlContext)
+		acCtx, ok := authCtx.(localCtx.AccessControlContext)
 		if !ok {
 			response.WriteHeader(http.StatusInternalServerError)
 
@@ -1250,7 +1253,7 @@ func (rh *RouteHandler) ListRepositories(response http.ResponseWriter, request *
 		}
 
 		for _, r := range combineRepoList {
-			if acCtx.isAdmin || matchesRepo(acCtx.globPatterns, r) {
+			if acCtx.IsAdmin || matchesRepo(acCtx.GlobPatterns, r) {
 				repos = append(repos, r)
 			}
 		}
