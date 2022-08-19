@@ -405,8 +405,8 @@ func TestRoutes(t *testing.T) {
 					"digest": "sha256:7a0437f04f83f084b7ed68ad9c4a4947e12fc4e1b006b38129bac89114ec3621",
 				},
 				&mocks.MockedImageStore{
-					GetBlobFn: func(repo, digest, mediaType string) (io.Reader, int64, error) {
-						return bytes.NewBuffer([]byte("")), 0, zerr.ErrRepoNotFound
+					GetBlobFn: func(repo, digest, mediaType string) (io.ReadCloser, int64, error) {
+						return io.NopCloser(bytes.NewBuffer([]byte(""))), 0, zerr.ErrRepoNotFound
 					},
 				})
 			So(statusCode, ShouldEqual, http.StatusNotFound)
@@ -418,8 +418,8 @@ func TestRoutes(t *testing.T) {
 					"digest": "sha256:7a0437f04f83f084b7ed68ad9c4a4947e12fc4e1b006b38129bac89114ec3621",
 				},
 				&mocks.MockedImageStore{
-					GetBlobFn: func(repo, digest, mediaType string) (io.Reader, int64, error) {
-						return bytes.NewBuffer([]byte("")), 0, zerr.ErrBadBlobDigest
+					GetBlobFn: func(repo, digest, mediaType string) (io.ReadCloser, int64, error) {
+						return io.NopCloser(bytes.NewBuffer([]byte(""))), 0, zerr.ErrBadBlobDigest
 					},
 				})
 			So(statusCode, ShouldEqual, http.StatusBadRequest)

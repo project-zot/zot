@@ -866,8 +866,11 @@ func TestS3Dedupe(t *testing.T) {
 		So(checkBlobSize1, ShouldBeGreaterThan, 0)
 		So(err, ShouldBeNil)
 
-		_, getBlobSize1, err := imgStore.GetBlob("dedupe1", digest.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
+		blobReadCloser, getBlobSize1, err := imgStore.GetBlob("dedupe1", digest.String(),
+			"application/vnd.oci.image.layer.v1.tar+gzip")
 		So(getBlobSize1, ShouldBeGreaterThan, 0)
+		So(err, ShouldBeNil)
+		err = blobReadCloser.Close()
 		So(err, ShouldBeNil)
 
 		cblob, cdigest := test.GetRandomImageConfig()
@@ -928,11 +931,14 @@ func TestS3Dedupe(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(checkBlobSize2, ShouldBeGreaterThan, 0)
 
-		_, getBlobSize2, err := imgStore.GetBlob("dedupe2", digest.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
+		blobReadCloser, getBlobSize2, err := imgStore.GetBlob("dedupe2", digest.String(),
+			"application/vnd.oci.image.layer.v1.tar+gzip")
 		So(err, ShouldBeNil)
 		So(getBlobSize2, ShouldBeGreaterThan, 0)
 		So(checkBlobSize1, ShouldEqual, checkBlobSize2)
 		So(getBlobSize1, ShouldEqual, getBlobSize2)
+		err = blobReadCloser.Close()
+		So(err, ShouldBeNil)
 
 		cblob, cdigest = test.GetRandomImageConfig()
 		_, clen, err = imgStore.FullBlobUpload("dedupe2", bytes.NewReader(cblob), cdigest.String())
@@ -1039,9 +1045,12 @@ func TestS3Dedupe(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// check that we retrieve the real dedupe2/blob (which is deduped earlier - 0 size) when switching to dedupe false
-			_, getBlobSize2, err = imgStore.GetBlob("dedupe2", digest.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
+			blobReadCloser, getBlobSize2, err = imgStore.GetBlob("dedupe2", digest.String(),
+				"application/vnd.oci.image.layer.v1.tar+gzip")
 			So(err, ShouldBeNil)
 			So(getBlobSize1, ShouldEqual, getBlobSize2)
+			err = blobReadCloser.Close()
+			So(err, ShouldBeNil)
 
 			_, checkBlobSize2, err := imgStore.CheckBlob("dedupe2", digest.String())
 			So(err, ShouldBeNil)

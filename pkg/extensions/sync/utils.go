@@ -294,43 +294,17 @@ func pushSyncedLocalImage(localRepo, tag, localCachePath string,
 	}
 
 	for _, blob := range manifest.Layers {
-		blobReader, _, err := cacheImageStore.GetBlob(localRepo, blob.Digest.String(), blob.MediaType)
+		err = copyBlob(localRepo, blob.Digest.String(), blob.MediaType,
+			cacheImageStore, imageStore, log)
 		if err != nil {
-			log.Error().Str("errorType", TypeOf(err)).
-				Err(err).Str("dir", path.Join(cacheImageStore.RootDir(),
-				localRepo)).Str("blob digest", blob.Digest.String()).Msg("couldn't read blob")
-
 			return err
-		}
-
-		if found, _, _ := imageStore.CheckBlob(localRepo, blob.Digest.String()); !found {
-			_, _, err = imageStore.FullBlobUpload(localRepo, blobReader, blob.Digest.String())
-			if err != nil {
-				log.Error().Str("errorType", TypeOf(err)).
-					Err(err).Str("blob digest", blob.Digest.String()).Msg("couldn't upload blob")
-
-				return err
-			}
 		}
 	}
 
-	blobReader, _, err := cacheImageStore.GetBlob(localRepo, manifest.Config.Digest.String(), manifest.Config.MediaType)
+	err = copyBlob(localRepo, manifest.Config.Digest.String(), manifest.Config.MediaType,
+		cacheImageStore, imageStore, log)
 	if err != nil {
-		log.Error().Str("errorType", TypeOf(err)).
-			Err(err).Str("dir", path.Join(cacheImageStore.RootDir(),
-			localRepo)).Str("blob digest", manifest.Config.Digest.String()).Msg("couldn't read config blob")
-
 		return err
-	}
-
-	if found, _, _ := imageStore.CheckBlob(localRepo, manifest.Config.Digest.String()); !found {
-		_, _, err = imageStore.FullBlobUpload(localRepo, blobReader, manifest.Config.Digest.String())
-		if err != nil {
-			log.Error().Str("errorType", TypeOf(err)).
-				Err(err).Str("blob digest", manifest.Config.Digest.String()).Msg("couldn't upload config blob")
-
-			return err
-		}
 	}
 
 	_, err = imageStore.PutImageManifest(localRepo, tag,
@@ -350,6 +324,36 @@ func pushSyncedLocalImage(localRepo, tag, localCachePath string,
 	}
 
 	return nil
+}
+
+// Copy a blob from one image store to another image store.
+func copyBlob(localRepo, blobDigest, blobMediaType string,
+	souceImageStore, destinationImageStore storage.ImageStore, log log.Logger,
+) error {
+	if found, _, _ := destinationImageStore.CheckBlob(localRepo, blobDigest); found {
+		// Blob is already at destination, nothing to do
+		return nil
+	}
+
+	blobReadCloser, _, err := souceImageStore.GetBlob(localRepo, blobDigest, blobMediaType)
+	if err != nil {
+		log.Error().Str("errorType", TypeOf(err)).Err(err).
+			Str("dir", path.Join(souceImageStore.RootDir(), localRepo)).
+			Str("blob digest", blobDigest).Str("media type", blobMediaType).
+			Msg("couldn't read blob")
+
+		return err
+	}
+	defer blobReadCloser.Close()
+
+	_, _, err = destinationImageStore.FullBlobUpload(localRepo, blobReadCloser, blobDigest)
+	if err != nil {
+		log.Error().Str("errorType", TypeOf(err)).Err(err).
+			Str("blob digest", blobDigest).Str("media type", blobMediaType).
+			Msg("couldn't upload blob")
+	}
+
+	return err
 }
 
 // sync needs transport to be stripped to not be wrongly interpreted as an image reference

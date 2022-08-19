@@ -39,7 +39,7 @@ type ImageStore interface {
 	DeleteBlobUpload(repo, uuid string) error
 	BlobPath(repo string, digest digest.Digest) string
 	CheckBlob(repo, digest string) (bool, int64, error)
-	GetBlob(repo, digest, mediaType string) (io.Reader, int64, error)
+	GetBlob(repo, digest, mediaType string) (io.ReadCloser, int64, error)
 	DeleteBlob(repo, digest string) error
 	GetIndexContent(repo string) ([]byte, error)
 	GetBlobContent(repo, digest string) ([]byte, error)
