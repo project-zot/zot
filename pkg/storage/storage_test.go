@@ -242,7 +242,9 @@ func TestStorageAPIs(t *testing.T) {
 						_, _, err = imgStore.CheckBlob("test", digest.String())
 						So(err, ShouldBeNil)
 
-						_, _, err = imgStore.GetBlob("test", digest.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
+						blob, _, err := imgStore.GetBlob("test", digest.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
+						So(err, ShouldBeNil)
+						err = blob.Close()
 						So(err, ShouldBeNil)
 
 						manifest := ispec.Manifest{}
@@ -431,7 +433,9 @@ func TestStorageAPIs(t *testing.T) {
 						_, _, err = imgStore.GetBlob("test", "inexistent", "application/vnd.oci.image.layer.v1.tar+gzip")
 						So(err, ShouldNotBeNil)
 
-						_, _, err = imgStore.GetBlob("test", digest.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
+						blob, _, err := imgStore.GetBlob("test", digest.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
+						So(err, ShouldBeNil)
+						err = blob.Close()
 						So(err, ShouldBeNil)
 
 						blobContent, err := imgStore.GetBlobContent("test", digest.String())

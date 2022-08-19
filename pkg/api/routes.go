@@ -655,6 +655,7 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 
 		return
 	}
+	defer repo.Close()
 
 	response.Header().Set("Content-Length", fmt.Sprintf("%d", blen))
 	response.Header().Set(constants.DistContentDigestKey, digest)

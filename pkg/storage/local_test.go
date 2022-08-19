@@ -751,11 +751,14 @@ func FuzzGetBlob(f *testing.F) {
 			t.Error(err)
 		}
 
-		_, _, err = imgStore.GetBlob(repoName, digest.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
+		blobReadCloser, _, err := imgStore.GetBlob(repoName, digest.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
 		if err != nil {
 			if isKnownErr(err) {
 				return
 			}
+			t.Error(err)
+		}
+		if err = blobReadCloser.Close(); err != nil {
 			t.Error(err)
 		}
 	})
@@ -951,7 +954,9 @@ func TestDedupeLinks(t *testing.T) {
 		_, _, err = imgStore.CheckBlob("dedupe1", digest.String())
 		So(err, ShouldBeNil)
 
-		_, _, err = imgStore.GetBlob("dedupe1", digest.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
+		blobrc, _, err := imgStore.GetBlob("dedupe1", digest.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
+		So(err, ShouldBeNil)
+		err = blobrc.Close()
 		So(err, ShouldBeNil)
 
 		cblob, cdigest := test.GetRandomImageConfig()
@@ -1009,7 +1014,9 @@ func TestDedupeLinks(t *testing.T) {
 		_, _, err = imgStore.CheckBlob("dedupe2", digest.String())
 		So(err, ShouldBeNil)
 
-		_, _, err = imgStore.GetBlob("dedupe2", digest.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
+		blobrc, _, err = imgStore.GetBlob("dedupe2", digest.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
+		So(err, ShouldBeNil)
+		err = blobrc.Close()
 		So(err, ShouldBeNil)
 
 		cblob, cdigest = test.GetRandomImageConfig()

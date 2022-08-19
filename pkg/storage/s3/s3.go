@@ -1253,7 +1253,7 @@ func (is *ObjectStorage) copyBlob(repo string, blobPath string, dstRecord string
 
 // GetBlob returns a stream to read the blob.
 // blob selector instead of directly downloading the blob.
-func (is *ObjectStorage) GetBlob(repo, digest, mediaType string) (io.Reader, int64, error) {
+func (is *ObjectStorage) GetBlob(repo, digest, mediaType string) (io.ReadCloser, int64, error) {
 	var lockLatency time.Time
 
 	dgst, err := godigest.Parse(digest)
@@ -1275,7 +1275,7 @@ func (is *ObjectStorage) GetBlob(repo, digest, mediaType string) (io.Reader, int
 		return nil, -1, zerr.ErrBlobNotFound
 	}
 
-	blobReader, err := is.store.Reader(context.Background(), blobPath, 0)
+	blobReadCloser, err := is.store.Reader(context.Background(), blobPath, 0)
 	if err != nil {
 		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to open blob")
 
@@ -1301,18 +1301,19 @@ func (is *ObjectStorage) GetBlob(repo, digest, mediaType string) (io.Reader, int
 				return nil, -1, zerr.ErrBlobNotFound
 			}
 
-			blobReader, err := is.store.Reader(context.Background(), dstRecord, 0)
+			blobReadCloser, err := is.store.Reader(context.Background(), dstRecord, 0)
 			if err != nil {
 				is.log.Error().Err(err).Str("blob", dstRecord).Msg("failed to open blob")
 
 				return nil, -1, err
 			}
 
-			return blobReader, binfo.Size(), nil
+			return blobReadCloser, binfo.Size(), nil
 		}
 	}
 
-	return blobReader, binfo.Size(), nil
+	// The caller function is responsible for calling Close()
+	return blobReadCloser, binfo.Size(), nil
 }
 
 func (is *ObjectStorage) GetBlobContent(repo, digest string) ([]byte, error) {
@@ -1320,6 +1321,7 @@ func (is *ObjectStorage) GetBlobContent(repo, digest string) ([]byte, error) {
 	if err != nil {
 		return []byte{}, err
 	}
+	defer blob.Close()
 
 	buf := new(bytes.Buffer)
 

@@ -1351,7 +1351,7 @@ func (is *ImageStoreLocal) copyBlob(repo, blobPath, dstRecord string) (int64, er
 
 // GetBlob returns a stream to read the blob.
 // blob selector instead of directly downloading the blob.
-func (is *ImageStoreLocal) GetBlob(repo, digest, mediaType string) (io.Reader, int64, error) {
+func (is *ImageStoreLocal) GetBlob(repo, digest, mediaType string) (io.ReadCloser, int64, error) {
 	var lockLatency time.Time
 
 	parsedDigest, err := godigest.Parse(digest)
@@ -1373,14 +1373,15 @@ func (is *ImageStoreLocal) GetBlob(repo, digest, mediaType string) (io.Reader, i
 		return nil, -1, zerr.ErrBlobNotFound
 	}
 
-	blobReader, err := os.Open(blobPath)
+	blobReadCloser, err := os.Open(blobPath)
 	if err != nil {
 		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to open blob")
 
 		return nil, -1, err
 	}
 
-	return blobReader, binfo.Size(), nil
+	// The caller function is responsible for calling Close()
+	return blobReadCloser, binfo.Size(), nil
 }
 
 func (is *ImageStoreLocal) GetBlobContent(repo, digest string) ([]byte, error) {
@@ -1388,6 +1389,7 @@ func (is *ImageStoreLocal) GetBlobContent(repo, digest string) ([]byte, error) {
 	if err != nil {
 		return []byte{}, err
 	}
+	defer blob.Close()
 
 	buf := new(bytes.Buffer)
 
