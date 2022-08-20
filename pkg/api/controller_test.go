@@ -4641,6 +4641,577 @@ func TestStorageCommit(t *testing.T) {
 	})
 }
 
+func TestManifestImageIndex(t *testing.T) {
+	Convey("Make a new controller", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		ctlr := api.NewController(conf)
+		dir := t.TempDir()
+		ctlr.Config.Storage.RootDirectory = dir
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		test.WaitTillServerReady(baseURL)
+
+		rthdlr := api.NewRouteHandler(ctlr)
+
+		// create a blob/layer
+		resp, err := resty.R().Post(baseURL + "/v2/index/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+		loc := test.Location(baseURL, resp)
+		So(loc, ShouldNotBeEmpty)
+
+		// since we are not specifying any prefix i.e provided in config while starting server,
+		// so it should store index1 to global root dir
+		_, err = os.Stat(path.Join(dir, "index"))
+		So(err, ShouldBeNil)
+
+		resp, err = resty.R().Get(loc)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
+		content := []byte("this is a blob1")
+		digest := godigest.FromBytes(content)
+		So(digest, ShouldNotBeNil)
+		bdgst1 := digest
+		// monolithic blob upload: success
+		resp, err = resty.R().SetQueryParam("digest", digest.String()).
+			SetHeader("Content-Type", "application/octet-stream").SetBody(content).Put(loc)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+		blobLoc := resp.Header().Get("Location")
+		So(blobLoc, ShouldNotBeEmpty)
+		So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
+		So(resp.Header().Get(constants.DistContentDigestKey), ShouldNotBeEmpty)
+
+		// check a non-existent manifest
+		resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+			SetBody(content).Head(baseURL + "/v2/unknown/manifests/test:1.0")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+		// upload image config blob
+		resp, err = resty.R().Post(baseURL + "/v2/index/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+		loc = test.Location(baseURL, resp)
+		cblob, cdigest := test.GetRandomImageConfig()
+
+		resp, err = resty.R().
+			SetContentLength(true).
+			SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", cdigest.String()).
+			SetBody(cblob).
+			Put(loc)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		// create a manifest
+		manifest := ispec.Manifest{
+			Config: ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageConfig,
+				Digest:    cdigest,
+				Size:      int64(len(cblob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageLayer,
+					Digest:    digest,
+					Size:      int64(len(content)),
+				},
+			},
+		}
+		manifest.SchemaVersion = 2
+		content, err = json.Marshal(manifest)
+		So(err, ShouldBeNil)
+		digest = godigest.FromBytes(content)
+		So(digest, ShouldNotBeNil)
+		m1content := content
+		resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+			SetBody(content).Put(baseURL + "/v2/index/manifests/test:1.0")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+		digestHdr := resp.Header().Get(constants.DistContentDigestKey)
+		So(digestHdr, ShouldNotBeEmpty)
+		So(digestHdr, ShouldEqual, digest.String())
+
+		// create another manifest but upload using its sha256 reference
+
+		// upload image config blob
+		resp, err = resty.R().Post(baseURL + "/v2/index/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+		loc = test.Location(baseURL, resp)
+		cblob, cdigest = test.GetRandomImageConfig()
+
+		resp, err = resty.R().
+			SetContentLength(true).
+			SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", cdigest.String()).
+			SetBody(cblob).
+			Put(loc)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		// create a manifest
+		manifest = ispec.Manifest{
+			Config: ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageConfig,
+				Digest:    cdigest,
+				Size:      int64(len(cblob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageLayer,
+					Digest:    bdgst1,
+					Size:      int64(len(content)),
+				},
+			},
+		}
+		manifest.SchemaVersion = 2
+		content, err = json.Marshal(manifest)
+		So(err, ShouldBeNil)
+		digest = godigest.FromBytes(content)
+		So(digest, ShouldNotBeNil)
+		m2dgst := digest
+		m2size := len(content)
+		resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+			SetBody(content).Put(baseURL + fmt.Sprintf("/v2/index/manifests/%s", digest))
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+		digestHdr = resp.Header().Get(constants.DistContentDigestKey)
+		So(digestHdr, ShouldNotBeEmpty)
+		So(digestHdr, ShouldEqual, digest.String())
+
+		Convey("Image index", func() {
+			// upload image config blob
+			resp, err = resty.R().Post(baseURL + "/v2/index/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+			loc = test.Location(baseURL, resp)
+			cblob, cdigest := test.GetRandomImageConfig()
+
+			resp, err = resty.R().
+				SetContentLength(true).
+				SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+				SetHeader("Content-Type", "application/octet-stream").
+				SetQueryParam("digest", cdigest.String()).
+				SetBody(cblob).
+				Put(loc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+			// create a manifest
+			manifest := ispec.Manifest{
+				Config: ispec.Descriptor{
+					MediaType: ispec.MediaTypeImageConfig,
+					Digest:    cdigest,
+					Size:      int64(len(cblob)),
+				},
+				Layers: []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageLayer,
+						Digest:    bdgst1,
+						Size:      int64(len(content)),
+					},
+				},
+			}
+			manifest.SchemaVersion = 2
+			content, err = json.Marshal(manifest)
+			So(err, ShouldBeNil)
+			digest = godigest.FromBytes(content)
+			So(digest, ShouldNotBeNil)
+			resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+				SetBody(content).Put(baseURL + fmt.Sprintf("/v2/index/manifests/%s", digest.String()))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+			digestHdr := resp.Header().Get(constants.DistContentDigestKey)
+			So(digestHdr, ShouldNotBeEmpty)
+			So(digestHdr, ShouldEqual, digest.String())
+
+			var index ispec.Index
+			index.SchemaVersion = 2
+			index.Manifests = []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageIndex,
+					Digest:    digest,
+					Size:      int64(len(content)),
+				},
+				{
+					MediaType: ispec.MediaTypeImageIndex,
+					Digest:    m2dgst,
+					Size:      int64(m2size),
+				},
+			}
+
+			content, err = json.Marshal(index)
+			So(err, ShouldBeNil)
+			digest = godigest.FromBytes(content)
+			So(digest, ShouldNotBeNil)
+			index1dgst := digest
+			resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+				SetBody(content).Put(baseURL + "/v2/index/manifests/test:index1")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+			digestHdr = resp.Header().Get(constants.DistContentDigestKey)
+			So(digestHdr, ShouldNotBeEmpty)
+			So(digestHdr, ShouldEqual, digest.String())
+			resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+				Get(baseURL + "/v2/index/manifests/test:index1")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(resp.Body(), ShouldNotBeEmpty)
+			So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
+
+			// upload another image config blob
+			resp, err = resty.R().Post(baseURL + "/v2/index/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+			loc = test.Location(baseURL, resp)
+			cblob, cdigest = test.GetRandomImageConfig()
+
+			resp, err = resty.R().
+				SetContentLength(true).
+				SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+				SetHeader("Content-Type", "application/octet-stream").
+				SetQueryParam("digest", cdigest.String()).
+				SetBody(cblob).
+				Put(loc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+			// create another manifest
+			manifest = ispec.Manifest{
+				Config: ispec.Descriptor{
+					MediaType: ispec.MediaTypeImageConfig,
+					Digest:    cdigest,
+					Size:      int64(len(cblob)),
+				},
+				Layers: []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageLayer,
+						Digest:    bdgst1,
+						Size:      int64(len(content)),
+					},
+				},
+			}
+			manifest.SchemaVersion = 2
+			content, err = json.Marshal(manifest)
+			So(err, ShouldBeNil)
+			digest = godigest.FromBytes(content)
+			So(digest, ShouldNotBeNil)
+			m4dgst := digest
+			m4size := len(content)
+			resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+				SetBody(content).Put(baseURL + fmt.Sprintf("/v2/index/manifests/%s", digest))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+			digestHdr = resp.Header().Get(constants.DistContentDigestKey)
+			So(digestHdr, ShouldNotBeEmpty)
+			So(digestHdr, ShouldEqual, digest.String())
+
+			index.SchemaVersion = 2
+			index.Manifests = []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageIndex,
+					Digest:    digest,
+					Size:      int64(len(content)),
+				},
+				{
+					MediaType: ispec.MediaTypeImageIndex,
+					Digest:    m2dgst,
+					Size:      int64(m2size),
+				},
+			}
+
+			content, err = json.Marshal(index)
+			So(err, ShouldBeNil)
+			digest = godigest.FromBytes(content)
+			So(digest, ShouldNotBeNil)
+			resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+				SetBody(content).Put(baseURL + "/v2/index/manifests/test:index2")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+			digestHdr = resp.Header().Get(constants.DistContentDigestKey)
+			So(digestHdr, ShouldNotBeEmpty)
+			So(digestHdr, ShouldEqual, digest.String())
+			resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+				Get(baseURL + "/v2/index/manifests/test:index2")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(resp.Body(), ShouldNotBeEmpty)
+			So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
+
+			Convey("List tags", func() {
+				request, _ := http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+				request = mux.SetURLVars(request, map[string]string{"name": "index"})
+				response := httptest.NewRecorder()
+
+				rthdlr.ListTags(response, request)
+
+				resp := response.Result()
+				defer resp.Body.Close()
+				So(resp, ShouldNotBeNil)
+				So(resp.StatusCode, ShouldEqual, http.StatusOK)
+
+				var tags api.ImageTags
+				err = json.NewDecoder(resp.Body).Decode(&tags)
+				So(err, ShouldBeNil)
+				So(len(tags.Tags), ShouldEqual, 3)
+				So(tags.Tags, ShouldContain, "test:1.0")
+				So(tags.Tags, ShouldContain, "test:index1")
+				So(tags.Tags, ShouldContain, "test:index2")
+			})
+
+			Convey("Another index with same manifest", func() {
+				var index ispec.Index
+				index.SchemaVersion = 2
+				index.Manifests = []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageIndex,
+						Digest:    m4dgst,
+						Size:      int64(m4size),
+					},
+				}
+
+				content, err = json.Marshal(index)
+				So(err, ShouldBeNil)
+				digest = godigest.FromBytes(content)
+				So(digest, ShouldNotBeNil)
+				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+					SetBody(content).Put(baseURL + "/v2/index/manifests/test:index3")
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+				digestHdr = resp.Header().Get(constants.DistContentDigestKey)
+				So(digestHdr, ShouldNotBeEmpty)
+				So(digestHdr, ShouldEqual, digest.String())
+			})
+
+			Convey("Another index using digest with same manifest", func() {
+				var index ispec.Index
+				index.SchemaVersion = 2
+				index.Manifests = []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageIndex,
+						Digest:    m4dgst,
+						Size:      int64(m4size),
+					},
+				}
+
+				content, err = json.Marshal(index)
+				So(err, ShouldBeNil)
+				digest = godigest.FromBytes(content)
+				So(digest, ShouldNotBeNil)
+				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+					SetBody(content).Put(baseURL + fmt.Sprintf("/v2/index/manifests/%s", digest))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+				digestHdr = resp.Header().Get(constants.DistContentDigestKey)
+				So(digestHdr, ShouldNotBeEmpty)
+				So(digestHdr, ShouldEqual, digest.String())
+			})
+
+			Convey("Deleting an image index", func() {
+				// delete manifest by tag should pass
+				resp, err = resty.R().Delete(baseURL + "/v2/index/manifests/test:index3")
+				So(err, ShouldBeNil)
+				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+					Get(baseURL + "/v2/index/manifests/test:index3")
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+				So(resp.Body(), ShouldNotBeEmpty)
+				resp, err = resty.R().Delete(baseURL + "/v2/index/manifests/test:index1")
+				So(err, ShouldBeNil)
+				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+					Get(baseURL + "/v2/index/manifests/test:index1")
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+				So(resp.Body(), ShouldNotBeEmpty)
+				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+					Get(baseURL + "/v2/index/manifests/test:index2")
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+				So(resp.Body(), ShouldNotBeEmpty)
+				So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
+			})
+
+			Convey("Deleting an image index by digest", func() {
+				// delete manifest by tag should pass
+				resp, err = resty.R().Delete(baseURL + "/v2/index/manifests/test:index3")
+				So(err, ShouldBeNil)
+				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+					Get(baseURL + "/v2/index/manifests/test:index3")
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+				So(resp.Body(), ShouldNotBeEmpty)
+				resp, err = resty.R().Delete(baseURL + fmt.Sprintf("/v2/index/manifests/%s", index1dgst))
+				So(err, ShouldBeNil)
+				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+					Get(baseURL + "/v2/index/manifests/test:index1")
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+				So(resp.Body(), ShouldNotBeEmpty)
+				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+					Get(baseURL + "/v2/index/manifests/test:index2")
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+				So(resp.Body(), ShouldNotBeEmpty)
+				So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
+			})
+
+			Convey("Update an index tag with different manifest", func() {
+				// create a blob/layer
+				resp, err := resty.R().Post(baseURL + "/v2/index/blobs/uploads/")
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+				loc := test.Location(baseURL, resp)
+				So(loc, ShouldNotBeEmpty)
+
+				resp, err = resty.R().Get(loc)
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
+				content := []byte("this is another blob")
+				digest := godigest.FromBytes(content)
+				So(digest, ShouldNotBeNil)
+				// monolithic blob upload: success
+				resp, err = resty.R().SetQueryParam("digest", digest.String()).
+					SetHeader("Content-Type", "application/octet-stream").SetBody(content).Put(loc)
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+				blobLoc := resp.Header().Get("Location")
+				So(blobLoc, ShouldNotBeEmpty)
+				So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
+				So(resp.Header().Get(constants.DistContentDigestKey), ShouldNotBeEmpty)
+
+				// create a manifest with same blob but a different tag
+				manifest = ispec.Manifest{
+					Config: ispec.Descriptor{
+						MediaType: ispec.MediaTypeImageConfig,
+						Digest:    cdigest,
+						Size:      int64(len(cblob)),
+					},
+					Layers: []ispec.Descriptor{
+						{
+							MediaType: ispec.MediaTypeImageLayer,
+							Digest:    digest,
+							Size:      int64(len(content)),
+						},
+					},
+				}
+				manifest.SchemaVersion = 2
+				content, err = json.Marshal(manifest)
+				So(err, ShouldBeNil)
+				digest = godigest.FromBytes(content)
+				So(digest, ShouldNotBeNil)
+				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+					SetBody(content).Put(baseURL + fmt.Sprintf("/v2/index/manifests/%s", digest))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+				digestHdr = resp.Header().Get(constants.DistContentDigestKey)
+				So(digestHdr, ShouldNotBeEmpty)
+				So(digestHdr, ShouldEqual, digest.String())
+
+				index.SchemaVersion = 2
+				index.Manifests = []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageIndex,
+						Digest:    digest,
+						Size:      int64(len(content)),
+					},
+				}
+
+				content, err = json.Marshal(index)
+				So(err, ShouldBeNil)
+				digest = godigest.FromBytes(content)
+				So(digest, ShouldNotBeNil)
+				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+					SetBody(content).Put(baseURL + "/v2/index/manifests/test:index1")
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+				digestHdr = resp.Header().Get(constants.DistContentDigestKey)
+				So(digestHdr, ShouldNotBeEmpty)
+				So(digestHdr, ShouldEqual, digest.String())
+				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+					Get(baseURL + "/v2/index/manifests/test:index1")
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+				So(resp.Body(), ShouldNotBeEmpty)
+				So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
+
+				// delete manifest by tag should pass
+				resp, err = resty.R().Delete(baseURL + "/v2/index/manifests/test:index1")
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+					Get(baseURL + "/v2/index/manifests/test:index1")
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+				So(resp.Body(), ShouldNotBeEmpty)
+			})
+
+			Convey("Negative test cases", func() {
+				Convey("Delete index", func() {
+					err = os.Remove(path.Join(dir, "index", "blobs", index1dgst.Algorithm().String(), index1dgst.Encoded()))
+					So(err, ShouldBeNil)
+					resp, err = resty.R().Delete(baseURL + fmt.Sprintf("/v2/index/manifests/%s", index1dgst))
+					So(err, ShouldBeNil)
+					resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+						Get(baseURL + "/v2/index/manifests/test:index1")
+					So(err, ShouldBeNil)
+					So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+					So(resp.Body(), ShouldNotBeEmpty)
+				})
+
+				Convey("Corrupt index", func() {
+					err = ioutil.WriteFile(path.Join(dir, "index", "blobs", index1dgst.Algorithm().String(), index1dgst.Encoded()),
+						[]byte("deadbeef"), storage.DefaultFilePerms)
+					So(err, ShouldBeNil)
+					resp, err = resty.R().Delete(baseURL + fmt.Sprintf("/v2/index/manifests/%s", index1dgst))
+					So(err, ShouldBeNil)
+					resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+						Get(baseURL + "/v2/index/manifests/test:index1")
+					So(err, ShouldBeNil)
+					So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+					So(resp.Body(), ShouldBeEmpty)
+				})
+
+				Convey("Change media-type", func() {
+					// previously a manifest, try writing an image index
+					var index ispec.Index
+					index.SchemaVersion = 2
+					index.Manifests = []ispec.Descriptor{
+						{
+							MediaType: ispec.MediaTypeImageIndex,
+							Digest:    m4dgst,
+							Size:      int64(m4size),
+						},
+					}
+
+					content, err = json.Marshal(index)
+					So(err, ShouldBeNil)
+					digest = godigest.FromBytes(content)
+					So(digest, ShouldNotBeNil)
+					resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+						SetBody(content).Put(baseURL + "/v2/index/manifests/test:1.0")
+					So(err, ShouldBeNil)
+					So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+
+					// previously an image index, try writing a manifest
+					resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+						SetBody(m1content).Put(baseURL + "/v2/index/manifests/test:index1")
+					So(err, ShouldBeNil)
+					So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+				})
+			})
+		})
+	})
+}
+
 func TestInjectInterruptedImageManifest(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		port := test.GetFreePort()

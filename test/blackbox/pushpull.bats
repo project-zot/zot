@@ -63,6 +63,43 @@ function teardown_file() {
     run cat ${BATS_FILE_TMPDIR}/oci/golang/index.json
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.manifests[].annotations."org.opencontainers.image.ref.name"') = '"1.18"' ]
+    run curl -X DELETE http://127.0.0.1:8080/v2/golang/manifests/1.18
+    [ "$status" -eq 0 ]
+}
+
+@test "push image index" {
+    # --multi-arch below pushes an image index (containing many images) instead
+    # of an image manifest (single image)
+    run skopeo --insecure-policy copy --format=oci --dest-tls-verify=false --multi-arch=all \
+        docker://public.ecr.aws/docker/library/busybox:latest \
+        docker://127.0.0.1:8080/busybox:latest
+    [ "$status" -eq 0 ]
+    run curl http://127.0.0.1:8080/v2/_catalog
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.repositories[0]') = '"busybox"' ]
+    run curl http://127.0.0.1:8080/v2/busybox/tags/list
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"latest"' ]
+}
+
+@test "pull image index" {
+    local oci_data_dir=${BATS_FILE_TMPDIR}/oci
+    run skopeo --insecure-policy copy --src-tls-verify=false --multi-arch=all \
+        docker://127.0.0.1:8080/busybox:latest \
+        oci:${oci_data_dir}/busybox:latest
+    [ "$status" -eq 0 ]
+    run cat ${BATS_FILE_TMPDIR}/oci/busybox/index.json
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.manifests[].annotations."org.opencontainers.image.ref.name"') = '"latest"' ]
+    run skopeo --insecure-policy --override-arch=arm64 --override-os=linux copy --src-tls-verify=false --multi-arch=all \
+        docker://127.0.0.1:8080/busybox:latest \
+        oci:${oci_data_dir}/busybox:latest
+    [ "$status" -eq 0 ]
+    run cat ${BATS_FILE_TMPDIR}/oci/busybox/index.json
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.manifests[].annotations."org.opencontainers.image.ref.name"') = '"latest"' ]
+    run curl -X DELETE http://127.0.0.1:8080/v2/busybox/manifests/latest
+    [ "$status" -eq 0 ]
 }
 
 @test "push oras artifact" {
