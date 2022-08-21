@@ -25,7 +25,7 @@ import (
 
 	"github.com/gorilla/mux"
 	jsoniter "github.com/json-iterator/go"
-	notreg "github.com/notaryproject/notation/pkg/registry"
+	notreg "github.com/notaryproject/notation-go/registry"
 	"github.com/opencontainers/distribution-spec/specs-go/v1/extensions"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
@@ -35,7 +35,7 @@ import (
 	ext "zotregistry.io/zot/pkg/extensions"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
-	"zotregistry.io/zot/pkg/test" // nolint: goimports
+	"zotregistry.io/zot/pkg/test" // nolint:goimports
 	// as required by swaggo.
 	_ "zotregistry.io/zot/swagger"
 )

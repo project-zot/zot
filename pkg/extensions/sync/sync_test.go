@@ -23,8 +23,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/notaryproject/notation-go-lib"
-	notreg "github.com/notaryproject/notation/pkg/registry"
+	"github.com/notaryproject/notation-go"
+	notreg "github.com/notaryproject/notation-go/registry"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"

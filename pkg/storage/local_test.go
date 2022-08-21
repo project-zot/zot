@@ -191,7 +191,7 @@ func TestGetReferrers(t *testing.T) {
 
 		artifactManifest := artifactspec.Manifest{}
 		artifactManifest.ArtifactType = "signature-example"
-		artifactManifest.Subject = artifactspec.Descriptor{
+		artifactManifest.Subject = &artifactspec.Descriptor{
 			MediaType: ispec.MediaTypeImageManifest,
 			Digest:    digest,
 			Size:      int64(buflen),
@@ -884,7 +884,7 @@ func FuzzGetReferrers(f *testing.F) {
 
 		artifactManifest := artifactspec.Manifest{}
 		artifactManifest.ArtifactType = data
-		artifactManifest.Subject = artifactspec.Descriptor{
+		artifactManifest.Subject = &artifactspec.Descriptor{
 			MediaType: ispec.MediaTypeImageManifest,
 			Digest:    digest,
 			Size:      int64(buflen),
