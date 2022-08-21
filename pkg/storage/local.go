@@ -21,7 +21,7 @@ import (
 	apexlog "github.com/apex/log"
 	guuid "github.com/gofrs/uuid"
 	"github.com/minio/sha256-simd"
-	"github.com/notaryproject/notation-go-lib"
+	"github.com/notaryproject/notation-go"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opencontainers/umoci"

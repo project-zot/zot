@@ -31,7 +31,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/mitchellh/mapstructure"
 	vldap "github.com/nmcclain/ldap"
-	notreg "github.com/notaryproject/notation/pkg/registry"
+	notreg "github.com/notaryproject/notation-go/registry"
 	distext "github.com/opencontainers/distribution-spec/specs-go/v1/extensions"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"

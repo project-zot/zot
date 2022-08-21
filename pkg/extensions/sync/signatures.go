@@ -8,7 +8,7 @@ import (
 	"path"
 	"strings"
 
-	notreg "github.com/notaryproject/notation/pkg/registry"
+	notreg "github.com/notaryproject/notation-go/registry"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/sigstore/cosign/pkg/oci/remote"
