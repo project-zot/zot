@@ -26,6 +26,9 @@ jobs:
             echo "job deprecated"
   build-test-arch:
     name: Build and test ZOT
+    permissions:
+      contents: write
+      packages: write
     runs-on: ubuntu-latest
     strategy:
       matrix:
