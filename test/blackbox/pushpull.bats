@@ -122,12 +122,14 @@ function teardown_file() {
 @test "push helm chart" {
     run helm package ${BATS_FILE_TMPDIR}/helm-charts/charts/zot
     [ "$status" -eq 0 ]
-    run helm push zot-0.1.0.tgz oci://localhost:8080/zot-chart
+    local chart_version=$(awk '/version/{printf $2}' ${BATS_FILE_TMPDIR}/helm-charts/charts/zot/Chart.yaml)
+    run helm push zot-${chart_version}.tgz oci://localhost:8080/zot-chart
     [ "$status" -eq 0 ]
 }
 
 @test "pull helm chart" {
-    run helm pull oci://localhost:8080/zot-chart/zot --version 0.1.0
+    local chart_version=$(awk '/version/{printf $2}' ${BATS_FILE_TMPDIR}/helm-charts/charts/zot/Chart.yaml)
+    run helm pull oci://localhost:8080/zot-chart/zot --version ${chart_version}
     [ "$status" -eq 0 ]
 }
 
