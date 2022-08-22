@@ -29,13 +29,12 @@ require (
 	github.com/minio/sha256-simd v1.0.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/nmcclain/ldap v0.0.0-20210720162743-7f8d1e44eeba
-	github.com/notaryproject/notation v0.9.0-alpha.1
 	github.com/notaryproject/notation-go-lib v1.0.0-alpha-1
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.0.3-0.20220114050600-8b9d41f48198
 	github.com/opencontainers/umoci v0.4.8-0.20210922062158-e60a0cc726e6
-	github.com/oras-project/artifacts-spec v1.0.0-rc.1
+	github.com/oras-project/artifacts-spec v1.0.0-rc.2
 	github.com/phayes/freeport v0.0.0-20220201140144-74d24b5ae9f5
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.13.0
@@ -57,7 +56,7 @@ require (
 require github.com/open-policy-agent/opa v0.43.0 // indirect
 
 require (
-	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20220217185014-dd38b7ed8a99
+	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20220620172159-4ab4752c3b86
 	github.com/sigstore/cosign v1.10.1
 	github.com/swaggo/http-swagger v1.3.3
 )
@@ -192,7 +191,7 @@ require (
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
-	github.com/golang-jwt/jwt/v4 v4.4.1 // indirect
+	github.com/golang-jwt/jwt/v4 v4.4.2 // indirect
 	github.com/golang/glog v1.0.0 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/mock v1.6.0 // indirect
@@ -269,7 +268,6 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/mpvl/unique v0.0.0-20150818121801-cbe035fff7de // indirect
 	github.com/nmcclain/asn1-ber v0.0.0-20170104154839-2661553a0484 // indirect
-	github.com/notaryproject/notation-go v0.8.0-alpha.1.0.20220518191708-407537596ed5 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/opencontainers/runc v1.1.3 // indirect
 	github.com/opencontainers/runtime-spec v1.0.3-0.20210326190908-1c3f411f0417 // indirect
@@ -361,8 +359,8 @@ require (
 	golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4 // indirect
 	golang.org/x/net v0.0.0-20220708220712-1185a9018129 // indirect
 	golang.org/x/oauth2 v0.0.0-20220718184931-c8730f7fcb92 // indirect
-	golang.org/x/sync v0.0.0-20220601150217-0de741cfad7f // indirect
-	golang.org/x/sys v0.0.0-20220715151400-c0bba94af5f8 // indirect
+	golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4 // indirect
+	golang.org/x/sys v0.0.0-20220731174439-a90be440212d // indirect
 	golang.org/x/term v0.0.0-20210927222741-03fcf44c2211 // indirect
 	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/time v0.0.0-20220411224347-583f2d630306 // indirect
@@ -386,7 +384,6 @@ require (
 	k8s.io/klog/v2 v2.60.1-0.20220317184644-43cc75f9ae89 // indirect
 	k8s.io/kube-openapi v0.0.0-20220124234850-424119656bbf // indirect
 	k8s.io/utils v0.0.0-20220210201930-3a6ce19ff2f9 // indirect
-	oras.land/oras-go/v2 v2.0.0-20220124135338-24c5637bde7b // indirect
 	sigs.k8s.io/json v0.0.0-20211208200746-9f7c6b3444d2 // indirect
 	sigs.k8s.io/release-utils v0.6.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.1 // indirect
