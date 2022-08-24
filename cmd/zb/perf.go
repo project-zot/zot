@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"log"
 	"math/big"
-	mrand "math/rand"
 	"net"
 	"net/http"
 	urlparser "net/url"
@@ -263,40 +262,6 @@ func printStats(requests int, summary *statsSummary, outFmt string) {
 	}
 }
 
-// nolint:gosec
-func flipFunc(probabilityRange []float64) int {
-	mrand.Seed(time.Now().UTC().UnixNano())
-	toss := mrand.Float64()
-
-	for idx, r := range probabilityRange {
-		if toss < r {
-			return idx
-		}
-	}
-
-	return len(probabilityRange) - 1
-}
-
-// pbty - probabilities.
-func normalizeProbabilityRange(pbty []float64) []float64 {
-	dim := len(pbty)
-
-	// npd - normalized probability density
-	npd := make([]float64, dim)
-
-	for idx := range pbty {
-		npd[idx] = 0.0
-	}
-
-	// [0.2, 0.7, 0.1] -> [0.2, 0.9, 1]
-	npd[0] = pbty[0]
-	for i := 1; i < dim; i++ {
-		npd[i] = npd[i-1] + pbty[i]
-	}
-
-	return npd
-}
-
 // test suites/funcs.
 
 type testFunc func(
@@ -307,6 +272,7 @@ type testFunc func(
 	client *resty.Client,
 ) error
 
+// nolint:gosec
 func GetCatalog(
 	workdir, url, repo string,
 	requests int,
@@ -314,6 +280,20 @@ func GetCatalog(
 	statsCh chan statsRecord,
 	client *resty.Client,
 ) error {
+	var repos []string
+
+	var err error
+
+	statusRequests = sync.Map{}
+
+	for count := 0; count < requests; count++ {
+		// Push random blob
+		_, repos, err = pushMonolithImage(workdir, url, repo, repos, config, client)
+		if err != nil {
+			return err
+		}
+	}
+
 	for count := 0; count < requests; count++ {
 		func() {
 			start := time.Now()
@@ -353,6 +333,12 @@ func GetCatalog(
 				return
 			}
 		}()
+	}
+
+	// clean up
+	err = deleteTestRepo(repos, url, client)
+	if err != nil {
+		return err
 	}
 
 	return nil
@@ -436,25 +422,31 @@ func Pull(
 		mediumSizeIdx := 1
 		largeSizeIdx := 2
 
+		config.size = smallBlob
+
 		// Push small blob
-		manifestBySize, repos, err := pushMonolithImage(workdir, url, trepo, repos, smallBlob, client)
+		manifestBySize, repos, err := pushMonolithImage(workdir, url, trepo, repos, config, client)
 		if err != nil {
 			return err
 		}
 
 		manifestBySizeHash[smallSizeIdx] = manifestBySize
 
+		config.size = mediumBlob
+
 		// Push medium blob
-		manifestBySize, repos, err = pushMonolithImage(workdir, url, trepo, repos, mediumBlob, client)
+		manifestBySize, repos, err = pushMonolithImage(workdir, url, trepo, repos, config, client)
 		if err != nil {
 			return err
 		}
 
 		manifestBySizeHash[mediumSizeIdx] = manifestBySize
 
+		config.size = largeBlob
+
 		// Push large blob
 		// nolint: ineffassign, staticcheck, wastedassign
-		manifestBySize, repos, err = pushMonolithImage(workdir, url, trepo, repos, largeBlob, client)
+		manifestBySize, repos, err = pushMonolithImage(workdir, url, trepo, repos, config, client)
 		if err != nil {
 			return err
 		}
@@ -463,7 +455,7 @@ func Pull(
 	} else {
 		// Push blob given size
 		var err error
-		manifestHash, repos, err = pushMonolithImage(workdir, url, trepo, repos, config.size, client)
+		manifestHash, repos, err = pushMonolithImage(workdir, url, trepo, repos, config, client)
 		if err != nil {
 			return err
 		}
@@ -500,7 +492,7 @@ func MixedPullAndPush(
 	statusRequests = sync.Map{}
 
 	// Push blob given size
-	manifestHash, repos, err := pushMonolithImage(workdir, url, trepo, repos, config.size, client)
+	manifestHash, repos, err := pushMonolithImage(workdir, url, trepo, repos, config, client)
 	if err != nil {
 		return err
 	}
@@ -548,8 +540,9 @@ type testConfig struct {
 
 var testSuite = []testConfig{ // nolint:gochecknoglobals // used only in this test
 	{
-		name:  "Get Catalog",
-		tfunc: GetCatalog,
+		name:             "Get Catalog",
+		tfunc:            GetCatalog,
+		probabilityRange: normalizeProbabilityRange([]float64{0.7, 0.2, 0.1}),
 	},
 	{
 		name:  "Push Monolith 1MB",
@@ -703,7 +696,7 @@ func Perf(
 		summary.total = time.Since(start)
 		summary.rps = float32(requests) / float32(summary.total.Seconds())
 
-		if tconfig.mixedSize {
+		if tconfig.mixedSize || tconfig.size == 0 {
 			summary.mixedSize = true
 		}
 
