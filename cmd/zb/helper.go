@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	mrand "math/rand"
 	"net/http"
 	"os"
 	"path"
@@ -64,23 +65,7 @@ func pullAndCollect(url string, repos []string, manifestItem manifestStruct,
 		}()
 
 		if config.mixedSize {
-			smallSizeIdx := 0
-			mediumSizeIdx := 1
-			largeSizeIdx := 2
-
-			idx := flipFunc(config.probabilityRange)
-
-			switch idx {
-			case smallSizeIdx:
-				current := loadOrStore(&statusRequests, "1MB", 0)
-				statusRequests.Store("1MB", current+1)
-			case mediumSizeIdx:
-				current := loadOrStore(&statusRequests, "10MB", 0)
-				statusRequests.Store("10MB", current+1)
-			case largeSizeIdx:
-				current := loadOrStore(&statusRequests, "100MB", 0)
-				statusRequests.Store("100MB", current+1)
-			}
+			_, idx := getRandomSize(config.probabilityRange)
 
 			manifestHash = manifestBySizeHash[idx]
 		}
@@ -256,7 +241,7 @@ func pullAndCollect(url string, repos []string, manifestItem manifestStruct,
 	return repos
 }
 
-func pushMonolithImage(workdir, url, trepo string, repos []string, size int,
+func pushMonolithImage(workdir, url, trepo string, repos []string, config testConfig,
 	client *resty.Client,
 ) (map[string]string, []string, error) {
 	var statusCode int
@@ -292,6 +277,15 @@ func pushMonolithImage(workdir, url, trepo string, repos []string, size int,
 	}
 
 	loc := test.Location(url, resp)
+
+	var size int
+
+	if config.size == 0 {
+		size, _ = getRandomSize(config.probabilityRange)
+	} else {
+		size = config.size
+	}
+
 	blob := path.Join(workdir, fmt.Sprintf("%d.blob", size))
 
 	fhandle, err := os.OpenFile(blob, os.O_RDONLY, defaultFilePerms)
@@ -465,27 +459,7 @@ func pushMonolithAndCollect(workdir, url, trepo string, count int,
 		var size int
 
 		if config.mixedSize {
-			idx := flipFunc(config.probabilityRange)
-			smallSizeIdx := 0
-			mediumSizeIdx := 1
-			largeSizeIdx := 2
-
-			switch idx {
-			case smallSizeIdx:
-				size = smallBlob
-				current := loadOrStore(&statusRequests, "1MB", 0)
-				statusRequests.Store("1MB", current+1)
-			case mediumSizeIdx:
-				size = mediumBlob
-				current := loadOrStore(&statusRequests, "10MB", 0)
-				statusRequests.Store("10MB", current+1)
-			case largeSizeIdx:
-				size = largeBlob
-				current := loadOrStore(&statusRequests, "100MB", 0)
-				statusRequests.Store("100MB", current+1)
-			default:
-				size = config.size
-			}
+			size, _ = getRandomSize(config.probabilityRange)
 		} else {
 			size = config.size
 		}
@@ -689,27 +663,7 @@ func pushChunkAndCollect(workdir, url, trepo string, count int,
 		var size int
 
 		if config.mixedSize {
-			idx := flipFunc(config.probabilityRange)
-			smallSizeIdx := 0
-			mediumSizeIdx := 1
-			largeSizeIdx := 2
-
-			switch idx {
-			case smallSizeIdx:
-				size = smallBlob
-				current := loadOrStore(&statusRequests, "1MB", 0)
-				statusRequests.Store("1MB", current+1)
-			case mediumSizeIdx:
-				size = mediumBlob
-				current := loadOrStore(&statusRequests, "10MB", 0)
-				statusRequests.Store("10MB", current+1)
-			case largeSizeIdx:
-				size = largeBlob
-				current := loadOrStore(&statusRequests, "100MB", 0)
-				statusRequests.Store("100MB", current+1)
-			default:
-				size = config.size
-			}
+			size, _ = getRandomSize(config.probabilityRange)
 		} else {
 			size = config.size
 		}
@@ -918,6 +872,68 @@ func pushChunkAndCollect(workdir, url, trepo string, count int,
 	}()
 
 	return repos
+}
+
+func getRandomSize(probabilityRange []float64) (int, int) {
+	var size int
+
+	idx := flipFunc(probabilityRange)
+	smallSizeIdx := 0
+	mediumSizeIdx := 1
+	largeSizeIdx := 2
+
+	switch idx {
+	case smallSizeIdx:
+		size = smallBlob
+		current := loadOrStore(&statusRequests, "1MB", 0)
+		statusRequests.Store("1MB", current+1)
+	case mediumSizeIdx:
+		size = mediumBlob
+		current := loadOrStore(&statusRequests, "10MB", 0)
+		statusRequests.Store("10MB", current+1)
+	case largeSizeIdx:
+		size = largeBlob
+		current := loadOrStore(&statusRequests, "100MB", 0)
+		statusRequests.Store("100MB", current+1)
+	default:
+		size = 0
+	}
+
+	return size, idx
+}
+
+// nolint:gosec
+func flipFunc(probabilityRange []float64) int {
+	mrand.Seed(time.Now().UTC().UnixNano())
+	toss := mrand.Float64()
+
+	for idx, r := range probabilityRange {
+		if toss < r {
+			return idx
+		}
+	}
+
+	return len(probabilityRange) - 1
+}
+
+// pbty - probabilities.
+func normalizeProbabilityRange(pbty []float64) []float64 {
+	dim := len(pbty)
+
+	// npd - normalized probability density
+	npd := make([]float64, dim)
+
+	for idx := range pbty {
+		npd[idx] = 0.0
+	}
+
+	// [0.2, 0.7, 0.1] -> [0.2, 0.9, 1]
+	npd[0] = pbty[0]
+	for i := 1; i < dim; i++ {
+		npd[i] = npd[i-1] + pbty[i]
+	}
+
+	return npd
 }
 
 func loadOrStore(statusRequests *sync.Map, key string, value int) int {
