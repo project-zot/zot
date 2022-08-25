@@ -246,11 +246,11 @@ run-container:
 
 .PHONY: binary-stacker
 binary-stacker:
-	${STACKER} build \
-		--substitute COMMIT=$(PWD) \
-		--substitute OS=$(OS) \
-		--substitute ARCH=$(ARCH) \
-		--substitute PWD=$(PWD)
+	${STACKER} --debug build \
+		--substitute PWD=$$PWD \
+		--substitute COMMIT=$$COMMIT \
+		--substitute ARCH=$$ARCH \
+		--substitute OS=$$OS
 
 .PHONY: image
 image:
