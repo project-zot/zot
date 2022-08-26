@@ -245,7 +245,11 @@ run-container:
 
 .PHONY: binary-stacker
 binary-stacker:
-	sudo ${STACKER} build --substitute PWD=$$PWD
+	${STACKER} build \
+		--substitute COMMIT=$(PWD) \
+		--substitute OS=$(OS) \
+		--substitute ARCH=$(ARCH) \
+		--substitute PWD=$(PWD)
 
 .PHONY: image
 image:
