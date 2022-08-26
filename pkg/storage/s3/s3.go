@@ -16,6 +16,7 @@ import (
 	"time"
 
 	// Add s3 support.
+
 	"github.com/docker/distribution/registry/storage/driver"
 	// Load s3 driver.
 	_ "github.com/docker/distribution/registry/storage/driver/s3-aws"

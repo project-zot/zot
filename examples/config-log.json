@@ -1,0 +1,20 @@
+{
+  "distSpecVersion": "1.0.1-dev",
+  "rootDirectory": "/tmp/zot",
+  "storage": {
+      "rootDirectory": "/tmp/zot",
+      "cacheDatabaseDriver": {
+          "name": "boltdb",
+          "cacheName": "cache1",
+          "rootDirectory": "/tmp/zot/cachedb",
+          "useRelPaths": false
+      }
+  },
+  "http": {
+      "address": "127.0.0.1",
+      "port": "8080"
+  },
+  "log": {
+      "level": "debug"
+  }
+}

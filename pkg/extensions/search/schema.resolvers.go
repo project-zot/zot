@@ -14,6 +14,52 @@ import (
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
 )
 
+// ToggleBookmark is the resolver for the ToggleBookmark field.
+func (r *mutationResolver) ToggleBookmark(ctx context.Context, repo string) (*gql_generated.MutationResult, error) {
+	// panic(fmt.Errorf("not implemented"))
+
+	acCtx := getAccessContext(ctx)
+	// empty user is anonymous
+	if acCtx.Username == "" {
+		return &gql_generated.MutationResult{Success: false},
+			fmt.Errorf("unidentified users cannot star repos")
+	}
+	// check user access level
+	filteredRepos := filterRepos(acCtx, []string{repo})
+	if len(filteredRepos) == 0 {
+		return &gql_generated.MutationResult{Success: false},
+			fmt.Errorf("repo does not exist or you are not authorized to see it")
+	}
+	// store to db
+	err := r.storeController.NonOciMetadata.ToggleBookmarkRepo(acCtx.Username, repo)
+	if err != nil {
+		return &gql_generated.MutationResult{Success: false}, err
+	}
+	return &gql_generated.MutationResult{Success: true}, nil
+}
+
+// ToggleStar is the resolver for the ToggleStar field.
+func (r *mutationResolver) ToggleStar(ctx context.Context, repo string) (*gql_generated.MutationResult, error) {
+	acCtx := getAccessContext(ctx)
+	// empty user is anonymous
+	if acCtx.Username == "" {
+		return &gql_generated.MutationResult{Success: false},
+			fmt.Errorf("unidentified users cannot star repos")
+	}
+	// check user access level
+	filteredRepos := filterRepos(acCtx, []string{repo})
+	if len(filteredRepos) == 0 {
+		return &gql_generated.MutationResult{Success: false},
+			fmt.Errorf("repo does not exist or you are not authorized to see it")
+	}
+	// store to db
+	err := r.storeController.NonOciMetadata.ToggleStarRepo(acCtx.Username, repo)
+	if err != nil {
+		return &gql_generated.MutationResult{Success: false}, err
+	}
+	return &gql_generated.MutationResult{Success: true}, nil
+}
+
 // CVEListForImage is the resolver for the CVEListForImage field.
 func (r *queryResolver) CVEListForImage(ctx context.Context, image string) (*gql_generated.CVEResultForImage, error) {
 	trivyCtx := r.cveInfo.GetTrivyContext(image)
@@ -470,7 +516,51 @@ func (r *queryResolver) GlobalSearch(ctx context.Context, query string) (*gql_ge
 	}, nil
 }
 
+// StarredRepos is the resolver for the StarredRepos field.
+func (r *queryResolver) StarredRepos(ctx context.Context, limit *int, offset int, sortBy *gql_generated.SortCriteria) (*gql_generated.PaginatedReposResult, error) {
+	empty := &gql_generated.PaginatedReposResult{Results: []*gql_generated.RepoSummary{}}
+	acCtx := getAccessContext(ctx)
+
+	r.log.Info().Str("user", acCtx.Username).Msg("resolve StarredRepos for user")
+
+	repoList, err := r.storeController.NonOciMetadata.GetStarredRepos(acCtx.Username)
+	if err != nil {
+		return empty, err
+	}
+
+	// check user access level
+	filteredRepos := filterRepos(acCtx, repoList)
+	olu := common.NewBaseOciLayoutUtils(r.storeController, r.log)
+	repos, _, _ := globalSearch(filteredRepos, "", "", olu, r.log)
+
+	prr := &gql_generated.PaginatedReposResult{Results: repos}
+	return prr, nil
+}
+
+// BookmarkedRepos is the resolver for the BookmarkedRepos field.
+func (r *queryResolver) BookmarkedRepos(ctx context.Context, limit *int, offset int, sortBy *gql_generated.SortCriteria) (*gql_generated.PaginatedReposResult, error) {
+	empty := &gql_generated.PaginatedReposResult{Results: []*gql_generated.RepoSummary{}}
+	acCtx := getAccessContext(ctx)
+
+	repoList, err := r.storeController.NonOciMetadata.GetBookmarkedRepos(acCtx.Username)
+	if err != nil {
+		return empty, nil
+	}
+
+	// check user access level
+	filteredRepos := filterRepos(acCtx, repoList)
+	olu := common.NewBaseOciLayoutUtils(r.storeController, r.log)
+	repos, _, _ := globalSearch(filteredRepos, "", "", olu, r.log)
+
+	prr := &gql_generated.PaginatedReposResult{Results: repos}
+	return prr, nil
+}
+
+// Mutation returns gql_generated.MutationResolver implementation.
+func (r *Resolver) Mutation() gql_generated.MutationResolver { return &mutationResolver{r} }
+
 // Query returns gql_generated.QueryResolver implementation.
 func (r *Resolver) Query() gql_generated.QueryResolver { return &queryResolver{r} }
 
+type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }

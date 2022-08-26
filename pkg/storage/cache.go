@@ -12,6 +12,7 @@ import (
 )
 
 const (
+	UserCache               = "users"
 	BlobsCache              = "blobs"
 	DBExtensionName         = ".db"
 	dbCacheLockCheckTimeout = 10 * time.Second

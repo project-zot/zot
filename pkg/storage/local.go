@@ -17,6 +17,9 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"go.etcd.io/bbolt"
+	"zotregistry.io/zot/pkg/common"
+
 	apexlog "github.com/apex/log"
 	guuid "github.com/gofrs/uuid"
 	"github.com/minio/sha256-simd"
@@ -48,11 +51,6 @@ const (
 type BlobUpload struct {
 	StoreName string
 	ID        string
-}
-
-type StoreController struct {
-	DefaultStore ImageStore
-	SubStore     map[string]ImageStore
 }
 
 // ImageStoreLocal provides the image storage operations.
@@ -1905,3 +1903,228 @@ func (is *ImageStoreLocal) RunGCRepo(repo string) {
 
 	is.log.Info().Msg(fmt.Sprintf("GC completed for %s", path.Join(is.RootDir(), repo)))
 }
+
+// func (d *MetadataLocalStoreDB) CreateNewUserEntry(userid string) (UserMetadata, error) {
+
+// 	return
+// }
+
+// stars
+const (
+	starredReposKey    = "starredReposKey"
+	bookmarkedReposKey = "bookmarkedReposKey"
+)
+
+func (d *MetadataLocalStoreDB) ToggleStarRepo(userid, reponame string) error {
+
+	if err := d.db.Update(func(tx *bbolt.Tx) error {
+		userdb := tx.Bucket([]byte(UserCache))
+		userBucket, err := userdb.CreateBucketIfNotExists([]byte(userid))
+		if err != nil {
+			// this is a serious failure
+			return fmt.Errorf("unable to create a user bucket for user")
+		}
+
+		mdata := userBucket.Get([]byte(starredReposKey))
+		unpacked := []string{}
+		if mdata != nil {
+			if err = json.Unmarshal(mdata, &unpacked); err != nil {
+				return fmt.Errorf("invalid old entry for user starred repos")
+			}
+		}
+
+		if unpacked == nil {
+			return fmt.Errorf("list of repos is still nil")
+			// should we panic now?
+		}
+
+		if !common.Contains(unpacked, reponame) { //len(mdata) > 0 &&
+			unpacked = append(unpacked, reponame)
+		} else {
+			unpacked = common.RemoveFrom(unpacked, reponame)
+		}
+
+		var repacked []byte
+		if repacked, err = json.Marshal(unpacked); err != nil {
+			return fmt.Errorf("could not repack entry for user starred repos")
+		}
+
+		err = userBucket.Put([]byte(starredReposKey), repacked)
+		if err != nil {
+			return fmt.Errorf("could not persist to db")
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (d *MetadataLocalStoreDB) GetStarredRepos(userid string) ([]string, error) {
+	var starredRepos []string
+
+	err := d.db.View(func(tx *bbolt.Tx) error {
+		userdb := tx.Bucket([]byte(UserCache))
+		if userid == "" {
+			starredRepos = []string{}
+			return nil
+		}
+
+		userBucket := userdb.Bucket([]byte(userid))
+		if userBucket == nil {
+			return nil
+		}
+		mdata := userBucket.Get([]byte(starredReposKey))
+		if mdata == nil {
+			return nil
+		}
+		if err := json.Unmarshal(mdata, &starredRepos); err != nil {
+			return fmt.Errorf("invalid entry for user starred repos")
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return starredRepos, nil
+}
+
+// bookmarks
+func (d *MetadataLocalStoreDB) ToggleBookmarkRepo(userid, reponame string) error {
+
+	if err := d.db.Update(func(tx *bbolt.Tx) error {
+		userdb := tx.Bucket([]byte(UserCache))
+		userBucket, err := userdb.CreateBucketIfNotExists([]byte(userid))
+		if err != nil {
+			// this is a serious failure
+			return fmt.Errorf("unable to create a user bucket for user")
+		}
+
+		mdata := userBucket.Get([]byte(bookmarkedReposKey))
+		unpacked := []string{}
+		if mdata != nil {
+			if err = json.Unmarshal(mdata, &unpacked); err != nil {
+				return fmt.Errorf("invalid old entry for user bookmarked repos")
+			}
+		}
+
+		if unpacked == nil {
+			return fmt.Errorf("list of repos is still nil")
+			// should we panic now?
+		}
+
+		if !common.Contains(unpacked, reponame) { //len(mdata) > 0 &&
+			unpacked = append(unpacked, reponame)
+		} else {
+			unpacked = common.RemoveFrom(unpacked, reponame)
+		}
+
+		var repacked []byte
+		if repacked, err = json.Marshal(unpacked); err != nil {
+			return fmt.Errorf("could not repack entry for user bookmarked repos")
+		}
+
+		err = userBucket.Put([]byte(bookmarkedReposKey), repacked)
+		if err != nil {
+			return fmt.Errorf("could not persist to db")
+		}
+
+		return nil
+	}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (d *MetadataLocalStoreDB) GetBookmarkedRepos(userid string) ([]string, error) {
+	var bookmarkedRepos []string
+
+	err := d.db.View(func(tx *bbolt.Tx) error {
+		userdb := tx.Bucket([]byte(UserCache))
+		if userid == "" {
+			bookmarkedRepos = []string{}
+			return nil
+		}
+
+		userBucket := userdb.Bucket([]byte(userid))
+		if userBucket == nil {
+			return nil
+		}
+		mdata := userBucket.Get([]byte(bookmarkedReposKey))
+		if mdata == nil {
+			return nil
+		}
+		if err := json.Unmarshal(mdata, &bookmarkedRepos); err != nil {
+			return fmt.Errorf("invalid entry for user bookmarked repos")
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return bookmarkedRepos, nil
+}
+
+type UserMetadata struct {
+	// data for each user
+	StarredRepos    []string
+	BookmarkedRepos []string
+}
+
+type MetadataLocalStoreDB struct {
+	db *bbolt.DB
+}
+
+func NewMetaStore(rootDir, storageName string, log zerolog.Logger) MetadataStoreDB {
+	var metadataDB *bbolt.DB
+	dbPath := path.Join(rootDir, storageName+DBExtensionName)
+	dbOpts := &bbolt.Options{
+		Timeout:      dbCacheLockCheckTimeout,
+		FreelistType: bbolt.FreelistArrayType,
+	}
+
+	metadataDB, err := bbolt.Open(dbPath, 0o600, dbOpts) //nolint:gomnd
+	if err != nil {
+		log.Error().Err(err).Str("dbPath", dbPath).Msg("unable to create cache db")
+
+		return nil
+	}
+
+	if err := metadataDB.Update(func(tx *bbolt.Tx) error {
+		// var usersBucket *bbolt.Bucket
+		var err error
+		if _, err = tx.CreateBucketIfNotExists([]byte(UserCache)); err != nil {
+			// this is a serious failure
+			log.Error().Err(err).Str("dbPath", dbPath).Msg("unable to create a user bucket")
+
+			return err
+		}
+		return nil
+	}); err != nil {
+		// something went wrong
+		log.Error().Err(err).Msg("unable to create a cache")
+
+		return nil
+	}
+
+	return &MetadataLocalStoreDB{
+		db: metadataDB,
+	}
+}
+
+// func (d *MetadataLocalStoreDB) CreateMetadataBucket() error {
+// 	return d.db.Update(func(tx *bbolt.Tx) error {
+// 		if _, err := tx.CreateBucketIfNotExists([]byte(UserCache)); err != nil {
+// 			// this is a serious failure
+// 			return fmt.Errorf("unable to create a User cache bucket")
+// 		}
+
+// 		return nil
+// 	})
+// }

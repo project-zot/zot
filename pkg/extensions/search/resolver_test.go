@@ -18,6 +18,12 @@ import (
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test/mocks"
+
+	// "context"
+	// "os"
+
+	// "zotregistry.io/zot/pkg/extensions/monitoring"
+
 )
 
 var ErrTestError = errors.New("TestError")
