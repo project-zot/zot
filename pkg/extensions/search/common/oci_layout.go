@@ -384,7 +384,9 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error)
 
 		tag, ok := man.Annotations[ispec.AnnotationRefName]
 		if !ok {
-			tag = "latest"
+			olu.Log.Info().Msgf("skipping manifest with digest %s because it doesn't have a tag", string(man.Digest))
+
+			continue
 		}
 
 		manifestInfo.Tag = tag

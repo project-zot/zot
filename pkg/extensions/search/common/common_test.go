@@ -591,6 +591,103 @@ func TestRepoListWithNewestImage(t *testing.T) {
 }
 
 func TestExpandedRepoInfo(t *testing.T) {
+	Convey("Filter out manifests with no tag", t, func() {
+		tagToBeRemoved := "3.0"
+		repo1 := "test1"
+		tempDir := t.TempDir()
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = tempDir
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
+		}
+
+		conf.Extensions.Search.CVE = nil
+
+		ctlr := api.NewController(conf)
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		WaitTillServerReady(baseURL)
+
+		config, layers, manifest, err := GetImageComponents(1000)
+		So(err, ShouldBeNil)
+
+		err = UploadImage(
+			Image{
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+				Tag:      "1.0",
+			},
+			baseURL,
+			repo1)
+		So(err, ShouldBeNil)
+
+		err = UploadImage(
+			Image{
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+				Tag:      "2.0",
+			},
+			baseURL,
+			repo1)
+		So(err, ShouldBeNil)
+
+		err = UploadImage(
+			Image{
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+				Tag:      tagToBeRemoved,
+			},
+			baseURL,
+			repo1)
+		So(err, ShouldBeNil)
+
+		indexPath := path.Join(tempDir, repo1, "index.json")
+		indexFile, err := os.Open(indexPath)
+		So(err, ShouldBeNil)
+		buf, err := ioutil.ReadAll(indexFile)
+		So(err, ShouldBeNil)
+
+		var index ispec.Index
+		if err = json.Unmarshal(buf, &index); err == nil {
+			for _, manifest := range index.Manifests {
+				if val, ok := manifest.Annotations[ispec.AnnotationRefName]; ok && val == tagToBeRemoved {
+					delete(manifest.Annotations, ispec.AnnotationRefName)
+
+					break
+				}
+			}
+		}
+		buf, err = json.Marshal(index)
+		So(err, ShouldBeNil)
+
+		err = os.WriteFile(indexPath, buf, 0o600)
+		So(err, ShouldBeNil)
+
+		query := "{ExpandedRepoInfo(repo:\"test1\"){Summary%20{Name%20LastUpdated%20Size%20Platforms%20{Os%20Arch}%20Vendors%20Score}%20Images%20{Digest%20IsSigned%20Tag%20Layers%20{Size%20Digest}}}}" // nolint: lll
+
+		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + query)
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		responseStruct := &ExpandedRepoInfoResp{}
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+		So(responseStruct.ExpandedRepoInfo.RepoInfo.Summary, ShouldNotBeEmpty)
+		So(responseStruct.ExpandedRepoInfo.RepoInfo.Summary.Name, ShouldEqual, "test1")
+		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Images), ShouldEqual, 2)
+	})
+
 	Convey("Test expanded repo info", t, func() {
 		subpath := "/a"
 		err := testSetup(t, subpath)
