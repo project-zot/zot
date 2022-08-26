@@ -150,6 +150,7 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 	if err := c.InitImageStore(reloadCtx); err != nil {
 		return err
 	}
+	c.CreateMetadataDatabaseDriver(nil, c.Log)
 
 	monitoring.SetServerInfo(c.Metrics, c.Config.Commit, c.Config.BinaryType, c.Config.GoVersion,
 		c.Config.DistSpecVersion)
@@ -215,6 +216,19 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 	}
 
 	return server.Serve(listener)
+}
+
+func (c *Controller) CreateMetadataDatabaseDriver(configOverride interface{}, logInstance log.Logger) *storage.Driver {
+	metastore := storage.NewCache(storage.BoltDBDriverParameters{
+		RootDir:     c.Config.Storage.RootDirectory,
+		Name:        "users",
+		UseRelPaths: true,
+	}, logInstance)
+
+	// metastore.CreateMetadataBucket()
+	c.StoreController.NonOciMetadata = metastore
+
+	return metastore
 }
 
 func (c *Controller) InitImageStore(reloadCtx context.Context) error {

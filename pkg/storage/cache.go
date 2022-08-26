@@ -1,6 +1,9 @@
 package storage
 
 import (
+	"encoding/json"
+	"fmt"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -8,10 +11,12 @@ import (
 
 	"go.etcd.io/bbolt"
 	"zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/common"
 	zlog "zotregistry.io/zot/pkg/log"
 )
 
 const (
+	UserCache               = "users"
 	BlobsCache              = "blobs"
 	DBExtensionName         = ".db"
 	dbCacheLockCheckTimeout = 10 * time.Second
@@ -218,4 +223,114 @@ func (c *Cache) DeleteBlob(digest, path string) error {
 	}
 
 	return nil
+}
+
+func (d *Driver) CreateMetadataBucket() error {
+	return d.db.Update(func(tx *bbolt.Tx) error {
+		if _, err := tx.CreateBucketIfNotExists([]byte(UserCache)); err != nil {
+			// this is a serious failure
+			return fmt.Errorf("unable to create a User cache bucket")
+		}
+
+		return nil
+	})
+}
+
+// stars
+func (d *Driver) ToggleStarRepo(userid, reponame string) error {
+
+	if err := d.db.Update(func(tx *bbolt.Tx) error {
+		userdb := tx.Bucket([]byte(UserCache))
+		raw_user := userdb.Get([]byte(userid))
+		var dataUser UserMetadata
+		json.Unmarshal(raw_user, &dataUser)
+		if !common.Contains(dataUser.StarredRepos, reponame) {
+			dataUser.StarredRepos = append(dataUser.StarredRepos, reponame)
+		} else {
+			dataUser.StarredRepos = common.RemoveFrom(dataUser.StarredRepos, reponame)
+		}
+
+		newRaw, _ := json.Marshal(dataUser)
+		userdb.Put([]byte(userid), []byte(newRaw))
+		return nil
+	}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (d *Driver) GetStarredRepos(userid string) ([]string, error) {
+	var starredRepos []string
+
+	err := d.db.View(func(tx *bbolt.Tx) error {
+		userdb := tx.Bucket([]byte(UserCache))
+		raw_user := userdb.Get([]byte(userid))
+		var dataForUser UserMetadata
+		json.Unmarshal(raw_user, &dataForUser)
+		starredRepos = dataForUser.StarredRepos
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return starredRepos, nil
+}
+
+// bookmarks
+func (d *Driver) ToggleBookmarkRepo(userid, reponame string) error {
+	if err := d.db.Update(func(tx *bbolt.Tx) error {
+		userdb := tx.Bucket([]byte(UserCache))
+		raw_user := userdb.Get([]byte(userid))
+		var dataUser UserMetadata
+		json.Unmarshal(raw_user, &dataUser)
+		if !common.Contains(dataUser.BookmarkedRepos, reponame) {
+			dataUser.BookmarkedRepos = append(dataUser.BookmarkedRepos, reponame)
+		} else {
+			dataUser.BookmarkedRepos = common.RemoveFrom(dataUser.BookmarkedRepos, reponame)
+		}
+
+		newRaw, _ := json.Marshal(dataUser)
+		userdb.Put([]byte(userid), []byte(newRaw))
+		return nil
+	}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (d *Driver) GetBookmarkedRepos(userid string) ([]string, error) {
+	var user_bookmark_repos []string
+	err := d.db.View(func(tx *bbolt.Tx) error {
+		userdb := tx.Bucket([]byte(UserCache))
+		raw_user := userdb.Get([]byte(userid))
+		var dataForUser UserMetadata
+		json.Unmarshal(raw_user, &dataForUser)
+		user_bookmark_repos = dataForUser.BookmarkedRepos
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+	// user_bookmark_repos = dataUser.bookmarkedRepos
+	return user_bookmark_repos, nil
+
+}
+
+type UserMetadata struct {
+	// data for each user
+	StarredRepos    []string
+	BookmarkedRepos []string
+}
+
+type MetadataStoreDB struct {
+	db Driver
+}
+
+func NewMetaStore(cache Driver) *MetadataStoreDB {
+	return &MetadataStoreDB{db: cache}
 }

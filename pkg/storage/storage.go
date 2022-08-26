@@ -13,6 +13,12 @@ const (
 	DefaultGCDelay      = 1 * time.Hour
 )
 
+type StoreController struct {
+	DefaultStore   ImageStore
+	SubStore       map[string]ImageStore
+	NonOciMetadata *Driver
+}
+
 type ImageStore interface {
 	DirExists(d string) bool
 	RootDir() string

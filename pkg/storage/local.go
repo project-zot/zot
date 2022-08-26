@@ -51,11 +51,6 @@ type BlobUpload struct {
 	ID        string
 }
 
-type StoreController struct {
-	DefaultStore ImageStore
-	SubStore     map[string]ImageStore
-}
-
 // ImageStoreLocal provides the image storage operations.
 type ImageStoreLocal struct {
 	rootDir     string
@@ -1905,3 +1900,57 @@ func (is *ImageStoreLocal) RunGCRepo(repo string) {
 
 	is.log.Info().Msg(fmt.Sprintf("GC completed for %s", path.Join(is.RootDir(), repo)))
 }
+
+// type MetadataLocal struct {
+// 	// metrics          monitoring.MetricServer
+// 	cache cachedb.Driver
+// }
+
+// func (*MetadataLocal) AddStarredRepo(userid, reponame string) error {
+// 	return nil
+// }
+
+// func (*MetadataLocal) GetStarredRepos(user string) ([]string, error) {
+// 	return []string{}, nil
+// }
+
+// func (*MetadataLocal) AddBookmarkedRepo(userid, reponame string) error {
+// 	return nil
+// }
+
+// func (*MetadataLocal) GetBookmarkedRepos(user string) ([]string, error) {
+// 	return []string{}, nil
+// }
+
+// func NewMetaStore(cache cachedb.Driver, rootDir string, log zlog.Logger) (MetaStore, error) {
+// 	// cache, _ = cachedb.Create("boltdb", BoltDBDriverParameters{rootDir, "cache", true}, log)
+// 	return &MetadataLocal{
+// 		cache,
+// 	}, nil
+// 	// return nil, nil
+// }
+
+// type MetaStoreGen interface {
+// 	AddStarredRepo(userid, reponame string) error
+// 	GetStarredRepos(user string) (string, error)
+// 	AddBookmarkedRepo(userid, reponame string) error
+// 	GetBookmarkedRepos(user string) (string, error)
+// }
+
+// type MetaStoreLocal struct {
+// 	drive Driver
+// }
+
+// type User struct {
+// 	bookmarks []string
+// }
+
+// func (ms *MetaStoreLocal) AddStarredRepo(userid, reponame string) error {
+// 	return nil
+// }
+
+// func GetStarredRepos(user string) (string, error) {
+
+// }
+// func AddBookmarkedRepo(userid, reponame string) error
+// func GetBookmarkedRepos(user string) (string, error)
