@@ -106,7 +106,7 @@ function teardown_file() {
     echo "{\"name\":\"foo\",\"value\":\"bar\"}" > config.json
     echo "hello world" > artifact.txt
     run oras push --plain-http 127.0.0.1:8080/hello-artifact:v2 \
-        --manifest-config config.json:application/vnd.acme.rocket.config.v1+json artifact.txt:text/plain -d -v
+        --config config.json:application/vnd.acme.rocket.config.v1+json artifact.txt:text/plain -d -v
     [ "$status" -eq 0 ]
     rm -f artifact.txt
     rm -f config.json

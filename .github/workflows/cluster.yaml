@@ -114,7 +114,7 @@ jobs:
             echo "{\"name\":\"foo\",\"value\":\"bar\"}" > config.json
             echo "hello world" > artifact.txt
             oras push --plain-http localhost:8080/hello-artifact:v2 \
-                --manifest-config config.json:application/vnd.acme.rocket.config.v1+json \
+                --config config.json:application/vnd.acme.rocket.config.v1+json \
                     artifact.txt:text/plain -d -v
             rm -f artifact.txt # first delete the file
             oras pull --plain-http localhost:8080/hello-artifact:v2 -d -v
