@@ -15,10 +15,10 @@ const (
 	// global bucket.
 	BlobsCache = "blobs"
 	// bucket where we store all blobs from storage(deduped blobs + original blob).
-	DedupedBucket = "deduped"
+	DuplicatesBucket = "duplicates"
 	/* bucket where we store only the original/source blob (used by s3 to know which is the blob with content)
 	it should contain only one blob, this is the only place from which we'll get blobs. */
-	OriginBucket            = "origin"
+	OriginalBucket          = "original"
 	DBExtensionName         = ".db"
 	dbCacheLockCheckTimeout = 10 * time.Second
 )
@@ -103,34 +103,34 @@ func (c *Cache) PutBlob(digest, path string) error {
 		}
 
 		// create nested deduped bucket where we store all the deduped blobs + original blob
-		deduped, err := bucket.CreateBucketIfNotExists([]byte(DedupedBucket))
+		deduped, err := bucket.CreateBucketIfNotExists([]byte(DuplicatesBucket))
 		if err != nil {
 			// this is a serious failure
-			c.log.Error().Err(err).Str("bucket", DedupedBucket).Msg("unable to create a bucket")
+			c.log.Error().Err(err).Str("bucket", DuplicatesBucket).Msg("unable to create a bucket")
 
 			return err
 		}
 
 		if err := deduped.Put([]byte(path), nil); err != nil {
-			c.log.Error().Err(err).Str("bucket", DedupedBucket).Str("value", path).Msg("unable to put record")
+			c.log.Error().Err(err).Str("bucket", DuplicatesBucket).Str("value", path).Msg("unable to put record")
 
 			return err
 		}
 
 		// create origin bucket and insert only the original blob
-		origin := bucket.Bucket([]byte(OriginBucket))
+		origin := bucket.Bucket([]byte(OriginalBucket))
 		if origin == nil {
 			// if the bucket doesn't exist yet then 'path' is the original blob
-			origin, err := bucket.CreateBucket([]byte(OriginBucket))
+			origin, err := bucket.CreateBucket([]byte(OriginalBucket))
 			if err != nil {
 				// this is a serious failure
-				c.log.Error().Err(err).Str("bucket", OriginBucket).Msg("unable to create a bucket")
+				c.log.Error().Err(err).Str("bucket", OriginalBucket).Msg("unable to create a bucket")
 
 				return err
 			}
 
 			if err := origin.Put([]byte(path), nil); err != nil {
-				c.log.Error().Err(err).Str("bucket", OriginBucket).Str("value", path).Msg("unable to put record")
+				c.log.Error().Err(err).Str("bucket", OriginalBucket).Str("value", path).Msg("unable to put record")
 
 				return err
 			}
@@ -159,7 +159,7 @@ func (c *Cache) GetBlob(digest string) (string, error) {
 
 		bucket := root.Bucket([]byte(digest))
 		if bucket != nil {
-			origin := bucket.Bucket([]byte(OriginBucket))
+			origin := bucket.Bucket([]byte(OriginalBucket))
 			blobPath.WriteString(string(c.getOne(origin)))
 
 			return nil
@@ -189,7 +189,7 @@ func (c *Cache) HasBlob(digest, blob string) bool {
 			return errors.ErrCacheMiss
 		}
 
-		origin := bucket.Bucket([]byte(OriginBucket))
+		origin := bucket.Bucket([]byte(OriginalBucket))
 		if origin == nil {
 			return errors.ErrCacheMiss
 		}
@@ -242,23 +242,25 @@ func (c *Cache) DeleteBlob(digest, path string) error {
 			return errors.ErrCacheMiss
 		}
 
-		deduped := bucket.Bucket([]byte(DedupedBucket))
+		deduped := bucket.Bucket([]byte(DuplicatesBucket))
 		if deduped == nil {
 			return errors.ErrCacheMiss
 		}
 
 		if err := deduped.Delete([]byte(path)); err != nil {
-			c.log.Error().Err(err).Str("digest", digest).Str("bucket", DedupedBucket).Str("path", path).Msg("unable to delete")
+			c.log.Error().Err(err).Str("digest", digest).Str("bucket", DuplicatesBucket).
+				Str("path", path).Msg("unable to delete")
 
 			return err
 		}
 
-		origin := bucket.Bucket([]byte(OriginBucket))
+		origin := bucket.Bucket([]byte(OriginalBucket))
 		if origin != nil {
 			originBlob := c.getOne(origin)
 			if originBlob != nil {
 				if err := origin.Delete([]byte(path)); err != nil {
-					c.log.Error().Err(err).Str("digest", digest).Str("bucket", OriginBucket).Str("path", path).Msg("unable to delete")
+					c.log.Error().Err(err).Str("digest", digest).Str("bucket", OriginalBucket).
+						Str("path", path).Msg("unable to delete")
 
 					return err
 				}
@@ -267,7 +269,7 @@ func (c *Cache) DeleteBlob(digest, path string) error {
 				dedupedBlob := c.getOne(deduped)
 				if dedupedBlob != nil {
 					if err := origin.Put(dedupedBlob, nil); err != nil {
-						c.log.Error().Err(err).Str("digest", digest).Str("bucket", OriginBucket).Str("path", path).Msg("unable to put")
+						c.log.Error().Err(err).Str("digest", digest).Str("bucket", OriginalBucket).Str("path", path).Msg("unable to put")
 
 						return err
 					}

@@ -2077,6 +2077,52 @@ func TestPutBlobChunkStreamed(t *testing.T) {
 	})
 }
 
+func TestPullRange(t *testing.T) {
+	Convey("Repo layout", t, func(c C) {
+		dir := t.TempDir()
+
+		log := log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, log)
+
+		Convey("Negative cases", func() {
+			imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay,
+				true, true, log, metrics, nil)
+			repoName := "pull-range"
+
+			upload, err := imgStore.NewBlobUpload(repoName)
+			So(err, ShouldBeNil)
+			So(upload, ShouldNotBeEmpty)
+
+			content := []byte("test-data1")
+			buf := bytes.NewBuffer(content)
+			buflen := buf.Len()
+			bdigest := godigest.FromBytes(content)
+
+			blob, err := imgStore.PutBlobChunk(repoName, upload, 0, int64(buflen), buf)
+			So(err, ShouldBeNil)
+			So(blob, ShouldEqual, buflen)
+
+			err = imgStore.FinishBlobUpload(repoName, upload, buf, bdigest.String())
+			So(err, ShouldBeNil)
+
+			_, _, _, err = imgStore.GetBlobPartial(repoName, "", "application/octet-stream", 0, 1)
+			So(err, ShouldNotBeNil)
+
+			_, _, _, err = imgStore.GetBlobPartial(repoName, bdigest.String(), "application/octet-stream", 1, 0)
+			So(err, ShouldNotBeNil)
+
+			_, _, _, err = imgStore.GetBlobPartial(repoName, bdigest.String(), "application/octet-stream", 1, 0)
+			So(err, ShouldNotBeNil)
+
+			blobPath := path.Join(imgStore.RootDir(), repoName, "blobs", bdigest.Algorithm().String(), bdigest.Encoded())
+			err = os.Chmod(blobPath, 0o000)
+			So(err, ShouldBeNil)
+			_, _, _, err = imgStore.GetBlobPartial(repoName, bdigest.String(), "application/octet-stream", -1, 1)
+			So(err, ShouldNotBeNil)
+		})
+	})
+}
+
 func NewRandomImgManifest(data []byte, cdigest, ldigest godigest.Digest, cblob, lblob []byte) (*ispec.Manifest, error) {
 	annotationsMap := make(map[string]string)
 

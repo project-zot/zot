@@ -56,4 +56,6 @@ var (
 	ErrImageLintAnnotations    = errors.New("routes: lint checks failed")
 	ErrParsingAuthHeader       = errors.New("auth: failed parsing authorization header")
 	ErrBadType                 = errors.New("core: invalid type")
+	ErrParsingHTTPHeader       = errors.New("routes: invalid HTTP header")
+	ErrBadRange                = errors.New("storage: bad range")
 )
