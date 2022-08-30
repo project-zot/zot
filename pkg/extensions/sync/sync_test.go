@@ -290,7 +290,7 @@ func TestORAS(t *testing.T) {
 
 		srcURL := strings.Join([]string{sctlr.Server.Addr, "/oras-artifact:v2"}, "")
 
-		cmd = exec.Command("oras", "push", "--plain-http", srcURL, "--manifest-config",
+		cmd = exec.Command("oras", "push", "--plain-http", srcURL, "--config",
 			"config.json:application/vnd.acme.rocket.config.v1+json", "artifact.txt:text/plain", "-d", "-v")
 		cmd.Dir = fileDir
 

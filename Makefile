@@ -71,7 +71,7 @@ exporter-minimal: modcheck build-metadata
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zxp-$(OS)-$(ARCH) -buildmode=pie -tags containers_image_openpgp -v -trimpath ./cmd/zxp
 
 .PHONY: test
-test: check-skopeo $(TESTDATA) $(NOTATION)
+test: check-skopeo $(TESTDATA) $(NOTATION) $(ORAS)
 	go test -failfast -tags $(EXTENSIONS),containers_image_openpgp -v -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-extended.txt -covermode=atomic ./...
 	go test -failfast -tags containers_image_openpgp -v -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-minimal.txt -covermode=atomic ./...
 	# development-mode unit tests possibly using failure injection
@@ -106,7 +106,7 @@ $(NOTATION):
 
 $(ORAS):
 	mkdir -p $(TOOLSDIR)/bin
-	curl -Lo oras.tar.gz https://github.com/oras-project/oras/releases/download/v0.13.0/oras_0.13.0_linux_amd64.tar.gz
+	curl -Lo oras.tar.gz https://github.com/oras-project/oras/releases/download/v0.14.0/oras_0.14.0_linux_amd64.tar.gz
 	tar xvzf oras.tar.gz -C $(TOOLSDIR)/bin  oras
 	rm oras.tar.gz
 
