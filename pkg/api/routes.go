@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -599,8 +600,55 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 	}
 
 	response.Header().Set("Content-Length", fmt.Sprintf("%d", blen))
+	response.Header().Set("Accept-Ranges", "bytes")
 	response.Header().Set(constants.DistContentDigestKey, digest)
 	response.WriteHeader(http.StatusOK)
+}
+
+/* parseRangeHeader validates the "Range" HTTP header and returns the range. */
+func parseRangeHeader(contentRange string) (int64, int64, error) {
+	/* bytes=<start>- and bytes=<start>-<end> formats are supported */
+	pattern := `bytes=(?P<rangeFrom>\d+)-(?P<rangeTo>\d*$)`
+
+	regex, err := regexp.Compile(pattern)
+	if err != nil {
+		return -1, -1, zerr.ErrParsingHTTPHeader
+	}
+
+	match := regex.FindStringSubmatch(contentRange)
+
+	paramsMap := make(map[string]string)
+
+	for i, name := range regex.SubexpNames() {
+		if i > 0 && i <= len(match) {
+			paramsMap[name] = match[i]
+		}
+	}
+
+	var from int64
+	to := int64(-1)
+
+	rangeFrom := paramsMap["rangeFrom"]
+	if rangeFrom == "" {
+		return -1, -1, zerr.ErrParsingHTTPHeader
+	}
+
+	if from, err = strconv.ParseInt(rangeFrom, 10, 64); err != nil {
+		return -1, -1, zerr.ErrParsingHTTPHeader
+	}
+
+	rangeTo := paramsMap["rangeTo"]
+	if rangeTo != "" {
+		if to, err = strconv.ParseInt(rangeTo, 10, 64); err != nil {
+			return -1, -1, zerr.ErrParsingHTTPHeader
+		}
+
+		if to < from {
+			return -1, -1, zerr.ErrParsingHTTPHeader
+		}
+	}
+
+	return from, to, nil
 }
 
 // GetBlob godoc
@@ -634,7 +682,43 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 
 	mediaType := request.Header.Get("Accept")
 
-	repo, blen, err := imgStore.GetBlob(name, digest, mediaType)
+	var err error
+
+	/* content range is supported for resumbale pulls */
+	partial := false
+
+	var from, to int64
+
+	contentRange := request.Header.Get("Range")
+
+	_, ok = request.Header["Range"]
+	if ok && contentRange == "" {
+		response.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+
+		return
+	}
+
+	if contentRange != "" {
+		from, to, err = parseRangeHeader(contentRange)
+		if err != nil {
+			response.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+
+			return
+		}
+
+		partial = true
+	}
+
+	var repo io.ReadCloser
+
+	var blen, bsize int64
+
+	if partial {
+		repo, blen, bsize, err = imgStore.GetBlobPartial(name, digest, mediaType, from, to)
+	} else {
+		repo, blen, err = imgStore.GetBlob(name, digest, mediaType)
+	}
+
 	if err != nil {
 		if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 			WriteJSON(response,
@@ -658,9 +742,19 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 	defer repo.Close()
 
 	response.Header().Set("Content-Length", fmt.Sprintf("%d", blen))
-	response.Header().Set(constants.DistContentDigestKey, digest)
+
+	status := http.StatusOK
+
+	if partial {
+		status = http.StatusPartialContent
+
+		response.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", from, from+blen-1, bsize))
+	} else {
+		response.Header().Set(constants.DistContentDigestKey, digest)
+	}
+
 	// return the blob data
-	WriteDataFromReader(response, http.StatusOK, blen, mediaType, repo, rh.c.Log)
+	WriteDataFromReader(response, status, blen, mediaType, repo, rh.c.Log)
 }
 
 // DeleteBlob godoc

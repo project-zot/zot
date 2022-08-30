@@ -1413,6 +1413,122 @@ func (is *ObjectStorage) copyBlob(repo string, blobPath string, dstRecord string
 	return -1, zerr.ErrBlobNotFound
 }
 
+// blobStream is using to serve blob range requests.
+type blobStream struct {
+	reader io.Reader
+	closer io.Closer
+}
+
+func NewBlobStream(readCloser io.ReadCloser, from, to int64) (io.ReadCloser, error) {
+	return &blobStream{reader: io.LimitReader(readCloser, to-from+1), closer: readCloser}, nil
+}
+
+func (bs *blobStream) Read(buf []byte) (int, error) {
+	return bs.reader.Read(buf)
+}
+
+func (bs *blobStream) Close() error {
+	return bs.closer.Close()
+}
+
+// GetBlobPartial returns a partial stream to read the blob.
+// blob selector instead of directly downloading the blob.
+func (is *ObjectStorage) GetBlobPartial(repo, digest, mediaType string, from, to int64,
+) (io.ReadCloser, int64, int64, error) {
+	var lockLatency time.Time
+
+	dgst, err := godigest.Parse(digest)
+	if err != nil {
+		is.log.Error().Err(err).Str("digest", digest).Msg("failed to parse digest")
+
+		return nil, -1, -1, zerr.ErrBadBlobDigest
+	}
+
+	blobPath := is.BlobPath(repo, dgst)
+
+	is.RLock(&lockLatency)
+	defer is.RUnlock(&lockLatency)
+
+	binfo, err := is.store.Stat(context.Background(), blobPath)
+	if err != nil {
+		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
+
+		return nil, -1, -1, zerr.ErrBlobNotFound
+	}
+
+	end := to
+
+	if to < 0 || to >= binfo.Size() {
+		end = binfo.Size() - 1
+	}
+
+	blobHandle, err := is.store.Reader(context.Background(), blobPath, from)
+	if err != nil {
+		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to open blob")
+
+		return nil, -1, -1, err
+	}
+
+	blobReadCloser, err := NewBlobStream(blobHandle, from, end)
+	if err != nil {
+		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to open blob stream")
+
+		return nil, -1, -1, err
+	}
+
+	// is a 'deduped' blob?
+	if binfo.Size() == 0 {
+		defer blobReadCloser.Close()
+
+		// Check blobs in cache
+		dstRecord, err := is.checkCacheBlob(digest)
+		if err != nil {
+			is.log.Error().Err(err).Str("digest", digest).Msg("cache: not found")
+
+			return nil, -1, -1, zerr.ErrBlobNotFound
+		}
+
+		binfo, err := is.store.Stat(context.Background(), dstRecord)
+		if err != nil {
+			is.log.Error().Err(err).Str("blob", dstRecord).Msg("failed to stat blob")
+
+			// the actual blob on disk may have been removed by GC, so sync the cache
+			if err := is.cache.DeleteBlob(digest, dstRecord); err != nil {
+				is.log.Error().Err(err).Str("dstDigest", digest).Str("dst", dstRecord).Msg("dedupe: unable to delete blob record")
+
+				return nil, -1, -1, err
+			}
+
+			return nil, -1, -1, zerr.ErrBlobNotFound
+		}
+
+		end := to
+
+		if to < 0 || to >= binfo.Size() {
+			end = binfo.Size() - 1
+		}
+
+		blobHandle, err := is.store.Reader(context.Background(), dstRecord, from)
+		if err != nil {
+			is.log.Error().Err(err).Str("blob", dstRecord).Msg("failed to open blob")
+
+			return nil, -1, -1, err
+		}
+
+		blobReadCloser, err := NewBlobStream(blobHandle, from, end)
+		if err != nil {
+			is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to open blob stream")
+
+			return nil, -1, -1, err
+		}
+
+		return blobReadCloser, end - from + 1, binfo.Size(), nil
+	}
+
+	// The caller function is responsible for calling Close()
+	return blobReadCloser, end - from + 1, binfo.Size(), nil
+}
+
 // GetBlob returns a stream to read the blob.
 // blob selector instead of directly downloading the blob.
 func (is *ObjectStorage) GetBlob(repo, digest, mediaType string) (io.ReadCloser, int64, error) {
@@ -1444,7 +1560,7 @@ func (is *ObjectStorage) GetBlob(repo, digest, mediaType string) (io.ReadCloser,
 		return nil, -1, err
 	}
 
-	// is a 'deduped' blob
+	// is a 'deduped' blob?
 	if binfo.Size() == 0 {
 		// Check blobs in cache
 		dstRecord, err := is.checkCacheBlob(digest)
