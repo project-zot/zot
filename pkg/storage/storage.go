@@ -40,6 +40,7 @@ type ImageStore interface {
 	BlobPath(repo string, digest digest.Digest) string
 	CheckBlob(repo, digest string) (bool, int64, error)
 	GetBlob(repo, digest, mediaType string) (io.ReadCloser, int64, error)
+	GetBlobPartial(repo, digest, mediaType string, from, to int64) (io.ReadCloser, int64, int64, error)
 	DeleteBlob(repo, digest string) error
 	GetIndexContent(repo string) ([]byte, error)
 	GetBlobContent(repo, digest string) ([]byte, error)

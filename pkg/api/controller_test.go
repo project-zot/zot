@@ -5414,6 +5414,159 @@ func TestManifestImageIndex(t *testing.T) {
 	})
 }
 
+func TestPullRange(t *testing.T) {
+	Convey("Make a new controller", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		ctlr := api.NewController(conf)
+		dir := t.TempDir()
+		ctlr.Config.Storage.RootDirectory = dir
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		test.WaitTillServerReady(baseURL)
+
+		// create a blob/layer
+		resp, err := resty.R().Post(baseURL + "/v2/index/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+		loc := test.Location(baseURL, resp)
+		So(loc, ShouldNotBeEmpty)
+
+		// since we are not specifying any prefix i.e provided in config while starting server,
+		// so it should store index1 to global root dir
+		_, err = os.Stat(path.Join(dir, "index"))
+		So(err, ShouldBeNil)
+
+		resp, err = resty.R().Get(loc)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
+		content := []byte("0123456789")
+		digest := godigest.FromBytes(content)
+		So(digest, ShouldNotBeNil)
+		// monolithic blob upload: success
+		resp, err = resty.R().SetQueryParam("digest", digest.String()).
+			SetHeader("Content-Type", "application/octet-stream").SetBody(content).Put(loc)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+		blobLoc := resp.Header().Get("Location")
+		So(blobLoc, ShouldNotBeEmpty)
+		So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
+		So(resp.Header().Get(constants.DistContentDigestKey), ShouldNotBeEmpty)
+		blobLoc = baseURL + blobLoc
+
+		Convey("Range is supported using 'bytes'", func() {
+			resp, err = resty.R().Head(blobLoc)
+			So(err, ShouldBeNil)
+			So(resp.Header().Get("Accept-Ranges"), ShouldEqual, "bytes")
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		})
+
+		Convey("Get a range of bytes", func() {
+			resp, err = resty.R().SetHeader("Range", "bytes=0-").Get(blobLoc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusPartialContent)
+			So(resp.Header().Get("Content-Length"), ShouldEqual, fmt.Sprintf("%d", len(content)))
+			So(resp.Body(), ShouldResemble, content)
+
+			resp, err = resty.R().SetHeader("Range", "bytes=0-100").Get(blobLoc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusPartialContent)
+			So(resp.Header().Get("Content-Length"), ShouldEqual, fmt.Sprintf("%d", len(content)))
+			So(resp.Body(), ShouldResemble, content)
+
+			resp, err = resty.R().SetHeader("Range", "bytes=0-10").Get(blobLoc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusPartialContent)
+			So(resp.Header().Get("Content-Length"), ShouldEqual, fmt.Sprintf("%d", len(content)))
+			So(resp.Body(), ShouldResemble, content)
+
+			resp, err = resty.R().SetHeader("Range", "bytes=0-0").Get(blobLoc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusPartialContent)
+			So(resp.Header().Get("Content-Length"), ShouldEqual, "1")
+			So(resp.Body(), ShouldResemble, content[0:1])
+
+			resp, err = resty.R().SetHeader("Range", "bytes=0-1").Get(blobLoc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusPartialContent)
+			So(resp.Header().Get("Content-Length"), ShouldEqual, "2")
+			So(resp.Body(), ShouldResemble, content[0:2])
+
+			resp, err = resty.R().SetHeader("Range", "bytes=2-3").Get(blobLoc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusPartialContent)
+			So(resp.Header().Get("Content-Length"), ShouldEqual, "2")
+			So(resp.Body(), ShouldResemble, content[2:4])
+		})
+
+		Convey("Negative test cases", func() {
+			resp, err = resty.R().SetHeader("Range", "=0").Get(blobLoc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusRequestedRangeNotSatisfiable)
+
+			resp, err = resty.R().SetHeader("Range", "=a").Get(blobLoc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusRequestedRangeNotSatisfiable)
+
+			resp, err = resty.R().SetHeader("Range", "").Get(blobLoc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusRequestedRangeNotSatisfiable)
+
+			resp, err = resty.R().SetHeader("Range", "=").Get(blobLoc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusRequestedRangeNotSatisfiable)
+
+			resp, err = resty.R().SetHeader("Range", "byte=").Get(blobLoc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusRequestedRangeNotSatisfiable)
+
+			resp, err = resty.R().SetHeader("Range", "bytes=").Get(blobLoc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusRequestedRangeNotSatisfiable)
+
+			resp, err = resty.R().SetHeader("Range", "byte=-0").Get(blobLoc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusRequestedRangeNotSatisfiable)
+
+			resp, err = resty.R().SetHeader("Range", "byte=0").Get(blobLoc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusRequestedRangeNotSatisfiable)
+
+			resp, err = resty.R().SetHeader("Range", "octet=-0").Get(blobLoc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusRequestedRangeNotSatisfiable)
+
+			resp, err = resty.R().SetHeader("Range", "bytes=-0").Get(blobLoc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusRequestedRangeNotSatisfiable)
+
+			resp, err = resty.R().SetHeader("Range", "bytes=-1-0").Get(blobLoc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusRequestedRangeNotSatisfiable)
+
+			resp, err = resty.R().SetHeader("Range", "bytes=-1--0").Get(blobLoc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusRequestedRangeNotSatisfiable)
+
+			resp, err = resty.R().SetHeader("Range", "bytes=0-a").Get(blobLoc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusRequestedRangeNotSatisfiable)
+
+			resp, err = resty.R().SetHeader("Range", "bytes=a-10").Get(blobLoc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusRequestedRangeNotSatisfiable)
+
+			resp, err = resty.R().SetHeader("Range", "bytes=a-b").Get(blobLoc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusRequestedRangeNotSatisfiable)
+		})
+	})
+}
+
 func TestInjectInterruptedImageManifest(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		port := test.GetFreePort()

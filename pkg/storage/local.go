@@ -1510,6 +1510,80 @@ func (is *ImageStoreLocal) copyBlob(repo, blobPath, dstRecord string) (int64, er
 	return -1, zerr.ErrBlobNotFound
 }
 
+// blobStream is using to serve blob range requests.
+type blobStream struct {
+	reader io.Reader
+	closer io.Closer
+}
+
+func NewBlobStream(blobPath string, from, to int64) (io.ReadCloser, error) {
+	blobFile, err := os.Open(blobPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if from > 0 {
+		_, err = blobFile.Seek(from, io.SeekStart)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	blobstrm := blobStream{reader: blobFile, closer: blobFile}
+
+	blobstrm.reader = io.LimitReader(blobFile, to-from+1)
+
+	return &blobstrm, nil
+}
+
+func (bs *blobStream) Read(buf []byte) (int, error) {
+	return bs.reader.Read(buf)
+}
+
+func (bs *blobStream) Close() error {
+	return bs.closer.Close()
+}
+
+// GetBlobPartial returns a partial stream to read the blob.
+// blob selector instead of directly downloading the blob.
+func (is *ImageStoreLocal) GetBlobPartial(repo, digest, mediaType string, from, to int64,
+) (io.ReadCloser, int64, int64, error) {
+	var lockLatency time.Time
+
+	parsedDigest, err := godigest.Parse(digest)
+	if err != nil {
+		is.log.Error().Err(err).Str("digest", digest).Msg("failed to parse digest")
+
+		return nil, -1, -1, zerr.ErrBadBlobDigest
+	}
+
+	blobPath := is.BlobPath(repo, parsedDigest)
+
+	is.RLock(&lockLatency)
+	defer is.RUnlock(&lockLatency)
+
+	binfo, err := os.Stat(blobPath)
+	if err != nil {
+		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
+
+		return nil, -1, -1, zerr.ErrBlobNotFound
+	}
+
+	if to < 0 || to >= binfo.Size() {
+		to = binfo.Size() - 1
+	}
+
+	blobReadCloser, err := NewBlobStream(blobPath, from, to)
+	if err != nil {
+		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to open blob")
+
+		return nil, -1, -1, err
+	}
+
+	// The caller function is responsible for calling Close()
+	return blobReadCloser, to - from + 1, binfo.Size(), nil
+}
+
 // GetBlob returns a stream to read the blob.
 // blob selector instead of directly downloading the blob.
 func (is *ImageStoreLocal) GetBlob(repo, digest, mediaType string) (io.ReadCloser, int64, error) {

@@ -1114,6 +1114,89 @@ func TestS3Dedupe(t *testing.T) {
 	})
 }
 
+func TestS3PullRange(t *testing.T) {
+	skipIt(t)
+
+	Convey("Test against s3 image store", t, func() {
+		uuid, err := guuid.NewV4()
+		if err != nil {
+			panic(err)
+		}
+
+		testDir := path.Join("/oci-repo-test", uuid.String())
+
+		storeDriver, imgStore, _ := createObjectsStore(testDir, t.TempDir(), true)
+		defer cleanupStorage(storeDriver, testDir)
+
+		// create a blob/layer
+		upload, err := imgStore.NewBlobUpload("index")
+		So(err, ShouldBeNil)
+		So(upload, ShouldNotBeEmpty)
+
+		content := []byte("0123456789")
+		buf := bytes.NewBuffer(content)
+		buflen := buf.Len()
+		digest := godigest.FromBytes(content)
+		So(digest, ShouldNotBeNil)
+		blob, err := imgStore.PutBlobChunkStreamed("index", upload, buf)
+		So(err, ShouldBeNil)
+		So(blob, ShouldEqual, buflen)
+
+		err = imgStore.FinishBlobUpload("index", upload, buf, digest.String())
+		So(err, ShouldBeNil)
+		So(blob, ShouldEqual, buflen)
+
+		reader, _, _, err := imgStore.GetBlobPartial("index", digest.String(), "*/*", 0, -1)
+		So(err, ShouldBeNil)
+		rdbuf, err := io.ReadAll(reader)
+		So(err, ShouldBeNil)
+		So(rdbuf, ShouldResemble, content)
+		reader.Close()
+
+		reader, _, _, err = imgStore.GetBlobPartial("index", digest.String(), "application/octet-stream", 0, -1)
+		So(err, ShouldBeNil)
+		rdbuf, err = io.ReadAll(reader)
+		So(err, ShouldBeNil)
+		So(rdbuf, ShouldResemble, content)
+		reader.Close()
+
+		reader, _, _, err = imgStore.GetBlobPartial("index", digest.String(), "*/*", 0, 100)
+		So(err, ShouldBeNil)
+		rdbuf, err = io.ReadAll(reader)
+		So(err, ShouldBeNil)
+		So(rdbuf, ShouldResemble, content)
+		reader.Close()
+
+		reader, _, _, err = imgStore.GetBlobPartial("index", digest.String(), "*/*", 0, 10)
+		So(err, ShouldBeNil)
+		rdbuf, err = io.ReadAll(reader)
+		So(err, ShouldBeNil)
+		So(rdbuf, ShouldResemble, content)
+		reader.Close()
+
+		reader, _, _, err = imgStore.GetBlobPartial("index", digest.String(), "*/*", 0, 0)
+		So(err, ShouldBeNil)
+		rdbuf, err = io.ReadAll(reader)
+		So(err, ShouldBeNil)
+		So(rdbuf, ShouldResemble, content[0:1])
+		reader.Close()
+
+		reader, _, _, err = imgStore.GetBlobPartial("index", digest.String(), "*/*", 0, 1)
+		So(err, ShouldBeNil)
+		rdbuf, err = io.ReadAll(reader)
+		So(err, ShouldBeNil)
+		So(rdbuf, ShouldResemble, content[0:2])
+		reader.Close()
+
+		reader, _, _, err = imgStore.GetBlobPartial("index", digest.String(), "*/*", 2, 3)
+		So(err, ShouldBeNil)
+		rdbuf, err = io.ReadAll(reader)
+		So(err, ShouldBeNil)
+		So(rdbuf, ShouldResemble, content[2:4])
+		reader.Close()
+	})
+}
+
 func TestS3ManifestImageIndex(t *testing.T) {
 	skipIt(t)
 
