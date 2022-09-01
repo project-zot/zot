@@ -15,7 +15,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"path"
@@ -444,7 +443,7 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 		return
 	}
 
-	body, err := ioutil.ReadAll(request.Body)
+	body, err := io.ReadAll(request.Body)
 	// hard to reach test case, injected error (simulates an interrupted image manifest upload)
 	// err could be io.ErrUnexpectedEOF
 	if err := test.Error(err); err != nil {

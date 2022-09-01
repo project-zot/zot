@@ -6,7 +6,6 @@ package test_test
 import (
 	"context"
 	"encoding/json"
-	"io/ioutil"
 	"os"
 	"path"
 	"testing"
@@ -58,7 +57,7 @@ func TestCopyFiles(t *testing.T) {
 		dir := t.TempDir()
 
 		filePath := path.Join(dir, "file.txt")
-		err := ioutil.WriteFile(filePath, []byte("some dummy file content"), 0o644) //nolint: gosec
+		err := os.WriteFile(filePath, []byte("some dummy file content"), 0o644) //nolint: gosec
 		if err != nil {
 			panic(err)
 		}
@@ -103,7 +102,7 @@ func TestGetOciLayoutDigests(t *testing.T) {
 			panic(err)
 		}
 
-		buf, err := ioutil.ReadFile(path.Join(dir, "test-manifest", "index.json"))
+		buf, err := os.ReadFile(path.Join(dir, "test-manifest", "index.json"))
 		if err != nil {
 			panic(err)
 		}

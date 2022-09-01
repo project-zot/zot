@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/url"
 	"os"
 	"os/exec"
@@ -157,7 +157,7 @@ func signUsingCosign(port string) error {
 
 	defer func() { _ = os.Chdir(cwd) }()
 
-	tdir, err := ioutil.TempDir("", "cosign")
+	tdir, err := os.MkdirTemp("", "cosign")
 	if err != nil {
 		return err
 	}
@@ -194,7 +194,7 @@ func signUsingNotary(port string) error {
 
 	defer func() { _ = os.Chdir(cwd) }()
 
-	tdir, err := ioutil.TempDir("", "notation")
+	tdir, err := os.MkdirTemp("", "notation")
 	if err != nil {
 		return err
 	}
@@ -653,7 +653,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		indexPath := path.Join(tempDir, repo1, "index.json")
 		indexFile, err := os.Open(indexPath)
 		So(err, ShouldBeNil)
-		buf, err := ioutil.ReadAll(indexFile)
+		buf, err := io.ReadAll(indexFile)
 		So(err, ShouldBeNil)
 
 		var index ispec.Index

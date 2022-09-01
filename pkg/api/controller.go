@@ -5,9 +5,9 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
+	"os"
 	"runtime"
 	"strings"
 	goSync "sync"
@@ -92,11 +92,11 @@ func DumpRuntimeParams(log log.Logger) {
 		evt = evt.Uint64("max. open files", rLimit.Cur)
 	}
 
-	if content, err := ioutil.ReadFile("/proc/sys/net/core/somaxconn"); err == nil {
+	if content, err := os.ReadFile("/proc/sys/net/core/somaxconn"); err == nil {
 		evt = evt.Str("listen backlog", strings.TrimSuffix(string(content), "\n"))
 	}
 
-	if content, err := ioutil.ReadFile("/proc/sys/user/max_inotify_watches"); err == nil {
+	if content, err := os.ReadFile("/proc/sys/user/max_inotify_watches"); err == nil {
 		evt = evt.Str("max. inotify watches", strings.TrimSuffix(string(content), "\n"))
 	}
 
@@ -196,7 +196,7 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 				clientAuth = tls.RequireAndVerifyClientCert
 			}
 
-			caCert, err := ioutil.ReadFile(c.Config.HTTP.TLS.CACert)
+			caCert, err := os.ReadFile(c.Config.HTTP.TLS.CACert)
 			if err != nil {
 				panic(err)
 			}

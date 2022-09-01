@@ -5,7 +5,6 @@ package sync_test
 
 import (
 	"context"
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -27,7 +26,7 @@ func TestSyncExtension(t *testing.T) {
 		globalDir := t.TempDir()
 		defaultValue := true
 
-		logFile, err := ioutil.TempFile(globalDir, "zot-log*.txt")
+		logFile, err := os.CreateTemp(globalDir, "zot-log*.txt")
 		So(err, ShouldBeNil)
 		defer os.Remove(logFile.Name())
 

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"regexp"
@@ -164,7 +163,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 			So(actual, ShouldContainSubstring, "test 1.0 affected parse application/vnd.oci.image.manifest.v1+json")
 
 			// put manifest content back to file
-			err = ioutil.WriteFile(manifestFile, content, 0o600)
+			err = os.WriteFile(manifestFile, content, 0o600)
 			So(err, ShouldBeNil)
 		})
 
@@ -192,7 +191,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 			So(actual, ShouldContainSubstring, "test 1.0 affected stat: parse application/vnd.oci.image.config.v1+json")
 
 			// put config content back to file
-			err = ioutil.WriteFile(configFile, content, 0o600)
+			err = os.WriteFile(configFile, content, 0o600)
 			So(err, ShouldBeNil)
 		})
 
@@ -220,7 +219,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 			So(actual, ShouldContainSubstring, "test 1.0 affected blob: bad blob digest")
 
 			// put layer content back to file
-			err = ioutil.WriteFile(layerFile, content, 0o600)
+			err = os.WriteFile(layerFile, content, 0o600)
 			So(err, ShouldBeNil)
 		})
 

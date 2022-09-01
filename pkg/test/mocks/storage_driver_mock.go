@@ -3,7 +3,6 @@ package mocks
 import (
 	"context"
 	"io"
-	"io/ioutil"
 	"strings"
 	"time"
 
@@ -58,7 +57,7 @@ func (s *StorageDriverMock) Reader(ctx context.Context, path string, offset int6
 		return s.ReaderFn(ctx, path, offset)
 	}
 
-	return ioutil.NopCloser(strings.NewReader("")), nil
+	return io.NopCloser(strings.NewReader("")), nil
 }
 
 func (s *StorageDriverMock) Writer(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {

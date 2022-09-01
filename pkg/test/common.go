@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"math/big"
 	"net/http"
@@ -67,14 +66,14 @@ func MakeHtpasswdFile() string {
 }
 
 func MakeHtpasswdFileFromString(fileContent string) string {
-	htpasswdFile, err := ioutil.TempFile("", "htpasswd-")
+	htpasswdFile, err := os.CreateTemp("", "htpasswd-")
 	if err != nil {
 		panic(err)
 	}
 
 	// bcrypt(username="test", passwd="test")
 	content := []byte(fileContent)
-	if err := ioutil.WriteFile(htpasswdFile.Name(), content, 0o600); err != nil { //nolint:gomnd
+	if err := os.WriteFile(htpasswdFile.Name(), content, 0o600); err != nil { //nolint:gomnd
 		panic(err)
 	}
 
@@ -109,9 +108,9 @@ func CopyFiles(sourceDir, destDir string) error {
 		return fmt.Errorf("CopyFiles os.MkdirAll failed: %w", err)
 	}
 
-	files, err := ioutil.ReadDir(sourceDir)
+	files, err := os.ReadDir(sourceDir)
 	if err != nil {
-		return fmt.Errorf("CopyFiles ioutil.ReadDir failed: %w", err)
+		return fmt.Errorf("CopyFiles os.ReadDir failed: %w", err)
 	}
 
 	for _, file := range files {
@@ -258,7 +257,7 @@ func GetOciLayoutDigests(imagePath string) (godigest.Digest, godigest.Digest, go
 			panic(err)
 		}
 
-		manifestBuf, err := ioutil.ReadAll(manifestBlob)
+		manifestBuf, err := io.ReadAll(manifestBlob)
 		if err != nil {
 			panic(err)
 		}

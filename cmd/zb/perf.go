@@ -4,7 +4,6 @@ import (
 	crand "crypto/rand"
 	"crypto/tls"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"math/big"
 	"net"
@@ -724,7 +723,7 @@ func Perf(
 			log.Fatal(err) // file closed on exit
 		}
 
-		if err := ioutil.WriteFile(fmt.Sprintf("%s.json", outFmt), jsonOut, defaultFilePerms); err != nil {
+		if err := os.WriteFile(fmt.Sprintf("%s.json", outFmt), jsonOut, defaultFilePerms); err != nil {
 			log.Fatal(err)
 		}
 	}

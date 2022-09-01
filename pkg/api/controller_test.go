@@ -13,7 +13,6 @@ import (
 	goerrors "errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -907,7 +906,7 @@ func TestMultipleInstance(t *testing.T) {
 
 func TestTLSWithBasicAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		caCert, err := ioutil.ReadFile(CACert)
+		caCert, err := os.ReadFile(CACert)
 		So(err, ShouldBeNil)
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
@@ -967,7 +966,7 @@ func TestTLSWithBasicAuth(t *testing.T) {
 
 func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		caCert, err := ioutil.ReadFile(CACert)
+		caCert, err := os.ReadFile(CACert)
 		So(err, ShouldBeNil)
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
@@ -1036,7 +1035,7 @@ func TestTLSWithBasicAuthAllowReadAccess(t *testing.T) {
 
 func TestMutualTLSAuthWithUserPermissions(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		caCert, err := ioutil.ReadFile(CACert)
+		caCert, err := os.ReadFile(CACert)
 		So(err, ShouldBeNil)
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
@@ -1119,7 +1118,7 @@ func TestMutualTLSAuthWithUserPermissions(t *testing.T) {
 
 func TestMutualTLSAuthWithoutCN(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		caCert, err := ioutil.ReadFile("../../test/data/noidentity/ca.crt")
+		caCert, err := os.ReadFile("../../test/data/noidentity/ca.crt")
 		So(err, ShouldBeNil)
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
@@ -1176,7 +1175,7 @@ func TestMutualTLSAuthWithoutCN(t *testing.T) {
 
 func TestTLSMutualAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		caCert, err := ioutil.ReadFile(CACert)
+		caCert, err := os.ReadFile(CACert)
 		So(err, ShouldBeNil)
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
@@ -1243,7 +1242,7 @@ func TestTLSMutualAuth(t *testing.T) {
 
 func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		caCert, err := ioutil.ReadFile(CACert)
+		caCert, err := os.ReadFile(CACert)
 		So(err, ShouldBeNil)
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
@@ -1325,7 +1324,7 @@ func TestTLSMutualAuthAllowReadAccess(t *testing.T) {
 
 func TestTLSMutualAndBasicAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		caCert, err := ioutil.ReadFile(CACert)
+		caCert, err := os.ReadFile(CACert)
 		So(err, ShouldBeNil)
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
@@ -1402,7 +1401,7 @@ func TestTLSMutualAndBasicAuth(t *testing.T) {
 
 func TestTLSMutualAndBasicAuthAllowReadAccess(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		caCert, err := ioutil.ReadFile(CACert)
+		caCert, err := os.ReadFile(CACert)
 		So(err, ShouldBeNil)
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
@@ -3219,7 +3218,7 @@ func TestCrossRepoMount(t *testing.T) {
 
 		blob := manifestDigest.Encoded()
 
-		buf, err := ioutil.ReadFile(path.Join(ctlr.Config.Storage.RootDirectory, "zot-cve-test/blobs/sha256/"+blob))
+		buf, err := os.ReadFile(path.Join(ctlr.Config.Storage.RootDirectory, "zot-cve-test/blobs/sha256/"+blob))
 		if err != nil {
 			panic(err)
 		}
@@ -3519,7 +3518,7 @@ func TestParallelRequests(t *testing.T) {
 
 				blobPath := path.Join("../../test/data", testcase.srcImageName, "blobs/sha256", blob)
 
-				buf, err := ioutil.ReadFile(blobPath)
+				buf, err := os.ReadFile(blobPath)
 				if err != nil {
 					panic(err)
 				}
@@ -3975,7 +3974,7 @@ func TestImageSignatures(t *testing.T) {
 				err = json.Unmarshal(resp.Body(), &refs)
 				So(err, ShouldBeNil)
 				So(len(refs.References), ShouldEqual, 1)
-				err = ioutil.WriteFile(path.Join(dir, repoName, "blobs",
+				err = os.WriteFile(path.Join(dir, repoName, "blobs",
 					strings.ReplaceAll(refs.References[0].Digest.String(), ":", "/")), []byte("corrupt"), 0o600)
 				So(err, ShouldBeNil)
 				resp, err = resty.R().SetQueryParam("artifactType", notreg.ArtifactTypeNotation).Get(
@@ -5371,7 +5370,7 @@ func TestManifestImageIndex(t *testing.T) {
 				})
 
 				Convey("Corrupt index", func() {
-					err = ioutil.WriteFile(path.Join(dir, "index", "blobs", index1dgst.Algorithm().String(), index1dgst.Encoded()),
+					err = os.WriteFile(path.Join(dir, "index", "blobs", index1dgst.Algorithm().String(), index1dgst.Encoded()),
 						[]byte("deadbeef"), storage.DefaultFilePerms)
 					So(err, ShouldBeNil)
 					resp, err = resty.R().Delete(baseURL + fmt.Sprintf("/v2/index/manifests/%s", index1dgst))
@@ -5751,7 +5750,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 			_, err = os.Stat(indexFile)
 			So(err, ShouldBeNil)
 			indexContent := []byte(`not a JSON content`)
-			err = ioutil.WriteFile(indexFile, indexContent, 0o600)
+			err = os.WriteFile(indexFile, indexContent, 0o600)
 			So(err, ShouldBeNil)
 
 			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
@@ -5771,7 +5770,7 @@ func TestPeriodicGC(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 
-		logFile, err := ioutil.TempFile("", "zot-log*.txt")
+		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
 		conf.Log.Output = logFile.Name()
 		defer os.Remove(logFile.Name()) // clean up
@@ -5814,7 +5813,7 @@ func TestPeriodicGC(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 
-		logFile, err := ioutil.TempFile("", "zot-log*.txt")
+		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
 		conf.Log.Output = logFile.Name()
 		defer os.Remove(logFile.Name()) // clean up
@@ -5854,7 +5853,7 @@ func TestPeriodicTasks(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 
-		logFile, err := ioutil.TempFile("", "zot-log*.txt")
+		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
 		conf.Log.Output = logFile.Name()
 		defer os.Remove(logFile.Name()) // clean up
@@ -5890,7 +5889,7 @@ func TestPeriodicTasks(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 
-		logFile, err := ioutil.TempFile("", "zot-log*.txt")
+		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
 		conf.Log.Output = logFile.Name()
 		defer os.Remove(logFile.Name()) // clean up
@@ -6096,7 +6095,7 @@ func TestDistSpecExtensions(t *testing.T) {
 			Search: searchConfig,
 		}
 
-		logFile, err := ioutil.TempFile("", "zot-log*.txt")
+		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
 		conf.Log.Output = logFile.Name()
 		defer os.Remove(logFile.Name()) // clean up
@@ -6132,7 +6131,7 @@ func TestDistSpecExtensions(t *testing.T) {
 
 		conf.HTTP.Port = port
 
-		logFile, err := ioutil.TempFile("", "zot-log*.txt")
+		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
 		conf.Log.Output = logFile.Name()
 		defer os.Remove(logFile.Name()) // clean up
@@ -6164,7 +6163,7 @@ func getAllBlobs(imagePath string) []string {
 		return []string{}
 	}
 
-	buf, err := ioutil.ReadFile(path.Join(imagePath, "index.json"))
+	buf, err := os.ReadFile(path.Join(imagePath, "index.json"))
 	if err != nil {
 		panic(err)
 	}
@@ -6181,7 +6180,7 @@ func getAllBlobs(imagePath string) []string {
 		blobList = append(blobList, digest.Encoded())
 		p := path.Join(imagePath, "blobs", digest.Algorithm().String(), digest.Encoded())
 
-		buf, err = ioutil.ReadFile(p)
+		buf, err = os.ReadFile(p)
 
 		if err != nil {
 			panic(err)
@@ -6209,7 +6208,7 @@ func getAllManifests(imagePath string) []string {
 		return []string{}
 	}
 
-	buf, err := ioutil.ReadFile(path.Join(imagePath, "index.json"))
+	buf, err := os.ReadFile(path.Join(imagePath, "index.json"))
 	if err != nil {
 		panic(err)
 	}

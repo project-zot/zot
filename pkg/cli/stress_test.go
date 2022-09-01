@@ -6,7 +6,6 @@ package cli_test
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"sync"
@@ -46,7 +45,7 @@ func TestSressTooManyOpenFiles(t *testing.T) {
 		conf.Storage.Dedupe = false
 		conf.Storage.GC = true
 
-		logFile, err := ioutil.TempFile("", "zot-log*.txt")
+		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
 
 		defer func() {
@@ -93,7 +92,7 @@ func TestSressTooManyOpenFiles(t *testing.T) {
 				}
 			}`, dir, conf.Storage.Dedupe, conf.Storage.GC, port, logFile.Name())
 
-		cfgfile, err := ioutil.TempFile("", "zot-test*.json")
+		cfgfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(cfgfile.Name()) // clean up
 		_, err = cfgfile.Write([]byte(content))
@@ -135,7 +134,7 @@ func TestSressTooManyOpenFiles(t *testing.T) {
 		stopServer(ctlr)
 		time.Sleep(2 * time.Second)
 
-		scrubFile, err := ioutil.TempFile("", "zot-scrub*.txt")
+		scrubFile, err := os.CreateTemp("", "zot-scrub*.txt")
 		So(err, ShouldBeNil)
 
 		defer func() {

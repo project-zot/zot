@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"testing"
@@ -78,7 +77,7 @@ func TestServe(t *testing.T) {
 		})
 
 		Convey("bad config", func(c C) {
-			tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+			tmpfile, err := os.CreateTemp("", "zot-test*.json")
 			So(err, ShouldBeNil)
 			defer os.Remove(tmpfile.Name()) // clean up
 			content := []byte(`{"log":{}}`)
@@ -98,7 +97,7 @@ func TestVerify(t *testing.T) {
 	defer func() { os.Args = oldArgs }()
 
 	Convey("Test verify bad config", t, func(c C) {
-		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"log":{}}`)
@@ -111,7 +110,7 @@ func TestVerify(t *testing.T) {
 	})
 
 	Convey("Test verify storage driver different than s3", t, func(c C) {
-		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot", "storageDriver": {"name": "gcs"}},
@@ -126,7 +125,7 @@ func TestVerify(t *testing.T) {
 	})
 
 	Convey("Test verify subpath storage driver different than s3", t, func(c C) {
-		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot", "storageDriver": {"name": "s3"},
@@ -142,7 +141,7 @@ func TestVerify(t *testing.T) {
 	})
 
 	Convey("Test verify subpath storage config", t, func(c C) {
-		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot",
@@ -218,7 +217,7 @@ func TestVerify(t *testing.T) {
 	})
 
 	Convey("Test verify w/ authorization and w/o authentication", t, func(c C) {
-		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
@@ -234,7 +233,7 @@ func TestVerify(t *testing.T) {
 	})
 
 	Convey("Test verify w/ authorization and w/ authentication", t, func(c C) {
-		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
@@ -251,7 +250,7 @@ func TestVerify(t *testing.T) {
 	})
 
 	Convey("Test verify anonymous authorization", t, func(c C) {
-		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
@@ -268,7 +267,7 @@ func TestVerify(t *testing.T) {
 	})
 
 	Convey("Test verify default authorization fail", t, func(c C) {
-		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
@@ -287,7 +286,7 @@ func TestVerify(t *testing.T) {
 	})
 
 	Convey("Test verify default authorization fail", t, func(c C) {
-		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
@@ -307,7 +306,7 @@ func TestVerify(t *testing.T) {
 	})
 
 	Convey("Test verify w/ sync and w/o filesystem storage", t, func(c C) {
-		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot", "storageDriver": {"name": "s3"}},
@@ -324,7 +323,7 @@ func TestVerify(t *testing.T) {
 	})
 
 	Convey("Test verify w/ sync and w/ filesystem storage", t, func(c C) {
-		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
@@ -341,7 +340,7 @@ func TestVerify(t *testing.T) {
 	})
 
 	Convey("Test verify with bad sync prefixes", t, func(c C) {
-		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
@@ -359,7 +358,7 @@ func TestVerify(t *testing.T) {
 	})
 
 	Convey("Test verify with bad authorization repo patterns", t, func(c C) {
-		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
@@ -375,7 +374,7 @@ func TestVerify(t *testing.T) {
 	})
 
 	Convey("Test verify sync config default tls value", t, func(c C) {
-		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
@@ -394,7 +393,7 @@ func TestVerify(t *testing.T) {
 	})
 
 	Convey("Test verify sync without retry options", t, func(c C) {
-		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
@@ -411,7 +410,7 @@ func TestVerify(t *testing.T) {
 	})
 
 	Convey("Test verify config with unknown keys", t, func(c C) {
-		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"distSpecVersion": "1.0.0", "storage": {"rootDirectory": "/tmp/zot"},
@@ -426,7 +425,7 @@ func TestVerify(t *testing.T) {
 	})
 
 	Convey("Test verify config with missing basedn key", t, func(c C) {
-		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"distSpecVersion": "1.0.0", "storage": {"rootDirectory": "/tmp/zot"},
@@ -442,7 +441,7 @@ func TestVerify(t *testing.T) {
 	})
 
 	Convey("Test verify config with missing address key", t, func(c C) {
-		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"distSpecVersion": "1.0.0", "storage": {"rootDirectory": "/tmp/zot"},
@@ -458,7 +457,7 @@ func TestVerify(t *testing.T) {
 	})
 
 	Convey("Test verify config with missing userattribute key", t, func(c C) {
-		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"distSpecVersion": "1.0.0", "storage": {"rootDirectory": "/tmp/zot"},
@@ -474,7 +473,7 @@ func TestVerify(t *testing.T) {
 	})
 
 	Convey("Test verify good config", t, func(c C) {
-		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"distSpecVersion": "1.0.0", "storage": {"rootDirectory": "/tmp/zot"},
@@ -498,7 +497,7 @@ func TestLoadConfig(t *testing.T) {
 	})
 	Convey("Test subpath config combination", t, func(c C) {
 		config := config.New()
-		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name())
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot",
@@ -557,7 +556,7 @@ func TestGC(t *testing.T) {
 	})
 
 	Convey("Test GC config corner cases", t, func(c C) {
-		contents, err := ioutil.ReadFile("../../examples/config-gc.json")
+		contents, err := os.ReadFile("../../examples/config-gc.json")
 		So(err, ShouldBeNil)
 
 		Convey("GC delay without GC", func() {
@@ -565,14 +564,14 @@ func TestGC(t *testing.T) {
 			err = json.Unmarshal(contents, config)
 			config.Storage.GC = false
 
-			file, err := ioutil.TempFile("", "gc-config-*.json")
+			file, err := os.CreateTemp("", "gc-config-*.json")
 			So(err, ShouldBeNil)
 			defer os.Remove(file.Name())
 
 			contents, err = json.MarshalIndent(config, "", " ")
 			So(err, ShouldBeNil)
 
-			err = ioutil.WriteFile(file.Name(), contents, 0o600)
+			err = os.WriteFile(file.Name(), contents, 0o600)
 			So(err, ShouldBeNil)
 			err = cli.LoadConfiguration(config, file.Name())
 			So(err, ShouldBeNil)
@@ -585,14 +584,14 @@ func TestGC(t *testing.T) {
 			config.Storage.GCDelay = 0
 			config.Storage.GCInterval = 24 * time.Hour
 
-			file, err := ioutil.TempFile("", "gc-config-*.json")
+			file, err := os.CreateTemp("", "gc-config-*.json")
 			So(err, ShouldBeNil)
 			defer os.Remove(file.Name())
 
 			contents, err = json.MarshalIndent(config, "", " ")
 			So(err, ShouldBeNil)
 
-			err = ioutil.WriteFile(file.Name(), contents, 0o600)
+			err = os.WriteFile(file.Name(), contents, 0o600)
 			So(err, ShouldBeNil)
 			err = cli.LoadConfiguration(config, file.Name())
 			So(err, ShouldBeNil)
@@ -603,14 +602,14 @@ func TestGC(t *testing.T) {
 			err = json.Unmarshal(contents, config)
 			config.Storage.GCDelay = -1 * time.Second
 
-			file, err := ioutil.TempFile("", "gc-config-*.json")
+			file, err := os.CreateTemp("", "gc-config-*.json")
 			So(err, ShouldBeNil)
 			defer os.Remove(file.Name())
 
 			contents, err = json.MarshalIndent(config, "", " ")
 			So(err, ShouldBeNil)
 
-			err = ioutil.WriteFile(file.Name(), contents, 0o600)
+			err = os.WriteFile(file.Name(), contents, 0o600)
 			So(err, ShouldBeNil)
 			err = cli.LoadConfiguration(config, file.Name())
 			So(err, ShouldNotBeNil)
@@ -619,7 +618,7 @@ func TestGC(t *testing.T) {
 		Convey("GC delay when GC = false", func() {
 			config := config.New()
 
-			file, err := ioutil.TempFile("", "gc-false-config-*.json")
+			file, err := os.CreateTemp("", "gc-false-config-*.json")
 			So(err, ShouldBeNil)
 			defer os.Remove(file.Name())
 
@@ -627,7 +626,7 @@ func TestGC(t *testing.T) {
 			"gc": false}, "http": {"address": "127.0.0.1", "port": "8080"},
 			"log": {"level": "debug"}}`)
 
-			err = ioutil.WriteFile(file.Name(), content, 0o600)
+			err = os.WriteFile(file.Name(), content, 0o600)
 			So(err, ShouldBeNil)
 			err = cli.LoadConfiguration(config, file.Name())
 			So(err, ShouldBeNil)
@@ -639,14 +638,14 @@ func TestGC(t *testing.T) {
 			err = json.Unmarshal(contents, config)
 			config.Storage.GCInterval = -1 * time.Second
 
-			file, err := ioutil.TempFile("", "gc-config-*.json")
+			file, err := os.CreateTemp("", "gc-config-*.json")
 			So(err, ShouldBeNil)
 			defer os.Remove(file.Name())
 
 			contents, err = json.MarshalIndent(config, "", " ")
 			So(err, ShouldBeNil)
 
-			err = ioutil.WriteFile(file.Name(), contents, 0o600)
+			err = os.WriteFile(file.Name(), contents, 0o600)
 			So(err, ShouldBeNil)
 			err = cli.LoadConfiguration(config, file.Name())
 			So(err, ShouldNotBeNil)
@@ -683,7 +682,7 @@ func TestScrub(t *testing.T) {
 		})
 
 		Convey("bad config", func(c C) {
-			tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+			tmpfile, err := os.CreateTemp("", "zot-test*.json")
 			So(err, ShouldBeNil)
 			defer os.Remove(tmpfile.Name()) // clean up
 			content := []byte(`{"log":{}}`)
@@ -720,7 +719,7 @@ func TestScrub(t *testing.T) {
 				time.Sleep(100 * time.Millisecond)
 			}
 
-			tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+			tmpfile, err := os.CreateTemp("", "zot-test*.json")
 			So(err, ShouldBeNil)
 			defer os.Remove(tmpfile.Name()) // clean up
 			content := []byte(fmt.Sprintf(`{
@@ -752,7 +751,7 @@ func TestScrub(t *testing.T) {
 		Convey("no image store provided", func(c C) {
 			port := GetFreePort()
 
-			tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+			tmpfile, err := os.CreateTemp("", "zot-test*.json")
 			So(err, ShouldBeNil)
 			defer os.Remove(tmpfile.Name()) // clean up
 			content := []byte(fmt.Sprintf(`{
@@ -782,7 +781,7 @@ func TestScrub(t *testing.T) {
 
 			repoName := "badIndex"
 
-			repo, err := ioutil.TempDir(dir, repoName)
+			repo, err := os.MkdirTemp(dir, repoName)
 			if err != nil {
 				panic(err)
 			}
@@ -793,19 +792,19 @@ func TestScrub(t *testing.T) {
 
 			if _, err = os.Stat(fmt.Sprintf("%s/oci-layout", repo)); err != nil {
 				content := []byte(`{"imageLayoutVersion": "1.0.0"}`)
-				if err = ioutil.WriteFile(fmt.Sprintf("%s/oci-layout", repo), content, 0o600); err != nil {
+				if err = os.WriteFile(fmt.Sprintf("%s/oci-layout", repo), content, 0o600); err != nil {
 					panic(err)
 				}
 			}
 
 			if _, err = os.Stat(fmt.Sprintf("%s/index.json", repo)); err != nil {
 				content := []byte(`not a JSON content`)
-				if err = ioutil.WriteFile(fmt.Sprintf("%s/index.json", repo), content, 0o600); err != nil {
+				if err = os.WriteFile(fmt.Sprintf("%s/index.json", repo), content, 0o600); err != nil {
 					panic(err)
 				}
 			}
 
-			tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+			tmpfile, err := os.CreateTemp("", "zot-test*.json")
 			So(err, ShouldBeNil)
 			defer os.Remove(tmpfile.Name()) // clean up
 			content := []byte(fmt.Sprintf(`{

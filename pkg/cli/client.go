@@ -10,7 +10,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"errors"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -131,7 +131,7 @@ func doHTTPRequest(req *http.Request, verifyTLS bool, resultsPtr interface{}) (h
 			return nil, zotErrors.ErrUnauthorizedAccess
 		}
 
-		bodyBytes, _ := ioutil.ReadAll(resp.Body)
+		bodyBytes, _ := io.ReadAll(resp.Body)
 
 		return nil, errors.New(string(bodyBytes)) //nolint: goerr113
 	}
@@ -179,7 +179,7 @@ func getTLSConfig(certsPath string, caCertPool *x509.CertPool) (*tls.Config, err
 		return nil, err
 	}
 
-	caCert, err := ioutil.ReadFile(caCertFile)
+	caCert, err := os.ReadFile(caCertFile)
 	if err != nil {
 		return nil, err
 	}

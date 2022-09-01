@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"path"
@@ -1414,7 +1413,7 @@ func makeConfigFile(content string) string {
 
 	configPath := path.Join(home + "/.zot")
 
-	if err := ioutil.WriteFile(configPath, []byte(content), 0o600); err != nil {
+	if err := os.WriteFile(configPath, []byte(content), 0o600); err != nil {
 		panic(err)
 	}
 

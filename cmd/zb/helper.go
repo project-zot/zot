@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	mrand "math/rand"
 	"net/http"
@@ -118,7 +117,7 @@ func pullAndCollect(url string, repos []string, manifestItem manifestStruct,
 			manifestBody := resp.Body()
 
 			// file copy simulation
-			_, err = io.Copy(ioutil.Discard, bytes.NewReader(manifestBody))
+			_, err = io.Copy(io.Discard, bytes.NewReader(manifestBody))
 
 			latency = time.Since(start)
 
@@ -176,7 +175,7 @@ func pullAndCollect(url string, repos []string, manifestItem manifestStruct,
 			configBody := resp.Body()
 
 			// file copy simulation
-			_, err = io.Copy(ioutil.Discard, bytes.NewReader(configBody))
+			_, err = io.Copy(io.Discard, bytes.NewReader(configBody))
 
 			latency = time.Since(start)
 
@@ -230,7 +229,7 @@ func pullAndCollect(url string, repos []string, manifestItem manifestStruct,
 				blobBody := resp.Body()
 
 				// file copy simulation
-				_, err = io.Copy(ioutil.Discard, bytes.NewReader(blobBody))
+				_, err = io.Copy(io.Discard, bytes.NewReader(blobBody))
 				if err != nil {
 					log.Fatal(err)
 				}

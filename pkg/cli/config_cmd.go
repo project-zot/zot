@@ -6,7 +6,6 @@ package cli
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"strconv"
@@ -135,7 +134,7 @@ func getConfigMapFromFile(filePath string) ([]interface{}, error) {
 
 	file.Close()
 
-	data, err := ioutil.ReadFile(filePath)
+	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +168,7 @@ func saveConfigMapToFile(filePath string, configMap []interface{}) error {
 		return err
 	}
 
-	if err := ioutil.WriteFile(filePath, marshalled, defaultFilePerms); err != nil {
+	if err := os.WriteFile(filePath, marshalled, defaultFilePerms); err != nil {
 		return err
 	}
 
