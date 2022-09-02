@@ -4,16 +4,21 @@
 package cli_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
+	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 	"zotregistry.io/zot/pkg/cli"
 	. "zotregistry.io/zot/pkg/test"
 )
+
+const readLogFileTimeout = 5 * time.Second
 
 func TestServeExtensions(t *testing.T) {
 	oldArgs := os.Args
@@ -311,9 +316,12 @@ func TestServeSyncExtension(t *testing.T) {
 				}
 			}`
 
-		data, err := runCLIWithConfig(t.TempDir(), content)
+		logPath, err := runCLIWithConfig(t.TempDir(), content)
 		So(err, ShouldBeNil)
-		So(data, ShouldContainSubstring,
+		data, err := os.ReadFile(logPath)
+		So(err, ShouldBeNil)
+		defer os.Remove(logPath) // clean up
+		So(string(data), ShouldContainSubstring,
 			"\"Extensions\":{\"Search\":null,\"Sync\":{\"Enable\":true")
 	})
 
@@ -354,9 +362,12 @@ func TestServeSyncExtension(t *testing.T) {
 				}
 			}`
 
-		data, err := runCLIWithConfig(t.TempDir(), content)
+		logPath, err := runCLIWithConfig(t.TempDir(), content)
 		So(err, ShouldBeNil)
-		So(data, ShouldContainSubstring,
+		data, err := os.ReadFile(logPath)
+		So(err, ShouldBeNil)
+		defer os.Remove(logPath) // clean up
+		So(string(data), ShouldContainSubstring,
 			"\"Extensions\":{\"Search\":null,\"Sync\":{\"Enable\":true")
 	})
 
@@ -387,9 +398,12 @@ func TestServeSyncExtension(t *testing.T) {
 				}
 			}`
 
-		data, err := runCLIWithConfig(t.TempDir(), content)
+		logPath, err := runCLIWithConfig(t.TempDir(), content)
 		So(err, ShouldBeNil)
-		So(data, ShouldContainSubstring,
+		data, err := os.ReadFile(logPath)
+		So(err, ShouldBeNil)
+		defer os.Remove(logPath) // clean up
+		So(string(data), ShouldContainSubstring,
 			"\"Extensions\":{\"Search\":null,\"Sync\":{\"Enable\":false")
 	})
 }
@@ -419,15 +433,19 @@ func TestServeScrubExtension(t *testing.T) {
 					}
 				}`
 
-		data, err := runCLIWithConfig(t.TempDir(), content)
+		logPath, err := runCLIWithConfig(t.TempDir(), content)
 		So(err, ShouldBeNil)
+		data, err := os.ReadFile(logPath)
+		So(err, ShouldBeNil)
+		defer os.Remove(logPath) // clean up
 		// Even if in config we specified scrub interval=1h, the minimum interval is 2h
-		So(data, ShouldContainSubstring,
+		dataStr := string(data)
+		So(dataStr, ShouldContainSubstring,
 			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":{\"Interval\":3600000000000},\"Lint\":null") //nolint:lll // gofumpt conflicts with lll
-		So(data, ShouldContainSubstring,
+		So(dataStr, ShouldContainSubstring,
 			"Scrub interval set to too-short interval < 2h, changing scrub duration to 2 hours and continuing.")
-		So(data, ShouldContainSubstring, "Starting periodic background tasks for")
-		So(data, ShouldContainSubstring, "Finishing periodic background tasks for")
+		So(dataStr, ShouldContainSubstring, "Starting periodic background tasks for")
+		So(dataStr, ShouldContainSubstring, "Finishing periodic background tasks for")
 	})
 
 	Convey("scrub not enabled - scrub interval param not set", t, func(c C) {
@@ -449,12 +467,16 @@ func TestServeScrubExtension(t *testing.T) {
 				}
 			}`
 
-		data, err := runCLIWithConfig(t.TempDir(), content)
+		logPath, err := runCLIWithConfig(t.TempDir(), content)
 		So(err, ShouldBeNil)
-		So(data, ShouldContainSubstring,
+		data, err := os.ReadFile(logPath)
+		So(err, ShouldBeNil)
+		defer os.Remove(logPath) // clean up
+		dataStr := string(data)
+		So(dataStr, ShouldContainSubstring,
 			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":null}")
-		So(data, ShouldContainSubstring, "Scrub config not provided, skipping scrub")
-		So(data, ShouldNotContainSubstring,
+		So(dataStr, ShouldContainSubstring, "Scrub config not provided, skipping scrub")
+		So(dataStr, ShouldNotContainSubstring,
 			"Scrub interval set to too-short interval < 2h, changing scrub duration to 2 hours and continuing.")
 	})
 }
@@ -485,9 +507,12 @@ func TestServeLintExtension(t *testing.T) {
 					}
 				}`
 
-		data, err := runCLIWithConfig(t.TempDir(), content)
+		logPath, err := runCLIWithConfig(t.TempDir(), content)
 		So(err, ShouldBeNil)
-		So(data, ShouldContainSubstring,
+		data, err := os.ReadFile(logPath)
+		So(err, ShouldBeNil)
+		defer os.Remove(logPath) // clean up
+		So(string(data), ShouldContainSubstring,
 			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":{\"Enabled\":true,\"MandatoryAnnotations\":") //nolint:lll // gofumpt conflicts with lll
 	})
 
@@ -511,9 +536,12 @@ func TestServeLintExtension(t *testing.T) {
 					}
 				}`
 
-		data, err := runCLIWithConfig(t.TempDir(), content)
+		logPath, err := runCLIWithConfig(t.TempDir(), content)
 		So(err, ShouldBeNil)
-		So(data, ShouldContainSubstring,
+		data, err := os.ReadFile(logPath)
+		So(err, ShouldBeNil)
+		defer os.Remove(logPath) // clean up
+		So(string(data), ShouldContainSubstring,
 			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":{\"Enabled\":false,\"MandatoryAnnotations\":null}") //nolint:lll // gofumpt conflicts with lll
 	})
 }
@@ -543,13 +571,20 @@ func TestServeSearchEnabled(t *testing.T) {
 				}`
 
 		tempDir := t.TempDir()
-		data, err := runCLIWithConfig(tempDir, content)
+		logPath, err := runCLIWithConfig(tempDir, content)
+		So(err, ShouldBeNil)
 		// to avoid data race when multiple go routines write to trivy DB instance.
 		WaitTillTrivyDBDownloadStarted(tempDir)
+		defer os.Remove(logPath) // clean up
+
+		substring := "\"Extensions\":{\"Search\":{\"CVE\":{\"UpdateInterval\":86400000000000},\"Enable\":true},\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":null}" //nolint:lll // gofumpt conflicts with lll
+		found, err := readLogFileAndSearchString(logPath, substring, readLogFileTimeout)
+		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
-		So(data, ShouldContainSubstring,
-			"\"Extensions\":{\"Search\":{\"CVE\":{\"UpdateInterval\":86400000000000},\"Enable\":true},\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":null}") //nolint:lll // gofumpt conflicts with lll
-		So(data, ShouldContainSubstring, "updating the CVE database")
+
+		found, err = readLogFileAndSearchString(logPath, "updating the CVE database", readLogFileTimeout)
+		So(found, ShouldBeTrue)
+		So(err, ShouldBeNil)
 	})
 }
 
@@ -581,16 +616,25 @@ func TestServeSearchEnabledCVE(t *testing.T) {
 				}`
 
 		tempDir := t.TempDir()
-		data, err := runCLIWithConfig(tempDir, content)
+		logPath, err := runCLIWithConfig(tempDir, content)
+		So(err, ShouldBeNil)
+		defer os.Remove(logPath) // clean up
 		// to avoid data race when multiple go routines write to trivy DB instance.
 		WaitTillTrivyDBDownloadStarted(tempDir)
+
+		substring := "\"Extensions\":{\"Search\":{\"CVE\":{\"UpdateInterval\":3600000000000},\"Enable\":true},\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":null}" //nolint:lll // gofumpt conflicts with lll
+		found, err := readLogFileAndSearchString(logPath, substring, readLogFileTimeout)
+		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
-		// Even if in config we specified updateInterval=1h, the minimum interval is 2h
-		So(data, ShouldContainSubstring,
-			"\"Extensions\":{\"Search\":{\"CVE\":{\"UpdateInterval\":3600000000000},\"Enable\":true},\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":null}") //nolint:lll // gofumpt conflicts with lll
-		So(data, ShouldContainSubstring, "updating the CVE database")
-		So(data, ShouldContainSubstring,
-			"CVE update interval set to too-short interval < 2h, changing update duration to 2 hours and continuing.")
+
+		found, err = readLogFileAndSearchString(logPath, "updating the CVE database", readLogFileTimeout)
+		So(found, ShouldBeTrue)
+		So(err, ShouldBeNil)
+
+		substring = "CVE update interval set to too-short interval < 2h, changing update duration to 2 hours and continuing." //nolint:lll // gofumpt conflicts with lll
+		found, err = readLogFileAndSearchString(logPath, substring, readLogFileTimeout)
+		So(found, ShouldBeTrue)
+		So(err, ShouldBeNil)
 	})
 }
 
@@ -620,13 +664,20 @@ func TestServeSearchEnabledNoCVE(t *testing.T) {
 			}`
 
 		tempDir := t.TempDir()
-		data, err := runCLIWithConfig(tempDir, content)
+		logPath, err := runCLIWithConfig(tempDir, content)
+		So(err, ShouldBeNil)
+		defer os.Remove(logPath) // clean up
 		// to avoid data race when multiple go routines write to trivy DB instance.
 		WaitTillTrivyDBDownloadStarted(tempDir)
+
+		substring := "\"Extensions\":{\"Search\":{\"CVE\":{\"UpdateInterval\":86400000000000},\"Enable\":true},\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":null}" //nolint:lll // gofumpt conflicts with lll
+		found, err := readLogFileAndSearchString(logPath, substring, readLogFileTimeout)
+		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
-		So(data, ShouldContainSubstring,
-			"\"Extensions\":{\"Search\":{\"CVE\":{\"UpdateInterval\":86400000000000},\"Enable\":true},\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":null}") //nolint:lll // gofumpt conflicts with lll
-		So(data, ShouldContainSubstring, "updating the CVE database")
+
+		found, err = readLogFileAndSearchString(logPath, "updating the CVE database", readLogFileTimeout)
+		So(found, ShouldBeTrue)
+		So(err, ShouldBeNil)
 	})
 }
 
@@ -658,16 +709,39 @@ func TestServeSearchDisabled(t *testing.T) {
 				}
 			}`
 
-		data, err := runCLIWithConfig(t.TempDir(), content)
+		logPath, err := runCLIWithConfig(t.TempDir(), content)
 		So(err, ShouldBeNil)
-
+		data, err := os.ReadFile(logPath)
 		So(err, ShouldBeNil)
-		So(data, ShouldContainSubstring,
+		defer os.Remove(logPath) // clean up
+		dataStr := string(data)
+		So(dataStr, ShouldContainSubstring,
 			"\"Extensions\":{\"Search\":{\"CVE\":{\"UpdateInterval\":10800000000000},\"Enable\":false},\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":null}") //nolint:lll // gofumpt conflicts with lll
-		So(data, ShouldContainSubstring, "CVE config not provided, skipping CVE update")
-		So(data, ShouldNotContainSubstring,
+		So(dataStr, ShouldContainSubstring, "CVE config not provided, skipping CVE update")
+		So(dataStr, ShouldNotContainSubstring,
 			"CVE update interval set to too-short interval < 2h, changing update duration to 2 hours and continuing.")
 	})
+}
+
+func readLogFileAndSearchString(logPath string, stringToMatch string, timeout time.Duration) (bool, error) {
+	ctx, cancelFunc := context.WithTimeout(context.Background(), timeout)
+	defer cancelFunc()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return false, nil
+		default:
+			content, err := os.ReadFile(logPath)
+			if err != nil {
+				return false, err
+			}
+
+			if strings.Contains(string(content), stringToMatch) {
+				return true, nil
+			}
+		}
+	}
 }
 
 // run cli and return output.
@@ -679,8 +753,6 @@ func runCLIWithConfig(tempDir string, config string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-
-	defer os.Remove(logFile.Name()) // clean up
 
 	cfgfile, err := os.CreateTemp(tempDir, "zot-test*.json")
 	if err != nil {
@@ -710,8 +782,5 @@ func runCLIWithConfig(tempDir string, config string) (string, error) {
 
 	WaitTillServerReady(baseURL)
 
-	data, err := os.ReadFile(logFile.Name())
-	So(err, ShouldBeNil)
-
-	return string(data), nil
+	return logFile.Name(), nil
 }
