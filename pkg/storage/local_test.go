@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"io/ioutil"
 	"math/big"
 	"os"
 	"path"
@@ -181,7 +180,7 @@ func TestGetReferrers(t *testing.T) {
 		digest := godigest.FromBytes(body)
 		buf := bytes.NewBuffer(body)
 		buflen := buf.Len()
-		err = ioutil.WriteFile(path.Join(imgStore.RootDir(), //nolint: gosec
+		err = os.WriteFile(path.Join(imgStore.RootDir(), //nolint: gosec
 			"zot-test", "blobs", digest.Algorithm().String(), digest.Encoded()),
 			buf.Bytes(), 0o644)
 		So(err, ShouldBeNil)
@@ -871,7 +870,7 @@ func FuzzGetReferrers(f *testing.F) {
 		digest := godigest.FromBytes([]byte(data))
 		buf := bytes.NewBuffer([]byte(data))
 		buflen := buf.Len()
-		err = ioutil.WriteFile(path.Join(imgStore.RootDir(), //nolint: gosec
+		err = os.WriteFile(path.Join(imgStore.RootDir(), //nolint: gosec
 			"zot-test", "blobs", digest.Algorithm().String(), digest.Encoded()),
 			buf.Bytes(), 0o644)
 		if err != nil {
@@ -1119,7 +1118,7 @@ func TestNegativeCases(t *testing.T) {
 		}
 
 		// Init repo should fail if repo is a file.
-		err = ioutil.WriteFile(path.Join(dir, "file-test"), []byte("this is test file"), 0o755) // nolint:gosec
+		err = os.WriteFile(path.Join(dir, "file-test"), []byte("this is test file"), 0o755) // nolint:gosec
 		So(err, ShouldBeNil)
 		err = imgStore.InitRepo("file-test")
 		So(err, ShouldNotBeNil)
@@ -1162,17 +1161,17 @@ func TestNegativeCases(t *testing.T) {
 			panic(err)
 		}
 
-		err = ioutil.WriteFile(path.Join(dir, "invalid-test", "blobs"), []byte{}, 0o755) // nolint: gosec
+		err = os.WriteFile(path.Join(dir, "invalid-test", "blobs"), []byte{}, 0o755) // nolint: gosec
 		if err != nil {
 			panic(err)
 		}
 
-		err = ioutil.WriteFile(path.Join(dir, "invalid-test", "index.json"), []byte{}, 0o755) // nolint: gosec
+		err = os.WriteFile(path.Join(dir, "invalid-test", "index.json"), []byte{}, 0o755) // nolint: gosec
 		if err != nil {
 			panic(err)
 		}
 
-		err = ioutil.WriteFile(path.Join(dir, "invalid-test", ispec.ImageLayoutFile), []byte{}, 0o755) // nolint: gosec
+		err = os.WriteFile(path.Join(dir, "invalid-test", ispec.ImageLayoutFile), []byte{}, 0o755) // nolint: gosec
 		if err != nil {
 			panic(err)
 		}
@@ -1193,7 +1192,7 @@ func TestNegativeCases(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		So(isValid, ShouldEqual, false)
 
-		err = ioutil.WriteFile(path.Join(dir, "invalid-test", ispec.ImageLayoutFile), []byte("{}"), 0o755) // nolint: gosec
+		err = os.WriteFile(path.Join(dir, "invalid-test", ispec.ImageLayoutFile), []byte("{}"), 0o755) // nolint: gosec
 		if err != nil {
 			panic(err)
 		}
@@ -1203,7 +1202,7 @@ func TestNegativeCases(t *testing.T) {
 		So(err, ShouldEqual, zerr.ErrRepoBadVersion)
 		So(isValid, ShouldEqual, false)
 
-		files, err := ioutil.ReadDir(path.Join(dir, "test"))
+		files, err := os.ReadDir(path.Join(dir, "test"))
 		if err != nil {
 			panic(err)
 		}
@@ -1265,7 +1264,7 @@ func TestNegativeCases(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		So(os.RemoveAll(path.Join(dir, "test")), ShouldBeNil)
 		So(imgStore.InitRepo("test"), ShouldBeNil)
-		So(ioutil.WriteFile(path.Join(dir, "test", "index.json"), []byte{}, 0o600), ShouldBeNil)
+		So(os.WriteFile(path.Join(dir, "test", "index.json"), []byte{}, 0o600), ShouldBeNil)
 		_, err = imgStore.GetImageTags("test")
 		So(err, ShouldNotBeNil)
 	})
@@ -1308,7 +1307,7 @@ func TestNegativeCases(t *testing.T) {
 
 		So(imgStore.InitRepo("test"), ShouldBeNil)
 
-		err = ioutil.WriteFile(path.Join(dir, "test", "index.json"), []byte{}, 0o600)
+		err = os.WriteFile(path.Join(dir, "test", "index.json"), []byte{}, 0o600)
 		if err != nil {
 			panic(err)
 		}
@@ -1385,7 +1384,7 @@ func TestNegativeCases(t *testing.T) {
 		dir := t.TempDir()
 
 		filePath := path.Join(dir, "file.txt")
-		err := ioutil.WriteFile(filePath, []byte("some dummy file content"), 0o644) //nolint: gosec
+		err := os.WriteFile(filePath, []byte("some dummy file content"), 0o644) //nolint: gosec
 		if err != nil {
 			panic(err)
 		}
@@ -1440,7 +1439,7 @@ func TestHardLink(t *testing.T) {
 		dir := t.TempDir()
 
 		filePath := path.Join(dir, "file.txt")
-		err := ioutil.WriteFile(filePath, []byte("some dummy file content"), 0o644) //nolint: gosec
+		err := os.WriteFile(filePath, []byte("some dummy file content"), 0o644) //nolint: gosec
 		if err != nil {
 			panic(err)
 		}
@@ -1454,7 +1453,7 @@ func TestHardLink(t *testing.T) {
 		err := storage.ValidateHardLink(dir)
 		So(err, ShouldBeNil)
 
-		err = ioutil.WriteFile(path.Join(dir, "hardtest.txt"), []byte("testing hard link code"), 0o644) //nolint: gosec
+		err = os.WriteFile(path.Join(dir, "hardtest.txt"), []byte("testing hard link code"), 0o644) //nolint: gosec
 		if err != nil {
 			panic(err)
 		}
@@ -1895,7 +1894,7 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 		dir := t.TempDir()
 
 		Convey("Garbage collect error for repo with config removed", func() {
-			logFile, _ := ioutil.TempFile("", "zot-log*.txt")
+			logFile, _ := os.CreateTemp("", "zot-log*.txt")
 
 			defer os.Remove(logFile.Name()) // clean up
 
@@ -1927,7 +1926,7 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 		})
 
 		Convey("Garbage collect error - not enough permissions to access index.json", func() {
-			logFile, _ := ioutil.TempFile("", "zot-log*.txt")
+			logFile, _ := os.CreateTemp("", "zot-log*.txt")
 
 			defer os.Remove(logFile.Name()) // clean up
 
@@ -2020,7 +2019,7 @@ func TestGetRepositoriesError(t *testing.T) {
 		err := os.Mkdir(path.Join(dir, "test-dir"), 0o755)
 		So(err, ShouldBeNil)
 
-		err = ioutil.WriteFile(path.Join(dir, "test-dir/test-file"), []byte("this is test file"), 0o000)
+		err = os.WriteFile(path.Join(dir, "test-dir/test-file"), []byte("this is test file"), 0o000)
 		So(err, ShouldBeNil)
 
 		_, err = imgStore.GetRepositories()

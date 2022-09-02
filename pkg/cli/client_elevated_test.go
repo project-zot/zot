@@ -9,7 +9,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -67,7 +66,7 @@ func TestElevatedPrivilegesTLSNewControllerPrivilegedCert(t *testing.T) {
 
 		os.Chdir(wd)
 
-		caCert, err := ioutil.ReadFile(CACert)
+		caCert, err := os.ReadFile(CACert)
 		So(err, ShouldBeNil)
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)

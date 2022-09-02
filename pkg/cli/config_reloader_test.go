@@ -3,7 +3,6 @@ package cli_test
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"testing"
 	"time"
@@ -23,7 +22,7 @@ func TestConfigReloader(t *testing.T) {
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
 
-		logFile, err := ioutil.TempFile("", "zot-log*.txt")
+		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
 
 		username := "alice"
@@ -78,7 +77,7 @@ func TestConfigReloader(t *testing.T) {
 			}
 		  }`, port, htpasswdPath, logFile.Name())
 
-		cfgfile, err := ioutil.TempFile("", "zot-test*.json")
+		cfgfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 
 		defer os.Remove(cfgfile.Name()) // clean up
@@ -161,7 +160,7 @@ func TestConfigReloader(t *testing.T) {
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
 
-		logFile, err := ioutil.TempFile("", "zot-log*.txt")
+		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
 
 		defer os.Remove(logFile.Name()) // clean up
@@ -202,7 +201,7 @@ func TestConfigReloader(t *testing.T) {
 				}
 			}`, port, logFile.Name())
 
-		cfgfile, err := ioutil.TempFile("", "zot-test*.json")
+		cfgfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 
 		defer os.Remove(cfgfile.Name()) // clean up
@@ -291,7 +290,7 @@ func TestConfigReloader(t *testing.T) {
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
 
-		logFile, err := ioutil.TempFile("", "zot-log*.txt")
+		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
 
 		defer os.Remove(logFile.Name()) // clean up
@@ -332,7 +331,7 @@ func TestConfigReloader(t *testing.T) {
 				}
 			}`, port, logFile.Name())
 
-		cfgfile, err := ioutil.TempFile("", "zot-test*.json")
+		cfgfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 
 		defer os.Remove(cfgfile.Name()) // clean up

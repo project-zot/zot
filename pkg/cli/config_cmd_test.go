@@ -5,7 +5,6 @@ package cli //nolint:testpackage
 
 import (
 	"bytes"
-	"io/ioutil"
 	"log"
 	"os"
 	"strings"
@@ -70,7 +69,7 @@ func TestConfigCmdMain(t *testing.T) {
 		cmd.SetArgs(args)
 		_ = cmd.Execute()
 
-		actual, err := ioutil.ReadFile(file)
+		actual, err := os.ReadFile(file)
 		if err != nil {
 			panic(err)
 		}
@@ -288,7 +287,7 @@ func TestConfigCmdMain(t *testing.T) {
 		err := cmd.Execute()
 		So(err, ShouldBeNil)
 
-		actual, err := ioutil.ReadFile(configPath)
+		actual, err := os.ReadFile(configPath)
 		if err != nil {
 			panic(err)
 		}
@@ -324,7 +323,7 @@ func TestConfigCmdMain(t *testing.T) {
 		err := cmd.Execute()
 		So(err, ShouldBeNil)
 
-		actual, err := ioutil.ReadFile(configPath)
+		actual, err := os.ReadFile(configPath)
 		if err != nil {
 			panic(err)
 		}
@@ -347,7 +346,7 @@ func TestConfigCmdMain(t *testing.T) {
 		err := cmd.Execute()
 		So(err, ShouldBeNil)
 
-		actual, err := ioutil.ReadFile(configPath)
+		actual, err := os.ReadFile(configPath)
 		if err != nil {
 			panic(err)
 		}

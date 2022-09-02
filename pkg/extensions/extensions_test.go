@@ -5,7 +5,6 @@ package extensions_test
 
 import (
 	"context"
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -35,7 +34,7 @@ func TestEnableExtension(t *testing.T) {
 		conf.Extensions.Sync = syncConfig
 		conf.HTTP.Port = port
 
-		logFile, err := ioutil.TempFile(globalDir, "zot-log*.txt")
+		logFile, err := os.CreateTemp(globalDir, "zot-log*.txt")
 		So(err, ShouldBeNil)
 		conf.Log.Level = "info"
 		conf.Log.Output = logFile.Name()
@@ -73,7 +72,7 @@ func TestMetricsExtension(t *testing.T) {
 		conf.HTTP.Port = port
 		baseURL := test.GetBaseURL(port)
 
-		logFile, err := ioutil.TempFile(globalDir, "zot-log*.txt")
+		logFile, err := os.CreateTemp(globalDir, "zot-log*.txt")
 		So(err, ShouldBeNil)
 		defaultValue := true
 

@@ -5,7 +5,6 @@ package cli_test
 
 import (
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"testing"
@@ -24,7 +23,7 @@ func TestServeExtensions(t *testing.T) {
 	Convey("config file with no extensions", t, func(c C) {
 		port := GetFreePort()
 		baseURL := GetBaseURL(port)
-		logFile, err := ioutil.TempFile("", "zot-log*.txt")
+		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
 		defer os.Remove(logFile.Name()) // clean up
 
@@ -42,7 +41,7 @@ func TestServeExtensions(t *testing.T) {
 			}
 		}`, port, logFile.Name())
 
-		cfgfile, err := ioutil.TempFile("", "zot-test*.json")
+		cfgfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(cfgfile.Name()) // clean up
 		_, err = cfgfile.Write([]byte(content))
@@ -65,7 +64,7 @@ func TestServeExtensions(t *testing.T) {
 	Convey("config file with empty extensions", t, func(c C) {
 		port := GetFreePort()
 		baseURL := GetBaseURL(port)
-		logFile, err := ioutil.TempFile("", "zot-log*.txt")
+		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
 		defer os.Remove(logFile.Name()) // clean up
 
@@ -85,7 +84,7 @@ func TestServeExtensions(t *testing.T) {
 			}
 		}`, port, logFile.Name())
 
-		cfgfile, err := ioutil.TempFile("", "zot-test*.json")
+		cfgfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(cfgfile.Name()) // clean up
 		_, err = cfgfile.Write([]byte(content))
@@ -109,13 +108,13 @@ func TestServeExtensions(t *testing.T) {
 func testWithMetricsEnabled(cfgContentFormat string) {
 	port := GetFreePort()
 	baseURL := GetBaseURL(port)
-	logFile, err := ioutil.TempFile("", "zot-log*.txt")
+	logFile, err := os.CreateTemp("", "zot-log*.txt")
 	So(err, ShouldBeNil)
 
 	defer os.Remove(logFile.Name()) // clean up
 
 	content := fmt.Sprintf(cfgContentFormat, port, logFile.Name())
-	cfgfile, err := ioutil.TempFile("", "zot-test*.json")
+	cfgfile, err := os.CreateTemp("", "zot-test*.json")
 	So(err, ShouldBeNil)
 
 	defer os.Remove(cfgfile.Name()) // clean up
@@ -221,7 +220,7 @@ func TestServeMetricsExtension(t *testing.T) {
 	Convey("with explicit disable", t, func(c C) {
 		port := GetFreePort()
 		baseURL := GetBaseURL(port)
-		logFile, err := ioutil.TempFile("", "zot-log*.txt")
+		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
 		defer os.Remove(logFile.Name()) // clean up
 
@@ -244,7 +243,7 @@ func TestServeMetricsExtension(t *testing.T) {
 					}
 				}`, port, logFile.Name())
 
-		cfgfile, err := ioutil.TempFile("", "zot-test*.json")
+		cfgfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(cfgfile.Name()) // clean up
 		_, err = cfgfile.Write([]byte(content))
@@ -676,14 +675,14 @@ func runCLIWithConfig(tempDir string, config string) (string, error) {
 	port := GetFreePort()
 	baseURL := GetBaseURL(port)
 
-	logFile, err := ioutil.TempFile(tempDir, "zot-log*.txt")
+	logFile, err := os.CreateTemp(tempDir, "zot-log*.txt")
 	if err != nil {
 		return "", err
 	}
 
 	defer os.Remove(logFile.Name()) // clean up
 
-	cfgfile, err := ioutil.TempFile(tempDir, "zot-test*.json")
+	cfgfile, err := os.CreateTemp(tempDir, "zot-test*.json")
 	if err != nil {
 		return "", err
 	}

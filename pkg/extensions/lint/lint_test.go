@@ -6,7 +6,6 @@ package lint_test
 import (
 	"context"
 	"encoding/json"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"path"
@@ -380,7 +379,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		}
 
 		var index ispec.Index
-		buf, err := ioutil.ReadFile(path.Join(dir, "zot-test", "index.json"))
+		buf, err := os.ReadFile(path.Join(dir, "zot-test", "index.json"))
 		So(err, ShouldBeNil)
 		err = json.Unmarshal(buf, &index)
 		So(err, ShouldBeNil)
@@ -388,7 +387,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		manifestDigest := index.Manifests[0].Digest
 
 		var manifest ispec.Manifest
-		buf, err = ioutil.ReadFile(path.Join(dir, "zot-test", "blobs",
+		buf, err = os.ReadFile(path.Join(dir, "zot-test", "blobs",
 			manifestDigest.Algorithm().String(), manifestDigest.Encoded()))
 		So(err, ShouldBeNil)
 		err = json.Unmarshal(buf, &manifest)
@@ -408,7 +407,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		digest := godigest.FromBytes(content)
 		So(digest, ShouldNotBeNil)
 
-		err = ioutil.WriteFile(path.Join(dir, "zot-test", "blobs",
+		err = os.WriteFile(path.Join(dir, "zot-test", "blobs",
 			digest.Algorithm().String(), digest.Encoded()), content, 0o600)
 		So(err, ShouldBeNil)
 
@@ -444,7 +443,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		}
 
 		var index ispec.Index
-		buf, err := ioutil.ReadFile(path.Join(dir, "zot-test", "index.json"))
+		buf, err := os.ReadFile(path.Join(dir, "zot-test", "index.json"))
 		So(err, ShouldBeNil)
 		err = json.Unmarshal(buf, &index)
 		So(err, ShouldBeNil)
@@ -452,7 +451,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		manifestDigest := index.Manifests[0].Digest
 
 		var manifest ispec.Manifest
-		buf, err = ioutil.ReadFile(path.Join(dir, "zot-test", "blobs",
+		buf, err = os.ReadFile(path.Join(dir, "zot-test", "blobs",
 			manifestDigest.Algorithm().String(), manifestDigest.Encoded()))
 		So(err, ShouldBeNil)
 		err = json.Unmarshal(buf, &manifest)
@@ -471,7 +470,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		digest := godigest.FromBytes(content)
 		So(digest, ShouldNotBeNil)
 
-		err = ioutil.WriteFile(path.Join(dir, "zot-test", "blobs",
+		err = os.WriteFile(path.Join(dir, "zot-test", "blobs",
 			digest.Algorithm().String(), digest.Encoded()), content, 0o600)
 		So(err, ShouldBeNil)
 
@@ -507,7 +506,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		}
 
 		var index ispec.Index
-		buf, err := ioutil.ReadFile(path.Join(dir, "zot-test", "index.json"))
+		buf, err := os.ReadFile(path.Join(dir, "zot-test", "index.json"))
 		So(err, ShouldBeNil)
 		err = json.Unmarshal(buf, &index)
 		So(err, ShouldBeNil)
@@ -515,7 +514,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		manifestDigest := index.Manifests[0].Digest
 
 		var manifest ispec.Manifest
-		buf, err = ioutil.ReadFile(path.Join(dir, "zot-test", "blobs",
+		buf, err = os.ReadFile(path.Join(dir, "zot-test", "blobs",
 			manifestDigest.Algorithm().String(), manifestDigest.Encoded()))
 		So(err, ShouldBeNil)
 		err = json.Unmarshal(buf, &manifest)
@@ -536,7 +535,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		digest := godigest.FromBytes(content)
 		So(digest, ShouldNotBeNil)
 
-		err = ioutil.WriteFile(path.Join(dir, "zot-test", "blobs",
+		err = os.WriteFile(path.Join(dir, "zot-test", "blobs",
 			digest.Algorithm().String(), digest.Encoded()), content, 0o600)
 		So(err, ShouldBeNil)
 
@@ -572,7 +571,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		}
 
 		var index ispec.Index
-		buf, err := ioutil.ReadFile(path.Join(dir, "zot-test", "index.json"))
+		buf, err := os.ReadFile(path.Join(dir, "zot-test", "index.json"))
 		So(err, ShouldBeNil)
 		err = json.Unmarshal(buf, &index)
 		So(err, ShouldBeNil)
@@ -580,7 +579,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		manifestDigest := index.Manifests[0].Digest
 
 		var manifest ispec.Manifest
-		buf, err = ioutil.ReadFile(path.Join(dir, "zot-test", "blobs",
+		buf, err = os.ReadFile(path.Join(dir, "zot-test", "blobs",
 			manifestDigest.Algorithm().String(), manifestDigest.Encoded()))
 		So(err, ShouldBeNil)
 		err = json.Unmarshal(buf, &manifest)
@@ -600,7 +599,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		digest := godigest.FromBytes(content)
 		So(digest, ShouldNotBeNil)
 
-		err = ioutil.WriteFile(path.Join(dir, "zot-test", "blobs",
+		err = os.WriteFile(path.Join(dir, "zot-test", "blobs",
 			digest.Algorithm().String(), digest.Encoded()), content, 0o600)
 		So(err, ShouldBeNil)
 

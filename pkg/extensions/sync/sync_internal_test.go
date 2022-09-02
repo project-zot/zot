@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/url"
 	"os"
 	"path"
@@ -97,13 +96,13 @@ func TestSyncInternal(t *testing.T) {
 		_, err = getFileCredentials("/path/to/inexistent/file")
 		So(err, ShouldNotBeNil)
 
-		tempFile, err := ioutil.TempFile("", "sync-credentials-")
+		tempFile, err := os.CreateTemp("", "sync-credentials-")
 		if err != nil {
 			panic(err)
 		}
 
 		content := []byte(`{`)
-		if err := ioutil.WriteFile(tempFile.Name(), content, 0o600); err != nil {
+		if err := os.WriteFile(tempFile.Name(), content, 0o600); err != nil {
 			panic(err)
 		}
 

@@ -8,7 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"path"
@@ -108,7 +108,7 @@ func TestAuditLogMessages(t *testing.T) {
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-				byteValue, _ := ioutil.ReadAll(auditFile)
+				byteValue, _ := io.ReadAll(auditFile)
 				So(len(byteValue), ShouldEqual, 0)
 			})
 
@@ -120,13 +120,13 @@ func TestAuditLogMessages(t *testing.T) {
 				So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 
 				// wait until the file is populated
-				byteValue, _ := ioutil.ReadAll(auditFile)
+				byteValue, _ := io.ReadAll(auditFile)
 				for {
 					if len(byteValue) != 0 {
 						break
 					}
 					time.Sleep(100 * time.Millisecond)
-					byteValue, _ = ioutil.ReadAll(auditFile)
+					byteValue, _ = io.ReadAll(auditFile)
 				}
 
 				var auditLog AuditLog
@@ -153,13 +153,13 @@ func TestAuditLogMessages(t *testing.T) {
 				So(location, ShouldNotBeEmpty)
 
 				// wait until the file is populated
-				byteValue, _ := ioutil.ReadAll(auditFile)
+				byteValue, _ := io.ReadAll(auditFile)
 				for {
 					if len(byteValue) != 0 {
 						break
 					}
 					time.Sleep(100 * time.Millisecond)
-					byteValue, _ = ioutil.ReadAll(auditFile)
+					byteValue, _ = io.ReadAll(auditFile)
 				}
 
 				var auditLog AuditLog
@@ -188,13 +188,13 @@ func TestAuditLogMessages(t *testing.T) {
 				So(resp.Header().Get(constants.DistContentDigestKey), ShouldNotBeEmpty)
 
 				// wait until the file is populated
-				byteValue, _ = ioutil.ReadAll(auditFile)
+				byteValue, _ = io.ReadAll(auditFile)
 				for {
 					if len(byteValue) != 0 {
 						break
 					}
 					time.Sleep(100 * time.Millisecond)
-					byteValue, _ = ioutil.ReadAll(auditFile)
+					byteValue, _ = io.ReadAll(auditFile)
 				}
 
 				err = json.Unmarshal(byteValue, &auditLog)
@@ -216,13 +216,13 @@ func TestAuditLogMessages(t *testing.T) {
 				So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
 
 				// wait until the file is populated
-				byteValue, _ = ioutil.ReadAll(auditFile)
+				byteValue, _ = io.ReadAll(auditFile)
 				for {
 					if len(byteValue) != 0 {
 						break
 					}
 					time.Sleep(100 * time.Millisecond)
-					byteValue, _ = ioutil.ReadAll(auditFile)
+					byteValue, _ = io.ReadAll(auditFile)
 				}
 
 				err = json.Unmarshal(byteValue, &auditLog)
@@ -249,13 +249,13 @@ func TestAuditLogMessages(t *testing.T) {
 				So(location, ShouldNotBeEmpty)
 
 				// wait until the file is populated
-				byteValue, _ := ioutil.ReadAll(auditFile)
+				byteValue, _ := io.ReadAll(auditFile)
 				for {
 					if len(byteValue) != 0 {
 						break
 					}
 					time.Sleep(100 * time.Millisecond)
-					byteValue, _ = ioutil.ReadAll(auditFile)
+					byteValue, _ = io.ReadAll(auditFile)
 				}
 
 				var auditLog AuditLog
@@ -284,13 +284,13 @@ func TestAuditLogMessages(t *testing.T) {
 				So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 
 				// wait until the file is populated
-				byteValue, _ = ioutil.ReadAll(auditFile)
+				byteValue, _ = io.ReadAll(auditFile)
 				for {
 					if len(byteValue) != 0 {
 						break
 					}
 					time.Sleep(100 * time.Millisecond)
-					byteValue, _ = ioutil.ReadAll(auditFile)
+					byteValue, _ = io.ReadAll(auditFile)
 				}
 
 				err = json.Unmarshal(byteValue, &auditLog)
@@ -317,7 +317,7 @@ func TestLogErrors(t *testing.T) {
 	Convey("Get error when opening log file", t, func() {
 		dir := t.TempDir()
 		logPath := path.Join(dir, "logFile")
-		err := ioutil.WriteFile(logPath, []byte{}, 0o000)
+		err := os.WriteFile(logPath, []byte{}, 0o000)
 		So(err, ShouldBeNil)
 		So(func() {
 			_ = log.NewLogger(zerolog.DebugLevel.String(), logPath)
@@ -333,7 +333,7 @@ func TestNewAuditLogger(t *testing.T) {
 	Convey("Get error when opening audit file", t, func() {
 		dir := t.TempDir()
 		logPath := path.Join(dir, "logFile")
-		err := ioutil.WriteFile(logPath, []byte{}, 0o000)
+		err := os.WriteFile(logPath, []byte{}, 0o000)
 		So(err, ShouldBeNil)
 		So(func() {
 			_ = log.NewAuditLogger(zerolog.DebugLevel.String(), logPath)

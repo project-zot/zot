@@ -6,7 +6,6 @@ package scrub_test
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"testing"
@@ -34,7 +33,7 @@ func TestScrubExtension(t *testing.T) {
 		port := test.GetFreePort()
 		url := test.GetBaseURL(port)
 
-		logFile, err := ioutil.TempFile("", "zot-log*.txt")
+		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
 
 		defer os.Remove(logFile.Name()) // clean up
@@ -92,7 +91,7 @@ func TestScrubExtension(t *testing.T) {
 		port := test.GetFreePort()
 		url := test.GetBaseURL(port)
 
-		logFile, err := ioutil.TempFile("", "zot-log*.txt")
+		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
 
 		defer os.Remove(logFile.Name()) // clean up
@@ -157,7 +156,7 @@ func TestScrubExtension(t *testing.T) {
 		port := test.GetFreePort()
 		url := test.GetBaseURL(port)
 
-		logFile, err := ioutil.TempFile("", "zot-log*.txt")
+		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
 
 		defer os.Remove(logFile.Name()) // clean up
@@ -219,7 +218,7 @@ func TestScrubExtension(t *testing.T) {
 
 func TestRunScrubRepo(t *testing.T) {
 	Convey("Blobs integrity not affected", t, func(c C) {
-		logFile, err := ioutil.TempFile("", "zot-log*.txt")
+		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
 
 		defer os.Remove(logFile.Name()) // clean up
@@ -247,7 +246,7 @@ func TestRunScrubRepo(t *testing.T) {
 	})
 
 	Convey("Blobs integrity affected", t, func(c C) {
-		logFile, err := ioutil.TempFile("", "zot-log*.txt")
+		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
 
 		defer os.Remove(logFile.Name()) // clean up
@@ -283,7 +282,7 @@ func TestRunScrubRepo(t *testing.T) {
 	})
 
 	Convey("CheckRepo error - not enough permissions to access root directory", t, func(c C) {
-		logFile, err := ioutil.TempFile("", "zot-log*.txt")
+		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
 
 		defer os.Remove(logFile.Name()) // clean up

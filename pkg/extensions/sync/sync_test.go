@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -117,7 +116,7 @@ func startUpstreamServer(
 			CACert: CACert,
 		}
 
-		caCert, err := ioutil.ReadFile(CACert)
+		caCert, err := os.ReadFile(CACert)
 		if err != nil {
 			panic(err)
 		}
@@ -199,7 +198,7 @@ func startDownstreamServer(
 			CACert: CACert,
 		}
 
-		caCert, err := ioutil.ReadFile(CACert)
+		caCert, err := os.ReadFile(CACert)
 		if err != nil {
 			panic(err)
 		}
@@ -778,7 +777,7 @@ func TestConfigReloader(t *testing.T) {
 
 		destConfig.HTTP.Port = destPort
 
-		destDir, err := ioutil.TempDir("", "oci-dest-repo-test")
+		destDir, err := os.MkdirTemp("", "oci-dest-repo-test")
 		if err != nil {
 			panic(err)
 		}
@@ -791,7 +790,7 @@ func TestConfigReloader(t *testing.T) {
 		destConfig.Extensions.Search = nil
 		destConfig.Extensions.Sync = syncConfig
 
-		logFile, err := ioutil.TempFile("", "zot-log*.txt")
+		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
 
 		defer os.Remove(logFile.Name()) // clean up
@@ -808,7 +807,7 @@ func TestConfigReloader(t *testing.T) {
 		"http": {"address": "127.0.0.1", "port": "%s"},
 		"log": {"level": "debug", "output": "%s"}}`, destDir, destPort, logFile.Name())
 
-		cfgfile, err := ioutil.TempFile("", "zot-test*.json")
+		cfgfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 
 		defer os.Remove(cfgfile.Name()) // clean up
@@ -913,7 +912,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 		destConfig.Extensions = &extconf.ExtensionConfig{}
 		destConfig.Extensions.Sync = syncConfig
 
-		logFile, err := ioutil.TempFile("", "zot-log*.txt")
+		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
 
 		destConfig.Log.Output = logFile.Name()
@@ -1033,7 +1032,7 @@ func TestTLS(t *testing.T) {
 		var srcIndex ispec.Index
 		var destIndex ispec.Index
 
-		srcBuf, err := ioutil.ReadFile(path.Join(srcDir, testImage, "index.json"))
+		srcBuf, err := os.ReadFile(path.Join(srcDir, testImage, "index.json"))
 		if err != nil {
 			panic(err)
 		}
@@ -1097,7 +1096,7 @@ func TestTLS(t *testing.T) {
 
 		// wait till ready
 		for {
-			destBuf, _ := ioutil.ReadFile(path.Join(destDir, testImage, "index.json"))
+			destBuf, _ := os.ReadFile(path.Join(destDir, testImage, "index.json"))
 			_ = json.Unmarshal(destBuf, &destIndex)
 			time.Sleep(500 * time.Millisecond)
 			if len(destIndex.Manifests) > 0 {
@@ -1737,13 +1736,13 @@ func TestInvalidCerts(t *testing.T) {
 }
 
 func makeCredentialsFile(fileContent string) string {
-	tmpfile, err := ioutil.TempFile("", "sync-credentials-")
+	tmpfile, err := os.CreateTemp("", "sync-credentials-")
 	if err != nil {
 		panic(err)
 	}
 
 	content := []byte(fileContent)
-	if err := ioutil.WriteFile(tmpfile.Name(), content, 0o600); err != nil {
+	if err := os.WriteFile(tmpfile.Name(), content, 0o600); err != nil {
 		panic(err)
 	}
 
@@ -2341,7 +2340,7 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 		// trigger permission denied on upstream manifest
 		var srcIndex ispec.Index
 
-		srcBuf, err := ioutil.ReadFile(path.Join(srcDir, repoName, "index.json"))
+		srcBuf, err := os.ReadFile(path.Join(srcDir, repoName, "index.json"))
 		if err != nil {
 			panic(err)
 		}
@@ -2424,7 +2423,7 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 			var artifactManifest artifactspec.Manifest
 			for _, ref := range referrers.References {
 				refPath := path.Join(srcDir, repoName, "blobs", string(ref.Digest.Algorithm()), ref.Digest.Hex())
-				body, err := ioutil.ReadFile(refPath)
+				body, err := os.ReadFile(refPath)
 				So(err, ShouldBeNil)
 
 				err = json.Unmarshal(body, &artifactManifest)
@@ -2592,7 +2591,7 @@ func TestSignatures(t *testing.T) {
 		var artifactManifest artifactspec.Manifest
 		for _, ref := range referrers.References {
 			refPath := path.Join(srcDir, repoName, "blobs", string(ref.Digest.Algorithm()), ref.Digest.Hex())
-			body, err := ioutil.ReadFile(refPath)
+			body, err := os.ReadFile(refPath)
 			So(err, ShouldBeNil)
 
 			err = json.Unmarshal(body, &artifactManifest)
@@ -3105,7 +3104,7 @@ func TestOnDemandPullsOnce(t *testing.T) {
 				case <-done:
 					return
 				default:
-					dirs, err := ioutil.ReadDir(syncBlobUploadDir)
+					dirs, err := os.ReadDir(syncBlobUploadDir)
 					if err != nil {
 						continue
 					}
@@ -3499,7 +3498,7 @@ func TestSyncOnlyDiff(t *testing.T) {
 
 		time.Sleep(3 * time.Second)
 
-		body, err := ioutil.ReadFile(path.Join(destDir, "sync.log"))
+		body, err := os.ReadFile(path.Join(destDir, "sync.log"))
 		if err != nil {
 			log.Fatalf("unable to read file: %v", err)
 		}
@@ -3680,7 +3679,7 @@ func TestSyncSignaturesDiff(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		defer func() { _ = os.Chdir(cwd) }()
-		tdir, err := ioutil.TempDir("", "sigs")
+		tdir, err := os.MkdirTemp("", "sigs")
 		So(err, ShouldBeNil)
 
 		_ = os.Chdir(tdir)
@@ -3773,7 +3772,7 @@ func TestSyncSignaturesDiff(t *testing.T) {
 
 		// now add new signatures to upstream and let sync detect that upstream signatures changed and pull them
 		So(os.RemoveAll(tdir), ShouldBeNil)
-		tdir, err = ioutil.TempDir("", "sigs")
+		tdir, err = os.MkdirTemp("", "sigs")
 		So(err, ShouldBeNil)
 		defer os.RemoveAll(tdir)
 		_ = os.Chdir(tdir)
@@ -3807,7 +3806,7 @@ func TestSyncSignaturesDiff(t *testing.T) {
 		var srcIndex ispec.Index
 		var destIndex ispec.Index
 
-		srcBuf, err := ioutil.ReadFile(path.Join(srcDir, repoName, "index.json"))
+		srcBuf, err := os.ReadFile(path.Join(srcDir, repoName, "index.json"))
 		if err != nil {
 			panic(err)
 		}
@@ -3816,7 +3815,7 @@ func TestSyncSignaturesDiff(t *testing.T) {
 			panic(err)
 		}
 
-		destBuf, err := ioutil.ReadFile(path.Join(destDir, repoName, "index.json"))
+		destBuf, err := os.ReadFile(path.Join(destDir, repoName, "index.json"))
 		if err != nil {
 			panic(err)
 		}

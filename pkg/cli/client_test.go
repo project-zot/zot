@@ -9,7 +9,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -46,7 +45,7 @@ const (
 
 func TestTLSWithAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		caCert, err := ioutil.ReadFile(CACert)
+		caCert, err := os.ReadFile(CACert)
 		So(err, ShouldBeNil)
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
@@ -152,7 +151,7 @@ func TestTLSWithAuth(t *testing.T) {
 
 func TestTLSWithoutAuth(t *testing.T) {
 	Convey("Home certs - Make a new controller", t, func() {
-		caCert, err := ioutil.ReadFile(CACert)
+		caCert, err := os.ReadFile(CACert)
 		So(err, ShouldBeNil)
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
@@ -222,7 +221,7 @@ func TestTLSWithoutAuth(t *testing.T) {
 
 func TestTLSBadCerts(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		caCert, err := ioutil.ReadFile(CACert)
+		caCert, err := os.ReadFile(CACert)
 		So(err, ShouldBeNil)
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)

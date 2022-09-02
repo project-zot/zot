@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"path"
@@ -75,7 +74,7 @@ type CVE struct {
 }
 
 func testSetup() error {
-	dir, err := ioutil.TempDir("", "util_test")
+	dir, err := os.MkdirTemp("", "util_test")
 	if err != nil {
 		return err
 	}
@@ -128,7 +127,7 @@ func generateTestData() error { // nolint: gocyclo
 		return err
 	}
 
-	if err = ioutil.WriteFile(path.Join(dbDir, "zot-nonreadable-test", "index.json"), buf, 0o111); err != nil {
+	if err = os.WriteFile(path.Join(dbDir, "zot-nonreadable-test", "index.json"), buf, 0o111); err != nil {
 		return err
 	}
 
@@ -194,7 +193,7 @@ func generateTestData() error { // nolint: gocyclo
 		return err
 	}
 
-	if err = ioutil.WriteFile(path.Join(dbDir, "zot-squashfs-test", "oci-layout"), buf, 0o644); err != nil { //nolint: gosec
+	if err = os.WriteFile(path.Join(dbDir, "zot-squashfs-test", "oci-layout"), buf, 0o644); err != nil { //nolint: gosec
 		return err
 	}
 
@@ -312,7 +311,7 @@ func generateTestData() error { // nolint: gocyclo
 }
 
 func makeTestFile(fileName, content string) error {
-	if err := ioutil.WriteFile(fileName, []byte(content), 0o600); err != nil {
+	if err := os.WriteFile(fileName, []byte(content), 0o600); err != nil {
 		panic(err)
 	}
 
@@ -680,12 +679,12 @@ func TestHTTPOptionsResponse(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		firstDir, err := ioutil.TempDir("", "oci-repo-test")
+		firstDir, err := os.MkdirTemp("", "oci-repo-test")
 		if err != nil {
 			panic(err)
 		}
 
-		secondDir, err := ioutil.TempDir("", "oci-repo-test")
+		secondDir, err := os.MkdirTemp("", "oci-repo-test")
 		if err != nil {
 			panic(err)
 		}

@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path"
 	"strings"
@@ -217,7 +216,7 @@ func (s *StorageDriverMock) Reader(ctx context.Context, path string, offset int6
 		return s.ReaderFn(ctx, path, offset)
 	}
 
-	return ioutil.NopCloser(strings.NewReader("")), nil
+	return io.NopCloser(strings.NewReader("")), nil
 }
 
 func (s *StorageDriverMock) Writer(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
@@ -477,7 +476,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 				return &FileWriterMock{}, errS3
 			},
 			ReaderFn: func(ctx context.Context, path string, offset int64) (io.ReadCloser, error) {
-				return ioutil.NopCloser(strings.NewReader("")), errS3
+				return io.NopCloser(strings.NewReader("")), errS3
 			},
 			WalkFn: func(ctx context.Context, path string, f driver.WalkFn) error {
 				return errS3
@@ -655,7 +654,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 				return &FileWriterMock{}, errS3
 			},
 		})
-		_, err := imgStore.PutBlobChunkStreamed(testImage, "uuid", ioutil.NopCloser(strings.NewReader("")))
+		_, err := imgStore.PutBlobChunkStreamed(testImage, "uuid", io.NopCloser(strings.NewReader("")))
 		So(err, ShouldNotBeNil)
 	})
 
@@ -667,7 +666,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 				}}, nil
 			},
 		})
-		_, err := imgStore.PutBlobChunkStreamed(testImage, "uuid", ioutil.NopCloser(strings.NewReader("")))
+		_, err := imgStore.PutBlobChunkStreamed(testImage, "uuid", io.NopCloser(strings.NewReader("")))
 		So(err, ShouldNotBeNil)
 	})
 
@@ -677,7 +676,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 				return &FileWriterMock{}, errS3
 			},
 		})
-		_, err := imgStore.PutBlobChunk(testImage, "uuid", 0, 100, ioutil.NopCloser(strings.NewReader("")))
+		_, err := imgStore.PutBlobChunk(testImage, "uuid", 0, 100, io.NopCloser(strings.NewReader("")))
 		So(err, ShouldNotBeNil)
 	})
 
@@ -694,7 +693,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 				}, nil
 			},
 		})
-		_, err := imgStore.PutBlobChunk(testImage, "uuid", 0, 100, ioutil.NopCloser(strings.NewReader("")))
+		_, err := imgStore.PutBlobChunk(testImage, "uuid", 0, 100, io.NopCloser(strings.NewReader("")))
 		So(err, ShouldNotBeNil)
 	})
 
@@ -708,7 +707,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 				}, nil
 			},
 		})
-		_, err := imgStore.PutBlobChunk(testImage, "uuid", 12, 100, ioutil.NopCloser(strings.NewReader("")))
+		_, err := imgStore.PutBlobChunk(testImage, "uuid", 12, 100, io.NopCloser(strings.NewReader("")))
 		So(err, ShouldNotBeNil)
 	})
 
@@ -723,7 +722,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 			},
 		})
 		d := godigest.FromBytes([]byte("test"))
-		err := imgStore.FinishBlobUpload(testImage, "uuid", ioutil.NopCloser(strings.NewReader("")), d.String())
+		err := imgStore.FinishBlobUpload(testImage, "uuid", io.NopCloser(strings.NewReader("")), d.String())
 		So(err, ShouldNotBeNil)
 	})
 
@@ -738,7 +737,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 			},
 		})
 		d := godigest.FromBytes([]byte("test"))
-		err := imgStore.FinishBlobUpload(testImage, "uuid", ioutil.NopCloser(strings.NewReader("")), d.String())
+		err := imgStore.FinishBlobUpload(testImage, "uuid", io.NopCloser(strings.NewReader("")), d.String())
 		So(err, ShouldNotBeNil)
 	})
 
@@ -749,7 +748,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 			},
 		})
 		d := godigest.FromBytes([]byte("test"))
-		err := imgStore.FinishBlobUpload(testImage, "uuid", ioutil.NopCloser(strings.NewReader("")), d.String())
+		err := imgStore.FinishBlobUpload(testImage, "uuid", io.NopCloser(strings.NewReader("")), d.String())
 		So(err, ShouldNotBeNil)
 	})
 
@@ -760,7 +759,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 			},
 		})
 		d := godigest.FromBytes([]byte(""))
-		err := imgStore.FinishBlobUpload(testImage, "uuid", ioutil.NopCloser(strings.NewReader("")), d.String())
+		err := imgStore.FinishBlobUpload(testImage, "uuid", io.NopCloser(strings.NewReader("")), d.String())
 		So(err, ShouldNotBeNil)
 	})
 
@@ -771,14 +770,14 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 			},
 		})
 		d := godigest.FromBytes([]byte(""))
-		_, _, err := imgStore.FullBlobUpload(testImage, ioutil.NopCloser(strings.NewReader("")), d.String())
+		_, _, err := imgStore.FullBlobUpload(testImage, io.NopCloser(strings.NewReader("")), d.String())
 		So(err, ShouldNotBeNil)
 	})
 
 	Convey("Test FullBlobUpload2", t, func(c C) {
 		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{})
 		d := godigest.FromBytes([]byte(" "))
-		_, _, err := imgStore.FullBlobUpload(testImage, ioutil.NopCloser(strings.NewReader("")), d.String())
+		_, _, err := imgStore.FullBlobUpload(testImage, io.NopCloser(strings.NewReader("")), d.String())
 		So(err, ShouldNotBeNil)
 	})
 
@@ -789,14 +788,14 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 			},
 		})
 		d := godigest.FromBytes([]byte(""))
-		_, _, err := imgStore.FullBlobUpload(testImage, ioutil.NopCloser(strings.NewReader("")), d.String())
+		_, _, err := imgStore.FullBlobUpload(testImage, io.NopCloser(strings.NewReader("")), d.String())
 		So(err, ShouldNotBeNil)
 	})
 
 	Convey("Test GetBlob", t, func(c C) {
 		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
 			ReaderFn: func(ctx context.Context, path string, offset int64) (io.ReadCloser, error) {
-				return ioutil.NopCloser(strings.NewReader("")), errS3
+				return io.NopCloser(strings.NewReader("")), errS3
 			},
 		})
 		d := godigest.FromBytes([]byte(""))
@@ -1010,12 +1009,12 @@ func TestS3Dedupe(t *testing.T) {
 		Convey("Check backward compatibility - switch dedupe to false", func() {
 			/* copy cache to the new storage with dedupe false (doing this because we
 			already have a cache object holding the lock on cache db file) */
-			input, err := ioutil.ReadFile(path.Join(tdir, s3.CacheDBName+storage.DBExtensionName))
+			input, err := os.ReadFile(path.Join(tdir, s3.CacheDBName+storage.DBExtensionName))
 			So(err, ShouldBeNil)
 
 			tdir = t.TempDir()
 
-			err = ioutil.WriteFile(path.Join(tdir, s3.CacheDBName+storage.DBExtensionName), input, 0o600)
+			err = os.WriteFile(path.Join(tdir, s3.CacheDBName+storage.DBExtensionName), input, 0o600)
 			So(err, ShouldBeNil)
 
 			storeDriver, imgStore, _ := createObjectsStore(testDir, tdir, false)
@@ -1747,12 +1746,12 @@ func TestS3DedupeErr(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// copy cache db to the new imagestore
-		input, err := ioutil.ReadFile(path.Join(tdir, s3.CacheDBName+storage.DBExtensionName))
+		input, err := os.ReadFile(path.Join(tdir, s3.CacheDBName+storage.DBExtensionName))
 		So(err, ShouldBeNil)
 
 		tdir = t.TempDir()
 
-		err = ioutil.WriteFile(path.Join(tdir, s3.CacheDBName+storage.DBExtensionName), input, 0o600)
+		err = os.WriteFile(path.Join(tdir, s3.CacheDBName+storage.DBExtensionName), input, 0o600)
 		So(err, ShouldBeNil)
 
 		imgStore = createMockStorage(testDir, tdir, true, &StorageDriverMock{
@@ -1784,12 +1783,12 @@ func TestS3DedupeErr(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// copy cache db to the new imagestore
-		input, err := ioutil.ReadFile(path.Join(tdir, s3.CacheDBName+storage.DBExtensionName))
+		input, err := os.ReadFile(path.Join(tdir, s3.CacheDBName+storage.DBExtensionName))
 		So(err, ShouldBeNil)
 
 		tdir = t.TempDir()
 
-		err = ioutil.WriteFile(path.Join(tdir, s3.CacheDBName+storage.DBExtensionName), input, 0o600)
+		err = os.WriteFile(path.Join(tdir, s3.CacheDBName+storage.DBExtensionName), input, 0o600)
 		So(err, ShouldBeNil)
 
 		imgStore = createMockStorage(testDir, tdir, true, &StorageDriverMock{
@@ -1802,10 +1801,10 @@ func TestS3DedupeErr(t *testing.T) {
 			},
 			ReaderFn: func(ctx context.Context, path string, offset int64) (io.ReadCloser, error) {
 				if strings.Contains(path, "repo1/dst1") {
-					return ioutil.NopCloser(strings.NewReader("")), errS3
+					return io.NopCloser(strings.NewReader("")), errS3
 				}
 
-				return ioutil.NopCloser(strings.NewReader("")), nil
+				return io.NopCloser(strings.NewReader("")), nil
 			},
 		})
 
@@ -1856,7 +1855,7 @@ func TestS3DedupeErr(t *testing.T) {
 			},
 		})
 		d := godigest.FromBytes([]byte(""))
-		_, _, err := imgStore.FullBlobUpload(testImage, ioutil.NopCloser(strings.NewReader("")), d.String())
+		_, _, err := imgStore.FullBlobUpload(testImage, io.NopCloser(strings.NewReader("")), d.String())
 		So(err, ShouldNotBeNil)
 	})
 
@@ -1868,7 +1867,7 @@ func TestS3DedupeErr(t *testing.T) {
 			},
 		})
 		d := godigest.FromBytes([]byte(""))
-		err := imgStore.FinishBlobUpload(testImage, "uuid", ioutil.NopCloser(strings.NewReader("")), d.String())
+		err := imgStore.FinishBlobUpload(testImage, "uuid", io.NopCloser(strings.NewReader("")), d.String())
 		So(err, ShouldNotBeNil)
 	})
 }

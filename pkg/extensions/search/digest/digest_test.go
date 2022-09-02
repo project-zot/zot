@@ -7,7 +7,6 @@ package digestinfo_test
 import (
 	"context"
 	"encoding/json"
-	"io/ioutil"
 	"os"
 	"testing"
 	"time"
@@ -63,12 +62,12 @@ func init() {
 }
 
 func testSetup() error {
-	dir, err := ioutil.TempDir("", "digest_test")
+	dir, err := os.MkdirTemp("", "digest_test")
 	if err != nil {
 		return err
 	}
 
-	subDir, err := ioutil.TempDir("", "sub_digest_test")
+	subDir, err := os.MkdirTemp("", "sub_digest_test")
 	if err != nil {
 		return err
 	}
@@ -305,7 +304,7 @@ func TestDigestSearchHTTPSubPaths(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		globalDir, err := ioutil.TempDir("", "digest_test")
+		globalDir, err := os.MkdirTemp("", "digest_test")
 		if err != nil {
 			panic(err)
 		}

@@ -5,7 +5,6 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"strconv"
@@ -132,7 +131,7 @@ func basicAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 			}
 
 			if ctlr.Config.HTTP.Auth.LDAP.CACert != "" {
-				caCert, err := ioutil.ReadFile(ctlr.Config.HTTP.Auth.LDAP.CACert)
+				caCert, err := os.ReadFile(ctlr.Config.HTTP.Auth.LDAP.CACert)
 				if err != nil {
 					panic(err)
 				}

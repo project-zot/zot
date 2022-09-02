@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path"
 	"strings"
@@ -105,7 +104,7 @@ func CheckRepo(imageName string, imgStore ImageStore) ([]ScrubImageResult, error
 	imgStore.RLock(&lockLatency)
 	defer imgStore.RUnlock(&lockLatency)
 
-	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
+	buf, err := os.ReadFile(path.Join(dir, "index.json"))
 	if err != nil {
 		return results, err
 	}

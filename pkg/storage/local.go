@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
@@ -269,7 +268,7 @@ func (is *ImageStoreLocal) ValidateRepo(name string) (bool, error) {
 		return false, zerr.ErrRepoNotFound
 	}
 
-	files, err := ioutil.ReadDir(dir)
+	files, err := os.ReadDir(dir)
 	if err != nil {
 		is.log.Error().Err(err).Str("dir", dir).Msg("unable to read directory")
 
@@ -300,7 +299,7 @@ func (is *ImageStoreLocal) ValidateRepo(name string) (bool, error) {
 		}
 	}
 
-	buf, err := ioutil.ReadFile(path.Join(dir, ispec.ImageLayoutFile))
+	buf, err := os.ReadFile(path.Join(dir, ispec.ImageLayoutFile))
 	if err != nil {
 		return false, err
 	}
@@ -326,7 +325,7 @@ func (is *ImageStoreLocal) GetRepositories() ([]string, error) {
 	is.RLock(&lockLatency)
 	defer is.RUnlock(&lockLatency)
 
-	_, err := ioutil.ReadDir(dir)
+	_, err := os.ReadDir(dir)
 	if err != nil {
 		is.log.Error().Err(err).Msg("failure walking storage root-dir")
 
@@ -373,7 +372,7 @@ func (is *ImageStoreLocal) GetImageTags(repo string) ([]string, error) {
 	is.RLock(&lockLatency)
 	defer is.RUnlock(&lockLatency)
 
-	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
+	buf, err := os.ReadFile(path.Join(dir, "index.json"))
 	if err != nil {
 		is.log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
 
@@ -411,7 +410,7 @@ func (is *ImageStoreLocal) GetImageManifest(repo, reference string) ([]byte, str
 	is.RLock(&lockLatency)
 	defer is.RUnlock(&lockLatency)
 
-	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
+	buf, err := os.ReadFile(path.Join(dir, "index.json"))
 	if err != nil {
 		is.log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
 
@@ -460,7 +459,7 @@ func (is *ImageStoreLocal) GetImageManifest(repo, reference string) ([]byte, str
 
 	p := path.Join(dir, "blobs", digest.Algorithm().String(), digest.Encoded())
 
-	buf, err = ioutil.ReadFile(p)
+	buf, err = os.ReadFile(p)
 
 	if err != nil {
 		is.log.Error().Err(err).Str("blob", p).Msg("failed to read manifest")
@@ -538,7 +537,8 @@ func (is *ImageStoreLocal) validateOCIManifest(repo, reference string, manifest 
 	return "", nil
 }
 
-/**
+/*
+*
 before an image index manifest is pushed to a repo, its constituent manifests
 are pushed first, so when updating/removing this image index manifest, we also
 need to determine if there are other image index manifests which refer to the
@@ -551,7 +551,7 @@ func pruneImageManifestsFromIndex(dir string, digest godigest.Digest, // nolint:
 ) ([]ispec.Descriptor, error) {
 	indexPath := path.Join(dir, "blobs", digest.Algorithm().String(), digest.Encoded())
 
-	buf, err := ioutil.ReadFile(indexPath)
+	buf, err := os.ReadFile(indexPath)
 	if err != nil {
 		log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
 
@@ -574,7 +574,7 @@ func pruneImageManifestsFromIndex(dir string, digest godigest.Digest, // nolint:
 	for _, otherIndex := range otherImgIndexes {
 		indexPath := path.Join(dir, "blobs", otherIndex.Digest.Algorithm().String(), otherIndex.Digest.Encoded())
 
-		buf, err := ioutil.ReadFile(indexPath)
+		buf, err := os.ReadFile(indexPath)
 		if err != nil {
 			log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
 
@@ -683,7 +683,7 @@ func (is *ImageStoreLocal) PutImageManifest(repo, reference, mediaType string, /
 
 	dir := path.Join(is.rootDir, repo)
 
-	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
+	buf, err := os.ReadFile(path.Join(dir, "index.json"))
 	if err != nil {
 		is.log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
 
@@ -874,7 +874,7 @@ func (is *ImageStoreLocal) DeleteImageManifest(repo, reference string) error {
 	is.Lock(&lockLatency)
 	defer is.Unlock(&lockLatency)
 
-	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
+	buf, err := os.ReadFile(path.Join(dir, "index.json"))
 	if err != nil {
 		is.log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
 
@@ -1572,7 +1572,7 @@ func (is *ImageStoreLocal) GetIndexContent(repo string) ([]byte, error) {
 	is.RLock(&lockLatency)
 	defer is.RUnlock(&lockLatency)
 
-	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
+	buf, err := os.ReadFile(path.Join(dir, "index.json"))
 	if err != nil {
 		if os.IsNotExist(err) {
 			is.log.Error().Err(err).Str("dir", dir).Msg("index.json doesn't exist")
@@ -1646,7 +1646,7 @@ func (is *ImageStoreLocal) GetReferrers(repo, digest, artifactType string) ([]ar
 	is.RLock(&lockLatency)
 	defer is.RUnlock(&lockLatency)
 
-	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
+	buf, err := os.ReadFile(path.Join(dir, "index.json"))
 	if err != nil {
 		is.log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
 
@@ -1675,7 +1675,7 @@ func (is *ImageStoreLocal) GetReferrers(repo, digest, artifactType string) ([]ar
 
 		p := path.Join(dir, "blobs", manifest.Digest.Algorithm().String(), manifest.Digest.Encoded())
 
-		buf, err = ioutil.ReadFile(p)
+		buf, err = os.ReadFile(p)
 
 		if err != nil {
 			is.log.Error().Err(err).Str("blob", p).Msg("failed to read manifest")
@@ -1718,7 +1718,7 @@ func (is *ImageStoreLocal) GetReferrers(repo, digest, artifactType string) ([]ar
 
 func (is *ImageStoreLocal) writeFile(filename string, data []byte) error {
 	if !is.commit {
-		return ioutil.WriteFile(filename, data, DefaultFilePerms)
+		return os.WriteFile(filename, data, DefaultFilePerms)
 	}
 
 	fhandle, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, DefaultFilePerms)
@@ -1753,7 +1753,7 @@ func ValidateHardLink(rootDir string) error {
 		return err
 	}
 
-	err := ioutil.WriteFile(path.Join(rootDir, "hardlinkcheck.txt"),
+	err := os.WriteFile(path.Join(rootDir, "hardlinkcheck.txt"),
 		[]byte("check whether hardlinks work on filesystem"), DefaultFilePerms)
 	if err != nil {
 		return err

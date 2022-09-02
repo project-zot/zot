@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/url"
 	"os"
 	"path"
@@ -187,7 +186,7 @@ func getRepoDestination(remoteRepo string, content Content) string {
 
 // Get sync.FileCredentials from file.
 func getFileCredentials(filepath string) (CredentialsFile, error) {
-	credsFile, err := ioutil.ReadFile(filepath)
+	credsFile, err := os.ReadFile(filepath)
 	if err != nil {
 		return nil, err
 	}
@@ -225,7 +224,7 @@ func getHTTPClient(regCfg *RegistryConfig, upstreamURL string, credentials Crede
 		clientKey := path.Join(regCfg.CertDir, "client.key")
 		caCertPath := path.Join(regCfg.CertDir, "ca.crt")
 
-		caCert, err := ioutil.ReadFile(caCertPath)
+		caCert, err := os.ReadFile(caCertPath)
 		if err != nil {
 			log.Error().Str("errorType", TypeOf(err)).
 				Err(err).Msg("couldn't read CA certificate")
