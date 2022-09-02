@@ -33,10 +33,11 @@ func SetupGQLPlaygroundRoutes(conf *config.Config, router *mux.Router,
 	router.PathPrefix(constants.ExtGQLPlaygroundEndpoint).HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Add("Content-Type", "text/html")
 
-		target := "http://" + conf.HTTP.Address + ":" + conf.HTTP.Port + constants.ExtSearchPrefix
+		target := "http://" + req.Host + ":" + conf.HTTP.Port + constants.ExtSearchPrefix
 
 		// respond with the output of template execution
 		t.Execute(w, struct {
-			Target    string
-		}{Target: target})})
+			Target string
+		}{Target: target})
+	})
 }
