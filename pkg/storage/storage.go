@@ -16,7 +16,7 @@ const (
 type StoreController struct {
 	DefaultStore   ImageStore
 	SubStore       map[string]ImageStore
-	NonOciMetadata *Driver
+	NonOciMetadata MetadataStoreDB
 }
 
 type ImageStore interface {
@@ -51,4 +51,11 @@ type ImageStore interface {
 	GetBlobContent(repo, digest string) ([]byte, error)
 	GetReferrers(repo, digest string, mediaType string) ([]artifactspec.Descriptor, error)
 	RunGCRepo(repo string)
+}
+
+type MetadataStoreDB interface {
+	GetStarredRepos(userid string) ([]string, error)
+	GetBookmarkedRepos(userid string) ([]string, error)
+	ToggleStarRepo(userid, reponame string) error
+	ToggleBookmarkRepo(userid, reponame string) error
 }

@@ -18,6 +18,9 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"go.etcd.io/bbolt"
+	"zotregistry.io/zot/pkg/common"
+
 	apexlog "github.com/apex/log"
 	guuid "github.com/gofrs/uuid"
 	"github.com/minio/sha256-simd"
@@ -1901,56 +1904,145 @@ func (is *ImageStoreLocal) RunGCRepo(repo string) {
 	is.log.Info().Msg(fmt.Sprintf("GC completed for %s", path.Join(is.RootDir(), repo)))
 }
 
-// type MetadataLocal struct {
-// 	// metrics          monitoring.MetricServer
-// 	cache cachedb.Driver
-// }
+// stars
+func (d *MetadataLocalStoreDB) ToggleStarRepo(userid, reponame string) error {
 
-// func (*MetadataLocal) AddStarredRepo(userid, reponame string) error {
-// 	return nil
-// }
+	if err := d.db.Update(func(tx *bbolt.Tx) error {
+		userdb := tx.Bucket([]byte(UserCache))
+		raw_user := userdb.Get([]byte(userid))
+		var dataUser UserMetadata
+		json.Unmarshal(raw_user, &dataUser)
+		if !common.Contains(dataUser.StarredRepos, reponame) {
+			dataUser.StarredRepos = append(dataUser.StarredRepos, reponame)
+		} else {
+			dataUser.StarredRepos = common.RemoveFrom(dataUser.StarredRepos, reponame)
+		}
 
-// func (*MetadataLocal) GetStarredRepos(user string) ([]string, error) {
-// 	return []string{}, nil
-// }
+		newRaw, _ := json.Marshal(dataUser)
+		userdb.Put([]byte(userid), []byte(newRaw))
+		return nil
+	}); err != nil {
+		return err
+	}
+	return nil
+}
 
-// func (*MetadataLocal) AddBookmarkedRepo(userid, reponame string) error {
-// 	return nil
-// }
+func (d *MetadataLocalStoreDB) GetStarredRepos(userid string) ([]string, error) {
+	var starredRepos []string
 
-// func (*MetadataLocal) GetBookmarkedRepos(user string) ([]string, error) {
-// 	return []string{}, nil
-// }
+	err := d.db.View(func(tx *bbolt.Tx) error {
+		userdb := tx.Bucket([]byte(UserCache))
+		raw_user := userdb.Get([]byte(userid))
+		var dataForUser UserMetadata
+		json.Unmarshal(raw_user, &dataForUser)
+		starredRepos = dataForUser.StarredRepos
 
-// func NewMetaStore(cache cachedb.Driver, rootDir string, log zlog.Logger) (MetaStore, error) {
-// 	// cache, _ = cachedb.Create("boltdb", BoltDBDriverParameters{rootDir, "cache", true}, log)
-// 	return &MetadataLocal{
-// 		cache,
-// 	}, nil
-// 	// return nil, nil
-// }
+		return nil
+	})
 
-// type MetaStoreGen interface {
-// 	AddStarredRepo(userid, reponame string) error
-// 	GetStarredRepos(user string) (string, error)
-// 	AddBookmarkedRepo(userid, reponame string) error
-// 	GetBookmarkedRepos(user string) (string, error)
-// }
+	if err != nil {
+		return nil, err
+	}
 
-// type MetaStoreLocal struct {
-// 	drive Driver
-// }
+	return starredRepos, nil
+}
 
-// type User struct {
-// 	bookmarks []string
-// }
+// bookmarks
+func (d *MetadataLocalStoreDB) ToggleBookmarkRepo(userid, reponame string) error {
+	if err := d.db.Update(func(tx *bbolt.Tx) error {
+		userdb := tx.Bucket([]byte(UserCache))
+		raw_user := userdb.Get([]byte(userid))
+		var dataUser UserMetadata
+		json.Unmarshal(raw_user, &dataUser)
+		if !common.Contains(dataUser.BookmarkedRepos, reponame) {
+			dataUser.BookmarkedRepos = append(dataUser.BookmarkedRepos, reponame)
+		} else {
+			dataUser.BookmarkedRepos = common.RemoveFrom(dataUser.BookmarkedRepos, reponame)
+		}
 
-// func (ms *MetaStoreLocal) AddStarredRepo(userid, reponame string) error {
-// 	return nil
-// }
+		newRaw, _ := json.Marshal(dataUser)
+		userdb.Put([]byte(userid), []byte(newRaw))
+		return nil
+	}); err != nil {
+		return err
+	}
+	return nil
+}
 
-// func GetStarredRepos(user string) (string, error) {
+func (d *MetadataLocalStoreDB) GetBookmarkedRepos(userid string) ([]string, error) {
+	var user_bookmark_repos []string
+	err := d.db.View(func(tx *bbolt.Tx) error {
+		userdb := tx.Bucket([]byte(UserCache))
+		raw_user := userdb.Get([]byte(userid))
+		var dataForUser UserMetadata
+		json.Unmarshal(raw_user, &dataForUser)
+		user_bookmark_repos = dataForUser.BookmarkedRepos
 
-// }
-// func AddBookmarkedRepo(userid, reponame string) error
-// func GetBookmarkedRepos(user string) (string, error)
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+	// user_bookmark_repos = dataUser.bookmarkedRepos
+	return user_bookmark_repos, nil
+
+}
+
+type UserMetadata struct {
+	// data for each user
+	StarredRepos    []string
+	BookmarkedRepos []string
+}
+
+type MetadataLocalStoreDB struct {
+	db *bbolt.DB
+}
+
+func NewMetaStore(rootDir, storageName string, log zerolog.Logger) MetadataStoreDB {
+	dbPath := path.Join(rootDir, storageName+DBExtensionName)
+	dbOpts := &bbolt.Options{
+		Timeout:      dbCacheLockCheckTimeout,
+		FreelistType: bbolt.FreelistArrayType,
+	}
+
+	cacheDB, err := bbolt.Open(dbPath, 0o600, dbOpts) //nolint:gomnd
+	if err != nil {
+		log.Error().Err(err).Str("dbPath", dbPath).Msg("unable to create cache db")
+
+		return nil
+	}
+
+	if err := cacheDB.Update(func(tx *bbolt.Tx) error {
+		if _, err := tx.CreateBucketIfNotExists([]byte(BlobsCache)); err != nil {
+			// this is a serious failure
+			log.Error().Err(err).Str("dbPath", dbPath).Msg("unable to create a root bucket")
+
+			return err
+		}
+
+		return nil
+	}); err != nil {
+		// something went wrong
+		log.Error().Err(err).Msg("unable to create a cache")
+
+		return nil
+	}
+
+	return &MetadataLocalStoreDB{
+		db: cacheDB,
+	}
+}
+
+func (d *MetadataLocalStoreDB) CreateMetadataBucket() error {
+	return d.db.Update(func(tx *bbolt.Tx) error {
+		if _, err := tx.CreateBucketIfNotExists([]byte(UserCache)); err != nil {
+			// this is a serious failure
+			return fmt.Errorf("unable to create a User cache bucket")
+		}
+
+		return nil
+	})
+}
+
+

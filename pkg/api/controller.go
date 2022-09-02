@@ -218,17 +218,20 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 	return server.Serve(listener)
 }
 
-func (c *Controller) CreateMetadataDatabaseDriver(configOverride interface{}, logInstance log.Logger) *storage.Driver {
-	metastore := storage.NewCache(storage.BoltDBDriverParameters{
-		RootDir:     c.Config.Storage.RootDirectory,
-		Name:        "users",
-		UseRelPaths: true,
-	}, logInstance)
+func (c *Controller) CreateMetadataDatabaseDriver(configOverride interface{}, logInstance log.Logger) storage.MetadataStoreDB {
+	// metastore := storage.NewCache(storage.BoltDBDriverParameters{
+	// 	RootDir:     c.Config.Storage.RootDirectory,
+	// 	Name:        "users",
+	// 	UseRelPaths: true,
+	// }, logInstance)
 
-	// metastore.CreateMetadataBucket()
-	c.StoreController.NonOciMetadata = metastore
+	c.StoreController.NonOciMetadata = storage.NewMetaStore(
+		c.Config.Storage.RootDirectory,
+		storage.UserCache,
+		logInstance.Logger)
+	// (storage.UserCache)
 
-	return metastore
+	return c.StoreController.NonOciMetadata
 }
 
 func (c *Controller) InitImageStore(reloadCtx context.Context) error {

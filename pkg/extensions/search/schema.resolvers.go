@@ -527,6 +527,7 @@ func (r *queryResolver) StarredRepos(ctx context.Context, limit *int, offset int
 		return empty, nil
 	}
 
+	// TODO: should be userAvailableRepos => we need to observe security restrictions
 	repos, err := retrieveReposFromName(repoList, r.storeController, r.log)
 	if err != nil {
 		return empty, err
@@ -554,6 +555,7 @@ func (r *queryResolver) BookmarkedRepos(ctx context.Context, limit *int, offset 
 		return empty, nil
 	}
 
+	// TODO: should be userAvailableRepos => we need to observe security restrictions
 	repos, err := retrieveReposFromName(repoList, r.storeController, r.log)
 	if err != nil {
 		return empty, err
