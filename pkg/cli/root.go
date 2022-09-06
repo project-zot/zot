@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -232,6 +233,10 @@ func validateStorageConfig(cfg *config.Config) error {
 }
 
 func validateConfiguration(config *config.Config) error {
+	if err := validateHTTP(config); err != nil {
+		return err
+	}
+
 	if err := validateGC(config); err != nil {
 		return err
 	}
@@ -509,6 +514,21 @@ func validateLDAP(config *config.Config) error {
 
 			return errors.ErrLDAPConfig
 		}
+	}
+
+	return nil
+}
+
+func validateHTTP(config *config.Config) error {
+	if config.HTTP.Port != "" {
+		port, err := strconv.ParseInt(config.HTTP.Port, 10, 64)
+		if err != nil || (port < 0 || port > 65535) {
+			log.Error().Str("port", config.HTTP.Port).Msg("invalid port")
+
+			return errors.ErrBadConfig
+		}
+
+		fmt.Printf("HTTP port %d\n", port)
 	}
 
 	return nil
