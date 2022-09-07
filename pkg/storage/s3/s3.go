@@ -1273,10 +1273,6 @@ retry:
 			return err
 		}
 
-		if dstRecord == dst {
-			is.log.Warn().Msg("FOUND equal dsts")
-		}
-
 		// prevent overwrite original blob
 		if fileInfo == nil && dstRecord != dst {
 			// put empty file so that we are compliant with oci layout, this will act as a deduped blob
@@ -1286,8 +1282,12 @@ retry:
 
 				return err
 			}
-		} else {
-			is.log.Warn().Msg("prevent overwrite")
+
+			if err := is.cache.PutBlob(dstDigest.String(), dst); err != nil {
+				is.log.Error().Err(err).Str("blobPath", dst).Msg("dedupe: unable to insert blob record")
+
+				return err
+			}
 		}
 
 		// remove temp blobupload
@@ -1445,33 +1445,37 @@ func (is *ObjectStorage) GetBlob(repo, digest, mediaType string) (io.ReadCloser,
 	}
 
 	// is a 'deduped' blob
-	if binfo.Size() == 0 && is.cache != nil {
+	if binfo.Size() == 0 {
 		// Check blobs in cache
 		dstRecord, err := is.checkCacheBlob(digest)
-		if err == nil {
-			binfo, err := is.store.Stat(context.Background(), dstRecord)
-			if err != nil {
-				is.log.Error().Err(err).Str("blob", dstRecord).Msg("failed to stat blob")
+		if err != nil {
+			is.log.Error().Err(err).Str("digest", digest).Msg("cache: not found")
 
-				// the actual blob on disk may have been removed by GC, so sync the cache
-				if err := is.cache.DeleteBlob(digest, dstRecord); err != nil {
-					is.log.Error().Err(err).Str("dstDigest", digest).Str("dst", dstRecord).Msg("dedupe: unable to delete blob record")
+			return nil, -1, zerr.ErrBlobNotFound
+		}
 
-					return nil, -1, err
-				}
+		binfo, err := is.store.Stat(context.Background(), dstRecord)
+		if err != nil {
+			is.log.Error().Err(err).Str("blob", dstRecord).Msg("failed to stat blob")
 
-				return nil, -1, zerr.ErrBlobNotFound
-			}
-
-			blobReadCloser, err := is.store.Reader(context.Background(), dstRecord, 0)
-			if err != nil {
-				is.log.Error().Err(err).Str("blob", dstRecord).Msg("failed to open blob")
+			// the actual blob on disk may have been removed by GC, so sync the cache
+			if err := is.cache.DeleteBlob(digest, dstRecord); err != nil {
+				is.log.Error().Err(err).Str("dstDigest", digest).Str("dst", dstRecord).Msg("dedupe: unable to delete blob record")
 
 				return nil, -1, err
 			}
 
-			return blobReadCloser, binfo.Size(), nil
+			return nil, -1, zerr.ErrBlobNotFound
 		}
+
+		blobReadCloser, err := is.store.Reader(context.Background(), dstRecord, 0)
+		if err != nil {
+			is.log.Error().Err(err).Str("blob", dstRecord).Msg("failed to open blob")
+
+			return nil, -1, err
+		}
+
+		return blobReadCloser, binfo.Size(), nil
 	}
 
 	// The caller function is responsible for calling Close()
