@@ -15,6 +15,8 @@ const (
 	BlobsCache              = "blobs"
 	DBExtensionName         = ".db"
 	dbCacheLockCheckTimeout = 10 * time.Second
+	// always mark the first key inserted in the BlobsCache with a value.
+	firstKeyValue = "first"
 )
 
 type Cache struct {
@@ -22,11 +24,6 @@ type Cache struct {
 	db          *bbolt.DB
 	log         zlog.Logger
 	useRelPaths bool // weather or not to use relative paths, should be true for filesystem and false for s3
-}
-
-// Blob is a blob record.
-type Blob struct {
-	Path string
 }
 
 func NewCache(rootDir string, name string, useRelPaths bool, log zlog.Logger) *Cache {
@@ -88,15 +85,25 @@ func (c *Cache) PutBlob(digest, path string) error {
 			return err
 		}
 
-		bucket, err := root.CreateBucketIfNotExists([]byte(digest))
-		if err != nil {
-			// this is a serious failure
-			c.log.Error().Err(err).Str("bucket", digest).Msg("unable to create a bucket")
+		var value string
 
-			return err
+		bucket := root.Bucket([]byte(digest))
+		if bucket == nil {
+			/* mark first key in bucket
+			in the context of s3 we need to know which blob is real
+			and we know that the first one is always the real, so mark them.
+			*/
+			value = firstKeyValue
+			bucket, err = root.CreateBucket([]byte(digest))
+			if err != nil {
+				// this is a serious failure
+				c.log.Error().Err(err).Str("bucket", digest).Msg("unable to create a bucket")
+
+				return err
+			}
 		}
 
-		if err := bucket.Put([]byte(path), nil); err != nil {
+		if err := bucket.Put([]byte(path), []byte(value)); err != nil {
 			c.log.Error().Err(err).Str("bucket", digest).Str("value", path).Msg("unable to put record")
 
 			return err
@@ -125,10 +132,20 @@ func (c *Cache) GetBlob(digest string) (string, error) {
 
 		b := root.Bucket([]byte(digest))
 		if b != nil {
-			// get first key
-			c := b.Cursor()
-			k, _ := c.First()
-			blobPath.WriteString(string(k))
+			if err := b.ForEach(func(k, v []byte) error {
+				// always return the key with 'first' value
+				if string(v) == firstKeyValue {
+					blobPath.WriteString(string(k))
+
+					return nil
+				}
+
+				return nil
+			}); err != nil {
+				c.log.Error().Err(err).Msg("unable to access digest bucket")
+
+				return err
+			}
 
 			return nil
 		}
@@ -194,6 +211,8 @@ func (c *Cache) DeleteBlob(digest, path string) error {
 			return errors.ErrCacheMiss
 		}
 
+		value := bucket.Get([]byte(path))
+
 		if err := bucket.Delete([]byte(path)); err != nil {
 			c.log.Error().Err(err).Str("digest", digest).Str("path", path).Msg("unable to delete")
 
@@ -202,11 +221,18 @@ func (c *Cache) DeleteBlob(digest, path string) error {
 
 		cur := bucket.Cursor()
 
-		k, _ := cur.First()
-		if k == nil {
+		key, _ := cur.First()
+		if key == nil {
 			c.log.Debug().Str("digest", digest).Str("path", path).Msg("deleting empty bucket")
 			if err := root.DeleteBucket([]byte(digest)); err != nil {
 				c.log.Error().Err(err).Str("digest", digest).Str("path", path).Msg("unable to delete")
+
+				return err
+			}
+			// if deleted key has value 'first' then move this value to the next key
+		} else if string(value) == firstKeyValue {
+			if err := bucket.Put(key, value); err != nil {
+				c.log.Error().Err(err).Str("bucket", digest).Str("value", path).Msg("unable to put record")
 
 				return err
 			}

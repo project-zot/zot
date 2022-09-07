@@ -1649,6 +1649,22 @@ func TestS3DedupeErr(t *testing.T) {
 		So(err, ShouldNotBeNil)
 	})
 
+	Convey("Test DedupeBlob - error on cache.PutBlob()", t, func(c C) {
+		tdir := t.TempDir()
+		imgStore = createMockStorage(testDir, tdir, true, &StorageDriverMock{
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+				return nil, nil
+			},
+		})
+
+		digest := godigest.NewDigestFromEncoded(godigest.SHA256, "digest")
+		err := imgStore.DedupeBlob("", digest, "dst")
+		So(err, ShouldBeNil)
+
+		err = imgStore.DedupeBlob("", digest, "")
+		So(err, ShouldNotBeNil)
+	})
+
 	Convey("Test DedupeBlob - error on store.Delete()", t, func(c C) {
 		tdir := t.TempDir()
 		imgStore = createMockStorage(testDir, tdir, true, &StorageDriverMock{
@@ -1805,6 +1821,26 @@ func TestS3DedupeErr(t *testing.T) {
 				}
 
 				return io.NopCloser(strings.NewReader("")), nil
+			},
+		})
+
+		_, _, err = imgStore.GetBlob("repo2", digest.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("Test GetBlob() - error on checkCacheBlob()", t, func(c C) {
+		tdir := t.TempDir()
+
+		digest := godigest.NewDigestFromEncoded(godigest.SHA256,
+			"7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc")
+
+		imgStore = createMockStorage(testDir, tdir, true, &StorageDriverMock{
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+				return &FileInfoMock{
+					SizeFn: func() int64 {
+						return 0
+					},
+				}, nil
 			},
 		})
 
