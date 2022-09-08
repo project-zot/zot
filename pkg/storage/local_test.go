@@ -1056,6 +1056,34 @@ func TestDedupeLinks(t *testing.T) {
 		fi2, err := os.Stat(path.Join(dir, "dedupe2", "blobs", "sha256", blobDigest2))
 		So(err, ShouldBeNil)
 		So(os.SameFile(fi1, fi2), ShouldBeTrue)
+
+		Convey("storage and cache inconsistency", func() {
+			// delete blobs
+			err = os.Remove(path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1))
+			So(err, ShouldBeNil)
+
+			err := os.Remove(path.Join(dir, "dedupe2", "blobs", "sha256", blobDigest2))
+			So(err, ShouldBeNil)
+
+			// now cache is inconsistent with storage (blobs present in cache but not in storage)
+			upload, err = imgStore.NewBlobUpload("dedupe3")
+			So(err, ShouldBeNil)
+			So(upload, ShouldNotBeEmpty)
+
+			content = []byte("test-data3")
+			buf = bytes.NewBuffer(content)
+			buflen = buf.Len()
+			digest = godigest.FromBytes(content)
+			blob, err = imgStore.PutBlobChunkStreamed("dedupe3", upload, buf)
+			So(err, ShouldBeNil)
+			So(blob, ShouldEqual, buflen)
+			blobDigest2 := strings.Split(digest.String(), ":")[1]
+			So(blobDigest2, ShouldNotBeEmpty)
+
+			err = imgStore.FinishBlobUpload("dedupe3", upload, buf, digest.String())
+			So(err, ShouldBeNil)
+			So(blob, ShouldEqual, buflen)
+		})
 	})
 }
 
