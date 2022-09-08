@@ -2,12 +2,11 @@ package search_test
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/url"
 	"os"
 	"regexp"
 
+	"net/url"
 	"testing"
 	"time"
 
@@ -22,7 +21,6 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 
 	// . "zotregistry.io/zot/pkg/test"
-
 	// "zotregistry.io/zot/pkg/api/config"
 	// "zotregistry.io/zot/pkg/extensions/sync"
 	"zotregistry.io/zot/pkg/test"
@@ -151,125 +149,324 @@ func getCredString(username, password string) string {
 	return usernameAndHash
 }
 
-func TestMetadataE2E(t *testing.T) {
-	Convey("Two creds", t, func() {
-		subpath := "/a"
-		twoCredTests := []string{}
-		user1 := "alicia"
-		password1 := "aliciapassword"
-		user2 := "bob"
-		password2 := "robert"
-		twoCredTests = append(twoCredTests, getCredString(user1, password1)+"\n"+
-			getCredString(user2, password2))
-
-		twoCredTests = append(twoCredTests, getCredString(user1, password1)+"\n"+
-			getCredString(user2, password2)+"\n")
-
-		twoCredTests = append(twoCredTests, getCredString(user1, password1)+"\n\n"+
-			getCredString(user2, password2)+"\n\n")
-
-		for _, testString := range twoCredTests {
-			func() {
-				port := test.GetFreePort()
-				baseURL := test.GetBaseURL(port)
-				conf := config.New()
-				conf.Storage.RootDirectory = rootDir
-				conf.Storage.SubPaths = make(map[string]config.StorageConfig)
-				conf.Storage.SubPaths[subpath] = config.StorageConfig{RootDirectory: subRootDir}
-				defaultVal := true
-				conf.Extensions = &extconf.ExtensionConfig{
-					Search: &extconf.SearchConfig{Enable: &defaultVal},
-				}
-
-				conf.Extensions.Search.CVE = nil
-				conf.HTTP.Port = port
-				htpasswdPath := test.MakeHtpasswdFileFromString(testString)
-				defer os.Remove(htpasswdPath)
-				conf.HTTP.Auth = &config.AuthConfig{
-					HTPasswd: config.AuthHTPasswd{
-						Path: htpasswdPath,
-					},
-				}
-				ctlr := api.NewController(conf)
-				ctlr.Config.Storage.RootDirectory = t.TempDir()
-
-				go startServer(ctlr)
-				defer stopServer(ctlr)
-				time.Sleep(1 * time.Second)
-				test.WaitTillServerReady(baseURL)
-
-				// url := fmt.Sprintf("%s/%s", baseURL, graphqlQueryPrefix)
-				// with creds, should get expected status code
-				// resp, _ := resty.R().SetBasicAuth(user1, password1).Get(url)
-				// // http://127.0.0.1:44075//v2/_zot/ext/search
-				// So(resp, ShouldNotBeNil)
-				// So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-				// resp, _ := resty.R().SetBasicAuth(user2, password2).Get(fmt.Sprintf("%s/v2/%s", baseURL, graphqlQueryPrefix))
-				// So(resp, ShouldNotBeNil)
-				// So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-				// // with invalid creds, it should fail
-				// resp, _ = resty.R().SetBasicAuth("chuck", "chuck").Get(fmt.Sprintf("%s/v2/%s", baseURL, graphqlQueryPrefix))
-				// So(resp, ShouldNotBeNil)
-				// So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
-
-				resty.SetRedirectPolicy(resty.FlexibleRedirectPolicy(10))
-				resp, err := resty.R().SetBasicAuth(user1, password1).Get(
-					fmt.Sprintf("%s%s?query=%s", baseURL, graphqlQueryPrefix,
-						url.QueryEscape("{StarredRepos{Results{RepoSummary{RepoName}}}}")))
-				So(resp, ShouldNotBeNil)
-				So(err, ShouldBeNil)
-				So(resp.StatusCode(), ShouldEqual, 200)
-				var pagRes PaginatedReposResultResp
-				var repos RepoResults
-
-				err = json.Unmarshal(resp.Body(), &pagRes)
-				repos = pagRes.data
-				So(err, ShouldBeNil)
-				for _, val := range repos.Repos {
-
-					So(val, ShouldNotBeBlank)
-				}
-			}()
-		}
-	})
-}
-
 func TestGetEmptyUser(t *testing.T) {
-	Convey("Verify sync on demand feature", t, func() {
+	Convey("Retrieve starred repos for empty user", t, func() {
 		t.Helper()
 
 		srcConfig := config.New()
+		srcConfig.Storage.RootDirectory = "/tmp/zotd/root"
 		sctlr := api.NewController(srcConfig)
 		sctlr.StoreController.NonOciMetadata = storage.NewMetaStore(
 			srcConfig.Storage.RootDirectory, "users", sctlr.Log.Logger)
-		brepos, err := sctlr.StoreController.NonOciMetadata.GetBookmarkedRepos("")
-		So(brepos, ShouldEqual, []string{})
+		brepos, err := sctlr.StoreController.NonOciMetadata.GetStarredRepos("")
+		So(brepos, ShouldResemble, []string{})
 		So(err, ShouldBeNil)
 	})
 }
 
 func TestGetExistingUser(t *testing.T) {
-	Convey("Verify sync on demand feature", t, func() {
-		t.Helper()
-
+	Convey("Create User metadata DB", t, func(c C) {
 		srcConfig := config.New()
+		srcConfig.Storage.RootDirectory = t.TempDir()
 		sctlr := api.NewController(srcConfig)
-		sctlr.StoreController.NonOciMetadata = storage.NewMetaStore(
-			srcConfig.Storage.RootDirectory, "users", sctlr.Log.Logger)
-		brepos, err := sctlr.StoreController.NonOciMetadata.GetBookmarkedRepos("test")
-		So(brepos, ShouldEqual, []string{})
-		So(err, ShouldBeNil)
+		sctlr.CreateMetadataDatabaseDriver(srcConfig, sctlr.Log)
+		So(sctlr.StoreController.NonOciMetadata, ShouldNotBeNil)
+		_, err := os.Stat("users.db")
+		So(err, ShouldNotBeNil)
+		// sctlr.StoreController.NonOciMetadata = storage.NewMetaStore(
+		// 	srcConfig.Storage.RootDirectory, "users", sctlr.Log.Logger)
 
-		sctlr.StoreController.NonOciMetadata.ToggleBookmarkRepo("test", "golang")
-		brepos2, err := sctlr.StoreController.NonOciMetadata.GetBookmarkedRepos("test")
-		So(brepos2, ShouldEqual, []string{"golang"})
-		So(err, ShouldBeNil)
+		Convey("Retrieve starred repos for simulated user without initial user metadata", func(c C) {
+			t.Helper()
 
-		sctlr.StoreController.NonOciMetadata.ToggleBookmarkRepo("test", "golang")
-		brepos3, err := sctlr.StoreController.NonOciMetadata.GetBookmarkedRepos("test")
-		So(brepos3, ShouldEqual, []string{})
-		So(err, ShouldBeNil)
+			simulatedUser := "test"
+			reponame := "golang"
+			repo2name := "alpine"
+			brepos, err := sctlr.StoreController.NonOciMetadata.GetStarredRepos(simulatedUser)
+			So(brepos, ShouldResemble, []string(nil))
+			So(err, ShouldBeNil)
+
+			err = sctlr.StoreController.NonOciMetadata.ToggleStarRepo(simulatedUser, reponame)
+			So(err, ShouldBeNil)
+			brepos2, err := sctlr.StoreController.NonOciMetadata.GetStarredRepos(simulatedUser)
+			So(brepos2, ShouldResemble, []string{reponame})
+			So(err, ShouldBeNil)
+
+			brepos3, err := sctlr.StoreController.NonOciMetadata.GetBookmarkedRepos(simulatedUser)
+			So(brepos3, ShouldResemble, []string(nil))
+			So(err, ShouldBeNil)
+			err = sctlr.StoreController.NonOciMetadata.ToggleBookmarkRepo(simulatedUser, repo2name)
+			So(err, ShouldBeNil)
+			brepos4, err := sctlr.StoreController.NonOciMetadata.GetBookmarkedRepos(simulatedUser)
+			So(brepos4, ShouldResemble, []string{repo2name})
+			So(err, ShouldBeNil)
+
+			brepos5, err := sctlr.StoreController.NonOciMetadata.GetStarredRepos(simulatedUser)
+			So(brepos5, ShouldResemble, []string{reponame})
+			So(err, ShouldBeNil)
+
+			err = sctlr.StoreController.NonOciMetadata.ToggleStarRepo(simulatedUser, reponame)
+			So(err, ShouldBeNil)
+			brepos6, err := sctlr.StoreController.NonOciMetadata.GetStarredRepos(simulatedUser)
+			So(brepos6, ShouldResemble, []string(nil)) // Nil or empty? []string{}
+			So(err, ShouldBeNil)
+
+		})
+	})
+}
+
+func TestUserMetadata(t *testing.T) {
+	Convey("UserMetadata", t, func(c C) {
+		conf := config.New()
+		port := test.GetFreePort() // "8080"
+		// conf.HTTP.Address = "172.24.56.23"
+		baseURL := fmt.Sprintf("http://%s:%s", conf.HTTP.Address, port) // test.GetBaseURL(port)
+		conf.HTTP.Port = port
+		conf.HTTP.AllowOrigin = "*"
+
+		tempDir := t.TempDir() // "/tmp/zotd/root"
+		conf.Storage.RootDirectory = tempDir
+
+		err := test.CopyFiles("../../../test/data", tempDir)
+		if err != nil {
+			panic(err)
+		}
+
+		repoName := "zot-cve-test"
+		inaccessibleRepo := "zot-test"
+
+		defaultVal := true
+
+		searchConfig := &extconf.SearchConfig{
+			Enable: &defaultVal,
+		}
+
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: searchConfig,
+		}
+
+		adminUser := "alice"
+		adminPassword := "deepGoesTheRabbitHole"
+		simpleUser := "test"
+		simpleUserPassword := "test123"
+		twoCredTests := fmt.Sprintf("%s\n%s\n\n", getCredString(adminUser, adminPassword),
+			getCredString(simpleUser, simpleUserPassword))
+
+		htpasswdPath := test.MakeHtpasswdFileFromString(twoCredTests)
+		defer os.Remove(htpasswdPath)
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+		}
+
+		conf.AccessControl = &config.AccessControlConfig{
+			Repositories: config.Repositories{
+				repoName: config.PolicyGroup{
+					Policies: []config.Policy{
+						{
+							Users:   []string{simpleUser},
+							Actions: []string{"read"},
+						},
+					},
+					DefaultPolicy: []string{},
+				},
+				inaccessibleRepo: config.PolicyGroup{
+					Policies: []config.Policy{
+						{
+							Users:   []string{},
+							Actions: []string{},
+						},
+					},
+					DefaultPolicy: []string{},
+				},
+			},
+			AdminPolicy: config.Policy{
+				Users:   []string{adminUser},
+				Actions: []string{"read", "create", "update"},
+			},
+		}
+
+		ctlr := api.NewController(conf)
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+
+		test.WaitTillServerReady(baseURL)
+
+		Convey("Flip Starred Repos in Usermetadata Authorized", func(c C) {
+			query := `
+				query UserStarRepos {
+				StarredRepos(offset: 0) {
+					Results {
+						Name
+						}
+					}
+				}
+			`
+
+			mutationCall := fmt.Sprintf(`
+				mutation FlipStarForTestRepo {
+					ToggleStar(repo: "%s") {
+							success
+					}
+				}
+			`, repoName)
+			clientHttp := resty.R().SetBasicAuth(simpleUser, simpleUserPassword)
+			resp0, err0 := clientHttp.Get(
+				fmt.Sprintf("%s%s?query=%s",
+					baseURL,
+					constants.ExtSearchPrefix,
+					url.QueryEscape(query)))
+			So(err0, ShouldBeNil)
+			So(resp0, ShouldNotBeNil)
+			So(resp0.StatusCode(), ShouldEqual, 200)
+
+			urlTarget := fmt.Sprintf("%s%s",
+				baseURL,
+				constants.ExtSearchPrefix,
+			)
+
+			resp1, err1 := resty.R().SetBasicAuth(simpleUser, simpleUserPassword).
+				SetBody(map[string]string{
+					"query": mutationCall,
+				}).
+				Post(urlTarget)
+			So(err1, ShouldBeNil)
+			So(resp1, ShouldNotBeNil)
+			So(resp1.StatusCode(), ShouldEqual, 200)
+			So(string(resp1.Body()), ShouldContainSubstring, "\"success\":true")
+
+			resp2, err2 := resty.R().SetBasicAuth(simpleUser, simpleUserPassword).Get(baseURL + constants.ExtSearchPrefix +
+				"?query=" + url.QueryEscape(query))
+			So(err2, ShouldBeNil)
+			So(resp2, ShouldNotBeNil)
+			So(resp2.StatusCode(), ShouldEqual, 200)
+
+			So(string(resp2.Body()), ShouldContainSubstring, repoName)
+
+			resp3, err3 := resty.R().SetBasicAuth(simpleUser, simpleUserPassword).
+				SetBody(map[string]string{
+					"query": mutationCall,
+				}).
+				Post(urlTarget)
+			So(err3, ShouldBeNil)
+			So(resp3, ShouldNotBeNil)
+			So(resp3.StatusCode(), ShouldEqual, 200)
+			So(string(resp3.Body()), ShouldContainSubstring, "\"success\":true")
+
+			resp4, err4 := resty.R().SetBasicAuth(simpleUser, simpleUserPassword).Get(baseURL + constants.ExtSearchPrefix +
+				"?query=" + url.QueryEscape(query))
+			So(err4, ShouldBeNil)
+			So(resp4, ShouldNotBeNil)
+			So(resp4.StatusCode(), ShouldEqual, 200)
+
+			So(string(resp4.Body()), ShouldNotContainSubstring, repoName)
+		})
+
+		Convey("Flip Starred Repos in Usermetadata with Unauthorized Repo", func(c C) {
+			query := `
+				query UserStarRepos {
+				StarredRepos(offset: 0) {
+					Results {
+						Name
+						}
+					}
+				}
+			`
+			mutationCall := fmt.Sprintf(`
+				mutation FlipStarForTestRepo {
+					ToggleStar(repo: "%s") {
+							success
+					}
+				}
+			`, inaccessibleRepo)
+
+			clientHttp := resty.R().SetBasicAuth(simpleUser, simpleUserPassword)
+			resp0, err0 := clientHttp.Get(
+				fmt.Sprintf("%s%s?query=%s",
+					baseURL,
+					constants.ExtSearchPrefix,
+					url.QueryEscape(query)))
+			So(err0, ShouldBeNil)
+			So(resp0, ShouldNotBeNil)
+			So(resp0.StatusCode(), ShouldEqual, 200)
+
+			urlTarget := fmt.Sprintf("%s%s",
+				baseURL,
+				constants.ExtSearchPrefix,
+			)
+
+			resp1, err1 := resty.R().SetBasicAuth(simpleUser, simpleUserPassword).
+				SetBody(map[string]string{
+					"query": mutationCall,
+				}).
+				Post(urlTarget)
+			So(err1, ShouldBeNil)
+			So(resp1, ShouldNotBeNil)
+			So(resp1.StatusCode(), ShouldEqual, 200)
+			So(string(resp1.Body()), ShouldContainSubstring,
+				"repo does not exist or you are not authorized to see it")
+
+			resp2, err2 := resty.R().SetBasicAuth(simpleUser, simpleUserPassword).Get(baseURL + constants.ExtSearchPrefix +
+				"?query=" + url.QueryEscape(query))
+			So(err2, ShouldBeNil)
+			So(resp2, ShouldNotBeNil)
+			So(resp2.StatusCode(), ShouldEqual, 200)
+
+			So(string(resp2.Body()), ShouldNotContainSubstring, inaccessibleRepo)
+		})
+
+		Convey("Flip Starred Repos in Usermetadata with Unauthorized Repo & admin user", func(c C) {
+			query := `
+				query UserStarRepos {
+				StarredRepos(offset: 0) {
+					Results {
+						Name
+						}
+					}
+				}
+			`
+			mutationCall := fmt.Sprintf(`
+				mutation FlipStarForTestRepo {
+					ToggleStar(repo: "%s") {
+							success
+					}
+				}
+			`, inaccessibleRepo)
+
+			clientHttp := resty.R().SetBasicAuth(adminUser, adminPassword)
+			resp0, err0 := clientHttp.Get(
+				fmt.Sprintf("%s%s?query=%s",
+					baseURL,
+					constants.ExtSearchPrefix,
+					url.QueryEscape(query)))
+			So(err0, ShouldBeNil)
+			So(resp0, ShouldNotBeNil)
+			So(resp0.StatusCode(), ShouldEqual, 200)
+
+			urlTarget := fmt.Sprintf("%s%s",
+				baseURL,
+				constants.ExtSearchPrefix,
+			)
+
+			resp1, err1 := resty.R().SetBasicAuth(adminUser, adminPassword).
+				SetBody(map[string]string{
+					"query": mutationCall,
+				}).
+				Post(urlTarget)
+			So(err1, ShouldBeNil)
+			So(resp1, ShouldNotBeNil)
+			So(resp1.StatusCode(), ShouldEqual, 200)
+			So(string(resp1.Body()), ShouldNotContainSubstring,
+				"repo does not exist or you are not authorized to see it")
+
+			resp2, err2 := resty.R().SetBasicAuth(adminUser, adminPassword).Get(baseURL + constants.ExtSearchPrefix +
+				"?query=" + url.QueryEscape(query))
+			So(err2, ShouldBeNil)
+			So(resp2, ShouldNotBeNil)
+			So(resp2.StatusCode(), ShouldEqual, 200)
+
+			So(string(resp2.Body()), ShouldContainSubstring, inaccessibleRepo)
+		})
 	})
 }
