@@ -21,9 +21,9 @@ func Index(slice []string, item string) int {
 	return -1
 }
 
-func RemoveFrom(slice []string, item string) []string {
+func RemoveFrom(input []string, item string) []string {
 	var newList []string
-	for _, v := range slice {
+	for _, v := range input {
 		if item != v {
 			newList = append(newList, v)
 		}

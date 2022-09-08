@@ -1904,20 +1904,31 @@ func (is *ImageStoreLocal) RunGCRepo(repo string) {
 	is.log.Info().Msg(fmt.Sprintf("GC completed for %s", path.Join(is.RootDir(), repo)))
 }
 
+// func (d *MetadataLocalStoreDB) CreateNewUserEntry(userid string) (UserMetadata, error) {
+
+// 	return
+// }
+
 // stars
 func (d *MetadataLocalStoreDB) ToggleStarRepo(userid, reponame string) error {
 
 	if err := d.db.Update(func(tx *bbolt.Tx) error {
 		userdb := tx.Bucket([]byte(UserCache))
 		raw_user := userdb.Get([]byte(userid))
-		var dataUser UserMetadata
-		json.Unmarshal(raw_user, &dataUser)
-		if !common.Contains(dataUser.StarredRepos, reponame) {
-			dataUser.StarredRepos = append(dataUser.StarredRepos, reponame)
+		var dataUser UserMetadata //
+		if raw_user != nil {
+			json.Unmarshal(raw_user, &dataUser)
+			if common.Contains(dataUser.StarredRepos, reponame) {
+				dataUser.StarredRepos = common.RemoveFrom(dataUser.StarredRepos, reponame)
+			} else {
+				dataUser.StarredRepos = append(dataUser.StarredRepos, reponame)
+			}
+			// reusing old data struct to avoid changing other fields
+			//    (and depending on other fields)
+			// newDataUser.BookmarkedRepos = dataUser.BookmarkedRepos
 		} else {
-			dataUser.StarredRepos = common.RemoveFrom(dataUser.StarredRepos, reponame)
+			dataUser.StarredRepos = []string{reponame}
 		}
-
 		newRaw, _ := json.Marshal(dataUser)
 		userdb.Put([]byte(userid), []byte(newRaw))
 		return nil
@@ -1932,6 +1943,10 @@ func (d *MetadataLocalStoreDB) GetStarredRepos(userid string) ([]string, error) 
 
 	err := d.db.View(func(tx *bbolt.Tx) error {
 		userdb := tx.Bucket([]byte(UserCache))
+		if userid == "" {
+			starredRepos = []string{}
+			return nil
+		}
 		raw_user := userdb.Get([]byte(userid))
 		var dataForUser UserMetadata
 		json.Unmarshal(raw_user, &dataForUser)
@@ -1954,12 +1969,21 @@ func (d *MetadataLocalStoreDB) ToggleBookmarkRepo(userid, reponame string) error
 		raw_user := userdb.Get([]byte(userid))
 		var dataUser UserMetadata
 		json.Unmarshal(raw_user, &dataUser)
-		if !common.Contains(dataUser.BookmarkedRepos, reponame) {
-			dataUser.BookmarkedRepos = append(dataUser.BookmarkedRepos, reponame)
+
+		if raw_user != nil {
+			if !common.Contains(dataUser.BookmarkedRepos, reponame) {
+				dataUser.BookmarkedRepos = append(dataUser.BookmarkedRepos, reponame)
+			} else {
+				dataUser.BookmarkedRepos = common.RemoveFrom(dataUser.BookmarkedRepos, reponame)
+			}
 		} else {
-			dataUser.BookmarkedRepos = common.RemoveFrom(dataUser.BookmarkedRepos, reponame)
+			dataUser.StarredRepos = []string{}
+			dataUser.BookmarkedRepos = []string{}
 		}
 
+		// reusing old data struct to avoid changing other fields
+		//    (and depending on other fields)
+		// newDataUser.BookmarkedRepos = dataUser.BookmarkedRepos
 		newRaw, _ := json.Marshal(dataUser)
 		userdb.Put([]byte(userid), []byte(newRaw))
 		return nil
@@ -2000,27 +2024,29 @@ type MetadataLocalStoreDB struct {
 }
 
 func NewMetaStore(rootDir, storageName string, log zerolog.Logger) MetadataStoreDB {
+	var metadataDB *bbolt.DB
 	dbPath := path.Join(rootDir, storageName+DBExtensionName)
 	dbOpts := &bbolt.Options{
 		Timeout:      dbCacheLockCheckTimeout,
 		FreelistType: bbolt.FreelistArrayType,
 	}
 
-	cacheDB, err := bbolt.Open(dbPath, 0o600, dbOpts) //nolint:gomnd
+	metadataDB, err := bbolt.Open(dbPath, 0o600, dbOpts) //nolint:gomnd
 	if err != nil {
 		log.Error().Err(err).Str("dbPath", dbPath).Msg("unable to create cache db")
 
 		return nil
 	}
 
-	if err := cacheDB.Update(func(tx *bbolt.Tx) error {
-		if _, err := tx.CreateBucketIfNotExists([]byte(BlobsCache)); err != nil {
+	if err := metadataDB.Update(func(tx *bbolt.Tx) error {
+		// var usersBucket *bbolt.Bucket
+		var err error
+		if _, err = tx.CreateBucketIfNotExists([]byte(UserCache)); err != nil {
 			// this is a serious failure
-			log.Error().Err(err).Str("dbPath", dbPath).Msg("unable to create a root bucket")
+			log.Error().Err(err).Str("dbPath", dbPath).Msg("unable to create a user bucket")
 
 			return err
 		}
-
 		return nil
 	}); err != nil {
 		// something went wrong
@@ -2030,19 +2056,17 @@ func NewMetaStore(rootDir, storageName string, log zerolog.Logger) MetadataStore
 	}
 
 	return &MetadataLocalStoreDB{
-		db: cacheDB,
+		db: metadataDB,
 	}
 }
 
-func (d *MetadataLocalStoreDB) CreateMetadataBucket() error {
-	return d.db.Update(func(tx *bbolt.Tx) error {
-		if _, err := tx.CreateBucketIfNotExists([]byte(UserCache)); err != nil {
-			// this is a serious failure
-			return fmt.Errorf("unable to create a User cache bucket")
-		}
+// func (d *MetadataLocalStoreDB) CreateMetadataBucket() error {
+// 	return d.db.Update(func(tx *bbolt.Tx) error {
+// 		if _, err := tx.CreateBucketIfNotExists([]byte(UserCache)); err != nil {
+// 			// this is a serious failure
+// 			return fmt.Errorf("unable to create a User cache bucket")
+// 		}
 
-		return nil
-	})
-}
-
-
+// 		return nil
+// 	})
+// }

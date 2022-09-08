@@ -19,14 +19,11 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test/mocks"
 
-	"context"
-	"os"
+	// "context"
+	// "os"
 
-	"github.com/rs/zerolog"
-	"zotregistry.io/zot/pkg/extensions/monitoring"
+	// "zotregistry.io/zot/pkg/extensions/monitoring"
 
-	localCtx "zotregistry.io/zot/pkg/requestcontext2"
-	"zotregistry.io/zot/pkg/storage"
 )
 
 var ErrTestError = errors.New("TestError")
@@ -240,28 +237,5 @@ func TestMatching(t *testing.T) {
 		query = pine
 		score = calculateImageMatchingScore("alpine/repo/test", strings.Index("alpine", query), false)
 		So(score, ShouldEqual, 12)
-	})
-}
-
-func TestUserAvailableRepos(t *testing.T) {
-	Convey("Type assertion fails", t, func() {
-		var invalid struct{}
-
-		log := log.Logger{Logger: zerolog.New(os.Stdout)}
-		dir := t.TempDir()
-		metrics := monitoring.NewMetricsServer(false, log)
-		defaultStore := storage.NewImageStore(dir, false, 0, false, false, log, metrics, nil)
-
-		repoList, err := defaultStore.GetRepositories()
-		So(err, ShouldBeNil)
-
-		ctx := context.TODO()
-		key := localCtx.GetContextKey()
-		ctx = context.WithValue(ctx, key, invalid)
-		So(repoList, ShouldBeEmpty)
-
-		// repos, err := userAvailableRepos(ctx, repoList)
-		// So(err, ShouldNotBeNil)
-		// So(repos, ShouldBeEmpty)
 	})
 }

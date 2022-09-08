@@ -125,6 +125,7 @@ type ComplexityRoot struct {
 	}
 
 	Query struct {
+		BookmarkedRepos         func(childComplexity int, limit *int, offset int, sortBy *SortCriteria) int
 		CVEListForImage         func(childComplexity int, image string) int
 		ExpandedRepoInfo        func(childComplexity int, repo string) int
 		GlobalSearch            func(childComplexity int, query string) int
@@ -133,9 +134,7 @@ type ComplexityRoot struct {
 		ImageListForDigest      func(childComplexity int, id string) int
 		ImageListWithCVEFixed   func(childComplexity int, id string, image string) int
 		RepoListWithNewestImage func(childComplexity int) int
-		BookmarkedRepos        func(childComplexity int, limit *int, offset int, sortBy *SortCriteria) int
-		ImageListWithLatestTag func(childComplexity int) int
-		StarredRepos           func(childComplexity int, limit *int, offset int, sortBy *SortCriteria) int
+		StarredRepos            func(childComplexity int, limit *int, offset int, sortBy *SortCriteria) int
 	}
 
 	RepoInfo struct {

@@ -17,20 +17,21 @@ import (
 // ToggleBookmark is the resolver for the ToggleBookmark field.
 func (r *mutationResolver) ToggleBookmark(ctx context.Context, repo string) (*gql_generated.MutationResult, error) {
 	// panic(fmt.Errorf("not implemented"))
-	// https://github.com/HomesNZ/go-common/pull/66
-	// ContextKeyRequestContext contextKey = iota
-	// v, ok := ctx.Value(ContextKeyRequestContext).(RequestContext)
-	// ctx.Value("userId").(string)
 
-	acCtx, err := getAccessContext(ctx)
-	if err != nil {
-		return &gql_generated.MutationResult{Success: false}, err
-	}
+	acCtx := getAccessContext(ctx)
+	// empty user is anonymous
 	if acCtx.Username == "" {
 		return &gql_generated.MutationResult{Success: false},
 			fmt.Errorf("unidentified users cannot star repos")
 	}
-	err = r.storeController.NonOciMetadata.ToggleBookmarkRepo(acCtx.Username, repo)
+	// check user access level
+	filteredRepos := filterRepos(acCtx, []string{repo})
+	if len(filteredRepos) == 0 {
+		return &gql_generated.MutationResult{Success: false},
+			fmt.Errorf("repo does not exist or you are not authorized to see it")
+	}
+	// store to db
+	err := r.storeController.NonOciMetadata.ToggleBookmarkRepo(acCtx.Username, repo)
 	if err != nil {
 		return &gql_generated.MutationResult{Success: false}, err
 	}
@@ -39,15 +40,20 @@ func (r *mutationResolver) ToggleBookmark(ctx context.Context, repo string) (*gq
 
 // ToggleStar is the resolver for the ToggleStar field.
 func (r *mutationResolver) ToggleStar(ctx context.Context, repo string) (*gql_generated.MutationResult, error) {
-	acCtx, err := getAccessContext(ctx)
-	if err != nil {
-		return &gql_generated.MutationResult{Success: false}, err
-	}
+	acCtx := getAccessContext(ctx)
+	// empty user is anonymous
 	if acCtx.Username == "" {
 		return &gql_generated.MutationResult{Success: false},
 			fmt.Errorf("unidentified users cannot star repos")
 	}
-	err = r.storeController.NonOciMetadata.ToggleStarRepo(acCtx.Username, repo)
+	// check user access level
+	filteredRepos := filterRepos(acCtx, []string{repo})
+	if len(filteredRepos) == 0 {
+		return &gql_generated.MutationResult{Success: false},
+			fmt.Errorf("repo does not exist or you are not authorized to see it")
+	}
+	// store to db
+	err := r.storeController.NonOciMetadata.ToggleStarRepo(acCtx.Username, repo)
 	if err != nil {
 		return &gql_generated.MutationResult{Success: false}, err
 	}
@@ -513,25 +519,19 @@ func (r *queryResolver) GlobalSearch(ctx context.Context, query string) (*gql_ge
 // StarredRepos is the resolver for the StarredRepos field.
 func (r *queryResolver) StarredRepos(ctx context.Context, limit *int, offset int, sortBy *gql_generated.SortCriteria) (*gql_generated.PaginatedReposResult, error) {
 	empty := &gql_generated.PaginatedReposResult{Results: []*gql_generated.RepoSummary{}}
-	acCtx, err := getAccessContext(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if acCtx.Username == "" {
-		return empty, nil
-		// fmt.Errorf("anonymous user does not have star repos")
-	}
+	acCtx := getAccessContext(ctx)
+
+	r.log.Info().Str("user", acCtx.Username).Msg("resolve StarredRepos for user")
 
 	repoList, err := r.storeController.NonOciMetadata.GetStarredRepos(acCtx.Username)
 	if err != nil {
-		return empty, nil
-	}
-
-	// TODO: should be userAvailableRepos => we need to observe security restrictions
-	repos, err := retrieveReposFromName(repoList, r.storeController, r.log)
-	if err != nil {
 		return empty, err
 	}
+
+	// check user access level
+	filteredRepos := filterRepos(acCtx, repoList)
+	olu := common.NewBaseOciLayoutUtils(r.storeController, r.log)
+	repos, _, _ := globalSearch(filteredRepos, "", "", olu, r.log)
 
 	prr := &gql_generated.PaginatedReposResult{Results: repos}
 	return prr, nil
@@ -540,26 +540,17 @@ func (r *queryResolver) StarredRepos(ctx context.Context, limit *int, offset int
 // BookmarkedRepos is the resolver for the BookmarkedRepos field.
 func (r *queryResolver) BookmarkedRepos(ctx context.Context, limit *int, offset int, sortBy *gql_generated.SortCriteria) (*gql_generated.PaginatedReposResult, error) {
 	empty := &gql_generated.PaginatedReposResult{Results: []*gql_generated.RepoSummary{}}
-
-	acCtx, err := getAccessContext(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if acCtx.Username == "" {
-		return empty, nil
-		// fmt.Errorf("anonymous user does not have star repos")
-	}
+	acCtx := getAccessContext(ctx)
 
 	repoList, err := r.storeController.NonOciMetadata.GetBookmarkedRepos(acCtx.Username)
 	if err != nil {
 		return empty, nil
 	}
 
-	// TODO: should be userAvailableRepos => we need to observe security restrictions
-	repos, err := retrieveReposFromName(repoList, r.storeController, r.log)
-	if err != nil {
-		return empty, err
-	}
+	// check user access level
+	filteredRepos := filterRepos(acCtx, repoList)
+	olu := common.NewBaseOciLayoutUtils(r.storeController, r.log)
+	repos, _, _ := globalSearch(filteredRepos, "", "", olu, r.log)
 
 	prr := &gql_generated.PaginatedReposResult{Results: repos}
 	return prr, nil
