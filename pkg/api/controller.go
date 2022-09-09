@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"strconv"
 	"strings"
 	goSync "sync"
 	"syscall"
@@ -41,6 +42,8 @@ type Controller struct {
 	Server          *http.Server
 	Metrics         monitoring.MetricServer
 	wgShutDown      *goSync.WaitGroup // use it to gracefully shutdown goroutines
+	// runtime params
+	chosenPort int // kernel-chosen port
 }
 
 func NewController(config *config.Config) *Controller {
@@ -101,6 +104,10 @@ func DumpRuntimeParams(log log.Logger) {
 	}
 
 	evt.Msg("runtime params")
+}
+
+func (c *Controller) GetPort() int {
+	return c.chosenPort
 }
 
 func (c *Controller) Run(reloadCtx context.Context) error {
@@ -169,6 +176,25 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
+	}
+
+	if c.Config.HTTP.Port == "0" || c.Config.HTTP.Port == "" {
+		chosenAddr, ok := listener.Addr().(*net.TCPAddr)
+		if !ok {
+			c.Log.Error().Str("port", c.Config.HTTP.Port).Msg("invalid addr type")
+
+			return errors.ErrBadType
+		}
+
+		c.chosenPort = chosenAddr.Port
+
+		c.Log.Info().Int("port", chosenAddr.Port).IPAddr("address", chosenAddr.IP).Msg(
+			"port is unspecified, listening on kernel chosen port",
+		)
+	} else {
+		chosenPort, _ := strconv.ParseInt(c.Config.HTTP.Port, 10, 64)
+
+		c.chosenPort = int(chosenPort)
 	}
 
 	if c.Config.HTTP.TLS != nil && c.Config.HTTP.TLS.Key != "" && c.Config.HTTP.TLS.Cert != "" {

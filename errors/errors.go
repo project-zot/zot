@@ -55,4 +55,5 @@ var (
 	ErrSyncSignature           = errors.New("sync: couldn't get upstream notary/cosign signatures")
 	ErrImageLintAnnotations    = errors.New("routes: lint checks failed")
 	ErrParsingAuthHeader       = errors.New("auth: failed parsing authorization header")
+	ErrBadType                 = errors.New("core: invalid type")
 )
