@@ -50,6 +50,9 @@ type ImageSummary {
     Description: String
     Licenses: String
     Labels: String
+    Title: String
+    Source: String
+    Documentation: String
 }
 
 # Brief on a specific repo to be used in queries returning a list of repos

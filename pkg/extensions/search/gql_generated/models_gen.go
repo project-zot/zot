@@ -41,6 +41,9 @@ type ImageSummary struct {
 	Description   *string         `json:"Description"`
 	Licenses      *string         `json:"Licenses"`
 	Labels        *string         `json:"Labels"`
+	Title         *string         `json:"Title"`
+	Source        *string         `json:"Source"`
+	Documentation *string         `json:"Documentation"`
 }
 
 type LayerSummary struct {

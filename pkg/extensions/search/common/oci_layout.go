@@ -28,7 +28,6 @@ type OciLayoutUtils interface {
 	GetImageTagsWithTimestamp(repo string) ([]TagInfo, error)
 	GetImageLastUpdated(imageInfo ispec.Image) time.Time
 	GetImagePlatform(imageInfo ispec.Image) (string, string)
-	GetImageVendor(imageInfo ispec.Image) string
 	GetImageManifestSize(repo string, manifestDigest godigest.Digest) int64
 	GetRepoLastUpdated(repo string) (TagInfo, error)
 	GetExpandedRepoInfo(name string) (RepoInfo, error)
@@ -55,12 +54,33 @@ type Image struct {
 }
 
 type RepoSummary struct {
-	Name        string    `json:"name"`
-	LastUpdated time.Time `json:"lastUpdated"`
-	Size        string    `json:"size"`
-	Platforms   []OsArch  `json:"platforms"`
-	Vendors     []string  `json:"vendors"`
-	Score       int       `json:"score"`
+	Name        string       `json:"name"`
+	LastUpdated time.Time    `json:"lastUpdated"`
+	Size        string       `json:"size"`
+	Platforms   []OsArch     `json:"platforms"`
+	Vendors     []string     `json:"vendors"`
+	Score       int          `json:"score"`
+	NewestImage ImageSummary `json:"newestImage"`
+}
+
+type ImageSummary struct {
+	RepoName      string    `json:"repoName"`
+	Tag           string    `json:"tag"`
+	Digest        string    `json:"digest"`
+	ConfigDigest  string    `json:"configDigest"`
+	LastUpdated   time.Time `json:"lastUpdated"`
+	IsSigned      bool      `json:"isSigned"`
+	Size          string    `json:"size"`
+	Platform      OsArch    `json:"platform"`
+	Vendor        string    `json:"vendor"`
+	Score         int       `json:"score"`
+	DownloadCount int       `json:"downloadCount"`
+	Description   string    `json:"description"`
+	Licenses      string    `json:"licenses"`
+	Labels        string    `json:"labels"`
+	Title         string    `json:"title"`
+	Source        string    `json:"source"`
+	Documentation string    `json:"documentation"`
 }
 
 type OsArch struct {
@@ -311,10 +331,6 @@ func (olu BaseOciLayoutUtils) GetImageConfigInfo(repo string, manifestDigest god
 	return imageInfo, nil
 }
 
-func (olu BaseOciLayoutUtils) GetImageVendor(imageConfig ispec.Image) string {
-	return imageConfig.Config.Labels["vendor"]
-}
-
 func (olu BaseOciLayoutUtils) GetImageManifestSize(repo string, manifestDigest godigest.Digest) int64 {
 	imageStore := olu.StoreController.GetImageStore(repo)
 
@@ -360,11 +376,6 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error)
 
 	manifests := make([]Image, 0)
 
-	tagsInfo, err := olu.GetImageTagsWithTimestamp(name)
-	if err != nil {
-		olu.Log.Error().Err(err).Msgf("can't get tags info for repo: %s", name)
-	}
-
 	manifestList, err := olu.GetImageManifests(name)
 	if err != nil {
 		olu.Log.Error().Err(err).Msg("error getting image manifests")
@@ -372,10 +383,21 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error)
 		return RepoInfo{}, err
 	}
 
-	repoPlatforms := make([]OsArch, 0, len(tagsInfo))
+	lastUpdatedTag, err := olu.GetRepoLastUpdated(name)
+	if err != nil {
+		olu.Log.Error().Err(err).Msgf("can't get last updated manifest for repo: %s", name)
+
+		return RepoInfo{}, err
+	}
+
+	repoPlatforms := make([]OsArch, 0)
 	repoVendors := make([]string, 0, len(manifestList))
 
+	var lastUpdatedImageSummary ImageSummary
+
 	for _, man := range manifestList {
+		imageLayersSize := int64(0)
+
 		manifestInfo := Image{}
 
 		manifestInfo.Digest = man.Digest.Encoded()
@@ -398,7 +420,8 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error)
 			return RepoInfo{}, err
 		}
 
-		manifestInfo.IsSigned = olu.CheckManifestSignature(name, man.Digest)
+		isSigned := olu.CheckManifestSignature(name, man.Digest)
+		manifestInfo.IsSigned = isSigned
 
 		manifestSize := olu.GetImageManifestSize(name, man.Digest)
 		olu.Log.Debug().Msg(fmt.Sprintf("%v", man.Digest))
@@ -414,7 +437,6 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error)
 			continue
 		}
 
-		vendor := olu.GetImageVendor(imageConfigInfo)
 		os, arch := olu.GetImagePlatform(imageConfigInfo)
 		osArch := OsArch{
 			Os:   os,
@@ -422,7 +444,6 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error)
 		}
 
 		repoPlatforms = append(repoPlatforms, osArch)
-		repoVendors = append(repoVendors, vendor)
 
 		layers := make([]Layer, 0)
 
@@ -435,20 +456,53 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error)
 
 			layerInfo.Size = strconv.FormatInt(layer.Size, 10)
 
+			imageLayersSize += layer.Size
+
 			layers = append(layers, layerInfo)
 		}
+
+		imageSize := imageLayersSize + manifestSize + configSize
 
 		manifestInfo.Layers = layers
 
 		manifests = append(manifests, manifestInfo)
+
+		// get image info from manifest annotation, if not found get from image config labels.
+		annotations := GetAnnotations(manifest.Annotations, imageConfigInfo.Config.Labels)
+
+		repoVendors = append(repoVendors, annotations.Vendor)
+
+		size := strconv.Itoa(int(imageSize))
+		manifestDigest := man.Digest.Hex()
+		configDigest := manifest.Config.Digest.Hex
+		lastUpdated := olu.GetImageLastUpdated(imageConfigInfo)
+		score := 0
+
+		imageSummary := ImageSummary{
+			RepoName:      name,
+			Tag:           tag,
+			LastUpdated:   lastUpdated,
+			Digest:        manifestDigest,
+			ConfigDigest:  configDigest,
+			IsSigned:      isSigned,
+			Size:          size,
+			Platform:      osArch,
+			Vendor:        annotations.Vendor,
+			Score:         score,
+			Description:   annotations.Description,
+			Title:         annotations.Title,
+			Documentation: annotations.Documentation,
+			Licenses:      annotations.Licenses,
+			Labels:        annotations.Labels,
+			Source:        annotations.Source,
+		}
+
+		if man.Digest.String() == lastUpdatedTag.Digest {
+			lastUpdatedImageSummary = imageSummary
+		}
 	}
 
 	repo.Images = manifests
-
-	lastUpdate, err := olu.GetRepoLastUpdated(name)
-	if err != nil {
-		olu.Log.Error().Err(err).Msgf("can't find latest update timestamp for repo: %s", name)
-	}
 
 	for blob := range repoBlob2Size {
 		repoSize += repoBlob2Size[blob]
@@ -458,9 +512,10 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error)
 
 	summary := RepoSummary{
 		Name:        name,
-		LastUpdated: lastUpdate.Timestamp,
+		LastUpdated: lastUpdatedTag.Timestamp,
 		Size:        size,
 		Platforms:   repoPlatforms,
+		NewestImage: lastUpdatedImageSummary,
 		Vendors:     repoVendors,
 		Score:       -1,
 	}

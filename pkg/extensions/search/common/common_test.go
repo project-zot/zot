@@ -24,7 +24,6 @@ import (
 	"github.com/sigstore/cosign/cmd/cosign/cli/sign"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
-	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
@@ -389,9 +388,8 @@ func TestRepoListWithNewestImage(t *testing.T) {
 			"?query={RepoListWithNewestImage{Name%20NewestImage{Tag}}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
-		errmsg := fmt.Sprint(zerr.ErrBlobNotFound)
 		body := string(resp.Body())
-		So(body, ShouldContainSubstring, errmsg)
+		So(body, ShouldContainSubstring, "can't get last updated manifest for repo:")
 		So(resp.StatusCode(), ShouldEqual, 200)
 
 		err = CopyFiles("../../../../test/data/zot-test", path.Join(rootDir, "zot-test"))
@@ -415,9 +413,8 @@ func TestRepoListWithNewestImage(t *testing.T) {
 			"?query={RepoListWithNewestImage{Name%20NewestImage{Tag}}}")
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
-		errmsg = fmt.Sprint(zerr.ErrBlobNotFound)
 		body = string(resp.Body())
-		So(body, ShouldContainSubstring, errmsg)
+		So(body, ShouldContainSubstring, "can't get last updated manifest for repo")
 		So(resp.StatusCode(), ShouldEqual, 200)
 
 		err = CopyFiles("../../../../test/data/zot-test", path.Join(rootDir, "zot-test"))
@@ -440,7 +437,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		body = string(resp.Body())
-		So(body, ShouldContainSubstring, "reference not found for this manifest")
+		So(body, ShouldContainSubstring, "reference not found for manifest")
 		So(resp.StatusCode(), ShouldEqual, 200)
 	})
 
@@ -890,7 +887,7 @@ func TestUtilsMethod(t *testing.T) {
 		desc := common.GetDescription(labels)
 		So(desc, ShouldEqual, "")
 
-		license := common.GetLicense(labels)
+		license := common.GetLicenses(labels)
 		So(license, ShouldEqual, "")
 
 		vendor := common.GetVendor(labels)
@@ -907,7 +904,7 @@ func TestUtilsMethod(t *testing.T) {
 		desc = common.GetDescription(labels)
 		So(desc, ShouldEqual, "zot-desc")
 
-		license = common.GetLicense(labels)
+		license = common.GetLicenses(labels)
 		So(license, ShouldEqual, "zot-license")
 
 		vendor = common.GetVendor(labels)
@@ -921,12 +918,12 @@ func TestUtilsMethod(t *testing.T) {
 		// Use diff key
 		labels[common.LabelAnnotationVendor] = "zot-vendor"
 		labels[common.LabelAnnotationDescription] = "zot-label-desc"
-		labels[common.LabelAnnotationLicenses] = "zot-label-license"
+		labels[ispec.AnnotationLicenses] = "zot-label-license"
 
 		desc = common.GetDescription(labels)
 		So(desc, ShouldEqual, "zot-label-desc")
 
-		license = common.GetLicense(labels)
+		license = common.GetLicenses(labels)
 		So(license, ShouldEqual, "zot-label-license")
 
 		vendor = common.GetVendor(labels)
