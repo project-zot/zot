@@ -23,7 +23,7 @@ func NewCveCommand(searchService SearchService) *cobra.Command {
 
 	var servURL, user, outputFormat string
 
-	var isSpinner, verifyTLS, fixedFlag, verbose bool
+	var isSpinner, verifyTLS, fixedFlag, verbose, debug bool
 
 	cveCmd := &cobra.Command{
 		Use:   "cve [config-name]",
@@ -87,6 +87,7 @@ func NewCveCommand(searchService SearchService) *cobra.Command {
 				fixedFlag:     &fixedFlag,
 				verifyTLS:     &verifyTLS,
 				verbose:       &verbose,
+				debug:         &debug,
 				resultWriter:  cmd.OutOrStdout(),
 				spinner:       spinnerState{spin, isSpinner},
 			}
@@ -109,6 +110,7 @@ func NewCveCommand(searchService SearchService) *cobra.Command {
 		user:            &user,
 		outputFormat:    &outputFormat,
 		fixedFlag:       &fixedFlag,
+		debug:           &debug,
 	}
 
 	setupCveFlags(cveCmd, vars)
@@ -127,6 +129,7 @@ func setupCveFlags(cveCmd *cobra.Command, variables cveFlagVariables) {
 		" JSON and YAML format return all info for CVEs")
 
 	cveCmd.Flags().BoolVar(variables.fixedFlag, "fixed", false, "List tags which have fixed a CVE")
+	cveCmd.Flags().BoolVar(variables.debug, "debug", false, "Show debug output")
 }
 
 type cveFlagVariables struct {
@@ -135,6 +138,7 @@ type cveFlagVariables struct {
 	user            *string
 	outputFormat    *string
 	fixedFlag       *bool
+	debug           *bool
 }
 
 type field struct {

@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -66,7 +67,7 @@ func createHTTPClient(verifyTLS bool, host string) *http.Client {
 }
 
 func makeGETRequest(ctx context.Context, url, username, password string,
-	verifyTLS bool, resultsPtr interface{},
+	verifyTLS bool, debug bool, resultsPtr interface{}, configWriter io.Writer,
 ) (http.Header, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -75,11 +76,11 @@ func makeGETRequest(ctx context.Context, url, username, password string,
 
 	req.SetBasicAuth(username, password)
 
-	return doHTTPRequest(req, verifyTLS, resultsPtr)
+	return doHTTPRequest(req, verifyTLS, debug, resultsPtr, configWriter)
 }
 
 func makeGraphQLRequest(ctx context.Context, url, query, username,
-	password string, verifyTLS bool, resultsPtr interface{},
+	password string, verifyTLS bool, debug bool, resultsPtr interface{}, configWriter io.Writer,
 ) error {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, bytes.NewBufferString(query))
 	if err != nil {
@@ -94,7 +95,7 @@ func makeGraphQLRequest(ctx context.Context, url, query, username,
 	req.SetBasicAuth(username, password)
 	req.Header.Add("Content-Type", "application/json")
 
-	_, err = doHTTPRequest(req, verifyTLS, resultsPtr)
+	_, err = doHTTPRequest(req, verifyTLS, debug, resultsPtr, configWriter)
 	if err != nil {
 		return err
 	}
@@ -102,7 +103,9 @@ func makeGraphQLRequest(ctx context.Context, url, query, username,
 	return nil
 }
 
-func doHTTPRequest(req *http.Request, verifyTLS bool, resultsPtr interface{}) (http.Header, error) {
+func doHTTPRequest(req *http.Request, verifyTLS bool, debug bool,
+	resultsPtr interface{}, configWriter io.Writer,
+) (http.Header, error) {
 	var httpClient *http.Client
 
 	host := req.Host
@@ -119,9 +122,18 @@ func doHTTPRequest(req *http.Request, verifyTLS bool, resultsPtr interface{}) (h
 
 	httpClientLock.Unlock()
 
+	if debug {
+		fmt.Fprintln(configWriter, "[debug] ", req.Method, " ", req.URL, "[request header] ", req.Header)
+	}
+
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
+	}
+
+	if debug {
+		fmt.Fprintln(configWriter, "[debug] ", req.Method, req.URL, "[status] ",
+			resp.StatusCode, " ", "[respoonse header] ", resp.Header)
 	}
 
 	defer resp.Body.Close()
@@ -252,7 +264,7 @@ func (p *requestsPool) doJob(ctx context.Context, job *manifestJob) {
 	defer p.wtgrp.Done()
 
 	header, err := makeGETRequest(ctx, job.url, job.username, job.password,
-		*job.config.verifyTLS, &job.manifestResp)
+		*job.config.verifyTLS, *job.config.debug, &job.manifestResp, job.config.resultWriter)
 	if err != nil {
 		if isContextDone(ctx) {
 			return

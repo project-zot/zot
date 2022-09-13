@@ -15,7 +15,7 @@ import (
 func NewRepoCommand(searchService SearchService) *cobra.Command {
 	var servURL, user, outputFormat string
 
-	var isSpinner, verifyTLS, verbose bool
+	var isSpinner, verifyTLS, verbose, debug bool
 
 	repoCmd := &cobra.Command{
 		Use:   "repos [config-name]",
@@ -73,6 +73,7 @@ func NewRepoCommand(searchService SearchService) *cobra.Command {
 				user:          &user,
 				outputFormat:  &outputFormat,
 				verbose:       &verbose,
+				debug:         &debug,
 				spinner:       spinnerState{spin, isSpinner},
 				verifyTLS:     &verifyTLS,
 				resultWriter:  cmd.OutOrStdout(),
@@ -94,6 +95,7 @@ func NewRepoCommand(searchService SearchService) *cobra.Command {
 
 	repoCmd.Flags().StringVar(&servURL, "url", "", "Specify zot server URL if config-name is not mentioned")
 	repoCmd.Flags().StringVarP(&user, "user", "u", "", `User Credentials of zot server in "username:password" format`)
+	repoCmd.Flags().BoolVar(&debug, "debug", false, "Show debug output")
 
 	return repoCmd
 }

@@ -84,6 +84,7 @@ type searchConfig struct {
 	verifyTLS     *bool
 	fixedFlag     *bool
 	verbose       *bool
+	debug         *bool
 	resultWriter  io.Writer
 	spinner       spinnerState
 }

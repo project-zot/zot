@@ -357,6 +357,24 @@ func TestListRepos(t *testing.T) {
 		So(err, ShouldBeNil)
 	})
 
+	Convey("Test listing repositories with debug flag", t, func() {
+		args := []string{"config-test", "--debug"}
+		configPath := makeConfigFile(`{"configs":[{"_name":"config-test","url":"https://test-url.com","showspinner":false}]}`)
+		defer os.Remove(configPath)
+		cmd := NewRepoCommand(new(searchService))
+
+		buff := bytes.NewBufferString("")
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err := cmd.Execute()
+		So(err, ShouldNotBeNil)
+		space := regexp.MustCompile(`\s+`)
+		str := space.ReplaceAllString(buff.String(), " ")
+		actual := strings.TrimSpace(str)
+		So(actual, ShouldContainSubstring, "GET")
+	})
+
 	Convey("Test error on home directory", t, func() {
 		args := []string{"config-test"}
 
@@ -656,6 +674,26 @@ func TestServerResponseGQL(t *testing.T) {
 			So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST CONFIG LAYERS SIZE")
 			So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 3a1d2d0c 15B b8781e88 15B")
 			So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 3a1d2d0c 15B b8781e88 15B")
+		})
+
+		Convey("Test all images with debug flag", func() {
+			args := []string{"imagetest", "--debug"}
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
+			defer os.Remove(configPath)
+			cmd := NewImageCommand(new(searchService))
+			buff := bytes.NewBufferString("")
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err := cmd.Execute()
+			So(err, ShouldBeNil)
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			actual := strings.TrimSpace(str)
+			So(actual, ShouldContainSubstring, "GET")
+			So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIZE")
+			So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 15B")
+			So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 15B")
 		})
 
 		Convey("Test image by name config url", func() {
@@ -1088,7 +1126,7 @@ func MockNewImageCommand(searchService SearchService) *cobra.Command {
 
 	var servURL, user, outputFormat string
 
-	var verifyTLS, verbose bool
+	var verifyTLS, verbose, debug bool
 
 	imageCmd := &cobra.Command{
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -1133,6 +1171,7 @@ func MockNewImageCommand(searchService SearchService) *cobra.Command {
 				user:          &user,
 				outputFormat:  &outputFormat,
 				verbose:       &verbose,
+				debug:         &debug,
 				verifyTLS:     &verifyTLS,
 				resultWriter:  cmd.OutOrStdout(),
 			}
@@ -1149,7 +1188,7 @@ func MockNewImageCommand(searchService SearchService) *cobra.Command {
 		},
 	}
 
-	setupImageFlags(imageCmd, searchImageParams, &servURL, &user, &outputFormat, &verbose)
+	setupImageFlags(imageCmd, searchImageParams, &servURL, &user, &outputFormat, &verbose, &debug)
 	imageCmd.SetUsageTemplate(imageCmd.UsageTemplate() + usageFooter)
 
 	return imageCmd
