@@ -7,6 +7,7 @@ package search
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -116,36 +117,39 @@ func (r *queryResolver) getImageListForDigest(repoList []string, digest string) 
 	return imgResultForDigest, errResult
 }
 
-// nolint:lll
-func (r *queryResolver) repoListWithNewestImage(ctx context.Context, store storage.ImageStore) ([]*gql_generated.RepoSummary, error) {
-	repos := []*gql_generated.RepoSummary{}
-	olu := common.NewBaseOciLayoutUtils(r.storeController, r.log)
+func repoListWithNewestImage(
+	ctx context.Context,
+	repoList []string,
+	olu common.OciLayoutUtils,
+	log log.Logger,
+) ([]*gql_generated.RepoSummary, error) {
+	reposSummary := []*gql_generated.RepoSummary{}
 
-	repoNames, err := store.GetRepositories()
-	if err != nil {
-		return nil, err
-	}
-
-	for _, repo := range repoNames {
+	for _, repo := range repoList {
 		lastUpdatedTag, err := olu.GetRepoLastUpdated(repo)
 		if err != nil {
-			graphql.AddError(ctx, err)
+			msg := fmt.Sprintf("can't get last updated manifest for repo: %s", repo)
+			log.Error().Err(err).Msg(msg)
+
+			graphql.AddError(ctx, gqlerror.Errorf(msg))
 
 			continue
 		}
 
 		repoSize := int64(0)
 		repoBlob2Size := make(map[string]int64, 10)
-		tagsInfo, _ := olu.GetImageTagsWithTimestamp(repo)
 
 		manifests, err := olu.GetImageManifests(repo)
 		if err != nil {
-			graphql.AddError(ctx, err)
+			msg := fmt.Sprintf("can't get manifests for repo: %s", repo)
+
+			log.Error().Err(err).Msg(msg)
+			graphql.AddError(ctx, gqlerror.Errorf(msg))
 
 			continue
 		}
 
-		repoPlatforms := make([]*gql_generated.OsArch, 0, len(tagsInfo))
+		repoPlatforms := make([]*gql_generated.OsArch, 0)
 		repoVendors := make([]*string, 0, len(manifests))
 		repoName := repo
 
@@ -153,14 +157,24 @@ func (r *queryResolver) repoListWithNewestImage(ctx context.Context, store stora
 
 		var brokenManifest bool
 
-		for i, manifest := range manifests {
+		for _, manifest := range manifests {
 			imageLayersSize := int64(0)
-			manifestSize := olu.GetImageManifestSize(repo, manifests[i].Digest)
+			manifestSize := olu.GetImageManifestSize(repo, manifest.Digest)
 
-			imageBlobManifest, _ := olu.GetImageBlobManifest(repo, manifests[i].Digest)
+			imageBlobManifest, err := olu.GetImageBlobManifest(repo, manifest.Digest)
+			if err != nil {
+				msg := fmt.Sprintf("reference not found for manifest %s", manifest.Digest)
+
+				log.Error().Err(err).Msg(msg)
+				graphql.AddError(ctx, gqlerror.Errorf(msg))
+
+				brokenManifest = true
+
+				continue
+			}
 
 			configSize := imageBlobManifest.Config.Size
-			repoBlob2Size[manifests[i].Digest.String()] = manifestSize
+			repoBlob2Size[manifest.Digest.String()] = manifestSize
 			repoBlob2Size[imageBlobManifest.Config.Digest.Hex] = configSize
 
 			for _, layer := range imageBlobManifest.Layers {
@@ -170,7 +184,17 @@ func (r *queryResolver) repoListWithNewestImage(ctx context.Context, store stora
 
 			imageSize := imageLayersSize + manifestSize + configSize
 
-			imageConfigInfo, _ := olu.GetImageConfigInfo(repo, manifests[i].Digest)
+			imageConfigInfo, err := olu.GetImageConfigInfo(repo, manifest.Digest)
+			if err != nil {
+				msg := fmt.Sprintf("can't get image config for manifest %s", manifest.Digest)
+
+				log.Error().Err(err).Msg(msg)
+				graphql.AddError(ctx, gqlerror.Errorf(msg))
+
+				brokenManifest = true
+
+				continue
+			}
 
 			os, arch := olu.GetImagePlatform(imageConfigInfo)
 			osArch := &gql_generated.OsArch{
@@ -179,12 +203,18 @@ func (r *queryResolver) repoListWithNewestImage(ctx context.Context, store stora
 			}
 			repoPlatforms = append(repoPlatforms, osArch)
 
-			vendor := olu.GetImageVendor(imageConfigInfo)
-			repoVendors = append(repoVendors, &vendor)
+			// get image info from manifest annotation, if not found get from image config labels.
+			annotations := common.GetAnnotations(imageBlobManifest.Annotations, imageConfigInfo.Config.Labels)
+
+			repoVendors = append(repoVendors, &annotations.Vendor)
 
 			manifestTag, ok := manifest.Annotations[ispec.AnnotationRefName]
 			if !ok {
-				graphql.AddError(ctx, gqlerror.Errorf("reference not found for this manifest"))
+				msg := fmt.Sprintf("reference not found for manifest %s", manifest.Digest.String())
+
+				log.Error().Msg(msg)
+				graphql.AddError(ctx, gqlerror.Errorf(msg))
+
 				brokenManifest = true
 
 				break
@@ -192,22 +222,32 @@ func (r *queryResolver) repoListWithNewestImage(ctx context.Context, store stora
 
 			tag := manifestTag
 			size := strconv.Itoa(int(imageSize))
-			isSigned := olu.CheckManifestSignature(repo, manifests[i].Digest)
+			manifestDigest := manifest.Digest.Hex()
+			configDigest := imageBlobManifest.Config.Digest.Hex
+			isSigned := olu.CheckManifestSignature(repo, manifest.Digest)
 			lastUpdated := olu.GetImageLastUpdated(imageConfigInfo)
 			score := 0
 
 			imageSummary := gql_generated.ImageSummary{
-				RepoName:    &repoName,
-				Tag:         &tag,
-				LastUpdated: &lastUpdated,
-				IsSigned:    &isSigned,
-				Size:        &size,
-				Platform:    osArch,
-				Vendor:      &vendor,
-				Score:       &score,
+				RepoName:      &repoName,
+				Tag:           &tag,
+				LastUpdated:   &lastUpdated,
+				Digest:        &manifestDigest,
+				ConfigDigest:  &configDigest,
+				IsSigned:      &isSigned,
+				Size:          &size,
+				Platform:      osArch,
+				Vendor:        &annotations.Vendor,
+				Score:         &score,
+				Description:   &annotations.Description,
+				Title:         &annotations.Title,
+				Documentation: &annotations.Documentation,
+				Licenses:      &annotations.Licenses,
+				Labels:        &annotations.Labels,
+				Source:        &annotations.Source,
 			}
 
-			if tagsInfo[i].Digest == lastUpdatedTag.Digest {
+			if manifest.Digest.String() == lastUpdatedTag.Digest {
 				lastUpdatedImageSummary = imageSummary
 			}
 		}
@@ -223,7 +263,7 @@ func (r *queryResolver) repoListWithNewestImage(ctx context.Context, store stora
 		repoSizeStr := strconv.FormatInt(repoSize, 10)
 		index := 0
 
-		repos = append(repos, &gql_generated.RepoSummary{
+		reposSummary = append(reposSummary, &gql_generated.RepoSummary{
 			Name:        &repoName,
 			LastUpdated: &lastUpdatedTag.Timestamp,
 			Size:        &repoSizeStr,
@@ -234,7 +274,7 @@ func (r *queryResolver) repoListWithNewestImage(ctx context.Context, store stora
 		})
 	}
 
-	return repos, nil
+	return reposSummary, nil
 }
 
 func cleanQuerry(query string) string {
@@ -282,7 +322,7 @@ func globalSearch(repoList []string, name, tag string, olu common.OciLayoutUtils
 
 			manifestTag, ok := manifest.Annotations[ispec.AnnotationRefName]
 			if !ok {
-				log.Error().Msg("reference not found for this manifest")
+				log.Error().Str("digest", manifest.Digest.String()).Msg("reference not found for this manifest")
 
 				continue
 			}
@@ -294,10 +334,10 @@ func globalSearch(repoList []string, name, tag string, olu common.OciLayoutUtils
 				continue
 			}
 
-			manifestSize := olu.GetImageManifestSize(repo, manifests[i].Digest)
+			manifestSize := olu.GetImageManifestSize(repo, manifest.Digest)
 			configSize := imageBlobManifest.Config.Size
 
-			repoBlob2Size[manifests[i].Digest.String()] = manifestSize
+			repoBlob2Size[manifest.Digest.String()] = manifestSize
 			repoBlob2Size[imageBlobManifest.Config.Digest.Hex] = configSize
 
 			for _, layer := range imageBlobManifest.Layers {
@@ -340,7 +380,6 @@ func globalSearch(repoList []string, name, tag string, olu common.OciLayoutUtils
 				// update matching score
 				score := calculateImageMatchingScore(repo, index, matchesTag)
 
-				vendor := olu.GetImageVendor(imageConfigInfo)
 				lastUpdated := olu.GetImageLastUpdated(imageConfigInfo)
 				os, arch := olu.GetImagePlatform(imageConfigInfo)
 				osArch := &gql_generated.OsArch{
@@ -348,21 +387,35 @@ func globalSearch(repoList []string, name, tag string, olu common.OciLayoutUtils
 					Arch: &arch,
 				}
 
+				// get image info from manifest annotation, if not found get from image config labels.
+				annotations := common.GetAnnotations(imageBlobManifest.Annotations, imageConfigInfo.Config.Labels)
+
+				manifestDigest := manifest.Digest.Hex()
+				configDigest := imageBlobManifest.Config.Digest.Hex
+
 				repoPlatforms = append(repoPlatforms, osArch)
-				repoVendors = append(repoVendors, &vendor)
+				repoVendors = append(repoVendors, &annotations.Vendor)
 
 				imageSummary := gql_generated.ImageSummary{
-					RepoName:    &repo,
-					Tag:         &manifestTag,
-					LastUpdated: &lastUpdated,
-					IsSigned:    &isSigned,
-					Size:        &size,
-					Platform:    osArch,
-					Vendor:      &vendor,
-					Score:       &score,
+					RepoName:      &repo,
+					Tag:           &manifestTag,
+					LastUpdated:   &lastUpdated,
+					Digest:        &manifestDigest,
+					ConfigDigest:  &configDigest,
+					IsSigned:      &isSigned,
+					Size:          &size,
+					Platform:      osArch,
+					Vendor:        &annotations.Vendor,
+					Score:         &score,
+					Description:   &annotations.Description,
+					Title:         &annotations.Title,
+					Documentation: &annotations.Documentation,
+					Licenses:      &annotations.Licenses,
+					Labels:        &annotations.Labels,
+					Source:        &annotations.Source,
 				}
 
-				if manifests[i].Digest.String() == lastUpdatedTag.Digest {
+				if manifest.Digest.String() == lastUpdatedTag.Digest {
 					lastUpdatedImageSummary = imageSummary
 				}
 

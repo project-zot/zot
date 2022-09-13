@@ -66,6 +66,7 @@ type ComplexityRoot struct {
 		ConfigDigest  func(childComplexity int) int
 		Description   func(childComplexity int) int
 		Digest        func(childComplexity int) int
+		Documentation func(childComplexity int) int
 		DownloadCount func(childComplexity int) int
 		IsSigned      func(childComplexity int) int
 		Labels        func(childComplexity int) int
@@ -76,7 +77,9 @@ type ComplexityRoot struct {
 		RepoName      func(childComplexity int) int
 		Score         func(childComplexity int) int
 		Size          func(childComplexity int) int
+		Source        func(childComplexity int) int
 		Tag           func(childComplexity int) int
+		Title         func(childComplexity int) int
 		Vendor        func(childComplexity int) int
 	}
 
@@ -244,6 +247,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.ImageSummary.Digest(childComplexity), true
 
+	case "ImageSummary.Documentation":
+		if e.complexity.ImageSummary.Documentation == nil {
+			break
+		}
+
+		return e.complexity.ImageSummary.Documentation(childComplexity), true
+
 	case "ImageSummary.DownloadCount":
 		if e.complexity.ImageSummary.DownloadCount == nil {
 			break
@@ -314,12 +324,26 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.ImageSummary.Size(childComplexity), true
 
+	case "ImageSummary.Source":
+		if e.complexity.ImageSummary.Source == nil {
+			break
+		}
+
+		return e.complexity.ImageSummary.Source(childComplexity), true
+
 	case "ImageSummary.Tag":
 		if e.complexity.ImageSummary.Tag == nil {
 			break
 		}
 
 		return e.complexity.ImageSummary.Tag(childComplexity), true
+
+	case "ImageSummary.Title":
+		if e.complexity.ImageSummary.Title == nil {
+			break
+		}
+
+		return e.complexity.ImageSummary.Title(childComplexity), true
 
 	case "ImageSummary.Vendor":
 		if e.complexity.ImageSummary.Vendor == nil {
@@ -663,6 +687,9 @@ type ImageSummary {
     Description: String
     Licenses: String
     Labels: String
+    Title: String
+    Source: String
+    Documentation: String
 }
 
 # Brief on a specific repo to be used in queries returning a list of repos
@@ -1250,6 +1277,12 @@ func (ec *executionContext) fieldContext_GlobalSearchResult_Images(ctx context.C
 				return ec.fieldContext_ImageSummary_Licenses(ctx, field)
 			case "Labels":
 				return ec.fieldContext_ImageSummary_Labels(ctx, field)
+			case "Title":
+				return ec.fieldContext_ImageSummary_Title(ctx, field)
+			case "Source":
+				return ec.fieldContext_ImageSummary_Source(ctx, field)
+			case "Documentation":
+				return ec.fieldContext_ImageSummary_Documentation(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -1998,6 +2031,129 @@ func (ec *executionContext) fieldContext_ImageSummary_Labels(ctx context.Context
 	return fc, nil
 }
 
+func (ec *executionContext) _ImageSummary_Title(ctx context.Context, field graphql.CollectedField, obj *ImageSummary) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_ImageSummary_Title(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Title, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_ImageSummary_Title(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ImageSummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ImageSummary_Source(ctx context.Context, field graphql.CollectedField, obj *ImageSummary) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_ImageSummary_Source(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Source, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_ImageSummary_Source(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ImageSummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ImageSummary_Documentation(ctx context.Context, field graphql.CollectedField, obj *ImageSummary) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_ImageSummary_Documentation(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Documentation, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_ImageSummary_Documentation(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ImageSummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _LayerSummary_Size(ctx context.Context, field graphql.CollectedField, obj *LayerSummary) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_LayerSummary_Size(ctx, field)
 	if err != nil {
@@ -2453,6 +2609,12 @@ func (ec *executionContext) fieldContext_Query_ImageListForCVE(ctx context.Conte
 				return ec.fieldContext_ImageSummary_Licenses(ctx, field)
 			case "Labels":
 				return ec.fieldContext_ImageSummary_Labels(ctx, field)
+			case "Title":
+				return ec.fieldContext_ImageSummary_Title(ctx, field)
+			case "Source":
+				return ec.fieldContext_ImageSummary_Source(ctx, field)
+			case "Documentation":
+				return ec.fieldContext_ImageSummary_Documentation(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -2537,6 +2699,12 @@ func (ec *executionContext) fieldContext_Query_ImageListWithCVEFixed(ctx context
 				return ec.fieldContext_ImageSummary_Licenses(ctx, field)
 			case "Labels":
 				return ec.fieldContext_ImageSummary_Labels(ctx, field)
+			case "Title":
+				return ec.fieldContext_ImageSummary_Title(ctx, field)
+			case "Source":
+				return ec.fieldContext_ImageSummary_Source(ctx, field)
+			case "Documentation":
+				return ec.fieldContext_ImageSummary_Documentation(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -2621,6 +2789,12 @@ func (ec *executionContext) fieldContext_Query_ImageListForDigest(ctx context.Co
 				return ec.fieldContext_ImageSummary_Licenses(ctx, field)
 			case "Labels":
 				return ec.fieldContext_ImageSummary_Labels(ctx, field)
+			case "Title":
+				return ec.fieldContext_ImageSummary_Title(ctx, field)
+			case "Source":
+				return ec.fieldContext_ImageSummary_Source(ctx, field)
+			case "Documentation":
+				return ec.fieldContext_ImageSummary_Documentation(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -2771,6 +2945,12 @@ func (ec *executionContext) fieldContext_Query_ImageList(ctx context.Context, fi
 				return ec.fieldContext_ImageSummary_Licenses(ctx, field)
 			case "Labels":
 				return ec.fieldContext_ImageSummary_Labels(ctx, field)
+			case "Title":
+				return ec.fieldContext_ImageSummary_Title(ctx, field)
+			case "Source":
+				return ec.fieldContext_ImageSummary_Source(ctx, field)
+			case "Documentation":
+				return ec.fieldContext_ImageSummary_Documentation(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -3108,6 +3288,12 @@ func (ec *executionContext) fieldContext_RepoInfo_Images(ctx context.Context, fi
 				return ec.fieldContext_ImageSummary_Licenses(ctx, field)
 			case "Labels":
 				return ec.fieldContext_ImageSummary_Labels(ctx, field)
+			case "Title":
+				return ec.fieldContext_ImageSummary_Title(ctx, field)
+			case "Source":
+				return ec.fieldContext_ImageSummary_Source(ctx, field)
+			case "Documentation":
+				return ec.fieldContext_ImageSummary_Documentation(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -3496,6 +3682,12 @@ func (ec *executionContext) fieldContext_RepoSummary_NewestImage(ctx context.Con
 				return ec.fieldContext_ImageSummary_Licenses(ctx, field)
 			case "Labels":
 				return ec.fieldContext_ImageSummary_Labels(ctx, field)
+			case "Title":
+				return ec.fieldContext_ImageSummary_Title(ctx, field)
+			case "Source":
+				return ec.fieldContext_ImageSummary_Source(ctx, field)
+			case "Documentation":
+				return ec.fieldContext_ImageSummary_Documentation(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -5579,6 +5771,18 @@ func (ec *executionContext) _ImageSummary(ctx context.Context, sel ast.Selection
 		case "Labels":
 
 			out.Values[i] = ec._ImageSummary_Labels(ctx, field, obj)
+
+		case "Title":
+
+			out.Values[i] = ec._ImageSummary_Title(ctx, field, obj)
+
+		case "Source":
+
+			out.Values[i] = ec._ImageSummary_Source(ctx, field, obj)
+
+		case "Documentation":
+
+			out.Values[i] = ec._ImageSummary_Documentation(ctx, field, obj)
 
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))

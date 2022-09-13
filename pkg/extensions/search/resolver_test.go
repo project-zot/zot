@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/99designs/gqlgen/graphql"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -174,6 +175,73 @@ func TestGlobalSearch(t *testing.T) {
 				},
 			}
 			globalSearch([]string{"repo1"}, "name", "tag", mockOlum, log.NewLogger("debug", ""))
+		})
+	})
+}
+
+func TestRepoListWithNewestImage(t *testing.T) {
+	Convey("repoListWithNewestImage", t, func() {
+		Convey("GetImageManifests fail", func() {
+			mockOlum := mocks.OciLayoutUtilsMock{
+				GetImageManifestsFn: func(image string) ([]ispec.Descriptor, error) {
+					return []ispec.Descriptor{}, ErrTestError
+				},
+			}
+
+			ctx := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter, graphql.Recover)
+			_, err := repoListWithNewestImage(ctx, []string{"repo1"}, mockOlum, log.NewLogger("debug", ""))
+			So(err, ShouldBeNil)
+
+			errs := graphql.GetErrors(ctx)
+			So(errs, ShouldNotBeEmpty)
+		})
+
+		Convey("GetImageBlobManifest fail", func() {
+			mockOlum := mocks.OciLayoutUtilsMock{
+				GetImageBlobManifestFn: func(imageDir string, digest godigest.Digest) (v1.Manifest, error) {
+					return v1.Manifest{}, ErrTestError
+				},
+				GetImageManifestsFn: func(image string) ([]ispec.Descriptor, error) {
+					return []ispec.Descriptor{
+						{
+							MediaType: "application/vnd.oci.image.layer.v1.tar",
+							Size:      int64(0),
+						},
+					}, nil
+				},
+			}
+
+			ctx := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter, graphql.Recover)
+			_, err := repoListWithNewestImage(ctx, []string{"repo1"}, mockOlum, log.NewLogger("debug", ""))
+			So(err, ShouldBeNil)
+
+			errs := graphql.GetErrors(ctx)
+			So(errs, ShouldNotBeEmpty)
+		})
+
+		Convey("GetImageConfigInfo fail", func() {
+			mockOlum := mocks.OciLayoutUtilsMock{
+				GetImageManifestsFn: func(image string) ([]ispec.Descriptor, error) {
+					return []ispec.Descriptor{
+						{
+							MediaType: "application/vnd.oci.image.layer.v1.tar",
+							Size:      int64(0),
+						},
+					}, nil
+				},
+				GetImageConfigInfoFn: func(repo string, manifestDigest godigest.Digest) (ispec.Image, error) {
+					return ispec.Image{
+						Author: "test",
+					}, ErrTestError
+				},
+			}
+
+			ctx := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter, graphql.Recover)
+			_, err := repoListWithNewestImage(ctx, []string{"repo1"}, mockOlum, log.NewLogger("debug", ""))
+			So(err, ShouldBeNil)
+
+			errs := graphql.GetErrors(ctx)
+			So(errs, ShouldNotBeEmpty)
 		})
 	})
 }

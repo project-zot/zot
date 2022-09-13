@@ -291,37 +291,43 @@ func (r *queryResolver) ImageListForDigest(ctx context.Context, id string) ([]*g
 func (r *queryResolver) RepoListWithNewestImage(ctx context.Context) ([]*gql_generated.RepoSummary, error) {
 	r.log.Info().Msg("extension api: finding image list")
 
-	repoList := make([]*gql_generated.RepoSummary, 0)
+	olu := common.NewBaseOciLayoutUtils(r.storeController, r.log)
 
-	defaultStore := r.storeController.DefaultStore
+	reposSummary := make([]*gql_generated.RepoSummary, 0)
 
-	dsRepoList, err := r.repoListWithNewestImage(ctx, defaultStore)
+	repoList := []string{}
+
+	defaultRepoList, err := r.storeController.DefaultStore.GetRepositories()
 	if err != nil {
-		r.log.Error().Err(err).Msg("extension api: error extracting default store image list")
+		r.log.Error().Err(err).Msg("extension api: error extracting default store repo list")
 
-		return repoList, err
+		return reposSummary, err
 	}
 
-	if len(dsRepoList) != 0 {
-		repoList = append(repoList, dsRepoList...)
+	if len(defaultRepoList) > 0 {
+		repoList = append(repoList, defaultRepoList...)
 	}
 
 	subStore := r.storeController.SubStore
-
 	for _, store := range subStore {
-		ssRepoList, err := r.repoListWithNewestImage(ctx, store)
+		subRepoList, err := store.GetRepositories()
 		if err != nil {
-			r.log.Error().Err(err).Msg("extension api: error extracting substore image list")
+			r.log.Error().Err(err).Msg("extension api: error extracting substore repo list")
 
-			return repoList, err
+			return reposSummary, err
 		}
 
-		if len(ssRepoList) != 0 {
-			repoList = append(repoList, ssRepoList...)
-		}
+		repoList = append(repoList, subRepoList...)
 	}
 
-	return repoList, nil
+	reposSummary, err = repoListWithNewestImage(ctx, repoList, olu, r.log)
+	if err != nil {
+		r.log.Error().Err(err).Msg("extension api: error extracting substore image list")
+
+		return reposSummary, err
+	}
+
+	return reposSummary, nil
 }
 
 // ImageList is the resolver for the ImageList field.
@@ -382,6 +388,27 @@ func (r *queryResolver) ExpandedRepoInfo(ctx context.Context, repo string) (*gql
 	summary.LastUpdated = &origRepoInfo.Summary.LastUpdated
 	summary.Name = &origRepoInfo.Summary.Name
 	summary.Platforms = []*gql_generated.OsArch{}
+	summary.NewestImage = &gql_generated.ImageSummary{
+		RepoName:     &origRepoInfo.Summary.NewestImage.RepoName,
+		Tag:          &origRepoInfo.Summary.NewestImage.Tag,
+		LastUpdated:  &origRepoInfo.Summary.NewestImage.LastUpdated,
+		Digest:       &origRepoInfo.Summary.NewestImage.Digest,
+		ConfigDigest: &origRepoInfo.Summary.NewestImage.ConfigDigest,
+		IsSigned:     &origRepoInfo.Summary.NewestImage.IsSigned,
+		Size:         &origRepoInfo.Summary.NewestImage.Size,
+		Platform: &gql_generated.OsArch{
+			Os:   &origRepoInfo.Summary.NewestImage.Platform.Os,
+			Arch: &origRepoInfo.Summary.NewestImage.Platform.Arch,
+		},
+		Vendor:        &origRepoInfo.Summary.NewestImage.Vendor,
+		Score:         &origRepoInfo.Summary.NewestImage.Score,
+		Description:   &origRepoInfo.Summary.NewestImage.Description,
+		Title:         &origRepoInfo.Summary.NewestImage.Title,
+		Documentation: &origRepoInfo.Summary.NewestImage.Documentation,
+		Licenses:      &origRepoInfo.Summary.NewestImage.Licenses,
+		Labels:        &origRepoInfo.Summary.NewestImage.Labels,
+		Source:        &origRepoInfo.Summary.NewestImage.Source,
+	}
 
 	for _, platform := range origRepoInfo.Summary.Platforms {
 		platform := platform
@@ -404,9 +431,7 @@ func (r *queryResolver) ExpandedRepoInfo(ctx context.Context, repo string) (*gql
 
 	for _, image := range origRepoInfo.Images {
 		tag := image.Tag
-
 		digest := image.Digest
-
 		isSigned := image.IsSigned
 
 		imageSummary := &gql_generated.ImageSummary{Tag: &tag, Digest: &digest, IsSigned: &isSigned}
@@ -415,7 +440,6 @@ func (r *queryResolver) ExpandedRepoInfo(ctx context.Context, repo string) (*gql
 
 		for _, l := range image.Layers {
 			size := l.Size
-
 			digest := l.Digest
 
 			layerInfo := &gql_generated.LayerSummary{Digest: &digest, Size: &size}
