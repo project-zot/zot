@@ -98,6 +98,11 @@ type LayerSummary struct {
 	Score  *int    `json:"Score"`
 }
 
+type MutationResult struct {
+	// outcome of the Mutation
+	Success bool `json:"success"`
+}
+
 // Contains details about the supported OS and architecture of the image
 type OsArch struct {
 	Os   *string `json:"Os"`

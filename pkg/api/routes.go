@@ -125,9 +125,14 @@ func (rh *RouteHandler) SetupRoutes() {
 			prefixedRouter.HandleFunc("/metrics", rh.GetMetrics).Methods("GET")
 		} else {
 			// extended build
+			// AuthHandler(rh.c), ??? no auth??
 			ext.SetupMetricsRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
-			ext.SetupSearchRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.RepoDB, rh.c.Log)
-			gqlPlayground.SetupGQLPlaygroundRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
+			// ext.SetupSearchRoutes(rh.c.Config, prefixedRouter, rh.c.StoreController, rh.c.RepoDB, rh.c.Log)
+			ext.SetupSearchRoutes(rh.c.Config, prefixedRouter, rh.c.StoreController,
+				rh.c.RepoDB, rh.c.MetaStore, rh.c.Log)
+			// UI not declared
+			// ext.SetupUIRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
+			gqlPlayground.SetupGQLPlaygroundRoutes(rh.c.Config, prefixedRouter, rh.c.StoreController, rh.c.Log)
 		}
 	}
 }

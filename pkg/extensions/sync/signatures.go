@@ -15,6 +15,7 @@ import (
 	oras "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/sigstore/cosign/pkg/oci/remote"
 
+	extconf "zotregistry.io/zot/pkg/extensions/config"
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/constants"
 	"zotregistry.io/zot/pkg/common"
@@ -26,11 +27,12 @@ type signaturesCopier struct {
 	client          *http.Client
 	upstreamURL     url.URL
 	storeController storage.StoreController
-	credentials     Credentials
+	credentials     extconf.Credentials
 	log             log.Logger
 }
 
-func newSignaturesCopier(httpClient *http.Client, credentials Credentials, upstreamURL url.URL,
+func newSignaturesCopier(httpClient *http.Client, credentials extconf.Credentials, 
+	upstreamURL url.URL,
 	storeController storage.StoreController, log log.Logger,
 ) *signaturesCopier {
 	return &signaturesCopier{

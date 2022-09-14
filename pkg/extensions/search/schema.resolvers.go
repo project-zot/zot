@@ -6,12 +6,84 @@ package search
 
 import (
 	"context"
+	"errors"
 
 	"github.com/vektah/gqlparser/v2/gqlerror"
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/search/common"
+	"zotregistry.io/zot/pkg/extensions/search/convert"
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
+	msConfig "zotregistry.io/zot/pkg/meta/config"
+	"zotregistry.io/zot/pkg/meta/repodb"
 )
+
+// ToggleBookmark is the resolver for the ToggleBookmark field.
+func (r *mutationResolver) ToggleBookmark(ctx context.Context, repo string) (*gql_generated.MutationResult, error) {
+	acCtx := getAccessContext(ctx)
+	// empty user is anonymous
+	if acCtx.Username == "" {
+		return &gql_generated.MutationResult{Success: false},
+			ErrAnonymousIsNotAuthorized
+	}
+
+	// check user access level
+	filteredRepos, err := userAvailableRepos(ctx, []string{repo})
+	if err != nil {
+		return &gql_generated.MutationResult{Success: false}, err
+	}
+	if len(filteredRepos) == 0 {
+		return &gql_generated.MutationResult{Success: false},
+			ErrNotAuthorized
+	}
+
+	// store to db
+	_, err = r.metadata.ToggleBookmarkRepo(acCtx.Username, repo)
+	if err != nil {
+		return &gql_generated.MutationResult{Success: false}, err
+	}
+
+	return &gql_generated.MutationResult{Success: true}, nil
+}
+
+// ToggleStar is the resolver for the ToggleStar field.
+func (r *mutationResolver) ToggleStar(ctx context.Context, repo string) (*gql_generated.MutationResult, error) {
+	acCtx := getAccessContext(ctx)
+
+	// empty user is anonymous
+	if acCtx.Username == "" {
+		return &gql_generated.MutationResult{Success: false},
+			ErrAnonymousIsNotAuthorized
+	}
+
+	// check user access level
+	filteredRepos, err := userAvailableRepos(ctx, []string{repo})
+	if err != nil {
+		return &gql_generated.MutationResult{Success: false}, err
+	}
+	if len(filteredRepos) == 0 {
+		return &gql_generated.MutationResult{Success: false},
+			ErrNotAuthorized
+	}
+
+	res, err := r.metadata.ToggleStarRepo(acCtx.Username, repo)
+	if err != nil {
+		return &gql_generated.MutationResult{Success: false}, err
+	}
+
+	if res == msConfig.Added {
+		err = r.repoDB.IncrementRepoStars(repo)
+	}
+
+	if res == msConfig.Removed {
+		err = r.repoDB.DecrementRepoStars(repo)
+	}
+
+	if err != nil {
+		return &gql_generated.MutationResult{Success: false}, err
+	}
+
+	return &gql_generated.MutationResult{Success: true}, nil
+}
 
 // CVEListForImage is the resolver for the CVEListForImage field.
 func (r *queryResolver) CVEListForImage(ctx context.Context, image string, requestedPage *gql_generated.PageInput) (*gql_generated.CVEResultForImage, error) {
@@ -142,7 +214,165 @@ func (r *queryResolver) Referrers(ctx context.Context, repo string, digest strin
 	return referrers, nil
 }
 
+// StarredRepos is the resolver for the StarredRepos field.
+func (r *queryResolver) StarredRepos(ctx context.Context, requestedPage *gql_generated.PageInput) (*gql_generated.PaginatedReposResult, error) {
+	paginatedRepos := &gql_generated.PaginatedReposResult{Results: []*gql_generated.RepoSummary{}}
+	acCtx := getAccessContext(ctx)
+	repoList, err := r.metadata.GetStarredRepos(acCtx.Username)
+	if err != nil {
+		return paginatedRepos, err
+	}
+
+	r.log.Info().Str("user", acCtx.Username).Int("repolist size", len(repoList)).
+		Msg("resolve StarredRepos for user")
+
+	// check user access level
+	filteredRepos, err := filterReposMap(ctx, repoList)
+	if err != nil {
+		return nil, err
+	}
+	filterFn := func(repoMeta repodb.RepoMetadata) bool {
+		_, ok := filteredRepos[repoMeta.Name]
+
+		return ok
+	}
+
+	r.log.Info().Str("user", acCtx.Username).Msg("after filteredReposMap")
+
+	if requestedPage == nil {
+		requestedPage = &gql_generated.PageInput{}
+	}
+
+	r.log.Info().Str("user", acCtx.Username).Msg("after init requestedPage")
+
+	requestedPageInput := repodb.PageInput{
+		Limit:  safeDerefferencing(requestedPage.Limit, 0),
+		Offset: safeDerefferencing(requestedPage.Offset, 0),
+		SortBy: repodb.SortCriteria(
+			safeDerefferencing(requestedPage.SortBy, gql_generated.SortCriteriaAlphabeticAsc),
+		),
+	}
+
+	r.log.Info().Msg("resolve StarredRepos bf GetMultipleRepoMeta  for user")
+
+	multiReposMeta, foundManifestMetadataMap, pageInfo, err := r.repoDB.FilterRepos(
+		ctx, filterFn, requestedPageInput)
+	if err != nil {
+		return nil, err
+	}
+
+	repoSummaries := make([]*gql_generated.RepoSummary, len(multiReposMeta))
+	skip := convert.SkipQGLField{
+		Vulnerabilities: canSkipField(convert.GetPreloads(ctx), "Vulnerabilities"),
+	}
+
+	r.log.Info().Msg("resolve StarredRepos af GetMultipleRepoMeta  for user")
+
+	for index, repoMeta := range multiReposMeta {
+		r.log.Info().Str("repoName", repoMeta.Name).
+			Msg("resolve StarredRepos bf RepoMeta2RepoSummary for repoName")
+
+		repoSummaries[index] = convert.RepoMeta2RepoSummary(
+			ctx,
+			repoMeta,
+			foundManifestMetadataMap,
+			skip,
+			r.cveInfo,
+		)
+
+		r.log.Info().Str("repoName", repoMeta.Name).
+			Msg("resolve StarredRepos af GetManifestMeta for manifestDigest")
+	}
+
+	paginatedRepos = &gql_generated.PaginatedReposResult{
+		Results: repoSummaries,
+		Page: &gql_generated.PageInfo{
+			TotalCount: pageInfo.TotalCount,
+			ItemCount:  pageInfo.ItemCount,
+		},
+	}
+
+	return paginatedRepos, nil
+}
+
+// BookmarkedRepos is the resolver for the BookmarkedRepos field.
+func (r *queryResolver) BookmarkedRepos(ctx context.Context, requestedPage *gql_generated.PageInput) (*gql_generated.PaginatedReposResult, error) {
+	paginatedRepos := &gql_generated.PaginatedReposResult{Results: []*gql_generated.RepoSummary{}}
+	acCtx := getAccessContext(ctx)
+
+	repoList, err := r.metadata.GetBookmarkedRepos(acCtx.Username)
+	if err != nil {
+		return paginatedRepos, err
+	}
+
+	// check user access level
+	filteredRepos, err := filterReposMap(ctx, repoList)
+	if err != nil {
+		return nil, err
+	}
+
+	filterFn := func(repoMeta repodb.RepoMetadata) bool {
+		_, ok := filteredRepos[repoMeta.Name]
+
+		return ok
+	}
+
+	requestedPageInput := repodb.PageInput{
+		Limit:  safeDerefferencing(requestedPage.Limit, 0),
+		Offset: safeDerefferencing(requestedPage.Offset, 0),
+		SortBy: repodb.SortCriteria(
+			safeDerefferencing(requestedPage.SortBy, gql_generated.SortCriteriaRelevance),
+		),
+	}
+
+	multiReposMeta, foundManifestMetadataMap, pageInfo, err := r.repoDB.FilterRepos(
+		ctx, filterFn, requestedPageInput)
+	if err != nil {
+		return nil, err
+	}
+
+	repoSummaries := make([]*gql_generated.RepoSummary, len(multiReposMeta))
+	skip := convert.SkipQGLField{
+		Vulnerabilities: canSkipField(convert.GetPreloads(ctx), "Vulnerabilities"),
+	}
+
+	for index, repoMeta := range multiReposMeta {
+		repoSummaries[index] = convert.RepoMeta2RepoSummary(
+			ctx,
+			repoMeta,
+			foundManifestMetadataMap,
+			skip,
+			r.cveInfo,
+		)
+	}
+
+	paginatedRepos = &gql_generated.PaginatedReposResult{
+		Results: repoSummaries,
+		Page: &gql_generated.PageInfo{
+			TotalCount: pageInfo.TotalCount,
+			ItemCount:  pageInfo.ItemCount,
+		},
+	}
+
+	return paginatedRepos, nil
+}
+
+// Mutation returns gql_generated.MutationResolver implementation.
+func (r *Resolver) Mutation() gql_generated.MutationResolver { return &mutationResolver{r} }
+
 // Query returns gql_generated.QueryResolver implementation.
 func (r *Resolver) Query() gql_generated.QueryResolver { return &queryResolver{r} }
 
+type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
+
+// !!! WARNING !!!
+// The code below was going to be deleted when updating resolvers. It has been copied here so you have
+// one last chance to move it out of harms way if you want. There are two reasons this happens:
+//   - When renaming or deleting a resolver the old code will be put in here. You can safely delete
+//     it when you're done.
+//   - You have helper methods in this file. Move them out to keep these resolver files clean.
+var (
+	ErrAnonymousIsNotAuthorized = errors.New("unidentified users cannot star repos")
+	ErrNotAuthorized            = errors.New("resource does not exist or you are not authorized to see it")
+)

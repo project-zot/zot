@@ -17,6 +17,8 @@ type RepoDBMock struct {
 
 	GetRepoStarsFn func(repo string) (int, error)
 
+	SetRepoStarsFn func(repo string, starCount int) error
+
 	SetRepoLogoFn func(repo string, logoPath string) error
 
 	SetRepoTagFn func(repo string, tag string, manifestDigest godigest.Digest, mediaType string) error
@@ -26,7 +28,10 @@ type RepoDBMock struct {
 	GetRepoMetaFn func(repo string) (repodb.RepoMetadata, error)
 
 	GetMultipleRepoMetaFn func(ctx context.Context, filter func(repoMeta repodb.RepoMetadata) bool,
-		requestedPage repodb.PageInput) ([]repodb.RepoMetadata, error)
+		requestedPage repodb.PageInput) (
+		[]repodb.RepoMetadata,
+		error,
+	)
 
 	GetManifestDataFn func(manifestDigest godigest.Digest) (repodb.ManifestData, error)
 
@@ -47,6 +52,13 @@ type RepoDBMock struct {
 
 	SearchTagsFn func(ctx context.Context, searchText string, filter repodb.Filter, requestedPage repodb.PageInput) (
 		[]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, repodb.PageInfo, error)
+
+	FilterReposFn func(ctx context.Context,
+		filter repodb.FilterRepoFunc,
+		requestedPage repodb.PageInput,
+	) (
+		[]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, repodb.PageInfo, error,
+	)
 
 	FilterTagsFn func(ctx context.Context, filter repodb.FilterFunc,
 		requestedPage repodb.PageInput,
@@ -97,6 +109,14 @@ func (sdm RepoDBMock) GetRepoStars(repo string) (int, error) {
 	}
 
 	return 0, nil
+}
+
+func (sdm RepoDBMock) SetRepoStars(repo string, starCount int) error {
+	if sdm.SetRepoStarsFn != nil {
+		return sdm.SetRepoStarsFn(repo, starCount)
+	}
+
+	return nil
 }
 
 func (sdm RepoDBMock) SetRepoLogo(repo string, logoPath string) error {
@@ -206,6 +226,17 @@ func (sdm RepoDBMock) SearchRepos(ctx context.Context, searchText string, filter
 ) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, repodb.PageInfo, error) {
 	if sdm.SearchReposFn != nil {
 		return sdm.SearchReposFn(ctx, searchText, filter, requestedPage)
+	}
+
+	return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, repodb.PageInfo{}, nil
+}
+
+func (sdm RepoDBMock) FilterRepos(ctx context.Context,
+	filter repodb.FilterRepoFunc,
+	requestedPage repodb.PageInput,
+) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, repodb.PageInfo, error) {
+	if sdm.FilterReposFn != nil {
+		return sdm.FilterReposFn(ctx, filter, requestedPage)
 	}
 
 	return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, repodb.PageInfo{}, nil

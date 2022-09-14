@@ -143,11 +143,11 @@ type Annotation {
 }
 
 type Referrer {
-        MediaType:    String
-        ArtifactType: String
-        Size:         Int
-        Digest:       String
-        Annotations:  [Annotation]!
+    MediaType:    String
+    ArtifactType: String
+    Size:         Int
+    Digest:       String
+    Annotations:  [Annotation]!
 }
 
 """
@@ -157,6 +157,7 @@ type OsArch {
     Os: String
     Arch: String
 }
+
 
 enum SortCriteria {
     RELEVANCE
@@ -168,6 +169,11 @@ enum SortCriteria {
     DOWNLOADS
 }
 
+# Information on current page returned by the API
+# ObjectCount represents the total number of objects on all pages
+# PreviousPage represents previous page number
+# NextPage represents next page number
+# Pages represents total number of pages
 type PageInfo {
     TotalCount: Int!
     ItemCount: Int!
@@ -183,15 +189,15 @@ input PageInput {
 # Paginated list of RepoSummary objects
 # If limit is -1, pagination is disabled
 type PaginatedReposResult {
-    Page: PageInfo
-    Results: [RepoSummary!]!
+     Page: PageInfo
+     Results: [RepoSummary!]!
 }
 
 # Paginated list of ImageSummary objects
 # If limit is -1, pagination is disabled
 type PaginatedImagesResult {
-    Page: PageInfo
-    Results: [ImageSummary!]!
+     Page: PageInfo
+     Results: [ImageSummary!]!
 }
 
 input Filter {
@@ -217,7 +223,7 @@ type Query {
     ImageListWithCVEFixed(id: String!, image: String!, requestedPage: PageInput): [ImageSummary!]
 
     """
-    Returns a list of images which contain the specified digest 
+    Returns a list of images which contain the specified digest
     """
     ImageListForDigest(id: String!, requestedPage: PageInput): [ImageSummary!]
 
@@ -261,4 +267,20 @@ type Query {
     Can be filtered based on a specific artifact type <type>
     """
     Referrers(repo: String!, digest: String!, type: [String!]): [Referrer]!
+    """Receive RepoSummaries of repos starred by current user"""
+    StarredRepos(requestedPage: PageInput): PaginatedReposResult!  # Newest based on created timestamp
+    """Receive RepoSummaries of repos bookmarked by current user"""
+    BookmarkedRepos(requestedPage: PageInput): PaginatedReposResult!  # Assuming the user is obtained from context object
+}
+
+type MutationResult {
+    """outcome of the Mutation"""
+    success: Boolean!
+}
+
+type Mutation {
+    """Toggle add or remove a bookmark for repo for the current user (depending on current state)"""
+    ToggleBookmark(repo: String!): MutationResult!  # Assuming the user is obtained from context object
+    """Toggle add or remove star for repo for the current user (depending on current state)"""
+    ToggleStar(repo: String!): MutationResult!  # Assuming the user is obtained from context object
 }

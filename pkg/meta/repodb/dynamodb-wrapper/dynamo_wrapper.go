@@ -651,6 +651,74 @@ func (dwr DBWrapper) SearchRepos(ctx context.Context, searchText string, filter 
 	return foundRepos, foundManifestMetadataMap, pageInfo, err
 }
 
+// TODO: actually implement 2023-01-16
+func (dwr DBWrapper) FilterRepos(ctx context.Context,
+	filter repodb.FilterRepoFunc,
+	requestedPage repodb.PageInput,
+) (
+	[]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, repodb.PageInfo, error,
+) {
+	var (
+		foundRepos = make([]repodb.RepoMetadata, 0)
+		// pageFinder repodb.PageFinder
+		foundManifestMetadataMap = make(map[string]repodb.ManifestMetadata)
+		pageInfo   repodb.PageInfo
+	)
+
+	// pageFinder, err := repodb.NewBaseRepoPageFinder(
+	// 	requestedPage.Limit,
+	// 	requestedPage.Offset,
+	// 	requestedPage.SortBy,
+	// )
+	// if err != nil {
+	// 	return nil, nil, pageInfo, err
+	// }
+
+	// err = dwr.db.View(func(tx *bolt.Tx) error {
+	// 	buck := tx.Bucket([]byte(repodb.RepoMetadataBucket))
+
+	// 	cursor := buck.Cursor()
+
+	// 	for repoName, repoMetaBlob := cursor.First(); repoName != nil; repoName, repoMetaBlob = cursor.Next() {
+	// 		if ok, err := localCtx.RepoIsUserAvailable(ctx, string(repoName)); !ok || err != nil {
+	// 			continue
+	// 		}
+
+	// 		repoMeta := repodb.RepoMetadata{}
+
+	// 		err := json.Unmarshal(repoMetaBlob, &repoMeta)
+	// 		if err != nil {
+	// 			return err
+	// 		}
+
+	// 		if filter(repoMeta) {
+	// 			pageFinder.Add(repodb.DetailedRepoMeta{
+	// 				RepoMeta: repoMeta,
+	// 			})
+	// 		}
+	// 	}
+
+	// 	foundRepos, pageInfo = pageFinder.Page()
+
+	// 	return nil
+	// })
+
+	
+
+	// for idx := range foundRepos {
+	// 	for _, manifestDigest := range foundRepos[idx].Tags {
+	// 		manifestMeta, err := dwr.GetManifestMeta(godigest.Digest(manifestDigest))
+	// 		if err != nil {
+	// 			return nil, nil, pageInfo, err
+	// 		}
+
+	// 		foundManifestMetadataMap[manifestDigest] = manifestMeta
+	// 	}
+	// }
+
+	return foundRepos, foundManifestMetadataMap, pageInfo, nil
+}
+
 func (dwr DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 	requestedPage repodb.PageInput,
 ) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, repodb.PageInfo, error) {

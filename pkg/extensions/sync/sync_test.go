@@ -167,7 +167,7 @@ func startUpstreamServer(
 }
 
 func startDownstreamServer(
-	t *testing.T, secure bool, syncConfig *sync.Config,
+	t *testing.T, secure bool, syncConfig *extconf.SyncConfig,
 ) (*api.Controller, string, string, *resty.Client) {
 	t.Helper()
 
@@ -272,11 +272,11 @@ func TestORAS(t *testing.T) {
 
 		regex := ".*"
 
-		syncRegistryConfig := sync.RegistryConfig{
-			Content: []sync.Content{
+		syncRegistryConfig := extconf.RegistryConfig{
+			Content: []extconf.Content{
 				{
 					Prefix: "oras-artifact",
-					Tags: &sync.Tags{
+					Tags: &extconf.Tags{
 						Regex: &regex,
 					},
 				},
@@ -288,9 +288,9 @@ func TestORAS(t *testing.T) {
 		}
 
 		defaultVal := true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		dctlr, destBaseURL, _, destClient := startDownstreamServer(t, false, syncConfig)
@@ -339,11 +339,11 @@ func TestOnDemand(t *testing.T) {
 		regex := ".*"
 		semver := true
 
-		syncRegistryConfig := sync.RegistryConfig{
-			Content: []sync.Content{
+		syncRegistryConfig := extconf.RegistryConfig{
+			Content: []extconf.Content{
 				{
 					Prefix: testImage,
-					Tags: &sync.Tags{
+					Tags: &extconf.Tags{
 						Regex:  &regex,
 						Semver: &semver,
 					},
@@ -356,9 +356,9 @@ func TestOnDemand(t *testing.T) {
 		}
 
 		defaultVal := true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(t, false, syncConfig)
@@ -471,11 +471,11 @@ func TestPeriodically(t *testing.T) {
 		maxRetries := 1
 		delay := 1 * time.Second
 
-		syncRegistryConfig := sync.RegistryConfig{
-			Content: []sync.Content{
+		syncRegistryConfig := extconf.RegistryConfig{
+			Content: []extconf.Content{
 				{
 					Prefix: testImage,
-					Tags: &sync.Tags{
+					Tags: &extconf.Tags{
 						Regex:  &regex,
 						Semver: &semver,
 					},
@@ -490,9 +490,9 @@ func TestPeriodically(t *testing.T) {
 		}
 
 		defaultVal := true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		dctlr, destBaseURL, _, destClient := startDownstreamServer(t, false, syncConfig)
@@ -541,18 +541,18 @@ func TestPeriodically(t *testing.T) {
 
 			var tlsVerify bool
 
-			syncRegistryConfig := sync.RegistryConfig{
-				Content: []sync.Content{
+			syncRegistryConfig := extconf.RegistryConfig{
+				Content: []extconf.Content{
 					{
 						Prefix: testImage,
-						Tags: &sync.Tags{
+						Tags: &extconf.Tags{
 							Regex:  &regex,
 							Semver: &semver,
 						},
 					},
 					{
 						Prefix: testCveImage,
-						Tags: &sync.Tags{
+						Tags: &extconf.Tags{
 							Regex:  &invalidRegex,
 							Semver: &semver,
 						},
@@ -564,9 +564,9 @@ func TestPeriodically(t *testing.T) {
 				CertDir:      "",
 			}
 
-			syncConfig := &sync.Config{
+			syncConfig := &extconf.SyncConfig{
 				Enable:     &defaultVal,
-				Registries: []sync.RegistryConfig{syncRegistryConfig},
+				Registries: []extconf.RegistryConfig{syncRegistryConfig},
 			}
 
 			dctlr, destBaseURL, _, destClient := startDownstreamServer(t, false, syncConfig)
@@ -641,11 +641,11 @@ func TestOnDemandPermsDenied(t *testing.T) {
 		semver := true
 		var tlsVerify bool
 
-		syncRegistryConfig := sync.RegistryConfig{
-			Content: []sync.Content{
+		syncRegistryConfig := extconf.RegistryConfig{
+			Content: []extconf.Content{
 				{
 					Prefix: testImage,
-					Tags: &sync.Tags{
+					Tags: &extconf.Tags{
 						Regex:  &regex,
 						Semver: &semver,
 					},
@@ -659,9 +659,9 @@ func TestOnDemandPermsDenied(t *testing.T) {
 		}
 
 		defaultVal := true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		destPort := test.GetFreePort()
@@ -717,8 +717,8 @@ func TestConfigReloader(t *testing.T) {
 
 		var tlsVerify bool
 
-		syncRegistryConfig := sync.RegistryConfig{
-			Content: []sync.Content{
+		syncRegistryConfig := extconf.RegistryConfig{
+			Content: []extconf.Content{
 				{
 					Prefix: testImage,
 				},
@@ -731,9 +731,9 @@ func TestConfigReloader(t *testing.T) {
 		}
 
 		defaultVal := true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		destPort := test.GetFreePort()
@@ -836,11 +836,11 @@ func TestMandatoryAnnotations(t *testing.T) {
 		var semver bool
 		tlsVerify := false
 
-		syncRegistryConfig := sync.RegistryConfig{
-			Content: []sync.Content{
+		syncRegistryConfig := extconf.RegistryConfig{
+			Content: []extconf.Content{
 				{
 					Prefix: testImage,
-					Tags: &sync.Tags{
+					Tags: &extconf.Tags{
 						Regex:  &regex,
 						Semver: &semver,
 					},
@@ -853,9 +853,9 @@ func TestMandatoryAnnotations(t *testing.T) {
 		}
 
 		defaultVal := true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		destPort := test.GetFreePort()
@@ -921,11 +921,11 @@ func TestBadTLS(t *testing.T) {
 		var semver bool
 		tlsVerify := true
 
-		syncRegistryConfig := sync.RegistryConfig{
-			Content: []sync.Content{
+		syncRegistryConfig := extconf.RegistryConfig{
+			Content: []extconf.Content{
 				{
 					Prefix: testImage,
-					Tags: &sync.Tags{
+					Tags: &extconf.Tags{
 						Regex:  &regex,
 						Semver: &semver,
 					},
@@ -938,9 +938,9 @@ func TestBadTLS(t *testing.T) {
 		}
 
 		defaultVal := true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		dctlr, destBaseURL, _, destClient := startDownstreamServer(t, true, syncConfig)
@@ -1013,11 +1013,11 @@ func TestTLS(t *testing.T) {
 		var semver bool
 		tlsVerify := true
 
-		syncRegistryConfig := sync.RegistryConfig{
-			Content: []sync.Content{
+		syncRegistryConfig := extconf.RegistryConfig{
+			Content: []extconf.Content{
 				{
 					Prefix: testImage,
-					Tags: &sync.Tags{
+					Tags: &extconf.Tags{
 						Regex:  &regex,
 						Semver: &semver,
 					},
@@ -1030,9 +1030,9 @@ func TestTLS(t *testing.T) {
 		}
 
 		defaultVal := true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		dctlr, _, destDir, _ := startDownstreamServer(t, true, syncConfig)
@@ -1081,8 +1081,8 @@ func TestBasicAuth(t *testing.T) {
 
 			var tlsVerify bool
 
-			syncRegistryConfig := sync.RegistryConfig{
-				Content: []sync.Content{
+			syncRegistryConfig := extconf.RegistryConfig{
+				Content: []extconf.Content{
 					{
 						Prefix: testImage,
 					},
@@ -1094,10 +1094,10 @@ func TestBasicAuth(t *testing.T) {
 			}
 
 			defaultVal := true
-			syncConfig := &sync.Config{
+			syncConfig := &extconf.SyncConfig{
 				Enable:          &defaultVal,
 				CredentialsFile: credentialsFile,
-				Registries:      []sync.RegistryConfig{syncRegistryConfig},
+				Registries:      []extconf.RegistryConfig{syncRegistryConfig},
 			}
 
 			dctlr, destBaseURL, _, destClient := startDownstreamServer(t, false, syncConfig)
@@ -1178,11 +1178,11 @@ func TestBasicAuth(t *testing.T) {
 
 			var tlsVerify bool
 
-			syncRegistryConfig := sync.RegistryConfig{
-				Content: []sync.Content{
+			syncRegistryConfig := extconf.RegistryConfig{
+				Content: []extconf.Content{
 					{
 						Prefix: testImage,
-						Tags: &sync.Tags{
+						Tags: &extconf.Tags{
 							Regex:  &regex,
 							Semver: &semver,
 						},
@@ -1197,10 +1197,10 @@ func TestBasicAuth(t *testing.T) {
 
 			destConfig.Extensions = &extconf.ExtensionConfig{}
 			defaultVal := true
-			destConfig.Extensions.Sync = &sync.Config{
+			destConfig.Extensions.Sync = &extconf.SyncConfig{
 				Enable:          &defaultVal,
 				CredentialsFile: credentialsFile,
-				Registries:      []sync.RegistryConfig{syncRegistryConfig},
+				Registries:      []extconf.RegistryConfig{syncRegistryConfig},
 			}
 
 			dctlr := api.NewController(destConfig)
@@ -1240,11 +1240,11 @@ func TestBasicAuth(t *testing.T) {
 			var semver bool
 			var tlsVerify bool
 
-			syncRegistryConfig := sync.RegistryConfig{
-				Content: []sync.Content{
+			syncRegistryConfig := extconf.RegistryConfig{
+				Content: []extconf.Content{
 					{
 						Prefix: testImage,
-						Tags: &sync.Tags{
+						Tags: &extconf.Tags{
 							Regex:  &regex,
 							Semver: &semver,
 						},
@@ -1257,10 +1257,10 @@ func TestBasicAuth(t *testing.T) {
 			}
 
 			defaultVal := true
-			syncConfig := &sync.Config{
+			syncConfig := &extconf.SyncConfig{
 				Enable:          &defaultVal,
 				CredentialsFile: credentialsFile,
-				Registries:      []sync.RegistryConfig{syncRegistryConfig},
+				Registries:      []extconf.RegistryConfig{syncRegistryConfig},
 			}
 
 			dctlr, destBaseURL, _, destClient := startDownstreamServer(t, false, syncConfig)
@@ -1287,27 +1287,27 @@ func TestBasicAuth(t *testing.T) {
 			registryName := sync.StripRegistryTransport(srcBaseURL)
 			credentialsFile := makeCredentialsFile(fmt.Sprintf(`{"%s":{"username": "test", "password": "test"}}`, registryName))
 
-			syncRegistryConfig := sync.RegistryConfig{
+			syncRegistryConfig := extconf.RegistryConfig{
 				URLs:     []string{srcBaseURL},
 				OnDemand: true,
 			}
 
-			unreacheableSyncRegistryConfig1 := sync.RegistryConfig{
+			unreacheableSyncRegistryConfig1 := extconf.RegistryConfig{
 				URLs:     []string{"localhost:9999"},
 				OnDemand: true,
 			}
 
-			unreacheableSyncRegistryConfig2 := sync.RegistryConfig{
+			unreacheableSyncRegistryConfig2 := extconf.RegistryConfig{
 				URLs:     []string{"localhost:9999"},
 				OnDemand: false,
 			}
 
 			defaultVal := true
 			// add file path to the credentials
-			syncConfig := &sync.Config{
+			syncConfig := &extconf.SyncConfig{
 				Enable:          &defaultVal,
 				CredentialsFile: credentialsFile,
-				Registries: []sync.RegistryConfig{
+				Registries: []extconf.RegistryConfig{
 					unreacheableSyncRegistryConfig1,
 					unreacheableSyncRegistryConfig2,
 					syncRegistryConfig,
@@ -1382,11 +1382,11 @@ func TestBadURL(t *testing.T) {
 		var semver bool
 		var tlsVerify bool
 
-		syncRegistryConfig := sync.RegistryConfig{
-			Content: []sync.Content{
+		syncRegistryConfig := extconf.RegistryConfig{
+			Content: []extconf.Content{
 				{
 					Prefix: testImage,
-					Tags: &sync.Tags{
+					Tags: &extconf.Tags{
 						Regex:  &regex,
 						Semver: &semver,
 					},
@@ -1400,9 +1400,9 @@ func TestBadURL(t *testing.T) {
 		}
 
 		defaultVal := true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		dctlr, destBaseURL, _, destClient := startDownstreamServer(t, false, syncConfig)
@@ -1430,11 +1430,11 @@ func TestNoImagesByRegex(t *testing.T) {
 		regex := "9.9.9"
 		var tlsVerify bool
 
-		syncRegistryConfig := sync.RegistryConfig{
-			Content: []sync.Content{
+		syncRegistryConfig := extconf.RegistryConfig{
+			Content: []extconf.Content{
 				{
 					Prefix: testImage,
-					Tags: &sync.Tags{
+					Tags: &extconf.Tags{
 						Regex: &regex,
 					},
 				},
@@ -1446,9 +1446,9 @@ func TestNoImagesByRegex(t *testing.T) {
 		}
 
 		defaultVal := true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		dctlr, destBaseURL, _, destClient := startDownstreamServer(t, false, syncConfig)
@@ -1489,11 +1489,11 @@ func TestInvalidRegex(t *testing.T) {
 		regex := "["
 		var tlsVerify bool
 
-		syncRegistryConfig := sync.RegistryConfig{
-			Content: []sync.Content{
+		syncRegistryConfig := extconf.RegistryConfig{
+			Content: []extconf.Content{
 				{
 					Prefix: testImage,
-					Tags: &sync.Tags{
+					Tags: &extconf.Tags{
 						Regex: &regex,
 					},
 				},
@@ -1506,9 +1506,9 @@ func TestInvalidRegex(t *testing.T) {
 		}
 
 		defaultVal := true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		dctlr, _, _, _ := startDownstreamServer(t, false, syncConfig)
@@ -1547,11 +1547,11 @@ func TestNotSemver(t *testing.T) {
 		semver := true
 		var tlsVerify bool
 
-		syncRegistryConfig := sync.RegistryConfig{
-			Content: []sync.Content{
+		syncRegistryConfig := extconf.RegistryConfig{
+			Content: []extconf.Content{
 				{
 					Prefix: testImage,
-					Tags: &sync.Tags{
+					Tags: &extconf.Tags{
 						Semver: &semver,
 					},
 				},
@@ -1563,9 +1563,9 @@ func TestNotSemver(t *testing.T) {
 		}
 
 		defaultVal := true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		dctlr, destBaseURL, _, destClient := startDownstreamServer(t, false, syncConfig)
@@ -1612,8 +1612,8 @@ func TestErrorOnCatalog(t *testing.T) {
 
 		tlsVerify := false
 
-		syncRegistryConfig := sync.RegistryConfig{
-			Content: []sync.Content{
+		syncRegistryConfig := extconf.RegistryConfig{
+			Content: []extconf.Content{
 				{
 					Prefix: testImage,
 				},
@@ -1625,9 +1625,9 @@ func TestErrorOnCatalog(t *testing.T) {
 		}
 
 		defaultVal := true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		dctlr, _, _, _ := startDownstreamServer(t, false, syncConfig)
@@ -1692,8 +1692,8 @@ func TestInvalidCerts(t *testing.T) {
 
 		tlsVerify := true
 
-		syncRegistryConfig := sync.RegistryConfig{
-			Content: []sync.Content{
+		syncRegistryConfig := extconf.RegistryConfig{
+			Content: []extconf.Content{
 				{
 					Prefix: testImage,
 				},
@@ -1706,9 +1706,9 @@ func TestInvalidCerts(t *testing.T) {
 		}
 
 		defaultVal := true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		dctlr, destBaseURL, _, destClient := startDownstreamServer(t, false, syncConfig)
@@ -1759,8 +1759,8 @@ func TestCertsWithWrongPerms(t *testing.T) {
 
 		tlsVerify := true
 
-		syncRegistryConfig := sync.RegistryConfig{
-			Content: []sync.Content{
+		syncRegistryConfig := extconf.RegistryConfig{
+			Content: []extconf.Content{
 				{
 					Prefix: testImage,
 				},
@@ -1773,9 +1773,9 @@ func TestCertsWithWrongPerms(t *testing.T) {
 		}
 
 		defaultVal := true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		dctlr, destBaseURL, _, destClient := startDownstreamServer(t, false, syncConfig)
@@ -1811,12 +1811,12 @@ func TestInvalidUrl(t *testing.T) {
 		var semver bool
 		var tlsVerify bool
 
-		syncRegistryConfig := sync.RegistryConfig{
-			Content: []sync.Content{
+		syncRegistryConfig := extconf.RegistryConfig{
+			Content: []extconf.Content{
 				{
 					// won't match any image on source registry, we will sync on demand
 					Prefix: "dummy",
-					Tags: &sync.Tags{
+					Tags: &extconf.Tags{
 						Regex:  &regex,
 						Semver: &semver,
 					},
@@ -1830,9 +1830,9 @@ func TestInvalidUrl(t *testing.T) {
 		}
 
 		defaultVal := true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		dctlr, destBaseURL, _, destClient := startDownstreamServer(t, false, syncConfig)
@@ -1861,12 +1861,12 @@ func TestInvalidTags(t *testing.T) {
 		var semver bool
 		var tlsVerify bool
 
-		syncRegistryConfig := sync.RegistryConfig{
-			Content: []sync.Content{
+		syncRegistryConfig := extconf.RegistryConfig{
+			Content: []extconf.Content{
 				{
 					// won't match any image on source registry, we will sync on demand
 					Prefix: "dummy",
-					Tags: &sync.Tags{
+					Tags: &extconf.Tags{
 						Regex:  &regex,
 						Semver: &semver,
 					},
@@ -1880,9 +1880,9 @@ func TestInvalidTags(t *testing.T) {
 		}
 
 		defaultVal := true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		dctlr, destBaseURL, _, destClient := startDownstreamServer(t, false, syncConfig)
@@ -1925,11 +1925,11 @@ func TestSubPaths(t *testing.T) {
 		var semver bool
 		var tlsVerify bool
 
-		syncRegistryConfig := sync.RegistryConfig{
-			Content: []sync.Content{
+		syncRegistryConfig := extconf.RegistryConfig{
+			Content: []extconf.Content{
 				{
 					Prefix: path.Join(subpath, testImage),
-					Tags: &sync.Tags{
+					Tags: &extconf.Tags{
 						Regex:  &regex,
 						Semver: &semver,
 					},
@@ -1943,9 +1943,9 @@ func TestSubPaths(t *testing.T) {
 		}
 
 		defaultVal := true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		destPort := test.GetFreePort()
@@ -2014,8 +2014,8 @@ func TestSubPaths(t *testing.T) {
 func TestOnDemandRepoErr(t *testing.T) {
 	Convey("Verify sync on demand parseRepositoryReference error", t, func() {
 		tlsVerify := false
-		syncRegistryConfig := sync.RegistryConfig{
-			Content: []sync.Content{
+		syncRegistryConfig := extconf.RegistryConfig{
+			Content: []extconf.Content{
 				{
 					// will sync on demand, should not be filtered out
 					Prefix: testImage,
@@ -2028,9 +2028,9 @@ func TestOnDemandRepoErr(t *testing.T) {
 		}
 
 		defaultVal := true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		dctlr, destBaseURL, _, _ := startDownstreamServer(t, false, syncConfig)
@@ -2058,12 +2058,12 @@ func TestOnDemandContentFiltering(t *testing.T) {
 			var semver bool
 			var tlsVerify bool
 
-			syncRegistryConfig := sync.RegistryConfig{
-				Content: []sync.Content{
+			syncRegistryConfig := extconf.RegistryConfig{
+				Content: []extconf.Content{
 					{
 						// should be filtered out
 						Prefix: "dummy",
-						Tags: &sync.Tags{
+						Tags: &extconf.Tags{
 							Regex:  &regex,
 							Semver: &semver,
 						},
@@ -2076,9 +2076,9 @@ func TestOnDemandContentFiltering(t *testing.T) {
 			}
 
 			defaultVal := true
-			syncConfig := &sync.Config{
+			syncConfig := &extconf.SyncConfig{
 				Enable:     &defaultVal,
-				Registries: []sync.RegistryConfig{syncRegistryConfig},
+				Registries: []extconf.RegistryConfig{syncRegistryConfig},
 			}
 
 			dctlr, destBaseURL, _, _ := startDownstreamServer(t, false, syncConfig)
@@ -2097,12 +2097,12 @@ func TestOnDemandContentFiltering(t *testing.T) {
 			semver := true
 			var tlsVerify bool
 
-			syncRegistryConfig := sync.RegistryConfig{
-				Content: []sync.Content{
+			syncRegistryConfig := extconf.RegistryConfig{
+				Content: []extconf.Content{
 					{
 						// will sync on demand, should not be filtered out
 						Prefix: testImage,
-						Tags: &sync.Tags{
+						Tags: &extconf.Tags{
 							Regex:  &regex,
 							Semver: &semver,
 						},
@@ -2115,9 +2115,9 @@ func TestOnDemandContentFiltering(t *testing.T) {
 			}
 
 			defaultVal := true
-			syncConfig := &sync.Config{
+			syncConfig := &extconf.SyncConfig{
 				Enable:     &defaultVal,
-				Registries: []sync.RegistryConfig{syncRegistryConfig},
+				Registries: []extconf.RegistryConfig{syncRegistryConfig},
 			}
 
 			dctlr, destBaseURL, _, _ := startDownstreamServer(t, false, syncConfig)
@@ -2146,11 +2146,11 @@ func TestConfigRules(t *testing.T) {
 			var semver bool
 			var tlsVerify bool
 
-			syncRegistryConfig := sync.RegistryConfig{
-				Content: []sync.Content{
+			syncRegistryConfig := extconf.RegistryConfig{
+				Content: []extconf.Content{
 					{
 						Prefix: testImage,
-						Tags: &sync.Tags{
+						Tags: &extconf.Tags{
 							Regex:  &regex,
 							Semver: &semver,
 						},
@@ -2163,9 +2163,9 @@ func TestConfigRules(t *testing.T) {
 			}
 
 			defaultVal := true
-			syncConfig := &sync.Config{
+			syncConfig := &extconf.SyncConfig{
 				Enable:     &defaultVal,
-				Registries: []sync.RegistryConfig{syncRegistryConfig},
+				Registries: []extconf.RegistryConfig{syncRegistryConfig},
 			}
 
 			dctlr, destBaseURL, _, _ := startDownstreamServer(t, false, syncConfig)
@@ -2184,7 +2184,7 @@ func TestConfigRules(t *testing.T) {
 			var tlsVerify bool
 			updateDuration, _ := time.ParseDuration("30m")
 
-			syncRegistryConfig := sync.RegistryConfig{
+			syncRegistryConfig := extconf.RegistryConfig{
 				PollInterval: updateDuration,
 				URLs:         []string{srcBaseURL},
 				TLSVerify:    &tlsVerify,
@@ -2193,9 +2193,9 @@ func TestConfigRules(t *testing.T) {
 			}
 
 			defaultVal := true
-			syncConfig := &sync.Config{
+			syncConfig := &extconf.SyncConfig{
 				Enable:     &defaultVal,
-				Registries: []sync.RegistryConfig{syncRegistryConfig},
+				Registries: []extconf.RegistryConfig{syncRegistryConfig},
 			}
 
 			dctlr, destBaseURL, _, _ := startDownstreamServer(t, false, syncConfig)
@@ -2212,7 +2212,7 @@ func TestConfigRules(t *testing.T) {
 		Convey("Test ondemand sync is disabled when ondemand is false", func() {
 			var tlsVerify bool
 
-			syncRegistryConfig := sync.RegistryConfig{
+			syncRegistryConfig := extconf.RegistryConfig{
 				URLs:      []string{srcBaseURL},
 				TLSVerify: &tlsVerify,
 				CertDir:   "",
@@ -2220,9 +2220,9 @@ func TestConfigRules(t *testing.T) {
 			}
 
 			defaultVal := true
-			syncConfig := &sync.Config{
+			syncConfig := &extconf.SyncConfig{
 				Enable:     &defaultVal,
-				Registries: []sync.RegistryConfig{syncRegistryConfig},
+				Registries: []extconf.RegistryConfig{syncRegistryConfig},
 			}
 
 			dctlr, destBaseURL, _, _ := startDownstreamServer(t, false, syncConfig)
@@ -2252,11 +2252,11 @@ func TestMultipleURLs(t *testing.T) {
 		semver := true
 		var tlsVerify bool
 
-		syncRegistryConfig := sync.RegistryConfig{
-			Content: []sync.Content{
+		syncRegistryConfig := extconf.RegistryConfig{
+			Content: []extconf.Content{
 				{
 					Prefix: testImage,
-					Tags: &sync.Tags{
+					Tags: &extconf.Tags{
 						Regex:  &regex,
 						Semver: &semver,
 					},
@@ -2269,9 +2269,9 @@ func TestMultipleURLs(t *testing.T) {
 		}
 
 		defaultVal := true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(t, false, syncConfig)
@@ -2348,11 +2348,11 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 		var semver bool
 		var tlsVerify bool
 
-		syncRegistryConfig := sync.RegistryConfig{
-			Content: []sync.Content{
+		syncRegistryConfig := extconf.RegistryConfig{
+			Content: []extconf.Content{
 				{
 					Prefix: repoName,
-					Tags: &sync.Tags{
+					Tags: &extconf.Tags{
 						Regex:  &regex,
 						Semver: &semver,
 					},
@@ -2366,9 +2366,9 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 		}
 
 		defaultVal := true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		// trigger permission denied on upstream manifest
@@ -2606,11 +2606,11 @@ func TestSignatures(t *testing.T) {
 		var semver bool
 		var tlsVerify bool
 
-		syncRegistryConfig := sync.RegistryConfig{
-			Content: []sync.Content{
+		syncRegistryConfig := extconf.RegistryConfig{
+			Content: []extconf.Content{
 				{
 					Prefix: repoName,
-					Tags: &sync.Tags{
+					Tags: &extconf.Tags{
 						Regex:  &regex,
 						Semver: &semver,
 					},
@@ -2624,9 +2624,9 @@ func TestSignatures(t *testing.T) {
 		}
 
 		defaultVal := true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(t, false, syncConfig)
@@ -3020,11 +3020,11 @@ func TestOnDemandRetryGoroutine(t *testing.T) {
 		semver := true
 		var tlsVerify bool
 
-		syncRegistryConfig := sync.RegistryConfig{
-			Content: []sync.Content{
+		syncRegistryConfig := extconf.RegistryConfig{
+			Content: []extconf.Content{
 				{
 					Prefix: testImage,
-					Tags: &sync.Tags{
+					Tags: &extconf.Tags{
 						Regex:  &regex,
 						Semver: &semver,
 					},
@@ -3042,9 +3042,9 @@ func TestOnDemandRetryGoroutine(t *testing.T) {
 		syncRegistryConfig.RetryDelay = &delay
 
 		defaultVal := true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(t, false, syncConfig)
@@ -3085,11 +3085,11 @@ func TestOnDemandWithDigest(t *testing.T) {
 		semver := true
 		var tlsVerify bool
 
-		syncRegistryConfig := sync.RegistryConfig{
-			Content: []sync.Content{
+		syncRegistryConfig := extconf.RegistryConfig{
+			Content: []extconf.Content{
 				{
 					Prefix: testImage,
-					Tags: &sync.Tags{
+					Tags: &extconf.Tags{
 						Regex:  &regex,
 						Semver: &semver,
 					},
@@ -3102,9 +3102,9 @@ func TestOnDemandWithDigest(t *testing.T) {
 		}
 
 		defaultVal := true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(t, false, syncConfig)
@@ -3133,11 +3133,11 @@ func TestOnDemandRetryGoroutineErr(t *testing.T) {
 		semver := true
 		var tlsVerify bool
 
-		syncRegistryConfig := sync.RegistryConfig{
-			Content: []sync.Content{
+		syncRegistryConfig := extconf.RegistryConfig{
+			Content: []extconf.Content{
 				{
 					Prefix: testImage,
-					Tags: &sync.Tags{
+					Tags: &extconf.Tags{
 						Regex:  &regex,
 						Semver: &semver,
 					},
@@ -3155,9 +3155,9 @@ func TestOnDemandRetryGoroutineErr(t *testing.T) {
 		syncRegistryConfig.RetryDelay = &delay
 
 		defaultVal := true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(t, false, syncConfig)
@@ -3199,7 +3199,7 @@ func TestOnDemandMultipleRetries(t *testing.T) {
 
 		var tlsVerify bool
 
-		syncRegistryConfig := sync.RegistryConfig{
+		syncRegistryConfig := extconf.RegistryConfig{
 			URLs:      []string{srcBaseURL},
 			OnDemand:  true,
 			TLSVerify: &tlsVerify,
@@ -3212,9 +3212,9 @@ func TestOnDemandMultipleRetries(t *testing.T) {
 		syncRegistryConfig.RetryDelay = &delay
 
 		defaultVal := true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(t, false, syncConfig)
@@ -3291,11 +3291,11 @@ func TestOnDemandPullsOnce(t *testing.T) {
 		semver := true
 		var tlsVerify bool
 
-		syncRegistryConfig := sync.RegistryConfig{
-			Content: []sync.Content{
+		syncRegistryConfig := extconf.RegistryConfig{
+			Content: []extconf.Content{
 				{
 					Prefix: testImage,
-					Tags: &sync.Tags{
+					Tags: &extconf.Tags{
 						Regex:  &regex,
 						Semver: &semver,
 					},
@@ -3308,9 +3308,9 @@ func TestOnDemandPullsOnce(t *testing.T) {
 		}
 
 		defaultVal := true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		dctlr, destBaseURL, destDir, _ := startDownstreamServer(t, false, syncConfig)
@@ -3390,11 +3390,11 @@ func TestError(t *testing.T) {
 		semver := true
 		var tlsVerify bool
 
-		syncRegistryConfig := sync.RegistryConfig{
-			Content: []sync.Content{
+		syncRegistryConfig := extconf.RegistryConfig{
+			Content: []extconf.Content{
 				{
 					Prefix: testImage,
-					Tags: &sync.Tags{
+					Tags: &extconf.Tags{
 						Regex:  &regex,
 						Semver: &semver,
 					},
@@ -3407,9 +3407,9 @@ func TestError(t *testing.T) {
 		}
 
 		defaultVal := true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		dctlr, destBaseURL, destDir, client := startDownstreamServer(t, false, syncConfig)
@@ -3461,7 +3461,7 @@ func TestSignaturesOnDemand(t *testing.T) {
 
 		var tlsVerify bool
 
-		syncRegistryConfig := sync.RegistryConfig{
+		syncRegistryConfig := extconf.RegistryConfig{
 			URLs:      []string{srcBaseURL},
 			TLSVerify: &tlsVerify,
 			CertDir:   "",
@@ -3469,9 +3469,9 @@ func TestSignaturesOnDemand(t *testing.T) {
 		}
 
 		defaultVal := true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		dctlr, destBaseURL, destDir, _ := startDownstreamServer(t, false, syncConfig)
@@ -3593,14 +3593,14 @@ func TestOnlySignaturesOnDemand(t *testing.T) {
 
 		var tlsVerify bool
 
-		syncRegistryConfig := sync.RegistryConfig{
+		syncRegistryConfig := extconf.RegistryConfig{
 			URLs:      []string{srcBaseURL},
 			TLSVerify: &tlsVerify,
 			CertDir:   "",
 			OnDemand:  true,
 		}
 
-		syncBadRegistryConfig := sync.RegistryConfig{
+		syncBadRegistryConfig := extconf.RegistryConfig{
 			URLs:      []string{"http://invalid.invalid:9999"},
 			TLSVerify: &tlsVerify,
 			CertDir:   "",
@@ -3608,9 +3608,9 @@ func TestOnlySignaturesOnDemand(t *testing.T) {
 		}
 
 		defaultVal := true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncBadRegistryConfig, syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncBadRegistryConfig, syncRegistryConfig},
 		}
 
 		dctlr, destBaseURL, _, _ := startDownstreamServer(t, false, syncConfig)
@@ -3705,8 +3705,8 @@ func TestSyncOnlyDiff(t *testing.T) {
 
 		var tlsVerify bool
 
-		syncRegistryConfig := sync.RegistryConfig{
-			Content: []sync.Content{
+		syncRegistryConfig := extconf.RegistryConfig{
+			Content: []extconf.Content{
 				{
 					Prefix: "**",
 				},
@@ -3719,9 +3719,9 @@ func TestSyncOnlyDiff(t *testing.T) {
 		}
 
 		defaultVal := true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		destPort := test.GetFreePort()
@@ -3777,8 +3777,8 @@ func TestSyncWithDiffDigest(t *testing.T) {
 
 		var tlsVerify bool
 
-		syncRegistryConfig := sync.RegistryConfig{
-			Content: []sync.Content{
+		syncRegistryConfig := extconf.RegistryConfig{
+			Content: []extconf.Content{
 				{
 					Prefix: "**",
 				},
@@ -3791,9 +3791,9 @@ func TestSyncWithDiffDigest(t *testing.T) {
 		}
 
 		defaultVal := true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		destPort := test.GetFreePort()
@@ -3940,11 +3940,11 @@ func TestSyncSignaturesDiff(t *testing.T) {
 		var semver bool
 		var tlsVerify bool
 
-		syncRegistryConfig := sync.RegistryConfig{
-			Content: []sync.Content{
+		syncRegistryConfig := extconf.RegistryConfig{
+			Content: []extconf.Content{
 				{
 					Prefix: repoName,
-					Tags: &sync.Tags{
+					Tags: &extconf.Tags{
 						Regex:  &regex,
 						Semver: &semver,
 					},
@@ -3958,9 +3958,9 @@ func TestSyncSignaturesDiff(t *testing.T) {
 		}
 
 		defaultVal := true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(t, false, syncConfig)
@@ -4141,11 +4141,11 @@ func TestOnlySignedFlag(t *testing.T) {
 
 	var tlsVerify bool
 
-	syncRegistryConfig := sync.RegistryConfig{
-		Content: []sync.Content{
+	syncRegistryConfig := extconf.RegistryConfig{
+		Content: []extconf.Content{
 			{
 				Prefix: testImage,
-				Tags: &sync.Tags{
+				Tags: &extconf.Tags{
 					Regex:  &regex,
 					Semver: &semver,
 				},
@@ -4162,9 +4162,9 @@ func TestOnlySignedFlag(t *testing.T) {
 
 	Convey("Verify sync revokes unsigned images", t, func() {
 		syncRegistryConfig.OnDemand = false
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		dctlr, destBaseURL, destDir, client := startDownstreamServer(t, false, syncConfig)
@@ -4183,9 +4183,9 @@ func TestOnlySignedFlag(t *testing.T) {
 
 	Convey("Verify sync ondemand revokes unsigned images", t, func() {
 		syncRegistryConfig.OnDemand = true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		dctlr, destBaseURL, destDir, client := startDownstreamServer(t, false, syncConfig)
@@ -4204,48 +4204,48 @@ func TestOnlySignedFlag(t *testing.T) {
 func TestSyncWithDestination(t *testing.T) {
 	Convey("Test sync computes destination option correctly", t, func() {
 		testCases := []struct {
-			content  sync.Content
+			content  extconf.Content
 			expected string
 			repo     string
 		}{
 			{
 				expected: "zot-test/zot-fold/zot-test",
-				content:  sync.Content{Prefix: "zot-fold/zot-test", Destination: "/zot-test", StripPrefix: false},
+				content:  extconf.Content{Prefix: "zot-fold/zot-test", Destination: "/zot-test", StripPrefix: false},
 				repo:     "zot-fold/zot-test",
 			},
 			{
 				expected: "zot-fold/zot-test",
-				content:  sync.Content{Prefix: "zot-fold/zot-test", Destination: "/", StripPrefix: false},
+				content:  extconf.Content{Prefix: "zot-fold/zot-test", Destination: "/", StripPrefix: false},
 				repo:     "zot-fold/zot-test",
 			},
 			{
 				expected: "zot-test",
-				content:  sync.Content{Prefix: "zot-fold/zot-test", Destination: "/zot-test", StripPrefix: true},
+				content:  extconf.Content{Prefix: "zot-fold/zot-test", Destination: "/zot-test", StripPrefix: true},
 				repo:     "zot-fold/zot-test",
 			},
 			{
 				expected: "zot-test",
-				content:  sync.Content{Prefix: "zot-fold/*", Destination: "/", StripPrefix: true},
+				content:  extconf.Content{Prefix: "zot-fold/*", Destination: "/", StripPrefix: true},
 				repo:     "zot-fold/zot-test",
 			},
 			{
 				expected: "zot-test",
-				content:  sync.Content{Prefix: "zot-fold/zot-test", Destination: "/zot-test", StripPrefix: true},
+				content:  extconf.Content{Prefix: "zot-fold/zot-test", Destination: "/zot-test", StripPrefix: true},
 				repo:     "zot-fold/zot-test",
 			},
 			{
 				expected: "zot-test",
-				content:  sync.Content{Prefix: "zot-fold/*", Destination: "/", StripPrefix: true},
+				content:  extconf.Content{Prefix: "zot-fold/*", Destination: "/", StripPrefix: true},
 				repo:     "zot-fold/zot-test",
 			},
 			{
 				expected: "zot-test",
-				content:  sync.Content{Prefix: "zot-fold/**", Destination: "/", StripPrefix: true},
+				content:  extconf.Content{Prefix: "zot-fold/**", Destination: "/", StripPrefix: true},
 				repo:     "zot-fold/zot-test",
 			},
 			{
 				expected: "zot-fold/zot-test",
-				content:  sync.Content{Prefix: "zot-fold/**", Destination: "/", StripPrefix: false},
+				content:  extconf.Content{Prefix: "zot-fold/**", Destination: "/", StripPrefix: false},
 				repo:     "zot-fold/zot-test",
 			},
 		}
@@ -4271,8 +4271,8 @@ func TestSyncWithDestination(t *testing.T) {
 			for _, testCase := range testCases {
 				updateDuration, _ := time.ParseDuration("30m")
 				tlsVerify := false
-				syncRegistryConfig := sync.RegistryConfig{
-					Content:      []sync.Content{testCase.content},
+				syncRegistryConfig := extconf.RegistryConfig{
+					Content:      []extconf.Content{testCase.content},
 					URLs:         []string{srcBaseURL},
 					OnDemand:     false,
 					PollInterval: updateDuration,
@@ -4280,9 +4280,9 @@ func TestSyncWithDestination(t *testing.T) {
 				}
 
 				defaultVal := true
-				syncConfig := &sync.Config{
+				syncConfig := &extconf.SyncConfig{
 					Enable:     &defaultVal,
-					Registries: []sync.RegistryConfig{syncRegistryConfig},
+					Registries: []extconf.RegistryConfig{syncRegistryConfig},
 				}
 
 				dctlr, destBaseURL, _, destClient := startDownstreamServer(t, false, syncConfig)
@@ -4306,17 +4306,17 @@ func TestSyncWithDestination(t *testing.T) {
 		Convey("Test ondemand sync", func() {
 			for _, testCase := range testCases {
 				tlsVerify := false
-				syncRegistryConfig := sync.RegistryConfig{
-					Content:   []sync.Content{testCase.content},
+				syncRegistryConfig := extconf.RegistryConfig{
+					Content:   []extconf.Content{testCase.content},
 					URLs:      []string{srcBaseURL},
 					OnDemand:  true,
 					TLSVerify: &tlsVerify,
 				}
 
 				defaultVal := true
-				syncConfig := &sync.Config{
+				syncConfig := &extconf.SyncConfig{
 					Enable:     &defaultVal,
-					Registries: []sync.RegistryConfig{syncRegistryConfig},
+					Registries: []extconf.RegistryConfig{syncRegistryConfig},
 				}
 
 				dctlr, destBaseURL, _, destClient := startDownstreamServer(t, false, syncConfig)
@@ -4349,11 +4349,11 @@ func TestSyncImageIndex(t *testing.T) {
 		var semver bool
 		tlsVerify := false
 
-		syncRegistryConfig := sync.RegistryConfig{
-			Content: []sync.Content{
+		syncRegistryConfig := extconf.RegistryConfig{
+			Content: []extconf.Content{
 				{
 					Prefix: "index",
-					Tags: &sync.Tags{
+					Tags: &extconf.Tags{
 						Regex:  &regex,
 						Semver: &semver,
 					},
@@ -4366,9 +4366,9 @@ func TestSyncImageIndex(t *testing.T) {
 		}
 
 		defaultVal := true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		// create an image index on upstream
@@ -4488,11 +4488,11 @@ func TestSyncOCIArtifactsWithTag(t *testing.T) {
 
 		repoName := "artifact"
 
-		syncRegistryConfig := sync.RegistryConfig{
-			Content: []sync.Content{
+		syncRegistryConfig := extconf.RegistryConfig{
+			Content: []extconf.Content{
 				{
 					Prefix: repoName,
-					Tags: &sync.Tags{
+					Tags: &extconf.Tags{
 						Regex:  &regex,
 						Semver: &semver,
 					},
@@ -4505,9 +4505,9 @@ func TestSyncOCIArtifactsWithTag(t *testing.T) {
 		}
 
 		defaultVal := true
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &defaultVal,
-			Registries: []sync.RegistryConfig{syncRegistryConfig},
+			Registries: []extconf.RegistryConfig{syncRegistryConfig},
 		}
 
 		// create artifact blob

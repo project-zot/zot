@@ -26,6 +26,7 @@ import (
 
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/common"
+	"zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
@@ -121,7 +122,7 @@ func parseRepositoryReference(input string) (reference.Named, error) {
 }
 
 // filterRepos filters repos based on prefix given in the config.
-func filterRepos(repos []string, contentList []Content, log log.Logger) map[int][]string {
+func filterRepos(repos []string, contentList []config.Content, log log.Logger) map[int][]string {
 	filtered := make(map[int][]string)
 
 	for _, repo := range repos {
@@ -155,7 +156,7 @@ func filterRepos(repos []string, contentList []Content, log log.Logger) map[int]
 }
 
 // findRepoContentID return the contentID that maches the localRepo path for a given RegistryConfig in the config file.
-func findRepoMatchingContentID(localRepo string, contentList []Content) (int, error) {
+func findRepoMatchingContentID(localRepo string, contentList []config.Content) (int, error) {
 	contentID := -1
 	localRepo = strings.Trim(localRepo, "/")
 
@@ -194,7 +195,7 @@ func findRepoMatchingContentID(localRepo string, contentList []Content) (int, er
 	return contentID, nil
 }
 
-func getRepoSource(localRepo string, content Content) string {
+func getRepoSource(localRepo string, content config.Content) string {
 	localRepo = strings.Trim(localRepo, "/")
 	destination := strings.Trim(content.Destination, "/")
 	prefix := strings.Trim(content.Prefix, "/*")
@@ -219,7 +220,7 @@ func getRepoSource(localRepo string, content Content) string {
 }
 
 // getRepoDestination returns the local storage path of the synced repo based on the specified destination.
-func getRepoDestination(remoteRepo string, content Content) string {
+func getRepoDestination(remoteRepo string, content config.Content) string {
 	remoteRepo = strings.Trim(remoteRepo, "/")
 	destination := strings.Trim(content.Destination, "/")
 	prefix := strings.Trim(content.Prefix, "/*")
@@ -244,13 +245,13 @@ func getRepoDestination(remoteRepo string, content Content) string {
 }
 
 // Get sync.FileCredentials from file.
-func getFileCredentials(filepath string) (CredentialsFile, error) {
+func getFileCredentials(filepath string) (config.CredentialsFile, error) {
 	credsFile, err := os.ReadFile(filepath)
 	if err != nil {
 		return nil, err
 	}
 
-	var creds CredentialsFile
+	var creds config.CredentialsFile
 
 	err = json.Unmarshal(credsFile, &creds)
 	if err != nil {
@@ -259,6 +260,69 @@ func getFileCredentials(filepath string) (CredentialsFile, error) {
 
 	return creds, nil
 }
+
+/* // TODO: is this still used? 2023-01-16
+func getHTTPClient(regCfg *config.RegistryConfig, upstreamURL string, credentials config.Credentials,
+	log log.Logger,
+) (*resty.Client, *url.URL, error) {
+	client := resty.New()
+
+	if !common.Contains(regCfg.URLs, upstreamURL) {
+		return nil, nil, zerr.ErrSyncInvalidUpstreamURL
+	}
+
+	registryURL, err := url.Parse(upstreamURL)
+	if err != nil {
+		log.Error().Str("errorType", TypeOf(err)).
+			Err(err).Str("url", upstreamURL).Msg("couldn't parse url")
+
+		return nil, nil, err
+	}
+
+	if regCfg.CertDir != "" {
+		log.Debug().Msgf("sync: using certs directory: %s", regCfg.CertDir)
+		clientCert := path.Join(regCfg.CertDir, "client.cert")
+		clientKey := path.Join(regCfg.CertDir, "client.key")
+		caCertPath := path.Join(regCfg.CertDir, "ca.crt")
+
+		caCert, err := os.ReadFile(caCertPath)
+		if err != nil {
+			log.Error().Str("errorType", TypeOf(err)).
+				Err(err).Msg("couldn't read CA certificate")
+
+			return nil, nil, err
+		}
+
+		caCertPool := x509.NewCertPool()
+		caCertPool.AppendCertsFromPEM(caCert)
+
+		client.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
+
+		cert, err := tls.LoadX509KeyPair(clientCert, clientKey)
+		if err != nil {
+			log.Error().Str("errorType", TypeOf(err)).
+				Err(err).Msg("couldn't read certificates key pairs")
+
+			return nil, nil, err
+		}
+
+		client.SetCertificates(cert)
+	}
+
+	//nolint: gosec
+	if regCfg.TLSVerify != nil && !*regCfg.TLSVerify && registryURL.Scheme == "https" {
+		client.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true})
+	}
+
+	if credentials.Username != "" && credentials.Password != "" {
+		log.Debug().Msgf("sync: using basic auth")
+		client.SetBasicAuth(credentials.Username, credentials.Password)
+	}
+
+	client.SetRedirectPolicy(resty.FlexibleRedirectPolicy(httpMaxRedirectsCount))
+
+	return client, registryURL, nil
+} */
 
 func pushSyncedLocalImage(localRepo, reference, localCachePath string,
 	imageStore storage.ImageStore, log log.Logger,

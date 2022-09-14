@@ -45,6 +45,12 @@ const (
 	defaultSchemaVersion = 2
 )
 
+// BlobUpload models and upload request.
+type BlobUpload struct {
+	StoreName string
+	ID        string
+}
+
 // ImageStoreLocal provides the image storage operations.
 type ImageStoreLocal struct {
 	rootDir     string
@@ -97,8 +103,8 @@ func NewImageStore(rootDir string, gc bool, gcDelay time.Duration, dedupe, commi
 	imgStore.cache = cacheDriver
 
 	if gc {
-		// we use umoci GC to perform garbage-collection, but it uses its own logger
-		// - so capture those logs, could be useful
+		// we use umoci GC to perform garbage-collection, but it uses its own logger.
+		// - so capture those logs, could be useful.
 		apexlog.SetLevel(apexlog.DebugLevel)
 		apexlog.SetHandler(apexlog.HandlerFunc(func(entry *apexlog.Entry) error {
 			e := log.Debug()
