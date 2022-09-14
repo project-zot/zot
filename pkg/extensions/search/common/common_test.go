@@ -35,6 +35,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	storConstants "zotregistry.io/zot/pkg/storage/constants"
 	. "zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
@@ -270,7 +271,7 @@ func TestImageFormat(t *testing.T) {
 		conf.Extensions.Lint = &extconf.LintConfig{}
 
 		metrics := monitoring.NewMetricsServer(false, log)
-		defaultStore := storage.NewImageStore(dbDir, false, storage.DefaultGCDelay,
+		defaultStore := storage.NewImageStore(dbDir, false, storConstants.DefaultGCDelay,
 			false, false, log, metrics, nil)
 		storeController := storage.StoreController{DefaultStore: defaultStore}
 		olu := common.NewBaseOciLayoutUtils(storeController, log)
@@ -963,10 +964,10 @@ func TestUtilsMethod(t *testing.T) {
 
 		metrics := monitoring.NewMetricsServer(false, log)
 		defaultStore := storage.NewImageStore(rootDir, false,
-			storage.DefaultGCDelay, false, false, log, metrics, nil)
+			storConstants.DefaultGCDelay, false, false, log, metrics, nil)
 
 		subStore := storage.NewImageStore(subRootDir, false,
-			storage.DefaultGCDelay, false, false, log, metrics, nil)
+			storConstants.DefaultGCDelay, false, false, log, metrics, nil)
 
 		subStoreMap := make(map[string]storage.ImageStore)
 
@@ -1746,7 +1747,7 @@ func TestSearchSize(t *testing.T) {
 			{
 				GlobalSearch(query:"test"){
 					Images { RepoName Tag LastUpdated Size Score }
-					Repos { 
+					Repos {
 						Name LastUpdated Size Vendors Score
       					Platforms {
       					  Os

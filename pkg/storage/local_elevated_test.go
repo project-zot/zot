@@ -18,6 +18,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	storConstants "zotregistry.io/zot/pkg/storage/constants"
 )
 
 func TestElevatedPrivilegesInvalidDedupe(t *testing.T) {
@@ -26,7 +27,7 @@ func TestElevatedPrivilegesInvalidDedupe(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
-		imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics, nil)
+		imgStore := storage.NewImageStore(dir, true, storConstants.DefaultGCDelay, true, true, log, metrics, nil)
 
 		upload, err := imgStore.NewBlobUpload("dedupe1")
 		So(err, ShouldBeNil)

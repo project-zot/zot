@@ -26,6 +26,7 @@ import (
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	storConstants "zotregistry.io/zot/pkg/storage/constants"
 	. "zotregistry.io/zot/pkg/test"
 )
 
@@ -86,7 +87,8 @@ func testSetup() error {
 	conf.Extensions = &extconf.ExtensionConfig{}
 	conf.Extensions.Lint = &extconf.LintConfig{}
 
-	storeController := storage.StoreController{DefaultStore: storage.NewImageStore(dir, false, storage.DefaultGCDelay, false, false, log, metrics, nil)}
+	storeController := storage.StoreController{DefaultStore: storage.NewImageStore(dir, false,
+		storConstants.DefaultGCDelay, false, false, log, metrics, nil)}
 
 	layoutUtils := common.NewBaseOciLayoutUtils(storeController, log)
 
@@ -333,11 +335,11 @@ func TestMultipleStoragePath(t *testing.T) {
 		conf.Extensions.Lint = &extconf.LintConfig{}
 
 		// Create ImageStore
-		firstStore := storage.NewImageStore(firstRootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil)
+		firstStore := storage.NewImageStore(firstRootDir, false, storConstants.DefaultGCDelay, false, false, log, metrics, nil)
 
-		secondStore := storage.NewImageStore(secondRootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil)
+		secondStore := storage.NewImageStore(secondRootDir, false, storConstants.DefaultGCDelay, false, false, log, metrics, nil)
 
-		thirdStore := storage.NewImageStore(thirdRootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil)
+		thirdStore := storage.NewImageStore(thirdRootDir, false, storConstants.DefaultGCDelay, false, false, log, metrics, nil)
 
 		storeController := storage.StoreController{}
 

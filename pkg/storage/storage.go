@@ -6,12 +6,19 @@ import (
 
 	"github.com/opencontainers/go-digest"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
+	"zotregistry.io/zot/pkg/metadata"
 )
 
 const (
 	S3StorageDriverName = "s3"
-	DefaultGCDelay      = 1 * time.Hour
+	//// DefaultGCDelay      = 1 * time.Hour.
 )
+
+type StoreController struct {
+	DefaultStore  ImageStore
+	SubStore      map[string]ImageStore
+	MetadataStore metadata.Store
+}
 
 type ImageStore interface {
 	DirExists(d string) bool

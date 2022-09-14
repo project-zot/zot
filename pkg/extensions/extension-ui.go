@@ -9,10 +9,9 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
-
-	"zotregistry.io/zot/pkg/api/config"
 )
 
 // content is our static web server content.

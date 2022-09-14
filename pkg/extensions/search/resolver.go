@@ -565,3 +565,30 @@ func userAvailableRepos(ctx context.Context, repoList []string) ([]string, error
 
 	return availableRepos, nil
 }
+
+func getAccessContext(ctx context.Context) localCtx.AccessControlContext {
+	authzCtxKey := localCtx.GetContextKey()
+	if authCtx := ctx.Value(authzCtxKey); authCtx != nil {
+		acCtx, _ := authCtx.(localCtx.AccessControlContext)
+		// acCtx.Username = "bob"
+		return acCtx
+	}
+
+	// anonymous / default is the empty access control ctx
+	return localCtx.AccessControlContext{
+		IsAdmin:  false,
+		Username: "",
+	}
+}
+
+func filterRepos(acCtx localCtx.AccessControlContext, repoList []string) []string {
+	var availableRepos []string
+
+	for _, repoName := range repoList {
+		if acCtx.IsAdmin || matchesRepo(acCtx.GlobPatterns, repoName) {
+			availableRepos = append(availableRepos, repoName)
+		}
+	}
+
+	return availableRepos
+}

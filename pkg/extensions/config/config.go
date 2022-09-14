@@ -2,13 +2,11 @@ package config
 
 import (
 	"time"
-
-	"zotregistry.io/zot/pkg/extensions/sync"
 )
 
 type ExtensionConfig struct {
 	Search  *SearchConfig
-	Sync    *sync.Config
+	Sync    *SyncConfig
 	Metrics *MetricsConfig
 	Scrub   *ScrubConfig
 	Lint    *LintConfig
@@ -45,4 +43,42 @@ type ScrubConfig struct {
 
 type UIConfig struct {
 	Enable *bool
+}
+
+// key is registry address.
+type CredentialsFile map[string]Credentials
+
+type Credentials struct {
+	Username string
+	Password string
+}
+
+type SyncConfig struct {
+	Enable          *bool
+	CredentialsFile string
+	Registries      []RegistryConfig
+}
+
+type RegistryConfig struct {
+	URLs         []string
+	PollInterval time.Duration
+	Content      []Content
+	TLSVerify    *bool
+	OnDemand     bool
+	CertDir      string
+	MaxRetries   *int
+	RetryDelay   *time.Duration
+	OnlySigned   *bool
+}
+
+type Content struct {
+	Prefix      string
+	Tags        *Tags
+	Destination string `mapstructure:",omitempty"`
+	StripPrefix bool
+}
+
+type Tags struct {
+	Regex  *string
+	Semver *bool
 }

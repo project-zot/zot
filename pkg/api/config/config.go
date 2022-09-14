@@ -9,7 +9,7 @@ import (
 	distspec "github.com/opencontainers/distribution-spec/specs-go"
 	"github.com/spf13/viper"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
-	"zotregistry.io/zot/pkg/storage"
+	storConstants "zotregistry.io/zot/pkg/storage/constants"
 )
 
 var (
@@ -139,7 +139,7 @@ func New() *Config {
 		GoVersion:       GoVersion,
 		Commit:          Commit,
 		BinaryType:      BinaryType,
-		Storage:         GlobalStorageConfig{GC: true, GCDelay: storage.DefaultGCDelay, Dedupe: true},
+		Storage:         GlobalStorageConfig{GC: true, GCDelay: storConstants.DefaultGCDelay, Dedupe: true},
 		HTTP:            HTTPConfig{Address: "127.0.0.1", Port: "8080", Auth: &AuthConfig{FailDelay: 0}},
 		Log:             &LogConfig{Level: "debug"},
 	}
