@@ -3,7 +3,7 @@ package config
 import (
 	"time"
 
-	"zotregistry.io/zot/pkg/extensions/sync"
+	msConfig "zotregistry.io/zot/pkg/meta/config"
 )
 
 // BaseConfig has params applicable to all extensions.
@@ -12,12 +12,13 @@ type BaseConfig struct {
 }
 
 type ExtensionConfig struct {
-	Search  *SearchConfig
-	Sync    *sync.Config
-	Metrics *MetricsConfig
-	Scrub   *ScrubConfig
-	Lint    *LintConfig
-	UI      *UIConfig
+	Search   *SearchConfig
+	Sync     *SyncConfig
+	Metrics  *MetricsConfig
+	Scrub    *ScrubConfig
+	Lint     *LintConfig
+	UI       *UIConfig
+	Metadata *msConfig.MetadataStoreConfig
 }
 
 type LintConfig struct {
@@ -51,4 +52,42 @@ type ScrubConfig struct {
 
 type UIConfig struct {
 	BaseConfig `mapstructure:",squash"`
+}
+
+// key is registry address.
+type CredentialsFile map[string]Credentials
+
+type Credentials struct {
+	Username string
+	Password string
+}
+
+type SyncConfig struct {
+	Enable          *bool
+	CredentialsFile string
+	Registries      []RegistryConfig
+}
+
+type RegistryConfig struct {
+	URLs         []string
+	PollInterval time.Duration
+	Content      []Content
+	TLSVerify    *bool
+	OnDemand     bool
+	CertDir      string
+	MaxRetries   *int
+	RetryDelay   *time.Duration
+	OnlySigned   *bool
+}
+
+type Content struct {
+	Prefix      string
+	Tags        *Tags
+	Destination string `mapstructure:",omitempty"`
+	StripPrefix bool
+}
+
+type Tags struct {
+	Regex  *string
+	Semver *bool
 }

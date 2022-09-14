@@ -9,6 +9,11 @@ import (
 	"time"
 )
 
+type Paginated interface {
+	IsPaginated()
+	GetPage() *PageInfo
+}
+
 type Annotation struct {
 	Key   *string `json:"Key"`
 	Value *string `json:"Value"`
@@ -98,6 +103,11 @@ type LayerSummary struct {
 	Score  *int    `json:"Score"`
 }
 
+type MutationResult struct {
+	// outcome of the Mutation
+	Success bool `json:"success"`
+}
+
 // Contains details about the supported OS and architecture of the image
 type OsArch struct {
 	Os   *string `json:"Os"`
@@ -127,10 +137,16 @@ type PaginatedImagesResult struct {
 	Results []*ImageSummary `json:"Results"`
 }
 
+func (PaginatedImagesResult) IsPaginated()            {}
+func (this PaginatedImagesResult) GetPage() *PageInfo { return this.Page }
+
 type PaginatedReposResult struct {
 	Page    *PageInfo      `json:"Page"`
 	Results []*RepoSummary `json:"Results"`
 }
+
+func (PaginatedReposResult) IsPaginated()            {}
+func (this PaginatedReposResult) GetPage() *PageInfo { return this.Page }
 
 type Referrer struct {
 	MediaType    *string       `json:"MediaType"`
