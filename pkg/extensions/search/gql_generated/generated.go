@@ -36,6 +36,7 @@ type Config struct {
 }
 
 type ResolverRoot interface {
+	Mutation() MutationResolver
 	Query() QueryResolver
 }
 
@@ -117,6 +118,15 @@ type ComplexityRoot struct {
 		Size   func(childComplexity int) int
 	}
 
+	Mutation struct {
+		ToggleBookmark func(childComplexity int, repo string) int
+		ToggleStar     func(childComplexity int, repo string) int
+	}
+
+	MutationResult struct {
+		Success func(childComplexity int) int
+	}
+
 	OsArch struct {
 		Arch func(childComplexity int) int
 		Os   func(childComplexity int) int
@@ -145,6 +155,7 @@ type ComplexityRoot struct {
 
 	Query struct {
 		BaseImageList           func(childComplexity int, image string, requestedPage *PageInput) int
+		BookmarkedRepos         func(childComplexity int, requestedPage *PageInput) int
 		CVEListForImage         func(childComplexity int, image string) int
 		DerivedImageList        func(childComplexity int, image string, requestedPage *PageInput) int
 		ExpandedRepoInfo        func(childComplexity int, repo string) int
@@ -156,6 +167,7 @@ type ComplexityRoot struct {
 		ImageListWithCVEFixed   func(childComplexity int, id string, image string, requestedPage *PageInput) int
 		Referrers               func(childComplexity int, repo string, digest string, typeArg string) int
 		RepoListWithNewestImage func(childComplexity int, requestedPage *PageInput) int
+		StarredRepos            func(childComplexity int, requestedPage *PageInput) int
 	}
 
 	Referrer struct {
@@ -186,6 +198,10 @@ type ComplexityRoot struct {
 	}
 }
 
+type MutationResolver interface {
+	ToggleBookmark(ctx context.Context, repo string) (*MutationResult, error)
+	ToggleStar(ctx context.Context, repo string) (*MutationResult, error)
+}
 type QueryResolver interface {
 	CVEListForImage(ctx context.Context, image string) (*CVEResultForImage, error)
 	ImageListForCve(ctx context.Context, id string, requestedPage *PageInput) ([]*ImageSummary, error)
@@ -199,6 +215,8 @@ type QueryResolver interface {
 	BaseImageList(ctx context.Context, image string, requestedPage *PageInput) (*PaginatedImagesResult, error)
 	Image(ctx context.Context, image string) (*ImageSummary, error)
 	Referrers(ctx context.Context, repo string, digest string, typeArg string) ([]*Referrer, error)
+	StarredRepos(ctx context.Context, requestedPage *PageInput) (*PaginatedReposResult, error)
+	BookmarkedRepos(ctx context.Context, requestedPage *PageInput) (*PaginatedReposResult, error)
 }
 
 type executableSchema struct {
@@ -545,6 +563,37 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.LayerSummary.Size(childComplexity), true
 
+	case "Mutation.ToggleBookmark":
+		if e.complexity.Mutation.ToggleBookmark == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_ToggleBookmark_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.ToggleBookmark(childComplexity, args["repo"].(string)), true
+
+	case "Mutation.ToggleStar":
+		if e.complexity.Mutation.ToggleStar == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_ToggleStar_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.ToggleStar(childComplexity, args["repo"].(string)), true
+
+	case "MutationResult.success":
+		if e.complexity.MutationResult.Success == nil {
+			break
+		}
+
+		return e.complexity.MutationResult.Success(childComplexity), true
+
 	case "OsArch.Arch":
 		if e.complexity.OsArch.Arch == nil {
 			break
@@ -633,6 +682,18 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Query.BaseImageList(childComplexity, args["image"].(string), args["requestedPage"].(*PageInput)), true
+
+	case "Query.BookmarkedRepos":
+		if e.complexity.Query.BookmarkedRepos == nil {
+			break
+		}
+
+		args, err := ec.field_Query_BookmarkedRepos_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.BookmarkedRepos(childComplexity, args["requestedPage"].(*PageInput)), true
 
 	case "Query.CVEListForImage":
 		if e.complexity.Query.CVEListForImage == nil {
@@ -765,6 +826,18 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Query.RepoListWithNewestImage(childComplexity, args["requestedPage"].(*PageInput)), true
+
+	case "Query.StarredRepos":
+		if e.complexity.Query.StarredRepos == nil {
+			break
+		}
+
+		args, err := ec.field_Query_StarredRepos_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.StarredRepos(childComplexity, args["requestedPage"].(*PageInput)), true
 
 	case "Referrer.Annotations":
 		if e.complexity.Referrer.Annotations == nil {
@@ -914,6 +987,21 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 			first = false
 			ctx = graphql.WithUnmarshalerMap(ctx, inputUnmarshalMap)
 			data := ec._Query(ctx, rc.Operation.SelectionSet)
+			var buf bytes.Buffer
+			data.MarshalGQL(&buf)
+
+			return &graphql.Response{
+				Data: buf.Bytes(),
+			}
+		}
+	case ast.Mutation:
+		return func(ctx context.Context) *graphql.Response {
+			if !first {
+				return nil
+			}
+			first = false
+			ctx = graphql.WithUnmarshalerMap(ctx, inputUnmarshalMap)
+			data := ec._Mutation(ctx, rc.Operation.SelectionSet)
 			var buf bytes.Buffer
 			data.MarshalGQL(&buf)
 
@@ -1107,18 +1195,28 @@ type OsArch {
     Arch: String
 }
 
+
 enum SortCriteria {
-    RELEVANCE
-    UPDATE_TIME
-    ALPHABETIC_ASC
-    ALPHABETIC_DSC
-    STARS
-    DOWNLOADS
+     RELEVANCE
+     UPDATE_TIME
+     ALPHABETIC_ASC
+     ALPHABETIC_DSC
+     STARS
+     DOWNLOADS
 }
 
+# Information on current page returned by the API
+# ObjectCount represents the total number of objects on all pages
+# PreviousPage represents previous page number
+# NextPage represents next page number
+# Pages represents total number of pages
 type PageInfo {
     TotalCount: Int!
     ItemCount: Int!
+}
+
+interface Paginated {
+     Page: PageInfo
 }
 
 # Pagination parameters
@@ -1130,16 +1228,16 @@ input PageInput {
 
 # Paginated list of RepoSummary objects
 # If limit is -1, pagination is disabled
-type PaginatedReposResult {
-    Page: PageInfo
-    Results: [RepoSummary!]!
+type PaginatedReposResult implements Paginated {
+     Page: PageInfo
+     Results: [RepoSummary!]!
 }
 
 # Paginated list of ImageSummary objects
 # If limit is -1, pagination is disabled
-type PaginatedImagesResult {
-    Page: PageInfo
-    Results: [ImageSummary!]!
+type PaginatedImagesResult implements Paginated {
+     Page: PageInfo
+     Results: [ImageSummary!]!
 }
 
 input Filter {
@@ -1165,7 +1263,7 @@ type Query {
     ImageListWithCVEFixed(id: String!, image: String!, requestedPage: PageInput): [ImageSummary!]
 
     """
-    Returns a list of images which contain the specified digest 
+    Returns a list of images which contain the specified digest
     """
     ImageListForDigest(id: String!, requestedPage: PageInput): [ImageSummary!]
 
@@ -1209,6 +1307,22 @@ type Query {
     Can be filtered based on a specific artifact type <type>
     """
     Referrers(repo: String!, digest: String!, type: String!): [Referrer]!
+    """Receive RepoSummaries of repos starred by current user"""
+    StarredRepos(requestedPage: PageInput): PaginatedReposResult!  # Newest based on created timestamp
+    """Receive RepoSummaries of repos bookmarked by current user"""
+    BookmarkedRepos(requestedPage: PageInput): PaginatedReposResult!  # Assuming the user is obtained from context object
+}
+
+type MutationResult {
+    """outcome of the Mutation"""
+    success: Boolean!
+}
+
+type Mutation {
+    """Toggle add or remove a bookmark for repo for the current user (depending on current state)"""
+    ToggleBookmark(repo: String!): MutationResult!  # Assuming the user is obtained from context object
+    """Toggle add or remove star for repo for the current user (depending on current state)"""
+    ToggleStar(repo: String!): MutationResult!  # Assuming the user is obtained from context object
 }
 `, BuiltIn: false},
 }
@@ -1217,6 +1331,36 @@ var parsedSchema = gqlparser.MustLoadSchema(sources...)
 // endregion ************************** generated!.gotpl **************************
 
 // region    ***************************** args.gotpl *****************************
+
+func (ec *executionContext) field_Mutation_ToggleBookmark_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 string
+	if tmp, ok := rawArgs["repo"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("repo"))
+		arg0, err = ec.unmarshalNString2string(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["repo"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_ToggleStar_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 string
+	if tmp, ok := rawArgs["repo"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("repo"))
+		arg0, err = ec.unmarshalNString2string(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["repo"] = arg0
+	return args, nil
+}
 
 func (ec *executionContext) field_Query_BaseImageList_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
@@ -1239,6 +1383,21 @@ func (ec *executionContext) field_Query_BaseImageList_args(ctx context.Context, 
 		}
 	}
 	args["requestedPage"] = arg1
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_BookmarkedRepos_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 *PageInput
+	if tmp, ok := rawArgs["requestedPage"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
+		arg0, err = ec.unmarshalOPageInput2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["requestedPage"] = arg0
 	return args, nil
 }
 
@@ -1483,6 +1642,21 @@ func (ec *executionContext) field_Query_Referrers_args(ctx context.Context, rawA
 }
 
 func (ec *executionContext) field_Query_RepoListWithNewestImage_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 *PageInput
+	if tmp, ok := rawArgs["requestedPage"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
+		arg0, err = ec.unmarshalOPageInput2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["requestedPage"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_StarredRepos_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
 	var arg0 *PageInput
@@ -3627,6 +3801,168 @@ func (ec *executionContext) fieldContext_LayerSummary_Score(ctx context.Context,
 	return fc, nil
 }
 
+func (ec *executionContext) _Mutation_ToggleBookmark(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Mutation_ToggleBookmark(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().ToggleBookmark(rctx, fc.Args["repo"].(string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*MutationResult)
+	fc.Result = res
+	return ec.marshalNMutationResult2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐMutationResult(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Mutation_ToggleBookmark(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "success":
+				return ec.fieldContext_MutationResult_success(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type MutationResult", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_ToggleBookmark_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_ToggleStar(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Mutation_ToggleStar(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().ToggleStar(rctx, fc.Args["repo"].(string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*MutationResult)
+	fc.Result = res
+	return ec.marshalNMutationResult2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐMutationResult(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Mutation_ToggleStar(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "success":
+				return ec.fieldContext_MutationResult_success(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type MutationResult", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_ToggleStar_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _MutationResult_success(ctx context.Context, field graphql.CollectedField, obj *MutationResult) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_MutationResult_success(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Success, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	fc.Result = res
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_MutationResult_success(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "MutationResult",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _OsArch_Os(ctx context.Context, field graphql.CollectedField, obj *OsArch) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_OsArch_Os(ctx, field)
 	if err != nil {
@@ -5093,6 +5429,128 @@ func (ec *executionContext) fieldContext_Query_Referrers(ctx context.Context, fi
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Query_Referrers_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_StarredRepos(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Query_StarredRepos(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Query().StarredRepos(rctx, fc.Args["requestedPage"].(*PageInput))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*PaginatedReposResult)
+	fc.Result = res
+	return ec.marshalNPaginatedReposResult2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedReposResult(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Query_StarredRepos(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "Page":
+				return ec.fieldContext_PaginatedReposResult_Page(ctx, field)
+			case "Results":
+				return ec.fieldContext_PaginatedReposResult_Results(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type PaginatedReposResult", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_StarredRepos_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_BookmarkedRepos(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Query_BookmarkedRepos(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Query().BookmarkedRepos(rctx, fc.Args["requestedPage"].(*PageInput))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*PaginatedReposResult)
+	fc.Result = res
+	return ec.marshalNPaginatedReposResult2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedReposResult(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Query_BookmarkedRepos(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "Page":
+				return ec.fieldContext_PaginatedReposResult_Page(ctx, field)
+			case "Results":
+				return ec.fieldContext_PaginatedReposResult_Results(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type PaginatedReposResult", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_BookmarkedRepos_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return
 	}
@@ -7962,6 +8420,29 @@ func (ec *executionContext) unmarshalInputPageInput(ctx context.Context, obj int
 
 // region    ************************** interface.gotpl ***************************
 
+func (ec *executionContext) _Paginated(ctx context.Context, sel ast.SelectionSet, obj Paginated) graphql.Marshaler {
+	switch obj := (obj).(type) {
+	case nil:
+		return graphql.Null
+	case PaginatedReposResult:
+		return ec._PaginatedReposResult(ctx, sel, &obj)
+	case *PaginatedReposResult:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._PaginatedReposResult(ctx, sel, obj)
+	case PaginatedImagesResult:
+		return ec._PaginatedImagesResult(ctx, sel, &obj)
+	case *PaginatedImagesResult:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._PaginatedImagesResult(ctx, sel, obj)
+	default:
+		panic(fmt.Errorf("unexpected type %T", obj))
+	}
+}
+
 // endregion ************************** interface.gotpl ***************************
 
 // region    **************************** object.gotpl ****************************
@@ -8343,6 +8824,82 @@ func (ec *executionContext) _LayerSummary(ctx context.Context, sel ast.Selection
 	return out
 }
 
+var mutationImplementors = []string{"Mutation"}
+
+func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, mutationImplementors)
+	ctx = graphql.WithFieldContext(ctx, &graphql.FieldContext{
+		Object: "Mutation",
+	})
+
+	out := graphql.NewFieldSet(fields)
+	var invalids uint32
+	for i, field := range fields {
+		innerCtx := graphql.WithRootFieldContext(ctx, &graphql.RootFieldContext{
+			Object: field.Name,
+			Field:  field,
+		})
+
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Mutation")
+		case "ToggleBookmark":
+
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_ToggleBookmark(ctx, field)
+			})
+
+			if out.Values[i] == graphql.Null {
+				invalids++
+			}
+		case "ToggleStar":
+
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_ToggleStar(ctx, field)
+			})
+
+			if out.Values[i] == graphql.Null {
+				invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch()
+	if invalids > 0 {
+		return graphql.Null
+	}
+	return out
+}
+
+var mutationResultImplementors = []string{"MutationResult"}
+
+func (ec *executionContext) _MutationResult(ctx context.Context, sel ast.SelectionSet, obj *MutationResult) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, mutationResultImplementors)
+	out := graphql.NewFieldSet(fields)
+	var invalids uint32
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("MutationResult")
+		case "success":
+
+			out.Values[i] = ec._MutationResult_success(ctx, field, obj)
+
+			if out.Values[i] == graphql.Null {
+				invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch()
+	if invalids > 0 {
+		return graphql.Null
+	}
+	return out
+}
+
 var osArchImplementors = []string{"OsArch"}
 
 func (ec *executionContext) _OsArch(ctx context.Context, sel ast.SelectionSet, obj *OsArch) graphql.Marshaler {
@@ -8440,7 +8997,7 @@ func (ec *executionContext) _PageInfo(ctx context.Context, sel ast.SelectionSet,
 	return out
 }
 
-var paginatedImagesResultImplementors = []string{"PaginatedImagesResult"}
+var paginatedImagesResultImplementors = []string{"PaginatedImagesResult", "Paginated"}
 
 func (ec *executionContext) _PaginatedImagesResult(ctx context.Context, sel ast.SelectionSet, obj *PaginatedImagesResult) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, paginatedImagesResultImplementors)
@@ -8472,7 +9029,7 @@ func (ec *executionContext) _PaginatedImagesResult(ctx context.Context, sel ast.
 	return out
 }
 
-var paginatedReposResultImplementors = []string{"PaginatedReposResult"}
+var paginatedReposResultImplementors = []string{"PaginatedReposResult", "Paginated"}
 
 func (ec *executionContext) _PaginatedReposResult(ctx context.Context, sel ast.SelectionSet, obj *PaginatedReposResult) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, paginatedReposResultImplementors)
@@ -8771,6 +9328,52 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 					}
 				}()
 				res = ec._Query_Referrers(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx, innerFunc)
+			}
+
+			out.Concurrently(i, func() graphql.Marshaler {
+				return rrm(innerCtx)
+			})
+		case "StarredRepos":
+			field := field
+
+			innerFunc := func(ctx context.Context) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_StarredRepos(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx, innerFunc)
+			}
+
+			out.Concurrently(i, func() graphql.Marshaler {
+				return rrm(innerCtx)
+			})
+		case "BookmarkedRepos":
+			field := field
+
+			innerFunc := func(ctx context.Context) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_BookmarkedRepos(ctx, field)
 				if res == graphql.Null {
 					atomic.AddUint32(&invalids, 1)
 				}
@@ -9411,6 +10014,20 @@ func (ec *executionContext) marshalNInt2int(ctx context.Context, sel ast.Selecti
 		}
 	}
 	return res
+}
+
+func (ec *executionContext) marshalNMutationResult2zotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐMutationResult(ctx context.Context, sel ast.SelectionSet, v MutationResult) graphql.Marshaler {
+	return ec._MutationResult(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNMutationResult2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐMutationResult(ctx context.Context, sel ast.SelectionSet, v *MutationResult) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._MutationResult(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalNPaginatedImagesResult2zotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedImagesResult(ctx context.Context, sel ast.SelectionSet, v PaginatedImagesResult) graphql.Marshaler {

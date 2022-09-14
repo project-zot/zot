@@ -9,7 +9,7 @@ import (
 
 	"github.com/docker/distribution/registry/storage/driver"
 	"github.com/gobwas/glob"
-	"github.com/notaryproject/notation-go"
+	notation "github.com/notaryproject/notation-go"
 	godigest "github.com/opencontainers/go-digest"
 	imeta "github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
