@@ -15,6 +15,8 @@ type RepoDBMock struct {
 
 	GetRepoStarsFn func(repo string) (int, error)
 
+	SetRepoStarsFn func(repo string, starCount int) error
+
 	SetRepoLogoFn func(repo string, logoPath string) error
 
 	SetRepoTagFn func(repo string, tag string, manifestDigest string) error
@@ -24,7 +26,11 @@ type RepoDBMock struct {
 	GetRepoMetaFn func(repo string) (repodb.RepoMetadata, error)
 
 	GetMultipleRepoMetaFn func(ctx context.Context, filter func(repoMeta repodb.RepoMetadata) bool,
-		requestedPage repodb.PageInput) ([]repodb.RepoMetadata, error)
+		requestedPage repodb.PageInput) (
+		[]repodb.RepoMetadata,
+		[]map[string]repodb.ManifestMetadata,
+		error,
+	)
 
 	GetManifestMetaFn func(manifestDigest string) (repodb.ManifestMetadata, error)
 
@@ -87,6 +93,14 @@ func (sdm RepoDBMock) GetRepoStars(repo string) (int, error) {
 	return 0, nil
 }
 
+func (sdm RepoDBMock) SetRepoStars(repo string, starCount int) error {
+	if sdm.SetRepoStarsFn != nil {
+		return sdm.SetRepoStarsFn(repo, starCount)
+	}
+
+	return nil
+}
+
 func (sdm RepoDBMock) SetRepoLogo(repo string, logoPath string) error {
 	if sdm.SetRepoLogoFn != nil {
 		return sdm.SetRepoLogoFn(repo, logoPath)
@@ -121,12 +135,12 @@ func (sdm RepoDBMock) GetRepoMeta(repo string) (repodb.RepoMetadata, error) {
 
 func (sdm RepoDBMock) GetMultipleRepoMeta(ctx context.Context, filter func(repoMeta repodb.RepoMetadata) bool,
 	requestedPage repodb.PageInput,
-) ([]repodb.RepoMetadata, error) {
+) ([]repodb.RepoMetadata, []map[string]repodb.ManifestMetadata, error) {
 	if sdm.GetMultipleRepoMetaFn != nil {
 		return sdm.GetMultipleRepoMetaFn(ctx, filter, requestedPage)
 	}
 
-	return []repodb.RepoMetadata{}, nil
+	return []repodb.RepoMetadata{}, []map[string]repodb.ManifestMetadata{}, nil
 }
 
 func (sdm RepoDBMock) GetManifestMeta(manifestDigest string) (repodb.ManifestMetadata, error) {

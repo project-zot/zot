@@ -1,7 +1,7 @@
-# `search` 
+# `search`
 
 `search` component provides efficient and enhanced registry search capabilities using graphQL backend.
-	
+
 | Supported queries | Input | Ouput | Description | graphQL query |
 | --- | --- | --- | --- | --- |
 | [Search images by digest](#search-images-by-digest) | digest | image list | Search all repositories in the registry and return list of images that matches given digest (manifest, config or layers) | ImageListForDigest |
@@ -19,7 +19,7 @@
 curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageListForDigest (id:\"63a795ca90aa6e7cca60941e826810a4cd0a2e73ea02bf458241df2a5c973e29\") { Name Tags } }" }' http://localhost:8080/v2/_zot/ext/search
 ```
 
-**Sample response** 
+**Sample response**
 
 ```
 	{
@@ -32,7 +32,7 @@ curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList
 				"Tags": ["8"]
 			}]
 		}
-	} 
+	}
 ```
 
 # Search images affected by a given CVE id
@@ -43,9 +43,9 @@ curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList
 curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageListForCVE (id:\"CVE-2002-1119\") { Name Tags } }" }' http://localhost:8080/v2/_zot/ext/search
 ```
 
-**Sample response** 
+**Sample response**
 
-``` 
+```
 {
 	"data": {
 		"ImageListForCVE": [{
@@ -60,13 +60,13 @@ curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList
 ```
 # List CVEs of given image
 
-**Sample reques**t 
+**Sample reques**t
 
-	
+
 ```
 curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ CVEListForImage (image:\"centos\" ) { Tag CVEList { Id Title Description Severity PackageList {Name InstalledVersion FixedVersion } } } }" }' http://localhost:8080/v2/_zot/ext/search
 ```
-	
+
 **Sample response**
 
 ```
@@ -91,15 +91,15 @@ curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ CVEListFo
 ```
 # List images not affected by a given CVE id
 
-**Sample request** 
+**Sample request**
 
 ```
 curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageListWithCVEFixed (id:\"CVE-2021-3713\",image:\"centos\") { Tags {Name Digest Timestamp} } }" }' http://localhost:8080/v2/_zot/ext/search
 ```
 
-**Sample response** 
+**Sample response**
 
-``` 
+```
 {
 	"data": {
 		"ImageListWithCVEFixed": {
@@ -115,15 +115,15 @@ curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList
 
 # List the latest image across every repository
 
-**Sample request** 
+**Sample request**
 
 ```
 curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageListWithLatestTag () { Name Latest LastUpdated Description Licenses Vendor Size Labels} }" }' http://localhost:8080/v2/_zot/ext/search
 ```
 
-**Sample response** 
+**Sample response**
 
-``` 
+```
 {
 	"data": {
 		"ImageListWithLatestTag": [{
@@ -151,15 +151,15 @@ curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList
 
 # List all images with expanded information for a given repository
 
-Sample request 
+Sample request
 
 ```
 curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ExpandedRepoInfo (repo:\"v2/centos\") { Manifests {Digest Tag IsSigned Layers {Size Digest}}} }" }' http://localhost:8080/v2/_zot/ext/search
 ```
 
-**Sample response** 
+**Sample response**
 
-``` 
+```
 {
 	"data": {
 		"ExpandedRepoInfo": {
@@ -184,3 +184,4 @@ curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ExpandedR
 	}
 }
 ```
+

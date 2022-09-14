@@ -102,7 +102,7 @@ func TestSyncRepoDBWithStorage(t *testing.T) {
 		err = repodb.SyncRepoDB(repoDB, storeController, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
 
-		repos, err := repoDB.GetMultipleRepoMeta(
+		repos, foundManifestMetadataMap, err := repoDB.GetMultipleRepoMeta(
 			context.Background(),
 			func(repoMeta repodb.RepoMetadata) bool { return true },
 			repodb.PageInput{},
@@ -113,7 +113,7 @@ func TestSyncRepoDBWithStorage(t *testing.T) {
 		So(len(repos[0].Tags), ShouldEqual, 2)
 
 		for _, digest := range repos[0].Tags {
-			manifestMeta, err := repoDB.GetManifestMeta(digest)
+			manifestMeta, err := foundManifestMetadataMap[0][digest]
 			So(err, ShouldBeNil)
 			So(manifestMeta.ManifestBlob, ShouldNotBeNil)
 			So(manifestMeta.ConfigBlob, ShouldNotBeNil)

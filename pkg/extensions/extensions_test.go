@@ -12,7 +12,6 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
-	"zotregistry.io/zot/pkg/extensions/sync"
 	"zotregistry.io/zot/pkg/test"
 )
 
@@ -24,9 +23,9 @@ func TestEnableExtension(t *testing.T) {
 		conf := config.New()
 		falseValue := false
 
-		syncConfig := &sync.Config{
+		syncConfig := &extconf.SyncConfig{
 			Enable:     &falseValue,
-			Registries: []sync.RegistryConfig{},
+			Registries: []extconf.RegistryConfig{},
 		}
 
 		// conf.Extensions.Sync.Enable = &falseValue

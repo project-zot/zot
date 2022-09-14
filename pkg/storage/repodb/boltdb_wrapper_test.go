@@ -267,15 +267,16 @@ func TestBoltDBWrapper(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			Convey("Get all Repometa", func() {
-				repoMetaSlice, err := repoDB.GetMultipleRepoMeta(context.TODO(), func(repoMeta repodb.RepoMetadata) bool {
+				repoMetaSlice, _, err := repoDB.GetMultipleRepoMeta(context.TODO(), func(repoMeta repodb.RepoMetadata) bool {
 					return true
 				}, repodb.PageInput{})
+
 				So(err, ShouldBeNil)
 				So(len(repoMetaSlice), ShouldEqual, 2)
 			})
 
 			Convey("Get repo with a tag", func() {
-				repoMetaSlice, err := repoDB.GetMultipleRepoMeta(context.TODO(), func(repoMeta repodb.RepoMetadata) bool {
+				repoMetaSlice, _, err := repoDB.GetMultipleRepoMeta(context.TODO(), func(repoMeta repodb.RepoMetadata) bool {
 					for tag := range repoMeta.Tags {
 						if tag == tag1 {
 							return true
@@ -284,6 +285,7 @@ func TestBoltDBWrapper(t *testing.T) {
 
 					return false
 				}, repodb.PageInput{})
+
 				So(err, ShouldBeNil)
 				So(len(repoMetaSlice), ShouldEqual, 1)
 				So(repoMetaSlice[0].Tags[tag1] == manifestDigest1, ShouldBeTrue)

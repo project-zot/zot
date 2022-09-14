@@ -1777,8 +1777,8 @@ github.com/nmcclain/asn1-ber v0.0.0-20170104154839-2661553a0484 h1:D9EvfGQvlkKaD
 github.com/nmcclain/asn1-ber v0.0.0-20170104154839-2661553a0484/go.mod h1:O1EljZ+oHprtxDDPHiMWVo/5dBT6PlvWX5PSwj80aBA=
 github.com/nmcclain/ldap v0.0.0-20210720162743-7f8d1e44eeba h1:DO8NFYdcRv1dnyAINJIBm6Bw2XibtLvQniNFGzf2W8E=
 github.com/nmcclain/ldap v0.0.0-20210720162743-7f8d1e44eeba/go.mod h1:4S0XndRL8HNOaQBfdViJ2F/GPCgL524xlXRuXFH12/U=
-github.com/notaryproject/notation-go v0.11.0-alpha.4 h1:PNptLtrhW0jyw10hUWU+KNzvzeuBBZmg+/1IUaGYE10=
-github.com/notaryproject/notation-go v0.11.0-alpha.4/go.mod h1:4xYTcW4wfsXkXw3piUA53uSW82RwdXyipSEtiiRVrCw=
+github.com/notaryproject/notation-go v0.10.0-alpha.3 h1:jDIwUzGHsxwXuIFYLwQ1pPzpO5GFcoaA1X78EixIBo4=
+github.com/notaryproject/notation-go v0.10.0-alpha.3/go.mod h1:PQuu7OZweVU5erEyqriguCvK7CCGF+X5psDj63iEvGk=
 github.com/nxadm/tail v1.4.4/go.mod h1:kenIhsEOeOJmVchQTgglprH7qJGnHDVpk1VPCcaMI8A=
 github.com/nxadm/tail v1.4.8 h1:nPr65rt6Y5JFSKQO7qToXr7pePgD6Gwiw05lkbyAQTE=
 github.com/nxadm/tail v1.4.8/go.mod h1:+ncqLTQzXmGhMZNUePPaPqPvBxHAIsmXswZKocGu+AU=

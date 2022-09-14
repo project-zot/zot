@@ -3904,7 +3904,7 @@ func TestSearchSize(t *testing.T) {
 		{
 			GlobalSearch(query:"testrepo"){
 				Images { RepoName Tag LastUpdated Size Score }
-				Repos { 
+				Repos {
 					Name LastUpdated Size Vendors Score
 						Platforms {
 							Os
@@ -3945,7 +3945,7 @@ func TestSearchSize(t *testing.T) {
 		{
 			GlobalSearch(query:"testrepo:"){
 				Images { RepoName Tag LastUpdated Size Score }
-				Repos { 
+				Repos {
 					Name LastUpdated Size Vendors Score
 					  Platforms {
 						Os
@@ -3971,7 +3971,7 @@ func TestSearchSize(t *testing.T) {
 		{
 			GlobalSearch(query:"testrepo"){
 				Images { RepoName Tag LastUpdated Size Score }
-				Repos { 
+				Repos {
 					Name LastUpdated Size Vendors Score
 					  Platforms {
 						Os

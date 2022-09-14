@@ -260,6 +260,7 @@ func (bdw BoltDBWrapper) IncrementRepoStars(repo string) error {
 		if err != nil {
 			return err
 		}
+		bdw.log.Info().Int("stars", repoMeta.Stars).Msg("Increment stars")
 
 		repoMeta.Stars++
 
@@ -390,17 +391,55 @@ func (bdw BoltDBWrapper) SetRepoLogo(repo string, logoPath string) error {
 	return err
 }
 
-func (bdw BoltDBWrapper) GetMultipleRepoMeta(ctx context.Context, filter func(repoMeta RepoMetadata) bool,
+func (bdw BoltDBWrapper) SetRepoStars(repo string, starCount int) error {
+	err := bdw.db.Update(func(tx *bolt.Tx) error {
+		buck := tx.Bucket([]byte(RepoMetadataBucket))
+
+		repoMetaBlob := buck.Get([]byte(repo))
+		if repoMetaBlob == nil {
+			return zerr.ErrRepoMetaNotFound
+		}
+
+		var repoMeta RepoMetadata
+
+		err := json.Unmarshal(repoMetaBlob, &repoMeta)
+		if err != nil {
+			return err
+		}
+
+		repoMeta.Stars = starCount
+
+		repoMetaBlob, err = json.Marshal(repoMeta)
+		if err != nil {
+			return err
+		}
+
+		return buck.Put([]byte(repo), repoMetaBlob)
+	})
+
+	return err
+}
+
+func (bdw BoltDBWrapper) GetMultipleRepoMeta(
+	ctx context.Context,
+	filter func(repoMeta RepoMetadata) bool,
 	requestedPage PageInput,
-) ([]RepoMetadata, error) {
+) ([]RepoMetadata,
+	[]map[string]ManifestMetadata,
+	error,
+) {
 	var (
 		foundRepos = make([]RepoMetadata, 0)
 		pageFinder PageFinder
 	)
 
-	pageFinder, err := NewBaseRepoPageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
+	pageFinder, err := NewBaseRepoPageFinder(
+		requestedPage.Limit,
+		requestedPage.Offset,
+		requestedPage.SortBy,
+	)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	err = bdw.db.View(func(tx *bolt.Tx) error {
@@ -432,7 +471,21 @@ func (bdw BoltDBWrapper) GetMultipleRepoMeta(ctx context.Context, filter func(re
 		return nil
 	})
 
-	return foundRepos, err
+	foundManifestMetadataMap := make([]map[string]ManifestMetadata, len(foundRepos))
+
+	for idx := range foundRepos {
+		for _, manifestDigest := range foundRepos[idx].Tags {
+			manifestMeta, err := bdw.GetManifestMeta(manifestDigest)
+			if err != nil {
+				return nil, nil, err
+			}
+
+			foundManifestMetadataMap[idx] = make(map[string]ManifestMetadata)
+			foundManifestMetadataMap[idx][manifestDigest] = manifestMeta
+		}
+	}
+
+	return foundRepos, foundManifestMetadataMap, err
 }
 
 func (bdw BoltDBWrapper) IncrementManifestDownloads(manifestDigest string) error {
