@@ -40,8 +40,13 @@ type RepoDB interface { //nolint:interfacebloat
 
 	// GetMultipleRepoMeta returns information about all repositories as map[string]RepoMetadata filtered by the filter
 	// function
-	GetMultipleRepoMeta(ctx context.Context, filter func(repoMeta RepoMetadata) bool, requestedPage PageInput) (
-		[]RepoMetadata, error)
+	GetMultipleRepoMeta(ctx context.Context,
+		filter func(repoMeta RepoMetadata) bool,
+		requestedPage PageInput) (
+		[]RepoMetadata,
+		[]map[string]ManifestMetadata,
+		error,
+	)
 
 	// GetManifestMeta returns ManifestMetadata for a given manifest from the database
 	GetManifestMeta(manifestDigest godigest.Digest) (ManifestMetadata, error)

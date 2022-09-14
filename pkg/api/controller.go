@@ -24,6 +24,7 @@ import (
 	ext "zotregistry.io/zot/pkg/extensions"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta" // MetadataStore   meta.MetadataStore
 	"zotregistry.io/zot/pkg/scheduler"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
@@ -41,6 +42,7 @@ type Controller struct {
 	Config          *config.Config
 	Router          *mux.Router
 	RepoDB          repodb.RepoDB
+	MetaStore       *meta.MetadataStore
 	StoreController storage.StoreController
 	Log             log.Logger
 	Audit           *log.Logger
@@ -122,6 +124,7 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 	// print the current runtime environment
 	DumpRuntimeParams(c.Log)
 
+	c.MetaStore = c.CreateMetadataDatabaseDriver(c.Config, c.Log)
 	// setup HTTP API router
 	engine := mux.NewRouter()
 
@@ -253,6 +256,14 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 	}
 
 	return server.Serve(listener)
+}
+
+func (c *Controller) CreateMetadataDatabaseDriver(cfg *config.Config,
+	log log.Logger,
+) *meta.MetadataStore {
+	metastore, _ := meta.NewBaseMetaDB(*cfg.Extensions.Metadata, log)
+
+	return &metastore
 }
 
 func (c *Controller) InitImageStore() error {

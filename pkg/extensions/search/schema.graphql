@@ -144,20 +144,30 @@ type OsArch {
     Arch: String
 }
 
+
 enum SortCriteria {
-    RELEVANCE
-    UPDATE_TIME
-    ALPHABETIC_ASC
-    ALPHABETIC_DSC
-    STARS
-    DOWNLOADS
+     RELEVANCE
+     UPDATE_TIME
+     ALPHABETIC_ASC
+     ALPHABETIC_DSC
+     STARS
+     DOWNLOADS
 }
 
+# Information on current page returned by the API
+# ObjectCount represents the total number of objects on all pages
+# PreviousPage represents previous page number
+# NextPage represents next page number
+# Pages represents total number of pages
 type PageInfo {
-    ObjectCount: Int!
-    PreviousPage: Int
-    NextPage: Int
-    Pages: Int
+     ObjectCount: Int!
+     PreviousPage: Int
+     NextPage: Int
+     Pages: Int
+}
+
+interface Paginated {
+     Page: PageInfo
 }
 
 # Pagination parameters
@@ -171,6 +181,20 @@ input Filter {
     Os: [String]
     Arch: [String]
     HasToBeSigned: Boolean
+}
+
+# Paginated list of RepoSummary objects
+# If limit is -1, pagination is disabled
+type PaginatedReposResult implements Paginated {
+     Page: PageInfo
+     Results: [RepoSummary!]!
+}
+
+# Paginated list of ImageSummary objects
+# If limit is -1, pagination is disabled
+type PaginatedImagesResult implements Paginated {
+     Page: PageInfo
+     Results: [ImageSummary!]!
 }
 
 type Query {
@@ -190,7 +214,7 @@ type Query {
     ImageListWithCVEFixed(id: String!, image: String!): [ImageSummary!]
 
     """
-    Returns a list of images which contain the specified digest 
+    Returns a list of images which contain the specified digest
     """
     ImageListForDigest(id: String!): [ImageSummary!]
 
@@ -223,9 +247,22 @@ type Query {
     List of images on which the argument image depends on
     """
     BaseImageList(image: String!): [ImageSummary!]
-
-    """
-    Search for a specific image using its name
-    """
+    """Retrieve a single image using its name (repo:tag)"""
     Image(image: String!): ImageSummary
+    """Receive RepoSummaries of repos starred by current user"""
+    StarredRepos(requestedPage: PageInput): PaginatedReposResult!  # Newest based on created timestamp
+    """Receive RepoSummaries of repos bookmarked by current user"""
+    BookmarkedRepos(requestedPage: PageInput): PaginatedReposResult!  # Assuming the user is obtained from context object
+}
+
+type MutationResult {
+    """outcome of the Mutation"""
+    success: Boolean!
+}
+
+type Mutation {
+    """Toggle add or remove a bookmark for repo for the current user (depending on current state)"""
+    ToggleBookmark(repo: String!): MutationResult!  # Assuming the user is obtained from context object
+    """Toggle add or remove star for repo for the current user (depending on current state)"""
+    ToggleStar(repo: String!): MutationResult!  # Assuming the user is obtained from context object
 }
