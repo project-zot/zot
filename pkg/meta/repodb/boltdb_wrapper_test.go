@@ -271,6 +271,7 @@ func TestBoltDBWrapper(t *testing.T) {
 				repoMetaSlice, err := repoDB.GetMultipleRepoMeta(context.TODO(), func(repoMeta repodb.RepoMetadata) bool {
 					return true
 				}, repodb.PageInput{})
+
 				So(err, ShouldBeNil)
 				So(len(repoMetaSlice), ShouldEqual, 2)
 			})
@@ -285,6 +286,7 @@ func TestBoltDBWrapper(t *testing.T) {
 
 					return false
 				}, repodb.PageInput{})
+
 				So(err, ShouldBeNil)
 				So(len(repoMetaSlice), ShouldEqual, 1)
 				So(repoMetaSlice[0].Tags[tag1] == manifestDigest1.String(), ShouldBeTrue)
