@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/gobwas/glob"
-	"github.com/notaryproject/notation-go"
+	notation "github.com/notaryproject/notation-go"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
