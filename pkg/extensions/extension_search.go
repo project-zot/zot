@@ -16,6 +16,7 @@ import (
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta"
 	"zotregistry.io/zot/pkg/meta/repodb"
 	"zotregistry.io/zot/pkg/storage"
 )
@@ -65,8 +66,12 @@ func downloadTrivyDB(log log.Logger, updateInterval time.Duration) error {
 	}
 }
 
-func SetupSearchRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
-	repoDB repodb.RepoDB, log log.Logger,
+func SetupSearchRoutes(config *config.Config,
+	router *mux.Router,
+	storeController storage.StoreController,
+	repoDB repodb.RepoDB,
+	metadata *meta.MetadataStore,
+	log log.Logger,
 ) {
 	log.Info().Msg("setting up search routes")
 
@@ -80,9 +85,9 @@ func SetupSearchRoutes(config *config.Config, router *mux.Router, storeControlle
 				cveInfo = cveinfo.NewCVEInfo(storeController, repoDB, log)
 			}
 
-			resConfig = search.GetResolverConfig(log, storeController, repoDB, cveInfo)
+			resConfig = search.GetResolverConfig(log, storeController, repoDB, cveInfo, metadata)
 		} else {
-			resConfig = search.GetResolverConfig(log, storeController, repoDB, nil)
+			resConfig = search.GetResolverConfig(log, storeController, repoDB, nil, metadata)
 		}
 
 		extRouter := router.PathPrefix(constants.ExtSearchPrefix).Subrouter()
