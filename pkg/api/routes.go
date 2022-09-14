@@ -125,7 +125,9 @@ func (rh *RouteHandler) SetupRoutes() {
 		} else {
 			// extended build
 			ext.SetupMetricsRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, AuthHandler(rh.c), rh.c.Log)
-			ext.SetupSearchRoutes(rh.c.Config, prefixedRouter, rh.c.StoreController, rh.c.RepoDB, rh.c.Log)
+			// ext.SetupSearchRoutes(rh.c.Config, prefixedRouter, rh.c.StoreController, rh.c.RepoDB, rh.c.Log)
+			ext.SetupSearchRoutes(rh.c.Config, prefixedRouter, rh.c.StoreController,
+				rh.c.RepoDB, rh.c.MetaStore, rh.c.Log)
 			ext.SetupUIRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
 			gqlPlayground.SetupGQLPlaygroundRoutes(rh.c.Config, prefixedRouter, rh.c.StoreController, rh.c.Log)
 		}
