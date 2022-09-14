@@ -75,3 +75,4 @@ issues:
         - lll
         - varnamelen
         - gci
+        - gofumpt
