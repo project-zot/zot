@@ -262,6 +262,7 @@ func (bdw BoltDBWrapper) IncrementRepoStars(repo string) error {
 		if err != nil {
 			return err
 		}
+		bdw.log.Info().Int("stars", repoMeta.Stars).Msg("Increment stars")
 
 		repoMeta.Stars++
 
@@ -380,6 +381,35 @@ func (bdw BoltDBWrapper) SetRepoLogo(repo string, logoPath string) error {
 		}
 
 		repoMeta.LogoPath = logoPath
+
+		repoMetaBlob, err = json.Marshal(repoMeta)
+		if err != nil {
+			return err
+		}
+
+		return buck.Put([]byte(repo), repoMetaBlob)
+	})
+
+	return err
+}
+
+func (bdw BoltDBWrapper) SetRepoStars(repo string, starCount int) error {
+	err := bdw.db.Update(func(tx *bolt.Tx) error {
+		buck := tx.Bucket([]byte(RepoMetadataBucket))
+
+		repoMetaBlob := buck.Get([]byte(repo))
+		if repoMetaBlob == nil {
+			return zerr.ErrRepoMetaNotFound
+		}
+
+		var repoMeta RepoMetadata
+
+		err := json.Unmarshal(repoMetaBlob, &repoMeta)
+		if err != nil {
+			return err
+		}
+
+		repoMeta.Stars = starCount
 
 		repoMetaBlob, err = json.Marshal(repoMeta)
 		if err != nil {
@@ -938,6 +968,71 @@ func (bdw BoltDBWrapper) SearchTags(ctx context.Context, searchText string, filt
 
 		return nil
 	})
+
+	return foundRepos, foundManifestMetadataMap, err
+}
+
+func (bdw BoltDBWrapper) FilterRepos(ctx context.Context,
+	filter FilterRepoFunc,
+	requestedPage PageInput,
+) (
+	[]RepoMetadata, map[string]ManifestMetadata, error,
+) {
+	var (
+		foundRepos = make([]RepoMetadata, 0)
+		pageFinder PageFinder
+	)
+
+	pageFinder, err := NewBaseRepoPageFinder(
+		requestedPage.Limit,
+		requestedPage.Offset,
+		requestedPage.SortBy,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	err = bdw.db.View(func(tx *bolt.Tx) error {
+		buck := tx.Bucket([]byte(RepoMetadataBucket))
+
+		cursor := buck.Cursor()
+
+		for repoName, repoMetaBlob := cursor.First(); repoName != nil; repoName, repoMetaBlob = cursor.Next() {
+			if ok, err := repoIsUserAvailable(ctx, string(repoName)); !ok || err != nil {
+				continue
+			}
+
+			repoMeta := RepoMetadata{}
+
+			err := json.Unmarshal(repoMetaBlob, &repoMeta)
+			if err != nil {
+				return err
+			}
+
+			if filter(repoMeta) {
+				pageFinder.Add(DetailedRepoMeta{
+					RepoMeta: repoMeta,
+				})
+			}
+		}
+
+		foundRepos = pageFinder.Page()
+
+		return nil
+	})
+
+	foundManifestMetadataMap := make(map[string]ManifestMetadata)
+
+	for idx := range foundRepos {
+		for _, manifestDigest := range foundRepos[idx].Tags {
+			manifestMeta, err := bdw.GetManifestMeta(godigest.Digest(manifestDigest))
+			if err != nil {
+				return nil, nil, err
+			}
+
+			foundManifestMetadataMap[manifestDigest] = manifestMeta
+		}
+	}
 
 	return foundRepos, foundManifestMetadataMap, err
 }

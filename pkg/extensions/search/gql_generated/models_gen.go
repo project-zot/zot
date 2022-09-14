@@ -9,6 +9,11 @@ import (
 	"time"
 )
 
+type Paginated interface {
+	IsPaginated()
+	GetPage() *PageInfo
+}
+
 // Contains various details about the CVE and a list of PackageInfo about the affected packages
 type Cve struct {
 	ID          *string        `json:"Id"`
@@ -92,6 +97,11 @@ type LayerSummary struct {
 	Score  *int    `json:"Score"`
 }
 
+type MutationResult struct {
+	// outcome of the Mutation
+	Success bool `json:"success"`
+}
+
 // Contains details about the supported OS and architecture of the image
 type OsArch struct {
 	Os   *string `json:"Os"`
@@ -117,6 +127,22 @@ type PageInput struct {
 	Offset *int          `json:"offset"`
 	SortBy *SortCriteria `json:"sortBy"`
 }
+
+type PaginatedImagesResult struct {
+	Page    *PageInfo       `json:"Page"`
+	Results []*ImageSummary `json:"Results"`
+}
+
+func (PaginatedImagesResult) IsPaginated()            {}
+func (this PaginatedImagesResult) GetPage() *PageInfo { return this.Page }
+
+type PaginatedReposResult struct {
+	Page    *PageInfo      `json:"Page"`
+	Results []*RepoSummary `json:"Results"`
+}
+
+func (PaginatedReposResult) IsPaginated()            {}
+func (this PaginatedReposResult) GetPage() *PageInfo { return this.Page }
 
 // Contains details about the repo: a list of image summaries and a summary of the repo
 type RepoInfo struct {
