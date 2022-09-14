@@ -12,7 +12,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/storage"
+	storConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
 )
@@ -23,7 +23,7 @@ func TestValidateManifest(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true,
+		imgStore := local.NewImageStore(dir, true, storConstants.DefaultGCDelay, true,
 			true, log, metrics, nil)
 
 		content := []byte("this is a blob")

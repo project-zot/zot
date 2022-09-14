@@ -27,6 +27,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	storConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/s3"
 	"zotregistry.io/zot/pkg/test"
 )
@@ -55,7 +56,7 @@ func skipIt(t *testing.T) {
 func createMockStorage(rootDir string, cacheDir string, dedupe bool, store driver.StorageDriver) storage.ImageStore {
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
-	il := s3.NewImageStore(rootDir, cacheDir, false, storage.DefaultGCDelay,
+	il := s3.NewImageStore(rootDir, cacheDir, false, storConstants.DefaultGCDelay,
 		dedupe, false, log, metrics, nil, store,
 	)
 
@@ -96,7 +97,7 @@ func createObjectsStore(rootDir string, cacheDir string, dedupe bool) (
 
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
-	il := s3.NewImageStore(rootDir, cacheDir, false, storage.DefaultGCDelay,
+	il := s3.NewImageStore(rootDir, cacheDir, false, storConstants.DefaultGCDelay,
 		dedupe, false, log, metrics, nil, store)
 
 	return store, il, err

@@ -25,6 +25,8 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/scheduler"
+	"zotregistry.io/zot/pkg/metadata"
+	msConfig "zotregistry.io/zot/pkg/metadata/config"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/storage/s3"
@@ -38,11 +40,12 @@ type Controller struct {
 	Config          *config.Config
 	Router          *mux.Router
 	StoreController storage.StoreController
-	Log             log.Logger
-	Audit           *log.Logger
-	Server          *http.Server
-	Metrics         monitoring.MetricServer
-	wgShutDown      *goSync.WaitGroup // use it to gracefully shutdown goroutines
+	// MetadataStore   metadata.MetadataStore
+	Log        log.Logger
+	Audit      *log.Logger
+	Server     *http.Server
+	Metrics    monitoring.MetricServer
+	wgShutDown *goSync.WaitGroup // use it to gracefully shutdown goroutines
 	// runtime params
 	chosenPort int // kernel-chosen port
 }
@@ -159,6 +162,7 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 		return err
 	}
 
+	c.CreateMetadataDatabaseDriver(nil, c.Log)
 	monitoring.SetServerInfo(c.Metrics, c.Config.Commit, c.Config.BinaryType, c.Config.GoVersion,
 		c.Config.DistSpecVersion)
 
@@ -242,6 +246,18 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 	}
 
 	return server.Serve(listener)
+}
+
+func (c *Controller) CreateMetadataDatabaseDriver(configOverride interface{},
+	logInstance log.Logger,
+) metadata.Store {
+	c.StoreController.MetadataStore, _ = metadata.NewBaseMetaDB(
+		msConfig.MetadataStoreConfig{
+			RootDir: c.Config.Storage.RootDirectory,
+		},
+		logInstance)
+
+	return c.StoreController.MetadataStore
 }
 
 func (c *Controller) InitImageStore(reloadCtx context.Context) error {

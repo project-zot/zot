@@ -114,6 +114,46 @@ type OsArch {
     Arch: String
 }
 
+
+enum SortCriteria {
+     RELEVANCE
+     UPDATE_TIME
+     ALPHABETIC_ASC
+     ALPHABETIC_DSC
+     STARS
+     DOWNLOADS
+}
+
+# Information on current page returned by the API
+# ObjectCount represents the total number of objects on all pages
+# PreviousPage represents previous page number
+# NextPage represents next page number
+# Pages represents total number of pages
+type PageInfo {
+     ObjectCount: Int!
+     PreviousPage: Int
+     NextPage: Int
+     Pages: Int
+}
+
+interface Paginated {
+     Page: PageInfo
+}
+
+# Paginated list of RepoSummary objects
+# If limit is -1, pagination is disabled
+type PaginatedReposResult implements Paginated {
+     Page: PageInfo
+     Results: [RepoSummary!]!
+}
+
+# Paginated list of ImageSummary objects
+# If limit is -1, pagination is disabled
+type PaginatedImagesResult implements Paginated {
+     Page: PageInfo
+     Results: [ImageSummary!]!
+}
+
 type Query {
     CVEListForImage(image: String!): CVEResultForImage!
     ImageListForCVE(id: String!): [ImageSummary!]
@@ -126,4 +166,15 @@ type Query {
     DerivedImageList(image: String!): [ImageSummary!]
     BaseImageList(image: String!): [ImageSummary!]
     Image(image: String!): ImageSummary
+    StarredRepos(limit: Int, offset: Int!, sortBy: SortCriteria): PaginatedReposResult!  # Newest based on created timestamp
+    BookmarkedRepos(limit: Int, offset: Int!, sortBy: SortCriteria): PaginatedReposResult!  # Assuming the user is obtained from context object
+}
+
+type MutationResult {
+     success: Boolean!
+}
+
+type Mutation {
+     ToggleBookmark(repo: String!): MutationResult!  # Assuming the user is obtained from context object
+     ToggleStar(repo: String!): MutationResult!  # Assuming the user is obtained from context object
 }

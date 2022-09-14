@@ -27,7 +27,7 @@ func TestElevatedPrivilegesInvalidDedupe(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics, nil)
+		imgStore := local.NewImageStore(dir, true, storConstants.DefaultGCDelay, true, true, log, metrics, nil)
 
 		upload, err := imgStore.NewBlobUpload("dedupe1")
 		So(err, ShouldBeNil)

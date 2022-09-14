@@ -3,8 +3,16 @@
 package gql_generated
 
 import (
+	"fmt"
+	"io"
+	"strconv"
 	"time"
 )
+
+type Paginated interface {
+	IsPaginated()
+	GetPage() *PageInfo
+}
 
 type Cve struct {
 	ID          *string        `json:"Id"`
@@ -76,6 +84,10 @@ type LayerSummary struct {
 	Score  *int    `json:"Score"`
 }
 
+type MutationResult struct {
+	Success bool `json:"success"`
+}
+
 type OsArch struct {
 	Os   *string `json:"Os"`
 	Arch *string `json:"Arch"`
@@ -86,6 +98,29 @@ type PackageInfo struct {
 	InstalledVersion *string `json:"InstalledVersion"`
 	FixedVersion     *string `json:"FixedVersion"`
 }
+
+type PageInfo struct {
+	ObjectCount  int  `json:"ObjectCount"`
+	PreviousPage *int `json:"PreviousPage"`
+	NextPage     *int `json:"NextPage"`
+	Pages        *int `json:"Pages"`
+}
+
+type PaginatedImagesResult struct {
+	Page    *PageInfo       `json:"Page"`
+	Results []*ImageSummary `json:"Results"`
+}
+
+func (PaginatedImagesResult) IsPaginated()            {}
+func (this PaginatedImagesResult) GetPage() *PageInfo { return this.Page }
+
+type PaginatedReposResult struct {
+	Page    *PageInfo      `json:"Page"`
+	Results []*RepoSummary `json:"Results"`
+}
+
+func (PaginatedReposResult) IsPaginated()            {}
+func (this PaginatedReposResult) GetPage() *PageInfo { return this.Page }
 
 type RepoInfo struct {
 	Images  []*ImageSummary `json:"Images"`
@@ -103,4 +138,53 @@ type RepoSummary struct {
 	DownloadCount *int          `json:"DownloadCount"`
 	StarCount     *int          `json:"StarCount"`
 	IsBookmarked  *bool         `json:"IsBookmarked"`
+}
+
+type SortCriteria string
+
+const (
+	SortCriteriaRelevance     SortCriteria = "RELEVANCE"
+	SortCriteriaUpdateTime    SortCriteria = "UPDATE_TIME"
+	SortCriteriaAlphabeticAsc SortCriteria = "ALPHABETIC_ASC"
+	SortCriteriaAlphabeticDsc SortCriteria = "ALPHABETIC_DSC"
+	SortCriteriaStars         SortCriteria = "STARS"
+	SortCriteriaDownloads     SortCriteria = "DOWNLOADS"
+)
+
+var AllSortCriteria = []SortCriteria{
+	SortCriteriaRelevance,
+	SortCriteriaUpdateTime,
+	SortCriteriaAlphabeticAsc,
+	SortCriteriaAlphabeticDsc,
+	SortCriteriaStars,
+	SortCriteriaDownloads,
+}
+
+func (e SortCriteria) IsValid() bool {
+	switch e {
+	case SortCriteriaRelevance, SortCriteriaUpdateTime, SortCriteriaAlphabeticAsc, SortCriteriaAlphabeticDsc, SortCriteriaStars, SortCriteriaDownloads:
+		return true
+	}
+	return false
+}
+
+func (e SortCriteria) String() string {
+	return string(e)
+}
+
+func (e *SortCriteria) UnmarshalGQL(v interface{}) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = SortCriteria(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid SortCriteria", str)
+	}
+	return nil
+}
+
+func (e SortCriteria) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
 }

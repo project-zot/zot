@@ -37,6 +37,7 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
+	storConstants "zotregistry.io/zot/pkg/storage/constants"
 	. "zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
@@ -255,6 +256,59 @@ func readFileAndSearchString(filePath string, stringToMatch string, timeout time
 			}
 		}
 	}
+}
+
+func TestImageFormat(t *testing.T) {
+	Convey("Test valid image", t, func() {
+		log := log.NewLogger("debug", "")
+		dbDir := "../../../../test/data"
+
+		conf := config.New()
+		conf.Extensions = &extconf.ExtensionConfig{}
+		conf.Extensions.Lint = &extconf.LintConfig{}
+
+		metrics := monitoring.NewMetricsServer(false, log)
+		defaultStore := local.NewImageStore(dbDir, false, storConstants.DefaultGCDelay,
+			false, false, log, metrics, nil)
+		storeController := storage.StoreController{DefaultStore: defaultStore}
+		olu := common.NewBaseOciLayoutUtils(storeController, log)
+
+		isValidImage, err := olu.IsValidImageFormat("zot-test")
+		So(err, ShouldBeNil)
+		So(isValidImage, ShouldEqual, true)
+
+		isValidImage, err = olu.IsValidImageFormat("zot-test:0.0.1")
+		So(err, ShouldBeNil)
+		So(isValidImage, ShouldEqual, true)
+
+		isValidImage, err = olu.IsValidImageFormat("zot-test:0.0.")
+		So(err, ShouldBeNil)
+		So(isValidImage, ShouldEqual, false)
+
+		isValidImage, err = olu.IsValidImageFormat("zot-noindex-test")
+		So(err, ShouldNotBeNil)
+		So(isValidImage, ShouldEqual, false)
+
+		isValidImage, err = olu.IsValidImageFormat("zot--tet")
+		So(err, ShouldNotBeNil)
+		So(isValidImage, ShouldEqual, false)
+
+		isValidImage, err = olu.IsValidImageFormat("zot-noindex-test")
+		So(err, ShouldNotBeNil)
+		So(isValidImage, ShouldEqual, false)
+
+		isValidImage, err = olu.IsValidImageFormat("zot-squashfs-noblobs")
+		So(err, ShouldNotBeNil)
+		So(isValidImage, ShouldEqual, false)
+
+		isValidImage, err = olu.IsValidImageFormat("zot-squashfs-invalid-index")
+		So(err, ShouldNotBeNil)
+		So(isValidImage, ShouldEqual, false)
+
+		isValidImage, err = olu.IsValidImageFormat("zot-squashfs-invalid-blob")
+		So(err, ShouldNotBeNil)
+		So(isValidImage, ShouldEqual, false)
+	})
 }
 
 func TestRepoListWithNewestImage(t *testing.T) {
@@ -1027,10 +1081,10 @@ func TestUtilsMethod(t *testing.T) {
 
 		metrics := monitoring.NewMetricsServer(false, log)
 		defaultStore := local.NewImageStore(rootDir, false,
-			storage.DefaultGCDelay, false, false, log, metrics, nil)
+			storConstants.DefaultGCDelay, false, false, log, metrics, nil)
 
 		subStore := local.NewImageStore(subRootDir, false,
-			storage.DefaultGCDelay, false, false, log, metrics, nil)
+			storConstants.DefaultGCDelay, false, false, log, metrics, nil)
 
 		subStoreMap := make(map[string]storage.ImageStore)
 
