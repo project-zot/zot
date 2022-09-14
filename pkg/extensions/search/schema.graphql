@@ -54,6 +54,12 @@ type ImageSummary {
     Source: String
     Documentation: String
     History: [LayerHistory]
+    Vulnerabilities: ImageVulnerabilitySummary
+}
+
+type ImageVulnerabilitySummary {
+    MaxSeverity: String
+    Count: Int
 }
 
 # Brief on a specific repo to be used in queries returning a list of repos

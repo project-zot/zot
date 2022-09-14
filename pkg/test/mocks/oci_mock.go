@@ -13,7 +13,6 @@ type OciLayoutUtilsMock struct {
 	GetImageManifestsFn         func(image string) ([]ispec.Descriptor, error)
 	GetImageBlobManifestFn      func(imageDir string, digest godigest.Digest) (v1.Manifest, error)
 	GetImageInfoFn              func(imageDir string, hash v1.Hash) (ispec.Image, error)
-	IsValidImageFormatFn        func(image string) (bool, error)
 	GetImageTagsWithTimestampFn func(repo string) ([]common.TagInfo, error)
 	GetImageLastUpdatedFn       func(imageInfo ispec.Image) time.Time
 	GetImagePlatformFn          func(imageInfo ispec.Image) (string, string)
@@ -28,7 +27,7 @@ type OciLayoutUtilsMock struct {
 }
 
 func (olum OciLayoutUtilsMock) GetRepositories() ([]string, error) {
-	if olum.GetImageManifestsFn != nil {
+	if olum.GetRepositoriesFn != nil {
 		return olum.GetRepositoriesFn()
 	}
 
@@ -57,14 +56,6 @@ func (olum OciLayoutUtilsMock) GetImageInfo(imageDir string, hash v1.Hash) (ispe
 	}
 
 	return ispec.Image{}, nil
-}
-
-func (olum OciLayoutUtilsMock) IsValidImageFormat(image string) (bool, error) {
-	if olum.IsValidImageFormatFn != nil {
-		return olum.IsValidImageFormatFn(image)
-	}
-
-	return true, nil
 }
 
 func (olum OciLayoutUtilsMock) GetImageTagsWithTimestamp(repo string) ([]common.TagInfo, error) {

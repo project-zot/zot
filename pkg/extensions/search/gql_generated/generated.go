@@ -71,25 +71,31 @@ type ComplexityRoot struct {
 	}
 
 	ImageSummary struct {
-		ConfigDigest  func(childComplexity int) int
-		Description   func(childComplexity int) int
-		Digest        func(childComplexity int) int
-		Documentation func(childComplexity int) int
-		DownloadCount func(childComplexity int) int
-		History       func(childComplexity int) int
-		IsSigned      func(childComplexity int) int
-		Labels        func(childComplexity int) int
-		LastUpdated   func(childComplexity int) int
-		Layers        func(childComplexity int) int
-		Licenses      func(childComplexity int) int
-		Platform      func(childComplexity int) int
-		RepoName      func(childComplexity int) int
-		Score         func(childComplexity int) int
-		Size          func(childComplexity int) int
-		Source        func(childComplexity int) int
-		Tag           func(childComplexity int) int
-		Title         func(childComplexity int) int
-		Vendor        func(childComplexity int) int
+		ConfigDigest    func(childComplexity int) int
+		Description     func(childComplexity int) int
+		Digest          func(childComplexity int) int
+		Documentation   func(childComplexity int) int
+		DownloadCount   func(childComplexity int) int
+		History         func(childComplexity int) int
+		IsSigned        func(childComplexity int) int
+		Labels          func(childComplexity int) int
+		LastUpdated     func(childComplexity int) int
+		Layers          func(childComplexity int) int
+		Licenses        func(childComplexity int) int
+		Platform        func(childComplexity int) int
+		RepoName        func(childComplexity int) int
+		Score           func(childComplexity int) int
+		Size            func(childComplexity int) int
+		Source          func(childComplexity int) int
+		Tag             func(childComplexity int) int
+		Title           func(childComplexity int) int
+		Vendor          func(childComplexity int) int
+		Vulnerabilities func(childComplexity int) int
+	}
+
+	ImageVulnerabilitySummary struct {
+		Count       func(childComplexity int) int
+		MaxSeverity func(childComplexity int) int
 	}
 
 	LayerHistory struct {
@@ -411,6 +417,27 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.ImageSummary.Vendor(childComplexity), true
+
+	case "ImageSummary.Vulnerabilities":
+		if e.complexity.ImageSummary.Vulnerabilities == nil {
+			break
+		}
+
+		return e.complexity.ImageSummary.Vulnerabilities(childComplexity), true
+
+	case "ImageVulnerabilitySummary.Count":
+		if e.complexity.ImageVulnerabilitySummary.Count == nil {
+			break
+		}
+
+		return e.complexity.ImageVulnerabilitySummary.Count(childComplexity), true
+
+	case "ImageVulnerabilitySummary.MaxSeverity":
+		if e.complexity.ImageVulnerabilitySummary.MaxSeverity == nil {
+			break
+		}
+
+		return e.complexity.ImageVulnerabilitySummary.MaxSeverity(childComplexity), true
 
 	case "LayerHistory.HistoryDescription":
 		if e.complexity.LayerHistory.HistoryDescription == nil {
@@ -789,6 +816,12 @@ type ImageSummary {
     Source: String
     Documentation: String
     History: [LayerHistory]
+    Vulnerabilities: ImageVulnerabilitySummary
+}
+
+type ImageVulnerabilitySummary {
+    MaxSeverity: String
+    Count: Int
 }
 
 # Brief on a specific repo to be used in queries returning a list of repos
@@ -1440,6 +1473,8 @@ func (ec *executionContext) fieldContext_GlobalSearchResult_Images(ctx context.C
 				return ec.fieldContext_ImageSummary_Documentation(ctx, field)
 			case "History":
 				return ec.fieldContext_ImageSummary_History(ctx, field)
+			case "Vulnerabilities":
+				return ec.fieldContext_ImageSummary_Vulnerabilities(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -2563,6 +2598,135 @@ func (ec *executionContext) fieldContext_ImageSummary_History(ctx context.Contex
 	return fc, nil
 }
 
+func (ec *executionContext) _ImageSummary_Vulnerabilities(ctx context.Context, field graphql.CollectedField, obj *ImageSummary) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_ImageSummary_Vulnerabilities(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Vulnerabilities, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*ImageVulnerabilitySummary)
+	fc.Result = res
+	return ec.marshalOImageVulnerabilitySummary2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageVulnerabilitySummary(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_ImageSummary_Vulnerabilities(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ImageSummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "MaxSeverity":
+				return ec.fieldContext_ImageVulnerabilitySummary_MaxSeverity(ctx, field)
+			case "Count":
+				return ec.fieldContext_ImageVulnerabilitySummary_Count(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type ImageVulnerabilitySummary", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ImageVulnerabilitySummary_MaxSeverity(ctx context.Context, field graphql.CollectedField, obj *ImageVulnerabilitySummary) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_ImageVulnerabilitySummary_MaxSeverity(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.MaxSeverity, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_ImageVulnerabilitySummary_MaxSeverity(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ImageVulnerabilitySummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ImageVulnerabilitySummary_Count(ctx context.Context, field graphql.CollectedField, obj *ImageVulnerabilitySummary) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_ImageVulnerabilitySummary_Count(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Count, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*int)
+	fc.Result = res
+	return ec.marshalOInt2ᚖint(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_ImageVulnerabilitySummary_Count(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ImageVulnerabilitySummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _LayerHistory_Layer(ctx context.Context, field graphql.CollectedField, obj *LayerHistory) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_LayerHistory_Layer(ctx, field)
 	if err != nil {
@@ -3128,6 +3292,8 @@ func (ec *executionContext) fieldContext_Query_ImageListForCVE(ctx context.Conte
 				return ec.fieldContext_ImageSummary_Documentation(ctx, field)
 			case "History":
 				return ec.fieldContext_ImageSummary_History(ctx, field)
+			case "Vulnerabilities":
+				return ec.fieldContext_ImageSummary_Vulnerabilities(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -3220,6 +3386,8 @@ func (ec *executionContext) fieldContext_Query_ImageListWithCVEFixed(ctx context
 				return ec.fieldContext_ImageSummary_Documentation(ctx, field)
 			case "History":
 				return ec.fieldContext_ImageSummary_History(ctx, field)
+			case "Vulnerabilities":
+				return ec.fieldContext_ImageSummary_Vulnerabilities(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -3312,6 +3480,8 @@ func (ec *executionContext) fieldContext_Query_ImageListForDigest(ctx context.Co
 				return ec.fieldContext_ImageSummary_Documentation(ctx, field)
 			case "History":
 				return ec.fieldContext_ImageSummary_History(ctx, field)
+			case "Vulnerabilities":
+				return ec.fieldContext_ImageSummary_Vulnerabilities(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -3470,6 +3640,8 @@ func (ec *executionContext) fieldContext_Query_ImageList(ctx context.Context, fi
 				return ec.fieldContext_ImageSummary_Documentation(ctx, field)
 			case "History":
 				return ec.fieldContext_ImageSummary_History(ctx, field)
+			case "Vulnerabilities":
+				return ec.fieldContext_ImageSummary_Vulnerabilities(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -3686,6 +3858,8 @@ func (ec *executionContext) fieldContext_Query_DerivedImageList(ctx context.Cont
 				return ec.fieldContext_ImageSummary_Documentation(ctx, field)
 			case "History":
 				return ec.fieldContext_ImageSummary_History(ctx, field)
+			case "Vulnerabilities":
+				return ec.fieldContext_ImageSummary_Vulnerabilities(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -3778,6 +3952,8 @@ func (ec *executionContext) fieldContext_Query_BaseImageList(ctx context.Context
 				return ec.fieldContext_ImageSummary_Documentation(ctx, field)
 			case "History":
 				return ec.fieldContext_ImageSummary_History(ctx, field)
+			case "Vulnerabilities":
+				return ec.fieldContext_ImageSummary_Vulnerabilities(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -3999,6 +4175,8 @@ func (ec *executionContext) fieldContext_RepoInfo_Images(ctx context.Context, fi
 				return ec.fieldContext_ImageSummary_Documentation(ctx, field)
 			case "History":
 				return ec.fieldContext_ImageSummary_History(ctx, field)
+			case "Vulnerabilities":
+				return ec.fieldContext_ImageSummary_Vulnerabilities(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -4395,6 +4573,8 @@ func (ec *executionContext) fieldContext_RepoSummary_NewestImage(ctx context.Con
 				return ec.fieldContext_ImageSummary_Documentation(ctx, field)
 			case "History":
 				return ec.fieldContext_ImageSummary_History(ctx, field)
+			case "Vulnerabilities":
+				return ec.fieldContext_ImageSummary_Vulnerabilities(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -6536,6 +6716,39 @@ func (ec *executionContext) _ImageSummary(ctx context.Context, sel ast.Selection
 
 			out.Values[i] = ec._ImageSummary_History(ctx, field, obj)
 
+		case "Vulnerabilities":
+
+			out.Values[i] = ec._ImageSummary_Vulnerabilities(ctx, field, obj)
+
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch()
+	if invalids > 0 {
+		return graphql.Null
+	}
+	return out
+}
+
+var imageVulnerabilitySummaryImplementors = []string{"ImageVulnerabilitySummary"}
+
+func (ec *executionContext) _ImageVulnerabilitySummary(ctx context.Context, sel ast.SelectionSet, obj *ImageVulnerabilitySummary) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, imageVulnerabilitySummaryImplementors)
+	out := graphql.NewFieldSet(fields)
+	var invalids uint32
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("ImageVulnerabilitySummary")
+		case "MaxSeverity":
+
+			out.Values[i] = ec._ImageVulnerabilitySummary_MaxSeverity(ctx, field, obj)
+
+		case "Count":
+
+			out.Values[i] = ec._ImageVulnerabilitySummary_Count(ctx, field, obj)
+
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -7896,6 +8109,13 @@ func (ec *executionContext) marshalOImageSummary2ᚖzotregistryᚗioᚋzotᚋpkg
 		return graphql.Null
 	}
 	return ec._ImageSummary(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalOImageVulnerabilitySummary2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageVulnerabilitySummary(ctx context.Context, sel ast.SelectionSet, v *ImageVulnerabilitySummary) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._ImageVulnerabilitySummary(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalOInt2ᚖint(ctx context.Context, v interface{}) (*int, error) {

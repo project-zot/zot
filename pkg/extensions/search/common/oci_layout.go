@@ -11,7 +11,6 @@ import (
 	"time"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
-	"github.com/google/go-containerregistry/pkg/v1/types"
 	notreg "github.com/notaryproject/notation-go/registry"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -24,7 +23,6 @@ type OciLayoutUtils interface {
 	GetImageManifests(image string) ([]ispec.Descriptor, error)
 	GetImageBlobManifest(imageDir string, digest godigest.Digest) (v1.Manifest, error)
 	GetImageInfo(imageDir string, hash v1.Hash) (ispec.Image, error)
-	IsValidImageFormat(image string) (bool, error)
 	GetImageTagsWithTimestamp(repo string) ([]TagInfo, error)
 	GetImageLastUpdated(imageInfo ispec.Image) time.Time
 	GetImagePlatform(imageInfo ispec.Image) (string, string)
@@ -115,6 +113,7 @@ func (olu BaseOciLayoutUtils) GetImageManifest(repo string, reference string) (i
 	return manifest, nil
 }
 
+// Provide a list of repositories from all the available image stores.
 func (olu BaseOciLayoutUtils) GetRepositories() ([]string, error) {
 	defaultStore := olu.StoreController.DefaultStore
 	substores := olu.StoreController.SubStore
@@ -206,44 +205,6 @@ func (olu BaseOciLayoutUtils) GetImageInfo(imageDir string, hash v1.Hash) (ispec
 	}
 
 	return imageInfo, err
-}
-
-func (olu BaseOciLayoutUtils) IsValidImageFormat(image string) (bool, error) {
-	imageDir, inputTag := GetImageDirAndTag(image)
-
-	manifests, err := olu.GetImageManifests(imageDir)
-	if err != nil {
-		return false, err
-	}
-
-	for _, manifest := range manifests {
-		tag, ok := manifest.Annotations[ispec.AnnotationRefName]
-
-		if ok && inputTag != "" && tag != inputTag {
-			continue
-		}
-
-		blobManifest, err := olu.GetImageBlobManifest(imageDir, manifest.Digest)
-		if err != nil {
-			return false, err
-		}
-
-		imageLayers := blobManifest.Layers
-
-		for _, imageLayer := range imageLayers {
-			switch imageLayer.MediaType {
-			case types.OCILayer, types.DockerLayer:
-				return true, nil
-
-			default:
-				olu.Log.Debug().Msg("image media type not supported for scanning")
-
-				return false, errors.ErrScanNotSupported
-			}
-		}
-	}
-
-	return false, nil
 }
 
 // GetImageTagsWithTimestamp returns a list of image tags with timestamp available in the specified repository.

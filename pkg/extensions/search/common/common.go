@@ -61,23 +61,39 @@ func GetRepo(image string) string {
 	return image
 }
 
-func GetFixedTags(allTags, infectedTags []TagInfo) []TagInfo {
+func GetFixedTags(allTags, vulnerableTags []TagInfo) []TagInfo {
 	sort.Slice(allTags, func(i, j int) bool {
 		return allTags[i].Timestamp.Before(allTags[j].Timestamp)
 	})
 
-	latestInfected := TagInfo{}
+	earliestVulnerable := vulnerableTags[0]
+	vulnerableTagMap := make(map[string]TagInfo, len(vulnerableTags))
 
-	for _, tag := range infectedTags {
-		if !tag.Timestamp.Before(latestInfected.Timestamp) {
-			latestInfected = tag
+	for _, tag := range vulnerableTags {
+		vulnerableTagMap[tag.Name] = tag
+
+		if tag.Timestamp.Before(earliestVulnerable.Timestamp) {
+			earliestVulnerable = tag
 		}
 	}
 
 	var fixedTags []TagInfo
 
+	// There are some downsides to this logic
+	// We assume there can't be multiple "branches" of the same
+	// image built at different times containing different fixes
+	// There may be older images which have a fix or
+	// newer images which don't
 	for _, tag := range allTags {
-		if tag.Timestamp.After(latestInfected.Timestamp) {
+		if tag.Timestamp.Before(earliestVulnerable.Timestamp) {
+			// The vulnerability did not exist at the time this
+			// image was built
+			continue
+		}
+		// If the image is old enough for the vulnerability to
+		// exist, but it was not detected, it means it contains
+		// the fix
+		if _, ok := vulnerableTagMap[tag.Name]; !ok {
 			fixedTags = append(fixedTags, tag)
 		}
 	}
