@@ -13,6 +13,7 @@ import (
 	"github.com/containers/image/v5/signature"
 	"github.com/containers/image/v5/types"
 
+	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 )
@@ -50,7 +51,7 @@ func (di *demandedImages) delete(key string) {
 	di.syncedMap.Delete(key)
 }
 
-func OneImage(cfg Config, storeController storage.StoreController,
+func OneImage(cfg extconf.SyncConfig, storeController storage.StoreController,
 	repo, reference string, isArtifact bool, log log.Logger,
 ) error {
 	// guard against multiple parallel requests
@@ -83,10 +84,11 @@ func OneImage(cfg Config, storeController storage.StoreController,
 	return err
 }
 
-func syncOneImage(imageChannel chan error, cfg Config, storeController storage.StoreController,
+func syncOneImage(imageChannel chan error,
+	cfg extconf.SyncConfig, storeController storage.StoreController,
 	localRepo, reference string, isArtifact bool, log log.Logger,
 ) {
-	var credentialsFile CredentialsFile
+	var credentialsFile extconf.CredentialsFile
 
 	if cfg.CredentialsFile != "" {
 		var err error
@@ -268,7 +270,7 @@ func syncOneImage(imageChannel chan error, cfg Config, storeController storage.S
 	imageChannel <- nil
 }
 
-func syncRun(regCfg RegistryConfig,
+func syncRun(regCfg extconf.RegistryConfig,
 	localRepo, upstreamRepo, reference string, utils syncContextUtils, sig *signaturesCopier,
 	log log.Logger,
 ) (bool, error) {
