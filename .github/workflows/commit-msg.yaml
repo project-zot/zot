@@ -1,0 +1,33 @@
+name: 'Check commit message style'
+on:
+  pull_request:
+    types:
+      - opened
+      - edited
+      - reopened
+      - synchronize
+  push:
+    branches:
+      - main
+
+jobs:
+  check-commit-message-style:
+    name: Check commit message style
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Check Commit Type
+        uses: gsactions/commit-message-checker@v1
+        with:
+          pattern: '^((build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\(.+\))?(!)?(: (.*\s*)*))'
+          flags: 'gm'
+          error: 'Your first line has to the Conventional Commits specification.'
+      - name: Check Line Length
+        uses: gsactions/commit-message-checker@v1
+        with:
+          pattern: '^[^#].{74}'
+          error: 'The maximum line length of 74 characters is exceeded.'
+          excludeDescription: 'true' # optional: this excludes the description body of a pull request
+          excludeTitle: 'true' # optional: this excludes the title of a pull request
+          checkAllCommitMessages: 'false'
