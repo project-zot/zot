@@ -16,6 +16,7 @@ The following document refers on the **core dist-spec**, see also the [zot-speci
 ## [**Why zot?**](COMPARISON.md)
 
 ## What's new?
+* Support content range for pull requests
 * Selectively add extensions on top of minimal build
 * Supports container image signatures - [cosign](https://github.com/sigstore/cosign) and [notation](https://github.com/notaryproject/notation)
 * Multi-arch support
