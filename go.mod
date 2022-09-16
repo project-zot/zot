@@ -18,7 +18,7 @@ require (
 	github.com/fsnotify/fsnotify v1.5.4
 	github.com/getlantern/deepcopy v0.0.0-20160317154340-7f45deb8130a
 	github.com/go-ldap/ldap/v3 v3.4.4
-	github.com/gofrs/uuid v4.2.0+incompatible
+	github.com/gofrs/uuid v4.3.0+incompatible
 	github.com/google/go-containerregistry v0.11.0
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/handlers v1.5.1
@@ -39,10 +39,10 @@ require (
 	github.com/rs/zerolog v1.28.0
 	github.com/smartystreets/goconvey v1.7.2
 	github.com/spf13/cobra v1.5.0
-	github.com/spf13/viper v1.12.0
+	github.com/spf13/viper v1.13.0
 	github.com/stretchr/testify v1.8.0
 	github.com/swaggo/swag v1.8.5
-	github.com/urfave/cli/v2 v2.11.2
+	github.com/urfave/cli/v2 v2.16.3
 	github.com/vektah/gqlparser/v2 v2.4.8
 	go.etcd.io/bbolt v1.3.6
 	golang.org/x/crypto v0.0.0-20220722155217-630584e8d5aa
@@ -265,13 +265,13 @@ require (
 	github.com/mpvl/unique v0.0.0-20150818121801-cbe035fff7de // indirect
 	github.com/nmcclain/asn1-ber v0.0.0-20170104154839-2661553a0484 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
-	github.com/open-policy-agent/opa v0.43.0 // indirect
+	github.com/open-policy-agent/opa v0.43.1 // indirect
 	github.com/opencontainers/runc v1.1.3 // indirect
 	github.com/opencontainers/runtime-spec v1.0.3-0.20210326190908-1c3f411f0417 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
 	github.com/owenrumney/squealer v0.2.28 // indirect
 	github.com/pelletier/go-toml v1.9.5 // indirect
-	github.com/pelletier/go-toml/v2 v2.0.1 // indirect
+	github.com/pelletier/go-toml/v2 v2.0.5 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/proglottis/gpgme v0.1.3 // indirect
 	github.com/prometheus/common v0.37.0 // indirect
@@ -301,7 +301,7 @@ require (
 	github.com/spiffe/go-spiffe/v2 v2.1.1 // indirect
 	github.com/stefanberger/go-pkcs11uri v0.0.0-20201008174630-78d3cae3a980 // indirect
 	github.com/stretchr/objx v0.4.0 // indirect
-	github.com/subosito/gotenv v1.3.0 // indirect
+	github.com/subosito/gotenv v1.4.1 // indirect
 	github.com/swaggo/files v0.0.0-20220610200504-28940afbdbfe // indirect
 	github.com/syndtr/gocapability v0.0.0-20200815063812-42c35b437635 // indirect
 	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7 // indirect
@@ -394,10 +394,10 @@ replace (
 	github.com/aquasecurity/trivy-db => github.com/project-zot/trivy-db v0.0.0-20211007191113-44f7e57b689c
 	github.com/containers/image/v5 => github.com/anuvu/image/v5 v5.0.0-20220520105616-e594853d6471
 	github.com/hashicorp/go-getter => github.com/hashicorp/go-getter v1.6.1
-	github.com/open-policy-agent/opa => github.com/open-policy-agent/opa v0.42.0
+	github.com/open-policy-agent/opa => github.com/open-policy-agent/opa v0.43.1
 	github.com/opencontainers/image-spec => github.com/opencontainers/image-spec v1.0.2-0.20211117181255-693428a734f5
 	github.com/opencontainers/runc => github.com/opencontainers/runc v1.1.2
-	github.com/theupdateframework/go-tuf => github.com/theupdateframework/go-tuf v0.3.0
+	github.com/theupdateframework/go-tuf => github.com/theupdateframework/go-tuf v0.3.1
 	go.etcd.io/etcd/v3 => go.etcd.io/etcd/v3 v3.5.4
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc => go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.26.1
 	go.opentelemetry.io/otel => go.opentelemetry.io/otel v1.2.0
