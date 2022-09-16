@@ -1055,6 +1055,19 @@ func (is *ObjectStorage) checkCacheBlob(digest string) (string, error) {
 		return "", err
 	}
 
+	if _, err := is.store.Stat(context.Background(), dstRecord); err != nil {
+		is.log.Error().Err(err).Str("blob", dstRecord).Msg("failed to stat blob")
+
+		// the actual blob on disk may have been removed by GC, so sync the cache
+		if err := is.cache.DeleteBlob(digest, dstRecord); err != nil {
+			is.log.Error().Err(err).Str("digest", digest).Str("blobPath", dstRecord).Msg("unable to remove blob path from cache")
+
+			return "", err
+		}
+
+		return "", zerr.ErrBlobNotFound
+	}
+
 	is.log.Debug().Str("digest", digest).Str("dstRecord", dstRecord).Msg("cache: found dedupe record")
 
 	return dstRecord, nil
@@ -1161,13 +1174,6 @@ func (is *ObjectStorage) GetBlobPartial(repo, digest, mediaType string, from, to
 		if err != nil {
 			is.log.Error().Err(err).Str("blob", dstRecord).Msg("failed to stat blob")
 
-			// the actual blob on disk may have been removed by GC, so sync the cache
-			if err := is.cache.DeleteBlob(digest, dstRecord); err != nil {
-				is.log.Error().Err(err).Str("dstDigest", digest).Str("dst", dstRecord).Msg("dedupe: unable to delete blob record")
-
-				return nil, -1, -1, err
-			}
-
 			return nil, -1, -1, zerr.ErrBlobNotFound
 		}
 
@@ -1242,13 +1248,6 @@ func (is *ObjectStorage) GetBlob(repo, digest, mediaType string) (io.ReadCloser,
 		binfo, err := is.store.Stat(context.Background(), dstRecord)
 		if err != nil {
 			is.log.Error().Err(err).Str("blob", dstRecord).Msg("failed to stat blob")
-
-			// the actual blob on disk may have been removed by GC, so sync the cache
-			if err := is.cache.DeleteBlob(digest, dstRecord); err != nil {
-				is.log.Error().Err(err).Str("dstDigest", digest).Str("dst", dstRecord).Msg("dedupe: unable to delete blob record")
-
-				return nil, -1, err
-			}
 
 			return nil, -1, zerr.ErrBlobNotFound
 		}
