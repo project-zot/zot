@@ -74,7 +74,7 @@ The following document refers on the **core dist-spec**, see also the [zot-speci
 
 # Presentations
 
-* [OCI Weekly Discussion - Oct 2, 2019](https://hackmd.io/El8Dd2xrTlCaCG59ns5cwg#October-2-2019)
+* [OCI Weekly Discussion - Oct 2, 2019](https://github.com/opencontainers/.github/blob/master/meeting-notes/oci-weekly-notes-2019-mar-2020-mar.md#october-2-2019)
 
 # Build and install binary (using host's toolchain)
 
