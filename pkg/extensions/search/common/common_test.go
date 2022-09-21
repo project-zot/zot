@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/opencontainers/go-digest"
+	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/sigstore/cosign/cmd/cosign/cli/generate"
 	"github.com/sigstore/cosign/cmd/cosign/cli/options"
@@ -29,6 +30,7 @@ import (
 	"zotregistry.io/zot/pkg/api/constants"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
+	"zotregistry.io/zot/pkg/extensions/search"
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
@@ -56,6 +58,15 @@ type RepoWithNewestImageResponse struct {
 	Errors                  []ErrorGQL              `json:"errors"`
 }
 
+type ImageListResponse struct {
+	ImageList ImageList  `json:"data"`
+	Errors    []ErrorGQL `json:"errors"`
+}
+
+type ImageList struct {
+	SummaryList []ImageSummary `json:"imageList"`
+}
+
 type ExpandedRepoInfoResp struct {
 	ExpandedRepoInfo ExpandedRepoInfo `json:"data"`
 	Errors           []ErrorGQL       `json:"errors"`
@@ -76,14 +87,29 @@ type GlobalSearch struct {
 }
 
 type ImageSummary struct {
-	RepoName    string    `json:"repoName"`
-	Tag         string    `json:"tag"`
-	LastUpdated time.Time `json:"lastUpdated"`
-	Size        string    `json:"size"`
-	Platform    OsArch    `json:"platform"`
-	Vendor      string    `json:"vendor"`
-	Score       int       `json:"score"`
-	IsSigned    bool      `json:"isSigned"`
+	RepoName    string         `json:"repoName"`
+	Tag         string         `json:"tag"`
+	LastUpdated time.Time      `json:"lastUpdated"`
+	Size        string         `json:"size"`
+	Platform    OsArch         `json:"platform"`
+	Vendor      string         `json:"vendor"`
+	Score       int            `json:"score"`
+	IsSigned    bool           `json:"isSigned"`
+	History     []LayerHistory `json:"history"`
+	Layers      []LayerSummary `json:"layers"`
+}
+
+type LayerHistory struct {
+	Layer              LayerSummary       `json:"layer"`
+	HistoryDescription HistoryDescription `json:"historyDescription"`
+}
+
+type HistoryDescription struct {
+	Created    time.Time `json:"created"`
+	CreatedBy  string    `json:"createdBy"`
+	Author     string    `json:"author"`
+	Comment    string    `json:"comment"`
+	EmptyLayer bool      `json:"emptyLayer"`
 }
 
 type RepoSummary struct {
@@ -1160,6 +1186,301 @@ func TestGlobalSearch(t *testing.T) {
 		So(responseStruct.Errors, ShouldNotBeEmpty)
 		err = os.Chmod(rootDir, 0o777)
 		So(err, ShouldBeNil)
+	})
+}
+
+func TestImageList(t *testing.T) {
+	Convey("Test ImageList", t, func() {
+		subpath := "/a"
+
+		err := testSetup(t, subpath)
+		if err != nil {
+			panic(err)
+		}
+
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = rootDir
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
+		}
+
+		conf.Extensions.Search.CVE = nil
+
+		ctlr := api.NewController(conf)
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		WaitTillServerReady(baseURL)
+
+		imageStore := ctlr.StoreController.DefaultStore
+
+		repos, err := imageStore.GetRepositories()
+		So(err, ShouldBeNil)
+
+		tags, err := imageStore.GetImageTags(repos[0])
+		So(err, ShouldBeNil)
+
+		buf, _, _, err := imageStore.GetImageManifest(repos[0], tags[0])
+		So(err, ShouldBeNil)
+		var imageManifest ispec.Manifest
+		err = json.Unmarshal(buf, &imageManifest)
+		So(err, ShouldBeNil)
+
+		var imageConfigInfo ispec.Image
+		imageConfigBuf, err := imageStore.GetBlobContent(repos[0], imageManifest.Config.Digest.String())
+		So(err, ShouldBeNil)
+		err = json.Unmarshal(imageConfigBuf, &imageConfigInfo)
+		So(err, ShouldBeNil)
+
+		query := fmt.Sprintf(`{
+		ImageList(repo:"%s"){
+			History{
+				HistoryDescription{
+					Author
+					Comment
+					Created
+					CreatedBy
+					EmptyLayer
+				},
+				Layer{
+					Digest
+					Size
+				}
+			}
+		}
+	}`, repos[0])
+
+		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp, ShouldNotBeNil)
+
+		var responseStruct ImageListResponse
+		err = json.Unmarshal(resp.Body(), &responseStruct)
+		So(err, ShouldBeNil)
+
+		So(len(responseStruct.ImageList.SummaryList[0].History), ShouldEqual, len(imageConfigInfo.History))
+	})
+
+	Convey("Test ImageSummary retuned by ImageList when getting tags timestamp info fails", t, func() {
+		invalid := "test"
+		tempDir := t.TempDir()
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = tempDir
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
+		}
+
+		conf.Extensions.Search.CVE = nil
+
+		ctlr := api.NewController(conf)
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		WaitTillServerReady(baseURL)
+
+		config := ispec.Image{
+			Architecture: "amd64",
+			OS:           "linux",
+			RootFS: ispec.RootFS{
+				Type:    "layers",
+				DiffIDs: []digest.Digest{},
+			},
+			Author:  "ZotUser",
+			History: []ispec.History{},
+		}
+
+		configBlob, err := json.Marshal(config)
+		So(err, ShouldBeNil)
+
+		configDigest := digest.FromBytes(configBlob)
+		layerDigest := digest.FromString(invalid)
+		layerblob := []byte(invalid)
+		schemaVersion := 2
+		ispecManifest := ispec.Manifest{
+			Versioned: specs.Versioned{
+				SchemaVersion: schemaVersion,
+			},
+			Config: ispec.Descriptor{
+				MediaType: "application/vnd.oci.image.config.v1+json",
+				Digest:    configDigest,
+				Size:      int64(len(configBlob)),
+			},
+			Layers: []ispec.Descriptor{ // just 1 layer in manifest
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    layerDigest,
+					Size:      int64(len(layerblob)),
+				},
+			},
+			Annotations: map[string]string{
+				ispec.AnnotationRefName: "1.0",
+			},
+		}
+
+		err = UploadImage(
+			Image{
+				Manifest: ispecManifest,
+				Config:   config,
+				Layers: [][]byte{
+					layerblob,
+				},
+				Tag: "0.0.1",
+			},
+			baseURL,
+			invalid,
+		)
+		So(err, ShouldBeNil)
+
+		configPath := path.Join(conf.Storage.RootDirectory, invalid, "blobs",
+			configDigest.Algorithm().String(), configDigest.Encoded())
+
+		err = os.Remove(configPath)
+		So(err, ShouldBeNil)
+
+		query := fmt.Sprintf(`{
+		ImageList(repo:"%s"){
+			History{
+				HistoryDescription{
+					Author
+					Comment
+					Created
+					CreatedBy
+					EmptyLayer
+				},
+				Layer{
+					Digest
+					Size
+				}
+			}
+		}
+	}`, invalid)
+
+		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp, ShouldNotBeNil)
+
+		var responseStruct ImageListResponse
+		err = json.Unmarshal(resp.Body(), &responseStruct)
+		So(err, ShouldBeNil)
+		So(len(responseStruct.ImageList.SummaryList), ShouldBeZeroValue)
+	})
+}
+
+func TestBuildImageInfo(t *testing.T) {
+	Convey("Check image summary when layer count does not match history", t, func() {
+		invalid := "invalid"
+
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		rootDir = t.TempDir()
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = rootDir
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
+		}
+
+		conf.Extensions.Search.CVE = nil
+
+		ctlr := api.NewController(conf)
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		WaitTillServerReady(baseURL)
+
+		olu := &common.BaseOciLayoutUtils{
+			StoreController: ctlr.StoreController,
+			Log:             ctlr.Log,
+		}
+
+		config := ispec.Image{
+			Architecture: "amd64",
+			OS:           "linux",
+			RootFS: ispec.RootFS{
+				Type:    "layers",
+				DiffIDs: []digest.Digest{},
+			},
+			Author: "ZotUser",
+			History: []ispec.History{ // should contain 3 elements, 2 of which corresponding to layers
+				{
+					EmptyLayer: false,
+				},
+				{
+					EmptyLayer: false,
+				},
+				{
+					EmptyLayer: true,
+				},
+			},
+		}
+
+		configBlob, err := json.Marshal(config)
+		So(err, ShouldBeNil)
+
+		configDigest := digest.FromBytes(configBlob)
+		layerDigest := digest.FromString(invalid)
+		layerblob := []byte(invalid)
+		schemaVersion := 2
+		ispecManifest := ispec.Manifest{
+			Versioned: specs.Versioned{
+				SchemaVersion: schemaVersion,
+			},
+			Config: ispec.Descriptor{
+				MediaType: "application/vnd.oci.image.config.v1+json",
+				Digest:    configDigest,
+				Size:      int64(len(configBlob)),
+			},
+			Layers: []ispec.Descriptor{ // just 1 layer in manifest
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    layerDigest,
+					Size:      int64(len(layerblob)),
+				},
+			},
+		}
+		manifestLayersSize := ispecManifest.Layers[0].Size
+		manifestBlob, err := json.Marshal(ispecManifest)
+		So(err, ShouldBeNil)
+		manifestDigest := digest.FromBytes(manifestBlob)
+		err = UploadImage(
+			Image{
+				Manifest: ispecManifest,
+				Config:   config,
+				Layers: [][]byte{
+					layerblob,
+				},
+				Tag: "0.0.1",
+			},
+			baseURL,
+			invalid,
+		)
+		So(err, ShouldBeNil)
+
+		manifest, err := olu.GetImageBlobManifest(invalid, manifestDigest)
+		So(err, ShouldBeNil)
+
+		imageConfig, err := olu.GetImageConfigInfo(invalid, manifestDigest)
+		So(err, ShouldBeNil)
+
+		imageSummary := search.BuildImageInfo(invalid, invalid, manifestDigest, manifest, imageConfig)
+
+		So(len(imageSummary.Layers), ShouldEqual, len(manifest.Layers))
+		imageSummaryLayerSize, err := strconv.Atoi(*imageSummary.Size)
+		So(err, ShouldBeNil)
+		So(imageSummaryLayerSize, ShouldEqual, manifestLayersSize)
 	})
 }
 

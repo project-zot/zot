@@ -53,6 +53,7 @@ type ImageSummary {
     Title: String
     Source: String
     Documentation: String
+    History: [LayerHistory]
 }
 
 # Brief on a specific repo to be used in queries returning a list of repos
@@ -75,6 +76,31 @@ type LayerSummary {
     Size: String  # Int64 is not supported.
     Digest: String
     Score: Int
+}
+
+type HistoryDescription {
+    Created: Time
+    """ 
+    CreatedBy is the command which created the layer.
+    """
+    CreatedBy: String 
+    """
+    Author is the author of the build point.
+    """
+    Author: String 
+    """
+    Comment is a custom message set when creating the layer.
+    """
+    Comment: String
+    """ 
+    EmptyLayer is used to mark if the history item created a filesystem diff.
+    """
+    EmptyLayer: Boolean
+}
+
+type LayerHistory {
+    Layer: LayerSummary
+    HistoryDescription: HistoryDescription
 }
 
 type OsArch {
