@@ -158,7 +158,7 @@ func (r *queryResolver) ImageListForCve(ctx context.Context, id string) ([]*gql_
 func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, image string) ([]*gql_generated.ImageSummary, error) {
 	tagListForCVE := []*gql_generated.ImageSummary{}
 
-	r.log.Info().Str("image", image).Msg("extracting list of tags available in image")
+	r.log.Info().Str("image", image).Msg("extracting list of tags available in repo")
 
 	tagsInfo, err := r.cveInfo.LayoutUtils.GetImageTagsWithTimestamp(image)
 	if err != nil {
@@ -232,7 +232,13 @@ func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, im
 			return []*gql_generated.ImageSummary{}, err
 		}
 
-		imageInfo := buildImageInfo(image, tag.Name, digest, manifest)
+		imageConfig, err := r.cveInfo.LayoutUtils.GetImageConfigInfo(image, digest)
+		if err != nil {
+			return []*gql_generated.ImageSummary{}, err
+		}
+
+		imageInfo := BuildImageInfo(image, tag.Name, digest, manifest, imageConfig)
+
 		tagListForCVE = append(tagListForCVE, imageInfo)
 	}
 

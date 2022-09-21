@@ -25,6 +25,18 @@ type GlobalSearchResult struct {
 	Layers []*LayerSummary `json:"Layers"`
 }
 
+type HistoryDescription struct {
+	Created *time.Time `json:"Created"`
+	// CreatedBy is the command which created the layer.
+	CreatedBy *string `json:"CreatedBy"`
+	// Author is the author of the build point.
+	Author *string `json:"Author"`
+	// Comment is a custom message set when creating the layer.
+	Comment *string `json:"Comment"`
+	// EmptyLayer is used to mark if the history item created a filesystem diff.
+	EmptyLayer *bool `json:"EmptyLayer"`
+}
+
 type ImageSummary struct {
 	RepoName      *string         `json:"RepoName"`
 	Tag           *string         `json:"Tag"`
@@ -44,6 +56,12 @@ type ImageSummary struct {
 	Title         *string         `json:"Title"`
 	Source        *string         `json:"Source"`
 	Documentation *string         `json:"Documentation"`
+	History       []*LayerHistory `json:"History"`
+}
+
+type LayerHistory struct {
+	Layer              *LayerSummary       `json:"Layer"`
+	HistoryDescription *HistoryDescription `json:"HistoryDescription"`
 }
 
 type LayerSummary struct {

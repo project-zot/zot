@@ -42,7 +42,10 @@ type cveDetail struct {
 	PackageList []*gql_generated.PackageInfo
 }
 
-var ErrBadCtxFormat = errors.New("type assertion failed")
+var (
+	ErrBadCtxFormat  = errors.New("type assertion failed")
+	ErrBadLayerCount = errors.New("manifest: layers count doesn't correspond to config history")
+)
 
 // GetResolverConfig ...
 func GetResolverConfig(log log.Logger, storeController storage.StoreController, enableCVE bool) gql_generated.Config {
@@ -71,6 +74,7 @@ func (r *queryResolver) getImageListForCVE(repoList []string, cvid string, imgSt
 	trivyCtx *cveinfo.TrivyCtx,
 ) ([]*gql_generated.ImageSummary, error) {
 	cveResult := []*gql_generated.ImageSummary{}
+	olu := common.NewBaseOciLayoutUtils(r.storeController, r.log)
 
 	for _, repo := range repoList {
 		r.log.Info().Str("repo", repo).Msg("extracting list of tags available in image repo")
@@ -83,9 +87,15 @@ func (r *queryResolver) getImageListForCVE(repoList []string, cvid string, imgSt
 		}
 
 		for _, imageByCVE := range imageListByCVE {
+			imageConfig, err := olu.GetImageConfigInfo(repo, imageByCVE.Digest)
+			if err != nil {
+				return []*gql_generated.ImageSummary{}, err
+			}
+
+			imageInfo := BuildImageInfo(repo, imageByCVE.Tag, imageByCVE.Digest, imageByCVE.Manifest, imageConfig)
+
 			cveResult = append(
-				cveResult,
-				buildImageInfo(repo, imageByCVE.Tag, imageByCVE.Digest, imageByCVE.Manifest),
+				cveResult, imageInfo,
 			)
 		}
 	}
@@ -95,6 +105,7 @@ func (r *queryResolver) getImageListForCVE(repoList []string, cvid string, imgSt
 
 func (r *queryResolver) getImageListForDigest(repoList []string, digest string) ([]*gql_generated.ImageSummary, error) {
 	imgResultForDigest := []*gql_generated.ImageSummary{}
+	olu := common.NewBaseOciLayoutUtils(r.storeController, r.log)
 
 	var errResult error
 
@@ -109,7 +120,13 @@ func (r *queryResolver) getImageListForDigest(repoList []string, digest string) 
 		}
 
 		for _, imageInfo := range imgTags {
-			imageInfo := buildImageInfo(repo, imageInfo.Tag, imageInfo.Digest, imageInfo.Manifest)
+			imageConfig, err := olu.GetImageConfigInfo(repo, imageInfo.Digest)
+			if err != nil {
+				return []*gql_generated.ImageSummary{}, err
+			}
+
+			imageInfo := BuildImageInfo(repo, imageInfo.Tag, imageInfo.Digest, imageInfo.Manifest, imageConfig)
+
 			imgResultForDigest = append(imgResultForDigest, imageInfo)
 		}
 	}
@@ -526,7 +543,12 @@ func (r *queryResolver) getImageList(store storage.ImageStore, imageName string)
 					return results, err
 				}
 
-				imageInfo := buildImageInfo(repo, tag.Name, digest, manifest)
+				imageConfig, err := layoutUtils.GetImageConfigInfo(repo, digest)
+				if err != nil {
+					return results, err
+				}
+
+				imageInfo := BuildImageInfo(repo, tag.Name, digest, manifest, imageConfig)
 
 				results = append(results, imageInfo)
 			}
@@ -540,36 +562,119 @@ func (r *queryResolver) getImageList(store storage.ImageStore, imageName string)
 	return results, nil
 }
 
-func buildImageInfo(repo string, tag string, tagDigest godigest.Digest,
-	manifest v1.Manifest,
+func BuildImageInfo(repo string, tag string, manifestDigest godigest.Digest,
+	manifest v1.Manifest, imageConfig ispec.Image,
 ) *gql_generated.ImageSummary {
 	layers := []*gql_generated.LayerSummary{}
 	size := int64(0)
 
-	for _, entry := range manifest.Layers {
-		size += entry.Size
-		digest := entry.Digest.Hex
-		layerSize := strconv.FormatInt(entry.Size, 10)
+	log := log.NewLogger("debug", "")
+
+	allHistory := []*gql_generated.LayerHistory{}
+
+	formattedManifestDigest := manifestDigest.Hex()
+
+	history := imageConfig.History
+	if len(history) == 0 {
+		for _, layer := range manifest.Layers {
+			size += layer.Size
+			digest := layer.Digest.Hex
+			layerSize := strconv.FormatInt(layer.Size, 10)
+
+			layer := &gql_generated.LayerSummary{
+				Size:   &layerSize,
+				Digest: &digest,
+			}
+
+			layers = append(
+				layers,
+				layer,
+			)
+
+			allHistory = append(allHistory, &gql_generated.LayerHistory{
+				Layer:              layer,
+				HistoryDescription: &gql_generated.HistoryDescription{},
+			})
+		}
+
+		formattedSize := strconv.FormatInt(size, 10)
+
+		imageInfo := &gql_generated.ImageSummary{
+			RepoName:     &repo,
+			Tag:          &tag,
+			Digest:       &formattedManifestDigest,
+			ConfigDigest: &manifest.Config.Digest.Hex,
+			Size:         &formattedSize,
+			Layers:       layers,
+			History:      []*gql_generated.LayerHistory{},
+		}
+
+		return imageInfo
+	}
+
+	// iterator over manifest layers
+	var layersIterator int
+	// since we are appending pointers, it is important to iterate with an index over slice
+	for i := range history {
+		allHistory = append(allHistory, &gql_generated.LayerHistory{
+			HistoryDescription: &gql_generated.HistoryDescription{
+				Created:    history[i].Created,
+				CreatedBy:  &history[i].CreatedBy,
+				Author:     &history[i].Author,
+				Comment:    &history[i].Comment,
+				EmptyLayer: &history[i].EmptyLayer,
+			},
+		})
+
+		if history[i].EmptyLayer {
+			continue
+		}
+
+		if layersIterator+1 > len(manifest.Layers) {
+			formattedSize := strconv.FormatInt(size, 10)
+
+			log.Error().Err(ErrBadLayerCount).Msg("error on creating layer history for ImageSummary")
+
+			return &gql_generated.ImageSummary{
+				RepoName:     &repo,
+				Tag:          &tag,
+				Digest:       &formattedManifestDigest,
+				ConfigDigest: &manifest.Config.Digest.Hex,
+				Size:         &formattedSize,
+				Layers:       layers,
+				History:      allHistory,
+			}
+		}
+
+		size += manifest.Layers[layersIterator].Size
+		digest := manifest.Layers[layersIterator].Digest.Hex
+		layerSize := strconv.FormatInt(manifest.Layers[layersIterator].Size, 10)
+
+		layer := &gql_generated.LayerSummary{
+			Size:   &layerSize,
+			Digest: &digest,
+		}
 
 		layers = append(
 			layers,
-			&gql_generated.LayerSummary{
-				Size:   &layerSize,
-				Digest: &digest,
-			},
+			layer,
 		)
+
+		allHistory[i].Layer = layer
+
+		layersIterator++
 	}
 
 	formattedSize := strconv.FormatInt(size, 10)
-	formattedTagDigest := tagDigest.Hex()
 
 	imageInfo := &gql_generated.ImageSummary{
 		RepoName:     &repo,
 		Tag:          &tag,
-		Digest:       &formattedTagDigest,
+		Digest:       &formattedManifestDigest,
 		ConfigDigest: &manifest.Config.Digest.Hex,
 		Size:         &formattedSize,
 		Layers:       layers,
+		History:      allHistory,
 	}
 
 	return imageInfo

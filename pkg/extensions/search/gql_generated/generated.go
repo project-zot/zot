@@ -62,12 +62,21 @@ type ComplexityRoot struct {
 		Repos  func(childComplexity int) int
 	}
 
+	HistoryDescription struct {
+		Author     func(childComplexity int) int
+		Comment    func(childComplexity int) int
+		Created    func(childComplexity int) int
+		CreatedBy  func(childComplexity int) int
+		EmptyLayer func(childComplexity int) int
+	}
+
 	ImageSummary struct {
 		ConfigDigest  func(childComplexity int) int
 		Description   func(childComplexity int) int
 		Digest        func(childComplexity int) int
 		Documentation func(childComplexity int) int
 		DownloadCount func(childComplexity int) int
+		History       func(childComplexity int) int
 		IsSigned      func(childComplexity int) int
 		Labels        func(childComplexity int) int
 		LastUpdated   func(childComplexity int) int
@@ -81,6 +90,11 @@ type ComplexityRoot struct {
 		Tag           func(childComplexity int) int
 		Title         func(childComplexity int) int
 		Vendor        func(childComplexity int) int
+	}
+
+	LayerHistory struct {
+		HistoryDescription func(childComplexity int) int
+		Layer              func(childComplexity int) int
 	}
 
 	LayerSummary struct {
@@ -226,6 +240,41 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.GlobalSearchResult.Repos(childComplexity), true
 
+	case "HistoryDescription.Author":
+		if e.complexity.HistoryDescription.Author == nil {
+			break
+		}
+
+		return e.complexity.HistoryDescription.Author(childComplexity), true
+
+	case "HistoryDescription.Comment":
+		if e.complexity.HistoryDescription.Comment == nil {
+			break
+		}
+
+		return e.complexity.HistoryDescription.Comment(childComplexity), true
+
+	case "HistoryDescription.Created":
+		if e.complexity.HistoryDescription.Created == nil {
+			break
+		}
+
+		return e.complexity.HistoryDescription.Created(childComplexity), true
+
+	case "HistoryDescription.CreatedBy":
+		if e.complexity.HistoryDescription.CreatedBy == nil {
+			break
+		}
+
+		return e.complexity.HistoryDescription.CreatedBy(childComplexity), true
+
+	case "HistoryDescription.EmptyLayer":
+		if e.complexity.HistoryDescription.EmptyLayer == nil {
+			break
+		}
+
+		return e.complexity.HistoryDescription.EmptyLayer(childComplexity), true
+
 	case "ImageSummary.ConfigDigest":
 		if e.complexity.ImageSummary.ConfigDigest == nil {
 			break
@@ -260,6 +309,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.ImageSummary.DownloadCount(childComplexity), true
+
+	case "ImageSummary.History":
+		if e.complexity.ImageSummary.History == nil {
+			break
+		}
+
+		return e.complexity.ImageSummary.History(childComplexity), true
 
 	case "ImageSummary.IsSigned":
 		if e.complexity.ImageSummary.IsSigned == nil {
@@ -351,6 +407,20 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.ImageSummary.Vendor(childComplexity), true
+
+	case "LayerHistory.HistoryDescription":
+		if e.complexity.LayerHistory.HistoryDescription == nil {
+			break
+		}
+
+		return e.complexity.LayerHistory.HistoryDescription(childComplexity), true
+
+	case "LayerHistory.Layer":
+		if e.complexity.LayerHistory.Layer == nil {
+			break
+		}
+
+		return e.complexity.LayerHistory.Layer(childComplexity), true
 
 	case "LayerSummary.Digest":
 		if e.complexity.LayerSummary.Digest == nil {
@@ -690,6 +760,7 @@ type ImageSummary {
     Title: String
     Source: String
     Documentation: String
+    History: [LayerHistory]
 }
 
 # Brief on a specific repo to be used in queries returning a list of repos
@@ -712,6 +783,31 @@ type LayerSummary {
     Size: String  # Int64 is not supported.
     Digest: String
     Score: Int
+}
+
+type HistoryDescription {
+    Created: Time
+    """ 
+    CreatedBy is the command which created the layer.
+    """
+    CreatedBy: String 
+    """
+    Author is the author of the build point.
+    """
+    Author: String 
+    """
+    Comment is a custom message set when creating the layer.
+    """
+    Comment: String
+    """ 
+    EmptyLayer is used to mark if the history item created a filesystem diff.
+    """
+    EmptyLayer: Boolean
+}
+
+type LayerHistory {
+    Layer: LayerSummary
+    HistoryDescription: HistoryDescription
 }
 
 type OsArch {
@@ -1283,6 +1379,8 @@ func (ec *executionContext) fieldContext_GlobalSearchResult_Images(ctx context.C
 				return ec.fieldContext_ImageSummary_Source(ctx, field)
 			case "Documentation":
 				return ec.fieldContext_ImageSummary_Documentation(ctx, field)
+			case "History":
+				return ec.fieldContext_ImageSummary_History(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -1397,6 +1495,211 @@ func (ec *executionContext) fieldContext_GlobalSearchResult_Layers(ctx context.C
 				return ec.fieldContext_LayerSummary_Score(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type LayerSummary", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _HistoryDescription_Created(ctx context.Context, field graphql.CollectedField, obj *HistoryDescription) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_HistoryDescription_Created(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Created, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*time.Time)
+	fc.Result = res
+	return ec.marshalOTime2ᚖtimeᚐTime(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_HistoryDescription_Created(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "HistoryDescription",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Time does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _HistoryDescription_CreatedBy(ctx context.Context, field graphql.CollectedField, obj *HistoryDescription) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_HistoryDescription_CreatedBy(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.CreatedBy, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_HistoryDescription_CreatedBy(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "HistoryDescription",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _HistoryDescription_Author(ctx context.Context, field graphql.CollectedField, obj *HistoryDescription) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_HistoryDescription_Author(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Author, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_HistoryDescription_Author(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "HistoryDescription",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _HistoryDescription_Comment(ctx context.Context, field graphql.CollectedField, obj *HistoryDescription) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_HistoryDescription_Comment(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Comment, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_HistoryDescription_Comment(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "HistoryDescription",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _HistoryDescription_EmptyLayer(ctx context.Context, field graphql.CollectedField, obj *HistoryDescription) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_HistoryDescription_EmptyLayer(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.EmptyLayer, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*bool)
+	fc.Result = res
+	return ec.marshalOBoolean2ᚖbool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_HistoryDescription_EmptyLayer(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "HistoryDescription",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
 		},
 	}
 	return fc, nil
@@ -2154,6 +2457,155 @@ func (ec *executionContext) fieldContext_ImageSummary_Documentation(ctx context.
 	return fc, nil
 }
 
+func (ec *executionContext) _ImageSummary_History(ctx context.Context, field graphql.CollectedField, obj *ImageSummary) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_ImageSummary_History(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.History, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.([]*LayerHistory)
+	fc.Result = res
+	return ec.marshalOLayerHistory2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐLayerHistory(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_ImageSummary_History(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ImageSummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "Layer":
+				return ec.fieldContext_LayerHistory_Layer(ctx, field)
+			case "HistoryDescription":
+				return ec.fieldContext_LayerHistory_HistoryDescription(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type LayerHistory", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _LayerHistory_Layer(ctx context.Context, field graphql.CollectedField, obj *LayerHistory) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_LayerHistory_Layer(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Layer, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*LayerSummary)
+	fc.Result = res
+	return ec.marshalOLayerSummary2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐLayerSummary(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_LayerHistory_Layer(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "LayerHistory",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "Size":
+				return ec.fieldContext_LayerSummary_Size(ctx, field)
+			case "Digest":
+				return ec.fieldContext_LayerSummary_Digest(ctx, field)
+			case "Score":
+				return ec.fieldContext_LayerSummary_Score(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type LayerSummary", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _LayerHistory_HistoryDescription(ctx context.Context, field graphql.CollectedField, obj *LayerHistory) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_LayerHistory_HistoryDescription(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.HistoryDescription, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*HistoryDescription)
+	fc.Result = res
+	return ec.marshalOHistoryDescription2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐHistoryDescription(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_LayerHistory_HistoryDescription(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "LayerHistory",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "Created":
+				return ec.fieldContext_HistoryDescription_Created(ctx, field)
+			case "CreatedBy":
+				return ec.fieldContext_HistoryDescription_CreatedBy(ctx, field)
+			case "Author":
+				return ec.fieldContext_HistoryDescription_Author(ctx, field)
+			case "Comment":
+				return ec.fieldContext_HistoryDescription_Comment(ctx, field)
+			case "EmptyLayer":
+				return ec.fieldContext_HistoryDescription_EmptyLayer(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type HistoryDescription", field.Name)
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _LayerSummary_Size(ctx context.Context, field graphql.CollectedField, obj *LayerSummary) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_LayerSummary_Size(ctx, field)
 	if err != nil {
@@ -2615,6 +3067,8 @@ func (ec *executionContext) fieldContext_Query_ImageListForCVE(ctx context.Conte
 				return ec.fieldContext_ImageSummary_Source(ctx, field)
 			case "Documentation":
 				return ec.fieldContext_ImageSummary_Documentation(ctx, field)
+			case "History":
+				return ec.fieldContext_ImageSummary_History(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -2705,6 +3159,8 @@ func (ec *executionContext) fieldContext_Query_ImageListWithCVEFixed(ctx context
 				return ec.fieldContext_ImageSummary_Source(ctx, field)
 			case "Documentation":
 				return ec.fieldContext_ImageSummary_Documentation(ctx, field)
+			case "History":
+				return ec.fieldContext_ImageSummary_History(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -2795,6 +3251,8 @@ func (ec *executionContext) fieldContext_Query_ImageListForDigest(ctx context.Co
 				return ec.fieldContext_ImageSummary_Source(ctx, field)
 			case "Documentation":
 				return ec.fieldContext_ImageSummary_Documentation(ctx, field)
+			case "History":
+				return ec.fieldContext_ImageSummary_History(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -2951,6 +3409,8 @@ func (ec *executionContext) fieldContext_Query_ImageList(ctx context.Context, fi
 				return ec.fieldContext_ImageSummary_Source(ctx, field)
 			case "Documentation":
 				return ec.fieldContext_ImageSummary_Documentation(ctx, field)
+			case "History":
+				return ec.fieldContext_ImageSummary_History(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -3294,6 +3754,8 @@ func (ec *executionContext) fieldContext_RepoInfo_Images(ctx context.Context, fi
 				return ec.fieldContext_ImageSummary_Source(ctx, field)
 			case "Documentation":
 				return ec.fieldContext_ImageSummary_Documentation(ctx, field)
+			case "History":
+				return ec.fieldContext_ImageSummary_History(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -3688,6 +4150,8 @@ func (ec *executionContext) fieldContext_RepoSummary_NewestImage(ctx context.Con
 				return ec.fieldContext_ImageSummary_Source(ctx, field)
 			case "Documentation":
 				return ec.fieldContext_ImageSummary_Documentation(ctx, field)
+			case "History":
+				return ec.fieldContext_ImageSummary_History(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -5702,6 +6166,47 @@ func (ec *executionContext) _GlobalSearchResult(ctx context.Context, sel ast.Sel
 	return out
 }
 
+var historyDescriptionImplementors = []string{"HistoryDescription"}
+
+func (ec *executionContext) _HistoryDescription(ctx context.Context, sel ast.SelectionSet, obj *HistoryDescription) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, historyDescriptionImplementors)
+	out := graphql.NewFieldSet(fields)
+	var invalids uint32
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("HistoryDescription")
+		case "Created":
+
+			out.Values[i] = ec._HistoryDescription_Created(ctx, field, obj)
+
+		case "CreatedBy":
+
+			out.Values[i] = ec._HistoryDescription_CreatedBy(ctx, field, obj)
+
+		case "Author":
+
+			out.Values[i] = ec._HistoryDescription_Author(ctx, field, obj)
+
+		case "Comment":
+
+			out.Values[i] = ec._HistoryDescription_Comment(ctx, field, obj)
+
+		case "EmptyLayer":
+
+			out.Values[i] = ec._HistoryDescription_EmptyLayer(ctx, field, obj)
+
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch()
+	if invalids > 0 {
+		return graphql.Null
+	}
+	return out
+}
+
 var imageSummaryImplementors = []string{"ImageSummary"}
 
 func (ec *executionContext) _ImageSummary(ctx context.Context, sel ast.SelectionSet, obj *ImageSummary) graphql.Marshaler {
@@ -5783,6 +6288,39 @@ func (ec *executionContext) _ImageSummary(ctx context.Context, sel ast.Selection
 		case "Documentation":
 
 			out.Values[i] = ec._ImageSummary_Documentation(ctx, field, obj)
+
+		case "History":
+
+			out.Values[i] = ec._ImageSummary_History(ctx, field, obj)
+
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch()
+	if invalids > 0 {
+		return graphql.Null
+	}
+	return out
+}
+
+var layerHistoryImplementors = []string{"LayerHistory"}
+
+func (ec *executionContext) _LayerHistory(ctx context.Context, sel ast.SelectionSet, obj *LayerHistory) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, layerHistoryImplementors)
+	out := graphql.NewFieldSet(fields)
+	var invalids uint32
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("LayerHistory")
+		case "Layer":
+
+			out.Values[i] = ec._LayerHistory_Layer(ctx, field, obj)
+
+		case "HistoryDescription":
+
+			out.Values[i] = ec._LayerHistory_HistoryDescription(ctx, field, obj)
 
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
@@ -6975,6 +7513,13 @@ func (ec *executionContext) marshalOCVE2ᚖzotregistryᚗioᚋzotᚋpkgᚋextens
 	return ec._CVE(ctx, sel, v)
 }
 
+func (ec *executionContext) marshalOHistoryDescription2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐHistoryDescription(ctx context.Context, sel ast.SelectionSet, v *HistoryDescription) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._HistoryDescription(ctx, sel, v)
+}
+
 func (ec *executionContext) marshalOImageSummary2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummary(ctx context.Context, sel ast.SelectionSet, v []*ImageSummary) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
@@ -7084,6 +7629,54 @@ func (ec *executionContext) marshalOInt2ᚖint(ctx context.Context, sel ast.Sele
 	}
 	res := graphql.MarshalInt(*v)
 	return res
+}
+
+func (ec *executionContext) marshalOLayerHistory2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐLayerHistory(ctx context.Context, sel ast.SelectionSet, v []*LayerHistory) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalOLayerHistory2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐLayerHistory(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	return ret
+}
+
+func (ec *executionContext) marshalOLayerHistory2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐLayerHistory(ctx context.Context, sel ast.SelectionSet, v *LayerHistory) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._LayerHistory(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalOLayerSummary2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐLayerSummary(ctx context.Context, sel ast.SelectionSet, v []*LayerSummary) graphql.Marshaler {
