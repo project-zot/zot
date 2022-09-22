@@ -303,7 +303,7 @@ func TestBaseImageList(t *testing.T) {
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIZE")
-			So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 15B")
+			So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 492B")
 		})
 
 		Convey("Test base images fail", func() {
