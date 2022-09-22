@@ -60,7 +60,6 @@ func (r *queryResolver) CVEListForImage(ctx context.Context, image string) (*gql
 // ImageListForCve is the resolver for the ImageListForCVE field.
 func (r *queryResolver) ImageListForCve(ctx context.Context, id string) ([]*gql_generated.ImageSummary, error) {
 	olu := common.NewBaseOciLayoutUtils(r.storeController, r.log)
-
 	affectedImages := []*gql_generated.ImageSummary{}
 
 	r.log.Info().Msg("extracting repositories")
@@ -90,7 +89,8 @@ func (r *queryResolver) ImageListForCve(ctx context.Context, id string) ([]*gql_
 				return affectedImages, err
 			}
 
-			imageInfo := BuildImageInfo(repo, imageByCVE.Tag, imageByCVE.Digest, imageByCVE.Manifest, imageConfig)
+			isSigned := olu.CheckManifestSignature(repo, imageByCVE.Digest)
+			imageInfo := BuildImageInfo(repo, imageByCVE.Tag, imageByCVE.Digest, imageByCVE.Manifest, imageConfig, isSigned)
 
 			affectedImages = append(
 				affectedImages,
@@ -129,7 +129,8 @@ func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, im
 			return []*gql_generated.ImageSummary{}, err
 		}
 
-		imageInfo := BuildImageInfo(image, tag.Name, digest, manifest, imageConfig)
+		isSigned := olu.CheckManifestSignature(image, digest)
+		imageInfo := BuildImageInfo(image, tag.Name, digest, manifest, imageConfig, isSigned)
 
 		unaffectedImages = append(unaffectedImages, imageInfo)
 	}
@@ -413,7 +414,7 @@ func (r *queryResolver) DerivedImageList(ctx context.Context, image string) ([]*
 
 	imageDir, imageTag := common.GetImageDirAndTag(image)
 
-	imageManifest, err := layoutUtils.GetImageManifest(imageDir, imageTag)
+	imageManifest, _, err := layoutUtils.GetImageManifest(imageDir, imageTag)
 	if err != nil {
 		r.log.Info().Str("image", image).Msg("image not found")
 
@@ -481,7 +482,7 @@ func (r *queryResolver) BaseImageList(ctx context.Context, image string) ([]*gql
 
 	imageDir, imageTag := common.GetImageDirAndTag(image)
 
-	imageManifest, err := layoutUtils.GetImageManifest(imageDir, imageTag)
+	imageManifest, _, err := layoutUtils.GetImageManifest(imageDir, imageTag)
 	if err != nil {
 		r.log.Info().Str("image", image).Msg("image not found")
 
@@ -537,6 +538,24 @@ func (r *queryResolver) BaseImageList(ctx context.Context, image string) ([]*gql
 	}
 
 	return imageList, nil
+}
+
+// Image is the resolver for the Image field.
+func (r *queryResolver) Image(ctx context.Context, image string) (*gql_generated.ImageSummary, error) {
+	repo, tag := common.GetImageDirAndTag(image)
+	layoutUtils := common.NewBaseOciLayoutUtils(r.storeController, r.log)
+
+	digest, manifest, imageConfig, err := extractImageDetails(ctx, layoutUtils, repo, tag, r.log)
+	if err != nil {
+		r.log.Error().Err(err).Msg("unable to get image details")
+
+		return nil, err
+	}
+
+	isSigned := layoutUtils.CheckManifestSignature(repo, digest)
+	result := BuildImageInfo(repo, tag, digest, *manifest, *imageConfig, isSigned)
+
+	return result, nil
 }
 
 // Query returns gql_generated.QueryResolver implementation.

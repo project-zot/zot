@@ -10,6 +10,7 @@ import (
 )
 
 type OciLayoutUtilsMock struct {
+	GetImageManifestFn          func(repo string, reference string) (ispec.Manifest, string, error)
 	GetImageManifestsFn         func(image string) ([]ispec.Descriptor, error)
 	GetImageBlobManifestFn      func(imageDir string, digest godigest.Digest) (v1.Manifest, error)
 	GetImageInfoFn              func(imageDir string, hash v1.Hash) (ispec.Image, error)
@@ -24,6 +25,14 @@ type OciLayoutUtilsMock struct {
 	GetImageConfigInfoFn        func(repo string, manifestDigest godigest.Digest) (ispec.Image, error)
 	CheckManifestSignatureFn    func(name string, digest godigest.Digest) bool
 	GetRepositoriesFn           func() ([]string, error)
+}
+
+func (olum OciLayoutUtilsMock) GetImageManifest(repo string, reference string) (ispec.Manifest, string, error) {
+	if olum.GetImageManifestFn != nil {
+		return olum.GetImageManifestFn(repo, reference)
+	}
+
+	return ispec.Manifest{}, "", nil
 }
 
 func (olum OciLayoutUtilsMock) GetRepositories() ([]string, error) {

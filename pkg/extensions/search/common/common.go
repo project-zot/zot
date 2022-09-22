@@ -61,6 +61,20 @@ func GetRepo(image string) string {
 	return image
 }
 
+func GetImageDirAndTag(imageName string) (string, string) {
+	var imageDir string
+
+	var imageTag string
+
+	if strings.Contains(imageName, ":") {
+		imageDir, imageTag, _ = strings.Cut(imageName, ":")
+	} else {
+		imageDir = imageName
+	}
+
+	return imageDir, imageTag
+}
+
 func GetFixedTags(allTags, vulnerableTags []TagInfo) []TagInfo {
 	sort.Slice(allTags, func(i, j int) bool {
 		return allTags[i].Timestamp.Before(allTags[j].Timestamp)

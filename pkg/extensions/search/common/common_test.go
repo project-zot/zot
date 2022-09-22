@@ -66,7 +66,7 @@ type ImageListResponse struct {
 }
 
 type ImageList struct {
-	SummaryList []ImageSummary `json:"imageList"`
+	SummaryList []common.ImageSummary `json:"imageList"`
 }
 
 type ExpandedRepoInfoResp struct {
@@ -83,62 +83,9 @@ type GlobalSearchResult struct {
 	GlobalSearch GlobalSearch `json:"globalSearch"`
 }
 type GlobalSearch struct {
-	Images []ImageSummary `json:"images"`
-	Repos  []RepoSummary  `json:"repos"`
-	Layers []LayerSummary `json:"layers"`
-}
-
-type ImageSummary struct {
-	RepoName        string                    `json:"repoName"`
-	Tag             string                    `json:"tag"`
-	LastUpdated     time.Time                 `json:"lastUpdated"`
-	Size            string                    `json:"size"`
-	Platform        OsArch                    `json:"platform"`
-	Vendor          string                    `json:"vendor"`
-	Score           int                       `json:"score"`
-	IsSigned        bool                      `json:"isSigned"`
-	History         []LayerHistory            `json:"history"`
-	Layers          []LayerSummary            `json:"layers"`
-	Vulnerabilities ImageVulnerabilitySummary `json:"vulnerabilities"`
-}
-
-type LayerHistory struct {
-	Layer              LayerSummary       `json:"layer"`
-	HistoryDescription HistoryDescription `json:"historyDescription"`
-}
-
-type HistoryDescription struct {
-	Created    time.Time `json:"created"`
-	CreatedBy  string    `json:"createdBy"`
-	Author     string    `json:"author"`
-	Comment    string    `json:"comment"`
-	EmptyLayer bool      `json:"emptyLayer"`
-}
-
-type ImageVulnerabilitySummary struct {
-	MaxSeverity string `json:"maxSeverity"`
-	Count       int    `json:"count"`
-}
-
-type RepoSummary struct {
-	Name        string       `json:"name"`
-	LastUpdated time.Time    `json:"lastUpdated"`
-	Size        string       `json:"size"`
-	Platforms   []OsArch     `json:"platforms"`
-	Vendors     []string     `json:"vendors"`
-	Score       int          `json:"score"`
-	NewestImage ImageSummary `json:"newestImage"`
-}
-
-type LayerSummary struct {
-	Size   string `json:"size"`
-	Digest string `json:"digest"`
-	Score  int    `json:"score"`
-}
-
-type OsArch struct {
-	Os   string `json:"os"`
-	Arch string `json:"arch"`
+	Images []common.ImageSummary `json:"images"`
+	Repos  []common.RepoSummary  `json:"repos"`
+	Layers []common.LayerSummary `json:"layers"`
 }
 
 type ExpandedRepoInfo struct {
@@ -147,7 +94,7 @@ type ExpandedRepoInfo struct {
 
 //nolint:tagliatelle // graphQL schema
 type RepoListWithNewestImage struct {
-	Repos []RepoSummary `json:"RepoListWithNewestImage"`
+	Repos []common.RepoSummary `json:"RepoListWithNewestImage"`
 }
 
 type ErrorGQL struct {
@@ -155,15 +102,12 @@ type ErrorGQL struct {
 	Path    []string `json:"path"`
 }
 
-type ImageInfo struct {
-	RepoName    string
-	Tag         string
-	LastUpdated time.Time
-	Description string
-	Licenses    string
-	Vendor      string
-	Size        string
-	Labels      string
+type SingleImageSummary struct {
+	ImageSummary common.ImageSummary `json:"Image"` //nolint:tagliatelle
+}
+type ImageSummaryResult struct {
+	SingleImageSummary SingleImageSummary `json:"data"`
+	Errors             []ErrorGQL         `json:"errors"`
 }
 
 func testSetup(t *testing.T, subpath string) error {
@@ -1202,7 +1146,7 @@ func TestDerivedImageList(t *testing.T) {
 			},
 		}
 
-		repoName := "test-repo"
+		repoName := "test-repo" //nolint:goconst
 
 		err = UploadImage(
 			Image{
@@ -1245,7 +1189,7 @@ func TestDerivedImageList(t *testing.T) {
 			},
 		}
 
-		repoName = "same-layers"
+		repoName = "same-layers" //nolint:goconst
 
 		err = UploadImage(
 			Image{
@@ -1378,7 +1322,7 @@ func TestDerivedImageList(t *testing.T) {
 
 		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
 		So(resp, ShouldNotBeNil)
-		So(strings.Contains(string(resp.Body()), "same-layers"), ShouldBeTrue)
+		So(strings.Contains(string(resp.Body()), "same-layers"), ShouldBeTrue) //nolint:goconst
 		So(strings.Contains(string(resp.Body()), "missing-layers"), ShouldBeFalse)
 		So(strings.Contains(string(resp.Body()), "more-layers"), ShouldBeTrue)
 		So(err, ShouldBeNil)
@@ -1497,7 +1441,7 @@ func TestGetImageManifest(t *testing.T) {
 		}
 		olu := common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
-		_, err := olu.GetImageManifest("nonexistent-repo", "latest")
+		_, _, err := olu.GetImageManifest("nonexistent-repo", "latest")
 		So(err, ShouldNotBeNil)
 	})
 
@@ -1513,7 +1457,7 @@ func TestGetImageManifest(t *testing.T) {
 		}
 		olu := common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
-		_, err := olu.GetImageManifest("test-repo", "latest")
+		_, _, err := olu.GetImageManifest("test-repo", "latest") //nolint:goconst
 		So(err, ShouldNotBeNil)
 	})
 }
@@ -1623,7 +1567,7 @@ func TestBaseImageList(t *testing.T) {
 			},
 		}
 
-		repoName := "test-repo"
+		repoName := "test-repo" //nolint:goconst
 
 		err = UploadImage(
 			Image{
@@ -1671,7 +1615,7 @@ func TestBaseImageList(t *testing.T) {
 			},
 		}
 
-		repoName = "same-layers"
+		repoName = "same-layers" //nolint:goconst
 
 		err = UploadImage(
 			Image{
@@ -1890,12 +1834,12 @@ func TestBaseImageList(t *testing.T) {
 
 		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
 		So(resp, ShouldNotBeNil)
-		So(strings.Contains(string(resp.Body()), "same-layers"), ShouldBeTrue)
+		So(strings.Contains(string(resp.Body()), "same-layers"), ShouldBeTrue) //nolint:goconst
 		So(strings.Contains(string(resp.Body()), "less-layers"), ShouldBeTrue)
 		So(strings.Contains(string(resp.Body()), "less-layers-false"), ShouldBeFalse)
 		So(strings.Contains(string(resp.Body()), "more-layers"), ShouldBeFalse)
 		So(strings.Contains(string(resp.Body()), "diff-layers"), ShouldBeFalse)
-		So(strings.Contains(string(resp.Body()), "test-repo"), ShouldBeTrue) // should not list given image
+		So(strings.Contains(string(resp.Body()), "test-repo"), ShouldBeTrue) //nolint:goconst // should not list given image
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 	})
@@ -2172,7 +2116,7 @@ func TestGlobalSearch(t *testing.T) {
 		t.Logf("returned layers: %v", responseStruct.GlobalSearchResult.GlobalSearch.Layers)
 		So(len(responseStruct.GlobalSearchResult.GlobalSearch.Layers), ShouldNotBeEmpty)
 
-		newestImageMap := make(map[string]ImageSummary)
+		newestImageMap := make(map[string]common.ImageSummary)
 		for _, image := range responseStruct.GlobalSearchResult.GlobalSearch.Images {
 			// Make sure all returned results are supposed to be in the repo
 			So(allExpectedTagMap[image.RepoName], ShouldContain, image.Tag)
@@ -2395,7 +2339,7 @@ func TestGlobalSearch(t *testing.T) {
 		t.Logf("returned layers: %v", responseStruct.GlobalSearchResult.GlobalSearch.Layers)
 		So(len(responseStruct.GlobalSearchResult.GlobalSearch.Layers), ShouldNotBeEmpty)
 
-		newestImageMap := make(map[string]ImageSummary)
+		newestImageMap := make(map[string]common.ImageSummary)
 		for _, image := range responseStruct.GlobalSearchResult.GlobalSearch.Images {
 			// Make sure all returned results are supposed to be in the repo
 			So(allExpectedTagMap[image.RepoName], ShouldContain, image.Tag)
@@ -2740,7 +2684,10 @@ func TestBuildImageInfo(t *testing.T) {
 		imageConfig, err := olu.GetImageConfigInfo(invalid, manifestDigest)
 		So(err, ShouldBeNil)
 
-		imageSummary := search.BuildImageInfo(invalid, invalid, manifestDigest, manifest, imageConfig)
+		isSigned := false
+
+		imageSummary := search.BuildImageInfo(invalid, invalid, manifestDigest, manifest,
+			imageConfig, isSigned)
 
 		So(len(imageSummary.Layers), ShouldEqual, len(manifest.Layers))
 		imageSummaryLayerSize, err := strconv.Atoi(*imageSummary.Size)
@@ -2883,7 +2830,7 @@ func TestSearchSize(t *testing.T) {
 			{
 				GlobalSearch(query:"test"){
 					Images { RepoName Tag LastUpdated Size Score }
-					Repos { 
+					Repos {
 						Name LastUpdated Size Vendors Score
       					Platforms {
       					  Os
@@ -2940,6 +2887,140 @@ func TestSearchSize(t *testing.T) {
 		size, err = strconv.Atoi(repo.Size)
 		So(err, ShouldBeNil)
 		So(size, ShouldAlmostEqual, configSize+layersSize+manifestSize)
+	})
+}
+
+func TestImageSummary(t *testing.T) {
+	Convey("GraphQL query ImageSummary", t, func() {
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = t.TempDir()
+
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
+		}
+
+		conf.Extensions.Search.CVE = nil
+
+		ctlr := api.NewController(conf)
+
+		gqlQuery := `
+			{
+				Image(image:"%s:%s"){
+					RepoName,
+					Tag,
+					Digest,
+					ConfigDigest,
+					LastUpdated,
+					IsSigned,
+					Size
+					Layers { Digest Size }
+				}
+			}`
+
+		gqlEndpoint := fmt.Sprintf("%s%s?query=", baseURL, graphqlQueryPrefix)
+		config, layers, manifest, err := GetImageComponents(100)
+		So(err, ShouldBeNil)
+
+		configBlob, errConfig := json.Marshal(config)
+		configDigest := digest.FromBytes(configBlob)
+		So(errConfig, ShouldBeNil) // marshall success, config is valid JSON
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		WaitTillServerReady(baseURL)
+
+		manifestBlob, errMarsal := json.Marshal(manifest)
+		So(errMarsal, ShouldBeNil)
+		So(manifestBlob, ShouldNotBeNil)
+		manifestDigest := digest.FromBytes(manifestBlob)
+		repoName := "test-repo" //nolint:goconst
+
+		tagTarget := "latest"
+		err = UploadImage(
+			Image{
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+				Tag:      tagTarget,
+			},
+			baseURL,
+			repoName,
+		)
+		So(err, ShouldBeNil)
+		var (
+			imgSummaryResponse ImageSummaryResult
+			strQuery           string
+			targetURL          string
+			resp               *resty.Response
+		)
+
+		t.Log("starting Test retrieve image based on image identifier")
+		// gql is parametrized with the repo.
+		strQuery = fmt.Sprintf(gqlQuery, repoName, tagTarget)
+		targetURL = fmt.Sprintf("%s%s", gqlEndpoint, url.QueryEscape(strQuery))
+
+		resp, err = resty.R().Get(targetURL)
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.Body(), ShouldNotBeNil)
+
+		err = json.Unmarshal(resp.Body(), &imgSummaryResponse)
+		So(err, ShouldBeNil)
+		So(imgSummaryResponse, ShouldNotBeNil)
+		So(imgSummaryResponse.SingleImageSummary, ShouldNotBeNil)
+		So(imgSummaryResponse.SingleImageSummary.ImageSummary, ShouldNotBeNil)
+
+		imgSummary := imgSummaryResponse.SingleImageSummary.ImageSummary
+		So(imgSummary.RepoName, ShouldContainSubstring, repoName)
+		So(imgSummary.ConfigDigest, ShouldContainSubstring, configDigest.Hex())
+		So(imgSummary.Digest, ShouldContainSubstring, manifestDigest.Hex())
+		So(len(imgSummary.Layers), ShouldEqual, 1)
+		So(imgSummary.Layers[0].Digest, ShouldContainSubstring,
+			digest.FromBytes(layers[0]).Hex())
+
+		t.Log("starting Test retrieve duplicated image same layers based on image identifier")
+		// gqlEndpoint
+		strQuery = fmt.Sprintf(gqlQuery, "wrong-repo-does-not-exist", "latest")
+		targetURL = fmt.Sprintf("%s%s", gqlEndpoint, url.QueryEscape(strQuery))
+
+		resp, err = resty.R().Get(targetURL)
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.Body(), ShouldNotBeNil)
+		err = json.Unmarshal(resp.Body(), &imgSummaryResponse)
+		So(err, ShouldBeNil)
+		So(imgSummaryResponse, ShouldNotBeNil)
+		So(imgSummaryResponse.SingleImageSummary, ShouldNotBeNil)
+		So(imgSummaryResponse.SingleImageSummary.ImageSummary, ShouldNotBeNil)
+
+		So(len(imgSummaryResponse.Errors), ShouldEqual, 1)
+		So(imgSummaryResponse.Errors[0].Message,
+			ShouldContainSubstring, "repository: not found")
+
+		t.Log("starting Test retrieve image with bad tag")
+		// gql is parametrized with the repo.
+		strQuery = fmt.Sprintf(gqlQuery, repoName, "nonexisttag")
+		targetURL = fmt.Sprintf("%s%s", gqlEndpoint, url.QueryEscape(strQuery))
+
+		resp, err = resty.R().Get(targetURL)
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.Body(), ShouldNotBeNil)
+		err = json.Unmarshal(resp.Body(), &imgSummaryResponse)
+		So(err, ShouldBeNil)
+		So(imgSummaryResponse, ShouldNotBeNil)
+		So(imgSummaryResponse.SingleImageSummary, ShouldNotBeNil)
+		So(imgSummaryResponse.SingleImageSummary.ImageSummary, ShouldNotBeNil)
+
+		So(len(imgSummaryResponse.Errors), ShouldEqual, 1)
+		So(imgSummaryResponse.Errors[0].Message,
+			ShouldContainSubstring, "manifest: not found")
 	})
 }
 

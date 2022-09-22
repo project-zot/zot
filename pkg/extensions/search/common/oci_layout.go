@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"path"
 	"strconv"
-	"strings"
 	"time"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -20,6 +19,7 @@ import (
 )
 
 type OciLayoutUtils interface {
+	GetImageManifest(repo string, reference string) (ispec.Manifest, string, error)
 	GetImageManifests(image string) ([]ispec.Descriptor, error)
 	GetImageBlobManifest(imageDir string, digest godigest.Digest) (v1.Manifest, error)
 	GetImageInfo(imageDir string, hash v1.Hash) (ispec.Image, error)
@@ -40,77 +40,31 @@ type BaseOciLayoutUtils struct {
 	StoreController storage.StoreController
 }
 
-type RepoInfo struct {
-	Summary        RepoSummary
-	ImageSummaries []ImageSummary `json:"images"`
-}
-
-type RepoSummary struct {
-	Name        string       `json:"name"`
-	LastUpdated time.Time    `json:"lastUpdated"`
-	Size        string       `json:"size"`
-	Platforms   []OsArch     `json:"platforms"`
-	Vendors     []string     `json:"vendors"`
-	Score       int          `json:"score"`
-	NewestImage ImageSummary `json:"newestImage"`
-}
-
-type ImageSummary struct {
-	RepoName      string    `json:"repoName"`
-	Tag           string    `json:"tag"`
-	Digest        string    `json:"digest"`
-	ConfigDigest  string    `json:"configDigest"`
-	LastUpdated   time.Time `json:"lastUpdated"`
-	IsSigned      bool      `json:"isSigned"`
-	Size          string    `json:"size"`
-	Platform      OsArch    `json:"platform"`
-	Vendor        string    `json:"vendor"`
-	Score         int       `json:"score"`
-	DownloadCount int       `json:"downloadCount"`
-	Description   string    `json:"description"`
-	Licenses      string    `json:"licenses"`
-	Labels        string    `json:"labels"`
-	Title         string    `json:"title"`
-	Source        string    `json:"source"`
-	Documentation string    `json:"documentation"`
-	Layers        []Layer   `json:"layers"`
-}
-
-type OsArch struct {
-	Os   string `json:"os"`
-	Arch string `json:"arch"`
-}
-
-type Layer struct {
-	Size   string `json:"size"`
-	Digest string `json:"digest"`
-}
-
 // NewBaseOciLayoutUtils initializes a new OciLayoutUtils object.
 func NewBaseOciLayoutUtils(storeController storage.StoreController, log log.Logger) *BaseOciLayoutUtils {
 	return &BaseOciLayoutUtils{Log: log, StoreController: storeController}
 }
 
-func (olu BaseOciLayoutUtils) GetImageManifest(repo string, reference string) (ispec.Manifest, error) {
+func (olu BaseOciLayoutUtils) GetImageManifest(repo string, reference string) (ispec.Manifest, string, error) {
 	imageStore := olu.StoreController.GetImageStore(repo)
 
 	if reference == "" {
 		reference = "latest"
 	}
 
-	buf, _, _, err := imageStore.GetImageManifest(repo, reference)
+	buf, dig, _, err := imageStore.GetImageManifest(repo, reference)
 	if err != nil {
-		return ispec.Manifest{}, err
+		return ispec.Manifest{}, "", err
 	}
 
 	var manifest ispec.Manifest
 
 	err = json.Unmarshal(buf, &manifest)
 	if err != nil {
-		return ispec.Manifest{}, err
+		return ispec.Manifest{}, "", err
 	}
 
-	return manifest, nil
+	return manifest, dig, nil
 }
 
 // Provide a list of repositories from all the available image stores.
@@ -435,10 +389,10 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error)
 
 		repoPlatforms = append(repoPlatforms, osArch)
 
-		layers := make([]Layer, 0)
+		layers := make([]LayerSummary, 0)
 
 		for _, layer := range manifest.Layers {
-			layerInfo := Layer{}
+			layerInfo := LayerSummary{}
 
 			layerInfo.Digest = layer.Digest.Hex
 
@@ -512,18 +466,4 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error)
 	repo.Summary = summary
 
 	return repo, nil
-}
-
-func GetImageDirAndTag(imageName string) (string, string) {
-	var imageDir string
-
-	var imageTag string
-
-	if strings.Contains(imageName, ":") {
-		imageDir, imageTag, _ = strings.Cut(imageName, ":")
-	} else {
-		imageDir = imageName
-	}
-
-	return imageDir, imageTag
 }

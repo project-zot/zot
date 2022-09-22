@@ -6,11 +6,11 @@ package search
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/99designs/gqlgen/graphql"
 	glob "github.com/bmatcuk/doublestar/v4"            // nolint:gci
@@ -18,6 +18,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/vektah/gqlparser/v2/gqlerror"
+	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	digestinfo "zotregistry.io/zot/pkg/extensions/search/digest"
@@ -34,11 +35,6 @@ type Resolver struct {
 	digestInfo      *digestinfo.DigestInfo
 	log             log.Logger
 }
-
-var (
-	ErrBadCtxFormat  = errors.New("type assertion failed")
-	ErrBadLayerCount = errors.New("manifest: layers count doesn't correspond to config history")
-)
 
 // GetResolverConfig ...
 func GetResolverConfig(log log.Logger, storeController storage.StoreController, cveInfo cveinfo.CveInfo,
@@ -75,7 +71,9 @@ func (r *queryResolver) getImageListForDigest(repoList []string, digest string) 
 				return []*gql_generated.ImageSummary{}, err
 			}
 
-			imageInfo := BuildImageInfo(repo, imageInfo.Tag, imageInfo.Digest, imageInfo.Manifest, imageConfig)
+			isSigned := olu.CheckManifestSignature(repo, imageInfo.Digest)
+			imageInfo := BuildImageInfo(repo, imageInfo.Tag, imageInfo.Digest,
+				imageInfo.Manifest, imageConfig, isSigned)
 
 			imgResultForDigest = append(imgResultForDigest, imageInfo)
 		}
@@ -544,7 +542,9 @@ func (r *queryResolver) getImageList(store storage.ImageStore, imageName string)
 					return results, err
 				}
 
-				imageInfo := BuildImageInfo(repo, tag.Name, digest, manifest, imageConfig)
+				isSigned := layoutUtils.CheckManifestSignature(repo, digest)
+				imageInfo := BuildImageInfo(repo, tag.Name, digest, manifest,
+					imageConfig, isSigned)
 
 				results = append(results, imageInfo)
 			}
@@ -559,16 +559,21 @@ func (r *queryResolver) getImageList(store storage.ImageStore, imageName string)
 }
 
 func BuildImageInfo(repo string, tag string, manifestDigest godigest.Digest,
-	manifest v1.Manifest, imageConfig ispec.Image,
+	manifest v1.Manifest, imageConfig ispec.Image, isSigned bool,
 ) *gql_generated.ImageSummary {
 	layers := []*gql_generated.LayerSummary{}
 	size := int64(0)
-
 	log := log.NewLogger("debug", "")
-
 	allHistory := []*gql_generated.LayerHistory{}
-
 	formattedManifestDigest := manifestDigest.Hex()
+	annotations := common.GetAnnotations(manifest.Annotations, imageConfig.Config.Labels)
+
+	lastUpdated := imageConfig.Created
+
+	if (lastUpdated == nil || *lastUpdated == (time.Time{})) &&
+		len(imageConfig.History) > 0 {
+		lastUpdated = imageConfig.History[len(imageConfig.History)-1].Created
+	}
 
 	history := imageConfig.History
 	if len(history) == 0 {
@@ -596,13 +601,26 @@ func BuildImageInfo(repo string, tag string, manifestDigest godigest.Digest,
 		formattedSize := strconv.FormatInt(size, 10)
 
 		imageInfo := &gql_generated.ImageSummary{
-			RepoName:     &repo,
-			Tag:          &tag,
-			Digest:       &formattedManifestDigest,
-			ConfigDigest: &manifest.Config.Digest.Hex,
-			Size:         &formattedSize,
-			Layers:       layers,
-			History:      []*gql_generated.LayerHistory{},
+			RepoName:      &repo,
+			Tag:           &tag,
+			Digest:        &formattedManifestDigest,
+			ConfigDigest:  &manifest.Config.Digest.Hex,
+			Size:          &formattedSize,
+			Layers:        layers,
+			History:       allHistory,
+			Vendor:        &annotations.Vendor,
+			Description:   &annotations.Description,
+			Title:         &annotations.Title,
+			Documentation: &annotations.Documentation,
+			Licenses:      &annotations.Licenses,
+			Labels:        &annotations.Labels,
+			Source:        &annotations.Source,
+			LastUpdated:   lastUpdated,
+			IsSigned:      &isSigned,
+			Platform: &gql_generated.OsArch{
+				Os:   &imageConfig.OS,
+				Arch: &imageConfig.Architecture,
+			},
 		}
 
 		return imageInfo
@@ -629,16 +647,29 @@ func BuildImageInfo(repo string, tag string, manifestDigest godigest.Digest,
 		if layersIterator+1 > len(manifest.Layers) {
 			formattedSize := strconv.FormatInt(size, 10)
 
-			log.Error().Err(ErrBadLayerCount).Msg("error on creating layer history for ImageSummary")
+			log.Error().Err(errors.ErrBadLayerCount).Msg("error on creating layer history for ImageSummary")
 
 			return &gql_generated.ImageSummary{
-				RepoName:     &repo,
-				Tag:          &tag,
-				Digest:       &formattedManifestDigest,
-				ConfigDigest: &manifest.Config.Digest.Hex,
-				Size:         &formattedSize,
-				Layers:       layers,
-				History:      allHistory,
+				RepoName:      &repo,
+				Tag:           &tag,
+				Digest:        &formattedManifestDigest,
+				ConfigDigest:  &manifest.Config.Digest.Hex,
+				Size:          &formattedSize,
+				Layers:        layers,
+				History:       allHistory,
+				Vendor:        &annotations.Vendor,
+				Description:   &annotations.Description,
+				Title:         &annotations.Title,
+				Documentation: &annotations.Documentation,
+				Licenses:      &annotations.Licenses,
+				Labels:        &annotations.Labels,
+				Source:        &annotations.Source,
+				LastUpdated:   lastUpdated,
+				IsSigned:      &isSigned,
+				Platform: &gql_generated.OsArch{
+					Os:   &imageConfig.OS,
+					Arch: &imageConfig.Architecture,
+				},
 			}
 		}
 
@@ -664,13 +695,26 @@ func BuildImageInfo(repo string, tag string, manifestDigest godigest.Digest,
 	formattedSize := strconv.FormatInt(size, 10)
 
 	imageInfo := &gql_generated.ImageSummary{
-		RepoName:     &repo,
-		Tag:          &tag,
-		Digest:       &formattedManifestDigest,
-		ConfigDigest: &manifest.Config.Digest.Hex,
-		Size:         &formattedSize,
-		Layers:       layers,
-		History:      allHistory,
+		RepoName:      &repo,
+		Tag:           &tag,
+		Digest:        &formattedManifestDigest,
+		ConfigDigest:  &manifest.Config.Digest.Hex,
+		Size:          &formattedSize,
+		Layers:        layers,
+		History:       allHistory,
+		Vendor:        &annotations.Vendor,
+		Description:   &annotations.Description,
+		Title:         &annotations.Title,
+		Documentation: &annotations.Documentation,
+		Licenses:      &annotations.Licenses,
+		Labels:        &annotations.Labels,
+		Source:        &annotations.Source,
+		LastUpdated:   lastUpdated,
+		IsSigned:      &isSigned,
+		Platform: &gql_generated.OsArch{
+			Os:   &imageConfig.OS,
+			Arch: &imageConfig.Architecture,
+		},
 	}
 
 	return imageInfo
@@ -703,7 +747,7 @@ func userAvailableRepos(ctx context.Context, repoList []string) ([]string, error
 	if authCtx := ctx.Value(authzCtxKey); authCtx != nil {
 		acCtx, ok := authCtx.(localCtx.AccessControlContext)
 		if !ok {
-			err := ErrBadCtxFormat
+			err := errors.ErrBadType
 
 			return []string{}, err
 		}
@@ -718,4 +762,50 @@ func userAvailableRepos(ctx context.Context, repoList []string) ([]string, error
 	}
 
 	return availableRepos, nil
+}
+
+func extractImageDetails(
+	ctx context.Context,
+	layoutUtils common.OciLayoutUtils,
+	repo, tag string,
+	log log.Logger) (
+	godigest.Digest, *v1.Manifest, *ispec.Image, error,
+) {
+	validRepoList, err := userAvailableRepos(ctx, []string{repo})
+	if err != nil {
+		log.Error().Err(err).Msg("unable to retrieve access token")
+
+		return "", nil, nil, err
+	}
+
+	if len(validRepoList) == 0 {
+		log.Error().Err(err).Msg("user is not authorized")
+
+		return "", nil, nil, errors.ErrUnauthorizedAccess
+	}
+
+	_, dig, err := layoutUtils.GetImageManifest(repo, tag)
+	if err != nil {
+		log.Error().Err(err).Msg("Could not retrieve image ispec manifest")
+
+		return "", nil, nil, err
+	}
+
+	digest := godigest.Digest(dig)
+
+	manifest, err := layoutUtils.GetImageBlobManifest(repo, digest)
+	if err != nil {
+		log.Error().Err(err).Msg("Could not retrieve image godigest manifest")
+
+		return "", nil, nil, err
+	}
+
+	imageConfig, err := layoutUtils.GetImageConfigInfo(repo, digest)
+	if err != nil {
+		log.Error().Err(err).Msg("Could not retrieve image config")
+
+		return "", nil, nil, err
+	}
+
+	return digest, &manifest, &imageConfig, nil
 }

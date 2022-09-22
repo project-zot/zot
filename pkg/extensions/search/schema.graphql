@@ -1,12 +1,12 @@
 scalar Time
 
 type CVEResultForImage {
-    Tag: String 
+    Tag: String
     CVEList: [CVE]
 }
 
 type CVE {
-    Id: String 
+    Id: String
     Title: String
     Description: String
     Severity: String
@@ -14,9 +14,9 @@ type CVE {
 }
 
 type PackageInfo {
-    Name: String 
-    InstalledVersion: String 
-    FixedVersion: String 
+    Name: String
+    InstalledVersion: String
+    FixedVersion: String
 }
 
 type RepoInfo {
@@ -86,19 +86,19 @@ type LayerSummary {
 
 type HistoryDescription {
     Created: Time
-    """ 
+    """
     CreatedBy is the command which created the layer.
     """
-    CreatedBy: String 
+    CreatedBy: String
     """
     Author is the author of the build point.
     """
-    Author: String 
+    Author: String
     """
     Comment is a custom message set when creating the layer.
     """
     Comment: String
-    """ 
+    """
     EmptyLayer is used to mark if the history item created a filesystem diff.
     """
     EmptyLayer: Boolean
@@ -125,4 +125,5 @@ type Query {
     GlobalSearch(query: String!): GlobalSearchResult!
     DerivedImageList(image: String!): [ImageSummary!]
     BaseImageList(image: String!): [ImageSummary!]
+    Image(image: String!): ImageSummary
 }
