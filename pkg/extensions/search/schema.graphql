@@ -117,4 +117,5 @@ type Query {
     ImageList(repo: String!): [ImageSummary!]
     ExpandedRepoInfo(repo: String!): RepoInfo!
     GlobalSearch(query: String!): GlobalSearchResult!
+    BaseImageList(image: String!): [ImageSummary!]
 }

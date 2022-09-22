@@ -146,7 +146,7 @@ func TestGlobalSearch(t *testing.T) {
 			mockOlum := mocks.OciLayoutUtilsMock{
 				GetExpandedRepoInfoFn: func(name string) (common.RepoInfo, error) {
 					return common.RepoInfo{
-						Images: []common.Image{
+						ImageSummaries: []common.ImageSummary{
 							{
 								Tag: "latest",
 								Layers: []common.Layer{

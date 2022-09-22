@@ -435,12 +435,13 @@ func (r *queryResolver) ExpandedRepoInfo(ctx context.Context, repo string) (*gql
 	score := -1 // score not relevant for this query
 	summary.Score = &score
 
-	for _, image := range origRepoInfo.Images {
+	for _, image := range origRepoInfo.ImageSummaries {
 		tag := image.Tag
 		digest := image.Digest
 		isSigned := image.IsSigned
+		size := image.Size
 
-		imageSummary := &gql_generated.ImageSummary{Tag: &tag, Digest: &digest, IsSigned: &isSigned}
+		imageSummary := &gql_generated.ImageSummary{Tag: &tag, Digest: &digest, IsSigned: &isSigned, RepoName: &repo}
 
 		layers := make([]*gql_generated.LayerSummary, 0)
 
@@ -454,7 +455,7 @@ func (r *queryResolver) ExpandedRepoInfo(ctx context.Context, repo string) (*gql
 		}
 
 		imageSummary.Layers = layers
-
+		imageSummary.Size = &size
 		images = append(images, imageSummary)
 	}
 
@@ -498,6 +499,84 @@ func (r *queryResolver) GlobalSearch(ctx context.Context, query string) (*gql_ge
 		Repos:  repos,
 		Layers: layers,
 	}, nil
+}
+
+// BaseImageList is the resolver for the BaseImageList field.
+func (r *queryResolver) BaseImageList(ctx context.Context, image string) ([]*gql_generated.ImageSummary, error) {
+	layoutUtils := common.NewBaseOciLayoutUtils(r.storeController, r.log)
+	imageList := make([]*gql_generated.ImageSummary, 0)
+
+	repoList, err := layoutUtils.GetRepositories()
+	if err != nil {
+		r.log.Error().Err(err).Msg("unable to get repositories list")
+
+		return nil, err
+	}
+
+	if len(repoList) == 0 {
+		r.log.Info().Msg("no repositories found")
+
+		return imageList, nil
+	}
+
+	imageDir, imageTag := common.GetImageDirAndTag(image)
+
+	imageManifest, err := layoutUtils.GetImageManifest(imageDir, imageTag)
+	if err != nil {
+		r.log.Info().Str("image", image).Msg("image not found")
+
+		return imageList, err
+	}
+
+	imageLayers := imageManifest.Layers
+
+	// This logic may not scale well in the future as we need to read all the
+	// manifest files from the disk when the call is made, we should improve in a future PR
+	for _, repo := range repoList {
+		repoInfo, err := r.ExpandedRepoInfo(ctx, repo)
+		if err != nil {
+			r.log.Error().Err(err).Msg("unable to get image list")
+
+			return nil, err
+		}
+
+		imageSummaries := repoInfo.Images
+
+		var addImageToList bool
+		// verify every image
+		for _, imageSummary := range imageSummaries {
+			if imageTag == *imageSummary.Tag && imageDir == repo {
+				continue
+			}
+
+			addImageToList = true
+			layers := imageSummary.Layers
+
+			for _, l := range layers {
+				foundLayer := false
+
+				for _, k := range imageLayers {
+					if *l.Digest == k.Digest.Encoded() {
+						foundLayer = true
+
+						break
+					}
+				}
+
+				if !foundLayer {
+					addImageToList = false
+
+					break
+				}
+			}
+
+			if addImageToList {
+				imageList = append(imageList, imageSummary)
+			}
+		}
+	}
+
+	return imageList, nil
 }
 
 // Query returns gql_generated.QueryResolver implementation.

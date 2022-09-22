@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -708,7 +709,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(responseStruct.ExpandedRepoInfo.RepoInfo.Summary, ShouldNotBeEmpty)
 		So(responseStruct.ExpandedRepoInfo.RepoInfo.Summary.Name, ShouldEqual, "test1")
-		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Images), ShouldEqual, 2)
+		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries), ShouldEqual, 2)
 	})
 
 	Convey("Test expanded repo info", t, func() {
@@ -791,10 +792,10 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
-		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Images), ShouldNotEqual, 0)
-		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Images[0].Layers), ShouldNotEqual, 0)
+		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries), ShouldNotEqual, 0)
+		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries[0].Layers), ShouldNotEqual, 0)
 		found := false
-		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.Images {
+		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries {
 			if m.Digest == "63a795ca90aa6e7cca60941e826810a4cd0a2e73ea02bf458241df2a5c973e29" {
 				found = true
 				So(m.IsSigned, ShouldEqual, false)
@@ -812,10 +813,10 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
-		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Images), ShouldNotEqual, 0)
-		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Images[0].Layers), ShouldNotEqual, 0)
+		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries), ShouldNotEqual, 0)
+		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries[0].Layers), ShouldNotEqual, 0)
 		found = false
-		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.Images {
+		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries {
 			if m.Digest == "63a795ca90aa6e7cca60941e826810a4cd0a2e73ea02bf458241df2a5c973e29" {
 				found = true
 				So(m.IsSigned, ShouldEqual, true)
@@ -838,10 +839,10 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
-		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Images), ShouldNotEqual, 0)
-		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Images[0].Layers), ShouldNotEqual, 0)
+		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries), ShouldNotEqual, 0)
+		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries[0].Layers), ShouldNotEqual, 0)
 		found = false
-		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.Images {
+		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries {
 			if m.Digest == "2bacca16b9df395fc855c14ccf50b12b58d35d468b8e7f25758aff90f89bf396" {
 				found = true
 				So(m.IsSigned, ShouldEqual, false)
@@ -859,10 +860,10 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
-		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Images), ShouldNotEqual, 0)
-		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Images[0].Layers), ShouldNotEqual, 0)
+		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries), ShouldNotEqual, 0)
+		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries[0].Layers), ShouldNotEqual, 0)
 		found = false
-		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.Images {
+		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries {
 			if m.Digest == "2bacca16b9df395fc855c14ccf50b12b58d35d468b8e7f25758aff90f89bf396" {
 				found = true
 				So(m.IsSigned, ShouldEqual, true)
@@ -1002,6 +1003,550 @@ func TestUtilsMethod(t *testing.T) {
 		dir = common.GetRootDir("b/zot-cve-test", storeController)
 
 		So(dir, ShouldEqual, subRootDir)
+	})
+}
+
+func TestGetImageManifest(t *testing.T) {
+	Convey("Test nonexistent image", t, func() {
+		mockImageStore := mocks.MockedImageStore{}
+
+		storeController := storage.StoreController{
+			DefaultStore: mockImageStore,
+		}
+		olu := common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+
+		_, err := olu.GetImageManifest("nonexistent-repo", "latest")
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("Test nonexistent image", t, func() {
+		mockImageStore := mocks.MockedImageStore{
+			GetImageManifestFn: func(repo string, reference string) ([]byte, string, string, error) {
+				return []byte{}, "", "", ErrTestError
+			},
+		}
+
+		storeController := storage.StoreController{
+			DefaultStore: mockImageStore,
+		}
+		olu := common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+
+		_, err := olu.GetImageManifest("test-repo", "latest")
+		So(err, ShouldNotBeNil)
+	})
+}
+
+func TestBaseImageList(t *testing.T) {
+	subpath := "/a"
+
+	err := testSetup(t, subpath)
+	if err != nil {
+		panic(err)
+	}
+
+	port := GetFreePort()
+	baseURL := GetBaseURL(port)
+	conf := config.New()
+	conf.HTTP.Port = port
+	conf.Storage.RootDirectory = rootDir
+	conf.Storage.SubPaths = make(map[string]config.StorageConfig)
+	conf.Storage.SubPaths[subpath] = config.StorageConfig{RootDirectory: subRootDir}
+	defaultVal := true
+	conf.Extensions = &extconf.ExtensionConfig{
+		Search: &extconf.SearchConfig{Enable: &defaultVal},
+	}
+
+	conf.Extensions.Search.CVE = nil
+
+	ctlr := api.NewController(conf)
+
+	go func() {
+		// this blocks
+		if err := ctlr.Run(context.Background()); err != nil {
+			return
+		}
+	}()
+
+	// wait till ready
+	for {
+		_, err := resty.R().Get(baseURL)
+		if err == nil {
+			break
+		}
+
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// shut down server
+
+	defer func() {
+		ctx := context.Background()
+		_ = ctlr.Server.Shutdown(ctx)
+	}()
+
+	Convey("Test base image list for image working", t, func() {
+		// create test images
+		config := ispec.Image{
+			Architecture: "amd64",
+			OS:           "linux",
+			RootFS: ispec.RootFS{
+				Type:    "layers",
+				DiffIDs: []digest.Digest{},
+			},
+			Author: "ZotUser",
+		}
+
+		configBlob, err := json.Marshal(config)
+		So(err, ShouldBeNil)
+
+		configDigest := digest.FromBytes(configBlob)
+
+		layers := [][]byte{
+			{10, 11, 10, 11},
+			{11, 11, 11, 11},
+			{10, 10, 10, 11},
+			{10, 10, 10, 10},
+		}
+
+		manifest := ispec.Manifest{
+			Versioned: specs.Versioned{
+				SchemaVersion: 2,
+			},
+			Config: ispec.Descriptor{
+				MediaType: "application/vnd.oci.image.config.v1+json",
+				Digest:    configDigest,
+				Size:      int64(len(configBlob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    digest.FromBytes(layers[0]),
+					Size:      int64(len(layers[0])),
+				},
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    digest.FromBytes(layers[1]),
+					Size:      int64(len(layers[1])),
+				},
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    digest.FromBytes(layers[2]),
+					Size:      int64(len(layers[2])),
+				},
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    digest.FromBytes(layers[3]),
+					Size:      int64(len(layers[3])),
+				},
+			},
+		}
+
+		repoName := "test-repo"
+
+		err = UploadImage(
+			Image{
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+				Tag:      "latest",
+			},
+			baseURL,
+			repoName,
+		)
+		So(err, ShouldBeNil)
+
+		// create image with the same layers
+		manifest = ispec.Manifest{
+			Versioned: specs.Versioned{
+				SchemaVersion: 2,
+			},
+			Config: ispec.Descriptor{
+				MediaType: "application/vnd.oci.image.config.v1+json",
+				Digest:    configDigest,
+				Size:      int64(len(configBlob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    digest.FromBytes(layers[0]),
+					Size:      int64(len(layers[0])),
+				},
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    digest.FromBytes(layers[1]),
+					Size:      int64(len(layers[1])),
+				},
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    digest.FromBytes(layers[2]),
+					Size:      int64(len(layers[2])),
+				},
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    digest.FromBytes(layers[3]),
+					Size:      int64(len(layers[3])),
+				},
+			},
+		}
+
+		repoName = "same-layers"
+
+		err = UploadImage(
+			Image{
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+				Tag:      "latest",
+			},
+			baseURL,
+			repoName,
+		)
+		So(err, ShouldBeNil)
+
+		// create image with less layers than the given image, but which are in the given image
+		layers = [][]byte{
+			{10, 11, 10, 11},
+			{10, 10, 10, 11},
+		}
+
+		manifest = ispec.Manifest{
+			Versioned: specs.Versioned{
+				SchemaVersion: 2,
+			},
+			Config: ispec.Descriptor{
+				MediaType: "application/vnd.oci.image.config.v1+json",
+				Digest:    configDigest,
+				Size:      int64(len(configBlob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    digest.FromBytes(layers[0]),
+					Size:      int64(len(layers[0])),
+				},
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    digest.FromBytes(layers[1]),
+					Size:      int64(len(layers[1])),
+				},
+			},
+		}
+
+		repoName = "less-layers"
+
+		err = UploadImage(
+			Image{
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+				Tag:      "latest",
+			},
+			baseURL,
+			repoName,
+		)
+		So(err, ShouldBeNil)
+
+		// create image with less layers than the given image, but one layer isn't in the given image
+		layers = [][]byte{
+			{10, 11, 10, 11},
+			{11, 10, 10, 11},
+		}
+
+		manifest = ispec.Manifest{
+			Versioned: specs.Versioned{
+				SchemaVersion: 2,
+			},
+			Config: ispec.Descriptor{
+				MediaType: "application/vnd.oci.image.config.v1+json",
+				Digest:    configDigest,
+				Size:      int64(len(configBlob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    digest.FromBytes(layers[0]),
+					Size:      int64(len(layers[0])),
+				},
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    digest.FromBytes(layers[1]),
+					Size:      int64(len(layers[1])),
+				},
+			},
+		}
+
+		repoName = "less-layers-false"
+
+		err = UploadImage(
+			Image{
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+				Tag:      "latest",
+			},
+			baseURL,
+			repoName,
+		)
+		So(err, ShouldBeNil)
+
+		// create image with more layers than the original
+		layers = [][]byte{
+			{10, 11, 10, 11},
+			{11, 11, 11, 11},
+			{10, 10, 10, 10},
+			{10, 10, 10, 11},
+			{11, 11, 10, 10},
+		}
+
+		manifest = ispec.Manifest{
+			Versioned: specs.Versioned{
+				SchemaVersion: 2,
+			},
+			Config: ispec.Descriptor{
+				MediaType: "application/vnd.oci.image.config.v1+json",
+				Digest:    configDigest,
+				Size:      int64(len(configBlob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    digest.FromBytes(layers[0]),
+					Size:      int64(len(layers[0])),
+				},
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    digest.FromBytes(layers[1]),
+					Size:      int64(len(layers[1])),
+				},
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    digest.FromBytes(layers[2]),
+					Size:      int64(len(layers[2])),
+				},
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    digest.FromBytes(layers[3]),
+					Size:      int64(len(layers[3])),
+				},
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    digest.FromBytes(layers[4]),
+					Size:      int64(len(layers[4])),
+				},
+			},
+		}
+
+		repoName = "more-layers"
+
+		err = UploadImage(
+			Image{
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+				Tag:      "latest",
+			},
+			baseURL,
+			repoName,
+		)
+		So(err, ShouldBeNil)
+
+		// create image with no shared layers with the given image
+		layers = [][]byte{
+			{12, 12, 12, 12},
+			{12, 10, 10, 12},
+		}
+
+		manifest = ispec.Manifest{
+			Versioned: specs.Versioned{
+				SchemaVersion: 2,
+			},
+			Config: ispec.Descriptor{
+				MediaType: "application/vnd.oci.image.config.v1+json",
+				Digest:    configDigest,
+				Size:      int64(len(configBlob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    digest.FromBytes(layers[0]),
+					Size:      int64(len(layers[0])),
+				},
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    digest.FromBytes(layers[1]),
+					Size:      int64(len(layers[1])),
+				},
+			},
+		}
+
+		repoName = "diff-layers"
+
+		err = UploadImage(
+			Image{
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+				Tag:      "latest",
+			},
+			baseURL,
+			repoName,
+		)
+		So(err, ShouldBeNil)
+
+		query := `
+						{
+							BaseImageList(image:"test-repo"){
+								RepoName,
+								Tag,
+								Digest,
+								ConfigDigest,
+								LastUpdated,
+								IsSigned,
+								Size
+							}
+						}`
+
+		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(strings.Contains(string(resp.Body()), "same-layers"), ShouldBeTrue)
+		So(strings.Contains(string(resp.Body()), "less-layers"), ShouldBeTrue)
+		So(strings.Contains(string(resp.Body()), "less-layers-false"), ShouldBeFalse)
+		So(strings.Contains(string(resp.Body()), "more-layers"), ShouldBeFalse)
+		So(strings.Contains(string(resp.Body()), "diff-layers"), ShouldBeFalse)
+		So(strings.Contains(string(resp.Body()), "test-repo"), ShouldBeTrue) // should not list given image
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+	})
+
+	Convey("Nonexistent repository", t, func() {
+		query := `
+					{
+						BaseImageList(image:"nonexistent-image"){
+							RepoName,
+							Tag,
+							Digest,
+							ConfigDigest,
+							LastUpdated,
+							IsSigned,
+							Size
+						}
+					}`
+
+		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(strings.Contains(string(resp.Body()), "repository: not found"), ShouldBeTrue)
+		So(err, ShouldBeNil)
+	})
+
+	Convey("Failed to get manifest", t, func() {
+		err := os.Mkdir(path.Join(rootDir, "fail-image"), 0o000)
+		So(err, ShouldBeNil)
+
+		query := `
+				{
+					BaseImageList(image:"fail-image"){
+						RepoName,
+						Tag,
+						Digest,
+						ConfigDigest,
+						LastUpdated,
+						IsSigned,
+						Size
+					}
+				}`
+
+		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(strings.Contains(string(resp.Body()), "permission denied"), ShouldBeTrue)
+		So(err, ShouldBeNil)
+	})
+}
+
+func TestBaseImageListNoRepos(t *testing.T) {
+	Convey("No repositories found", t, func() {
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = t.TempDir()
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
+		}
+
+		conf.Extensions.Search.CVE = nil
+
+		ctlr := api.NewController(conf)
+
+		go func() {
+			// this blocks
+			if err := ctlr.Run(context.Background()); err != nil {
+				return
+			}
+		}()
+
+		// wait till ready
+		for {
+			_, err := resty.R().Get(baseURL)
+			if err == nil {
+				break
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		// shut down server
+
+		defer func() {
+			ctx := context.Background()
+			_ = ctlr.Server.Shutdown(ctx)
+		}()
+
+		query := `
+				{
+					BaseImageList(image:"test-image"){
+						RepoName,
+						Tag,
+						Digest,
+						ConfigDigest,
+						LastUpdated,
+						IsSigned,
+						Size
+					}
+				}`
+
+		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(strings.Contains(string(resp.Body()), "{\"data\":{\"BaseImageList\":[]}}"), ShouldBeTrue)
+		So(err, ShouldBeNil)
+	})
+}
+
+func TestGetRepositories(t *testing.T) {
+	Convey("Test getting the repositories list", t, func() {
+		mockImageStore := mocks.MockedImageStore{
+			GetRepositoriesFn: func() ([]string, error) {
+				return []string{}, ErrTestError
+			},
+		}
+
+		storeController := storage.StoreController{
+			DefaultStore: mockImageStore,
+			SubStore:     map[string]storage.ImageStore{"test": mockImageStore},
+		}
+		olu := common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+
+		repoList, err := olu.GetRepositories()
+		So(repoList, ShouldBeEmpty)
+		So(err, ShouldNotBeNil)
+
+		storeController = storage.StoreController{
+			DefaultStore: mocks.MockedImageStore{},
+			SubStore:     map[string]storage.ImageStore{"test": mockImageStore},
+		}
+		olu = common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+
+		repoList, err = olu.GetRepositories()
+		So(repoList, ShouldBeEmpty)
+		So(err, ShouldNotBeNil)
 	})
 }
 
