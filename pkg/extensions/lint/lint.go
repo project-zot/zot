@@ -53,17 +53,54 @@ func (linter *Linter) CheckMandatoryAnnotations(repo string, manifestDigest godi
 		return false, err
 	}
 
-	annotations := manifest.Annotations
+	mandatoryAnnotationsMap := make(map[string]bool)
+	for _, annotation := range mandatoryAnnotationsList {
+		mandatoryAnnotationsMap[annotation] = false
+	}
 
-	for _, annot := range mandatoryAnnotationsList {
-		_, found := annotations[annot]
-
-		if !found {
-			// if annotations are not found, return false but it's not an error
-			linter.log.Error().Msgf("linter: missing %s annotations", annot)
-
-			return false, nil
+	manifestAnnotations := manifest.Annotations
+	for annotation := range manifestAnnotations {
+		if _, ok := mandatoryAnnotationsMap[annotation]; ok {
+			mandatoryAnnotationsMap[annotation] = true
 		}
+	}
+
+	missingAnnotations := getMissingAnnotations(mandatoryAnnotationsMap)
+	if len(missingAnnotations) == 0 {
+		return true, nil
+	}
+
+	// if there are mandatory annotations missing in the manifest, get config and check these annotations too
+	configDigest := manifest.Config.Digest
+
+	content, err = imgStore.GetBlobContent(repo, string(configDigest))
+	if err != nil {
+		linter.log.Error().Err(err).Msg("linter: couldn't get config JSON " + string(configDigest))
+
+		return false, err
+	}
+
+	var imageConfig ispec.Image
+	if err := json.Unmarshal(content, &imageConfig); err != nil {
+		linter.log.Error().Err(err).Msg("linter: couldn't unmarshal config JSON " + string(configDigest))
+
+		return false, err
+	}
+
+	configAnnotations := imageConfig.Config.Labels
+
+	for annotation := range configAnnotations {
+		if _, ok := mandatoryAnnotationsMap[annotation]; ok {
+			mandatoryAnnotationsMap[annotation] = true
+		}
+	}
+
+	missingAnnotations = getMissingAnnotations(mandatoryAnnotationsMap)
+	if len(missingAnnotations) > 0 {
+		linter.log.Error().Msgf("linter: manifest %s / config %s are missing annotations: %s",
+			string(manifestDigest), string(configDigest), missingAnnotations)
+
+		return false, nil
 	}
 
 	return true, nil
@@ -73,4 +110,16 @@ func (linter *Linter) Lint(repo string, manifestDigest godigest.Digest,
 	imageStore storage.ImageStore,
 ) (bool, error) {
 	return linter.CheckMandatoryAnnotations(repo, manifestDigest, imageStore)
+}
+
+func getMissingAnnotations(mandatoryAnnotationsMap map[string]bool) []string {
+	var missingAnnotations []string
+
+	for annotation, flag := range mandatoryAnnotationsMap {
+		if !flag {
+			missingAnnotations = append(missingAnnotations, annotation)
+		}
+	}
+
+	return missingAnnotations
 }

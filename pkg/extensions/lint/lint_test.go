@@ -6,6 +6,7 @@ package lint_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path"
@@ -186,6 +187,183 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 			SetBody(content).Put(baseURL + "/v2/zot-test/manifests/0.0.1")
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+	})
+
+	Convey("Mandatory annotations verification in manifest and config passing", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+
+		conf := config.New()
+		conf.HTTP.Port = port
+		enabled := true
+		conf.Extensions = &extconf.ExtensionConfig{Lint: &extconf.LintConfig{}}
+		conf.Extensions.Lint.MandatoryAnnotations = []string{}
+
+		conf.Extensions.Lint.Enabled = &enabled
+		conf.Extensions.Lint.MandatoryAnnotations = []string{"annotation1", "annotation2", "annotation3"}
+
+		ctlr := api.NewController(conf)
+		dir := t.TempDir()
+
+		err := test.CopyFiles("../../../test/data", dir)
+		if err != nil {
+			panic(err)
+		}
+
+		ctlr.Config.Storage.RootDirectory = dir
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		test.WaitTillServerReady(baseURL)
+
+		resp, err := resty.R().SetBasicAuth(username, passphrase).
+			Get(baseURL + "/v2/zot-test/manifests/0.0.1")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		manifestBlob := resp.Body()
+		var manifest ispec.Manifest
+		err = json.Unmarshal(manifestBlob, &manifest)
+		So(err, ShouldBeNil)
+
+		manifest.Annotations = make(map[string]string)
+
+		manifest.Annotations["annotation1"] = "annotationPass1"
+		manifest.Annotations["annotation2"] = "annotationPass2"
+
+		configDigest := manifest.Config.Digest
+
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Get(baseURL + fmt.Sprintf("/v2/zot-test/blobs/%s", configDigest))
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		configBlob := resp.Body()
+		var imageConfig ispec.Image
+		err = json.Unmarshal(configBlob, &imageConfig)
+		So(err, ShouldBeNil)
+
+		imageConfig.Config.Labels = make(map[string]string)
+		imageConfig.Config.Labels["annotation3"] = "annotationPass3"
+
+		configContent, err := json.Marshal(imageConfig)
+		So(err, ShouldBeNil)
+
+		configBlobDigestRaw := godigest.FromBytes(configContent)
+		manifest.Config.Digest = configBlobDigestRaw
+		manifest.Config.Size = int64(len(configContent))
+		manifestContent, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+
+		// upload image config blob
+		resp, err = resty.R().
+			Post(fmt.Sprintf("%s/v2/zot-test/blobs/uploads/", baseURL))
+		So(err, ShouldBeNil)
+		loc := test.Location(baseURL, resp)
+
+		_, err = resty.R().
+			SetContentLength(true).
+			SetHeader("Content-Length", fmt.Sprintf("%d", len(configContent))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", configBlobDigestRaw.String()).
+			SetBody(configContent).
+			Put(loc)
+		So(err, ShouldBeNil)
+
+		resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+			SetBody(manifestContent).Put(baseURL + "/v2/zot-test/manifests/0.0.1")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+	})
+
+	Convey("Mandatory annotations verification in manifest and config failing", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+
+		conf := config.New()
+		conf.HTTP.Port = port
+		enabled := true
+		conf.Extensions = &extconf.ExtensionConfig{Lint: &extconf.LintConfig{}}
+		conf.Extensions.Lint.MandatoryAnnotations = []string{}
+
+		conf.Extensions.Lint.Enabled = &enabled
+		conf.Extensions.Lint.MandatoryAnnotations = []string{"annotation1", "annotation2", "annotation3"}
+
+		ctlr := api.NewController(conf)
+		dir := t.TempDir()
+
+		err := test.CopyFiles("../../../test/data", dir)
+		if err != nil {
+			panic(err)
+		}
+
+		ctlr.Config.Storage.RootDirectory = dir
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		test.WaitTillServerReady(baseURL)
+
+		resp, err := resty.R().SetBasicAuth(username, passphrase).
+			Get(baseURL + "/v2/zot-test/manifests/0.0.1")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		manifestBlob := resp.Body()
+		var manifest ispec.Manifest
+		err = json.Unmarshal(manifestBlob, &manifest)
+		So(err, ShouldBeNil)
+
+		manifest.Annotations = make(map[string]string)
+
+		manifest.Annotations["annotation1"] = "testFail1"
+
+		configDigest := manifest.Config.Digest
+
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Get(baseURL + fmt.Sprintf("/v2/zot-test/blobs/%s", configDigest))
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		configBlob := resp.Body()
+		var imageConfig ispec.Image
+		err = json.Unmarshal(configBlob, &imageConfig)
+		So(err, ShouldBeNil)
+
+		imageConfig.Config.Labels = make(map[string]string)
+		imageConfig.Config.Labels["annotation2"] = "testFail2"
+
+		configContent, err := json.Marshal(imageConfig)
+		So(err, ShouldBeNil)
+
+		configBlobDigestRaw := godigest.FromBytes(configContent)
+		manifest.Config.Digest = configBlobDigestRaw
+		manifest.Config.Size = int64(len(configContent))
+		manifestContent, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+
+		// upload image config blob
+		_, err = resty.R().
+			Post(fmt.Sprintf("%s/v2/zot-test/blobs/uploads/", baseURL))
+		So(err, ShouldBeNil)
+		loc := test.Location(baseURL, resp)
+
+		_, err = resty.R().
+			SetContentLength(true).
+			SetHeader("Content-Length", fmt.Sprintf("%d", len(configContent))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", configBlobDigestRaw.String()).
+			SetBody(configContent).
+			Put(loc)
+		So(err, ShouldBeNil)
+
+		resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+			SetBody(manifestContent).Put(baseURL + "/v2/zot-test/manifests/0.0.1")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
 	})
 
 	Convey("Mandatory annotations incomplete in manifest", t, func() {
@@ -624,6 +802,105 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		So(pass, ShouldBeFalse)
 
 		err = os.Chmod(path.Join(dir, "zot-test", "blobs"), 0o755)
+		if err != nil {
+			panic(err)
+		}
+	})
+
+	Convey("Cannot get config file", t, func() {
+		enabled := true
+
+		lintConfig := &extconf.LintConfig{
+			Enabled:              &enabled,
+			MandatoryAnnotations: []string{"annotation1", "annotation2", "annotation3"},
+		}
+
+		dir := t.TempDir()
+
+		err := test.CopyFiles("../../../test/data", dir)
+		if err != nil {
+			panic(err)
+		}
+
+		var index ispec.Index
+		buf, err := os.ReadFile(path.Join(dir, "zot-test", "index.json"))
+		So(err, ShouldBeNil)
+		err = json.Unmarshal(buf, &index)
+		So(err, ShouldBeNil)
+
+		manifestDigest := index.Manifests[0].Digest
+
+		var manifest ispec.Manifest
+		buf, err = os.ReadFile(path.Join(dir, "zot-test", "blobs",
+			manifestDigest.Algorithm().String(), manifestDigest.Encoded()))
+		So(err, ShouldBeNil)
+		err = json.Unmarshal(buf, &manifest)
+		So(err, ShouldBeNil)
+
+		manifest.Annotations = make(map[string]string)
+
+		manifest.Annotations["annotation1"] = "testAnnotation1"
+		manifest.Annotations["annotation2"] = "testAnnotation2"
+
+		// write config
+		var imageConfig ispec.Image
+		configDigest := manifest.Config.Digest
+		buf, err = os.ReadFile(path.Join(dir, "zot-test", "blobs", "sha256",
+			configDigest.Hex()))
+		So(err, ShouldBeNil)
+		err = json.Unmarshal(buf, &imageConfig)
+		So(err, ShouldBeNil)
+
+		imageConfig.Config.Labels = make(map[string]string)
+		imageConfig.Config.Labels["annotation3"] = "testAnnotation3"
+
+		configContent, err := json.Marshal(imageConfig)
+		So(err, ShouldBeNil)
+		So(configContent, ShouldNotBeNil)
+
+		cfgDigest := godigest.FromBytes(configContent)
+		So(cfgDigest, ShouldNotBeNil)
+
+		err = os.WriteFile(path.Join(dir, "zot-test", "blobs", "sha256",
+			cfgDigest.Hex()), configContent, 0o600)
+		So(err, ShouldBeNil)
+
+		// write manifest
+		manifest.SchemaVersion = 2
+		manifest.Config.Size = int64(len(configContent))
+		manifest.Config.Digest = cfgDigest
+		manifestContent, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+		So(manifestContent, ShouldNotBeNil)
+
+		digest := godigest.FromBytes(manifestContent)
+		So(digest, ShouldNotBeNil)
+
+		err = os.WriteFile(path.Join(dir, "zot-test", "blobs",
+			digest.Algorithm().String(), digest.Encoded()), manifestContent, 0o600)
+		So(err, ShouldBeNil)
+
+		manifestDesc := ispec.Descriptor{
+			Size:   int64(len(manifestContent)),
+			Digest: digest,
+		}
+
+		index.Manifests = append(index.Manifests, manifestDesc)
+
+		linter := lint.NewLinter(lintConfig, log.NewLogger("debug", ""))
+		imgStore := storage.NewImageStore(dir, false, 0, false, false,
+			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), linter)
+
+		err = os.Chmod(path.Join(dir, "zot-test", "blobs", "sha256", manifest.Config.Digest.Hex()), 0o000)
+		if err != nil {
+			panic(err)
+		}
+
+		pass, err := linter.CheckMandatoryAnnotations("zot-test", digest, imgStore)
+		So(err, ShouldNotBeNil)
+		So(pass, ShouldBeFalse)
+
+		err = os.Chmod(path.Join(dir, "zot-test", "blobs", "sha256", manifest.Config.Digest.Hex()), 0o755)
 		if err != nil {
 			panic(err)
 		}
