@@ -34,6 +34,8 @@ type SearchService interface {
 		cveID string) (*imagesForCve, error)
 	getFixedTagsForCVEGQL(ctx context.Context, config searchConfig, username, password, imageName,
 		cveID string) (*fixedTags, error)
+	getDerivedImageListGQL(ctx context.Context, config searchConfig, username, password string,
+		derivedImage string) (*imageListStructForDerivedImagesGQL, error)
 	getBaseImageListGQL(ctx context.Context, config searchConfig, username, password string,
 		baseImage string) (*imageListStructForBaseImagesGQL, error)
 
@@ -59,6 +61,32 @@ type searchService struct{}
 
 func NewSearchService() SearchService {
 	return searchService{}
+}
+
+func (service searchService) getDerivedImageListGQL(ctx context.Context, config searchConfig, username, password string,
+	derivedImage string,
+) (*imageListStructForDerivedImagesGQL, error) {
+	query := fmt.Sprintf(`
+		{
+			DerivedImageList(image:"%s"){
+				RepoName,
+				Tag,
+				Digest,
+				ConfigDigest,
+				LastUpdated,
+				IsSigned,
+				Size
+			}
+		}`, derivedImage)
+
+	result := &imageListStructForDerivedImagesGQL{}
+	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
+
+	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
+		return nil, errResult
+	}
+
+	return result, nil
 }
 
 func (service searchService) getBaseImageListGQL(ctx context.Context, config searchConfig, username, password string,
@@ -828,6 +856,13 @@ type imageListStructForDigestGQL struct {
 	Errors []errorGraphQL `json:"errors"`
 	Data   struct {
 		ImageList []imageStruct `json:"ImageListForDigest"` // nolint:tagliatelle
+	} `json:"data"`
+}
+
+type imageListStructForDerivedImagesGQL struct {
+	Errors []errorGraphQL `json:"errors"`
+	Data   struct {
+		ImageList []imageStruct `json:"DerivedImageList"` // nolint:tagliatelle
 	} `json:"data"`
 }
 
