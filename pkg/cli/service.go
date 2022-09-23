@@ -263,7 +263,8 @@ func (service searchService) getAllImages(ctx context.Context, config searchConf
 		return
 	}
 
-	_, err = makeGETRequest(ctx, catalogEndPoint, username, password, *config.verifyTLS, catalog)
+	_, err = makeGETRequest(ctx, catalogEndPoint, username, password, *config.verifyTLS,
+		*config.debug, catalog, config.resultWriter)
 	if err != nil {
 		if isContextDone(ctx) {
 			return
@@ -306,7 +307,8 @@ func getImage(ctx context.Context, config searchConfig, username, password, imag
 	}
 
 	tagList := &tagListResp{}
-	_, err = makeGETRequest(ctx, tagListEndpoint, username, password, *config.verifyTLS, &tagList)
+	_, err = makeGETRequest(ctx, tagListEndpoint, username, password, *config.verifyTLS,
+		*config.debug, &tagList, config.resultWriter)
 
 	if err != nil {
 		if isContextDone(ctx) {
@@ -658,7 +660,8 @@ func (service searchService) makeGraphQLQuery(ctx context.Context,
 		return err
 	}
 
-	err = makeGraphQLRequest(ctx, endPoint, query, username, password, *config.verifyTLS, resultPtr)
+	err = makeGraphQLRequest(ctx, endPoint, query, username, password, *config.verifyTLS,
+		*config.debug, resultPtr, config.resultWriter)
 	if err != nil {
 		return err
 	}
@@ -1082,7 +1085,8 @@ func (service searchService) getRepos(ctx context.Context, config searchConfig, 
 		return
 	}
 
-	_, err = makeGETRequest(ctx, catalogEndPoint, username, password, *config.verifyTLS, catalog)
+	_, err = makeGETRequest(ctx, catalogEndPoint, username, password, *config.verifyTLS,
+		*config.debug, catalog, config.resultWriter)
 	if err != nil {
 		if isContextDone(ctx) {
 			return

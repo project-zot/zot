@@ -152,6 +152,22 @@ func TestSearchCVECmd(t *testing.T) {
 		So(err, ShouldBeNil)
 	})
 
+	Convey("Test debug flag", t, func() {
+		args := []string{"cvetest", "--image", "dummyImageName:tag", "--debug"}
+		configPath := makeConfigFile(`{"configs":[{"_name":"cvetest","url":"https://test-url.com","showspinner":false}]}`)
+		defer os.Remove(configPath)
+		cmd := NewCveCommand(new(searchService))
+		buff := bytes.NewBufferString("")
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err := cmd.Execute()
+		space := regexp.MustCompile(`\s+`)
+		str := space.ReplaceAllString(buff.String(), " ")
+		So(strings.TrimSpace(str), ShouldContainSubstring, "GET")
+		So(err, ShouldNotBeNil)
+	})
+
 	Convey("Test CVE by name and CVE ID", t, func() {
 		args := []string{"cvetest", "--image", "dummyImageName", "--cve-id", "aCVEID", "--url", "someURL"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"cvetest","showspinner":false}]}`)
@@ -935,7 +951,7 @@ func MockNewCveCommand(searchService SearchService) *cobra.Command {
 
 	var servURL, user, outputFormat string
 
-	var verifyTLS, fixedFlag, verbose bool
+	var verifyTLS, fixedFlag, verbose, debug bool
 
 	cveCmd := &cobra.Command{
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -974,6 +990,7 @@ func MockNewCveCommand(searchService SearchService) *cobra.Command {
 			}
 
 			verbose = false
+			debug = false
 
 			searchConfig := searchConfig{
 				params:        searchCveParams,
@@ -984,6 +1001,7 @@ func MockNewCveCommand(searchService SearchService) *cobra.Command {
 				fixedFlag:     &fixedFlag,
 				verifyTLS:     &verifyTLS,
 				verbose:       &verbose,
+				debug:         &debug,
 				resultWriter:  cmd.OutOrStdout(),
 			}
 
@@ -1005,6 +1023,7 @@ func MockNewCveCommand(searchService SearchService) *cobra.Command {
 		user:            &user,
 		outputFormat:    &outputFormat,
 		fixedFlag:       &fixedFlag,
+		debug:           &debug,
 	}
 
 	setupCveFlags(cveCmd, vars)

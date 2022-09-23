@@ -19,7 +19,7 @@ func NewImageCommand(searchService SearchService) *cobra.Command {
 
 	var servURL, user, outputFormat string
 
-	var isSpinner, verifyTLS, verbose bool
+	var isSpinner, verifyTLS, verbose, debug bool
 
 	imageCmd := &cobra.Command{
 		Use:   "images [config-name]",
@@ -78,6 +78,7 @@ func NewImageCommand(searchService SearchService) *cobra.Command {
 				user:          &user,
 				outputFormat:  &outputFormat,
 				verbose:       &verbose,
+				debug:         &debug,
 				spinner:       spinnerState{spin, isSpinner},
 				verifyTLS:     &verifyTLS,
 				resultWriter:  cmd.OutOrStdout(),
@@ -95,7 +96,7 @@ func NewImageCommand(searchService SearchService) *cobra.Command {
 		},
 	}
 
-	setupImageFlags(imageCmd, searchImageParams, &servURL, &user, &outputFormat, &verbose)
+	setupImageFlags(imageCmd, searchImageParams, &servURL, &user, &outputFormat, &verbose, &debug)
 	imageCmd.SetUsageTemplate(imageCmd.UsageTemplate() + usageFooter)
 
 	return imageCmd
@@ -116,7 +117,7 @@ func parseBooleanConfig(configPath, configName, configParam string) (bool, error
 }
 
 func setupImageFlags(imageCmd *cobra.Command, searchImageParams map[string]*string,
-	servURL, user, outputFormat *string, verbose *bool,
+	servURL, user, outputFormat *string, verbose *bool, debug *bool,
 ) {
 	searchImageParams["imageName"] = imageCmd.Flags().StringP("name", "n", "", "List image details by name")
 	searchImageParams["digest"] = imageCmd.Flags().StringP("digest", "d", "",
@@ -130,6 +131,7 @@ func setupImageFlags(imageCmd *cobra.Command, searchImageParams map[string]*stri
 	imageCmd.Flags().StringVarP(user, "user", "u", "", `User Credentials of zot server in "username:password" format`)
 	imageCmd.Flags().StringVarP(outputFormat, "output", "o", "", "Specify output format [text/json/yaml]")
 	imageCmd.Flags().BoolVar(verbose, "verbose", false, "Show verbose output")
+	imageCmd.Flags().BoolVar(debug, "debug", false, "Show debug output")
 }
 
 func searchImage(searchConfig searchConfig) error {
