@@ -57,7 +57,7 @@ func createHTTPClient(verifyTLS bool, host string) *http.Client {
 		tlsConfig = &tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12}
 	}
 
-	htr = &http.Transport{TLSClientConfig: tlsConfig}
+	htr.TLSClientConfig = tlsConfig
 
 	return &http.Client{
 		Timeout:   httpTimeout,
