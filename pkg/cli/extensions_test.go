@@ -444,8 +444,6 @@ func TestServeScrubExtension(t *testing.T) {
 			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":{\"Interval\":3600000000000},\"Lint\":null") //nolint:lll // gofumpt conflicts with lll
 		So(dataStr, ShouldContainSubstring,
 			"Scrub interval set to too-short interval < 2h, changing scrub duration to 2 hours and continuing.")
-		So(dataStr, ShouldContainSubstring, "Starting periodic background tasks for")
-		So(dataStr, ShouldContainSubstring, "Finishing periodic background tasks for")
 	})
 
 	Convey("scrub not enabled - scrub interval param not set", t, func(c C) {

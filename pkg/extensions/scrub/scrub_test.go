@@ -42,8 +42,11 @@ func TestScrubExtension(t *testing.T) {
 		conf.HTTP.Port = port
 
 		dir := t.TempDir()
+		subdir := t.TempDir()
 
 		conf.Storage.RootDirectory = dir
+		substore := config.StorageConfig{RootDirectory: subdir}
+		conf.Storage.SubPaths = map[string]config.StorageConfig{"/a": substore}
 		conf.Log.Output = logFile.Name()
 		scrubConfig := &extconf.ScrubConfig{
 			Interval: 2,
@@ -75,7 +78,7 @@ func TestScrubExtension(t *testing.T) {
 
 			time.Sleep(100 * time.Millisecond)
 		}
-		time.Sleep(1 * time.Second)
+		time.Sleep(6 * time.Second)
 
 		defer func(controller *api.Controller) {
 			ctx := context.Background()
@@ -140,7 +143,7 @@ func TestScrubExtension(t *testing.T) {
 
 			time.Sleep(100 * time.Millisecond)
 		}
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(6 * time.Second)
 
 		defer func(controller *api.Controller) {
 			ctx := context.Background()
@@ -152,7 +155,7 @@ func TestScrubExtension(t *testing.T) {
 		So(string(data), ShouldContainSubstring, "scrub: blobs/manifest affected")
 	})
 
-	Convey("RunBackgroundTasks error - not enough permissions to access root directory", t, func(c C) {
+	Convey("Generator error - not enough permissions to access root directory", t, func(c C) {
 		port := test.GetFreePort()
 		url := test.GetBaseURL(port)
 
@@ -200,7 +203,7 @@ func TestScrubExtension(t *testing.T) {
 
 			time.Sleep(100 * time.Millisecond)
 		}
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(6 * time.Second)
 
 		defer func(controller *api.Controller) {
 			ctx := context.Background()
@@ -209,8 +212,7 @@ func TestScrubExtension(t *testing.T) {
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
-		So(string(data), ShouldContainSubstring,
-			fmt.Sprintf("error while running background task for %s", ctlr.StoreController.DefaultStore.RootDir()))
+		So(string(data), ShouldContainSubstring, "error while executing generator")
 
 		So(os.Chmod(path.Join(dir, repoName), 0o755), ShouldBeNil)
 	})
@@ -238,7 +240,8 @@ func TestRunScrubRepo(t *testing.T) {
 			panic(err)
 		}
 
-		scrub.RunScrubRepo(imgStore, repoName, log)
+		err = scrub.RunScrubRepo(imgStore, repoName, log)
+		So(err, ShouldBeNil)
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
@@ -274,7 +277,8 @@ func TestRunScrubRepo(t *testing.T) {
 			panic(err)
 		}
 
-		scrub.RunScrubRepo(imgStore, repoName, log)
+		err = scrub.RunScrubRepo(imgStore, repoName, log)
+		So(err, ShouldBeNil)
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
@@ -304,7 +308,8 @@ func TestRunScrubRepo(t *testing.T) {
 
 		So(os.Chmod(path.Join(dir, repoName), 0o000), ShouldBeNil)
 
-		scrub.RunScrubRepo(imgStore, repoName, log)
+		err = scrub.RunScrubRepo(imgStore, repoName, log)
+		So(err, ShouldNotBeNil)
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
