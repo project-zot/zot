@@ -17,6 +17,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/local"
 )
 
 const (
@@ -30,7 +31,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 
 	metrics := monitoring.NewMetricsServer(false, log)
 
-	imgStore := storage.NewImageStore(dir, true, storage.DefaultGCDelay,
+	imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay,
 		true, true, log, metrics, nil)
 
 	Convey("Scrub only one repo", t, func(c C) {

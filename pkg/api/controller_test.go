@@ -49,6 +49,7 @@ import (
 	"zotregistry.io/zot/pkg/api/constants"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
 )
 
@@ -5420,7 +5421,7 @@ func TestManifestImageIndex(t *testing.T) {
 
 				Convey("Corrupt index", func() {
 					err = os.WriteFile(path.Join(dir, "index", "blobs", index1dgst.Algorithm().String(), index1dgst.Encoded()),
-						[]byte("deadbeef"), storage.DefaultFilePerms)
+						[]byte("deadbeef"), local.DefaultFilePerms)
 					So(err, ShouldBeNil)
 					resp, err = resty.R().Delete(baseURL + fmt.Sprintf("/v2/index/manifests/%s", index1dgst))
 					So(err, ShouldBeNil)
@@ -6289,7 +6290,7 @@ func TestDistSpecExtensions(t *testing.T) {
 func getAllBlobs(imagePath string) []string {
 	blobList := make([]string, 0)
 
-	if !storage.DirExists(imagePath) {
+	if !local.DirExists(imagePath) {
 		return []string{}
 	}
 
@@ -6334,7 +6335,7 @@ func getAllBlobs(imagePath string) []string {
 func getAllManifests(imagePath string) []string {
 	manifestList := make([]string, 0)
 
-	if !storage.DirExists(imagePath) {
+	if !local.DirExists(imagePath) {
 		return []string{}
 	}
 

@@ -26,6 +26,7 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/scheduler"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/storage/s3"
 )
 
@@ -251,7 +252,7 @@ func (c *Controller) InitImageStore(reloadCtx context.Context) error {
 	if c.Config.Storage.RootDirectory != "" {
 		// no need to validate hard links work on s3
 		if c.Config.Storage.Dedupe && c.Config.Storage.StorageDriver == nil {
-			err := storage.ValidateHardLink(c.Config.Storage.RootDirectory)
+			err := local.ValidateHardLink(c.Config.Storage.RootDirectory)
 			if err != nil {
 				c.Log.Warn().Msg("input storage root directory filesystem does not supports hardlinking," +
 					"disabling dedupe functionality")
@@ -264,7 +265,7 @@ func (c *Controller) InitImageStore(reloadCtx context.Context) error {
 		if c.Config.Storage.StorageDriver == nil {
 			// false positive lint - linter does not implement Lint method
 			// nolint: typecheck
-			defaultStore = storage.NewImageStore(c.Config.Storage.RootDirectory,
+			defaultStore = local.NewImageStore(c.Config.Storage.RootDirectory,
 				c.Config.Storage.GC, c.Config.Storage.GCDelay,
 				c.Config.Storage.Dedupe, c.Config.Storage.Commit, c.Log, c.Metrics, linter,
 			)
@@ -335,7 +336,7 @@ func (c *Controller) getSubStore(subPaths map[string]config.StorageConfig,
 	for route, storageConfig := range subPaths {
 		// no need to validate hard links work on s3
 		if storageConfig.Dedupe && storageConfig.StorageDriver == nil {
-			err := storage.ValidateHardLink(storageConfig.RootDirectory)
+			err := local.ValidateHardLink(storageConfig.RootDirectory)
 			if err != nil {
 				c.Log.Warn().Msg("input storage root directory filesystem does not supports hardlinking, " +
 					"disabling dedupe functionality")
@@ -370,7 +371,7 @@ func (c *Controller) getSubStore(subPaths map[string]config.StorageConfig,
 			// add it to uniqueSubFiles
 			// Create a new image store and assign it to imgStoreMap
 			if isUnique {
-				imgStoreMap[storageConfig.RootDirectory] = storage.NewImageStore(storageConfig.RootDirectory,
+				imgStoreMap[storageConfig.RootDirectory] = local.NewImageStore(storageConfig.RootDirectory,
 					storageConfig.GC, storageConfig.GCDelay, storageConfig.Dedupe, storageConfig.Commit, c.Log, c.Metrics, linter)
 
 				subImageStore[route] = imgStoreMap[storageConfig.RootDirectory]

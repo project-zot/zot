@@ -36,6 +36,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/local"
 	. "zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
@@ -1081,10 +1082,10 @@ func TestUtilsMethod(t *testing.T) {
 		conf.Extensions.Lint = &extconf.LintConfig{}
 
 		metrics := monitoring.NewMetricsServer(false, log)
-		defaultStore := storage.NewImageStore(rootDir, false,
+		defaultStore := local.NewImageStore(rootDir, false,
 			storage.DefaultGCDelay, false, false, log, metrics, nil)
 
-		subStore := storage.NewImageStore(subRootDir, false,
+		subStore := local.NewImageStore(subRootDir, false,
 			storage.DefaultGCDelay, false, false, log, metrics, nil)
 
 		subStoreMap := make(map[string]storage.ImageStore)

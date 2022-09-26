@@ -21,6 +21,7 @@ import (
 	digestinfo "zotregistry.io/zot/pkg/extensions/search/digest"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/local"
 	. "zotregistry.io/zot/pkg/test"
 )
 
@@ -101,7 +102,7 @@ func testSetup() error {
 	log := log.NewLogger("debug", "")
 	metrics := monitoring.NewMetricsServer(false, log)
 	storeController := storage.StoreController{
-		DefaultStore: storage.NewImageStore(rootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil),
+		DefaultStore: local.NewImageStore(rootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil),
 	}
 
 	digestInfo = digestinfo.NewDigestInfo(storeController, log)
@@ -114,7 +115,7 @@ func TestDigestInfo(t *testing.T) {
 		log := log.NewLogger("debug", "")
 		metrics := monitoring.NewMetricsServer(false, log)
 		storeController := storage.StoreController{
-			DefaultStore: storage.NewImageStore(rootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil),
+			DefaultStore: local.NewImageStore(rootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil),
 		}
 
 		digestInfo = digestinfo.NewDigestInfo(storeController, log)

@@ -22,7 +22,7 @@ import (
 	"time"
 
 	zotErrors "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/local"
 )
 
 var (
@@ -160,7 +160,7 @@ func loadPerHostCerts(caCertPool *x509.CertPool, host string) *tls.Config {
 	home := os.Getenv("HOME")
 	clientCertsDir := filepath.Join(home, homeCertsDir, host)
 
-	if storage.DirExists(clientCertsDir) {
+	if local.DirExists(clientCertsDir) {
 		tlsConfig, err := getTLSConfig(clientCertsDir, caCertPool)
 
 		if err == nil {
@@ -170,7 +170,7 @@ func loadPerHostCerts(caCertPool *x509.CertPool, host string) *tls.Config {
 
 	// Check if the /etc/containers/certs.d/$IP:$PORT dir exists
 	clientCertsDir = filepath.Join(certsPath, host)
-	if storage.DirExists(clientCertsDir) {
+	if local.DirExists(clientCertsDir) {
 		tlsConfig, err := getTLSConfig(clientCertsDir, caCertPool)
 
 		if err == nil {

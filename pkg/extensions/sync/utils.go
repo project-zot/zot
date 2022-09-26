@@ -26,6 +26,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
 )
 
@@ -270,7 +271,7 @@ func pushSyncedLocalImage(localRepo, tag, localCachePath string,
 
 	metrics := monitoring.NewMetricsServer(false, log)
 
-	cacheImageStore := storage.NewImageStore(localCachePath, false,
+	cacheImageStore := local.NewImageStore(localCachePath, false,
 		storage.DefaultGCDelay, false, false, log, metrics, nil)
 
 	manifestContent, _, _, err := cacheImageStore.GetImageManifest(localRepo, tag)
@@ -404,7 +405,7 @@ func getLocalCachePath(imageStore storage.ImageStore, repo string) (string, erro
 	// check if SyncBlobUploadDir exists, create if not
 	var err error
 	if _, err = os.ReadDir(localRepoPath); os.IsNotExist(err) {
-		if err = os.MkdirAll(localRepoPath, storage.DefaultDirPerms); err != nil {
+		if err = os.MkdirAll(localRepoPath, local.DefaultDirPerms); err != nil {
 			return "", err
 		}
 	}
@@ -423,7 +424,7 @@ func getLocalCachePath(imageStore storage.ImageStore, repo string) (string, erro
 	localCachePath := path.Join(localRepoPath, uuid.String())
 
 	cachedRepoPath := path.Join(localCachePath, repo)
-	if err = os.MkdirAll(cachedRepoPath, storage.DefaultDirPerms); err != nil {
+	if err = os.MkdirAll(cachedRepoPath, local.DefaultDirPerms); err != nil {
 		return "", err
 	}
 
