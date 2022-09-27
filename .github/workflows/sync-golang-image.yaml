@@ -6,9 +6,6 @@ on:
     branches:
       - main
 
-env:
-  GOLANG_VERSION: 1.18
-
 permissions:
   contents: read
   packages: write
@@ -16,6 +13,11 @@ permissions:
 jobs:
   sync-golang:
     name: 'sync'
+    strategy:
+      matrix:
+        golang_version:
+          - 1.18
+          - 1.19
     runs-on: ubuntu-latest
     steps:
       - name: Log in to GitHub Docker Registry
@@ -24,9 +26,9 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      
       - name: Tag and push golang to ghcr
         run: |
-          docker pull golang:${{ env.GOLANG_VERSION }}
-          docker tag golang:${{ env.GOLANG_VERSION }} ghcr.io/${{ github.repository_owner }}/golang:${{ env.GOLANG_VERSION }}
-          docker push ghcr.io/${{ github.repository_owner }}/golang:${{ env.GOLANG_VERSION }}
+          docker trust inspect golang:${{ matrix.golang_version }}
+          docker pull golang:${{ matrix.golang_version }}
+          docker tag golang:${{ matrix.golang_version }} ghcr.io/${{ github.repository_owner }}/golang:${{ matrix.golang_version }}
+          docker push ghcr.io/${{ github.repository_owner }}/golang:${{ matrix.golang_version }}
