@@ -276,12 +276,12 @@ func (olu BaseOciLayoutUtils) GetImageTagsWithTimestamp(repo string) ([]TagInfo,
 				return tagsInfo, err
 			}
 
-			var timeStamp time.Time
+			timeStamp := *imageInfo.Created
 
-			if len(imageInfo.History) != 0 {
-				timeStamp = *imageInfo.History[0].Created
-			} else {
-				timeStamp = time.Time{}
+			defaultTime := time.Time{}
+
+			if timeStamp == defaultTime && len(imageInfo.History) != 0 {
+				timeStamp = *imageInfo.History[len(imageInfo.History)-1].Created
 			}
 
 			tagsInfo = append(tagsInfo, TagInfo{Name: val, Timestamp: timeStamp, Digest: digest.String()})
@@ -338,12 +338,12 @@ func (olu BaseOciLayoutUtils) CheckManifestSignature(name string, digest godiges
 }
 
 func (olu BaseOciLayoutUtils) GetImageLastUpdated(imageInfo ispec.Image) time.Time {
-	var timeStamp time.Time
+	timeStamp := *imageInfo.Created
 
-	if len(imageInfo.History) != 0 {
-		timeStamp = *imageInfo.History[0].Created
-	} else {
-		timeStamp = time.Time{}
+	defaultTime := time.Time{}
+
+	if timeStamp == defaultTime && len(imageInfo.History) != 0 {
+		timeStamp = *imageInfo.History[len(imageInfo.History)-1].Created
 	}
 
 	return timeStamp
