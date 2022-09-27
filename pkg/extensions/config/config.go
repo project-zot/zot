@@ -39,5 +39,6 @@ type PrometheusConfig struct {
 }
 
 type ScrubConfig struct {
+	Enable   *bool
 	Interval time.Duration
 }

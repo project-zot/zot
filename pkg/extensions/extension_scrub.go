@@ -20,7 +20,7 @@ func EnableScrubExtension(config *config.Config, log log.Logger, storeController
 	sch *scheduler.Scheduler,
 ) {
 	if config.Extensions.Scrub != nil &&
-		config.Extensions.Scrub.Interval != 0 {
+		*config.Extensions.Scrub.Enable {
 		minScrubInterval, _ := time.ParseDuration("2h")
 
 		if config.Extensions.Scrub.Interval < minScrubInterval {

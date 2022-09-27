@@ -46,6 +46,7 @@
 			}
 		},
 		"scrub": {
+			"enable": true,
 			"interval": "24h"
 		}
 	}

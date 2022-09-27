@@ -413,7 +413,38 @@ func TestServeScrubExtension(t *testing.T) {
 
 	defer func() { os.Args = oldArgs }()
 
-	Convey("scrub enabled by scrub interval param set", t, func(c C) {
+	Convey("scrub implicitly enabled", t, func(c C) {
+		content := `{
+					"storage": {
+						"rootDirectory": "%s"
+					},
+					"http": {
+						"address": "127.0.0.1",
+						"port": "%s"
+					},
+					"log": {
+						"level": "debug",
+						"output": "%s"
+					},
+					"extensions": {
+						"scrub": {
+						}
+					}
+				}`
+
+		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		So(err, ShouldBeNil)
+		data, err := os.ReadFile(logPath)
+		So(err, ShouldBeNil)
+		defer os.Remove(logPath) // clean up
+		dataStr := string(data)
+		So(dataStr, ShouldContainSubstring,
+			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":{\"Enable\":true,\"Interval\":86400000000000},\"Lint\":null") //nolint:lll // gofumpt conflicts with lll
+		So(dataStr, ShouldNotContainSubstring,
+			"Scrub interval set to too-short interval < 2h, changing scrub duration to 2 hours and continuing.")
+	})
+
+	Convey("scrub implicitly enabled, but with scrub interval param set", t, func(c C) {
 		content := `{
 					"storage": {
 						"rootDirectory": "%s"
@@ -441,12 +472,44 @@ func TestServeScrubExtension(t *testing.T) {
 		// Even if in config we specified scrub interval=1h, the minimum interval is 2h
 		dataStr := string(data)
 		So(dataStr, ShouldContainSubstring,
-			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":{\"Interval\":3600000000000},\"Lint\":null") //nolint:lll // gofumpt conflicts with lll
+			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":{\"Enable\":true,\"Interval\":3600000000000},\"Lint\":null") //nolint:lll // gofumpt conflicts with lll
 		So(dataStr, ShouldContainSubstring,
 			"Scrub interval set to too-short interval < 2h, changing scrub duration to 2 hours and continuing.")
 	})
 
-	Convey("scrub not enabled - scrub interval param not set", t, func(c C) {
+	Convey("scrub explicitly enabled, but without scrub interval param set", t, func(c C) {
+		content := `{
+					"storage": {
+						"rootDirectory": "%s"
+					},
+					"http": {
+						"address": "127.0.0.1",
+						"port": "%s"
+					},
+					"log": {
+						"level": "debug",
+						"output": "%s"
+					},
+					"extensions": {
+						"scrub": {
+							"enable": true
+						}
+					}
+				}`
+
+		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		So(err, ShouldBeNil)
+		data, err := os.ReadFile(logPath)
+		So(err, ShouldBeNil)
+		defer os.Remove(logPath) // clean up
+		dataStr := string(data)
+		So(dataStr, ShouldContainSubstring,
+			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":{\"Enable\":true,\"Interval\":86400000000000},\"Lint\":null") //nolint:lll // gofumpt conflicts with lll
+		So(dataStr, ShouldNotContainSubstring,
+			"Scrub interval set to too-short interval < 2h, changing scrub duration to 2 hours and continuing.")
+	})
+
+	Convey("scrub explicitly disabled", t, func(c C) {
 		content := `{
 				"storage": {
 					"rootDirectory": "%s"
@@ -461,6 +524,7 @@ func TestServeScrubExtension(t *testing.T) {
 				},
 				"extensions": {
 					"scrub": {
+						"enable": false
 					}
 				}
 			}`
@@ -472,7 +536,7 @@ func TestServeScrubExtension(t *testing.T) {
 		defer os.Remove(logPath) // clean up
 		dataStr := string(data)
 		So(dataStr, ShouldContainSubstring,
-			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":null}")
+			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":{\"Enable\":false,\"Interval\":86400000000000},\"Lint\":null}") //nolint:lll // gofumpt conflicts with lll
 		So(dataStr, ShouldContainSubstring, "Scrub config not provided, skipping scrub")
 		So(dataStr, ShouldNotContainSubstring,
 			"Scrub interval set to too-short interval < 2h, changing scrub duration to 2 hours and continuing.")
