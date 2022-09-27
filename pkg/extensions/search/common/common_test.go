@@ -43,7 +43,7 @@ import (
 )
 
 const (
-	graphqlQueryPrefix = constants.ExtSearchPrefix
+	graphqlQueryPrefix = constants.FullSearchPrefix
 	DBFileName         = "repo.db"
 )
 

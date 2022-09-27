@@ -6162,7 +6162,7 @@ func TestSearchRoutes(t *testing.T) {
 					}
 				}
 			}`
-			resp, err := resty.R().SetBasicAuth(user1, password1).Get(baseURL + constants.ExtSearchPrefix +
+			resp, err := resty.R().SetBasicAuth(user1, password1).Get(baseURL + constants.FullSearchPrefix +
 				"?query=" + url.QueryEscape(query))
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
@@ -6171,7 +6171,7 @@ func TestSearchRoutes(t *testing.T) {
 			So(string(resp.Body()), ShouldContainSubstring, repoName)
 			So(string(resp.Body()), ShouldNotContainSubstring, inaccessibleRepo)
 
-			resp, err = resty.R().Get(baseURL + constants.ExtSearchPrefix + "?query=" + url.QueryEscape(query))
+			resp, err = resty.R().Get(baseURL + constants.FullSearchPrefix + "?query=" + url.QueryEscape(query))
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
@@ -6204,7 +6204,7 @@ func TestSearchRoutes(t *testing.T) {
 			}
 
 			// authenticated, but no access to resource
-			resp, err = resty.R().SetBasicAuth(user1, password1).Get(baseURL + constants.ExtSearchPrefix +
+			resp, err = resty.R().SetBasicAuth(user1, password1).Get(baseURL + constants.FullSearchPrefix +
 				"?query=" + url.QueryEscape(query))
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
@@ -6259,7 +6259,7 @@ func TestDistSpecExtensions(t *testing.T) {
 		So(extensionList.Extensions[0].Name, ShouldEqual, "_zot")
 		So(extensionList.Extensions[0].URL, ShouldContainSubstring, "_zot.md")
 		So(extensionList.Extensions[0].Description, ShouldNotBeEmpty)
-		So(extensionList.Extensions[0].Endpoints[0], ShouldEqual, constants.ExtSearchPrefix)
+		So(extensionList.Extensions[0].Endpoints[0], ShouldEqual, constants.FullSearchPrefix)
 	})
 
 	Convey("start minimal zot server", t, func(c C) {
