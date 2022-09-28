@@ -343,6 +343,76 @@ func TestBaseImageList(t *testing.T) {
 	})
 }
 
+/*
+
+		args := []string{"config-test"}
+
+			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"config-test",
+            "url":"%s","showspinner":false}]}`, url))
+			defer os.Remove(configPath)
+
+			cmd := NewRepoCommand(new(searchService))
+			buff := &bytes.Buffer{}
+			cmd.SetOut(buff)
+			cmd.SetErr(buff)
+			cmd.SetArgs(args)
+			err = cmd.Execute()
+			space := regexp.MustCompile(`\s+`)
+			str := space.ReplaceAllString(buff.String(), " ")
+			actual := strings.TrimSpace(str)
+
+			So(actual, ShouldContainSubstring, "REPOSITORY NAME")
+			So(actual, ShouldContainSubstring, "repo7")
+
+*/
+
+func TestGetServerVersion(t *testing.T) {
+	port := test.GetFreePort()
+	url := test.GetBaseURL(port)
+	conf := config.New()
+	conf.HTTP.Port = port
+	defaultVal := true
+	conf.Extensions = &extconf.ExtensionConfig{
+		Search: &extconf.SearchConfig{Enable: &defaultVal},
+	}
+	ctlr := api.NewController(conf)
+	ctlr.Config.Storage.RootDirectory = t.TempDir()
+	go func(controller *api.Controller) {
+		// this blocks
+		if err := controller.Run(context.Background()); err != nil {
+			return
+		}
+	}(ctlr)
+	// wait till ready
+	for {
+		_, err := resty.R().Get(url)
+		if err == nil {
+			break
+		}
+
+		time.Sleep(100 * time.Millisecond)
+	}
+	defer func(controller *api.Controller) {
+		ctx := context.Background()
+		_ = controller.Server.Shutdown(ctx)
+	}(ctlr)
+
+	Convey("Test showing the zot server version", t, func() {
+		t.Logf("%s", ctlr.Config.Storage.RootDirectory)
+		args := []string{"config-test"}
+		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"config-test","url":"%s","showspinner":false}]}`, url))
+		defer os.Remove(configPath)
+		cmd := NewVersionCommand(new(searchService))
+		buff := &bytes.Buffer{}
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err := cmd.Execute()
+		So(err, ShouldBeNil)
+		So(buff.String(), ShouldContainSubstring, "Zot server version")
+	})
+}
+
 func TestListRepos(t *testing.T) {
 	Convey("Test listing repositories", t, func() {
 		args := []string{"config-test"}
@@ -1263,6 +1333,12 @@ func (service mockService) getRepos(ctx context.Context, config searchConfig, us
 	catalog[2] = "hello-world"
 
 	channel <- stringResult{"", nil}
+}
+
+func (service mockService) getServerVersion(ctx context.Context, config searchConfig, username, password string,
+	rch chan stringResult, wtgrp *sync.WaitGroup,
+) {
+	rch <- stringResult{"", nil}
 }
 
 func (service mockService) getBaseImageListGQL(ctx context.Context, config searchConfig, username, password string,

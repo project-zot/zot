@@ -5,5 +5,6 @@ const (
 	ExtCatalogPrefix     = "/_catalog"
 	ExtOciDiscoverPrefix = "/_oci/ext/discover"
 	// zot specific extensions.
-	ExtSearchPrefix = RoutePrefix + "/_zot/ext/search"
+	ExtSearchPrefix     = RoutePrefix + "/_zot/ext/search"
+	ServerVersionPrefix = RoutePrefix + "/_zot/version"
 )

@@ -49,6 +49,8 @@ type SearchService interface {
 		channel chan stringResult, wtgrp *sync.WaitGroup)
 	getRepos(ctx context.Context, config searchConfig, username, password string,
 		channel chan stringResult, wtgrp *sync.WaitGroup)
+	getServerVersion(ctx context.Context, config searchConfig, username, password string,
+		rch chan stringResult, wtgrp *sync.WaitGroup)
 	getImageByName(ctx context.Context, config searchConfig, username, password, imageName string,
 		channel chan stringResult, wtgrp *sync.WaitGroup)
 	getImageByNameAndCVEID(ctx context.Context, config searchConfig, username, password, imageName, cvid string,
@@ -294,6 +296,38 @@ func getImage(ctx context.Context, config searchConfig, username, password, imag
 
 		go addManifestCallToPool(ctx, config, pool, username, password, imageName, tag, rch, wtgrp)
 	}
+}
+
+func (service searchService) getServerVersion(ctx context.Context, config searchConfig, username, password string,
+	rch chan stringResult, wtgrp *sync.WaitGroup,
+) {
+	defer wtgrp.Done()
+	defer close(rch)
+
+	tagListEndpoint, err := combineServerAndEndpointURL(*config.servURL, fmt.Sprint("/v2/_zot/version"))
+	if err != nil {
+		if isContextDone(ctx) {
+			return
+		}
+		rch <- stringResult{"", err}
+
+		return
+	}
+
+	version := &version{}
+	_, err = makeGETRequest(ctx, tagListEndpoint, username, password, *config.verifyTLS, &version)
+
+	if err != nil {
+		if isContextDone(ctx) {
+			return
+		}
+		rch <- stringResult{"", err}
+
+		return
+	}
+
+	serverVersion := strings.Split(version.Version, "-")
+	fmt.Fprintln(config.resultWriter, "\nZot server version:", serverVersion[0])
 }
 
 func (service searchService) getImagesByCveID(ctx context.Context, config searchConfig, username,
@@ -942,6 +976,10 @@ func (img imageStruct) stringYAML() (string, error) {
 
 type catalogResponse struct {
 	Repositories []string `json:"repositories"`
+}
+
+type version struct {
+	Version string `json:"version"`
 }
 
 //nolint:tagliatelle

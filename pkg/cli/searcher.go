@@ -759,3 +759,29 @@ func (search repoSearcher) searchRepos(config searchConfig) error {
 		return nil
 	}
 }
+
+type serverVersionSearcher struct{}
+
+func (search serverVersionSearcher) searchServerVersion(config searchConfig) error {
+	username, password := getUsernameAndPassword(*config.user)
+	verErr := make(chan stringResult)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+
+	go config.searchService.getServerVersion(ctx, config, username, password, verErr, &wg)
+	wg.Add(1)
+
+	errCh := make(chan error, 1)
+
+	go collectResults(config, &wg, verErr, cancel, printImageTableHeader, errCh)
+	wg.Wait()
+	select {
+	case err := <-errCh:
+		return err
+	default:
+		return nil
+	}
+}

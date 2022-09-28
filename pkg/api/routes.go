@@ -37,6 +37,7 @@ import (
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test" // nolint:goimports
+
 	// as required by swaggo.
 	_ "zotregistry.io/zot/swagger"
 )
@@ -126,6 +127,8 @@ func (rh *RouteHandler) SetupRoutes() {
 			ext.SetupSearchRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
 		}
 	}
+
+	ext.SetupServerVersionRoute(rh.c.Config, rh.c.Router, rh.c.Log)
 }
 
 // Method handlers
