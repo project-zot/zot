@@ -204,7 +204,7 @@ func (is *ObjectStorage) ValidateRepo(name string) (bool, error) {
 		return false, zerr.ErrRepoNotFound
 	}
 
-	// nolint:gomnd
+	//nolint:gomnd
 	if len(files) < 2 {
 		return false, zerr.ErrRepoBadVersion
 	}
@@ -922,7 +922,7 @@ retry:
 			// the actual blob on disk may have been removed by GC, so sync the cache
 			err := is.cache.DeleteBlob(dstDigest.String(), dstRecord)
 			if err = test.Error(err); err != nil {
-				// nolint:lll
+				//nolint:lll
 				is.log.Error().Err(err).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe: unable to delete blob record")
 
 				return err

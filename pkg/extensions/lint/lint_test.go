@@ -40,7 +40,7 @@ const (
 )
 
 func TestVerifyMandatoryAnnotations(t *testing.T) {
-	// nolint: dupl
+	//nolint: dupl
 	Convey("Mandatory annotations disabled", t, func() {
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
@@ -87,7 +87,7 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 	})
 
-	// nolint: dupl
+	//nolint: dupl
 	Convey("Mandatory annotations enabled, but no list in config", t, func() {
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)

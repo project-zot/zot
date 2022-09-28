@@ -126,7 +126,7 @@ func GetLatestTag(allTags []TagInfo) TagInfo {
 func GetRoutePrefix(name string) string {
 	names := strings.SplitN(name, "/", 2) //nolint:gomnd
 
-	if len(names) != 2 { // nolint:gomnd
+	if len(names) != 2 { //nolint:gomnd
 		// it means route is of global storage e.g "centos:latest"
 		if len(names) == 1 {
 			return "/"
@@ -146,9 +146,12 @@ type ImageAnnotations struct {
 	Vendor        string
 }
 
-/* OCI annotation/label with backwards compatibility
+/*
+	OCI annotation/label with backwards compatibility
+
 arg can be either lables or annotations
-https://github.com/opencontainers/image-spec/blob/main/annotations.md.*/
+https://github.com/opencontainers/image-spec/blob/main/annotations.md.
+*/
 func GetAnnotationValue(annotations map[string]string, annotationKey, labelKey string) string {
 	value, ok := annotations[annotationKey]
 	if !ok || value == "" {

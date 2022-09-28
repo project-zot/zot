@@ -24,7 +24,7 @@ import (
 
 func TestElevatedPrivilegesTLSNewControllerPrivilegedCert(t *testing.T) {
 	Convey("Privileged certs - Make a new controller", t, func() {
-		cmd := exec.Command("mkdir", "-p", "/etc/containers/certs.d/127.0.0.1:8089/") // nolint: gosec
+		cmd := exec.Command("mkdir", "-p", "/etc/containers/certs.d/127.0.0.1:8089/") //nolint: gosec
 		_, err := cmd.Output()
 		if err != nil {
 			panic(err)

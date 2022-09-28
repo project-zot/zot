@@ -31,7 +31,7 @@ import (
 	"zotregistry.io/zot/pkg/test"
 )
 
-// nolint: gochecknoglobals
+//nolint:gochecknoglobals
 var (
 	testImage      = "test"
 	fileWriterSize = 12

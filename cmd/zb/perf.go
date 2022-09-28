@@ -42,10 +42,10 @@ const (
 	TLSHandshakeTimeout  = 10 * time.Second
 )
 
-// nolint:gochecknoglobals
+//nolint:gochecknoglobals
 var blobHash map[string]godigest.Digest = map[string]godigest.Digest{}
 
-// nolint:gochecknoglobals // used only in this test
+//nolint:gochecknoglobals // used only in this test
 var statusRequests sync.Map
 
 func setup(workingDir string) {
@@ -99,7 +99,7 @@ func setup(workingDir string) {
 
 		digest, err := godigest.FromReader(fhandle)
 		if err != nil {
-			log.Fatal(err) // nolint:gocritic // file closed on exit
+			log.Fatal(err) //nolint:gocritic // file closed on exit
 		}
 
 		blobHash[fname] = digest
@@ -200,7 +200,7 @@ type manifestStruct struct {
 	manifestBySizeHash map[int](map[string]string)
 }
 
-// nolint:gochecknoglobals // used only in this test
+//nolint:gochecknoglobals // used only in this test
 var cicdSummary = []cicdTestSummary{}
 
 func printStats(requests int, summary *statsSummary, outFmt string) {
@@ -271,7 +271,7 @@ type testFunc func(
 	client *resty.Client,
 ) error
 
-// nolint:gosec
+//nolint:gosec
 func GetCatalog(
 	workdir, url, repo string,
 	requests int,
@@ -444,7 +444,7 @@ func Pull(
 		config.size = largeBlob
 
 		// Push large blob
-		// nolint: ineffassign, staticcheck, wastedassign
+		//nolint: ineffassign, staticcheck, wastedassign
 		manifestBySize, repos, err = pushMonolithImage(workdir, url, trepo, repos, config, client)
 		if err != nil {
 			return err
@@ -537,7 +537,7 @@ type testConfig struct {
 	mixedSize, mixedType bool
 }
 
-var testSuite = []testConfig{ // nolint:gochecknoglobals // used only in this test
+var testSuite = []testConfig{ //nolint:gochecknoglobals // used only in this test
 	{
 		name:             "Get Catalog",
 		tfunc:            GetCatalog,
@@ -777,7 +777,7 @@ func getRandomClientIPs(auth string, url string, ips []string) (*resty.Client, e
 		log.Fatal(err)
 	}
 
-	// nolint: gosec
+	//nolint: gosec
 	if parsedURL.Scheme == secureProtocol {
 		client.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true})
 	}
@@ -787,7 +787,7 @@ func getRandomClientIPs(auth string, url string, ips []string) (*resty.Client, e
 
 // getIPsFromCIDR returns a list of ips given a cidr.
 func getIPsFromCIDR(cidr string, maxIPs int) ([]string, error) {
-	// nolint:varnamelen
+	//nolint:varnamelen
 	ip, ipnet, err := net.ParseCIDR(cidr)
 	if err != nil {
 		return nil, err

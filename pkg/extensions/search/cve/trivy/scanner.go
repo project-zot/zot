@@ -192,7 +192,7 @@ func (scanner Scanner) ScanImage(image string) (map[string]cvemodel.CVE, error) 
 	report, err := artifact.TrivyImageRun(tCtx.Ctx)
 	scanner.dbLock.Unlock()
 
-	if err != nil { // nolint: wsl
+	if err != nil { //nolint: wsl
 		scanner.log.Error().Err(err).Str("image", image).Msg("unable to scan image")
 
 		return cveidMap, err

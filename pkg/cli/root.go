@@ -372,7 +372,7 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper) {
 			}
 
 			if config.Extensions.Search.CVE == nil {
-				config.Extensions.Search.CVE = &extconf.CVEConfig{UpdateInterval: 24 * time.Hour} // nolint: gomnd
+				config.Extensions.Search.CVE = &extconf.CVEConfig{UpdateInterval: 24 * time.Hour} //nolint: gomnd
 			}
 		}
 
@@ -392,7 +392,7 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper) {
 			}
 
 			if config.Extensions.Scrub.Interval == 0 {
-				config.Extensions.Scrub.Interval = 24 * time.Hour // nolint: gomnd
+				config.Extensions.Scrub.Interval = 24 * time.Hour //nolint: gomnd
 			}
 		}
 	}

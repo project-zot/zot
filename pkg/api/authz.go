@@ -217,13 +217,13 @@ func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 			// will return only repos on which client is authorized to read
 			if request.RequestURI == fmt.Sprintf("%s%s", constants.RoutePrefix, constants.ExtCatalogPrefix) {
-				next.ServeHTTP(response, request.WithContext(ctx))
+				next.ServeHTTP(response, request.WithContext(ctx)) //nolint:contextcheck
 
 				return
 			}
 
 			if strings.Contains(request.RequestURI, constants.ExtSearchPrefix) {
-				next.ServeHTTP(response, request.WithContext(ctx))
+				next.ServeHTTP(response, request.WithContext(ctx)) //nolint:contextcheck
 
 				return
 			}
@@ -255,7 +255,7 @@ func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 			if !can {
 				authzFail(response, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
 			} else {
-				next.ServeHTTP(response, request.WithContext(ctx))
+				next.ServeHTTP(response, request.WithContext(ctx)) //nolint:contextcheck
 			}
 		})
 	}

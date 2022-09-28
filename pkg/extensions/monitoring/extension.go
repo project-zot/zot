@@ -17,7 +17,7 @@ import (
 const metricsNamespace = "zot"
 
 var (
-	httpConnRequests = promauto.NewCounterVec( // nolint: gochecknoglobals
+	httpConnRequests = promauto.NewCounterVec( //nolint: gochecknoglobals
 		prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Name:      "http_requests_total",
@@ -25,7 +25,7 @@ var (
 		},
 		[]string{"method", "code"},
 	)
-	httpRepoLatency = promauto.NewSummaryVec( // nolint: gochecknoglobals
+	httpRepoLatency = promauto.NewSummaryVec( //nolint: gochecknoglobals
 		prometheus.SummaryOpts{
 			Namespace: metricsNamespace,
 			Name:      "http_repo_latency_seconds",
@@ -33,7 +33,7 @@ var (
 		},
 		[]string{"repo"},
 	)
-	httpMethodLatency = promauto.NewHistogramVec( // nolint: gochecknoglobals
+	httpMethodLatency = promauto.NewHistogramVec( //nolint: gochecknoglobals
 		prometheus.HistogramOpts{
 			Namespace: metricsNamespace,
 			Name:      "http_method_latency_seconds",
@@ -42,7 +42,7 @@ var (
 		},
 		[]string{"method"},
 	)
-	repoStorageBytes = promauto.NewGaugeVec( // nolint: gochecknoglobals
+	repoStorageBytes = promauto.NewGaugeVec( //nolint: gochecknoglobals
 		prometheus.GaugeOpts{
 			Namespace: metricsNamespace,
 			Name:      "repo_storage_bytes",
@@ -50,7 +50,7 @@ var (
 		},
 		[]string{"repo"},
 	)
-	uploadCounter = promauto.NewCounterVec( // nolint: gochecknoglobals
+	uploadCounter = promauto.NewCounterVec( //nolint: gochecknoglobals
 		prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Name:      "repo_uploads_total",
@@ -58,7 +58,7 @@ var (
 		},
 		[]string{"repo"},
 	)
-	downloadCounter = promauto.NewCounterVec( // nolint: gochecknoglobals
+	downloadCounter = promauto.NewCounterVec( //nolint: gochecknoglobals
 		prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Name:      "repo_downloads_total",
@@ -66,7 +66,7 @@ var (
 		},
 		[]string{"repo"},
 	)
-	serverInfo = promauto.NewGaugeVec( // nolint: gochecknoglobals
+	serverInfo = promauto.NewGaugeVec( //nolint: gochecknoglobals
 		prometheus.GaugeOpts{
 			Namespace: metricsNamespace,
 			Name:      "info",
@@ -74,7 +74,7 @@ var (
 		},
 		[]string{"commit", "binaryType", "goVersion", "version"},
 	)
-	storageLockLatency = promauto.NewHistogramVec( // nolint: gochecknoglobals
+	storageLockLatency = promauto.NewHistogramVec( //nolint: gochecknoglobals
 		prometheus.HistogramOpts{
 			Namespace: metricsNamespace,
 			Name:      "storage_lock_latency_seconds",

@@ -83,7 +83,7 @@ func createObjectsStore(rootDir string, cacheDir string) (driver.StorageDriver, 
 	return store, il, err
 }
 
-// nolint: gochecknoglobals
+//nolint:gochecknoglobals
 var testCases = []struct {
 	testCaseName string
 	storageType  string
@@ -768,7 +768,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 						imgStore = s3.NewImageStore(testDir, tdir, false, 1, false, false, log, metrics,
 							&mocks.MockedLint{
 								LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storage.ImageStore) (bool, error) {
-									// nolint: goerr113
+									//nolint: goerr113
 									return false, errors.New("linter error")
 								},
 							}, store)
@@ -776,7 +776,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 						imgStore = local.NewImageStore(tdir, true, storage.DefaultGCDelay, true,
 							true, log, metrics, &mocks.MockedLint{
 								LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storage.ImageStore) (bool, error) {
-									// nolint: goerr113
+									//nolint: goerr113
 									return false, errors.New("linter error")
 								},
 							})

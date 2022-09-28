@@ -97,7 +97,7 @@ func ValidateManifest(imgStore ImageStore, repo, reference, mediaType string, bo
 	return "", nil
 }
 
-func validateOCIManifest(imgStore ImageStore, repo, reference string, manifest *ispec.Manifest,
+func validateOCIManifest(imgStore ImageStore, repo, reference string, manifest *ispec.Manifest, //nolint:unparam
 	log zerolog.Logger,
 ) (string, error) {
 	if manifest.SchemaVersion != SchemaVersion {
@@ -152,8 +152,11 @@ func GetAndValidateRequestDigest(body []byte, digest string, log zerolog.Logger)
 	return bodyDigest, err
 }
 
-/* CheckIfIndexNeedsUpdate verifies if an index needs to be updated given a new manifest descriptor.
-Returns whether or not index needs update, in the latter case it will also return the previous digest. */
+/*
+	CheckIfIndexNeedsUpdate verifies if an index needs to be updated given a new manifest descriptor.
+
+Returns whether or not index needs update, in the latter case it will also return the previous digest.
+*/
 func CheckIfIndexNeedsUpdate(index *ispec.Index, desc *ispec.Descriptor,
 	log zerolog.Logger,
 ) (bool, godigest.Digest, error) {
@@ -273,9 +276,12 @@ func RemoveManifestDescByReference(index *ispec.Index, reference string) (ispec.
 	return removedManifest, found
 }
 
-/* additionally, unmarshal an image index and for all manifests in that
+/*
+	additionally, unmarshal an image index and for all manifests in that
+
 index, ensure that they do not have a name or they are not in other
-manifest indexes else GC can never clean them. */
+manifest indexes else GC can never clean them.
+*/
 func UpdateIndexWithPrunedImageManifests(imgStore ImageStore, index *ispec.Index, repo string,
 	desc ispec.Descriptor, oldDgst godigest.Digest, log zerolog.Logger,
 ) error {
@@ -310,7 +316,7 @@ same constitutent manifests so that they can be garbage-collected correctly
 
 pruneImageManifestsFromIndex is a helper routine to achieve this.
 */
-func PruneImageManifestsFromIndex(imgStore ImageStore, repo string, digest godigest.Digest, // nolint: gocyclo
+func PruneImageManifestsFromIndex(imgStore ImageStore, repo string, digest godigest.Digest, //nolint:gocyclo
 	outIndex ispec.Index, otherImgIndexes []ispec.Descriptor, log zerolog.Logger,
 ) ([]ispec.Descriptor, error) {
 	dir := path.Join(imgStore.RootDir(), repo)

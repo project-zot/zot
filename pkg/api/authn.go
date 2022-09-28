@@ -91,7 +91,7 @@ func noPasswdAuth(realm string, config *config.Config) mux.MiddlewareFunc {
 	}
 }
 
-// nolint:gocyclo  // we use closure making this a complex subroutine
+//nolint:gocyclo  // we use closure making this a complex subroutine
 func basicAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 	realm := ctlr.Config.HTTP.Realm
 	if realm == "" {

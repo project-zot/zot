@@ -17,7 +17,7 @@ type ErrorList struct {
 
 type ErrorCode int
 
-// nolint: golint, stylecheck, revive
+//nolint:golint,stylecheck,revive
 const (
 	BLOB_UNKNOWN ErrorCode = iota
 	BLOB_UPLOAD_INVALID
@@ -60,7 +60,7 @@ func (e ErrorCode) String() string {
 	return errMap[e]
 }
 
-func NewError(code ErrorCode, detail ...interface{}) Error { //nolint: interfacer
+func NewError(code ErrorCode, detail ...interface{}) Error {
 	errMap := map[ErrorCode]Error{
 		BLOB_UNKNOWN: {
 			Message: "blob unknown to registry",

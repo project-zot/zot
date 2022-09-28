@@ -1,5 +1,5 @@
-// nolint: dupl
-package v1_0_0 // nolint:stylecheck,golint,revive
+//nolint:dupl
+package v1_0_0 //nolint:stylecheck,golint,revive
 
 import (
 	"bytes"
@@ -14,9 +14,9 @@ import (
 	"testing"
 
 	godigest "github.com/opencontainers/go-digest"
-	// nolint: goimports
+	//nolint: goimports
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	// nolint:golint,stylecheck,revive
+	//nolint:golint,stylecheck,revive
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/smartystreets/goconvey/convey/reporting"
 	"gopkg.in/resty.v1"
@@ -1054,7 +1054,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 	})
 }
 
-// nolint: gochecknoglobals
+//nolint:gochecknoglobals
 var (
 	old  *os.File
 	r    *os.File

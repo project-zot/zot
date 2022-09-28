@@ -60,7 +60,7 @@ func TestRoutes(t *testing.T) {
 				},
 			}
 
-			request, _ := http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{
 				"name":      "test",
 				"reference": "b8b1231908844a55c251211c7a67ae3c809fb86a081a8eeb4a715e6d7d65625c",
@@ -80,7 +80,7 @@ func TestRoutes(t *testing.T) {
 			testUpdateManifest := func(urlVars map[string]string, ism *mocks.MockedImageStore) int {
 				ctlr.StoreController.DefaultStore = ism
 				str := []byte("test")
-				request, _ := http.NewRequestWithContext(context.TODO(), "PUT", baseURL, bytes.NewBuffer(str))
+				request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPut, baseURL, bytes.NewBuffer(str))
 				request = mux.SetURLVars(request, urlVars)
 				request.Header.Add("Content-Type", ispec.MediaTypeImageManifest)
 				response := httptest.NewRecorder()
@@ -159,7 +159,7 @@ func TestRoutes(t *testing.T) {
 		Convey("DeleteManifest", func() {
 			testDeleteManifest := func(headers map[string]string, urlVars map[string]string, ism *mocks.MockedImageStore) int {
 				ctlr.StoreController.DefaultStore = ism
-				request, _ := http.NewRequestWithContext(context.Background(), "DELETE", baseURL, nil)
+				request, _ := http.NewRequestWithContext(context.Background(), http.MethodDelete, baseURL, nil)
 				request = mux.SetURLVars(request, urlVars)
 				for k, v := range headers {
 					request.Header.Add(k, v)
@@ -238,7 +238,7 @@ func TestRoutes(t *testing.T) {
 		Convey("DeleteBlob", func() {
 			testDeleteBlob := func(urlVars map[string]string, ism *mocks.MockedImageStore) int {
 				ctlr.StoreController.DefaultStore = ism
-				request, _ := http.NewRequestWithContext(context.TODO(), "DELETE", baseURL, nil)
+				request, _ := http.NewRequestWithContext(context.TODO(), http.MethodDelete, baseURL, nil)
 				request = mux.SetURLVars(request, urlVars)
 				response := httptest.NewRecorder()
 
@@ -306,7 +306,7 @@ func TestRoutes(t *testing.T) {
 		Convey("CheckBlob", func() {
 			testCheckBlob := func(urlVars map[string]string, ism *mocks.MockedImageStore) int {
 				ctlr.StoreController.DefaultStore = ism
-				request, _ := http.NewRequestWithContext(context.TODO(), "HEAD", baseURL, nil)
+				request, _ := http.NewRequestWithContext(context.TODO(), http.MethodHead, baseURL, nil)
 				request = mux.SetURLVars(request, urlVars)
 				response := httptest.NewRecorder()
 
@@ -387,7 +387,7 @@ func TestRoutes(t *testing.T) {
 		Convey("GetBlob", func() {
 			testGetBlob := func(urlVars map[string]string, ism *mocks.MockedImageStore) int {
 				ctlr.StoreController.DefaultStore = ism
-				request, _ := http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+				request, _ := http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
 				request = mux.SetURLVars(request, urlVars)
 				response := httptest.NewRecorder()
 
@@ -432,7 +432,7 @@ func TestRoutes(t *testing.T) {
 				ism *mocks.MockedImageStore,
 			) int {
 				ctlr.StoreController.DefaultStore = ism
-				request, _ := http.NewRequestWithContext(context.TODO(), "POST", baseURL, nil)
+				request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPost, baseURL, nil)
 				request = mux.SetURLVars(request,
 					map[string]string{
 						"name":  "test",
@@ -579,7 +579,7 @@ func TestRoutes(t *testing.T) {
 				ism *mocks.MockedImageStore,
 			) int {
 				ctlr.StoreController.DefaultStore = ism
-				request, _ := http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+				request, _ := http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
 				request = mux.SetURLVars(request, vars)
 
 				q := request.URL.Query()
@@ -694,7 +694,7 @@ func TestRoutes(t *testing.T) {
 				ism *mocks.MockedImageStore,
 			) int {
 				ctlr.StoreController.DefaultStore = ism
-				request, _ := http.NewRequestWithContext(context.TODO(), "PATCH", baseURL, nil)
+				request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPatch, baseURL, nil)
 
 				request = mux.SetURLVars(request, vars)
 
@@ -809,7 +809,7 @@ func TestRoutes(t *testing.T) {
 				ism *mocks.MockedImageStore,
 			) int {
 				ctlr.StoreController.DefaultStore = ism
-				request, _ := http.NewRequestWithContext(context.TODO(), "PATCH", baseURL, nil)
+				request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPatch, baseURL, nil)
 
 				request = mux.SetURLVars(request, vars)
 
@@ -1054,7 +1054,7 @@ func TestRoutes(t *testing.T) {
 				ism *mocks.MockedImageStore,
 			) int {
 				ctlr.StoreController.DefaultStore = ism
-				request, _ := http.NewRequestWithContext(context.TODO(), "PATCH", baseURL, nil)
+				request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPatch, baseURL, nil)
 
 				request = mux.SetURLVars(request, vars)
 
@@ -1139,7 +1139,7 @@ func TestRoutes(t *testing.T) {
 						},
 					},
 				}
-				request, _ := http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+				request, _ := http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
 
 				request = mux.SetURLVars(request, vars)
 
@@ -1171,7 +1171,7 @@ func TestRoutes(t *testing.T) {
 			) int {
 				ctlr.StoreController.DefaultStore = ism
 				ctlr.StoreController.SubStore = map[string]storage.ImageStore{}
-				request, _ := http.NewRequestWithContext(context.TODO(), "PATCH", baseURL, nil)
+				request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPatch, baseURL, nil)
 
 				request = mux.SetURLVars(request, vars)
 
@@ -1249,7 +1249,7 @@ func TestRoutes(t *testing.T) {
 			// acCtx := api.NewAccessControlContext(map[string]bool{}, true)
 			// ctx := context.WithValue(context.Background(), "ctx", acCtx)
 			ctx := context.Background()
-			request, _ := http.NewRequestWithContext(ctx, "GET", baseURL, nil)
+			request, _ := http.NewRequestWithContext(ctx, http.MethodGet, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{
 				"name":       "repo",
 				"session_id": "test",
@@ -1272,7 +1272,7 @@ func TestRoutes(t *testing.T) {
 				ism *mocks.MockedImageStore,
 			) int {
 				ctlr.StoreController.DefaultStore = ism
-				request, _ := http.NewRequestWithContext(context.TODO(), "PATCH", baseURL, nil)
+				request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPatch, baseURL, nil)
 
 				request = mux.SetURLVars(request, vars)
 

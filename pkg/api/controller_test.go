@@ -601,7 +601,7 @@ func TestInterruptedBlobUpload(t *testing.T) {
 		blob := make([]byte, 50*1024*1024)
 		digest := godigest.FromBytes(blob).String()
 
-		// nolint: dupl
+		//nolint: dupl
 		Convey("Test interrupt PATCH blob upload", func() {
 			resp, err := client.R().Post(baseURL + "/v2/" + AuthorizedNamespace + "/blobs/uploads/")
 			So(err, ShouldBeNil)
@@ -703,7 +703,7 @@ func TestInterruptedBlobUpload(t *testing.T) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 		})
 
-		// nolint: dupl
+		//nolint: dupl
 		Convey("Test interrupt PUT blob upload", func() {
 			resp, err := client.R().Post(baseURL + "/v2/" + AuthorizedNamespace + "/blobs/uploads/")
 			So(err, ShouldBeNil)
@@ -4115,7 +4115,7 @@ func TestRouteFailures(t *testing.T) {
 		// so path routing is bypassed
 
 		Convey("List tags", func() {
-			request, _ := http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
 			mux.SetURLVars(request, map[string]string{})
 			response := httptest.NewRecorder()
 
@@ -4126,7 +4126,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
 			response = httptest.NewRecorder()
 
@@ -4137,7 +4137,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
 			qparm := request.URL.Query()
 			qparm.Add("n", "a")
@@ -4151,7 +4151,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
 			qparm = request.URL.Query()
 			qparm.Add("n", "abc")
@@ -4165,7 +4165,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
 			qparm = request.URL.Query()
 			qparm.Add("n", "a")
@@ -4180,7 +4180,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
 			qparm = request.URL.Query()
 			qparm.Add("n", "0")
@@ -4194,7 +4194,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
 			qparm = request.URL.Query()
 			qparm.Add("n", "1")
@@ -4209,7 +4209,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
 			qparm = request.URL.Query()
 			qparm.Add("n", "1")
@@ -4224,7 +4224,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
 			qparm = request.URL.Query()
 			qparm.Add("n", "1")
@@ -4242,7 +4242,7 @@ func TestRouteFailures(t *testing.T) {
 		})
 
 		Convey("Check manifest", func() {
-			request, _ := http.NewRequestWithContext(context.TODO(), "HEAD", baseURL, nil)
+			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodHead, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{})
 			response := httptest.NewRecorder()
 
@@ -4253,7 +4253,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "HEAD", baseURL, nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodHead, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
 			response = httptest.NewRecorder()
 
@@ -4264,7 +4264,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "HEAD", baseURL, nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodHead, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo", "reference": ""})
 			response = httptest.NewRecorder()
 
@@ -4277,7 +4277,7 @@ func TestRouteFailures(t *testing.T) {
 		})
 
 		Convey("Get manifest", func() {
-			request, _ := http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{})
 			response := httptest.NewRecorder()
 
@@ -4288,7 +4288,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
 			response = httptest.NewRecorder()
 
@@ -4299,7 +4299,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo", "reference": ""})
 			response = httptest.NewRecorder()
 
@@ -4312,7 +4312,7 @@ func TestRouteFailures(t *testing.T) {
 		})
 
 		Convey("Update manifest", func() {
-			request, _ := http.NewRequestWithContext(context.TODO(), "PUT", baseURL, nil)
+			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPut, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{})
 			response := httptest.NewRecorder()
 
@@ -4323,7 +4323,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "PUT", baseURL, nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodPut, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
 			response = httptest.NewRecorder()
 
@@ -4334,7 +4334,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "PUT", baseURL, nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodPut, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo", "reference": ""})
 			response = httptest.NewRecorder()
 
@@ -4347,7 +4347,7 @@ func TestRouteFailures(t *testing.T) {
 		})
 
 		Convey("Delete manifest", func() {
-			request, _ := http.NewRequestWithContext(context.TODO(), "DELETE", baseURL, nil)
+			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodDelete, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{})
 			response := httptest.NewRecorder()
 
@@ -4358,7 +4358,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "DELETE", baseURL, nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodDelete, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
 			response = httptest.NewRecorder()
 
@@ -4369,7 +4369,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "DELETE", baseURL, nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodDelete, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo", "reference": ""})
 			response = httptest.NewRecorder()
 
@@ -4382,7 +4382,7 @@ func TestRouteFailures(t *testing.T) {
 		})
 
 		Convey("Check blob", func() {
-			request, _ := http.NewRequestWithContext(context.TODO(), "HEAD", baseURL, nil)
+			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodHead, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{})
 			response := httptest.NewRecorder()
 
@@ -4393,7 +4393,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "HEAD", baseURL, nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodHead, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
 			response = httptest.NewRecorder()
 
@@ -4404,7 +4404,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "HEAD", baseURL, nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodHead, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo", "digest": ""})
 			response = httptest.NewRecorder()
 
@@ -4417,7 +4417,7 @@ func TestRouteFailures(t *testing.T) {
 		})
 
 		Convey("Get blob", func() {
-			request, _ := http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{})
 			response := httptest.NewRecorder()
 
@@ -4428,7 +4428,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
 			response = httptest.NewRecorder()
 
@@ -4439,7 +4439,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo", "digest": ""})
 			response = httptest.NewRecorder()
 
@@ -4452,7 +4452,7 @@ func TestRouteFailures(t *testing.T) {
 		})
 
 		Convey("Delete blob", func() {
-			request, _ := http.NewRequestWithContext(context.TODO(), "DELETE", baseURL, nil)
+			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodDelete, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{})
 			response := httptest.NewRecorder()
 
@@ -4463,7 +4463,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "DELETE", baseURL, nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodDelete, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
 			response = httptest.NewRecorder()
 
@@ -4474,7 +4474,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "DELETE", baseURL, nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodDelete, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo", "digest": ""})
 			response = httptest.NewRecorder()
 
@@ -4487,7 +4487,7 @@ func TestRouteFailures(t *testing.T) {
 		})
 
 		Convey("Create blob upload", func() {
-			request, _ := http.NewRequestWithContext(context.TODO(), "POST", baseURL, nil)
+			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPost, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{})
 			response := httptest.NewRecorder()
 
@@ -4498,7 +4498,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "POST", baseURL, nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodPost, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
 			qparm := request.URL.Query()
 			qparm.Add("mount", "a")
@@ -4513,7 +4513,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "POST", baseURL, nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodPost, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
 			qparm = request.URL.Query()
 			qparm.Add("mount", "a")
@@ -4529,7 +4529,7 @@ func TestRouteFailures(t *testing.T) {
 		})
 
 		Convey("Get blob upload", func() {
-			request, _ := http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{})
 			response := httptest.NewRecorder()
 
@@ -4540,7 +4540,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
 			response = httptest.NewRecorder()
 
@@ -4553,7 +4553,7 @@ func TestRouteFailures(t *testing.T) {
 		})
 
 		Convey("Patch blob upload", func() {
-			request, _ := http.NewRequestWithContext(context.TODO(), "PATCH", baseURL, nil)
+			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPatch, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{})
 			response := httptest.NewRecorder()
 
@@ -4564,7 +4564,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
 			response = httptest.NewRecorder()
 
@@ -4577,7 +4577,7 @@ func TestRouteFailures(t *testing.T) {
 		})
 
 		Convey("Update blob upload", func() {
-			request, _ := http.NewRequestWithContext(context.TODO(), "PUT", baseURL, nil)
+			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPut, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{})
 			response := httptest.NewRecorder()
 
@@ -4588,7 +4588,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "PUT", baseURL, nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodPut, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
 			response = httptest.NewRecorder()
 
@@ -4599,7 +4599,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "PUT", baseURL, nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodPut, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo", "session_id": "bar"})
 			response = httptest.NewRecorder()
 
@@ -4610,7 +4610,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "PUT", baseURL, nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodPut, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo", "session_id": "bar"})
 			qparm := request.URL.Query()
 			qparm.Add("digest", "a")
@@ -4627,7 +4627,7 @@ func TestRouteFailures(t *testing.T) {
 		})
 
 		Convey("Delete blob upload", func() {
-			request, _ := http.NewRequestWithContext(context.TODO(), "DELETE", baseURL, nil)
+			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodDelete, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{})
 			response := httptest.NewRecorder()
 
@@ -4638,7 +4638,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "DELETE", baseURL, nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodDelete, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
 			response = httptest.NewRecorder()
 
@@ -4651,7 +4651,7 @@ func TestRouteFailures(t *testing.T) {
 		})
 
 		Convey("Get referrers", func() {
-			request, _ := http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{})
 			response := httptest.NewRecorder()
 
@@ -4662,7 +4662,7 @@ func TestRouteFailures(t *testing.T) {
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode, ShouldEqual, http.StatusNotFound)
 
-			request, _ = http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
 			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
 			response = httptest.NewRecorder()
 
@@ -5200,7 +5200,7 @@ func TestManifestImageIndex(t *testing.T) {
 			So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
 
 			Convey("List tags", func() {
-				request, _ := http.NewRequestWithContext(context.TODO(), "GET", baseURL, nil)
+				request, _ := http.NewRequestWithContext(context.TODO(), http.MethodGet, baseURL, nil)
 				request = mux.SetURLVars(request, map[string]string{"name": "index"})
 				response := httptest.NewRecorder()
 
@@ -5713,7 +5713,7 @@ func TestInjectInterruptedImageManifest(t *testing.T) {
 			Convey("Uploading an image manifest blob (when injected simulates an interrupted image manifest upload)", func() {
 				injected := test.InjectFailure(0)
 
-				request, _ := http.NewRequestWithContext(context.TODO(), "PUT", baseURL, bytes.NewReader(content))
+				request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPut, baseURL, bytes.NewReader(content))
 				request = mux.SetURLVars(request, map[string]string{"name": "repotest", "reference": "1.0"})
 				request.Header.Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
 				response := httptest.NewRecorder()
@@ -5774,7 +5774,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 		// monolithic blob upload
 		injected := test.InjectFailure(0)
 		if injected {
-			request, _ := http.NewRequestWithContext(context.TODO(), "PUT", loc, bytes.NewReader(content))
+			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPut, loc, bytes.NewReader(content))
 			tokens := strings.Split(loc, "/")
 			request = mux.SetURLVars(request, map[string]string{"name": "repotest", "session_id": tokens[len(tokens)-1]})
 			q := request.URL.Query()
@@ -5847,7 +5847,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 		Convey("Uploading an image manifest blob (when injected simulates that PutImageManifest failed due to 'too many open files' error)", func() {
 			injected := test.InjectFailure(1)
 
-			request, _ := http.NewRequestWithContext(context.TODO(), "PUT", baseURL, bytes.NewReader(content))
+			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPut, baseURL, bytes.NewReader(content))
 			request = mux.SetURLVars(request, map[string]string{"name": "repotest", "reference": "1.0"})
 			request.Header.Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
 			response := httptest.NewRecorder()
@@ -5867,7 +5867,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 		Convey("when injected simulates a `too many open files` error inside PutImageManifest method of img store", func() {
 			injected := test.InjectFailure(2)
 
-			request, _ := http.NewRequestWithContext(context.TODO(), "PUT", baseURL, bytes.NewReader(content))
+			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPut, baseURL, bytes.NewReader(content))
 			request = mux.SetURLVars(request, map[string]string{"name": "repotest", "reference": "1.0"})
 			request.Header.Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
 			response := httptest.NewRecorder()
@@ -5888,7 +5888,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 		Convey("code coverage: error inside PutImageManifest method of img store (unable to marshal JSON)", func() {
 			injected := test.InjectFailure(1)
 
-			request, _ := http.NewRequestWithContext(context.TODO(), "PUT", baseURL, bytes.NewReader(content))
+			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPut, baseURL, bytes.NewReader(content))
 			request = mux.SetURLVars(request, map[string]string{"name": "repotest", "reference": "1.0"})
 			request.Header.Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
 			response := httptest.NewRecorder()
@@ -5909,7 +5909,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 		Convey("code coverage: error inside PutImageManifest method of img store (umoci.OpenLayout error)", func() {
 			injected := test.InjectFailure(3)
 
-			request, _ := http.NewRequestWithContext(context.TODO(), "PUT", baseURL, bytes.NewReader(content))
+			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPut, baseURL, bytes.NewReader(content))
 			request = mux.SetURLVars(request, map[string]string{"name": "repotest", "reference": "1.0"})
 			request.Header.Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
 			response := httptest.NewRecorder()
@@ -5930,7 +5930,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 		Convey("code coverage: error inside PutImageManifest method of img store (oci.GC)", func() {
 			injected := test.InjectFailure(4)
 
-			request, _ := http.NewRequestWithContext(context.TODO(), "PUT", baseURL, bytes.NewReader(content))
+			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPut, baseURL, bytes.NewReader(content))
 			request = mux.SetURLVars(request, map[string]string{"name": "repotest", "reference": "1.0"})
 			request.Header.Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
 			response := httptest.NewRecorder()

@@ -30,7 +30,7 @@ type syncContextUtils struct {
 	copyOptions  copy.Options
 }
 
-// nolint: gochecknoglobals
+//nolint:gochecknoglobals
 var demandedImgs demandedImages
 
 type demandedImages struct {

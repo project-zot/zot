@@ -69,7 +69,7 @@ func createHTTPClient(verifyTLS bool, host string) *http.Client {
 func makeGETRequest(ctx context.Context, url, username, password string,
 	verifyTLS bool, debug bool, resultsPtr interface{}, configWriter io.Writer,
 ) (http.Header, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +82,7 @@ func makeGETRequest(ctx context.Context, url, username, password string,
 func makeGraphQLRequest(ctx context.Context, url, query, username,
 	password string, verifyTLS bool, debug bool, resultsPtr interface{}, configWriter io.Writer,
 ) error {
-	req, err := http.NewRequestWithContext(ctx, "GET", url, bytes.NewBufferString(query))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, bytes.NewBufferString(query))
 	if err != nil {
 		return err
 	}

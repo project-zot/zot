@@ -50,7 +50,7 @@ var (
 	ErrPutManifest = errors.New("can't put manifest")
 )
 
-// nolint:gochecknoglobals
+//nolint:gochecknoglobals
 var (
 	rootDir    string
 	subRootDir string
@@ -111,7 +111,7 @@ type ImageSummaryResult struct {
 	Errors             []ErrorGQL         `json:"errors"`
 }
 
-func testSetup(t *testing.T, subpath string) error {
+func testSetup(t *testing.T, subpath string) error { //nolint:unparam
 	t.Helper()
 	dir := t.TempDir()
 
@@ -738,7 +738,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		err = os.WriteFile(indexPath, buf, 0o600)
 		So(err, ShouldBeNil)
 
-		query := "{ExpandedRepoInfo(repo:\"test1\"){Summary%20{Name%20LastUpdated%20Size%20Platforms%20{Os%20Arch}%20Vendors%20Score}%20Images%20{Digest%20IsSigned%20Tag%20Layers%20{Size%20Digest}}}}" // nolint: lll
+		query := "{ExpandedRepoInfo(repo:\"test1\"){Summary%20{Name%20LastUpdated%20Size%20Platforms%20{Os%20Arch}%20Vendors%20Score}%20Images%20{Digest%20IsSigned%20Tag%20Layers%20{Size%20Digest}}}}" //nolint: lll
 
 		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + query)
 		So(resp, ShouldNotBeNil)
@@ -808,7 +808,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 422)
 
-		query := "{ExpandedRepoInfo(repo:\"zot-cve-test\"){Summary%20{Name%20LastUpdated%20Size%20Platforms%20{Os%20Arch}%20Vendors%20Score}}}" // nolint: lll
+		query := "{ExpandedRepoInfo(repo:\"zot-cve-test\"){Summary%20{Name%20LastUpdated%20Size%20Platforms%20{Os%20Arch}%20Vendors%20Score}}}" //nolint: lll
 
 		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + query)
 		So(resp, ShouldNotBeNil)
@@ -1372,7 +1372,7 @@ func TestDerivedImageList(t *testing.T) {
 	})
 }
 
-// nolint:dupl
+//nolint:dupl
 func TestDerivedImageListNoRepos(t *testing.T) {
 	Convey("No repositories found", t, func() {
 		port := GetFreePort()
@@ -1887,7 +1887,7 @@ func TestBaseImageList(t *testing.T) {
 	})
 }
 
-// nolint:dupl
+//nolint:dupl
 func TestBaseImageListNoRepos(t *testing.T) {
 	Convey("No repositories found", t, func() {
 		port := GetFreePort()

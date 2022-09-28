@@ -901,7 +901,7 @@ func getRandomSize(probabilityRange []float64) (int, int) {
 	return size, idx
 }
 
-// nolint:gosec
+//nolint:gosec
 func flipFunc(probabilityRange []float64) int {
 	mrand.Seed(time.Now().UTC().UnixNano())
 	toss := mrand.Float64()
@@ -935,7 +935,7 @@ func normalizeProbabilityRange(pbty []float64) []float64 {
 	return npd
 }
 
-func loadOrStore(statusRequests *sync.Map, key string, value int) int {
+func loadOrStore(statusRequests *sync.Map, key string, value int) int { //nolint:unparam
 	val, _ := statusRequests.LoadOrStore(key, value)
 
 	intValue, ok := val.(int)

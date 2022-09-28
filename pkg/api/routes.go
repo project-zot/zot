@@ -32,14 +32,13 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/storage"
-	"zotregistry.io/zot/pkg/test" // nolint:goimports
+	"zotregistry.io/zot/pkg/test" //nolint:goimports
 )
 
 type RouteHandler struct {
 	c *Controller
 }
 
-// nolint: contextcheck
 func NewRouteHandler(c *Controller) *RouteHandler {
 	rh := &RouteHandler{c: c}
 	rh.SetupRoutes()
@@ -51,7 +50,6 @@ func allowedMethods(method string) []string {
 	return []string{http.MethodOptions, method}
 }
 
-// nolint: contextcheck
 func (rh *RouteHandler) SetupRoutes() {
 	rh.c.Router.Use(AuthHandler(rh.c))
 	// authz is being enabled if AccessControl is specified
@@ -308,7 +306,7 @@ func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *htt
 		return
 	}
 
-	content, digest, mediaType, err := getImageManifest(rh, imgStore, name, reference)
+	content, digest, mediaType, err := getImageManifest(rh, imgStore, name, reference) //nolint:contextcheck
 	if err != nil {
 		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 			WriteJSON(response, http.StatusNotFound,
@@ -373,7 +371,7 @@ func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.
 		return
 	}
 
-	content, digest, mediaType, err := getImageManifest(rh, imgStore, name, reference)
+	content, digest, mediaType, err := getImageManifest(rh, imgStore, name, reference) //nolint: contextcheck
 	if err != nil {
 		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 			WriteJSON(response, http.StatusNotFound,
@@ -1550,7 +1548,7 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 
 	rh.c.Log.Info().Str("digest", digest).Str("artifactType", artifactType).Msg("getting manifest")
 
-	refs, err := getReferrers(rh, imgStore, name, digest, artifactType)
+	refs, err := getReferrers(rh, imgStore, name, digest, artifactType) //nolint:contextcheck
 	if err != nil {
 		rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest).Msg("unable to get references")
 		response.WriteHeader(http.StatusBadRequest)
