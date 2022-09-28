@@ -1,7 +1,7 @@
 # ---
 # Stage 1: Install certs, build binary, create default config file
 # ---
-FROM ghcr.io/project-zot/golang:1.18 AS builder
+FROM ghcr.io/project-zot/golang:1.19 AS builder
 ARG COMMIT
 RUN apt-get update && apt-get install -y git make ca-certificates
 RUN mkdir -p /go/src/github.com/project-zot/zot
