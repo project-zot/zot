@@ -1,155 +1,63 @@
 package cveinfo
 
 import (
-	"flag"
 	"fmt"
-	"path"
-	"strings"
 
-	dbTypes "github.com/aquasecurity/trivy-db/pkg/types"
-	"github.com/aquasecurity/trivy/pkg/commands/artifact"
-	"github.com/aquasecurity/trivy/pkg/commands/operation"
-	"github.com/aquasecurity/trivy/pkg/report"
-	"github.com/aquasecurity/trivy/pkg/types"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/urfave/cli/v2"
 	"zotregistry.io/zot/pkg/extensions/search/common"
+	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
+	"zotregistry.io/zot/pkg/extensions/search/cve/trivy"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 )
 
-func getRoutePrefix(name string) string {
-	names := strings.SplitN(name, "/", 2) //nolint:gomnd
-
-	if len(names) != 2 { // nolint: gomnd
-		// it means route is of global storage e.g "centos:latest"
-		if len(names) == 1 {
-			return "/"
-		}
-	}
-
-	return fmt.Sprintf("/%s", names[0])
+type CveInfo interface {
+	GetImageListForCVE(repo, cveID string) ([]ImageInfoByCVE, error)
+	GetImageListWithCVEFixed(repo, cveID string) ([]common.TagInfo, error)
+	GetCVEListForImage(image string) (map[string]cvemodel.CVE, error)
+	GetCVESummaryForImage(image string) (ImageCVESummary, error)
+	UpdateDB() error
 }
 
-// UpdateCVEDb ...
-func UpdateCVEDb(dbDir string, log log.Logger) error {
-	return operation.DownloadDB("dev", dbDir, false, false, false)
+type Scanner interface {
+	ScanImage(image string) (map[string]cvemodel.CVE, error)
+	IsImageFormatScannable(image string) (bool, error)
+	CompareSeverities(severity1, severity2 string) int
+	UpdateDB() error
 }
 
-// NewTrivyContext set some trivy configuration value and return a context.
-func NewTrivyContext(dir string) *TrivyCtx {
-	trivyCtx := &TrivyCtx{}
-
-	app := &cli.App{}
-
-	flagSet := &flag.FlagSet{}
-
-	var cacheDir string
-
-	flagSet.StringVar(&cacheDir, "cache-dir", dir, "")
-
-	var vuln string
-
-	flagSet.StringVar(&vuln, "vuln-type", strings.Join([]string{types.VulnTypeOS, types.VulnTypeLibrary}, ","), "")
-
-	var severity string
-
-	flagSet.StringVar(&severity, "severity", strings.Join(dbTypes.SeverityNames, ","), "")
-
-	flagSet.StringVar(&trivyCtx.Input, "input", "", "")
-
-	var securityCheck string
-
-	flagSet.StringVar(&securityCheck, "security-checks", types.SecurityCheckVulnerability, "")
-
-	var reportFormat string
-
-	flagSet.StringVar(&reportFormat, "format", "table", "")
-
-	ctx := cli.NewContext(app, flagSet, nil)
-
-	trivyCtx.Ctx = ctx
-
-	return trivyCtx
+type ImageInfoByCVE struct {
+	Tag      string
+	Digest   digest.Digest
+	Manifest v1.Manifest
 }
 
-func ScanImage(ctx *cli.Context) (report.Report, error) {
-	return artifact.TrivyImageRun(ctx)
+type ImageCVESummary struct {
+	Count       int
+	MaxSeverity string
 }
 
-func GetCVEInfo(storeController storage.StoreController, log log.Logger) (*CveInfo, error) {
-	cveController := CveTrivyController{}
+type BaseCveInfo struct {
+	Log         log.Logger
+	Scanner     Scanner
+	LayoutUtils common.OciLayoutUtils
+}
+
+func NewCVEInfo(storeController storage.StoreController, log log.Logger) *BaseCveInfo {
 	layoutUtils := common.NewBaseOciLayoutUtils(storeController, log)
+	scanner := trivy.NewScanner(storeController, layoutUtils, log)
 
-	subCveConfig := make(map[string]*TrivyCtx)
-
-	if storeController.DefaultStore != nil {
-		imageStore := storeController.DefaultStore
-
-		rootDir := imageStore.RootDir()
-
-		ctx := NewTrivyContext(rootDir)
-
-		cveController.DefaultCveConfig = ctx
-	}
-
-	if storeController.SubStore != nil {
-		for route, storage := range storeController.SubStore {
-			rootDir := storage.RootDir()
-
-			ctx := NewTrivyContext(rootDir)
-
-			subCveConfig[route] = ctx
-		}
-	}
-
-	cveController.SubCveConfig = subCveConfig
-
-	return &CveInfo{
-		Log: log, CveTrivyController: cveController, StoreController: storeController,
-		LayoutUtils: layoutUtils,
-	}, nil
+	return &BaseCveInfo{Log: log, Scanner: scanner, LayoutUtils: layoutUtils}
 }
 
-func (cveinfo CveInfo) GetTrivyContext(image string) *TrivyCtx {
-	// Split image to get route prefix
-	prefixName := getRoutePrefix(image)
-
-	var trivyCtx *TrivyCtx
-
-	var ok bool
-
-	var rootDir string
-
-	// Get corresponding CVE trivy config, if no sub cve config present that means its default
-	trivyCtx, ok = cveinfo.CveTrivyController.SubCveConfig[prefixName]
-	if ok {
-		imgStore := cveinfo.StoreController.SubStore[prefixName]
-
-		rootDir = imgStore.RootDir()
-	} else {
-		trivyCtx = cveinfo.CveTrivyController.DefaultCveConfig
-
-		imgStore := cveinfo.StoreController.DefaultStore
-
-		rootDir = imgStore.RootDir()
-	}
-
-	trivyCtx.Input = path.Join(rootDir, image)
-
-	return trivyCtx
-}
-
-func (cveinfo CveInfo) GetImageListForCVE(repo, cvid string, imgStore storage.ImageStore,
-	trivyCtx *TrivyCtx,
-) ([]ImageInfoByCVE, error) {
+func (cveinfo BaseCveInfo) GetImageListForCVE(repo, cveID string) ([]ImageInfoByCVE, error) {
 	imgList := make([]ImageInfoByCVE, 0)
-
-	rootDir := imgStore.RootDir()
 
 	manifests, err := cveinfo.LayoutUtils.GetImageManifests(repo)
 	if err != nil {
-		cveinfo.Log.Error().Err(err).Msg("unable to get list of image tag")
+		cveinfo.Log.Error().Err(err).Str("repo", repo).Msg("unable to get list of tags from repo")
 
 		return imgList, err
 	}
@@ -159,47 +67,141 @@ func (cveinfo CveInfo) GetImageListForCVE(repo, cvid string, imgStore storage.Im
 
 		image := fmt.Sprintf("%s:%s", repo, tag)
 
-		trivyCtx.Input = path.Join(rootDir, image)
-
-		isValidImage, _ := cveinfo.LayoutUtils.IsValidImageFormat(image)
+		isValidImage, _ := cveinfo.Scanner.IsImageFormatScannable(image)
 		if !isValidImage {
-			cveinfo.Log.Debug().Str("image", repo+":"+tag).Msg("image media type not supported for scanning")
-
 			continue
 		}
 
-		cveinfo.Log.Info().Str("image", repo+":"+tag).Msg("scanning image")
-
-		report, err := ScanImage(trivyCtx.Ctx)
+		cveMap, err := cveinfo.Scanner.ScanImage(image)
 		if err != nil {
-			cveinfo.Log.Error().Err(err).Str("image", repo+":"+tag).Msg("unable to scan image")
-
 			continue
 		}
 
-		for _, result := range report.Results {
-			for _, vulnerability := range result.Vulnerabilities {
-				if vulnerability.VulnerabilityID == cvid {
-					digest := manifest.Digest
+		for id := range cveMap {
+			if id == cveID {
+				digest := manifest.Digest
 
-					imageBlobManifest, err := cveinfo.LayoutUtils.GetImageBlobManifest(repo, digest)
-					if err != nil {
-						cveinfo.Log.Error().Err(err).Msg("unable to read image blob manifest")
+				imageBlobManifest, err := cveinfo.LayoutUtils.GetImageBlobManifest(repo, digest)
+				if err != nil {
+					cveinfo.Log.Error().Err(err).Msg("unable to read image blob manifest")
 
-						return []ImageInfoByCVE{}, err
-					}
-
-					imgList = append(imgList, ImageInfoByCVE{
-						Tag:      tag,
-						Digest:   digest,
-						Manifest: imageBlobManifest,
-					})
-
-					break
+					return []ImageInfoByCVE{}, err
 				}
+
+				imgList = append(imgList, ImageInfoByCVE{
+					Tag:      tag,
+					Digest:   digest,
+					Manifest: imageBlobManifest,
+				})
+
+				break
 			}
 		}
 	}
 
 	return imgList, nil
+}
+
+func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]common.TagInfo, error) {
+	tagsInfo, err := cveinfo.LayoutUtils.GetImageTagsWithTimestamp(repo)
+	if err != nil {
+		cveinfo.Log.Error().Err(err).Str("repo", repo).Msg("unable to get list of tags from repo")
+
+		return []common.TagInfo{}, err
+	}
+
+	vulnerableTags := make([]common.TagInfo, 0)
+
+	var hasCVE bool
+
+	for _, tag := range tagsInfo {
+		image := fmt.Sprintf("%s:%s", repo, tag.Name)
+		tagInfo := common.TagInfo{Name: tag.Name, Timestamp: tag.Timestamp, Digest: tag.Digest}
+
+		isValidImage, _ := cveinfo.Scanner.IsImageFormatScannable(image)
+		if !isValidImage {
+			cveinfo.Log.Debug().Str("image", image).
+				Msg("image media type not supported for scanning, adding as a vulnerable image")
+
+			vulnerableTags = append(vulnerableTags, tagInfo)
+
+			continue
+		}
+
+		cveMap, err := cveinfo.Scanner.ScanImage(image)
+		if err != nil {
+			cveinfo.Log.Debug().Str("image", image).
+				Msg("scanning failed, adding as a vulnerable image")
+
+			vulnerableTags = append(vulnerableTags, tagInfo)
+
+			continue
+		}
+
+		hasCVE = false
+
+		for id := range cveMap {
+			if id == cveID {
+				hasCVE = true
+
+				break
+			}
+		}
+
+		if hasCVE {
+			vulnerableTags = append(vulnerableTags, tagInfo)
+		}
+	}
+
+	if len(vulnerableTags) != 0 {
+		cveinfo.Log.Info().Str("repo", repo).Msg("comparing fixed tags timestamp")
+
+		tagsInfo = common.GetFixedTags(tagsInfo, vulnerableTags)
+	} else {
+		cveinfo.Log.Info().Str("repo", repo).Str("cve-id", cveID).
+			Msg("image does not contain any tag that have given cve")
+	}
+
+	return tagsInfo, nil
+}
+
+func (cveinfo BaseCveInfo) GetCVEListForImage(image string) (map[string]cvemodel.CVE, error) {
+	cveMap := make(map[string]cvemodel.CVE)
+
+	isValidImage, err := cveinfo.Scanner.IsImageFormatScannable(image)
+	if !isValidImage {
+		return cveMap, err
+	}
+
+	return cveinfo.Scanner.ScanImage(image)
+}
+
+func (cveinfo BaseCveInfo) GetCVESummaryForImage(image string) (ImageCVESummary, error) {
+	imageCVESummary := ImageCVESummary{
+		Count:       0,
+		MaxSeverity: "UNKNOWN",
+	}
+
+	isValidImage, err := cveinfo.Scanner.IsImageFormatScannable(image)
+	if !isValidImage {
+		return imageCVESummary, err
+	}
+
+	cveMap, err := cveinfo.Scanner.ScanImage(image)
+	if err != nil {
+		return imageCVESummary, err
+	}
+
+	for _, cve := range cveMap {
+		if cveinfo.Scanner.CompareSeverities(imageCVESummary.MaxSeverity, cve.Severity) > 0 {
+			imageCVESummary.MaxSeverity = cve.Severity
+		}
+	}
+	imageCVESummary.Count = len(cveMap)
+
+	return imageCVESummary, nil
+}
+
+func (cveinfo BaseCveInfo) UpdateDB() error {
+	return cveinfo.Scanner.UpdateDB()
 }

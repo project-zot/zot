@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	dbTypes "github.com/aquasecurity/trivy-db/pkg/types"
 	"github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -88,16 +89,17 @@ type GlobalSearch struct {
 }
 
 type ImageSummary struct {
-	RepoName    string         `json:"repoName"`
-	Tag         string         `json:"tag"`
-	LastUpdated time.Time      `json:"lastUpdated"`
-	Size        string         `json:"size"`
-	Platform    OsArch         `json:"platform"`
-	Vendor      string         `json:"vendor"`
-	Score       int            `json:"score"`
-	IsSigned    bool           `json:"isSigned"`
-	History     []LayerHistory `json:"history"`
-	Layers      []LayerSummary `json:"layers"`
+	RepoName        string                    `json:"repoName"`
+	Tag             string                    `json:"tag"`
+	LastUpdated     time.Time                 `json:"lastUpdated"`
+	Size            string                    `json:"size"`
+	Platform        OsArch                    `json:"platform"`
+	Vendor          string                    `json:"vendor"`
+	Score           int                       `json:"score"`
+	IsSigned        bool                      `json:"isSigned"`
+	History         []LayerHistory            `json:"history"`
+	Layers          []LayerSummary            `json:"layers"`
+	Vulnerabilities ImageVulnerabilitySummary `json:"vulnerabilities"`
 }
 
 type LayerHistory struct {
@@ -111,6 +113,11 @@ type HistoryDescription struct {
 	Author     string    `json:"author"`
 	Comment    string    `json:"comment"`
 	EmptyLayer bool      `json:"emptyLayer"`
+}
+
+type ImageVulnerabilitySummary struct {
+	MaxSeverity string `json:"maxSeverity"`
+	Count       int    `json:"count"`
 }
 
 type RepoSummary struct {
@@ -278,71 +285,31 @@ func getTags() ([]common.TagInfo, []common.TagInfo) {
 
 	tags = append(tags, firstTag, secondTag, thirdTag, fourthTag)
 
-	infectedTags := make([]common.TagInfo, 0)
-	infectedTags = append(infectedTags, secondTag)
+	vulnerableTags := make([]common.TagInfo, 0)
+	vulnerableTags = append(vulnerableTags, secondTag)
 
-	return tags, infectedTags
+	return tags, vulnerableTags
 }
 
-func TestImageFormat(t *testing.T) {
-	Convey("Test valid image", t, func() {
-		log := log.NewLogger("debug", "")
-		dbDir := "../../../../test/data"
+func readFileAndSearchString(filePath string, stringToMatch string, timeout time.Duration) (bool, error) {
+	ctx, cancelFunc := context.WithTimeout(context.Background(), timeout)
+	defer cancelFunc()
 
-		conf := config.New()
-		conf.Extensions = &extconf.ExtensionConfig{}
-		conf.Extensions.Lint = &extconf.LintConfig{}
+	for {
+		select {
+		case <-ctx.Done():
+			return false, nil
+		default:
+			content, err := os.ReadFile(filePath)
+			if err != nil {
+				return false, err
+			}
 
-		metrics := monitoring.NewMetricsServer(false, log)
-		defaultStore := storage.NewImageStore(dbDir, false, storage.DefaultGCDelay,
-			false, false, log, metrics, nil)
-		storeController := storage.StoreController{DefaultStore: defaultStore}
-		olu := common.NewBaseOciLayoutUtils(storeController, log)
-
-		isValidImage, err := olu.IsValidImageFormat("zot-test")
-		So(err, ShouldBeNil)
-		So(isValidImage, ShouldEqual, true)
-
-		isValidImage, err = olu.IsValidImageFormat("zot-test:0.0.1")
-		So(err, ShouldBeNil)
-		So(isValidImage, ShouldEqual, true)
-
-		isValidImage, err = olu.IsValidImageFormat("zot-test:0.0.")
-		So(err, ShouldBeNil)
-		So(isValidImage, ShouldEqual, false)
-
-		isValidImage, err = olu.IsValidImageFormat("zot-noindex-test")
-		So(err, ShouldNotBeNil)
-		So(isValidImage, ShouldEqual, false)
-
-		isValidImage, err = olu.IsValidImageFormat("zot--tet")
-		So(err, ShouldNotBeNil)
-		So(isValidImage, ShouldEqual, false)
-
-		isValidImage, err = olu.IsValidImageFormat("zot-noindex-test")
-		So(err, ShouldNotBeNil)
-		So(isValidImage, ShouldEqual, false)
-
-		isValidImage, err = olu.IsValidImageFormat("zot-squashfs-noblobs")
-		So(err, ShouldNotBeNil)
-		So(isValidImage, ShouldEqual, false)
-
-		isValidImage, err = olu.IsValidImageFormat("zot-squashfs-invalid-index")
-		So(err, ShouldNotBeNil)
-		So(isValidImage, ShouldEqual, false)
-
-		isValidImage, err = olu.IsValidImageFormat("zot-squashfs-invalid-blob")
-		So(err, ShouldNotBeNil)
-		So(isValidImage, ShouldEqual, false)
-
-		isValidImage, err = olu.IsValidImageFormat("zot-squashfs-test:0.3.22-squashfs")
-		So(err, ShouldNotBeNil)
-		So(isValidImage, ShouldEqual, false)
-
-		isValidImage, err = olu.IsValidImageFormat("zot-nonreadable-test")
-		So(err, ShouldNotBeNil)
-		So(isValidImage, ShouldEqual, false)
-	})
+			if strings.Contains(string(content), stringToMatch) {
+				return true, nil
+			}
+		}
+	}
 }
 
 func TestRepoListWithNewestImage(t *testing.T) {
@@ -536,6 +503,22 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		images := responseStruct.RepoListWithNewestImage.Repos
 		So(images[0].NewestImage.Tag, ShouldEqual, "0.0.1")
 
+		// Verify we don't return any vulnerabilities if CVE scanning is disabled
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
+			"?query={RepoListWithNewestImage{Name%20NewestImage{Tag%20Vulnerabilities{MaxSeverity%20Count}}}}")
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		err = json.Unmarshal(resp.Body(), &responseStruct)
+		So(err, ShouldBeNil)
+		So(len(responseStruct.RepoListWithNewestImage.Repos), ShouldEqual, 4)
+
+		images = responseStruct.RepoListWithNewestImage.Repos
+		So(images[0].NewestImage.Tag, ShouldEqual, "0.0.1")
+		So(images[0].NewestImage.Vulnerabilities.Count, ShouldEqual, 0)
+		So(images[0].NewestImage.Vulnerabilities.MaxSeverity, ShouldEqual, "")
+
 		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
 			"?query={RepoListWithNewestImage{Name%20NewestImage{Tag}}}")
 		So(resp, ShouldNotBeNil)
@@ -611,6 +594,120 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
+	})
+
+	Convey("Test repoListWithNewestImage with vulnerability scan enabled", t, func() {
+		subpath := "/a"
+		err := testSetup(t, subpath)
+		if err != nil {
+			panic(err)
+		}
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = rootDir
+		conf.Storage.SubPaths = make(map[string]config.StorageConfig)
+		conf.Storage.SubPaths[subpath] = config.StorageConfig{RootDirectory: subRootDir}
+		defaultVal := true
+
+		updateDuration, _ := time.ParseDuration("1h")
+		cveConfig := &extconf.CVEConfig{
+			UpdateInterval: updateDuration,
+		}
+		searchConfig := &extconf.SearchConfig{
+			Enable: &defaultVal,
+			CVE:    cveConfig,
+		}
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: searchConfig,
+		}
+
+		// we won't use the logging config feature as we want logs in both
+		// stdout and a file
+		logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
+		So(err, ShouldBeNil)
+		logPath := logFile.Name()
+		defer os.Remove(logPath)
+
+		writers := io.MultiWriter(os.Stdout, logFile)
+
+		ctlr := api.NewController(conf)
+		ctlr.Log.Logger = ctlr.Log.Output(writers)
+
+		go func() {
+			// this blocks
+			if err := ctlr.Run(context.Background()); err != nil {
+				return
+			}
+		}()
+
+		// wait till ready
+		for {
+			_, err := resty.R().Get(baseURL)
+			if err == nil {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		// shut down server
+		defer func() {
+			ctx := context.Background()
+			_ = ctlr.Server.Shutdown(ctx)
+		}()
+
+		substring := "\"Extensions\":{\"Search\":{\"CVE\":{\"UpdateInterval\":3600000000000},\"Enable\":true},\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":null}" //nolint:lll // gofumpt conflicts with lll
+		found, err := readFileAndSearchString(logPath, substring, 2*time.Minute)
+		So(found, ShouldBeTrue)
+		So(err, ShouldBeNil)
+
+		found, err = readFileAndSearchString(logPath, "updating the CVE database", 2*time.Minute)
+		So(found, ShouldBeTrue)
+		So(err, ShouldBeNil)
+
+		found, err = readFileAndSearchString(logPath, "DB update completed, next update scheduled", 4*time.Minute)
+		So(found, ShouldBeTrue)
+		So(err, ShouldBeNil)
+
+		resp, err := resty.R().Get(baseURL + "/v2/")
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix)
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 422)
+
+		query := "?query={RepoListWithNewestImage{Name%20NewestImage{Tag%20Vulnerabilities{MaxSeverity%20Count}}}}"
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + query)
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		var responseStruct RepoWithNewestImageResponse
+		err = json.Unmarshal(resp.Body(), &responseStruct)
+		So(err, ShouldBeNil)
+		So(len(responseStruct.RepoListWithNewestImage.Repos), ShouldEqual, 4)
+
+		repos := responseStruct.RepoListWithNewestImage.Repos
+		So(repos[0].NewestImage.Tag, ShouldEqual, "0.0.1")
+
+		for _, repo := range repos {
+			vulnerabilities := repo.NewestImage.Vulnerabilities
+			So(vulnerabilities, ShouldNotBeNil)
+			t.Logf("Found vulnerability summary %v", vulnerabilities)
+			// Depends on test data, but current tested images contain hundreds
+			So(vulnerabilities.Count, ShouldBeGreaterThan, 1)
+			So(
+				dbTypes.CompareSeverityString(dbTypes.SeverityUnknown.String(), vulnerabilities.MaxSeverity),
+				ShouldBeGreaterThan,
+				0,
+			)
+			// This really depends on the test data, but with the current test images it's CRITICAL
+			So(vulnerabilities.MaxSeverity, ShouldEqual, "CRITICAL")
+		}
 	})
 }
 
@@ -965,12 +1062,12 @@ func TestUtilsMethod(t *testing.T) {
 		routePrefix = common.GetRoutePrefix("a/b/test:latest")
 		So(routePrefix, ShouldEqual, "/a")
 
-		allTags, infectedTags := getTags()
+		allTags, vulnerableTags := getTags()
 
 		latestTag := common.GetLatestTag(allTags)
 		So(latestTag.Name, ShouldEqual, "1.0.3")
 
-		fixedTags := common.GetFixedTags(allTags, infectedTags)
+		fixedTags := common.GetFixedTags(allTags, vulnerableTags)
 		So(len(fixedTags), ShouldEqual, 2)
 
 		log := log.NewLogger("debug", "")
@@ -1937,7 +2034,7 @@ func TestGetRepositories(t *testing.T) {
 }
 
 func TestGlobalSearch(t *testing.T) {
-	Convey("Test utils", t, func() {
+	Convey("Test global search", t, func() {
 		subpath := "/a"
 
 		err := testSetup(t, subpath)
@@ -2000,16 +2097,20 @@ func TestGlobalSearch(t *testing.T) {
 							Os
 							Arch
 						}
+						Vulnerabilities {
+							Count
+							MaxSeverity
+						}
 					}
 					Repos {
 						Name
-      					LastUpdated
-      					Size
-      					Platforms {
-      						Os
-      						Arch
-      					}
-      					Vendors
+						LastUpdated
+						Size
+						Platforms {
+							Os
+							Arch
+						}
+						Vendors
 						Score
 						NewestImage {
 							RepoName
@@ -2022,6 +2123,10 @@ func TestGlobalSearch(t *testing.T) {
 							Platform {
 								Os
 								Arch
+							}
+							Vulnerabilities {
+								Count
+								MaxSeverity
 							}
 						}
 					}
@@ -2098,6 +2203,235 @@ func TestGlobalSearch(t *testing.T) {
 			So(repo.NewestImage.Vendor, ShouldEqual, image.Vendor)
 			So(repo.NewestImage.Platform.Os, ShouldEqual, image.Platform.Os)
 			So(repo.NewestImage.Platform.Arch, ShouldEqual, image.Platform.Arch)
+			So(repo.NewestImage.Vulnerabilities.Count, ShouldEqual, 0)
+			So(repo.NewestImage.Vulnerabilities.MaxSeverity, ShouldEqual, "")
+		}
+
+		// GetRepositories fail
+
+		err = os.Chmod(rootDir, 0o333)
+		So(err, ShouldBeNil)
+
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		responseStruct = &GlobalSearchResultResp{}
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+
+		So(responseStruct.Errors, ShouldNotBeEmpty)
+		err = os.Chmod(rootDir, 0o777)
+		So(err, ShouldBeNil)
+	})
+
+	Convey("Test global search with vulnerabitity scanning enabled", t, func() {
+		subpath := "/a"
+
+		err := testSetup(t, subpath)
+		if err != nil {
+			panic(err)
+		}
+
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = rootDir
+		conf.Storage.SubPaths = make(map[string]config.StorageConfig)
+		conf.Storage.SubPaths[subpath] = config.StorageConfig{RootDirectory: subRootDir}
+		defaultVal := true
+
+		updateDuration, _ := time.ParseDuration("1h")
+		cveConfig := &extconf.CVEConfig{
+			UpdateInterval: updateDuration,
+		}
+		searchConfig := &extconf.SearchConfig{
+			Enable: &defaultVal,
+			CVE:    cveConfig,
+		}
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: searchConfig,
+		}
+
+		// we won't use the logging config feature as we want logs in both
+		// stdout and a file
+		logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
+		So(err, ShouldBeNil)
+		logPath := logFile.Name()
+		defer os.Remove(logPath)
+
+		writers := io.MultiWriter(os.Stdout, logFile)
+
+		ctlr := api.NewController(conf)
+		ctlr.Log.Logger = ctlr.Log.Output(writers)
+
+		go func() {
+			// this blocks
+			if err := ctlr.Run(context.Background()); err != nil {
+				return
+			}
+		}()
+
+		// wait till ready
+		for {
+			_, err := resty.R().Get(baseURL)
+			if err == nil {
+				break
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		// shut down server
+
+		defer func() {
+			ctx := context.Background()
+			_ = ctlr.Server.Shutdown(ctx)
+		}()
+
+		// Wait for trivy db to download
+		substring := "\"Extensions\":{\"Search\":{\"CVE\":{\"UpdateInterval\":3600000000000},\"Enable\":true},\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":null}" //nolint:lll // gofumpt conflicts with lll
+		found, err := readFileAndSearchString(logPath, substring, 2*time.Minute)
+		So(found, ShouldBeTrue)
+		So(err, ShouldBeNil)
+
+		found, err = readFileAndSearchString(logPath, "updating the CVE database", 2*time.Minute)
+		So(found, ShouldBeTrue)
+		So(err, ShouldBeNil)
+
+		found, err = readFileAndSearchString(logPath, "DB update completed, next update scheduled", 4*time.Minute)
+		So(found, ShouldBeTrue)
+		So(err, ShouldBeNil)
+
+		query := `
+			{
+				GlobalSearch(query:""){
+					Images {
+						RepoName
+						Tag
+						LastUpdated
+						Size
+						IsSigned
+						Vendor
+						Score
+						Platform {
+							Os
+							Arch
+						}
+						Vulnerabilities {
+							Count
+							MaxSeverity
+						}
+					}
+					Repos {
+						Name
+						LastUpdated
+						Size
+						Platforms {
+							Os
+							Arch
+						}
+						Vendors
+						Score
+						NewestImage {
+							RepoName
+							Tag
+							LastUpdated
+							Size
+							IsSigned
+							Vendor
+							Score
+							Platform {
+								Os
+								Arch
+							}
+							Vulnerabilities {
+								Count
+								MaxSeverity
+							}
+						}
+					}
+					Layers {
+						Digest
+						Size
+					}
+				}
+			}`
+		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		responseStruct := &GlobalSearchResultResp{}
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+
+		// There are 2 repos: zot-cve-test and zot-test, each having an image with tag 0.0.1
+		imageStore := ctlr.StoreController.DefaultStore
+
+		repos, err := imageStore.GetRepositories()
+		So(err, ShouldBeNil)
+		expectedRepoCount := len(repos)
+
+		allExpectedTagMap := make(map[string][]string, expectedRepoCount)
+		expectedImageCount := 0
+		for _, repo := range repos {
+			tags, err := imageStore.GetImageTags(repo)
+			So(err, ShouldBeNil)
+
+			allExpectedTagMap[repo] = tags
+			expectedImageCount += len(tags)
+		}
+
+		// Make sure the repo/image counts match before comparing actual content
+		So(responseStruct.GlobalSearchResult.GlobalSearch.Images, ShouldNotBeNil)
+		t.Logf("returned images: %v", responseStruct.GlobalSearchResult.GlobalSearch.Images)
+		So(len(responseStruct.GlobalSearchResult.GlobalSearch.Images), ShouldEqual, expectedImageCount)
+		t.Logf("returned repos: %v", responseStruct.GlobalSearchResult.GlobalSearch.Repos)
+		So(len(responseStruct.GlobalSearchResult.GlobalSearch.Repos), ShouldEqual, expectedRepoCount)
+		t.Logf("returned layers: %v", responseStruct.GlobalSearchResult.GlobalSearch.Layers)
+		So(len(responseStruct.GlobalSearchResult.GlobalSearch.Layers), ShouldNotBeEmpty)
+
+		newestImageMap := make(map[string]ImageSummary)
+		for _, image := range responseStruct.GlobalSearchResult.GlobalSearch.Images {
+			// Make sure all returned results are supposed to be in the repo
+			So(allExpectedTagMap[image.RepoName], ShouldContain, image.Tag)
+			// Identify the newest image in each repo
+			if newestImage, ok := newestImageMap[image.RepoName]; ok {
+				if newestImage.LastUpdated.Before(image.LastUpdated) {
+					newestImageMap[image.RepoName] = image
+				}
+			} else {
+				newestImageMap[image.RepoName] = image
+			}
+		}
+		t.Logf("expected results for newest images in repos: %v", newestImageMap)
+
+		for _, repo := range responseStruct.GlobalSearchResult.GlobalSearch.Repos {
+			image := newestImageMap[repo.Name]
+			So(repo.Name, ShouldEqual, image.RepoName)
+			So(repo.LastUpdated, ShouldEqual, image.LastUpdated)
+			So(repo.Size, ShouldEqual, image.Size)
+			So(repo.Vendors[0], ShouldEqual, image.Vendor)
+			So(repo.Platforms[0].Os, ShouldEqual, image.Platform.Os)
+			So(repo.Platforms[0].Arch, ShouldEqual, image.Platform.Arch)
+			So(repo.NewestImage.RepoName, ShouldEqual, image.RepoName)
+			So(repo.NewestImage.Tag, ShouldEqual, image.Tag)
+			So(repo.NewestImage.LastUpdated, ShouldEqual, image.LastUpdated)
+			So(repo.NewestImage.Size, ShouldEqual, image.Size)
+			So(repo.NewestImage.IsSigned, ShouldEqual, image.IsSigned)
+			So(repo.NewestImage.Vendor, ShouldEqual, image.Vendor)
+			So(repo.NewestImage.Platform.Os, ShouldEqual, image.Platform.Os)
+			So(repo.NewestImage.Platform.Arch, ShouldEqual, image.Platform.Arch)
+			t.Logf("Found vulnerability summary %v", repo.NewestImage.Vulnerabilities)
+			So(repo.NewestImage.Vulnerabilities.Count, ShouldEqual, image.Vulnerabilities.Count)
+			So(repo.NewestImage.Vulnerabilities.Count, ShouldBeGreaterThan, 1)
+			So(repo.NewestImage.Vulnerabilities.MaxSeverity, ShouldEqual, image.Vulnerabilities.MaxSeverity)
+			// This really depends on the test data, but with the current test images it's CRITICAL
+			So(repo.NewestImage.Vulnerabilities.MaxSeverity, ShouldEqual, "CRITICAL")
 		}
 
 		// GetRepositories fail

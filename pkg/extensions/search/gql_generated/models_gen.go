@@ -38,25 +38,31 @@ type HistoryDescription struct {
 }
 
 type ImageSummary struct {
-	RepoName      *string         `json:"RepoName"`
-	Tag           *string         `json:"Tag"`
-	Digest        *string         `json:"Digest"`
-	ConfigDigest  *string         `json:"ConfigDigest"`
-	LastUpdated   *time.Time      `json:"LastUpdated"`
-	IsSigned      *bool           `json:"IsSigned"`
-	Size          *string         `json:"Size"`
-	Platform      *OsArch         `json:"Platform"`
-	Vendor        *string         `json:"Vendor"`
-	Score         *int            `json:"Score"`
-	DownloadCount *int            `json:"DownloadCount"`
-	Layers        []*LayerSummary `json:"Layers"`
-	Description   *string         `json:"Description"`
-	Licenses      *string         `json:"Licenses"`
-	Labels        *string         `json:"Labels"`
-	Title         *string         `json:"Title"`
-	Source        *string         `json:"Source"`
-	Documentation *string         `json:"Documentation"`
-	History       []*LayerHistory `json:"History"`
+	RepoName        *string                    `json:"RepoName"`
+	Tag             *string                    `json:"Tag"`
+	Digest          *string                    `json:"Digest"`
+	ConfigDigest    *string                    `json:"ConfigDigest"`
+	LastUpdated     *time.Time                 `json:"LastUpdated"`
+	IsSigned        *bool                      `json:"IsSigned"`
+	Size            *string                    `json:"Size"`
+	Platform        *OsArch                    `json:"Platform"`
+	Vendor          *string                    `json:"Vendor"`
+	Score           *int                       `json:"Score"`
+	DownloadCount   *int                       `json:"DownloadCount"`
+	Layers          []*LayerSummary            `json:"Layers"`
+	Description     *string                    `json:"Description"`
+	Licenses        *string                    `json:"Licenses"`
+	Labels          *string                    `json:"Labels"`
+	Title           *string                    `json:"Title"`
+	Source          *string                    `json:"Source"`
+	Documentation   *string                    `json:"Documentation"`
+	History         []*LayerHistory            `json:"History"`
+	Vulnerabilities *ImageVulnerabilitySummary `json:"Vulnerabilities"`
+}
+
+type ImageVulnerabilitySummary struct {
+	MaxSeverity *string `json:"MaxSeverity"`
+	Count       *int    `json:"Count"`
 }
 
 type LayerHistory struct {

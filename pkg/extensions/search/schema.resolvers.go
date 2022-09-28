@@ -6,96 +6,52 @@ package search
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	godigest "github.com/opencontainers/go-digest"
 	"zotregistry.io/zot/pkg/extensions/search/common"
-	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
 )
 
 // CVEListForImage is the resolver for the CVEListForImage field.
 func (r *queryResolver) CVEListForImage(ctx context.Context, image string) (*gql_generated.CVEResultForImage, error) {
-	trivyCtx := r.cveInfo.GetTrivyContext(image)
-
-	r.log.Info().Str("image", image).Msg("scanning image")
-
-	isValidImage, err := r.cveInfo.LayoutUtils.IsValidImageFormat(image)
-	if !isValidImage {
-		r.log.Debug().Str("image", image).Msg("image media type not supported for scanning")
-
-		return &gql_generated.CVEResultForImage{}, err
-	}
-
-	report, err := cveinfo.ScanImage(trivyCtx.Ctx)
+	cveidMap, err := r.cveInfo.GetCVEListForImage(image)
 	if err != nil {
-		r.log.Error().Err(err).Msg("unable to scan image repository")
-
 		return &gql_generated.CVEResultForImage{}, err
 	}
 
-	var copyImgTag string
-
-	if strings.Contains(image, ":") {
-		copyImgTag = strings.Split(image, ":")[1]
-	}
-
-	cveidMap := make(map[string]cveDetail)
-
-	for _, result := range report.Results {
-		for _, vulnerability := range result.Vulnerabilities {
-			pkgName := vulnerability.PkgName
-
-			installedVersion := vulnerability.InstalledVersion
-
-			var fixedVersion string
-			if vulnerability.FixedVersion != "" {
-				fixedVersion = vulnerability.FixedVersion
-			} else {
-				fixedVersion = "Not Specified"
-			}
-
-			_, ok := cveidMap[vulnerability.VulnerabilityID]
-			if ok {
-				cveDetailStruct := cveidMap[vulnerability.VulnerabilityID]
-
-				pkgList := cveDetailStruct.PackageList
-
-				pkgList = append(pkgList,
-					&gql_generated.PackageInfo{Name: &pkgName, InstalledVersion: &installedVersion, FixedVersion: &fixedVersion})
-
-				cveDetailStruct.PackageList = pkgList
-
-				cveidMap[vulnerability.VulnerabilityID] = cveDetailStruct
-			} else {
-				newPkgList := make([]*gql_generated.PackageInfo, 0)
-
-				newPkgList = append(newPkgList,
-					&gql_generated.PackageInfo{Name: &pkgName, InstalledVersion: &installedVersion, FixedVersion: &fixedVersion})
-
-				cveidMap[vulnerability.VulnerabilityID] = cveDetail{
-					Title:       vulnerability.Title,
-					Description: vulnerability.Description, Severity: vulnerability.Severity, PackageList: newPkgList,
-				}
-			}
-		}
-	}
+	_, copyImgTag := common.GetImageDirAndTag(image)
 
 	cveids := []*gql_generated.Cve{}
 
 	for id, cveDetail := range cveidMap {
 		vulID := id
-
 		desc := cveDetail.Description
-
 		title := cveDetail.Title
-
 		severity := cveDetail.Severity
 
-		pkgList := cveDetail.PackageList
+		pkgList := make([]*gql_generated.PackageInfo, 0)
+
+		for _, pkg := range cveDetail.PackageList {
+			pkg := pkg
+
+			pkgList = append(pkgList,
+				&gql_generated.PackageInfo{
+					Name:             &pkg.Name,
+					InstalledVersion: &pkg.InstalledVersion,
+					FixedVersion:     &pkg.FixedVersion,
+				},
+			)
+		}
 
 		cveids = append(cveids,
-			&gql_generated.Cve{ID: &vulID, Title: &title, Description: &desc, Severity: &severity, PackageList: pkgList})
+			&gql_generated.Cve{
+				ID:          &vulID,
+				Title:       &title,
+				Description: &desc,
+				Severity:    &severity,
+				PackageList: pkgList,
+			},
+		)
 	}
 
 	return &gql_generated.CVEResultForImage{Tag: &copyImgTag, CVEList: cveids}, nil
@@ -103,146 +59,82 @@ func (r *queryResolver) CVEListForImage(ctx context.Context, image string) (*gql
 
 // ImageListForCve is the resolver for the ImageListForCVE field.
 func (r *queryResolver) ImageListForCve(ctx context.Context, id string) ([]*gql_generated.ImageSummary, error) {
-	finalCveResult := []*gql_generated.ImageSummary{}
+	olu := common.NewBaseOciLayoutUtils(r.storeController, r.log)
+
+	affectedImages := []*gql_generated.ImageSummary{}
 
 	r.log.Info().Msg("extracting repositories")
-
-	defaultStore := r.storeController.DefaultStore
-
-	defaultTrivyCtx := r.cveInfo.CveTrivyController.DefaultCveConfig
-
-	repoList, err := defaultStore.GetRepositories()
-	if err != nil {
+	repoList, err := olu.GetRepositories()
+	if err != nil { // nolint: wsl
 		r.log.Error().Err(err).Msg("unable to search repositories")
 
-		return finalCveResult, err
+		return affectedImages, err
 	}
 
-	r.cveInfo.Log.Info().Msg("scanning each global repository")
+	r.log.Info().Msg("scanning each repository")
 
-	cveResult, err := r.getImageListForCVE(repoList, id, defaultStore, defaultTrivyCtx)
-	if err != nil {
-		r.log.Error().Err(err).Msg("error getting cve list for global repositories")
+	for _, repo := range repoList {
+		r.log.Info().Str("repo", repo).Msg("extracting list of tags available in image repo")
 
-		return finalCveResult, err
-	}
-
-	finalCveResult = append(finalCveResult, cveResult...)
-
-	subStore := r.storeController.SubStore
-
-	for route, store := range subStore {
-		subRepoList, err := store.GetRepositories()
+		imageListByCVE, err := r.cveInfo.GetImageListForCVE(repo, id)
 		if err != nil {
-			r.log.Error().Err(err).Msg("unable to search repositories")
+			r.log.Error().Str("repo", repo).Str("CVE", id).Err(err).
+				Msg("error getting image list for CVE from repo")
 
-			return cveResult, err
+			return affectedImages, err
 		}
 
-		subTrivyCtx := r.cveInfo.CveTrivyController.SubCveConfig[route]
+		for _, imageByCVE := range imageListByCVE {
+			imageConfig, err := olu.GetImageConfigInfo(repo, imageByCVE.Digest)
+			if err != nil {
+				return affectedImages, err
+			}
 
-		subCveResult, err := r.getImageListForCVE(subRepoList, id, store, subTrivyCtx)
-		if err != nil {
-			r.log.Error().Err(err).Msg("unable to get cve result for sub repositories")
+			imageInfo := BuildImageInfo(repo, imageByCVE.Tag, imageByCVE.Digest, imageByCVE.Manifest, imageConfig)
 
-			return finalCveResult, err
+			affectedImages = append(
+				affectedImages,
+				imageInfo,
+			)
 		}
-
-		finalCveResult = append(finalCveResult, subCveResult...)
 	}
 
-	return finalCveResult, nil
+	return affectedImages, nil
 }
 
 // ImageListWithCVEFixed is the resolver for the ImageListWithCVEFixed field.
 func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, image string) ([]*gql_generated.ImageSummary, error) {
-	tagListForCVE := []*gql_generated.ImageSummary{}
+	olu := common.NewBaseOciLayoutUtils(r.storeController, r.log)
 
-	r.log.Info().Str("image", image).Msg("extracting list of tags available in repo")
+	unaffectedImages := []*gql_generated.ImageSummary{}
 
-	tagsInfo, err := r.cveInfo.LayoutUtils.GetImageTagsWithTimestamp(image)
+	tagsInfo, err := r.cveInfo.GetImageListWithCVEFixed(image, id)
 	if err != nil {
-		r.log.Error().Err(err).Msg("unable to read image tags")
-
-		return tagListForCVE, err
-	}
-
-	infectedTags := make([]common.TagInfo, 0)
-
-	var hasCVE bool
-
-	for _, tag := range tagsInfo {
-		image := fmt.Sprintf("%s:%s", image, tag.Name)
-
-		isValidImage, _ := r.cveInfo.LayoutUtils.IsValidImageFormat(image)
-		if !isValidImage {
-			r.log.Debug().Str("image",
-				fmt.Sprintf("%s:%s", image, tag.Name)).
-				Msg("image media type not supported for scanning, adding as an infected image")
-
-			infectedTags = append(infectedTags, common.TagInfo{Name: tag.Name, Timestamp: tag.Timestamp})
-
-			continue
-		}
-
-		trivyCtx := r.cveInfo.GetTrivyContext(image)
-
-		r.cveInfo.Log.Info().Str("image", fmt.Sprintf("%s:%s", image, tag.Name)).Msg("scanning image")
-
-		report, err := cveinfo.ScanImage(trivyCtx.Ctx)
-		if err != nil {
-			r.log.Error().Err(err).
-				Str("image", fmt.Sprintf("%s:%s", image, tag.Name)).Msg("unable to scan image")
-
-			continue
-		}
-
-		hasCVE = false
-
-		for _, result := range report.Results {
-			for _, vulnerability := range result.Vulnerabilities {
-				if vulnerability.VulnerabilityID == id {
-					hasCVE = true
-
-					break
-				}
-			}
-		}
-
-		if hasCVE {
-			infectedTags = append(infectedTags, common.TagInfo{Name: tag.Name, Timestamp: tag.Timestamp, Digest: tag.Digest})
-		}
-	}
-
-	if len(infectedTags) != 0 {
-		r.log.Info().Msg("comparing fixed tags timestamp")
-
-		tagsInfo = common.GetFixedTags(tagsInfo, infectedTags)
-	} else {
-		r.log.Info().Str("image", image).Str("cve-id", id).Msg("image does not contain any tag that have given cve")
+		return unaffectedImages, err
 	}
 
 	for _, tag := range tagsInfo {
 		digest := godigest.Digest(tag.Digest)
 
-		manifest, err := r.cveInfo.LayoutUtils.GetImageBlobManifest(image, digest)
+		manifest, err := olu.GetImageBlobManifest(image, digest)
 		if err != nil {
-			r.log.Error().Err(err).Msg("extension api: error reading manifest")
+			r.log.Error().Err(err).Str("repo", image).Str("digest", tag.Digest).
+				Msg("extension api: error reading manifest")
 
-			return []*gql_generated.ImageSummary{}, err
+			return unaffectedImages, err
 		}
 
-		imageConfig, err := r.cveInfo.LayoutUtils.GetImageConfigInfo(image, digest)
+		imageConfig, err := olu.GetImageConfigInfo(image, digest)
 		if err != nil {
 			return []*gql_generated.ImageSummary{}, err
 		}
 
 		imageInfo := BuildImageInfo(image, tag.Name, digest, manifest, imageConfig)
 
-		tagListForCVE = append(tagListForCVE, imageInfo)
+		unaffectedImages = append(unaffectedImages, imageInfo)
 	}
 
-	return tagListForCVE, nil
+	return unaffectedImages, nil
 }
 
 // ImageListForDigest is the resolver for the ImageListForDigest field.
@@ -326,7 +218,7 @@ func (r *queryResolver) RepoListWithNewestImage(ctx context.Context) ([]*gql_gen
 		repoList = append(repoList, subRepoList...)
 	}
 
-	reposSummary, err = repoListWithNewestImage(ctx, repoList, olu, r.log)
+	reposSummary, err = repoListWithNewestImage(ctx, repoList, olu, r.cveInfo, r.log)
 	if err != nil {
 		r.log.Error().Err(err).Msg("extension api: error extracting substore image list")
 
@@ -492,7 +384,7 @@ func (r *queryResolver) GlobalSearch(ctx context.Context, query string) (*gql_ge
 		return &gql_generated.GlobalSearchResult{}, err
 	}
 
-	repos, images, layers := globalSearch(availableRepos, name, tag, olu, r.log)
+	repos, images, layers := globalSearch(availableRepos, name, tag, olu, r.cveInfo, r.log)
 
 	return &gql_generated.GlobalSearchResult{
 		Images: images,

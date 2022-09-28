@@ -31,8 +31,9 @@ func TestGlobalSearch(t *testing.T) {
 					return common.TagInfo{}, ErrTestError
 				},
 			}
+			mockCve := mocks.CveInfoMock{}
 
-			globalSearch([]string{"repo1"}, "name", "tag", mockOlum, log.NewLogger("debug", ""))
+			globalSearch([]string{"repo1"}, "name", "tag", mockOlum, mockCve, log.NewLogger("debug", ""))
 		})
 
 		Convey("GetImageTagsWithTimestamp fail", func() {
@@ -41,8 +42,9 @@ func TestGlobalSearch(t *testing.T) {
 					return []common.TagInfo{}, ErrTestError
 				},
 			}
+			mockCve := mocks.CveInfoMock{}
 
-			globalSearch([]string{"repo1"}, "name", "tag", mockOlum, log.NewLogger("debug", ""))
+			globalSearch([]string{"repo1"}, "name", "tag", mockOlum, mockCve, log.NewLogger("debug", ""))
 		})
 
 		Convey("GetImageManifests fail", func() {
@@ -51,8 +53,9 @@ func TestGlobalSearch(t *testing.T) {
 					return []ispec.Descriptor{}, ErrTestError
 				},
 			}
+			mockCve := mocks.CveInfoMock{}
 
-			globalSearch([]string{"repo1"}, "name", "tag", mockOlum, log.NewLogger("debug", ""))
+			globalSearch([]string{"repo1"}, "name", "tag", mockOlum, mockCve, log.NewLogger("debug", ""))
 		})
 
 		Convey("Manifests given, bad image blob manifest", func() {
@@ -72,7 +75,9 @@ func TestGlobalSearch(t *testing.T) {
 					return v1.Manifest{}, ErrTestError
 				},
 			}
-			globalSearch([]string{"repo1"}, "name", "tag", mockOlum, log.NewLogger("debug", ""))
+			mockCve := mocks.CveInfoMock{}
+
+			globalSearch([]string{"repo1"}, "name", "tag", mockOlum, mockCve, log.NewLogger("debug", ""))
 		})
 
 		Convey("Manifests given, no manifest tag", func() {
@@ -86,8 +91,9 @@ func TestGlobalSearch(t *testing.T) {
 					}, nil
 				},
 			}
+			mockCve := mocks.CveInfoMock{}
 
-			globalSearch([]string{"repo1"}, "test", "tag", mockOlum, log.NewLogger("debug", ""))
+			globalSearch([]string{"repo1"}, "test", "tag", mockOlum, mockCve, log.NewLogger("debug", ""))
 		})
 
 		Convey("Global search success, no tag", func() {
@@ -119,7 +125,8 @@ func TestGlobalSearch(t *testing.T) {
 					}, nil
 				},
 			}
-			globalSearch([]string{"repo1/name"}, "name", "tag", mockOlum, log.NewLogger("debug", ""))
+			mockCve := mocks.CveInfoMock{}
+			globalSearch([]string{"repo1/name"}, "name", "tag", mockOlum, mockCve, log.NewLogger("debug", ""))
 		})
 
 		Convey("Manifests given, bad image config info", func() {
@@ -139,7 +146,8 @@ func TestGlobalSearch(t *testing.T) {
 					return ispec.Image{}, ErrTestError
 				},
 			}
-			globalSearch([]string{"repo1/name"}, "name", "tag", mockOlum, log.NewLogger("debug", ""))
+			mockCve := mocks.CveInfoMock{}
+			globalSearch([]string{"repo1/name"}, "name", "tag", mockOlum, mockCve, log.NewLogger("debug", ""))
 		})
 
 		Convey("Tag given, no layer match", func() {
@@ -174,7 +182,8 @@ func TestGlobalSearch(t *testing.T) {
 					}, nil
 				},
 			}
-			globalSearch([]string{"repo1"}, "name", "tag", mockOlum, log.NewLogger("debug", ""))
+			mockCve := mocks.CveInfoMock{}
+			globalSearch([]string{"repo1"}, "name", "tag", mockOlum, mockCve, log.NewLogger("debug", ""))
 		})
 	})
 }
@@ -189,7 +198,8 @@ func TestRepoListWithNewestImage(t *testing.T) {
 			}
 
 			ctx := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter, graphql.Recover)
-			_, err := repoListWithNewestImage(ctx, []string{"repo1"}, mockOlum, log.NewLogger("debug", ""))
+			mockCve := mocks.CveInfoMock{}
+			_, err := repoListWithNewestImage(ctx, []string{"repo1"}, mockOlum, mockCve, log.NewLogger("debug", ""))
 			So(err, ShouldBeNil)
 
 			errs := graphql.GetErrors(ctx)
@@ -212,7 +222,8 @@ func TestRepoListWithNewestImage(t *testing.T) {
 			}
 
 			ctx := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter, graphql.Recover)
-			_, err := repoListWithNewestImage(ctx, []string{"repo1"}, mockOlum, log.NewLogger("debug", ""))
+			mockCve := mocks.CveInfoMock{}
+			_, err := repoListWithNewestImage(ctx, []string{"repo1"}, mockOlum, mockCve, log.NewLogger("debug", ""))
 			So(err, ShouldBeNil)
 
 			errs := graphql.GetErrors(ctx)
@@ -237,7 +248,8 @@ func TestRepoListWithNewestImage(t *testing.T) {
 			}
 
 			ctx := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter, graphql.Recover)
-			_, err := repoListWithNewestImage(ctx, []string{"repo1"}, mockOlum, log.NewLogger("debug", ""))
+			mockCve := mocks.CveInfoMock{}
+			_, err := repoListWithNewestImage(ctx, []string{"repo1"}, mockOlum, mockCve, log.NewLogger("debug", ""))
 			So(err, ShouldBeNil)
 
 			errs := graphql.GetErrors(ctx)

@@ -14,9 +14,13 @@ import (
 	"testing"
 	"time"
 
+	v1 "github.com/google/go-containerregistry/pkg/v1"
+	regTypes "github.com/google/go-containerregistry/pkg/v1/types"
+	"github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
+	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
@@ -24,14 +28,17 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
+	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
+	"zotregistry.io/zot/pkg/extensions/search/cve/trivy"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	. "zotregistry.io/zot/pkg/test"
+	"zotregistry.io/zot/pkg/test/mocks"
 )
 
 // nolint:gochecknoglobals
 var (
-	cve            *cveinfo.CveInfo
+	cve            cveinfo.CveInfo
 	dbDir          string
 	updateDuration time.Duration
 )
@@ -62,15 +69,8 @@ type ImgList struct {
 
 //nolint:tagliatelle // graphQL schema
 type CVEResultForImage struct {
-	Tag     string `json:"Tag"`
-	CVEList []CVE  `json:"CVEList"`
-}
-
-//nolint:tagliatelle // graphQL schema
-type CVE struct {
-	ID          string `json:"Id"`
-	Description string `json:"Description"`
-	Severity    string `json:"Severity"`
+	Tag     string         `json:"Tag"`
+	CVEList []cvemodel.CVE `json:"CVEList"`
 }
 
 func testSetup() error {
@@ -89,8 +89,9 @@ func testSetup() error {
 	storeController := storage.StoreController{DefaultStore: storage.NewImageStore(dir, false, storage.DefaultGCDelay, false, false, log, metrics, nil)}
 
 	layoutUtils := common.NewBaseOciLayoutUtils(storeController, log)
+	scanner := trivy.NewScanner(storeController, layoutUtils, log)
 
-	cve = &cveinfo.CveInfo{Log: log, StoreController: storeController, LayoutUtils: layoutUtils}
+	cve = &cveinfo.BaseCveInfo{Log: log, Scanner: scanner, LayoutUtils: layoutUtils}
 
 	dbDir = dir
 
@@ -318,43 +319,65 @@ func makeTestFile(fileName, content string) error {
 	return nil
 }
 
-func TestMultipleStoragePath(t *testing.T) {
-	Convey("Test multiple storage path", t, func() {
-		// Create temporary directory
-		firstRootDir := t.TempDir()
-		secondRootDir := t.TempDir()
-		thirdRootDir := t.TempDir()
-
+func TestImageFormat(t *testing.T) {
+	Convey("Test valid image", t, func() {
 		log := log.NewLogger("debug", "")
-		metrics := monitoring.NewMetricsServer(false, log)
+		dbDir := "../../../../test/data"
 
 		conf := config.New()
 		conf.Extensions = &extconf.ExtensionConfig{}
 		conf.Extensions.Lint = &extconf.LintConfig{}
 
-		// Create ImageStore
-		firstStore := storage.NewImageStore(firstRootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil)
+		metrics := monitoring.NewMetricsServer(false, log)
+		defaultStore := storage.NewImageStore(dbDir, false, storage.DefaultGCDelay,
+			false, false, log, metrics, nil)
+		storeController := storage.StoreController{DefaultStore: defaultStore}
 
-		secondStore := storage.NewImageStore(secondRootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil)
+		cveInfo := cveinfo.NewCVEInfo(storeController, log)
 
-		thirdStore := storage.NewImageStore(thirdRootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil)
-
-		storeController := storage.StoreController{}
-
-		storeController.DefaultStore = firstStore
-
-		subStore := make(map[string]storage.ImageStore)
-
-		subStore["/a"] = secondStore
-		subStore["/b"] = thirdStore
-
-		storeController.SubStore = subStore
-
-		cveInfo, err := cveinfo.GetCVEInfo(storeController, log)
-
+		isValidImage, err := cveInfo.Scanner.IsImageFormatScannable("zot-test")
 		So(err, ShouldBeNil)
-		So(cveInfo.StoreController.DefaultStore, ShouldNotBeNil)
-		So(cveInfo.StoreController.SubStore, ShouldNotBeNil)
+		So(isValidImage, ShouldEqual, true)
+
+		isValidImage, err = cveInfo.Scanner.IsImageFormatScannable("zot-test:0.0.1")
+		So(err, ShouldBeNil)
+		So(isValidImage, ShouldEqual, true)
+
+		isValidImage, err = cveInfo.Scanner.IsImageFormatScannable("zot-test:0.0.")
+		So(err, ShouldBeNil)
+		So(isValidImage, ShouldEqual, false)
+
+		isValidImage, err = cveInfo.Scanner.IsImageFormatScannable("zot-noindex-test")
+		So(err, ShouldNotBeNil)
+		So(isValidImage, ShouldEqual, false)
+
+		isValidImage, err = cveInfo.Scanner.IsImageFormatScannable("zot--tet")
+		So(err, ShouldNotBeNil)
+		So(isValidImage, ShouldEqual, false)
+
+		isValidImage, err = cveInfo.Scanner.IsImageFormatScannable("zot-noindex-test")
+		So(err, ShouldNotBeNil)
+		So(isValidImage, ShouldEqual, false)
+
+		isValidImage, err = cveInfo.Scanner.IsImageFormatScannable("zot-squashfs-noblobs")
+		So(err, ShouldNotBeNil)
+		So(isValidImage, ShouldEqual, false)
+
+		isValidImage, err = cveInfo.Scanner.IsImageFormatScannable("zot-squashfs-invalid-index")
+		So(err, ShouldNotBeNil)
+		So(isValidImage, ShouldEqual, false)
+
+		isValidImage, err = cveInfo.Scanner.IsImageFormatScannable("zot-squashfs-invalid-blob")
+		So(err, ShouldNotBeNil)
+		So(isValidImage, ShouldEqual, false)
+
+		isValidImage, err = cveInfo.Scanner.IsImageFormatScannable("zot-squashfs-test:0.3.22-squashfs")
+		So(err, ShouldNotBeNil)
+		So(isValidImage, ShouldEqual, false)
+
+		isValidImage, err = cveInfo.Scanner.IsImageFormatScannable("zot-nonreadable-test")
+		So(err, ShouldNotBeNil)
+		So(isValidImage, ShouldEqual, false)
 	})
 }
 
@@ -728,5 +751,459 @@ func TestHTTPOptionsResponse(t *testing.T) {
 			ctx := context.Background()
 			_ = ctlr.Server.Shutdown(ctx)
 		}()
+	})
+}
+
+func TestCVEStruct(t *testing.T) {
+	Convey("Unit test the CVE struct", t, func() {
+		// Setup test image data in mock storage
+		layoutUtils := mocks.OciLayoutUtilsMock{
+			GetImageManifestsFn: func(repo string) ([]ispec.Descriptor, error) {
+				// Valid image for scanning
+				if repo == "repo1" { //nolint: goconst
+					return []ispec.Descriptor{
+						{
+							MediaType: "application/vnd.oci.image.manifest.v1+json",
+							Size:      int64(0),
+							Annotations: map[string]string{
+								ispec.AnnotationRefName: "0.1.0",
+							},
+							Digest: "abcc",
+						},
+						{
+							MediaType: "application/vnd.oci.image.manifest.v1+json",
+							Size:      int64(0),
+							Annotations: map[string]string{
+								ispec.AnnotationRefName: "1.0.0",
+							},
+							Digest: "abcd",
+						},
+						{
+							MediaType: "application/vnd.oci.image.manifest.v1+json",
+							Size:      int64(0),
+							Annotations: map[string]string{
+								ispec.AnnotationRefName: "1.1.0",
+							},
+							Digest: "abce",
+						},
+						{
+							MediaType: "application/vnd.oci.image.manifest.v1+json",
+							Size:      int64(0),
+							Annotations: map[string]string{
+								ispec.AnnotationRefName: "1.0.1",
+							},
+							Digest: "abcf",
+						},
+					}, nil
+				}
+
+				// Image with non-scannable blob
+				if repo == "repo2" { //nolint: goconst
+					return []ispec.Descriptor{
+						{
+							MediaType: "application/vnd.oci.image.manifest.v1+json",
+							Size:      int64(0),
+							Annotations: map[string]string{
+								ispec.AnnotationRefName: "1.0.0",
+							},
+							Digest: "abcd",
+						},
+					}, nil
+				}
+
+				// By default the image is not found
+				return nil, errors.ErrRepoNotFound
+			},
+			GetImageTagsWithTimestampFn: func(repo string) ([]common.TagInfo, error) {
+				// Valid image for scanning
+				if repo == "repo1" { //nolint: goconst
+					return []common.TagInfo{
+						{
+							Name:      "0.1.0",
+							Digest:    "abcc",
+							Timestamp: time.Date(2008, 1, 1, 12, 0, 0, 0, time.UTC),
+						},
+						{
+							Name:      "1.0.0",
+							Digest:    "abcd",
+							Timestamp: time.Date(2009, 1, 1, 12, 0, 0, 0, time.UTC),
+						},
+						{
+							Name:      "1.1.0",
+							Digest:    "abce",
+							Timestamp: time.Date(2010, 1, 1, 12, 0, 0, 0, time.UTC),
+						},
+						{
+							Name:      "1.0.1",
+							Digest:    "abcf",
+							Timestamp: time.Date(2011, 1, 1, 12, 0, 0, 0, time.UTC),
+						},
+					}, nil
+				}
+
+				// Image with non-scannable blob
+				if repo == "repo2" { //nolint: goconst
+					return []common.TagInfo{
+						{
+							Name:      "1.0.0",
+							Digest:    "abcd",
+							Timestamp: time.Date(2009, 1, 1, 12, 0, 0, 0, time.UTC),
+						},
+					}, nil
+				}
+
+				// By default do not return any tags
+				return []common.TagInfo{}, errors.ErrRepoNotFound
+			},
+			GetImageBlobManifestFn: func(imageDir string, digest digest.Digest) (v1.Manifest, error) {
+				// Valid image for scanning
+				if imageDir == "repo1" { //nolint: goconst
+					return v1.Manifest{
+						Layers: []v1.Descriptor{
+							{
+								MediaType: regTypes.OCILayer,
+								Size:      0,
+								Digest:    v1.Hash{},
+							},
+						},
+					}, nil
+				}
+
+				// Image with non-scannable blob
+				if imageDir == "repo2" { //nolint: goconst
+					return v1.Manifest{
+						Layers: []v1.Descriptor{
+							{
+								MediaType: regTypes.OCIRestrictedLayer,
+								Size:      0,
+								Digest:    v1.Hash{},
+							},
+						},
+					}, nil
+				}
+
+				return v1.Manifest{}, errors.ErrBlobNotFound
+			},
+		}
+
+		severities := map[string]int{
+			"UNKNOWN":  0,
+			"LOW":      1,
+			"MEDIUM":   2,
+			"HIGH":     3,
+			"CRITICAL": 4,
+		}
+
+		// Setup test CVE data in mock scanner
+		scanner := mocks.CveScannerMock{
+			ScanImageFn: func(image string) (map[string]cvemodel.CVE, error) {
+				// Images in chronological order
+				if image == "repo1:0.1.0" {
+					return map[string]cvemodel.CVE{
+						"CVE1": {
+							ID:          "CVE1",
+							Severity:    "MEDIUM",
+							Title:       "Title CVE1",
+							Description: "Description CVE1",
+						},
+					}, nil
+				}
+
+				if image == "repo1:1.0.0" {
+					return map[string]cvemodel.CVE{
+						"CVE1": {
+							ID:          "CVE1",
+							Severity:    "MEDIUM",
+							Title:       "Title CVE1",
+							Description: "Description CVE1",
+						},
+						"CVE2": {
+							ID:          "CVE2",
+							Severity:    "HIGH",
+							Title:       "Title CVE2",
+							Description: "Description CVE2",
+						},
+						"CVE3": {
+							ID:          "CVE3",
+							Severity:    "LOW",
+							Title:       "Title CVE3",
+							Description: "Description CVE3",
+						},
+					}, nil
+				}
+
+				if image == "repo1:1.1.0" {
+					return map[string]cvemodel.CVE{
+						"CVE3": {
+							ID:          "CVE3",
+							Severity:    "LOW",
+							Title:       "Title CVE3",
+							Description: "Description CVE3",
+						},
+					}, nil
+				}
+
+				// As a minor release on 1.0.0 banch
+				// does not include all fixes published in 1.1.0
+				if image == "repo1:1.0.1" {
+					return map[string]cvemodel.CVE{
+						"CVE1": {
+							ID:          "CVE1",
+							Severity:    "MEDIUM",
+							Title:       "Title CVE1",
+							Description: "Description CVE1",
+						},
+						"CVE3": {
+							ID:          "CVE3",
+							Severity:    "LOW",
+							Title:       "Title CVE3",
+							Description: "Description CVE3",
+						},
+					}, nil
+				}
+
+				// By default the image has no vulnerabilities
+				return map[string]cvemodel.CVE{}, nil
+			},
+			CompareSeveritiesFn: func(severity1, severity2 string) int {
+				return severities[severity2] - severities[severity1]
+			},
+			IsImageFormatScannableFn: func(image string) (bool, error) {
+				// Almost same logic compared to actual Trivy specific implementation
+				imageDir, inputTag := common.GetImageDirAndTag(image)
+
+				manifests, err := layoutUtils.GetImageManifests(imageDir)
+				if err != nil {
+					return false, err
+				}
+
+				for _, manifest := range manifests {
+					tag, ok := manifest.Annotations[ispec.AnnotationRefName]
+
+					if ok && inputTag != "" && tag != inputTag {
+						continue
+					}
+
+					blobManifest, err := layoutUtils.GetImageBlobManifest(imageDir, manifest.Digest)
+					if err != nil {
+						return false, err
+					}
+
+					imageLayers := blobManifest.Layers
+
+					for _, imageLayer := range imageLayers {
+						switch imageLayer.MediaType {
+						case regTypes.OCILayer, regTypes.DockerLayer:
+							return true, nil
+
+						default:
+							return false, errors.ErrScanNotSupported
+						}
+					}
+				}
+
+				return false, nil
+			},
+		}
+
+		log := log.NewLogger("debug", "")
+
+		Convey("Test GetCVESummaryForImage", func() {
+			cveInfo := cveinfo.BaseCveInfo{Log: log, Scanner: scanner, LayoutUtils: layoutUtils}
+
+			// Image is found
+			cveSummary, err := cveInfo.GetCVESummaryForImage("repo1:0.1.0")
+			So(err, ShouldBeNil)
+			So(cveSummary.Count, ShouldEqual, 1)
+			So(cveSummary.MaxSeverity, ShouldEqual, "MEDIUM")
+
+			cveSummary, err = cveInfo.GetCVESummaryForImage("repo1:1.0.0")
+			So(err, ShouldBeNil)
+			So(cveSummary.Count, ShouldEqual, 3)
+			So(cveSummary.MaxSeverity, ShouldEqual, "HIGH")
+
+			cveSummary, err = cveInfo.GetCVESummaryForImage("repo1:1.0.1")
+			So(err, ShouldBeNil)
+			So(cveSummary.Count, ShouldEqual, 2)
+			So(cveSummary.MaxSeverity, ShouldEqual, "MEDIUM")
+
+			cveSummary, err = cveInfo.GetCVESummaryForImage("repo1:1.1.0")
+			So(err, ShouldBeNil)
+			So(cveSummary.Count, ShouldEqual, 1)
+			So(cveSummary.MaxSeverity, ShouldEqual, "LOW")
+
+			// Image is not scannable
+			cveSummary, err = cveInfo.GetCVESummaryForImage("repo2:1.0.0")
+			So(err, ShouldEqual, errors.ErrScanNotSupported)
+			So(cveSummary.Count, ShouldEqual, 0)
+			So(cveSummary.MaxSeverity, ShouldEqual, "UNKNOWN")
+
+			// Image is not found
+			cveSummary, err = cveInfo.GetCVESummaryForImage("repo3:1.0.0")
+			So(err, ShouldEqual, errors.ErrRepoNotFound)
+			So(cveSummary.Count, ShouldEqual, 0)
+			So(cveSummary.MaxSeverity, ShouldEqual, "UNKNOWN")
+		})
+
+		Convey("Test GetCVEListForImage", func() {
+			cveInfo := cveinfo.BaseCveInfo{Log: log, Scanner: scanner, LayoutUtils: layoutUtils}
+
+			// Image is found
+			cveMap, err := cveInfo.GetCVEListForImage("repo1:0.1.0")
+			So(err, ShouldBeNil)
+			So(len(cveMap), ShouldEqual, 1)
+			So(cveMap, ShouldContainKey, "CVE1")
+			So(cveMap, ShouldNotContainKey, "CVE2")
+			So(cveMap, ShouldNotContainKey, "CVE3")
+
+			cveMap, err = cveInfo.GetCVEListForImage("repo1:1.0.0")
+			So(err, ShouldBeNil)
+			So(len(cveMap), ShouldEqual, 3)
+			So(cveMap, ShouldContainKey, "CVE1")
+			So(cveMap, ShouldContainKey, "CVE2")
+			So(cveMap, ShouldContainKey, "CVE3")
+
+			cveMap, err = cveInfo.GetCVEListForImage("repo1:1.0.1")
+			So(err, ShouldBeNil)
+			So(len(cveMap), ShouldEqual, 2)
+			So(cveMap, ShouldContainKey, "CVE1")
+			So(cveMap, ShouldNotContainKey, "CVE2")
+			So(cveMap, ShouldContainKey, "CVE3")
+
+			cveMap, err = cveInfo.GetCVEListForImage("repo1:1.1.0")
+			So(err, ShouldBeNil)
+			So(len(cveMap), ShouldEqual, 1)
+			So(cveMap, ShouldNotContainKey, "CVE1")
+			So(cveMap, ShouldNotContainKey, "CVE2")
+			So(cveMap, ShouldContainKey, "CVE3")
+
+			// Image is not scannable
+			cveMap, err = cveInfo.GetCVEListForImage("repo2:1.0.0")
+			So(err, ShouldEqual, errors.ErrScanNotSupported)
+			So(len(cveMap), ShouldEqual, 0)
+
+			// Image is not found
+			cveMap, err = cveInfo.GetCVEListForImage("repo3:1.0.0")
+			So(err, ShouldEqual, errors.ErrRepoNotFound)
+			So(len(cveMap), ShouldEqual, 0)
+		})
+
+		Convey("Test GetImageListWithCVEFixed", func() {
+			cveInfo := cveinfo.BaseCveInfo{Log: log, Scanner: scanner, LayoutUtils: layoutUtils}
+
+			// Image is found
+			tagList, err := cveInfo.GetImageListWithCVEFixed("repo1", "CVE1")
+			So(err, ShouldBeNil)
+			So(len(tagList), ShouldEqual, 1)
+			So(tagList[0].Name, ShouldEqual, "1.1.0")
+
+			tagList, err = cveInfo.GetImageListWithCVEFixed("repo1", "CVE2")
+			So(err, ShouldBeNil)
+			So(len(tagList), ShouldEqual, 2)
+			So(tagList[0].Name, ShouldEqual, "1.1.0")
+			So(tagList[1].Name, ShouldEqual, "1.0.1")
+
+			tagList, err = cveInfo.GetImageListWithCVEFixed("repo1", "CVE3")
+			So(err, ShouldBeNil)
+			// CVE3 is not present in 0.1.0, but that is older than all other
+			// images where it is present. The rest of the images explicitly  have it.
+			// This means we consider it not fixed in any image.
+			So(len(tagList), ShouldEqual, 0)
+
+			// Image is not scannable
+			tagList, err = cveInfo.GetImageListWithCVEFixed("repo2", "CVE100")
+			// CVE is not considered fixed as scan is not possible
+			// but do not return an error
+			So(err, ShouldBeNil)
+			So(len(tagList), ShouldEqual, 0)
+
+			// Image is not found
+			tagList, err = cveInfo.GetImageListWithCVEFixed("repo3", "CVE101")
+			So(err, ShouldEqual, errors.ErrRepoNotFound)
+			So(len(tagList), ShouldEqual, 0)
+		})
+
+		Convey("Test GetImageListForCVE", func() {
+			cveInfo := cveinfo.BaseCveInfo{Log: log, Scanner: scanner, LayoutUtils: layoutUtils}
+
+			// Image is found
+			imageInfoByCveList, err := cveInfo.GetImageListForCVE("repo1", "CVE1")
+			So(err, ShouldBeNil)
+			So(len(imageInfoByCveList), ShouldEqual, 3)
+			So(imageInfoByCveList[0].Tag, ShouldEqual, "0.1.0")
+			So(imageInfoByCveList[1].Tag, ShouldEqual, "1.0.0")
+			So(imageInfoByCveList[2].Tag, ShouldEqual, "1.0.1")
+
+			imageInfoByCveList, err = cveInfo.GetImageListForCVE("repo1", "CVE2")
+			So(err, ShouldBeNil)
+			So(len(imageInfoByCveList), ShouldEqual, 1)
+			So(imageInfoByCveList[0].Tag, ShouldEqual, "1.0.0")
+
+			imageInfoByCveList, err = cveInfo.GetImageListForCVE("repo1", "CVE3")
+			So(err, ShouldBeNil)
+			So(len(imageInfoByCveList), ShouldEqual, 3)
+			So(imageInfoByCveList[0].Tag, ShouldEqual, "1.0.0")
+			So(imageInfoByCveList[1].Tag, ShouldEqual, "1.1.0")
+			So(imageInfoByCveList[2].Tag, ShouldEqual, "1.0.1")
+
+			// Image is not scannable
+			imageInfoByCveList, err = cveInfo.GetImageListForCVE("repo2", "CVE100")
+			// Image is not considered affected with CVE as scan is not possible
+			// but do not return an error
+			So(err, ShouldBeNil)
+			So(len(imageInfoByCveList), ShouldEqual, 0)
+
+			// Image is not found
+			imageInfoByCveList, err = cveInfo.GetImageListForCVE("repo3", "CVE101")
+			So(err, ShouldEqual, errors.ErrRepoNotFound)
+			So(len(imageInfoByCveList), ShouldEqual, 0)
+		})
+
+		Convey("Test errors while scanning", func() {
+			localScanner := scanner
+
+			localScanner.ScanImageFn = func(image string) (map[string]cvemodel.CVE, error) {
+				// Could be any type of error, let's reuse this one
+				return nil, errors.ErrScanNotSupported
+			}
+
+			cveInfo := cveinfo.BaseCveInfo{Log: log, Scanner: localScanner, LayoutUtils: layoutUtils}
+
+			cveSummary, err := cveInfo.GetCVESummaryForImage("repo1:0.1.0")
+			So(err, ShouldNotBeNil)
+			So(cveSummary.Count, ShouldEqual, 0)
+			So(cveSummary.MaxSeverity, ShouldEqual, "UNKNOWN")
+
+			cveMap, err := cveInfo.GetCVEListForImage("repo1:0.1.0")
+			So(err, ShouldNotBeNil)
+			So(cveMap, ShouldBeNil)
+
+			tagList, err := cveInfo.GetImageListWithCVEFixed("repo1", "CVE1")
+			// CVE is not considered fixed as scan is not possible
+			// but do not return an error
+			So(err, ShouldBeNil)
+			So(len(tagList), ShouldEqual, 0)
+
+			imageInfoByCveList, err := cveInfo.GetImageListForCVE("repo1", "CVE1")
+			// Image is not considered affected with CVE as scan is not possible
+			// but do not return an error
+			So(err, ShouldBeNil)
+			So(len(imageInfoByCveList), ShouldEqual, 0)
+		})
+
+		Convey("Test error while reading blob manifest", func() {
+			localLayoutUtils := layoutUtils
+			localLayoutUtils.GetImageBlobManifestFn = func(imageDir string,
+				digest digest.Digest,
+			) (v1.Manifest, error) {
+				return v1.Manifest{}, errors.ErrBlobNotFound
+			}
+
+			cveInfo := cveinfo.BaseCveInfo{Log: log, Scanner: scanner, LayoutUtils: localLayoutUtils}
+
+			imageInfoByCveList, err := cveInfo.GetImageListForCVE("repo1", "CVE1")
+			So(err, ShouldNotBeNil)
+			So(len(imageInfoByCveList), ShouldEqual, 0)
+		})
 	})
 }
