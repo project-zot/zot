@@ -128,8 +128,9 @@ type ComplexityRoot struct {
 	}
 
 	RepoInfo struct {
-		Images  func(childComplexity int) int
-		Summary func(childComplexity int) int
+		Images       func(childComplexity int) int
+		PullCommands func(childComplexity int) int
+		Summary      func(childComplexity int) int
 	}
 
 	RepoSummary struct {
@@ -604,6 +605,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.RepoInfo.Images(childComplexity), true
 
+	case "RepoInfo.PullCommands":
+		if e.complexity.RepoInfo.PullCommands == nil {
+			break
+		}
+
+		return e.complexity.RepoInfo.PullCommands(childComplexity), true
+
 	case "RepoInfo.Summary":
 		if e.complexity.RepoInfo.Summary == nil {
 			break
@@ -757,6 +765,7 @@ type PackageInfo {
 type RepoInfo {
     Images: [ImageSummary]
     Summary: RepoSummary
+    PullCommands: [String]
 }
 
 # Search results in all repos/images/layers
@@ -3531,6 +3540,8 @@ func (ec *executionContext) fieldContext_Query_ExpandedRepoInfo(ctx context.Cont
 				return ec.fieldContext_RepoInfo_Images(ctx, field)
 			case "Summary":
 				return ec.fieldContext_RepoInfo_Summary(ctx, field)
+			case "PullCommands":
+				return ec.fieldContext_RepoInfo_PullCommands(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type RepoInfo", field.Name)
 		},
@@ -4064,6 +4075,47 @@ func (ec *executionContext) fieldContext_RepoInfo_Summary(ctx context.Context, f
 				return ec.fieldContext_RepoSummary_IsBookmarked(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type RepoSummary", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _RepoInfo_PullCommands(ctx context.Context, field graphql.CollectedField, obj *RepoInfo) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_RepoInfo_PullCommands(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.PullCommands, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.([]*string)
+	fc.Result = res
+	return ec.marshalOString2ᚕᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_RepoInfo_PullCommands(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "RepoInfo",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
 		},
 	}
 	return fc, nil
@@ -6942,6 +6994,10 @@ func (ec *executionContext) _RepoInfo(ctx context.Context, sel ast.SelectionSet,
 		case "Summary":
 
 			out.Values[i] = ec._RepoInfo_Summary(ctx, field, obj)
+
+		case "PullCommands":
+
+			out.Values[i] = ec._RepoInfo_PullCommands(ctx, field, obj)
 
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))

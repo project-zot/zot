@@ -22,6 +22,7 @@ type PackageInfo {
 type RepoInfo {
     Images: [ImageSummary]
     Summary: RepoSummary
+    PullCommands: [String]
 }
 
 # Search results in all repos/images/layers

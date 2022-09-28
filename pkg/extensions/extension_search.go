@@ -66,9 +66,9 @@ func SetupSearchRoutes(config *config.Config, router *mux.Router, storeControlle
 		var resConfig gql_generated.Config
 
 		if config.Extensions.Search.CVE != nil {
-			resConfig = search.GetResolverConfig(log, storeController, true)
+			resConfig = search.GetResolverConfig(log, storeController, true, config.HTTP.Address, config.HTTP.Port)
 		} else {
-			resConfig = search.GetResolverConfig(log, storeController, false)
+			resConfig = search.GetResolverConfig(log, storeController, false, config.HTTP.Address, config.HTTP.Port)
 		}
 
 		graphqlPrefix := router.PathPrefix(constants.ExtSearchPrefix).Methods("OPTIONS", "GET", "POST")

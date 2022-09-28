@@ -32,6 +32,7 @@ type Resolver struct {
 	cveInfo         *cveinfo.CveInfo
 	storeController storage.StoreController
 	digestInfo      *digestinfo.DigestInfo
+	hostAddress, hostPort string
 	log             log.Logger
 }
 
@@ -48,7 +49,7 @@ var (
 )
 
 // GetResolverConfig ...
-func GetResolverConfig(log log.Logger, storeController storage.StoreController, enableCVE bool) gql_generated.Config {
+func GetResolverConfig(log log.Logger, storeController storage.StoreController, enableCVE bool, hostAddress, hostPort string) gql_generated.Config {
 	var cveInfo *cveinfo.CveInfo
 
 	var err error
@@ -62,7 +63,7 @@ func GetResolverConfig(log log.Logger, storeController storage.StoreController, 
 
 	digestInfo := digestinfo.NewDigestInfo(storeController, log)
 
-	resConfig := &Resolver{cveInfo: cveInfo, storeController: storeController, digestInfo: digestInfo, log: log}
+	resConfig := &Resolver{cveInfo: cveInfo, storeController: storeController, digestInfo: digestInfo, log: log, hostAddress: hostAddress, hostPort: hostPort}
 
 	return gql_generated.Config{
 		Resolvers: resConfig, Directives: gql_generated.DirectiveRoot{},

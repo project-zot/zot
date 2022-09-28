@@ -82,8 +82,9 @@ type PackageInfo struct {
 }
 
 type RepoInfo struct {
-	Images  []*ImageSummary `json:"Images"`
-	Summary *RepoSummary    `json:"Summary"`
+	Images       []*ImageSummary `json:"Images"`
+	Summary      *RepoSummary    `json:"Summary"`
+	PullCommands []*string       `json:"PullCommands"`
 }
 
 type RepoSummary struct {

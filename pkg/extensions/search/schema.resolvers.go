@@ -462,6 +462,12 @@ func (r *queryResolver) ExpandedRepoInfo(ctx context.Context, repo string) (*gql
 	repoInfo.Summary = summary
 	repoInfo.Images = images
 
+	host := r.hostAddress + ":" + r.hostPort
+	dockerPullCommand := "docker pull " + host + "/" + repo + ":" + *repoInfo.Summary.NewestImage.Tag
+	podmanPullCommand := "podman pull " + host + "/" + repo + ":" + *repoInfo.Summary.NewestImage.Tag
+	skopeoPullCommand := "skopeo copy docker://" + host + "/" + repo + ":" + *repoInfo.Summary.NewestImage.Tag + " docker://artprod.mycompany:port/" + "<DOCKER_REPOSITORY>" + ":" + "<DOCKER_TAG>"
+	repoInfo.PullCommands = []*string{&dockerPullCommand, &podmanPullCommand, &skopeoPullCommand}
+
 	return repoInfo, nil
 }
 
