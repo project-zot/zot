@@ -48,7 +48,9 @@ func TestScrubExtension(t *testing.T) {
 		substore := config.StorageConfig{RootDirectory: subdir}
 		conf.Storage.SubPaths = map[string]config.StorageConfig{"/a": substore}
 		conf.Log.Output = logFile.Name()
+		trueValue := true
 		scrubConfig := &extconf.ScrubConfig{
+			Enable:   &trueValue,
 			Interval: 2,
 		}
 		conf.Extensions = &extconf.ExtensionConfig{
@@ -106,7 +108,9 @@ func TestScrubExtension(t *testing.T) {
 
 		conf.Storage.RootDirectory = dir
 		conf.Log.Output = logFile.Name()
+		trueValue := true
 		scrubConfig := &extconf.ScrubConfig{
+			Enable:   &trueValue,
 			Interval: 2,
 		}
 		conf.Extensions = &extconf.ExtensionConfig{
@@ -171,7 +175,9 @@ func TestScrubExtension(t *testing.T) {
 
 		conf.Storage.RootDirectory = dir
 		conf.Log.Output = logFile.Name()
+		trueValue := true
 		scrubConfig := &extconf.ScrubConfig{
+			Enable:   &trueValue,
 			Interval: 2,
 		}
 		conf.Extensions = &extconf.ExtensionConfig{

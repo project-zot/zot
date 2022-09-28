@@ -35,6 +35,7 @@ function setup() {
     },
     "extensions": {
         "scrub": {
+            "enable": true,
             "interval": "2h"
         }
     }

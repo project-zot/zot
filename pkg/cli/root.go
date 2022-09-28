@@ -344,6 +344,13 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper) {
 			// Note: In case search is not empty the config.Extensions will not be nil and we will not reach here
 			config.Extensions.Search = &extconf.SearchConfig{}
 		}
+
+		_, ok = extMap["scrub"]
+		if ok {
+			// we found a config like `"extensions": {"scrub:": {}}`
+			// Note: In case scrub is not empty the config.Extensions will not be nil and we will not reach here
+			config.Extensions.Scrub = &extconf.ScrubConfig{}
+		}
 	}
 
 	if config.Extensions != nil {
@@ -376,6 +383,16 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper) {
 
 			if config.Extensions.Metrics.Prometheus == nil {
 				config.Extensions.Metrics.Prometheus = &extconf.PrometheusConfig{Path: constants.DefaultMetricsExtensionRoute}
+			}
+		}
+
+		if config.Extensions.Scrub != nil {
+			if config.Extensions.Scrub.Enable == nil {
+				config.Extensions.Scrub.Enable = &defaultVal
+			}
+
+			if config.Extensions.Scrub.Interval == 0 {
+				config.Extensions.Scrub.Interval = 24 * time.Hour // nolint: gomnd
 			}
 		}
 	}
