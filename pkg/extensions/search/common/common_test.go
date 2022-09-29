@@ -750,6 +750,10 @@ func TestExpandedRepoInfo(t *testing.T) {
 			repo1)
 		So(err, ShouldBeNil)
 
+		// delete image
+		// resp, err := resty.R().Delete(baseURL + "/v2/" + repo1 + "manifests" + tagToBeRemoved)
+		// So(err, ShouldBeNil)
+
 		indexPath := path.Join(tempDir, repo1, "index.json")
 		indexFile, err := os.Open(indexPath)
 		So(err, ShouldBeNil)
@@ -863,7 +867,6 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(responseStruct.ExpandedRepoInfo.RepoInfo.Summary, ShouldNotBeEmpty)
 		So(responseStruct.ExpandedRepoInfo.RepoInfo.Summary.Name, ShouldEqual, "zot-cve-test")
-		So(responseStruct.ExpandedRepoInfo.RepoInfo.Summary.Score, ShouldEqual, -1)
 
 		query = "{ExpandedRepoInfo(repo:\"zot-cve-test\"){Images%20{Digest%20IsSigned%20Tag%20Layers%20{Size%20Digest}}}}"
 
@@ -886,7 +889,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		found := false
 		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries {
-			if m.Digest == testManifestDigest.Encoded() {
+			if m.Digest == testManifestDigest.String() {
 				found = true
 				So(m.IsSigned, ShouldEqual, false)
 			}
@@ -913,7 +916,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		found = false
 		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries {
-			if m.Digest == testManifestDigest.Encoded() {
+			if m.Digest == testManifestDigest.String() {
 				found = true
 				So(m.IsSigned, ShouldEqual, true)
 			}
@@ -945,7 +948,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		found = false
 		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries {
-			if m.Digest == testManifestDigest.Encoded() {
+			if m.Digest == testManifestDigest.String() {
 				found = true
 				So(m.IsSigned, ShouldEqual, false)
 			}
@@ -972,7 +975,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		found = false
 		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries {
-			if m.Digest == testManifestDigest.Encoded() {
+			if m.Digest == testManifestDigest.String() {
 				found = true
 				So(m.IsSigned, ShouldEqual, true)
 			}

@@ -921,19 +921,21 @@ func (img imageStruct) stringPlainText(maxImgNameLen, maxTagLen int) (string, er
 
 	imageName = img.RepoName
 	tagName = img.Tag
-	digest := ellipsize(img.Digest, digestWidth, "")
+	manifestDigest := strings.TrimPrefix(img.Digest, "sha256:")
+	configDigest := strings.TrimPrefix(img.ConfigDigest, "sha256:")
+
 	imgSize, _ := strconv.ParseUint(img.Size, 10, 64)
 	size := ellipsize(strings.ReplaceAll(humanize.Bytes(imgSize), " ", ""), sizeWidth, ellipsis)
-	config := ellipsize(img.ConfigDigest, configWidth, "")
+	configDigest = ellipsize(configDigest, configWidth, "")
 	row := make([]string, 6) //nolint:gomnd
 
 	row[colImageNameIndex] = imageName
 	row[colTagIndex] = tagName
-	row[colDigestIndex] = digest
+	row[colDigestIndex] = manifestDigest
 	row[colSizeIndex] = size
 
 	if img.verbose {
-		row[colConfigIndex] = config
+		row[colConfigIndex] = configDigest
 		row[colLayersIndex] = ""
 	}
 
@@ -943,7 +945,8 @@ func (img imageStruct) stringPlainText(maxImgNameLen, maxTagLen int) (string, er
 		for _, entry := range img.Layers {
 			layerSize := entry.Size
 			size := ellipsize(strings.ReplaceAll(humanize.Bytes(layerSize), " ", ""), sizeWidth, ellipsis)
-			layerDigest := ellipsize(entry.Digest, digestWidth, "")
+			layerDigest := strings.TrimPrefix(entry.Digest, "sha256:")
+			layerDigest = ellipsize(layerDigest, digestWidth, "")
 
 			layerRow := make([]string, 6) //nolint:gomnd
 			layerRow[colImageNameIndex] = ""

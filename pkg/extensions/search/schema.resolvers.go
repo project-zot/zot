@@ -267,96 +267,9 @@ func (r *queryResolver) ImageList(ctx context.Context, repo string) ([]*gql_gene
 
 // ExpandedRepoInfo is the resolver for the ExpandedRepoInfo field.
 func (r *queryResolver) ExpandedRepoInfo(ctx context.Context, repo string) (*gql_generated.RepoInfo, error) {
-	olu := common.NewBaseOciLayoutUtils(r.storeController, r.log)
+	repoInfo, err := expandedRepoInfo(ctx, repo, r.repoDB, r.cveInfo)
 
-	origRepoInfo, err := olu.GetExpandedRepoInfo(repo)
-	if err != nil {
-		r.log.Error().Err(err).Msgf("error getting repo '%s'", repo)
-
-		return &gql_generated.RepoInfo{}, err
-	}
-
-	// repos type is of common deep copy this to search
-	repoInfo := &gql_generated.RepoInfo{}
-
-	images := make([]*gql_generated.ImageSummary, 0)
-
-	summary := &gql_generated.RepoSummary{}
-
-	summary.LastUpdated = &origRepoInfo.Summary.LastUpdated
-	summary.Name = &origRepoInfo.Summary.Name
-	summary.Platforms = []*gql_generated.OsArch{}
-	summary.NewestImage = &gql_generated.ImageSummary{
-		RepoName:     &origRepoInfo.Summary.NewestImage.RepoName,
-		Tag:          &origRepoInfo.Summary.NewestImage.Tag,
-		LastUpdated:  &origRepoInfo.Summary.NewestImage.LastUpdated,
-		Digest:       &origRepoInfo.Summary.NewestImage.Digest,
-		ConfigDigest: &origRepoInfo.Summary.NewestImage.ConfigDigest,
-		IsSigned:     &origRepoInfo.Summary.NewestImage.IsSigned,
-		Size:         &origRepoInfo.Summary.NewestImage.Size,
-		Platform: &gql_generated.OsArch{
-			Os:   &origRepoInfo.Summary.NewestImage.Platform.Os,
-			Arch: &origRepoInfo.Summary.NewestImage.Platform.Arch,
-		},
-		Vendor:        &origRepoInfo.Summary.NewestImage.Vendor,
-		Score:         &origRepoInfo.Summary.NewestImage.Score,
-		Description:   &origRepoInfo.Summary.NewestImage.Description,
-		Title:         &origRepoInfo.Summary.NewestImage.Title,
-		Documentation: &origRepoInfo.Summary.NewestImage.Documentation,
-		Licenses:      &origRepoInfo.Summary.NewestImage.Licenses,
-		Labels:        &origRepoInfo.Summary.NewestImage.Labels,
-		Source:        &origRepoInfo.Summary.NewestImage.Source,
-		Logo:          &origRepoInfo.Summary.NewestImage.Logo,
-	}
-
-	for _, platform := range origRepoInfo.Summary.Platforms {
-		platform := platform
-
-		summary.Platforms = append(summary.Platforms, &gql_generated.OsArch{
-			Os:   &platform.Os,
-			Arch: &platform.Arch,
-		})
-	}
-
-	summary.Size = &origRepoInfo.Summary.Size
-
-	for _, vendor := range origRepoInfo.Summary.Vendors {
-		vendor := vendor
-		summary.Vendors = append(summary.Vendors, &vendor)
-	}
-
-	score := -1 // score not relevant for this query
-	summary.Score = &score
-
-	for _, image := range origRepoInfo.ImageSummaries {
-		tag := image.Tag
-		digest := image.Digest
-		isSigned := image.IsSigned
-		size := image.Size
-		logo := image.Logo
-
-		imageSummary := &gql_generated.ImageSummary{Tag: &tag, Digest: &digest, IsSigned: &isSigned, RepoName: &repo, Logo: &logo}
-
-		layers := make([]*gql_generated.LayerSummary, 0)
-
-		for _, l := range image.Layers {
-			size := l.Size
-			digest := l.Digest
-
-			layerInfo := &gql_generated.LayerSummary{Digest: &digest, Size: &size}
-
-			layers = append(layers, layerInfo)
-		}
-
-		imageSummary.Layers = layers
-		imageSummary.Size = &size
-		images = append(images, imageSummary)
-	}
-
-	repoInfo.Summary = summary
-	repoInfo.Images = images
-
-	return repoInfo, nil
+	return repoInfo, err
 }
 
 // GlobalSearch is the resolver for the GlobalSearch field.
@@ -423,7 +336,7 @@ func (r *queryResolver) DerivedImageList(ctx context.Context, image string) ([]*
 
 			for _, l := range imageLayers {
 				for _, k := range layers {
-					if *k.Digest == l.Digest.Encoded() {
+					if *k.Digest == l.Digest.String() {
 						sameLayer++
 					}
 				}
@@ -495,7 +408,7 @@ func (r *queryResolver) BaseImageList(ctx context.Context, image string) ([]*gql
 				foundLayer := false
 
 				for _, k := range imageLayers {
-					if *l.Digest == k.Digest.Encoded() {
+					if *l.Digest == k.Digest.String() {
 						foundLayer = true
 
 						break

@@ -368,6 +368,41 @@ func globalSearch(ctx context.Context, query string, repoDB repodb.RepoDB, filte
 	return repos, images, layers, nil
 }
 
+func expandedRepoInfo(ctx context.Context, repo string, repoDB repodb.RepoDB,
+	cveInfo cveinfo.CveInfo,
+) (*gql_generated.RepoInfo, error) {
+	if ok, err := localCtx.RepoIsUserAvailable(ctx, repo); !ok || err != nil {
+		// log
+		return &gql_generated.RepoInfo{}, nil //nolint:nilerr // don't give details to a potential attacker
+	}
+
+	repoMeta, err := repoDB.GetRepoMeta(repo)
+	if err != nil {
+		// log
+		return &gql_generated.RepoInfo{}, err
+	}
+
+	manifestMetaMap := map[string]repodb.ManifestMetadata{}
+
+	for _, digest := range repoMeta.Tags {
+		if _, alreadyDownloaded := manifestMetaMap[digest]; alreadyDownloaded {
+			continue
+		}
+
+		manifestMeta, err := repoDB.GetManifestMeta(digest)
+		if err != nil {
+			// add error to gql errors
+			continue
+		}
+
+		manifestMetaMap[digest] = manifestMeta
+	}
+
+	repoSummary, imageSummaries := RepoMeta2ExpandedRepoInfo(ctx, repoMeta, manifestMetaMap, cveInfo)
+
+	return &gql_generated.RepoInfo{Summary: repoSummary, Images: imageSummaries}, nil
+}
+
 func safeDerefferencing[T any](pointer *T, defaultVal T) T {
 	if pointer != nil {
 		return *pointer
@@ -475,6 +510,173 @@ func RepoMeta2ImageSummaries(ctx context.Context, repoMeta repodb.RepoMetadata,
 	}
 
 	return imageSummaries
+}
+
+func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta repodb.RepoMetadata,
+	manifestMetaMap map[string]repodb.ManifestMetadata, cveInfo cveinfo.CveInfo,
+) (*gql_generated.RepoSummary, []*gql_generated.ImageSummary) {
+	var (
+		repoLastUpdatedTimestamp = time.Time{}
+		repoPlatformsSet         = map[string]*gql_generated.OsArch{}
+		repoVendorsSet           = map[string]bool{}
+		lastUpdatedImageSummary  *gql_generated.ImageSummary
+		repoStarCount            = repoMeta.Stars
+		isBookmarked             = false
+		isStarred                = false
+		repoDownloadCount        = 0
+		repoName                 = repoMeta.Name
+
+		// map used to keep track of all blobs of a repo without dublicates as
+		// some images may have the same layers
+		repoBlob2Size = make(map[string]int64, 10)
+
+		// made up of all manifests, configs and image layers
+		size = int64(0)
+
+		imageSummaries = make([]*gql_generated.ImageSummary, 0, len(repoMeta.Tags))
+	)
+
+	for tag, manifestDigest := range repoMeta.Tags {
+		var manifestContent ispec.Manifest
+
+		err := json.Unmarshal(manifestMetaMap[manifestDigest].ManifestBlob, &manifestContent)
+		if err != nil {
+			graphql.AddError(ctx, gqlerror.Errorf("can't unmarshal manifest blob for image: %s:%s, manifest digest: %s, "+
+				"error: %s", repoMeta.Name, tag, manifestDigest, err.Error()))
+
+			continue
+		}
+
+		var configContent ispec.Image
+
+		err = json.Unmarshal(manifestMetaMap[manifestDigest].ConfigBlob, &configContent)
+		if err != nil {
+			graphql.AddError(ctx, gqlerror.Errorf("can't unmarshal config blob for image: %s:%s, manifest digest: %s, error: %s",
+				repoMeta.Name, tag, manifestDigest, err.Error()))
+
+			continue
+		}
+
+		imageCveSummary := cveinfo.ImageCVESummary{}
+		// Check if vulnerability scanning is disabled
+		if cveInfo != nil {
+			imageName := fmt.Sprintf("%s:%s", repoMeta.Name, tag)
+			imageCveSummary, err = cveInfo.GetCVESummaryForImage(imageName)
+
+			if err != nil {
+				// Log the error, but we should still include the manifest in results
+				graphql.AddError(ctx, gqlerror.Errorf("unable to run vulnerability scan on tag %s in repo %s: "+
+					"manifest digest: %s, error: %s", tag, repoMeta.Name, manifestDigest, err.Error()))
+			}
+		}
+
+		var (
+			tag              = tag
+			isSigned         = len(manifestMetaMap[manifestDigest].Signatures) > 0
+			configDigest     = manifestContent.Config.Digest.String()
+			configSize       = manifestContent.Config.Size
+			opSys            = configContent.OS
+			arch             = configContent.Architecture
+			osArch           = gql_generated.OsArch{Os: &opSys, Arch: &arch}
+			imageLastUpdated = getImageLastUpdated(configContent)
+			downloadCount    = manifestMetaMap[manifestDigest].DownloadCount
+			manifestDigest   = manifestDigest
+
+			size = updateRepoBlobsMap(
+				manifestDigest, int64(len(manifestMetaMap[manifestDigest].ManifestBlob)),
+				configDigest, configSize,
+				manifestContent.Layers,
+				repoBlob2Size)
+			imageSize = strconv.FormatInt(size, 10)
+		)
+
+		annotations := common.GetAnnotations(manifestContent.Annotations, configContent.Config.Labels)
+
+		imageSummary := gql_generated.ImageSummary{
+			RepoName:      &repoName,
+			Tag:           &tag,
+			Digest:        &manifestDigest,
+			ConfigDigest:  &configDigest,
+			LastUpdated:   imageLastUpdated,
+			IsSigned:      &isSigned,
+			Size:          &imageSize,
+			Platform:      &osArch,
+			Vendor:        &annotations.Vendor,
+			DownloadCount: &downloadCount,
+			Layers:        getLayersSummaries(manifestContent),
+			Description:   &annotations.Description,
+			Title:         &annotations.Title,
+			Documentation: &annotations.Documentation,
+			Licenses:      &annotations.Licenses,
+			Labels:        &annotations.Labels,
+			Source:        &annotations.Source,
+			Vulnerabilities: &gql_generated.ImageVulnerabilitySummary{
+				MaxSeverity: &imageCveSummary.MaxSeverity,
+				Count:       &imageCveSummary.Count,
+			},
+		}
+
+		imageSummaries = append(imageSummaries, &imageSummary)
+
+		if annotations.Vendor != "" {
+			repoVendorsSet[annotations.Vendor] = true
+		}
+
+		if opSys != "" || arch != "" {
+			osArchString := strings.TrimSpace(fmt.Sprintf("%s %s", opSys, arch))
+			repoPlatformsSet[osArchString] = &gql_generated.OsArch{Os: &opSys, Arch: &arch}
+		}
+
+		if repoLastUpdatedTimestamp.Equal(time.Time{}) {
+			// initialize with first time value
+			if imageLastUpdated != nil {
+				repoLastUpdatedTimestamp = *imageLastUpdated
+			}
+
+			lastUpdatedImageSummary = &imageSummary
+		} else if imageLastUpdated != nil && repoLastUpdatedTimestamp.Before(*imageLastUpdated) {
+			repoLastUpdatedTimestamp = *imageLastUpdated
+			lastUpdatedImageSummary = &imageSummary
+		}
+
+		repoDownloadCount += manifestMetaMap[manifestDigest].DownloadCount
+	}
+
+	// calculate repo size = sum all manifest, config and layer blobs sizes
+	for _, blobSize := range repoBlob2Size {
+		size += blobSize
+	}
+
+	repoSize := strconv.FormatInt(size, 10)
+	score := 0
+
+	repoPlatforms := make([]*gql_generated.OsArch, 0, len(repoPlatformsSet))
+	for _, osArch := range repoPlatformsSet {
+		repoPlatforms = append(repoPlatforms, osArch)
+	}
+
+	repoVendors := make([]*string, 0, len(repoVendorsSet))
+
+	for vendor := range repoVendorsSet {
+		vendor := vendor
+		repoVendors = append(repoVendors, &vendor)
+	}
+
+	summary := &gql_generated.RepoSummary{
+		Name:          &repoName,
+		LastUpdated:   &repoLastUpdatedTimestamp,
+		Size:          &repoSize,
+		Platforms:     repoPlatforms,
+		Vendors:       repoVendors,
+		Score:         &score,
+		NewestImage:   lastUpdatedImageSummary,
+		DownloadCount: &repoDownloadCount,
+		StarCount:     &repoStarCount,
+		IsBookmarked:  &isBookmarked,
+		IsStarred:     &isStarred,
+	}
+
+	return summary, imageSummaries
 }
 
 func getLayersSummaries(manifestContent ispec.Manifest) []*gql_generated.LayerSummary {
