@@ -85,6 +85,7 @@ type GlobalSearchResultResp struct {
 type GlobalSearchResult struct {
 	GlobalSearch GlobalSearch `json:"globalSearch"`
 }
+
 type GlobalSearch struct {
 	Images []common.ImageSummary `json:"images"`
 	Repos  []common.RepoSummary  `json:"repos"`
@@ -1952,7 +1953,7 @@ func TestGetRepositories(t *testing.T) {
 }
 
 //nolint:dupl // duplicated test code
-func TestGlobalSearch(t *testing.T) {
+func TestGlobalSearch(t *testing.T) { // nolint: gocyclo
 	Convey("Test searching for repos with vulnerabitity scanning disabled", t, func() {
 		subpath := "/a"
 
@@ -2005,7 +2006,24 @@ func TestGlobalSearch(t *testing.T) {
 		config1, layers1, manifest1, err := GetImageComponents(100)
 		So(err, ShouldBeNil)
 		createdTime := time.Date(2010, 1, 1, 12, 0, 0, 0, time.UTC)
-		config1.History = append(config1.History, ispec.History{Created: &createdTime})
+		createdTimeL2 := time.Date(2010, 2, 1, 12, 0, 0, 0, time.UTC)
+		config1.History = append(
+			config1.History,
+			ispec.History{
+				Created:    &createdTime,
+				CreatedBy:  "go test data",
+				Author:     "ZotUser",
+				Comment:    "Test history comment",
+				EmptyLayer: true,
+			},
+			ispec.History{
+				Created:    &createdTimeL2,
+				CreatedBy:  "go test data 2",
+				Author:     "ZotUser",
+				Comment:    "Test history comment2",
+				EmptyLayer: false,
+			},
+		)
 		manifest1, err = updateManifestConfig(manifest1, config1)
 		So(err, ShouldBeNil)
 
@@ -2030,7 +2048,24 @@ func TestGlobalSearch(t *testing.T) {
 		config2, layers2, manifest2, err := GetImageComponents(200)
 		So(err, ShouldBeNil)
 		createdTime2 := time.Date(2009, 1, 1, 12, 0, 0, 0, time.UTC)
-		config2.History = append(config2.History, ispec.History{Created: &createdTime2})
+		createdTimeL2 = time.Date(2009, 2, 1, 12, 0, 0, 0, time.UTC)
+		config2.History = append(
+			config2.History,
+			ispec.History{
+				Created:    &createdTime2,
+				CreatedBy:  "go test data",
+				Author:     "ZotUser",
+				Comment:    "Test history comment",
+				EmptyLayer: true,
+			},
+			ispec.History{
+				Created:    &createdTimeL2,
+				CreatedBy:  "go test data 2",
+				Author:     "ZotUser",
+				Comment:    "Test history comment2",
+				EmptyLayer: false,
+			},
+		)
 		manifest2, err = updateManifestConfig(manifest2, config2)
 		So(err, ShouldBeNil)
 
@@ -2101,6 +2136,10 @@ func TestGlobalSearch(t *testing.T) {
 						RepoName Tag LastUpdated Size IsSigned Vendor Score
 						Platform { Os Arch }
 						Vulnerabilities { Count MaxSeverity }
+						History {
+							Layer { Size Digest }
+							HistoryDescription { Author Comment Created CreatedBy EmptyLayer }
+						}
 					}
 					Repos {
 						Name LastUpdated Size
@@ -2110,6 +2149,10 @@ func TestGlobalSearch(t *testing.T) {
 							RepoName Tag LastUpdated Size IsSigned Vendor Score
 							Platform { Os Arch }
 							Vulnerabilities { Count MaxSeverity }
+							History {
+								Layer { Size Digest }
+								HistoryDescription { Author Comment Created CreatedBy EmptyLayer }
+							}
 						}
 					}
 					Layers { Digest Size }
@@ -2175,6 +2218,51 @@ func TestGlobalSearch(t *testing.T) {
 			So(repoSummary.NewestImage.Vendor, ShouldEqual, repoInfo.Summary.NewestImage.Vendor)
 			So(repoSummary.NewestImage.Platform.Os, ShouldEqual, repoInfo.Summary.NewestImage.Platform.Os)
 			So(repoSummary.NewestImage.Platform.Arch, ShouldEqual, repoInfo.Summary.NewestImage.Platform.Arch)
+			So(repoSummary.NewestImage.Title, ShouldEqual, repoInfo.Summary.NewestImage.Title)
+			So(repoSummary.NewestImage.Description, ShouldEqual, repoInfo.Summary.NewestImage.Description)
+			So(repoSummary.NewestImage.Source, ShouldEqual, repoInfo.Summary.NewestImage.Source)
+			So(repoSummary.NewestImage.Documentation, ShouldEqual, repoInfo.Summary.NewestImage.Documentation)
+			So(repoSummary.NewestImage.Licenses, ShouldEqual, repoInfo.Summary.NewestImage.Licenses)
+			t.Log(repoSummary.NewestImage.History)
+			t.Log(repoInfo.Summary.NewestImage.History)
+
+			So(len(repoSummary.NewestImage.History), ShouldEqual, len(repoInfo.Summary.NewestImage.History))
+			for index, history := range repoSummary.NewestImage.History {
+				// We really need to be consistent about including/removing `sha256` in API replies
+				if repoInfo.Summary.NewestImage.History[index].Layer.Digest == "" {
+					So(history.Layer.Digest, ShouldEqual, repoInfo.Summary.NewestImage.History[index].Layer.Digest)
+				} else {
+					actualDigest, err := digest.Parse(history.Layer.Digest)
+					So(err, ShouldBeNil)
+					So(actualDigest.Encoded(), ShouldEqual, repoInfo.Summary.NewestImage.History[index].Layer.Digest)
+				}
+				So(history.Layer.Size, ShouldEqual, repoInfo.Summary.NewestImage.History[index].Layer.Size)
+				So(
+					history.HistoryDescription.Author,
+					ShouldEqual,
+					repoInfo.Summary.NewestImage.History[index].HistoryDescription.Author,
+				)
+				So(
+					history.HistoryDescription.Created,
+					ShouldEqual,
+					repoInfo.Summary.NewestImage.History[index].HistoryDescription.Created,
+				)
+				So(
+					history.HistoryDescription.CreatedBy,
+					ShouldEqual,
+					repoInfo.Summary.NewestImage.History[index].HistoryDescription.CreatedBy,
+				)
+				So(
+					history.HistoryDescription.EmptyLayer,
+					ShouldEqual,
+					repoInfo.Summary.NewestImage.History[index].HistoryDescription.EmptyLayer,
+				)
+				So(
+					history.HistoryDescription.Comment,
+					ShouldEqual,
+					repoInfo.Summary.NewestImage.History[index].HistoryDescription.Comment,
+				)
+			}
 
 			// RepoInfo object does not provide vulnerability information so we need to check differently
 			// No vulnerabilities should be detected since trivy is disabled
@@ -2190,6 +2278,10 @@ func TestGlobalSearch(t *testing.T) {
 					RepoName Tag LastUpdated Size IsSigned Vendor Score
 					Platform { Os Arch }
 					Vulnerabilities { Count MaxSeverity }
+					History {
+						Layer { Size Digest }
+						HistoryDescription { Author Comment Created CreatedBy EmptyLayer }
+					}
 				}
 				Repos {
 					Name LastUpdated Size
@@ -2199,6 +2291,10 @@ func TestGlobalSearch(t *testing.T) {
 						RepoName Tag LastUpdated Size IsSigned Vendor Score
 						Platform { Os Arch }
 						Vulnerabilities { Count MaxSeverity }
+						History {
+							Layer { Size Digest }
+							HistoryDescription { Author Comment Created CreatedBy EmptyLayer }
+						}
 					}
 				}
 				Layers { Digest Size }
@@ -2232,6 +2328,48 @@ func TestGlobalSearch(t *testing.T) {
 		So(actualImageSummary.Vendor, ShouldEqual, expectedImageSummary.Vendor)
 		So(actualImageSummary.Platform.Os, ShouldEqual, expectedImageSummary.Platform.Os)
 		So(actualImageSummary.Platform.Arch, ShouldEqual, expectedImageSummary.Platform.Arch)
+		So(actualImageSummary.Title, ShouldEqual, expectedImageSummary.Title)
+		So(actualImageSummary.Description, ShouldEqual, expectedImageSummary.Description)
+		So(actualImageSummary.Source, ShouldEqual, expectedImageSummary.Source)
+		So(actualImageSummary.Documentation, ShouldEqual, expectedImageSummary.Documentation)
+		So(actualImageSummary.Licenses, ShouldEqual, expectedImageSummary.Licenses)
+		So(len(actualImageSummary.History), ShouldEqual, len(expectedImageSummary.History))
+		for index, history := range actualImageSummary.History {
+			// We really need to be consistent about including/removing `sha256` in API replies
+			if expectedImageSummary.History[index].Layer.Digest == "" {
+				So(history.Layer.Digest, ShouldEqual, expectedImageSummary.History[index].Layer.Digest)
+			} else {
+				actualDigest, err := digest.Parse(history.Layer.Digest)
+				So(err, ShouldBeNil)
+				So(actualDigest.Encoded(), ShouldEqual, expectedImageSummary.History[index].Layer.Digest)
+			}
+			So(history.Layer.Size, ShouldEqual, expectedImageSummary.History[index].Layer.Size)
+			So(
+				history.HistoryDescription.Author,
+				ShouldEqual,
+				expectedImageSummary.History[index].HistoryDescription.Author,
+			)
+			So(
+				history.HistoryDescription.Created,
+				ShouldEqual,
+				expectedImageSummary.History[index].HistoryDescription.Created,
+			)
+			So(
+				history.HistoryDescription.CreatedBy,
+				ShouldEqual,
+				expectedImageSummary.History[index].HistoryDescription.CreatedBy,
+			)
+			So(
+				history.HistoryDescription.EmptyLayer,
+				ShouldEqual,
+				expectedImageSummary.History[index].HistoryDescription.EmptyLayer,
+			)
+			So(
+				history.HistoryDescription.Comment,
+				ShouldEqual,
+				expectedImageSummary.History[index].HistoryDescription.Comment,
+			)
+		}
 
 		// RepoInfo object does not provide vulnerability information so we need to check differently
 		// 0 vulnerabilities should be detected since trivy is disabled
@@ -2419,6 +2557,10 @@ func TestGlobalSearch(t *testing.T) {
 						RepoName Tag LastUpdated Size IsSigned Vendor Score
 						Platform { Os Arch }
 						Vulnerabilities { Count MaxSeverity }
+						History {
+							Layer { Size Digest }
+							HistoryDescription { Author Comment Created CreatedBy EmptyLayer }
+						}
 					}
 					Repos {
 						Name LastUpdated Size
@@ -2428,6 +2570,10 @@ func TestGlobalSearch(t *testing.T) {
 							RepoName Tag LastUpdated Size IsSigned Vendor Score
 							Platform { Os Arch }
 							Vulnerabilities { Count MaxSeverity }
+							History {
+								Layer { Size Digest }
+								HistoryDescription { Author Comment Created CreatedBy EmptyLayer }
+							}
 						}
 					}
 					Layers { Digest Size }
@@ -2493,6 +2639,50 @@ func TestGlobalSearch(t *testing.T) {
 			So(repoSummary.NewestImage.Vendor, ShouldEqual, repoInfo.Summary.NewestImage.Vendor)
 			So(repoSummary.NewestImage.Platform.Os, ShouldEqual, repoInfo.Summary.NewestImage.Platform.Os)
 			So(repoSummary.NewestImage.Platform.Arch, ShouldEqual, repoInfo.Summary.NewestImage.Platform.Arch)
+			So(repoSummary.NewestImage.Title, ShouldEqual, repoInfo.Summary.NewestImage.Title)
+			So(repoSummary.NewestImage.Description, ShouldEqual, repoInfo.Summary.NewestImage.Description)
+			So(repoSummary.NewestImage.Source, ShouldEqual, repoInfo.Summary.NewestImage.Source)
+			So(repoSummary.NewestImage.Documentation, ShouldEqual, repoInfo.Summary.NewestImage.Documentation)
+			So(repoSummary.NewestImage.Licenses, ShouldEqual, repoInfo.Summary.NewestImage.Licenses)
+			t.Log(repoSummary.NewestImage.History)
+			t.Log(repoInfo.Summary.NewestImage.History)
+			So(len(repoSummary.NewestImage.History), ShouldEqual, len(repoInfo.Summary.NewestImage.History))
+			for index, history := range repoSummary.NewestImage.History {
+				// We really need to be consistent about including/removing `sha256` in API replies
+				if repoInfo.Summary.NewestImage.History[index].Layer.Digest == "" {
+					So(history.Layer.Digest, ShouldEqual, repoInfo.Summary.NewestImage.History[index].Layer.Digest)
+				} else {
+					actualDigest, err := digest.Parse(history.Layer.Digest)
+					So(err, ShouldBeNil)
+					So(actualDigest.Encoded(), ShouldEqual, repoInfo.Summary.NewestImage.History[index].Layer.Digest)
+				}
+				So(history.Layer.Size, ShouldEqual, repoInfo.Summary.NewestImage.History[index].Layer.Size)
+				So(
+					history.HistoryDescription.Author,
+					ShouldEqual,
+					repoInfo.Summary.NewestImage.History[index].HistoryDescription.Author,
+				)
+				So(
+					history.HistoryDescription.Created,
+					ShouldEqual,
+					repoInfo.Summary.NewestImage.History[index].HistoryDescription.Created,
+				)
+				So(
+					history.HistoryDescription.CreatedBy,
+					ShouldEqual,
+					repoInfo.Summary.NewestImage.History[index].HistoryDescription.CreatedBy,
+				)
+				So(
+					history.HistoryDescription.EmptyLayer,
+					ShouldEqual,
+					repoInfo.Summary.NewestImage.History[index].HistoryDescription.EmptyLayer,
+				)
+				So(
+					history.HistoryDescription.Comment,
+					ShouldEqual,
+					repoInfo.Summary.NewestImage.History[index].HistoryDescription.Comment,
+				)
+			}
 
 			// RepoInfo object does not provide vulnerability information so we need to check differently
 			t.Logf("Found vulnerability summary %v", repoSummary.NewestImage.Vulnerabilities)
@@ -2508,6 +2698,10 @@ func TestGlobalSearch(t *testing.T) {
 					RepoName Tag LastUpdated Size IsSigned Vendor Score
 					Platform { Os Arch }
 					Vulnerabilities { Count MaxSeverity }
+					History {
+						Layer { Size Digest }
+						HistoryDescription { Author Comment Created CreatedBy EmptyLayer }
+					}
 				}
 				Repos {
 					Name LastUpdated Size
@@ -2517,6 +2711,10 @@ func TestGlobalSearch(t *testing.T) {
 						RepoName Tag LastUpdated Size IsSigned Vendor Score
 						Platform { Os Arch }
 						Vulnerabilities { Count MaxSeverity }
+						History {
+							Layer { Size Digest }
+							HistoryDescription { Author Comment Created CreatedBy EmptyLayer }
+						}
 					}
 				}
 				Layers { Digest Size }
@@ -2550,6 +2748,48 @@ func TestGlobalSearch(t *testing.T) {
 		So(actualImageSummary.Vendor, ShouldEqual, expectedImageSummary.Vendor)
 		So(actualImageSummary.Platform.Os, ShouldEqual, expectedImageSummary.Platform.Os)
 		So(actualImageSummary.Platform.Arch, ShouldEqual, expectedImageSummary.Platform.Arch)
+		So(actualImageSummary.Title, ShouldEqual, expectedImageSummary.Title)
+		So(actualImageSummary.Description, ShouldEqual, expectedImageSummary.Description)
+		So(actualImageSummary.Source, ShouldEqual, expectedImageSummary.Source)
+		So(actualImageSummary.Documentation, ShouldEqual, expectedImageSummary.Documentation)
+		So(actualImageSummary.Licenses, ShouldEqual, expectedImageSummary.Licenses)
+		So(len(actualImageSummary.History), ShouldEqual, len(expectedImageSummary.History))
+		for index, history := range actualImageSummary.History {
+			// We really need to be consistent about including/removing `sha256` in API replies
+			if expectedImageSummary.History[index].Layer.Digest == "" {
+				So(history.Layer.Digest, ShouldEqual, expectedImageSummary.History[index].Layer.Digest)
+			} else {
+				actualDigest, err := digest.Parse(history.Layer.Digest)
+				So(err, ShouldBeNil)
+				So(actualDigest.Encoded(), ShouldEqual, expectedImageSummary.History[index].Layer.Digest)
+			}
+			So(history.Layer.Size, ShouldEqual, expectedImageSummary.History[index].Layer.Size)
+			So(
+				history.HistoryDescription.Author,
+				ShouldEqual,
+				expectedImageSummary.History[index].HistoryDescription.Author,
+			)
+			So(
+				history.HistoryDescription.Created,
+				ShouldEqual,
+				expectedImageSummary.History[index].HistoryDescription.Created,
+			)
+			So(
+				history.HistoryDescription.CreatedBy,
+				ShouldEqual,
+				expectedImageSummary.History[index].HistoryDescription.CreatedBy,
+			)
+			So(
+				history.HistoryDescription.EmptyLayer,
+				ShouldEqual,
+				expectedImageSummary.History[index].HistoryDescription.EmptyLayer,
+			)
+			So(
+				history.HistoryDescription.Comment,
+				ShouldEqual,
+				expectedImageSummary.History[index].HistoryDescription.Comment,
+			)
+		}
 
 		// RepoInfo object does not provide vulnerability information so we need to check differently
 		t.Logf("Found vulnerability summary %v", actualImageSummary.Vulnerabilities)

@@ -396,6 +396,50 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error)
 			repoVendorsSet[annotations.Vendor] = true
 		}
 
+		imageConfigHistory := imageConfigInfo.History
+		allHistory := []LayerHistory{}
+
+		if len(imageConfigHistory) == 0 {
+			for _, layer := range layers {
+				allHistory = append(allHistory, LayerHistory{
+					Layer:              layer,
+					HistoryDescription: HistoryDescription{},
+				})
+			}
+		} else {
+			// iterator over manifest layers
+			var layersIterator int
+			// since we are appending pointers, it is important to iterate with an index over slice
+			for i := range imageConfigHistory {
+				allHistory = append(allHistory, LayerHistory{
+					HistoryDescription: HistoryDescription{
+						Created:    *imageConfigHistory[i].Created,
+						CreatedBy:  imageConfigHistory[i].CreatedBy,
+						Author:     imageConfigHistory[i].Author,
+						Comment:    imageConfigHistory[i].Comment,
+						EmptyLayer: imageConfigHistory[i].EmptyLayer,
+					},
+				})
+
+				if imageConfigHistory[i].EmptyLayer {
+					continue
+				}
+
+				if layersIterator+1 > len(layers) {
+					olu.Log.Error().Err(errors.ErrBadLayerCount).
+						Msgf("error on creating layer history for imaeg %s %s", name, man.Digest)
+
+					break
+				}
+
+				allHistory[i].Layer = layers[layersIterator]
+
+				layersIterator++
+			}
+		}
+
+		olu.Log.Debug().Msgf("all history %v", allHistory)
+
 		size := strconv.Itoa(int(imageSize))
 		manifestDigest := man.Digest.Hex()
 		configDigest := manifest.Config.Digest.Hex
@@ -420,6 +464,7 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error)
 			Labels:        annotations.Labels,
 			Source:        annotations.Source,
 			Layers:        layers,
+			History:       allHistory,
 		}
 
 		imageSummaries = append(imageSummaries, imageSummary)

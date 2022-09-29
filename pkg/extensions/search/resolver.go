@@ -439,6 +439,12 @@ func RepoMeta2ImageSummaries(ctx context.Context, repoMeta repodb.RepoMetadata,
 
 		annotations := common.GetAnnotations(manifestContent.Annotations, configContent.Config.Labels)
 
+		historyEntries, err := getAllHistory(manifestContent, configContent)
+		if err != nil {
+			graphql.AddError(ctx, gqlerror.Errorf("error generating history on tag %s in repo %s: "+
+				"manifest digest: %s, error: %s", tag, repoMeta.Name, manifestDigest, err.Error()))
+		}
+
 		imageSummary := gql_generated.ImageSummary{
 			RepoName:      &repoName,
 			Tag:           &tag,
@@ -450,13 +456,14 @@ func RepoMeta2ImageSummaries(ctx context.Context, repoMeta repodb.RepoMetadata,
 			Platform:      &osArch,
 			Vendor:        &annotations.Vendor,
 			DownloadCount: &downloadCount,
-			Layers:        getLayersSummary(manifestContent),
+			Layers:        getLayersSummaries(manifestContent),
 			Description:   &annotations.Description,
 			Title:         &annotations.Title,
 			Documentation: &annotations.Documentation,
 			Licenses:      &annotations.Licenses,
 			Labels:        &annotations.Labels,
 			Source:        &annotations.Source,
+			History:       historyEntries,
 			Vulnerabilities: &gql_generated.ImageVulnerabilitySummary{
 				MaxSeverity: &imageCveSummary.MaxSeverity,
 				Count:       &imageCveSummary.Count,
@@ -469,7 +476,7 @@ func RepoMeta2ImageSummaries(ctx context.Context, repoMeta repodb.RepoMetadata,
 	return imageSummaries
 }
 
-func getLayersSummary(manifestContent ispec.Manifest) []*gql_generated.LayerSummary {
+func getLayersSummaries(manifestContent ispec.Manifest) []*gql_generated.LayerSummary {
 	layers := make([]*gql_generated.LayerSummary, 0, len(manifestContent.Layers))
 
 	for _, layer := range manifestContent.Layers {
@@ -483,6 +490,56 @@ func getLayersSummary(manifestContent ispec.Manifest) []*gql_generated.LayerSumm
 	}
 
 	return layers
+}
+
+func getAllHistory(manifestContent ispec.Manifest, configContent ispec.Image) (
+	[]*gql_generated.LayerHistory, error,
+) {
+	allHistory := []*gql_generated.LayerHistory{}
+	layerSummaries := getLayersSummaries(manifestContent)
+
+	history := configContent.History
+	if len(history) == 0 {
+		// We don't have any image history metadata
+		// let's make due with just the layer metadata
+		for _, layer := range layerSummaries {
+			allHistory = append(allHistory, &gql_generated.LayerHistory{
+				Layer:              layer,
+				HistoryDescription: &gql_generated.HistoryDescription{},
+			})
+		}
+
+		return allHistory, nil
+	}
+
+	// Iterator over manifest layers
+	var layersIterator int
+	// Since we are appending pointers, it is important to iterate with an index over slice
+	for i := range history {
+		allHistory = append(allHistory, &gql_generated.LayerHistory{
+			HistoryDescription: &gql_generated.HistoryDescription{
+				Created:    history[i].Created,
+				CreatedBy:  &history[i].CreatedBy,
+				Author:     &history[i].Author,
+				Comment:    &history[i].Comment,
+				EmptyLayer: &history[i].EmptyLayer,
+			},
+		})
+
+		if history[i].EmptyLayer {
+			continue
+		}
+
+		if layersIterator+1 > len(manifestContent.Layers) {
+			return allHistory, errors.ErrBadLayerCount
+		}
+
+		allHistory[i].Layer = layerSummaries[layersIterator]
+
+		layersIterator++
+	}
+
+	return allHistory, nil
 }
 
 func RepoMeta2RepoSummary(ctx context.Context, repoMeta repodb.RepoMetadata,
@@ -563,6 +620,12 @@ func RepoMeta2RepoSummary(ctx context.Context, repoMeta repodb.RepoMetadata,
 
 		annotations := common.GetAnnotations(manifestContent.Annotations, configContent.Config.Labels)
 
+		historyEntries, err := getAllHistory(manifestContent, configContent)
+		if err != nil {
+			graphql.AddError(ctx, gqlerror.Errorf("error generating history on tag %s in repo %s: "+
+				"manifest digest: %s, error: %s", tag, repoMeta.Name, manifestDigest, err.Error()))
+		}
+
 		imageSummary := gql_generated.ImageSummary{
 			RepoName:      &repoName,
 			Tag:           &tag,
@@ -574,13 +637,14 @@ func RepoMeta2RepoSummary(ctx context.Context, repoMeta repodb.RepoMetadata,
 			Platform:      &osArch,
 			Vendor:        &annotations.Vendor,
 			DownloadCount: &downloadCount,
-			Layers:        getLayersSummary(manifestContent),
+			Layers:        getLayersSummaries(manifestContent),
 			Description:   &annotations.Description,
 			Title:         &annotations.Title,
 			Documentation: &annotations.Documentation,
 			Licenses:      &annotations.Licenses,
 			Labels:        &annotations.Labels,
 			Source:        &annotations.Source,
+			History:       historyEntries,
 			Vulnerabilities: &gql_generated.ImageVulnerabilitySummary{
 				MaxSeverity: &imageCveSummary.MaxSeverity,
 				Count:       &imageCveSummary.Count,
