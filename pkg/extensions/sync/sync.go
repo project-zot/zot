@@ -614,9 +614,6 @@ func Run(ctx context.Context, cfg Config,
 
 		ticker := time.NewTicker(regCfg.PollInterval)
 
-		// fork a new zerolog child to avoid data race
-		tlogger := log.Logger{Logger: logger.Logger}
-
 		retryOptions := &retry.RetryOptions{}
 
 		if regCfg.MaxRetries != nil {
@@ -658,7 +655,7 @@ func Run(ctx context.Context, cfg Config,
 					continue
 				}
 			}
-		}(ctx, regCfg, tlogger)
+		}(ctx, regCfg, logger)
 	}
 
 	logger.Info().Msg("finished setting up sync")

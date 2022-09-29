@@ -62,10 +62,8 @@ func downloadTrivyDB(log log.Logger, updateInterval time.Duration) error {
 }
 
 func SetupSearchRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
-	l log.Logger,
+	log log.Logger,
 ) {
-	// fork a new zerolog child to avoid data race
-	log := log.Logger{Logger: l.With().Caller().Timestamp().Logger()}
 	log.Info().Msg("setting up search routes")
 
 	if config.Extensions.Search != nil && *config.Extensions.Search.Enable {
