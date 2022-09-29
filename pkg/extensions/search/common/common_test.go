@@ -2804,6 +2804,72 @@ func TestImageList(t *testing.T) {
 	})
 }
 
+func TestGlobalSearchPagination(t *testing.T) {
+	Convey("Test global search pagination", t, func() {
+		dir := t.TempDir()
+
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = dir
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
+		}
+
+		ctlr := api.NewController(conf)
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		WaitTillServerReady(baseURL)
+
+		for i := 0; i < 1; i++ {
+			config, layers, manifest, err := GetImageComponents(10)
+			So(err, ShouldBeNil)
+
+			err = UploadImage(
+				Image{
+					Manifest: manifest,
+					Config:   config,
+					Layers:   layers,
+					Tag:      "0.0.1",
+				},
+				baseURL,
+				fmt.Sprintf("repo%d", i),
+			)
+			So(err, ShouldBeNil)
+		}
+
+		Convey("Limit is bigger than the repo count", func() {
+			query := `
+			{
+				GlobalSearch(query:"repo", requestedPage:{limit: 9, offset: 0, sortBy:RELEVANCE}){
+					Repos {
+						Name
+					}
+				}
+			}`
+
+			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			responseStruct := &GlobalSearchResultResp{}
+
+			err = json.Unmarshal(resp.Body(), responseStruct)
+			So(err, ShouldBeNil)
+
+			So(responseStruct.GlobalSearchResult.GlobalSearch.Images, ShouldBeEmpty)
+			So(responseStruct.GlobalSearchResult.GlobalSearch.Repos, ShouldNotBeEmpty)
+			So(responseStruct.GlobalSearchResult.GlobalSearch.Layers, ShouldBeEmpty)
+
+			So(len(responseStruct.GlobalSearchResult.GlobalSearch.Repos), ShouldEqual, 1)
+		})
+	})
+}
+
 func TestBuildImageInfo(t *testing.T) {
 	Convey("Check image summary when layer count does not match history", t, func() {
 		invalid := "invalid"

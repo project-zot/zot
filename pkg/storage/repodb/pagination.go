@@ -80,6 +80,10 @@ func (bpt *RepoPageFinder) Page() []RepoMetadata {
 		end = start
 	}
 
+	if end >= len(bpt.pageBuffer) {
+		end = len(bpt.pageBuffer)
+	}
+
 	detailedReposPage := bpt.pageBuffer[start:end]
 
 	if start == 0 && end == 0 {
