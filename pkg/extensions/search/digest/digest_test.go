@@ -7,6 +7,7 @@ package digestinfo_test
 import (
 	"context"
 	"encoding/json"
+	"net/url"
 	"os"
 	"testing"
 	"time"
@@ -213,10 +214,13 @@ func TestDigestSearchHTTP(t *testing.T) {
 
 		// Call should return {"data":{"ImageListForDigest":[{"Name":"zot-test","Tags":["0.0.1"]}]}}
 		// "2bacca16" should match the manifest of 1 image
-		resp, err = resty.R().Get(
-			baseURL + constants.ExtSearchPrefix + `?query={ImageListForDigest(id:"2bacca16")` +
-				`{RepoName%20Tag%20Digest%20ConfigDigest%20Size%20Layers%20{%20Digest}}}`,
-		)
+
+		gqlQuery := url.QueryEscape(`{ImageListForDigest(id:"2bacca16")
+			{RepoName Tag Digest ConfigDigest Size Layers { Digest }}}`)
+		targetURL := baseURL + constants.ExtSearchPrefix + `?query=` + gqlQuery
+
+		resp, err = resty.R().Get(targetURL)
+		So(string(resp.Body()), ShouldNotBeNil)
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -228,11 +232,13 @@ func TestDigestSearchHTTP(t *testing.T) {
 		So(responseStruct.ImgListForDigest.Images[0].RepoName, ShouldEqual, "zot-test")
 		So(responseStruct.ImgListForDigest.Images[0].Tag, ShouldEqual, "0.0.1")
 
-		// "adf3bb6c" should match the config of 1 image
-		resp, err = resty.R().Get(
-			baseURL + constants.ExtSearchPrefix + `?query={ImageListForDigest(id:"adf3bb6c")` +
-				`{RepoName%20Tag%20Digest%20ConfigDigest%20Size%20Layers%20{%20Digest}}}`,
-		)
+		// "adf3bb6c" should match the config of 1 image.
+		gqlQuery = url.QueryEscape(`{ImageListForDigest(id:"adf3bb6c")
+			{RepoName Tag Digest ConfigDigest Size Layers { Digest }}}`)
+
+		targetURL = baseURL + constants.ExtSearchPrefix + `?query=` + gqlQuery
+		resp, err = resty.R().Get(targetURL)
+
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -246,20 +252,25 @@ func TestDigestSearchHTTP(t *testing.T) {
 
 		// Call should return {"data":{"ImageListForDigest":[{"Name":"zot-cve-test","Tags":["0.0.1"]}]}}
 		// "7a0437f0" should match the layer of 1 image
+		gqlQuery = url.QueryEscape(`{ImageListForDigest(id:"7a0437f0")
+			{RepoName Tag Digest ConfigDigest Size Layers { Digest }}}`)
+		targetURL = baseURL + constants.ExtSearchPrefix + `?query=` + gqlQuery
+
 		resp, err = resty.R().Get(
-			baseURL + constants.ExtSearchPrefix + `?query={ImageListForDigest(id:"7a0437f0")` +
-				`{RepoName%20Tag%20Digest%20ConfigDigest%20Size%20Layers%20{%20Digest}}}`,
+			targetURL,
 		)
+
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
+		var responseStruct2 ImgResponseForDigest
 
-		err = json.Unmarshal(resp.Body(), &responseStruct)
+		err = json.Unmarshal(resp.Body(), &responseStruct2)
 		So(err, ShouldBeNil)
-		So(len(responseStruct.Errors), ShouldEqual, 0)
-		So(len(responseStruct.ImgListForDigest.Images), ShouldEqual, 1)
-		So(responseStruct.ImgListForDigest.Images[0].RepoName, ShouldEqual, "zot-cve-test")
-		So(responseStruct.ImgListForDigest.Images[0].Tag, ShouldEqual, "0.0.1")
+		So(len(responseStruct2.Errors), ShouldEqual, 0)
+		So(len(responseStruct2.ImgListForDigest.Images), ShouldEqual, 1)
+		So(responseStruct2.ImgListForDigest.Images[0].RepoName, ShouldEqual, "zot-cve-test")
+		So(responseStruct2.ImgListForDigest.Images[0].Tag, ShouldEqual, "0.0.1")
 
 		// Call should return {"data":{"ImageListForDigest":[]}}
 		// "1111111" should match 0 images
