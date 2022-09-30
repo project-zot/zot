@@ -598,9 +598,17 @@ func validateSync(config *config.Config) error {
 				for _, content := range regCfg.Content {
 					ok := glob.ValidatePattern(content.Prefix)
 					if !ok {
-						log.Error().Err(glob.ErrBadPattern).Str("pattern", content.Prefix).Msg("sync pattern could not be compiled")
+						log.Error().Err(glob.ErrBadPattern).Str("prefix", content.Prefix).Msg("sync prefix could not be compiled")
 
 						return glob.ErrBadPattern
+					}
+
+					if content.StripPrefix && !strings.Contains(content.Prefix, "/*") && content.Destination == "/" {
+						log.Error().Err(errors.ErrBadConfig).
+							Interface("sync content", content).
+							Msg("sync config: can not use stripPrefix true and destination '/' without using glob patterns in prefix")
+
+						return errors.ErrBadConfig
 					}
 				}
 			}

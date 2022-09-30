@@ -382,22 +382,22 @@ func syncRegistry(ctx context.Context, regCfg RegistryConfig,
 		}
 
 		remoteRepoCopy := remoteRepo
-		imageStore := storeController.GetImageStore(remoteRepoCopy)
-
-		localCachePath, err := getLocalCachePath(imageStore, remoteRepoCopy)
-		if err != nil {
-			log.Error().Str("errorType", TypeOf(err)).
-				Err(err).Msgf("couldn't get localCachePath for %s", remoteRepoCopy)
-
-			return err
-		}
-
-		if localCachePath != "" {
-			defer os.RemoveAll(localCachePath)
-		}
 
 		for _, image := range imageList {
-			localRepo := remoteRepoCopy
+			localRepo := getRepoDestination(remoteRepo, image.content)
+
+			imageStore := storeController.GetImageStore(localRepo)
+
+			localCachePath, err := getLocalCachePath(imageStore, localRepo)
+			if err != nil {
+				log.Error().Str("errorType", TypeOf(err)).
+					Err(err).Msgf("couldn't get localCachePath for %s", remoteRepoCopy)
+
+				return err
+			}
+
+			defer os.RemoveAll(localCachePath)
+
 			upstreamImageRef := image.ref
 
 			upstreamImageDigest, err := docker.GetDigest(ctx, upstreamCtx, upstreamImageRef)
