@@ -18,7 +18,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	"zotregistry.io/zot/pkg/log"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
-	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
 
@@ -266,7 +266,7 @@ func TestUserAvailableRepos(t *testing.T) {
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		dir := t.TempDir()
 		metrics := monitoring.NewMetricsServer(false, log)
-		defaultStore := storage.NewImageStore(dir, false, 0, false, false, log, metrics, nil)
+		defaultStore := local.NewImageStore(dir, false, 0, false, false, log, metrics, nil)
 
 		repoList, err := defaultStore.GetRepositories()
 		So(err, ShouldBeNil)

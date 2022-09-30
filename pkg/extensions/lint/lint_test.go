@@ -22,7 +22,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/lint"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
 )
 
@@ -493,7 +493,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		var index ispec.Index
 
 		linter := lint.NewLinter(lintConfig, log.NewLogger("debug", ""))
-		imgStore := storage.NewImageStore(dir, false, 0, false, false,
+		imgStore := local.NewImageStore(dir, false, 0, false, false,
 			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), linter)
 
 		indexContent, err := imgStore.GetIndexContent("zot-test")
@@ -526,7 +526,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		var index ispec.Index
 
 		linter := lint.NewLinter(lintConfig, log.NewLogger("debug", ""))
-		imgStore := storage.NewImageStore(dir, false, 0, false, false,
+		imgStore := local.NewImageStore(dir, false, 0, false, false,
 			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), linter)
 
 		indexContent, err := imgStore.GetIndexContent("zot-test")
@@ -597,7 +597,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		index.Manifests = append(index.Manifests, manifestDesc)
 
 		linter := lint.NewLinter(lintConfig, log.NewLogger("debug", ""))
-		imgStore := storage.NewImageStore(dir, false, 0, false, false,
+		imgStore := local.NewImageStore(dir, false, 0, false, false,
 			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), linter)
 
 		pass, err := linter.CheckMandatoryAnnotations("zot-test", digest, imgStore)
@@ -660,7 +660,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		index.Manifests = append(index.Manifests, manifestDesc)
 
 		linter := lint.NewLinter(lintConfig, log.NewLogger("debug", ""))
-		imgStore := storage.NewImageStore(dir, false, 0, false, false,
+		imgStore := local.NewImageStore(dir, false, 0, false, false,
 			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), linter)
 
 		pass, err := linter.CheckMandatoryAnnotations("zot-test", digest, imgStore)
@@ -725,7 +725,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		index.Manifests = append(index.Manifests, manifestDesc)
 
 		linter := lint.NewLinter(lintConfig, log.NewLogger("debug", ""))
-		imgStore := storage.NewImageStore(dir, false, 0, false, false,
+		imgStore := local.NewImageStore(dir, false, 0, false, false,
 			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), linter)
 
 		pass, err := linter.CheckMandatoryAnnotations("zot-test", digest, imgStore)
@@ -789,7 +789,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		index.Manifests = append(index.Manifests, manifestDesc)
 
 		linter := lint.NewLinter(lintConfig, log.NewLogger("debug", ""))
-		imgStore := storage.NewImageStore(dir, false, 0, false, false,
+		imgStore := local.NewImageStore(dir, false, 0, false, false,
 			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), linter)
 
 		err = os.Chmod(path.Join(dir, "zot-test", "blobs"), 0o000)
@@ -888,7 +888,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		index.Manifests = append(index.Manifests, manifestDesc)
 
 		linter := lint.NewLinter(lintConfig, log.NewLogger("debug", ""))
-		imgStore := storage.NewImageStore(dir, false, 0, false, false,
+		imgStore := local.NewImageStore(dir, false, 0, false, false,
 			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), linter)
 
 		err = os.Chmod(path.Join(dir, "zot-test", "blobs", "sha256", manifest.Config.Digest.Hex()), 0o000)

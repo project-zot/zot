@@ -32,6 +32,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/search/cve/trivy"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/local"
 	. "zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
@@ -86,7 +87,7 @@ func testSetup() error {
 	conf.Extensions = &extconf.ExtensionConfig{}
 	conf.Extensions.Lint = &extconf.LintConfig{}
 
-	storeController := storage.StoreController{DefaultStore: storage.NewImageStore(dir, false, storage.DefaultGCDelay, false, false, log, metrics, nil)}
+	storeController := storage.StoreController{DefaultStore: local.NewImageStore(dir, false, storage.DefaultGCDelay, false, false, log, metrics, nil)}
 
 	layoutUtils := common.NewBaseOciLayoutUtils(storeController, log)
 	scanner := trivy.NewScanner(storeController, layoutUtils, log)
@@ -329,7 +330,7 @@ func TestImageFormat(t *testing.T) {
 		conf.Extensions.Lint = &extconf.LintConfig{}
 
 		metrics := monitoring.NewMetricsServer(false, log)
-		defaultStore := storage.NewImageStore(dbDir, false, storage.DefaultGCDelay,
+		defaultStore := local.NewImageStore(dbDir, false, storage.DefaultGCDelay,
 			false, false, log, metrics, nil)
 		storeController := storage.StoreController{DefaultStore: defaultStore}
 

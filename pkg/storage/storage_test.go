@@ -27,6 +27,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/storage/s3"
 	"zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/mocks"
@@ -121,7 +122,7 @@ func TestStorageAPIs(t *testing.T) {
 
 				log := log.Logger{Logger: zerolog.New(os.Stdout)}
 				metrics := monitoring.NewMetricsServer(false, log)
-				imgStore = storage.NewImageStore(dir, true, storage.DefaultGCDelay, true,
+				imgStore = local.NewImageStore(dir, true, storage.DefaultGCDelay, true,
 					true, log, metrics, nil)
 			}
 
@@ -712,7 +713,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 			} else {
 				tdir = t.TempDir()
 
-				imgStore = storage.NewImageStore(tdir, true, storage.DefaultGCDelay, true,
+				imgStore = local.NewImageStore(tdir, true, storage.DefaultGCDelay, true,
 					true, log, metrics, &mocks.MockedLint{
 						LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storage.ImageStore) (bool, error) {
 							return false, nil
@@ -772,7 +773,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 								},
 							}, store)
 					} else {
-						imgStore = storage.NewImageStore(tdir, true, storage.DefaultGCDelay, true,
+						imgStore = local.NewImageStore(tdir, true, storage.DefaultGCDelay, true,
 							true, log, metrics, &mocks.MockedLint{
 								LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storage.ImageStore) (bool, error) {
 									// nolint: goerr113
@@ -828,13 +829,13 @@ func TestStorageHandler(t *testing.T) {
 				metrics := monitoring.NewMetricsServer(false, log)
 
 				// Create ImageStore
-				firstStore = storage.NewImageStore(firstRootDir, false, storage.DefaultGCDelay,
+				firstStore = local.NewImageStore(firstRootDir, false, storage.DefaultGCDelay,
 					false, false, log, metrics, nil)
 
-				secondStore = storage.NewImageStore(secondRootDir, false,
+				secondStore = local.NewImageStore(secondRootDir, false,
 					storage.DefaultGCDelay, false, false, log, metrics, nil)
 
-				thirdStore = storage.NewImageStore(thirdRootDir, false, storage.DefaultGCDelay,
+				thirdStore = local.NewImageStore(thirdRootDir, false, storage.DefaultGCDelay,
 					false, false, log, metrics, nil)
 			}
 

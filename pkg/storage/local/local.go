@@ -1,4 +1,4 @@
-package storage
+package local
 
 import (
 	"bytes"
@@ -11,7 +11,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -20,55 +19,38 @@ import (
 	apexlog "github.com/apex/log"
 	guuid "github.com/gofrs/uuid"
 	"github.com/minio/sha256-simd"
-	"github.com/notaryproject/notation-go"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opencontainers/umoci"
 	"github.com/opencontainers/umoci/oci/casext"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/rs/zerolog"
-	"github.com/sigstore/cosign/pkg/oci/remote"
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	zlog "zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/scheduler"
+	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test"
 )
 
 const (
-	// BlobUploadDir defines the upload directory for blob uploads.
-	BlobUploadDir    = ".uploads"
-	SchemaVersion    = 2
 	DefaultFilePerms = 0o600
 	DefaultDirPerms  = 0o700
-	RLOCK            = "RLock"
-	RWLOCK           = "RWLock"
 )
-
-// BlobUpload models and upload request.
-type BlobUpload struct {
-	StoreName string
-	ID        string
-}
-
-type StoreController struct {
-	DefaultStore ImageStore
-	SubStore     map[string]ImageStore
-}
 
 // ImageStoreLocal provides the image storage operations.
 type ImageStoreLocal struct {
 	rootDir     string
 	lock        *sync.RWMutex
-	blobUploads map[string]BlobUpload
-	cache       *Cache
+	blobUploads map[string]storage.BlobUpload
+	cache       *storage.Cache
 	gc          bool
 	dedupe      bool
 	commit      bool
 	gcDelay     time.Duration
 	log         zerolog.Logger
 	metrics     monitoring.MetricServer
-	linter      Lint
+	linter      storage.Lint
 }
 
 func (is *ImageStoreLocal) RootDir() string {
@@ -79,39 +61,10 @@ func (is *ImageStoreLocal) DirExists(d string) bool {
 	return DirExists(d)
 }
 
-func getRoutePrefix(name string) string {
-	names := strings.SplitN(name, "/", 2) //nolint:gomnd
-
-	if len(names) != 2 { //nolint:gomnd
-		// it means route is of global storage e.g "centos:latest"
-		if len(names) == 1 {
-			return "/"
-		}
-	}
-
-	return fmt.Sprintf("/%s", names[0])
-}
-
-func (sc StoreController) GetImageStore(name string) ImageStore {
-	if sc.SubStore != nil {
-		// SubStore is being provided, now we need to find equivalent image store and this will be found by splitting name
-		prefixName := getRoutePrefix(name)
-
-		imgStore, ok := sc.SubStore[prefixName]
-		if !ok {
-			imgStore = sc.DefaultStore
-		}
-
-		return imgStore
-	}
-
-	return sc.DefaultStore
-}
-
 // NewImageStore returns a new image store backed by a file storage.
 func NewImageStore(rootDir string, gc bool, gcDelay time.Duration, dedupe, commit bool,
-	log zlog.Logger, metrics monitoring.MetricServer, linter Lint,
-) ImageStore {
+	log zlog.Logger, metrics monitoring.MetricServer, linter storage.Lint,
+) storage.ImageStore {
 	if _, err := os.Stat(rootDir); os.IsNotExist(err) {
 		if err := os.MkdirAll(rootDir, DefaultDirPerms); err != nil {
 			log.Error().Err(err).Str("rootDir", rootDir).Msg("unable to create root dir")
@@ -123,7 +76,7 @@ func NewImageStore(rootDir string, gc bool, gcDelay time.Duration, dedupe, commi
 	imgStore := &ImageStoreLocal{
 		rootDir:     rootDir,
 		lock:        &sync.RWMutex{},
-		blobUploads: make(map[string]BlobUpload),
+		blobUploads: make(map[string]storage.BlobUpload),
 		gc:          gc,
 		gcDelay:     gcDelay,
 		dedupe:      dedupe,
@@ -134,7 +87,7 @@ func NewImageStore(rootDir string, gc bool, gcDelay time.Duration, dedupe, commi
 	}
 
 	if dedupe {
-		imgStore.cache = NewCache(rootDir, "cache", true, log)
+		imgStore.cache = storage.NewCache(rootDir, "cache", true, log)
 	}
 
 	if gc {
@@ -168,7 +121,7 @@ func (is *ImageStoreLocal) RUnlock(lockStart *time.Time) {
 
 	lockEnd := time.Now()
 	latency := lockEnd.Sub(*lockStart)
-	monitoring.ObserveStorageLockLatency(is.metrics, latency, is.RootDir(), RLOCK) // histogram
+	monitoring.ObserveStorageLockLatency(is.metrics, latency, is.RootDir(), storage.RLOCK) // histogram
 }
 
 // Lock write-lock.
@@ -184,7 +137,7 @@ func (is *ImageStoreLocal) Unlock(lockStart *time.Time) {
 
 	lockEnd := time.Now()
 	latency := lockEnd.Sub(*lockStart)
-	monitoring.ObserveStorageLockLatency(is.metrics, latency, is.RootDir(), RWLOCK) // histogram
+	monitoring.ObserveStorageLockLatency(is.metrics, latency, is.RootDir(), storage.RWLOCK) // histogram
 }
 
 func (is *ImageStoreLocal) initRepo(name string) error {
@@ -204,7 +157,7 @@ func (is *ImageStoreLocal) initRepo(name string) error {
 		return err
 	}
 	// create BlobUploadDir subdir
-	err = ensureDir(path.Join(repoDir, BlobUploadDir), is.log)
+	err = ensureDir(path.Join(repoDir, storage.BlobUploadDir), is.log)
 	if err != nil {
 		is.log.Error().Err(err).Msg("error creating blob upload subdir")
 
@@ -295,7 +248,7 @@ func (is *ImageStoreLocal) ValidateRepo(name string) (bool, error) {
 	}
 
 	for k, v := range found {
-		if !v && k != BlobUploadDir {
+		if !v && k != storage.BlobUploadDir {
 			return false, nil
 		}
 	}
@@ -422,109 +375,39 @@ func (is *ImageStoreLocal) GetNextRepository(repo string) (string, error) {
 
 // GetImageTags returns a list of image tags available in the specified repository.
 func (is *ImageStoreLocal) GetImageTags(repo string) ([]string, error) {
-	var lockLatency time.Time
-
 	dir := path.Join(is.rootDir, repo)
 	if !is.DirExists(dir) {
 		return nil, zerr.ErrRepoNotFound
 	}
 
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
-
-	buf, err := os.ReadFile(path.Join(dir, "index.json"))
+	index, err := storage.GetIndex(is, repo, is.log)
 	if err != nil {
-		is.log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
-
-		return nil, zerr.ErrRepoNotFound
+		return nil, err
 	}
 
-	var index ispec.Index
-	if err := json.Unmarshal(buf, &index); err != nil {
-		is.log.Error().Err(err).Str("dir", dir).Msg("invalid JSON")
-
-		return nil, zerr.ErrRepoNotFound
-	}
-
-	tags := make([]string, 0)
-
-	for _, manifest := range index.Manifests {
-		v, ok := manifest.Annotations[ispec.AnnotationRefName]
-		if ok {
-			tags = append(tags, v)
-		}
-	}
-
-	return tags, nil
+	return storage.GetTagsByIndex(index), nil
 }
 
 // GetImageManifest returns the image manifest of an image in the specific repository.
 func (is *ImageStoreLocal) GetImageManifest(repo, reference string) ([]byte, string, string, error) {
-	var lockLatency time.Time
-
 	dir := path.Join(is.rootDir, repo)
 	if !is.DirExists(dir) {
 		return nil, "", "", zerr.ErrRepoNotFound
 	}
 
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
-
-	buf, err := os.ReadFile(path.Join(dir, "index.json"))
+	index, err := storage.GetIndex(is, repo, is.log)
 	if err != nil {
-		is.log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
-
-		if os.IsNotExist(err) {
-			return nil, "", "", zerr.ErrRepoNotFound
-		}
-
 		return nil, "", "", err
 	}
 
-	var index ispec.Index
-	if err := json.Unmarshal(buf, &index); err != nil {
-		is.log.Error().Err(err).Str("dir", dir).Msg("invalid JSON")
-
-		return nil, "", "", err
-	}
-
-	found := false
-
-	var digest godigest.Digest
-
-	mediaType := ""
-
-	for _, manifest := range index.Manifests {
-		if reference == manifest.Digest.String() {
-			digest = manifest.Digest
-			mediaType = manifest.MediaType
-			found = true
-
-			break
-		}
-
-		v, ok := manifest.Annotations[ispec.AnnotationRefName]
-		if ok && v == reference {
-			digest = manifest.Digest
-			mediaType = manifest.MediaType
-			found = true
-
-			break
-		}
-	}
-
+	manifestDesc, found := storage.GetManifestDescByReference(index, reference)
 	if !found {
 		return nil, "", "", zerr.ErrManifestNotFound
 	}
 
-	p := path.Join(dir, "blobs", digest.Algorithm().String(), digest.Encoded())
-
-	buf, err = os.ReadFile(p)
-
+	buf, err := is.GetBlobContent(repo, manifestDesc.Digest.String())
 	if err != nil {
-		is.log.Error().Err(err).Str("blob", p).Msg("failed to read manifest")
-
-		if os.IsNotExist(err) {
+		if errors.Is(err, zerr.ErrBlobNotFound) {
 			return nil, "", "", zerr.ErrManifestNotFound
 		}
 
@@ -540,156 +423,7 @@ func (is *ImageStoreLocal) GetImageManifest(repo, reference string) ([]byte, str
 
 	monitoring.IncDownloadCounter(is.metrics, repo)
 
-	return buf, digest.String(), mediaType, nil
-}
-
-func (is *ImageStoreLocal) validateOCIManifest(repo, reference string, manifest *ispec.Manifest) (string, error) {
-	if manifest.SchemaVersion != SchemaVersion {
-		is.log.Error().Int("SchemaVersion", manifest.SchemaVersion).Msg("invalid manifest")
-
-		return "", zerr.ErrBadManifest
-	}
-
-	// validate image config
-	config := manifest.Config
-	if config.MediaType != ispec.MediaTypeImageConfig {
-		return "", zerr.ErrBadManifest
-	}
-
-	digest := config.Digest
-
-	blobPath := is.BlobPath(repo, digest)
-	if _, err := os.Stat(blobPath); err != nil {
-		is.log.Error().Err(err).Str("blobPath", blobPath).Msg("unable to find blob")
-
-		return digest.String(), zerr.ErrBlobNotFound
-	}
-
-	blobFile, err := os.Open(blobPath)
-	if err != nil {
-		is.log.Error().Err(err).Str("blobPath", blobPath).Msg("unable to find blob")
-
-		return digest.String(), zerr.ErrBlobNotFound
-	}
-
-	defer blobFile.Close()
-
-	dec := json.NewDecoder(blobFile)
-
-	var cspec ispec.Image
-	if err := dec.Decode(&cspec); err != nil {
-		return "", zerr.ErrBadManifest
-	}
-
-	// validate the layers
-	for _, l := range manifest.Layers {
-		digest = l.Digest
-		blobPath = is.BlobPath(repo, digest)
-		is.log.Info().Str("blobPath", blobPath).Str("reference", reference).Msg("manifest layers")
-
-		if _, err := os.Stat(blobPath); err != nil {
-			is.log.Error().Err(err).Str("blobPath", blobPath).Msg("unable to find blob")
-
-			return digest.String(), zerr.ErrBlobNotFound
-		}
-	}
-
-	return "", nil
-}
-
-/*
-*
-before an image index manifest is pushed to a repo, its constituent manifests
-are pushed first, so when updating/removing this image index manifest, we also
-need to determine if there are other image index manifests which refer to the
-same constitutent manifests so that they can be garbage-collected correctly
-
-pruneImageManifestsFromIndex is a helper routine to achieve this.
-*/
-func pruneImageManifestsFromIndex(dir string, digest godigest.Digest, // nolint: gocyclo
-	outIndex ispec.Index, otherImgIndexes []ispec.Descriptor, log zerolog.Logger,
-) ([]ispec.Descriptor, error) {
-	indexPath := path.Join(dir, "blobs", digest.Algorithm().String(), digest.Encoded())
-
-	buf, err := os.ReadFile(indexPath)
-	if err != nil {
-		log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
-
-		return nil, err
-	}
-
-	var imgIndex ispec.Index
-	if err := json.Unmarshal(buf, &imgIndex); err != nil {
-		log.Error().Err(err).Str("path", indexPath).Msg("invalid JSON")
-
-		return nil, err
-	}
-
-	inUse := map[string]uint{}
-
-	for _, manifest := range imgIndex.Manifests {
-		inUse[manifest.Digest.Encoded()]++
-	}
-
-	for _, otherIndex := range otherImgIndexes {
-		indexPath := path.Join(dir, "blobs", otherIndex.Digest.Algorithm().String(), otherIndex.Digest.Encoded())
-
-		buf, err := os.ReadFile(indexPath)
-		if err != nil {
-			log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
-
-			return nil, err
-		}
-
-		var oindex ispec.Index
-		if err := json.Unmarshal(buf, &oindex); err != nil {
-			log.Error().Err(err).Str("path", indexPath).Msg("invalid JSON")
-
-			return nil, err
-		}
-
-		for _, omanifest := range oindex.Manifests {
-			_, ok := inUse[omanifest.Digest.Encoded()]
-			if ok {
-				inUse[omanifest.Digest.Encoded()]++
-			}
-		}
-	}
-
-	prunedManifests := []ispec.Descriptor{}
-
-	// for all manifests in the index, skip those that either have a tag or
-	// are used in other imgIndexes
-	for _, outManifest := range outIndex.Manifests {
-		if outManifest.MediaType != ispec.MediaTypeImageManifest {
-			prunedManifests = append(prunedManifests, outManifest)
-
-			continue
-		}
-
-		_, ok := outManifest.Annotations[ispec.AnnotationRefName]
-		if ok {
-			prunedManifests = append(prunedManifests, outManifest)
-
-			continue
-		}
-
-		count, ok := inUse[outManifest.Digest.Encoded()]
-		if !ok {
-			prunedManifests = append(prunedManifests, outManifest)
-
-			continue
-		}
-
-		if count != 1 {
-			// this manifest is in use in other image indexes
-			prunedManifests = append(prunedManifests, outManifest)
-
-			continue
-		}
-	}
-
-	return prunedManifests, nil
+	return buf, manifestDesc.Digest.String(), manifestDesc.MediaType, nil
 }
 
 // PutImageManifest adds an image manifest to the repository.
@@ -702,38 +436,43 @@ func (is *ImageStoreLocal) PutImageManifest(repo, reference, mediaType string, /
 		return "", err
 	}
 
-	// validate the manifest
-	if !IsSupportedMediaType(mediaType) {
-		is.log.Debug().Interface("actual", mediaType).
-			Msg("bad manifest media type")
-
-		return "", zerr.ErrBadManifest
-	}
-
-	if len(body) == 0 {
-		is.log.Debug().Int("len", len(body)).Msg("invalid body length")
-
-		return "", zerr.ErrBadManifest
-	}
-
-	dig, err := validateManifest(is, repo, reference, mediaType, body)
+	dig, err := storage.ValidateManifest(is, repo, reference, mediaType, body, is.log)
 	if err != nil {
 		return dig, err
 	}
 
-	mDigest := godigest.FromBytes(body)
-	refIsDigest := false
-	d, err := godigest.Parse(reference)
+	refIsDigest := true
 
-	if err == nil {
-		if d.String() != mDigest.String() {
-			is.log.Error().Str("actual", mDigest.String()).Str("expected", d.String()).
-				Msg("manifest digest is not valid")
-
-			return "", zerr.ErrBadManifest
+	mDigest, err := storage.GetAndValidateRequestDigest(body, reference, is.log)
+	if err != nil {
+		if errors.Is(err, zerr.ErrBadManifest) {
+			return mDigest.String(), err
 		}
 
-		refIsDigest = true
+		refIsDigest = false
+	}
+
+	index, err := storage.GetIndex(is, repo, is.log)
+	if err != nil {
+		return "", err
+	}
+
+	// create a new descriptor
+	desc := ispec.Descriptor{
+		MediaType: mediaType, Size: int64(len(body)), Digest: mDigest,
+	}
+
+	if !refIsDigest {
+		desc.Annotations = map[string]string{ispec.AnnotationRefName: reference}
+	}
+
+	updateIndex, oldDgst, err := storage.CheckIfIndexNeedsUpdate(&index, &desc, is.log)
+	if err != nil {
+		return "", err
+	}
+
+	if !updateIndex {
+		return desc.Digest.String(), nil
 	}
 
 	var lockLatency time.Time
@@ -741,90 +480,8 @@ func (is *ImageStoreLocal) PutImageManifest(repo, reference, mediaType string, /
 	is.Lock(&lockLatency)
 	defer is.Unlock(&lockLatency)
 
-	dir := path.Join(is.rootDir, repo)
-
-	buf, err := os.ReadFile(path.Join(dir, "index.json"))
-	if err != nil {
-		is.log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
-
-		return "", err
-	}
-
-	var index ispec.Index
-	if err := json.Unmarshal(buf, &index); err != nil {
-		is.log.Error().Err(err).Str("dir", dir).Msg("invalid JSON")
-
-		return "", zerr.ErrRepoBadVersion
-	}
-
-	updateIndex := true
-	// create a new descriptor
-	desc := ispec.Descriptor{
-		MediaType: mediaType, Size: int64(len(body)), Digest: mDigest,
-	}
-	if !refIsDigest {
-		desc.Annotations = map[string]string{ispec.AnnotationRefName: reference}
-	}
-
-	var oldDgst godigest.Digest
-
-	for midx, manifest := range index.Manifests {
-		if reference == manifest.Digest.String() {
-			// nothing changed, so don't update
-			desc = manifest
-			updateIndex = false
-
-			break
-		}
-
-		v, ok := manifest.Annotations[ispec.AnnotationRefName]
-		if ok && v == reference {
-			if manifest.Digest.String() == mDigest.String() {
-				// nothing changed, so don't update
-				desc = manifest
-				updateIndex = false
-
-				break
-			}
-
-			// manifest contents have changed for the same tag,
-			// so update index.json descriptor
-			is.log.Info().
-				Int64("old size", desc.Size).
-				Int64("new size", int64(len(body))).
-				Str("old digest", desc.Digest.String()).
-				Str("new digest", mDigest.String()).
-				Str("old mediaType", manifest.MediaType).
-				Str("new mediaType", mediaType).
-				Msg("updating existing tag with new manifest contents")
-
-			// changing media-type is disallowed!
-			if manifest.MediaType != mediaType {
-				err = zerr.ErrBadManifest
-				is.log.Error().Err(err).
-					Str("old mediaType", manifest.MediaType).
-					Str("new mediaType", mediaType).Msg("cannot change media-type")
-
-				return "", err
-			}
-
-			desc = manifest
-			oldDgst = manifest.Digest
-			desc.Size = int64(len(body))
-			desc.Digest = mDigest
-
-			index.Manifests = append(index.Manifests[:midx], index.Manifests[midx+1:]...)
-
-			break
-		}
-	}
-
-	if !updateIndex {
-		return desc.Digest.String(), nil
-	}
-
 	// write manifest to "blobs"
-	dir = path.Join(is.rootDir, repo, "blobs", mDigest.Algorithm().String())
+	dir := path.Join(is.rootDir, repo, "blobs", mDigest.Algorithm().String())
 	_ = ensureDir(dir, is.log)
 	file := path.Join(dir, mDigest.Encoded())
 
@@ -835,62 +492,38 @@ func (is *ImageStoreLocal) PutImageManifest(repo, reference, mediaType string, /
 		return "", err
 	}
 
-	/* additionally, unmarshal an image index and for all manifests in that
-	index, ensure that they do not have a name or they are not in other
-	manifest indexes else GC can never clean them */
-	if (mediaType == ispec.MediaTypeImageIndex) && (oldDgst != "") {
-		otherImgIndexes := []ispec.Descriptor{}
+	is.Unlock(&lockLatency)
 
-		for _, manifest := range index.Manifests {
-			if manifest.MediaType == ispec.MediaTypeImageIndex {
-				otherImgIndexes = append(otherImgIndexes, manifest)
-			}
-		}
-
-		otherImgIndexes = append(otherImgIndexes, desc)
-
-		dir := path.Join(is.rootDir, repo)
-
-		prunedManifests, err := pruneImageManifestsFromIndex(dir, oldDgst, index, otherImgIndexes, is.log)
-		if err != nil {
-			return "", err
-		}
-
-		index.Manifests = prunedManifests
+	err = storage.UpdateIndexWithPrunedImageManifests(is, &index, repo, desc, oldDgst, is.log)
+	if err != nil {
+		return "", err
 	}
+
+	is.Lock(&lockLatency)
 
 	// now update "index.json"
 	index.Manifests = append(index.Manifests, desc)
 	dir = path.Join(is.rootDir, repo)
 	file = path.Join(dir, "index.json")
-	buf, err = json.Marshal(index)
 
+	buf, err := json.Marshal(index)
 	if err := test.Error(err); err != nil {
 		is.log.Error().Err(err).Str("file", file).Msg("unable to marshal JSON")
 
 		return "", err
 	}
 
+	is.Unlock(&lockLatency)
+
 	// apply linter only on images, not signatures
-	if is.linter != nil {
-		if mediaType == ispec.MediaTypeImageManifest &&
-			// check that image manifest is not cosign signature
-			!strings.HasPrefix(reference, "sha256-") &&
-			!strings.HasSuffix(reference, remote.SignatureTagSuffix) {
-			// lint new index with new manifest before writing to disk
-			is.Unlock(&lockLatency)
-			pass, err := is.linter.Lint(repo, mDigest, is)
-			is.Lock(&lockLatency)
-			if err != nil {
-				is.log.Error().Err(err).Msg("linter error")
+	pass, err := storage.ApplyLinter(is, is.linter, repo, desc)
 
-				return "", err
-			}
+	is.Lock(&lockLatency)
 
-			if !pass {
-				return "", zerr.ErrImageLintAnnotations
-			}
-		}
+	if !pass {
+		is.log.Error().Err(err).Str("repo", repo).Str("reference", reference).Msg("linter didn't pass")
+
+		return "", err
 	}
 
 	err = is.writeFile(file, buf)
@@ -921,100 +554,29 @@ func (is *ImageStoreLocal) DeleteImageManifest(repo, reference string) error {
 		return zerr.ErrRepoNotFound
 	}
 
-	isTag := false
-
-	// as per spec "reference" can be a digest and a tag
-	dgst, err := godigest.Parse(reference)
+	index, err := storage.GetIndex(is, repo, is.log)
 	if err != nil {
-		is.log.Debug().Str("invalid digest: ", reference).Msg("storage: assuming tag")
+		return err
+	}
 
-		isTag = true
+	manifestDesc, found := storage.RemoveManifestDescByReference(&index, reference)
+	if !found {
+		return zerr.ErrManifestNotFound
+	}
+
+	err = storage.UpdateIndexWithPrunedImageManifests(is, &index, repo, manifestDesc, manifestDesc.Digest, is.log)
+	if err != nil {
+		return err
 	}
 
 	is.Lock(&lockLatency)
 	defer is.Unlock(&lockLatency)
 
-	buf, err := os.ReadFile(path.Join(dir, "index.json"))
-	if err != nil {
-		is.log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
-
-		return err
-	}
-
-	var index ispec.Index
-	if err := json.Unmarshal(buf, &index); err != nil {
-		is.log.Error().Err(err).Str("dir", dir).Msg("invalid JSON")
-
-		return err
-	}
-
-	found := false
-
-	isImageIndex := false
-
-	var manifest ispec.Descriptor
-
-	// we are deleting, so keep only those manifests that don't match
-	outIndex := index
-	outIndex.Manifests = []ispec.Descriptor{}
-
-	otherImgIndexes := []ispec.Descriptor{}
-
-	for _, manifest = range index.Manifests {
-		if isTag {
-			tag, ok := manifest.Annotations[ispec.AnnotationRefName]
-			if ok && tag == reference {
-				is.log.Debug().Str("deleting tag", tag).Msg("")
-
-				dgst = manifest.Digest
-
-				found = true
-
-				if manifest.MediaType == ispec.MediaTypeImageIndex {
-					isImageIndex = true
-				}
-
-				continue
-			}
-		} else if reference == manifest.Digest.String() {
-			is.log.Debug().Str("deleting reference", reference).Msg("")
-			found = true
-
-			if manifest.MediaType == ispec.MediaTypeImageIndex {
-				isImageIndex = true
-			}
-
-			continue
-		}
-
-		outIndex.Manifests = append(outIndex.Manifests, manifest)
-
-		if manifest.MediaType == ispec.MediaTypeImageIndex {
-			otherImgIndexes = append(otherImgIndexes, manifest)
-		}
-	}
-
-	if !found {
-		return zerr.ErrManifestNotFound
-	}
-
-	/* additionally, unmarshal an image index and for all manifests in that
-	index, ensure that they do not have a name or they are not in other
-	manifest indexes else GC can never clean them */
-	if isImageIndex {
-		prunedManifests, err := pruneImageManifestsFromIndex(dir, dgst, outIndex, otherImgIndexes, is.log)
-		if err != nil {
-			return err
-		}
-
-		outIndex.Manifests = prunedManifests
-	}
-
 	// now update "index.json"
 	dir = path.Join(is.rootDir, repo)
 	file := path.Join(dir, "index.json")
-	buf, err = json.Marshal(outIndex)
 
+	buf, err := json.Marshal(index)
 	if err != nil {
 		return err
 	}
@@ -1033,8 +595,8 @@ func (is *ImageStoreLocal) DeleteImageManifest(repo, reference string) error {
 	// e.g. 1.0.1 & 1.0.2 have same blob digest so if we delete 1.0.1, blob should not be removed.
 	toDelete := true
 
-	for _, manifest = range outIndex.Manifests {
-		if dgst.String() == manifest.Digest.String() {
+	for _, manifest := range index.Manifests {
+		if manifestDesc.Digest.String() == manifest.Digest.String() {
 			toDelete = false
 
 			break
@@ -1042,7 +604,7 @@ func (is *ImageStoreLocal) DeleteImageManifest(repo, reference string) error {
 	}
 
 	if toDelete {
-		p := path.Join(dir, "blobs", dgst.Algorithm().String(), dgst.Encoded())
+		p := path.Join(dir, "blobs", manifestDesc.Digest.Algorithm().String(), manifestDesc.Digest.Encoded())
 
 		_ = os.Remove(p)
 	}
@@ -1055,7 +617,7 @@ func (is *ImageStoreLocal) DeleteImageManifest(repo, reference string) error {
 // BlobUploadPath returns the upload path for a blob in this store.
 func (is *ImageStoreLocal) BlobUploadPath(repo, uuid string) string {
 	dir := path.Join(is.rootDir, repo)
-	blobUploadPath := path.Join(dir, BlobUploadDir, uuid)
+	blobUploadPath := path.Join(dir, storage.BlobUploadDir, uuid)
 
 	return blobUploadPath
 }
@@ -1781,26 +1343,13 @@ func (is *ImageStoreLocal) GetReferrers(repo, digest, artifactType string) ([]ar
 		return nil, zerr.ErrBadBlobDigest
 	}
 
+	index, err := storage.GetIndex(is, repo, is.log)
+	if err != nil {
+		return nil, err
+	}
+
 	is.RLock(&lockLatency)
 	defer is.RUnlock(&lockLatency)
-
-	buf, err := os.ReadFile(path.Join(dir, "index.json"))
-	if err != nil {
-		is.log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
-
-		if os.IsNotExist(err) {
-			return nil, zerr.ErrRepoNotFound
-		}
-
-		return nil, err
-	}
-
-	var index ispec.Index
-	if err := json.Unmarshal(buf, &index); err != nil {
-		is.log.Error().Err(err).Str("dir", dir).Msg("invalid JSON")
-
-		return nil, err
-	}
 
 	found := false
 
@@ -1813,8 +1362,7 @@ func (is *ImageStoreLocal) GetReferrers(repo, digest, artifactType string) ([]ar
 
 		p := path.Join(dir, "blobs", manifest.Digest.Algorithm().String(), manifest.Digest.Encoded())
 
-		buf, err = os.ReadFile(p)
-
+		buf, err := os.ReadFile(p)
 		if err != nil {
 			is.log.Error().Err(err).Str("blob", p).Msg("failed to read manifest")
 
@@ -1878,12 +1426,6 @@ func (is *ImageStoreLocal) writeFile(filename string, data []byte) error {
 	return err
 }
 
-func IsSupportedMediaType(mediaType string) bool {
-	return mediaType == ispec.MediaTypeImageIndex ||
-		mediaType == ispec.MediaTypeImageManifest ||
-		mediaType == artifactspec.MediaTypeArtifactManifest
-}
-
 // utility routines
 
 func ValidateHardLink(rootDir string) error {
@@ -1939,37 +1481,6 @@ func (is *ImageStoreLocal) garbageCollect(dir string, repo string) error {
 	}
 
 	return nil
-}
-
-func validateManifest(imgStore *ImageStoreLocal, repo, reference,
-	mediaType string, body []byte,
-) (string, error) {
-	if mediaType == ispec.MediaTypeImageManifest {
-		var manifest ispec.Manifest
-		if err := json.Unmarshal(body, &manifest); err != nil {
-			imgStore.log.Error().Err(err).Msg("unable to unmarshal JSON")
-
-			return "", zerr.ErrBadManifest
-		}
-
-		if manifest.Config.MediaType == ispec.MediaTypeImageConfig {
-			digest, err := imgStore.validateOCIManifest(repo, reference, &manifest)
-			if err != nil {
-				imgStore.log.Error().Err(err).Msg("invalid oci image manifest")
-
-				return digest, err
-			}
-		}
-	} else if mediaType == artifactspec.MediaTypeArtifactManifest {
-		var m notation.Descriptor
-		if err := json.Unmarshal(body, &m); err != nil {
-			imgStore.log.Error().Err(err).Msg("unable to unmarshal JSON")
-
-			return "", zerr.ErrBadManifest
-		}
-	}
-
-	return "", nil
 }
 
 func ifOlderThan(imgStore *ImageStoreLocal, repo string, delay time.Duration) casext.GCPolicy {

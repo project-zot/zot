@@ -20,7 +20,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/extensions/scrub"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
 )
 
@@ -238,7 +238,7 @@ func TestRunScrubRepo(t *testing.T) {
 		dir := t.TempDir()
 		log := log.NewLogger("debug", logFile.Name())
 		metrics := monitoring.NewMetricsServer(false, log)
-		imgStore := storage.NewImageStore(dir, true, 1*time.Second, true,
+		imgStore := local.NewImageStore(dir, true, 1*time.Second, true,
 			true, log, metrics, nil)
 
 		err = test.CopyFiles("../../../test/data/zot-test", path.Join(dir, repoName))
@@ -268,7 +268,7 @@ func TestRunScrubRepo(t *testing.T) {
 		dir := t.TempDir()
 		log := log.NewLogger("debug", logFile.Name())
 		metrics := monitoring.NewMetricsServer(false, log)
-		imgStore := storage.NewImageStore(dir, true, 1*time.Second, true,
+		imgStore := local.NewImageStore(dir, true, 1*time.Second, true,
 			true, log, metrics, nil)
 
 		err = test.CopyFiles("../../../test/data/zot-test", path.Join(dir, repoName))
@@ -304,7 +304,7 @@ func TestRunScrubRepo(t *testing.T) {
 		dir := t.TempDir()
 		log := log.NewLogger("debug", logFile.Name())
 		metrics := monitoring.NewMetricsServer(false, log)
-		imgStore := storage.NewImageStore(dir, true, 1*time.Second,
+		imgStore := local.NewImageStore(dir, true, 1*time.Second,
 			true, true, log, metrics, nil)
 
 		err = test.CopyFiles("../../../test/data/zot-test", path.Join(dir, repoName))
