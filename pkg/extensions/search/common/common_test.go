@@ -232,6 +232,98 @@ func readFileAndSearchString(filePath string, stringToMatch string, timeout time
 	}
 }
 
+func verifyRepoSummaryFields(t *testing.T,
+	actualRepoSummary, expectedRepoSummary *common.RepoSummary,
+) {
+	t.Helper()
+
+	t.Logf("Verify RepoSummary \n%v \nmatches fields of \n%v",
+		actualRepoSummary, expectedRepoSummary,
+	)
+
+	So(actualRepoSummary.Name, ShouldEqual, expectedRepoSummary.Name)
+	So(actualRepoSummary.LastUpdated, ShouldEqual, expectedRepoSummary.LastUpdated)
+	So(actualRepoSummary.Size, ShouldEqual, expectedRepoSummary.Size)
+	So(len(actualRepoSummary.Vendors), ShouldEqual, len(expectedRepoSummary.Vendors))
+
+	for index, vendor := range actualRepoSummary.Vendors {
+		So(vendor, ShouldEqual, expectedRepoSummary.Vendors[index])
+	}
+
+	So(len(actualRepoSummary.Platforms), ShouldEqual, len(expectedRepoSummary.Platforms))
+
+	for index, platform := range actualRepoSummary.Platforms {
+		So(platform.Os, ShouldEqual, expectedRepoSummary.Platforms[index].Os)
+		So(platform.Arch, ShouldEqual, expectedRepoSummary.Platforms[index].Arch)
+	}
+
+	So(actualRepoSummary.NewestImage.Tag, ShouldEqual, expectedRepoSummary.NewestImage.Tag)
+	verifyImageSummaryFields(t, &actualRepoSummary.NewestImage, &expectedRepoSummary.NewestImage)
+}
+
+func verifyImageSummaryFields(t *testing.T,
+	actualImageSummary, expectedImageSummary *common.ImageSummary,
+) {
+	t.Helper()
+
+	t.Logf("Verify ImageSummary \n%v \nmatches fields of \n%v",
+		actualImageSummary, expectedImageSummary,
+	)
+
+	So(actualImageSummary.Tag, ShouldEqual, expectedImageSummary.Tag)
+	So(actualImageSummary.LastUpdated, ShouldEqual, expectedImageSummary.LastUpdated)
+	So(actualImageSummary.Size, ShouldEqual, expectedImageSummary.Size)
+	So(actualImageSummary.IsSigned, ShouldEqual, expectedImageSummary.IsSigned)
+	So(actualImageSummary.Vendor, ShouldEqual, expectedImageSummary.Vendor)
+	So(actualImageSummary.Platform.Os, ShouldEqual, expectedImageSummary.Platform.Os)
+	So(actualImageSummary.Platform.Arch, ShouldEqual, expectedImageSummary.Platform.Arch)
+	So(actualImageSummary.Title, ShouldEqual, expectedImageSummary.Title)
+	So(actualImageSummary.Description, ShouldEqual, expectedImageSummary.Description)
+	So(actualImageSummary.Source, ShouldEqual, expectedImageSummary.Source)
+	So(actualImageSummary.Documentation, ShouldEqual, expectedImageSummary.Documentation)
+	So(actualImageSummary.Licenses, ShouldEqual, expectedImageSummary.Licenses)
+	So(len(actualImageSummary.History), ShouldEqual, len(expectedImageSummary.History))
+
+	for index, history := range actualImageSummary.History {
+		// Digest could be empty string if the history entry is not associated with a layer
+		if expectedImageSummary.History[index].Layer.Digest == "" {
+			So(history.Layer.Digest, ShouldEqual, expectedImageSummary.History[index].Layer.Digest)
+		} else {
+			// We really need to be consistent about including/removing `sha256` in API replies
+			actualDigest, err := digest.Parse(history.Layer.Digest)
+			So(err, ShouldBeNil)
+			So(actualDigest.Encoded(), ShouldEqual, expectedImageSummary.History[index].Layer.Digest)
+		}
+
+		So(history.Layer.Size, ShouldEqual, expectedImageSummary.History[index].Layer.Size)
+		So(
+			history.HistoryDescription.Author,
+			ShouldEqual,
+			expectedImageSummary.History[index].HistoryDescription.Author,
+		)
+		So(
+			history.HistoryDescription.Created,
+			ShouldEqual,
+			expectedImageSummary.History[index].HistoryDescription.Created,
+		)
+		So(
+			history.HistoryDescription.CreatedBy,
+			ShouldEqual,
+			expectedImageSummary.History[index].HistoryDescription.CreatedBy,
+		)
+		So(
+			history.HistoryDescription.EmptyLayer,
+			ShouldEqual,
+			expectedImageSummary.History[index].HistoryDescription.EmptyLayer,
+		)
+		So(
+			history.HistoryDescription.Comment,
+			ShouldEqual,
+			expectedImageSummary.History[index].HistoryDescription.Comment,
+		)
+	}
+}
+
 func TestRepoListWithNewestImage(t *testing.T) {
 	Convey("Test repoListWithNewestImage AddError", t, func() {
 		subpath := "/a"
@@ -1952,8 +2044,7 @@ func TestGetRepositories(t *testing.T) {
 	})
 }
 
-//nolint:dupl // duplicated test code
-func TestGlobalSearch(t *testing.T) { // nolint: gocyclo
+func TestGlobalSearch(t *testing.T) {
 	Convey("Test searching for repos with vulnerabitity scanning disabled", t, func() {
 		subpath := "/a"
 
@@ -2192,6 +2283,8 @@ func TestGlobalSearch(t *testing.T) { // nolint: gocyclo
 		So(newestImageMap["repo2"].LastUpdated, ShouldEqual, time.Date(2009, 2, 1, 12, 0, 0, 0, time.UTC))
 
 		for repoName, repoSummary := range actualRepoMap {
+			repoSummary := repoSummary
+
 			// Check if data in NewestImage is consistent with the data in RepoSummary
 			So(repoName, ShouldEqual, repoSummary.NewestImage.RepoName)
 			So(repoSummary.Name, ShouldEqual, repoSummary.NewestImage.RepoName)
@@ -2199,70 +2292,9 @@ func TestGlobalSearch(t *testing.T) { // nolint: gocyclo
 
 			// The data in the RepoSummary returned from the request matches the data returned from the disk
 			repoInfo := allExpectedRepoInfoMap[repoName]
-			So(repoSummary.Name, ShouldEqual, repoInfo.Summary.Name)
-			So(repoSummary.LastUpdated, ShouldEqual, repoInfo.Summary.LastUpdated)
-			So(repoSummary.Size, ShouldEqual, repoInfo.Summary.Size)
-			So(len(repoSummary.Vendors), ShouldEqual, len(repoInfo.Summary.Vendors))
-			for index, vendor := range repoSummary.Vendors {
-				So(vendor, ShouldEqual, repoInfo.Summary.Vendors[index])
-			}
-			So(len(repoSummary.Platforms), ShouldEqual, len(repoInfo.Summary.Platforms))
-			for index, platform := range repoSummary.Platforms {
-				So(platform.Os, ShouldEqual, repoInfo.Summary.Platforms[index].Os)
-				So(platform.Arch, ShouldEqual, repoInfo.Summary.Platforms[index].Arch)
-			}
-			So(repoSummary.NewestImage.Tag, ShouldEqual, repoInfo.Summary.NewestImage.Tag)
-			So(repoSummary.NewestImage.LastUpdated, ShouldEqual, repoInfo.Summary.NewestImage.LastUpdated)
-			So(repoSummary.NewestImage.Size, ShouldEqual, repoInfo.Summary.NewestImage.Size)
-			So(repoSummary.NewestImage.IsSigned, ShouldEqual, repoInfo.Summary.NewestImage.IsSigned)
-			So(repoSummary.NewestImage.Vendor, ShouldEqual, repoInfo.Summary.NewestImage.Vendor)
-			So(repoSummary.NewestImage.Platform.Os, ShouldEqual, repoInfo.Summary.NewestImage.Platform.Os)
-			So(repoSummary.NewestImage.Platform.Arch, ShouldEqual, repoInfo.Summary.NewestImage.Platform.Arch)
-			So(repoSummary.NewestImage.Title, ShouldEqual, repoInfo.Summary.NewestImage.Title)
-			So(repoSummary.NewestImage.Description, ShouldEqual, repoInfo.Summary.NewestImage.Description)
-			So(repoSummary.NewestImage.Source, ShouldEqual, repoInfo.Summary.NewestImage.Source)
-			So(repoSummary.NewestImage.Documentation, ShouldEqual, repoInfo.Summary.NewestImage.Documentation)
-			So(repoSummary.NewestImage.Licenses, ShouldEqual, repoInfo.Summary.NewestImage.Licenses)
-			t.Log(repoSummary.NewestImage.History)
-			t.Log(repoInfo.Summary.NewestImage.History)
 
-			So(len(repoSummary.NewestImage.History), ShouldEqual, len(repoInfo.Summary.NewestImage.History))
-			for index, history := range repoSummary.NewestImage.History {
-				// We really need to be consistent about including/removing `sha256` in API replies
-				if repoInfo.Summary.NewestImage.History[index].Layer.Digest == "" {
-					So(history.Layer.Digest, ShouldEqual, repoInfo.Summary.NewestImage.History[index].Layer.Digest)
-				} else {
-					actualDigest, err := digest.Parse(history.Layer.Digest)
-					So(err, ShouldBeNil)
-					So(actualDigest.Encoded(), ShouldEqual, repoInfo.Summary.NewestImage.History[index].Layer.Digest)
-				}
-				So(history.Layer.Size, ShouldEqual, repoInfo.Summary.NewestImage.History[index].Layer.Size)
-				So(
-					history.HistoryDescription.Author,
-					ShouldEqual,
-					repoInfo.Summary.NewestImage.History[index].HistoryDescription.Author,
-				)
-				So(
-					history.HistoryDescription.Created,
-					ShouldEqual,
-					repoInfo.Summary.NewestImage.History[index].HistoryDescription.Created,
-				)
-				So(
-					history.HistoryDescription.CreatedBy,
-					ShouldEqual,
-					repoInfo.Summary.NewestImage.History[index].HistoryDescription.CreatedBy,
-				)
-				So(
-					history.HistoryDescription.EmptyLayer,
-					ShouldEqual,
-					repoInfo.Summary.NewestImage.History[index].HistoryDescription.EmptyLayer,
-				)
-				So(
-					history.HistoryDescription.Comment,
-					ShouldEqual,
-					repoInfo.Summary.NewestImage.History[index].HistoryDescription.Comment,
-				)
-			}
+			t.Logf("Validate repo summary returned by global search with vulnerability scanning disabled")
+			verifyRepoSummaryFields(t, &repoSummary, &repoInfo.Summary)
 
 			// RepoInfo object does not provide vulnerability information so we need to check differently
 			// No vulnerabilities should be detected since trivy is disabled
@@ -2321,55 +2353,9 @@ func TestGlobalSearch(t *testing.T) { // nolint: gocyclo
 
 		expectedImageSummary, ok := allExpectedImageSummaryMap["repo1:1.0.1"]
 		So(ok, ShouldEqual, true)
-		So(actualImageSummary.Tag, ShouldEqual, expectedImageSummary.Tag)
-		So(actualImageSummary.LastUpdated, ShouldEqual, expectedImageSummary.LastUpdated)
-		So(actualImageSummary.Size, ShouldEqual, expectedImageSummary.Size)
-		So(actualImageSummary.IsSigned, ShouldEqual, expectedImageSummary.IsSigned)
-		So(actualImageSummary.Vendor, ShouldEqual, expectedImageSummary.Vendor)
-		So(actualImageSummary.Platform.Os, ShouldEqual, expectedImageSummary.Platform.Os)
-		So(actualImageSummary.Platform.Arch, ShouldEqual, expectedImageSummary.Platform.Arch)
-		So(actualImageSummary.Title, ShouldEqual, expectedImageSummary.Title)
-		So(actualImageSummary.Description, ShouldEqual, expectedImageSummary.Description)
-		So(actualImageSummary.Source, ShouldEqual, expectedImageSummary.Source)
-		So(actualImageSummary.Documentation, ShouldEqual, expectedImageSummary.Documentation)
-		So(actualImageSummary.Licenses, ShouldEqual, expectedImageSummary.Licenses)
-		So(len(actualImageSummary.History), ShouldEqual, len(expectedImageSummary.History))
-		for index, history := range actualImageSummary.History {
-			// We really need to be consistent about including/removing `sha256` in API replies
-			if expectedImageSummary.History[index].Layer.Digest == "" {
-				So(history.Layer.Digest, ShouldEqual, expectedImageSummary.History[index].Layer.Digest)
-			} else {
-				actualDigest, err := digest.Parse(history.Layer.Digest)
-				So(err, ShouldBeNil)
-				So(actualDigest.Encoded(), ShouldEqual, expectedImageSummary.History[index].Layer.Digest)
-			}
-			So(history.Layer.Size, ShouldEqual, expectedImageSummary.History[index].Layer.Size)
-			So(
-				history.HistoryDescription.Author,
-				ShouldEqual,
-				expectedImageSummary.History[index].HistoryDescription.Author,
-			)
-			So(
-				history.HistoryDescription.Created,
-				ShouldEqual,
-				expectedImageSummary.History[index].HistoryDescription.Created,
-			)
-			So(
-				history.HistoryDescription.CreatedBy,
-				ShouldEqual,
-				expectedImageSummary.History[index].HistoryDescription.CreatedBy,
-			)
-			So(
-				history.HistoryDescription.EmptyLayer,
-				ShouldEqual,
-				expectedImageSummary.History[index].HistoryDescription.EmptyLayer,
-			)
-			So(
-				history.HistoryDescription.Comment,
-				ShouldEqual,
-				expectedImageSummary.History[index].HistoryDescription.Comment,
-			)
-		}
+
+		t.Logf("Validate image summary returned by global search with vulnerability scanning disabled")
+		verifyImageSummaryFields(t, &actualImageSummary, &expectedImageSummary)
 
 		// RepoInfo object does not provide vulnerability information so we need to check differently
 		// 0 vulnerabilities should be detected since trivy is disabled
@@ -2613,6 +2599,8 @@ func TestGlobalSearch(t *testing.T) { // nolint: gocyclo
 		So(newestImageMap["repo2"].LastUpdated, ShouldEqual, time.Date(2009, 2, 1, 12, 0, 0, 0, time.UTC))
 
 		for repoName, repoSummary := range actualRepoMap {
+			repoSummary := repoSummary
+
 			// Check if data in NewestImage is consistent with the data in RepoSummary
 			So(repoName, ShouldEqual, repoSummary.NewestImage.RepoName)
 			So(repoSummary.Name, ShouldEqual, repoSummary.NewestImage.RepoName)
@@ -2620,69 +2608,9 @@ func TestGlobalSearch(t *testing.T) { // nolint: gocyclo
 
 			// The data in the RepoSummary returned from the request matches the data returned from the disk
 			repoInfo := allExpectedRepoInfoMap[repoName]
-			So(repoSummary.Name, ShouldEqual, repoInfo.Summary.Name)
-			So(repoSummary.LastUpdated, ShouldEqual, repoInfo.Summary.LastUpdated)
-			So(repoSummary.Size, ShouldEqual, repoInfo.Summary.Size)
-			So(len(repoSummary.Vendors), ShouldEqual, len(repoInfo.Summary.Vendors))
-			for index, vendor := range repoSummary.Vendors {
-				So(vendor, ShouldEqual, repoInfo.Summary.Vendors[index])
-			}
-			So(len(repoSummary.Platforms), ShouldEqual, len(repoInfo.Summary.Platforms))
-			for index, platform := range repoSummary.Platforms {
-				So(platform.Os, ShouldEqual, repoInfo.Summary.Platforms[index].Os)
-				So(platform.Arch, ShouldEqual, repoInfo.Summary.Platforms[index].Arch)
-			}
-			So(repoSummary.NewestImage.Tag, ShouldEqual, repoInfo.Summary.NewestImage.Tag)
-			So(repoSummary.NewestImage.LastUpdated, ShouldEqual, repoInfo.Summary.NewestImage.LastUpdated)
-			So(repoSummary.NewestImage.Size, ShouldEqual, repoInfo.Summary.NewestImage.Size)
-			So(repoSummary.NewestImage.IsSigned, ShouldEqual, repoInfo.Summary.NewestImage.IsSigned)
-			So(repoSummary.NewestImage.Vendor, ShouldEqual, repoInfo.Summary.NewestImage.Vendor)
-			So(repoSummary.NewestImage.Platform.Os, ShouldEqual, repoInfo.Summary.NewestImage.Platform.Os)
-			So(repoSummary.NewestImage.Platform.Arch, ShouldEqual, repoInfo.Summary.NewestImage.Platform.Arch)
-			So(repoSummary.NewestImage.Title, ShouldEqual, repoInfo.Summary.NewestImage.Title)
-			So(repoSummary.NewestImage.Description, ShouldEqual, repoInfo.Summary.NewestImage.Description)
-			So(repoSummary.NewestImage.Source, ShouldEqual, repoInfo.Summary.NewestImage.Source)
-			So(repoSummary.NewestImage.Documentation, ShouldEqual, repoInfo.Summary.NewestImage.Documentation)
-			So(repoSummary.NewestImage.Licenses, ShouldEqual, repoInfo.Summary.NewestImage.Licenses)
-			t.Log(repoSummary.NewestImage.History)
-			t.Log(repoInfo.Summary.NewestImage.History)
-			So(len(repoSummary.NewestImage.History), ShouldEqual, len(repoInfo.Summary.NewestImage.History))
-			for index, history := range repoSummary.NewestImage.History {
-				// We really need to be consistent about including/removing `sha256` in API replies
-				if repoInfo.Summary.NewestImage.History[index].Layer.Digest == "" {
-					So(history.Layer.Digest, ShouldEqual, repoInfo.Summary.NewestImage.History[index].Layer.Digest)
-				} else {
-					actualDigest, err := digest.Parse(history.Layer.Digest)
-					So(err, ShouldBeNil)
-					So(actualDigest.Encoded(), ShouldEqual, repoInfo.Summary.NewestImage.History[index].Layer.Digest)
-				}
-				So(history.Layer.Size, ShouldEqual, repoInfo.Summary.NewestImage.History[index].Layer.Size)
-				So(
-					history.HistoryDescription.Author,
-					ShouldEqual,
-					repoInfo.Summary.NewestImage.History[index].HistoryDescription.Author,
-				)
-				So(
-					history.HistoryDescription.Created,
-					ShouldEqual,
-					repoInfo.Summary.NewestImage.History[index].HistoryDescription.Created,
-				)
-				So(
-					history.HistoryDescription.CreatedBy,
-					ShouldEqual,
-					repoInfo.Summary.NewestImage.History[index].HistoryDescription.CreatedBy,
-				)
-				So(
-					history.HistoryDescription.EmptyLayer,
-					ShouldEqual,
-					repoInfo.Summary.NewestImage.History[index].HistoryDescription.EmptyLayer,
-				)
-				So(
-					history.HistoryDescription.Comment,
-					ShouldEqual,
-					repoInfo.Summary.NewestImage.History[index].HistoryDescription.Comment,
-				)
-			}
+
+			t.Logf("Validate repo summary returned by global search with vulnerability scanning enabled")
+			verifyRepoSummaryFields(t, &repoSummary, &repoInfo.Summary)
 
 			// RepoInfo object does not provide vulnerability information so we need to check differently
 			t.Logf("Found vulnerability summary %v", repoSummary.NewestImage.Vulnerabilities)
@@ -2741,55 +2669,9 @@ func TestGlobalSearch(t *testing.T) { // nolint: gocyclo
 
 		expectedImageSummary, ok := allExpectedImageSummaryMap["repo1:1.0.1"]
 		So(ok, ShouldEqual, true)
-		So(actualImageSummary.Tag, ShouldEqual, expectedImageSummary.Tag)
-		So(actualImageSummary.LastUpdated, ShouldEqual, expectedImageSummary.LastUpdated)
-		So(actualImageSummary.Size, ShouldEqual, expectedImageSummary.Size)
-		So(actualImageSummary.IsSigned, ShouldEqual, expectedImageSummary.IsSigned)
-		So(actualImageSummary.Vendor, ShouldEqual, expectedImageSummary.Vendor)
-		So(actualImageSummary.Platform.Os, ShouldEqual, expectedImageSummary.Platform.Os)
-		So(actualImageSummary.Platform.Arch, ShouldEqual, expectedImageSummary.Platform.Arch)
-		So(actualImageSummary.Title, ShouldEqual, expectedImageSummary.Title)
-		So(actualImageSummary.Description, ShouldEqual, expectedImageSummary.Description)
-		So(actualImageSummary.Source, ShouldEqual, expectedImageSummary.Source)
-		So(actualImageSummary.Documentation, ShouldEqual, expectedImageSummary.Documentation)
-		So(actualImageSummary.Licenses, ShouldEqual, expectedImageSummary.Licenses)
-		So(len(actualImageSummary.History), ShouldEqual, len(expectedImageSummary.History))
-		for index, history := range actualImageSummary.History {
-			// We really need to be consistent about including/removing `sha256` in API replies
-			if expectedImageSummary.History[index].Layer.Digest == "" {
-				So(history.Layer.Digest, ShouldEqual, expectedImageSummary.History[index].Layer.Digest)
-			} else {
-				actualDigest, err := digest.Parse(history.Layer.Digest)
-				So(err, ShouldBeNil)
-				So(actualDigest.Encoded(), ShouldEqual, expectedImageSummary.History[index].Layer.Digest)
-			}
-			So(history.Layer.Size, ShouldEqual, expectedImageSummary.History[index].Layer.Size)
-			So(
-				history.HistoryDescription.Author,
-				ShouldEqual,
-				expectedImageSummary.History[index].HistoryDescription.Author,
-			)
-			So(
-				history.HistoryDescription.Created,
-				ShouldEqual,
-				expectedImageSummary.History[index].HistoryDescription.Created,
-			)
-			So(
-				history.HistoryDescription.CreatedBy,
-				ShouldEqual,
-				expectedImageSummary.History[index].HistoryDescription.CreatedBy,
-			)
-			So(
-				history.HistoryDescription.EmptyLayer,
-				ShouldEqual,
-				expectedImageSummary.History[index].HistoryDescription.EmptyLayer,
-			)
-			So(
-				history.HistoryDescription.Comment,
-				ShouldEqual,
-				expectedImageSummary.History[index].HistoryDescription.Comment,
-			)
-		}
+
+		t.Logf("Validate image summary returned by global search with vulnerability scanning enable")
+		verifyImageSummaryFields(t, &actualImageSummary, &expectedImageSummary)
 
 		// RepoInfo object does not provide vulnerability information so we need to check differently
 		t.Logf("Found vulnerability summary %v", actualImageSummary.Vulnerabilities)
