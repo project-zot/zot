@@ -523,13 +523,27 @@ func (r *queryResolver) Image(ctx context.Context, image string) (*gql_generated
 
 	digest, manifest, imageConfig, err := extractImageDetails(ctx, layoutUtils, repo, tag, r.log)
 	if err != nil {
-		r.log.Error().Err(err).Msg("unable to get image details")
+		r.log.Error().Str("image", image).Err(err).Msg("unable to get image details")
 
 		return nil, err
 	}
 
 	isSigned := layoutUtils.CheckManifestSignature(repo, digest)
 	result := BuildImageInfo(repo, tag, digest, *manifest, *imageConfig, isSigned)
+
+	// Check if vulnerability scanning is disabled
+	if r.cveInfo != nil {
+		imageCveSummary, err := r.cveInfo.GetCVESummaryForImage(image)
+		if err != nil {
+			// Log the error
+			r.log.Error().Str("image", image).Err(err).Msg("able to run vulnerability scan on image")
+		}
+
+		result.Vulnerabilities = &gql_generated.ImageVulnerabilitySummary{
+			Count:       &imageCveSummary.Count,
+			MaxSeverity: &imageCveSummary.MaxSeverity,
+		}
+	}
 
 	return result, nil
 }

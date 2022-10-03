@@ -4056,19 +4056,29 @@ func TestImageSummary(t *testing.T) {
 		gqlQuery := `
 			{
 				Image(image:"%s:%s"){
-					RepoName,
-					Tag,
-					Digest,
-					ConfigDigest,
-					LastUpdated,
-					IsSigned,
+					RepoName
+					Tag
+					Digest
+					ConfigDigest
+					LastUpdated
+					IsSigned
 					Size
+					Platform { Os Arch }
 					Layers { Digest Size }
+					Vulnerabilities { Count MaxSeverity }
+					History {
+						HistoryDescription { Created }
+						Layer { Digest Size }
+					}
 				}
 			}`
 
 		gqlEndpoint := fmt.Sprintf("%s%s?query=", baseURL, graphqlQueryPrefix)
 		config, layers, manifest, err := GetImageComponents(100)
+		So(err, ShouldBeNil)
+		createdTime := time.Date(2010, 1, 1, 12, 0, 0, 0, time.UTC)
+		config.History = append(config.History, ispec.History{Created: &createdTime})
+		manifest, err = updateManifestConfig(manifest, config)
 		So(err, ShouldBeNil)
 
 		configBlob, errConfig := json.Marshal(config)
@@ -4122,11 +4132,22 @@ func TestImageSummary(t *testing.T) {
 
 		imgSummary := imgSummaryResponse.SingleImageSummary.ImageSummary
 		So(imgSummary.RepoName, ShouldContainSubstring, repoName)
+		So(imgSummary.Tag, ShouldContainSubstring, tagTarget)
 		So(imgSummary.ConfigDigest, ShouldContainSubstring, configDigest.Hex())
 		So(imgSummary.Digest, ShouldContainSubstring, manifestDigest.Hex())
 		So(len(imgSummary.Layers), ShouldEqual, 1)
 		So(imgSummary.Layers[0].Digest, ShouldContainSubstring,
 			digest.FromBytes(layers[0]).Hex())
+		So(imgSummary.LastUpdated, ShouldEqual, createdTime)
+		So(imgSummary.IsSigned, ShouldEqual, false)
+		t.Log(imgSummary)
+		So(imgSummary.Platform.Os, ShouldEqual, "linux")
+		So(imgSummary.Platform.Arch, ShouldEqual, "amd64")
+		So(len(imgSummary.History), ShouldEqual, 1)
+		So(imgSummary.History[0].HistoryDescription.Created, ShouldEqual, createdTime)
+		// No vulnerabilities should be detected since trivy is disabled
+		So(imgSummary.Vulnerabilities.Count, ShouldEqual, 0)
+		So(imgSummary.Vulnerabilities.MaxSeverity, ShouldEqual, "")
 
 		t.Log("starting Test retrieve duplicated image same layers based on image identifier")
 		// gqlEndpoint
@@ -4167,6 +4188,125 @@ func TestImageSummary(t *testing.T) {
 		So(len(imgSummaryResponse.Errors), ShouldEqual, 1)
 		So(imgSummaryResponse.Errors[0].Message,
 			ShouldContainSubstring, "manifest: not found")
+	})
+
+	Convey("GraphQL query ImageSummary with Vulnerability scan enabled", t, func() {
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = t.TempDir()
+
+		defaultVal := true
+		updateDuration, _ := time.ParseDuration("1h")
+		cveConfig := &extconf.CVEConfig{
+			UpdateInterval: updateDuration,
+		}
+		searchConfig := &extconf.SearchConfig{
+			Enable: &defaultVal,
+			CVE:    cveConfig,
+		}
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: searchConfig,
+		}
+
+		ctlr := api.NewController(conf)
+
+		gqlQuery := `
+			{
+				Image(image:"%s:%s"){
+					RepoName
+					Tag
+					Digest
+					ConfigDigest
+					LastUpdated
+					IsSigned
+					Size
+					Platform { Os Arch }
+					Layers { Digest Size }
+					Vulnerabilities { Count MaxSeverity }
+					History {
+						HistoryDescription { Created }
+						Layer { Digest Size }
+					}
+				}
+			}`
+
+		gqlEndpoint := fmt.Sprintf("%s%s?query=", baseURL, graphqlQueryPrefix)
+		config, layers, manifest, err := GetImageComponents(100)
+		So(err, ShouldBeNil)
+		createdTime := time.Date(2010, 1, 1, 12, 0, 0, 0, time.UTC)
+		config.History = append(config.History, ispec.History{Created: &createdTime})
+		manifest, err = updateManifestConfig(manifest, config)
+		So(err, ShouldBeNil)
+
+		configBlob, errConfig := json.Marshal(config)
+		configDigest := digest.FromBytes(configBlob)
+		So(errConfig, ShouldBeNil) // marshall success, config is valid JSON
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		WaitTillServerReady(baseURL)
+
+		manifestBlob, errMarsal := json.Marshal(manifest)
+		So(errMarsal, ShouldBeNil)
+		So(manifestBlob, ShouldNotBeNil)
+		manifestDigest := digest.FromBytes(manifestBlob)
+		repoName := "test-repo" //nolint:goconst
+
+		tagTarget := "latest"
+		err = UploadImage(
+			Image{
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+				Tag:      tagTarget,
+			},
+			baseURL,
+			repoName,
+		)
+		So(err, ShouldBeNil)
+		var (
+			imgSummaryResponse ImageSummaryResult
+			strQuery           string
+			targetURL          string
+			resp               *resty.Response
+		)
+
+		t.Log("starting Test retrieve image based on image identifier")
+		// gql is parametrized with the repo.
+		strQuery = fmt.Sprintf(gqlQuery, repoName, tagTarget)
+		targetURL = fmt.Sprintf("%s%s", gqlEndpoint, url.QueryEscape(strQuery))
+
+		resp, err = resty.R().Get(targetURL)
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.Body(), ShouldNotBeNil)
+
+		err = json.Unmarshal(resp.Body(), &imgSummaryResponse)
+		So(err, ShouldBeNil)
+		So(imgSummaryResponse, ShouldNotBeNil)
+		So(imgSummaryResponse.SingleImageSummary, ShouldNotBeNil)
+		So(imgSummaryResponse.SingleImageSummary.ImageSummary, ShouldNotBeNil)
+
+		imgSummary := imgSummaryResponse.SingleImageSummary.ImageSummary
+		So(imgSummary.RepoName, ShouldContainSubstring, repoName)
+		So(imgSummary.Tag, ShouldContainSubstring, tagTarget)
+		So(imgSummary.ConfigDigest, ShouldContainSubstring, configDigest.Hex())
+		So(imgSummary.Digest, ShouldContainSubstring, manifestDigest.Hex())
+		So(len(imgSummary.Layers), ShouldEqual, 1)
+		So(imgSummary.Layers[0].Digest, ShouldContainSubstring,
+			digest.FromBytes(layers[0]).Hex())
+		So(imgSummary.LastUpdated, ShouldEqual, createdTime)
+		So(imgSummary.IsSigned, ShouldEqual, false)
+		t.Log(imgSummary)
+		So(imgSummary.Platform.Os, ShouldEqual, "linux")
+		So(imgSummary.Platform.Arch, ShouldEqual, "amd64")
+		So(len(imgSummary.History), ShouldEqual, 1)
+		So(imgSummary.History[0].HistoryDescription.Created, ShouldEqual, createdTime)
+		So(imgSummary.Vulnerabilities.Count, ShouldEqual, 0)
+		// The score is UNKNOWN by default, as there are 0 vulnerabilities this data used in tests
+		So(imgSummary.Vulnerabilities.MaxSeverity, ShouldEqual, "UNKNOWN")
 	})
 }
 
