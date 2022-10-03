@@ -44,18 +44,18 @@ build-metadata:
 	echo "\n Files: \n"
 	go list -tags $(EXTENSIONS) -f '{{ join .GoFiles "\n" }}' ./... | sort -u
 
+.PHONY: binary-minimal
+binary-minimal: EXTENSIONS=minimal # tag doesn't exist, but we need it to overwrite default value and indicate that we have no extension in build-metadata
+binary-minimal: modcheck build-metadata
+	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)-minimal -buildmode=pie -tags containers_image_openpgp -v -trimpath -ldflags "-X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=minimal -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zot
+
 .PHONY: binary
-binary: modcheck swagger create-name build-metadata
+binary: modcheck create-name build-metadata
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH) -buildmode=pie -tags $(EXTENSIONS),containers_image_openpgp -v -trimpath -ldflags "-X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=$(extended-name) -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zot
 
 .PHONY: binary-debug
 binary-debug: modcheck swagger create-name build-metadata
-	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)-debug -buildmode=pie -tags $(EXTENSIONS),containers_image_openpgp -v -gcflags all='-N -l' -ldflags "-X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=$(extended-name) -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION}" ./cmd/zot
-
-.PHONY: binary-minimal
-binary-minimal: EXTENSIONS=minimal # tag doesn't exist, but we need it to overwrite default value and indicate that we have no extension in build-metadata
-binary-minimal: modcheck swagger build-metadata
-	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)-minimal -buildmode=pie -tags containers_image_openpgp -v -trimpath -ldflags "-X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=minimal -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zot
+	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)-debug -buildmode=pie -tags $(EXTENSIONS),debug,containers_image_openpgp -v -gcflags all='-N -l' -ldflags "-X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=$(extended-name) -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION}" ./cmd/zot
 
 .PHONY: cli
 cli: modcheck create-name build-metadata
