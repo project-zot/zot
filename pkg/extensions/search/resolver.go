@@ -91,6 +91,35 @@ func (r *queryResolver) getImageListForDigest(repoList []string, digest string) 
 	return imgResultForDigest, errResult
 }
 
+func getImageSummary(ctx context.Context, repo, tag string, repoDB repodb.RepoDB,
+	cveInfo cveinfo.CveInfo, log log.Logger, //nolint:unparam
+) (
+	*gql_generated.ImageSummary, error,
+) {
+	repoMeta, err := repoDB.GetRepoMeta(repo)
+	if err != nil {
+		return nil, err
+	}
+
+	manifestDigest, ok := repoMeta.Tags[tag]
+	if !ok {
+		return nil, gqlerror.Errorf("can't find image: %s:%s", repo, tag)
+	}
+
+	manifestMeta, err := repoDB.GetManifestMeta(manifestDigest)
+	if err != nil {
+		return nil, err
+	}
+
+	manifestMetaMap := map[string]repodb.ManifestMetadata{
+		manifestDigest: manifestMeta,
+	}
+
+	imageSummaries := RepoMeta2ImageSummaries(ctx, repoMeta, manifestMetaMap, cveInfo)
+
+	return imageSummaries[0], nil
+}
+
 func repoListWithNewestImage(
 	ctx context.Context,
 	repoList []string,
@@ -1244,7 +1273,7 @@ func userAvailableRepos(ctx context.Context, repoList []string) ([]string, error
 func extractImageDetails(
 	ctx context.Context,
 	layoutUtils common.OciLayoutUtils,
-	repo, tag string,
+	repo, tag string, //nolint:unparam // function only called in the tests
 	log log.Logger) (
 	godigest.Digest, *v1.Manifest, *ispec.Image, error,
 ) {

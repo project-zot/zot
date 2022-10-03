@@ -4099,7 +4099,6 @@ func TestImageSummary(t *testing.T) {
 		So(imgSummaryResponse, ShouldNotBeNil)
 		So(imgSummaryResponse.SingleImageSummary, ShouldNotBeNil)
 		So(imgSummaryResponse.SingleImageSummary.ImageSummary, ShouldNotBeNil)
-
 		imgSummary := imgSummaryResponse.SingleImageSummary.ImageSummary
 		So(imgSummary.RepoName, ShouldContainSubstring, repoName)
 		So(imgSummary.Tag, ShouldContainSubstring, tagTarget)
@@ -4110,7 +4109,6 @@ func TestImageSummary(t *testing.T) {
 			digest.FromBytes(layers[0]).Hex())
 		So(imgSummary.LastUpdated, ShouldEqual, createdTime)
 		So(imgSummary.IsSigned, ShouldEqual, false)
-		t.Log(imgSummary)
 		So(imgSummary.Platform.Os, ShouldEqual, "linux")
 		So(imgSummary.Platform.Arch, ShouldEqual, "amd64")
 		So(len(imgSummary.History), ShouldEqual, 1)
@@ -4137,7 +4135,7 @@ func TestImageSummary(t *testing.T) {
 
 		So(len(imgSummaryResponse.Errors), ShouldEqual, 1)
 		So(imgSummaryResponse.Errors[0].Message,
-			ShouldContainSubstring, "repository: not found")
+			ShouldContainSubstring, "repodb: repo metadata not found for given repo name")
 
 		t.Log("starting Test retrieve image with bad tag")
 		// gql is parametrized with the repo.
@@ -4157,7 +4155,7 @@ func TestImageSummary(t *testing.T) {
 
 		So(len(imgSummaryResponse.Errors), ShouldEqual, 1)
 		So(imgSummaryResponse.Errors[0].Message,
-			ShouldContainSubstring, "manifest: not found")
+			ShouldContainSubstring, "can't find image: test-repo:nonexisttag")
 	})
 
 	Convey("GraphQL query ImageSummary with Vulnerability scan enabled", t, func() {
@@ -4269,7 +4267,6 @@ func TestImageSummary(t *testing.T) {
 			digest.FromBytes(layers[0]).Hex())
 		So(imgSummary.LastUpdated, ShouldEqual, createdTime)
 		So(imgSummary.IsSigned, ShouldEqual, false)
-		t.Log(imgSummary)
 		So(imgSummary.Platform.Os, ShouldEqual, "linux")
 		So(imgSummary.Platform.Arch, ShouldEqual, "amd64")
 		So(len(imgSummary.History), ShouldEqual, 1)
