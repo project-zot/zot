@@ -2,10 +2,6 @@
 // @version v0.1.0-dev
 // @description APIs for Open Container Initiative Distribution Specification
 
-// @contact.name API Support
-// @contact.url http://www.swagger.io/support
-// @contact.email support@swagger.io
-
 // @license.name Apache 2.0
 // @license.url http://www.apache.org/licenses/LICENSE-2.0.html
 
@@ -29,16 +25,14 @@ import (
 	"github.com/opencontainers/distribution-spec/specs-go/v1/extensions"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
-	httpSwagger "github.com/swaggo/http-swagger"
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/constants"
+	debug "zotregistry.io/zot/pkg/debug/swagger"
 	ext "zotregistry.io/zot/pkg/extensions"
 	"zotregistry.io/zot/pkg/log"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test" // nolint:goimports
-	// as required by swaggo.
-	_ "zotregistry.io/zot/swagger"
 )
 
 type RouteHandler struct {
@@ -113,8 +107,9 @@ func (rh *RouteHandler) SetupRoutes() {
 	rh.c.Router.HandleFunc(fmt.Sprintf("%s/{name:%s}/manifests/{digest}/referrers",
 		constants.ArtifactSpecRoutePrefix, NameRegexp.String()), rh.GetReferrers).Methods("GET")
 
-	// swagger swagger "/swagger/v2/index.html"
-	rh.c.Router.PathPrefix("/swagger/v2/").Methods("GET").Handler(httpSwagger.WrapHandler)
+	// swagger
+	debug.SetupSwaggerRoutes(rh.c.Config, rh.c.Router, rh.c.Log)
+
 	// Setup Extensions Routes
 	if rh.c.Config != nil {
 		if rh.c.Config.Extensions == nil {
