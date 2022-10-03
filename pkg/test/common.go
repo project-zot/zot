@@ -1,6 +1,7 @@
 package test
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/json"
@@ -18,13 +19,14 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/specs-go"
-	imagespec "github.com/opencontainers/image-spec/specs-go/v1"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opencontainers/umoci"
 	"github.com/phayes/freeport"
 	"github.com/sigstore/cosign/cmd/cosign/cli/generate"
 	"github.com/sigstore/cosign/cmd/cosign/cli/options"
 	"github.com/sigstore/cosign/cmd/cosign/cli/sign"
 	"gopkg.in/resty.v1"
+	"zotregistry.io/zot/pkg/storage"
 )
 
 const (
@@ -39,8 +41,8 @@ var (
 )
 
 type Image struct {
-	Manifest imagespec.Manifest
-	Config   imagespec.Image
+	Manifest ispec.Manifest
+	Config   ispec.Image
 	Layers   [][]byte
 	Tag      string
 }
@@ -147,6 +149,50 @@ func CopyFiles(sourceDir, destDir string) error {
 	return nil
 }
 
+func WriteImageToFileSystem(image Image, repoName string, storeController storage.StoreController) error {
+	store := storeController.GetImageStore(repoName)
+
+	err := store.InitRepo(repoName)
+	if err != nil {
+		return err
+	}
+
+	for _, layerBlob := range image.Layers {
+		layerReader := bytes.NewReader(layerBlob)
+		layerDigest := godigest.FromBytes(layerBlob)
+
+		_, _, err = store.FullBlobUpload(repoName, layerReader, layerDigest.String())
+		if err != nil {
+			return err
+		}
+	}
+
+	configBlob, err := json.Marshal(image.Config)
+	if err != nil {
+		return err
+	}
+
+	configReader := bytes.NewReader(configBlob)
+	configDigest := godigest.FromBytes(configBlob)
+
+	_, _, err = store.FullBlobUpload(repoName, configReader, configDigest.String())
+	if err != nil {
+		return err
+	}
+
+	manifestBlob, err := json.Marshal(image.Manifest)
+	if err != nil {
+		return err
+	}
+
+	_, err = store.PutImageManifest(repoName, image.Tag, ispec.MediaTypeImageManifest, manifestBlob)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func WaitTillServerReady(url string) {
 	for {
 		_, err := resty.R().Get(url)
@@ -191,10 +237,10 @@ func GetRandomImageConfig() ([]byte, godigest.Digest) {
 
 	randomAuthor := randomString(maxLen)
 
-	config := imagespec.Image{
+	config := ispec.Image{
 		Architecture: "amd64",
 		OS:           "linux",
-		RootFS: imagespec.RootFS{
+		RootFS: ispec.RootFS{
 			Type:    "layers",
 			DiffIDs: []godigest.Digest{},
 		},
@@ -212,10 +258,10 @@ func GetRandomImageConfig() ([]byte, godigest.Digest) {
 }
 
 func GetImageConfig() ([]byte, godigest.Digest) {
-	config := imagespec.Image{
+	config := ispec.Image{
 		Architecture: "amd64",
 		OS:           "linux",
-		RootFS: imagespec.RootFS{
+		RootFS: ispec.RootFS{
 			Type:    "layers",
 			DiffIDs: []godigest.Digest{},
 		},
@@ -266,7 +312,7 @@ func GetOciLayoutDigests(imagePath string) (godigest.Digest, godigest.Digest, go
 			panic(err)
 		}
 
-		var manifest imagespec.Manifest
+		var manifest ispec.Manifest
 
 		err = json.Unmarshal(manifestBuf, &manifest)
 		if err != nil {
@@ -283,11 +329,11 @@ func GetOciLayoutDigests(imagePath string) (godigest.Digest, godigest.Digest, go
 	return manifestDigest, configDigest, layerDigest
 }
 
-func GetImageComponents(layerSize int) (imagespec.Image, [][]byte, imagespec.Manifest, error) {
-	config := imagespec.Image{
+func GetImageComponents(layerSize int) (ispec.Image, [][]byte, ispec.Manifest, error) {
+	config := ispec.Image{
 		Architecture: "amd64",
 		OS:           "linux",
-		RootFS: imagespec.RootFS{
+		RootFS: ispec.RootFS{
 			Type:    "layers",
 			DiffIDs: []godigest.Digest{},
 		},
@@ -296,7 +342,7 @@ func GetImageComponents(layerSize int) (imagespec.Image, [][]byte, imagespec.Man
 
 	configBlob, err := json.Marshal(config)
 	if err = Error(err); err != nil {
-		return imagespec.Image{}, [][]byte{}, imagespec.Manifest{}, err
+		return ispec.Image{}, [][]byte{}, ispec.Manifest{}, err
 	}
 
 	configDigest := godigest.FromBytes(configBlob)
@@ -307,16 +353,16 @@ func GetImageComponents(layerSize int) (imagespec.Image, [][]byte, imagespec.Man
 
 	schemaVersion := 2
 
-	manifest := imagespec.Manifest{
+	manifest := ispec.Manifest{
 		Versioned: specs.Versioned{
 			SchemaVersion: schemaVersion,
 		},
-		Config: imagespec.Descriptor{
+		Config: ispec.Descriptor{
 			MediaType: "application/vnd.oci.image.config.v1+json",
 			Digest:    configDigest,
 			Size:      int64(len(configBlob)),
 		},
-		Layers: []imagespec.Descriptor{
+		Layers: []ispec.Descriptor{
 			{
 				MediaType: "application/vnd.oci.image.layer.v1.tar",
 				Digest:    godigest.FromBytes(layers[0]),

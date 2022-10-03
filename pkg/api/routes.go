@@ -8,7 +8,6 @@
 package api
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -20,7 +19,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/gobwas/glob"
 	"github.com/gorilla/mux"
 	jsoniter "github.com/json-iterator/go"
 	notreg "github.com/notaryproject/notation-go/registry"
@@ -502,7 +500,7 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 
 	if rh.c.RepoDB != nil {
 		// check is image is a signature
-		isSignature, signatureType, signedManifestDigest, err := imageIsSignature(name, body, reference,
+		isSignature, signatureType, signedManifestDigest, err := storage.CheckIsImageSignature(name, body, reference,
 			rh.c.StoreController)
 		if err != nil {
 			rh.c.Log.Error().Err(err).Msg("can't check if image is a signature or not")
@@ -528,7 +526,7 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 				metadataSuccessfullySet = false
 			}
 		} else {
-			imageMetadata, err := newManifestMeta(name, body, rh.c.StoreController)
+			imageMetadata, err := repodb.NewManifestMeta(name, body, rh.c.StoreController)
 			if err == nil {
 				err := rh.c.RepoDB.SetManifestMeta(digest, imageMetadata)
 				if err != nil {
@@ -566,109 +564,6 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 	response.Header().Set("Location", fmt.Sprintf("/v2/%s/manifests/%s", name, digest))
 	response.Header().Set(constants.DistContentDigestKey, digest)
 	response.WriteHeader(http.StatusCreated)
-}
-
-// imageIsSignature checks if the given image (repo:tag) represents a signature. The function
-// returns:
-//
-// - bool: if the image is a signature or not
-//
-// - string: the type of signature
-//
-// - string: the digest of the image it signs
-//
-// - error: any errors that occur.
-func imageIsSignature(repoName string, manifestBlob []byte, reference string,
-	storeController storage.StoreController,
-) (bool, string, string, error) {
-	var manifestContent artifactspec.Manifest
-
-	err := json.Unmarshal(manifestBlob, &manifestContent)
-	if err != nil {
-		return false, "", "", err
-	}
-
-	// check notation signature
-	if manifestContent.Subject != nil {
-		imgStore := storeController.GetImageStore(repoName)
-
-		_, signedImageManifestDigest, _, err := imgStore.GetImageManifest(repoName,
-			manifestContent.Subject.Digest.String())
-		if err == nil && signedImageManifestDigest != "" {
-			return true, "notation", signedImageManifestDigest, nil
-		}
-	}
-
-	// check cosign
-	cosignTagRule := glob.MustCompile("sha256-*.sig")
-
-	if tag := reference; cosignTagRule.Match(reference) {
-		prefixLen := len("sha256-")
-		digestLen := 64
-		signedImageManifestDigest := tag[prefixLen : prefixLen+digestLen]
-
-		var builder strings.Builder
-
-		builder.WriteString("sha256:")
-		builder.WriteString(signedImageManifestDigest)
-		signedImageManifestDigest = builder.String()
-
-		imgStore := storeController.GetImageStore(repoName)
-
-		_, signedImageManifestDigest, _, err := imgStore.GetImageManifest(repoName,
-			signedImageManifestDigest)
-		if err == nil && signedImageManifestDigest != "" {
-			return true, "cosign", signedImageManifestDigest, nil
-		}
-	}
-
-	return false, "", "", nil
-}
-
-func newManifestMeta(repoName string, manifestBlob []byte,
-	storeController storage.StoreController,
-) (repodb.ManifestMetadata, error) {
-	const (
-		configCount   = 1
-		manifestCount = 1
-	)
-
-	var manifestMeta repodb.ManifestMetadata
-
-	var manifestContent ispec.Manifest
-
-	err := json.Unmarshal(manifestBlob, &manifestContent)
-	if err != nil {
-		return repodb.ManifestMetadata{}, err
-	}
-
-	imgStore := storeController.GetImageStore(repoName)
-
-	configBlob, err := imgStore.GetBlobContent(repoName, manifestContent.Config.Digest.String())
-	if err != nil {
-		return repodb.ManifestMetadata{}, err
-	}
-
-	var configContent ispec.Image
-
-	err = json.Unmarshal(configBlob, &configContent)
-	if err != nil {
-		return repodb.ManifestMetadata{}, err
-	}
-
-	manifestMeta.BlobsSize = len(configBlob) + len(manifestBlob)
-	for _, layer := range manifestContent.Layers {
-		manifestMeta.BlobsSize += int(layer.Size)
-	}
-
-	manifestMeta.BlobCount = configCount + manifestCount + len(manifestContent.Layers)
-	manifestMeta.ManifestBlob = manifestBlob
-	manifestMeta.ConfigBlob = configBlob
-
-	// manifestMeta.Dependants
-	// manifestMeta.Dependencies
-
-	return manifestMeta, nil
 }
 
 // DeleteManifest godoc
@@ -739,7 +634,7 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 	}
 
 	if rh.c.RepoDB != nil {
-		isSignature, signatureType, signedManifestDigest, err := imageIsSignature(name, manifestBlob,
+		isSignature, signatureType, signedManifestDigest, err := storage.CheckIsImageSignature(name, manifestBlob,
 			reference, rh.c.StoreController)
 		if err != nil {
 			rh.c.Log.Error().Err(err).Msg("can't check if image is a signature or not")

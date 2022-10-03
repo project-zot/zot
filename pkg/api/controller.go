@@ -435,6 +435,11 @@ func (c *Controller) InitRepoDB(reloadCtx context.Context) error {
 		}
 
 		c.RepoDB = driver
+
+		err = repodb.SyncRepoDB(driver, c.StoreController, c.Log)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil

@@ -710,50 +710,31 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		imageStore := local.NewImageStore(tempDir, false, 0, false, false,
+			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil)
 
-		config, layers, manifest, err := GetImageComponents(1000)
-		So(err, ShouldBeNil)
+		storeController := storage.StoreController{
+			DefaultStore: imageStore,
+		}
 
-		err = UploadImage(
-			Image{
-				Manifest: manifest,
-				Config:   config,
-				Layers:   layers,
-				Tag:      "1.0",
-			},
-			baseURL,
-			repo1)
-		So(err, ShouldBeNil)
+		// init storage layout with 3 images
+		for i := 1; i <= 3; i++ {
+			config, layers, manifest, err := GetImageComponents(100)
+			So(err, ShouldBeNil)
 
-		err = UploadImage(
-			Image{
-				Manifest: manifest,
-				Config:   config,
-				Layers:   layers,
-				Tag:      "2.0",
-			},
-			baseURL,
-			repo1)
-		So(err, ShouldBeNil)
+			err = WriteImageToFileSystem(
+				Image{
+					Manifest: manifest,
+					Config:   config,
+					Layers:   layers,
+					Tag:      fmt.Sprintf("%d.0", i),
+				},
+				repo1,
+				storeController)
+			So(err, ShouldBeNil)
+		}
 
-		err = UploadImage(
-			Image{
-				Manifest: manifest,
-				Config:   config,
-				Layers:   layers,
-				Tag:      tagToBeRemoved,
-			},
-			baseURL,
-			repo1)
-		So(err, ShouldBeNil)
-
-		// delete image
-		// resp, err := resty.R().Delete(baseURL + "/v2/" + repo1 + "manifests" + tagToBeRemoved)
-		// So(err, ShouldBeNil)
-
+		// remote a tag from index.json
 		indexPath := path.Join(tempDir, repo1, "index.json")
 		indexFile, err := os.Open(indexPath)
 		So(err, ShouldBeNil)
@@ -775,6 +756,10 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		err = os.WriteFile(indexPath, buf, 0o600)
 		So(err, ShouldBeNil)
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		WaitTillServerReady(baseURL)
 
 		query := "{ExpandedRepoInfo(repo:\"test1\"){Summary%20{Name%20LastUpdated%20Size%20Platforms%20{Os%20Arch}%20Vendors%20Score}%20Images%20{Digest%20IsSigned%20Tag%20Layers%20{Size%20Digest}}}}" //nolint: lll
 
@@ -814,27 +799,9 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		go func() {
-			// this blocks
-			if err := ctlr.Run(context.Background()); err != nil {
-				return
-			}
-		}()
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(baseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		// shut down server
-		defer func() {
-			ctx := context.Background()
-			_ = ctlr.Server.Shutdown(ctx)
-		}()
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		WaitTillServerReady(baseURL)
 
 		err = triggerUploadForTestImages(GetBaseURL(port))
 		So(err, ShouldBeNil)

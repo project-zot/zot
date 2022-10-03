@@ -29,14 +29,14 @@ const (
 func TestBoltDBWrapper(t *testing.T) {
 	Convey("BoltDB Wrapper creation", t, func() {
 		boltDBParams := repodb.BoltDBParameters{}
-		searchDB, err := repodb.NewBotDBWrapper(boltDBParams)
+		searchDB, err := repodb.NewBoltDBWrapper(boltDBParams)
 		So(searchDB, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
 		err = os.Chmod("repo.db", 0o200)
 		So(err, ShouldBeNil)
 
-		searchDB, err = repodb.NewBotDBWrapper(boltDBParams)
+		searchDB, err = repodb.NewBoltDBWrapper(boltDBParams)
 		So(searchDB, ShouldBeNil)
 		So(err, ShouldNotBeNil)
 
@@ -52,14 +52,14 @@ func TestBoltDBWrapper(t *testing.T) {
 			RootDir: t.TempDir(),
 		}
 
-		repoDB, err := repodb.NewBotDBWrapper(boltDBParams)
+		repoDB, err := repodb.NewBoltDBWrapper(boltDBParams)
 		So(repoDB, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
 		defer os.Remove(filePath)
 
 		Convey("Test SetManifestMeta and GetManifestMeta", func() {
-			configBlob, manifestBlob, err := generateTestImageManifest()
+			configBlob, manifestBlob, err := generateTestImage()
 			So(err, ShouldBeNil)
 
 			manifestDigest := digest.FromBytes(manifestBlob)
@@ -432,7 +432,7 @@ func TestBoltDBWrapper(t *testing.T) {
 		})
 
 		Convey("Test IncrementManifestDownloads", func() {
-			configBlob, manifestBlob, err := generateTestImageManifest()
+			configBlob, manifestBlob, err := generateTestImage()
 			So(err, ShouldBeNil)
 
 			manifestDigest := digest.FromBytes(manifestBlob)
@@ -1113,7 +1113,7 @@ func TestBoltDBWrapper(t *testing.T) {
 				Os: &opSys,
 			}
 
-			repos, _, err := repoDB.SearchRepos(context.TODO(), "repo", filter, repodb.PageInput{SortBy: repodb.AlphabeticAsc})
+			repos, _, err := repoDB.SearchRepos(context.TODO(), "", filter, repodb.PageInput{SortBy: repodb.AlphabeticAsc})
 			So(err, ShouldBeNil)
 			So(len(repos), ShouldEqual, 2)
 			So(repos[0].Name, ShouldResemble, "repo1")
@@ -1247,7 +1247,7 @@ func TestBoltDBWrapper(t *testing.T) {
 	})
 }
 
-func generateTestImageManifest() ([]byte, []byte, error) {
+func generateTestImage() ([]byte, []byte, error) {
 	config := ispec.Image{
 		Architecture: "amd64",
 		OS:           LINUX,

@@ -32,7 +32,7 @@ func (bwf BoltDBWrapperFactory) Create(parameters interface{}) (RepoDB, error) {
 		panic("Failed type assertion")
 	}
 
-	return NewBotDBWrapper(properParameters)
+	return NewBoltDBWrapper(properParameters)
 }
 
 type BoltDBWrapper struct {
@@ -40,7 +40,7 @@ type BoltDBWrapper struct {
 	log log.Logger
 }
 
-func NewBotDBWrapper(params BoltDBParameters) (*BoltDBWrapper, error) {
+func NewBoltDBWrapper(params BoltDBParameters) (*BoltDBWrapper, error) {
 	const perms = 0o600
 
 	boltDB, err := bolt.Open(path.Join(params.RootDir, "repo.db"), perms, &bolt.Options{Timeout: time.Second * 10})
@@ -395,10 +395,10 @@ func (bdw BoltDBWrapper) GetMultipleRepoMeta(ctx context.Context, filter func(re
 ) ([]RepoMetadata, error) {
 	var (
 		foundRepos = make([]RepoMetadata, 0)
-		paginator  PageFinder
+		pageFinder PageFinder
 	)
 
-	paginator, err := NewBaseRepoPageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
+	pageFinder, err := NewBaseRepoPageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
 	if err != nil {
 		return nil, err
 	}
@@ -421,13 +421,13 @@ func (bdw BoltDBWrapper) GetMultipleRepoMeta(ctx context.Context, filter func(re
 			}
 
 			if filter(repoMeta) {
-				paginator.Add(DetailedRepoMeta{
+				pageFinder.Add(DetailedRepoMeta{
 					RepoMeta: repoMeta,
 				})
 			}
 		}
 
-		foundRepos = paginator.Page()
+		foundRepos = pageFinder.Page()
 
 		return nil
 	})
