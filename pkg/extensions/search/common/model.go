@@ -41,6 +41,7 @@ type ImageSummary struct {
 	Layers          []LayerSummary            `json:"layers"`
 	Vulnerabilities ImageVulnerabilitySummary `json:"vulnerabilities"`
 	Authors         string                    `json:"authors"`
+	Logo            string                    `json:"logo"`
 }
 
 type OsArch struct {

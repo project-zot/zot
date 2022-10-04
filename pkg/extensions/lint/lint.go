@@ -4,7 +4,13 @@
 package lint
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/json"
+	"image"
+	_ "image/gif"  //nolint:gci  // imported for the registration of it's decoder func
+	_ "image/jpeg" //nolint:gci // imported for the registration of it's decoder func
+	_ "image/png"  //nolint:gci  // imported for the registration of it's decoder func
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -12,6 +18,10 @@ import (
 	"zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+)
+
+const (
+	logoKey string = "com.zot.logo"
 )
 
 type Linter struct {
@@ -62,6 +72,13 @@ func (linter *Linter) CheckMandatoryAnnotations(repo string, manifestDigest godi
 	manifestAnnotations := manifest.Annotations
 	for annotation := range manifestAnnotations {
 		if _, ok := mandatoryAnnotationsMap[annotation]; ok {
+			if annotation == logoKey {
+				if ok := linter.checkIfLogoAnnotationValid(manifestAnnotations[annotation]); ok {
+					mandatoryAnnotationsMap[annotation] = true
+				}
+
+				continue
+			}
 			mandatoryAnnotationsMap[annotation] = true
 		}
 	}
@@ -89,9 +106,15 @@ func (linter *Linter) CheckMandatoryAnnotations(repo string, manifestDigest godi
 	}
 
 	configAnnotations := imageConfig.Config.Labels
-
 	for annotation := range configAnnotations {
 		if _, ok := mandatoryAnnotationsMap[annotation]; ok {
+			if annotation == logoKey {
+				if ok := linter.checkIfLogoAnnotationValid(configAnnotations[annotation]); ok {
+					mandatoryAnnotationsMap[annotation] = true
+				}
+
+				continue
+			}
 			mandatoryAnnotationsMap[annotation] = true
 		}
 	}
@@ -123,4 +146,35 @@ func getMissingAnnotations(mandatoryAnnotationsMap map[string]bool) []string {
 	}
 
 	return missingAnnotations
+}
+
+func (linter *Linter) checkIfLogoAnnotationValid(annotationVal string) bool {
+	decodedVal, err := base64.StdEncoding.DecodeString(annotationVal)
+	if err != nil {
+		linter.log.Error().Err(err).Msg("unable to decode value")
+
+		return false
+	}
+	imageVal := bytes.NewBuffer(decodedVal)
+
+	logoConf, format, err := image.DecodeConfig(imageVal)
+	if err != nil {
+		linter.log.Error().Err(err).Msg("unable to decode image")
+
+		return false
+	}
+
+	if format != "jpeg" && format != "gif" && format != "png" {
+		linter.log.Error().Msg("encoded logo is of incorrect format, allowed formats are jpeg/png/gif")
+
+		return false
+	}
+
+	if logoConf.Height > 200 || logoConf.Width > 200 {
+		linter.log.Error().Msg("encoded logo is of incorrect size")
+
+		return false
+	}
+
+	return true
 }
