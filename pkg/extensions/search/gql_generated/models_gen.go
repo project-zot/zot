@@ -72,6 +72,7 @@ type ImageSummary struct {
 	Documentation   *string                    `json:"Documentation"`
 	History         []*LayerHistory            `json:"History"`
 	Vulnerabilities *ImageVulnerabilitySummary `json:"Vulnerabilities"`
+	Logo            *string                    `json:"Logo"`
 }
 
 type ImageVulnerabilitySummary struct {
