@@ -89,6 +89,7 @@ type ComplexityRoot struct {
 		LastUpdated     func(childComplexity int) int
 		Layers          func(childComplexity int) int
 		Licenses        func(childComplexity int) int
+		Logo            func(childComplexity int) int
 		Platform        func(childComplexity int) int
 		RepoName        func(childComplexity int) int
 		Score           func(childComplexity int) int
@@ -416,6 +417,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.ImageSummary.Licenses(childComplexity), true
+
+	case "ImageSummary.Logo":
+		if e.complexity.ImageSummary.Logo == nil {
+			break
+		}
+
+		return e.complexity.ImageSummary.Logo(childComplexity), true
 
 	case "ImageSummary.Platform":
 		if e.complexity.ImageSummary.Platform == nil {
@@ -994,6 +1002,7 @@ type ImageSummary {
     History: [LayerHistory]
     Vulnerabilities: ImageVulnerabilitySummary
     Authors: String
+    Logo: String
 }
 
 type ImageVulnerabilitySummary {
@@ -1971,6 +1980,8 @@ func (ec *executionContext) fieldContext_GlobalSearchResult_Images(ctx context.C
 				return ec.fieldContext_ImageSummary_Vulnerabilities(ctx, field)
 			case "Authors":
 				return ec.fieldContext_ImageSummary_Authors(ctx, field)
+			case "Logo":
+				return ec.fieldContext_ImageSummary_Logo(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -3184,6 +3195,47 @@ func (ec *executionContext) fieldContext_ImageSummary_Authors(ctx context.Contex
 	return fc, nil
 }
 
+func (ec *executionContext) _ImageSummary_Logo(ctx context.Context, field graphql.CollectedField, obj *ImageSummary) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_ImageSummary_Logo(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Logo, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_ImageSummary_Logo(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ImageSummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _ImageVulnerabilitySummary_MaxSeverity(ctx context.Context, field graphql.CollectedField, obj *ImageVulnerabilitySummary) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_ImageVulnerabilitySummary_MaxSeverity(ctx, field)
 	if err != nil {
@@ -4002,6 +4054,8 @@ func (ec *executionContext) fieldContext_Query_ImageListForCVE(ctx context.Conte
 				return ec.fieldContext_ImageSummary_Vulnerabilities(ctx, field)
 			case "Authors":
 				return ec.fieldContext_ImageSummary_Authors(ctx, field)
+			case "Logo":
+				return ec.fieldContext_ImageSummary_Logo(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -4098,6 +4152,8 @@ func (ec *executionContext) fieldContext_Query_ImageListWithCVEFixed(ctx context
 				return ec.fieldContext_ImageSummary_Vulnerabilities(ctx, field)
 			case "Authors":
 				return ec.fieldContext_ImageSummary_Authors(ctx, field)
+			case "Logo":
+				return ec.fieldContext_ImageSummary_Logo(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -4194,6 +4250,8 @@ func (ec *executionContext) fieldContext_Query_ImageListForDigest(ctx context.Co
 				return ec.fieldContext_ImageSummary_Vulnerabilities(ctx, field)
 			case "Authors":
 				return ec.fieldContext_ImageSummary_Authors(ctx, field)
+			case "Logo":
+				return ec.fieldContext_ImageSummary_Logo(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -4369,6 +4427,8 @@ func (ec *executionContext) fieldContext_Query_ImageList(ctx context.Context, fi
 				return ec.fieldContext_ImageSummary_Vulnerabilities(ctx, field)
 			case "Authors":
 				return ec.fieldContext_ImageSummary_Authors(ctx, field)
+			case "Logo":
+				return ec.fieldContext_ImageSummary_Logo(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -4591,6 +4651,8 @@ func (ec *executionContext) fieldContext_Query_DerivedImageList(ctx context.Cont
 				return ec.fieldContext_ImageSummary_Vulnerabilities(ctx, field)
 			case "Authors":
 				return ec.fieldContext_ImageSummary_Authors(ctx, field)
+			case "Logo":
+				return ec.fieldContext_ImageSummary_Logo(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -4687,6 +4749,8 @@ func (ec *executionContext) fieldContext_Query_BaseImageList(ctx context.Context
 				return ec.fieldContext_ImageSummary_Vulnerabilities(ctx, field)
 			case "Authors":
 				return ec.fieldContext_ImageSummary_Authors(ctx, field)
+			case "Logo":
+				return ec.fieldContext_ImageSummary_Logo(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -4783,6 +4847,8 @@ func (ec *executionContext) fieldContext_Query_Image(ctx context.Context, field 
 				return ec.fieldContext_ImageSummary_Vulnerabilities(ctx, field)
 			case "Authors":
 				return ec.fieldContext_ImageSummary_Authors(ctx, field)
+			case "Logo":
+				return ec.fieldContext_ImageSummary_Logo(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -5289,6 +5355,8 @@ func (ec *executionContext) fieldContext_RepoInfo_Images(ctx context.Context, fi
 				return ec.fieldContext_ImageSummary_Vulnerabilities(ctx, field)
 			case "Authors":
 				return ec.fieldContext_ImageSummary_Authors(ctx, field)
+			case "Logo":
+				return ec.fieldContext_ImageSummary_Logo(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -5691,6 +5759,8 @@ func (ec *executionContext) fieldContext_RepoSummary_NewestImage(ctx context.Con
 				return ec.fieldContext_ImageSummary_Vulnerabilities(ctx, field)
 			case "Authors":
 				return ec.fieldContext_ImageSummary_Authors(ctx, field)
+			case "Logo":
+				return ec.fieldContext_ImageSummary_Logo(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -8001,6 +8071,10 @@ func (ec *executionContext) _ImageSummary(ctx context.Context, sel ast.Selection
 		case "Authors":
 
 			out.Values[i] = ec._ImageSummary_Authors(ctx, field, obj)
+
+		case "Logo":
+
+			out.Values[i] = ec._ImageSummary_Logo(ctx, field, obj)
 
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
