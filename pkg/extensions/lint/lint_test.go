@@ -4,24 +4,35 @@
 package lint_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/color"
+	"image/gif"
+	"image/jpeg"
+	"image/png"
 	"net/http"
 	"os"
 	"path"
 	"testing"
 
+	webp "github.com/chai2010/webp"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/lint"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
 )
@@ -29,6 +40,7 @@ import (
 const (
 	username               = "test"
 	passphrase             = "test"
+	repoName               = "test"
 	ServerCert             = "../../test/data/server.cert"
 	ServerKey              = "../../test/data/server.key"
 	CACert                 = "../../test/data/ca.crt"
@@ -37,6 +49,8 @@ const (
 	ALICE                  = "alice"
 	AuthorizationNamespace = "authz/image"
 	AuthorizationAllRepos  = "**"
+	tag                    = "1.0"
+	logoKey                = "com.zot.logo"
 )
 
 func TestVerifyMandatoryAnnotations(t *testing.T) {
@@ -904,6 +918,321 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
+	})
+}
+
+func TestValidateLogo(t *testing.T) {
+	Convey("Make manifest", t, func(c C) {
+		dir := t.TempDir()
+
+		enabled := true
+
+		lintConfig := &extconf.LintConfig{
+			Enabled:              &enabled,
+			MandatoryAnnotations: []string{logoKey},
+		}
+
+		linter := lint.NewLinter(lintConfig, log.NewLogger("debug", ""))
+
+		log := log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, log)
+		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true,
+			true, log, metrics, linter)
+
+		content := []byte("this is a blob")
+		digest := godigest.FromBytes(content)
+		So(digest, ShouldNotBeNil)
+
+		_, blen, err := imgStore.FullBlobUpload(repoName, bytes.NewReader(content), digest.String())
+		So(err, ShouldBeNil)
+		So(blen, ShouldEqual, len(content))
+
+		cblob, cdigest := test.GetRandomImageConfig()
+		_, clen, err := imgStore.FullBlobUpload(repoName, bytes.NewReader(cblob), cdigest.String())
+		So(err, ShouldBeNil)
+		So(clen, ShouldEqual, len(cblob))
+
+		Convey("Check logo in annotations", func() {
+			annotationsMap := make(map[string]string)
+			annotationsMap[ispec.AnnotationRefName] = tag
+
+			cblob, cdigest := test.GetRandomImageConfig()
+			_, clen, err := imgStore.FullBlobUpload(repoName, bytes.NewReader(cblob), cdigest.String())
+			So(err, ShouldBeNil)
+			So(clen, ShouldEqual, len(cblob))
+			hasBlob, _, err := imgStore.CheckBlob(repoName, cdigest.String())
+			So(err, ShouldBeNil)
+			So(hasBlob, ShouldEqual, true)
+
+			Convey("logo string not in base64 encoding", func() {
+				annotationsMap[logoKey] = "invalid"
+
+				manifest := ispec.Manifest{
+					Config: ispec.Descriptor{
+						MediaType: "application/vnd.oci.image.config.v1+json",
+						Digest:    cdigest,
+						Size:      int64(len(cblob)),
+					},
+					Layers: []ispec.Descriptor{
+						{
+							MediaType: "application/vnd.oci.image.layer.v1.tar",
+							Digest:    digest,
+							Size:      int64(len(content)),
+						},
+					},
+					Annotations: annotationsMap,
+				}
+
+				manifest.SchemaVersion = 2
+				manifestBuf, err := json.Marshal(manifest)
+				So(err, ShouldBeNil)
+				digest = godigest.FromBytes(manifestBuf)
+
+				_, err = imgStore.PutImageManifest(repoName, "1.0", ispec.MediaTypeImageManifest, manifestBuf)
+				So(err, ShouldEqual, zerr.ErrImageLintAnnotations)
+			})
+
+			Convey("base64 encoded, but not an image format", func() {
+				logoEncoding := base64.StdEncoding.EncodeToString([]byte("invalid"))
+
+				annotationsMap[logoKey] = logoEncoding
+
+				manifest := ispec.Manifest{
+					Config: ispec.Descriptor{
+						MediaType: "application/vnd.oci.image.config.v1+json",
+						Digest:    cdigest,
+						Size:      int64(len(cblob)),
+					},
+					Layers: []ispec.Descriptor{
+						{
+							MediaType: "application/vnd.oci.image.layer.v1.tar",
+							Digest:    digest,
+							Size:      int64(len(content)),
+						},
+					},
+					Annotations: annotationsMap,
+				}
+
+				manifest.SchemaVersion = 2
+				manifestBuf, err := json.Marshal(manifest)
+				So(err, ShouldBeNil)
+				digest = godigest.FromBytes(manifestBuf)
+
+				_, err = imgStore.PutImageManifest(repoName, "1.0", ispec.MediaTypeImageManifest, manifestBuf)
+				So(err, ShouldEqual, zerr.ErrImageLintAnnotations)
+			})
+
+			Convey("base64 encoded, but invalid image format", func() {
+				width := 190
+				height := 190
+
+				upLeft := image.Point{0, 0}
+				lowRight := image.Point{width, height}
+				logoImage := image.NewRGBA(image.Rectangle{upLeft, lowRight})
+
+				buff := new(bytes.Buffer)
+				err := webp.Encode(buff, logoImage, nil)
+				So(err, ShouldBeNil)
+				logoEncoding := base64.StdEncoding.EncodeToString(buff.Bytes())
+				annotationsMap[logoKey] = logoEncoding
+
+				manifest := ispec.Manifest{
+					Config: ispec.Descriptor{
+						MediaType: "application/vnd.oci.image.config.v1+json",
+						Digest:    cdigest,
+						Size:      int64(len(cblob)),
+					},
+					Layers: []ispec.Descriptor{
+						{
+							MediaType: "application/vnd.oci.image.layer.v1.tar",
+							Digest:    digest,
+							Size:      int64(len(content)),
+						},
+					},
+					Annotations: annotationsMap,
+				}
+
+				manifest.SchemaVersion = 2
+				manifestBuf, err := json.Marshal(manifest)
+				So(err, ShouldBeNil)
+				digest = godigest.FromBytes(manifestBuf)
+
+				_, err = imgStore.PutImageManifest(repoName, "1.0", ispec.MediaTypeImageManifest, manifestBuf)
+				So(err, ShouldEqual, zerr.ErrImageLintAnnotations)
+			})
+
+			Convey("bad logo size", func() {
+				width := 250
+				height := 190
+
+				upLeft := image.Point{0, 0}
+				lowRight := image.Point{width, height}
+				logo := image.NewRGBA(image.Rectangle{upLeft, lowRight})
+
+				buff := new(bytes.Buffer)
+				err := png.Encode(buff, logo)
+				So(err, ShouldBeNil)
+
+				logoEncoding := base64.StdEncoding.EncodeToString(buff.Bytes())
+
+				annotationsMap[logoKey] = logoEncoding
+
+				manifest := ispec.Manifest{
+					Config: ispec.Descriptor{
+						MediaType: "application/vnd.oci.image.config.v1+json",
+						Digest:    cdigest,
+						Size:      int64(len(cblob)),
+					},
+					Layers: []ispec.Descriptor{
+						{
+							MediaType: "application/vnd.oci.image.layer.v1.tar",
+							Digest:    digest,
+							Size:      int64(len(content)),
+						},
+					},
+					Annotations: annotationsMap,
+				}
+
+				manifest.SchemaVersion = 2
+				manifestBuf, err := json.Marshal(manifest)
+				So(err, ShouldBeNil)
+				digest = godigest.FromBytes(manifestBuf)
+
+				_, err = imgStore.PutImageManifest(repoName, "1.0", ispec.MediaTypeImageManifest, manifestBuf)
+				So(err, ShouldEqual, zerr.ErrImageLintAnnotations)
+			})
+
+			Convey("logo with good png format", func() {
+				width := 190
+				height := 190
+
+				upLeft := image.Point{0, 0}
+				lowRight := image.Point{width, height}
+				logo := image.NewRGBA(image.Rectangle{upLeft, lowRight})
+
+				buff := new(bytes.Buffer)
+				err := png.Encode(buff, logo)
+				So(err, ShouldBeNil)
+
+				logoEncoding := base64.StdEncoding.EncodeToString(buff.Bytes())
+
+				annotationsMap[logoKey] = logoEncoding
+
+				manifest := ispec.Manifest{
+					Config: ispec.Descriptor{
+						MediaType: "application/vnd.oci.image.config.v1+json",
+						Digest:    cdigest,
+						Size:      int64(len(cblob)),
+					},
+					Layers: []ispec.Descriptor{
+						{
+							MediaType: "application/vnd.oci.image.layer.v1.tar",
+							Digest:    digest,
+							Size:      int64(len(content)),
+						},
+					},
+					Annotations: annotationsMap,
+				}
+
+				manifest.SchemaVersion = 2
+				manifestBuf, err := json.Marshal(manifest)
+				So(err, ShouldBeNil)
+				digest = godigest.FromBytes(manifestBuf)
+
+				_, err = imgStore.PutImageManifest(repoName, "1.0", ispec.MediaTypeImageManifest, manifestBuf)
+				So(err, ShouldBeNil)
+			})
+
+			Convey("logo with good jpeg format", func() {
+				width := 190
+				height := 190
+
+				upLeft := image.Point{0, 0}
+				lowRight := image.Point{width, height}
+				logo := image.NewRGBA(image.Rectangle{upLeft, lowRight})
+
+				buff := new(bytes.Buffer)
+				err := jpeg.Encode(buff, logo, nil)
+				So(err, ShouldBeNil)
+
+				logoEncoding := base64.StdEncoding.EncodeToString(buff.Bytes())
+
+				annotationsMap[logoKey] = logoEncoding
+
+				manifest := ispec.Manifest{
+					Config: ispec.Descriptor{
+						MediaType: "application/vnd.oci.image.config.v1+json",
+						Digest:    cdigest,
+						Size:      int64(len(cblob)),
+					},
+					Layers: []ispec.Descriptor{
+						{
+							MediaType: "application/vnd.oci.image.layer.v1.tar",
+							Digest:    digest,
+							Size:      int64(len(content)),
+						},
+					},
+					Annotations: annotationsMap,
+				}
+
+				manifest.SchemaVersion = 2
+				manifestBuf, err := json.Marshal(manifest)
+				So(err, ShouldBeNil)
+				digest = godigest.FromBytes(manifestBuf)
+
+				_, err = imgStore.PutImageManifest(repoName, "1.0", ispec.MediaTypeImageManifest, manifestBuf)
+				So(err, ShouldBeNil)
+			})
+
+			Convey("logo with good gif format", func() {
+				width := 190
+				height := 190
+
+				upLeft := image.Point{0, 0}
+				lowRight := image.Point{width, height}
+				palette := []color.Color{color.White, color.Black}
+				rect := image.Rectangle{upLeft, lowRight}
+				logo := image.NewPaletted(rect, palette)
+
+				logo.SetColorIndex(width/2, height/2, 1)
+
+				anim := gif.GIF{Delay: []int{0}, Image: []*image.Paletted{logo}}
+
+				buff := new(bytes.Buffer)
+				err := gif.EncodeAll(buff, &anim)
+
+				// err := png.Encode(buff, logo)
+				So(err, ShouldBeNil)
+
+				logoEncoding := base64.StdEncoding.EncodeToString(buff.Bytes())
+
+				annotationsMap[logoKey] = logoEncoding
+
+				manifest := ispec.Manifest{
+					Config: ispec.Descriptor{
+						MediaType: "application/vnd.oci.image.config.v1+json",
+						Digest:    cdigest,
+						Size:      int64(len(cblob)),
+					},
+					Layers: []ispec.Descriptor{
+						{
+							MediaType: "application/vnd.oci.image.layer.v1.tar",
+							Digest:    digest,
+							Size:      int64(len(content)),
+						},
+					},
+					Annotations: annotationsMap,
+				}
+
+				manifest.SchemaVersion = 2
+				manifestBuf, err := json.Marshal(manifest)
+				So(err, ShouldBeNil)
+				digest = godigest.FromBytes(manifestBuf)
+
+				_, err = imgStore.PutImageManifest(repoName, "1.0", ispec.MediaTypeImageManifest, manifestBuf)
+				So(err, ShouldBeNil)
+			})
+		})
 	})
 }
 

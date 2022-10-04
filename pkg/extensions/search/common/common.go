@@ -21,6 +21,7 @@ const (
 	LabelAnnotationTitle         = "org.label-schema.name"
 	LabelAnnotationDocumentation = "org.label-schema.usage"
 	LabelAnnotationSource        = "org.label-schema.vcs-url"
+	logoKey                      = "com.zot.logo"
 )
 
 type TagInfo struct {
@@ -167,6 +168,7 @@ type ImageAnnotations struct {
 	Source        string
 	Labels        string
 	Vendor        string
+	Logo          string
 }
 
 /*
@@ -217,6 +219,12 @@ func GetCategories(labels map[string]string) string {
 	return categories
 }
 
+func GetLogo(annotations map[string]string) string {
+	logo := annotations[logoKey]
+
+	return logo
+}
+
 func GetAnnotations(annotations, labels map[string]string) ImageAnnotations {
 	description := GetDescription(annotations)
 	if description == "" {
@@ -253,6 +261,11 @@ func GetAnnotations(annotations, labels map[string]string) ImageAnnotations {
 		vendor = GetVendor(labels)
 	}
 
+	logo := GetLogo(annotations)
+	if logo == "" {
+		logo = GetLogo(labels)
+	}
+
 	return ImageAnnotations{
 		Description:   description,
 		Title:         title,
@@ -261,5 +274,6 @@ func GetAnnotations(annotations, labels map[string]string) ImageAnnotations {
 		Licenses:      licenses,
 		Labels:        categories,
 		Vendor:        vendor,
+		Logo:          logo,
 	}
 }

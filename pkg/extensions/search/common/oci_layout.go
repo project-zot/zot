@@ -465,6 +465,7 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error)
 			Source:        annotations.Source,
 			Layers:        layers,
 			History:       allHistory,
+			Logo:          annotations.Logo,
 		}
 
 		imageSummaries = append(imageSummaries, imageSummary)
