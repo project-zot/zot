@@ -307,6 +307,7 @@ func (r *queryResolver) ExpandedRepoInfo(ctx context.Context, repo string) (*gql
 		Licenses:      &origRepoInfo.Summary.NewestImage.Licenses,
 		Labels:        &origRepoInfo.Summary.NewestImage.Labels,
 		Source:        &origRepoInfo.Summary.NewestImage.Source,
+		Logo:          &origRepoInfo.Summary.NewestImage.Logo,
 	}
 
 	for _, platform := range origRepoInfo.Summary.Platforms {
@@ -333,8 +334,9 @@ func (r *queryResolver) ExpandedRepoInfo(ctx context.Context, repo string) (*gql
 		digest := image.Digest
 		isSigned := image.IsSigned
 		size := image.Size
+		logo := image.Logo
 
-		imageSummary := &gql_generated.ImageSummary{Tag: &tag, Digest: &digest, IsSigned: &isSigned, RepoName: &repo}
+		imageSummary := &gql_generated.ImageSummary{Tag: &tag, Digest: &digest, IsSigned: &isSigned, RepoName: &repo, Logo: &logo}
 
 		layers := make([]*gql_generated.LayerSummary, 0)
 

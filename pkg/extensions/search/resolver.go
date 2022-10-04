@@ -235,6 +235,7 @@ func repoListWithNewestImage(
 					MaxSeverity: &imageCveSummary.MaxSeverity,
 					Count:       &imageCveSummary.Count,
 				},
+				Logo: &annotations.Logo,
 			}
 
 			if manifest.Digest.String() == lastUpdatedTag.Digest {
@@ -424,6 +425,7 @@ func globalSearch(repoList []string, name, tag string, olu common.OciLayoutUtils
 						MaxSeverity: &imageCveSummary.MaxSeverity,
 						Count:       &imageCveSummary.Count,
 					},
+					Logo: &annotations.Logo,
 				}
 
 				if manifest.Digest.String() == lastUpdatedTag.Digest {
@@ -621,6 +623,7 @@ func BuildImageInfo(repo string, tag string, manifestDigest godigest.Digest,
 				Os:   &imageConfig.OS,
 				Arch: &imageConfig.Architecture,
 			},
+			Logo: &annotations.Logo,
 		}
 
 		return imageInfo
@@ -670,6 +673,7 @@ func BuildImageInfo(repo string, tag string, manifestDigest godigest.Digest,
 					Os:   &imageConfig.OS,
 					Arch: &imageConfig.Architecture,
 				},
+				Logo: &annotations.Logo,
 			}
 		}
 
@@ -715,6 +719,7 @@ func BuildImageInfo(repo string, tag string, manifestDigest godigest.Digest,
 			Os:   &imageConfig.OS,
 			Arch: &imageConfig.Architecture,
 		},
+		Logo: &annotations.Logo,
 	}
 
 	return imageInfo
