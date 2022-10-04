@@ -118,6 +118,7 @@ func RepoMeta2RepoSummary(ctx context.Context, repoMeta repodb.RepoMetadata,
 			Licenses:      &annotations.Licenses,
 			Labels:        &annotations.Labels,
 			Source:        &annotations.Source,
+			Logo:          &annotations.Logo,
 			Authors:       &authors,
 			History:       historyEntries,
 			Vulnerabilities: &gql_generated.ImageVulnerabilitySummary{
@@ -297,6 +298,7 @@ func RepoMeta2ImageSummaries(ctx context.Context, repoMeta repodb.RepoMetadata,
 			Licenses:      &annotations.Licenses,
 			Labels:        &annotations.Labels,
 			Source:        &annotations.Source,
+			Logo:          &annotations.Logo,
 			Authors:       &authors,
 			History:       historyEntries,
 			Vulnerabilities: &gql_generated.ImageVulnerabilitySummary{
@@ -403,6 +405,7 @@ func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta repodb.RepoMetadata
 			Licenses:      &annotations.Licenses,
 			Labels:        &annotations.Labels,
 			Source:        &annotations.Source,
+			Logo:          &annotations.Logo,
 			Authors:       &authors,
 			Vulnerabilities: &gql_generated.ImageVulnerabilitySummary{
 				MaxSeverity: &imageCveSummary.MaxSeverity,
