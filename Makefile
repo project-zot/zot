@@ -172,7 +172,7 @@ check-licenses:
 					echo FAIL; \
 					exit 1; \
 				fi; \
-				echo "$${result}" | egrep -q "missing go.sum entry|no required module provides package|build constraints exclude all|updates to go.mod needed"; \
+				echo "$${result}" | egrep -q "missing go.sum entry|no required module provides package|build constraints exclude all|updates to go.mod needed|non-Go code"; \
 				if [ $$? -eq 0 ]; then \
 					echo UNKNOWN; \
 					break; \
