@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -26,6 +27,7 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
+	"zotregistry.io/zot/pkg/test/mocks"
 )
 
 const (
@@ -454,99 +456,226 @@ func TestSyncInternal(t *testing.T) {
 		manifestContent, _, _, err := testImageStore.GetImageManifest(testImage, testImageTag)
 		So(err, ShouldBeNil)
 
-		var manifest ispec.Manifest
+		Convey("index image errors", func() {
+			// create an image index on upstream
+			repo := "index"
 
-		if err := json.Unmarshal(manifestContent, &manifest); err != nil {
-			panic(err)
-		}
+			var index ispec.Index
+			index.SchemaVersion = 2
+			index.MediaType = ispec.MediaTypeImageIndex
 
-		if err := os.Chmod(storageDir, 0o000); err != nil {
-			panic(err)
-		}
+			// upload multiple manifests
+			for i := 0; i < 2; i++ {
+				config, layers, manifest, err := test.GetImageComponents(1000 + i)
+				So(err, ShouldBeNil)
 
-		if os.Geteuid() != 0 {
-			So(func() {
-				_ = pushSyncedLocalImage(testImage, testImageTag, testRootDir, imageStore, log)
-			}, ShouldPanic)
-		}
+				for _, layer := range layers {
+					// upload layer
+					_, _, err := testImageStore.FullBlobUpload(repo, bytes.NewReader(layer), godigest.FromBytes(layer).String())
+					So(err, ShouldBeNil)
+				}
 
-		if err := os.Chmod(storageDir, 0o755); err != nil {
-			panic(err)
-		}
+				configContent, err := json.Marshal(config)
+				So(err, ShouldBeNil)
 
-		if err := os.Chmod(path.Join(testRootDir, testImage, "blobs", "sha256",
-			manifest.Layers[0].Digest.Hex()), 0o000); err != nil {
-			panic(err)
-		}
+				configDigest := godigest.FromBytes(configContent)
 
-		err = pushSyncedLocalImage(testImage, testImageTag, testRootDir, imageStore, log)
-		So(err, ShouldNotBeNil)
+				_, _, err = testImageStore.FullBlobUpload(repo, bytes.NewReader(configContent), configDigest.String())
+				So(err, ShouldBeNil)
 
-		if err := os.Chmod(path.Join(testRootDir, testImage, "blobs", "sha256",
-			manifest.Layers[0].Digest.Hex()), 0o755); err != nil {
-			panic(err)
-		}
+				manifestContent, err := json.Marshal(manifest)
+				So(err, ShouldBeNil)
 
-		cachedManifestConfigPath := path.Join(imageStore.RootDir(), testImage, SyncBlobUploadDir,
-			testImage, "blobs", "sha256", manifest.Config.Digest.Hex())
-		if err := os.Chmod(cachedManifestConfigPath, 0o000); err != nil {
-			panic(err)
-		}
+				manifestDigest := godigest.FromBytes(manifestContent)
 
-		err = pushSyncedLocalImage(testImage, testImageTag, testRootDir, imageStore, log)
-		So(err, ShouldNotBeNil)
+				_, err = testImageStore.PutImageManifest(repo, manifestDigest.String(),
+					ispec.MediaTypeImageManifest, manifestContent)
+				So(err, ShouldBeNil)
 
-		if err := os.Chmod(cachedManifestConfigPath, 0o755); err != nil {
-			panic(err)
-		}
+				index.Manifests = append(index.Manifests, ispec.Descriptor{
+					Digest:    manifestDigest,
+					MediaType: ispec.MediaTypeImageManifest,
+					Size:      int64(len(manifestContent)),
+				})
+			}
 
-		cachedManifestBackup, err := os.ReadFile(cachedManifestConfigPath)
-		if err != nil {
-			panic(err)
-		}
+			content, err := json.Marshal(index)
+			So(err, ShouldBeNil)
+			digest := godigest.FromBytes(content)
+			So(digest, ShouldNotBeNil)
 
-		configDigestBackup := manifest.Config.Digest
-		manifest.Config.Digest = "not what it needs to be"
-		manifestBuf, err := json.Marshal(manifest)
-		if err != nil {
-			panic(err)
-		}
+			// upload index image
+			_, err = testImageStore.PutImageManifest(repo, "latest", ispec.MediaTypeImageIndex, content)
+			So(err, ShouldBeNil)
 
-		if err = os.WriteFile(cachedManifestConfigPath, manifestBuf, 0o600); err != nil {
-			panic(err)
-		}
+			err = pushSyncedLocalImage(repo, "latest", testRootDir, imageStore, log)
+			So(err, ShouldBeNil)
 
-		if err = os.Chmod(cachedManifestConfigPath, 0o755); err != nil {
-			panic(err)
-		}
+			// trigger  error on manifest pull
+			err = os.Chmod(path.Join(testRootDir, repo, "blobs",
+				index.Manifests[0].Digest.Algorithm().String(), index.Manifests[0].Digest.Encoded()), 0o000)
+			So(err, ShouldBeNil)
 
-		err = pushSyncedLocalImage(testImage, testImageTag, testRootDir, imageStore, log)
-		So(err, ShouldNotBeNil)
+			err = pushSyncedLocalImage(repo, "latest", testRootDir, imageStore, log)
+			So(err, ShouldNotBeNil)
 
-		manifest.Config.Digest = configDigestBackup
-		manifestBuf = cachedManifestBackup
+			err = os.Chmod(path.Join(testRootDir, repo, "blobs",
+				index.Manifests[0].Digest.Algorithm().String(), index.Manifests[0].Digest.Encoded()), local.DefaultDirPerms)
+			So(err, ShouldBeNil)
 
-		if err := os.Remove(cachedManifestConfigPath); err != nil {
-			panic(err)
-		}
+			// trigger linter error on manifest push
+			imageStoreWithLinter := local.NewImageStore(t.TempDir(), false, storage.DefaultGCDelay,
+				false, false, log, metrics, &mocks.MockedLint{
+					LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storage.ImageStore) (bool, error) {
+						return false, nil
+					},
+				},
+			)
 
-		if err = os.WriteFile(cachedManifestConfigPath, manifestBuf, 0o600); err != nil {
-			panic(err)
-		}
+			err = pushSyncedLocalImage(repo, "latest", testRootDir, imageStoreWithLinter, log)
+			// linter error will be ignored by sync
+			So(err, ShouldBeNil)
 
-		if err = os.Chmod(cachedManifestConfigPath, 0o755); err != nil {
-			panic(err)
-		}
+			// trigger error on blob
+			var manifest ispec.Manifest
 
-		mDigest := godigest.FromBytes(manifestContent)
+			manifestContent, _, mediaType, err := testImageStore.GetImageManifest(repo, index.Manifests[0].Digest.String())
+			So(err, ShouldBeNil)
+			So(mediaType, ShouldEqual, ispec.MediaTypeImageManifest)
 
-		manifestPath := path.Join(imageStore.RootDir(), testImage, "blobs", mDigest.Algorithm().String(), mDigest.Encoded())
-		if err := os.MkdirAll(manifestPath, 0o000); err != nil {
-			panic(err)
-		}
+			err = json.Unmarshal(manifestContent, &manifest)
+			So(err, ShouldBeNil)
 
-		err = pushSyncedLocalImage(testImage, testImageTag, testRootDir, imageStore, log)
-		So(err, ShouldNotBeNil)
+			configBlobPath := path.Join(testRootDir, repo, "blobs",
+				manifest.Config.Digest.Algorithm().String(), manifest.Config.Digest.Encoded())
+			err = os.Chmod(configBlobPath, 0o000)
+			So(err, ShouldBeNil)
+
+			// remove destination blob, so that pushSyncedLocalImage will try to push it again
+			err = os.Remove(path.Join(imageStore.RootDir(), repo, "blobs",
+				manifest.Config.Digest.Algorithm().String(), manifest.Config.Digest.Encoded()))
+			So(err, ShouldBeNil)
+
+			err = pushSyncedLocalImage(repo, "latest", testRootDir, imageStore, log)
+			So(err, ShouldNotBeNil)
+
+			err = os.Chmod(configBlobPath, local.DefaultDirPerms)
+			So(err, ShouldBeNil)
+
+			err = os.RemoveAll(path.Join(imageStore.RootDir(), repo, "index.json"))
+			So(err, ShouldBeNil)
+
+			// remove destination blob, so that pushSyncedLocalImage will try to push it again
+			indexManifestPath := path.Join(imageStore.RootDir(), repo, "blobs",
+				digest.Algorithm().String(), digest.Encoded())
+			err = os.Remove(indexManifestPath)
+			So(err, ShouldBeNil)
+
+			err = os.MkdirAll(indexManifestPath, 0o000)
+			So(err, ShouldBeNil)
+
+			err = pushSyncedLocalImage(repo, "latest", testRootDir, imageStore, log)
+			So(err, ShouldNotBeNil)
+
+			err = os.Remove(indexManifestPath)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("manifest image errors", func() {
+			var manifest ispec.Manifest
+
+			if err := json.Unmarshal(manifestContent, &manifest); err != nil {
+				panic(err)
+			}
+
+			if err := os.Chmod(storageDir, 0o000); err != nil {
+				panic(err)
+			}
+
+			if os.Geteuid() != 0 {
+				So(func() {
+					_ = pushSyncedLocalImage(testImage, testImageTag, testRootDir, imageStore, log)
+				}, ShouldPanic)
+			}
+
+			if err := os.Chmod(storageDir, 0o755); err != nil {
+				panic(err)
+			}
+
+			if err := os.Chmod(path.Join(testRootDir, testImage, "blobs", "sha256",
+				manifest.Layers[0].Digest.Hex()), 0o000); err != nil {
+				panic(err)
+			}
+
+			err = pushSyncedLocalImage(testImage, testImageTag, testRootDir, imageStore, log)
+			So(err, ShouldNotBeNil)
+
+			if err := os.Chmod(path.Join(testRootDir, testImage, "blobs", "sha256",
+				manifest.Layers[0].Digest.Hex()), 0o755); err != nil {
+				panic(err)
+			}
+
+			cachedManifestConfigPath := path.Join(imageStore.RootDir(), testImage, SyncBlobUploadDir,
+				testImage, "blobs", "sha256", manifest.Config.Digest.Hex())
+			if err := os.Chmod(cachedManifestConfigPath, 0o000); err != nil {
+				panic(err)
+			}
+
+			err = pushSyncedLocalImage(testImage, testImageTag, testRootDir, imageStore, log)
+			So(err, ShouldNotBeNil)
+
+			if err := os.Chmod(cachedManifestConfigPath, 0o755); err != nil {
+				panic(err)
+			}
+
+			cachedManifestBackup, err := os.ReadFile(cachedManifestConfigPath)
+			if err != nil {
+				panic(err)
+			}
+
+			configDigestBackup := manifest.Config.Digest
+			manifest.Config.Digest = "not what it needs to be"
+			manifestBuf, err := json.Marshal(manifest)
+			if err != nil {
+				panic(err)
+			}
+
+			if err = os.WriteFile(cachedManifestConfigPath, manifestBuf, 0o600); err != nil {
+				panic(err)
+			}
+
+			if err = os.Chmod(cachedManifestConfigPath, 0o755); err != nil {
+				panic(err)
+			}
+
+			err = pushSyncedLocalImage(testImage, testImageTag, testRootDir, imageStore, log)
+			So(err, ShouldNotBeNil)
+
+			manifest.Config.Digest = configDigestBackup
+			manifestBuf = cachedManifestBackup
+
+			if err := os.Remove(cachedManifestConfigPath); err != nil {
+				panic(err)
+			}
+
+			if err = os.WriteFile(cachedManifestConfigPath, manifestBuf, 0o600); err != nil {
+				panic(err)
+			}
+
+			if err = os.Chmod(cachedManifestConfigPath, 0o755); err != nil {
+				panic(err)
+			}
+
+			mDigest := godigest.FromBytes(manifestContent)
+
+			manifestPath := path.Join(imageStore.RootDir(), testImage, "blobs", mDigest.Algorithm().String(), mDigest.Encoded())
+			if err := os.MkdirAll(manifestPath, 0o000); err != nil {
+				panic(err)
+			}
+
+			err = pushSyncedLocalImage(testImage, testImageTag, testRootDir, imageStore, log)
+			So(err, ShouldNotBeNil)
+		})
 	})
 }
 

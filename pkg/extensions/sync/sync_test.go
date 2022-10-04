@@ -4087,6 +4087,110 @@ func TestSyncWithDestination(t *testing.T) {
 	})
 }
 
+func TestSyncImageIndex(t *testing.T) {
+	Convey("Verify syncing image indexes works", t, func() {
+		updateDuration, _ := time.ParseDuration("30m")
+
+		sctlr, srcBaseURL, _, _, _ := startUpstreamServer(t, false, false)
+
+		defer func() {
+			sctlr.Shutdown()
+		}()
+
+		regex := ".*"
+		var semver bool
+		tlsVerify := false
+
+		syncRegistryConfig := sync.RegistryConfig{
+			Content: []sync.Content{
+				{
+					Prefix: "index",
+					Tags: &sync.Tags{
+						Regex:  &regex,
+						Semver: &semver,
+					},
+				},
+			},
+			URLs:         []string{srcBaseURL},
+			OnDemand:     false,
+			PollInterval: updateDuration,
+			TLSVerify:    &tlsVerify,
+		}
+
+		defaultVal := true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
+
+		// create an image index on upstream
+		var index ispec.Index
+		index.SchemaVersion = 2
+		index.MediaType = ispec.MediaTypeImageIndex
+
+		// upload multiple manifests
+		for i := 0; i < 4; i++ {
+			config, layers, manifest, err := test.GetImageComponents(1000 + i)
+			So(err, ShouldBeNil)
+
+			manifestContent, err := json.Marshal(manifest)
+			So(err, ShouldBeNil)
+
+			manifestDigest := godigest.FromBytes(manifestContent)
+
+			err = test.UploadImage(
+				test.Image{
+					Manifest: manifest,
+					Config:   config,
+					Layers:   layers,
+					Tag:      manifestDigest.String(),
+				},
+				srcBaseURL,
+				"index")
+			So(err, ShouldBeNil)
+
+			index.Manifests = append(index.Manifests, ispec.Descriptor{
+				Digest:    manifestDigest,
+				MediaType: ispec.MediaTypeImageManifest,
+				Size:      int64(len(manifestContent)),
+			})
+		}
+
+		content, err := json.Marshal(index)
+		So(err, ShouldBeNil)
+		digest := godigest.FromBytes(content)
+		So(digest, ShouldNotBeNil)
+		resp, err := resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+			SetBody(content).Put(srcBaseURL + "/v2/index/manifests/latest")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+		resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+			Get(srcBaseURL + "/v2/index/manifests/latest")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(resp.Body(), ShouldNotBeEmpty)
+		So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
+
+		// start downstream server
+		dctlr, destBaseURL, _, _ := startDownstreamServer(t, false, syncConfig)
+
+		defer func() {
+			dctlr.Shutdown()
+		}()
+
+		// give it time to set up sync
+		t.Logf("waitsync(%s, %s)", dctlr.Config.Storage.RootDirectory, "index")
+		waitSync(dctlr.Config.Storage.RootDirectory, "index")
+
+		resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+			Get(destBaseURL + "/v2/index/manifests/latest")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(resp.Body(), ShouldNotBeEmpty)
+		So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
+	})
+}
+
 func generateKeyPairs(tdir string) {
 	// generate a keypair
 	os.Setenv("COSIGN_PASSWORD", "")
