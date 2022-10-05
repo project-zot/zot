@@ -9,7 +9,7 @@ const (
 	RepoMetadataBucket     = "RepoMetadata"
 )
 
-type RepoDB interface {
+type RepoDB interface { //nolint:interfacebloat
 	// SetRepoDescription sets the repo description
 	SetRepoDescription(repo, description string) error
 

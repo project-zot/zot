@@ -16,8 +16,6 @@ import (
 	glob "github.com/bmatcuk/doublestar/v4"            //nolint:gci
 	v1 "github.com/google/go-containerregistry/pkg/v1" //nolint:gci
 	godigest "github.com/opencontainers/go-digest"
-	"zotregistry.io/zot/pkg/storage/repodb"
-
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/vektah/gqlparser/v2/gqlerror"
 	"zotregistry.io/zot/errors"
@@ -28,6 +26,7 @@ import (
 	"zotregistry.io/zot/pkg/log" //nolint: gci
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/repodb"
 ) // THIS CODE IS A STARTING POINT ONLY. IT WILL NOT BE UPDATED WITH SCHEMA CHANGES.
 
 // Resolver ...
@@ -305,7 +304,7 @@ func cleanQuerry(query string) string {
 }
 
 func globalSearch(ctx context.Context, query string, repoDB repodb.RepoDB, filter *gql_generated.Filter,
-	requestedPage *gql_generated.PageInput, cveInfo cveinfo.CveInfo, log log.Logger,
+	requestedPage *gql_generated.PageInput, cveInfo cveinfo.CveInfo, log log.Logger, //nolint:unparam
 ) ([]*gql_generated.RepoSummary, []*gql_generated.ImageSummary, []*gql_generated.LayerSummary, error,
 ) {
 	repos := []*gql_generated.RepoSummary{}

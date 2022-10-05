@@ -15,6 +15,7 @@ import (
 )
 
 // content is our static web server content.
+//
 //go:embed build/*
 var content embed.FS
 

@@ -8,9 +8,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"image"
-	_ "image/gif"  // nolint:gci  // imported for the registration of it's decoder func
-	_ "image/jpeg" // nolint:gci // imported for the registration of it's decoder func
-	_ "image/png"  // nolint:gci  // imported for the registration of it's decoder func
+	_ "image/gif"  //nolint:gci  // imported for the registration of it's decoder func
+	_ "image/jpeg" //nolint:gci // imported for the registration of it's decoder func
+	_ "image/png"  //nolint:gci  // imported for the registration of it's decoder func
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"

@@ -1271,7 +1271,7 @@ func generateTestImageManifest() ([]byte, []byte, error) {
 
 	// init layers with random values
 	for i := range layers {
-		// nolint:gosec
+		//nolint:gosec
 		_, err := rand.Read(layers[i])
 		if err != nil {
 			return []byte{}, []byte{}, err

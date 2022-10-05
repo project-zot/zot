@@ -440,7 +440,7 @@ func (c *Controller) InitRepoDB(reloadCtx context.Context) error {
 	return nil
 }
 
-func (c *Controller) createRepoDBDriver(reloadCtx context.Context) (repodb.RepoDB, error) {
+func (c *Controller) createRepoDBDriver(reloadCtx context.Context) (repodb.RepoDB, error) { //nolint:unparam
 	repoDBConfig := c.Config.Storage.RepoDBDriver
 
 	if repoDBConfig != nil {

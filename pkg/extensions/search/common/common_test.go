@@ -134,7 +134,7 @@ func testSetup(t *testing.T, subpath string) error { //nolint:unparam
 
 // triggerUploadForTestImages is paired with testSetup and is supposed to trigger events when pushing an image
 // by pushing just the manifest.
-func triggerUploadForTestImages(port, baseURL string) error {
+func triggerUploadForTestImages(baseURL string) error {
 	log := log.NewLogger("debug", "")
 	metrics := monitoring.NewMetricsServer(false, log)
 	storage := local.NewImageStore("../../../../test/data", false, storage.DefaultGCDelay,
@@ -455,7 +455,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		defer stopServer(ctlr)
 		WaitTillServerReady(baseURL)
 
-		err = triggerUploadForTestImages(port, GetBaseURL(port))
+		err = triggerUploadForTestImages(GetBaseURL(port))
 		So(err, ShouldBeNil)
 
 		resp, err := resty.R().Get(baseURL + "/v2/")
@@ -832,7 +832,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 			_ = ctlr.Server.Shutdown(ctx)
 		}()
 
-		err = triggerUploadForTestImages(port, GetBaseURL(port))
+		err = triggerUploadForTestImages(GetBaseURL(port))
 		So(err, ShouldBeNil)
 
 		log := log.NewLogger("debug", "")

@@ -808,7 +808,7 @@ func TestServerCVEResponse(t *testing.T) {
 	}(ctlr)
 
 	Convey("Test CVE by image name", t, func() {
-		err = triggerUploadForTestImages(port, url)
+		err = triggerUploadForTestImages(url)
 
 		args := []string{"cvetest", "--image", "zot-cve-test:0.0.1"}
 		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
@@ -956,7 +956,7 @@ func TestServerCVEResponse(t *testing.T) {
 
 // triggerUploadForTestImages is paired with testSetup and is supposed to trigger events when pushing an image
 // by pushing just the manifest.
-func triggerUploadForTestImages(port, baseURL string) error {
+func triggerUploadForTestImages(baseURL string) error {
 	log := log.NewLogger("debug", "")
 	metrics := monitoring.NewMetricsServer(false, log)
 	storage := local.NewImageStore("../../test/data/", false, storage.DefaultGCDelay,
