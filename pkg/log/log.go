@@ -13,7 +13,7 @@ import (
 
 const defaultPerms = 0o0600
 
-// nolint:gochecknoglobals
+//nolint:gochecknoglobals
 var loggerSetTimeFormat sync.Once
 
 // Logger extends zerolog's Logger.

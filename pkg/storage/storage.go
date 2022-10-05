@@ -14,7 +14,7 @@ const (
 	DefaultGCDelay      = 1 * time.Hour
 )
 
-type ImageStore interface {
+type ImageStore interface { //nolint:interfacebloat
 	DirExists(d string) bool
 	RootDir() string
 	RLock(*time.Time)

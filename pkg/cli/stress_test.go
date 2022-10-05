@@ -171,7 +171,7 @@ func worker(id int, zotPort, rootDir string) {
 			sourceImg, destImg,
 		}
 		err := exec.Command("skopeo", skopeoArgs...).Run()
-		if err != nil { // nolint: wsl
+		if err != nil { //nolint: wsl
 			continue // we expect clients to receive errors due to FD limit reached on server
 		}
 

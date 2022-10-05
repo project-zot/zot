@@ -22,7 +22,7 @@ type StorageDriverMock struct {
 	WalkFn       func(ctx context.Context, path string, f driver.WalkFn) error
 }
 
-// nolint: gochecknoglobals
+//nolint:gochecknoglobals
 var (
 	fileWriterSize = 12
 	fileInfoSize   = 10

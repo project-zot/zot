@@ -229,7 +229,7 @@ func (is *ImageStoreLocal) ValidateRepo(name string) (bool, error) {
 		return false, zerr.ErrRepoNotFound
 	}
 
-	if len(files) < 3 { // nolint:gomnd
+	if len(files) < 3 { //nolint:gomnd
 		return false, zerr.ErrRepoBadVersion
 	}
 
@@ -298,11 +298,11 @@ func (is *ImageStoreLocal) GetRepositories() ([]string, error) {
 
 		rel, err := filepath.Rel(is.rootDir, path)
 		if err != nil {
-			return nil // nolint:nilerr // ignore paths not relative to root dir
+			return nil //nolint:nilerr // ignore paths not relative to root dir
 		}
 
 		if ok, err := is.ValidateRepo(rel); !ok || err != nil {
-			return nil // nolint:nilerr // ignore invalid repos
+			return nil //nolint:nilerr // ignore invalid repos
 		}
 
 		// is.log.Debug().Str("dir", path).Str("name", info.Name()).Msg("found image store")
@@ -343,12 +343,12 @@ func (is *ImageStoreLocal) GetNextRepository(repo string) (string, error) {
 
 		rel, err := filepath.Rel(is.rootDir, path)
 		if err != nil {
-			return nil // nolint:nilerr // ignore paths not relative to root dir
+			return nil //nolint:nilerr // ignore paths not relative to root dir
 		}
 
 		ok, err := is.ValidateRepo(rel)
 		if !ok || err != nil {
-			return nil // nolint:nilerr // ignore invalid repos
+			return nil //nolint:nilerr // ignore invalid repos
 		}
 
 		if repo == "" && ok && err == nil {
@@ -427,7 +427,7 @@ func (is *ImageStoreLocal) GetImageManifest(repo, reference string) ([]byte, str
 }
 
 // PutImageManifest adds an image manifest to the repository.
-func (is *ImageStoreLocal) PutImageManifest(repo, reference, mediaType string, // nolint: gocyclo
+func (is *ImageStoreLocal) PutImageManifest(repo, reference, mediaType string, //nolint: gocyclo
 	body []byte,
 ) (string, error) {
 	if err := is.InitRepo(repo); err != nil {

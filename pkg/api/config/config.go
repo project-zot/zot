@@ -13,9 +13,9 @@ import (
 )
 
 var (
-	Commit     string // nolint: gochecknoglobals
-	BinaryType string // nolint: gochecknoglobals
-	GoVersion  string // nolint: gochecknoglobals
+	Commit     string //nolint: gochecknoglobals
+	BinaryType string //nolint: gochecknoglobals
+	GoVersion  string //nolint: gochecknoglobals
 )
 
 type StorageConfig struct {

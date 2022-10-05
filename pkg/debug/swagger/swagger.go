@@ -11,7 +11,7 @@ import (
 	"github.com/gorilla/mux"
 	httpSwagger "github.com/swaggo/http-swagger"
 	"zotregistry.io/zot/pkg/api/config"
-	"zotregistry.io/zot/pkg/log" // nolint:goimports
+	"zotregistry.io/zot/pkg/log" //nolint:goimports
 	// as required by swaggo.
 	_ "zotregistry.io/zot/swagger"
 )

@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/99designs/gqlgen/graphql"
-	glob "github.com/bmatcuk/doublestar/v4"            // nolint:gci
-	v1 "github.com/google/go-containerregistry/pkg/v1" // nolint:gci
+	glob "github.com/bmatcuk/doublestar/v4"            //nolint:gci
+	v1 "github.com/google/go-containerregistry/pkg/v1" //nolint:gci
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/vektah/gqlparser/v2/gqlerror"
@@ -23,7 +23,7 @@ import (
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	digestinfo "zotregistry.io/zot/pkg/extensions/search/digest"
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
-	"zotregistry.io/zot/pkg/log" // nolint: gci
+	"zotregistry.io/zot/pkg/log" //nolint: gci
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/storage"
 ) // THIS CODE IS A STARTING POINT ONLY. IT WILL NOT BE UPDATED WITH SCHEMA CHANGES.
@@ -88,7 +88,7 @@ func repoListWithNewestImage(
 	olu common.OciLayoutUtils,
 	cveInfo cveinfo.CveInfo,
 	log log.Logger,
-) ([]*gql_generated.RepoSummary, error) {
+) ([]*gql_generated.RepoSummary, error) { //nolint:unparam
 	reposSummary := []*gql_generated.RepoSummary{}
 
 	for _, repo := range repoList {
@@ -473,8 +473,10 @@ func globalSearch(repoList []string, name, tag string, olu common.OciLayoutUtils
 // The distance represents the score of the match.
 //
 // Example:
-// 	query: image
-// 	repos: repo/test/myimage
+//
+//	query: image
+//	repos: repo/test/myimage
+//
 // Score will be 2.
 func calculateImageMatchingScore(artefactName string, index int, matchesTag bool) int {
 	score := 0

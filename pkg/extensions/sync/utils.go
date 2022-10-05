@@ -249,7 +249,7 @@ func getHTTPClient(regCfg *RegistryConfig, upstreamURL string, credentials Crede
 		client.SetCertificates(cert)
 	}
 
-	// nolint: gosec
+	//nolint: gosec
 	if regCfg.TLSVerify != nil && !*regCfg.TLSVerify && registryURL.Scheme == "https" {
 		client.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true})
 	}

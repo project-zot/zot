@@ -21,7 +21,6 @@ import (
 	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/config"
 	ext "zotregistry.io/zot/pkg/extensions"
-	"zotregistry.io/zot/pkg/extensions/lint"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/scheduler"
@@ -31,7 +30,8 @@ import (
 )
 
 const (
-	idleTimeout = 120 * time.Second
+	idleTimeout       = 120 * time.Second
+	readHeaderTimeout = 5 * time.Second
 )
 
 type Controller struct {
@@ -162,14 +162,15 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 	monitoring.SetServerInfo(c.Metrics, c.Config.Commit, c.Config.BinaryType, c.Config.GoVersion,
 		c.Config.DistSpecVersion)
 
-	// nolint: contextcheck
+	//nolint: contextcheck
 	_ = NewRouteHandler(c)
 
 	addr := fmt.Sprintf("%s:%s", c.Config.HTTP.Address, c.Config.HTTP.Port)
 	server := &http.Server{
-		Addr:        addr,
-		Handler:     c.Router,
-		IdleTimeout: idleTimeout,
+		Addr:              addr,
+		Handler:           c.Router,
+		IdleTimeout:       idleTimeout,
+		ReadHeaderTimeout: readHeaderTimeout,
 	}
 	c.Server = server
 
@@ -264,7 +265,7 @@ func (c *Controller) InitImageStore(reloadCtx context.Context) error {
 		var defaultStore storage.ImageStore
 		if c.Config.Storage.StorageDriver == nil {
 			// false positive lint - linter does not implement Lint method
-			// nolint: typecheck
+			//nolint:typecheck
 			defaultStore = local.NewImageStore(c.Config.Storage.RootDirectory,
 				c.Config.Storage.GC, c.Config.Storage.GCDelay,
 				c.Config.Storage.Dedupe, c.Config.Storage.Commit, c.Log, c.Metrics, linter,
@@ -291,7 +292,7 @@ func (c *Controller) InitImageStore(reloadCtx context.Context) error {
 			}
 
 			// false positive lint - linter does not implement Lint method
-			// nolint: typecheck
+			//nolint: typecheck
 			defaultStore = s3.NewImageStore(rootDir, c.Config.Storage.RootDirectory,
 				c.Config.Storage.GC, c.Config.Storage.GCDelay, c.Config.Storage.Dedupe,
 				c.Config.Storage.Commit, c.Log, c.Metrics, linter, store)
@@ -326,7 +327,7 @@ func (c *Controller) InitImageStore(reloadCtx context.Context) error {
 }
 
 func (c *Controller) getSubStore(subPaths map[string]config.StorageConfig,
-	linter *lint.Linter,
+	linter storage.Lint,
 ) (map[string]storage.ImageStore, error) {
 	imgStoreMap := make(map[string]storage.ImageStore, 0)
 
@@ -398,7 +399,7 @@ func (c *Controller) getSubStore(subPaths map[string]config.StorageConfig,
 			}
 
 			// false positive lint - linter does not implement Lint method
-			// nolint: typecheck
+			//nolint: typecheck
 			subImageStore[route] = s3.NewImageStore(rootDir, storageConfig.RootDirectory,
 				storageConfig.GC, storageConfig.GCDelay,
 				storageConfig.Dedupe, storageConfig.Commit, c.Log, c.Metrics, linter, store,

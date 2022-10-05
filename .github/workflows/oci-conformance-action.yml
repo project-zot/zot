@@ -20,10 +20,10 @@ jobs:
     runs-on: ubuntu-latest
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-    - name: Install go 1.18
+    - name: Install go 1.19
       uses: actions/setup-go@v3
       with:
-        go-version: 1.18.x
+        go-version: 1.19.x
     - name: Checkout this PR 
       uses: actions/checkout@v3
     - name: Start zot server

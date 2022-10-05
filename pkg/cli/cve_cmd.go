@@ -174,7 +174,7 @@ func checkExtEndPoint(serverURL string) bool {
 		return false
 	}
 
-	// nolint: gosec
+	//nolint: gosec
 	resp, err := client.R().Get(extEndPoint)
 	if err != nil || resp.StatusCode() != http.StatusOK {
 		return false

@@ -6,7 +6,7 @@ function setup_file() {
         exit 1
     fi
     # Download test data to folder common for the entire suite, not just this file
-    skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.18 oci:${TEST_DATA_DIR}/golang:1.18
+    skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.19 oci:${TEST_DATA_DIR}/golang:1.19
     # Setup zot server
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
@@ -43,27 +43,27 @@ function teardown_file() {
 
 @test "push image" {
     run skopeo --insecure-policy copy --dest-tls-verify=false \
-        oci:${TEST_DATA_DIR}/golang:1.18 \
-        docker://127.0.0.1:8080/golang:1.18
+        oci:${TEST_DATA_DIR}/golang:1.19 \
+        docker://127.0.0.1:8080/golang:1.19
     [ "$status" -eq 0 ]
     run curl http://127.0.0.1:8080/v2/_catalog
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.repositories[]') = '"golang"' ]
     run curl http://127.0.0.1:8080/v2/golang/tags/list
     [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.18"' ]
+    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.19"' ]
 }
 
 @test "pull image" {
     local oci_data_dir=${BATS_FILE_TMPDIR}/oci
     run skopeo --insecure-policy copy --src-tls-verify=false \
-        docker://127.0.0.1:8080/golang:1.18 \
-        oci:${oci_data_dir}/golang:1.18
+        docker://127.0.0.1:8080/golang:1.19 \
+        oci:${oci_data_dir}/golang:1.19
     [ "$status" -eq 0 ]
     run cat ${BATS_FILE_TMPDIR}/oci/golang/index.json
     [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.manifests[].annotations."org.opencontainers.image.ref.name"') = '"1.18"' ]
-    run curl -X DELETE http://127.0.0.1:8080/v2/golang/manifests/1.18
+    [ $(echo "${lines[-1]}" | jq '.manifests[].annotations."org.opencontainers.image.ref.name"') = '"1.19"' ]
+    run curl -X DELETE http://127.0.0.1:8080/v2/golang/manifests/1.19
     [ "$status" -eq 0 ]
 }
 
@@ -136,7 +136,7 @@ function teardown_file() {
 @test "copy image with regclient" {
     run regctl registry set localhost:8080 --tls disabled
     [ "$status" -eq 0 ]
-    run regctl image copy ocidir://${TEST_DATA_DIR}/golang:1.18 localhost:8080/test-regclient
+    run regctl image copy ocidir://${TEST_DATA_DIR}/golang:1.19 localhost:8080/test-regclient
     [ "$status" -eq 0 ]
 }
 
@@ -184,6 +184,6 @@ EOF
 }
 
 @test "pull image with regclient" {
-    run regctl image copy localhost:8080/test-regclient ocidir://${TEST_DATA_DIR}/golang:1.18
+    run regctl image copy localhost:8080/test-regclient ocidir://${TEST_DATA_DIR}/golang:1.19
     [ "$status" -eq 0 ]
 }

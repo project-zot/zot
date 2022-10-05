@@ -1,7 +1,7 @@
 //go:build search
 // +build search
 
-// nolint: gochecknoinits
+//nolint:gochecknoinits
 package digestinfo_test
 
 import (
@@ -26,7 +26,7 @@ import (
 	. "zotregistry.io/zot/pkg/test"
 )
 
-// nolint:gochecknoglobals
+//nolint:gochecknoglobals
 var (
 	digestInfo *digestinfo.DigestInfo
 	rootDir    string

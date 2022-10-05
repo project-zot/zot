@@ -1,4 +1,4 @@
-package main // nolint:testpackage // separate binary
+package main //nolint:testpackage // separate binary
 
 import (
 	"testing"

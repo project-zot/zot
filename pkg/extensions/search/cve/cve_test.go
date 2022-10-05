@@ -1,7 +1,7 @@
 //go:build search
 // +build search
 
-// nolint:lll,gosimple
+//nolint:lll,gosimple
 package cveinfo_test
 
 import (
@@ -37,7 +37,7 @@ import (
 	"zotregistry.io/zot/pkg/test/mocks"
 )
 
-// nolint:gochecknoglobals
+//nolint:gochecknoglobals
 var (
 	cve            cveinfo.CveInfo
 	dbDir          string
@@ -109,7 +109,7 @@ func testSetup() error {
 	return nil
 }
 
-func generateTestData() error { // nolint: gocyclo
+func generateTestData() error { //nolint: gocyclo
 	// Image dir with no files
 	err := os.Mkdir(path.Join(dbDir, "zot-noindex-test"), 0o755)
 	if err != nil {

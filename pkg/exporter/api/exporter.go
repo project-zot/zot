@@ -1,7 +1,7 @@
 //go:build !metrics
 // +build !metrics
 
-// nolint: varnamelen
+//nolint:varnamelen
 package api
 
 import (
@@ -10,11 +10,17 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
+)
+
+const (
+	idleTimeout       = 120 * time.Second
+	readHeaderTimeout = 5 * time.Second
 )
 
 type Collector struct {
@@ -164,18 +170,24 @@ func GetCollector(c *Controller) *Collector {
 }
 
 func runExporter(c *Controller) {
+	exporterAddr := fmt.Sprintf(":%s", c.Config.Exporter.Port)
+	server := &http.Server{
+		Addr:              exporterAddr,
+		IdleTimeout:       idleTimeout,
+		ReadHeaderTimeout: readHeaderTimeout,
+	}
+
 	err := prometheus.Register(GetCollector(c))
 	if err != nil {
 		c.Log.Error().Err(err).Msg("Expected error in testing")
 	}
 
 	http.Handle(c.Config.Exporter.Metrics.Path, promhttp.Handler())
-	exporterAddr := fmt.Sprintf(":%s", c.Config.Exporter.Port)
 	c.Log.Info().Msgf("Exporter is listening on %s & exposes metrics on %s path",
 		exporterAddr, c.Config.Exporter.Metrics.Path)
 
 	serverAddr := fmt.Sprintf("%s://%s:%s", c.Config.Server.Protocol,
 		c.Config.Server.Host, c.Config.Server.Port)
 	c.Log.Info().Msgf("Scraping metrics from %s", serverAddr)
-	c.Log.Fatal().Err(http.ListenAndServe(exporterAddr, nil)).Msg("Exporter stopped")
+	c.Log.Fatal().Err(server.ListenAndServe()).Msg("Exporter stopped")
 }

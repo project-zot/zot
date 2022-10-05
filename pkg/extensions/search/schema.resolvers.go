@@ -64,7 +64,7 @@ func (r *queryResolver) ImageListForCve(ctx context.Context, id string) ([]*gql_
 
 	r.log.Info().Msg("extracting repositories")
 	repoList, err := olu.GetRepositories()
-	if err != nil { // nolint: wsl
+	if err != nil { //nolint: wsl
 		r.log.Error().Err(err).Msg("unable to search repositories")
 
 		return affectedImages, err

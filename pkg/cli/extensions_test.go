@@ -785,7 +785,7 @@ func TestServeSearchDisabled(t *testing.T) {
 	})
 }
 
-func readLogFileAndSearchString(logPath string, stringToMatch string, timeout time.Duration) (bool, error) {
+func readLogFileAndSearchString(logPath string, stringToMatch string, timeout time.Duration) (bool, error) { //nolint:unparam,lll
 	ctx, cancelFunc := context.WithTimeout(context.Background(), timeout)
 	defer cancelFunc()
 

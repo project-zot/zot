@@ -24,7 +24,7 @@ import (
 
 func TestElevatedPrivilegesTLSNewControllerPrivilegedCert(t *testing.T) {
 	Convey("Privileged certs - Make a new controller", t, func() {
-		cmd := exec.Command("mkdir", "-p", "/etc/containers/certs.d/127.0.0.1:8089/") // nolint: gosec
+		cmd := exec.Command("mkdir", "-p", "/etc/containers/certs.d/127.0.0.1:8089/") //nolint: gosec
 		_, err := cmd.Output()
 		if err != nil {
 			panic(err)
@@ -32,8 +32,8 @@ func TestElevatedPrivilegesTLSNewControllerPrivilegedCert(t *testing.T) {
 
 		defer exec.Command("rm", "-rf", "/etc/containers/certs.d/127.0.0.1:8089/")
 
-		wd, _ := os.Getwd()
-		os.Chdir("../../test/data")
+		workDir, _ := os.Getwd()
+		_ = os.Chdir("../../test/data")
 
 		clientGlob, _ := filepath.Glob("client.*")
 		caGlob, _ := filepath.Glob("ca.*")
@@ -64,7 +64,7 @@ func TestElevatedPrivilegesTLSNewControllerPrivilegedCert(t *testing.T) {
 			}
 		}
 
-		os.Chdir(wd)
+		_ = os.Chdir(workDir)
 
 		caCert, err := os.ReadFile(CACert)
 		So(err, ShouldBeNil)

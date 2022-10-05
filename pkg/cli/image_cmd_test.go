@@ -250,7 +250,7 @@ func TestSearchImageCmd(t *testing.T) {
 	})
 }
 
-// nolint: dupl
+//nolint:dupl
 func TestDerivedImageList(t *testing.T) {
 	Convey("Test from real server", t, func() {
 		port := test.GetFreePort()
@@ -344,7 +344,7 @@ func TestDerivedImageList(t *testing.T) {
 	})
 }
 
-// nolint: dupl
+//nolint:dupl
 func TestBaseImageList(t *testing.T) {
 	Convey("Test from real server", t, func() {
 		port := test.GetFreePort()
@@ -1469,7 +1469,7 @@ func (service mockService) getImagesByCveIDGQL(ctx context.Context, config searc
 	imagesForCve := &imagesForCve{
 		Errors: nil,
 		Data: struct {
-			ImageList []imageStruct `json:"ImageListForCVE"` // nolint:tagliatelle
+			ImageList []imageStruct `json:"ImageListForCVE"` //nolint:tagliatelle
 		}{},
 	}
 
@@ -1545,7 +1545,7 @@ func (service mockService) getCveByImageGQL(ctx context.Context, config searchCo
 	return cveRes, nil
 }
 
-// nolint: goconst
+//nolint:goconst
 func (service mockService) getMockedImageByName(imageName string) imageStruct {
 	image := imageStruct{}
 	image.RepoName = imageName

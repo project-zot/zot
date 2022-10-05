@@ -3,7 +3,7 @@ package requestcontext
 type Key int
 
 // request-local context key.
-var authzCtxKey = Key(0) // nolint: gochecknoglobals
+var authzCtxKey = Key(0) //nolint: gochecknoglobals
 
 // pointer needed for use in context.WithValue.
 func GetContextKey() *Key {

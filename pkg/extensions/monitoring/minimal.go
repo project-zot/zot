@@ -1,7 +1,7 @@
 //go:build !metrics
 // +build !metrics
 
-// nolint: varnamelen,forcetypeassert
+//nolint:varnamelen,forcetypeassert
 package monitoring
 
 import (
@@ -401,7 +401,7 @@ func (ms *metricServer) HistogramObserve(hv *HistogramValue) {
 	}
 }
 
-// nolint: goerr113
+//nolint:goerr113
 func sanityChecks(name string, knownLabels []string, found bool, labelNames, labelValues []string) error {
 	if !found {
 		return fmt.Errorf("metric %s: not found", name)

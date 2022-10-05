@@ -638,14 +638,14 @@ type spinnerState struct {
 	enabled bool
 }
 
-// nolint
+//nolint
 func (spinner *spinnerState) startSpinner() {
 	if spinner.enabled {
 		spinner.spinner.Start()
 	}
 }
 
-// nolint
+//nolint
 func (spinner *spinnerState) stopSpinner() {
 	if spinner.enabled && spinner.spinner.Active() {
 		spinner.spinner.Stop()
@@ -706,7 +706,7 @@ func printImageTableHeader(writer io.Writer, verbose bool) {
 		table.SetColMinWidth(colLayersIndex, layersWidth)
 	}
 
-	row := make([]string, 6) // nolint:gomnd
+	row := make([]string, 6) //nolint:gomnd
 
 	row[colImageNameIndex] = "IMAGE NAME"
 	row[colTagIndex] = "TAG"

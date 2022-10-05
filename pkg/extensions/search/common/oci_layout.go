@@ -18,7 +18,7 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 )
 
-type OciLayoutUtils interface {
+type OciLayoutUtils interface { //nolint: interfacebloat
 	GetImageManifest(repo string, reference string) (ispec.Manifest, string, error)
 	GetImageManifests(image string) ([]ispec.Descriptor, error)
 	GetImageBlobManifest(imageDir string, digest godigest.Digest) (v1.Manifest, error)
@@ -117,7 +117,6 @@ func (olu BaseOciLayoutUtils) GetImageManifests(image string) ([]ispec.Descripto
 	return index.Manifests, nil
 }
 
-//nolint: interfacer
 func (olu BaseOciLayoutUtils) GetImageBlobManifest(imageDir string, digest godigest.Digest) (v1.Manifest, error) {
 	var blobIndex v1.Manifest
 
@@ -139,7 +138,6 @@ func (olu BaseOciLayoutUtils) GetImageBlobManifest(imageDir string, digest godig
 	return blobIndex, nil
 }
 
-//nolint: interfacer
 func (olu BaseOciLayoutUtils) GetImageInfo(imageDir string, hash v1.Hash) (ispec.Image, error) {
 	var imageInfo ispec.Image
 
@@ -230,7 +228,7 @@ func (olu BaseOciLayoutUtils) checkCosignSignature(name string, digest godigest.
 	// new manifest is tagged as sha256-<manifest-digest>.sig.
 	reference := fmt.Sprintf("sha256-%s.sig", digest.Encoded())
 
-	_, _, _, err := imageStore.GetImageManifest(name, reference) // nolint: dogsled
+	_, _, _, err := imageStore.GetImageManifest(name, reference) //nolint: dogsled
 	if err != nil {
 		olu.Log.Info().Err(err).Str("repo", name).Str("digest",
 			digest.String()).Msg("invalid cosign signature")

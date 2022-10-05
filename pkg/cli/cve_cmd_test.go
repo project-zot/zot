@@ -341,7 +341,7 @@ func TestSearchCVECmd(t *testing.T) {
 	})
 }
 
-// nolint: dupl // GQL
+//nolint:dupl // GQL
 func TestServerCVEResponseGQL(t *testing.T) {
 	port := test.GetFreePort()
 	url := test.GetBaseURL(port)
@@ -750,7 +750,7 @@ func TestNegativeServerResponse(t *testing.T) {
 	})
 }
 
-// nolint: dupl
+//nolint:dupl
 func TestServerCVEResponse(t *testing.T) {
 	port := test.GetFreePort()
 	url := test.GetBaseURL(port)

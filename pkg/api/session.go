@@ -98,7 +98,7 @@ func SessionLogger(ctlr *Controller) mux.MiddlewareFunc {
 						b, err := base64.StdEncoding.DecodeString(s[1])
 						if err == nil {
 							pair := strings.SplitN(string(b), ":", 2) //nolint:gomnd
-							// nolint:gomnd
+							//nolint:gomnd
 							if len(pair) == 2 {
 								log = log.Str("username", pair[0])
 							}

@@ -15,7 +15,7 @@ import (
 	. "zotregistry.io/zot/pkg/test"
 )
 
-// nolint: gochecknoglobals
+//nolint:gochecknoglobals
 var (
 	listenAddress = "127.0.0.1"
 	defaultDir    = ""

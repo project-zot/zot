@@ -125,7 +125,7 @@ func CheckRepo(imageName string, imgStore ImageStore) ([]ScrubImageResult, error
 	return results, nil
 }
 
-func checkIntegrity(ctx context.Context, imageName, tagName string, oci casext.Engine, manifest ispec.Descriptor, dir string) ScrubImageResult { // nolint: lll
+func checkIntegrity(ctx context.Context, imageName, tagName string, oci casext.Engine, manifest ispec.Descriptor, dir string) ScrubImageResult { //nolint: lll
 	// check manifest and config
 	stat, err := umoci.Stat(ctx, oci, manifest)
 

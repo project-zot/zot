@@ -21,7 +21,7 @@ import (
 	"zotregistry.io/zot/pkg/api/constants"
 )
 
-type SearchService interface {
+type SearchService interface { //nolint:interfacebloat
 	getImagesGQL(ctx context.Context, config searchConfig, username, password string,
 		imageName string) (*imageListStructGQL, error)
 	getImagesByDigestGQL(ctx context.Context, config searchConfig, username, password string,
@@ -673,7 +673,7 @@ func checkResultGraphQLQuery(ctx context.Context, err error, resultErrors []erro
 ) error {
 	if err != nil {
 		if isContextDone(ctx) {
-			return nil // nolint:nilnil
+			return nil //nolint:nilnil
 		}
 
 		return err
@@ -690,7 +690,7 @@ func checkResultGraphQLQuery(ctx context.Context, err error, resultErrors []erro
 			return nil
 		}
 
-		// nolint: goerr113
+		//nolint: goerr113
 		return errors.New(errBuilder.String())
 	}
 
@@ -851,28 +851,28 @@ type imageStruct struct {
 type imageListStructGQL struct {
 	Errors []errorGraphQL `json:"errors"`
 	Data   struct {
-		ImageList []imageStruct `json:"ImageList"` // nolint:tagliatelle
+		ImageList []imageStruct `json:"ImageList"` //nolint:tagliatelle
 	} `json:"data"`
 }
 
 type imageListStructForDigestGQL struct {
 	Errors []errorGraphQL `json:"errors"`
 	Data   struct {
-		ImageList []imageStruct `json:"ImageListForDigest"` // nolint:tagliatelle
+		ImageList []imageStruct `json:"ImageListForDigest"` //nolint:tagliatelle
 	} `json:"data"`
 }
 
 type imageListStructForDerivedImagesGQL struct {
 	Errors []errorGraphQL `json:"errors"`
 	Data   struct {
-		ImageList []imageStruct `json:"DerivedImageList"` // nolint:tagliatelle
+		ImageList []imageStruct `json:"DerivedImageList"` //nolint:tagliatelle
 	} `json:"data"`
 }
 
 type imageListStructForBaseImagesGQL struct {
 	Errors []errorGraphQL `json:"errors"`
 	Data   struct {
-		ImageList []imageStruct `json:"BaseImageList"` // nolint:tagliatelle
+		ImageList []imageStruct `json:"BaseImageList"` //nolint:tagliatelle
 	} `json:"data"`
 }
 
@@ -921,7 +921,7 @@ func (img imageStruct) stringPlainText() (string, error) {
 	imgSize, _ := strconv.ParseUint(img.Size, 10, 64)
 	size := ellipsize(strings.ReplaceAll(humanize.Bytes(imgSize), " ", ""), sizeWidth, ellipsis)
 	config := ellipsize(img.ConfigDigest, configWidth, "")
-	row := make([]string, 6) // nolint:gomnd
+	row := make([]string, 6) //nolint:gomnd
 
 	row[colImageNameIndex] = imageName
 	row[colTagIndex] = tagName
@@ -941,7 +941,7 @@ func (img imageStruct) stringPlainText() (string, error) {
 			size := ellipsize(strings.ReplaceAll(humanize.Bytes(layerSize), " ", ""), sizeWidth, ellipsis)
 			layerDigest := ellipsize(entry.Digest, digestWidth, "")
 
-			layerRow := make([]string, 6) // nolint:gomnd
+			layerRow := make([]string, 6) //nolint:gomnd
 			layerRow[colImageNameIndex] = ""
 			layerRow[colTagIndex] = ""
 			layerRow[colDigestIndex] = ""

@@ -21,7 +21,7 @@ import (
 // We need this object to be a singleton as read/writes in the CVE DB may
 // occur at any time via DB downloads as well as during scanning.
 // The library doesn't seem to handle concurrency very well internally.
-var cveInfo cveinfo.CveInfo // nolint:gochecknoglobals
+var cveInfo cveinfo.CveInfo //nolint:gochecknoglobals
 
 func EnableSearchExtension(config *config.Config, log log.Logger, storeController storage.StoreController) {
 	if config.Extensions.Search != nil && *config.Extensions.Search.Enable && config.Extensions.Search.CVE != nil {

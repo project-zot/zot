@@ -295,7 +295,7 @@ func getUpstreamContext(regCfg *RegistryConfig, credentials Credentials) *types.
 	return upstreamCtx
 }
 
-// nolint:gocyclo  // offloading some of the functionalities from here would make the code harder to follow
+//nolint:gocyclo  // offloading some of the functionalities from here would make the code harder to follow
 func syncRegistry(ctx context.Context, regCfg RegistryConfig,
 	upstreamURL string,
 	storeController storage.StoreController, localCtx *types.SystemContext,

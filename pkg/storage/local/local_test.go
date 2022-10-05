@@ -434,7 +434,7 @@ func FuzzTestDeleteImageManifest(f *testing.F) {
 }
 
 func FuzzDirExists(f *testing.F) {
-	f.Fuzz(func(t *testing.T, data string) { //nolint: unusedparams
+	f.Fuzz(func(t *testing.T, data string) {
 		_ = local.DirExists(data)
 	})
 }
@@ -1110,7 +1110,7 @@ func TestDedupe(t *testing.T) {
 	})
 }
 
-// nolint: gocyclo
+//nolint:gocyclo
 func TestNegativeCases(t *testing.T) {
 	Convey("Invalid root dir", t, func(c C) {
 		dir := t.TempDir()
@@ -1150,7 +1150,7 @@ func TestNegativeCases(t *testing.T) {
 		}
 
 		// Init repo should fail if repo is a file.
-		err = os.WriteFile(path.Join(dir, "file-test"), []byte("this is test file"), 0o755) // nolint:gosec
+		err = os.WriteFile(path.Join(dir, "file-test"), []byte("this is test file"), 0o755) //nolint:gosec
 		So(err, ShouldBeNil)
 		err = imgStore.InitRepo("file-test")
 		So(err, ShouldNotBeNil)
@@ -1193,17 +1193,17 @@ func TestNegativeCases(t *testing.T) {
 			panic(err)
 		}
 
-		err = os.WriteFile(path.Join(dir, "invalid-test", "blobs"), []byte{}, 0o755) // nolint: gosec
+		err = os.WriteFile(path.Join(dir, "invalid-test", "blobs"), []byte{}, 0o755) //nolint: gosec
 		if err != nil {
 			panic(err)
 		}
 
-		err = os.WriteFile(path.Join(dir, "invalid-test", "index.json"), []byte{}, 0o755) // nolint: gosec
+		err = os.WriteFile(path.Join(dir, "invalid-test", "index.json"), []byte{}, 0o755) //nolint: gosec
 		if err != nil {
 			panic(err)
 		}
 
-		err = os.WriteFile(path.Join(dir, "invalid-test", ispec.ImageLayoutFile), []byte{}, 0o755) // nolint: gosec
+		err = os.WriteFile(path.Join(dir, "invalid-test", ispec.ImageLayoutFile), []byte{}, 0o755) //nolint: gosec
 		if err != nil {
 			panic(err)
 		}
@@ -1224,7 +1224,7 @@ func TestNegativeCases(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		So(isValid, ShouldEqual, false)
 
-		err = os.WriteFile(path.Join(dir, "invalid-test", ispec.ImageLayoutFile), []byte("{}"), 0o755) // nolint: gosec
+		err = os.WriteFile(path.Join(dir, "invalid-test", ispec.ImageLayoutFile), []byte("{}"), 0o755) //nolint: gosec
 		if err != nil {
 			panic(err)
 		}
@@ -2196,7 +2196,7 @@ func NewRandomImgManifest(data []byte, cdigest, ldigest godigest.Digest, cblob, 
 	return &manifest, nil
 }
 
-func newRandomBlobForFuzz(data []byte) (godigest.Digest, []byte, error) {
+func newRandomBlobForFuzz(data []byte) (godigest.Digest, []byte, error) { //nolint:unparam
 	return godigest.FromBytes(data), data, nil
 }
 
