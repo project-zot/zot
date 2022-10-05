@@ -6,6 +6,7 @@ import (
 	"time"
 )
 
+// Contains various details about the CVE and a list of PackageInfo about the affected packages
 type Cve struct {
 	ID          *string        `json:"Id"`
 	Title       *string        `json:"Title"`
@@ -14,11 +15,13 @@ type Cve struct {
 	PackageList []*PackageInfo `json:"PackageList"`
 }
 
+// Contains the tag of the image and a list of CVEs
 type CVEResultForImage struct {
 	Tag     *string `json:"Tag"`
 	CVEList []*Cve  `json:"CVEList"`
 }
 
+// Search everything. Can search Images, Repos and Layers
 type GlobalSearchResult struct {
 	Images []*ImageSummary `json:"Images"`
 	Repos  []*RepoSummary  `json:"Repos"`
@@ -37,6 +40,7 @@ type HistoryDescription struct {
 	EmptyLayer *bool `json:"EmptyLayer"`
 }
 
+// Contains details about the image
 type ImageSummary struct {
 	RepoName        *string                    `json:"RepoName"`
 	Tag             *string                    `json:"Tag"`
@@ -70,28 +74,33 @@ type LayerHistory struct {
 	HistoryDescription *HistoryDescription `json:"HistoryDescription"`
 }
 
+// Contains details about the layer
 type LayerSummary struct {
 	Size   *string `json:"Size"`
 	Digest *string `json:"Digest"`
 	Score  *int    `json:"Score"`
 }
 
+// Contains details about the supported OS and architecture of the image
 type OsArch struct {
 	Os   *string `json:"Os"`
 	Arch *string `json:"Arch"`
 }
 
+// Contains the name of the package, the current installed version and the version where the CVE was fixed
 type PackageInfo struct {
 	Name             *string `json:"Name"`
 	InstalledVersion *string `json:"InstalledVersion"`
 	FixedVersion     *string `json:"FixedVersion"`
 }
 
+// Contains details about the repo: a list of image summaries and a summary of the repo
 type RepoInfo struct {
 	Images  []*ImageSummary `json:"Images"`
 	Summary *RepoSummary    `json:"Summary"`
 }
 
+// Contains details about the repo
 type RepoSummary struct {
 	Name          *string       `json:"Name"`
 	LastUpdated   *time.Time    `json:"LastUpdated"`

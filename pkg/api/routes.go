@@ -27,6 +27,7 @@ import (
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/constants"
+	gqlPlayground "zotregistry.io/zot/pkg/debug/gqlplayground"
 	debug "zotregistry.io/zot/pkg/debug/swagger"
 	ext "zotregistry.io/zot/pkg/extensions"
 	"zotregistry.io/zot/pkg/log"
@@ -117,6 +118,7 @@ func (rh *RouteHandler) SetupRoutes() {
 			// extended build
 			ext.SetupMetricsRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
 			ext.SetupSearchRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
+			gqlPlayground.SetupGQLPlaygroundRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
 		}
 	}
 }
