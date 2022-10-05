@@ -42,6 +42,7 @@ import (
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/sync"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
 )
 
@@ -948,7 +949,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 		// give it time to set up sync
 		time.Sleep(3 * time.Second)
 
-		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifest/0.0.1")
+		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/0.0.1")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
@@ -3949,6 +3950,140 @@ func TestOnlySignedFlag(t *testing.T) {
 		resp, err := client.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
+	})
+}
+
+func TestSyncWithDestination(t *testing.T) {
+	Convey("Test sync computes destination option correctly", t, func() {
+		testCases := []struct {
+			content  sync.Content
+			expected string
+			repo     string
+		}{
+			{
+				expected: "zot-test/zot-fold/zot-test",
+				content:  sync.Content{Prefix: "zot-fold/zot-test", Destination: "/zot-test", StripPrefix: false},
+				repo:     "zot-fold/zot-test",
+			},
+			{
+				expected: "zot-fold/zot-test",
+				content:  sync.Content{Prefix: "zot-fold/zot-test", Destination: "/", StripPrefix: false},
+				repo:     "zot-fold/zot-test",
+			},
+			{
+				expected: "zot-test",
+				content:  sync.Content{Prefix: "zot-fold/zot-test", Destination: "/zot-test", StripPrefix: true},
+				repo:     "zot-fold/zot-test",
+			},
+			{
+				expected: "zot-test",
+				content:  sync.Content{Prefix: "zot-fold/*", Destination: "/", StripPrefix: true},
+				repo:     "zot-fold/zot-test",
+			},
+			{
+				expected: "zot-test",
+				content:  sync.Content{Prefix: "zot-fold/zot-test", Destination: "/zot-test", StripPrefix: true},
+				repo:     "zot-fold/zot-test",
+			},
+			{
+				expected: "zot-test",
+				content:  sync.Content{Prefix: "zot-fold/*", Destination: "/", StripPrefix: true},
+				repo:     "zot-fold/zot-test",
+			},
+			{
+				expected: "zot-test",
+				content:  sync.Content{Prefix: "zot-fold/**", Destination: "/", StripPrefix: true},
+				repo:     "zot-fold/zot-test",
+			},
+			{
+				expected: "zot-fold/zot-test",
+				content:  sync.Content{Prefix: "zot-fold/**", Destination: "/", StripPrefix: false},
+				repo:     "zot-fold/zot-test",
+			},
+		}
+
+		sctlr, srcBaseURL, _, _, _ := startUpstreamServer(t, false, false)
+
+		defer func() {
+			sctlr.Shutdown()
+		}()
+
+		err := os.MkdirAll(path.Join(sctlr.Config.Storage.RootDirectory, "/zot-fold"), local.DefaultDirPerms)
+		So(err, ShouldBeNil)
+
+		// move upstream images under /zot-fold
+		err = os.Rename(
+			path.Join(sctlr.Config.Storage.RootDirectory, "zot-test"),
+			path.Join(sctlr.Config.Storage.RootDirectory, "/zot-fold/zot-test"),
+		)
+
+		So(err, ShouldBeNil)
+
+		Convey("Test peridiocally sync", func() {
+			for _, testCase := range testCases {
+				updateDuration, _ := time.ParseDuration("30m")
+				tlsVerify := false
+				syncRegistryConfig := sync.RegistryConfig{
+					Content:      []sync.Content{testCase.content},
+					URLs:         []string{srcBaseURL},
+					OnDemand:     false,
+					PollInterval: updateDuration,
+					TLSVerify:    &tlsVerify,
+				}
+
+				defaultVal := true
+				syncConfig := &sync.Config{
+					Enable:     &defaultVal,
+					Registries: []sync.RegistryConfig{syncRegistryConfig},
+				}
+
+				dctlr, destBaseURL, _, destClient := startDownstreamServer(t, false, syncConfig)
+
+				defer func() {
+					dctlr.Shutdown()
+				}()
+
+				// give it time to set up sync
+				waitSync(dctlr.Config.Storage.RootDirectory, testCase.expected)
+
+				resp, err := destClient.R().Get(destBaseURL + "/v2/" + testCase.expected + "/manifests/0.0.1")
+				t.Logf("testcase: %#v", testCase)
+				So(err, ShouldBeNil)
+				So(resp, ShouldNotBeNil)
+				So(resp.StatusCode(), ShouldEqual, 200)
+			}
+		})
+
+		// this is the inverse function of getRepoDestination()
+		Convey("Test ondemand sync", func() {
+			for _, testCase := range testCases {
+				tlsVerify := false
+				syncRegistryConfig := sync.RegistryConfig{
+					Content:   []sync.Content{testCase.content},
+					URLs:      []string{srcBaseURL},
+					OnDemand:  true,
+					TLSVerify: &tlsVerify,
+				}
+
+				defaultVal := true
+				syncConfig := &sync.Config{
+					Enable:     &defaultVal,
+					Registries: []sync.RegistryConfig{syncRegistryConfig},
+				}
+
+				dctlr, destBaseURL, _, destClient := startDownstreamServer(t, false, syncConfig)
+
+				defer func() {
+					dctlr.Shutdown()
+				}()
+
+				resp, err := destClient.R().Get(destBaseURL + "/v2/" + testCase.expected + "/manifests/0.0.1")
+				t.Logf("testcase: %#v", testCase)
+				So(err, ShouldBeNil)
+				So(resp, ShouldNotBeNil)
+				So(resp.StatusCode(), ShouldEqual, 200)
+			}
+		})
 	})
 }
 
