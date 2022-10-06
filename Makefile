@@ -19,7 +19,7 @@ TESTDATA := $(TOP_LEVEL)/test/data
 OS ?= linux
 ARCH ?= amd64
 BENCH_OUTPUT ?= stdout
-EXTENSIONS ?= sync,search,scrub,metrics,ui_base,lint
+EXTENSIONS ?= sync,search,scrub,metrics,lint
 comma:= ,
 hyphen:= -
 extended-name:=
@@ -59,7 +59,7 @@ binary-debug: modcheck swagger create-name build-metadata
 
 .PHONY: cli
 cli: modcheck create-name build-metadata
-	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zli-$(OS)-$(ARCH) -buildmode=pie -tags $(EXTENSIONS),ui_base,containers_image_openpgp -v -trimpath -ldflags "-X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=$(extended-name) -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zli
+	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zli-$(OS)-$(ARCH) -buildmode=pie -tags $(EXTENSIONS),search,containers_image_openpgp -v -trimpath -ldflags "-X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=$(extended-name) -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zli
 
 .PHONY: bench
 bench: modcheck create-name build-metadata
@@ -280,12 +280,12 @@ bats-sync-verbose: binary binary-minimal check-skopeo $(BATS)
 	$(BATS) --trace -t -x -p --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/sync.bats
 
 .PHONY: bats-cve
-bats-cve: EXTENSIONS=ui_base
+bats-cve: EXTENSIONS=search
 bats-cve: binary cli check-skopeo $(BATS)
 	$(BATS) --trace --print-output-on-failure test/blackbox/cve.bats
 
 .PHONY: bats-cve-verbose
-bats-cve-verbose: EXTENSIONS=ui_base
+bats-cve-verbose: EXTENSIONS=search
 bats-cve-verbose: binary cli check-skopeo $(BATS)
 	$(BATS) --trace -t -x -p --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/cve.bats
 
