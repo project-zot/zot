@@ -1,7 +1,7 @@
 load helpers_scrub
 
 function setup_file(){
-    skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.17 oci:${TEST_DATA_DIR}/golang:1.17
+    skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.19 oci:${TEST_DATA_DIR}/golang:1.19
 }
 
 function setup() {

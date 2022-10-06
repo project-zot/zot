@@ -184,7 +184,7 @@ func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 			// allow anonymous authz if no authn present and only default policies are present
 			identity = ""
-			if isAuthnEnabled(ctlr.Config) && request.Header.Get("Authorization") != "" {
+			if ctlr.Config.GetAuthInfo().Type == constants.BasicAuth && request.Header.Get("Authorization") != "" {
 				identity, _, err = getUsernamePasswordBasicAuth(request)
 
 				if err != nil {
@@ -261,18 +261,4 @@ func authzFail(w http.ResponseWriter, realm string, delay int) {
 	w.Header().Set("WWW-Authenticate", realm)
 	w.Header().Set("Content-Type", "application/json")
 	WriteJSON(w, http.StatusForbidden, NewErrorList(NewError(DENIED)))
-}
-
-func anonymousPolicyExists(config *config.AccessControlConfig) bool {
-	if config == nil {
-		return false
-	}
-
-	for _, repository := range config.Repositories {
-		if len(repository.AnonymousPolicy) > 0 {
-			return true
-		}
-	}
-
-	return false
 }

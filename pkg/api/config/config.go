@@ -9,6 +9,7 @@ import (
 	distspec "github.com/opencontainers/distribution-spec/specs-go"
 	"github.com/spf13/viper"
 
+	"zotregistry.io/zot/pkg/api/constants"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/storage"
 )
@@ -132,6 +133,25 @@ type Config struct {
 	Extensions      *extconf.ExtensionConfig
 }
 
+type AuthInfo struct {
+	Enabled bool     `json:"enabled"`
+	Type    string   `json:"type"`
+	Details *Details `json:"details"`
+}
+
+type Details struct {
+	Bearer *BearerDetails `json:"bearer"`
+	// Openid *OpenidDetails `json:"openid"`
+}
+
+type BearerDetails struct {
+	Realm string `json:"realm"`
+}
+
+// type OpenidDetails struct {
+// 	Providers []string `json:"providers"`
+// }
+
 func New() *Config {
 	return &Config{
 		DistSpecVersion: distspec.Version,
@@ -145,6 +165,43 @@ func New() *Config {
 		HTTP: HTTPConfig{Address: "127.0.0.1", Port: "8080", Auth: &AuthConfig{FailDelay: 0}},
 		Log:  &LogConfig{Level: "debug"},
 	}
+}
+
+func (c *Config) GetAuthInfo() AuthInfo {
+	//nolint: gocritic
+	authInfo := AuthInfo{Enabled: false}
+	//nolint: gocritic
+	if isBearerAuthEnabled(c) {
+		authInfo.Enabled = true
+		authInfo.Type = constants.BearerAuth
+		authInfo.Details = &Details{Bearer: &BearerDetails{Realm: c.HTTP.Auth.Bearer.Realm}}
+	} else if isAuthnEnabled(c) {
+		authInfo.Enabled = true
+		authInfo.Type = constants.BasicAuth
+	} else if c.HTTP.TLS != nil &&
+		c.HTTP.TLS.Key != "" &&
+		c.HTTP.TLS.Cert != "" &&
+		c.HTTP.TLS.CACert != "" &&
+		!c.AnonymousPolicyExists() {
+		authInfo.Enabled = true
+		authInfo.Type = constants.CertificateAuth
+	}
+
+	return authInfo
+}
+
+func (c *Config) AnonymousPolicyExists() bool {
+	if c.AccessControl == nil {
+		return false
+	}
+
+	for _, repository := range c.AccessControl.Repositories {
+		if len(repository.AnonymousPolicy) > 0 {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (expConfig StorageConfig) ParamsEqual(actConfig StorageConfig) bool {
@@ -225,4 +282,25 @@ func (c *Config) LoadAccessControlConfig(viperInstance *viper.Viper) error {
 	}
 
 	return nil
+}
+
+func isAuthnEnabled(config *Config) bool {
+	if config.HTTP.Auth != nil &&
+		(config.HTTP.Auth.HTPasswd.Path != "" || config.HTTP.Auth.LDAP != nil) {
+		return true
+	}
+
+	return false
+}
+
+func isBearerAuthEnabled(config *Config) bool {
+	if config.HTTP.Auth != nil &&
+		config.HTTP.Auth.Bearer != nil &&
+		config.HTTP.Auth.Bearer.Cert != "" &&
+		config.HTTP.Auth.Bearer.Realm != "" &&
+		config.HTTP.Auth.Bearer.Service != "" {
+		return true
+	}
+
+	return false
 }

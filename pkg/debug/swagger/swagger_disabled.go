@@ -16,7 +16,7 @@ import (
 	_ "zotregistry.io/zot/swagger"
 )
 
-func SetupSwaggerRoutes(conf *config.Config, router *mux.Router, log log.Logger,
+func SetupSwaggerRoutes(conf *config.Config, router *mux.Router, authFunc mux.MiddlewareFunc, log log.Logger,
 ) {
 	// swagger swagger "/swagger/v2/index.html"
 	log.Warn().Msg("skipping enabling swagger because given zot binary " +

@@ -456,6 +456,13 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper) {
 			// Note: In case scrub is not empty the config.Extensions will not be nil and we will not reach here
 			config.Extensions.Scrub = &extconf.ScrubConfig{}
 		}
+
+		_, ok = extMap["mgmt"]
+		if ok {
+			// we found a config like `"extensions": {"mgmt:": {}}`
+			// Note: In case mgmt is not empty the config.Extensions will not be nil and we will not reach here
+			config.Extensions.Mgmt = &extconf.MgmtConfig{}
+		}
 	}
 
 	if config.Extensions != nil {
@@ -494,6 +501,12 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper) {
 
 			if config.Extensions.Scrub.Interval == 0 {
 				config.Extensions.Scrub.Interval = 24 * time.Hour //nolint: gomnd
+			}
+		}
+
+		if config.Extensions.Mgmt != nil {
+			if config.Extensions.Mgmt.Enable == nil {
+				config.Extensions.Mgmt.Enable = &defaultVal
 			}
 		}
 	}

@@ -21,6 +21,7 @@ import (
 
 	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/api/constants"
 	ext "zotregistry.io/zot/pkg/extensions"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
@@ -31,7 +32,7 @@ import (
 	"zotregistry.io/zot/pkg/scheduler"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/cache"
-	"zotregistry.io/zot/pkg/storage/constants"
+	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/storage/s3"
 )
@@ -233,8 +234,8 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 
 		if c.Config.HTTP.TLS.CACert != "" {
 			clientAuth := tls.VerifyClientCertIfGiven
-			if (c.Config.HTTP.Auth == nil || c.Config.HTTP.Auth.HTPasswd.Path == "") &&
-				!anonymousPolicyExists(c.Config.AccessControl) {
+
+			if c.Config.GetAuthInfo().Type == constants.CertificateAuth {
 				clientAuth = tls.RequireAndVerifyClientCert
 			}
 
@@ -446,7 +447,7 @@ func CreateCacheDatabaseDriver(storageConfig config.StorageConfig, log log.Logge
 		if !storageConfig.RemoteCache {
 			params := cache.BoltDBDriverParameters{}
 			params.RootDir = storageConfig.RootDirectory
-			params.Name = constants.BoltdbName
+			params.Name = storageConstants.BoltdbName
 			params.UseRelPaths = getUseRelPaths(&storageConfig)
 
 			driver, _ := storage.Create("boltdb", params, log)
@@ -463,7 +464,7 @@ func CreateCacheDatabaseDriver(storageConfig config.StorageConfig, log log.Logge
 				return nil
 			}
 
-			if name != constants.DynamoDBDriverName {
+			if name != storageConstants.DynamoDBDriverName {
 				log.Warn().Str("driver", name).Msg("remote cache driver unsupported!")
 
 				return nil

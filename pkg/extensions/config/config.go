@@ -17,6 +17,11 @@ type ExtensionConfig struct {
 	Metrics *MetricsConfig
 	Scrub   *ScrubConfig
 	Lint    *LintConfig
+	Mgmt    *MgmtConfig
+}
+
+type MgmtConfig struct {
+	BaseConfig `mapstructure:",squash"`
 }
 
 type LintConfig struct {

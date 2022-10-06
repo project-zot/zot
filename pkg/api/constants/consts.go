@@ -11,4 +11,8 @@ const (
 	DefaultMediaType             = "application/json"
 	BinaryMediaType              = "application/octet-stream"
 	DefaultMetricsExtensionRoute = "/metrics"
+	// auth types.
+	BearerAuth      = "Bearer"
+	BasicAuth       = "Basic"
+	CertificateAuth = "Certificate"
 )

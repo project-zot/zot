@@ -7,6 +7,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/api/constants"
 )
 
 func TestConfig(t *testing.T) {
@@ -64,5 +65,46 @@ func TestConfig(t *testing.T) {
 		isSame, err = config.SameFile(dir1, dir1)
 		So(err, ShouldBeNil)
 		So(isSame, ShouldBeTrue)
+	})
+
+	Convey("Test GetAuthType", t, func() {
+		conf := config.New()
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
+				Path: "test",
+			},
+		}
+
+		So(conf.GetAuthInfo().Type, ShouldEqual, constants.BasicAuth)
+
+		conf = config.New()
+		conf.HTTP.Auth = &config.AuthConfig{
+			LDAP: &config.LDAPConfig{
+				BindDN: "binddn",
+			},
+		}
+
+		So(conf.GetAuthInfo().Type, ShouldEqual, constants.BasicAuth)
+
+		conf = config.New()
+		conf.HTTP.Auth = &config.AuthConfig{
+			Bearer: &config.BearerConfig{
+				Realm:   "bearer",
+				Service: "bearer",
+				Cert:    "path/to/cert",
+			},
+		}
+
+		So(conf.GetAuthInfo().Type, ShouldEqual, constants.BearerAuth)
+		So(conf.GetAuthInfo().Details.Bearer.Realm, ShouldEqual, "bearer")
+
+		conf = config.New()
+		conf.HTTP.TLS = &config.TLSConfig{
+			Cert:   "cert",
+			CACert: "ca",
+			Key:    "key",
+		}
+
+		So(conf.GetAuthInfo().Type, ShouldEqual, constants.CertificateAuth)
 	})
 }

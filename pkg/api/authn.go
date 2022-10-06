@@ -17,6 +17,7 @@ import (
 
 	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/api/constants"
 )
 
 const (
@@ -24,7 +25,7 @@ const (
 )
 
 func AuthHandler(c *Controller) mux.MiddlewareFunc {
-	if isBearerAuthEnabled(c.Config) {
+	if c.Config.GetAuthInfo().Type == constants.BearerAuth {
 		return bearerAuthHandler(c)
 	}
 
@@ -181,7 +182,7 @@ func basicAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 				return
 			}
-			if request.Header.Get("Authorization") == "" && anonymousPolicyExists(ctlr.Config.AccessControl) {
+			if request.Header.Get("Authorization") == "" && ctlr.Config.AnonymousPolicyExists() {
 				// Process request
 				next.ServeHTTP(response, request)
 
@@ -198,7 +199,7 @@ func basicAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 			// some client tools might send Authorization: Basic Og== (decoded into ":")
 			// empty username and password
-			if username == "" && passphrase == "" && anonymousPolicyExists(ctlr.Config.AccessControl) {
+			if username == "" && passphrase == "" && ctlr.Config.AnonymousPolicyExists() {
 				// Process request
 				next.ServeHTTP(response, request)
 
@@ -230,27 +231,6 @@ func basicAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 			authFail(response, realm, delay)
 		})
 	}
-}
-
-func isAuthnEnabled(config *config.Config) bool {
-	if config.HTTP.Auth != nil &&
-		(config.HTTP.Auth.HTPasswd.Path != "" || config.HTTP.Auth.LDAP != nil) {
-		return true
-	}
-
-	return false
-}
-
-func isBearerAuthEnabled(config *config.Config) bool {
-	if config.HTTP.Auth != nil &&
-		config.HTTP.Auth.Bearer != nil &&
-		config.HTTP.Auth.Bearer.Cert != "" &&
-		config.HTTP.Auth.Bearer.Realm != "" &&
-		config.HTTP.Auth.Bearer.Service != "" {
-		return true
-	}
-
-	return false
 }
 
 func authFail(w http.ResponseWriter, realm string, delay int) {
