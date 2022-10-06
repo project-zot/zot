@@ -13,12 +13,17 @@ import (
 func SyncRepoDB(repoDB RepoDB, storeController storage.StoreController, log log.Logger) error {
 	allRepos, err := getAllRepos(storeController)
 	if err != nil {
+		rootDir := storeController.DefaultStore.RootDir()
+		log.Error().Err(err).Msgf("sync-repodb: failed to get all repo names present under %s", rootDir)
+
 		return err
 	}
 
 	for _, repo := range allRepos {
 		err := SyncRepo(repo, repoDB, storeController, log)
 		if err != nil {
+			log.Error().Err(err).Msgf("sync-repodb: failed to sync repo %s", repo)
+
 			return err
 		}
 	}
@@ -31,6 +36,8 @@ func SyncRepo(repo string, repoDB RepoDB, storeController storage.StoreControlle
 
 	indexBlob, err := imageStore.GetIndexContent(repo)
 	if err != nil {
+		log.Error().Err(err).Msgf("sync-repo: failed to read index.json for repo %s", repo)
+
 		return err
 	}
 
@@ -38,15 +45,21 @@ func SyncRepo(repo string, repoDB RepoDB, storeController storage.StoreControlle
 
 	err = json.Unmarshal(indexBlob, &indexContent)
 	if err != nil {
+		log.Error().Err(err).Msgf("sync-repo: failed to unmarshal index.json for repo %s", repo)
+
 		return err
 	}
 
-	err = resetRepoMetaTags(repo, repoDB)
+	err = resetRepoMetaTags(repo, repoDB, log)
 	if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
+		log.Error().Err(err).Msgf("sync-repo: failed to reset tag field in RepoMetadata for repo %s", repo)
+
 		return err
 	}
 
 	type foundSignatureData struct {
+		repo                 string
+		tag                  string
 		signatureType        string
 		signedManifestDigest string
 		signatureDigest      string
@@ -58,17 +71,23 @@ func SyncRepo(repo string, repoDB RepoDB, storeController storage.StoreControlle
 		tag, hasTag := manifest.Annotations[ispec.AnnotationRefName]
 
 		if !hasTag {
+			log.Warn().Msgf("sync-repo: image without tag found, will not be synced into RepoDB")
+
 			continue
 		}
 
 		manifestMetaIsPresent, err := isManifestMetaPresent(manifest, repoDB)
 		if err != nil {
+			log.Error().Err(err).Msgf("sync-repo: error checking manifestMeta in RepoDB")
+
 			return err
 		}
 
 		if manifestMetaIsPresent {
 			err = repoDB.SetRepoTag(repo, tag, manifest.Digest.String())
 			if err != nil {
+				log.Error().Err(err).Msgf("sync-repo: failed to set repo tag for %s:%s", repo, tag)
+
 				return err
 			}
 
@@ -77,12 +96,16 @@ func SyncRepo(repo string, repoDB RepoDB, storeController storage.StoreControlle
 
 		manifestBlob, digest, _, err := imageStore.GetImageManifest(repo, manifest.Digest.String())
 		if err != nil {
+			log.Error().Err(err).Msgf("sync-repo: failed to set repo tag for %s:%s", repo, tag)
+
 			return err
 		}
 
 		isSignature, signatureType, signedManifestDigest, err := storage.CheckIsImageSignature(repo,
 			manifestBlob, manifest.Digest.String(), storeController)
 		if err != nil {
+			log.Error().Err(err).Msgf("sync-repo: failed checking if image is signature for %s:%s", repo, tag)
+
 			return err
 		}
 
@@ -90,6 +113,8 @@ func SyncRepo(repo string, repoDB RepoDB, storeController storage.StoreControlle
 			// We'll ignore signatures now because the order in which the signed image and signature are added into
 			// the DB matters. First we add the normal images then the signatures
 			signaturesFound = append(signaturesFound, foundSignatureData{
+				repo:                 repo,
+				tag:                  tag,
 				signatureType:        signatureType,
 				signedManifestDigest: signedManifestDigest,
 				signatureDigest:      digest,
@@ -100,16 +125,25 @@ func SyncRepo(repo string, repoDB RepoDB, storeController storage.StoreControlle
 
 		manifestMeta, err := NewManifestMeta(repo, manifestBlob, storeController)
 		if err != nil {
+			log.Error().Err(err).Msgf("sync-repo: failed to create manifest meta for image %s:%s manifest digest %s ",
+				repo, tag, manifest.Digest.String())
+
 			return err
 		}
 
 		err = repoDB.SetManifestMeta(manifest.Digest.String(), manifestMeta)
 		if err != nil {
+			log.Error().Err(err).Msgf("sync-repo: failed to set manifest meta for image %s:%s manifest digest %s ",
+				repo, tag, manifest.Digest.String())
+
 			return err
 		}
 
 		err = repoDB.SetRepoTag(repo, tag, manifest.Digest.String())
 		if err != nil {
+			log.Error().Err(err).Msgf("sync-repo: failed to repo tag for repo %s and tag %s",
+				repo, tag)
+
 			return err
 		}
 	}
@@ -121,6 +155,9 @@ func SyncRepo(repo string, repoDB RepoDB, storeController storage.StoreControlle
 			SignatureDigest: sigData.signatureDigest,
 		})
 		if err != nil {
+			log.Error().Err(err).Msgf("sync-repo: failed set signature meta for signed image %s:%s manifest digest %s ",
+				sigData.repo, sigData.tag, sigData.signedManifestDigest)
+
 			return err
 		}
 	}
@@ -128,9 +165,11 @@ func SyncRepo(repo string, repoDB RepoDB, storeController storage.StoreControlle
 	return nil
 }
 
-func resetRepoMetaTags(repo string, repoDB RepoDB) error {
+func resetRepoMetaTags(repo string, repoDB RepoDB, log log.Logger) error {
 	repoMeta, err := repoDB.GetRepoMeta(repo)
 	if err != nil {
+		log.Error().Err(err).Msgf("sync-repo: failed to get RepoMeta for repo %s", repo)
+
 		return err
 	}
 
@@ -138,6 +177,8 @@ func resetRepoMetaTags(repo string, repoDB RepoDB) error {
 		// We should have a way to delete all tags at once
 		err := repoDB.DeleteRepoTag(repo, tag)
 		if err != nil {
+			log.Error().Err(err).Msgf("sync-repo: failed to delete tag %s from RepoMeta for repo %s", tag, repo)
+
 			return err
 		}
 	}

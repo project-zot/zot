@@ -267,7 +267,7 @@ func (r *queryResolver) ImageList(ctx context.Context, repo string) ([]*gql_gene
 
 // ExpandedRepoInfo is the resolver for the ExpandedRepoInfo field.
 func (r *queryResolver) ExpandedRepoInfo(ctx context.Context, repo string) (*gql_generated.RepoInfo, error) {
-	repoInfo, err := expandedRepoInfo(ctx, repo, r.repoDB, r.cveInfo)
+	repoInfo, err := expandedRepoInfo(ctx, repo, r.repoDB, r.cveInfo, r.log)
 
 	return repoInfo, err
 }

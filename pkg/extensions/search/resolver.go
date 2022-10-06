@@ -17,8 +17,9 @@ import (
 	v1 "github.com/google/go-containerregistry/pkg/v1" //nolint:gci
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/pkg/errors"
 	"github.com/vektah/gqlparser/v2/gqlerror"
-	"zotregistry.io/zot/errors"
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	digestinfo "zotregistry.io/zot/pkg/extensions/search/digest"
@@ -397,30 +398,33 @@ func globalSearch(ctx context.Context, query string, repoDB repodb.RepoDB, filte
 	return repos, images, layers, nil
 }
 
-func expandedRepoInfo(ctx context.Context, repo string, repoDB repodb.RepoDB,
-	cveInfo cveinfo.CveInfo,
+func expandedRepoInfo(ctx context.Context, repo string, repoDB repodb.RepoDB, cveInfo cveinfo.CveInfo, log log.Logger,
 ) (*gql_generated.RepoInfo, error) {
 	if ok, err := localCtx.RepoIsUserAvailable(ctx, repo); !ok || err != nil {
-		// log
+		log.Info().Err(err).Msgf("resolver: 'repo %s is user available' = %v", repo, ok)
+
 		return &gql_generated.RepoInfo{}, nil //nolint:nilerr // don't give details to a potential attacker
 	}
 
 	repoMeta, err := repoDB.GetRepoMeta(repo)
 	if err != nil {
-		// log
+		log.Error().Err(err).Msgf("resolver: can't retrieve repoMeta for repo %s", repo)
+
 		return &gql_generated.RepoInfo{}, err
 	}
 
 	manifestMetaMap := map[string]repodb.ManifestMetadata{}
 
-	for _, digest := range repoMeta.Tags {
+	for tag, digest := range repoMeta.Tags {
 		if _, alreadyDownloaded := manifestMetaMap[digest]; alreadyDownloaded {
 			continue
 		}
 
 		manifestMeta, err := repoDB.GetManifestMeta(digest)
 		if err != nil {
-			// add error to gql errors
+			graphql.AddError(ctx, errors.Wrapf(err,
+				"resolver: failed to get manifest meta for image %s:%s with manifest digest %s", repo, tag, digest))
+
 			continue
 		}
 
@@ -763,7 +767,7 @@ func getAllHistory(manifestContent ispec.Manifest, configContent ispec.Image) (
 		}
 
 		if layersIterator+1 > len(manifestContent.Layers) {
-			return allHistory, errors.ErrBadLayerCount
+			return allHistory, zerr.ErrBadLayerCount
 		}
 
 		allHistory[i].Layer = layerSummaries[layersIterator]
@@ -1151,7 +1155,7 @@ func BuildImageInfo(repo string, tag string, manifestDigest godigest.Digest,
 		if layersIterator+1 > len(manifest.Layers) {
 			formattedSize := strconv.FormatInt(size, 10)
 
-			log.Error().Err(errors.ErrBadLayerCount).Msg("error on creating layer history for ImageSummary")
+			log.Error().Err(zerr.ErrBadLayerCount).Msg("error on creating layer history for ImageSummary")
 
 			return &gql_generated.ImageSummary{
 				RepoName:      &repo,
@@ -1253,7 +1257,7 @@ func userAvailableRepos(ctx context.Context, repoList []string) ([]string, error
 	if authCtx := ctx.Value(authzCtxKey); authCtx != nil {
 		acCtx, ok := authCtx.(localCtx.AccessControlContext)
 		if !ok {
-			err := errors.ErrBadType
+			err := zerr.ErrBadType
 
 			return []string{}, err
 		}
@@ -1287,7 +1291,7 @@ func extractImageDetails(
 	if len(validRepoList) == 0 {
 		log.Error().Err(err).Msg("user is not authorized")
 
-		return "", nil, nil, errors.ErrUnauthorizedAccess
+		return "", nil, nil, zerr.ErrUnauthorizedAccess
 	}
 
 	_, dig, err := layoutUtils.GetImageManifest(repo, tag)
