@@ -1,5 +1,5 @@
-//go:build ui_base
-// +build ui_base
+//go:build cli
+// +build cli
 
 package cli //nolint:testpackage
 

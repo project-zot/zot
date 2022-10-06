@@ -1,5 +1,5 @@
-//go:build ui_base || search
-// +build ui_base search
+//go:build cli || search
+// +build cli search
 
 package cli
 

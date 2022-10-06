@@ -45,7 +45,7 @@ make binary-minimal
 ```
 
 For a zot that includes only the extensions that you specify,
-the available extensions that can be used at the moment are: sync, scrub, metrics, search, ui_base .
+the available extensions that can be used at the moment are: sync, scrub, metrics, search, cli.
 
 NOTES: When multiple extensions are used, they should be enlisted in the above presented order.
 
