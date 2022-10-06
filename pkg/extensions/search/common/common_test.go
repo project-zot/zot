@@ -482,6 +482,31 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		images := responseStruct.RepoListWithNewestImage.Repos
 		So(images[0].NewestImage.Tag, ShouldEqual, "0.0.1")
 
+		query := `{
+			RepoListWithNewestImage(requestedPage: {
+				limit:1
+				offset:0
+				sortBy: UPDATE_TIME
+			}){
+				Name
+				NewestImage{
+					Tag
+				}
+			}
+		}`
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
+			"?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		err = json.Unmarshal(resp.Body(), &responseStruct)
+		So(err, ShouldBeNil)
+		So(len(responseStruct.RepoListWithNewestImage.Repos), ShouldEqual, 1)
+
+		repos := responseStruct.RepoListWithNewestImage.Repos
+		So(repos[0].NewestImage.Tag, ShouldEqual, "0.0.1")
+
 		// Verify we don't return any vulnerabilities if CVE scanning is disabled
 		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
 			"?query={RepoListWithNewestImage{Name%20NewestImage{Tag%20Vulnerabilities{MaxSeverity%20Count}}}}")

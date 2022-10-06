@@ -381,6 +381,232 @@ func TestGlobalSearch(t *testing.T) {
 	})
 }
 
+func TestRepoListWithNewestImage(t *testing.T) {
+	Convey("RepoListWithNewestImage", t, func() {
+		Convey("RepoDB SearchRepos error", func() {
+			mockSearchDB := mocks.RepoDBMock{
+				SearchReposFn: func(ctx context.Context, searchText string, filter repodb.Filter, requestedPage repodb.PageInput,
+				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
+					return make([]repodb.RepoMetadata, 0), make(map[string]repodb.ManifestMetadata), ErrTestError
+				},
+			}
+			responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
+				graphql.DefaultRecover)
+			mockCve := mocks.CveInfoMock{}
+
+			limit := 1
+			ofset := 0
+			sortCriteria := gql_generated.SortCriteriaUpdateTime
+			pageInput := gql_generated.PageInput{
+				Limit:  &limit,
+				Offset: &ofset,
+				SortBy: &sortCriteria,
+			}
+			repos, err := repoListWithNewestImage(responseContext, mockCve, log.NewLogger("debug", ""), &pageInput, mockSearchDB)
+			So(err, ShouldNotBeNil)
+			So(repos, ShouldBeEmpty)
+		})
+
+		Convey("RepoDB SearchRepo Bad manifest refferenced", func() {
+			mockSearchDB := mocks.RepoDBMock{
+				SearchReposFn: func(ctx context.Context, searchText string, filter repodb.Filter, requestedPage repodb.PageInput,
+				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
+					repos := []repodb.RepoMetadata{
+						{
+							Name: "repo1",
+							Tags: map[string]string{
+								"1.0.1": "digestTag1.0.1",
+							},
+							Signatures:  []string{"testSignature"},
+							Stars:       100,
+							Description: "Description repo1",
+							LogoPath:    "test/logoPath",
+						},
+						{
+							Name: "repo2",
+							Tags: map[string]string{
+								"1.0.2": "digestTag1.0.2",
+							},
+							Signatures:  []string{"testSignature"},
+							Stars:       100,
+							Description: "Description repo2",
+							LogoPath:    "test/logoPath",
+						},
+					}
+
+					configBlob1, err := json.Marshal(ispec.Image{
+						Config: ispec.ImageConfig{
+							Labels: map[string]string{},
+						},
+					})
+					So(err, ShouldBeNil)
+
+					manifestMetas := map[string]repodb.ManifestMetadata{
+						"digestTag1.0.1": {
+							ManifestBlob:  []byte("bad manifest blob"),
+							ConfigBlob:    configBlob1,
+							DownloadCount: 100,
+							Signatures:    make(map[string][]string),
+							Dependencies:  make([]string, 0),
+							Dependants:    make([]string, 0),
+							BlobsSize:     0,
+							BlobCount:     0,
+						},
+						"digestTag1.0.2": {
+							ManifestBlob:  []byte("bad manifest blob"),
+							ConfigBlob:    configBlob1,
+							DownloadCount: 100,
+							Signatures:    make(map[string][]string),
+							Dependencies:  make([]string, 0),
+							Dependants:    make([]string, 0),
+							BlobsSize:     0,
+							BlobCount:     0,
+						},
+					}
+
+					return repos, manifestMetas, nil
+				},
+			}
+
+			responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
+				graphql.DefaultRecover)
+			mockCve := mocks.CveInfoMock{}
+
+			limit := 1
+			ofset := 0
+			sortCriteria := gql_generated.SortCriteriaUpdateTime
+			pageInput := gql_generated.PageInput{
+				Limit:  &limit,
+				Offset: &ofset,
+				SortBy: &sortCriteria,
+			}
+			repos, err := repoListWithNewestImage(responseContext, mockCve, log.NewLogger("debug", ""), &pageInput, mockSearchDB)
+			So(err, ShouldBeNil)
+			So(repos, ShouldNotBeEmpty)
+		})
+
+		Convey("Working SearchRepo function", func() {
+			createTime := time.Now()
+			createTime2 := createTime.Add(time.Second)
+			mockSearchDB := mocks.RepoDBMock{
+				SearchReposFn: func(ctx context.Context, searchText string, filter repodb.Filter, requestedPage repodb.PageInput,
+				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
+					pageFinder, err := repodb.NewBaseRepoPageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
+					So(err, ShouldBeNil)
+
+					repos := []repodb.RepoMetadata{
+						{
+							Name: "repo1",
+							Tags: map[string]string{
+								"1.0.1": "digestTag1.0.1",
+							},
+							Signatures:  []string{"testSignature"},
+							Stars:       100,
+							Description: "Description repo1",
+							LogoPath:    "test/logoPath",
+						},
+						{
+							Name: "repo2",
+							Tags: map[string]string{
+								"1.0.2": "digestTag1.0.2",
+							},
+							Signatures:  []string{"testSignature"},
+							Stars:       100,
+							Description: "Description repo2",
+							LogoPath:    "test/logoPath",
+						},
+					}
+
+					for _, repoMeta := range repos {
+						pageFinder.Add(repodb.DetailedRepoMeta{
+							RepoMeta:   repoMeta,
+							UpdateTime: createTime,
+						})
+						createTime = createTime.Add(time.Second)
+					}
+
+					repos = pageFinder.Page()
+
+					configBlob1, err := json.Marshal(ispec.Image{
+						Config: ispec.ImageConfig{
+							Labels: map[string]string{},
+						},
+						Created: &createTime,
+					})
+					So(err, ShouldBeNil)
+
+					configBlob2, err := json.Marshal(ispec.Image{
+						Config: ispec.ImageConfig{
+							Labels: map[string]string{},
+						},
+						Created: &createTime2,
+					})
+					So(err, ShouldBeNil)
+
+					manifestBlob, err := json.Marshal(ispec.Manifest{})
+					So(err, ShouldBeNil)
+
+					manifestMetas := map[string]repodb.ManifestMetadata{
+						"digestTag1.0.1": {
+							ManifestBlob:  manifestBlob,
+							ConfigBlob:    configBlob1,
+							DownloadCount: 100,
+							Signatures:    make(map[string][]string),
+							Dependencies:  make([]string, 0),
+							Dependants:    make([]string, 0),
+							BlobsSize:     0,
+							BlobCount:     0,
+						},
+						"digestTag1.0.2": {
+							ManifestBlob:  manifestBlob,
+							ConfigBlob:    configBlob2,
+							DownloadCount: 100,
+							Signatures:    make(map[string][]string),
+							Dependencies:  make([]string, 0),
+							Dependants:    make([]string, 0),
+							BlobsSize:     0,
+							BlobCount:     0,
+						},
+					}
+
+					return repos, manifestMetas, nil
+				},
+			}
+			Convey("RepoDB missing requestedPage", func() {
+				responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
+					graphql.DefaultRecover)
+				mockCve := mocks.CveInfoMock{}
+				repos, err := repoListWithNewestImage(responseContext, mockCve, log.NewLogger("debug", ""), nil, mockSearchDB)
+				So(err, ShouldBeNil)
+				So(repos, ShouldNotBeEmpty)
+			})
+
+			Convey("RepoDB SearchRepo is successful", func() {
+				limit := 2
+				ofset := 0
+				sortCriteria := gql_generated.SortCriteriaUpdateTime
+				pageInput := gql_generated.PageInput{
+					Limit:  &limit,
+					Offset: &ofset,
+					SortBy: &sortCriteria,
+				}
+
+				responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
+					graphql.DefaultRecover)
+
+				mockCve := mocks.CveInfoMock{}
+				repos, err := repoListWithNewestImage(responseContext, mockCve,
+					log.NewLogger("debug", ""), &pageInput, mockSearchDB)
+				So(err, ShouldBeNil)
+				So(repos, ShouldNotBeEmpty)
+				So(len(repos), ShouldEqual, 2)
+				So(*repos[0].Name, ShouldEqual, "repo2")
+				So(*repos[0].LastUpdated, ShouldEqual, createTime2)
+			})
+		})
+	})
+}
+
 func TestMatching(t *testing.T) {
 	pine := "pine"
 

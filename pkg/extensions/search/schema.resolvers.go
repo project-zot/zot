@@ -186,41 +186,12 @@ func (r *queryResolver) ImageListForDigest(ctx context.Context, id string) ([]*g
 }
 
 // RepoListWithNewestImage is the resolver for the RepoListWithNewestImage field.
-func (r *queryResolver) RepoListWithNewestImage(ctx context.Context) ([]*gql_generated.RepoSummary, error) {
+func (r *queryResolver) RepoListWithNewestImage(ctx context.Context, requestedPage *gql_generated.PageInput) ([]*gql_generated.RepoSummary, error) {
 	r.log.Info().Msg("extension api: finding image list")
 
-	olu := common.NewBaseOciLayoutUtils(r.storeController, r.log)
-
-	reposSummary := make([]*gql_generated.RepoSummary, 0)
-
-	repoList := []string{}
-
-	defaultRepoList, err := r.storeController.DefaultStore.GetRepositories()
+	reposSummary, err := repoListWithNewestImage(ctx, r.cveInfo, r.log, requestedPage, r.repoDB)
 	if err != nil {
-		r.log.Error().Err(err).Msg("extension api: error extracting default store repo list")
-
-		return reposSummary, err
-	}
-
-	if len(defaultRepoList) > 0 {
-		repoList = append(repoList, defaultRepoList...)
-	}
-
-	subStore := r.storeController.SubStore
-	for _, store := range subStore {
-		subRepoList, err := store.GetRepositories()
-		if err != nil {
-			r.log.Error().Err(err).Msg("extension api: error extracting substore repo list")
-
-			return reposSummary, err
-		}
-
-		repoList = append(repoList, subRepoList...)
-	}
-
-	reposSummary, err = repoListWithNewestImage(ctx, repoList, olu, r.cveInfo, r.log)
-	if err != nil {
-		r.log.Error().Err(err).Msg("extension api: error extracting substore image list")
+		r.log.Error().Err(err).Msg("unable to retrieve repo list")
 
 		return reposSummary, err
 	}

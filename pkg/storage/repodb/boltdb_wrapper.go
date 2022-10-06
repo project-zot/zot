@@ -577,7 +577,7 @@ func (bdw BoltDBWrapper) SearchRepos(ctx context.Context, searchText string, fil
 				return err
 			}
 
-			if score := strings.Index(string(repoName), searchText); score != -1 {
+			if score := strings.Index(string(repoName), searchText); score != -1 || searchText == "" {
 				var (
 					// specific values used for sorting that need to be calculated based on all manifests from the repo
 					repoDownloads   = 0

@@ -123,208 +123,36 @@ func getImageSummary(ctx context.Context, repo, tag string, repoDB repodb.RepoDB
 
 func repoListWithNewestImage(
 	ctx context.Context,
-	repoList []string,
-	olu common.OciLayoutUtils,
 	cveInfo cveinfo.CveInfo,
-	log log.Logger,
-) ([]*gql_generated.RepoSummary, error) { //nolint:unparam
-	reposSummary := []*gql_generated.RepoSummary{}
+	log log.Logger, //nolint:unparam // may be used by devs for debugging
+	requestedPage *gql_generated.PageInput,
+	repoDB repodb.RepoDB,
+) ([]*gql_generated.RepoSummary, error) {
+	repos := []*gql_generated.RepoSummary{}
 
-	for _, repo := range repoList {
-		lastUpdatedTag, err := olu.GetRepoLastUpdated(repo)
-		if err != nil {
-			msg := fmt.Sprintf("can't get last updated manifest for repo: %s", repo)
-			log.Error().Err(err).Msg(msg)
-
-			graphql.AddError(ctx, gqlerror.Errorf(msg))
-
-			continue
-		}
-
-		repoSize := int64(0)
-		repoBlob2Size := make(map[string]int64, 10)
-
-		manifests, err := olu.GetImageManifests(repo)
-		if err != nil {
-			msg := fmt.Sprintf("can't get manifests for repo: %s", repo)
-
-			log.Error().Err(err).Msg(msg)
-			graphql.AddError(ctx, gqlerror.Errorf(msg))
-
-			continue
-		}
-
-		repoVendorsSet := make(map[string]bool, len(manifests))
-		repoPlatformsSet := make(map[string]*gql_generated.OsArch, len(manifests))
-
-		repoName := repo
-
-		var lastUpdatedImageSummary gql_generated.ImageSummary
-
-		var brokenManifest bool
-
-		for _, manifest := range manifests {
-			imageLayersSize := int64(0)
-			manifestSize := olu.GetImageManifestSize(repo, manifest.Digest)
-
-			imageBlobManifest, err := olu.GetImageBlobManifest(repo, manifest.Digest)
-			if err != nil {
-				msg := fmt.Sprintf("reference not found for manifest %s", manifest.Digest)
-
-				log.Error().Err(err).Msg(msg)
-				graphql.AddError(ctx, gqlerror.Errorf(msg))
-
-				brokenManifest = true
-
-				continue
-			}
-
-			configSize := imageBlobManifest.Config.Size
-			repoBlob2Size[manifest.Digest.String()] = manifestSize
-			repoBlob2Size[imageBlobManifest.Config.Digest.Hex] = configSize
-
-			for _, layer := range imageBlobManifest.Layers {
-				repoBlob2Size[layer.Digest.String()] = layer.Size
-				imageLayersSize += layer.Size
-			}
-
-			imageSize := imageLayersSize + manifestSize + configSize
-
-			imageConfigInfo, err := olu.GetImageConfigInfo(repo, manifest.Digest)
-			if err != nil {
-				msg := fmt.Sprintf("can't get image config for manifest %s", manifest.Digest)
-
-				log.Error().Err(err).Msg(msg)
-				graphql.AddError(ctx, gqlerror.Errorf(msg))
-
-				brokenManifest = true
-
-				continue
-			}
-
-			opSys, arch := olu.GetImagePlatform(imageConfigInfo)
-			osArch := &gql_generated.OsArch{
-				Os:   &opSys,
-				Arch: &arch,
-			}
-
-			if opSys != "" || arch != "" {
-				osArchString := strings.TrimSpace(fmt.Sprintf("%s %s", opSys, arch))
-				repoPlatformsSet[osArchString] = &gql_generated.OsArch{Os: &opSys, Arch: &arch}
-			}
-
-			// get image info from manifest annotation, if not found get from image config labels.
-			annotations := common.GetAnnotations(imageBlobManifest.Annotations, imageConfigInfo.Config.Labels)
-
-			if annotations.Vendor != "" {
-				repoVendorsSet[annotations.Vendor] = true
-			}
-
-			manifestTag, ok := manifest.Annotations[ispec.AnnotationRefName]
-			if !ok {
-				msg := fmt.Sprintf("reference not found for manifest %s in repo %s",
-					manifest.Digest.String(), repoName)
-
-				log.Error().Msg(msg)
-				graphql.AddError(ctx, gqlerror.Errorf(msg))
-
-				brokenManifest = true
-
-				break
-			}
-
-			imageCveSummary := cveinfo.ImageCVESummary{}
-			// Check if vulnerability scanning is disabled
-			if cveInfo != nil {
-				imageName := fmt.Sprintf("%s:%s", repoName, manifestTag)
-				imageCveSummary, err = cveInfo.GetCVESummaryForImage(imageName)
-
-				if err != nil {
-					// Log the error, but we should still include the manifest in results
-					msg := fmt.Sprintf(
-						"unable to run vulnerability scan on tag %s in repo %s",
-						manifestTag,
-						repoName,
-					)
-
-					log.Error().Msg(msg)
-					graphql.AddError(ctx, gqlerror.Errorf(msg))
-				}
-			}
-
-			tag := manifestTag
-			size := strconv.Itoa(int(imageSize))
-			manifestDigest := manifest.Digest.Hex()
-			configDigest := imageBlobManifest.Config.Digest.Hex
-			isSigned := olu.CheckManifestSignature(repo, manifest.Digest)
-			lastUpdated := common.GetImageLastUpdated(imageConfigInfo)
-			score := 0
-
-			imageSummary := gql_generated.ImageSummary{
-				RepoName:      &repoName,
-				Tag:           &tag,
-				LastUpdated:   &lastUpdated,
-				Digest:        &manifestDigest,
-				ConfigDigest:  &configDigest,
-				IsSigned:      &isSigned,
-				Size:          &size,
-				Platform:      osArch,
-				Vendor:        &annotations.Vendor,
-				Score:         &score,
-				Description:   &annotations.Description,
-				Title:         &annotations.Title,
-				Documentation: &annotations.Documentation,
-				Licenses:      &annotations.Licenses,
-				Labels:        &annotations.Labels,
-				Source:        &annotations.Source,
-				Vulnerabilities: &gql_generated.ImageVulnerabilitySummary{
-					MaxSeverity: &imageCveSummary.MaxSeverity,
-					Count:       &imageCveSummary.Count,
-				},
-				Logo: &annotations.Logo,
-			}
-
-			if manifest.Digest.String() == lastUpdatedTag.Digest {
-				lastUpdatedImageSummary = imageSummary
-			}
-		}
-
-		if brokenManifest {
-			continue
-		}
-
-		for blob := range repoBlob2Size {
-			repoSize += repoBlob2Size[blob]
-		}
-
-		repoSizeStr := strconv.FormatInt(repoSize, 10)
-		index := 0
-
-		repoPlatforms := make([]*gql_generated.OsArch, 0, len(repoPlatformsSet))
-
-		for _, osArch := range repoPlatformsSet {
-			repoPlatforms = append(repoPlatforms, osArch)
-		}
-
-		repoVendors := make([]*string, 0, len(repoVendorsSet))
-
-		for vendor := range repoVendorsSet {
-			vendor := vendor
-			repoVendors = append(repoVendors, &vendor)
-		}
-
-		reposSummary = append(reposSummary, &gql_generated.RepoSummary{
-			Name:        &repoName,
-			LastUpdated: &lastUpdatedTag.Timestamp,
-			Size:        &repoSizeStr,
-			Platforms:   repoPlatforms,
-			Vendors:     repoVendors,
-			Score:       &index,
-			NewestImage: &lastUpdatedImageSummary,
-		})
+	if requestedPage == nil {
+		requestedPage = &gql_generated.PageInput{}
 	}
 
-	return reposSummary, nil
+	pageInput := repodb.PageInput{
+		Limit:  safeDerefferencing(requestedPage.Limit, 0),
+		Offset: safeDerefferencing(requestedPage.Offset, 0),
+		SortBy: repodb.SortCriteria(
+			safeDerefferencing(requestedPage.SortBy, gql_generated.SortCriteriaRelevance),
+		),
+	}
+
+	reposMeta, manifestMetaMap, err := repoDB.SearchRepos(ctx, "", repodb.Filter{}, pageInput)
+	if err != nil {
+		return []*gql_generated.RepoSummary{}, err
+	}
+
+	for _, repoMeta := range reposMeta {
+		repoSummary := RepoMeta2RepoSummary(ctx, repoMeta, manifestMetaMap, cveInfo)
+		repos = append(repos, repoSummary)
+	}
+
+	return repos, nil
 }
 
 func cleanQuerry(query string) string {
@@ -611,7 +439,7 @@ func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta repodb.RepoMetadata
 			opSys            = configContent.OS
 			arch             = configContent.Architecture
 			osArch           = gql_generated.OsArch{Os: &opSys, Arch: &arch}
-			imageLastUpdated = getImageLastUpdated(configContent)
+			imageLastUpdated = common.GetImageLastUpdated(configContent)
 			downloadCount    = manifestMetaMap[manifestDigest].DownloadCount
 			manifestDigest   = manifestDigest
 
@@ -630,7 +458,7 @@ func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta repodb.RepoMetadata
 			Tag:           &tag,
 			Digest:        &manifestDigest,
 			ConfigDigest:  &configDigest,
-			LastUpdated:   imageLastUpdated,
+			LastUpdated:   &imageLastUpdated,
 			IsSigned:      &isSigned,
 			Size:          &imageSize,
 			Platform:      &osArch,
@@ -662,13 +490,10 @@ func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta repodb.RepoMetadata
 
 		if repoLastUpdatedTimestamp.Equal(time.Time{}) {
 			// initialize with first time value
-			if imageLastUpdated != nil {
-				repoLastUpdatedTimestamp = *imageLastUpdated
-			}
-
+			repoLastUpdatedTimestamp = imageLastUpdated
 			lastUpdatedImageSummary = &imageSummary
-		} else if imageLastUpdated != nil && repoLastUpdatedTimestamp.Before(*imageLastUpdated) {
-			repoLastUpdatedTimestamp = *imageLastUpdated
+		} else if repoLastUpdatedTimestamp.Before(imageLastUpdated) {
+			repoLastUpdatedTimestamp = imageLastUpdated
 			lastUpdatedImageSummary = &imageSummary
 		}
 
