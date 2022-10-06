@@ -888,10 +888,10 @@ type layer struct {
 	Digest string `json:"digest"`
 }
 
-func (img imageStruct) string(format string) (string, error) {
+func (img imageStruct) string(format string, maxImgNameLen, maxTagLen int) (string, error) {
 	switch strings.ToLower(format) {
 	case "", defaultOutoutFormat:
-		return img.stringPlainText()
+		return img.stringPlainText(maxImgNameLen, maxTagLen)
 	case "json":
 		return img.stringJSON()
 	case "yml", "yaml":
@@ -901,12 +901,14 @@ func (img imageStruct) string(format string) (string, error) {
 	}
 }
 
-func (img imageStruct) stringPlainText() (string, error) {
+func (img imageStruct) stringPlainText(maxImgNameLen, maxTagLen int) (string, error) {
 	var builder strings.Builder
 
 	table := getImageTableWriter(&builder)
-	table.SetColMinWidth(colImageNameIndex, imageNameWidth)
-	table.SetColMinWidth(colTagIndex, tagWidth)
+
+	table.SetColMinWidth(colImageNameIndex, maxImgNameLen)
+	table.SetColMinWidth(colTagIndex, maxTagLen)
+
 	table.SetColMinWidth(colDigestIndex, digestWidth)
 	table.SetColMinWidth(colSizeIndex, sizeWidth)
 
@@ -915,8 +917,10 @@ func (img imageStruct) stringPlainText() (string, error) {
 		table.SetColMinWidth(colLayersIndex, layersWidth)
 	}
 
-	imageName := ellipsize(img.RepoName, imageNameWidth, ellipsis)
-	tagName := ellipsize(img.Tag, tagWidth, ellipsis)
+	var imageName, tagName string
+
+	imageName = img.RepoName
+	tagName = img.Tag
 	digest := ellipsize(img.Digest, digestWidth, "")
 	imgSize, _ := strconv.ParseUint(img.Size, 10, 64)
 	size := ellipsize(strings.ReplaceAll(humanize.Bytes(imgSize), " ", ""), sizeWidth, ellipsis)

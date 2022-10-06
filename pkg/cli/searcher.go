@@ -358,7 +358,7 @@ func (search cveByImageSearcherGQL) search(config searchConfig) (bool, error) {
 
 	if len(cveList.Data.CVEListForImage.CVEList) > 0 &&
 		(*config.outputFormat == defaultOutoutFormat || *config.outputFormat == "") {
-		printCVETableHeader(&builder, *config.verbose)
+		printCVETableHeader(&builder, *config.verbose, 0, 0)
 		fmt.Fprint(config.resultWriter, builder.String())
 	}
 
@@ -589,7 +589,7 @@ func collectResults(config searchConfig, wg *sync.WaitGroup, imageErr chan strin
 			if !foundResult && (*config.outputFormat == defaultOutoutFormat || *config.outputFormat == "") {
 				var builder strings.Builder
 
-				printHeader(&builder, *config.verbose)
+				printHeader(&builder, *config.verbose, 0, 0)
 				fmt.Fprint(config.resultWriter, builder.String())
 			}
 
@@ -691,9 +691,9 @@ type stringResult struct {
 	Err      error
 }
 
-type printHeader func(writer io.Writer, verbose bool)
+type printHeader func(writer io.Writer, verbose bool, maxImageNameLen, maxTagLen int)
 
-func printImageTableHeader(writer io.Writer, verbose bool) {
+func printImageTableHeader(writer io.Writer, verbose bool, maxImageNameLen, maxTagLen int) {
 	table := getImageTableWriter(writer)
 
 	table.SetColMinWidth(colImageNameIndex, imageNameWidth)
@@ -708,8 +708,23 @@ func printImageTableHeader(writer io.Writer, verbose bool) {
 
 	row := make([]string, 6) //nolint:gomnd
 
-	row[colImageNameIndex] = "IMAGE NAME"
-	row[colTagIndex] = "TAG"
+	// adding spaces so that image name and tag columns are aligned
+	// in case the name/tag are fully shown and too long
+	var offset string
+	if maxImageNameLen > len("IMAGE NAME") {
+		offset = strings.Repeat(" ", maxImageNameLen-len("IMAGE NAME"))
+		row[colImageNameIndex] = "IMAGE NAME" + offset
+	} else {
+		row[colImageNameIndex] = "IMAGE NAME"
+	}
+
+	if maxTagLen > len("TAG") {
+		offset = strings.Repeat(" ", maxTagLen-len("TAG"))
+		row[colTagIndex] = "TAG" + offset
+	} else {
+		row[colTagIndex] = "TAG"
+	}
+
 	row[colDigestIndex] = "DIGEST"
 	row[colSizeIndex] = "SIZE"
 
@@ -722,7 +737,7 @@ func printImageTableHeader(writer io.Writer, verbose bool) {
 	table.Render()
 }
 
-func printCVETableHeader(writer io.Writer, verbose bool) {
+func printCVETableHeader(writer io.Writer, verbose bool, maxImgLen, maxTagLen int) {
 	table := getCVETableWriter(writer)
 	row := make([]string, 3) //nolint:gomnd
 	row[colCVEIDIndex] = "ID"
@@ -735,9 +750,21 @@ func printCVETableHeader(writer io.Writer, verbose bool) {
 
 func printResult(config searchConfig, imageList []imageStruct) error {
 	var builder strings.Builder
+	maxImgNameLen := 0
+	maxTagLen := 0
 
 	if len(imageList) > 0 {
-		printImageTableHeader(&builder, *config.verbose)
+		for i := range imageList {
+			if maxImgNameLen < len(imageList[i].RepoName) {
+				maxImgNameLen = len(imageList[i].RepoName)
+			}
+
+			if maxTagLen < len(imageList[i].Tag) {
+				maxTagLen = len(imageList[i].Tag)
+			}
+		}
+
+		printImageTableHeader(&builder, *config.verbose, maxImgNameLen, maxTagLen)
 		fmt.Fprint(config.resultWriter, builder.String())
 	}
 
@@ -745,7 +772,7 @@ func printResult(config searchConfig, imageList []imageStruct) error {
 		img := imageList[i]
 		img.verbose = *config.verbose
 
-		out, err := img.string(*config.outputFormat)
+		out, err := img.string(*config.outputFormat, maxImgNameLen, maxTagLen)
 		if err != nil {
 			return err
 		}
