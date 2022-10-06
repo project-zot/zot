@@ -167,10 +167,16 @@ func SyncRepo(repo string, repoDB RepoDB, storeController storage.StoreControlle
 
 func resetRepoMetaTags(repo string, repoDB RepoDB, log log.Logger) error {
 	repoMeta, err := repoDB.GetRepoMeta(repo)
-	if err != nil {
+	if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
 		log.Error().Err(err).Msgf("sync-repo: failed to get RepoMeta for repo %s", repo)
 
 		return err
+	}
+
+	if errors.Is(err, zerr.ErrRepoMetaNotFound) {
+		log.Info().Msgf("sync-repo: RepoMeta not found for repo %s, new RepoMeta will be created", repo)
+
+		return nil
 	}
 
 	for tag := range repoMeta.Tags {
