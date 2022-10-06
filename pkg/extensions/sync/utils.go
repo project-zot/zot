@@ -274,7 +274,7 @@ func pushSyncedLocalImage(localRepo, tag, localCachePath string,
 	cacheImageStore := local.NewImageStore(localCachePath, false,
 		storage.DefaultGCDelay, false, false, log, metrics, nil)
 
-	manifestContent, _, _, err := cacheImageStore.GetImageManifest(localRepo, tag)
+	manifestContent, _, mediaType, err := cacheImageStore.GetImageManifest(localRepo, tag)
 	if err != nil {
 		log.Error().Str("errorType", TypeOf(err)).
 			Err(err).Str("dir", path.Join(cacheImageStore.RootDir(), localRepo)).
@@ -283,7 +283,73 @@ func pushSyncedLocalImage(localRepo, tag, localCachePath string,
 		return err
 	}
 
+	// is image manifest
+	if mediaType == ispec.MediaTypeImageManifest {
+		if err := copyManifest(localRepo, manifestContent, tag, cacheImageStore, imageStore, log); err != nil {
+			if errors.Is(err, zerr.ErrImageLintAnnotations) {
+				log.Error().Str("errorType", TypeOf(err)).
+					Err(err).Msg("couldn't upload manifest because of missing annotations")
+
+				return nil
+			}
+
+			return err
+		}
+
+		return nil
+	}
+
+	// is image index
+	var indexManifest ispec.Index
+
+	if err := json.Unmarshal(manifestContent, &indexManifest); err != nil {
+		log.Error().Str("errorType", TypeOf(err)).
+			Err(err).Str("dir", path.Join(cacheImageStore.RootDir(), localRepo)).
+			Msg("invalid JSON")
+
+		return err
+	}
+
+	for _, manifest := range indexManifest.Manifests {
+		manifestBuf, err := cacheImageStore.GetBlobContent(localRepo, manifest.Digest.String())
+		if err != nil {
+			log.Error().Str("errorType", TypeOf(err)).
+				Err(err).Str("dir", path.Join(cacheImageStore.RootDir(), localRepo)).Str("digest", manifest.Digest.String()).
+				Msg("couldn't find manifest which is part of an image index")
+
+			return err
+		}
+
+		if err := copyManifest(localRepo, manifestBuf, manifest.Digest.String(),
+			cacheImageStore, imageStore, log); err != nil {
+			if errors.Is(err, zerr.ErrImageLintAnnotations) {
+				log.Error().Str("errorType", TypeOf(err)).
+					Err(err).Msg("couldn't upload manifest because of missing annotations")
+
+				return nil
+			}
+
+			return err
+		}
+	}
+
+	_, err = imageStore.PutImageManifest(localRepo, tag, mediaType, manifestContent)
+	if err != nil {
+		log.Error().Str("errorType", TypeOf(err)).
+			Err(err).Msg("couldn't upload manifest")
+
+		return err
+	}
+
+	return nil
+}
+
+func copyManifest(localRepo string, manifestContent []byte, reference string,
+	cacheImageStore, imageStore storage.ImageStore, log log.Logger,
+) error {
 	var manifest ispec.Manifest
+
+	var err error
 
 	if err := json.Unmarshal(manifestContent, &manifest); err != nil {
 		log.Error().Str("errorType", TypeOf(err)).
@@ -307,16 +373,9 @@ func pushSyncedLocalImage(localRepo, tag, localCachePath string,
 		return err
 	}
 
-	_, err = imageStore.PutImageManifest(localRepo, tag,
+	_, err = imageStore.PutImageManifest(localRepo, reference,
 		ispec.MediaTypeImageManifest, manifestContent)
 	if err != nil {
-		if errors.Is(err, zerr.ErrImageLintAnnotations) {
-			log.Error().Str("errorType", TypeOf(err)).
-				Err(err).Msg("couldn't upload manifest because of missing annotations")
-
-			return nil
-		}
-
 		log.Error().Str("errorType", TypeOf(err)).
 			Err(err).Msg("couldn't upload manifest")
 
