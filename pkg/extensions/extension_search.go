@@ -103,7 +103,7 @@ func GetExtensions(config *config.Config) distext.ExtensionList {
 	if config.Extensions != nil && config.Extensions.Search != nil {
 		endpoints := []string{constants.ExtSearchPrefix}
 		searchExt := getExtension("_zot",
-			"https://github.com/project-zot/zot/tree/main/pkg/extensions/_zot.md",
+			"https://github.com/project-zot/zot/blob/"+config.CommitHash+"/pkg/extensions/_zot.md",
 			"zot registry extension",
 			endpoints)
 
