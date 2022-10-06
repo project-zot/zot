@@ -102,7 +102,7 @@ func SyncRepo(repo string, repoDB RepoDB, storeController storage.StoreControlle
 		}
 
 		isSignature, signatureType, signedManifestDigest, err := storage.CheckIsImageSignature(repo,
-			manifestBlob, manifest.Digest.String(), storeController)
+			manifestBlob, tag, storeController)
 		if err != nil {
 			log.Error().Err(err).Msgf("sync-repo: failed checking if image is signature for %s:%s", repo, tag)
 

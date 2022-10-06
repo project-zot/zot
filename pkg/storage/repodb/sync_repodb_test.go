@@ -9,6 +9,7 @@ import (
 	"path"
 	"testing"
 
+	"github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
@@ -28,10 +29,12 @@ func TestSyncRepoDBWithStorage(t *testing.T) {
 			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil)
 
 		storeController := storage.StoreController{DefaultStore: imageStore}
-
+		manifests := []ispec.Manifest{}
 		for i := 0; i < 3; i++ {
-			config, layers, manifest, err := test.GetImageComponents(100)
+			config, layers, manifest, err := test.GetRandomImageComponents(100)
 			So(err, ShouldBeNil)
+
+			manifests = append(manifests, manifest)
 
 			err = test.WriteImageToFileSystem(
 				test.Image{
@@ -45,7 +48,30 @@ func TestSyncRepoDBWithStorage(t *testing.T) {
 			So(err, ShouldBeNil)
 		}
 
-		// remove tag3 from index.json
+		// add fake signature for tag1
+		signatureTag, err := test.GetCosignSignatureTagForManifest(manifests[1])
+		So(err, ShouldBeNil)
+
+		manifestBlob, err := json.Marshal(manifests[1])
+		So(err, ShouldBeNil)
+
+		signedManifestDigest := digest.FromBytes(manifestBlob)
+
+		config, layers, manifest, err := test.GetRandomImageComponents(100)
+		So(err, ShouldBeNil)
+
+		err = test.WriteImageToFileSystem(
+			test.Image{
+				Config:   config,
+				Layers:   layers,
+				Manifest: manifest,
+				Tag:      signatureTag,
+			},
+			repo,
+			storeController)
+		So(err, ShouldBeNil)
+
+		// remove tag2 from index.json
 		indexPath := path.Join(rootDir, repo, "index.json")
 		indexFile, err := os.Open(indexPath)
 		So(err, ShouldBeNil)
@@ -85,5 +111,16 @@ func TestSyncRepoDBWithStorage(t *testing.T) {
 
 		So(len(repos), ShouldEqual, 1)
 		So(len(repos[0].Tags), ShouldEqual, 2)
+
+		for _, digest := range repos[0].Tags {
+			manifestMeta, err := repoDB.GetManifestMeta(digest)
+			So(err, ShouldBeNil)
+			So(manifestMeta.ManifestBlob, ShouldNotBeNil)
+			So(manifestMeta.ConfigBlob, ShouldNotBeNil)
+
+			if digest == signedManifestDigest.String() {
+				So(manifestMeta.Signatures, ShouldNotBeEmpty)
+			}
+		}
 	})
 }

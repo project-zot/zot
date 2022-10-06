@@ -17,6 +17,7 @@ import (
 	"path"
 	"time"
 
+	"github.com/opencontainers/go-digest"
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -372,6 +373,73 @@ func GetImageComponents(layerSize int) (ispec.Image, [][]byte, ispec.Manifest, e
 	}
 
 	return config, layers, manifest, nil
+}
+
+func GetRandomImageComponents(layerSize int) (ispec.Image, [][]byte, ispec.Manifest, error) {
+	config := ispec.Image{
+		Architecture: "amd64",
+		OS:           "linux",
+		RootFS: ispec.RootFS{
+			Type:    "layers",
+			DiffIDs: []godigest.Digest{},
+		},
+		Author: "ZotUser",
+	}
+
+	configBlob, err := json.Marshal(config)
+	if err = Error(err); err != nil {
+		return ispec.Image{}, [][]byte{}, ispec.Manifest{}, err
+	}
+
+	configDigest := godigest.FromBytes(configBlob)
+
+	layer := make([]byte, layerSize)
+
+	_, err = rand.Read(layer)
+	if err != nil {
+		return ispec.Image{}, [][]byte{}, ispec.Manifest{}, err
+	}
+
+	layers := [][]byte{
+		layer,
+	}
+
+	schemaVersion := 2
+
+	manifest := ispec.Manifest{
+		Versioned: specs.Versioned{
+			SchemaVersion: schemaVersion,
+		},
+		Config: ispec.Descriptor{
+			MediaType: "application/vnd.oci.image.config.v1+json",
+			Digest:    configDigest,
+			Size:      int64(len(configBlob)),
+		},
+		Layers: []ispec.Descriptor{
+			{
+				MediaType: "application/vnd.oci.image.layer.v1.tar",
+				Digest:    godigest.FromBytes(layers[0]),
+				Size:      int64(len(layers[0])),
+			},
+		},
+	}
+
+	return config, layers, manifest, nil
+}
+
+func GetCosignSignatureTagForManifest(manifest ispec.Manifest) (string, error) {
+	manifestBlob, err := json.Marshal(manifest)
+	if err != nil {
+		return "", err
+	}
+
+	manifestDigest := digest.FromBytes(manifestBlob)
+
+	return GetCosignSignatureTagForDigest(manifestDigest), nil
+}
+
+func GetCosignSignatureTagForDigest(manifestDigest digest.Digest) string {
+	return manifestDigest.Algorithm().String() + "-" + manifestDigest.Encoded() + ".sig"
 }
 
 func UploadImage(img Image, baseURL, repo string) error {
