@@ -32,8 +32,8 @@ import (
 	"zotregistry.io/zot/pkg/api/constants"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
-	"zotregistry.io/zot/pkg/extensions/search"
 	"zotregistry.io/zot/pkg/extensions/search/common"
+	"zotregistry.io/zot/pkg/extensions/search/convert"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
@@ -3030,7 +3030,7 @@ func TestBuildImageInfo(t *testing.T) {
 
 		isSigned := false
 
-		imageSummary := search.BuildImageInfo(invalid, invalid, manifestDigest, manifest,
+		imageSummary := convert.BuildImageInfo(invalid, invalid, manifestDigest, manifest,
 			imageConfig, isSigned)
 
 		So(len(imageSummary.Layers), ShouldEqual, len(manifest.Layers))

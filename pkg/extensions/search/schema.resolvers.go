@@ -8,6 +8,7 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	"zotregistry.io/zot/pkg/extensions/search/common"
+	"zotregistry.io/zot/pkg/extensions/search/convert"
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
 )
 
@@ -89,7 +90,13 @@ func (r *queryResolver) ImageListForCve(ctx context.Context, id string) ([]*gql_
 			}
 
 			isSigned := olu.CheckManifestSignature(repo, imageByCVE.Digest)
-			imageInfo := BuildImageInfo(repo, imageByCVE.Tag, imageByCVE.Digest, imageByCVE.Manifest, imageConfig, isSigned)
+			imageInfo := convert.BuildImageInfo(
+				repo, imageByCVE.Tag,
+				imageByCVE.Digest,
+				imageByCVE.Manifest,
+				imageConfig,
+				isSigned,
+			)
 
 			affectedImages = append(
 				affectedImages,
@@ -129,7 +136,7 @@ func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, im
 		}
 
 		isSigned := olu.CheckManifestSignature(image, digest)
-		imageInfo := BuildImageInfo(image, tag.Name, digest, manifest, imageConfig, isSigned)
+		imageInfo := convert.BuildImageInfo(image, tag.Name, digest, manifest, imageConfig, isSigned)
 
 		unaffectedImages = append(unaffectedImages, imageInfo)
 	}
