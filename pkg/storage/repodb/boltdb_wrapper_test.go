@@ -1110,7 +1110,7 @@ func TestBoltDBWrapper(t *testing.T) {
 			opSys := LINUX
 			arch := ""
 			filter := repodb.Filter{
-				Os: &opSys,
+				Os: []*string{&opSys},
 			}
 
 			repos, _, err := repoDB.SearchRepos(context.TODO(), "", filter, repodb.PageInput{SortBy: repodb.AlphabeticAsc})
@@ -1121,7 +1121,7 @@ func TestBoltDBWrapper(t *testing.T) {
 
 			opSys = WINDOWS
 			filter = repodb.Filter{
-				Os: &opSys,
+				Os: []*string{&opSys},
 			}
 			repos, _, err = repoDB.SearchRepos(context.TODO(), "repo", filter, repodb.PageInput{SortBy: repodb.AlphabeticAsc})
 			So(err, ShouldBeNil)
@@ -1131,7 +1131,7 @@ func TestBoltDBWrapper(t *testing.T) {
 
 			opSys = "wrong"
 			filter = repodb.Filter{
-				Os: &opSys,
+				Os: []*string{&opSys},
 			}
 			repos, _, err = repoDB.SearchRepos(context.TODO(), "repo", filter, repodb.PageInput{SortBy: repodb.AlphabeticAsc})
 			So(err, ShouldBeNil)
@@ -1140,8 +1140,8 @@ func TestBoltDBWrapper(t *testing.T) {
 			opSys = LINUX
 			arch = AMD
 			filter = repodb.Filter{
-				Os:   &opSys,
-				Arch: &arch,
+				Os:   []*string{&opSys},
+				Arch: []*string{&arch},
 			}
 			repos, _, err = repoDB.SearchRepos(context.TODO(), "repo", filter, repodb.PageInput{SortBy: repodb.AlphabeticAsc})
 			So(err, ShouldBeNil)
@@ -1152,8 +1152,8 @@ func TestBoltDBWrapper(t *testing.T) {
 			opSys = WINDOWS
 			arch = AMD
 			filter = repodb.Filter{
-				Os:   &opSys,
-				Arch: &arch,
+				Os:   []*string{&opSys},
+				Arch: []*string{&arch},
 			}
 			repos, _, err = repoDB.SearchRepos(context.TODO(), "repo", filter, repodb.PageInput{SortBy: repodb.AlphabeticAsc})
 			So(err, ShouldBeNil)
@@ -1214,8 +1214,8 @@ func TestBoltDBWrapper(t *testing.T) {
 			opSys := LINUX
 			arch := AMD
 			filter := repodb.Filter{
-				Os:   &opSys,
-				Arch: &arch,
+				Os:   []*string{&opSys},
+				Arch: []*string{&arch},
 			}
 			repos, _, err := repoDB.SearchTags(context.TODO(), "repo1:", filter, repodb.PageInput{SortBy: repodb.AlphabeticAsc})
 			So(err, ShouldBeNil)
@@ -1225,8 +1225,8 @@ func TestBoltDBWrapper(t *testing.T) {
 			opSys = LINUX
 			arch = "badArch"
 			filter = repodb.Filter{
-				Os:   &opSys,
-				Arch: &arch,
+				Os:   []*string{&opSys},
+				Arch: []*string{&arch},
 			}
 			repos, _, err = repoDB.SearchTags(context.TODO(), "repo1:", filter, repodb.PageInput{SortBy: repodb.AlphabeticAsc})
 			So(err, ShouldBeNil)

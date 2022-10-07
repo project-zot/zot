@@ -629,9 +629,9 @@ func (bdw BoltDBWrapper) SearchRepos(ctx context.Context, searchText string, fil
 					manifestMetadataMap[manifestDigest] = manifestMeta
 				}
 
-				repoFilterData := FilterData{
-					Os:       getMapKeys(osSet),
-					Arch:     getMapKeys(archSet),
+				repoFilterData := filterData{
+					OsList:   getMapKeys(osSet),
+					ArchList: getMapKeys(archSet),
 					IsSigned: false,
 				}
 
@@ -783,9 +783,9 @@ func (bdw BoltDBWrapper) SearchTags(ctx context.Context, searchText string, filt
 						return errors.Wrapf(err, "repodb: error while unmashaling manifest metadata for digest %s", manifestDigest)
 					}
 
-					imageFilterData := FilterData{
-						Os:       []string{configContent.OS},
-						Arch:     []string{configContent.Architecture},
+					imageFilterData := filterData{
+						OsList:   []string{configContent.OS},
+						ArchList: []string{configContent.Architecture},
 						IsSigned: false,
 					}
 
@@ -822,9 +822,14 @@ func (bdw BoltDBWrapper) SearchTags(ctx context.Context, searchText string, filt
 	return foundRepos, foundManifestMetadataMap, err
 }
 
-func acceptedByFilter(filter Filter, filterData FilterData) bool {
+// acceptedByFilter checks that data contains at least 1 of each filter criteria(os, arch)
+// present in filter.
+func acceptedByFilter(filter Filter, data filterData) bool {
 	if filter.Arch != nil {
-		foundArch := containsString(*filter.Arch, filterData.Arch)
+		foundArch := false
+		for _, arch := range filter.Arch {
+			foundArch = foundArch || containsString(data.ArchList, *arch)
+		}
 
 		if !foundArch {
 			return false
@@ -832,21 +837,24 @@ func acceptedByFilter(filter Filter, filterData FilterData) bool {
 	}
 
 	if filter.Os != nil {
-		foundOs := containsString(*filter.Os, filterData.Os)
+		foundOs := false
+		for _, os := range filter.Os {
+			foundOs = foundOs || containsString(data.OsList, *os)
+		}
 
 		if !foundOs {
 			return false
 		}
 	}
 
-	if filter.HasToBeSigned != nil && *filter.HasToBeSigned != filterData.IsSigned {
+	if filter.HasToBeSigned != nil && *filter.HasToBeSigned != data.IsSigned {
 		return false
 	}
 
 	return true
 }
 
-func containsString(str string, strSlice []string) bool {
+func containsString(strSlice []string, str string) bool {
 	for _, val := range strSlice {
 		if val == str {
 			return true

@@ -1011,8 +1011,8 @@ input PageInput {
 }
 
 input Filter {
-    Os: String
-    Arch: String
+    Os: [String]
+    Arch: [String]
     HasToBeSigned: Boolean
 }
 
@@ -7162,7 +7162,7 @@ func (ec *executionContext) unmarshalInputFilter(ctx context.Context, obj interf
 			var err error
 
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("Os"))
-			it.Os, err = ec.unmarshalOString2ᚖstring(ctx, v)
+			it.Os, err = ec.unmarshalOString2ᚕᚖstring(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -7170,7 +7170,7 @@ func (ec *executionContext) unmarshalInputFilter(ctx context.Context, obj interf
 			var err error
 
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("Arch"))
-			it.Arch, err = ec.unmarshalOString2ᚖstring(ctx, v)
+			it.Arch, err = ec.unmarshalOString2ᚕᚖstring(ctx, v)
 			if err != nil {
 				return it, err
 			}

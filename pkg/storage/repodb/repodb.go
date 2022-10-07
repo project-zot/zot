@@ -122,13 +122,13 @@ type PageInput struct {
 }
 
 type Filter struct {
-	Os            *string
-	Arch          *string
+	Os            []*string
+	Arch          []*string
 	HasToBeSigned *bool
 }
 
-type FilterData struct {
-	Os       []string
-	Arch     []string
+type filterData struct {
+	OsList   []string
+	ArchList []string
 	IsSigned bool
 }

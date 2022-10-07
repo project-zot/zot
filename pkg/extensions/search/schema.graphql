@@ -168,8 +168,8 @@ input PageInput {
 }
 
 input Filter {
-    Os: String
-    Arch: String
+    Os: [String]
+    Arch: [String]
     HasToBeSigned: Boolean
 }
 
