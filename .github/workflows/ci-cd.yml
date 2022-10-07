@@ -153,6 +153,7 @@ jobs:
         with:
           file: 'stacker.yaml'
           build-args: |
+            RELEASE_TAG=${{ github.event.release.tag_name }}
             COMMIT=${{ github.event.release.tag_name }}-${{ github.sha }}
             OS=${{ matrix.os }}
             ARCH=${{ matrix.arch }}
@@ -198,6 +199,7 @@ jobs:
         with:
           file: 'stacker.yaml'
           build-args: |
+            RELEASE_TAG=${{ github.event.release.tag_name }}
             COMMIT=${{ github.event.release.tag_name }}-${{ github.sha }}
             OS=${{ matrix.os }}
             ARCH=${{ matrix.arch }}
