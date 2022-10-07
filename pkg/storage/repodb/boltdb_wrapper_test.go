@@ -1247,6 +1247,87 @@ func TestBoltDBWrapper(t *testing.T) {
 	})
 }
 
+func TestRelevanceSorting(t *testing.T) {
+	Convey("Test Relevance Sorting", t, func() {
+		So(repodb.ScoreRepoName("alpine", "alpine"), ShouldEqual, 1)
+		So(repodb.ScoreRepoName("test/alpine", "alpine"), ShouldEqual, -1)
+		So(repodb.ScoreRepoName("alpine", "test/alpine"), ShouldEqual, 1)
+		So(repodb.ScoreRepoName("test", "test/alpine"), ShouldEqual, 10)
+		So(repodb.ScoreRepoName("pine", "test/alpine"), ShouldEqual, 3)
+		So(repodb.ScoreRepoName("pine", "alpine/alpine"), ShouldEqual, 3)
+		So(repodb.ScoreRepoName("pine", "alpine/test"), ShouldEqual, 30)
+		So(repodb.ScoreRepoName("test/pine", "alpine"), ShouldEqual, -1)
+		So(repodb.ScoreRepoName("repo/test", "repo/test/alpine"), ShouldEqual, 1)
+
+		Convey("Integration", func() {
+			filePath := path.Join(t.TempDir(), "repo.db")
+			boltDBParams := repodb.BoltDBParameters{
+				RootDir: t.TempDir(),
+			}
+
+			repoDB, err := repodb.NewBoltDBWrapper(boltDBParams)
+			So(repoDB, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+
+			defer os.Remove(filePath)
+
+			var (
+				repo1           = "alpine"
+				repo2           = "alpine/test"
+				repo3           = "notalpine"
+				repo4           = "unmached/repo"
+				tag1            = "0.0.1"
+				manifestDigest1 = digest.FromString("fake-manifest1").String()
+				tag2            = "0.0.2"
+				manifestDigest2 = digest.FromString("fake-manifest2").String()
+				tag3            = "0.0.3"
+				manifestDigest3 = digest.FromString("fake-manifest3").String()
+				ctx             = context.Background()
+				emptyManifest   ispec.Manifest
+				emptyConfig     ispec.Manifest
+			)
+			emptyManifestBlob, err := json.Marshal(emptyManifest)
+			So(err, ShouldBeNil)
+
+			emptyConfigBlob, err := json.Marshal(emptyConfig)
+			So(err, ShouldBeNil)
+
+			emptyRepoMeta := repodb.ManifestMetadata{
+				ManifestBlob: emptyManifestBlob,
+				ConfigBlob:   emptyConfigBlob,
+			}
+
+			err = repoDB.SetRepoTag(repo1, tag1, manifestDigest1)
+			So(err, ShouldBeNil)
+			err = repoDB.SetRepoTag(repo1, tag2, manifestDigest2)
+			So(err, ShouldBeNil)
+			err = repoDB.SetRepoTag(repo2, tag3, manifestDigest3)
+			So(err, ShouldBeNil)
+			err = repoDB.SetRepoTag(repo3, tag3, manifestDigest3)
+			So(err, ShouldBeNil)
+			err = repoDB.SetRepoTag(repo4, tag1, manifestDigest3)
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetManifestMeta(manifestDigest1, emptyRepoMeta)
+			So(err, ShouldBeNil)
+			err = repoDB.SetManifestMeta(manifestDigest2, emptyRepoMeta)
+			So(err, ShouldBeNil)
+			err = repoDB.SetManifestMeta(manifestDigest3, emptyRepoMeta)
+			So(err, ShouldBeNil)
+
+			repos, _, err := repoDB.SearchRepos(ctx, "pine", repodb.Filter{},
+				repodb.PageInput{SortBy: repodb.Relevance},
+			)
+
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 3)
+			So(repos[0].Name, ShouldEqual, repo1)
+			So(repos[1].Name, ShouldEqual, repo3)
+			So(repos[2].Name, ShouldEqual, repo2)
+		})
+	})
+}
+
 func generateTestImage() ([]byte, []byte, error) {
 	config := ispec.Image{
 		Architecture: "amd64",

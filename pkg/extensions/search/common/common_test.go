@@ -535,27 +535,9 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		ctlr := api.NewController(conf)
 		ctlr.Log.Logger = ctlr.Log.Output(writers)
 
-		go func() {
-			// this blocks
-			if err := ctlr.Run(context.Background()); err != nil {
-				return
-			}
-		}()
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(baseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		// shut down server
-		defer func() {
-			ctx := context.Background()
-			_ = ctlr.Server.Shutdown(ctx)
-		}()
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		WaitTillServerReady(baseURL)
 
 		substring := "{\"Search\":{\"CVE\":{\"UpdateInterval\":3600000000000},\"Enable\":true}"
 		found, err := readFileAndSearchString(logPath, substring, 2*time.Minute)
@@ -1347,29 +1329,9 @@ func TestDerivedImageListNoRepos(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		go func() {
-			// this blocks
-			if err := ctlr.Run(context.Background()); err != nil {
-				return
-			}
-		}()
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(baseURL)
-			if err == nil {
-				break
-			}
-
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		// shut down server
-
-		defer func() {
-			ctx := context.Background()
-			_ = ctlr.Server.Shutdown(ctx)
-		}()
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		WaitTillServerReady(baseURL)
 
 		query := `
 			{
@@ -1862,29 +1824,9 @@ func TestBaseImageListNoRepos(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		go func() {
-			// this blocks
-			if err := ctlr.Run(context.Background()); err != nil {
-				return
-			}
-		}()
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(baseURL)
-			if err == nil {
-				break
-			}
-
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		// shut down server
-
-		defer func() {
-			ctx := context.Background()
-			_ = ctlr.Server.Shutdown(ctx)
-		}()
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		WaitTillServerReady(baseURL)
 
 		query := `
 			{
@@ -1960,29 +1902,9 @@ func TestGlobalSearch(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		go func() {
-			// this blocks
-			if err := ctlr.Run(context.Background()); err != nil {
-				return
-			}
-		}()
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(baseURL)
-			if err == nil {
-				break
-			}
-
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		// shut down server
-
-		defer func() {
-			ctx := context.Background()
-			_ = ctlr.Server.Shutdown(ctx)
-		}()
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		WaitTillServerReady(baseURL)
 
 		// push test images to repo 1 image 1
 		config1, layers1, manifest1, err := GetImageComponents(100)
@@ -2296,29 +2218,9 @@ func TestGlobalSearch(t *testing.T) {
 		ctlr := api.NewController(conf)
 		ctlr.Log.Logger = ctlr.Log.Output(writers)
 
-		go func() {
-			// this blocks
-			if err := ctlr.Run(context.Background()); err != nil {
-				return
-			}
-		}()
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(baseURL)
-			if err == nil {
-				break
-			}
-
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		// shut down server
-
-		defer func() {
-			ctx := context.Background()
-			_ = ctlr.Server.Shutdown(ctx)
-		}()
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		WaitTillServerReady(baseURL)
 
 		// Wait for trivy db to download
 		substring := "{\"Search\":{\"CVE\":{\"UpdateInterval\":3600000000000},\"Enable\":true}"

@@ -17,7 +17,6 @@ import (
 	"path"
 	"time"
 
-	"github.com/opencontainers/go-digest"
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -433,12 +432,12 @@ func GetCosignSignatureTagForManifest(manifest ispec.Manifest) (string, error) {
 		return "", err
 	}
 
-	manifestDigest := digest.FromBytes(manifestBlob)
+	manifestDigest := godigest.FromBytes(manifestBlob)
 
 	return GetCosignSignatureTagForDigest(manifestDigest), nil
 }
 
-func GetCosignSignatureTagForDigest(manifestDigest digest.Digest) string {
+func GetCosignSignatureTagForDigest(manifestDigest godigest.Digest) string {
 	return manifestDigest.Algorithm().String() + "-" + manifestDigest.Encoded() + ".sig"
 }
 

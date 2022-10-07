@@ -577,7 +577,7 @@ func (bdw BoltDBWrapper) SearchRepos(ctx context.Context, searchText string, fil
 				return err
 			}
 
-			if score := strings.Index(string(repoName), searchText); score != -1 || searchText == "" {
+			if score := ScoreRepoName(searchText, string(repoName)); score != -1 {
 				var (
 					// specific values used for sorting that need to be calculated based on all manifests from the repo
 					repoDownloads   = 0
@@ -661,6 +661,48 @@ func (bdw BoltDBWrapper) SearchRepos(ctx context.Context, searchText string, fil
 	})
 
 	return foundRepos, foundManifestMetadataMap, err
+}
+
+func ScoreRepoName(searchText string, repoName string) int {
+	searchTextSlice := strings.Split(searchText, "/")
+	repoNameSlice := strings.Split(repoName, "/")
+
+	if len(searchTextSlice) > len(repoNameSlice) {
+		return -1
+	}
+
+	if len(searchTextSlice) == 1 {
+		// check if it maches first or last name in path
+		if index := strings.Index(repoNameSlice[len(repoNameSlice)-1], searchTextSlice[0]); index != -1 {
+			return index + 1
+		}
+
+		// we'll make repos that match the first name in path less important than matching the last name in path
+		if index := strings.Index(repoNameSlice[0], searchTextSlice[0]); index != -1 {
+			return (index + 1) * 10
+		}
+
+		return -1
+	}
+
+	if len(searchTextSlice) < len(repoNameSlice) &&
+		strings.HasPrefix(repoName, searchText) {
+		return 1
+	}
+
+	// searchText and repoName match perfectly up until the last name in path
+	for i := 0; i < len(searchTextSlice)-1; i++ {
+		if searchTextSlice[i] != repoNameSlice[i] {
+			return -1
+		}
+	}
+
+	// check the last
+	if index := strings.Index(repoNameSlice[len(repoNameSlice)-1], searchTextSlice[len(searchTextSlice)-1]); index != -1 {
+		return (index + 1)
+	}
+
+	return -1
 }
 
 func (bdw BoltDBWrapper) SearchTags(ctx context.Context, searchText string, filter Filter, requestedPage PageInput,
