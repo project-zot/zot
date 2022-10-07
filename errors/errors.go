@@ -62,4 +62,5 @@ var (
 	ErrManifestMetaNotFound    = errors.New("repodb: image metadata not found for given manifest digest")
 	ErrRepoMetaNotFound        = errors.New("repodb: repo metadata not found for given repo name")
 	ErrTypeAssertionFailed     = errors.New("storage: failed DatabaseDriver type assertion")
+	ErrInvalidRequestParams    = errors.New("resolver: parameter sent has invalid value")
 )

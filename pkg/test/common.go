@@ -215,7 +215,7 @@ func WaitTillTrivyDBDownloadStarted(rootDir string) {
 }
 
 // Adapted from https://gist.github.com/dopey/c69559607800d2f2f90b1b1ed4e550fb
-func randomString(n int) string {
+func RandomString(n int) string {
 	const letters = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-"
 
 	ret := make([]byte, n)
@@ -235,7 +235,7 @@ func randomString(n int) string {
 func GetRandomImageConfig() ([]byte, godigest.Digest) {
 	const maxLen = 16
 
-	randomAuthor := randomString(maxLen)
+	randomAuthor := RandomString(maxLen)
 
 	config := ispec.Image{
 		Architecture: "amd64",
@@ -424,6 +424,49 @@ func GetRandomImageComponents(layerSize int) (ispec.Image, [][]byte, ispec.Manif
 	}
 
 	return config, layers, manifest, nil
+}
+
+func GetImageWithConfig(conf ispec.Image) (ispec.Image, [][]byte, ispec.Manifest, error) {
+	configBlob, err := json.Marshal(conf)
+	if err = Error(err); err != nil {
+		return ispec.Image{}, [][]byte{}, ispec.Manifest{}, err
+	}
+
+	configDigest := godigest.FromBytes(configBlob)
+
+	layerSize := 100
+	layer := make([]byte, layerSize)
+
+	_, err = rand.Read(layer)
+	if err != nil {
+		return ispec.Image{}, [][]byte{}, ispec.Manifest{}, err
+	}
+
+	layers := [][]byte{
+		layer,
+	}
+
+	schemaVersion := 2
+
+	manifest := ispec.Manifest{
+		Versioned: specs.Versioned{
+			SchemaVersion: schemaVersion,
+		},
+		Config: ispec.Descriptor{
+			MediaType: "application/vnd.oci.image.config.v1+json",
+			Digest:    configDigest,
+			Size:      int64(len(configBlob)),
+		},
+		Layers: []ispec.Descriptor{
+			{
+				MediaType: "application/vnd.oci.image.layer.v1.tar",
+				Digest:    godigest.FromBytes(layers[0]),
+				Size:      int64(len(layers[0])),
+			},
+		},
+	}
+
+	return conf, layers, manifest, nil
 }
 
 func GetCosignSignatureTagForManifest(manifest ispec.Manifest) (string, error) {

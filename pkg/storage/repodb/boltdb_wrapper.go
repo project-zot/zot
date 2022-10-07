@@ -822,8 +822,8 @@ func (bdw BoltDBWrapper) SearchTags(ctx context.Context, searchText string, filt
 	return foundRepos, foundManifestMetadataMap, err
 }
 
-// acceptedByFilter checks that data contains at least 1 of each filter criteria(os, arch)
-// present in filter.
+// acceptedByFilter checks that data contains at least 1 element of each filter
+// criteria(os, arch) present in filter.
 func acceptedByFilter(filter Filter, data filterData) bool {
 	if filter.Arch != nil {
 		foundArch := false
@@ -856,7 +856,7 @@ func acceptedByFilter(filter Filter, data filterData) bool {
 
 func containsString(strSlice []string, str string) bool {
 	for _, val := range strSlice {
-		if val == str {
+		if strings.EqualFold(val, str) {
 			return true
 		}
 	}

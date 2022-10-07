@@ -607,36 +607,6 @@ func TestRepoListWithNewestImage(t *testing.T) {
 	})
 }
 
-func TestMatching(t *testing.T) {
-	pine := "pine"
-
-	Convey("Perfect Matching", t, func() {
-		query := "alpine"
-		score := calculateImageMatchingScore("alpine", strings.Index("alpine", query))
-		So(score, ShouldEqual, 0)
-	})
-
-	Convey("Partial Matching", t, func() {
-		query := pine
-		score := calculateImageMatchingScore("alpine", strings.Index("alpine", query))
-		So(score, ShouldEqual, 2)
-	})
-
-	Convey("Complex Partial Matching", t, func() {
-		query := pine
-		score := calculateImageMatchingScore("repo/test/alpine", strings.Index("alpine", query))
-		So(score, ShouldEqual, 2)
-
-		query = pine
-		score = calculateImageMatchingScore("repo/alpine/test", strings.Index("alpine", query))
-		So(score, ShouldEqual, 2)
-
-		query = pine
-		score = calculateImageMatchingScore("alpine/repo/test", strings.Index("alpine", query))
-		So(score, ShouldEqual, 2)
-	})
-}
-
 func TestExtractImageDetails(t *testing.T) {
 	Convey("repoListWithNewestImage", t, func() {
 		// log := log.Logger{Logger: zerolog.New(os.Stdout)}

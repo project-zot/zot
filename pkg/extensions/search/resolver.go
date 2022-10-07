@@ -27,6 +27,10 @@ import (
 	"zotregistry.io/zot/pkg/storage/repodb"
 ) // THIS CODE IS A STARTING POINT ONLY. IT WILL NOT BE UPDATED WITH SCHEMA CHANGES.
 
+const (
+	querySizeLimit = 256
+)
+
 // Resolver ...
 type Resolver struct {
 	cveInfo         cveinfo.CveInfo
@@ -152,12 +156,6 @@ func repoListWithNewestImage(
 	return repos, nil
 }
 
-func cleanQuerry(query string) string {
-	query = strings.TrimSpace(query)
-
-	return query
-}
-
 func globalSearch(ctx context.Context, query string, repoDB repodb.RepoDB, filter *gql_generated.Filter,
 	requestedPage *gql_generated.PageInput, cveInfo cveinfo.CveInfo, log log.Logger, //nolint:unparam
 ) ([]*gql_generated.RepoSummary, []*gql_generated.ImageSummary, []*gql_generated.LayerSummary, error,
@@ -196,7 +194,6 @@ func globalSearch(ctx context.Context, query string, repoDB repodb.RepoDB, filte
 		for _, repoMeta := range reposMeta {
 			repoSummary := convert.RepoMeta2RepoSummary(ctx, repoMeta, manifestMetaMap, cveInfo)
 
-			*repoSummary.Score = calculateImageMatchingScore(repoMeta.Name, strings.Index(repoMeta.Name, query))
 			repos = append(repos, repoSummary)
 		}
 	} else { // search for images
@@ -221,6 +218,130 @@ func globalSearch(ctx context.Context, query string, repoDB repodb.RepoDB, filte
 	}
 
 	return repos, images, layers, nil
+}
+
+func validateGlobalSearchInput(query string, filter *gql_generated.Filter,
+	requestedPage *gql_generated.PageInput,
+) error {
+	if len(query) > querySizeLimit {
+		format := "global-search: max string size limit exeeded for query parameter. max=%d current=%d"
+
+		return errors.Wrapf(zerr.ErrInvalidRequestParams, format, querySizeLimit, len(query))
+	}
+
+	err := checkFilter(filter)
+	if err != nil {
+		return err
+	}
+
+	err = checkRequestedPage(requestedPage)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func checkFilter(filter *gql_generated.Filter) error {
+	if filter == nil {
+		return nil
+	}
+
+	for _, arch := range filter.Arch {
+		if len(*arch) > querySizeLimit {
+			format := "global-search: max string size limit exeeded for arch parameter. max=%d current=%d"
+
+			return errors.Wrapf(zerr.ErrInvalidRequestParams, format, querySizeLimit, len(*arch))
+		}
+	}
+
+	for _, osSys := range filter.Os {
+		if len(*osSys) > querySizeLimit {
+			format := "global-search: max string size limit exeeded for os parameter. max=%d current=%d"
+
+			return errors.Wrapf(zerr.ErrInvalidRequestParams, format, querySizeLimit, len(*osSys))
+		}
+	}
+
+	return nil
+}
+
+func checkRequestedPage(requestedPage *gql_generated.PageInput) error {
+	if requestedPage == nil {
+		return nil
+	}
+
+	if requestedPage.Limit != nil && *requestedPage.Limit < 0 {
+		format := "global-search: requested page limit parameter can't be negative"
+
+		return errors.Wrap(zerr.ErrInvalidRequestParams, format)
+	}
+
+	if requestedPage.Offset != nil && *requestedPage.Offset < 0 {
+		format := "global-search: requested page offset parameter can't be negative"
+
+		return errors.Wrap(zerr.ErrInvalidRequestParams, format)
+	}
+
+	return nil
+}
+
+func cleanQuery(query string) string {
+	query = strings.TrimSpace(query)
+	query = strings.Trim(query, "/")
+	query = strings.ToLower(query)
+
+	return query
+}
+
+func cleanFilter(filter *gql_generated.Filter) *gql_generated.Filter {
+	if filter == nil {
+		return nil
+	}
+
+	if filter.Arch != nil {
+		for i := range filter.Arch {
+			*filter.Arch[i] = strings.ToLower(*filter.Arch[i])
+			*filter.Arch[i] = strings.TrimSpace(*filter.Arch[i])
+		}
+
+		filter.Arch = deleteEmptyElements(filter.Arch)
+	}
+
+	if filter.Os != nil {
+		for i := range filter.Os {
+			*filter.Os[i] = strings.ToLower(*filter.Os[i])
+			*filter.Os[i] = strings.TrimSpace(*filter.Os[i])
+		}
+
+		filter.Os = deleteEmptyElements(filter.Os)
+	}
+
+	return filter
+}
+
+func deleteEmptyElements(slice []*string) []*string {
+	i := 0
+	for i < len(slice) {
+		if elementIsEmpty(*slice[i]) {
+			slice = deleteElementAt(slice, i)
+		} else {
+			i++
+		}
+	}
+
+	return slice
+}
+
+func elementIsEmpty(s string) bool {
+	return s == ""
+}
+
+func deleteElementAt(slice []*string, i int) []*string {
+	slice[i] = slice[len(slice)-1]
+	slice = slice[:len(slice)-1]
+
+	return slice
 }
 
 func expandedRepoInfo(ctx context.Context, repo string, repoDB repodb.RepoDB, cveInfo cveinfo.CveInfo, log log.Logger,
@@ -271,30 +392,6 @@ func safeDerefferencing[T any](pointer *T, defaultVal T) T {
 
 func searchingForRepos(query string) bool {
 	return !strings.Contains(query, ":")
-}
-
-// calcalculateImageMatchingScore iterated from the index of the matched string in the
-// artifact name until the beginning of the string or until delimitator "/".
-// The distance represents the score of the match.
-//
-// Example:
-//
-//	query: image
-//	repos: repo/test/myimage
-//
-// Score will be 2.
-func calculateImageMatchingScore(artefactName string, index int) int {
-	score := 0
-
-	for index >= 1 {
-		if artefactName[index-1] == '/' {
-			break
-		}
-		index--
-		score++
-	}
-
-	return score
 }
 
 func (r *queryResolver) getImageList(store storage.ImageStore, imageName string) (

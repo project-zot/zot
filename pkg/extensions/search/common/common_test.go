@@ -2474,6 +2474,174 @@ func TestGlobalSearch(t *testing.T) {
 	})
 }
 
+func TestCleaningFilteringParamsGlobalSearch(t *testing.T) {
+	Convey("Test cleaning filtering parameters for global search", t, func() {
+		dir := t.TempDir()
+
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = dir
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
+		}
+
+		ctlr := api.NewController(conf)
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		WaitTillServerReady(baseURL)
+
+		config, layers, manifest, err := GetImageWithConfig(ispec.Image{
+			OS:           "windows",
+			Architecture: "amd64",
+		})
+		So(err, ShouldBeNil)
+
+		err = UploadImage(
+			Image{
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+				Tag:      "0.0.1",
+			},
+			baseURL,
+			"repo1",
+		)
+		So(err, ShouldBeNil)
+
+		config, layers, manifest, err = GetImageWithConfig(ispec.Image{
+			OS:           "linux",
+			Architecture: "amd64",
+		})
+		So(err, ShouldBeNil)
+
+		err = UploadImage(
+			Image{
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+				Tag:      "0.0.1",
+			},
+			baseURL,
+			"repo2",
+		)
+		So(err, ShouldBeNil)
+
+		query := `
+		{
+			GlobalSearch(query:"repo", requestedPage:{limit: 3, offset: 0, sortBy:RELEVANCE},
+			filter:{Os:["  linux", "Windows ", "  "], Arch:["","aMd64  "]}) {
+				Repos {
+					Name
+				}
+			}
+		}`
+
+		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		responseStruct := &GlobalSearchResultResp{}
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+	})
+}
+
+func TestGlobalSearchWithInvalidInput(t *testing.T) {
+	Convey("Global search with invalid input", t, func() {
+		dir := t.TempDir()
+
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = dir
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{Enable: &defaultVal},
+		}
+
+		ctlr := api.NewController(conf)
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		WaitTillServerReady(baseURL)
+
+		longString := RandomString(1000)
+
+		query := fmt.Sprintf(`
+		{
+			GlobalSearch(query:"%s", requestedPage:{limit: 3, offset: 4, sortBy:RELEVANCE},
+			filter:{Os:["linux", "Windows", ""], Arch:["","amd64"]}) {
+				Repos {
+					Name
+				}
+			}
+		}`, longString)
+
+		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		responseStruct := &GlobalSearchResultResp{}
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+
+		So(responseStruct.Errors, ShouldNotBeEmpty)
+
+		query = fmt.Sprintf(`
+		{
+			GlobalSearch(query:"repo", requestedPage:{limit: 3, offset: 4, sortBy:RELEVANCE},
+			filter:{Os:["%s", "Windows", ""], Arch:["","amd64"]}) {
+				Repos {
+					Name
+				}
+			}
+		}`, longString)
+
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		responseStruct = &GlobalSearchResultResp{}
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+
+		So(responseStruct.Errors, ShouldNotBeEmpty)
+
+		query = fmt.Sprintf(`
+		{
+			GlobalSearch(query:"repo", requestedPage:{limit: 3, offset: 4, sortBy:RELEVANCE},
+			filter:{Os:["", "Windows", ""], Arch:["","%s"]}) {
+				Repos {
+					Name
+				}
+			}
+		}`, longString)
+
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		responseStruct = &GlobalSearchResultResp{}
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+
+		So(responseStruct.Errors, ShouldNotBeEmpty)
+	})
+}
+
 func TestImageList(t *testing.T) {
 	Convey("Test ImageList", t, func() {
 		subpath := "/a"
