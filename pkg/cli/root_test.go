@@ -266,17 +266,21 @@ func TestVerify(t *testing.T) {
 		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldNotPanic)
 	})
 
-	Convey("Test verify default authorization fail", t, func(c C) {
+	Convey("Test verify admin policy authz is not allowed if no authn is configured", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 		 					"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							 "accessControl":{"**":{"defaultPolicy": ["read", "create"]},
-							 "/repo":{"anonymousPolicy": ["read", "create"]},
-							 "adminPolicy":{"users":["admin"],
-							 "actions":["read","create","update","delete"]}
-							 }}}`)
+								"accessControl":{
+									"**":{"defaultPolicy": ["read", "create"]},
+									"/repo":{"anonymousPolicy": ["read", "create"]},
+									"adminPolicy":{
+										"users":["admin"],
+										"actions":["read","create","update","delete"]
+									}
+								}
+							}}`)
 		_, err = tmpfile.Write(content)
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
@@ -285,18 +289,41 @@ func TestVerify(t *testing.T) {
 		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 	})
 
-	Convey("Test verify default authorization fail", t, func(c C) {
+	Convey("Test verify default policy authz is not allowed if no authn is configured", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							"accessControl":{"**":{"defaultPolicy": ["read", "create"]},
-							"/repo":{"anonymousPolicy": ["read", "create"]},
-							"/repo2":{"policies": [{
-								 "users": ["charlie"],
-								 "actions": ["read", "create", "update"]}]}
-							}}}`)
+								"accessControl":{
+									"**":{"defaultPolicy": ["read", "create"]},
+									"/repo":{"anonymousPolicy": ["read", "create"]}
+								}
+							}}`)
+		_, err = tmpfile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpfile.Close()
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+	})
+
+	Convey("Test verify authz per user policies fail if no authn is configured", t, func(c C) {
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+								"accessControl":{
+									"/repo":{"anonymousPolicy": ["read", "create"]},
+									"/repo2":{
+										"policies": [{
+											"users": ["charlie"],
+											"actions": ["read", "create", "update"]
+										}]
+									}
+								}
+							}}`)
 		_, err = tmpfile.Write(content)
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
