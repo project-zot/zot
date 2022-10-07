@@ -26,7 +26,7 @@ func SetupGQLPlaygroundRoutes(conf *config.Config, router *mux.Router,
 	log := log.Logger{Logger: l.With().Caller().Timestamp().Logger()}
 	log.Info().Msg("setting up graphql playground route")
 
-	templ, err := template.ParseFS(playgroundHTML, "gqlplayground/index.html.tmpl")
+	templ, err := template.ParseFS(playgroundHTML, "index.html.tmpl")
 	if err != nil {
 		log.Fatal().Err(err)
 	}
