@@ -122,14 +122,14 @@ func testSetup(t *testing.T, subpath string) error { //nolint:unparam
 
 	rootDir = dir
 
-	subRootDir = path.Join(subDir, subpath)
+	subRootDir = subDir
 
 	err := CopyFiles("../../../../test/data", rootDir)
 	if err != nil {
 		return err
 	}
 
-	return CopyFiles("../../../../test/data", subRootDir)
+	return CopyFiles("../../../../test/data", path.Join(subDir, subpath))
 }
 
 // triggerUploadForTestImages is paired with testSetup and is supposed to trigger events when pushing an image
@@ -325,110 +325,6 @@ func verifyImageSummaryFields(t *testing.T,
 }
 
 func TestRepoListWithNewestImage(t *testing.T) {
-	Convey("Test repoListWithNewestImage AddError", t, func() {
-		subpath := "/a"
-		err := testSetup(t, subpath)
-		if err != nil {
-			panic(err)
-		}
-
-		err = os.RemoveAll(path.Join(rootDir, "zot-cve-test"))
-		if err != nil {
-			panic(err)
-		}
-
-		err = os.RemoveAll(path.Join(rootDir, subpath))
-		if err != nil {
-			panic(err)
-		}
-
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
-		conf := config.New()
-		conf.HTTP.Port = port
-		conf.Storage.RootDirectory = rootDir
-		defaultVal := true
-		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{Enable: &defaultVal},
-		}
-
-		conf.Extensions.Search.CVE = nil
-
-		ctlr := api.NewController(conf)
-
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
-
-		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix +
-			"?query={RepoListWithNewestImage{Name%20NewestImage{Tag}}}")
-		So(resp, ShouldNotBeNil)
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
-
-		err = os.Remove(path.Join(rootDir,
-			"zot-test/blobs/sha256/2bacca16b9df395fc855c14ccf50b12b58d35d468b8e7f25758aff90f89bf396"))
-		if err != nil {
-			panic(err)
-		}
-
-		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
-			"?query={RepoListWithNewestImage{Name%20NewestImage{Tag}}}")
-		So(resp, ShouldNotBeNil)
-		So(err, ShouldBeNil)
-		body := string(resp.Body())
-		So(body, ShouldContainSubstring, "can't get last updated manifest for repo:")
-		So(resp.StatusCode(), ShouldEqual, 200)
-
-		err = CopyFiles("../../../../test/data/zot-test", path.Join(rootDir, "zot-test"))
-		if err != nil {
-			panic(err)
-		}
-
-		err = os.Remove(path.Join(rootDir,
-			"zot-test/blobs/sha256/adf3bb6cc81f8bd6a9d5233be5f0c1a4f1e3ed1cf5bbdfad7708cc8d4099b741"))
-		if err != nil {
-			panic(err)
-		}
-
-		err = os.Remove(path.Join(rootDir,
-			"zot-test/blobs/sha256/2d473b07cdd5f0912cd6f1a703352c82b512407db6b05b43f2553732b55df3bc"))
-		if err != nil {
-			panic(err)
-		}
-
-		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
-			"?query={RepoListWithNewestImage{Name%20NewestImage{Tag}}}")
-		So(resp, ShouldNotBeNil)
-		So(err, ShouldBeNil)
-		body = string(resp.Body())
-		So(body, ShouldContainSubstring, "can't get last updated manifest for repo")
-		So(resp.StatusCode(), ShouldEqual, 200)
-
-		err = CopyFiles("../../../../test/data/zot-test", path.Join(rootDir, "zot-test"))
-		if err != nil {
-			panic(err)
-		}
-
-		err = os.Remove(path.Join(rootDir, "zot-test/index.json"))
-		if err != nil {
-			panic(err)
-		}
-		//nolint: lll
-		manifestNoAnnotations := "{\"schemaVersion\":2,\"manifests\":[{\"mediaType\":\"application/vnd.oci.image.manifest.v1+json\",\"digest\":\"sha256:2bacca16b9df395fc855c14ccf50b12b58d35d468b8e7f25758aff90f89bf396\",\"size\":350}]}"
-		err = os.WriteFile(path.Join(rootDir, "zot-test/index.json"), []byte(manifestNoAnnotations), 0o600)
-		if err != nil {
-			panic(err)
-		}
-		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
-			"?query={RepoListWithNewestImage{Name%20NewestImage{Tag}}}")
-		So(resp, ShouldNotBeNil)
-		So(err, ShouldBeNil)
-		body = string(resp.Body())
-		So(body, ShouldContainSubstring, "reference not found for manifest")
-		So(resp.StatusCode(), ShouldEqual, 200)
-	})
-
 	Convey("Test repoListWithNewestImage by tag with HTTP", t, func() {
 		subpath := "/a"
 		err := testSetup(t, subpath)
@@ -541,7 +437,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 
 		err = json.Unmarshal(resp.Body(), &responseStruct)
 		So(err, ShouldBeNil)
-		So(responseStruct.Errors, ShouldNotBeNil)
+		So(responseStruct.Errors, ShouldBeNil) // Even if permissions fail data is coming from the DB
 
 		err = os.Chmod(rootDir, 0o755)
 		if err != nil {
@@ -553,7 +449,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		manifestDigest, configDigest, _ = GetOciLayoutDigests("../../../../test/data/zot-test")
 
 		// Delete config blob and try.
-		err = os.Remove(path.Join(subRootDir, "zot-test/blobs/sha256", configDigest.Encoded()))
+		err = os.Remove(path.Join(subRootDir, "a/zot-test/blobs/sha256", configDigest.Encoded()))
 		if err != nil {
 			panic(err)
 		}
@@ -564,7 +460,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		err = os.Remove(path.Join(subRootDir, "zot-test/blobs/sha256",
+		err = os.Remove(path.Join(subRootDir, "a/zot-test/blobs/sha256",
 			manifestDigest.Encoded()))
 		if err != nil {
 			panic(err)
