@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/docker/distribution/registry/storage/driver"
-	"github.com/notaryproject/notation-go"
 	godigest "github.com/opencontainers/go-digest"
 	imeta "github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -94,7 +93,7 @@ func ValidateManifest(imgStore ImageStore, repo, reference, mediaType string, bo
 			}
 		}
 	case oras.MediaTypeArtifactManifest:
-		var m notation.Descriptor
+		var m ispec.Descriptor
 		if err := json.Unmarshal(body, &m); err != nil {
 			log.Error().Err(err).Msg("unable to unmarshal JSON")
 

@@ -11,7 +11,6 @@ import (
 	"io"
 	"net/url"
 	"os"
-	"os/exec"
 	"path"
 	"strconv"
 	"strings"
@@ -208,17 +207,10 @@ func signUsingNotary(port string) error {
 
 	_ = os.Chdir(tdir)
 
-	_, err = exec.LookPath("notation")
-	if err != nil {
-		return err
-	}
-
 	os.Setenv("XDG_CONFIG_HOME", tdir)
 
 	// generate a keypair
-	cmd := exec.Command("notation", "cert", "generate-test", "--trust", "notation-sign-test")
-
-	err = cmd.Run()
+	err = GenerateNotationCerts(tdir, "notation-sign-test")
 	if err != nil {
 		return err
 	}
@@ -226,9 +218,9 @@ func signUsingNotary(port string) error {
 	// sign the image
 	image := fmt.Sprintf("localhost:%s/%s:%s", port, "zot-test", "0.0.1")
 
-	cmd = exec.Command("notation", "sign", "--key", "notation-sign-test", "--plain-http", image)
+	err = SignUsingNotation("notation-sign-test", image, tdir)
 
-	return cmd.Run()
+	return err
 }
 
 func getTags() ([]common.TagInfo, []common.TagInfo) {

@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
@@ -22,7 +21,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/notaryproject/notation-go"
 	notreg "github.com/notaryproject/notation-go/registry"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -72,31 +70,11 @@ type TagsList struct {
 }
 
 type ReferenceList struct {
-	References []notation.Descriptor `json:"references"`
+	References []ispec.Descriptor `json:"references"`
 }
 
 type catalog struct {
 	Repositories []string `json:"repositories"`
-}
-
-func copyFile(sourceFilePath, destFilePath string) error {
-	destFile, err := os.Create(destFilePath)
-	if err != nil {
-		return err
-	}
-	defer destFile.Close()
-
-	sourceFile, err := os.Open(sourceFilePath)
-	if err != nil {
-		return err
-	}
-	defer sourceFile.Close()
-
-	if _, err = io.Copy(destFile, sourceFile); err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func startUpstreamServer(
@@ -1046,19 +1024,19 @@ func TestTLS(t *testing.T) {
 		destClientCertDir := t.TempDir()
 
 		destFilePath := path.Join(destClientCertDir, "ca.crt")
-		err = copyFile(CACert, destFilePath)
+		err = test.CopyFile(CACert, destFilePath)
 		if err != nil {
 			panic(err)
 		}
 
 		destFilePath = path.Join(destClientCertDir, "client.cert")
-		err = copyFile(ClientCert, destFilePath)
+		err = test.CopyFile(ClientCert, destFilePath)
 		if err != nil {
 			panic(err)
 		}
 
 		destFilePath = path.Join(destClientCertDir, "client.key")
-		err = copyFile(ClientKey, destFilePath)
+		err = test.CopyFile(ClientKey, destFilePath)
 		if err != nil {
 			panic(err)
 		}
@@ -1675,7 +1653,7 @@ func TestInvalidCerts(t *testing.T) {
 		clientCertDir := t.TempDir()
 
 		destFilePath := path.Join(clientCertDir, "ca.crt")
-		err := copyFile(CACert, destFilePath)
+		err := test.CopyFile(CACert, destFilePath)
 		if err != nil {
 			panic(err)
 		}
@@ -1692,13 +1670,13 @@ func TestInvalidCerts(t *testing.T) {
 		}
 
 		destFilePath = path.Join(clientCertDir, "client.cert")
-		err = copyFile(ClientCert, destFilePath)
+		err = test.CopyFile(ClientCert, destFilePath)
 		if err != nil {
 			panic(err)
 		}
 
 		destFilePath = path.Join(clientCertDir, "client.key")
-		err = copyFile(ClientKey, destFilePath)
+		err = test.CopyFile(ClientKey, destFilePath)
 		if err != nil {
 			panic(err)
 		}
@@ -2565,6 +2543,9 @@ func TestSignatures(t *testing.T) {
 		defer func() { _ = os.Chdir(cwd) }()
 		tdir := t.TempDir()
 		_ = os.Chdir(tdir)
+
+		os.Setenv("XDG_CONFIG_HOME", tdir)
+
 		generateKeyPairs(tdir)
 
 		So(func() { signImage(tdir, srcPort, repoName, digest) }, ShouldNotPanic)
@@ -2636,13 +2617,9 @@ func TestSignatures(t *testing.T) {
 
 		// notation verify the image
 		image := fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")
-		cmd := exec.Command("notation", "verify", "--cert", "good", "--plain-http", image)
-		out, err := cmd.CombinedOutput()
-		So(err, ShouldBeNil)
 
-		msg := string(out)
-		So(msg, ShouldNotBeEmpty)
-		So(strings.Contains(msg, "verification failure"), ShouldBeFalse)
+		err = test.VerifyNotarySignature(image, tdir)
+		So(err, ShouldBeNil)
 
 		// cosign verify the image
 		vrfy := verify.VerifyCommand{
@@ -3484,12 +3461,8 @@ func TestSignaturesOnDemand(t *testing.T) {
 
 		// notation verify the synced image
 		image := fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")
-		cmd := exec.Command("notation", "verify", "--cert", "good", "--plain-http", image)
-		out, err := cmd.CombinedOutput()
+		err = test.VerifyNotarySignature(image, tdir)
 		So(err, ShouldBeNil)
-		msg := string(out)
-		So(msg, ShouldNotBeEmpty)
-		So(strings.Contains(msg, "verification failure"), ShouldBeFalse)
 
 		// cosign verify the synced image
 		vrfy := verify.VerifyCommand{
@@ -3627,12 +3600,8 @@ func TestOnlySignaturesOnDemand(t *testing.T) {
 
 		// sync signature on demand when upstream doesn't have the signature
 		image := fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")
-		cmd := exec.Command("notation", "verify", "--cert", "good", "--plain-http", image)
-		out, err := cmd.CombinedOutput()
+		err = test.VerifyNotarySignature(image, tdir)
 		So(err, ShouldNotBeNil)
-		msg := string(out)
-		So(msg, ShouldNotBeEmpty)
-		So(strings.Contains(msg, "signature failure"), ShouldBeTrue)
 
 		// cosign verify the synced image
 		vrfy := verify.VerifyCommand{
@@ -3650,12 +3619,8 @@ func TestOnlySignaturesOnDemand(t *testing.T) {
 
 		// now it should sync signatures on demand, even if we already have the image
 		image = fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")
-		cmd = exec.Command("notation", "verify", "--cert", "good", "--plain-http", image)
-		out, err = cmd.CombinedOutput()
+		err = test.VerifyNotarySignature(image, tdir)
 		So(err, ShouldBeNil)
-		msg = string(out)
-		So(msg, ShouldNotBeEmpty)
-		So(strings.Contains(msg, "verification failure"), ShouldBeFalse)
 
 		// cosign verify the synced image
 		vrfy = verify.VerifyCommand{
@@ -4009,13 +3974,8 @@ func TestSyncSignaturesDiff(t *testing.T) {
 
 		// notation verify the image
 		image := fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")
-		cmd := exec.Command("notation", "verify", "--cert", "good", "--plain-http", image)
-		out, err := cmd.CombinedOutput()
+		err = test.VerifyNotarySignature(image, tdir)
 		So(err, ShouldBeNil)
-
-		msg := string(out)
-		So(msg, ShouldNotBeEmpty)
-		So(strings.Contains(msg, "verification failure"), ShouldBeFalse)
 
 		// cosign verify the image
 		vrfy := verify.VerifyCommand{
@@ -4041,13 +4001,8 @@ func TestSyncSignaturesDiff(t *testing.T) {
 
 		// notation verify the image
 		image = fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")
-		cmd = exec.Command("notation", "verify", "--cert", "good", "--plain-http", image)
-		out, err = cmd.CombinedOutput()
+		err = test.VerifyNotarySignature(image, tdir)
 		So(err, ShouldBeNil)
-
-		msg = string(out)
-		So(msg, ShouldNotBeEmpty)
-		So(strings.Contains(msg, "verification failure"), ShouldBeFalse)
 
 		// cosign verify the image
 		vrfy = verify.VerifyCommand{
@@ -4745,18 +4700,7 @@ func generateKeyPairs(tdir string) {
 		}
 	}
 
-	// "notation" (notaryv2) doesn't yet support exported apis, so use the binary instead
-	_, err := exec.LookPath("notation")
-	if err != nil {
-		panic(err)
-	}
-
-	os.Setenv("XDG_CONFIG_HOME", tdir)
-
-	// generate a keypair
-	cmd := exec.Command("notation", "cert", "generate-test", "--trust", "good")
-
-	err = cmd.Run()
+	err := test.GenerateNotationCerts(tdir, "good")
 	if err != nil {
 		panic(err)
 	}
@@ -4795,23 +4739,20 @@ func signImage(tdir, port, repoName string, digest godigest.Digest) {
 		panic(err)
 	}
 
+	os.Setenv("XDG_CONFIG_HOME", tdir)
+
 	// sign the image
 	image := fmt.Sprintf("localhost:%s/%s:%s", port, repoName, "1.0")
-	cmd := exec.Command("notation", "sign", "--key", "good", "--plain-http", image)
 
-	err = cmd.Run()
+	err = test.SignUsingNotation("good", image, tdir)
 	if err != nil {
 		panic(err)
 	}
 
-	// verify the image
-	cmd = exec.Command("notation", "verify", "--cert", "good", "--plain-http", image)
-	out, err := cmd.CombinedOutput()
-	So(err, ShouldBeNil)
-
-	msg := string(out)
-	So(msg, ShouldNotBeEmpty)
-	So(strings.Contains(msg, "verification failure"), ShouldBeFalse)
+	err = test.VerifyNotarySignature(image, tdir)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func pushRepo(url, repoName string) godigest.Digest {
