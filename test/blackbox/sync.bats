@@ -248,11 +248,33 @@ function teardown_file() {
 }
 
 @test "sign/verify with notation" {
-    run notation cert generate-test --trust "notation-sign-sync-test"
+    run notation cert generate-test "notation-sign-sync-test"
     [ "$status" -eq 0 ]
+
+    local trust_policy_file=${HOME}/.config/notation/trustpolicy.json
+
+    cat >${trust_policy_file} <<EOF
+{
+    "version": "1.0",
+    "trustPolicies": [
+        {
+            "name": "notation-sign-sync-test",
+            "registryScopes": [ "*" ],
+            "signatureVerification": {
+                "level" : "strict" 
+            },
+            "trustStores": [ "ca:notation-sign-sync-test" ],
+            "trustedIdentities": [
+                "*"
+            ]
+        }
+    ]
+}
+EOF
+
     run notation sign --key "notation-sign-sync-test" --plain-http localhost:9000/golang:1.19
     [ "$status" -eq 0 ]
-    run notation verify --cert "notation-sign-sync-test" --plain-http localhost:9000/golang:1.19
+    run notation verify  --plain-http localhost:9000/golang:1.19
     [ "$status" -eq 0 ]
     run notation list --plain-http localhost:9000/golang:1.19
     [ "$status" -eq 0 ]
@@ -262,7 +284,7 @@ function teardown_file() {
     # wait for signatures to be copied
     run sleep 5s
 
-    run notation verify --cert "notation-sign-sync-test" --plain-http localhost:8081/golang:1.19
+    run notation verify --plain-http localhost:8081/golang:1.19
     [ "$status" -eq 0 ]
 
     run cosign verify --key cosign.pub localhost:8081/golang:1.19
@@ -270,7 +292,7 @@ function teardown_file() {
 }
 
 @test "sync signatures ondemand" {
-    run notation verify --cert "notation-sign-sync-test" --plain-http localhost:8082/golang:1.19
+    run notation verify --plain-http localhost:8082/golang:1.19
     [ "$status" -eq 0 ]
 
     run cosign verify --key cosign.pub localhost:8082/golang:1.19

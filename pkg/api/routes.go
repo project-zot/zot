@@ -431,7 +431,7 @@ func getReferrers(ctx context.Context, routeHandler *RouteHandler,
 	artifactTypes []string,
 ) (ispec.Index, error) {
 	references, err := imgStore.GetReferrers(name, digest, artifactTypes)
-	if err != nil {
+	if err != nil || len(references.Manifests) == 0 {
 		if routeHandler.c.Config.Extensions != nil &&
 			routeHandler.c.Config.Extensions.Sync != nil &&
 			*routeHandler.c.Config.Extensions.Sync.Enable {
@@ -495,10 +495,10 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 		if errors.Is(err, zerr.ErrManifestNotFound) || errors.Is(err, zerr.ErrRepoNotFound) {
 			rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).Msg("manifest not found")
 			response.WriteHeader(http.StatusNotFound)
+		} else {
+			rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).Msg("unable to get references")
+			response.WriteHeader(http.StatusInternalServerError)
 		}
-
-		rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).Msg("unable to get references")
-		response.WriteHeader(http.StatusInternalServerError)
 
 		return
 	}
@@ -1671,7 +1671,7 @@ func getOrasReferrers(ctx context.Context, routeHandler *RouteHandler,
 		if routeHandler.c.Config.Extensions != nil &&
 			routeHandler.c.Config.Extensions.Sync != nil &&
 			*routeHandler.c.Config.Extensions.Sync.Enable {
-			routeHandler.c.Log.Info().Msgf("signature not found, trying to get signature %s:%s by syncing on demand",
+			routeHandler.c.Log.Info().Msgf("artifact not found, trying to get artifact %s:%s by syncing on demand",
 				name, digest.String())
 
 			errSync := ext.SyncOneImage(ctx, routeHandler.c.Config, routeHandler.c.StoreController,
@@ -1745,8 +1745,13 @@ func (rh *RouteHandler) GetOrasReferrers(response http.ResponseWriter, request *
 
 	refs, err := getOrasReferrers(request.Context(), rh, imgStore, name, digest, artifactType) //nolint:contextcheck
 	if err != nil {
-		rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).Msg("unable to get references")
-		response.WriteHeader(http.StatusNotFound)
+		if errors.Is(err, zerr.ErrManifestNotFound) || errors.Is(err, zerr.ErrRepoNotFound) {
+			rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).Msg("manifest not found")
+			response.WriteHeader(http.StatusNotFound)
+		} else {
+			rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).Msg("unable to get references")
+			response.WriteHeader(http.StatusInternalServerError)
+		}
 
 		return
 	}

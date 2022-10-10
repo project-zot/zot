@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
@@ -22,11 +21,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/notaryproject/notation-go"
 	notreg "github.com/notaryproject/notation-go/registry"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	oraspec "github.com/oras-project/artifacts-spec/specs-go/v1"
+	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	perr "github.com/pkg/errors"
 	"github.com/sigstore/cosign/cmd/cosign/cli/generate"
 	"github.com/sigstore/cosign/cmd/cosign/cli/options"
@@ -74,31 +72,11 @@ type TagsList struct {
 }
 
 type ReferenceList struct {
-	References []notation.Descriptor `json:"references"`
+	References []ispec.Descriptor `json:"references"`
 }
 
 type catalog struct {
 	Repositories []string `json:"repositories"`
-}
-
-func copyFile(sourceFilePath, destFilePath string) error {
-	destFile, err := os.Create(destFilePath)
-	if err != nil {
-		return err
-	}
-	defer destFile.Close()
-
-	sourceFile, err := os.Open(sourceFilePath)
-	if err != nil {
-		return err
-	}
-	defer sourceFile.Close()
-
-	if _, err = io.Copy(destFile, sourceFile); err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func startUpstreamServer(
@@ -323,6 +301,180 @@ func TestORAS(t *testing.T) {
 
 		So(err, ShouldBeNil)
 		So(string(output), ShouldContainSubstring, "helloworld")
+	})
+
+	Convey("Verify get and sync oras refs", t, func() {
+		updateDuration, _ := time.ParseDuration("30m")
+
+		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(t, false, false)
+
+		defer func() {
+			sctlr.Shutdown()
+		}()
+
+		repoName := testImage
+		var digest godigest.Digest
+		So(func() { digest = pushRepo(srcBaseURL, repoName) }, ShouldNotPanic)
+
+		regex := ".*"
+		var semver bool
+		var tlsVerify bool
+
+		syncRegistryConfig := sync.RegistryConfig{
+			Content: []sync.Content{
+				{
+					Prefix: repoName,
+					Tags: &sync.Tags{
+						Regex:  &regex,
+						Semver: &semver,
+					},
+				},
+			},
+			URLs:         []string{srcBaseURL},
+			PollInterval: updateDuration,
+			TLSVerify:    &tlsVerify,
+			CertDir:      "",
+			OnDemand:     true,
+		}
+
+		defaultVal := true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
+
+		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(t, false, syncConfig)
+
+		defer func() {
+			dctlr.Shutdown()
+		}()
+
+		// wait for sync
+		var destTagsList TagsList
+
+		for {
+			resp, err := destClient.R().Get(destBaseURL + "/v2/" + repoName + "/tags/list")
+			if err != nil {
+				panic(err)
+			}
+
+			err = json.Unmarshal(resp.Body(), &destTagsList)
+			if err != nil {
+				panic(err)
+			}
+
+			if len(destTagsList.Tags) > 0 {
+				break
+			}
+
+			time.Sleep(500 * time.Millisecond)
+		}
+
+		time.Sleep(1 * time.Second)
+
+		// get oras refs from downstream, should be synced
+		getORASReferrersURL := destBaseURL + path.Join("/oras/artifacts/v1/", repoName, "manifests", digest.String(), "referrers") //nolint:lll
+
+		resp, err := resty.R().Get(getORASReferrersURL)
+
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeEmpty)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+		err = os.Chmod(path.Join(destDir, testImage, "index.json"), 0o000)
+		So(err, ShouldBeNil)
+
+		resp, err = resty.R().Get(getORASReferrersURL)
+
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeEmpty)
+		So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+
+		err = os.Chmod(path.Join(destDir, testImage, "index.json"), 0o755)
+		So(err, ShouldBeNil)
+
+		// get manifest digest from source
+		resp, err = destClient.R().Get(srcBaseURL + "/v2/" + testImage + "/manifests/" + digest.String())
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		digest = godigest.FromBytes(resp.Body())
+
+		content := []byte("blob content")
+		adigest := pushBlob(srcBaseURL, repoName, content)
+
+		artifactManifest := ispec.Artifact{
+			MediaType:    artifactspec.MediaTypeArtifactManifest,
+			ArtifactType: "application/vnd.oras.artifact",
+			Blobs: []ispec.Descriptor{
+				{
+					MediaType: "application/octet-stream",
+					Digest:    adigest,
+					Size:      int64(len(content)),
+				},
+			},
+			Subject: &ispec.Descriptor{
+				MediaType: "application/vnd.oci.image.manifest.v1+json",
+				Digest:    digest,
+				Size:      int64(len(resp.Body())),
+			},
+		}
+
+		content, err = json.Marshal(artifactManifest)
+		if err != nil {
+			panic(err)
+		}
+
+		adigest = godigest.FromBytes(content)
+
+		// put OCI reference artifact mediaType artifact
+		_, err = resty.R().SetHeader("Content-Type", artifactspec.MediaTypeArtifactManifest).
+			SetBody(content).Put(srcBaseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, adigest.String()))
+		if err != nil {
+			panic(err)
+		}
+
+		err = os.Chmod(path.Join(destDir, testImage, "index.json"), 0o000)
+		So(err, ShouldBeNil)
+
+		resp, err = resty.R().Get(getORASReferrersURL)
+
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeEmpty)
+		So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+
+		err = os.Chmod(path.Join(destDir, testImage, "index.json"), 0o755)
+		So(err, ShouldBeNil)
+
+		resp, err = resty.R().Get(getORASReferrersURL)
+
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeEmpty)
+
+		var refs ReferenceList
+
+		err = json.Unmarshal(resp.Body(), &refs)
+		So(err, ShouldBeNil)
+
+		So(len(refs.References), ShouldEqual, 1)
+
+		err = os.RemoveAll(path.Join(destDir, repoName))
+		So(err, ShouldBeNil)
+
+		err = os.WriteFile(path.Join(srcDir, repoName, "blobs", "sha256", adigest.Encoded()), []byte("wrong content"), 0o600)
+		So(err, ShouldBeNil)
+
+		_, err = resty.R().SetHeader("Content-Type", artifactspec.MediaTypeArtifactManifest).
+			SetBody(content).Put(srcBaseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, adigest.String()))
+		if err != nil {
+			panic(err)
+		}
+
+		resp, err = resty.R().Get(getORASReferrersURL)
+
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeEmpty)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 	})
 }
 
@@ -994,19 +1146,19 @@ func TestTLS(t *testing.T) {
 		destClientCertDir := t.TempDir()
 
 		destFilePath := path.Join(destClientCertDir, "ca.crt")
-		err = copyFile(CACert, destFilePath)
+		err = test.CopyFile(CACert, destFilePath)
 		if err != nil {
 			panic(err)
 		}
 
 		destFilePath = path.Join(destClientCertDir, "client.cert")
-		err = copyFile(ClientCert, destFilePath)
+		err = test.CopyFile(ClientCert, destFilePath)
 		if err != nil {
 			panic(err)
 		}
 
 		destFilePath = path.Join(destClientCertDir, "client.key")
-		err = copyFile(ClientKey, destFilePath)
+		err = test.CopyFile(ClientKey, destFilePath)
 		if err != nil {
 			panic(err)
 		}
@@ -1664,7 +1816,7 @@ func TestInvalidCerts(t *testing.T) {
 		clientCertDir := t.TempDir()
 
 		destFilePath := path.Join(clientCertDir, "ca.crt")
-		err := copyFile(CACert, destFilePath)
+		err := test.CopyFile(CACert, destFilePath)
 		if err != nil {
 			panic(err)
 		}
@@ -1681,13 +1833,13 @@ func TestInvalidCerts(t *testing.T) {
 		}
 
 		destFilePath = path.Join(clientCertDir, "client.cert")
-		err = copyFile(ClientCert, destFilePath)
+		err = test.CopyFile(ClientCert, destFilePath)
 		if err != nil {
 			panic(err)
 		}
 
 		destFilePath = path.Join(clientCertDir, "client.key")
-		err = copyFile(ClientKey, destFilePath)
+		err = test.CopyFile(ClientKey, destFilePath)
 		if err != nil {
 			panic(err)
 		}
@@ -1739,7 +1891,7 @@ func TestCertsWithWrongPerms(t *testing.T) {
 		clientCertDir := t.TempDir()
 
 		destFilePath := path.Join(clientCertDir, "ca.crt")
-		err := copyFile(CACert, destFilePath)
+		err := test.CopyFile(CACert, destFilePath)
 		if err != nil {
 			panic(err)
 		}
@@ -1748,13 +1900,13 @@ func TestCertsWithWrongPerms(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		destFilePath = path.Join(clientCertDir, "client.cert")
-		err = copyFile(ClientCert, destFilePath)
+		err = test.CopyFile(ClientCert, destFilePath)
 		if err != nil {
 			panic(err)
 		}
 
 		destFilePath = path.Join(clientCertDir, "client.key")
-		err = copyFile(ClientKey, destFilePath)
+		err = test.CopyFile(ClientKey, destFilePath)
 		if err != nil {
 			panic(err)
 		}
@@ -2439,25 +2591,25 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 
 		Convey("Trigger error on notary signature", func() {
 			// trigger permission error on notary signature on upstream
-			notaryURLPath := path.Join("/oras/artifacts/v1/", repoName, "manifests", imageManifestDigest.String(), "referrers")
+			notaryURLPath := path.Join("/v2/", repoName, "referrers", imageManifestDigest.String())
 
 			// based on image manifest digest get referrers
 			resp, err := resty.R().
 				SetHeader("Content-Type", "application/json").
-				SetQueryParam("artifactType", "application/vnd.cncf.notary.v2.signature").
+				SetQueryParam("artifactType", "application/vnd.cncf.notary.signature").
 				Get(srcBaseURL + notaryURLPath)
 
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeEmpty)
 
-			var referrers ReferenceList
+			var referrers ispec.Index
 
 			err = json.Unmarshal(resp.Body(), &referrers)
 			So(err, ShouldBeNil)
 
 			// read manifest
-			var artifactManifest oraspec.Manifest
-			for _, ref := range referrers.References {
+			var artifactManifest ispec.Artifact
+			for _, ref := range referrers.Manifests {
 				refPath := path.Join(srcDir, repoName, "blobs", string(ref.Digest.Algorithm()), ref.Digest.Encoded())
 				body, err := os.ReadFile(refPath)
 				So(err, ShouldBeNil)
@@ -2481,10 +2633,17 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 
 			// should not be synced nor sync on demand
 			resp, err = resty.R().SetHeader("Content-Type", "application/json").
-				SetQueryParam("artifactType", "application/vnd.cncf.notary.v2.signature").
+				SetQueryParam("artifactType", "application/vnd.cncf.notary.signature").
 				Get(destBaseURL + notaryURLPath)
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, 404)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			var index ispec.Index
+
+			err = json.Unmarshal(resp.Body(), &index)
+			So(err, ShouldBeNil)
+
+			So(len(index.Manifests), ShouldEqual, 0)
 		})
 
 		Convey("Trigger error on artifact references", func() {
@@ -2600,6 +2759,7 @@ func TestSignatures(t *testing.T) {
 		defer func() { _ = os.Chdir(cwd) }()
 		tdir := t.TempDir()
 		_ = os.Chdir(tdir)
+
 		generateKeyPairs(tdir)
 
 		So(func() { signImage(tdir, srcPort, repoName, digest) }, ShouldNotPanic)
@@ -2671,13 +2831,9 @@ func TestSignatures(t *testing.T) {
 
 		// notation verify the image
 		image := fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")
-		cmd := exec.Command("notation", "verify", "--cert", "good", "--plain-http", image)
-		out, err := cmd.CombinedOutput()
-		So(err, ShouldBeNil)
 
-		msg := string(out)
-		So(msg, ShouldNotBeEmpty)
-		So(strings.Contains(msg, "verification failure"), ShouldBeFalse)
+		err = test.VerifyWithNotation(image, tdir)
+		So(err, ShouldBeNil)
 
 		// cosign verify the image
 		vrfy := verify.VerifyCommand{
@@ -2703,23 +2859,23 @@ func TestSignatures(t *testing.T) {
 		err = json.Unmarshal(resp.Body(), &index)
 		So(err, ShouldBeNil)
 
-		So(len(index.Manifests), ShouldEqual, 2)
+		So(len(index.Manifests), ShouldEqual, 3)
 
 		// test negative cases (trigger errors)
 		// test notary signatures errors
 
 		// based on manifest digest get referrers
-		getReferrersURL := srcBaseURL + path.Join("/oras/artifacts/v1/", repoName, "manifests", digest.String(), "referrers")
+		getReferrersURL := srcBaseURL + path.Join("/v2/", repoName, "referrers", digest.String())
 
 		resp, err = resty.R().
 			SetHeader("Content-Type", "application/json").
-			SetQueryParam("artifactType", "application/vnd.cncf.notary.v2.signature").
+			SetQueryParam("artifactType", "application/vnd.cncf.notary.signature").
 			Get(getReferrersURL)
 
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeEmpty)
 
-		var referrers ReferenceList
+		var referrers ispec.Index
 
 		err = json.Unmarshal(resp.Body(), &referrers)
 		So(err, ShouldBeNil)
@@ -2728,8 +2884,8 @@ func TestSignatures(t *testing.T) {
 		err = os.RemoveAll(path.Join(destDir, repoName))
 		So(err, ShouldBeNil)
 
-		var artifactManifest oraspec.Manifest
-		for _, ref := range referrers.References {
+		var artifactManifest ispec.Artifact
+		for _, ref := range referrers.Manifests {
 			refPath := path.Join(srcDir, repoName, "blobs", string(ref.Digest.Algorithm()), ref.Digest.Encoded())
 			body, err := os.ReadFile(refPath)
 			So(err, ShouldBeNil)
@@ -2757,7 +2913,7 @@ func TestSignatures(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// triggers perm denied on notary manifest on downstream
-		for _, ref := range referrers.References {
+		for _, ref := range referrers.Manifests {
 			refPath := path.Join(destDir, repoName, "blobs", string(ref.Digest.Algorithm()), ref.Digest.Encoded())
 			err := os.MkdirAll(refPath, 0o755)
 			So(err, ShouldBeNil)
@@ -3498,12 +3654,8 @@ func TestSignaturesOnDemand(t *testing.T) {
 
 		// notation verify the synced image
 		image := fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")
-		cmd := exec.Command("notation", "verify", "--cert", "good", "--plain-http", image)
-		out, err := cmd.CombinedOutput()
+		err = test.VerifyWithNotation(image, tdir)
 		So(err, ShouldBeNil)
-		msg := string(out)
-		So(msg, ShouldNotBeEmpty)
-		So(strings.Contains(msg, "verification failure"), ShouldBeFalse)
 
 		// cosign verify the synced image
 		vrfy := verify.VerifyCommand{
@@ -3567,6 +3719,107 @@ func TestSignaturesOnDemand(t *testing.T) {
 
 		err = os.Chmod(srcSignatureBlobPath, 0o755)
 		So(err, ShouldBeNil)
+	})
+
+	Convey("Verify sync signatures on demand feature: notation - negative cases", t, func() {
+		sctlr, srcBaseURL, srcDir, _, _ := startUpstreamServer(t, false, false)
+
+		defer func() {
+			sctlr.Shutdown()
+		}()
+
+		// create repo, push and sign it
+		repoName := testSignedImage
+		var digest godigest.Digest
+		So(func() { digest = pushRepo(srcBaseURL, repoName) }, ShouldNotPanic)
+
+		splittedURL := strings.SplitAfter(srcBaseURL, ":")
+		srcPort := splittedURL[len(splittedURL)-1]
+
+		cwd, err := os.Getwd()
+		So(err, ShouldBeNil)
+
+		defer func() { _ = os.Chdir(cwd) }()
+		tdir := t.TempDir()
+		_ = os.Chdir(tdir)
+
+		generateKeyPairs(tdir)
+
+		So(func() { signImage(tdir, srcPort, repoName, digest) }, ShouldNotPanic)
+
+		var tlsVerify bool
+
+		syncRegistryConfig := sync.RegistryConfig{
+			URLs:      []string{srcBaseURL},
+			TLSVerify: &tlsVerify,
+			CertDir:   "",
+			OnDemand:  true,
+		}
+
+		defaultVal := true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
+
+		destPort := test.GetFreePort()
+		destConfig := config.New()
+		destBaseURL := test.GetBaseURL(destPort)
+		destConfig.HTTP.Port = destPort
+
+		destDir := t.TempDir()
+
+		destConfig.Storage.RootDirectory = destDir
+		destConfig.Storage.Dedupe = false
+		destConfig.Storage.GC = false
+
+		destConfig.Extensions = &extconf.ExtensionConfig{}
+		destConfig.Extensions.Search = nil
+		destConfig.Extensions.Sync = syncConfig
+		destConfig.Log.Output = path.Join(destDir, "sync.log")
+
+		dctlr := api.NewController(destConfig)
+		dcm := test.NewControllerManager(dctlr)
+
+		dcm.StartAndWait(destPort)
+
+		defer dcm.StopServer()
+
+		// trigger getOCIRefs error
+		getReferrersURL := srcBaseURL + path.Join("/v2/", repoName, "referrers", digest.String())
+
+		resp, err := resty.R().
+			SetHeader("Content-Type", "application/json").
+			SetQueryParam("artifactType", "application/vnd.cncf.notary.signature").
+			Get(getReferrersURL)
+
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeEmpty)
+
+		var referrers ispec.Index
+
+		err = json.Unmarshal(resp.Body(), &referrers)
+		So(err, ShouldBeNil)
+
+		for _, ref := range referrers.Manifests {
+			refPath := path.Join(srcDir, repoName, "blobs", string(ref.Digest.Algorithm()), ref.Digest.Encoded())
+			err := os.Remove(refPath)
+			So(err, ShouldBeNil)
+		}
+
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + testSignedImage + "/manifests/1.0")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		time.Sleep(3 * time.Second)
+
+		body, err := os.ReadFile(path.Join(destDir, "sync.log"))
+		if err != nil {
+			log.Fatalf("unable to read file: %v", err)
+		}
+
+		So(string(body), ShouldContainSubstring, "couldn't find any oci reference")
+		So(string(body), ShouldContainSubstring, "couldn't find upstream referrer")
 	})
 }
 
@@ -3641,12 +3894,8 @@ func TestOnlySignaturesOnDemand(t *testing.T) {
 
 		// sync signature on demand when upstream doesn't have the signature
 		image := fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")
-		cmd := exec.Command("notation", "verify", "--cert", "good", "--plain-http", image)
-		out, err := cmd.CombinedOutput()
+		err = test.VerifyWithNotation(image, tdir)
 		So(err, ShouldNotBeNil)
-		msg := string(out)
-		So(msg, ShouldNotBeEmpty)
-		So(strings.Contains(msg, "signature failure"), ShouldBeTrue)
 
 		// cosign verify the synced image
 		vrfy := verify.VerifyCommand{
@@ -3664,12 +3913,8 @@ func TestOnlySignaturesOnDemand(t *testing.T) {
 
 		// now it should sync signatures on demand, even if we already have the image
 		image = fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")
-		cmd = exec.Command("notation", "verify", "--cert", "good", "--plain-http", image)
-		out, err = cmd.CombinedOutput()
+		err = test.VerifyWithNotation(image, tdir)
 		So(err, ShouldBeNil)
-		msg = string(out)
-		So(msg, ShouldNotBeEmpty)
-		So(strings.Contains(msg, "verification failure"), ShouldBeFalse)
 
 		// cosign verify the synced image
 		vrfy = verify.VerifyCommand{
@@ -4002,13 +4247,8 @@ func TestSyncSignaturesDiff(t *testing.T) {
 
 		// notation verify the image
 		image := fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")
-		cmd := exec.Command("notation", "verify", "--cert", "good", "--plain-http", image)
-		out, err := cmd.CombinedOutput()
+		err = test.VerifyWithNotation(image, tdir)
 		So(err, ShouldBeNil)
-
-		msg := string(out)
-		So(msg, ShouldNotBeEmpty)
-		So(strings.Contains(msg, "verification failure"), ShouldBeFalse)
 
 		// cosign verify the image
 		vrfy := verify.VerifyCommand{
@@ -4033,13 +4273,8 @@ func TestSyncSignaturesDiff(t *testing.T) {
 
 		// notation verify the image
 		image = fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")
-		cmd = exec.Command("notation", "verify", "--cert", "good", "--plain-http", image)
-		out, err = cmd.CombinedOutput()
+		err = test.VerifyWithNotation(image, tdir)
 		So(err, ShouldBeNil)
-
-		msg = string(out)
-		So(msg, ShouldNotBeEmpty)
-		So(strings.Contains(msg, "verification failure"), ShouldBeFalse)
 
 		// cosign verify the image
 		vrfy = verify.VerifyCommand{
@@ -4721,18 +4956,12 @@ func generateKeyPairs(tdir string) {
 		}
 	}
 
-	// "notation" (notaryv2) doesn't yet support exported apis, so use the binary instead
-	_, err := exec.LookPath("notation")
-	if err != nil {
-		panic(err)
-	}
+	test.NotationPathLock.Lock()
+	defer test.NotationPathLock.Unlock()
 
-	os.Setenv("XDG_CONFIG_HOME", tdir)
+	test.LoadNotationPath(tdir)
 
-	// generate a keypair
-	cmd := exec.Command("notation", "cert", "generate-test", "--trust", "good")
-
-	err = cmd.Run()
+	err := test.GenerateNotationCerts(tdir, "good")
 	if err != nil {
 		panic(err)
 	}
@@ -4771,23 +5000,23 @@ func signImage(tdir, port, repoName string, digest godigest.Digest) {
 		panic(err)
 	}
 
+	test.NotationPathLock.Lock()
+	defer test.NotationPathLock.Unlock()
+
+	test.LoadNotationPath(tdir)
+
 	// sign the image
 	image := fmt.Sprintf("localhost:%s/%s:%s", port, repoName, "1.0")
-	cmd := exec.Command("notation", "sign", "--key", "good", "--plain-http", image)
 
-	err = cmd.Run()
+	err = test.SignWithNotation("good", image, tdir)
 	if err != nil {
 		panic(err)
 	}
 
-	// verify the image
-	cmd = exec.Command("notation", "verify", "--cert", "good", "--plain-http", image)
-	out, err := cmd.CombinedOutput()
-	So(err, ShouldBeNil)
-
-	msg := string(out)
-	So(msg, ShouldNotBeEmpty)
-	So(strings.Contains(msg, "verification failure"), ShouldBeFalse)
+	err = test.VerifyWithNotation(image, tdir)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func pushRepo(url, repoName string) godigest.Digest {

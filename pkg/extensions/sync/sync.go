@@ -334,15 +334,15 @@ func syncRegistry(ctx context.Context, regCfg RegistryConfig,
 				return err
 			}
 
-			refs, err := sig.getNotaryRefs(upstreamRepo, upstreamImageDigest.String())
+			index, err := sig.getOCIRefs(upstreamRepo, upstreamImageDigest.String())
 			if err != nil && !errors.Is(err, zerr.ErrSyncReferrerNotFound) {
-				log.Error().Err(err).Msgf("couldn't get upstream image %s notary references", upstreamImageRef.DockerReference())
+				log.Error().Err(err).Msgf("couldn't get upstream image %s OCI references", upstreamImageRef.DockerReference())
 
 				return err
 			}
 
 			// check if upstream image is signed
-			if cosignManifest == nil && len(refs.References) == 0 {
+			if cosignManifest == nil && len(getNotationManifestsFromOCIRefs(index)) == 0 {
 				// upstream image not signed
 				if regCfg.OnlySigned != nil && *regCfg.OnlySigned {
 					// skip unsigned images
@@ -399,17 +399,17 @@ func syncRegistry(ctx context.Context, regCfg RegistryConfig,
 
 			// sync signatures
 			if err = retry.RetryIfNecessary(ctx, func() error {
-				index, err := sig.getOCIRefs(upstreamRepo, upstreamImageDigest.String())
-				if err != nil && !errors.Is(err, zerr.ErrSyncReferrerNotFound) {
-					return err
-				}
-
 				err = sig.syncOCIRefs(localRepo, upstreamRepo, upstreamImageDigest.String(), index)
 				if err != nil {
 					return err
 				}
 
-				err = sig.syncNotaryRefs(localRepo, upstreamRepo, upstreamImageDigest.String(), refs)
+				refs, err := sig.getORASRefs(upstreamRepo, upstreamImageDigest.String())
+				if err != nil && !errors.Is(err, zerr.ErrSyncReferrerNotFound) {
+					return err
+				}
+
+				err = sig.syncORASRefs(localRepo, upstreamRepo, upstreamImageDigest.String(), refs)
 				if err != nil {
 					return err
 				}

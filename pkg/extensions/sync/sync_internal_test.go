@@ -358,8 +358,10 @@ func TestSyncInternal(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(regURL, ShouldNotBeNil)
 
-		ref := artifactspec.Descriptor{
-			Digest: "fakeDigest",
+		ref := ispec.Descriptor{
+			MediaType:    ispec.MediaTypeArtifactManifest,
+			Digest:       "fakeDigest",
+			ArtifactType: "application/vnd.cncf.notary.signature",
 		}
 
 		desc := ispec.Descriptor{
@@ -383,7 +385,7 @@ func TestSyncInternal(t *testing.T) {
 		err = sig.syncCosignSignature(testImage, testImage, testImageTag, &manifest)
 		So(err, ShouldNotBeNil)
 
-		err = sig.syncNotaryRefs(testImage, testImage, "invalidDigest", ReferenceList{[]artifactspec.Descriptor{ref}})
+		err = sig.syncOCIRefs(testImage, testImage, "invalidDigest", ispec.Index{Manifests: []ispec.Descriptor{ref}})
 		So(err, ShouldNotBeNil)
 	})
 
@@ -398,9 +400,11 @@ func TestSyncInternal(t *testing.T) {
 		imageStore := local.NewImageStore(storageDir, false, storage.DefaultGCDelay,
 			false, false, log, metrics, nil, nil)
 
-		refs := ReferenceList{[]artifactspec.Descriptor{
+		refs := ispec.Index{Manifests: []ispec.Descriptor{
 			{
-				Digest: "fakeDigest",
+				MediaType:    ispec.MediaTypeArtifactManifest,
+				Digest:       "fakeDigest",
+				ArtifactType: "application/vnd.cncf.notary.signature",
 			},
 		}}
 
@@ -425,14 +429,34 @@ func TestSyncInternal(t *testing.T) {
 		client := &http.Client{}
 		sig := newSignaturesCopier(client, Credentials{}, *regURL, storage.StoreController{DefaultStore: imageStore}, log)
 
-		canBeSkipped, err = sig.canSkipNotaryRefs(testImage, testImageManifestDigest.String(), refs)
+		canBeSkipped, err = sig.canSkipOCIRefs(testImage, testImageManifestDigest.String(), refs)
+		So(err, ShouldBeNil)
+		So(canBeSkipped, ShouldBeFalse)
+
+		var index ispec.Index
+		indexPath := path.Join(imageStore.RootDir(), testImage, "index.json")
+		buf, err := os.ReadFile(indexPath)
+		So(err, ShouldBeNil)
+		err = json.Unmarshal(buf, &index)
+		So(err, ShouldBeNil)
+		index.Manifests = append(index.Manifests, ispec.Descriptor{
+			MediaType:    ispec.MediaTypeArtifactManifest,
+			Digest:       godigest.FromString(""),
+			ArtifactType: "application/vnd.cncf.notary.signature",
+		})
+		indexBuf, err := json.Marshal(index)
+		So(err, ShouldBeNil)
+		err = os.WriteFile(indexPath, indexBuf, 0o600)
+		So(err, ShouldBeNil)
+
+		canBeSkipped, err = sig.canSkipOCIRefs(testImage, testImageManifestDigest.String(), refs)
 		So(err, ShouldBeNil)
 		So(canBeSkipped, ShouldBeFalse)
 
 		err = os.Chmod(path.Join(imageStore.RootDir(), testImage, "index.json"), 0o000)
 		So(err, ShouldBeNil)
 
-		canBeSkipped, err = sig.canSkipNotaryRefs(testImage, testImageManifestDigest.String(), refs)
+		canBeSkipped, err = sig.canSkipOCIRefs(testImage, testImageManifestDigest.String(), refs)
 		So(err, ShouldNotBeNil)
 		So(canBeSkipped, ShouldBeFalse)
 
@@ -455,6 +479,65 @@ func TestSyncInternal(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		canBeSkipped, err = sig.canSkipCosignSignature(testImage, testImageManifestDigest.String(), &cosignManifest)
+		So(err, ShouldBeNil)
+		So(canBeSkipped, ShouldBeFalse)
+
+		// test canSkipOrasRefs()
+		refList := ReferenceList{}
+		canBeSkipped, err = sig.canSkipORASRefs(testImage, testImageManifestDigest.String(), refList)
+		So(err, ShouldBeNil)
+		So(canBeSkipped, ShouldBeTrue)
+
+		refList.References = append(refList.References, artifactspec.Descriptor{
+			MediaType:    artifactspec.MediaTypeArtifactManifest,
+			Digest:       godigest.FromString(""),
+			ArtifactType: "application/vnd.oras.artifact.ref",
+		})
+		canBeSkipped, err = sig.canSkipORASRefs(testImage, testImageManifestDigest.String(), refList)
+		So(err, ShouldBeNil)
+		So(canBeSkipped, ShouldBeFalse)
+
+		err = sig.syncORASRefs(testImage, testImage, testImageManifestDigest.String(), refList)
+		So(err, ShouldNotBeNil)
+
+		buf, err = os.ReadFile(indexPath)
+		So(err, ShouldBeNil)
+		err = json.Unmarshal(buf, &index)
+		So(err, ShouldBeNil)
+		blobs := []artifactspec.Descriptor{}
+		manifest := artifactspec.Manifest{
+			MediaType: artifactspec.MediaTypeArtifactManifest,
+			Blobs:     blobs,
+			Subject:   &artifactspec.Descriptor{Digest: testImageManifestDigest},
+		}
+		manifestBuf, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+		index.Manifests = append(index.Manifests, ispec.Descriptor{
+			MediaType:    artifactspec.MediaTypeArtifactManifest,
+			Digest:       godigest.FromBytes(manifestBuf),
+			ArtifactType: "application/vnd.oras.artifact",
+		})
+		indexBuf, err = json.Marshal(index)
+		So(err, ShouldBeNil)
+		err = os.WriteFile(indexPath, indexBuf, 0o600)
+		So(err, ShouldBeNil)
+
+		err = os.Chmod(path.Join(imageStore.RootDir(), testImage, "index.json"), 0o000)
+		So(err, ShouldBeNil)
+
+		canBeSkipped, err = sig.canSkipORASRefs(testImage, testImageManifestDigest.String(), refList)
+		So(err, ShouldNotBeNil)
+		So(canBeSkipped, ShouldBeFalse)
+
+		err = os.Chmod(path.Join(imageStore.RootDir(), testImage, "index.json"), 0o755)
+		So(err, ShouldBeNil)
+
+		err = os.WriteFile(path.Join(imageStore.RootDir(), testImage,
+			"blobs", "sha256", godigest.FromBytes(manifestBuf).Encoded()),
+			manifestBuf, 0o600)
+		So(err, ShouldBeNil)
+
+		canBeSkipped, err = sig.canSkipORASRefs(testImage, testImageManifestDigest.String(), refList)
 		So(err, ShouldBeNil)
 		So(canBeSkipped, ShouldBeFalse)
 	})

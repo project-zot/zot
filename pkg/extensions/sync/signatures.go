@@ -73,7 +73,7 @@ func (sig *signaturesCopier) getCosignManifest(repo, digestStr string) (*ispec.M
 	return &cosignManifest, nil
 }
 
-func (sig *signaturesCopier) getNotaryRefs(repo, digestStr string) (ReferenceList, error) {
+func (sig *signaturesCopier) getORASRefs(repo, digestStr string) (ReferenceList, error) {
 	var referrers ReferenceList
 
 	getReferrersURL := sig.upstreamURL
@@ -89,12 +89,12 @@ func (sig *signaturesCopier) getNotaryRefs(repo, digestStr string) (ReferenceLis
 		getReferrersURL.String(), "application/json", sig.log)
 	if err != nil {
 		if statusCode == http.StatusNotFound {
-			sig.log.Info().Err(err).Msg("couldn't find any notary signatures/oras artifacts")
+			sig.log.Info().Err(err).Msg("couldn't find any ORAS artifact")
 
 			return referrers, zerr.ErrSyncReferrerNotFound
 		}
 
-		sig.log.Error().Err(err).Msg("couldn't get notary signatures/oras artifacts")
+		sig.log.Error().Err(err).Msg("couldn't get ORAS artifacts")
 
 		return referrers, err
 	}
@@ -188,25 +188,25 @@ func (sig *signaturesCopier) syncCosignSignature(localRepo, remoteRepo, digestSt
 	return nil
 }
 
-func (sig *signaturesCopier) syncNotaryRefs(localRepo, remoteRepo, digestStr string, referrers ReferenceList,
+func (sig *signaturesCopier) syncORASRefs(localRepo, remoteRepo, digestStr string, referrers ReferenceList,
 ) error {
 	if len(referrers.References) == 0 {
 		return nil
 	}
 
-	skipNotarySig, err := sig.canSkipNotaryRefs(localRepo, digestStr, referrers)
+	skipORASRefs, err := sig.canSkipORASRefs(localRepo, digestStr, referrers)
 	if err != nil {
-		sig.log.Error().Err(err).Msgf("couldn't check if the upstream image %s:%s notary signature can be skipped",
+		sig.log.Error().Err(err).Msgf("couldn't check if the upstream image %s:%s ORAS artifact can be skipped",
 			remoteRepo, digestStr)
 	}
 
-	if skipNotarySig {
+	if skipORASRefs {
 		return nil
 	}
 
 	imageStore := sig.storeController.GetImageStore(localRepo)
 
-	sig.log.Info().Msg("syncing notary signatures")
+	sig.log.Info().Msg("syncing ORAS artifacts")
 
 	for _, ref := range referrers.References {
 		// get referrer manifest
@@ -222,13 +222,13 @@ func (sig *signaturesCopier) syncNotaryRefs(localRepo, remoteRepo, digestStr str
 		if err != nil {
 			if statusCode == http.StatusNotFound {
 				sig.log.Error().Str("errorType", common.TypeOf(err)).
-					Err(err).Msgf("couldn't find any notary manifest: %s", getRefManifestURL.String())
+					Err(err).Msgf("couldn't find any ORAS manifest: %s", getRefManifestURL.String())
 
 				return zerr.ErrSyncReferrerNotFound
 			}
 
 			sig.log.Error().Str("errorType", common.TypeOf(err)).
-				Err(err).Msgf("couldn't get notary manifest: %s", getRefManifestURL.String())
+				Err(err).Msgf("couldn't get ORAS manifest: %s", getRefManifestURL.String())
 
 			return err
 		}
@@ -243,13 +243,13 @@ func (sig *signaturesCopier) syncNotaryRefs(localRepo, remoteRepo, digestStr str
 			oras.MediaTypeArtifactManifest, body)
 		if err != nil {
 			sig.log.Error().Str("errorType", common.TypeOf(err)).
-				Err(err).Msg("couldn't upload notary sig manifest")
+				Err(err).Msg("couldn't upload ORAS manifest")
 
 			return err
 		}
 	}
 
-	sig.log.Info().Msgf("successfully synced notary signature for repo %s digest %s", localRepo, digestStr)
+	sig.log.Info().Msgf("successfully synced ORAS artifacts for repo %s digest %s", localRepo, digestStr)
 
 	return nil
 }
@@ -409,33 +409,33 @@ func (sig *signaturesCopier) syncOCIArtifact(localRepo, remoteRepo, reference st
 	return nil
 }
 
-func (sig *signaturesCopier) canSkipNotaryRefs(localRepo, digestStr string, refs ReferenceList,
+func (sig *signaturesCopier) canSkipORASRefs(localRepo, digestStr string, refs ReferenceList,
 ) (bool, error) {
 	imageStore := sig.storeController.GetImageStore(localRepo)
 	digest := godigest.Digest(digestStr)
 
-	// check notary signature already synced
+	// check oras artifacts already synced
 	if len(refs.References) > 0 {
-		localRefs, err := imageStore.GetOrasReferrers(localRepo, digest, notreg.ArtifactTypeNotation)
+		localRefs, err := imageStore.GetOrasReferrers(localRepo, digest, "")
 		if err != nil {
 			if errors.Is(err, zerr.ErrManifestNotFound) {
 				return false, nil
 			}
 
 			sig.log.Error().Str("errorType", common.TypeOf(err)).
-				Err(err).Msgf("couldn't get local notary signature %s:%s manifest", localRepo, digestStr)
+				Err(err).Msgf("couldn't get local ORAS artifact %s:%s manifest", localRepo, digestStr)
 
 			return false, err
 		}
 
 		if !artifactDescriptorsEqual(localRefs, refs.References) {
-			sig.log.Info().Msgf("upstream notary signatures %s:%s changed, syncing again", localRepo, digestStr)
+			sig.log.Info().Msgf("upstream ORAS artifacts %s:%s changed, syncing again", localRepo, digestStr)
 
 			return false, nil
 		}
 	}
 
-	sig.log.Info().Msgf("skipping notary signature %s:%s, already synced", localRepo, digestStr)
+	sig.log.Info().Msgf("skipping ORAS artifact %s:%s, already synced", localRepo, digestStr)
 
 	return true, nil
 }
@@ -607,4 +607,16 @@ func getCosignTagFromImageDigest(digestStr string) string {
 	}
 
 	return digestStr
+}
+
+func getNotationManifestsFromOCIRefs(ociRefs ispec.Index) []ispec.Descriptor {
+	notaryManifests := []ispec.Descriptor{}
+
+	for _, ref := range ociRefs.Manifests {
+		if ref.ArtifactType == notreg.ArtifactTypeNotation {
+			notaryManifests = append(notaryManifests, ref)
+		}
+	}
+
+	return notaryManifests
 }

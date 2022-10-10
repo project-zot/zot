@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"path"
 	"regexp"
 	"strings"
@@ -254,46 +253,6 @@ func TestSearchImageCmd(t *testing.T) {
 	})
 }
 
-func SignImageUsingNotary(repoTag, port string) error {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-
-	defer func() { _ = os.Chdir(cwd) }()
-
-	tdir, err := os.MkdirTemp("", "notation")
-	if err != nil {
-		return err
-	}
-
-	defer os.RemoveAll(tdir)
-
-	_ = os.Chdir(tdir)
-
-	_, err = exec.LookPath("notation")
-	if err != nil {
-		return err
-	}
-
-	os.Setenv("XDG_CONFIG_HOME", tdir)
-
-	// generate a keypair
-	cmd := exec.Command("notation", "cert", "generate-test", "--trust", "notation-sign-test")
-
-	err = cmd.Run()
-	if err != nil {
-		return err
-	}
-
-	// sign the image
-	image := fmt.Sprintf("localhost:%s/%s", port, repoTag)
-
-	cmd = exec.Command("notation", "sign", "--key", "notation-sign-test", "--plain-http", image)
-
-	return cmd.Run()
-}
-
 func TestSignature(t *testing.T) {
 	Convey("Test from real server", t, func() {
 		currentWorkingDir, err := os.Getwd()
@@ -427,7 +386,7 @@ func TestSignature(t *testing.T) {
 		digest := godigest.FromBytes(content)
 		So(digest, ShouldNotBeNil)
 
-		err = SignImageUsingNotary("repo7:0.0.1", port)
+		err = test.SignImageUsingNotary("repo7:0.0.1", port)
 		So(err, ShouldBeNil)
 
 		t.Logf("%s", ctlr.Config.Storage.RootDirectory)

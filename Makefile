@@ -12,6 +12,7 @@ STACKER := $(shell which stacker)
 GOLINTER := $(TOOLSDIR)/bin/golangci-lint
 GOLINTER_VERSION := v1.49.0
 NOTATION := $(TOOLSDIR)/bin/notation
+NOTATION_VERSION := 1.0.0-rc.1
 COSIGN := $(TOOLSDIR)/bin/cosign
 HELM := $(TOOLSDIR)/bin/helm
 ORAS := $(TOOLSDIR)/bin/oras
@@ -85,7 +86,7 @@ exporter-minimal: modcheck build-metadata
 
 .PHONY: test
 test: $(if $(findstring ui,$(EXTENSIONS)), ui)
-test: check-skopeo $(TESTDATA) $(NOTATION) $(ORAS)
+test: check-skopeo $(TESTDATA) $(ORAS)
 	go test -failfast -tags $(EXTENSIONS),containers_image_openpgp -v -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-extended.txt -covermode=atomic ./...
 	go test -failfast -tags containers_image_openpgp -v -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-minimal.txt -covermode=atomic ./...
 	# development-mode unit tests possibly using failure injection
@@ -95,7 +96,7 @@ test: check-skopeo $(TESTDATA) $(NOTATION) $(ORAS)
 
 .PHONY: privileged-test
 privileged-test: $(if $(findstring ui,$(EXTENSIONS)), ui)
-privileged-test: check-skopeo $(TESTDATA) $(NOTATION)
+privileged-test: check-skopeo $(TESTDATA)
 	go test -failfast -tags needprivileges,$(EXTENSIONS),containers_image_openpgp -v -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-dev-needprivileges.txt -covermode=atomic ./pkg/storage/... ./pkg/cli/... -run ^TestElevatedPrivileges
 
 $(TESTDATA): check-skopeo
@@ -115,7 +116,7 @@ check-skopeo:
 
 $(NOTATION):
 	mkdir -p $(TOOLSDIR)/bin
-	curl -Lo notation.tar.gz https://github.com/notaryproject/notation/releases/download/v0.7.1-alpha.1/notation_0.7.1-alpha.1_linux_amd64.tar.gz
+	curl -Lo notation.tar.gz https://github.com/notaryproject/notation/releases/download/v$(NOTATION_VERSION)/notation_$(NOTATION_VERSION)_linux_amd64.tar.gz
 	tar xvzf notation.tar.gz -C $(TOOLSDIR)/bin  notation
 	rm notation.tar.gz
 
