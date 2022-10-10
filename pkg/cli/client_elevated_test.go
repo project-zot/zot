@@ -1,5 +1,5 @@
-//go:build ui_base && needprivileges
-// +build ui_base,needprivileges
+//go:build search && needprivileges
+// +build search,needprivileges
 
 package cli //nolint:testpackage
 

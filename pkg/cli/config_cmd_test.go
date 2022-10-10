@@ -1,5 +1,5 @@
-//go:build ui_base
-// +build ui_base
+//go:build search
+// +build search
 
 package cli //nolint:testpackage
 

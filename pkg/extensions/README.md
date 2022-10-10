@@ -27,5 +27,5 @@ package extensions
 
 - with every new extension, you should modify the EXTENSIONS variable in Makefile by adding the new extension. The EXTENSIONS variable represents all extensions and is used in Make targets that require them all (e.g make test).
 
-- the available extensions that can be used at the moment are: <b>sync, scrub, metrics, search, ui_base </b>.
+- the available extensions that can be used at the moment are: <b>sync, scrub, metrics, search </b>.
 NOTE: When multiple extensions are used, they should be enlisted in the above presented order.
