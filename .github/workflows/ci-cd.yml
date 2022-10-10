@@ -109,7 +109,7 @@ jobs:
       - name: Check if GraphQL Schema Changed
         if: matrix.os == 'linux' && matrix.arch == 'amd64'
         id: changed-files-specific
-        uses: tj-actions/changed-files@v29
+        uses: tj-actions/changed-files@v32
         with:
           files: |
             pkg/extensions/search/schema.graphql
