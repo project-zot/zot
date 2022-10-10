@@ -9,6 +9,7 @@ package debug
 
 import (
 	"github.com/gorilla/mux"
+
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/log" //nolint:goimports
 	// as required by swaggo.

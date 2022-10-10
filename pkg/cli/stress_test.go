@@ -14,6 +14,7 @@ import (
 	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
+
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/cli"

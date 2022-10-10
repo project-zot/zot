@@ -13,6 +13,7 @@ import (
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/sigstore/cosign/pkg/oci/remote"
 	"gopkg.in/resty.v1"
+
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/constants"
 	"zotregistry.io/zot/pkg/log"

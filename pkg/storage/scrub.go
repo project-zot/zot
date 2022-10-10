@@ -15,6 +15,7 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opencontainers/umoci"
 	"github.com/opencontainers/umoci/oci/casext"
+
 	"zotregistry.io/zot/errors"
 )
 

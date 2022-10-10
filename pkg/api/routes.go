@@ -25,6 +25,7 @@ import (
 	"github.com/opencontainers/distribution-spec/specs-go/v1/extensions"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
+
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/constants"
 	gqlPlayground "zotregistry.io/zot/pkg/debug/gqlplayground"

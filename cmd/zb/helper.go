@@ -17,6 +17,7 @@ import (
 	imeta "github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"gopkg.in/resty.v1"
+
 	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/test"
 )

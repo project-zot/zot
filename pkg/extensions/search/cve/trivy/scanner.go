@@ -13,6 +13,7 @@ import (
 	regTypes "github.com/google/go-containerregistry/pkg/v1/types"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/urfave/cli/v2"
+
 	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"

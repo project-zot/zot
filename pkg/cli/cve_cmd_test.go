@@ -17,6 +17,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/spf13/cobra"
 	"gopkg.in/resty.v1"
+
 	zotErrors "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"

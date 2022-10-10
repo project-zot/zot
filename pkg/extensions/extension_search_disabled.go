@@ -6,6 +6,7 @@ package extensions
 import (
 	"github.com/gorilla/mux"
 	distext "github.com/opencontainers/distribution-spec/specs-go/v1/extensions"
+
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"

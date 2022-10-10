@@ -17,6 +17,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/olekukonko/tablewriter"
 	"gopkg.in/yaml.v2"
+
 	zotErrors "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/constants"
 )

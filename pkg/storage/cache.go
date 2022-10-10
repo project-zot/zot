@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"go.etcd.io/bbolt"
+
 	"zotregistry.io/zot/errors"
 	zlog "zotregistry.io/zot/pkg/log"
 )

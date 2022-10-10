@@ -20,6 +20,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	godigest "github.com/opencontainers/go-digest"
 	"gopkg.in/resty.v1"
+
 	"zotregistry.io/zot/pkg/api/constants"
 )
 

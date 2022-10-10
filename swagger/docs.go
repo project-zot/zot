@@ -838,7 +838,6 @@ func New() *s {
 	return &s{}
 }
 
-
 func (s *s) ReadDoc() string {
 	sInfo := SwaggerInfo
 	sInfo.Description = strings.Replace(sInfo.Description, "\n", "\\n", -1)

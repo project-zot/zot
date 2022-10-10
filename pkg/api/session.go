@@ -9,6 +9,7 @@ import (
 
 	"github.com/didip/tollbooth/v6"
 	"github.com/gorilla/mux"
+
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 )

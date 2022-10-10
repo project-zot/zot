@@ -8,6 +8,7 @@ import (
 	"github.com/getlantern/deepcopy"
 	distspec "github.com/opencontainers/distribution-spec/specs-go"
 	"github.com/spf13/viper"
+
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/storage"
 )

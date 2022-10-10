@@ -20,6 +20,7 @@ import (
 	"github.com/containers/image/v5/types"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"gopkg.in/resty.v1"
+
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/constants"
 	"zotregistry.io/zot/pkg/log"
