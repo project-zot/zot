@@ -15,6 +15,7 @@ NOTATION := $(TOOLSDIR)/bin/notation
 HELM := $(TOOLSDIR)/bin/helm
 ORAS := $(TOOLSDIR)/bin/oras
 REGCLIENT := $(TOOLSDIR)/bin/regctl
+STACKER := $(TOOLSDIR)/bin/stacker
 BATS := $(TOOLSDIR)/bin/bats
 TESTDATA := $(TOP_LEVEL)/test/data
 OS ?= linux
@@ -262,52 +263,52 @@ $(BATS):
 	cd bats-core; ./install.sh $(TOOLSDIR); cd ..; \
 	rm -rf bats-core
 
-.PHONY: push-pull
-push-pull: binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM)
+.PHONY: test-push-pull
+test-push-pull: binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM)
 	$(BATS) --trace --print-output-on-failure test/blackbox/pushpull.bats
 
-.PHONY: push-pull-verbose
-push-pull-verbose: binary check-skopeo $(BATS)
+.PHONY: test-push-pull-verbose
+test-push-pull-verbose: binary check-skopeo $(BATS)
 	$(BATS) --trace --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/pushpull.bats
 
-.PHONY: bats-sync
-bats-sync: EXTENSIONS=sync
-bats-sync: binary binary-minimal check-skopeo $(BATS)
+.PHONY: test-bats-sync
+test-bats-sync: EXTENSIONS=sync
+test-bats-sync: binary binary-minimal check-skopeo $(BATS)
 	$(BATS) --trace --print-output-on-failure test/blackbox/sync.bats
 	
-.PHONY: bats-sync-verbose
-bats-sync-verbose: EXTENSIONS=sync
-bats-sync-verbose: binary binary-minimal check-skopeo $(BATS)
+.PHONY: test-bats-sync-verbose
+test-bats-sync-verbose: EXTENSIONS=sync
+test-bats-sync-verbose: binary binary-minimal check-skopeo $(BATS)
 	$(BATS) --trace -t -x -p --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/sync.bats
 
-.PHONY: bats-cve
-bats-cve: EXTENSIONS=search
-bats-cve: binary cli check-skopeo $(BATS)
+.PHONY: test-bats-cve
+test-bats-cve: EXTENSIONS=search
+test-bats-cve: binary cli check-skopeo $(BATS)
 	$(BATS) --trace --print-output-on-failure test/blackbox/cve.bats
 
-.PHONY: bats-cve-verbose
-bats-cve-verbose: EXTENSIONS=search
-bats-cve-verbose: binary cli check-skopeo $(BATS)
+.PHONY: test-bats-cve-verbose
+test-bats-cve-verbose: EXTENSIONS=search
+test-bats-cve-verbose: binary cli check-skopeo $(BATS)
 	$(BATS) --trace -t -x -p --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/cve.bats
 
-.PHONY: bats-scrub
-bats-scrub: EXTENSIONS=scrub
-bats-scrub: binary check-skopeo $(BATS)
+.PHONY: test-bats-scrub
+test-bats-scrub: EXTENSIONS=scrub
+test-bats-scrub: binary check-skopeo $(BATS)
 	$(BATS) --trace --print-output-on-failure test/blackbox/scrub.bats
 
-.PHONY: bats-scrub-verbose
-bats-scrub-verbose: EXTENSIONS=scrub
-bats-scrub-verbose: binary check-skopeo $(BATS)
+.PHONY: test-bats-scrub-verbose
+test-bats-scrub-verbose: EXTENSIONS=scrub
+test-bats-scrub-verbose: binary check-skopeo $(BATS)
 	$(BATS) --trace -p --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/scrub.bats
 
-.PHONY: bats-metrics
-bats-metrics: EXTENSIONS=metrics
-bats-metrics: binary check-skopeo $(BATS)
+.PHONY: test-bats-metrics
+test-bats-metrics: EXTENSIONS=metrics
+test-bats-metrics: binary check-skopeo $(BATS)
 	$(BATS) --trace --print-output-on-failure test/blackbox/metrics.bats
 
-.PHONY: bats-metrics-verbose
-bats-metrics-verbose: EXTENSIONS=metrics
-bats-metrics-verbose: binary check-skopeo $(BATS)
+.PHONY: test-bats-metrics-verbose
+test-bats-metrics-verbose: EXTENSIONS=metrics
+test-bats-metrics-verbose: binary check-skopeo $(BATS)
 	$(BATS) --trace -p --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/metrics.bats
 
 .PHONY: fuzz-all
@@ -321,6 +322,15 @@ fuzz-all:
 	bash test/scripts/fuzzAll.sh ${fuzztime}; \
 	rm -rf pkg/storage/testdata; \
 
-.PHONY: anonymous-push-pull
-anonymous-push-pull: binary check-skopeo $(BATS)
+.PHONY: test-anonymous-push-pull
+test-anonymous-push-pull: binary check-skopeo $(BATS)
 	$(BATS) --trace --print-output-on-failure test/blackbox/anonymous_policiy.bats
+
+$(STACKER):
+	mkdir -p $(TOOLSDIR)/bin; \
+	curl -fsSL https://github.com/project-stacker/stacker/releases/latest/download/stacker -o $@; \
+	chmod +x $@
+
+.PHONY: test-annotations
+test-annotations: binary check-skopeo $(BATS) $(STACKER)
+	$(BATS) --trace --print-output-on-failure test/blackbox/annotations.bats
