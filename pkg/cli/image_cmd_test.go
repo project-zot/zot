@@ -1568,7 +1568,7 @@ func (service mockService) getAllImages(ctx context.Context, config searchConfig
 	image.Digest = "DigestsAreReallyLong"
 	image.Size = "123445"
 
-	str, err := image.string(*config.outputFormat)
+	str, err := image.string(*config.outputFormat, len(image.RepoName), len(image.Tag))
 	if err != nil {
 		channel <- stringResult{"", err}
 
@@ -1590,7 +1590,7 @@ func (service mockService) getImageByName(ctx context.Context, config searchConf
 	image.Digest = "DigestsAreReallyLong"
 	image.Size = "123445"
 
-	str, err := image.string(*config.outputFormat)
+	str, err := image.string(*config.outputFormat, len(image.RepoName), len(image.Tag))
 	if err != nil {
 		channel <- stringResult{"", err}
 

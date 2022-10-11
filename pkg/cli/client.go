@@ -303,7 +303,7 @@ func (p *requestsPool) doJob(ctx context.Context, job *manifestJob) {
 	image.ConfigDigest = configDigest
 	image.Layers = layers
 
-	str, err := image.string(*job.config.outputFormat)
+	str, err := image.string(*job.config.outputFormat, len(job.imageName), len(job.tagName))
 	if err != nil {
 		if isContextDone(ctx) {
 			return
