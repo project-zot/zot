@@ -10,7 +10,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/99designs/gqlgen/graphql"
 	glob "github.com/bmatcuk/doublestar/v4"            //nolint:gci
@@ -211,7 +210,7 @@ func repoListWithNewestImage(
 			manifestDigest := manifest.Digest.Hex()
 			configDigest := imageBlobManifest.Config.Digest.Hex
 			isSigned := olu.CheckManifestSignature(repo, manifest.Digest)
-			lastUpdated := olu.GetImageLastUpdated(imageConfigInfo)
+			lastUpdated := common.GetImageLastUpdated(imageConfigInfo)
 			score := 0
 
 			imageSummary := gql_generated.ImageSummary{
@@ -371,7 +370,7 @@ func globalSearch(repoList []string, name, tag string, olu common.OciLayoutUtils
 				// update matching score
 				score := calculateImageMatchingScore(repo, index, matchesTag)
 
-				lastUpdated := olu.GetImageLastUpdated(imageConfigInfo)
+				lastUpdated := common.GetImageLastUpdated(imageConfigInfo)
 				os, arch := olu.GetImagePlatform(imageConfigInfo)
 				osArch := &gql_generated.OsArch{
 					Os:   &os,
@@ -569,13 +568,7 @@ func BuildImageInfo(repo string, tag string, manifestDigest godigest.Digest,
 	allHistory := []*gql_generated.LayerHistory{}
 	formattedManifestDigest := manifestDigest.Hex()
 	annotations := common.GetAnnotations(manifest.Annotations, imageConfig.Config.Labels)
-
-	lastUpdated := imageConfig.Created
-
-	if (lastUpdated == nil || *lastUpdated == (time.Time{})) &&
-		len(imageConfig.History) > 0 {
-		lastUpdated = imageConfig.History[len(imageConfig.History)-1].Created
-	}
+	lastUpdated := common.GetImageLastUpdated(imageConfig)
 
 	history := imageConfig.History
 	if len(history) == 0 {
@@ -617,7 +610,7 @@ func BuildImageInfo(repo string, tag string, manifestDigest godigest.Digest,
 			Licenses:      &annotations.Licenses,
 			Labels:        &annotations.Labels,
 			Source:        &annotations.Source,
-			LastUpdated:   lastUpdated,
+			LastUpdated:   &lastUpdated,
 			IsSigned:      &isSigned,
 			Platform: &gql_generated.OsArch{
 				Os:   &imageConfig.OS,
@@ -666,7 +659,7 @@ func BuildImageInfo(repo string, tag string, manifestDigest godigest.Digest,
 				Licenses:      &annotations.Licenses,
 				Labels:        &annotations.Labels,
 				Source:        &annotations.Source,
-				LastUpdated:   lastUpdated,
+				LastUpdated:   &lastUpdated,
 				IsSigned:      &isSigned,
 				Platform: &gql_generated.OsArch{
 					Os:   &imageConfig.OS,
@@ -711,7 +704,7 @@ func BuildImageInfo(repo string, tag string, manifestDigest godigest.Digest,
 		Licenses:      &annotations.Licenses,
 		Labels:        &annotations.Labels,
 		Source:        &annotations.Source,
-		LastUpdated:   lastUpdated,
+		LastUpdated:   &lastUpdated,
 		IsSigned:      &isSigned,
 		Platform: &gql_generated.OsArch{
 			Os:   &imageConfig.OS,

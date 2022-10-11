@@ -75,6 +75,27 @@ func GetImageDirAndTag(imageName string) (string, string) {
 	return imageDir, imageTag
 }
 
+// GetImageLastUpdated This method will return last updated timestamp.
+// The Created timestamp is used, but if it is missing, look at the
+// history field and, if provided, return the timestamp of last entry in history.
+func GetImageLastUpdated(imageInfo ispec.Image) time.Time {
+	timeStamp := imageInfo.Created
+
+	if timeStamp != nil && !timeStamp.IsZero() {
+		return *timeStamp
+	}
+
+	if len(imageInfo.History) > 0 {
+		timeStamp = imageInfo.History[len(imageInfo.History)-1].Created
+	}
+
+	if timeStamp == nil {
+		timeStamp = &time.Time{}
+	}
+
+	return *timeStamp
+}
+
 func GetFixedTags(allTags, vulnerableTags []TagInfo) []TagInfo {
 	sort.Slice(allTags, func(i, j int) bool {
 		return allTags[i].Timestamp.Before(allTags[j].Timestamp)

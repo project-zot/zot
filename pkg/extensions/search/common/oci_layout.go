@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"path"
 	"strconv"
-	"time"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	notreg "github.com/notaryproject/notation-go/registry"
@@ -24,7 +23,6 @@ type OciLayoutUtils interface { //nolint: interfacebloat
 	GetImageBlobManifest(imageDir string, digest godigest.Digest) (v1.Manifest, error)
 	GetImageInfo(imageDir string, hash v1.Hash) (ispec.Image, error)
 	GetImageTagsWithTimestamp(repo string) ([]TagInfo, error)
-	GetImageLastUpdated(imageInfo ispec.Image) time.Time
 	GetImagePlatform(imageInfo ispec.Image) (string, string)
 	GetImageManifestSize(repo string, manifestDigest godigest.Digest) int64
 	GetRepoLastUpdated(repo string) (TagInfo, error)
@@ -189,13 +187,7 @@ func (olu BaseOciLayoutUtils) GetImageTagsWithTimestamp(repo string) ([]TagInfo,
 				return tagsInfo, err
 			}
 
-			var timeStamp time.Time
-
-			if len(imageInfo.History) != 0 {
-				timeStamp = *imageInfo.History[0].Created
-			} else {
-				timeStamp = time.Time{}
-			}
+			timeStamp := GetImageLastUpdated(imageInfo)
 
 			tagsInfo = append(tagsInfo, TagInfo{Name: val, Timestamp: timeStamp, Digest: digest.String()})
 		}
@@ -248,18 +240,6 @@ func (olu BaseOciLayoutUtils) CheckManifestSignature(name string, digest godiges
 	}
 
 	return true
-}
-
-func (olu BaseOciLayoutUtils) GetImageLastUpdated(imageInfo ispec.Image) time.Time {
-	var timeStamp time.Time
-
-	if len(imageInfo.History) != 0 {
-		timeStamp = *imageInfo.History[0].Created
-	} else {
-		timeStamp = time.Time{}
-	}
-
-	return timeStamp
 }
 
 func (olu BaseOciLayoutUtils) GetImagePlatform(imageConfig ispec.Image) (
@@ -413,7 +393,7 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(name string) (RepoInfo, error)
 		size := strconv.Itoa(int(imageSize))
 		manifestDigest := man.Digest.Hex()
 		configDigest := manifest.Config.Digest.Hex
-		lastUpdated := olu.GetImageLastUpdated(imageConfigInfo)
+		lastUpdated := GetImageLastUpdated(imageConfigInfo)
 		score := 0
 
 		imageSummary := ImageSummary{

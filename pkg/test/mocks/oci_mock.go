@@ -1,8 +1,6 @@
 package mocks
 
 import (
-	"time"
-
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -15,7 +13,6 @@ type OciLayoutUtilsMock struct {
 	GetImageBlobManifestFn      func(imageDir string, digest godigest.Digest) (v1.Manifest, error)
 	GetImageInfoFn              func(imageDir string, hash v1.Hash) (ispec.Image, error)
 	GetImageTagsWithTimestampFn func(repo string) ([]common.TagInfo, error)
-	GetImageLastUpdatedFn       func(imageInfo ispec.Image) time.Time
 	GetImagePlatformFn          func(imageInfo ispec.Image) (string, string)
 	GetImageVendorFn            func(imageInfo ispec.Image) string
 	GetImageManifestSizeFn      func(repo string, manifestDigest godigest.Digest) int64
@@ -73,14 +70,6 @@ func (olum OciLayoutUtilsMock) GetImageTagsWithTimestamp(repo string) ([]common.
 	}
 
 	return []common.TagInfo{}, nil
-}
-
-func (olum OciLayoutUtilsMock) GetImageLastUpdated(imageInfo ispec.Image) time.Time {
-	if olum.GetImageLastUpdatedFn != nil {
-		return olum.GetImageLastUpdatedFn(imageInfo)
-	}
-
-	return time.Time{}
 }
 
 func (olum OciLayoutUtilsMock) GetImagePlatform(imageInfo ispec.Image) (string, string) {
