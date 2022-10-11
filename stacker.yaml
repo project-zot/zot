@@ -13,7 +13,7 @@ build:
     cd /go/src/github.com/project-zot
     git clone /zotcopy zot
     cd /go/src/github.com/project-zot/zot
-    make COMMIT=${{COMMIT}} OS=${{OS}} ARCH=${{ARCH}} clean binary${{EXT:}}
+    make COMMIT=${{COMMIT}} OS=${{OS}} ARCH=${{ARCH}} RELEASE_TAG=&{{RELEASE_TAG}} clean binary${{EXT:}}
     cat > config.json << EOF
     {
       "storage":{

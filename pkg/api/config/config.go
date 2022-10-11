@@ -14,6 +14,7 @@ import (
 
 var (
 	Commit     string //nolint: gochecknoglobals
+	ReleaseTag string //nolint: gochecknoglobals
 	BinaryType string //nolint: gochecknoglobals
 	GoVersion  string //nolint: gochecknoglobals
 )
@@ -125,6 +126,7 @@ type Config struct {
 	DistSpecVersion string `json:"distSpecVersion" mapstructure:"distSpecVersion"`
 	GoVersion       string
 	Commit          string
+	ReleaseTag      string
 	BinaryType      string
 	AccessControl   *AccessControlConfig
 	Storage         GlobalStorageConfig
@@ -138,6 +140,7 @@ func New() *Config {
 		DistSpecVersion: distspec.Version,
 		GoVersion:       GoVersion,
 		Commit:          Commit,
+		ReleaseTag:      ReleaseTag,
 		BinaryType:      BinaryType,
 		Storage:         GlobalStorageConfig{GC: true, GCDelay: storage.DefaultGCDelay, Dedupe: true},
 		HTTP:            HTTPConfig{Address: "127.0.0.1", Port: "8080", Auth: &AuthConfig{FailDelay: 0}},
