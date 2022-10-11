@@ -29,6 +29,29 @@ const (
 	SleepTime     = 100 * time.Millisecond
 )
 
+// which: manifest, config, layer
+func GetTestBlobDigest(image, which string) godigest.Digest {
+	prePath := "../test/data"
+
+	for _, err := os.Stat(prePath); err != nil; _, err = os.Stat(prePath) {
+		prePath = "../" + prePath
+	}
+
+	imgPath := path.Join(prePath, image)
+	manifest, config, layer := GetOciLayoutDigests(imgPath)
+
+	switch which {
+	case "manifest":
+		return manifest
+	case "config":
+		return config
+	case "layer":
+		return layer
+	}
+
+	return ""
+}
+
 var (
 	ErrPostBlob = errors.New("can't post blob")
 	ErrPutBlob  = errors.New("can't put blob")

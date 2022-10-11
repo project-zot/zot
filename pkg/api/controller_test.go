@@ -3077,7 +3077,7 @@ func TestInvalidCases(t *testing.T) {
 		}(ctlr)
 		test.WaitTillServerReady(baseURL)
 
-		digest := "sha256:8dd57e171a61368ffcfde38045ddb6ed74a32950c271c1da93eaddfb66a77e78"
+		digest := test.GetTestBlobDigest("zot-cve-test", "config").String()
 		name := "zot-c-test"
 
 		client := resty.New()
@@ -3380,7 +3380,7 @@ func TestCrossRepoMount(t *testing.T) {
 		defer stopServer(ctlr)
 		test.WaitTillServerReady(baseURL)
 
-		digest := "sha256:7a0437f04f83f084b7ed68ad9c4a4947e12fc4e1b006b38129bac89114ec3621"
+		digest := test.GetTestBlobDigest("zot-cve-test", "layer").String()
 		name := "zot-c-test"
 		client := resty.New()
 		headResponse, err := client.R().SetBasicAuth(username, passphrase).

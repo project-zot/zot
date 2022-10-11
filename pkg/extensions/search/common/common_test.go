@@ -142,6 +142,8 @@ func signUsingCosign(port string) error {
 
 	defer os.RemoveAll(tdir)
 
+	digest := GetTestBlobDigest("zot-cve-test", "manifest").String()
+
 	_ = os.Chdir(tdir)
 
 	// generate a keypair
@@ -152,8 +154,7 @@ func signUsingCosign(port string) error {
 		return err
 	}
 
-	imageURL := fmt.Sprintf("localhost:%s/%s@%s", port, "zot-cve-test",
-		"sha256:63a795ca90aa6e7cca60941e826810a4cd0a2e73ea02bf458241df2a5c973e29")
+	imageURL := fmt.Sprintf("localhost:%s/%s@%s", port, "zot-cve-test", digest)
 
 	// sign the image
 	return sign.SignCmd(&options.RootOptions{Verbose: true, Timeout: 1 * time.Minute},
@@ -318,7 +319,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, 200)
 
 		err = os.Remove(path.Join(rootDir,
-			"zot-test/blobs/sha256/2bacca16b9df395fc855c14ccf50b12b58d35d468b8e7f25758aff90f89bf396"))
+			"zot-test/blobs/sha256", GetTestBlobDigest("zot-test", "manifest").Encoded()))
 		if err != nil {
 			panic(err)
 		}
@@ -337,13 +338,13 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		}
 
 		err = os.Remove(path.Join(rootDir,
-			"zot-test/blobs/sha256/adf3bb6cc81f8bd6a9d5233be5f0c1a4f1e3ed1cf5bbdfad7708cc8d4099b741"))
+			"zot-test/blobs/sha256/", GetTestBlobDigest("zot-test", "config").Encoded()))
 		if err != nil {
 			panic(err)
 		}
 
 		err = os.Remove(path.Join(rootDir,
-			"zot-test/blobs/sha256/2d473b07cdd5f0912cd6f1a703352c82b512407db6b05b43f2553732b55df3bc"))
+			"zot-test/blobs/sha256", GetTestBlobDigest("zot-test", "layer").Encoded()))
 		if err != nil {
 			panic(err)
 		}
@@ -366,7 +367,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 			panic(err)
 		}
 		//nolint: lll
-		manifestNoAnnotations := "{\"schemaVersion\":2,\"manifests\":[{\"mediaType\":\"application/vnd.oci.image.manifest.v1+json\",\"digest\":\"sha256:2bacca16b9df395fc855c14ccf50b12b58d35d468b8e7f25758aff90f89bf396\",\"size\":350}]}"
+		manifestNoAnnotations := "{\"schemaVersion\":2,\"manifests\":[{\"mediaType\":\"application/vnd.oci.image.manifest.v1+json\",\"digest\":\"" + GetTestBlobDigest("zot-test", "manifest").String() + "\",\"size\":350}]}"
 		err = os.WriteFile(path.Join(rootDir, "zot-test/index.json"), []byte(manifestNoAnnotations), 0o600)
 		if err != nil {
 			panic(err)
@@ -838,7 +839,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries[0].Layers), ShouldNotEqual, 0)
 		found := false
 		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries {
-			if m.Digest == "63a795ca90aa6e7cca60941e826810a4cd0a2e73ea02bf458241df2a5c973e29" {
+			if m.Digest == GetTestBlobDigest("zot-cve-test", "manifest").Encoded() {
 				found = true
 				So(m.IsSigned, ShouldEqual, false)
 			}
@@ -859,7 +860,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries[0].Layers), ShouldNotEqual, 0)
 		found = false
 		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries {
-			if m.Digest == "63a795ca90aa6e7cca60941e826810a4cd0a2e73ea02bf458241df2a5c973e29" {
+			if m.Digest == GetTestBlobDigest("zot-cve-test", "manifest").Encoded() {
 				found = true
 				So(m.IsSigned, ShouldEqual, true)
 			}
@@ -885,7 +886,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries[0].Layers), ShouldNotEqual, 0)
 		found = false
 		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries {
-			if m.Digest == "2bacca16b9df395fc855c14ccf50b12b58d35d468b8e7f25758aff90f89bf396" {
+			if m.Digest == GetTestBlobDigest("zot-test", "manifest").Encoded() {
 				found = true
 				So(m.IsSigned, ShouldEqual, false)
 			}
@@ -906,7 +907,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries[0].Layers), ShouldNotEqual, 0)
 		found = false
 		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries {
-			if m.Digest == "2bacca16b9df395fc855c14ccf50b12b58d35d468b8e7f25758aff90f89bf396" {
+			if m.Digest == GetTestBlobDigest("zot-test", "manifest").Encoded() {
 				found = true
 				So(m.IsSigned, ShouldEqual, true)
 			}
@@ -2698,7 +2699,7 @@ func TestBuildImageInfo(t *testing.T) {
 }
 
 func TestBaseOciLayoutUtils(t *testing.T) {
-	manifestDigest := "sha256:adf3bb6cc81f8bd6a9d5233be5f0c1a4f1e3ed1cf5bbdfad7708cc8d4099b741"
+	manifestDigest := GetTestBlobDigest("zot-test", "config").String()
 
 	Convey("GetImageManifestSize fail", t, func() {
 		mockStoreController := mocks.MockedImageStore{
