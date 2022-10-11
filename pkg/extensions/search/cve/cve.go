@@ -57,7 +57,8 @@ func (cveinfo BaseCveInfo) GetImageListForCVE(repo, cveID string) ([]ImageInfoBy
 
 	manifests, err := cveinfo.LayoutUtils.GetImageManifests(repo)
 	if err != nil {
-		cveinfo.Log.Error().Err(err).Str("repo", repo).Msg("unable to get list of tags from repo")
+		cveinfo.Log.Error().Err(err).Str("repo", repo).Str("cve-id", cveID).
+			Msg("unable to get list of tags from repo")
 
 		return imgList, err
 	}
@@ -105,7 +106,8 @@ func (cveinfo BaseCveInfo) GetImageListForCVE(repo, cveID string) ([]ImageInfoBy
 func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]common.TagInfo, error) {
 	tagsInfo, err := cveinfo.LayoutUtils.GetImageTagsWithTimestamp(repo)
 	if err != nil {
-		cveinfo.Log.Error().Err(err).Str("repo", repo).Msg("unable to get list of tags from repo")
+		cveinfo.Log.Error().Err(err).Str("repo", repo).Str("cve-id", cveID).
+			Msg("unable to get list of tags from repo")
 
 		return []common.TagInfo{}, err
 	}
@@ -120,7 +122,7 @@ func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]commo
 
 		isValidImage, _ := cveinfo.Scanner.IsImageFormatScannable(image)
 		if !isValidImage {
-			cveinfo.Log.Debug().Str("image", image).
+			cveinfo.Log.Debug().Str("image", image).Str("cve-id", cveID).
 				Msg("image media type not supported for scanning, adding as a vulnerable image")
 
 			vulnerableTags = append(vulnerableTags, tagInfo)
@@ -130,7 +132,7 @@ func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]commo
 
 		cveMap, err := cveinfo.Scanner.ScanImage(image)
 		if err != nil {
-			cveinfo.Log.Debug().Str("image", image).
+			cveinfo.Log.Debug().Str("image", image).Str("cve-id", cveID).
 				Msg("scanning failed, adding as a vulnerable image")
 
 			vulnerableTags = append(vulnerableTags, tagInfo)
@@ -154,9 +156,9 @@ func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]commo
 	}
 
 	if len(vulnerableTags) != 0 {
-		cveinfo.Log.Info().Str("repo", repo).Msg("comparing fixed tags timestamp")
-
+		cveinfo.Log.Info().Str("repo", repo).Str("cve-id", cveID).Msgf("Vulnerable tags: %v", vulnerableTags)
 		tagsInfo = common.GetFixedTags(tagsInfo, vulnerableTags)
+		cveinfo.Log.Info().Str("repo", repo).Str("cve-id", cveID).Msgf("Fixed tags: %v", tagsInfo)
 	} else {
 		cveinfo.Log.Info().Str("repo", repo).Str("cve-id", cveID).
 			Msg("image does not contain any tag that have given cve")

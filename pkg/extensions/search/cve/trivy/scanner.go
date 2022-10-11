@@ -184,7 +184,7 @@ func (scanner Scanner) IsImageFormatScannable(image string) (bool, error) {
 func (scanner Scanner) ScanImage(image string) (map[string]cvemodel.CVE, error) {
 	cveidMap := make(map[string]cvemodel.CVE)
 
-	scanner.log.Info().Str("image", image).Msg("scanning image")
+	scanner.log.Debug().Str("image", image).Msg("scanning image")
 
 	tCtx := scanner.getTrivyContext(image)
 
