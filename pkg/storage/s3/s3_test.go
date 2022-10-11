@@ -359,471 +359,479 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 		panic(err)
 	}
 
+	tdir := t.TempDir()
 	testDir := path.Join("/oci-repo-test", uuid.String())
 
-	tdir := t.TempDir()
+	Convey("With dedupe", t, func(c C) {
+		storeDriver, imgStore, _ := createObjectsStore(testDir, tdir, true)
+		defer cleanupStorage(storeDriver, testDir)
 
-	storeDriver, imgStore, _ := createObjectsStore(testDir, tdir, true)
-	defer cleanupStorage(storeDriver, testDir)
-
-	Convey("Invalid validate repo", t, func(c C) {
-		So(imgStore.InitRepo(testImage), ShouldBeNil)
-		objects, err := storeDriver.List(context.Background(), path.Join(imgStore.RootDir(), testImage))
-		So(err, ShouldBeNil)
-		for _, object := range objects {
-			t.Logf("Removing object: %s", object)
-			err := storeDriver.Delete(context.Background(), object)
+		Convey("Invalid validate repo", func(c C) {
+			So(imgStore.InitRepo(testImage), ShouldBeNil)
+			objects, err := storeDriver.List(context.Background(), path.Join(imgStore.RootDir(), testImage))
 			So(err, ShouldBeNil)
-		}
-		_, err = imgStore.ValidateRepo(testImage)
-		So(err, ShouldNotBeNil)
-		_, err = imgStore.GetRepositories()
-		So(err, ShouldBeNil)
-	})
-
-	Convey("Invalid get image tags", t, func(c C) {
-		So(imgStore.InitRepo(testImage), ShouldBeNil)
-
-		So(storeDriver.Move(context.Background(), path.Join(testDir, testImage, "index.json"),
-			path.Join(testDir, testImage, "blobs")), ShouldBeNil)
-		ok, _ := imgStore.ValidateRepo(testImage)
-		So(ok, ShouldBeFalse)
-		_, err = imgStore.GetImageTags(testImage)
-		So(err, ShouldNotBeNil)
-
-		So(storeDriver.Delete(context.Background(), path.Join(testDir, testImage)), ShouldBeNil)
-
-		So(imgStore.InitRepo(testImage), ShouldBeNil)
-		So(storeDriver.PutContent(context.Background(), path.Join(testDir, testImage, "index.json"), []byte{}), ShouldBeNil)
-		_, err = imgStore.GetImageTags(testImage)
-		So(err, ShouldNotBeNil)
-	})
-
-	Convey("Invalid get image manifest", t, func(c C) {
-		So(imgStore.InitRepo(testImage), ShouldBeNil)
-		So(storeDriver.Delete(context.Background(), path.Join(testDir, testImage, "index.json")), ShouldBeNil)
-		_, _, _, err = imgStore.GetImageManifest(testImage, "")
-		So(err, ShouldNotBeNil)
-		So(storeDriver.Delete(context.Background(), path.Join(testDir, testImage)), ShouldBeNil)
-		So(imgStore.InitRepo(testImage), ShouldBeNil)
-		So(storeDriver.PutContent(context.Background(), path.Join(testDir, testImage, "index.json"), []byte{}), ShouldBeNil)
-		_, _, _, err = imgStore.GetImageManifest(testImage, "")
-		So(err, ShouldNotBeNil)
-	})
-
-	Convey("Invalid validate repo", t, func(c C) {
-		So(imgStore, ShouldNotBeNil)
-
-		So(imgStore.InitRepo(testImage), ShouldBeNil)
-		So(storeDriver.Delete(context.Background(), path.Join(testDir, testImage, "index.json")), ShouldBeNil)
-		_, err = imgStore.ValidateRepo(testImage)
-		So(err, ShouldNotBeNil)
-		So(storeDriver.Delete(context.Background(), path.Join(testDir, testImage)), ShouldBeNil)
-		So(imgStore.InitRepo(testImage), ShouldBeNil)
-		So(storeDriver.Move(context.Background(), path.Join(testDir, testImage, "index.json"),
-			path.Join(testDir, testImage, "_index.json")), ShouldBeNil)
-		ok, err := imgStore.ValidateRepo(testImage)
-		So(err, ShouldBeNil)
-		So(ok, ShouldBeFalse)
-	})
-
-	Convey("Invalid finish blob upload", t, func(c C) {
-		So(imgStore, ShouldNotBeNil)
-
-		So(imgStore.InitRepo(testImage), ShouldBeNil)
-		upload, err := imgStore.NewBlobUpload(testImage)
-		So(err, ShouldBeNil)
-		So(upload, ShouldNotBeEmpty)
-
-		content := []byte("test-data1")
-		buf := bytes.NewBuffer(content)
-		buflen := buf.Len()
-		digest := godigest.FromBytes(content)
-
-		blob, err := imgStore.PutBlobChunk(testImage, upload, 0, int64(buflen), buf)
-		So(err, ShouldBeNil)
-		So(blob, ShouldEqual, buflen)
-
-		src := imgStore.BlobUploadPath(testImage, upload)
-		stwr, err := storeDriver.Writer(context.Background(), src, true)
-		So(err, ShouldBeNil)
-
-		_, err = stwr.Write([]byte("another-chunk-of-data"))
-		So(err, ShouldBeNil)
-
-		err = stwr.Close()
-		So(err, ShouldBeNil)
-
-		err = imgStore.FinishBlobUpload(testImage, upload, buf, digest.String())
-		So(err, ShouldNotBeNil)
-	})
-
-	Convey("Test storage driver errors", t, func(c C) {
-		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			ListFn: func(ctx context.Context, path string) ([]string, error) {
-				return []string{testImage}, errS3
-			},
-			MoveFn: func(ctx context.Context, sourcePath, destPath string) error {
-				return errS3
-			},
-			GetContentFn: func(ctx context.Context, path string) ([]byte, error) {
-				return []byte{}, errS3
-			},
-			PutContentFn: func(ctx context.Context, path string, content []byte) error {
-				return errS3
-			},
-			WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
-				return &FileWriterMock{}, errS3
-			},
-			ReaderFn: func(ctx context.Context, path string, offset int64) (io.ReadCloser, error) {
-				return io.NopCloser(strings.NewReader("")), errS3
-			},
-			WalkFn: func(ctx context.Context, path string, f driver.WalkFn) error {
-				return errS3
-			},
-			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-				return &FileInfoMock{}, errS3
-			},
-			DeleteFn: func(ctx context.Context, path string) error {
-				return errS3
-			},
+			for _, object := range objects {
+				t.Logf("Removing object: %s", object)
+				err := storeDriver.Delete(context.Background(), object)
+				So(err, ShouldBeNil)
+			}
+			_, err = imgStore.ValidateRepo(testImage)
+			So(err, ShouldNotBeNil)
+			_, err = imgStore.GetRepositories()
+			So(err, ShouldBeNil)
 		})
-		So(imgStore, ShouldNotBeNil)
 
-		So(imgStore.InitRepo(testImage), ShouldNotBeNil)
-		_, err := imgStore.ValidateRepo(testImage)
-		So(err, ShouldNotBeNil)
+		Convey("Invalid get image tags", func(c C) {
+			So(imgStore.InitRepo(testImage), ShouldBeNil)
 
-		upload, err := imgStore.NewBlobUpload(testImage)
-		So(err, ShouldNotBeNil)
+			So(storeDriver.Move(context.Background(), path.Join(testDir, testImage, "index.json"),
+				path.Join(testDir, testImage, "blobs")), ShouldBeNil)
+			ok, _ := imgStore.ValidateRepo(testImage)
+			So(ok, ShouldBeFalse)
+			_, err = imgStore.GetImageTags(testImage)
+			So(err, ShouldNotBeNil)
 
-		content := []byte("test-data1")
-		buf := bytes.NewBuffer(content)
-		buflen := buf.Len()
-		digest := godigest.FromBytes(content)
+			So(storeDriver.Delete(context.Background(), path.Join(testDir, testImage)), ShouldBeNil)
 
-		_, err = imgStore.PutBlobChunk(testImage, upload, 0, int64(buflen), buf)
-		So(err, ShouldNotBeNil)
-
-		err = imgStore.FinishBlobUpload(testImage, upload, buf, digest.String())
-		So(err, ShouldNotBeNil)
-
-		err = imgStore.DeleteBlob(testImage, digest.String())
-		So(err, ShouldNotBeNil)
-
-		err = imgStore.DeleteBlobUpload(testImage, upload)
-		So(err, ShouldNotBeNil)
-
-		err = imgStore.DeleteImageManifest(testImage, "1.0")
-		So(err, ShouldNotBeNil)
-
-		_, err = imgStore.PutImageManifest(testImage, "1.0", "application/json", []byte{})
-		So(err, ShouldNotBeNil)
-
-		_, err = imgStore.PutBlobChunkStreamed(testImage, upload, bytes.NewBuffer([]byte(testImage)))
-		So(err, ShouldNotBeNil)
-
-		_, _, err = imgStore.FullBlobUpload(testImage, bytes.NewBuffer([]byte{}), "inexistent")
-		So(err, ShouldNotBeNil)
-
-		_, _, err = imgStore.CheckBlob(testImage, digest.String())
-		So(err, ShouldNotBeNil)
+			So(imgStore.InitRepo(testImage), ShouldBeNil)
+			So(storeDriver.PutContent(context.Background(), path.Join(testDir, testImage, "index.json"), []byte{}), ShouldBeNil)
+			_, err = imgStore.GetImageTags(testImage)
+			So(err, ShouldNotBeNil)
+		})
 	})
 
-	Convey("Test ValidateRepo", t, func(c C) {
+	Convey("Without dedupe", t, func(c C) {
 		tdir := t.TempDir()
 
-		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			ListFn: func(ctx context.Context, path string) ([]string, error) {
-				return []string{testImage, testImage}, errS3
-			},
+		storeDriver, imgStore, _ := createObjectsStore(testDir, tdir, false)
+		defer cleanupStorage(storeDriver, testDir)
+
+		Convey("Invalid get image manifest", func(c C) {
+			So(imgStore.InitRepo(testImage), ShouldBeNil)
+			So(storeDriver.Delete(context.Background(), path.Join(testDir, testImage, "index.json")), ShouldBeNil)
+			_, _, _, err = imgStore.GetImageManifest(testImage, "")
+			So(err, ShouldNotBeNil)
+			So(storeDriver.Delete(context.Background(), path.Join(testDir, testImage)), ShouldBeNil)
+			So(imgStore.InitRepo(testImage), ShouldBeNil)
+			So(storeDriver.PutContent(context.Background(), path.Join(testDir, testImage, "index.json"), []byte{}), ShouldBeNil)
+			_, _, _, err = imgStore.GetImageManifest(testImage, "")
+			So(err, ShouldNotBeNil)
 		})
 
-		_, err := imgStore.ValidateRepo(testImage)
-		So(err, ShouldNotBeNil)
+		Convey("Invalid validate repo", func(c C) {
+			So(imgStore, ShouldNotBeNil)
 
-		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			ListFn: func(ctx context.Context, path string) ([]string, error) {
-				return []string{testImage, testImage}, nil
-			},
-			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-				return nil, errS3
-			},
+			So(imgStore.InitRepo(testImage), ShouldBeNil)
+			So(storeDriver.Delete(context.Background(), path.Join(testDir, testImage, "index.json")), ShouldBeNil)
+			_, err = imgStore.ValidateRepo(testImage)
+			So(err, ShouldNotBeNil)
+			So(storeDriver.Delete(context.Background(), path.Join(testDir, testImage)), ShouldBeNil)
+			So(imgStore.InitRepo(testImage), ShouldBeNil)
+			So(storeDriver.Move(context.Background(), path.Join(testDir, testImage, "index.json"),
+				path.Join(testDir, testImage, "_index.json")), ShouldBeNil)
+			ok, err := imgStore.ValidateRepo(testImage)
+			So(err, ShouldBeNil)
+			So(ok, ShouldBeFalse)
 		})
 
-		_, err = imgStore.ValidateRepo(testImage)
-		So(err, ShouldNotBeNil)
-	})
+		Convey("Invalid finish blob upload", func(c C) {
+			So(imgStore, ShouldNotBeNil)
 
-	Convey("Test ValidateRepo2", t, func(c C) {
-		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			ListFn: func(ctx context.Context, path string) ([]string, error) {
-				return []string{"test/test/oci-layout", "test/test/index.json"}, nil
-			},
-			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-				return &FileInfoMock{}, nil
-			},
+			So(imgStore.InitRepo(testImage), ShouldBeNil)
+			upload, err := imgStore.NewBlobUpload(testImage)
+			So(err, ShouldBeNil)
+			So(upload, ShouldNotBeEmpty)
+
+			content := []byte("test-data1")
+			buf := bytes.NewBuffer(content)
+			buflen := buf.Len()
+			digest := godigest.FromBytes(content)
+
+			blob, err := imgStore.PutBlobChunk(testImage, upload, 0, int64(buflen), buf)
+			So(err, ShouldBeNil)
+			So(blob, ShouldEqual, buflen)
+
+			src := imgStore.BlobUploadPath(testImage, upload)
+			stwr, err := storeDriver.Writer(context.Background(), src, true)
+			So(err, ShouldBeNil)
+
+			_, err = stwr.Write([]byte("another-chunk-of-data"))
+			So(err, ShouldBeNil)
+
+			err = stwr.Close()
+			So(err, ShouldBeNil)
+
+			err = imgStore.FinishBlobUpload(testImage, upload, buf, digest.String())
+			So(err, ShouldNotBeNil)
 		})
-		_, err := imgStore.ValidateRepo(testImage)
-		So(err, ShouldNotBeNil)
-	})
 
-	Convey("Test ValidateRepo3", t, func(c C) {
-		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			ListFn: func(ctx context.Context, path string) ([]string, error) {
-				return []string{"test/test/oci-layout", "test/test/index.json"}, nil
-			},
-			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-				return &FileInfoMock{}, nil
-			},
-			GetContentFn: func(ctx context.Context, path string) ([]byte, error) {
-				return []byte{}, errS3
-			},
+		Convey("Test storage driver errors", func(c C) {
+			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
+				ListFn: func(ctx context.Context, path string) ([]string, error) {
+					return []string{testImage}, errS3
+				},
+				MoveFn: func(ctx context.Context, sourcePath, destPath string) error {
+					return errS3
+				},
+				GetContentFn: func(ctx context.Context, path string) ([]byte, error) {
+					return []byte{}, errS3
+				},
+				PutContentFn: func(ctx context.Context, path string, content []byte) error {
+					return errS3
+				},
+				WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
+					return &FileWriterMock{}, errS3
+				},
+				ReaderFn: func(ctx context.Context, path string, offset int64) (io.ReadCloser, error) {
+					return io.NopCloser(strings.NewReader("")), errS3
+				},
+				WalkFn: func(ctx context.Context, path string, f driver.WalkFn) error {
+					return errS3
+				},
+				StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+					return &FileInfoMock{}, errS3
+				},
+				DeleteFn: func(ctx context.Context, path string) error {
+					return errS3
+				},
+			})
+			So(imgStore, ShouldNotBeNil)
+
+			So(imgStore.InitRepo(testImage), ShouldNotBeNil)
+			_, err := imgStore.ValidateRepo(testImage)
+			So(err, ShouldNotBeNil)
+
+			upload, err := imgStore.NewBlobUpload(testImage)
+			So(err, ShouldNotBeNil)
+
+			content := []byte("test-data1")
+			buf := bytes.NewBuffer(content)
+			buflen := buf.Len()
+			digest := godigest.FromBytes(content)
+
+			_, err = imgStore.PutBlobChunk(testImage, upload, 0, int64(buflen), buf)
+			So(err, ShouldNotBeNil)
+
+			err = imgStore.FinishBlobUpload(testImage, upload, buf, digest.String())
+			So(err, ShouldNotBeNil)
+
+			err = imgStore.DeleteBlob(testImage, digest.String())
+			So(err, ShouldNotBeNil)
+
+			err = imgStore.DeleteBlobUpload(testImage, upload)
+			So(err, ShouldNotBeNil)
+
+			err = imgStore.DeleteImageManifest(testImage, "1.0")
+			So(err, ShouldNotBeNil)
+
+			_, err = imgStore.PutImageManifest(testImage, "1.0", "application/json", []byte{})
+			So(err, ShouldNotBeNil)
+
+			_, err = imgStore.PutBlobChunkStreamed(testImage, upload, bytes.NewBuffer([]byte(testImage)))
+			So(err, ShouldNotBeNil)
+
+			_, _, err = imgStore.FullBlobUpload(testImage, bytes.NewBuffer([]byte{}), "inexistent")
+			So(err, ShouldNotBeNil)
+
+			_, _, err = imgStore.CheckBlob(testImage, digest.String())
+			So(err, ShouldNotBeNil)
 		})
-		_, err := imgStore.ValidateRepo(testImage)
-		So(err, ShouldNotBeNil)
-	})
 
-	Convey("Test ValidateRepo4", t, func(c C) {
-		ociLayout := []byte(`{"imageLayoutVersion": "9.9.9"}`)
-		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			ListFn: func(ctx context.Context, path string) ([]string, error) {
-				return []string{"test/test/oci-layout", "test/test/index.json"}, nil
-			},
-			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-				return &FileInfoMock{}, nil
-			},
-			GetContentFn: func(ctx context.Context, path string) ([]byte, error) {
-				return ociLayout, nil
-			},
+		Convey("Test ValidateRepo", func(c C) {
+			tdir := t.TempDir()
+
+			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
+				ListFn: func(ctx context.Context, path string) ([]string, error) {
+					return []string{testImage, testImage}, errS3
+				},
+			})
+
+			_, err := imgStore.ValidateRepo(testImage)
+			So(err, ShouldNotBeNil)
+
+			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
+				ListFn: func(ctx context.Context, path string) ([]string, error) {
+					return []string{testImage, testImage}, nil
+				},
+				StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+					return nil, errS3
+				},
+			})
+
+			_, err = imgStore.ValidateRepo(testImage)
+			So(err, ShouldNotBeNil)
 		})
-		_, err := imgStore.ValidateRepo(testImage)
-		So(err, ShouldNotBeNil)
-	})
 
-	Convey("Test GetRepositories", t, func(c C) {
-		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			WalkFn: func(ctx context.Context, path string, f driver.WalkFn) error {
-				return f(new(FileInfoMock))
-			},
+		Convey("Test ValidateRepo2", func(c C) {
+			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
+				ListFn: func(ctx context.Context, path string) ([]string, error) {
+					return []string{"test/test/oci-layout", "test/test/index.json"}, nil
+				},
+				StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+					return &FileInfoMock{}, nil
+				},
+			})
+			_, err := imgStore.ValidateRepo(testImage)
+			So(err, ShouldNotBeNil)
 		})
-		repos, err := imgStore.GetRepositories()
-		So(repos, ShouldBeEmpty)
-		So(err, ShouldBeNil)
-	})
 
-	Convey("Test DeleteImageManifest", t, func(c C) {
-		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			GetContentFn: func(ctx context.Context, path string) ([]byte, error) {
-				return []byte{}, errS3
-			},
+		Convey("Test ValidateRepo3", func(c C) {
+			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
+				ListFn: func(ctx context.Context, path string) ([]string, error) {
+					return []string{"test/test/oci-layout", "test/test/index.json"}, nil
+				},
+				StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+					return &FileInfoMock{}, nil
+				},
+				GetContentFn: func(ctx context.Context, path string) ([]byte, error) {
+					return []byte{}, errS3
+				},
+			})
+			_, err := imgStore.ValidateRepo(testImage)
+			So(err, ShouldNotBeNil)
 		})
-		err := imgStore.DeleteImageManifest(testImage, "1.0")
-		So(err, ShouldNotBeNil)
-	})
 
-	Convey("Test DeleteImageManifest2", t, func(c C) {
-		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{})
-		err := imgStore.DeleteImageManifest(testImage, "1.0")
-		So(err, ShouldNotBeNil)
-	})
-
-	Convey("Test NewBlobUpload", t, func(c C) {
-		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			PutContentFn: func(ctx context.Context, path string, content []byte) error {
-				return errS3
-			},
+		Convey("Test ValidateRepo4", func(c C) {
+			ociLayout := []byte(`{"imageLayoutVersion": "9.9.9"}`)
+			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
+				ListFn: func(ctx context.Context, path string) ([]string, error) {
+					return []string{"test/test/oci-layout", "test/test/index.json"}, nil
+				},
+				StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+					return &FileInfoMock{}, nil
+				},
+				GetContentFn: func(ctx context.Context, path string) ([]byte, error) {
+					return ociLayout, nil
+				},
+			})
+			_, err := imgStore.ValidateRepo(testImage)
+			So(err, ShouldNotBeNil)
 		})
-		_, err := imgStore.NewBlobUpload(testImage)
-		So(err, ShouldNotBeNil)
-	})
 
-	Convey("Test GetBlobUpload", t, func(c C) {
-		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-				return &FileInfoMock{}, errS3
-			},
+		Convey("Test GetRepositories", func(c C) {
+			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
+				WalkFn: func(ctx context.Context, path string, f driver.WalkFn) error {
+					return f(new(FileInfoMock))
+				},
+			})
+			repos, err := imgStore.GetRepositories()
+			So(repos, ShouldBeEmpty)
+			So(err, ShouldBeNil)
 		})
-		_, err := imgStore.GetBlobUpload(testImage, "uuid")
-		So(err, ShouldNotBeNil)
-	})
 
-	Convey("Test PutBlobChunkStreamed", t, func(c C) {
-		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
-				return &FileWriterMock{}, errS3
-			},
+		Convey("Test DeleteImageManifest", func(c C) {
+			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
+				GetContentFn: func(ctx context.Context, path string) ([]byte, error) {
+					return []byte{}, errS3
+				},
+			})
+			err := imgStore.DeleteImageManifest(testImage, "1.0")
+			So(err, ShouldNotBeNil)
 		})
-		_, err := imgStore.PutBlobChunkStreamed(testImage, "uuid", io.NopCloser(strings.NewReader("")))
-		So(err, ShouldNotBeNil)
-	})
 
-	Convey("Test PutBlobChunkStreamed2", t, func(c C) {
-		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
-				return &FileWriterMock{WriteFn: func(b []byte) (int, error) {
-					return 0, errS3
-				}}, nil
-			},
+		Convey("Test DeleteImageManifest2", func(c C) {
+			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{})
+			err := imgStore.DeleteImageManifest(testImage, "1.0")
+			So(err, ShouldNotBeNil)
 		})
-		_, err := imgStore.PutBlobChunkStreamed(testImage, "uuid", io.NopCloser(strings.NewReader("")))
-		So(err, ShouldNotBeNil)
-	})
 
-	Convey("Test PutBlobChunk", t, func(c C) {
-		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
-				return &FileWriterMock{}, errS3
-			},
+		Convey("Test NewBlobUpload", func(c C) {
+			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
+				PutContentFn: func(ctx context.Context, path string, content []byte) error {
+					return errS3
+				},
+			})
+			_, err := imgStore.NewBlobUpload(testImage)
+			So(err, ShouldNotBeNil)
 		})
-		_, err := imgStore.PutBlobChunk(testImage, "uuid", 0, 100, io.NopCloser(strings.NewReader("")))
-		So(err, ShouldNotBeNil)
-	})
 
-	Convey("Test PutBlobChunk2", t, func(c C) {
-		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
-				return &FileWriterMock{
-					WriteFn: func(b []byte) (int, error) {
+		Convey("Test GetBlobUpload", func(c C) {
+			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
+				StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+					return &FileInfoMock{}, errS3
+				},
+			})
+			_, err := imgStore.GetBlobUpload(testImage, "uuid")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Test PutBlobChunkStreamed", func(c C) {
+			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
+				WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
+					return &FileWriterMock{}, errS3
+				},
+			})
+			_, err := imgStore.PutBlobChunkStreamed(testImage, "uuid", io.NopCloser(strings.NewReader("")))
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Test PutBlobChunkStreamed2", func(c C) {
+			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
+				WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
+					return &FileWriterMock{WriteFn: func(b []byte) (int, error) {
 						return 0, errS3
-					},
-					CancelFn: func() error {
-						return errS3
-					},
-				}, nil
-			},
+					}}, nil
+				},
+			})
+			_, err := imgStore.PutBlobChunkStreamed(testImage, "uuid", io.NopCloser(strings.NewReader("")))
+			So(err, ShouldNotBeNil)
 		})
-		_, err := imgStore.PutBlobChunk(testImage, "uuid", 0, 100, io.NopCloser(strings.NewReader("")))
-		So(err, ShouldNotBeNil)
-	})
 
-	Convey("Test PutBlobChunk3", t, func(c C) {
-		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
-				return &FileWriterMock{
-					WriteFn: func(b []byte) (int, error) {
-						return 0, errS3
-					},
-				}, nil
-			},
+		Convey("Test PutBlobChunk", func(c C) {
+			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
+				WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
+					return &FileWriterMock{}, errS3
+				},
+			})
+			_, err := imgStore.PutBlobChunk(testImage, "uuid", 0, 100, io.NopCloser(strings.NewReader("")))
+			So(err, ShouldNotBeNil)
 		})
-		_, err := imgStore.PutBlobChunk(testImage, "uuid", 12, 100, io.NopCloser(strings.NewReader("")))
-		So(err, ShouldNotBeNil)
-	})
 
-	Convey("Test FinishBlobUpload", t, func(c C) {
-		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
-				return &FileWriterMock{
-					CommitFn: func() error {
-						return errS3
-					},
-				}, nil
-			},
+		Convey("Test PutBlobChunk2", func(c C) {
+			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
+				WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
+					return &FileWriterMock{
+						WriteFn: func(b []byte) (int, error) {
+							return 0, errS3
+						},
+						CancelFn: func() error {
+							return errS3
+						},
+					}, nil
+				},
+			})
+			_, err := imgStore.PutBlobChunk(testImage, "uuid", 0, 100, io.NopCloser(strings.NewReader("")))
+			So(err, ShouldNotBeNil)
 		})
-		d := godigest.FromBytes([]byte("test"))
-		err := imgStore.FinishBlobUpload(testImage, "uuid", io.NopCloser(strings.NewReader("")), d.String())
-		So(err, ShouldNotBeNil)
-	})
 
-	Convey("Test FinishBlobUpload2", t, func(c C) {
-		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
-				return &FileWriterMock{
-					CloseFn: func() error {
-						return errS3
-					},
-				}, nil
-			},
+		Convey("Test PutBlobChunk3", func(c C) {
+			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
+				WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
+					return &FileWriterMock{
+						WriteFn: func(b []byte) (int, error) {
+							return 0, errS3
+						},
+					}, nil
+				},
+			})
+			_, err := imgStore.PutBlobChunk(testImage, "uuid", 12, 100, io.NopCloser(strings.NewReader("")))
+			So(err, ShouldNotBeNil)
 		})
-		d := godigest.FromBytes([]byte("test"))
-		err := imgStore.FinishBlobUpload(testImage, "uuid", io.NopCloser(strings.NewReader("")), d.String())
-		So(err, ShouldNotBeNil)
-	})
 
-	Convey("Test FinishBlobUpload3", t, func(c C) {
-		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			ReaderFn: func(ctx context.Context, path string, offset int64) (io.ReadCloser, error) {
-				return nil, errS3
-			},
+		Convey("Test FinishBlobUpload", func(c C) {
+			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
+				WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
+					return &FileWriterMock{
+						CommitFn: func() error {
+							return errS3
+						},
+					}, nil
+				},
+			})
+			d := godigest.FromBytes([]byte("test"))
+			err := imgStore.FinishBlobUpload(testImage, "uuid", io.NopCloser(strings.NewReader("")), d.String())
+			So(err, ShouldNotBeNil)
 		})
-		d := godigest.FromBytes([]byte("test"))
-		err := imgStore.FinishBlobUpload(testImage, "uuid", io.NopCloser(strings.NewReader("")), d.String())
-		So(err, ShouldNotBeNil)
-	})
 
-	Convey("Test FinishBlobUpload4", t, func(c C) {
-		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			MoveFn: func(ctx context.Context, sourcePath, destPath string) error {
-				return errS3
-			},
+		Convey("Test FinishBlobUpload2", func(c C) {
+			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
+				WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
+					return &FileWriterMock{
+						CloseFn: func() error {
+							return errS3
+						},
+					}, nil
+				},
+			})
+			d := godigest.FromBytes([]byte("test"))
+			err := imgStore.FinishBlobUpload(testImage, "uuid", io.NopCloser(strings.NewReader("")), d.String())
+			So(err, ShouldNotBeNil)
 		})
-		d := godigest.FromBytes([]byte(""))
-		err := imgStore.FinishBlobUpload(testImage, "uuid", io.NopCloser(strings.NewReader("")), d.String())
-		So(err, ShouldNotBeNil)
-	})
 
-	Convey("Test FullBlobUpload", t, func(c C) {
-		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
-				return &FileWriterMock{}, errS3
-			},
+		Convey("Test FinishBlobUpload3", func(c C) {
+			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
+				ReaderFn: func(ctx context.Context, path string, offset int64) (io.ReadCloser, error) {
+					return nil, errS3
+				},
+			})
+			d := godigest.FromBytes([]byte("test"))
+			err := imgStore.FinishBlobUpload(testImage, "uuid", io.NopCloser(strings.NewReader("")), d.String())
+			So(err, ShouldNotBeNil)
 		})
-		d := godigest.FromBytes([]byte(""))
-		_, _, err := imgStore.FullBlobUpload(testImage, io.NopCloser(strings.NewReader("")), d.String())
-		So(err, ShouldNotBeNil)
-	})
 
-	Convey("Test FullBlobUpload2", t, func(c C) {
-		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{})
-		d := godigest.FromBytes([]byte(" "))
-		_, _, err := imgStore.FullBlobUpload(testImage, io.NopCloser(strings.NewReader("")), d.String())
-		So(err, ShouldNotBeNil)
-	})
-
-	Convey("Test FullBlobUpload3", t, func(c C) {
-		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			MoveFn: func(ctx context.Context, sourcePath, destPath string) error {
-				return errS3
-			},
+		Convey("Test FinishBlobUpload4", func(c C) {
+			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
+				MoveFn: func(ctx context.Context, sourcePath, destPath string) error {
+					return errS3
+				},
+			})
+			d := godigest.FromBytes([]byte(""))
+			err := imgStore.FinishBlobUpload(testImage, "uuid", io.NopCloser(strings.NewReader("")), d.String())
+			So(err, ShouldNotBeNil)
 		})
-		d := godigest.FromBytes([]byte(""))
-		_, _, err := imgStore.FullBlobUpload(testImage, io.NopCloser(strings.NewReader("")), d.String())
-		So(err, ShouldNotBeNil)
-	})
 
-	Convey("Test GetBlob", t, func(c C) {
-		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			ReaderFn: func(ctx context.Context, path string, offset int64) (io.ReadCloser, error) {
-				return io.NopCloser(strings.NewReader("")), errS3
-			},
+		Convey("Test FullBlobUpload", func(c C) {
+			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
+				WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
+					return &FileWriterMock{}, errS3
+				},
+			})
+			d := godigest.FromBytes([]byte(""))
+			_, _, err := imgStore.FullBlobUpload(testImage, io.NopCloser(strings.NewReader("")), d.String())
+			So(err, ShouldNotBeNil)
 		})
-		d := godigest.FromBytes([]byte(""))
-		_, _, err := imgStore.GetBlob(testImage, d.String(), "")
-		So(err, ShouldNotBeNil)
-	})
 
-	Convey("Test DeleteBlob", t, func(c C) {
-		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			DeleteFn: func(ctx context.Context, path string) error {
-				return errS3
-			},
+		Convey("Test FullBlobUpload2", func(c C) {
+			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{})
+			d := godigest.FromBytes([]byte(" "))
+			_, _, err := imgStore.FullBlobUpload(testImage, io.NopCloser(strings.NewReader("")), d.String())
+			So(err, ShouldNotBeNil)
 		})
-		d := godigest.FromBytes([]byte(""))
-		err := imgStore.DeleteBlob(testImage, d.String())
-		So(err, ShouldNotBeNil)
-	})
 
-	Convey("Test GetReferrers", t, func(c C) {
-		imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-			DeleteFn: func(ctx context.Context, path string) error {
-				return errS3
-			},
+		Convey("Test FullBlobUpload3", func(c C) {
+			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
+				MoveFn: func(ctx context.Context, sourcePath, destPath string) error {
+					return errS3
+				},
+			})
+			d := godigest.FromBytes([]byte(""))
+			_, _, err := imgStore.FullBlobUpload(testImage, io.NopCloser(strings.NewReader("")), d.String())
+			So(err, ShouldNotBeNil)
 		})
-		d := godigest.FromBytes([]byte(""))
-		_, err := imgStore.GetReferrers(testImage, d.String(), "application/image")
-		So(err, ShouldNotBeNil)
-		So(err, ShouldEqual, zerr.ErrMethodNotSupported)
+
+		Convey("Test GetBlob", func(c C) {
+			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
+				ReaderFn: func(ctx context.Context, path string, offset int64) (io.ReadCloser, error) {
+					return io.NopCloser(strings.NewReader("")), errS3
+				},
+			})
+			d := godigest.FromBytes([]byte(""))
+			_, _, err := imgStore.GetBlob(testImage, d.String(), "")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Test DeleteBlob", func(c C) {
+			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
+				DeleteFn: func(ctx context.Context, path string) error {
+					return errS3
+				},
+			})
+			d := godigest.FromBytes([]byte(""))
+			err := imgStore.DeleteBlob(testImage, d.String())
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Test GetReferrers", func(c C) {
+			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
+				DeleteFn: func(ctx context.Context, path string) error {
+					return errS3
+				},
+			})
+			d := godigest.FromBytes([]byte(""))
+			_, err := imgStore.GetReferrers(testImage, d.String(), "application/image")
+			So(err, ShouldNotBeNil)
+			So(err, ShouldEqual, zerr.ErrMethodNotSupported)
+		})
 	})
 }
 

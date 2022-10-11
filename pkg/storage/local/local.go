@@ -1104,6 +1104,19 @@ func (is *ImageStoreLocal) checkCacheBlob(digest string) (string, error) {
 
 	dstRecord = path.Join(is.rootDir, dstRecord)
 
+	if _, err := os.Stat(dstRecord); err != nil {
+		is.log.Error().Err(err).Str("blob", dstRecord).Msg("failed to stat blob")
+
+		// the actual blob on disk may have been removed by GC, so sync the cache
+		if err := is.cache.DeleteBlob(digest, dstRecord); err != nil {
+			is.log.Error().Err(err).Str("digest", digest).Str("blobPath", dstRecord).Msg("unable to remove blob path from cache")
+
+			return "", err
+		}
+
+		return "", zerr.ErrBlobNotFound
+	}
+
 	is.log.Debug().Str("digest", digest).Str("dstRecord", dstRecord).Msg("cache: found dedupe record")
 
 	return dstRecord, nil
