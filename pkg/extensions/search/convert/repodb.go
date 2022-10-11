@@ -60,19 +60,6 @@ func RepoMeta2RepoSummary(ctx context.Context, repoMeta repodb.RepoMetadata,
 			continue
 		}
 
-		imageCveSummary := cveinfo.ImageCVESummary{}
-		// Check if vulnerability scanning is disabled
-		if cveInfo != nil {
-			imageName := fmt.Sprintf("%s:%s", repoMeta.Name, tag)
-			imageCveSummary, err = cveInfo.GetCVESummaryForImage(imageName)
-
-			if err != nil {
-				// Log the error, but we should still include the manifest in results
-				graphql.AddError(ctx, gqlerror.Errorf("unable to run vulnerability scan on tag %s in repo %s: "+
-					"manifest digest: %s, error: %s", tag, repoMeta.Name, manifestDigest, err.Error()))
-			}
-		}
-
 		var (
 			tag              = tag
 			isSigned         = len(manifestMetaMap[manifestDigest].Signatures) > 0
@@ -100,6 +87,8 @@ func RepoMeta2RepoSummary(ctx context.Context, repoMeta repodb.RepoMetadata,
 			graphql.AddError(ctx, gqlerror.Errorf("error generating history on tag %s in repo %s: "+
 				"manifest digest: %s, error: %s", tag, repoMeta.Name, manifestDigest, err.Error()))
 		}
+
+		imageCveSummary := cveinfo.ImageCVESummary{}
 
 		imageSummary := gql_generated.ImageSummary{
 			RepoName:      &repoName,
@@ -166,6 +155,29 @@ func RepoMeta2RepoSummary(ctx context.Context, repoMeta repodb.RepoMetadata,
 	for vendor := range repoVendorsSet {
 		vendor := vendor
 		repoVendors = append(repoVendors, &vendor)
+	}
+
+	// We only scan the latest image on the repo for performance reasons
+	// Check if vulnerability scanning is disabled
+	if cveInfo != nil && lastUpdatedImageSummary != nil {
+		imageName := fmt.Sprintf("%s:%s", repoMeta.Name, *lastUpdatedImageSummary.Tag)
+
+		imageCveSummary, err := cveInfo.GetCVESummaryForImage(imageName)
+		if err != nil {
+			// Log the error, but we should still include the image in results
+			graphql.AddError(
+				ctx,
+				gqlerror.Errorf(
+					"unable to run vulnerability scan on tag %s in repo %s: error: %s",
+					*lastUpdatedImageSummary.Tag, repoMeta.Name, err.Error(),
+				),
+			)
+		}
+
+		lastUpdatedImageSummary.Vulnerabilities = &gql_generated.ImageVulnerabilitySummary{
+			MaxSeverity: &imageCveSummary.MaxSeverity,
+			Count:       &imageCveSummary.Count,
+		}
 	}
 
 	return &gql_generated.RepoSummary{
@@ -329,19 +341,6 @@ func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta repodb.RepoMetadata
 			continue
 		}
 
-		imageCveSummary := cveinfo.ImageCVESummary{}
-		// Check if vulnerability scanning is disabled
-		if cveInfo != nil {
-			imageName := fmt.Sprintf("%s:%s", repoMeta.Name, tag)
-			imageCveSummary, err = cveInfo.GetCVESummaryForImage(imageName)
-
-			if err != nil {
-				// Log the error, but we should still include the manifest in results
-				graphql.AddError(ctx, gqlerror.Errorf("unable to run vulnerability scan on tag %s in repo %s: "+
-					"manifest digest: %s, error: %s", tag, repoMeta.Name, manifestDigest, err.Error()))
-			}
-		}
-
 		var (
 			tag              = tag
 			isSigned         = len(manifestMetaMap[manifestDigest].Signatures) > 0
@@ -363,6 +362,8 @@ func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta repodb.RepoMetadata
 		)
 
 		annotations := common.GetAnnotations(manifestContent.Annotations, configContent.Config.Labels)
+
+		imageCveSummary := cveinfo.ImageCVESummary{}
 
 		imageSummary := gql_generated.ImageSummary{
 			RepoName:      &repoName,
@@ -429,6 +430,29 @@ func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta repodb.RepoMetadata
 	for vendor := range repoVendorsSet {
 		vendor := vendor
 		repoVendors = append(repoVendors, &vendor)
+	}
+
+	// We only scan the latest image on the repo for performance reasons
+	// Check if vulnerability scanning is disabled
+	if cveInfo != nil && lastUpdatedImageSummary != nil {
+		imageName := fmt.Sprintf("%s:%s", repoMeta.Name, *lastUpdatedImageSummary.Tag)
+
+		imageCveSummary, err := cveInfo.GetCVESummaryForImage(imageName)
+		if err != nil {
+			// Log the error, but we should still include the image in results
+			graphql.AddError(
+				ctx,
+				gqlerror.Errorf(
+					"unable to run vulnerability scan on tag %s in repo %s: error: %s",
+					*lastUpdatedImageSummary.Tag, repoMeta.Name, err.Error(),
+				),
+			)
+		}
+
+		lastUpdatedImageSummary.Vulnerabilities = &gql_generated.ImageVulnerabilitySummary{
+			MaxSeverity: &imageCveSummary.MaxSeverity,
+			Count:       &imageCveSummary.Count,
+		}
 	}
 
 	summary := &gql_generated.RepoSummary{
