@@ -19,31 +19,32 @@ import (
 //go:embed build/*
 var content embed.FS
 
+type uiHandler struct {
+	log log.Logger
+}
+
+func (uih uiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	buf, _ := content.ReadFile("build/index.html")
+
+	_, err := w.Write(buf)
+	if err != nil {
+		uih.log.Error().Err(err).Msg("unable to serve index.html")
+	}
+}
+
 func SetupUIRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
 	log log.Logger,
 ) {
 	if config.Extensions.UI != nil {
 		fsub, _ := fs.Sub(content, "build")
+		uih := uiHandler{log: log}
 
-		router.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
-			buf, _ := content.ReadFile("build/index.html")
-
-			_, err := w.Write(buf)
-			if err != nil {
-				log.Error().Err(err).Msg("unable to serve index.html")
-			}
-		})
-
-		router.HandleFunc("/home", func(w http.ResponseWriter, r *http.Request) {
-			buf, _ := content.ReadFile("build/index.html")
-
-			_, err := w.Write(buf)
-			if err != nil {
-				log.Error().Err(err).Msg("unable to serve index.html")
-			}
-		})
-
+		router.PathPrefix("/login").Handler(uih)
+		router.PathPrefix("/home").Handler(uih)
+		router.PathPrefix("/explore").Handler(uih)
+		router.PathPrefix("/image").Handler(uih)
 		router.PathPrefix("/").Handler(http.FileServer(http.FS(fsub)))
+
 		log.Info().Msg("setting up ui routes")
 	}
 }
