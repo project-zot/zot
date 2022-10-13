@@ -139,9 +139,9 @@ type ComplexityRoot struct {
 	}
 
 	Query struct {
-		BaseImageList           func(childComplexity int, image string) int
+		BaseImageList           func(childComplexity int, image string, requestedPage *PageInput) int
 		CVEListForImage         func(childComplexity int, image string) int
-		DerivedImageList        func(childComplexity int, image string) int
+		DerivedImageList        func(childComplexity int, image string, requestedPage *PageInput) int
 		ExpandedRepoInfo        func(childComplexity int, repo string) int
 		GlobalSearch            func(childComplexity int, query string, filter *Filter, requestedPage *PageInput) int
 		Image                   func(childComplexity int, image string) int
@@ -181,8 +181,8 @@ type QueryResolver interface {
 	ImageList(ctx context.Context, repo string, requestedPage *PageInput) ([]*ImageSummary, error)
 	ExpandedRepoInfo(ctx context.Context, repo string) (*RepoInfo, error)
 	GlobalSearch(ctx context.Context, query string, filter *Filter, requestedPage *PageInput) (*GlobalSearchResult, error)
-	DerivedImageList(ctx context.Context, image string) ([]*ImageSummary, error)
-	BaseImageList(ctx context.Context, image string) ([]*ImageSummary, error)
+	DerivedImageList(ctx context.Context, image string, requestedPage *PageInput) (*PaginatedImagesResult, error)
+	BaseImageList(ctx context.Context, image string, requestedPage *PageInput) (*PaginatedImagesResult, error)
 	Image(ctx context.Context, image string) (*ImageSummary, error)
 }
 
@@ -603,7 +603,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 			return 0, false
 		}
 
-		return e.complexity.Query.BaseImageList(childComplexity, args["image"].(string)), true
+		return e.complexity.Query.BaseImageList(childComplexity, args["image"].(string), args["requestedPage"].(*PageInput)), true
 
 	case "Query.CVEListForImage":
 		if e.complexity.Query.CVEListForImage == nil {
@@ -627,7 +627,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 			return 0, false
 		}
 
-		return e.complexity.Query.DerivedImageList(childComplexity, args["image"].(string)), true
+		return e.complexity.Query.DerivedImageList(childComplexity, args["image"].(string), args["requestedPage"].(*PageInput)), true
 
 	case "Query.ExpandedRepoInfo":
 		if e.complexity.Query.ExpandedRepoInfo == nil {
@@ -1103,12 +1103,12 @@ type Query {
     """
     List of images which use the argument image
     """
-    DerivedImageList(image: String!): [ImageSummary!]
+    DerivedImageList(image: String!, requestedPage: PageInput): PaginatedImagesResult!
 
     """
     List of images on which the argument image depends on
     """
-    BaseImageList(image: String!): [ImageSummary!]
+    BaseImageList(image: String!, requestedPage: PageInput): PaginatedImagesResult!
 
     """
     Search for a specific image using its name
@@ -1135,6 +1135,15 @@ func (ec *executionContext) field_Query_BaseImageList_args(ctx context.Context, 
 		}
 	}
 	args["image"] = arg0
+	var arg1 *PageInput
+	if tmp, ok := rawArgs["requestedPage"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
+		arg1, err = ec.unmarshalOPageInput2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["requestedPage"] = arg1
 	return args, nil
 }
 
@@ -1165,6 +1174,15 @@ func (ec *executionContext) field_Query_DerivedImageList_args(ctx context.Contex
 		}
 	}
 	args["image"] = arg0
+	var arg1 *PageInput
+	if tmp, ok := rawArgs["requestedPage"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
+		arg1, err = ec.unmarshalOPageInput2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["requestedPage"] = arg1
 	return args, nil
 }
 
@@ -4598,18 +4616,21 @@ func (ec *executionContext) _Query_DerivedImageList(ctx context.Context, field g
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().DerivedImageList(rctx, fc.Args["image"].(string))
+		return ec.resolvers.Query().DerivedImageList(rctx, fc.Args["image"].(string), fc.Args["requestedPage"].(*PageInput))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
 		return graphql.Null
 	}
 	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
 		return graphql.Null
 	}
-	res := resTmp.([]*ImageSummary)
+	res := resTmp.(*PaginatedImagesResult)
 	fc.Result = res
-	return ec.marshalOImageSummary2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummaryᚄ(ctx, field.Selections, res)
+	return ec.marshalNPaginatedImagesResult2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedImagesResult(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Query_DerivedImageList(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -4620,52 +4641,12 @@ func (ec *executionContext) fieldContext_Query_DerivedImageList(ctx context.Cont
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
-			case "RepoName":
-				return ec.fieldContext_ImageSummary_RepoName(ctx, field)
-			case "Tag":
-				return ec.fieldContext_ImageSummary_Tag(ctx, field)
-			case "Digest":
-				return ec.fieldContext_ImageSummary_Digest(ctx, field)
-			case "ConfigDigest":
-				return ec.fieldContext_ImageSummary_ConfigDigest(ctx, field)
-			case "LastUpdated":
-				return ec.fieldContext_ImageSummary_LastUpdated(ctx, field)
-			case "IsSigned":
-				return ec.fieldContext_ImageSummary_IsSigned(ctx, field)
-			case "Size":
-				return ec.fieldContext_ImageSummary_Size(ctx, field)
-			case "Platform":
-				return ec.fieldContext_ImageSummary_Platform(ctx, field)
-			case "Vendor":
-				return ec.fieldContext_ImageSummary_Vendor(ctx, field)
-			case "Score":
-				return ec.fieldContext_ImageSummary_Score(ctx, field)
-			case "DownloadCount":
-				return ec.fieldContext_ImageSummary_DownloadCount(ctx, field)
-			case "Layers":
-				return ec.fieldContext_ImageSummary_Layers(ctx, field)
-			case "Description":
-				return ec.fieldContext_ImageSummary_Description(ctx, field)
-			case "Licenses":
-				return ec.fieldContext_ImageSummary_Licenses(ctx, field)
-			case "Labels":
-				return ec.fieldContext_ImageSummary_Labels(ctx, field)
-			case "Title":
-				return ec.fieldContext_ImageSummary_Title(ctx, field)
-			case "Source":
-				return ec.fieldContext_ImageSummary_Source(ctx, field)
-			case "Documentation":
-				return ec.fieldContext_ImageSummary_Documentation(ctx, field)
-			case "History":
-				return ec.fieldContext_ImageSummary_History(ctx, field)
-			case "Vulnerabilities":
-				return ec.fieldContext_ImageSummary_Vulnerabilities(ctx, field)
-			case "Authors":
-				return ec.fieldContext_ImageSummary_Authors(ctx, field)
-			case "Logo":
-				return ec.fieldContext_ImageSummary_Logo(ctx, field)
+			case "Page":
+				return ec.fieldContext_PaginatedImagesResult_Page(ctx, field)
+			case "Results":
+				return ec.fieldContext_PaginatedImagesResult_Results(ctx, field)
 			}
-			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
+			return nil, fmt.Errorf("no field named %q was found under type PaginatedImagesResult", field.Name)
 		},
 	}
 	defer func() {
@@ -4696,18 +4677,21 @@ func (ec *executionContext) _Query_BaseImageList(ctx context.Context, field grap
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().BaseImageList(rctx, fc.Args["image"].(string))
+		return ec.resolvers.Query().BaseImageList(rctx, fc.Args["image"].(string), fc.Args["requestedPage"].(*PageInput))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
 		return graphql.Null
 	}
 	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
 		return graphql.Null
 	}
-	res := resTmp.([]*ImageSummary)
+	res := resTmp.(*PaginatedImagesResult)
 	fc.Result = res
-	return ec.marshalOImageSummary2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummaryᚄ(ctx, field.Selections, res)
+	return ec.marshalNPaginatedImagesResult2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedImagesResult(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Query_BaseImageList(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -4718,52 +4702,12 @@ func (ec *executionContext) fieldContext_Query_BaseImageList(ctx context.Context
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
-			case "RepoName":
-				return ec.fieldContext_ImageSummary_RepoName(ctx, field)
-			case "Tag":
-				return ec.fieldContext_ImageSummary_Tag(ctx, field)
-			case "Digest":
-				return ec.fieldContext_ImageSummary_Digest(ctx, field)
-			case "ConfigDigest":
-				return ec.fieldContext_ImageSummary_ConfigDigest(ctx, field)
-			case "LastUpdated":
-				return ec.fieldContext_ImageSummary_LastUpdated(ctx, field)
-			case "IsSigned":
-				return ec.fieldContext_ImageSummary_IsSigned(ctx, field)
-			case "Size":
-				return ec.fieldContext_ImageSummary_Size(ctx, field)
-			case "Platform":
-				return ec.fieldContext_ImageSummary_Platform(ctx, field)
-			case "Vendor":
-				return ec.fieldContext_ImageSummary_Vendor(ctx, field)
-			case "Score":
-				return ec.fieldContext_ImageSummary_Score(ctx, field)
-			case "DownloadCount":
-				return ec.fieldContext_ImageSummary_DownloadCount(ctx, field)
-			case "Layers":
-				return ec.fieldContext_ImageSummary_Layers(ctx, field)
-			case "Description":
-				return ec.fieldContext_ImageSummary_Description(ctx, field)
-			case "Licenses":
-				return ec.fieldContext_ImageSummary_Licenses(ctx, field)
-			case "Labels":
-				return ec.fieldContext_ImageSummary_Labels(ctx, field)
-			case "Title":
-				return ec.fieldContext_ImageSummary_Title(ctx, field)
-			case "Source":
-				return ec.fieldContext_ImageSummary_Source(ctx, field)
-			case "Documentation":
-				return ec.fieldContext_ImageSummary_Documentation(ctx, field)
-			case "History":
-				return ec.fieldContext_ImageSummary_History(ctx, field)
-			case "Vulnerabilities":
-				return ec.fieldContext_ImageSummary_Vulnerabilities(ctx, field)
-			case "Authors":
-				return ec.fieldContext_ImageSummary_Authors(ctx, field)
-			case "Logo":
-				return ec.fieldContext_ImageSummary_Logo(ctx, field)
+			case "Page":
+				return ec.fieldContext_PaginatedImagesResult_Page(ctx, field)
+			case "Results":
+				return ec.fieldContext_PaginatedImagesResult_Results(ctx, field)
 			}
-			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
+			return nil, fmt.Errorf("no field named %q was found under type PaginatedImagesResult", field.Name)
 		},
 	}
 	defer func() {
@@ -8241,6 +8185,9 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 					}
 				}()
 				res = ec._Query_DerivedImageList(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&invalids, 1)
+				}
 				return res
 			}
 
@@ -8261,6 +8208,9 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 					}
 				}()
 				res = ec._Query_BaseImageList(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&invalids, 1)
+				}
 				return res
 			}
 
@@ -8836,6 +8786,20 @@ func (ec *executionContext) marshalNInt2int(ctx context.Context, sel ast.Selecti
 		}
 	}
 	return res
+}
+
+func (ec *executionContext) marshalNPaginatedImagesResult2zotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedImagesResult(ctx context.Context, sel ast.SelectionSet, v PaginatedImagesResult) graphql.Marshaler {
+	return ec._PaginatedImagesResult(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNPaginatedImagesResult2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedImagesResult(ctx context.Context, sel ast.SelectionSet, v *PaginatedImagesResult) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._PaginatedImagesResult(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalNPaginatedReposResult2zotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedReposResult(ctx context.Context, sel ast.SelectionSet, v PaginatedReposResult) graphql.Marshaler {
