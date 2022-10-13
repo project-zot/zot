@@ -398,7 +398,7 @@ func TestWrapperErrors(t *testing.T) {
 			err = setBadRepoMeta(dynamoWrapper.Client, repoMetaTablename, "repo") //nolint:contextcheck
 			So(err, ShouldBeNil)
 
-			_, _, err = dynamoWrapper.FilterTags(
+			_, _, _, err = dynamoWrapper.FilterTags(
 				ctx,
 				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
 					return true
@@ -413,7 +413,7 @@ func TestWrapperErrors(t *testing.T) {
 			err := dynamoWrapper.SetRepoTag("repo", "tag1", "manifestNotFound", "") //nolint:contextcheck
 			So(err, ShouldBeNil)
 
-			_, _, err = dynamoWrapper.FilterTags(
+			_, _, _, err = dynamoWrapper.FilterTags(
 				ctx,
 				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
 					return true
@@ -431,7 +431,7 @@ func TestWrapperErrors(t *testing.T) {
 			err = setBadManifestData(dynamoWrapper.Client, manifestDataTablename, "dig") //nolint:contextcheck
 			So(err, ShouldBeNil)
 
-			_, _, err = dynamoWrapper.FilterTags(
+			_, _, _, err = dynamoWrapper.FilterTags(
 				ctx,
 				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
 					return true
@@ -452,7 +452,7 @@ func TestWrapperErrors(t *testing.T) {
 			})
 			So(err, ShouldBeNil)
 
-			_, _, err = dynamoWrapper.FilterTags(
+			_, _, _, err = dynamoWrapper.FilterTags(
 				ctx,
 				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
 					return true

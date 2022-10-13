@@ -127,6 +127,11 @@ type PaginatedReposResult struct {
 	Page    repodb.PageInfo      `json:"page"`
 }
 
+type PaginatedImagesResult struct {
+	Results []common.ImageSummary `json:"results"`
+	Page    repodb.PageInfo       `json:"page"`
+}
+
 //nolint:tagliatelle // graphQL schema
 type RepoListWithNewestImage struct {
 	PaginatedReposResult `json:"RepoListWithNewestImage"`
@@ -1504,6 +1509,7 @@ func TestDerivedImageList(t *testing.T) {
 			{10, 10, 10, 10},
 			{10, 10, 10, 11},
 			{11, 11, 10, 10},
+			{11, 10, 10, 10},
 		}
 
 		manifest = ispec.Manifest{
@@ -1558,39 +1564,129 @@ func TestDerivedImageList(t *testing.T) {
 		)
 		So(err, ShouldBeNil)
 
-		query := `
-			{
-				DerivedImageList(image:"test-repo:latest"){
-					RepoName,
-					Tag,
-					Digest,
-					ConfigDigest,
-					LastUpdated,
-					IsSigned,
-					Size
-				}
-			}`
+		manifest = ispec.Manifest{
+			Versioned: specs.Versioned{
+				SchemaVersion: 2,
+			},
+			Config: ispec.Descriptor{
+				MediaType: "application/vnd.oci.image.config.v1+json",
+				Digest:    configDigest,
+				Size:      int64(len(configBlob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    godigest.FromBytes(layers[0]),
+					Size:      int64(len(layers[0])),
+				},
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    godigest.FromBytes(layers[1]),
+					Size:      int64(len(layers[1])),
+				},
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    godigest.FromBytes(layers[2]),
+					Size:      int64(len(layers[2])),
+				},
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    godigest.FromBytes(layers[3]),
+					Size:      int64(len(layers[3])),
+				},
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    godigest.FromBytes(layers[4]),
+					Size:      int64(len(layers[4])),
+				},
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    godigest.FromBytes(layers[5]),
+					Size:      int64(len(layers[5])),
+				},
+			},
+		}
 
-		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
-		So(resp, ShouldNotBeNil)
-		So(strings.Contains(string(resp.Body()), "same-layers"), ShouldBeTrue) //nolint:goconst
-		So(strings.Contains(string(resp.Body()), "missing-layers"), ShouldBeFalse)
-		So(strings.Contains(string(resp.Body()), "more-layers"), ShouldBeTrue)
+		repoName = "all-layers"
+
+		err = UploadImage(
+			Image{
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+				Tag:      "latest",
+			},
+			baseURL,
+			repoName,
+		)
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+
+		Convey("non paginated query", func() {
+			query := `
+				{
+					DerivedImageList(image:"test-repo:latest"){
+						Results{
+							RepoName,
+							Tag,
+							Digest,
+							ConfigDigest,
+							LastUpdated,
+							IsSigned,
+							Size
+						}
+					}
+				}`
+
+			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(strings.Contains(string(resp.Body()), "same-layers"), ShouldBeFalse) //nolint:goconst
+			So(strings.Contains(string(resp.Body()), "missing-layers"), ShouldBeFalse)
+			So(strings.Contains(string(resp.Body()), "more-layers"), ShouldBeTrue)
+			So(strings.Contains(string(resp.Body()), "all-layers"), ShouldBeTrue)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+		})
+
+		Convey("paginated query", func() {
+			query := `
+				{
+					DerivedImageList(image:"test-repo:latest", requestedPage:{limit: 1, offset: 0, sortBy:ALPHABETIC_ASC}){
+						Results{
+							RepoName,
+							Tag,
+							Digest,
+							ConfigDigest,
+							LastUpdated,
+							IsSigned,
+							Size
+						}
+					}
+				}`
+
+			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(strings.Contains(string(resp.Body()), "same-layers"), ShouldBeFalse) //nolint:goconst
+			So(strings.Contains(string(resp.Body()), "missing-layers"), ShouldBeFalse)
+			So(strings.Contains(string(resp.Body()), "more-layers"), ShouldBeFalse)
+			So(strings.Contains(string(resp.Body()), "all-layers"), ShouldBeTrue)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+		})
 	})
 
 	Convey("Inexistent repository", t, func() {
 		query := `
 			{
 				DerivedImageList(image:"inexistent-image:latest"){
-					RepoName,
-					Tag,
-					Digest,
-					ConfigDigest,
-					LastUpdated,
-					IsSigned,
-					Size
+					Results {
+						RepoName,
+						Tag,
+						Digest,
+						ConfigDigest,
+						LastUpdated,
+						IsSigned,
+						Size
+					}
 				}
 			}`
 
@@ -1603,13 +1699,15 @@ func TestDerivedImageList(t *testing.T) {
 		query := `
 			{
 				DerivedImageList(image:"inexistent-image"){
-					RepoName,
-					Tag,
-					Digest,
-					ConfigDigest,
-					LastUpdated,
-					IsSigned,
-					Size
+					Results {
+						RepoName,
+						Tag,
+						Digest,
+						ConfigDigest,
+						LastUpdated,
+						IsSigned,
+						Size
+					}
 				}
 			}`
 
@@ -1627,28 +1725,6 @@ func TestDerivedImageList(t *testing.T) {
 			}
 		}
 		So(contains, ShouldBeTrue)
-	})
-
-	Convey("Failed to get manifest", t, func() {
-		err := os.Mkdir(path.Join(rootDir, "fail-image"), 0o000)
-		So(err, ShouldBeNil)
-
-		query := `
-			{
-				DerivedImageList(image:"fail-image:latest"){
-					RepoName,
-					Tag,
-					Digest,
-					ConfigDigest,
-					LastUpdated,
-					IsSigned,
-					Size
-				}
-			}`
-
-		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
-		So(strings.Contains(string(resp.Body()), "permission denied"), ShouldBeTrue)
-		So(err, ShouldBeNil)
 	})
 }
 
@@ -1676,19 +1752,25 @@ func TestDerivedImageListNoRepos(t *testing.T) {
 
 		query := `
 			{
-				DerivedImageList(image:"test-image:latest"){
-					RepoName,
-					Tag,
-					Digest,
-					ConfigDigest,
-					LastUpdated,
-					IsSigned,
-					Size
+				DerivedImageList(image:"test-image"){
+					Results{
+						RepoName,
+						Tag,
+						Digest,
+						ConfigDigest,
+						LastUpdated,
+						IsSigned,
+						Size
+					}
 				}
 			}`
 
 		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
-		So(strings.Contains(string(resp.Body()), "{\"data\":{\"DerivedImageList\":[]}}"), ShouldBeTrue)
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		So(strings.Contains(string(resp.Body()), "no reference provided"), ShouldBeTrue)
 		So(err, ShouldBeNil)
 	})
 }
@@ -1915,6 +1997,43 @@ func TestBaseImageList(t *testing.T) {
 		)
 		So(err, ShouldBeNil)
 
+		// create image with one layer, which is also present in the given image
+		layers = [][]byte{
+			{10, 11, 10, 11},
+		}
+
+		manifest = ispec.Manifest{
+			Versioned: specs.Versioned{
+				SchemaVersion: 2,
+			},
+			Config: ispec.Descriptor{
+				MediaType: "application/vnd.oci.image.config.v1+json",
+				Digest:    configDigest,
+				Size:      int64(len(configBlob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    godigest.FromBytes(layers[0]),
+					Size:      int64(len(layers[0])),
+				},
+			},
+		}
+
+		repoName = "one-layer"
+
+		err = UploadImage(
+			Image{
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+				Tag:      "latest",
+			},
+			baseURL,
+			repoName,
+		)
+		So(err, ShouldBeNil)
+
 		// create image with less layers than the given image, but one layer isn't in the given image
 		layers = [][]byte{
 			{10, 11, 10, 11},
@@ -2062,42 +2181,78 @@ func TestBaseImageList(t *testing.T) {
 		)
 		So(err, ShouldBeNil)
 
-		query := `
-			{
-				BaseImageList(image:"test-repo:latest"){
-					RepoName,
-					Tag,
-					Digest,
-					ConfigDigest,
-					LastUpdated,
-					IsSigned,
-					Size
-				}
-			}`
+		Convey("non paginated query", func() {
+			query := `
+				{
+					BaseImageList(image:"test-repo:latest"){
+						Results{
+							RepoName,
+							Tag,
+							Digest,
+							ConfigDigest,
+							LastUpdated,
+							IsSigned,
+							Size
+						}
+					}
+				}`
 
-		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
-		So(resp, ShouldNotBeNil)
-		So(strings.Contains(string(resp.Body()), "same-layers"), ShouldBeTrue) //nolint:goconst
-		So(strings.Contains(string(resp.Body()), "less-layers"), ShouldBeTrue)
-		So(strings.Contains(string(resp.Body()), "less-layers-false"), ShouldBeFalse)
-		So(strings.Contains(string(resp.Body()), "more-layers"), ShouldBeFalse)
-		So(strings.Contains(string(resp.Body()), "diff-layers"), ShouldBeFalse)
-		So(strings.Contains(string(resp.Body()), "test-repo"), ShouldBeFalse) //nolint:goconst // should not list given image
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(strings.Contains(string(resp.Body()), "less-layers"), ShouldBeTrue)
+			So(strings.Contains(string(resp.Body()), "one-layer"), ShouldBeTrue)
+			So(strings.Contains(string(resp.Body()), "same-layers"), ShouldBeFalse) //nolint:goconst
+			So(strings.Contains(string(resp.Body()), "less-layers-false"), ShouldBeFalse)
+			So(strings.Contains(string(resp.Body()), "more-layers"), ShouldBeFalse)
+			So(strings.Contains(string(resp.Body()), "diff-layers"), ShouldBeFalse)
+			So(strings.Contains(string(resp.Body()), "test-repo"), ShouldBeFalse) //nolint:goconst // should not list given image
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+		})
+
+		Convey("paginated query", func() {
+			query := `
+				{
+					BaseImageList(image:"test-repo:latest", requestedPage:{limit: 1, offset: 0, sortBy:RELEVANCE}){
+						Results{
+							RepoName,
+							Tag,
+							Digest,
+							ConfigDigest,
+							LastUpdated,
+							IsSigned,
+							Size
+						}
+					}
+				}`
+
+			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(strings.Contains(string(resp.Body()), "less-layers"), ShouldBeTrue)
+			So(strings.Contains(string(resp.Body()), "one-layer"), ShouldBeFalse)
+			So(strings.Contains(string(resp.Body()), "same-layers"), ShouldBeFalse) //nolint:goconst
+			So(strings.Contains(string(resp.Body()), "less-layers-false"), ShouldBeFalse)
+			So(strings.Contains(string(resp.Body()), "more-layers"), ShouldBeFalse)
+			So(strings.Contains(string(resp.Body()), "diff-layers"), ShouldBeFalse)
+			So(strings.Contains(string(resp.Body()), "test-repo"), ShouldBeFalse) //nolint:goconst // should not list given image
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+		})
 	})
 
 	Convey("Nonexistent repository", t, func() {
 		query := `
 			{
 				BaseImageList(image:"nonexistent-image:latest"){
-					RepoName,
-					Tag,
-					Digest,
-					ConfigDigest,
-					LastUpdated,
-					IsSigned,
-					Size
+					Results{
+						RepoName,
+						Tag,
+						Digest,
+						ConfigDigest,
+						LastUpdated,
+						IsSigned,
+						Size
+					}
 				}
 			}`
 
@@ -2110,13 +2265,15 @@ func TestBaseImageList(t *testing.T) {
 		query := `
 		{
 			BaseImageList(image:"nonexistent-image"){
-				RepoName,
-				Tag,
-				Digest,
-				ConfigDigest,
-				LastUpdated,
-				IsSigned,
-				Size
+				Results{
+					RepoName,
+					Tag,
+					Digest,
+					ConfigDigest,
+					LastUpdated,
+					IsSigned,
+					Size
+				}
 			}
 		}`
 
@@ -2134,28 +2291,6 @@ func TestBaseImageList(t *testing.T) {
 			}
 		}
 		So(contains, ShouldBeTrue)
-	})
-
-	Convey("Failed to get manifest", t, func() {
-		err := os.Mkdir(path.Join(rootDir, "fail-image"), 0o000)
-		So(err, ShouldBeNil)
-
-		query := `
-			{
-				BaseImageList(image:"fail-image:latest"){
-					RepoName,
-					Tag,
-					Digest,
-					ConfigDigest,
-					LastUpdated,
-					IsSigned,
-					Size
-				}
-			}`
-
-		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
-		So(strings.Contains(string(resp.Body()), "permission denied"), ShouldBeTrue)
-		So(err, ShouldBeNil)
 	})
 }
 
@@ -2183,19 +2318,21 @@ func TestBaseImageListNoRepos(t *testing.T) {
 
 		query := `
 			{
-				BaseImageList(image:"test-image:latest"){
-					RepoName,
-					Tag,
-					Digest,
-					ConfigDigest,
-					LastUpdated,
-					IsSigned,
-					Size
+				BaseImageList(image:"test-image"){
+					Results{
+						RepoName,
+						Tag,
+						Digest,
+						ConfigDigest,
+						LastUpdated,
+						IsSigned,
+						Size
+					}
 				}
 			}`
 
 		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
-		So(strings.Contains(string(resp.Body()), "{\"data\":{\"BaseImageList\":[]}}"), ShouldBeTrue)
+		So(strings.Contains(string(resp.Body()), "no reference provided"), ShouldBeTrue)
 		So(err, ShouldBeNil)
 	})
 }
