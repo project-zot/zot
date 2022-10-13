@@ -70,7 +70,7 @@ type RepoDB interface { //nolint:interfacebloat
 
 	// FilterTags filters for images given a filter function
 	FilterTags(ctx context.Context, filter FilterFunc,
-		requestedPage PageInput) ([]RepoMetadata, map[string]ManifestMetadata, error)
+		requestedPage PageInput) ([]RepoMetadata, map[string]ManifestMetadata, PageInfo, error)
 
 	// SearchDigests searches for digests given a search string
 	SearchDigests(ctx context.Context, searchText string, requestedPage PageInput) (
