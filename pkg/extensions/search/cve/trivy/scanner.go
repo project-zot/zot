@@ -73,6 +73,7 @@ type Scanner struct {
 	storeController storage.StoreController
 	log             log.Logger
 	dbLock          *sync.Mutex
+	cache           *CveCache
 }
 
 func NewScanner(storeController storage.StoreController,
@@ -110,6 +111,7 @@ func NewScanner(storeController storage.StoreController,
 		cveController:   cveController,
 		storeController: storeController,
 		dbLock:          &sync.Mutex{},
+		cache:           NewCveCache(10000, log), //nolint:gomnd
 	}
 }
 
@@ -143,6 +145,10 @@ func (scanner Scanner) getTrivyContext(image string) *trivyCtx {
 }
 
 func (scanner Scanner) IsImageFormatScannable(image string) (bool, error) {
+	if scanner.cache.Get(image) != nil {
+		return true, nil
+	}
+
 	imageDir, inputTag := common.GetImageDirAndTag(image)
 
 	manifests, err := scanner.layoutUtils.GetImageManifests(imageDir)
@@ -182,6 +188,10 @@ func (scanner Scanner) IsImageFormatScannable(image string) (bool, error) {
 }
 
 func (scanner Scanner) ScanImage(image string) (map[string]cvemodel.CVE, error) {
+	if scanner.cache.Get(image) != nil {
+		return scanner.cache.Get(image), nil
+	}
+
 	cveidMap := make(map[string]cvemodel.CVE)
 
 	scanner.log.Debug().Str("image", image).Msg("scanning image")
@@ -252,6 +262,8 @@ func (scanner Scanner) ScanImage(image string) (map[string]cvemodel.CVE, error) 
 		}
 	}
 
+	scanner.cache.Add(image, cveidMap)
+
 	return cveidMap, nil
 }
 
@@ -280,6 +292,8 @@ func (scanner Scanner) UpdateDB() error {
 			}
 		}
 	}
+
+	scanner.cache.Purge()
 
 	return nil
 }
