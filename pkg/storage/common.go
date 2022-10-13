@@ -55,7 +55,7 @@ func GetManifestDescByReference(index ispec.Index, reference string) (ispec.Desc
 
 func ValidateManifest(imgStore ImageStore, repo, reference, mediaType string, body []byte,
 	log zerolog.Logger,
-) (string, error) {
+) (godigest.Digest, error) {
 	// validate the manifest
 	if !IsSupportedMediaType(mediaType) {
 		log.Debug().Interface("actual", mediaType).
@@ -100,7 +100,7 @@ func ValidateManifest(imgStore ImageStore, repo, reference, mediaType string, bo
 
 func validateOCIManifest(imgStore ImageStore, repo, reference string, manifest *ispec.Manifest, //nolint:unparam
 	log zerolog.Logger,
-) (string, error) {
+) (godigest.Digest, error) {
 	if manifest.SchemaVersion != SchemaVersion {
 		log.Error().Int("SchemaVersion", manifest.SchemaVersion).Msg("invalid manifest")
 
@@ -110,9 +110,9 @@ func validateOCIManifest(imgStore ImageStore, repo, reference string, manifest *
 	// validate image config
 	config := manifest.Config
 
-	blobFile, _, err := imgStore.GetBlob(repo, config.Digest.String(), "")
+	blobFile, _, err := imgStore.GetBlob(repo, config.Digest, "")
 	if err != nil {
-		return config.Digest.String(), zerr.ErrBlobNotFound
+		return config.Digest, zerr.ErrBlobNotFound
 	}
 
 	defer blobFile.Close()
@@ -126,9 +126,9 @@ func validateOCIManifest(imgStore ImageStore, repo, reference string, manifest *
 
 	// validate the layers
 	for _, l := range manifest.Layers {
-		blobFile, _, err := imgStore.GetBlob(repo, l.Digest.String(), "")
+		blobFile, _, err := imgStore.GetBlob(repo, l.Digest, "")
 		if err != nil {
-			return l.Digest.String(), zerr.ErrBlobNotFound
+			return l.Digest, zerr.ErrBlobNotFound
 		}
 
 		defer blobFile.Close()
@@ -137,10 +137,10 @@ func validateOCIManifest(imgStore ImageStore, repo, reference string, manifest *
 	return "", nil
 }
 
-func GetAndValidateRequestDigest(body []byte, digest string, log zerolog.Logger) (godigest.Digest, error) {
+func GetAndValidateRequestDigest(body []byte, digestStr string, log zerolog.Logger) (godigest.Digest, error) {
 	bodyDigest := godigest.FromBytes(body)
 
-	d, err := godigest.Parse(digest)
+	d, err := godigest.Parse(digestStr)
 	if err == nil {
 		if d.String() != bodyDigest.String() {
 			log.Error().Str("actual", bodyDigest.String()).Str("expected", d.String()).
@@ -324,7 +324,7 @@ func PruneImageManifestsFromIndex(imgStore ImageStore, repo string, digest godig
 
 	indexPath := path.Join(dir, "blobs", digest.Algorithm().String(), digest.Encoded())
 
-	buf, err := imgStore.GetBlobContent(repo, digest.String())
+	buf, err := imgStore.GetBlobContent(repo, digest)
 	if err != nil {
 		return nil, err
 	}
@@ -343,7 +343,7 @@ func PruneImageManifestsFromIndex(imgStore ImageStore, repo string, digest godig
 	}
 
 	for _, otherIndex := range otherImgIndexes {
-		buf, err := imgStore.GetBlobContent(repo, otherIndex.Digest.String())
+		buf, err := imgStore.GetBlobContent(repo, otherIndex.Digest)
 		if err != nil {
 			return nil, err
 		}

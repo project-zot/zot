@@ -847,7 +847,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		var imageConfig ispec.Image
 		configDigest := manifest.Config.Digest
 		buf, err = os.ReadFile(path.Join(dir, "zot-test", "blobs", "sha256",
-			configDigest.Hex()))
+			configDigest.Encoded()))
 		So(err, ShouldBeNil)
 		err = json.Unmarshal(buf, &imageConfig)
 		So(err, ShouldBeNil)
@@ -863,7 +863,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		So(cfgDigest, ShouldNotBeNil)
 
 		err = os.WriteFile(path.Join(dir, "zot-test", "blobs", "sha256",
-			cfgDigest.Hex()), configContent, 0o600)
+			cfgDigest.Encoded()), configContent, 0o600)
 		So(err, ShouldBeNil)
 
 		// write manifest
@@ -892,7 +892,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		imgStore := local.NewImageStore(dir, false, 0, false, false,
 			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), linter)
 
-		err = os.Chmod(path.Join(dir, "zot-test", "blobs", "sha256", manifest.Config.Digest.Hex()), 0o000)
+		err = os.Chmod(path.Join(dir, "zot-test", "blobs", "sha256", manifest.Config.Digest.Encoded()), 0o000)
 		if err != nil {
 			panic(err)
 		}
@@ -901,7 +901,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		So(pass, ShouldBeFalse)
 
-		err = os.Chmod(path.Join(dir, "zot-test", "blobs", "sha256", manifest.Config.Digest.Hex()), 0o755)
+		err = os.Chmod(path.Join(dir, "zot-test", "blobs", "sha256", manifest.Config.Digest.Encoded()), 0o755)
 		if err != nil {
 			panic(err)
 		}

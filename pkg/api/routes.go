@@ -23,6 +23,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	notreg "github.com/notaryproject/notation-go/registry"
 	"github.com/opencontainers/distribution-spec/specs-go/v1/extensions"
+	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 
@@ -326,7 +327,7 @@ func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *htt
 		return
 	}
 
-	response.Header().Set(constants.DistContentDigestKey, digest)
+	response.Header().Set(constants.DistContentDigestKey, digest.String())
 	response.Header().Set("Content-Length", fmt.Sprintf("%d", len(content)))
 	response.Header().Set("Content-Type", mediaType)
 	response.WriteHeader(http.StatusOK)
@@ -393,7 +394,7 @@ func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.
 		return
 	}
 
-	response.Header().Set(constants.DistContentDigestKey, digest)
+	response.Header().Set(constants.DistContentDigestKey, digest.String())
 	WriteData(response, http.StatusOK, mediaType, content)
 }
 
@@ -463,7 +464,7 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 				NewErrorList(NewError(MANIFEST_INVALID, map[string]string{"reference": reference})))
 		} else if errors.Is(err, zerr.ErrBlobNotFound) {
 			WriteJSON(response, http.StatusBadRequest,
-				NewErrorList(NewError(BLOB_UNKNOWN, map[string]string{"blob": digest})))
+				NewErrorList(NewError(BLOB_UNKNOWN, map[string]string{"blob": digest.String()})))
 		} else if errors.Is(err, zerr.ErrRepoBadVersion) {
 			WriteJSON(response, http.StatusInternalServerError,
 				NewErrorList(NewError(INVALID_INDEX, map[string]string{"name": name})))
@@ -488,7 +489,7 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 	}
 
 	response.Header().Set("Location", fmt.Sprintf("/v2/%s/manifests/%s", name, digest))
-	response.Header().Set(constants.DistContentDigestKey, digest)
+	response.Header().Set(constants.DistContentDigestKey, digest.String())
 	response.WriteHeader(http.StatusCreated)
 }
 
@@ -564,23 +565,27 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 
 	imgStore := rh.getImageStore(name)
 
-	digest, ok := vars["digest"]
-	if !ok || digest == "" {
+	digestStr, ok := vars["digest"]
+
+	if !ok || digestStr == "" {
 		response.WriteHeader(http.StatusNotFound)
 
 		return
 	}
+
+	digest := godigest.Digest(digestStr)
 
 	ok, blen, err := imgStore.CheckBlob(name, digest)
 	if err != nil {
 		if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 			WriteJSON(response,
 				http.StatusBadRequest,
-				NewErrorList(NewError(DIGEST_INVALID, map[string]string{"digest": digest})))
+				NewErrorList(NewError(DIGEST_INVALID, map[string]string{"digest": digest.String()})))
 		} else if errors.Is(err, zerr.ErrRepoNotFound) {
 			WriteJSON(response, http.StatusNotFound, NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
 		} else if errors.Is(err, zerr.ErrBlobNotFound) {
-			WriteJSON(response, http.StatusNotFound, NewErrorList(NewError(BLOB_UNKNOWN, map[string]string{"digest": digest})))
+			WriteJSON(response, http.StatusNotFound, NewErrorList(NewError(BLOB_UNKNOWN,
+				map[string]string{"digest": digest.String()})))
 		} else {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			response.WriteHeader(http.StatusInternalServerError)
@@ -590,14 +595,15 @@ func (rh *RouteHandler) CheckBlob(response http.ResponseWriter, request *http.Re
 	}
 
 	if !ok {
-		WriteJSON(response, http.StatusNotFound, NewErrorList(NewError(BLOB_UNKNOWN, map[string]string{"digest": digest})))
+		WriteJSON(response, http.StatusNotFound, NewErrorList(NewError(BLOB_UNKNOWN,
+			map[string]string{"digest": digest.String()})))
 
 		return
 	}
 
 	response.Header().Set("Content-Length", fmt.Sprintf("%d", blen))
 	response.Header().Set("Accept-Ranges", "bytes")
-	response.Header().Set(constants.DistContentDigestKey, digest)
+	response.Header().Set(constants.DistContentDigestKey, digest.String())
 	response.WriteHeader(http.StatusOK)
 }
 
@@ -669,21 +675,24 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 
 	imgStore := rh.getImageStore(name)
 
-	digest, ok := vars["digest"]
-	if !ok || digest == "" {
+	digestStr, ok := vars["digest"]
+
+	if !ok || digestStr == "" {
 		response.WriteHeader(http.StatusNotFound)
 
 		return
 	}
 
-	mediaType := request.Header.Get("Accept")
+	digest := godigest.Digest(digestStr)
 
-	var err error
+	mediaType := request.Header.Get("Accept")
 
 	/* content range is supported for resumbale pulls */
 	partial := false
 
 	var from, to int64
+
+	var err error
 
 	contentRange := request.Header.Get("Range")
 
@@ -719,7 +728,7 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 		if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 			WriteJSON(response,
 				http.StatusBadRequest,
-				NewErrorList(NewError(DIGEST_INVALID, map[string]string{"digest": digest})))
+				NewErrorList(NewError(DIGEST_INVALID, map[string]string{"digest": digest.String()})))
 		} else if errors.Is(err, zerr.ErrRepoNotFound) {
 			WriteJSON(response,
 				http.StatusNotFound,
@@ -727,7 +736,7 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 		} else if errors.Is(err, zerr.ErrBlobNotFound) {
 			WriteJSON(response,
 				http.StatusNotFound,
-				NewErrorList(NewError(BLOB_UNKNOWN, map[string]string{"digest": digest})))
+				NewErrorList(NewError(BLOB_UNKNOWN, map[string]string{"digest": digest.String()})))
 		} else {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			response.WriteHeader(http.StatusInternalServerError)
@@ -746,7 +755,7 @@ func (rh *RouteHandler) GetBlob(response http.ResponseWriter, request *http.Requ
 
 		response.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", from, from+blen-1, bsize))
 	} else {
-		response.Header().Set(constants.DistContentDigestKey, digest)
+		response.Header().Set(constants.DistContentDigestKey, digest.String())
 	}
 
 	// return the blob data
@@ -772,8 +781,10 @@ func (rh *RouteHandler) DeleteBlob(response http.ResponseWriter, request *http.R
 		return
 	}
 
-	digest, ok := vars["digest"]
-	if !ok || digest == "" {
+	digestStr, ok := vars["digest"]
+	digest, err := godigest.Parse(digestStr)
+
+	if !ok || digestStr == "" || err != nil {
 		response.WriteHeader(http.StatusNotFound)
 
 		return
@@ -781,12 +792,12 @@ func (rh *RouteHandler) DeleteBlob(response http.ResponseWriter, request *http.R
 
 	imgStore := rh.getImageStore(name)
 
-	err := imgStore.DeleteBlob(name, digest)
+	err = imgStore.DeleteBlob(name, digest)
 	if err != nil {
 		if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 			WriteJSON(response,
 				http.StatusBadRequest,
-				NewErrorList(NewError(DIGEST_INVALID, map[string]string{"digest": digest})))
+				NewErrorList(NewError(DIGEST_INVALID, map[string]string{"digest": digest.String()})))
 		} else if errors.Is(err, zerr.ErrRepoNotFound) {
 			WriteJSON(response,
 				http.StatusNotFound,
@@ -794,7 +805,7 @@ func (rh *RouteHandler) DeleteBlob(response http.ResponseWriter, request *http.R
 		} else if errors.Is(err, zerr.ErrBlobNotFound) {
 			WriteJSON(response,
 				http.StatusNotFound,
-				NewErrorList(NewError(BLOB_UNKNOWN, map[string]string{"digest": digest})))
+				NewErrorList(NewError(BLOB_UNKNOWN, map[string]string{".String()": digest.String()})))
 		} else {
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
 			response.WriteHeader(http.StatusInternalServerError)
@@ -838,10 +849,11 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 			return
 		}
 
+		mountDigest := godigest.Digest(mountDigests[0])
 		// zot does not support cross mounting directly and do a workaround creating using hard link.
 		// check blob looks for actual path (name+mountDigests[0]) first then look for cache and
 		// if found in cache, will do hard link and if fails we will start new upload.
-		_, _, err := imgStore.CheckBlob(name, mountDigests[0])
+		_, _, err := imgStore.CheckBlob(name, mountDigest)
 		if err != nil {
 			upload, err := imgStore.NewBlobUpload(name)
 			if err != nil {
@@ -862,7 +874,7 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 			return
 		}
 
-		response.Header().Set("Location", getBlobUploadLocation(request.URL, name, mountDigests[0]))
+		response.Header().Set("Location", getBlobUploadLocation(request.URL, name, mountDigest))
 		response.WriteHeader(http.StatusCreated)
 
 		return
@@ -883,8 +895,6 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 			return
 		}
 
-		digest := digests[0]
-
 		if contentType := request.Header.Get("Content-Type"); contentType != constants.BinaryMediaType {
 			rh.c.Log.Warn().Str("actual", contentType).Str("expected", constants.BinaryMediaType).Msg("invalid media type")
 			response.WriteHeader(http.StatusUnsupportedMediaType)
@@ -894,15 +904,17 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 
 		rh.c.Log.Info().Int64("r.ContentLength", request.ContentLength).Msg("DEBUG")
 
+		digestStr := digests[0]
+
+		digest := godigest.Digest(digestStr)
+
 		var contentLength int64
 
-		var err error
-
-		contentLength, err = strconv.ParseInt(request.Header.Get("Content-Length"), 10, 64)
+		contentLength, err := strconv.ParseInt(request.Header.Get("Content-Length"), 10, 64)
 		if err != nil || contentLength <= 0 {
 			rh.c.Log.Warn().Str("actual", request.Header.Get("Content-Length")).Msg("invalid content length")
 			WriteJSON(response, http.StatusBadRequest,
-				NewErrorList(NewError(BLOB_UPLOAD_INVALID, map[string]string{"digest": digest})))
+				NewErrorList(NewError(BLOB_UPLOAD_INVALID, map[string]string{"digest": digest.String()})))
 
 			return
 		}
@@ -1139,7 +1151,12 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 		return
 	}
 
-	digest := digests[0]
+	digest, err := godigest.Parse(digests[0])
+	if err != nil {
+		response.WriteHeader(http.StatusBadRequest)
+
+		return
+	}
 
 	rh.c.Log.Info().Int64("r.ContentLength", request.ContentLength).Msg("DEBUG")
 
@@ -1212,7 +1229,7 @@ finish:
 	if err := imgStore.FinishBlobUpload(name, sessionID, request.Body, digest); err != nil {
 		if errors.Is(err, zerr.ErrBadBlobDigest) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 			WriteJSON(response, http.StatusBadRequest,
-				NewErrorList(NewError(DIGEST_INVALID, map[string]string{"digest": digest})))
+				NewErrorList(NewError(DIGEST_INVALID, map[string]string{"digest": digest.String()})))
 		} else if errors.Is(err, zerr.ErrBadUploadRange) {
 			WriteJSON(response, http.StatusBadRequest,
 				NewErrorList(NewError(BLOB_UPLOAD_INVALID, map[string]string{"session_id": sessionID})))
@@ -1237,7 +1254,7 @@ finish:
 
 	response.Header().Set("Location", getBlobUploadLocation(request.URL, name, digest))
 	response.Header().Set("Content-Length", "0")
-	response.Header().Set(constants.DistContentDigestKey, digest)
+	response.Header().Set(constants.DistContentDigestKey, digest.String())
 	response.WriteHeader(http.StatusCreated)
 }
 
@@ -1443,7 +1460,7 @@ func (rh *RouteHandler) getImageStore(name string) storage.ImageStore {
 // will sync on demand if an image is not found, in case sync extensions is enabled.
 func getImageManifest(routeHandler *RouteHandler, imgStore storage.ImageStore, name,
 	reference string,
-) ([]byte, string, string, error) {
+) ([]byte, godigest.Digest, string, error) {
 	content, digest, mediaType, err := imgStore.GetImageManifest(name, reference)
 	if err != nil {
 		if errors.Is(err, zerr.ErrRepoNotFound) || errors.Is(err, zerr.ErrManifestNotFound) {
@@ -1471,7 +1488,7 @@ func getImageManifest(routeHandler *RouteHandler, imgStore storage.ImageStore, n
 }
 
 // will sync referrers on demand if they are not found, in case sync extensions is enabled.
-func getReferrers(routeHandler *RouteHandler, imgStore storage.ImageStore, name, digest,
+func getReferrers(routeHandler *RouteHandler, imgStore storage.ImageStore, name string, digest godigest.Digest,
 	artifactType string,
 ) ([]artifactspec.Descriptor, error) {
 	refs, err := imgStore.GetReferrers(name, digest, artifactType)
@@ -1480,12 +1497,12 @@ func getReferrers(routeHandler *RouteHandler, imgStore storage.ImageStore, name,
 			routeHandler.c.Config.Extensions.Sync != nil &&
 			*routeHandler.c.Config.Extensions.Sync.Enable {
 			routeHandler.c.Log.Info().Msgf("signature not found, trying to get signature %s:%s by syncing on demand",
-				name, digest)
+				name, digest.String())
 
 			errSync := ext.SyncOneImage(routeHandler.c.Config, routeHandler.c.StoreController,
-				name, digest, true, routeHandler.c.Log)
+				name, digest.String(), true, routeHandler.c.Log)
 			if errSync != nil {
-				routeHandler.c.Log.Error().Err(err).Str("name", name).Str("digest", digest).Msg("unable to get references")
+				routeHandler.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).Msg("unable to get references")
 
 				return []artifactspec.Descriptor{}, err
 			}
@@ -1523,8 +1540,10 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 		return
 	}
 
-	digest, ok := vars["digest"]
-	if !ok || digest == "" {
+	digestStr, ok := vars["digest"]
+	digest, err := godigest.Parse(digestStr)
+
+	if !ok || digestStr == "" || err != nil {
 		response.WriteHeader(http.StatusBadRequest)
 
 		return
@@ -1549,11 +1568,11 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 
 	imgStore := rh.getImageStore(name)
 
-	rh.c.Log.Info().Str("digest", digest).Str("artifactType", artifactType).Msg("getting manifest")
+	rh.c.Log.Info().Str("digest", digest.String()).Str("artifactType", artifactType).Msg("getting manifest")
 
 	refs, err := getReferrers(rh, imgStore, name, digest, artifactType) //nolint:contextcheck
 	if err != nil {
-		rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest).Msg("unable to get references")
+		rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).Msg("unable to get references")
 		response.WriteHeader(http.StatusBadRequest)
 
 		return
@@ -1578,7 +1597,7 @@ func getBlobUploadSessionLocation(url *url.URL, sessionID string) string {
 
 // GetBlobUploadLocation returns actual blob location on registry
 // e.g /v2/<name>/blobs/<digest>.
-func getBlobUploadLocation(url *url.URL, name, digest string) string {
+func getBlobUploadLocation(url *url.URL, name string, digest godigest.Digest) string {
 	url.RawQuery = ""
 
 	// we are relying on request URL to set location and
@@ -1586,7 +1605,7 @@ func getBlobUploadLocation(url *url.URL, name, digest string) string {
 	// getBlobUploadLocation will be called only when blob upload is completed and
 	// location should be set as blob url <v2/<name>/blobs/<digest>>.
 	if strings.Contains(url.Path, "uploads") {
-		url.Path = path.Join(constants.RoutePrefix, name, constants.Blobs, digest)
+		url.Path = path.Join(constants.RoutePrefix, name, constants.Blobs, digest.String())
 	}
 
 	return url.String()

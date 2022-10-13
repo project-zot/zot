@@ -16,6 +16,7 @@ import (
 	"github.com/dustin/go-humanize"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/olekukonko/tablewriter"
+	godigest "github.com/opencontainers/go-digest"
 	"gopkg.in/yaml.v2"
 
 	zotErrors "zotregistry.io/zot/errors"
@@ -74,6 +75,7 @@ func (service searchService) getDerivedImageListGQL(ctx context.Context, config 
 				Tag,
 				Digest,
 				ConfigDigest,
+				Layers {Size Digest},
 				LastUpdated,
 				IsSigned,
 				Size
@@ -100,6 +102,7 @@ func (service searchService) getBaseImageListGQL(ctx context.Context, config sea
 				Tag,
 				Digest,
 				ConfigDigest,
+				Layers {Size Digest},
 				LastUpdated,
 				IsSigned,
 				Size
@@ -156,7 +159,7 @@ func (service searchService) getImagesByCveIDGQL(ctx context.Context, config sea
 	password, cveID string,
 ) (*imagesForCve, error) {
 	query := fmt.Sprintf(`{ImageListForCVE(id: "%s") {`+`
-								RepoName Tag Digest Size}
+								RepoName Tag Digest ConfigDigest Layers {Size Digest} Size}
 						  }`,
 		cveID)
 	result := &imagesForCve{}
@@ -193,7 +196,7 @@ func (service searchService) getTagsForCVEGQL(ctx context.Context, config search
 	username, password, imageName, cveID string,
 ) (*imagesForCve, error) {
 	query := fmt.Sprintf(`{ImageListForCVE(id: "%s") {`+`
-							RepoName Tag Digest Size}
+							RepoName Tag Digest ConfigDigest Layers {Size Digest} Size}
 						}`,
 		cveID)
 	result := &imagesForCve{}
@@ -211,7 +214,7 @@ func (service searchService) getFixedTagsForCVEGQL(ctx context.Context, config s
 	username, password, imageName, cveID string,
 ) (*fixedTags, error) {
 	query := fmt.Sprintf(`{ImageListWithCVEFixed(id: "%s", image: "%s") {`+`
-							RepoName Tag Digest Size}
+							RepoName Tag Digest ConfigDigest Layers {Size Digest} Size}
 	  					}`,
 		cveID, imageName)
 
@@ -334,7 +337,7 @@ func (service searchService) getImagesByCveID(ctx context.Context, config search
 	defer close(rch)
 
 	query := fmt.Sprintf(`{ImageListForCVE(id: "%s") {`+`
-								RepoName Tag Digest Size}
+								RepoName Tag Digest ConfigDigest Layers {Size Digest} Size}
 						  }`,
 		cvid)
 	result := &imagesForCve{}
@@ -551,7 +554,7 @@ func (service searchService) getFixedTagsForCVE(ctx context.Context, config sear
 	defer close(rch)
 
 	query := fmt.Sprintf(`{ImageListWithCVEFixed (id: "%s", image: "%s") {`+`
-							RepoName Tag Digest Size}
+							RepoName Tag Digest ConfigDigest Layers {Size Digest} Size}
 							  }`,
 		cvid, imageName)
 	result := &fixedTags{}
@@ -924,21 +927,32 @@ func (img imageStruct) stringPlainText(maxImgNameLen, maxTagLen int) (string, er
 
 	imageName = img.RepoName
 	tagName = img.Tag
-	digest := ellipsize(img.Digest, digestWidth, "")
+
+	manifestDigest, err := godigest.Parse(img.Digest)
+	if err != nil {
+		return "", fmt.Errorf("error parsing manifest digest %s: %w", img.Digest, err)
+	}
+
+	configDigest, err := godigest.Parse(img.ConfigDigest)
+	if err != nil {
+		return "", fmt.Errorf("error parsing config digest %s: %w", img.ConfigDigest, err)
+	}
+
+	minifestDigestStr := ellipsize(manifestDigest.Encoded(), digestWidth, "")
+	configDigestStr := ellipsize(configDigest.Encoded(), configWidth, "")
 	imgSize, _ := strconv.ParseUint(img.Size, 10, 64)
 	size := ellipsize(strings.ReplaceAll(humanize.Bytes(imgSize), " ", ""), sizeWidth, ellipsis)
-	config := ellipsize(img.ConfigDigest, configWidth, "")
 	isSigned := img.IsSigned
 	row := make([]string, 7) //nolint:gomnd
 
 	row[colImageNameIndex] = imageName
 	row[colTagIndex] = tagName
-	row[colDigestIndex] = digest
+	row[colDigestIndex] = minifestDigestStr
 	row[colSizeIndex] = size
 	row[colIsSignedIndex] = strconv.FormatBool(isSigned)
 
 	if img.verbose {
-		row[colConfigIndex] = config
+		row[colConfigIndex] = configDigestStr
 		row[colLayersIndex] = ""
 	}
 
@@ -948,7 +962,13 @@ func (img imageStruct) stringPlainText(maxImgNameLen, maxTagLen int) (string, er
 		for _, entry := range img.Layers {
 			layerSize := entry.Size
 			size := ellipsize(strings.ReplaceAll(humanize.Bytes(layerSize), " ", ""), sizeWidth, ellipsis)
-			layerDigest := ellipsize(entry.Digest, digestWidth, "")
+
+			layerDigest, err := godigest.Parse(entry.Digest)
+			if err != nil {
+				return "", fmt.Errorf("error parsing layer digest %s: %w", entry.Digest, err)
+			}
+
+			layerDigestStr := ellipsize(layerDigest.Encoded(), digestWidth, "")
 
 			layerRow := make([]string, 7) //nolint:gomnd
 			layerRow[colImageNameIndex] = ""
@@ -956,7 +976,7 @@ func (img imageStruct) stringPlainText(maxImgNameLen, maxTagLen int) (string, er
 			layerRow[colDigestIndex] = ""
 			layerRow[colSizeIndex] = size
 			layerRow[colConfigIndex] = ""
-			layerRow[colLayersIndex] = layerDigest
+			layerRow[colLayersIndex] = layerDigestStr
 
 			table.Append(layerRow)
 		}

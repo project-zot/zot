@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/opencontainers/go-digest"
+	godigest "github.com/opencontainers/go-digest"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 
@@ -124,7 +124,7 @@ func TestScrubExtension(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
-		var manifestDigest digest.Digest
+		var manifestDigest godigest.Digest
 		manifestDigest, _, _ = test.GetOciLayoutDigests("../../../test/data/zot-test")
 
 		err = os.Remove(path.Join(dir, repoName, "blobs/sha256", manifestDigest.Encoded()))
@@ -276,7 +276,7 @@ func TestRunScrubRepo(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
-		var manifestDigest digest.Digest
+		var manifestDigest godigest.Digest
 		manifestDigest, _, _ = test.GetOciLayoutDigests("../../../test/data/zot-test")
 
 		err = os.Remove(path.Join(dir, repoName, "blobs/sha256", manifestDigest.Encoded()))

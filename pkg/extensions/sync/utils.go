@@ -20,6 +20,7 @@ import (
 	"github.com/containers/image/v5/oci/layout"
 	"github.com/containers/image/v5/types"
 	guuid "github.com/gofrs/uuid"
+	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/sigstore/cosign/pkg/oci/static"
@@ -374,7 +375,7 @@ func pushSyncedLocalImage(localRepo, tag, localCachePath string,
 	}
 
 	for _, manifest := range indexManifest.Manifests {
-		manifestBuf, err := cacheImageStore.GetBlobContent(localRepo, manifest.Digest.String())
+		manifestBuf, err := cacheImageStore.GetBlobContent(localRepo, manifest.Digest)
 		if err != nil {
 			log.Error().Str("errorType", TypeOf(err)).
 				Err(err).Str("dir", path.Join(cacheImageStore.RootDir(), localRepo)).Str("digest", manifest.Digest.String()).
@@ -423,14 +424,14 @@ func copyManifest(localRepo string, manifestContent []byte, reference string,
 	}
 
 	for _, blob := range manifest.Layers {
-		err = copyBlob(localRepo, blob.Digest.String(), blob.MediaType,
+		err = copyBlob(localRepo, blob.Digest, blob.MediaType,
 			cacheImageStore, imageStore, log)
 		if err != nil {
 			return err
 		}
 	}
 
-	err = copyBlob(localRepo, manifest.Config.Digest.String(), manifest.Config.MediaType,
+	err = copyBlob(localRepo, manifest.Config.Digest, manifest.Config.MediaType,
 		cacheImageStore, imageStore, log)
 	if err != nil {
 		return err
@@ -449,7 +450,7 @@ func copyManifest(localRepo string, manifestContent []byte, reference string,
 }
 
 // Copy a blob from one image store to another image store.
-func copyBlob(localRepo, blobDigest, blobMediaType string,
+func copyBlob(localRepo string, blobDigest godigest.Digest, blobMediaType string,
 	souceImageStore, destinationImageStore storage.ImageStore, log log.Logger,
 ) error {
 	if found, _, _ := destinationImageStore.CheckBlob(localRepo, blobDigest); found {
@@ -461,7 +462,7 @@ func copyBlob(localRepo, blobDigest, blobMediaType string,
 	if err != nil {
 		log.Error().Str("errorType", TypeOf(err)).Err(err).
 			Str("dir", path.Join(souceImageStore.RootDir(), localRepo)).
-			Str("blob digest", blobDigest).Str("media type", blobMediaType).
+			Str("blob digest", blobDigest.String()).Str("media type", blobMediaType).
 			Msg("couldn't read blob")
 
 		return err
@@ -471,7 +472,7 @@ func copyBlob(localRepo, blobDigest, blobMediaType string,
 	_, _, err = destinationImageStore.FullBlobUpload(localRepo, blobReadCloser, blobDigest)
 	if err != nil {
 		log.Error().Str("errorType", TypeOf(err)).Err(err).
-			Str("blob digest", blobDigest).Str("media type", blobMediaType).
+			Str("blob digest", blobDigest.String()).Str("media type", blobMediaType).
 			Msg("couldn't upload blob")
 	}
 
@@ -554,7 +555,8 @@ func getLocalCachePath(imageStore storage.ImageStore, repo string) (string, erro
 }
 
 // canSkipImage returns whether or not we already synced this image.
-func canSkipImage(repo, tag, digest string, imageStore storage.ImageStore, log log.Logger) (bool, error) {
+func canSkipImage(repo, tag string, digest godigest.Digest, imageStore storage.ImageStore, log log.Logger,
+) (bool, error) {
 	// check image already synced
 	_, localImageManifestDigest, _, err := imageStore.GetImageManifest(repo, tag)
 	if err != nil {

@@ -31,12 +31,12 @@ func TestValidateManifest(t *testing.T) {
 		digest := godigest.FromBytes(content)
 		So(digest, ShouldNotBeNil)
 
-		_, blen, err := imgStore.FullBlobUpload("test", bytes.NewReader(content), digest.String())
+		_, blen, err := imgStore.FullBlobUpload("test", bytes.NewReader(content), digest)
 		So(err, ShouldBeNil)
 		So(blen, ShouldEqual, len(content))
 
 		cblob, cdigest := test.GetRandomImageConfig()
-		_, clen, err := imgStore.FullBlobUpload("test", bytes.NewReader(cblob), cdigest.String())
+		_, clen, err := imgStore.FullBlobUpload("test", bytes.NewReader(cblob), cdigest)
 		So(err, ShouldBeNil)
 		So(clen, ShouldEqual, len(cblob))
 

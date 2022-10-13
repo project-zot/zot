@@ -336,7 +336,7 @@ func syncRegistry(ctx context.Context, regCfg RegistryConfig,
 
 			tag := getTagFromRef(upstreamImageRef, log).Tag()
 
-			skipImage, err := canSkipImage(localRepo, tag, upstreamImageDigest.String(), imageStore, log)
+			skipImage, err := canSkipImage(localRepo, tag, upstreamImageDigest, imageStore, log)
 			if err != nil {
 				log.Error().Err(err).Msgf("couldn't check if the upstream image %s can be skipped",
 					upstreamImageRef.DockerReference())

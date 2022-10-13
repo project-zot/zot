@@ -4,7 +4,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/opencontainers/go-digest"
+	godigest "github.com/opencontainers/go-digest"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 
 	"zotregistry.io/zot/pkg/scheduler"
@@ -27,8 +27,8 @@ type ImageStore interface { //nolint:interfacebloat
 	GetRepositories() ([]string, error)
 	GetNextRepository(repo string) (string, error)
 	GetImageTags(repo string) ([]string, error)
-	GetImageManifest(repo, reference string) ([]byte, string, string, error)
-	PutImageManifest(repo, reference, mediaType string, body []byte) (string, error)
+	GetImageManifest(repo, reference string) ([]byte, godigest.Digest, string, error)
+	PutImageManifest(repo, reference, mediaType string, body []byte) (godigest.Digest, error)
 	DeleteImageManifest(repo, reference string) error
 	BlobUploadPath(repo, uuid string) string
 	NewBlobUpload(repo string) (string, error)
@@ -36,18 +36,19 @@ type ImageStore interface { //nolint:interfacebloat
 	PutBlobChunkStreamed(repo, uuid string, body io.Reader) (int64, error)
 	PutBlobChunk(repo, uuid string, from, to int64, body io.Reader) (int64, error)
 	BlobUploadInfo(repo, uuid string) (int64, error)
-	FinishBlobUpload(repo, uuid string, body io.Reader, digest string) error
-	FullBlobUpload(repo string, body io.Reader, digest string) (string, int64, error)
-	DedupeBlob(src string, dstDigest digest.Digest, dst string) error
+	FinishBlobUpload(repo, uuid string, body io.Reader, digest godigest.Digest) error
+	FullBlobUpload(repo string, body io.Reader, digest godigest.Digest) (string, int64, error)
+	DedupeBlob(src string, dstDigest godigest.Digest, dst string) error
 	DeleteBlobUpload(repo, uuid string) error
-	BlobPath(repo string, digest digest.Digest) string
-	CheckBlob(repo, digest string) (bool, int64, error)
-	GetBlob(repo, digest, mediaType string) (io.ReadCloser, int64, error)
-	GetBlobPartial(repo, digest, mediaType string, from, to int64) (io.ReadCloser, int64, int64, error)
-	DeleteBlob(repo, digest string) error
+	BlobPath(repo string, digest godigest.Digest) string
+	CheckBlob(repo string, digest godigest.Digest) (bool, int64, error)
+	GetBlob(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error)
+	GetBlobPartial(repo string, digest godigest.Digest, mediaType string, from, to int64,
+	) (io.ReadCloser, int64, int64, error)
+	DeleteBlob(repo string, digest godigest.Digest) error
 	GetIndexContent(repo string) ([]byte, error)
-	GetBlobContent(repo, digest string) ([]byte, error)
-	GetReferrers(repo, digest string, mediaType string) ([]artifactspec.Descriptor, error)
+	GetBlobContent(repo string, digest godigest.Digest) ([]byte, error)
+	GetReferrers(repo string, digest godigest.Digest, mediaType string) ([]artifactspec.Descriptor, error)
 	RunGCRepo(repo string) error
 	RunGCPeriodically(interval time.Duration, sch *scheduler.Scheduler)
 }

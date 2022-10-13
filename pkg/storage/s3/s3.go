@@ -306,7 +306,7 @@ func (is *ObjectStorage) GetImageTags(repo string) ([]string, error) {
 }
 
 // GetImageManifest returns the image manifest of an image in the specific repository.
-func (is *ObjectStorage) GetImageManifest(repo, reference string) ([]byte, string, string, error) {
+func (is *ObjectStorage) GetImageManifest(repo, reference string) ([]byte, godigest.Digest, string, error) {
 	dir := path.Join(is.rootDir, repo)
 	if fi, err := is.store.Stat(context.Background(), dir); err != nil || !fi.IsDir() {
 		return nil, "", "", zerr.ErrRepoNotFound
@@ -322,7 +322,7 @@ func (is *ObjectStorage) GetImageManifest(repo, reference string) ([]byte, strin
 		return nil, "", "", zerr.ErrManifestNotFound
 	}
 
-	buf, err := is.GetBlobContent(repo, manifestDesc.Digest.String())
+	buf, err := is.GetBlobContent(repo, manifestDesc.Digest)
 	if err != nil {
 		if errors.Is(err, zerr.ErrBlobNotFound) {
 			return nil, "", "", zerr.ErrManifestNotFound
@@ -340,13 +340,13 @@ func (is *ObjectStorage) GetImageManifest(repo, reference string) ([]byte, strin
 
 	monitoring.IncDownloadCounter(is.metrics, repo)
 
-	return buf, manifestDesc.Digest.String(), manifestDesc.MediaType, nil
+	return buf, manifestDesc.Digest, manifestDesc.MediaType, nil
 }
 
 // PutImageManifest adds an image manifest to the repository.
 func (is *ObjectStorage) PutImageManifest(repo, reference, mediaType string, //nolint: gocyclo
-	body []byte) (string, error,
-) {
+	body []byte,
+) (godigest.Digest, error) {
 	if err := is.InitRepo(repo); err != nil {
 		is.log.Debug().Err(err).Msg("init repo")
 
@@ -363,7 +363,7 @@ func (is *ObjectStorage) PutImageManifest(repo, reference, mediaType string, //n
 	mDigest, err := storage.GetAndValidateRequestDigest(body, reference, is.log)
 	if err != nil {
 		if errors.Is(err, zerr.ErrBadManifest) {
-			return mDigest.String(), err
+			return mDigest, err
 		}
 
 		refIsDigest = false
@@ -389,7 +389,7 @@ func (is *ObjectStorage) PutImageManifest(repo, reference, mediaType string, //n
 	}
 
 	if !updateIndex {
-		return desc.Digest.String(), nil
+		return desc.Digest, nil
 	}
 
 	var lockLatency time.Time
@@ -446,7 +446,7 @@ func (is *ObjectStorage) PutImageManifest(repo, reference, mediaType string, //n
 	monitoring.SetStorageUsage(is.metrics, is.rootDir, repo)
 	monitoring.IncUploadCounter(is.metrics, repo)
 
-	return desc.Digest.String(), nil
+	return desc.Digest, nil
 }
 
 // DeleteImageManifest deletes the image manifest from the repository.
@@ -675,12 +675,9 @@ func (is *ObjectStorage) BlobUploadInfo(repo, uuid string) (int64, error) {
 }
 
 // FinishBlobUpload finalizes the blob upload and moves blob the repository.
-func (is *ObjectStorage) FinishBlobUpload(repo, uuid string, body io.Reader, digest string) error {
-	dstDigest, err := godigest.Parse(digest)
-	if err != nil {
-		is.log.Error().Err(err).Str("digest", digest).Msg("failed to parse digest")
-
-		return zerr.ErrBadBlobDigest
+func (is *ObjectStorage) FinishBlobUpload(repo, uuid string, body io.Reader, dstDigest godigest.Digest) error {
+	if err := dstDigest.Validate(); err != nil {
+		return err
 	}
 
 	src := is.BlobUploadPath(repo, uuid)
@@ -755,16 +752,13 @@ func (is *ObjectStorage) FinishBlobUpload(repo, uuid string, body io.Reader, dig
 }
 
 // FullBlobUpload handles a full blob upload, and no partial session is created.
-func (is *ObjectStorage) FullBlobUpload(repo string, body io.Reader, digest string) (string, int64, error) {
-	if err := is.InitRepo(repo); err != nil {
+func (is *ObjectStorage) FullBlobUpload(repo string, body io.Reader, dstDigest godigest.Digest) (string, int64, error) {
+	if err := dstDigest.Validate(); err != nil {
 		return "", -1, err
 	}
 
-	dstDigest, err := godigest.Parse(digest)
-	if err != nil {
-		is.log.Error().Err(err).Str("digest", digest).Msg("failed to parse digest")
-
-		return "", -1, zerr.ErrBadBlobDigest
+	if err := is.InitRepo(repo); err != nil {
+		return "", -1, err
 	}
 
 	u, err := guuid.NewV4()
@@ -836,7 +830,7 @@ func (is *ObjectStorage) DedupeBlob(src string, dstDigest godigest.Digest, dst s
 retry:
 	is.log.Debug().Str("src", src).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe: enter")
 
-	dstRecord, err := is.cache.GetBlob(dstDigest.String())
+	dstRecord, err := is.cache.GetBlob(dstDigest)
 	if err := test.Error(err); err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
 		is.log.Error().Err(err).Str("blobPath", dst).Msg("dedupe: unable to lookup blob record")
 
@@ -845,7 +839,7 @@ retry:
 
 	if dstRecord == "" {
 		// cache record doesn't exist, so first disk and cache entry for this digest
-		if err := is.cache.PutBlob(dstDigest.String(), dst); err != nil {
+		if err := is.cache.PutBlob(dstDigest, dst); err != nil {
 			is.log.Error().Err(err).Str("blobPath", dst).Msg("dedupe: unable to insert blob record")
 
 			return err
@@ -866,7 +860,7 @@ retry:
 		if err != nil {
 			is.log.Error().Err(err).Str("blobPath", dstRecord).Msg("dedupe: unable to stat")
 			// the actual blob on disk may have been removed by GC, so sync the cache
-			err := is.cache.DeleteBlob(dstDigest.String(), dstRecord)
+			err := is.cache.DeleteBlob(dstDigest, dstRecord)
 			if err = test.Error(err); err != nil {
 				//nolint:lll
 				is.log.Error().Err(err).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe: unable to delete blob record")
@@ -894,7 +888,7 @@ retry:
 				return err
 			}
 
-			if err := is.cache.PutBlob(dstDigest.String(), dst); err != nil {
+			if err := is.cache.PutBlob(dstDigest, dst); err != nil {
 				is.log.Error().Err(err).Str("blobPath", dst).Msg("dedupe: unable to insert blob record")
 
 				return err
@@ -951,17 +945,14 @@ func (is *ObjectStorage) BlobPath(repo string, digest godigest.Digest) string {
 }
 
 // CheckBlob verifies a blob and returns true if the blob is correct.
-func (is *ObjectStorage) CheckBlob(repo, digest string) (bool, int64, error) {
+func (is *ObjectStorage) CheckBlob(repo string, digest godigest.Digest) (bool, int64, error) {
 	var lockLatency time.Time
 
-	dgst, err := godigest.Parse(digest)
-	if err != nil {
-		is.log.Error().Err(err).Str("digest", digest).Msg("failed to parse digest")
-
-		return false, -1, zerr.ErrBadBlobDigest
+	if err := digest.Validate(); err != nil {
+		return false, -1, err
 	}
 
-	blobPath := is.BlobPath(repo, dgst)
+	blobPath := is.BlobPath(repo, digest)
 
 	if is.dedupe && is.cache != nil {
 		is.Lock(&lockLatency)
@@ -982,12 +973,11 @@ func (is *ObjectStorage) CheckBlob(repo, digest string) (bool, int64, error) {
 	// Check blobs in cache
 	dstRecord, err := is.checkCacheBlob(digest)
 	if err != nil {
-		is.log.Error().Err(err).Str("digest", digest).Msg("cache: not found")
+		is.log.Error().Err(err).Str("digest", digest.String()).Msg("cache: not found")
 
 		return false, -1, zerr.ErrBlobNotFound
 	}
 
-	// If found copy to location
 	blobSize, err := is.copyBlob(repo, blobPath, dstRecord)
 	if err != nil {
 		return false, -1, zerr.ErrBlobNotFound
@@ -1003,7 +993,11 @@ func (is *ObjectStorage) CheckBlob(repo, digest string) (bool, int64, error) {
 	return true, blobSize, nil
 }
 
-func (is *ObjectStorage) checkCacheBlob(digest string) (string, error) {
+func (is *ObjectStorage) checkCacheBlob(digest godigest.Digest) (string, error) {
+	if err := digest.Validate(); err != nil {
+		return "", err
+	}
+
 	if is.cache == nil {
 		return "", zerr.ErrBlobNotFound
 	}
@@ -1018,7 +1012,8 @@ func (is *ObjectStorage) checkCacheBlob(digest string) (string, error) {
 
 		// the actual blob on disk may have been removed by GC, so sync the cache
 		if err := is.cache.DeleteBlob(digest, dstRecord); err != nil {
-			is.log.Error().Err(err).Str("digest", digest).Str("blobPath", dstRecord).Msg("unable to remove blob path from cache")
+			is.log.Error().Err(err).Str("digest", digest.String()).Str("blobPath", dstRecord).
+				Msg("unable to remove blob path from cache")
 
 			return "", err
 		}
@@ -1026,7 +1021,7 @@ func (is *ObjectStorage) checkCacheBlob(digest string) (string, error) {
 		return "", zerr.ErrBlobNotFound
 	}
 
-	is.log.Debug().Str("digest", digest).Str("dstRecord", dstRecord).Msg("cache: found dedupe record")
+	is.log.Debug().Str("digest", digest.String()).Str("dstRecord", dstRecord).Msg("cache: found dedupe record")
 
 	return dstRecord, nil
 }
@@ -1073,18 +1068,15 @@ func (bs *blobStream) Close() error {
 
 // GetBlobPartial returns a partial stream to read the blob.
 // blob selector instead of directly downloading the blob.
-func (is *ObjectStorage) GetBlobPartial(repo, digest, mediaType string, from, to int64,
+func (is *ObjectStorage) GetBlobPartial(repo string, digest godigest.Digest, mediaType string, from, to int64,
 ) (io.ReadCloser, int64, int64, error) {
 	var lockLatency time.Time
 
-	dgst, err := godigest.Parse(digest)
-	if err != nil {
-		is.log.Error().Err(err).Str("digest", digest).Msg("failed to parse digest")
-
-		return nil, -1, -1, zerr.ErrBadBlobDigest
+	if err := digest.Validate(); err != nil {
+		return nil, -1, -1, err
 	}
 
-	blobPath := is.BlobPath(repo, dgst)
+	blobPath := is.BlobPath(repo, digest)
 
 	is.RLock(&lockLatency)
 	defer is.RUnlock(&lockLatency)
@@ -1123,7 +1115,7 @@ func (is *ObjectStorage) GetBlobPartial(repo, digest, mediaType string, from, to
 		// Check blobs in cache
 		dstRecord, err := is.checkCacheBlob(digest)
 		if err != nil {
-			is.log.Error().Err(err).Str("digest", digest).Msg("cache: not found")
+			is.log.Error().Err(err).Str("digest", digest.String()).Msg("cache: not found")
 
 			return nil, -1, -1, zerr.ErrBlobNotFound
 		}
@@ -1164,17 +1156,14 @@ func (is *ObjectStorage) GetBlobPartial(repo, digest, mediaType string, from, to
 
 // GetBlob returns a stream to read the blob.
 // blob selector instead of directly downloading the blob.
-func (is *ObjectStorage) GetBlob(repo, digest, mediaType string) (io.ReadCloser, int64, error) {
+func (is *ObjectStorage) GetBlob(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error) {
 	var lockLatency time.Time
 
-	dgst, err := godigest.Parse(digest)
-	if err != nil {
-		is.log.Error().Err(err).Str("digest", digest).Msg("failed to parse digest")
-
-		return nil, -1, zerr.ErrBadBlobDigest
+	if err := digest.Validate(); err != nil {
+		return nil, -1, err
 	}
 
-	blobPath := is.BlobPath(repo, dgst)
+	blobPath := is.BlobPath(repo, digest)
 
 	is.RLock(&lockLatency)
 	defer is.RUnlock(&lockLatency)
@@ -1198,7 +1187,7 @@ func (is *ObjectStorage) GetBlob(repo, digest, mediaType string) (io.ReadCloser,
 		// Check blobs in cache
 		dstRecord, err := is.checkCacheBlob(digest)
 		if err != nil {
-			is.log.Error().Err(err).Str("digest", digest).Msg("cache: not found")
+			is.log.Error().Err(err).Str("digest", digest.String()).Msg("cache: not found")
 
 			return nil, -1, zerr.ErrBlobNotFound
 		}
@@ -1224,7 +1213,7 @@ func (is *ObjectStorage) GetBlob(repo, digest, mediaType string) (io.ReadCloser,
 	return blobReadCloser, binfo.Size(), nil
 }
 
-func (is *ObjectStorage) GetBlobContent(repo, digest string) ([]byte, error) {
+func (is *ObjectStorage) GetBlobContent(repo string, digest godigest.Digest) ([]byte, error) {
 	blob, _, err := is.GetBlob(repo, digest, ispec.MediaTypeImageManifest)
 	if err != nil {
 		return []byte{}, err
@@ -1243,7 +1232,8 @@ func (is *ObjectStorage) GetBlobContent(repo, digest string) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (is *ObjectStorage) GetReferrers(repo, digest, mediaType string) ([]artifactspec.Descriptor, error) {
+func (is *ObjectStorage) GetReferrers(repo string, digest godigest.Digest, mediaType string,
+) ([]artifactspec.Descriptor, error) {
 	return nil, zerr.ErrMethodNotSupported
 }
 
@@ -1266,22 +1256,19 @@ func (is *ObjectStorage) GetIndexContent(repo string) ([]byte, error) {
 }
 
 // DeleteBlob removes the blob from the repository.
-func (is *ObjectStorage) DeleteBlob(repo, digest string) error {
+func (is *ObjectStorage) DeleteBlob(repo string, digest godigest.Digest) error {
 	var lockLatency time.Time
 
-	dgst, err := godigest.Parse(digest)
-	if err != nil {
-		is.log.Error().Err(err).Str("digest", digest).Msg("failed to parse digest")
-
-		return zerr.ErrBlobNotFound
+	if err := digest.Validate(); err != nil {
+		return err
 	}
 
-	blobPath := is.BlobPath(repo, dgst)
+	blobPath := is.BlobPath(repo, digest)
 
 	is.Lock(&lockLatency)
 	defer is.Unlock(&lockLatency)
 
-	_, err = is.store.Stat(context.Background(), blobPath)
+	_, err := is.store.Stat(context.Background(), blobPath)
 	if err != nil {
 		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
 
@@ -1298,7 +1285,8 @@ func (is *ObjectStorage) DeleteBlob(repo, digest string) error {
 
 		// remove cache entry and move blob contents to the next candidate if there is any
 		if err := is.cache.DeleteBlob(digest, blobPath); err != nil {
-			is.log.Error().Err(err).Str("digest", digest).Str("blobPath", blobPath).Msg("unable to remove blob path from cache")
+			is.log.Error().Err(err).Str("digest", digest.String()).Str("blobPath", blobPath).
+				Msg("unable to remove blob path from cache")
 
 			return err
 		}

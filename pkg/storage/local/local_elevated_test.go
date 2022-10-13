@@ -45,7 +45,7 @@ func TestElevatedPrivilegesInvalidDedupe(t *testing.T) {
 		blobDigest1 := strings.Split(digest.String(), ":")[1]
 		So(blobDigest1, ShouldNotBeEmpty)
 
-		err = imgStore.FinishBlobUpload("dedupe1", upload, buf, digest.String())
+		err = imgStore.FinishBlobUpload("dedupe1", upload, buf, digest)
 		So(err, ShouldBeNil)
 		So(blob, ShouldEqual, buflen)
 
@@ -81,7 +81,7 @@ func TestElevatedPrivilegesInvalidDedupe(t *testing.T) {
 			panic(err)
 		}
 
-		err = imgStore.FinishBlobUpload("dedupe2", upload, buf, digest.String())
+		err = imgStore.FinishBlobUpload("dedupe2", upload, buf, digest)
 		So(err, ShouldNotBeNil)
 		So(blob, ShouldEqual, buflen)
 
@@ -91,7 +91,7 @@ func TestElevatedPrivilegesInvalidDedupe(t *testing.T) {
 			panic(err)
 		}
 
-		err = imgStore.FinishBlobUpload("dedupe2", upload, buf, digest.String())
+		err = imgStore.FinishBlobUpload("dedupe2", upload, buf, digest)
 		So(err, ShouldBeNil)
 		So(blob, ShouldEqual, buflen)
 	})

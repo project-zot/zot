@@ -183,7 +183,7 @@ func TestSearchCVECmd(t *testing.T) {
 		So(err, ShouldBeNil)
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
-		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIGNED SIZE dummyImageName tag DigestsA false 123kB")
+		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIGNED SIZE dummyImageName tag 6e2f80bf false 123kB")
 		Convey("using shorthand", func() {
 			args := []string{"cvetest", "-I", "dummyImageName", "--cve-id", "aCVEID", "--url", "someURL"}
 			buff := bytes.NewBufferString("")
@@ -197,7 +197,7 @@ func TestSearchCVECmd(t *testing.T) {
 			So(err, ShouldBeNil)
 			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
-			So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIGNED SIZE dummyImageName tag DigestsA false 123kB")
+			So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIGNED SIZE dummyImageName tag 6e2f80bf false 123kB")
 		})
 	})
 
@@ -281,7 +281,7 @@ func TestSearchCVECmd(t *testing.T) {
 		err := cveCmd.Execute()
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
-		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIGNED SIZE anImage tag DigestsA false 123kB")
+		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIGNED SIZE anImage tag 6e2f80bf false 123kB")
 		So(err, ShouldBeNil)
 
 		Convey("invalid CVE ID", func() {
@@ -326,7 +326,7 @@ func TestSearchCVECmd(t *testing.T) {
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
 		So(err, ShouldBeNil)
-		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIGNED SIZE fixedImage tag DigestsA false 123kB")
+		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIGNED SIZE fixedImage tag 6e2f80bf false 123kB")
 
 		Convey("invalid image name", func() {
 			args := []string{"cvetest", "--cve-id", "aCVEID", "--image", "invalidImageName"}

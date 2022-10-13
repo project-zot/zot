@@ -374,14 +374,14 @@ func TestSyncInternal(t *testing.T) {
 
 		sig := newSignaturesCopier(resty.New(), *regURL, storage.StoreController{DefaultStore: imageStore}, log)
 
-		canBeSkipped, err = sig.canSkipNotarySignature(testImage, testImageManifestDigest, refs)
+		canBeSkipped, err = sig.canSkipNotarySignature(testImage, testImageManifestDigest.String(), refs)
 		So(err, ShouldBeNil)
 		So(canBeSkipped, ShouldBeFalse)
 
 		err = os.Chmod(path.Join(imageStore.RootDir(), testImage, "index.json"), 0o000)
 		So(err, ShouldBeNil)
 
-		canBeSkipped, err = sig.canSkipNotarySignature(testImage, testImageManifestDigest, refs)
+		canBeSkipped, err = sig.canSkipNotarySignature(testImage, testImageManifestDigest.String(), refs)
 		So(err, ShouldNotBeNil)
 		So(canBeSkipped, ShouldBeFalse)
 
@@ -392,7 +392,7 @@ func TestSyncInternal(t *testing.T) {
 		err = os.Chmod(path.Join(imageStore.RootDir(), testImage, "index.json"), 0o755)
 		So(err, ShouldBeNil)
 
-		canBeSkipped, err = sig.canSkipCosignSignature(testImage, testImageManifestDigest, &cosignManifest)
+		canBeSkipped, err = sig.canSkipCosignSignature(testImage, testImageManifestDigest.String(), &cosignManifest)
 		So(err, ShouldBeNil)
 		So(canBeSkipped, ShouldBeFalse)
 	})
@@ -480,7 +480,7 @@ func TestSyncInternal(t *testing.T) {
 
 				for _, layer := range layers {
 					// upload layer
-					_, _, err := testImageStore.FullBlobUpload(repo, bytes.NewReader(layer), godigest.FromBytes(layer).String())
+					_, _, err := testImageStore.FullBlobUpload(repo, bytes.NewReader(layer), godigest.FromBytes(layer))
 					So(err, ShouldBeNil)
 				}
 
@@ -489,7 +489,7 @@ func TestSyncInternal(t *testing.T) {
 
 				configDigest := godigest.FromBytes(configContent)
 
-				_, _, err = testImageStore.FullBlobUpload(repo, bytes.NewReader(configContent), configDigest.String())
+				_, _, err = testImageStore.FullBlobUpload(repo, bytes.NewReader(configContent), configDigest)
 				So(err, ShouldBeNil)
 
 				manifestContent, err := json.Marshal(manifest)
@@ -612,7 +612,7 @@ func TestSyncInternal(t *testing.T) {
 			}
 
 			if err := os.Chmod(path.Join(testRootDir, testImage, "blobs", "sha256",
-				manifest.Layers[0].Digest.Hex()), 0o000); err != nil {
+				manifest.Layers[0].Digest.Encoded()), 0o000); err != nil {
 				panic(err)
 			}
 
@@ -620,12 +620,12 @@ func TestSyncInternal(t *testing.T) {
 			So(err, ShouldNotBeNil)
 
 			if err := os.Chmod(path.Join(testRootDir, testImage, "blobs", "sha256",
-				manifest.Layers[0].Digest.Hex()), 0o755); err != nil {
+				manifest.Layers[0].Digest.Encoded()), 0o755); err != nil {
 				panic(err)
 			}
 
 			cachedManifestConfigPath := path.Join(imageStore.RootDir(), testImage, SyncBlobUploadDir,
-				testImage, "blobs", "sha256", manifest.Config.Digest.Hex())
+				testImage, "blobs", "sha256", manifest.Config.Digest.Encoded())
 			if err := os.Chmod(cachedManifestConfigPath, 0o000); err != nil {
 				panic(err)
 			}

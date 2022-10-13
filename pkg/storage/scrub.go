@@ -143,7 +143,7 @@ func checkIntegrity(ctx context.Context, imageName, tagName string, oci casext.E
 			}
 
 			// check layer
-			layerPath := path.Join(dir, "blobs", layer.Digest.Algorithm().String(), layer.Digest.Hex())
+			layerPath := path.Join(dir, "blobs", layer.Digest.Algorithm().String(), layer.Digest.Encoded())
 
 			_, err = os.Stat(layerPath)
 			if err != nil {

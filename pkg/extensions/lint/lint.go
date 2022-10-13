@@ -39,7 +39,7 @@ func (linter *Linter) CheckMandatoryAnnotations(repo string, manifestDigest godi
 
 	mandatoryAnnotationsList := linter.config.MandatoryAnnotations
 
-	content, err := imgStore.GetBlobContent(repo, string(manifestDigest))
+	content, err := imgStore.GetBlobContent(repo, manifestDigest)
 	if err != nil {
 		linter.log.Error().Err(err).Msg("linter: unable to get image manifest")
 
@@ -74,16 +74,16 @@ func (linter *Linter) CheckMandatoryAnnotations(repo string, manifestDigest godi
 	// if there are mandatory annotations missing in the manifest, get config and check these annotations too
 	configDigest := manifest.Config.Digest
 
-	content, err = imgStore.GetBlobContent(repo, string(configDigest))
+	content, err = imgStore.GetBlobContent(repo, configDigest)
 	if err != nil {
-		linter.log.Error().Err(err).Msg("linter: couldn't get config JSON " + string(configDigest))
+		linter.log.Error().Err(err).Msg("linter: couldn't get config JSON " + configDigest.String())
 
 		return false, err
 	}
 
 	var imageConfig ispec.Image
 	if err := json.Unmarshal(content, &imageConfig); err != nil {
-		linter.log.Error().Err(err).Msg("linter: couldn't unmarshal config JSON " + string(configDigest))
+		linter.log.Error().Err(err).Msg("linter: couldn't unmarshal config JSON " + configDigest.String())
 
 		return false, err
 	}
