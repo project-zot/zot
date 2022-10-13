@@ -243,12 +243,12 @@ type Query {
     """
     List of images which use the argument image
     """
-    DerivedImageList(image: String!): [ImageSummary!]
+    DerivedImageList(image: String!, requestedPage: PageInput): PaginatedImagesResult!
 
     """
     List of images on which the argument image depends on
     """
-    BaseImageList(image: String!): [ImageSummary!]
+    BaseImageList(image: String!, requestedPage: PageInput): PaginatedImagesResult!
 
     """
     Search for a specific image using its name

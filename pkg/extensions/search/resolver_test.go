@@ -11,6 +11,7 @@ import (
 
 	"github.com/99designs/gqlgen/graphql"
 	godigest "github.com/opencontainers/go-digest"
+	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -617,8 +618,8 @@ func TestImageListForDigest(t *testing.T) {
 			mockSearchDB := mocks.RepoDBMock{
 				FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc,
 					requestedPage repodb.PageInput,
-				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
-					return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, ErrTestError
+				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, repodb.PageInfo, error) {
+					return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, repodb.PageInfo{}, ErrTestError
 				},
 			}
 
@@ -632,7 +633,7 @@ func TestImageListForDigest(t *testing.T) {
 			mockSearchDB := mocks.RepoDBMock{
 				FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc,
 					requestedPage repodb.PageInput,
-				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
+				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, repodb.PageInfo, error) {
 					repos := []repodb.RepoMetadata{
 						{
 							Name: "test",
@@ -667,7 +668,7 @@ func TestImageListForDigest(t *testing.T) {
 						},
 					}
 
-					return repos, manifestMetaDatas, nil
+					return repos, manifestMetaDatas, repodb.PageInfo{}, nil
 				},
 			}
 
@@ -688,7 +689,7 @@ func TestImageListForDigest(t *testing.T) {
 			mockSearchDB := mocks.RepoDBMock{
 				FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc,
 					requestedPage repodb.PageInput,
-				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
+				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, repodb.PageInfo, error) {
 					repos := []repodb.RepoMetadata{
 						{
 							Name: "test",
@@ -729,7 +730,7 @@ func TestImageListForDigest(t *testing.T) {
 
 					repos[0].Tags = matchedTags
 
-					return repos, manifestMetaDatas, nil
+					return repos, manifestMetaDatas, repodb.PageInfo{}, nil
 				},
 			}
 
@@ -769,7 +770,7 @@ func TestImageListForDigest(t *testing.T) {
 			mockSearchDB := mocks.RepoDBMock{
 				FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc,
 					requestedPage repodb.PageInput,
-				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
+				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, repodb.PageInfo, error) {
 					repos := []repodb.RepoMetadata{
 						{
 							Name: "test",
@@ -815,7 +816,7 @@ func TestImageListForDigest(t *testing.T) {
 
 					repos[0].Tags = matchedTags
 
-					return repos, manifestMetaDatas, nil
+					return repos, manifestMetaDatas, repodb.PageInfo{}, nil
 				},
 			}
 
@@ -851,7 +852,7 @@ func TestImageListForDigest(t *testing.T) {
 			mockSearchDB := mocks.RepoDBMock{
 				FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc,
 					requestedPage repodb.PageInput,
-				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
+				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, repodb.PageInfo, error) {
 					repos := []repodb.RepoMetadata{
 						{
 							Name: "test",
@@ -899,7 +900,7 @@ func TestImageListForDigest(t *testing.T) {
 
 					repos[0].Tags = matchedTags
 
-					return repos, manifestMetaDatas, nil
+					return repos, manifestMetaDatas, repodb.PageInfo{}, nil
 				},
 			}
 
@@ -933,7 +934,7 @@ func TestImageListForDigest(t *testing.T) {
 			mockSearchDB := mocks.RepoDBMock{
 				FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc,
 					requestedPage repodb.PageInput,
-				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
+				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, repodb.PageInfo, error) {
 					repos := []repodb.RepoMetadata{
 						{
 							Name: "test",
@@ -976,7 +977,7 @@ func TestImageListForDigest(t *testing.T) {
 						repos[i].Tags = matchedTags
 					}
 
-					return repos, manifestMetaDatas, nil
+					return repos, manifestMetaDatas, repodb.PageInfo{}, nil
 				},
 			}
 
@@ -1010,10 +1011,10 @@ func TestImageListForDigest(t *testing.T) {
 			mockSearchDB := mocks.RepoDBMock{
 				FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc,
 					requestedPage repodb.PageInput,
-				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
+				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, repodb.PageInfo, error) {
 					pageFinder, err := repodb.NewBaseImagePageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
 					if err != nil {
-						return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, err
+						return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, repodb.PageInfo{}, err
 					}
 
 					repos := []repodb.RepoMetadata{
@@ -1064,7 +1065,7 @@ func TestImageListForDigest(t *testing.T) {
 
 					repos, _ = pageFinder.Page()
 
-					return repos, manifestMetaDatas, nil
+					return repos, manifestMetaDatas, repodb.PageInfo{}, nil
 				},
 			}
 
@@ -1095,8 +1096,8 @@ func TestImageList(t *testing.T) {
 			mockSearchDB := mocks.RepoDBMock{
 				FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc,
 					requestedPage repodb.PageInput,
-				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
-					return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, ErrTestError
+				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, repodb.PageInfo, error) {
+					return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, repodb.PageInfo{}, ErrTestError
 				},
 			}
 
@@ -1111,7 +1112,7 @@ func TestImageList(t *testing.T) {
 			mockSearchDB := mocks.RepoDBMock{
 				FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc,
 					requestedPage repodb.PageInput,
-				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
+				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, repodb.PageInfo, error) {
 					repos := []repodb.RepoMetadata{
 						{
 							Name: "test",
@@ -1148,7 +1149,7 @@ func TestImageList(t *testing.T) {
 						},
 					}
 
-					return repos, manifestMetaDatas, nil
+					return repos, manifestMetaDatas, repodb.PageInfo{}, nil
 				},
 			}
 
@@ -2047,4 +2048,711 @@ func getPageInput(limit int, offset int) *gql_generated.PageInput {
 		Offset: &offset,
 		SortBy: &sortCriteria,
 	}
+}
+
+func TestDerivedImageList(t *testing.T) {
+	Convey("RepoDB FilterTags error", t, func() {
+		mockSearchDB := mocks.RepoDBMock{
+			FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc,
+				requestedPage repodb.PageInput,
+			) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, repodb.PageInfo, error) {
+				return make([]repodb.RepoMetadata, 0), make(map[string]repodb.ManifestMetadata), repodb.PageInfo{}, ErrTestError
+			},
+			GetRepoMetaFn: func(repo string) (repodb.RepoMetadata, error) {
+				return repodb.RepoMetadata{}, ErrTestError
+			},
+			GetManifestMetaFn: func(manifestDigest godigest.Digest) (repodb.ManifestMetadata, error) {
+				return repodb.ManifestMetadata{}, ErrTestError
+			},
+		}
+		responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
+			graphql.DefaultRecover)
+
+		mockCve := mocks.CveInfoMock{}
+		images, err := derivedImageList(responseContext, "repo1:1.0.1", mockSearchDB, &gql_generated.PageInput{},
+			mockCve, log.NewLogger("debug", ""))
+		So(err, ShouldNotBeNil)
+		So(images.Results, ShouldBeEmpty)
+	})
+
+	//nolint: dupl
+	Convey("RepoDB FilterTags no repo available", t, func() {
+		configBlob, err := json.Marshal(ispec.Image{
+			Config: ispec.ImageConfig{
+				Labels: map[string]string{},
+			},
+		})
+		So(err, ShouldBeNil)
+
+		manifest := ispec.Manifest{}
+
+		manifestBlob, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+
+		manifestDigest := godigest.FromBytes(manifestBlob)
+
+		mockSearchDB := mocks.RepoDBMock{
+			FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc,
+				requestedPage repodb.PageInput,
+			) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, repodb.PageInfo, error) {
+				return make([]repodb.RepoMetadata, 0), make(map[string]repodb.ManifestMetadata), repodb.PageInfo{}, nil
+			},
+			GetRepoMetaFn: func(repo string) (repodb.RepoMetadata, error) {
+				return repodb.RepoMetadata{
+					Name: "repo1",
+					Tags: map[string]string{
+						"1.0.1": manifestDigest.String(),
+					},
+				}, nil
+			},
+			GetManifestMetaFn: func(manifestDigest godigest.Digest) (repodb.ManifestMetadata, error) {
+				return repodb.ManifestMetadata{
+					ManifestBlob: manifestBlob,
+					ConfigBlob:   configBlob,
+				}, nil
+			},
+		}
+		responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
+			graphql.DefaultRecover)
+
+		mockCve := mocks.CveInfoMock{}
+		images, err := derivedImageList(responseContext, "repo1:1.0.1", mockSearchDB, &gql_generated.PageInput{},
+			mockCve, log.NewLogger("debug", ""))
+		So(err, ShouldBeNil)
+		So(images.Results, ShouldBeEmpty)
+	})
+
+	//nolint: dupl
+	Convey("derived image list working", t, func() {
+		configBlob, err := json.Marshal(ispec.Image{
+			Config: ispec.ImageConfig{
+				Labels: map[string]string{},
+			},
+		})
+		So(err, ShouldBeNil)
+
+		configDigest := godigest.FromBytes(configBlob)
+
+		layers := [][]byte{
+			{10, 11, 10, 11},
+			{11, 11, 11, 11},
+			{10, 10, 10, 11},
+			{13, 14, 15, 11},
+		}
+
+		manifestBlob, err := json.Marshal(ispec.Manifest{
+			Versioned: specs.Versioned{
+				SchemaVersion: 2,
+			},
+			Config: ispec.Descriptor{
+				MediaType: "application/vnd.oci.image.config.v1+json",
+				Digest:    configDigest,
+				Size:      int64(len(configBlob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    godigest.FromBytes(layers[0]),
+					Size:      int64(len(layers[0])),
+				},
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    godigest.FromBytes(layers[1]),
+					Size:      int64(len(layers[1])),
+				},
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    godigest.FromBytes(layers[2]),
+					Size:      int64(len(layers[2])),
+				},
+			},
+		})
+		So(err, ShouldBeNil)
+
+		derivedManifestBlob, err := json.Marshal(ispec.Manifest{
+			Versioned: specs.Versioned{
+				SchemaVersion: 2,
+			},
+			Config: ispec.Descriptor{
+				MediaType: "application/vnd.oci.image.config.v1+json",
+				Digest:    configDigest,
+				Size:      int64(len(configBlob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    godigest.FromBytes(layers[0]),
+					Size:      int64(len(layers[0])),
+				},
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    godigest.FromBytes(layers[1]),
+					Size:      int64(len(layers[1])),
+				},
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    godigest.FromBytes(layers[2]),
+					Size:      int64(len(layers[2])),
+				},
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    godigest.FromBytes(layers[3]),
+					Size:      int64(len(layers[3])),
+				},
+			},
+		})
+		So(err, ShouldBeNil)
+
+		manifestMetas := map[string]repodb.ManifestMetadata{
+			"digestTag1.0.1": {
+				ManifestBlob:  manifestBlob,
+				ConfigBlob:    configBlob,
+				DownloadCount: 100,
+				Signatures:    make(map[string][]string),
+				Dependencies:  make([]string, 0),
+				Dependants:    make([]string, 0),
+				BlobsSize:     0,
+				BlobCount:     0,
+			},
+			"digestTag1.0.2": {
+				ManifestBlob:  derivedManifestBlob,
+				ConfigBlob:    configBlob,
+				DownloadCount: 100,
+				Signatures:    make(map[string][]string),
+				Dependencies:  make([]string, 0),
+				Dependants:    make([]string, 0),
+				BlobsSize:     0,
+				BlobCount:     0,
+			},
+			"digestTag1.0.3": {
+				ManifestBlob:  derivedManifestBlob,
+				ConfigBlob:    configBlob,
+				DownloadCount: 100,
+				Signatures:    make(map[string][]string),
+				Dependencies:  make([]string, 0),
+				Dependants:    make([]string, 0),
+				BlobsSize:     0,
+				BlobCount:     0,
+			},
+		}
+		manifestDigest := godigest.FromBytes(manifestBlob)
+
+		mockSearchDB := mocks.RepoDBMock{
+			GetRepoMetaFn: func(repo string) (repodb.RepoMetadata, error) {
+				return repodb.RepoMetadata{
+					Name: "repo1",
+					Tags: map[string]string{
+						"1.0.1": manifestDigest.String(),
+					},
+				}, nil
+			},
+			GetManifestMetaFn: func(manifestDigest godigest.Digest) (repodb.ManifestMetadata, error) {
+				return repodb.ManifestMetadata{
+					ManifestBlob: manifestBlob,
+					ConfigBlob:   configBlob,
+				}, nil
+			},
+			FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc,
+				requestedPage repodb.PageInput,
+			) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, repodb.PageInfo, error) {
+				pageFinder, err := repodb.NewBaseImagePageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
+				So(err, ShouldBeNil)
+
+				repos := []repodb.RepoMetadata{
+					{
+						Name: "repo1",
+						Tags: map[string]string{
+							"1.0.1": "digestTag1.0.1",
+							"1.0.2": "digestTag1.0.2",
+							"1.0.3": "digestTag1.0.3",
+						},
+						Signatures:  []string{"testSignature"},
+						Stars:       100,
+						Description: "Description repo1",
+						LogoPath:    "test/logoPath",
+					},
+				}
+
+				for i, repo := range repos {
+					matchedTags := repo.Tags
+
+					for tag, manifestDigest := range repo.Tags {
+						if !filter(repo, manifestMetas[manifestDigest]) {
+							delete(matchedTags, tag)
+							delete(manifestMetas, manifestDigest)
+
+							continue
+						}
+					}
+
+					repos[i].Tags = matchedTags
+
+					pageFinder.Add(repodb.DetailedRepoMeta{
+						RepoMeta: repo,
+					})
+				}
+				repos, pageInfo := pageFinder.Page()
+
+				return repos, manifestMetas, pageInfo, nil
+			},
+		}
+
+		responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
+			graphql.DefaultRecover)
+
+		mockCve := mocks.CveInfoMock{}
+
+		Convey("valid derivedImageList, results not affected by pageInput", func() {
+			images, err := derivedImageList(responseContext, "repo1:1.0.1", mockSearchDB, &gql_generated.PageInput{},
+				mockCve, log.NewLogger("debug", ""))
+			So(err, ShouldBeNil)
+			So(images.Results, ShouldNotBeEmpty)
+			So(len(images.Results), ShouldEqual, 2)
+		})
+
+		Convey("valid derivedImageList, results affected by pageInput", func() {
+			limit := 1
+			offset := 0
+			sortCriteria := gql_generated.SortCriteriaAlphabeticAsc
+			pageInput := gql_generated.PageInput{
+				Limit:  &limit,
+				Offset: &offset,
+				SortBy: &sortCriteria,
+			}
+
+			images, err := derivedImageList(responseContext, "repo1:1.0.1", mockSearchDB, &pageInput,
+				mockCve, log.NewLogger("debug", ""))
+			So(err, ShouldBeNil)
+			So(images.Results, ShouldNotBeEmpty)
+			So(len(images.Results), ShouldEqual, limit)
+		})
+	})
+}
+
+func TestBaseImageList(t *testing.T) {
+	Convey("RepoDB FilterTags error", t, func() {
+		mockSearchDB := mocks.RepoDBMock{
+			FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc,
+				requestedPage repodb.PageInput,
+			) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, repodb.PageInfo, error) {
+				return make([]repodb.RepoMetadata, 0), make(map[string]repodb.ManifestMetadata), repodb.PageInfo{}, ErrTestError
+			},
+			GetRepoMetaFn: func(repo string) (repodb.RepoMetadata, error) {
+				return repodb.RepoMetadata{}, ErrTestError
+			},
+			GetManifestMetaFn: func(manifestDigest godigest.Digest) (repodb.ManifestMetadata, error) {
+				return repodb.ManifestMetadata{}, ErrTestError
+			},
+		}
+		responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
+			graphql.DefaultRecover)
+
+		mockCve := mocks.CveInfoMock{}
+		images, err := baseImageList(responseContext, "repo1:1.0.2", mockSearchDB, &gql_generated.PageInput{},
+			mockCve, log.NewLogger("debug", ""))
+		So(err, ShouldNotBeNil)
+		So(images.Results, ShouldBeEmpty)
+	})
+
+	//nolint: dupl
+	Convey("RepoDB FilterTags no repo available", t, func() {
+		configBlob, err := json.Marshal(ispec.Image{
+			Config: ispec.ImageConfig{
+				Labels: map[string]string{},
+			},
+		})
+		So(err, ShouldBeNil)
+
+		manifest := ispec.Manifest{}
+
+		manifestBlob, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+
+		manifestDigest := godigest.FromBytes(manifestBlob)
+
+		mockSearchDB := mocks.RepoDBMock{
+			FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc,
+				requestedPage repodb.PageInput,
+			) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, repodb.PageInfo, error) {
+				return make([]repodb.RepoMetadata, 0), make(map[string]repodb.ManifestMetadata), repodb.PageInfo{}, nil
+			},
+			GetRepoMetaFn: func(repo string) (repodb.RepoMetadata, error) {
+				return repodb.RepoMetadata{
+					Name: "repo1",
+					Tags: map[string]string{
+						"1.0.2": manifestDigest.String(),
+					},
+				}, nil
+			},
+			GetManifestMetaFn: func(manifestDigest godigest.Digest) (repodb.ManifestMetadata, error) {
+				return repodb.ManifestMetadata{
+					ManifestBlob: manifestBlob,
+					ConfigBlob:   configBlob,
+				}, nil
+			},
+		}
+		responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
+			graphql.DefaultRecover)
+
+		mockCve := mocks.CveInfoMock{}
+		images, err := baseImageList(responseContext, "repo1:1.0.2", mockSearchDB, &gql_generated.PageInput{},
+			mockCve, log.NewLogger("debug", ""))
+		So(err, ShouldBeNil)
+		So(images.Results, ShouldBeEmpty)
+	})
+
+	//nolint: dupl
+	Convey("base image list working", t, func() {
+		configBlob, err := json.Marshal(ispec.Image{
+			Config: ispec.ImageConfig{
+				Labels: map[string]string{},
+			},
+		})
+		So(err, ShouldBeNil)
+
+		configDigest := godigest.FromBytes(configBlob)
+
+		layers := [][]byte{
+			{10, 11, 10, 11},
+			{11, 11, 11, 11},
+			{10, 10, 10, 11},
+			{13, 14, 15, 11},
+		}
+
+		manifestBlob, err := json.Marshal(ispec.Manifest{
+			Versioned: specs.Versioned{
+				SchemaVersion: 2,
+			},
+			Config: ispec.Descriptor{
+				MediaType: "application/vnd.oci.image.config.v1+json",
+				Digest:    configDigest,
+				Size:      int64(len(configBlob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    godigest.FromBytes(layers[0]),
+					Size:      int64(len(layers[0])),
+				},
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    godigest.FromBytes(layers[1]),
+					Size:      int64(len(layers[1])),
+				},
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    godigest.FromBytes(layers[2]),
+					Size:      int64(len(layers[2])),
+				},
+			},
+		})
+		So(err, ShouldBeNil)
+
+		derivedManifestBlob, err := json.Marshal(ispec.Manifest{
+			Versioned: specs.Versioned{
+				SchemaVersion: 2,
+			},
+			Config: ispec.Descriptor{
+				MediaType: "application/vnd.oci.image.config.v1+json",
+				Digest:    configDigest,
+				Size:      int64(len(configBlob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    godigest.FromBytes(layers[0]),
+					Size:      int64(len(layers[0])),
+				},
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    godigest.FromBytes(layers[1]),
+					Size:      int64(len(layers[1])),
+				},
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    godigest.FromBytes(layers[2]),
+					Size:      int64(len(layers[2])),
+				},
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    godigest.FromBytes(layers[3]),
+					Size:      int64(len(layers[3])),
+				},
+			},
+		})
+		So(err, ShouldBeNil)
+
+		manifestMetas := map[string]repodb.ManifestMetadata{
+			"digestTag1.0.1": {
+				ManifestBlob:  manifestBlob,
+				ConfigBlob:    configBlob,
+				DownloadCount: 100,
+				Signatures:    make(map[string][]string),
+				Dependencies:  make([]string, 0),
+				Dependants:    make([]string, 0),
+				BlobsSize:     0,
+				BlobCount:     0,
+			},
+			"digestTag1.0.2": {
+				ManifestBlob:  derivedManifestBlob,
+				ConfigBlob:    configBlob,
+				DownloadCount: 100,
+				Signatures:    make(map[string][]string),
+				Dependencies:  make([]string, 0),
+				Dependants:    make([]string, 0),
+				BlobsSize:     0,
+				BlobCount:     0,
+			},
+		}
+		derivedManifestDigest := godigest.FromBytes(derivedManifestBlob)
+
+		mockSearchDB := mocks.RepoDBMock{
+			GetRepoMetaFn: func(repo string) (repodb.RepoMetadata, error) {
+				return repodb.RepoMetadata{
+					Name: "repo1",
+					Tags: map[string]string{
+						"1.0.2": derivedManifestDigest.String(),
+					},
+				}, nil
+			},
+			GetManifestMetaFn: func(manifestDigest godigest.Digest) (repodb.ManifestMetadata, error) {
+				return repodb.ManifestMetadata{
+					ManifestBlob: derivedManifestBlob,
+					ConfigBlob:   configBlob,
+				}, nil
+			},
+			FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc,
+				requestedPage repodb.PageInput,
+			) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, repodb.PageInfo, error) {
+				pageFinder, err := repodb.NewBaseImagePageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
+				So(err, ShouldBeNil)
+
+				repos := []repodb.RepoMetadata{
+					{
+						Name: "repo1",
+						Tags: map[string]string{
+							"1.0.1": "digestTag1.0.1",
+							"1.0.3": "digestTag1.0.1",
+							"1.0.2": "digestTag1.0.2",
+						},
+						Signatures:  []string{"testSignature"},
+						Stars:       100,
+						Description: "Description repo1",
+						LogoPath:    "test/logoPath",
+					},
+				}
+
+				for i, repo := range repos {
+					matchedTags := repo.Tags
+
+					for tag, manifestDigest := range repo.Tags {
+						if !filter(repo, manifestMetas[manifestDigest]) {
+							delete(matchedTags, tag)
+							delete(manifestMetas, manifestDigest)
+
+							continue
+						}
+					}
+
+					repos[i].Tags = matchedTags
+
+					pageFinder.Add(repodb.DetailedRepoMeta{
+						RepoMeta: repo,
+					})
+				}
+
+				repos, pageInfo := pageFinder.Page()
+
+				return repos, manifestMetas, pageInfo, nil
+			},
+		}
+		responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
+			graphql.DefaultRecover)
+
+		mockCve := mocks.CveInfoMock{}
+
+		Convey("valid baseImageList, results not affected by pageInput", func() {
+			images, err := baseImageList(responseContext, "repo1:1.0.2", mockSearchDB,
+				&gql_generated.PageInput{}, mockCve, log.NewLogger("debug", ""))
+			So(err, ShouldBeNil)
+			So(images.Results, ShouldNotBeEmpty)
+			So(len(images.Results), ShouldEqual, 2)
+			So(*images.Results[0].Tag, ShouldEqual, "1.0.1")
+		})
+
+		Convey("valid baseImageList, results affected by pageInput", func() {
+			limit := 1
+			offset := 0
+			sortCriteria := gql_generated.SortCriteriaAlphabeticAsc
+			pageInput := gql_generated.PageInput{
+				Limit:  &limit,
+				Offset: &offset,
+				SortBy: &sortCriteria,
+			}
+
+			images, err := baseImageList(responseContext, "repo1:1.0.2", mockSearchDB,
+				&pageInput, mockCve, log.NewLogger("debug", ""))
+			So(err, ShouldBeNil)
+			So(images.Results, ShouldNotBeEmpty)
+			So(len(images.Results), ShouldEqual, limit)
+			So(*images.Results[0].Tag, ShouldEqual, "1.0.1")
+		})
+	})
+
+	//nolint: dupl
+	Convey("filterTags working, no base image list found", t, func() {
+		configBlob, err := json.Marshal(ispec.Image{
+			Config: ispec.ImageConfig{
+				Labels: map[string]string{},
+			},
+		})
+		So(err, ShouldBeNil)
+
+		configDigest := godigest.FromBytes(configBlob)
+
+		layers := [][]byte{
+			{10, 11, 10, 11},
+			{11, 11, 11, 11},
+			{10, 10, 10, 11},
+			{13, 14, 15, 11},
+		}
+
+		manifestBlob, err := json.Marshal(ispec.Manifest{
+			Versioned: specs.Versioned{
+				SchemaVersion: 2,
+			},
+			Config: ispec.Descriptor{
+				MediaType: "application/vnd.oci.image.config.v1+json",
+				Digest:    configDigest,
+				Size:      int64(len(configBlob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    godigest.FromBytes(layers[0]),
+					Size:      int64(len(layers[0])),
+				},
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    godigest.FromBytes(layers[1]),
+					Size:      int64(len(layers[1])),
+				},
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    godigest.FromBytes(layers[2]),
+					Size:      int64(len(layers[2])),
+				},
+			},
+		})
+		So(err, ShouldBeNil)
+
+		derivedManifestBlob, err := json.Marshal(ispec.Manifest{
+			Versioned: specs.Versioned{
+				SchemaVersion: 2,
+			},
+			Config: ispec.Descriptor{
+				MediaType: "application/vnd.oci.image.config.v1+json",
+				Digest:    configDigest,
+				Size:      int64(len(configBlob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    godigest.FromBytes(layers[3]),
+					Size:      int64(len(layers[3])),
+				},
+			},
+		})
+		So(err, ShouldBeNil)
+
+		manifestMetas := map[string]repodb.ManifestMetadata{
+			"digestTag1.0.1": {
+				ManifestBlob:  manifestBlob,
+				ConfigBlob:    configBlob,
+				DownloadCount: 100,
+				Signatures:    make(map[string][]string),
+				Dependencies:  make([]string, 0),
+				Dependants:    make([]string, 0),
+				BlobsSize:     0,
+				BlobCount:     0,
+			},
+			"digestTag1.0.2": {
+				ManifestBlob:  derivedManifestBlob,
+				ConfigBlob:    configBlob,
+				DownloadCount: 100,
+				Signatures:    make(map[string][]string),
+				Dependencies:  make([]string, 0),
+				Dependants:    make([]string, 0),
+				BlobsSize:     0,
+				BlobCount:     0,
+			},
+		}
+		derivedManifestDigest := godigest.FromBytes(derivedManifestBlob)
+
+		mockSearchDB := mocks.RepoDBMock{
+			GetRepoMetaFn: func(repo string) (repodb.RepoMetadata, error) {
+				return repodb.RepoMetadata{
+					Name: "repo1",
+					Tags: map[string]string{
+						"1.0.2": derivedManifestDigest.String(),
+					},
+				}, nil
+			},
+			GetManifestMetaFn: func(manifestDigest godigest.Digest) (repodb.ManifestMetadata, error) {
+				return repodb.ManifestMetadata{
+					ManifestBlob: derivedManifestBlob,
+					ConfigBlob:   configBlob,
+				}, nil
+			},
+			FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc,
+				requestedPage repodb.PageInput,
+			) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, repodb.PageInfo, error) {
+				pageFinder, err := repodb.NewBaseImagePageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
+				So(err, ShouldBeNil)
+
+				repos := []repodb.RepoMetadata{
+					{
+						Name: "repo1",
+						Tags: map[string]string{
+							"1.0.1": "digestTag1.0.1",
+							"1.0.2": "digestTag1.0.2",
+						},
+						Signatures:  []string{"testSignature"},
+						Stars:       100,
+						Description: "Description repo1",
+						LogoPath:    "test/logoPath",
+					},
+				}
+
+				for i, repo := range repos {
+					matchedTags := repo.Tags
+
+					for tag, manifestDigest := range repo.Tags {
+						if !filter(repo, manifestMetas[manifestDigest]) {
+							delete(matchedTags, tag)
+							delete(manifestMetas, manifestDigest)
+
+							continue
+						}
+					}
+
+					repos[i].Tags = matchedTags
+
+					pageFinder.Add(repodb.DetailedRepoMeta{
+						RepoMeta: repo,
+					})
+				}
+
+				return repos, manifestMetas, repodb.PageInfo{}, nil
+			},
+		}
+		responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
+			graphql.DefaultRecover)
+
+		mockCve := mocks.CveInfoMock{}
+		images, err := baseImageList(responseContext, "repo1:1.0.2", mockSearchDB, &gql_generated.PageInput{},
+			mockCve, log.NewLogger("debug", ""))
+		So(err, ShouldBeNil)
+		So(images.Results, ShouldBeEmpty)
+	})
 }

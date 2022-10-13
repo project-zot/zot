@@ -710,16 +710,17 @@ func ScoreRepoName(searchText string, repoName string) int {
 
 func (bdw BoltDBWrapper) FilterTags(ctx context.Context, filter FilterFunc,
 	requestedPage PageInput,
-) ([]RepoMetadata, map[string]ManifestMetadata, error) {
+) ([]RepoMetadata, map[string]ManifestMetadata, PageInfo, error) {
 	var (
 		foundRepos               = make([]RepoMetadata, 0)
 		foundManifestMetadataMap = make(map[string]ManifestMetadata)
 		pageFinder               *ImagePageFinder
+		pageInfo                 PageInfo
 	)
 
 	pageFinder, err := NewBaseImagePageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
 	if err != nil {
-		return []RepoMetadata{}, map[string]ManifestMetadata{}, err
+		return []RepoMetadata{}, map[string]ManifestMetadata{}, PageInfo{}, err
 	}
 
 	err = bdw.db.View(func(tx *bolt.Tx) error {
@@ -792,7 +793,7 @@ func (bdw BoltDBWrapper) FilterTags(ctx context.Context, filter FilterFunc,
 			})
 		}
 
-		foundRepos, _ = pageFinder.Page()
+		foundRepos, pageInfo = pageFinder.Page()
 
 		// keep just the manifestMeta we need
 		for _, repoMeta := range foundRepos {
@@ -804,7 +805,7 @@ func (bdw BoltDBWrapper) FilterTags(ctx context.Context, filter FilterFunc,
 		return nil
 	})
 
-	return foundRepos, foundManifestMetadataMap, err
+	return foundRepos, foundManifestMetadataMap, pageInfo, err
 }
 
 func (bdw BoltDBWrapper) SearchTags(ctx context.Context, searchText string, filter Filter, requestedPage PageInput,

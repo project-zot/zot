@@ -590,7 +590,7 @@ func TestDerivedImageList(t *testing.T) {
 		_ = controller.Server.Shutdown(ctx)
 	}(ctlr)
 
-	err := uploadManifest(url)
+	err := uploadManifestDerivedBase(url)
 	if err != nil {
 		panic(err)
 	}
@@ -600,7 +600,7 @@ func TestDerivedImageList(t *testing.T) {
 	Convey("Test from real server", t, func() {
 		Convey("Test derived images list working", func() {
 			t.Logf("%s", ctlr.Config.Storage.RootDirectory)
-			args := []string{"imagetest", "--derived-images", "repo7:test:1.0"}
+			args := []string{"imagetest", "--derived-images", "repo7:test:2.0"}
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 			defer os.Remove(configPath)
 			cmd := NewImageCommand(new(searchService))
@@ -614,33 +614,12 @@ func TestDerivedImageList(t *testing.T) {
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIGNED SIZE")
-			So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 false 492B")
-		})
-
-		Convey("Test derived images fail", func() {
-			t.Logf("%s", ctlr.Config.Storage.RootDirectory)
-			err = os.Chmod(ctlr.Config.Storage.RootDirectory, 0o000)
-			So(err, ShouldBeNil)
-
-			defer func() {
-				err := os.Chmod(ctlr.Config.Storage.RootDirectory, 0o755)
-				So(err, ShouldBeNil)
-			}()
-			args := []string{"imagetest", "--derived-images", "repo7:test:1.0"}
-			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-			defer os.Remove(configPath)
-			cmd := NewImageCommand(new(searchService))
-			buff := &bytes.Buffer{}
-			cmd.SetOut(buff)
-			cmd.SetErr(buff)
-			cmd.SetArgs(args)
-			err = cmd.Execute()
-			So(err, ShouldNotBeNil)
+			So(actual, ShouldContainSubstring, "repo7 test:1.0 2694fdb0 false 824B")
 		})
 
 		Convey("Test derived images list cannot print", func() {
 			t.Logf("%s", ctlr.Config.Storage.RootDirectory)
-			args := []string{"imagetest", "--derived-images", "repo7:test:1.0", "-o", "random"}
+			args := []string{"imagetest", "--derived-images", "repo7:test:2.0", "-o", "random"}
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 			defer os.Remove(configPath)
 			cmd := NewImageCommand(new(searchService))
@@ -689,7 +668,7 @@ func TestBaseImageList(t *testing.T) {
 		_ = controller.Server.Shutdown(ctx)
 	}(ctlr)
 
-	err := uploadManifest(url)
+	err := uploadManifestDerivedBase(url)
 	if err != nil {
 		panic(err)
 	}
@@ -713,28 +692,7 @@ func TestBaseImageList(t *testing.T) {
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIGNED SIZE")
-			So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 false 492B")
-		})
-
-		Convey("Test base images fail", func() {
-			t.Logf("%s", ctlr.Config.Storage.RootDirectory)
-			err = os.Chmod(ctlr.Config.Storage.RootDirectory, 0o000)
-			So(err, ShouldBeNil)
-
-			defer func() {
-				err := os.Chmod(ctlr.Config.Storage.RootDirectory, 0o755)
-				So(err, ShouldBeNil)
-			}()
-			args := []string{"imagetest", "--base-images", "repo7:test:1.0"}
-			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-			defer os.Remove(configPath)
-			cmd := NewImageCommand(new(searchService))
-			buff := &bytes.Buffer{}
-			cmd.SetOut(buff)
-			cmd.SetErr(buff)
-			cmd.SetArgs(args)
-			err = cmd.Execute()
-			So(err, ShouldNotBeNil)
+			So(actual, ShouldContainSubstring, "repo7 test:2.0 3fc80493 false 494B")
 		})
 
 		Convey("Test base images list cannot print", func() {
@@ -1643,6 +1601,98 @@ func uploadManifest(url string) error {
 	return nil
 }
 
+func uploadManifestDerivedBase(url string) error {
+	// create a blob/layer
+	_, _ = resty.R().Post(url + "/v2/repo7/blobs/uploads/")
+
+	content1 := []byte("this is a blob5.0")
+	content2 := []byte("this is a blob5.1")
+	content3 := []byte("this is a blob5.2")
+	digest1 := godigest.FromBytes(content1)
+	digest2 := godigest.FromBytes(content2)
+	digest3 := godigest.FromBytes(content3)
+	_, _ = resty.R().SetQueryParam("digest", digest1.String()).
+		SetHeader("Content-Type", "application/octet-stream").SetBody(content1).Post(url + "/v2/repo7/blobs/uploads/")
+	_, _ = resty.R().SetQueryParam("digest", digest2.String()).
+		SetHeader("Content-Type", "application/octet-stream").SetBody(content2).Post(url + "/v2/repo7/blobs/uploads/")
+	_, _ = resty.R().SetQueryParam("digest", digest3.String()).
+		SetHeader("Content-Type", "application/octet-stream").SetBody(content3).Post(url + "/v2/repo7/blobs/uploads/")
+
+	// upload image config blob
+	resp, _ := resty.R().Post(url + "/v2/repo7/blobs/uploads/")
+	loc := test.Location(url, resp)
+	cblob, cdigest := test.GetImageConfig()
+
+	_, _ = resty.R().
+		SetContentLength(true).
+		SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+		SetHeader("Content-Type", "application/octet-stream").
+		SetQueryParam("digest", cdigest.String()).
+		SetBody(cblob).
+		Put(loc)
+
+	// create a manifest
+	manifest := ispec.Manifest{
+		Config: ispec.Descriptor{
+			MediaType: "application/vnd.oci.image.config.v1+json",
+			Digest:    cdigest,
+			Size:      int64(len(cblob)),
+		},
+		Layers: []ispec.Descriptor{
+			{
+				MediaType: "application/vnd.oci.image.layer.v1.tar",
+				Digest:    digest1,
+				Size:      int64(len(content1)),
+			}, {
+				MediaType: "application/vnd.oci.image.layer.v1.tar",
+				Digest:    digest2,
+				Size:      int64(len(content2)),
+			}, {
+				MediaType: "application/vnd.oci.image.layer.v1.tar",
+				Digest:    digest3,
+				Size:      int64(len(content3)),
+			},
+		},
+	}
+	manifest.SchemaVersion = 2
+
+	content, err := json.Marshal(manifest)
+	if err != nil {
+		return err
+	}
+
+	_, _ = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+		SetBody(content).Put(url + "/v2/repo7/manifests/test:1.0")
+
+	content1 = []byte("this is a blob5.0")
+	digest1 = godigest.FromBytes(content1)
+	// create a manifest with one common layer blob
+	manifest = ispec.Manifest{
+		Config: ispec.Descriptor{
+			MediaType: "application/vnd.oci.image.config.v1+json",
+			Digest:    cdigest,
+			Size:      int64(len(cblob)),
+		},
+		Layers: []ispec.Descriptor{
+			{
+				MediaType: "application/vnd.oci.image.layer.v1.tar",
+				Digest:    digest1,
+				Size:      int64(len(content1)),
+			},
+		},
+	}
+	manifest.SchemaVersion = 2
+
+	content, err = json.Marshal(manifest)
+	if err != nil {
+		return err
+	}
+	_, _ = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+		SetBody(content).Put(url + "/v2/repo7/manifests/test:2.0")
+
+	return nil
+}
+
 type mockService struct{}
 
 func (service mockService) getRepos(ctx context.Context, config searchConfig, username,
@@ -1663,7 +1713,7 @@ func (service mockService) getDerivedImageListGQL(ctx context.Context, config se
 	derivedImage string,
 ) (*imageListStructForDerivedImagesGQL, error) {
 	imageListGQLResponse := &imageListStructForDerivedImagesGQL{}
-	imageListGQLResponse.Data.ImageList = []imageStruct{
+	imageListGQLResponse.Data.ImageList.Results = []imageStruct{
 		{
 			RepoName:     "dummyImageName",
 			Tag:          "tag",
@@ -1681,7 +1731,7 @@ func (service mockService) getBaseImageListGQL(ctx context.Context, config searc
 	derivedImage string,
 ) (*imageListStructForBaseImagesGQL, error) {
 	imageListGQLResponse := &imageListStructForBaseImagesGQL{}
-	imageListGQLResponse.Data.ImageList = []imageStruct{
+	imageListGQLResponse.Data.ImageList.Results = []imageStruct{
 		{
 			RepoName:     "dummyImageName",
 			Tag:          "tag",
