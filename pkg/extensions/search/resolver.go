@@ -121,7 +121,7 @@ func getImageListForDigest(ctx context.Context, digest string, repoDB repodb.Rep
 	}
 
 	// get all repos
-	reposMeta, manifestMetaMap, err := repoDB.FilterTags(ctx, FilterByDigest(digest), pageInput)
+	reposMeta, manifestMetaMap, _, err := repoDB.FilterTags(ctx, FilterByDigest(digest), pageInput)
 	if err != nil {
 		return []*gql_generated.ImageSummary{}, err
 	}
@@ -148,6 +148,12 @@ func getImageSummary(ctx context.Context, repo, tag string, repoDB repodb.RepoDB
 	manifestDigest, ok := repoMeta.Tags[tag]
 	if !ok {
 		return nil, gqlerror.Errorf("can't find image: %s:%s", repo, tag)
+	}
+
+	for t := range repoMeta.Tags {
+		if t != tag {
+			delete(repoMeta.Tags, t)
+		}
 	}
 
 	manifestMeta, err := repoDB.GetManifestMeta(godigest.Digest(manifestDigest))
@@ -288,7 +294,7 @@ func getImageListForCVE(
 	}
 
 	// get all repos
-	reposMeta, manifestMetaMap, err := repoDB.FilterTags(ctx, FilterByTagInfo(affectedImages), pageInput)
+	reposMeta, manifestMetaMap, _, err := repoDB.FilterTags(ctx, FilterByTagInfo(affectedImages), pageInput)
 	if err != nil {
 		return []*gql_generated.ImageSummary{}, err
 	}
@@ -340,7 +346,7 @@ func getImageListWithCVEFixed(
 	}
 
 	// get all repos
-	reposMeta, manifestMetaMap, err := repoDB.FilterTags(ctx, FilterByTagInfo(tagsInfo), pageInput)
+	reposMeta, manifestMetaMap, _, err := repoDB.FilterTags(ctx, FilterByTagInfo(tagsInfo), pageInput)
 	if err != nil {
 		return []*gql_generated.ImageSummary{}, err
 	}
@@ -492,6 +498,218 @@ func canSkipField(preloads map[string]bool, s string) bool {
 	fieldIsPresent := preloads[s]
 
 	return !fieldIsPresent
+}
+
+func derivedImageList(ctx context.Context, image string, repoDB repodb.RepoDB,
+	requestedPage *gql_generated.PageInput,
+	cveInfo cveinfo.CveInfo, log log.Logger,
+) (*gql_generated.PaginatedImagesResult, error) {
+	derivedList := make([]*gql_generated.ImageSummary, 0)
+
+	if requestedPage == nil {
+		requestedPage = &gql_generated.PageInput{}
+	}
+
+	pageInput := repodb.PageInput{
+		Limit:  safeDerefferencing(requestedPage.Limit, 0),
+		Offset: safeDerefferencing(requestedPage.Offset, 0),
+		SortBy: repodb.SortCriteria(
+			safeDerefferencing(requestedPage.SortBy, gql_generated.SortCriteriaUpdateTime),
+		),
+	}
+
+	skip := convert.SkipQGLField{
+		Vulnerabilities: canSkipField(convert.GetPreloads(ctx), "Vulnerabilities"),
+	}
+
+	imageRepo, imageTag := common.GetImageDirAndTag(image)
+
+	searchedImage, err := getImageSummary(ctx, imageRepo, imageTag, repoDB, cveInfo, log)
+	if err != nil {
+		if errors.Is(err, zerr.ErrRepoMetaNotFound) {
+			return &gql_generated.PaginatedImagesResult{}, nil
+		}
+
+		return &gql_generated.PaginatedImagesResult{}, err
+	}
+
+	// we need all available tags
+	reposMeta, manifestMetaMap, pageInfo, err := repoDB.FilterTags(ctx,
+		filterDerivedImages(searchedImage),
+		pageInput)
+	if err != nil {
+		return &gql_generated.PaginatedImagesResult{}, err
+	}
+
+	for _, repoMeta := range reposMeta {
+		summary := convert.RepoMeta2ImageSummaries(ctx, repoMeta, manifestMetaMap, skip, cveInfo)
+		derivedList = append(derivedList, summary...)
+	}
+
+	if len(derivedList) == 0 {
+		log.Info().Msg("no images found")
+
+		return &gql_generated.PaginatedImagesResult{
+			Page:    &gql_generated.PageInfo{},
+			Results: derivedList,
+		}, nil
+	}
+
+	return &gql_generated.PaginatedImagesResult{
+		Results: derivedList,
+		Page: &gql_generated.PageInfo{
+			TotalCount: pageInfo.TotalCount,
+			ItemCount:  pageInfo.ItemCount,
+		},
+	}, nil
+}
+
+func filterDerivedImages(image *gql_generated.ImageSummary) repodb.FilterFunc {
+	return func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
+		var addImageToList bool
+
+		var imageManifest ispec.Manifest
+
+		err := json.Unmarshal(manifestMeta.ManifestBlob, &imageManifest)
+		if err != nil {
+			return false
+		}
+
+		manifestDigest := godigest.FromBytes(manifestMeta.ManifestBlob).String()
+		if manifestDigest == *image.Digest {
+			return false
+		}
+
+		imageLayers := image.Layers
+
+		addImageToList = false
+		layers := imageManifest.Layers
+
+		sameLayer := 0
+
+		for _, l := range imageLayers {
+			for _, k := range layers {
+				if k.Digest.String() == *l.Digest {
+					sameLayer++
+				}
+			}
+		}
+
+		// if all layers are the same
+		if sameLayer == len(imageLayers) {
+			// it's a derived image
+			addImageToList = true
+		}
+
+		return addImageToList
+	}
+}
+
+func baseImageList(ctx context.Context, image string, repoDB repodb.RepoDB,
+	requestedPage *gql_generated.PageInput,
+	cveInfo cveinfo.CveInfo, log log.Logger,
+) (*gql_generated.PaginatedImagesResult, error) {
+	imageSummaries := make([]*gql_generated.ImageSummary, 0)
+
+	if requestedPage == nil {
+		requestedPage = &gql_generated.PageInput{}
+	}
+
+	pageInput := repodb.PageInput{
+		Limit:  safeDerefferencing(requestedPage.Limit, 0),
+		Offset: safeDerefferencing(requestedPage.Offset, 0),
+		SortBy: repodb.SortCriteria(
+			safeDerefferencing(requestedPage.SortBy, gql_generated.SortCriteriaUpdateTime),
+		),
+	}
+
+	skip := convert.SkipQGLField{
+		Vulnerabilities: canSkipField(convert.GetPreloads(ctx), "Vulnerabilities"),
+	}
+
+	imageRepo, imageTag := common.GetImageDirAndTag(image)
+
+	searchedImage, err := getImageSummary(ctx, imageRepo, imageTag, repoDB, cveInfo, log)
+	if err != nil {
+		if errors.Is(err, zerr.ErrRepoMetaNotFound) {
+			return &gql_generated.PaginatedImagesResult{}, nil
+		}
+
+		return &gql_generated.PaginatedImagesResult{}, err
+	}
+
+	// we need all available tags
+	reposMeta, manifestMetaMap, pageInfo, err := repoDB.FilterTags(ctx,
+		filterBaseImages(searchedImage),
+		pageInput)
+	if err != nil {
+		return &gql_generated.PaginatedImagesResult{}, err
+	}
+
+	for _, repoMeta := range reposMeta {
+		summary := convert.RepoMeta2ImageSummaries(ctx, repoMeta, manifestMetaMap, skip, cveInfo)
+		imageSummaries = append(imageSummaries, summary...)
+	}
+
+	if len(imageSummaries) == 0 {
+		log.Info().Msg("no images found")
+
+		return &gql_generated.PaginatedImagesResult{
+			Results: imageSummaries,
+			Page:    &gql_generated.PageInfo{},
+		}, nil
+	}
+
+	return &gql_generated.PaginatedImagesResult{
+		Page: &gql_generated.PageInfo{
+			TotalCount: pageInfo.TotalCount,
+			ItemCount:  pageInfo.ItemCount,
+		},
+		Results: imageSummaries,
+	}, nil
+}
+
+func filterBaseImages(image *gql_generated.ImageSummary) repodb.FilterFunc {
+	return func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
+		var addImageToList bool
+
+		var imageManifest ispec.Manifest
+
+		err := json.Unmarshal(manifestMeta.ManifestBlob, &imageManifest)
+		if err != nil {
+			return false
+		}
+
+		manifestDigest := godigest.FromBytes(manifestMeta.ManifestBlob).String()
+		if manifestDigest == *image.Digest {
+			return false
+		}
+
+		imageLayers := image.Layers
+
+		addImageToList = true
+		layers := imageManifest.Layers
+
+		for _, l := range layers {
+			foundLayer := false
+
+			for _, k := range imageLayers {
+				if l.Digest.String() == *k.Digest {
+					foundLayer = true
+
+					break
+				}
+			}
+
+			if !foundLayer {
+				addImageToList = false
+
+				break
+			}
+		}
+
+		return addImageToList
+	}
 }
 
 func validateGlobalSearchInput(query string, filter *gql_generated.Filter,
@@ -694,7 +912,7 @@ func getImageList(ctx context.Context, repo string, repoDB repodb.RepoDB, cveInf
 	}
 
 	// reposMeta, manifestMetaMap, err := repoDB.SearchRepos(ctx, repo, repodb.Filter{}, pageInput)
-	reposMeta, manifestMetaMap, err := repoDB.FilterTags(ctx,
+	reposMeta, manifestMetaMap, _, err := repoDB.FilterTags(ctx,
 		func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
 			return true
 		},
