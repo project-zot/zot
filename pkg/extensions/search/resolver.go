@@ -139,7 +139,7 @@ func repoListWithNewestImage(
 		Limit:  safeDerefferencing(requestedPage.Limit, 0),
 		Offset: safeDerefferencing(requestedPage.Offset, 0),
 		SortBy: repodb.SortCriteria(
-			safeDerefferencing(requestedPage.SortBy, gql_generated.SortCriteriaRelevance),
+			safeDerefferencing(requestedPage.SortBy, gql_generated.SortCriteriaUpdateTime),
 		),
 	}
 
