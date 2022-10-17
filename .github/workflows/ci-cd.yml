@@ -96,6 +96,15 @@ jobs:
           ARCH: ${{ matrix.arch }}
       - name: Upload code coverage
         uses: codecov/codecov-action@v3
+
+      - name: Generate GraphQL Introspection JSON on Release
+        if: github.event_name == 'release' && github.event.action == 'published' && matrix.os == 'linux' && matrix.arch == 'amd64'
+        run: |
+          bin/zot-linux-amd64 serve examples/config-search.json &
+          sleep 10
+          curl -X POST -H "Content-Type: application/json" -d @.pkg/debug/githubWorkflows/introspection-query.json http://localhost:5000/v2/_zot/ext/search | jq > bin/zot-gql-introspection-result.json
+          pkill zot
+
       - if: github.event_name == 'release' && github.event.action == 'published'
         name: Publish artifacts on releases
         uses: svenstaro/upload-release-action@v2
@@ -105,31 +114,6 @@ jobs:
           tag: ${{ github.ref }}
           overwrite: true
           file_glob: true
-
-      - name: Check if GraphQL Schema Changed
-        if: matrix.os == 'linux' && matrix.arch == 'amd64'
-        id: changed-files-specific
-        uses: tj-actions/changed-files@v32
-        with:
-          files: |
-            pkg/extensions/search/schema.graphql
-
-      - name: Generate GraphQL Introspection JSON
-        if: steps.changed-files-specific.outputs.any_changed == 'true' && matrix.os == 'linux' && matrix.arch == 'amd64'
-        run: |
-          echo "Schema has changed"
-          bin/zot-linux-amd64 serve examples/config-search.json &
-          sleep 10
-          mkdir introspection
-          curl -X POST -H "Content-Type: application/json" -d @.pkg/debug/githubWorkflows/introspection-query.json http://localhost:5000/v2/_zot/ext/search | jq > introspection/introspection-result.json
-          pkill zot
-
-      - name: Upload GraphQL Introspection JSON
-        uses: actions/upload-artifact@v3
-        if: steps.changed-files-specific.outputs.any_changed == 'true' && matrix.os == 'linux' && matrix.arch == 'amd64'
-        with:
-          name: introspection-result
-          path: introspection/introspection-result.json
 
   push-image:
     if: github.event_name == 'release' && github.event.action== 'published'
