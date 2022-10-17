@@ -637,8 +637,8 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 
 		Convey("Test NewBlobUpload", func(c C) {
 			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-				PutContentFn: func(ctx context.Context, path string, content []byte) error {
-					return errS3
+				WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
+					return nil, errS3
 				},
 			})
 			_, err := imgStore.NewBlobUpload(testImage)
@@ -647,11 +647,21 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 
 		Convey("Test GetBlobUpload", func(c C) {
 			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-				StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
-					return &FileInfoMock{}, errS3
+				WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
+					return nil, errS3
 				},
 			})
 			_, err := imgStore.GetBlobUpload(testImage, "uuid")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Test BlobUploadInfo", func(c C) {
+			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
+				WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
+					return nil, errS3
+				},
+			})
+			_, err := imgStore.BlobUploadInfo(testImage, "uuid")
 			So(err, ShouldNotBeNil)
 		})
 
@@ -715,6 +725,16 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 				},
 			})
 			_, err := imgStore.PutBlobChunk(testImage, "uuid", 12, 100, io.NopCloser(strings.NewReader("")))
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Test PutBlobChunk4", func(c C) {
+			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
+				WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
+					return &FileWriterMock{}, driver.PathNotFoundError{}
+				},
+			})
+			_, err := imgStore.PutBlobChunk(testImage, "uuid", 0, 100, io.NopCloser(strings.NewReader("")))
 			So(err, ShouldNotBeNil)
 		})
 

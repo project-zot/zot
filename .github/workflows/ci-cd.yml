@@ -36,14 +36,13 @@ jobs:
         arch: [amd64, arm64]
     services:
       s3mock:
-        image: ghcr.io/project-zot/localstack/localstack:0.13.2
+        image: ghcr.io/project-zot/localstack/localstack:1.2.0
         env:
           SERVICES: s3
         ports:
           - 4563-4599:4563-4599
           - 9090:8080
     steps:
-
       - name: Install go
         uses: actions/setup-go@v3
         with:
