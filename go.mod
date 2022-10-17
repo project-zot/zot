@@ -42,7 +42,7 @@ require (
 	github.com/spf13/viper v1.13.0
 	github.com/stretchr/testify v1.8.0
 	github.com/swaggo/swag v1.8.6
-	github.com/urfave/cli/v2 v2.19.2
+	github.com/urfave/cli/v2 v2.20.2
 	github.com/vektah/gqlparser/v2 v2.5.1
 	go.etcd.io/bbolt v1.3.6
 	golang.org/x/crypto v0.0.0-20220919173607-35f4265a4bc0
