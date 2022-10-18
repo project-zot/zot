@@ -672,74 +672,47 @@ func searchingForRepos(query string) bool {
 	return !strings.Contains(query, ":")
 }
 
-func (r *queryResolver) getImageList(store storage.ImageStore, imageName string) (
-	[]*gql_generated.ImageSummary, error,
-) {
-	results := make([]*gql_generated.ImageSummary, 0)
+func getImageList(ctx context.Context, repo string, repoDB repodb.RepoDB, cveInfo cveinfo.CveInfo,
+	requestedPage *gql_generated.PageInput, log log.Logger, //nolint:unparam
+) ([]*gql_generated.ImageSummary, error) {
+	imageList := make([]*gql_generated.ImageSummary, 0)
 
-	repoList, err := store.GetRepositories()
+	if requestedPage == nil {
+		requestedPage = &gql_generated.PageInput{}
+	}
+
+	skip := convert.SkipQGLField{
+		Vulnerabilities: canSkipField(convert.GetPreloads(ctx), "Images.Vulnerabilities"),
+	}
+
+	pageInput := repodb.PageInput{
+		Limit:  safeDerefferencing(requestedPage.Limit, 0),
+		Offset: safeDerefferencing(requestedPage.Offset, 0),
+		SortBy: repodb.SortCriteria(
+			safeDerefferencing(requestedPage.SortBy, gql_generated.SortCriteriaRelevance),
+		),
+	}
+
+	// reposMeta, manifestMetaMap, err := repoDB.SearchRepos(ctx, repo, repodb.Filter{}, pageInput)
+	reposMeta, manifestMetaMap, err := repoDB.FilterTags(ctx,
+		func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
+			return true
+		},
+		pageInput)
 	if err != nil {
-		r.log.Error().Err(err).Msg("extension api: error extracting repositories list")
-
-		return results, err
+		return []*gql_generated.ImageSummary{}, err
 	}
 
-	layoutUtils := common.NewBaseOciLayoutUtils(r.storeController, r.log)
-
-	for _, repo := range repoList {
-		if (imageName != "" && repo == imageName) || imageName == "" {
-			tagsInfo, err := layoutUtils.GetImageTagsWithTimestamp(repo)
-			if err != nil {
-				r.log.Error().Err(err).Msg("extension api: error getting tag timestamp info")
-
-				return results, nil
-			}
-
-			if len(tagsInfo) == 0 {
-				r.log.Info().Str("no tagsinfo found for repo", repo).Msg(" continuing traversing")
-
-				continue
-			}
-
-			for i := range tagsInfo {
-				// using a loop variable called tag would be reassigned after each iteration, using the same memory address
-				// directly access the value at the current index in the slice as ImageInfo requires pointers to tag fields
-				tag := tagsInfo[i]
-				digest := tag.Digest
-
-				manifest, err := layoutUtils.GetImageBlobManifest(repo, digest)
-				if err != nil {
-					r.log.Error().Err(err).Msg("extension api: error reading manifest")
-
-					return results, err
-				}
-
-				imageConfig, err := layoutUtils.GetImageConfigInfo(repo, digest)
-				if err != nil {
-					return results, err
-				}
-
-				isSigned := layoutUtils.CheckManifestSignature(repo, digest)
-
-				tagPrefix := strings.HasPrefix(tag.Name, "sha256-")
-				tagSuffix := strings.HasSuffix(tag.Name, ".sig")
-
-				imageInfo := convert.BuildImageInfo(repo, tag.Name, digest, manifest,
-					imageConfig, isSigned)
-
-				// check if it's an image or a signature
-				if !tagPrefix && !tagSuffix {
-					results = append(results, imageInfo)
-				}
-			}
+	for _, repoMeta := range reposMeta {
+		if repoMeta.Name != repo && repo != "" {
+			continue
 		}
+		imageSummaries := convert.RepoMeta2ImageSummaries(ctx, repoMeta, manifestMetaMap, skip, cveInfo)
+
+		imageList = append(imageList, imageSummaries...)
 	}
 
-	if len(results) == 0 {
-		r.log.Info().Msg("no repositories found")
-	}
-
-	return results, nil
+	return imageList, nil
 }
 
 // returns either a user has or not rights on 'repository'.
