@@ -700,13 +700,14 @@ func printImageTableHeader(writer io.Writer, verbose bool, maxImageNameLen, maxT
 	table.SetColMinWidth(colTagIndex, tagWidth)
 	table.SetColMinWidth(colDigestIndex, digestWidth)
 	table.SetColMinWidth(colSizeIndex, sizeWidth)
+	table.SetColMinWidth(colIsSignedIndex, isSignedWidth)
 
 	if verbose {
 		table.SetColMinWidth(colConfigIndex, configWidth)
 		table.SetColMinWidth(colLayersIndex, layersWidth)
 	}
 
-	row := make([]string, 6) //nolint:gomnd
+	row := make([]string, 7) //nolint:gomnd
 
 	// adding spaces so that image name and tag columns are aligned
 	// in case the name/tag are fully shown and too long
@@ -727,6 +728,7 @@ func printImageTableHeader(writer io.Writer, verbose bool, maxImageNameLen, maxT
 
 	row[colDigestIndex] = "DIGEST"
 	row[colSizeIndex] = "SIZE"
+	row[colIsSignedIndex] = "SIGNED"
 
 	if verbose {
 		row[colConfigIndex] = "CONFIG"

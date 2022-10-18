@@ -544,10 +544,17 @@ func (r *queryResolver) getImageList(store storage.ImageStore, imageName string)
 				}
 
 				isSigned := layoutUtils.CheckManifestSignature(repo, digest)
+
+				tagPrefix := strings.HasPrefix(tag.Name, "sha256-")
+				tagSuffix := strings.HasSuffix(tag.Name, ".sig")
+
 				imageInfo := BuildImageInfo(repo, tag.Name, digest, manifest,
 					imageConfig, isSigned)
 
-				results = append(results, imageInfo)
+				// check if it's an image or a signature
+				if !tagPrefix && !tagSuffix {
+					results = append(results, imageInfo)
+				}
 			}
 		}
 	}
