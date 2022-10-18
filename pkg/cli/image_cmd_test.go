@@ -368,7 +368,7 @@ func TestSignature(t *testing.T) {
 		str := space.ReplaceAllString(buff.String(), " ")
 		actual := strings.TrimSpace(str)
 		So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIGNED SIZE")
-		So(actual, ShouldContainSubstring, "repo7 test:1.0 6742241d true 1B")
+		So(actual, ShouldContainSubstring, "repo7 test:1.0 6742241d true 447B")
 
 		t.Log("Test getting all images using rest calls to get catalog and individual manifests")
 		cmd = MockNewImageCommand(new(searchService))
@@ -445,7 +445,7 @@ func TestSignature(t *testing.T) {
 		str := space.ReplaceAllString(buff.String(), " ")
 		actual := strings.TrimSpace(str)
 		So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIGNED SIZE")
-		So(actual, ShouldContainSubstring, "repo7 0.0.1 6742241d true 1B")
+		So(actual, ShouldContainSubstring, "repo7 0.0.1 6742241d true 447B")
 
 		t.Log("Test getting all images using rest calls to get catalog and individual manifests")
 		cmd = MockNewImageCommand(new(searchService))
@@ -913,8 +913,8 @@ func TestServerResponseGQL(t *testing.T) {
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIGNED SIZE")
-			So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 false 15B")
-			So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 false 15B")
+			So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 false 492B")
+			So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 false 492B")
 			Convey("Test all images invalid output format", func() {
 				args := []string{"imagetest", "-o", "random"}
 				configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
@@ -945,14 +945,14 @@ func TestServerResponseGQL(t *testing.T) {
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			// Actual cli output should be something similar to (order of images may differ):
-			// IMAGE NAME    TAG       DIGEST    CONFIG    LAYERS    SIZE
-			// repo7         test:2.0  a0ca253b  b8781e88            15B
-			//                                             b8781e88  15B
-			// repo7         test:1.0  a0ca253b  b8781e88            15B
-			//                                             b8781e88  15B
+			// IMAGE NAME    TAG       DIGEST    CONFIG    SIGNED  LAYERS    SIZE
+			// repo7         test:2.0  a0ca253b  b8781e88  false             492B
+			//                                                     b8781e88  15B
+			// repo7         test:1.0  a0ca253b  b8781e88  false             492B
+			//                                                     b8781e88  15B
 			So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST CONFIG SIGNED LAYERS SIZE")
-			So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 3a1d2d0c false 15B b8781e88 15B")
-			So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 3a1d2d0c false 15B b8781e88 15B")
+			So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 3a1d2d0c false 492B b8781e88 15B")
+			So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 3a1d2d0c false 492B b8781e88 15B")
 		})
 
 		Convey("Test all images with debug flag", func() {
@@ -971,8 +971,8 @@ func TestServerResponseGQL(t *testing.T) {
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "GET")
 			So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIGNED SIZE")
-			So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 false 15B")
-			So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 false 15B")
+			So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 false 492B")
+			So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 false 492B")
 		})
 
 		Convey("Test image by name config url", func() {
@@ -990,8 +990,8 @@ func TestServerResponseGQL(t *testing.T) {
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIGNED SIZE")
-			So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 false 15B")
-			So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 false 15B")
+			So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 false 492B")
+			So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 false 492B")
 
 			Convey("with shorthand", func() {
 				args := []string{"imagetest", "-n", "repo7"}
@@ -1008,8 +1008,8 @@ func TestServerResponseGQL(t *testing.T) {
 				str := space.ReplaceAllString(buff.String(), " ")
 				actual := strings.TrimSpace(str)
 				So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIGNED SIZE")
-				So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 false 15B")
-				So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 false 15B")
+				So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 false 492B")
+				So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 false 492B")
 			})
 
 			Convey("invalid output format", func() {
@@ -1193,11 +1193,11 @@ func TestServerResponse(t *testing.T) {
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			// Actual cli output should be something similar to (order of images may differ):
-			// IMAGE NAME    TAG       DIGEST    CONFIG    LAYERS    SIZE
-			// repo7         test:2.0  a0ca253b  b8781e88            492B
-			//                                             b8781e88  15B
-			// repo7         test:1.0  a0ca253b  b8781e88            492B
-			//                                             b8781e88  15B
+			// IMAGE NAME    TAG       DIGEST    CONFIG    SIGNED  LAYERS    SIZE
+			// repo7         test:2.0  a0ca253b  b8781e88  false             492B
+			//                                                     b8781e88  15B
+			// repo7         test:1.0  a0ca253b  b8781e88  false             492B
+			//                                                     b8781e88  15B
 			So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST CONFIG SIGNED LAYERS SIZE")
 			So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 3a1d2d0c false 492B b8781e88 15B")
 			So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 3a1d2d0c false 492B b8781e88 15B")
