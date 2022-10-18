@@ -453,7 +453,7 @@ func TestCVESearch(t *testing.T) {
 		err = json.Unmarshal(resp.Body(), &apiErr)
 		So(err, ShouldBeNil)
 
-		resp, err = resty.R().Get(baseURL + constants.ExtSearchPrefix)
+		resp, err = resty.R().Get(baseURL + constants.FullSearchPrefix)
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 401)
@@ -469,11 +469,11 @@ func TestCVESearch(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.ExtSearchPrefix)
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 422)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.ExtSearchPrefix + "?query={CVEListForImage(image:\"zot-test:0.0.1\"){Tag%20CVEList{Id%20Description%20Severity%20PackageList{Name%20InstalledVersion%20FixedVersion}}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={CVEListForImage(image:\"zot-test:0.0.1\"){Tag%20CVEList{Id%20Description%20Severity%20PackageList{Name%20InstalledVersion%20FixedVersion}}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -484,7 +484,7 @@ func TestCVESearch(t *testing.T) {
 
 		cvid := cveResult.ImgList.CVEResultForImage.CVEList[0].ID
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.ExtSearchPrefix + "?query={ImageListWithCVEFixed(id:\"" + cvid + "\",image:\"zot-test\"){RepoName%20LastUpdated}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={ImageListWithCVEFixed(id:\"" + cvid + "\",image:\"zot-test\"){RepoName%20LastUpdated}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -493,7 +493,7 @@ func TestCVESearch(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(imgListWithCVEFixed.Images), ShouldEqual, 0)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.ExtSearchPrefix + "?query={ImageListWithCVEFixed(id:\"" + cvid + "\",image:\"zot-cve-test\"){RepoName%20LastUpdated}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={ImageListWithCVEFixed(id:\"" + cvid + "\",image:\"zot-cve-test\"){RepoName%20LastUpdated}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -501,11 +501,11 @@ func TestCVESearch(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(imgListWithCVEFixed.Images), ShouldEqual, 0)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.ExtSearchPrefix + "?query={ImageListWithCVEFixed(id:\"" + cvid + "\",image:\"zot-test\"){RepoName%20LastUpdated}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={ImageListWithCVEFixed(id:\"" + cvid + "\",image:\"zot-test\"){RepoName%20LastUpdated}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.ExtSearchPrefix + "?query={CVEListForImage(image:\"b/zot-squashfs-test:commit-aaa7c6e7-squashfs\"){Tag%20CVEList{Id%20Description%20Severity%20PackageList{Name%20InstalledVersion%20FixedVersion}}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={CVEListForImage(image:\"b/zot-squashfs-test:commit-aaa7c6e7-squashfs\"){Tag%20CVEList{Id%20Description%20Severity%20PackageList{Name%20InstalledVersion%20FixedVersion}}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
@@ -514,108 +514,108 @@ func TestCVESearch(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(cveSquashFSResult.ImgList.CVEResultForImage.CVEList), ShouldBeZeroValue)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.ExtSearchPrefix + "?query={CVEListForImage(image:\"zot-squashfs-noindex:commit-aaa7c6e7-squashfs\"){Tag%20CVEList{Id%20Description%20Severity%20PackageList{Name%20InstalledVersion%20FixedVersion}}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={CVEListForImage(image:\"zot-squashfs-noindex:commit-aaa7c6e7-squashfs\"){Tag%20CVEList{Id%20Description%20Severity%20PackageList{Name%20InstalledVersion%20FixedVersion}}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.ExtSearchPrefix + "?query={ImageListWithCVEFixed(id:\"" + cvid + "\",image:\"zot-squashfs-noindex\"){RepoName%20LastUpdated}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={ImageListWithCVEFixed(id:\"" + cvid + "\",image:\"zot-squashfs-noindex\"){RepoName%20LastUpdated}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.ExtSearchPrefix + "?query={CVEListForImage(image:\"zot-squashfs-invalid-index:commit-aaa7c6e7-squashfs\"){Tag%20CVEList{Id%20Description%20Severity%20PackageList{Name%20InstalledVersion%20FixedVersion}}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={CVEListForImage(image:\"zot-squashfs-invalid-index:commit-aaa7c6e7-squashfs\"){Tag%20CVEList{Id%20Description%20Severity%20PackageList{Name%20InstalledVersion%20FixedVersion}}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.ExtSearchPrefix + "?query={ImageListWithCVEFixed(id:\"" + cvid + "\",image:\"zot-squashfs-invalid-index\"){RepoName%20LastUpdated}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={ImageListWithCVEFixed(id:\"" + cvid + "\",image:\"zot-squashfs-invalid-index\"){RepoName%20LastUpdated}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.ExtSearchPrefix + "?query={CVEListForImage(image:\"zot-squashfs-noblobs:commit-aaa7c6e7-squashfs\"){Tag%20CVEList{Id%20Description%20Severity%20PackageList{Name%20InstalledVersion%20FixedVersion}}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={CVEListForImage(image:\"zot-squashfs-noblobs:commit-aaa7c6e7-squashfs\"){Tag%20CVEList{Id%20Description%20Severity%20PackageList{Name%20InstalledVersion%20FixedVersion}}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.ExtSearchPrefix + "?query={ImageListWithCVEFixed(id:\"" + cvid + "\",image:\"zot-squashfs-noblob\"){RepoName%20LastUpdated}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={ImageListWithCVEFixed(id:\"" + cvid + "\",image:\"zot-squashfs-noblob\"){RepoName%20LastUpdated}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.ExtSearchPrefix + "?query={ImageListWithCVEFixed(id:\"" + cvid + "\",image:\"zot-squashfs-test\"){RepoName%20LastUpdated}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={ImageListWithCVEFixed(id:\"" + cvid + "\",image:\"zot-squashfs-test\"){RepoName%20LastUpdated}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.ExtSearchPrefix + "?query={CVEListForImage(image:\"zot-squashfs-invalid-blob:commit-aaa7c6e7-squashfs\"){Tag%20CVEList{Id%20Description%20Severity%20PackageList{Name%20InstalledVersion%20FixedVersion}}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={CVEListForImage(image:\"zot-squashfs-invalid-blob:commit-aaa7c6e7-squashfs\"){Tag%20CVEList{Id%20Description%20Severity%20PackageList{Name%20InstalledVersion%20FixedVersion}}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.ExtSearchPrefix + "?query={ImageListWithCVEFixed(id:\"" + cvid + "\",image:\"zot-squashfs-invalid-blob\"){RepoName%20LastUpdated}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={ImageListWithCVEFixed(id:\"" + cvid + "\",image:\"zot-squashfs-invalid-blob\"){RepoName%20LastUpdated}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.ExtSearchPrefix + "?query={CVEListForImage(image:\"zot-squashfs-test\"){Tag%20CVEList{Id%20Description%20Severity%20PackageList{Name%20InstalledVersion%20FixedVersion}}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={CVEListForImage(image:\"zot-squashfs-test\"){Tag%20CVEList{Id%20Description%20Severity%20PackageList{Name%20InstalledVersion%20FixedVersion}}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.ExtSearchPrefix + "?query={CVEListForImage(image:\"cntos\"){Tag%20CVEList{Id%20Description%20Severity}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={CVEListForImage(image:\"cntos\"){Tag%20CVEList{Id%20Description%20Severity}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.ExtSearchPrefix + "?query={ImageListForCVE(id:\"CVE-201-20482\"){RepoName%20Tag}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={ImageListForCVE(id:\"CVE-201-20482\"){RepoName%20Tag}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.ExtSearchPrefix + "?query={CVEListForImage(image:\"zot-test\"){Tag%20CVEList{Id%20Description}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={CVEListForImage(image:\"zot-test\"){Tag%20CVEList{Id%20Description}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.ExtSearchPrefix + "?query={CVEListForImage(image:\"zot-test:0.0.1\"){Tag}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={CVEListForImage(image:\"zot-test:0.0.1\"){Tag}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.ExtSearchPrefix + "?query={CVEListForImage(image:\"zot-test:0.0.1\"){CVEList{Id%20Description%20Severity}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={CVEListForImage(image:\"zot-test:0.0.1\"){CVEList{Id%20Description%20Severity}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.ExtSearchPrefix + "?query={CVEListForImage(image:\"zot-test:0.0.1\"){CVEList{Description%20Severity}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={CVEListForImage(image:\"zot-test:0.0.1\"){CVEList{Description%20Severity}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.ExtSearchPrefix + "?query={CVEListForImage(image:\"zot-test:0.0.1\"){CVEList{Id%20Severity}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={CVEListForImage(image:\"zot-test:0.0.1\"){CVEList{Id%20Severity}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.ExtSearchPrefix + "?query={CVEListForImage(image:\"zot-test:0.0.1\"){CVEList{Id%20Description}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={CVEListForImage(image:\"zot-test:0.0.1\"){CVEList{Id%20Description}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.ExtSearchPrefix + "?query={CVEListForImage(image:\"zot-test:0.0.1\"){CVEList{Id}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={CVEListForImage(image:\"zot-test:0.0.1\"){CVEList{Id}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.ExtSearchPrefix + "?query={CVEListForImage(image:\"zot-test:0.0.1\"){CVEList{Description}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={CVEListForImage(image:\"zot-test:0.0.1\"){CVEList{Description}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
 		// Testing Invalid Search URL
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.ExtSearchPrefix + "?query={CVEListForImage(image:\"zot-test:0.0.1\"){Ta%20CVEList{Id%20Description%20Severity}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={CVEListForImage(image:\"zot-test:0.0.1\"){Ta%20CVEList{Id%20Description%20Severity}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 422)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.ExtSearchPrefix + "?query={ImageListForCVE(tet:\"CVE-2018-20482\"){RepoName%20Tag}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={ImageListForCVE(tet:\"CVE-2018-20482\"){RepoName%20Tag}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 422)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.ExtSearchPrefix + "?query={ImageistForCVE(id:\"CVE-2018-20482\"){RepoName%20Tag}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={ImageistForCVE(id:\"CVE-2018-20482\"){RepoName%20Tag}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 422)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.ExtSearchPrefix + "?query={ImageListForCVE(id:\"CVE-2018-20482\"){ame%20Tags}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={ImageListForCVE(id:\"CVE-2018-20482\"){ame%20Tags}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 422)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.ExtSearchPrefix + "?query={CVEListForImage(reo:\"zot-test:1.0.0\"){Tag%20CVEList{Id%20Description%20Severity}}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={CVEListForImage(reo:\"zot-test:1.0.0\"){Tag%20CVEList{Id%20Description%20Severity}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 422)
 
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.ExtSearchPrefix + "?query={ImageListForCVE(id:\"" + cvid + "\"){RepoName%20Tag}}")
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={ImageListForCVE(id:\"" + cvid + "\"){RepoName%20Tag}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 	})

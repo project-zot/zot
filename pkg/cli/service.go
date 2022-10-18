@@ -655,7 +655,7 @@ func (service searchService) makeGraphQLQuery(ctx context.Context,
 	config searchConfig, username, password, query string,
 	resultPtr interface{},
 ) error {
-	endPoint, err := combineServerAndEndpointURL(*config.servURL, constants.ExtSearchPrefix)
+	endPoint, err := combineServerAndEndpointURL(*config.servURL, constants.FullSearchPrefix)
 	if err != nil {
 		return err
 	}
