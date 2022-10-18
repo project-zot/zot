@@ -213,9 +213,9 @@ type Query {
     RepoListWithNewestImage(requestedPage: PageInput): PaginatedReposResult!  # Newest based on created timestamp
 
     """
-    Returns all the images from the specified repo
+    Returns all the images from the specified repo | from all repos if specified repo is ""
     """
-    ImageList(repo: String!): [ImageSummary!]
+    ImageList(repo: String!, requestedPage: PageInput): [ImageSummary!]
 
     """
     Returns information about the specified repo
