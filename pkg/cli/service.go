@@ -1156,8 +1156,8 @@ const (
 	colDigestIndex    = 2
 	colConfigIndex    = 3
 	colIsSignedIndex  = 4
-	colLayersIndex    = 5
 	colSizeIndex      = 6
+	colLayersIndex    = 5
 
 	cveIDWidth       = 16
 	cveSeverityWidth = 8
