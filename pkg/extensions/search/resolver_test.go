@@ -620,7 +620,6 @@ func TestImageListForDigest(t *testing.T) {
 
 			responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 				graphql.DefaultRecover)
-
 			_, err := getImageListForDigest(responseContext, "invalid", mockSearchDB, mocks.CveInfoMock{}, nil)
 			So(err, ShouldNotBeNil)
 		})
@@ -649,7 +648,6 @@ func TestImageListForDigest(t *testing.T) {
 						},
 					})
 					So(err, ShouldBeNil)
-
 					manifestBlob := []byte("invalid")
 
 					manifestMetaDatas := map[string]repodb.ManifestMetadata{
@@ -715,7 +713,6 @@ func TestImageListForDigest(t *testing.T) {
 							BlobCount:     0,
 						},
 					}
-
 					matchedTags := repos[0].Tags
 					for tag, manifestDigest := range repos[0].Tags {
 						if !filter(repos[0], manifestMetaDatas[manifestDigest]) {
@@ -743,7 +740,6 @@ func TestImageListForDigest(t *testing.T) {
 
 			responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 				graphql.DefaultRecover)
-
 			imageSummaries, err := getImageListForDigest(responseContext, manifestDigest,
 				mockSearchDB, mocks.CveInfoMock{}, &pageInput)
 			So(err, ShouldBeNil)
@@ -1084,6 +1080,95 @@ func TestImageListForDigest(t *testing.T) {
 				mockSearchDB, mocks.CveInfoMock{}, &pageInput)
 			So(err, ShouldBeNil)
 			So(len(imageSummaries), ShouldEqual, 1)
+		})
+	})
+}
+
+func TestImageList(t *testing.T) {
+	Convey("getImageList", t, func() {
+		testLogger := log.NewLogger("debug", "")
+		Convey("no page requested, SearchRepoFn returns error", func() {
+			mockSearchDB := mocks.RepoDBMock{
+				FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc,
+					requestedPage repodb.PageInput,
+				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
+					return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, ErrTestError
+				},
+			}
+
+			responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
+				graphql.DefaultRecover)
+
+			_, err := getImageList(responseContext, "test", mockSearchDB, mocks.CveInfoMock{}, nil, testLogger)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("valid repoList returned", func() {
+			mockSearchDB := mocks.RepoDBMock{
+				FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc,
+					requestedPage repodb.PageInput,
+				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
+					repos := []repodb.RepoMetadata{
+						{
+							Name: "test",
+							Tags: map[string]string{
+								"1.0.1": "digestTag1.0.1",
+							},
+							Signatures:  []string{"testSignature"},
+							Stars:       100,
+							Description: "Description repo1",
+							LogoPath:    "test/logoPath",
+						},
+					}
+
+					configBlob, err := json.Marshal(ispec.Image{
+						Config: ispec.ImageConfig{
+							Labels: map[string]string{},
+						},
+					})
+					So(err, ShouldBeNil)
+
+					manifestBlob, err := json.Marshal(ispec.Manifest{})
+					So(err, ShouldBeNil)
+
+					manifestMetaDatas := map[string]repodb.ManifestMetadata{
+						"digestTag1.0.1": {
+							ManifestBlob:  manifestBlob,
+							ConfigBlob:    configBlob,
+							DownloadCount: 0,
+							Signatures:    make(map[string][]string),
+							Dependencies:  make([]string, 0),
+							Dependants:    make([]string, 0),
+							BlobsSize:     0,
+							BlobCount:     0,
+						},
+					}
+
+					return repos, manifestMetaDatas, nil
+				},
+			}
+
+			limit := 1
+			ofset := 0
+			sortCriteria := gql_generated.SortCriteriaAlphabeticAsc
+			pageInput := gql_generated.PageInput{
+				Limit:  &limit,
+				Offset: &ofset,
+				SortBy: &sortCriteria,
+			}
+
+			responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
+				graphql.DefaultRecover)
+
+			imageSummaries, err := getImageList(responseContext, "test", mockSearchDB,
+				mocks.CveInfoMock{}, &pageInput, testLogger)
+			So(err, ShouldBeNil)
+			So(len(imageSummaries), ShouldEqual, 1)
+
+			imageSummaries, err = getImageList(responseContext, "invalid", mockSearchDB,
+				mocks.CveInfoMock{}, &pageInput, testLogger)
+			So(err, ShouldBeNil)
+			So(len(imageSummaries), ShouldEqual, 0)
 		})
 	})
 }

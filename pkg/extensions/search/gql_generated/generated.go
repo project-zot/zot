@@ -136,7 +136,7 @@ type ComplexityRoot struct {
 		ExpandedRepoInfo        func(childComplexity int, repo string) int
 		GlobalSearch            func(childComplexity int, query string, filter *Filter, requestedPage *PageInput) int
 		Image                   func(childComplexity int, image string) int
-		ImageList               func(childComplexity int, repo string) int
+		ImageList               func(childComplexity int, repo string, requestedPage *PageInput) int
 		ImageListForCve         func(childComplexity int, id string) int
 		ImageListForDigest      func(childComplexity int, id string, requestedPage *PageInput) int
 		ImageListWithCVEFixed   func(childComplexity int, id string, image string) int
@@ -169,7 +169,7 @@ type QueryResolver interface {
 	ImageListWithCVEFixed(ctx context.Context, id string, image string) ([]*ImageSummary, error)
 	ImageListForDigest(ctx context.Context, id string, requestedPage *PageInput) ([]*ImageSummary, error)
 	RepoListWithNewestImage(ctx context.Context, requestedPage *PageInput) ([]*RepoSummary, error)
-	ImageList(ctx context.Context, repo string) ([]*ImageSummary, error)
+	ImageList(ctx context.Context, repo string, requestedPage *PageInput) ([]*ImageSummary, error)
 	ExpandedRepoInfo(ctx context.Context, repo string) (*RepoInfo, error)
 	GlobalSearch(ctx context.Context, query string, filter *Filter, requestedPage *PageInput) (*GlobalSearchResult, error)
 	DerivedImageList(ctx context.Context, image string) ([]*ImageSummary, error)
@@ -645,7 +645,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 			return 0, false
 		}
 
-		return e.complexity.Query.ImageList(childComplexity, args["repo"].(string)), true
+		return e.complexity.Query.ImageList(childComplexity, args["repo"].(string), args["requestedPage"].(*PageInput)), true
 
 	case "Query.ImageListForCVE":
 		if e.complexity.Query.ImageListForCve == nil {
@@ -1045,7 +1045,7 @@ type Query {
     """
     Returns all the images from the specified repo
     """
-    ImageList(repo: String!): [ImageSummary!]
+    ImageList(repo: String!, requestedPage: PageInput): [ImageSummary!]
 
     """
     Returns information about the specified repo
@@ -1248,6 +1248,15 @@ func (ec *executionContext) field_Query_ImageList_args(ctx context.Context, rawA
 		}
 	}
 	args["repo"] = arg0
+	var arg1 *PageInput
+	if tmp, ok := rawArgs["requestedPage"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
+		arg1, err = ec.unmarshalOPageInput2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["requestedPage"] = arg1
 	return args, nil
 }
 
@@ -4104,7 +4113,7 @@ func (ec *executionContext) _Query_ImageList(ctx context.Context, field graphql.
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().ImageList(rctx, fc.Args["repo"].(string))
+		return ec.resolvers.Query().ImageList(rctx, fc.Args["repo"].(string), fc.Args["requestedPage"].(*PageInput))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
