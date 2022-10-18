@@ -2876,7 +2876,8 @@ func TestImageList(t *testing.T) {
 		err = json.Unmarshal(imageConfigBuf, &imageConfigInfo)
 		So(err, ShouldBeNil)
 
-		query := fmt.Sprintf(`{
+		Convey("without pagination, valid response", func() {
+			query := fmt.Sprintf(`{
 			ImageList(repo:"%s"){
 				History{
 					HistoryDescription{
@@ -2894,126 +2895,50 @@ func TestImageList(t *testing.T) {
 			}
 		}`, repos[0])
 
-		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
-		So(resp, ShouldNotBeNil)
+			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+			So(resp, ShouldNotBeNil)
 
-		var responseStruct ImageListResponse
-		err = json.Unmarshal(resp.Body(), &responseStruct)
-		So(err, ShouldBeNil)
+			var responseStruct ImageListResponse
+			err = json.Unmarshal(resp.Body(), &responseStruct)
+			So(err, ShouldBeNil)
 
-		So(len(responseStruct.ImageList.SummaryList[0].History), ShouldEqual, len(imageConfigInfo.History))
-	})
+			So(len(responseStruct.ImageList.SummaryList), ShouldEqual, len(tags))
+			So(len(responseStruct.ImageList.SummaryList[0].History), ShouldEqual, len(imageConfigInfo.History))
+		})
 
-	Convey("Test ImageSummary retuned by ImageList when getting tags timestamp info fails", t, func() {
-		invalid := "test"
-		tempDir := t.TempDir()
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
-
-		conf := config.New()
-		conf.HTTP.Port = port
-		conf.Storage.RootDirectory = tempDir
-		defaultVal := true
-		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
-		}
-
-		conf.Extensions.Search.CVE = nil
-
-		ctlr := api.NewController(conf)
-
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
-
-		config := ispec.Image{
-			Architecture: "amd64",
-			OS:           "linux",
-			RootFS: ispec.RootFS{
-				Type:    "layers",
-				DiffIDs: []godigest.Digest{},
-			},
-			Author:  "ZotUser",
-			History: []ispec.History{},
-		}
-
-		configBlob, err := json.Marshal(config)
-		So(err, ShouldBeNil)
-
-		configDigest := godigest.FromBytes(configBlob)
-		layerDigest := godigest.FromString(invalid)
-		layerblob := []byte(invalid)
-		schemaVersion := 2
-		ispecManifest := ispec.Manifest{
-			Versioned: specs.Versioned{
-				SchemaVersion: schemaVersion,
-			},
-			Config: ispec.Descriptor{
-				MediaType: "application/vnd.oci.image.config.v1+json",
-				Digest:    configDigest,
-				Size:      int64(len(configBlob)),
-			},
-			Layers: []ispec.Descriptor{ // just 1 layer in manifest
-				{
-					MediaType: "application/vnd.oci.image.layer.v1.tar",
-					Digest:    layerDigest,
-					Size:      int64(len(layerblob)),
-				},
-			},
-			Annotations: map[string]string{
-				ispec.AnnotationRefName: "1.0",
-			},
-		}
-
-		err = UploadImage(
-			Image{
-				Manifest: ispecManifest,
-				Config:   config,
-				Layers: [][]byte{
-					layerblob,
-				},
-				Tag: "0.0.1",
-			},
-			baseURL,
-			invalid,
-		)
-		So(err, ShouldBeNil)
-
-		configPath := path.Join(conf.Storage.RootDirectory, invalid, "blobs",
-			configDigest.Algorithm().String(), configDigest.Encoded())
-
-		err = os.Remove(configPath)
-		So(err, ShouldBeNil)
-
-		query := fmt.Sprintf(`{
-			ImageList(repo:"%s"){
-				History{
-					HistoryDescription{
-						Author
-						Comment
-						Created
-						CreatedBy
-						EmptyLayer
-					},
-					Layer{
-						Digest
-						Size
+		Convey("Pagination with valid params", func() {
+			limit := 1
+			query := fmt.Sprintf(`{
+				ImageList(repo:"%s", requestedPage:{limit: %d, offset: 0, sortBy:RELEVANCE}){
+					History{
+						HistoryDescription{
+							Author
+							Comment
+							Created
+							CreatedBy
+							EmptyLayer
+						},
+						Layer{
+							Digest
+							Size
+						}
 					}
 				}
-			}
-		}`, invalid)
+			}`, repos[0], limit)
 
-		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
-		So(resp, ShouldNotBeNil)
+			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+			So(resp, ShouldNotBeNil)
 
-		var responseStruct ImageListResponse
-		err = json.Unmarshal(resp.Body(), &responseStruct)
-		So(err, ShouldBeNil)
-		So(len(responseStruct.ImageList.SummaryList), ShouldBeZeroValue)
+			var responseStruct ImageListResponse
+			err = json.Unmarshal(resp.Body(), &responseStruct)
+			So(err, ShouldBeNil)
+
+			So(len(responseStruct.ImageList.SummaryList), ShouldEqual, limit)
+		})
 	})
 }
 
