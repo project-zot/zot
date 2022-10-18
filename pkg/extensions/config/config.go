@@ -6,6 +6,11 @@ import (
 	"zotregistry.io/zot/pkg/extensions/sync"
 )
 
+// BaseConfig has params applicable to all extensions.
+type BaseConfig struct {
+	Enable *bool `mapstructure:",omitempty"`
+}
+
 type ExtensionConfig struct {
 	Search  *SearchConfig
 	Sync    *sync.Config
@@ -15,14 +20,14 @@ type ExtensionConfig struct {
 }
 
 type LintConfig struct {
-	Enabled              *bool
+	BaseConfig           `mapstructure:",squash"`
 	MandatoryAnnotations []string
 }
 
 type SearchConfig struct {
+	BaseConfig `mapstructure:",squash"`
 	// CVE search
-	CVE    *CVEConfig
-	Enable *bool
+	CVE *CVEConfig
 }
 
 type CVEConfig struct {
@@ -30,7 +35,7 @@ type CVEConfig struct {
 }
 
 type MetricsConfig struct {
-	Enable     *bool
+	BaseConfig `mapstructure:",squash"`
 	Prometheus *PrometheusConfig
 }
 
@@ -39,6 +44,6 @@ type PrometheusConfig struct {
 }
 
 type ScrubConfig struct {
-	Enable   *bool
-	Interval time.Duration
+	BaseConfig `mapstructure:",squash"`
+	Interval   time.Duration
 }

@@ -269,7 +269,7 @@ func TestSignature(t *testing.T) {
 		conf.HTTP.Port = port
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{Enable: &defaultVal},
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
 		}
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = currentDir
@@ -391,7 +391,7 @@ func TestDerivedImageList(t *testing.T) {
 		conf.HTTP.Port = port
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{Enable: &defaultVal},
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
 		}
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
@@ -485,7 +485,7 @@ func TestBaseImageList(t *testing.T) {
 		conf.HTTP.Port = port
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{Enable: &defaultVal},
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
 		}
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
@@ -819,7 +819,7 @@ func TestServerResponseGQL(t *testing.T) {
 		conf.HTTP.Port = port
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{Enable: &defaultVal},
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
 		}
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
@@ -1092,7 +1092,7 @@ func TestServerResponse(t *testing.T) {
 		conf.HTTP.Port = port
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{Enable: &defaultVal},
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
 		}
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
@@ -1262,8 +1262,8 @@ func TestServerResponseGQLWithoutPermissions(t *testing.T) {
 	}
 	defaultVal := true
 	searchConfig := &extconf.SearchConfig{
-		CVE:    cveConfig,
-		Enable: &defaultVal,
+		BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+		CVE:        cveConfig,
 	}
 	conf.Extensions = &extconf.ExtensionConfig{
 		Search: searchConfig,

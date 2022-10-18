@@ -284,7 +284,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		conf.Storage.RootDirectory = rootDir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{Enable: &defaultVal},
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
 		}
 
 		conf.Extensions.Search.CVE = nil
@@ -397,7 +397,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		conf.Storage.SubPaths[subpath] = config.StorageConfig{RootDirectory: subRootDir}
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{Enable: &defaultVal},
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
 		}
 
 		conf.Extensions.Search.CVE = nil
@@ -563,8 +563,8 @@ func TestRepoListWithNewestImage(t *testing.T) {
 			UpdateInterval: updateDuration,
 		}
 		searchConfig := &extconf.SearchConfig{
-			Enable: &defaultVal,
-			CVE:    cveConfig,
+			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+			CVE:        cveConfig,
 		}
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: searchConfig,
@@ -604,7 +604,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 			_ = ctlr.Server.Shutdown(ctx)
 		}()
 
-		substring := "\"Extensions\":{\"Search\":{\"CVE\":{\"UpdateInterval\":3600000000000},\"Enable\":true},\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":null}" //nolint:lll // gofumpt conflicts with lll
+		substring := "\"Extensions\":{\"Search\":{\"Enable\":true,\"CVE\":{\"UpdateInterval\":3600000000000}},\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":null}" //nolint:lll // gofumpt conflicts with lll
 		found, err := readFileAndSearchString(logPath, substring, 2*time.Minute)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
@@ -671,7 +671,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		conf.Storage.RootDirectory = tempDir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{Enable: &defaultVal},
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
 		}
 
 		conf.Extensions.Search.CVE = nil
@@ -771,7 +771,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		conf.Storage.SubPaths[subpath] = config.StorageConfig{RootDirectory: subRootDir}
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{Enable: &defaultVal},
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
 		}
 
 		conf.Extensions.Search.CVE = nil
@@ -1067,7 +1067,7 @@ func TestDerivedImageList(t *testing.T) {
 	conf.Storage.SubPaths[subpath] = config.StorageConfig{RootDirectory: subRootDir}
 	defaultVal := true
 	conf.Extensions = &extconf.ExtensionConfig{
-		Search: &extconf.SearchConfig{Enable: &defaultVal},
+		Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
 	}
 
 	conf.Extensions.Search.CVE = nil
@@ -1385,7 +1385,7 @@ func TestDerivedImageListNoRepos(t *testing.T) {
 		conf.Storage.RootDirectory = t.TempDir()
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{Enable: &defaultVal},
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
 		}
 
 		conf.Extensions.Search.CVE = nil
@@ -1482,7 +1482,7 @@ func TestBaseImageList(t *testing.T) {
 	conf.Storage.SubPaths[subpath] = config.StorageConfig{RootDirectory: subRootDir}
 	defaultVal := true
 	conf.Extensions = &extconf.ExtensionConfig{
-		Search: &extconf.SearchConfig{Enable: &defaultVal},
+		Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
 	}
 
 	conf.Extensions.Search.CVE = nil
@@ -1900,7 +1900,7 @@ func TestBaseImageListNoRepos(t *testing.T) {
 		conf.Storage.RootDirectory = t.TempDir()
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{Enable: &defaultVal},
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
 		}
 
 		conf.Extensions.Search.CVE = nil
@@ -1998,7 +1998,7 @@ func TestGlobalSearch(t *testing.T) {
 		conf.Storage.SubPaths[subpath] = config.StorageConfig{RootDirectory: subRootDir}
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{Enable: &defaultVal},
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
 		}
 
 		conf.Extensions.Search.CVE = nil
@@ -2195,8 +2195,8 @@ func TestGlobalSearch(t *testing.T) {
 			UpdateInterval: updateDuration,
 		}
 		searchConfig := &extconf.SearchConfig{
-			Enable: &defaultVal,
-			CVE:    cveConfig,
+			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+			CVE:        cveConfig,
 		}
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: searchConfig,
@@ -2239,7 +2239,7 @@ func TestGlobalSearch(t *testing.T) {
 		}()
 
 		// Wait for trivy db to download
-		substring := "\"Extensions\":{\"Search\":{\"CVE\":{\"UpdateInterval\":3600000000000},\"Enable\":true},\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":null}" //nolint:lll // gofumpt conflicts with lll
+		substring := "\"Extensions\":{\"Search\":{\"Enable\":true,\"CVE\":{\"UpdateInterval\":3600000000000}},\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":null}" //nolint:lll // gofumpt conflicts with lll
 		found, err := readFileAndSearchString(logPath, substring, 2*time.Minute)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
@@ -2418,7 +2418,7 @@ func TestImageList(t *testing.T) {
 		conf.Storage.RootDirectory = rootDir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{Enable: &defaultVal},
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
 		}
 
 		conf.Extensions.Search.CVE = nil
@@ -2490,7 +2490,7 @@ func TestImageList(t *testing.T) {
 		conf.Storage.RootDirectory = tempDir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{Enable: &defaultVal},
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
 		}
 
 		conf.Extensions.Search.CVE = nil
@@ -2602,7 +2602,7 @@ func TestBuildImageInfo(t *testing.T) {
 		conf.Storage.RootDirectory = rootDir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{Enable: &defaultVal},
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
 		}
 
 		conf.Extensions.Search.CVE = nil
@@ -2789,7 +2789,7 @@ func TestSearchSize(t *testing.T) {
 		conf.HTTP.Port = port
 		tr := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{Enable: &tr},
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &tr}},
 		}
 
 		ctlr := api.NewController(conf)
@@ -2903,7 +2903,7 @@ func TestImageSummary(t *testing.T) {
 
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{Enable: &defaultVal},
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
 		}
 
 		conf.Extensions.Search.CVE = nil

@@ -33,7 +33,7 @@ func TestExtensionMetrics(t *testing.T) {
 		conf.Extensions = &extconf.ExtensionConfig{}
 		enabled := true
 		conf.Extensions.Metrics = &extconf.MetricsConfig{
-			Enable:     &enabled,
+			BaseConfig: extconf.BaseConfig{Enable: &enabled},
 			Prometheus: &extconf.PrometheusConfig{Path: "/metrics"},
 		}
 
@@ -86,7 +86,7 @@ func TestExtensionMetrics(t *testing.T) {
 		conf.Storage.RootDirectory = t.TempDir()
 		conf.Extensions = &extconf.ExtensionConfig{}
 		var disabled bool
-		conf.Extensions.Metrics = &extconf.MetricsConfig{Enable: &disabled}
+		conf.Extensions.Metrics = &extconf.MetricsConfig{BaseConfig: extconf.BaseConfig{Enable: &disabled}}
 
 		ctlr := api.NewController(conf)
 		So(ctlr, ShouldNotBeNil)

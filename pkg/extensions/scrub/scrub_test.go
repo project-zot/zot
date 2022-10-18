@@ -51,8 +51,8 @@ func TestScrubExtension(t *testing.T) {
 		conf.Log.Output = logFile.Name()
 		trueValue := true
 		scrubConfig := &extconf.ScrubConfig{
-			Enable:   &trueValue,
-			Interval: 2,
+			BaseConfig: extconf.BaseConfig{Enable: &trueValue},
+			Interval:   2,
 		}
 		conf.Extensions = &extconf.ExtensionConfig{
 			Scrub: scrubConfig,
@@ -111,8 +111,8 @@ func TestScrubExtension(t *testing.T) {
 		conf.Log.Output = logFile.Name()
 		trueValue := true
 		scrubConfig := &extconf.ScrubConfig{
-			Enable:   &trueValue,
-			Interval: 2,
+			BaseConfig: extconf.BaseConfig{Enable: &trueValue},
+			Interval:   2,
 		}
 		conf.Extensions = &extconf.ExtensionConfig{
 			Scrub: scrubConfig,
@@ -178,8 +178,8 @@ func TestScrubExtension(t *testing.T) {
 		conf.Log.Output = logFile.Name()
 		trueValue := true
 		scrubConfig := &extconf.ScrubConfig{
-			Enable:   &trueValue,
-			Interval: 2,
+			BaseConfig: extconf.BaseConfig{Enable: &trueValue},
+			Interval:   2,
 		}
 		conf.Extensions = &extconf.ExtensionConfig{
 			Scrub: scrubConfig,

@@ -12,7 +12,7 @@
     },
     "extensions": {
         "lint": {
-          "enabled": true,
+          "enable": true,
           "mandatoryAnnotations": ["annot1", "annot2", "annot3"]
           
           }
