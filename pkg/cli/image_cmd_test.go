@@ -1145,7 +1145,7 @@ func TestServerResponseGQLWithoutPermissions(t *testing.T) {
 	}(ctlr)
 	// wait till ready
 	for {
-		res, err := resty.R().Get(url + constants.ExtSearchPrefix)
+		res, err := resty.R().Get(url + constants.FullSearchPrefix)
 		if err == nil && res.StatusCode() == 422 {
 			break
 		}

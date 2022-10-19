@@ -180,7 +180,7 @@ func checkExtEndPoint(serverURL string) bool {
 		return false
 	}
 
-	searchEndPoint, _ := combineServerAndEndpointURL(serverURL, constants.ExtSearchPrefix)
+	searchEndPoint, _ := combineServerAndEndpointURL(serverURL, constants.FullSearchPrefix)
 
 	query := `
         {

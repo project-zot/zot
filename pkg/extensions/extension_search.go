@@ -81,7 +81,7 @@ func SetupSearchRoutes(config *config.Config, router *mux.Router, storeControlle
 			resConfig = search.GetResolverConfig(log, storeController, nil)
 		}
 
-		graphqlPrefix := router.PathPrefix(constants.ExtSearchPrefix).Methods("OPTIONS", "GET", "POST")
+		graphqlPrefix := router.PathPrefix(constants.FullSearchPrefix).Methods("OPTIONS", "GET", "POST")
 		graphqlPrefix.Handler(gqlHandler.NewDefaultServer(gql_generated.NewExecutableSchema(resConfig)))
 	}
 }
@@ -101,7 +101,7 @@ func GetExtensions(config *config.Config) distext.ExtensionList {
 	extensions := make([]distext.Extension, 0)
 
 	if config.Extensions != nil && config.Extensions.Search != nil {
-		endpoints := []string{constants.ExtSearchPrefix}
+		endpoints := []string{constants.FullSearchPrefix}
 		searchExt := getExtension("_zot",
 			"https://github.com/project-zot/zot/blob/"+config.ReleaseTag+"/pkg/extensions/_zot.md",
 			"zot registry extensions",

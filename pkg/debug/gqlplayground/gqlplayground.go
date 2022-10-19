@@ -43,7 +43,7 @@ func SetupGQLPlaygroundRoutes(conf *config.Config, router *mux.Router,
 			proto += "https://"
 		}
 
-		target := proto + req.Host + constants.ExtSearchPrefix
+		target := proto + req.Host + constants.FullSearchPrefix
 
 		// respond with the output of template execution
 		_ = templ.Execute(writer, struct {

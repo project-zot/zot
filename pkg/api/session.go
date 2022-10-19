@@ -83,10 +83,8 @@ func SessionLogger(ctlr *Controller) mux.MiddlewareFunc {
 			// Stop timer
 			end := time.Now()
 			latency := end.Sub(start)
-			if latency > time.Minute {
-				// Truncate in a golang < 1.8 safe way
-				latency -= latency % time.Second
-			}
+			latency = latency.Truncate(time.Second)
+
 			clientIP := request.RemoteAddr
 			method := request.Method
 			headers := map[string][]string{}
