@@ -783,7 +783,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 			err = imgStore.DeleteBlobUpload(testImage, upload)
 			So(err, ShouldNotBeNil)
 
-			err = imgStore.DeleteImageManifest(testImage, "1.0")
+			err = imgStore.DeleteImageManifest(testImage, "1.0", false)
 			So(err, ShouldNotBeNil)
 
 			_, err = imgStore.PutImageManifest(testImage, "1.0", "application/json", []byte{})
@@ -887,13 +887,13 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 					return []byte{}, errS3
 				},
 			})
-			err := imgStore.DeleteImageManifest(testImage, "1.0")
+			err := imgStore.DeleteImageManifest(testImage, "1.0", false)
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("Test DeleteImageManifest2", func(c C) {
 			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{})
-			err := imgStore.DeleteImageManifest(testImage, "1.0")
+			err := imgStore.DeleteImageManifest(testImage, "1.0", false)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -1891,12 +1891,12 @@ func TestS3ManifestImageIndex(t *testing.T) {
 
 			Convey("Deleting an image index", func() {
 				// delete manifest by tag should pass
-				err := imgStore.DeleteImageManifest("index", "test:index3")
+				err := imgStore.DeleteImageManifest("index", "test:index3", false)
 				So(err, ShouldNotBeNil)
 				_, _, _, err = imgStore.GetImageManifest("index", "test:index3")
 				So(err, ShouldNotBeNil)
 
-				err = imgStore.DeleteImageManifest("index", "test:index1")
+				err = imgStore.DeleteImageManifest("index", "test:index1", false)
 				So(err, ShouldBeNil)
 				_, _, _, err = imgStore.GetImageManifest("index", "test:index1")
 				So(err, ShouldNotBeNil)
@@ -1907,12 +1907,12 @@ func TestS3ManifestImageIndex(t *testing.T) {
 
 			Convey("Deleting an image index by digest", func() {
 				// delete manifest by tag should pass
-				err := imgStore.DeleteImageManifest("index", "test:index3")
+				err := imgStore.DeleteImageManifest("index", "test:index3", false)
 				So(err, ShouldNotBeNil)
 				_, _, _, err = imgStore.GetImageManifest("index", "test:index3")
 				So(err, ShouldNotBeNil)
 
-				err = imgStore.DeleteImageManifest("index", index1dgst.String())
+				err = imgStore.DeleteImageManifest("index", index1dgst.String(), false)
 				So(err, ShouldBeNil)
 				_, _, _, err = imgStore.GetImageManifest("index", "test:index1")
 				So(err, ShouldNotBeNil)
@@ -1983,7 +1983,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 				_, _, _, err = imgStore.GetImageManifest("index", "test:index1")
 				So(err, ShouldBeNil)
 
-				err = imgStore.DeleteImageManifest("index", "test:index1")
+				err = imgStore.DeleteImageManifest("index", "test:index1", false)
 				So(err, ShouldBeNil)
 				_, _, _, err = imgStore.GetImageManifest("index", "test:index1")
 				So(err, ShouldNotBeNil)
@@ -1994,7 +1994,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 					cleanupStorage(storeDriver, path.Join(testDir, "index", "blobs",
 						index1dgst.Algorithm().String(), index1dgst.Encoded()))
 
-					err = imgStore.DeleteImageManifest("index", index1dgst.String())
+					err = imgStore.DeleteImageManifest("index", index1dgst.String(), false)
 					So(err, ShouldNotBeNil)
 					_, _, _, err = imgStore.GetImageManifest("index", "test:index1")
 					So(err, ShouldNotBeNil)
@@ -2009,7 +2009,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 					_, err = wrtr.Write([]byte("deadbeef"))
 					So(err, ShouldBeNil)
 					wrtr.Close()
-					err = imgStore.DeleteImageManifest("index", index1dgst.String())
+					err = imgStore.DeleteImageManifest("index", index1dgst.String(), false)
 					So(err, ShouldBeNil)
 					_, _, _, err = imgStore.GetImageManifest("index", "test:index1")
 					So(err, ShouldNotBeNil)

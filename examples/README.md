@@ -175,8 +175,11 @@ Should authentication fail, to prevent automated attacks, a delayed response can
 ## Identity-based Authorization
 
 Allowing actions on one or more repository paths can be tied to user
-identities. An additional per-repository default policy can be specified for
-identities not in the whitelist. Furthermore, a global admin policy can also be
+identities. Two additional per-repository policies can be specified for identities not in the whitelist:
+- anonymousPolicy - applied for unathenticated users.
+- defaultPolicy - applied for authenticated users.
+
+Furthermore, a global admin policy can also be
 specified which can override per-repository policies.
 
 Glob patterns can also be used as repository paths.
@@ -191,7 +194,15 @@ because it will be longer. So that's why we have the option to specify an adminP
 
 Basically '**' means repositories not matched by any other per-repository policy.
 
-create/update/delete can not be used without 'read' action, make sure read is always included in policies!
+Method-based action list:
+- "read" - list/pull images
+- "create" - push images (needs "read")
+- "update" - overwrite tags (needs "read" and "create")
+- "delete" - delete images (needs "read")
+
+Behaviour-based action list
+- "detectManifestCollision" - delete manifest by digest will throw an error if multiple manifests have the same digest (needs "read" and "delete")
+
 
 ```
 "accessControl": {
@@ -202,8 +213,8 @@ create/update/delete can not be used without 'read' action, make sure read is al
           "actions": ["read", "create", "update"]
         }
       ],
-      "defaultPolicy": ["read", "create"],                     # default policy which is applied for authenticated users, other than "charlie"=> so these users can read/create repositories
-      "anonymousPolicy": ["read]                               # anonymous policy which is applied for unauthenticated users => so they can read repositories
+      "defaultPolicy": ["read", "create", "delete", "detectManifestCollision"], # default policy which is applied for authenticated users, other than "charlie"=> so these users can read/create/delete repositories and also can detect manifests collision.
+      "anonymousPolicy": ["read"]                               # anonymous policy which is applied for unauthenticated users => so they can read repositories
     },
     "tmp/**": {                                                # matches all repos under tmp/ recursively
       "defaultPolicy": ["read", "create", "update"]            # so all users have read/create/update on all repos under tmp/ eg: tmp/infra/repo

@@ -18,11 +18,13 @@ import (
 )
 
 const (
-	// actions.
-	CREATE = "create"
-	READ   = "read"
-	UPDATE = "update"
-	DELETE = "delete"
+	// method actions.
+	Create = "create"
+	Read   = "read"
+	Update = "update"
+	Delete = "delete"
+	// behaviour actions.
+	DetectManifestCollision = "detectManifestCollision"
 )
 
 // AccessController authorizes users to act on resources.
@@ -38,19 +40,27 @@ func NewAccessController(config *config.Config) *AccessController {
 	}
 }
 
-// getReadRepos get glob patterns from config file that the user has or doesn't have READ perms.
+// getGlobPatterns gets glob patterns from authz config on which <username> has <action> perms.
 // used to filter /v2/_catalog repositories based on user rights.
-func (ac *AccessController) getReadGlobPatterns(username string) map[string]bool {
+func (ac *AccessController) getGlobPatterns(username string, action string) map[string]bool {
 	globPatterns := make(map[string]bool)
 
 	for pattern, policyGroup := range ac.Config.Repositories {
-		// check default policy
-		if common.Contains(policyGroup.DefaultPolicy, READ) {
-			globPatterns[pattern] = true
+		if username == "" {
+			// check anonymous policy
+			if common.Contains(policyGroup.AnonymousPolicy, action) {
+				globPatterns[pattern] = true
+			}
+		} else {
+			// check default policy (authenticated user)
+			if common.Contains(policyGroup.DefaultPolicy, action) {
+				globPatterns[pattern] = true
+			}
 		}
+
 		// check user based policy
 		for _, p := range policyGroup.Policies {
-			if common.Contains(p.Users, username) && common.Contains(p.Actions, READ) {
+			if common.Contains(p.Users, username) && common.Contains(p.Actions, action) {
 				globPatterns[pattern] = true
 			}
 		}
@@ -102,10 +112,13 @@ func (ac *AccessController) isAdmin(username string) bool {
 
 // getContext builds ac context(allowed to read repos and if user is admin) and returns it.
 func (ac *AccessController) getContext(username string, request *http.Request) context.Context {
-	readGlobPatterns := ac.getReadGlobPatterns(username)
+	readGlobPatterns := ac.getGlobPatterns(username, Read)
+	dmcGlobPatterns := ac.getGlobPatterns(username, DetectManifestCollision)
+
 	acCtx := localCtx.AccessControlContext{
-		GlobPatterns: readGlobPatterns,
-		Username:     username,
+		ReadGlobPatterns: readGlobPatterns,
+		DmcGlobPatterns:  dmcGlobPatterns,
+		Username:         username,
 	}
 
 	if ac.isAdmin(username) {
@@ -147,25 +160,6 @@ func isPermitted(username, action string, policyGroup config.PolicyGroup) bool {
 	}
 
 	return result
-}
-
-// returns either a user has or not rights on 'repository'.
-func matchesRepo(globPatterns map[string]bool, repository string) bool {
-	var longestMatchedPattern string
-
-	// because of the longest path matching rule, we need to check all patterns from config
-	for pattern := range globPatterns {
-		matched, err := glob.Match(pattern, repository)
-		if err == nil {
-			if matched && len(pattern) > len(longestMatchedPattern) {
-				longestMatchedPattern = pattern
-			}
-		}
-	}
-
-	allowed := globPatterns[longestMatchedPattern]
-
-	return allowed
 }
 
 func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
@@ -231,25 +225,25 @@ func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 			var action string
 			if request.Method == http.MethodGet || request.Method == http.MethodHead {
-				action = READ
+				action = Read
 			}
 
 			if request.Method == http.MethodPut || request.Method == http.MethodPatch || request.Method == http.MethodPost {
 				// assume user wants to create
-				action = CREATE
+				action = Create
 				// if we get a reference (tag)
 				if ok {
 					is := ctlr.StoreController.GetImageStore(resource)
 					tags, err := is.GetImageTags(resource)
 					// if repo exists and request's tag exists then action is UPDATE
 					if err == nil && common.Contains(tags, reference) && reference != "latest" {
-						action = UPDATE
+						action = Update
 					}
 				}
 			}
 
 			if request.Method == http.MethodDelete {
-				action = DELETE
+				action = Delete
 			}
 
 			can := acCtrlr.can(identity, action, resource)

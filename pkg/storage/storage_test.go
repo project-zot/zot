@@ -356,7 +356,7 @@ func TestStorageAPIs(t *testing.T) {
 							_, _, _, err = imgStore.GetImageManifest("test", "3.0")
 							So(err, ShouldBeNil)
 
-							err = imgStore.DeleteImageManifest("test", "1.0")
+							err = imgStore.DeleteImageManifest("test", "1.0", false)
 							So(err, ShouldBeNil)
 
 							tags, err = imgStore.GetImageTags("test")
@@ -368,8 +368,12 @@ func TestStorageAPIs(t *testing.T) {
 							So(err, ShouldBeNil)
 							So(hasBlob, ShouldEqual, true)
 
+							// with detectManifestCollision should get error
+							err = imgStore.DeleteImageManifest("test", digest.String(), true)
+							So(err, ShouldNotBeNil)
+
 							// If we pass reference all manifest with input reference should be deleted.
-							err = imgStore.DeleteImageManifest("test", digest.String())
+							err = imgStore.DeleteImageManifest("test", digest.String(), false)
 							So(err, ShouldBeNil)
 
 							tags, err = imgStore.GetImageTags("test")
@@ -541,13 +545,13 @@ func TestStorageAPIs(t *testing.T) {
 							So(err, ShouldBeNil)
 
 							So(len(index.Manifests), ShouldEqual, 1)
-							err = imgStore.DeleteImageManifest("test", "1.0")
+							err = imgStore.DeleteImageManifest("test", "1.0", false)
 							So(err, ShouldNotBeNil)
 
-							err = imgStore.DeleteImageManifest("inexistent", "1.0")
+							err = imgStore.DeleteImageManifest("inexistent", "1.0", false)
 							So(err, ShouldNotBeNil)
 
-							err = imgStore.DeleteImageManifest("test", digest.String())
+							err = imgStore.DeleteImageManifest("test", digest.String(), false)
 							So(err, ShouldBeNil)
 
 							_, _, _, err = imgStore.GetImageManifest("test", digest.String())

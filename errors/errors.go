@@ -59,4 +59,5 @@ var (
 	ErrParsingHTTPHeader       = errors.New("routes: invalid HTTP header")
 	ErrBadRange                = errors.New("storage: bad range")
 	ErrBadLayerCount           = errors.New("manifest: layers count doesn't correspond to config history")
+	ErrManifestConflict        = errors.New("manifest: multiple manifests found")
 )
