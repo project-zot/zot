@@ -5464,6 +5464,115 @@ func TestManifestImageIndex(t *testing.T) {
 	})
 }
 
+func TestManifestCollision(t *testing.T) {
+	Convey("Make a new controller", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		ctlr := api.NewController(conf)
+		dir := t.TempDir()
+		ctlr.Config.Storage.RootDirectory = dir
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		test.WaitTillServerReady(baseURL)
+
+		// create a blob/layer
+		resp, err := resty.R().Post(baseURL + "/v2/index/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+		loc := test.Location(baseURL, resp)
+		So(loc, ShouldNotBeEmpty)
+
+		// since we are not specifying any prefix i.e provided in config while starting server,
+		// so it should store index1 to global root dir
+		_, err = os.Stat(path.Join(dir, "index"))
+		So(err, ShouldBeNil)
+
+		resp, err = resty.R().Get(loc)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
+		content := []byte("this is a blob1")
+		digest := godigest.FromBytes(content)
+		So(digest, ShouldNotBeNil)
+		// monolithic blob upload: success
+		resp, err = resty.R().SetQueryParam("digest", digest.String()).
+			SetHeader("Content-Type", "application/octet-stream").SetBody(content).Put(loc)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+		blobLoc := resp.Header().Get("Location")
+		So(blobLoc, ShouldNotBeEmpty)
+		So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
+		So(resp.Header().Get(constants.DistContentDigestKey), ShouldNotBeEmpty)
+
+		// check a non-existent manifest
+		resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+			SetBody(content).Head(baseURL + "/v2/unknown/manifests/test:1.0")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+		// upload image config blob
+		resp, err = resty.R().Post(baseURL + "/v2/index/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+		loc = test.Location(baseURL, resp)
+		cblob, cdigest := test.GetRandomImageConfig()
+
+		resp, err = resty.R().
+			SetContentLength(true).
+			SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", cdigest.String()).
+			SetBody(cblob).
+			Put(loc)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		// create a manifest
+		manifest := ispec.Manifest{
+			Config: ispec.Descriptor{
+				MediaType: ispec.MediaTypeImageConfig,
+				Digest:    cdigest,
+				Size:      int64(len(cblob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageLayer,
+					Digest:    digest,
+					Size:      int64(len(content)),
+				},
+			},
+		}
+		manifest.SchemaVersion = 2
+		content, err = json.Marshal(manifest)
+		So(err, ShouldBeNil)
+		digest = godigest.FromBytes(content)
+		So(digest, ShouldNotBeNil)
+		resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+			SetBody(content).Put(baseURL + "/v2/index/manifests/test:1.0")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+		digestHdr := resp.Header().Get(constants.DistContentDigestKey)
+		So(digestHdr, ShouldNotBeEmpty)
+		So(digestHdr, ShouldEqual, digest.String())
+
+		resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+			SetBody(content).Put(baseURL + "/v2/index/manifests/test:2.0")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+		digestHdr = resp.Header().Get(constants.DistContentDigestKey)
+		So(digestHdr, ShouldNotBeEmpty)
+		So(digestHdr, ShouldEqual, digest.String())
+
+		// Deletion should fail if using digest
+		resp, err = resty.R().Delete(baseURL + "/v2/index/manifests/" + digest.String())
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusConflict)
+	})
+}
+
 func TestPullRange(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		port := test.GetFreePort()

@@ -153,7 +153,7 @@ func GetAndValidateRequestDigest(body []byte, digest string, log zerolog.Logger)
 }
 
 /*
-	CheckIfIndexNeedsUpdate verifies if an index needs to be updated given a new manifest descriptor.
+CheckIfIndexNeedsUpdate verifies if an index needs to be updated given a new manifest descriptor.
 
 Returns whether or not index needs update, in the latter case it will also return the previous digest.
 */
@@ -247,10 +247,12 @@ func GetIndex(imgStore ImageStore, repo string, log zerolog.Logger) (ispec.Index
 	return index, nil
 }
 
-func RemoveManifestDescByReference(index *ispec.Index, reference string) (ispec.Descriptor, bool) {
+func RemoveManifestDescByReference(index *ispec.Index, reference string) (ispec.Descriptor, bool, error) {
 	var removedManifest ispec.Descriptor
 
 	var found bool
+
+	foundCount := 0
 
 	var outIndex ispec.Index
 
@@ -259,11 +261,13 @@ func RemoveManifestDescByReference(index *ispec.Index, reference string) (ispec.
 		if ok && tag == reference {
 			removedManifest = manifest
 			found = true
+			foundCount++
 
 			continue
 		} else if reference == manifest.Digest.String() {
 			removedManifest = manifest
 			found = true
+			foundCount++
 
 			continue
 		}
@@ -271,14 +275,17 @@ func RemoveManifestDescByReference(index *ispec.Index, reference string) (ispec.
 		outIndex.Manifests = append(outIndex.Manifests, manifest)
 	}
 
+	if foundCount > 1 {
+		return ispec.Descriptor{}, false, zerr.ErrManifestConflict
+	}
+
 	index.Manifests = outIndex.Manifests
 
-	return removedManifest, found
+	return removedManifest, found, nil
 }
 
 /*
-	additionally, unmarshal an image index and for all manifests in that
-
+Unmarshal an image index and for all manifests in that
 index, ensure that they do not have a name or they are not in other
 manifest indexes else GC can never clean them.
 */
@@ -308,13 +315,12 @@ func UpdateIndexWithPrunedImageManifests(imgStore ImageStore, index *ispec.Index
 }
 
 /*
-*
-before an image index manifest is pushed to a repo, its constituent manifests
+Before an image index manifest is pushed to a repo, its constituent manifests
 are pushed first, so when updating/removing this image index manifest, we also
 need to determine if there are other image index manifests which refer to the
 same constitutent manifests so that they can be garbage-collected correctly
 
-pruneImageManifestsFromIndex is a helper routine to achieve this.
+PruneImageManifestsFromIndex is a helper routine to achieve this.
 */
 func PruneImageManifestsFromIndex(imgStore ImageStore, repo string, digest godigest.Digest, //nolint:gocyclo
 	outIndex ispec.Index, otherImgIndexes []ispec.Descriptor, log zerolog.Logger,

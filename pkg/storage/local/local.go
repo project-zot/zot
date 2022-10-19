@@ -559,7 +559,11 @@ func (is *ImageStoreLocal) DeleteImageManifest(repo, reference string) error {
 		return err
 	}
 
-	manifestDesc, found := storage.RemoveManifestDescByReference(&index, reference)
+	manifestDesc, found, err := storage.RemoveManifestDescByReference(&index, reference)
+	if err != nil {
+		return err
+	}
+
 	if !found {
 		return zerr.ErrManifestNotFound
 	}
