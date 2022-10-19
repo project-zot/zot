@@ -254,7 +254,7 @@ func TestRoutes(t *testing.T) {
 			statusCode := testDeleteBlob(
 				map[string]string{
 					"name":   "ErrUnexpectedError",
-					"digest": "sha256:7a0437f04f83f084b7ed68ad9c4a4947e12fc4e1b006b38129bac89114ec3621",
+					"digest": test.GetTestBlobDigest("zot-cve-test", "layer").String(),
 				},
 				&mocks.MockedImageStore{
 					DeleteBlobFn: func(repo, digest string) error {
@@ -279,7 +279,7 @@ func TestRoutes(t *testing.T) {
 			statusCode = testDeleteBlob(
 				map[string]string{
 					"name":   "ErrBlobNotFound",
-					"digest": "sha256:7a0437f04f83f084b7ed68ad9c4a4947e12fc4e1b006b38129bac89114ec3621",
+					"digest": test.GetTestBlobDigest("zot-cve-test", "layer").String(),
 				},
 				&mocks.MockedImageStore{
 					DeleteBlobFn: func(repo, digest string) error {
@@ -292,7 +292,7 @@ func TestRoutes(t *testing.T) {
 			statusCode = testDeleteBlob(
 				map[string]string{
 					"name":   "ErrRepoNotFound",
-					"digest": "sha256:7a0437f04f83f084b7ed68ad9c4a4947e12fc4e1b006b38129bac89114ec3621",
+					"digest": test.GetTestBlobDigest("zot-cve-test", "layer").String(),
 				},
 				&mocks.MockedImageStore{
 					DeleteBlobFn: func(repo, digest string) error {
@@ -402,7 +402,7 @@ func TestRoutes(t *testing.T) {
 			statusCode := testGetBlob(
 				map[string]string{
 					"name":   "ErrRepoNotFound",
-					"digest": "sha256:7a0437f04f83f084b7ed68ad9c4a4947e12fc4e1b006b38129bac89114ec3621",
+					"digest": test.GetTestBlobDigest("zot-cve-test", "layer").String(),
 				},
 				&mocks.MockedImageStore{
 					GetBlobFn: func(repo, digest, mediaType string) (io.ReadCloser, int64, error) {
@@ -415,7 +415,7 @@ func TestRoutes(t *testing.T) {
 			statusCode = testGetBlob(
 				map[string]string{
 					"name":   "ErrRepoNotFound",
-					"digest": "sha256:7a0437f04f83f084b7ed68ad9c4a4947e12fc4e1b006b38129bac89114ec3621",
+					"digest": test.GetTestBlobDigest("zot-cve-test", "layer").String(),
 				},
 				&mocks.MockedImageStore{
 					GetBlobFn: func(repo, digest, mediaType string) (io.ReadCloser, int64, error) {
@@ -835,7 +835,7 @@ func TestRoutes(t *testing.T) {
 
 			status := testUpdateBlobUpload(
 				[]struct{ k, v string }{
-					{"digest", "sha256:7a0437f04f83f084b7ed68ad9c4a4947e12fc4e1b006b38129bac89114ec3621"},
+					{"digest", test.GetTestBlobDigest("zot-cve-test", "layer").String()},
 				},
 				map[string]string{
 					"Content-Length": "",
@@ -851,7 +851,7 @@ func TestRoutes(t *testing.T) {
 
 			status = testUpdateBlobUpload(
 				[]struct{ k, v string }{
-					{"digest", "sha256:7a0437f04f83f084b7ed68ad9c4a4947e12fc4e1b006b38129bac89114ec3621"},
+					{"digest", test.GetTestBlobDigest("zot-cve-test", "layer").String()},
 				},
 				map[string]string{
 					"Content-Length": "100",
@@ -867,7 +867,7 @@ func TestRoutes(t *testing.T) {
 
 			status = testUpdateBlobUpload(
 				[]struct{ k, v string }{
-					{"digest", "sha256:7a0437f04f83f084b7ed68ad9c4a4947e12fc4e1b006b38129bac89114ec3621"},
+					{"digest", test.GetTestBlobDigest("zot-cve-test", "layer").String()},
 				},
 				map[string]string{
 					"Content-Length": "100",
@@ -887,7 +887,7 @@ func TestRoutes(t *testing.T) {
 
 			status = testUpdateBlobUpload(
 				[]struct{ k, v string }{
-					{"digest", "sha256:7a0437f04f83f084b7ed68ad9c4a4947e12fc4e1b006b38129bac89114ec3621"},
+					{"digest", test.GetTestBlobDigest("zot-cve-test", "layer").String()},
 				},
 				map[string]string{
 					"Content-Length": "100",
@@ -907,7 +907,7 @@ func TestRoutes(t *testing.T) {
 
 			status = testUpdateBlobUpload(
 				[]struct{ k, v string }{
-					{"digest", "sha256:7a0437f04f83f084b7ed68ad9c4a4947e12fc4e1b006b38129bac89114ec3621"},
+					{"digest", test.GetTestBlobDigest("zot-cve-test", "layer").String()},
 				},
 				map[string]string{
 					"Content-Length": "100",
@@ -927,7 +927,7 @@ func TestRoutes(t *testing.T) {
 
 			status = testUpdateBlobUpload(
 				[]struct{ k, v string }{
-					{"digest", "sha256:7a0437f04f83f084b7ed68ad9c4a4947e12fc4e1b006b38129bac89114ec3621"},
+					{"digest", test.GetTestBlobDigest("zot-cve-test", "layer").String()},
 				},
 				map[string]string{
 					"Content-Length": "100",
@@ -947,7 +947,7 @@ func TestRoutes(t *testing.T) {
 
 			status = testUpdateBlobUpload(
 				[]struct{ k, v string }{
-					{"digest", "sha256:7a0437f04f83f084b7ed68ad9c4a4947e12fc4e1b006b38129bac89114ec3621"},
+					{"digest", test.GetTestBlobDigest("zot-cve-test", "layer").String()},
 				},
 				map[string]string{
 					"Content-Length": "0",
@@ -967,7 +967,7 @@ func TestRoutes(t *testing.T) {
 
 			status = testUpdateBlobUpload(
 				[]struct{ k, v string }{
-					{"digest", "sha256:7a0437f04f83f084b7ed68ad9c4a4947e12fc4e1b006b38129bac89114ec3621"},
+					{"digest", test.GetTestBlobDigest("zot-cve-test", "layer").String()},
 				},
 				map[string]string{
 					"Content-Length": "0",
@@ -987,7 +987,7 @@ func TestRoutes(t *testing.T) {
 
 			status = testUpdateBlobUpload(
 				[]struct{ k, v string }{
-					{"digest", "sha256:7a0437f04f83f084b7ed68ad9c4a4947e12fc4e1b006b38129bac89114ec3621"},
+					{"digest", test.GetTestBlobDigest("zot-cve-test", "layer").String()},
 				},
 				map[string]string{
 					"Content-Length": "0",
@@ -1007,7 +1007,7 @@ func TestRoutes(t *testing.T) {
 
 			status = testUpdateBlobUpload(
 				[]struct{ k, v string }{
-					{"digest", "sha256:7a0437f04f83f084b7ed68ad9c4a4947e12fc4e1b006b38129bac89114ec3621"},
+					{"digest", test.GetTestBlobDigest("zot-cve-test", "layer").String()},
 				},
 				map[string]string{
 					"Content-Length": "0",
@@ -1027,7 +1027,7 @@ func TestRoutes(t *testing.T) {
 
 			status = testUpdateBlobUpload(
 				[]struct{ k, v string }{
-					{"digest", "sha256:7a0437f04f83f084b7ed68ad9c4a4947e12fc4e1b006b38129bac89114ec3621"},
+					{"digest", test.GetTestBlobDigest("zot-cve-test", "layer").String()},
 				},
 				map[string]string{
 					"Content-Length": "0",
@@ -1298,7 +1298,7 @@ func TestRoutes(t *testing.T) {
 
 			status := testUpdateBlobUpload(
 				[]struct{ k, v string }{
-					{"digest", "sha256:7a0437f04f83f084b7ed68ad9c4a4947e12fc4e1b006b38129bac89114ec3621"},
+					{"digest", test.GetTestBlobDigest("zot-cve-test", "layer").String()},
 				},
 				map[string]string{
 					"Content-Length": "0",
@@ -1318,7 +1318,7 @@ func TestRoutes(t *testing.T) {
 
 			status = testUpdateBlobUpload(
 				[]struct{ k, v string }{
-					{"digest", "sha256:7a0437f04f83f084b7ed68ad9c4a4947e12fc4e1b006b38129bac89114ec3621"},
+					{"digest", test.GetTestBlobDigest("zot-cve-test", "layer").String()},
 				},
 				map[string]string{
 					"Content-Length": "0",
@@ -1338,7 +1338,7 @@ func TestRoutes(t *testing.T) {
 
 			status = testUpdateBlobUpload(
 				[]struct{ k, v string }{
-					{"digest", "sha256:7a0437f04f83f084b7ed68ad9c4a4947e12fc4e1b006b38129bac89114ec3621"},
+					{"digest", test.GetTestBlobDigest("zot-cve-test", "layer").String()},
 				},
 				map[string]string{
 					"Content-Length": "0",
