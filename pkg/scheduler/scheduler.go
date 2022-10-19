@@ -112,11 +112,24 @@ func (scheduler *Scheduler) RunScheduler(ctx context.Context) {
 
 func (scheduler *Scheduler) pushReadyGenerators() {
 	// iterate through waiting generators list and resubmit those which become ready to run
-	for i, gen := range scheduler.waitingGenerators {
-		if gen.getState() == ready {
-			gen.done = false
-			heap.Push(&scheduler.generators, gen)
-			scheduler.waitingGenerators = append(scheduler.waitingGenerators[:i], scheduler.waitingGenerators[i+1:]...)
+	for {
+		modified := false
+
+		for i, gen := range scheduler.waitingGenerators {
+			if gen.getState() == ready {
+				gen.done = false
+				heap.Push(&scheduler.generators, gen)
+				scheduler.waitingGenerators = append(scheduler.waitingGenerators[:i], scheduler.waitingGenerators[i+1:]...)
+				modified = true
+
+				scheduler.log.Debug().Msg("waiting generator is ready, pushing to ready generators")
+
+				break
+			}
+		}
+
+		if !modified {
+			break
 		}
 	}
 }

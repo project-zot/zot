@@ -59,7 +59,54 @@ func (g *generator) Reset() {
 	g.step = 0
 }
 
+type shortGenerator struct {
+	log      log.Logger
+	priority string
+	done     bool
+	index    int
+	step     int
+}
+
+func (g *shortGenerator) GenerateTask() (scheduler.Task, error) {
+	g.done = true
+
+	return &task{log: g.log, msg: fmt.Sprintf("executing %s task; index: %d", g.priority, g.index), err: false}, nil
+}
+
+func (g *shortGenerator) IsDone() bool {
+	return g.done
+}
+
+func (g *shortGenerator) Reset() {
+	g.done = true
+	g.step = 0
+}
+
 func TestScheduler(t *testing.T) {
+	Convey("Test active to waiting periodic generator", t, func() {
+		logFile, err := os.CreateTemp("", "zot-log*.txt")
+		So(err, ShouldBeNil)
+
+		defer os.Remove(logFile.Name()) // clean up
+
+		logger := log.NewLogger("debug", logFile.Name())
+		sch := scheduler.NewScheduler(logger)
+
+		genH := &shortGenerator{log: logger, priority: "high priority"}
+		// interval has to be higher than throttle value to simulate
+		sch.SubmitGenerator(genH, 12000*time.Millisecond, scheduler.HighPriority)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		sch.RunScheduler(ctx)
+
+		time.Sleep(16 * time.Second)
+		cancel()
+
+		data, err := os.ReadFile(logFile.Name())
+		So(err, ShouldBeNil)
+		So(string(data), ShouldContainSubstring, "waiting generator is ready, pushing to ready generators")
+	})
+
 	Convey("Test order of generators in queue", t, func() {
 		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
