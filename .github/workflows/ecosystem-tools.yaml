@@ -35,19 +35,22 @@ jobs:
           skopeo -v
       - name: Run push-pull tests
         run: |
-            make push-pull
+            make test-push-pull
       - name: Run metrics tests
         run: |
-            make bats-metrics
+            make test-bats-metrics
       - name: Run cve tests
         run: |
-            make bats-cve
+            make test-bats-cve
       - name: Run sync test
         run: |
-            make bats-sync
+            make test-bats-sync
       - name: Run scrub tests
         run: |
-            make bats-scrub
+            make test-bats-scrub
       - name: Run anonymous-push-pull tests
         run: |
-            make anonymous-push-pull
+            make test-anonymous-push-pull
+      - name: Run annotations tests
+        run: |
+            make test-annotations
