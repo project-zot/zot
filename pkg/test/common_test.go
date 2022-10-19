@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"testing"
+	"time"
 
 	"github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -136,6 +137,20 @@ func TestGetImageComponents(t *testing.T) {
 	})
 	Convey("finishes successfully", t, func() {
 		_, _, _, err := test.GetImageComponents(100)
+		So(err, ShouldBeNil)
+	})
+}
+
+func TestWaitTillTrivyDBDownloadStarted(t *testing.T) {
+	Convey("finishes successfully", t, func() {
+		tempDir := t.TempDir()
+		go func() {
+			test.WaitTillTrivyDBDownloadStarted(tempDir)
+		}()
+
+		time.Sleep(test.SleepTime)
+
+		_, err := os.Create(path.Join(tempDir, "trivy.db"))
 		So(err, ShouldBeNil)
 	})
 }

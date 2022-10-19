@@ -796,6 +796,9 @@ func TestRoutes(t *testing.T) {
 					PutBlobChunkFn: func(repo, uuid string, from, to int64, body io.Reader) (int64, error) {
 						return 100, ErrUnexpectedError
 					},
+					DeleteBlobUploadFn: func(repo, uuid string) error {
+						return ErrUnexpectedError
+					},
 				},
 			)
 			So(status, ShouldEqual, http.StatusInternalServerError)
@@ -941,6 +944,9 @@ func TestRoutes(t *testing.T) {
 					PutBlobChunkFn: func(repo, uuid string, from, to int64, body io.Reader) (int64, error) {
 						return 0, ErrUnexpectedError
 					},
+					DeleteBlobUploadFn: func(repo, uuid string) error {
+						return ErrUnexpectedError
+					},
 				},
 			)
 			So(status, ShouldEqual, http.StatusInternalServerError)
@@ -1039,6 +1045,9 @@ func TestRoutes(t *testing.T) {
 				},
 				&mocks.MockedImageStore{
 					FinishBlobUploadFn: func(repo, uuid string, body io.Reader, digest string) error {
+						return ErrUnexpectedError
+					},
+					DeleteBlobUploadFn: func(repo, uuid string) error {
 						return ErrUnexpectedError
 					},
 				},
