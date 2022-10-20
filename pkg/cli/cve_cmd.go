@@ -14,6 +14,7 @@ import (
 	"github.com/briandowns/spinner"
 	"github.com/spf13/cobra"
 	"gopkg.in/resty.v1"
+
 	zotErrors "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/constants"
 )

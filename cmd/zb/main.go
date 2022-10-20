@@ -6,6 +6,7 @@ import (
 	distspec "github.com/opencontainers/distribution-spec/specs-go"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+
 	"zotregistry.io/zot/pkg/api/config"
 )
 

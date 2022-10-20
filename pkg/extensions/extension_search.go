@@ -9,6 +9,7 @@ import (
 	gqlHandler "github.com/99designs/gqlgen/graphql/handler"
 	"github.com/gorilla/mux"
 	distext "github.com/opencontainers/distribution-spec/specs-go/v1/extensions"
+
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
 	"zotregistry.io/zot/pkg/extensions/search"

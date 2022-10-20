@@ -14,6 +14,7 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
+
 	"zotregistry.io/zot/pkg/cli"
 	. "zotregistry.io/zot/pkg/test"
 )

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
+
 	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"

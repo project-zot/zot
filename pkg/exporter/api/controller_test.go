@@ -20,6 +20,7 @@ import (
 	dto "github.com/prometheus/client_model/go"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
+
 	zotapi "zotregistry.io/zot/pkg/api"
 	zotcfg "zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/exporter/api"

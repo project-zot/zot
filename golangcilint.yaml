@@ -32,6 +32,11 @@ linters-settings:
       - w *os.File
       - to int64
       - l *ldap.Conn
+  gci:
+    sections:
+      - standard
+      - default
+      - prefix(zotregistry.io/zot)
   wsl:
     allow-assign-and-anything: true
     enforce-err-cuddling: true
@@ -69,3 +74,4 @@ issues:
       linters:
         - lll
         - varnamelen
+        - gci

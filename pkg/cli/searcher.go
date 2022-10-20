@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/briandowns/spinner"
+
 	zotErrors "zotregistry.io/zot/errors"
 )
 
@@ -638,14 +639,12 @@ type spinnerState struct {
 	enabled bool
 }
 
-//nolint
 func (spinner *spinnerState) startSpinner() {
 	if spinner.enabled {
 		spinner.spinner.Start()
 	}
 }
 
-//nolint
 func (spinner *spinnerState) stopSpinner() {
 	if spinner.enabled && spinner.spinner.Active() {
 		spinner.spinner.Stop()

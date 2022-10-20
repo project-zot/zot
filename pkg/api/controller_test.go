@@ -43,6 +43,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/resty.v1"
+
 	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"

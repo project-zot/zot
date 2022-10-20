@@ -9,6 +9,7 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 	"golang.org/x/crypto/bcrypt"
+
 	"zotregistry.io/zot/pkg/cli"
 	"zotregistry.io/zot/pkg/test"
 )

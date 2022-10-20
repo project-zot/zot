@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-ldap/ldap/v3"
+
 	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/log"
 )

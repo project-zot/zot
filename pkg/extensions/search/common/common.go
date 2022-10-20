@@ -7,6 +7,7 @@ import (
 	"time"
 
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+
 	"zotregistry.io/zot/pkg/storage"
 )
 

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
+
 	zotErrors "zotregistry.io/zot/errors"
 )
 

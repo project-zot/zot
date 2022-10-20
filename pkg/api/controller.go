@@ -18,6 +18,7 @@ import (
 	"github.com/docker/distribution/registry/storage/driver/factory"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
+
 	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/config"
 	ext "zotregistry.io/zot/pkg/extensions"

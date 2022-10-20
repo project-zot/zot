@@ -11,6 +11,7 @@ import (
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/rs/zerolog"
 	"github.com/sigstore/cosign/pkg/oci/remote"
+
 	zerr "zotregistry.io/zot/errors"
 )
 

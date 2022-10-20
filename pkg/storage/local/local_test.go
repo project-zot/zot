@@ -23,6 +23,7 @@ import (
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
+
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"

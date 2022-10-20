@@ -14,6 +14,7 @@ import (
 	"github.com/chartmuseum/auth"
 	"github.com/gorilla/mux"
 	"golang.org/x/crypto/bcrypt"
+
 	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/config"
 )

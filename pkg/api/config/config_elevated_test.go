@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
+
 	"zotregistry.io/zot/pkg/api/config"
 )
 

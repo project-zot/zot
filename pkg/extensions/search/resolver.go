@@ -12,17 +12,18 @@ import (
 	"strings"
 
 	"github.com/99designs/gqlgen/graphql"
-	glob "github.com/bmatcuk/doublestar/v4"            //nolint:gci
-	v1 "github.com/google/go-containerregistry/pkg/v1" //nolint:gci
+	glob "github.com/bmatcuk/doublestar/v4"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/vektah/gqlparser/v2/gqlerror"
+
 	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	digestinfo "zotregistry.io/zot/pkg/extensions/search/digest"
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
-	"zotregistry.io/zot/pkg/log" //nolint: gci
+	"zotregistry.io/zot/pkg/log"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/storage"
 ) // THIS CODE IS A STARTING POINT ONLY. IT WILL NOT BE UPDATED WITH SCHEMA CHANGES.
