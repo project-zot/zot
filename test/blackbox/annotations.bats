@@ -31,7 +31,7 @@ function setup_file() {
                     "enable": "true"
         },
         "lint": {
-                    "enabled": "true",
+                    "enable": "true",
                     "mandatoryAnnotations": ["org.opencontainers.image.licenses", "org.opencontainers.image.vendor"]
         }
     }

@@ -33,7 +33,7 @@ func (linter *Linter) CheckMandatoryAnnotations(repo string, manifestDigest godi
 		return true, nil
 	}
 
-	if (linter.config != nil && !*linter.config.Enabled) || len(linter.config.MandatoryAnnotations) == 0 {
+	if (linter.config != nil && !*linter.config.Enable) || len(linter.config.MandatoryAnnotations) == 0 {
 		return true, nil
 	}
 

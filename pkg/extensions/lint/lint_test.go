@@ -48,10 +48,10 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 
 		conf := config.New()
 		conf.HTTP.Port = port
-		enabled := false
+		enable := false
 		conf.Extensions = &extconf.ExtensionConfig{Lint: &extconf.LintConfig{}}
 		conf.Extensions.Lint.MandatoryAnnotations = []string{}
-		conf.Extensions.Lint.Enabled = &enabled
+		conf.Extensions.Lint.Enable = &enable
 
 		ctlr := api.NewController(conf)
 		dir := t.TempDir()
@@ -95,11 +95,11 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 
 		conf := config.New()
 		conf.HTTP.Port = port
-		enabled := true
+		enable := true
 		conf.Extensions = &extconf.ExtensionConfig{Lint: &extconf.LintConfig{}}
 		conf.Extensions.Lint.MandatoryAnnotations = []string{}
 
-		conf.Extensions.Lint.Enabled = &enabled
+		conf.Extensions.Lint.Enable = &enable
 
 		ctlr := api.NewController(conf)
 		dir := t.TempDir()
@@ -142,11 +142,11 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 
 		conf := config.New()
 		conf.HTTP.Port = port
-		enabled := true
+		enable := true
 		conf.Extensions = &extconf.ExtensionConfig{Lint: &extconf.LintConfig{}}
 		conf.Extensions.Lint.MandatoryAnnotations = []string{}
 
-		conf.Extensions.Lint.Enabled = &enabled
+		conf.Extensions.Lint.Enable = &enable
 		conf.Extensions.Lint.MandatoryAnnotations = []string{"annotation1", "annotation2", "annotation3"}
 
 		ctlr := api.NewController(conf)
@@ -196,11 +196,11 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 
 		conf := config.New()
 		conf.HTTP.Port = port
-		enabled := true
+		enable := true
 		conf.Extensions = &extconf.ExtensionConfig{Lint: &extconf.LintConfig{}}
 		conf.Extensions.Lint.MandatoryAnnotations = []string{}
 
-		conf.Extensions.Lint.Enabled = &enabled
+		conf.Extensions.Lint.Enable = &enable
 		conf.Extensions.Lint.MandatoryAnnotations = []string{"annotation1", "annotation2", "annotation3"}
 
 		ctlr := api.NewController(conf)
@@ -285,11 +285,11 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 
 		conf := config.New()
 		conf.HTTP.Port = port
-		enabled := true
+		enable := true
 		conf.Extensions = &extconf.ExtensionConfig{Lint: &extconf.LintConfig{}}
 		conf.Extensions.Lint.MandatoryAnnotations = []string{}
 
-		conf.Extensions.Lint.Enabled = &enabled
+		conf.Extensions.Lint.Enable = &enable
 		conf.Extensions.Lint.MandatoryAnnotations = []string{"annotation1", "annotation2", "annotation3"}
 
 		ctlr := api.NewController(conf)
@@ -373,11 +373,11 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 
 		conf := config.New()
 		conf.HTTP.Port = port
-		enabled := true
+		enable := true
 		conf.Extensions = &extconf.ExtensionConfig{Lint: &extconf.LintConfig{}}
 		conf.Extensions.Lint.MandatoryAnnotations = []string{}
 
-		conf.Extensions.Lint.Enabled = &enabled
+		conf.Extensions.Lint.Enable = &enable
 		conf.Extensions.Lint.MandatoryAnnotations = []string{"annotation1", "annotation2", "annotation3"}
 
 		ctlr := api.NewController(conf)
@@ -426,10 +426,10 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 
 		conf := config.New()
 		conf.HTTP.Port = port
-		enabled := true
+		enable := true
 		conf.Extensions = &extconf.ExtensionConfig{Lint: &extconf.LintConfig{}}
 		conf.Extensions.Lint.MandatoryAnnotations = []string{}
-		conf.Extensions.Lint.Enabled = &enabled
+		conf.Extensions.Lint.Enable = &enable
 		conf.Extensions.Lint.MandatoryAnnotations = []string{"annotation1", "annotation2", "annotation3"}
 
 		ctlr := api.NewController(conf)
@@ -477,10 +477,10 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 
 func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 	Convey("Mandatory annotations disabled", t, func() {
-		enabled := false
+		enable := false
 
 		lintConfig := &extconf.LintConfig{
-			Enabled:              &enabled,
+			BaseConfig:           extconf.BaseConfig{Enable: &enable},
 			MandatoryAnnotations: []string{},
 		}
 
@@ -510,10 +510,10 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 	})
 
 	Convey("Mandatory annotations enabled, but no list in config", t, func() {
-		enabled := true
+		enable := true
 
 		lintConfig := &extconf.LintConfig{
-			Enabled:              &enabled,
+			BaseConfig:           extconf.BaseConfig{Enable: &enable},
 			MandatoryAnnotations: []string{},
 		}
 
@@ -543,10 +543,10 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 	})
 
 	Convey("Mandatory annotations verification passing", t, func() {
-		enabled := true
+		enable := true
 
 		lintConfig := &extconf.LintConfig{
-			Enabled:              &enabled,
+			BaseConfig:           extconf.BaseConfig{Enable: &enable},
 			MandatoryAnnotations: []string{"annotation1", "annotation2", "annotation3"},
 		}
 
@@ -607,10 +607,10 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 	})
 
 	Convey("Mandatory annotations incomplete in manifest", t, func() {
-		enabled := true
+		enable := true
 
 		lintConfig := &extconf.LintConfig{
-			Enabled:              &enabled,
+			BaseConfig:           extconf.BaseConfig{Enable: &enable},
 			MandatoryAnnotations: []string{"annotation1", "annotation2", "annotation3"},
 		}
 
@@ -670,10 +670,10 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 	})
 
 	Convey("Mandatory annotations verification passing - more annotations than the mandatory list", t, func() {
-		enabled := true
+		enable := true
 
 		lintConfig := &extconf.LintConfig{
-			Enabled:              &enabled,
+			BaseConfig:           extconf.BaseConfig{Enable: &enable},
 			MandatoryAnnotations: []string{"annotation1", "annotation2", "annotation3"},
 		}
 
@@ -735,10 +735,10 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 	})
 
 	Convey("Cannot unmarshal manifest", t, func() {
-		enabled := true
+		enable := true
 
 		lintConfig := &extconf.LintConfig{
-			Enabled:              &enabled,
+			BaseConfig:           extconf.BaseConfig{Enable: &enable},
 			MandatoryAnnotations: []string{"annotation1", "annotation2", "annotation3"},
 		}
 
@@ -809,10 +809,10 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 	})
 
 	Convey("Cannot get config file", t, func() {
-		enabled := true
+		enable := true
 
 		lintConfig := &extconf.LintConfig{
-			Enabled:              &enabled,
+			BaseConfig:           extconf.BaseConfig{Enable: &enable},
 			MandatoryAnnotations: []string{"annotation1", "annotation2", "annotation3"},
 		}
 

@@ -412,8 +412,8 @@ func TestCVESearch(t *testing.T) {
 		}
 		defaultVal := true
 		searchConfig := &extconf.SearchConfig{
-			Enable: &defaultVal,
-			CVE:    cveConfig,
+			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+			CVE:        cveConfig,
 		}
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: searchConfig,

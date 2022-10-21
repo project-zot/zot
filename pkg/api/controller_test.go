@@ -6118,7 +6118,7 @@ func TestSearchRoutes(t *testing.T) {
 			defaultVal := true
 
 			searchConfig := &extconf.SearchConfig{
-				Enable: &defaultVal,
+				BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
 			}
 
 			conf.Extensions = &extconf.ExtensionConfig{
@@ -6220,7 +6220,7 @@ func TestDistSpecExtensions(t *testing.T) {
 		defaultVal := true
 
 		searchConfig := &extconf.SearchConfig{
-			Enable: &defaultVal,
+			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
 		}
 
 		conf.Extensions = &extconf.ExtensionConfig{

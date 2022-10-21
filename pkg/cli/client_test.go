@@ -72,7 +72,7 @@ func TestTLSWithAuth(t *testing.T) {
 
 		enable := true
 		conf.Extensions = &extConf.ExtensionConfig{
-			Search: &extConf.SearchConfig{Enable: &enable},
+			Search: &extConf.SearchConfig{BaseConfig: extConf.BaseConfig{Enable: &enable}},
 		}
 
 		ctlr := api.NewController(conf)
@@ -169,7 +169,7 @@ func TestTLSWithoutAuth(t *testing.T) {
 
 		enable := true
 		conf.Extensions = &extConf.ExtensionConfig{
-			Search: &extConf.SearchConfig{Enable: &enable},
+			Search: &extConf.SearchConfig{BaseConfig: extConf.BaseConfig{Enable: &enable}},
 		}
 
 		ctlr := api.NewController(conf)

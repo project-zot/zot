@@ -161,7 +161,7 @@ func TestDigestSearchHTTP(t *testing.T) {
 		conf.Storage.RootDirectory = rootDir
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{Enable: &defaultVal},
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
 		}
 
 		ctlr := api.NewController(conf)
@@ -312,7 +312,7 @@ func TestDigestSearchHTTPSubPaths(t *testing.T) {
 		conf.HTTP.Port = port
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{Enable: &defaultVal},
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
 		}
 
 		ctlr := api.NewController(conf)
@@ -388,7 +388,7 @@ func TestDigestSearchDisabled(t *testing.T) {
 		conf.HTTP.Port = port
 		conf.Storage.RootDirectory = t.TempDir()
 		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{Enable: &disabled},
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &disabled}},
 		}
 
 		ctlr := api.NewController(conf)

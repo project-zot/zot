@@ -919,9 +919,9 @@ func TestMandatoryAnnotations(t *testing.T) {
 
 		destConfig.Log.Output = logFile.Name()
 
-		lintEnabled := true
+		lintEnable := true
 		destConfig.Extensions.Lint = &extconf.LintConfig{}
-		destConfig.Extensions.Lint.Enabled = &lintEnabled
+		destConfig.Extensions.Lint.Enable = &lintEnable
 		destConfig.Extensions.Lint.MandatoryAnnotations = []string{"annot1", "annot2", "annot3"}
 
 		dctlr := api.NewController(destConfig)

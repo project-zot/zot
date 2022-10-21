@@ -362,8 +362,8 @@ func TestServerCVEResponseGQL(t *testing.T) {
 	}
 	defaultVal := true
 	searchConfig := &extconf.SearchConfig{
-		CVE:    cveConfig,
-		Enable: &defaultVal,
+		BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+		CVE:        cveConfig,
 	}
 	conf.Extensions = &extconf.ExtensionConfig{
 		Search: searchConfig,
@@ -634,8 +634,8 @@ func TestNegativeServerResponse(t *testing.T) {
 		}
 		defaultVal := false
 		searchConfig := &extconf.SearchConfig{
-			CVE:    cveConfig,
-			Enable: &defaultVal,
+			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+			CVE:        cveConfig,
 		}
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: searchConfig,
@@ -707,8 +707,8 @@ func TestNegativeServerResponse(t *testing.T) {
 		}
 		defaultVal := true
 		searchConfig := &extconf.SearchConfig{
-			CVE:    cveConfig,
-			Enable: &defaultVal,
+			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+			CVE:        cveConfig,
 		}
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: searchConfig,
@@ -771,8 +771,8 @@ func TestServerCVEResponse(t *testing.T) {
 	}
 	defaultVal := true
 	searchConfig := &extconf.SearchConfig{
-		CVE:    cveConfig,
-		Enable: &defaultVal,
+		BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+		CVE:        cveConfig,
 	}
 	conf.Extensions = &extconf.ExtensionConfig{
 		Search: searchConfig,
