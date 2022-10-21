@@ -409,6 +409,27 @@ func TestInjectUploadImage(t *testing.T) {
 	})
 }
 
+func TestReadLogFileAndSearchString(t *testing.T) {
+	logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
+	if err != nil {
+		panic(err)
+	}
+
+	logPath := logFile.Name()
+	defer os.Remove(logPath)
+
+	Convey("Invalid path", t, func() {
+		_, err = test.ReadLogFileAndSearchString("invalidPath", "DB update completed, next update scheduled", 90*time.Second)
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("Time too short", t, func() {
+		ok, err := test.ReadLogFileAndSearchString(logPath, "invalid string", time.Microsecond)
+		So(err, ShouldBeNil)
+		So(ok, ShouldBeFalse)
+	})
+}
+
 func startServer(c *api.Controller) {
 	// this blocks
 	ctx := context.Background()
