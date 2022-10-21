@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"regexp"
@@ -369,7 +370,18 @@ func TestServerCVEResponseGQL(t *testing.T) {
 		Search: searchConfig,
 	}
 
+	logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
+	if err != nil {
+		panic(err)
+	}
+
+	logPath := logFile.Name()
+	defer os.Remove(logPath)
+
+	writers := io.MultiWriter(os.Stdout, logFile)
+
 	ctlr := api.NewController(conf)
+	ctlr.Log.Logger = ctlr.Log.Output(writers)
 
 	go func(controller *api.Controller) {
 		// this blocks
@@ -386,7 +398,11 @@ func TestServerCVEResponseGQL(t *testing.T) {
 
 		time.Sleep(100 * time.Millisecond)
 	}
-	time.Sleep(90 * time.Second)
+
+	_, err = test.ReadLogFileAndSearchString(logPath, "DB update completed, next update scheduled", 90*time.Second)
+	if err != nil {
+		panic(err)
+	}
 
 	defer func(controller *api.Controller) {
 		ctx := context.Background()
@@ -641,7 +657,18 @@ func TestNegativeServerResponse(t *testing.T) {
 			Search: searchConfig,
 		}
 
+		logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
+		if err != nil {
+			panic(err)
+		}
+
+		logPath := logFile.Name()
+		defer os.Remove(logPath)
+
+		writers := io.MultiWriter(os.Stdout, logFile)
+
 		ctlr := api.NewController(conf)
+		ctlr.Log.Logger = ctlr.Log.Output(writers)
 
 		go func(controller *api.Controller) {
 			// this blocks
@@ -658,7 +685,10 @@ func TestNegativeServerResponse(t *testing.T) {
 
 			time.Sleep(100 * time.Millisecond)
 		}
-		time.Sleep(90 * time.Second)
+		_, err = test.ReadLogFileAndSearchString(logPath, "CVE config not provided, skipping CVE update", 90*time.Second)
+		if err != nil {
+			panic(err)
+		}
 
 		defer func(controller *api.Controller) {
 			ctx := context.Background()
@@ -714,7 +744,18 @@ func TestNegativeServerResponse(t *testing.T) {
 			Search: searchConfig,
 		}
 
+		logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
+		if err != nil {
+			panic(err)
+		}
+
+		logPath := logFile.Name()
+		defer os.Remove(logPath)
+
+		writers := io.MultiWriter(os.Stdout, logFile)
+
 		ctlr := api.NewController(conf)
+		ctlr.Log.Logger = ctlr.Log.Output(writers)
 
 		go func(controller *api.Controller) {
 			// this blocks
@@ -731,7 +772,10 @@ func TestNegativeServerResponse(t *testing.T) {
 
 			time.Sleep(100 * time.Millisecond)
 		}
-		time.Sleep(90 * time.Second)
+		_, err = test.ReadLogFileAndSearchString(logPath, "DB update completed, next update scheduled", 90*time.Second)
+		if err != nil {
+			panic(err)
+		}
 
 		defer func(controller *api.Controller) {
 			ctx := context.Background()
@@ -778,7 +822,18 @@ func TestServerCVEResponse(t *testing.T) {
 		Search: searchConfig,
 	}
 
+	logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
+	if err != nil {
+		panic(err)
+	}
+
+	logPath := logFile.Name()
+	defer os.Remove(logPath)
+
+	writers := io.MultiWriter(os.Stdout, logFile)
+
 	ctlr := api.NewController(conf)
+	ctlr.Log.Logger = ctlr.Log.Output(writers)
 
 	go func(controller *api.Controller) {
 		// this blocks
@@ -795,7 +850,11 @@ func TestServerCVEResponse(t *testing.T) {
 
 		time.Sleep(100 * time.Millisecond)
 	}
-	time.Sleep(90 * time.Second)
+
+	_, err = test.ReadLogFileAndSearchString(logPath, "DB update completed, next update scheduled", 90*time.Second)
+	if err != nil {
+		panic(err)
+	}
 
 	defer func(controller *api.Controller) {
 		ctx := context.Background()

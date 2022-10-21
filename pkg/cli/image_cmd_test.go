@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path"
@@ -1269,7 +1270,18 @@ func TestServerResponseGQLWithoutPermissions(t *testing.T) {
 		Search: searchConfig,
 	}
 
+	logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
+	if err != nil {
+		panic(err)
+	}
+
+	logPath := logFile.Name()
+	defer os.Remove(logPath)
+
+	writers := io.MultiWriter(os.Stdout, logFile)
+
 	ctlr := api.NewController(conf)
+	ctlr.Log.Logger = ctlr.Log.Output(writers)
 
 	go func(controller *api.Controller) {
 		// this blocks
@@ -1286,7 +1298,11 @@ func TestServerResponseGQLWithoutPermissions(t *testing.T) {
 
 		time.Sleep(100 * time.Millisecond)
 	}
-	time.Sleep(90 * time.Second)
+
+	_, err = test.ReadLogFileAndSearchString(logPath, "DB update completed, next update scheduled", 90*time.Second)
+	if err != nil {
+		panic(err)
+	}
 
 	defer func(controller *api.Controller) {
 		err = os.Chmod(path.Join(dir, "zot-test", "blobs"), 0o777)

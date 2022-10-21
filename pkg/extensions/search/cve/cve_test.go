@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path"
@@ -419,7 +420,18 @@ func TestCVESearch(t *testing.T) {
 			Search: searchConfig,
 		}
 
+		logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
+		if err != nil {
+			panic(err)
+		}
+
+		logPath := logFile.Name()
+		defer os.Remove(logPath)
+
+		writers := io.MultiWriter(os.Stdout, logFile)
+
 		ctlr := api.NewController(conf)
+		ctlr.Log.Logger = ctlr.Log.Output(writers)
 
 		go func() {
 			// this blocks
@@ -438,7 +450,10 @@ func TestCVESearch(t *testing.T) {
 		}
 
 		// Wait for trivy db to download
-		time.Sleep(90 * time.Second)
+		_, err = ReadLogFileAndSearchString(logPath, "DB update completed, next update scheduled", 90*time.Second)
+		if err != nil {
+			panic(err)
+		}
 
 		defer func() {
 			ctx := context.Background()

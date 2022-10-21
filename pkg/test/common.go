@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"strings"
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
@@ -424,4 +425,25 @@ func UploadImage(img Image, baseURL, repo string) error {
 		Put(baseURL + "/v2/" + repo + "/manifests/" + img.Tag)
 
 	return err
+}
+
+func ReadLogFileAndSearchString(logPath string, stringToMatch string, timeout time.Duration) (bool, error) {
+	ctx, cancelFunc := context.WithTimeout(context.Background(), timeout)
+	defer cancelFunc()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return false, nil
+		default:
+			content, err := os.ReadFile(logPath)
+			if err != nil {
+				return false, err
+			}
+
+			if strings.Contains(string(content), stringToMatch) {
+				return true, nil
+			}
+		}
+	}
 }
