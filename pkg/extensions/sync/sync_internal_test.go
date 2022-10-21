@@ -290,14 +290,14 @@ func TestSyncInternal(t *testing.T) {
 	})
 
 	Convey("Test imagesToCopyFromUpstream()", t, func() {
-		repos := []string{"repo1"}
+		repo := "repo1"
 		upstreamCtx := &types.SystemContext{}
 
-		_, err := imagesToCopyFromUpstream(context.Background(), "localhost:4566", repos, upstreamCtx,
+		_, err := imagesToCopyFromUpstream(context.Background(), "localhost:4566", repo, upstreamCtx,
 			Content{}, log.NewLogger("debug", ""))
 		So(err, ShouldNotBeNil)
 
-		_, err = imagesToCopyFromUpstream(context.Background(), "docker://localhost:4566", repos, upstreamCtx,
+		_, err = imagesToCopyFromUpstream(context.Background(), "docker://localhost:4566", repo, upstreamCtx,
 			Content{}, log.NewLogger("debug", ""))
 		So(err, ShouldNotBeNil)
 	})

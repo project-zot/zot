@@ -191,71 +191,69 @@ func filterImagesBySemver(upstreamReferences *[]types.ImageReference, content Co
 }
 
 // imagesToCopyFromRepos lists all images given a registry name and its repos.
-func imagesToCopyFromUpstream(ctx context.Context, registryName string, repos []string,
+func imagesToCopyFromUpstream(ctx context.Context, registryName string, repo string,
 	upstreamCtx *types.SystemContext, content Content, log log.Logger,
 ) (map[string][]types.ImageReference, error) {
 	upstreamReferences := make(map[string][]types.ImageReference)
 
-	for _, repoName := range repos {
-		repoUpstreamReferences := make([]types.ImageReference, 0)
+	repoUpstreamReferences := make([]types.ImageReference, 0)
 
-		repoRef, err := parseRepositoryReference(fmt.Sprintf("%s/%s", registryName, repoName))
+	repoRef, err := parseRepositoryReference(fmt.Sprintf("%s/%s", registryName, repo))
+	if err != nil {
+		log.Error().Str("errorType", TypeOf(err)).
+			Err(err).Msgf("couldn't parse repository reference: %s", repoRef)
+
+		return nil, err
+	}
+
+	tags, err := getImageTags(ctx, upstreamCtx, repoRef)
+	if err != nil {
+		log.Error().Str("errorType", TypeOf(err)).
+			Err(err).Msgf("couldn't fetch tags for %s", repoRef)
+
+		return nil, err
+	}
+
+	for _, tag := range tags {
+		// don't copy cosign signature, containers/image doesn't support it
+		// we will copy it manually later
+		if isCosignTag(tag) {
+			continue
+		}
+
+		taggedRef, err := reference.WithTag(repoRef, tag)
 		if err != nil {
-			log.Error().Str("errorType", TypeOf(err)).
-				Err(err).Msgf("couldn't parse repository reference: %s", repoRef)
+			log.Err(err).Msgf("error creating a reference for repository %s and tag %q", repoRef.Name(), tag)
 
 			return nil, err
 		}
 
-		tags, err := getImageTags(ctx, upstreamCtx, repoRef)
+		ref, err := docker.NewReference(taggedRef)
 		if err != nil {
-			log.Error().Str("errorType", TypeOf(err)).
-				Err(err).Msgf("couldn't fetch tags for %s", repoRef)
+			log.Err(err).Msgf("cannot obtain a valid image reference for transport %q and reference %s",
+				docker.Transport.Name(), taggedRef.String())
 
 			return nil, err
 		}
 
-		for _, tag := range tags {
-			// don't copy cosign signature, containers/image doesn't support it
-			// we will copy it manually later
-			if isCosignTag(tag) {
-				continue
-			}
+		repoUpstreamReferences = append(repoUpstreamReferences, ref)
 
-			taggedRef, err := reference.WithTag(repoRef, tag)
-			if err != nil {
-				log.Err(err).Msgf("error creating a reference for repository %s and tag %q", repoRef.Name(), tag)
+		upstreamReferences[repo] = repoUpstreamReferences
 
-				return nil, err
-			}
-
-			ref, err := docker.NewReference(taggedRef)
-			if err != nil {
-				log.Err(err).Msgf("cannot obtain a valid image reference for transport %q and reference %s",
-					docker.Transport.Name(), taggedRef.String())
-
-				return nil, err
-			}
-
-			repoUpstreamReferences = append(repoUpstreamReferences, ref)
-		}
-
-		upstreamReferences[repoName] = repoUpstreamReferences
-
-		log.Debug().Msgf("repo: %s - upstream refs to be copied: %v", repoName, upstreamReferences)
+		log.Debug().Msgf("repo: %s - upstream refs to be copied: %v", repo, upstreamReferences)
 
 		err = filterImagesByTagRegex(&repoUpstreamReferences, content, log)
 		if err != nil {
 			return map[string][]types.ImageReference{}, err
 		}
 
-		log.Debug().Msgf("repo: %s - remaining upstream refs to be copied: %v", repoName, repoUpstreamReferences)
+		log.Debug().Msgf("repo: %s - remaining upstream refs to be copied: %v", repo, repoUpstreamReferences)
 
 		filterImagesBySemver(&repoUpstreamReferences, content, log)
 
-		log.Debug().Msgf("repo: %s - remaining upstream refs to be copied: %v", repoName, repoUpstreamReferences)
+		log.Debug().Msgf("repo: %s - remaining upstream refs to be copied: %v", repo, repoUpstreamReferences)
 
-		upstreamReferences[repoName] = repoUpstreamReferences
+		upstreamReferences[repo] = repoUpstreamReferences
 	}
 
 	return upstreamReferences, nil
@@ -350,7 +348,7 @@ func syncRegistry(ctx context.Context, regCfg RegistryConfig,
 
 		if err = retry.RetryIfNecessary(ctx, func() error {
 			for _, repo := range r {
-				refs, err := imagesToCopyFromUpstream(ctx, upstreamAddr, r, upstreamCtx, regCfg.Content[contentID], log)
+				refs, err := imagesToCopyFromUpstream(ctx, upstreamAddr, repo, upstreamCtx, regCfg.Content[contentID], log)
 				if err != nil {
 					return err
 				}
@@ -520,7 +518,6 @@ func syncRegistry(ctx context.Context, regCfg RegistryConfig,
 				return err
 			}
 
-			refs, err = getNotaryRefs(httpClient, *registryURL, remoteRepoCopy, upstreamImageDigest.String(), log)
 			if err = retry.RetryIfNecessary(ctx, func() error {
 				err = syncNotarySignature(httpClient, imageStore, *registryURL, localRepo,
 					remoteRepoCopy, upstreamImageDigest.String(), refs, log)
@@ -531,8 +528,6 @@ func syncRegistry(ctx context.Context, regCfg RegistryConfig,
 					Err(err).Msgf("couldn't copy notary signature for %s", upstreamImageRef.DockerReference())
 			}
 
-			cosignManifest, err = getCosignManifest(httpClient, *registryURL, remoteRepoCopy,
-				upstreamImageDigest.String(), log)
 			if err = retry.RetryIfNecessary(ctx, func() error {
 				err = syncCosignSignature(httpClient, imageStore, *registryURL, localRepo,
 					remoteRepoCopy, upstreamImageDigest.String(), cosignManifest, log)
