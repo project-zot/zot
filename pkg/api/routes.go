@@ -615,7 +615,8 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 	}
 
 	if rh.c.RepoDB != nil {
-		err := repoDBUpdate.OnUpdateManifest(name, reference, digest, body, rh.c.StoreController, rh.c.RepoDB, rh.c.Log)
+		err := repoDBUpdate.OnUpdateManifest(name, reference, mediaType, digest, body, rh.c.StoreController, rh.c.RepoDB,
+			rh.c.Log)
 		if errors.Is(err, zerr.ErrOrphanSignature) {
 			rh.c.Log.Error().Err(err).Msgf("pushed image is an orphan signature")
 		} else if err != nil {

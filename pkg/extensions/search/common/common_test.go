@@ -3655,7 +3655,7 @@ func TestRepoDBWhenPushingImages(t *testing.T) {
 
 		Convey("SetManifestMeta succeeds but SetRepoTag fails", func() {
 			ctlr.RepoDB = mocks.RepoDBMock{
-				SetRepoTagFn: func(repo, tag string, manifestDigest godigest.Digest) error {
+				SetRepoTagFn: func(repo, tag string, manifestDigest godigest.Digest, mediaType string) error {
 					return ErrTestError
 				},
 			}

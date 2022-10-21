@@ -169,7 +169,7 @@ func (bpt *ImagePageFinder) Page() []RepoMetadata {
 	repos := make([]RepoMetadata, 0)
 
 	// finish counting remaining tags inside the first repo meta
-	partialTags := map[string]string{}
+	partialTags := map[string]Descriptor{}
 	firstRepoMeta := bpt.pageBuffer[repoStartIndex].RepoMeta
 
 	tags := make([]string, 0, len(firstRepoMeta.Tags))
@@ -202,7 +202,7 @@ func (bpt *ImagePageFinder) Page() []RepoMetadata {
 		repoMeta := bpt.pageBuffer[i].RepoMeta
 
 		if len(repoMeta.Tags) > remainingLimit {
-			partialTags := map[string]string{}
+			partialTags := map[string]Descriptor{}
 
 			tags := make([]string, 0, len(repoMeta.Tags))
 			for k := range repoMeta.Tags {

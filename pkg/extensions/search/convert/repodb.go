@@ -44,8 +44,11 @@ func RepoMeta2RepoSummary(ctx context.Context, repoMeta repodb.RepoMetadata,
 		size = int64(0)
 	)
 
-	for tag, manifestDigest := range repoMeta.Tags {
-		var manifestContent ispec.Manifest
+	for tag, descriptor := range repoMeta.Tags {
+		var (
+			manifestContent ispec.Manifest
+			manifestDigest  = descriptor.Digest
+		)
 
 		err := json.Unmarshal(manifestMetaMap[manifestDigest].ManifestBlob, &manifestContent)
 		if err != nil {
@@ -75,7 +78,6 @@ func RepoMeta2RepoSummary(ctx context.Context, repoMeta repodb.RepoMetadata,
 			osArch           = gql_generated.OsArch{Os: &opSys, Arch: &arch}
 			imageLastUpdated = common.GetImageLastUpdated(configContent)
 			downloadCount    = manifestMetaMap[manifestDigest].DownloadCount
-			manifestDigest   = manifestDigest
 
 			size = updateRepoBlobsMap(
 				manifestDigest, int64(len(manifestMetaMap[manifestDigest].ManifestBlob)),
@@ -210,8 +212,11 @@ func RepoMeta2ImageSummaries(ctx context.Context, repoMeta repodb.RepoMetadata,
 ) []*gql_generated.ImageSummary {
 	imageSummaries := make([]*gql_generated.ImageSummary, 0, len(repoMeta.Tags))
 
-	for tag, manifestDigest := range repoMeta.Tags {
-		var manifestContent ispec.Manifest
+	for tag, descriptor := range repoMeta.Tags {
+		var (
+			manifestContent ispec.Manifest
+			manifestDigest  = descriptor.Digest
+		)
 
 		err := json.Unmarshal(manifestMetaMap[manifestDigest].ManifestBlob, &manifestContent)
 		if err != nil {
@@ -255,7 +260,6 @@ func RepoMeta2ImageSummaries(ctx context.Context, repoMeta repodb.RepoMetadata,
 		var (
 			repoName         = repoMeta.Name
 			tag              = tag
-			manifestDigest   = manifestDigest
 			configDigest     = manifestContent.Config.Digest.String()
 			imageLastUpdated = common.GetImageLastUpdated(configContent)
 			isSigned         = imageHasSignatures(manifestMetaMap[manifestDigest].Signatures)
@@ -335,8 +339,11 @@ func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta repodb.RepoMetadata
 		imageSummaries = make([]*gql_generated.ImageSummary, 0, len(repoMeta.Tags))
 	)
 
-	for tag, manifestDigest := range repoMeta.Tags {
-		var manifestContent ispec.Manifest
+	for tag, descriptor := range repoMeta.Tags {
+		var (
+			manifestContent ispec.Manifest
+			manifestDigest  = descriptor.Digest
+		)
 
 		err := json.Unmarshal(manifestMetaMap[manifestDigest].ManifestBlob, &manifestContent)
 		if err != nil {
@@ -366,7 +373,6 @@ func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta repodb.RepoMetadata
 			osArch           = gql_generated.OsArch{Os: &opSys, Arch: &arch}
 			imageLastUpdated = common.GetImageLastUpdated(configContent)
 			downloadCount    = manifestMetaMap[manifestDigest].DownloadCount
-			manifestDigest   = manifestDigest
 
 			size = updateRepoBlobsMap(
 				manifestDigest, int64(len(manifestMetaMap[manifestDigest].ManifestBlob)),

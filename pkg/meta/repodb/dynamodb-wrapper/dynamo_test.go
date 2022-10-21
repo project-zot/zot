@@ -30,13 +30,13 @@ func TestIterator(t *testing.T) {
 		So(dynamoWrapper.ResetManifestMetaTable(), ShouldBeNil)
 		So(dynamoWrapper.ResetRepoMetaTable(), ShouldBeNil)
 
-		err = dynamoWrapper.SetRepoTag("repo1", "tag1", "manifestDigest1")
+		err = dynamoWrapper.SetRepoTag("repo1", "tag1", "manifestType", "manifestDigest1")
 		So(err, ShouldBeNil)
 
-		err = dynamoWrapper.SetRepoTag("repo2", "tag2", "manifestDigest2")
+		err = dynamoWrapper.SetRepoTag("repo2", "tag2", "manifestType", "manifestDigest2")
 		So(err, ShouldBeNil)
 
-		err = dynamoWrapper.SetRepoTag("repo3", "tag3", "manifestDigest3")
+		err = dynamoWrapper.SetRepoTag("repo3", "tag3", "manifestType", "manifestDigest3")
 		So(err, ShouldBeNil)
 
 		repoMetaAttributeIterator := dynamo.NewBaseDynamoAttributesIterator(

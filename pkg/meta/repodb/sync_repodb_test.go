@@ -111,7 +111,12 @@ func TestSyncRepoDBErrors(t *testing.T) {
 
 			Convey("repoDB.DeleteRepoTag errors", func() {
 				repoDB.GetRepoMetaFn = func(repo string) (repodb.RepoMetadata, error) {
-					return repodb.RepoMetadata{Tags: map[string]string{"digest1": "tag1"}}, nil
+					return repodb.RepoMetadata{
+						Tags: map[string]repodb.Descriptor{
+							"digest1": {Digest: "tag1",
+								MediaType: ispec.MediaTypeImageManifest},
+						},
+					}, nil
 				}
 				repoDB.DeleteRepoTagFn = func(repo, tag string) error {
 					return ErrTestError
@@ -171,7 +176,7 @@ func TestSyncRepoDBErrors(t *testing.T) {
 			}
 
 			Convey("repoDB.SetRepoTag", func() {
-				repoDB.SetRepoTagFn = func(repo, tag string, manifestDigest godigest.Digest) error {
+				repoDB.SetRepoTagFn = func(repo, tag string, manifestDigest godigest.Digest, mediaType string) error {
 					return ErrTestError
 				}
 
@@ -362,13 +367,13 @@ func TestSyncRepoDBWithStorage(t *testing.T) {
 		So(len(repos), ShouldEqual, 1)
 		So(len(repos[0].Tags), ShouldEqual, 2)
 
-		for _, digest := range repos[0].Tags {
-			manifestMeta, err := repoDB.GetManifestMeta(godigest.Digest(digest))
+		for _, descriptor := range repos[0].Tags {
+			manifestMeta, err := repoDB.GetManifestMeta(godigest.Digest(descriptor.Digest))
 			So(err, ShouldBeNil)
 			So(manifestMeta.ManifestBlob, ShouldNotBeNil)
 			So(manifestMeta.ConfigBlob, ShouldNotBeNil)
 
-			if digest == signedManifestDigest.String() {
+			if descriptor.Digest == signedManifestDigest.String() {
 				So(manifestMeta.Signatures, ShouldNotBeEmpty)
 			}
 		}
@@ -536,13 +541,13 @@ func TestSyncRepoDBDynamoWrapper(t *testing.T) {
 		So(len(repos), ShouldEqual, 1)
 		So(len(repos[0].Tags), ShouldEqual, 2)
 
-		for _, digest := range repos[0].Tags {
-			manifestMeta, err := repoDB.GetManifestMeta(godigest.Digest(digest))
+		for _, descriptor := range repos[0].Tags {
+			manifestMeta, err := repoDB.GetManifestMeta(godigest.Digest(descriptor.Digest))
 			So(err, ShouldBeNil)
 			So(manifestMeta.ManifestBlob, ShouldNotBeNil)
 			So(manifestMeta.ConfigBlob, ShouldNotBeNil)
 
-			if digest == signedManifestDigest.String() {
+			if descriptor.Digest == signedManifestDigest.String() {
 				So(manifestMeta.Signatures, ShouldNotBeEmpty)
 			}
 		}

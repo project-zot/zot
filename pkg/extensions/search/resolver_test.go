@@ -50,9 +50,15 @@ func TestGlobalSearch(t *testing.T) {
 					repos := []repodb.RepoMetadata{
 						{
 							Name: "repo1",
-							Tags: map[string]string{
-								"1.0.1": "digestTag1.0.1",
-								"1.0.2": "digestTag1.0.2",
+							Tags: map[string]repodb.Descriptor{
+								"1.0.1": {
+									Digest:    "digestTag1.0.1",
+									MediaType: ispec.MediaTypeImageManifest,
+								},
+								"1.0.2": {
+									Digest:    "digestTag1.0.2",
+									MediaType: ispec.MediaTypeImageManifest,
+								},
 							},
 							Signatures:  []string{"testSignature"},
 							Stars:       100,
@@ -140,8 +146,11 @@ func TestGlobalSearch(t *testing.T) {
 					repos := []repodb.RepoMetadata{
 						{
 							Name: "repo1",
-							Tags: map[string]string{
-								"1.0.1": "digestTag1.0.1",
+							Tags: map[string]repodb.Descriptor{
+								"1.0.1": {
+									Digest:    "digestTag1.0.1",
+									MediaType: ispec.MediaTypeImageManifest,
+								},
 							},
 							Signatures:  []string{"testSignature"},
 							Stars:       100,
@@ -210,8 +219,11 @@ func TestGlobalSearch(t *testing.T) {
 					repos := []repodb.RepoMetadata{
 						{
 							Name: "repo1",
-							Tags: map[string]string{
-								"1.0.1": "digestTag1.0.1",
+							Tags: map[string]repodb.Descriptor{
+								"1.0.1": {
+									Digest:    "digestTag1.0.1",
+									MediaType: ispec.MediaTypeImageManifest,
+								},
 							},
 							Signatures:  []string{"testSignature"},
 							Stars:       100,
@@ -299,8 +311,11 @@ func TestGlobalSearch(t *testing.T) {
 					repos := []repodb.RepoMetadata{
 						{
 							Name: "repo1",
-							Tags: map[string]string{
-								"1.0.1": "digestTag1.0.1",
+							Tags: map[string]repodb.Descriptor{
+								"1.0.1": {
+									Digest:    "digestTag1.0.1",
+									MediaType: ispec.MediaTypeImageManifest,
+								},
 							},
 							Signatures:  []string{"testSignature"},
 							Stars:       100,
@@ -414,8 +429,11 @@ func TestRepoListWithNewestImage(t *testing.T) {
 					repos := []repodb.RepoMetadata{
 						{
 							Name: "repo1",
-							Tags: map[string]string{
-								"1.0.1": "digestTag1.0.1",
+							Tags: map[string]repodb.Descriptor{
+								"1.0.1": {
+									Digest:    "digestTag1.0.1",
+									MediaType: ispec.MediaTypeImageManifest,
+								},
 							},
 							Signatures:  []string{"testSignature"},
 							Stars:       100,
@@ -424,8 +442,11 @@ func TestRepoListWithNewestImage(t *testing.T) {
 						},
 						{
 							Name: "repo2",
-							Tags: map[string]string{
-								"1.0.2": "digestTag1.0.2",
+							Tags: map[string]repodb.Descriptor{
+								"1.0.2": {
+									Digest:    "digestTag1.0.2",
+									MediaType: ispec.MediaTypeImageManifest,
+								},
 							},
 							Signatures:  []string{"testSignature"},
 							Stars:       100,
@@ -497,8 +518,11 @@ func TestRepoListWithNewestImage(t *testing.T) {
 					repos := []repodb.RepoMetadata{
 						{
 							Name: "repo1",
-							Tags: map[string]string{
-								"1.0.1": "digestTag1.0.1",
+							Tags: map[string]repodb.Descriptor{
+								"1.0.1": {
+									Digest:    "digestTag1.0.1",
+									MediaType: ispec.MediaTypeImageManifest,
+								},
 							},
 							Signatures:  []string{"testSignature"},
 							Stars:       100,
@@ -507,8 +531,11 @@ func TestRepoListWithNewestImage(t *testing.T) {
 						},
 						{
 							Name: "repo2",
-							Tags: map[string]string{
-								"1.0.2": "digestTag1.0.2",
+							Tags: map[string]repodb.Descriptor{
+								"1.0.2": {
+									Digest:    "digestTag1.0.2",
+									MediaType: ispec.MediaTypeImageManifest,
+								},
 							},
 							Signatures:  []string{"testSignature"},
 							Stars:       100,

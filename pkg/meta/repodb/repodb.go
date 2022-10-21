@@ -30,7 +30,7 @@ type RepoDB interface { //nolint:interfacebloat
 	SetRepoLogo(repo string, logoPath string) error
 
 	// SetRepoTag sets the tag of a manifest in the tag list of a repo
-	SetRepoTag(repo string, tag string, manifestDigest godigest.Digest) error
+	SetRepoTag(repo string, tag string, manifestDigest godigest.Digest, mediaType string) error
 
 	// DeleteRepoTag delets the tag from the tag list of a repo
 	DeleteRepoTag(repo string, tag string) error
@@ -94,9 +94,18 @@ type ManifestMetadata struct {
 	BlobCount     int
 }
 
+type IndexMetadata struct {
+	Manifests []godigest.Digest
+}
+
+type Descriptor struct {
+	Digest    string
+	MediaType string
+}
+
 type RepoMetadata struct {
 	Name        string
-	Tags        map[string]string
+	Tags        map[string]Descriptor
 	Signatures  []string
 	Stars       int
 	Description string

@@ -139,7 +139,7 @@ func (dwr DBWrapper) SetRepoLogo(repo string, logoPath string) error {
 	return err
 }
 
-func (dwr DBWrapper) SetRepoTag(repo string, tag string, manifestDigest godigest.Digest) error {
+func (dwr DBWrapper) SetRepoTag(repo string, tag string, manifestDigest godigest.Digest, mediaType string) error {
 	if err := common.ValidateRepoTagInput(repo, tag, manifestDigest); err != nil {
 		return err
 	}
@@ -156,7 +156,7 @@ func (dwr DBWrapper) SetRepoTag(repo string, tag string, manifestDigest godigest
 
 	repoMeta := repodb.RepoMetadata{
 		Name: repo,
-		Tags: map[string]string{},
+		Tags: map[string]repodb.Descriptor{},
 	}
 
 	if resp.Item != nil {
@@ -166,7 +166,10 @@ func (dwr DBWrapper) SetRepoTag(repo string, tag string, manifestDigest godigest
 		}
 	}
 
-	repoMeta.Tags[tag] = manifestDigest.String()
+	repoMeta.Tags[tag] = repodb.Descriptor{
+		Digest:    manifestDigest.String(),
+		MediaType: mediaType,
+	}
 
 	err = dwr.setRepoMeta(repo, repoMeta)
 
@@ -470,16 +473,16 @@ func (dwr DBWrapper) SearchRepos(ctx context.Context, searchText string, filter 
 				isSigned          = false
 			)
 
-			for _, manifestDigest := range repoMeta.Tags {
+			for _, descriptor := range repoMeta.Tags {
 				var manifestMeta repodb.ManifestMetadata
 
-				manifestMeta, manifestDownloaded := manifestMetadataMap[manifestDigest]
+				manifestMeta, manifestDownloaded := manifestMetadataMap[descriptor.Digest]
 
 				if !manifestDownloaded {
-					manifestMeta, err = dwr.GetManifestMeta(godigest.Digest(manifestDigest)) //nolint:contextcheck
+					manifestMeta, err = dwr.GetManifestMeta(godigest.Digest(descriptor.Digest)) //nolint:contextcheck
 					if err != nil {
 						return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{},
-							errors.Wrapf(err, "repodb: error while getting manifest metadata for digest %s", manifestDigest)
+							errors.Wrapf(err, "repodb: error while unmarshaling manifest metadata for digest %s", descriptor.Digest)
 					}
 				}
 
@@ -489,7 +492,7 @@ func (dwr DBWrapper) SearchRepos(ctx context.Context, searchText string, filter 
 				err = json.Unmarshal(manifestMeta.ConfigBlob, &configContent)
 				if err != nil {
 					return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{},
-						errors.Wrapf(err, "repodb: error while unmarshaling config content for digest %s", manifestDigest)
+						errors.Wrapf(err, "repodb: error while unmarshaling config content for digest %s", descriptor.Digest)
 				}
 
 				osSet[configContent.OS] = true
@@ -501,7 +504,7 @@ func (dwr DBWrapper) SearchRepos(ctx context.Context, searchText string, filter 
 				imageLastUpdated, err := common.GetImageLastUpdatedTimestamp(manifestMeta.ConfigBlob)
 				if err != nil {
 					return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{},
-						errors.Wrapf(err, "repodb: error while unmarshaling image config referenced by digest %s", manifestDigest)
+						errors.Wrapf(err, "repodb: error while unmarshaling image config referenced by digest %s", descriptor.Digest)
 				}
 
 				if firstImageChecked || repoLastUpdated.Before(imageLastUpdated) {
@@ -511,7 +514,7 @@ func (dwr DBWrapper) SearchRepos(ctx context.Context, searchText string, filter 
 					isSigned = common.CheckIsSigned(manifestMeta.Signatures)
 				}
 
-				manifestMetadataMap[manifestDigest] = manifestMeta
+				manifestMetadataMap[descriptor.Digest] = manifestMeta
 			}
 
 			repoFilterData := repodb.FilterData{
@@ -537,8 +540,8 @@ func (dwr DBWrapper) SearchRepos(ctx context.Context, searchText string, filter 
 
 	// keep just the manifestMeta we need
 	for _, repoMeta := range foundRepos {
-		for _, manifestDigest := range repoMeta.Tags {
-			foundManifestMetadataMap[manifestDigest] = manifestMetadataMap[manifestDigest]
+		for _, descriptor := range repoMeta.Tags {
+			foundManifestMetadataMap[descriptor.Digest] = manifestMetadataMap[descriptor.Digest]
 		}
 	}
 
@@ -589,26 +592,26 @@ func (dwr DBWrapper) SearchTags(ctx context.Context, searchText string, filter r
 		}
 
 		if repoMeta.Name == searchedRepo {
-			matchedTags := make(map[string]string)
+			matchedTags := make(map[string]repodb.Descriptor)
 			// take all manifestMetas
-			for tag, manifestDigest := range repoMeta.Tags {
+			for tag, descriptor := range repoMeta.Tags {
 				if !strings.HasPrefix(tag, searchedTag) {
 					continue
 				}
 
-				matchedTags[tag] = manifestDigest
+				matchedTags[tag] = descriptor
 
 				// in case tags reference the same manifest we don't download from DB multiple times
-				if manifestMeta, manifestExists := manifestMetadataMap[manifestDigest]; manifestExists {
-					manifestMetadataMap[manifestDigest] = manifestMeta
+				if manifestMeta, manifestExists := manifestMetadataMap[descriptor.Digest]; manifestExists {
+					manifestMetadataMap[descriptor.Digest] = manifestMeta
 
 					continue
 				}
 
-				manifestMeta, err := dwr.GetManifestMeta(godigest.Digest(manifestDigest)) //nolint:contextcheck
+				manifestMeta, err := dwr.GetManifestMeta(godigest.Digest(descriptor.Digest)) //nolint:contextcheck
 				if err != nil {
 					return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{},
-						errors.Wrapf(err, "repodb: error while unmashaling manifest metadata for digest %s", manifestDigest)
+						errors.Wrapf(err, "repodb: error while unmashaling manifest metadata for digest %s", descriptor.Digest)
 				}
 
 				var configContent ispec.Image
@@ -616,7 +619,7 @@ func (dwr DBWrapper) SearchTags(ctx context.Context, searchText string, filter r
 				err = json.Unmarshal(manifestMeta.ConfigBlob, &configContent)
 				if err != nil {
 					return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{},
-						errors.Wrapf(err, "repodb: error while unmashaling manifest metadata for digest %s", manifestDigest)
+						errors.Wrapf(err, "repodb: error while unmashaling manifest metadata for digest %s", descriptor.Digest)
 				}
 
 				imageFilterData := repodb.FilterData{
@@ -627,12 +630,12 @@ func (dwr DBWrapper) SearchTags(ctx context.Context, searchText string, filter r
 
 				if !common.AcceptedByFilter(filter, imageFilterData) {
 					delete(matchedTags, tag)
-					delete(manifestMetadataMap, manifestDigest)
+					delete(manifestMetadataMap, descriptor.Digest)
 
 					continue
 				}
 
-				manifestMetadataMap[manifestDigest] = manifestMeta
+				manifestMetadataMap[descriptor.Digest] = manifestMeta
 			}
 
 			repoMeta.Tags = matchedTags
@@ -647,8 +650,8 @@ func (dwr DBWrapper) SearchTags(ctx context.Context, searchText string, filter r
 
 	// keep just the manifestMeta we need
 	for _, repoMeta := range foundRepos {
-		for _, manifestDigest := range repoMeta.Tags {
-			foundManifestMetadataMap[manifestDigest] = manifestMetadataMap[manifestDigest]
+		for _, descriptor := range repoMeta.Tags {
+			foundManifestMetadataMap[descriptor.Digest] = manifestMetadataMap[descriptor.Digest]
 		}
 	}
 

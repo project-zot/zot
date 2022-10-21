@@ -51,7 +51,7 @@ func TestOnUpdateManifest(t *testing.T) {
 
 		digest := godigest.FromBytes(manifestBlob)
 
-		err = repoDBUpdate.OnUpdateManifest("repo", "tag1", digest, manifestBlob, storeController, repoDB, log)
+		err = repoDBUpdate.OnUpdateManifest("repo", "tag1", "", digest, manifestBlob, storeController, repoDB, log)
 		So(err, ShouldBeNil)
 
 		repoMeta, err := repoDB.GetRepoMeta("repo")
@@ -82,7 +82,7 @@ func TestUpdateErrors(t *testing.T) {
 					return []byte{}, "", "", zerr.ErrManifestNotFound
 				}
 
-				err = repoDBUpdate.OnUpdateManifest("repo", "tag1", "digest", manifestBlob,
+				err = repoDBUpdate.OnUpdateManifest("repo", "tag1", "", "digest", manifestBlob,
 					storeController, repoDB, log)
 				So(err, ShouldNotBeNil)
 			})
@@ -160,7 +160,7 @@ func TestUpdateErrors(t *testing.T) {
 			repoDB := mocks.RepoDBMock{}
 			log := log.NewLogger("debug", "")
 
-			err := repoDBUpdate.SetMetadataFromInput("repo", "ref", "digest", []byte("BadManifestBlob"),
+			err := repoDBUpdate.SetMetadataFromInput("repo", "ref", "digest", "", []byte("BadManifestBlob"),
 				storeController, repoDB, log)
 			So(err, ShouldNotBeNil)
 
@@ -177,7 +177,7 @@ func TestUpdateErrors(t *testing.T) {
 				return []byte("{}"), nil
 			}
 
-			err = repoDBUpdate.SetMetadataFromInput("repo", string(godigest.FromString("reference")), "digest",
+			err = repoDBUpdate.SetMetadataFromInput("repo", string(godigest.FromString("reference")), "", "digest",
 				manifestBlob, storeController, repoDB, log)
 			So(err, ShouldBeNil)
 		})

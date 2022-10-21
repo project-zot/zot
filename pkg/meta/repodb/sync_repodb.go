@@ -88,7 +88,7 @@ func SyncRepo(repo string, repoDB RepoDB, storeController storage.StoreControlle
 		}
 
 		if manifestMetaIsPresent {
-			err = repoDB.SetRepoTag(repo, tag, manifest.Digest)
+			err = repoDB.SetRepoTag(repo, tag, manifest.Digest, manifest.MediaType)
 			if err != nil {
 				log.Error().Err(err).Msgf("sync-repo: failed to set repo tag for %s:%s", repo, tag)
 
@@ -147,7 +147,7 @@ func SyncRepo(repo string, repoDB RepoDB, storeController storage.StoreControlle
 			return err
 		}
 
-		err = repoDB.SetRepoTag(repo, tag, manifest.Digest)
+		err = repoDB.SetRepoTag(repo, tag, manifest.Digest, manifest.MediaType)
 		if err != nil {
 			log.Error().Err(err).Msgf("sync-repo: failed to repo tag for repo %s and tag %s",
 				repo, tag)
