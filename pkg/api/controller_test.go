@@ -6003,7 +6003,7 @@ func TestPeriodicGC(t *testing.T) {
 		defer stopServer(ctlr)
 		test.WaitTillServerReady(baseURL)
 
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(5000 * time.Millisecond)
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
