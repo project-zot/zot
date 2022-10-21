@@ -74,7 +74,8 @@ function teardown_file() {
     [ "$status" -eq 0 ]
     run podman push 127.0.0.1:8080/annotations:latest --tls-verify=false --format=oci
     [ "$status" -eq 0 ]
-    run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"annotations\") { Results { RepoName Tag Digest ConfigDigest Size Layers {Size Digest } Vendor Licenses }}}"}' http://localhost:8080/v2/_zot/ext/search
+    run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"annotations\") { Results { RepoName Tag Manifests {Digest ConfigDigest Size Layers { Size Digest }} Vendor Licenses }}}"}' http://localhost:8080/v2/_zot/ext/search
+   
     [ "$status" -eq 0 ]
     # [ $(echo "${lines[-1]}" | jq '.data.ImageList') ]
     [ $(echo "${lines[-1]}" | jq '.data.ImageList.Results[0].RepoName') = '"annotations"' ]
@@ -87,7 +88,7 @@ function teardown_file() {
     [ "$status" -eq 0 ]
     run stacker --oci-dir ${BATS_FILE_TMPDIR}/stackeroci --stacker-dir ${BATS_FILE_TMPDIR}/.stacker --roots-dir ${BATS_FILE_TMPDIR}/roots publish -f ${BATS_FILE_TMPDIR}/stacker.yaml --substitute IMAGE_NAME="ghcr.io/project-zot/golang" --substitute IMAGE_TAG="1.20" --substitute DESCRIPTION="mydesc" --substitute VENDOR="CentOs" --substitute LICENSES="GPLv2" --url docker://127.0.0.1:8080 --tag 1.20 --skip-tls
     [ "$status" -eq 0 ]
-    run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"ghcr.io/project-zot/golang\") { Results { RepoName Tag Digest ConfigDigest Size Layers {Size Digest } Description Vendor Licenses }}}"}' http://localhost:8080/v2/_zot/ext/search
+    run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"ghcr.io/project-zot/golang\") { Results { RepoName Tag Manifests {Digest ConfigDigest Size Layers { Size Digest }} Vendor Licenses Description }}}"}' http://localhost:8080/v2/_zot/ext/search
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.data.ImageList.Results[0].RepoName') = '"ghcr.io/project-zot/golang"' ]
     [ $(echo "${lines[-1]}" | jq '.data.ImageList.Results[0].Description') = '"mydesc"' ]
@@ -96,10 +97,10 @@ function teardown_file() {
 }
 
 @test "sign/verify with cosign" {
-    run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"annotations\") { Results { RepoName Tag Digest ConfigDigest Size Layers {Size Digest } Vendor Licenses }}}"}' http://localhost:8080/v2/_zot/ext/search
+    run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"annotations\") { Results { RepoName Tag Manifests {Digest ConfigDigest Size Layers { Size Digest }} Vendor Licenses }}}"}' http://localhost:8080/v2/_zot/ext/search
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.data.ImageList.Results[0].RepoName') = '"annotations"' ]
-    local digest=$(echo "${lines[-1]}" | jq -r '.data.ImageList.Results[0].Digest')
+    local digest=$(echo "${lines[-1]}" | jq -r '.data.ImageList.Results[0].Manifests[0].Digest')
     
     run cosign initialize
     [ "$status" -eq 0 ]
@@ -115,7 +116,7 @@ function teardown_file() {
 }
 
 @test "sign/verify with notation" {
-    run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"annotations\") { Results { RepoName Tag Digest ConfigDigest Size Layers {Size Digest } }}}"}' http://localhost:8080/v2/_zot/ext/search
+    run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"annotations\") { Results { RepoName Tag Manifests {Digest ConfigDigest Size Layers { Size Digest }} Vendor Licenses }}}"}' http://localhost:8080/v2/_zot/ext/search
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.data.ImageList.Results[0].RepoName') = '"annotations"' ]
     [ "$status" -eq 0 ]

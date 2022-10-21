@@ -179,7 +179,7 @@ func TestSearchCVECmd(t *testing.T) {
 		So(err, ShouldBeNil)
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
-		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIGNED SIZE dummyImageName tag 6e2f80bf false 123kB")
+		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE dummyImageName tag 6e2f80bf os/arch false 123kB") //nolint:lll
 	})
 
 	Convey("Test CVE by name and CVE ID - using shorthand", t, func() {
@@ -195,7 +195,7 @@ func TestSearchCVECmd(t *testing.T) {
 		So(err, ShouldBeNil)
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
-		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIGNED SIZE dummyImageName tag 6e2f80bf false 123kB")
+		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE dummyImageName tag 6e2f80bf os/arch false 123kB") //nolint:lll
 	})
 
 	Convey("Test CVE by image name - in text format", t, func() {
@@ -278,7 +278,7 @@ func TestSearchCVECmd(t *testing.T) {
 		err := cveCmd.Execute()
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
-		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIGNED SIZE anImage tag 6e2f80bf false 123kB")
+		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE anImage tag 6e2f80bf os/arch false 123kB") //nolint:lll
 		So(err, ShouldBeNil)
 	})
 
@@ -323,7 +323,7 @@ func TestSearchCVECmd(t *testing.T) {
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
 		So(err, ShouldBeNil)
-		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIGNED SIZE fixedImage tag 6e2f80bf false 123kB")
+		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE fixedImage tag 6e2f80bf os/arch false 123kB") //nolint:lll
 	})
 
 	Convey("Test fixed tags by and image name CVE ID - invalid image name", t, func() {
@@ -625,8 +625,8 @@ func TestServerCVEResponse(t *testing.T) {
 		str := space.ReplaceAllString(buff.String(), " ")
 		str = strings.TrimSpace(str)
 		So(err, ShouldBeNil)
-		So(str, ShouldEqual, "IMAGE NAME TAG DIGEST SIGNED SIZE zot-cve-test 0.0.1 "+
-			test.GetTestBlobDigest("zot-cve-test", "manifest").Encoded()[:8]+" false 75MB")
+		So(str, ShouldEqual, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE zot-cve-test 0.0.1 "+
+			test.GetTestBlobDigest("zot-cve-test", "manifest").Encoded()[:8]+" N/A false 75MB")
 	})
 
 	Convey("Test images by CVE ID - GQL - invalid CVE ID", t, func() {
@@ -643,7 +643,7 @@ func TestServerCVEResponse(t *testing.T) {
 		str := space.ReplaceAllString(buff.String(), " ")
 		str = strings.TrimSpace(str)
 		So(err, ShouldBeNil)
-		So(str, ShouldNotContainSubstring, "IMAGE NAME TAG DIGEST SIGNED SIZE")
+		So(str, ShouldNotContainSubstring, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE")
 	})
 
 	Convey("Test images by CVE ID - GQL - invalid output format", t, func() {
@@ -691,7 +691,7 @@ func TestServerCVEResponse(t *testing.T) {
 		str := space.ReplaceAllString(buff.String(), " ")
 		str = strings.TrimSpace(str)
 		So(err, ShouldBeNil)
-		So(strings.TrimSpace(str), ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIGNED SIZE")
+		So(strings.TrimSpace(str), ShouldContainSubstring, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE")
 	})
 
 	Convey("Test fixed tags by image name and CVE ID - GQL - random image", t, func() {
@@ -708,7 +708,7 @@ func TestServerCVEResponse(t *testing.T) {
 		str := space.ReplaceAllString(buff.String(), " ")
 		str = strings.TrimSpace(str)
 		So(err, ShouldNotBeNil)
-		So(strings.TrimSpace(str), ShouldNotContainSubstring, "IMAGE NAME TAG DIGEST SIGNED SIZE")
+		So(strings.TrimSpace(str), ShouldNotContainSubstring, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE")
 	})
 
 	Convey("Test fixed tags by image name and CVE ID - GQL - invalid image", t, func() {
@@ -725,7 +725,7 @@ func TestServerCVEResponse(t *testing.T) {
 		str := space.ReplaceAllString(buff.String(), " ")
 		str = strings.TrimSpace(str)
 		So(err, ShouldNotBeNil)
-		So(strings.TrimSpace(str), ShouldNotContainSubstring, "IMAGE NAME TAG DIGEST SIGNED SIZE")
+		So(strings.TrimSpace(str), ShouldNotContainSubstring, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE")
 	})
 
 	Convey("Test CVE by name and CVE ID - GQL - positive", t, func() {
@@ -741,8 +741,8 @@ func TestServerCVEResponse(t *testing.T) {
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
 		So(err, ShouldBeNil)
-		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIGNED SIZE zot-cve-test 0.0.1 "+
-			test.GetTestBlobDigest("zot-cve-test", "manifest").Encoded()[:8]+" false 75MB")
+		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE zot-cve-test 0.0.1 "+
+			test.GetTestBlobDigest("zot-cve-test", "manifest").Encoded()[:8]+" N/A false 75MB")
 	})
 
 	Convey("Test CVE by name and CVE ID - GQL - invalid name and CVE ID", t, func() {
@@ -820,8 +820,8 @@ func TestServerCVEResponse(t *testing.T) {
 		str := space.ReplaceAllString(buff.String(), " ")
 		str = strings.TrimSpace(str)
 		So(err, ShouldBeNil)
-		So(str, ShouldEqual, "IMAGE NAME TAG DIGEST SIGNED SIZE zot-cve-test 0.0.1 "+
-			test.GetTestBlobDigest("zot-cve-test", "manifest").Encoded()[:8]+" false 75MB")
+		So(str, ShouldEqual, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE zot-cve-test 0.0.1 "+
+			test.GetTestBlobDigest("zot-cve-test", "manifest").Encoded()[:8]+" N/A false 75MB")
 	})
 
 	Convey("Test images by CVE ID - invalid CVE ID", t, func() {
@@ -838,7 +838,7 @@ func TestServerCVEResponse(t *testing.T) {
 		str := space.ReplaceAllString(buff.String(), " ")
 		str = strings.TrimSpace(str)
 		So(err, ShouldBeNil)
-		So(str, ShouldNotContainSubstring, "IMAGE NAME TAG DIGEST SIGNED SIZE")
+		So(str, ShouldNotContainSubstring, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE")
 	})
 
 	Convey("Test fixed tags by and image name CVE ID - positive", t, func() {
@@ -872,7 +872,7 @@ func TestServerCVEResponse(t *testing.T) {
 		str := space.ReplaceAllString(buff.String(), " ")
 		str = strings.TrimSpace(str)
 		So(err, ShouldBeNil)
-		So(strings.TrimSpace(str), ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIGNED SIZE")
+		So(strings.TrimSpace(str), ShouldContainSubstring, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE")
 	})
 
 	Convey("Test fixed tags by and image name CVE ID - invalid image", t, func() {
@@ -889,7 +889,7 @@ func TestServerCVEResponse(t *testing.T) {
 		str := space.ReplaceAllString(buff.String(), " ")
 		str = strings.TrimSpace(str)
 		So(err, ShouldNotBeNil)
-		So(strings.TrimSpace(str), ShouldNotContainSubstring, "IMAGE NAME TAG DIGEST SIGNED SIZE")
+		So(strings.TrimSpace(str), ShouldNotContainSubstring, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE")
 	})
 
 	Convey("Test CVE by name and CVE ID - positive", t, func() {
@@ -905,8 +905,8 @@ func TestServerCVEResponse(t *testing.T) {
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
 		So(err, ShouldBeNil)
-		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIGNED SIZE zot-cve-test 0.0.1 "+
-			test.GetTestBlobDigest("zot-cve-test", "manifest").Encoded()[:8]+" false 75MB")
+		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE zot-cve-test 0.0.1 "+
+			test.GetTestBlobDigest("zot-cve-test", "manifest").Encoded()[:8]+" N/A false 75MB")
 	})
 
 	Convey("Test CVE by name and CVE ID - invalid name and CVE ID", t, func() {
@@ -922,7 +922,7 @@ func TestServerCVEResponse(t *testing.T) {
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
 		So(err, ShouldBeNil)
-		So(strings.TrimSpace(str), ShouldNotContainSubstring, "IMAGE NAME TAG DIGEST SIGNED SIZE")
+		So(strings.TrimSpace(str), ShouldNotContainSubstring, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE")
 	})
 }
 
@@ -1082,17 +1082,10 @@ func getMockCveInfo(repoDB repodb.RepoDB, log log.Logger) cveinfo.CveInfo {
 		CompareSeveritiesFn: func(severity1, severity2 string) int {
 			return severities[severity2] - severities[severity1]
 		},
-		IsImageFormatScannableFn: func(image string) (bool, error) {
+		IsImageFormatScannableFn: func(repo string, reference string) (bool, error) {
 			// Almost same logic compared to actual Trivy specific implementation
-			var imageDir string
-
-			var inputTag string
-
-			if strings.Contains(image, ":") {
-				imageDir, inputTag, _ = strings.Cut(image, ":")
-			} else {
-				imageDir = image
-			}
+			imageDir := repo
+			inputTag := reference
 
 			repoMeta, err := repoDB.GetRepoMeta(imageDir)
 			if err != nil {

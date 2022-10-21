@@ -104,15 +104,15 @@ func (r *queryResolver) GlobalSearch(ctx context.Context, query string, filter *
 }
 
 // DependencyListForImage is the resolver for the DependencyListForImage field.
-func (r *queryResolver) DerivedImageList(ctx context.Context, image string, requestedPage *gql_generated.PageInput) (*gql_generated.PaginatedImagesResult, error) {
-	derivedList, err := derivedImageList(ctx, image, r.repoDB, requestedPage, r.cveInfo, r.log)
+func (r *queryResolver) DerivedImageList(ctx context.Context, image string, digest *string, requestedPage *gql_generated.PageInput) (*gql_generated.PaginatedImagesResult, error) {
+	derivedList, err := derivedImageList(ctx, image, digest, r.repoDB, requestedPage, r.cveInfo, r.log)
 
 	return derivedList, err
 }
 
 // BaseImageList is the resolver for the BaseImageList field.
-func (r *queryResolver) BaseImageList(ctx context.Context, image string, requestedPage *gql_generated.PageInput) (*gql_generated.PaginatedImagesResult, error) {
-	imageList, err := baseImageList(ctx, image, r.repoDB, requestedPage, r.cveInfo, r.log)
+func (r *queryResolver) BaseImageList(ctx context.Context, image string, digest *string, requestedPage *gql_generated.PageInput) (*gql_generated.PaginatedImagesResult, error) {
+	imageList, err := baseImageList(ctx, image, digest, r.repoDB, requestedPage, r.cveInfo, r.log)
 
 	return imageList, err
 }
@@ -125,7 +125,7 @@ func (r *queryResolver) Image(ctx context.Context, image string) (*gql_generated
 		return &gql_generated.ImageSummary{}, gqlerror.Errorf("no reference provided")
 	}
 
-	return getImageSummary(ctx, repo, tag, r.repoDB, r.cveInfo, r.log)
+	return getImageSummary(ctx, repo, tag, nil, r.repoDB, r.cveInfo, r.log)
 }
 
 // Referrers is the resolver for the Referrers field.

@@ -119,6 +119,7 @@ func TestVersioningDynamoDB(t *testing.T) {
 			Region:                region,
 			RepoMetaTablename:     "RepoMetadataTable",
 			ManifestDataTablename: "ManifestDataTable",
+			IndexDataTablename:    "IndexDataTable",
 			VersionTablename:      "Version",
 		})
 		So(err, ShouldBeNil)

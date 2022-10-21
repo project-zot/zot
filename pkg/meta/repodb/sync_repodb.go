@@ -74,12 +74,6 @@ func SyncRepo(repo string, repoDB RepoDB, storeController storage.StoreControlle
 	for _, manifest := range indexContent.Manifests {
 		tag, hasTag := manifest.Annotations[ispec.AnnotationRefName]
 
-		if !hasTag {
-			log.Warn().Msgf("sync-repo: image without tag found, will not be synced into RepoDB")
-
-			continue
-		}
-
 		manifestMetaIsPresent, err := isManifestMetaPresent(repo, manifest, repoDB)
 		if err != nil {
 			log.Error().Err(err).Msgf("sync-repo: error checking manifestMeta in RepoDB")
@@ -87,7 +81,7 @@ func SyncRepo(repo string, repoDB RepoDB, storeController storage.StoreControlle
 			return err
 		}
 
-		if manifestMetaIsPresent {
+		if manifestMetaIsPresent && hasTag {
 			err = repoDB.SetRepoTag(repo, tag, manifest.Digest, manifest.MediaType)
 			if err != nil {
 				log.Error().Err(err).Msgf("sync-repo: failed to set repo tag for %s:%s", repo, tag)
@@ -131,31 +125,16 @@ func SyncRepo(repo string, repoDB RepoDB, storeController storage.StoreControlle
 			continue
 		}
 
-		manifestData, err := NewManifestData(repo, manifestBlob, storeController)
-		if err != nil {
-			log.Error().Err(err).Msgf("sync-repo: failed to create manifest data for image %s:%s manifest digest %s ",
-				repo, tag, manifest.Digest.String())
+		reference := tag
 
-			return err
+		if tag == "" {
+			reference = manifest.Digest.String()
 		}
 
-		err = repoDB.SetManifestMeta(repo, manifest.Digest, ManifestMetadata{
-			ManifestBlob:  manifestData.ManifestBlob,
-			ConfigBlob:    manifestData.ConfigBlob,
-			DownloadCount: 0,
-			Signatures:    ManifestSignatures{},
-		})
+		err = SetMetadataFromInput(repo, reference, manifest.MediaType, manifest.Digest, manifestBlob,
+			storeController, repoDB, log)
 		if err != nil {
-			log.Error().Err(err).Msgf("sync-repo: failed to set manifest meta for image %s:%s manifest digest %s ",
-				repo, tag, manifest.Digest.String())
-
-			return err
-		}
-
-		err = repoDB.SetRepoTag(repo, tag, manifest.Digest, manifest.MediaType)
-		if err != nil {
-			log.Error().Err(err).Msgf("sync-repo: failed to repo tag for repo %s and tag %s",
-				repo, tag)
+			log.Error().Err(err).Msgf("sync-repo: failed to set metadata for %s:%s", repo, tag)
 
 			return err
 		}
@@ -270,4 +249,62 @@ func NewManifestData(repoName string, manifestBlob []byte, storeController stora
 	manifestData.ConfigBlob = configBlob
 
 	return manifestData, nil
+}
+
+func NewIndexData(repoName string, indexBlob []byte, storeController storage.StoreController,
+) IndexData {
+	indexData := IndexData{}
+
+	indexData.IndexBlob = indexBlob
+
+	return indexData
+}
+
+// SetMetadataFromInput tries to set manifest metadata and update repo metadata by adding the current tag
+// (in case the reference is a tag). The function expects image manifests and indexes (multi arch images).
+func SetMetadataFromInput(repo, reference, mediaType string, digest godigest.Digest, descriptorBlob []byte,
+	storeController storage.StoreController, repoDB RepoDB, log log.Logger,
+) error {
+	switch mediaType {
+	case ispec.MediaTypeImageManifest:
+		imageData, err := NewManifestData(repo, descriptorBlob, storeController)
+		if err != nil {
+			return err
+		}
+
+		err = repoDB.SetManifestData(digest, imageData)
+		if err != nil {
+			log.Error().Err(err).Msg("repodb: error while putting manifest meta")
+
+			return err
+		}
+	case ispec.MediaTypeImageIndex:
+		indexData := NewIndexData(repo, descriptorBlob, storeController)
+
+		err := repoDB.SetIndexData(digest, indexData)
+		if err != nil {
+			log.Error().Err(err).Msg("repodb: error while putting index data")
+
+			return err
+		}
+	}
+
+	if refferenceIsDigest(reference) {
+		return nil
+	}
+
+	err := repoDB.SetRepoTag(repo, reference, digest, mediaType)
+	if err != nil {
+		log.Error().Err(err).Msg("repodb: error while putting repo meta")
+
+		return err
+	}
+
+	return nil
+}
+
+func refferenceIsDigest(reference string) bool {
+	_, err := godigest.Parse(reference)
+
+	return err == nil
 }

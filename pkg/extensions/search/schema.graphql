@@ -124,53 +124,33 @@ type ImageSummary {
     """
     Tag: String
     """
-    Digest of the manifest file associated with this image
+    List of manifests for all supported versions of the image for different operating systems and architectures
     """
-    Digest: String
+    Manifests: [ManifestSummary]
     """
-    Digest of the config file associated with this image
-    """
-    ConfigDigest: String
-    """
-    Timestamp of the last modification done to the image (from config or the last updated layer)
-    """
-    LastUpdated: Time
-    """
-    True if the image has a signature associated with it, false otherwise
-    """
-    IsSigned: Boolean
-    """
-    Total size of the files associated with this image (manigest, config, layers)
+    Total size of the files associated with all images (manigest, config, layers)
     """
     Size: String
-    """
-    OS and architecture supported by this image
-    """
-    Platform: OsArch
-    """
-    Vendor associated with this image, the distributing entity, organization or individual
-    """
-    Vendor: String
-    """
-    Integer used to rank search results by relevance
-    """
-    Score: Int
     """
     Number of downloads of the manifest of this image
     """
     DownloadCount: Int
     """
-    Information on the layers of this image
+    Timestamp of the last modification done to the image (from config or the last updated layer)
     """
-    Layers: [LayerSummary]
+    LastUpdated: Time
     """
     Human-readable description of the software packaged in the image
     """
     Description: String
     """
+    True if the image has a signature associated with it, false otherwise
+    """
+    IsSigned: Boolean 
+    """
     License(s) under which contained software is distributed as an SPDX License Expression
     """
-    Licenses: String
+    Licenses: String  #  The value of the annotation if present, 'unknown' otherwise).
     """
     Labels associated with this image
     NOTE: currently this field is unused
@@ -181,6 +161,10 @@ type ImageSummary {
     """
     Title: String
     """
+    Integer used to rank search results by relevance
+    """
+    Score: Int
+    """
     URL to get source code for building the image
     """
     Source: String
@@ -189,6 +173,52 @@ type ImageSummary {
     """
     Documentation: String
     """
+    Vendor associated with this image, the distributing entity, organization or individual
+    """
+    Vendor: String
+    """
+    Contact details of the people or organization responsible for the image
+    """
+    Authors: String
+    """
+    Short summary of the identified CVEs
+    """
+    Vulnerabilities: ImageVulnerabilitySummary
+}
+"""
+Details about a specific version of an image for a certain operating system and architecture.
+"""
+type ManifestSummary {
+    """
+    Digest of the manifest file associated with this image
+    """
+    Digest: String
+    """
+    Digest of the config file associated with this image
+    """
+    ConfigDigest: String
+    """
+    Timestamp of the last update to an image inside this repository
+    """
+    LastUpdated: Time
+    """
+    Total size of the files associated with this manifest (manigest, config, layers)
+    """
+    Size: String
+    """
+    OS and architecture supported by this image
+    """
+    Platform: OsArch
+    """
+    Total numer of image manifest downloads from this repository
+    """
+    DownloadCount: Int
+    """
+    List of layers matching the search criteria
+    NOTE: the actual search logic for layers is not implemented at the moment
+    """
+    Layers: [LayerSummary]
+    """
     Information about the history of the specific image, see LayerHistory
     """
     History: [LayerHistory]
@@ -196,10 +226,6 @@ type ImageSummary {
     Short summary of the identified CVEs
     """
     Vulnerabilities: ImageVulnerabilitySummary
-    """
-    Contact details of the people or organization responsible for the image
-    """
-    Authors: String
 }
 
 """
@@ -606,6 +632,8 @@ type Query {
     DerivedImageList(
         "Image name in the format `repository:tag`"
         image: String!,
+        "Digest of a specific manifest inside the image. When null whole image is considered"
+        digest: String,
         "Sets the parameters of the requested page"
         requestedPage: PageInput
     ): PaginatedImagesResult!
@@ -616,6 +644,8 @@ type Query {
     BaseImageList(
         "Image name in the format `repository:tag`"
         image: String!,
+        "Digest of a specific manifest inside the image. When null whole image is considered"
+        digest: String,
         "Sets the parameters of the requested page"
         requestedPage: PageInput
     ): PaginatedImagesResult!

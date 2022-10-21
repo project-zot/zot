@@ -65,11 +65,11 @@ func testSetup(t *testing.T) (string, string, *digestinfo.DigestInfo) {
 	subRootDir := subDir
 
 	// Test images used/copied:
-	// IMAGE NAME    TAG                       DIGEST    CONFIG    LAYERS    SIZE
-	// zot-test      0.0.1                     2bacca16  adf3bb6c            76MB
-	//                                                             2d473b07  76MB
-	// zot-cve-test  0.0.1                     63a795ca  8dd57e17            75MB
-	//                                                             7a0437f0  75MB
+	// IMAGE NAME    TAG        DIGEST    OS/ARCH      CONFIG    LAYERS    SIZE
+	// zot-test      0.0.1      2bacca16  linux/amd64  adf3bb6c            76MB
+	//                                                           2d473b07  76MB
+	// zot-cve-test  0.0.1      63a795ca  linux/amd64  8dd57e17            75MB
+	//                                                           7a0437f0  75MB
 
 	err := os.Mkdir(subDir+"/a", 0o700)
 	if err != nil {
@@ -159,9 +159,20 @@ func TestDigestSearchHTTP(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, 422)
 
 		// "sha" should match all digests in all images
+		query := `{
+			ImageListForDigest(id:"sha") {
+				Results {
+					RepoName Tag 
+					Manifests {
+						Digest ConfigDigest Size 
+						Layers { Digest }
+					}
+					Size
+				}
+			}
+		}`
 		resp, err = resty.R().Get(
-			baseURL + constants.FullSearchPrefix + `?query={ImageListForDigest(id:"sha")` +
-				`{Results{RepoName%20Tag%20Digest%20ConfigDigest%20Size%20Layers%20{%20Digest}}}}`,
+			baseURL + constants.FullSearchPrefix + "?query=" + url.QueryEscape(query),
 		)
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
@@ -178,7 +189,7 @@ func TestDigestSearchHTTP(t *testing.T) {
 		// GetTestBlobDigest("zot-test", "manifest").Encoded() should match the manifest of 1 image
 
 		gqlQuery := url.QueryEscape(`{ImageListForDigest(id:"` + GetTestBlobDigest("zot-test", "manifest").Encoded() + `")
-			{Results{RepoName Tag Digest ConfigDigest Size Layers { Digest }}}}`)
+			{Results{RepoName Tag Manifests {Digest ConfigDigest Size Layers { Digest }}}}}`)
 		targetURL := baseURL + constants.FullSearchPrefix + `?query=` + gqlQuery
 
 		resp, err = resty.R().Get(targetURL)
@@ -196,7 +207,7 @@ func TestDigestSearchHTTP(t *testing.T) {
 
 		// GetTestBlobDigest("zot-test", "config").Encoded() should match the config of 1 image.
 		gqlQuery = url.QueryEscape(`{ImageListForDigest(id:"` + GetTestBlobDigest("zot-test", "config").Encoded() + `")
-			{Results{RepoName Tag Digest ConfigDigest Size Layers { Digest }}}}`)
+		{Results{RepoName Tag Manifests {Digest ConfigDigest Size Layers { Digest }}}}}`)
 
 		targetURL = baseURL + constants.FullSearchPrefix + `?query=` + gqlQuery
 		resp, err = resty.R().Get(targetURL)
@@ -215,7 +226,7 @@ func TestDigestSearchHTTP(t *testing.T) {
 		// Call should return {"data":{"ImageListForDigest":[{"Name":"zot-cve-test","Tags":["0.0.1"]}]}}
 		// GetTestBlobDigest("zot-cve-test", "layer").Encoded() should match the layer of 1 image
 		gqlQuery = url.QueryEscape(`{ImageListForDigest(id:"` + GetTestBlobDigest("zot-cve-test", "layer").Encoded() + `")
-			{Results{RepoName Tag Digest ConfigDigest Size Layers { Digest }}}}`)
+		{Results{RepoName Tag Manifests {Digest ConfigDigest Size Layers { Digest }}}}}`)
 		targetURL = baseURL + constants.FullSearchPrefix + `?query=` + gqlQuery
 
 		resp, err = resty.R().Get(
@@ -236,9 +247,20 @@ func TestDigestSearchHTTP(t *testing.T) {
 
 		// Call should return {"data":{"ImageListForDigest":[]}}
 		// "1111111" should match 0 images
+		query = `
+		{
+			ImageListForDigest(id:"1111111") {
+				Results {				
+					RepoName Tag 
+					Manifests {
+						Digest ConfigDigest Size 
+						Layers { Digest }
+					}
+				}
+			}
+		}`
 		resp, err = resty.R().Get(
-			baseURL + constants.FullSearchPrefix + `?query={ImageListForDigest(id:"1111111")` +
-				`{Results{RepoName%20Tag%20Digest%20ConfigDigest%20Size%20Layers%20{%20Digest}}}}`,
+			baseURL + constants.FullSearchPrefix + "?query=" + url.QueryEscape(query),
 		)
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
@@ -250,9 +272,14 @@ func TestDigestSearchHTTP(t *testing.T) {
 		So(len(responseStruct.ImgListForDigest.Results), ShouldEqual, 0)
 
 		// Call should return {"errors": [{....}]", data":null}}
+		query = `{
+			ImageListForDigest(id:"1111111") {
+				Results {
+					RepoName Tag343s
+				}
+			}`
 		resp, err = resty.R().Get(
-			baseURL + constants.FullSearchPrefix + `?query={ImageListForDigest(id:"1111111")` +
-				`{Results{RepoName%20Tag343s}}}`,
+			baseURL + constants.FullSearchPrefix + "?query=" + url.QueryEscape(query),
 		)
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
@@ -306,9 +333,19 @@ func TestDigestSearchHTTPSubPaths(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 422)
 
+		query := `{
+			ImageListForDigest(id:"sha") {
+				Results {
+					RepoName Tag 
+					Manifests {
+						Digest ConfigDigest Size 
+						Layers { Digest }
+						}
+					}
+				}
+			}`
 		resp, err = resty.R().Get(
-			baseURL + constants.FullSearchPrefix + `?query={ImageListForDigest(id:"sha")` +
-				`{Results{RepoName%20Tag%20Digest%20ConfigDigest%20Size%20Layers%20{%20Digest}}}}`,
+			baseURL + constants.FullSearchPrefix + "?query=" + url.QueryEscape(query),
 		)
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)

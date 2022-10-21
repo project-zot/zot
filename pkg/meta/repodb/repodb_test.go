@@ -13,7 +13,7 @@ import (
 	"time"
 
 	guuid "github.com/gofrs/uuid"
-	"github.com/opencontainers/go-digest"
+	godigest "github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
@@ -24,6 +24,7 @@ import (
 	dynamo "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper"
 	dynamoParams "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper/params"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
+	"zotregistry.io/zot/pkg/test"
 )
 
 const (
@@ -74,12 +75,14 @@ func TestDynamoDBWrapper(t *testing.T) {
 	repoMetaTablename := "RepoMetadataTable" + uuid.String()
 	manifestDataTablename := "ManifestDataTable" + uuid.String()
 	versionTablename := "Version" + uuid.String()
+	indexDataTablename := "IndexDataTable" + uuid.String()
 
 	Convey("DynamoDB Wrapper", t, func() {
 		dynamoDBDriverParams := dynamoParams.DBDriverParameters{
 			Endpoint:              os.Getenv("DYNAMODBMOCK_ENDPOINT"),
 			RepoMetaTablename:     repoMetaTablename,
 			ManifestDataTablename: manifestDataTablename,
+			IndexDataTablename:    indexDataTablename,
 			VersionTablename:      versionTablename,
 			Region:                "us-east-2",
 		}
@@ -114,7 +117,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			configBlob, manifestBlob, err := generateTestImage()
 			So(err, ShouldBeNil)
 
-			manifestDigest := digest.FromBytes(manifestBlob)
+			manifestDigest := godigest.FromBytes(manifestBlob)
 
 			err = repoDB.SetManifestData(manifestDigest, repodb.ManifestData{
 				ManifestBlob: manifestBlob,
@@ -133,16 +136,56 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			So(err, ShouldNotBeNil)
 		})
 
+		Convey("Test SetManifestMeta", func() {
+			Convey("RepoMeta not found", func() {
+				var (
+					manifestDigest = godigest.FromString("dig")
+					manifestBlob   = []byte("manifestBlob")
+					configBlob     = []byte("configBlob")
+
+					signatures = repodb.ManifestSignatures{
+						"digest1": []repodb.SignatureInfo{
+							{
+								SignatureManifestDigest: "signatureDigest",
+								LayersInfo: []repodb.LayerInfo{
+									{
+										LayerDigest:  "layerDigest",
+										LayerContent: []byte("layerContent"),
+									},
+								},
+							},
+						},
+					}
+				)
+
+				err := repoDB.SetManifestMeta("repo", manifestDigest, repodb.ManifestMetadata{
+					ManifestBlob:  manifestBlob,
+					ConfigBlob:    configBlob,
+					DownloadCount: 10,
+					Signatures:    signatures,
+				})
+				So(err, ShouldBeNil)
+
+				manifestMeta, err := repoDB.GetManifestMeta("repo", manifestDigest)
+				So(err, ShouldBeNil)
+
+				So(manifestMeta.ManifestBlob, ShouldResemble, manifestBlob)
+				So(manifestMeta.ConfigBlob, ShouldResemble, configBlob)
+				So(manifestMeta.DownloadCount, ShouldEqual, 10)
+				So(manifestMeta.Signatures, ShouldResemble, signatures)
+			})
+		})
+
 		Convey("Test SetRepoTag", func() {
 			// test behaviours
 			var (
 				repo1           = "repo1"
 				repo2           = "repo2"
 				tag1            = "0.0.1"
-				manifestDigest1 = digest.FromString("fake-manifest1")
+				manifestDigest1 = godigest.FromString("fake-manifest1")
 
 				tag2            = "0.0.2"
-				manifestDigest2 = digest.FromString("fake-manifes2")
+				manifestDigest2 = godigest.FromString("fake-manifes2")
 			)
 
 			Convey("Setting a good repo", func() {
@@ -203,11 +246,11 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			var (
 				repo1           = "repo1"
 				tag1            = "0.0.1"
-				manifestDigest1 = digest.FromString("fake-manifest1")
+				manifestDigest1 = godigest.FromString("fake-manifest1")
 
 				repo2           = "repo2"
 				tag2            = "0.0.2"
-				manifestDigest2 = digest.FromString("fake-manifest2")
+				manifestDigest2 = godigest.FromString("fake-manifest2")
 
 				InexistentRepo = "InexistentRepo"
 			)
@@ -239,9 +282,9 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			var (
 				repo            = "repo1"
 				tag1            = "0.0.1"
-				manifestDigest1 = digest.FromString("fake-manifest1")
+				manifestDigest1 = godigest.FromString("fake-manifest1")
 				tag2            = "0.0.2"
-				manifestDigest2 = digest.FromString("fake-manifest2")
+				manifestDigest2 = godigest.FromString("fake-manifest2")
 			)
 
 			err := repoDB.SetRepoTag(repo, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
@@ -304,9 +347,9 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				repo1           = "repo1"
 				repo2           = "repo2"
 				tag1            = "0.0.1"
-				manifestDigest1 = digest.FromString("fake-manifest1")
+				manifestDigest1 = godigest.FromString("fake-manifest1")
 				tag2            = "0.0.2"
-				manifestDigest2 = digest.FromString("fake-manifest2")
+				manifestDigest2 = godigest.FromString("fake-manifest2")
 			)
 
 			err := repoDB.SetRepoTag(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
@@ -361,7 +404,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			var (
 				repo1           = "repo1"
 				tag1            = "0.0.1"
-				manifestDigest1 = digest.FromString("fake-manifest1")
+				manifestDigest1 = godigest.FromString("fake-manifest1")
 			)
 
 			err := repoDB.SetRepoTag(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
@@ -393,7 +436,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			var (
 				repo1           = "repo1"
 				tag1            = "0.0.1"
-				manifestDigest1 = digest.FromString("fake-manifest1")
+				manifestDigest1 = godigest.FromString("fake-manifest1")
 			)
 
 			err := repoDB.SetRepoTag(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
@@ -428,7 +471,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			var (
 				repo1           = "repo1"
 				tag1            = "0.0.1"
-				manifestDigest1 = digest.FromString("fake-manifest1")
+				manifestDigest1 = godigest.FromString("fake-manifest1")
 			)
 
 			err := repoDB.SetRepoTag(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
@@ -463,7 +506,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			configBlob, manifestBlob, err := generateTestImage()
 			So(err, ShouldBeNil)
 
-			manifestDigest := digest.FromBytes(manifestBlob)
+			manifestDigest := godigest.FromBytes(manifestBlob)
 
 			err = repoDB.SetRepoTag(repo1, tag1, manifestDigest, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
@@ -498,7 +541,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			var (
 				repo1           = "repo1"
 				tag1            = "0.0.1"
-				manifestDigest1 = digest.FromString("fake-manifest1")
+				manifestDigest1 = godigest.FromString("fake-manifest1")
 			)
 
 			err := repoDB.SetRepoTag(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
@@ -526,7 +569,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			var (
 				repo1           = "repo1"
 				tag1            = "0.0.1"
-				manifestDigest1 = digest.FromString("fake-manifest1")
+				manifestDigest1 = godigest.FromString("fake-manifest1")
 			)
 
 			err := repoDB.SetRepoTag(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
@@ -569,11 +612,11 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				repo2           = "repo2"
 				repo3           = "repo3"
 				tag1            = "0.0.1"
-				manifestDigest1 = digest.FromString("fake-manifest1")
+				manifestDigest1 = godigest.FromString("fake-manifest1")
 				tag2            = "0.0.2"
-				manifestDigest2 = digest.FromString("fake-manifest2")
+				manifestDigest2 = godigest.FromString("fake-manifest2")
 				tag3            = "0.0.3"
-				manifestDigest3 = digest.FromString("fake-manifest3")
+				manifestDigest3 = godigest.FromString("fake-manifest3")
 				ctx             = context.Background()
 				emptyManifest   ispec.Manifest
 				emptyConfig     ispec.Manifest
@@ -604,13 +647,13 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				err = repoDB.SetManifestMeta(repo1, manifestDigest3, emptyRepoMeta)
 				So(err, ShouldBeNil)
 
-				repos, manifesMetaMap, _, err := repoDB.SearchRepos(ctx, "", repodb.Filter{}, repodb.PageInput{})
+				repos, manifestMetaMap, _, _, err := repoDB.SearchRepos(ctx, "", repodb.Filter{}, repodb.PageInput{})
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 2)
-				So(len(manifesMetaMap), ShouldEqual, 3)
-				So(manifesMetaMap, ShouldContainKey, manifestDigest1.String())
-				So(manifesMetaMap, ShouldContainKey, manifestDigest2.String())
-				So(manifesMetaMap, ShouldContainKey, manifestDigest3.String())
+				So(len(manifestMetaMap), ShouldEqual, 3)
+				So(manifestMetaMap, ShouldContainKey, manifestDigest1.String())
+				So(manifestMetaMap, ShouldContainKey, manifestDigest2.String())
+				So(manifestMetaMap, ShouldContainKey, manifestDigest3.String())
 			})
 
 			Convey("Search a repo by name", func() {
@@ -620,11 +663,11 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				err = repoDB.SetManifestMeta(repo1, manifestDigest1, emptyRepoMeta)
 				So(err, ShouldBeNil)
 
-				repos, manifesMetaMap, _, err := repoDB.SearchRepos(ctx, repo1, repodb.Filter{}, repodb.PageInput{})
+				repos, manifestMetaMap, _, _, err := repoDB.SearchRepos(ctx, repo1, repodb.Filter{}, repodb.PageInput{})
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 1)
-				So(len(manifesMetaMap), ShouldEqual, 1)
-				So(manifesMetaMap, ShouldContainKey, manifestDigest1.String())
+				So(len(manifestMetaMap), ShouldEqual, 1)
+				So(manifestMetaMap, ShouldContainKey, manifestDigest1.String())
 			})
 
 			Convey("Search non-existing repo by name", func() {
@@ -634,10 +677,11 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				err = repoDB.SetRepoTag(repo1, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
 				So(err, ShouldBeNil)
 
-				repos, manifesMetaMap, _, err := repoDB.SearchRepos(ctx, "RepoThatDoesntExist", repodb.Filter{}, repodb.PageInput{})
+				repos, manifestMetaMap, _, _, err := repoDB.SearchRepos(ctx, "RepoThatDoesntExist", repodb.Filter{},
+					repodb.PageInput{})
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 0)
-				So(len(manifesMetaMap), ShouldEqual, 0)
+				So(len(manifestMetaMap), ShouldEqual, 0)
 			})
 
 			Convey("Search with partial match", func() {
@@ -655,12 +699,12 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				err = repoDB.SetManifestMeta("golang", manifestDigest3, emptyRepoMeta)
 				So(err, ShouldBeNil)
 
-				repos, manifesMetaMap, _, err := repoDB.SearchRepos(ctx, "pine", repodb.Filter{}, repodb.PageInput{})
+				repos, manifestMetaMap, _, _, err := repoDB.SearchRepos(ctx, "pine", repodb.Filter{}, repodb.PageInput{})
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 2)
-				So(manifesMetaMap, ShouldContainKey, manifestDigest1.String())
-				So(manifesMetaMap, ShouldContainKey, manifestDigest2.String())
-				So(manifesMetaMap, ShouldNotContainKey, manifestDigest3.String())
+				So(manifestMetaMap, ShouldContainKey, manifestDigest1.String())
+				So(manifestMetaMap, ShouldContainKey, manifestDigest2.String())
+				So(manifestMetaMap, ShouldNotContainKey, manifestDigest3.String())
 			})
 
 			Convey("Search multiple repos that share manifests", func() {
@@ -678,10 +722,10 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				err = repoDB.SetManifestMeta(repo3, manifestDigest1, emptyRepoMeta)
 				So(err, ShouldBeNil)
 
-				repos, manifesMetaMap, _, err := repoDB.SearchRepos(ctx, "", repodb.Filter{}, repodb.PageInput{})
+				repos, manifestMetaMap, _, _, err := repoDB.SearchRepos(ctx, "", repodb.Filter{}, repodb.PageInput{})
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 3)
-				So(len(manifesMetaMap), ShouldEqual, 1)
+				So(len(manifestMetaMap), ShouldEqual, 1)
 			})
 
 			Convey("Search repos with access control", func() {
@@ -709,7 +753,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				authzCtxKey := localCtx.GetContextKey()
 				ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
 
-				repos, _, _, err := repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{})
+				repos, _, _, _, err := repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{})
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 2)
 				for _, k := range repos {
@@ -722,7 +766,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				repoNameBuilder := strings.Builder{}
 
 				for _, i := range rand.Perm(reposCount) {
-					manifestDigest := digest.FromString("fakeManifest" + strconv.Itoa(i))
+					manifestDigest := godigest.FromString("fakeManifest" + strconv.Itoa(i))
 					timeString := fmt.Sprintf("1%02d0-01-01 04:35", i)
 					createdTime, err := time.Parse("2006-01-02 15:04", timeString)
 					So(err, ShouldBeNil)
@@ -754,18 +798,18 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 					repoNameBuilder.Reset()
 				}
 
-				repos, _, _, err := repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{})
+				repos, _, _, _, err := repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{})
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, reposCount)
 
-				repos, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
+				repos, _, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
 					Limit:  20,
 					SortBy: repodb.AlphabeticAsc,
 				})
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 20)
 
-				repos, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
+				repos, _, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
 					Limit:  1,
 					Offset: 0,
 					SortBy: repodb.AlphabeticAsc,
@@ -774,7 +818,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				So(len(repos), ShouldEqual, 1)
 				So(repos[0].Name, ShouldResemble, "repo0")
 
-				repos, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
+				repos, _, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
 					Limit:  1,
 					Offset: 1,
 					SortBy: repodb.AlphabeticAsc,
@@ -783,7 +827,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				So(len(repos), ShouldEqual, 1)
 				So(repos[0].Name, ShouldResemble, "repo1")
 
-				repos, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
+				repos, _, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
 					Limit:  1,
 					Offset: 49,
 					SortBy: repodb.AlphabeticAsc,
@@ -792,7 +836,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				So(len(repos), ShouldEqual, 1)
 				So(repos[0].Name, ShouldResemble, "repo9")
 
-				repos, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
+				repos, _, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
 					Limit:  1,
 					Offset: 49,
 					SortBy: repodb.AlphabeticDsc,
@@ -801,7 +845,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				So(len(repos), ShouldEqual, 1)
 				So(repos[0].Name, ShouldResemble, "repo0")
 
-				repos, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
+				repos, _, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
 					Limit:  1,
 					Offset: 0,
 					SortBy: repodb.AlphabeticDsc,
@@ -811,7 +855,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				So(repos[0].Name, ShouldResemble, "repo9")
 
 				// sort by downloads
-				repos, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
+				repos, _, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
 					Limit:  1,
 					Offset: 0,
 					SortBy: repodb.Downloads,
@@ -821,7 +865,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				So(repos[0].Name, ShouldResemble, "repo49")
 
 				// sort by last update
-				repos, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
+				repos, _, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
 					Limit:  1,
 					Offset: 0,
 					SortBy: repodb.UpdateTime,
@@ -830,7 +874,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				So(len(repos), ShouldEqual, 1)
 				So(repos[0].Name, ShouldResemble, "repo49")
 
-				repos, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
+				repos, _, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
 					Limit:  1,
 					Offset: 100,
 					SortBy: repodb.UpdateTime,
@@ -841,33 +885,110 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			})
 
 			Convey("Search with wrong pagination input", func() {
-				_, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
+				_, _, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
 					Limit:  1,
 					Offset: 100,
 					SortBy: repodb.UpdateTime,
 				})
 				So(err, ShouldBeNil)
 
-				_, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
+				_, _, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
 					Limit:  -1,
 					Offset: 100,
 					SortBy: repodb.UpdateTime,
 				})
 				So(err, ShouldNotBeNil)
 
-				_, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
+				_, _, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
 					Limit:  1,
 					Offset: -1,
 					SortBy: repodb.UpdateTime,
 				})
 				So(err, ShouldNotBeNil)
 
-				_, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
+				_, _, _, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
 					Limit:  1,
 					Offset: 1,
 					SortBy: repodb.SortCriteria("InvalidSortingCriteria"),
 				})
 				So(err, ShouldNotBeNil)
+			})
+
+			Convey("Search Repos with Indexes", func() {
+				var (
+					tag4            = "0.0.4"
+					indexDigest     = godigest.FromString("Multiarch")
+					manifestDigest1 = godigest.FromString("manifestDigest1")
+					manifestDigest2 = godigest.FromString("manifestDigest2")
+
+					tag5            = "0.0.5"
+					manifestDigest3 = godigest.FromString("manifestDigest3")
+				)
+
+				err := repoDB.SetManifestData(manifestDigest1, repodb.ManifestData{
+					ManifestBlob: []byte("{}"),
+					ConfigBlob:   []byte("{}"),
+				})
+				So(err, ShouldBeNil)
+
+				config := ispec.Image{
+					Platform: ispec.Platform{
+						Architecture: "arch",
+						OS:           "os",
+					},
+				}
+
+				confBlob, err := json.Marshal(config)
+				So(err, ShouldBeNil)
+
+				err = repoDB.SetManifestData(manifestDigest2, repodb.ManifestData{
+					ManifestBlob: []byte("{}"),
+					ConfigBlob:   confBlob,
+				})
+				So(err, ShouldBeNil)
+				err = repoDB.SetManifestData(manifestDigest3, repodb.ManifestData{
+					ManifestBlob: []byte("{}"),
+					ConfigBlob:   []byte("{}"),
+				})
+				So(err, ShouldBeNil)
+
+				indexContent := ispec.Index{
+					MediaType: ispec.MediaTypeImageIndex,
+					Manifests: []ispec.Descriptor{
+						{
+							Digest: manifestDigest1,
+						},
+						{
+							Digest: manifestDigest2,
+						},
+					},
+				}
+
+				indexBlob, err := json.Marshal(indexContent)
+				So(err, ShouldBeNil)
+
+				err = repoDB.SetIndexData(indexDigest, repodb.IndexData{
+					IndexBlob: indexBlob,
+				})
+				So(err, ShouldBeNil)
+
+				err = repoDB.SetRepoTag("repo", tag4, indexDigest, ispec.MediaTypeImageIndex)
+				So(err, ShouldBeNil)
+
+				err = repoDB.SetRepoTag("repo", tag5, manifestDigest3, ispec.MediaTypeImageManifest)
+				So(err, ShouldBeNil)
+
+				repos, manifestMetaMap, indexDataMap, _, err := repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{})
+				So(err, ShouldBeNil)
+
+				So(len(repos), ShouldEqual, 1)
+				So(repos[0].Name, ShouldResemble, "repo")
+				So(repos[0].Tags, ShouldContainKey, tag4)
+				So(repos[0].Tags, ShouldContainKey, tag5)
+				So(manifestMetaMap, ShouldContainKey, manifestDigest1.String())
+				So(manifestMetaMap, ShouldContainKey, manifestDigest2.String())
+				So(manifestMetaMap, ShouldContainKey, manifestDigest3.String())
+				So(indexDataMap, ShouldContainKey, indexDigest.String())
 			})
 		})
 
@@ -875,9 +996,9 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			var (
 				repo1           = "repo1"
 				repo2           = "repo2"
-				manifestDigest1 = digest.FromString("fake-manifest1")
-				manifestDigest2 = digest.FromString("fake-manifest2")
-				manifestDigest3 = digest.FromString("fake-manifest3")
+				manifestDigest1 = godigest.FromString("fake-manifest1")
+				manifestDigest2 = godigest.FromString("fake-manifest2")
+				manifestDigest3 = godigest.FromString("fake-manifest3")
 				ctx             = context.Background()
 				emptyManifest   ispec.Manifest
 				emptyConfig     ispec.Manifest
@@ -917,48 +1038,48 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			So(err, ShouldBeNil)
 
 			Convey("With exact match", func() {
-				repos, manifesMetaMap, _, err := repoDB.SearchTags(ctx, "repo1:0.0.1", repodb.Filter{}, repodb.PageInput{})
+				repos, manifestMetaMap, _, _, err := repoDB.SearchTags(ctx, "repo1:0.0.1", repodb.Filter{}, repodb.PageInput{})
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 1)
 				So(len(repos[0].Tags), ShouldEqual, 1)
 				So(repos[0].Tags, ShouldContainKey, "0.0.1")
-				So(manifesMetaMap, ShouldContainKey, manifestDigest1.String())
+				So(manifestMetaMap, ShouldContainKey, manifestDigest1.String())
 			})
 
 			Convey("With partial repo path", func() {
-				repos, manifesMetaMap, _, err := repoDB.SearchTags(ctx, "repo:0.0.1", repodb.Filter{}, repodb.PageInput{})
+				repos, manifestMetaMap, _, _, err := repoDB.SearchTags(ctx, "repo:0.0.1", repodb.Filter{}, repodb.PageInput{})
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 0)
-				So(len(manifesMetaMap), ShouldEqual, 0)
+				So(len(manifestMetaMap), ShouldEqual, 0)
 			})
 
 			Convey("With partial tag", func() {
-				repos, manifesMetaMap, _, err := repoDB.SearchTags(ctx, "repo1:0.0", repodb.Filter{}, repodb.PageInput{})
+				repos, manifestMetaMap, _, _, err := repoDB.SearchTags(ctx, "repo1:0.0", repodb.Filter{}, repodb.PageInput{})
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 1)
 				So(len(repos[0].Tags), ShouldEqual, 2)
 				So(repos[0].Tags, ShouldContainKey, "0.0.2")
 				So(repos[0].Tags, ShouldContainKey, "0.0.1")
-				So(manifesMetaMap, ShouldContainKey, manifestDigest1.String())
-				So(manifesMetaMap, ShouldContainKey, manifestDigest3.String())
+				So(manifestMetaMap, ShouldContainKey, manifestDigest1.String())
+				So(manifestMetaMap, ShouldContainKey, manifestDigest3.String())
 
-				repos, manifesMetaMap, _, err = repoDB.SearchTags(ctx, "repo1:0.", repodb.Filter{}, repodb.PageInput{})
+				repos, manifestMetaMap, _, _, err = repoDB.SearchTags(ctx, "repo1:0.", repodb.Filter{}, repodb.PageInput{})
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 1)
 				So(len(repos[0].Tags), ShouldEqual, 3)
 				So(repos[0].Tags, ShouldContainKey, "0.0.1")
 				So(repos[0].Tags, ShouldContainKey, "0.0.2")
 				So(repos[0].Tags, ShouldContainKey, "0.1.0")
-				So(manifesMetaMap, ShouldContainKey, manifestDigest1.String())
-				So(manifesMetaMap, ShouldContainKey, manifestDigest2.String())
-				So(manifesMetaMap, ShouldContainKey, manifestDigest3.String())
+				So(manifestMetaMap, ShouldContainKey, manifestDigest1.String())
+				So(manifestMetaMap, ShouldContainKey, manifestDigest2.String())
+				So(manifestMetaMap, ShouldContainKey, manifestDigest3.String())
 			})
 
 			Convey("With bad query", func() {
-				repos, manifesMetaMap, _, err := repoDB.SearchTags(ctx, "repo:0.0.1:test", repodb.Filter{}, repodb.PageInput{})
+				repos, manifestMetaMap, _, _, err := repoDB.SearchTags(ctx, "repo:0.0.1:test", repodb.Filter{}, repodb.PageInput{})
 				So(err, ShouldNotBeNil)
 				So(len(repos), ShouldEqual, 0)
-				So(len(manifesMetaMap), ShouldEqual, 0)
+				So(len(manifestMetaMap), ShouldEqual, 0)
 			})
 
 			Convey("Search with access control", func() {
@@ -967,7 +1088,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 					repo2           = "repo2"
 					repo3           = "repo3"
 					tag1            = "0.0.1"
-					manifestDigest1 = digest.FromString("fake-manifest1")
+					manifestDigest1 = godigest.FromString("fake-manifest1")
 					tag2            = "0.0.2"
 					tag3            = "0.0.3"
 				)
@@ -1000,22 +1121,107 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				authzCtxKey := localCtx.GetContextKey()
 				ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
 
-				repos, _, _, err := repoDB.SearchTags(ctx, "repo1:", repodb.Filter{}, repodb.PageInput{})
+				repos, _, _, _, err := repoDB.SearchTags(ctx, "repo1:", repodb.Filter{}, repodb.PageInput{})
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 1)
 				So(repos[0].Name, ShouldResemble, repo1)
 
-				repos, _, _, err = repoDB.SearchTags(ctx, "repo2:", repodb.Filter{}, repodb.PageInput{})
+				repos, _, _, _, err = repoDB.SearchTags(ctx, "repo2:", repodb.Filter{}, repodb.PageInput{})
 				So(err, ShouldBeNil)
 				So(repos, ShouldBeEmpty)
 			})
 
 			Convey("With wrong pagination input", func() {
-				repos, _, _, err := repoDB.SearchTags(ctx, "repo2:", repodb.Filter{}, repodb.PageInput{
+				repos, _, _, _, err := repoDB.SearchTags(ctx, "repo2:", repodb.Filter{}, repodb.PageInput{
 					Limit: -1,
 				})
 				So(err, ShouldNotBeNil)
 				So(repos, ShouldBeEmpty)
+			})
+
+			Convey("Search Tags with Indexes", func() {
+				var (
+					tag4            = "0.0.4"
+					indexDigest     = godigest.FromString("Multiarch")
+					manifestDigest1 = godigest.FromString("manifestDigest1")
+					manifestDigest2 = godigest.FromString("manifestDigest2")
+
+					tag5            = "0.0.5"
+					manifestDigest3 = godigest.FromString("manifestDigest3")
+
+					tag6            = "6.0.0"
+					manifestDigest4 = godigest.FromString("manifestDigest4")
+				)
+
+				err := repoDB.SetManifestData(manifestDigest1, repodb.ManifestData{
+					ManifestBlob: []byte("{}"),
+					ConfigBlob:   []byte("{}"),
+				})
+				So(err, ShouldBeNil)
+
+				config := ispec.Image{
+					Platform: ispec.Platform{
+						Architecture: "arch",
+						OS:           "os",
+					},
+				}
+
+				confBlob, err := json.Marshal(config)
+				So(err, ShouldBeNil)
+
+				err = repoDB.SetManifestData(manifestDigest2, repodb.ManifestData{
+					ManifestBlob: []byte("{}"),
+					ConfigBlob:   confBlob,
+				})
+				So(err, ShouldBeNil)
+				err = repoDB.SetManifestData(manifestDigest3, repodb.ManifestData{
+					ManifestBlob: []byte("{}"),
+					ConfigBlob:   []byte("{}"),
+				})
+				So(err, ShouldBeNil)
+
+				err = repoDB.SetManifestData(manifestDigest4, repodb.ManifestData{
+					ManifestBlob: []byte("{}"),
+					ConfigBlob:   []byte("{}"),
+				})
+				So(err, ShouldBeNil)
+
+				indexBlob, err := test.GetIndexBlobWithManifests(
+					[]godigest.Digest{
+						manifestDigest1,
+						manifestDigest2,
+					},
+				)
+				So(err, ShouldBeNil)
+
+				err = repoDB.SetIndexData(indexDigest, repodb.IndexData{
+					IndexBlob: indexBlob,
+				})
+				So(err, ShouldBeNil)
+
+				err = repoDB.SetRepoTag("repo", tag4, indexDigest, ispec.MediaTypeImageIndex)
+				So(err, ShouldBeNil)
+
+				err = repoDB.SetRepoTag("repo", tag5, manifestDigest3, ispec.MediaTypeImageManifest)
+				So(err, ShouldBeNil)
+
+				err = repoDB.SetRepoTag("repo", tag6, manifestDigest4, ispec.MediaTypeImageManifest)
+				So(err, ShouldBeNil)
+
+				repos, manifestMetaMap, indexDataMap, _, err := repoDB.SearchTags(ctx, "repo:0.0", repodb.Filter{},
+					repodb.PageInput{})
+				So(err, ShouldBeNil)
+
+				So(len(repos), ShouldEqual, 1)
+				So(repos[0].Name, ShouldResemble, "repo")
+				So(repos[0].Tags, ShouldContainKey, tag4)
+				So(repos[0].Tags, ShouldContainKey, tag5)
+				So(repos[0].Tags, ShouldNotContainKey, tag6)
+				So(manifestMetaMap, ShouldContainKey, manifestDigest1.String())
+				So(manifestMetaMap, ShouldContainKey, manifestDigest2.String())
+				So(manifestMetaMap, ShouldContainKey, manifestDigest3.String())
+				So(manifestMetaMap, ShouldNotContainKey, manifestDigest4.String())
+				So(indexDataMap, ShouldContainKey, indexDigest.String())
 			})
 		})
 
@@ -1023,7 +1229,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			var (
 				repo1           = "repo1"
 				tag1            = "0.0.1"
-				manifestDigest1 = digest.FromString("fake-manifest1")
+				manifestDigest1 = godigest.FromString("fake-manifest1")
 				tag2            = "0.0.2"
 				tag3            = "0.0.3"
 				tag4            = "0.0.4"
@@ -1048,7 +1254,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			err = repoDB.SetManifestMeta(repo1, manifestDigest1, repodb.ManifestMetadata{ConfigBlob: configBlob})
 			So(err, ShouldBeNil)
 
-			repos, _, _, err := repoDB.SearchTags(context.TODO(), "repo1:", repodb.Filter{}, repodb.PageInput{
+			repos, _, _, _, err := repoDB.SearchTags(context.TODO(), "repo1:", repodb.Filter{}, repodb.PageInput{
 				Limit:  1,
 				Offset: 0,
 				SortBy: repodb.AlphabeticAsc,
@@ -1061,7 +1267,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				keys = append(keys, k)
 			}
 
-			repos, _, _, err = repoDB.SearchTags(context.TODO(), "repo1:", repodb.Filter{}, repodb.PageInput{
+			repos, _, _, _, err = repoDB.SearchTags(context.TODO(), "repo1:", repodb.Filter{}, repodb.PageInput{
 				Limit:  1,
 				Offset: 1,
 				SortBy: repodb.AlphabeticAsc,
@@ -1073,7 +1279,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				keys = append(keys, k)
 			}
 
-			repos, _, _, err = repoDB.SearchTags(context.TODO(), "repo1:", repodb.Filter{}, repodb.PageInput{
+			repos, _, _, _, err = repoDB.SearchTags(context.TODO(), "repo1:", repodb.Filter{}, repodb.PageInput{
 				Limit:  1,
 				Offset: 2,
 				SortBy: repodb.AlphabeticAsc,
@@ -1098,9 +1304,9 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				repo4           = "repo4"
 				tag1            = "0.0.1"
 				tag2            = "0.0.2"
-				manifestDigest1 = digest.FromString("fake-manifest1")
-				manifestDigest2 = digest.FromString("fake-manifest2")
-				manifestDigest3 = digest.FromString("fake-manifest3")
+				manifestDigest1 = godigest.FromString("fake-manifest1")
+				manifestDigest2 = godigest.FromString("fake-manifest2")
+				manifestDigest3 = godigest.FromString("fake-manifest3")
 			)
 
 			err := repoDB.SetRepoTag(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
@@ -1157,7 +1363,8 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				Os: []*string{&opSys},
 			}
 
-			repos, _, _, err := repoDB.SearchRepos(context.TODO(), "", filter, repodb.PageInput{SortBy: repodb.AlphabeticAsc})
+			repos, _, _, _, err := repoDB.SearchRepos(context.TODO(), "", filter,
+				repodb.PageInput{SortBy: repodb.AlphabeticAsc})
 			So(err, ShouldBeNil)
 			So(len(repos), ShouldEqual, 2)
 			So(repos[0].Name, ShouldResemble, "repo1")
@@ -1167,7 +1374,8 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			filter = repodb.Filter{
 				Os: []*string{&opSys},
 			}
-			repos, _, _, err = repoDB.SearchRepos(context.TODO(), "repo", filter, repodb.PageInput{SortBy: repodb.AlphabeticAsc})
+			repos, _, _, _, err = repoDB.SearchRepos(context.TODO(), "repo", filter,
+				repodb.PageInput{SortBy: repodb.AlphabeticAsc})
 			So(err, ShouldBeNil)
 			So(len(repos), ShouldEqual, 2)
 			So(repos[0].Name, ShouldResemble, "repo1")
@@ -1177,7 +1385,8 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			filter = repodb.Filter{
 				Os: []*string{&opSys},
 			}
-			repos, _, _, err = repoDB.SearchRepos(context.TODO(), "repo", filter, repodb.PageInput{SortBy: repodb.AlphabeticAsc})
+			repos, _, _, _, err = repoDB.SearchRepos(context.TODO(), "repo", filter,
+				repodb.PageInput{SortBy: repodb.AlphabeticAsc})
 			So(err, ShouldBeNil)
 			So(len(repos), ShouldEqual, 0)
 
@@ -1187,7 +1396,8 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				Os:   []*string{&opSys},
 				Arch: []*string{&arch},
 			}
-			repos, _, _, err = repoDB.SearchRepos(context.TODO(), "repo", filter, repodb.PageInput{SortBy: repodb.AlphabeticAsc})
+			repos, _, _, _, err = repoDB.SearchRepos(context.TODO(), "repo", filter,
+				repodb.PageInput{SortBy: repodb.AlphabeticAsc})
 			So(err, ShouldBeNil)
 			So(len(repos), ShouldEqual, 2)
 			So(repos[0].Name, ShouldResemble, "repo1")
@@ -1199,7 +1409,8 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				Os:   []*string{&opSys},
 				Arch: []*string{&arch},
 			}
-			repos, _, _, err = repoDB.SearchRepos(context.TODO(), "repo", filter, repodb.PageInput{SortBy: repodb.AlphabeticAsc})
+			repos, _, _, _, err = repoDB.SearchRepos(context.TODO(), "repo", filter,
+				repodb.PageInput{SortBy: repodb.AlphabeticAsc})
 			So(err, ShouldBeNil)
 			So(len(repos), ShouldEqual, 1)
 		})
@@ -1212,12 +1423,33 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				repo4           = "repo4"
 				tag1            = "0.0.1"
 				tag2            = "0.0.2"
-				manifestDigest1 = digest.FromString("fake-manifest1")
-				manifestDigest2 = digest.FromString("fake-manifest2")
-				manifestDigest3 = digest.FromString("fake-manifest3")
+				tag3            = "0.0.3"
+				manifestDigest1 = godigest.FromString("fake-manifest1")
+				manifestDigest2 = godigest.FromString("fake-manifest2")
+				manifestDigest3 = godigest.FromString("fake-manifest3")
+
+				indexDigest              = godigest.FromString("index-digest")
+				manifestFromIndexDigest1 = godigest.FromString("fake-manifestFromIndexDigest1")
+				manifestFromIndexDigest2 = godigest.FromString("fake-manifestFromIndexDigest2")
 			)
 
-			err := repoDB.SetRepoTag(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+			err := repoDB.SetRepoTag(repo1, tag3, indexDigest, ispec.MediaTypeImageIndex)
+			So(err, ShouldBeNil)
+
+			indexBlob, err := test.GetIndexBlobWithManifests(
+				[]godigest.Digest{
+					manifestFromIndexDigest1,
+					manifestFromIndexDigest2,
+				},
+			)
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetIndexData(indexDigest, repodb.IndexData{
+				IndexBlob: indexBlob,
+			})
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetRepoTag(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
 			err = repoDB.SetRepoTag(repo1, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
@@ -1265,13 +1497,21 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			err = repoDB.SetManifestMeta(repo4, manifestDigest3, repodb.ManifestMetadata{ConfigBlob: configBlob3})
 			So(err, ShouldBeNil)
 
+			err = repoDB.SetManifestMeta(repo1, manifestFromIndexDigest1,
+				repodb.ManifestMetadata{ConfigBlob: []byte("{}")})
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetManifestMeta(repo1, manifestFromIndexDigest2,
+				repodb.ManifestMetadata{ConfigBlob: []byte("{}")})
+			So(err, ShouldBeNil)
+
 			opSys := LINUX
 			arch := AMD
 			filter := repodb.Filter{
 				Os:   []*string{&opSys},
 				Arch: []*string{&arch},
 			}
-			repos, _, _, err := repoDB.SearchTags(context.TODO(), "repo1:", filter,
+			repos, _, _, _, err := repoDB.SearchTags(context.TODO(), "repo1:", filter,
 				repodb.PageInput{SortBy: repodb.AlphabeticAsc})
 			So(err, ShouldBeNil)
 			So(len(repos), ShouldEqual, 1)
@@ -1283,7 +1523,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				Os:   []*string{&opSys},
 				Arch: []*string{&arch},
 			}
-			repos, _, _, err = repoDB.SearchTags(context.TODO(), "repo1:", filter,
+			repos, _, _, _, err = repoDB.SearchTags(context.TODO(), "repo1:", filter,
 				repodb.PageInput{SortBy: repodb.AlphabeticAsc})
 			So(err, ShouldBeNil)
 			So(len(repos), ShouldEqual, 0)
@@ -1291,14 +1531,18 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 
 		Convey("Test FilterTags", func() {
 			var (
-				repo1           = "repo1"
-				repo2           = "repo2"
-				manifestDigest1 = digest.FromString("fake-manifest1")
-				manifestDigest2 = digest.FromString("fake-manifest2")
-				manifestDigest3 = digest.FromString("fake-manifest3")
-				ctx             = context.Background()
-				emptyManifest   ispec.Manifest
-				emptyConfig     ispec.Image
+				repo1                    = "repo1"
+				repo2                    = "repo2"
+				manifestDigest1          = godigest.FromString("fake-manifest1")
+				manifestDigest2          = godigest.FromString("fake-manifest2")
+				manifestDigest3          = godigest.FromString("fake-manifest3")
+				indexDigest              = godigest.FromString("index-digest")
+				manifestFromIndexDigest1 = godigest.FromString("fake-manifestFromIndexDigest1")
+				manifestFromIndexDigest2 = godigest.FromString("fake-manifestFromIndexDigest2")
+
+				emptyManifest ispec.Manifest
+				emptyConfig   ispec.Image
+				ctx           = context.Background()
 			)
 
 			emptyManifestBlob, err := json.Marshal(emptyManifest)
@@ -1307,10 +1551,29 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			emptyConfigBlob, err := json.Marshal(emptyConfig)
 			So(err, ShouldBeNil)
 
-			emptyRepoMeta := repodb.ManifestMetadata{
+			emptyManifestMeta := repodb.ManifestMetadata{
 				ManifestBlob: emptyManifestBlob,
 				ConfigBlob:   emptyConfigBlob,
 			}
+
+			emptyManifestData := repodb.ManifestData{
+				ManifestBlob: emptyManifestBlob,
+				ConfigBlob:   emptyConfigBlob,
+			}
+
+			err = repoDB.SetRepoTag(repo1, "2.0.0", indexDigest, ispec.MediaTypeImageIndex)
+			So(err, ShouldBeNil)
+
+			indexBlob, err := test.GetIndexBlobWithManifests([]godigest.Digest{
+				manifestFromIndexDigest1,
+				manifestFromIndexDigest2,
+			})
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetIndexData(indexDigest, repodb.IndexData{
+				IndexBlob: indexBlob,
+			})
+			So(err, ShouldBeNil)
 
 			err = repoDB.SetRepoTag(repo1, "0.0.1", manifestDigest1, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
@@ -1325,17 +1588,22 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			err = repoDB.SetRepoTag(repo2, "0.0.1", manifestDigest3, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetManifestMeta(repo1, manifestDigest1, emptyRepoMeta)
+			err = repoDB.SetManifestMeta(repo1, manifestDigest1, emptyManifestMeta)
 			So(err, ShouldBeNil)
-			err = repoDB.SetManifestMeta(repo1, manifestDigest2, emptyRepoMeta)
+			err = repoDB.SetManifestMeta(repo1, manifestDigest2, emptyManifestMeta)
 			So(err, ShouldBeNil)
-			err = repoDB.SetManifestMeta(repo1, manifestDigest3, emptyRepoMeta)
+			err = repoDB.SetManifestMeta(repo1, manifestDigest3, emptyManifestMeta)
 			So(err, ShouldBeNil)
-			err = repoDB.SetManifestMeta(repo2, manifestDigest3, emptyRepoMeta)
+			err = repoDB.SetManifestMeta(repo2, manifestDigest3, emptyManifestMeta)
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetManifestData(manifestFromIndexDigest1, emptyManifestData)
+			So(err, ShouldBeNil)
+			err = repoDB.SetManifestData(manifestFromIndexDigest2, emptyManifestData)
 			So(err, ShouldBeNil)
 
 			Convey("Return all tags", func() {
-				repos, manifesMetaMap, pageInfo, err := repoDB.FilterTags(
+				repos, manifestMetaMap, indexDataMap, pageInfo, err := repoDB.FilterTags(
 					ctx,
 					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
 						return true
@@ -1347,23 +1615,27 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				So(len(repos), ShouldEqual, 2)
 				So(repos[0].Name, ShouldEqual, "repo1")
 				So(repos[1].Name, ShouldEqual, "repo2")
-				So(len(repos[0].Tags), ShouldEqual, 5)
+				So(len(repos[0].Tags), ShouldEqual, 6)
 				So(len(repos[1].Tags), ShouldEqual, 1)
 				So(repos[0].Tags, ShouldContainKey, "0.0.1")
 				So(repos[0].Tags, ShouldContainKey, "0.0.2")
 				So(repos[0].Tags, ShouldContainKey, "0.1.0")
 				So(repos[0].Tags, ShouldContainKey, "1.0.0")
 				So(repos[0].Tags, ShouldContainKey, "1.0.1")
+				So(repos[0].Tags, ShouldContainKey, "2.0.0")
 				So(repos[1].Tags, ShouldContainKey, "0.0.1")
-				So(manifesMetaMap, ShouldContainKey, manifestDigest1.String())
-				So(manifesMetaMap, ShouldContainKey, manifestDigest2.String())
-				So(manifesMetaMap, ShouldContainKey, manifestDigest3.String())
-				So(pageInfo.ItemCount, ShouldEqual, 6)
-				So(pageInfo.TotalCount, ShouldEqual, 6)
+				So(manifestMetaMap, ShouldContainKey, manifestDigest1.String())
+				So(manifestMetaMap, ShouldContainKey, manifestDigest2.String())
+				So(manifestMetaMap, ShouldContainKey, manifestDigest3.String())
+				So(indexDataMap, ShouldContainKey, indexDigest.String())
+				So(manifestMetaMap, ShouldContainKey, manifestFromIndexDigest1.String())
+				So(manifestMetaMap, ShouldContainKey, manifestFromIndexDigest2.String())
+				So(pageInfo.ItemCount, ShouldEqual, 7)
+				So(pageInfo.TotalCount, ShouldEqual, 7)
 			})
 
 			Convey("Return all tags in a specific repo", func() {
-				repos, manifesMetaMap, pageInfo, err := repoDB.FilterTags(
+				repos, manifestMetaMap, indexDataMap, pageInfo, err := repoDB.FilterTags(
 					ctx,
 					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
 						return repoMeta.Name == repo1
@@ -1374,21 +1646,25 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 1)
 				So(repos[0].Name, ShouldEqual, repo1)
-				So(len(repos[0].Tags), ShouldEqual, 5)
+				So(len(repos[0].Tags), ShouldEqual, 6)
 				So(repos[0].Tags, ShouldContainKey, "0.0.1")
 				So(repos[0].Tags, ShouldContainKey, "0.0.2")
 				So(repos[0].Tags, ShouldContainKey, "0.1.0")
 				So(repos[0].Tags, ShouldContainKey, "1.0.0")
 				So(repos[0].Tags, ShouldContainKey, "1.0.1")
-				So(manifesMetaMap, ShouldContainKey, manifestDigest1.String())
-				So(manifesMetaMap, ShouldContainKey, manifestDigest2.String())
-				So(manifesMetaMap, ShouldContainKey, manifestDigest3.String())
-				So(pageInfo.ItemCount, ShouldEqual, 5)
-				So(pageInfo.TotalCount, ShouldEqual, 5)
+				So(repos[0].Tags, ShouldContainKey, "2.0.0")
+				So(manifestMetaMap, ShouldContainKey, manifestDigest1.String())
+				So(manifestMetaMap, ShouldContainKey, manifestDigest2.String())
+				So(manifestMetaMap, ShouldContainKey, manifestDigest3.String())
+				So(indexDataMap, ShouldContainKey, indexDigest.String())
+				So(manifestMetaMap, ShouldContainKey, manifestFromIndexDigest1.String())
+				So(manifestMetaMap, ShouldContainKey, manifestFromIndexDigest2.String())
+				So(pageInfo.ItemCount, ShouldEqual, 6)
+				So(pageInfo.TotalCount, ShouldEqual, 6)
 			})
 
 			Convey("Filter everything out", func() {
-				repos, manifesMetaMap, pageInfo, err := repoDB.FilterTags(
+				repos, manifestMetaMap, _, pageInfo, err := repoDB.FilterTags(
 					ctx,
 					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
 						return false
@@ -1398,7 +1674,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 0)
-				So(len(manifesMetaMap), ShouldEqual, 0)
+				So(len(manifestMetaMap), ShouldEqual, 0)
 				So(pageInfo.ItemCount, ShouldEqual, 0)
 				So(pageInfo.TotalCount, ShouldEqual, 0)
 			})
@@ -1415,7 +1691,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				authzCtxKey := localCtx.GetContextKey()
 				ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
 
-				repos, manifesMetaMap, pageInfo, err := repoDB.FilterTags(
+				repos, manifestMetaMap, _, pageInfo, err := repoDB.FilterTags(
 					ctx,
 					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
 						return true
@@ -1428,13 +1704,13 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				So(repos[0].Name, ShouldResemble, repo2)
 				So(len(repos[0].Tags), ShouldEqual, 1)
 				So(repos[0].Tags, ShouldContainKey, "0.0.1")
-				So(manifesMetaMap, ShouldContainKey, manifestDigest3.String())
+				So(manifestMetaMap, ShouldContainKey, manifestDigest3.String())
 				So(pageInfo.ItemCount, ShouldEqual, 1)
 				So(pageInfo.TotalCount, ShouldEqual, 1)
 			})
 
 			Convey("With wrong pagination input", func() {
-				repos, _, _, err := repoDB.FilterTags(
+				repos, _, _, _, err := repoDB.FilterTags(
 					ctx,
 					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
 						return true
@@ -1444,6 +1720,27 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				So(err, ShouldNotBeNil)
 				So(repos, ShouldBeEmpty)
 			})
+		})
+
+		Convey("Test index logic", func() {
+			multiArch, err := test.GetRandomMultiarchImage("tag1")
+			So(err, ShouldBeNil)
+
+			indexDigest, err := multiArch.Digest()
+			So(err, ShouldBeNil)
+
+			indexData, err := multiArch.IndexData()
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetIndexData(indexDigest, indexData)
+			So(err, ShouldBeNil)
+
+			result, err := repoDB.GetIndexData(indexDigest)
+			So(err, ShouldBeNil)
+			So(result, ShouldResemble, indexData)
+
+			_, err = repoDB.GetIndexData(godigest.FromString("inexistent"))
+			So(err, ShouldNotBeNil)
 		})
 	})
 }
@@ -1480,11 +1777,11 @@ func TestRelevanceSorting(t *testing.T) {
 				repo3           = "notalpine"
 				repo4           = "unmached/repo"
 				tag1            = "0.0.1"
-				manifestDigest1 = digest.FromString("fake-manifest1")
+				manifestDigest1 = godigest.FromString("fake-manifest1")
 				tag2            = "0.0.2"
-				manifestDigest2 = digest.FromString("fake-manifest2")
+				manifestDigest2 = godigest.FromString("fake-manifest2")
 				tag3            = "0.0.3"
-				manifestDigest3 = digest.FromString("fake-manifest3")
+				manifestDigest3 = godigest.FromString("fake-manifest3")
 				ctx             = context.Background()
 				emptyManifest   ispec.Manifest
 				emptyConfig     ispec.Manifest
@@ -1526,7 +1823,7 @@ func TestRelevanceSorting(t *testing.T) {
 			err = repoDB.SetManifestMeta(repo4, manifestDigest3, emptyRepoMeta)
 			So(err, ShouldBeNil)
 
-			repos, _, _, err := repoDB.SearchRepos(ctx, "pine", repodb.Filter{},
+			repos, _, _, _, err := repoDB.SearchRepos(ctx, "pine", repodb.Filter{},
 				repodb.PageInput{SortBy: repodb.Relevance},
 			)
 
@@ -1547,7 +1844,7 @@ func generateTestImage() ([]byte, []byte, error) {
 		},
 		RootFS: ispec.RootFS{
 			Type:    "layers",
-			DiffIDs: []digest.Digest{},
+			DiffIDs: []godigest.Digest{},
 		},
 		Author: "ZotUser",
 	}
@@ -1557,7 +1854,7 @@ func generateTestImage() ([]byte, []byte, error) {
 		return []byte{}, []byte{}, err
 	}
 
-	configDigest := digest.FromBytes(configBlob)
+	configDigest := godigest.FromBytes(configBlob)
 
 	layers := [][]byte{
 		make([]byte, 100),
@@ -1584,7 +1881,7 @@ func generateTestImage() ([]byte, []byte, error) {
 		Layers: []ispec.Descriptor{
 			{
 				MediaType: "application/vnd.oci.image.layer.v1.tar",
-				Digest:    digest.FromBytes(layers[0]),
+				Digest:    godigest.FromBytes(layers[0]),
 				Size:      int64(len(layers[0])),
 			},
 		},

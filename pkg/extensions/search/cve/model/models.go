@@ -15,3 +15,23 @@ type Package struct {
 	InstalledVersion string `json:"InstalledVersion"`
 	FixedVersion     string `json:"FixedVersion"`
 }
+
+const (
+	None = iota
+	Low
+	Medium
+	High
+	Critical
+)
+
+func SeverityValue(severity string) int {
+	sevMap := map[string]int{
+		"NONE":     None,
+		"LOW":      Low,
+		"MEDIUM":   Medium,
+		"HIGH":     High,
+		"CRITICAL": Critical,
+	}
+
+	return sevMap[severity]
+}

@@ -203,6 +203,12 @@ func (p *requestsPool) doJob(ctx context.Context, job *manifestJob) {
 	digestStr := header.Get("docker-content-digest")
 	configDigest := job.manifestResp.Config.Digest
 
+	platform := job.manifestResp.Config.Platform.Os
+	if job.manifestResp.Config.Platform.Arch != "" {
+		platform = platform + "/" + job.manifestResp.Config.Platform.Arch
+		platform = strings.Trim(platform, "/")
+	}
+
 	var size uint64
 
 	layers := []layer{}
@@ -259,13 +265,18 @@ func (p *requestsPool) doJob(ctx context.Context, job *manifestJob) {
 	image.verbose = *job.config.verbose
 	image.RepoName = job.imageName
 	image.Tag = job.tagName
-	image.Digest = digestStr
+	image.Manifests = []manifestStruct{
+		{
+			Digest:       digestStr,
+			Size:         strconv.Itoa(int(size)),
+			ConfigDigest: configDigest,
+			Layers:       layers,
+		},
+	}
 	image.Size = strconv.Itoa(int(size))
-	image.ConfigDigest = configDigest
-	image.Layers = layers
 	image.IsSigned = isSigned
 
-	str, err := image.string(*job.config.outputFormat, len(job.imageName), len(job.tagName))
+	str, err := image.string(*job.config.outputFormat, len(job.imageName), len(job.tagName), len(platform))
 	if err != nil {
 		if isContextDone(ctx) {
 			return

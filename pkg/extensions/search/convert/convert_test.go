@@ -19,6 +19,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	"zotregistry.io/zot/pkg/extensions/search/convert"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
+	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/repodb"
 	bolt "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
 	. "zotregistry.io/zot/pkg/test"
@@ -28,7 +29,7 @@ import (
 var ErrTestError = errors.New("TestError")
 
 func TestConvertErrors(t *testing.T) {
-	Convey("", t, func() {
+	Convey("Convert Errors", t, func() {
 		repoDB, err := bolt.NewBoltDBWrapper(bolt.DBParameters{
 			RootDir: t.TempDir(),
 		})
@@ -59,7 +60,7 @@ func TestConvertErrors(t *testing.T) {
 		err = repoDB.SetRepoTag("repo1", "0.1.0", digest11, ispec.MediaTypeImageManifest)
 		So(err, ShouldBeNil)
 
-		repoMetas, manifestMetaMap, _, err := repoDB.SearchRepos(context.Background(), "", repodb.Filter{},
+		repoMetas, manifestMetaMap, _, _, err := repoDB.SearchRepos(context.Background(), "", repodb.Filter{},
 			repodb.PageInput{})
 		So(err, ShouldBeNil)
 
@@ -70,15 +71,178 @@ func TestConvertErrors(t *testing.T) {
 			ctx,
 			repoMetas[0],
 			manifestMetaMap,
+			map[string]repodb.IndexData{},
 			convert.SkipQGLField{},
 			mocks.CveInfoMock{
-				GetCVESummaryForImageFn: func(image string) (cveinfo.ImageCVESummary, error) {
+				GetCVESummaryForImageFn: func(repo string, reference string,
+				) (cveinfo.ImageCVESummary, error) {
 					return cveinfo.ImageCVESummary{}, ErrTestError
 				},
 			},
 		)
 
 		So(graphql.GetErrors(ctx).Error(), ShouldContainSubstring, "unable to run vulnerability scan on tag")
+	})
+
+	Convey("ImageIndex2ImageSummary errors", t, func() {
+		ctx := graphql.WithResponseContext(context.Background(),
+			graphql.DefaultErrorPresenter, graphql.DefaultRecover)
+
+		_, _, err := convert.ImageIndex2ImageSummary(
+			ctx,
+			"repo",
+			"tag",
+			godigest.FromString("indexDigest"),
+			true,
+			repodb.RepoMetadata{},
+			repodb.IndexData{
+				IndexBlob: []byte("bad json"),
+			},
+			map[string]repodb.ManifestMetadata{},
+			mocks.CveInfoMock{},
+		)
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("ImageIndex2ImageSummary cve scanning", t, func() {
+		ctx := graphql.WithResponseContext(context.Background(),
+			graphql.DefaultErrorPresenter, graphql.DefaultRecover)
+
+		_, _, err := convert.ImageIndex2ImageSummary(
+			ctx,
+			"repo",
+			"tag",
+			godigest.FromString("indexDigest"),
+			false,
+			repodb.RepoMetadata{},
+			repodb.IndexData{
+				IndexBlob: []byte("{}"),
+			},
+			map[string]repodb.ManifestMetadata{},
+			mocks.CveInfoMock{
+				GetCVESummaryForImageFn: func(repo, reference string,
+				) (cveinfo.ImageCVESummary, error) {
+					return cveinfo.ImageCVESummary{}, ErrTestError
+				},
+			},
+		)
+		So(err, ShouldBeNil)
+	})
+
+	Convey("ImageManifest2ImageSummary", t, func() {
+		ctx := graphql.WithResponseContext(context.Background(),
+			graphql.DefaultErrorPresenter, graphql.DefaultRecover)
+
+		_, _, err := convert.ImageManifest2ImageSummary(
+			ctx,
+			"repo",
+			"tag",
+			godigest.FromString("manifestDigest"),
+			false,
+			repodb.RepoMetadata{},
+			repodb.ManifestMetadata{
+				ManifestBlob: []byte("{}"),
+				ConfigBlob:   []byte("{}"),
+			},
+			mocks.CveInfoMock{
+				GetCVESummaryForImageFn: func(repo, reference string,
+				) (cveinfo.ImageCVESummary, error) {
+					return cveinfo.ImageCVESummary{}, ErrTestError
+				},
+			},
+		)
+		So(err, ShouldBeNil)
+	})
+
+	Convey("ImageManifest2ManifestSummary", t, func() {
+		ctx := graphql.WithResponseContext(context.Background(),
+			graphql.DefaultErrorPresenter, graphql.DefaultRecover)
+
+		// with bad config json, error while unmarshaling
+		_, _, err := convert.ImageManifest2ManifestSummary(
+			ctx,
+			"repo",
+			"tag",
+			ispec.Descriptor{
+				Digest:    "dig",
+				MediaType: ispec.MediaTypeImageManifest,
+			},
+			false,
+			repodb.ManifestMetadata{
+				ManifestBlob: []byte("{}"),
+				ConfigBlob:   []byte("bad json"),
+			},
+			mocks.CveInfoMock{
+				GetCVESummaryForImageFn: func(repo, reference string,
+				) (cveinfo.ImageCVESummary, error) {
+					return cveinfo.ImageCVESummary{}, ErrTestError
+				},
+			},
+		)
+		So(err, ShouldNotBeNil)
+
+		// CVE scan using platform
+		configBlob, err := json.Marshal(ispec.Image{
+			Platform: ispec.Platform{
+				OS:           "os",
+				Architecture: "arch",
+			},
+		})
+		So(err, ShouldBeNil)
+
+		_, _, err = convert.ImageManifest2ManifestSummary(
+			ctx,
+			"repo",
+			"tag",
+			ispec.Descriptor{
+				Digest:    "dig",
+				MediaType: ispec.MediaTypeImageManifest,
+			},
+			false,
+			repodb.ManifestMetadata{
+				ManifestBlob: []byte("{}"),
+				ConfigBlob:   configBlob,
+			},
+			mocks.CveInfoMock{
+				GetCVESummaryForImageFn: func(repo, reference string,
+				) (cveinfo.ImageCVESummary, error) {
+					return cveinfo.ImageCVESummary{}, ErrTestError
+				},
+			},
+		)
+		So(err, ShouldBeNil)
+	})
+
+	Convey("RepoMeta2ExpandedRepoInfo", t, func() {
+		ctx := graphql.WithResponseContext(context.Background(),
+			graphql.DefaultErrorPresenter, graphql.DefaultRecover)
+
+		// with bad config json, error while unmarshaling
+		_, imageSummaries := convert.RepoMeta2ExpandedRepoInfo(
+			ctx,
+			repodb.RepoMetadata{
+				Tags: map[string]repodb.Descriptor{
+					"tag1": {Digest: "dig", MediaType: ispec.MediaTypeImageManifest},
+				},
+			},
+			map[string]repodb.ManifestMetadata{
+				"dig": {
+					ManifestBlob: []byte("{}"),
+					ConfigBlob:   []byte("bad json"),
+				},
+			},
+			map[string]repodb.IndexData{},
+			convert.SkipQGLField{
+				Vulnerabilities: false,
+			},
+			mocks.CveInfoMock{
+				GetCVESummaryForImageFn: func(repo, reference string,
+				) (cveinfo.ImageCVESummary, error) {
+					return cveinfo.ImageCVESummary{}, ErrTestError
+				},
+			}, log.NewLogger("debug", ""),
+		)
+		So(len(imageSummaries), ShouldEqual, 0)
 	})
 }
 
@@ -159,7 +323,7 @@ func TestBuildImageInfo(t *testing.T) {
 				Layers: [][]byte{
 					layerblob,
 				},
-				Tag: "0.0.1",
+				Reference: "0.0.1",
 			},
 			baseURL,
 			imageName,
@@ -174,7 +338,7 @@ func TestBuildImageInfo(t *testing.T) {
 		imageSummary := convert.BuildImageInfo(imageName, imageName, manifestDigest, ispecManifest,
 			imageConfig, isSigned)
 
-		So(len(imageSummary.Layers), ShouldEqual, len(ispecManifest.Layers))
+		So(len(imageSummary.Manifests[0].Layers), ShouldEqual, len(ispecManifest.Layers))
 		imageSummaryLayerSize, err := strconv.Atoi(*imageSummary.Size)
 		So(err, ShouldBeNil)
 		So(imageSummaryLayerSize, ShouldEqual, manifestLayersSize)
@@ -249,7 +413,7 @@ func TestBuildImageInfo(t *testing.T) {
 					layerblob,
 					layerblob2,
 				},
-				Tag: "0.0.1",
+				Reference: "0.0.1",
 			},
 			baseURL,
 			imageName,
@@ -264,7 +428,7 @@ func TestBuildImageInfo(t *testing.T) {
 		imageSummary := convert.BuildImageInfo(imageName, imageName, manifestDigest, ispecManifest,
 			imageConfig, isSigned)
 
-		So(len(imageSummary.Layers), ShouldEqual, len(ispecManifest.Layers))
+		So(len(imageSummary.Manifests[0].Layers), ShouldEqual, len(ispecManifest.Layers))
 		imageSummaryLayerSize, err := strconv.Atoi(*imageSummary.Size)
 		So(err, ShouldBeNil)
 		So(imageSummaryLayerSize, ShouldEqual, manifestLayersSize)
@@ -331,7 +495,7 @@ func TestBuildImageInfo(t *testing.T) {
 				Layers: [][]byte{
 					layerblob,
 				},
-				Tag: "0.0.1",
+				Reference: "0.0.1",
 			},
 			baseURL,
 			imageName,
@@ -346,7 +510,7 @@ func TestBuildImageInfo(t *testing.T) {
 		imageSummary := convert.BuildImageInfo(imageName, imageName, manifestDigest, ispecManifest,
 			imageConfig, isSigned)
 
-		So(len(imageSummary.Layers), ShouldEqual, len(ispecManifest.Layers))
+		So(len(imageSummary.Manifests[0].Layers), ShouldEqual, len(ispecManifest.Layers))
 		imageSummaryLayerSize, err := strconv.Atoi(*imageSummary.Size)
 		So(err, ShouldBeNil)
 		So(imageSummaryLayerSize, ShouldEqual, manifestLayersSize)

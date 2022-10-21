@@ -1061,10 +1061,10 @@ func TestVerifyWithNotation(t *testing.T) {
 
 		err = test.UploadImage(
 			test.Image{
-				Config:   cfg,
-				Layers:   layers,
-				Manifest: manifest,
-				Tag:      tag,
+				Config:    cfg,
+				Layers:    layers,
+				Manifest:  manifest,
+				Reference: tag,
 			}, baseURL, repoName)
 		So(err, ShouldBeNil)
 

@@ -74,9 +74,13 @@ func (service searchService) getDerivedImageListGQL(ctx context.Context, config 
 				Results{
 					RepoName,
 					Tag,
-					Digest,
-					ConfigDigest,
-					Layers {Size Digest},
+					Manifests {
+						Digest,
+						ConfigDigest,
+						Layers {Size Digest},
+						LastUpdated,
+						Size
+					},
 					LastUpdated,
 					IsSigned,
 					Size
@@ -103,9 +107,13 @@ func (service searchService) getBaseImageListGQL(ctx context.Context, config sea
 				Results{
 					RepoName,
 					Tag,
-					Digest,
-					ConfigDigest,
-					Layers {Size Digest},
+					Manifests {
+						Digest,
+						ConfigDigest,
+						Layers {Size Digest},
+						LastUpdated,
+						Size
+					},
 					LastUpdated,
 					IsSigned,
 					Size
@@ -126,9 +134,23 @@ func (service searchService) getBaseImageListGQL(ctx context.Context, config sea
 func (service searchService) getImagesGQL(ctx context.Context, config searchConfig, username, password string,
 	imageName string,
 ) (*imageListStructGQL, error) {
-	query := fmt.Sprintf(`{ImageList(repo: "%s") { Results {`+`
-									RepoName Tag Digest ConfigDigest Size Layers {Size Digest} IsSigned}}
-							  }`,
+	query := fmt.Sprintf(`
+	{
+		ImageList(repo: "%s") {
+			Results {
+				RepoName Tag 
+				Manifests {
+					Digest 
+					ConfigDigest
+					Size
+					Platform {Os Arch}
+					Layers {Size Digest}
+				} 
+				Size 
+				IsSigned
+			}
+		}
+	}`,
 		imageName)
 	result := &imageListStructGQL{}
 
@@ -144,9 +166,22 @@ func (service searchService) getImagesGQL(ctx context.Context, config searchConf
 func (service searchService) getImagesByDigestGQL(ctx context.Context, config searchConfig, username, password string,
 	digest string,
 ) (*imageListStructForDigestGQL, error) {
-	query := fmt.Sprintf(`{ImageListForDigest(id: "%s") { Results{`+`
-									RepoName Tag Digest ConfigDigest Size Layers {Size Digest}}}
-							  }`,
+	query := fmt.Sprintf(`
+	{
+		ImageListForDigest(id: "%s") {
+			Results {
+				RepoName Tag 
+				Manifests {
+					Digest 
+					ConfigDigest
+					Size
+					Layers {Size Digest}
+					} 
+				Size 
+				IsSigned
+			}
+		}
+	}`,
 		digest)
 	result := &imageListStructForDigestGQL{}
 
@@ -162,9 +197,22 @@ func (service searchService) getImagesByDigestGQL(ctx context.Context, config se
 func (service searchService) getImagesByCveIDGQL(ctx context.Context, config searchConfig, username,
 	password, cveID string,
 ) (*imagesForCve, error) {
-	query := fmt.Sprintf(`{ImageListForCVE(id: "%s") { Results {`+`
-								RepoName Tag Digest ConfigDigest Layers {Size Digest} Size}}
-						  }`,
+	query := fmt.Sprintf(`
+	{
+		ImageListForCVE(id: "%s") {
+			Results {
+				RepoName Tag 
+				Manifests {
+					Digest 
+					ConfigDigest
+					Size
+					Layers {Size Digest}
+					} 
+				Size 
+				IsSigned
+			}
+		}
+	}`,
 		cveID)
 	result := &imagesForCve{}
 
@@ -199,9 +247,21 @@ func (service searchService) getCveByImageGQL(ctx context.Context, config search
 func (service searchService) getTagsForCVEGQL(ctx context.Context, config searchConfig,
 	username, password, imageName, cveID string,
 ) (*imagesForCve, error) {
-	query := fmt.Sprintf(`{ImageListForCVE(id: "%s") { Results {`+`
-							RepoName Tag Digest ConfigDigest Layers {Size Digest} Size}}
-						}`,
+	query := fmt.Sprintf(`
+		{
+			ImageListForCVE(id: "%s") {
+				Results {
+					RepoName Tag
+					Manifests {
+						Digest 
+						ConfigDigest
+						Size
+						Layers {Size Digest}
+					} 
+					Size
+				}
+			}
+		}`,
 		cveID)
 	result := &imagesForCve{}
 
@@ -217,9 +277,21 @@ func (service searchService) getTagsForCVEGQL(ctx context.Context, config search
 func (service searchService) getFixedTagsForCVEGQL(ctx context.Context, config searchConfig,
 	username, password, imageName, cveID string,
 ) (*fixedTags, error) {
-	query := fmt.Sprintf(`{ImageListWithCVEFixed(id: "%s", image: "%s") { Results {`+`
-							RepoName Tag Digest ConfigDigest Layers {Size Digest} Size}}
-	  					}`,
+	query := fmt.Sprintf(`
+		{
+			ImageListWithCVEFixed(id: "%s", image: "%s") {
+				Results {
+					RepoName Tag 
+					Manifests {
+						Digest 
+						ConfigDigest
+						Size
+						Layers {Size Digest}
+						} 
+					Size 
+				}
+			}
+		}`,
 		cveID, imageName)
 
 	result := &fixedTags{}
@@ -349,10 +421,23 @@ func (service searchService) getImagesByCveID(ctx context.Context, config search
 	defer wtgrp.Done()
 	defer close(rch)
 
-	query := fmt.Sprintf(`{ImageListForCVE(id: "%s") { Results {`+`
-								RepoName Tag Digest ConfigDigest Layers {Size Digest} Size}}
-						  }`,
+	query := fmt.Sprintf(
+		`{
+			ImageListForCVE(id: "%s") {
+				Results {
+					RepoName Tag 
+					Manifests {
+						Digest 
+						ConfigDigest
+						Size
+						Layers {Size Digest}
+						} 
+					Size 
+				}
+			}
+		}`,
 		cvid)
+
 	result := &imagesForCve{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
@@ -402,10 +487,23 @@ func (service searchService) getImagesByDigest(ctx context.Context, config searc
 	defer wtgrp.Done()
 	defer close(rch)
 
-	query := fmt.Sprintf(`{ImageListForDigest(id: "%s") { Results {`+`
-								RepoName Tag Digest ConfigDigest Size Layers {Size Digest}}}
-							  }`,
+	query := fmt.Sprintf(
+		`{
+			ImageListForDigest(id: "%s") {
+				Results {
+					RepoName Tag 
+					Manifests {
+						Digest 
+						ConfigDigest
+						Size
+						Layers {Size Digest}
+						} 
+					Size 
+				}
+			}
+		}`,
 		digest)
+
 	result := &imagesForDigest{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
@@ -455,10 +553,23 @@ func (service searchService) getImageByNameAndCVEID(ctx context.Context, config 
 	defer wtgrp.Done()
 	defer close(rch)
 
-	query := fmt.Sprintf(`{ImageListForCVE(id: "%s") { Results {`+`
-							RepoName Tag Digest ConfigDigest Size Layers {Size Digest}}}
-							  }`,
+	query := fmt.Sprintf(
+		`{
+			ImageListForCVE(id: "%s") {
+				Results {
+					RepoName Tag 
+					Manifests {
+						Digest 
+						ConfigDigest
+						Size
+						Layers {Size Digest}
+						} 
+					Size 
+				}
+			}
+		}`,
 		cvid)
+
 	result := &imagesForCve{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
@@ -566,10 +677,22 @@ func (service searchService) getFixedTagsForCVE(ctx context.Context, config sear
 	defer wtgrp.Done()
 	defer close(rch)
 
-	query := fmt.Sprintf(`{ImageListWithCVEFixed (id: "%s", image: "%s") { Results {`+`
-							RepoName Tag Digest ConfigDigest Layers {Size Digest} Size}}
-							  }`,
-		cvid, imageName)
+	query := fmt.Sprintf(`
+	{
+		ImageListWithCVEFixed (id: "%s", image: "%s") {
+			Results {
+				RepoName Tag 
+				Manifests {
+					Digest 
+					ConfigDigest
+					Size
+					Layers {Size Digest}
+					} 
+				Size 
+			}
+		}
+	}`, cvid, imageName)
+
 	result := &fixedTags{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
@@ -860,14 +983,26 @@ type PaginatedImagesResult struct {
 }
 
 type imageStruct struct {
-	RepoName     string  `json:"repoName"`
-	Tag          string  `json:"tag"`
-	ConfigDigest string  `json:"configDigest"`
-	Digest       string  `json:"digest"`
-	Layers       []layer `json:"layers"`
-	Size         string  `json:"size"`
-	verbose      bool
-	IsSigned     bool `json:"isSigned"`
+	RepoName  string `json:"repoName"`
+	Tag       string `json:"tag"`
+	Manifests []manifestStruct
+	Size      string `json:"size"`
+	verbose   bool
+	IsSigned  bool `json:"isSigned"`
+}
+
+type manifestStruct struct {
+	ConfigDigest string   `json:"configDigest"`
+	Digest       string   `json:"digest"`
+	Layers       []layer  `json:"layers"`
+	Platform     platform `json:"platform"`
+	Size         string   `json:"size"`
+	IsSigned     bool     `json:"isSigned"`
+}
+
+type platform struct {
+	Os   string `json:"os"`
+	Arch string `json:"arch"`
 }
 
 type DerivedImageList struct {
@@ -917,10 +1052,10 @@ type layer struct {
 	Digest string `json:"digest"`
 }
 
-func (img imageStruct) string(format string, maxImgNameLen, maxTagLen int) (string, error) {
+func (img imageStruct) string(format string, maxImgNameLen, maxTagLen, maxPlatformLen int) (string, error) {
 	switch strings.ToLower(format) {
 	case "", defaultOutoutFormat:
-		return img.stringPlainText(maxImgNameLen, maxTagLen)
+		return img.stringPlainText(maxImgNameLen, maxTagLen, maxPlatformLen)
 	case "json":
 		return img.stringJSON()
 	case "yml", "yaml":
@@ -930,14 +1065,14 @@ func (img imageStruct) string(format string, maxImgNameLen, maxTagLen int) (stri
 	}
 }
 
-func (img imageStruct) stringPlainText(maxImgNameLen, maxTagLen int) (string, error) {
+func (img imageStruct) stringPlainText(maxImgNameLen, maxTagLen, maxPlatformLen int) (string, error) {
 	var builder strings.Builder
 
 	table := getImageTableWriter(&builder)
 
 	table.SetColMinWidth(colImageNameIndex, maxImgNameLen)
 	table.SetColMinWidth(colTagIndex, maxTagLen)
-
+	table.SetColMinWidth(colOsArchIndex, osArchWidth)
 	table.SetColMinWidth(colDigestIndex, digestWidth)
 	table.SetColMinWidth(colSizeIndex, sizeWidth)
 	table.SetColMinWidth(colIsSignedIndex, isSignedWidth)
@@ -952,63 +1087,103 @@ func (img imageStruct) stringPlainText(maxImgNameLen, maxTagLen int) (string, er
 	imageName = img.RepoName
 	tagName = img.Tag
 
-	manifestDigest, err := godigest.Parse(img.Digest)
-	if err != nil {
-		return "", fmt.Errorf("error parsing manifest digest %s: %w", img.Digest, err)
+	if imageNameWidth > maxImgNameLen {
+		maxImgNameLen = imageNameWidth
 	}
 
-	configDigest, err := godigest.Parse(img.ConfigDigest)
-	if err != nil {
-		return "", fmt.Errorf("error parsing config digest %s: %w", img.ConfigDigest, err)
+	if tagWidth > maxTagLen {
+		maxTagLen = tagWidth
 	}
 
-	minifestDigestStr := ellipsize(manifestDigest.Encoded(), digestWidth, "")
-	configDigestStr := ellipsize(configDigest.Encoded(), configWidth, "")
-	imgSize, _ := strconv.ParseUint(img.Size, 10, 64)
-	size := ellipsize(strings.ReplaceAll(humanize.Bytes(imgSize), " ", ""), sizeWidth, ellipsis)
-	isSigned := img.IsSigned
-	row := make([]string, 7) //nolint:gomnd
-
-	row[colImageNameIndex] = imageName
-	row[colTagIndex] = tagName
-	row[colDigestIndex] = minifestDigestStr
-	row[colSizeIndex] = size
-	row[colIsSignedIndex] = strconv.FormatBool(isSigned)
-
-	if img.verbose {
-		row[colConfigIndex] = configDigestStr
-		row[colLayersIndex] = ""
+	// adding spaces so that image name and tag columns are aligned
+	// in case the name/tag are fully shown and too long
+	var offset string
+	if maxImgNameLen > len(imageName) {
+		offset = strings.Repeat(" ", maxImgNameLen-len(imageName))
+		imageName += offset
 	}
 
-	table.Append(row)
+	if maxTagLen > len(tagName) {
+		offset = strings.Repeat(" ", maxTagLen-len(tagName))
+		tagName += offset
+	}
 
-	if img.verbose {
-		for _, entry := range img.Layers {
-			layerSize := entry.Size
-			size := ellipsize(strings.ReplaceAll(humanize.Bytes(layerSize), " ", ""), sizeWidth, ellipsis)
+	for i := range img.Manifests {
+		manifestDigest, err := godigest.Parse(img.Manifests[i].Digest)
+		if err != nil {
+			return "", fmt.Errorf("error parsing manifest digest %s: %w", img.Manifests[i].Digest, err)
+		}
 
-			layerDigest, err := godigest.Parse(entry.Digest)
-			if err != nil {
-				return "", fmt.Errorf("error parsing layer digest %s: %w", entry.Digest, err)
+		configDigest, err := godigest.Parse(img.Manifests[i].ConfigDigest)
+		if err != nil {
+			return "", fmt.Errorf("error parsing config digest %s: %w", img.Manifests[i].ConfigDigest, err)
+		}
+
+		osArch := getOsArchStr(img.Manifests[i].Platform)
+
+		if maxPlatformLen > len(osArch) {
+			offset = strings.Repeat(" ", maxPlatformLen-len(osArch))
+			osArch += offset
+		}
+
+		minifestDigestStr := ellipsize(manifestDigest.Encoded(), digestWidth, "")
+		configDigestStr := ellipsize(configDigest.Encoded(), configWidth, "")
+		imgSize, _ := strconv.ParseUint(img.Manifests[i].Size, 10, 64)
+		size := ellipsize(strings.ReplaceAll(humanize.Bytes(imgSize), " ", ""), sizeWidth, ellipsis)
+		isSigned := img.IsSigned
+		row := make([]string, 8) //nolint:gomnd
+
+		row[colImageNameIndex] = imageName
+		row[colTagIndex] = tagName
+		row[colDigestIndex] = minifestDigestStr
+		row[colOsArchIndex] = osArch
+		row[colSizeIndex] = size
+		row[colIsSignedIndex] = strconv.FormatBool(isSigned)
+
+		if img.verbose {
+			row[colConfigIndex] = configDigestStr
+			row[colLayersIndex] = ""
+		}
+
+		table.Append(row)
+
+		if img.verbose {
+			for _, entry := range img.Manifests[i].Layers {
+				layerSize := entry.Size
+				size := ellipsize(strings.ReplaceAll(humanize.Bytes(layerSize), " ", ""), sizeWidth, ellipsis)
+
+				layerDigest, err := godigest.Parse(entry.Digest)
+				if err != nil {
+					return "", fmt.Errorf("error parsing layer digest %s: %w", entry.Digest, err)
+				}
+
+				layerDigestStr := ellipsize(layerDigest.Encoded(), digestWidth, "")
+
+				layerRow := make([]string, 8) //nolint:gomnd
+				layerRow[colImageNameIndex] = ""
+				layerRow[colTagIndex] = ""
+				layerRow[colDigestIndex] = ""
+				layerRow[colOsArchIndex] = ""
+				layerRow[colSizeIndex] = size
+				layerRow[colConfigIndex] = ""
+				layerRow[colLayersIndex] = layerDigestStr
+
+				table.Append(layerRow)
 			}
-
-			layerDigestStr := ellipsize(layerDigest.Encoded(), digestWidth, "")
-
-			layerRow := make([]string, 7) //nolint:gomnd
-			layerRow[colImageNameIndex] = ""
-			layerRow[colTagIndex] = ""
-			layerRow[colDigestIndex] = ""
-			layerRow[colSizeIndex] = size
-			layerRow[colConfigIndex] = ""
-			layerRow[colLayersIndex] = layerDigestStr
-
-			table.Append(layerRow)
 		}
 	}
 
 	table.Render()
 
 	return builder.String(), nil
+}
+
+func getOsArchStr(platform platform) string {
+	if platform.Arch == "" && platform.Os == "" {
+		return "N/A"
+	}
+
+	return platform.Os + "/" + platform.Arch
 }
 
 func (img imageStruct) stringJSON() (string, error) {
@@ -1047,9 +1222,10 @@ type manifestResponse struct {
 		WsTychoStackerGitVersion  string `json:"ws.tycho.stacker.git_version"`
 	} `json:"annotations"`
 	Config struct {
-		Size      int    `json:"size"`
-		Digest    string `json:"digest"`
-		MediaType string `json:"mediaType"`
+		Size      int      `json:"size"`
+		Digest    string   `json:"digest"`
+		MediaType string   `json:"mediaType"`
+		Platform  platform `json:"platform"`
 	} `json:"config"`
 	SchemaVersion int `json:"schemaVersion"`
 }
@@ -1157,9 +1333,10 @@ func (service searchService) getRepos(ctx context.Context, config searchConfig, 
 }
 
 const (
-	imageNameWidth = 32
-	tagWidth       = 24
+	imageNameWidth = 10
+	tagWidth       = 8
 	digestWidth    = 8
+	osArchWidth    = 12
 	sizeWidth      = 8
 	isSignedWidth  = 8
 	configWidth    = 8
@@ -1170,9 +1347,10 @@ const (
 	colTagIndex       = 1
 	colDigestIndex    = 2
 	colConfigIndex    = 3
-	colIsSignedIndex  = 4
-	colLayersIndex    = 5
-	colSizeIndex      = 6
+	colOsArchIndex    = 4
+	colIsSignedIndex  = 5
+	colLayersIndex    = 6
+	colSizeIndex      = 7
 
 	cveIDWidth       = 16
 	cveSeverityWidth = 8

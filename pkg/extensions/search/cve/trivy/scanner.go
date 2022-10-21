@@ -14,6 +14,7 @@ import (
 	regTypes "github.com/google/go-containerregistry/pkg/v1/types"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/pkg/errors"
 
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/search/common"
@@ -173,24 +174,49 @@ func (scanner Scanner) runTrivy(opts flag.Options) (types.Report, error) {
 	return report, nil
 }
 
-func (scanner Scanner) IsImageFormatScannable(image string) (bool, error) {
+func (scanner Scanner) IsImageFormatScannable(repo, tag string) (bool, error) {
+	image := repo + ":" + tag
+
 	if scanner.cache.Get(image) != nil {
 		return true, nil
 	}
 
-	imageDir, inputTag := common.GetImageDirAndTag(image)
-
-	repoMeta, err := scanner.repoDB.GetRepoMeta(imageDir)
+	repoMeta, err := scanner.repoDB.GetRepoMeta(repo)
 	if err != nil {
 		return false, err
 	}
 
-	manifestDigestStr, ok := repoMeta.Tags[inputTag]
+	var ok bool
+
+	imageDescriptor, ok := repoMeta.Tags[tag]
 	if !ok {
 		return false, zerr.ErrTagMetaNotFound
 	}
 
-	manifestDigest, err := godigest.Parse(manifestDigestStr.Digest)
+	switch imageDescriptor.MediaType {
+	case ispec.MediaTypeImageManifest:
+		ok, err := scanner.isManifestScanable(imageDescriptor)
+		if err != nil {
+			return ok, errors.Wrapf(err, "image '%s'", image)
+		}
+
+		return ok, nil
+	case ispec.MediaTypeImageIndex:
+		ok, err := scanner.isIndexScanable(imageDescriptor)
+		if err != nil {
+			return ok, errors.Wrapf(err, "image '%s'", image)
+		}
+
+		return ok, nil
+	}
+
+	return false, nil
+}
+
+func (scanner Scanner) isManifestScanable(descriptor repodb.Descriptor) (bool, error) {
+	manifestDigestStr := descriptor.Digest
+
+	manifestDigest, err := godigest.Parse(manifestDigestStr)
 	if err != nil {
 		return false, err
 	}
@@ -204,7 +230,7 @@ func (scanner Scanner) IsImageFormatScannable(image string) (bool, error) {
 
 	err = json.Unmarshal(manifestData.ManifestBlob, &manifestContent)
 	if err != nil {
-		scanner.log.Error().Err(err).Str("image", image).Msg("unable to unmashal manifest blob")
+		scanner.log.Error().Err(err).Msg("unable to unmashal manifest blob")
 
 		return false, zerr.ErrScanNotSupported
 	}
@@ -214,10 +240,49 @@ func (scanner Scanner) IsImageFormatScannable(image string) (bool, error) {
 		case ispec.MediaTypeImageLayerGzip, ispec.MediaTypeImageLayer, string(regTypes.DockerLayer):
 			continue
 		default:
-			scanner.log.Debug().Str("image", image).
+			scanner.log.Debug().
 				Msgf("image media type %s not supported for scanning", imageLayer.MediaType)
 
 			return false, zerr.ErrScanNotSupported
+		}
+	}
+
+	return true, nil
+}
+
+func (scanner Scanner) isIndexScanable(descriptor repodb.Descriptor) (bool, error) {
+	indexDigestStr := descriptor.Digest
+
+	indexDigest, err := godigest.Parse(indexDigestStr)
+	if err != nil {
+		return false, err
+	}
+
+	indexData, err := scanner.repoDB.GetIndexData(indexDigest)
+	if err != nil {
+		return false, err
+	}
+
+	var indexContent ispec.Index
+
+	err = json.Unmarshal(indexData.IndexBlob, &indexContent)
+	if err != nil {
+		scanner.log.Error().Err(err).Msg("unable to unmashal manifest blob")
+
+		return false, zerr.ErrScanNotSupported
+	}
+
+	for _, manifestDescriptor := range indexContent.Manifests {
+		ok, err := scanner.isManifestScanable(repodb.Descriptor{
+			Digest:    manifestDescriptor.Digest.String(),
+			MediaType: manifestDescriptor.MediaType,
+		})
+		if err != nil {
+			return false, err
+		}
+
+		if !ok {
+			return false, nil
 		}
 	}
 

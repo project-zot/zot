@@ -91,28 +91,18 @@ type ImageSummary struct {
 	RepoName *string `json:"RepoName"`
 	// Tag identifying the image within the repository
 	Tag *string `json:"Tag"`
-	// Digest of the manifest file associated with this image
-	Digest *string `json:"Digest"`
-	// Digest of the config file associated with this image
-	ConfigDigest *string `json:"ConfigDigest"`
-	// Timestamp of the last modification done to the image (from config or the last updated layer)
-	LastUpdated *time.Time `json:"LastUpdated"`
-	// True if the image has a signature associated with it, false otherwise
-	IsSigned *bool `json:"IsSigned"`
-	// Total size of the files associated with this image (manigest, config, layers)
+	// List of manifests for all supported versions of the image for different operating systems and architectures
+	Manifests []*ManifestSummary `json:"Manifests"`
+	// Total size of the files associated with all images (manigest, config, layers)
 	Size *string `json:"Size"`
-	// OS and architecture supported by this image
-	Platform *OsArch `json:"Platform"`
-	// Vendor associated with this image, the distributing entity, organization or individual
-	Vendor *string `json:"Vendor"`
-	// Integer used to rank search results by relevance
-	Score *int `json:"Score"`
 	// Number of downloads of the manifest of this image
 	DownloadCount *int `json:"DownloadCount"`
-	// Information on the layers of this image
-	Layers []*LayerSummary `json:"Layers"`
+	// Timestamp of the last modification done to the image (from config or the last updated layer)
+	LastUpdated *time.Time `json:"LastUpdated"`
 	// Human-readable description of the software packaged in the image
 	Description *string `json:"Description"`
+	// True if the image has a signature associated with it, false otherwise
+	IsSigned *bool `json:"IsSigned"`
 	// License(s) under which contained software is distributed as an SPDX License Expression
 	Licenses *string `json:"Licenses"`
 	// Labels associated with this image
@@ -120,16 +110,18 @@ type ImageSummary struct {
 	Labels *string `json:"Labels"`
 	// Human-readable title of the image
 	Title *string `json:"Title"`
+	// Integer used to rank search results by relevance
+	Score *int `json:"Score"`
 	// URL to get source code for building the image
 	Source *string `json:"Source"`
 	// URL to get documentation on the image
 	Documentation *string `json:"Documentation"`
-	// Information about the history of the specific image, see LayerHistory
-	History []*LayerHistory `json:"History"`
-	// Short summary of the identified CVEs
-	Vulnerabilities *ImageVulnerabilitySummary `json:"Vulnerabilities"`
+	// Vendor associated with this image, the distributing entity, organization or individual
+	Vendor *string `json:"Vendor"`
 	// Contact details of the people or organization responsible for the image
 	Authors *string `json:"Authors"`
+	// Short summary of the identified CVEs
+	Vulnerabilities *ImageVulnerabilitySummary `json:"Vulnerabilities"`
 }
 
 // Contains summary of vulnerabilities found in a specific image
@@ -156,6 +148,29 @@ type LayerSummary struct {
 	Digest *string `json:"Digest"`
 	// Integer used to rank search results by relevance
 	Score *int `json:"Score"`
+}
+
+// Details about a specific version of an image for a certain operating system and architecture.
+type ManifestSummary struct {
+	// Digest of the manifest file associated with this image
+	Digest *string `json:"Digest"`
+	// Digest of the config file associated with this image
+	ConfigDigest *string `json:"ConfigDigest"`
+	// Timestamp of the last update to an image inside this repository
+	LastUpdated *time.Time `json:"LastUpdated"`
+	// Total size of the files associated with this manifest (manigest, config, layers)
+	Size *string `json:"Size"`
+	// OS and architecture supported by this image
+	Platform *OsArch `json:"Platform"`
+	// Total numer of image manifest downloads from this repository
+	DownloadCount *int `json:"DownloadCount"`
+	// List of layers matching the search criteria
+	// NOTE: the actual search logic for layers is not implemented at the moment
+	Layers []*LayerSummary `json:"Layers"`
+	// Information about the history of the specific image, see LayerHistory
+	History []*LayerHistory `json:"History"`
+	// Short summary of the identified CVEs
+	Vulnerabilities *ImageVulnerabilitySummary `json:"Vulnerabilities"`
 }
 
 // Contains details about the OS and architecture of the image

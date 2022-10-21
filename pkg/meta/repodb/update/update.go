@@ -51,7 +51,7 @@ func OnUpdateManifest(name, reference, mediaType string, digest godigest.Digest,
 			metadataSuccessfullySet = false
 		}
 	} else {
-		err := SetMetadataFromInput(name, reference, mediaType, digest, body,
+		err := repodb.SetMetadataFromInput(name, reference, mediaType, digest, body,
 			storeController, repoDB, log)
 		if err != nil {
 			metadataSuccessfullySet = false
@@ -159,47 +159,4 @@ func OnGetManifest(name, reference string, digest godigest.Digest, body []byte,
 	}
 
 	return nil
-}
-
-// SetMetadataFromInput receives raw information about the manifest pushed and tries to set manifest metadata
-// and update repo metadata by adding the current tag (in case the reference is a tag).
-// The function expects image manifest.
-func SetMetadataFromInput(repo, reference, mediaType string, digest godigest.Digest, manifestBlob []byte,
-	storeController storage.StoreController, repoDB repodb.RepoDB, log log.Logger,
-) error {
-	imageMetadata, err := repodb.NewManifestData(repo, manifestBlob, storeController)
-	if err != nil {
-		return err
-	}
-
-	err = repoDB.SetManifestMeta(repo, digest, repodb.ManifestMetadata{
-		ManifestBlob:  imageMetadata.ManifestBlob,
-		ConfigBlob:    imageMetadata.ConfigBlob,
-		DownloadCount: 0,
-		Signatures:    repodb.ManifestSignatures{},
-	})
-	if err != nil {
-		log.Error().Err(err).Msg("repodb: error while putting image meta")
-
-		return err
-	}
-
-	if refferenceIsDigest(reference) {
-		return nil
-	}
-
-	err = repoDB.SetRepoTag(repo, reference, digest, mediaType)
-	if err != nil {
-		log.Error().Err(err).Msg("repodb: error while putting repo meta")
-
-		return err
-	}
-
-	return nil
-}
-
-func refferenceIsDigest(reference string) bool {
-	_, err := godigest.Parse(reference)
-
-	return err == nil
 }

@@ -9,10 +9,12 @@ import (
 type CveInfoMock struct {
 	GetImageListForCVEFn       func(repo, cveID string) ([]common.TagInfo, error)
 	GetImageListWithCVEFixedFn func(repo, cveID string) ([]common.TagInfo, error)
-	GetCVEListForImageFn       func(image string, pageInput cveinfo.PageInput) ([]cvemodel.CVE, cveinfo.PageInfo, error)
-	GetCVESummaryForImageFn    func(image string) (cveinfo.ImageCVESummary, error)
-	CompareSeveritiesFn        func(severity1, severity2 string) int
-	UpdateDBFn                 func() error
+	GetCVEListForImageFn       func(repo string, reference string, pageInput cveinfo.PageInput,
+	) ([]cvemodel.CVE, cveinfo.PageInfo, error)
+	GetCVESummaryForImageFn func(repo string, reference string,
+	) (cveinfo.ImageCVESummary, error)
+	CompareSeveritiesFn func(severity1, severity2 string) int
+	UpdateDBFn          func() error
 }
 
 func (cveInfo CveInfoMock) GetImageListForCVE(repo, cveID string) ([]common.TagInfo, error) {
@@ -31,21 +33,22 @@ func (cveInfo CveInfoMock) GetImageListWithCVEFixed(repo, cveID string) ([]commo
 	return []common.TagInfo{}, nil
 }
 
-func (cveInfo CveInfoMock) GetCVEListForImage(image string, pageInput cveinfo.PageInput) (
+func (cveInfo CveInfoMock) GetCVEListForImage(repo string, reference string, pageInput cveinfo.PageInput) (
 	[]cvemodel.CVE,
 	cveinfo.PageInfo,
 	error,
 ) {
 	if cveInfo.GetCVEListForImageFn != nil {
-		return cveInfo.GetCVEListForImageFn(image, pageInput)
+		return cveInfo.GetCVEListForImageFn(repo, reference, pageInput)
 	}
 
 	return []cvemodel.CVE{}, cveinfo.PageInfo{}, nil
 }
 
-func (cveInfo CveInfoMock) GetCVESummaryForImage(image string) (cveinfo.ImageCVESummary, error) {
+func (cveInfo CveInfoMock) GetCVESummaryForImage(repo string, reference string,
+) (cveinfo.ImageCVESummary, error) {
 	if cveInfo.GetCVESummaryForImageFn != nil {
-		return cveInfo.GetCVESummaryForImageFn(image)
+		return cveInfo.GetCVESummaryForImageFn(repo, reference)
 	}
 
 	return cveinfo.ImageCVESummary{}, nil
@@ -68,15 +71,15 @@ func (cveInfo CveInfoMock) UpdateDB() error {
 }
 
 type CveScannerMock struct {
-	IsImageFormatScannableFn func(image string) (bool, error)
+	IsImageFormatScannableFn func(repo string, reference string) (bool, error)
 	ScanImageFn              func(image string) (map[string]cvemodel.CVE, error)
 	CompareSeveritiesFn      func(severity1, severity2 string) int
 	UpdateDBFn               func() error
 }
 
-func (scanner CveScannerMock) IsImageFormatScannable(image string) (bool, error) {
+func (scanner CveScannerMock) IsImageFormatScannable(repo string, reference string) (bool, error) {
 	if scanner.IsImageFormatScannableFn != nil {
-		return scanner.IsImageFormatScannableFn(image)
+		return scanner.IsImageFormatScannableFn(repo, reference)
 	}
 
 	return true, nil

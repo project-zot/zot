@@ -24,10 +24,15 @@ const (
 	LabelAnnotationSource        = "org.label-schema.vcs-url"
 )
 
-type TagInfo struct {
-	Name      string
+type Descriptor struct {
 	Digest    godigest.Digest
-	Timestamp time.Time
+	MediaType string
+}
+
+type TagInfo struct {
+	Name       string
+	Descriptor Descriptor
+	Timestamp  time.Time
 }
 
 func GetRootDir(image string, storeController storage.StoreController) string {
@@ -76,6 +81,33 @@ func GetImageDirAndTag(imageName string) (string, string) {
 	}
 
 	return imageDir, imageTag
+}
+
+func GetImageDirAndDigest(imageName string) (string, string) {
+	var imageDir string
+
+	var imageDigest string
+
+	if strings.Contains(imageName, "@") {
+		imageDir, imageDigest, _ = strings.Cut(imageName, "@")
+	} else {
+		imageDir = imageName
+	}
+
+	return imageDir, imageDigest
+}
+
+// GetImageDirAndReference returns the repo, digest and isTag.
+func GetImageDirAndReference(imageName string) (string, string, bool) {
+	if strings.Contains(imageName, "@") {
+		repo, digest := GetImageDirAndDigest(imageName)
+
+		return repo, digest, false
+	}
+
+	repo, tag := GetImageDirAndTag(imageName)
+
+	return repo, tag, true
 }
 
 // GetImageLastUpdated This method will return last updated timestamp.
@@ -276,4 +308,10 @@ func GetAnnotations(annotations, labels map[string]string) ImageAnnotations {
 		Vendor:        vendor,
 		Authors:       authors,
 	}
+}
+
+func ReferenceIsDigest(reference string) bool {
+	_, err := godigest.Parse(reference)
+
+	return err == nil
 }
