@@ -290,14 +290,13 @@ func TestSyncInternal(t *testing.T) {
 	})
 
 	Convey("Test imagesToCopyFromUpstream()", t, func() {
-		repos := []string{"repo1"}
 		upstreamCtx := &types.SystemContext{}
 
-		_, err := imagesToCopyFromUpstream(context.Background(), "localhost:4566", repos, upstreamCtx,
+		_, err := imagesToCopyFromUpstream(context.Background(), "localhost:4566", "repo1", upstreamCtx,
 			Content{}, log.NewLogger("debug", ""))
 		So(err, ShouldNotBeNil)
 
-		_, err = imagesToCopyFromUpstream(context.Background(), "docker://localhost:4566", repos, upstreamCtx,
+		_, err = imagesToCopyFromUpstream(context.Background(), "docker://localhost:4566", "repo1", upstreamCtx,
 			Content{}, log.NewLogger("debug", ""))
 		So(err, ShouldNotBeNil)
 	})
@@ -323,16 +322,15 @@ func TestSyncInternal(t *testing.T) {
 			Layers: []ispec.Descriptor{desc},
 		}
 
-		err = syncCosignSignature(client, &local.ImageStoreLocal{}, *regURL, testImage, testImage,
-			testImageTag, &ispec.Manifest{}, log)
+		sig := newSignaturesCopier(client, *regURL, storage.StoreController{DefaultStore: &local.ImageStoreLocal{}}, log)
+
+		err = sig.syncCosignSignature(testImage, testImage, testImageTag, &ispec.Manifest{})
 		So(err, ShouldNotBeNil)
 
-		err = syncCosignSignature(client, &local.ImageStoreLocal{}, *regURL, testImage, testImage,
-			testImageTag, &manifest, log)
+		err = sig.syncCosignSignature(testImage, testImage, testImageTag, &manifest)
 		So(err, ShouldNotBeNil)
 
-		err = syncNotarySignature(client, &local.ImageStoreLocal{}, *regURL, testImage, testImage,
-			"invalidDigest", ReferenceList{[]artifactspec.Descriptor{ref}}, log)
+		err = sig.syncNotarySignature(testImage, testImage, "invalidDigest", ReferenceList{[]artifactspec.Descriptor{ref}})
 		So(err, ShouldNotBeNil)
 	})
 
@@ -370,16 +368,20 @@ func TestSyncInternal(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(testImageManifestDigest, ShouldNotBeEmpty)
 
-		canBeSkipped, err = canSkipNotarySignature(testImage, testImageTag,
-			testImageManifestDigest, refs, imageStore, log)
+		regURL, err := url.Parse("http://zot")
+		So(err, ShouldBeNil)
+		So(regURL, ShouldNotBeNil)
+
+		sig := newSignaturesCopier(resty.New(), *regURL, storage.StoreController{DefaultStore: imageStore}, log)
+
+		canBeSkipped, err = sig.canSkipNotarySignature(testImage, testImageManifestDigest, refs)
 		So(err, ShouldBeNil)
 		So(canBeSkipped, ShouldBeFalse)
 
 		err = os.Chmod(path.Join(imageStore.RootDir(), testImage, "index.json"), 0o000)
 		So(err, ShouldBeNil)
 
-		canBeSkipped, err = canSkipNotarySignature(testImage, testImageTag,
-			testImageManifestDigest, refs, imageStore, log)
+		canBeSkipped, err = sig.canSkipNotarySignature(testImage, testImageManifestDigest, refs)
 		So(err, ShouldNotBeNil)
 		So(canBeSkipped, ShouldBeFalse)
 
@@ -390,8 +392,7 @@ func TestSyncInternal(t *testing.T) {
 		err = os.Chmod(path.Join(imageStore.RootDir(), testImage, "index.json"), 0o755)
 		So(err, ShouldBeNil)
 
-		canBeSkipped, err = canSkipCosignSignature(testImage, testImageTag,
-			testImageManifestDigest, &cosignManifest, imageStore, log)
+		canBeSkipped, err = sig.canSkipCosignSignature(testImage, testImageManifestDigest, &cosignManifest)
 		So(err, ShouldBeNil)
 		So(canBeSkipped, ShouldBeFalse)
 	})
@@ -422,6 +423,13 @@ func TestSyncInternal(t *testing.T) {
 
 		filteredRepos = filterRepos(repos, contents, log.NewLogger("", ""))
 		So(len(filteredRepos), ShouldEqual, 0)
+	})
+
+	Convey("Test filterTagsByRegex()", t, func() {
+		tags := []string{"one"}
+		filteredTags, err := filterTagsByRegex(tags, ".*", log.NewLogger("", ""))
+		So(err, ShouldBeNil)
+		So(filteredTags, ShouldResemble, tags)
 	})
 
 	Convey("Verify pushSyncedLocalImage func", t, func() {

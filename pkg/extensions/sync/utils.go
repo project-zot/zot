@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -9,8 +10,10 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"regexp"
 	"strings"
 
+	"github.com/Masterminds/semver"
 	glob "github.com/bmatcuk/doublestar/v4"
 	"github.com/containers/image/v5/docker"
 	"github.com/containers/image/v5/docker/reference"
@@ -47,6 +50,65 @@ func getTagFromRef(ref types.ImageReference, log log.Logger) reference.Tagged {
 	}
 
 	return tagged
+}
+
+// getImageTags lists all tags in a repository.
+// It returns a string slice of tags and any error encountered.
+func getImageTags(ctx context.Context, sysCtx *types.SystemContext, repoRef reference.Named) ([]string, error) {
+	dockerRef, err := docker.NewReference(reference.TagNameOnly(repoRef))
+	// hard to reach test case, injected error, see pkg/test/dev.go
+	if err = test.Error(err); err != nil {
+		return nil, err // Should never happen for a reference with tag and no digest
+	}
+
+	tags, err := docker.GetRepositoryTags(ctx, sysCtx, dockerRef)
+	if err != nil {
+		return nil, err
+	}
+
+	return tags, nil
+}
+
+// filterTagsByRegex filters images by tag regex given in the config.
+func filterTagsByRegex(tags []string, regex string, log log.Logger) ([]string, error) {
+	filteredTags := []string{}
+
+	if len(tags) == 0 || regex == "" {
+		return filteredTags, nil
+	}
+
+	log.Info().Msgf("start filtering using the regular expression: %s", regex)
+
+	tagReg, err := regexp.Compile(regex)
+	if err != nil {
+		log.Error().Err(err).Str("regex", regex).Msg("couldn't compile regex")
+
+		return filteredTags, err
+	}
+
+	for _, tag := range tags {
+		if tagReg.MatchString(tag) {
+			filteredTags = append(filteredTags, tag)
+		}
+	}
+
+	return filteredTags, nil
+}
+
+// filterTagsBySemver filters tags by checking if they are semver compliant.
+func filterTagsBySemver(tags []string, log log.Logger) []string {
+	filteredTags := []string{}
+
+	log.Info().Msg("start filtering using semver compliant rule")
+
+	for _, tag := range tags {
+		_, err := semver.NewVersion(tag)
+		if err == nil {
+			filteredTags = append(filteredTags, tag)
+		}
+	}
+
+	return filteredTags
 }
 
 // parseRepositoryReference parses input into a reference.Named, and verifies that it names a repository, not an image.
