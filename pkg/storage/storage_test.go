@@ -170,7 +170,7 @@ func TestStorageAPIs(t *testing.T) {
 					body := []byte("this is a blob")
 					buf := bytes.NewBuffer(body)
 					digest := godigest.FromBytes(body)
-					upload, n, err := imgStore.FullBlobUpload("test", buf, digest.String())
+					upload, n, err := imgStore.FullBlobUpload("test", buf, digest)
 					So(err, ShouldBeNil)
 					So(n, ShouldEqual, len(body))
 					So(upload, ShouldNotBeEmpty)
@@ -238,13 +238,13 @@ func TestStorageAPIs(t *testing.T) {
 						So(err, ShouldBeNil)
 						So(bupload, ShouldEqual, secondChunkLen)
 
-						err = imgStore.FinishBlobUpload("test", upload, buf, digest.String())
+						err = imgStore.FinishBlobUpload("test", upload, buf, digest)
 						So(err, ShouldBeNil)
 
-						_, _, err = imgStore.CheckBlob("test", digest.String())
+						_, _, err = imgStore.CheckBlob("test", digest)
 						So(err, ShouldBeNil)
 
-						blob, _, err := imgStore.GetBlob("test", digest.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
+						blob, _, err := imgStore.GetBlob("test", digest, "application/vnd.oci.image.layer.v1.tar+gzip")
 						So(err, ShouldBeNil)
 						err = blob.Close()
 						So(err, ShouldBeNil)
@@ -280,10 +280,10 @@ func TestStorageAPIs(t *testing.T) {
 
 						Convey("Good image manifest", func() {
 							cblob, cdigest := test.GetRandomImageConfig()
-							_, clen, err := imgStore.FullBlobUpload("test", bytes.NewReader(cblob), cdigest.String())
+							_, clen, err := imgStore.FullBlobUpload("test", bytes.NewReader(cblob), cdigest)
 							So(err, ShouldBeNil)
 							So(clen, ShouldEqual, len(cblob))
-							hasBlob, _, err := imgStore.CheckBlob("test", cdigest.String())
+							hasBlob, _, err := imgStore.CheckBlob("test", cdigest)
 							So(err, ShouldBeNil)
 							So(hasBlob, ShouldEqual, true)
 
@@ -353,7 +353,7 @@ func TestStorageAPIs(t *testing.T) {
 							So(len(tags), ShouldEqual, 2)
 
 							// We deleted only one tag, make sure blob should not be removed.
-							hasBlob, _, err = imgStore.CheckBlob("test", digest.String())
+							hasBlob, _, err = imgStore.CheckBlob("test", digest)
 							So(err, ShouldBeNil)
 							So(hasBlob, ShouldEqual, true)
 
@@ -366,17 +366,17 @@ func TestStorageAPIs(t *testing.T) {
 							So(len(tags), ShouldEqual, 0)
 
 							// All tags/references are deleted, blob should not be present in disk.
-							hasBlob, _, err = imgStore.CheckBlob("test", digest.String())
+							hasBlob, _, err = imgStore.CheckBlob("test", digest)
 							So(err, ShouldNotBeNil)
 							So(hasBlob, ShouldEqual, false)
 
 							err = imgStore.DeleteBlob("test", "inexistent")
 							So(err, ShouldNotBeNil)
 
-							err = imgStore.DeleteBlob("test", godigest.FromBytes([]byte("inexistent")).String())
+							err = imgStore.DeleteBlob("test", godigest.FromBytes([]byte("inexistent")))
 							So(err, ShouldNotBeNil)
 
-							err = imgStore.DeleteBlob("test", blobDigest.String())
+							err = imgStore.DeleteBlob("test", blobDigest)
 							So(err, ShouldBeNil)
 
 							_, _, _, err = imgStore.GetImageManifest("test", digest.String())
@@ -394,9 +394,6 @@ func TestStorageAPIs(t *testing.T) {
 					So(bupload, ShouldNotBeEmpty)
 
 					Convey("Get blob upload", func() {
-						err = imgStore.FinishBlobUpload("test", bupload, bytes.NewBuffer([]byte{}), "inexistent")
-						So(err, ShouldNotBeNil)
-
 						upload, err := imgStore.GetBlobUpload("test", "invalid")
 						So(err, ShouldNotBeNil)
 						So(upload, ShouldEqual, -1)
@@ -423,28 +420,28 @@ func TestStorageAPIs(t *testing.T) {
 						_, err = imgStore.PutBlobChunkStreamed("test", "inexistent", buf)
 						So(err, ShouldNotBeNil)
 
-						err = imgStore.FinishBlobUpload("test", "inexistent", buf, digest.String())
+						err = imgStore.FinishBlobUpload("test", "inexistent", buf, digest)
 						So(err, ShouldNotBeNil)
 
-						err = imgStore.FinishBlobUpload("test", bupload, buf, digest.String())
+						err = imgStore.FinishBlobUpload("test", bupload, buf, digest)
 						So(err, ShouldBeNil)
 
-						_, _, err = imgStore.CheckBlob("test", digest.String())
+						_, _, err = imgStore.CheckBlob("test", digest)
 						So(err, ShouldBeNil)
 
 						_, _, err = imgStore.GetBlob("test", "inexistent", "application/vnd.oci.image.layer.v1.tar+gzip")
 						So(err, ShouldNotBeNil)
 
-						blob, _, err := imgStore.GetBlob("test", digest.String(), "application/vnd.oci.image.layer.v1.tar+gzip")
+						blob, _, err := imgStore.GetBlob("test", digest, "application/vnd.oci.image.layer.v1.tar+gzip")
 						So(err, ShouldBeNil)
 						err = blob.Close()
 						So(err, ShouldBeNil)
 
-						blobContent, err := imgStore.GetBlobContent("test", digest.String())
+						blobContent, err := imgStore.GetBlobContent("test", digest)
 						So(err, ShouldBeNil)
 						So(content, ShouldResemble, blobContent)
 
-						_, err = imgStore.GetBlobContent("inexistent", digest.String())
+						_, err = imgStore.GetBlobContent("inexistent", digest)
 						So(err, ShouldNotBeNil)
 
 						manifest := ispec.Manifest{}
@@ -475,10 +472,10 @@ func TestStorageAPIs(t *testing.T) {
 
 						Convey("Good image manifest", func() {
 							cblob, cdigest := test.GetRandomImageConfig()
-							_, clen, err := imgStore.FullBlobUpload("test", bytes.NewReader(cblob), cdigest.String())
+							_, clen, err := imgStore.FullBlobUpload("test", bytes.NewReader(cblob), cdigest)
 							So(err, ShouldBeNil)
 							So(clen, ShouldEqual, len(cblob))
-							hasBlob, _, err := imgStore.CheckBlob("test", cdigest.String())
+							hasBlob, _, err := imgStore.CheckBlob("test", cdigest)
 							So(err, ShouldBeNil)
 							So(hasBlob, ShouldEqual, true)
 
@@ -567,15 +564,15 @@ func TestStorageAPIs(t *testing.T) {
 					blobDigest1 := strings.Split(digest.String(), ":")[1]
 					So(blobDigest1, ShouldNotBeEmpty)
 
-					err = imgStore.FinishBlobUpload("replace", upload, buf, digest.String())
+					err = imgStore.FinishBlobUpload("replace", upload, buf, digest)
 					So(err, ShouldBeNil)
 					So(blob, ShouldEqual, buflen)
 
 					cblob, cdigest := test.GetRandomImageConfig()
-					_, clen, err := imgStore.FullBlobUpload("replace", bytes.NewReader(cblob), cdigest.String())
+					_, clen, err := imgStore.FullBlobUpload("replace", bytes.NewReader(cblob), cdigest)
 					So(err, ShouldBeNil)
 					So(clen, ShouldEqual, len(cblob))
-					hasBlob, _, err := imgStore.CheckBlob("replace", cdigest.String())
+					hasBlob, _, err := imgStore.CheckBlob("replace", cdigest)
 					So(err, ShouldBeNil)
 					So(hasBlob, ShouldEqual, true)
 
@@ -619,15 +616,15 @@ func TestStorageAPIs(t *testing.T) {
 					blobDigest2 := strings.Split(digest.String(), ":")[1]
 					So(blobDigest2, ShouldNotBeEmpty)
 
-					err = imgStore.FinishBlobUpload("replace", upload, buf, digest.String())
+					err = imgStore.FinishBlobUpload("replace", upload, buf, digest)
 					So(err, ShouldBeNil)
 					So(blob, ShouldEqual, buflen)
 
 					cblob, cdigest = test.GetRandomImageConfig()
-					_, clen, err = imgStore.FullBlobUpload("replace", bytes.NewReader(cblob), cdigest.String())
+					_, clen, err = imgStore.FullBlobUpload("replace", bytes.NewReader(cblob), cdigest)
 					So(err, ShouldBeNil)
 					So(clen, ShouldEqual, len(cblob))
-					hasBlob, _, err = imgStore.CheckBlob("replace", cdigest.String())
+					hasBlob, _, err = imgStore.CheckBlob("replace", cdigest)
 					So(err, ShouldBeNil)
 					So(hasBlob, ShouldEqual, true)
 
@@ -728,11 +725,11 @@ func TestMandatoryAnnotations(t *testing.T) {
 				buflen := buf.Len()
 				digest := godigest.FromBytes(content)
 
-				_, _, err := imgStore.FullBlobUpload("test", bytes.NewReader(buf.Bytes()), digest.String())
+				_, _, err := imgStore.FullBlobUpload("test", bytes.NewReader(buf.Bytes()), digest)
 				So(err, ShouldBeNil)
 
 				cblob, cdigest := test.GetRandomImageConfig()
-				_, clen, err := imgStore.FullBlobUpload("test", bytes.NewReader(cblob), cdigest.String())
+				_, clen, err := imgStore.FullBlobUpload("test", bytes.NewReader(cblob), cdigest)
 				So(err, ShouldBeNil)
 				So(clen, ShouldEqual, len(cblob))
 

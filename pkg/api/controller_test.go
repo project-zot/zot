@@ -3294,12 +3294,12 @@ func TestCrossRepoMount(t *testing.T) {
 			baseURL, constants.RoutePrefix, constants.Blobs, godigest.SHA256, blob))
 
 		// Check os.SameFile here
-		cachePath := path.Join(ctlr.Config.Storage.RootDirectory, "zot-d-test", "blobs/sha256", dgst.Hex())
+		cachePath := path.Join(ctlr.Config.Storage.RootDirectory, "zot-d-test", "blobs/sha256", dgst.Encoded())
 
 		cacheFi, err := os.Stat(cachePath)
 		So(err, ShouldBeNil)
 
-		linkPath := path.Join(ctlr.Config.Storage.RootDirectory, "zot-mount-test", "blobs/sha256", dgst.Hex())
+		linkPath := path.Join(ctlr.Config.Storage.RootDirectory, "zot-mount-test", "blobs/sha256", dgst.Encoded())
 
 		linkFi, err := os.Stat(linkPath)
 		So(err, ShouldBeNil)
@@ -3318,7 +3318,7 @@ func TestCrossRepoMount(t *testing.T) {
 		So(test.Location(baseURL, postResponse), ShouldEqual, fmt.Sprintf("%s%s/zot-mount1-test/%s/%s:%s",
 			baseURL, constants.RoutePrefix, constants.Blobs, godigest.SHA256, blob))
 
-		linkPath = path.Join(ctlr.Config.Storage.RootDirectory, "zot-mount1-test", "blobs/sha256", dgst.Hex())
+		linkPath = path.Join(ctlr.Config.Storage.RootDirectory, "zot-mount1-test", "blobs/sha256", dgst.Encoded())
 
 		linkFi, err = os.Stat(linkPath)
 		So(err, ShouldBeNil)

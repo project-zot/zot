@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/opencontainers/go-digest"
+	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -267,7 +267,7 @@ func TestUploadImage(t *testing.T) {
 		test.WaitTillServerReady(baseURL)
 
 		layerBlob := []byte("test")
-		layerBlobDigest := digest.FromBytes(layerBlob)
+		layerBlobDigest := godigest.FromBytes(layerBlob)
 		layerPath := path.Join(tempDir, "test", "blobs", "sha256")
 
 		if _, err := os.Stat(layerPath); os.IsNotExist(err) {

@@ -17,7 +17,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -272,11 +271,8 @@ func (p *requestsPool) doJob(ctx context.Context, job *manifestJob) {
 		p.outputCh <- stringResult{"", err}
 	}
 
-	digest := header.Get("docker-content-digest")
-	digest = strings.TrimPrefix(digest, "sha256:")
-
+	digestStr := header.Get("docker-content-digest")
 	configDigest := job.manifestResp.Config.Digest
-	configDigest = strings.TrimPrefix(configDigest, "sha256:")
 
 	var size uint64
 
@@ -289,7 +285,7 @@ func (p *requestsPool) doJob(ctx context.Context, job *manifestJob) {
 			layers,
 			layer{
 				Size:   entry.Size,
-				Digest: strings.TrimPrefix(entry.Digest, "sha256:"),
+				Digest: entry.Digest,
 			},
 		)
 	}
@@ -298,7 +294,7 @@ func (p *requestsPool) doJob(ctx context.Context, job *manifestJob) {
 	image.verbose = *job.config.verbose
 	image.RepoName = job.imageName
 	image.Tag = job.tagName
-	image.Digest = digest
+	image.Digest = digestStr
 	image.Size = strconv.Itoa(int(size))
 	image.ConfigDigest = configDigest
 	image.Layers = layers

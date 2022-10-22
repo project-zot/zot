@@ -13,7 +13,6 @@ import (
 
 	"github.com/99designs/gqlgen/graphql"
 	glob "github.com/bmatcuk/doublestar/v4"
-	v1 "github.com/google/go-containerregistry/pkg/v1"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/vektah/gqlparser/v2/gqlerror"
@@ -141,7 +140,7 @@ func repoListWithNewestImage(
 
 			configSize := imageBlobManifest.Config.Size
 			repoBlob2Size[manifest.Digest.String()] = manifestSize
-			repoBlob2Size[imageBlobManifest.Config.Digest.Hex] = configSize
+			repoBlob2Size[imageBlobManifest.Config.Digest.String()] = configSize
 
 			for _, layer := range imageBlobManifest.Layers {
 				repoBlob2Size[layer.Digest.String()] = layer.Size
@@ -208,8 +207,8 @@ func repoListWithNewestImage(
 
 			tag := manifestTag
 			size := strconv.Itoa(int(imageSize))
-			manifestDigest := manifest.Digest.Hex()
-			configDigest := imageBlobManifest.Config.Digest.Hex
+			manifestDigest := manifest.Digest.String()
+			configDigest := imageBlobManifest.Config.Digest.String()
 			isSigned := olu.CheckManifestSignature(repo, manifest.Digest)
 			lastUpdated := common.GetImageLastUpdated(imageConfigInfo)
 			score := 0
@@ -237,7 +236,7 @@ func repoListWithNewestImage(
 				},
 			}
 
-			if manifest.Digest.String() == lastUpdatedTag.Digest {
+			if manifest.Digest.String() == lastUpdatedTag.Digest.String() {
 				lastUpdatedImageSummary = imageSummary
 			}
 		}
@@ -329,7 +328,7 @@ func globalSearch(repoList []string, name, tag string, olu common.OciLayoutUtils
 			configSize := imageBlobManifest.Config.Size
 
 			repoBlob2Size[manifest.Digest.String()] = manifestSize
-			repoBlob2Size[imageBlobManifest.Config.Digest.Hex] = configSize
+			repoBlob2Size[imageBlobManifest.Config.Digest.String()] = configSize
 
 			for _, layer := range imageBlobManifest.Layers {
 				layer := layer
@@ -381,8 +380,8 @@ func globalSearch(repoList []string, name, tag string, olu common.OciLayoutUtils
 				// get image info from manifest annotation, if not found get from image config labels.
 				annotations := common.GetAnnotations(imageBlobManifest.Annotations, imageConfigInfo.Config.Labels)
 
-				manifestDigest := manifest.Digest.Hex()
-				configDigest := imageBlobManifest.Config.Digest.Hex
+				manifestDigest := manifest.Digest.String()
+				configDigest := imageBlobManifest.Config.Digest.String()
 
 				repoPlatforms = append(repoPlatforms, osArch)
 				repoVendors = append(repoVendors, &annotations.Vendor)
@@ -426,7 +425,7 @@ func globalSearch(repoList []string, name, tag string, olu common.OciLayoutUtils
 					},
 				}
 
-				if manifest.Digest.String() == lastUpdatedTag.Digest {
+				if manifest.Digest.String() == lastUpdatedTag.Digest.String() {
 					lastUpdatedImageSummary = imageSummary
 				}
 
@@ -529,8 +528,7 @@ func (r *queryResolver) getImageList(store storage.ImageStore, imageName string)
 				// using a loop variable called tag would be reassigned after each iteration, using the same memory address
 				// directly access the value at the current index in the slice as ImageInfo requires pointers to tag fields
 				tag := tagsInfo[i]
-
-				digest := godigest.Digest(tag.Digest)
+				digest := tag.Digest
 
 				manifest, err := layoutUtils.GetImageBlobManifest(repo, digest)
 				if err != nil {
@@ -568,13 +566,14 @@ func (r *queryResolver) getImageList(store storage.ImageStore, imageName string)
 }
 
 func BuildImageInfo(repo string, tag string, manifestDigest godigest.Digest,
-	manifest v1.Manifest, imageConfig ispec.Image, isSigned bool,
+	manifest ispec.Manifest, imageConfig ispec.Image, isSigned bool,
 ) *gql_generated.ImageSummary {
 	layers := []*gql_generated.LayerSummary{}
 	size := int64(0)
 	log := log.NewLogger("debug", "")
 	allHistory := []*gql_generated.LayerHistory{}
-	formattedManifestDigest := manifestDigest.Hex()
+	formattedManifestDigest := manifestDigest.String()
+	formattedConfigDigest := manifest.Config.Digest.String()
 	annotations := common.GetAnnotations(manifest.Annotations, imageConfig.Config.Labels)
 	lastUpdated := common.GetImageLastUpdated(imageConfig)
 
@@ -582,7 +581,7 @@ func BuildImageInfo(repo string, tag string, manifestDigest godigest.Digest,
 	if len(history) == 0 {
 		for _, layer := range manifest.Layers {
 			size += layer.Size
-			digest := layer.Digest.Hex
+			digest := layer.Digest.String()
 			layerSize := strconv.FormatInt(layer.Size, 10)
 
 			layer := &gql_generated.LayerSummary{
@@ -607,7 +606,7 @@ func BuildImageInfo(repo string, tag string, manifestDigest godigest.Digest,
 			RepoName:      &repo,
 			Tag:           &tag,
 			Digest:        &formattedManifestDigest,
-			ConfigDigest:  &manifest.Config.Digest.Hex,
+			ConfigDigest:  &formattedConfigDigest,
 			Size:          &formattedSize,
 			Layers:        layers,
 			History:       allHistory,
@@ -656,7 +655,7 @@ func BuildImageInfo(repo string, tag string, manifestDigest godigest.Digest,
 				RepoName:      &repo,
 				Tag:           &tag,
 				Digest:        &formattedManifestDigest,
-				ConfigDigest:  &manifest.Config.Digest.Hex,
+				ConfigDigest:  &formattedConfigDigest,
 				Size:          &formattedSize,
 				Layers:        layers,
 				History:       allHistory,
@@ -677,7 +676,7 @@ func BuildImageInfo(repo string, tag string, manifestDigest godigest.Digest,
 		}
 
 		size += manifest.Layers[layersIterator].Size
-		digest := manifest.Layers[layersIterator].Digest.Hex
+		digest := manifest.Layers[layersIterator].Digest.String()
 		layerSize := strconv.FormatInt(manifest.Layers[layersIterator].Size, 10)
 
 		layer := &gql_generated.LayerSummary{
@@ -701,7 +700,7 @@ func BuildImageInfo(repo string, tag string, manifestDigest godigest.Digest,
 		RepoName:      &repo,
 		Tag:           &tag,
 		Digest:        &formattedManifestDigest,
-		ConfigDigest:  &manifest.Config.Digest.Hex,
+		ConfigDigest:  &formattedConfigDigest,
 		Size:          &formattedSize,
 		Layers:        layers,
 		History:       allHistory,
@@ -772,7 +771,7 @@ func extractImageDetails(
 	layoutUtils common.OciLayoutUtils,
 	repo, tag string,
 	log log.Logger) (
-	godigest.Digest, *v1.Manifest, *ispec.Image, error,
+	godigest.Digest, *ispec.Manifest, *ispec.Image, error,
 ) {
 	validRepoList, err := userAvailableRepos(ctx, []string{repo})
 	if err != nil {
@@ -787,21 +786,14 @@ func extractImageDetails(
 		return "", nil, nil, errors.ErrUnauthorizedAccess
 	}
 
-	_, dig, err := layoutUtils.GetImageManifest(repo, tag)
+	manifest, dig, err := layoutUtils.GetImageManifest(repo, tag)
 	if err != nil {
 		log.Error().Err(err).Msg("Could not retrieve image ispec manifest")
 
 		return "", nil, nil, err
 	}
 
-	digest := godigest.Digest(dig)
-
-	manifest, err := layoutUtils.GetImageBlobManifest(repo, digest)
-	if err != nil {
-		log.Error().Err(err).Msg("Could not retrieve image godigest manifest")
-
-		return "", nil, nil, err
-	}
+	digest := dig
 
 	imageConfig, err := layoutUtils.GetImageConfigInfo(repo, digest)
 	if err != nil {

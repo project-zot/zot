@@ -34,7 +34,7 @@ func generateTestImage(storeController storage.StoreController, image string) {
 	for _, layerBlob := range layers {
 		layerReader := bytes.NewReader(layerBlob)
 		layerDigest := godigest.FromBytes(layerBlob)
-		_, _, err = store.FullBlobUpload(repoName, layerReader, layerDigest.String())
+		_, _, err = store.FullBlobUpload(repoName, layerReader, layerDigest)
 		So(err, ShouldBeNil)
 	}
 
@@ -42,7 +42,7 @@ func generateTestImage(storeController storage.StoreController, image string) {
 	So(err, ShouldBeNil)
 	configReader := bytes.NewReader(configBlob)
 	configDigest := godigest.FromBytes(configBlob)
-	_, _, err = store.FullBlobUpload(repoName, configReader, configDigest.String())
+	_, _, err = store.FullBlobUpload(repoName, configReader, configDigest)
 	So(err, ShouldBeNil)
 
 	manifestBlob, err := json.Marshal(manifest)

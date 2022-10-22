@@ -3,8 +3,7 @@ package digestinfo
 import (
 	"strings"
 
-	v1 "github.com/google/go-containerregistry/pkg/v1"
-	"github.com/opencontainers/go-digest"
+	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"zotregistry.io/zot/pkg/extensions/search/common"
@@ -20,8 +19,8 @@ type DigestInfo struct {
 
 type ImageInfoByDigest struct {
 	Tag      string
-	Digest   digest.Digest
-	Manifest v1.Manifest
+	Digest   godigest.Digest
+	Manifest ispec.Manifest
 }
 
 // NewDigestInfo initializes a new DigestInfo object.
@@ -64,14 +63,14 @@ func (digestinfo DigestInfo) GetImageTagsByDigest(repo, digest string) ([]ImageI
 
 			// Check the image config matches the search digest
 			// This is a blob with mediaType application/vnd.oci.image.config.v1+json
-			if strings.Contains(imageBlobManifest.Config.Digest.Algorithm+":"+imageBlobManifest.Config.Digest.Hex, digest) {
+			if strings.Contains(imageBlobManifest.Config.Digest.String(), digest) {
 				tags = append(tags, &val)
 			}
 
 			// Check to see if the individual layers in the oci image manifest match the digest
 			// These are blobs with mediaType application/vnd.oci.image.layer.v1.tar+gzip
 			for _, layer := range imageBlobManifest.Layers {
-				if strings.Contains(layer.Digest.Algorithm+":"+layer.Digest.Hex, digest) {
+				if strings.Contains(layer.Digest.String(), digest) {
 					tags = append(tags, &val)
 				}
 			}

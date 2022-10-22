@@ -2356,7 +2356,7 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 		Convey("Trigger error on image manifest", func() {
 			// trigger permission denied on image manifest
 			manifestPath := path.Join(srcDir, repoName, "blobs",
-				string(imageManifestDigest.Algorithm()), imageManifestDigest.Hex())
+				string(imageManifestDigest.Algorithm()), imageManifestDigest.Encoded())
 			err = os.Chmod(manifestPath, 0o000)
 			So(err, ShouldBeNil)
 
@@ -2373,7 +2373,7 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 
 		Convey("Trigger error on cosign signature", func() {
 			// trigger permission error on cosign signature on upstream
-			cosignTag := string(imageManifestDigest.Algorithm()) + "-" + imageManifestDigest.Hex() +
+			cosignTag := string(imageManifestDigest.Algorithm()) + "-" + imageManifestDigest.Encoded() +
 				"." + remote.SignatureTagSuffix
 
 			getCosignManifestURL := srcBaseURL + path.Join(constants.RoutePrefix, repoName, "manifests", cosignTag)
@@ -2386,7 +2386,7 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			for _, blob := range cm.Layers {
-				blobPath := path.Join(srcDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Hex())
+				blobPath := path.Join(srcDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Encoded())
 				err := os.Chmod(blobPath, 0o000)
 				So(err, ShouldBeNil)
 			}
@@ -2424,7 +2424,7 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 			// read manifest
 			var artifactManifest artifactspec.Manifest
 			for _, ref := range referrers.References {
-				refPath := path.Join(srcDir, repoName, "blobs", string(ref.Digest.Algorithm()), ref.Digest.Hex())
+				refPath := path.Join(srcDir, repoName, "blobs", string(ref.Digest.Algorithm()), ref.Digest.Encoded())
 				body, err := os.ReadFile(refPath)
 				So(err, ShouldBeNil)
 
@@ -2433,7 +2433,7 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 
 				// triggers perm denied on sig blobs
 				for _, blob := range artifactManifest.Blobs {
-					blobPath := path.Join(srcDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Hex())
+					blobPath := path.Join(srcDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Encoded())
 					err := os.Chmod(blobPath, 0o000)
 					So(err, ShouldBeNil)
 				}
@@ -2592,7 +2592,7 @@ func TestSignatures(t *testing.T) {
 
 		var artifactManifest artifactspec.Manifest
 		for _, ref := range referrers.References {
-			refPath := path.Join(srcDir, repoName, "blobs", string(ref.Digest.Algorithm()), ref.Digest.Hex())
+			refPath := path.Join(srcDir, repoName, "blobs", string(ref.Digest.Algorithm()), ref.Digest.Encoded())
 			body, err := os.ReadFile(refPath)
 			So(err, ShouldBeNil)
 
@@ -2601,7 +2601,7 @@ func TestSignatures(t *testing.T) {
 
 			// triggers perm denied on notary sig blobs on downstream
 			for _, blob := range artifactManifest.Blobs {
-				blobPath := path.Join(destDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Hex())
+				blobPath := path.Join(destDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Encoded())
 				err := os.MkdirAll(blobPath, 0o755)
 				So(err, ShouldBeNil)
 				err = os.Chmod(blobPath, 0o000)
@@ -2620,7 +2620,7 @@ func TestSignatures(t *testing.T) {
 
 		// triggers perm denied on notary manifest on downstream
 		for _, ref := range referrers.References {
-			refPath := path.Join(destDir, repoName, "blobs", string(ref.Digest.Algorithm()), ref.Digest.Hex())
+			refPath := path.Join(destDir, repoName, "blobs", string(ref.Digest.Algorithm()), ref.Digest.Encoded())
 			err := os.MkdirAll(refPath, 0o755)
 			So(err, ShouldBeNil)
 			err = os.Chmod(refPath, 0o000)
@@ -2634,7 +2634,7 @@ func TestSignatures(t *testing.T) {
 
 		// triggers perm denied on sig blobs
 		for _, blob := range artifactManifest.Blobs {
-			blobPath := path.Join(srcDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Hex())
+			blobPath := path.Join(srcDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Encoded())
 			err := os.Chmod(blobPath, 0o000)
 			So(err, ShouldBeNil)
 		}
@@ -2679,7 +2679,7 @@ func TestSignatures(t *testing.T) {
 		cosignManifestDigest := godigest.FromBytes(buf)
 
 		for _, blob := range imageManifest.Layers {
-			blobPath := path.Join(srcDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Hex())
+			blobPath := path.Join(srcDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Encoded())
 			err := os.Chmod(blobPath, 0o000)
 			So(err, ShouldBeNil)
 		}
@@ -2698,11 +2698,11 @@ func TestSignatures(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		for _, blob := range imageManifest.Layers {
-			srcBlobPath := path.Join(srcDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Hex())
+			srcBlobPath := path.Join(srcDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Encoded())
 			err := os.Chmod(srcBlobPath, 0o755)
 			So(err, ShouldBeNil)
 
-			destBlobPath := path.Join(destDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Hex())
+			destBlobPath := path.Join(destDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Encoded())
 			err = os.MkdirAll(destBlobPath, 0o755)
 			So(err, ShouldBeNil)
 			err = os.Chmod(destBlobPath, 0o755)
@@ -2715,7 +2715,7 @@ func TestSignatures(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, 200)
 
 		for _, blob := range imageManifest.Layers {
-			destBlobPath := path.Join(destDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Hex())
+			destBlobPath := path.Join(destDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Encoded())
 			err = os.Chmod(destBlobPath, 0o755)
 			So(err, ShouldBeNil)
 			err = os.Remove(destBlobPath)
@@ -2724,7 +2724,7 @@ func TestSignatures(t *testing.T) {
 
 		// trigger error on upstream config blob
 		srcConfigBlobPath := path.Join(srcDir, repoName, "blobs", string(imageManifest.Config.Digest.Algorithm()),
-			imageManifest.Config.Digest.Hex())
+			imageManifest.Config.Digest.Encoded())
 		err = os.Chmod(srcConfigBlobPath, 0o000)
 		So(err, ShouldBeNil)
 
@@ -2746,7 +2746,7 @@ func TestSignatures(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		destConfigBlobPath := path.Join(destDir, repoName, "blobs", string(imageManifest.Config.Digest.Algorithm()),
-			imageManifest.Config.Digest.Hex())
+			imageManifest.Config.Digest.Encoded())
 
 		err = os.MkdirAll(destConfigBlobPath, 0o755)
 		So(err, ShouldBeNil)
@@ -2764,7 +2764,7 @@ func TestSignatures(t *testing.T) {
 
 		// trigger error on downstream manifest
 		destManifestPath := path.Join(destDir, repoName, "blobs", string(cosignManifestDigest.Algorithm()),
-			cosignManifestDigest.Hex())
+			cosignManifestDigest.Encoded())
 		err = os.MkdirAll(destManifestPath, 0o755)
 		So(err, ShouldBeNil)
 		err = os.Chmod(destManifestPath, 0o000)
@@ -3277,7 +3277,7 @@ func TestSignaturesOnDemand(t *testing.T) {
 		// trigger errors on cosign blobs
 		// trigger error on cosign config blob
 		srcConfigBlobPath := path.Join(srcDir, repoName, "blobs", string(imageManifest.Config.Digest.Algorithm()),
-			imageManifest.Config.Digest.Hex())
+			imageManifest.Config.Digest.Encoded())
 		err = os.Chmod(srcConfigBlobPath, 0o000)
 		So(err, ShouldBeNil)
 
@@ -3292,7 +3292,7 @@ func TestSignaturesOnDemand(t *testing.T) {
 
 		// trigger error on cosign layer blob
 		srcSignatureBlobPath := path.Join(srcDir, repoName, "blobs", string(imageManifest.Layers[0].Digest.Algorithm()),
-			imageManifest.Layers[0].Digest.Hex())
+			imageManifest.Layers[0].Digest.Encoded())
 
 		err = os.Chmod(srcConfigBlobPath, 0o755)
 		So(err, ShouldBeNil)

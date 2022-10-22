@@ -50,6 +50,9 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 
 		const tag = "1.0"
 
+		var manifestDigest godigest.Digest
+		var configDigest godigest.Digest
+		var layerDigest godigest.Digest
 		var manifest string
 		var config string
 		var layer string
@@ -59,10 +62,11 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 		buf := bytes.NewBuffer(body)
 		buflen := buf.Len()
 		digest := godigest.FromBytes(body)
-		upload, n, err := imgStore.FullBlobUpload(repoName, buf, digest.String())
+		upload, n, err := imgStore.FullBlobUpload(repoName, buf, digest)
 		So(err, ShouldBeNil)
 		So(n, ShouldEqual, len(body))
 		So(upload, ShouldNotBeEmpty)
+		layerDigest = digest
 		layer = digest.String()
 
 		// create config digest
@@ -92,8 +96,8 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 			}`, created, created, created))
 		configBuf := bytes.NewBuffer(configBody)
 		configLen := configBuf.Len()
-		configDigest := godigest.FromBytes(configBody)
-		uConfig, nConfig, err := imgStore.FullBlobUpload(repoName, configBuf, configDigest.String())
+		configDigest = godigest.FromBytes(configBody)
+		uConfig, nConfig, err := imgStore.FullBlobUpload(repoName, configBuf, configDigest)
 		So(err, ShouldBeNil)
 		So(nConfig, ShouldEqual, len(configBody))
 		So(uConfig, ShouldNotBeEmpty)
@@ -122,9 +126,11 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 		mbytes, err := json.Marshal(mnfst)
 		So(err, ShouldBeNil)
 
-		manifest, err = imgStore.PutImageManifest(repoName, tag, ispec.MediaTypeImageManifest,
+		manifestDigest, err = imgStore.PutImageManifest(repoName, tag, ispec.MediaTypeImageManifest,
 			mbytes)
 		So(err, ShouldBeNil)
+
+		manifest = manifestDigest.String()
 
 		Convey("Blobs integrity not affected", func() {
 			buff := bytes.NewBufferString("")
@@ -171,7 +177,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 
 		Convey("Config integrity affected", func() {
 			// get content of config file
-			content, err := imgStore.GetBlobContent(repoName, config)
+			content, err := imgStore.GetBlobContent(repoName, configDigest)
 			So(err, ShouldBeNil)
 
 			// delete content of config file
@@ -199,7 +205,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 
 		Convey("Layers integrity affected", func() {
 			// get content of layer
-			content, err := imgStore.GetBlobContent(repoName, layer)
+			content, err := imgStore.GetBlobContent(repoName, layerDigest)
 			So(err, ShouldBeNil)
 
 			// delete content of layer file

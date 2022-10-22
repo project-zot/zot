@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 
-	godigest "github.com/opencontainers/go-digest"
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
 )
@@ -114,11 +113,11 @@ func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, im
 	}
 
 	for _, tag := range tagsInfo {
-		digest := godigest.Digest(tag.Digest)
+		digest := tag.Digest
 
 		manifest, err := olu.GetImageBlobManifest(image, digest)
 		if err != nil {
-			r.log.Error().Err(err).Str("repo", image).Str("digest", tag.Digest).
+			r.log.Error().Err(err).Str("repo", image).Str("digest", tag.Digest.String()).
 				Msg("extension api: error reading manifest")
 
 			return unaffectedImages, err
@@ -331,10 +330,17 @@ func (r *queryResolver) ExpandedRepoInfo(ctx context.Context, repo string) (*gql
 	for _, image := range origRepoInfo.ImageSummaries {
 		tag := image.Tag
 		digest := image.Digest
+		configDigest := image.ConfigDigest
 		isSigned := image.IsSigned
 		size := image.Size
 
-		imageSummary := &gql_generated.ImageSummary{Tag: &tag, Digest: &digest, IsSigned: &isSigned, RepoName: &repo}
+		imageSummary := &gql_generated.ImageSummary{
+			Tag:          &tag,
+			Digest:       &digest,
+			ConfigDigest: &configDigest,
+			IsSigned:     &isSigned,
+			RepoName:     &repo,
+		}
 
 		layers := make([]*gql_generated.LayerSummary, 0)
 
@@ -445,7 +451,7 @@ func (r *queryResolver) DerivedImageList(ctx context.Context, image string) ([]*
 
 			for _, l := range imageLayers {
 				for _, k := range layers {
-					if *k.Digest == l.Digest.Encoded() {
+					if *k.Digest == l.Digest.String() {
 						sameLayer++
 					}
 				}
@@ -517,7 +523,7 @@ func (r *queryResolver) BaseImageList(ctx context.Context, image string) ([]*gql
 				foundLayer := false
 
 				for _, k := range imageLayers {
-					if *l.Digest == k.Digest.Encoded() {
+					if *l.Digest == k.Digest.String() {
 						foundLayer = true
 
 						break

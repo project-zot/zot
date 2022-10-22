@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"zotregistry.io/zot/pkg/storage"
@@ -24,7 +25,7 @@ const (
 
 type TagInfo struct {
 	Name      string
-	Digest    string
+	Digest    godigest.Digest
 	Timestamp time.Time
 }
 

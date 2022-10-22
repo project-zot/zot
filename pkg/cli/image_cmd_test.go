@@ -187,7 +187,7 @@ func TestSearchImageCmd(t *testing.T) {
 		err := cmd.Execute()
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
-		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIGNED SIZE dummyImageName tag DigestsA false 123kB")
+		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIGNED SIZE dummyImageName tag 6e2f80bf false 123kB")
 		So(err, ShouldBeNil)
 	})
 
@@ -203,7 +203,7 @@ func TestSearchImageCmd(t *testing.T) {
 		err := imageCmd.Execute()
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
-		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIGNED SIZE dummyImageName tag DigestsA false 123kB")
+		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIGNED SIZE dummyImageName tag 6e2f80bf false 123kB")
 		So(err, ShouldBeNil)
 		Convey("using shorthand", func() {
 			args := []string{"imagetest", "-n", "dummyImageName", "--url", "someUrlImage"}
@@ -218,13 +218,13 @@ func TestSearchImageCmd(t *testing.T) {
 
 			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
-			So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIGNED SIZE dummyImageName tag DigestsA false 123kB")
+			So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIGNED SIZE dummyImageName tag 6e2f80bf false 123kB")
 			So(err, ShouldBeNil)
 		})
 	})
 
 	Convey("Test image by digest", t, func() {
-		args := []string{"imagetest", "--digest", "DigestsA", "--url", "someUrlImage"}
+		args := []string{"imagetest", "--digest", "6e2f80bf", "--url", "someUrlImage"}
 		configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","showspinner":false}]}`)
 		defer os.Remove(configPath)
 		imageCmd := NewImageCommand(new(mockService))
@@ -235,7 +235,7 @@ func TestSearchImageCmd(t *testing.T) {
 		err := imageCmd.Execute()
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
-		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIGNED SIZE anImage tag DigestsA false 123kB")
+		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIGNED SIZE anImage tag 6e2f80bf false 123kB")
 		So(err, ShouldBeNil)
 
 		Convey("invalid URL format", func() {
@@ -385,42 +385,47 @@ func TestSignature(t *testing.T) {
 
 //nolint:dupl
 func TestDerivedImageList(t *testing.T) {
+	port := test.GetFreePort()
+	url := test.GetBaseURL(port)
+	conf := config.New()
+	conf.HTTP.Port = port
+	defaultVal := true
+	conf.Extensions = &extconf.ExtensionConfig{
+		Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+	}
+	ctlr := api.NewController(conf)
+	ctlr.Config.Storage.RootDirectory = t.TempDir()
+
+	go func(controller *api.Controller) {
+		// this blocks
+		if err := controller.Run(context.Background()); err != nil {
+			return
+		}
+	}(ctlr)
+
+	// wait till ready
+	for {
+		_, err := resty.R().Get(url)
+		if err == nil {
+			break
+		}
+
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	defer func(controller *api.Controller) {
+		ctx := context.Background()
+		_ = controller.Server.Shutdown(ctx)
+	}(ctlr)
+
+	err := uploadManifest(url)
+	if err != nil {
+		panic(err)
+	}
+
+	t.Logf("rootDir: %s", ctlr.Config.Storage.RootDirectory)
+
 	Convey("Test from real server", t, func() {
-		port := test.GetFreePort()
-		url := test.GetBaseURL(port)
-		conf := config.New()
-		conf.HTTP.Port = port
-		defaultVal := true
-		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
-		}
-		ctlr := api.NewController(conf)
-		ctlr.Config.Storage.RootDirectory = t.TempDir()
-
-		go func(controller *api.Controller) {
-			// this blocks
-			if err := controller.Run(context.Background()); err != nil {
-				return
-			}
-		}(ctlr)
-		// wait till ready
-		for {
-			_, err := resty.R().Get(url)
-			if err == nil {
-				break
-			}
-
-			time.Sleep(100 * time.Millisecond)
-		}
-		defer func(controller *api.Controller) {
-			ctx := context.Background()
-			_ = controller.Server.Shutdown(ctx)
-		}(ctlr)
-
-		err := uploadManifest(url)
-		So(err, ShouldBeNil)
-		t.Logf("rootDir: %s", ctlr.Config.Storage.RootDirectory)
-
 		Convey("Test derived images list working", func() {
 			t.Logf("%s", ctlr.Config.Storage.RootDirectory)
 			args := []string{"imagetest", "--derived-images", "repo7:test:1.0"}
@@ -479,42 +484,47 @@ func TestDerivedImageList(t *testing.T) {
 
 //nolint:dupl
 func TestBaseImageList(t *testing.T) {
+	port := test.GetFreePort()
+	url := test.GetBaseURL(port)
+	conf := config.New()
+	conf.HTTP.Port = port
+	defaultVal := true
+	conf.Extensions = &extconf.ExtensionConfig{
+		Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+	}
+	ctlr := api.NewController(conf)
+	ctlr.Config.Storage.RootDirectory = t.TempDir()
+
+	go func(controller *api.Controller) {
+		// this blocks
+		if err := controller.Run(context.Background()); err != nil {
+			return
+		}
+	}(ctlr)
+
+	// wait till ready
+	for {
+		_, err := resty.R().Get(url)
+		if err == nil {
+			break
+		}
+
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	defer func(controller *api.Controller) {
+		ctx := context.Background()
+		_ = controller.Server.Shutdown(ctx)
+	}(ctlr)
+
+	err := uploadManifest(url)
+	if err != nil {
+		panic(err)
+	}
+
+	t.Logf("rootDir: %s", ctlr.Config.Storage.RootDirectory)
+
 	Convey("Test from real server", t, func() {
-		port := test.GetFreePort()
-		url := test.GetBaseURL(port)
-		conf := config.New()
-		conf.HTTP.Port = port
-		defaultVal := true
-		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
-		}
-		ctlr := api.NewController(conf)
-		ctlr.Config.Storage.RootDirectory = t.TempDir()
-
-		go func(controller *api.Controller) {
-			// this blocks
-			if err := controller.Run(context.Background()); err != nil {
-				return
-			}
-		}(ctlr)
-		// wait till ready
-		for {
-			_, err := resty.R().Get(url)
-			if err == nil {
-				break
-			}
-
-			time.Sleep(100 * time.Millisecond)
-		}
-		defer func(controller *api.Controller) {
-			ctx := context.Background()
-			_ = controller.Server.Shutdown(ctx)
-		}(ctlr)
-
-		err := uploadManifest(url)
-		So(err, ShouldBeNil)
-		t.Logf("rootDir: %s", ctlr.Config.Storage.RootDirectory)
-
 		Convey("Test base images list working", func() {
 			t.Logf("%s", ctlr.Config.Storage.RootDirectory)
 			args := []string{"imagetest", "--base-images", "repo7:test:1.0"}
@@ -727,7 +737,7 @@ func TestOutputFormat(t *testing.T) {
 		err := cmd.Execute()
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
-		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIGNED SIZE dummyImageName tag DigestsA false 123kB")
+		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIGNED SIZE dummyImageName tag 6e2f80bf false 123kB")
 		So(err, ShouldBeNil)
 	})
 
@@ -746,7 +756,11 @@ func TestOutputFormat(t *testing.T) {
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
 		So(strings.TrimSpace(str), ShouldEqual, `{ "repoName": "dummyImageName", "tag": "tag", `+
-			`"configDigest": "", "digest": "DigestsAreReallyLong", "layers": null, "size": "123445", "isSigned": false }`)
+			`"configDigest": "sha256:4c10985c40365538426f2ba8cf0c21384a7769be502a550dcc0601b3736625e0", `+
+			`"digest": "sha256:6e2f80bf9cfaabad474fbaf8ad68fdb652f776ea80b63492ecca404e5f6446a6", `+
+			`"layers": [ { "size": "0", `+
+			`"digest": "sha256:c122a146f0d02349be211bb95cc2530f4a5793f96edbdfa00860f741e5d8c0e6" } ], `+
+			`"size": "123445", "isSigned": false }`)
 		So(err, ShouldBeNil)
 	})
 
@@ -765,9 +779,11 @@ func TestOutputFormat(t *testing.T) {
 		So(
 			strings.TrimSpace(str),
 			ShouldEqual,
-			`reponame: dummyImageName tag: tag configdigest: "" `+
-				`digest: DigestsAreReallyLong layers: [] size: "123445" `+
-				`issigned: false`,
+			`reponame: dummyImageName tag: tag `+
+				`configdigest: sha256:4c10985c40365538426f2ba8cf0c21384a7769be502a550dcc0601b3736625e0 `+
+				`digest: sha256:6e2f80bf9cfaabad474fbaf8ad68fdb652f776ea80b63492ecca404e5f6446a6 `+
+				`layers: - size: 0 digest: sha256:c122a146f0d02349be211bb95cc2530f4a5793f96edbdfa00860f741e5d8c0e6 `+
+				`size: "123445" issigned: false`,
 		)
 		So(err, ShouldBeNil)
 
@@ -789,9 +805,11 @@ func TestOutputFormat(t *testing.T) {
 			So(
 				strings.TrimSpace(str),
 				ShouldEqual,
-				`reponame: dummyImageName tag: tag configdigest: "" `+
-					`digest: DigestsAreReallyLong layers: [] size: "123445" `+
-					`issigned: false`,
+				`reponame: dummyImageName tag: tag `+
+					`configdigest: sha256:4c10985c40365538426f2ba8cf0c21384a7769be502a550dcc0601b3736625e0 `+
+					`digest: sha256:6e2f80bf9cfaabad474fbaf8ad68fdb652f776ea80b63492ecca404e5f6446a6 `+
+					`layers: - size: 0 digest: sha256:c122a146f0d02349be211bb95cc2530f4a5793f96edbdfa00860f741e5d8c0e6 `+
+					`size: "123445" issigned: false`,
 			)
 			So(err, ShouldBeNil)
 		})
@@ -1086,41 +1104,47 @@ func TestServerResponseGQL(t *testing.T) {
 }
 
 func TestServerResponse(t *testing.T) {
+	port := test.GetFreePort()
+	url := test.GetBaseURL(port)
+	conf := config.New()
+	conf.HTTP.Port = port
+	defaultVal := true
+	conf.Extensions = &extconf.ExtensionConfig{
+		Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+	}
+	ctlr := api.NewController(conf)
+	ctlr.Config.Storage.RootDirectory = t.TempDir()
+
+	go func(controller *api.Controller) {
+		// this blocks
+		if err := controller.Run(context.Background()); err != nil {
+			return
+		}
+	}(ctlr)
+
+	// wait till ready
+	for {
+		_, err := resty.R().Get(url)
+		if err == nil {
+			break
+		}
+
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	defer func(controller *api.Controller) {
+		ctx := context.Background()
+		_ = controller.Server.Shutdown(ctx)
+	}(ctlr)
+
+	err := uploadManifest(url)
+	if err != nil {
+		panic(err)
+	}
+
+	t.Logf("%s", ctlr.Config.Storage.RootDirectory)
+
 	Convey("Test from real server", t, func() {
-		port := test.GetFreePort()
-		url := test.GetBaseURL(port)
-		conf := config.New()
-		conf.HTTP.Port = port
-		defaultVal := true
-		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
-		}
-		ctlr := api.NewController(conf)
-		ctlr.Config.Storage.RootDirectory = t.TempDir()
-		go func(controller *api.Controller) {
-			// this blocks
-			if err := controller.Run(context.Background()); err != nil {
-				return
-			}
-		}(ctlr)
-		// wait till ready
-		for {
-			_, err := resty.R().Get(url)
-			if err == nil {
-				break
-			}
-
-			time.Sleep(100 * time.Millisecond)
-		}
-		defer func(controller *api.Controller) {
-			ctx := context.Background()
-			_ = controller.Server.Shutdown(ctx)
-		}(ctlr)
-
-		err := uploadManifest(url)
-		t.Logf("%s", ctlr.Config.Storage.RootDirectory)
-		So(err, ShouldBeNil)
-
 		Convey("Test all images", func() {
 			t.Logf("%s", ctlr.Config.Storage.RootDirectory)
 			args := []string{"imagetest"}
@@ -1555,10 +1579,12 @@ func (service mockService) getDerivedImageListGQL(ctx context.Context, config se
 	imageListGQLResponse := &imageListStructForDerivedImagesGQL{}
 	imageListGQLResponse.Data.ImageList = []imageStruct{
 		{
-			RepoName: "dummyImageName",
-			Tag:      "tag",
-			Digest:   "DigestsAreReallyLong",
-			Size:     "123445",
+			RepoName:     "dummyImageName",
+			Tag:          "tag",
+			Digest:       godigest.FromString("Digest").String(),
+			ConfigDigest: godigest.FromString("ConfigDigest").String(),
+			Size:         "123445",
+			Layers:       []layer{{Digest: godigest.FromString("LayerDigest").String()}},
 		},
 	}
 
@@ -1571,10 +1597,12 @@ func (service mockService) getBaseImageListGQL(ctx context.Context, config searc
 	imageListGQLResponse := &imageListStructForBaseImagesGQL{}
 	imageListGQLResponse.Data.ImageList = []imageStruct{
 		{
-			RepoName: "dummyImageName",
-			Tag:      "tag",
-			Digest:   "DigestsAreReallyLong",
-			Size:     "123445",
+			RepoName:     "dummyImageName",
+			Tag:          "tag",
+			Digest:       godigest.FromString("Digest").String(),
+			ConfigDigest: godigest.FromString("ConfigDigest").String(),
+			Size:         "123445",
+			Layers:       []layer{{Digest: godigest.FromString("LayerDigest").String()}},
 		},
 	}
 
@@ -1587,10 +1615,12 @@ func (service mockService) getImagesGQL(ctx context.Context, config searchConfig
 	imageListGQLResponse := &imageListStructGQL{}
 	imageListGQLResponse.Data.ImageList = []imageStruct{
 		{
-			RepoName: "dummyImageName",
-			Tag:      "tag",
-			Digest:   "DigestsAreReallyLong",
-			Size:     "123445",
+			RepoName:     "dummyImageName",
+			Tag:          "tag",
+			Digest:       godigest.FromString("Digest").String(),
+			ConfigDigest: godigest.FromString("ConfigDigest").String(),
+			Size:         "123445",
+			Layers:       []layer{{Digest: godigest.FromString("LayerDigest").String()}},
 		},
 	}
 
@@ -1603,10 +1633,12 @@ func (service mockService) getImagesByDigestGQL(ctx context.Context, config sear
 	imageListGQLResponse := &imageListStructForDigestGQL{}
 	imageListGQLResponse.Data.ImageList = []imageStruct{
 		{
-			RepoName: "randomimageName",
-			Tag:      "tag",
-			Digest:   "DigestsAreReallyLong",
-			Size:     "123445",
+			RepoName:     "randomimageName",
+			Tag:          "tag",
+			Digest:       godigest.FromString("Digest").String(),
+			ConfigDigest: godigest.FromString("ConfigDigest").String(),
+			Size:         "123445",
+			Layers:       []layer{{Digest: godigest.FromString("LayerDigest").String()}},
 		},
 	}
 
@@ -1700,8 +1732,10 @@ func (service mockService) getMockedImageByName(imageName string) imageStruct {
 	image := imageStruct{}
 	image.RepoName = imageName
 	image.Tag = "tag"
-	image.Digest = "DigestsAreReallyLong"
+	image.Digest = godigest.FromString("Digest").String()
+	image.ConfigDigest = godigest.FromString("ConfigDigest").String()
 	image.Size = "123445"
+	image.Layers = []layer{{Digest: godigest.FromString("LayerDigest").String()}}
 
 	return image
 }
@@ -1715,8 +1749,10 @@ func (service mockService) getAllImages(ctx context.Context, config searchConfig
 	image := &imageStruct{}
 	image.RepoName = "randomimageName"
 	image.Tag = "tag"
-	image.Digest = "DigestsAreReallyLong"
+	image.Digest = godigest.FromString("Digest").String()
+	image.ConfigDigest = godigest.FromString("ConfigDigest").String()
 	image.Size = "123445"
+	image.Layers = []layer{{Digest: godigest.FromString("LayerDigest").String()}}
 
 	str, err := image.string(*config.outputFormat, len(image.RepoName), len(image.Tag))
 	if err != nil {
@@ -1737,8 +1773,10 @@ func (service mockService) getImageByName(ctx context.Context, config searchConf
 	image := &imageStruct{}
 	image.RepoName = imageName
 	image.Tag = "tag"
-	image.Digest = "DigestsAreReallyLong"
+	image.Digest = godigest.FromString("Digest").String()
+	image.ConfigDigest = godigest.FromString("ConfigDigest").String()
 	image.Size = "123445"
+	image.Layers = []layer{{Digest: godigest.FromString("LayerDigest").String()}}
 
 	str, err := image.string(*config.outputFormat, len(image.RepoName), len(image.Tag))
 	if err != nil {

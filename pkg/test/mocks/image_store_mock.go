@@ -4,7 +4,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/opencontainers/go-digest"
+	godigest "github.com/opencontainers/go-digest"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 
 	"zotregistry.io/zot/pkg/scheduler"
@@ -18,8 +18,8 @@ type MockedImageStore struct {
 	GetRepositoriesFn      func() ([]string, error)
 	GetNextRepositoryFn    func(repo string) (string, error)
 	GetImageTagsFn         func(repo string) ([]string, error)
-	GetImageManifestFn     func(repo string, reference string) ([]byte, string, string, error)
-	PutImageManifestFn     func(repo string, reference string, mediaType string, body []byte) (string, error)
+	GetImageManifestFn     func(repo string, reference string) ([]byte, godigest.Digest, string, error)
+	PutImageManifestFn     func(repo string, reference string, mediaType string, body []byte) (godigest.Digest, error)
 	DeleteImageManifestFn  func(repo string, reference string) error
 	BlobUploadPathFn       func(repo string, uuid string) string
 	NewBlobUploadFn        func(repo string) (string, error)
@@ -27,19 +27,19 @@ type MockedImageStore struct {
 	BlobUploadInfoFn       func(repo string, uuid string) (int64, error)
 	PutBlobChunkStreamedFn func(repo string, uuid string, body io.Reader) (int64, error)
 	PutBlobChunkFn         func(repo string, uuid string, from int64, to int64, body io.Reader) (int64, error)
-	FinishBlobUploadFn     func(repo string, uuid string, body io.Reader, digest string) error
-	FullBlobUploadFn       func(repo string, body io.Reader, digest string) (string, int64, error)
-	DedupeBlobFn           func(src string, dstDigest digest.Digest, dst string) error
+	FinishBlobUploadFn     func(repo string, uuid string, body io.Reader, digest godigest.Digest) error
+	FullBlobUploadFn       func(repo string, body io.Reader, digest godigest.Digest) (string, int64, error)
+	DedupeBlobFn           func(src string, dstDigest godigest.Digest, dst string) error
 	DeleteBlobUploadFn     func(repo string, uuid string) error
-	BlobPathFn             func(repo string, digest digest.Digest) string
-	CheckBlobFn            func(repo string, digest string) (bool, int64, error)
-	GetBlobPartialFn       func(repo string, digest string, mediaType string, from, to int64,
+	BlobPathFn             func(repo string, digest godigest.Digest) string
+	CheckBlobFn            func(repo string, digest godigest.Digest) (bool, int64, error)
+	GetBlobPartialFn       func(repo string, digest godigest.Digest, mediaType string, from, to int64,
 	) (io.ReadCloser, int64, int64, error)
-	GetBlobFn           func(repo string, digest string, mediaType string) (io.ReadCloser, int64, error)
-	DeleteBlobFn        func(repo string, digest string) error
+	GetBlobFn           func(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error)
+	DeleteBlobFn        func(repo string, digest godigest.Digest) error
 	GetIndexContentFn   func(repo string) ([]byte, error)
-	GetBlobContentFn    func(repo, digest string) ([]byte, error)
-	GetReferrersFn      func(repo, digest string, mediaType string) ([]artifactspec.Descriptor, error)
+	GetBlobContentFn    func(repo string, digest godigest.Digest) ([]byte, error)
+	GetReferrersFn      func(repo string, digest godigest.Digest, mediaType string) ([]artifactspec.Descriptor, error)
 	URLForPathFn        func(path string) (string, error)
 	RunGCRepoFn         func(repo string) error
 	RunGCPeriodicallyFn func(interval time.Duration, sch *scheduler.Scheduler)
@@ -105,7 +105,7 @@ func (is MockedImageStore) GetNextRepository(repo string) (string, error) {
 	return "", nil
 }
 
-func (is MockedImageStore) GetImageManifest(repo string, reference string) ([]byte, string, string, error) {
+func (is MockedImageStore) GetImageManifest(repo string, reference string) ([]byte, godigest.Digest, string, error) {
 	if is.GetImageManifestFn != nil {
 		return is.GetImageManifestFn(repo, reference)
 	}
@@ -118,7 +118,7 @@ func (is MockedImageStore) PutImageManifest(
 	reference string,
 	mediaType string,
 	body []byte,
-) (string, error) {
+) (godigest.Digest, error) {
 	if is.PutImageManifestFn != nil {
 		return is.PutImageManifestFn(repo, reference, mediaType, body)
 	}
@@ -196,7 +196,7 @@ func (is MockedImageStore) PutBlobChunk(
 	return 0, nil
 }
 
-func (is MockedImageStore) FinishBlobUpload(repo string, uuid string, body io.Reader, digest string) error {
+func (is MockedImageStore) FinishBlobUpload(repo string, uuid string, body io.Reader, digest godigest.Digest) error {
 	if is.FinishBlobUploadFn != nil {
 		return is.FinishBlobUploadFn(repo, uuid, body, digest)
 	}
@@ -204,7 +204,7 @@ func (is MockedImageStore) FinishBlobUpload(repo string, uuid string, body io.Re
 	return nil
 }
 
-func (is MockedImageStore) FullBlobUpload(repo string, body io.Reader, digest string) (string, int64, error) {
+func (is MockedImageStore) FullBlobUpload(repo string, body io.Reader, digest godigest.Digest) (string, int64, error) {
 	if is.FullBlobUploadFn != nil {
 		return is.FullBlobUploadFn(repo, body, digest)
 	}
@@ -212,7 +212,7 @@ func (is MockedImageStore) FullBlobUpload(repo string, body io.Reader, digest st
 	return "", 0, nil
 }
 
-func (is MockedImageStore) DedupeBlob(src string, dstDigest digest.Digest, dst string) error {
+func (is MockedImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dst string) error {
 	if is.DedupeBlobFn != nil {
 		return is.DedupeBlobFn(src, dstDigest, dst)
 	}
@@ -220,7 +220,7 @@ func (is MockedImageStore) DedupeBlob(src string, dstDigest digest.Digest, dst s
 	return nil
 }
 
-func (is MockedImageStore) DeleteBlob(repo string, digest string) error {
+func (is MockedImageStore) DeleteBlob(repo string, digest godigest.Digest) error {
 	if is.DeleteBlobFn != nil {
 		return is.DeleteBlobFn(repo, digest)
 	}
@@ -228,7 +228,7 @@ func (is MockedImageStore) DeleteBlob(repo string, digest string) error {
 	return nil
 }
 
-func (is MockedImageStore) BlobPath(repo string, digest digest.Digest) string {
+func (is MockedImageStore) BlobPath(repo string, digest godigest.Digest) string {
 	if is.BlobPathFn != nil {
 		return is.BlobPathFn(repo, digest)
 	}
@@ -236,7 +236,7 @@ func (is MockedImageStore) BlobPath(repo string, digest digest.Digest) string {
 	return ""
 }
 
-func (is MockedImageStore) CheckBlob(repo string, digest string) (bool, int64, error) {
+func (is MockedImageStore) CheckBlob(repo string, digest godigest.Digest) (bool, int64, error) {
 	if is.CheckBlobFn != nil {
 		return is.CheckBlobFn(repo, digest)
 	}
@@ -244,7 +244,7 @@ func (is MockedImageStore) CheckBlob(repo string, digest string) (bool, int64, e
 	return true, 0, nil
 }
 
-func (is MockedImageStore) GetBlobPartial(repo string, digest string, mediaType string, from, to int64,
+func (is MockedImageStore) GetBlobPartial(repo string, digest godigest.Digest, mediaType string, from, to int64,
 ) (io.ReadCloser, int64, int64, error) {
 	if is.GetBlobPartialFn != nil {
 		return is.GetBlobPartialFn(repo, digest, mediaType, from, to)
@@ -253,7 +253,8 @@ func (is MockedImageStore) GetBlobPartial(repo string, digest string, mediaType 
 	return io.NopCloser(&io.LimitedReader{}), 0, 0, nil
 }
 
-func (is MockedImageStore) GetBlob(repo string, digest string, mediaType string) (io.ReadCloser, int64, error) {
+func (is MockedImageStore) GetBlob(repo string, digest godigest.Digest, mediaType string,
+) (io.ReadCloser, int64, error) {
 	if is.GetBlobFn != nil {
 		return is.GetBlobFn(repo, digest, mediaType)
 	}
@@ -261,9 +262,9 @@ func (is MockedImageStore) GetBlob(repo string, digest string, mediaType string)
 	return io.NopCloser(&io.LimitedReader{}), 0, nil
 }
 
-func (is MockedImageStore) DeleteBlobUpload(repo string, digest string) error {
+func (is MockedImageStore) DeleteBlobUpload(repo string, uuid string) error {
 	if is.DeleteBlobUploadFn != nil {
-		return is.DeleteBlobUploadFn(repo, digest)
+		return is.DeleteBlobUploadFn(repo, uuid)
 	}
 
 	return nil
@@ -277,7 +278,7 @@ func (is MockedImageStore) GetIndexContent(repo string) ([]byte, error) {
 	return []byte{}, nil
 }
 
-func (is MockedImageStore) GetBlobContent(repo string, digest string) ([]byte, error) {
+func (is MockedImageStore) GetBlobContent(repo string, digest godigest.Digest) ([]byte, error) {
 	if is.GetBlobContentFn != nil {
 		return is.GetBlobContentFn(repo, digest)
 	}
@@ -287,7 +288,7 @@ func (is MockedImageStore) GetBlobContent(repo string, digest string) ([]byte, e
 
 func (is MockedImageStore) GetReferrers(
 	repo string,
-	digest string,
+	digest godigest.Digest,
 	mediaType string,
 ) ([]artifactspec.Descriptor, error) {
 	if is.GetReferrersFn != nil {

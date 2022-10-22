@@ -1,7 +1,6 @@
 package mocks
 
 import (
-	v1 "github.com/google/go-containerregistry/pkg/v1"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
@@ -9,10 +8,10 @@ import (
 )
 
 type OciLayoutUtilsMock struct {
-	GetImageManifestFn          func(repo string, reference string) (ispec.Manifest, string, error)
-	GetImageManifestsFn         func(image string) ([]ispec.Descriptor, error)
-	GetImageBlobManifestFn      func(imageDir string, digest godigest.Digest) (v1.Manifest, error)
-	GetImageInfoFn              func(imageDir string, hash v1.Hash) (ispec.Image, error)
+	GetImageManifestFn          func(repo string, reference string) (ispec.Manifest, godigest.Digest, error)
+	GetImageManifestsFn         func(repo string) ([]ispec.Descriptor, error)
+	GetImageBlobManifestFn      func(repo string, digest godigest.Digest) (ispec.Manifest, error)
+	GetImageInfoFn              func(repo string, digest godigest.Digest) (ispec.Image, error)
 	GetImageTagsWithTimestampFn func(repo string) ([]common.TagInfo, error)
 	GetImagePlatformFn          func(imageInfo ispec.Image) (string, string)
 	GetImageVendorFn            func(imageInfo ispec.Image) string
@@ -25,7 +24,8 @@ type OciLayoutUtilsMock struct {
 	GetRepositoriesFn           func() ([]string, error)
 }
 
-func (olum OciLayoutUtilsMock) GetImageManifest(repo string, reference string) (ispec.Manifest, string, error) {
+func (olum OciLayoutUtilsMock) GetImageManifest(repo string, reference string,
+) (ispec.Manifest, godigest.Digest, error) {
 	if olum.GetImageManifestFn != nil {
 		return olum.GetImageManifestFn(repo, reference)
 	}
@@ -41,25 +41,25 @@ func (olum OciLayoutUtilsMock) GetRepositories() ([]string, error) {
 	return []string{}, nil
 }
 
-func (olum OciLayoutUtilsMock) GetImageManifests(image string) ([]ispec.Descriptor, error) {
+func (olum OciLayoutUtilsMock) GetImageManifests(repo string) ([]ispec.Descriptor, error) {
 	if olum.GetImageManifestsFn != nil {
-		return olum.GetImageManifestsFn(image)
+		return olum.GetImageManifestsFn(repo)
 	}
 
 	return []ispec.Descriptor{}, nil
 }
 
-func (olum OciLayoutUtilsMock) GetImageBlobManifest(imageDir string, digest godigest.Digest) (v1.Manifest, error) {
+func (olum OciLayoutUtilsMock) GetImageBlobManifest(repo string, digest godigest.Digest) (ispec.Manifest, error) {
 	if olum.GetImageBlobManifestFn != nil {
-		return olum.GetImageBlobManifestFn(imageDir, digest)
+		return olum.GetImageBlobManifestFn(repo, digest)
 	}
 
-	return v1.Manifest{}, nil
+	return ispec.Manifest{}, nil
 }
 
-func (olum OciLayoutUtilsMock) GetImageInfo(imageDir string, hash v1.Hash) (ispec.Image, error) {
+func (olum OciLayoutUtilsMock) GetImageInfo(repo string, digest godigest.Digest) (ispec.Image, error) {
 	if olum.GetImageInfoFn != nil {
-		return olum.GetImageInfoFn(imageDir, hash)
+		return olum.GetImageInfoFn(repo, digest)
 	}
 
 	return ispec.Image{}, nil

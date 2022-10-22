@@ -15,9 +15,8 @@ import (
 	"testing"
 	"time"
 
-	v1 "github.com/google/go-containerregistry/pkg/v1"
 	regTypes "github.com/google/go-containerregistry/pkg/v1/types"
-	"github.com/opencontainers/go-digest"
+	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
@@ -394,6 +393,8 @@ func TestDownloadDB(t *testing.T) {
 func TestCVESearch(t *testing.T) {
 	Convey("Test image vulnerability scanning", t, func() {
 		updateDuration, _ = time.ParseDuration("1h")
+		dbDir := "../../../../test/data"
+
 		port := GetFreePort()
 		baseURL := GetBaseURL(port)
 		conf := config.New()
@@ -785,7 +786,7 @@ func TestCVEStruct(t *testing.T) {
 							Annotations: map[string]string{
 								ispec.AnnotationRefName: "0.1.0",
 							},
-							Digest: "abcc",
+							Digest: godigest.FromString("abcc"),
 						},
 						{
 							MediaType: "application/vnd.oci.image.manifest.v1+json",
@@ -793,7 +794,7 @@ func TestCVEStruct(t *testing.T) {
 							Annotations: map[string]string{
 								ispec.AnnotationRefName: "1.0.0",
 							},
-							Digest: "abcd",
+							Digest: godigest.FromString("abcd"),
 						},
 						{
 							MediaType: "application/vnd.oci.image.manifest.v1+json",
@@ -801,7 +802,7 @@ func TestCVEStruct(t *testing.T) {
 							Annotations: map[string]string{
 								ispec.AnnotationRefName: "1.1.0",
 							},
-							Digest: "abce",
+							Digest: godigest.FromString("abce"),
 						},
 						{
 							MediaType: "application/vnd.oci.image.manifest.v1+json",
@@ -809,7 +810,7 @@ func TestCVEStruct(t *testing.T) {
 							Annotations: map[string]string{
 								ispec.AnnotationRefName: "1.0.1",
 							},
-							Digest: "abcf",
+							Digest: godigest.FromString("abcf"),
 						},
 					}, nil
 				}
@@ -823,7 +824,7 @@ func TestCVEStruct(t *testing.T) {
 							Annotations: map[string]string{
 								ispec.AnnotationRefName: "1.0.0",
 							},
-							Digest: "abcd",
+							Digest: godigest.FromString("abcd"),
 						},
 					}, nil
 				}
@@ -837,22 +838,22 @@ func TestCVEStruct(t *testing.T) {
 					return []common.TagInfo{
 						{
 							Name:      "0.1.0",
-							Digest:    "abcc",
+							Digest:    godigest.FromString("abcc"),
 							Timestamp: time.Date(2008, 1, 1, 12, 0, 0, 0, time.UTC),
 						},
 						{
 							Name:      "1.0.0",
-							Digest:    "abcd",
+							Digest:    godigest.FromString("abcd"),
 							Timestamp: time.Date(2009, 1, 1, 12, 0, 0, 0, time.UTC),
 						},
 						{
 							Name:      "1.1.0",
-							Digest:    "abce",
+							Digest:    godigest.FromString("abce"),
 							Timestamp: time.Date(2010, 1, 1, 12, 0, 0, 0, time.UTC),
 						},
 						{
 							Name:      "1.0.1",
-							Digest:    "abcf",
+							Digest:    godigest.FromString("abcf"),
 							Timestamp: time.Date(2011, 1, 1, 12, 0, 0, 0, time.UTC),
 						},
 					}, nil
@@ -863,7 +864,7 @@ func TestCVEStruct(t *testing.T) {
 					return []common.TagInfo{
 						{
 							Name:      "1.0.0",
-							Digest:    "abcd",
+							Digest:    godigest.FromString("abcd"),
 							Timestamp: time.Date(2009, 1, 1, 12, 0, 0, 0, time.UTC),
 						},
 					}, nil
@@ -872,15 +873,15 @@ func TestCVEStruct(t *testing.T) {
 				// By default do not return any tags
 				return []common.TagInfo{}, errors.ErrRepoNotFound
 			},
-			GetImageBlobManifestFn: func(imageDir string, digest digest.Digest) (v1.Manifest, error) {
+			GetImageBlobManifestFn: func(imageDir string, digest godigest.Digest) (ispec.Manifest, error) {
 				// Valid image for scanning
 				if imageDir == "repo1" { //nolint: goconst
-					return v1.Manifest{
-						Layers: []v1.Descriptor{
+					return ispec.Manifest{
+						Layers: []ispec.Descriptor{
 							{
-								MediaType: regTypes.OCILayer,
+								MediaType: ispec.MediaTypeImageLayer,
 								Size:      0,
-								Digest:    v1.Hash{},
+								Digest:    godigest.Digest(""),
 							},
 						},
 					}, nil
@@ -888,18 +889,18 @@ func TestCVEStruct(t *testing.T) {
 
 				// Image with non-scannable blob
 				if imageDir == "repo2" { //nolint: goconst
-					return v1.Manifest{
-						Layers: []v1.Descriptor{
+					return ispec.Manifest{
+						Layers: []ispec.Descriptor{
 							{
-								MediaType: regTypes.OCIRestrictedLayer,
+								MediaType: string(regTypes.OCIRestrictedLayer),
 								Size:      0,
-								Digest:    v1.Hash{},
+								Digest:    godigest.Digest(""),
 							},
 						},
 					}, nil
 				}
 
-				return v1.Manifest{}, errors.ErrBlobNotFound
+				return ispec.Manifest{}, errors.ErrBlobNotFound
 			},
 		}
 
@@ -1010,7 +1011,7 @@ func TestCVEStruct(t *testing.T) {
 
 					for _, imageLayer := range imageLayers {
 						switch imageLayer.MediaType {
-						case regTypes.OCILayer, regTypes.DockerLayer:
+						case ispec.MediaTypeImageLayer, ispec.MediaTypeImageLayerGzip, string(regTypes.DockerLayer):
 							return true, nil
 
 						default:
@@ -1211,9 +1212,9 @@ func TestCVEStruct(t *testing.T) {
 		Convey("Test error while reading blob manifest", func() {
 			localLayoutUtils := layoutUtils
 			localLayoutUtils.GetImageBlobManifestFn = func(imageDir string,
-				digest digest.Digest,
-			) (v1.Manifest, error) {
-				return v1.Manifest{}, errors.ErrBlobNotFound
+				digest godigest.Digest,
+			) (ispec.Manifest, error) {
+				return ispec.Manifest{}, errors.ErrBlobNotFound
 			}
 
 			cveInfo := cveinfo.BaseCveInfo{Log: log, Scanner: scanner, LayoutUtils: localLayoutUtils}
