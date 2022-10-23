@@ -4,19 +4,14 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
-	"net/http"
-	"net/url"
 	"os"
 	"path"
 
 	"github.com/briandowns/spinner"
 	"github.com/spf13/cobra"
-	"gopkg.in/resty.v1"
 
 	zotErrors "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/api/constants"
 )
 
 func NewCveCommand(searchService SearchService) *cobra.Command {
@@ -142,74 +137,10 @@ type cveFlagVariables struct {
 	debug           *bool
 }
 
-type field struct {
-	Name string `json:"name"`
-}
-
-type schemaList struct {
-	Data struct {
-		Schema struct {
-			QueryType struct {
-				Fields []field `json:"fields"`
-			} `json:"queryType"` //nolint:tagliatelle // graphQL schema
-		} `json:"__schema"` //nolint:tagliatelle // graphQL schema
-	} `json:"data"`
-}
-
-func containsGQLQuery(queryList []field, query string) bool {
-	for _, q := range queryList {
-		if q.Name == query {
-			return true
-		}
-	}
-
-	return false
-}
-
-func checkExtEndPoint(serverURL string) bool {
-	client := resty.New()
-
-	extEndPoint, err := combineServerAndEndpointURL(serverURL, fmt.Sprintf("%s%s",
-		constants.RoutePrefix, constants.ExtOciDiscoverPrefix))
-	if err != nil {
-		return false
-	}
-
-	//nolint: gosec
-	resp, err := client.R().Get(extEndPoint)
-	if err != nil || resp.StatusCode() != http.StatusOK {
-		return false
-	}
-
-	searchEndPoint, _ := combineServerAndEndpointURL(serverURL, constants.FullSearchPrefix)
-
-	query := `
-        {
-            __schema() {
-                queryType {
-                    fields {
-                        name
-                    }
-                }
-            }
-        }`
-
-	resp, err = client.R().Get(searchEndPoint + "?query=" + url.QueryEscape(query))
-	if err != nil || resp.StatusCode() != http.StatusOK {
-		return false
-	}
-
-	queryList := &schemaList{}
-
-	_ = json.Unmarshal(resp.Body(), queryList)
-
-	return containsGQLQuery(queryList.Data.Schema.QueryType.Fields, "ImageList")
-}
-
 func searchCve(searchConfig searchConfig) error {
 	var searchers []searcher
 
-	if checkExtEndPoint(*searchConfig.servURL) {
+	if checkExtEndPoint(searchConfig) {
 		searchers = getCveSearchersGQL()
 	} else {
 		searchers = getCveSearchers()
