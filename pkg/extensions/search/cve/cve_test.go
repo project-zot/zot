@@ -829,6 +829,20 @@ func TestCVEStruct(t *testing.T) {
 					}, nil
 				}
 
+				// Image with no CVEs
+				if repo == "repo4" { //nolint: goconst
+					return []ispec.Descriptor{
+						{
+							MediaType: "application/vnd.oci.image.manifest.v1+json",
+							Size:      int64(0),
+							Annotations: map[string]string{
+								ispec.AnnotationRefName: "1.0.0",
+							},
+							Digest: godigest.FromString("abc"),
+						},
+					}, nil
+				}
+
 				// By default the image is not found
 				return nil, errors.ErrRepoNotFound
 			},
@@ -870,6 +884,17 @@ func TestCVEStruct(t *testing.T) {
 					}, nil
 				}
 
+				// Image with no vulnerabilities, repo3 is for tests on missing images
+				if repo == "repo4" { //nolint: goconst
+					return []common.TagInfo{
+						{
+							Name:      "1.0.0",
+							Digest:    godigest.FromString("abc"),
+							Timestamp: time.Date(2009, 1, 1, 12, 0, 0, 0, time.UTC),
+						},
+					}, nil
+				}
+
 				// By default do not return any tags
 				return []common.TagInfo{}, errors.ErrRepoNotFound
 			},
@@ -893,6 +918,19 @@ func TestCVEStruct(t *testing.T) {
 						Layers: []ispec.Descriptor{
 							{
 								MediaType: string(regTypes.OCIRestrictedLayer),
+								Size:      0,
+								Digest:    godigest.Digest(""),
+							},
+						},
+					}, nil
+				}
+
+				// Image with no CVEs
+				if imageDir == "repo4" { //nolint: goconst
+					return ispec.Manifest{
+						Layers: []ispec.Descriptor{
+							{
+								MediaType: string(ispec.MediaTypeImageLayer),
 								Size:      0,
 								Digest:    godigest.Digest(""),
 							},
@@ -1054,13 +1092,19 @@ func TestCVEStruct(t *testing.T) {
 			cveSummary, err = cveInfo.GetCVESummaryForImage("repo2:1.0.0")
 			So(err, ShouldEqual, errors.ErrScanNotSupported)
 			So(cveSummary.Count, ShouldEqual, 0)
-			So(cveSummary.MaxSeverity, ShouldEqual, "UNKNOWN")
+			So(cveSummary.MaxSeverity, ShouldEqual, "")
 
 			// Image is not found
 			cveSummary, err = cveInfo.GetCVESummaryForImage("repo3:1.0.0")
 			So(err, ShouldEqual, errors.ErrRepoNotFound)
 			So(cveSummary.Count, ShouldEqual, 0)
-			So(cveSummary.MaxSeverity, ShouldEqual, "UNKNOWN")
+			So(cveSummary.MaxSeverity, ShouldEqual, "")
+
+			// Image has no vulnerabilities
+			cveSummary, err = cveInfo.GetCVESummaryForImage("repo4:1.0.0")
+			So(err, ShouldBeNil)
+			So(cveSummary.Count, ShouldEqual, 0)
+			So(cveSummary.MaxSeverity, ShouldEqual, "NONE")
 		})
 
 		Convey("Test GetCVEListForImage", func() {
@@ -1104,6 +1148,11 @@ func TestCVEStruct(t *testing.T) {
 			cveMap, err = cveInfo.GetCVEListForImage("repo3:1.0.0")
 			So(err, ShouldEqual, errors.ErrRepoNotFound)
 			So(len(cveMap), ShouldEqual, 0)
+
+			// Image has no vulnerabilities
+			cveMap, err = cveInfo.GetCVEListForImage("repo4:1.0.0")
+			So(err, ShouldBeNil)
+			So(len(cveMap), ShouldEqual, 0)
 		})
 
 		Convey("Test GetImageListWithCVEFixed", func() {
@@ -1139,6 +1188,12 @@ func TestCVEStruct(t *testing.T) {
 			tagList, err = cveInfo.GetImageListWithCVEFixed("repo3", "CVE101")
 			So(err, ShouldEqual, errors.ErrRepoNotFound)
 			So(len(tagList), ShouldEqual, 0)
+
+			// Image has no vulnerabilities
+			tagList, err = cveInfo.GetImageListWithCVEFixed("repo4", "CVE101")
+			So(err, ShouldBeNil)
+			So(len(tagList), ShouldEqual, 1)
+			So(tagList[0].Name, ShouldEqual, "1.0.0")
 		})
 
 		Convey("Test GetImageListForCVE", func() {
@@ -1175,6 +1230,11 @@ func TestCVEStruct(t *testing.T) {
 			imageInfoByCveList, err = cveInfo.GetImageListForCVE("repo3", "CVE101")
 			So(err, ShouldEqual, errors.ErrRepoNotFound)
 			So(len(imageInfoByCveList), ShouldEqual, 0)
+
+			// Image/repo is not vulnerable
+			imageInfoByCveList, err = cveInfo.GetImageListForCVE("repo4", "CVE101")
+			So(err, ShouldBeNil)
+			So(len(imageInfoByCveList), ShouldEqual, 0)
 		})
 
 		Convey("Test errors while scanning", func() {
@@ -1190,7 +1250,7 @@ func TestCVEStruct(t *testing.T) {
 			cveSummary, err := cveInfo.GetCVESummaryForImage("repo1:0.1.0")
 			So(err, ShouldNotBeNil)
 			So(cveSummary.Count, ShouldEqual, 0)
-			So(cveSummary.MaxSeverity, ShouldEqual, "UNKNOWN")
+			So(cveSummary.MaxSeverity, ShouldEqual, "")
 
 			cveMap, err := cveInfo.GetCVEListForImage("repo1:0.1.0")
 			So(err, ShouldNotBeNil)
