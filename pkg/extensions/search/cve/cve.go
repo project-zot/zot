@@ -177,9 +177,13 @@ func (cveinfo BaseCveInfo) GetCVEListForImage(image string) (map[string]cvemodel
 }
 
 func (cveinfo BaseCveInfo) GetCVESummaryForImage(image string) (ImageCVESummary, error) {
+	// There are several cases, expected returned values below:
+	// not scannable / error during scan   - max severity ""            - cve count 0   - Errors
+	// scannable no issues found           - max severity "NONE"        - cve count 0   - no Errors
+	// scannable issues found              - max severity from Scanner  - cve count >0  - no Errors
 	imageCVESummary := ImageCVESummary{
 		Count:       0,
-		MaxSeverity: "UNKNOWN",
+		MaxSeverity: "",
 	}
 
 	isValidImage, err := cveinfo.Scanner.IsImageFormatScannable(image)
@@ -192,12 +196,20 @@ func (cveinfo BaseCveInfo) GetCVESummaryForImage(image string) (ImageCVESummary,
 		return imageCVESummary, err
 	}
 
+	imageCVESummary.Count = len(cveMap)
+
+	if imageCVESummary.Count == 0 {
+		imageCVESummary.MaxSeverity = "NONE"
+
+		return imageCVESummary, nil
+	}
+
+	imageCVESummary.MaxSeverity = "UNKNOWN"
 	for _, cve := range cveMap {
 		if cveinfo.Scanner.CompareSeverities(imageCVESummary.MaxSeverity, cve.Severity) > 0 {
 			imageCVESummary.MaxSeverity = cve.Severity
 		}
 	}
-	imageCVESummary.Count = len(cveMap)
 
 	return imageCVESummary, nil
 }
