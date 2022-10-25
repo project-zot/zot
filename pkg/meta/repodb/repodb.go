@@ -13,6 +13,8 @@ const (
 	RepoMetadataBucket     = "RepoMetadata"
 )
 
+type FilterFunc func(repoMeta RepoMetadata, manifestMeta ManifestMetadata) bool
+
 type RepoDB interface { //nolint:interfacebloat
 	// SetRepoDescription sets the repo description
 	SetRepoDescription(repo, description string) error
@@ -65,6 +67,10 @@ type RepoDB interface { //nolint:interfacebloat
 	// SearchTags searches for images(repo:tag) given a search string
 	SearchTags(ctx context.Context, searchText string, filter Filter, requestedPage PageInput) (
 		[]RepoMetadata, map[string]ManifestMetadata, error)
+
+	// FilterTags filters for images given a filter function
+	FilterTags(ctx context.Context, filter FilterFunc,
+		requestedPage PageInput) ([]RepoMetadata, map[string]ManifestMetadata, error)
 
 	// SearchDigests searches for digests given a search string
 	SearchDigests(ctx context.Context, searchText string, requestedPage PageInput) (
