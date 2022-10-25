@@ -212,7 +212,7 @@ func (scanner Scanner) IsImageFormatScannable(image string) (bool, error) {
 	for _, imageLayer := range manifestContent.Layers {
 		switch imageLayer.MediaType {
 		case ispec.MediaTypeImageLayerGzip, ispec.MediaTypeImageLayer, string(regTypes.DockerLayer):
-			return true, nil
+			continue
 		default:
 			scanner.log.Debug().Str("image", image).
 				Msgf("image media type %s not supported for scanning", imageLayer.MediaType)
@@ -221,7 +221,7 @@ func (scanner Scanner) IsImageFormatScannable(image string) (bool, error) {
 		}
 	}
 
-	return false, nil
+	return true, nil
 }
 
 func (scanner Scanner) ScanImage(image string) (map[string]cvemodel.CVE, error) {

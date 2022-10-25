@@ -6,6 +6,7 @@ import (
 	"os"
 	"path"
 	"testing"
+	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -206,6 +207,193 @@ func TestTrivyLibraryErrors(t *testing.T) {
 		opts.ReportOptions.IgnorePolicy = "invalid file path"
 		_, err = scanner.runTrivy(opts)
 		So(err, ShouldNotBeNil)
+	})
+}
+
+func TestImageScannable(t *testing.T) {
+	rootDir := t.TempDir()
+
+	repoDB, err := bolt.NewBoltDBWrapper(bolt.DBParameters{
+		RootDir: rootDir,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	// Create test data for the following cases
+	// - Error: RepoMeta not found in DB
+	// - Error: Tag not found in DB
+	// - Error: Digest in RepoMeta is invalid
+	// - Error: ManifestData not found in repodb
+	// - Error: ManifestData cannot be unmarshalled
+	// - Error: ManifestData contains unscannable layer type
+	// - Valid Scannable image
+
+	// Create repodb data for scannable image
+	timeStamp := time.Date(2008, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	validConfigBlob, err := json.Marshal(ispec.Image{
+		Created: &timeStamp,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	validManifestBlob, err := json.Marshal(ispec.Manifest{
+		Config: ispec.Descriptor{
+			MediaType: ispec.MediaTypeImageConfig,
+			Size:      0,
+			Digest:    godigest.FromBytes(validConfigBlob),
+		},
+		Layers: []ispec.Descriptor{
+			{
+				MediaType: ispec.MediaTypeImageLayerGzip,
+				Size:      0,
+				Digest:    godigest.NewDigestFromEncoded(godigest.SHA256, "digest"),
+			},
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	validRepoMeta := repodb.ManifestData{
+		ManifestBlob: validManifestBlob,
+		ConfigBlob:   validConfigBlob,
+	}
+
+	digestValidManifest := godigest.FromBytes(validManifestBlob)
+
+	err = repoDB.SetManifestData(digestValidManifest, validRepoMeta)
+	if err != nil {
+		panic(err)
+	}
+
+	err = repoDB.SetRepoTag("repo1", "valid", digestValidManifest, ispec.MediaTypeImageManifest)
+	if err != nil {
+		panic(err)
+	}
+
+	// Create RepoDB data for manifest with unscannable layers
+	manifestBlobUnscannableLayer, err := json.Marshal(ispec.Manifest{
+		Config: ispec.Descriptor{
+			MediaType: ispec.MediaTypeImageConfig,
+			Size:      0,
+			Digest:    godigest.FromBytes(validConfigBlob),
+		},
+		Layers: []ispec.Descriptor{
+			{
+				MediaType: "unscannable_media_type",
+				Size:      0,
+				Digest:    godigest.NewDigestFromEncoded(godigest.SHA256, "digest"),
+			},
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	repoMetaUnscannableLayer := repodb.ManifestData{
+		ManifestBlob: manifestBlobUnscannableLayer,
+		ConfigBlob:   validConfigBlob,
+	}
+
+	digestManifestUnscannableLayer := godigest.FromBytes(manifestBlobUnscannableLayer)
+
+	err = repoDB.SetManifestData(digestManifestUnscannableLayer, repoMetaUnscannableLayer)
+	if err != nil {
+		panic(err)
+	}
+
+	err = repoDB.SetRepoTag("repo1", "unscannable-layer", digestManifestUnscannableLayer, ispec.MediaTypeImageManifest)
+	if err != nil {
+		panic(err)
+	}
+
+	// Create RepoDB data for unmarshable manifest
+	unmarshableManifestBlob := []byte("Some string")
+	repoMetaUnmarshable := repodb.ManifestData{
+		ManifestBlob: unmarshableManifestBlob,
+		ConfigBlob:   validConfigBlob,
+	}
+
+	digestUnmarshableManifest := godigest.FromBytes(unmarshableManifestBlob)
+
+	err = repoDB.SetManifestData(digestUnmarshableManifest, repoMetaUnmarshable)
+	if err != nil {
+		panic(err)
+	}
+
+	err = repoDB.SetRepoTag("repo1", "unmarshable", digestUnmarshableManifest, ispec.MediaTypeImageManifest)
+	if err != nil {
+		panic(err)
+	}
+
+	// Manifest meta cannot be found
+	digestMissingManifest := godigest.FromBytes([]byte("Some other string"))
+
+	err = repoDB.SetRepoTag("repo1", "missing", digestMissingManifest, ispec.MediaTypeImageManifest)
+	if err != nil {
+		panic(err)
+	}
+
+	// RepoMeta contains invalid digest
+	err = repoDB.SetRepoTag("repo1", "invalid-digest", "invalid", ispec.MediaTypeImageManifest)
+	if err != nil {
+		panic(err)
+	}
+
+	// Continue with initializing the objects the scanner depends on
+	log := log.NewLogger("debug", "")
+	metrics := monitoring.NewMetricsServer(false, log)
+
+	store := local.NewImageStore(rootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil, nil)
+
+	storeController := storage.StoreController{}
+	storeController.DefaultStore = store
+
+	scanner := NewScanner(storeController, repoDB, "ghcr.io/project-zot/trivy-db", log)
+
+	Convey("Valid image should be scannable", t, func() {
+		result, err := scanner.IsImageFormatScannable("repo1:valid")
+		So(err, ShouldBeNil)
+		So(result, ShouldBeTrue)
+	})
+
+	Convey("Image with layers of unsupported types should be unscannable", t, func() {
+		result, err := scanner.IsImageFormatScannable("repo1:unscannable-layer")
+		So(err, ShouldNotBeNil)
+		So(result, ShouldBeFalse)
+	})
+
+	Convey("Image with unmarshable manifests should be unscannable", t, func() {
+		result, err := scanner.IsImageFormatScannable("repo1:unmarshable")
+		So(err, ShouldNotBeNil)
+		So(result, ShouldBeFalse)
+	})
+
+	Convey("Image with missing manifest meta should be unscannable", t, func() {
+		result, err := scanner.IsImageFormatScannable("repo1:missing")
+		So(err, ShouldNotBeNil)
+		So(result, ShouldBeFalse)
+	})
+
+	Convey("Image with invalid manifest digest should be unscannable", t, func() {
+		result, err := scanner.IsImageFormatScannable("repo1:invalid-digest")
+		So(err, ShouldNotBeNil)
+		So(result, ShouldBeFalse)
+	})
+
+	Convey("Image with unknown tag should be unscannable", t, func() {
+		result, err := scanner.IsImageFormatScannable("repo1:unknown-tag")
+		So(err, ShouldNotBeNil)
+		So(result, ShouldBeFalse)
+	})
+
+	Convey("Image with unknown repo should be unscannable", t, func() {
+		result, err := scanner.IsImageFormatScannable("unknown-repo:sometag")
+		So(err, ShouldNotBeNil)
+		So(result, ShouldBeFalse)
 	})
 }
 
