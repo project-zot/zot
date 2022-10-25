@@ -48,6 +48,10 @@ type RepoDBMock struct {
 	SearchTagsFn func(ctx context.Context, searchText string, filter repodb.Filter, requestedPage repodb.PageInput) (
 		[]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error)
 
+	FilterTagsFn func(ctx context.Context, filter repodb.FilterFunc,
+		requestedPage repodb.PageInput,
+	) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error)
+
 	SearchDigestsFn func(ctx context.Context, searchText string, requestedPage repodb.PageInput) (
 		[]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error)
 
@@ -212,6 +216,16 @@ func (sdm RepoDBMock) SearchTags(ctx context.Context, searchText string, filter 
 ) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
 	if sdm.SearchTagsFn != nil {
 		return sdm.SearchTagsFn(ctx, searchText, filter, requestedPage)
+	}
+
+	return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, nil
+}
+
+func (sdm RepoDBMock) FilterTags(ctx context.Context, filter repodb.FilterFunc,
+	requestedPage repodb.PageInput,
+) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
+	if sdm.FilterTagsFn != nil {
+		return sdm.FilterTagsFn(ctx, filter, requestedPage)
 	}
 
 	return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, nil
