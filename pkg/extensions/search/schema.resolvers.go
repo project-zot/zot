@@ -7,140 +7,22 @@ import (
 	"context"
 
 	"zotregistry.io/zot/pkg/extensions/search/common"
-	"zotregistry.io/zot/pkg/extensions/search/convert"
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
 )
 
 // CVEListForImage is the resolver for the CVEListForImage field.
 func (r *queryResolver) CVEListForImage(ctx context.Context, image string) (*gql_generated.CVEResultForImage, error) {
-	cveidMap, err := r.cveInfo.GetCVEListForImage(image)
-	if err != nil {
-		return &gql_generated.CVEResultForImage{}, err
-	}
-
-	_, copyImgTag := common.GetImageDirAndTag(image)
-
-	cveids := []*gql_generated.Cve{}
-
-	for id, cveDetail := range cveidMap {
-		vulID := id
-		desc := cveDetail.Description
-		title := cveDetail.Title
-		severity := cveDetail.Severity
-
-		pkgList := make([]*gql_generated.PackageInfo, 0)
-
-		for _, pkg := range cveDetail.PackageList {
-			pkg := pkg
-
-			pkgList = append(pkgList,
-				&gql_generated.PackageInfo{
-					Name:             &pkg.Name,
-					InstalledVersion: &pkg.InstalledVersion,
-					FixedVersion:     &pkg.FixedVersion,
-				},
-			)
-		}
-
-		cveids = append(cveids,
-			&gql_generated.Cve{
-				ID:          &vulID,
-				Title:       &title,
-				Description: &desc,
-				Severity:    &severity,
-				PackageList: pkgList,
-			},
-		)
-	}
-
-	return &gql_generated.CVEResultForImage{Tag: &copyImgTag, CVEList: cveids}, nil
+	return getCVEListForImage(ctx, image, r.cveInfo, r.log)
 }
 
 // ImageListForCve is the resolver for the ImageListForCVE field.
-func (r *queryResolver) ImageListForCve(ctx context.Context, id string) ([]*gql_generated.ImageSummary, error) {
-	olu := common.NewBaseOciLayoutUtils(r.storeController, r.log)
-	affectedImages := []*gql_generated.ImageSummary{}
-
-	r.log.Info().Msg("extracting repositories")
-	repoList, err := olu.GetRepositories()
-	if err != nil { //nolint: wsl
-		r.log.Error().Err(err).Msg("unable to search repositories")
-
-		return affectedImages, err
-	}
-
-	r.log.Info().Msg("scanning each repository")
-
-	for _, repo := range repoList {
-		r.log.Info().Str("repo", repo).Msg("extracting list of tags available in image repo")
-
-		imageListByCVE, err := r.cveInfo.GetImageListForCVE(repo, id)
-		if err != nil {
-			r.log.Error().Str("repo", repo).Str("CVE", id).Err(err).
-				Msg("error getting image list for CVE from repo")
-
-			return affectedImages, err
-		}
-
-		for _, imageByCVE := range imageListByCVE {
-			imageConfig, err := olu.GetImageConfigInfo(repo, imageByCVE.Digest)
-			if err != nil {
-				return affectedImages, err
-			}
-
-			isSigned := olu.CheckManifestSignature(repo, imageByCVE.Digest)
-			imageInfo := convert.BuildImageInfo(
-				repo, imageByCVE.Tag,
-				imageByCVE.Digest,
-				imageByCVE.Manifest,
-				imageConfig,
-				isSigned,
-			)
-
-			affectedImages = append(
-				affectedImages,
-				imageInfo,
-			)
-		}
-	}
-
-	return affectedImages, nil
+func (r *queryResolver) ImageListForCve(ctx context.Context, id string, requestedPage *gql_generated.PageInput) ([]*gql_generated.ImageSummary, error) {
+	return getImageListForCVE(ctx, id, r.cveInfo, requestedPage, r.repoDB, r.log)
 }
 
 // ImageListWithCVEFixed is the resolver for the ImageListWithCVEFixed field.
-func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, image string) ([]*gql_generated.ImageSummary, error) {
-	olu := common.NewBaseOciLayoutUtils(r.storeController, r.log)
-
-	unaffectedImages := []*gql_generated.ImageSummary{}
-
-	tagsInfo, err := r.cveInfo.GetImageListWithCVEFixed(image, id)
-	if err != nil {
-		return unaffectedImages, err
-	}
-
-	for _, tag := range tagsInfo {
-		digest := tag.Digest
-
-		manifest, err := olu.GetImageBlobManifest(image, digest)
-		if err != nil {
-			r.log.Error().Err(err).Str("repo", image).Str("digest", tag.Digest.String()).
-				Msg("extension api: error reading manifest")
-
-			return unaffectedImages, err
-		}
-
-		imageConfig, err := olu.GetImageConfigInfo(image, digest)
-		if err != nil {
-			return []*gql_generated.ImageSummary{}, err
-		}
-
-		isSigned := olu.CheckManifestSignature(image, digest)
-		imageInfo := convert.BuildImageInfo(image, tag.Name, digest, manifest, imageConfig, isSigned)
-
-		unaffectedImages = append(unaffectedImages, imageInfo)
-	}
-
-	return unaffectedImages, nil
+func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, image string, requestedPage *gql_generated.PageInput) ([]*gql_generated.ImageSummary, error) {
+	return getImageListWithCVEFixed(ctx, id, image, r.cveInfo, requestedPage, r.repoDB, r.log)
 }
 
 // ImageListForDigest is the resolver for the ImageListForDigest field.

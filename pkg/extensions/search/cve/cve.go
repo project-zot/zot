@@ -16,7 +16,7 @@ import (
 )
 
 type CveInfo interface {
-	GetImageListForCVE(repo, cveID string) ([]ImageInfoByCVE, error)
+	GetImageListForCVE(repo, cveID string) ([]common.TagInfo, error)
 	GetImageListWithCVEFixed(repo, cveID string) ([]common.TagInfo, error)
 	GetCVEListForImage(image string) (map[string]cvemodel.CVE, error)
 	GetCVESummaryForImage(image string) (ImageCVESummary, error)
@@ -28,12 +28,6 @@ type Scanner interface {
 	IsImageFormatScannable(image string) (bool, error)
 	CompareSeverities(severity1, severity2 string) int
 	UpdateDB() error
-}
-
-type ImageInfoByCVE struct {
-	Tag      string
-	Digest   godigest.Digest
-	Manifest ispec.Manifest
 }
 
 type ImageCVESummary struct {
@@ -59,8 +53,8 @@ func NewCVEInfo(storeController storage.StoreController, repoDB repodb.RepoDB,
 	}
 }
 
-func (cveinfo BaseCveInfo) GetImageListForCVE(repo, cveID string) ([]ImageInfoByCVE, error) {
-	imgList := make([]ImageInfoByCVE, 0)
+func (cveinfo BaseCveInfo) GetImageListForCVE(repo, cveID string) ([]common.TagInfo, error) {
+	imgList := make([]common.TagInfo, 0)
 
 	repoMeta, err := cveinfo.RepoDB.GetRepoMeta(repo)
 	if err != nil {
@@ -79,21 +73,6 @@ func (cveinfo BaseCveInfo) GetImageListForCVE(repo, cveID string) ([]ImageInfoBy
 			return nil, err
 		}
 
-		manifestMeta, err := cveinfo.RepoDB.GetManifestMeta(manifestDigest)
-		if err != nil {
-			return nil, err
-		}
-
-		var manifestContent ispec.Manifest
-
-		err = json.Unmarshal(manifestMeta.ManifestBlob, &manifestContent)
-		if err != nil {
-			cveinfo.Log.Error().Err(err).Str("repo", repo).Str("tag", tag).
-				Str("cve-id", cveID).Msg("unable to unmashal manifest blob")
-
-			continue
-		}
-
 		image := fmt.Sprintf("%s:%s", repo, tag)
 
 		isValidImage, _ := cveinfo.Scanner.IsImageFormatScannable(image)
@@ -108,10 +87,9 @@ func (cveinfo BaseCveInfo) GetImageListForCVE(repo, cveID string) ([]ImageInfoBy
 
 		for id := range cveMap {
 			if id == cveID {
-				imgList = append(imgList, ImageInfoByCVE{
-					Tag:      tag,
-					Digest:   manifestDigest,
-					Manifest: manifestContent,
+				imgList = append(imgList, common.TagInfo{
+					Name:   tag,
+					Digest: manifestDigest,
 				})
 
 				break
