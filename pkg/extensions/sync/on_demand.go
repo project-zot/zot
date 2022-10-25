@@ -257,6 +257,11 @@ func syncOneImage(imageChannel chan error, cfg Config, storeController storage.S
 							Err(err).Msgf("sync routine: error while copying image %s", demandedImageRef)
 					}
 				}()
+			} else {
+				// if successfully synced then return
+				imageChannel <- nil
+
+				return
 			}
 		}
 	}
