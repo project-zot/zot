@@ -144,51 +144,12 @@ func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, im
 }
 
 // ImageListForDigest is the resolver for the ImageListForDigest field.
-func (r *queryResolver) ImageListForDigest(ctx context.Context, id string) ([]*gql_generated.ImageSummary, error) {
-	imgResultForDigest := []*gql_generated.ImageSummary{}
-
+func (r *queryResolver) ImageListForDigest(ctx context.Context, id string, requestedPage *gql_generated.PageInput) ([]*gql_generated.ImageSummary, error) {
 	r.log.Info().Msg("extracting repositories")
 
-	defaultStore := r.storeController.DefaultStore
+	imgResultForDigest, err := getImageListForDigest(ctx, id, r.repoDB, r.cveInfo, requestedPage)
 
-	repoList, err := defaultStore.GetRepositories()
-	if err != nil {
-		r.log.Error().Err(err).Msg("unable to search repositories")
-
-		return imgResultForDigest, err
-	}
-
-	r.log.Info().Msg("scanning each global repository")
-
-	partialImgResultForDigest, err := r.getImageListForDigest(repoList, id)
-	if err != nil {
-		r.log.Error().Err(err).Msg("unable to get image and tag list for global repositories")
-
-		return imgResultForDigest, err
-	}
-
-	imgResultForDigest = append(imgResultForDigest, partialImgResultForDigest...)
-
-	subStore := r.storeController.SubStore
-	for _, store := range subStore {
-		subRepoList, err := store.GetRepositories()
-		if err != nil {
-			r.log.Error().Err(err).Msg("unable to search sub-repositories")
-
-			return imgResultForDigest, err
-		}
-
-		partialImgResultForDigest, err = r.getImageListForDigest(subRepoList, id)
-		if err != nil {
-			r.log.Error().Err(err).Msg("unable to get image and tag list for sub-repositories")
-
-			return imgResultForDigest, err
-		}
-
-		imgResultForDigest = append(imgResultForDigest, partialImgResultForDigest...)
-	}
-
-	return imgResultForDigest, nil
+	return imgResultForDigest, err
 }
 
 // RepoListWithNewestImage is the resolver for the RepoListWithNewestImage field.

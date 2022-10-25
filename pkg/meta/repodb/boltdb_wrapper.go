@@ -707,13 +707,112 @@ func ScoreRepoName(searchText string, repoName string) int {
 	return -1
 }
 
+func (bdw BoltDBWrapper) FilterTags(ctx context.Context, filter FilterFunc,
+	requestedPage PageInput,
+) ([]RepoMetadata, map[string]ManifestMetadata, error) {
+	var (
+		foundRepos               = make([]RepoMetadata, 0)
+		foundManifestMetadataMap = make(map[string]ManifestMetadata)
+		pageFinder               *ImagePageFinder
+	)
+
+	pageFinder, err := NewBaseImagePageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
+	if err != nil {
+		return []RepoMetadata{}, map[string]ManifestMetadata{}, err
+	}
+
+	err = bdw.db.View(func(tx *bolt.Tx) error {
+		var (
+			manifestMetadataMap = make(map[string]ManifestMetadata)
+			repoBuck            = tx.Bucket([]byte(RepoMetadataBucket))
+			manifestBuck        = tx.Bucket([]byte(ManifestMetadataBucket))
+			cursor              = repoBuck.Cursor()
+		)
+
+		repoName, repoMetaBlob := cursor.First()
+
+		for ; repoName != nil; repoName, repoMetaBlob = cursor.Next() {
+			if ok, err := repoIsUserAvailable(ctx, string(repoName)); !ok || err != nil {
+				continue
+			}
+
+			repoMeta := RepoMetadata{}
+
+			err := json.Unmarshal(repoMetaBlob, &repoMeta)
+			if err != nil {
+				return err
+			}
+
+			matchedTags := make(map[string]string)
+			// take all manifestMetas
+			for tag, manifestDigest := range repoMeta.Tags {
+				matchedTags[tag] = manifestDigest
+
+				// in case tags reference the same manifest we don't download from DB multiple times
+				if manifestMeta, manifestExists := manifestMetadataMap[manifestDigest]; manifestExists {
+					manifestMetadataMap[manifestDigest] = manifestMeta
+
+					continue
+				}
+
+				manifestMetaBlob := manifestBuck.Get([]byte(manifestDigest))
+				if manifestMetaBlob == nil {
+					return zerr.ErrManifestMetaNotFound
+				}
+
+				var manifestMeta ManifestMetadata
+
+				err := json.Unmarshal(manifestMetaBlob, &manifestMeta)
+				if err != nil {
+					return errors.Wrapf(err, "repodb: error while unmashaling manifest metadata for digest %s", manifestDigest)
+				}
+
+				var configContent ispec.Image
+
+				err = json.Unmarshal(manifestMeta.ConfigBlob, &configContent)
+				if err != nil {
+					return errors.Wrapf(err, "repodb: error while unmashaling manifest metadata for digest %s", manifestDigest)
+				}
+
+				if !filter(repoMeta, manifestMeta) {
+					delete(matchedTags, tag)
+					delete(manifestMetadataMap, manifestDigest)
+
+					continue
+				}
+
+				manifestMetadataMap[manifestDigest] = manifestMeta
+			}
+
+			repoMeta.Tags = matchedTags
+
+			pageFinder.Add(DetailedRepoMeta{
+				RepoMeta: repoMeta,
+			})
+		}
+
+		foundRepos = pageFinder.Page()
+
+		// keep just the manifestMeta we need
+		for _, repoMeta := range foundRepos {
+			for _, manifestDigest := range repoMeta.Tags {
+				foundManifestMetadataMap[manifestDigest] = manifestMetadataMap[manifestDigest]
+			}
+		}
+
+		return nil
+	})
+
+	return foundRepos, foundManifestMetadataMap, err
+}
+
 func (bdw BoltDBWrapper) SearchTags(ctx context.Context, searchText string, filter Filter, requestedPage PageInput,
 ) ([]RepoMetadata, map[string]ManifestMetadata, error) {
 	var (
 		foundRepos               = make([]RepoMetadata, 0)
 		foundManifestMetadataMap = make(map[string]ManifestMetadata)
 
-		pageFinder PageFinder
+		pageFinder *ImagePageFinder
 	)
 
 	pageFinder, err := NewBaseImagePageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
@@ -799,6 +898,10 @@ func (bdw BoltDBWrapper) SearchTags(ctx context.Context, searchText string, filt
 					}
 
 					manifestMetadataMap[manifestDigest] = manifestMeta
+				}
+
+				if len(matchedTags) == 0 {
+					continue
 				}
 
 				repoMeta.Tags = matchedTags

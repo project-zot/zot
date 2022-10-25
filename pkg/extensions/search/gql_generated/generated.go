@@ -144,7 +144,7 @@ type ComplexityRoot struct {
 		Image                   func(childComplexity int, image string) int
 		ImageList               func(childComplexity int, repo string) int
 		ImageListForCve         func(childComplexity int, id string) int
-		ImageListForDigest      func(childComplexity int, id string) int
+		ImageListForDigest      func(childComplexity int, id string, requestedPage *PageInput) int
 		ImageListWithCVEFixed   func(childComplexity int, id string, image string) int
 		Referrers               func(childComplexity int, repo string, digest string, typeArg string) int
 		RepoListWithNewestImage func(childComplexity int, requestedPage *PageInput) int
@@ -182,7 +182,7 @@ type QueryResolver interface {
 	CVEListForImage(ctx context.Context, image string) (*CVEResultForImage, error)
 	ImageListForCve(ctx context.Context, id string) ([]*ImageSummary, error)
 	ImageListWithCVEFixed(ctx context.Context, id string, image string) ([]*ImageSummary, error)
-	ImageListForDigest(ctx context.Context, id string) ([]*ImageSummary, error)
+	ImageListForDigest(ctx context.Context, id string, requestedPage *PageInput) ([]*ImageSummary, error)
 	RepoListWithNewestImage(ctx context.Context, requestedPage *PageInput) ([]*RepoSummary, error)
 	ImageList(ctx context.Context, repo string) ([]*ImageSummary, error)
 	ExpandedRepoInfo(ctx context.Context, repo string) (*RepoInfo, error)
@@ -706,7 +706,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 			return 0, false
 		}
 
-		return e.complexity.Query.ImageListForDigest(childComplexity, args["id"].(string)), true
+		return e.complexity.Query.ImageListForDigest(childComplexity, args["id"].(string), args["requestedPage"].(*PageInput)), true
 
 	case "Query.ImageListWithCVEFixed":
 		if e.complexity.Query.ImageListWithCVEFixed == nil {
@@ -1133,7 +1133,7 @@ type Query {
     """
     Returns a list of images which contain the specified digest 
     """
-    ImageListForDigest(id: String!): [ImageSummary!]
+    ImageListForDigest(id: String!, requestedPage: PageInput): [ImageSummary!]
 
     """
     Returns a list of repos with the newest tag within
@@ -1289,6 +1289,15 @@ func (ec *executionContext) field_Query_ImageListForCVE_args(ctx context.Context
 		}
 	}
 	args["id"] = arg0
+	var arg1 *PageInput
+	if tmp, ok := rawArgs["requestedPage"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
+		arg1, err = ec.unmarshalOPageInput2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["requestedPage"] = arg1
 	return args, nil
 }
 
@@ -4186,7 +4195,7 @@ func (ec *executionContext) _Query_ImageListForDigest(ctx context.Context, field
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().ImageListForDigest(rctx, fc.Args["id"].(string))
+		return ec.resolvers.Query().ImageListForDigest(rctx, fc.Args["id"].(string), fc.Args["requestedPage"].(*PageInput))
 	})
 	if err != nil {
 		ec.Error(ctx, err)

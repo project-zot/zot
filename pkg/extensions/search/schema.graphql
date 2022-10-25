@@ -206,7 +206,7 @@ type Query {
     """
     Returns a list of images which contain the specified digest 
     """
-    ImageListForDigest(id: String!): [ImageSummary!]
+    ImageListForDigest(id: String!, requestedPage: PageInput): [ImageSummary!]
 
     """
     Returns a list of repos with the newest tag within
