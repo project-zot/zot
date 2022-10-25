@@ -183,12 +183,12 @@ type Query {
     """
     Returns a list of images vulnerable to the CVE of the specified ID
     """
-    ImageListForCVE(id: String!): [ImageSummary!]
+    ImageListForCVE(id: String!, requestedPage: PageInput): [ImageSummary!]
 
     """
     Returns a list of images that are no longer vulnerable to the CVE of the specified ID, from the specified image (repo)
     """
-    ImageListWithCVEFixed(id: String!, image: String!): [ImageSummary!]
+    ImageListWithCVEFixed(id: String!, image: String!, requestedPage: PageInput): [ImageSummary!]
 
     """
     Returns a list of images which contain the specified digest 
