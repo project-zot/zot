@@ -1013,8 +1013,8 @@ func TestServerResponseGQL(t *testing.T) {
 			// repo7         test:2.0  a0ca253b  15B
 			// repo7         test:1.0  a0ca253b  15B
 			So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIGNED SIZE")
-			So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 false 15B")
-			So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 false 15B")
+			So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 false 492B")
+			So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 false 492B")
 
 			Convey("with shorthand", func() {
 				args := []string{"imagetest", "-d", "883fc0c5"}
@@ -1031,8 +1031,8 @@ func TestServerResponseGQL(t *testing.T) {
 				str := space.ReplaceAllString(buff.String(), " ")
 				actual := strings.TrimSpace(str)
 				So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIGNED SIZE")
-				So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 false 15B")
-				So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 false 15B")
+				So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 false 492B")
+				So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 false 492B")
 			})
 
 			Convey("nonexistent digest", func() {
