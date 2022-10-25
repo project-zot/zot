@@ -3215,7 +3215,7 @@ func TestCrossRepoMount(t *testing.T) {
 			baseURL, constants.RoutePrefix, constants.Blobs, constants.Uploads))
 
 		incorrectParams := make(map[string]string)
-		incorrectParams["mount"] = "sha256:63a795ca90aa6e7dda60941e826810a4cd0a2e73ea02bf458241df2a5c973e29"
+		incorrectParams["mount"] = test.GetTestBlobDigest("zot-cve-test", "manifest").String()
 		incorrectParams["from"] = "zot-x-test"
 
 		postResponse, err = client.R().

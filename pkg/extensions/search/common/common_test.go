@@ -2750,7 +2750,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 					"layers": [
 						{
 							"mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-							"digest": "sha256:2d473b07cdd5f0912cd6f1a703352c82b512407db6b05b43f2553732b55df3bc",
+							"digest": "` + GetTestBlobDigest("zot-test", "layer").String() + `",
 							"size": 76097157
 						}
 					]

@@ -1377,7 +1377,7 @@ func TestServerResponseGQLWithoutPermissions(t *testing.T) {
 	})
 
 	Convey("Test image by digest", t, func() {
-		args := []string{"imagetest", "--digest", "2bacca16"}
+		args := []string{"imagetest", "--digest", test.GetTestBlobDigest("zot-test", "manifest").Encoded()}
 		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
 		defer os.Remove(configPath)
 		cmd := NewImageCommand(new(searchService))
