@@ -153,6 +153,17 @@ func (bpt *ImagePageFinder) Page() []RepoMetadata {
 	remainingOffset := bpt.offset
 	remainingLimit := bpt.limit
 
+	repos := make([]RepoMetadata, 0)
+
+	if remainingOffset == 0 && remainingLimit == 0 {
+		for _, drm := range bpt.pageBuffer {
+			repo := drm.RepoMeta
+			repos = append(repos, repo)
+		}
+
+		return repos
+	}
+
 	// bring cursor to position in RepoMeta array
 	for _, drm := range bpt.pageBuffer {
 		if remainingOffset < len(drm.RepoMeta.Tags) {
@@ -169,8 +180,6 @@ func (bpt *ImagePageFinder) Page() []RepoMetadata {
 	if repoStartIndex >= len(bpt.pageBuffer) {
 		return []RepoMetadata{}
 	}
-
-	repos := make([]RepoMetadata, 0)
 
 	// finish counting remaining tags inside the first repo meta
 	partialTags := map[string]string{}
