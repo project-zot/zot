@@ -168,6 +168,195 @@ func getImageSummary(ctx context.Context, repo, tag string, repoDB repodb.RepoDB
 	return imageSummaries[0], nil
 }
 
+func getCVEListForImage(
+	ctx context.Context, //nolint:unparam // may be used in the future to filter by permissions
+	image string,
+	cveInfo cveinfo.CveInfo,
+	log log.Logger, //nolint:unparam // may be used by devs for debugging
+) (*gql_generated.CVEResultForImage, error) {
+	cveidMap, err := cveInfo.GetCVEListForImage(image)
+	if err != nil {
+		return &gql_generated.CVEResultForImage{}, err
+	}
+
+	_, copyImgTag := common.GetImageDirAndTag(image)
+
+	cveids := []*gql_generated.Cve{}
+
+	for id, cveDetail := range cveidMap {
+		vulID := id
+		desc := cveDetail.Description
+		title := cveDetail.Title
+		severity := cveDetail.Severity
+
+		pkgList := make([]*gql_generated.PackageInfo, 0)
+
+		for _, pkg := range cveDetail.PackageList {
+			pkg := pkg
+
+			pkgList = append(pkgList,
+				&gql_generated.PackageInfo{
+					Name:             &pkg.Name,
+					InstalledVersion: &pkg.InstalledVersion,
+					FixedVersion:     &pkg.FixedVersion,
+				},
+			)
+		}
+
+		cveids = append(cveids,
+			&gql_generated.Cve{
+				ID:          &vulID,
+				Title:       &title,
+				Description: &desc,
+				Severity:    &severity,
+				PackageList: pkgList,
+			},
+		)
+	}
+
+	return &gql_generated.CVEResultForImage{Tag: &copyImgTag, CVEList: cveids}, nil
+}
+
+func FilterByTagInfo(tagsInfo []common.TagInfo) repodb.FilterFunc {
+	return func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
+		manifestDigest := godigest.FromBytes(manifestMeta.ManifestBlob).String()
+
+		for _, tagInfo := range tagsInfo {
+			if tagInfo.Digest.String() == manifestDigest {
+				return true
+			}
+		}
+
+		return false
+	}
+}
+
+func getImageListForCVE(
+	ctx context.Context,
+	cveID string,
+	cveInfo cveinfo.CveInfo,
+	requestedPage *gql_generated.PageInput,
+	repoDB repodb.RepoDB,
+	log log.Logger,
+) ([]*gql_generated.ImageSummary, error) {
+	// Obtain all repos and tags
+	// Infinite page to make sure we scan all repos in advance, before filtering results
+	// The CVE scan logic is called from here, not in the actual filter,
+	// this is because we shouldn't keep the DB locked while we wait on scan results
+	reposMeta, err := repoDB.GetMultipleRepoMeta(ctx,
+		func(repoMeta repodb.RepoMetadata) bool { return true },
+		repodb.PageInput{Limit: 0, Offset: 0, SortBy: repodb.SortCriteria(gql_generated.SortCriteriaUpdateTime)},
+	)
+	if err != nil {
+		return []*gql_generated.ImageSummary{}, err
+	}
+
+	affectedImages := []common.TagInfo{}
+
+	for _, repoMeta := range reposMeta {
+		repo := repoMeta.Name
+
+		log.Info().Str("repo", repo).Str("CVE", cveID).Msg("extracting list of tags affected by CVE")
+
+		tagsInfo, err := cveInfo.GetImageListForCVE(repo, cveID)
+		if err != nil {
+			log.Error().Str("repo", repo).Str("CVE", cveID).Err(err).
+				Msg("error getting image list for CVE from repo")
+
+			return []*gql_generated.ImageSummary{}, err
+		}
+
+		affectedImages = append(affectedImages, tagsInfo...)
+	}
+
+	imageList := make([]*gql_generated.ImageSummary, 0)
+
+	// We're not interested in other vulnerabilities
+	skip := convert.SkipQGLField{Vulnerabilities: true}
+
+	if requestedPage == nil {
+		requestedPage = &gql_generated.PageInput{}
+	}
+
+	// Actual page requested by user
+	pageInput := repodb.PageInput{
+		Limit:  safeDerefferencing(requestedPage.Limit, 0),
+		Offset: safeDerefferencing(requestedPage.Offset, 0),
+		SortBy: repodb.SortCriteria(
+			safeDerefferencing(requestedPage.SortBy, gql_generated.SortCriteriaUpdateTime),
+		),
+	}
+
+	// get all repos
+	reposMeta, manifestMetaMap, err := repoDB.FilterTags(ctx, FilterByTagInfo(affectedImages), pageInput)
+	if err != nil {
+		return []*gql_generated.ImageSummary{}, err
+	}
+
+	for _, repoMeta := range reposMeta {
+		imageSummaries := convert.RepoMeta2ImageSummaries(ctx, repoMeta, manifestMetaMap, skip, cveInfo)
+
+		imageList = append(imageList, imageSummaries...)
+	}
+
+	return imageList, nil
+}
+
+func getImageListWithCVEFixed(
+	ctx context.Context,
+	cveID string,
+	repo string,
+	cveInfo cveinfo.CveInfo,
+	requestedPage *gql_generated.PageInput,
+	repoDB repodb.RepoDB,
+	log log.Logger,
+) ([]*gql_generated.ImageSummary, error) {
+	imageList := make([]*gql_generated.ImageSummary, 0)
+
+	log.Info().Str("repo", repo).Str("CVE", cveID).Msg("extracting list of tags where CVE is fixed")
+
+	tagsInfo, err := cveInfo.GetImageListWithCVEFixed(repo, cveID)
+	if err != nil {
+		log.Error().Str("repo", repo).Str("CVE", cveID).Err(err).
+			Msg("error getting image list with CVE fixed from repo")
+
+		return imageList, err
+	}
+
+	// We're not interested in other vulnerabilities
+	skip := convert.SkipQGLField{Vulnerabilities: true}
+
+	if requestedPage == nil {
+		requestedPage = &gql_generated.PageInput{}
+	}
+
+	// Actual page requested by user
+	pageInput := repodb.PageInput{
+		Limit:  safeDerefferencing(requestedPage.Limit, 0),
+		Offset: safeDerefferencing(requestedPage.Offset, 0),
+		SortBy: repodb.SortCriteria(
+			safeDerefferencing(requestedPage.SortBy, gql_generated.SortCriteriaUpdateTime),
+		),
+	}
+
+	// get all repos
+	reposMeta, manifestMetaMap, err := repoDB.FilterTags(ctx, FilterByTagInfo(tagsInfo), pageInput)
+	if err != nil {
+		return []*gql_generated.ImageSummary{}, err
+	}
+
+	for _, repoMeta := range reposMeta {
+		if repoMeta.Name != repo {
+			continue
+		}
+
+		imageSummaries := convert.RepoMeta2ImageSummaries(ctx, repoMeta, manifestMetaMap, skip, cveInfo)
+		imageList = append(imageList, imageSummaries...)
+	}
+
+	return imageList, nil
+}
+
 func repoListWithNewestImage(
 	ctx context.Context,
 	cveInfo cveinfo.CveInfo,
