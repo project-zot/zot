@@ -481,7 +481,8 @@ func TestServerCVEResponseGQL(t *testing.T) {
 		str := space.ReplaceAllString(buff.String(), " ")
 		str = strings.TrimSpace(str)
 		So(err, ShouldBeNil)
-		So(str, ShouldEqual, "IMAGE NAME TAG DIGEST SIGNED SIZE zot-cve-test 0.0.1 63a795ca false 75MB")
+		So(str, ShouldEqual, "IMAGE NAME TAG DIGEST SIGNED SIZE zot-cve-test 0.0.1 "+
+			test.GetTestBlobDigest("zot-cve-test", "manifest").Encoded()[:8]+" false 75MB")
 
 		Convey("invalid CVE ID", func() {
 			args := []string{"cvetest", "--cve-id", "invalid"}
@@ -596,7 +597,8 @@ func TestServerCVEResponseGQL(t *testing.T) {
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
 		So(err, ShouldBeNil)
-		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIGNED SIZE zot-cve-test 0.0.1 63a795ca false 75MB")
+		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIGNED SIZE zot-cve-test 0.0.1 "+
+			test.GetTestBlobDigest("zot-cve-test", "manifest").Encoded()[:8]+" false 75MB")
 
 		Convey("invalid name and CVE ID", func() {
 			args := []string{"cvetest", "--image", "test", "--cve-id", "CVE-20807"}
@@ -905,7 +907,8 @@ func TestServerCVEResponse(t *testing.T) {
 		str := space.ReplaceAllString(buff.String(), " ")
 		str = strings.TrimSpace(str)
 		So(err, ShouldBeNil)
-		So(str, ShouldEqual, "IMAGE NAME TAG DIGEST SIGNED SIZE zot-cve-test 0.0.1 63a795ca false 75MB")
+		So(str, ShouldEqual, "IMAGE NAME TAG DIGEST SIGNED SIZE zot-cve-test 0.0.1 "+
+			test.GetTestBlobDigest("zot-cve-test", "manifest").Encoded()[:8]+" false 75MB")
 		Convey("invalid CVE ID", func() {
 			args := []string{"cvetest", "--cve-id", "invalid"}
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
@@ -987,7 +990,8 @@ func TestServerCVEResponse(t *testing.T) {
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
 		So(err, ShouldBeNil)
-		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIGNED SIZE zot-cve-test 0.0.1 63a795ca false 75MB")
+		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST SIGNED SIZE zot-cve-test 0.0.1 "+
+			test.GetTestBlobDigest("zot-cve-test", "manifest").Encoded()[:8]+" false 75MB")
 		Convey("invalid name and CVE ID", func() {
 			args := []string{"cvetest", "--image", "test", "--cve-id", "CVE-20807"}
 			configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"cvetest","url":"%s","showspinner":false}]}`, url))
