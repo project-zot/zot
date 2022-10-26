@@ -89,3 +89,38 @@ function teardown_file() {
     [ $(echo "${lines[-1]}" | jq '.data.ImageList[0].Vendor') = '"CentOs"' ]
     [ $(echo "${lines[-1]}" | jq '.data.ImageList[0].Licenses') = '"GPLv2"' ]
 }
+
+@test "sign/verify with cosign" {
+    run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"annotations\") { RepoName Tag Digest ConfigDigest Size Layers {Size Digest } Vendor Licenses }}"}' http://localhost:8080/v2/_zot/ext/search
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.data.ImageList[0].RepoName') = '"annotations"' ]
+    local digest=$(echo "${lines[-1]}" | jq -r '.data.ImageList[0].Digest')
+    
+    run cosign initialize
+    [ "$status" -eq 0 ]
+    run cosign generate-key-pair
+    [ "$status" -eq 0 ]
+    run cosign sign --key cosign.key localhost:8080/annotations:latest --yes
+    [ "$status" -eq 0 ]
+    run cosign verify --key cosign.pub localhost:8080/annotations:latest
+    [ "$status" -eq 0 ]
+    local sigName=$(echo "${lines[-1]}" | jq '.[].critical.image."docker-manifest-digest"')
+    [ "$status" -eq 0 ]
+    [[ "$sigName" == *"${digest}"* ]]
+}
+
+@test "sign/verify with notation" {
+    run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"annotations\") { RepoName Tag Digest ConfigDigest Size Layers {Size Digest } }}"}' http://localhost:8080/v2/_zot/ext/search
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.data.ImageList[0].RepoName') = '"annotations"' ]
+    [ "$status" -eq 0 ]
+
+    run notation cert generate-test --trust "notation-sign-test"
+    [ "$status" -eq 0 ]
+    run notation sign --key "notation-sign-test" --plain-http localhost:8080/annotations:latest
+    [ "$status" -eq 0 ]
+    run notation verify --cert "notation-sign-test" --plain-http localhost:8080/annotations:latest
+    [ "$status" -eq 0 ]
+    run notation list --plain-http localhost:8080/annotations:latest
+    [ "$status" -eq 0 ]
+}
