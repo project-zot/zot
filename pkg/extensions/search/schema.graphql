@@ -189,7 +189,7 @@ input Filter {
 
 type Query {
     """
-    Returns a CVE list for the image specified in the arugment
+    Returns a CVE list for the image specified in the argument. Format image:tag
     """
     CVEListForImage(image: String!): CVEResultForImage!
 
@@ -211,7 +211,7 @@ type Query {
     """
     Returns a list of repos with the newest tag within
     """
-    RepoListWithNewestImage(requestedPage: PageInput): [RepoSummary!]!  # Newest based on created timestamp
+    RepoListWithNewestImage(requestedPage: PageInput): [RepoSummary!]! # Newest based on created timestamp
 
     """
     Returns all the images from the specified repo
