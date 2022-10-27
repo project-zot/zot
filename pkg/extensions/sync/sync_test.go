@@ -2865,6 +2865,56 @@ func TestOnDemandRetryGoroutine(t *testing.T) {
 	})
 }
 
+func TestOnDemandWithDigest(t *testing.T) {
+	Convey("Verify ondemand sync retries in background on error", t, func() {
+		_, srcBaseURL, _, _, _ := startUpstreamServer(t, false, false)
+
+		regex := ".*"
+		semver := true
+		var tlsVerify bool
+
+		syncRegistryConfig := sync.RegistryConfig{
+			Content: []sync.Content{
+				{
+					Prefix: testImage,
+					Tags: &sync.Tags{
+						Regex:  &regex,
+						Semver: &semver,
+					},
+				},
+			},
+			URLs:      []string{srcBaseURL},
+			OnDemand:  true,
+			TLSVerify: &tlsVerify,
+			CertDir:   "",
+		}
+
+		defaultVal := true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
+
+		dctlr, destBaseURL, destDir, destClient := startDownstreamServer(t, false, syncConfig)
+		defer os.RemoveAll(destDir)
+
+		defer func() {
+			dctlr.Shutdown()
+		}()
+
+		// get manifest digest from source
+		resp, err := destClient.R().Get(srcBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		digest := godigest.FromBytes(resp.Body())
+
+		resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + digest.String())
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+	})
+}
+
 func TestOnDemandRetryGoroutineErr(t *testing.T) {
 	Convey("Verify ondemand sync retries in background on error", t, func() {
 		regex := ".*"

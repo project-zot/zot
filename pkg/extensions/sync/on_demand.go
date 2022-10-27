@@ -51,10 +51,10 @@ func (di *demandedImages) delete(key string) {
 }
 
 func OneImage(cfg Config, storeController storage.StoreController,
-	repo, tag string, isArtifact bool, log log.Logger,
+	repo, reference string, isArtifact bool, log log.Logger,
 ) error {
 	// guard against multiple parallel requests
-	demandedImage := fmt.Sprintf("%s:%s", repo, tag)
+	demandedImage := fmt.Sprintf("%s:%s", repo, reference)
 	// loadOrStore image-based channel
 	imageChannel, found := demandedImgs.loadOrStoreChan(demandedImage, make(chan error))
 	// if value found wait on channel receive or close
@@ -73,7 +73,7 @@ func OneImage(cfg Config, storeController storage.StoreController,
 	defer demandedImgs.delete(demandedImage)
 	defer close(imageChannel)
 
-	go syncOneImage(imageChannel, cfg, storeController, repo, tag, isArtifact, log)
+	go syncOneImage(imageChannel, cfg, storeController, repo, reference, isArtifact, log)
 
 	err, ok := <-imageChannel
 	if !ok {
@@ -84,7 +84,7 @@ func OneImage(cfg Config, storeController storage.StoreController,
 }
 
 func syncOneImage(imageChannel chan error, cfg Config, storeController storage.StoreController,
-	localRepo, tag string, isArtifact bool, log log.Logger,
+	localRepo, reference string, isArtifact bool, log log.Logger,
 ) {
 	var credentialsFile CredentialsFile
 
@@ -161,21 +161,21 @@ func syncOneImage(imageChannel chan error, cfg Config, storeController storage.S
 			options := getCopyOptions(upstreamCtx, localCtx)
 
 			// demanded 'image' is a signature
-			if isCosignTag(tag) {
+			if isCosignTag(reference) {
 				// at tis point we should already have images synced, but not their signatures.
 				// is cosign signature
-				cosignManifest, err := sig.getCosignManifest(upstreamRepo, tag)
+				cosignManifest, err := sig.getCosignManifest(upstreamRepo, reference)
 				if err != nil {
 					log.Error().Str("errorType", TypeOf(err)).
-						Err(err).Msgf("couldn't get upstream image %s:%s:%s cosign manifest", upstreamURL, upstreamRepo, tag)
+						Err(err).Msgf("couldn't get upstream image %s:%s:%s cosign manifest", upstreamURL, upstreamRepo, reference)
 
 					continue
 				}
 
-				err = sig.syncCosignSignature(localRepo, upstreamRepo, tag, cosignManifest)
+				err = sig.syncCosignSignature(localRepo, upstreamRepo, reference, cosignManifest)
 				if err != nil {
 					log.Error().Str("errorType", TypeOf(err)).
-						Err(err).Msgf("couldn't copy upstream image cosign signature %s/%s:%s", upstreamURL, upstreamRepo, tag)
+						Err(err).Msgf("couldn't copy upstream image cosign signature %s/%s:%s", upstreamURL, upstreamRepo, reference)
 
 					continue
 				}
@@ -185,18 +185,18 @@ func syncOneImage(imageChannel chan error, cfg Config, storeController storage.S
 				return
 			} else if isArtifact {
 				// is notary signature
-				refs, err := sig.getNotaryRefs(upstreamRepo, tag)
+				refs, err := sig.getNotaryRefs(upstreamRepo, reference)
 				if err != nil {
 					log.Error().Str("errorType", TypeOf(err)).
-						Err(err).Msgf("couldn't get upstream image %s/%s:%s notary references", upstreamURL, upstreamRepo, tag)
+						Err(err).Msgf("couldn't get upstream image %s/%s:%s notary references", upstreamURL, upstreamRepo, reference)
 
 					continue
 				}
 
-				err = sig.syncNotarySignature(localRepo, upstreamRepo, tag, refs)
+				err = sig.syncNotarySignature(localRepo, upstreamRepo, reference, refs)
 				if err != nil {
 					log.Error().Str("errorType", TypeOf(err)).
-						Err(err).Msgf("couldn't copy image signature %s/%s:%s", upstreamURL, upstreamRepo, tag)
+						Err(err).Msgf("couldn't copy image signature %s/%s:%s", upstreamURL, upstreamRepo, reference)
 
 					continue
 				}
@@ -214,13 +214,13 @@ func syncOneImage(imageChannel chan error, cfg Config, storeController storage.S
 				copyOptions:  options,
 			}
 
-			skipped, copyErr := syncRun(regCfg, localRepo, upstreamRepo, tag, syncContextUtils, sig, log)
+			skipped, copyErr := syncRun(regCfg, localRepo, upstreamRepo, reference, syncContextUtils, sig, log)
 			if skipped {
 				continue
 			}
 
 			// key used to check if we already have a go routine syncing this image
-			demandedImageRef := fmt.Sprintf("%s/%s:%s", upstreamAddr, upstreamRepo, tag)
+			demandedImageRef := fmt.Sprintf("%s/%s:%s", upstreamAddr, upstreamRepo, reference)
 
 			if copyErr != nil {
 				// don't retry in background if maxretry is 0
@@ -249,7 +249,7 @@ func syncOneImage(imageChannel chan error, cfg Config, storeController storage.S
 					time.Sleep(retryOptions.Delay)
 
 					if err = retry.RetryIfNecessary(context.Background(), func() error {
-						_, err := syncRun(regCfg, localRepo, upstreamRepo, tag, syncContextUtils, sig, log)
+						_, err := syncRun(regCfg, localRepo, upstreamRepo, reference, syncContextUtils, sig, log)
 
 						return err
 					}, retryOptions); err != nil {
@@ -257,6 +257,10 @@ func syncOneImage(imageChannel chan error, cfg Config, storeController storage.S
 							Err(err).Msgf("sync routine: error while copying image %s", demandedImageRef)
 					}
 				}()
+			} else {
+				imageChannel <- nil
+
+				return
 			}
 		}
 	}
@@ -265,24 +269,28 @@ func syncOneImage(imageChannel chan error, cfg Config, storeController storage.S
 }
 
 func syncRun(regCfg RegistryConfig,
-	localRepo, upstreamRepo, tag string, utils syncContextUtils, sig *signaturesCopier,
+	localRepo, upstreamRepo, reference string, utils syncContextUtils, sig *signaturesCopier,
 	log log.Logger,
 ) (bool, error) {
-	upstreamImageRef, err := getImageRef(utils.upstreamAddr, upstreamRepo, tag)
+	upstreamImageDigest, refIsDigest := parseDigest(reference)
+
+	upstreamImageRef, err := getImageRef(utils.upstreamAddr, upstreamRepo, reference)
 	if err != nil {
 		log.Error().Str("errorType", TypeOf(err)).
 			Err(err).Msgf("error creating docker reference for repository %s/%s:%s",
-			utils.upstreamAddr, upstreamRepo, tag)
+			utils.upstreamAddr, upstreamRepo, reference)
 
 		return false, err
 	}
 
-	upstreamImageDigest, err := docker.GetDigest(context.Background(), utils.upstreamCtx, upstreamImageRef)
-	if err != nil {
-		log.Error().Str("errorType", TypeOf(err)).
-			Err(err).Msgf("couldn't get upstream image %s manifest", upstreamImageRef.DockerReference())
+	if !refIsDigest {
+		upstreamImageDigest, err = docker.GetDigest(context.Background(), utils.upstreamCtx, upstreamImageRef)
+		if err != nil {
+			log.Error().Str("errorType", TypeOf(err)).
+				Err(err).Msgf("couldn't get upstream image %s manifest", upstreamImageRef.DockerReference())
 
-		return false, err
+			return false, err
+		}
 	}
 
 	// get upstream signatures
@@ -316,11 +324,11 @@ func syncRun(regCfg RegistryConfig,
 		log.Error().Err(err).Msgf("couldn't get localCachePath for %s", localRepo)
 	}
 
-	localImageRef, err := getLocalImageRef(localCachePath, localRepo, tag)
+	localImageRef, err := getLocalImageRef(localCachePath, localRepo, reference)
 	if err != nil {
 		log.Error().Str("errorType", TypeOf(err)).
 			Err(err).Msgf("couldn't obtain a valid image reference for reference %s/%s:%s",
-			localCachePath, localRepo, tag)
+			localCachePath, localRepo, reference)
 
 		return false, err
 	}
@@ -338,11 +346,11 @@ func syncRun(regCfg RegistryConfig,
 		return false, err
 	}
 
-	err = pushSyncedLocalImage(localRepo, tag, localCachePath, imageStore, log)
+	err = pushSyncedLocalImage(localRepo, reference, localCachePath, imageStore, log)
 	if err != nil {
 		log.Error().Str("errorType", TypeOf(err)).
 			Err(err).Msgf("error while pushing synced cached image %s",
-			fmt.Sprintf("%s/%s:%s", localCachePath, localRepo, tag))
+			fmt.Sprintf("%s/%s:%s", localCachePath, localRepo, reference))
 
 		return false, err
 	}
@@ -350,7 +358,7 @@ func syncRun(regCfg RegistryConfig,
 	err = sig.syncCosignSignature(localRepo, upstreamRepo, upstreamImageDigest.String(), cosignManifest)
 	if err != nil {
 		log.Error().Str("errorType", TypeOf(err)).
-			Err(err).Msgf("couldn't copy image cosign signature %s/%s:%s", utils.upstreamAddr, upstreamRepo, tag)
+			Err(err).Msgf("couldn't copy image cosign signature %s/%s:%s", utils.upstreamAddr, upstreamRepo, reference)
 
 		return false, err
 	}
@@ -358,12 +366,12 @@ func syncRun(regCfg RegistryConfig,
 	err = sig.syncNotarySignature(localRepo, upstreamRepo, upstreamImageDigest.String(), refs)
 	if err != nil {
 		log.Error().Str("errorType", TypeOf(err)).
-			Err(err).Msgf("couldn't copy image notary signature %s/%s:%s", utils.upstreamAddr, upstreamRepo, tag)
+			Err(err).Msgf("couldn't copy image notary signature %s/%s:%s", utils.upstreamAddr, upstreamRepo, reference)
 
 		return false, err
 	}
 
-	log.Info().Msgf("successfully synced %s/%s:%s", utils.upstreamAddr, upstreamRepo, tag)
+	log.Info().Msgf("successfully synced %s/%s:%s", utils.upstreamAddr, upstreamRepo, reference)
 
 	return false, nil
 }
