@@ -328,28 +328,28 @@ func getHTTPClient(regCfg *RegistryConfig, upstreamURL string, credentials Crede
 	return client, registryURL, nil
 }
 
-func pushSyncedLocalImage(localRepo, tag, localCachePath string,
+func pushSyncedLocalImage(localRepo, reference, localCachePath string,
 	imageStore storage.ImageStore, log log.Logger,
 ) error {
-	log.Info().Msgf("pushing synced local image %s/%s:%s to local registry", localCachePath, localRepo, tag)
+	log.Info().Msgf("pushing synced local image %s/%s:%s to local registry", localCachePath, localRepo, reference)
 
 	metrics := monitoring.NewMetricsServer(false, log)
 
 	cacheImageStore := local.NewImageStore(localCachePath, false,
 		storage.DefaultGCDelay, false, false, log, metrics, nil)
 
-	manifestContent, _, mediaType, err := cacheImageStore.GetImageManifest(localRepo, tag)
+	manifestContent, _, mediaType, err := cacheImageStore.GetImageManifest(localRepo, reference)
 	if err != nil {
 		log.Error().Str("errorType", TypeOf(err)).
 			Err(err).Str("dir", path.Join(cacheImageStore.RootDir(), localRepo)).
-			Msg("couldn't find index.json")
+			Msgf("couldn't find %s manifest", reference)
 
 		return err
 	}
 
 	// is image manifest
 	if mediaType == ispec.MediaTypeImageManifest {
-		if err := copyManifest(localRepo, manifestContent, tag, cacheImageStore, imageStore, log); err != nil {
+		if err := copyManifest(localRepo, manifestContent, reference, cacheImageStore, imageStore, log); err != nil {
 			if errors.Is(err, zerr.ErrImageLintAnnotations) {
 				log.Error().Str("errorType", TypeOf(err)).
 					Err(err).Msg("couldn't upload manifest because of missing annotations")
@@ -397,7 +397,7 @@ func pushSyncedLocalImage(localRepo, tag, localCachePath string,
 		}
 	}
 
-	_, err = imageStore.PutImageManifest(localRepo, tag, mediaType, manifestContent)
+	_, err = imageStore.PutImageManifest(localRepo, reference, mediaType, manifestContent)
 	if err != nil {
 		log.Error().Str("errorType", TypeOf(err)).
 			Err(err).Msg("couldn't upload manifest")
@@ -486,18 +486,28 @@ func StripRegistryTransport(url string) string {
 }
 
 // get an ImageReference given the registry, repo and tag.
-func getImageRef(registryDomain, repo, tag string) (types.ImageReference, error) {
+func getImageRef(registryDomain, repo, ref string) (types.ImageReference, error) {
 	repoRef, err := parseRepositoryReference(fmt.Sprintf("%s/%s", registryDomain, repo))
 	if err != nil {
 		return nil, err
 	}
 
-	taggedRepoRef, err := reference.WithTag(repoRef, tag)
-	if err != nil {
-		return nil, err
+	var namedRepoRef reference.Named
+
+	digest, ok := parseDigest(ref)
+	if ok {
+		namedRepoRef, err = reference.WithDigest(repoRef, digest)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		namedRepoRef, err = reference.WithTag(repoRef, ref)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	imageRef, err := docker.NewReference(taggedRepoRef)
+	imageRef, err := docker.NewReference(namedRepoRef)
 	if err != nil {
 		return nil, err
 	}
@@ -506,15 +516,20 @@ func getImageRef(registryDomain, repo, tag string) (types.ImageReference, error)
 }
 
 // get a local ImageReference used to temporary store one synced image.
-func getLocalImageRef(localCachePath, repo, tag string) (types.ImageReference, error) {
+func getLocalImageRef(localCachePath, repo, reference string) (types.ImageReference, error) {
 	if _, err := os.ReadDir(localCachePath); err != nil {
 		return nil, err
 	}
 
 	localRepo := path.Join(localCachePath, repo)
-	localTaggedRepo := fmt.Sprintf("%s:%s", localRepo, tag)
 
-	localImageRef, err := layout.ParseReference(localTaggedRepo)
+	_, refIsDigest := parseDigest(reference)
+
+	if !refIsDigest {
+		localRepo = fmt.Sprintf("%s:%s", localRepo, reference)
+	}
+
+	localImageRef, err := layout.ParseReference(localRepo)
 	if err != nil {
 		return nil, err
 	}
@@ -577,6 +592,18 @@ func canSkipImage(repo, tag string, digest godigest.Digest, imageStore storage.I
 	}
 
 	return true, nil
+}
+
+// parse a reference, return its digest and if it's valid.
+func parseDigest(reference string) (godigest.Digest, bool) {
+	var ok bool
+
+	d, err := godigest.Parse(reference)
+	if err == nil {
+		ok = true
+	}
+
+	return d, ok
 }
 
 func manifestsEqual(manifest1, manifest2 ispec.Manifest) bool {
