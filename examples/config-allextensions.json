@@ -5,12 +5,33 @@
 	},
 	"http": {
 		"address": "127.0.0.1",
-		"port": "8080"
+		"port": "8080",
+		"auth": {
+			"htpasswd": {
+			  "path": "test/data/htpasswd"
+			}
+		},
+		"accesscontrol": {
+			"adminpolicy": {
+			  "actions": [
+				"read",
+				"create",
+				"update",
+				"delete"
+			  ],
+			  "users": [
+				"admin"
+			  ]
+			}
+		}
 	},
 	"log": {
 		"level": "debug"
 	},
 	"extensions": {
+		"sysconfig": {
+			"enable": true
+		},
 		"metrics": {},
 		"sync": {
 			"credentialsFile": "./examples/sync-auth-filepath.json",

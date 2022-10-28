@@ -7,4 +7,5 @@ const (
 	// zot specific extensions.
 	ExtSearchPrefix  = "/_zot/ext/search"
 	FullSearchPrefix = RoutePrefix + ExtSearchPrefix
+	ExtConfigPrefix  = RoutePrefix + "/_zot/ext/config"
 )

@@ -12,16 +12,21 @@ type BaseConfig struct {
 }
 
 type ExtensionConfig struct {
-	Search  *SearchConfig
-	Sync    *sync.Config
-	Metrics *MetricsConfig
-	Scrub   *ScrubConfig
-	Lint    *LintConfig
+	Search    *SearchConfig
+	Sync      *sync.Config
+	Metrics   *MetricsConfig
+	Scrub     *ScrubConfig
+	Lint      *LintConfig
+	SysConfig *SysConfig
 }
 
 type LintConfig struct {
 	BaseConfig           `mapstructure:",squash"`
 	MandatoryAnnotations []string
+}
+
+type SysConfig struct {
+	Enable *bool
 }
 
 type SearchConfig struct {

@@ -5,35 +5,17 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"strconv"
-	"strings"
-	"time"
 
-	glob "github.com/bmatcuk/doublestar/v4"
-	"github.com/mitchellh/mapstructure"
 	distspec "github.com/opencontainers/distribution-spec/specs-go"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 
-	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
-	"zotregistry.io/zot/pkg/api/constants"
-	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
-	"zotregistry.io/zot/pkg/storage"
 )
 
-// metadataConfig reports metadata after parsing, which we use to track
-// errors.
-func metadataConfig(md *mapstructure.Metadata) viper.DecoderConfigOption {
-	return func(c *mapstructure.DecoderConfig) {
-		c.Metadata = md
-	}
-}
-
-func newServeCmd(conf *config.Config) *cobra.Command {
+func newServeCmd() *cobra.Command {
 	// "serve"
 	serveCmd := &cobra.Command{
 		Use:     "serve <config>",
@@ -42,25 +24,18 @@ func newServeCmd(conf *config.Config) *cobra.Command {
 		Long:    "`serve` stores and distributes OCI images",
 		Run: func(cmd *cobra.Command, args []string) {
 			if len(args) > 0 {
-				if err := LoadConfiguration(conf, args[0]); err != nil {
+				hotReloader, err := NewHotReloader(args[0])
+				if err != nil {
 					panic(err)
 				}
-			}
 
-			ctlr := api.NewController(conf)
+				hotReloader.Start()
+			} else {
+				if err := cmd.Usage(); err != nil {
+					panic(err)
+				}
 
-			// config reloader
-			hotReloader, err := NewHotReloader(ctlr, args[0])
-			if err != nil {
-				panic(err)
-			}
-
-			/* context used to cancel go routines so that
-			we can change their config on the fly (restart routines with different config) */
-			reloaderCtx := hotReloader.Start()
-
-			if err := ctlr.Run(reloaderCtx); err != nil {
-				panic(err)
+				return
 			}
 		},
 	}
@@ -77,7 +52,7 @@ func newScrubCmd(conf *config.Config) *cobra.Command {
 		Long:    "`scrub` checks manifest/blob integrity",
 		Run: func(cmd *cobra.Command, args []string) {
 			if len(args) > 0 {
-				if err := LoadConfiguration(conf, args[0]); err != nil {
+				if err := config.LoadFromFile(args[0], conf); err != nil {
 					panic(err)
 				}
 			} else {
@@ -89,18 +64,8 @@ func newScrubCmd(conf *config.Config) *cobra.Command {
 			}
 
 			// checking if the server is  already running
-			req, err := http.NewRequestWithContext(context.Background(),
-				http.MethodGet,
-				fmt.Sprintf("http://%s/v2", net.JoinHostPort(conf.HTTP.Address, conf.HTTP.Port)),
-				nil)
-			if err != nil {
-				log.Error().Err(err).Msg("unable to create a new http request")
-				panic(err)
-			}
-
-			response, err := http.DefaultClient.Do(req)
-			if err == nil {
-				response.Body.Close()
+			ok := isServerRunning(conf.HTTP.Address, conf.HTTP.Port)
+			if ok {
 				log.Warn().Msg("The server is running, in order to perform the scrub command the server should be shut down")
 				panic("Error: server is running")
 			} else {
@@ -108,7 +73,7 @@ func newScrubCmd(conf *config.Config) *cobra.Command {
 				ctlr := api.NewController(conf)
 				ctlr.Metrics = monitoring.NewMetricsServer(false, ctlr.Log)
 
-				if err := ctlr.InitImageStore(context.Background()); err != nil {
+				if err := ctlr.InitImageStore(); err != nil {
 					panic(err)
 				}
 
@@ -134,11 +99,13 @@ func newVerifyCmd(conf *config.Config) *cobra.Command {
 		Long:    "`verify` validates a zot config file",
 		Run: func(cmd *cobra.Command, args []string) {
 			if len(args) > 0 {
-				if err := LoadConfiguration(conf, args[0]); err != nil {
+				if err := config.LoadFromFile(args[0], conf); err != nil {
+					log.Error().Err(err).Str("path", args[0]).Msgf("invalid config file %s", args[0])
+
 					panic(err)
 				}
 
-				log.Info().Msgf("Config file %s is valid", args[0])
+				log.Info().Msgf("config file %s is valid", args[0])
 			}
 		},
 	}
@@ -167,7 +134,7 @@ func NewServerRootCmd() *cobra.Command {
 	}
 
 	// "serve"
-	rootCmd.AddCommand(newServeCmd(conf))
+	rootCmd.AddCommand(newServeCmd())
 	// "verify"
 	rootCmd.AddCommand(newVerifyCmd(conf))
 	// "scrub"
@@ -205,416 +172,23 @@ func NewCliRootCmd() *cobra.Command {
 	return rootCmd
 }
 
-func validateStorageConfig(cfg *config.Config) error {
-	expConfigMap := make(map[string]config.StorageConfig, 0)
-
-	defaultRootDir := cfg.Storage.RootDirectory
-
-	for _, storageConfig := range cfg.Storage.SubPaths {
-		if strings.EqualFold(defaultRootDir, storageConfig.RootDirectory) {
-			log.Error().Err(errors.ErrBadConfig).Msg("storage subpaths cannot use default storage root directory")
-
-			return errors.ErrBadConfig
-		}
-
-		expConfig, ok := expConfigMap[storageConfig.RootDirectory]
-		if ok {
-			equal := expConfig.ParamsEqual(storageConfig)
-			if !equal {
-				log.Error().Err(errors.ErrBadConfig).Msg("storage config with same root directory should have same parameters")
-
-				return errors.ErrBadConfig
-			}
-		} else {
-			expConfigMap[storageConfig.RootDirectory] = storageConfig
-		}
-	}
-
-	return nil
-}
-
-func validateConfiguration(config *config.Config) error {
-	if err := validateHTTP(config); err != nil {
-		return err
-	}
-
-	if err := validateGC(config); err != nil {
-		return err
-	}
-
-	if err := validateLDAP(config); err != nil {
-		return err
-	}
-
-	if err := validateSync(config); err != nil {
-		return err
-	}
-
-	if err := validateStorageConfig(config); err != nil {
-		return err
-	}
-
-	// check authorization config, it should have basic auth enabled or ldap
-	if config.HTTP.RawAccessControl != nil {
-		// checking for anonymous policy only authorization config: no users, no policies but anonymous policy
-		if err := validateAuthzPolicies(config); err != nil {
-			return err
-		}
-	}
-
-	if len(config.Storage.StorageDriver) != 0 {
-		// enforce s3 driver in case of using storage driver
-		if config.Storage.StorageDriver["name"] != storage.S3StorageDriverName {
-			log.Error().Err(errors.ErrBadConfig).Msgf("unsupported storage driver: %s", config.Storage.StorageDriver["name"])
-
-			return errors.ErrBadConfig
-		}
-
-		// enforce filesystem storage in case sync feature is enabled
-		if config.Extensions != nil && config.Extensions.Sync != nil {
-			log.Error().Err(errors.ErrBadConfig).Msg("sync supports only filesystem storage")
-
-			return errors.ErrBadConfig
-		}
-	}
-
-	// enforce s3 driver on subpaths in case of using storage driver
-	if config.Storage.SubPaths != nil {
-		if len(config.Storage.SubPaths) > 0 {
-			subPaths := config.Storage.SubPaths
-
-			for route, storageConfig := range subPaths {
-				if len(storageConfig.StorageDriver) != 0 {
-					if storageConfig.StorageDriver["name"] != storage.S3StorageDriverName {
-						log.Error().Err(errors.ErrBadConfig).Str("subpath",
-							route).Msgf("unsupported storage driver: %s", storageConfig.StorageDriver["name"])
-
-						return errors.ErrBadConfig
-					}
-				}
-			}
-		}
-	}
-
-	// check glob patterns in authz config are compilable
-	if config.AccessControl != nil {
-		for pattern := range config.AccessControl.Repositories {
-			ok := glob.ValidatePattern(pattern)
-			if !ok {
-				log.Error().Err(glob.ErrBadPattern).Str("pattern", pattern).Msg("authorization pattern could not be compiled")
-
-				return glob.ErrBadPattern
-			}
-		}
-	}
-
-	return nil
-}
-
-func validateAuthzPolicies(config *config.Config) error {
-	if (config.HTTP.Auth == nil || (config.HTTP.Auth.HTPasswd.Path == "" && config.HTTP.Auth.LDAP == nil)) &&
-		!authzContainsOnlyAnonymousPolicy(config) {
-		log.Error().Err(errors.ErrBadConfig).
-			Msg("access control config requires httpasswd, ldap authentication " +
-				"or using only 'anonymousPolicy' policies")
-
-		return errors.ErrBadConfig
-	}
-
-	return nil
-}
-
-func applyDefaultValues(config *config.Config, viperInstance *viper.Viper) {
-	defaultVal := true
-
-	if config.Extensions == nil && viperInstance.Get("extensions") != nil {
-		config.Extensions = &extconf.ExtensionConfig{}
-
-		extMap := viperInstance.GetStringMap("extensions")
-		_, ok := extMap["metrics"]
-
-		if ok {
-			// we found a config like `"extensions": {"metrics": {}}`
-			// Note: In case metrics is not empty the config.Extensions will not be nil and we will not reach here
-			config.Extensions.Metrics = &extconf.MetricsConfig{}
-		}
-
-		_, ok = extMap["search"]
-		if ok {
-			// we found a config like `"extensions": {"search": {}}`
-			// Note: In case search is not empty the config.Extensions will not be nil and we will not reach here
-			config.Extensions.Search = &extconf.SearchConfig{}
-		}
-
-		_, ok = extMap["scrub"]
-		if ok {
-			// we found a config like `"extensions": {"scrub:": {}}`
-			// Note: In case scrub is not empty the config.Extensions will not be nil and we will not reach here
-			config.Extensions.Scrub = &extconf.ScrubConfig{}
-		}
-	}
-
-	if config.Extensions != nil {
-		if config.Extensions.Sync != nil {
-			if config.Extensions.Sync.Enable == nil {
-				config.Extensions.Sync.Enable = &defaultVal
-			}
-
-			for id, regCfg := range config.Extensions.Sync.Registries {
-				if regCfg.TLSVerify == nil {
-					config.Extensions.Sync.Registries[id].TLSVerify = &defaultVal
-				}
-			}
-		}
-
-		if config.Extensions.Search != nil {
-			if config.Extensions.Search.Enable == nil {
-				config.Extensions.Search.Enable = &defaultVal
-			}
-
-			if config.Extensions.Search.CVE == nil {
-				config.Extensions.Search.CVE = &extconf.CVEConfig{UpdateInterval: 24 * time.Hour} //nolint: gomnd
-			}
-		}
-
-		if config.Extensions.Metrics != nil {
-			if config.Extensions.Metrics.Enable == nil {
-				config.Extensions.Metrics.Enable = &defaultVal
-			}
-
-			if config.Extensions.Metrics.Prometheus == nil {
-				config.Extensions.Metrics.Prometheus = &extconf.PrometheusConfig{Path: constants.DefaultMetricsExtensionRoute}
-			}
-		}
-
-		if config.Extensions.Scrub != nil {
-			if config.Extensions.Scrub.Enable == nil {
-				config.Extensions.Scrub.Enable = &defaultVal
-			}
-
-			if config.Extensions.Scrub.Interval == 0 {
-				config.Extensions.Scrub.Interval = 24 * time.Hour //nolint: gomnd
-			}
-		}
-	}
-
-	if !config.Storage.GC && viperInstance.Get("storage::gcdelay") == nil {
-		config.Storage.GCDelay = 0
-	}
-}
-
-func updateDistSpecVersion(config *config.Config) {
-	if config.DistSpecVersion == distspec.Version {
-		return
-	}
-
-	log.Warn().
-		Msgf("config dist-spec version: %s differs from version actually used: %s",
-			config.DistSpecVersion, distspec.Version)
-
-	config.DistSpecVersion = distspec.Version
-}
-
-func LoadConfiguration(config *config.Config, configPath string) error {
-	// Default is dot (.) but because we allow glob patterns in authz
-	// we need another key delimiter.
-	viperInstance := viper.NewWithOptions(viper.KeyDelimiter("::"))
-
-	viperInstance.SetConfigFile(configPath)
-
-	if err := viperInstance.ReadInConfig(); err != nil {
-		log.Error().Err(err).Msg("error while reading configuration")
-
-		return err
-	}
-
-	metaData := &mapstructure.Metadata{}
-	if err := viperInstance.Unmarshal(&config, metadataConfig(metaData)); err != nil {
-		log.Error().Err(err).Msg("error while unmarshalling new config")
-
-		return err
-	}
-
-	if len(metaData.Keys) == 0 {
-		log.Error().Err(errors.ErrBadConfig).Msgf("config doesn't contain any key:value pair")
-
-		return errors.ErrBadConfig
-	}
-
-	if len(metaData.Unused) > 0 {
-		log.Error().Err(errors.ErrBadConfig).Msgf("unknown keys: %v", metaData.Unused)
-
-		return errors.ErrBadConfig
-	}
-
-	err := config.LoadAccessControlConfig(viperInstance)
+func isServerRunning(address, port string) bool {
+	// checking if the server is  already running
+	req, err := http.NewRequestWithContext(context.Background(),
+		http.MethodGet,
+		fmt.Sprintf("http://%s/v2", net.JoinHostPort(address, port)),
+		nil)
 	if err != nil {
-		log.Error().Err(err).Msg("unable to unmarshal config's accessControl")
-
-		return err
+		log.Error().Err(err).Msg("unable to create a new http request")
+		panic(err)
 	}
 
-	// defaults
-	applyDefaultValues(config, viperInstance)
-
-	// various config checks
-	if err := validateConfiguration(config); err != nil {
-		return err
-	}
-
-	// update distSpecVersion
-	updateDistSpecVersion(config)
-
-	return nil
-}
-
-func authzContainsOnlyAnonymousPolicy(cfg *config.Config) bool {
-	adminPolicy := cfg.AccessControl.AdminPolicy
-	anonymousPolicyPresent := false
-
-	log.Info().Msg("checking if anonymous authorization is the only type of authorization policy configured")
-
-	if len(adminPolicy.Actions)+len(adminPolicy.Users) > 0 {
-		log.Info().Msg("admin policy detected, anonymous authorization is not the only authorization policy configured")
-
+	response, err := http.DefaultClient.Do(req)
+	if err != nil {
 		return false
 	}
 
-	for _, repository := range cfg.AccessControl.Repositories {
-		if len(repository.DefaultPolicy) > 0 {
-			log.Info().Interface("repository", repository).
-				Msg("default policy detected, anonymous authorization is not the only authorization policy configured")
+	response.Body.Close()
 
-			return false
-		}
-
-		if len(repository.AnonymousPolicy) > 0 {
-			log.Info().Msg("anonymous authorization detected")
-
-			anonymousPolicyPresent = true
-		}
-
-		for _, policy := range repository.Policies {
-			if len(policy.Actions)+len(policy.Users) > 0 {
-				log.Info().Interface("repository", repository).
-					Msg("repository with non-empty policy detected, " +
-						"anonymous authorization is not the only authorization policy configured")
-
-				return false
-			}
-		}
-	}
-
-	return anonymousPolicyPresent
-}
-
-func validateLDAP(config *config.Config) error {
-	// LDAP mandatory configuration
-	if config.HTTP.Auth != nil && config.HTTP.Auth.LDAP != nil {
-		ldap := config.HTTP.Auth.LDAP
-		if ldap.UserAttribute == "" {
-			log.Error().Str("userAttribute", ldap.UserAttribute).
-				Msg("invalid LDAP configuration, missing mandatory key: userAttribute")
-
-			return errors.ErrLDAPConfig
-		}
-
-		if ldap.Address == "" {
-			log.Error().Str("address", ldap.Address).
-				Msg("invalid LDAP configuration, missing mandatory key: address")
-
-			return errors.ErrLDAPConfig
-		}
-
-		if ldap.BaseDN == "" {
-			log.Error().Str("basedn", ldap.BaseDN).
-				Msg("invalid LDAP configuration, missing mandatory key: basedn")
-
-			return errors.ErrLDAPConfig
-		}
-	}
-
-	return nil
-}
-
-func validateHTTP(config *config.Config) error {
-	if config.HTTP.Port != "" {
-		port, err := strconv.ParseInt(config.HTTP.Port, 10, 64)
-		if err != nil || (port < 0 || port > 65535) {
-			log.Error().Str("port", config.HTTP.Port).Msg("invalid port")
-
-			return errors.ErrBadConfig
-		}
-
-		fmt.Printf("HTTP port %d\n", port)
-	}
-
-	return nil
-}
-
-func validateGC(config *config.Config) error {
-	// enforce GC params
-	if config.Storage.GCDelay < 0 {
-		log.Error().Err(errors.ErrBadConfig).
-			Msgf("invalid garbage-collect delay %v specified", config.Storage.GCDelay)
-
-		return errors.ErrBadConfig
-	}
-
-	if config.Storage.GCInterval < 0 {
-		log.Error().Err(errors.ErrBadConfig).
-			Msgf("invalid garbage-collect interval %v specified", config.Storage.GCInterval)
-
-		return errors.ErrBadConfig
-	}
-
-	if !config.Storage.GC {
-		if config.Storage.GCDelay != 0 {
-			log.Warn().Err(errors.ErrBadConfig).
-				Msg("garbage-collect delay specified without enabling garbage-collect, will be ignored")
-		}
-
-		if config.Storage.GCInterval != 0 {
-			log.Warn().Err(errors.ErrBadConfig).
-				Msg("periodic garbage-collect interval specified without enabling garbage-collect, will be ignored")
-		}
-	}
-
-	return nil
-}
-
-func validateSync(config *config.Config) error {
-	// check glob patterns in sync config are compilable
-	if config.Extensions != nil && config.Extensions.Sync != nil {
-		for id, regCfg := range config.Extensions.Sync.Registries {
-			// check retry options are configured for sync
-			if regCfg.MaxRetries != nil && regCfg.RetryDelay == nil {
-				log.Error().Err(errors.ErrBadConfig).Msgf("extensions.sync.registries[%d].retryDelay"+
-					" is required when using extensions.sync.registries[%d].maxRetries", id, id)
-
-				return errors.ErrBadConfig
-			}
-
-			if regCfg.Content != nil {
-				for _, content := range regCfg.Content {
-					ok := glob.ValidatePattern(content.Prefix)
-					if !ok {
-						log.Error().Err(glob.ErrBadPattern).Str("prefix", content.Prefix).Msg("sync prefix could not be compiled")
-
-						return glob.ErrBadPattern
-					}
-
-					if content.StripPrefix && !strings.Contains(content.Prefix, "/*") && content.Destination == "/" {
-						log.Error().Err(errors.ErrBadConfig).
-							Interface("sync content", content).
-							Msg("sync config: can not use stripPrefix true and destination '/' without using glob patterns in prefix")
-
-						return errors.ErrBadConfig
-					}
-				}
-			}
-		}
-	}
-
-	return nil
+	return true
 }

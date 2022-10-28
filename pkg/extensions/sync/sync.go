@@ -439,7 +439,7 @@ func Run(ctx context.Context, cfg Config,
 	var err error
 
 	if cfg.CredentialsFile != "" {
-		credentialsFile, err = getFileCredentials(cfg.CredentialsFile)
+		credentialsFile, err = GetFileCredentials(cfg.CredentialsFile)
 		if err != nil {
 			logger.Error().Str("errortype", TypeOf(err)).
 				Err(err).Msgf("couldn't get registry credentials from %s", cfg.CredentialsFile)
@@ -505,6 +505,7 @@ func Run(ctx context.Context, cfg Config,
 				select {
 				case <-ctx.Done():
 					ticker.Stop()
+					logger.Info().Msg("sync routine will exit, config reloaded")
 
 					return
 				case <-ticker.C:

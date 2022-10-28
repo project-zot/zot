@@ -31,20 +31,22 @@ function setup_file() {
             }
         },
         "accessControl": {
-            "**": {
-                "anonymousPolicy": ["read"],
-                "policies": [
-                    {
-                        "users": [
-                            "test"
-                        ],
-                        "actions": [
-                            "read",
-                            "create",
-                            "update"
-                        ]
-                    }
-                ]
+            "repositories": {
+                "**": {
+                    "anonymousPolicy": ["read"],
+                    "policies": [
+                        {
+                            "users": [
+                                "test"
+                            ],
+                            "actions": [
+                                "read",
+                                "create",
+                                "update"
+                            ]
+                        }
+                    ]
+                }
             }
         }
     },

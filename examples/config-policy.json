@@ -14,84 +14,86 @@
       "failDelay": 1
     },
     "accessControl": {
-      "**": {
-        "anonymousPolicy": ["read"],
-        "policies": [
-          {
-            "users": [
-              "charlie"
-            ],
-            "actions": [
-              "read",
-              "create",
-              "update"
-            ]
-          }
-        ],
-        "defaultPolicy": [
-          "read",
-          "create"
-        ]
-      },
-      "tmp/**": {
-        "defaultPolicy": [
-          "read",
-          "create",
-          "update"
-        ]
-      },
-      "infra/**": {
-        "policies": [
-          {
-            "users": [
-              "alice",
-              "bob"
-            ],
-            "actions": [
-              "create",
-              "read",
-              "update",
-              "delete"
-            ]
-          },
-          {
-            "users": [
-              "mallory"
-            ],
-            "actions": [
-              "create",
-              "read"
-            ]
-          }
-        ],
-        "defaultPolicy": [
-          "read"
-        ]
-      },
-      "repos2/repo": {
-        "policies": [
-          {
-            "users": [
-              "charlie"
-            ],
-            "actions": [
-              "read",
-              "create"
-            ]
-          },
-          {
-            "users": [
-              "mallory"
-            ],
-            "actions": [
-              "create",
-              "read"
-            ]
-          }
-        ],
-        "defaultPolicy": [
-          "read"
-        ]
+      "repositories": {
+        "**": {
+          "anonymousPolicy": ["read"],
+          "policies": [
+            {
+              "users": [
+                "charlie"
+              ],
+              "actions": [
+                "read",
+                "create",
+                "update"
+              ]
+            }
+          ],
+          "defaultPolicy": [
+            "read",
+            "create"
+          ]
+        },
+        "tmp/**": {
+          "defaultPolicy": [
+            "read",
+            "create",
+            "update"
+          ]
+        },
+        "infra/**": {
+          "policies": [
+            {
+              "users": [
+                "alice",
+                "bob"
+              ],
+              "actions": [
+                "create",
+                "read",
+                "update",
+                "delete"
+              ]
+            },
+            {
+              "users": [
+                "mallory"
+              ],
+              "actions": [
+                "create",
+                "read"
+              ]
+            }
+          ],
+          "defaultPolicy": [
+            "read"
+          ]
+        },
+        "repos2/repo": {
+          "policies": [
+            {
+              "users": [
+                "charlie"
+              ],
+              "actions": [
+                "read",
+                "create"
+              ]
+            },
+            {
+              "users": [
+                "mallory"
+              ],
+              "actions": [
+                "create",
+                "read"
+              ]
+            }
+          ],
+          "defaultPolicy": [
+            "read"
+          ]
+        }
       },
       "adminPolicy": {
         "users": [

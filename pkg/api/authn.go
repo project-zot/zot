@@ -181,7 +181,7 @@ func basicAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 				return
 			}
-			if request.Header.Get("Authorization") == "" && anonymousPolicyExists(ctlr.Config.AccessControl) {
+			if request.Header.Get("Authorization") == "" && anonymousPolicyExists(ctlr.Config.HTTP.AccessControl) {
 				// Process request
 				next.ServeHTTP(response, request)
 
@@ -198,7 +198,7 @@ func basicAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 			// some client tools might send Authorization: Basic Og== (decoded into ":")
 			// empty username and password
-			if username == "" && passphrase == "" && anonymousPolicyExists(ctlr.Config.AccessControl) {
+			if username == "" && passphrase == "" && anonymousPolicyExists(ctlr.Config.HTTP.AccessControl) {
 				// Process request
 				next.ServeHTTP(response, request)
 

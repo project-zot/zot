@@ -1,0 +1,36 @@
+{
+  "distspecversion": "1.0.1-dev",
+  "extensions": {
+    "sysconfig": {
+      "enable": true
+    }
+  },
+  "http": {
+    "accesscontrol": {
+      "adminpolicy": {
+        "actions": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ],
+        "users": [
+          "admin"
+        ]
+      }
+    },
+    "address": "127.0.0.1",
+    "auth": {
+      "htpasswd": {
+        "path": "test/data/htpasswd"
+      }
+    },
+    "port": "5000"
+  },
+  "log": {
+    "level": "debug"
+  },
+  "storage": {
+    "rootdirectory": "/tmp/zot"
+  }
+}

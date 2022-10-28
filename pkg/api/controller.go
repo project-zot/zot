@@ -37,6 +37,7 @@ const (
 
 type Controller struct {
 	Config          *config.Config
+	ConfigPath      string
 	Router          *mux.Router
 	StoreController storage.StoreController
 	Log             log.Logger
@@ -60,6 +61,15 @@ func NewController(config *config.Config) *Controller {
 		audit := log.NewAuditLogger(config.Log.Level, config.Log.Audit)
 		controller.Audit = audit
 	}
+
+	addr := fmt.Sprintf("%s:%s", controller.Config.HTTP.Address, controller.Config.HTTP.Port)
+	server := &http.Server{
+		Addr:              addr,
+		Handler:           controller.Router,
+		IdleTimeout:       idleTimeout,
+		ReadHeaderTimeout: readHeaderTimeout,
+	}
+	controller.Server = server
 
 	return &controller
 }
@@ -112,6 +122,10 @@ func (c *Controller) GetPort() int {
 	return c.chosenPort
 }
 
+func (c *Controller) SetConfigPath(path string) {
+	c.ConfigPath = path
+}
+
 func (c *Controller) Run(reloadCtx context.Context) error {
 	// print the current configuration, but strip secrets
 	c.Log.Info().Interface("params", c.Config.Sanitize()).Msg("configuration settings")
@@ -144,6 +158,7 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 	}
 
 	c.Router = engine
+	c.Server.Handler = engine
 	c.Router.UseEncodedPath()
 
 	var enabled bool
@@ -156,27 +171,20 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 
 	c.Metrics = monitoring.NewMetricsServer(enabled, c.Log)
 
-	if err := c.InitImageStore(reloadCtx); err != nil {
+	if err := c.InitImageStore(); err != nil {
 		return err
 	}
 
-	monitoring.SetServerInfo(c.Metrics, c.Config.Commit, c.Config.BinaryType, c.Config.GoVersion,
-		c.Config.DistSpecVersion)
+	c.StartBackgroundTasks(reloadCtx)
 
 	//nolint: contextcheck
 	_ = NewRouteHandler(c)
 
-	addr := fmt.Sprintf("%s:%s", c.Config.HTTP.Address, c.Config.HTTP.Port)
-	server := &http.Server{
-		Addr:              addr,
-		Handler:           c.Router,
-		IdleTimeout:       idleTimeout,
-		ReadHeaderTimeout: readHeaderTimeout,
-	}
-	c.Server = server
+	monitoring.SetServerInfo(c.Metrics, c.Config.Commit, c.Config.BinaryType, c.Config.GoVersion,
+		c.Config.DistSpecVersion)
 
 	// Create the listener
-	listener, err := net.Listen("tcp", addr)
+	listener, err := net.Listen("tcp", c.Server.Addr)
 	if err != nil {
 		return err
 	}
@@ -201,7 +209,7 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 	}
 
 	if c.Config.HTTP.TLS != nil && c.Config.HTTP.TLS.Key != "" && c.Config.HTTP.TLS.Cert != "" {
-		server.TLSConfig = &tls.Config{
+		c.Server.TLSConfig = &tls.Config{
 			CipherSuites: []uint16{
 				tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
 				tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
@@ -221,7 +229,7 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 		if c.Config.HTTP.TLS.CACert != "" {
 			clientAuth := tls.VerifyClientCertIfGiven
 			if (c.Config.HTTP.Auth == nil || c.Config.HTTP.Auth.HTPasswd.Path == "") &&
-				!anonymousPolicyExists(c.Config.AccessControl) {
+				!anonymousPolicyExists(c.Config.HTTP.AccessControl) {
 				clientAuth = tls.RequireAndVerifyClientCert
 			}
 
@@ -236,17 +244,17 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 				panic(errors.ErrBadCACert)
 			}
 
-			server.TLSConfig.ClientAuth = clientAuth
-			server.TLSConfig.ClientCAs = caCertPool
+			c.Server.TLSConfig.ClientAuth = clientAuth
+			c.Server.TLSConfig.ClientCAs = caCertPool
 		}
 
-		return server.ServeTLS(listener, c.Config.HTTP.TLS.Cert, c.Config.HTTP.TLS.Key)
+		return c.Server.ServeTLS(listener, c.Config.HTTP.TLS.Cert, c.Config.HTTP.TLS.Key)
 	}
 
-	return server.Serve(listener)
+	return c.Server.Serve(listener)
 }
 
-func (c *Controller) InitImageStore(reloadCtx context.Context) error {
+func (c *Controller) InitImageStore() error {
 	c.StoreController = storage.StoreController{}
 
 	linter := ext.GetLinter(c.Config, c.Log)
@@ -321,8 +329,6 @@ func (c *Controller) InitImageStore(reloadCtx context.Context) error {
 			c.StoreController.SubStore = subImageStore
 		}
 	}
-
-	c.StartBackgroundTasks(reloadCtx)
 
 	return nil
 }
@@ -421,23 +427,6 @@ func compareImageStore(root1, root2 string) bool {
 	return isSameFile
 }
 
-func (c *Controller) LoadNewConfig(reloadCtx context.Context, config *config.Config) {
-	// reload access control config
-	c.Config.AccessControl = config.AccessControl
-	c.Config.HTTP.RawAccessControl = config.HTTP.RawAccessControl
-
-	// Enable extensions if extension config is provided
-	if config.Extensions != nil && config.Extensions.Sync != nil {
-		// reload sync config
-		c.Config.Extensions.Sync = config.Extensions.Sync
-		ext.EnableSyncExtension(reloadCtx, c.Config, c.wgShutDown, c.StoreController, c.Log)
-	} else if c.Config.Extensions != nil {
-		c.Config.Extensions.Sync = nil
-	}
-
-	c.Log.Info().Interface("reloaded params", c.Config.Sanitize()).Msg("new configuration settings")
-}
-
 func (c *Controller) Shutdown() {
 	// wait gracefully
 	c.wgShutDown.Wait()
@@ -446,9 +435,9 @@ func (c *Controller) Shutdown() {
 	_ = c.Server.Shutdown(ctx)
 }
 
-func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
+func (c *Controller) StartBackgroundTasks(ctx context.Context) {
 	taskScheduler := scheduler.NewScheduler(c.Log)
-	taskScheduler.RunScheduler(reloadCtx)
+	taskScheduler.RunScheduler(ctx)
 
 	// Enable running garbage-collect periodically for DefaultStore
 	if c.Config.Storage.GC && c.Config.Storage.GCInterval != 0 {
@@ -478,7 +467,7 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 	// Enable extensions if extension config is provided for storeController
 	if c.Config.Extensions != nil {
 		if c.Config.Extensions.Sync != nil {
-			ext.EnableSyncExtension(reloadCtx, c.Config, c.wgShutDown, c.StoreController, c.Log)
+			ext.EnableSyncExtension(ctx, c.Config, c.wgShutDown, c.StoreController, c.Log)
 		}
 	}
 
