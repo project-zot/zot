@@ -303,3 +303,40 @@ func TestGetReferrersErrors(t *testing.T) {
 		})
 	})
 }
+
+func TestGetImageIndexErrors(t *testing.T) {
+	log := zerolog.New(os.Stdout)
+
+	Convey("Trigger invalid digest error", t, func(c C) {
+		imgStore := &mocks.MockedImageStore{}
+
+		_, err := storage.GetImageIndex(imgStore, "zot-test", "invalidDigest", log)
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("Trigger GetBlobContent error", t, func(c C) {
+		imgStore := &mocks.MockedImageStore{
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				return []byte{}, errors.ErrBlobNotFound
+			},
+		}
+
+		validDigest := godigest.FromBytes([]byte("blob"))
+
+		_, err := storage.GetImageIndex(imgStore, "zot-test", validDigest, log)
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("Trigger unmarshal error", t, func(c C) {
+		imgStore := &mocks.MockedImageStore{
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				return []byte{}, nil
+			},
+		}
+
+		validDigest := godigest.FromBytes([]byte("blob"))
+
+		_, err := storage.GetImageIndex(imgStore, "zot-test", validDigest, log)
+		So(err, ShouldNotBeNil)
+	})
+}

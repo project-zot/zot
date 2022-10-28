@@ -463,13 +463,9 @@ func (is *ObjectStorage) DeleteImageManifest(repo, reference string, detectColli
 		return err
 	}
 
-	manifestDesc, found, err := storage.RemoveManifestDescByReference(&index, reference, detectCollisions)
+	manifestDesc, err := storage.RemoveManifestDescByReference(&index, reference, detectCollisions)
 	if err != nil {
 		return err
-	}
-
-	if !found {
-		return zerr.ErrManifestNotFound
 	}
 
 	err = storage.UpdateIndexWithPrunedImageManifests(is, &index, repo, manifestDesc, manifestDesc.Digest, is.log)
