@@ -1101,8 +1101,10 @@ func TestDerivedImageList(t *testing.T) {
 	Convey("Test dependency list for image working", t, func() {
 		// create test images
 		config := ispec.Image{
-			Architecture: "amd64",
-			OS:           "linux",
+			Platform: ispec.Platform{
+				Architecture: "amd64",
+				OS:           "linux",
+			},
 			RootFS: ispec.RootFS{
 				Type:    "layers",
 				DiffIDs: []godigest.Digest{},
@@ -1516,8 +1518,10 @@ func TestBaseImageList(t *testing.T) {
 	Convey("Test base image list for image working", t, func() {
 		// create test images
 		config := ispec.Image{
-			Architecture: "amd64",
-			OS:           "linux",
+			Platform: ispec.Platform{
+				Architecture: "amd64",
+				OS:           "linux",
+			},
 			RootFS: ispec.RootFS{
 				Type:    "layers",
 				DiffIDs: []godigest.Digest{},
@@ -2502,8 +2506,10 @@ func TestImageList(t *testing.T) {
 		WaitTillServerReady(baseURL)
 
 		config := ispec.Image{
-			Architecture: "amd64",
-			OS:           "linux",
+			Platform: ispec.Platform{
+				Architecture: "amd64",
+				OS:           "linux",
+			},
 			RootFS: ispec.RootFS{
 				Type:    "layers",
 				DiffIDs: []godigest.Digest{},
@@ -2619,8 +2625,10 @@ func TestBuildImageInfo(t *testing.T) {
 		}
 
 		config := ispec.Image{
-			Architecture: "amd64",
-			OS:           "linux",
+			Platform: ispec.Platform{
+				Architecture: "amd64",
+				OS:           "linux",
+			},
 			RootFS: ispec.RootFS{
 				Type:    "layers",
 				DiffIDs: []godigest.Digest{},

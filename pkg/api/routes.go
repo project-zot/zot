@@ -8,6 +8,8 @@
 package api
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -96,6 +98,9 @@ func (rh *RouteHandler) SetupRoutes() {
 			rh.UpdateBlobUpload).Methods("PUT")
 		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/{session_id}", NameRegexp.String()),
 			rh.DeleteBlobUpload).Methods("DELETE")
+		// support for OCI artifact references
+		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/referrers/{digest}", NameRegexp.String()),
+			rh.GetReferrers).Methods(allowedMethods("GET")...)
 		prefixedRouter.HandleFunc(constants.ExtCatalogPrefix,
 			rh.ListRepositories).Methods(allowedMethods("GET")...)
 		prefixedRouter.HandleFunc(constants.ExtOciDiscoverPrefix,
@@ -104,9 +109,9 @@ func (rh *RouteHandler) SetupRoutes() {
 			rh.CheckVersionSupport).Methods(allowedMethods("GET")...)
 	}
 
-	// support for oras artifact reference types (alpha 1) - image signature use case
+	// support for ORAS artifact reference types (alpha 1) - image signature use case
 	rh.c.Router.HandleFunc(fmt.Sprintf("%s/{name:%s}/manifests/{digest}/referrers",
-		constants.ArtifactSpecRoutePrefix, NameRegexp.String()), rh.GetReferrers).Methods("GET")
+		constants.ArtifactSpecRoutePrefix, NameRegexp.String()), rh.GetOrasReferrers).Methods("GET")
 
 	// swagger
 	debug.SetupSwaggerRoutes(rh.c.Config, rh.c.Router, rh.c.Log)
@@ -310,7 +315,8 @@ func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *htt
 		return
 	}
 
-	content, digest, mediaType, err := getImageManifest(rh, imgStore, name, reference) //nolint:contextcheck
+	content, digest, mediaType, err := getImageManifest(request.Context(), rh, imgStore,
+		name, reference) //nolint:contextcheck
 	if err != nil {
 		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 			WriteJSON(response, http.StatusNotFound,
@@ -375,7 +381,8 @@ func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.
 		return
 	}
 
-	content, digest, mediaType, err := getImageManifest(rh, imgStore, name, reference) //nolint: contextcheck
+	content, digest, mediaType, err := getImageManifest(request.Context(), rh,
+		imgStore, name, reference) //nolint: contextcheck
 	if err != nil {
 		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 			WriteJSON(response, http.StatusNotFound,
@@ -396,6 +403,117 @@ func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.
 
 	response.Header().Set(constants.DistContentDigestKey, digest.String())
 	WriteData(response, http.StatusOK, mediaType, content)
+}
+
+type ImageIndex struct {
+	ispec.Index
+}
+
+func getReferrers(ctx context.Context, routeHandler *RouteHandler,
+	imgStore storage.ImageStore, name string, digest godigest.Digest,
+	artifactType string,
+) (ispec.Index, error) {
+	// first get the subject and then all its referrers
+	references, err := imgStore.GetReferrers(name, digest, artifactType)
+	if err != nil {
+		if routeHandler.c.Config.Extensions != nil &&
+			routeHandler.c.Config.Extensions.Sync != nil &&
+			*routeHandler.c.Config.Extensions.Sync.Enable {
+			routeHandler.c.Log.Info().Msgf("referrers not found, trying to get referrers to %s:%s by syncing on demand",
+				name, digest)
+
+			errSync := ext.SyncOneImage(ctx, routeHandler.c.Config, routeHandler.c.StoreController,
+				name, digest.String(), false, routeHandler.c.Log)
+			if errSync != nil {
+				routeHandler.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).Msg("unable to get references")
+
+				return ispec.Index{}, err
+			}
+
+			for _, ref := range references.Manifests {
+				errSync := ext.SyncOneImage(ctx, routeHandler.c.Config, routeHandler.c.StoreController,
+					name, ref.Digest.String(), false, routeHandler.c.Log)
+				if errSync != nil {
+					routeHandler.c.Log.Error().Err(err).Str("name", name).
+						Str("digest", ref.Digest.String()).Msg("unable to get references")
+
+					return ispec.Index{}, err
+				}
+			}
+
+			references, err = imgStore.GetReferrers(name, digest, artifactType)
+		}
+	}
+
+	return references, err
+}
+
+// GetReferrers godoc
+// @Summary Get references for a given digest
+// @Description Get references given a digest
+// @Accept  json
+// @Produce application/vnd.oci.image.index.v1+json
+// @Param   name     			path    string     true        "repository name"
+// @Param   digest     path    string     true        "digest"
+// @Success 200 {object} 	api.ImageIndex
+// @Failure 404 {string} string "not found"
+// @Failure 500 {string} string "internal server error"
+// @Router /v2/{name}/references/{digest} [get].
+func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http.Request) {
+	vars := mux.Vars(request)
+
+	name, ok := vars["name"]
+	if !ok || name == "" {
+		response.WriteHeader(http.StatusNotFound)
+
+		return
+	}
+
+	digestStr, ok := vars["digest"]
+	digest, err := godigest.Parse(digestStr)
+
+	if !ok || digestStr == "" || err != nil {
+		response.WriteHeader(http.StatusBadRequest)
+
+		return
+	}
+
+	// filter by artifact type
+	artifactType := ""
+
+	artifactTypes, ok := request.URL.Query()["artifactType"]
+	if ok {
+		if len(artifactTypes) != 1 {
+			rh.c.Log.Error().Msg("invalid artifact types")
+			response.WriteHeader(http.StatusBadRequest)
+
+			return
+		}
+
+		artifactType = artifactTypes[0]
+	}
+
+	rh.c.Log.Info().Str("digest", digest.String()).Str("artifactType", artifactType).Msg("getting manifest")
+
+	imgStore := rh.getImageStore(name)
+
+	referrers, err := getReferrers(request.Context(), rh, imgStore, name, digest, artifactType)
+	if err != nil {
+		rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).Msg("unable to get references")
+		response.WriteHeader(http.StatusNotFound)
+
+		return
+	}
+
+	out, err := json.Marshal(referrers)
+	if err != nil {
+		rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).Msg("unable to marshal json")
+		response.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	WriteData(response, http.StatusOK, ispec.MediaTypeImageIndex, out)
 }
 
 // UpdateManifest godoc
@@ -1458,7 +1576,7 @@ func (rh *RouteHandler) getImageStore(name string) storage.ImageStore {
 }
 
 // will sync on demand if an image is not found, in case sync extensions is enabled.
-func getImageManifest(routeHandler *RouteHandler, imgStore storage.ImageStore, name,
+func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore storage.ImageStore, name,
 	reference string,
 ) ([]byte, godigest.Digest, string, error) {
 	content, digest, mediaType, err := imgStore.GetImageManifest(name, reference)
@@ -1470,7 +1588,7 @@ func getImageManifest(routeHandler *RouteHandler, imgStore storage.ImageStore, n
 				routeHandler.c.Log.Info().Msgf("image not found, trying to get image %s:%s by syncing on demand",
 					name, reference)
 
-				errSync := ext.SyncOneImage(routeHandler.c.Config, routeHandler.c.StoreController,
+				errSync := ext.SyncOneImage(ctx, routeHandler.c.Config, routeHandler.c.StoreController,
 					name, reference, false, routeHandler.c.Log)
 				if errSync != nil {
 					routeHandler.c.Log.Err(errSync).Msgf("error encounter while syncing image %s:%s",
@@ -1488,10 +1606,11 @@ func getImageManifest(routeHandler *RouteHandler, imgStore storage.ImageStore, n
 }
 
 // will sync referrers on demand if they are not found, in case sync extensions is enabled.
-func getReferrers(routeHandler *RouteHandler, imgStore storage.ImageStore, name string, digest godigest.Digest,
+func getOrasReferrers(ctx context.Context, routeHandler *RouteHandler,
+	imgStore storage.ImageStore, name string, digest godigest.Digest,
 	artifactType string,
 ) ([]artifactspec.Descriptor, error) {
-	refs, err := imgStore.GetReferrers(name, digest, artifactType)
+	refs, err := imgStore.GetOrasReferrers(name, digest, artifactType)
 	if err != nil {
 		if routeHandler.c.Config.Extensions != nil &&
 			routeHandler.c.Config.Extensions.Sync != nil &&
@@ -1499,7 +1618,7 @@ func getReferrers(routeHandler *RouteHandler, imgStore storage.ImageStore, name 
 			routeHandler.c.Log.Info().Msgf("signature not found, trying to get signature %s:%s by syncing on demand",
 				name, digest.String())
 
-			errSync := ext.SyncOneImage(routeHandler.c.Config, routeHandler.c.StoreController,
+			errSync := ext.SyncOneImage(ctx, routeHandler.c.Config, routeHandler.c.StoreController,
 				name, digest.String(), true, routeHandler.c.Log)
 			if errSync != nil {
 				routeHandler.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).Msg("unable to get references")
@@ -1507,7 +1626,7 @@ func getReferrers(routeHandler *RouteHandler, imgStore storage.ImageStore, name 
 				return []artifactspec.Descriptor{}, err
 			}
 
-			refs, err = imgStore.GetReferrers(name, digest, artifactType)
+			refs, err = imgStore.GetOrasReferrers(name, digest, artifactType)
 		}
 	}
 
@@ -1518,7 +1637,7 @@ type ReferenceList struct {
 	References []artifactspec.Descriptor `json:"references"`
 }
 
-// GetReferrers godoc
+// GetOrasReferrers godoc
 // @Summary Get references for an image
 // @Description Get references for an image given a digest and artifact type
 // @Accept  json
@@ -1530,7 +1649,7 @@ type ReferenceList struct {
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
 // @Router /oras/artifacts/v1/{name:%s}/manifests/{digest}/referrers [get].
-func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http.Request) {
+func (rh *RouteHandler) GetOrasReferrers(response http.ResponseWriter, request *http.Request) {
 	vars := mux.Vars(request)
 	name, ok := vars["name"]
 
@@ -1549,15 +1668,20 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 		return
 	}
 
+	// filter by artifact type
+	artifactType := ""
+
 	artifactTypes, ok := request.URL.Query()["artifactType"]
-	if !ok || len(artifactTypes) != 1 {
-		rh.c.Log.Error().Msg("invalid artifact types")
-		response.WriteHeader(http.StatusBadRequest)
+	if ok {
+		if len(artifactTypes) != 1 {
+			rh.c.Log.Error().Msg("invalid artifact types")
+			response.WriteHeader(http.StatusBadRequest)
 
-		return
+			return
+		}
+
+		artifactType = artifactTypes[0]
 	}
-
-	artifactType := artifactTypes[0]
 
 	if artifactType != notreg.ArtifactTypeNotation {
 		rh.c.Log.Error().Str("artifactType", artifactType).Msg("invalid artifact type")
@@ -1570,10 +1694,10 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 
 	rh.c.Log.Info().Str("digest", digest.String()).Str("artifactType", artifactType).Msg("getting manifest")
 
-	refs, err := getReferrers(rh, imgStore, name, digest, artifactType) //nolint:contextcheck
+	refs, err := getOrasReferrers(request.Context(), rh, imgStore, name, digest, artifactType) //nolint:contextcheck
 	if err != nil {
 		rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).Msg("unable to get references")
-		response.WriteHeader(http.StatusBadRequest)
+		response.WriteHeader(http.StatusNotFound)
 
 		return
 	}

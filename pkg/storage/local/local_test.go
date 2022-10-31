@@ -147,14 +147,14 @@ func TestStorageFSAPIs(t *testing.T) {
 				panic(err)
 			}
 
-			// invalid GetReferrers
-			_, err = imgStore.GetReferrers("invalid", "invalid", "invalid")
+			// invalid GetOrasReferrers
+			_, err = imgStore.GetOrasReferrers("invalid", "invalid", "invalid")
 			So(err, ShouldNotBeNil)
 
-			_, err = imgStore.GetReferrers(repoName, "invalid", "invalid")
+			_, err = imgStore.GetOrasReferrers(repoName, "invalid", "invalid")
 			So(err, ShouldNotBeNil)
 
-			_, err = imgStore.GetReferrers(repoName, digest, "invalid")
+			_, err = imgStore.GetOrasReferrers(repoName, digest, "invalid")
 			So(err, ShouldNotBeNil)
 
 			// invalid DeleteImageManifest
@@ -175,7 +175,7 @@ func TestStorageFSAPIs(t *testing.T) {
 	})
 }
 
-func TestGetReferrers(t *testing.T) {
+func TestGetOrasReferrers(t *testing.T) {
 	dir := t.TempDir()
 
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
@@ -218,7 +218,7 @@ func TestGetReferrers(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		So(err, ShouldBeNil)
-		descriptors, err := imgStore.GetReferrers("zot-test", digest, "signature-example")
+		descriptors, err := imgStore.GetOrasReferrers("zot-test", digest, "signature-example")
 		So(err, ShouldBeNil)
 		So(descriptors, ShouldNotBeEmpty)
 		So(descriptors[0].ArtifactType, ShouldEqual, "signature-example")
@@ -982,7 +982,7 @@ func FuzzGetBlobContent(f *testing.F) {
 	})
 }
 
-func FuzzGetReferrers(f *testing.F) {
+func FuzzGetOrasReferrers(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data string) {
 		log := &log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, *log)
@@ -1033,7 +1033,7 @@ func FuzzGetReferrers(f *testing.F) {
 		if err != nil {
 			t.Error(err)
 		}
-		_, err = imgStore.GetReferrers("zot-test", digest, data)
+		_, err = imgStore.GetOrasReferrers("zot-test", digest, data)
 		if err != nil {
 			if errors.Is(err, zerr.ErrManifestNotFound) || isKnownErr(err) {
 				return

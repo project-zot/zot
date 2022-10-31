@@ -201,7 +201,7 @@ func (olu BaseOciLayoutUtils) checkNotarySignature(name string, digest godigest.
 	imageStore := olu.StoreController.GetImageStore(name)
 	mediaType := notreg.ArtifactTypeNotation
 
-	_, err := imageStore.GetReferrers(name, digest, mediaType)
+	_, err := imageStore.GetOrasReferrers(name, digest, mediaType)
 	if err != nil {
 		olu.Log.Info().Err(err).Str("repo", name).Str("digest",
 			digest.String()).Str("mediatype", mediaType).Msg("invalid notary signature")

@@ -26,7 +26,7 @@ import (
 	notreg "github.com/notaryproject/notation-go/registry"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
+	oraspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	perr "github.com/pkg/errors"
 	"github.com/sigstore/cosign/cmd/cosign/cli/generate"
 	"github.com/sigstore/cosign/cmd/cosign/cli/options"
@@ -2404,7 +2404,7 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 		})
 
 		Convey("Trigger error on notary signature", func() {
-			// trigger permission error on cosign signature on upstream
+			// trigger permission error on notary signature on upstream
 			notaryURLPath := path.Join("/oras/artifacts/v1/", repoName, "manifests", imageManifestDigest.String(), "referrers")
 
 			// based on image manifest digest get referrers
@@ -2422,7 +2422,7 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// read manifest
-			var artifactManifest artifactspec.Manifest
+			var artifactManifest oraspec.Manifest
 			for _, ref := range referrers.References {
 				refPath := path.Join(srcDir, repoName, "blobs", string(ref.Digest.Algorithm()), ref.Digest.Encoded())
 				body, err := os.ReadFile(refPath)
@@ -2449,6 +2449,53 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 			resp, err = resty.R().Get(destBaseURL + notaryURLPath)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 400)
+		})
+
+		Convey("Trigger error on artifact references", func() {
+			// trigger permission denied on image manifest
+			manifestPath := path.Join(srcDir, repoName, "blobs",
+				string(imageManifestDigest.Algorithm()), imageManifestDigest.Encoded())
+			err = os.Chmod(manifestPath, 0o000)
+			So(err, ShouldBeNil)
+
+			// trigger permission error on upstream
+			artifactURLPath := path.Join("/v2", repoName, "referrers", imageManifestDigest.String())
+
+			// based on image manifest digest get referrers
+			resp, err := resty.R().
+				SetHeader("Content-Type", "application/json").
+				SetQueryParam("artifactType", "application/vnd.cncf.icecream").
+				Get(srcBaseURL + artifactURLPath)
+
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeEmpty)
+
+			var referrers ispec.Index
+
+			err = json.Unmarshal(resp.Body(), &referrers)
+			So(err, ShouldBeNil)
+
+			// read manifest
+			for _, ref := range referrers.Manifests {
+				refPath := path.Join(srcDir, repoName, "blobs", string(ref.Digest.Algorithm()), ref.Digest.Encoded())
+				_, err = os.ReadFile(refPath)
+				So(err, ShouldBeNil)
+
+				// triggers perm denied on artifact blobs
+				err = os.Chmod(refPath, 0o000)
+				So(err, ShouldBeNil)
+			}
+
+			// start downstream server
+			dctlr, destBaseURL, _, _ := startDownstreamServer(t, false, syncConfig)
+			defer dctlr.Shutdown()
+
+			time.Sleep(2 * time.Second)
+
+			// should not be synced nor sync on demand
+			resp, err = resty.R().Get(destBaseURL + artifactURLPath)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 404)
 		})
 	})
 }
@@ -2590,7 +2637,7 @@ func TestSignatures(t *testing.T) {
 		err = os.RemoveAll(path.Join(destDir, repoName))
 		So(err, ShouldBeNil)
 
-		var artifactManifest artifactspec.Manifest
+		var artifactManifest oraspec.Manifest
 		for _, ref := range referrers.References {
 			refPath := path.Join(srcDir, repoName, "blobs", string(ref.Digest.Algorithm()), ref.Digest.Encoded())
 			body, err := os.ReadFile(refPath)
@@ -4401,6 +4448,42 @@ func pushRepo(url, repoName string) godigest.Digest {
 
 	_, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
 		SetBody(content).Put(url + fmt.Sprintf("/v2/%s/manifests/1.0", repoName))
+	if err != nil {
+		panic(err)
+	}
+
+	// push a referrer artifact
+	manifest = ispec.Manifest{
+		Config: ispec.Descriptor{
+			MediaType: "application/vnd.cncf.icecream",
+			Digest:    cdigest,
+			Size:      int64(len(cblob)),
+		},
+		Layers: []ispec.Descriptor{
+			{
+				MediaType: "application/vnd.oci.image.layer.v1.tar",
+				Digest:    digest,
+				Size:      int64(len(content)),
+			},
+		},
+		Subject: &ispec.Descriptor{
+			MediaType: "application/vnd.oci.image.manifest.v1+json",
+			Digest:    digest,
+			Size:      int64(len(content)),
+		},
+	}
+
+	manifest.SchemaVersion = 2
+
+	content, err = json.Marshal(manifest)
+	if err != nil {
+		panic(err)
+	}
+
+	adigest := godigest.FromBytes(content)
+
+	_, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+		SetBody(content).Put(url + fmt.Sprintf("/v2/%s/manifests/%s", repoName, adigest.String()))
 	if err != nil {
 		panic(err)
 	}

@@ -4060,7 +4060,7 @@ func TestImageSignatures(t *testing.T) {
 				resp, err = resty.R().SetQueryParam("artifactType", notreg.ArtifactTypeNotation).Get(
 					fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers", baseURL, repoName, digest.String()))
 				So(err, ShouldBeNil)
-				So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 				cmd = exec.Command("notation", "verify", "--cert", "good", "--plain-http", image)
 				out, err = cmd.CombinedOutput()
 				So(err, ShouldNotBeNil)
@@ -4084,7 +4084,7 @@ func TestImageSignatures(t *testing.T) {
 				resp, err = resty.R().SetQueryParam("artifactType", notreg.ArtifactTypeNotation).Get(
 					fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers", baseURL, repoName, digest.String()))
 				So(err, ShouldBeNil)
-				So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 				cmd = exec.Command("notation", "verify", "--cert", "good", "--plain-http", image)
 				out, err = cmd.CombinedOutput()
 				So(err, ShouldNotBeNil)
@@ -4093,7 +4093,7 @@ func TestImageSignatures(t *testing.T) {
 			})
 		})
 
-		Convey("GetReferrers", func() {
+		Convey("GetOrasReferrers", func() {
 			// cover error paths
 			resp, err := resty.R().Get(
 				fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers", baseURL, "badRepo", "badDigest"))
@@ -4119,6 +4119,301 @@ func TestImageSignatures(t *testing.T) {
 				fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers", baseURL, "badRepo", digest.String()))
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+		})
+	})
+}
+
+func TestArtifactReferences(t *testing.T) {
+	Convey("Validate Artifact References", t, func() {
+		// start a new server
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		ctlr := api.NewController(conf)
+		dir := t.TempDir()
+		ctlr.Config.Storage.RootDirectory = dir
+		go func(controller *api.Controller) {
+			// this blocks
+			if err := controller.Run(context.Background()); err != nil {
+				return
+			}
+		}(ctlr)
+		// wait till ready
+		for {
+			_, err := resty.R().Get(baseURL)
+			if err == nil {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		defer func(controller *api.Controller) {
+			ctx := context.Background()
+			_ = controller.Server.Shutdown(ctx)
+		}(ctlr)
+
+		repoName := "artifact-repo"
+
+		// create a blob/layer
+		resp, err := resty.R().Post(baseURL + fmt.Sprintf("/v2/%s/blobs/uploads/", repoName))
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+		loc := test.Location(baseURL, resp)
+		So(loc, ShouldNotBeEmpty)
+
+		resp, err = resty.R().Get(loc)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 204)
+		content := []byte("this is a blob")
+		digest := godigest.FromBytes(content)
+		So(digest, ShouldNotBeNil)
+
+		// monolithic blob upload: success
+		resp, err = resty.R().SetQueryParam("digest", digest.String()).
+			SetHeader("Content-Type", "application/octet-stream").SetBody(content).Put(loc)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+		blobLoc := resp.Header().Get("Location")
+		So(blobLoc, ShouldNotBeEmpty)
+		So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
+		So(resp.Header().Get(constants.DistContentDigestKey), ShouldNotBeEmpty)
+
+		// upload image config blob
+		resp, err = resty.R().Post(baseURL + fmt.Sprintf("/v2/%s/blobs/uploads/", repoName))
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+		loc = test.Location(baseURL, resp)
+		cblob, cdigest := test.GetRandomImageConfig()
+
+		resp, err = resty.R().
+			SetContentLength(true).
+			SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", cdigest.String()).
+			SetBody(cblob).
+			Put(loc)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		// create a manifest
+		manifest := ispec.Manifest{
+			Config: ispec.Descriptor{
+				MediaType: "application/vnd.oci.image.config.v1+json",
+				Digest:    cdigest,
+				Size:      int64(len(cblob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    digest,
+					Size:      int64(len(content)),
+				},
+			},
+		}
+		manifest.SchemaVersion = 2
+		content, err = json.Marshal(manifest)
+		So(err, ShouldBeNil)
+		digest = godigest.FromBytes(content)
+		So(digest, ShouldNotBeNil)
+		resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+			SetBody(content).Put(baseURL + fmt.Sprintf("/v2/%s/manifests/1.0", repoName))
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+		d := resp.Header().Get(constants.DistContentDigestKey)
+		So(d, ShouldNotBeEmpty)
+		So(d, ShouldEqual, digest.String())
+
+		artifactType := "application/vnd.example.icecream.v1"
+
+		Convey("Validate Image Manifest Reference", func() {
+			resp, err = resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			// now upload a reference
+
+			// upload image config blob
+			resp, err = resty.R().Post(baseURL + fmt.Sprintf("/v2/%s/blobs/uploads/", repoName))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+			loc = test.Location(baseURL, resp)
+			cblob, cdigest := test.GetEmptyImageConfig()
+
+			resp, err = resty.R().
+				SetContentLength(true).
+				SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+				SetHeader("Content-Type", "application/octet-stream").
+				SetQueryParam("digest", cdigest.String()).
+				SetBody(cblob).
+				Put(loc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+			// create a manifest
+			manifest := ispec.Manifest{
+				Config: ispec.Descriptor{
+					MediaType: artifactType,
+					Digest:    cdigest,
+					Size:      int64(len(cblob)),
+				},
+				Layers: []ispec.Descriptor{
+					{
+						MediaType: "application/vnd.oci.image.layer.v1.tar",
+						Digest:    digest,
+						Size:      int64(len(content)),
+					},
+				},
+				Subject: &ispec.Descriptor{
+					MediaType: ispec.MediaTypeImageManifest,
+					Digest:    digest,
+					Size:      int64(len(content)),
+				},
+				Annotations: map[string]string{
+					"key": "val",
+				},
+			}
+			manifest.SchemaVersion = 2
+
+			Convey("Using invalid content", func() {
+				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+					SetBody([]byte("invalid data")).Put(baseURL + fmt.Sprintf("/v2/%s/manifests/1.0", repoName))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+
+				resp, err = resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+				resp, err = resty.R().SetQueryParams(map[string]string{"artifactType": artifactType}).
+					Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			})
+			Convey("Using valid content", func() {
+				content, err = json.Marshal(manifest)
+				So(err, ShouldBeNil)
+				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+					SetBody(content).Put(baseURL + fmt.Sprintf("/v2/%s/manifests/1.0", repoName))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+				resp, err = resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+				resp, err = resty.R().SetQueryParams(map[string]string{"artifact": "invalid"}).
+					Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+				resp, err = resty.R().SetQueryParams(map[string]string{"artifactType": "invalid"}).
+					Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+				resp, err = resty.R().SetQueryParams(map[string]string{"artifactType": artifactType}).
+					Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+				So(resp.Header().Get("Content-Type"), ShouldEqual, ispec.MediaTypeImageIndex)
+			})
+		})
+
+		Convey("Validate Artifact Manifest Reference", func() {
+			resp, err = resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			// now upload a reference
+
+			// upload image config blob
+			resp, err = resty.R().Post(baseURL + fmt.Sprintf("/v2/%s/blobs/uploads/", repoName))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+			loc = test.Location(baseURL, resp)
+			cblob, cdigest := test.GetEmptyImageConfig()
+
+			resp, err = resty.R().
+				SetContentLength(true).
+				SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+				SetHeader("Content-Type", "application/octet-stream").
+				SetQueryParam("digest", cdigest.String()).
+				SetBody(cblob).
+				Put(loc)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+			// create a artifact
+			manifest := ispec.Artifact{
+				MediaType:    ispec.MediaTypeArtifactManifest,
+				ArtifactType: artifactType,
+				Blobs: []ispec.Descriptor{
+					{
+						MediaType: "application/vnd.oci.image.layer.v1.tar",
+						Digest:    digest,
+						Size:      int64(len(content)),
+					},
+				},
+				Subject: &ispec.Descriptor{
+					MediaType: ispec.MediaTypeImageManifest,
+					Digest:    digest,
+					Size:      int64(len(content)),
+				},
+				Annotations: map[string]string{
+					"key": "val",
+				},
+			}
+			Convey("Using invalid content", func() {
+				content := []byte("invalid data")
+				So(err, ShouldBeNil)
+				mdigest := godigest.FromBytes(content)
+				So(mdigest, ShouldNotBeNil)
+				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeArtifactManifest).
+					SetBody(content).Put(baseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, mdigest.String()))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+
+				resp, err = resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+				resp, err = resty.R().SetQueryParams(map[string]string{"artifactType": artifactType}).
+					Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			})
+			Convey("Using valid content", func() {
+				content, err = json.Marshal(manifest)
+				So(err, ShouldBeNil)
+				mdigest := godigest.FromBytes(content)
+				So(mdigest, ShouldNotBeNil)
+				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeArtifactManifest).
+					SetBody(content).Put(baseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, mdigest.String()))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+				resp, err = resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+				resp, err = resty.R().SetQueryParams(map[string]string{"artifact": "invalid"}).
+					Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+				resp, err = resty.R().SetQueryParams(map[string]string{"artifactType": "invalid"}).
+					Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+				resp, err = resty.R().SetQueryParams(map[string]string{"artifactType": artifactType}).
+					Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+				So(resp.Header().Get("Content-Type"), ShouldEqual, ispec.MediaTypeImageIndex)
+			})
 		})
 	})
 }
@@ -4685,7 +4980,7 @@ func TestRouteFailures(t *testing.T) {
 			request = mux.SetURLVars(request, map[string]string{})
 			response := httptest.NewRecorder()
 
-			rthdlr.GetReferrers(response, request)
+			rthdlr.GetOrasReferrers(response, request)
 
 			resp := response.Result()
 			defer resp.Body.Close()
@@ -4696,7 +4991,7 @@ func TestRouteFailures(t *testing.T) {
 			request = mux.SetURLVars(request, map[string]string{"name": "foo"})
 			response = httptest.NewRecorder()
 
-			rthdlr.GetReferrers(response, request)
+			rthdlr.GetOrasReferrers(response, request)
 
 			resp = response.Result()
 			defer resp.Body.Close()

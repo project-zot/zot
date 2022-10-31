@@ -917,6 +917,18 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(err, ShouldEqual, zerr.ErrMethodNotSupported)
 		})
+
+		Convey("Test GetOrasReferrers", func(c C) {
+			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
+				DeleteFn: func(ctx context.Context, path string) error {
+					return errS3
+				},
+			})
+			d := godigest.FromBytes([]byte(""))
+			_, err := imgStore.GetOrasReferrers(testImage, d, "application/image")
+			So(err, ShouldNotBeNil)
+			So(err, ShouldEqual, zerr.ErrMethodNotSupported)
+		})
 	})
 }
 

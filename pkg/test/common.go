@@ -212,8 +212,10 @@ func GetRandomImageConfig() ([]byte, godigest.Digest) {
 	randomAuthor := randomString(maxLen)
 
 	config := imagespec.Image{
-		Architecture: "amd64",
-		OS:           "linux",
+		Platform: imagespec.Platform{
+			Architecture: "amd64",
+			OS:           "linux",
+		},
 		RootFS: imagespec.RootFS{
 			Type:    "layers",
 			DiffIDs: []godigest.Digest{},
@@ -231,10 +233,25 @@ func GetRandomImageConfig() ([]byte, godigest.Digest) {
 	return configBlobContent, configBlobDigestRaw
 }
 
+func GetEmptyImageConfig() ([]byte, godigest.Digest) {
+	config := imagespec.Image{}
+
+	configBlobContent, err := json.MarshalIndent(&config, "", "\t")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	configBlobDigestRaw := godigest.FromBytes(configBlobContent)
+
+	return configBlobContent, configBlobDigestRaw
+}
+
 func GetImageConfig() ([]byte, godigest.Digest) {
 	config := imagespec.Image{
-		Architecture: "amd64",
-		OS:           "linux",
+		Platform: imagespec.Platform{
+			Architecture: "amd64",
+			OS:           "linux",
+		},
 		RootFS: imagespec.RootFS{
 			Type:    "layers",
 			DiffIDs: []godigest.Digest{},
@@ -305,8 +322,10 @@ func GetOciLayoutDigests(imagePath string) (godigest.Digest, godigest.Digest, go
 
 func GetImageComponents(layerSize int) (imagespec.Image, [][]byte, imagespec.Manifest, error) {
 	config := imagespec.Image{
-		Architecture: "amd64",
-		OS:           "linux",
+		Platform: imagespec.Platform{
+			Architecture: "amd64",
+			OS:           "linux",
+		},
 		RootFS: imagespec.RootFS{
 			Type:    "layers",
 			DiffIDs: []godigest.Digest{},

@@ -8,7 +8,7 @@ import (
 	"github.com/notaryproject/notation-go"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
+	oras "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/rs/zerolog"
 	"github.com/sigstore/cosign/pkg/oci/remote"
 
@@ -63,7 +63,8 @@ func ValidateManifest(imgStore ImageStore, repo, reference, mediaType string, bo
 		return "", zerr.ErrBadManifest
 	}
 
-	if mediaType == ispec.MediaTypeImageManifest {
+	switch mediaType {
+	case ispec.MediaTypeImageManifest:
 		var manifest ispec.Manifest
 		if err := json.Unmarshal(body, &manifest); err != nil {
 			log.Error().Err(err).Msg("unable to unmarshal JSON")
@@ -79,12 +80,37 @@ func ValidateManifest(imgStore ImageStore, repo, reference, mediaType string, bo
 				return digest, err
 			}
 		}
-	} else if mediaType == artifactspec.MediaTypeArtifactManifest {
+
+		if manifest.Subject != nil {
+			var m ispec.Descriptor
+			if err := json.Unmarshal(body, &m); err != nil {
+				log.Error().Err(err).Msg("unable to unmarshal JSON")
+
+				return "", zerr.ErrBadManifest
+			}
+		}
+	case oras.MediaTypeArtifactManifest:
 		var m notation.Descriptor
 		if err := json.Unmarshal(body, &m); err != nil {
 			log.Error().Err(err).Msg("unable to unmarshal JSON")
 
 			return "", zerr.ErrBadManifest
+		}
+	case ispec.MediaTypeArtifactManifest:
+		var artifact ispec.Artifact
+		if err := json.Unmarshal(body, &artifact); err != nil {
+			log.Error().Err(err).Msg("unable to unmarshal JSON")
+
+			return "", zerr.ErrBadManifest
+		}
+
+		if artifact.Subject != nil {
+			var m ispec.Descriptor
+			if err := json.Unmarshal(body, &m); err != nil {
+				log.Error().Err(err).Msg("unable to unmarshal JSON")
+
+				return "", zerr.ErrBadManifest
+			}
 		}
 	}
 
@@ -423,5 +449,6 @@ func ApplyLinter(imgStore ImageStore, linter Lint, repo string, manifestDesc isp
 func IsSupportedMediaType(mediaType string) bool {
 	return mediaType == ispec.MediaTypeImageIndex ||
 		mediaType == ispec.MediaTypeImageManifest ||
-		mediaType == artifactspec.MediaTypeArtifactManifest
+		mediaType == ispec.MediaTypeArtifactManifest ||
+		mediaType == oras.MediaTypeArtifactManifest
 }

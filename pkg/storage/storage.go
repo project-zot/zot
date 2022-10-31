@@ -5,6 +5,7 @@ import (
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 
 	"zotregistry.io/zot/pkg/scheduler"
@@ -48,7 +49,8 @@ type ImageStore interface { //nolint:interfacebloat
 	DeleteBlob(repo string, digest godigest.Digest) error
 	GetIndexContent(repo string) ([]byte, error)
 	GetBlobContent(repo string, digest godigest.Digest) ([]byte, error)
-	GetReferrers(repo string, digest godigest.Digest, mediaType string) ([]artifactspec.Descriptor, error)
+	GetReferrers(repo string, digest godigest.Digest, artifactType string) (ispec.Index, error)
+	GetOrasReferrers(repo string, digest godigest.Digest, artifactType string) ([]artifactspec.Descriptor, error)
 	RunGCRepo(repo string) error
 	RunGCPeriodically(interval time.Duration, sch *scheduler.Scheduler)
 }

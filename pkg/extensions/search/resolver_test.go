@@ -322,8 +322,10 @@ func TestExtractImageDetails(t *testing.T) {
 		testLogger := log.NewLogger("debug", "")
 		layerDigest := godigest.FromBytes(content)
 		config := ispec.Image{
-			Architecture: "amd64",
-			OS:           "linux",
+			Platform: ispec.Platform{
+				Architecture: "amd64",
+				OS:           "linux",
+			},
 			RootFS: ispec.RootFS{
 				Type:    "layers",
 				DiffIDs: []godigest.Digest{},
