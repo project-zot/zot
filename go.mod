@@ -8,7 +8,7 @@ require (
 	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
 	github.com/apex/log v1.9.0
 	github.com/aquasecurity/trivy-db v0.0.0-20210916043317-726b7b72a47b
-	github.com/bmatcuk/doublestar/v4 v4.2.0
+	github.com/bmatcuk/doublestar/v4 v4.3.0
 	github.com/briandowns/spinner v1.19.0
 	github.com/chartmuseum/auth v0.5.0
 	github.com/containers/common v0.50.1
