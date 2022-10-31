@@ -172,17 +172,17 @@ func (r *queryResolver) ImageListForDigest(ctx context.Context, id string, reque
 }
 
 // RepoListWithNewestImage is the resolver for the RepoListWithNewestImage field.
-func (r *queryResolver) RepoListWithNewestImage(ctx context.Context, requestedPage *gql_generated.PageInput) ([]*gql_generated.RepoSummary, error) {
+func (r *queryResolver) RepoListWithNewestImage(ctx context.Context, requestedPage *gql_generated.PageInput) (*gql_generated.PaginatedReposResult, error) {
 	r.log.Info().Msg("extension api: finding image list")
 
-	reposSummary, err := repoListWithNewestImage(ctx, r.cveInfo, r.log, requestedPage, r.repoDB)
+	paginatedReposResult, err := repoListWithNewestImage(ctx, r.cveInfo, r.log, requestedPage, r.repoDB)
 	if err != nil {
 		r.log.Error().Err(err).Msg("unable to retrieve repo list")
 
-		return reposSummary, err
+		return paginatedReposResult, err
 	}
 
-	return reposSummary, nil
+	return paginatedReposResult, nil
 }
 
 // ImageList is the resolver for the ImageList field.
@@ -238,11 +238,12 @@ func (r *queryResolver) GlobalSearch(ctx context.Context, query string, filter *
 	query = cleanQuery(query)
 	filter = cleanFilter(filter)
 
-	repos, images, layers, err := globalSearch(ctx, query, r.repoDB, filter, requestedPage, r.cveInfo, r.log)
+	paginatedReposResult, images, layers, err := globalSearch(ctx, query, r.repoDB, filter, requestedPage, r.cveInfo, r.log)
 
 	return &gql_generated.GlobalSearchResult{
+		Page:   paginatedReposResult.Page,
 		Images: images,
-		Repos:  repos,
+		Repos:  paginatedReposResult.Results,
 		Layers: layers,
 	}, err
 }

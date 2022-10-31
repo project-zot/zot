@@ -52,7 +52,8 @@ func TestConvertErrors(t *testing.T) {
 		err = repoDB.SetRepoTag("repo1", "0.1.0", digest11, ispec.MediaTypeImageManifest)
 		So(err, ShouldBeNil)
 
-		repoMetas, manifestMetaMap, err := repoDB.SearchRepos(context.Background(), "", repodb.Filter{}, repodb.PageInput{})
+		repoMetas, manifestMetaMap, _, err := repoDB.SearchRepos(context.Background(), "", repodb.Filter{},
+			repodb.PageInput{})
 		So(err, ShouldBeNil)
 
 		ctx := graphql.WithResponseContext(context.Background(),

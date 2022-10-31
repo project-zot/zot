@@ -457,7 +457,7 @@ func (bdw DBWrapper) GetMultipleRepoMeta(ctx context.Context, filter func(repoMe
 			}
 		}
 
-		foundRepos = pageFinder.Page()
+		foundRepos, _ = pageFinder.Page()
 
 		return nil
 	})
@@ -622,16 +622,17 @@ func (bdw DBWrapper) DeleteSignature(repo string, signedManifestDigest godigest.
 
 func (bdw DBWrapper) SearchRepos(ctx context.Context, searchText string, filter repodb.Filter,
 	requestedPage repodb.PageInput,
-) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
+) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, repodb.PageInfo, error) {
 	var (
 		foundRepos               = make([]repodb.RepoMetadata, 0)
 		foundManifestMetadataMap = make(map[string]repodb.ManifestMetadata)
 		pageFinder               repodb.PageFinder
+		pageInfo                 repodb.PageInfo
 	)
 
 	pageFinder, err := repodb.NewBaseRepoPageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
 	if err != nil {
-		return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, err
+		return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, repodb.PageInfo{}, err
 	}
 
 	err = bdw.DB.View(func(tx *bolt.Tx) error {
@@ -728,7 +729,7 @@ func (bdw DBWrapper) SearchRepos(ctx context.Context, searchText string, filter 
 			}
 		}
 
-		foundRepos = pageFinder.Page()
+		foundRepos, pageInfo = pageFinder.Page()
 
 		// keep just the manifestMeta we need
 		for _, repoMeta := range foundRepos {
@@ -740,7 +741,7 @@ func (bdw DBWrapper) SearchRepos(ctx context.Context, searchText string, filter 
 		return nil
 	})
 
-	return foundRepos, foundManifestMetadataMap, err
+	return foundRepos, foundManifestMetadataMap, pageInfo, err
 }
 
 func (bdw DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
@@ -835,7 +836,7 @@ func (bdw DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 			})
 		}
 
-		foundRepos = pageFinder.Page()
+		foundRepos, _ = pageFinder.Page()
 
 		// keep just the manifestMeta we need
 		for _, repoMeta := range foundRepos {
@@ -852,22 +853,23 @@ func (bdw DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 
 func (bdw DBWrapper) SearchTags(ctx context.Context, searchText string, filter repodb.Filter,
 	requestedPage repodb.PageInput,
-) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
+) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, repodb.PageInfo, error) {
 	var (
 		foundRepos               = make([]repodb.RepoMetadata, 0)
 		foundManifestMetadataMap = make(map[string]repodb.ManifestMetadata)
+		pageInfo                 repodb.PageInfo
 
 		pageFinder repodb.PageFinder
 	)
 
 	pageFinder, err := repodb.NewBaseImagePageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
 	if err != nil {
-		return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, err
+		return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, repodb.PageInfo{}, err
 	}
 
 	searchedRepo, searchedTag, err := common.GetRepoTag(searchText)
 	if err != nil {
-		return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{},
+		return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, repodb.PageInfo{},
 			errors.Wrap(err, "repodb: error while parsing search text, invalid format")
 	}
 
@@ -957,7 +959,7 @@ func (bdw DBWrapper) SearchTags(ctx context.Context, searchText string, filter r
 			}
 		}
 
-		foundRepos = pageFinder.Page()
+		foundRepos, pageInfo = pageFinder.Page()
 
 		// keep just the manifestMeta we need
 		for _, repoMeta := range foundRepos {
@@ -969,7 +971,7 @@ func (bdw DBWrapper) SearchTags(ctx context.Context, searchText string, filter r
 		return nil
 	})
 
-	return foundRepos, foundManifestMetadataMap, err
+	return foundRepos, foundManifestMetadataMap, pageInfo, err
 }
 
 func (bdw *DBWrapper) PatchDB() error {

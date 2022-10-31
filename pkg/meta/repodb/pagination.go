@@ -11,9 +11,8 @@ import (
 // PageFinder permits keeping a pool of objects using Add
 // and returning a specific page.
 type PageFinder interface {
-	// Add
 	Add(detailedRepoMeta DetailedRepoMeta)
-	Page() []RepoMetadata
+	Page() ([]RepoMetadata, PageInfo)
 	Reset()
 }
 
@@ -59,10 +58,12 @@ func (bpt *RepoPageFinder) Add(namedRepoMeta DetailedRepoMeta) {
 	bpt.pageBuffer = append(bpt.pageBuffer, namedRepoMeta)
 }
 
-func (bpt *RepoPageFinder) Page() []RepoMetadata {
+func (bpt *RepoPageFinder) Page() ([]RepoMetadata, PageInfo) {
 	if len(bpt.pageBuffer) == 0 {
-		return []RepoMetadata{}
+		return []RepoMetadata{}, PageInfo{}
 	}
+
+	pageInfo := &PageInfo{}
 
 	sort.Slice(bpt.pageBuffer, SortFunctions()[bpt.sortBy](bpt.pageBuffer))
 
@@ -82,8 +83,11 @@ func (bpt *RepoPageFinder) Page() []RepoMetadata {
 
 	detailedReposPage := bpt.pageBuffer[start:end]
 
+	pageInfo.ItemCount = len(detailedReposPage)
+
 	if start == 0 && end == 0 {
 		detailedReposPage = bpt.pageBuffer
+		pageInfo.ItemCount = len(detailedReposPage)
 	}
 
 	repos := make([]RepoMetadata, 0, len(detailedReposPage))
@@ -92,7 +96,9 @@ func (bpt *RepoPageFinder) Page() []RepoMetadata {
 		repos = append(repos, drm.RepoMeta)
 	}
 
-	return repos
+	pageInfo.TotalCount = len(bpt.pageBuffer)
+
+	return repos, *pageInfo
 }
 
 type ImagePageFinder struct {
@@ -135,9 +141,16 @@ func (bpt *ImagePageFinder) Add(namedRepoMeta DetailedRepoMeta) {
 	bpt.pageBuffer = append(bpt.pageBuffer, namedRepoMeta)
 }
 
-func (bpt *ImagePageFinder) Page() []RepoMetadata {
+func (bpt *ImagePageFinder) Page() ([]RepoMetadata, PageInfo) {
 	if len(bpt.pageBuffer) == 0 {
-		return []RepoMetadata{}
+		return []RepoMetadata{}, PageInfo{}
+	}
+
+	pageInfo := PageInfo{}
+
+	for _, drm := range bpt.pageBuffer {
+		repo := drm.RepoMeta
+		pageInfo.TotalCount += len(repo.Tags)
 	}
 
 	sort.Slice(bpt.pageBuffer, SortFunctions()[bpt.sortBy](bpt.pageBuffer))
@@ -155,9 +168,11 @@ func (bpt *ImagePageFinder) Page() []RepoMetadata {
 		for _, drm := range bpt.pageBuffer {
 			repo := drm.RepoMeta
 			repos = append(repos, repo)
+
+			pageInfo.ItemCount += len(repo.Tags)
 		}
 
-		return repos
+		return repos, pageInfo
 	}
 
 	// bring cursor to position in RepoMeta array
@@ -174,7 +189,7 @@ func (bpt *ImagePageFinder) Page() []RepoMetadata {
 
 	// offset is larger than the number of tags
 	if repoStartIndex >= len(bpt.pageBuffer) {
-		return []RepoMetadata{}
+		return []RepoMetadata{}, PageInfo{}
 	}
 
 	// finish counting remaining tags inside the first repo meta
@@ -197,12 +212,14 @@ func (bpt *ImagePageFinder) Page() []RepoMetadata {
 		if remainingLimit == 0 {
 			firstRepoMeta.Tags = partialTags
 			repos = append(repos, firstRepoMeta)
+			pageInfo.ItemCount = len(partialTags)
 
-			return repos
+			return repos, pageInfo
 		}
 	}
 
 	firstRepoMeta.Tags = partialTags
+	pageInfo.ItemCount += len(firstRepoMeta.Tags)
 	repos = append(repos, firstRepoMeta)
 	repoStartIndex++
 
@@ -228,23 +245,26 @@ func (bpt *ImagePageFinder) Page() []RepoMetadata {
 					repoMeta.Tags = partialTags
 					repos = append(repos, repoMeta)
 
+					pageInfo.ItemCount += len(partialTags)
+
 					break
 				}
 			}
 
-			return repos
+			return repos, pageInfo
 		}
 
 		// add the whole repo
 		repos = append(repos, repoMeta)
+		pageInfo.ItemCount += len(repoMeta.Tags)
 		remainingLimit -= len(repoMeta.Tags)
 
 		if remainingLimit == 0 {
-			return repos
+			return repos, pageInfo
 		}
 	}
 
 	// we arrive here when the limit is bigger than the number of tags
 
-	return repos
+	return repos, pageInfo
 }
