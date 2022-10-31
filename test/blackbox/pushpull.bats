@@ -133,14 +133,19 @@ function teardown_file() {
     [ "$status" -eq 0 ]
 }
 
-@test "copy image with regclient" {
+@test "push image with regclient" {
     run regctl registry set localhost:8080 --tls disabled
     [ "$status" -eq 0 ]
     run regctl image copy ocidir://${TEST_DATA_DIR}/golang:1.19 localhost:8080/test-regclient
     [ "$status" -eq 0 ]
 }
 
-@test "list all images with regclient" {
+@test "pull image with regclient" {
+    run regctl image copy localhost:8080/test-regclient ocidir://${TEST_DATA_DIR}/golang:1.19
+    [ "$status" -eq 0 ]
+}
+
+@test "list repositories with regclient" {
     run regctl repo ls localhost:8080
     [ "$status" -eq 0 ]
 
@@ -155,7 +160,7 @@ function teardown_file() {
     [ "$found" -eq 1 ]
 }
 
-@test "list tags with regclient" {
+@test "list image tags with regclient" {
     run regctl tag ls localhost:8080/test-regclient
     [ "$status" -eq 0 ]
 
@@ -170,7 +175,7 @@ function teardown_file() {
     [ "$found" -eq 1 ]
 }
 
-@test "get and push manifest with regclient" {
+@test "push manifest with regclient" {
     manifest=$(regctl manifest get localhost:8080/test-regclient --format=raw-body)
     run regctl manifest put localhost:8080/test-regclient:1.0.0 --format oci --content-type application/vnd.oci.image.manifest.v1+json --format oci <<EOF
     $manifest
@@ -178,12 +183,43 @@ EOF
     [ "$status" -eq 0 ]
 }
 
-@test "get manifest with regclient" {
+@test "pull manifest with regclient" {
     run regctl manifest get localhost:8080/test-regclient
     [ "$status" -eq 0 ]
 }
 
-@test "pull image with regclient" {
-    run regctl image copy localhost:8080/test-regclient ocidir://${TEST_DATA_DIR}/golang:1.19
+@test "push OCI artifact with regclient" {
+    run regctl artifact put localhost:8080/artifact:demo <<EOF
+this is an artifact
+EOF
     [ "$status" -eq 0 ]
+}
+
+@test "pull OCI artifact with regclient" {
+    run regctl manifest get localhost:8080/artifact:demo
+    [ "$status" -eq 0 ]
+    run regctl artifact get localhost:8080/artifact:demo
+    [ "$status" -eq 0 ]
+    [ "${lines[-1]}" == "this is an artifact" ]
+}
+
+@test "list OCI artifacts with regclient" {
+    run regctl artifact list localhost:8080/test-regclient --format raw-body
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.manifests') == '[]' ]
+    # push OCI artifacts on an image
+    run regctl artifact put --refers localhost:8080/test-regclient <<EOF
+first artifact with subject
+EOF
+    [ "$status" -eq 0 ]
+
+    run regctl artifact put --refers localhost:8080/test-regclient <<EOF
+second artifact with subject
+EOF
+    [ "$status" -eq 0 ]
+
+    # list OCI artifacts of an image
+    run regctl artifact list localhost:8080/test-regclient --format raw-body
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.manifests | length') -eq 2 ]
 }

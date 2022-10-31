@@ -22,6 +22,7 @@ The following document refers on the **core dist-spec**, see also the [zot-speci
 * Multi-arch support
 * Clustering support
 * Image linting support
+* Supports push/pull OCI Artifacts
 
 ## [Demos](demos/README.md)
 
