@@ -21,7 +21,8 @@ func TestPagination(t *testing.T) {
 
 			paginator.Reset()
 
-			So(paginator.Page(), ShouldBeEmpty)
+			result, _ := paginator.Page()
+			So(result, ShouldBeEmpty)
 		})
 	})
 
@@ -51,10 +52,40 @@ func TestPagination(t *testing.T) {
 
 			paginator.Reset()
 
-			So(paginator.Page(), ShouldBeEmpty)
+			result, _ := paginator.Page()
+			So(result, ShouldBeEmpty)
 		})
 
 		Convey("Page", func() {
+			Convey("no limit or offset", func() {
+				paginator, err := repodb.NewBaseImagePageFinder(0, 0, repodb.AlphabeticAsc)
+				So(err, ShouldBeNil)
+				So(paginator, ShouldNotBeNil)
+
+				paginator.Add(repodb.DetailedRepoMeta{
+					RepoMeta: repodb.RepoMetadata{
+						Name: "repo1",
+						Tags: map[string]string{
+							"tag1": "dig1",
+						},
+					},
+				})
+
+				paginator.Add(repodb.DetailedRepoMeta{
+					RepoMeta: repodb.RepoMetadata{
+						Name: "repo2",
+						Tags: map[string]string{
+							"Tag1": "dig1",
+							"Tag2": "dig2",
+							"Tag3": "dig3",
+							"Tag4": "dig4",
+						},
+					},
+				})
+				_, pageInfo := paginator.Page()
+				So(pageInfo.ItemCount, ShouldEqual, 5)
+				So(pageInfo.TotalCount, ShouldEqual, 5)
+			})
 			Convey("limit < len(tags)", func() {
 				paginator, err := repodb.NewBaseImagePageFinder(5, 2, repodb.AlphabeticAsc)
 				So(err, ShouldBeNil)
@@ -92,12 +123,14 @@ func TestPagination(t *testing.T) {
 					},
 				})
 
-				result := paginator.Page()
+				result, pageInfo := paginator.Page()
 				So(result[0].Tags, ShouldContainKey, "Tag2")
 				So(result[0].Tags, ShouldContainKey, "Tag3")
 				So(result[0].Tags, ShouldContainKey, "Tag4")
 				So(result[1].Tags, ShouldContainKey, "Tag11")
 				So(result[1].Tags, ShouldContainKey, "Tag12")
+				So(pageInfo.ItemCount, ShouldEqual, 5)
+				So(pageInfo.TotalCount, ShouldEqual, 9)
 			})
 
 			Convey("limit > len(tags)", func() {
@@ -131,7 +164,7 @@ func TestPagination(t *testing.T) {
 					},
 				})
 
-				result := paginator.Page()
+				result, _ := paginator.Page()
 				So(result[0].Tags, ShouldContainKey, "tag1")
 				So(result[1].Tags, ShouldContainKey, "Tag1")
 				So(result[2].Tags, ShouldContainKey, "Tag11")

@@ -62,11 +62,11 @@ type RepoDB interface { //nolint:interfacebloat
 
 	// SearchRepos searches for repos given a search string
 	SearchRepos(ctx context.Context, searchText string, filter Filter, requestedPage PageInput) (
-		[]RepoMetadata, map[string]ManifestMetadata, error)
+		[]RepoMetadata, map[string]ManifestMetadata, PageInfo, error)
 
 	// SearchTags searches for images(repo:tag) given a search string
 	SearchTags(ctx context.Context, searchText string, filter Filter, requestedPage PageInput) (
-		[]RepoMetadata, map[string]ManifestMetadata, error)
+		[]RepoMetadata, map[string]ManifestMetadata, PageInfo, error)
 
 	// FilterTags filters for images given a filter function
 	FilterTags(ctx context.Context, filter FilterFunc,
@@ -129,6 +129,11 @@ type PageInput struct {
 	Limit  int
 	Offset int
 	SortBy SortCriteria
+}
+
+type PageInfo struct {
+	TotalCount int
+	ItemCount  int
 }
 
 type Filter struct {
