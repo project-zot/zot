@@ -363,15 +363,16 @@ func repoListWithNewestImage(
 	log log.Logger, //nolint:unparam // may be used by devs for debugging
 	requestedPage *gql_generated.PageInput,
 	repoDB repodb.RepoDB,
-) ([]*gql_generated.RepoSummary, error) {
+) (*gql_generated.PaginatedReposResult, error) {
 	repos := []*gql_generated.RepoSummary{}
+	paginatedRepos := &gql_generated.PaginatedReposResult{}
 
 	if requestedPage == nil {
 		requestedPage = &gql_generated.PageInput{}
 	}
 
 	skip := convert.SkipQGLField{
-		Vulnerabilities: canSkipField(convert.GetPreloads(ctx), "NewestImage.Vulnerabilities"),
+		Vulnerabilities: canSkipField(convert.GetPreloads(ctx), "Results.NewestImage.Vulnerabilities"),
 	}
 
 	pageInput := repodb.PageInput{
@@ -382,9 +383,9 @@ func repoListWithNewestImage(
 		),
 	}
 
-	reposMeta, manifestMetaMap, err := repoDB.SearchRepos(ctx, "", repodb.Filter{}, pageInput)
+	reposMeta, manifestMetaMap, pageInfo, err := repoDB.SearchRepos(ctx, "", repodb.Filter{}, pageInput)
 	if err != nil {
-		return []*gql_generated.RepoSummary{}, err
+		return &gql_generated.PaginatedReposResult{}, err
 	}
 
 	for _, repoMeta := range reposMeta {
@@ -392,15 +393,22 @@ func repoListWithNewestImage(
 		repos = append(repos, repoSummary)
 	}
 
-	return repos, nil
+	paginatedRepos.Page = &gql_generated.PageInfo{
+		TotalCount: pageInfo.TotalCount,
+		ItemCount:  pageInfo.ItemCount,
+	}
+	paginatedRepos.Results = repos
+
+	return paginatedRepos, nil
 }
 
 func globalSearch(ctx context.Context, query string, repoDB repodb.RepoDB, filter *gql_generated.Filter,
 	requestedPage *gql_generated.PageInput, cveInfo cveinfo.CveInfo, log log.Logger, //nolint:unparam
-) ([]*gql_generated.RepoSummary, []*gql_generated.ImageSummary, []*gql_generated.LayerSummary, error,
+) (*gql_generated.PaginatedReposResult, []*gql_generated.ImageSummary, []*gql_generated.LayerSummary, error,
 ) {
 	preloads := convert.GetPreloads(ctx)
 	repos := []*gql_generated.RepoSummary{}
+	paginatedRepos := gql_generated.PaginatedReposResult{}
 	images := []*gql_generated.ImageSummary{}
 	layers := []*gql_generated.LayerSummary{}
 
@@ -430,9 +438,9 @@ func globalSearch(ctx context.Context, query string, repoDB repodb.RepoDB, filte
 			),
 		}
 
-		reposMeta, manifestMetaMap, err := repoDB.SearchRepos(ctx, query, localFilter, pageInput)
+		reposMeta, manifestMetaMap, pageInfo, err := repoDB.SearchRepos(ctx, query, localFilter, pageInput)
 		if err != nil {
-			return []*gql_generated.RepoSummary{}, []*gql_generated.ImageSummary{}, []*gql_generated.LayerSummary{}, err
+			return &gql_generated.PaginatedReposResult{}, []*gql_generated.ImageSummary{}, []*gql_generated.LayerSummary{}, err
 		}
 
 		for _, repoMeta := range reposMeta {
@@ -440,6 +448,13 @@ func globalSearch(ctx context.Context, query string, repoDB repodb.RepoDB, filte
 
 			repos = append(repos, repoSummary)
 		}
+
+		paginatedRepos.Page = &gql_generated.PageInfo{
+			TotalCount: pageInfo.TotalCount,
+			ItemCount:  pageInfo.ItemCount,
+		}
+
+		paginatedRepos.Results = repos
 	} else { // search for images
 		skip := convert.SkipQGLField{
 			Vulnerabilities: canSkipField(preloads, "Images.Vulnerabilities"),
@@ -453,9 +468,9 @@ func globalSearch(ctx context.Context, query string, repoDB repodb.RepoDB, filte
 			),
 		}
 
-		reposMeta, manifestMetaMap, err := repoDB.SearchTags(ctx, query, localFilter, pageInput)
+		reposMeta, manifestMetaMap, pageInfo, err := repoDB.SearchTags(ctx, query, localFilter, pageInput)
 		if err != nil {
-			return []*gql_generated.RepoSummary{}, []*gql_generated.ImageSummary{}, []*gql_generated.LayerSummary{}, err
+			return &gql_generated.PaginatedReposResult{}, []*gql_generated.ImageSummary{}, []*gql_generated.LayerSummary{}, err
 		}
 
 		for _, repoMeta := range reposMeta {
@@ -463,9 +478,14 @@ func globalSearch(ctx context.Context, query string, repoDB repodb.RepoDB, filte
 
 			images = append(images, imageSummaries...)
 		}
+
+		paginatedRepos.Page = &gql_generated.PageInfo{
+			TotalCount: pageInfo.TotalCount,
+			ItemCount:  pageInfo.ItemCount,
+		}
 	}
 
-	return repos, images, layers, nil
+	return &paginatedRepos, images, layers, nil
 }
 
 func canSkipField(preloads map[string]bool, s string) bool {

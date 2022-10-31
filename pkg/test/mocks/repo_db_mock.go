@@ -39,10 +39,10 @@ type RepoDBMock struct {
 	DeleteSignatureFn func(manifestDigest godigest.Digest, sm repodb.SignatureMetadata) error
 
 	SearchReposFn func(ctx context.Context, searchText string, filter repodb.Filter, requestedPage repodb.PageInput) (
-		[]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error)
+		[]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, repodb.PageInfo, error)
 
 	SearchTagsFn func(ctx context.Context, searchText string, filter repodb.Filter, requestedPage repodb.PageInput) (
-		[]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error)
+		[]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, repodb.PageInfo, error)
 
 	FilterTagsFn func(ctx context.Context, filter repodb.FilterFunc,
 		requestedPage repodb.PageInput,
@@ -177,22 +177,22 @@ func (sdm RepoDBMock) DeleteSignature(manifestDigest godigest.Digest, sm repodb.
 
 func (sdm RepoDBMock) SearchRepos(ctx context.Context, searchText string, filter repodb.Filter,
 	requestedPage repodb.PageInput,
-) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
+) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, repodb.PageInfo, error) {
 	if sdm.SearchReposFn != nil {
 		return sdm.SearchReposFn(ctx, searchText, filter, requestedPage)
 	}
 
-	return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, nil
+	return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, repodb.PageInfo{}, nil
 }
 
 func (sdm RepoDBMock) SearchTags(ctx context.Context, searchText string, filter repodb.Filter,
 	requestedPage repodb.PageInput,
-) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
+) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, repodb.PageInfo, error) {
 	if sdm.SearchTagsFn != nil {
 		return sdm.SearchTagsFn(ctx, searchText, filter, requestedPage)
 	}
 
-	return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, nil
+	return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, repodb.PageInfo{}, nil
 }
 
 func (sdm RepoDBMock) FilterTags(ctx context.Context, filter repodb.FilterFunc,
