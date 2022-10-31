@@ -106,16 +106,24 @@ type PackageInfo struct {
 }
 
 type PageInfo struct {
-	ObjectCount  int  `json:"ObjectCount"`
-	PreviousPage *int `json:"PreviousPage"`
-	NextPage     *int `json:"NextPage"`
-	Pages        *int `json:"Pages"`
+	TotalCount int `json:"TotalCount"`
+	ItemCount  int `json:"ItemCount"`
 }
 
 type PageInput struct {
 	Limit  *int          `json:"limit"`
 	Offset *int          `json:"offset"`
 	SortBy *SortCriteria `json:"sortBy"`
+}
+
+type PaginatedImagesResult struct {
+	Page    *PageInfo       `json:"Page"`
+	Results []*ImageSummary `json:"Results"`
+}
+
+type PaginatedReposResult struct {
+	Page    *PageInfo      `json:"Page"`
+	Results []*RepoSummary `json:"Results"`
 }
 
 // Contains details about the repo: a list of image summaries and a summary of the repo

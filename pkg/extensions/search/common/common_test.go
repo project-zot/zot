@@ -91,15 +91,21 @@ type GlobalSearch struct {
 	Images []common.ImageSummary `json:"images"`
 	Repos  []common.RepoSummary  `json:"repos"`
 	Layers []common.LayerSummary `json:"layers"`
+	Page   repodb.PageInfo       `json:"page"`
 }
 
 type ExpandedRepoInfo struct {
 	RepoInfo common.RepoInfo `json:"expandedRepoInfo"`
 }
 
+type PaginatedReposResult struct {
+	Results []common.RepoSummary `json:"results"`
+	Page    repodb.PageInfo      `json:"page"`
+}
+
 //nolint:tagliatelle // graphQL schema
 type RepoListWithNewestImage struct {
-	Repos []common.RepoSummary `json:"RepoListWithNewestImage"`
+	PaginatedReposResult `json:"RepoListWithNewestImage"`
 }
 
 type ErrorGQL struct {
@@ -357,136 +363,241 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 422)
 
-		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
-			"?query={RepoListWithNewestImage{Name%20NewestImage{Tag}}}")
-		So(resp, ShouldNotBeNil)
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
-
-		var responseStruct RepoWithNewestImageResponse
-		err = json.Unmarshal(resp.Body(), &responseStruct)
-		So(err, ShouldBeNil)
-		So(len(responseStruct.RepoListWithNewestImage.Repos), ShouldEqual, 4)
-
-		images := responseStruct.RepoListWithNewestImage.Repos
-		So(images[0].NewestImage.Tag, ShouldEqual, "0.0.1")
-
-		query := `{
-			RepoListWithNewestImage(requestedPage: {
-				limit:1
-				offset:0
-				sortBy: UPDATE_TIME
-			}){
-				Name
-				NewestImage{
-					Tag
+		Convey("Test repoListWithNewestImage with pagination", func() {
+			query := `{
+				RepoListWithNewestImage(requestedPage:{
+					limit: 2
+					offset: 0
+					sortBy: UPDATE_TIME
+				}){
+					Page{
+						ItemCount
+						TotalCount
+					}
+					Results{
+						Name
+						NewestImage{
+							Tag
+						}
+					}
 				}
+			}`
+
+			resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
+				"?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			var responseStruct RepoWithNewestImageResponse
+			err = json.Unmarshal(resp.Body(), &responseStruct)
+			So(err, ShouldBeNil)
+			So(len(responseStruct.RepoListWithNewestImage.PaginatedReposResult.Results), ShouldEqual, 2)
+			So(responseStruct.RepoListWithNewestImage.PaginatedReposResult.Page.ItemCount, ShouldEqual, 2)
+			So(responseStruct.RepoListWithNewestImage.PaginatedReposResult.Page.TotalCount, ShouldEqual, 4)
+		})
+
+		Convey("Test repoListWithNewestImage with pagination, no limit or offset", func() {
+			query := `{
+				RepoListWithNewestImage(requestedPage:{
+					limit: 0
+					offset: 0
+					sortBy: UPDATE_TIME
+				}){
+					Page{
+						ItemCount
+						TotalCount
+					}
+					Results{
+						Name
+						NewestImage{
+							Tag
+						}
+					}
+				}
+			}`
+
+			resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
+				"?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			var responseStruct RepoWithNewestImageResponse
+			err = json.Unmarshal(resp.Body(), &responseStruct)
+			So(err, ShouldBeNil)
+			So(len(responseStruct.RepoListWithNewestImage.PaginatedReposResult.Results), ShouldEqual, 4)
+			So(responseStruct.RepoListWithNewestImage.PaginatedReposResult.Page.ItemCount, ShouldEqual, 4)
+			So(responseStruct.RepoListWithNewestImage.PaginatedReposResult.Page.TotalCount, ShouldEqual, 4)
+		})
+
+		Convey("Test repoListWithNewestImage multiple", func() {
+			query := `{RepoListWithNewestImage{
+							Results{
+								Name
+								NewestImage{
+									Tag
+								}
+							}
+						}}`
+			resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
+				"?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			var responseStruct RepoWithNewestImageResponse
+			err = json.Unmarshal(resp.Body(), &responseStruct)
+			So(err, ShouldBeNil)
+			So(len(responseStruct.RepoListWithNewestImage.PaginatedReposResult.Results), ShouldEqual, 4)
+
+			images := responseStruct.RepoListWithNewestImage.PaginatedReposResult.Results
+			So(images[0].NewestImage.Tag, ShouldEqual, "0.0.1")
+
+			query = `{
+				RepoListWithNewestImage(requestedPage: {
+					limit: 1
+					offset: 0
+					sortBy: UPDATE_TIME
+				}){
+					Results{
+						Name
+						NewestImage{
+							Tag
+						}
+					}
+				}
+			}`
+			resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
+				"?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			err = json.Unmarshal(resp.Body(), &responseStruct)
+			So(err, ShouldBeNil)
+			So(len(responseStruct.RepoListWithNewestImage.PaginatedReposResult.Results), ShouldEqual, 1)
+
+			repos := responseStruct.RepoListWithNewestImage.PaginatedReposResult.Results
+			So(repos[0].NewestImage.Tag, ShouldEqual, "0.0.1")
+
+			query = `{
+				RepoListWithNewestImage{
+					Results{
+						Name
+						NewestImage{
+							Tag
+							Vulnerabilities{
+								MaxSeverity
+								Count
+							}
+						}
+					}
+				}
+			}`
+
+			// Verify we don't return any vulnerabilities if CVE scanning is disabled
+			resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
+				"?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			err = json.Unmarshal(resp.Body(), &responseStruct)
+			So(err, ShouldBeNil)
+			So(len(responseStruct.RepoListWithNewestImage.PaginatedReposResult.Results), ShouldEqual, 4)
+
+			images = responseStruct.RepoListWithNewestImage.PaginatedReposResult.Results
+			So(images[0].NewestImage.Tag, ShouldEqual, "0.0.1")
+			So(images[0].NewestImage.Vulnerabilities.Count, ShouldEqual, 0)
+			So(images[0].NewestImage.Vulnerabilities.MaxSeverity, ShouldEqual, "")
+
+			query = `{
+				RepoListWithNewestImage{
+					Results{
+						Name
+						NewestImage{
+							Tag
+						}
+					}
+				}
+			}`
+			resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
+				"?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+
+			err = os.Chmod(rootDir, 0o000)
+			if err != nil {
+				panic(err)
 			}
-		}`
-		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
-			"?query=" + url.QueryEscape(query))
-		So(resp, ShouldNotBeNil)
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
 
-		err = json.Unmarshal(resp.Body(), &responseStruct)
-		So(err, ShouldBeNil)
-		So(len(responseStruct.RepoListWithNewestImage.Repos), ShouldEqual, 1)
+			resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
+				"?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
 
-		repos := responseStruct.RepoListWithNewestImage.Repos
-		So(repos[0].NewestImage.Tag, ShouldEqual, "0.0.1")
+			err = json.Unmarshal(resp.Body(), &responseStruct)
+			So(err, ShouldBeNil)
+			So(responseStruct.Errors, ShouldBeNil) // Even if permissions fail data is coming from the DB
 
-		// Verify we don't return any vulnerabilities if CVE scanning is disabled
-		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
-			"?query={RepoListWithNewestImage{Name%20NewestImage{Tag%20Vulnerabilities{MaxSeverity%20Count}}}}")
-		So(resp, ShouldNotBeNil)
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+			err = os.Chmod(rootDir, 0o755)
+			if err != nil {
+				panic(err)
+			}
 
-		err = json.Unmarshal(resp.Body(), &responseStruct)
-		So(err, ShouldBeNil)
-		So(len(responseStruct.RepoListWithNewestImage.Repos), ShouldEqual, 4)
+			var manifestDigest godigest.Digest
+			var configDigest godigest.Digest
+			manifestDigest, configDigest, _ = GetOciLayoutDigests("../../../../test/data/zot-test")
 
-		images = responseStruct.RepoListWithNewestImage.Repos
-		So(images[0].NewestImage.Tag, ShouldEqual, "0.0.1")
-		So(images[0].NewestImage.Vulnerabilities.Count, ShouldEqual, 0)
-		So(images[0].NewestImage.Vulnerabilities.MaxSeverity, ShouldEqual, "")
+			// Delete config blob and try.
+			err = os.Remove(path.Join(subRootDir, "a/zot-test/blobs/sha256", configDigest.Encoded()))
+			if err != nil {
+				panic(err)
+			}
 
-		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
-			"?query={RepoListWithNewestImage{Name%20NewestImage{Tag}}}")
-		So(resp, ShouldNotBeNil)
-		So(err, ShouldBeNil)
+			resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
+				"?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
 
-		err = os.Chmod(rootDir, 0o000)
-		if err != nil {
-			panic(err)
-		}
+			err = os.Remove(path.Join(subRootDir, "a/zot-test/blobs/sha256",
+				manifestDigest.Encoded()))
+			if err != nil {
+				panic(err)
+			}
 
-		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
-			"?query={RepoListWithNewestImage{Name%20NewestImage{Tag}}}")
-		So(resp, ShouldNotBeNil)
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+			resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
+				"?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
 
-		err = json.Unmarshal(resp.Body(), &responseStruct)
-		So(err, ShouldBeNil)
-		So(responseStruct.Errors, ShouldBeNil) // Even if permissions fail data is coming from the DB
+			err = os.Remove(path.Join(rootDir, "zot-test/blobs/sha256", configDigest.Encoded()))
+			if err != nil {
+				panic(err)
+			}
 
-		err = os.Chmod(rootDir, 0o755)
-		if err != nil {
-			panic(err)
-		}
+			resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
+				"?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
 
-		var manifestDigest godigest.Digest
-		var configDigest godigest.Digest
-		manifestDigest, configDigest, _ = GetOciLayoutDigests("../../../../test/data/zot-test")
+			// Delete manifest blob also and try
+			err = os.Remove(path.Join(rootDir, "zot-test/blobs/sha256", manifestDigest.Encoded()))
+			if err != nil {
+				panic(err)
+			}
 
-		// Delete config blob and try.
-		err = os.Remove(path.Join(subRootDir, "a/zot-test/blobs/sha256", configDigest.Encoded()))
-		if err != nil {
-			panic(err)
-		}
-
-		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
-			"?query={RepoListWithNewestImage{Name%20NewestImage{Tag}}}")
-		So(resp, ShouldNotBeNil)
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
-
-		err = os.Remove(path.Join(subRootDir, "a/zot-test/blobs/sha256",
-			manifestDigest.Encoded()))
-		if err != nil {
-			panic(err)
-		}
-
-		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
-			"?query={RepoListWithNewestImage{Name%20NewestImage{Tag}}}")
-		So(resp, ShouldNotBeNil)
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
-
-		err = os.Remove(path.Join(rootDir, "zot-test/blobs/sha256", configDigest.Encoded()))
-		if err != nil {
-			panic(err)
-		}
-
-		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
-			"?query={RepoListWithNewestImage{Name%20NewestImage{Tag}}}")
-		So(resp, ShouldNotBeNil)
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
-
-		// Delete manifest blob also and try
-		err = os.Remove(path.Join(rootDir, "zot-test/blobs/sha256", manifestDigest.Encoded()))
-		if err != nil {
-			panic(err)
-		}
-
-		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
-			"?query={RepoListWithNewestImage{Name%20NewestImage{Tag}}}")
-		So(resp, ShouldNotBeNil)
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+			resp, err = resty.R().Get(baseURL + graphqlQueryPrefix +
+				"?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+		})
 	})
 
 	Convey("Test repoListWithNewestImage with vulnerability scan enabled", t, func() {
@@ -555,8 +666,21 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 422)
 
-		query := "?query={RepoListWithNewestImage{Name%20NewestImage{Tag%20Vulnerabilities{MaxSeverity%20Count}}}}"
-		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + query)
+		query := `{
+			RepoListWithNewestImage{
+				Results{
+					Name
+					NewestImage{
+						Tag
+						Vulnerabilities{
+							MaxSeverity
+							Count
+						}
+					}
+				}
+			}
+		}`
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
@@ -564,9 +688,9 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		var responseStruct RepoWithNewestImageResponse
 		err = json.Unmarshal(resp.Body(), &responseStruct)
 		So(err, ShouldBeNil)
-		So(len(responseStruct.RepoListWithNewestImage.Repos), ShouldEqual, 4)
+		So(len(responseStruct.RepoListWithNewestImage.PaginatedReposResult.Results), ShouldEqual, 4)
 
-		repos := responseStruct.RepoListWithNewestImage.Repos
+		repos := responseStruct.RepoListWithNewestImage.PaginatedReposResult.Results
 		So(repos[0].NewestImage.Tag, ShouldEqual, "0.0.1")
 
 		for _, repo := range repos {
@@ -2913,7 +3037,7 @@ func TestGlobalSearchPagination(t *testing.T) {
 		defer stopServer(ctlr)
 		WaitTillServerReady(baseURL)
 
-		for i := 0; i < 1; i++ {
+		for i := 0; i < 3; i++ {
 			config, layers, manifest, err := GetImageComponents(10)
 			So(err, ShouldBeNil)
 
@@ -2954,7 +3078,133 @@ func TestGlobalSearchPagination(t *testing.T) {
 			So(responseStruct.GlobalSearchResult.GlobalSearch.Repos, ShouldNotBeEmpty)
 			So(responseStruct.GlobalSearchResult.GlobalSearch.Layers, ShouldBeEmpty)
 
-			So(len(responseStruct.GlobalSearchResult.GlobalSearch.Repos), ShouldEqual, 1)
+			So(len(responseStruct.GlobalSearchResult.GlobalSearch.Repos), ShouldEqual, 3)
+		})
+
+		Convey("Limit is lower than the repo count", func() {
+			query := `
+			{
+				GlobalSearch(query:"repo", requestedPage:{limit: 2, offset: 0, sortBy:RELEVANCE}){
+					Repos {
+						Name
+					}
+				}
+			}`
+
+			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			responseStruct := &GlobalSearchResultResp{}
+
+			err = json.Unmarshal(resp.Body(), responseStruct)
+			So(err, ShouldBeNil)
+
+			So(responseStruct.GlobalSearchResult.GlobalSearch.Images, ShouldBeEmpty)
+			So(responseStruct.GlobalSearchResult.GlobalSearch.Repos, ShouldNotBeEmpty)
+			So(responseStruct.GlobalSearchResult.GlobalSearch.Layers, ShouldBeEmpty)
+
+			So(len(responseStruct.GlobalSearchResult.GlobalSearch.Repos), ShouldEqual, 2)
+		})
+
+		Convey("PageInfo returned proper response", func() {
+			query := `
+			{
+				GlobalSearch(query:"repo", requestedPage:{limit: 2, offset: 0, sortBy:RELEVANCE}){
+					Repos {
+						Name
+					}
+					Page{
+						ItemCount
+						TotalCount
+					}
+				}
+			}`
+
+			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			responseStruct := &GlobalSearchResultResp{}
+
+			err = json.Unmarshal(resp.Body(), responseStruct)
+			So(err, ShouldBeNil)
+
+			So(responseStruct.GlobalSearchResult.GlobalSearch.Images, ShouldBeEmpty)
+			So(responseStruct.GlobalSearchResult.GlobalSearch.Repos, ShouldNotBeEmpty)
+			So(responseStruct.GlobalSearchResult.GlobalSearch.Layers, ShouldBeEmpty)
+
+			So(len(responseStruct.GlobalSearchResult.GlobalSearch.Repos), ShouldEqual, 2)
+			So(responseStruct.GlobalSearchResult.GlobalSearch.Page.TotalCount, ShouldEqual, 3)
+			So(responseStruct.GlobalSearchResult.GlobalSearch.Page.ItemCount, ShouldEqual, 2)
+		})
+
+		Convey("PageInfo when limit is bigger than the repo count", func() {
+			query := `
+			{
+				GlobalSearch(query:"repo", requestedPage:{limit: 9, offset: 0, sortBy:RELEVANCE}){
+					Repos {
+						Name
+					}
+					Page{
+						ItemCount
+						TotalCount
+					}
+				}
+			}`
+
+			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			responseStruct := &GlobalSearchResultResp{}
+
+			err = json.Unmarshal(resp.Body(), responseStruct)
+			So(err, ShouldBeNil)
+
+			So(responseStruct.GlobalSearchResult.GlobalSearch.Images, ShouldBeEmpty)
+			So(responseStruct.GlobalSearchResult.GlobalSearch.Repos, ShouldNotBeEmpty)
+			So(responseStruct.GlobalSearchResult.GlobalSearch.Layers, ShouldBeEmpty)
+
+			So(len(responseStruct.GlobalSearchResult.GlobalSearch.Repos), ShouldEqual, 3)
+			So(responseStruct.GlobalSearchResult.GlobalSearch.Page.TotalCount, ShouldEqual, 3)
+			So(responseStruct.GlobalSearchResult.GlobalSearch.Page.ItemCount, ShouldEqual, 3)
+		})
+
+		Convey("PageInfo when limit and offset have 0 value", func() {
+			query := `
+			{
+				GlobalSearch(query:"repo", requestedPage:{limit: 0, offset: 0, sortBy:RELEVANCE}){
+					Repos {
+						Name
+					}
+					Page{
+						ItemCount
+						TotalCount
+					}
+				}
+			}`
+
+			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			responseStruct := &GlobalSearchResultResp{}
+
+			err = json.Unmarshal(resp.Body(), responseStruct)
+			So(err, ShouldBeNil)
+
+			So(responseStruct.GlobalSearchResult.GlobalSearch.Images, ShouldBeEmpty)
+			So(responseStruct.GlobalSearchResult.GlobalSearch.Repos, ShouldNotBeEmpty)
+			So(responseStruct.GlobalSearchResult.GlobalSearch.Layers, ShouldBeEmpty)
+
+			So(len(responseStruct.GlobalSearchResult.GlobalSearch.Repos), ShouldEqual, 3)
+			So(responseStruct.GlobalSearchResult.GlobalSearch.Page.TotalCount, ShouldEqual, 3)
+			So(responseStruct.GlobalSearchResult.GlobalSearch.Page.ItemCount, ShouldEqual, 3)
 		})
 	})
 }
