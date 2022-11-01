@@ -12,6 +12,7 @@ STACKER := $(shell which stacker)
 GOLINTER := $(TOOLSDIR)/bin/golangci-lint
 GOLINTER_VERSION := v1.49.0
 NOTATION := $(TOOLSDIR)/bin/notation
+COSIGN := $(TOOLSDIR)/bin/cosign
 HELM := $(TOOLSDIR)/bin/helm
 ORAS := $(TOOLSDIR)/bin/oras
 REGCLIENT := $(TOOLSDIR)/bin/regctl
@@ -331,6 +332,11 @@ $(STACKER):
 	curl -fsSL https://github.com/project-stacker/stacker/releases/latest/download/stacker -o $@; \
 	chmod +x $@
 
+$(COSIGN):
+	mkdir -p $(TOOLSDIR)/bin
+	curl -fsSL https://github.com/sigstore/cosign/releases/download/v1.13.0/cosign-linux-amd64 -o $@; \
+	chmod +x $@
+
 .PHONY: test-annotations
-test-annotations: binary check-skopeo $(BATS) $(STACKER)
+test-annotations: binary check-skopeo $(BATS) $(STACKER) $(NOTATION) $(COSIGN)
 	$(BATS) --trace --print-output-on-failure test/blackbox/annotations.bats
