@@ -117,52 +117,301 @@ func TestVerify(t *testing.T) {
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
 
-		// dedup true, can't parse database type
-		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot", "dedupe": true,
-							"cache": {"type": 123}},
-							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+		// dedupe true, remote storage, remoteCache true, but no cacheDriver (remote)
+		content := []byte(`{
+			"storage":{
+				"rootDirectory":"/tmp/zot",
+				"dedupe":true,
+				"remoteCache":true,
+				"storageDriver":{
+					"name":"s3",
+					"rootdirectory":"/zot",
+					"region":"us-east-2",
+					"bucket":"zot-storage",
+					"secure":true,
+					"skipverify":false
+				}
+			},
+			"http":{
+				"address":"127.0.0.1",
+				"port":"8080",
+				"realm":"zot",
+				"auth":{
+					"htpasswd":{
+						"path":"test/data/htpasswd"
+					},
+					"failDelay":1
+				}
+			}
+		}`)
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
 		So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 
-		// dedup true, wrong database type
-		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot", "dedupe": true,
-							"cache": {"type": "wrong"}},
-							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+		// local storage with remote caching
+		content = []byte(`{
+			"storage":{
+			   "rootDirectory":"/tmp/zot",
+			   "dedupe":true,
+			   "remoteCache":true,
+			   "cacheDriver":{
+				  "name":"dynamodb",
+				  "endpoint":"http://localhost:4566",
+				  "region":"us-east-2",
+				  "tableName":"BlobTable"
+			   }
+			},
+			"http":{
+			   "address":"127.0.0.1",
+			   "port":"8080",
+			   "realm":"zot",
+			   "auth":{
+				  "htpasswd":{
+					 "path":"test/data/htpasswd"
+				  },
+				  "failDelay":1
+			   }
+			}
+		 }`)
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
 		So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+
+		// unsupported cache driver
+		content = []byte(`{
+			"storage":{
+			   "rootDirectory":"/tmp/zot",
+			   "dedupe":true,
+			   "remoteCache":true,
+			   "cacheDriver":{
+				  "name":"unsupportedDriver"
+			   },
+			   "storageDriver":{
+				  "name":"s3",
+				  "rootdirectory":"/zot",
+				  "region":"us-east-2",
+				  "bucket":"zot-storage",
+				  "secure":true,
+				  "skipverify":false
+			   }
+			},
+			"http":{
+			   "address":"127.0.0.1",
+			   "port":"8080",
+			   "realm":"zot",
+			   "auth":{
+				  "htpasswd":{
+					 "path":"test/data/htpasswd"
+				  },
+				  "failDelay":1
+			   }
+			}
+		 }`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+
+		// remoteCache false but provided cacheDriver config, ignored
+		content = []byte(`{
+			"storage":{
+			   "rootDirectory":"/tmp/zot",
+			   "dedupe":true,
+			   "remoteCache":false,
+			   "cacheDriver":{
+				  "name":"dynamodb",
+				  "endpoint":"http://localhost:4566",
+				  "region":"us-east-2",
+				  "tableName":"BlobTable"
+			   },
+			   "storageDriver":{
+				  "name":"s3",
+				  "rootdirectory":"/zot",
+				  "region":"us-east-2",
+				  "bucket":"zot-storage",
+				  "secure":true,
+				  "skipverify":false
+			   }
+			},
+			"http":{
+			   "address":"127.0.0.1",
+			   "port":"8080",
+			   "realm":"zot",
+			   "auth":{
+				  "htpasswd":{
+					 "path":"test/data/htpasswd"
+				  },
+				  "failDelay":1
+			   }
+			}
+		 }`)
+
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldNotPanic)
 
 		// SubPaths
-		// dedup true, wrong database type
-		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot", "dedupe": false,
-							"subPaths": {"/a": {"rootDirectory": "/zot-a", "dedupe": true,
-							"cache": {"type": "wrong"}}}},
-							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+		// dedupe true, remote storage, remoteCache true, but no cacheDriver (remote)
+		content = []byte(`{
+			"storage":{
+			   "rootDirectory":"/tmp/zot",
+			   "dedupe":false,
+			   "subPaths":{
+				  "/a":{
+					 "rootDirectory":"/zot-a",
+					 "dedupe":true,
+					 "remoteCache":true,
+					 "storageDriver":{
+						"name":"s3",
+						"rootdirectory":"/zot",
+						"region":"us-east-2",
+						"bucket":"zot-storage",
+						"secure":true,
+						"skipverify":false
+					 }
+				  }
+			   }
+			},
+			"http":{
+			   "address":"127.0.0.1",
+			   "port":"8080",
+			   "realm":"zot",
+			   "auth":{
+				  "htpasswd":{
+					 "path":"test/data/htpasswd"
+				  },
+				  "failDelay":1
+			   }
+			}
+		 }`)
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
 		So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 
-		// dedup true, can't parse database type
-		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot", "dedupe": false,
-							"subPaths": {"/a": {"rootDirectory": "/zot-a", "dedupe": true,
-							"cache": {"type": 123}}}},
-							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+		// local storage with remote caching
+		content = []byte(`{
+			"storage":{
+			   "rootDirectory":"/tmp/zot",
+			   "dedupe":false,
+			   "subPaths":{
+				  "/a":{
+					 "rootDirectory":"/zot-a",
+					 "dedupe":true,
+					 "remoteCache":true,
+					 "cacheDriver":{
+						"name":"dynamodb",
+						"endpoint":"http://localhost:4566",
+						"region":"us-east-2",
+						"tableName":"BlobTable"
+					 }
+				  }
+			   }
+			},
+			"http":{
+			   "address":"127.0.0.1",
+			   "port":"8080",
+			   "realm":"zot",
+			   "auth":{
+				  "htpasswd":{
+					 "path":"test/data/htpasswd"
+				  },
+				  "failDelay":1
+			   }
+			}
+		 }`)
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
 		So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+
+		// unsupported cache driver
+		content = []byte(`{
+			"storage":{
+			   "rootDirectory":"/tmp/zot",
+			   "dedupe":false,
+			   "subPaths":{
+				  "/a":{
+					 "rootDirectory":"/zot-a",
+					 "dedupe":true,
+					 "remoteCache":true,
+					 "cacheDriver":{
+						"name":"badDriverName"
+					 },
+					 "storageDriver":{
+						"name":"s3",
+						"rootdirectory":"/zot",
+						"region":"us-east-2",
+						"bucket":"zot-storage",
+						"secure":true,
+						"skipverify":false
+					 }
+				  }
+			   }
+			},
+			"http":{
+			   "address":"127.0.0.1",
+			   "port":"8080",
+			   "realm":"zot",
+			   "auth":{
+				  "htpasswd":{
+					 "path":"test/data/htpasswd"
+				  },
+				  "failDelay":1
+			   }
+			}
+		 }`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+
+		// remoteCache false but provided cacheDriver config, ignored
+		content = []byte(`{
+			"storage":{
+			   "rootDirectory":"/tmp/zot",
+			   "dedupe":false,
+			   "subPaths":{
+				  "/a":{
+					 "rootDirectory":"/zot-a",
+					 "dedupe":true,
+					 "remoteCache":false,
+					 "cacheDriver":{
+						"name":"dynamodb",
+						"endpoint":"http://localhost:4566",
+						"region":"us-east-2",
+						"tableName":"BlobTable"
+					 }
+				  }
+			   }
+			},
+			"http":{
+			   "address":"127.0.0.1",
+			   "port":"8080",
+			   "realm":"zot",
+			   "auth":{
+				  "htpasswd":{
+					 "path":"test/data/htpasswd"
+				  },
+				  "failDelay":1
+			   }
+			}
+		 }`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldNotPanic)
 	})
 
 	Convey("Test apply defaults cache db", t, func(c C) {

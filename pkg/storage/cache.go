@@ -12,6 +12,10 @@ func Create(dbtype string, parameters interface{}, log zlog.Logger) (cache.Cache
 		{
 			return cache.NewBoltDBCache(parameters, log), nil
 		}
+	case "dynamodb":
+		{
+			return cache.NewDynamoDBCache(parameters, log), nil
+		}
 	default:
 		{
 			return nil, errors.ErrBadConfig

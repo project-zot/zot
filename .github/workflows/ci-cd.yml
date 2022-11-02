@@ -38,7 +38,7 @@ jobs:
       s3mock:
         image: ghcr.io/project-zot/localstack/localstack:1.2.0
         env:
-          SERVICES: s3
+          SERVICES: s3,dynamodb
         ports:
           - 4563-4599:4563-4599
           - 9090:8080
@@ -79,6 +79,7 @@ jobs:
       - name: Run build and test
         timeout-minutes: 60
         run: |
+          aws dynamodb --endpoint-url http://localhost:4566 --region "us-east-2" create-table --table-name BlobTable --attribute-definitions AttributeName=Digest,AttributeType=S --key-schema AttributeName=Digest,KeyType=HASH --provisioned-throughput ReadCapacityUnits=10,WriteCapacityUnits=5
           echo "Building for $OS:$ARCH"
           cd $GITHUB_WORKSPACE
           if [[ $OS == "linux" && $ARCH == "amd64" ]]; then
@@ -87,8 +88,10 @@ jobs:
           else
             make OS=$OS ARCH=$ARCH binary binary-minimal binary-debug cli bench exporter-minimal
           fi
+          aws dynamodb --endpoint-url "http://localhost:4566" --region "us-east-2" delete-table --table-name "BlobTable"
         env:
           S3MOCK_ENDPOINT: localhost:4566
+          DYNAMODBMOCK_ENDPOINT: http://localhost:4566
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
           OS: ${{ matrix.os }}

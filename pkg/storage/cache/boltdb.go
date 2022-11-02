@@ -32,18 +32,14 @@ func NewBoltDBCache(parameters interface{}, log zlog.Logger) Cache {
 		panic("Failed type assertion")
 	}
 
-	return NewCache(properParameters, log)
-}
-
-func NewCache(parameters BoltDBDriverParameters, log zlog.Logger) *BoltDBDriver {
-	err := os.MkdirAll(parameters.RootDir, constants.DefaultDirPerms)
+	err := os.MkdirAll(properParameters.RootDir, constants.DefaultDirPerms)
 	if err != nil {
-		log.Error().Err(err).Msgf("unable to create directory for cache db: %v", parameters.RootDir)
+		log.Error().Err(err).Msgf("unable to create directory for cache db: %v", properParameters.RootDir)
 
 		return nil
 	}
 
-	dbPath := path.Join(parameters.RootDir, parameters.Name+constants.DBExtensionName)
+	dbPath := path.Join(properParameters.RootDir, properParameters.Name+constants.DBExtensionName)
 	dbOpts := &bbolt.Options{
 		Timeout:      constants.DBCacheLockCheckTimeout,
 		FreelistType: bbolt.FreelistArrayType,
@@ -72,7 +68,12 @@ func NewCache(parameters BoltDBDriverParameters, log zlog.Logger) *BoltDBDriver 
 		return nil
 	}
 
-	return &BoltDBDriver{rootDir: parameters.RootDir, db: cacheDB, useRelPaths: parameters.UseRelPaths, log: log}
+	return &BoltDBDriver{
+		rootDir:     properParameters.RootDir,
+		db:          cacheDB,
+		useRelPaths: properParameters.UseRelPaths,
+		log:         log,
+	}
 }
 
 func (d *BoltDBDriver) Name() string {

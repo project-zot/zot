@@ -99,6 +99,14 @@ func skipIt(t *testing.T) {
 	}
 }
 
+func skipDynamo(t *testing.T) {
+	t.Helper()
+
+	if os.Getenv("DYNAMODBMOCK_ENDPOINT") == "" {
+		t.Skip("Skipping testing without AWS DynamoDB mock server")
+	}
+}
+
 func TestNew(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		conf := config.New()
@@ -108,7 +116,7 @@ func TestNew(t *testing.T) {
 }
 
 func TestCreateCacheDatabaseDriver(t *testing.T) {
-	Convey("Test CreateCacheDatabaseDriver", t, func() {
+	Convey("Test CreateCacheDatabaseDriver boltdb", t, func() {
 		log := log.NewLogger("debug", "")
 
 		// fail create db, no perm
@@ -131,6 +139,35 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 
 		driver = api.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
 		So(driver, ShouldBeNil)
+	})
+	skipDynamo(t)
+	skipIt(t)
+	Convey("Test CreateCacheDatabaseDriver dynamodb", t, func() {
+		log := log.NewLogger("debug", "")
+		dir := t.TempDir()
+		// good config
+		conf := config.New()
+		conf.Storage.RootDirectory = dir
+		conf.Storage.Dedupe = true
+		conf.Storage.RemoteCache = true
+		conf.Storage.StorageDriver = map[string]interface{}{
+			"name":          "s3",
+			"rootdirectory": "/zot",
+			"region":        "us-east-2",
+			"bucket":        "zot-storage",
+			"secure":        true,
+			"skipverify":    false,
+		}
+
+		conf.Storage.CacheDriver = map[string]interface{}{
+			"name":      "dynamodb",
+			"endpoint":  "http://localhost:4566",
+			"region":    "us-east-2",
+			"tableName": "BlobTable",
+		}
+
+		driver := api.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
+		So(driver, ShouldNotBeNil)
 	})
 }
 
