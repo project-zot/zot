@@ -31,6 +31,8 @@ import (
 	zlog "zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/scheduler"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/cache"
+	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/test"
 )
 
@@ -44,7 +46,7 @@ type ImageStoreLocal struct {
 	rootDir     string
 	lock        *sync.RWMutex
 	blobUploads map[string]storage.BlobUpload
-	cache       *storage.Cache
+	cache       cache.Cache
 	gc          bool
 	dedupe      bool
 	commit      bool
@@ -63,8 +65,9 @@ func (is *ImageStoreLocal) DirExists(d string) bool {
 }
 
 // NewImageStore returns a new image store backed by a file storage.
+// Use the last argument to properly set a cache database, or it will default to boltDB local storage.
 func NewImageStore(rootDir string, gc bool, gcDelay time.Duration, dedupe, commit bool,
-	log zlog.Logger, metrics monitoring.MetricServer, linter storage.Lint,
+	log zlog.Logger, metrics monitoring.MetricServer, linter storage.Lint, cacheDriver cache.Cache,
 ) storage.ImageStore {
 	if _, err := os.Stat(rootDir); os.IsNotExist(err) {
 		if err := os.MkdirAll(rootDir, DefaultDirPerms); err != nil {
@@ -87,9 +90,7 @@ func NewImageStore(rootDir string, gc bool, gcDelay time.Duration, dedupe, commi
 		linter:      linter,
 	}
 
-	if dedupe {
-		imgStore.cache = storage.NewCache(rootDir, "cache", true, log)
-	}
+	imgStore.cache = cacheDriver
 
 	if gc {
 		// we use umoci GC to perform garbage-collection, but it uses its own logger
@@ -122,7 +123,7 @@ func (is *ImageStoreLocal) RUnlock(lockStart *time.Time) {
 
 	lockEnd := time.Now()
 	latency := lockEnd.Sub(*lockStart)
-	monitoring.ObserveStorageLockLatency(is.metrics, latency, is.RootDir(), storage.RLOCK) // histogram
+	monitoring.ObserveStorageLockLatency(is.metrics, latency, is.RootDir(), storageConstants.RLOCK) // histogram
 }
 
 // Lock write-lock.
@@ -138,7 +139,7 @@ func (is *ImageStoreLocal) Unlock(lockStart *time.Time) {
 
 	lockEnd := time.Now()
 	latency := lockEnd.Sub(*lockStart)
-	monitoring.ObserveStorageLockLatency(is.metrics, latency, is.RootDir(), storage.RWLOCK) // histogram
+	monitoring.ObserveStorageLockLatency(is.metrics, latency, is.RootDir(), storageConstants.RWLOCK) // histogram
 }
 
 func (is *ImageStoreLocal) initRepo(name string) error {
@@ -158,7 +159,7 @@ func (is *ImageStoreLocal) initRepo(name string) error {
 		return err
 	}
 	// create BlobUploadDir subdir
-	err = ensureDir(path.Join(repoDir, storage.BlobUploadDir), is.log)
+	err = ensureDir(path.Join(repoDir, storageConstants.BlobUploadDir), is.log)
 	if err != nil {
 		is.log.Error().Err(err).Msg("error creating blob upload subdir")
 
@@ -249,7 +250,7 @@ func (is *ImageStoreLocal) ValidateRepo(name string) (bool, error) {
 	}
 
 	for k, v := range found {
-		if !v && k != storage.BlobUploadDir {
+		if !v && k != storageConstants.BlobUploadDir {
 			return false, nil
 		}
 	}
@@ -618,7 +619,7 @@ func (is *ImageStoreLocal) DeleteImageManifest(repo, reference string) error {
 // BlobUploadPath returns the upload path for a blob in this store.
 func (is *ImageStoreLocal) BlobUploadPath(repo, uuid string) string {
 	dir := path.Join(is.rootDir, repo)
-	blobUploadPath := path.Join(dir, storage.BlobUploadDir, uuid)
+	blobUploadPath := path.Join(dir, storageConstants.BlobUploadDir, uuid)
 
 	return blobUploadPath
 }
@@ -836,7 +837,7 @@ func (is *ImageStoreLocal) FinishBlobUpload(repo, uuid string, body io.Reader, d
 
 	dst := is.BlobPath(repo, dstDigest)
 
-	if is.dedupe && is.cache != nil {
+	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
 		err = is.DedupeBlob(src, dstDigest, dst)
 		if err := test.Error(err); err != nil {
 			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
@@ -917,7 +918,7 @@ func (is *ImageStoreLocal) FullBlobUpload(repo string, body io.Reader, dstDigest
 	_ = ensureDir(dir, is.log)
 	dst := is.BlobPath(repo, dstDigest)
 
-	if is.dedupe && is.cache != nil {
+	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
 		if err := is.DedupeBlob(src, dstDigest, dst); err != nil {
 			is.log.Error().Err(err).Str("src", src).Str("dstDigest", dstDigest.String()).
 				Str("dst", dst).Msg("unable to dedupe blob")
@@ -1046,7 +1047,7 @@ func (is *ImageStoreLocal) CheckBlob(repo string, digest godigest.Digest) (bool,
 
 	blobPath := is.BlobPath(repo, digest)
 
-	if is.dedupe && is.cache != nil {
+	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
 		is.Lock(&lockLatency)
 		defer is.Unlock(&lockLatency)
 	} else {
@@ -1091,7 +1092,7 @@ func (is *ImageStoreLocal) checkCacheBlob(digest godigest.Digest) (string, error
 		return "", err
 	}
 
-	if !is.dedupe || is.cache == nil {
+	if !is.dedupe || fmt.Sprintf("%v", is.cache) == fmt.Sprintf("%v", nil) {
 		return "", zerr.ErrBlobNotFound
 	}
 
@@ -1319,7 +1320,7 @@ func (is *ImageStoreLocal) DeleteBlob(repo string, digest godigest.Digest) error
 		return zerr.ErrBlobNotFound
 	}
 
-	if is.cache != nil {
+	if fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
 		if err := is.cache.DeleteBlob(digest, blobPath); err != nil {
 			is.log.Error().Err(err).Str("digest", digest.String()).Str("blobPath", blobPath).
 				Msg("unable to remove blob path from cache")

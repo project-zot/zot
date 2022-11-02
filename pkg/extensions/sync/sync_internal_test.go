@@ -65,7 +65,7 @@ func TestInjectSyncUtils(t *testing.T) {
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
 		imageStore := local.NewImageStore(t.TempDir(), false, storage.DefaultGCDelay,
-			false, false, log, metrics, nil,
+			false, false, log, metrics, nil, nil,
 		)
 		injected = test.InjectFailure(0)
 
@@ -164,7 +164,7 @@ func TestSyncInternal(t *testing.T) {
 		metrics := monitoring.NewMetricsServer(false, log)
 
 		imageStore := local.NewImageStore(t.TempDir(), false, storage.DefaultGCDelay,
-			false, false, log, metrics, nil)
+			false, false, log, metrics, nil, nil)
 
 		err := os.Chmod(imageStore.RootDir(), 0o000)
 		So(err, ShouldBeNil)
@@ -346,7 +346,7 @@ func TestSyncInternal(t *testing.T) {
 		metrics := monitoring.NewMetricsServer(false, log)
 
 		imageStore := local.NewImageStore(storageDir, false, storage.DefaultGCDelay,
-			false, false, log, metrics, nil)
+			false, false, log, metrics, nil, nil)
 
 		refs := ReferenceList{[]artifactspec.Descriptor{
 			{
@@ -439,7 +439,7 @@ func TestSyncInternal(t *testing.T) {
 		metrics := monitoring.NewMetricsServer(false, log)
 
 		imageStore := local.NewImageStore(storageDir, false, storage.DefaultGCDelay,
-			false, false, log, metrics, nil)
+			false, false, log, metrics, nil, nil)
 
 		storeController := storage.StoreController{}
 		storeController.DefaultStore = imageStore
@@ -461,7 +461,7 @@ func TestSyncInternal(t *testing.T) {
 		}
 
 		testImageStore := local.NewImageStore(testRootDir, false,
-			storage.DefaultGCDelay, false, false, log, metrics, nil)
+			storage.DefaultGCDelay, false, false, log, metrics, nil, nil)
 		manifestContent, _, _, err := testImageStore.GetImageManifest(testImage, testImageTag)
 		So(err, ShouldBeNil)
 
@@ -538,7 +538,7 @@ func TestSyncInternal(t *testing.T) {
 					LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storage.ImageStore) (bool, error) {
 						return false, nil
 					},
-				},
+				}, nil,
 			)
 
 			err = pushSyncedLocalImage(repo, "latest", testRootDir, imageStoreWithLinter, log)

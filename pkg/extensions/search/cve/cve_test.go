@@ -88,7 +88,7 @@ func testSetup() error {
 	conf.Extensions = &extconf.ExtensionConfig{}
 	conf.Extensions.Lint = &extconf.LintConfig{}
 
-	storeController := storage.StoreController{DefaultStore: local.NewImageStore(dir, false, storage.DefaultGCDelay, false, false, log, metrics, nil)}
+	storeController := storage.StoreController{DefaultStore: local.NewImageStore(dir, false, storage.DefaultGCDelay, false, false, log, metrics, nil, nil)}
 
 	layoutUtils := common.NewBaseOciLayoutUtils(storeController, log)
 	scanner := trivy.NewScanner(storeController, layoutUtils, log)
@@ -332,7 +332,7 @@ func TestImageFormat(t *testing.T) {
 
 		metrics := monitoring.NewMetricsServer(false, log)
 		defaultStore := local.NewImageStore(dbDir, false, storage.DefaultGCDelay,
-			false, false, log, metrics, nil)
+			false, false, log, metrics, nil, nil)
 		storeController := storage.StoreController{DefaultStore: defaultStore}
 
 		cveInfo := cveinfo.NewCVEInfo(storeController, log)

@@ -19,6 +19,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/cache"
 	"zotregistry.io/zot/pkg/storage/local"
 )
 
@@ -28,7 +29,13 @@ func TestElevatedPrivilegesInvalidDedupe(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics, nil)
+
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true, true, log, metrics, nil, cacheDriver)
 
 		upload, err := imgStore.NewBlobUpload("dedupe1")
 		So(err, ShouldBeNil)
