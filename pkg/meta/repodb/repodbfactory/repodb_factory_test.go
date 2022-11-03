@@ -18,7 +18,7 @@ func TestCreateDynamo(t *testing.T) {
 		dynamoDBDriverParams := dynamo.DBDriverParameters{
 			Endpoint:              os.Getenv("DYNAMODBMOCK_ENDPOINT"),
 			RepoMetaTablename:     "RepoMetadataTable",
-			ManifestMetaTablename: "ManifestMetadataTable",
+			ManifestDataTablename: "ManifestDataTable",
 			Region:                "us-east-2",
 		}
 

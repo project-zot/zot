@@ -164,14 +164,14 @@ func (scanner Scanner) IsImageFormatScannable(image string) (bool, error) {
 		return false, err
 	}
 
-	manifestMeta, err := scanner.repoDB.GetManifestMeta(manifestDigest)
+	manifestData, err := scanner.repoDB.GetManifestData(manifestDigest)
 	if err != nil {
 		return false, err
 	}
 
 	var manifestContent ispec.Manifest
 
-	err = json.Unmarshal(manifestMeta.ManifestBlob, &manifestContent)
+	err = json.Unmarshal(manifestData.ManifestBlob, &manifestContent)
 	if err != nil {
 		scanner.log.Error().Err(err).Str("image", image).Msg("unable to unmashal manifest blob")
 

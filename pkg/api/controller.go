@@ -512,7 +512,7 @@ func (c *Controller) createRepoDBDriver(reloadCtx context.Context) (repodb.RepoD
 		dynamoParams.Endpoint, _ = storageConfig.CacheDriver["endpoint"].(string)
 		dynamoParams.Region, _ = storageConfig.CacheDriver["region"].(string)
 		dynamoParams.RepoMetaTablename, _ = storageConfig.CacheDriver["repometatablename"].(string)
-		dynamoParams.ManifestMetaTablename, _ = storageConfig.CacheDriver["manifestmetatablename"].(string)
+		dynamoParams.ManifestDataTablename, _ = storageConfig.CacheDriver["manifestdatatablename"].(string)
 
 		return repodbfactory.Create("dynamodb", dynamoParams) //nolint:contextcheck
 	}

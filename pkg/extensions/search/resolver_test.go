@@ -60,10 +60,7 @@ func TestGlobalSearch(t *testing.T) {
 									MediaType: ispec.MediaTypeImageManifest,
 								},
 							},
-							Signatures:  []string{"testSignature"},
-							Stars:       100,
-							Description: "Descriptions repo1",
-							LogoPath:    "test/logoPath",
+							Stars: 100,
 						},
 					}
 
@@ -92,24 +89,12 @@ func TestGlobalSearch(t *testing.T) {
 
 					manifestMetas := map[string]repodb.ManifestMetadata{
 						"digestTag1.0.1": {
-							ManifestBlob:  manifestBlob,
-							ConfigBlob:    configBlob1,
-							DownloadCount: 100,
-							Signatures:    make(map[string][]string),
-							Dependencies:  make([]string, 0),
-							Dependants:    make([]string, 0),
-							BlobsSize:     0,
-							BlobCount:     0,
+							ManifestBlob: manifestBlob,
+							ConfigBlob:   configBlob1,
 						},
 						"digestTag1.0.2": {
-							ManifestBlob:  manifestBlob,
-							ConfigBlob:    configBlob2,
-							DownloadCount: 100,
-							Signatures:    make(map[string][]string),
-							Dependencies:  make([]string, 0),
-							Dependants:    make([]string, 0),
-							BlobsSize:     0,
-							BlobCount:     0,
+							ManifestBlob: manifestBlob,
+							ConfigBlob:   configBlob2,
 						},
 					}
 
@@ -139,7 +124,7 @@ func TestGlobalSearch(t *testing.T) {
 			So(len(repos[0].Vendors), ShouldEqual, 2)
 		})
 
-		Convey("RepoDB SearchRepo Bad manifest refferenced", func() {
+		Convey("RepoDB SearchRepo Bad manifest referenced", func() {
 			mockRepoDB := mocks.RepoDBMock{
 				SearchReposFn: func(ctx context.Context, searchText string, filter repodb.Filter, requestedPage repodb.PageInput,
 				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
@@ -152,10 +137,7 @@ func TestGlobalSearch(t *testing.T) {
 									MediaType: ispec.MediaTypeImageManifest,
 								},
 							},
-							Signatures:  []string{"testSignature"},
-							Stars:       100,
-							Description: "Descriptions repo1",
-							LogoPath:    "test/logoPath",
+							Stars: 100,
 						},
 					}
 
@@ -164,14 +146,8 @@ func TestGlobalSearch(t *testing.T) {
 
 					manifestMetas := map[string]repodb.ManifestMetadata{
 						"digestTag1.0.1": {
-							ManifestBlob:  []byte("bad manifest blob"),
-							ConfigBlob:    configBlob,
-							DownloadCount: 100,
-							Signatures:    make(map[string][]string),
-							Dependencies:  make([]string, 0),
-							Dependants:    make([]string, 0),
-							BlobsSize:     0,
-							BlobCount:     0,
+							ManifestBlob: []byte("bad manifest blob"),
+							ConfigBlob:   configBlob,
 						},
 					}
 
@@ -212,7 +188,7 @@ func TestGlobalSearch(t *testing.T) {
 			So(repos, ShouldBeEmpty)
 		})
 
-		Convey("RepoDB SearchRepo good manifest refferenced and bad config blob", func() {
+		Convey("RepoDB SearchRepo good manifest referenced and bad config blob", func() {
 			mockRepoDB := mocks.RepoDBMock{
 				SearchReposFn: func(ctx context.Context, searchText string, filter repodb.Filter, requestedPage repodb.PageInput,
 				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
@@ -225,10 +201,7 @@ func TestGlobalSearch(t *testing.T) {
 									MediaType: ispec.MediaTypeImageManifest,
 								},
 							},
-							Signatures:  []string{"testSignature"},
-							Stars:       100,
-							Description: "Descriptions repo1",
-							LogoPath:    "test/logoPath",
+							Stars: 100,
 						},
 					}
 
@@ -237,14 +210,8 @@ func TestGlobalSearch(t *testing.T) {
 
 					manifestMetas := map[string]repodb.ManifestMetadata{
 						"digestTag1.0.1": {
-							ManifestBlob:  manifestBlob,
-							ConfigBlob:    []byte("bad config blob"),
-							DownloadCount: 100,
-							Signatures:    make(map[string][]string),
-							Dependencies:  make([]string, 0),
-							Dependants:    make([]string, 0),
-							BlobsSize:     0,
-							BlobCount:     0,
+							ManifestBlob: manifestBlob,
+							ConfigBlob:   []byte("bad config blob"),
 						},
 					}
 
@@ -317,10 +284,7 @@ func TestGlobalSearch(t *testing.T) {
 									MediaType: ispec.MediaTypeImageManifest,
 								},
 							},
-							Signatures:  []string{"testSignature"},
-							Stars:       100,
-							Description: "Descriptions repo1",
-							LogoPath:    "test/logoPath",
+							Stars: 100,
 						},
 					}
 
@@ -347,24 +311,12 @@ func TestGlobalSearch(t *testing.T) {
 
 					manifestMetas := map[string]repodb.ManifestMetadata{
 						"digestTag1.0.1": {
-							ManifestBlob:  manifestBlob,
-							ConfigBlob:    configBlob1,
-							DownloadCount: 100,
-							Signatures:    make(map[string][]string),
-							Dependencies:  make([]string, 0),
-							Dependants:    make([]string, 0),
-							BlobsSize:     0,
-							BlobCount:     0,
+							ManifestBlob: manifestBlob,
+							ConfigBlob:   configBlob1,
 						},
 						"digestTag1.0.2": {
-							ManifestBlob:  manifestBlob,
-							ConfigBlob:    configBlob2,
-							DownloadCount: 100,
-							Signatures:    make(map[string][]string),
-							Dependencies:  make([]string, 0),
-							Dependants:    make([]string, 0),
-							BlobsSize:     0,
-							BlobCount:     0,
+							ManifestBlob: manifestBlob,
+							ConfigBlob:   configBlob2,
 						},
 					}
 
@@ -422,7 +374,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 			So(repos, ShouldBeEmpty)
 		})
 
-		Convey("RepoDB SearchRepo Bad manifest refferenced", func() {
+		Convey("RepoDB SearchRepo Bad manifest referenced", func() {
 			mockRepoDB := mocks.RepoDBMock{
 				SearchReposFn: func(ctx context.Context, searchText string, filter repodb.Filter, requestedPage repodb.PageInput,
 				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
@@ -435,10 +387,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 									MediaType: ispec.MediaTypeImageManifest,
 								},
 							},
-							Signatures:  []string{"testSignature"},
-							Stars:       100,
-							Description: "Description repo1",
-							LogoPath:    "test/logoPath",
+							Stars: 100,
 						},
 						{
 							Name: "repo2",
@@ -448,10 +397,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 									MediaType: ispec.MediaTypeImageManifest,
 								},
 							},
-							Signatures:  []string{"testSignature"},
-							Stars:       100,
-							Description: "Description repo2",
-							LogoPath:    "test/logoPath",
+							Stars: 100,
 						},
 					}
 
@@ -464,24 +410,12 @@ func TestRepoListWithNewestImage(t *testing.T) {
 
 					manifestMetas := map[string]repodb.ManifestMetadata{
 						"digestTag1.0.1": {
-							ManifestBlob:  []byte("bad manifest blob"),
-							ConfigBlob:    configBlob1,
-							DownloadCount: 100,
-							Signatures:    make(map[string][]string),
-							Dependencies:  make([]string, 0),
-							Dependants:    make([]string, 0),
-							BlobsSize:     0,
-							BlobCount:     0,
+							ManifestBlob: []byte("bad manifest blob"),
+							ConfigBlob:   configBlob1,
 						},
 						"digestTag1.0.2": {
-							ManifestBlob:  []byte("bad manifest blob"),
-							ConfigBlob:    configBlob1,
-							DownloadCount: 100,
-							Signatures:    make(map[string][]string),
-							Dependencies:  make([]string, 0),
-							Dependants:    make([]string, 0),
-							BlobsSize:     0,
-							BlobCount:     0,
+							ManifestBlob: []byte("bad manifest blob"),
+							ConfigBlob:   configBlob1,
 						},
 					}
 
@@ -524,10 +458,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 									MediaType: ispec.MediaTypeImageManifest,
 								},
 							},
-							Signatures:  []string{"testSignature"},
-							Stars:       100,
-							Description: "Description repo1",
-							LogoPath:    "test/logoPath",
+							Stars: 100,
 						},
 						{
 							Name: "repo2",
@@ -537,10 +468,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 									MediaType: ispec.MediaTypeImageManifest,
 								},
 							},
-							Signatures:  []string{"testSignature"},
-							Stars:       100,
-							Description: "Description repo2",
-							LogoPath:    "test/logoPath",
+							Stars: 100,
 						},
 					}
 
@@ -575,24 +503,12 @@ func TestRepoListWithNewestImage(t *testing.T) {
 
 					manifestMetas := map[string]repodb.ManifestMetadata{
 						"digestTag1.0.1": {
-							ManifestBlob:  manifestBlob,
-							ConfigBlob:    configBlob1,
-							DownloadCount: 100,
-							Signatures:    make(map[string][]string),
-							Dependencies:  make([]string, 0),
-							Dependants:    make([]string, 0),
-							BlobsSize:     0,
-							BlobCount:     0,
+							ManifestBlob: manifestBlob,
+							ConfigBlob:   configBlob1,
 						},
 						"digestTag1.0.2": {
-							ManifestBlob:  manifestBlob,
-							ConfigBlob:    configBlob2,
-							DownloadCount: 100,
-							Signatures:    make(map[string][]string),
-							Dependencies:  make([]string, 0),
-							Dependants:    make([]string, 0),
-							BlobsSize:     0,
-							BlobCount:     0,
+							ManifestBlob: manifestBlob,
+							ConfigBlob:   configBlob2,
 						},
 					}
 

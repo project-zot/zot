@@ -48,6 +48,7 @@ func RepoMeta2RepoSummary(ctx context.Context, repoMeta repodb.RepoMetadata,
 		var (
 			manifestContent ispec.Manifest
 			manifestDigest  = descriptor.Digest
+			imageSignatures = repoMeta.Signatures[descriptor.Digest]
 		)
 
 		err := json.Unmarshal(manifestMetaMap[manifestDigest].ManifestBlob, &manifestContent)
@@ -70,14 +71,14 @@ func RepoMeta2RepoSummary(ctx context.Context, repoMeta repodb.RepoMetadata,
 
 		var (
 			tag              = tag
-			isSigned         = len(manifestMetaMap[manifestDigest].Signatures) > 0
+			isSigned         = imageHasSignatures(imageSignatures)
 			configDigest     = manifestContent.Config.Digest.String()
 			configSize       = manifestContent.Config.Size
 			opSys            = configContent.OS
 			arch             = configContent.Architecture
 			osArch           = gql_generated.OsArch{Os: &opSys, Arch: &arch}
 			imageLastUpdated = common.GetImageLastUpdated(configContent)
-			downloadCount    = manifestMetaMap[manifestDigest].DownloadCount
+			downloadCount    = repoMeta.Statistics[descriptor.Digest].DownloadCount
 
 			size = updateRepoBlobsMap(
 				manifestDigest, int64(len(manifestMetaMap[manifestDigest].ManifestBlob)),
@@ -146,7 +147,7 @@ func RepoMeta2RepoSummary(ctx context.Context, repoMeta repodb.RepoMetadata,
 			lastUpdatedImageSummary = &imageSummary
 		}
 
-		repoDownloadCount += manifestMetaMap[manifestDigest].DownloadCount
+		repoDownloadCount += repoMeta.Statistics[descriptor.Digest].DownloadCount
 	}
 
 	// calculate repo size = sum all manifest, config and layer blobs sizes
@@ -216,6 +217,7 @@ func RepoMeta2ImageSummaries(ctx context.Context, repoMeta repodb.RepoMetadata,
 		var (
 			manifestContent ispec.Manifest
 			manifestDigest  = descriptor.Digest
+			imageSignatures = repoMeta.Signatures[descriptor.Digest]
 		)
 
 		err := json.Unmarshal(manifestMetaMap[manifestDigest].ManifestBlob, &manifestContent)
@@ -262,12 +264,12 @@ func RepoMeta2ImageSummaries(ctx context.Context, repoMeta repodb.RepoMetadata,
 			tag              = tag
 			configDigest     = manifestContent.Config.Digest.String()
 			imageLastUpdated = common.GetImageLastUpdated(configContent)
-			isSigned         = imageHasSignatures(manifestMetaMap[manifestDigest].Signatures)
+			isSigned         = imageHasSignatures(imageSignatures)
 			imageSize        = strconv.FormatInt(imgSize, 10)
 			os               = configContent.OS
 			arch             = configContent.Architecture
 			osArch           = gql_generated.OsArch{Os: &os, Arch: &arch}
-			downloadCount    = manifestMetaMap[manifestDigest].DownloadCount
+			downloadCount    = repoMeta.Statistics[descriptor.Digest].DownloadCount
 		)
 
 		annotations := common.GetAnnotations(manifestContent.Annotations, configContent.Config.Labels)
@@ -343,6 +345,7 @@ func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta repodb.RepoMetadata
 		var (
 			manifestContent ispec.Manifest
 			manifestDigest  = descriptor.Digest
+			imageSignatures = repoMeta.Signatures[descriptor.Digest]
 		)
 
 		err := json.Unmarshal(manifestMetaMap[manifestDigest].ManifestBlob, &manifestContent)
@@ -365,14 +368,14 @@ func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta repodb.RepoMetadata
 
 		var (
 			tag              = tag
-			isSigned         = len(manifestMetaMap[manifestDigest].Signatures) > 0
+			isSigned         = imageHasSignatures(imageSignatures)
 			configDigest     = manifestContent.Config.Digest.String()
 			configSize       = manifestContent.Config.Size
 			opSys            = configContent.OS
 			arch             = configContent.Architecture
 			osArch           = gql_generated.OsArch{Os: &opSys, Arch: &arch}
 			imageLastUpdated = common.GetImageLastUpdated(configContent)
-			downloadCount    = manifestMetaMap[manifestDigest].DownloadCount
+			downloadCount    = repoMeta.Statistics[descriptor.Digest].DownloadCount
 
 			size = updateRepoBlobsMap(
 				manifestDigest, int64(len(manifestMetaMap[manifestDigest].ManifestBlob)),
@@ -436,7 +439,7 @@ func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta repodb.RepoMetadata
 			lastUpdatedImageSummary = &imageSummary
 		}
 
-		repoDownloadCount += manifestMetaMap[manifestDigest].DownloadCount
+		repoDownloadCount += repoMeta.Statistics[descriptor.Digest].DownloadCount
 	}
 
 	// calculate repo size = sum all manifest, config and layer blobs sizes

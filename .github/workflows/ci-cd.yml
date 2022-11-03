@@ -89,7 +89,7 @@ jobs:
         run: |
           aws dynamodb --endpoint-url http://localhost:4566 --region "us-east-2" create-table --table-name BlobTable --attribute-definitions AttributeName=Digest,AttributeType=S --key-schema AttributeName=Digest,KeyType=HASH --provisioned-throughput ReadCapacityUnits=10,WriteCapacityUnits=5
           aws dynamodb --endpoint-url http://localhost:4566 --region "us-east-2" create-table --table-name RepoMetadataTable --attribute-definitions AttributeName=RepoName,AttributeType=S --key-schema AttributeName=RepoName,KeyType=HASH --provisioned-throughput ReadCapacityUnits=10,WriteCapacityUnits=5
-          aws dynamodb --endpoint-url http://localhost:4566 --region "us-east-2" create-table --table-name ManifestMetadataTable --attribute-definitions AttributeName=Digest,AttributeType=S --key-schema AttributeName=Digest,KeyType=HASH --provisioned-throughput ReadCapacityUnits=10,WriteCapacityUnits=5
+          aws dynamodb --endpoint-url http://localhost:4566 --region "us-east-2" create-table --table-name ManifestDataTable --attribute-definitions AttributeName=Digest,AttributeType=S --key-schema AttributeName=Digest,KeyType=HASH --provisioned-throughput ReadCapacityUnits=10,WriteCapacityUnits=5
           echo "Building for $OS:$ARCH"
           cd $GITHUB_WORKSPACE
           if [[ $OS == "linux" && $ARCH == "amd64" ]]; then
@@ -100,7 +100,7 @@ jobs:
           fi
           aws dynamodb --endpoint-url "http://localhost:4566" --region "us-east-2" delete-table --table-name "BlobTable"
           aws dynamodb --endpoint-url "http://localhost:4566" --region "us-east-2" delete-table --table-name "RepoMetadataTable"
-          aws dynamodb --endpoint-url "http://localhost:4566" --region "us-east-2" delete-table --table-name "ManifestMetadataTable"
+          aws dynamodb --endpoint-url "http://localhost:4566" --region "us-east-2" delete-table --table-name "ManifestDataTable"
         env:
           S3MOCK_ENDPOINT: localhost:4566
           DYNAMODBMOCK_ENDPOINT: http://localhost:4566

@@ -113,8 +113,10 @@ func TestSyncRepoDBErrors(t *testing.T) {
 				repoDB.GetRepoMetaFn = func(repo string) (repodb.RepoMetadata, error) {
 					return repodb.RepoMetadata{
 						Tags: map[string]repodb.Descriptor{
-							"digest1": {Digest: "tag1",
-								MediaType: ispec.MediaTypeImageManifest},
+							"digest1": {
+								Digest:    "tag1",
+								MediaType: ispec.MediaTypeImageManifest,
+							},
 						},
 					}, nil
 				}
@@ -147,7 +149,7 @@ func TestSyncRepoDBErrors(t *testing.T) {
 			}
 
 			Convey("repoDB.GetManifestMeta errors", func() {
-				repoDB.GetManifestMetaFn = func(manifestDigest godigest.Digest) (repodb.ManifestMetadata, error) {
+				repoDB.GetManifestMetaFn = func(repo string, manifestDigest godigest.Digest) (repodb.ManifestMetadata, error) {
 					return repodb.ManifestMetadata{}, ErrTestError
 				}
 
@@ -204,7 +206,7 @@ func TestSyncRepoDBErrors(t *testing.T) {
 				return indexBlob, nil
 			}
 
-			repoDB.GetManifestMetaFn = func(manifestDigest godigest.Digest) (repodb.ManifestMetadata, error) {
+			repoDB.GetManifestMetaFn = func(repo string, manifestDigest godigest.Digest) (repodb.ManifestMetadata, error) {
 				return repodb.ManifestMetadata{}, zerr.ErrManifestMetaNotFound
 			}
 
@@ -265,7 +267,9 @@ func TestSyncRepoDBErrors(t *testing.T) {
 					return manifestBlob, "", "", nil
 				}
 
-				repoDB.AddManifestSignatureFn = func(manifestDigest godigest.Digest, sm repodb.SignatureMetadata) error {
+				repoDB.AddManifestSignatureFn = func(repo string, signedManifestDigest godigest.Digest,
+					sm repodb.SignatureMetadata,
+				) error {
 					return ErrTestError
 				}
 
@@ -368,13 +372,14 @@ func TestSyncRepoDBWithStorage(t *testing.T) {
 		So(len(repos[0].Tags), ShouldEqual, 2)
 
 		for _, descriptor := range repos[0].Tags {
-			manifestMeta, err := repoDB.GetManifestMeta(godigest.Digest(descriptor.Digest))
+			manifestMeta, err := repoDB.GetManifestMeta(repo, godigest.Digest(descriptor.Digest))
 			So(err, ShouldBeNil)
 			So(manifestMeta.ManifestBlob, ShouldNotBeNil)
 			So(manifestMeta.ConfigBlob, ShouldNotBeNil)
 
 			if descriptor.Digest == signedManifestDigest.String() {
-				So(manifestMeta.Signatures, ShouldNotBeEmpty)
+				So(repos[0].Signatures[descriptor.Digest], ShouldNotBeEmpty)
+				So(manifestMeta.Signatures["cosign"], ShouldNotBeEmpty)
 			}
 		}
 	})
@@ -524,7 +529,7 @@ func TestSyncRepoDBDynamoWrapper(t *testing.T) {
 			Endpoint:              os.Getenv("DYNAMODBMOCK_ENDPOINT"),
 			Region:                "us-east-2",
 			RepoMetaTablename:     "RepoMetadataTable",
-			ManifestMetaTablename: "ManifestMetadataTable",
+			ManifestDataTablename: "ManifestDataTable",
 		})
 		So(err, ShouldBeNil)
 
@@ -542,7 +547,7 @@ func TestSyncRepoDBDynamoWrapper(t *testing.T) {
 		So(len(repos[0].Tags), ShouldEqual, 2)
 
 		for _, descriptor := range repos[0].Tags {
-			manifestMeta, err := repoDB.GetManifestMeta(godigest.Digest(descriptor.Digest))
+			manifestMeta, err := repoDB.GetManifestMeta(repo, godigest.Digest(descriptor.Digest))
 			So(err, ShouldBeNil)
 			So(manifestMeta.ManifestBlob, ShouldNotBeNil)
 			So(manifestMeta.ConfigBlob, ShouldNotBeNil)
@@ -602,7 +607,7 @@ func TestSyncRepoDBDynamoWrapper(t *testing.T) {
 			Endpoint:              os.Getenv("DYNAMODBMOCK_ENDPOINT"),
 			Region:                "us-east-2",
 			RepoMetaTablename:     "RepoMetadataTable",
-			ManifestMetaTablename: "ManifestMetadataTable",
+			ManifestDataTablename: "ManifestDataTable",
 		})
 		So(err, ShouldBeNil)
 

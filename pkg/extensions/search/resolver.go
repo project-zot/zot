@@ -115,7 +115,7 @@ func getImageSummary(ctx context.Context, repo, tag string, repoDB repodb.RepoDB
 		}
 	}
 
-	manifestMeta, err := repoDB.GetManifestMeta(godigest.Digest(manifestDigest))
+	manifestMeta, err := repoDB.GetManifestMeta(repo, godigest.Digest(manifestDigest))
 	if err != nil {
 		return nil, err
 	}
@@ -398,7 +398,7 @@ func expandedRepoInfo(ctx context.Context, repo string, repoDB repodb.RepoDB, cv
 			continue
 		}
 
-		manifestMeta, err := repoDB.GetManifestMeta(godigest.Digest(digest))
+		manifestMeta, err := repoDB.GetManifestMeta(repo, godigest.Digest(digest))
 		if err != nil {
 			graphql.AddError(ctx, errors.Wrapf(err,
 				"resolver: failed to get manifest meta for image %s:%s with manifest digest %s", repo, tag, digest))

@@ -80,7 +80,7 @@ func SyncRepo(repo string, repoDB RepoDB, storeController storage.StoreControlle
 			continue
 		}
 
-		manifestMetaIsPresent, err := isManifestMetaPresent(manifest, repoDB)
+		manifestMetaIsPresent, err := isManifestMetaPresent(repo, manifest, repoDB)
 		if err != nil {
 			log.Error().Err(err).Msgf("sync-repo: error checking manifestMeta in RepoDB")
 
@@ -131,15 +131,20 @@ func SyncRepo(repo string, repoDB RepoDB, storeController storage.StoreControlle
 			continue
 		}
 
-		manifestMeta, err := NewManifestMeta(repo, manifestBlob, storeController)
+		manifestData, err := NewManifestData(repo, manifestBlob, storeController)
 		if err != nil {
-			log.Error().Err(err).Msgf("sync-repo: failed to create manifest meta for image %s:%s manifest digest %s ",
+			log.Error().Err(err).Msgf("sync-repo: failed to create manifest data for image %s:%s manifest digest %s ",
 				repo, tag, manifest.Digest.String())
 
 			return err
 		}
 
-		err = repoDB.SetManifestMeta(manifest.Digest, manifestMeta)
+		err = repoDB.SetManifestMeta(repo, manifest.Digest, ManifestMetadata{
+			ManifestBlob:  manifestData.ManifestBlob,
+			ConfigBlob:    manifestData.ConfigBlob,
+			DownloadCount: 0,
+			Signatures:    ManifestSignatures{},
+		})
 		if err != nil {
 			log.Error().Err(err).Msgf("sync-repo: failed to set manifest meta for image %s:%s manifest digest %s ",
 				repo, tag, manifest.Digest.String())
@@ -158,9 +163,9 @@ func SyncRepo(repo string, repoDB RepoDB, storeController storage.StoreControlle
 
 	// manage the signatures found
 	for _, sigData := range signaturesFound {
-		err := repoDB.AddManifestSignature(godigest.Digest(sigData.signedManifestDigest), SignatureMetadata{
+		err := repoDB.AddManifestSignature(repo, godigest.Digest(sigData.signedManifestDigest), SignatureMetadata{
 			SignatureType:   sigData.signatureType,
-			SignatureDigest: godigest.Digest(sigData.signatureDigest),
+			SignatureDigest: sigData.signatureDigest,
 		})
 		if err != nil {
 			log.Error().Err(err).Msgf("sync-repo: failed set signature meta for signed image %s:%s manifest digest %s ",
@@ -221,8 +226,9 @@ func getAllRepos(storeController storage.StoreController) ([]string, error) {
 	return allRepos, nil
 }
 
-func isManifestMetaPresent(manifest ispec.Descriptor, repoDB RepoDB) (bool, error) {
-	_, err := repoDB.GetManifestMeta(manifest.Digest)
+// isManifestMetaPresent checks if the manifest with a certain digest is present in a certain repo.
+func isManifestMetaPresent(repo string, manifest ispec.Descriptor, repoDB RepoDB) (bool, error) {
+	_, err := repoDB.GetManifestMeta(repo, manifest.Digest)
 	if err != nil && !errors.Is(err, zerr.ErrManifestMetaNotFound) {
 		return false, err
 	}
@@ -235,44 +241,33 @@ func isManifestMetaPresent(manifest ispec.Descriptor, repoDB RepoDB) (bool, erro
 }
 
 // NewManifestMeta takes raw data about an image and createa a new ManifestMetadate object.
-func NewManifestMeta(repoName string, manifestBlob []byte, storeController storage.StoreController,
-) (ManifestMetadata, error) {
-	const (
-		configCount   = 1
-		manifestCount = 1
-	)
-
+func NewManifestData(repoName string, manifestBlob []byte, storeController storage.StoreController,
+) (ManifestData, error) {
 	var (
 		manifestContent ispec.Manifest
 		configContent   ispec.Image
-		manifestMeta    ManifestMetadata
+		manifestData    ManifestData
 	)
 
 	imgStore := storeController.GetImageStore(repoName)
 
 	err := json.Unmarshal(manifestBlob, &manifestContent)
 	if err != nil {
-		return ManifestMetadata{}, err
+		return ManifestData{}, err
 	}
 
 	configBlob, err := imgStore.GetBlobContent(repoName, manifestContent.Config.Digest)
 	if err != nil {
-		return ManifestMetadata{}, err
+		return ManifestData{}, err
 	}
 
 	err = json.Unmarshal(configBlob, &configContent)
 	if err != nil {
-		return ManifestMetadata{}, err
+		return ManifestData{}, err
 	}
 
-	manifestMeta.BlobsSize = len(configBlob) + len(manifestBlob)
-	for _, layer := range manifestContent.Layers {
-		manifestMeta.BlobsSize += int(layer.Size)
-	}
+	manifestData.ManifestBlob = manifestBlob
+	manifestData.ConfigBlob = configBlob
 
-	manifestMeta.BlobCount = configCount + manifestCount + len(manifestContent.Layers)
-	manifestMeta.ManifestBlob = manifestBlob
-	manifestMeta.ConfigBlob = configBlob
-
-	return manifestMeta, nil
+	return manifestData, nil
 }

@@ -27,12 +27,12 @@ import (
 type DBWrapper struct {
 	Client                *dynamodb.Client
 	RepoMetaTablename     string
-	ManifestMetaTablename string
+	ManifestDataTablename string
 	Log                   log.Logger
 }
 
 type DBDriverParameters struct {
-	Endpoint, Region, RepoMetaTablename, ManifestMetaTablename string
+	Endpoint, Region, RepoMetaTablename, ManifestDataTablename string
 }
 
 func NewDynamoDBWrapper(params DBDriverParameters) (*DBWrapper, error) {
@@ -58,7 +58,7 @@ func NewDynamoDBWrapper(params DBDriverParameters) (*DBWrapper, error) {
 	dynamoWrapper := DBWrapper{
 		Client:                dynamodb.NewFromConfig(cfg),
 		RepoMetaTablename:     params.RepoMetaTablename,
-		ManifestMetaTablename: params.ManifestMetaTablename,
+		ManifestDataTablename: params.ManifestDataTablename,
 		Log:                   log.Logger{Logger: zerolog.New(os.Stdout)},
 	}
 
@@ -67,7 +67,7 @@ func NewDynamoDBWrapper(params DBDriverParameters) (*DBWrapper, error) {
 		return nil, err
 	}
 
-	err = dynamoWrapper.createManifestMetaTable()
+	err = dynamoWrapper.createManifestDataTable()
 	if err != nil {
 		return nil, err
 	}
@@ -76,17 +76,131 @@ func NewDynamoDBWrapper(params DBDriverParameters) (*DBWrapper, error) {
 	return &dynamoWrapper, nil
 }
 
-func (dwr DBWrapper) SetRepoDescription(repo, description string) error {
-	repoMeta, err := dwr.GetRepoMeta(repo)
+func (dwr DBWrapper) SetManifestData(manifestDigest godigest.Digest, manifestData repodb.ManifestData) error {
+	mdAttributeValue, err := attributevalue.Marshal(manifestData)
 	if err != nil {
 		return err
 	}
 
-	repoMeta.Description = description
-
-	err = dwr.setRepoMeta(repo, repoMeta)
+	_, err = dwr.Client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
+		ExpressionAttributeNames: map[string]string{
+			"#MD": "ManifestData",
+		},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":ManifestData": mdAttributeValue,
+		},
+		Key: map[string]types.AttributeValue{
+			"Digest": &types.AttributeValueMemberS{
+				Value: manifestDigest.String(),
+			},
+		},
+		TableName:        aws.String(dwr.ManifestDataTablename),
+		UpdateExpression: aws.String("SET #MD = :ManifestData"),
+	})
 
 	return err
+}
+
+func (dwr DBWrapper) GetManifestData(manifestDigest godigest.Digest) (repodb.ManifestData, error) {
+	resp, err := dwr.Client.GetItem(context.Background(), &dynamodb.GetItemInput{
+		TableName: aws.String(dwr.ManifestDataTablename),
+		Key: map[string]types.AttributeValue{
+			"Digest": &types.AttributeValueMemberS{Value: manifestDigest.String()},
+		},
+	})
+	if err != nil {
+		return repodb.ManifestData{}, err
+	}
+
+	if resp.Item == nil {
+		return repodb.ManifestData{}, zerr.ErrManifestMetaNotFound
+	}
+
+	var manifestData repodb.ManifestData
+
+	err = attributevalue.Unmarshal(resp.Item["ManifestData"], &manifestData)
+	if err != nil {
+		return repodb.ManifestData{}, err
+	}
+
+	return manifestData, nil
+}
+
+func (dwr DBWrapper) SetManifestMeta(repo string, manifestDigest godigest.Digest, manifestMeta repodb.ManifestMetadata,
+) error {
+	if manifestMeta.Signatures == nil {
+		manifestMeta.Signatures = repodb.ManifestSignatures{}
+	}
+
+	repoMeta, err := dwr.GetRepoMeta(repo)
+	if err != nil {
+		if !errors.Is(err, zerr.ErrRepoMetaNotFound) {
+			return err
+		}
+
+		repoMeta = repodb.RepoMetadata{
+			Name:       repo,
+			Tags:       map[string]repodb.Descriptor{},
+			Statistics: map[string]repodb.DescriptorStatistics{},
+			Signatures: map[string]repodb.ManifestSignatures{},
+		}
+	}
+
+	err = dwr.SetManifestData(manifestDigest, repodb.ManifestData{
+		ManifestBlob: manifestMeta.ManifestBlob,
+		ConfigBlob:   manifestMeta.ConfigBlob,
+	})
+	if err != nil {
+		return err
+	}
+
+	updatedRepoMeta := common.UpdateManifestMeta(repoMeta, manifestDigest, manifestMeta)
+
+	err = dwr.setRepoMeta(repo, updatedRepoMeta)
+	if err != nil {
+		return err
+	}
+
+	return err
+}
+
+func (dwr DBWrapper) GetManifestMeta(repo string, manifestDigest godigest.Digest,
+) (repodb.ManifestMetadata, error) { //nolint:contextcheck
+	manifestData, err := dwr.GetManifestData(manifestDigest)
+	if err != nil {
+		if errors.Is(err, zerr.ErrManifestDataNotFound) {
+			return repodb.ManifestMetadata{}, zerr.ErrManifestMetaNotFound
+		}
+
+		return repodb.ManifestMetadata{},
+			errors.Wrapf(err, "error while constructing manifest meta for manifest '%s' from repo '%s'",
+				manifestDigest, repo)
+	}
+
+	repoMeta, err := dwr.GetRepoMeta(repo)
+	if err != nil {
+		if errors.Is(err, zerr.ErrRepoMetaNotFound) {
+			return repodb.ManifestMetadata{}, zerr.ErrManifestMetaNotFound
+		}
+
+		return repodb.ManifestMetadata{},
+			errors.Wrapf(err, "error while constructing manifest meta for manifest '%s' from repo '%s'",
+				manifestDigest, repo)
+	}
+
+	manifestMetadata := repodb.ManifestMetadata{}
+
+	manifestMetadata.ManifestBlob = manifestData.ManifestBlob
+	manifestMetadata.ConfigBlob = manifestData.ConfigBlob
+	manifestMetadata.DownloadCount = repoMeta.Statistics[manifestDigest.String()].DownloadCount
+
+	manifestMetadata.Signatures = repodb.ManifestSignatures{}
+
+	if repoMeta.Signatures[manifestDigest.String()] != nil {
+		manifestMetadata.Signatures = repoMeta.Signatures[manifestDigest.String()]
+	}
+
+	return manifestMetadata, nil
 }
 
 func (dwr DBWrapper) IncrementRepoStars(repo string) error {
@@ -126,19 +240,6 @@ func (dwr DBWrapper) GetRepoStars(repo string) (int, error) {
 	return repoMeta.Stars, nil
 }
 
-func (dwr DBWrapper) SetRepoLogo(repo string, logoPath string) error {
-	repoMeta, err := dwr.GetRepoMeta(repo)
-	if err != nil {
-		return err
-	}
-
-	repoMeta.LogoPath = logoPath
-
-	err = dwr.setRepoMeta(repo, repoMeta)
-
-	return err
-}
-
 func (dwr DBWrapper) SetRepoTag(repo string, tag string, manifestDigest godigest.Digest, mediaType string) error {
 	if err := common.ValidateRepoTagInput(repo, tag, manifestDigest); err != nil {
 		return err
@@ -155,8 +256,10 @@ func (dwr DBWrapper) SetRepoTag(repo string, tag string, manifestDigest godigest
 	}
 
 	repoMeta := repodb.RepoMetadata{
-		Name: repo,
-		Tags: map[string]repodb.Descriptor{},
+		Name:       repo,
+		Tags:       map[string]repodb.Descriptor{},
+		Statistics: map[string]repodb.DescriptorStatistics{},
+		Signatures: map[string]repodb.ManifestSignatures{},
 	}
 
 	if resp.Item != nil {
@@ -260,119 +363,114 @@ func (dwr DBWrapper) GetRepoMeta(repo string) (repodb.RepoMetadata, error) {
 	return repoMeta, nil
 }
 
-func (dwr DBWrapper) GetManifestMeta(manifestDigest godigest.Digest,
-) (repodb.ManifestMetadata, error) { //nolint:contextcheck
-	resp, err := dwr.Client.GetItem(context.Background(), &dynamodb.GetItemInput{
-		TableName: aws.String(dwr.ManifestMetaTablename),
-		Key: map[string]types.AttributeValue{
-			"Digest": &types.AttributeValueMemberS{Value: manifestDigest.String()},
-		},
-	})
-	if err != nil {
-		return repodb.ManifestMetadata{}, err
-	}
-
-	if resp.Item == nil {
-		return repodb.ManifestMetadata{}, zerr.ErrManifestMetaNotFound
-	}
-
-	var manifestMetadata repodb.ManifestMetadata
-
-	err = attributevalue.Unmarshal(resp.Item["ManifestMetadata"], &manifestMetadata)
-	if err != nil {
-		return repodb.ManifestMetadata{}, err
-	}
-
-	return manifestMetadata, nil
-}
-
-func (dwr DBWrapper) SetManifestMeta(manifestDigest godigest.Digest, manifestMeta repodb.ManifestMetadata) error {
-	if manifestMeta.Signatures == nil {
-		manifestMeta.Signatures = map[string][]string{}
-	}
-
-	mmAttributeValue, err := attributevalue.Marshal(manifestMeta)
+func (dwr DBWrapper) IncrementImageDownloads(repo string, reference string) error {
+	repoMeta, err := dwr.GetRepoMeta(repo)
 	if err != nil {
 		return err
 	}
 
-	_, err = dwr.Client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
-		ExpressionAttributeNames: map[string]string{
-			"#MM": "ManifestMetadata",
-		},
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":ManifestMetadata": mmAttributeValue,
-		},
-		Key: map[string]types.AttributeValue{
-			"Digest": &types.AttributeValueMemberS{
-				Value: manifestDigest.String(),
-			},
-		},
-		TableName:        aws.String(dwr.ManifestMetaTablename),
-		UpdateExpression: aws.String("SET #MM = :ManifestMetadata"),
-	})
+	manifestDigest := reference
 
-	return err
-}
+	if !common.ReferenceIsDigest(reference) {
+		// search digest for tag
+		descriptor, found := repoMeta.Tags[reference]
 
-func (dwr DBWrapper) IncrementManifestDownloads(manifestDigest godigest.Digest) error {
-	manifestMeta, err := dwr.GetManifestMeta(manifestDigest)
+		if !found {
+			return zerr.ErrManifestMetaNotFound
+		}
+
+		manifestDigest = descriptor.Digest
+	}
+
+	manifestMeta, err := dwr.GetManifestMeta(repo, godigest.Digest(manifestDigest))
 	if err != nil {
 		return err
 	}
 
 	manifestMeta.DownloadCount++
 
-	err = dwr.SetManifestMeta(manifestDigest, manifestMeta)
+	err = dwr.SetManifestMeta(repo, godigest.Digest(manifestDigest), manifestMeta)
 
 	return err
 }
 
-func (dwr DBWrapper) AddManifestSignature(manifestDigest godigest.Digest, sigMeta repodb.SignatureMetadata) error {
-	manifestMeta, err := dwr.GetManifestMeta(manifestDigest)
+func (dwr DBWrapper) AddManifestSignature(repo string, signedManifestDigest godigest.Digest,
+	sygMeta repodb.SignatureMetadata,
+) error {
+	repoMeta, err := dwr.GetRepoMeta(repo)
 	if err != nil {
 		return err
 	}
 
-	manifestMeta.Signatures[sigMeta.SignatureType] = append(manifestMeta.Signatures[sigMeta.SignatureType],
-		sigMeta.SignatureDigest.String())
+	var (
+		manifestSignatures repodb.ManifestSignatures
+		found              bool
+	)
 
-	err = dwr.SetManifestMeta(manifestDigest, manifestMeta)
+	if manifestSignatures, found = repoMeta.Signatures[signedManifestDigest.String()]; !found {
+		manifestSignatures = repodb.ManifestSignatures{}
+	}
+
+	signatureSlice := manifestSignatures[sygMeta.SignatureType]
+	if !common.SignatureAlreadyExists(signatureSlice, sygMeta) {
+		if sygMeta.SignatureType == repodb.NotationType {
+			signatureSlice = append(signatureSlice, repodb.SignatureInfo{
+				SignatureManifestDigest: sygMeta.SignatureDigest,
+				LayersInfo:              sygMeta.LayersInfo,
+			})
+		} else if sygMeta.SignatureType == repodb.CosignType {
+			signatureSlice = []repodb.SignatureInfo{{
+				SignatureManifestDigest: sygMeta.SignatureDigest,
+				LayersInfo:              sygMeta.LayersInfo,
+			}}
+		}
+	}
+
+	manifestSignatures[sygMeta.SignatureType] = signatureSlice
+
+	repoMeta.Signatures[signedManifestDigest.String()] = manifestSignatures
+
+	err = dwr.setRepoMeta(repoMeta.Name, repoMeta)
 
 	return err
 }
 
-func (dwr DBWrapper) DeleteSignature(manifestDigest godigest.Digest, sigMeta repodb.SignatureMetadata) error {
-	manifestMeta, err := dwr.GetManifestMeta(manifestDigest)
+func (dwr DBWrapper) DeleteSignature(repo string, signedManifestDigest godigest.Digest,
+	sigMeta repodb.SignatureMetadata,
+) error {
+	repoMeta, err := dwr.GetRepoMeta(repo)
 	if err != nil {
 		return err
 	}
 
 	sigType := sigMeta.SignatureType
 
-	for i, sig := range manifestMeta.Signatures[sigType] {
-		if sig == sigMeta.SignatureDigest.String() {
-			signaturesCount := len(manifestMeta.Signatures[sigType])
+	var (
+		manifestSignatures repodb.ManifestSignatures
+		found              bool
+	)
 
-			if signaturesCount < 1 {
-				manifestMeta.Signatures[sigType] = []string{}
+	if manifestSignatures, found = repoMeta.Signatures[signedManifestDigest.String()]; !found {
+		return zerr.ErrManifestMetaNotFound
+	}
 
-				return nil
-			}
+	signatureSlice := manifestSignatures[sigType]
 
-			// put element to be deleted at the end of the array
-			manifestMeta.Signatures[sigType][i] = manifestMeta.Signatures[sigType][signaturesCount-1]
+	newSignatureSlice := make([]repodb.SignatureInfo, 0, len(signatureSlice)-1)
 
-			// trim the last element
-			manifestMeta.Signatures[sigType] = manifestMeta.Signatures[sigType][:signaturesCount-1]
-
-			err := dwr.SetManifestMeta(manifestDigest, manifestMeta)
-
-			return err
+	for _, sigDigest := range signatureSlice {
+		if sigDigest.SignatureManifestDigest != sigMeta.SignatureDigest {
+			newSignatureSlice = append(newSignatureSlice, sigDigest)
 		}
 	}
 
-	return nil
+	manifestSignatures[sigType] = newSignatureSlice
+
+	repoMeta.Signatures[signedManifestDigest.String()] = manifestSignatures
+
+	err = dwr.setRepoMeta(repoMeta.Name, repoMeta)
+
+	return err
 }
 
 func (dwr DBWrapper) GetMultipleRepoMeta(ctx context.Context,
@@ -479,7 +577,7 @@ func (dwr DBWrapper) SearchRepos(ctx context.Context, searchText string, filter 
 				manifestMeta, manifestDownloaded := manifestMetadataMap[descriptor.Digest]
 
 				if !manifestDownloaded {
-					manifestMeta, err = dwr.GetManifestMeta(godigest.Digest(descriptor.Digest)) //nolint:contextcheck
+					manifestMeta, err = dwr.GetManifestMeta(repoMeta.Name, godigest.Digest(descriptor.Digest)) //nolint:contextcheck
 					if err != nil {
 						return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{},
 							errors.Wrapf(err, "repodb: error while unmarshaling manifest metadata for digest %s", descriptor.Digest)
@@ -499,7 +597,7 @@ func (dwr DBWrapper) SearchRepos(ctx context.Context, searchText string, filter 
 				archSet[configContent.Architecture] = true
 
 				// get fields related to sorting
-				repoDownloads += manifestMeta.DownloadCount
+				repoDownloads += repoMeta.Statistics[descriptor.Digest].DownloadCount
 
 				imageLastUpdated, err := common.GetImageLastUpdatedTimestamp(manifestMeta.ConfigBlob)
 				if err != nil {
@@ -608,7 +706,7 @@ func (dwr DBWrapper) SearchTags(ctx context.Context, searchText string, filter r
 					continue
 				}
 
-				manifestMeta, err := dwr.GetManifestMeta(godigest.Digest(descriptor.Digest)) //nolint:contextcheck
+				manifestMeta, err := dwr.GetManifestMeta(repoMeta.Name, godigest.Digest(descriptor.Digest)) //nolint:contextcheck
 				if err != nil {
 					return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{},
 						errors.Wrapf(err, "repodb: error while unmashaling manifest metadata for digest %s", descriptor.Digest)
@@ -725,9 +823,9 @@ func (dwr DBWrapper) ResetRepoMetaTable() error {
 	return dwr.createRepoMetaTable()
 }
 
-func (dwr DBWrapper) createManifestMetaTable() error {
+func (dwr DBWrapper) createManifestDataTable() error {
 	_, err := dwr.Client.CreateTable(context.Background(), &dynamodb.CreateTableInput{
-		TableName: aws.String(dwr.ManifestMetaTablename),
+		TableName: aws.String(dwr.ManifestDataTablename),
 		AttributeDefinitions: []types.AttributeDefinition{
 			{
 				AttributeName: aws.String("Digest"),
@@ -752,7 +850,7 @@ func (dwr DBWrapper) createManifestMetaTable() error {
 
 func (dwr DBWrapper) deleteManifestMetaTable() error {
 	_, err := dwr.Client.DeleteTable(context.Background(), &dynamodb.DeleteTableInput{
-		TableName: aws.String(dwr.ManifestMetaTablename),
+		TableName: aws.String(dwr.ManifestDataTablename),
 	})
 
 	return err
@@ -764,7 +862,7 @@ func (dwr DBWrapper) ResetManifestMetaTable() error {
 		return err
 	}
 
-	return dwr.createManifestMetaTable()
+	return dwr.createManifestDataTable()
 }
 
 func (dwr DBWrapper) SearchDigests(ctx context.Context, searchText string, requestedPage repodb.PageInput,

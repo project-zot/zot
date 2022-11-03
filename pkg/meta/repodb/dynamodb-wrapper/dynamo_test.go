@@ -23,7 +23,7 @@ func TestIterator(t *testing.T) {
 			Endpoint:              endpoint,
 			Region:                region,
 			RepoMetaTablename:     "RepoMetadataTable",
-			ManifestMetaTablename: "ManifestMetadataTable",
+			ManifestDataTablename: "ManifestDataTable",
 		})
 		So(err, ShouldBeNil)
 

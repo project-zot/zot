@@ -19,7 +19,7 @@
             "region": "us-east-2",
             "cacheTablename": "BlobTable",
             "repoMetaTablename": "RepoMetadataTable",
-            "manifestMetaTablename": "ManifestMetadataTable"
+            "manifestDataTablename": "ManifestDataTable"
         }
     },
     "http": {

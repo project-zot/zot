@@ -81,7 +81,7 @@ func (cveinfo BaseCveInfo) GetImageListForCVE(repo, cveID string) ([]ImageInfoBy
 			return nil, err
 		}
 
-		manifestMeta, err := cveinfo.RepoDB.GetManifestMeta(manifestDigest)
+		manifestMeta, err := cveinfo.RepoDB.GetManifestMeta(repo, manifestDigest)
 		if err != nil {
 			return nil, err
 		}
@@ -147,7 +147,7 @@ func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]commo
 			continue
 		}
 
-		manifestMeta, err := cveinfo.RepoDB.GetManifestMeta(manifestDigest)
+		manifestMeta, err := cveinfo.RepoDB.GetManifestMeta(repo, manifestDigest)
 		if err != nil {
 			cveinfo.Log.Error().Err(err).Str("repo", repo).Str("tag", tag).
 				Str("cve-id", cveID).Msg("unable to obtain manifest meta")

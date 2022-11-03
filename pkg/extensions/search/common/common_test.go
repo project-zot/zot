@@ -158,53 +158,6 @@ func testSetup(t *testing.T, subpath string) error { //nolint:unparam
 	return CopyFiles("../../../../test/data", path.Join(subDir, subpath))
 }
 
-// triggerUploadForTestImages is paired with testSetup and is supposed to trigger events when pushing an image
-// by pushing just the manifest.
-func triggerUploadForTestImages(baseURL string) error {
-	log := log.NewLogger("debug", "")
-	metrics := monitoring.NewMetricsServer(false, log)
-	storage := local.NewImageStore("../../../../test/data", false, storage.DefaultGCDelay,
-		false, false, log, metrics, nil, nil)
-
-	repos, err := storage.GetRepositories()
-	if err != nil {
-		return err
-	}
-
-	for _, repo := range repos {
-		indexBlob, err := storage.GetIndexContent(repo)
-		if err != nil {
-			return err
-		}
-
-		var indexJSON ispec.Index
-
-		err = json.Unmarshal(indexBlob, &indexJSON)
-		if err != nil {
-			return err
-		}
-
-		for _, manifest := range indexJSON.Manifests {
-			tag := manifest.Annotations[ispec.AnnotationRefName]
-
-			manifestBlob, _, _, err := storage.GetImageManifest(repo, tag)
-			if err != nil {
-				return err
-			}
-
-			_, err = resty.R().
-				SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
-				SetBody(manifestBlob).
-				Put(baseURL + "/v2/" + repo + "/manifests/" + tag)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
-}
-
 func getTags() ([]common.TagInfo, []common.TagInfo) {
 	tags := make([]common.TagInfo, 0)
 
@@ -368,9 +321,6 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		go startServer(ctlr)
 		defer stopServer(ctlr)
 		WaitTillServerReady(baseURL)
-
-		err = triggerUploadForTestImages(GetBaseURL(port))
-		So(err, ShouldBeNil)
 
 		resp, err := resty.R().Get(baseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
@@ -855,9 +805,6 @@ func TestExpandedRepoInfo(t *testing.T) {
 		go startServer(ctlr)
 		defer stopServer(ctlr)
 		WaitTillServerReady(baseURL)
-
-		err = triggerUploadForTestImages(GetBaseURL(port))
-		So(err, ShouldBeNil)
 
 		log := log.NewLogger("debug", "")
 		metrics := monitoring.NewMetricsServer(false, log)
@@ -3502,28 +3449,39 @@ func TestRepoDBWhenSigningImages(t *testing.T) {
 		)
 		So(err, ShouldBeNil)
 
-		query := `
+		err = UploadImage(
+			Image{
+				Manifest: manifest1,
+				Config:   config1,
+				Layers:   layers1,
+				Tag:      "2.0.2",
+			},
+			baseURL,
+			"repo1",
+		)
+		So(err, ShouldBeNil)
+
+		manifestBlob, err := json.Marshal(manifest1)
+		So(err, ShouldBeNil)
+
+		manifestDigest := godigest.FromBytes(manifestBlob)
+
+		queryImage1 := `
 		{
 			GlobalSearch(query:"repo1:1.0"){
 				Images {
 					RepoName Tag LastUpdated Size IsSigned Vendor Score
 					Platform { Os Arch }
 				}
-				Repos {
-					Name LastUpdated Size
-					Platforms { Os Arch }
-					Vendors Score
-					NewestImage {
-						RepoName Tag LastUpdated Size IsSigned Vendor Score
-						Platform {
-							Os
-							Arch
-						}
-					}
-				}
-				Layers {
-					Digest
-					Size
+			}
+		}`
+
+		queryImage2 := `
+		{
+			GlobalSearch(query:"repo1:2.0"){
+				Images {
+					RepoName Tag LastUpdated Size IsSigned Vendor Score
+					Platform { Os Arch }
 				}
 			}
 		}`
@@ -3532,7 +3490,7 @@ func TestRepoDBWhenSigningImages(t *testing.T) {
 			err = SignImageUsingCosign("repo1:1.0.1", port)
 			So(err, ShouldBeNil)
 
-			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(queryImage1))
 			So(resp, ShouldNotBeNil)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
@@ -3543,6 +3501,38 @@ func TestRepoDBWhenSigningImages(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			So(responseStruct.GlobalSearchResult.GlobalSearch.Images[0].IsSigned, ShouldBeTrue)
+
+			// check image 2 is signed also because it has the same manifest
+			resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(queryImage2))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			responseStruct = &GlobalSearchResultResp{}
+
+			err = json.Unmarshal(resp.Body(), responseStruct)
+			So(err, ShouldBeNil)
+
+			So(responseStruct.GlobalSearchResult.GlobalSearch.Images[0].IsSigned, ShouldBeTrue)
+
+			// delete the signature
+			resp, err = resty.R().Delete(baseURL + "/v2/" + "repo1" + "/manifests/" +
+				fmt.Sprintf("sha256-%s.sig", manifestDigest.Encoded()))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+			// check image 2 is not signed anymore
+			resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(queryImage2))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			responseStruct = &GlobalSearchResultResp{}
+
+			err = json.Unmarshal(resp.Body(), responseStruct)
+			So(err, ShouldBeNil)
+
+			So(responseStruct.GlobalSearchResult.GlobalSearch.Images[0].IsSigned, ShouldBeFalse)
 		})
 
 		Convey("Cover errors when signing with cosign", func() {
@@ -3568,7 +3558,9 @@ func TestRepoDBWhenSigningImages(t *testing.T) {
 
 			Convey("image is a signature, AddManifestSignature fails", func() {
 				ctlr.RepoDB = mocks.RepoDBMock{
-					AddManifestSignatureFn: func(manifestDigest godigest.Digest, sm repodb.SignatureMetadata) error {
+					AddManifestSignatureFn: func(repo string, signedManifestDigest godigest.Digest,
+						sm repodb.SignatureMetadata,
+					) error {
 						return ErrTestError
 					},
 				}
@@ -3582,7 +3574,7 @@ func TestRepoDBWhenSigningImages(t *testing.T) {
 			err = SignImageUsingNotary("repo1:1.0.1", port)
 			So(err, ShouldBeNil)
 
-			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(queryImage1))
 			So(resp, ShouldNotBeNil)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
@@ -3619,7 +3611,7 @@ func TestRepoDBWhenPushingImages(t *testing.T) {
 
 		Convey("SetManifestMeta fails", func() {
 			ctlr.RepoDB = mocks.RepoDBMock{
-				SetManifestMetaFn: func(manifestDigest godigest.Digest, mm repodb.ManifestMetadata) error {
+				SetManifestMetaFn: func(repo string, manifestDigest godigest.Digest, mm repodb.ManifestMetadata) error {
 					return ErrTestError
 				},
 			}
@@ -3761,7 +3753,7 @@ func TestRepoDBWhenReadingImages(t *testing.T) {
 
 		Convey("Error when incrementing", func() {
 			ctlr.RepoDB = mocks.RepoDBMock{
-				IncrementManifestDownloadsFn: func(manifestDigest godigest.Digest) error {
+				IncrementImageDownloadsFn: func(repo string, tag string) error {
 					return ErrTestError
 				},
 			}
@@ -4021,14 +4013,14 @@ func TestRepoDBWhenDeletingImages(t *testing.T) {
 			err = json.Unmarshal(indexBlob, &indexContent)
 			So(err, ShouldBeNil)
 
-			signatureRefference := ""
+			signatureReference := ""
 
 			var sigManifestContent artifactspec.Manifest
 
 			for _, manifest := range indexContent.Manifests {
 				if manifest.MediaType == artifactspec.MediaTypeArtifactManifest {
-					signatureRefference = manifest.Digest.String()
-					manifestBlob, _, _, err := storage.GetImageManifest(repo, signatureRefference)
+					signatureReference = manifest.Digest.String()
+					manifestBlob, _, _, err := storage.GetImageManifest(repo, signatureReference)
 					So(err, ShouldBeNil)
 					err = json.Unmarshal(manifestBlob, &sigManifestContent)
 					So(err, ShouldBeNil)
@@ -4044,7 +4036,7 @@ func TestRepoDBWhenDeletingImages(t *testing.T) {
 			So(sigManifestContent.Subject.Digest.String(), ShouldEqual, manifest1Digest.String())
 
 			// delete the signature using the digest
-			resp, err = resty.R().Delete(baseURL + "/v2/" + "repo1" + "/manifests/" + signatureRefference)
+			resp, err = resty.R().Delete(baseURL + "/v2/" + "repo1" + "/manifests/" + signatureReference)
 			So(resp, ShouldNotBeNil)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
@@ -4070,7 +4062,7 @@ func TestRepoDBWhenDeletingImages(t *testing.T) {
 						return []byte{}, "", "", zerr.ErrRepoNotFound
 					},
 				}
-				resp, err = resty.R().Delete(baseURL + "/v2/" + "repo1" + "/manifests/" + "signatureRefference")
+				resp, err = resty.R().Delete(baseURL + "/v2/" + "repo1" + "/manifests/" + "signatureReference")
 				So(resp, ShouldNotBeNil)
 				So(err, ShouldBeNil)
 				ctlr.StoreController.DefaultStore = mocks.MockedImageStore{
@@ -4078,7 +4070,7 @@ func TestRepoDBWhenDeletingImages(t *testing.T) {
 						return []byte{}, "", "", zerr.ErrBadManifest
 					},
 				}
-				resp, err = resty.R().Delete(baseURL + "/v2/" + "repo1" + "/manifests/" + "signatureRefference")
+				resp, err = resty.R().Delete(baseURL + "/v2/" + "repo1" + "/manifests/" + "signatureReference")
 				So(resp, ShouldNotBeNil)
 				So(err, ShouldBeNil)
 
@@ -4087,7 +4079,7 @@ func TestRepoDBWhenDeletingImages(t *testing.T) {
 						return []byte{}, "", "", zerr.ErrRepoNotFound
 					},
 				}
-				resp, err = resty.R().Delete(baseURL + "/v2/" + "repo1" + "/manifests/" + "signatureRefference")
+				resp, err = resty.R().Delete(baseURL + "/v2/" + "repo1" + "/manifests/" + "signatureReference")
 				So(resp, ShouldNotBeNil)
 				So(err, ShouldBeNil)
 			})
@@ -4102,7 +4094,7 @@ func TestRepoDBWhenDeletingImages(t *testing.T) {
 					},
 				}
 
-				resp, err = resty.R().Delete(baseURL + "/v2/" + "repo1" + "/manifests/" + "signatureRefference")
+				resp, err = resty.R().Delete(baseURL + "/v2/" + "repo1" + "/manifests/" + "signatureReference")
 				So(resp, ShouldNotBeNil)
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)

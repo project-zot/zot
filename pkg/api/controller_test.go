@@ -167,7 +167,7 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 			"region":                "us-east-2",
 			"cacheTablename":        "BlobTable",
 			"repoMetaTablename":     "RepoMetadataTable",
-			"manifestMetaTablename": "ManifestMetadataTable",
+			"manifestDataTablename": "ManifestDataTable",
 		}
 
 		driver := api.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
@@ -180,7 +180,7 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 			"region":                "us-east-2",
 			"cacheTablename":        "BlobTable",
 			"repoMetaTablename":     "RepoMetadataTable",
-			"manifestMetaTablename": "ManifestMetadataTable",
+			"manifestDataTablename": "ManifestDataTable",
 		}
 
 		driver = api.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
@@ -192,7 +192,7 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 			"region":                "us-east-2",
 			"cacheTablename":        "BlobTable",
 			"repoMetaTablename":     "RepoMetadataTable",
-			"manifestMetaTablename": "ManifestMetadataTable",
+			"manifestDataTablename": "ManifestDataTable",
 		}
 
 		driver = api.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)

@@ -12,6 +12,40 @@ import (
 	"zotregistry.io/zot/pkg/meta/repodb"
 )
 
+func UpdateManifestMeta(repoMeta repodb.RepoMetadata, manifestDigest godigest.Digest,
+	manifestMeta repodb.ManifestMetadata,
+) repodb.RepoMetadata {
+	updatedRepoMeta := repoMeta
+
+	updatedStatistics := repoMeta.Statistics[manifestDigest.String()]
+	updatedStatistics.DownloadCount = manifestMeta.DownloadCount
+	updatedRepoMeta.Statistics[manifestDigest.String()] = updatedStatistics
+
+	if manifestMeta.Signatures == nil {
+		manifestMeta.Signatures = repodb.ManifestSignatures{}
+	}
+
+	updatedRepoMeta.Signatures[manifestDigest.String()] = manifestMeta.Signatures
+
+	return updatedRepoMeta
+}
+
+func SignatureAlreadyExists(signatureSlice []repodb.SignatureInfo, sm repodb.SignatureMetadata) bool {
+	for _, sigInfo := range signatureSlice {
+		if sm.SignatureDigest == sigInfo.SignatureManifestDigest {
+			return true
+		}
+	}
+
+	return false
+}
+
+func ReferenceIsDigest(reference string) bool {
+	_, err := godigest.Parse(reference)
+
+	return err == nil
+}
+
 func ValidateRepoTagInput(repo, tag string, manifestDigest godigest.Digest) error {
 	if repo == "" {
 		return zerr.ErrEmptyRepoName
@@ -96,7 +130,7 @@ func GetImageLastUpdatedTimestamp(configBlob []byte) (time.Time, error) {
 	return *timeStamp, nil
 }
 
-func CheckIsSigned(signatures map[string][]string) bool {
+func CheckIsSigned(signatures repodb.ManifestSignatures) bool {
 	for _, signatures := range signatures {
 		if len(signatures) > 0 {
 			return true
