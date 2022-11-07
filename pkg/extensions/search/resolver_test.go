@@ -26,7 +26,7 @@ func TestGlobalSearch(t *testing.T) {
 	Convey("globalSearch", t, func() {
 		const query = "repo1"
 		Convey("RepoDB SearchRepos error", func() {
-			mockSearchDB := mocks.RepoDBMock{
+			mockRepoDB := mocks.RepoDBMock{
 				SearchReposFn: func(ctx context.Context, searchText string, filter repodb.Filter, requestedPage repodb.PageInput,
 				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
 					return make([]repodb.RepoMetadata, 0), make(map[string]repodb.ManifestMetadata), ErrTestError
@@ -35,7 +35,7 @@ func TestGlobalSearch(t *testing.T) {
 			responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 				graphql.DefaultRecover)
 			mockCve := mocks.CveInfoMock{}
-			repos, images, layers, err := globalSearch(responseContext, query, mockSearchDB, &gql_generated.Filter{},
+			repos, images, layers, err := globalSearch(responseContext, query, mockRepoDB, &gql_generated.Filter{},
 				&gql_generated.PageInput{}, mockCve, log.NewLogger("debug", ""))
 			So(err, ShouldNotBeNil)
 			So(images, ShouldBeEmpty)
@@ -44,7 +44,7 @@ func TestGlobalSearch(t *testing.T) {
 		})
 
 		Convey("RepoDB SearchRepo is successful", func() {
-			mockSearchDB := mocks.RepoDBMock{
+			mockRepoDB := mocks.RepoDBMock{
 				SearchReposFn: func(ctx context.Context, searchText string, filter repodb.Filter, requestedPage repodb.PageInput,
 				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
 					repos := []repodb.RepoMetadata{
@@ -124,7 +124,7 @@ func TestGlobalSearch(t *testing.T) {
 			responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 				graphql.DefaultRecover)
 			mockCve := mocks.CveInfoMock{}
-			repos, images, layers, err := globalSearch(responseContext, query, mockSearchDB,
+			repos, images, layers, err := globalSearch(responseContext, query, mockRepoDB,
 				&gql_generated.Filter{}, &pageInput, mockCve, log.NewLogger("debug", ""))
 			So(err, ShouldBeNil)
 			So(images, ShouldBeEmpty)
@@ -134,7 +134,7 @@ func TestGlobalSearch(t *testing.T) {
 		})
 
 		Convey("RepoDB SearchRepo Bad manifest refferenced", func() {
-			mockSearchDB := mocks.RepoDBMock{
+			mockRepoDB := mocks.RepoDBMock{
 				SearchReposFn: func(ctx context.Context, searchText string, filter repodb.Filter, requestedPage repodb.PageInput,
 				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
 					repos := []repodb.RepoMetadata{
@@ -184,7 +184,7 @@ func TestGlobalSearch(t *testing.T) {
 				graphql.DefaultRecover)
 			mockCve := mocks.CveInfoMock{}
 
-			repos, images, layers, err := globalSearch(responseContext, query, mockSearchDB,
+			repos, images, layers, err := globalSearch(responseContext, query, mockRepoDB,
 				&gql_generated.Filter{}, &pageInput, mockCve, log.NewLogger("debug", ""))
 			So(err, ShouldBeNil)
 			So(images, ShouldBeEmpty)
@@ -195,7 +195,7 @@ func TestGlobalSearch(t *testing.T) {
 
 			responseContext = graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 				graphql.DefaultRecover)
-			repos, images, layers, err = globalSearch(responseContext, query, mockSearchDB,
+			repos, images, layers, err = globalSearch(responseContext, query, mockRepoDB,
 				&gql_generated.Filter{}, &pageInput, mockCve, log.NewLogger("debug", ""))
 			So(err, ShouldBeNil)
 			So(images, ShouldBeEmpty)
@@ -204,7 +204,7 @@ func TestGlobalSearch(t *testing.T) {
 		})
 
 		Convey("RepoDB SearchRepo good manifest refferenced and bad config blob", func() {
-			mockSearchDB := mocks.RepoDBMock{
+			mockRepoDB := mocks.RepoDBMock{
 				SearchReposFn: func(ctx context.Context, searchText string, filter repodb.Filter, requestedPage repodb.PageInput,
 				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
 					repos := []repodb.RepoMetadata{
@@ -254,7 +254,7 @@ func TestGlobalSearch(t *testing.T) {
 
 			responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 				graphql.DefaultRecover)
-			repos, images, layers, err := globalSearch(responseContext, query, mockSearchDB,
+			repos, images, layers, err := globalSearch(responseContext, query, mockRepoDB,
 				&gql_generated.Filter{}, &pageInput, mockCve, log.NewLogger("debug", ""))
 			So(err, ShouldBeNil)
 			So(images, ShouldBeEmpty)
@@ -264,7 +264,7 @@ func TestGlobalSearch(t *testing.T) {
 			query = "repo1:1.0.1"
 			responseContext = graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 				graphql.DefaultRecover)
-			repos, images, layers, err = globalSearch(responseContext, query, mockSearchDB,
+			repos, images, layers, err = globalSearch(responseContext, query, mockRepoDB,
 				&gql_generated.Filter{}, &pageInput, mockCve, log.NewLogger("debug", ""))
 			So(err, ShouldBeNil)
 			So(images, ShouldBeEmpty)
@@ -273,7 +273,7 @@ func TestGlobalSearch(t *testing.T) {
 		})
 
 		Convey("RepoDB SearchTags gives error", func() {
-			mockSearchDB := mocks.RepoDBMock{
+			mockRepoDB := mocks.RepoDBMock{
 				SearchTagsFn: func(ctx context.Context, searchText string, filter repodb.Filter, requestedPage repodb.PageInput,
 				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
 					return make([]repodb.RepoMetadata, 0), make(map[string]repodb.ManifestMetadata), ErrTestError
@@ -284,7 +284,7 @@ func TestGlobalSearch(t *testing.T) {
 
 			responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 				graphql.DefaultRecover)
-			repos, images, layers, err := globalSearch(responseContext, query, mockSearchDB, &gql_generated.Filter{},
+			repos, images, layers, err := globalSearch(responseContext, query, mockRepoDB, &gql_generated.Filter{},
 				&gql_generated.PageInput{}, mockCve, log.NewLogger("debug", ""))
 			So(err, ShouldNotBeNil)
 			So(images, ShouldBeEmpty)
@@ -293,7 +293,7 @@ func TestGlobalSearch(t *testing.T) {
 		})
 
 		Convey("RepoDB SearchTags is successful", func() {
-			mockSearchDB := mocks.RepoDBMock{
+			mockRepoDB := mocks.RepoDBMock{
 				SearchTagsFn: func(ctx context.Context, searchText string, filter repodb.Filter, requestedPage repodb.PageInput,
 				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
 					repos := []repodb.RepoMetadata{
@@ -371,7 +371,7 @@ func TestGlobalSearch(t *testing.T) {
 
 			responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 				graphql.DefaultRecover)
-			repos, images, layers, err := globalSearch(responseContext, query, mockSearchDB,
+			repos, images, layers, err := globalSearch(responseContext, query, mockRepoDB,
 				&gql_generated.Filter{}, &pageInput, mockCve, log.NewLogger("debug", ""))
 			So(err, ShouldBeNil)
 			So(images, ShouldNotBeEmpty)
@@ -384,7 +384,7 @@ func TestGlobalSearch(t *testing.T) {
 func TestRepoListWithNewestImage(t *testing.T) {
 	Convey("RepoListWithNewestImage", t, func() {
 		Convey("RepoDB SearchRepos error", func() {
-			mockSearchDB := mocks.RepoDBMock{
+			mockRepoDB := mocks.RepoDBMock{
 				SearchReposFn: func(ctx context.Context, searchText string, filter repodb.Filter, requestedPage repodb.PageInput,
 				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
 					return make([]repodb.RepoMetadata, 0), make(map[string]repodb.ManifestMetadata), ErrTestError
@@ -402,13 +402,13 @@ func TestRepoListWithNewestImage(t *testing.T) {
 				Offset: &ofset,
 				SortBy: &sortCriteria,
 			}
-			repos, err := repoListWithNewestImage(responseContext, mockCve, log.NewLogger("debug", ""), &pageInput, mockSearchDB)
+			repos, err := repoListWithNewestImage(responseContext, mockCve, log.NewLogger("debug", ""), &pageInput, mockRepoDB)
 			So(err, ShouldNotBeNil)
 			So(repos, ShouldBeEmpty)
 		})
 
 		Convey("RepoDB SearchRepo Bad manifest refferenced", func() {
-			mockSearchDB := mocks.RepoDBMock{
+			mockRepoDB := mocks.RepoDBMock{
 				SearchReposFn: func(ctx context.Context, searchText string, filter repodb.Filter, requestedPage repodb.PageInput,
 				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
 					repos := []repodb.RepoMetadata{
@@ -480,7 +480,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 				Offset: &ofset,
 				SortBy: &sortCriteria,
 			}
-			repos, err := repoListWithNewestImage(responseContext, mockCve, log.NewLogger("debug", ""), &pageInput, mockSearchDB)
+			repos, err := repoListWithNewestImage(responseContext, mockCve, log.NewLogger("debug", ""), &pageInput, mockRepoDB)
 			So(err, ShouldBeNil)
 			So(repos, ShouldNotBeEmpty)
 		})
@@ -488,7 +488,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		Convey("Working SearchRepo function", func() {
 			createTime := time.Now()
 			createTime2 := createTime.Add(time.Second)
-			mockSearchDB := mocks.RepoDBMock{
+			mockRepoDB := mocks.RepoDBMock{
 				SearchReposFn: func(ctx context.Context, searchText string, filter repodb.Filter, requestedPage repodb.PageInput,
 				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
 					pageFinder, err := repodb.NewBaseRepoPageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
@@ -576,7 +576,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 				responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 					graphql.DefaultRecover)
 				mockCve := mocks.CveInfoMock{}
-				repos, err := repoListWithNewestImage(responseContext, mockCve, log.NewLogger("debug", ""), nil, mockSearchDB)
+				repos, err := repoListWithNewestImage(responseContext, mockCve, log.NewLogger("debug", ""), nil, mockRepoDB)
 				So(err, ShouldBeNil)
 				So(repos, ShouldNotBeEmpty)
 			})
@@ -596,7 +596,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 
 				mockCve := mocks.CveInfoMock{}
 				repos, err := repoListWithNewestImage(responseContext, mockCve,
-					log.NewLogger("debug", ""), &pageInput, mockSearchDB)
+					log.NewLogger("debug", ""), &pageInput, mockRepoDB)
 				So(err, ShouldBeNil)
 				So(repos, ShouldNotBeEmpty)
 				So(len(repos), ShouldEqual, 2)
