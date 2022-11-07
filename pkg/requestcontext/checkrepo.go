@@ -2,12 +2,10 @@ package requestcontext
 
 import (
 	"context"
-	"errors"
 
 	glob "github.com/bmatcuk/doublestar/v4"
+	zerr "zotregistry.io/zot/errors"
 )
-
-var ErrBadCtxFormat = errors.New("type assertion failed")
 
 func RepoIsUserAvailable(ctx context.Context, repoName string) (bool, error) {
 	authzCtxKey := GetContextKey()
@@ -15,7 +13,7 @@ func RepoIsUserAvailable(ctx context.Context, repoName string) (bool, error) {
 	if authCtx := ctx.Value(authzCtxKey); authCtx != nil {
 		acCtx, ok := authCtx.(AccessControlContext)
 		if !ok {
-			err := ErrBadCtxFormat
+			err := zerr.ErrBadCtxFormat
 
 			return false, err
 		}
