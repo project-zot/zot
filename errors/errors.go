@@ -65,4 +65,5 @@ var (
 	ErrTypeAssertionFailed     = errors.New("storage: failed DatabaseDriver type assertion")
 	ErrInvalidRequestParams    = errors.New("resolver: parameter sent has invalid value")
 	ErrOrphanSignature         = errors.New("repodb: signature detected but signed image doesn't exit")
+	ErrBadCtxFormat            = errors.New("type assertion failed")
 )
