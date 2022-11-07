@@ -73,7 +73,7 @@ func OnUpdateManifest(name, reference string, digest godigest.Digest, body []byt
 }
 
 // OnDeleteManifest is called when a manifest is deleted. It updates repodb according to the type
-// of image pushed(normal images, signatues, etc.).In care of any errors, it makes sure to keep
+// of image pushed(normal images, signatues, etc.). In care of any errors, it makes sure to keep
 // consistency between repodb and the image store.
 func OnDeleteManifest(name, reference, mediaType string, digest godigest.Digest, manifestBlob []byte,
 	storeController storage.StoreController, repoDB repodb.RepoDB, log log.Logger,
@@ -160,8 +160,9 @@ func OnGetManifest(name, reference string, digest godigest.Digest, body []byte,
 	return nil
 }
 
-// setMetadataFromInput tries to set manifest metadata and update repo metadata by adding the current tag
-// (in case the reference is a tag). The function expects image manifest.
+// setMetadataFromInput recieves raw information about the manifest pushed and tries to set manifest metadata
+// and update repo metadata by adding the current tag (in case the reference is a tag).
+// The function expects image manifest.
 func setMetadataFromInput(repo, reference string, digest godigest.Digest, manifestBlob []byte,
 	storeController storage.StoreController, repoDB repodb.RepoDB, log log.Logger,
 ) error {

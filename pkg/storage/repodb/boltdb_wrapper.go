@@ -20,8 +20,6 @@ import (
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 )
 
-var ErrBadCtxFormat = errors.New("type assertion failed")
-
 type BoltDBParameters struct {
 	RootDir string
 }
@@ -74,7 +72,6 @@ func NewBoltDBWrapper(params BoltDBParameters) (*BoltDBWrapper, error) {
 }
 
 func (bdw BoltDBWrapper) SetManifestMeta(manifestDigest godigest.Digest, manifestMeta ManifestMetadata) error {
-	// Q: should we check for correct input?
 	if manifestMeta.Signatures == nil {
 		manifestMeta.Signatures = map[string][]string{}
 	}
@@ -907,7 +904,7 @@ func repoIsUserAvailable(ctx context.Context, repoName string) (bool, error) {
 	if authCtx := ctx.Value(authzCtxKey); authCtx != nil {
 		acCtx, ok := authCtx.(localCtx.AccessControlContext)
 		if !ok {
-			err := ErrBadCtxFormat
+			err := zerr.ErrBadCtxFormat
 
 			return false, err
 		}
