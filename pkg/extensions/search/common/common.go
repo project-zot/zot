@@ -14,11 +14,10 @@ import (
 
 const (
 	// See https://github.com/opencontainers/image-spec/blob/main/annotations.md#back-compatibility-with-label-schema
-	AnnotationLabels           = "org.label-schema.labels"
-	LabelAnnotationCreated     = "org.label-schema.build-date"
-	LabelAnnotationVendor      = "org.label-schema.vendor"
-	LabelAnnotationDescription = "org.label-schema.description"
-	// Q I don't see this in the compatibility table.
+	AnnotationLabels             = "org.label-schema.labels"
+	LabelAnnotationCreated       = "org.label-schema.build-date"
+	LabelAnnotationVendor        = "org.label-schema.vendor"
+	LabelAnnotationDescription   = "org.label-schema.description"
 	LabelAnnotationLicenses      = "org.label-schema.license"
 	LabelAnnotationTitle         = "org.label-schema.name"
 	LabelAnnotationDocumentation = "org.label-schema.usage"
