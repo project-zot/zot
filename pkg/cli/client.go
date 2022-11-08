@@ -290,6 +290,15 @@ func (p *requestsPool) doJob(ctx context.Context, job *manifestJob) {
 		)
 	}
 
+	size += uint64(job.manifestResp.Config.Size)
+
+	manifestSize, err := strconv.Atoi(header.Get("Content-Length"))
+	if err != nil {
+		p.outputCh <- stringResult{"", err}
+	}
+
+	size += uint64(manifestSize)
+
 	image := &imageStruct{}
 	image.verbose = *job.config.verbose
 	image.RepoName = job.imageName
