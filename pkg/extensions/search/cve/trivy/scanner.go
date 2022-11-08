@@ -20,8 +20,8 @@ import (
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/meta/repodb"
+	"zotregistry.io/zot/pkg/storage"
 )
 
 type trivyCtx struct {
