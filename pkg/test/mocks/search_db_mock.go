@@ -5,7 +5,7 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 
-	"zotregistry.io/zot/pkg/storage/repodb"
+	"zotregistry.io/zot/pkg/meta/repodb"
 )
 
 type RepoDBMock struct {

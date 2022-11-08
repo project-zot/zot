@@ -12,7 +12,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/search/cve/trivy"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
-	"zotregistry.io/zot/pkg/storage/repodb"
+	"zotregistry.io/zot/pkg/meta/repodb"
 )
 
 type CveInfo interface {

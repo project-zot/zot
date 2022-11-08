@@ -2,7 +2,7 @@ package repodbfactory
 
 import (
 	"zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/storage/repodb"
+	"zotregistry.io/zot/pkg/meta/repodb"
 )
 
 type RepoDBDriverFactory interface {
