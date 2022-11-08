@@ -33,7 +33,7 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
-	"zotregistry.io/zot/pkg/storage/repodb"
+	"zotregistry.io/zot/pkg/meta/repodb"
 	. "zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
