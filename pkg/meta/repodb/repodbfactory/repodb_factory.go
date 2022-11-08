@@ -5,21 +5,20 @@ import (
 	"zotregistry.io/zot/pkg/meta/repodb"
 )
 
-type RepoDBDriverFactory interface {
-	Create(parameters interface{}) (repodb.RepoDB, error)
-}
+func Create(dbtype string, parameters interface{}) (repodb.RepoDB, error) {
+	switch dbtype {
+	case "boltdb":
+		{
+			properParameters, ok := parameters.(repodb.BoltDBParameters)
+			if !ok {
+				panic("Failed type assertion")
+			}
 
-func repoDBFactories() map[string]RepoDBDriverFactory {
-	return map[string]RepoDBDriverFactory{
-		"boltdb": repodb.BoltDBWrapperFactory{},
+			return repodb.NewBoltDBWrapper(properParameters)
+		}
+	default:
+		{
+			return nil, errors.ErrBadConfig
+		}
 	}
-}
-
-func Create(name string, parameters interface{}) (repodb.RepoDB, error) {
-	driverFactory, ok := repoDBFactories()[name]
-	if !ok {
-		return nil, errors.ErrBadConfig
-	}
-
-	return driverFactory.Create(parameters)
 }
