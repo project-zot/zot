@@ -16,8 +16,8 @@ import (
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/meta/repodb"
+	"zotregistry.io/zot/pkg/storage"
 )
 
 // We need this object to be a singleton as read/writes in the CVE DB may
