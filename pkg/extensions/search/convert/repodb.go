@@ -15,7 +15,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
-	"zotregistry.io/zot/pkg/storage/repodb"
+	"zotregistry.io/zot/pkg/meta/repodb"
 )
 
 type SkipQGLField struct {
