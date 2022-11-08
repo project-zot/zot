@@ -5,7 +5,7 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.io/zot/pkg/storage/repodb"
+	"zotregistry.io/zot/pkg/meta/repodb"
 )
 
 func TestPagination(t *testing.T) {

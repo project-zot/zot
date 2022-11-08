@@ -29,8 +29,8 @@ import (
 	"zotregistry.io/zot/pkg/storage/cache"
 	"zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
-	"zotregistry.io/zot/pkg/storage/repodb"
-	"zotregistry.io/zot/pkg/storage/repodb/repodbfactory"
+	"zotregistry.io/zot/pkg/meta/repodb"
+	"zotregistry.io/zot/pkg/meta/repodb/repodbfactory"
 	"zotregistry.io/zot/pkg/storage/s3"
 )
 
