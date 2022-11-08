@@ -18,7 +18,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
-	"zotregistry.io/zot/pkg/storage/repodb"
+	"zotregistry.io/zot/pkg/meta/repodb"
 )
 
 const (

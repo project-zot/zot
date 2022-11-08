@@ -35,9 +35,9 @@ import (
 	debug "zotregistry.io/zot/pkg/debug/swagger"
 	ext "zotregistry.io/zot/pkg/extensions"
 	"zotregistry.io/zot/pkg/log"
+	repoDBUpdate "zotregistry.io/zot/pkg/meta/repodb/update"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/storage"
-	repoDBUpdate "zotregistry.io/zot/pkg/storage/repodb/update"
 	"zotregistry.io/zot/pkg/test" //nolint:goimports
 )
 

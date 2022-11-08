@@ -5,8 +5,8 @@ import (
 	"github.com/pkg/errors"
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta/repodb"
 	"zotregistry.io/zot/pkg/storage"
-	"zotregistry.io/zot/pkg/storage/repodb"
 )
 
 // OnUpdateManifest is called when a new manifest is added. It updates repodb according to the type
