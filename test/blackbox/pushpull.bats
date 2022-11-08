@@ -203,23 +203,50 @@ EOF
     [ "${lines[-1]}" == "this is an artifact" ]
 }
 
-@test "list OCI artifacts with regclient" {
-    run regctl artifact list localhost:8080/test-regclient --format raw-body
-    [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.manifests') == '[]' ]
-    # push OCI artifacts on an image
-    run regctl artifact put --refers localhost:8080/test-regclient <<EOF
-first artifact with subject
+@test "push OCI artifact references with regclient" {
+    run regctl artifact put localhost:8080/manifest-ref:demo <<EOF
+test artifact
 EOF
     [ "$status" -eq 0 ]
-
-    run regctl artifact put --refers localhost:8080/test-regclient <<EOF
-second artifact with subject
+    run regctl artifact list localhost:8080/manifest-ref:demo --format raw-body
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.manifests | length') -eq 0 ]
+    run regctl artifact put --annotation  demo=true --annotation format=oci --artifact-type "application/vnd.example.icecream.v1" --subject localhost:8080/manifest-ref:demo << EOF
+test reference
 EOF
     [ "$status" -eq 0 ]
-
-    # list OCI artifacts of an image
-    run regctl artifact list localhost:8080/test-regclient --format raw-body
+    # with artifact media-type
+    run regctl artifact put localhost:8080/artifact-ref:demo <<EOF
+test artifact
+EOF
     [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.manifests | length') -eq 2 ]
+    run regctl artifact list localhost:8080/artifact-ref:demo --format raw-body
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.manifests | length') -eq 0 ]
+    run regctl artifact put --media-type  "application/vnd.oci.artifact.manifest.v1+json" --annotation  demo=true --annotation format=oci --artifact-type "application/vnd.example.icecream.v1" --subject localhost:8080/artifact-ref:demo << EOF
+test reference
+EOF
+    [ "$status" -eq 0 ]
+}
+
+@test "pull OCI artifact references with regclient" {
+    run regctl artifact list localhost:8080/manifest-ref:demo --format raw-body
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.manifests | length') -eq 1 ]
+    run regctl artifact list --filter-artifact-type "application/vnd.example.icecream.v1" localhost:8080/manifest-ref:demo --format raw-body
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.manifests | length') -eq 1 ]
+    run regctl artifact list --filter-artifact-type "application/invalid" localhost:8080/manifest-ref:demo --format raw-body
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.manifests | length') -eq 0 ]
+    # with artifact media-type
+    run regctl artifact list localhost:8080/artifact-ref:demo --format raw-body
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.manifests | length') -eq 1 ]
+    run regctl artifact list --filter-artifact-type "application/vnd.example.icecream.v1" localhost:8080/artifact-ref:demo --format raw-body
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.manifests | length') -eq 1 ]
+    run regctl artifact list --filter-artifact-type "application/invalid" localhost:8080/artifact-ref:demo --format raw-body
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.manifests | length') -eq 0 ]
 }

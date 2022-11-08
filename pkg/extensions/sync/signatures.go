@@ -340,7 +340,7 @@ func (sig *signaturesCopier) canSkipNotarySignature(localRepo, digestStr string,
 
 	// check notary signature already synced
 	if len(refs.References) > 0 {
-		localRefs, err := imageStore.GetReferrers(localRepo, digest, notreg.ArtifactTypeNotation)
+		localRefs, err := imageStore.GetOrasReferrers(localRepo, digest, notreg.ArtifactTypeNotation)
 		if err != nil {
 			if errors.Is(err, zerr.ErrManifestNotFound) {
 				return false, nil

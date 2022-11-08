@@ -19,6 +19,6 @@ import (
 func SetupSwaggerRoutes(conf *config.Config, router *mux.Router, log log.Logger,
 ) {
 	// swagger swagger "/swagger/v2/index.html"
-	log.Warn().Msg("skipping enabling swagger because given zot binary" +
+	log.Warn().Msg("skipping enabling swagger because given zot binary " +
 		"doesn't include this feature, please build a binary that does so")
 }

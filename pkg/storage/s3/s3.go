@@ -1224,7 +1224,12 @@ func (is *ObjectStorage) GetBlobContent(repo string, digest godigest.Digest) ([]
 	return buf.Bytes(), nil
 }
 
-func (is *ObjectStorage) GetReferrers(repo string, digest godigest.Digest, mediaType string,
+func (is *ObjectStorage) GetReferrers(repo string, digest godigest.Digest, artifactType string,
+) (ispec.Index, error) {
+	return ispec.Index{}, zerr.ErrMethodNotSupported
+}
+
+func (is *ObjectStorage) GetOrasReferrers(repo string, digest godigest.Digest, artifactType string,
 ) ([]artifactspec.Descriptor, error) {
 	return nil, zerr.ErrMethodNotSupported
 }

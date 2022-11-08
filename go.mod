@@ -29,7 +29,7 @@ require (
 	github.com/nmcclain/ldap v0.0.0-20210720162743-7f8d1e44eeba
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/opencontainers/go-digest v1.0.0
-	github.com/opencontainers/image-spec v1.1.0-rc2
+	github.com/opencontainers/image-spec v1.1.0-rc2.0.20221020182949-4df8887994e8
 	github.com/opencontainers/umoci v0.4.8-0.20210922062158-e60a0cc726e6
 	github.com/oras-project/artifacts-spec v1.0.0-rc.2
 	github.com/phayes/freeport v0.0.0-20220201140144-74d24b5ae9f5
@@ -413,7 +413,6 @@ replace (
 	github.com/containers/image/v5 => github.com/anuvu/image/v5 v5.0.0-20220520105616-e594853d6471
 	github.com/hashicorp/go-getter => github.com/hashicorp/go-getter v1.6.1
 	github.com/open-policy-agent/opa => github.com/open-policy-agent/opa v0.44.0
-	github.com/opencontainers/image-spec => github.com/opencontainers/image-spec v1.0.2-0.20211117181255-693428a734f5
 	github.com/opencontainers/runc => github.com/opencontainers/runc v1.1.2
 	go.etcd.io/etcd/v3 => go.etcd.io/etcd/v3 v3.5.4
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc => go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.26.1

@@ -16,6 +16,7 @@ COSIGN := $(TOOLSDIR)/bin/cosign
 HELM := $(TOOLSDIR)/bin/helm
 ORAS := $(TOOLSDIR)/bin/oras
 REGCLIENT := $(TOOLSDIR)/bin/regctl
+REGCLIENT_VERSION := v0.4.5
 STACKER := $(TOOLSDIR)/bin/stacker
 BATS := $(TOOLSDIR)/bin/bats
 TESTDATA := $(TOP_LEVEL)/test/data
@@ -121,7 +122,7 @@ $(HELM):
 
 $(REGCLIENT):
 	mkdir -p $(TOOLSDIR)/bin
-	curl -Lo regctl https://github.com/regclient/regclient/releases/download/v0.4.4/regctl-linux-amd64
+	curl -Lo regctl https://github.com/regclient/regclient/releases/download/$(REGCLIENT_VERSION)/regctl-linux-amd64
 	cp regctl $(TOOLSDIR)/bin/regctl
 	chmod +x $(TOOLSDIR)/bin/regctl
 

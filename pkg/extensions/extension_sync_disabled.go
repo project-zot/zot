@@ -22,7 +22,7 @@ func EnableSyncExtension(ctx context.Context,
 }
 
 // SyncOneImage ...
-func SyncOneImage(config *config.Config, storeController storage.StoreController,
+func SyncOneImage(ctx context.Context, config *config.Config, storeController storage.StoreController,
 	repoName, reference string, isArtifact bool, log log.Logger,
 ) error {
 	log.Warn().Msg("skipping syncing on demand because given zot binary doesn't include this feature," +

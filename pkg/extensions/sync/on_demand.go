@@ -50,7 +50,7 @@ func (di *demandedImages) delete(key string) {
 	di.syncedMap.Delete(key)
 }
 
-func OneImage(cfg Config, storeController storage.StoreController,
+func OneImage(ctx context.Context, cfg Config, storeController storage.StoreController,
 	repo, reference string, isArtifact bool, log log.Logger,
 ) error {
 	// guard against multiple parallel requests
@@ -73,7 +73,7 @@ func OneImage(cfg Config, storeController storage.StoreController,
 	defer demandedImgs.delete(demandedImage)
 	defer close(imageChannel)
 
-	go syncOneImage(imageChannel, cfg, storeController, repo, reference, isArtifact, log)
+	go syncOneImage(ctx, imageChannel, cfg, storeController, repo, reference, isArtifact, log)
 
 	err, ok := <-imageChannel
 	if !ok {
@@ -83,7 +83,7 @@ func OneImage(cfg Config, storeController storage.StoreController,
 	return err
 }
 
-func syncOneImage(imageChannel chan error, cfg Config, storeController storage.StoreController,
+func syncOneImage(ctx context.Context, imageChannel chan error, cfg Config, storeController storage.StoreController,
 	localRepo, reference string, isArtifact bool, log log.Logger,
 ) {
 	var credentialsFile CredentialsFile
@@ -248,7 +248,7 @@ func syncOneImage(imageChannel chan error, cfg Config, storeController storage.S
 						demandedImageRef, copyErr)
 					time.Sleep(retryOptions.Delay)
 
-					if err = retry.RetryIfNecessary(context.Background(), func() error {
+					if err = retry.RetryIfNecessary(ctx, func() error {
 						_, err := syncRun(regCfg, localRepo, upstreamRepo, reference, syncContextUtils, sig, log)
 
 						return err

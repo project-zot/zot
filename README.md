@@ -16,13 +16,14 @@ The following document refers on the **core dist-spec**, see also the [zot-speci
 ## [**Why zot?**](COMPARISON.md)
 
 ## What's new?
-* Support content range for pull requests
+* Supports push/pull OCI and ORAS Artifacts
+* Supports OCI references
+* Supports content range for pull requests
 * Selectively add extensions on top of minimal build
 * Supports container image signatures - [cosign](https://github.com/sigstore/cosign) and [notation](https://github.com/notaryproject/notation)
 * Multi-arch support
 * Clustering support
 * Image linting support
-* Supports push/pull OCI Artifacts
 
 ## [Demos](demos/README.md)
 
@@ -290,7 +291,7 @@ Supports:
 
 You can benchmark a zot registry or any other dist-spec conformant registry with `zb`.
 
-## Building `zb``
+## Building `zb`
 
 ```console
 $ make bench

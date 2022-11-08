@@ -20,10 +20,11 @@ import (
 	guuid "github.com/gofrs/uuid"
 	"github.com/minio/sha256-simd"
 	godigest "github.com/opencontainers/go-digest"
+	imeta "github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opencontainers/umoci"
 	"github.com/opencontainers/umoci/oci/casext"
-	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
+	oras "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/rs/zerolog"
 
 	zerr "zotregistry.io/zot/errors"
@@ -37,8 +38,9 @@ import (
 )
 
 const (
-	DefaultFilePerms = 0o600
-	DefaultDirPerms  = 0o700
+	DefaultFilePerms     = 0o600
+	DefaultDirPerms      = 0o700
+	defaultSchemaVersion = 2
 )
 
 // ImageStoreLocal provides the image storage operations.
@@ -186,8 +188,7 @@ func (is *ImageStoreLocal) initRepo(name string) error {
 	// "index.json" file - create if it doesn't exist
 	indexPath := path.Join(repoDir, "index.json")
 	if _, err := os.Stat(indexPath); err != nil {
-		index := ispec.Index{}
-		index.SchemaVersion = 2
+		index := ispec.Index{Versioned: imeta.Versioned{SchemaVersion: defaultSchemaVersion}}
 
 		buf, err := json.Marshal(index)
 		if err != nil {
@@ -1339,7 +1340,120 @@ func (is *ImageStoreLocal) DeleteBlob(repo string, digest godigest.Digest) error
 }
 
 func (is *ImageStoreLocal) GetReferrers(repo string, gdigest godigest.Digest, artifactType string,
-) ([]artifactspec.Descriptor, error) {
+) (ispec.Index, error) {
+	var lockLatency time.Time
+
+	nilIndex := ispec.Index{}
+
+	if err := gdigest.Validate(); err != nil {
+		return nilIndex, err
+	}
+
+	dir := path.Join(is.rootDir, repo)
+	if !is.DirExists(dir) {
+		return nilIndex, zerr.ErrRepoNotFound
+	}
+
+	index, err := storage.GetIndex(is, repo, is.log)
+	if err != nil {
+		return nilIndex, err
+	}
+
+	is.RLock(&lockLatency)
+	defer is.RUnlock(&lockLatency)
+
+	found := false
+
+	result := []ispec.Descriptor{}
+
+	for _, manifest := range index.Manifests {
+		if manifest.Digest == gdigest {
+			continue
+		}
+
+		p := path.Join(dir, "blobs", manifest.Digest.Algorithm().String(), manifest.Digest.Encoded())
+
+		buf, err := os.ReadFile(p)
+		if err != nil {
+			is.log.Error().Err(err).Str("blob", p).Msg("failed to read manifest")
+
+			if os.IsNotExist(err) {
+				return nilIndex, zerr.ErrManifestNotFound
+			}
+
+			return nilIndex, err
+		}
+
+		if manifest.MediaType == ispec.MediaTypeImageManifest {
+			var mfst ispec.Manifest
+			if err := json.Unmarshal(buf, &mfst); err != nil {
+				return nilIndex, err
+			}
+
+			if mfst.Subject == nil || mfst.Subject.Digest != gdigest {
+				continue
+			}
+
+			// filter by artifact type
+			if artifactType != "" && mfst.Config.MediaType != artifactType {
+				continue
+			}
+
+			result = append(result, ispec.Descriptor{
+				MediaType:    manifest.MediaType,
+				ArtifactType: mfst.Config.MediaType,
+				Size:         manifest.Size,
+				Digest:       manifest.Digest,
+				Annotations:  mfst.Annotations,
+			})
+		} else if manifest.MediaType == ispec.MediaTypeArtifactManifest {
+			var art ispec.Artifact
+			if err := json.Unmarshal(buf, &art); err != nil {
+				return nilIndex, err
+			}
+
+			if art.Subject == nil || art.Subject.Digest != gdigest {
+				continue
+			}
+
+			// filter by artifact type
+			if artifactType != "" && art.ArtifactType != artifactType {
+				continue
+			}
+
+			result = append(result, ispec.Descriptor{
+				MediaType:    manifest.MediaType,
+				ArtifactType: art.ArtifactType,
+				Size:         manifest.Size,
+				Digest:       manifest.Digest,
+				Annotations:  art.Annotations,
+			})
+		}
+
+		found = true
+	}
+
+	if !found {
+		return nilIndex, zerr.ErrManifestNotFound
+	}
+
+	index = ispec.Index{
+		Versioned:   imeta.Versioned{SchemaVersion: defaultSchemaVersion},
+		MediaType:   ispec.MediaTypeImageIndex,
+		Manifests:   result,
+		Annotations: map[string]string{},
+	}
+
+	// response was filtered by artifactType
+	if artifactType != "" {
+		index.Annotations[storageConstants.ReferrerFilterAnnotation] = artifactType
+	}
+
+	return index, nil
+}
+
+func (is *ImageStoreLocal) GetOrasReferrers(repo string, gdigest godigest.Digest, artifactType string,
+) ([]oras.Descriptor, error) {
 	var lockLatency time.Time
 
 	if err := gdigest.Validate(); err != nil {
@@ -1361,10 +1475,10 @@ func (is *ImageStoreLocal) GetReferrers(repo string, gdigest godigest.Digest, ar
 
 	found := false
 
-	result := []artifactspec.Descriptor{}
+	result := []oras.Descriptor{}
 
 	for _, manifest := range index.Manifests {
-		if manifest.MediaType != artifactspec.MediaTypeArtifactManifest {
+		if manifest.MediaType != oras.MediaTypeArtifactManifest {
 			continue
 		}
 
@@ -1381,18 +1495,23 @@ func (is *ImageStoreLocal) GetReferrers(repo string, gdigest godigest.Digest, ar
 			return nil, err
 		}
 
-		var artManifest artifactspec.Manifest
+		var artManifest oras.Manifest
 		if err := json.Unmarshal(buf, &artManifest); err != nil {
 			is.log.Error().Err(err).Str("dir", dir).Msg("invalid JSON")
 
 			return nil, err
 		}
 
-		if artifactType != artManifest.ArtifactType || gdigest != artManifest.Subject.Digest {
+		if artManifest.Subject.Digest != gdigest {
 			continue
 		}
 
-		result = append(result, artifactspec.Descriptor{
+		// filter by artifact type
+		if artifactType != "" && artManifest.ArtifactType != artifactType {
+			continue
+		}
+
+		result = append(result, oras.Descriptor{
 			MediaType:    manifest.MediaType,
 			ArtifactType: artManifest.ArtifactType,
 			Digest:       manifest.Digest,
