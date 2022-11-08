@@ -8,7 +8,7 @@ require (
 	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
 	github.com/apex/log v1.9.0
 	github.com/aquasecurity/trivy-db v0.0.0-20210916043317-726b7b72a47b
-	github.com/bmatcuk/doublestar/v4 v4.3.0
+	github.com/bmatcuk/doublestar/v4 v4.4.0
 	github.com/briandowns/spinner v1.19.0
 	github.com/chartmuseum/auth v0.5.0
 	github.com/containers/common v0.50.1
@@ -18,7 +18,7 @@ require (
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/getlantern/deepcopy v0.0.0-20160317154340-7f45deb8130a
 	github.com/go-ldap/ldap/v3 v3.4.4
-	github.com/gofrs/uuid v4.3.0+incompatible
+	github.com/gofrs/uuid v4.3.1+incompatible
 	github.com/google/go-containerregistry v0.12.0
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/handlers v1.5.1
@@ -34,7 +34,7 @@ require (
 	github.com/oras-project/artifacts-spec v1.0.0-rc.2
 	github.com/phayes/freeport v0.0.0-20220201140144-74d24b5ae9f5
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v1.13.0
+	github.com/prometheus/client_golang v1.13.1
 	github.com/prometheus/client_model v0.3.0
 	github.com/rs/zerolog v1.28.0
 	github.com/smartystreets/goconvey v1.7.2
@@ -42,7 +42,7 @@ require (
 	github.com/spf13/viper v1.13.0
 	github.com/stretchr/testify v1.8.1
 	github.com/swaggo/swag v1.8.7
-	github.com/urfave/cli/v2 v2.23.0
+	github.com/urfave/cli/v2 v2.23.4
 	github.com/vektah/gqlparser/v2 v2.5.1
 	go.etcd.io/bbolt v1.3.6
 	golang.org/x/crypto v0.1.0
@@ -53,7 +53,7 @@ require (
 require (
 	github.com/aquasecurity/trivy v0.0.0-00010101000000-000000000000
 	github.com/containers/image/v5 v5.23.0
-	github.com/notaryproject/notation-go v0.11.0-alpha.4
+	github.com/notaryproject/notation-go v0.12.0-beta.1
 	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20220620172159-4ab4752c3b86
 	github.com/sigstore/cosign v1.13.1
 	github.com/swaggo/http-swagger v1.3.3
@@ -279,6 +279,7 @@ require (
 	github.com/mozillazg/docker-credential-acr-helper v0.3.0 // indirect
 	github.com/mpvl/unique v0.0.0-20150818121801-cbe035fff7de // indirect
 	github.com/nmcclain/asn1-ber v0.0.0-20170104154839-2661553a0484 // indirect
+	github.com/notaryproject/notation-core-go v0.2.0-beta.1 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/open-policy-agent/opa v0.45.0 // indirect
 	github.com/opencontainers/runc v1.1.4 // indirect

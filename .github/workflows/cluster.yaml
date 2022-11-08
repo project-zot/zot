@@ -170,7 +170,7 @@ jobs:
           key: ${{ runner.os }}-gen1-benchmark-stateless-cluster
       # Run `github-action-benchmark` action
       - name: Store benchmark result
-        uses: benchmark-action/github-action-benchmark@v1.14.0
+        uses: benchmark-action/github-action-benchmark@v1.15.0
         with:
           # What benchmark tool the output.txt came from
           tool: 'customBiggerIsBetter'
