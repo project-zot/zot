@@ -23,17 +23,6 @@ type BoltDBParameters struct {
 	RootDir string
 }
 
-type BoltDBWrapperFactory struct{}
-
-func (bwf BoltDBWrapperFactory) Create(parameters interface{}) (RepoDB, error) {
-	properParameters, ok := parameters.(BoltDBParameters)
-	if !ok {
-		panic("Failed type assertion")
-	}
-
-	return NewBoltDBWrapper(properParameters)
-}
-
 type BoltDBWrapper struct {
 	db  *bolt.DB
 	log log.Logger

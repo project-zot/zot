@@ -34,7 +34,7 @@ func SyncRepoDB(repoDB RepoDB, storeController storage.StoreController, log log.
 	return nil
 }
 
-// SyncRepo reads the contents of a repo and syncs all images/signatures found. 
+// SyncRepo reads the contents of a repo and syncs all images signatures found.
 func SyncRepo(repo string, repoDB RepoDB, storeController storage.StoreController, log log.Logger) error {
 	imageStore := storeController.GetImageStore(repo)
 
@@ -173,7 +173,7 @@ func SyncRepo(repo string, repoDB RepoDB, storeController storage.StoreControlle
 	return nil
 }
 
-// resetRepoMetaTags will delete all tags from a repometadata. 
+// resetRepoMetaTags will delete all tags from a repometadata.
 func resetRepoMetaTags(repo string, repoDB RepoDB, log log.Logger) error {
 	repoMeta, err := repoDB.GetRepoMeta(repo)
 	if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
