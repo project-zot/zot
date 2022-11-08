@@ -73,6 +73,7 @@ type ImageSummary {
     Documentation: String
     History: [LayerHistory]
     Vulnerabilities: ImageVulnerabilitySummary
+    Authors: String
 }
 
 type ImageVulnerabilitySummary {

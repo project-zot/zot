@@ -205,6 +205,11 @@ func repoListWithNewestImage(
 				}
 			}
 
+			authors := annotations.Authors
+			if authors == "" {
+				authors = imageConfigInfo.Author
+			}
+
 			tag := manifestTag
 			size := strconv.Itoa(int(imageSize))
 			manifestDigest := manifest.Digest.String()
@@ -234,6 +239,7 @@ func repoListWithNewestImage(
 					MaxSeverity: &imageCveSummary.MaxSeverity,
 					Count:       &imageCveSummary.Count,
 				},
+				Authors: &authors,
 			}
 
 			if manifest.Digest.String() == lastUpdatedTag.Digest.String() {
@@ -402,6 +408,11 @@ func globalSearch(repoList []string, name, tag string, olu common.OciLayoutUtils
 					}
 				}
 
+				authors := annotations.Authors
+				if authors == "" {
+					authors = imageConfigInfo.Author
+				}
+
 				imageSummary := gql_generated.ImageSummary{
 					RepoName:      &repo,
 					Tag:           &manifestTag,
@@ -423,6 +434,7 @@ func globalSearch(repoList []string, name, tag string, olu common.OciLayoutUtils
 						MaxSeverity: &imageCveSummary.MaxSeverity,
 						Count:       &imageCveSummary.Count,
 					},
+					Authors: &authors,
 				}
 
 				if manifest.Digest.String() == lastUpdatedTag.Digest.String() {
