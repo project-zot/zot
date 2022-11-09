@@ -20,6 +20,7 @@ import (
 	guuid "github.com/gofrs/uuid"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
@@ -64,7 +65,7 @@ func createMockStorage(rootDir string, cacheDir string, dedupe bool, store drive
 	var cacheDriver cache.Cache
 
 	// from pkg/cli/root.go/applyDefaultValues, s3 magic
-	if _, err := os.Stat(cacheDir); dedupe || (!dedupe && err == nil) {
+	if _, err := os.Stat(path.Join(cacheDir, "s3_cache.db")); dedupe || (!dedupe && err == nil) {
 		cacheDriver, _ = storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     cacheDir,
 			Name:        "s3_cache",
@@ -116,7 +117,7 @@ func createObjectsStore(rootDir string, cacheDir string, dedupe bool) (
 	var cacheDriver cache.Cache
 
 	// from pkg/cli/root.go/applyDefaultValues, s3 magic
-	if _, err := os.Stat(cacheDir); dedupe || (!dedupe && err == nil) {
+	if _, err := os.Stat(path.Join(cacheDir, "s3_cache.db")); dedupe || (!dedupe && err == nil) {
 		cacheDriver, _ = storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     cacheDir,
 			Name:        "s3_cache",
@@ -378,6 +379,201 @@ func TestStorageDriverStatFunction(t *testing.T) {
 	})
 }
 
+func TestGetOrasAndOCIReferrers(t *testing.T) {
+	repo := "zot-test"
+
+	uuid, err := guuid.NewV4()
+	if err != nil {
+		panic(err)
+	}
+
+	tdir := t.TempDir()
+	testDir := path.Join("/oci-repo-test", uuid.String())
+
+	_, imgStore, _ := createObjectsStore(testDir, tdir, true)
+
+	Convey("Upload test image", t, func(c C) {
+		cfg, layers, manifest, err := test.GetImageComponents(100)
+		So(err, ShouldBeNil)
+
+		for _, content := range layers {
+			upload, err := imgStore.NewBlobUpload(repo)
+			So(err, ShouldBeNil)
+			So(upload, ShouldNotBeEmpty)
+
+			buf := bytes.NewBuffer(content)
+			buflen := buf.Len()
+			digest := godigest.FromBytes(content)
+
+			blob, err := imgStore.PutBlobChunkStreamed(repo, upload, buf)
+			So(err, ShouldBeNil)
+			So(blob, ShouldEqual, buflen)
+			blobDigest1 := digest
+			So(blobDigest1, ShouldNotBeEmpty)
+
+			err = imgStore.FinishBlobUpload(repo, upload, buf, digest)
+			So(err, ShouldBeNil)
+			So(blob, ShouldEqual, buflen)
+		}
+
+		// upload config blob
+		cblob, err := json.Marshal(cfg)
+		So(err, ShouldBeNil)
+
+		buf := bytes.NewBuffer(cblob)
+		buflen := buf.Len()
+		digest := godigest.FromBytes(cblob)
+
+		_, clen, err := imgStore.FullBlobUpload(repo, buf, digest)
+		So(err, ShouldBeNil)
+		So(clen, ShouldEqual, buflen)
+
+		// upload manifest
+		mblob, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+
+		mbuf := bytes.NewBuffer(mblob)
+		mbuflen := mbuf.Len()
+		mdigest := godigest.FromBytes(mblob)
+
+		d, err := imgStore.PutImageManifest(repo, "1.0", ispec.MediaTypeImageManifest, mbuf.Bytes())
+		So(d, ShouldEqual, mdigest)
+		So(err, ShouldBeNil)
+
+		body := []byte("this is an artifact")
+		digest = godigest.FromBytes(body)
+		buf = bytes.NewBuffer(body)
+		buflen = buf.Len()
+
+		_, n, err := imgStore.FullBlobUpload(repo, buf, digest)
+		So(err, ShouldBeNil)
+		So(n, ShouldEqual, buflen)
+
+		Convey("Get oci referrers - application/vnd.oci.image.manifest.v1+json", func(c C) {
+			artifactType := "application/vnd.example.icecream.v1"
+			// push artifact config blob
+			configBody := []byte("{}")
+			configDigest := godigest.FromBytes(configBody)
+			configBuf := bytes.NewBuffer(configBody)
+			configBufLen := configBuf.Len()
+
+			_, n, err := imgStore.FullBlobUpload(repo, configBuf, configDigest)
+			So(err, ShouldBeNil)
+			So(n, ShouldEqual, configBufLen)
+
+			artifactManifest := ispec.Manifest{
+				MediaType: ispec.MediaTypeImageManifest,
+				Config: ispec.Descriptor{
+					MediaType: artifactType,
+					Size:      int64(configBufLen),
+					Digest:    configDigest,
+				},
+				Layers: []ispec.Descriptor{
+					{
+						MediaType: "application/octet-stream",
+						Size:      int64(buflen),
+						Digest:    digest,
+					},
+				},
+				Subject: &ispec.Descriptor{
+					MediaType: ispec.MediaTypeImageManifest,
+					Size:      int64(mbuflen),
+					Digest:    mdigest,
+				},
+			}
+
+			manBuf, err := json.Marshal(artifactManifest)
+			So(err, ShouldBeNil)
+
+			manBufLen := len(manBuf)
+			manDigest := godigest.FromBytes(manBuf)
+
+			_, err = imgStore.PutImageManifest(repo, manDigest.Encoded(), ispec.MediaTypeImageManifest, manBuf)
+			So(err, ShouldBeNil)
+
+			index, err := imgStore.GetReferrers(repo, mdigest, artifactType)
+			So(err, ShouldBeNil)
+			So(index, ShouldNotBeEmpty)
+			So(index.Manifests[0].ArtifactType, ShouldEqual, artifactType)
+			So(index.Manifests[0].MediaType, ShouldEqual, ispec.MediaTypeImageManifest)
+			So(index.Manifests[0].Size, ShouldEqual, manBufLen)
+			So(index.Manifests[0].Digest, ShouldEqual, manDigest)
+		})
+
+		Convey("Get oci referrers - application/vnd.oci.artifact.manifest.v1+json", func(c C) {
+			artifactType := "application/vnd.example.icecream.v1"
+
+			artifactManifest := ispec.Artifact{
+				MediaType:    ispec.MediaTypeArtifactManifest,
+				ArtifactType: artifactType,
+				Blobs: []ispec.Descriptor{
+					{
+						MediaType: "application/octet-stream",
+						Size:      int64(buflen),
+						Digest:    digest,
+					},
+				},
+				Subject: &ispec.Descriptor{
+					MediaType: ispec.MediaTypeImageManifest,
+					Size:      int64(mbuflen),
+					Digest:    mdigest,
+				},
+			}
+
+			manBuf, err := json.Marshal(artifactManifest)
+			So(err, ShouldBeNil)
+
+			manBufLen := len(manBuf)
+			manDigest := godigest.FromBytes(manBuf)
+
+			_, err = imgStore.PutImageManifest(repo, manDigest.Encoded(), ispec.MediaTypeArtifactManifest, manBuf)
+			So(err, ShouldBeNil)
+
+			index, err := imgStore.GetReferrers(repo, mdigest, artifactType)
+			So(err, ShouldBeNil)
+			So(index, ShouldNotBeEmpty)
+			So(index.Manifests[1].ArtifactType, ShouldEqual, artifactType)
+			So(index.Manifests[1].MediaType, ShouldEqual, ispec.MediaTypeArtifactManifest)
+			So(index.Manifests[1].Size, ShouldEqual, manBufLen)
+			So(index.Manifests[1].Digest, ShouldEqual, manDigest)
+		})
+
+		Convey("Get oras referrers", func(c C) {
+			artifactManifest := artifactspec.Manifest{}
+			artifactManifest.ArtifactType = "signature-example"
+			artifactManifest.Subject = &artifactspec.Descriptor{
+				MediaType: ispec.MediaTypeImageManifest,
+				Digest:    mdigest,
+				Size:      int64(mbuflen),
+			}
+			artifactManifest.Blobs = []artifactspec.Descriptor{
+				{
+					Size:      int64(buflen),
+					Digest:    digest,
+					MediaType: "application/octet-stream",
+				},
+			}
+
+			manBuf, err := json.Marshal(artifactManifest)
+			So(err, ShouldBeNil)
+
+			manBufLen := len(manBuf)
+			manDigest := godigest.FromBytes(manBuf)
+
+			_, err = imgStore.PutImageManifest(repo, manDigest.Encoded(), artifactspec.MediaTypeArtifactManifest, manBuf)
+			So(err, ShouldBeNil)
+
+			descriptors, err := imgStore.GetOrasReferrers(repo, mdigest, "signature-example")
+			So(err, ShouldBeNil)
+			So(descriptors, ShouldNotBeEmpty)
+			So(descriptors[0].ArtifactType, ShouldEqual, "signature-example")
+			So(descriptors[0].MediaType, ShouldEqual, artifactspec.MediaTypeArtifactManifest)
+			So(descriptors[0].Size, ShouldEqual, manBufLen)
+			So(descriptors[0].Digest, ShouldEqual, manDigest)
+		})
+	})
+}
+
 func TestNegativeCasesObjectsStorage(t *testing.T) {
 	skipIt(t)
 
@@ -397,11 +593,13 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 			So(imgStore.InitRepo(testImage), ShouldBeNil)
 			objects, err := storeDriver.List(context.Background(), path.Join(imgStore.RootDir(), testImage))
 			So(err, ShouldBeNil)
+
 			for _, object := range objects {
 				t.Logf("Removing object: %s", object)
 				err := storeDriver.Delete(context.Background(), object)
 				So(err, ShouldBeNil)
 			}
+
 			_, err = imgStore.ValidateRepo(testImage)
 			So(err, ShouldNotBeNil)
 			_, err = imgStore.GetRepositories()
@@ -467,7 +665,6 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 
 	Convey("Without dedupe", t, func(c C) {
 		tdir := t.TempDir()
-
 		storeDriver, imgStore, _ := createObjectsStore(testDir, tdir, false)
 		defer cleanupStorage(storeDriver, testDir)
 
@@ -907,27 +1104,19 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 		})
 
 		Convey("Test GetReferrers", func(c C) {
-			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-				DeleteFn: func(ctx context.Context, path string) error {
-					return errS3
-				},
-			})
+			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{})
 			d := godigest.FromBytes([]byte(""))
 			_, err := imgStore.GetReferrers(testImage, d, "application/image")
 			So(err, ShouldNotBeNil)
-			So(err, ShouldEqual, zerr.ErrMethodNotSupported)
+			So(err, ShouldEqual, zerr.ErrRepoBadVersion)
 		})
 
 		Convey("Test GetOrasReferrers", func(c C) {
-			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
-				DeleteFn: func(ctx context.Context, path string) error {
-					return errS3
-				},
-			})
+			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{})
 			d := godigest.FromBytes([]byte(""))
 			_, err := imgStore.GetOrasReferrers(testImage, d, "application/image")
 			So(err, ShouldNotBeNil)
-			So(err, ShouldEqual, zerr.ErrMethodNotSupported)
+			So(err, ShouldEqual, zerr.ErrRepoBadVersion)
 		})
 	})
 }

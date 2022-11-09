@@ -4,19 +4,24 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"path"
 	"testing"
 
+	"github.com/docker/distribution/registry/storage/driver"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
 
+	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/cache"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
+	"zotregistry.io/zot/pkg/test/mocks"
 )
 
 func TestValidateManifest(t *testing.T) {
@@ -98,6 +103,202 @@ func TestValidateManifest(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			_, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, body)
+			So(err, ShouldNotBeNil)
+		})
+	})
+}
+
+func TestGetReferrersErrors(t *testing.T) {
+	Convey("make storage", t, func(c C) {
+		dir := t.TempDir()
+
+		log := log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, log)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+
+		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, false,
+			true, log, metrics, nil, cacheDriver)
+
+		artifactType := "application/vnd.example.icecream.v1"
+		validDigest := godigest.FromBytes([]byte("blob"))
+
+		Convey("Trigger invalid digest error", func(c C) {
+			_, err := storage.GetReferrers(imgStore, "zot-test", "invalidDigest", artifactType, log.With().Caller().Logger())
+			So(err, ShouldNotBeNil)
+
+			_, err = storage.GetOrasReferrers(imgStore, "zot-test", "invalidDigest", artifactType, log.With().Caller().Logger())
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Trigger repo not found error", func(c C) {
+			_, err := storage.GetReferrers(imgStore, "zot-test", validDigest, artifactType, log.With().Caller().Logger())
+			So(err, ShouldNotBeNil)
+
+			_, err = storage.GetOrasReferrers(imgStore, "zot-test", validDigest, artifactType, log.With().Caller().Logger())
+			So(err, ShouldNotBeNil)
+		})
+
+		err := test.CopyFiles("../../test/data/zot-test", path.Join(dir, "zot-test"))
+		So(err, ShouldBeNil)
+
+		digest := godigest.FromBytes([]byte("{}"))
+
+		index := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{
+					MediaType: artifactspec.MediaTypeArtifactManifest,
+					Digest:    digest,
+				},
+			},
+		}
+
+		indexBuf, err := json.Marshal(index)
+		So(err, ShouldBeNil)
+
+		Convey("Trigger GetBlobContent() not found", func(c C) {
+			imgStore = &mocks.MockedImageStore{
+				GetIndexContentFn: func(repo string) ([]byte, error) {
+					return indexBuf, nil
+				},
+				GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+					return []byte{}, driver.PathNotFoundError{}
+				},
+			}
+
+			_, err = storage.GetReferrers(imgStore, "zot-test", validDigest, artifactType, log.With().Caller().Logger())
+			So(err, ShouldNotBeNil)
+
+			_, err = storage.GetOrasReferrers(imgStore, "zot-test", validDigest, artifactType, log.With().Caller().Logger())
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Trigger GetBlobContent() generic error", func(c C) {
+			imgStore = &mocks.MockedImageStore{
+				GetIndexContentFn: func(repo string) ([]byte, error) {
+					return indexBuf, nil
+				},
+				GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+					return []byte{}, errors.ErrBadBlob
+				},
+			}
+
+			_, err = storage.GetReferrers(imgStore, "zot-test", validDigest, artifactType, log.With().Caller().Logger())
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Trigger continue on different artifactType", func(c C) {
+			orasManifest := artifactspec.Manifest{
+				Subject: &artifactspec.Descriptor{
+					Digest:       digest,
+					ArtifactType: "unknown",
+				},
+			}
+
+			orasBuf, err := json.Marshal(orasManifest)
+			So(err, ShouldBeNil)
+
+			imgStore = &mocks.MockedImageStore{
+				GetIndexContentFn: func(repo string) ([]byte, error) {
+					return indexBuf, nil
+				},
+				GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+					return orasBuf, nil
+				},
+			}
+
+			_, err = storage.GetOrasReferrers(imgStore, "zot-test", validDigest, artifactType, log.With().Caller().Logger())
+			So(err, ShouldNotBeNil)
+
+			_, err = storage.GetOrasReferrers(imgStore, "zot-test", digest, artifactType, log.With().Caller().Logger())
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Trigger unmarshal error on manifest image mediaType", func(c C) {
+			index = ispec.Index{
+				Manifests: []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageManifest,
+						Digest:    digest,
+					},
+				},
+			}
+
+			indexBuf, err = json.Marshal(index)
+			So(err, ShouldBeNil)
+
+			imgStore = &mocks.MockedImageStore{
+				GetIndexContentFn: func(repo string) ([]byte, error) {
+					return indexBuf, nil
+				},
+				GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+					return []byte{}, nil
+				},
+			}
+
+			_, err = storage.GetReferrers(imgStore, "zot-test", validDigest, artifactType, log.With().Caller().Logger())
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Trigger unmarshal error on artifact mediaType", func(c C) {
+			index = ispec.Index{
+				Manifests: []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeArtifactManifest,
+						Digest:    digest,
+					},
+				},
+			}
+
+			indexBuf, err = json.Marshal(index)
+			So(err, ShouldBeNil)
+
+			imgStore = &mocks.MockedImageStore{
+				GetIndexContentFn: func(repo string) ([]byte, error) {
+					return indexBuf, nil
+				},
+				GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+					return []byte{}, nil
+				},
+			}
+
+			_, err = storage.GetReferrers(imgStore, "zot-test", validDigest, artifactType, log.With().Caller().Logger())
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Trigger nil subject", func(c C) {
+			index = ispec.Index{
+				Manifests: []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeArtifactManifest,
+						Digest:    digest,
+					},
+				},
+			}
+
+			indexBuf, err = json.Marshal(index)
+			So(err, ShouldBeNil)
+
+			ociManifest := ispec.Manifest{
+				Subject: nil,
+			}
+
+			ociManifestBuf, err := json.Marshal(ociManifest)
+			So(err, ShouldBeNil)
+
+			imgStore = &mocks.MockedImageStore{
+				GetIndexContentFn: func(repo string) ([]byte, error) {
+					return indexBuf, nil
+				},
+				GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+					return ociManifestBuf, nil
+				},
+			}
+
+			_, err = storage.GetReferrers(imgStore, "zot-test", validDigest, artifactType, log.With().Caller().Logger())
 			So(err, ShouldNotBeNil)
 		})
 	})

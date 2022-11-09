@@ -348,7 +348,8 @@ func pushSyncedLocalImage(localRepo, reference, localCachePath string,
 	}
 
 	// is image manifest
-	if mediaType == ispec.MediaTypeImageManifest {
+	switch mediaType {
+	case ispec.MediaTypeImageManifest:
 		if err := copyManifest(localRepo, manifestContent, reference, cacheImageStore, imageStore, log); err != nil {
 			if errors.Is(err, zerr.ErrImageLintAnnotations) {
 				log.Error().Str("errorType", TypeOf(err)).
@@ -359,50 +360,48 @@ func pushSyncedLocalImage(localRepo, reference, localCachePath string,
 
 			return err
 		}
+	case ispec.MediaTypeImageIndex:
+		// is image index
+		var indexManifest ispec.Index
 
-		return nil
-	}
-
-	// is image index
-	var indexManifest ispec.Index
-
-	if err := json.Unmarshal(manifestContent, &indexManifest); err != nil {
-		log.Error().Str("errorType", TypeOf(err)).
-			Err(err).Str("dir", path.Join(cacheImageStore.RootDir(), localRepo)).
-			Msg("invalid JSON")
-
-		return err
-	}
-
-	for _, manifest := range indexManifest.Manifests {
-		manifestBuf, err := cacheImageStore.GetBlobContent(localRepo, manifest.Digest)
-		if err != nil {
+		if err := json.Unmarshal(manifestContent, &indexManifest); err != nil {
 			log.Error().Str("errorType", TypeOf(err)).
-				Err(err).Str("dir", path.Join(cacheImageStore.RootDir(), localRepo)).Str("digest", manifest.Digest.String()).
-				Msg("couldn't find manifest which is part of an image index")
+				Err(err).Str("dir", path.Join(cacheImageStore.RootDir(), localRepo)).
+				Msg("invalid JSON")
 
 			return err
 		}
 
-		if err := copyManifest(localRepo, manifestBuf, manifest.Digest.String(),
-			cacheImageStore, imageStore, log); err != nil {
-			if errors.Is(err, zerr.ErrImageLintAnnotations) {
+		for _, manifest := range indexManifest.Manifests {
+			manifestBuf, err := cacheImageStore.GetBlobContent(localRepo, manifest.Digest)
+			if err != nil {
 				log.Error().Str("errorType", TypeOf(err)).
-					Err(err).Msg("couldn't upload manifest because of missing annotations")
+					Err(err).Str("dir", path.Join(cacheImageStore.RootDir(), localRepo)).Str("digest", manifest.Digest.String()).
+					Msg("couldn't find manifest which is part of an image index")
 
-				return nil
+				return err
 			}
 
+			if err := copyManifest(localRepo, manifestBuf, manifest.Digest.String(),
+				cacheImageStore, imageStore, log); err != nil {
+				if errors.Is(err, zerr.ErrImageLintAnnotations) {
+					log.Error().Str("errorType", TypeOf(err)).
+						Err(err).Msg("couldn't upload manifest because of missing annotations")
+
+					return nil
+				}
+
+				return err
+			}
+		}
+
+		_, err = imageStore.PutImageManifest(localRepo, reference, mediaType, manifestContent)
+		if err != nil {
+			log.Error().Str("errorType", TypeOf(err)).
+				Err(err).Msg("couldn't upload manifest")
+
 			return err
 		}
-	}
-
-	_, err = imageStore.PutImageManifest(localRepo, reference, mediaType, manifestContent)
-	if err != nil {
-		log.Error().Str("errorType", TypeOf(err)).
-			Err(err).Msg("couldn't upload manifest")
-
-		return err
 	}
 
 	return nil

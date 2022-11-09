@@ -309,14 +309,14 @@ func syncRegistry(ctx context.Context, regCfg RegistryConfig,
 
 			// get upstream signatures
 			cosignManifest, err := sig.getCosignManifest(upstreamRepo, upstreamImageDigest.String())
-			if err != nil && !errors.Is(err, zerr.ErrSyncSignatureNotFound) {
+			if err != nil && !errors.Is(err, zerr.ErrSyncReferrerNotFound) {
 				log.Error().Err(err).Msgf("couldn't get upstream image %s cosign manifest", upstreamImageRef.DockerReference())
 
 				return err
 			}
 
-			refs, err := sig.getNotaryRefs(upstreamRepo, upstreamImageDigest.String())
-			if err != nil && !errors.Is(err, zerr.ErrSyncSignatureNotFound) {
+			refs, err := sig.getNotarySignatures(upstreamRepo, upstreamImageDigest.String())
+			if err != nil && !errors.Is(err, zerr.ErrSyncReferrerNotFound) {
 				log.Error().Err(err).Msgf("couldn't get upstream image %s notary references", upstreamImageRef.DockerReference())
 
 				return err
@@ -382,6 +382,16 @@ func syncRegistry(ctx context.Context, regCfg RegistryConfig,
 
 			// sync signatures
 			if err = retry.RetryIfNecessary(ctx, func() error {
+				index, err := sig.getOCIRefs(upstreamRepo, upstreamImageDigest.String())
+				if err != nil && !errors.Is(err, zerr.ErrSyncReferrerNotFound) {
+					return err
+				}
+
+				err = sig.syncOCIRefs(localRepo, upstreamRepo, upstreamImageDigest.String(), index)
+				if err != nil {
+					return err
+				}
+
 				err = sig.syncNotarySignature(localRepo, upstreamRepo, upstreamImageDigest.String(), refs)
 				if err != nil {
 					return err
@@ -395,7 +405,7 @@ func syncRegistry(ctx context.Context, regCfg RegistryConfig,
 				return nil
 			}, retryOptions); err != nil {
 				log.Error().Str("errorType", TypeOf(err)).
-					Err(err).Msgf("couldn't copy notary signature for %s", upstreamImageRef.DockerReference())
+					Err(err).Msgf("couldn't copy referrer for %s", upstreamImageRef.DockerReference())
 			}
 		}
 	}

@@ -34,6 +34,7 @@ import (
 	gqlPlayground "zotregistry.io/zot/pkg/debug/gqlplayground"
 	debug "zotregistry.io/zot/pkg/debug/swagger"
 	ext "zotregistry.io/zot/pkg/extensions"
+	"zotregistry.io/zot/pkg/extensions/sync"
 	"zotregistry.io/zot/pkg/log"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/storage"
@@ -413,7 +414,6 @@ func getReferrers(ctx context.Context, routeHandler *RouteHandler,
 	imgStore storage.ImageStore, name string, digest godigest.Digest,
 	artifactType string,
 ) (ispec.Index, error) {
-	// first get the subject and then all its referrers
 	references, err := imgStore.GetReferrers(name, digest, artifactType)
 	if err != nil {
 		if routeHandler.c.Config.Extensions != nil &&
@@ -423,22 +423,11 @@ func getReferrers(ctx context.Context, routeHandler *RouteHandler,
 				name, digest)
 
 			errSync := ext.SyncOneImage(ctx, routeHandler.c.Config, routeHandler.c.StoreController,
-				name, digest.String(), false, routeHandler.c.Log)
+				name, digest.String(), sync.OCIReference, routeHandler.c.Log)
 			if errSync != nil {
 				routeHandler.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).Msg("unable to get references")
 
 				return ispec.Index{}, err
-			}
-
-			for _, ref := range references.Manifests {
-				errSync := ext.SyncOneImage(ctx, routeHandler.c.Config, routeHandler.c.StoreController,
-					name, ref.Digest.String(), false, routeHandler.c.Log)
-				if errSync != nil {
-					routeHandler.c.Log.Error().Err(err).Str("name", name).
-						Str("digest", ref.Digest.String()).Msg("unable to get references")
-
-					return ispec.Index{}, err
-				}
 			}
 
 			references, err = imgStore.GetReferrers(name, digest, artifactType)
@@ -1589,7 +1578,7 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 					name, reference)
 
 				errSync := ext.SyncOneImage(ctx, routeHandler.c.Config, routeHandler.c.StoreController,
-					name, reference, false, routeHandler.c.Log)
+					name, reference, "", routeHandler.c.Log)
 				if errSync != nil {
 					routeHandler.c.Log.Err(errSync).Msgf("error encounter while syncing image %s:%s",
 						name, reference)
@@ -1619,7 +1608,7 @@ func getOrasReferrers(ctx context.Context, routeHandler *RouteHandler,
 				name, digest.String())
 
 			errSync := ext.SyncOneImage(ctx, routeHandler.c.Config, routeHandler.c.StoreController,
-				name, digest.String(), true, routeHandler.c.Log)
+				name, digest.String(), sync.OrasArtifact, routeHandler.c.Log)
 			if errSync != nil {
 				routeHandler.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).Msg("unable to get references")
 

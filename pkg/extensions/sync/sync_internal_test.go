@@ -385,6 +385,17 @@ func TestSyncInternal(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		So(canBeSkipped, ShouldBeFalse)
 
+		err = sig.syncOCIRefs(testImage, testImage, testImageManifestDigest.String(),
+			ispec.Index{Manifests: []ispec.Descriptor{
+				{
+					MediaType: ispec.MediaTypeImageManifest,
+				},
+			}})
+		So(err, ShouldNotBeNil)
+
+		err = syncSignaturesArtifacts(sig, testImage, testImage, testImageManifestDigest.String(), OCIReference)
+		So(err, ShouldNotBeNil)
+
 		cosignManifest := ispec.Manifest{
 			Layers: []ispec.Descriptor{{Digest: "fakeDigest"}},
 		}
