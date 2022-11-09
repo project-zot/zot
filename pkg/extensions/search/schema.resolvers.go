@@ -14,12 +14,12 @@ import (
 )
 
 // CVEListForImage is the resolver for the CVEListForImage field.
-func (r *queryResolver) CVEListForImage(ctx context.Context, image string) (*gql_generated.CVEResultForImage, error) {
+func (r *queryResolver) CVEListForImage(ctx context.Context, image string, requestedPage *gql_generated.PageInput) (*gql_generated.CVEResultForImage, error) {
 	if r.cveInfo == nil {
 		return &gql_generated.CVEResultForImage{}, zerr.ErrCVESearchDisabled
 	}
 
-	return getCVEListForImage(ctx, image, r.cveInfo, r.log)
+	return getCVEListForImage(ctx, image, r.cveInfo, requestedPage, r.log)
 }
 
 // ImageListForCve is the resolver for the ImageListForCVE field.

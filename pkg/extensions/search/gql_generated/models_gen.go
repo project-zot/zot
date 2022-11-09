@@ -25,8 +25,9 @@ type Cve struct {
 
 // Contains the tag of the image and a list of CVEs
 type CVEResultForImage struct {
-	Tag     *string `json:"Tag"`
-	CVEList []*Cve  `json:"CVEList"`
+	Tag     *string   `json:"Tag"`
+	CVEList []*Cve    `json:"CVEList"`
+	Page    *PageInfo `json:"Page"`
 }
 
 type Filter struct {
@@ -167,6 +168,7 @@ const (
 	SortCriteriaUpdateTime    SortCriteria = "UPDATE_TIME"
 	SortCriteriaAlphabeticAsc SortCriteria = "ALPHABETIC_ASC"
 	SortCriteriaAlphabeticDsc SortCriteria = "ALPHABETIC_DSC"
+	SortCriteriaSeverity      SortCriteria = "SEVERITY"
 	SortCriteriaStars         SortCriteria = "STARS"
 	SortCriteriaDownloads     SortCriteria = "DOWNLOADS"
 )
@@ -176,13 +178,14 @@ var AllSortCriteria = []SortCriteria{
 	SortCriteriaUpdateTime,
 	SortCriteriaAlphabeticAsc,
 	SortCriteriaAlphabeticDsc,
+	SortCriteriaSeverity,
 	SortCriteriaStars,
 	SortCriteriaDownloads,
 }
 
 func (e SortCriteria) IsValid() bool {
 	switch e {
-	case SortCriteriaRelevance, SortCriteriaUpdateTime, SortCriteriaAlphabeticAsc, SortCriteriaAlphabeticDsc, SortCriteriaStars, SortCriteriaDownloads:
+	case SortCriteriaRelevance, SortCriteriaUpdateTime, SortCriteriaAlphabeticAsc, SortCriteriaAlphabeticDsc, SortCriteriaSeverity, SortCriteriaStars, SortCriteriaDownloads:
 		return true
 	}
 	return false

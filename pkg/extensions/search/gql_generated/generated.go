@@ -58,6 +58,7 @@ type ComplexityRoot struct {
 
 	CVEResultForImage struct {
 		CVEList func(childComplexity int) int
+		Page    func(childComplexity int) int
 		Tag     func(childComplexity int) int
 	}
 
@@ -144,7 +145,7 @@ type ComplexityRoot struct {
 
 	Query struct {
 		BaseImageList           func(childComplexity int, image string) int
-		CVEListForImage         func(childComplexity int, image string) int
+		CVEListForImage         func(childComplexity int, image string, requestedPage *PageInput) int
 		DerivedImageList        func(childComplexity int, image string) int
 		ExpandedRepoInfo        func(childComplexity int, repo string) int
 		GlobalSearch            func(childComplexity int, query string, filter *Filter, requestedPage *PageInput) int
@@ -186,7 +187,7 @@ type ComplexityRoot struct {
 }
 
 type QueryResolver interface {
-	CVEListForImage(ctx context.Context, image string) (*CVEResultForImage, error)
+	CVEListForImage(ctx context.Context, image string, requestedPage *PageInput) (*CVEResultForImage, error)
 	ImageListForCve(ctx context.Context, id string, requestedPage *PageInput) ([]*ImageSummary, error)
 	ImageListWithCVEFixed(ctx context.Context, id string, image string, requestedPage *PageInput) ([]*ImageSummary, error)
 	ImageListForDigest(ctx context.Context, id string, requestedPage *PageInput) ([]*ImageSummary, error)
@@ -270,6 +271,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.CVEResultForImage.CVEList(childComplexity), true
+
+	case "CVEResultForImage.Page":
+		if e.complexity.CVEResultForImage.Page == nil {
+			break
+		}
+
+		return e.complexity.CVEResultForImage.Page(childComplexity), true
 
 	case "CVEResultForImage.Tag":
 		if e.complexity.CVEResultForImage.Tag == nil {
@@ -636,7 +644,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 			return 0, false
 		}
 
-		return e.complexity.Query.CVEListForImage(childComplexity, args["image"].(string)), true
+		return e.complexity.Query.CVEListForImage(childComplexity, args["image"].(string), args["requestedPage"].(*PageInput)), true
 
 	case "Query.DerivedImageList":
 		if e.complexity.Query.DerivedImageList == nil {
@@ -947,6 +955,7 @@ Contains the tag of the image and a list of CVEs
 type CVEResultForImage {
     Tag: String
     CVEList: [CVE]
+    Page: PageInfo
 }
 
 """
@@ -1103,6 +1112,7 @@ enum SortCriteria {
     UPDATE_TIME
     ALPHABETIC_ASC
     ALPHABETIC_DSC
+    SEVERITY
     STARS
     DOWNLOADS
 }
@@ -1141,9 +1151,9 @@ input Filter {
 
 type Query {
     """
-    Returns a CVE list for the image specified in the arugment
+    Returns a CVE list for the image specified in the argument. Format image:tag
     """
-    CVEListForImage(image: String!): CVEResultForImage!
+    CVEListForImage(image: String!, requestedPage: PageInput): CVEResultForImage!
 
     """
     Returns a list of images vulnerable to the CVE of the specified ID
@@ -1236,6 +1246,15 @@ func (ec *executionContext) field_Query_CVEListForImage_args(ctx context.Context
 		}
 	}
 	args["image"] = arg0
+	var arg1 *PageInput
+	if tmp, ok := rawArgs["requestedPage"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
+		arg1, err = ec.unmarshalOPageInput2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["requestedPage"] = arg1
 	return args, nil
 }
 
@@ -1907,6 +1926,53 @@ func (ec *executionContext) fieldContext_CVEResultForImage_CVEList(ctx context.C
 				return ec.fieldContext_CVE_PackageList(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type CVE", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _CVEResultForImage_Page(ctx context.Context, field graphql.CollectedField, obj *CVEResultForImage) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_CVEResultForImage_Page(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Page, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*PageInfo)
+	fc.Result = res
+	return ec.marshalOPageInfo2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInfo(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_CVEResultForImage_Page(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "CVEResultForImage",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "TotalCount":
+				return ec.fieldContext_PageInfo_TotalCount(ctx, field)
+			case "ItemCount":
+				return ec.fieldContext_PageInfo_ItemCount(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type PageInfo", field.Name)
 		},
 	}
 	return fc, nil
@@ -4114,7 +4180,7 @@ func (ec *executionContext) _Query_CVEListForImage(ctx context.Context, field gr
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().CVEListForImage(rctx, fc.Args["image"].(string))
+		return ec.resolvers.Query().CVEListForImage(rctx, fc.Args["image"].(string), fc.Args["requestedPage"].(*PageInput))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -4143,6 +4209,8 @@ func (ec *executionContext) fieldContext_Query_CVEListForImage(ctx context.Conte
 				return ec.fieldContext_CVEResultForImage_Tag(ctx, field)
 			case "CVEList":
 				return ec.fieldContext_CVEResultForImage_CVEList(ctx, field)
+			case "Page":
+				return ec.fieldContext_CVEResultForImage_Page(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type CVEResultForImage", field.Name)
 		},
@@ -8037,6 +8105,10 @@ func (ec *executionContext) _CVEResultForImage(ctx context.Context, sel ast.Sele
 		case "CVEList":
 
 			out.Values[i] = ec._CVEResultForImage_CVEList(ctx, field, obj)
+
+		case "Page":
+
+			out.Values[i] = ec._CVEResultForImage_Page(ctx, field, obj)
 
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))

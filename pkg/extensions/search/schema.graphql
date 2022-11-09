@@ -6,6 +6,7 @@ Contains the tag of the image and a list of CVEs
 type CVEResultForImage {
     Tag: String
     CVEList: [CVE]
+    Page: PageInfo
 }
 
 """
@@ -162,6 +163,7 @@ enum SortCriteria {
     UPDATE_TIME
     ALPHABETIC_ASC
     ALPHABETIC_DSC
+    SEVERITY
     STARS
     DOWNLOADS
 }
@@ -200,9 +202,9 @@ input Filter {
 
 type Query {
     """
-    Returns a CVE list for the image specified in the arugment
+    Returns a CVE list for the image specified in the argument. Format image:tag
     """
-    CVEListForImage(image: String!): CVEResultForImage!
+    CVEListForImage(image: String!, requestedPage: PageInput): CVEResultForImage!
 
     """
     Returns a list of images vulnerable to the CVE of the specified ID
