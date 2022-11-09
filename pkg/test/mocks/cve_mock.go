@@ -9,7 +9,7 @@ import (
 type CveInfoMock struct {
 	GetImageListForCVEFn       func(repo, cveID string) ([]common.TagInfo, error)
 	GetImageListWithCVEFixedFn func(repo, cveID string) ([]common.TagInfo, error)
-	GetCVEListForImageFn       func(image string) (map[string]cvemodel.CVE, error)
+	GetCVEListForImageFn       func(image string) ([]cvemodel.CVE, error)
 	GetCVESummaryForImageFn    func(image string) (cveinfo.ImageCVESummary, error)
 	UpdateDBFn                 func() error
 }
@@ -30,12 +30,12 @@ func (cveInfo CveInfoMock) GetImageListWithCVEFixed(repo, cveID string) ([]commo
 	return []common.TagInfo{}, nil
 }
 
-func (cveInfo CveInfoMock) GetCVEListForImage(image string) (map[string]cvemodel.CVE, error) {
+func (cveInfo CveInfoMock) GetCVEListForImage(image string) ([]cvemodel.CVE, error) {
 	if cveInfo.GetCVEListForImageFn != nil {
 		return cveInfo.GetCVEListForImageFn(image)
 	}
 
-	return map[string]cvemodel.CVE{}, nil
+	return []cvemodel.CVE{}, nil
 }
 
 func (cveInfo CveInfoMock) GetCVESummaryForImage(image string) (cveinfo.ImageCVESummary, error) {
