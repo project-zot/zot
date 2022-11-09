@@ -1182,57 +1182,52 @@ func TestCVEStruct(t *testing.T) {
 		t.Log("Test GetCVEListForImage")
 
 		// Image is found
-		cveMap, err := cveInfo.GetCVEListForImage("repo1:0.1.0")
+		cveList, err := cveInfo.GetCVEListForImage("repo1:0.1.0")
 		So(err, ShouldBeNil)
-		So(len(cveMap), ShouldEqual, 1)
-		So(cveMap, ShouldContainKey, "CVE1")
-		So(cveMap, ShouldNotContainKey, "CVE2")
-		So(cveMap, ShouldNotContainKey, "CVE3")
+		So(len(cveList), ShouldEqual, 1)
+		So(cveList[0].ID, ShouldEqual, "CVE1")
 
-		cveMap, err = cveInfo.GetCVEListForImage("repo1:1.0.0")
+		cveList, err = cveInfo.GetCVEListForImage("repo1:1.0.0")
 		So(err, ShouldBeNil)
-		So(len(cveMap), ShouldEqual, 3)
-		So(cveMap, ShouldContainKey, "CVE1")
-		So(cveMap, ShouldContainKey, "CVE2")
-		So(cveMap, ShouldContainKey, "CVE3")
+		So(len(cveList), ShouldEqual, 3)
+		So(cveList[0].ID, ShouldEqual, "CVE2")
+		So(cveList[1].ID, ShouldEqual, "CVE1")
+		So(cveList[2].ID, ShouldEqual, "CVE3")
 
-		cveMap, err = cveInfo.GetCVEListForImage("repo1:1.0.1")
+		cveList, err = cveInfo.GetCVEListForImage("repo1:1.0.1")
 		So(err, ShouldBeNil)
-		So(len(cveMap), ShouldEqual, 2)
-		So(cveMap, ShouldContainKey, "CVE1")
-		So(cveMap, ShouldNotContainKey, "CVE2")
-		So(cveMap, ShouldContainKey, "CVE3")
+		So(len(cveList), ShouldEqual, 2)
+		So(cveList[0].ID, ShouldEqual, "CVE1")
+		So(cveList[1].ID, ShouldEqual, "CVE3")
 
-		cveMap, err = cveInfo.GetCVEListForImage("repo1:1.1.0")
+		cveList, err = cveInfo.GetCVEListForImage("repo1:1.1.0")
 		So(err, ShouldBeNil)
-		So(len(cveMap), ShouldEqual, 1)
-		So(cveMap, ShouldNotContainKey, "CVE1")
-		So(cveMap, ShouldNotContainKey, "CVE2")
-		So(cveMap, ShouldContainKey, "CVE3")
+		So(len(cveList), ShouldEqual, 1)
+		So(cveList[0].ID, ShouldEqual, "CVE3")
 
-		cveMap, err = cveInfo.GetCVEListForImage("repo6:1.0.0")
+		cveList, err = cveInfo.GetCVEListForImage("repo6:1.0.0")
 		So(err, ShouldBeNil)
-		So(len(cveMap), ShouldEqual, 0)
+		So(len(cveList), ShouldEqual, 0)
 
 		// Image is not scannable
-		cveMap, err = cveInfo.GetCVEListForImage("repo2:1.0.0")
+		cveList, err = cveInfo.GetCVEListForImage("repo2:1.0.0")
 		So(err, ShouldEqual, zerr.ErrScanNotSupported)
-		So(len(cveMap), ShouldEqual, 0)
+		So(len(cveList), ShouldEqual, 0)
 
 		// Tag is not found
-		cveMap, err = cveInfo.GetCVEListForImage("repo3:1.0.0")
+		cveList, err = cveInfo.GetCVEListForImage("repo3:1.0.0")
 		So(err, ShouldEqual, zerr.ErrTagMetaNotFound)
-		So(len(cveMap), ShouldEqual, 0)
+		So(len(cveList), ShouldEqual, 0)
 
 		// Manifest is not found
-		cveMap, err = cveInfo.GetCVEListForImage("repo5:nonexitent-manifest")
+		cveList, err = cveInfo.GetCVEListForImage("repo5:nonexitent-manifest")
 		So(err, ShouldEqual, zerr.ErrManifestMetaNotFound)
-		So(len(cveMap), ShouldEqual, 0)
+		So(len(cveList), ShouldEqual, 0)
 
 		// Repo is not found
-		cveMap, err = cveInfo.GetCVEListForImage("repo100:1.0.0")
+		cveList, err = cveInfo.GetCVEListForImage("repo100:1.0.0")
 		So(err, ShouldEqual, zerr.ErrRepoMetaNotFound)
-		So(len(cveMap), ShouldEqual, 0)
+		So(len(cveList), ShouldEqual, 0)
 
 		t.Log("Test GetImageListWithCVEFixed")
 
@@ -1355,9 +1350,9 @@ func TestCVEStruct(t *testing.T) {
 		So(cveSummary.Count, ShouldEqual, 0)
 		So(cveSummary.MaxSeverity, ShouldEqual, "")
 
-		cveMap, err = cveInfo.GetCVEListForImage("repo1:0.1.0")
+		cveList, err = cveInfo.GetCVEListForImage("repo1:0.1.0")
 		So(err, ShouldNotBeNil)
-		So(cveMap, ShouldBeNil)
+		So(cveList, ShouldBeEmpty)
 
 		tagList, err = cveInfo.GetImageListWithCVEFixed("repo1", "CVE1")
 		// CVE is not considered fixed as scan is not possible

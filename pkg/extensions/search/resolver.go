@@ -174,7 +174,7 @@ func getCVEListForImage(
 	cveInfo cveinfo.CveInfo,
 	log log.Logger, //nolint:unparam // may be used by devs for debugging
 ) (*gql_generated.CVEResultForImage, error) {
-	cveidMap, err := cveInfo.GetCVEListForImage(image)
+	cveList, err := cveInfo.GetCVEListForImage(image)
 	if err != nil {
 		return &gql_generated.CVEResultForImage{}, err
 	}
@@ -183,8 +183,8 @@ func getCVEListForImage(
 
 	cveids := []*gql_generated.Cve{}
 
-	for id, cveDetail := range cveidMap {
-		vulID := id
+	for _, cveDetail := range cveList {
+		vulID := cveDetail.ID
 		desc := cveDetail.Description
 		title := cveDetail.Title
 		severity := cveDetail.Severity
