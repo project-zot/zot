@@ -134,7 +134,7 @@ jobs:
       - name: Build and push zot container image
         uses: project-stacker/stacker-build-push-action@main
         with:
-          file: 'stacker.yaml'
+          file: 'build/stacker.yaml'
           build-args: |
             RELEASE_TAG=${{ github.event.release.tag_name }}
             COMMIT=${{ github.event.release.tag_name }}-${{ github.sha }}
@@ -180,7 +180,7 @@ jobs:
       - name: Build and push zot-minimal container image
         uses: project-stacker/stacker-build-push-action@main
         with:
-          file: 'stacker.yaml'
+          file: 'build/stacker.yaml'
           build-args: |
             RELEASE_TAG=${{ github.event.release.tag_name }}
             COMMIT=${{ github.event.release.tag_name }}-${{ github.sha }}
@@ -227,7 +227,7 @@ jobs:
       - name: Build and push zot-exporter container image
         uses: project-stacker/stacker-build-push-action@main
         with:
-          file: 'stacker-zxp.yaml'
+          file: 'build/stacker-zxp.yaml'
           build-args: |
             RELEASE_TAG=${{ github.event.release.tag_name }}
             COMMIT=${{ github.event.release.tag_name }}-${{ github.sha }}
@@ -273,7 +273,7 @@ jobs:
       - name: Build and push zb container image
         uses: project-stacker/stacker-build-push-action@main
         with:
-          file: 'stacker-zb.yaml'
+          file: 'build/stacker-zb.yaml'
           build-args: |
             RELEASE_TAG=${{ github.event.release.tag_name }}
             COMMIT=${{ github.event.release.tag_name }}-${{ github.sha }}

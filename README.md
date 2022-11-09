@@ -125,7 +125,7 @@ Examples of config files are available in [examples/](examples/) dir.
 
 # Container Image
 
-The [Dockerfile](./Dockerfile) in this repo can be used to build a container image
+The [Dockerfile](./build/Dockerfile) in this repo can be used to build a container image
 that runs _zot_.
 
 To build the image with ref `zot:latest`:

@@ -66,7 +66,7 @@ function teardown_file() {
 }
 
 @test "build image with podman and specify annotations" {
-    run podman build -t 127.0.0.1:8080/annotations:latest . --format oci --annotation org.opencontainers.image.vendor="CentOS" --annotation org.opencontainers.image.licenses="GPLv2"
+    run podman build -f build/Dockerfile -t 127.0.0.1:8080/annotations:latest . --format oci --annotation org.opencontainers.image.vendor="CentOS" --annotation org.opencontainers.image.licenses="GPLv2"
     [ "$status" -eq 0 ]
     run podman push 127.0.0.1:8080/annotations:latest --tls-verify=false --format=oci
     [ "$status" -eq 0 ]
