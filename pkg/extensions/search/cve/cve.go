@@ -3,6 +3,7 @@ package cveinfo
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -18,7 +19,7 @@ import (
 type CveInfo interface {
 	GetImageListForCVE(repo, cveID string) ([]common.TagInfo, error)
 	GetImageListWithCVEFixed(repo, cveID string) ([]common.TagInfo, error)
-	GetCVEListForImage(image string) (map[string]cvemodel.CVE, error)
+	GetCVEListForImage(image string) ([]cvemodel.CVE, error)
 	GetCVESummaryForImage(image string) (ImageCVESummary, error)
 	UpdateDB() error
 }
@@ -85,15 +86,11 @@ func (cveinfo BaseCveInfo) GetImageListForCVE(repo, cveID string) ([]common.TagI
 			continue
 		}
 
-		for id := range cveMap {
-			if id == cveID {
-				imgList = append(imgList, common.TagInfo{
-					Name:   tag,
-					Digest: manifestDigest,
-				})
-
-				break
-			}
+		if _, hasCVE := cveMap[cveID]; hasCVE {
+			imgList = append(imgList, common.TagInfo{
+				Name:   tag,
+				Digest: manifestDigest,
+			})
 		}
 	}
 
@@ -111,8 +108,6 @@ func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]commo
 
 	vulnerableTags := make([]common.TagInfo, 0)
 	allTags := make([]common.TagInfo, 0)
-
-	var hasCVE bool
 
 	for tag, manifestDigestStr := range repoMeta.Tags {
 		manifestDigest, err := godigest.Parse(manifestDigestStr)
@@ -171,17 +166,7 @@ func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]commo
 			continue
 		}
 
-		hasCVE = false
-
-		for id := range cveMap {
-			if id == cveID {
-				hasCVE = true
-
-				break
-			}
-		}
-
-		if hasCVE {
+		if _, hasCVE := cveMap[cveID]; hasCVE {
 			vulnerableTags = append(vulnerableTags, tagInfo)
 		}
 	}
@@ -201,15 +186,37 @@ func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]commo
 	return fixedTags, nil
 }
 
-func (cveinfo BaseCveInfo) GetCVEListForImage(image string) (map[string]cvemodel.CVE, error) {
-	cveMap := make(map[string]cvemodel.CVE)
-
+func (cveinfo BaseCveInfo) GetCVEListForImage(image string) ([]cvemodel.CVE, error) {
 	isValidImage, err := cveinfo.Scanner.IsImageFormatScannable(image)
 	if !isValidImage {
-		return cveMap, err
+		return []cvemodel.CVE{}, err
 	}
 
-	return cveinfo.Scanner.ScanImage(image)
+	cveMap, err := cveinfo.Scanner.ScanImage(image)
+	if err != nil {
+		return []cvemodel.CVE{}, err
+	}
+
+	cveIDList := []string{}
+	for cveID := range cveMap {
+		cveIDList = append(cveIDList, cveID)
+	}
+
+	// Sort based on package name, severity and vulnerabilityID
+	sort.SliceStable(cveIDList, func(i, j int) bool {
+		return cveinfo.Scanner.CompareSeverities(
+			cveMap[cveIDList[j]].Severity,
+			cveMap[cveIDList[i]].Severity,
+		) > 0
+	})
+
+	cveList := []cvemodel.CVE{}
+
+	for _, cveID := range cveIDList {
+		cveList = append(cveList, cveMap[cveID])
+	}
+
+	return cveList, nil
 }
 
 func (cveinfo BaseCveInfo) GetCVESummaryForImage(image string) (ImageCVESummary, error) {
