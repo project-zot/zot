@@ -77,7 +77,7 @@ jobs:
           sudo tar xvzf notation.tar.gz -C /usr/bin notation
           go install github.com/wadey/gocovmerge@latest
       - name: Run build and test
-        timeout-minutes: 60
+        timeout-minutes: 70
         run: |
           echo "Building for $OS:$ARCH"
           cd $GITHUB_WORKSPACE
