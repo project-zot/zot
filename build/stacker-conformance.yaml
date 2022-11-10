@@ -3,7 +3,7 @@ build:
     type: docker
     url: docker://ghcr.io/project-zot/golang:1.19
   binds:
-    - . -> /zotcopy
+    - ../. -> /zotcopy
   run: |
     export GO111MODULE=on 
     export GOPATH='/go'
@@ -33,26 +33,24 @@ build:
 
     cat config.json
 
-    mkdir -p /zotcopy/build/binary
-    mkdir -p /zotcopy/build/cert
-    mkdir -p /zotcopy/build/config
-    cp /go/src/github.com/project-zot/zot/bin/zot-linux-amd64 /zotcopy/build/binary
-    cp /go/src/github.com/project-zot/zot/config.json /zotcopy/build/config
-    cp /etc/ssl/certs/ca-certificates.crt /zotcopy/build/cert
+    mkdir -p /zotcopy/.build/${{REPO_NAME}}/binary
+    mkdir -p /zotcopy/.build/${{REPO_NAME}}/cert
+    mkdir -p /zotcopy/.build/${{REPO_NAME}}/config
+    cp /go/src/github.com/project-zot/zot/bin/zot-linux-amd64 /zotcopy/.build/${{REPO_NAME}}/binary
+    cp /go/src/github.com/project-zot/zot/config.json /zotcopy/.build/${{REPO_NAME}}/config
+    cp /etc/ssl/certs/ca-certificates.crt /zotcopy/.build/${{REPO_NAME}}/cert
   build_only: true
 
 "${{REPO_NAME:zot}}":
-  os: ${{OS}}
-  arch: ${{ARCH}}
   from:
     type: docker
     url: docker://gcr.io/distroless/base:latest-${{ARCH}}
   overlay_dirs:
-    - source: ./build/binary
+    - source: ../.build/${{REPO_NAME}}/binary
       dest: /usr/local/bin
-    - source: ./build/cert
+    - source: ../.build/${{REPO_NAME}}/cert
       dest: /etc/ssl/certs
-    - source: ./build/config
+    - source: ../.build/${{REPO_NAME}}/config
       dest: /etc/zot
   entrypoint:
     - /usr/bin/zot-linux-amd64
