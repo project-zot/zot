@@ -167,6 +167,7 @@ type ImageAnnotations struct {
 	Source        string
 	Labels        string
 	Vendor        string
+	Authors       string
 }
 
 /*
@@ -193,6 +194,12 @@ func GetDescription(annotations map[string]string) string {
 
 func GetVendor(annotations map[string]string) string {
 	return GetAnnotationValue(annotations, ispec.AnnotationVendor, LabelAnnotationVendor)
+}
+
+func GetAuthors(annotations map[string]string) string {
+	authors := annotations[ispec.AnnotationAuthors]
+
+	return authors
 }
 
 func GetTitle(annotations map[string]string) string {
@@ -232,7 +239,7 @@ func GetAnnotations(annotations, labels map[string]string) ImageAnnotations {
 
 	documentation := GetDocumentation(annotations)
 	if documentation == "" {
-		documentation = GetDocumentation(annotations)
+		documentation = GetDocumentation(labels)
 	}
 
 	source := GetSource(annotations)
@@ -255,6 +262,11 @@ func GetAnnotations(annotations, labels map[string]string) ImageAnnotations {
 		vendor = GetVendor(labels)
 	}
 
+	authors := GetAuthors(annotations)
+	if authors == "" {
+		authors = GetAuthors(labels)
+	}
+
 	return ImageAnnotations{
 		Description:   description,
 		Title:         title,
@@ -263,5 +275,6 @@ func GetAnnotations(annotations, labels map[string]string) ImageAnnotations {
 		Licenses:      licenses,
 		Labels:        categories,
 		Vendor:        vendor,
+		Authors:       authors,
 	}
 }

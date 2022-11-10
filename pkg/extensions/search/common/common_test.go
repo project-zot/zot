@@ -1984,6 +1984,150 @@ func TestGetRepositories(t *testing.T) {
 	})
 }
 
+func TestGlobalSearchImageAuthor(t *testing.T) {
+	port := GetFreePort()
+	baseURL := GetBaseURL(port)
+	conf := config.New()
+	conf.HTTP.Port = port
+	tempDir := t.TempDir()
+	conf.Storage.RootDirectory = tempDir
+
+	defaultVal := true
+	conf.Extensions = &extconf.ExtensionConfig{
+		Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+	}
+
+	conf.Extensions.Search.CVE = nil
+
+	ctlr := api.NewController(conf)
+
+	go func() {
+		// this blocks
+		if err := ctlr.Run(context.Background()); err != nil {
+			return
+		}
+	}()
+
+	// wait till ready
+	for {
+		_, err := resty.R().Get(baseURL)
+		if err == nil {
+			break
+		}
+
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// shut down server
+
+	defer func() {
+		ctx := context.Background()
+		_ = ctlr.Server.Shutdown(ctx)
+	}()
+
+	Convey("Test global search with author in manifest's annotations", t, func() {
+		cfg, layers, manifest, err := GetImageComponents(10000)
+		So(err, ShouldBeNil)
+
+		manifest.Annotations = make(map[string]string)
+		manifest.Annotations["org.opencontainers.image.authors"] = "author name"
+		err = UploadImage(
+			Image{
+				Config:   cfg,
+				Layers:   layers,
+				Manifest: manifest,
+				Tag:      "latest",
+			}, baseURL, "repowithauthor")
+
+		So(err, ShouldBeNil)
+
+		query := `
+			{
+				GlobalSearch(query:""){
+					Images {
+						RepoName
+						Tag
+						LastUpdated
+						Size
+						IsSigned
+						Vendor
+						Score
+						Platform {
+							Os
+							Arch
+						}
+						Vulnerabilities {
+							Count
+							MaxSeverity
+						}
+						Authors
+					}
+				}
+			}`
+		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		responseStruct := &GlobalSearchResultResp{}
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+
+		So(responseStruct.GlobalSearchResult.GlobalSearch.Images[0].Authors, ShouldEqual, "author name")
+	})
+
+	Convey("Test global search with author in manifest's config", t, func() {
+		cfg, layers, manifest, err := GetImageComponents(10000)
+		So(err, ShouldBeNil)
+
+		err = UploadImage(
+			Image{
+				Config:   cfg,
+				Layers:   layers,
+				Manifest: manifest,
+				Tag:      "latest",
+			}, baseURL, "repowithauthorconfig")
+
+		So(err, ShouldBeNil)
+
+		query := `
+			{
+				GlobalSearch(query:""){
+					Images {
+						RepoName
+						Tag
+						LastUpdated
+						Size
+						IsSigned
+						Vendor
+						Score
+						Platform {
+							Os
+							Arch
+						}
+						Vulnerabilities {
+							Count
+							MaxSeverity
+						}
+						Authors
+					}
+				}
+			}`
+		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		responseStruct := &GlobalSearchResultResp{}
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+
+		So(responseStruct.GlobalSearchResult.GlobalSearch.Images[1].Authors, ShouldEqual, "ZotUser")
+	})
+}
+
 func TestGlobalSearch(t *testing.T) {
 	Convey("Test global search", t, func() {
 		subpath := "/a"
