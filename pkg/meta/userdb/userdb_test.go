@@ -7,7 +7,6 @@ import (
 	"net/url"
 	"os"
 	"path"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -234,9 +233,8 @@ func TestGetExistingUser(t *testing.T) {
 }
 
 func TestUserMetadata(t *testing.T) {
-	startOfTest := time.Now()
-	zotServerRoot := t.TempDir()
-
+	// startOfTest := time.Now()
+	// zotServerRoot := t.TempDir()
 	Convey("UserMetadata", t, func(c C) {
 		conf := config.New()
 		port := test.GetFreePort() // "8080"
@@ -246,10 +244,10 @@ func TestUserMetadata(t *testing.T) {
 		conf.HTTP.Port = port
 		conf.HTTP.AllowOrigin = "*"
 		conf.Log.Level = "debug"
-		conf.Log.Output = fmt.Sprintf(filepath.Join(zotServerRoot, "zot%s.log"),
-			startOfTest.Local().Format("20060201_150405"))
-		So(conf.Log.Output, ShouldNotBeEmpty)
-		So(conf.Log.Output, ShouldNotContainSubstring, " ")
+		// conf.Log.Output = fmt.Sprintf(filepath.Join(zotServerRoot, "zot%s.log"),
+		// 	startOfTest.Local().Format("20060201_150405"))
+		// So(conf.Log.Output, ShouldNotBeEmpty)
+		// So(conf.Log.Output, ShouldNotContainSubstring, " ")
 
 		tempDir := t.TempDir() // "/tmp/zotd/root"
 		conf.Storage.RootDirectory = tempDir
