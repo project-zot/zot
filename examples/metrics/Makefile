@@ -2,7 +2,7 @@ CONTAINER_RUNTIME := docker
 
 .PHONY: binary-container
 binary-container:
-	${CONTAINER_RUNTIME} build -f Dockerfile -t zot-build:latest ../../.
+	${CONTAINER_RUNTIME} build -f build/Dockerfile -t zot-build:latest ../../.
 
 .PHONY: run-container
 run-container:
@@ -11,7 +11,7 @@ run-container:
 
 .PHONY: binary-minimal-container
 binary-minimal-container:
-	${CONTAINER_RUNTIME} build -f Dockerfile-minimal -t zot-minimal:latest ../../.
+	${CONTAINER_RUNTIME} build -f build/Dockerfile-minimal -t zot-minimal:latest ../../.
 
 .PHONY: run-minimal-container
 run-minimal-container:
@@ -20,7 +20,7 @@ run-minimal-container:
 
 .PHONY: binary-exporter-container
 binary-exporter-container:
-	${CONTAINER_RUNTIME} build -f Dockerfile-zxp -t zxp:latest ../../.
+	${CONTAINER_RUNTIME} build -f build/Dockerfile-zxp -t zxp:latest ../../.
 
 .PHONY: run-exporter-container
 run-exporter-container:

@@ -13,20 +13,20 @@ build:
     cd /go/src/github.com/project-zot
     git clone /zotcopy zot
     cd /go/src/github.com/project-zot/zot
-    make COMMIT=${{COMMIT}} clean binary
+    make COMMIT=${{COMMIT}} OS=${{OS}} ARCH=${{ARCH}} clean exporter-minimal
+
     cat > config.json << EOF
     {
-      "storage":{
-          "rootDirectory":"/var/lib/registry",
-          "gc": false,
-          "dedupe": false
+      "Server":{
+          "protocol":"http",
+          "host": "127.0.0.1",
+          "port": "5000"
       },
-      "http":{
-          "address":"0.0.0.0",
-          "port":"5000"
-      },
-      "log":{
-          "level":"debug"
+      "Exporter":{
+          "port":"5001",
+          "log":{
+            "level":"debug"
+          }
       }
     }
     EOF
@@ -34,28 +34,24 @@ build:
     cat config.json
 
     mkdir -p /zotcopy/build/binary
-    mkdir -p /zotcopy/build/cert
     mkdir -p /zotcopy/build/config
-    cp /go/src/github.com/project-zot/zot/bin/zot-linux-amd64 /zotcopy/build/binary
+    cp /go/src/github.com/project-zot/zot/bin/zxp-${{OS}}-${{ARCH}} /zotcopy/build/binary
     cp /go/src/github.com/project-zot/zot/config.json /zotcopy/build/config
-    cp /etc/ssl/certs/ca-certificates.crt /zotcopy/build/cert
   build_only: true
 
-"${{REPO_NAME:zot}}":
+"${{REPO_NAME:zxp}}":
+  os: ${{OS}}
+  arch: ${{ARCH}}
   from:
     type: docker
-    url: docker://gcr.io/distroless/base
+    url: docker://gcr.io/distroless/base:latest-${{ARCH}}
   overlay_dirs:
     - source: ./build/binary
       dest: /usr/local/bin
-    - source: ./build/cert
-      dest: /etc/ssl/certs
     - source: ./build/config
-      dest: /etc/zot
+      dest: /etc/zxp
   entrypoint:
-    - /usr/bin/zot-linux-amd64
-  volumes:
-    - /var/lib/registry
+    - /usr/local/bin/zxp-${{OS}}-${{ARCH}}
   cmd:
-    - serve
-    - /etc/zot/config.json
+    - config
+    - /etc/zxp/config.json

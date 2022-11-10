@@ -240,7 +240,7 @@ verify-gql-committed:
 
 .PHONY: binary-container
 binary-container:
-	${CONTAINER_RUNTIME} build ${BUILD_ARGS} -f Dockerfile -t zot-build:latest .
+	${CONTAINER_RUNTIME} build ${BUILD_ARGS} -f build/Dockerfile -t zot-build:latest .
 
 .PHONY: run-container
 run-container:
@@ -250,6 +250,7 @@ run-container:
 .PHONY: binary-stacker
 binary-stacker:
 	${STACKER} build \
+		-f build/stacker.yaml \
 		--substitute COMMIT=$(PWD) \
 		--substitute OS=$(OS) \
 		--substitute ARCH=$(ARCH) \
@@ -257,7 +258,7 @@ binary-stacker:
 
 .PHONY: image
 image:
-	${CONTAINER_RUNTIME} build ${BUILD_ARGS} -f Dockerfile -t zot:latest .
+	${CONTAINER_RUNTIME} build ${BUILD_ARGS} -f build/Dockerfile -t zot:latest .
 
 $(BATS):
 	rm -rf bats-core; \
