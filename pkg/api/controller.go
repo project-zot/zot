@@ -476,52 +476,18 @@ func (c *Controller) InitRepoDB(reloadCtx context.Context) error {
 }
 
 func (c *Controller) createRepoDBDriver(reloadCtx context.Context) (repodb.RepoDB, error) { //nolint:unparam
-	repoDBConfig := c.Config.Storage.RepoDBDriver
+	if c.Config.Storage.RemoteCache {
+		c.Log.Warn().Msgf("memote RepoDB implementation is not available yet, defaulting to local")
 
-	if repoDBConfig != nil {
-		if val, ok := repoDBConfig["name"]; ok {
-			assertedDriverNameVal, okAssert := val.(string)
-			if !okAssert {
-				c.Log.Error().Err(errors.ErrTypeAssertionFailed).Msgf("Failed type assertion for %v to string",
-					"cacheDatabaseDriverName")
-
-				return nil, errors.ErrTypeAssertionFailed
-			}
-
-			switch assertedDriverNameVal {
-			case "boltdb":
-				params := repodb.BoltDBParameters{}
-				boltRootDirCfgVarName := "rootDirectory"
-
-				// default values
-				params.RootDir = c.StoreController.DefaultStore.RootDir()
-
-				if rootDirVal, ok := repoDBConfig[boltRootDirCfgVarName]; ok {
-					assertedRootDir, okAssert := rootDirVal.(string)
-					if !okAssert {
-						c.Log.Error().Err(errors.ErrTypeAssertionFailed).Msgf("Failed type assertion for %v to string", rootDirVal)
-
-						return nil, errors.ErrTypeAssertionFailed
-					}
-					params.RootDir = assertedRootDir
-				}
-
-				return repodbfactory.Create("boltdb", params)
-			default:
-				c.Log.Warn().Msgf("Cache DB driver not found for %v: defaulting to boltdb (local storage)", val)
-
-				return repodbfactory.Create("boltdb", repodb.BoltDBParameters{
-					RootDir: c.StoreController.DefaultStore.RootDir(),
-				})
-			}
-		}
+		return repodbfactory.Create("boltdb", repodb.BoltDBParameters{
+			RootDir: c.StoreController.DefaultStore.RootDir(),
+		})
 	}
 
-	c.Log.Warn().Msg(`Something went wrong when reading the cachedb config. Defulting to BoltDB`)
+	params := repodb.BoltDBParameters{}
+	params.RootDir = c.StoreController.DefaultStore.RootDir()
 
-	return repodbfactory.Create("boltdb", repodb.BoltDBParameters{
-		RootDir: c.StoreController.DefaultStore.RootDir(),
-	})
+	return repodbfactory.Create("boltdb", params)
 }
 
 func (c *Controller) LoadNewConfig(reloadCtx context.Context, config *config.Config) {
