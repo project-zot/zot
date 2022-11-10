@@ -2,10 +2,7 @@
     "distSpecVersion": "1.0.1-dev",
     "storage": {
         "rootDirectory": "/tmp/zot",
-        "repoDBDriver": {
-            "name": "boltdb",
-            "rootDirectory": "/tmp/zot/cachedb"
-        }
+        "remoteCache": true
     },
     "extensions": {
         "search": {
