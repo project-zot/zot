@@ -30,7 +30,6 @@ func OnUpdateManifest(name, reference string, digest godigest.Digest, body []byt
 
 		log.Error().Err(err).Msg("can't check if image is a signature or not")
 
-		// TODO:
 		if err := imgStore.DeleteImageManifest(name, reference, false); err != nil {
 			log.Error().Err(err).Msgf("couldn't remove image manifest %s in repo %s", reference, name)
 
@@ -62,7 +61,6 @@ func OnUpdateManifest(name, reference string, digest godigest.Digest, body []byt
 	if !metadataSuccessfullySet {
 		log.Info().Msgf("uploding image meta was unsuccessful for tag %s in repo %s", reference, name)
 
-		// TODO:
 		if err := imgStore.DeleteImageManifest(name, reference, false); err != nil {
 			log.Error().Err(err).Msgf("couldn't remove image manifest %s in repo %s", reference, name)
 

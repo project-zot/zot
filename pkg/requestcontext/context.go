@@ -4,6 +4,7 @@ import (
 	"context"
 
 	glob "github.com/bmatcuk/doublestar/v4" //nolint:gci
+
 	"zotregistry.io/zot/errors"
 )
 

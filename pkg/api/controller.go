@@ -161,7 +161,7 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 
 	c.Metrics = monitoring.NewMetricsServer(enabled, c.Log)
 
-	if err := c.InitImageStore(); err != nil {
+	if err := c.InitImageStore(reloadCtx); err != nil {
 		return err
 	}
 
@@ -257,7 +257,7 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 	return server.Serve(listener)
 }
 
-func (c *Controller) InitImageStore() error {
+func (c *Controller) InitImageStore(ctx context.Context) error {
 	c.StoreController = storage.StoreController{}
 
 	linter := ext.GetLinter(c.Config, c.Log)
@@ -504,15 +504,15 @@ func (c *Controller) InitRepoDB(reloadCtx context.Context) error {
 
 func (c *Controller) createRepoDBDriver(reloadCtx context.Context) (repodb.RepoDB, error) { //nolint:unparam
 	if c.Config.Storage.RemoteCache {
-		c.Log.Warn().Msgf("memote RepoDB implementation is not available yet, defaulting to local")
+		c.Log.Warn().Msgf("remote RepoDB implementation is not available yet, defaulting to local")
 
 		return repodbfactory.Create("boltdb", repodb.BoltDBParameters{
-			RootDir: c.StoreController.DefaultStore.RootDir(),
+			RootDir: c.Config.Storage.RootDirectory,
 		})
 	}
 
 	params := repodb.BoltDBParameters{}
-	params.RootDir = c.StoreController.DefaultStore.RootDir()
+	params.RootDir = c.Config.Storage.RootDirectory
 
 	return repodbfactory.Create("boltdb", params)
 }
