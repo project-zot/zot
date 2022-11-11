@@ -3,7 +3,7 @@ build:
     type: docker
     url: docker://ghcr.io/project-zot/golang:1.19
   binds:
-    - . -> /zotcopy
+    - ../. -> /zotcopy
   run: |
     export GO111MODULE=on 
     export GOPATH='/go'
@@ -15,18 +15,16 @@ build:
     cd /go/src/github.com/project-zot/zot
     make COMMIT=${{COMMIT}} OS=${{OS}} ARCH=${{ARCH}} clean bench
 
-    mkdir -p /zotcopy/build/binary
-    cp /go/src/github.com/project-zot/zot/bin/zb-${{OS}}-${{ARCH}} /zotcopy/build/binary
+    mkdir -p /zotcopy/.build/${{REPO_NAME}}/binary
+    cp /go/src/github.com/project-zot/zot/bin/zb-${{OS}}-${{ARCH}} /zotcopy/.build/${{REPO_NAME}}/binary
   build_only: true
 
 "${{REPO_NAME:zb}}":
-  os: ${{OS}}
-  arch: ${{ARCH}}
   from:
     type: docker
     url: docker://gcr.io/distroless/base:latest-${{ARCH}}
   overlay_dirs:
-    - source: ./build/binary
+    - source: ../.build/${{REPO_NAME}}/binary
       dest: /usr/local/bin
   entrypoint:
     - /usr/local/bin/zb-${{OS}}-${{ARCH}}
