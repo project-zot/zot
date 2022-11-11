@@ -24,6 +24,11 @@ func BuildImageInfo(repo string, tag string, manifestDigest godigest.Digest,
 	annotations := common.GetAnnotations(manifest.Annotations, imageConfig.Config.Labels)
 	lastUpdated := common.GetImageLastUpdated(imageConfig)
 
+	authors := annotations.Authors
+	if authors == "" {
+		authors = imageConfig.Author
+	}
+
 	history := imageConfig.History
 	if len(history) == 0 {
 		for _, layer := range manifest.Layers {
@@ -64,6 +69,7 @@ func BuildImageInfo(repo string, tag string, manifestDigest godigest.Digest,
 			Licenses:      &annotations.Licenses,
 			Labels:        &annotations.Labels,
 			Source:        &annotations.Source,
+			Authors:       &authors,
 			LastUpdated:   &lastUpdated,
 			IsSigned:      &isSigned,
 			Platform: &gql_generated.OsArch{
@@ -113,6 +119,7 @@ func BuildImageInfo(repo string, tag string, manifestDigest godigest.Digest,
 				Licenses:      &annotations.Licenses,
 				Labels:        &annotations.Labels,
 				Source:        &annotations.Source,
+				Authors:       &authors,
 				LastUpdated:   &lastUpdated,
 				IsSigned:      &isSigned,
 				Platform: &gql_generated.OsArch{
@@ -158,6 +165,7 @@ func BuildImageInfo(repo string, tag string, manifestDigest godigest.Digest,
 		Licenses:      &annotations.Licenses,
 		Labels:        &annotations.Labels,
 		Source:        &annotations.Source,
+		Authors:       &authors,
 		LastUpdated:   &lastUpdated,
 		IsSigned:      &isSigned,
 		Platform: &gql_generated.OsArch{
