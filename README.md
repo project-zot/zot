@@ -5,8 +5,12 @@
 https://zotregistry.io
 
 [```docker pull ghcr.io/project-zot/zot-linux-amd64:latest```](https://github.com/project-zot/zot/pkgs/container/zot)
-
 [```docker run -p 5000:5000 ghcr.io/project-zot/zot-linux-amd64:latest```](https://github.com/project-zot/zot/pkgs/container/zot)
+
+Or for the minimal sized image:
+
+[```docker pull ghcr.io/project-zot/zot-minimal-linux-amd64:latest```](https://github.com/project-zot/zot/pkgs/container/zot) 
+[```docker run -p 5000:5000 ghcr.io/project-zot/zot-minimal-linux-amd64:latest```](https://github.com/project-zot/zot/pkgs/container/zot)
 
 **Check the [package repository](https://github.com/orgs/project-zot/packages?repo_name=zot) for your os/arch**
 
