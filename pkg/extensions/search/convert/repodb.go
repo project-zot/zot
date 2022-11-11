@@ -87,6 +87,11 @@ func RepoMeta2RepoSummary(ctx context.Context, repoMeta repodb.RepoMetadata,
 
 		annotations := common.GetAnnotations(manifestContent.Annotations, configContent.Config.Labels)
 
+		authors := annotations.Authors
+		if authors == "" {
+			authors = configContent.Author
+		}
+
 		historyEntries, err := getAllHistory(manifestContent, configContent)
 		if err != nil {
 			graphql.AddError(ctx, gqlerror.Errorf("error generating history on tag %s in repo %s: "+
@@ -113,6 +118,7 @@ func RepoMeta2RepoSummary(ctx context.Context, repoMeta repodb.RepoMetadata,
 			Licenses:      &annotations.Licenses,
 			Labels:        &annotations.Labels,
 			Source:        &annotations.Source,
+			Authors:       &authors,
 			History:       historyEntries,
 			Vulnerabilities: &gql_generated.ImageVulnerabilitySummary{
 				MaxSeverity: &imageCveSummary.MaxSeverity,
@@ -262,6 +268,11 @@ func RepoMeta2ImageSummaries(ctx context.Context, repoMeta repodb.RepoMetadata,
 
 		annotations := common.GetAnnotations(manifestContent.Annotations, configContent.Config.Labels)
 
+		authors := annotations.Authors
+		if authors == "" {
+			authors = configContent.Author
+		}
+
 		historyEntries, err := getAllHistory(manifestContent, configContent)
 		if err != nil {
 			graphql.AddError(ctx, gqlerror.Errorf("error generating history on tag %s in repo %s: "+
@@ -286,6 +297,7 @@ func RepoMeta2ImageSummaries(ctx context.Context, repoMeta repodb.RepoMetadata,
 			Licenses:      &annotations.Licenses,
 			Labels:        &annotations.Labels,
 			Source:        &annotations.Source,
+			Authors:       &authors,
 			History:       historyEntries,
 			Vulnerabilities: &gql_generated.ImageVulnerabilitySummary{
 				MaxSeverity: &imageCveSummary.MaxSeverity,
@@ -366,6 +378,11 @@ func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta repodb.RepoMetadata
 
 		annotations := common.GetAnnotations(manifestContent.Annotations, configContent.Config.Labels)
 
+		authors := annotations.Authors
+		if authors == "" {
+			authors = configContent.Author
+		}
+
 		imageCveSummary := cveinfo.ImageCVESummary{}
 
 		imageSummary := gql_generated.ImageSummary{
@@ -386,6 +403,7 @@ func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta repodb.RepoMetadata
 			Licenses:      &annotations.Licenses,
 			Labels:        &annotations.Labels,
 			Source:        &annotations.Source,
+			Authors:       &authors,
 			Vulnerabilities: &gql_generated.ImageVulnerabilitySummary{
 				MaxSeverity: &imageCveSummary.MaxSeverity,
 				Count:       &imageCveSummary.Count,

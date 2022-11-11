@@ -3,6 +3,7 @@ package update
 import (
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/pkg/errors"
+
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/repodb"
@@ -29,7 +30,6 @@ func OnUpdateManifest(name, reference string, digest godigest.Digest, body []byt
 
 		log.Error().Err(err).Msg("can't check if image is a signature or not")
 
-		// TODO:
 		if err := imgStore.DeleteImageManifest(name, reference, false); err != nil {
 			log.Error().Err(err).Msgf("couldn't remove image manifest %s in repo %s", reference, name)
 
@@ -61,7 +61,6 @@ func OnUpdateManifest(name, reference string, digest godigest.Digest, body []byt
 	if !metadataSuccessfullySet {
 		log.Info().Msgf("uploding image meta was unsuccessful for tag %s in repo %s", reference, name)
 
-		// TODO:
 		if err := imgStore.DeleteImageManifest(name, reference, false); err != nil {
 			log.Error().Err(err).Msgf("couldn't remove image manifest %s in repo %s", reference, name)
 
@@ -143,11 +142,11 @@ func OnGetManifest(name, reference string, digest godigest.Digest, body []byte,
 			log.Warn().Err(err).Msg("image has signature format but it doesn't sign any image")
 
 			return err
-		} else {
-			log.Error().Err(err).Msg("can't check if manifest is a signature or not")
-
-			return err
 		}
+
+		log.Error().Err(err).Msg("can't check if manifest is a signature or not")
+
+		return err
 	}
 
 	if !isSignature {
@@ -162,7 +161,7 @@ func OnGetManifest(name, reference string, digest godigest.Digest, body []byte,
 	return nil
 }
 
-// setMetadataFromInput recieves raw information about the manifest pushed and tries to set manifest metadata
+// setMetadataFromInput receives raw information about the manifest pushed and tries to set manifest metadata
 // and update repo metadata by adding the current tag (in case the reference is a tag).
 // The function expects image manifest.
 func setMetadataFromInput(repo, reference string, digest godigest.Digest, manifestBlob []byte,

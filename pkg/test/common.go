@@ -609,7 +609,7 @@ func UploadImage(img Image, baseURL, repo string) error {
 	return err
 }
 
-func UploadArtifact(baseURL, repo string, artifactManifest *imagespec.Artifact) error {
+func UploadArtifact(baseURL, repo string, artifactManifest *ispec.Artifact) error {
 	// put manifest
 	artifactManifestBlob, err := json.Marshal(artifactManifest)
 	if err != nil {
@@ -619,7 +619,7 @@ func UploadArtifact(baseURL, repo string, artifactManifest *imagespec.Artifact) 
 	artifactManifestDigest := godigest.FromBytes(artifactManifestBlob)
 
 	_, err = resty.R().
-		SetHeader("Content-type", imagespec.MediaTypeArtifactManifest).
+		SetHeader("Content-type", ispec.MediaTypeArtifactManifest).
 		SetBody(artifactManifestBlob).
 		Put(baseURL + "/v2/" + repo + "/manifests/" + artifactManifestDigest.String())
 

@@ -693,6 +693,9 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 		} else if errors.Is(err, zerr.ErrManifestNotFound) {
 			WriteJSON(response, http.StatusNotFound,
 				NewErrorList(NewError(MANIFEST_UNKNOWN, map[string]string{"reference": reference})))
+		} else if errors.Is(err, zerr.ErrManifestConflict) {
+			WriteJSON(response, http.StatusConflict,
+				NewErrorList(NewError(MANIFEST_INVALID, map[string]string{"reference": reference})))
 		} else if errors.Is(err, zerr.ErrBadManifest) {
 			WriteJSON(response, http.StatusBadRequest,
 				NewErrorList(NewError(UNSUPPORTED, map[string]string{"reference": reference})))

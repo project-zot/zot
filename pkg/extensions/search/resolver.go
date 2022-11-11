@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/99designs/gqlgen/graphql"
-	glob "github.com/bmatcuk/doublestar/v4"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
@@ -530,25 +529,6 @@ func getReferrers(store storage.ImageStore, repoName string, digest string, arti
 	}
 
 	return results, nil
-}
-
-// returns either a user has or not rights on 'repository'.
-func matchesRepo(globPatterns map[string]bool, repository string) bool {
-	var longestMatchedPattern string
-
-	// because of the longest path matching rule, we need to check all patterns from config
-	for pattern := range globPatterns {
-		matched, err := glob.Match(pattern, repository)
-		if err == nil {
-			if matched && len(pattern) > len(longestMatchedPattern) {
-				longestMatchedPattern = pattern
-			}
-		}
-	}
-
-	allowed := globPatterns[longestMatchedPattern]
-
-	return allowed
 }
 
 // get passed context from authzHandler and filter out repos based on permissions.
