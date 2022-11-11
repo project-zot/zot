@@ -41,6 +41,8 @@ build:
   build_only: true
 
 "${{REPO_NAME:zot}}":
+  os: ${{OS}}
+  arch: ${{ARCH}}
   from:
     type: docker
     url: docker://gcr.io/distroless/base:latest-${{ARCH}}
