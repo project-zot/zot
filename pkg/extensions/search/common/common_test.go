@@ -1883,29 +1883,9 @@ func TestGlobalSearchImageAuthor(t *testing.T) {
 
 	ctlr := api.NewController(conf)
 
-	go func() {
-		// this blocks
-		if err := ctlr.Run(context.Background()); err != nil {
-			return
-		}
-	}()
-
-	// wait till ready
-	for {
-		_, err := resty.R().Get(baseURL)
-		if err == nil {
-			break
-		}
-
-		time.Sleep(100 * time.Millisecond)
-	}
-
-	// shut down server
-
-	defer func() {
-		ctx := context.Background()
-		_ = ctlr.Server.Shutdown(ctx)
-	}()
+	go startServer(ctlr)
+	defer stopServer(ctlr)
+	WaitTillServerReady(baseURL)
 
 	Convey("Test global search with author in manifest's annotations", t, func() {
 		cfg, layers, manifest, err := GetImageComponents(10000)
@@ -1925,23 +1905,10 @@ func TestGlobalSearchImageAuthor(t *testing.T) {
 
 		query := `
 			{
-				GlobalSearch(query:""){
+				GlobalSearch(query:"repowithauthor:latest"){
 					Images {
-						RepoName
-						Tag
-						LastUpdated
-						Size
-						IsSigned
-						Vendor
-						Score
-						Platform {
-							Os
-							Arch
-						}
-						Vulnerabilities {
-							Count
-							MaxSeverity
-						}
+						RepoName Tag LastUpdated Size IsSigned Vendor Score
+						Platform { Os Arch }
 						Authors
 					}
 				}
@@ -1951,12 +1918,40 @@ func TestGlobalSearchImageAuthor(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		responseStruct := &GlobalSearchResultResp{}
+		responseStructImages := &GlobalSearchResultResp{}
 
-		err = json.Unmarshal(resp.Body(), responseStruct)
+		err = json.Unmarshal(resp.Body(), responseStructImages)
 		So(err, ShouldBeNil)
 
-		So(responseStruct.GlobalSearchResult.GlobalSearch.Images[0].Authors, ShouldEqual, "author name")
+		So(responseStructImages.GlobalSearchResult.GlobalSearch.Images[0].Authors, ShouldEqual, "author name")
+
+		query = `
+		{
+			GlobalSearch(query:"repowithauthor"){
+				Repos {
+					Name LastUpdated Size
+					Platforms { Os Arch }
+					Vendors Score
+					NewestImage {
+						RepoName Tag LastUpdated Size IsSigned Vendor Score
+						Platform { Os Arch }
+						Authors
+					}
+				}
+			}
+		}`
+
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		responseStructRepos := &GlobalSearchResultResp{}
+
+		err = json.Unmarshal(resp.Body(), responseStructRepos)
+		So(err, ShouldBeNil)
+
+		So(responseStructRepos.GlobalSearchResult.GlobalSearch.Repos[0].NewestImage.Authors, ShouldEqual, "author name")
 	})
 
 	Convey("Test global search with author in manifest's config", t, func() {
@@ -1975,23 +1970,10 @@ func TestGlobalSearchImageAuthor(t *testing.T) {
 
 		query := `
 			{
-				GlobalSearch(query:""){
+				GlobalSearch(query:"repowithauthorconfig:latest"){
 					Images {
-						RepoName
-						Tag
-						LastUpdated
-						Size
-						IsSigned
-						Vendor
-						Score
-						Platform {
-							Os
-							Arch
-						}
-						Vulnerabilities {
-							Count
-							MaxSeverity
-						}
+						RepoName Tag LastUpdated Size IsSigned Vendor Score
+						Platform { Os Arch }
 						Authors
 					}
 				}
@@ -2001,12 +1983,40 @@ func TestGlobalSearchImageAuthor(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		responseStruct := &GlobalSearchResultResp{}
+		responseStructImages := &GlobalSearchResultResp{}
 
-		err = json.Unmarshal(resp.Body(), responseStruct)
+		err = json.Unmarshal(resp.Body(), responseStructImages)
 		So(err, ShouldBeNil)
 
-		So(responseStruct.GlobalSearchResult.GlobalSearch.Images[1].Authors, ShouldEqual, "ZotUser")
+		So(responseStructImages.GlobalSearchResult.GlobalSearch.Images[0].Authors, ShouldEqual, "ZotUser")
+
+		query = `
+		{
+			GlobalSearch(query:"repowithauthorconfig"){
+				Repos {
+					Name LastUpdated Size
+					Platforms { Os Arch }
+					Vendors Score
+					NewestImage {
+						RepoName Tag LastUpdated Size IsSigned Vendor Score
+						Platform { Os Arch }
+						Authors
+					}
+				}
+			}
+		}`
+
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		responseStructRepos := &GlobalSearchResultResp{}
+
+		err = json.Unmarshal(resp.Body(), responseStructRepos)
+		So(err, ShouldBeNil)
+
+		So(responseStructRepos.GlobalSearchResult.GlobalSearch.Repos[0].NewestImage.Authors, ShouldEqual, "ZotUser")
 	})
 }
 
