@@ -3818,6 +3818,8 @@ func (ec *executionContext) fieldContext_PaginatedImagesResult_Results(ctx conte
 				return ec.fieldContext_ImageSummary_History(ctx, field)
 			case "Vulnerabilities":
 				return ec.fieldContext_ImageSummary_Vulnerabilities(ctx, field)
+			case "Authors":
+				return ec.fieldContext_ImageSummary_Authors(ctx, field)
 			case "Logo":
 				return ec.fieldContext_ImageSummary_Logo(ctx, field)
 			}
