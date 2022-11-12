@@ -40,6 +40,8 @@ build:
   build_only: true
 
 "${{REPO_NAME:zxp}}":
+  os: ${{OS}}
+  arch: ${{ARCH}}
   from:
     type: docker
     url: docker://gcr.io/distroless/base:latest-${{ARCH}}
