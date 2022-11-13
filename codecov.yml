@@ -5,3 +5,4 @@ ignore:
     - "./pkg/cli/minimal.go"
     - "./cmd/zb/*.go"
     - "./pkg/test/mocks/*.go"
+    - "./swagger/*.go"
