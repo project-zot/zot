@@ -4,11 +4,17 @@
 
 https://zotregistry.io
 
-[```docker pull ghcr.io/project-zot/zot-linux-amd64:latest```](https://github.com/project-zot/zot/pkgs/container/zot)
+For the full-featured (with all extensions enabled):
 
-[```docker run -p 5000:5000 ghcr.io/project-zot/zot-linux-amd64:latest```](https://github.com/project-zot/zot/pkgs/container/zot)
+[```docker pull ghcr.io/project-zot/zot-linux-amd64:latest```](https://github.com/project-zot/zot/pkgs/container/zot-linux-amd64)
+[```docker run -p 5000:5000 ghcr.io/project-zot/zot-linux-amd64:latest```](https://github.com/project-zot/zot/pkgs/container/zot-linux-amd64)
 
-**Check the [package repository](https://github.com/orgs/project-zot/packages?repo_name=zot) for your os/arch**
+Or for the minimal image (for the security-minded and extensions stripped):
+
+[```docker pull ghcr.io/project-zot/zot-minimal-linux-amd64:latest```](https://github.com/project-zot/zot/pkgs/container/zot-minimal-linux-amd64)
+[```docker run -p 5000:5000 ghcr.io/project-zot/zot-minimal-linux-amd64:latest```](https://github.com/project-zot/zot/pkgs/container/zot-minimal-linux-amd64)
+
+**Check the [package repository](https://github.com/orgs/project-zot/packages?repo_name=zot) for your os/arch (linux/arm64, darwin/amd64, darwin/arm64)**
 
 The following document refers on the **core dist-spec**, see also the [zot-specific extensions spec](pkg/extensions/README.md)
 
