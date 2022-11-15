@@ -11,6 +11,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"os/exec"
 	"path"
 	"regexp"
 	"strings"
@@ -255,6 +256,46 @@ func TestSearchImageCmd(t *testing.T) {
 	})
 }
 
+func SignImageUsingNotary(repoTag, port string) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+
+	defer func() { _ = os.Chdir(cwd) }()
+
+	tdir, err := os.MkdirTemp("", "notation")
+	if err != nil {
+		return err
+	}
+
+	defer os.RemoveAll(tdir)
+
+	_ = os.Chdir(tdir)
+
+	_, err = exec.LookPath("notation")
+	if err != nil {
+		return err
+	}
+
+	os.Setenv("XDG_CONFIG_HOME", tdir)
+
+	// generate a keypair
+	cmd := exec.Command("notation", "cert", "generate-test", "--trust", "notation-sign-test")
+
+	err = cmd.Run()
+	if err != nil {
+		return err
+	}
+
+	// sign the image
+	image := fmt.Sprintf("localhost:%s/%s", port, repoTag)
+
+	cmd = exec.Command("notation", "sign", "--key", "notation-sign-test", "--plain-http", image)
+
+	return cmd.Run()
+}
+
 func TestSignature(t *testing.T) {
 	Convey("Test from real server", t, func() {
 		currentWorkingDir, err := os.Getwd()
@@ -376,7 +417,140 @@ func TestSignature(t *testing.T) {
 		str := space.ReplaceAllString(buff.String(), " ")
 		actual := strings.TrimSpace(str)
 		So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIGNED SIZE")
-		So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 true")
+		So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 true 15B")
+
+		t.Log("Test getting all images using rest calls to get catalog and individual manifests")
+		cmd = MockNewImageCommand(new(searchService))
+		buff = &bytes.Buffer{}
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err = cmd.Execute()
+		So(err, ShouldBeNil)
+		str = space.ReplaceAllString(buff.String(), " ")
+		actual = strings.TrimSpace(str)
+		So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIGNED SIZE")
+		So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 true 492B")
+
+		err = os.Chdir(currentWorkingDir)
+		So(err, ShouldBeNil)
+	})
+
+	Convey("Test with notation signature", t, func() {
+		currentWorkingDir, err := os.Getwd()
+		So(err, ShouldBeNil)
+
+		currentDir := t.TempDir()
+		err = os.Chdir(currentDir)
+		So(err, ShouldBeNil)
+
+		port := test.GetFreePort()
+		url := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+		}
+		ctlr := api.NewController(conf)
+		ctlr.Config.Storage.RootDirectory = currentDir
+		go func(controller *api.Controller) {
+			// this blocks
+			if err := controller.Run(context.Background()); err != nil {
+				return
+			}
+		}(ctlr)
+		// wait till ready
+		for {
+			_, err := resty.R().Get(url)
+			if err == nil {
+				break
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+		defer func(controller *api.Controller) {
+			ctx := context.Background()
+			_ = controller.Server.Shutdown(ctx)
+		}(ctlr)
+
+		// create a blob/layer
+		resp, _ := resty.R().Post(url + "/v2/repo7/blobs/uploads/")
+		loc := test.Location(url, resp)
+
+		content := []byte("this is a blob5")
+		digest := godigest.FromBytes(content)
+		_, _ = resty.R().SetQueryParam("digest", digest.String()).
+			SetHeader("Content-Type", "application/octet-stream").SetBody(content).Put(loc)
+
+		// upload image config blob
+		resp, _ = resty.R().Post(url + "/v2/repo7/blobs/uploads/")
+		loc = test.Location(url, resp)
+		cblob, cdigest := test.GetImageConfig()
+
+		_, _ = resty.R().
+			SetContentLength(true).
+			SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", cdigest.String()).
+			SetBody(cblob).
+			Put(loc)
+
+		// create a manifest
+		manifest := ispec.Manifest{
+			Config: ispec.Descriptor{
+				MediaType: "application/vnd.oci.image.config.v1+json",
+				Digest:    cdigest,
+				Size:      int64(len(cblob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    digest,
+					Size:      int64(len(content)),
+				},
+			},
+		}
+		manifest.SchemaVersion = 2
+
+		content, err = json.Marshal(manifest)
+		So(err, ShouldBeNil)
+
+		_, _ = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+			SetBody(content).Put(url + "/v2/repo7/manifests/0.0.1")
+
+		err = SignImageUsingNotary("repo7:0.0.1", port)
+		So(err, ShouldBeNil)
+
+		t.Logf("%s", ctlr.Config.Storage.RootDirectory)
+		args := []string{"imagetest"}
+		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
+		defer os.Remove(configPath)
+		cmd := NewImageCommand(new(searchService))
+		buff := &bytes.Buffer{}
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err = cmd.Execute()
+		So(err, ShouldBeNil)
+		space := regexp.MustCompile(`\s+`)
+		str := space.ReplaceAllString(buff.String(), " ")
+		actual := strings.TrimSpace(str)
+		So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIGNED SIZE")
+		So(actual, ShouldContainSubstring, "repo7 0.0.1 883fc0c5 true 15B")
+
+		t.Log("Test getting all images using rest calls to get catalog and individual manifests")
+		cmd = MockNewImageCommand(new(searchService))
+		buff = &bytes.Buffer{}
+		cmd.SetOut(buff)
+		cmd.SetErr(buff)
+		cmd.SetArgs(args)
+		err = cmd.Execute()
+		So(err, ShouldBeNil)
+		str = space.ReplaceAllString(buff.String(), " ")
+		actual = strings.TrimSpace(str)
+		So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIGNED SIZE")
+		So(actual, ShouldContainSubstring, "repo7 0.0.1 883fc0c5 true 492B")
 
 		err = os.Chdir(currentWorkingDir)
 		So(err, ShouldBeNil)

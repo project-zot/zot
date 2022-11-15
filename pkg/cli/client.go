@@ -17,10 +17,15 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
+	notreg "github.com/notaryproject/notation-go/registry"
+	"github.com/sigstore/cosign/pkg/oci/remote"
+
 	zotErrors "zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/storage/local"
 )
 
@@ -297,6 +302,33 @@ func (p *requestsPool) doJob(ctx context.Context, job *manifestJob) {
 		p.outputCh <- stringResult{"", err}
 	}
 
+	isSigned := false
+	cosignTag := strings.Replace(digestStr, ":", "-", 1) + "." + remote.SignatureTagSuffix
+
+	_, err = makeGETRequest(ctx, *job.config.servURL+"/v2/"+job.imageName+
+		"/manifests/"+cosignTag, job.username, job.password,
+		*job.config.verifyTLS, *job.config.debug, &job.manifestResp, job.config.resultWriter)
+	if err == nil {
+		isSigned = true
+	}
+
+	var referrers api.ReferenceList
+
+	if !isSigned {
+		_, err = makeGETRequest(ctx, fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers?artifactType=%s",
+			*job.config.servURL, job.imageName, digestStr, notreg.ArtifactTypeNotation), job.username, job.password,
+			*job.config.verifyTLS, *job.config.debug, &referrers, job.config.resultWriter)
+		if err == nil {
+			for _, reference := range referrers.References {
+				if reference.ArtifactType == notreg.ArtifactTypeNotation {
+					isSigned = true
+
+					break
+				}
+			}
+		}
+	}
+
 	size += uint64(manifestSize)
 
 	image := &imageStruct{}
@@ -307,6 +339,7 @@ func (p *requestsPool) doJob(ctx context.Context, job *manifestJob) {
 	image.Size = strconv.Itoa(int(size))
 	image.ConfigDigest = configDigest
 	image.Layers = layers
+	image.IsSigned = isSigned
 
 	str, err := image.string(*job.config.outputFormat, len(job.imageName), len(job.tagName))
 	if err != nil {
