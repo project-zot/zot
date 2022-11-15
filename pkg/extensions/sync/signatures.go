@@ -11,7 +11,7 @@ import (
 	notreg "github.com/notaryproject/notation-go/registry"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
+	oras "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/sigstore/cosign/pkg/oci/remote"
 	"gopkg.in/resty.v1"
 
@@ -51,7 +51,7 @@ func (sig *signaturesCopier) getCosignManifest(repo, digestStr string) (*ispec.M
 	getCosignManifestURL.RawQuery = getCosignManifestURL.Query().Encode()
 
 	resp, err := sig.client.R().
-		SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+		SetHeader("Content-Type", ispec.MediaTypeImageManifest).
 		Get(getCosignManifestURL.String())
 	if err != nil {
 		sig.log.Error().Str("errorType", TypeOf(err)).
@@ -65,13 +65,13 @@ func (sig *signaturesCopier) getCosignManifest(repo, digestStr string) (*ispec.M
 		sig.log.Info().Msgf("couldn't find any cosign signature from %s, status code: %d skipping",
 			getCosignManifestURL.String(), resp.StatusCode())
 
-		return nil, zerr.ErrSyncSignatureNotFound
+		return nil, zerr.ErrSyncReferrerNotFound
 	} else if resp.IsError() {
-		sig.log.Error().Str("errorType", TypeOf(zerr.ErrSyncSignature)).
-			Err(zerr.ErrSyncSignature).Msgf("couldn't get cosign signature from %s, status code: %d skipping",
+		sig.log.Error().Str("errorType", TypeOf(zerr.ErrSyncReferrer)).
+			Err(zerr.ErrSyncReferrer).Msgf("couldn't get cosign signature from %s, status code: %d skipping",
 			getCosignManifestURL.String(), resp.StatusCode())
 
-		return nil, zerr.ErrSyncSignature
+		return nil, zerr.ErrSyncReferrer
 	}
 
 	err = json.Unmarshal(resp.Body(), &cosignManifest)
@@ -86,7 +86,7 @@ func (sig *signaturesCopier) getCosignManifest(repo, digestStr string) (*ispec.M
 	return &cosignManifest, nil
 }
 
-func (sig *signaturesCopier) getNotaryRefs(repo, digestStr string) (ReferenceList, error) {
+func (sig *signaturesCopier) getNotarySignatures(repo, digestStr string) (ReferenceList, error) {
 	var referrers ReferenceList
 
 	getReferrersURL := sig.upstreamURL
@@ -112,13 +112,13 @@ func (sig *signaturesCopier) getNotaryRefs(repo, digestStr string) (ReferenceLis
 		sig.log.Info().Msgf("couldn't find any notary signature from %s, status code: %d, skipping",
 			getReferrersURL.String(), resp.StatusCode())
 
-		return ReferenceList{}, zerr.ErrSyncSignatureNotFound
+		return ReferenceList{}, zerr.ErrSyncReferrerNotFound
 	} else if resp.IsError() {
-		sig.log.Error().Str("errorType", TypeOf(zerr.ErrSyncSignature)).
-			Err(zerr.ErrSyncSignature).Msgf("couldn't get notary signature from %s, status code: %d skipping",
+		sig.log.Error().Str("errorType", TypeOf(zerr.ErrSyncReferrer)).
+			Err(zerr.ErrSyncReferrer).Msgf("couldn't get notary signature from %s, status code: %d skipping",
 			getReferrersURL.String(), resp.StatusCode())
 
-		return ReferenceList{}, zerr.ErrSyncSignature
+		return ReferenceList{}, zerr.ErrSyncReferrer
 	}
 
 	err = json.Unmarshal(resp.Body(), &referrers)
@@ -131,6 +131,50 @@ func (sig *signaturesCopier) getNotaryRefs(repo, digestStr string) (ReferenceLis
 	}
 
 	return referrers, nil
+}
+
+func (sig *signaturesCopier) getOCIRefs(repo, digestStr string) (ispec.Index, error) {
+	var index ispec.Index
+
+	getReferrersURL := sig.upstreamURL
+	// based on manifest digest get referrers
+	getReferrersURL.Path = path.Join(getReferrersURL.Path, "v2", repo, "referrers", digestStr)
+
+	getReferrersURL.RawQuery = getReferrersURL.Query().Encode()
+
+	resp, err := sig.client.R().
+		SetHeader("Content-Type", "application/json").
+		Get(getReferrersURL.String())
+	if err != nil {
+		sig.log.Error().Str("errorType", TypeOf(err)).
+			Err(err).Str("url", getReferrersURL.String()).Msg("couldn't get referrers")
+
+		return index, err
+	}
+
+	if resp.StatusCode() == http.StatusNotFound {
+		sig.log.Info().Msgf("couldn't find any oci reference from %s, status code: %d, skipping",
+			getReferrersURL.String(), resp.StatusCode())
+
+		return index, zerr.ErrSyncReferrerNotFound
+	} else if resp.IsError() {
+		sig.log.Error().Str("errorType", TypeOf(zerr.ErrSyncReferrer)).
+			Err(zerr.ErrSyncReferrer).Msgf("couldn't get oci reference from %s, status code: %d skipping",
+			getReferrersURL.String(), resp.StatusCode())
+
+		return index, zerr.ErrSyncReferrer
+	}
+
+	err = json.Unmarshal(resp.Body(), &index)
+	if err != nil {
+		sig.log.Error().Str("errorType", TypeOf(err)).
+			Err(err).Str("url", getReferrersURL.String()).
+			Msgf("couldn't unmarshal oci reference")
+
+		return index, err
+	}
+
+	return index, nil
 }
 
 func (sig *signaturesCopier) syncCosignSignature(localRepo, remoteRepo, digestStr string,
@@ -158,65 +202,13 @@ func (sig *signaturesCopier) syncCosignSignature(localRepo, remoteRepo, digestSt
 	sig.log.Info().Msg("syncing cosign signatures")
 
 	for _, blob := range cosignManifest.Layers {
-		// get blob
-		getBlobURL := sig.upstreamURL
-		getBlobURL.Path = path.Join(getBlobURL.Path, "v2", remoteRepo, "blobs", blob.Digest.String())
-		getBlobURL.RawQuery = getBlobURL.Query().Encode()
-
-		resp, err := sig.client.R().SetDoNotParseResponse(true).Get(getBlobURL.String())
-		if err != nil {
-			sig.log.Error().Str("errorType", TypeOf(err)).
-				Err(err).Msgf("couldn't get cosign blob: %s", blob.Digest.String())
-
-			return err
-		}
-
-		if resp.IsError() {
-			sig.log.Info().Msgf("couldn't find cosign blob from %s, status code: %d", getBlobURL.String(), resp.StatusCode())
-
-			return zerr.ErrSyncSignature
-		}
-
-		defer resp.RawBody().Close()
-
-		// push blob
-		_, _, err = imageStore.FullBlobUpload(localRepo, resp.RawBody(), blob.Digest)
-		if err != nil {
-			sig.log.Error().Str("errorType", TypeOf(err)).
-				Err(err).Msg("couldn't upload cosign blob")
-
+		if err := syncBlob(sig, imageStore, localRepo, remoteRepo, blob.Digest); err != nil {
 			return err
 		}
 	}
 
-	// get config blob
-	getBlobURL := sig.upstreamURL
-	getBlobURL.Path = path.Join(getBlobURL.Path, "v2", remoteRepo, "blobs", cosignManifest.Config.Digest.String())
-	getBlobURL.RawQuery = getBlobURL.Query().Encode()
-
-	resp, err := sig.client.R().SetDoNotParseResponse(true).Get(getBlobURL.String())
-	if err != nil {
-		sig.log.Error().Str("errorType", TypeOf(err)).
-			Err(err).Msgf("couldn't get cosign config blob: %s", getBlobURL.String())
-
-		return err
-	}
-
-	if resp.IsError() {
-		sig.log.Info().Msgf("couldn't find cosign config blob from %s, status code: %d",
-			getBlobURL.String(), resp.StatusCode())
-
-		return zerr.ErrSyncSignature
-	}
-
-	defer resp.RawBody().Close()
-
-	// push config blob
-	_, _, err = imageStore.FullBlobUpload(localRepo, resp.RawBody(), cosignManifest.Config.Digest)
-	if err != nil {
-		sig.log.Error().Str("errorType", TypeOf(err)).
-			Err(err).Msg("couldn't upload cosign config blob")
-
+	// sync config blob
+	if err := syncBlob(sig, imageStore, localRepo, remoteRepo, cosignManifest.Config.Digest); err != nil {
 		return err
 	}
 
@@ -248,7 +240,7 @@ func (sig *signaturesCopier) syncNotarySignature(localRepo, remoteRepo, digestSt
 	}
 
 	skipNotarySig, err := sig.canSkipNotarySignature(localRepo, digestStr, referrers)
-	if skipNotarySig || err != nil {
+	if err != nil {
 		sig.log.Error().Err(err).Msgf("couldn't check if the upstream image %s:%s notary signature can be skipped",
 			remoteRepo, digestStr)
 	}
@@ -268,6 +260,7 @@ func (sig *signaturesCopier) syncNotarySignature(localRepo, remoteRepo, digestSt
 		getRefManifestURL.RawQuery = getRefManifestURL.Query().Encode()
 
 		resp, err := sig.client.R().
+			SetHeader("Content-Type", ref.MediaType).
 			Get(getRefManifestURL.String())
 		if err != nil {
 			sig.log.Error().Str("errorType", TypeOf(err)).
@@ -277,7 +270,7 @@ func (sig *signaturesCopier) syncNotarySignature(localRepo, remoteRepo, digestSt
 		}
 
 		// read manifest
-		var artifactManifest artifactspec.Manifest
+		var artifactManifest oras.Manifest
 
 		err = json.Unmarshal(resp.Body(), &artifactManifest)
 		if err != nil {
@@ -288,38 +281,13 @@ func (sig *signaturesCopier) syncNotarySignature(localRepo, remoteRepo, digestSt
 		}
 
 		for _, blob := range artifactManifest.Blobs {
-			getBlobURL := sig.upstreamURL
-			getBlobURL.Path = path.Join(getBlobURL.Path, "v2", remoteRepo, "blobs", blob.Digest.String())
-			getBlobURL.RawQuery = getBlobURL.Query().Encode()
-
-			resp, err := sig.client.R().SetDoNotParseResponse(true).Get(getBlobURL.String())
-			if err != nil {
-				sig.log.Error().Str("errorType", TypeOf(err)).
-					Err(err).Msgf("couldn't get notary blob: %s", getBlobURL.String())
-
-				return err
-			}
-
-			defer resp.RawBody().Close()
-
-			if resp.IsError() {
-				sig.log.Info().Msgf("couldn't find notary blob from %s, status code: %d",
-					getBlobURL.String(), resp.StatusCode())
-
-				return zerr.ErrSyncSignature
-			}
-
-			_, _, err = imageStore.FullBlobUpload(localRepo, resp.RawBody(), blob.Digest)
-			if err != nil {
-				sig.log.Error().Str("errorType", TypeOf(err)).
-					Err(err).Msg("couldn't upload notary sig blob")
-
+			if err := syncBlob(sig, imageStore, localRepo, remoteRepo, blob.Digest); err != nil {
 				return err
 			}
 		}
 
 		_, err = imageStore.PutImageManifest(localRepo, ref.Digest.String(),
-			artifactspec.MediaTypeArtifactManifest, resp.Body())
+			oras.MediaTypeArtifactManifest, resp.Body())
 		if err != nil {
 			sig.log.Error().Str("errorType", TypeOf(err)).
 				Err(err).Msg("couldn't upload notary sig manifest")
@@ -329,6 +297,97 @@ func (sig *signaturesCopier) syncNotarySignature(localRepo, remoteRepo, digestSt
 	}
 
 	sig.log.Info().Msgf("successfully synced notary signature for repo %s digest %s", localRepo, digestStr)
+
+	return nil
+}
+
+func (sig *signaturesCopier) syncOCIRefs(localRepo, remoteRepo, digestStr string, index ispec.Index,
+) error {
+	if len(index.Manifests) == 0 {
+		return nil
+	}
+
+	skipOCIRefs, err := sig.canSkipOCIRefs(localRepo, digestStr, index)
+	if err != nil {
+		sig.log.Error().Err(err).Msgf("couldn't check if the upstream image %s:%s oci references can be skipped",
+			remoteRepo, digestStr)
+	}
+
+	if skipOCIRefs {
+		return nil
+	}
+
+	imageStore := sig.storeController.GetImageStore(localRepo)
+
+	sig.log.Info().Msg("syncing oci references")
+
+	for _, ref := range index.Manifests {
+		getRefManifestURL := sig.upstreamURL
+		getRefManifestURL.Path = path.Join(getRefManifestURL.Path, "v2", remoteRepo, "manifests", ref.Digest.String())
+		getRefManifestURL.RawQuery = getRefManifestURL.Query().Encode()
+
+		resp, err := sig.client.R().
+			SetHeader("Content-Type", ref.MediaType).
+			Get(getRefManifestURL.String())
+		if err != nil {
+			sig.log.Error().Str("errorType", TypeOf(err)).
+				Err(err).Msgf("couldn't get oci reference manifest: %s", getRefManifestURL.String())
+
+			return err
+		}
+
+		if ref.MediaType == ispec.MediaTypeImageManifest {
+			// read manifest
+			var manifest ispec.Manifest
+
+			err = json.Unmarshal(resp.Body(), &manifest)
+			if err != nil {
+				sig.log.Error().Str("errorType", TypeOf(err)).
+					Err(err).Msgf("couldn't unmarshal oci reference manifest: %s", getRefManifestURL.String())
+
+				return err
+			}
+
+			for _, layer := range manifest.Layers {
+				if err := syncBlob(sig, imageStore, localRepo, remoteRepo, layer.Digest); err != nil {
+					return err
+				}
+			}
+
+			// sync config blob
+			if err := syncBlob(sig, imageStore, localRepo, remoteRepo, manifest.Config.Digest); err != nil {
+				return err
+			}
+		} else if ref.MediaType == ispec.MediaTypeArtifactManifest {
+			// read manifest
+			var manifest ispec.Artifact
+
+			err = json.Unmarshal(resp.Body(), &manifest)
+			if err != nil {
+				sig.log.Error().Str("errorType", TypeOf(err)).
+					Err(err).Msgf("couldn't unmarshal oci reference manifest: %s", getRefManifestURL.String())
+
+				return err
+			}
+
+			for _, layer := range manifest.Blobs {
+				if err := syncBlob(sig, imageStore, localRepo, remoteRepo, layer.Digest); err != nil {
+					return err
+				}
+			}
+		}
+
+		_, err = imageStore.PutImageManifest(localRepo, ref.Digest.String(),
+			ref.MediaType, resp.Body())
+		if err != nil {
+			sig.log.Error().Str("errorType", TypeOf(err)).
+				Err(err).Msg("couldn't upload oci reference manifest")
+
+			return err
+		}
+	}
+
+	sig.log.Info().Msgf("successfully synced oci references for repo %s digest %s", localRepo, digestStr)
 
 	return nil
 }
@@ -405,6 +464,72 @@ func (sig *signaturesCopier) canSkipCosignSignature(localRepo, digestStr string,
 	sig.log.Info().Msgf("skipping cosign signature %s:%s, already synced", localRepo, digestStr)
 
 	return true, nil
+}
+
+func (sig *signaturesCopier) canSkipOCIRefs(localRepo, digestStr string, index ispec.Index,
+) (bool, error) {
+	imageStore := sig.storeController.GetImageStore(localRepo)
+	digest := godigest.Digest(digestStr)
+
+	// check oci references already synced
+	if len(index.Manifests) > 0 {
+		localRefs, err := imageStore.GetReferrers(localRepo, digest, "")
+		if err != nil {
+			if errors.Is(err, zerr.ErrManifestNotFound) {
+				return false, nil
+			}
+
+			sig.log.Error().Str("errorType", TypeOf(err)).
+				Err(err).Msgf("couldn't get local ocireferences for %s:%s manifest", localRepo, digestStr)
+
+			return false, err
+		}
+
+		if !descriptorsEqual(localRefs.Manifests, index.Manifests) {
+			sig.log.Info().Msgf("upstream oci references for %s:%s changed, syncing again", localRepo, digestStr)
+
+			return false, nil
+		}
+	}
+
+	sig.log.Info().Msgf("skipping oci references %s:%s, already synced", localRepo, digestStr)
+
+	return true, nil
+}
+
+func syncBlob(sig *signaturesCopier, imageStore storage.ImageStore, remoteRepo, localRepo string,
+	digest godigest.Digest,
+) error {
+	getBlobURL := sig.upstreamURL
+	getBlobURL.Path = path.Join(getBlobURL.Path, "v2", remoteRepo, "blobs", digest.String())
+	getBlobURL.RawQuery = getBlobURL.Query().Encode()
+
+	resp, err := sig.client.R().SetDoNotParseResponse(true).Get(getBlobURL.String())
+	if err != nil {
+		sig.log.Error().Str("errorType", TypeOf(err)).Str("url", getBlobURL.String()).
+			Err(err).Msgf("couldn't get blob: %s", getBlobURL.String())
+
+		return err
+	}
+
+	defer resp.RawBody().Close()
+
+	if resp.IsError() {
+		sig.log.Info().Str("url", getBlobURL.String()).Msgf("couldn't find blob from %s, status code: %d",
+			getBlobURL.String(), resp.StatusCode())
+
+		return zerr.ErrSyncReferrer
+	}
+
+	_, _, err = imageStore.FullBlobUpload(localRepo, resp.RawBody(), digest)
+	if err != nil {
+		sig.log.Error().Str("errorType", TypeOf(err)).Str("digest", digest.String()).
+			Err(err).Msg("couldn't upload blob")
+
+		return err
+	}
+
+	return nil
 }
 
 // sync feature will try to pull cosign signature because for sync cosign signature is just an image

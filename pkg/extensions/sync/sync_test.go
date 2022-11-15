@@ -857,7 +857,6 @@ func TestConfigReloader(t *testing.T) {
 		So(string(data), ShouldContainSubstring, "reloaded params")
 		So(string(data), ShouldContainSubstring, "new configuration settings")
 		So(string(data), ShouldContainSubstring, "\"Sync\":null")
-		So(string(data), ShouldNotContainSubstring, "sync:")
 	})
 }
 
@@ -2446,9 +2445,11 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 			time.Sleep(2 * time.Second)
 
 			// should not be synced nor sync on demand
-			resp, err = resty.R().Get(destBaseURL + notaryURLPath)
+			resp, err = resty.R().SetHeader("Content-Type", "application/json").
+				SetQueryParam("artifactType", "application/vnd.cncf.notary.v2.signature").
+				Get(destBaseURL + notaryURLPath)
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, 400)
+			So(resp.StatusCode(), ShouldEqual, 404)
 		})
 
 		Convey("Trigger error on artifact references", func() {
@@ -2475,27 +2476,67 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 			err = json.Unmarshal(resp.Body(), &referrers)
 			So(err, ShouldBeNil)
 
-			// read manifest
-			for _, ref := range referrers.Manifests {
-				refPath := path.Join(srcDir, repoName, "blobs", string(ref.Digest.Algorithm()), ref.Digest.Encoded())
-				_, err = os.ReadFile(refPath)
+			Convey("of type OCI image", func() {
+				// read manifest
+				var artifactManifest ispec.Manifest
+				for _, ref := range referrers.Manifests {
+					refPath := path.Join(srcDir, repoName, "blobs", string(ref.Digest.Algorithm()), ref.Digest.Encoded())
+					body, err := os.ReadFile(refPath)
+					So(err, ShouldBeNil)
+
+					err = json.Unmarshal(body, &artifactManifest)
+					So(err, ShouldBeNil)
+
+					// triggers perm denied on artifact blobs
+					for _, blob := range artifactManifest.Layers {
+						blobPath := path.Join(srcDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Encoded())
+						err := os.Chmod(blobPath, 0o000)
+						So(err, ShouldBeNil)
+					}
+				}
+
+				// start downstream server
+				dctlr, destBaseURL, _, _ := startDownstreamServer(t, false, syncConfig)
+				defer dctlr.Shutdown()
+
+				time.Sleep(2 * time.Second)
+
+				// should not be synced nor sync on demand
+				resp, err = resty.R().Get(destBaseURL + artifactURLPath)
 				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, 404)
+			})
 
-				// triggers perm denied on artifact blobs
-				err = os.Chmod(refPath, 0o000)
+			Convey("of type OCI artifact", func() {
+				// read manifest
+				var artifactManifest ispec.Artifact
+				for _, ref := range referrers.Manifests {
+					refPath := path.Join(srcDir, repoName, "blobs", string(ref.Digest.Algorithm()), ref.Digest.Encoded())
+					body, err := os.ReadFile(refPath)
+					So(err, ShouldBeNil)
+
+					err = json.Unmarshal(body, &artifactManifest)
+					So(err, ShouldBeNil)
+
+					// triggers perm denied on artifact blobs
+					for _, blob := range artifactManifest.Blobs {
+						blobPath := path.Join(srcDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Encoded())
+						err := os.Chmod(blobPath, 0o000)
+						So(err, ShouldBeNil)
+					}
+				}
+
+				// start downstream server
+				dctlr, destBaseURL, _, _ := startDownstreamServer(t, false, syncConfig)
+				defer dctlr.Shutdown()
+
+				time.Sleep(2 * time.Second)
+
+				// should not be synced nor sync on demand
+				resp, err = resty.R().Get(destBaseURL + artifactURLPath)
 				So(err, ShouldBeNil)
-			}
-
-			// start downstream server
-			dctlr, destBaseURL, _, _ := startDownstreamServer(t, false, syncConfig)
-			defer dctlr.Shutdown()
-
-			time.Sleep(2 * time.Second)
-
-			// should not be synced nor sync on demand
-			resp, err = resty.R().Get(destBaseURL + artifactURLPath)
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, 404)
+				So(resp.StatusCode(), ShouldEqual, 404)
+			})
 		})
 	})
 }
@@ -2614,13 +2655,28 @@ func TestSignatures(t *testing.T) {
 		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")})
 		So(err, ShouldBeNil)
 
+		// get oci references from downstream, should be synced
+		getOCIReferrersURL := srcBaseURL + path.Join("/v2", repoName, "referrers", digest.String())
+
+		resp, err := resty.R().Get(getOCIReferrersURL)
+
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeEmpty)
+
+		var index ispec.Index
+
+		err = json.Unmarshal(resp.Body(), &index)
+		So(err, ShouldBeNil)
+
+		So(len(index.Manifests), ShouldEqual, 2)
+
 		// test negative cases (trigger errors)
 		// test notary signatures errors
 
 		// based on manifest digest get referrers
 		getReferrersURL := srcBaseURL + path.Join("/oras/artifacts/v1/", repoName, "manifests", digest.String(), "referrers")
 
-		resp, err := resty.R().
+		resp, err = resty.R().
 			SetHeader("Content-Type", "application/json").
 			SetQueryParam("artifactType", "application/vnd.cncf.notary.v2.signature").
 			Get(getReferrersURL)
@@ -2816,6 +2872,92 @@ func TestSignatures(t *testing.T) {
 		So(err, ShouldBeNil)
 		err = os.Chmod(destManifestPath, 0o000)
 		So(err, ShouldBeNil)
+
+		// sync on demand
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		err = os.Chmod(destManifestPath, 0o755)
+		So(err, ShouldBeNil)
+
+		getOCIReferrersURL = srcBaseURL + path.Join("/v2", repoName, "referrers", digest.String())
+
+		resp, err = resty.R().Get(getOCIReferrersURL)
+
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeEmpty)
+
+		err = json.Unmarshal(resp.Body(), &index)
+		So(err, ShouldBeNil)
+
+		// remove already synced image
+		err = os.RemoveAll(path.Join(destDir, repoName))
+		So(err, ShouldBeNil)
+
+		var refManifest ispec.Manifest
+		for _, ref := range index.Manifests {
+			refPath := path.Join(srcDir, repoName, "blobs", string(ref.Digest.Algorithm()), ref.Digest.Encoded())
+			body, err := os.ReadFile(refPath)
+			So(err, ShouldBeNil)
+
+			err = json.Unmarshal(body, &refManifest)
+			So(err, ShouldBeNil)
+
+			// triggers perm denied on notary sig blobs on downstream
+			for _, blob := range refManifest.Layers {
+				blobPath := path.Join(destDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Encoded())
+				err := os.MkdirAll(blobPath, 0o755)
+				So(err, ShouldBeNil)
+				err = os.Chmod(blobPath, 0o000)
+				So(err, ShouldBeNil)
+			}
+		}
+
+		// sync on demand
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		// cleanup
+		for _, blob := range refManifest.Layers {
+			blobPath := path.Join(destDir, repoName, "blobs", string(blob.Digest.Algorithm()), blob.Digest.Encoded())
+			err = os.Chmod(blobPath, 0o755)
+			So(err, ShouldBeNil)
+		}
+
+		// remove already synced image
+		err = os.RemoveAll(path.Join(destDir, repoName))
+		So(err, ShouldBeNil)
+
+		// trigger error on reference config blob
+		referenceConfigBlobPath := path.Join(destDir, repoName, "blobs",
+			string(refManifest.Config.Digest.Algorithm()), refManifest.Config.Digest.Encoded())
+		err = os.MkdirAll(referenceConfigBlobPath, 0o755)
+		So(err, ShouldBeNil)
+		err = os.Chmod(referenceConfigBlobPath, 0o000)
+		So(err, ShouldBeNil)
+
+		// sync on demand
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		err = os.Chmod(referenceConfigBlobPath, 0o755)
+		So(err, ShouldBeNil)
+
+		// remove already synced image
+		err = os.RemoveAll(path.Join(destDir, repoName))
+		So(err, ShouldBeNil)
+
+		// trigger error on pushing oci reference manifest
+		for _, ref := range index.Manifests {
+			refPath := path.Join(destDir, repoName, "blobs", string(ref.Digest.Algorithm()), ref.Digest.Encoded())
+			err = os.MkdirAll(refPath, 0o755)
+			So(err, ShouldBeNil)
+			err = os.Chmod(refPath, 0o000)
+			So(err, ShouldBeNil)
+		}
 
 		// sync on demand
 		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
@@ -3359,12 +3501,15 @@ func TestSignaturesOnDemand(t *testing.T) {
 		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")})
 		So(err, ShouldBeNil)
 
+		//
+
 		// test negative case
 		cosignEncodedDigest := strings.Replace(digest.String(), ":", "-", 1) + ".sig"
 		getCosignManifestURL := srcBaseURL + path.Join(constants.RoutePrefix, repoName, "manifests", cosignEncodedDigest)
 
 		mResp, err := resty.R().Get(getCosignManifestURL)
 		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		var imageManifest ispec.Manifest
 
@@ -3467,6 +3612,8 @@ func TestOnlySignaturesOnDemand(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
+		imageManifestDigest := godigest.FromBytes(resp.Body())
+
 		splittedURL = strings.SplitAfter(destBaseURL, ":")
 		destPort := splittedURL[len(splittedURL)-1]
 
@@ -3519,6 +3666,17 @@ func TestOnlySignaturesOnDemand(t *testing.T) {
 		}
 
 		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")})
+		So(err, ShouldBeNil)
+
+		// trigger syncing OCI references on demand
+		artifactURLPath := path.Join("/v2", repoName, "referrers", imageManifestDigest.String())
+
+		// based on image manifest digest get referrers
+		resp, err = resty.R().
+			SetHeader("Content-Type", "application/json").
+			SetQueryParam("artifactType", "application/vnd.cncf.icecream").
+			Get(srcBaseURL + artifactURLPath)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 		So(err, ShouldBeNil)
 	})
 }
@@ -4452,18 +4610,43 @@ func pushRepo(url, repoName string) godigest.Digest {
 		panic(err)
 	}
 
+	// create artifact blob
+	abuf := []byte("this is an artifact")
+	adigest := pushBlob(url, repoName, abuf)
+
+	// create artifact config blob
+	acbuf := []byte("{}")
+	acdigest := pushBlob(url, repoName, acbuf)
+
 	// push a referrer artifact
 	manifest = ispec.Manifest{
 		Config: ispec.Descriptor{
 			MediaType: "application/vnd.cncf.icecream",
-			Digest:    cdigest,
-			Size:      int64(len(cblob)),
+			Digest:    acdigest,
+			Size:      int64(len(acbuf)),
 		},
 		Layers: []ispec.Descriptor{
 			{
-				MediaType: "application/vnd.oci.image.layer.v1.tar",
-				Digest:    digest,
-				Size:      int64(len(content)),
+				MediaType: "application/octet-stream",
+				Digest:    adigest,
+				Size:      int64(len(abuf)),
+			},
+		},
+		Subject: &ispec.Descriptor{
+			MediaType: "application/vnd.oci.image.manifest.v1+json",
+			Digest:    digest,
+			Size:      int64(len(content)),
+		},
+	}
+
+	artifactManifest := ispec.Artifact{
+		MediaType:    ispec.MediaTypeArtifactManifest,
+		ArtifactType: "application/vnd.cncf.icecream",
+		Blobs: []ispec.Descriptor{
+			{
+				MediaType: "application/octet-stream",
+				Digest:    adigest,
+				Size:      int64(len(abuf)),
 			},
 		},
 		Subject: &ispec.Descriptor{
@@ -4480,9 +4663,24 @@ func pushRepo(url, repoName string) godigest.Digest {
 		panic(err)
 	}
 
-	adigest := godigest.FromBytes(content)
+	adigest = godigest.FromBytes(content)
 
-	_, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
+	// put OCI reference image mediaType artifact
+	_, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+		SetBody(content).Put(url + fmt.Sprintf("/v2/%s/manifests/%s", repoName, adigest.String()))
+	if err != nil {
+		panic(err)
+	}
+
+	content, err = json.Marshal(artifactManifest)
+	if err != nil {
+		panic(err)
+	}
+
+	adigest = godigest.FromBytes(content)
+
+	// put OCI reference artifact mediaType artifact
+	_, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeArtifactManifest).
 		SetBody(content).Put(url + fmt.Sprintf("/v2/%s/manifests/%s", repoName, adigest.String()))
 	if err != nil {
 		panic(err)
@@ -4502,4 +4700,37 @@ func waitSync(rootDir, repoName string) {
 
 		time.Sleep(500 * time.Millisecond)
 	}
+}
+
+func pushBlob(url string, repoName string, buf []byte) godigest.Digest {
+	resp, err := resty.R().
+		Post(fmt.Sprintf("%s/v2/%s/blobs/uploads/", url, repoName))
+	if err != nil {
+		panic(err)
+	}
+
+	if resp.StatusCode() != http.StatusAccepted {
+		panic(perr.Wrapf(errBadStatus, "invalid status code: %d", resp.StatusCode()))
+	}
+
+	loc := test.Location(url, resp)
+
+	digest := godigest.FromBytes(buf)
+	resp, err = resty.R().
+		SetContentLength(true).
+		SetHeader("Content-Length", fmt.Sprintf("%d", len(buf))).
+		SetHeader("Content-Type", "application/octet-stream").
+		SetQueryParam("digest", digest.String()).
+		SetBody(buf).
+		Put(loc)
+
+	if err != nil {
+		panic(err)
+	}
+
+	if resp.StatusCode() != http.StatusCreated {
+		panic(perr.Wrapf(errBadStatus, "invalid status code: %d", resp.StatusCode()))
+	}
+
+	return digest
 }

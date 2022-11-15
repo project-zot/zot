@@ -1224,14 +1224,14 @@ func (is *ObjectStorage) GetBlobContent(repo string, digest godigest.Digest) ([]
 	return buf.Bytes(), nil
 }
 
-func (is *ObjectStorage) GetReferrers(repo string, digest godigest.Digest, artifactType string,
+func (is *ObjectStorage) GetReferrers(repo string, gdigest godigest.Digest, artifactType string,
 ) (ispec.Index, error) {
-	return ispec.Index{}, zerr.ErrMethodNotSupported
+	return storage.GetReferrers(is, repo, gdigest, artifactType, is.log)
 }
 
-func (is *ObjectStorage) GetOrasReferrers(repo string, digest godigest.Digest, artifactType string,
+func (is *ObjectStorage) GetOrasReferrers(repo string, gdigest godigest.Digest, artifactType string,
 ) ([]artifactspec.Descriptor, error) {
-	return nil, zerr.ErrMethodNotSupported
+	return storage.GetOrasReferrers(is, repo, gdigest, artifactType, is.log)
 }
 
 func (is *ObjectStorage) GetIndexContent(repo string) ([]byte, error) {
