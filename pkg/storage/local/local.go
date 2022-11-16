@@ -1,7 +1,6 @@
 package local
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -378,10 +377,15 @@ func (is *ImageStoreLocal) GetNextRepository(repo string) (string, error) {
 
 // GetImageTags returns a list of image tags available in the specified repository.
 func (is *ImageStoreLocal) GetImageTags(repo string) ([]string, error) {
+	var lockLatency time.Time
+
 	dir := path.Join(is.rootDir, repo)
 	if !is.DirExists(dir) {
 		return nil, zerr.ErrRepoNotFound
 	}
+
+	is.RLock(&lockLatency)
+	defer is.RUnlock(&lockLatency)
 
 	index, err := storage.GetIndex(is, repo, is.log)
 	if err != nil {
@@ -393,10 +397,15 @@ func (is *ImageStoreLocal) GetImageTags(repo string) ([]string, error) {
 
 // GetImageManifest returns the image manifest of an image in the specific repository.
 func (is *ImageStoreLocal) GetImageManifest(repo, reference string) ([]byte, godigest.Digest, string, error) {
+	var lockLatency time.Time
+
 	dir := path.Join(is.rootDir, repo)
 	if !is.DirExists(dir) {
 		return nil, "", "", zerr.ErrRepoNotFound
 	}
+
+	is.RLock(&lockLatency)
+	defer is.RUnlock(&lockLatency)
 
 	index, err := storage.GetIndex(is, repo, is.log)
 	if err != nil {
@@ -439,6 +448,11 @@ func (is *ImageStoreLocal) PutImageManifest(repo, reference, mediaType string, /
 		return "", err
 	}
 
+	var lockLatency time.Time
+
+	is.Lock(&lockLatency)
+	defer is.Unlock(&lockLatency)
+
 	digest, err := storage.ValidateManifest(is, repo, reference, mediaType, body, is.log)
 	if err != nil {
 		return digest, err
@@ -478,11 +492,6 @@ func (is *ImageStoreLocal) PutImageManifest(repo, reference, mediaType string, /
 		return desc.Digest, nil
 	}
 
-	var lockLatency time.Time
-
-	is.Lock(&lockLatency)
-	defer is.Unlock(&lockLatency)
-
 	// write manifest to "blobs"
 	dir := path.Join(is.rootDir, repo, "blobs", mDigest.Algorithm().String())
 	_ = ensureDir(dir, is.log)
@@ -495,14 +504,10 @@ func (is *ImageStoreLocal) PutImageManifest(repo, reference, mediaType string, /
 		return "", err
 	}
 
-	is.Unlock(&lockLatency)
-
 	err = storage.UpdateIndexWithPrunedImageManifests(is, &index, repo, desc, oldDgst, is.log)
 	if err != nil {
 		return "", err
 	}
-
-	is.Lock(&lockLatency)
 
 	// now update "index.json"
 	index.Manifests = append(index.Manifests, desc)
@@ -516,13 +521,8 @@ func (is *ImageStoreLocal) PutImageManifest(repo, reference, mediaType string, /
 		return "", err
 	}
 
-	is.Unlock(&lockLatency)
-
 	// apply linter only on images, not signatures
 	pass, err := storage.ApplyLinter(is, is.linter, repo, desc)
-
-	is.Lock(&lockLatency)
-
 	if !pass {
 		is.log.Error().Err(err).Str("repo", repo).Str("reference", reference).Msg("linter didn't pass")
 
@@ -557,6 +557,9 @@ func (is *ImageStoreLocal) DeleteImageManifest(repo, reference string, detectCol
 		return zerr.ErrRepoNotFound
 	}
 
+	is.Lock(&lockLatency)
+	defer is.Unlock(&lockLatency)
+
 	index, err := storage.GetIndex(is, repo, is.log)
 	if err != nil {
 		return err
@@ -575,9 +578,6 @@ func (is *ImageStoreLocal) DeleteImageManifest(repo, reference string, detectCol
 	if err != nil {
 		return err
 	}
-
-	is.Lock(&lockLatency)
-	defer is.Unlock(&lockLatency)
 
 	// now update "index.json"
 	dir = path.Join(is.rootDir, repo)
@@ -1258,36 +1258,29 @@ func (is *ImageStoreLocal) GetBlob(repo string, digest godigest.Digest, mediaTyp
 	return blobReadCloser, binfo.Size(), nil
 }
 
+// GetBlobContent returns blob contents, SHOULD lock from outside.
 func (is *ImageStoreLocal) GetBlobContent(repo string, digest godigest.Digest) ([]byte, error) {
 	if err := digest.Validate(); err != nil {
 		return []byte{}, err
 	}
 
-	blob, _, err := is.GetBlob(repo, digest, ispec.MediaTypeImageManifest)
-	if err != nil {
-		return []byte{}, err
-	}
-	defer blob.Close()
+	blobPath := is.BlobPath(repo, digest)
 
-	buf := new(bytes.Buffer)
+	blob, err := os.ReadFile(blobPath)
+	if os.IsNotExist(err) {
+		is.log.Error().Err(err).Str("blob", blobPath).Msg("blob doesn't exist")
 
-	_, err = buf.ReadFrom(blob)
-	if err != nil {
-		is.log.Error().Err(err).Str("digest", digest.String()).Msg("failed to read blob")
-
-		return []byte{}, err
+		return []byte{}, zerr.ErrBlobNotFound
 	}
 
-	return buf.Bytes(), nil
+	is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to read blob")
+
+	return blob, nil
 }
 
+// GetIndexContent returns index.json contents, SHOULD lock from outside.
 func (is *ImageStoreLocal) GetIndexContent(repo string) ([]byte, error) {
-	var lockLatency time.Time
-
 	dir := path.Join(is.rootDir, repo)
-
-	is.RLock(&lockLatency)
-	defer is.RUnlock(&lockLatency)
 
 	buf, err := os.ReadFile(path.Join(dir, "index.json"))
 	if err != nil {
@@ -1345,11 +1338,21 @@ func (is *ImageStoreLocal) DeleteBlob(repo string, digest godigest.Digest) error
 
 func (is *ImageStoreLocal) GetReferrers(repo string, gdigest godigest.Digest, artifactType string,
 ) (ispec.Index, error) {
+	var lockLatency time.Time
+
+	is.RLock(&lockLatency)
+	defer is.RUnlock(&lockLatency)
+
 	return storage.GetReferrers(is, repo, gdigest, artifactType, is.log)
 }
 
 func (is *ImageStoreLocal) GetOrasReferrers(repo string, gdigest godigest.Digest, artifactType string,
 ) ([]oras.Descriptor, error) {
+	var lockLatency time.Time
+
+	is.RLock(&lockLatency)
+	defer is.RUnlock(&lockLatency)
+
 	return storage.GetOrasReferrers(is, repo, gdigest, artifactType, is.log)
 }
 
@@ -1483,9 +1486,7 @@ func (is *ImageStoreLocal) gcRepo(repo string) error {
 	var lockLatency time.Time
 
 	is.Lock(&lockLatency)
-
 	err := is.garbageCollect(dir, repo)
-
 	is.Unlock(&lockLatency)
 
 	if err != nil {

@@ -322,7 +322,12 @@ func TestSyncInternal(t *testing.T) {
 			Layers: []ispec.Descriptor{desc},
 		}
 
-		sig := newSignaturesCopier(client, *regURL, storage.StoreController{DefaultStore: &local.ImageStoreLocal{}}, log)
+		metrics := monitoring.NewMetricsServer(false, log)
+		imageStore := local.NewImageStore(t.TempDir(), false, storage.DefaultGCDelay,
+			false, false, log, metrics, nil, nil,
+		)
+
+		sig := newSignaturesCopier(client, *regURL, storage.StoreController{DefaultStore: imageStore}, log)
 
 		err = sig.syncCosignSignature(testImage, testImage, testImageTag, &ispec.Manifest{})
 		So(err, ShouldNotBeNil)

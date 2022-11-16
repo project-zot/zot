@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"strings"
@@ -257,6 +258,18 @@ func TestStorageAPIs(t *testing.T) {
 
 						blob, _, err := imgStore.GetBlob("test", digest, "application/vnd.oci.image.layer.v1.tar+gzip")
 						So(err, ShouldBeNil)
+
+						blobBuf := new(strings.Builder)
+						n, err := io.Copy(blobBuf, blob)
+						// check errors
+						So(n, ShouldEqual, buflen)
+						So(err, ShouldBeNil)
+						So(blobBuf.String(), ShouldEqual, buf.String())
+
+						blobContent, err := imgStore.GetBlobContent("test", digest)
+						So(err, ShouldBeNil)
+						So(blobContent, ShouldResemble, content)
+
 						err = blob.Close()
 						So(err, ShouldBeNil)
 
