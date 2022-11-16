@@ -7,6 +7,7 @@ package search
 import (
 	"context"
 	"encoding/json"
+	"sort"
 	"strings"
 
 	"github.com/99designs/gqlgen/graphql"
@@ -875,7 +876,28 @@ func expandedRepoInfo(ctx context.Context, repo string, repoDB repodb.RepoDB, cv
 
 	repoSummary, imageSummaries := convert.RepoMeta2ExpandedRepoInfo(ctx, repoMeta, manifestMetaMap, skip, cveInfo)
 
-	return &gql_generated.RepoInfo{Summary: repoSummary, Images: imageSummaries}, nil
+	dateSortedImages := make(timeSlice, 0, len(imageSummaries))
+	for _, imgSummary := range imageSummaries {
+		dateSortedImages = append(dateSortedImages, imgSummary)
+	}
+
+	sort.Sort(dateSortedImages)
+
+	return &gql_generated.RepoInfo{Summary: repoSummary, Images: dateSortedImages}, nil
+}
+
+type timeSlice []*gql_generated.ImageSummary
+
+func (p timeSlice) Len() int {
+	return len(p)
+}
+
+func (p timeSlice) Less(i, j int) bool {
+	return p[i].LastUpdated.After(*p[j].LastUpdated)
+}
+
+func (p timeSlice) Swap(i, j int) {
+	p[i], p[j] = p[j], p[i]
 }
 
 func safeDerefferencing[T any](pointer *T, defaultVal T) T {

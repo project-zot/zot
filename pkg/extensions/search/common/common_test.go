@@ -345,6 +345,58 @@ func verifyImageSummaryFields(t *testing.T,
 	}
 }
 
+func uploadNewRepoTag(tag string, repoName string, baseURL string, layers [][]byte) error {
+	created := time.Now()
+	config := ispec.Image{
+		Created: &created,
+		Platform: ispec.Platform{
+			Architecture: "amd64",
+			OS:           "linux",
+		},
+		RootFS: ispec.RootFS{
+			Type:    "layers",
+			DiffIDs: []godigest.Digest{},
+		},
+		Author: "ZotUser",
+	}
+
+	configBlob, err := json.Marshal(config)
+	So(err, ShouldBeNil)
+
+	configDigest := godigest.FromBytes(configBlob)
+
+	manifest := ispec.Manifest{
+		Versioned: specs.Versioned{
+			SchemaVersion: 2,
+		},
+		Config: ispec.Descriptor{
+			MediaType: "application/vnd.oci.image.config.v1+json",
+			Digest:    configDigest,
+			Size:      int64(len(configBlob)),
+		},
+		Layers: []ispec.Descriptor{
+			{
+				MediaType: "application/vnd.oci.image.layer.v1.tar",
+				Digest:    godigest.FromBytes(layers[0]),
+				Size:      int64(len(layers[0])),
+			},
+		},
+	}
+
+	err = UploadImage(
+		Image{
+			Manifest: manifest,
+			Config:   config,
+			Layers:   layers,
+			Tag:      tag,
+		},
+		baseURL,
+		repoName,
+	)
+
+	return err
+}
+
 func TestRepoListWithNewestImage(t *testing.T) {
 	Convey("Test repoListWithNewestImage by tag with HTTP", t, func() {
 		subpath := "/a"
@@ -996,6 +1048,68 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
+	})
+
+	Convey("Test image tags order", t, func() {
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = t.TempDir()
+
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+		}
+
+		conf.Extensions.Search.CVE = nil
+
+		ctlr := api.NewController(conf)
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		WaitTillServerReady(baseURL)
+
+		resp, err := resty.R().Get(baseURL + "/v2/")
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix)
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 422)
+
+		// create test images
+		repoName := "test-repo" //nolint:goconst
+		layers := [][]byte{
+			{10, 11, 10, 11},
+		}
+
+		err = uploadNewRepoTag("1.0", repoName, baseURL, layers)
+		So(err, ShouldBeNil)
+
+		err = uploadNewRepoTag("2.0", repoName, baseURL, layers)
+		So(err, ShouldBeNil)
+
+		err = uploadNewRepoTag("3.0", repoName, baseURL, layers)
+		So(err, ShouldBeNil)
+
+		responseStruct := &ExpandedRepoInfoResp{}
+		query := "{ExpandedRepoInfo(repo:\"test-repo\"){Images%20{RepoName%20Digest%20Tag%20LastUpdated%20Layers%20{Size%20Digest}}}}" //nolint: lll
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + query)
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries), ShouldNotEqual, 0)
+		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries[0].Layers), ShouldNotEqual, 0)
+
+		So(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries[0].Tag, ShouldEqual, "3.0")
+		So(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries[1].Tag, ShouldEqual, "2.0")
+		So(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries[2].Tag, ShouldEqual, "1.0")
 	})
 }
 
