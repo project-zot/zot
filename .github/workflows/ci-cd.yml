@@ -1,10 +1,10 @@
 on:
   push:
     branches:
-      - main
+      - ui-integration-laurentiu
   pull_request:
     branches:
-      - main
+      - ui-integration-laurentiu
   release:
     types:
       - published
