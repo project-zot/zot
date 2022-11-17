@@ -1,9 +1,9 @@
 package storage
 
 import (
-	godigest "github.com/opencontainers/go-digest"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
 type Lint interface {
-	Lint(repo string, manifestDigest godigest.Digest, imageStore ImageStore) (bool, error)
+	Lint(repo string, manifestDescriptor ispec.Descriptor, imageStore ImageStore) (bool, error)
 }

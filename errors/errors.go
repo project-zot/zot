@@ -10,6 +10,7 @@ var (
 	ErrRepoBadVersion          = errors.New("repository: unsupported layout version")
 	ErrManifestNotFound        = errors.New("manifest: not found")
 	ErrBadManifest             = errors.New("manifest: invalid contents")
+	ErrBadLogo                 = errors.New("logo: invalid blob contents")
 	ErrBadIndex                = errors.New("index: invalid contents")
 	ErrUploadNotFound          = errors.New("uploads: not found")
 	ErrBadUploadRange          = errors.New("uploads: bad range")

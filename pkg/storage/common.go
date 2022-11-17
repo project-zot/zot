@@ -457,7 +457,19 @@ func ApplyLinter(imgStore ImageStore, linter Lint, repo string, manifestDesc isp
 			!strings.HasPrefix(tag, "sha256-") &&
 			!strings.HasSuffix(tag, remote.SignatureTagSuffix) {
 			// lint new index with new manifest before writing to disk
-			pass, err := linter.Lint(repo, manifestDesc.Digest, imgStore)
+			pass, err := linter.Lint(repo, manifestDesc, imgStore)
+			if err != nil {
+				return false, err
+			}
+
+			if !pass {
+				return false, zerr.ErrImageLintAnnotations
+			}
+		}
+
+		if manifestDesc.MediaType == ispec.MediaTypeArtifactManifest {
+			// lint new index with new manifest before writing to disk
+			pass, err := linter.Lint(repo, manifestDesc, imgStore)
 			if err != nil {
 				return false, err
 			}

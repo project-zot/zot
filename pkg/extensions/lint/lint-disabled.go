@@ -4,14 +4,14 @@
 package lint
 
 import (
-	godigest "github.com/opencontainers/go-digest"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"zotregistry.io/zot/pkg/storage"
 )
 
 type Linter struct{}
 
-func (linter *Linter) Lint(repo string, manifestDigest godigest.Digest,
+func (linter *Linter) Lint(repo string, manifestDescriptor ispec.Descriptor,
 	imageStore storage.ImageStore,
 ) (bool, error) {
 	return true, nil

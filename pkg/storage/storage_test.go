@@ -730,7 +730,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 				store, _, _ = createObjectsStore(testDir, tdir)
 				imgStore = s3.NewImageStore(testDir, tdir, false, 1, false, false, log, metrics,
 					&mocks.MockedLint{
-						LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storage.ImageStore) (bool, error) {
+						LintFn: func(repo string, manifestDescriptor ispec.Descriptor, imageStore storage.ImageStore) (bool, error) {
 							return false, nil
 						},
 					}, store, nil)
@@ -745,7 +745,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 				}, log)
 				imgStore = local.NewImageStore(tdir, true, storage.DefaultGCDelay, true,
 					true, log, metrics, &mocks.MockedLint{
-						LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storage.ImageStore) (bool, error) {
+						LintFn: func(repo string, manifestDescriptor ispec.Descriptor, imageStore storage.ImageStore) (bool, error) {
 							return false, nil
 						},
 					}, cacheDriver)
@@ -797,7 +797,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 					if testcase.storageType == "s3" {
 						imgStore = s3.NewImageStore(testDir, tdir, false, 1, false, false, log, metrics,
 							&mocks.MockedLint{
-								LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storage.ImageStore) (bool, error) {
+								LintFn: func(repo string, manifestDescriptor ispec.Descriptor, imageStore storage.ImageStore) (bool, error) {
 									//nolint: goerr113
 									return false, errors.New("linter error")
 								},
@@ -810,7 +810,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 						}, log)
 						imgStore = local.NewImageStore(tdir, true, storage.DefaultGCDelay, true,
 							true, log, metrics, &mocks.MockedLint{
-								LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storage.ImageStore) (bool, error) {
+								LintFn: func(repo string, manifestDescriptor ispec.Descriptor, imageStore storage.ImageStore) (bool, error) {
 									//nolint: goerr113
 									return false, errors.New("linter error")
 								},

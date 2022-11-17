@@ -551,7 +551,7 @@ func TestSyncInternal(t *testing.T) {
 			// trigger linter error on manifest push
 			imageStoreWithLinter := local.NewImageStore(t.TempDir(), false, storage.DefaultGCDelay,
 				false, false, log, metrics, &mocks.MockedLint{
-					LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storage.ImageStore) (bool, error) {
+					LintFn: func(repo string, manifestDescriptor ispec.Descriptor, imageStore storage.ImageStore) (bool, error) {
 						return false, nil
 					},
 				}, nil,

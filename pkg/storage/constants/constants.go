@@ -20,4 +20,5 @@ const (
 	BoltdbName               = "cache"
 	ReferrerFilterAnnotation = "org.opencontainers.references.filtersApplied"
 	DynamoDBDriverName       = "dynamodb"
+	LogoKey                  = "com.zot.logo"
 )
