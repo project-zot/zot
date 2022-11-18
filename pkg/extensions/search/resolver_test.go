@@ -337,8 +337,8 @@ func TestExtractImageDetails(t *testing.T) {
 		authzCtxKey := localCtx.GetContextKey()
 		ctx = context.WithValue(ctx, authzCtxKey,
 			localCtx.AccessControlContext{
-				GlobPatterns: map[string]bool{"*": true, "**": true},
-				Username:     "jane_doe",
+				ReadGlobPatterns: map[string]bool{"*": true, "**": true},
+				Username:         "jane_doe",
 			})
 		configBlobContent, _ := json.MarshalIndent(&config, "", "\t")
 		configDigest := godigest.FromBytes(configBlobContent)
@@ -429,8 +429,8 @@ func TestExtractImageDetails(t *testing.T) {
 		Convey("extractImageDetails without proper authz", func() {
 			ctx = context.WithValue(ctx, authzCtxKey,
 				localCtx.AccessControlContext{
-					GlobPatterns: map[string]bool{},
-					Username:     "jane_doe",
+					ReadGlobPatterns: map[string]bool{},
+					Username:         "jane_doe",
 				})
 			mockOlum := mocks.OciLayoutUtilsMock{
 				GetImageConfigInfoFn: func(repo string, digest godigest.Digest) (

@@ -7,7 +7,7 @@ function setup_file() {
     fi
 
     # Download test data to folder common for the entire suite, not just this file
-    skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.18 oci:${TEST_DATA_DIR}/golang:1.18
+    skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.19 oci:${TEST_DATA_DIR}/golang:1.19
     # Setup zot server
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
@@ -32,7 +32,12 @@ function setup_file() {
         },
         "accessControl": {
             "**": {
-                "anonymousPolicy": ["read"],
+                "anonymousPolicy": [ 
+                    "read",
+                    "create",
+                    "delete",
+                    "detectManifestCollision"
+                ],
                 "policies": [
                     {
                         "users": [
@@ -41,7 +46,7 @@ function setup_file() {
                         "actions": [
                             "read",
                             "create",
-                            "update"
+                            "delete"
                         ]
                     }
                 ]
@@ -53,7 +58,6 @@ function setup_file() {
     }
 }
 EOF
-    git -C ${BATS_FILE_TMPDIR} clone https://github.com/project-zot/helm-charts.git
     setup_zot_file_level ${zot_config_file}
     wait_zot_reachable "http://127.0.0.1:8080/v2/_catalog"   
 }
@@ -66,26 +70,40 @@ function teardown_file() {
     rm -rf ${oci_data_dir}
 }
 
-
-@test "push image user policy" {
+@test "push 2 images with same manifest with user policy" {
     run skopeo --insecure-policy copy --dest-creds test:test --dest-tls-verify=false \
-        oci:${TEST_DATA_DIR}/golang:1.18 \
-        docker://127.0.0.1:8080/golang:1.18
+        oci:${TEST_DATA_DIR}/golang:1.19 \
+        docker://127.0.0.1:8080/golang:1.19
+    [ "$status" -eq 0 ]
+
+    run skopeo --insecure-policy copy --dest-creds test:test --dest-tls-verify=false \
+        oci:${TEST_DATA_DIR}/golang:1.19 \
+        docker://127.0.0.1:8080/golang:latest
     [ "$status" -eq 0 ]
 }
 
-
-@test "pull image anonymous policy" {
-    local oci_data_dir=${BATS_FILE_TMPDIR}/oci
-    run skopeo --insecure-policy copy --src-tls-verify=false \
-        docker://127.0.0.1:8080/golang:1.18 \
-        oci:${oci_data_dir}/golang:1.18
-    [ "$status" -eq 0 ]
-}
-
-@test "push image anonymous policy" {
-    run skopeo --insecure-policy copy --dest-tls-verify=false \
-        oci:${TEST_DATA_DIR}/golang:1.18 \
-        docker://127.0.0.1:8080/golang:1.18
+@test "skopeo delete image with anonymous policy should fail" {
+    # skopeo deletes by digest, so it should fail with detectManifestCollision policy
+    run skopeo --insecure-policy delete --tls-verify=false \
+        docker://127.0.0.1:8080/golang:1.19
     [ "$status" -eq 1 ]
+    # conflict status code
+    [[ "$output" == *"409"* ]]
+}
+
+@test "regctl delete image with anonymous policy should fail" {
+    run regctl registry set localhost:8080 --tls disabled
+    [ "$status" -eq 0 ]
+
+    run regctl image delete localhost:8080/golang:1.19 --force-tag-dereference
+    [ "$status" -eq 1 ]
+    # conflict status code
+    [[ "$output" == *"409"* ]]
+}
+
+@test "delete image with user policy should work" {
+    # should work without detectManifestCollision policy
+    run skopeo --insecure-policy delete --creds test:test --tls-verify=false \
+        docker://127.0.0.1:8080/golang:1.19
+    [ "$status" -eq 0 ]
 }

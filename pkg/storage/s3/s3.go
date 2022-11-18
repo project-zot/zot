@@ -442,7 +442,7 @@ func (is *ObjectStorage) PutImageManifest(repo, reference, mediaType string, //n
 }
 
 // DeleteImageManifest deletes the image manifest from the repository.
-func (is *ObjectStorage) DeleteImageManifest(repo, reference string) error {
+func (is *ObjectStorage) DeleteImageManifest(repo, reference string, detectCollisions bool) error {
 	var lockLatency time.Time
 
 	dir := path.Join(is.rootDir, repo)
@@ -455,7 +455,11 @@ func (is *ObjectStorage) DeleteImageManifest(repo, reference string) error {
 		return err
 	}
 
-	manifestDesc, found := storage.RemoveManifestDescByReference(&index, reference)
+	manifestDesc, found, err := storage.RemoveManifestDescByReference(&index, reference, detectCollisions)
+	if err != nil {
+		return err
+	}
+
 	if !found {
 		return zerr.ErrManifestNotFound
 	}

@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/99designs/gqlgen/graphql"
-	glob "github.com/bmatcuk/doublestar/v4"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/vektah/gqlparser/v2/gqlerror"
@@ -734,40 +733,21 @@ func BuildImageInfo(repo string, tag string, manifestDigest godigest.Digest,
 	return imageInfo
 }
 
-// returns either a user has or not rights on 'repository'.
-func matchesRepo(globPatterns map[string]bool, repository string) bool {
-	var longestMatchedPattern string
-
-	// because of the longest path matching rule, we need to check all patterns from config
-	for pattern := range globPatterns {
-		matched, err := glob.Match(pattern, repository)
-		if err == nil {
-			if matched && len(pattern) > len(longestMatchedPattern) {
-				longestMatchedPattern = pattern
-			}
-		}
-	}
-
-	allowed := globPatterns[longestMatchedPattern]
-
-	return allowed
-}
-
 // get passed context from authzHandler and filter out repos based on permissions.
 func userAvailableRepos(ctx context.Context, repoList []string) ([]string, error) {
 	var availableRepos []string
 
-	authzCtxKey := localCtx.GetContextKey()
-	if authCtx := ctx.Value(authzCtxKey); authCtx != nil {
-		acCtx, ok := authCtx.(localCtx.AccessControlContext)
-		if !ok {
-			err := errors.ErrBadType
+	// authz request context (set in authz middleware)
+	acCtx, err := localCtx.GetAccessControlContext(ctx)
+	if err != nil {
+		err := errors.ErrBadType
 
-			return []string{}, err
-		}
+		return []string{}, err
+	}
 
+	if acCtx != nil {
 		for _, r := range repoList {
-			if acCtx.IsAdmin || matchesRepo(acCtx.GlobPatterns, r) {
+			if acCtx.IsAdmin || acCtx.CanReadRepo(r) {
 				availableRepos = append(availableRepos, r)
 			}
 		}

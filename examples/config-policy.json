@@ -30,7 +30,9 @@
         ],
         "defaultPolicy": [
           "read",
-          "create"
+          "create",
+          "delete",
+          "detectManifestCollision"
         ]
       },
       "tmp/**": {

@@ -314,6 +314,18 @@ test-bats-metrics-verbose: EXTENSIONS=metrics
 test-bats-metrics-verbose: binary check-skopeo $(BATS)
 	$(BATS) --trace -p --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/metrics.bats
 
+.PHONY: test-anonymous-push-pull
+test-anonymous-push-pull: binary check-skopeo $(BATS)
+	$(BATS) --trace --print-output-on-failure test/blackbox/anonymous_policy.bats
+
+.PHONY: test-annotations
+test-annotations: binary check-skopeo $(BATS) $(STACKER) $(NOTATION) $(COSIGN)
+	$(BATS) --trace --print-output-on-failure test/blackbox/annotations.bats
+
+.PHONY: test-detect-manifest-collision
+test-detect-manifest-collision: binary check-skopeo $(BATS)
+	$(BATS) --trace --print-output-on-failure test/blackbox/detect_manifest_collision.bats
+
 .PHONY: fuzz-all
 fuzz-all: fuzztime=${1}
 fuzz-all:
@@ -325,10 +337,6 @@ fuzz-all:
 	bash test/scripts/fuzzAll.sh ${fuzztime}; \
 	rm -rf pkg/storage/testdata; \
 
-.PHONY: test-anonymous-push-pull
-test-anonymous-push-pull: binary check-skopeo $(BATS)
-	$(BATS) --trace --print-output-on-failure test/blackbox/anonymous_policiy.bats
-
 $(STACKER):
 	mkdir -p $(TOOLSDIR)/bin; \
 	curl -fsSL https://github.com/project-stacker/stacker/releases/latest/download/stacker -o $@; \
@@ -338,7 +346,3 @@ $(COSIGN):
 	mkdir -p $(TOOLSDIR)/bin
 	curl -fsSL https://github.com/sigstore/cosign/releases/download/v1.13.0/cosign-linux-amd64 -o $@; \
 	chmod +x $@
-
-.PHONY: test-annotations
-test-annotations: binary check-skopeo $(BATS) $(STACKER) $(NOTATION) $(COSIGN)
-	$(BATS) --trace --print-output-on-failure test/blackbox/annotations.bats

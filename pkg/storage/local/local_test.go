@@ -164,7 +164,7 @@ func TestStorageFSAPIs(t *testing.T) {
 				panic(err)
 			}
 
-			err = imgStore.DeleteImageManifest(repoName, digest.String())
+			err = imgStore.DeleteImageManifest(repoName, digest.String(), false)
 			So(err, ShouldNotBeNil)
 
 			err = os.RemoveAll(path.Join(imgStore.RootDir(), repoName))
@@ -440,7 +440,7 @@ func FuzzTestPutDeleteImageManifest(f *testing.F) {
 			t.Errorf("the error that occurred is %v \n", err)
 		}
 
-		err = imgStore.DeleteImageManifest(repoName, mdigest.String())
+		err = imgStore.DeleteImageManifest(repoName, mdigest.String(), false)
 		if err != nil {
 			if isKnownErr(err) {
 				return
@@ -470,7 +470,7 @@ func FuzzTestDeleteImageManifest(f *testing.F) {
 		if err != nil {
 			return
 		}
-		err = imgStore.DeleteImageManifest(string(data), digest.String())
+		err = imgStore.DeleteImageManifest(string(data), digest.String(), false)
 		if err != nil {
 			if errors.Is(err, zerr.ErrRepoNotFound) || isKnownErr(err) {
 				return
@@ -1822,7 +1822,7 @@ func TestGarbageCollect(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(hasBlob, ShouldEqual, true)
 
-			err = imgStore.DeleteImageManifest(repoName, digest.String())
+			err = imgStore.DeleteImageManifest(repoName, digest.String(), false)
 			So(err, ShouldBeNil)
 
 			hasBlob, _, err = imgStore.CheckBlob(repoName, bdigest)
@@ -1922,7 +1922,7 @@ func TestGarbageCollect(t *testing.T) {
 			// sleep so orphan blob can be GC'ed
 			time.Sleep(5 * time.Second)
 
-			err = imgStore.DeleteImageManifest(repoName, digest.String())
+			err = imgStore.DeleteImageManifest(repoName, digest.String(), false)
 			So(err, ShouldBeNil)
 
 			hasBlob, _, err = imgStore.CheckBlob(repoName, bdigest)

@@ -21,6 +21,7 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
+	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/mocks"
@@ -53,6 +54,52 @@ func TestRoutes(t *testing.T) {
 
 		// NOTE: the url or method itself doesn't matter below since we are calling the handlers directly,
 		// so path routing is bypassed
+
+		Convey("List repositories authz error", func() {
+			var invalid struct{}
+
+			ctx := context.TODO()
+			key := localCtx.GetContextKey()
+			ctx = context.WithValue(ctx, key, invalid)
+
+			request, _ := http.NewRequestWithContext(ctx, http.MethodGet, baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{
+				"name":      "test",
+				"reference": "b8b1231908844a55c251211c7a67ae3c809fb86a081a8eeb4a715e6d7d65625c",
+			})
+			response := httptest.NewRecorder()
+
+			rthdlr.ListRepositories(response, request)
+
+			resp := response.Result()
+
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+		})
+
+		Convey("Delete manifest authz error", func() {
+			var invalid struct{}
+
+			ctx := context.TODO()
+			key := localCtx.GetContextKey()
+			ctx = context.WithValue(ctx, key, invalid)
+
+			request, _ := http.NewRequestWithContext(ctx, http.MethodGet, baseURL, nil)
+			request = mux.SetURLVars(request, map[string]string{
+				"name":      "test",
+				"reference": "b8b1231908844a55c251211c7a67ae3c809fb86a081a8eeb4a715e6d7d65625c",
+			})
+			response := httptest.NewRecorder()
+
+			rthdlr.DeleteManifest(response, request)
+
+			resp := response.Result()
+
+			defer resp.Body.Close()
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+		})
 
 		Convey("Get manifest", func() {
 			// overwrite controller storage
@@ -184,7 +231,7 @@ func TestRoutes(t *testing.T) {
 					"reference": "reference",
 				},
 				&mocks.MockedImageStore{
-					DeleteImageManifestFn: func(repo, reference string) error {
+					DeleteImageManifestFn: func(repo, reference string, detectCollision bool) error {
 						return zerr.ErrRepoNotFound
 					},
 				},
@@ -199,7 +246,7 @@ func TestRoutes(t *testing.T) {
 					"reference": "reference",
 				},
 				&mocks.MockedImageStore{
-					DeleteImageManifestFn: func(repo, reference string) error {
+					DeleteImageManifestFn: func(repo, reference string, detectCollision bool) error {
 						return zerr.ErrManifestNotFound
 					},
 				},
@@ -214,7 +261,7 @@ func TestRoutes(t *testing.T) {
 					"reference": "reference",
 				},
 				&mocks.MockedImageStore{
-					DeleteImageManifestFn: func(repo, reference string) error {
+					DeleteImageManifestFn: func(repo, reference string, detectCollision bool) error {
 						return ErrUnexpectedError
 					},
 				},
@@ -229,7 +276,7 @@ func TestRoutes(t *testing.T) {
 					"reference": "reference",
 				},
 				&mocks.MockedImageStore{
-					DeleteImageManifestFn: func(repo, reference string) error {
+					DeleteImageManifestFn: func(repo, reference string, detectCollision bool) error {
 						return zerr.ErrBadManifest
 					},
 				},

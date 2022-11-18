@@ -582,7 +582,7 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 			// could be syscall.EMFILE (Err:0x18 too many opened files), etc
 			rh.c.Log.Error().Err(err).Msg("unexpected error: performing cleanup")
 
-			if err = imgStore.DeleteImageManifest(name, reference); err != nil {
+			if err = imgStore.DeleteImageManifest(name, reference, false); err != nil {
 				// deletion of image manifest is important, but not critical for image repo consistancy
 				// in the worst scenario a partial manifest file written to disk will not affect the repo because
 				// the new manifest was not added to "index.json" file (it is possible that GC will take care of it)
@@ -628,7 +628,20 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 		return
 	}
 
-	err := imgStore.DeleteImageManifest(name, reference)
+	// authz request context (set in authz middleware)
+	acCtx, err := localCtx.GetAccessControlContext(request.Context())
+	if err != nil {
+		response.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	var detectCollision bool
+	if acCtx != nil {
+		detectCollision = acCtx.CanDetectManifestCollision(name)
+	}
+
+	err = imgStore.DeleteImageManifest(name, reference, detectCollision)
 	if err != nil {
 		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 			WriteJSON(response, http.StatusBadRequest,
@@ -636,6 +649,9 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 		} else if errors.Is(err, zerr.ErrManifestNotFound) {
 			WriteJSON(response, http.StatusNotFound,
 				NewErrorList(NewError(MANIFEST_UNKNOWN, map[string]string{"reference": reference})))
+		} else if errors.Is(err, zerr.ErrManifestConflict) {
+			WriteJSON(response, http.StatusConflict,
+				NewErrorList(NewError(MANIFEST_INVALID, map[string]string{"reference": reference})))
 		} else if errors.Is(err, zerr.ErrBadManifest) {
 			WriteJSON(response, http.StatusBadRequest,
 				NewErrorList(NewError(UNSUPPORTED, map[string]string{"reference": reference})))
@@ -1454,19 +1470,18 @@ func (rh *RouteHandler) ListRepositories(response http.ResponseWriter, request *
 	}
 
 	var repos []string
-	authzCtxKey := localCtx.GetContextKey()
 
-	// get passed context from authzHandler and filter out repos based on permissions
-	if authCtx := request.Context().Value(authzCtxKey); authCtx != nil {
-		acCtx, ok := authCtx.(localCtx.AccessControlContext)
-		if !ok {
-			response.WriteHeader(http.StatusInternalServerError)
+	// authz context
+	acCtx, err := localCtx.GetAccessControlContext(request.Context())
+	if err != nil {
+		response.WriteHeader(http.StatusInternalServerError)
 
-			return
-		}
+		return
+	}
 
+	if acCtx != nil {
 		for _, r := range combineRepoList {
-			if acCtx.IsAdmin || matchesRepo(acCtx.GlobPatterns, r) {
+			if acCtx.IsAdmin || acCtx.CanReadRepo(r) {
 				repos = append(repos, r)
 			}
 		}
