@@ -576,6 +576,47 @@ func (r *queryResolver) getImageList(store storage.ImageStore, imageName string)
 	return results, nil
 }
 
+func getReferrers(store storage.ImageStore, repoName string, digest string, artifactType string, log log.Logger) (
+	[]*gql_generated.Referrer, error,
+) {
+	results := make([]*gql_generated.Referrer, 0)
+
+	index, err := store.GetReferrers(repoName, godigest.Digest(digest), artifactType)
+	if err != nil {
+		log.Error().Err(err).Msg("error extracting referrers list")
+
+		return results, err
+	}
+
+	for _, manifest := range index.Manifests {
+		size := int(manifest.Size)
+		digest := manifest.Digest.String()
+		annotations := make([]*gql_generated.Annotation, 0)
+		artifactType := manifest.ArtifactType
+		mediaType := manifest.MediaType
+
+		for k, v := range manifest.Annotations {
+			key := k
+			value := v
+
+			annotations = append(annotations, &gql_generated.Annotation{
+				Key:   &key,
+				Value: &value,
+			})
+		}
+
+		results = append(results, &gql_generated.Referrer{
+			MediaType:    &mediaType,
+			ArtifactType: &artifactType,
+			Digest:       &digest,
+			Size:         &size,
+			Annotations:  annotations,
+		})
+	}
+
+	return results, nil
+}
+
 func BuildImageInfo(repo string, tag string, manifestDigest godigest.Digest,
 	manifest ispec.Manifest, imageConfig ispec.Image, isSigned bool,
 ) *gql_generated.ImageSummary {

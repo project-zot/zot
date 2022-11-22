@@ -71,3 +71,16 @@ type HistoryDescription struct {
 	Comment    string    `json:"comment"`
 	EmptyLayer bool      `json:"emptyLayer"`
 }
+
+type Referrer struct {
+	MediaType    string       `json:"mediatype"`
+	ArtifactType string       `json:"artifacttype"`
+	Size         int          `json:"size"`
+	Digest       string       `json:"digest"`
+	Annotations  []Annotation `json:"annotations"`
+}
+
+type Annotation struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}

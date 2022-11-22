@@ -156,6 +156,142 @@ func TestWaitTillTrivyDBDownloadStarted(t *testing.T) {
 	})
 }
 
+func TestUploadArtifact(t *testing.T) {
+	Convey("Put request results in an error", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+
+		artifact := ispec.Artifact{}
+
+		err := test.UploadArtifact(baseURL, "test", &artifact)
+		So(err, ShouldNotBeNil)
+	})
+}
+
+func TestUploadBlob(t *testing.T) {
+	Convey("Post request results in an error", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+
+		err := test.UploadBlob(baseURL, "test", []byte("test"), "zot.com.test")
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("Post request status differs from accepted", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+
+		tempDir := t.TempDir()
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = tempDir
+
+		err := os.Chmod(tempDir, 0o400)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		ctlr := api.NewController(conf)
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+
+		test.WaitTillServerReady(baseURL)
+
+		err = test.UploadBlob(baseURL, "test", []byte("test"), "zot.com.test")
+		So(err, ShouldEqual, test.ErrPostBlob)
+	})
+
+	Convey("Put request results in an error", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+
+		tempDir := t.TempDir()
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = tempDir
+
+		ctlr := api.NewController(conf)
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+
+		test.WaitTillServerReady(baseURL)
+
+		blob := new([]byte)
+
+		err := test.UploadBlob(baseURL, "test", *blob, "zot.com.test")
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("Put request status differs from accepted", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+
+		tempDir := t.TempDir()
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = tempDir
+
+		ctlr := api.NewController(conf)
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+
+		test.WaitTillServerReady(baseURL)
+
+		blob := []byte("test")
+		blobDigest := godigest.FromBytes(blob)
+		layerPath := path.Join(tempDir, "test", "blobs", "sha256")
+		blobPath := path.Join(layerPath, blobDigest.String())
+		if _, err := os.Stat(layerPath); os.IsNotExist(err) {
+			err = os.MkdirAll(layerPath, 0o700)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			file, err := os.Create(blobPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			err = os.Chmod(layerPath, 0o000)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() {
+				err = os.Chmod(layerPath, 0o700)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				os.RemoveAll(file.Name())
+			}()
+		}
+
+		err := test.UploadBlob(baseURL, "test", blob, "zot.com.test")
+		So(err, ShouldEqual, test.ErrPutBlob)
+	})
+
+	Convey("Put request successful", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+
+		tempDir := t.TempDir()
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = tempDir
+
+		ctlr := api.NewController(conf)
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+
+		test.WaitTillServerReady(baseURL)
+
+		blob := []byte("test")
+
+		err := test.UploadBlob(baseURL, "test", blob, "zot.com.test")
+		So(err, ShouldEqual, nil)
+	})
+}
+
 func TestUploadImage(t *testing.T) {
 	Convey("Post request results in an error", t, func() {
 		port := test.GetFreePort()

@@ -315,6 +315,52 @@ func TestMatching(t *testing.T) {
 	})
 }
 
+func TestGetReferrers(t *testing.T) {
+	Convey("getReferrers", t, func() {
+		Convey("GetReferrers returns error", func() {
+			testLogger := log.NewLogger("debug", "")
+			mockedStore := mocks.MockedImageStore{
+				GetReferrersFn: func(repo string, digest godigest.Digest, artifactType string) (ispec.Index, error) {
+					return ispec.Index{}, ErrTestError
+				},
+			}
+
+			_, err := getReferrers(mockedStore, "test", "", "", testLogger)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("GetReferrers return index of descriptors", func() {
+			testLogger := log.NewLogger("debug", "")
+			referrerDescriptor := ispec.Descriptor{
+				MediaType:    ispec.MediaTypeArtifactManifest,
+				ArtifactType: "com.artifact.test",
+				Size:         403,
+				Digest:       godigest.FromString("test"),
+				Annotations: map[string]string{
+					"key": "value",
+				},
+			}
+			mockedStore := mocks.MockedImageStore{
+				GetReferrersFn: func(repo string, digest godigest.Digest, artifactType string) (ispec.Index, error) {
+					return ispec.Index{
+						Manifests: []ispec.Descriptor{
+							referrerDescriptor,
+						},
+					}, nil
+				},
+			}
+
+			referrers, err := getReferrers(mockedStore, "test", "", "", testLogger)
+			So(err, ShouldBeNil)
+			So(*referrers[0].ArtifactType, ShouldEqual, referrerDescriptor.ArtifactType)
+			So(*referrers[0].MediaType, ShouldEqual, referrerDescriptor.MediaType)
+			So(*referrers[0].Size, ShouldEqual, referrerDescriptor.Size)
+			So(*referrers[0].Digest, ShouldEqual, referrerDescriptor.Digest)
+			So(*referrers[0].Annotations[0].Value, ShouldEqual, referrerDescriptor.Annotations["key"])
+		})
+	})
+}
+
 func TestExtractImageDetails(t *testing.T) {
 	Convey("repoListWithNewestImage", t, func() {
 		// log := log.Logger{Logger: zerolog.New(os.Stdout)}

@@ -76,6 +76,14 @@ type ExpandedRepoInfoResp struct {
 	Errors           []ErrorGQL       `json:"errors"`
 }
 
+type ReferrersResp struct {
+	ReferrersResult ReferrersResult `json:"data"`
+	Errors          []ErrorGQL      `json:"errors"`
+}
+
+type ReferrersResult struct {
+	Referrers []common.Referrer `json:"referrers"`
+}
 type GlobalSearchResultResp struct {
 	GlobalSearchResult GlobalSearchResult `json:"data"`
 	Errors             []ErrorGQL         `json:"errors"`
@@ -655,6 +663,138 @@ func TestRepoListWithNewestImage(t *testing.T) {
 			// This really depends on the test data, but with the current test images it's CRITICAL
 			So(vulnerabilities.MaxSeverity, ShouldEqual, "CRITICAL")
 		}
+	})
+}
+
+func TestGetReferrersGQL(t *testing.T) {
+	Convey("get referrers", t, func() {
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = t.TempDir()
+
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Lint: &extconf.LintConfig{
+				BaseConfig: extconf.BaseConfig{
+					Enable: &defaultVal,
+				},
+			},
+		}
+
+		gqlEndpoint := fmt.Sprintf("%s%s?query=", baseURL, graphqlQueryPrefix)
+
+		conf.Extensions.Search.CVE = nil
+
+		ctlr := api.NewController(conf)
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+
+		WaitTillServerReady(baseURL)
+
+		// =======================
+
+		config, layers, manifest, err := GetImageComponents(1000)
+		So(err, ShouldBeNil)
+
+		repo := "artifact-ref"
+
+		err = UploadImage(
+			Image{
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+				Tag:      "1.0",
+			},
+			baseURL,
+			repo)
+
+		So(err, ShouldBeNil)
+
+		manifestBlob, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+		manifestDigest := godigest.FromBytes(manifestBlob)
+		manifestSize := int64(len(manifestBlob))
+
+		subjectDescriptor := &ispec.Descriptor{
+			MediaType: "application/vnd.oci.image.manifest.v1+json",
+			Size:      manifestSize,
+			Digest:    manifestDigest,
+		}
+
+		artifactContentBlob := []byte("test artifact")
+		artifactContentBlobSize := int64(len(artifactContentBlob))
+		artifactContentType := "application/octet-stream"
+		artifactContentBlobDigest := godigest.FromBytes(artifactContentBlob)
+		artifactType := "com.artifact.test"
+
+		err = UploadBlob(baseURL, repo, artifactContentBlob, artifactContentType)
+		So(err, ShouldBeNil)
+
+		artifact := &ispec.Artifact{
+			Blobs: []ispec.Descriptor{
+				{
+					MediaType: artifactContentType,
+					Digest:    artifactContentBlobDigest,
+					Size:      artifactContentBlobSize,
+				},
+			},
+			Subject:      subjectDescriptor,
+			ArtifactType: artifactType,
+			Annotations: map[string]string{
+				"com.artifact.format": "test",
+			},
+		}
+
+		artifactManifestBlob, err := json.Marshal(artifact)
+		So(err, ShouldBeNil)
+		artifactManifestDigest := godigest.FromBytes(artifactManifestBlob)
+
+		err = UploadArtifact(baseURL, repo, artifact)
+		So(err, ShouldBeNil)
+
+		gqlQuery := `
+			{Referrers(
+				repo: "%s",
+				digest: "%s",
+				type: ""
+		   		){
+					ArtifactType,
+					Digest,
+					MediaType,
+					Size,
+					Annotations{
+						Key
+						Value
+					}
+		   		}
+			}`
+
+		strQuery := fmt.Sprintf(gqlQuery, repo, manifestDigest.String())
+
+		targetURL := fmt.Sprintf("%s%s", gqlEndpoint, url.QueryEscape(strQuery))
+
+		resp, err := resty.R().Get(targetURL)
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.Body(), ShouldNotBeNil)
+
+		refferrsResp := &ReferrersResp{}
+
+		err = json.Unmarshal(resp.Body(), refferrsResp)
+		So(err, ShouldBeNil)
+		So(refferrsResp.Errors, ShouldBeNil)
+		So(refferrsResp.ReferrersResult.Referrers[0].ArtifactType, ShouldEqual, artifactType)
+		So(refferrsResp.ReferrersResult.Referrers[0].MediaType, ShouldEqual, ispec.MediaTypeArtifactManifest)
+
+		So(refferrsResp.ReferrersResult.Referrers[0].Annotations[0].Key, ShouldEqual, "com.artifact.format")
+		So(refferrsResp.ReferrersResult.Referrers[0].Annotations[0].Value, ShouldEqual, "test")
+
+		So(refferrsResp.ReferrersResult.Referrers[0].Digest, ShouldEqual, artifactManifestDigest)
 	})
 }
 
