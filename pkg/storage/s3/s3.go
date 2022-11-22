@@ -284,10 +284,15 @@ func (is *ObjectStorage) GetNextRepository(repo string) (string, error) {
 
 // GetImageTags returns a list of image tags available in the specified repository.
 func (is *ObjectStorage) GetImageTags(repo string) ([]string, error) {
+	var lockLatency time.Time
+
 	dir := path.Join(is.rootDir, repo)
 	if fi, err := is.store.Stat(context.Background(), dir); err != nil || !fi.IsDir() {
 		return nil, zerr.ErrRepoNotFound
 	}
+
+	is.RLock(&lockLatency)
+	defer is.RUnlock(&lockLatency)
 
 	index, err := storage.GetIndex(is, repo, is.log)
 	if err != nil {
@@ -299,10 +304,15 @@ func (is *ObjectStorage) GetImageTags(repo string) ([]string, error) {
 
 // GetImageManifest returns the image manifest of an image in the specific repository.
 func (is *ObjectStorage) GetImageManifest(repo, reference string) ([]byte, godigest.Digest, string, error) {
+	var lockLatency time.Time
+
 	dir := path.Join(is.rootDir, repo)
 	if fi, err := is.store.Stat(context.Background(), dir); err != nil || !fi.IsDir() {
 		return nil, "", "", zerr.ErrRepoNotFound
 	}
+
+	is.RLock(&lockLatency)
+	defer is.RUnlock(&lockLatency)
 
 	index, err := storage.GetIndex(is, repo, is.log)
 	if err != nil {
@@ -345,6 +355,11 @@ func (is *ObjectStorage) PutImageManifest(repo, reference, mediaType string, //n
 		return "", err
 	}
 
+	var lockLatency time.Time
+
+	is.Lock(&lockLatency)
+	defer is.Unlock(&lockLatency)
+
 	dig, err := storage.ValidateManifest(is, repo, reference, mediaType, body, is.log)
 	if err != nil {
 		return dig, err
@@ -384,11 +399,6 @@ func (is *ObjectStorage) PutImageManifest(repo, reference, mediaType string, //n
 		return desc.Digest, nil
 	}
 
-	var lockLatency time.Time
-
-	is.Lock(&lockLatency)
-	defer is.Unlock(&lockLatency)
-
 	// write manifest to "blobs"
 	dir := path.Join(is.rootDir, repo, "blobs", mDigest.Algorithm().String())
 	manifestPath := path.Join(dir, mDigest.Encoded())
@@ -399,10 +409,7 @@ func (is *ObjectStorage) PutImageManifest(repo, reference, mediaType string, //n
 		return "", err
 	}
 
-	is.Unlock(&lockLatency)
-
 	err = storage.UpdateIndexWithPrunedImageManifests(is, &index, repo, desc, oldDgst, is.log)
-	is.Lock(&lockLatency)
 	if err != nil {
 		return "", err
 	}
@@ -419,10 +426,8 @@ func (is *ObjectStorage) PutImageManifest(repo, reference, mediaType string, //n
 		return "", err
 	}
 
-	is.Unlock(&lockLatency)
 	// apply linter only on images, not signatures
 	pass, err := storage.ApplyLinter(is, is.linter, repo, desc)
-	is.Lock(&lockLatency)
 	if !pass {
 		is.log.Error().Err(err).Str("repo", repo).Str("reference", reference).Msg("linter didn't pass")
 
@@ -450,6 +455,9 @@ func (is *ObjectStorage) DeleteImageManifest(repo, reference string, detectColli
 		return zerr.ErrRepoNotFound
 	}
 
+	is.Lock(&lockLatency)
+	defer is.Unlock(&lockLatency)
+
 	index, err := storage.GetIndex(is, repo, is.log)
 	if err != nil {
 		return err
@@ -468,9 +476,6 @@ func (is *ObjectStorage) DeleteImageManifest(repo, reference string, detectColli
 	if err != nil {
 		return err
 	}
-
-	is.Lock(&lockLatency)
-	defer is.Unlock(&lockLatency)
 
 	// now update "index.json"
 	dir = path.Join(is.rootDir, repo)
@@ -686,8 +691,6 @@ func (is *ObjectStorage) FinishBlobUpload(repo, uuid string, body io.Reader, dst
 		return zerr.ErrBadBlobDigest
 	}
 
-	defer fileWriter.Close()
-
 	if err := fileWriter.Commit(); err != nil {
 		is.log.Error().Err(err).Msg("failed to commit file")
 
@@ -696,6 +699,8 @@ func (is *ObjectStorage) FinishBlobUpload(repo, uuid string, body io.Reader, dst
 
 	if err := fileWriter.Close(); err != nil {
 		is.log.Error().Err(err).Msg("failed to close file")
+
+		return err
 	}
 
 	fileReader, err := is.store.Reader(context.Background(), src, 0)
@@ -704,6 +709,8 @@ func (is *ObjectStorage) FinishBlobUpload(repo, uuid string, body io.Reader, dst
 
 		return zerr.ErrUploadNotFound
 	}
+
+	defer fileReader.Close()
 
 	srcDigest, err := godigest.FromReader(fileReader)
 	if err != nil {
@@ -718,8 +725,6 @@ func (is *ObjectStorage) FinishBlobUpload(repo, uuid string, body io.Reader, dst
 
 		return zerr.ErrBadBlobDigest
 	}
-
-	fileReader.Close()
 
 	dst := is.BlobPath(repo, dstDigest)
 
@@ -1209,48 +1214,86 @@ func (is *ObjectStorage) GetBlob(repo string, digest godigest.Digest, mediaType 
 	return blobReadCloser, binfo.Size(), nil
 }
 
+// GetBlobContent returns blob contents, SHOULD lock from outside.
 func (is *ObjectStorage) GetBlobContent(repo string, digest godigest.Digest) ([]byte, error) {
-	blob, _, err := is.GetBlob(repo, digest, ispec.MediaTypeImageManifest)
-	if err != nil {
-		return []byte{}, err
-	}
-	defer blob.Close()
-
-	buf := new(bytes.Buffer)
-
-	_, err = buf.ReadFrom(blob)
-	if err != nil {
-		is.log.Error().Err(err).Msg("failed to read blob")
-
+	if err := digest.Validate(); err != nil {
 		return []byte{}, err
 	}
 
-	return buf.Bytes(), nil
+	blobPath := is.BlobPath(repo, digest)
+
+	binfo, err := is.store.Stat(context.Background(), blobPath)
+	if err != nil {
+		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
+
+		return []byte{}, zerr.ErrBlobNotFound
+	}
+
+	blobBuf, err := is.store.GetContent(context.Background(), blobPath)
+	if err != nil {
+		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to open blob")
+
+		return nil, err
+	}
+
+	// is a 'deduped' blob?
+	if binfo.Size() == 0 && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
+		// Check blobs in cache
+		dstRecord, err := is.checkCacheBlob(digest)
+		if err != nil {
+			is.log.Error().Err(err).Str("digest", digest.String()).Msg("cache: not found")
+
+			return nil, zerr.ErrBlobNotFound
+		}
+
+		blobBuf, err := is.store.GetContent(context.Background(), dstRecord)
+		if err != nil {
+			is.log.Error().Err(err).Str("blob", dstRecord).Msg("failed to open blob")
+
+			return nil, err
+		}
+
+		return blobBuf, nil
+	}
+
+	return blobBuf, nil
 }
 
 func (is *ObjectStorage) GetReferrers(repo string, gdigest godigest.Digest, artifactType string,
 ) (ispec.Index, error) {
+	var lockLatency time.Time
+
+	is.RLock(&lockLatency)
+	defer is.RUnlock(&lockLatency)
+
 	return storage.GetReferrers(is, repo, gdigest, artifactType, is.log)
 }
 
 func (is *ObjectStorage) GetOrasReferrers(repo string, gdigest godigest.Digest, artifactType string,
 ) ([]artifactspec.Descriptor, error) {
-	return storage.GetOrasReferrers(is, repo, gdigest, artifactType, is.log)
-}
-
-func (is *ObjectStorage) GetIndexContent(repo string) ([]byte, error) {
 	var lockLatency time.Time
-
-	dir := path.Join(is.rootDir, repo)
 
 	is.RLock(&lockLatency)
 	defer is.RUnlock(&lockLatency)
 
+	return storage.GetOrasReferrers(is, repo, gdigest, artifactType, is.log)
+}
+
+// GetIndexContent returns index.json contents, SHOULD lock from outside.
+func (is *ObjectStorage) GetIndexContent(repo string) ([]byte, error) {
+	dir := path.Join(is.rootDir, repo)
+
 	buf, err := is.store.GetContent(context.Background(), path.Join(dir, "index.json"))
 	if err != nil {
+		if errors.Is(err, driver.PathNotFoundError{}) {
+			is.log.Error().Err(err).Str("dir", dir).Msg("index.json doesn't exist")
+
+			return []byte{}, zerr.ErrRepoNotFound
+		}
+
 		is.log.Error().Err(err).Str("dir", dir).Msg("failed to read index.json")
 
-		return []byte{}, zerr.ErrRepoNotFound
+		return []byte{}, err
 	}
 
 	return buf, nil

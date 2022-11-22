@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path"
 	"strconv"
+	"time"
 
 	notreg "github.com/notaryproject/notation-go/registry"
 	godigest "github.com/opencontainers/go-digest"
@@ -89,7 +90,12 @@ func (olu BaseOciLayoutUtils) GetRepositories() ([]string, error) {
 
 // Below method will return image path including root dir, root dir is determined by splitting.
 func (olu BaseOciLayoutUtils) GetImageManifests(repo string) ([]ispec.Descriptor, error) {
+	var lockLatency time.Time
+
 	imageStore := olu.StoreController.GetImageStore(repo)
+
+	imageStore.RLock(&lockLatency)
+	defer imageStore.RUnlock(&lockLatency)
 
 	buf, err := imageStore.GetIndexContent(repo)
 	if err != nil {
@@ -118,7 +124,12 @@ func (olu BaseOciLayoutUtils) GetImageManifests(repo string) ([]ispec.Descriptor
 func (olu BaseOciLayoutUtils) GetImageBlobManifest(repo string, digest godigest.Digest) (ispec.Manifest, error) {
 	var blobIndex ispec.Manifest
 
+	var lockLatency time.Time
+
 	imageStore := olu.StoreController.GetImageStore(repo)
+
+	imageStore.RLock(&lockLatency)
+	defer imageStore.RUnlock(&lockLatency)
 
 	blobBuf, err := imageStore.GetBlobContent(repo, digest)
 	if err != nil {
@@ -139,7 +150,12 @@ func (olu BaseOciLayoutUtils) GetImageBlobManifest(repo string, digest godigest.
 func (olu BaseOciLayoutUtils) GetImageInfo(repo string, digest godigest.Digest) (ispec.Image, error) {
 	var imageInfo ispec.Image
 
+	var lockLatency time.Time
+
 	imageStore := olu.StoreController.GetImageStore(repo)
+
+	imageStore.RLock(&lockLatency)
+	defer imageStore.RUnlock(&lockLatency)
 
 	blobBuf, err := imageStore.GetBlobContent(repo, digest)
 	if err != nil {
@@ -264,6 +280,11 @@ func (olu BaseOciLayoutUtils) GetImageConfigInfo(repo string, manifestDigest god
 
 func (olu BaseOciLayoutUtils) GetImageManifestSize(repo string, manifestDigest godigest.Digest) int64 {
 	imageStore := olu.StoreController.GetImageStore(repo)
+
+	var lockLatency time.Time
+
+	imageStore.RLock(&lockLatency)
+	defer imageStore.RUnlock(&lockLatency)
 
 	manifestBlob, err := imageStore.GetBlobContent(repo, manifestDigest)
 	if err != nil {

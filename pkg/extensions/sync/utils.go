@@ -12,6 +12,7 @@ import (
 	"path"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/Masterminds/semver"
 	glob "github.com/bmatcuk/doublestar/v4"
@@ -333,6 +334,8 @@ func pushSyncedLocalImage(localRepo, reference, localCachePath string,
 ) error {
 	log.Info().Msgf("pushing synced local image %s/%s:%s to local registry", localCachePath, localRepo, reference)
 
+	var lockLatency time.Time
+
 	metrics := monitoring.NewMetricsServer(false, log)
 
 	cacheImageStore := local.NewImageStore(localCachePath, false,
@@ -373,7 +376,10 @@ func pushSyncedLocalImage(localRepo, reference, localCachePath string,
 		}
 
 		for _, manifest := range indexManifest.Manifests {
+			cacheImageStore.RLock(&lockLatency)
 			manifestBuf, err := cacheImageStore.GetBlobContent(localRepo, manifest.Digest)
+			cacheImageStore.RUnlock(&lockLatency)
+
 			if err != nil {
 				log.Error().Str("errorType", TypeOf(err)).
 					Err(err).Str("dir", path.Join(cacheImageStore.RootDir(), localRepo)).Str("digest", manifest.Digest.String()).

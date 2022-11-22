@@ -6,7 +6,6 @@ import (
 	"os"
 	"path"
 	"strings"
-	"time"
 
 	"github.com/docker/distribution/registry/storage/driver"
 	"github.com/notaryproject/notation-go"
@@ -134,28 +133,24 @@ func validateOCIManifest(imgStore ImageStore, repo, reference string, manifest *
 	// validate image config
 	config := manifest.Config
 
-	blobFile, _, err := imgStore.GetBlob(repo, config.Digest, "")
+	blobBuf, err := imgStore.GetBlobContent(repo, config.Digest)
 	if err != nil {
 		return config.Digest, zerr.ErrBlobNotFound
 	}
 
-	defer blobFile.Close()
-
-	dec := json.NewDecoder(blobFile)
-
 	var cspec ispec.Image
-	if err := dec.Decode(&cspec); err != nil {
+
+	err = json.Unmarshal(blobBuf, &cspec)
+	if err != nil {
 		return "", zerr.ErrBadManifest
 	}
 
 	// validate the layers
 	for _, l := range manifest.Layers {
-		blobFile, _, err := imgStore.GetBlob(repo, l.Digest, "")
+		_, err := imgStore.GetBlobContent(repo, l.Digest)
 		if err != nil {
 			return l.Digest, zerr.ErrBlobNotFound
 		}
-
-		defer blobFile.Close()
 	}
 
 	return "", nil
@@ -461,8 +456,6 @@ func ApplyLinter(imgStore ImageStore, linter Lint, repo string, manifestDesc isp
 func GetOrasReferrers(imgStore ImageStore, repo string, gdigest godigest.Digest, artifactType string,
 	log zerolog.Logger,
 ) ([]oras.Descriptor, error) {
-	var lockLatency time.Time
-
 	if err := gdigest.Validate(); err != nil {
 		return nil, err
 	}
@@ -477,9 +470,6 @@ func GetOrasReferrers(imgStore ImageStore, repo string, gdigest godigest.Digest,
 		return nil, err
 	}
 
-	imgStore.RLock(&lockLatency)
-	defer imgStore.RUnlock(&lockLatency)
-
 	found := false
 
 	result := []oras.Descriptor{}
@@ -489,10 +479,7 @@ func GetOrasReferrers(imgStore ImageStore, repo string, gdigest godigest.Digest,
 			continue
 		}
 
-		imgStore.RUnlock(&lockLatency)
 		buf, err := imgStore.GetBlobContent(repo, manifest.Digest)
-		imgStore.RLock(&lockLatency)
-
 		if err != nil {
 			log.Error().Err(err).Str("blob", imgStore.BlobPath(repo, manifest.Digest)).Msg("failed to read manifest")
 
@@ -540,8 +527,6 @@ func GetOrasReferrers(imgStore ImageStore, repo string, gdigest godigest.Digest,
 func GetReferrers(imgStore ImageStore, repo string, gdigest godigest.Digest, artifactType string,
 	log zerolog.Logger,
 ) (ispec.Index, error) {
-	var lockLatency time.Time
-
 	nilIndex := ispec.Index{}
 
 	if err := gdigest.Validate(); err != nil {
@@ -558,9 +543,6 @@ func GetReferrers(imgStore ImageStore, repo string, gdigest godigest.Digest, art
 		return nilIndex, err
 	}
 
-	imgStore.RLock(&lockLatency)
-	defer imgStore.RUnlock(&lockLatency)
-
 	found := false
 
 	result := []ispec.Descriptor{}
@@ -570,10 +552,7 @@ func GetReferrers(imgStore ImageStore, repo string, gdigest godigest.Digest, art
 			continue
 		}
 
-		imgStore.RUnlock(&lockLatency)
 		buf, err := imgStore.GetBlobContent(repo, manifest.Digest)
-		imgStore.RLock(&lockLatency)
-
 		if err != nil {
 			log.Error().Err(err).Str("blob", imgStore.BlobPath(repo, manifest.Digest)).Msg("failed to read manifest")
 

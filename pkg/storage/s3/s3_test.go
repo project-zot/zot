@@ -891,6 +891,16 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
+		Convey("Test GetIndexContent", func(c C) {
+			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
+				GetContentFn: func(ctx context.Context, path string) ([]byte, error) {
+					return []byte{}, driver.PathNotFoundError{}
+				},
+			})
+			_, err := imgStore.GetIndexContent(testImage)
+			So(err, ShouldNotBeNil)
+		})
+
 		Convey("Test DeleteImageManifest2", func(c C) {
 			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{})
 			err := imgStore.DeleteImageManifest(testImage, "1.0", false)
@@ -1092,6 +1102,18 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
+		Convey("Test GetBlobContent", func(c C) {
+			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
+				GetContentFn: func(ctx context.Context, path string) ([]byte, error) {
+					return []byte{}, errS3
+				},
+			})
+
+			d := godigest.FromBytes([]byte(""))
+			_, err := imgStore.GetBlobContent(testImage, d)
+			So(err, ShouldNotBeNil)
+		})
+
 		Convey("Test DeleteBlob", func(c C) {
 			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{
 				DeleteFn: func(ctx context.Context, path string) error {
@@ -1233,6 +1255,14 @@ func TestS3Dedupe(t *testing.T) {
 		err = blobReadCloser.Close()
 		So(err, ShouldBeNil)
 
+		blobContent, err := imgStore.GetBlobContent("dedupe2", digest)
+		So(err, ShouldBeNil)
+		So(len(blobContent), ShouldBeGreaterThan, 0)
+		So(checkBlobSize1, ShouldEqual, len(blobContent))
+		So(getBlobSize1, ShouldEqual, len(blobContent))
+		err = blobReadCloser.Close()
+		So(err, ShouldBeNil)
+
 		cblob, cdigest = test.GetRandomImageConfig()
 		_, clen, err = imgStore.FullBlobUpload("dedupe2", bytes.NewReader(cblob), cdigest)
 		So(err, ShouldBeNil)
@@ -1358,6 +1388,10 @@ func TestS3Dedupe(t *testing.T) {
 			_, getBlobSize3, err := imgStore.GetBlob("dedupe3", digest, "application/vnd.oci.image.layer.v1.tar+gzip")
 			So(err, ShouldBeNil)
 			So(getBlobSize1, ShouldEqual, getBlobSize3)
+
+			blobContent, err := imgStore.GetBlobContent("dedupe3", digest)
+			So(err, ShouldBeNil)
+			So(getBlobSize1, ShouldEqual, len(blobContent))
 
 			_, checkBlobSize3, err := imgStore.CheckBlob("dedupe3", digest)
 			So(err, ShouldBeNil)
@@ -2261,6 +2295,9 @@ func TestS3DedupeErr(t *testing.T) {
 		_, _, err = imgStore.GetBlob("repo2", digest, "application/vnd.oci.image.layer.v1.tar+gzip")
 		So(err, ShouldNotBeNil)
 
+		_, err = imgStore.GetBlobContent("repo2", digest)
+		So(err, ShouldNotBeNil)
+
 		_, _, _, err = imgStore.GetBlobPartial("repo2", digest, "application/vnd.oci.image.layer.v1.tar+gzip", 0, 1)
 		So(err, ShouldNotBeNil)
 	})
@@ -2303,9 +2340,20 @@ func TestS3DedupeErr(t *testing.T) {
 
 				return io.NopCloser(strings.NewReader("")), nil
 			},
+
+			GetContentFn: func(ctx context.Context, path string) ([]byte, error) {
+				if strings.Contains(path, "repo1/dst1") {
+					return []byte{}, errS3
+				}
+
+				return []byte{}, nil
+			},
 		})
 
 		_, _, err = imgStore.GetBlob("repo2", digest, "application/vnd.oci.image.layer.v1.tar+gzip")
+		So(err, ShouldNotBeNil)
+
+		_, err = imgStore.GetBlobContent("repo2", digest)
 		So(err, ShouldNotBeNil)
 
 		_, _, _, err = imgStore.GetBlobPartial("repo2", digest, "application/vnd.oci.image.layer.v1.tar+gzip", 0, 1)
@@ -2329,6 +2377,9 @@ func TestS3DedupeErr(t *testing.T) {
 		})
 
 		_, _, err = imgStore.GetBlob("repo2", digest, "application/vnd.oci.image.layer.v1.tar+gzip")
+		So(err, ShouldNotBeNil)
+
+		_, err = imgStore.GetBlobContent("repo2", digest)
 		So(err, ShouldNotBeNil)
 
 		_, _, _, err = imgStore.GetBlobPartial("repo2", digest, "application/vnd.oci.image.layer.v1.tar+gzip", 0, 1)
