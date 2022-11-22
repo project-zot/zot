@@ -268,7 +268,7 @@ func (c *Controller) InitImageStore(reloadCtx context.Context) error {
 		var defaultStore storage.ImageStore
 		if c.Config.Storage.StorageDriver == nil {
 			// false positive lint - linter does not implement Lint method
-			//nolint:typecheck
+			//nolint:typecheck,contextcheck
 			defaultStore = local.NewImageStore(c.Config.Storage.RootDirectory,
 				c.Config.Storage.GC, c.Config.Storage.GCDelay,
 				c.Config.Storage.Dedupe, c.Config.Storage.Commit, c.Log, c.Metrics, linter,
@@ -296,7 +296,7 @@ func (c *Controller) InitImageStore(reloadCtx context.Context) error {
 			}
 
 			// false positive lint - linter does not implement Lint method
-			//nolint: typecheck
+			//nolint: typecheck,contextcheck
 			defaultStore = s3.NewImageStore(rootDir, c.Config.Storage.RootDirectory,
 				c.Config.Storage.GC, c.Config.Storage.GCDelay, c.Config.Storage.Dedupe,
 				c.Config.Storage.Commit, c.Log, c.Metrics, linter, store,
@@ -315,6 +315,7 @@ func (c *Controller) InitImageStore(reloadCtx context.Context) error {
 		if len(c.Config.Storage.SubPaths) > 0 {
 			subPaths := c.Config.Storage.SubPaths
 
+			//nolint: contextcheck
 			subImageStore, err := c.getSubStore(subPaths, linter)
 			if err != nil {
 				c.Log.Error().Err(err).Msg("controller: error getting sub image store")
@@ -443,7 +444,18 @@ func CreateCacheDatabaseDriver(storageConfig config.StorageConfig, log log.Logge
 
 			return driver
 		}
-		// used for tests, dynamodb when it comes
+		// dynamodb
+		if storageConfig.CacheDriver != nil {
+			dynamoParams := cache.DynamoDBDriverParameters{}
+			dynamoParams.Endpoint, _ = storageConfig.CacheDriver["endpoint"].(string)
+			dynamoParams.Region, _ = storageConfig.CacheDriver["region"].(string)
+			dynamoParams.TableName, _ = storageConfig.CacheDriver["tablename"].(string)
+
+			driver, _ := storage.Create("dynamodb", dynamoParams, log)
+
+			return driver
+		}
+
 		return nil
 	}
 

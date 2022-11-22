@@ -19,5 +19,5 @@ const (
 	DBCacheLockCheckTimeout  = 10 * time.Second
 	BoltdbName               = "cache"
 	ReferrerFilterAnnotation = "org.opencontainers.references.filtersApplied"
-	//
+	DynamoDBDriverName       = "dynamodb"
 )

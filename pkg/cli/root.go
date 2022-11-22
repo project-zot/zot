@@ -237,6 +237,75 @@ func validateStorageConfig(cfg *config.Config) error {
 	return nil
 }
 
+func validateCacheConfig(cfg *config.Config) error {
+	// global
+	// dedupe true, remote storage, remoteCache true, but no cacheDriver (remote)
+	//nolint: lll
+	if cfg.Storage.Dedupe && cfg.Storage.StorageDriver != nil && cfg.Storage.RemoteCache && cfg.Storage.CacheDriver == nil {
+		log.Error().Err(errors.ErrBadConfig).Msg(
+			"dedupe set to true with remote storage and caching, but no remote cache configured!")
+
+		return errors.ErrBadConfig
+	}
+
+	if cfg.Storage.CacheDriver != nil && cfg.Storage.RemoteCache {
+		// local storage with remote caching
+		if cfg.Storage.StorageDriver == nil {
+			log.Error().Err(errors.ErrBadConfig).Msg("cannot have local storage driver with remote caching!")
+
+			return errors.ErrBadConfig
+		}
+
+		// unsupported cache driver
+		if cfg.Storage.CacheDriver["name"] != storageConstants.DynamoDBDriverName {
+			log.Error().Err(errors.ErrBadConfig).Msgf("unsupported cache driver: %s", cfg.Storage.CacheDriver["name"])
+
+			return errors.ErrBadConfig
+		}
+	}
+
+	if !cfg.Storage.RemoteCache && cfg.Storage.CacheDriver != nil {
+		log.Warn().Err(errors.ErrBadConfig).Msgf(
+			"remoteCache set to false but cacheDriver config (remote caching) provided for %s,"+
+				"will ignore and use local caching", cfg.Storage.RootDirectory)
+	}
+
+	// subpaths
+	for _, subPath := range cfg.Storage.SubPaths {
+		// dedupe true, remote storage, remoteCache true, but no cacheDriver (remote)
+		//nolint: lll
+		if subPath.Dedupe && subPath.StorageDriver != nil && subPath.RemoteCache && subPath.CacheDriver == nil {
+			log.Error().Err(errors.ErrBadConfig).Msg("dedupe set to true with remote storage and caching, but no remote cache configured!")
+
+			return errors.ErrBadConfig
+		}
+
+		if subPath.CacheDriver != nil && subPath.RemoteCache {
+			// local storage with remote caching
+			if subPath.StorageDriver == nil {
+				log.Error().Err(errors.ErrBadConfig).Msg("cannot have local storage driver with remote caching!")
+
+				return errors.ErrBadConfig
+			}
+
+			// unsupported cache driver
+			if subPath.CacheDriver["name"] != storageConstants.DynamoDBDriverName {
+				log.Error().Err(errors.ErrBadConfig).Msgf("unsupported cache driver: %s", subPath.CacheDriver["name"])
+
+				return errors.ErrBadConfig
+			}
+		}
+
+		if !subPath.RemoteCache && subPath.CacheDriver != nil {
+			log.Warn().Err(errors.ErrBadConfig).Msgf(
+				"remoteCache set to false but cacheDriver config (remote caching) provided for %s,"+
+					"will ignore and use local caching", subPath.RootDirectory)
+		}
+	}
+
+	return nil
+}
+
 func validateConfiguration(config *config.Config) error {
 	if err := validateHTTP(config); err != nil {
 		return err
@@ -255,6 +324,10 @@ func validateConfiguration(config *config.Config) error {
 	}
 
 	if err := validateStorageConfig(config); err != nil {
+		return err
+	}
+
+	if err := validateCacheConfig(config); err != nil {
 		return err
 	}
 

@@ -44,6 +44,7 @@ var (
 	fileInfoSize   = 10
 	errorText      = "new s3 error"
 	errS3          = errors.New(errorText)
+	zotStorageTest = "zot-storage-test"
 )
 
 func cleanupStorage(store driver.StorageDriver, name string) {
@@ -55,6 +56,10 @@ func skipIt(t *testing.T) {
 
 	if os.Getenv("S3MOCK_ENDPOINT") == "" {
 		t.Skip("Skipping testing without AWS S3 mock server")
+	}
+
+	if os.Getenv("DYNAMODBMOCK_ENDPOINT") == "" {
+		t.Skip("Skipping testing without AWS DynamoDB mock server")
 	}
 }
 
@@ -84,7 +89,7 @@ func createObjectsStore(rootDir string, cacheDir string, dedupe bool) (
 	storage.ImageStore,
 	error,
 ) {
-	bucket := "zot-storage-test"
+	bucket := zotStorageTest
 	endpoint := os.Getenv("S3MOCK_ENDPOINT")
 	storageDriverParams := map[string]interface{}{
 		"rootDir":        rootDir,
@@ -124,6 +129,66 @@ func createObjectsStore(rootDir string, cacheDir string, dedupe bool) (
 			UseRelPaths: false,
 		}, log)
 	}
+	il := s3.NewImageStore(rootDir, cacheDir, false, storage.DefaultGCDelay,
+		dedupe, false, log, metrics, nil, store, cacheDriver)
+
+	return store, il, err
+}
+
+func createObjectsStoreDynamo(rootDir string, cacheDir string, dedupe bool, tableName string) (
+	driver.StorageDriver,
+	storage.ImageStore,
+	error,
+) {
+	bucket := zotStorageTest
+	endpoint := os.Getenv("S3MOCK_ENDPOINT")
+	storageDriverParams := map[string]interface{}{
+		"rootDir":        rootDir,
+		"name":           "s3",
+		"region":         "us-east-2",
+		"bucket":         bucket,
+		"regionendpoint": endpoint,
+		"accesskey":      "minioadmin",
+		"secretkey":      "minioadmin",
+		"secure":         false,
+		"skipverify":     false,
+	}
+
+	storeName := fmt.Sprintf("%v", storageDriverParams["name"])
+
+	store, err := factory.Create(storeName, storageDriverParams)
+	if err != nil {
+		panic(err)
+	}
+
+	// create bucket if it doesn't exists
+	_, err = resty.R().Put("http://" + endpoint + "/" + bucket)
+	if err != nil {
+		panic(err)
+	}
+
+	log := log.Logger{Logger: zerolog.New(os.Stdout)}
+	metrics := monitoring.NewMetricsServer(false, log)
+
+	var cacheDriver cache.Cache
+
+	// from pkg/cli/root.go/applyDefaultValues, s3 magic
+
+	cacheDriver, _ = storage.Create("dynamodb", cache.DynamoDBDriverParameters{
+		Endpoint:  os.Getenv("DYNAMODBMOCK_ENDPOINT"),
+		Region:    os.Getenv("us-east-2"),
+		TableName: tableName,
+	}, log)
+
+	tableName = strings.ReplaceAll(tableName, "/", "")
+	//nolint:errcheck
+	cacheDriverDynamo, _ := cacheDriver.(*cache.DynamoDBDriver)
+
+	err = cacheDriverDynamo.NewTable(tableName)
+	if err != nil {
+		panic(err)
+	}
+
 	il := s3.NewImageStore(rootDir, cacheDir, false, storage.DefaultGCDelay,
 		dedupe, false, log, metrics, nil, store, cacheDriver)
 
@@ -607,7 +672,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 		})
 
 		Convey("Unable to create subpath cache db", func(c C) {
-			bucket := "zot-storage-test"
+			bucket := zotStorageTest
 			endpoint := os.Getenv("S3MOCK_ENDPOINT")
 
 			storageDriverParams := config.GlobalStorageConfig{
@@ -1446,6 +1511,189 @@ func TestS3Dedupe(t *testing.T) {
 
 			// the new blob with dedupe false should be equal with the origin blob from dedupe1
 			So(fi1.Size(), ShouldEqual, fi3.Size())
+		})
+	})
+
+	Convey("Dedupe with dynamodb", t, func(c C) {
+		uuid, err := guuid.NewV4()
+		if err != nil {
+			panic(err)
+		}
+
+		testDir := path.Join("/oci-repo-test", uuid.String())
+
+		tdir := t.TempDir()
+
+		storeDriver, imgStore, _ := createObjectsStoreDynamo(testDir, tdir, true, tdir)
+		defer cleanupStorage(storeDriver, testDir)
+
+		// manifest1
+		upload, err := imgStore.NewBlobUpload("dedupe1")
+		So(err, ShouldBeNil)
+		So(upload, ShouldNotBeEmpty)
+
+		content := []byte("test-data3")
+		buf := bytes.NewBuffer(content)
+		buflen := buf.Len()
+		digest := godigest.FromBytes(content)
+		blob, err := imgStore.PutBlobChunkStreamed("dedupe1", upload, buf)
+		So(err, ShouldBeNil)
+		So(blob, ShouldEqual, buflen)
+		blobDigest1 := digest
+		So(blobDigest1, ShouldNotBeEmpty)
+
+		err = imgStore.FinishBlobUpload("dedupe1", upload, buf, digest)
+		So(err, ShouldBeNil)
+		So(blob, ShouldEqual, buflen)
+
+		_, checkBlobSize1, err := imgStore.CheckBlob("dedupe1", digest)
+		So(checkBlobSize1, ShouldBeGreaterThan, 0)
+		So(err, ShouldBeNil)
+
+		blobReadCloser, getBlobSize1, err := imgStore.GetBlob("dedupe1", digest,
+			"application/vnd.oci.image.layer.v1.tar+gzip")
+		So(getBlobSize1, ShouldBeGreaterThan, 0)
+		So(err, ShouldBeNil)
+		err = blobReadCloser.Close()
+		So(err, ShouldBeNil)
+
+		cblob, cdigest := test.GetRandomImageConfig()
+		_, clen, err := imgStore.FullBlobUpload("dedupe1", bytes.NewReader(cblob), cdigest)
+		So(err, ShouldBeNil)
+		So(clen, ShouldEqual, len(cblob))
+		hasBlob, _, err := imgStore.CheckBlob("dedupe1", cdigest)
+		So(err, ShouldBeNil)
+		So(hasBlob, ShouldEqual, true)
+
+		manifest := ispec.Manifest{
+			Config: ispec.Descriptor{
+				MediaType: "application/vnd.oci.image.config.v1+json",
+				Digest:    cdigest,
+				Size:      int64(len(cblob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    digest,
+					Size:      int64(buflen),
+				},
+			},
+		}
+
+		manifest.SchemaVersion = 2
+		manifestBuf, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+		digest = godigest.FromBytes(manifestBuf)
+		_, err = imgStore.PutImageManifest("dedupe1", digest.String(),
+			ispec.MediaTypeImageManifest, manifestBuf)
+		So(err, ShouldBeNil)
+
+		_, _, _, err = imgStore.GetImageManifest("dedupe1", digest.String())
+		So(err, ShouldBeNil)
+
+		// manifest2
+		upload, err = imgStore.NewBlobUpload("dedupe2")
+		So(err, ShouldBeNil)
+		So(upload, ShouldNotBeEmpty)
+
+		content = []byte("test-data3")
+		buf = bytes.NewBuffer(content)
+		buflen = buf.Len()
+		digest = godigest.FromBytes(content)
+
+		blob, err = imgStore.PutBlobChunkStreamed("dedupe2", upload, buf)
+		So(err, ShouldBeNil)
+		So(blob, ShouldEqual, buflen)
+		blobDigest2 := digest
+		So(blobDigest2, ShouldNotBeEmpty)
+
+		err = imgStore.FinishBlobUpload("dedupe2", upload, buf, digest)
+		So(err, ShouldBeNil)
+		So(blob, ShouldEqual, buflen)
+
+		_, checkBlobSize2, err := imgStore.CheckBlob("dedupe2", digest)
+		So(err, ShouldBeNil)
+		So(checkBlobSize2, ShouldBeGreaterThan, 0)
+
+		blobReadCloser, getBlobSize2, err := imgStore.GetBlob("dedupe2", digest,
+			"application/vnd.oci.image.layer.v1.tar+gzip")
+		So(err, ShouldBeNil)
+		So(getBlobSize2, ShouldBeGreaterThan, 0)
+		So(checkBlobSize1, ShouldEqual, checkBlobSize2)
+		So(getBlobSize1, ShouldEqual, getBlobSize2)
+		err = blobReadCloser.Close()
+		So(err, ShouldBeNil)
+
+		cblob, cdigest = test.GetRandomImageConfig()
+		_, clen, err = imgStore.FullBlobUpload("dedupe2", bytes.NewReader(cblob), cdigest)
+		So(err, ShouldBeNil)
+		So(clen, ShouldEqual, len(cblob))
+		hasBlob, _, err = imgStore.CheckBlob("dedupe2", cdigest)
+		So(err, ShouldBeNil)
+		So(hasBlob, ShouldEqual, true)
+
+		manifest = ispec.Manifest{
+			Config: ispec.Descriptor{
+				MediaType: "application/vnd.oci.image.config.v1+json",
+				Digest:    cdigest,
+				Size:      int64(len(cblob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    digest,
+					Size:      int64(buflen),
+				},
+			},
+		}
+		manifest.SchemaVersion = 2
+		manifestBuf, err = json.Marshal(manifest)
+		So(err, ShouldBeNil)
+		digest = godigest.FromBytes(manifestBuf)
+		_, err = imgStore.PutImageManifest("dedupe2", "1.0", ispec.MediaTypeImageManifest,
+			manifestBuf)
+		So(err, ShouldBeNil)
+
+		_, _, _, err = imgStore.GetImageManifest("dedupe2", digest.String())
+		So(err, ShouldBeNil)
+
+		fi1, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe1", "blobs", "sha256",
+			blobDigest1.Encoded()))
+		So(err, ShouldBeNil)
+
+		fi2, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
+			blobDigest2.Encoded()))
+		So(err, ShouldBeNil)
+
+		// original blob should have the real content of blob
+		So(fi1.Size(), ShouldNotEqual, fi2.Size())
+		So(fi1.Size(), ShouldBeGreaterThan, 0)
+		// deduped blob should be of size 0
+		So(fi2.Size(), ShouldEqual, 0)
+
+		Convey("Check that delete blobs moves the real content to the next contenders", func() {
+			// if we delete blob1, the content should be moved to blob2
+			err = imgStore.DeleteBlob("dedupe1", blobDigest1)
+			So(err, ShouldBeNil)
+
+			_, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe1", "blobs", "sha256",
+				blobDigest1.Encoded()))
+			So(err, ShouldNotBeNil)
+
+			fi2, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
+				blobDigest2.Encoded()))
+			So(err, ShouldBeNil)
+
+			So(fi2.Size(), ShouldBeGreaterThan, 0)
+			// the second blob should now be equal to the deleted blob.
+			So(fi2.Size(), ShouldEqual, fi1.Size())
+
+			err = imgStore.DeleteBlob("dedupe2", blobDigest2)
+			So(err, ShouldBeNil)
+
+			_, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
+				blobDigest2.Encoded()))
+			So(err, ShouldNotBeNil)
 		})
 	})
 }

@@ -29,6 +29,7 @@ type StorageConfig struct {
 	GCDelay       time.Duration
 	GCInterval    time.Duration
 	StorageDriver map[string]interface{} `mapstructure:",omitempty"`
+	CacheDriver   map[string]interface{} `mapstructure:",omitempty"`
 }
 
 type TLSConfig struct {

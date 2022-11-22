@@ -11,6 +11,12 @@
             "secure": true,
             "skipverify": false
         },
+        "cacheDriver": {
+            "name": "dynamodb",
+            "endpoint": "http://localhost:4566",
+            "region": "us-east-2",
+            "tableName": "MainTable"
+        },
         "subPaths": {
             "/a": {
                 "rootDirectory": "/tmp/zot1",
@@ -27,6 +33,7 @@
             "/b": {
                 "rootDirectory": "/tmp/zot2",
                 "dedupe": true,
+                "remoteCache": false,
                 "storageDriver": {
                     "name": "s3",
                     "rootdirectory": "/zot-b",
@@ -39,6 +46,7 @@
             "/c": {
                 "rootDirectory": "/tmp/zot3",
                 "dedupe": true,
+                "remoteCache": true,
                 "storageDriver": {
                     "name": "s3",
                     "rootdirectory": "/zot-c",
@@ -46,6 +54,12 @@
                     "bucket": "zot-storage",
                     "secure": false,
                     "skipverify": false
+                },
+                "cacheDriver": {
+                    "name": "dynamodb",
+                    "endpoint": "http://localhost:4566",
+                    "region": "us-east-2",
+                    "tableName": "cTable"
                 }
             }
         }

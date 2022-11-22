@@ -274,6 +274,14 @@ test-push-pull: binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM)
 test-push-pull-verbose: binary check-skopeo $(BATS)
 	$(BATS) --trace --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/pushpull.bats
 
+.PHONY: test-cloud-only
+test-cloud-only: binary check-skopeo $(BATS)
+	$(BATS) --trace --print-output-on-failure test/blackbox/cloud-only.bats
+
+.PHONY: test-cloud-only-verbose
+test-cloud-only-verbose: binary check-skopeo $(BATS)
+	$(BATS) --trace --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/cloud-only.bats
+
 .PHONY: test-bats-sync
 test-bats-sync: EXTENSIONS=sync
 test-bats-sync: binary binary-minimal check-skopeo $(BATS) $(NOTATION) $(COSIGN)

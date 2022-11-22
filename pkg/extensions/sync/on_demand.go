@@ -185,7 +185,7 @@ func syncOneImage(ctx context.Context, imageChannel chan error, cfg Config, stor
 				upstreamAddr: upstreamAddr,
 				copyOptions:  options,
 			}
-
+			//nolint:contextcheck
 			skipped, copyErr := syncRun(regCfg, localRepo, upstreamRepo, reference, syncContextUtils, sig, log)
 			if skipped {
 				continue

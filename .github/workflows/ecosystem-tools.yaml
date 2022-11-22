@@ -54,3 +54,20 @@ jobs:
       - name: Run annotations tests
         run: |
             make test-annotations
+      - name: Install localstack
+        run: |
+          pip install --upgrade pyopenssl
+          pip install localstack awscli-local[ver1] # install LocalStack cli and awslocal
+          docker pull localstack/localstack         # Make sure to pull the latest version of the image
+          localstack start -d                       # Start LocalStack in the background
+          
+          echo "Waiting for LocalStack startup..."  # Wait 30 seconds for the LocalStack container
+          localstack wait -t 30                     # to become ready before timing out 
+          echo "Startup complete"          
+      - name: Run cloud-only tests
+        run: |
+            sudo mkdir /zot
+            make test-cloud-only
+        env:
+          AWS_ACCESS_KEY_ID: fake
+          AWS_SECRET_ACCESS_KEY: fake
