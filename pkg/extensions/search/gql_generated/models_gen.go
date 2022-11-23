@@ -6,6 +6,11 @@ import (
 	"time"
 )
 
+type Annotation struct {
+	Key   *string `json:"Key"`
+	Value *string `json:"Value"`
+}
+
 // Contains various details about the CVE and a list of PackageInfo about the affected packages
 type Cve struct {
 	ID          *string        `json:"Id"`
@@ -93,6 +98,14 @@ type PackageInfo struct {
 	Name             *string `json:"Name"`
 	InstalledVersion *string `json:"InstalledVersion"`
 	FixedVersion     *string `json:"FixedVersion"`
+}
+
+type Referrer struct {
+	MediaType    *string       `json:"MediaType"`
+	ArtifactType *string       `json:"ArtifactType"`
+	Size         *int          `json:"Size"`
+	Digest       *string       `json:"Digest"`
+	Annotations  []*Annotation `json:"Annotations"`
 }
 
 // Contains details about the repo: a list of image summaries and a summary of the repo

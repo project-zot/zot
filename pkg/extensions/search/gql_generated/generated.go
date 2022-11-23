@@ -43,6 +43,11 @@ type DirectiveRoot struct {
 }
 
 type ComplexityRoot struct {
+	Annotation struct {
+		Key   func(childComplexity int) int
+		Value func(childComplexity int) int
+	}
+
 	CVE struct {
 		Description func(childComplexity int) int
 		ID          func(childComplexity int) int
@@ -132,7 +137,16 @@ type ComplexityRoot struct {
 		ImageListForCve         func(childComplexity int, id string) int
 		ImageListForDigest      func(childComplexity int, id string) int
 		ImageListWithCVEFixed   func(childComplexity int, id string, image string) int
+		Referrers               func(childComplexity int, repo string, digest string, typeArg string) int
 		RepoListWithNewestImage func(childComplexity int) int
+	}
+
+	Referrer struct {
+		Annotations  func(childComplexity int) int
+		ArtifactType func(childComplexity int) int
+		Digest       func(childComplexity int) int
+		MediaType    func(childComplexity int) int
+		Size         func(childComplexity int) int
 	}
 
 	RepoInfo struct {
@@ -166,6 +180,7 @@ type QueryResolver interface {
 	DerivedImageList(ctx context.Context, image string) ([]*ImageSummary, error)
 	BaseImageList(ctx context.Context, image string) ([]*ImageSummary, error)
 	Image(ctx context.Context, image string) (*ImageSummary, error)
+	Referrers(ctx context.Context, repo string, digest string, typeArg string) ([]*Referrer, error)
 }
 
 type executableSchema struct {
@@ -182,6 +197,20 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 	ec := executionContext{nil, e}
 	_ = ec
 	switch typeName + "." + field {
+
+	case "Annotation.Key":
+		if e.complexity.Annotation.Key == nil {
+			break
+		}
+
+		return e.complexity.Annotation.Key(childComplexity), true
+
+	case "Annotation.Value":
+		if e.complexity.Annotation.Value == nil {
+			break
+		}
+
+		return e.complexity.Annotation.Value(childComplexity), true
 
 	case "CVE.Description":
 		if e.complexity.CVE.Description == nil {
@@ -639,12 +668,59 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Query.ImageListWithCVEFixed(childComplexity, args["id"].(string), args["image"].(string)), true
 
+	case "Query.Referrers":
+		if e.complexity.Query.Referrers == nil {
+			break
+		}
+
+		args, err := ec.field_Query_Referrers_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.Referrers(childComplexity, args["repo"].(string), args["digest"].(string), args["type"].(string)), true
+
 	case "Query.RepoListWithNewestImage":
 		if e.complexity.Query.RepoListWithNewestImage == nil {
 			break
 		}
 
 		return e.complexity.Query.RepoListWithNewestImage(childComplexity), true
+
+	case "Referrer.Annotations":
+		if e.complexity.Referrer.Annotations == nil {
+			break
+		}
+
+		return e.complexity.Referrer.Annotations(childComplexity), true
+
+	case "Referrer.ArtifactType":
+		if e.complexity.Referrer.ArtifactType == nil {
+			break
+		}
+
+		return e.complexity.Referrer.ArtifactType(childComplexity), true
+
+	case "Referrer.Digest":
+		if e.complexity.Referrer.Digest == nil {
+			break
+		}
+
+		return e.complexity.Referrer.Digest(childComplexity), true
+
+	case "Referrer.MediaType":
+		if e.complexity.Referrer.MediaType == nil {
+			break
+		}
+
+		return e.complexity.Referrer.MediaType(childComplexity), true
+
+	case "Referrer.Size":
+		if e.complexity.Referrer.Size == nil {
+			break
+		}
+
+		return e.complexity.Referrer.Size(childComplexity), true
 
 	case "RepoInfo.Images":
 		if e.complexity.RepoInfo.Images == nil {
@@ -918,6 +994,19 @@ type LayerHistory {
     HistoryDescription: HistoryDescription
 }
 
+type Annotation {
+    Key: String
+    Value: String
+}
+
+type Referrer {
+        MediaType:    String
+        ArtifactType: String
+        Size:         Int
+        Digest:       String
+        Annotations:  [Annotation]!
+}
+
 """
 Contains details about the supported OS and architecture of the image
 """
@@ -981,6 +1070,12 @@ type Query {
     Search for a specific image using its name
     """
     Image(image: String!): ImageSummary
+
+    """
+    Returns a list of descriptors of an image or artifact manifest that are found in a <repo> and have a subject field of <digest>
+    Can be filtered based on a specific artifact type <type>
+    """
+    Referrers(repo: String!, digest: String!, type: String!): [Referrer]!
 }
 `, BuiltIn: false},
 }
@@ -1149,6 +1244,39 @@ func (ec *executionContext) field_Query_Image_args(ctx context.Context, rawArgs 
 	return args, nil
 }
 
+func (ec *executionContext) field_Query_Referrers_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 string
+	if tmp, ok := rawArgs["repo"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("repo"))
+		arg0, err = ec.unmarshalNString2string(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["repo"] = arg0
+	var arg1 string
+	if tmp, ok := rawArgs["digest"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("digest"))
+		arg1, err = ec.unmarshalNString2string(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["digest"] = arg1
+	var arg2 string
+	if tmp, ok := rawArgs["type"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("type"))
+		arg2, err = ec.unmarshalNString2string(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["type"] = arg2
+	return args, nil
+}
+
 func (ec *executionContext) field_Query___type_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
@@ -1201,6 +1329,88 @@ func (ec *executionContext) field___Type_fields_args(ctx context.Context, rawArg
 // endregion ************************** directives.gotpl **************************
 
 // region    **************************** field.gotpl *****************************
+
+func (ec *executionContext) _Annotation_Key(ctx context.Context, field graphql.CollectedField, obj *Annotation) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Annotation_Key(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Key, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Annotation_Key(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Annotation",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Annotation_Value(ctx context.Context, field graphql.CollectedField, obj *Annotation) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Annotation_Value(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Value, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Annotation_Value(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Annotation",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
 
 func (ec *executionContext) _CVE_Id(ctx context.Context, field graphql.CollectedField, obj *Cve) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_CVE_Id(ctx, field)
@@ -4233,6 +4443,73 @@ func (ec *executionContext) fieldContext_Query_Image(ctx context.Context, field 
 	return fc, nil
 }
 
+func (ec *executionContext) _Query_Referrers(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Query_Referrers(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Query().Referrers(rctx, fc.Args["repo"].(string), fc.Args["digest"].(string), fc.Args["type"].(string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]*Referrer)
+	fc.Result = res
+	return ec.marshalNReferrer2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐReferrer(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Query_Referrers(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "MediaType":
+				return ec.fieldContext_Referrer_MediaType(ctx, field)
+			case "ArtifactType":
+				return ec.fieldContext_Referrer_ArtifactType(ctx, field)
+			case "Size":
+				return ec.fieldContext_Referrer_Size(ctx, field)
+			case "Digest":
+				return ec.fieldContext_Referrer_Digest(ctx, field)
+			case "Annotations":
+				return ec.fieldContext_Referrer_Annotations(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Referrer", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_Referrers_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Query___type(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Query___type(ctx, field)
 	if err != nil {
@@ -4357,6 +4634,220 @@ func (ec *executionContext) fieldContext_Query___schema(ctx context.Context, fie
 				return ec.fieldContext___Schema_directives(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type __Schema", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Referrer_MediaType(ctx context.Context, field graphql.CollectedField, obj *Referrer) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Referrer_MediaType(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.MediaType, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Referrer_MediaType(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Referrer",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Referrer_ArtifactType(ctx context.Context, field graphql.CollectedField, obj *Referrer) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Referrer_ArtifactType(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.ArtifactType, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Referrer_ArtifactType(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Referrer",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Referrer_Size(ctx context.Context, field graphql.CollectedField, obj *Referrer) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Referrer_Size(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Size, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*int)
+	fc.Result = res
+	return ec.marshalOInt2ᚖint(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Referrer_Size(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Referrer",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Referrer_Digest(ctx context.Context, field graphql.CollectedField, obj *Referrer) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Referrer_Digest(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Digest, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Referrer_Digest(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Referrer",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Referrer_Annotations(ctx context.Context, field graphql.CollectedField, obj *Referrer) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Referrer_Annotations(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Annotations, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]*Annotation)
+	fc.Result = res
+	return ec.marshalNAnnotation2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐAnnotation(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Referrer_Annotations(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Referrer",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "Key":
+				return ec.fieldContext_Annotation_Key(ctx, field)
+			case "Value":
+				return ec.fieldContext_Annotation_Value(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Annotation", field.Name)
 		},
 	}
 	return fc, nil
@@ -6751,6 +7242,35 @@ func (ec *executionContext) fieldContext___Type_specifiedByURL(ctx context.Conte
 
 // region    **************************** object.gotpl ****************************
 
+var annotationImplementors = []string{"Annotation"}
+
+func (ec *executionContext) _Annotation(ctx context.Context, sel ast.SelectionSet, obj *Annotation) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, annotationImplementors)
+	out := graphql.NewFieldSet(fields)
+	var invalids uint32
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Annotation")
+		case "Key":
+
+			out.Values[i] = ec._Annotation_Key(ctx, field, obj)
+
+		case "Value":
+
+			out.Values[i] = ec._Annotation_Value(ctx, field, obj)
+
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch()
+	if invalids > 0 {
+		return graphql.Null
+	}
+	return out
+}
+
 var cVEImplementors = []string{"CVE"}
 
 func (ec *executionContext) _CVE(ctx context.Context, sel ast.SelectionSet, obj *Cve) graphql.Marshaler {
@@ -7404,6 +7924,29 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			out.Concurrently(i, func() graphql.Marshaler {
 				return rrm(innerCtx)
 			})
+		case "Referrers":
+			field := field
+
+			innerFunc := func(ctx context.Context) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_Referrers(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx, innerFunc)
+			}
+
+			out.Concurrently(i, func() graphql.Marshaler {
+				return rrm(innerCtx)
+			})
 		case "__type":
 
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
@@ -7416,6 +7959,50 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 				return ec._Query___schema(ctx, field)
 			})
 
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch()
+	if invalids > 0 {
+		return graphql.Null
+	}
+	return out
+}
+
+var referrerImplementors = []string{"Referrer"}
+
+func (ec *executionContext) _Referrer(ctx context.Context, sel ast.SelectionSet, obj *Referrer) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, referrerImplementors)
+	out := graphql.NewFieldSet(fields)
+	var invalids uint32
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Referrer")
+		case "MediaType":
+
+			out.Values[i] = ec._Referrer_MediaType(ctx, field, obj)
+
+		case "ArtifactType":
+
+			out.Values[i] = ec._Referrer_ArtifactType(ctx, field, obj)
+
+		case "Size":
+
+			out.Values[i] = ec._Referrer_Size(ctx, field, obj)
+
+		case "Digest":
+
+			out.Values[i] = ec._Referrer_Digest(ctx, field, obj)
+
+		case "Annotations":
+
+			out.Values[i] = ec._Referrer_Annotations(ctx, field, obj)
+
+			if out.Values[i] == graphql.Null {
+				invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -7835,6 +8422,44 @@ func (ec *executionContext) ___Type(ctx context.Context, sel ast.SelectionSet, o
 
 // region    ***************************** type.gotpl *****************************
 
+func (ec *executionContext) marshalNAnnotation2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐAnnotation(ctx context.Context, sel ast.SelectionSet, v []*Annotation) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalOAnnotation2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐAnnotation(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	return ret
+}
+
 func (ec *executionContext) unmarshalNBoolean2bool(ctx context.Context, v interface{}) (bool, error) {
 	res, err := graphql.UnmarshalBoolean(v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -7886,6 +8511,44 @@ func (ec *executionContext) marshalNImageSummary2ᚖzotregistryᚗioᚋzotᚋpkg
 		return graphql.Null
 	}
 	return ec._ImageSummary(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNReferrer2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐReferrer(ctx context.Context, sel ast.SelectionSet, v []*Referrer) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalOReferrer2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐReferrer(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	return ret
 }
 
 func (ec *executionContext) marshalNRepoInfo2zotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐRepoInfo(ctx context.Context, sel ast.SelectionSet, v RepoInfo) graphql.Marshaler {
@@ -8222,6 +8885,13 @@ func (ec *executionContext) marshalN__TypeKind2string(ctx context.Context, sel a
 		}
 	}
 	return res
+}
+
+func (ec *executionContext) marshalOAnnotation2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐAnnotation(ctx context.Context, sel ast.SelectionSet, v *Annotation) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._Annotation(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalOBoolean2bool(ctx context.Context, v interface{}) (bool, error) {
@@ -8613,6 +9283,13 @@ func (ec *executionContext) marshalOPackageInfo2ᚖzotregistryᚗioᚋzotᚋpkg�
 		return graphql.Null
 	}
 	return ec._PackageInfo(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalOReferrer2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐReferrer(ctx context.Context, sel ast.SelectionSet, v *Referrer) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._Referrer(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalORepoSummary2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐRepoSummary(ctx context.Context, sel ast.SelectionSet, v []*RepoSummary) graphql.Marshaler {

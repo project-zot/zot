@@ -446,6 +446,55 @@ func UploadImage(img Image, baseURL, repo string) error {
 	return err
 }
 
+func UploadArtifact(baseURL, repo string, artifactManifest *imagespec.Artifact) error {
+	// put manifest
+	artifactManifestBlob, err := json.Marshal(artifactManifest)
+	if err != nil {
+		return err
+	}
+
+	artifactManifestDigest := godigest.FromBytes(artifactManifestBlob)
+
+	_, err = resty.R().
+		SetHeader("Content-type", imagespec.MediaTypeArtifactManifest).
+		SetBody(artifactManifestBlob).
+		Put(baseURL + "/v2/" + repo + "/manifests/" + artifactManifestDigest.String())
+
+	return err
+}
+
+func UploadBlob(baseURL, repo string, blob []byte, artifactBlobMediaType string) error {
+	resp, err := resty.R().Post(baseURL + "/v2/" + repo + "/blobs/uploads/")
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode() != http.StatusAccepted {
+		return ErrPostBlob
+	}
+
+	loc := resp.Header().Get("Location")
+
+	blobDigest := godigest.FromBytes(blob).String()
+
+	resp, err = resty.R().
+		SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
+		SetHeader("Content-Type", artifactBlobMediaType).
+		SetQueryParam("digest", blobDigest).
+		SetBody(blob).
+		Put(baseURL + loc)
+
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode() != http.StatusCreated {
+		return ErrPutBlob
+	}
+
+	return nil
+}
+
 func ReadLogFileAndSearchString(logPath string, stringToMatch string, timeout time.Duration) (bool, error) {
 	ctx, cancelFunc := context.WithTimeout(context.Background(), timeout)
 	defer cancelFunc()

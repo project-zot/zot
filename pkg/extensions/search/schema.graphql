@@ -134,6 +134,19 @@ type LayerHistory {
     HistoryDescription: HistoryDescription
 }
 
+type Annotation {
+    Key: String
+    Value: String
+}
+
+type Referrer {
+        MediaType:    String
+        ArtifactType: String
+        Size:         Int
+        Digest:       String
+        Annotations:  [Annotation]!
+}
+
 """
 Contains details about the supported OS and architecture of the image
 """
@@ -197,4 +210,10 @@ type Query {
     Search for a specific image using its name
     """
     Image(image: String!): ImageSummary
+
+    """
+    Returns a list of descriptors of an image or artifact manifest that are found in a <repo> and have a subject field of <digest>
+    Can be filtered based on a specific artifact type <type>
+    """
+    Referrers(repo: String!, digest: String!, type: String!): [Referrer]!
 }
