@@ -46,23 +46,28 @@ func (ac *AccessController) getGlobPatterns(username string, action string) map[
 	globPatterns := make(map[string]bool)
 
 	for pattern, policyGroup := range ac.Config.Repositories {
-		if username == "" {
-			// check anonymous policy
-			if common.Contains(policyGroup.AnonymousPolicy, action) {
-				globPatterns[pattern] = true
-			}
-		} else {
-			// check default policy (authenticated user)
-			if common.Contains(policyGroup.DefaultPolicy, action) {
-				globPatterns[pattern] = true
-			}
-		}
+		if username != "" {
+			foundUserPolicy := false
+			// check user based policy
+			for _, p := range policyGroup.Policies {
+				if common.Contains(p.Users, username) {
+					foundUserPolicy = true
 
-		// check user based policy
-		for _, p := range policyGroup.Policies {
-			if common.Contains(p.Users, username) && common.Contains(p.Actions, action) {
-				globPatterns[pattern] = true
+					if common.Contains(p.Actions, action) {
+						globPatterns[pattern] = true
+					}
+				}
 			}
+
+			if !foundUserPolicy {
+				// check default policy (authenticated user)
+				if common.Contains(policyGroup.DefaultPolicy, action) {
+					globPatterns[pattern] = true
+				}
+			}
+		} else if common.Contains(policyGroup.AnonymousPolicy, action) {
+			// check anonymous policy (unauthenticated user)
+			globPatterns[pattern] = true
 		}
 
 		// if not allowed then mark it
@@ -136,27 +141,32 @@ func (ac *AccessController) getContext(username string, request *http.Request) c
 // isPermitted returns true if username can do action on a repository policy.
 func isPermitted(username, action string, policyGroup config.PolicyGroup) bool {
 	var result bool
-	// check repo/system based policies
-	for _, p := range policyGroup.Policies {
-		if common.Contains(p.Users, username) && common.Contains(p.Actions, action) {
-			result = true
 
-			break
-		}
-	}
+	var foundUserPolicy bool
 
-	// check defaultPolicy
-	if !result {
-		if common.Contains(policyGroup.DefaultPolicy, action) && username != "" {
-			result = true
-		}
-	}
+	if username != "" {
+		// check repo/system based policies
+		for _, p := range policyGroup.Policies {
+			if common.Contains(p.Users, username) {
+				foundUserPolicy = true
 
-	// check anonymousPolicy
-	if !result {
-		if common.Contains(policyGroup.AnonymousPolicy, action) && username == "" {
-			result = true
+				if common.Contains(p.Actions, action) {
+					result = true
+
+					break
+				}
+			}
 		}
+
+		// check defaultPolicy
+		if !foundUserPolicy {
+			if common.Contains(policyGroup.DefaultPolicy, action) {
+				result = true
+			}
+		}
+	} else if common.Contains(policyGroup.AnonymousPolicy, action) {
+		// check anonymousPolicy
+		result = true
 	}
 
 	return result

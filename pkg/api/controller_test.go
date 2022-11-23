@@ -2562,6 +2562,20 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 		So(resp.Body(), ShouldResemble, manifestBlob)
 
+		// add update perm on default policy and make sure default policy is not picked over user policy
+		repoPolicy = conf.AccessControl.Repositories["zot-test"]
+		repoPolicy.DefaultPolicy = []string{"update"}
+		conf.AccessControl.Repositories["zot-test"] = repoPolicy
+
+		// update manifest should get 403 even if defaultPolicy has update, user policy has priority
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
+			SetBody(updatedManifestBlob).
+			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+
 		// add update perm on repo
 		conf.AccessControl.Repositories["zot-test"].Policies[0].Actions = append(conf.AccessControl.Repositories["zot-test"].Policies[0].Actions, "update") //nolint:lll // gofumpt conflicts with lll
 
@@ -2584,9 +2598,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 
 		// now use default repo policy
 		conf.AccessControl.Repositories["zot-test"].Policies[0].Actions = []string{}
-		repoPolicy = conf.AccessControl.Repositories["zot-test"]
-		repoPolicy.DefaultPolicy = []string{"update"}
-		conf.AccessControl.Repositories["zot-test"] = repoPolicy
+		conf.AccessControl.Repositories["zot-test"].Policies[0].Users = []string{}
 
 		// update manifest should get 201 with update perm on repo's default policy
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
@@ -2599,6 +2611,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 
 		// with default read on repo should still get 200
 		conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions = []string{}
+		conf.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Users = []string{}
 		repoPolicy = conf.AccessControl.Repositories[AuthorizationNamespace]
 		repoPolicy.DefaultPolicy = []string{"read"}
 		conf.AccessControl.Repositories[AuthorizationNamespace] = repoPolicy
@@ -3076,6 +3089,8 @@ func TestAuthorizationWithMultiplePolicies(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
 
 		repoPolicy.DefaultPolicy = append(repoPolicy.DefaultPolicy, "read")
+		// remove user policy
+		repoPolicy.Policies[0].Users = []string{}
 		conf.AccessControl.Repositories[AuthorizationAllRepos] = repoPolicy
 
 		// with read permission should get 200, because default policy allows reading now
