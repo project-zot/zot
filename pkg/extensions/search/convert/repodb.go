@@ -23,7 +23,8 @@ type SkipQGLField struct {
 }
 
 func RepoMeta2RepoSummary(ctx context.Context, repoMeta repodb.RepoMetadata,
-	manifestMetaMap map[string]repodb.ManifestMetadata, skip SkipQGLField, cveInfo cveinfo.CveInfo,
+	manifestMetaMap map[string]repodb.ManifestMetadata,
+	skip SkipQGLField, cveInfo cveinfo.CveInfo, isBookmarked bool, isStarred bool,
 ) *gql_generated.RepoSummary {
 	var (
 		repoLastUpdatedTimestamp = time.Time{}
@@ -31,10 +32,10 @@ func RepoMeta2RepoSummary(ctx context.Context, repoMeta repodb.RepoMetadata,
 		repoVendorsSet           = map[string]bool{}
 		lastUpdatedImageSummary  *gql_generated.ImageSummary
 		repoStarCount            = repoMeta.Stars
-		isBookmarked             = false
-		isStarred                = false
-		repoDownloadCount        = 0
-		repoName                 = repoMeta.Name
+		// isBookmarked             = false
+		// isStarred                = false
+		repoDownloadCount = 0
+		repoName          = repoMeta.Name
 
 		// map used to keep track of all blobs of a repo without dublicates as
 		// some images may have the same layers
@@ -315,6 +316,7 @@ func RepoMeta2ImageSummaries(ctx context.Context, repoMeta repodb.RepoMetadata,
 
 func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta repodb.RepoMetadata,
 	manifestMetaMap map[string]repodb.ManifestMetadata, skip SkipQGLField, cveInfo cveinfo.CveInfo,
+	isBookmarked bool, isStarred bool,
 ) (*gql_generated.RepoSummary, []*gql_generated.ImageSummary) {
 	var (
 		repoLastUpdatedTimestamp = time.Time{}
@@ -322,10 +324,10 @@ func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta repodb.RepoMetadata
 		repoVendorsSet           = map[string]bool{}
 		lastUpdatedImageSummary  *gql_generated.ImageSummary
 		repoStarCount            = repoMeta.Stars
-		isBookmarked             = false
-		isStarred                = false
-		repoDownloadCount        = 0
-		repoName                 = repoMeta.Name
+		// isBookmarked             = false
+		// isStarred                = false
+		repoDownloadCount = 0
+		repoName          = repoMeta.Name
 
 		// map used to keep track of all blobs of a repo without dublicates as
 		// some images may have the same layers

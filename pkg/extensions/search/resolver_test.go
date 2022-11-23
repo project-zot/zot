@@ -41,7 +41,7 @@ func TestGlobalSearch(t *testing.T) {
 				graphql.DefaultRecover)
 			mockCve := mocks.CveInfoMock{}
 			repos, images, layers, err := globalSearch(responseContext, query, mockRepoDB, &gql_generated.Filter{},
-				&gql_generated.PageInput{}, mockCve, log.NewLogger("debug", ""))
+				&gql_generated.PageInput{}, mockCve, log.NewLogger("debug", ""), []string{}, []string{})
 			So(err, ShouldNotBeNil)
 			So(images, ShouldBeEmpty)
 			So(layers, ShouldBeEmpty)
@@ -130,7 +130,8 @@ func TestGlobalSearch(t *testing.T) {
 				graphql.DefaultRecover)
 			mockCve := mocks.CveInfoMock{}
 			repos, images, layers, err := globalSearch(responseContext, query, mockRepoDB,
-				&gql_generated.Filter{}, &pageInput, mockCve, log.NewLogger("debug", ""))
+				&gql_generated.Filter{}, &pageInput, mockCve, log.NewLogger("debug", ""),
+				[]string{}, []string{})
 			So(err, ShouldBeNil)
 			So(images, ShouldBeEmpty)
 			So(layers, ShouldBeEmpty)
@@ -190,7 +191,8 @@ func TestGlobalSearch(t *testing.T) {
 			mockCve := mocks.CveInfoMock{}
 
 			repos, images, layers, err := globalSearch(responseContext, query, mockRepoDB,
-				&gql_generated.Filter{}, &pageInput, mockCve, log.NewLogger("debug", ""))
+				&gql_generated.Filter{}, &pageInput, mockCve, log.NewLogger("debug", ""),
+				[]string{}, []string{})
 			So(err, ShouldBeNil)
 			So(images, ShouldBeEmpty)
 			So(layers, ShouldBeEmpty)
@@ -201,7 +203,8 @@ func TestGlobalSearch(t *testing.T) {
 			responseContext = graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 				graphql.DefaultRecover)
 			repos, images, layers, err = globalSearch(responseContext, query, mockRepoDB,
-				&gql_generated.Filter{}, &pageInput, mockCve, log.NewLogger("debug", ""))
+				&gql_generated.Filter{}, &pageInput, mockCve, log.NewLogger("debug", ""),
+				[]string{}, []string{})
 			So(err, ShouldBeNil)
 			So(images, ShouldBeEmpty)
 			So(layers, ShouldBeEmpty)
@@ -260,7 +263,8 @@ func TestGlobalSearch(t *testing.T) {
 			responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 				graphql.DefaultRecover)
 			repos, images, layers, err := globalSearch(responseContext, query, mockRepoDB,
-				&gql_generated.Filter{}, &pageInput, mockCve, log.NewLogger("debug", ""))
+				&gql_generated.Filter{}, &pageInput, mockCve, log.NewLogger("debug", ""),
+				[]string{}, []string{})
 			So(err, ShouldBeNil)
 			So(images, ShouldBeEmpty)
 			So(layers, ShouldBeEmpty)
@@ -270,7 +274,8 @@ func TestGlobalSearch(t *testing.T) {
 			responseContext = graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 				graphql.DefaultRecover)
 			repos, images, layers, err = globalSearch(responseContext, query, mockRepoDB,
-				&gql_generated.Filter{}, &pageInput, mockCve, log.NewLogger("debug", ""))
+				&gql_generated.Filter{}, &pageInput, mockCve, log.NewLogger("debug", ""),
+				[]string{}, []string{})
 			So(err, ShouldBeNil)
 			So(images, ShouldBeEmpty)
 			So(layers, ShouldBeEmpty)
@@ -290,7 +295,8 @@ func TestGlobalSearch(t *testing.T) {
 			responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 				graphql.DefaultRecover)
 			repos, images, layers, err := globalSearch(responseContext, query, mockRepoDB, &gql_generated.Filter{},
-				&gql_generated.PageInput{}, mockCve, log.NewLogger("debug", ""))
+				&gql_generated.PageInput{}, mockCve, log.NewLogger("debug", ""),
+				[]string{}, []string{})
 			So(err, ShouldNotBeNil)
 			So(images, ShouldBeEmpty)
 			So(layers, ShouldBeEmpty)
@@ -377,7 +383,8 @@ func TestGlobalSearch(t *testing.T) {
 			responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 				graphql.DefaultRecover)
 			repos, images, layers, err := globalSearch(responseContext, query, mockRepoDB,
-				&gql_generated.Filter{}, &pageInput, mockCve, log.NewLogger("debug", ""))
+				&gql_generated.Filter{}, &pageInput, mockCve, log.NewLogger("debug", ""),
+				[]string{}, []string{})
 			So(err, ShouldBeNil)
 			So(images, ShouldNotBeEmpty)
 			So(layers, ShouldBeEmpty)
@@ -407,7 +414,8 @@ func TestRepoListWithNewestImage(t *testing.T) {
 				Offset: &offset,
 				SortBy: &sortCriteria,
 			}
-			repos, err := repoListWithNewestImage(responseContext, mockCve, log.NewLogger("debug", ""), &pageInput, mockRepoDB)
+			repos, err := repoListWithNewestImage(responseContext, mockCve, log.NewLogger("debug",
+				""), &pageInput, mockRepoDB, []string{}, []string{})
 			So(err, ShouldNotBeNil)
 			So(repos.Results, ShouldBeEmpty)
 		})
@@ -485,7 +493,8 @@ func TestRepoListWithNewestImage(t *testing.T) {
 				Offset: &offset,
 				SortBy: &sortCriteria,
 			}
-			repos, err := repoListWithNewestImage(responseContext, mockCve, log.NewLogger("debug", ""), &pageInput, mockRepoDB)
+			repos, err := repoListWithNewestImage(responseContext, mockCve,
+				log.NewLogger("debug", ""), &pageInput, mockRepoDB, []string{}, []string{})
 			So(err, ShouldBeNil)
 			So(repos.Results, ShouldNotBeEmpty)
 		})
@@ -578,10 +587,12 @@ func TestRepoListWithNewestImage(t *testing.T) {
 				},
 			}
 			Convey("RepoDB missing requestedPage", func() {
-				responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
+				responseContext := graphql.WithResponseContext(context.Background(),
+					graphql.DefaultErrorPresenter,
 					graphql.DefaultRecover)
 				mockCve := mocks.CveInfoMock{}
-				repos, err := repoListWithNewestImage(responseContext, mockCve, log.NewLogger("debug", ""), nil, mockRepoDB)
+				repos, err := repoListWithNewestImage(responseContext, mockCve,
+					log.NewLogger("debug", ""), nil, mockRepoDB, []string{}, []string{})
 				So(err, ShouldBeNil)
 				So(repos.Results, ShouldNotBeEmpty)
 			})
@@ -601,7 +612,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 
 				mockCve := mocks.CveInfoMock{}
 				repos, err := repoListWithNewestImage(responseContext, mockCve,
-					log.NewLogger("debug", ""), &pageInput, mockRepoDB)
+					log.NewLogger("debug", ""), &pageInput, mockRepoDB, []string{}, []string{})
 				So(err, ShouldBeNil)
 				So(repos, ShouldNotBeEmpty)
 				So(len(repos.Results), ShouldEqual, 2)

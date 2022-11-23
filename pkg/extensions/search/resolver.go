@@ -18,6 +18,7 @@ import (
 	"github.com/vektah/gqlparser/v2/gqlerror"
 
 	zerr "zotregistry.io/zot/errors"
+	mcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	"zotregistry.io/zot/pkg/extensions/search/convert"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
@@ -373,6 +374,7 @@ func repoListWithNewestImage(
 	log log.Logger, //nolint:unparam // may be used by devs for debugging
 	requestedPage *gql_generated.PageInput,
 	repoDB repodb.RepoDB,
+	bookmarkedByUser []string, starredByUser []string,
 ) (*gql_generated.PaginatedReposResult, error) {
 	repos := []*gql_generated.RepoSummary{}
 	paginatedRepos := &gql_generated.PaginatedReposResult{}
@@ -399,7 +401,10 @@ func repoListWithNewestImage(
 	}
 
 	for _, repoMeta := range reposMeta {
-		repoSummary := convert.RepoMeta2RepoSummary(ctx, repoMeta, manifestMetaMap, skip, cveInfo)
+		isBookmarked := mcommon.Contains(bookmarkedByUser, repoMeta.Name)
+		isStarred := mcommon.Contains(starredByUser, repoMeta.Name)
+		repoSummary := convert.RepoMeta2RepoSummary(ctx, repoMeta, manifestMetaMap, skip, cveInfo,
+			isBookmarked, isStarred)
 		repos = append(repos, repoSummary)
 	}
 
@@ -414,6 +419,7 @@ func repoListWithNewestImage(
 
 func globalSearch(ctx context.Context, query string, repoDB repodb.RepoDB, filter *gql_generated.Filter,
 	requestedPage *gql_generated.PageInput, cveInfo cveinfo.CveInfo, log log.Logger, //nolint:unparam
+	bookmarkedByUser []string, starredByUser []string,
 ) (*gql_generated.PaginatedReposResult, []*gql_generated.ImageSummary, []*gql_generated.LayerSummary, error,
 ) {
 	preloads := convert.GetPreloads(ctx)
@@ -454,7 +460,9 @@ func globalSearch(ctx context.Context, query string, repoDB repodb.RepoDB, filte
 		}
 
 		for _, repoMeta := range reposMeta {
-			repoSummary := convert.RepoMeta2RepoSummary(ctx, repoMeta, manifestMetaMap, skip, cveInfo)
+			isBookmarked := mcommon.Contains(bookmarkedByUser, repoMeta.Name)
+			isStarred := mcommon.Contains(starredByUser, repoMeta.Name)
+			repoSummary := convert.RepoMeta2RepoSummary(ctx, repoMeta, manifestMetaMap, skip, cveInfo, isBookmarked, isStarred)
 
 			repos = append(repos, repoSummary)
 		}
@@ -840,7 +848,8 @@ func deleteElementAt(slice []*string, i int) []*string {
 	return slice
 }
 
-func expandedRepoInfo(ctx context.Context, repo string, repoDB repodb.RepoDB, cveInfo cveinfo.CveInfo, log log.Logger,
+func expandedRepoInfo(ctx context.Context, repo string, repoDB repodb.RepoDB,
+	cveInfo cveinfo.CveInfo, log log.Logger, isBookmarked bool, isStarred bool,
 ) (*gql_generated.RepoInfo, error) {
 	if ok, err := localCtx.RepoIsUserAvailable(ctx, repo); !ok || err != nil {
 		log.Info().Err(err).Msgf("resolver: 'repo %s is user available' = %v", repo, ok)
@@ -877,7 +886,8 @@ func expandedRepoInfo(ctx context.Context, repo string, repoDB repodb.RepoDB, cv
 		Vulnerabilities: canSkipField(convert.GetPreloads(ctx), "Summary.NewestImage.Vulnerabilities"),
 	}
 
-	repoSummary, imageSummaries := convert.RepoMeta2ExpandedRepoInfo(ctx, repoMeta, manifestMetaMap, skip, cveInfo)
+	repoSummary, imageSummaries := convert.RepoMeta2ExpandedRepoInfo(ctx, repoMeta,
+		manifestMetaMap, skip, cveInfo, isBookmarked, isStarred)
 
 	dateSortedImages := make(timeSlice, 0, len(imageSummaries))
 	for _, imgSummary := range imageSummaries {
