@@ -23,7 +23,6 @@ import (
 
 	"github.com/gorilla/mux"
 	jsoniter "github.com/json-iterator/go"
-	notreg "github.com/notaryproject/notation-go/registry"
 	"github.com/opencontainers/distribution-spec/specs-go/v1/extensions"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -1685,13 +1684,6 @@ func (rh *RouteHandler) GetOrasReferrers(response http.ResponseWriter, request *
 		}
 
 		artifactType = artifactTypes[0]
-	}
-
-	if artifactType != notreg.ArtifactTypeNotation {
-		rh.c.Log.Error().Str("artifactType", artifactType).Msg("invalid artifact type")
-		response.WriteHeader(http.StatusBadRequest)
-
-		return
 	}
 
 	imgStore := rh.getImageStore(name)

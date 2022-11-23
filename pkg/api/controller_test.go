@@ -4145,12 +4145,12 @@ func TestImageSignatures(t *testing.T) {
 			resp, err = resty.R().Get(
 				fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers", baseURL, repoName, digest.String()))
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 			resp, err = resty.R().SetQueryParam("artifactType", "badArtifact").Get(
 				fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers", baseURL, repoName, digest.String()))
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 			resp, err = resty.R().SetQueryParam("artifactType", notreg.ArtifactTypeNotation).Get(
 				fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers", baseURL, "badRepo", digest.String()))
