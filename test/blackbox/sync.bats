@@ -329,33 +329,58 @@ function teardown_file() {
 }
 
 # sync OCI artifacts
-@test "push OCI artifact with regclient" {
+@test "push OCI artifact (oci image mediatype) with regclient" {
     run regctl registry set localhost:9000 --tls disabled
     run regctl registry set localhost:8081 --tls disabled
     run regctl registry set localhost:8082 --tls disabled
 
     run regctl artifact put localhost:9000/artifact:demo <<EOF
-this is an artifact
+this is an oci image artifact
 EOF
     [ "$status" -eq 0 ]
 }
 
-@test "sync OCI artifact periodically" {
+@test "sync OCI artifact (oci image mediatype) periodically" {
     # wait for helm chart to be copied
     run sleep 5s
     run regctl manifest get localhost:8081/artifact:demo
     [ "$status" -eq 0 ]
     run regctl artifact get localhost:8081/artifact:demo
     [ "$status" -eq 0 ]
-    [ "${lines[-1]}" == "this is an artifact" ]
+    [ "${lines[-1]}" == "this is an oci image artifact" ]
 }
 
-@test "sync OCI artifact on demand" {
+@test "sync OCI artifact (oci image mediatype) on demand" {
     run regctl manifest get localhost:8082/artifact:demo
     [ "$status" -eq 0 ]
     run regctl artifact get localhost:8082/artifact:demo
     [ "$status" -eq 0 ]
-    [ "${lines[-1]}" == "this is an artifact" ]
+    [ "${lines[-1]}" == "this is an oci image artifact" ]
+}
+
+@test "push OCI artifact (oci artifact mediatype) with regclient" {
+    run regctl artifact put --media-type  "application/vnd.oci.artifact.manifest.v1+json" --artifact-type "application/vnd.example.icecream.v1"  localhost:9000/newartifact:demo <<EOF
+this is an oci artifact
+EOF
+    [ "$status" -eq 0 ]
+}
+
+@test "sync OCI artifact (oci artifact mediatype) periodically" {
+    # wait for helm chart to be copied
+    run sleep 5s
+    run regctl manifest get localhost:8081/newartifact:demo
+    [ "$status" -eq 0 ]
+    run regctl artifact get localhost:8081/newartifact:demo
+    [ "$status" -eq 0 ]
+    [ "${lines[-1]}" == "this is an oci artifact" ]
+}
+
+@test "sync OCI artifact (oci artifact mediatype) on demand" {
+    run regctl manifest get localhost:8082/newartifact:demo
+    [ "$status" -eq 0 ]
+    run regctl artifact get localhost:8082/newartifact:demo
+    [ "$status" -eq 0 ]
+    [ "${lines[-1]}" == "this is an oci artifact" ]
 }
 
 @test "push OCI artifact references with regclient" {

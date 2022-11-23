@@ -9,9 +9,10 @@ import (
 
 	"github.com/containers/common/pkg/retry"
 	"github.com/containers/image/v5/copy"
-	"github.com/containers/image/v5/docker"
 	"github.com/containers/image/v5/signature"
 	"github.com/containers/image/v5/types"
+	"github.com/opencontainers/go-digest"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
@@ -244,7 +245,7 @@ func syncRun(regCfg RegistryConfig,
 	localRepo, upstreamRepo, reference string, utils syncContextUtils, sig *signaturesCopier,
 	log log.Logger,
 ) (bool, error) {
-	upstreamImageDigest, refIsDigest := parseDigest(reference)
+	upstreamImageDigest, refIsDigest := parseReference(reference)
 
 	upstreamImageRef, err := getImageRef(utils.upstreamAddr, upstreamRepo, reference)
 	if err != nil {
@@ -255,14 +256,24 @@ func syncRun(regCfg RegistryConfig,
 		return false, err
 	}
 
-	if !refIsDigest {
-		upstreamImageDigest, err = docker.GetDigest(context.Background(), utils.upstreamCtx, upstreamImageRef)
-		if err != nil {
-			log.Error().Str("errorType", TypeOf(err)).
-				Err(err).Msgf("couldn't get upstream image %s manifest", upstreamImageRef.DockerReference())
+	manifestBuf, mediaType, err := getImageRefManifest(context.Background(), utils.upstreamCtx, upstreamImageRef, log)
+	if err != nil {
+		return false, err
+	}
 
-			return false, err
+	if !refIsDigest {
+		upstreamImageDigest = digest.FromBytes(manifestBuf)
+	}
+
+	if !isSupportedMediaType(mediaType) {
+		if mediaType == ispec.MediaTypeArtifactManifest {
+			err = sig.syncOCIArtifact(localRepo, upstreamRepo, reference, manifestBuf)
+			if err != nil {
+				return false, err
+			}
 		}
+
+		return false, nil
 	}
 
 	// get upstream signatures
@@ -272,7 +283,7 @@ func syncRun(regCfg RegistryConfig,
 			Err(err).Msgf("couldn't get upstream image %s cosign manifest", upstreamImageRef.DockerReference())
 	}
 
-	refs, err := sig.getNotarySignatures(upstreamRepo, upstreamImageDigest.String())
+	refs, err := sig.getNotaryRefs(upstreamRepo, upstreamImageDigest.String())
 	if err != nil {
 		log.Error().Str("errorType", TypeOf(err)).
 			Err(err).Msgf("couldn't get upstream image %s notary references", upstreamImageRef.DockerReference())
@@ -346,7 +357,7 @@ func syncRun(regCfg RegistryConfig,
 		return false, err
 	}
 
-	err = sig.syncNotarySignature(localRepo, upstreamRepo, upstreamImageDigest.String(), refs)
+	err = sig.syncNotaryRefs(localRepo, upstreamRepo, upstreamImageDigest.String(), refs)
 	if err != nil {
 		log.Error().Str("errorType", TypeOf(err)).
 			Err(err).Msgf("couldn't copy image notary signature %s/%s:%s", utils.upstreamAddr, upstreamRepo, reference)
@@ -382,7 +393,7 @@ func syncSignaturesArtifacts(sig *signaturesCopier, localRepo, upstreamRepo, ref
 		}
 	case artifactType == OrasArtifact:
 		// is notary signature
-		refs, err := sig.getNotarySignatures(upstreamRepo, reference)
+		refs, err := sig.getNotaryRefs(upstreamRepo, reference)
 		if err != nil {
 			sig.log.Error().Str("errorType", TypeOf(err)).
 				Err(err).Msgf("couldn't get upstream image %s/%s:%s notary references", upstreamURL, upstreamRepo, reference)
@@ -390,7 +401,7 @@ func syncSignaturesArtifacts(sig *signaturesCopier, localRepo, upstreamRepo, ref
 			return err
 		}
 
-		err = sig.syncNotarySignature(localRepo, upstreamRepo, reference, refs)
+		err = sig.syncNotaryRefs(localRepo, upstreamRepo, reference, refs)
 		if err != nil {
 			sig.log.Error().Str("errorType", TypeOf(err)).
 				Err(err).Msgf("couldn't copy image signature %s/%s:%s", upstreamURL, upstreamRepo, reference)

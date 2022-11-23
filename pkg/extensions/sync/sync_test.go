@@ -4427,23 +4427,310 @@ func TestSyncImageIndex(t *testing.T) {
 		So(resp.Body(), ShouldNotBeEmpty)
 		So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
 
-		// start downstream server
-		dctlr, destBaseURL, _, _ := startDownstreamServer(t, false, syncConfig)
+		Convey("sync periodically", func() {
+			// start downstream server
+			dctlr, destBaseURL, _, _ := startDownstreamServer(t, false, syncConfig)
+
+			defer func() {
+				dctlr.Shutdown()
+			}()
+
+			// give it time to set up sync
+			t.Logf("waitsync(%s, %s)", dctlr.Config.Storage.RootDirectory, "index")
+			waitSync(dctlr.Config.Storage.RootDirectory, "index")
+
+			resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+				Get(destBaseURL + "/v2/index/manifests/latest")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(resp.Body(), ShouldNotBeEmpty)
+			So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
+
+			var syncedIndex ispec.Index
+			err := json.Unmarshal(resp.Body(), &syncedIndex)
+			So(err, ShouldBeNil)
+
+			So(reflect.DeepEqual(syncedIndex, index), ShouldEqual, true)
+		})
+
+		Convey("sync on demand", func() {
+			// start downstream server
+			syncConfig.Registries[0].OnDemand = true
+			syncConfig.Registries[0].PollInterval = 0
+
+			dctlr, destBaseURL, _, _ := startDownstreamServer(t, false, syncConfig)
+
+			defer func() {
+				dctlr.Shutdown()
+			}()
+
+			resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+				Get(destBaseURL + "/v2/index/manifests/latest")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(resp.Body(), ShouldNotBeEmpty)
+			So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
+
+			var syncedIndex ispec.Index
+			err := json.Unmarshal(resp.Body(), &syncedIndex)
+			So(err, ShouldBeNil)
+
+			So(reflect.DeepEqual(syncedIndex, index), ShouldEqual, true)
+		})
+	})
+}
+
+func TestSyncOCIArtifactsWithTag(t *testing.T) {
+	Convey("Verify syncing tagged OCI artifacts", t, func() {
+		updateDuration, _ := time.ParseDuration("5s")
+
+		sctlr, srcBaseURL, _, _, _ := startUpstreamServer(t, false, false)
 
 		defer func() {
-			dctlr.Shutdown()
+			sctlr.Shutdown()
 		}()
 
-		// give it time to set up sync
-		t.Logf("waitsync(%s, %s)", dctlr.Config.Storage.RootDirectory, "index")
-		waitSync(dctlr.Config.Storage.RootDirectory, "index")
+		regex := ".*"
+		var semver bool
+		tlsVerify := false
 
-		resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
-			Get(destBaseURL + "/v2/index/manifests/latest")
+		repoName := "artifact"
+
+		syncRegistryConfig := sync.RegistryConfig{
+			Content: []sync.Content{
+				{
+					Prefix: repoName,
+					Tags: &sync.Tags{
+						Regex:  &regex,
+						Semver: &semver,
+					},
+				},
+			},
+			URLs:         []string{srcBaseURL},
+			OnDemand:     false,
+			PollInterval: updateDuration,
+			TLSVerify:    &tlsVerify,
+		}
+
+		defaultVal := true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
+
+		// create artifact blob
+		buf := []byte("this is an artifact")
+		digest := pushBlob(srcBaseURL, repoName, buf)
+
+		// create artifact config blob
+		cbuf := []byte("{}")
+		cdigest := pushBlob(srcBaseURL, repoName, cbuf)
+
+		// push a referrer artifact
+		manifest := ispec.Manifest{
+			MediaType: ispec.MediaTypeImageManifest,
+			Config: ispec.Descriptor{
+				MediaType: "application/vnd.cncf.icecream",
+				Digest:    cdigest,
+				Size:      int64(len(cbuf)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: "application/octet-stream",
+					Digest:    digest,
+					Size:      int64(len(buf)),
+				},
+			},
+		}
+
+		artifactManifest := ispec.Artifact{
+			MediaType:    ispec.MediaTypeArtifactManifest,
+			ArtifactType: "application/vnd.cncf.icecream",
+			Blobs: []ispec.Descriptor{
+				{
+					MediaType: "application/octet-stream",
+					Digest:    digest,
+					Size:      int64(len(buf)),
+				},
+			},
+		}
+
+		manifest.SchemaVersion = 2
+
+		content, err := json.Marshal(manifest)
 		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-		So(resp.Body(), ShouldNotBeEmpty)
-		So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
+
+		// put OCI artifact mediatype oci image
+		_, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+			SetBody(content).Put(srcBaseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, "1.0"))
+		So(err, ShouldBeNil)
+
+		content, err = json.Marshal(artifactManifest)
+		So(err, ShouldBeNil)
+
+		artifactDigest := godigest.FromBytes(content)
+
+		// put OCI artifact mediatype artifact
+		_, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeArtifactManifest).
+			SetBody(content).Put(srcBaseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, "2.0"))
+		So(err, ShouldBeNil)
+
+		Convey("sync periodically", func() {
+			// start downstream server
+			dctlr, destBaseURL, _, _ := startDownstreamServer(t, false, syncConfig)
+
+			defer func() {
+				dctlr.Shutdown()
+			}()
+
+			// give it time to set up sync
+			t.Logf("waitsync(%s, %s)", dctlr.Config.Storage.RootDirectory, repoName)
+			waitSync(dctlr.Config.Storage.RootDirectory, repoName)
+
+			resp, err := resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+				Get(destBaseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, "1.0"))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(resp.Body(), ShouldNotBeEmpty)
+			So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
+
+			var syncedManifest ispec.Manifest
+			err = json.Unmarshal(resp.Body(), &syncedManifest)
+			So(err, ShouldBeNil)
+
+			So(reflect.DeepEqual(syncedManifest, manifest), ShouldEqual, true)
+
+			// sync again for coverage
+			time.Sleep(5 * time.Second)
+		})
+
+		Convey("sync on demand", func() {
+			// start downstream server
+			syncConfig.Registries[0].OnDemand = true
+			syncConfig.Registries[0].PollInterval = 0
+
+			dctlr, destBaseURL, _, _ := startDownstreamServer(t, false, syncConfig)
+
+			defer func() {
+				dctlr.Shutdown()
+			}()
+
+			resp, err := resty.R().SetHeader("Content-Type", ispec.MediaTypeArtifactManifest).
+				Get(destBaseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, "2.0"))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(resp.Body(), ShouldNotBeEmpty)
+			So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
+
+			var syncedArtifact ispec.Artifact
+			err = json.Unmarshal(resp.Body(), &syncedArtifact)
+			So(err, ShouldBeNil)
+
+			So(reflect.DeepEqual(syncedArtifact, artifactManifest), ShouldEqual, true)
+		})
+
+		Convey("sync periodically error on mediatype", func() {
+			manifestPath := path.Join(sctlr.Config.Storage.RootDirectory, repoName, "blobs", "sha256", artifactDigest.Encoded())
+			So(os.Chmod(manifestPath, 0o000), ShouldBeNil)
+
+			// start downstream server
+			dctlr, destBaseURL, _, _ := startDownstreamServer(t, false, syncConfig)
+
+			defer func() {
+				dctlr.Shutdown()
+			}()
+
+			defer func() {
+				err := os.Chmod(manifestPath, 0o755)
+				So(err, ShouldBeNil)
+			}()
+
+			// give it time to set up sync
+			time.Sleep(3 * time.Second)
+
+			resp, err := resty.R().SetHeader("Content-Type", ispec.MediaTypeArtifactManifest).
+				Get(destBaseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, artifactDigest.String()))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+		})
+
+		Convey("sync on demand error on mediatype", func() {
+			// start downstream server
+			syncConfig.Registries[0].OnDemand = true
+			syncConfig.Registries[0].PollInterval = 0
+
+			dctlr, destBaseURL, _, _ := startDownstreamServer(t, false, syncConfig)
+
+			defer func() {
+				dctlr.Shutdown()
+			}()
+
+			manifestPath := path.Join(sctlr.Config.Storage.RootDirectory, repoName, "blobs", "sha256", artifactDigest.Encoded())
+			So(os.Chmod(manifestPath, 0o000), ShouldBeNil)
+			defer func() {
+				err := os.Chmod(manifestPath, 0o755)
+				So(err, ShouldBeNil)
+			}()
+
+			resp, err := resty.R().SetHeader("Content-Type", ispec.MediaTypeArtifactManifest).
+				Get(destBaseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, artifactDigest.String()))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+		})
+
+		Convey("sync on demand and periodically error on PutImageManifest", func() {
+			// start downstream server
+			syncConfig.Registries[0].OnDemand = true
+
+			destDir := t.TempDir()
+			destConfig := config.New()
+
+			destConfig.HTTP.Port = test.GetFreePort()
+			destBaseURL := test.GetBaseURL(destConfig.HTTP.Port)
+
+			destConfig.Storage.RootDirectory = destDir
+
+			destConfig.Extensions = &extconf.ExtensionConfig{}
+			destConfig.Extensions.Search = nil
+			destConfig.Extensions.Sync = syncConfig
+
+			dctlr := api.NewController(destConfig)
+
+			manifestPath := path.Join(destDir, repoName, "blobs", "sha256", artifactDigest.Encoded())
+			So(os.MkdirAll(manifestPath, 0o755), ShouldBeNil)
+			So(os.Chmod(manifestPath, 0o000), ShouldBeNil)
+
+			go func() {
+				// this blocks
+				if err := dctlr.Run(context.Background()); err != nil {
+					return
+				}
+			}()
+
+			// wait till ready
+			for {
+				_, err := resty.R().Get(destBaseURL)
+				if err == nil {
+					break
+				}
+
+				time.Sleep(100 * time.Millisecond)
+			}
+
+			defer func() {
+				dctlr.Shutdown()
+			}()
+
+			defer func() {
+				err := os.Chmod(manifestPath, 0o755)
+				So(err, ShouldBeNil)
+			}()
+
+			resp, err := resty.R().SetHeader("Content-Type", ispec.MediaTypeArtifactManifest).
+				Get(destBaseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, artifactDigest.String()))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+		})
 	})
 }
 
@@ -4620,6 +4907,7 @@ func pushRepo(url, repoName string) godigest.Digest {
 
 	// push a referrer artifact
 	manifest = ispec.Manifest{
+		MediaType: ispec.MediaTypeImageManifest,
 		Config: ispec.Descriptor{
 			MediaType: "application/vnd.cncf.icecream",
 			Digest:    acdigest,

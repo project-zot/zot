@@ -16,6 +16,7 @@ import (
 	"github.com/containers/image/v5/docker/reference"
 	"github.com/containers/image/v5/signature"
 	"github.com/containers/image/v5/types"
+	"github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"gopkg.in/resty.v1"
 
@@ -300,11 +301,24 @@ func syncRegistry(ctx context.Context, regCfg RegistryConfig,
 		defer os.RemoveAll(localCachePath)
 
 		for _, upstreamImageRef := range repoReference.imageReferences {
-			upstreamImageDigest, err := docker.GetDigest(ctx, upstreamCtx, upstreamImageRef)
+			manifestBuf, mediaType, err := getImageRefManifest(ctx, upstreamCtx, upstreamImageRef, log)
 			if err != nil {
-				log.Error().Err(err).Msgf("couldn't get upstream image %s manifest", upstreamImageRef.DockerReference())
-
 				return err
+			}
+
+			upstreamImageDigest := digest.FromBytes(manifestBuf)
+
+			tag := getTagFromRef(upstreamImageRef, log).Tag()
+
+			if !isSupportedMediaType(mediaType) {
+				if mediaType == ispec.MediaTypeArtifactManifest {
+					err = sig.syncOCIArtifact(localRepo, upstreamRepo, tag, manifestBuf)
+					if err != nil {
+						return err
+					}
+				}
+
+				continue
 			}
 
 			// get upstream signatures
@@ -315,7 +329,7 @@ func syncRegistry(ctx context.Context, regCfg RegistryConfig,
 				return err
 			}
 
-			refs, err := sig.getNotarySignatures(upstreamRepo, upstreamImageDigest.String())
+			refs, err := sig.getNotaryRefs(upstreamRepo, upstreamImageDigest.String())
 			if err != nil && !errors.Is(err, zerr.ErrSyncReferrerNotFound) {
 				log.Error().Err(err).Msgf("couldn't get upstream image %s notary references", upstreamImageRef.DockerReference())
 
@@ -332,8 +346,6 @@ func syncRegistry(ctx context.Context, regCfg RegistryConfig,
 					continue
 				}
 			}
-
-			tag := getTagFromRef(upstreamImageRef, log).Tag()
 
 			skipImage, err := canSkipImage(localRepo, tag, upstreamImageDigest, imageStore, log)
 			if err != nil {
@@ -392,7 +404,7 @@ func syncRegistry(ctx context.Context, regCfg RegistryConfig,
 					return err
 				}
 
-				err = sig.syncNotarySignature(localRepo, upstreamRepo, upstreamImageDigest.String(), refs)
+				err = sig.syncNotaryRefs(localRepo, upstreamRepo, upstreamImageDigest.String(), refs)
 				if err != nil {
 					return err
 				}

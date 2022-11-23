@@ -86,7 +86,7 @@ func (sig *signaturesCopier) getCosignManifest(repo, digestStr string) (*ispec.M
 	return &cosignManifest, nil
 }
 
-func (sig *signaturesCopier) getNotarySignatures(repo, digestStr string) (ReferenceList, error) {
+func (sig *signaturesCopier) getNotaryRefs(repo, digestStr string) (ReferenceList, error) {
 	var referrers ReferenceList
 
 	getReferrersURL := sig.upstreamURL
@@ -99,7 +99,6 @@ func (sig *signaturesCopier) getNotarySignatures(repo, digestStr string) (Refere
 
 	resp, err := sig.client.R().
 		SetHeader("Content-Type", "application/json").
-		SetQueryParam("artifactType", notreg.ArtifactTypeNotation).
 		Get(getReferrersURL.String())
 	if err != nil {
 		sig.log.Error().Str("errorType", TypeOf(err)).
@@ -216,6 +215,8 @@ func (sig *signaturesCopier) syncCosignSignature(localRepo, remoteRepo, digestSt
 	if err != nil {
 		sig.log.Error().Str("errorType", TypeOf(err)).
 			Err(err).Msg("couldn't marshal cosign manifest")
+
+		return err
 	}
 
 	// push manifest
@@ -233,13 +234,68 @@ func (sig *signaturesCopier) syncCosignSignature(localRepo, remoteRepo, digestSt
 	return nil
 }
 
-func (sig *signaturesCopier) syncNotarySignature(localRepo, remoteRepo, digestStr string, referrers ReferenceList,
+func (sig *signaturesCopier) syncOCIArtifact(localRepo, remoteRepo, reference string,
+	ociArtifactBuf []byte,
+) error {
+	var ociArtifact ispec.Artifact
+
+	err := json.Unmarshal(ociArtifactBuf, &ociArtifact)
+	if err != nil {
+		sig.log.Error().Err(err).Msgf("couldn't unmarshal OCI artifact from %s:%s", remoteRepo, reference)
+
+		return err
+	}
+
+	canSkipOCIArtifact, err := sig.canSkipOCIArtifact(localRepo, reference, ociArtifact)
+	if err != nil {
+		sig.log.Error().Err(err).Msgf("couldn't check if OCI artifact %s:%s can be skipped",
+			remoteRepo, reference)
+	}
+
+	if canSkipOCIArtifact {
+		return nil
+	}
+
+	imageStore := sig.storeController.GetImageStore(localRepo)
+
+	sig.log.Info().Msg("syncing OCI artifacts")
+
+	for _, blob := range ociArtifact.Blobs {
+		if err := syncBlob(sig, imageStore, localRepo, remoteRepo, blob.Digest); err != nil {
+			return err
+		}
+	}
+
+	artifactManifestBuf, err := json.Marshal(ociArtifact)
+	if err != nil {
+		sig.log.Error().Str("errorType", TypeOf(err)).
+			Err(err).Msg("couldn't marshal OCI artifact")
+
+		return err
+	}
+
+	// push manifest
+	_, err = imageStore.PutImageManifest(localRepo, reference,
+		ispec.MediaTypeArtifactManifest, artifactManifestBuf)
+	if err != nil {
+		sig.log.Error().Str("errorType", TypeOf(err)).
+			Err(err).Msg("couldn't upload OCI artifact manifest")
+
+		return err
+	}
+
+	sig.log.Info().Msgf("successfully synced OCI artifact for repo %s tag %s", localRepo, reference)
+
+	return nil
+}
+
+func (sig *signaturesCopier) syncNotaryRefs(localRepo, remoteRepo, digestStr string, referrers ReferenceList,
 ) error {
 	if len(referrers.References) == 0 {
 		return nil
 	}
 
-	skipNotarySig, err := sig.canSkipNotarySignature(localRepo, digestStr, referrers)
+	skipNotarySig, err := sig.canSkipNotaryRefs(localRepo, digestStr, referrers)
 	if err != nil {
 		sig.log.Error().Err(err).Msgf("couldn't check if the upstream image %s:%s notary signature can be skipped",
 			remoteRepo, digestStr)
@@ -319,7 +375,7 @@ func (sig *signaturesCopier) syncOCIRefs(localRepo, remoteRepo, digestStr string
 
 	imageStore := sig.storeController.GetImageStore(localRepo)
 
-	sig.log.Info().Msg("syncing oci references")
+	sig.log.Info().Msg("syncing OCI references")
 
 	for _, ref := range index.Manifests {
 		getRefManifestURL := sig.upstreamURL
@@ -392,7 +448,7 @@ func (sig *signaturesCopier) syncOCIRefs(localRepo, remoteRepo, digestStr string
 	return nil
 }
 
-func (sig *signaturesCopier) canSkipNotarySignature(localRepo, digestStr string, refs ReferenceList,
+func (sig *signaturesCopier) canSkipNotaryRefs(localRepo, digestStr string, refs ReferenceList,
 ) (bool, error) {
 	imageStore := sig.storeController.GetImageStore(localRepo)
 	digest := godigest.Digest(digestStr)
@@ -419,6 +475,43 @@ func (sig *signaturesCopier) canSkipNotarySignature(localRepo, digestStr string,
 	}
 
 	sig.log.Info().Msgf("skipping notary signature %s:%s, already synced", localRepo, digestStr)
+
+	return true, nil
+}
+
+func (sig *signaturesCopier) canSkipOCIArtifact(localRepo, reference string, artifact ispec.Artifact,
+) (bool, error) {
+	imageStore := sig.storeController.GetImageStore(localRepo)
+
+	var localArtifactManifest ispec.Artifact
+
+	localArtifactBuf, _, _, err := imageStore.GetImageManifest(localRepo, reference)
+	if err != nil {
+		if errors.Is(err, zerr.ErrManifestNotFound) {
+			return false, nil
+		}
+
+		sig.log.Error().Str("errorType", TypeOf(err)).
+			Err(err).Msgf("couldn't get local OCI artifact %s:%s manifest", localRepo, reference)
+
+		return false, err
+	}
+
+	err = json.Unmarshal(localArtifactBuf, &localArtifactManifest)
+	if err != nil {
+		sig.log.Error().Str("errorType", TypeOf(err)).
+			Err(err).Msgf("couldn't unmarshal local OCI artifact %s:%s manifest", localRepo, reference)
+
+		return false, err
+	}
+
+	if !artifactsEqual(localArtifactManifest, artifact) {
+		sig.log.Info().Msgf("upstream OCI artifact %s:%s changed, syncing again", localRepo, reference)
+
+		return false, nil
+	}
+
+	sig.log.Info().Msgf("skipping OCI artifact %s:%s, already synced", localRepo, reference)
 
 	return true, nil
 }
@@ -480,7 +573,7 @@ func (sig *signaturesCopier) canSkipOCIRefs(localRepo, digestStr string, index i
 			}
 
 			sig.log.Error().Str("errorType", TypeOf(err)).
-				Err(err).Msgf("couldn't get local ocireferences for %s:%s manifest", localRepo, digestStr)
+				Err(err).Msgf("couldn't get local oci references for %s:%s manifest", localRepo, digestStr)
 
 			return false, err
 		}
