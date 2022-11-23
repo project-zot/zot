@@ -27,7 +27,7 @@ import (
 	"zotregistry.io/zot/pkg/scheduler"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/cache"
-	storageConstants "zotregistry.io/zot/pkg/storage/constants"
+	"zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/storage/s3"
 )
@@ -437,15 +437,30 @@ func CreateCacheDatabaseDriver(storageConfig config.StorageConfig, log log.Logge
 		if !storageConfig.RemoteCache {
 			params := cache.BoltDBDriverParameters{}
 			params.RootDir = storageConfig.RootDirectory
-			params.Name = storageConstants.BoltdbName
+			params.Name = constants.BoltdbName
 			params.UseRelPaths = getUseRelPaths(&storageConfig)
 
 			driver, _ := storage.Create("boltdb", params, log)
 
 			return driver
 		}
-		// dynamodb
+
+		// remote cache
 		if storageConfig.CacheDriver != nil {
+			name, ok := storageConfig.CacheDriver["name"].(string)
+			if !ok {
+				log.Warn().Msg("remote cache driver name missing!")
+
+				return nil
+			}
+
+			if name != constants.DynamoDBDriverName {
+				log.Warn().Str("driver", name).Msg("remote cache driver unsupported!")
+
+				return nil
+			}
+
+			// dynamodb
 			dynamoParams := cache.DynamoDBDriverParameters{}
 			dynamoParams.Endpoint, _ = storageConfig.CacheDriver["endpoint"].(string)
 			dynamoParams.Region, _ = storageConfig.CacheDriver["region"].(string)
