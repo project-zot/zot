@@ -402,6 +402,8 @@ func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.
 	}
 
 	response.Header().Set(constants.DistContentDigestKey, digest.String())
+	response.Header().Set("Content-Length", fmt.Sprintf("%d", len(content)))
+	response.Header().Set("Content-Type", mediaType)
 	WriteData(response, http.StatusOK, mediaType, content)
 }
 
