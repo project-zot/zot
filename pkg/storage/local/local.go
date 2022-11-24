@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -18,6 +19,7 @@ import (
 	apexlog "github.com/apex/log"
 	guuid "github.com/gofrs/uuid"
 	"github.com/minio/sha256-simd"
+	notreg "github.com/notaryproject/notation-go/registry"
 	godigest "github.com/opencontainers/go-digest"
 	imeta "github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -25,8 +27,10 @@ import (
 	"github.com/opencontainers/umoci/oci/casext"
 	oras "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/rs/zerolog"
+	"github.com/sigstore/cosign/pkg/oci/remote"
 
 	zerr "zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	zlog "zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/scheduler"
@@ -565,13 +569,9 @@ func (is *ImageStoreLocal) DeleteImageManifest(repo, reference string, detectCol
 		return err
 	}
 
-	manifestDesc, found, err := storage.RemoveManifestDescByReference(&index, reference, detectCollision)
+	manifestDesc, err := storage.RemoveManifestDescByReference(&index, reference, detectCollision)
 	if err != nil {
 		return err
-	}
-
-	if !found {
-		return zerr.ErrManifestNotFound
 	}
 
 	err = storage.UpdateIndexWithPrunedImageManifests(is, &index, repo, manifestDesc, manifestDesc.Digest, is.log)
@@ -1267,13 +1267,17 @@ func (is *ImageStoreLocal) GetBlobContent(repo string, digest godigest.Digest) (
 	blobPath := is.BlobPath(repo, digest)
 
 	blob, err := os.ReadFile(blobPath)
-	if os.IsNotExist(err) {
-		is.log.Error().Err(err).Str("blob", blobPath).Msg("blob doesn't exist")
+	if err != nil {
+		if os.IsNotExist(err) {
+			is.log.Error().Err(err).Str("blob", blobPath).Msg("blob doesn't exist")
 
-		return []byte{}, zerr.ErrBlobNotFound
+			return []byte{}, zerr.ErrBlobNotFound
+		}
+
+		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to read blob")
+
+		return []byte{}, err
 	}
-
-	is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to read blob")
 
 	return blob, nil
 }
@@ -1429,6 +1433,65 @@ func (is *ImageStoreLocal) garbageCollect(dir string, repo string) error {
 	}
 	defer oci.Close()
 
+	// gc untagged manifests and signatures
+	index, err := oci.GetIndex(context.Background())
+	if err != nil {
+		return err
+	}
+
+	referencedByImageIndex := []string{}
+	cosignDescriptors := []ispec.Descriptor{}
+	notationDescriptors := []ispec.Descriptor{}
+
+	/* gather manifests references by multiarch images (to skip gc)
+	gather cosign and notation signatures descriptors */
+	for _, desc := range index.Manifests {
+		switch desc.MediaType {
+		case ispec.MediaTypeImageIndex:
+			indexImage, err := storage.GetImageIndex(is, repo, desc.Digest, is.log)
+			if err != nil {
+				is.log.Error().Err(err).Str("repo", repo).Str("digest", desc.Digest.String()).
+					Msg("gc: failed to read multiarch(index) image")
+
+				return err
+			}
+
+			for _, indexDesc := range indexImage.Manifests {
+				referencedByImageIndex = append(referencedByImageIndex, indexDesc.Digest.String())
+			}
+		case ispec.MediaTypeImageManifest:
+			tag, ok := desc.Annotations[ispec.AnnotationRefName]
+			if ok {
+				// gather cosign signatures
+				if strings.HasPrefix(tag, "sha256-") && strings.HasSuffix(tag, remote.SignatureTagSuffix) {
+					cosignDescriptors = append(cosignDescriptors, desc)
+				}
+			}
+		case oras.MediaTypeArtifactManifest:
+			notationDescriptors = append(notationDescriptors, desc)
+		}
+	}
+
+	is.log.Info().Msg("gc: untagged manifests")
+
+	if err := gcUntaggedManifests(is, oci, &index, repo, referencedByImageIndex); err != nil {
+		return err
+	}
+
+	is.log.Info().Msg("gc: cosign signatures")
+
+	if err := gcCosignSignatures(is, oci, &index, repo, cosignDescriptors); err != nil {
+		return err
+	}
+
+	is.log.Info().Msg("gc: notation signatures")
+
+	if err := gcNotationSignatures(is, oci, &index, repo, notationDescriptors); err != nil {
+		return err
+	}
+
+	is.log.Info().Msg("gc: blobs")
+
 	err = oci.GC(context.Background(), ifOlderThan(is, repo, is.gcDelay))
 	if err := test.Error(err); err != nil {
 		return err
@@ -1437,23 +1500,174 @@ func (is *ImageStoreLocal) garbageCollect(dir string, repo string) error {
 	return nil
 }
 
+func gcUntaggedManifests(imgStore *ImageStoreLocal, oci casext.Engine, index *ispec.Index, repo string,
+	referencedByImageIndex []string,
+) error {
+	for _, desc := range index.Manifests {
+		// skip manifests referenced in image indexex
+		if common.Contains(referencedByImageIndex, desc.Digest.String()) {
+			continue
+		}
+
+		// remove untagged images
+		if desc.MediaType == ispec.MediaTypeImageManifest {
+			_, ok := desc.Annotations[ispec.AnnotationRefName]
+			if !ok {
+				// check if is indeed an image and not an artifact by checking it's config blob
+				buf, err := imgStore.GetBlobContent(repo, desc.Digest)
+				if err != nil {
+					imgStore.log.Error().Err(err).Str("repo", repo).Str("digest", desc.Digest.String()).
+						Msg("gc: failed to read image manifest")
+
+					return err
+				}
+
+				manifest := ispec.Manifest{}
+
+				err = json.Unmarshal(buf, &manifest)
+				if err != nil {
+					return err
+				}
+
+				// skip manifests which are not of type image
+				if manifest.Config.MediaType != ispec.MediaTypeImageConfig {
+					imgStore.log.Info().Str("config mediaType", manifest.Config.MediaType).
+						Msg("skipping gc untagged manifest, because config blob is not application/vnd.oci.image.config.v1+json")
+
+					continue
+				}
+
+				// remove manifest if it's older than gc.delay
+				canGC, err := isBlobOlderThan(imgStore, repo, desc.Digest, imgStore.gcDelay)
+				if err != nil {
+					imgStore.log.Error().Err(err).Str("repo", repo).Str("digest", desc.Digest.String()).
+						Msgf("gc: failed to check if blob is older than %s", imgStore.gcDelay.String())
+
+					return err
+				}
+
+				if canGC {
+					imgStore.log.Info().Str("repo", repo).Str("digest", desc.Digest.String()).Msg("gc: removing manifest without tag")
+
+					_, err = storage.RemoveManifestDescByReference(index, desc.Digest.String(), true)
+					if errors.Is(err, zerr.ErrManifestConflict) {
+						imgStore.log.Info().Str("repo", repo).Str("digest", desc.Digest.String()).
+							Msg("gc: skipping removing manifest due to conflict")
+
+						continue
+					}
+
+					err := oci.PutIndex(context.Background(), *index)
+					if err != nil {
+						return err
+					}
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func gcCosignSignatures(imgStore *ImageStoreLocal, oci casext.Engine, index *ispec.Index, repo string,
+	cosignDescriptors []ispec.Descriptor,
+) error {
+	for _, cosignDesc := range cosignDescriptors {
+		foundSubject := false
+		// check if we can find the manifest which the signature points to
+		for _, desc := range index.Manifests {
+			subject := fmt.Sprintf("sha256-%s.%s", desc.Digest.Encoded(), remote.SignatureTagSuffix)
+			if subject == cosignDesc.Annotations[ispec.AnnotationRefName] {
+				foundSubject = true
+			}
+		}
+
+		if !foundSubject {
+			// remove manifest
+			imgStore.log.Info().Str("repo", repo).Str("digest", cosignDesc.Digest.String()).
+				Msg("gc: removing cosign signature without subject")
+
+			// no need to check for manifest conflict, if one doesn't have a subject, then none with same digest will have
+			_, _ = storage.RemoveManifestDescByReference(index, cosignDesc.Digest.String(), false)
+
+			err := oci.PutIndex(context.Background(), *index)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func gcNotationSignatures(imgStore *ImageStoreLocal, oci casext.Engine, index *ispec.Index, repo string,
+	notationDescriptors []ispec.Descriptor,
+) error {
+	for _, notationDesc := range notationDescriptors {
+		foundSubject := false
+		// check if we can find the manifest which the signature points to
+		artManifest, err := storage.GetOrasManifestByDigest(imgStore, repo, notationDesc.Digest, imgStore.log)
+		if err != nil {
+			imgStore.log.Error().Err(err).Str("repo", repo).Str("digest", notationDesc.Digest.String()).
+				Msg("gc: failed to get oras artifact manifest")
+
+			return err
+		}
+
+		// skip oras artifacts which are not signatures
+		if artManifest.ArtifactType != notreg.ArtifactTypeNotation {
+			continue
+		}
+
+		for _, desc := range index.Manifests {
+			if desc.Digest == artManifest.Subject.Digest {
+				foundSubject = true
+			}
+		}
+
+		if !foundSubject {
+			// remove manifest
+			imgStore.log.Info().Str("repo", repo).Str("digest", notationDesc.Digest.String()).
+				Msg("gc: removing notation signature without subject")
+
+			// no need to check for manifest conflict, if one doesn't have a subject, then none with same digest will have
+			_, _ = storage.RemoveManifestDescByReference(index, notationDesc.Digest.String(), false)
+
+			err := oci.PutIndex(context.Background(), *index)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 func ifOlderThan(imgStore *ImageStoreLocal, repo string, delay time.Duration) casext.GCPolicy {
 	return func(ctx context.Context, digest godigest.Digest) (bool, error) {
-		blobPath := imgStore.BlobPath(repo, digest)
-
-		fi, err := os.Stat(blobPath)
-		if err != nil {
-			return false, err
-		}
-
-		if fi.ModTime().Add(delay).After(time.Now()) {
-			return false, nil
-		}
-
-		imgStore.log.Info().Str("digest", digest.String()).Str("blobPath", blobPath).Msg("perform GC on blob")
-
-		return true, nil
+		return isBlobOlderThan(imgStore, repo, digest, delay)
 	}
+}
+
+func isBlobOlderThan(imgStore *ImageStoreLocal, repo string, digest godigest.Digest, delay time.Duration,
+) (bool, error) {
+	blobPath := imgStore.BlobPath(repo, digest)
+
+	fileInfo, err := os.Stat(blobPath)
+	if err != nil {
+		imgStore.log.Error().Err(err).Str("digest", digest.String()).Str("blobPath", blobPath).
+			Msg("gc: failed to stat blob")
+
+		return false, err
+	}
+
+	if fileInfo.ModTime().Add(delay).After(time.Now()) {
+		return false, nil
+	}
+
+	imgStore.log.Info().Str("digest", digest.String()).Str("blobPath", blobPath).Msg("perform GC on blob")
+
+	return true, nil
 }
 
 func DirExists(d string) bool {

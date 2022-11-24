@@ -250,6 +250,7 @@ func CheckIfIndexNeedsUpdate(index *ispec.Index, desc *ispec.Descriptor,
 	return updateIndex, oldDgst, nil
 }
 
+// GetIndex returns the contents of index.json.
 func GetIndex(imgStore ImageStore, repo string, log zerolog.Logger) (ispec.Index, error) {
 	var index ispec.Index
 
@@ -267,8 +268,33 @@ func GetIndex(imgStore ImageStore, repo string, log zerolog.Logger) (ispec.Index
 	return index, nil
 }
 
+// GetImageIndex returns a multiarch type image.
+func GetImageIndex(imgStore ImageStore, repo string, digest godigest.Digest, log zerolog.Logger) (ispec.Index, error) {
+	var imageIndex ispec.Index
+
+	if err := digest.Validate(); err != nil {
+		return imageIndex, err
+	}
+
+	buf, err := imgStore.GetBlobContent(repo, digest)
+	if err != nil {
+		return imageIndex, err
+	}
+
+	indexPath := path.Join(imgStore.RootDir(), repo, "blobs",
+		digest.Algorithm().String(), digest.Encoded())
+
+	if err := json.Unmarshal(buf, &imageIndex); err != nil {
+		log.Error().Err(err).Str("path", indexPath).Msg("invalid JSON")
+
+		return imageIndex, err
+	}
+
+	return imageIndex, nil
+}
+
 func RemoveManifestDescByReference(index *ispec.Index, reference string, detectCollisions bool,
-) (ispec.Descriptor, bool, error) {
+) (ispec.Descriptor, error) {
 	var removedManifest ispec.Descriptor
 
 	var found bool
@@ -297,12 +323,14 @@ func RemoveManifestDescByReference(index *ispec.Index, reference string, detectC
 	}
 
 	if foundCount > 1 && detectCollisions {
-		return ispec.Descriptor{}, false, zerr.ErrManifestConflict
+		return ispec.Descriptor{}, zerr.ErrManifestConflict
+	} else if !found {
+		return ispec.Descriptor{}, zerr.ErrManifestNotFound
 	}
 
 	index.Manifests = outIndex.Manifests
 
-	return removedManifest, found, nil
+	return removedManifest, nil
 }
 
 /*
@@ -369,18 +397,8 @@ func PruneImageManifestsFromIndex(imgStore ImageStore, repo string, digest godig
 	}
 
 	for _, otherIndex := range otherImgIndexes {
-		buf, err := imgStore.GetBlobContent(repo, otherIndex.Digest)
+		oindex, err := GetImageIndex(imgStore, repo, otherIndex.Digest, log)
 		if err != nil {
-			return nil, err
-		}
-
-		indexPath := path.Join(imgStore.RootDir(), repo, "blobs",
-			otherIndex.Digest.Algorithm().String(), otherIndex.Digest.Encoded())
-
-		var oindex ispec.Index
-		if err := json.Unmarshal(buf, &oindex); err != nil {
-			log.Error().Err(err).Str("path", indexPath).Msg("invalid JSON")
-
 			return nil, err
 		}
 
@@ -479,21 +497,8 @@ func GetOrasReferrers(imgStore ImageStore, repo string, gdigest godigest.Digest,
 			continue
 		}
 
-		buf, err := imgStore.GetBlobContent(repo, manifest.Digest)
+		artManifest, err := GetOrasManifestByDigest(imgStore, repo, manifest.Digest, log)
 		if err != nil {
-			log.Error().Err(err).Str("blob", imgStore.BlobPath(repo, manifest.Digest)).Msg("failed to read manifest")
-
-			if os.IsNotExist(err) || errors.Is(err, driver.PathNotFoundError{}) {
-				return nil, zerr.ErrManifestNotFound
-			}
-
-			return nil, err
-		}
-
-		var artManifest oras.Manifest
-		if err := json.Unmarshal(buf, &artManifest); err != nil {
-			log.Error().Err(err).Str("dir", dir).Msg("invalid JSON")
-
 			return nil, err
 		}
 
@@ -633,6 +638,32 @@ func GetReferrers(imgStore ImageStore, repo string, gdigest godigest.Digest, art
 	}
 
 	return index, nil
+}
+
+func GetOrasManifestByDigest(imgStore ImageStore, repo string, digest godigest.Digest, log zerolog.Logger,
+) (oras.Manifest, error) {
+	var artManifest oras.Manifest
+
+	blobPath := imgStore.BlobPath(repo, digest)
+
+	buf, err := imgStore.GetBlobContent(repo, digest)
+	if err != nil {
+		log.Error().Err(err).Str("blob", blobPath).Msg("failed to read manifest")
+
+		if os.IsNotExist(err) || errors.Is(err, driver.PathNotFoundError{}) {
+			return artManifest, zerr.ErrManifestNotFound
+		}
+
+		return artManifest, err
+	}
+
+	if err := json.Unmarshal(buf, &artManifest); err != nil {
+		log.Error().Err(err).Str("blob", blobPath).Msg("invalid JSON")
+
+		return artManifest, err
+	}
+
+	return artManifest, nil
 }
 
 func IsSupportedMediaType(mediaType string) bool {

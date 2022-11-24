@@ -1073,7 +1073,7 @@ func TestDedupeLinks(t *testing.T) {
 		Name:        "cache",
 		UseRelPaths: true,
 	}, log)
-	imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay,
+	imgStore := local.NewImageStore(dir, false, storage.DefaultGCDelay,
 		true, true, log, metrics, nil, cacheDriver)
 
 	Convey("Dedupe", t, func(c C) {
@@ -2201,6 +2201,225 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 			So(string(data), ShouldContainSubstring,
 				fmt.Sprintf("error while running GC for %s", path.Join(imgStore.RootDir(), repoName)))
 			So(os.Chmod(path.Join(dir, repoName, "index.json"), 0o755), ShouldBeNil)
+		})
+	})
+}
+
+func TestGarbageCollectErrors(t *testing.T) {
+	Convey("Make image store", t, func(c C) {
+		dir := t.TempDir()
+
+		log := log.NewLogger("debug", "")
+		metrics := monitoring.NewMetricsServer(false, log)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+		imgStore := local.NewImageStore(dir, true, 500*time.Millisecond, true, true, log, metrics, nil, cacheDriver)
+		repoName := "gc-index"
+
+		// create a blob/layer
+		upload, err := imgStore.NewBlobUpload(repoName)
+		So(err, ShouldBeNil)
+		So(upload, ShouldNotBeEmpty)
+
+		content := []byte("this is a blob1")
+		buf := bytes.NewBuffer(content)
+		buflen := buf.Len()
+		digest := godigest.FromBytes(content)
+		So(digest, ShouldNotBeNil)
+		blob, err := imgStore.PutBlobChunkStreamed(repoName, upload, buf)
+		So(err, ShouldBeNil)
+		So(blob, ShouldEqual, buflen)
+		bdgst1 := digest
+		bsize1 := len(content)
+
+		err = imgStore.FinishBlobUpload(repoName, upload, buf, digest)
+		So(err, ShouldBeNil)
+		So(blob, ShouldEqual, buflen)
+
+		Convey("Trigger error on GetImageIndex", func() {
+			var index ispec.Index
+			index.SchemaVersion = 2
+			index.MediaType = ispec.MediaTypeImageIndex
+
+			for i := 0; i < 4; i++ {
+				// upload image config blob
+				upload, err = imgStore.NewBlobUpload(repoName)
+				So(err, ShouldBeNil)
+				So(upload, ShouldNotBeEmpty)
+
+				cblob, cdigest := test.GetRandomImageConfig()
+				buf = bytes.NewBuffer(cblob)
+				buflen = buf.Len()
+				blob, err = imgStore.PutBlobChunkStreamed(repoName, upload, buf)
+				So(err, ShouldBeNil)
+				So(blob, ShouldEqual, buflen)
+
+				err = imgStore.FinishBlobUpload(repoName, upload, buf, cdigest)
+				So(err, ShouldBeNil)
+				So(blob, ShouldEqual, buflen)
+
+				// create a manifest
+				manifest := ispec.Manifest{
+					Config: ispec.Descriptor{
+						MediaType: ispec.MediaTypeImageConfig,
+						Digest:    cdigest,
+						Size:      int64(len(cblob)),
+					},
+					Layers: []ispec.Descriptor{
+						{
+							MediaType: ispec.MediaTypeImageLayer,
+							Digest:    bdgst1,
+							Size:      int64(bsize1),
+						},
+					},
+				}
+				manifest.SchemaVersion = 2
+				content, err = json.Marshal(manifest)
+				So(err, ShouldBeNil)
+				digest = godigest.FromBytes(content)
+				So(digest, ShouldNotBeNil)
+				_, err = imgStore.PutImageManifest(repoName, digest.String(), ispec.MediaTypeImageManifest, content)
+				So(err, ShouldBeNil)
+
+				index.Manifests = append(index.Manifests, ispec.Descriptor{
+					Digest:    digest,
+					MediaType: ispec.MediaTypeImageManifest,
+					Size:      int64(len(content)),
+				})
+			}
+
+			// upload index image
+			indexContent, err := json.Marshal(index)
+			So(err, ShouldBeNil)
+			indexDigest := godigest.FromBytes(indexContent)
+			So(indexDigest, ShouldNotBeNil)
+
+			_, err = imgStore.PutImageManifest(repoName, "1.0", ispec.MediaTypeImageIndex, indexContent)
+			So(err, ShouldBeNil)
+
+			err = os.Chmod(imgStore.BlobPath(repoName, indexDigest), 0o000)
+			So(err, ShouldBeNil)
+
+			time.Sleep(500 * time.Millisecond)
+
+			err = imgStore.RunGCRepo(repoName)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Trigger error on GetBlobContent and Unmarshal for untagged manifest", func() {
+			// upload image config blob
+			upload, err = imgStore.NewBlobUpload(repoName)
+			So(err, ShouldBeNil)
+			So(upload, ShouldNotBeEmpty)
+
+			cblob, cdigest := test.GetRandomImageConfig()
+			buf = bytes.NewBuffer(cblob)
+			buflen = buf.Len()
+			blob, err = imgStore.PutBlobChunkStreamed(repoName, upload, buf)
+			So(err, ShouldBeNil)
+			So(blob, ShouldEqual, buflen)
+
+			err = imgStore.FinishBlobUpload(repoName, upload, buf, cdigest)
+			So(err, ShouldBeNil)
+			So(blob, ShouldEqual, buflen)
+
+			// create a manifest
+			manifest := ispec.Manifest{
+				Config: ispec.Descriptor{
+					MediaType: ispec.MediaTypeImageConfig,
+					Digest:    cdigest,
+					Size:      int64(len(cblob)),
+				},
+				Layers: []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageLayer,
+						Digest:    bdgst1,
+						Size:      int64(bsize1),
+					},
+				},
+			}
+			manifest.SchemaVersion = 2
+			content, err = json.Marshal(manifest)
+			So(err, ShouldBeNil)
+			digest = godigest.FromBytes(content)
+			So(digest, ShouldNotBeNil)
+
+			_, err = imgStore.PutImageManifest(repoName, digest.String(), ispec.MediaTypeImageManifest, content)
+			So(err, ShouldBeNil)
+
+			// trigger GetBlobContent error
+			err = os.Remove(imgStore.BlobPath(repoName, digest))
+			So(err, ShouldBeNil)
+
+			time.Sleep(500 * time.Millisecond)
+
+			err = imgStore.RunGCRepo(repoName)
+			So(err, ShouldNotBeNil)
+
+			// trigger Unmarshal error
+			_, err = os.Create(imgStore.BlobPath(repoName, digest))
+			So(err, ShouldBeNil)
+
+			err = imgStore.RunGCRepo(repoName)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Trigger manifest conflict error", func() {
+			// upload image config blob
+			upload, err = imgStore.NewBlobUpload(repoName)
+			So(err, ShouldBeNil)
+			So(upload, ShouldNotBeEmpty)
+
+			cblob, cdigest := test.GetRandomImageConfig()
+			buf = bytes.NewBuffer(cblob)
+			buflen = buf.Len()
+			blob, err = imgStore.PutBlobChunkStreamed(repoName, upload, buf)
+			So(err, ShouldBeNil)
+			So(blob, ShouldEqual, buflen)
+
+			err = imgStore.FinishBlobUpload(repoName, upload, buf, cdigest)
+			So(err, ShouldBeNil)
+			So(blob, ShouldEqual, buflen)
+
+			// create a manifest
+			manifest := ispec.Manifest{
+				Config: ispec.Descriptor{
+					MediaType: ispec.MediaTypeImageConfig,
+					Digest:    cdigest,
+					Size:      int64(len(cblob)),
+				},
+				Layers: []ispec.Descriptor{
+					{
+						MediaType: ispec.MediaTypeImageLayer,
+						Digest:    bdgst1,
+						Size:      int64(bsize1),
+					},
+				},
+			}
+			manifest.SchemaVersion = 2
+			content, err = json.Marshal(manifest)
+			So(err, ShouldBeNil)
+			digest = godigest.FromBytes(content)
+			So(digest, ShouldNotBeNil)
+
+			_, err = imgStore.PutImageManifest(repoName, digest.String(), ispec.MediaTypeImageManifest, content)
+			So(err, ShouldBeNil)
+			// upload again same manifest so that we trigger manifest conflict
+			_, err = imgStore.PutImageManifest(repoName, "1.0", ispec.MediaTypeImageManifest, content)
+			So(err, ShouldBeNil)
+
+			time.Sleep(500 * time.Millisecond)
+
+			err = imgStore.RunGCRepo(repoName)
+			So(err, ShouldBeNil)
+
+			// blob shouldn't be gc'ed
+			found, _, err := imgStore.CheckBlob(repoName, digest)
+			So(err, ShouldBeNil)
+			So(found, ShouldEqual, true)
 		})
 	})
 }

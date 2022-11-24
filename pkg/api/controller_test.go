@@ -39,6 +39,7 @@ import (
 	"github.com/sigstore/cosign/cmd/cosign/cli/options"
 	"github.com/sigstore/cosign/cmd/cosign/cli/sign"
 	"github.com/sigstore/cosign/cmd/cosign/cli/verify"
+	"github.com/sigstore/cosign/pkg/oci/remote"
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/bcrypt"
@@ -2251,8 +2252,8 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-		var e api.Error
-		err = json.Unmarshal(resp.Body(), &e)
+		var apiErr api.Error
+		err = json.Unmarshal(resp.Body(), &apiErr)
 		So(err, ShouldBeNil)
 
 		// should get 403 without create
@@ -2456,6 +2457,27 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 				Actions: []string{"read"},
 			},
 		}, DefaultPolicy: []string{}}
+
+		/* we have 4 images(authz/image, golang, zot-test, zot-cve-test) in storage,
+		but because at this point we only have read access
+		in authz/image and zot-test, we should get only that when listing repositories*/
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Get(baseURL + constants.RoutePrefix + constants.ExtCatalogPrefix)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		err = json.Unmarshal(resp.Body(), &apiErr)
+		So(err, ShouldBeNil)
+
+		catalog := struct {
+			Repositories []string `json:"repositories"`
+		}{}
+
+		err = json.Unmarshal(resp.Body(), &catalog)
+		So(err, ShouldBeNil)
+		So(len(catalog.Repositories), ShouldEqual, 2)
+		So(catalog.Repositories, ShouldContain, "zot-test")
+		So(catalog.Repositories, ShouldContain, AuthorizationNamespace)
 
 		// get manifest should get 200 now
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
@@ -6486,6 +6508,257 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 				SetBody(content).Put(baseURL + "/v2/repotest/manifests/v1.1")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+		})
+	})
+}
+
+func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
+	Convey("Make controller", t, func() {
+		repoName := "testrepo"
+		tag := "0.0.1"
+
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		ctlr := api.NewController(conf)
+
+		Convey("Garbage collect signatures without subject and manifests without tags", func(c C) {
+			dir := t.TempDir()
+			ctlr.Config.Storage.RootDirectory = dir
+			ctlr.Config.Storage.GC = true
+			ctlr.Config.Storage.GCDelay = 1 * time.Millisecond
+
+			err := test.CopyFiles("../../test/data/zot-test", path.Join(dir, repoName))
+			if err != nil {
+				panic(err)
+			}
+
+			go startServer(ctlr)
+			defer stopServer(ctlr)
+			test.WaitTillServerReady(baseURL)
+
+			resp, err := resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, tag))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			digest := godigest.FromBytes(resp.Body())
+			So(digest, ShouldNotBeEmpty)
+
+			cwd, err := os.Getwd()
+			So(err, ShouldBeNil)
+			defer func() { _ = os.Chdir(cwd) }()
+			tdir := t.TempDir()
+			_ = os.Chdir(tdir)
+
+			// generate a keypair
+			os.Setenv("COSIGN_PASSWORD", "")
+			err = generate.GenerateKeyPairCmd(context.TODO(), "", nil)
+			So(err, ShouldBeNil)
+
+			image := fmt.Sprintf("localhost:%s/%s@%s", port, repoName, digest.String())
+
+			// sign the image
+			err = sign.SignCmd(&options.RootOptions{Verbose: true, Timeout: 1 * time.Minute},
+				options.KeyOpts{KeyRef: path.Join(tdir, "cosign.key"), PassFunc: generate.GetPass},
+				options.RegistryOptions{AllowInsecure: true},
+				map[string]interface{}{"tag": tag},
+				[]string{image},
+				"", "", true, "", "", "", false, false, "", true)
+
+			So(err, ShouldBeNil)
+
+			// "notation" (notaryv2) doesn't yet support exported apis, so use the binary instead
+			notPath, err := exec.LookPath("notation")
+			So(notPath, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+
+			os.Setenv("XDG_CONFIG_HOME", tdir)
+
+			// generate a keypair
+			cmd := exec.Command("notation", "cert", "generate-test", "--trust", "good")
+			output, err := cmd.CombinedOutput()
+			t.Log(string(output))
+			So(err, ShouldBeNil)
+
+			// sign the image
+			cmd = exec.Command("notation", "sign", "--key", "good", "--plain-http", image)
+			output, err = cmd.CombinedOutput()
+			t.Log(string(output))
+			So(err, ShouldBeNil)
+
+			// get cosign signature manifest
+			cosignTag := strings.Replace(digest.String(), ":", "-", 1) + "." + remote.SignatureTagSuffix
+
+			resp, err = resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, cosignTag))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// get notation signature manifest
+			resp, err = resty.R().SetQueryParam("artifactType", notreg.ArtifactTypeNotation).Get(
+				fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers", baseURL, repoName, digest.String()))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			Convey("Trigger gcNotationSignatures() error", func() {
+				var refs api.ReferenceList
+				err = json.Unmarshal(resp.Body(), &refs)
+
+				err := os.Chmod(path.Join(dir, repoName, "blobs", "sha256", refs.References[0].Digest.Encoded()), 0o000)
+				So(err, ShouldBeNil)
+
+				// trigger gc
+				cfg, layers, manifest, err := test.GetImageComponents(3)
+				So(err, ShouldBeNil)
+
+				err = test.UploadImage(
+					test.Image{
+						Config:   cfg,
+						Layers:   layers,
+						Manifest: manifest,
+						Tag:      tag,
+					}, baseURL, repoName)
+				So(err, ShouldBeNil)
+
+				err = os.Chmod(path.Join(dir, repoName, "blobs", "sha256", refs.References[0].Digest.Encoded()), 0o755)
+				So(err, ShouldBeNil)
+			})
+
+			// push an image without tag
+			cfg, layers, manifest, err := test.GetImageComponents(2)
+			So(err, ShouldBeNil)
+
+			manifestBuf, err := json.Marshal(manifest)
+			So(err, ShouldBeNil)
+			untaggedManifestDigest := godigest.FromBytes(manifestBuf)
+
+			err = test.UploadImage(
+				test.Image{
+					Config:   cfg,
+					Layers:   layers,
+					Manifest: manifest,
+					Tag:      untaggedManifestDigest.String(),
+				}, baseURL, repoName)
+			So(err, ShouldBeNil)
+
+			// overwrite image so that signatures will get invalidated and gc'ed
+			cfg, layers, manifest, err = test.GetImageComponents(3)
+			So(err, ShouldBeNil)
+
+			err = test.UploadImage(
+				test.Image{
+					Config:   cfg,
+					Layers:   layers,
+					Manifest: manifest,
+					Tag:      tag,
+				}, baseURL, repoName)
+			So(err, ShouldBeNil)
+
+			manifestBuf, err = json.Marshal(manifest)
+			So(err, ShouldBeNil)
+			newManifestDigest := godigest.FromBytes(manifestBuf)
+
+			// both signatures should be gc'ed
+			resp, err = resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, cosignTag))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			resp, err = resty.R().SetQueryParam("artifactType", notreg.ArtifactTypeNotation).Get(
+				fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers", baseURL, repoName, digest.String()))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			resp, err = resty.R().SetQueryParam("artifactType", notreg.ArtifactTypeNotation).Get(
+				fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers", baseURL, repoName, newManifestDigest.String()))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			// untagged image should also be gc'ed
+			resp, err = resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, untaggedManifestDigest))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+		})
+
+		Convey("Do not gc manifests which are part of a multiarch image", func(c C) {
+			dir := t.TempDir()
+			ctlr.Config.Storage.RootDirectory = dir
+			ctlr.Config.Storage.GC = true
+			ctlr.Config.Storage.GCDelay = 500 * time.Millisecond
+
+			err := test.CopyFiles("../../test/data/zot-test", path.Join(dir, repoName))
+			if err != nil {
+				panic(err)
+			}
+
+			go startServer(ctlr)
+			defer stopServer(ctlr)
+			test.WaitTillServerReady(baseURL)
+
+			resp, err := resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, tag))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			digest := godigest.FromBytes(resp.Body())
+			So(digest, ShouldNotBeEmpty)
+
+			// push an image index and make sure manifests contained by it are not gc'ed
+			// create an image index on upstream
+			var index ispec.Index
+			index.SchemaVersion = 2
+			index.MediaType = ispec.MediaTypeImageIndex
+
+			// upload multiple manifests
+			for i := 0; i < 4; i++ {
+				config, layers, manifest, err := test.GetImageComponents(1000 + i)
+				So(err, ShouldBeNil)
+
+				manifestContent, err := json.Marshal(manifest)
+				So(err, ShouldBeNil)
+
+				manifestDigest := godigest.FromBytes(manifestContent)
+
+				err = test.UploadImage(
+					test.Image{
+						Manifest: manifest,
+						Config:   config,
+						Layers:   layers,
+						Tag:      manifestDigest.String(),
+					},
+					baseURL,
+					repoName)
+				So(err, ShouldBeNil)
+
+				index.Manifests = append(index.Manifests, ispec.Descriptor{
+					Digest:    manifestDigest,
+					MediaType: ispec.MediaTypeImageManifest,
+					Size:      int64(len(manifestContent)),
+				})
+			}
+
+			content, err := json.Marshal(index)
+			So(err, ShouldBeNil)
+			indexDigest := godigest.FromBytes(content)
+			So(indexDigest, ShouldNotBeNil)
+
+			time.Sleep(1 * time.Second)
+			// upload image index
+			resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+				SetBody(content).Put(baseURL + fmt.Sprintf("/v2/%s/manifests/latest", repoName))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+			resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageIndex).
+				Get(baseURL + fmt.Sprintf("/v2/%s/manifests/latest", repoName))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(resp.Body(), ShouldNotBeEmpty)
+			So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
+
+			// make sure manifests which are part of image index are not gc'ed
+			for _, manifest := range index.Manifests {
+				resp, err = resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, manifest.Digest.String()))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			}
 		})
 	})
 }
