@@ -112,6 +112,84 @@ func TestVerify(t *testing.T) {
 		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 	})
 
+	Convey("Test verify CVE warn for remote storage", t, func(c C) {
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+
+		content := []byte(`{
+			"storage":{
+				"rootDirectory":"/tmp/zot",
+				"dedupe":true,
+				"remoteCache":false,
+				"storageDriver":{
+					"name":"s3",
+					"rootdirectory":"/zot",
+					"region":"us-east-2",
+					"bucket":"zot-storage",
+					"secure":true,
+					"skipverify":false
+				}
+			},
+			"http":{
+				"address":"127.0.0.1",
+				"port":"8080"
+			},
+			"extensions":{
+				"search": {
+					"enable": true,
+					"cve": {
+						"updateInterval": "24h"
+					}
+				}
+			}
+		}`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+
+		content = []byte(`{
+			"storage":{
+				"rootDirectory":"/tmp/zot",
+				"dedupe":true,
+				"remoteCache":false,
+				"subPaths":{
+					"/a": {
+						"rootDirectory": "/tmp/zot1",
+						"dedupe": false,
+						"storageDriver":{
+							"name":"s3",
+							"rootdirectory":"/zot-a",
+							"region":"us-east-2",
+							"bucket":"zot-storage",
+							"secure":true,
+							"skipverify":false
+						}
+					}
+				}
+			},
+			"http":{
+				"address":"127.0.0.1",
+				"port":"8080"
+			},
+			"extensions":{
+				"search": {
+					"enable": true,
+					"cve": {
+						"updateInterval": "24h"
+					}
+				}
+			}
+		}`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+	})
+
 	Convey("Test cached db config", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)

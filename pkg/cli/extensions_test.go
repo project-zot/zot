@@ -637,15 +637,10 @@ func TestServeSearchEnabled(t *testing.T) {
 		logPath, err := runCLIWithConfig(tempDir, content)
 		So(err, ShouldBeNil)
 		// to avoid data race when multiple go routines write to trivy DB instance.
-		WaitTillTrivyDBDownloadStarted(tempDir)
 		defer os.Remove(logPath) // clean up
 
-		substring := "\"Extensions\":{\"Search\":{\"Enable\":true,\"CVE\":{\"UpdateInterval\":86400000000000}},\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":null}" //nolint:lll // gofumpt conflicts with lll
+		substring := "\"Extensions\":{\"Search\":{\"Enable\":true,\"CVE\":null},\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":null}" //nolint:lll // gofumpt conflicts with lll
 		found, err := readLogFileAndSearchString(logPath, substring, readLogFileTimeout)
-		So(found, ShouldBeTrue)
-		So(err, ShouldBeNil)
-
-		found, err = readLogFileAndSearchString(logPath, "updating the CVE database", readLogFileTimeout)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 	})
@@ -730,15 +725,9 @@ func TestServeSearchEnabledNoCVE(t *testing.T) {
 		logPath, err := runCLIWithConfig(tempDir, content)
 		So(err, ShouldBeNil)
 		defer os.Remove(logPath) // clean up
-		// to avoid data race when multiple go routines write to trivy DB instance.
-		WaitTillTrivyDBDownloadStarted(tempDir)
 
-		substring := "\"Extensions\":{\"Search\":{\"Enable\":true,\"CVE\":{\"UpdateInterval\":86400000000000}},\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":null}" //nolint:lll // gofumpt conflicts with lll
+		substring := "\"Extensions\":{\"Search\":{\"Enable\":true,\"CVE\":null},\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":null}" //nolint:lll // gofumpt conflicts with lll
 		found, err := readLogFileAndSearchString(logPath, substring, readLogFileTimeout)
-		So(found, ShouldBeTrue)
-		So(err, ShouldBeNil)
-
-		found, err = readLogFileAndSearchString(logPath, "updating the CVE database", readLogFileTimeout)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 	})
