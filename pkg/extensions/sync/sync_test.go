@@ -40,8 +40,10 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
 	"zotregistry.io/zot/pkg/cli"
+	"zotregistry.io/zot/pkg/common"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/sync"
+	logger "zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
@@ -947,7 +949,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 		}()
 
 		// give it time to set up sync
-		time.Sleep(3 * time.Second)
+		time.Sleep(5 * time.Second)
 
 		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/0.0.1")
 		So(err, ShouldBeNil)
@@ -1661,6 +1663,57 @@ func TestNotSemver(t *testing.T) {
 	})
 }
 
+func TestErrorOnCatalog(t *testing.T) {
+	Convey("Verify error on catalog", t, func() {
+		updateDuration, _ := time.ParseDuration("1h")
+
+		sctlr, srcBaseURL, destDir, _, _ := startUpstreamServer(t, true, false)
+
+		defer func() {
+			sctlr.Shutdown()
+		}()
+
+		err := os.Chmod(destDir, 0o000)
+		So(err, ShouldBeNil)
+
+		tlsVerify := false
+
+		syncRegistryConfig := sync.RegistryConfig{
+			Content: []sync.Content{
+				{
+					Prefix: testImage,
+				},
+			},
+			URLs:         []string{srcBaseURL},
+			PollInterval: updateDuration,
+			TLSVerify:    &tlsVerify,
+			OnDemand:     true,
+		}
+
+		defaultVal := true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
+
+		dctlr, _, _, _ := startDownstreamServer(t, false, syncConfig)
+
+		httpClient, err := common.CreateHTTPClient(*syncRegistryConfig.TLSVerify, "localhost", "")
+		So(httpClient, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+
+		_, err = sync.GetUpstreamCatalog(httpClient, srcBaseURL, "", "", logger.NewLogger("", ""))
+		So(err, ShouldNotBeNil)
+
+		err = os.Chmod(destDir, 0o755)
+		So(err, ShouldBeNil)
+
+		defer func() {
+			dctlr.Shutdown()
+		}()
+	})
+}
+
 func TestInvalidCerts(t *testing.T) {
 	Convey("Verify sync with bad certs", t, func() {
 		updateDuration, _ := time.ParseDuration("1h")
@@ -1703,12 +1756,79 @@ func TestInvalidCerts(t *testing.T) {
 			panic(err)
 		}
 
-		var tlsVerify bool
+		tlsVerify := true
 
 		syncRegistryConfig := sync.RegistryConfig{
 			Content: []sync.Content{
 				{
-					Prefix: "",
+					Prefix: testImage,
+				},
+			},
+			URLs:         []string{srcBaseURL},
+			PollInterval: updateDuration,
+			TLSVerify:    &tlsVerify,
+			CertDir:      clientCertDir,
+			OnDemand:     true,
+		}
+
+		defaultVal := true
+		syncConfig := &sync.Config{
+			Enable:     &defaultVal,
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
+
+		dctlr, destBaseURL, _, destClient := startDownstreamServer(t, false, syncConfig)
+
+		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 404)
+
+		defer func() {
+			dctlr.Shutdown()
+		}()
+	})
+}
+
+func TestCertsWithWrongPerms(t *testing.T) {
+	Convey("Verify sync with wrong permissions on certs", t, func() {
+		updateDuration, _ := time.ParseDuration("1h")
+
+		sctlr, srcBaseURL, _, _, _ := startUpstreamServer(t, true, false)
+
+		defer func() {
+			sctlr.Shutdown()
+		}()
+
+		// copy client certs, use them in sync config
+		clientCertDir := t.TempDir()
+
+		destFilePath := path.Join(clientCertDir, "ca.crt")
+		err := copyFile(CACert, destFilePath)
+		if err != nil {
+			panic(err)
+		}
+
+		err = os.Chmod(destFilePath, 0o000)
+		So(err, ShouldBeNil)
+
+		destFilePath = path.Join(clientCertDir, "client.cert")
+		err = copyFile(ClientCert, destFilePath)
+		if err != nil {
+			panic(err)
+		}
+
+		destFilePath = path.Join(clientCertDir, "client.key")
+		err = copyFile(ClientKey, destFilePath)
+		if err != nil {
+			panic(err)
+		}
+
+		tlsVerify := true
+
+		syncRegistryConfig := sync.RegistryConfig{
+			Content: []sync.Content{
+				{
+					Prefix: testImage,
 				},
 			},
 			URLs:         []string{srcBaseURL},

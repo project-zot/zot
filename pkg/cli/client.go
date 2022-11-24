@@ -6,16 +6,12 @@ package cli
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,7 +22,7 @@ import (
 
 	zotErrors "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api"
-	"zotregistry.io/zot/pkg/storage/local"
+	"zotregistry.io/zot/pkg/common"
 )
 
 var (
@@ -42,33 +38,6 @@ const (
 	clientKeyFilename  = "client.key"
 	caCertFilename     = "ca.crt"
 )
-
-func createHTTPClient(verifyTLS bool, host string) *http.Client {
-	htr := http.DefaultTransport.(*http.Transport).Clone() //nolint: forcetypeassert
-	if !verifyTLS {
-		htr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint: gosec
-
-		return &http.Client{
-			Timeout:   httpTimeout,
-			Transport: htr,
-		}
-	}
-
-	// Add a copy of the system cert pool
-	caCertPool, _ := x509.SystemCertPool()
-
-	tlsConfig := loadPerHostCerts(caCertPool, host)
-	if tlsConfig == nil {
-		tlsConfig = &tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12}
-	}
-
-	htr.TLSClientConfig = tlsConfig
-
-	return &http.Client{
-		Timeout:   httpTimeout,
-		Transport: htr,
-	}
-}
 
 func makeGETRequest(ctx context.Context, url, username, password string,
 	verifyTLS bool, debug bool, resultsPtr interface{}, configWriter io.Writer,
@@ -112,12 +81,17 @@ func doHTTPRequest(req *http.Request, verifyTLS bool, debug bool,
 ) (http.Header, error) {
 	var httpClient *http.Client
 
+	var err error
+
 	host := req.Host
 
 	httpClientLock.Lock()
 
 	if httpClientsMap[host] == nil {
-		httpClient = createHTTPClient(verifyTLS, host)
+		httpClient, err = common.CreateHTTPClient(verifyTLS, host, "")
+		if err != nil {
+			return nil, err
+		}
 
 		httpClientsMap[host] = httpClient
 	} else {
@@ -157,56 +131,6 @@ func doHTTPRequest(req *http.Request, verifyTLS bool, debug bool,
 	}
 
 	return resp.Header, nil
-}
-
-func loadPerHostCerts(caCertPool *x509.CertPool, host string) *tls.Config {
-	// Check if the /home/user/.config/containers/certs.d/$IP:$PORT dir exists
-	home := os.Getenv("HOME")
-	clientCertsDir := filepath.Join(home, homeCertsDir, host)
-
-	if local.DirExists(clientCertsDir) {
-		tlsConfig, err := getTLSConfig(clientCertsDir, caCertPool)
-
-		if err == nil {
-			return tlsConfig
-		}
-	}
-
-	// Check if the /etc/containers/certs.d/$IP:$PORT dir exists
-	clientCertsDir = filepath.Join(certsPath, host)
-	if local.DirExists(clientCertsDir) {
-		tlsConfig, err := getTLSConfig(clientCertsDir, caCertPool)
-
-		if err == nil {
-			return tlsConfig
-		}
-	}
-
-	return nil
-}
-
-func getTLSConfig(certsPath string, caCertPool *x509.CertPool) (*tls.Config, error) {
-	clientCert := filepath.Join(certsPath, clientCertFilename)
-	clientKey := filepath.Join(certsPath, clientKeyFilename)
-	caCertFile := filepath.Join(certsPath, caCertFilename)
-
-	cert, err := tls.LoadX509KeyPair(clientCert, clientKey)
-	if err != nil {
-		return nil, err
-	}
-
-	caCert, err := os.ReadFile(caCertFile)
-	if err != nil {
-		return nil, err
-	}
-
-	caCertPool.AppendCertsFromPEM(caCert)
-
-	return &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		RootCAs:      caCertPool,
-		MinVersion:   tls.VersionTLS12,
-	}, nil
 }
 
 func isURL(str string) bool {

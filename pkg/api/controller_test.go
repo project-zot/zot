@@ -49,6 +49,7 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
+	"zotregistry.io/zot/pkg/common"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
@@ -6911,7 +6912,7 @@ func TestDistSpecExtensions(t *testing.T) {
 func getAllBlobs(imagePath string) []string {
 	blobList := make([]string, 0)
 
-	if !local.DirExists(imagePath) {
+	if !common.DirExists(imagePath) {
 		return []string{}
 	}
 
@@ -6956,7 +6957,7 @@ func getAllBlobs(imagePath string) []string {
 func getAllManifests(imagePath string) []string {
 	manifestList := make([]string, 0)
 
-	if !local.DirExists(imagePath) {
+	if !common.DirExists(imagePath) {
 		return []string{}
 	}
 

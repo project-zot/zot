@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"path"
@@ -20,9 +21,9 @@ import (
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
-	"gopkg.in/resty.v1"
 
 	"zotregistry.io/zot/errors"
+	. "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
@@ -159,6 +160,40 @@ func TestSyncInternal(t *testing.T) {
 		So(err, ShouldNotBeNil)
 	})
 
+	Convey("Verify syncRegistry func with wrong upstreamURL", t, func() {
+		tlsVerify := false
+		updateDuration := time.Microsecond
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		syncRegistryConfig := RegistryConfig{
+			Content: []Content{
+				{
+					Prefix: testImage,
+				},
+			},
+			URLs:         []string{baseURL},
+			PollInterval: updateDuration,
+			TLSVerify:    &tlsVerify,
+			CertDir:      "",
+		}
+
+		ctx := context.Background()
+
+		log := log.NewLogger("debug", "")
+
+		metrics := monitoring.NewMetricsServer(false, log)
+		imageStore := local.NewImageStore(t.TempDir(), false, storage.DefaultGCDelay,
+			false, false, log, metrics, nil, nil,
+		)
+
+		localCtx, policyCtx, err := getLocalContexts(log)
+		So(err, ShouldBeNil)
+
+		err = syncRegistry(ctx, syncRegistryConfig, "randomUpstreamURL",
+			storage.StoreController{DefaultStore: imageStore}, localCtx, policyCtx, Credentials{}, nil, log)
+		So(err, ShouldNotBeNil)
+	})
+
 	Convey("Verify getLocalImageRef() and getLocalCachePath()", t, func() {
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
@@ -220,12 +255,12 @@ func TestSyncInternal(t *testing.T) {
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
 
-		httpClient, registryURL, err := getHTTPClient(&syncRegistryConfig, baseURL, Credentials{}, log.NewLogger("debug", ""))
-		So(err, ShouldNotBeNil)
-		So(httpClient, ShouldBeNil)
-		So(registryURL, ShouldBeNil)
-		// _, err = getUpstreamCatalog(httpClient, baseURL, log.NewLogger("debug", ""))
-		// So(err, ShouldNotBeNil)
+		httpClient, err := CreateHTTPClient(*syncRegistryConfig.TLSVerify, baseURL, "")
+		So(httpClient, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		registryURL, err := url.Parse(baseURL)
+		So(registryURL, ShouldNotBeNil)
+		So(err, ShouldBeNil)
 	})
 
 	Convey("Test getHttpClient() with bad certs", t, func() {
@@ -253,40 +288,53 @@ func TestSyncInternal(t *testing.T) {
 			CertDir:      badCertsDir,
 		}
 
-		httpClient, _, err := getHTTPClient(&syncRegistryConfig, baseURL, Credentials{}, log.NewLogger("debug", ""))
-		So(err, ShouldNotBeNil)
-		So(httpClient, ShouldBeNil)
+		httpClient, err := CreateHTTPClient(*syncRegistryConfig.TLSVerify, baseURL, "")
+		So(httpClient, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		registryURL, err := url.Parse(baseURL)
+		So(registryURL, ShouldNotBeNil)
+		So(err, ShouldBeNil)
 
 		syncRegistryConfig.CertDir = "/path/to/invalid/cert"
 
-		httpClient, _, err = getHTTPClient(&syncRegistryConfig, baseURL, Credentials{}, log.NewLogger("debug", ""))
-		So(err, ShouldNotBeNil)
-		So(httpClient, ShouldBeNil)
+		httpClient, err = CreateHTTPClient(*syncRegistryConfig.TLSVerify, baseURL, "")
+		So(httpClient, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		registryURL, err = url.Parse(baseURL)
+		So(registryURL, ShouldNotBeNil)
+		So(err, ShouldBeNil)
 
 		syncRegistryConfig.CertDir = ""
 		syncRegistryConfig.URLs = []string{baseSecureURL}
 
-		httpClient, registryURL, err := getHTTPClient(&syncRegistryConfig, baseSecureURL,
-			Credentials{}, log.NewLogger("debug", ""))
-		So(err, ShouldBeNil)
+		httpClient, err = CreateHTTPClient(*syncRegistryConfig.TLSVerify, baseSecureURL, "")
 		So(httpClient, ShouldNotBeNil)
-		So(registryURL.String(), ShouldEqual, baseSecureURL)
+		So(err, ShouldBeNil)
+		registryURL, err = url.Parse(baseSecureURL)
+		So(registryURL, ShouldNotBeNil)
+		So(err, ShouldBeNil)
 
-		_, err = getUpstreamCatalog(httpClient, baseURL, log.NewLogger("debug", ""))
+		_, err = GetUpstreamCatalog(httpClient, baseURL, "", "", log.NewLogger("debug", ""))
 		So(err, ShouldNotBeNil)
 
-		_, err = getUpstreamCatalog(httpClient, "http://invalid:5000", log.NewLogger("debug", ""))
+		_, err = GetUpstreamCatalog(httpClient, "http://invalid:5000", "", "", log.NewLogger("debug", ""))
 		So(err, ShouldNotBeNil)
 
 		syncRegistryConfig.URLs = []string{test.BaseURL}
-		httpClient, _, err = getHTTPClient(&syncRegistryConfig, baseSecureURL, Credentials{}, log.NewLogger("debug", ""))
+		httpClient, err = CreateHTTPClient(*syncRegistryConfig.TLSVerify, test.BaseURL, "")
+		So(httpClient, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		registryURL, err = url.Parse(test.BaseURL) //nolint
+		So(registryURL, ShouldBeNil)
 		So(err, ShouldNotBeNil)
-		So(httpClient, ShouldBeNil)
 
 		syncRegistryConfig.URLs = []string{"%"}
-		httpClient, _, err = getHTTPClient(&syncRegistryConfig, "%", Credentials{}, log.NewLogger("debug", ""))
+		httpClient, err = CreateHTTPClient(*syncRegistryConfig.TLSVerify, test.BaseURL, "")
+		So(httpClient, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		registryURL, err = url.Parse(test.BaseURL) //nolint
+		So(registryURL, ShouldBeNil)
 		So(err, ShouldNotBeNil)
-		So(httpClient, ShouldBeNil)
 	})
 
 	Convey("Test imagesToCopyFromUpstream()", t, func() {
@@ -304,7 +352,7 @@ func TestSyncInternal(t *testing.T) {
 	Convey("Test signatures", t, func() {
 		log := log.NewLogger("debug", "")
 
-		client := resty.New()
+		client := &http.Client{}
 
 		regURL, err := url.Parse("http://zot")
 		So(err, ShouldBeNil)
@@ -327,7 +375,7 @@ func TestSyncInternal(t *testing.T) {
 			false, false, log, metrics, nil, nil,
 		)
 
-		sig := newSignaturesCopier(client, *regURL, storage.StoreController{DefaultStore: imageStore}, log)
+		sig := newSignaturesCopier(client, Credentials{}, *regURL, storage.StoreController{DefaultStore: imageStore}, log)
 
 		err = sig.syncCosignSignature(testImage, testImage, testImageTag, &ispec.Manifest{})
 		So(err, ShouldNotBeNil)
@@ -335,39 +383,8 @@ func TestSyncInternal(t *testing.T) {
 		err = sig.syncCosignSignature(testImage, testImage, testImageTag, &manifest)
 		So(err, ShouldNotBeNil)
 
-		err = sig.syncOCIArtifact(testImage, testImage, testImageTag, nil)
-		So(err, ShouldNotBeNil)
-
-		ociArtifactBuf, err := json.Marshal(ispec.Artifact{})
-		So(err, ShouldBeNil)
-
-		err = sig.syncOCIArtifact(testImage, testImage, testImageTag, ociArtifactBuf)
-		So(err, ShouldBeNil)
-
-		ociArtifactBuf, err = json.Marshal(
-			ispec.Artifact{Blobs: []ispec.Descriptor{{Digest: "fakeDigest"}}})
-		So(err, ShouldBeNil)
-
-		err = sig.syncOCIArtifact(testImage, testImage, testImageTag, ociArtifactBuf)
-		So(err, ShouldNotBeNil)
-
 		err = sig.syncNotaryRefs(testImage, testImage, "invalidDigest", ReferenceList{[]artifactspec.Descriptor{ref}})
 		So(err, ShouldNotBeNil)
-
-		Convey("Trigger unmarshal error on canSkipOCIArtifact", func() {
-			sig := newSignaturesCopier(client, *regURL, storage.StoreController{DefaultStore: mocks.MockedImageStore{
-				GetImageManifestFn: func(repo, reference string) ([]byte, godigest.Digest, string, error) {
-					result := []byte{}
-					digest := godigest.FromBytes(result)
-
-					return result, digest, "", nil
-				},
-			}}, log)
-
-			skip, err := sig.canSkipOCIArtifact(testImage, testImageTag, ispec.Artifact{})
-			So(skip, ShouldBeFalse)
-			So(err, ShouldNotBeNil)
-		})
 	})
 
 	Convey("Test canSkipImage()", t, func() {
@@ -408,7 +425,8 @@ func TestSyncInternal(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(regURL, ShouldNotBeNil)
 
-		sig := newSignaturesCopier(resty.New(), *regURL, storage.StoreController{DefaultStore: imageStore}, log)
+		client := &http.Client{}
+		sig := newSignaturesCopier(client, Credentials{}, *regURL, storage.StoreController{DefaultStore: imageStore}, log)
 
 		canBeSkipped, err = sig.canSkipNotaryRefs(testImage, testImageManifestDigest.String(), refs)
 		So(err, ShouldBeNil)

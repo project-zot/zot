@@ -2,12 +2,9 @@ package sync
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/url"
 	"os"
 	"path"
 	"regexp"
@@ -26,7 +23,6 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/sigstore/cosign/pkg/oci/static"
-	"gopkg.in/resty.v1"
 
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/common"
@@ -39,10 +35,6 @@ import (
 
 type ReferenceList struct {
 	References []artifactspec.Descriptor `json:"references"`
-}
-
-func TypeOf(v interface{}) string {
-	return fmt.Sprintf("%T", v)
 }
 
 // getTagFromRef returns a tagged reference from an image reference.
@@ -144,7 +136,7 @@ func filterRepos(repos []string, contentList []Content, log log.Logger) map[int]
 
 			matched, err := glob.Match(prefix, repo)
 			if err != nil {
-				log.Error().Str("errorType", TypeOf(err)).
+				log.Error().Str("errorType", common.TypeOf(err)).
 					Err(err).Str("pattern",
 					prefix).Msg("error while parsing glob pattern, skipping it...")
 
@@ -268,68 +260,6 @@ func getFileCredentials(filepath string) (CredentialsFile, error) {
 	return creds, nil
 }
 
-func getHTTPClient(regCfg *RegistryConfig, upstreamURL string, credentials Credentials,
-	log log.Logger,
-) (*resty.Client, *url.URL, error) {
-	client := resty.New()
-
-	if !common.Contains(regCfg.URLs, upstreamURL) {
-		return nil, nil, zerr.ErrSyncInvalidUpstreamURL
-	}
-
-	registryURL, err := url.Parse(upstreamURL)
-	if err != nil {
-		log.Error().Str("errorType", TypeOf(err)).
-			Err(err).Str("url", upstreamURL).Msg("couldn't parse url")
-
-		return nil, nil, err
-	}
-
-	if regCfg.CertDir != "" {
-		log.Debug().Msgf("sync: using certs directory: %s", regCfg.CertDir)
-		clientCert := path.Join(regCfg.CertDir, "client.cert")
-		clientKey := path.Join(regCfg.CertDir, "client.key")
-		caCertPath := path.Join(regCfg.CertDir, "ca.crt")
-
-		caCert, err := os.ReadFile(caCertPath)
-		if err != nil {
-			log.Error().Str("errorType", TypeOf(err)).
-				Err(err).Msg("couldn't read CA certificate")
-
-			return nil, nil, err
-		}
-
-		caCertPool := x509.NewCertPool()
-		caCertPool.AppendCertsFromPEM(caCert)
-
-		client.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
-
-		cert, err := tls.LoadX509KeyPair(clientCert, clientKey)
-		if err != nil {
-			log.Error().Str("errorType", TypeOf(err)).
-				Err(err).Msg("couldn't read certificates key pairs")
-
-			return nil, nil, err
-		}
-
-		client.SetCertificates(cert)
-	}
-
-	//nolint: gosec
-	if regCfg.TLSVerify != nil && !*regCfg.TLSVerify && registryURL.Scheme == "https" {
-		client.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true})
-	}
-
-	if credentials.Username != "" && credentials.Password != "" {
-		log.Debug().Msgf("sync: using basic auth")
-		client.SetBasicAuth(credentials.Username, credentials.Password)
-	}
-
-	client.SetRedirectPolicy(resty.FlexibleRedirectPolicy(httpMaxRedirectsCount))
-
-	return client, registryURL, nil
-}
-
 func pushSyncedLocalImage(localRepo, reference, localCachePath string,
 	imageStore storage.ImageStore, log log.Logger,
 ) error {
@@ -344,7 +274,7 @@ func pushSyncedLocalImage(localRepo, reference, localCachePath string,
 
 	manifestContent, _, mediaType, err := cacheImageStore.GetImageManifest(localRepo, reference)
 	if err != nil {
-		log.Error().Str("errorType", TypeOf(err)).
+		log.Error().Str("errorType", common.TypeOf(err)).
 			Err(err).Str("dir", path.Join(cacheImageStore.RootDir(), localRepo)).
 			Msgf("couldn't find %s manifest", reference)
 
@@ -356,7 +286,7 @@ func pushSyncedLocalImage(localRepo, reference, localCachePath string,
 	case ispec.MediaTypeImageManifest:
 		if err := copyManifest(localRepo, manifestContent, reference, cacheImageStore, imageStore, log); err != nil {
 			if errors.Is(err, zerr.ErrImageLintAnnotations) {
-				log.Error().Str("errorType", TypeOf(err)).
+				log.Error().Str("errorType", common.TypeOf(err)).
 					Err(err).Msg("couldn't upload manifest because of missing annotations")
 
 				return nil
@@ -369,7 +299,7 @@ func pushSyncedLocalImage(localRepo, reference, localCachePath string,
 		var indexManifest ispec.Index
 
 		if err := json.Unmarshal(manifestContent, &indexManifest); err != nil {
-			log.Error().Str("errorType", TypeOf(err)).
+			log.Error().Str("errorType", common.TypeOf(err)).
 				Err(err).Str("dir", path.Join(cacheImageStore.RootDir(), localRepo)).
 				Msg("invalid JSON")
 
@@ -382,7 +312,7 @@ func pushSyncedLocalImage(localRepo, reference, localCachePath string,
 			cacheImageStore.RUnlock(&lockLatency)
 
 			if err != nil {
-				log.Error().Str("errorType", TypeOf(err)).
+				log.Error().Str("errorType", common.TypeOf(err)).
 					Err(err).Str("dir", path.Join(cacheImageStore.RootDir(), localRepo)).Str("digest", manifest.Digest.String()).
 					Msg("couldn't find manifest which is part of an image index")
 
@@ -392,7 +322,7 @@ func pushSyncedLocalImage(localRepo, reference, localCachePath string,
 			if err := copyManifest(localRepo, manifestBuf, manifest.Digest.String(),
 				cacheImageStore, imageStore, log); err != nil {
 				if errors.Is(err, zerr.ErrImageLintAnnotations) {
-					log.Error().Str("errorType", TypeOf(err)).
+					log.Error().Str("errorType", common.TypeOf(err)).
 						Err(err).Msg("couldn't upload manifest because of missing annotations")
 
 					return nil
@@ -404,7 +334,7 @@ func pushSyncedLocalImage(localRepo, reference, localCachePath string,
 
 		_, err = imageStore.PutImageManifest(localRepo, reference, mediaType, manifestContent)
 		if err != nil {
-			log.Error().Str("errorType", TypeOf(err)).
+			log.Error().Str("errorType", common.TypeOf(err)).
 				Err(err).Msg("couldn't upload manifest")
 
 			return err
@@ -422,7 +352,7 @@ func copyManifest(localRepo string, manifestContent []byte, reference string,
 	var err error
 
 	if err := json.Unmarshal(manifestContent, &manifest); err != nil {
-		log.Error().Str("errorType", TypeOf(err)).
+		log.Error().Str("errorType", common.TypeOf(err)).
 			Err(err).Str("dir", path.Join(cacheImageStore.RootDir(), localRepo)).
 			Msg("invalid JSON")
 
@@ -446,7 +376,7 @@ func copyManifest(localRepo string, manifestContent []byte, reference string,
 	_, err = imageStore.PutImageManifest(localRepo, reference,
 		ispec.MediaTypeImageManifest, manifestContent)
 	if err != nil {
-		log.Error().Str("errorType", TypeOf(err)).
+		log.Error().Str("errorType", common.TypeOf(err)).
 			Err(err).Msg("couldn't upload manifest")
 
 		return err
@@ -466,7 +396,7 @@ func copyBlob(localRepo string, blobDigest godigest.Digest, blobMediaType string
 
 	blobReadCloser, _, err := souceImageStore.GetBlob(localRepo, blobDigest, blobMediaType)
 	if err != nil {
-		log.Error().Str("errorType", TypeOf(err)).Err(err).
+		log.Error().Str("errorType", common.TypeOf(err)).Err(err).
 			Str("dir", path.Join(souceImageStore.RootDir(), localRepo)).
 			Str("blob digest", blobDigest.String()).Str("media type", blobMediaType).
 			Msg("couldn't read blob")
@@ -477,7 +407,7 @@ func copyBlob(localRepo string, blobDigest godigest.Digest, blobMediaType string
 
 	_, _, err = destinationImageStore.FullBlobUpload(localRepo, blobReadCloser, blobDigest)
 	if err != nil {
-		log.Error().Str("errorType", TypeOf(err)).Err(err).
+		log.Error().Str("errorType", common.TypeOf(err)).Err(err).
 			Str("blob digest", blobDigest.String()).Str("media type", blobMediaType).
 			Msg("couldn't upload blob")
 	}
@@ -585,7 +515,7 @@ func canSkipImage(repo, tag string, digest godigest.Digest, imageStore storage.I
 			return false, nil
 		}
 
-		log.Error().Str("errorType", TypeOf(err)).
+		log.Error().Str("errorType", common.TypeOf(err)).
 			Err(err).Msgf("couldn't get local image %s:%s manifest", repo, tag)
 
 		return false, err
