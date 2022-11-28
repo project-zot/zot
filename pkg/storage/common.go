@@ -548,8 +548,6 @@ func GetReferrers(imgStore ImageStore, repo string, gdigest godigest.Digest, art
 		return nilIndex, err
 	}
 
-	found := false
-
 	result := []ispec.Descriptor{}
 
 	for _, manifest := range index.Manifests {
@@ -617,12 +615,6 @@ func GetReferrers(imgStore ImageStore, repo string, gdigest godigest.Digest, art
 				Annotations:  art.Annotations,
 			})
 		}
-
-		found = true
-	}
-
-	if !found {
-		return nilIndex, zerr.ErrManifestNotFound
 	}
 
 	index = ispec.Index{
