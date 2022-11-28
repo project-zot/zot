@@ -45,7 +45,7 @@ require (
 	github.com/urfave/cli/v2 v2.23.5
 	github.com/vektah/gqlparser/v2 v2.5.1
 	go.etcd.io/bbolt v1.3.6
-	golang.org/x/crypto v0.2.0
+	golang.org/x/crypto v0.3.0
 	gopkg.in/resty.v1 v1.12.0
 	gopkg.in/yaml.v2 v2.4.0
 )
