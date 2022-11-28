@@ -299,7 +299,7 @@ func TestGetReferrersErrors(t *testing.T) {
 			}
 
 			_, err = storage.GetReferrers(imgStore, "zot-test", validDigest, artifactType, log.With().Caller().Logger())
-			So(err, ShouldNotBeNil)
+			So(err, ShouldBeNil)
 		})
 	})
 }
