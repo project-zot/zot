@@ -4,12 +4,8 @@ import (
 	"sort"
 
 	"github.com/pkg/errors"
-)
 
-var (
-	ErrLimitIsNegative          = errors.New("pageturner: limit has negative value")
-	ErrOffsetIsNegative         = errors.New("pageturner: offset has negative value")
-	ErrSortCriteriaNotSupported = errors.New("pageturner: the sort criteria is not supported")
+	zerr "zotregistry.io/zot/errors"
 )
 
 // PageFinder permits keeping a pool of objects using Add
@@ -36,15 +32,15 @@ func NewBaseRepoPageFinder(limit, offset int, sortBy SortCriteria) (*RepoPageFin
 	}
 
 	if limit < 0 {
-		return nil, ErrLimitIsNegative
+		return nil, zerr.ErrLimitIsNegative
 	}
 
 	if offset < 0 {
-		return nil, ErrLimitIsNegative
+		return nil, zerr.ErrOffsetIsNegative
 	}
 
 	if _, found := SortFunctions()[sortBy]; !found {
-		return nil, errors.Wrapf(ErrSortCriteriaNotSupported, "sorting repos by '%s' is not supported", sortBy)
+		return nil, errors.Wrapf(zerr.ErrSortCriteriaNotSupported, "sorting repos by '%s' is not supported", sortBy)
 	}
 
 	return &RepoPageFinder{
@@ -112,15 +108,15 @@ func NewBaseImagePageFinder(limit, offset int, sortBy SortCriteria) (*ImagePageF
 	}
 
 	if limit < 0 {
-		return nil, ErrLimitIsNegative
+		return nil, zerr.ErrLimitIsNegative
 	}
 
 	if offset < 0 {
-		return nil, ErrLimitIsNegative
+		return nil, zerr.ErrOffsetIsNegative
 	}
 
 	if _, found := SortFunctions()[sortBy]; !found {
-		return nil, errors.Wrapf(ErrSortCriteriaNotSupported, "sorting repos by '%s' is not supported", sortBy)
+		return nil, errors.Wrapf(zerr.ErrSortCriteriaNotSupported, "sorting repos by '%s' is not supported", sortBy)
 	}
 
 	return &ImagePageFinder{

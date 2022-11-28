@@ -162,10 +162,12 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 		}
 
 		conf.Storage.CacheDriver = map[string]interface{}{
-			"name":      "dynamodb",
-			"endpoint":  "http://localhost:4566",
-			"region":    "us-east-2",
-			"tableName": "BlobTable",
+			"name":                  "dynamodb",
+			"endpoint":              "http://localhost:4566",
+			"region":                "us-east-2",
+			"cacheTablename":        "BlobTable",
+			"repoMetaTablename":     "RepoMetadataTable",
+			"manifestMetaTablename": "ManifestMetadataTable",
 		}
 
 		driver := api.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
@@ -174,19 +176,23 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 		// negative test cases
 
 		conf.Storage.CacheDriver = map[string]interface{}{
-			"endpoint":  "http://localhost:4566",
-			"region":    "us-east-2",
-			"tableName": "BlobTable",
+			"endpoint":              "http://localhost:4566",
+			"region":                "us-east-2",
+			"cacheTablename":        "BlobTable",
+			"repoMetaTablename":     "RepoMetadataTable",
+			"manifestMetaTablename": "ManifestMetadataTable",
 		}
 
 		driver = api.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
 		So(driver, ShouldBeNil)
 
 		conf.Storage.CacheDriver = map[string]interface{}{
-			"name":      "dummy",
-			"endpoint":  "http://localhost:4566",
-			"region":    "us-east-2",
-			"tableName": "BlobTable",
+			"name":                  "dummy",
+			"endpoint":              "http://localhost:4566",
+			"region":                "us-east-2",
+			"cacheTablename":        "BlobTable",
+			"repoMetaTablename":     "RepoMetadataTable",
+			"manifestMetaTablename": "ManifestMetadataTable",
 		}
 
 		driver = api.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)

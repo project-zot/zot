@@ -11,56 +11,56 @@ import (
 func TestPagination(t *testing.T) {
 	Convey("Repo Pagination", t, func() {
 		Convey("reset", func() {
-			paginator, err := repodb.NewBaseRepoPageFinder(1, 0, repodb.AlphabeticAsc)
+			pageFinder, err := repodb.NewBaseRepoPageFinder(1, 0, repodb.AlphabeticAsc)
 			So(err, ShouldBeNil)
-			So(paginator, ShouldNotBeNil)
+			So(pageFinder, ShouldNotBeNil)
 
-			paginator.Add(repodb.DetailedRepoMeta{})
-			paginator.Add(repodb.DetailedRepoMeta{})
-			paginator.Add(repodb.DetailedRepoMeta{})
+			pageFinder.Add(repodb.DetailedRepoMeta{})
+			pageFinder.Add(repodb.DetailedRepoMeta{})
+			pageFinder.Add(repodb.DetailedRepoMeta{})
 
-			paginator.Reset()
+			pageFinder.Reset()
 
-			So(paginator.Page(), ShouldBeEmpty)
+			So(pageFinder.Page(), ShouldBeEmpty)
 		})
 	})
 
 	Convey("Image Pagination", t, func() {
-		Convey("create new paginator errors", func() {
-			paginator, err := repodb.NewBaseImagePageFinder(-1, 10, repodb.AlphabeticAsc)
-			So(paginator, ShouldBeNil)
+		Convey("create new pageFinder errors", func() {
+			pageFinder, err := repodb.NewBaseImagePageFinder(-1, 10, repodb.AlphabeticAsc)
+			So(pageFinder, ShouldBeNil)
 			So(err, ShouldNotBeNil)
 
-			paginator, err = repodb.NewBaseImagePageFinder(2, -1, repodb.AlphabeticAsc)
-			So(paginator, ShouldBeNil)
+			pageFinder, err = repodb.NewBaseImagePageFinder(2, -1, repodb.AlphabeticAsc)
+			So(pageFinder, ShouldBeNil)
 			So(err, ShouldNotBeNil)
 
-			paginator, err = repodb.NewBaseImagePageFinder(2, 1, "wrong sorting criteria")
-			So(paginator, ShouldBeNil)
+			pageFinder, err = repodb.NewBaseImagePageFinder(2, 1, "wrong sorting criteria")
+			So(pageFinder, ShouldBeNil)
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("Reset", func() {
-			paginator, err := repodb.NewBaseImagePageFinder(1, 0, repodb.AlphabeticAsc)
+			pageFinder, err := repodb.NewBaseImagePageFinder(1, 0, repodb.AlphabeticAsc)
 			So(err, ShouldBeNil)
-			So(paginator, ShouldNotBeNil)
+			So(pageFinder, ShouldNotBeNil)
 
-			paginator.Add(repodb.DetailedRepoMeta{})
-			paginator.Add(repodb.DetailedRepoMeta{})
-			paginator.Add(repodb.DetailedRepoMeta{})
+			pageFinder.Add(repodb.DetailedRepoMeta{})
+			pageFinder.Add(repodb.DetailedRepoMeta{})
+			pageFinder.Add(repodb.DetailedRepoMeta{})
 
-			paginator.Reset()
+			pageFinder.Reset()
 
-			So(paginator.Page(), ShouldBeEmpty)
+			So(pageFinder.Page(), ShouldBeEmpty)
 		})
 
 		Convey("Page", func() {
 			Convey("limit < len(tags)", func() {
-				paginator, err := repodb.NewBaseImagePageFinder(5, 2, repodb.AlphabeticAsc)
+				pageFinder, err := repodb.NewBaseImagePageFinder(5, 2, repodb.AlphabeticAsc)
 				So(err, ShouldBeNil)
-				So(paginator, ShouldNotBeNil)
+				So(pageFinder, ShouldNotBeNil)
 
-				paginator.Add(repodb.DetailedRepoMeta{
+				pageFinder.Add(repodb.DetailedRepoMeta{
 					RepoMeta: repodb.RepoMetadata{
 						Name: "repo1",
 						Tags: map[string]string{
@@ -69,7 +69,7 @@ func TestPagination(t *testing.T) {
 					},
 				})
 
-				paginator.Add(repodb.DetailedRepoMeta{
+				pageFinder.Add(repodb.DetailedRepoMeta{
 					RepoMeta: repodb.RepoMetadata{
 						Name: "repo2",
 						Tags: map[string]string{
@@ -80,7 +80,7 @@ func TestPagination(t *testing.T) {
 						},
 					},
 				})
-				paginator.Add(repodb.DetailedRepoMeta{
+				pageFinder.Add(repodb.DetailedRepoMeta{
 					RepoMeta: repodb.RepoMetadata{
 						Name: "repo3",
 						Tags: map[string]string{
@@ -92,7 +92,7 @@ func TestPagination(t *testing.T) {
 					},
 				})
 
-				result := paginator.Page()
+				result := pageFinder.Page()
 				So(result[0].Tags, ShouldContainKey, "Tag2")
 				So(result[0].Tags, ShouldContainKey, "Tag3")
 				So(result[0].Tags, ShouldContainKey, "Tag4")
@@ -101,11 +101,11 @@ func TestPagination(t *testing.T) {
 			})
 
 			Convey("limit > len(tags)", func() {
-				paginator, err := repodb.NewBaseImagePageFinder(3, 0, repodb.AlphabeticAsc)
+				pageFinder, err := repodb.NewBaseImagePageFinder(3, 0, repodb.AlphabeticAsc)
 				So(err, ShouldBeNil)
-				So(paginator, ShouldNotBeNil)
+				So(pageFinder, ShouldNotBeNil)
 
-				paginator.Add(repodb.DetailedRepoMeta{
+				pageFinder.Add(repodb.DetailedRepoMeta{
 					RepoMeta: repodb.RepoMetadata{
 						Name: "repo1",
 						Tags: map[string]string{
@@ -114,7 +114,7 @@ func TestPagination(t *testing.T) {
 					},
 				})
 
-				paginator.Add(repodb.DetailedRepoMeta{
+				pageFinder.Add(repodb.DetailedRepoMeta{
 					RepoMeta: repodb.RepoMetadata{
 						Name: "repo2",
 						Tags: map[string]string{
@@ -122,7 +122,7 @@ func TestPagination(t *testing.T) {
 						},
 					},
 				})
-				paginator.Add(repodb.DetailedRepoMeta{
+				pageFinder.Add(repodb.DetailedRepoMeta{
 					RepoMeta: repodb.RepoMetadata{
 						Name: "repo3",
 						Tags: map[string]string{
@@ -131,7 +131,7 @@ func TestPagination(t *testing.T) {
 					},
 				})
 
-				result := paginator.Page()
+				result := pageFinder.Page()
 				So(result[0].Tags, ShouldContainKey, "tag1")
 				So(result[1].Tags, ShouldContainKey, "Tag1")
 				So(result[2].Tags, ShouldContainKey, "Tag11")

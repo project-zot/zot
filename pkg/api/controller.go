@@ -25,6 +25,8 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/repodb"
+	bolt "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
+	dynamo "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper"
 	"zotregistry.io/zot/pkg/meta/repodb/repodbfactory"
 	"zotregistry.io/zot/pkg/scheduler"
 	"zotregistry.io/zot/pkg/storage"
@@ -471,7 +473,7 @@ func CreateCacheDatabaseDriver(storageConfig config.StorageConfig, log log.Logge
 			dynamoParams := cache.DynamoDBDriverParameters{}
 			dynamoParams.Endpoint, _ = storageConfig.CacheDriver["endpoint"].(string)
 			dynamoParams.Region, _ = storageConfig.CacheDriver["region"].(string)
-			dynamoParams.TableName, _ = storageConfig.CacheDriver["tablename"].(string)
+			dynamoParams.TableName, _ = storageConfig.CacheDriver["cachetablename"].(string)
 
 			driver, _ := storage.Create("dynamodb", dynamoParams, log)
 
@@ -503,18 +505,22 @@ func (c *Controller) InitRepoDB(reloadCtx context.Context) error {
 }
 
 func (c *Controller) createRepoDBDriver(reloadCtx context.Context) (repodb.RepoDB, error) { //nolint:unparam
-	if c.Config.Storage.RemoteCache {
-		c.Log.Warn().Msgf("remote RepoDB implementation is not available yet, defaulting to local")
+	storageConfig := c.Config.Storage
 
-		return repodbfactory.Create("boltdb", repodb.BoltDBParameters{
-			RootDir: c.Config.Storage.RootDirectory,
-		})
+	if storageConfig.RemoteCache {
+		dynamoParams := dynamo.DBDriverParameters{}
+		dynamoParams.Endpoint, _ = storageConfig.CacheDriver["endpoint"].(string)
+		dynamoParams.Region, _ = storageConfig.CacheDriver["region"].(string)
+		dynamoParams.RepoMetaTablename, _ = storageConfig.CacheDriver["repometatablename"].(string)
+		dynamoParams.ManifestMetaTablename, _ = storageConfig.CacheDriver["manifestmetatablename"].(string)
+
+		return repodbfactory.Create("dynamodb", dynamoParams) //nolint:contextcheck
 	}
 
-	params := repodb.BoltDBParameters{}
+	params := bolt.DBParameters{}
 	params.RootDir = c.Config.Storage.RootDirectory
 
-	return repodbfactory.Create("boltdb", params)
+	return repodbfactory.Create("boltdb", params) //nolint:contextcheck
 }
 
 func (c *Controller) LoadNewConfig(reloadCtx context.Context, config *config.Config) {

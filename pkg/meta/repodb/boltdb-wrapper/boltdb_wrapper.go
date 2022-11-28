@@ -1,4 +1,4 @@
-package repodb
+package bolt
 
 import (
 	"context"
@@ -16,19 +16,21 @@ import (
 
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta/repodb"
+	"zotregistry.io/zot/pkg/meta/repodb/common"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 )
 
-type BoltDBParameters struct {
+type DBParameters struct {
 	RootDir string
 }
 
-type BoltDBWrapper struct {
+type DBWrapper struct {
 	db  *bolt.DB
 	log log.Logger
 }
 
-func NewBoltDBWrapper(params BoltDBParameters) (*BoltDBWrapper, error) {
+func NewBoltDBWrapper(params DBParameters) (*DBWrapper, error) {
 	const perms = 0o600
 
 	boltDB, err := bolt.Open(path.Join(params.RootDir, "repo.db"), perms, &bolt.Options{Timeout: time.Second * 10})
@@ -37,12 +39,12 @@ func NewBoltDBWrapper(params BoltDBParameters) (*BoltDBWrapper, error) {
 	}
 
 	err = boltDB.Update(func(transaction *bolt.Tx) error {
-		_, err := transaction.CreateBucketIfNotExists([]byte(ManifestMetadataBucket))
+		_, err := transaction.CreateBucketIfNotExists([]byte(repodb.ManifestMetadataBucket))
 		if err != nil {
 			return err
 		}
 
-		_, err = transaction.CreateBucketIfNotExists([]byte(RepoMetadataBucket))
+		_, err = transaction.CreateBucketIfNotExists([]byte(repodb.RepoMetadataBucket))
 		if err != nil {
 			return err
 		}
@@ -53,19 +55,19 @@ func NewBoltDBWrapper(params BoltDBParameters) (*BoltDBWrapper, error) {
 		return nil, err
 	}
 
-	return &BoltDBWrapper{
+	return &DBWrapper{
 		db:  boltDB,
 		log: log.Logger{Logger: zerolog.New(os.Stdout)},
 	}, nil
 }
 
-func (bdw BoltDBWrapper) SetManifestMeta(manifestDigest godigest.Digest, manifestMeta ManifestMetadata) error {
+func (bdw DBWrapper) SetManifestMeta(manifestDigest godigest.Digest, manifestMeta repodb.ManifestMetadata) error {
 	if manifestMeta.Signatures == nil {
 		manifestMeta.Signatures = map[string][]string{}
 	}
 
 	err := bdw.db.Update(func(tx *bolt.Tx) error {
-		buck := tx.Bucket([]byte(ManifestMetadataBucket))
+		buck := tx.Bucket([]byte(repodb.ManifestMetadataBucket))
 
 		mmBlob, err := json.Marshal(manifestMeta)
 		if err != nil {
@@ -83,11 +85,11 @@ func (bdw BoltDBWrapper) SetManifestMeta(manifestDigest godigest.Digest, manifes
 	return err
 }
 
-func (bdw BoltDBWrapper) GetManifestMeta(manifestDigest godigest.Digest) (ManifestMetadata, error) {
-	var manifestMetadata ManifestMetadata
+func (bdw DBWrapper) GetManifestMeta(manifestDigest godigest.Digest) (repodb.ManifestMetadata, error) {
+	var manifestMetadata repodb.ManifestMetadata
 
 	err := bdw.db.View(func(tx *bolt.Tx) error {
-		buck := tx.Bucket([]byte(ManifestMetadataBucket))
+		buck := tx.Bucket([]byte(repodb.ManifestMetadataBucket))
 
 		mmBlob := buck.Get([]byte(manifestDigest))
 
@@ -106,20 +108,20 @@ func (bdw BoltDBWrapper) GetManifestMeta(manifestDigest godigest.Digest) (Manife
 	return manifestMetadata, err
 }
 
-func (bdw BoltDBWrapper) SetRepoTag(repo string, tag string, manifestDigest godigest.Digest) error {
-	if err := validateRepoTagInput(repo, tag, manifestDigest); err != nil {
+func (bdw DBWrapper) SetRepoTag(repo string, tag string, manifestDigest godigest.Digest) error {
+	if err := common.ValidateRepoTagInput(repo, tag, manifestDigest); err != nil {
 		return err
 	}
 
 	err := bdw.db.Update(func(tx *bolt.Tx) error {
-		buck := tx.Bucket([]byte(RepoMetadataBucket))
+		buck := tx.Bucket([]byte(repodb.RepoMetadataBucket))
 
 		repoMetaBlob := buck.Get([]byte(repo))
 
 		// object not found
 		if len(repoMetaBlob) == 0 {
 			// create a new object
-			repoMeta := RepoMetadata{
+			repoMeta := repodb.RepoMetadata{
 				Name: repo,
 				Tags: map[string]string{
 					tag: manifestDigest.String(),
@@ -135,7 +137,7 @@ func (bdw BoltDBWrapper) SetRepoTag(repo string, tag string, manifestDigest godi
 		}
 
 		// object found
-		var repoMeta RepoMetadata
+		var repoMeta repodb.RepoMetadata
 
 		err := json.Unmarshal(repoMetaBlob, &repoMeta)
 		if err != nil {
@@ -155,27 +157,11 @@ func (bdw BoltDBWrapper) SetRepoTag(repo string, tag string, manifestDigest godi
 	return err
 }
 
-func validateRepoTagInput(repo, tag string, manifestDigest godigest.Digest) error {
-	if repo == "" {
-		return errors.New("repodb: repo name can't be empty string")
-	}
-
-	if tag == "" {
-		return errors.New("repodb: tag can't be empty string")
-	}
-
-	if manifestDigest == "" {
-		return errors.New("repodb: manifest digest can't be empty string")
-	}
-
-	return nil
-}
-
-func (bdw BoltDBWrapper) GetRepoMeta(repo string) (RepoMetadata, error) {
-	var repoMeta RepoMetadata
+func (bdw DBWrapper) GetRepoMeta(repo string) (repodb.RepoMetadata, error) {
+	var repoMeta repodb.RepoMetadata
 
 	err := bdw.db.Update(func(tx *bolt.Tx) error {
-		buck := tx.Bucket([]byte(RepoMetadataBucket))
+		buck := tx.Bucket([]byte(repodb.RepoMetadataBucket))
 
 		repoMetaBlob := buck.Get([]byte(repo))
 
@@ -196,9 +182,9 @@ func (bdw BoltDBWrapper) GetRepoMeta(repo string) (RepoMetadata, error) {
 	return repoMeta, err
 }
 
-func (bdw BoltDBWrapper) DeleteRepoTag(repo string, tag string) error {
+func (bdw DBWrapper) DeleteRepoTag(repo string, tag string) error {
 	err := bdw.db.Update(func(tx *bolt.Tx) error {
-		buck := tx.Bucket([]byte(RepoMetadataBucket))
+		buck := tx.Bucket([]byte(repodb.RepoMetadataBucket))
 
 		repoMetaBlob := buck.Get([]byte(repo))
 
@@ -208,7 +194,7 @@ func (bdw BoltDBWrapper) DeleteRepoTag(repo string, tag string) error {
 		}
 
 		// object found
-		var repoMeta RepoMetadata
+		var repoMeta repodb.RepoMetadata
 
 		err := json.Unmarshal(repoMetaBlob, &repoMeta)
 		if err != nil {
@@ -232,16 +218,16 @@ func (bdw BoltDBWrapper) DeleteRepoTag(repo string, tag string) error {
 	return err
 }
 
-func (bdw BoltDBWrapper) IncrementRepoStars(repo string) error {
+func (bdw DBWrapper) IncrementRepoStars(repo string) error {
 	err := bdw.db.Update(func(tx *bolt.Tx) error {
-		buck := tx.Bucket([]byte(RepoMetadataBucket))
+		buck := tx.Bucket([]byte(repodb.RepoMetadataBucket))
 
 		repoMetaBlob := buck.Get([]byte(repo))
 		if repoMetaBlob == nil {
 			return zerr.ErrRepoMetaNotFound
 		}
 
-		var repoMeta RepoMetadata
+		var repoMeta repodb.RepoMetadata
 
 		err := json.Unmarshal(repoMetaBlob, &repoMeta)
 		if err != nil {
@@ -261,16 +247,16 @@ func (bdw BoltDBWrapper) IncrementRepoStars(repo string) error {
 	return err
 }
 
-func (bdw BoltDBWrapper) DecrementRepoStars(repo string) error {
+func (bdw DBWrapper) DecrementRepoStars(repo string) error {
 	err := bdw.db.Update(func(tx *bolt.Tx) error {
-		buck := tx.Bucket([]byte(RepoMetadataBucket))
+		buck := tx.Bucket([]byte(repodb.RepoMetadataBucket))
 
 		repoMetaBlob := buck.Get([]byte(repo))
 		if repoMetaBlob == nil {
 			return zerr.ErrRepoMetaNotFound
 		}
 
-		var repoMeta RepoMetadata
+		var repoMeta repodb.RepoMetadata
 
 		err := json.Unmarshal(repoMetaBlob, &repoMeta)
 		if err != nil {
@@ -292,11 +278,11 @@ func (bdw BoltDBWrapper) DecrementRepoStars(repo string) error {
 	return err
 }
 
-func (bdw BoltDBWrapper) GetRepoStars(repo string) (int, error) {
+func (bdw DBWrapper) GetRepoStars(repo string) (int, error) {
 	stars := 0
 
 	err := bdw.db.View(func(tx *bolt.Tx) error {
-		buck := tx.Bucket([]byte(RepoMetadataBucket))
+		buck := tx.Bucket([]byte(repodb.RepoMetadataBucket))
 
 		buck.Get([]byte(repo))
 		repoMetaBlob := buck.Get([]byte(repo))
@@ -304,7 +290,7 @@ func (bdw BoltDBWrapper) GetRepoStars(repo string) (int, error) {
 			return zerr.ErrRepoMetaNotFound
 		}
 
-		var repoMeta RepoMetadata
+		var repoMeta repodb.RepoMetadata
 
 		err := json.Unmarshal(repoMetaBlob, &repoMeta)
 		if err != nil {
@@ -319,16 +305,16 @@ func (bdw BoltDBWrapper) GetRepoStars(repo string) (int, error) {
 	return stars, err
 }
 
-func (bdw BoltDBWrapper) SetRepoDescription(repo, description string) error {
+func (bdw DBWrapper) SetRepoDescription(repo, description string) error {
 	err := bdw.db.Update(func(tx *bolt.Tx) error {
-		buck := tx.Bucket([]byte(RepoMetadataBucket))
+		buck := tx.Bucket([]byte(repodb.RepoMetadataBucket))
 
 		repoMetaBlob := buck.Get([]byte(repo))
 		if repoMetaBlob == nil {
 			return zerr.ErrRepoMetaNotFound
 		}
 
-		var repoMeta RepoMetadata
+		var repoMeta repodb.RepoMetadata
 
 		err := json.Unmarshal(repoMetaBlob, &repoMeta)
 		if err != nil {
@@ -348,16 +334,16 @@ func (bdw BoltDBWrapper) SetRepoDescription(repo, description string) error {
 	return err
 }
 
-func (bdw BoltDBWrapper) SetRepoLogo(repo string, logoPath string) error {
+func (bdw DBWrapper) SetRepoLogo(repo string, logoPath string) error {
 	err := bdw.db.Update(func(tx *bolt.Tx) error {
-		buck := tx.Bucket([]byte(RepoMetadataBucket))
+		buck := tx.Bucket([]byte(repodb.RepoMetadataBucket))
 
 		repoMetaBlob := buck.Get([]byte(repo))
 		if repoMetaBlob == nil {
 			return zerr.ErrRepoMetaNotFound
 		}
 
-		var repoMeta RepoMetadata
+		var repoMeta repodb.RepoMetadata
 
 		err := json.Unmarshal(repoMetaBlob, &repoMeta)
 		if err != nil {
@@ -377,30 +363,30 @@ func (bdw BoltDBWrapper) SetRepoLogo(repo string, logoPath string) error {
 	return err
 }
 
-func (bdw BoltDBWrapper) GetMultipleRepoMeta(ctx context.Context, filter func(repoMeta RepoMetadata) bool,
-	requestedPage PageInput,
-) ([]RepoMetadata, error) {
+func (bdw DBWrapper) GetMultipleRepoMeta(ctx context.Context, filter func(repoMeta repodb.RepoMetadata) bool,
+	requestedPage repodb.PageInput,
+) ([]repodb.RepoMetadata, error) {
 	var (
-		foundRepos = make([]RepoMetadata, 0)
-		pageFinder PageFinder
+		foundRepos = make([]repodb.RepoMetadata, 0)
+		pageFinder repodb.PageFinder
 	)
 
-	pageFinder, err := NewBaseRepoPageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
+	pageFinder, err := repodb.NewBaseRepoPageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
 	if err != nil {
 		return nil, err
 	}
 
 	err = bdw.db.View(func(tx *bolt.Tx) error {
-		buck := tx.Bucket([]byte(RepoMetadataBucket))
+		buck := tx.Bucket([]byte(repodb.RepoMetadataBucket))
 
 		cursor := buck.Cursor()
 
 		for repoName, repoMetaBlob := cursor.First(); repoName != nil; repoName, repoMetaBlob = cursor.Next() {
-			if ok, err := repoIsUserAvailable(ctx, string(repoName)); !ok || err != nil {
+			if ok, err := localCtx.RepoIsUserAvailable(ctx, string(repoName)); !ok || err != nil {
 				continue
 			}
 
-			repoMeta := RepoMetadata{}
+			repoMeta := repodb.RepoMetadata{}
 
 			err := json.Unmarshal(repoMetaBlob, &repoMeta)
 			if err != nil {
@@ -408,7 +394,7 @@ func (bdw BoltDBWrapper) GetMultipleRepoMeta(ctx context.Context, filter func(re
 			}
 
 			if filter(repoMeta) {
-				pageFinder.Add(DetailedRepoMeta{
+				pageFinder.Add(repodb.DetailedRepoMeta{
 					RepoMeta: repoMeta,
 				})
 			}
@@ -422,16 +408,16 @@ func (bdw BoltDBWrapper) GetMultipleRepoMeta(ctx context.Context, filter func(re
 	return foundRepos, err
 }
 
-func (bdw BoltDBWrapper) IncrementManifestDownloads(manifestDigest godigest.Digest) error {
+func (bdw DBWrapper) IncrementManifestDownloads(manifestDigest godigest.Digest) error {
 	err := bdw.db.Update(func(tx *bolt.Tx) error {
-		buck := tx.Bucket([]byte(ManifestMetadataBucket))
+		buck := tx.Bucket([]byte(repodb.ManifestMetadataBucket))
 
 		manifestMetaBlob := buck.Get([]byte(manifestDigest))
 		if manifestMetaBlob == nil {
 			return zerr.ErrManifestMetaNotFound
 		}
 
-		var manifestMeta ManifestMetadata
+		var manifestMeta repodb.ManifestMetadata
 
 		err := json.Unmarshal(manifestMetaBlob, &manifestMeta)
 		if err != nil {
@@ -451,16 +437,16 @@ func (bdw BoltDBWrapper) IncrementManifestDownloads(manifestDigest godigest.Dige
 	return err
 }
 
-func (bdw BoltDBWrapper) AddManifestSignature(manifestDigest godigest.Digest, sigMeta SignatureMetadata) error {
+func (bdw DBWrapper) AddManifestSignature(manifestDigest godigest.Digest, sigMeta repodb.SignatureMetadata) error {
 	err := bdw.db.Update(func(tx *bolt.Tx) error {
-		buck := tx.Bucket([]byte(ManifestMetadataBucket))
+		buck := tx.Bucket([]byte(repodb.ManifestMetadataBucket))
 
 		manifestMetaBlob := buck.Get([]byte(manifestDigest))
 		if manifestMetaBlob == nil {
 			return zerr.ErrManifestMetaNotFound
 		}
 
-		var manifestMeta ManifestMetadata
+		var manifestMeta repodb.ManifestMetadata
 
 		err := json.Unmarshal(manifestMetaBlob, &manifestMeta)
 		if err != nil {
@@ -481,16 +467,16 @@ func (bdw BoltDBWrapper) AddManifestSignature(manifestDigest godigest.Digest, si
 	return err
 }
 
-func (bdw BoltDBWrapper) DeleteSignature(manifestDigest godigest.Digest, sigMeta SignatureMetadata) error {
+func (bdw DBWrapper) DeleteSignature(manifestDigest godigest.Digest, sigMeta repodb.SignatureMetadata) error {
 	err := bdw.db.Update(func(tx *bolt.Tx) error {
-		buck := tx.Bucket([]byte(ManifestMetadataBucket))
+		buck := tx.Bucket([]byte(repodb.ManifestMetadataBucket))
 
 		manifestMetaBlob := buck.Get([]byte(manifestDigest))
 		if manifestMetaBlob == nil {
 			return zerr.ErrManifestMetaNotFound
 		}
 
-		var manifestMeta ManifestMetadata
+		var manifestMeta repodb.ManifestMetadata
 
 		err := json.Unmarshal(manifestMetaBlob, &manifestMeta)
 		if err != nil {
@@ -530,41 +516,42 @@ func (bdw BoltDBWrapper) DeleteSignature(manifestDigest godigest.Digest, sigMeta
 	return err
 }
 
-func (bdw BoltDBWrapper) SearchRepos(ctx context.Context, searchText string, filter Filter, requestedPage PageInput,
-) ([]RepoMetadata, map[string]ManifestMetadata, error) {
+func (bdw DBWrapper) SearchRepos(ctx context.Context, searchText string, filter repodb.Filter,
+	requestedPage repodb.PageInput,
+) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
 	var (
-		foundRepos               = make([]RepoMetadata, 0)
-		foundManifestMetadataMap = make(map[string]ManifestMetadata)
-		pageFinder               PageFinder
+		foundRepos               = make([]repodb.RepoMetadata, 0)
+		foundManifestMetadataMap = make(map[string]repodb.ManifestMetadata)
+		pageFinder               repodb.PageFinder
 	)
 
-	pageFinder, err := NewBaseRepoPageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
+	pageFinder, err := repodb.NewBaseRepoPageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
 	if err != nil {
-		return []RepoMetadata{}, map[string]ManifestMetadata{}, err
+		return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, err
 	}
 
 	err = bdw.db.View(func(tx *bolt.Tx) error {
 		var (
-			manifestMetadataMap = make(map[string]ManifestMetadata)
-			repoBuck            = tx.Bucket([]byte(RepoMetadataBucket))
-			manifestBuck        = tx.Bucket([]byte(ManifestMetadataBucket))
+			manifestMetadataMap = make(map[string]repodb.ManifestMetadata)
+			repoBuck            = tx.Bucket([]byte(repodb.RepoMetadataBucket))
+			manifestBuck        = tx.Bucket([]byte(repodb.ManifestMetadataBucket))
 		)
 
 		cursor := repoBuck.Cursor()
 
 		for repoName, repoMetaBlob := cursor.First(); repoName != nil; repoName, repoMetaBlob = cursor.Next() {
-			if ok, err := repoIsUserAvailable(ctx, string(repoName)); !ok || err != nil {
+			if ok, err := localCtx.RepoIsUserAvailable(ctx, string(repoName)); !ok || err != nil {
 				continue
 			}
 
-			var repoMeta RepoMetadata
+			var repoMeta repodb.RepoMetadata
 
 			err := json.Unmarshal(repoMetaBlob, &repoMeta)
 			if err != nil {
 				return err
 			}
 
-			if score := ScoreRepoName(searchText, string(repoName)); score != -1 {
+			if score := common.ScoreRepoName(searchText, string(repoName)); score != -1 {
 				var (
 					// specific values used for sorting that need to be calculated based on all manifests from the repo
 					repoDownloads     = 0
@@ -576,7 +563,7 @@ func (bdw BoltDBWrapper) SearchRepos(ctx context.Context, searchText string, fil
 				)
 
 				for _, manifestDigest := range repoMeta.Tags {
-					var manifestMeta ManifestMetadata
+					var manifestMeta repodb.ManifestMetadata
 
 					manifestMeta, manifestDownloaded := manifestMetadataMap[manifestDigest]
 
@@ -606,7 +593,7 @@ func (bdw BoltDBWrapper) SearchRepos(ctx context.Context, searchText string, fil
 					// get fields related to sorting
 					repoDownloads += manifestMeta.DownloadCount
 
-					imageLastUpdated, err := getImageLastUpdatedTimestamp(manifestMeta.ConfigBlob)
+					imageLastUpdated, err := common.GetImageLastUpdatedTimestamp(manifestMeta.ConfigBlob)
 					if err != nil {
 						return errors.Wrapf(err, "repodb: error while unmarshaling image config referenced by digest %s", manifestDigest)
 					}
@@ -615,23 +602,23 @@ func (bdw BoltDBWrapper) SearchRepos(ctx context.Context, searchText string, fil
 						repoLastUpdated = imageLastUpdated
 						firstImageChecked = false
 
-						isSigned = checkIsSigned(manifestMeta.Signatures)
+						isSigned = common.CheckIsSigned(manifestMeta.Signatures)
 					}
 
 					manifestMetadataMap[manifestDigest] = manifestMeta
 				}
 
-				repoFilterData := filterData{
-					OsList:   getMapKeys(osSet),
-					ArchList: getMapKeys(archSet),
+				repoFilterData := repodb.FilterData{
+					OsList:   common.GetMapKeys(osSet),
+					ArchList: common.GetMapKeys(archSet),
 					IsSigned: isSigned,
 				}
 
-				if !acceptedByFilter(filter, repoFilterData) {
+				if !common.AcceptedByFilter(filter, repoFilterData) {
 					continue
 				}
 
-				pageFinder.Add(DetailedRepoMeta{
+				pageFinder.Add(repodb.DetailedRepoMeta{
 					RepoMeta:   repoMeta,
 					Score:      score,
 					Downloads:  repoDownloads,
@@ -655,94 +642,43 @@ func (bdw BoltDBWrapper) SearchRepos(ctx context.Context, searchText string, fil
 	return foundRepos, foundManifestMetadataMap, err
 }
 
-func checkIsSigned(signatures map[string][]string) bool {
-	for _, signatures := range signatures {
-		if len(signatures) > 0 {
-			return true
-		}
-	}
-
-	return false
-}
-
-func ScoreRepoName(searchText string, repoName string) int {
-	searchTextSlice := strings.Split(searchText, "/")
-	repoNameSlice := strings.Split(repoName, "/")
-
-	if len(searchTextSlice) > len(repoNameSlice) {
-		return -1
-	}
-
-	if len(searchTextSlice) == 1 {
-		// check if it maches first or last name in path
-		if index := strings.Index(repoNameSlice[len(repoNameSlice)-1], searchTextSlice[0]); index != -1 {
-			return index + 1
-		}
-
-		// we'll make repos that match the first name in path less important than matching the last name in path
-		if index := strings.Index(repoNameSlice[0], searchTextSlice[0]); index != -1 {
-			return (index + 1) * 10
-		}
-
-		return -1
-	}
-
-	if len(searchTextSlice) < len(repoNameSlice) &&
-		strings.HasPrefix(repoName, searchText) {
-		return 1
-	}
-
-	// searchText and repoName match perfectly up until the last name in path
-	for i := 0; i < len(searchTextSlice)-1; i++ {
-		if searchTextSlice[i] != repoNameSlice[i] {
-			return -1
-		}
-	}
-
-	// check the last
-	if index := strings.Index(repoNameSlice[len(repoNameSlice)-1], searchTextSlice[len(searchTextSlice)-1]); index != -1 {
-		return (index + 1)
-	}
-
-	return -1
-}
-
-func (bdw BoltDBWrapper) SearchTags(ctx context.Context, searchText string, filter Filter, requestedPage PageInput,
-) ([]RepoMetadata, map[string]ManifestMetadata, error) {
+func (bdw DBWrapper) SearchTags(ctx context.Context, searchText string, filter repodb.Filter,
+	requestedPage repodb.PageInput,
+) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
 	var (
-		foundRepos               = make([]RepoMetadata, 0)
-		foundManifestMetadataMap = make(map[string]ManifestMetadata)
+		foundRepos               = make([]repodb.RepoMetadata, 0)
+		foundManifestMetadataMap = make(map[string]repodb.ManifestMetadata)
 
-		pageFinder PageFinder
+		pageFinder repodb.PageFinder
 	)
 
-	pageFinder, err := NewBaseImagePageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
+	pageFinder, err := repodb.NewBaseImagePageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
 	if err != nil {
-		return []RepoMetadata{}, map[string]ManifestMetadata{}, err
+		return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, err
 	}
 
-	searchedRepo, searchedTag, err := getRepoTag(searchText)
+	searchedRepo, searchedTag, err := common.GetRepoTag(searchText)
 	if err != nil {
-		return []RepoMetadata{}, map[string]ManifestMetadata{},
+		return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{},
 			errors.Wrap(err, "repodb: error while parsing search text, invalid format")
 	}
 
 	err = bdw.db.View(func(tx *bolt.Tx) error {
 		var (
-			manifestMetadataMap = make(map[string]ManifestMetadata)
-			repoBuck            = tx.Bucket([]byte(RepoMetadataBucket))
-			manifestBuck        = tx.Bucket([]byte(ManifestMetadataBucket))
+			manifestMetadataMap = make(map[string]repodb.ManifestMetadata)
+			repoBuck            = tx.Bucket([]byte(repodb.RepoMetadataBucket))
+			manifestBuck        = tx.Bucket([]byte(repodb.ManifestMetadataBucket))
 			cursor              = repoBuck.Cursor()
 		)
 
 		repoName, repoMetaBlob := cursor.Seek([]byte(searchedRepo))
 
 		for ; repoName != nil; repoName, repoMetaBlob = cursor.Next() {
-			if ok, err := repoIsUserAvailable(ctx, string(repoName)); !ok || err != nil {
+			if ok, err := localCtx.RepoIsUserAvailable(ctx, string(repoName)); !ok || err != nil {
 				continue
 			}
 
-			repoMeta := RepoMetadata{}
+			repoMeta := repodb.RepoMetadata{}
 
 			err := json.Unmarshal(repoMetaBlob, &repoMeta)
 			if err != nil {
@@ -771,7 +707,7 @@ func (bdw BoltDBWrapper) SearchTags(ctx context.Context, searchText string, filt
 						return zerr.ErrManifestMetaNotFound
 					}
 
-					var manifestMeta ManifestMetadata
+					var manifestMeta repodb.ManifestMetadata
 
 					err := json.Unmarshal(manifestMetaBlob, &manifestMeta)
 					if err != nil {
@@ -785,13 +721,13 @@ func (bdw BoltDBWrapper) SearchTags(ctx context.Context, searchText string, filt
 						return errors.Wrapf(err, "repodb: error while unmashaling manifest metadata for digest %s", manifestDigest)
 					}
 
-					imageFilterData := filterData{
+					imageFilterData := repodb.FilterData{
 						OsList:   []string{configContent.OS},
 						ArchList: []string{configContent.Architecture},
 						IsSigned: false,
 					}
 
-					if !acceptedByFilter(filter, imageFilterData) {
+					if !common.AcceptedByFilter(filter, imageFilterData) {
 						delete(matchedTags, tag)
 						delete(manifestMetadataMap, manifestDigest)
 
@@ -803,7 +739,7 @@ func (bdw BoltDBWrapper) SearchTags(ctx context.Context, searchText string, filt
 
 				repoMeta.Tags = matchedTags
 
-				pageFinder.Add(DetailedRepoMeta{
+				pageFinder.Add(repodb.DetailedRepoMeta{
 					RepoMeta: repoMeta,
 				})
 			}
@@ -824,136 +760,22 @@ func (bdw BoltDBWrapper) SearchTags(ctx context.Context, searchText string, filt
 	return foundRepos, foundManifestMetadataMap, err
 }
 
-// acceptedByFilter checks that data contains at least 1 element of each filter
-// criteria(os, arch) present in filter.
-func acceptedByFilter(filter Filter, data filterData) bool {
-	if filter.Arch != nil {
-		foundArch := false
-		for _, arch := range filter.Arch {
-			foundArch = foundArch || containsString(data.ArchList, *arch)
-		}
-
-		if !foundArch {
-			return false
-		}
-	}
-
-	if filter.Os != nil {
-		foundOs := false
-		for _, os := range filter.Os {
-			foundOs = foundOs || containsString(data.OsList, *os)
-		}
-
-		if !foundOs {
-			return false
-		}
-	}
-
-	if filter.HasToBeSigned != nil && *filter.HasToBeSigned != data.IsSigned {
-		return false
-	}
-
-	return true
-}
-
-func containsString(strSlice []string, str string) bool {
-	for _, val := range strSlice {
-		if strings.EqualFold(val, str) {
-			return true
-		}
-	}
-
-	return false
-}
-
-func (bdw BoltDBWrapper) SearchDigests(ctx context.Context, searchText string, requestedPage PageInput,
-) ([]RepoMetadata, map[string]ManifestMetadata, error) {
+func (bdw DBWrapper) SearchDigests(ctx context.Context, searchText string, requestedPage repodb.PageInput,
+) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
 	panic("not implemented")
 }
 
-func (bdw BoltDBWrapper) SearchLayers(ctx context.Context, searchText string, requestedPage PageInput,
-) ([]RepoMetadata, map[string]ManifestMetadata, error) {
+func (bdw DBWrapper) SearchLayers(ctx context.Context, searchText string, requestedPage repodb.PageInput,
+) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
 	panic("not implemented")
 }
 
-func (bdw BoltDBWrapper) SearchForAscendantImages(ctx context.Context, searchText string, requestedPage PageInput,
-) ([]RepoMetadata, map[string]ManifestMetadata, error) {
+func (bdw DBWrapper) SearchForAscendantImages(ctx context.Context, searchText string, requestedPage repodb.PageInput,
+) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
 	panic("not implemented")
 }
 
-func (bdw BoltDBWrapper) SearchForDescendantImages(ctx context.Context, searchText string, requestedPage PageInput,
-) ([]RepoMetadata, map[string]ManifestMetadata, error) {
+func (bdw DBWrapper) SearchForDescendantImages(ctx context.Context, searchText string, requestedPage repodb.PageInput,
+) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
 	panic("not implemented")
-}
-
-func repoIsUserAvailable(ctx context.Context, repoName string) (bool, error) {
-	authzCtxKey := localCtx.GetContextKey()
-
-	if authCtx := ctx.Value(authzCtxKey); authCtx != nil {
-		acCtx, ok := authCtx.(localCtx.AccessControlContext)
-		if !ok {
-			err := zerr.ErrBadCtxFormat
-
-			return false, err
-		}
-
-		if acCtx.IsAdmin || acCtx.CanReadRepo(repoName) {
-			return true, nil
-		}
-
-		return false, nil
-	}
-
-	return true, nil
-}
-
-func getRepoTag(searchText string) (string, string, error) {
-	const repoTagCount = 2
-
-	splitSlice := strings.Split(searchText, ":")
-
-	if len(splitSlice) != repoTagCount {
-		return "", "", errors.New("invalid format for tag search, not following repo:tag")
-	}
-
-	repo := strings.TrimSpace(splitSlice[0])
-	tag := strings.TrimSpace(splitSlice[1])
-
-	return repo, tag, nil
-}
-
-func getMapKeys[K comparable, V any](genericMap map[K]V) []K {
-	keys := make([]K, 0, len(genericMap))
-
-	for k := range genericMap {
-		keys = append(keys, k)
-	}
-
-	return keys
-}
-
-func getImageLastUpdatedTimestamp(configBlob []byte) (time.Time, error) {
-	var (
-		configContent ispec.Image
-		timeStamp     *time.Time
-	)
-
-	err := json.Unmarshal(configBlob, &configContent)
-	if err != nil {
-		return time.Time{}, err
-	}
-
-	if configContent.Created != nil && !configContent.Created.IsZero() {
-		return *configContent.Created, nil
-	}
-
-	if len(configContent.History) != 0 {
-		timeStamp = configContent.History[len(configContent.History)-1].Created
-	}
-
-	if timeStamp == nil {
-		timeStamp = &time.Time{}
-	}
-
-	return *timeStamp, nil
 }

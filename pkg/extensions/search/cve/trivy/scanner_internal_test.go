@@ -17,6 +17,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/repodb"
+	bolt "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
@@ -84,7 +85,7 @@ func TestMultipleStoragePath(t *testing.T) {
 
 		storeController.SubStore = subStore
 
-		repoDB, err := repodb.NewBoltDBWrapper(repodb.BoltDBParameters{
+		repoDB, err := bolt.NewBoltDBWrapper(bolt.DBParameters{
 			RootDir: firstRootDir,
 		})
 		So(err, ShouldBeNil)

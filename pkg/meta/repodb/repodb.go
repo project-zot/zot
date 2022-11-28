@@ -131,7 +131,7 @@ type Filter struct {
 	HasToBeSigned *bool
 }
 
-type filterData struct {
+type FilterData struct {
 	OsList   []string
 	ArchList []string
 	IsSigned bool

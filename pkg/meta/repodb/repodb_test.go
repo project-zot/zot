@@ -18,6 +18,9 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	"zotregistry.io/zot/pkg/meta/repodb"
+	bolt "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
+	"zotregistry.io/zot/pkg/meta/repodb/common"
+	dynamo "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 )
 
@@ -29,15 +32,15 @@ const (
 
 func TestBoltDBWrapper(t *testing.T) {
 	Convey("BoltDB Wrapper creation", t, func() {
-		boltDBParams := repodb.BoltDBParameters{}
-		searchDB, err := repodb.NewBoltDBWrapper(boltDBParams)
+		boltDBParams := bolt.DBParameters{}
+		searchDB, err := bolt.NewBoltDBWrapper(boltDBParams)
 		So(searchDB, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
 		err = os.Chmod("repo.db", 0o200)
 		So(err, ShouldBeNil)
 
-		searchDB, err = repodb.NewBoltDBWrapper(boltDBParams)
+		searchDB, err = bolt.NewBoltDBWrapper(boltDBParams)
 		So(searchDB, ShouldBeNil)
 		So(err, ShouldNotBeNil)
 
@@ -47,17 +50,53 @@ func TestBoltDBWrapper(t *testing.T) {
 		defer os.Remove("repo.db")
 	})
 
-	Convey("Test RepoDB Interface implementation", t, func() {
-		filePath := path.Join(t.TempDir(), "repo.db")
-		boltDBParams := repodb.BoltDBParameters{
-			RootDir: t.TempDir(),
-		}
-
-		repoDB, err := repodb.NewBoltDBWrapper(boltDBParams)
-		So(repoDB, ShouldNotBeNil)
+	Convey("BoltDB Wrapper", t, func() {
+		boltDBParams := bolt.DBParameters{}
+		boltdbWrapper, err := bolt.NewBoltDBWrapper(boltDBParams)
+		defer os.Remove("repo.db")
+		So(boltdbWrapper, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
-		defer os.Remove(filePath)
+		RunRepoDBTests(boltdbWrapper)
+	})
+}
+
+func TestDynamoDBWrapper(t *testing.T) {
+	skipIt(t)
+
+	Convey("DynamoDB Wrapper", t, func() {
+		dynamoDBDriverParams := dynamo.DBDriverParameters{
+			Endpoint:              os.Getenv("DYNAMODBMOCK_ENDPOINT"),
+			RepoMetaTablename:     "RepoMetadataTable",
+			ManifestMetaTablename: "ManifestMetadataTable",
+			Region:                "us-east-2",
+		}
+
+		dynamoDriver, err := dynamo.NewDynamoDBWrapper(dynamoDBDriverParams)
+		So(dynamoDriver, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+
+		resetDynamoDBTables := func() error {
+			err := dynamoDriver.ResetRepoMetaTable()
+			if err != nil {
+				return err
+			}
+
+			err = dynamoDriver.ResetManifestMetaTable()
+
+			return err
+		}
+
+		RunRepoDBTests(dynamoDriver, resetDynamoDBTables)
+	})
+}
+
+func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
+	Convey("Test RepoDB Interface implementation", func() {
+		for _, prepFunc := range preparationFuncs {
+			err := prepFunc()
+			So(err, ShouldBeNil)
+		}
 
 		Convey("Test SetManifestMeta and GetManifestMeta", func() {
 			configBlob, manifestBlob, err := generateTestImage()
@@ -137,12 +176,12 @@ func TestBoltDBWrapper(t *testing.T) {
 				})
 
 				Convey("Tag is not valid", func() {
-					err = repoDB.SetRepoTag(repo1, "", manifestDigest1)
+					err := repoDB.SetRepoTag(repo1, "", manifestDigest1)
 					So(err, ShouldNotBeNil)
 				})
 
 				Convey("Manifest Digest is not valid", func() {
-					err = repoDB.SetRepoTag(repo1, tag1, "")
+					err := repoDB.SetRepoTag(repo1, tag1, "")
 					So(err, ShouldNotBeNil)
 				})
 			})
@@ -455,6 +494,9 @@ func TestBoltDBWrapper(t *testing.T) {
 			err = repoDB.IncrementManifestDownloads(manifestDigest)
 			So(err, ShouldBeNil)
 
+			err = repoDB.IncrementManifestDownloads("badManiestDigest")
+			So(err, ShouldNotBeNil)
+
 			manifestMeta, err = repoDB.GetManifestMeta(manifestDigest)
 			So(err, ShouldBeNil)
 
@@ -476,6 +518,12 @@ func TestBoltDBWrapper(t *testing.T) {
 
 			err = repoDB.SetManifestMeta(manifestDigest1, repodb.ManifestMetadata{})
 			So(err, ShouldBeNil)
+
+			err = repoDB.AddManifestSignature("badDigest", repodb.SignatureMetadata{
+				SignatureType:   "cosign",
+				SignatureDigest: "digest",
+			})
+			So(err, ShouldNotBeNil)
 
 			err = repoDB.AddManifestSignature(manifestDigest1, repodb.SignatureMetadata{
 				SignatureType:   "cosign",
@@ -502,6 +550,12 @@ func TestBoltDBWrapper(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			err = repoDB.SetManifestMeta(manifestDigest1, repodb.ManifestMetadata{})
+			So(err, ShouldBeNil)
+
+			err = repoDB.DeleteSignature(manifestDigest1, repodb.SignatureMetadata{
+				SignatureType:   "cosign",
+				SignatureDigest: "digest",
+			})
 			So(err, ShouldBeNil)
 
 			err = repoDB.AddManifestSignature(manifestDigest1, repodb.SignatureMetadata{
@@ -784,16 +838,6 @@ func TestBoltDBWrapper(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 1)
 				So(repos[0].Name, ShouldResemble, "repo49")
-
-				// sort by stars
-				repos, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
-					Limit:  1,
-					Offset: 0,
-					SortBy: repodb.Stars,
-				})
-				So(err, ShouldBeNil)
-				So(len(repos), ShouldEqual, 1)
-				So(repos[0].Name, ShouldResemble, "repo0")
 
 				// sort by last update
 				repos, _, err = repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{
@@ -1243,38 +1287,44 @@ func TestBoltDBWrapper(t *testing.T) {
 		})
 
 		Convey("Test SearchDigests", func() {
+			So(func() { _, _, _ = repoDB.SearchDigests(context.TODO(), "", repodb.PageInput{}) }, ShouldPanic)
 		})
 
 		Convey("Test SearchLayers", func() {
+			So(func() { _, _, _ = repoDB.SearchLayers(context.TODO(), "", repodb.PageInput{}) }, ShouldPanic)
 		})
 
 		Convey("Test SearchForAscendantImages", func() {
+			So(func() { _, _, _ = repoDB.SearchForAscendantImages(context.TODO(), "", repodb.PageInput{}) }, ShouldPanic)
 		})
 
 		Convey("Test SearchForDescendantImages", func() {
+			So(func() { _, _, _ = repoDB.SearchForDescendantImages(context.TODO(), "", repodb.PageInput{}) }, ShouldPanic)
 		})
 	})
 }
 
 func TestRelevanceSorting(t *testing.T) {
 	Convey("Test Relevance Sorting", t, func() {
-		So(repodb.ScoreRepoName("alpine", "alpine"), ShouldEqual, 1)
-		So(repodb.ScoreRepoName("test/alpine", "alpine"), ShouldEqual, -1)
-		So(repodb.ScoreRepoName("alpine", "test/alpine"), ShouldEqual, 1)
-		So(repodb.ScoreRepoName("test", "test/alpine"), ShouldEqual, 10)
-		So(repodb.ScoreRepoName("pine", "test/alpine"), ShouldEqual, 3)
-		So(repodb.ScoreRepoName("pine", "alpine/alpine"), ShouldEqual, 3)
-		So(repodb.ScoreRepoName("pine", "alpine/test"), ShouldEqual, 30)
-		So(repodb.ScoreRepoName("test/pine", "alpine"), ShouldEqual, -1)
-		So(repodb.ScoreRepoName("repo/test", "repo/test/alpine"), ShouldEqual, 1)
+		So(common.ScoreRepoName("alpine", "alpine"), ShouldEqual, 1)
+		So(common.ScoreRepoName("test/alpine", "alpine"), ShouldEqual, -1)
+		So(common.ScoreRepoName("alpine", "test/alpine"), ShouldEqual, 1)
+		So(common.ScoreRepoName("test", "test/alpine"), ShouldEqual, 10)
+		So(common.ScoreRepoName("pine", "test/alpine"), ShouldEqual, 3)
+		So(common.ScoreRepoName("pine", "alpine/alpine"), ShouldEqual, 3)
+		So(common.ScoreRepoName("pine", "alpine/test"), ShouldEqual, 30)
+		So(common.ScoreRepoName("test/pine", "alpine"), ShouldEqual, -1)
+		So(common.ScoreRepoName("repo/test", "repo/test/alpine"), ShouldEqual, 1)
+		So(common.ScoreRepoName("repo/test/golang", "repo/test2/alpine"), ShouldEqual, -1)
+		So(common.ScoreRepoName("repo/test/pine", "repo/test/alpine"), ShouldEqual, 3)
 
 		Convey("Integration", func() {
 			filePath := path.Join(t.TempDir(), "repo.db")
-			boltDBParams := repodb.BoltDBParameters{
+			boltDBParams := bolt.DBParameters{
 				RootDir: t.TempDir(),
 			}
 
-			repoDB, err := repodb.NewBoltDBWrapper(boltDBParams)
+			repoDB, err := bolt.NewBoltDBWrapper(boltDBParams)
 			So(repoDB, ShouldNotBeNil)
 			So(err, ShouldBeNil)
 
