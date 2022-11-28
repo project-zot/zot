@@ -15,6 +15,7 @@ NOTATION := $(TOOLSDIR)/bin/notation
 COSIGN := $(TOOLSDIR)/bin/cosign
 HELM := $(TOOLSDIR)/bin/helm
 ORAS := $(TOOLSDIR)/bin/oras
+ORAS_VERSION := 0.16.0
 REGCLIENT := $(TOOLSDIR)/bin/regctl
 REGCLIENT_VERSION := v0.4.5
 STACKER := $(TOOLSDIR)/bin/stacker
@@ -110,7 +111,7 @@ $(NOTATION):
 
 $(ORAS):
 	mkdir -p $(TOOLSDIR)/bin
-	curl -Lo oras.tar.gz https://github.com/oras-project/oras/releases/download/v0.14.0/oras_0.14.0_linux_amd64.tar.gz
+	curl -Lo oras.tar.gz https://github.com/oras-project/oras/releases/download/v$(ORAS_VERSION)/oras_$(ORAS_VERSION)_linux_amd64.tar.gz
 	tar xvzf oras.tar.gz -C $(TOOLSDIR)/bin  oras
 	rm oras.tar.gz
 

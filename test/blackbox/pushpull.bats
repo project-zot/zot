@@ -63,8 +63,6 @@ function teardown_file() {
     run cat ${BATS_FILE_TMPDIR}/oci/golang/index.json
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.manifests[].annotations."org.opencontainers.image.ref.name"') = '"1.19"' ]
-    run curl -X DELETE http://127.0.0.1:8080/v2/golang/manifests/1.19
-    [ "$status" -eq 0 ]
 }
 
 @test "push image index" {
@@ -117,6 +115,23 @@ function teardown_file() {
     [ "$status" -eq 0 ]
     grep -q "hello world" artifact.txt
     rm -f artifact.txt
+}
+
+@test "attach oras artifacts" {
+    # attach signature
+    echo "{\"artifact\": \"\", \"signature\": \"pat hancock\"}" > signature.json
+    run oras attach --plain-http 127.0.0.1:8080/golang:1.19 --artifact-type 'signature/example' ./signature.json:application/json
+    [ "$status" -eq 0 ]
+    # attach sbom
+    echo "{\"version\": \"0.0.0.0\", \"artifact\": \"'127.0.0.1:8080/golang:1.19'\", \"contents\": \"good\"}" > sbom.json
+    run oras attach --plain-http 127.0.0.1:8080/golang:1.19 --artifact-type 'sbom/example' ./sbom.json:application/json
+    [ "$status" -eq 0 ]
+}
+
+@test "discover oras artifacts" {
+    run oras discover --plain-http -o json 127.0.0.1:8080/golang:1.19
+    [ "$status" -eq 0 ]
+    [ $(echo "$output" | jq -r ".manifests | length") -eq 2 ]
 }
 
 @test "push helm chart" {
