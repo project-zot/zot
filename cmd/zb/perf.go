@@ -640,21 +640,35 @@ func Perf(
 	log.SetFlags(0)
 	log.SetOutput(tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.TabIndent))
 
-	// initialize test data
-	setup(workdir)
-	defer teardown(workdir)
-
 	// common header
 	log.Printf("Registry URL:\t%s", url)
 	log.Printf("\n")
 	log.Printf("Concurrency Level:\t%v", concurrency)
 	log.Printf("Total requests:\t%v", requests)
-	log.Printf("Working dir:\t%v", workdir)
+
+	if workdir == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			log.Fatal("unable to get current working dir")
+		}
+
+		log.Printf("Working dir:\t%v", cwd)
+	} else {
+		log.Printf("Working dir:\t%v", workdir)
+	}
+
 	log.Printf("\n")
 
-	zbError := false
+	// initialize test data
+	log.Printf("Preparing test data ...\n")
+
+	setup(workdir)
+	defer teardown(workdir)
+
+	log.Printf("Starting tests ...\n")
 
 	var err error
+	zbError := false
 
 	// get host ips from command line to make requests from
 	var ips []string
