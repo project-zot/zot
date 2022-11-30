@@ -1,0 +1,37 @@
+{
+    "distSpecVersion": "1.0.1-dev",
+    "storage": {
+        "dedupe": true,
+        "remoteCache": true,
+        "storageDriver": {
+            "name": "s3",
+            "rootdirectory": "/zot",
+            "region": "us-east-2",
+            "regionendpoint": "localhost:4566",
+            "bucket": "zot-storage",
+            "secure": false,
+            "skipverify": false
+        },
+        "cacheDriver": {
+            "name": "dynamodb",
+            "endpoint": "http://localhost:4566",
+            "region": "us-east-2",
+            "tableName": "BlobTable"
+        }
+    },
+    "http": {
+        "address": "127.0.0.1",
+        "port": "8080"
+    },
+    "log": {
+        "level": "debug"
+    },
+    "extensions": {
+      "search": {
+        "enable": false,
+        "cve": {
+          "updateInterval": "2h"
+        }
+      }
+    }
+}

@@ -12,7 +12,10 @@
     },
     "extensions": {
         "search": {
-          "enable": true
+          "enable": true,
+          "cve": {
+            "updateInterval": "24h"
+          }
         }
     }
 }
