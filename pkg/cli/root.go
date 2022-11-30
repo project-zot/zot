@@ -306,6 +306,28 @@ func validateCacheConfig(cfg *config.Config) error {
 	return nil
 }
 
+func validateExtensionsConfig(cfg *config.Config) error {
+	//nolint:lll
+	if cfg.Storage.StorageDriver != nil && cfg.Extensions != nil && cfg.Extensions.Search != nil &&
+		cfg.Extensions.Search.Enable != nil && *cfg.Extensions.Search.Enable && cfg.Extensions.Search.CVE != nil {
+		log.Warn().Err(errors.ErrBadConfig).Msg("CVE functionality can't be used with remote storage. Please disable CVE")
+
+		return errors.ErrBadConfig
+	}
+
+	for _, subPath := range cfg.Storage.SubPaths {
+		//nolint:lll
+		if subPath.StorageDriver != nil && cfg.Extensions != nil && cfg.Extensions.Search != nil &&
+			cfg.Extensions.Search.Enable != nil && *cfg.Extensions.Search.Enable && cfg.Extensions.Search.CVE != nil {
+			log.Warn().Err(errors.ErrBadConfig).Msg("CVE functionality can't be used with remote storage. Please disable CVE")
+
+			return errors.ErrBadConfig
+		}
+	}
+
+	return nil
+}
+
 func validateConfiguration(config *config.Config) error {
 	if err := validateHTTP(config); err != nil {
 		return err
@@ -328,6 +350,10 @@ func validateConfiguration(config *config.Config) error {
 	}
 
 	if err := validateCacheConfig(config); err != nil {
+		return err
+	}
+
+	if err := validateExtensionsConfig(config); err != nil {
 		return err
 	}
 
@@ -448,10 +474,6 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper) {
 		if config.Extensions.Search != nil {
 			if config.Extensions.Search.Enable == nil {
 				config.Extensions.Search.Enable = &defaultVal
-			}
-
-			if config.Extensions.Search.CVE == nil {
-				config.Extensions.Search.CVE = &extconf.CVEConfig{UpdateInterval: 24 * time.Hour} //nolint: gomnd
 			}
 		}
 
