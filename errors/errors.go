@@ -60,4 +60,5 @@ var (
 	ErrBadRange                = errors.New("storage: bad range")
 	ErrBadLayerCount           = errors.New("manifest: layers count doesn't correspond to config history")
 	ErrManifestConflict        = errors.New("manifest: multiple manifests found")
+	ErrSearchCVEDisabled       = errors.New("search: CVE query attempted but the CVE extension is disabled")
 )

@@ -28,6 +28,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
@@ -3182,6 +3183,85 @@ func TestSearchSize(t *testing.T) {
 		size, err = strconv.Atoi(repo.Size)
 		So(err, ShouldBeNil)
 		So(size, ShouldAlmostEqual, configSize+layersSize+manifestSize)
+	})
+}
+
+func TestSearchCVE(t *testing.T) {
+	Convey("CVEListForImage with CVE disabled", t, func() {
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+
+		conf := config.New()
+		conf.HTTP.Port = port
+		tr := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &tr}},
+		}
+
+		conf.Extensions.Search.CVE = nil
+
+		ctlr := api.NewController(conf)
+		dir := t.TempDir()
+		ctlr.Config.Storage.RootDirectory = dir
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		WaitTillServerReady(baseURL)
+
+		repoName := "testrepo"
+		config, layers, manifest, err := GetImageComponents(10000)
+		So(err, ShouldBeNil)
+
+		err = UploadImage(
+			Image{
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+				Tag:      "latest",
+			},
+			baseURL,
+			repoName,
+		)
+		So(err, ShouldBeNil)
+
+		query := `
+			{
+				CVEListForImage (image: "testrepo:ver") {
+					Tag
+					CVEList {
+					  Id
+					  Title
+					}
+				  }
+			}`
+		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(err, ShouldBeNil)
+
+		So(string(resp.Body()), ShouldContainSubstring, zerr.ErrSearchCVEDisabled.Error())
+
+		query = `
+			{
+				ImageListForCVE (id: "something") {
+					Tag
+					RepoName
+				  }
+			}`
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(err, ShouldBeNil)
+
+		So(string(resp.Body()), ShouldContainSubstring, zerr.ErrSearchCVEDisabled.Error())
+
+		query = `
+			{
+				ImageListWithCVEFixed (image: "testrepo:ver" ,id: "something") {
+					Tag
+					RepoName
+				}
+			}`
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(err, ShouldBeNil)
+
+		So(string(resp.Body()), ShouldContainSubstring, zerr.ErrSearchCVEDisabled.Error())
 	})
 }
 

@@ -7,12 +7,17 @@ import (
 	"context"
 	"fmt"
 
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
 )
 
 // CVEListForImage is the resolver for the CVEListForImage field.
 func (r *queryResolver) CVEListForImage(ctx context.Context, image string) (*gql_generated.CVEResultForImage, error) {
+	if r.cveInfo == nil {
+		return &gql_generated.CVEResultForImage{}, zerr.ErrSearchCVEDisabled
+	}
+
 	cveidMap, err := r.cveInfo.GetCVEListForImage(image)
 	if err != nil {
 		return &gql_generated.CVEResultForImage{}, err
@@ -58,8 +63,13 @@ func (r *queryResolver) CVEListForImage(ctx context.Context, image string) (*gql
 
 // ImageListForCve is the resolver for the ImageListForCVE field.
 func (r *queryResolver) ImageListForCve(ctx context.Context, id string) ([]*gql_generated.ImageSummary, error) {
-	olu := common.NewBaseOciLayoutUtils(r.storeController, r.log)
 	affectedImages := []*gql_generated.ImageSummary{}
+
+	if r.cveInfo == nil {
+		return affectedImages, zerr.ErrSearchCVEDisabled
+	}
+
+	olu := common.NewBaseOciLayoutUtils(r.storeController, r.log)
 
 	r.log.Info().Msg("extracting repositories")
 	repoList, err := olu.GetRepositories()
@@ -103,9 +113,13 @@ func (r *queryResolver) ImageListForCve(ctx context.Context, id string) ([]*gql_
 
 // ImageListWithCVEFixed is the resolver for the ImageListWithCVEFixed field.
 func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, image string) ([]*gql_generated.ImageSummary, error) {
-	olu := common.NewBaseOciLayoutUtils(r.storeController, r.log)
-
 	unaffectedImages := []*gql_generated.ImageSummary{}
+
+	if r.cveInfo == nil {
+		return unaffectedImages, zerr.ErrSearchCVEDisabled
+	}
+
+	olu := common.NewBaseOciLayoutUtils(r.storeController, r.log)
 
 	tagsInfo, err := r.cveInfo.GetImageListWithCVEFixed(image, id)
 	if err != nil {
