@@ -62,6 +62,16 @@ type RepoWithNewestImageResponse struct {
 	Errors                  []ErrorGQL              `json:"errors"`
 }
 
+type DerivedImageListResponse struct {
+	DerivedImageList DerivedImageList `json:"data"`
+	Errors           []ErrorGQL       `json:"errors"`
+}
+
+type BaseImageListResponse struct {
+	BaseImageList BaseImageList `json:"data"`
+	Errors        []ErrorGQL    `json:"errors"`
+}
+
 type ImageListResponse struct {
 	ImageList ImageList  `json:"data"`
 	Errors    []ErrorGQL `json:"errors"`
@@ -69,6 +79,13 @@ type ImageListResponse struct {
 
 type ImageList struct {
 	SummaryList []common.ImageSummary `json:"imageList"`
+}
+
+type DerivedImageList struct {
+	DerivedList []common.ImageSummary `json:"derivedImageList"`
+}
+type BaseImageList struct {
+	BaseList []common.ImageSummary `json:"baseImageList"`
 }
 
 type ExpandedRepoInfoResp struct {
@@ -1454,7 +1471,7 @@ func TestDerivedImageList(t *testing.T) {
 
 		query := `
 			{
-				DerivedImageList(image:"test-repo"){
+				DerivedImageList(image:"test-repo:latest"){
 					RepoName,
 					Tag,
 					Digest,
@@ -1477,7 +1494,7 @@ func TestDerivedImageList(t *testing.T) {
 	Convey("Inexistent repository", t, func() {
 		query := `
 			{
-				DerivedImageList(image:"inexistent-image"){
+				DerivedImageList(image:"inexistent-image:latest"){
 					RepoName,
 					Tag,
 					Digest,
@@ -1493,13 +1510,43 @@ func TestDerivedImageList(t *testing.T) {
 		So(err, ShouldBeNil)
 	})
 
+	Convey("Invalid query, no reference provided", t, func() {
+		query := `
+			{
+				DerivedImageList(image:"inexistent-image"){
+					RepoName,
+					Tag,
+					Digest,
+					ConfigDigest,
+					LastUpdated,
+					IsSigned,
+					Size
+				}
+			}`
+
+		responseStruct := &DerivedImageListResponse{}
+		contains := false
+		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(err, ShouldBeNil)
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+		for _, err := range responseStruct.Errors {
+			result := strings.Contains(err.Message, "no reference provided")
+			if result {
+				contains = result
+			}
+		}
+		So(contains, ShouldBeTrue)
+	})
+
 	Convey("Failed to get manifest", t, func() {
 		err := os.Mkdir(path.Join(rootDir, "fail-image"), 0o000)
 		So(err, ShouldBeNil)
 
 		query := `
 			{
-				DerivedImageList(image:"fail-image"){
+				DerivedImageList(image:"fail-image:latest"){
 					RepoName,
 					Tag,
 					Digest,
@@ -1560,7 +1607,7 @@ func TestDerivedImageListNoRepos(t *testing.T) {
 
 		query := `
 			{
-				DerivedImageList(image:"test-image"){
+				DerivedImageList(image:"test-image:latest"){
 					RepoName,
 					Tag,
 					Digest,
@@ -1968,7 +2015,7 @@ func TestBaseImageList(t *testing.T) {
 
 		query := `
 			{
-				BaseImageList(image:"test-repo"){
+				BaseImageList(image:"test-repo:latest"){
 					RepoName,
 					Tag,
 					Digest,
@@ -1986,7 +2033,7 @@ func TestBaseImageList(t *testing.T) {
 		So(strings.Contains(string(resp.Body()), "less-layers-false"), ShouldBeFalse)
 		So(strings.Contains(string(resp.Body()), "more-layers"), ShouldBeFalse)
 		So(strings.Contains(string(resp.Body()), "diff-layers"), ShouldBeFalse)
-		So(strings.Contains(string(resp.Body()), "test-repo"), ShouldBeTrue) //nolint:goconst // should not list given image
+		So(strings.Contains(string(resp.Body()), "test-repo"), ShouldBeFalse) //nolint:goconst // should not list given image
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 	})
@@ -1994,7 +2041,7 @@ func TestBaseImageList(t *testing.T) {
 	Convey("Nonexistent repository", t, func() {
 		query := `
 			{
-				BaseImageList(image:"nonexistent-image"){
+				BaseImageList(image:"nonexistent-image:latest"){
 					RepoName,
 					Tag,
 					Digest,
@@ -2010,13 +2057,43 @@ func TestBaseImageList(t *testing.T) {
 		So(err, ShouldBeNil)
 	})
 
+	Convey("Invalid query, no reference provided", t, func() {
+		query := `
+		{
+			BaseImageList(image:"nonexistent-image"){
+				RepoName,
+				Tag,
+				Digest,
+				ConfigDigest,
+				LastUpdated,
+				IsSigned,
+				Size
+			}
+		}`
+
+		responseStruct := &BaseImageListResponse{}
+		contains := false
+		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(err, ShouldBeNil)
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+		for _, err := range responseStruct.Errors {
+			result := strings.Contains(err.Message, "no reference provided")
+			if result {
+				contains = result
+			}
+		}
+		So(contains, ShouldBeTrue)
+	})
+
 	Convey("Failed to get manifest", t, func() {
 		err := os.Mkdir(path.Join(rootDir, "fail-image"), 0o000)
 		So(err, ShouldBeNil)
 
 		query := `
 			{
-				BaseImageList(image:"fail-image"){
+				BaseImageList(image:"fail-image:latest"){
 					RepoName,
 					Tag,
 					Digest,
@@ -2077,7 +2154,7 @@ func TestBaseImageListNoRepos(t *testing.T) {
 
 		query := `
 			{
-				BaseImageList(image:"test-image"){
+				BaseImageList(image:"test-image:latest"){
 					RepoName,
 					Tag,
 					Digest,
@@ -3216,6 +3293,20 @@ func TestImageSummary(t *testing.T) {
 				}
 			}`
 
+		noTagQuery := `
+			{
+				Image(image:"%s"){
+					RepoName,
+					Tag,
+					Digest,
+					ConfigDigest,
+					LastUpdated,
+					IsSigned,
+					Size
+					Layers { Digest Size }
+				}
+			}`
+
 		gqlEndpoint := fmt.Sprintf("%s%s?query=", baseURL, graphqlQueryPrefix)
 		config, layers, manifest, err := GetImageComponents(100)
 		So(err, ShouldBeNil)
@@ -3251,6 +3342,27 @@ func TestImageSummary(t *testing.T) {
 			targetURL          string
 			resp               *resty.Response
 		)
+
+		t.Log("starting test to retrieve image without reference")
+		strQuery = fmt.Sprintf(noTagQuery, repoName)
+		targetURL = fmt.Sprintf("%s%s", gqlEndpoint, url.QueryEscape(strQuery))
+		contains := false
+
+		resp, err = resty.R().Get(targetURL)
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.Body(), ShouldNotBeNil)
+
+		err = json.Unmarshal(resp.Body(), &imgSummaryResponse)
+		So(err, ShouldBeNil)
+		for _, err := range imgSummaryResponse.Errors {
+			result := strings.Contains(err.Message, "no reference provided")
+			if result {
+				contains = result
+			}
+		}
+		So(contains, ShouldBeTrue)
 
 		t.Log("starting Test retrieve image based on image identifier")
 		// gql is parametrized with the repo.

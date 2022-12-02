@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/vektah/gqlparser/v2/gqlerror"
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
 )
@@ -20,6 +21,10 @@ func (r *queryResolver) CVEListForImage(ctx context.Context, image string) (*gql
 	}
 
 	_, copyImgTag := common.GetImageDirAndTag(image)
+
+	if copyImgTag == "" {
+		return &gql_generated.CVEResultForImage{}, gqlerror.Errorf("no reference provided")
+	}
 
 	cveids := []*gql_generated.Cve{}
 
@@ -421,6 +426,10 @@ func (r *queryResolver) DerivedImageList(ctx context.Context, image string) ([]*
 
 	imageDir, imageTag := common.GetImageDirAndTag(image)
 
+	if imageTag == "" {
+		return []*gql_generated.ImageSummary{}, gqlerror.Errorf("no reference provided")
+	}
+
 	imageManifest, _, err := layoutUtils.GetImageManifest(imageDir, imageTag)
 	if err != nil {
 		r.log.Info().Str("image", image).Msg("image not found")
@@ -489,6 +498,10 @@ func (r *queryResolver) BaseImageList(ctx context.Context, image string) ([]*gql
 
 	imageDir, imageTag := common.GetImageDirAndTag(image)
 
+	if imageTag == "" {
+		return []*gql_generated.ImageSummary{}, gqlerror.Errorf("no reference provided")
+	}
+
 	imageManifest, _, err := layoutUtils.GetImageManifest(imageDir, imageTag)
 	if err != nil {
 		r.log.Info().Str("image", image).Msg("image not found")
@@ -551,6 +564,10 @@ func (r *queryResolver) BaseImageList(ctx context.Context, image string) ([]*gql
 func (r *queryResolver) Image(ctx context.Context, image string) (*gql_generated.ImageSummary, error) {
 	repo, tag := common.GetImageDirAndTag(image)
 	layoutUtils := common.NewBaseOciLayoutUtils(r.storeController, r.log)
+
+	if tag == "" {
+		return &gql_generated.ImageSummary{}, gqlerror.Errorf("no reference provided")
+	}
 
 	digest, manifest, imageConfig, err := extractImageDetails(ctx, layoutUtils, repo, tag, r.log)
 	if err != nil {

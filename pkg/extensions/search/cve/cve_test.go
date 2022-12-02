@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"strings"
 	"testing"
 	"time"
 
@@ -51,7 +52,8 @@ const (
 )
 
 type CveResult struct {
-	ImgList ImgList `json:"data"`
+	ImgList ImgList    `json:"data"`
+	Errors  []ErrorGQL `json:"errors"`
 }
 
 //nolint:tagliatelle // graphQL schema
@@ -67,6 +69,11 @@ type ImageInfo struct {
 //nolint:tagliatelle // graphQL schema
 type ImgList struct {
 	CVEResultForImage CVEResultForImage `json:"CVEListForImage"`
+}
+
+type ErrorGQL struct {
+	Message string   `json:"message"`
+	Path    []string `json:"path"`
 }
 
 //nolint:tagliatelle // graphQL schema
@@ -490,11 +497,23 @@ func TestCVESearch(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 422)
 
+		var cveResult CveResult
+		contains := false
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={CVEListForImage(image:\"zot-test\"){Tag%20CVEList{Id%20Description%20Severity%20PackageList{Name%20InstalledVersion%20FixedVersion}}}}")
+		err = json.Unmarshal(resp.Body(), &cveResult)
+		So(err, ShouldBeNil)
+		for _, err := range cveResult.Errors {
+			result := strings.Contains(err.Message, "no reference provided")
+			if result {
+				contains = result
+			}
+		}
+		So(contains, ShouldBeTrue)
+
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={CVEListForImage(image:\"zot-test:0.0.1\"){Tag%20CVEList{Id%20Description%20Severity%20PackageList{Name%20InstalledVersion%20FixedVersion}}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		var cveResult CveResult
 		err = json.Unmarshal(resp.Body(), &cveResult)
 		So(err, ShouldBeNil)
 		So(len(cveResult.ImgList.CVEResultForImage.CVEList), ShouldNotBeZeroValue)
