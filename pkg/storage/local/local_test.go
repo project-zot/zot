@@ -2549,6 +2549,15 @@ func TestGetNextRepository(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		So(err, ShouldEqual, io.EOF)
 	})
+
+	Convey("Return error", t, func() {
+		err = os.Chmod(imgStore.RootDir(), 0o000)
+		So(err, ShouldBeNil)
+		_, err := imgStore.GetNextRepository(firstRepoName)
+		So(err, ShouldNotBeNil)
+		err = os.Chmod(imgStore.RootDir(), 0o755)
+		So(err, ShouldBeNil)
+	})
 }
 
 func TestPutBlobChunkStreamed(t *testing.T) {
