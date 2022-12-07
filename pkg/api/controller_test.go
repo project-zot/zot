@@ -6861,6 +6861,51 @@ func TestPeriodicGC(t *testing.T) {
 		So(string(data), ShouldContainSubstring,
 			fmt.Sprintf("\"SubPaths\":{\"/a\":{\"RootDirectory\":\"%s\",\"Dedupe\":false,\"RemoteCache\":false,\"GC\":true,\"Commit\":false,\"GCDelay\":1000000000,\"GCInterval\":86400000000000", subDir)) //nolint:lll // gofumpt conflicts with lll
 	})
+
+	Convey("Periodic gc error", t, func() {
+		repoName := "testRepo"
+
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RemoteCache = false
+
+		logFile, err := os.CreateTemp("", "zot-log*.txt")
+		So(err, ShouldBeNil)
+		conf.Log.Output = logFile.Name()
+		defer os.Remove(logFile.Name()) // clean up
+
+		ctlr := api.NewController(conf)
+		dir := t.TempDir()
+		ctlr.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.GC = true
+		ctlr.Config.Storage.GCInterval = 1 * time.Hour
+		ctlr.Config.Storage.GCDelay = 1 * time.Second
+
+		err = test.CopyFiles("../../test/data/zot-test", path.Join(dir, repoName))
+		if err != nil {
+			panic(err)
+		}
+
+		So(os.Chmod(dir, 0o000), ShouldBeNil)
+
+		defer func() {
+			So(os.Chmod(dir, 0o755), ShouldBeNil)
+		}()
+
+		go startServer(ctlr)
+		defer stopServer(ctlr)
+		test.WaitTillServerReady(baseURL)
+
+		time.Sleep(5000 * time.Millisecond)
+
+		data, err := os.ReadFile(logFile.Name())
+		So(err, ShouldBeNil)
+		So(string(data), ShouldContainSubstring,
+			"\"GC\":true,\"Commit\":false,\"GCDelay\":1000000000,\"GCInterval\":3600000000000")
+		So(string(data), ShouldContainSubstring, "failure walking storage root-dir") //nolint:lll
+	})
 }
 
 func TestSearchRoutes(t *testing.T) {
