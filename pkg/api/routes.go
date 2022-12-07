@@ -505,8 +505,13 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 
 	referrers, err := getReferrers(request.Context(), rh, imgStore, name, digest, artifactType)
 	if err != nil {
+		if errors.Is(err, zerr.ErrManifestNotFound) || errors.Is(err, zerr.ErrRepoNotFound) {
+			rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).Msg("manifest not found")
+			response.WriteHeader(http.StatusNotFound)
+		}
+
 		rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).Msg("unable to get references")
-		response.WriteHeader(http.StatusNotFound)
+		response.WriteHeader(http.StatusInternalServerError)
 
 		return
 	}

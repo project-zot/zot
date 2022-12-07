@@ -4310,7 +4310,12 @@ func TestArtifactReferences(t *testing.T) {
 		Convey("Validate Image Manifest Reference", func() {
 			resp, err = resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()))
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			var referrers ispec.Index
+			err := json.Unmarshal(resp.Body(), &referrers)
+			So(err, ShouldBeNil)
+			So(referrers.Manifests, ShouldBeEmpty)
 
 			// now upload a reference
 
@@ -4362,14 +4367,19 @@ func TestArtifactReferences(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
 
-				resp, err = resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()))
+				// unknown repo will return status not found
+				resp, err = resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", "unknown", digest.String()))
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+				resp, err = resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 				resp, err = resty.R().SetQueryParams(map[string]string{"artifactType": artifactType}).
 					Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()))
 				So(err, ShouldBeNil)
-				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 			})
 			Convey("Using valid content", func() {
 				content, err = json.Marshal(manifest)
@@ -4391,7 +4401,7 @@ func TestArtifactReferences(t *testing.T) {
 				resp, err = resty.R().SetQueryParams(map[string]string{"artifactType": "invalid"}).
 					Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()))
 				So(err, ShouldBeNil)
-				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 				resp, err = resty.R().SetQueryParams(map[string]string{"artifactType": artifactType}).
 					Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()))
@@ -4404,7 +4414,12 @@ func TestArtifactReferences(t *testing.T) {
 		Convey("Validate Artifact Manifest Reference", func() {
 			resp, err = resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()))
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			var referrers ispec.Index
+			err := json.Unmarshal(resp.Body(), &referrers)
+			So(err, ShouldBeNil)
+			So(referrers.Manifests, ShouldBeEmpty)
 
 			// now upload a reference
 
@@ -4455,14 +4470,19 @@ func TestArtifactReferences(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
 
-				resp, err = resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()))
+				// unknown repo will return status not found
+				resp, err = resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", "unknown", digest.String()))
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+				resp, err = resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()))
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 				resp, err = resty.R().SetQueryParams(map[string]string{"artifactType": artifactType}).
 					Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()))
 				So(err, ShouldBeNil)
-				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 			})
 			Convey("Using valid content", func() {
 				content, err = json.Marshal(manifest)
@@ -4486,7 +4506,7 @@ func TestArtifactReferences(t *testing.T) {
 				resp, err = resty.R().SetQueryParams(map[string]string{"artifactType": "invalid"}).
 					Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()))
 				So(err, ShouldBeNil)
-				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 				resp, err = resty.R().SetQueryParams(map[string]string{"artifactType": artifactType}).
 					Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()))

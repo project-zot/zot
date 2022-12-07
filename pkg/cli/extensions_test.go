@@ -636,16 +636,11 @@ func TestServeSearchEnabled(t *testing.T) {
 		logPath, err := runCLIWithConfig(tempDir, content)
 		So(err, ShouldBeNil)
 		// to avoid data race when multiple go routines write to trivy DB instance.
-		WaitTillTrivyDBDownloadStarted(tempDir)
 		defer os.Remove(logPath) // clean up
 
 		substring := "\"Search\":{\"Enable\":true,\"CVE\":{\"UpdateInterval\":86400000000000}"
 
 		found, err := readLogFileAndSearchString(logPath, substring, readLogFileTimeout)
-		So(found, ShouldBeTrue)
-		So(err, ShouldBeNil)
-
-		found, err = readLogFileAndSearchString(logPath, "updating the CVE database", readLogFileTimeout)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 	})
@@ -731,16 +726,10 @@ func TestServeSearchEnabledNoCVE(t *testing.T) {
 		logPath, err := runCLIWithConfig(tempDir, content)
 		So(err, ShouldBeNil)
 		defer os.Remove(logPath) // clean up
-		// to avoid data race when multiple go routines write to trivy DB instance.
-		WaitTillTrivyDBDownloadStarted(tempDir)
 
 		substring := "\"Search\":{\"Enable\":true,\"CVE\":{\"UpdateInterval\":86400000000000}"
 
 		found, err := readLogFileAndSearchString(logPath, substring, readLogFileTimeout)
-		So(found, ShouldBeTrue)
-		So(err, ShouldBeNil)
-
-		found, err = readLogFileAndSearchString(logPath, "updating the CVE database", readLogFileTimeout)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 	})

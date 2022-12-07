@@ -309,53 +309,9 @@ will produce `bin/zb` binary.
 
 ## Running `zb`
 
-```console
-$ zb -c 10 -n 1000 http://localhost:8080
-
-Registry URL: http://localhost:8080
-
-Concurrency Level: 2
-Total requests:    100
-Working dir:
-
-============
-Test name:            Get Catalog
-Time taken for tests: 45.397205ms
-Complete requests:    100
-Failed requests:      0
-Requests per second:  2202.7788
-
-2xx responses: 100
-
-min: 402.259µs
-max: 3.295887ms
-p50: 855.045µs
-p75: 971.709µs
-p90: 1.127389ms
-p99: 3.295887ms
-
-============
-Test name:            Push Monolith 1MB
-Time taken for tests: 952.336383ms
-Complete requests:    100
-Failed requests:      0
-Requests per second:  105.00491
-
-2xx responses: 100
-
-min: 11.125673ms
-max: 26.375356ms
-p50: 18.917253ms
-p75: 21.753441ms
-p90: 24.02137ms
-p99: 26.375356ms
-
-...
-```
-
+See [details](./cmd/zb/README.md)
 
 # Ecosystem
-
 
 ## skopeo
 
