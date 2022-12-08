@@ -46,9 +46,9 @@ func TestRoutes(t *testing.T) {
 			panic(err)
 		}
 
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		test.WaitTillServerReady(baseURL)
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(port)
+		defer cm.StopServer()
 
 		rthdlr := api.NewRouteHandler(ctlr)
 
