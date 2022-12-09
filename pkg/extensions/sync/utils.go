@@ -499,7 +499,7 @@ func getImageRef(registryDomain, repo, ref string) (types.ImageReference, error)
 
 	var namedRepoRef reference.Named
 
-	digest, ok := parseDigest(ref)
+	digest, ok := parseReference(ref)
 	if ok {
 		namedRepoRef, err = reference.WithDigest(repoRef, digest)
 		if err != nil {
@@ -528,7 +528,7 @@ func getLocalImageRef(localCachePath, repo, reference string) (types.ImageRefere
 
 	localRepo := path.Join(localCachePath, repo)
 
-	_, refIsDigest := parseDigest(reference)
+	_, refIsDigest := parseReference(reference)
 
 	if !refIsDigest {
 		localRepo = fmt.Sprintf("%s:%s", localRepo, reference)
@@ -600,7 +600,7 @@ func canSkipImage(repo, tag string, digest godigest.Digest, imageStore storage.I
 }
 
 // parse a reference, return its digest and if it's valid.
-func parseDigest(reference string) (godigest.Digest, bool) {
+func parseReference(reference string) (godigest.Digest, bool) {
 	var ok bool
 
 	d, err := godigest.Parse(reference)
@@ -616,6 +616,17 @@ func manifestsEqual(manifest1, manifest2 ispec.Manifest) bool {
 		manifest1.Config.MediaType == manifest2.Config.MediaType &&
 		manifest1.Config.Size == manifest2.Config.Size {
 		if descriptorsEqual(manifest1.Layers, manifest2.Layers) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func artifactsEqual(manifest1, manifest2 ispec.Artifact) bool {
+	if manifest1.ArtifactType == manifest2.ArtifactType &&
+		manifest1.MediaType == manifest2.MediaType {
+		if descriptorsEqual(manifest1.Blobs, manifest2.Blobs) {
 			return true
 		}
 	}
@@ -646,13 +657,48 @@ func descriptorsEqual(desc1, desc2 []ispec.Descriptor) bool {
 	}
 
 	for id, desc := range desc1 {
-		if desc.Digest != desc2[id].Digest ||
-			desc.Size != desc2[id].Size ||
-			desc.MediaType != desc2[id].MediaType ||
-			desc.Annotations[static.SignatureAnnotationKey] != desc2[id].Annotations[static.SignatureAnnotationKey] {
+		if !descriptorEqual(desc, desc2[id]) {
 			return false
 		}
 	}
 
 	return true
+}
+
+func descriptorEqual(desc1, desc2 ispec.Descriptor) bool {
+	if desc1.Size == desc2.Size &&
+		desc1.Digest == desc2.Digest &&
+		desc1.MediaType == desc2.MediaType &&
+		desc1.Annotations[static.SignatureAnnotationKey] == desc2.Annotations[static.SignatureAnnotationKey] {
+		return true
+	}
+
+	return false
+}
+
+func isSupportedMediaType(mediaType string) bool {
+	return mediaType == ispec.MediaTypeImageIndex ||
+		mediaType == ispec.MediaTypeImageManifest
+}
+
+func getImageRefManifest(ctx context.Context, upstreamCtx *types.SystemContext, imageRef types.ImageReference,
+	log log.Logger,
+) ([]byte, string, error) {
+	imageSource, err := imageRef.NewImageSource(ctx, upstreamCtx)
+	if err != nil {
+		log.Error().Err(err).Msgf("couldn't get upstream image %s manifest details", imageRef.DockerReference())
+
+		return []byte{}, "", err
+	}
+
+	defer imageSource.Close()
+
+	manifestBuf, mediaType, err := imageSource.GetManifest(ctx, nil)
+	if err != nil {
+		log.Error().Err(err).Msgf("couldn't get upstream image %s manifest mediaType", imageRef.DockerReference())
+
+		return []byte{}, "", err
+	}
+
+	return manifestBuf, mediaType, nil
 }

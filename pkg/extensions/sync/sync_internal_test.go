@@ -335,8 +335,39 @@ func TestSyncInternal(t *testing.T) {
 		err = sig.syncCosignSignature(testImage, testImage, testImageTag, &manifest)
 		So(err, ShouldNotBeNil)
 
-		err = sig.syncNotarySignature(testImage, testImage, "invalidDigest", ReferenceList{[]artifactspec.Descriptor{ref}})
+		err = sig.syncOCIArtifact(testImage, testImage, testImageTag, nil)
 		So(err, ShouldNotBeNil)
+
+		ociArtifactBuf, err := json.Marshal(ispec.Artifact{})
+		So(err, ShouldBeNil)
+
+		err = sig.syncOCIArtifact(testImage, testImage, testImageTag, ociArtifactBuf)
+		So(err, ShouldBeNil)
+
+		ociArtifactBuf, err = json.Marshal(
+			ispec.Artifact{Blobs: []ispec.Descriptor{{Digest: "fakeDigest"}}})
+		So(err, ShouldBeNil)
+
+		err = sig.syncOCIArtifact(testImage, testImage, testImageTag, ociArtifactBuf)
+		So(err, ShouldNotBeNil)
+
+		err = sig.syncNotaryRefs(testImage, testImage, "invalidDigest", ReferenceList{[]artifactspec.Descriptor{ref}})
+		So(err, ShouldNotBeNil)
+
+		Convey("Trigger unmarshal error on canSkipOCIArtifact", func() {
+			sig := newSignaturesCopier(client, *regURL, storage.StoreController{DefaultStore: mocks.MockedImageStore{
+				GetImageManifestFn: func(repo, reference string) ([]byte, godigest.Digest, string, error) {
+					result := []byte{}
+					digest := godigest.FromBytes(result)
+
+					return result, digest, "", nil
+				},
+			}}, log)
+
+			skip, err := sig.canSkipOCIArtifact(testImage, testImageTag, ispec.Artifact{})
+			So(skip, ShouldBeFalse)
+			So(err, ShouldNotBeNil)
+		})
 	})
 
 	Convey("Test canSkipImage()", t, func() {
@@ -379,14 +410,14 @@ func TestSyncInternal(t *testing.T) {
 
 		sig := newSignaturesCopier(resty.New(), *regURL, storage.StoreController{DefaultStore: imageStore}, log)
 
-		canBeSkipped, err = sig.canSkipNotarySignature(testImage, testImageManifestDigest.String(), refs)
+		canBeSkipped, err = sig.canSkipNotaryRefs(testImage, testImageManifestDigest.String(), refs)
 		So(err, ShouldBeNil)
 		So(canBeSkipped, ShouldBeFalse)
 
 		err = os.Chmod(path.Join(imageStore.RootDir(), testImage, "index.json"), 0o000)
 		So(err, ShouldBeNil)
 
-		canBeSkipped, err = sig.canSkipNotarySignature(testImage, testImageManifestDigest.String(), refs)
+		canBeSkipped, err = sig.canSkipNotaryRefs(testImage, testImageManifestDigest.String(), refs)
 		So(err, ShouldNotBeNil)
 		So(canBeSkipped, ShouldBeFalse)
 
