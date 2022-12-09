@@ -55,13 +55,25 @@ func NewDynamoDBWrapper(params DBDriverParameters) (*DBWrapper, error) {
 		return nil, err
 	}
 
-	// Using the Config value, create the DynamoDB client
-	return &DBWrapper{
+	dynamoWrapper := DBWrapper{
 		Client:                dynamodb.NewFromConfig(cfg),
 		RepoMetaTablename:     params.RepoMetaTablename,
 		ManifestMetaTablename: params.ManifestMetaTablename,
 		Log:                   log.Logger{Logger: zerolog.New(os.Stdout)},
-	}, nil
+	}
+
+	err = dynamoWrapper.createRepoMetaTable()
+	if err != nil {
+		return nil, err
+	}
+
+	err = dynamoWrapper.createManifestMetaTable()
+	if err != nil {
+		return nil, err
+	}
+
+	// Using the Config value, create the DynamoDB client
+	return &dynamoWrapper, nil
 }
 
 func (dwr DBWrapper) SetRepoDescription(repo, description string) error {
@@ -686,6 +698,10 @@ func (dwr DBWrapper) createRepoMetaTable() error {
 		BillingMode: types.BillingModePayPerRequest,
 	})
 
+	if err != nil && strings.Contains(err.Error(), "Table already exists") {
+		return nil
+	}
+
 	return err
 }
 
@@ -723,6 +739,10 @@ func (dwr DBWrapper) createManifestMetaTable() error {
 		},
 		BillingMode: types.BillingModePayPerRequest,
 	})
+
+	if err != nil && strings.Contains(err.Error(), "Table already exists") {
+		return nil
+	}
 
 	return err
 }
