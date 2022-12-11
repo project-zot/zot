@@ -33,7 +33,7 @@ var doc = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/oras/artifacts/v1/{name": {
+        "/oras/artifacts/v1/{name}": {
             "get": {
                 "description": "Get references for an image given a digest and artifact type",
                 "consumes": [
