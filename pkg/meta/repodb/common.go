@@ -20,7 +20,6 @@ func SortFunctions() map[SortCriteria]func(pageBuffer []DetailedRepoMeta) func(i
 		AlphabeticDsc: SortByAlphabeticDsc,
 		Relevance:     SortByRelevance,
 		UpdateTime:    SortByUpdateTime,
-		Stars:         SortByStars,
 		Downloads:     SortByDownloads,
 	}
 }
@@ -47,12 +46,6 @@ func SortByRelevance(pageBuffer []DetailedRepoMeta) func(i, j int) bool {
 func SortByUpdateTime(pageBuffer []DetailedRepoMeta) func(i, j int) bool {
 	return func(i, j int) bool {
 		return pageBuffer[i].UpdateTime.After(pageBuffer[j].UpdateTime)
-	}
-}
-
-func SortByStars(pageBuffer []DetailedRepoMeta) func(i, j int) bool {
-	return func(i, j int) bool {
-		return pageBuffer[i].RepoMeta.Stars > pageBuffer[j].RepoMeta.Stars
 	}
 }
 

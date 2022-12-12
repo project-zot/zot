@@ -25,7 +25,7 @@ func OnUpdateManifest(name, reference string, digest godigest.Digest, body []byt
 		if errors.Is(err, zerr.ErrOrphanSignature) {
 			log.Warn().Err(err).Msg("image has signature format but it doesn't sign any image")
 
-			return nil
+			return zerr.ErrOrphanSignature
 		}
 
 		log.Error().Err(err).Msg("can't check if image is a signature or not")
@@ -51,7 +51,7 @@ func OnUpdateManifest(name, reference string, digest godigest.Digest, body []byt
 			metadataSuccessfullySet = false
 		}
 	} else {
-		err := setMetadataFromInput(name, reference, digest, body,
+		err := SetMetadataFromInput(name, reference, digest, body,
 			storeController, repoDB, log)
 		if err != nil {
 			metadataSuccessfullySet = false
@@ -161,10 +161,10 @@ func OnGetManifest(name, reference string, digest godigest.Digest, body []byte,
 	return nil
 }
 
-// setMetadataFromInput receives raw information about the manifest pushed and tries to set manifest metadata
+// SetMetadataFromInput receives raw information about the manifest pushed and tries to set manifest metadata
 // and update repo metadata by adding the current tag (in case the reference is a tag).
 // The function expects image manifest.
-func setMetadataFromInput(repo, reference string, digest godigest.Digest, manifestBlob []byte,
+func SetMetadataFromInput(repo, reference string, digest godigest.Digest, manifestBlob []byte,
 	storeController storage.StoreController, repoDB repodb.RepoDB, log log.Logger,
 ) error {
 	imageMetadata, err := repodb.NewManifestMeta(repo, manifestBlob, storeController)

@@ -695,7 +695,7 @@ func CheckIsImageSignature(repoName string, manifestBlob []byte, reference strin
 		_, signedImageManifestDigest, _, err := imgStore.GetImageManifest(repoName,
 			manifestContent.Subject.Digest.String())
 		if err != nil {
-			if errors.Is(err, zerr.ErrOrphanSignature) {
+			if errors.Is(err, zerr.ErrManifestNotFound) {
 				return true, "notation", signedImageManifestDigest, zerr.ErrOrphanSignature
 			}
 

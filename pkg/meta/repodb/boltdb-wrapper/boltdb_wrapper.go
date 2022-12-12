@@ -489,12 +489,6 @@ func (bdw DBWrapper) DeleteSignature(manifestDigest godigest.Digest, sigMeta rep
 			if sig == sigMeta.SignatureDigest.String() {
 				signaturesCount := len(manifestMeta.Signatures[sigType])
 
-				if signaturesCount < 1 {
-					manifestMeta.Signatures[sigType] = []string{}
-
-					return nil
-				}
-
 				// put element to be deleted at the end of the array
 				manifestMeta.Signatures[sigType][i] = manifestMeta.Signatures[sigType][signaturesCount-1]
 

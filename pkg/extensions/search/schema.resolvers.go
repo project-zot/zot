@@ -15,15 +15,15 @@ import (
 
 // CVEListForImage is the resolver for the CVEListForImage field.
 func (r *queryResolver) CVEListForImage(ctx context.Context, image string) (*gql_generated.CVEResultForImage, error) {
-	cveidMap, err := r.cveInfo.GetCVEListForImage(image)
-	if err != nil {
-		return &gql_generated.CVEResultForImage{}, err
-	}
-
 	_, copyImgTag := common.GetImageDirAndTag(image)
 
 	if copyImgTag == "" {
 		return &gql_generated.CVEResultForImage{}, gqlerror.Errorf("no reference provided")
+	}
+
+	cveidMap, err := r.cveInfo.GetCVEListForImage(image)
+	if err != nil {
+		return &gql_generated.CVEResultForImage{}, err
 	}
 
 	cveids := []*gql_generated.Cve{}

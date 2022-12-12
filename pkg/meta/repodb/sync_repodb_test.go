@@ -3,6 +3,7 @@ package repodb_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -11,8 +12,10 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	oras "github.com/oras-project/artifacts-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/repodb"
@@ -21,9 +24,252 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
+	"zotregistry.io/zot/pkg/test/mocks"
 )
 
 const repo = "repo"
+
+var ErrTestError = errors.New("test error")
+
+func TestSyncRepoDBErrors(t *testing.T) {
+	Convey("SyncRepoDB", t, func() {
+		imageStore := mocks.MockedImageStore{
+			GetIndexContentFn: func(repo string) ([]byte, error) {
+				return nil, ErrTestError
+			},
+			GetRepositoriesFn: func() ([]string, error) {
+				return []string{"repo1", "repo2"}, nil
+			},
+		}
+		storeController := storage.StoreController{DefaultStore: imageStore}
+		repoDB := mocks.RepoDBMock{}
+
+		// sync repo fail
+		err := repodb.SyncRepoDB(repoDB, storeController, log.NewLogger("debug", ""))
+		So(err, ShouldNotBeNil)
+
+		Convey("getAllRepos errors", func() {
+			imageStore1 := mocks.MockedImageStore{
+				GetRepositoriesFn: func() ([]string, error) {
+					return []string{"repo1", "repo2"}, nil
+				},
+			}
+			imageStore2 := mocks.MockedImageStore{
+				GetRepositoriesFn: func() ([]string, error) {
+					return nil, ErrTestError
+				},
+			}
+			storeController := storage.StoreController{
+				DefaultStore: imageStore1,
+				SubStore: map[string]storage.ImageStore{
+					"a": imageStore2,
+				},
+			}
+
+			err := repodb.SyncRepoDB(repoDB, storeController, log.NewLogger("debug", ""))
+			So(err, ShouldNotBeNil)
+		})
+	})
+
+	Convey("SyncRepo", t, func() {
+		imageStore := mocks.MockedImageStore{}
+		storeController := storage.StoreController{DefaultStore: &imageStore}
+		repoDB := mocks.RepoDBMock{}
+		log := log.NewLogger("debug", "")
+
+		Convey("imageStore.GetIndexContent errors", func() {
+			imageStore.GetIndexContentFn = func(repo string) ([]byte, error) {
+				return nil, ErrTestError
+			}
+
+			err := repodb.SyncRepo("repo", repoDB, storeController, log)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("json.Unmarshal errors", func() {
+			imageStore.GetIndexContentFn = func(repo string) ([]byte, error) {
+				return []byte("Invalid JSON"), nil
+			}
+
+			err := repodb.SyncRepo("repo", repoDB, storeController, log)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("resetRepoMetaTags errors", func() {
+			imageStore.GetIndexContentFn = func(repo string) ([]byte, error) {
+				return []byte("{}"), nil
+			}
+
+			Convey("repoDB.GetRepoMeta errors", func() {
+				repoDB.GetRepoMetaFn = func(repo string) (repodb.RepoMetadata, error) {
+					return repodb.RepoMetadata{}, ErrTestError
+				}
+
+				err := repodb.SyncRepo("repo", repoDB, storeController, log)
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("repoDB.DeleteRepoTag errors", func() {
+				repoDB.GetRepoMetaFn = func(repo string) (repodb.RepoMetadata, error) {
+					return repodb.RepoMetadata{Tags: map[string]string{"digest1": "tag1"}}, nil
+				}
+				repoDB.DeleteRepoTagFn = func(repo, tag string) error {
+					return ErrTestError
+				}
+
+				err := repodb.SyncRepo("repo", repoDB, storeController, log)
+				So(err, ShouldNotBeNil)
+			})
+		})
+
+		Convey("isManifestMetaPresent errors", func() {
+			indexContent := ispec.Index{
+				Manifests: []ispec.Descriptor{
+					{
+						Digest:    godigest.FromString("manifest1"),
+						MediaType: ispec.MediaTypeImageManifest,
+						Annotations: map[string]string{
+							ispec.AnnotationRefName: "tag1",
+						},
+					},
+				},
+			}
+			indexBlob, err := json.Marshal(indexContent)
+			So(err, ShouldBeNil)
+
+			imageStore.GetIndexContentFn = func(repo string) ([]byte, error) {
+				return indexBlob, nil
+			}
+
+			Convey("repoDB.GetManifestMeta errors", func() {
+				repoDB.GetManifestMetaFn = func(manifestDigest godigest.Digest) (repodb.ManifestMetadata, error) {
+					return repodb.ManifestMetadata{}, ErrTestError
+				}
+
+				err = repodb.SyncRepo("repo", repoDB, storeController, log)
+				So(err, ShouldNotBeNil)
+			})
+		})
+
+		Convey("manifestMetaIsPresent true", func() {
+			indexContent := ispec.Index{
+				Manifests: []ispec.Descriptor{
+					{
+						Digest:    godigest.FromString("manifest1"),
+						MediaType: ispec.MediaTypeImageManifest,
+						Annotations: map[string]string{
+							ispec.AnnotationRefName: "tag1",
+						},
+					},
+				},
+			}
+			indexBlob, err := json.Marshal(indexContent)
+			So(err, ShouldBeNil)
+
+			imageStore.GetIndexContentFn = func(repo string) ([]byte, error) {
+				return indexBlob, nil
+			}
+
+			Convey("repoDB.SetRepoTag", func() {
+				repoDB.SetRepoTagFn = func(repo, tag string, manifestDigest godigest.Digest) error {
+					return ErrTestError
+				}
+
+				err = repodb.SyncRepo("repo", repoDB, storeController, log)
+				So(err, ShouldNotBeNil)
+			})
+		})
+
+		Convey("manifestMetaIsPresent false", func() {
+			indexContent := ispec.Index{
+				Manifests: []ispec.Descriptor{
+					{
+						Digest:    godigest.FromString("manifest1"),
+						MediaType: ispec.MediaTypeImageManifest,
+						Annotations: map[string]string{
+							ispec.AnnotationRefName: "tag1",
+						},
+					},
+				},
+			}
+			indexBlob, err := json.Marshal(indexContent)
+			So(err, ShouldBeNil)
+
+			imageStore.GetIndexContentFn = func(repo string) ([]byte, error) {
+				return indexBlob, nil
+			}
+
+			repoDB.GetManifestMetaFn = func(manifestDigest godigest.Digest) (repodb.ManifestMetadata, error) {
+				return repodb.ManifestMetadata{}, zerr.ErrManifestMetaNotFound
+			}
+
+			Convey("GetImageManifest errors", func() {
+				imageStore.GetImageManifestFn = func(repo, reference string) ([]byte, godigest.Digest, string, error) {
+					return nil, "", "", ErrTestError
+				}
+				err = repodb.SyncRepo("repo", repoDB, storeController, log)
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("CheckIsImageSignature errors", func() {
+				// CheckIsImageSignature will fail because of a invalid json
+				imageStore.GetImageManifestFn = func(repo, reference string) ([]byte, godigest.Digest, string, error) {
+					return []byte("Invalid JSON"), "", "", nil
+				}
+				err = repodb.SyncRepo("repo", repoDB, storeController, log)
+				So(err, ShouldNotBeNil)
+			})
+			Convey("CheckIsImageSignature -> not signature", func() {
+				manifestContent := ispec.Manifest{}
+				manifestBlob, err := json.Marshal(manifestContent)
+				So(err, ShouldBeNil)
+
+				imageStore.GetImageManifestFn = func(repo, reference string) ([]byte, godigest.Digest, string, error) {
+					return manifestBlob, "", "", nil
+				}
+
+				Convey("imgStore.GetBlobContent errors", func() {
+					imageStore.GetBlobContentFn = func(repo string, digest godigest.Digest) ([]byte, error) {
+						return nil, ErrTestError
+					}
+
+					err = repodb.SyncRepo("repo", repoDB, storeController, log)
+					So(err, ShouldNotBeNil)
+				})
+
+				Convey("json.Unmarshal(configBlob errors", func() {
+					imageStore.GetBlobContentFn = func(repo string, digest godigest.Digest) ([]byte, error) {
+						return []byte("invalid JSON"), nil
+					}
+
+					err = repodb.SyncRepo("repo", repoDB, storeController, log)
+					So(err, ShouldNotBeNil)
+				})
+			})
+
+			Convey("CheckIsImageSignature -> is signature", func() {
+				manifestContent := oras.Manifest{
+					Subject: &oras.Descriptor{
+						Digest: "123",
+					},
+				}
+				manifestBlob, err := json.Marshal(manifestContent)
+				So(err, ShouldBeNil)
+
+				imageStore.GetImageManifestFn = func(repo, reference string) ([]byte, godigest.Digest, string, error) {
+					return manifestBlob, "", "", nil
+				}
+
+				repoDB.AddManifestSignatureFn = func(manifestDigest godigest.Digest, sm repodb.SignatureMetadata) error {
+					return ErrTestError
+				}
+
+				err = repodb.SyncRepo("repo", repoDB, storeController, log)
+				So(err, ShouldNotBeNil)
+			})
+		})
+	})
+}
 
 func TestSyncRepoDBWithStorage(t *testing.T) {
 	Convey("Boltdb", t, func() {
