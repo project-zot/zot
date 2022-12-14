@@ -1298,7 +1298,7 @@ func TestScrub(t *testing.T) {
 
 			dir := t.TempDir()
 
-			repoName := "badIndex"
+			repoName := "badindex"
 
 			repo, err := os.MkdirTemp(dir, repoName)
 			if err != nil {

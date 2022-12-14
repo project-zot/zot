@@ -102,18 +102,22 @@ func TestMultipleStoragePath(t *testing.T) {
 		img1 := "a/test/image1:tag1"
 		img2 := "b/test/image2:tag2"
 
-		ctx := scanner.getTrivyContext(img0)
-		So(ctx.Input, ShouldEqual, path.Join(firstStore.RootDir(), img0))
+		opts := scanner.getTrivyOptions(img0)
+		So(opts.ScanOptions.Target, ShouldEqual, path.Join(firstStore.RootDir(), img0))
 
-		ctx = scanner.getTrivyContext(img1)
-		So(ctx.Input, ShouldEqual, path.Join(secondStore.RootDir(), img1))
+		opts = scanner.getTrivyOptions(img1)
+		So(opts.ScanOptions.Target, ShouldEqual, path.Join(secondStore.RootDir(), img1))
 
-		ctx = scanner.getTrivyContext(img2)
-		So(ctx.Input, ShouldEqual, path.Join(thirdStore.RootDir(), img2))
+		opts = scanner.getTrivyOptions(img2)
+		So(opts.ScanOptions.Target, ShouldEqual, path.Join(thirdStore.RootDir(), img2))
 
 		generateTestImage(storeController, img0)
 		generateTestImage(storeController, img1)
 		generateTestImage(storeController, img2)
+
+		// Download DB since DB download on scan is disabled
+		err = scanner.UpdateDB()
+		So(err, ShouldBeNil)
 
 		// Scanning image in default store
 		cveMap, err := scanner.ScanImage(img0)
@@ -150,5 +154,67 @@ func TestMultipleStoragePath(t *testing.T) {
 
 		err = os.Chmod(secondRootDir, 0o777)
 		So(err, ShouldBeNil)
+	})
+}
+
+func TestTrivyLibraryErrors(t *testing.T) {
+	Convey("Test trivy API errors", t, func() {
+		// Create temporary directory
+		rootDir := t.TempDir()
+
+		err := test.CopyFiles("../../../../../test/data/zot-test", path.Join(rootDir, "zot-test"))
+		So(err, ShouldBeNil)
+
+		log := log.NewLogger("debug", "")
+		metrics := monitoring.NewMetricsServer(false, log)
+
+		conf := config.New()
+		conf.Extensions = &extconf.ExtensionConfig{}
+		conf.Extensions.Lint = &extconf.LintConfig{}
+
+		// Create ImageStore
+		store := local.NewImageStore(rootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil, nil)
+
+		storeController := storage.StoreController{}
+		storeController.DefaultStore = store
+
+		repoDB, err := bolt.NewBoltDBWrapper(bolt.DBParameters{
+			RootDir: rootDir,
+		})
+		So(err, ShouldBeNil)
+
+		err = repodb.SyncRepoDB(repoDB, storeController, log)
+		So(err, ShouldBeNil)
+
+		scanner := NewScanner(storeController, repoDB, log)
+
+		// Download DB since DB download on scan is disabled
+		err = scanner.UpdateDB()
+		So(err, ShouldBeNil)
+
+		img := "zot-test:0.0.1"
+
+		// Scanning image with correct options
+		opts := scanner.getTrivyOptions(img)
+		_, err = scanner.runTrivy(opts)
+		So(err, ShouldBeNil)
+
+		// Scanning image with incorrect cache options
+		// to trigger runner initialization errors
+		opts.CacheOptions.CacheBackend = "redis://asdf!$%&!*)("
+		_, err = scanner.runTrivy(opts)
+		So(err, ShouldNotBeNil)
+
+		// Scanning image with invalid input to trigger a scanner error
+		opts = scanner.getTrivyOptions("nonexisting_image:0.0.1")
+		_, err = scanner.runTrivy(opts)
+		So(err, ShouldNotBeNil)
+
+		// Scanning image with incorrect report options
+		// to trigger report filtering errors
+		opts = scanner.getTrivyOptions(img)
+		opts.ReportOptions.IgnorePolicy = "invalid file path"
+		_, err = scanner.runTrivy(opts)
+		So(err, ShouldNotBeNil)
 	})
 }

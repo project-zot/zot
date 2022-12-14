@@ -1,4 +1,4 @@
-package api
+package regexp
 
 import "regexp"
 
@@ -26,6 +26,10 @@ var (
 	NameRegexp = expression(
 		nameComponentRegexp,
 		optional(repeated(literal(`/`), nameComponentRegexp)))
+
+	// FullNameRegexp is the format which matches the full string of the
+	// name component of reference.
+	FullNameRegexp = expression(match("^"), NameRegexp, match("$"))
 )
 
 // match compiles the string to a regular expression.

@@ -30,6 +30,7 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/cache"
+	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
 )
@@ -1326,6 +1327,11 @@ func TestNegativeCases(t *testing.T) {
 		// Init repo should fail if repo is invalid UTF-8
 		err = imgStore.InitRepo("hi \255")
 		So(err, ShouldNotBeNil)
+
+		// Init repo should fail if repo name does not match spec
+		err = imgStore.InitRepo("_trivy")
+		So(err, ShouldNotBeNil)
+		So(errors.Is(err, zerr.ErrInvalidRepositoryName), ShouldBeTrue)
 	})
 
 	Convey("Invalid validate repo", t, func(c C) {
@@ -1430,7 +1436,7 @@ func TestNegativeCases(t *testing.T) {
 			So(func() { _, _ = imgStore.ValidateRepo("test") }, ShouldPanic)
 		}
 
-		err = os.Chmod(dir, 0o755) // remove all perms
+		err = os.Chmod(dir, 0o755) // add perms
 		if err != nil {
 			panic(err)
 		}
@@ -2483,10 +2489,53 @@ func TestValidateRepo(t *testing.T) {
 		_, err = imgStore.ValidateRepo("test-dir")
 		So(err, ShouldNotBeNil)
 	})
+
+	Convey("Get error when repo name is not compliant with repo spec", t, func() {
+		dir := t.TempDir()
+
+		log := log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, log)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay,
+			true, true, log, metrics, nil, cacheDriver)
+
+		_, err := imgStore.ValidateRepo(".")
+		So(err, ShouldNotBeNil)
+		So(errors.Is(err, zerr.ErrInvalidRepositoryName), ShouldBeTrue)
+
+		_, err = imgStore.ValidateRepo("..")
+		So(err, ShouldNotBeNil)
+		So(errors.Is(err, zerr.ErrInvalidRepositoryName), ShouldBeTrue)
+
+		err = os.Mkdir(path.Join(dir, "_test-dir"), 0o755)
+		So(err, ShouldBeNil)
+
+		_, err = imgStore.ValidateRepo("_test-dir")
+		So(err, ShouldNotBeNil)
+		So(errors.Is(err, zerr.ErrInvalidRepositoryName), ShouldBeTrue)
+
+		err = os.Mkdir(path.Join(dir, ".test-dir"), 0o755)
+		So(err, ShouldBeNil)
+
+		_, err = imgStore.ValidateRepo(".test-dir")
+		So(err, ShouldNotBeNil)
+		So(errors.Is(err, zerr.ErrInvalidRepositoryName), ShouldBeTrue)
+
+		err = os.Mkdir(path.Join(dir, "-test-dir"), 0o755)
+		So(err, ShouldBeNil)
+
+		_, err = imgStore.ValidateRepo("-test-dir")
+		So(err, ShouldNotBeNil)
+		So(errors.Is(err, zerr.ErrInvalidRepositoryName), ShouldBeTrue)
+	})
 }
 
-func TestGetRepositoriesError(t *testing.T) {
-	Convey("Get error when returning relative path", t, func() {
+func TestGetRepositories(t *testing.T) {
+	Convey("Verify errors and repos returned by GetRepositories()", t, func() {
 		dir := t.TempDir()
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
@@ -2500,15 +2549,178 @@ func TestGetRepositoriesError(t *testing.T) {
 			true, true, log, metrics, nil, cacheDriver,
 		)
 
-		// create valid directory with permissions
-		err := os.Mkdir(path.Join(dir, "test-dir"), 0o755)
+		// Create valid directory with permissions
+		err := os.Mkdir(path.Join(dir, "test-dir"), 0o755) //nolint: gosec
 		So(err, ShouldBeNil)
 
-		err = os.WriteFile(path.Join(dir, "test-dir/test-file"), []byte("this is test file"), 0o000)
+		err = os.WriteFile(path.Join(dir, "test-dir/test-file"), []byte("this is test file"), 0o755) //nolint: gosec
 		So(err, ShouldBeNil)
 
-		_, err = imgStore.GetRepositories()
+		// Folder is not a repo as it is missing the requires files/subfolder
+		repos, err := imgStore.GetRepositories()
 		So(err, ShouldBeNil)
+		So(len(repos), ShouldEqual, 0)
+
+		il := ispec.ImageLayout{Version: ispec.ImageLayoutVersion}
+		layoutFileContent, err := json.Marshal(il)
+		So(err, ShouldBeNil)
+
+		// Folder becomes a repo after the missing content is added
+		err = os.Mkdir(path.Join(dir, "test-dir", "blobs"), 0o755) //nolint: gosec
+		So(err, ShouldBeNil)
+
+		err = os.Mkdir(path.Join(dir, "test-dir", storageConstants.BlobUploadDir), 0o755) //nolint: gosec
+		So(err, ShouldBeNil)
+
+		err = os.WriteFile(path.Join(dir, "test-dir", "index.json"), []byte{}, 0o755) //nolint: gosec
+		So(err, ShouldBeNil)
+
+		err = os.WriteFile(path.Join(dir, "test-dir", ispec.ImageLayoutFile), layoutFileContent, 0o755) //nolint: gosec
+		So(err, ShouldBeNil)
+
+		// Verify the new repo is turned
+		repos, err = imgStore.GetRepositories()
+		So(err, ShouldBeNil)
+		So(len(repos), ShouldEqual, 1)
+		So(repos[0], ShouldEqual, "test-dir")
+
+		// create directory starting with underscore, which is not OCI a dist spec compliant repo name
+		// [a-z0-9]+([._-][a-z0-9]+)*(/[a-z0-9]+([._-][a-z0-9]+)*)*
+		err = os.MkdirAll(path.Join(dir, "_trivy", "db"), 0o755)
+		So(err, ShouldBeNil)
+
+		err = os.WriteFile(path.Join(dir, "_trivy", "db", "trivy.db"), []byte("this is test file"), 0o755) //nolint: gosec
+		So(err, ShouldBeNil)
+
+		// Folder with invalid name is not a repo as it is missing the requires files/subfolder
+		repos, err = imgStore.GetRepositories()
+		So(err, ShouldBeNil)
+		So(len(repos), ShouldEqual, 1)
+		So(repos[0], ShouldEqual, "test-dir")
+
+		// Add missing content to folder with invalid name
+		err = os.Mkdir(path.Join(dir, "_trivy", "blobs"), 0o755) //nolint: gosec
+		So(err, ShouldBeNil)
+
+		err = os.Mkdir(path.Join(dir, "_trivy", storageConstants.BlobUploadDir), 0o755) //nolint: gosec
+		So(err, ShouldBeNil)
+
+		err = os.WriteFile(path.Join(dir, "_trivy", "index.json"), []byte{}, 0o755) //nolint: gosec
+		So(err, ShouldBeNil)
+
+		err = os.WriteFile(path.Join(dir, "_trivy", ispec.ImageLayoutFile), layoutFileContent, 0o755) //nolint: gosec
+		So(err, ShouldBeNil)
+
+		// Folder with invalid name doesn't become a repo after the missing content is added
+		repos, err = imgStore.GetRepositories()
+		So(err, ShouldBeNil)
+		t.Logf("repos %v", repos)
+		So(len(repos), ShouldEqual, 1)
+		So(repos[0], ShouldEqual, "test-dir")
+
+		// Rename folder with invalid name to a valid one
+		err = os.Rename(path.Join(dir, "_trivy"), path.Join(dir, "test-dir-2"))
+		So(err, ShouldBeNil)
+
+		// Verify both repos are now visible
+		repos, err = imgStore.GetRepositories()
+		So(err, ShouldBeNil)
+		t.Logf("repos %v", repos)
+		So(len(repos), ShouldEqual, 2)
+		So(repos, ShouldContain, "test-dir")
+		So(repos, ShouldContain, "test-dir-2")
+	})
+
+	Convey("Verify GetRepositories() doesn't return '.' when having an oci layout as root directory ", t, func() {
+		dir := t.TempDir()
+
+		log := log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, log)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+
+		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay,
+			true, true, log, metrics, nil, cacheDriver,
+		)
+
+		// Root dir does not contain repos
+		repos, err := imgStore.GetRepositories()
+		So(err, ShouldBeNil)
+		So(len(repos), ShouldEqual, 0)
+
+		// Configure root directory as an oci layout
+		err = os.Mkdir(path.Join(dir, "blobs"), 0o755) //nolint: gosec
+		So(err, ShouldBeNil)
+
+		err = os.Mkdir(path.Join(dir, storageConstants.BlobUploadDir), 0o755) //nolint: gosec
+		So(err, ShouldBeNil)
+
+		err = os.WriteFile(path.Join(dir, "index.json"), []byte{}, 0o755) //nolint: gosec
+		So(err, ShouldBeNil)
+
+		il := ispec.ImageLayout{Version: ispec.ImageLayoutVersion}
+		layoutFileContent, err := json.Marshal(il)
+		So(err, ShouldBeNil)
+
+		err = os.WriteFile(path.Join(dir, ispec.ImageLayoutFile), layoutFileContent, 0o755) //nolint: gosec
+		So(err, ShouldBeNil)
+
+		// Verify root directory is not returned as a repo
+		repos, err = imgStore.GetRepositories()
+		So(err, ShouldBeNil)
+		t.Logf("repos %v", repos)
+		So(len(repos), ShouldEqual, 0)
+	})
+
+	Convey("Verify GetRepositories() doesn't return '..'", t, func() {
+		dir := t.TempDir()
+
+		rootDir := path.Join(dir, "rootDir")
+		err := os.Mkdir(rootDir, 0o755)
+		So(err, ShouldBeNil)
+
+		log := log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, log)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     rootDir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
+
+		imgStore := local.NewImageStore(rootDir, true, storage.DefaultGCDelay,
+			true, true, log, metrics, nil, cacheDriver,
+		)
+
+		// Root dir does not contain repos
+		repos, err := imgStore.GetRepositories()
+		So(err, ShouldBeNil)
+		So(len(repos), ShouldEqual, 0)
+
+		// Configure parent of root directory as an oci layout
+		err = os.Mkdir(path.Join(dir, "blobs"), 0o755) //nolint: gosec
+		So(err, ShouldBeNil)
+
+		err = os.Mkdir(path.Join(dir, storageConstants.BlobUploadDir), 0o755) //nolint: gosec
+		So(err, ShouldBeNil)
+
+		err = os.WriteFile(path.Join(dir, "index.json"), []byte{}, 0o755) //nolint: gosec
+		So(err, ShouldBeNil)
+
+		il := ispec.ImageLayout{Version: ispec.ImageLayoutVersion}
+		layoutFileContent, err := json.Marshal(il)
+		So(err, ShouldBeNil)
+
+		err = os.WriteFile(path.Join(dir, ispec.ImageLayoutFile), layoutFileContent, 0o755) //nolint: gosec
+		So(err, ShouldBeNil)
+
+		// Verify root directory is not returned as a repo
+		repos, err = imgStore.GetRepositories()
+		So(err, ShouldBeNil)
+		t.Logf("repos %v", repos)
+		So(len(repos), ShouldEqual, 0)
 	})
 }
 

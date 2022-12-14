@@ -31,6 +31,7 @@ import (
 	"zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	zlog "zotregistry.io/zot/pkg/log"
+	zreg "zotregistry.io/zot/pkg/regexp"
 	"zotregistry.io/zot/pkg/scheduler"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/cache"
@@ -154,6 +155,12 @@ func (is *ImageStoreLocal) initRepo(name string) error {
 		return zerr.ErrInvalidRepositoryName
 	}
 
+	if !zreg.FullNameRegexp.MatchString(name) {
+		is.log.Error().Str("repo", name).Msg("invalid repository name")
+
+		return zerr.ErrInvalidRepositoryName
+	}
+
 	// create "blobs" subdir
 	err := ensureDir(path.Join(repoDir, "blobs"), is.log)
 	if err != nil {
@@ -221,6 +228,10 @@ func (is *ImageStoreLocal) ValidateRepo(name string) (bool, error) {
 	// https://github.com/opencontainers/image-spec/blob/master/image-layout.md#content
 	// at least, expect at least 3 entries - ["blobs", "oci-layout", "index.json"]
 	// and an additional/optional BlobUploadDir in each image store
+	if !zreg.FullNameRegexp.MatchString(name) {
+		return false, zerr.ErrInvalidRepositoryName
+	}
+
 	dir := path.Join(is.rootDir, name)
 	if !is.DirExists(dir) {
 		return false, zerr.ErrRepoNotFound

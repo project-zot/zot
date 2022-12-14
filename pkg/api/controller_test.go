@@ -6117,7 +6117,7 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 
 func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 	Convey("Make controller", t, func() {
-		repoName := "testrepo"
+		repoName := "testrepo" //nolint:goconst
 		tag := "0.0.1"
 
 		port := test.GetFreePort()
@@ -6369,7 +6369,7 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 
 func TestPeriodicGC(t *testing.T) {
 	Convey("Periodic gc enabled for default store", t, func() {
-		repoName := "testRepo"
+		repoName := "testrepo" //nolint:goconst
 
 		port := test.GetFreePort()
 		conf := config.New()
@@ -6445,7 +6445,7 @@ func TestPeriodicGC(t *testing.T) {
 	})
 
 	Convey("Periodic gc error", t, func() {
-		repoName := "testRepo"
+		repoName := "testrepo" //nolint:goconst
 
 		port := test.GetFreePort()
 		conf := config.New()
@@ -6505,7 +6505,7 @@ func TestSearchRoutes(t *testing.T) {
 		cm.StartAndWait(port)
 		defer cm.StopServer()
 
-		repoName := "testrepo"
+		repoName := "testrepo" //nolint:goconst
 		inaccessibleRepo := "inaccessible"
 
 		cfg, layers, manifest, err := test.GetImageComponents(10000)
