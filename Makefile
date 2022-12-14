@@ -287,11 +287,13 @@ test-cloud-only-verbose: binary check-skopeo $(BATS)
 test-bats-sync: EXTENSIONS=sync
 test-bats-sync: binary binary-minimal check-skopeo $(BATS) $(NOTATION) $(COSIGN)
 	$(BATS) --trace --print-output-on-failure test/blackbox/sync.bats
+	$(BATS) --trace --print-output-on-failure test/blackbox/sync_docker.bats
 	
 .PHONY: test-bats-sync-verbose
 test-bats-sync-verbose: EXTENSIONS=sync
 test-bats-sync-verbose: binary binary-minimal check-skopeo $(BATS) $(NOTATION) $(COSIGN)
 	$(BATS) --trace -t -x -p --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/sync.bats
+	$(BATS) --trace -t -x -p --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/sync_docker.bats
 
 .PHONY: test-bats-cve
 test-bats-cve: EXTENSIONS=search
