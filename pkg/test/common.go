@@ -167,6 +167,58 @@ func CopyFiles(sourceDir, destDir string) error {
 	return nil
 }
 
+type Controller interface {
+	Run(ctx context.Context) error
+	Shutdown()
+	GetPort() int
+}
+
+type ControllerManager struct {
+	controller Controller
+}
+
+func (cm *ControllerManager) StartServer() {
+	// this blocks
+	ctx := context.Background()
+
+	go func() {
+		if err := cm.controller.Run(ctx); err != nil {
+			return
+		}
+	}()
+}
+
+func (cm *ControllerManager) StopServer() {
+	cm.controller.Shutdown()
+}
+
+func (cm *ControllerManager) WaitServerToBeReady(port string) {
+	url := GetBaseURL(port)
+	WaitTillServerReady(url)
+}
+
+func (cm *ControllerManager) StartAndWait(port string) {
+	// this blocks
+	ctx := context.Background()
+
+	go func() {
+		if err := cm.controller.Run(ctx); err != nil {
+			return
+		}
+	}()
+
+	url := GetBaseURL(port)
+	WaitTillServerReady(url)
+}
+
+func NewControllerManager(controller Controller) ControllerManager {
+	cm := ControllerManager{
+		controller: controller,
+	}
+
+	return cm
+}
+
 func WaitTillServerReady(url string) {
 	for {
 		_, err := resty.R().Get(url)
