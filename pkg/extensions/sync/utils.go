@@ -18,6 +18,7 @@ import (
 	glob "github.com/bmatcuk/doublestar/v4"
 	"github.com/containers/image/v5/docker"
 	"github.com/containers/image/v5/docker/reference"
+	"github.com/containers/image/v5/manifest"
 	"github.com/containers/image/v5/oci/layout"
 	"github.com/containers/image/v5/types"
 	guuid "github.com/gofrs/uuid"
@@ -678,7 +679,8 @@ func descriptorEqual(desc1, desc2 ispec.Descriptor) bool {
 
 func isSupportedMediaType(mediaType string) bool {
 	return mediaType == ispec.MediaTypeImageIndex ||
-		mediaType == ispec.MediaTypeImageManifest
+		mediaType == ispec.MediaTypeImageManifest ||
+		mediaType == manifest.DockerV2ListMediaType
 }
 
 func getImageRefManifest(ctx context.Context, upstreamCtx *types.SystemContext, imageRef types.ImageReference,
