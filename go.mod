@@ -52,7 +52,7 @@ require (
 
 require (
 	github.com/aquasecurity/trivy v0.0.0-00010101000000-000000000000
-	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.17.8
+	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.17.9
 	github.com/containers/image/v5 v5.23.0
 	github.com/notaryproject/notation-go v0.12.0-beta.1
 	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20220620172159-4ab4752c3b86
@@ -61,9 +61,9 @@ require (
 )
 
 require (
-	github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.13.27 // indirect
+	github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.13.28 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.9.11 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery v1.7.20 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery v1.7.21 // indirect
 )
 
 require (
@@ -125,7 +125,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.17.3
 	github.com/aws/aws-sdk-go-v2/config v1.18.5
 	github.com/aws/aws-sdk-go-v2/credentials v1.13.5 // indirect
-	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.10.7
+	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.10.8
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.12.21 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.1.27 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.4.21 // indirect
