@@ -4,17 +4,18 @@ import (
 	"zotregistry.io/zot/errors"
 	zlog "zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage/cache"
+	"zotregistry.io/zot/pkg/storage/constants"
 )
 
 func Create(dbtype string, parameters interface{}, log zlog.Logger) (cache.Cache, error) {
 	switch dbtype {
-	case "boltdb":
+	case constants.BoltDBDriverName:
 		{
-			return cache.NewBoltDBCache(parameters, log), nil
+			return cache.NewBoltDBCache(parameters, log)
 		}
-	case "dynamodb":
+	case constants.DynamoDBDriverName:
 		{
-			return cache.NewDynamoDBCache(parameters, log), nil
+			return cache.NewDynamoDBCache(parameters, log)
 		}
 	default:
 		{

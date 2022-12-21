@@ -32,7 +32,7 @@ func TestOnUpdateManifest(t *testing.T) {
 		log := log.NewLogger("debug", "")
 		metrics := monitoring.NewMetricsServer(false, log)
 		storeController.DefaultStore = local.NewImageStore(rootDir, true, 1*time.Second,
-			true, true, log, metrics, nil, nil,
+			true, true, log, metrics, nil, nil, "",
 		)
 
 		repoDB, err := bolt_wrapper.NewBoltDBWrapper(bolt_wrapper.DBParameters{
@@ -71,7 +71,7 @@ func TestOnUpdateManifest(t *testing.T) {
 		log := log.NewLogger("debug", "")
 		metrics := monitoring.NewMetricsServer(false, log)
 		storeController.DefaultStore = local.NewImageStore(rootDir, true, 1*time.Second,
-			true, true, log, metrics, nil, nil,
+			true, true, log, metrics, nil, nil, "",
 		)
 
 		repoDB := mocks.RepoDBMock{

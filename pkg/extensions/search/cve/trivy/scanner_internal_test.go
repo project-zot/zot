@@ -66,11 +66,14 @@ func TestMultipleStoragePath(t *testing.T) {
 		metrics := monitoring.NewMetricsServer(false, log)
 
 		// Create ImageStore
-		firstStore := local.NewImageStore(firstRootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil, nil)
+		firstStore := local.NewImageStore(firstRootDir, false, storage.DefaultGCDelay, false, false, log,
+			metrics, nil, nil, "")
 
-		secondStore := local.NewImageStore(secondRootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil, nil)
+		secondStore := local.NewImageStore(secondRootDir, false, storage.DefaultGCDelay, false, false, log,
+			metrics, nil, nil, "")
 
-		thirdStore := local.NewImageStore(thirdRootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil, nil)
+		thirdStore := local.NewImageStore(thirdRootDir, false, storage.DefaultGCDelay, false, false, log,
+			metrics, nil, nil, "")
 
 		storeController := storage.StoreController{}
 
@@ -168,7 +171,7 @@ func TestTrivyLibraryErrors(t *testing.T) {
 		metrics := monitoring.NewMetricsServer(false, log)
 
 		// Create ImageStore
-		store := local.NewImageStore(rootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil, nil)
+		store := local.NewImageStore(rootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil, nil, "")
 
 		storeController := storage.StoreController{}
 		storeController.DefaultStore = store
@@ -351,7 +354,7 @@ func TestImageScannable(t *testing.T) {
 	log := log.NewLogger("debug", "")
 	metrics := monitoring.NewMetricsServer(false, log)
 
-	store := local.NewImageStore(rootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil, nil)
+	store := local.NewImageStore(rootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil, nil, "")
 
 	storeController := storage.StoreController{}
 	storeController.DefaultStore = store
@@ -413,7 +416,7 @@ func TestDefaultTrivyDBUrl(t *testing.T) {
 		metrics := monitoring.NewMetricsServer(false, log)
 
 		// Create ImageStore
-		store := local.NewImageStore(rootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil, nil)
+		store := local.NewImageStore(rootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil, nil, "")
 
 		storeController := storage.StoreController{}
 		storeController.DefaultStore = store

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path"
+	"strings"
 	"testing"
 
 	godigest "github.com/opencontainers/go-digest"
@@ -18,6 +19,7 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/cache"
+	"zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/mocks"
@@ -30,12 +32,19 @@ func TestValidateManifest(t *testing.T) {
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
-			RootDir:     dir,
-			Name:        "cache",
-			UseRelPaths: true,
+			RootDir: dir,
+			Name:    constants.BoltdbName,
 		}, log)
+
+		tableName := strings.ReplaceAll(dir, "/", "")
+
+		err := cacheDriver.CreateBucket(tableName)
+		if err != nil {
+			panic(err)
+		}
+
 		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true,
-			true, log, metrics, nil, cacheDriver)
+			true, log, metrics, nil, cacheDriver, tableName)
 
 		content := []byte("this is a blob")
 		digest := godigest.FromBytes(content)
@@ -114,13 +123,19 @@ func TestGetReferrersErrors(t *testing.T) {
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
-			RootDir:     dir,
-			Name:        "cache",
-			UseRelPaths: true,
+			RootDir: dir,
+			Name:    constants.BoltdbName,
 		}, log)
 
+		tableName := strings.ReplaceAll(dir, "/", "")
+
+		err := cacheDriver.CreateBucket(tableName)
+		if err != nil {
+			panic(err)
+		}
+
 		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, false,
-			true, log, metrics, nil, cacheDriver)
+			true, log, metrics, nil, cacheDriver, tableName)
 
 		artifactType := "application/vnd.example.icecream.v1"
 		validDigest := godigest.FromBytes([]byte("blob"))
@@ -145,7 +160,7 @@ func TestGetReferrersErrors(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
-		err := test.CopyFiles("../../test/data/zot-test", path.Join(dir, "zot-test"))
+		err = test.CopyFiles("../../test/data/zot-test", path.Join(dir, "zot-test"))
 		So(err, ShouldBeNil)
 
 		digest := godigest.FromBytes([]byte("{}"))

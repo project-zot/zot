@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"strings"
 	"testing"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/cache"
+	"zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
 )
@@ -177,12 +179,18 @@ func TestRunScrubRepo(t *testing.T) {
 		log := log.NewLogger("debug", logFile.Name())
 		metrics := monitoring.NewMetricsServer(false, log)
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
-			RootDir:     dir,
-			Name:        "cache",
-			UseRelPaths: true,
+			RootDir: dir,
+			Name:    constants.BoltdbName,
 		}, log)
+
+		tableName := strings.ReplaceAll(dir, "/", "")
+
+		err = cacheDriver.CreateBucket(tableName)
+		if err != nil {
+			panic(err)
+		}
 		imgStore := local.NewImageStore(dir, true, 1*time.Second, true,
-			true, log, metrics, nil, cacheDriver)
+			true, log, metrics, nil, cacheDriver, tableName)
 
 		test.CopyTestFiles("../../../test/data/zot-test", path.Join(dir, repoName))
 
@@ -209,12 +217,19 @@ func TestRunScrubRepo(t *testing.T) {
 		log := log.NewLogger("debug", logFile.Name())
 		metrics := monitoring.NewMetricsServer(false, log)
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
-			RootDir:     dir,
-			Name:        "cache",
-			UseRelPaths: true,
+			RootDir: dir,
+			Name:    constants.BoltdbName,
 		}, log)
+
+		tableName := strings.ReplaceAll(dir, "/", "")
+
+		err = cacheDriver.CreateBucket(tableName)
+		if err != nil {
+			panic(err)
+		}
+
 		imgStore := local.NewImageStore(dir, true, 1*time.Second, true,
-			true, log, metrics, nil, cacheDriver)
+			true, log, metrics, nil, cacheDriver, tableName)
 
 		test.CopyTestFiles("../../../test/data/zot-test", path.Join(dir, repoName))
 		var manifestDigest godigest.Digest
@@ -247,12 +262,19 @@ func TestRunScrubRepo(t *testing.T) {
 		log := log.NewLogger("debug", logFile.Name())
 		metrics := monitoring.NewMetricsServer(false, log)
 		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
-			RootDir:     dir,
-			Name:        "cache",
-			UseRelPaths: true,
+			RootDir: dir,
+			Name:    constants.BoltdbName,
 		}, log)
+
+		tableName := strings.ReplaceAll(dir, "/", "")
+
+		err = cacheDriver.CreateBucket(tableName)
+		if err != nil {
+			panic(err)
+		}
+
 		imgStore := local.NewImageStore(dir, true, 1*time.Second,
-			true, true, log, metrics, nil, cacheDriver,
+			true, true, log, metrics, nil, cacheDriver, tableName,
 		)
 
 		test.CopyTestFiles("../../../test/data/zot-test", path.Join(dir, repoName))

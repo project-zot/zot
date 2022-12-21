@@ -286,7 +286,7 @@ func TestSyncRepoDBWithStorage(t *testing.T) {
 		rootDir := t.TempDir()
 
 		imageStore := local.NewImageStore(rootDir, false, 0, false, false,
-			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil)
+			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil, "")
 
 		storeController := storage.StoreController{DefaultStore: imageStore}
 		manifests := []ispec.Manifest{}
@@ -389,7 +389,7 @@ func TestSyncRepoDBWithStorage(t *testing.T) {
 		rootDir := t.TempDir()
 
 		imageStore := local.NewImageStore(rootDir, false, 0, false, false,
-			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil)
+			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil, "")
 
 		storeController := storage.StoreController{DefaultStore: imageStore}
 		// add an image
@@ -458,7 +458,7 @@ func TestSyncRepoDBDynamoWrapper(t *testing.T) {
 		rootDir := t.TempDir()
 
 		imageStore := local.NewImageStore(rootDir, false, 0, false, false,
-			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil)
+			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil, "")
 
 		storeController := storage.StoreController{DefaultStore: imageStore}
 		manifests := []ispec.Manifest{}
@@ -572,7 +572,7 @@ func TestSyncRepoDBDynamoWrapper(t *testing.T) {
 		rootDir := t.TempDir()
 
 		imageStore := local.NewImageStore(rootDir, false, 0, false, false,
-			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil)
+			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil, "")
 
 		storeController := storage.StoreController{DefaultStore: imageStore}
 		// add an image

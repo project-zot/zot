@@ -68,6 +68,7 @@ const (
 	ALICE                  = "alice"
 	AuthorizationNamespace = "authz/image"
 	AuthorizationAllRepos  = "**"
+	s3BucketName           = "zot-storage-test"
 )
 
 type (
@@ -126,21 +127,40 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 		conf := config.New()
 		conf.Storage.RootDirectory = dir
 		conf.Storage.Dedupe = true
-		conf.Storage.RemoteCache = false
 
 		err := os.Chmod(dir, 0o000)
 		if err != nil {
 			panic(err)
 		}
 
-		driver := api.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
+		driver, buckets, err := api.CreateCacheDBAndBuckets(conf.Storage, log)
 		So(driver, ShouldBeNil)
+		So(err, ShouldNotBeNil)
+		So(buckets, ShouldBeEmpty)
 
-		conf.Storage.RemoteCache = true
 		conf.Storage.RootDirectory = t.TempDir()
 
-		driver = api.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
-		So(driver, ShouldBeNil)
+		driver, buckets, err = api.CreateCacheDBAndBuckets(conf.Storage, log)
+		So(driver, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(buckets, ShouldNotBeEmpty)
+		So(len(buckets), ShouldEqual, 1)
+
+		subPathMap := make(map[string]config.StorageConfig)
+		subPathMap["/a"] = config.StorageConfig{
+			RootDirectory: t.TempDir(),
+			Dedupe:        true,
+		}
+		conf.Storage.SubPaths = subPathMap
+		conf.Storage.RootDirectory = t.TempDir()
+
+		driver, buckets, err = api.CreateCacheDBAndBuckets(conf.Storage, log)
+		So(driver, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(buckets, ShouldNotBeEmpty)
+		So(len(buckets), ShouldEqual, 2)
+		So(buckets[""], ShouldEqual, "main_bucket")
+		So(buckets["/a"], ShouldEqual, "a_bucket")
 	})
 	skipDynamo(t)
 	skipIt(t)
@@ -151,7 +171,6 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 		conf := config.New()
 		conf.Storage.RootDirectory = dir
 		conf.Storage.Dedupe = true
-		conf.Storage.RemoteCache = true
 		conf.Storage.StorageDriver = map[string]interface{}{
 			"name":          "s3",
 			"rootdirectory": "/zot",
@@ -165,52 +184,84 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 			"name":                  "dynamodb",
 			"endpoint":              "http://localhost:4566",
 			"region":                "us-east-2",
-			"cacheTablename":        "BlobTable",
 			"repoMetaTablename":     "RepoMetadataTable",
 			"manifestDataTablename": "ManifestDataTable",
 			"versionTablename":      "Version",
 		}
 
-		driver := api.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
+		driver, buckets, err := api.CreateCacheDBAndBuckets(conf.Storage, log)
 		So(driver, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(len(buckets), ShouldEqual, 1)
 
 		// negative test cases
 
 		conf.Storage.CacheDriver = map[string]interface{}{
 			"endpoint":              "http://localhost:4566",
 			"region":                "us-east-2",
-			"cacheTablename":        "BlobTable",
 			"repoMetaTablename":     "RepoMetadataTable",
 			"manifestDataTablename": "ManifestDataTable",
 			"versionTablename":      "Version",
 		}
 
-		driver = api.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
+		driver, buckets, err = api.CreateCacheDBAndBuckets(conf.Storage, log)
 		So(driver, ShouldBeNil)
+		So(err, ShouldNotBeNil)
+		So(buckets, ShouldBeEmpty)
 
 		conf.Storage.CacheDriver = map[string]interface{}{
 			"name":                  "dummy",
 			"endpoint":              "http://localhost:4566",
 			"region":                "us-east-2",
-			"cacheTablename":        "BlobTable",
 			"repoMetaTablename":     "RepoMetadataTable",
 			"manifestDataTablename": "ManifestDataTable",
 			"versionTablename":      "Version",
 		}
 
-		driver = api.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
+		driver, buckets, err = api.CreateCacheDBAndBuckets(conf.Storage, log)
 		So(driver, ShouldBeNil)
+		So(err, ShouldNotBeNil)
+		So(buckets, ShouldBeEmpty)
+
+		subPathMap := make(map[string]config.StorageConfig)
+		subPathMap["/tmp/infra"] = config.StorageConfig{
+			RootDirectory: t.TempDir(),
+			Dedupe:        true,
+		}
+		conf.Storage.SubPaths = subPathMap
+		conf.Storage.RootDirectory = t.TempDir()
+
+		conf.Storage.CacheDriver["name"] = "dynamodb"
+
+		driver, buckets, err = api.CreateCacheDBAndBuckets(conf.Storage, log)
+		So(driver, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(buckets, ShouldNotBeEmpty)
+		So(len(buckets), ShouldEqual, 2)
+		So(buckets[""], ShouldEqual, "main_bucket")
+		So(buckets["/tmp/infra"], ShouldEqual, "tmp_infra_bucket")
+
+		conf.Storage.CacheDriver["tablenameprefix"] = "staging"
+
+		driver, buckets, err = api.CreateCacheDBAndBuckets(conf.Storage, log)
+		So(driver, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(buckets, ShouldNotBeEmpty)
+		So(len(buckets), ShouldEqual, 2)
+		So(buckets[""], ShouldEqual, "staging_main_bucket")
+		So(buckets["/tmp/infra"], ShouldEqual, "staging_tmp_infra_bucket")
 	})
 }
 
 func TestCreateRepoDBDriver(t *testing.T) {
+	skipDynamo(t)
+	skipIt(t)
 	Convey("Test CreateCacheDatabaseDriver dynamo", t, func() {
 		log := log.NewLogger("debug", "")
 		dir := t.TempDir()
 		conf := config.New()
 		conf.Storage.RootDirectory = dir
 		conf.Storage.Dedupe = true
-		conf.Storage.RemoteCache = true
 		conf.Storage.StorageDriver = map[string]interface{}{
 			"name":          "s3",
 			"rootdirectory": "/zot",
@@ -224,7 +275,6 @@ func TestCreateRepoDBDriver(t *testing.T) {
 			"name":                  "dummy",
 			"endpoint":              "http://localhost:4566",
 			"region":                "us-east-2",
-			"cachetablename":        "BlobTable",
 			"repometatablename":     "RepoMetadataTable",
 			"manifestdatatablename": "ManifestDataTable",
 		}
@@ -236,7 +286,6 @@ func TestCreateRepoDBDriver(t *testing.T) {
 			"name":                  "dummy",
 			"endpoint":              "http://localhost:4566",
 			"region":                "us-east-2",
-			"cachetablename":        "",
 			"repometatablename":     "RepoMetadataTable",
 			"manifestdatatablename": "ManifestDataTable",
 			"versiontablename":      1,
@@ -244,6 +293,19 @@ func TestCreateRepoDBDriver(t *testing.T) {
 
 		testFunc = func() { _, _ = api.CreateRepoDBDriver(conf.Storage.StorageConfig, log) }
 		So(testFunc, ShouldPanic)
+
+		conf.Storage.CacheDriver = map[string]interface{}{
+			"name":                  "dynamodb",
+			"endpoint":              "http://localhost:4566",
+			"region":                "us-east-2",
+			"repometatablename":     "RepoMetadataTable",
+			"manifestdatatablename": "ManifestDataTable",
+			"indexdatatablename":    "IndexDataTable",
+			"versiontablename":      "VersionTable",
+		}
+
+		testFunc = func() { _, _ = api.CreateRepoDBDriver(conf.Storage.StorageConfig, log) }
+		So(testFunc, ShouldNotPanic)
 	})
 }
 
@@ -260,7 +322,7 @@ func TestRunAlreadyRunningServer(t *testing.T) {
 		defer cm.StopServer()
 
 		err := ctlr.Init(context.Background())
-		So(err, ShouldBeNil)
+		So(err, ShouldNotBeNil)
 
 		err = ctlr.Run(context.Background())
 		So(err, ShouldNotBeNil)
@@ -318,7 +380,34 @@ func TestAutoPortSelection(t *testing.T) {
 
 func TestObjectStorageController(t *testing.T) {
 	skipIt(t)
-	Convey("Negative make a new object storage controller", t, func() {
+	Convey("Make a new object storage controller", t, func() {
+		port := test.GetFreePort()
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		bucket := s3BucketName
+		endpoint := os.Getenv("S3MOCK_ENDPOINT")
+
+		storageDriverParams := map[string]interface{}{
+			"rootdirectory":  "zot",
+			"name":           storage.S3StorageDriverName,
+			"region":         "us-east-2",
+			"bucket":         bucket,
+			"regionendpoint": endpoint,
+			"secure":         false,
+			"skipverify":     false,
+		}
+		conf.Storage.StorageDriver = storageDriverParams
+		ctlr := makeController(conf, t.TempDir(), "")
+		So(ctlr, ShouldNotBeNil)
+
+		cm := test.NewControllerManager(ctlr)
+
+		cm.StartAndWait(port)
+		defer cm.StopServer()
+	})
+
+	Convey("Negative make a new object storage controller - bad params", t, func() {
 		port := test.GetFreePort()
 		conf := config.New()
 		conf.HTTP.Port = port
@@ -334,12 +423,12 @@ func TestObjectStorageController(t *testing.T) {
 		So(err, ShouldNotBeNil)
 	})
 
-	Convey("Make a new object storage controller", t, func() {
+	Convey("Negative make a new object storage controller - unable to write cache", t, func() {
 		port := test.GetFreePort()
 		conf := config.New()
 		conf.HTTP.Port = port
 
-		bucket := "zot-storage-test"
+		bucket := s3BucketName
 		endpoint := os.Getenv("S3MOCK_ENDPOINT")
 
 		storageDriverParams := map[string]interface{}{
@@ -355,9 +444,8 @@ func TestObjectStorageController(t *testing.T) {
 		ctlr := makeController(conf, "/", "")
 		So(ctlr, ShouldNotBeNil)
 
-		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(port)
-		defer cm.StopServer()
+		err := ctlr.Init(context.Background())
+		So(err, ShouldNotBeNil)
 	})
 }
 
@@ -367,8 +455,10 @@ func TestObjectStorageControllerSubPaths(t *testing.T) {
 		port := test.GetFreePort()
 		conf := config.New()
 		conf.HTTP.Port = port
+		conf.Storage.Dedupe = false
+		dir := t.TempDir()
 
-		bucket := "zot-storage-test"
+		bucket := s3BucketName
 		endpoint := os.Getenv("S3MOCK_ENDPOINT")
 
 		storageDriverParams := map[string]interface{}{
@@ -380,18 +470,22 @@ func TestObjectStorageControllerSubPaths(t *testing.T) {
 			"secure":         false,
 			"skipverify":     false,
 		}
-		conf.Storage.StorageDriver = storageDriverParams
-		ctlr := makeController(conf, "zot", "")
+
+		ctlr := makeController(conf, dir, "")
 		So(ctlr, ShouldNotBeNil)
+
+		subPathDir := t.TempDir()
 
 		subPathMap := make(map[string]config.StorageConfig)
 		subPathMap["/a"] = config.StorageConfig{
-			RootDirectory: "/a",
+			RootDirectory: subPathDir,
 			StorageDriver: storageDriverParams,
+			Dedupe:        true,
 		}
 		ctlr.Config.Storage.SubPaths = subPathMap
 
 		cm := test.NewControllerManager(ctlr)
+
 		cm.StartAndWait(port)
 		defer cm.StopServer()
 	})
@@ -953,6 +1047,80 @@ func TestMultipleInstance(t *testing.T) {
 		So(tagResponse.StatusCode(), ShouldEqual, http.StatusNotFound)
 	})
 
+	Convey("Negative test - unable to create cacheDB default bucket", t, func() {
+		port := test.GetFreePort()
+		conf := config.New()
+		conf.HTTP.Port = port
+		htpasswdPath := test.MakeHtpasswdFile()
+		defer os.Remove(htpasswdPath)
+
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+		}
+		ctlr := api.NewController(conf)
+
+		globalDir := t.TempDir()
+		subDir := t.TempDir()
+
+		ctlr.Config.Storage.RootDirectory = globalDir
+		ctlr.Config.Storage.Dedupe = true
+		ctlr.Config.Storage.CacheDriver = map[string]interface{}{
+			"name":                  "dynamodb",
+			"endpoint":              "http://localhost:9999999", // invalid port
+			"region":                "us-east-2",
+			"repoMetaTablename":     "RepoMetadataTable",
+			"manifestDataTablename": "ManifestDataTable",
+			"versionTablename":      "Version",
+		}
+
+		subPathMap := make(map[string]config.StorageConfig)
+
+		subPathMap["/a"] = config.StorageConfig{RootDirectory: subDir, Dedupe: true}
+		ctlr.Config.Storage.SubPaths = subPathMap
+
+		err := ctlr.Init(context.Background())
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("Negative test - unable to create cacheDB subpath bucket", t, func() {
+		port := test.GetFreePort()
+		conf := config.New()
+		conf.HTTP.Port = port
+		htpasswdPath := test.MakeHtpasswdFile()
+		defer os.Remove(htpasswdPath)
+
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+		}
+		ctlr := api.NewController(conf)
+
+		globalDir := t.TempDir()
+		subDir := t.TempDir()
+
+		ctlr.Config.Storage.RootDirectory = globalDir
+		ctlr.Config.Storage.Dedupe = false
+		ctlr.Config.Storage.CacheDriver = map[string]interface{}{
+			"name":                  "dynamodb",
+			"endpoint":              "http://localhost:9999999", // invalid port
+			"region":                "us-east-2",
+			"repoMetaTablename":     "RepoMetadataTable",
+			"manifestDataTablename": "ManifestDataTable",
+			"versionTablename":      "Version",
+		}
+
+		subPathMap := make(map[string]config.StorageConfig)
+
+		subPathMap["/a"] = config.StorageConfig{RootDirectory: subDir, Dedupe: true}
+		ctlr.Config.Storage.SubPaths = subPathMap
+
+		err := ctlr.Init(context.Background())
+		So(err, ShouldNotBeNil)
+	})
+
 	Convey("Test zot multiple instance", t, func() {
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
@@ -1008,6 +1176,7 @@ func TestMultipleInstance(t *testing.T) {
 				Path: htpasswdPath,
 			},
 		}
+
 		globalDir := t.TempDir()
 		subDir := t.TempDir()
 
@@ -1020,6 +1189,7 @@ func TestMultipleInstance(t *testing.T) {
 
 		err := ctlr.Init(context.Background())
 		So(err, ShouldNotBeNil)
+		ctlr.Shutdown()
 
 		// subpath root directory does not exist.
 		subPathMap["/a"] = config.StorageConfig{RootDirectory: globalDir, Dedupe: true, GC: true}
@@ -1029,11 +1199,13 @@ func TestMultipleInstance(t *testing.T) {
 
 		err = ctlr.Init(context.Background())
 		So(err, ShouldNotBeNil)
+		ctlr.Shutdown()
 
 		subPathMap["/a"] = config.StorageConfig{RootDirectory: subDir, Dedupe: true, GC: true}
 		subPathMap["/b"] = config.StorageConfig{RootDirectory: subDir, Dedupe: true, GC: true}
 
 		ctlr.Config.Storage.SubPaths = subPathMap
+		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -3156,15 +3328,15 @@ func TestInvalidCases(t *testing.T) {
 
 		ctlr := makeController(conf, "oci-repo-test", "")
 
-		err := os.Mkdir("oci-repo-test", 0o000)
-		if err != nil {
-			panic(err)
-		}
-
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
 		defer func(ctrl *api.Controller) {
 			err := ctrl.Server.Shutdown(context.Background())
+			if err != nil {
+				panic(err)
+			}
+
+			err = os.Chmod("oci-repo-test", 0o700)
 			if err != nil {
 				panic(err)
 			}
@@ -3174,6 +3346,11 @@ func TestInvalidCases(t *testing.T) {
 				panic(err)
 			}
 		}(ctlr)
+
+		err := os.Chmod("oci-repo-test", 0o000)
+		if err != nil {
+			panic(err)
+		}
 
 		digest := test.GetTestBlobDigest("zot-cve-test", "config").String()
 		name := "zot-c-test"
@@ -3269,7 +3446,6 @@ func TestCrossRepoMount(t *testing.T) {
 
 		dir := t.TempDir()
 		ctlr := makeController(conf, dir, "../../test/data")
-		ctlr.Config.Storage.RemoteCache = false
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -3817,12 +3993,11 @@ func TestHardLink(t *testing.T) {
 		ctlr := makeController(conf, dir, "")
 		subPaths := make(map[string]config.StorageConfig)
 
-		subPaths["/a"] = config.StorageConfig{RootDirectory: subDir, Dedupe: true}
+		subPaths["/a"] = config.StorageConfig{RootDirectory: subDir, Dedupe: false}
 		ctlr.Config.Storage.SubPaths = subPaths
 
-		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(port)
-		defer cm.StopServer()
+		err = ctlr.Init(context.Background())
+		So(err, ShouldNotBeNil)
 
 		err = os.Chmod(dir, 0o644)
 		if err != nil {
@@ -5888,7 +6063,6 @@ func TestInjectTooManyOpenFiles(t *testing.T) {
 
 		dir := t.TempDir()
 		ctlr := makeController(conf, dir, "")
-		conf.Storage.RemoteCache = false
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -6394,7 +6568,6 @@ func TestPeriodicGC(t *testing.T) {
 		port := test.GetFreePort()
 		conf := config.New()
 		conf.HTTP.Port = port
-		conf.Storage.RemoteCache = false
 
 		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
@@ -6443,7 +6616,7 @@ func TestPeriodicGC(t *testing.T) {
 
 		subPaths := make(map[string]config.StorageConfig)
 
-		subPaths["/a"] = config.StorageConfig{RootDirectory: subDir, GC: true, GCDelay: 1 * time.Second, GCInterval: 24 * time.Hour, RemoteCache: false} //nolint:lll // gofumpt conflicts with lll
+		subPaths["/a"] = config.StorageConfig{RootDirectory: subDir, GC: true, GCDelay: 1 * time.Second, GCInterval: 24 * time.Hour} //nolint:lll // gofumpt conflicts with lll
 
 		ctlr.Config.Storage.SubPaths = subPaths
 
@@ -6458,16 +6631,16 @@ func TestPeriodicGC(t *testing.T) {
 			"\"GCDelay\":3600000000000,\"GCInterval\":0,\"")
 		// periodic GC is enabled for sub store
 		So(string(data), ShouldContainSubstring,
-			fmt.Sprintf("\"SubPaths\":{\"/a\":{\"RootDirectory\":\"%s\",\"Dedupe\":false,\"RemoteCache\":false,\"GC\":true,\"Commit\":false,\"GCDelay\":1000000000,\"GCInterval\":86400000000000", subDir)) //nolint:lll // gofumpt conflicts with lll
+			fmt.Sprintf("\"SubPaths\":{\"/a\":{\"RootDirectory\":\"%s\",\"Dedupe\":false,\"GC\":true,\"Commit\":false,\"GCDelay\":1000000000,\"GCInterval\":86400000000000", subDir)) //nolint:lll // gofumpt conflicts with lll
 	})
 
 	Convey("Periodic gc error", t, func() {
 		repoName := "testrepo" //nolint:goconst
 
 		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
-		conf.Storage.RemoteCache = false
 
 		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
@@ -6485,15 +6658,25 @@ func TestPeriodicGC(t *testing.T) {
 
 		test.CopyTestFiles("../../test/data/zot-test", path.Join(dir, repoName))
 
+		ctx := context.Background()
+		err = ctlr.Init(ctx)
+		So(err, ShouldBeNil)
+
 		So(os.Chmod(dir, 0o000), ShouldBeNil)
 
 		defer func() {
 			So(os.Chmod(dir, 0o755), ShouldBeNil)
 		}()
 
-		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(port)
-		defer cm.StopServer()
+		go func() {
+			if err := ctlr.Run(ctx); !goerrors.Is(err, http.ErrServerClosed) {
+				panic(err)
+			}
+		}()
+
+		test.WaitTillServerReady(baseURL)
+
+		defer ctlr.Shutdown()
 
 		time.Sleep(5000 * time.Millisecond)
 
@@ -6511,13 +6694,14 @@ func TestSearchRoutes(t *testing.T) {
 		baseURL := test.GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
+		conf.Storage.Dedupe = false
+
 		tempDir := t.TempDir()
 
 		ctlr := makeController(conf, tempDir, "")
-		cm := test.NewControllerManager(ctlr)
+		cm := test.NewControllerManager(ctlr) //nolint: varnamelen
 
 		cm.StartAndWait(port)
-		defer cm.StopServer()
 
 		repoName := "testrepo" //nolint:goconst
 		inaccessibleRepo := "inaccessible"
@@ -6548,6 +6732,8 @@ func TestSearchRoutes(t *testing.T) {
 			}, baseURL, inaccessibleRepo)
 
 		So(err, ShouldBeNil)
+
+		cm.StopServer()
 
 		Convey("GlobalSearch with authz enabled", func(c C) {
 			conf := config.New()

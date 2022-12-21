@@ -51,6 +51,7 @@ type ImageStoreLocal struct {
 	lock        *sync.RWMutex
 	blobUploads map[string]storage.BlobUpload
 	cache       cache.Cache
+	cacheBucket string
 	gc          bool
 	dedupe      bool
 	commit      bool
@@ -71,7 +72,7 @@ func (is *ImageStoreLocal) DirExists(d string) bool {
 // NewImageStore returns a new image store backed by a file storage.
 // Use the last argument to properly set a cache database, or it will default to boltDB local storage.
 func NewImageStore(rootDir string, gc bool, gcDelay time.Duration, dedupe, commit bool,
-	log zlog.Logger, metrics monitoring.MetricServer, linter storage.Lint, cacheDriver cache.Cache,
+	log zlog.Logger, metrics monitoring.MetricServer, linter storage.Lint, cacheDriver cache.Cache, cacheBucket string,
 ) storage.ImageStore {
 	if _, err := os.Stat(rootDir); os.IsNotExist(err) {
 		if err := os.MkdirAll(rootDir, DefaultDirPerms); err != nil {
@@ -95,6 +96,7 @@ func NewImageStore(rootDir string, gc bool, gcDelay time.Duration, dedupe, commi
 	}
 
 	imgStore.cache = cacheDriver
+	imgStore.cacheBucket = cacheBucket
 
 	if gc {
 		// we use umoci GC to perform garbage-collection, but it uses its own logger
@@ -955,7 +957,7 @@ func (is *ImageStoreLocal) DedupeBlob(src string, dstDigest godigest.Digest, dst
 retry:
 	is.log.Debug().Str("src", src).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe: enter")
 
-	dstRecord, err := is.cache.GetBlob(dstDigest)
+	dstRecord, err := is.cache.GetBlob(is.cacheBucket, dstDigest)
 
 	if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
 		is.log.Error().Err(err).Str("blobPath", dst).Msg("dedupe: unable to lookup blob record")
@@ -965,7 +967,7 @@ retry:
 
 	if dstRecord == "" {
 		// cache record doesn't exist, so first disk and cache entry for this diges
-		if err := is.cache.PutBlob(dstDigest, dst); err != nil {
+		if err := is.cache.PutBlob(is.cacheBucket, dstDigest, dst); err != nil {
 			is.log.Error().Err(err).Str("blobPath", dst).Msg("dedupe: unable to insert blob record")
 
 			return err
@@ -982,13 +984,11 @@ retry:
 	} else {
 		// cache record exists, but due to GC and upgrades from older versions,
 		// disk content and cache records may go out of sync
-		dstRecord = path.Join(is.rootDir, dstRecord)
-
 		dstRecordFi, err := os.Stat(dstRecord)
 		if err != nil {
 			is.log.Error().Err(err).Str("blobPath", dstRecord).Msg("dedupe: unable to stat")
 			// the actual blob on disk may have been removed by GC, so sync the cache
-			if err := is.cache.DeleteBlob(dstDigest, dstRecord); err != nil {
+			if err := is.cache.DeleteBlob(is.cacheBucket, dstDigest, dstRecord); err != nil {
 				//nolint:lll // gofumpt conflicts with lll
 				is.log.Error().Err(err).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe: unable to delete blob record")
 
@@ -1092,7 +1092,7 @@ func (is *ImageStoreLocal) CheckBlob(repo string, digest godigest.Digest) (bool,
 		return false, -1, zerr.ErrBlobNotFound
 	}
 
-	if err := is.cache.PutBlob(digest, blobPath); err != nil {
+	if err := is.cache.PutBlob(is.cacheBucket, digest, blobPath); err != nil {
 		is.log.Error().Err(err).Str("blobPath", blobPath).Msg("dedupe: unable to insert blob record")
 
 		return false, -1, err
@@ -1110,18 +1110,16 @@ func (is *ImageStoreLocal) checkCacheBlob(digest godigest.Digest) (string, error
 		return "", zerr.ErrBlobNotFound
 	}
 
-	dstRecord, err := is.cache.GetBlob(digest)
+	dstRecord, err := is.cache.GetBlob(is.cacheBucket, digest)
 	if err != nil {
 		return "", err
 	}
-
-	dstRecord = path.Join(is.rootDir, dstRecord)
 
 	if _, err := os.Stat(dstRecord); err != nil {
 		is.log.Error().Err(err).Str("blob", dstRecord).Msg("failed to stat blob")
 
 		// the actual blob on disk may have been removed by GC, so sync the cache
-		if err := is.cache.DeleteBlob(digest, dstRecord); err != nil {
+		if err := is.cache.DeleteBlob(is.cacheBucket, digest, dstRecord); err != nil {
 			is.log.Error().Err(err).Str("digest", digest.String()).Str("blobPath", dstRecord).
 				Msg("unable to remove blob path from cache")
 
@@ -1331,8 +1329,8 @@ func (is *ImageStoreLocal) DeleteBlob(repo string, digest godigest.Digest) error
 		return zerr.ErrBlobNotFound
 	}
 
-	if fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
-		if err := is.cache.DeleteBlob(digest, blobPath); err != nil {
+	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
+		if err := is.cache.DeleteBlob(is.cacheBucket, digest, blobPath); err != nil {
 			is.log.Error().Err(err).Str("digest", digest.String()).Str("blobPath", blobPath).
 				Msg("unable to remove blob path from cache")
 

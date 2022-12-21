@@ -34,10 +34,6 @@ import (
 	"zotregistry.io/zot/pkg/test"
 )
 
-const (
-	CacheDBName = "s3_cache"
-)
-
 // ObjectStorage provides the image storage operations.
 type ObjectStorage struct {
 	rootDir     string
@@ -47,6 +43,7 @@ type ObjectStorage struct {
 	log         zerolog.Logger
 	metrics     monitoring.MetricServer
 	cache       cache.Cache
+	cacheBucket string
 	dedupe      bool
 	linter      storage.Lint
 }
@@ -66,9 +63,9 @@ func (is *ObjectStorage) DirExists(d string) bool {
 // NewObjectStorage returns a new image store backed by cloud storages.
 // see https://github.com/docker/docker.github.io/tree/master/registry/storage-drivers
 // Use the last argument to properly set a cache database, or it will default to boltDB local storage.
-func NewImageStore(rootDir string, cacheDir string, gc bool, gcDelay time.Duration, dedupe, commit bool,
+func NewImageStore(rootDir string, gc bool, gcDelay time.Duration, dedupe, commit bool,
 	log zlog.Logger, metrics monitoring.MetricServer, linter storage.Lint,
-	store driver.StorageDriver, cacheDriver cache.Cache,
+	store driver.StorageDriver, cacheDriver cache.Cache, cacheBucket string,
 ) storage.ImageStore {
 	imgStore := &ObjectStorage{
 		rootDir:     rootDir,
@@ -82,6 +79,7 @@ func NewImageStore(rootDir string, cacheDir string, gc bool, gcDelay time.Durati
 	}
 
 	imgStore.cache = cacheDriver
+	imgStore.cacheBucket = cacheBucket
 
 	return imgStore
 }
@@ -838,7 +836,7 @@ func (is *ObjectStorage) DedupeBlob(src string, dstDigest godigest.Digest, dst s
 retry:
 	is.log.Debug().Str("src", src).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe: enter")
 
-	dstRecord, err := is.cache.GetBlob(dstDigest)
+	dstRecord, err := is.cache.GetBlob(is.cacheBucket, dstDigest)
 	if err := test.Error(err); err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
 		is.log.Error().Err(err).Str("blobPath", dst).Msg("dedupe: unable to lookup blob record")
 
@@ -847,7 +845,7 @@ retry:
 
 	if dstRecord == "" {
 		// cache record doesn't exist, so first disk and cache entry for this digest
-		if err := is.cache.PutBlob(dstDigest, dst); err != nil {
+		if err := is.cache.PutBlob(is.cacheBucket, dstDigest, dst); err != nil {
 			is.log.Error().Err(err).Str("blobPath", dst).Msg("dedupe: unable to insert blob record")
 
 			return err
@@ -868,7 +866,7 @@ retry:
 		if err != nil {
 			is.log.Error().Err(err).Str("blobPath", dstRecord).Msg("dedupe: unable to stat")
 			// the actual blob on disk may have been removed by GC, so sync the cache
-			err := is.cache.DeleteBlob(dstDigest, dstRecord)
+			err := is.cache.DeleteBlob(is.cacheBucket, dstDigest, dstRecord)
 			if err = test.Error(err); err != nil {
 				//nolint:lll
 				is.log.Error().Err(err).Str("dstDigest", dstDigest.String()).Str("dst", dst).Msg("dedupe: unable to delete blob record")
@@ -896,7 +894,7 @@ retry:
 				return err
 			}
 
-			if err := is.cache.PutBlob(dstDigest, dst); err != nil {
+			if err := is.cache.PutBlob(is.cacheBucket, dstDigest, dst); err != nil {
 				is.log.Error().Err(err).Str("blobPath", dst).Msg("dedupe: unable to insert blob record")
 
 				return err
@@ -992,7 +990,7 @@ func (is *ObjectStorage) CheckBlob(repo string, digest godigest.Digest) (bool, i
 	}
 
 	// put deduped blob in cache
-	if err := is.cache.PutBlob(digest, blobPath); err != nil {
+	if err := is.cache.PutBlob(is.cacheBucket, digest, blobPath); err != nil {
 		is.log.Error().Err(err).Str("blobPath", blobPath).Msg("dedupe: unable to insert blob record")
 
 		return false, -1, err
@@ -1010,7 +1008,7 @@ func (is *ObjectStorage) checkCacheBlob(digest godigest.Digest) (string, error) 
 		return "", zerr.ErrBlobNotFound
 	}
 
-	dstRecord, err := is.cache.GetBlob(digest)
+	dstRecord, err := is.cache.GetBlob(is.cacheBucket, digest)
 	if err != nil {
 		return "", err
 	}
@@ -1019,7 +1017,7 @@ func (is *ObjectStorage) checkCacheBlob(digest godigest.Digest) (string, error) 
 		is.log.Error().Err(err).Str("blob", dstRecord).Msg("failed to stat blob")
 
 		// the actual blob on disk may have been removed by GC, so sync the cache
-		if err := is.cache.DeleteBlob(digest, dstRecord); err != nil {
+		if err := is.cache.DeleteBlob(is.cacheBucket, digest, dstRecord); err != nil {
 			is.log.Error().Err(err).Str("digest", digest.String()).Str("blobPath", dstRecord).
 				Msg("unable to remove blob path from cache")
 
@@ -1327,7 +1325,7 @@ func (is *ObjectStorage) DeleteBlob(repo string, digest godigest.Digest) error {
 	}
 
 	if fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
-		dstRecord, err := is.cache.GetBlob(digest)
+		dstRecord, err := is.cache.GetBlob(is.cacheBucket, digest)
 		if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
 			is.log.Error().Err(err).Str("blobPath", dstRecord).Msg("dedupe: unable to lookup blob record")
 
@@ -1335,7 +1333,7 @@ func (is *ObjectStorage) DeleteBlob(repo string, digest godigest.Digest) error {
 		}
 
 		// remove cache entry and move blob contents to the next candidate if there is any
-		if err := is.cache.DeleteBlob(digest, blobPath); err != nil {
+		if err := is.cache.DeleteBlob(is.cacheBucket, digest, blobPath); err != nil {
 			is.log.Error().Err(err).Str("digest", digest.String()).Str("blobPath", blobPath).
 				Msg("unable to remove blob path from cache")
 
@@ -1345,7 +1343,7 @@ func (is *ObjectStorage) DeleteBlob(repo string, digest godigest.Digest) error {
 		// if the deleted blob is one with content
 		if dstRecord == blobPath {
 			// get next candidate
-			dstRecord, err := is.cache.GetBlob(digest)
+			dstRecord, err := is.cache.GetBlob(is.cacheBucket, digest)
 			if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
 				is.log.Error().Err(err).Str("blobPath", dstRecord).Msg("dedupe: unable to lookup blob record")
 

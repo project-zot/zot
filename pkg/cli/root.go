@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"os"
-	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -26,7 +24,6 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/storage"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
-	"zotregistry.io/zot/pkg/storage/s3"
 )
 
 // metadataConfig reports metadata after parsing, which we use to track
@@ -243,68 +240,13 @@ func validateStorageConfig(cfg *config.Config) error {
 }
 
 func validateCacheConfig(cfg *config.Config) error {
-	// global
-	// dedupe true, remote storage, remoteCache true, but no cacheDriver (remote)
-	//nolint: lll
-	if cfg.Storage.Dedupe && cfg.Storage.StorageDriver != nil && cfg.Storage.RemoteCache && cfg.Storage.CacheDriver == nil {
-		log.Error().Err(errors.ErrBadConfig).Msg(
-			"dedupe set to true with remote storage and caching, but no remote cache configured!")
-
-		return errors.ErrBadConfig
-	}
-
-	if cfg.Storage.CacheDriver != nil && cfg.Storage.RemoteCache {
-		// local storage with remote caching
-		if cfg.Storage.StorageDriver == nil {
-			log.Error().Err(errors.ErrBadConfig).Msg("cannot have local storage driver with remote caching!")
-
-			return errors.ErrBadConfig
-		}
-
+	if cfg.Storage.CacheDriver != nil {
 		// unsupported cache driver
-		if cfg.Storage.CacheDriver["name"] != storageConstants.DynamoDBDriverName {
+		if cfg.Storage.CacheDriver["name"] != storageConstants.DynamoDBDriverName &&
+			cfg.Storage.CacheDriver["name"] != storageConstants.BoltDBDriverName {
 			log.Error().Err(errors.ErrBadConfig).Msgf("unsupported cache driver: %s", cfg.Storage.CacheDriver["name"])
 
 			return errors.ErrBadConfig
-		}
-	}
-
-	if !cfg.Storage.RemoteCache && cfg.Storage.CacheDriver != nil {
-		log.Warn().Err(errors.ErrBadConfig).Msgf(
-			"remoteCache set to false but cacheDriver config (remote caching) provided for %s,"+
-				"will ignore and use local caching", cfg.Storage.RootDirectory)
-	}
-
-	// subpaths
-	for _, subPath := range cfg.Storage.SubPaths {
-		// dedupe true, remote storage, remoteCache true, but no cacheDriver (remote)
-		//nolint: lll
-		if subPath.Dedupe && subPath.StorageDriver != nil && subPath.RemoteCache && subPath.CacheDriver == nil {
-			log.Error().Err(errors.ErrBadConfig).Msg("dedupe set to true with remote storage and caching, but no remote cache configured!")
-
-			return errors.ErrBadConfig
-		}
-
-		if subPath.CacheDriver != nil && subPath.RemoteCache {
-			// local storage with remote caching
-			if subPath.StorageDriver == nil {
-				log.Error().Err(errors.ErrBadConfig).Msg("cannot have local storage driver with remote caching!")
-
-				return errors.ErrBadConfig
-			}
-
-			// unsupported cache driver
-			if subPath.CacheDriver["name"] != storageConstants.DynamoDBDriverName {
-				log.Error().Err(errors.ErrBadConfig).Msgf("unsupported cache driver: %s", subPath.CacheDriver["name"])
-
-				return errors.ErrBadConfig
-			}
-		}
-
-		if !subPath.RemoteCache && subPath.CacheDriver != nil {
-			log.Warn().Err(errors.ErrBadConfig).Msgf(
-				"remoteCache set to false but cacheDriver config (remote caching) provided for %s,"+
-					"will ignore and use local caching", subPath.RootDirectory)
 		}
 	}
 
@@ -507,50 +449,8 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper) {
 		config.Storage.GCDelay = 0
 	}
 
-	// cache settings
-
-	// global storage
-
-	// if dedupe is true but remoteCache bool not set in config file
-	// for cloud based storage, remoteCache defaults to true
-	if config.Storage.Dedupe && !viperInstance.IsSet("storage::remotecache") && config.Storage.StorageDriver != nil {
-		config.Storage.RemoteCache = true
-	}
-
-	// s3 dedup=false, check for previous dedup usage and set to true if cachedb found
-	if !config.Storage.Dedupe && config.Storage.StorageDriver != nil {
-		cacheDir, _ := config.Storage.StorageDriver["rootdirectory"].(string)
-		cachePath := path.Join(cacheDir, s3.CacheDBName+storageConstants.DBExtensionName)
-
-		if _, err := os.Stat(cachePath); err == nil {
-			log.Info().Msg("Config: dedupe set to false for s3 driver but used to be true.")
-			log.Info().Str("cache path", cachePath).Msg("found cache database")
-
-			config.Storage.RemoteCache = false
-		}
-	}
-
 	// subpaths
 	for name, storageConfig := range config.Storage.SubPaths {
-		// if dedupe is true but remoteCache bool not set in config file
-		// for cloud based storage, remoteCache defaults to true
-		if storageConfig.Dedupe && !viperInstance.IsSet("storage::subpaths::"+name+"::remotecache") && storageConfig.StorageDriver != nil { //nolint:lll
-			storageConfig.RemoteCache = true
-		}
-
-		// s3 dedup=false, check for previous dedup usage and set to true if cachedb found
-		if !storageConfig.Dedupe && storageConfig.StorageDriver != nil {
-			subpathCacheDir, _ := storageConfig.StorageDriver["rootdirectory"].(string)
-			subpathCachePath := path.Join(subpathCacheDir, s3.CacheDBName+storageConstants.DBExtensionName)
-
-			if _, err := os.Stat(subpathCachePath); err == nil {
-				log.Info().Msg("Config: dedupe set to false for s3 driver but used to be true. ")
-				log.Info().Str("cache path", subpathCachePath).Msg("found cache database")
-
-				storageConfig.RemoteCache = false
-			}
-		}
-
 		// if gc is enabled and gcDelay is not set, it is set to default value
 		if storageConfig.GC && !viperInstance.IsSet("storage::subpaths::"+name+"::gcdelay") {
 			storageConfig.GCDelay = storage.DefaultGCDelay

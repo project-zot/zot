@@ -33,9 +33,11 @@ func TestServeExtensions(t *testing.T) {
 		So(err, ShouldBeNil)
 		defer os.Remove(logFile.Name()) // clean up
 
+		rootDir := t.TempDir()
+
 		content := fmt.Sprintf(`{
 			"storage": {
-				"rootDirectory": "/tmp/zot"
+				"rootDirectory": "%s"
 			},
 			"http": {
 				"address": "127.0.0.1",
@@ -45,7 +47,7 @@ func TestServeExtensions(t *testing.T) {
 				"level": "debug",
 				"output": "%s"
 			}
-		}`, port, logFile.Name())
+		}`, rootDir, port, logFile.Name())
 
 		cfgfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
@@ -74,9 +76,11 @@ func TestServeExtensions(t *testing.T) {
 		So(err, ShouldBeNil)
 		defer os.Remove(logFile.Name()) // clean up
 
+		rootDir := t.TempDir()
+
 		content := fmt.Sprintf(`{
 			"storage": {
-				"rootDirectory": "/tmp/zot"
+				"rootDirectory": "%s"
 			},
 			"http": {
 				"address": "127.0.0.1",
@@ -88,7 +92,7 @@ func TestServeExtensions(t *testing.T) {
 			},
 			"extensions": {
 			}
-		}`, port, logFile.Name())
+		}`, rootDir, port, logFile.Name())
 
 		cfgfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
@@ -112,7 +116,7 @@ func TestServeExtensions(t *testing.T) {
 	})
 }
 
-func testWithMetricsEnabled(cfgContentFormat string) {
+func testWithMetricsEnabled(rootDir string, cfgContentFormat string) {
 	port := GetFreePort()
 	baseURL := GetBaseURL(port)
 	logFile, err := os.CreateTemp("", "zot-log*.txt")
@@ -120,7 +124,7 @@ func testWithMetricsEnabled(cfgContentFormat string) {
 
 	defer os.Remove(logFile.Name()) // clean up
 
-	content := fmt.Sprintf(cfgContentFormat, port, logFile.Name())
+	content := fmt.Sprintf(cfgContentFormat, rootDir, port, logFile.Name())
 	cfgfile, err := os.CreateTemp("", "zot-test*.json")
 	So(err, ShouldBeNil)
 
@@ -160,7 +164,8 @@ func TestServeMetricsExtension(t *testing.T) {
 	Convey("no explicit enable", t, func(c C) {
 		content := `{
 			"storage": {
-				"rootDirectory": "/tmp/zot"
+				"rootDirectory": "%s",
+				"dedupe": false
 			},
 			"http": {
 				"address": "127.0.0.1",
@@ -175,13 +180,14 @@ func TestServeMetricsExtension(t *testing.T) {
 				}
 			}
 		}`
-		testWithMetricsEnabled(content)
+		testWithMetricsEnabled(t.TempDir(), content)
 	})
 
 	Convey("no explicit enable but with prometheus parameter", t, func(c C) {
 		content := `{
 			"storage": {
-				"rootDirectory": "/tmp/zot"
+				"rootDirectory": "%s",
+				"dedupe": false
 			},
 			"http": {
 				"address": "127.0.0.1",
@@ -199,13 +205,14 @@ func TestServeMetricsExtension(t *testing.T) {
 				}
 			}
 		}`
-		testWithMetricsEnabled(content)
+		testWithMetricsEnabled(t.TempDir(), content)
 	})
 
 	Convey("with explicit enable, but without prometheus parameter", t, func(c C) {
 		content := `{
 			"storage": {
-				"rootDirectory": "/tmp/zot"
+				"rootDirectory": "%s",
+				"dedupe": false
 			},
 			"http": {
 				"address": "127.0.0.1",
@@ -221,7 +228,7 @@ func TestServeMetricsExtension(t *testing.T) {
 				}
 			}
 		}`
-		testWithMetricsEnabled(content)
+		testWithMetricsEnabled(t.TempDir(), content)
 	})
 
 	Convey("with explicit disable", t, func(c C) {
@@ -231,9 +238,12 @@ func TestServeMetricsExtension(t *testing.T) {
 		So(err, ShouldBeNil)
 		defer os.Remove(logFile.Name()) // clean up
 
+		rootDir := t.TempDir()
+		defer os.RemoveAll(rootDir)
+
 		content := fmt.Sprintf(`{
 					"storage": {
-						"rootDirectory": "/tmp/zot"
+						"rootDirectory": "%s"
 					},
 					"http": {
 						"address": "127.0.0.1",
@@ -248,7 +258,7 @@ func TestServeMetricsExtension(t *testing.T) {
 							"enable": false
 						}
 					}
-				}`, port, logFile.Name())
+				}`, rootDir, port, logFile.Name())
 
 		cfgfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)

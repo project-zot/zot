@@ -37,14 +37,17 @@ func TestConfigReloader(t *testing.T) {
 		usernameAndHash := fmt.Sprintf("%s:%s", username, string(hash))
 
 		htpasswdPath := test.MakeHtpasswdFileFromString(usernameAndHash)
-		defer os.Remove(htpasswdPath)
 
+		rootDir := t.TempDir()
+
+		defer os.Remove(htpasswdPath)
+		defer os.RemoveAll(rootDir)
 		defer os.Remove(logFile.Name()) // clean up
 
 		content := fmt.Sprintf(`{
 			"distSpecVersion": "1.1.0-dev",
 			"storage": {
-			  "rootDirectory": "/tmp/zot"
+			  "rootDirectory": "%s"
 			},
 			"http": {
 			  "address": "127.0.0.1",
@@ -64,7 +67,7 @@ func TestConfigReloader(t *testing.T) {
 					  "actions": ["read"]
 					}
 				  ],
-				  "defaultPolicy": ["read", "create"] 
+				  "defaultPolicy": ["read", "create"]
 				},
 				"adminPolicy": {
 					"users": ["admin"],
@@ -76,7 +79,7 @@ func TestConfigReloader(t *testing.T) {
 			  "level": "debug",
 			  "output": "%s"
 			}
-		  }`, port, htpasswdPath, logFile.Name())
+		  }`, rootDir, port, htpasswdPath, logFile.Name())
 
 		cfgfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
@@ -97,10 +100,12 @@ func TestConfigReloader(t *testing.T) {
 
 		test.WaitTillServerReady(baseURL)
 
+		rootDir = t.TempDir()
+
 		content = fmt.Sprintf(`{
 			"distSpecVersion": "1.1.0-dev",
 			"storage": {
-			  "rootDirectory": "/tmp/zot"
+			  "rootDirectory": "%s"
 			},
 			"http": {
 			  "address": "127.0.0.1",
@@ -120,7 +125,7 @@ func TestConfigReloader(t *testing.T) {
 					  "actions": ["read", "create", "update", "delete"]
 					}
 				  ],
-				  "defaultPolicy": ["read"] 
+				  "defaultPolicy": ["read"]
 				},
 				"adminPolicy": {
 					"users": ["admin"],
@@ -132,7 +137,7 @@ func TestConfigReloader(t *testing.T) {
 			  "level": "debug",
 			  "output": "%s"
 			}
-		}`, port, htpasswdPath, logFile.Name())
+		}`, rootDir, port, htpasswdPath, logFile.Name())
 
 		err = cfgfile.Truncate(0)
 		So(err, ShouldBeNil)
@@ -165,11 +170,13 @@ func TestConfigReloader(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		defer os.Remove(logFile.Name()) // clean up
+		rootDir := t.TempDir()
+		defer os.RemoveAll(rootDir)
 
 		content := fmt.Sprintf(`{
 				"distSpecVersion": "1.1.0-dev",
 				"storage": {
-					"rootDirectory": "/tmp/zot"
+					"rootDirectory": "%s"
 				},
 				"http": {
 					"address": "127.0.0.1",
@@ -200,7 +207,7 @@ func TestConfigReloader(t *testing.T) {
 						}]
 					}
 				}
-			}`, port, logFile.Name())
+			}`, rootDir, port, logFile.Name())
 
 		cfgfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
@@ -224,7 +231,7 @@ func TestConfigReloader(t *testing.T) {
 		content = fmt.Sprintf(`{
 			"distSpecVersion": "1.1.0-dev",
 			"storage": {
-				"rootDirectory": "/tmp/zot"
+				"rootDirectory": "%s"
 			},
 			"http": {
 				"address": "127.0.0.1",
@@ -255,7 +262,7 @@ func TestConfigReloader(t *testing.T) {
 					}]
 				}
 			}
-		}`, port, logFile.Name())
+		}`, rootDir, port, logFile.Name())
 
 		err = cfgfile.Truncate(0)
 		So(err, ShouldBeNil)
@@ -294,12 +301,14 @@ func TestConfigReloader(t *testing.T) {
 		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
 
+		rootDir := t.TempDir()
 		defer os.Remove(logFile.Name()) // clean up
+		defer os.RemoveAll(rootDir)
 
 		content := fmt.Sprintf(`{
 				"distSpecVersion": "1.1.0-dev",
 				"storage": {
-					"rootDirectory": "/tmp/zot"
+					"rootDirectory": "%s"
 				},
 				"http": {
 					"address": "127.0.0.1",
@@ -330,7 +339,7 @@ func TestConfigReloader(t *testing.T) {
 						}]
 					}
 				}
-			}`, port, logFile.Name())
+			}`, rootDir, port, logFile.Name())
 
 		cfgfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)

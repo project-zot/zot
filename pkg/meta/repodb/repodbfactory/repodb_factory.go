@@ -6,11 +6,12 @@ import (
 	boltdb_wrapper "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
 	dynamodb_wrapper "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper"
 	dynamoParams "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper/params"
+	"zotregistry.io/zot/pkg/storage/constants"
 )
 
 func Create(dbtype string, parameters interface{}) (repodb.RepoDB, error) { //nolint:contextcheck
 	switch dbtype {
-	case "boltdb":
+	case constants.BoltDBDriverName:
 		{
 			properParameters, ok := parameters.(boltdb_wrapper.DBParameters)
 			if !ok {
@@ -19,7 +20,7 @@ func Create(dbtype string, parameters interface{}) (repodb.RepoDB, error) { //no
 
 			return boltdb_wrapper.NewBoltDBWrapper(properParameters)
 		}
-	case "dynamodb":
+	case constants.DynamoDBDriverName:
 		{
 			properParameters, ok := parameters.(dynamoParams.DBDriverParameters)
 			if !ok {

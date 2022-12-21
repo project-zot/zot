@@ -25,13 +25,9 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/repodb"
-	bolt "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
-	dynamoParams "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper/params"
-	"zotregistry.io/zot/pkg/meta/repodb/repodbfactory"
 	"zotregistry.io/zot/pkg/scheduler"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/cache"
-	"zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/storage/s3"
 )
@@ -45,6 +41,7 @@ type Controller struct {
 	Config          *config.Config
 	Router          *mux.Router
 	RepoDB          repodb.RepoDB
+	CacheDB         cache.Cache
 	StoreController storage.StoreController
 	Log             log.Logger
 	Audit           *log.Logger
@@ -122,6 +119,13 @@ func (c *Controller) GetPort() int {
 
 func (c *Controller) Run(reloadCtx context.Context) error {
 	c.StartBackgroundTasks(reloadCtx)
+
+	// release cacheDB when run exits
+	defer func() {
+		if c.CacheDB != nil {
+			c.CacheDB.Close()
+		}
+	}()
 
 	// setup HTTP API router
 	engine := mux.NewRouter()
@@ -278,6 +282,10 @@ func (c *Controller) InitImageStore(ctx context.Context) error {
 
 	linter := ext.GetLinter(c.Config, c.Log)
 
+	var err error
+
+	var buckets map[string]string
+
 	if c.Config.Storage.RootDirectory != "" {
 		// no need to validate hard links work on s3
 		if c.Config.Storage.Dedupe && c.Config.Storage.StorageDriver == nil {
@@ -290,6 +298,13 @@ func (c *Controller) InitImageStore(ctx context.Context) error {
 			}
 		}
 
+		c.CacheDB, buckets, err = CreateCacheDBAndBuckets(c.Config.Storage, c.Log) //nolint: contextcheck
+		if err != nil {
+			c.Log.Error().Err(err).Msg("failed to create cache database driver")
+
+			return err
+		}
+
 		var defaultStore storage.ImageStore
 		if c.Config.Storage.StorageDriver == nil {
 			// false positive lint - linter does not implement Lint method
@@ -297,7 +312,7 @@ func (c *Controller) InitImageStore(ctx context.Context) error {
 			defaultStore = local.NewImageStore(c.Config.Storage.RootDirectory,
 				c.Config.Storage.GC, c.Config.Storage.GCDelay,
 				c.Config.Storage.Dedupe, c.Config.Storage.Commit, c.Log, c.Metrics, linter,
-				CreateCacheDatabaseDriver(c.Config.Storage.StorageConfig, c.Log),
+				c.CacheDB, buckets[""],
 			)
 		} else {
 			storeName := fmt.Sprintf("%v", c.Config.Storage.StorageDriver["name"])
@@ -322,10 +337,8 @@ func (c *Controller) InitImageStore(ctx context.Context) error {
 
 			// false positive lint - linter does not implement Lint method
 			//nolint: typecheck,contextcheck
-			defaultStore = s3.NewImageStore(rootDir, c.Config.Storage.RootDirectory,
-				c.Config.Storage.GC, c.Config.Storage.GCDelay, c.Config.Storage.Dedupe,
-				c.Config.Storage.Commit, c.Log, c.Metrics, linter, store,
-				CreateCacheDatabaseDriver(c.Config.Storage.StorageConfig, c.Log))
+			defaultStore = s3.NewImageStore(rootDir, c.Config.Storage.GC, c.Config.Storage.GCDelay,
+				c.Config.Storage.Dedupe, c.Config.Storage.Commit, c.Log, c.Metrics, linter, store, c.CacheDB, buckets[""])
 		}
 
 		c.StoreController.DefaultStore = defaultStore
@@ -341,7 +354,7 @@ func (c *Controller) InitImageStore(ctx context.Context) error {
 			subPaths := c.Config.Storage.SubPaths
 
 			//nolint: contextcheck
-			subImageStore, err := c.getSubStore(subPaths, linter)
+			subImageStore, err := c.getSubStore(subPaths, linter, buckets)
 			if err != nil {
 				c.Log.Error().Err(err).Msg("controller: error getting sub image store")
 
@@ -355,8 +368,8 @@ func (c *Controller) InitImageStore(ctx context.Context) error {
 	return nil
 }
 
-func (c *Controller) getSubStore(subPaths map[string]config.StorageConfig,
-	linter storage.Lint,
+func (c *Controller) getSubStore(subPaths map[string]config.StorageConfig, linter storage.Lint,
+	buckets map[string]string,
 ) (map[string]storage.ImageStore, error) {
 	imgStoreMap := make(map[string]storage.ImageStore, 0)
 
@@ -403,7 +416,7 @@ func (c *Controller) getSubStore(subPaths map[string]config.StorageConfig,
 			if isUnique {
 				imgStoreMap[storageConfig.RootDirectory] = local.NewImageStore(storageConfig.RootDirectory,
 					storageConfig.GC, storageConfig.GCDelay, storageConfig.Dedupe,
-					storageConfig.Commit, c.Log, c.Metrics, linter, CreateCacheDatabaseDriver(storageConfig, c.Log))
+					storageConfig.Commit, c.Log, c.Metrics, linter, c.CacheDB, buckets[route])
 
 				subImageStore[route] = imgStoreMap[storageConfig.RootDirectory]
 			}
@@ -424,16 +437,14 @@ func (c *Controller) getSubStore(subPaths map[string]config.StorageConfig,
 			/* in the case of s3 c.Config.Storage.RootDirectory is used for caching blobs locally and
 			c.Config.Storage.StorageDriver["rootdirectory"] is the actual rootDir in s3 */
 			rootDir := "/"
-			if c.Config.Storage.StorageDriver["rootdirectory"] != nil {
-				rootDir = fmt.Sprintf("%v", c.Config.Storage.StorageDriver["rootdirectory"])
+			if storageConfig.StorageDriver["rootdirectory"] != nil {
+				rootDir = fmt.Sprintf("%v", storageConfig.StorageDriver["rootdirectory"])
 			}
 
 			// false positive lint - linter does not implement Lint method
 			//nolint: typecheck
-			subImageStore[route] = s3.NewImageStore(rootDir, storageConfig.RootDirectory,
-				storageConfig.GC, storageConfig.GCDelay,
-				storageConfig.Dedupe, storageConfig.Commit, c.Log, c.Metrics, linter, store,
-				CreateCacheDatabaseDriver(storageConfig, c.Log),
+			subImageStore[route] = s3.NewImageStore(rootDir, storageConfig.GC, storageConfig.GCDelay,
+				storageConfig.Dedupe, storageConfig.Commit, c.Log, c.Metrics, linter, store, c.CacheDB, buckets[route],
 			)
 		}
 	}
@@ -449,55 +460,6 @@ func compareImageStore(root1, root2 string) bool {
 	}
 
 	return isSameFile
-}
-
-func getUseRelPaths(storageConfig *config.StorageConfig) bool {
-	return storageConfig.StorageDriver == nil
-}
-
-func CreateCacheDatabaseDriver(storageConfig config.StorageConfig, log log.Logger) cache.Cache {
-	if storageConfig.Dedupe {
-		if !storageConfig.RemoteCache {
-			params := cache.BoltDBDriverParameters{}
-			params.RootDir = storageConfig.RootDirectory
-			params.Name = constants.BoltdbName
-			params.UseRelPaths = getUseRelPaths(&storageConfig)
-
-			driver, _ := storage.Create("boltdb", params, log)
-
-			return driver
-		}
-
-		// remote cache
-		if storageConfig.CacheDriver != nil {
-			name, ok := storageConfig.CacheDriver["name"].(string)
-			if !ok {
-				log.Warn().Msg("remote cache driver name missing!")
-
-				return nil
-			}
-
-			if name != constants.DynamoDBDriverName {
-				log.Warn().Str("driver", name).Msg("remote cache driver unsupported!")
-
-				return nil
-			}
-
-			// dynamodb
-			dynamoParams := cache.DynamoDBDriverParameters{}
-			dynamoParams.Endpoint, _ = storageConfig.CacheDriver["endpoint"].(string)
-			dynamoParams.Region, _ = storageConfig.CacheDriver["region"].(string)
-			dynamoParams.TableName, _ = storageConfig.CacheDriver["cachetablename"].(string)
-
-			driver, _ := storage.Create("dynamodb", dynamoParams, log)
-
-			return driver
-		}
-
-		return nil
-	}
-
-	return nil
 }
 
 func (c *Controller) InitRepoDB(reloadCtx context.Context) error {
@@ -523,80 +485,6 @@ func (c *Controller) InitRepoDB(reloadCtx context.Context) error {
 	return nil
 }
 
-func CreateRepoDBDriver(storageConfig config.StorageConfig, log log.Logger) (repodb.RepoDB, error) {
-	if storageConfig.RemoteCache {
-		dynamoParams := getDynamoParams(storageConfig.CacheDriver, log)
-
-		return repodbfactory.Create("dynamodb", dynamoParams) //nolint:contextcheck
-	}
-
-	params := bolt.DBParameters{}
-	params.RootDir = storageConfig.RootDirectory
-
-	return repodbfactory.Create("boltdb", params) //nolint:contextcheck
-}
-
-func getDynamoParams(cacheDriverConfig map[string]interface{}, log log.Logger) dynamoParams.DBDriverParameters {
-	allParametersOk := true
-
-	endpoint, ok := toStringIfOk(cacheDriverConfig, "endpoint", log)
-	allParametersOk = allParametersOk && ok
-
-	region, ok := toStringIfOk(cacheDriverConfig, "region", log)
-	allParametersOk = allParametersOk && ok
-
-	repoMetaTablename, ok := toStringIfOk(cacheDriverConfig, "repometatablename", log)
-	allParametersOk = allParametersOk && ok
-
-	manifestDataTablename, ok := toStringIfOk(cacheDriverConfig, "manifestdatatablename", log)
-	allParametersOk = allParametersOk && ok
-
-	indexDataTablename, ok := toStringIfOk(cacheDriverConfig, "indexdatatablename", log)
-	allParametersOk = allParametersOk && ok
-
-	versionTablename, ok := toStringIfOk(cacheDriverConfig, "versiontablename", log)
-	allParametersOk = allParametersOk && ok
-
-	if !allParametersOk {
-		panic("dynamo parameters are not specified correctly, can't proceede")
-	}
-
-	return dynamoParams.DBDriverParameters{
-		Endpoint:              endpoint,
-		Region:                region,
-		RepoMetaTablename:     repoMetaTablename,
-		ManifestDataTablename: manifestDataTablename,
-		IndexDataTablename:    indexDataTablename,
-		VersionTablename:      versionTablename,
-	}
-}
-
-func toStringIfOk(cacheDriverConfig map[string]interface{}, param string, log log.Logger) (string, bool) {
-	val, ok := cacheDriverConfig[param]
-
-	if !ok {
-		log.Error().Msgf("parsing CacheDriver config failed, field '%s' is not present", param)
-
-		return "", false
-	}
-
-	str, ok := val.(string)
-
-	if !ok {
-		log.Error().Msgf("parsing CacheDriver config failed, parameter '%s' isn't a string", param)
-
-		return "", false
-	}
-
-	if str == "" {
-		log.Error().Msgf("parsing CacheDriver config failed, field '%s' is is empty", param)
-
-		return "", false
-	}
-
-	return str, ok
-}
-
 func (c *Controller) LoadNewConfig(reloadCtx context.Context, config *config.Config) {
 	// reload access control config
 	c.Config.AccessControl = config.AccessControl
@@ -615,11 +503,16 @@ func (c *Controller) LoadNewConfig(reloadCtx context.Context, config *config.Con
 }
 
 func (c *Controller) Shutdown() {
+	if c.CacheDB != nil {
+		defer c.CacheDB.Close()
+	}
 	// wait gracefully
 	c.wgShutDown.Wait()
 
 	ctx := context.Background()
-	_ = c.Server.Shutdown(ctx)
+	if c.Server != nil {
+		_ = c.Server.Shutdown(ctx)
+	}
 }
 
 func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {

@@ -20,7 +20,6 @@ function setup() {
 	"storage": {
         "rootDirectory": "${zot_root_dir}",
         "dedupe": true,
-        "remoteCache": true,
         "storageDriver": {
             "name": "s3",
             "rootdirectory": "/zot",
@@ -34,7 +33,6 @@ function setup() {
             "name": "dynamodb",
             "endpoint": "http://localhost:4566",
             "region": "us-east-2",
-            "cacheTablename": "BlobTable",
             "repoMetaTablename": "RepoMetadataTable",
             "manifestDataTablename": "ManifestDataTable",
             "indexDataTablename": "IndexDataTable",

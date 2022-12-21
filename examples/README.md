@@ -69,6 +69,20 @@ support hard links, inline deduplication can be enabled with:
 ```
         "dedupe": true,
 ```
+By default it will use a boltdb database.
+
+Also a dynamodb can be used to cache blobs for both local and s3 storages:
+
+```
+        "dedupe": true,
+        "cacheDriver": {
+            "name": "dynamodb",
+            "endpoint": "http://localhost:4566",
+            "region": "us-east-2",
+            "tableNamePrefix": "staging"
+        }
+```
+Note: The cache database is global(either boltdb or dynamodb) and it will be used for all subpaths!
 
 When an image is deleted (either by tag or reference), orphaned blobs can lead
 to wasted storage, and background garbage collection can be enabled with:
@@ -98,6 +112,8 @@ their own repository paths, dedupe and garbage collection settings with:
         }
     },
 ```
+
+
 
 ## Authentication
 

@@ -3,7 +3,6 @@ package cache
 import (
 	"os"
 	"path"
-	"path/filepath"
 	"strings"
 
 	godigest "github.com/opencontainers/go-digest"
@@ -15,28 +14,29 @@ import (
 )
 
 type BoltDBDriver struct {
-	rootDir     string
-	db          *bbolt.DB
-	log         zlog.Logger
-	useRelPaths bool // whether or not to use relative paths, should be true for filesystem and false for s3
+	rootDir string
+	db      *bbolt.DB
+	log     zlog.Logger
 }
 
 type BoltDBDriverParameters struct {
-	RootDir, Name string
-	UseRelPaths   bool
+	RootDir string
+	Name    string
 }
 
-func NewBoltDBCache(parameters interface{}, log zlog.Logger) Cache {
+func NewBoltDBCache(parameters interface{}, log zlog.Logger) (Cache, error) {
 	properParameters, ok := parameters.(BoltDBDriverParameters)
 	if !ok {
-		panic("Failed type assertion")
+		log.Error().Err(errors.ErrTypeAssertionFailed).Msg("failed type assertion for boltdb")
+
+		return nil, errors.ErrTypeAssertionFailed
 	}
 
 	err := os.MkdirAll(properParameters.RootDir, constants.DefaultDirPerms)
 	if err != nil {
 		log.Error().Err(err).Msgf("unable to create directory for cache db: %v", properParameters.RootDir)
 
-		return nil
+		return nil, err
 	}
 
 	dbPath := path.Join(properParameters.RootDir, properParameters.Name+constants.DBExtensionName)
@@ -49,13 +49,25 @@ func NewBoltDBCache(parameters interface{}, log zlog.Logger) Cache {
 	if err != nil {
 		log.Error().Err(err).Str("dbPath", dbPath).Msg("unable to create cache db")
 
-		return nil
+		return nil, err
 	}
 
-	if err := cacheDB.Update(func(tx *bbolt.Tx) error {
-		if _, err := tx.CreateBucketIfNotExists([]byte(constants.BlobsCache)); err != nil {
+	return &BoltDBDriver{
+		rootDir: properParameters.RootDir,
+		db:      cacheDB,
+		log:     log,
+	}, nil
+}
+
+func (d *BoltDBDriver) Name() string {
+	return "boltdb"
+}
+
+func (d *BoltDBDriver) CreateBucket(name string) error {
+	if err := d.db.Update(func(tx *bbolt.Tx) error {
+		if _, err := tx.CreateBucketIfNotExists([]byte(name)); err != nil {
 			// this is a serious failure
-			log.Error().Err(err).Str("dbPath", dbPath).Msg("unable to create a root bucket")
+			d.log.Error().Err(err).Str("rootDir", d.rootDir).Msg("unable to create root bucket")
 
 			return err
 		}
@@ -63,41 +75,23 @@ func NewBoltDBCache(parameters interface{}, log zlog.Logger) Cache {
 		return nil
 	}); err != nil {
 		// something went wrong
-		log.Error().Err(err).Msg("unable to create a cache")
+		d.log.Error().Err(err).Msg("unable to create a cache")
 
-		return nil
+		return err
 	}
 
-	return &BoltDBDriver{
-		rootDir:     properParameters.RootDir,
-		db:          cacheDB,
-		useRelPaths: properParameters.UseRelPaths,
-		log:         log,
-	}
+	return nil
 }
 
-func (d *BoltDBDriver) Name() string {
-	return "boltdb"
-}
-
-func (d *BoltDBDriver) PutBlob(digest godigest.Digest, path string) error {
-	if path == "" {
-		d.log.Error().Err(errors.ErrEmptyValue).Str("digest", digest.String()).Msg("empty path provided")
+func (d *BoltDBDriver) PutBlob(bucket string, digest godigest.Digest, path string) error {
+	if path == "" || bucket == "" {
+		d.log.Error().Err(errors.ErrEmptyValue).Str("digest", digest.String()).Msg("empty path or bucket provided")
 
 		return errors.ErrEmptyValue
 	}
 
-	// use only relative (to rootDir) paths on blobs
-	var err error
-	if d.useRelPaths {
-		path, err = filepath.Rel(d.rootDir, path)
-		if err != nil {
-			d.log.Error().Err(err).Str("path", path).Msg("unable to get relative path")
-		}
-	}
-
 	if err := d.db.Update(func(tx *bbolt.Tx) error {
-		root := tx.Bucket([]byte(constants.BlobsCache))
+		root := tx.Bucket([]byte(bucket))
 		if root == nil {
 			// this is a serious failure
 			err := errors.ErrCacheRootBucket
@@ -156,11 +150,17 @@ func (d *BoltDBDriver) PutBlob(digest godigest.Digest, path string) error {
 	return nil
 }
 
-func (d *BoltDBDriver) GetBlob(digest godigest.Digest) (string, error) {
+func (d *BoltDBDriver) GetBlob(bucket string, digest godigest.Digest) (string, error) {
+	if bucket == "" {
+		d.log.Error().Err(errors.ErrEmptyValue).Str("digest", digest.String()).Msg("empty bucket provided")
+
+		return "", errors.ErrEmptyValue
+	}
+
 	var blobPath strings.Builder
 
 	if err := d.db.View(func(tx *bbolt.Tx) error {
-		root := tx.Bucket([]byte(constants.BlobsCache))
+		root := tx.Bucket([]byte(bucket))
 		if root == nil {
 			// this is a serious failure
 			err := errors.ErrCacheRootBucket
@@ -185,9 +185,15 @@ func (d *BoltDBDriver) GetBlob(digest godigest.Digest) (string, error) {
 	return blobPath.String(), nil
 }
 
-func (d *BoltDBDriver) HasBlob(digest godigest.Digest, blob string) bool {
+func (d *BoltDBDriver) HasBlob(bucket string, digest godigest.Digest, path string) bool {
+	if bucket == "" || path == "" {
+		d.log.Warn().Str("digest", digest.String()).Msg("empty path or bucket provided")
+
+		return false
+	}
+
 	if err := d.db.View(func(tx *bbolt.Tx) error {
-		root := tx.Bucket([]byte(constants.BlobsCache))
+		root := tx.Bucket([]byte(bucket))
 		if root == nil {
 			// this is a serious failure
 			err := errors.ErrCacheRootBucket
@@ -206,8 +212,15 @@ func (d *BoltDBDriver) HasBlob(digest godigest.Digest, blob string) bool {
 			return errors.ErrCacheMiss
 		}
 
-		if origin.Get([]byte(blob)) == nil {
+		deduped := bucket.Bucket([]byte(constants.DuplicatesBucket))
+		if deduped == nil {
 			return errors.ErrCacheMiss
+		}
+
+		if origin.Get([]byte(path)) == nil {
+			if deduped.Get([]byte(path)) == nil {
+				return errors.ErrCacheMiss
+			}
 		}
 
 		return nil
@@ -229,18 +242,15 @@ func (d *BoltDBDriver) getOne(bucket *bbolt.Bucket) []byte {
 	return nil
 }
 
-func (d *BoltDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
-	// use only relative (to rootDir) paths on blobs
-	var err error
-	if d.useRelPaths {
-		path, err = filepath.Rel(d.rootDir, path)
-		if err != nil {
-			d.log.Error().Err(err).Str("path", path).Msg("unable to get relative path")
-		}
+func (d *BoltDBDriver) DeleteBlob(bucket string, digest godigest.Digest, path string) error {
+	if bucket == "" || path == "" {
+		d.log.Error().Err(errors.ErrEmptyValue).Str("digest", digest.String()).Msg("empty path or bucket provided")
+
+		return errors.ErrEmptyValue
 	}
 
 	if err := d.db.Update(func(tx *bbolt.Tx) error {
-		root := tx.Bucket([]byte(constants.BlobsCache))
+		root := tx.Bucket([]byte(bucket))
 		if root == nil {
 			// this is a serious failure
 			err := errors.ErrCacheRootBucket
@@ -308,4 +318,8 @@ func (d *BoltDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 	}
 
 	return nil
+}
+
+func (d *BoltDBDriver) Close() error {
+	return d.db.Close()
 }

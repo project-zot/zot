@@ -23,7 +23,6 @@ var (
 type StorageConfig struct {
 	RootDirectory string
 	Dedupe        bool
-	RemoteCache   bool
 	GC            bool
 	Commit        bool
 	GCDelay       time.Duration

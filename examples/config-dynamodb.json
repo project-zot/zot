@@ -3,7 +3,6 @@
     "storage": {
         "rootDirectory": "/tmp/zot",
         "dedupe": true,
-        "remoteCache": true,
         "storageDriver": {
             "name": "s3",
             "rootdirectory": "/zot",
@@ -17,7 +16,7 @@
             "name": "dynamodb",
             "endpoint": "http://localhost:4566",
             "region": "us-east-2",
-            "cacheTablename": "ZotBlobTable",
+            "tableNamePrefix": "staging",
             "repoMetaTablename": "ZotRepoMetadataTable",
             "manifestDataTablename": "ZotManifestDataTable",
             "versionTablename": "ZotVersion"

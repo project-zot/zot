@@ -258,16 +258,23 @@ func TestUploadBlob(t *testing.T) {
 		conf.HTTP.Port = port
 		conf.Storage.RootDirectory = tempDir
 
-		err := os.Chmod(tempDir, 0o400)
-		if err != nil {
-			t.Fatal(err)
-		}
-
 		ctlr := api.NewController(conf)
 
 		ctlrManager := test.NewControllerManager(ctlr)
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
+
+		err := os.Chmod(tempDir, 0o400)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		defer func() {
+			err = os.Chmod(tempDir, 0o700)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}()
 
 		err = test.UploadBlob(baseURL, "test", []byte("test"), "zot.com.test")
 		So(err, ShouldEqual, test.ErrPostBlob)
@@ -388,16 +395,23 @@ func TestUploadImage(t *testing.T) {
 		conf.HTTP.Port = port
 		conf.Storage.RootDirectory = tempDir
 
-		err := os.Chmod(tempDir, 0o400)
-		if err != nil {
-			t.Fatal(err)
-		}
-
 		ctlr := api.NewController(conf)
 
 		ctlrManager := test.NewControllerManager(ctlr)
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
+
+		err := os.Chmod(tempDir, 0o400)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		defer func() {
+			err = os.Chmod(tempDir, 0o700)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}()
 
 		img := test.Image{
 			Layers: make([][]byte, 10),

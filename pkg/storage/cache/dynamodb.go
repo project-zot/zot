@@ -16,13 +16,12 @@ import (
 )
 
 type DynamoDBDriver struct {
-	client    *dynamodb.Client
-	log       zlog.Logger
-	tableName string
+	client *dynamodb.Client
+	log    zlog.Logger
 }
 
 type DynamoDBDriverParameters struct {
-	Endpoint, Region, TableName string
+	Endpoint, Region, TableNamePrefix string
 }
 
 type Blob struct {
@@ -30,8 +29,7 @@ type Blob struct {
 	BlobPath []string `dynamodbav:"BlobPath,stringset"`
 }
 
-// Use ONLY for tests.
-func (d *DynamoDBDriver) NewTable(tableName string) error {
+func (d *DynamoDBDriver) CreateBucket(tableName string) error {
 	//nolint:gomnd
 	_, err := d.client.CreateTable(context.TODO(), &dynamodb.CreateTableInput{
 		TableName: &tableName,
@@ -53,18 +51,20 @@ func (d *DynamoDBDriver) NewTable(tableName string) error {
 		},
 	})
 	if err != nil && !strings.Contains(err.Error(), "Table already exists") {
+		d.log.Error().Err(err).Msgf("failed to create table %s", tableName)
+
 		return err
 	}
-
-	d.tableName = tableName
 
 	return nil
 }
 
-func NewDynamoDBCache(parameters interface{}, log zlog.Logger) Cache {
+func NewDynamoDBCache(parameters interface{}, log zlog.Logger) (Cache, error) {
 	properParameters, ok := parameters.(DynamoDBDriverParameters)
 	if !ok {
-		panic("Failed type assertion!")
+		log.Error().Err(zerr.ErrTypeAssertionFailed).Msg("failed type assertion for dynamodb")
+
+		return nil, zerr.ErrTypeAssertionFailed
 	}
 
 	// custom endpoint resolver to point to localhost
@@ -85,18 +85,11 @@ func NewDynamoDBCache(parameters interface{}, log zlog.Logger) Cache {
 	if err != nil {
 		log.Error().Msgf("unable to load AWS SDK config for dynamodb, %v", err)
 
-		return nil
-	}
-
-	driver := &DynamoDBDriver{client: dynamodb.NewFromConfig(cfg), tableName: properParameters.TableName, log: log}
-
-	err = driver.NewTable(driver.tableName)
-	if err != nil {
-		log.Error().Err(err).Msgf("unable to create table for cache '%s'", driver.tableName)
+		return nil, err
 	}
 
 	// Using the Config value, create the DynamoDB client
-	return driver
+	return &DynamoDBDriver{client: dynamodb.NewFromConfig(cfg), log: log}, nil
 }
 
 func (d *DynamoDBDriver) Name() string {
@@ -104,15 +97,21 @@ func (d *DynamoDBDriver) Name() string {
 }
 
 // Returns the first path of the blob if it exists.
-func (d *DynamoDBDriver) GetBlob(digest godigest.Digest) (string, error) {
+func (d *DynamoDBDriver) GetBlob(tableName string, digest godigest.Digest) (string, error) {
+	if tableName == "" {
+		d.log.Error().Err(zerr.ErrEmptyValue).Str("digest", digest.String()).Msg("empty bucket provided")
+
+		return "", zerr.ErrEmptyValue
+	}
+
 	resp, err := d.client.GetItem(context.TODO(), &dynamodb.GetItemInput{
-		TableName: aws.String(d.tableName),
+		TableName: aws.String(tableName),
 		Key: map[string]types.AttributeValue{
 			"Digest": &types.AttributeValueMemberS{Value: digest.String()},
 		},
 	})
 	if err != nil {
-		d.log.Error().Msgf("failed to get blob %v, %v", d.tableName, err)
+		d.log.Error().Msgf("failed to get blob %v, %v", tableName, err)
 
 		return "", err
 	}
@@ -132,9 +131,9 @@ func (d *DynamoDBDriver) GetBlob(digest godigest.Digest) (string, error) {
 	return out.BlobPath[0], nil
 }
 
-func (d *DynamoDBDriver) PutBlob(digest godigest.Digest, path string) error {
-	if path == "" {
-		d.log.Error().Err(zerr.ErrEmptyValue).Str("digest", digest.String()).Msg("empty path provided")
+func (d *DynamoDBDriver) PutBlob(tableName string, digest godigest.Digest, path string) error {
+	if path == "" || tableName == "" {
+		d.log.Error().Err(zerr.ErrEmptyValue).Str("digest", digest.String()).Msg("empty path or table provided")
 
 		return zerr.ErrEmptyValue
 	}
@@ -145,7 +144,7 @@ func (d *DynamoDBDriver) PutBlob(digest godigest.Digest, path string) error {
 
 	if _, err := d.client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
 		Key:                       marshaledKey,
-		TableName:                 &d.tableName,
+		TableName:                 &tableName,
 		UpdateExpression:          &expression,
 		ExpressionAttributeValues: map[string]types.AttributeValue{":i": &attrPath},
 	}); err != nil {
@@ -157,15 +156,21 @@ func (d *DynamoDBDriver) PutBlob(digest godigest.Digest, path string) error {
 	return nil
 }
 
-func (d *DynamoDBDriver) HasBlob(digest godigest.Digest, path string) bool {
+func (d *DynamoDBDriver) HasBlob(tableName string, digest godigest.Digest, path string) bool {
+	if tableName == "" || path == "" {
+		d.log.Warn().Str("digest", digest.String()).Msg("empty path or bucket provided")
+
+		return false
+	}
+
 	resp, err := d.client.GetItem(context.TODO(), &dynamodb.GetItemInput{
-		TableName: aws.String(d.tableName),
+		TableName: aws.String(tableName),
 		Key: map[string]types.AttributeValue{
 			"Digest": &types.AttributeValueMemberS{Value: digest.String()},
 		},
 	})
 	if err != nil {
-		d.log.Error().Msgf("failed to get blob %v, %v", d.tableName, err)
+		d.log.Error().Msgf("failed to get blob %v, %v", tableName, err)
 
 		return false
 	}
@@ -191,7 +196,13 @@ func (d *DynamoDBDriver) HasBlob(digest godigest.Digest, path string) bool {
 	return false
 }
 
-func (d *DynamoDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
+func (d *DynamoDBDriver) DeleteBlob(tableName string, digest godigest.Digest, path string) error {
+	if tableName == "" || path == "" {
+		d.log.Error().Err(zerr.ErrEmptyValue).Str("digest", digest.String()).Msg("empty path or bucket provided")
+
+		return zerr.ErrEmptyValue
+	}
+
 	marshaledKey, _ := attributevalue.MarshalMap(map[string]interface{}{"Digest": digest.String()})
 
 	expression := "DELETE BlobPath :i"
@@ -199,7 +210,7 @@ func (d *DynamoDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 
 	_, err := d.client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
 		Key:                       marshaledKey,
-		TableName:                 &d.tableName,
+		TableName:                 &tableName,
 		UpdateExpression:          &expression,
 		ExpressionAttributeValues: map[string]types.AttributeValue{":i": &attrPath},
 	})
@@ -209,16 +220,20 @@ func (d *DynamoDBDriver) DeleteBlob(digest godigest.Digest, path string) error {
 		return err
 	}
 
-	result, _ := d.GetBlob(digest)
+	result, _ := d.GetBlob(tableName, digest)
 
 	if result == "" {
 		d.log.Debug().Str("digest", digest.String()).Str("path", path).Msg("deleting empty bucket")
 
 		_, _ = d.client.DeleteItem(context.TODO(), &dynamodb.DeleteItemInput{
 			Key:       marshaledKey,
-			TableName: &d.tableName,
+			TableName: &tableName,
 		})
 	}
 
+	return nil
+}
+
+func (d *DynamoDBDriver) Close() error {
 	return nil
 }

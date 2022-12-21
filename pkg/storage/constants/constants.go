@@ -20,4 +20,5 @@ const (
 	BoltdbName               = "cache"
 	ReferrerFilterAnnotation = "org.opencontainers.referrers.filtersApplied"
 	DynamoDBDriverName       = "dynamodb"
+	BoltDBDriverName         = "boltdb"
 )

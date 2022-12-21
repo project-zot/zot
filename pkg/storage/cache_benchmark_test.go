@@ -3,6 +3,7 @@ package storage_test
 import (
 	"math/rand"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
@@ -54,114 +55,117 @@ func generateData() map[godigest.Digest]string {
 	return dataMap
 }
 
-func helperPutAll(cache cache.Cache, testData map[godigest.Digest]string) {
+func helperPutAll(cache cache.Cache, tableName string, testData map[godigest.Digest]string) {
 	for digest, path := range testData {
-		_ = cache.PutBlob(digest, path)
+		_ = cache.PutBlob(tableName, digest, path)
 	}
 }
 
-func helperDeleteAll(cache cache.Cache, testData map[godigest.Digest]string) {
+func helperDeleteAll(cache cache.Cache, tableName string, testData map[godigest.Digest]string) {
 	for digest, path := range testData {
-		_ = cache.DeleteBlob(digest, path)
+		_ = cache.DeleteBlob(tableName, digest, path)
 	}
 }
 
-func helperHasAll(cache cache.Cache, testData map[godigest.Digest]string) {
+func helperHasAll(cache cache.Cache, tableName string, testData map[godigest.Digest]string) {
 	for digest, path := range testData {
-		_ = cache.HasBlob(digest, path)
+		_ = cache.HasBlob(tableName, digest, path)
 	}
 }
 
-func helperGetAll(cache cache.Cache, testData map[godigest.Digest]string) {
+func helperGetAll(cache cache.Cache, tableName string, testData map[godigest.Digest]string) {
 	for digest := range testData {
-		_, _ = cache.GetBlob(digest)
+		_, _ = cache.GetBlob(tableName, digest)
 	}
 }
 
-func helperMix(cache cache.Cache, testData map[godigest.Digest]string, digestSlice []godigest.Digest) {
+func helperMix(cache cache.Cache, tableName string, testData map[godigest.Digest]string,
+	digestSlice []godigest.Digest,
+) {
 	// The test data contains datasetSize entries by default, and each set of operations uses 5 entries
 	for i := 0; i < 1000; i++ {
-		_ = cache.PutBlob(digestSlice[i*5], testData[digestSlice[i*5]])
-		_ = cache.PutBlob(digestSlice[i*5+1], testData[digestSlice[i*5+1]])
-		_ = cache.PutBlob(digestSlice[i*5+2], testData[digestSlice[i*5+2]])
-		_ = cache.PutBlob(digestSlice[i*5+2], testData[digestSlice[i*5+3]])
-		_ = cache.DeleteBlob(digestSlice[i*5+1], testData[digestSlice[i*5+1]])
-		_ = cache.DeleteBlob(digestSlice[i*5+2], testData[digestSlice[i*5+3]])
-		_ = cache.DeleteBlob(digestSlice[i*5+2], testData[digestSlice[i*5+2]])
-		_ = cache.HasBlob(digestSlice[i*5], testData[digestSlice[i*5]])
-		_ = cache.HasBlob(digestSlice[i*5+1], testData[digestSlice[i*5+1]])
-		_, _ = cache.GetBlob(digestSlice[i*5])
-		_, _ = cache.GetBlob(digestSlice[i*5+1])
-		_ = cache.PutBlob(digestSlice[i*5], testData[digestSlice[i*5+4]])
-		_, _ = cache.GetBlob(digestSlice[i*5+4])
-		_ = cache.DeleteBlob(digestSlice[i*5], testData[digestSlice[i*5+4]])
-		_ = cache.DeleteBlob(digestSlice[i*5], testData[digestSlice[i*5]])
+		_ = cache.PutBlob(tableName, digestSlice[i*5], testData[digestSlice[i*5]])
+		_ = cache.PutBlob(tableName, digestSlice[i*5+1], testData[digestSlice[i*5+1]])
+		_ = cache.PutBlob(tableName, digestSlice[i*5+2], testData[digestSlice[i*5+2]])
+		_ = cache.PutBlob(tableName, digestSlice[i*5+2], testData[digestSlice[i*5+3]])
+		_ = cache.DeleteBlob(tableName, digestSlice[i*5+1], testData[digestSlice[i*5+1]])
+		_ = cache.DeleteBlob(tableName, digestSlice[i*5+2], testData[digestSlice[i*5+3]])
+		_ = cache.DeleteBlob(tableName, digestSlice[i*5+2], testData[digestSlice[i*5+2]])
+		_ = cache.HasBlob(tableName, digestSlice[i*5], testData[digestSlice[i*5]])
+		_ = cache.HasBlob(tableName, digestSlice[i*5+1], testData[digestSlice[i*5+1]])
+		_, _ = cache.GetBlob(tableName, digestSlice[i*5])
+		_, _ = cache.GetBlob(tableName, digestSlice[i*5+1])
+		_ = cache.PutBlob(tableName, digestSlice[i*5], testData[digestSlice[i*5+4]])
+		_, _ = cache.GetBlob(tableName, digestSlice[i*5+4])
+		_ = cache.DeleteBlob(tableName, digestSlice[i*5], testData[digestSlice[i*5+4]])
+		_ = cache.DeleteBlob(tableName, digestSlice[i*5], testData[digestSlice[i*5]])
 	}
+}
+
+func createCacheDriver(rootDir string) (cache.Cache, string) {
+	log := log.NewLogger("error", "")
+
+	cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+		RootDir: rootDir,
+		Name:    "cache_test",
+	}, log)
+
+	tableName := strings.ReplaceAll(rootDir, "/", "")
+
+	err := cacheDriver.CreateBucket(tableName)
+	if err != nil {
+		panic(err)
+	}
+
+	return cacheDriver, tableName
 }
 
 // BoltDB tests
 
 func BenchmarkPutLocal(b *testing.B) {
 	dir := b.TempDir()
-	log := log.NewLogger("error", "")
-	cache, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
-		RootDir:     dir,
-		Name:        "cache_test",
-		UseRelPaths: false,
-	}, log)
+	cache, tableName := createCacheDriver(dir)
 	testData := generateData()
 
 	b.ResetTimer()
 
-	helperPutAll(cache, testData)
+	helperPutAll(cache, tableName, testData)
 }
 
 func BenchmarkDeleteLocal(b *testing.B) {
 	dir := b.TempDir()
-	log := log.NewLogger("error", "")
-	cache, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
-		RootDir:     dir,
-		Name:        "cache_test",
-		UseRelPaths: false,
-	}, log)
+	cache, tableName := createCacheDriver(dir)
+
 	testData := generateData()
 
 	for digest, path := range testData {
-		_ = cache.PutBlob(digest, path)
+		_ = cache.PutBlob(tableName, digest, path)
 	}
 
 	b.ResetTimer()
 
-	helperDeleteAll(cache, testData)
+	helperDeleteAll(cache, tableName, testData)
 }
 
 func BenchmarkHasLocal(b *testing.B) {
 	dir := b.TempDir()
-	log := log.NewLogger("error", "")
-	cache, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
-		RootDir:     dir,
-		Name:        "cache_test",
-		UseRelPaths: false,
-	}, log)
+	cache, tableName := createCacheDriver(dir)
+
 	testData := generateData()
 
 	for digest, path := range testData {
-		_ = cache.PutBlob(digest, path)
+		_ = cache.PutBlob(tableName, digest, path)
 	}
 
 	b.ResetTimer()
 
-	helperHasAll(cache, testData)
+	helperHasAll(cache, tableName, testData)
 }
 
 func BenchmarkGetLocal(b *testing.B) {
 	dir := b.TempDir()
-	log := log.NewLogger("error", "")
-	cache, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
-		RootDir:     dir,
-		Name:        "cache_test",
-		UseRelPaths: false,
-	}, log)
+	cache, tableName := createCacheDriver(dir)
+
 	testData := generateData()
 	counter := 1
 
@@ -169,28 +173,24 @@ func BenchmarkGetLocal(b *testing.B) {
 
 	for digest, path := range testData {
 		if counter != 10 {
-			_ = cache.PutBlob(digest, path)
+			_ = cache.PutBlob(tableName, digest, path)
 			previousDigest = digest
 			counter++
 		} else {
-			_ = cache.PutBlob(previousDigest, path)
+			_ = cache.PutBlob(tableName, previousDigest, path)
 			counter = 1
 		}
 	}
 
 	b.ResetTimer()
 
-	helperGetAll(cache, testData)
+	helperGetAll(cache, tableName, testData)
 }
 
 func BenchmarkMixLocal(b *testing.B) {
 	dir := b.TempDir()
-	log := log.NewLogger("error", "")
-	cache, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
-		RootDir:     dir,
-		Name:        "cache_test",
-		UseRelPaths: false,
-	}, log)
+	cache, tableName := createCacheDriver(dir)
+
 	testData := generateData()
 	digestSlice := make([]godigest.Digest, datasetSize)
 	counter := 0
@@ -202,7 +202,7 @@ func BenchmarkMixLocal(b *testing.B) {
 
 	b.ResetTimer()
 
-	helperMix(cache, testData, digestSlice)
+	helperMix(cache, tableName, testData, digestSlice)
 }
 
 // DynamoDB Local tests
@@ -221,15 +221,14 @@ func BenchmarkPutLocalstack(b *testing.B) {
 	}
 
 	cache, _ := storage.Create("dynamodb", cache.DynamoDBDriverParameters{
-		Endpoint:  localEndpoint,
-		Region:    region,
-		TableName: tableName,
+		Endpoint: localEndpoint,
+		Region:   region,
 	}, log)
 	testData := generateData()
 
 	b.ResetTimer()
 
-	helperPutAll(cache, testData)
+	helperPutAll(cache, tableName, testData)
 }
 
 func BenchmarkDeleteLocalstack(b *testing.B) {
@@ -246,19 +245,18 @@ func BenchmarkDeleteLocalstack(b *testing.B) {
 	}
 
 	cache, _ := storage.Create("dynamodb", cache.DynamoDBDriverParameters{
-		Endpoint:  localEndpoint,
-		Region:    region,
-		TableName: tableName,
+		Endpoint: localEndpoint,
+		Region:   region,
 	}, log)
 	testData := generateData()
 
 	for digest, path := range testData {
-		_ = cache.PutBlob(digest, path)
+		_ = cache.PutBlob(tableName, digest, path)
 	}
 
 	b.ResetTimer()
 
-	helperDeleteAll(cache, testData)
+	helperDeleteAll(cache, tableName, testData)
 }
 
 func BenchmarkHasLocalstack(b *testing.B) {
@@ -275,19 +273,18 @@ func BenchmarkHasLocalstack(b *testing.B) {
 	}
 
 	cache, _ := storage.Create("dynamodb", cache.DynamoDBDriverParameters{
-		Endpoint:  localEndpoint,
-		Region:    region,
-		TableName: tableName,
+		Endpoint: localEndpoint,
+		Region:   region,
 	}, log)
 	testData := generateData()
 
 	for digest, path := range testData {
-		_ = cache.PutBlob(digest, path)
+		_ = cache.PutBlob(tableName, digest, path)
 	}
 
 	b.ResetTimer()
 
-	helperHasAll(cache, testData)
+	helperHasAll(cache, tableName, testData)
 }
 
 func BenchmarkGetLocalstack(b *testing.B) {
@@ -304,9 +301,8 @@ func BenchmarkGetLocalstack(b *testing.B) {
 	}
 
 	cache, _ := storage.Create("dynamodb", cache.DynamoDBDriverParameters{
-		Endpoint:  localEndpoint,
-		Region:    region,
-		TableName: tableName,
+		Endpoint: localEndpoint,
+		Region:   region,
 	}, log)
 	testData := generateData()
 	counter := 1
@@ -315,18 +311,18 @@ func BenchmarkGetLocalstack(b *testing.B) {
 
 	for digest, path := range testData {
 		if counter != 10 {
-			_ = cache.PutBlob(digest, path)
+			_ = cache.PutBlob(tableName, digest, path)
 			previousDigest = digest
 			counter++
 		} else {
-			_ = cache.PutBlob(previousDigest, path)
+			_ = cache.PutBlob(tableName, previousDigest, path)
 			counter = 1
 		}
 	}
 
 	b.ResetTimer()
 
-	helperGetAll(cache, testData)
+	helperGetAll(cache, tableName, testData)
 }
 
 func BenchmarkMixLocalstack(b *testing.B) {
@@ -343,9 +339,8 @@ func BenchmarkMixLocalstack(b *testing.B) {
 	}
 
 	cache, _ := storage.Create("dynamodb", cache.DynamoDBDriverParameters{
-		Endpoint:  localEndpoint,
-		Region:    region,
-		TableName: tableName,
+		Endpoint: localEndpoint,
+		Region:   region,
 	}, log)
 	testData := generateData()
 	digestSlice := make([]godigest.Digest, datasetSize)
@@ -358,7 +353,7 @@ func BenchmarkMixLocalstack(b *testing.B) {
 
 	b.ResetTimer()
 
-	helperMix(cache, testData, digestSlice)
+	helperMix(cache, tableName, testData, digestSlice)
 }
 
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -379,15 +374,14 @@ func BenchmarkPutAWS(b *testing.B) {
 	}
 
 	cache, _ := storage.Create("dynamodb", cache.DynamoDBDriverParameters{
-		Endpoint:  awsEndpoint,
-		Region:    region,
-		TableName: tableName,
+		Endpoint: awsEndpoint,
+		Region:   region,
 	}, log)
 	testData := generateData()
 
 	b.ResetTimer()
 
-	helperPutAll(cache, testData)
+	helperPutAll(cache, tableName, testData)
 }
 
 func BenchmarkDeleteAWS(b *testing.B) {
@@ -404,19 +398,18 @@ func BenchmarkDeleteAWS(b *testing.B) {
 	}
 
 	cache, _ := storage.Create("dynamodb", cache.DynamoDBDriverParameters{
-		Endpoint:  awsEndpoint,
-		Region:    region,
-		TableName: tableName,
+		Endpoint: awsEndpoint,
+		Region:   region,
 	}, log)
 	testData := generateData()
 
 	for digest, path := range testData {
-		_ = cache.PutBlob(digest, path)
+		_ = cache.PutBlob(tableName, digest, path)
 	}
 
 	b.ResetTimer()
 
-	helperDeleteAll(cache, testData)
+	helperDeleteAll(cache, tableName, testData)
 }
 
 func BenchmarkHasAWS(b *testing.B) {
@@ -433,19 +426,18 @@ func BenchmarkHasAWS(b *testing.B) {
 	}
 
 	cache, _ := storage.Create("dynamodb", cache.DynamoDBDriverParameters{
-		Endpoint:  awsEndpoint,
-		Region:    region,
-		TableName: tableName,
+		Endpoint: awsEndpoint,
+		Region:   region,
 	}, log)
 	testData := generateData()
 
 	for digest, path := range testData {
-		_ = cache.PutBlob(digest, path)
+		_ = cache.PutBlob(tableName, digest, path)
 	}
 
 	b.ResetTimer()
 
-	helperHasAll(cache, testData)
+	helperHasAll(cache, tableName, testData)
 }
 
 func BenchmarkGetAWS(b *testing.B) {
@@ -462,9 +454,8 @@ func BenchmarkGetAWS(b *testing.B) {
 	}
 
 	cache, _ := storage.Create("dynamodb", cache.DynamoDBDriverParameters{
-		Endpoint:  awsEndpoint,
-		Region:    region,
-		TableName: tableName,
+		Endpoint: awsEndpoint,
+		Region:   region,
 	}, log)
 	testData := generateData()
 	counter := 1
@@ -473,18 +464,18 @@ func BenchmarkGetAWS(b *testing.B) {
 
 	for digest, path := range testData {
 		if counter != 10 {
-			_ = cache.PutBlob(digest, path)
+			_ = cache.PutBlob(tableName, digest, path)
 			previousDigest = digest
 			counter++
 		} else {
-			_ = cache.PutBlob(previousDigest, path)
+			_ = cache.PutBlob(tableName, previousDigest, path)
 			counter = 1
 		}
 	}
 
 	b.ResetTimer()
 
-	helperGetAll(cache, testData)
+	helperGetAll(cache, tableName, testData)
 }
 
 func BenchmarkMixAWS(b *testing.B) {
@@ -501,9 +492,8 @@ func BenchmarkMixAWS(b *testing.B) {
 	}
 
 	cache, _ := storage.Create("dynamodb", cache.DynamoDBDriverParameters{
-		Endpoint:  awsEndpoint,
-		Region:    region,
-		TableName: tableName,
+		Endpoint: awsEndpoint,
+		Region:   region,
 	}, log)
 	testData := generateData()
 	digestSlice := make([]godigest.Digest, datasetSize)
@@ -516,5 +506,5 @@ func BenchmarkMixAWS(b *testing.B) {
 
 	b.ResetTimer()
 
-	helperMix(cache, testData, digestSlice)
+	helperMix(cache, tableName, testData, digestSlice)
 }

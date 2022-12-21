@@ -9,14 +9,20 @@ type Cache interface {
 	Name() string
 
 	// Retrieves the blob matching provided digest.
-	GetBlob(digest godigest.Digest) (string, error)
+	GetBlob(bucket string, digest godigest.Digest) (string, error)
 
 	// Uploads blob to cachedb.
-	PutBlob(digest godigest.Digest, path string) error
+	PutBlob(bucket string, digest godigest.Digest, path string) error
 
 	// Check if blob exists in cachedb.
-	HasBlob(digest godigest.Digest, path string) bool
+	HasBlob(bucket string, digest godigest.Digest, path string) bool
 
 	// Delete a blob from the cachedb.
-	DeleteBlob(digest godigest.Digest, path string) error
+	DeleteBlob(bucket string, digest godigest.Digest, path string) error
+
+	// Create bucket/table for each substore
+	CreateBucket(name string) error
+
+	// Release resources
+	Close() error
 }

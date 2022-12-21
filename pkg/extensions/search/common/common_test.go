@@ -1083,7 +1083,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		imageStore := local.NewImageStore(tempDir, false, 0, false, false,
-			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil)
+			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil, "")
 
 		storeController := storage.StoreController{
 			DefaultStore: imageStore,
@@ -1218,7 +1218,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		log := log.NewLogger("debug", "")
 		metrics := monitoring.NewMetricsServer(false, log)
 		testStorage := local.NewImageStore(rootDir, false, storage.DefaultGCDelay,
-			false, false, log, metrics, nil, nil)
+			false, false, log, metrics, nil, nil, "")
 
 		resp, err := resty.R().Get(baseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
@@ -1488,7 +1488,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		imageStore := local.NewImageStore(conf.Storage.RootDirectory, false, 0, false, false,
-			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil)
+			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil, "")
 
 		storeController := storage.StoreController{
 			DefaultStore: imageStore,
@@ -1700,10 +1700,10 @@ func TestUtilsMethod(t *testing.T) {
 
 		metrics := monitoring.NewMetricsServer(false, log)
 		defaultStore := local.NewImageStore(rootDir, false,
-			storage.DefaultGCDelay, false, false, log, metrics, nil, nil)
+			storage.DefaultGCDelay, false, false, log, metrics, nil, nil, "")
 
 		subStore := local.NewImageStore(subRootDir, false,
-			storage.DefaultGCDelay, false, false, log, metrics, nil, nil)
+			storage.DefaultGCDelay, false, false, log, metrics, nil, nil, "")
 
 		subStoreMap := make(map[string]storage.ImageStore)
 
@@ -5524,7 +5524,7 @@ func TestRepoDBWhenDeletingImages(t *testing.T) {
 			log := log.NewLogger("debug", "")
 			metrics := monitoring.NewMetricsServer(false, log)
 			storage := local.NewImageStore(dir, false, storage.DefaultGCDelay,
-				false, false, log, metrics, nil, nil)
+				false, false, log, metrics, nil, nil, "")
 
 			indexBlob, err := storage.GetIndexContent(repo)
 			So(err, ShouldBeNil)
@@ -5601,7 +5601,7 @@ func TestRepoDBWhenDeletingImages(t *testing.T) {
 			log := log.NewLogger("debug", "")
 			metrics := monitoring.NewMetricsServer(false, log)
 			storage := local.NewImageStore(dir, false, storage.DefaultGCDelay,
-				false, false, log, metrics, nil, nil)
+				false, false, log, metrics, nil, nil, "")
 
 			indexBlob, err := storage.GetIndexContent(repo)
 			So(err, ShouldBeNil)

@@ -30,6 +30,7 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/cache"
+	"zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/storage/s3"
 	"zotregistry.io/zot/pkg/test"
@@ -48,7 +49,7 @@ func skipIt(t *testing.T) {
 	}
 }
 
-func createObjectsStore(rootDir string, cacheDir string) (driver.StorageDriver, storage.ImageStore, error) {
+func createObjectsStore(rootDir string, cacheDir string) (driver.StorageDriver, storage.ImageStore) {
 	bucket := "zot-storage-test"
 	endpoint := os.Getenv("S3MOCK_ENDPOINT")
 	storageDriverParams := map[string]interface{}{
@@ -80,15 +81,22 @@ func createObjectsStore(rootDir string, cacheDir string) (driver.StorageDriver, 
 	metrics := monitoring.NewMetricsServer(false, log)
 
 	cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
-		RootDir:     cacheDir,
-		Name:        "s3_cache",
-		UseRelPaths: false,
+		RootDir: cacheDir,
+		Name:    constants.BoltdbName,
 	}, log)
-	il := s3.NewImageStore(rootDir, cacheDir, false, storage.DefaultGCDelay,
-		true, false, log, metrics, nil, store, cacheDriver,
+
+	tableName := strings.ReplaceAll(rootDir, "/", "")
+
+	err = cacheDriver.CreateBucket(tableName)
+	if err != nil {
+		panic(err)
+	}
+
+	il := s3.NewImageStore(rootDir, false, storage.DefaultGCDelay,
+		true, false, log, metrics, nil, store, cacheDriver, tableName,
 	)
 
-	return store, il, err
+	return store, il
 }
 
 //nolint:gochecknoglobals
@@ -123,7 +131,7 @@ func TestStorageAPIs(t *testing.T) {
 				tdir := t.TempDir()
 
 				var store driver.StorageDriver
-				store, imgStore, _ = createObjectsStore(testDir, tdir)
+				store, imgStore = createObjectsStore(testDir, tdir)
 				defer cleanupStorage(store, testDir)
 			} else {
 				dir := t.TempDir()
@@ -131,12 +139,19 @@ func TestStorageAPIs(t *testing.T) {
 				log := log.Logger{Logger: zerolog.New(os.Stdout)}
 				metrics := monitoring.NewMetricsServer(false, log)
 				cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
-					RootDir:     dir,
-					Name:        "cache",
-					UseRelPaths: true,
+					RootDir: dir,
+					Name:    constants.BoltdbName,
 				}, log)
+
+				tableName := strings.ReplaceAll(dir, "/", "")
+
+				err := cacheDriver.CreateBucket(tableName)
+				if err != nil {
+					panic(err)
+				}
+
 				imgStore = local.NewImageStore(dir, true, storage.DefaultGCDelay, true,
-					true, log, metrics, nil, cacheDriver)
+					true, log, metrics, nil, cacheDriver, tableName)
 			}
 
 			Convey("Repo layout", t, func(c C) {
@@ -727,28 +742,35 @@ func TestMandatoryAnnotations(t *testing.T) {
 				testDir = path.Join("/oci-repo-test", uuid.String())
 				tdir = t.TempDir()
 
-				store, _, _ = createObjectsStore(testDir, tdir)
-				imgStore = s3.NewImageStore(testDir, tdir, false, 1, false, false, log, metrics,
+				store, _ = createObjectsStore(testDir, tdir)
+				imgStore = s3.NewImageStore(testDir, false, 1, false, false, log, metrics,
 					&mocks.MockedLint{
 						LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storage.ImageStore) (bool, error) {
 							return false, nil
 						},
-					}, store, nil)
+					}, store, nil, "")
 
 				defer cleanupStorage(store, testDir)
 			} else {
 				tdir = t.TempDir()
 				cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
-					RootDir:     tdir,
-					Name:        "cache",
-					UseRelPaths: true,
+					RootDir: tdir,
+					Name:    constants.BoltdbName,
 				}, log)
+
+				tableName := strings.ReplaceAll(tdir, "/", "")
+
+				err := cacheDriver.CreateBucket(tableName)
+				if err != nil {
+					panic(err)
+				}
+
 				imgStore = local.NewImageStore(tdir, true, storage.DefaultGCDelay, true,
 					true, log, metrics, &mocks.MockedLint{
 						LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storage.ImageStore) (bool, error) {
 							return false, nil
 						},
-					}, cacheDriver)
+					}, cacheDriver, tableName)
 			}
 
 			Convey("Setup manifest", t, func() {
@@ -795,26 +817,21 @@ func TestMandatoryAnnotations(t *testing.T) {
 
 				Convey("Error on mandatory annotations", func() {
 					if testcase.storageType == "s3" {
-						imgStore = s3.NewImageStore(testDir, tdir, false, 1, false, false, log, metrics,
+						imgStore = s3.NewImageStore(testDir, false, 1, false, false, log, metrics,
 							&mocks.MockedLint{
 								LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storage.ImageStore) (bool, error) {
 									//nolint: goerr113
 									return false, errors.New("linter error")
 								},
-							}, store, nil)
+							}, store, nil, "")
 					} else {
-						cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
-							RootDir:     tdir,
-							Name:        "cache",
-							UseRelPaths: true,
-						}, log)
 						imgStore = local.NewImageStore(tdir, true, storage.DefaultGCDelay, true,
 							true, log, metrics, &mocks.MockedLint{
 								LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storage.ImageStore) (bool, error) {
 									//nolint: goerr113
 									return false, errors.New("linter error")
 								},
-							}, cacheDriver)
+							}, nil, "")
 					}
 
 					_, err = imgStore.PutImageManifest("test", "1.0.0", ispec.MediaTypeImageManifest, manifestBuf)
@@ -843,15 +860,15 @@ func TestStorageHandler(t *testing.T) {
 				var thirdStorageDriver driver.StorageDriver
 
 				firstRootDir = "/util_test1"
-				firstStorageDriver, firstStore, _ = createObjectsStore(firstRootDir, t.TempDir())
+				firstStorageDriver, firstStore = createObjectsStore(firstRootDir, t.TempDir())
 				defer cleanupStorage(firstStorageDriver, firstRootDir)
 
 				secondRootDir = "/util_test2"
-				secondStorageDriver, secondStore, _ = createObjectsStore(secondRootDir, t.TempDir())
+				secondStorageDriver, secondStore = createObjectsStore(secondRootDir, t.TempDir())
 				defer cleanupStorage(secondStorageDriver, secondRootDir)
 
 				thirdRootDir = "/util_test3"
-				thirdStorageDriver, thirdStore, _ = createObjectsStore(thirdRootDir, t.TempDir())
+				thirdStorageDriver, thirdStore = createObjectsStore(thirdRootDir, t.TempDir())
 				defer cleanupStorage(thirdStorageDriver, thirdRootDir)
 			} else {
 				// Create temporary directory
@@ -865,13 +882,13 @@ func TestStorageHandler(t *testing.T) {
 
 				// Create ImageStore
 				firstStore = local.NewImageStore(firstRootDir, false, storage.DefaultGCDelay,
-					false, false, log, metrics, nil, nil)
+					false, false, log, metrics, nil, nil, "")
 
 				secondStore = local.NewImageStore(secondRootDir, false,
-					storage.DefaultGCDelay, false, false, log, metrics, nil, nil)
+					storage.DefaultGCDelay, false, false, log, metrics, nil, nil, "")
 
 				thirdStore = local.NewImageStore(thirdRootDir, false, storage.DefaultGCDelay,
-					false, false, log, metrics, nil, nil)
+					false, false, log, metrics, nil, nil, "")
 			}
 
 			Convey("Test storage handler", t, func() {

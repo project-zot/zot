@@ -15,7 +15,6 @@ import (
 	"zotregistry.io/zot/pkg/cli"
 	"zotregistry.io/zot/pkg/storage"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
-	"zotregistry.io/zot/pkg/storage/s3"
 	. "zotregistry.io/zot/pkg/test"
 )
 
@@ -144,7 +143,6 @@ func TestVerify(t *testing.T) {
 			"storage":{
 				"rootDirectory":"/tmp/zot",
 				"dedupe":true,
-				"remoteCache":false,
 				"storageDriver":{
 					"name":"s3",
 					"rootdirectory":"/zot",
@@ -177,7 +175,6 @@ func TestVerify(t *testing.T) {
 			"storage":{
 				"rootDirectory":"/tmp/zot",
 				"dedupe":true,
-				"remoteCache":false,
 				"subPaths":{
 					"/a": {
 						"rootDirectory": "/tmp/zot1",
@@ -218,12 +215,10 @@ func TestVerify(t *testing.T) {
 		So(err, ShouldBeNil)
 		defer os.Remove(tmpfile.Name()) // clean up
 
-		// dedupe true, remote storage, remoteCache true, but no cacheDriver (remote)
 		content := []byte(`{
 			"storage":{
 				"rootDirectory":"/tmp/zot",
 				"dedupe":true,
-				"remoteCache":true,
 				"storageDriver":{
 					"name":"s3",
 					"rootdirectory":"/zot",
@@ -249,19 +244,48 @@ func TestVerify(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldNotPanic)
 
-		// local storage with remote caching
+		content = []byte(`{
+			"storage":{
+				"rootDirectory":"/tmp/zot",
+				"dedupe":true,
+				"cacheDriver": {"name": "boltdb"},
+				"storageDriver":{
+					"name":"s3",
+					"rootdirectory":"/zot",
+					"region":"us-east-2",
+					"bucket":"zot-storage",
+					"secure":true,
+					"skipverify":false
+				}
+			},
+			"http":{
+				"address":"127.0.0.1",
+				"port":"8080",
+				"realm":"zot",
+				"auth":{
+					"htpasswd":{
+						"path":"test/data/htpasswd"
+					},
+					"failDelay":1
+				}
+			}
+		}`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldNotPanic)
+
 		content = []byte(`{
 			"storage":{
 			   "rootDirectory":"/tmp/zot",
 			   "dedupe":true,
-			   "remoteCache":true,
 			   "cacheDriver":{
 				  "name":"dynamodb",
 				  "endpoint":"http://localhost:4566",
-				  "region":"us-east-2",
-				  "cacheTablename":"BlobTable"
+				  "region":"us-east-2"
 			   }
 			},
 			"http":{
@@ -280,14 +304,13 @@ func TestVerify(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldNotPanic)
 
 		// unsupported cache driver
 		content = []byte(`{
 			"storage":{
 			   "rootDirectory":"/tmp/zot",
 			   "dedupe":true,
-			   "remoteCache":true,
 			   "cacheDriver":{
 				  "name":"unsupportedDriver"
 			   },
@@ -318,17 +341,14 @@ func TestVerify(t *testing.T) {
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
 		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 
-		// remoteCache false but provided cacheDriver config, ignored
 		content = []byte(`{
 			"storage":{
 			   "rootDirectory":"/tmp/zot",
 			   "dedupe":true,
-			   "remoteCache":false,
 			   "cacheDriver":{
 				  "name":"dynamodb",
 				  "endpoint":"http://localhost:4566",
-				  "region":"us-east-2",
-				  "cacheTablename":"BlobTable"
+				  "region":"us-east-2"
 			   },
 			   "storageDriver":{
 				  "name":"s3",
@@ -359,7 +379,6 @@ func TestVerify(t *testing.T) {
 		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldNotPanic)
 
 		// SubPaths
-		// dedupe true, remote storage, remoteCache true, but no cacheDriver (remote)
 		content = []byte(`{
 			"storage":{
 			   "rootDirectory":"/tmp/zot",
@@ -368,7 +387,6 @@ func TestVerify(t *testing.T) {
 				  "/a":{
 					 "rootDirectory":"/zot-a",
 					 "dedupe":true,
-					 "remoteCache":true,
 					 "storageDriver":{
 						"name":"s3",
 						"rootdirectory":"/zot",
@@ -396,7 +414,7 @@ func TestVerify(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldNotPanic)
 
 		// local storage with remote caching
 		content = []byte(`{
@@ -407,12 +425,10 @@ func TestVerify(t *testing.T) {
 				  "/a":{
 					 "rootDirectory":"/zot-a",
 					 "dedupe":true,
-					 "remoteCache":true,
 					 "cacheDriver":{
 						"name":"dynamodb",
 						"endpoint":"http://localhost:4566",
-						"region":"us-east-2",
-						"cacheTablename":"BlobTable"
+						"region":"us-east-2"
 					 }
 				  }
 			   }
@@ -433,66 +449,21 @@ func TestVerify(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldNotPanic)
 
-		// unsupported cache driver
 		content = []byte(`{
 			"storage":{
 			   "rootDirectory":"/tmp/zot",
 			   "dedupe":false,
+			   "cacheDriver":{
+				   "name":"dynamodb",
+				    "endpoint":"http://localhost:4566",
+				    "region":"us-east-2"
+			   },
 			   "subPaths":{
 				  "/a":{
 					 "rootDirectory":"/zot-a",
-					 "dedupe":true,
-					 "remoteCache":true,
-					 "cacheDriver":{
-						"name":"badDriverName"
-					 },
-					 "storageDriver":{
-						"name":"s3",
-						"rootdirectory":"/zot",
-						"region":"us-east-2",
-						"bucket":"zot-storage",
-						"secure":true,
-						"skipverify":false
-					 }
-				  }
-			   }
-			},
-			"http":{
-			   "address":"127.0.0.1",
-			   "port":"8080",
-			   "realm":"zot",
-			   "auth":{
-				  "htpasswd":{
-					 "path":"test/data/htpasswd"
-				  },
-				  "failDelay":1
-			   }
-			}
-		 }`)
-		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
-		So(err, ShouldBeNil)
-
-		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
-		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
-
-		// remoteCache false but provided cacheDriver config, ignored
-		content = []byte(`{
-			"storage":{
-			   "rootDirectory":"/tmp/zot",
-			   "dedupe":false,
-			   "subPaths":{
-				  "/a":{
-					 "rootDirectory":"/zot-a",
-					 "dedupe":true,
-					 "remoteCache":false,
-					 "cacheDriver":{
-						"name":"dynamodb",
-						"endpoint":"http://localhost:4566",
-						"region":"us-east-2",
-						"cacheTablename":"BlobTable"
-					 }
+					 "dedupe":true
 				  }
 			   }
 			},
@@ -522,7 +493,7 @@ func TestVerify(t *testing.T) {
 
 		// s3 dedup=false, check for previous dedup usage and set to true if cachedb found
 		cacheDir := t.TempDir()
-		existingDBPath := path.Join(cacheDir, s3.CacheDBName+storageConstants.DBExtensionName)
+		existingDBPath := path.Join(cacheDir, storageConstants.BoltdbName+storageConstants.DBExtensionName)
 		_, err = os.Create(existingDBPath)
 		So(err, ShouldBeNil)
 
@@ -538,7 +509,7 @@ func TestVerify(t *testing.T) {
 
 		// subpath s3 dedup=false, check for previous dedup usage and set to true if cachedb found
 		cacheDir = t.TempDir()
-		existingDBPath = path.Join(cacheDir, s3.CacheDBName+storageConstants.DBExtensionName)
+		existingDBPath = path.Join(cacheDir, storageConstants.BoltdbName+storageConstants.DBExtensionName)
 		_, err = os.Create(existingDBPath)
 		So(err, ShouldBeNil)
 

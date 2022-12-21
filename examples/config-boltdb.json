@@ -2,8 +2,7 @@
     "distSpecVersion": "1.1.0-dev",
     "storage": {
         "rootDirectory": "/tmp/zot",
-        "dedupe": true,
-        "remoteCache": false
+        "dedupe": true
     },
     "http": {
         "address": "127.0.0.1",

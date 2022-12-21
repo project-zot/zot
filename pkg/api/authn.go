@@ -181,6 +181,7 @@ func basicAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 				return
 			}
+
 			if request.Header.Get("Authorization") == "" && anonymousPolicyExists(ctlr.Config.AccessControl) {
 				// Process request
 				next.ServeHTTP(response, request)
