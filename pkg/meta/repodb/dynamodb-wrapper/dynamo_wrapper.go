@@ -605,11 +605,7 @@ func (dwr DBWrapper) SearchRepos(ctx context.Context, searchText string, filter 
 				// get fields related to sorting
 				repoDownloads += repoMeta.Statistics[descriptor.Digest].DownloadCount
 
-				imageLastUpdated, err := common.GetImageLastUpdatedTimestamp(manifestMeta.ConfigBlob)
-				if err != nil {
-					return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{},
-						errors.Wrapf(err, "repodb: error while unmarshaling image config referenced by digest %s", descriptor.Digest)
-				}
+				imageLastUpdated := common.GetImageLastUpdatedTimestamp(configContent)
 
 				if firstImageChecked || repoLastUpdated.Before(imageLastUpdated) {
 					repoLastUpdated = imageLastUpdated

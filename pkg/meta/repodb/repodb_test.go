@@ -330,6 +330,21 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				So(len(repoMetaSlice), ShouldEqual, 1)
 				So(repoMetaSlice[0].Tags[tag1].Digest == manifestDigest1.String(), ShouldBeTrue)
 			})
+
+			Convey("Wrong page input", func() {
+				repoMetaSlice, err := repoDB.GetMultipleRepoMeta(context.TODO(), func(repoMeta repodb.RepoMetadata) bool {
+					for tag := range repoMeta.Tags {
+						if tag == tag1 {
+							return true
+						}
+					}
+
+					return false
+				}, repodb.PageInput{Limit: -1, Offset: -1})
+
+				So(err, ShouldNotBeNil)
+				So(len(repoMetaSlice), ShouldEqual, 0)
+			})
 		})
 
 		Convey("Test IncrementRepoStars", func() {
@@ -982,6 +997,14 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 
 				repos, _, err = repoDB.SearchTags(ctx, "repo2:", repodb.Filter{}, repodb.PageInput{})
 				So(err, ShouldBeNil)
+				So(repos, ShouldBeEmpty)
+			})
+
+			Convey("With wrong pagination input", func() {
+				repos, _, err := repoDB.SearchTags(ctx, "repo2:", repodb.Filter{}, repodb.PageInput{
+					Limit: -1,
+				})
+				So(err, ShouldNotBeNil)
 				So(repos, ShouldBeEmpty)
 			})
 		})

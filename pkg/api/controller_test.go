@@ -203,6 +203,50 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 	})
 }
 
+func TestCreateRepoDBDriver(t *testing.T) {
+	Convey("Test CreateCacheDatabaseDriver dynamo", t, func() {
+		log := log.NewLogger("debug", "")
+		dir := t.TempDir()
+		conf := config.New()
+		conf.Storage.RootDirectory = dir
+		conf.Storage.Dedupe = true
+		conf.Storage.RemoteCache = true
+		conf.Storage.StorageDriver = map[string]interface{}{
+			"name":          "s3",
+			"rootdirectory": "/zot",
+			"region":        "us-east-2",
+			"bucket":        "zot-storage",
+			"secure":        true,
+			"skipverify":    false,
+		}
+
+		conf.Storage.CacheDriver = map[string]interface{}{
+			"name":                  "dummy",
+			"endpoint":              "http://localhost:4566",
+			"region":                "us-east-2",
+			"cachetablename":        "BlobTable",
+			"repometatablename":     "RepoMetadataTable",
+			"manifestdatatablename": "ManifestDataTable",
+		}
+
+		testFunc := func() { _, _ = api.CreateRepoDBDriver(conf.Storage.StorageConfig, log) }
+		So(testFunc, ShouldPanic)
+
+		conf.Storage.CacheDriver = map[string]interface{}{
+			"name":                  "dummy",
+			"endpoint":              "http://localhost:4566",
+			"region":                "us-east-2",
+			"cachetablename":        "",
+			"repometatablename":     "RepoMetadataTable",
+			"manifestdatatablename": "ManifestDataTable",
+			"versiontablename":      1,
+		}
+
+		testFunc = func() { _, _ = api.CreateRepoDBDriver(conf.Storage.StorageConfig, log) }
+		So(testFunc, ShouldPanic)
+	})
+}
+
 func TestRunAlreadyRunningServer(t *testing.T) {
 	Convey("Run server on unavailable port", t, func() {
 		port := test.GetFreePort()

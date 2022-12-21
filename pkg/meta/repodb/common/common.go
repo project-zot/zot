@@ -1,7 +1,6 @@
 package common
 
 import (
-	"encoding/json"
 	"strings"
 	"time"
 
@@ -104,19 +103,11 @@ func ScoreRepoName(searchText string, repoName string) int {
 	return -1
 }
 
-func GetImageLastUpdatedTimestamp(configBlob []byte) (time.Time, error) {
-	var (
-		configContent ispec.Image
-		timeStamp     *time.Time
-	)
-
-	err := json.Unmarshal(configBlob, &configContent)
-	if err != nil {
-		return time.Time{}, err
-	}
+func GetImageLastUpdatedTimestamp(configContent ispec.Image) time.Time {
+	var timeStamp *time.Time
 
 	if configContent.Created != nil && !configContent.Created.IsZero() {
-		return *configContent.Created, nil
+		return *configContent.Created
 	}
 
 	if len(configContent.History) != 0 {
@@ -127,7 +118,7 @@ func GetImageLastUpdatedTimestamp(configBlob []byte) (time.Time, error) {
 		timeStamp = &time.Time{}
 	}
 
-	return *timeStamp, nil
+	return *timeStamp
 }
 
 func CheckIsSigned(signatures repodb.ManifestSignatures) bool {

@@ -4254,6 +4254,105 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		_, err := olu.GetRepoLastUpdated("")
 		So(err, ShouldNotBeNil)
 	})
+
+	Convey("GetImageTagsWithTimestamp: GetImageBlobManifest fails", t, func() {
+		index := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{Annotations: map[string]string{ispec.AnnotationRefName: "w"}}, {},
+			},
+		}
+
+		indexBlob, err := json.Marshal(index)
+		So(err, ShouldBeNil)
+
+		mockStoreController := mocks.MockedImageStore{
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				return nil, ErrTestError
+			},
+			GetIndexContentFn: func(repo string) ([]byte, error) {
+				return indexBlob, nil
+			},
+		}
+
+		storeController := storage.StoreController{DefaultStore: mockStoreController}
+		olu := common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+
+		_, err = olu.GetImageTagsWithTimestamp("rep")
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("GetExpandedRepoInfo: fails", t, func() {
+		index := ispec.Index{
+			Manifests: []ispec.Descriptor{
+				{},
+				{
+					Annotations: map[string]string{
+						ispec.AnnotationRefName: "w",
+						ispec.AnnotationVendor:  "vend",
+					},
+				},
+			},
+		}
+
+		indexBlob, err := json.Marshal(index)
+		So(err, ShouldBeNil)
+
+		manifest := ispec.Manifest{
+			Annotations: map[string]string{
+				ispec.AnnotationRefName: "w",
+				ispec.AnnotationVendor:  "vend",
+			},
+			Layers: []ispec.Descriptor{
+				{},
+				{},
+			},
+		}
+
+		manifestBlob, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+
+		mockStoreController := mocks.MockedImageStore{
+			GetIndexContentFn: func(repo string) ([]byte, error) {
+				return nil, ErrTestError
+			},
+		}
+
+		storeController := storage.StoreController{DefaultStore: mockStoreController}
+		olu := common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+
+		_, err = olu.GetExpandedRepoInfo("rep")
+		So(err, ShouldNotBeNil)
+
+		// GetRepoLastUpdated fails
+		mockStoreController = mocks.MockedImageStore{
+			GetIndexContentFn: func(repo string) ([]byte, error) {
+				return indexBlob, nil
+			},
+		}
+
+		storeController = storage.StoreController{DefaultStore: mockStoreController}
+		olu = common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+
+		_, err = olu.GetExpandedRepoInfo("rep")
+		So(err, ShouldNotBeNil)
+
+		// anotations
+
+		mockStoreController = mocks.MockedImageStore{
+			GetIndexContentFn: func(repo string) ([]byte, error) {
+				return indexBlob, nil
+			},
+			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+				return manifestBlob, nil
+			},
+		}
+
+		storeController = storage.StoreController{DefaultStore: mockStoreController}
+		olu = common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+
+		_, err = olu.GetExpandedRepoInfo("rep")
+		So(err, ShouldBeNil)
+	})
 }
 
 func TestSearchSize(t *testing.T) {

@@ -636,7 +636,7 @@ func (bdw DBWrapper) SearchRepos(ctx context.Context, searchText string, filter 
 		var (
 			manifestMetadataMap = make(map[string]repodb.ManifestMetadata)
 			repoBuck            = tx.Bucket([]byte(repodb.RepoMetadataBucket))
-			manifestBuck        = tx.Bucket([]byte(repodb.ManifestDataBucket))
+			dataBuck            = tx.Bucket([]byte(repodb.ManifestDataBucket))
 		)
 
 		cursor := repoBuck.Cursor()
@@ -670,7 +670,7 @@ func (bdw DBWrapper) SearchRepos(ctx context.Context, searchText string, filter 
 					manifestMeta, manifestDownloaded := manifestMetadataMap[descriptor.Digest]
 
 					if !manifestDownloaded {
-						manifestMetaBlob := manifestBuck.Get([]byte(descriptor.Digest))
+						manifestMetaBlob := dataBuck.Get([]byte(descriptor.Digest))
 						if manifestMetaBlob == nil {
 							return zerr.ErrManifestMetaNotFound
 						}
@@ -695,11 +695,7 @@ func (bdw DBWrapper) SearchRepos(ctx context.Context, searchText string, filter 
 					// get fields related to sorting
 					repoDownloads += repoMeta.Statistics[descriptor.Digest].DownloadCount
 
-					imageLastUpdated, err := common.GetImageLastUpdatedTimestamp(manifestMeta.ConfigBlob)
-					if err != nil {
-						return errors.Wrapf(err, "repodb: error while unmarshaling image config referenced by digest %s",
-							descriptor.Digest)
-					}
+					imageLastUpdated := common.GetImageLastUpdatedTimestamp(configContent)
 
 					if firstImageChecked || repoLastUpdated.Before(imageLastUpdated) {
 						repoLastUpdated = imageLastUpdated
@@ -770,7 +766,7 @@ func (bdw DBWrapper) SearchTags(ctx context.Context, searchText string, filter r
 		var (
 			manifestMetadataMap = make(map[string]repodb.ManifestMetadata)
 			repoBuck            = tx.Bucket([]byte(repodb.RepoMetadataBucket))
-			manifestBuck        = tx.Bucket([]byte(repodb.ManifestDataBucket))
+			dataBuck            = tx.Bucket([]byte(repodb.ManifestDataBucket))
 			cursor              = repoBuck.Cursor()
 		)
 
@@ -805,7 +801,7 @@ func (bdw DBWrapper) SearchTags(ctx context.Context, searchText string, filter r
 						continue
 					}
 
-					manifestMetaBlob := manifestBuck.Get([]byte(descriptor.Digest))
+					manifestMetaBlob := dataBuck.Get([]byte(descriptor.Digest))
 					if manifestMetaBlob == nil {
 						return zerr.ErrManifestMetaNotFound
 					}

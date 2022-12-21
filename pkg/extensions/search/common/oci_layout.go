@@ -231,6 +231,10 @@ func (olu BaseOciLayoutUtils) checkNotarySignature(name string, digest godigest.
 
 // check cosign signature corresponding to  manifest.
 func (olu BaseOciLayoutUtils) checkCosignSignature(name string, digest godigest.Digest) bool {
+	if digest.Validate() != nil {
+		return false
+	}
+
 	imageStore := olu.StoreController.GetImageStore(name)
 
 	// if manifest is signed using cosign mechanism, cosign adds a new manifest.
