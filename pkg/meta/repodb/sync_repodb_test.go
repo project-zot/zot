@@ -21,6 +21,7 @@ import (
 	"zotregistry.io/zot/pkg/meta/repodb"
 	bolt "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
 	dynamo "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper"
+	dynamoParams "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper/params"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
@@ -525,11 +526,12 @@ func TestSyncRepoDBDynamoWrapper(t *testing.T) {
 		err = os.WriteFile(indexPath, buf, 0o600)
 		So(err, ShouldBeNil)
 
-		repoDB, err := dynamo.NewDynamoDBWrapper(dynamo.DBDriverParameters{
+		repoDB, err := dynamo.NewDynamoDBWrapper(dynamoParams.DBDriverParameters{
 			Endpoint:              os.Getenv("DYNAMODBMOCK_ENDPOINT"),
 			Region:                "us-east-2",
 			RepoMetaTablename:     "RepoMetadataTable",
 			ManifestDataTablename: "ManifestDataTable",
+			VersionTablename:      "Version",
 		})
 		So(err, ShouldBeNil)
 
@@ -603,11 +605,12 @@ func TestSyncRepoDBDynamoWrapper(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// test that we have only 1 image inside the repo
-		repoDB, err := dynamo.NewDynamoDBWrapper(dynamo.DBDriverParameters{
+		repoDB, err := dynamo.NewDynamoDBWrapper(dynamoParams.DBDriverParameters{
 			Endpoint:              os.Getenv("DYNAMODBMOCK_ENDPOINT"),
 			Region:                "us-east-2",
 			RepoMetaTablename:     "RepoMetadataTable",
 			ManifestDataTablename: "ManifestDataTable",
+			VersionTablename:      "Version",
 		})
 		So(err, ShouldBeNil)
 

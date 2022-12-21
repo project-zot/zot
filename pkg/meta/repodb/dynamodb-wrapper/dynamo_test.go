@@ -10,6 +10,8 @@ import (
 
 	"zotregistry.io/zot/pkg/log"
 	dynamo "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper"
+	"zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper/iterator"
+	dynamoParams "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper/params"
 )
 
 func TestIterator(t *testing.T) {
@@ -19,11 +21,12 @@ func TestIterator(t *testing.T) {
 	)
 
 	Convey("TestIterator", t, func() {
-		dynamoWrapper, err := dynamo.NewDynamoDBWrapper(dynamo.DBDriverParameters{
+		dynamoWrapper, err := dynamo.NewDynamoDBWrapper(dynamoParams.DBDriverParameters{
 			Endpoint:              endpoint,
 			Region:                region,
 			RepoMetaTablename:     "RepoMetadataTable",
 			ManifestDataTablename: "ManifestDataTable",
+			VersionTablename:      "Version",
 		})
 		So(err, ShouldBeNil)
 
@@ -39,7 +42,7 @@ func TestIterator(t *testing.T) {
 		err = dynamoWrapper.SetRepoTag("repo3", "tag3", "manifestType", "manifestDigest3")
 		So(err, ShouldBeNil)
 
-		repoMetaAttributeIterator := dynamo.NewBaseDynamoAttributesIterator(
+		repoMetaAttributeIterator := iterator.NewBaseDynamoAttributesIterator(
 			dynamoWrapper.Client,
 			"RepoMetadataTable",
 			"RepoMetadata",

@@ -11,6 +11,7 @@ const (
 	ManifestDataBucket = "ManifestData"
 	UserMetadataBucket = "UserMeta"
 	RepoMetadataBucket = "RepoMetadata"
+	VersionBucket      = "Version"
 )
 
 const (
@@ -73,21 +74,7 @@ type RepoDB interface { //nolint:interfacebloat
 	SearchTags(ctx context.Context, searchText string, filter Filter, requestedPage PageInput) (
 		[]RepoMetadata, map[string]ManifestMetadata, error)
 
-	// SearchDigests searches for digests given a search string
-	SearchDigests(ctx context.Context, searchText string, requestedPage PageInput) (
-		[]RepoMetadata, map[string]ManifestMetadata, error)
-
-	// SearchLayers searches for layers given a search string
-	SearchLayers(ctx context.Context, searchText string, requestedPage PageInput) (
-		[]RepoMetadata, map[string]ManifestMetadata, error)
-
-	// SearchForAscendantImages searches for ascendant images given a search string
-	SearchForAscendantImages(ctx context.Context, searchText string, requestedPage PageInput) (
-		[]RepoMetadata, map[string]ManifestMetadata, error)
-
-	// SearchForDescendantImages searches for descendant images given a search string
-	SearchForDescendantImages(ctx context.Context, searchText string, requestedPage PageInput) (
-		[]RepoMetadata, map[string]ManifestMetadata, error)
+	PatchDB() error
 }
 
 type ManifestMetadata struct {

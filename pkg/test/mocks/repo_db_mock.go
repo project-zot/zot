@@ -59,6 +59,8 @@ type RepoDBMock struct {
 
 	SearchForDescendantImagesFn func(ctx context.Context, searchText string, requestedPage repodb.PageInput) (
 		[]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error)
+
+	PatchDBFn func() error
 }
 
 func (sdm RepoDBMock) SetRepoDescription(repo, description string) error {
@@ -250,4 +252,12 @@ func (sdm RepoDBMock) SearchForDescendantImages(ctx context.Context, searchText 
 	}
 
 	return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, nil
+}
+
+func (sdm RepoDBMock) PatchDB() error {
+	if sdm.PatchDBFn != nil {
+		return sdm.PatchDBFn()
+	}
+
+	return nil
 }

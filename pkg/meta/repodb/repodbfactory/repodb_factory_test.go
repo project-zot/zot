@@ -7,7 +7,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	bolt "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
-	dynamo "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper"
+	dynamoParams "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper/params"
 	"zotregistry.io/zot/pkg/meta/repodb/repodbfactory"
 )
 
@@ -15,10 +15,11 @@ func TestCreateDynamo(t *testing.T) {
 	skipDynamo(t)
 
 	Convey("Create", t, func() {
-		dynamoDBDriverParams := dynamo.DBDriverParameters{
+		dynamoDBDriverParams := dynamoParams.DBDriverParameters{
 			Endpoint:              os.Getenv("DYNAMODBMOCK_ENDPOINT"),
 			RepoMetaTablename:     "RepoMetadataTable",
 			ManifestDataTablename: "ManifestDataTable",
+			VersionTablename:      "Version",
 			Region:                "us-east-2",
 		}
 
@@ -48,7 +49,7 @@ func TestCreateBoltDB(t *testing.T) {
 	})
 
 	Convey("fails", t, func() {
-		So(func() { _, _ = repodbfactory.Create("boltdb", dynamo.DBDriverParameters{}) }, ShouldPanic)
+		So(func() { _, _ = repodbfactory.Create("boltdb", dynamoParams.DBDriverParameters{}) }, ShouldPanic)
 	})
 }
 

@@ -21,6 +21,9 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/repodb" //nolint:go-staticcheck
 	"zotregistry.io/zot/pkg/meta/repodb/common"
+	"zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper/iterator"
+	dynamoParams "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper/params"
+	"zotregistry.io/zot/pkg/meta/repodb/version"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 )
 
@@ -28,14 +31,11 @@ type DBWrapper struct {
 	Client                *dynamodb.Client
 	RepoMetaTablename     string
 	ManifestDataTablename string
+	VersionTablename      string
 	Log                   log.Logger
 }
 
-type DBDriverParameters struct {
-	Endpoint, Region, RepoMetaTablename, ManifestDataTablename string
-}
-
-func NewDynamoDBWrapper(params DBDriverParameters) (*DBWrapper, error) {
+func NewDynamoDBWrapper(params dynamoParams.DBDriverParameters) (*DBWrapper, error) {
 	// custom endpoint resolver to point to localhost
 	customResolver := aws.EndpointResolverWithOptionsFunc(
 		func(service, region string, options ...interface{}) (aws.Endpoint, error) {
@@ -59,7 +59,13 @@ func NewDynamoDBWrapper(params DBDriverParameters) (*DBWrapper, error) {
 		Client:                dynamodb.NewFromConfig(cfg),
 		RepoMetaTablename:     params.RepoMetaTablename,
 		ManifestDataTablename: params.ManifestDataTablename,
+		VersionTablename:      params.VersionTablename,
 		Log:                   log.Logger{Logger: zerolog.New(os.Stdout)},
+	}
+
+	err = dynamoWrapper.createVersionTable()
+	if err != nil {
+		return nil, err
 	}
 
 	err = dynamoWrapper.createRepoMetaTable()
@@ -477,11 +483,11 @@ func (dwr DBWrapper) GetMultipleRepoMeta(ctx context.Context,
 	filter func(repoMeta repodb.RepoMetadata) bool, requestedPage repodb.PageInput,
 ) ([]repodb.RepoMetadata, error) {
 	var (
-		repoMetaAttributeIterator AttributesIterator
+		repoMetaAttributeIterator iterator.AttributesIterator
 		pageFinder                repodb.PageFinder
 	)
 
-	repoMetaAttributeIterator = NewBaseDynamoAttributesIterator(
+	repoMetaAttributeIterator = iterator.NewBaseDynamoAttributesIterator(
 		dwr.Client, dwr.RepoMetaTablename, "RepoMetadata", 0, dwr.Log,
 	)
 
@@ -528,11 +534,11 @@ func (dwr DBWrapper) SearchRepos(ctx context.Context, searchText string, filter 
 		foundManifestMetadataMap = make(map[string]repodb.ManifestMetadata)
 		manifestMetadataMap      = make(map[string]repodb.ManifestMetadata)
 
-		repoMetaAttributeIterator AttributesIterator
+		repoMetaAttributeIterator iterator.AttributesIterator
 		pageFinder                repodb.PageFinder
 	)
 
-	repoMetaAttributeIterator = NewBaseDynamoAttributesIterator(
+	repoMetaAttributeIterator = iterator.NewBaseDynamoAttributesIterator(
 		dwr.Client, dwr.RepoMetaTablename, "RepoMetadata", 0, dwr.Log,
 	)
 
@@ -652,7 +658,7 @@ func (dwr DBWrapper) SearchTags(ctx context.Context, searchText string, filter r
 	var (
 		foundManifestMetadataMap  = make(map[string]repodb.ManifestMetadata)
 		manifestMetadataMap       = make(map[string]repodb.ManifestMetadata)
-		repoMetaAttributeIterator = NewBaseDynamoAttributesIterator(
+		repoMetaAttributeIterator = iterator.NewBaseDynamoAttributesIterator(
 			dwr.Client, dwr.RepoMetaTablename, "RepoMetadata", 0, dwr.Log,
 		)
 
@@ -756,6 +762,32 @@ func (dwr DBWrapper) SearchTags(ctx context.Context, searchText string, filter r
 	return foundRepos, foundManifestMetadataMap, err
 }
 
+func (dwr *DBWrapper) PatchDB() error {
+	DBVersion, err := dwr.getDBVersion()
+	if err != nil {
+		return errors.Wrapf(err, "")
+	}
+
+	for patchIndex, patch := range version.GetDynamoDBPatches() {
+		if patchIndex < version.GetVersionIndex(DBVersion) {
+			continue
+		}
+
+		tableNames := map[string]string{
+			"RepoMetaTablename":     dwr.RepoMetaTablename,
+			"ManifestDataTablename": dwr.ManifestDataTablename,
+			"VersionTablename":      dwr.VersionTablename,
+		}
+
+		err := patch(dwr.Client, tableNames)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (dwr DBWrapper) setRepoMeta(repo string, repoMeta repodb.RepoMetadata) error {
 	repoAttributeValue, err := attributevalue.Marshal(repoMeta)
 	if err != nil {
@@ -848,6 +880,83 @@ func (dwr DBWrapper) createManifestDataTable() error {
 	return err
 }
 
+func (dwr *DBWrapper) createVersionTable() error {
+	_, err := dwr.Client.CreateTable(context.Background(), &dynamodb.CreateTableInput{
+		TableName: aws.String(dwr.VersionTablename),
+		AttributeDefinitions: []types.AttributeDefinition{
+			{
+				AttributeName: aws.String("VersionKey"),
+				AttributeType: types.ScalarAttributeTypeS,
+			},
+		},
+		KeySchema: []types.KeySchemaElement{
+			{
+				AttributeName: aws.String("VersionKey"),
+				KeyType:       types.KeyTypeHash,
+			},
+		},
+		BillingMode: types.BillingModePayPerRequest,
+	})
+
+	if err != nil && strings.Contains(err.Error(), "Table already exists") {
+		return nil
+	}
+
+	if err == nil {
+		mdAttributeValue, err := attributevalue.Marshal(version.CurrentVersion)
+		if err != nil {
+			return err
+		}
+
+		_, err = dwr.Client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
+			ExpressionAttributeNames: map[string]string{
+				"#V": "Version",
+			},
+			ExpressionAttributeValues: map[string]types.AttributeValue{
+				":Version": mdAttributeValue,
+			},
+			Key: map[string]types.AttributeValue{
+				"VersionKey": &types.AttributeValueMemberS{
+					Value: version.DBVersionKey,
+				},
+			},
+			TableName:        aws.String(dwr.VersionTablename),
+			UpdateExpression: aws.String("SET #V = :Version"),
+		})
+
+		if err != nil {
+			return err
+		}
+	}
+
+	return err
+}
+
+func (dwr *DBWrapper) getDBVersion() (string, error) {
+	resp, err := dwr.Client.GetItem(context.TODO(), &dynamodb.GetItemInput{
+		TableName: aws.String(dwr.VersionTablename),
+		Key: map[string]types.AttributeValue{
+			"VersionKey": &types.AttributeValueMemberS{Value: version.DBVersionKey},
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+
+	if resp.Item == nil {
+		return "", nil
+	}
+
+	var version string
+
+	err = attributevalue.Unmarshal(resp.Item["Version"], &version)
+	if err != nil {
+		return "", err
+	}
+
+	return version, nil
+}
+
 func (dwr DBWrapper) deleteManifestMetaTable() error {
 	_, err := dwr.Client.DeleteTable(context.Background(), &dynamodb.DeleteTableInput{
 		TableName: aws.String(dwr.ManifestDataTablename),
@@ -863,24 +972,4 @@ func (dwr DBWrapper) ResetManifestMetaTable() error {
 	}
 
 	return dwr.createManifestDataTable()
-}
-
-func (dwr DBWrapper) SearchDigests(ctx context.Context, searchText string, requestedPage repodb.PageInput,
-) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
-	panic("not implemented")
-}
-
-func (dwr DBWrapper) SearchLayers(ctx context.Context, searchText string, requestedPage repodb.PageInput,
-) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
-	panic("not implemented")
-}
-
-func (dwr DBWrapper) SearchForAscendantImages(ctx context.Context, searchText string, requestedPage repodb.PageInput,
-) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
-	panic("not implemented")
-}
-
-func (dwr DBWrapper) SearchForDescendantImages(ctx context.Context, searchText string, requestedPage repodb.PageInput,
-) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
-	panic("not implemented")
 }

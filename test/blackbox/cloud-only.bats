@@ -36,7 +36,8 @@ function setup() {
             "region": "us-east-2",
             "cacheTablename": "BlobTable",
             "repoMetaTablename": "RepoMetadataTable",
-            "manifestDataTablename": "ManifestDataTable"
+            "manifestDataTablename": "ManifestDataTable",
+            "versionTablename": "Version"
         }
 	},
 	"http": {

@@ -275,5 +275,6 @@ func imageHasSignatures(signatures repodb.ManifestSignatures) bool {
 			return true
 		}
 	}
+
 	return false
 }

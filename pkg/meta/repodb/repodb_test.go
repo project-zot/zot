@@ -21,6 +21,7 @@ import (
 	bolt "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
 	"zotregistry.io/zot/pkg/meta/repodb/common"
 	dynamo "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper"
+	dynamoParams "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper/params"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 )
 
@@ -65,10 +66,11 @@ func TestDynamoDBWrapper(t *testing.T) {
 	skipIt(t)
 
 	Convey("DynamoDB Wrapper", t, func() {
-		dynamoDBDriverParams := dynamo.DBDriverParameters{
+		dynamoDBDriverParams := dynamoParams.DBDriverParameters{
 			Endpoint:              os.Getenv("DYNAMODBMOCK_ENDPOINT"),
 			RepoMetaTablename:     "RepoMetadataTable",
 			ManifestDataTablename: "ManifestDataTable",
+			VersionTablename:      "Version",
 			Region:                "us-east-2",
 		}
 
@@ -1250,22 +1252,6 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			repos, _, err = repoDB.SearchTags(context.TODO(), "repo1:", filter, repodb.PageInput{SortBy: repodb.AlphabeticAsc})
 			So(err, ShouldBeNil)
 			So(len(repos), ShouldEqual, 0)
-		})
-
-		Convey("Test SearchDigests", func() {
-			So(func() { _, _, _ = repoDB.SearchDigests(context.TODO(), "", repodb.PageInput{}) }, ShouldPanic)
-		})
-
-		Convey("Test SearchLayers", func() {
-			So(func() { _, _, _ = repoDB.SearchLayers(context.TODO(), "", repodb.PageInput{}) }, ShouldPanic)
-		})
-
-		Convey("Test SearchForAscendantImages", func() {
-			So(func() { _, _, _ = repoDB.SearchForAscendantImages(context.TODO(), "", repodb.PageInput{}) }, ShouldPanic)
-		})
-
-		Convey("Test SearchForDescendantImages", func() {
-			So(func() { _, _, _ = repoDB.SearchForDescendantImages(context.TODO(), "", repodb.PageInput{}) }, ShouldPanic)
 		})
 	})
 }
