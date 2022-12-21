@@ -13,10 +13,13 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
+	"zotregistry.io/zot/pkg/extensions/search/common"
+	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/repodb"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
+	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
 
@@ -733,6 +736,420 @@ func TestExtractImageDetails(t *testing.T) {
 			So(resIspecImage, ShouldBeNil)
 			So(resErr, ShouldNotBeNil)
 			So(strings.ToLower(resErr.Error()), ShouldContainSubstring, "unauthorized access")
+		})
+	})
+}
+
+func TestQueryResolverErrors(t *testing.T) {
+	Convey("Errors", t, func() {
+		log := log.NewLogger("debug", "")
+		ctx := context.Background()
+
+		Convey("ImageListForCve olu.GetRepositories() errors", func() {
+			resolverConfig := NewResolver(
+				log,
+				storage.StoreController{
+					DefaultStore: mocks.MockedImageStore{
+						GetRepositoriesFn: func() ([]string, error) {
+							return nil, ErrTestError
+						},
+					},
+				},
+				mocks.RepoDBMock{},
+				mocks.CveInfoMock{},
+			)
+
+			qr := queryResolver{
+				resolverConfig,
+			}
+
+			_, err := qr.ImageListForCve(ctx, "id")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("ImageListForCve cveInfo.GetImageListForCVE() errors", func() {
+			resolverConfig := NewResolver(
+				log,
+				storage.StoreController{
+					DefaultStore: mocks.MockedImageStore{
+						GetRepositoriesFn: func() ([]string, error) {
+							return []string{"repo"}, nil
+						},
+					},
+				},
+				mocks.RepoDBMock{},
+				mocks.CveInfoMock{
+					GetImageListForCVEFn: func(repo, cveID string) ([]cveinfo.ImageInfoByCVE, error) {
+						return nil, ErrTestError
+					},
+				},
+			)
+
+			qr := queryResolver{
+				resolverConfig,
+			}
+
+			_, err := qr.ImageListForCve(ctx, "a")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("ImageListForCve olu.GetImageConfigInfo() errors", func() {
+			resolverConfig := NewResolver(
+				log,
+				storage.StoreController{
+					DefaultStore: mocks.MockedImageStore{
+						GetRepositoriesFn: func() ([]string, error) {
+							return []string{"repo"}, nil
+						},
+						GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+							return nil, ErrTestError
+						},
+					},
+				},
+				mocks.RepoDBMock{},
+				mocks.CveInfoMock{
+					GetImageListForCVEFn: func(repo, cveID string) ([]cveinfo.ImageInfoByCVE, error) {
+						return []cveinfo.ImageInfoByCVE{{}}, nil
+					},
+				},
+			)
+
+			qr := queryResolver{
+				resolverConfig,
+			}
+
+			_, err := qr.ImageListForCve(ctx, "a")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("RepoListWithNewestImage repoListWithNewestImage errors", func() {
+			resolverConfig := NewResolver(
+				log,
+				storage.StoreController{
+					DefaultStore: mocks.MockedImageStore{},
+				},
+				mocks.RepoDBMock{
+					SearchReposFn: func(ctx context.Context, searchText string, filter repodb.Filter,
+						requestedPage repodb.PageInput) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata,
+						error) {
+						return nil, nil, ErrTestError
+					},
+				},
+				mocks.CveInfoMock{},
+			)
+
+			qr := queryResolver{
+				resolverConfig,
+			}
+
+			_, err := qr.RepoListWithNewestImage(ctx, &gql_generated.PageInput{})
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("ImageListWithCVEFixed olu.GetImageBlobManifest() errors", func() {
+			resolverConfig := NewResolver(
+				log,
+				storage.StoreController{
+					DefaultStore: mocks.MockedImageStore{
+						GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+							return nil, ErrTestError
+						},
+					},
+				},
+				mocks.RepoDBMock{},
+				mocks.CveInfoMock{
+					GetImageListWithCVEFixedFn: func(repo, cveID string) ([]common.TagInfo, error) {
+						return []common.TagInfo{{}}, nil
+					},
+				},
+			)
+
+			qr := queryResolver{
+				resolverConfig,
+			}
+
+			_, err := qr.ImageListWithCVEFixed(ctx, "a", "d")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("ImageListWithCVEFixed olu.GetImageConfigInfo() errors", func() {
+			getBlobContentCallCounter := 0
+
+			resolverConfig := NewResolver(
+				log,
+				storage.StoreController{
+					DefaultStore: mocks.MockedImageStore{
+						GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+							if getBlobContentCallCounter == 1 {
+								getBlobContentCallCounter++
+
+								return nil, ErrTestError
+							}
+							getBlobContentCallCounter++
+
+							return []byte("{}"), nil
+						},
+					},
+				},
+				mocks.RepoDBMock{},
+				mocks.CveInfoMock{
+					GetImageListWithCVEFixedFn: func(repo, cveID string) ([]common.TagInfo, error) {
+						return []common.TagInfo{{}}, nil
+					},
+				},
+			)
+
+			qr := queryResolver{
+				resolverConfig,
+			}
+
+			_, err := qr.ImageListWithCVEFixed(ctx, "a", "d")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("ImageListForDigest defaultStore.GetRepositories() errors", func() {
+			resolverConfig := NewResolver(
+				log,
+				storage.StoreController{
+					DefaultStore: mocks.MockedImageStore{
+						GetRepositoriesFn: func() ([]string, error) {
+							return nil, ErrTestError
+						},
+					},
+				},
+				mocks.RepoDBMock{},
+				mocks.CveInfoMock{},
+			)
+
+			qr := queryResolver{
+				resolverConfig,
+			}
+
+			_, err := qr.ImageListForDigest(ctx, "")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("ImageListForDigest getImageListForDigest() errors", func() {
+			resolverConfig := NewResolver(
+				log,
+				storage.StoreController{
+					DefaultStore: mocks.MockedImageStore{
+						GetRepositoriesFn: func() ([]string, error) {
+							return []string{"repo"}, nil
+						},
+						GetIndexContentFn: func(repo string) ([]byte, error) {
+							return nil, ErrTestError
+						},
+					},
+				},
+				mocks.RepoDBMock{},
+				mocks.CveInfoMock{},
+			)
+
+			qr := queryResolver{
+				resolverConfig,
+			}
+
+			_, err := qr.ImageListForDigest(ctx, "")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("ImageListForDigest substores store.GetRepositories() errors", func() {
+			resolverConfig := NewResolver(
+				log,
+				storage.StoreController{
+					DefaultStore: mocks.MockedImageStore{
+						GetIndexContentFn: func(repo string) ([]byte, error) {
+							return []byte("{}"), nil
+						},
+						GetRepositoriesFn: func() ([]string, error) {
+							return []string{"repo"}, nil
+						},
+					},
+					SubStore: map[string]storage.ImageStore{
+						"sub1": mocks.MockedImageStore{
+							GetRepositoriesFn: func() ([]string, error) {
+								return []string{"repo"}, ErrTestError
+							},
+						},
+					},
+				},
+				mocks.RepoDBMock{},
+				mocks.CveInfoMock{},
+			)
+
+			qr := queryResolver{
+				resolverConfig,
+			}
+
+			_, err := qr.ImageListForDigest(ctx, "")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("ImageListForDigest substores getImageListForDigest() errors", func() {
+			resolverConfig := NewResolver(
+				log,
+				storage.StoreController{
+					DefaultStore: mocks.MockedImageStore{
+						GetIndexContentFn: func(repo string) ([]byte, error) {
+							return []byte("{}"), nil
+						},
+						GetRepositoriesFn: func() ([]string, error) {
+							return []string{"repo"}, nil
+						},
+					},
+					SubStore: map[string]storage.ImageStore{
+						"/sub1": mocks.MockedImageStore{
+							GetRepositoriesFn: func() ([]string, error) {
+								return []string{"sub1/repo"}, nil
+							},
+							GetIndexContentFn: func(repo string) ([]byte, error) {
+								return nil, ErrTestError
+							},
+						},
+					},
+				},
+				mocks.RepoDBMock{},
+				mocks.CveInfoMock{},
+			)
+
+			qr := queryResolver{
+				resolverConfig,
+			}
+
+			_, err := qr.ImageListForDigest(ctx, "")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("RepoListWithNewestImage repoListWithNewestImage() errors", func() {
+			resolverConfig := NewResolver(
+				log,
+				storage.StoreController{},
+				mocks.RepoDBMock{
+					SearchReposFn: func(ctx context.Context, searchText string,
+						filter repodb.Filter, requestedPage repodb.PageInput,
+					) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
+						return nil, nil, ErrTestError
+					},
+				},
+				mocks.CveInfoMock{},
+			)
+
+			qr := queryResolver{
+				resolverConfig,
+			}
+
+			_, err := qr.RepoListWithNewestImage(ctx, &gql_generated.PageInput{})
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("ImageList getImageList() errors", func() {
+			resolverConfig := NewResolver(
+				log,
+				storage.StoreController{
+					DefaultStore: mocks.MockedImageStore{
+						GetRepositoriesFn: func() ([]string, error) {
+							return nil, ErrTestError
+						},
+					},
+				},
+				mocks.RepoDBMock{},
+				mocks.CveInfoMock{},
+			)
+
+			qr := queryResolver{
+				resolverConfig,
+			}
+
+			_, err := qr.ImageList(ctx, "repo")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("ImageList subpaths getImageList() errors", func() {
+			resolverConfig := NewResolver(
+				log,
+				storage.StoreController{
+					DefaultStore: mocks.MockedImageStore{
+						GetRepositoriesFn: func() ([]string, error) {
+							return []string{"sub1/repo"}, nil
+						},
+					},
+					SubStore: map[string]storage.ImageStore{
+						"/sub1": mocks.MockedImageStore{
+							GetRepositoriesFn: func() ([]string, error) {
+								return nil, ErrTestError
+							},
+						},
+					},
+				},
+				mocks.RepoDBMock{},
+				mocks.CveInfoMock{},
+			)
+
+			qr := queryResolver{
+				resolverConfig,
+			}
+
+			_, err := qr.ImageList(ctx, "repo")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("DerivedImageList ExpandedRepoInfo() errors", func() {
+			resolverConfig := NewResolver(
+				log,
+				storage.StoreController{
+					DefaultStore: mocks.MockedImageStore{
+						GetRepositoriesFn: func() ([]string, error) {
+							return []string{"sub1/repo"}, nil
+						},
+						GetImageManifestFn: func(repo, reference string) ([]byte, godigest.Digest, string, error) {
+							return []byte("{}"), "digest", "str", nil
+						},
+					},
+				},
+				mocks.RepoDBMock{
+					GetRepoMetaFn: func(repo string) (repodb.RepoMetadata, error) {
+						return repodb.RepoMetadata{}, ErrTestError
+					},
+				},
+				mocks.CveInfoMock{},
+			)
+
+			qr := queryResolver{
+				resolverConfig,
+			}
+
+			_, err := qr.DerivedImageList(ctx, "repo:tag")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("BaseImageList ExpandedRepoInfo() errors", func() {
+			resolverConfig := NewResolver(
+				log,
+				storage.StoreController{
+					DefaultStore: mocks.MockedImageStore{
+						GetRepositoriesFn: func() ([]string, error) {
+							return []string{"sub1/repo"}, nil
+						},
+						GetImageManifestFn: func(repo, reference string) ([]byte, godigest.Digest, string, error) {
+							return []byte("{}"), "digest", "str", nil
+						},
+					},
+				},
+				mocks.RepoDBMock{
+					GetRepoMetaFn: func(repo string) (repodb.RepoMetadata, error) {
+						return repodb.RepoMetadata{}, ErrTestError
+					},
+				},
+				mocks.CveInfoMock{},
+			)
+
+			qr := queryResolver{
+				resolverConfig,
+			}
+
+			_, err := qr.BaseImageList(ctx, "repo:tag")
+			So(err, ShouldNotBeNil)
 		})
 	})
 }

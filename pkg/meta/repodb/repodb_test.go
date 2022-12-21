@@ -84,7 +84,7 @@ func TestDynamoDBWrapper(t *testing.T) {
 				return err
 			}
 
-			err = dynamoDriver.ResetManifestMetaTable()
+			err = dynamoDriver.ResetManifestDataTable()
 
 			return err
 		}

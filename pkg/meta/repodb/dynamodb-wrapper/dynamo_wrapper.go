@@ -119,7 +119,7 @@ func (dwr DBWrapper) GetManifestData(manifestDigest godigest.Digest) (repodb.Man
 	}
 
 	if resp.Item == nil {
-		return repodb.ManifestData{}, zerr.ErrManifestMetaNotFound
+		return repodb.ManifestData{}, zerr.ErrManifestDataNotFound
 	}
 
 	var manifestData repodb.ManifestData
@@ -953,7 +953,7 @@ func (dwr *DBWrapper) getDBVersion() (string, error) {
 	return version, nil
 }
 
-func (dwr DBWrapper) deleteManifestMetaTable() error {
+func (dwr DBWrapper) deleteManifestDataTable() error {
 	_, err := dwr.Client.DeleteTable(context.Background(), &dynamodb.DeleteTableInput{
 		TableName: aws.String(dwr.ManifestDataTablename),
 	})
@@ -961,8 +961,8 @@ func (dwr DBWrapper) deleteManifestMetaTable() error {
 	return err
 }
 
-func (dwr DBWrapper) ResetManifestMetaTable() error {
-	err := dwr.deleteManifestMetaTable()
+func (dwr DBWrapper) ResetManifestDataTable() error {
+	err := dwr.deleteManifestDataTable()
 	if err != nil {
 		return err
 	}

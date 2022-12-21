@@ -526,7 +526,7 @@ func TestSyncRepoDBDynamoWrapper(t *testing.T) {
 		err = os.WriteFile(indexPath, buf, 0o600)
 		So(err, ShouldBeNil)
 
-		repoDB, err := dynamo.NewDynamoDBWrapper(dynamoParams.DBDriverParameters{
+		dynamoWrapper, err := dynamo.NewDynamoDBWrapper(dynamoParams.DBDriverParameters{
 			Endpoint:              os.Getenv("DYNAMODBMOCK_ENDPOINT"),
 			Region:                "us-east-2",
 			RepoMetaTablename:     "RepoMetadataTable",
@@ -535,21 +535,28 @@ func TestSyncRepoDBDynamoWrapper(t *testing.T) {
 		})
 		So(err, ShouldBeNil)
 
-		err = repodb.SyncRepoDB(repoDB, storeController, log.NewLogger("debug", ""))
+		err = dynamoWrapper.ResetManifestDataTable()
 		So(err, ShouldBeNil)
 
-		repos, err := repoDB.GetMultipleRepoMeta(
+		err = dynamoWrapper.ResetRepoMetaTable()
+		So(err, ShouldBeNil)
+
+		err = repodb.SyncRepoDB(dynamoWrapper, storeController, log.NewLogger("debug", ""))
+		So(err, ShouldBeNil)
+
+		repos, err := dynamoWrapper.GetMultipleRepoMeta(
 			context.Background(),
 			func(repoMeta repodb.RepoMetadata) bool { return true },
 			repodb.PageInput{},
 		)
+		t.Logf("%#v", repos)
 		So(err, ShouldBeNil)
 
 		So(len(repos), ShouldEqual, 1)
 		So(len(repos[0].Tags), ShouldEqual, 2)
 
 		for _, descriptor := range repos[0].Tags {
-			manifestMeta, err := repoDB.GetManifestMeta(repo, godigest.Digest(descriptor.Digest))
+			manifestMeta, err := dynamoWrapper.GetManifestMeta(repo, godigest.Digest(descriptor.Digest))
 			So(err, ShouldBeNil)
 			So(manifestMeta.ManifestBlob, ShouldNotBeNil)
 			So(manifestMeta.ConfigBlob, ShouldNotBeNil)
@@ -623,6 +630,7 @@ func TestSyncRepoDBDynamoWrapper(t *testing.T) {
 			repodb.PageInput{},
 		)
 		So(err, ShouldBeNil)
+		t.Logf("%#v", repos)
 
 		So(len(repos), ShouldEqual, 1)
 		So(repos[0].Tags, ShouldContainKey, "tag1")

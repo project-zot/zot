@@ -59,6 +59,22 @@ func GetResolverConfig(log log.Logger, storeController storage.StoreController,
 	}
 }
 
+func NewResolver(log log.Logger, storeController storage.StoreController,
+	repoDB repodb.RepoDB, cveInfo cveinfo.CveInfo,
+) *Resolver {
+	digestInfo := digestinfo.NewDigestInfo(storeController, log)
+
+	resolver := &Resolver{
+		cveInfo:         cveInfo,
+		repoDB:          repoDB,
+		storeController: storeController,
+		digestInfo:      digestInfo,
+		log:             log,
+	}
+
+	return resolver
+}
+
 func (r *queryResolver) getImageListForDigest(repoList []string, digest string) ([]*gql_generated.ImageSummary, error) {
 	imgResultForDigest := []*gql_generated.ImageSummary{}
 	olu := common.NewBaseOciLayoutUtils(r.storeController, r.log)
