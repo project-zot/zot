@@ -5,7 +5,7 @@ const (
 	Version2 = "V2"
 	Version3 = "V3"
 
-	CurrentVersion = Version3
+	CurrentVersion = Version1
 )
 
 const (
@@ -17,9 +17,15 @@ const (
 const DBVersionKey = "DBVersion"
 
 func GetVersionIndex(dbVersion string) int {
-	return map[string]int{
+	index, ok := map[string]int{
 		Version1: versionV1Index,
 		Version2: versionV2Index,
 		Version3: versionV3Index,
 	}[dbVersion]
+
+	if !ok {
+		return -1
+	}
+
+	return index
 }

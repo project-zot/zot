@@ -17,7 +17,8 @@ import (
 
 func TestWrapperErrors(t *testing.T) {
 	Convey("Errors", t, func() {
-		boltDBParams := bolt.DBParameters{}
+		tmpDir := t.TempDir()
+		boltDBParams := bolt.DBParameters{RootDir: tmpDir}
 		boltdbWrapper, err := bolt.NewBoltDBWrapper(boltDBParams)
 		defer os.Remove("repo.db")
 		So(boltdbWrapper, ShouldNotBeNil)

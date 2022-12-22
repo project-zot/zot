@@ -112,7 +112,7 @@ func TestWrapperErrors(t *testing.T) {
 	ctx := context.Background()
 
 	Convey("Errors", t, func() {
-		dynamoWrapper, err := dynamo.NewDynamoDBWrapper(dynamoParams.DBDriverParameters{
+		dynamoWrapper, err := dynamo.NewDynamoDBWrapper(dynamoParams.DBDriverParameters{ //nolint:contextcheck
 			Endpoint:              endpoint,
 			Region:                region,
 			RepoMetaTablename:     "RepoMetadataTable",
@@ -121,8 +121,8 @@ func TestWrapperErrors(t *testing.T) {
 		})
 		So(err, ShouldBeNil)
 
-		So(dynamoWrapper.ResetManifestDataTable(), ShouldBeNil)
-		So(dynamoWrapper.ResetRepoMetaTable(), ShouldBeNil)
+		So(dynamoWrapper.ResetManifestDataTable(), ShouldBeNil) //nolint:contextcheck
+		So(dynamoWrapper.ResetRepoMetaTable(), ShouldBeNil)     //nolint:contextcheck
 
 		Convey("SetManifestData", func() {
 			dynamoWrapper.ManifestDataTablename = "WRONG table"
@@ -147,10 +147,10 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("SetManifestMeta GetRepoMeta error", func() {
-			err := setBadRepoMeta(dynamoWrapper.Client, "repo")
+			err := setBadRepoMeta(dynamoWrapper.Client, "repo1")
 			So(err, ShouldBeNil)
 
-			err = dynamoWrapper.SetManifestMeta("repo", "dig", repodb.ManifestMetadata{})
+			err = dynamoWrapper.SetManifestMeta("repo1", "dig", repodb.ManifestMetadata{})
 			So(err, ShouldNotBeNil)
 		})
 
@@ -297,7 +297,7 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("GetMultipleRepoMeta unmarshal error", func() {
-			err = setBadRepoMeta(dynamoWrapper.Client, "repo")
+			err = setBadRepoMeta(dynamoWrapper.Client, "repo") //nolint:contextcheck
 			So(err, ShouldBeNil)
 
 			_, err = dynamoWrapper.GetMultipleRepoMeta(ctx, func(repoMeta repodb.RepoMetadata) bool { return true },
@@ -307,7 +307,7 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("SearchRepos repoMeta unmarshal error", func() {
-			err = setBadRepoMeta(dynamoWrapper.Client, "repo")
+			err = setBadRepoMeta(dynamoWrapper.Client, "repo") //nolint:contextcheck
 			So(err, ShouldBeNil)
 
 			_, _, err = dynamoWrapper.SearchRepos(ctx, "", repodb.Filter{}, repodb.PageInput{})
@@ -316,7 +316,7 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("SearchRepos GetManifestMeta error", func() {
-			err := dynamoWrapper.SetRepoTag("repo", "tag1", "notFoundDigest", "")
+			err := dynamoWrapper.SetRepoTag("repo", "tag1", "notFoundDigest", "") //nolint:contextcheck
 			So(err, ShouldBeNil)
 
 			_, _, err = dynamoWrapper.SearchRepos(ctx, "", repodb.Filter{}, repodb.PageInput{})
@@ -325,10 +325,10 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("SearchRepos config unmarshal error", func() {
-			err := dynamoWrapper.SetRepoTag("repo", "tag1", "dig1", "")
+			err := dynamoWrapper.SetRepoTag("repo", "tag1", "dig1", "") //nolint:contextcheck
 			So(err, ShouldBeNil)
 
-			err = dynamoWrapper.SetManifestData("dig1", repodb.ManifestData{
+			err = dynamoWrapper.SetManifestData("dig1", repodb.ManifestData{ //nolint:contextcheck
 				ManifestBlob: []byte("{}"),
 				ConfigBlob:   []byte("bad json"),
 			})
@@ -340,7 +340,7 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("SearchTags repoMeta unmarshal error", func() {
-			err = setBadRepoMeta(dynamoWrapper.Client, "repo")
+			err = setBadRepoMeta(dynamoWrapper.Client, "repo") //nolint:contextcheck
 			So(err, ShouldBeNil)
 
 			_, _, err = dynamoWrapper.SearchTags(ctx, "repo:", repodb.Filter{}, repodb.PageInput{})
@@ -349,7 +349,7 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("SearchTags GetManifestMeta error", func() {
-			err := dynamoWrapper.SetRepoTag("repo", "tag1", "manifestNotFound", "")
+			err := dynamoWrapper.SetRepoTag("repo", "tag1", "manifestNotFound", "") //nolint:contextcheck
 			So(err, ShouldBeNil)
 
 			_, _, err = dynamoWrapper.SearchTags(ctx, "repo:", repodb.Filter{}, repodb.PageInput{})
@@ -358,13 +358,16 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("SearchTags config unmarshal error", func() {
-			err := dynamoWrapper.SetRepoTag("repo", "tag1", "dig1", "")
+			err := dynamoWrapper.SetRepoTag("repo", "tag1", "dig1", "") //nolint:contextcheck
 			So(err, ShouldBeNil)
 
-			err = dynamoWrapper.SetManifestData("dig1", repodb.ManifestData{
-				ManifestBlob: []byte("{}"),
-				ConfigBlob:   []byte("bad json"),
-			})
+			err = dynamoWrapper.SetManifestData( //nolint:contextcheck
+				"dig1",
+				repodb.ManifestData{
+					ManifestBlob: []byte("{}"),
+					ConfigBlob:   []byte("bad json"),
+				},
+			)
 			So(err, ShouldBeNil)
 
 			_, _, err = dynamoWrapper.SearchTags(ctx, "repo:", repodb.Filter{}, repodb.PageInput{})

@@ -27,8 +27,9 @@ type DBParameters struct {
 }
 
 type DBWrapper struct {
-	DB  *bolt.DB
-	Log log.Logger
+	DB      *bolt.DB
+	Patches []func(DB *bolt.DB) error
+	Log     log.Logger
 }
 
 func NewBoltDBWrapper(params DBParameters) (*DBWrapper, error) {
@@ -67,8 +68,9 @@ func NewBoltDBWrapper(params DBParameters) (*DBWrapper, error) {
 	}
 
 	return &DBWrapper{
-		DB:  boltDB,
-		Log: log.Logger{Logger: zerolog.New(os.Stdout)},
+		DB:      boltDB,
+		Patches: version.GetBoltDBPatches(),
+		Log:     log.Logger{Logger: zerolog.New(os.Stdout)},
 	}, nil
 }
 
@@ -872,16 +874,16 @@ func (bdw *DBWrapper) PatchDB() error {
 		return errors.Wrapf(err, "patching the database failed, can't read db version")
 	}
 
-	if DBVersion == "" {
+	if version.GetVersionIndex(DBVersion) == -1 {
 		return errors.New("DB has broken format, no version found")
 	}
 
-	for patchIndex, applyPatch := range version.GetBoltDBPatches() {
+	for patchIndex, patch := range bdw.Patches {
 		if patchIndex < version.GetVersionIndex(DBVersion) {
 			continue
 		}
 
-		err := applyPatch(bdw.DB)
+		err := patch(bdw.DB)
 		if err != nil {
 			return err
 		}

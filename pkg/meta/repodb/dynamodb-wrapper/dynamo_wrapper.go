@@ -32,6 +32,7 @@ type DBWrapper struct {
 	RepoMetaTablename     string
 	ManifestDataTablename string
 	VersionTablename      string
+	Patches               []func(client *dynamodb.Client, tableNames map[string]string) error
 	Log                   log.Logger
 }
 
@@ -60,6 +61,7 @@ func NewDynamoDBWrapper(params dynamoParams.DBDriverParameters) (*DBWrapper, err
 		RepoMetaTablename:     params.RepoMetaTablename,
 		ManifestDataTablename: params.ManifestDataTablename,
 		VersionTablename:      params.VersionTablename,
+		Patches:               version.GetDynamoDBPatches(),
 		Log:                   log.Logger{Logger: zerolog.New(os.Stdout)},
 	}
 
@@ -761,10 +763,14 @@ func (dwr DBWrapper) SearchTags(ctx context.Context, searchText string, filter r
 func (dwr *DBWrapper) PatchDB() error {
 	DBVersion, err := dwr.getDBVersion()
 	if err != nil {
-		return errors.Wrapf(err, "")
+		return errors.Wrapf(err, "patching dynamo failed, error retrieving database version")
 	}
 
-	for patchIndex, patch := range version.GetDynamoDBPatches() {
+	if version.GetVersionIndex(DBVersion) == -1 {
+		return errors.New("DB has broken format, no version found")
+	}
+
+	for patchIndex, patch := range dwr.Patches {
 		if patchIndex < version.GetVersionIndex(DBVersion) {
 			continue
 		}

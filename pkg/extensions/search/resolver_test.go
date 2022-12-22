@@ -830,8 +830,8 @@ func TestQueryResolverErrors(t *testing.T) {
 				},
 				mocks.RepoDBMock{
 					SearchReposFn: func(ctx context.Context, searchText string, filter repodb.Filter,
-						requestedPage repodb.PageInput) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata,
-						error) {
+						requestedPage repodb.PageInput,
+					) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
 						return nil, nil, ErrTestError
 					},
 				},

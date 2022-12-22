@@ -493,12 +493,17 @@ func (c *Controller) InitRepoDB(reloadCtx context.Context) error {
 			return err
 		}
 
-		c.RepoDB = driver
+		err = driver.PatchDB()
+		if err != nil {
+			return err
+		}
 
 		err = repodb.SyncRepoDB(driver, c.StoreController, c.Log)
 		if err != nil {
 			return err
 		}
+
+		c.RepoDB = driver
 	}
 
 	return nil
