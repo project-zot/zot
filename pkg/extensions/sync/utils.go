@@ -680,7 +680,8 @@ func descriptorEqual(desc1, desc2 ispec.Descriptor) bool {
 func isSupportedMediaType(mediaType string) bool {
 	return mediaType == ispec.MediaTypeImageIndex ||
 		mediaType == ispec.MediaTypeImageManifest ||
-		mediaType == manifest.DockerV2ListMediaType
+		mediaType == manifest.DockerV2ListMediaType ||
+		mediaType == manifest.DockerV2Schema2MediaType
 }
 
 func getImageRefManifest(ctx context.Context, upstreamCtx *types.SystemContext, imageRef types.ImageReference,
