@@ -255,14 +255,15 @@ func (is *ObjectStorage) GetRepositories() ([]string, error) {
 		}
 
 		rel, err := filepath.Rel(is.rootDir, fileInfo.Path())
-		if err != nil {
-			return nil //nolint:nilerr // ignore paths that are not under root dir
+		if err != nil || rel == "." {
+			return nil //nolint:nilerr // ignore paths not relative to root dir
 		}
 
 		if ok, err := is.ValidateRepo(rel); !ok || err != nil {
 			return nil //nolint:nilerr // ignore invalid repos
 		}
 
+		is.log.Debug().Str("name", fileInfo.Path()).Msg("found image store")
 		stores = append(stores, rel)
 
 		return nil

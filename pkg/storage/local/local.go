@@ -303,7 +303,7 @@ func (is *ImageStoreLocal) GetRepositories() ([]string, error) {
 		}
 
 		rel, err := filepath.Rel(is.rootDir, path)
-		if err != nil {
+		if err != nil || rel == "." {
 			return nil //nolint:nilerr // ignore paths not relative to root dir
 		}
 
@@ -311,7 +311,7 @@ func (is *ImageStoreLocal) GetRepositories() ([]string, error) {
 			return nil //nolint:nilerr // ignore invalid repos
 		}
 
-		// is.log.Debug().Str("dir", path).Str("name", info.Name()).Msg("found image store")
+		is.log.Debug().Str("dir", path).Str("name", info.Name()).Msg("found image store")
 		stores = append(stores, rel)
 
 		return nil
@@ -348,7 +348,7 @@ func (is *ImageStoreLocal) GetNextRepository(repo string) (string, error) {
 		}
 
 		rel, err := filepath.Rel(is.rootDir, path)
-		if err != nil {
+		if err != nil || rel == "." {
 			return nil //nolint:nilerr // ignore paths not relative to root dir
 		}
 
