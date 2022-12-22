@@ -53,16 +53,29 @@ function teardown_file() {
 }
 
 # sync image
-@test "sync docker image on demand" {
-    run skopeo --insecure-policy copy --src-tls-verify=false \
+@test "sync docker image list on demand" {
+    run skopeo --insecure-policy copy --multi-arch=all --src-tls-verify=false \
         docker://127.0.0.1:8090/registry \
         oci:${TEST_DATA_DIR}
     [ "$status" -eq 0 ]
 
-
     run curl http://127.0.0.1:8090/v2/_catalog
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.repositories[]') = '"registry"' ]
+    run curl http://127.0.0.1:8090/v2/registry/tags/list
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"latest"' ]
+}
+
+@test "sync docker image on demand" {
+    run skopeo --insecure-policy copy --src-tls-verify=false \
+        docker://127.0.0.1:8090/archlinux \
+        oci:${TEST_DATA_DIR}
+    [ "$status" -eq 0 ]
+
+    run curl http://127.0.0.1:8090/v2/_catalog
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.repositories[0]') = '"archlinux"' ]
     run curl http://127.0.0.1:8090/v2/registry/tags/list
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.tags[]') = '"latest"' ]
