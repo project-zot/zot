@@ -25,6 +25,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	zerr "zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
@@ -482,7 +483,7 @@ func FuzzTestDeleteImageManifest(f *testing.F) {
 
 func FuzzDirExists(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data string) {
-		_ = local.DirExists(data)
+		_ = common.DirExists(data)
 	})
 }
 
@@ -1602,7 +1603,7 @@ func TestNegativeCases(t *testing.T) {
 			panic(err)
 		}
 
-		ok := local.DirExists(filePath)
+		ok := common.DirExists(filePath)
 		So(ok, ShouldBeFalse)
 	})
 
@@ -1610,7 +1611,7 @@ func TestNegativeCases(t *testing.T) {
 		dir := t.TempDir()
 
 		filePath := path.Join(dir, "hi \255")
-		ok := local.DirExists(filePath)
+		ok := common.DirExists(filePath)
 		So(ok, ShouldBeFalse)
 	})
 
@@ -1623,7 +1624,7 @@ func TestNegativeCases(t *testing.T) {
 			}
 		}
 		path := builder.String()
-		ok := local.DirExists(path)
+		ok := common.DirExists(path)
 		So(ok, ShouldBeFalse)
 	})
 }

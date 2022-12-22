@@ -6,13 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -66,7 +64,7 @@ func (is *ImageStoreLocal) RootDir() string {
 }
 
 func (is *ImageStoreLocal) DirExists(d string) bool {
-	return DirExists(d)
+	return common.DirExists(d)
 }
 
 // NewImageStore returns a new image store backed by a file storage.
@@ -1668,30 +1666,6 @@ func isBlobOlderThan(imgStore *ImageStoreLocal, repo string, digest godigest.Dig
 	imgStore.log.Info().Str("digest", digest.String()).Str("blobPath", blobPath).Msg("perform GC on blob")
 
 	return true, nil
-}
-
-func DirExists(d string) bool {
-	if !utf8.ValidString(d) {
-		return false
-	}
-
-	fileInfo, err := os.Stat(d)
-	if err != nil {
-		if e, ok := err.(*fs.PathError); ok && errors.Is(e.Err, syscall.ENAMETOOLONG) || //nolint: errorlint
-			errors.Is(e.Err, syscall.EINVAL) {
-			return false
-		}
-	}
-
-	if err != nil && os.IsNotExist(err) {
-		return false
-	}
-
-	if !fileInfo.IsDir() {
-		return false
-	}
-
-	return true
 }
 
 func (is *ImageStoreLocal) gcRepo(repo string) error {
