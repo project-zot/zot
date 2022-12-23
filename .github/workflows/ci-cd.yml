@@ -34,14 +34,6 @@ jobs:
       matrix:
         os: [linux, darwin]
         arch: [amd64, arm64]
-    services:
-      s3mock:
-        image: ghcr.io/project-zot/localstack/localstack:1.2.0
-        env:
-          SERVICES: s3,dynamodb
-        ports:
-          - 4563-4599:4563-4599
-          - 9090:8080
     steps:
       - name: Install go
         uses: actions/setup-go@v3
@@ -76,10 +68,25 @@ jobs:
           curl -Lo notation.tar.gz https://github.com/notaryproject/notation/releases/download/v0.7.1-alpha.1/notation_0.7.1-alpha.1_linux_amd64.tar.gz
           sudo tar xvzf notation.tar.gz -C /usr/bin notation
           go install github.com/wadey/gocovmerge@latest
+
+      - if: matrix.os == 'linux' && matrix.arch == 'amd64'
+        name: Setup localstack service
+        run: |
+            pip install localstack                    # install LocalStack cli
+            docker pull localstack/localstack         # Make sure to pull the latest version of the image
+            localstack start -d                       # Start LocalStack in the background
+            
+            echo "Waiting for LocalStack startup..."  # Wait 30 seconds for the LocalStack container
+            localstack wait -t 30                     # to become ready before timing out 
+            echo "Startup complete"        
+
+            aws dynamodb --endpoint-url http://localhost:4566 --region "us-east-2" create-table --table-name BlobTable --attribute-definitions AttributeName=Digest,AttributeType=S --key-schema AttributeName=Digest,KeyType=HASH --provisioned-throughput ReadCapacityUnits=10,WriteCapacityUnits=5
+        env:
+          AWS_ACCESS_KEY_ID: fake
+          AWS_SECRET_ACCESS_KEY: fake
       - name: Run build and test
         timeout-minutes: 60
         run: |
-          aws dynamodb --endpoint-url http://localhost:4566 --region "us-east-2" create-table --table-name BlobTable --attribute-definitions AttributeName=Digest,AttributeType=S --key-schema AttributeName=Digest,KeyType=HASH --provisioned-throughput ReadCapacityUnits=10,WriteCapacityUnits=5
           echo "Building for $OS:$ARCH"
           cd $GITHUB_WORKSPACE
           if [[ $OS == "linux" && $ARCH == "amd64" ]]; then
@@ -88,7 +95,6 @@ jobs:
           else
             make OS=$OS ARCH=$ARCH binary binary-minimal binary-debug cli bench exporter-minimal
           fi
-          aws dynamodb --endpoint-url "http://localhost:4566" --region "us-east-2" delete-table --table-name "BlobTable"
         env:
           S3MOCK_ENDPOINT: localhost:4566
           DYNAMODBMOCK_ENDPOINT: http://localhost:4566
