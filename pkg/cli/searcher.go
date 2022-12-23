@@ -363,6 +363,12 @@ func (search cveByImageSearcherGQL) search(config searchConfig) (bool, error) {
 		fmt.Fprint(config.resultWriter, builder.String())
 	}
 
+	if len(cveList.Data.CVEListForImage.CVEList) == 0 {
+		fmt.Fprint(config.resultWriter, "No CVEs found for image\n")
+
+		return true, nil
+	}
+
 	out, err := cveList.string(*config.outputFormat)
 	if err != nil {
 		return true, err
