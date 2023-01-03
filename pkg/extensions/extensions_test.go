@@ -1,5 +1,5 @@
-//go:build sync || metrics || mgmt
-// +build sync metrics mgmt
+//go:build sync || metrics || mgmt || apikey
+// +build sync metrics mgmt apikey
 
 package extensions_test
 
@@ -128,6 +128,20 @@ func TestMgmtExtension(t *testing.T) {
 
 	defaultValue := true
 
+	mockOIDCServer, err := test.MockOIDCRun()
+	if err != nil {
+		panic(err)
+	}
+
+	defer func() {
+		err := mockOIDCServer.Shutdown()
+		if err != nil {
+			panic(err)
+		}
+	}()
+
+	mockOIDCConfig := mockOIDCServer.Config()
+
 	Convey("Verify mgmt route enabled with htpasswd", t, func() {
 		htpasswdPath := test.MakeHtpasswdFile()
 		conf.HTTP.Auth.HTPasswd.Path = htpasswdPath
@@ -145,7 +159,7 @@ func TestMgmtExtension(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		subPaths := make(map[string]config.StorageConfig)
-		subPaths["/a"] = config.StorageConfig{}
+		subPaths["/a"] = config.StorageConfig{RootDirectory: t.TempDir()}
 
 		ctlr.Config.Storage.RootDirectory = globalDir
 		ctlr.Config.Storage.SubPaths = subPaths
@@ -157,6 +171,13 @@ func TestMgmtExtension(t *testing.T) {
 		data, _ := os.ReadFile(logFile.Name())
 
 		So(string(data), ShouldContainSubstring, "setting up mgmt routes")
+
+		Convey("unsupported http method call", func() {
+			// without credentials
+			resp, err := resty.R().Patch(baseURL + constants.FullMgmtPrefix)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusMethodNotAllowed)
+		})
 
 		// without credentials
 		resp, err := resty.R().Get(baseURL + constants.FullMgmtPrefix)
@@ -210,9 +231,9 @@ func TestMgmtExtension(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		subPaths := make(map[string]config.StorageConfig)
-		subPaths["/a"] = config.StorageConfig{}
+		subPaths["/a"] = config.StorageConfig{RootDirectory: t.TempDir()}
 
-		ctlr.Config.Storage.RootDirectory = globalDir
+		ctlr.Config.Storage.RootDirectory = t.TempDir()
 		ctlr.Config.Storage.SubPaths = subPaths
 
 		ctlrManager := test.NewControllerManager(ctlr)
@@ -259,9 +280,9 @@ func TestMgmtExtension(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		subPaths := make(map[string]config.StorageConfig)
-		subPaths["/a"] = config.StorageConfig{}
+		subPaths["/a"] = config.StorageConfig{RootDirectory: t.TempDir()}
 
-		ctlr.Config.Storage.RootDirectory = globalDir
+		ctlr.Config.Storage.RootDirectory = t.TempDir()
 		ctlr.Config.Storage.SubPaths = subPaths
 
 		ctlrManager := test.NewControllerManager(ctlr)
@@ -325,11 +346,7 @@ func TestMgmtExtension(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		subPaths := make(map[string]config.StorageConfig)
-		subPaths["/a"] = config.StorageConfig{}
-
-		ctlr.Config.Storage.RootDirectory = globalDir
-		ctlr.Config.Storage.SubPaths = subPaths
+		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		ctlrManager := test.NewControllerManager(ctlr)
 		ctlrManager.StartAndWait(port)
@@ -396,9 +413,9 @@ func TestMgmtExtension(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		subPaths := make(map[string]config.StorageConfig)
-		subPaths["/a"] = config.StorageConfig{}
+		subPaths["/a"] = config.StorageConfig{RootDirectory: t.TempDir()}
 
-		ctlr.Config.Storage.RootDirectory = globalDir
+		ctlr.Config.Storage.RootDirectory = t.TempDir()
 		ctlr.Config.Storage.SubPaths = subPaths
 
 		ctlrManager := test.NewControllerManager(ctlr)
@@ -445,11 +462,7 @@ func TestMgmtExtension(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		subPaths := make(map[string]config.StorageConfig)
-		subPaths["/a"] = config.StorageConfig{}
-
-		ctlr.Config.Storage.RootDirectory = globalDir
-		ctlr.Config.Storage.SubPaths = subPaths
+		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		ctlrManager := test.NewControllerManager(ctlr)
 		ctlrManager.StartAndWait(port)
@@ -472,6 +485,110 @@ func TestMgmtExtension(t *testing.T) {
 		So(mgmtResp.HTTP.Auth.Bearer, ShouldNotBeNil)
 		So(mgmtResp.HTTP.Auth.Bearer.Realm, ShouldEqual, "realm")
 		So(mgmtResp.HTTP.Auth.Bearer.Service, ShouldEqual, "service")
+	})
+
+	Convey("Verify mgmt route enabled with openID", t, func() {
+		conf.HTTP.Auth.HTPasswd.Path = ""
+		conf.HTTP.Auth.LDAP = nil
+		conf.HTTP.Auth.Bearer = nil
+
+		openIDProviders := make(map[string]config.OpenIDProviderConfig)
+		openIDProviders["dex"] = config.OpenIDProviderConfig{
+			ClientID:     mockOIDCConfig.ClientID,
+			ClientSecret: mockOIDCConfig.ClientSecret,
+			Issuer:       mockOIDCConfig.Issuer,
+		}
+
+		conf.HTTP.Auth.OpenID = &config.OpenIDConfig{
+			Providers: openIDProviders,
+		}
+
+		conf.Extensions = &extconf.ExtensionConfig{}
+		conf.Extensions.Mgmt = &extconf.MgmtConfig{
+			BaseConfig: extconf.BaseConfig{
+				Enable: &defaultValue,
+			},
+		}
+
+		conf.Log.Output = logFile.Name()
+		defer os.Remove(logFile.Name()) // cleanup
+
+		ctlr := api.NewController(conf)
+
+		ctlr.Config.Storage.RootDirectory = t.TempDir()
+
+		ctlrManager := test.NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
+
+		data, _ := os.ReadFile(logFile.Name())
+
+		So(string(data), ShouldContainSubstring, "setting up mgmt routes")
+
+		// without credentials
+		resp, err := resty.R().Get(baseURL + constants.FullMgmtPrefix)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		mgmtResp := extensions.StrippedConfig{}
+		err = json.Unmarshal(resp.Body(), &mgmtResp)
+		t.Logf("resp: %v", mgmtResp.HTTP.Auth.OpenID)
+		So(err, ShouldBeNil)
+		So(mgmtResp.HTTP.Auth.HTPasswd, ShouldBeNil)
+		So(mgmtResp.HTTP.Auth.LDAP, ShouldBeNil)
+		So(mgmtResp.HTTP.Auth.Bearer, ShouldBeNil)
+		So(mgmtResp.HTTP.Auth.OpenID, ShouldNotBeNil)
+		So(mgmtResp.HTTP.Auth.OpenID.Providers, ShouldNotBeEmpty)
+	})
+
+	Convey("Verify mgmt route enabled with empty openID provider list", t, func() {
+		htpasswdPath := test.MakeHtpasswdFile()
+
+		conf.HTTP.Auth.HTPasswd.Path = htpasswdPath
+		conf.HTTP.Auth.LDAP = nil
+		conf.HTTP.Auth.Bearer = nil
+
+		openIDProviders := make(map[string]config.OpenIDProviderConfig)
+
+		conf.HTTP.Auth.OpenID = &config.OpenIDConfig{
+			Providers: openIDProviders,
+		}
+
+		conf.Extensions = &extconf.ExtensionConfig{}
+		conf.Extensions.Mgmt = &extconf.MgmtConfig{
+			BaseConfig: extconf.BaseConfig{
+				Enable: &defaultValue,
+			},
+		}
+
+		conf.Log.Output = logFile.Name()
+		defer os.Remove(logFile.Name()) // cleanup
+
+		ctlr := api.NewController(conf)
+
+		ctlr.Config.Storage.RootDirectory = t.TempDir()
+
+		ctlrManager := test.NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
+
+		data, _ := os.ReadFile(logFile.Name())
+
+		So(string(data), ShouldContainSubstring, "setting up mgmt routes")
+
+		// without credentials
+		resp, err := resty.R().Get(baseURL + constants.FullMgmtPrefix)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		mgmtResp := extensions.StrippedConfig{}
+		err = json.Unmarshal(resp.Body(), &mgmtResp)
+		t.Logf("resp: %v", mgmtResp.HTTP.Auth.OpenID)
+		So(err, ShouldBeNil)
+		So(mgmtResp.HTTP.Auth.HTPasswd, ShouldNotBeNil)
+		So(mgmtResp.HTTP.Auth.LDAP, ShouldBeNil)
+		So(mgmtResp.HTTP.Auth.Bearer, ShouldBeNil)
+		So(mgmtResp.HTTP.Auth.OpenID, ShouldBeNil)
 	})
 
 	Convey("Verify mgmt route enabled without any auth", t, func() {
@@ -499,11 +616,7 @@ func TestMgmtExtension(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		subPaths := make(map[string]config.StorageConfig)
-		subPaths["/a"] = config.StorageConfig{}
-
-		ctlr.Config.Storage.RootDirectory = globalDir
-		ctlr.Config.Storage.SubPaths = subPaths
+		ctlr.Config.Storage.RootDirectory = t.TempDir()
 
 		ctlrManager := test.NewControllerManager(ctlr)
 		ctlrManager.StartAndWait(port)
@@ -853,6 +966,35 @@ func TestAllowedMethodsHeaderMgmt(t *testing.T) {
 		resp, _ := resty.R().Options(baseURL + constants.FullMgmtPrefix)
 		So(resp, ShouldNotBeNil)
 		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "GET,POST,OPTIONS")
+		So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
+	})
+}
+
+func TestAllowedMethodsHeaderAPIKey(t *testing.T) {
+	defaultVal := true
+
+	Convey("Test http options response", t, func() {
+		conf := config.New()
+		port := test.GetFreePort()
+		conf.HTTP.Port = port
+		conf.Extensions = &extconf.ExtensionConfig{
+			APIKey: &extconf.APIKeyConfig{
+				BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+			},
+		}
+		baseURL := test.GetBaseURL(port)
+
+		ctlr := api.NewController(conf)
+		ctlr.Config.Storage.RootDirectory = t.TempDir()
+
+		ctrlManager := test.NewControllerManager(ctlr)
+
+		ctrlManager.StartAndWait(port)
+		defer ctrlManager.StopServer()
+
+		resp, _ := resty.R().Options(baseURL + constants.FullAPIKeyPrefix)
+		So(resp, ShouldNotBeNil)
+		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "POST,DELETE,OPTIONS")
 		So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
 	})
 }

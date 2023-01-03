@@ -19,6 +19,11 @@ type ExtensionConfig struct {
 	Lint    *LintConfig
 	UI      *UIConfig
 	Mgmt    *MgmtConfig
+	APIKey  *APIKeyConfig
+}
+
+type APIKeyConfig struct {
+	BaseConfig `mapstructure:",squash"`
 }
 
 type MgmtConfig struct {

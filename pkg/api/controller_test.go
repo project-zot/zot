@@ -1,5 +1,5 @@
-//go:build sync && scrub && metrics && search
-// +build sync,scrub,metrics,search
+//go:build sync && scrub && metrics && search && mgmt
+// +build sync,scrub,metrics,search,mgmt
 
 package api_test
 
@@ -19,18 +19,24 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/google/go-github/v52/github"
 	"github.com/gorilla/mux"
+	"github.com/gorilla/securecookie"
+	"github.com/gorilla/sessions"
+	"github.com/migueleliasweb/go-github-mock/src/mock"
 	vldap "github.com/nmcclain/ldap"
 	notreg "github.com/notaryproject/notation-go/registry"
 	distext "github.com/opencontainers/distribution-spec/specs-go/v1/extensions"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
+	"github.com/project-zot/mockoidc"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/generate"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/options"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/sign"
@@ -55,6 +61,7 @@ import (
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/inject"
+	"zotregistry.io/zot/pkg/test/mocks"
 )
 
 const (
@@ -249,6 +256,7 @@ func TestCreateRepoDBDriver(t *testing.T) {
 			"manifestdatatablename": "ManifestDataTable",
 			"indexdatatablename":    "IndexDataTable",
 			"userdatatablename":     "ZotUserDataTable",
+			"apikeytablename":       "APIKeyTable",
 			"versiontablename":      "1",
 		}
 
@@ -356,6 +364,9 @@ func TestAutoPortSelection(t *testing.T) {
 
 func TestObjectStorageController(t *testing.T) {
 	skipIt(t)
+
+	bucket := "zot-storage-test"
+
 	Convey("Negative make a new object storage controller", t, func() {
 		port := test.GetFreePort()
 		conf := config.New()
@@ -377,7 +388,6 @@ func TestObjectStorageController(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 
-		bucket := "zot-storage-test"
 		endpoint := os.Getenv("S3MOCK_ENDPOINT")
 
 		storageDriverParams := map[string]interface{}{
@@ -389,7 +399,82 @@ func TestObjectStorageController(t *testing.T) {
 			"secure":         false,
 			"skipverify":     false,
 		}
+
 		conf.Storage.StorageDriver = storageDriverParams
+		ctlr := makeController(conf, "/", "")
+		So(ctlr, ShouldNotBeNil)
+
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(port)
+		defer cm.StopServer()
+	})
+
+	Convey("Make a new object storage controller with openid", t, func() {
+		port := test.GetFreePort()
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		endpoint := os.Getenv("S3MOCK_ENDPOINT")
+
+		storageDriverParams := map[string]interface{}{
+			"rootdirectory":  "/zot",
+			"name":           storageConstants.S3StorageDriverName,
+			"region":         "us-east-2",
+			"bucket":         bucket,
+			"regionendpoint": endpoint,
+			"secure":         false,
+			"skipverify":     false,
+		}
+		conf.Storage.RemoteCache = true
+		conf.Storage.StorageDriver = storageDriverParams
+
+		conf.Storage.CacheDriver = map[string]interface{}{
+			"name":                  "dynamodb",
+			"endpoint":              "http://localhost:4566",
+			"region":                "us-east-2",
+			"cachetablename":        "test",
+			"repometatablename":     "RepoMetadataTable",
+			"manifestdatatablename": "ManifestDataTable",
+			"indexdatatablename":    "IndexDataTable",
+			"userdatatablename":     "ZotUserDataTable",
+			"apikeytablename":       "APIKeyTable1",
+			"versiontablename":      "Version",
+		}
+
+		mockOIDCServer, err := test.MockOIDCRun()
+		if err != nil {
+			panic(err)
+		}
+
+		defer func() {
+			err := mockOIDCServer.Shutdown()
+			if err != nil {
+				panic(err)
+			}
+		}()
+
+		mockOIDCConfig := mockOIDCServer.Config()
+
+		conf.HTTP.Auth = &config.AuthConfig{
+			OpenID: &config.OpenIDConfig{
+				Providers: map[string]config.OpenIDProviderConfig{
+					"dex": {
+						ClientID:     mockOIDCConfig.ClientID,
+						ClientSecret: mockOIDCConfig.ClientSecret,
+						KeyPath:      "",
+						Issuer:       mockOIDCConfig.Issuer,
+						Scopes:       []string{"openid", "email"},
+					},
+				},
+			},
+		}
+
+		// create s3 bucket
+		_, err = resty.R().Put("http://" + os.Getenv("S3MOCK_ENDPOINT") + "/" + bucket)
+		if err != nil {
+			panic(err)
+		}
+
 		ctlr := makeController(conf, "/", "")
 		So(ctlr, ShouldNotBeNil)
 
@@ -401,12 +486,14 @@ func TestObjectStorageController(t *testing.T) {
 
 func TestObjectStorageControllerSubPaths(t *testing.T) {
 	skipIt(t)
+
+	bucket := "zot-storage-test"
+
 	Convey("Make a new object storage controller", t, func() {
 		port := test.GetFreePort()
 		conf := config.New()
 		conf.HTTP.Port = port
 
-		bucket := "zot-storage-test"
 		endpoint := os.Getenv("S3MOCK_ENDPOINT")
 
 		storageDriverParams := map[string]interface{}{
@@ -471,12 +558,12 @@ func TestHtpasswdSingleCred(t *testing.T) {
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-				header := []string{"Authorization,content-type"}
+				header := []string{"Authorization,content-type," + constants.SessionClientHeaderName}
 
 				resp, _ = resty.R().SetBasicAuth(user, password).Options(baseURL + "/v2/")
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
-				So(len(resp.Header()), ShouldEqual, 4)
+				So(len(resp.Header()), ShouldEqual, 5)
 				So(resp.Header()["Access-Control-Allow-Headers"], ShouldResemble, header)
 				So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "HEAD,GET,POST,OPTIONS")
 
@@ -2184,6 +2271,29 @@ func TestBearerAuth(t *testing.T) {
 	})
 }
 
+func TestBearerAuthWrongAuthorizer(t *testing.T) {
+	Convey("Make a new authorizer", t, func() {
+		port := test.GetFreePort()
+
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.HTTP.Auth = &config.AuthConfig{
+			Bearer: &config.BearerConfig{
+				Cert:    "bla",
+				Realm:   "blabla",
+				Service: "blablabla",
+			},
+		}
+		ctlr := makeController(conf, t.TempDir(), "")
+		cm := test.NewControllerManager(ctlr)
+
+		So(func() {
+			ctx := context.Background()
+			cm.RunServer(ctx)
+		}, ShouldPanic)
+	})
+}
+
 func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		authTestServer := test.MakeAuthTestServer(ServerKey, UnauthorizedNamespace)
@@ -2354,11 +2464,1004 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 	})
 }
 
+func TestNewRelyingPartyOIDC(t *testing.T) {
+	Convey("Test NewRelyingPartyOIDC", t, func() {
+		conf := config.New()
+
+		mockOIDCServer, err := test.MockOIDCRun()
+		if err != nil {
+			panic(err)
+		}
+
+		defer func() {
+			err := mockOIDCServer.Shutdown()
+			if err != nil {
+				panic(err)
+			}
+		}()
+
+		mockOIDCConfig := mockOIDCServer.Config()
+
+		conf.HTTP.Auth = &config.AuthConfig{
+			OpenID: &config.OpenIDConfig{
+				Providers: map[string]config.OpenIDProviderConfig{
+					"dex": {
+						ClientID:     mockOIDCConfig.ClientID,
+						ClientSecret: mockOIDCConfig.ClientSecret,
+						KeyPath:      "",
+						Issuer:       mockOIDCConfig.Issuer,
+						Scopes:       []string{"openid", "email"},
+					},
+				},
+			},
+		}
+
+		Convey("provider not found in config", func() {
+			So(func() { _ = api.NewRelyingPartyOIDC(conf, "notDex") }, ShouldPanic)
+		})
+
+		Convey("key path not found on disk", func() {
+			dexProviderCfg := conf.HTTP.Auth.OpenID.Providers["dex"]
+			dexProviderCfg.KeyPath = "path/to/file"
+			conf.HTTP.Auth.OpenID.Providers["dex"] = dexProviderCfg
+
+			So(func() { _ = api.NewRelyingPartyOIDC(conf, "dex") }, ShouldPanic)
+		})
+
+		Convey("https callback", func() {
+			conf.HTTP.TLS = &config.TLSConfig{
+				Cert: ServerCert,
+				Key:  ServerKey,
+			}
+
+			rp := api.NewRelyingPartyOIDC(conf, "dex")
+			So(rp, ShouldNotBeNil)
+		})
+
+		Convey("no client secret in config", func() {
+			dexProvider := conf.HTTP.Auth.OpenID.Providers["dex"]
+			dexProvider.ClientSecret = ""
+			conf.HTTP.Auth.OpenID.Providers["dex"] = dexProvider
+
+			rp := api.NewRelyingPartyOIDC(conf, "dex")
+			So(rp, ShouldNotBeNil)
+		})
+
+		Convey("provider issuer unreachable", func() {
+			dexProvider := conf.HTTP.Auth.OpenID.Providers["dex"]
+			dexProvider.Issuer = ""
+			conf.HTTP.Auth.OpenID.Providers["dex"] = dexProvider
+
+			So(func() { _ = api.NewRelyingPartyOIDC(conf, "dex") }, ShouldPanic)
+		})
+	})
+}
+
+func TestOpenIDMiddleware(t *testing.T) {
+	port := test.GetFreePort()
+	baseURL := test.GetBaseURL(port)
+	defaultVal := true
+
+	conf := config.New()
+	conf.HTTP.Port = port
+
+	// need a username different than ldap one, to test both logic
+	htpasswdUsername := "htpasswduser"
+	content := fmt.Sprintf("%s:$2y$05$hlbSXDp6hzDLu6VwACS39ORvVRpr3OMR4RlJ31jtlaOEGnPjKZI1m\n", htpasswdUsername)
+	htpasswdPath := test.MakeHtpasswdFileFromString(content)
+
+	defer os.Remove(htpasswdPath)
+
+	ldapServer := newTestLDAPServer()
+	port = test.GetFreePort()
+
+	ldapPort, err := strconv.Atoi(port)
+	if err != nil {
+		panic(err)
+	}
+
+	ldapServer.Start(ldapPort)
+	defer ldapServer.Stop()
+
+	mockOIDCServer, err := test.MockOIDCRun()
+	if err != nil {
+		panic(err)
+	}
+
+	defer func() {
+		err := mockOIDCServer.Shutdown()
+		if err != nil {
+			panic(err)
+		}
+	}()
+
+	mockOIDCConfig := mockOIDCServer.Config()
+	conf.HTTP.Auth = &config.AuthConfig{
+		HTPasswd: config.AuthHTPasswd{
+			Path: htpasswdPath,
+		},
+		LDAP: &config.LDAPConfig{
+			Insecure:      true,
+			Address:       LDAPAddress,
+			Port:          ldapPort,
+			BindDN:        LDAPBindDN,
+			BindPassword:  LDAPBindPassword,
+			BaseDN:        LDAPBaseDN,
+			UserAttribute: "uid",
+		},
+		OpenID: &config.OpenIDConfig{
+			Providers: map[string]config.OpenIDProviderConfig{
+				"dex": {
+					ClientID:     mockOIDCConfig.ClientID,
+					ClientSecret: mockOIDCConfig.ClientSecret,
+					KeyPath:      "",
+					Issuer:       mockOIDCConfig.Issuer,
+					Scopes:       []string{"openid", "email"},
+				},
+				// just for the constructor coverage
+				"github": {
+					ClientID:     mockOIDCConfig.ClientID,
+					ClientSecret: mockOIDCConfig.ClientSecret,
+					KeyPath:      "",
+					Issuer:       mockOIDCConfig.Issuer,
+					Scopes:       []string{"openid", "email"},
+				},
+			},
+		},
+	}
+
+	mgmtConfg := &extconf.MgmtConfig{
+		BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+	}
+
+	conf.Extensions = &extconf.ExtensionConfig{
+		Mgmt: mgmtConfg,
+	}
+
+	ctlr := api.NewController(conf)
+	dir := t.TempDir()
+
+	ctlr.Config.Storage.RootDirectory = dir
+
+	cm := test.NewControllerManager(ctlr)
+
+	cm.StartServer()
+	defer cm.StopServer()
+	test.WaitTillServerReady(baseURL)
+
+	Convey("browser client requests", t, func() {
+		Convey("login with no provider supplied", func() {
+			client := resty.New()
+			client.SetRedirectPolicy(test.CustomRedirectPolicy(20))
+			// first login user
+			resp, err := client.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				SetQueryParam("provider", "unknown").
+				Get(baseURL + constants.LoginPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
+		})
+
+		Convey("login with openid and get catalog with session", func() {
+			client := resty.New()
+			client.SetRedirectPolicy(test.CustomRedirectPolicy(20))
+
+			Convey("with callback_ui value provided", func() {
+				// first login user
+				resp, err := client.R().
+					SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+					SetQueryParam("provider", "dex").
+					SetQueryParam("callback_ui", baseURL+"/v2/").
+					Get(baseURL + constants.LoginPath)
+				So(err, ShouldBeNil)
+				So(resp, ShouldNotBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			})
+
+			// first login user
+			resp, err := client.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				SetQueryParam("provider", "dex").
+				Get(baseURL + constants.LoginPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+			client.SetCookies(resp.Cookies())
+
+			// call endpoint with session (added to client after previous request)
+			resp, err = client.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				Get(baseURL + "/v2/_catalog")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// logout with options method for coverage
+			resp, err = client.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				Options(baseURL + constants.LogoutPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+
+			// logout user
+			resp, err = client.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				Post(baseURL + constants.LogoutPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// calling endpoint should fail with unathorized access
+			resp, err = client.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				Get(baseURL + "/v2/_catalog")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		})
+
+		//nolint: dupl
+		Convey("login with basic auth(htpasswd) and get catalog with session", func() {
+			client := resty.New()
+
+			// without creds, should get access error
+			resp, err := client.R().Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+			var e apiErr.Error
+			err = json.Unmarshal(resp.Body(), &e)
+			So(err, ShouldBeNil)
+
+			// first login user
+			// with creds, should get expected status code
+			resp, err = client.R().SetBasicAuth(htpasswdUsername, passphrase).Get(baseURL)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			resp, err = client.R().SetBasicAuth(htpasswdUsername, passphrase).Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, err = client.R().
+				SetBasicAuth(htpasswdUsername, passphrase).
+				Get(baseURL + constants.FullMgmtPrefix)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			client.SetCookies(resp.Cookies())
+
+			// call endpoint with session, without credentials, (added to client after previous request)
+			resp, err = client.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				Get(baseURL + "/v2/_catalog")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, err = client.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				Get(baseURL + constants.FullMgmtPrefix)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// logout user
+			resp, err = client.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				Post(baseURL + constants.LogoutPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// calling endpoint should fail with unathorized access
+			resp, err = client.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				Get(baseURL + "/v2/_catalog")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		})
+
+		//nolint: dupl
+		Convey("login with ldap and get catalog", func() {
+			client := resty.New()
+
+			// without creds, should get access error
+			resp, err := client.R().Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+			var e apiErr.Error
+			err = json.Unmarshal(resp.Body(), &e)
+			So(err, ShouldBeNil)
+
+			// first login user
+			// with creds, should get expected status code
+			resp, err = client.R().SetBasicAuth(username, passphrase).Get(baseURL)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			resp, err = client.R().SetBasicAuth(username, passphrase).Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, err = client.R().
+				SetBasicAuth(username, passphrase).
+				Get(baseURL + constants.FullMgmtPrefix)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			client.SetCookies(resp.Cookies())
+
+			// call endpoint with session, without credentials, (added to client after previous request)
+			resp, err = client.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				Get(baseURL + "/v2/_catalog")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			resp, err = client.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				Get(baseURL + constants.FullMgmtPrefix)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// logout user
+			resp, err = client.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				Post(baseURL + constants.LogoutPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// calling endpoint should fail with unathorized access
+			resp, err = client.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				Get(baseURL + "/v2/_catalog")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		})
+
+		Convey("unauthenticated catalog request", func() {
+			client := resty.New()
+
+			// mgmt should work both unauthenticated and authenticated
+			resp, err := client.R().
+				Get(baseURL + constants.FullMgmtPrefix)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			// call endpoint without session
+			resp, err = client.R().
+				Get(baseURL + "/v2/_catalog")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		})
+	})
+}
+
+func TestIsOpenIDEnabled(t *testing.T) {
+	Convey("make oidc server", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		mockOIDCServer, err := test.MockOIDCRun()
+		if err != nil {
+			panic(err)
+		}
+
+		defer func() {
+			err := mockOIDCServer.Shutdown()
+			if err != nil {
+				panic(err)
+			}
+		}()
+
+		rootDir := t.TempDir()
+
+		Convey("Only OAuth2 provided", func() {
+			mockOIDCConfig := mockOIDCServer.Config()
+			conf.HTTP.Auth = &config.AuthConfig{
+				OpenID: &config.OpenIDConfig{
+					Providers: map[string]config.OpenIDProviderConfig{
+						"github": {
+							ClientID:     mockOIDCConfig.ClientID,
+							ClientSecret: mockOIDCConfig.ClientSecret,
+							KeyPath:      "",
+							Issuer:       mockOIDCConfig.Issuer,
+							Scopes:       []string{"email", "groups"},
+						},
+					},
+				},
+			}
+
+			ctlr := api.NewController(conf)
+
+			ctlr.Config.Storage.RootDirectory = rootDir
+
+			cm := test.NewControllerManager(ctlr)
+
+			cm.StartServer()
+			defer cm.StopServer()
+			test.WaitTillServerReady(baseURL)
+
+			resp, err := resty.R().
+				Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		})
+
+		Convey("Unsupported provider", func() {
+			mockOIDCConfig := mockOIDCServer.Config()
+			conf.HTTP.Auth = &config.AuthConfig{
+				OpenID: &config.OpenIDConfig{
+					Providers: map[string]config.OpenIDProviderConfig{
+						"invalidProvider": {
+							ClientID:     mockOIDCConfig.ClientID,
+							ClientSecret: mockOIDCConfig.ClientSecret,
+							KeyPath:      "",
+							Issuer:       mockOIDCConfig.Issuer,
+							Scopes:       []string{"email", "groups"},
+						},
+					},
+				},
+			}
+
+			ctlr := api.NewController(conf)
+
+			ctlr.Config.Storage.RootDirectory = rootDir
+
+			cm := test.NewControllerManager(ctlr)
+
+			cm.StartServer()
+			defer cm.StopServer()
+			test.WaitTillServerReady(baseURL)
+
+			resp, err := resty.R().
+				Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		})
+	})
+}
+
+func TestAuthnSessionErrors(t *testing.T) {
+	Convey("make controller", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		defaultVal := true
+
+		conf := config.New()
+		conf.HTTP.Port = port
+		invalidSessionID := "sessionID"
+
+		// need a username different than ldap one, to test both logic
+		htpasswdUsername := "htpasswduser"
+		content := fmt.Sprintf("%s:$2y$05$hlbSXDp6hzDLu6VwACS39ORvVRpr3OMR4RlJ31jtlaOEGnPjKZI1m\n", htpasswdUsername)
+
+		htpasswdPath := test.MakeHtpasswdFileFromString(content)
+		defer os.Remove(htpasswdPath)
+
+		ldapServer := newTestLDAPServer()
+		port = test.GetFreePort()
+
+		ldapPort, err := strconv.Atoi(port)
+		if err != nil {
+			panic(err)
+		}
+
+		ldapServer.Start(ldapPort)
+		defer ldapServer.Stop()
+
+		mockOIDCServer, err := test.MockOIDCRun()
+		if err != nil {
+			panic(err)
+		}
+
+		defer func() {
+			err := mockOIDCServer.Shutdown()
+			if err != nil {
+				panic(err)
+			}
+		}()
+
+		rootDir := t.TempDir()
+
+		mockOIDCConfig := mockOIDCServer.Config()
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+			LDAP: &config.LDAPConfig{
+				Insecure:      true,
+				Address:       LDAPAddress,
+				Port:          ldapPort,
+				BindDN:        LDAPBindDN,
+				BindPassword:  LDAPBindPassword,
+				BaseDN:        LDAPBaseDN,
+				UserAttribute: "uid",
+			},
+			OpenID: &config.OpenIDConfig{
+				Providers: map[string]config.OpenIDProviderConfig{
+					"dex": {
+						ClientID:     mockOIDCConfig.ClientID,
+						ClientSecret: mockOIDCConfig.ClientSecret,
+						KeyPath:      "",
+						Issuer:       mockOIDCConfig.Issuer,
+						Scopes:       []string{"email", "groups"},
+					},
+				},
+			},
+		}
+
+		mgmtConfg := &extconf.MgmtConfig{
+			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+		}
+
+		conf.Extensions = &extconf.ExtensionConfig{
+			Mgmt: mgmtConfg,
+		}
+
+		ctlr := api.NewController(conf)
+
+		ctlr.Config.Storage.RootDirectory = rootDir
+
+		cm := test.NewControllerManager(ctlr)
+
+		cm.StartServer()
+		defer cm.StopServer()
+		test.WaitTillServerReady(baseURL)
+
+		Convey("trigger basic authn middle(htpasswd) error", func() {
+			client := resty.New()
+
+			ctlr.RepoDB = mocks.RepoDBMock{
+				SetUserGroupsFn: func(ctx context.Context, groups []string) error {
+					return ErrUnexpectedError
+				},
+			}
+
+			resp, err := client.R().
+				SetBasicAuth(htpasswdUsername, passphrase).
+				Get(baseURL + "/v2/_catalog")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+		})
+
+		Convey("trigger basic authn middle(ldap) error", func() {
+			client := resty.New()
+
+			ctlr.RepoDB = mocks.RepoDBMock{
+				SetUserGroupsFn: func(ctx context.Context, groups []string) error {
+					return ErrUnexpectedError
+				},
+			}
+
+			resp, err := client.R().
+				SetBasicAuth(username, passphrase).
+				Get(baseURL + "/v2/_catalog")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+		})
+
+		Convey("trigger updateUserData error", func() {
+			client := resty.New()
+			client.SetRedirectPolicy(test.CustomRedirectPolicy(20))
+
+			ctlr.RepoDB = mocks.RepoDBMock{
+				SetUserGroupsFn: func(ctx context.Context, groups []string) error {
+					return ErrUnexpectedError
+				},
+			}
+
+			resp, err := client.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				SetQueryParam("provider", "dex").
+				Get(baseURL + constants.LoginPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+		})
+
+		Convey("trigger session middle repoDB errors", func() {
+			client := resty.New()
+			client.SetRedirectPolicy(test.CustomRedirectPolicy(20))
+
+			user := mockoidc.DefaultUser()
+			user.Groups = []string{"group1", "group2"}
+
+			mockOIDCServer.QueueUser(user)
+
+			ctlr.RepoDB = mocks.RepoDBMock{}
+
+			// first login user
+			resp, err := client.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				SetQueryParam("provider", "dex").
+				Get(baseURL + constants.LoginPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+			Convey("trigger session middle error internal server error", func() {
+				cookies := resp.Cookies()
+
+				client.SetCookies(cookies)
+
+				ctlr.RepoDB = mocks.RepoDBMock{
+					GetUserGroupsFn: func(ctx context.Context) ([]string, error) {
+						return []string{}, ErrUnexpectedError
+					},
+				}
+
+				// call endpoint with session (added to client after previous request)
+				resp, err = client.R().
+					SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+					Get(baseURL + "/v2/_catalog")
+				So(err, ShouldBeNil)
+				So(resp, ShouldNotBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+			})
+
+			Convey("trigger session middle error GetUserGroups not found", func() {
+				cookies := resp.Cookies()
+
+				client.SetCookies(cookies)
+
+				ctlr.RepoDB = mocks.RepoDBMock{
+					GetUserGroupsFn: func(ctx context.Context) ([]string, error) {
+						return []string{}, errors.ErrUserDataNotFound
+					},
+				}
+
+				// call endpoint with session (added to client after previous request)
+				resp, err = client.R().
+					SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+					Get(baseURL + "/v2/_catalog")
+				So(err, ShouldBeNil)
+				So(resp, ShouldNotBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+			})
+		})
+
+		Convey("trigger no email error in routes(callback)", func() {
+			user := mockoidc.DefaultUser()
+			user.Email = ""
+
+			mockOIDCServer.QueueUser(user)
+
+			client := resty.New()
+			client.SetRedirectPolicy(test.CustomRedirectPolicy(20))
+
+			client.SetCookie(&http.Cookie{Name: "session"})
+
+			// call endpoint with session (added to client after previous request)
+			resp, err := client.R().
+				SetQueryParam("provider", "dex").
+				Get(baseURL + constants.LoginPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+		})
+
+		Convey("trigger session save error in routes(callback)", func() {
+			err := os.Chmod(rootDir, 0o000)
+			So(err, ShouldBeNil)
+
+			defer func() {
+				err := os.Chmod(rootDir, storageConstants.DefaultDirPerms)
+				So(err, ShouldBeNil)
+			}()
+
+			client := resty.New()
+			client.SetRedirectPolicy(test.CustomRedirectPolicy(20))
+
+			// first login user
+			resp, err := client.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				SetQueryParam("provider", "dex").
+				Get(baseURL + constants.LoginPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+		})
+
+		Convey("trigger session save error in basicAuthn", func() {
+			err := os.Chmod(rootDir, 0o000)
+			So(err, ShouldBeNil)
+
+			defer func() {
+				err := os.Chmod(rootDir, storageConstants.DefaultDirPerms)
+				So(err, ShouldBeNil)
+			}()
+
+			client := resty.New()
+
+			// first htpasswd saveSessionLoggedUser() error
+			resp, err := client.R().
+				SetBasicAuth(htpasswdUsername, passphrase).
+				Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+
+			// second ldap saveSessionLoggedUser() error
+			resp, err = client.R().
+				SetBasicAuth(username, passphrase).
+				Get(baseURL + "/v2/")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+		})
+
+		Convey("trigger session middle errors", func() {
+			client := resty.New()
+			client.SetRedirectPolicy(test.CustomRedirectPolicy(20))
+
+			user := mockoidc.DefaultUser()
+			user.Groups = []string{"group1", "group2"}
+
+			mockOIDCServer.QueueUser(user)
+
+			// first login user
+			resp, err := client.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				SetQueryParam("provider", "dex").
+				Get(baseURL + constants.LoginPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+			Convey("trigger bad session encoding error in authn", func() {
+				cookies := resp.Cookies()
+				for _, cookie := range cookies {
+					if cookie.Name == "session" {
+						cookie.Value = "badSessionValue"
+					}
+				}
+
+				client.SetCookies(cookies)
+
+				// call endpoint with session (added to client after previous request)
+				resp, err = client.R().
+					SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+					Get(baseURL + "/v2/_catalog")
+				So(err, ShouldBeNil)
+				So(resp, ShouldNotBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+			})
+
+			Convey("web request without cookies", func() {
+				client.SetCookie(&http.Cookie{})
+
+				// call endpoint with session (added to client after previous request)
+				resp, err = client.R().
+					SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+					Get(baseURL + "/v2/_catalog")
+				So(err, ShouldBeNil)
+				So(resp, ShouldNotBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+			})
+
+			Convey("web request with userless cookie", func() {
+				// first get session
+				session, err := ctlr.CookieStore.Get(resp.RawResponse.Request, "session")
+				So(err, ShouldBeNil)
+
+				session.ID = invalidSessionID
+				session.IsNew = false
+				session.Values["authStatus"] = true
+
+				cookieStore, ok := ctlr.CookieStore.(*sessions.FilesystemStore)
+				So(ok, ShouldBeTrue)
+
+				// first encode sessionID
+				encoded, err := securecookie.EncodeMulti(session.Name(), session.ID,
+					cookieStore.Codecs...)
+				So(err, ShouldBeNil)
+
+				// save cookie
+				cookie := sessions.NewCookie(session.Name(), encoded, session.Options)
+				client.SetCookie(cookie)
+
+				// encode session values and save on disk
+				encoded, err = securecookie.EncodeMulti(session.Name(), session.Values,
+					cookieStore.Codecs...)
+				So(err, ShouldBeNil)
+
+				filename := filepath.Join(rootDir, "session_"+session.ID)
+
+				err = os.WriteFile(filename, []byte(encoded), 0o600)
+				So(err, ShouldBeNil)
+
+				// call endpoint with session (added to client after previous request)
+				resp, err = client.R().
+					SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+					Get(baseURL + "/v2/_catalog")
+				So(err, ShouldBeNil)
+				So(resp, ShouldNotBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+			})
+
+			Convey("web request with authStatus false cookie", func() {
+				// first get session
+				session, err := ctlr.CookieStore.Get(resp.RawResponse.Request, "session")
+				So(err, ShouldBeNil)
+
+				session.ID = invalidSessionID
+				session.IsNew = false
+				session.Values["authStatus"] = false
+				session.Values["username"] = username
+
+				cookieStore, ok := ctlr.CookieStore.(*sessions.FilesystemStore)
+				So(ok, ShouldBeTrue)
+
+				// first encode sessionID
+				encoded, err := securecookie.EncodeMulti(session.Name(), session.ID,
+					cookieStore.Codecs...)
+				So(err, ShouldBeNil)
+
+				// save cookie
+				cookie := sessions.NewCookie(session.Name(), encoded, session.Options)
+				client.SetCookie(cookie)
+
+				// encode session values and save on disk
+				encoded, err = securecookie.EncodeMulti(session.Name(), session.Values,
+					cookieStore.Codecs...)
+				So(err, ShouldBeNil)
+
+				filename := filepath.Join(rootDir, "session_"+session.ID)
+
+				err = os.WriteFile(filename, []byte(encoded), 0o600)
+				So(err, ShouldBeNil)
+
+				// call endpoint with session (added to client after previous request)
+				resp, err = client.R().
+					SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+					Get(baseURL + "/v2/_catalog")
+				So(err, ShouldBeNil)
+				So(resp, ShouldNotBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
+			})
+		})
+	})
+}
+
+func TestAuthnRepoDBErrors(t *testing.T) {
+	Convey("make controller", t, func() {
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		htpasswdPath := test.MakeHtpasswdFile()
+		defer os.Remove(htpasswdPath)
+
+		mockOIDCServer, err := test.MockOIDCRun()
+		if err != nil {
+			panic(err)
+		}
+
+		defer func() {
+			err := mockOIDCServer.Shutdown()
+			if err != nil {
+				panic(err)
+			}
+		}()
+
+		rootDir := t.TempDir()
+
+		mockOIDCConfig := mockOIDCServer.Config()
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+			OpenID: &config.OpenIDConfig{
+				Providers: map[string]config.OpenIDProviderConfig{
+					"dex": {
+						ClientID:     mockOIDCConfig.ClientID,
+						ClientSecret: mockOIDCConfig.ClientSecret,
+						KeyPath:      "",
+						Issuer:       mockOIDCConfig.Issuer,
+						Scopes:       []string{"openid", "email"},
+					},
+				},
+			},
+		}
+
+		ctlr := api.NewController(conf)
+
+		ctlr.Config.Storage.RootDirectory = rootDir
+
+		cm := test.NewControllerManager(ctlr)
+
+		cm.StartServer()
+		defer cm.StopServer()
+		test.WaitTillServerReady(baseURL)
+
+		Convey("trigger basic authn middle(htpasswd) error", func() {
+			client := resty.New()
+
+			ctlr.RepoDB = mocks.RepoDBMock{
+				SetUserGroupsFn: func(ctx context.Context, groups []string) error {
+					return ErrUnexpectedError
+				},
+			}
+
+			resp, err := client.R().
+				SetBasicAuth(username, passphrase).
+				Get(baseURL + "/v2/_catalog")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+		})
+
+		Convey("trigger session middle repoDB errors", func() {
+			client := resty.New()
+			client.SetRedirectPolicy(test.CustomRedirectPolicy(20))
+
+			user := mockoidc.DefaultUser()
+			user.Groups = []string{"group1", "group2"}
+
+			mockOIDCServer.QueueUser(user)
+
+			// first login user
+			resp, err := client.R().
+				SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+				SetQueryParam("provider", "dex").
+				Get(baseURL + constants.LoginPath)
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+			Convey("trigger session middle error", func() {
+				cookies := resp.Cookies()
+
+				client.SetCookies(cookies)
+
+				ctlr.RepoDB = mocks.RepoDBMock{
+					GetUserGroupsFn: func(ctx context.Context) ([]string, error) {
+						return []string{}, ErrUnexpectedError
+					},
+				}
+
+				// call endpoint with session (added to client after previous request)
+				resp, err = client.R().
+					SetHeader(constants.SessionClientHeaderName, constants.SessionClientHeaderValue).
+					Get(baseURL + "/v2/_catalog")
+				So(err, ShouldBeNil)
+				So(resp, ShouldNotBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+			})
+		})
+	})
+}
+
 func TestAuthorizationWithBasicAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		port := test.GetFreePort()
 		baseURL := test.GetBaseURL(port)
-
 		conf := config.New()
 		conf.HTTP.Port = port
 		htpasswdPath := test.MakeHtpasswdFile()
@@ -3325,17 +4428,18 @@ func TestInvalidCases(t *testing.T) {
 			},
 		}
 
-		ctlr := makeController(conf, "oci-repo-test", "")
-
-		err := os.Mkdir("oci-repo-test", 0o000)
-		if err != nil {
-			panic(err)
-		}
+		dir := t.TempDir()
+		ctlr := makeController(conf, dir, "")
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
 		defer func(ctrl *api.Controller) {
-			err := ctrl.Server.Shutdown(context.Background())
+			err := os.Chmod(dir, 0o755)
+			if err != nil {
+				panic(err)
+			}
+
+			err = ctrl.Server.Shutdown(context.Background())
 			if err != nil {
 				panic(err)
 			}
@@ -3345,6 +4449,11 @@ func TestInvalidCases(t *testing.T) {
 				panic(err)
 			}
 		}(ctlr)
+
+		err := os.Chmod(dir, 0o000)
+		if err != nil {
+			panic(err)
+		}
 
 		digest := test.GetTestBlobDigest("zot-cve-test", "config").String()
 		name := "zot-c-test"
@@ -3439,10 +4548,9 @@ func TestCrossRepoMount(t *testing.T) {
 		}
 
 		dir := t.TempDir()
-		err := os.MkdirAll(path.Join(dir, "zot-cve-test"), storageConstants.DefaultDirPerms)
-		So(err, ShouldBeNil)
+		ctlr := api.NewController(conf)
 
-		ctlr := makeController(conf, path.Join(dir, "zot-cve-test"), "../../test/data/zot-cve-test")
+		test.CopyTestFiles("../../test/data/zot-cve-test", path.Join(dir, "zot-cve-test"))
 
 		ctlr.Config.Storage.RootDirectory = dir
 		ctlr.Config.Storage.RemoteCache = false
@@ -3454,7 +4562,7 @@ func TestCrossRepoMount(t *testing.T) {
 		params := make(map[string]string)
 
 		var manifestDigest godigest.Digest
-		manifestDigest, _, _ = test.GetOciLayoutDigests("../../test/data/zot-cve-test")
+		manifestDigest, _, _ = test.GetOciLayoutDigests(path.Join(dir, "zot-cve-test"))
 
 		dgst := manifestDigest
 		name := "zot-cve-test"
@@ -3550,10 +4658,18 @@ func TestCrossRepoMount(t *testing.T) {
 		// in cache, now try mount blob request status and it should be 201 because now blob is present in cache
 		// and it should do hard link.
 
-		// restart server with dedupe enabled
+		// make a new server with dedupe on and same rootDir (can't restart because of repodb - boltdb being open)
+		newDir := t.TempDir()
+		err = test.CopyFiles(dir, newDir)
+		So(err, ShouldBeNil)
+
 		cm.StopServer()
+
 		ctlr.Config.Storage.Dedupe = true
+		ctlr.Config.Storage.RootDirectory = newDir
+		cm = test.NewControllerManager(ctlr) //nolint: varnamelen
 		cm.StartAndWait(port)
+		defer cm.StopServer()
 
 		// wait for dedupe task to run
 		time.Sleep(10 * time.Second)
@@ -3976,13 +5092,6 @@ func TestHardLink(t *testing.T) {
 		port := test.GetFreePort()
 		conf := config.New()
 		conf.HTTP.Port = port
-		htpasswdPath := test.MakeHtpasswdFileFromString(getCredString(username, passphrase))
-
-		conf.HTTP.Auth = &config.AuthConfig{
-			HTPasswd: config.AuthHTPasswd{
-				Path: htpasswdPath,
-			},
-		}
 
 		dir := t.TempDir()
 
@@ -7387,6 +8496,84 @@ func TestHTTPOptionsResponse(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
 
 		defer ctrlManager.StopServer()
+	})
+}
+
+func TestGetGithubUserInfo(t *testing.T) {
+	Convey("github api calls works", t, func() {
+		mockedHTTPClient := mock.NewMockedHTTPClient(
+			mock.WithRequestMatch(
+				mock.GetUserEmails,
+				[]github.UserEmail{
+					{
+						Email:   github.String("test@test"),
+						Primary: github.Bool(true),
+					},
+				},
+			),
+			mock.WithRequestMatch(
+				mock.GetUserOrgs,
+				[]github.Organization{
+					{
+						Login: github.String("testOrg"),
+					},
+				},
+			),
+		)
+
+		client := github.NewClient(mockedHTTPClient)
+
+		_, _, err := api.GetGithubUserInfo(context.Background(), client, log.Logger{})
+		So(err, ShouldBeNil)
+	})
+
+	Convey("github ListEmails error", t, func() {
+		mockedHTTPClient := mock.NewMockedHTTPClient(
+			mock.WithRequestMatchHandler(
+				mock.GetUserEmails,
+				http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					mock.WriteError(
+						w,
+						http.StatusInternalServerError,
+						"github error",
+					)
+				}),
+			),
+		)
+
+		client := github.NewClient(mockedHTTPClient)
+
+		_, _, err := api.GetGithubUserInfo(context.Background(), client, log.Logger{})
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("github ListEmails error", t, func() {
+		mockedHTTPClient := mock.NewMockedHTTPClient(
+			mock.WithRequestMatch(
+				mock.GetUserEmails,
+				[]github.UserEmail{
+					{
+						Email:   github.String("test@test"),
+						Primary: github.Bool(true),
+					},
+				},
+			),
+			mock.WithRequestMatchHandler(
+				mock.GetUserOrgs,
+				http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					mock.WriteError(
+						w,
+						http.StatusInternalServerError,
+						"github error",
+					)
+				}),
+			),
+		)
+
+		client := github.NewClient(mockedHTTPClient)
+
+		_, _, err := api.GetGithubUserInfo(context.Background(), client, log.Logger{})
+		So(err, ShouldNotBeNil)
 	})
 }
 

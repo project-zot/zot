@@ -20,7 +20,6 @@ require (
 	github.com/gofrs/uuid v4.4.0+incompatible
 	github.com/google/go-containerregistry v0.15.2
 	github.com/google/uuid v1.3.0
-	github.com/gorilla/handlers v1.5.1
 	github.com/gorilla/mux v1.8.0
 	github.com/hashicorp/golang-lru/v2 v2.0.3
 	github.com/json-iterator/go v1.1.12
@@ -53,12 +52,27 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.20.0
 	github.com/containers/image/v5 v5.25.0
 	github.com/gobwas/glob v0.2.3
+	github.com/google/go-github/v52 v52.0.0
+	github.com/gorilla/handlers v1.5.1
+	github.com/gorilla/securecookie v1.1.1
+	github.com/gorilla/sessions v1.2.1
+	github.com/migueleliasweb/go-github-mock v0.0.18
 	github.com/notaryproject/notation-go v1.0.0-rc.6
 	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20230117141039-067a0f5b0e25
+	github.com/project-zot/mockoidc v0.0.0-20230307111146-f607b4b5fb97
 	github.com/sigstore/cosign/v2 v2.0.2
 	github.com/swaggo/http-swagger v1.3.4
+	github.com/zitadel/oidc v1.12.0
+	golang.org/x/oauth2 v0.9.0
 	modernc.org/sqlite v1.23.1
 	oras.land/oras-go/v2 v2.2.1
+)
+
+require (
+	github.com/google/go-github/v50 v50.2.0 // indirect
+	golang.org/x/sync v0.3.0 // indirect
+	golang.org/x/sys v0.9.0 // indirect
+	golang.org/x/text v0.10.0 // indirect
 )
 
 require (
@@ -108,7 +122,6 @@ require (
 	github.com/go-jose/go-jose/v3 v3.0.0 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/google/gnostic v0.5.7-v3refs // indirect
-	github.com/google/go-github/v50 v50.2.0 // indirect
 	github.com/google/licenseclassifier/v2 v2.0.0 // indirect
 	github.com/google/s2a-go v0.1.3 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
@@ -331,6 +344,7 @@ require (
 	github.com/googleapis/enterprise-certificate-proxy v0.2.3 // indirect
 	github.com/googleapis/gax-go/v2 v2.8.0 // indirect
 	github.com/gopherjs/gopherjs v1.17.2 // indirect
+	github.com/gorilla/schema v1.2.0 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
@@ -452,11 +466,7 @@ require (
 	golang.org/x/exp v0.0.0-20230321023759-10a507213a29 // indirect
 	golang.org/x/mod v0.10.0 // indirect
 	golang.org/x/net v0.11.0 // indirect
-	golang.org/x/oauth2 v0.9.0 // indirect
-	golang.org/x/sync v0.3.0 // indirect
-	golang.org/x/sys v0.9.0 // indirect
 	golang.org/x/term v0.9.0 // indirect
-	golang.org/x/text v0.10.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
 	golang.org/x/tools v0.8.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect

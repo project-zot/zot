@@ -92,6 +92,7 @@ func TestDynamoDBWrapper(t *testing.T) {
 	versionTablename := "Version" + uuid.String()
 	indexDataTablename := "IndexDataTable" + uuid.String()
 	userDataTablename := "UserDataTable" + uuid.String()
+	apiKeyTablename := "ApiKeyTable" + uuid.String()
 
 	Convey("DynamoDB Wrapper", t, func() {
 		dynamoDBDriverParams := dynamo.DBDriverParameters{
@@ -101,6 +102,7 @@ func TestDynamoDBWrapper(t *testing.T) {
 			IndexDataTablename:    indexDataTablename,
 			VersionTablename:      versionTablename,
 			UserDataTablename:     userDataTablename,
+			APIKeyTablename:       apiKeyTablename,
 			Region:                "us-east-2",
 		}
 
@@ -136,6 +138,118 @@ func RunRepoDBTests(t *testing.T, repoDB repodb.RepoDB, preparationFuncs ...func
 			err := prepFunc()
 			So(err, ShouldBeNil)
 		}
+
+		Convey("Test CRUD operations on UserData and API keys", func() {
+			hashKey1 := "id"
+			hashKey2 := "key"
+			apiKeys := make(map[string]repodb.APIKeyDetails)
+			apiKeyDetails := repodb.APIKeyDetails{
+				Label:  "apiKey",
+				Scopes: []string{"repo"},
+				UUID:   hashKey1,
+			}
+
+			apiKeys[hashKey1] = apiKeyDetails
+
+			userProfileSrc := repodb.UserData{
+				Groups:  []string{"group1", "group2"},
+				APIKeys: apiKeys,
+			}
+
+			authzCtxKey := localCtx.GetContextKey()
+
+			acCtx := localCtx.AccessControlContext{
+				Username: "test",
+			}
+
+			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+
+			err := repoDB.AddUserAPIKey(ctx, hashKey1, &apiKeyDetails)
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetUserData(ctx, userProfileSrc)
+			So(err, ShouldBeNil)
+
+			userProfile, err := repoDB.GetUserData(ctx)
+			So(err, ShouldBeNil)
+			So(userProfile.Groups, ShouldResemble, userProfileSrc.Groups)
+			So(userProfile.APIKeys, ShouldContainKey, hashKey1)
+			So(userProfile.APIKeys[hashKey1].Label, ShouldEqual, apiKeyDetails.Label)
+			So(userProfile.APIKeys[hashKey1].Scopes, ShouldResemble, apiKeyDetails.Scopes)
+
+			lastUsed := userProfile.APIKeys[hashKey1].LastUsed
+
+			err = repoDB.UpdateUserAPIKeyLastUsed(ctx, hashKey1)
+			So(err, ShouldBeNil)
+
+			userProfile, err = repoDB.GetUserData(ctx)
+			So(err, ShouldBeNil)
+			So(userProfile.APIKeys[hashKey1].LastUsed, ShouldHappenAfter, lastUsed)
+
+			userGroups, err := repoDB.GetUserGroups(ctx)
+			So(err, ShouldBeNil)
+			So(userGroups, ShouldResemble, userProfileSrc.Groups)
+
+			apiKeyDetails.UUID = hashKey2
+			err = repoDB.AddUserAPIKey(ctx, hashKey2, &apiKeyDetails)
+			So(err, ShouldBeNil)
+
+			userProfile, err = repoDB.GetUserData(ctx)
+			So(err, ShouldBeNil)
+			So(userProfile.Groups, ShouldResemble, userProfileSrc.Groups)
+			So(userProfile.APIKeys, ShouldContainKey, hashKey2)
+			So(userProfile.APIKeys[hashKey2].Label, ShouldEqual, apiKeyDetails.Label)
+			So(userProfile.APIKeys[hashKey2].Scopes, ShouldResemble, apiKeyDetails.Scopes)
+
+			email, err := repoDB.GetUserAPIKeyInfo(hashKey2)
+			So(err, ShouldBeNil)
+			So(email, ShouldEqual, "test")
+
+			err = repoDB.DeleteUserAPIKey(ctx, hashKey1)
+			So(err, ShouldBeNil)
+
+			userProfile, err = repoDB.GetUserData(ctx)
+			So(err, ShouldBeNil)
+			So(len(userProfile.APIKeys), ShouldEqual, 1)
+			So(userProfile.APIKeys, ShouldNotContainKey, hashKey1)
+
+			err = repoDB.DeleteUserAPIKey(ctx, hashKey2)
+			So(err, ShouldBeNil)
+
+			userProfile, err = repoDB.GetUserData(ctx)
+			So(err, ShouldBeNil)
+			So(len(userProfile.APIKeys), ShouldEqual, 0)
+			So(userProfile.APIKeys, ShouldNotContainKey, hashKey2)
+
+			// delete non existent api key
+			err = repoDB.DeleteUserAPIKey(ctx, hashKey2)
+			So(err, ShouldBeNil)
+
+			err = repoDB.DeleteUserData(ctx)
+			So(err, ShouldBeNil)
+
+			email, err = repoDB.GetUserAPIKeyInfo(hashKey2)
+			So(err, ShouldNotBeNil)
+			So(email, ShouldBeEmpty)
+
+			email, err = repoDB.GetUserAPIKeyInfo(hashKey1)
+			So(err, ShouldNotBeNil)
+			So(email, ShouldBeEmpty)
+
+			_, err = repoDB.GetUserData(ctx)
+			So(err, ShouldNotBeNil)
+
+			userGroups, err = repoDB.GetUserGroups(ctx)
+			So(err, ShouldNotBeNil)
+			So(userGroups, ShouldBeEmpty)
+
+			err = repoDB.SetUserGroups(ctx, userProfileSrc.Groups)
+			So(err, ShouldBeNil)
+
+			userGroups, err = repoDB.GetUserGroups(ctx)
+			So(err, ShouldBeNil)
+			So(userGroups, ShouldResemble, userProfileSrc.Groups)
+		})
 
 		Convey("Test SetManifestData and GetManifestData", func() {
 			configBlob, manifestBlob, err := generateTestImage()

@@ -10,7 +10,7 @@ import (
 
 type DBDriverParameters struct {
 	Endpoint, Region, RepoMetaTablename, ManifestDataTablename, IndexDataTablename,
-	VersionTablename, UserDataTablename string
+	UserDataTablename, APIKeyTablename, VersionTablename string
 }
 
 func GetDynamoClient(params DBDriverParameters) (*dynamodb.Client, error) {

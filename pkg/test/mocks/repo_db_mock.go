@@ -95,6 +95,24 @@ type RepoDBMock struct {
 
 	ToggleBookmarkRepoFn func(ctx context.Context, repo string) (repodb.ToggleState, error)
 
+	GetUserDataFn func(ctx context.Context) (repodb.UserData, error)
+
+	SetUserDataFn func(ctx context.Context, userProfile repodb.UserData) error
+
+	SetUserGroupsFn func(ctx context.Context, groups []string) error
+
+	GetUserGroupsFn func(ctx context.Context) ([]string, error)
+
+	DeleteUserDataFn func(ctx context.Context) error
+
+	GetUserAPIKeyInfoFn func(hashedKey string) (string, error)
+
+	AddUserAPIKeyFn func(ctx context.Context, hashedKey string, apiKeyDetails *repodb.APIKeyDetails) error
+
+	UpdateUserAPIKeyLastUsedFn func(ctx context.Context, hashedKey string) error
+
+	DeleteUserAPIKeyFn func(ctx context.Context, id string) error
+
 	PatchDBFn func() error
 }
 
@@ -413,4 +431,76 @@ func (sdm RepoDBMock) ToggleBookmarkRepo(ctx context.Context, repo string) (repo
 	}
 
 	return repodb.NotChanged, nil
+}
+
+func (sdm RepoDBMock) GetUserData(ctx context.Context) (repodb.UserData, error) {
+	if sdm.GetUserDataFn != nil {
+		return sdm.GetUserDataFn(ctx)
+	}
+
+	return repodb.UserData{}, nil
+}
+
+func (sdm RepoDBMock) SetUserData(ctx context.Context, userProfile repodb.UserData) error {
+	if sdm.SetUserDataFn != nil {
+		return sdm.SetUserDataFn(ctx, userProfile)
+	}
+
+	return nil
+}
+
+func (sdm RepoDBMock) SetUserGroups(ctx context.Context, groups []string) error {
+	if sdm.SetUserGroupsFn != nil {
+		return sdm.SetUserGroupsFn(ctx, groups)
+	}
+
+	return nil
+}
+
+func (sdm RepoDBMock) GetUserGroups(ctx context.Context) ([]string, error) {
+	if sdm.GetUserGroupsFn != nil {
+		return sdm.GetUserGroupsFn(ctx)
+	}
+
+	return []string{}, nil
+}
+
+func (sdm RepoDBMock) DeleteUserData(ctx context.Context) error {
+	if sdm.DeleteUserDataFn != nil {
+		return sdm.DeleteUserDataFn(ctx)
+	}
+
+	return nil
+}
+
+func (sdm RepoDBMock) GetUserAPIKeyInfo(hashedKey string) (string, error) {
+	if sdm.GetUserAPIKeyInfoFn != nil {
+		return sdm.GetUserAPIKeyInfoFn(hashedKey)
+	}
+
+	return "", nil
+}
+
+func (sdm RepoDBMock) AddUserAPIKey(ctx context.Context, hashedKey string, apiKeyDetails *repodb.APIKeyDetails) error {
+	if sdm.AddUserAPIKeyFn != nil {
+		return sdm.AddUserAPIKeyFn(ctx, hashedKey, apiKeyDetails)
+	}
+
+	return nil
+}
+
+func (sdm RepoDBMock) UpdateUserAPIKeyLastUsed(ctx context.Context, hashedKey string) error {
+	if sdm.UpdateUserAPIKeyLastUsedFn != nil {
+		return sdm.UpdateUserAPIKeyLastUsedFn(ctx, hashedKey)
+	}
+
+	return nil
+}
+
+func (sdm RepoDBMock) DeleteUserAPIKey(ctx context.Context, id string) error {
+	if sdm.DeleteUserAPIKeyFn != nil {
+		return sdm.DeleteUserAPIKeyFn(ctx, id)
+	}
+
+	return nil
 }

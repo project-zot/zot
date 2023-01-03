@@ -18,13 +18,20 @@ Examples of working configurations for various use cases are available [here](..
 
 # Configuration Parameters
 
-* [Network](#network)
-* [Storage](#storage)
-* [Authentication](#authentication)
-* [Identity-based Authorization](#identity-based-authorization)
-* [Logging](#logging)
-* [Metrics](#metrics)
-* [Sync](#sync)
+- [Configuration Parameters](#configuration-parameters)
+  - [Network](#network)
+  - [Storage](#storage)
+  - [Authentication](#authentication)
+    - [TLS Mutual Authentication](#tls-mutual-authentication)
+    - [Passphrase Authentication](#passphrase-authentication)
+      - [Authentication Failures](#authentication-failures)
+      - [API keys](#api-keys)
+  - [Identity-based Authorization](#identity-based-authorization)
+  - [Logging](#logging)
+  - [Metrics](#metrics)
+  - [Storage Drivers](#storage-drivers)
+    - [Specifying S3 credentials](#specifying-s3-credentials)
+  - [Sync](#sync)
 
 
 ## Network
@@ -162,6 +169,98 @@ NOTE: When both htpasswd and LDAP configuration are specified, LDAP authenticati
       }
 ```
 
+### OpenID/OAuth2 social login
+
+zot supports several openID/OAuth2 providers:
+ - google
+ - github
+ - gitlab
+ - dex
+
+zot can be configured to use the above providers with:
+```
+{
+  "http": {
+    "auth": {
+      "openid": {
+        "providers": {
+          "github": {
+            "clientid": <client_id>,
+            "clientsecret": <client_secret>,
+            "scopes": ["read:org", "user", "repo"]
+          },
+          "google": {
+            "issuer": "https://accounts.google.com",
+            "clientid": <client_id>,
+            "clientsecret": <client_secret>,
+            "scopes": ["openid", "email"]
+          },
+          "gitlab": {
+            "issuer": "https://gitlab.com",
+            "clientid": <client_id>,
+            "clientsecret": <client_secret>,
+            "scopes": ["openid", "read_api", "read_user", "profile", "email"]
+          }
+        }
+      }
+    }
+  }
+```
+
+the login with either provider use http://127.0.0.1:8080/auth/login?provider=\<provider\>&callback_ui=http://127.0.0.1:8080/home
+for example to login with github use http://127.0.0.1:8080/auth/login?provider=github&callback_ui=http://127.0.0.1:8080/home
+
+callback_ui query parameter is used by zot to redirect to UI after a successful openid/oauth2 authentication
+
+the callback url which should be used when making oauth2 provider setup is http://127.0.0.1:8080/auth/callback/\<provider\>
+for example github callback url would be http://127.0.0.1:8080/auth/callback/github
+
+If network policy doesn't allow inbound connections, this callback wont work!
+
+dex is an identity service that uses OpenID Connect to drive authentication for other apps https://github.com/dexidp/dex
+To setup dex service see https://dexidp.io/docs/getting-started/
+
+to configure zot as a client in dex (assuming zot is hosted at 127.0.0.1:8080), we need to configure dex with:
+
+```
+staticClients:
+  - id: zot-client
+    redirectURIs:
+      - 'http://127.0.0.1:8080/auth/callback/dex'
+    name: 'zot'
+    secret: ZXhhbXBsZS1hcHAtc2VjcmV0
+```
+
+zot can be configured to use dex with:
+
+```
+  "http": {
+    "auth": {
+      "openid": {
+        "providers": {
+          "dex": {
+            "clientid": "zot-client",
+            "clientsecret": "ZXhhbXBsZS1hcHAtc2VjcmV0",
+            "keypath": "",
+            "issuer": "http://127.0.0.1:5556/dex",
+            "scopes": ["openid", "profile", "email", "groups"]
+          }
+        }
+      }
+    }
+  }
+```
+
+to login using openid dex provider use http://127.0.0.1:8080/auth/login?provider=dex
+
+### Session based login
+
+Whenever a user logs in zot using any of the auth options available(basic auth/openid) zot will set a 'session' cookie on its response.
+Using that cookie on subsequent calls will authenticate them, asumming the cookie didn't expire.
+
+In case of using filesystem storage sessions are saved in zot's root directory.
+In case of using cloud storage sessions are saved in memory.
+
 #### Authentication Failures
 
 Should authentication fail, to prevent automated attacks, a delayed response can be configured with:
@@ -170,6 +269,21 @@ Should authentication fail, to prevent automated attacks, a delayed response can
   "http": {
     "auth": {
       "failDelay": 5
+```
+
+#### API keys
+
+zot allows authentication for REST API calls using your API key as an alternative to your password.
+for more info see [API keys doc](../pkg/extensions/README_apikey.md)
+
+To activate API keys use:
+
+```
+"extensions": {
+  "apikey": {
+    "enable": true
+  }
+}
 ```
 
 ## Identity-based Authorization

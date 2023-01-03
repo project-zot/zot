@@ -952,6 +952,71 @@ func TestVerify(t *testing.T) {
 		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 	})
 
+	Convey("Test verify openid config with missing parameter", t, func(c C) {
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := []byte(`{"distSpecVersion":"1.1.0-dev","storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"openid":{"providers":{"dex":{"issuer":"http://127.0.0.1:5556/dex"}}}}},
+							"log":{"level":"debug"}}`)
+		_, err = tmpfile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpfile.Close()
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+	})
+
+	Convey("Test verify oauth2 config with missing parameter", t, func(c C) {
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := []byte(`{"distSpecVersion":"1.1.0-dev","storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"openid":{"providers":{"github":{"clientid":"client_id"}}}}},
+							"log":{"level":"debug"}}`)
+		_, err = tmpfile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpfile.Close()
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+	})
+
+	Convey("Test verify openid config with unsupported provider", t, func(c C) {
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := []byte(`{"distSpecVersion":"1.1.0-dev","storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"openid":{"providers":{"unsupported":{"issuer":"http://127.0.0.1:5556/dex"}}}}},
+							"log":{"level":"debug"}}`)
+		_, err = tmpfile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpfile.Close()
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+	})
+
+	Convey("Test verify openid config without apikey extension enabled", t, func(c C) {
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := []byte(`{"distSpecVersion":"1.1.0-dev","storage":{"rootDirectory":"/tmp/zot"},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"openid":{"providers":{"dex":{"issuer":"http://127.0.0.1:5556/dex",
+						    "clientid":"client_id","scopes":["openid"]}}}}},
+							"log":{"level":"debug"}}`)
+		_, err = tmpfile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpfile.Close()
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldNotPanic)
+	})
+
 	Convey("Test verify config with missing basedn key", t, func(c C) {
 		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)

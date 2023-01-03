@@ -1,0 +1,28 @@
+issuer: http://127.0.0.1:5556/dex
+
+storage:
+  type: sqlite3
+  config:
+    file: dex.db
+
+web:
+  http: 127.0.0.1:5556
+
+telemetry:
+  http: 127.0.0.1:5558
+
+grpc:
+  addr: 127.0.0.1:5557
+
+staticClients:
+  - id: zot-client
+    redirectURIs:
+      - 'http://127.0.0.1:8080/openid/auth/callback/dex'
+    name: 'zot'
+    secret: ZXhhbXBsZS1hcHAtc2VjcmV0
+
+connectors:
+  - type: mockCallback
+    id: mock
+    name: Example
+enablePasswordDB: true

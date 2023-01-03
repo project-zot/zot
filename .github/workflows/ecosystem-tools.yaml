@@ -46,6 +46,12 @@ jobs:
           sudo systemctl enable crio.service
           sudo systemctl start crio.service
           sudo chmod 0777 /var/run/crio/crio.sock
+          # install dex
+          git clone https://github.com/dexidp/dex.git
+          cd dex/
+          make bin/dex
+          ./bin/dex serve $GITHUB_WORKSPACE/test/dex/config-dev.yaml &
+          cd $GITHUB_WORKSPACE
       - name: Run referrers tests
         run: |
             make test-bats-referrers

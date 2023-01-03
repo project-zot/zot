@@ -18,4 +18,7 @@ const (
 	ExtUserPreferences        = "/userprefs"
 	ExtUserPreferencesPrefix  = ExtPrefix + ExtUserPreferences
 	FullUserPreferencesPrefix = RoutePrefix + ExtUserPreferencesPrefix
+	ExtAPIKey                 = "/apikey"
+	ExtAPIKeyPrefix           = ExtPrefix + ExtAPIKey //nolint: gosec
+	FullAPIKeyPrefix          = RoutePrefix + ExtAPIKeyPrefix
 )

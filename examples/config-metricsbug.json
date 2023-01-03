@@ -1,0 +1,121 @@
+{
+    "distSpecVersion": "1.1.0-dev",
+    "extensions": {
+      "metrics": {
+        "enable": true,
+        "prometheus": {
+          "path": "/metrics"
+        }
+      },
+      "mgmt": {
+        "enable": true
+      },
+      "scrub": {
+        "enable": true,
+        "interval": "24h"
+      },
+      "search": {
+        "cve": {
+          "updateInterval": "2h"
+        },
+        "enable": true
+      },
+      "sync": {
+        "enable": true,
+        "registries": [
+          {
+            "content": [
+              {
+                "destination": "/docker.io",
+                "prefix": "**"
+              }
+            ],
+            "onDemand": true,
+            "tlsVerify": true,
+            "urls": [
+              "https://docker.io/library"
+            ]
+          },
+          {
+            "content": [
+              {
+                "destination": "/registry.gitlab.com",
+                "prefix": "**"
+              }
+            ],
+            "onDemand": true,
+            "tlsVerify": true,
+            "urls": [
+              "https://registry.gitlab.com"
+            ]
+          },
+          {
+            "content": [
+              {
+                "destination": "ghcr.io",
+                "prefix": "**"
+              }
+            ],
+            "onDemand": true,
+            "tlsVerify": true,
+            "urls": [
+              "https://ghcr.io"
+            ]
+          },
+          {
+            "content": [
+              {
+                "destination": "/quay.io",
+                "prefix": "**"
+              }
+            ],
+            "onDemand": true,
+            "tlsVerify": true,
+            "urls": [
+              "https://quay.io"
+            ]
+          },
+          {
+            "content": [
+              {
+                "destination": "/gcr.io",
+                "prefix": "**"
+              }
+            ],
+            "onDemand": true,
+            "tlsVerify": true,
+            "urls": [
+              "https://gcr.io"
+            ]
+          },
+          {
+            "content": [
+              {
+                "destination": "/registry.k8s.io",
+                "prefix": "**"
+              }
+            ],
+            "onDemand": true,
+            "tlsVerify": true,
+            "urls": [
+              "https://registry.k8s.io"
+            ]
+          }
+        ]
+      },
+      "ui": {
+        "enable": true
+      }
+    },
+    "http": {
+      "address": "0.0.0.0",
+      "port": "5000"
+    },
+    "log": {
+      "level": "debug"
+    },
+    "storage": {
+      "gc": true,
+      "rootDirectory": "/tmp/zot"
+    }
+  }

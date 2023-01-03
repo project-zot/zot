@@ -20,11 +20,14 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/google/go-github/v52/github"
 	"github.com/gorilla/mux"
 	"github.com/opencontainers/distribution-spec/specs-go/v1/extensions"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
+	"github.com/zitadel/oidc/pkg/client/rp"
+	"github.com/zitadel/oidc/pkg/oidc"
 
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/constants"
@@ -55,13 +58,38 @@ func NewRouteHandler(c *Controller) *RouteHandler {
 }
 
 func (rh *RouteHandler) SetupRoutes() {
+	// first get Auth middleware in order to first setup openid/ldap/htpasswd, before oidc provider routes are setup
+	authHandler := AuthHandler(rh.c)
+
+	applyCORSHeaders := getCORSHeadersHandler(rh.c.Config.HTTP.AllowOrigin)
+
+	if isOpenIDAuthEnabled(rh.c.Config) {
+		// login path for openID
+		rh.c.Router.HandleFunc(constants.LoginPath, rh.AuthURLHandler())
+
+		// logout path for openID
+		rh.c.Router.HandleFunc(constants.LogoutPath, applyCORSHeaders(rh.Logout)).
+			Methods(zcommon.AllowedMethods("POST")...)
+
+		// callback path for openID
+		for provider, relyingParty := range rh.c.RelyingParties {
+			if IsOauth2Supported(provider) {
+				rh.c.Router.HandleFunc(constants.CallbackBasePath+fmt.Sprintf("/%s", provider),
+					rp.CodeExchangeHandler(rh.GithubCodeExchangeCallback(), relyingParty))
+			} else if IsOpenIDSupported(provider) {
+				rh.c.Router.HandleFunc(constants.CallbackBasePath+fmt.Sprintf("/%s", provider),
+					rp.CodeExchangeHandler(rp.UserinfoCallback(rh.OpenIDCodeExchangeCallback()), relyingParty))
+			}
+		}
+	}
+
 	prefixedRouter := rh.c.Router.PathPrefix(constants.RoutePrefix).Subrouter()
-	prefixedRouter.Use(AuthHandler(rh.c))
+	prefixedRouter.Use(authHandler)
 
 	prefixedDistSpecRouter := prefixedRouter.NewRoute().Subrouter()
 	// authz is being enabled if AccessControl is specified
 	// if Authn is not present AccessControl will have only default policies
-	if rh.c.Config.HTTP.AccessControl != nil && !isBearerAuthEnabled(rh.c.Config) {
+	if rh.c.Config.HTTP.AccessControl != nil {
 		if isAuthnEnabled(rh.c.Config) {
 			rh.c.Log.Info().Msg("access control is being enabled")
 		} else {
@@ -71,8 +99,6 @@ func (rh *RouteHandler) SetupRoutes() {
 		prefixedRouter.Use(BaseAuthzHandler(rh.c))
 		prefixedDistSpecRouter.Use(DistSpecAuthzHandler(rh.c))
 	}
-
-	applyCORSHeaders := getCORSHeadersHandler(rh.c.Config.HTTP.AllowOrigin)
 
 	// https://github.com/opencontainers/distribution-spec/blob/main/spec.md#endpoints
 	{
@@ -118,7 +144,7 @@ func (rh *RouteHandler) SetupRoutes() {
 		constants.ArtifactSpecRoutePrefix, zreg.NameRegexp.String()), rh.GetOrasReferrers).Methods("GET")
 
 	// swagger
-	debug.SetupSwaggerRoutes(rh.c.Config, rh.c.Router, AuthHandler(rh.c), rh.c.Log)
+	debug.SetupSwaggerRoutes(rh.c.Config, rh.c.Router, authHandler, rh.c.Log)
 
 	// Setup Extensions Routes
 	if rh.c.Config != nil {
@@ -135,8 +161,8 @@ func (rh *RouteHandler) SetupRoutes() {
 				rh.c.Log)
 			ext.SetupUserPreferencesRoutes(rh.c.Config, prefixedExtensionsRouter, rh.c.StoreController, rh.c.RepoDB,
 				rh.c.CveInfo, rh.c.Log)
-
-			ext.SetupMetricsRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, AuthHandler(rh.c), rh.c.Log)
+			ext.SetupAPIKeyRoutes(rh.c.Config, prefixedExtensionsRouter, rh.c.RepoDB, rh.c.CookieStore, rh.c.Log)
+			ext.SetupMetricsRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, authHandler, rh.c.Log)
 
 			gqlPlayground.SetupGQLPlaygroundRoutes(rh.c.Config, prefixedRouter, rh.c.StoreController, rh.c.Log)
 
@@ -185,7 +211,8 @@ func addCORSHeaders(allowOrigin string, response http.ResponseWriter) {
 // @Success 200 {string} string	"ok".
 func (rh *RouteHandler) CheckVersionSupport(response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("Access-Control-Allow-Methods", "HEAD,GET,POST,OPTIONS")
-	response.Header().Set("Access-Control-Allow-Headers", "Authorization,content-type")
+	response.Header().Set("Access-Control-Allow-Headers", "Authorization,content-type,"+constants.SessionClientHeaderName)
+	response.Header().Set("Access-Control-Allow-Credentials", "true")
 
 	if request.Method == http.MethodOptions {
 		return
@@ -195,10 +222,13 @@ func (rh *RouteHandler) CheckVersionSupport(response http.ResponseWriter, reques
 	// NOTE: compatibility workaround - return this header in "allowed-read" mode to allow for clients to
 	// work correctly
 	if rh.c.Config.HTTP.Auth != nil {
-		if rh.c.Config.HTTP.Auth.Bearer != nil {
-			response.Header().Set("WWW-Authenticate", fmt.Sprintf("bearer realm=%s", rh.c.Config.HTTP.Auth.Bearer.Realm))
-		} else {
-			response.Header().Set("WWW-Authenticate", fmt.Sprintf("basic realm=%s", rh.c.Config.HTTP.Realm))
+		// don't send auth headers if request is coming from UI
+		if request.Header.Get(constants.SessionClientHeaderName) != constants.SessionClientHeaderValue {
+			if rh.c.Config.HTTP.Auth.Bearer != nil {
+				response.Header().Set("WWW-Authenticate", fmt.Sprintf("bearer realm=%s", rh.c.Config.HTTP.Auth.Bearer.Realm))
+			} else {
+				response.Header().Set("WWW-Authenticate", fmt.Sprintf("basic realm=%s", rh.c.Config.HTTP.Realm))
+			}
 		}
 	}
 
@@ -224,7 +254,8 @@ type ImageTags struct {
 // @Failure 400 {string} 	string 				"bad request".
 func (rh *RouteHandler) ListTags(response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("Access-Control-Allow-Methods", "HEAD,GET,POST,OPTIONS")
-	response.Header().Set("Access-Control-Allow-Headers", "Authorization,content-type")
+	response.Header().Set("Access-Control-Allow-Headers", "Authorization,content-type,"+constants.SessionClientHeaderName)
+	response.Header().Set("Access-Control-Allow-Credentials", "true")
 
 	if request.Method == http.MethodOptions {
 		return
@@ -355,7 +386,8 @@ func (rh *RouteHandler) ListTags(response http.ResponseWriter, request *http.Req
 // @Failure 500 {string} string "internal server error".
 func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("Access-Control-Allow-Methods", "HEAD,GET,POST,OPTIONS")
-	response.Header().Set("Access-Control-Allow-Headers", "Authorization,content-type")
+	response.Header().Set("Access-Control-Allow-Headers", "Authorization,content-type,"+constants.SessionClientHeaderName)
+	response.Header().Set("Access-Control-Allow-Credentials", "true")
 
 	if request.Method == http.MethodOptions {
 		return
@@ -427,7 +459,8 @@ type ExtensionList struct {
 // @Router /v2/{name}/manifests/{reference} [get].
 func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("Access-Control-Allow-Methods", "HEAD,GET,POST,OPTIONS")
-	response.Header().Set("Access-Control-Allow-Headers", "Authorization,content-type")
+	response.Header().Set("Access-Control-Allow-Headers", "Authorization,content-type,"+constants.SessionClientHeaderName)
+	response.Header().Set("Access-Control-Allow-Credentials", "true")
 
 	if request.Method == http.MethodOptions {
 		return
@@ -527,7 +560,8 @@ func getReferrers(routeHandler *RouteHandler,
 // @Router /v2/{name}/referrers/{digest} [get].
 func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("Access-Control-Allow-Methods", "HEAD,GET,POST,OPTIONS")
-	response.Header().Set("Access-Control-Allow-Headers", "Authorization,content-type")
+	response.Header().Set("Access-Control-Allow-Headers", "Authorization,content-type,"+constants.SessionClientHeaderName)
+	response.Header().Set("Access-Control-Allow-Credentials", "true")
 
 	if request.Method == http.MethodOptions {
 		return
@@ -1576,7 +1610,8 @@ type RepositoryList struct {
 // @Router /v2/_catalog [get].
 func (rh *RouteHandler) ListRepositories(response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("Access-Control-Allow-Methods", "HEAD,GET,POST,OPTIONS")
-	response.Header().Set("Access-Control-Allow-Headers", "Authorization,content-type")
+	response.Header().Set("Access-Control-Allow-Headers", "Authorization,content-type,"+constants.SessionClientHeaderName)
+	response.Header().Set("Access-Control-Allow-Credentials", "true")
 
 	if request.Method == http.MethodOptions {
 		return
@@ -1642,7 +1677,8 @@ func (rh *RouteHandler) ListRepositories(response http.ResponseWriter, request *
 // @Router /v2/_oci/ext/discover [get].
 func (rh *RouteHandler) ListExtensions(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Methods", "HEAD,GET,POST,OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Authorization,content-type")
+	w.Header().Set("Access-Control-Allow-Headers", "Authorization,content-type,"+constants.SessionClientHeaderName)
+	w.Header().Set("Access-Control-Allow-Credentials", "true")
 
 	if r.Method == http.MethodOptions {
 		return
@@ -1651,6 +1687,116 @@ func (rh *RouteHandler) ListExtensions(w http.ResponseWriter, r *http.Request) {
 	extensionList := ext.GetExtensions(rh.c.Config)
 
 	zcommon.WriteJSON(w, http.StatusOK, extensionList)
+}
+
+// The following routes are specific to zot and NOT part of the OCI dist-spec
+
+// Logout godoc
+// @Summary Logout by removing current session
+// @Description Logout by removing current session
+// @Router 	/openid/auth/logout [post]
+// @Accept  json
+// @Produce json
+// @Success 200 {string} string	"ok".
+// @Failure 500 {string} string "internal server error".
+func (rh *RouteHandler) Logout(response http.ResponseWriter, request *http.Request) {
+	response.Header().Set("Access-Control-Allow-Methods", "HEAD,GET,POST,OPTIONS")
+	response.Header().Set("Access-Control-Allow-Headers", "Authorization,content-type,"+constants.SessionClientHeaderName)
+	response.Header().Set("Access-Control-Allow-Credentials", "true")
+
+	if request.Method == http.MethodOptions {
+		return
+	}
+
+	session, _ := rh.c.CookieStore.Get(request, "session")
+	session.Options.MaxAge = -1
+
+	err := session.Save(request, response)
+	if err != nil {
+		response.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	response.WriteHeader(http.StatusOK)
+}
+
+// github Oauth2 CodeExchange callback.
+func (rh *RouteHandler) GithubCodeExchangeCallback() rp.CodeExchangeCallback {
+	return func(w http.ResponseWriter, r *http.Request,
+		tokens *oidc.Tokens, state string, relyingParty rp.RelyingParty,
+	) {
+		ctx := r.Context()
+
+		client := github.NewClient(relyingParty.OAuthConfig().Client(ctx, tokens.Token))
+
+		email, groups, err := GetGithubUserInfo(ctx, client, rh.c.Log)
+		if email == "" || err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+
+			return
+		}
+
+		callbackUI, err := OAuth2Callback(rh.c, w, r, state, email, groups) //nolint: contextcheck
+		if err != nil {
+			if errors.Is(err, zerr.ErrInvalidStateCookie) {
+				w.WriteHeader(http.StatusUnauthorized)
+			}
+
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+
+		if callbackUI != "" {
+			http.Redirect(w, r, callbackUI, http.StatusFound)
+
+			return
+		}
+
+		w.WriteHeader(http.StatusCreated)
+	}
+}
+
+// Openid CodeExchange callback.
+func (rh *RouteHandler) OpenIDCodeExchangeCallback() rp.CodeExchangeUserinfoCallback {
+	return func(w http.ResponseWriter, r *http.Request, tokens *oidc.Tokens, state string,
+		relyingParty rp.RelyingParty, info oidc.UserInfo,
+	) {
+		email := info.GetEmail()
+		if email == "" {
+			rh.c.Log.Error().Msg("couldn't set user record for empty email value")
+			w.WriteHeader(http.StatusUnauthorized)
+
+			return
+		}
+
+		var groups []string
+
+		val, ok := info.GetClaim("groups").([]interface{})
+		if !ok {
+			rh.c.Log.Info().Msgf("couldn't find any 'groups' claim for user %s", email)
+		}
+
+		for _, group := range val {
+			groups = append(groups, fmt.Sprint(group))
+		}
+
+		callbackUI, err := OAuth2Callback(rh.c, w, r, state, email, groups)
+		if err != nil {
+			if errors.Is(err, zerr.ErrInvalidStateCookie) {
+				w.WriteHeader(http.StatusUnauthorized)
+			}
+
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+
+		if callbackUI != "" {
+			http.Redirect(w, r, callbackUI, http.StatusFound)
+
+			return
+		}
+
+		w.WriteHeader(http.StatusCreated)
+	}
 }
 
 func (rh *RouteHandler) GetMetrics(w http.ResponseWriter, r *http.Request) {

@@ -3,6 +3,7 @@ package bolt
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -56,6 +57,11 @@ func NewBoltDBWrapper(boltDB *bbolt.DB, log log.Logger) (*DBWrapper, error) {
 		}
 
 		_, err = transaction.CreateBucketIfNotExists([]byte(bolt.UserDataBucket))
+		if err != nil {
+			return err
+		}
+
+		_, err = transaction.CreateBucketIfNotExists([]byte(bolt.UserAPIKeysBucket))
 		if err != nil {
 			return err
 		}
@@ -1680,39 +1686,26 @@ func (bdw *DBWrapper) ToggleStarRepo(ctx context.Context, repo string) (repodb.T
 	var res repodb.ToggleState
 
 	if err := bdw.DB.Update(func(tx *bbolt.Tx) error { //nolint:varnamelen
-		userdb := tx.Bucket([]byte(bolt.UserDataBucket))
-		userBucket, err := userdb.CreateBucketIfNotExists([]byte(userid))
-		if err != nil {
-			// this is a serious failure
-			return zerr.ErrUnableToCreateUserBucket
+		var userData repodb.UserData
+
+		err := bdw.getUserData(userid, tx, &userData)
+		if err != nil && !errors.Is(err, zerr.ErrUserDataNotFound) {
+			return err
 		}
 
-		mdata := userBucket.Get([]byte(bolt.StarredReposKey))
-		unpacked := []string{}
-		if mdata != nil {
-			if err = json.Unmarshal(mdata, &unpacked); err != nil {
-				return zerr.ErrInvalidOldUserStarredRepos
-			}
-		}
-
-		isRepoStarred := zcommon.Contains(unpacked, repo)
+		isRepoStarred := zcommon.Contains(userData.StarredRepos, repo)
 
 		if isRepoStarred {
 			res = repodb.Removed
-			unpacked = zcommon.RemoveFrom(unpacked, repo)
+			userData.StarredRepos = zcommon.RemoveFrom(userData.StarredRepos, repo)
 		} else {
 			res = repodb.Added
-			unpacked = append(unpacked, repo)
+			userData.StarredRepos = append(userData.StarredRepos, repo)
 		}
 
-		var repacked []byte
-		if repacked, err = json.Marshal(unpacked); err != nil {
-			return zerr.ErrCouldNotMarshalStarredRepos
-		}
-
-		err = userBucket.Put([]byte(bolt.StarredReposKey), repacked)
+		err = bdw.setUserData(userid, tx, userData)
 		if err != nil {
-			return zerr.ErrCouldNotPersistData
+			return err
 		}
 
 		repoBuck := tx.Bucket([]byte(bolt.RepoMetadataBucket))
@@ -1755,46 +1748,12 @@ func (bdw *DBWrapper) ToggleStarRepo(ctx context.Context, repo string) (repodb.T
 }
 
 func (bdw *DBWrapper) GetStarredRepos(ctx context.Context) ([]string, error) {
-	starredRepos := make([]string, 0)
-
-	acCtx, err := localCtx.GetAccessControlContext(ctx)
-	if err != nil {
-		return starredRepos, err
+	userData, err := bdw.GetUserData(ctx)
+	if errors.Is(err, zerr.ErrUserDataNotFound) || errors.Is(err, zerr.ErrUserDataNotAllowed) {
+		return []string{}, nil
 	}
 
-	userid := localCtx.GetUsernameFromContext(acCtx)
-
-	err = bdw.DB.View(func(tx *bbolt.Tx) error { //nolint:dupl
-		if userid == "" {
-			return nil
-		}
-
-		userdb := tx.Bucket([]byte(bolt.UserDataBucket))
-		userBucket := userdb.Bucket([]byte(userid))
-
-		if userBucket == nil {
-			return nil
-		}
-
-		mdata := userBucket.Get([]byte(bolt.StarredReposKey))
-		if mdata == nil {
-			return nil
-		}
-
-		if err := json.Unmarshal(mdata, &starredRepos); err != nil {
-			bdw.Log.Info().Str("user", userid).Err(err).Msg("unmarshal error")
-
-			return zerr.ErrInvalidOldUserStarredRepos
-		}
-
-		if starredRepos == nil {
-			starredRepos = make([]string, 0)
-		}
-
-		return nil
-	})
-
-	return starredRepos, err
+	return userData.StarredRepos, err
 }
 
 func (bdw *DBWrapper) ToggleBookmarkRepo(ctx context.Context, repo string) (repodb.ToggleState, error) {
@@ -1815,43 +1774,25 @@ func (bdw *DBWrapper) ToggleBookmarkRepo(ctx context.Context, repo string) (repo
 
 	var res repodb.ToggleState
 
-	if err := bdw.DB.Update(func(tx *bbolt.Tx) error { //nolint:dupl
-		userdb := tx.Bucket([]byte(bolt.UserDataBucket))
-		userBucket, err := userdb.CreateBucketIfNotExists([]byte(userid))
-		if err != nil {
-			// this is a serious failure
-			return zerr.ErrUnableToCreateUserBucket
+	if err := bdw.DB.Update(func(transaction *bbolt.Tx) error { //nolint:dupl
+		var userData repodb.UserData
+
+		err := bdw.getUserData(userid, transaction, &userData)
+		if err != nil && !errors.Is(err, zerr.ErrUserDataNotFound) {
+			return err
 		}
 
-		mdata := userBucket.Get([]byte(bolt.BookmarkedReposKey))
-		unpacked := []string{}
-		if mdata != nil {
-			if err = json.Unmarshal(mdata, &unpacked); err != nil {
-				return zerr.ErrInvalidOldUserBookmarkedRepos
-			}
-		}
-
-		isRepoBookmarked := zcommon.Contains(unpacked, repo)
+		isRepoBookmarked := zcommon.Contains(userData.BookmarkedRepos, repo)
 
 		if isRepoBookmarked {
 			res = repodb.Removed
-			unpacked = zcommon.RemoveFrom(unpacked, repo)
+			userData.BookmarkedRepos = zcommon.RemoveFrom(userData.BookmarkedRepos, repo)
 		} else {
 			res = repodb.Added
-			unpacked = append(unpacked, repo)
+			userData.BookmarkedRepos = append(userData.BookmarkedRepos, repo)
 		}
 
-		var repacked []byte
-		if repacked, err = json.Marshal(unpacked); err != nil {
-			return zerr.ErrCouldNotMarshalBookmarkedRepos
-		}
-
-		err = userBucket.Put([]byte(bolt.BookmarkedReposKey), repacked)
-		if err != nil {
-			return zerr.ErrUnableToCreateUserBucket
-		}
-
-		return nil
+		return bdw.setUserData(userid, transaction, userData)
 	}); err != nil {
 		return repodb.NotChanged, err
 	}
@@ -1860,46 +1801,12 @@ func (bdw *DBWrapper) ToggleBookmarkRepo(ctx context.Context, repo string) (repo
 }
 
 func (bdw *DBWrapper) GetBookmarkedRepos(ctx context.Context) ([]string, error) {
-	bookmarkedRepos := []string{}
-
-	acCtx, err := localCtx.GetAccessControlContext(ctx)
-	if err != nil {
-		return bookmarkedRepos, err
+	userData, err := bdw.GetUserData(ctx)
+	if errors.Is(err, zerr.ErrUserDataNotFound) || errors.Is(err, zerr.ErrUserDataNotAllowed) {
+		return []string{}, nil
 	}
 
-	userid := localCtx.GetUsernameFromContext(acCtx)
-
-	err = bdw.DB.View(func(tx *bbolt.Tx) error { //nolint:dupl
-		if userid == "" {
-			return nil
-		}
-
-		userdb := tx.Bucket([]byte(bolt.UserDataBucket))
-		userBucket := userdb.Bucket([]byte(userid))
-
-		if userBucket == nil {
-			return nil
-		}
-
-		mdata := userBucket.Get([]byte(bolt.BookmarkedReposKey))
-		if mdata == nil {
-			return nil
-		}
-
-		if err := json.Unmarshal(mdata, &bookmarkedRepos); err != nil {
-			bdw.Log.Info().Str("user", userid).Err(err).Msg("unmarshal error")
-
-			return zerr.ErrInvalidOldUserBookmarkedRepos
-		}
-
-		if bookmarkedRepos == nil {
-			bookmarkedRepos = make([]string, 0)
-		}
-
-		return nil
-	})
-
-	return bookmarkedRepos, err
+	return userData.BookmarkedRepos, err
 }
 
 func (bdw *DBWrapper) PatchDB() error {
@@ -1940,30 +1847,25 @@ func getUserStars(ctx context.Context, transaction *bbolt.Tx) []string {
 	}
 
 	var (
-		userid       = localCtx.GetUsernameFromContext(acCtx)
-		starredRepos = []string{}
-		userdb       = transaction.Bucket([]byte(bolt.UserDataBucket))
-		userBucket   = userdb.Bucket([]byte(userid))
+		userData repodb.UserData
+		userid   = localCtx.GetUsernameFromContext(acCtx)
+		userdb   = transaction.Bucket([]byte(bolt.UserDataBucket))
 	)
 
-	if userid == "" {
+	if userid == "" || userdb == nil {
 		return []string{}
 	}
 
-	if userBucket == nil {
-		return []string{}
-	}
-
-	mdata := userBucket.Get([]byte(bolt.StarredReposKey))
+	mdata := userdb.Get([]byte(userid))
 	if mdata == nil {
 		return []string{}
 	}
 
-	if err := json.Unmarshal(mdata, &starredRepos); err != nil {
+	if err := json.Unmarshal(mdata, &userData); err != nil {
 		return []string{}
 	}
 
-	return starredRepos
+	return userData.StarredRepos
 }
 
 func getUserBookmarks(ctx context.Context, transaction *bbolt.Tx) []string {
@@ -1973,28 +1875,309 @@ func getUserBookmarks(ctx context.Context, transaction *bbolt.Tx) []string {
 	}
 
 	var (
-		userid          = localCtx.GetUsernameFromContext(acCtx)
-		bookmarkedRepos = []string{}
-		userdb          = transaction.Bucket([]byte(bolt.UserDataBucket))
-		userBucket      = userdb.Bucket([]byte(userid))
+		userData repodb.UserData
+		userid   = localCtx.GetUsernameFromContext(acCtx)
+		userdb   = transaction.Bucket([]byte(bolt.UserDataBucket))
 	)
 
-	if userid == "" {
+	if userid == "" || userdb == nil {
 		return []string{}
 	}
 
-	if userBucket == nil {
-		return []string{}
-	}
-
-	mdata := userBucket.Get([]byte(bolt.BookmarkedReposKey))
+	mdata := userdb.Get([]byte(userid))
 	if mdata == nil {
 		return []string{}
 	}
 
-	if err := json.Unmarshal(mdata, &bookmarkedRepos); err != nil {
+	if err := json.Unmarshal(mdata, &userData); err != nil {
 		return []string{}
 	}
 
-	return bookmarkedRepos
+	return userData.BookmarkedRepos
+}
+
+func (bdw *DBWrapper) SetUserGroups(ctx context.Context, groups []string) error {
+	acCtx, err := localCtx.GetAccessControlContext(ctx)
+	if err != nil {
+		return err
+	}
+
+	userid := localCtx.GetUsernameFromContext(acCtx)
+
+	if userid == "" {
+		// empty user is anonymous
+		return zerr.ErrUserDataNotAllowed
+	}
+
+	err = bdw.DB.Update(func(tx *bbolt.Tx) error { //nolint:varnamelen
+		var userData repodb.UserData
+
+		err := bdw.getUserData(userid, tx, &userData)
+		if err != nil && !errors.Is(err, zerr.ErrUserDataNotFound) {
+			return err
+		}
+
+		userData.Groups = append(userData.Groups, groups...)
+
+		err = bdw.setUserData(userid, tx, userData)
+
+		return err
+	})
+
+	return err
+}
+
+func (bdw *DBWrapper) GetUserGroups(ctx context.Context) ([]string, error) {
+	userData, err := bdw.GetUserData(ctx)
+
+	return userData.Groups, err
+}
+
+func (bdw *DBWrapper) UpdateUserAPIKeyLastUsed(ctx context.Context, hashedKey string) error {
+	acCtx, err := localCtx.GetAccessControlContext(ctx)
+	if err != nil {
+		return err
+	}
+
+	userid := localCtx.GetUsernameFromContext(acCtx)
+
+	if userid == "" {
+		// empty user is anonymous
+		return zerr.ErrUserDataNotAllowed
+	}
+
+	err = bdw.DB.Update(func(tx *bbolt.Tx) error { //nolint:varnamelen
+		var userData repodb.UserData
+
+		err := bdw.getUserData(userid, tx, &userData)
+		if err != nil {
+			return err
+		}
+
+		apiKeyDetails := userData.APIKeys[hashedKey]
+		apiKeyDetails.LastUsed = time.Now()
+
+		userData.APIKeys[hashedKey] = apiKeyDetails
+
+		err = bdw.setUserData(userid, tx, userData)
+
+		return err
+	})
+
+	return err
+}
+
+func (bdw *DBWrapper) AddUserAPIKey(ctx context.Context, hashedKey string, apiKeyDetails *repodb.APIKeyDetails) error {
+	acCtx, err := localCtx.GetAccessControlContext(ctx)
+	if err != nil {
+		return err
+	}
+
+	userid := localCtx.GetUsernameFromContext(acCtx)
+	if userid == "" {
+		// empty user is anonymous
+		return zerr.ErrUserDataNotAllowed
+	}
+
+	err = bdw.DB.Update(func(transaction *bbolt.Tx) error {
+		var userData repodb.UserData
+
+		apiKeysbuck := transaction.Bucket([]byte(bolt.UserAPIKeysBucket))
+		if apiKeysbuck == nil {
+			return zerr.ErrBucketDoesNotExist
+		}
+
+		err := apiKeysbuck.Put([]byte(hashedKey), []byte(userid))
+		if err != nil {
+			return fmt.Errorf("repoDB: error while setting userData for identity %s %w", userid, err)
+		}
+
+		err = bdw.getUserData(userid, transaction, &userData)
+		if err != nil && !errors.Is(err, zerr.ErrUserDataNotFound) {
+			return err
+		}
+
+		if userData.APIKeys == nil {
+			userData.APIKeys = make(map[string]repodb.APIKeyDetails)
+		}
+
+		userData.APIKeys[hashedKey] = *apiKeyDetails
+
+		err = bdw.setUserData(userid, transaction, userData)
+
+		return err
+	})
+
+	return err
+}
+
+func (bdw *DBWrapper) DeleteUserAPIKey(ctx context.Context, keyID string) error {
+	acCtx, err := localCtx.GetAccessControlContext(ctx)
+	if err != nil {
+		return err
+	}
+
+	userid := localCtx.GetUsernameFromContext(acCtx)
+	if userid == "" {
+		// empty user is anonymous
+		return zerr.ErrUserDataNotAllowed
+	}
+
+	err = bdw.DB.Update(func(transaction *bbolt.Tx) error {
+		var userData repodb.UserData
+
+		apiKeysbuck := transaction.Bucket([]byte(bolt.UserAPIKeysBucket))
+		if apiKeysbuck == nil {
+			return zerr.ErrBucketDoesNotExist
+		}
+
+		err := bdw.getUserData(userid, transaction, &userData)
+		if err != nil {
+			return err
+		}
+
+		for hash, apiKeyDetails := range userData.APIKeys {
+			if apiKeyDetails.UUID == keyID {
+				delete(userData.APIKeys, hash)
+
+				err := apiKeysbuck.Delete([]byte(hash))
+				if err != nil {
+					return fmt.Errorf("userDB: error while deleting userAPIKey entry for hash %s %w", hash, err)
+				}
+			}
+		}
+
+		return bdw.setUserData(userid, transaction, userData)
+	})
+
+	return err
+}
+
+func (bdw *DBWrapper) GetUserAPIKeyInfo(hashedKey string) (string, error) {
+	var userid string
+	err := bdw.DB.View(func(tx *bbolt.Tx) error {
+		buck := tx.Bucket([]byte(bolt.UserAPIKeysBucket))
+		if buck == nil {
+			return zerr.ErrBucketDoesNotExist
+		}
+
+		uiBlob := buck.Get([]byte(hashedKey))
+		if len(uiBlob) == 0 {
+			return zerr.ErrUserAPIKeyNotFound
+		}
+
+		userid = string(uiBlob)
+
+		return nil
+	})
+
+	return userid, err
+}
+
+func (bdw *DBWrapper) GetUserData(ctx context.Context) (repodb.UserData, error) {
+	var userData repodb.UserData
+
+	acCtx, err := localCtx.GetAccessControlContext(ctx)
+	if err != nil {
+		return userData, err
+	}
+
+	userid := localCtx.GetUsernameFromContext(acCtx)
+	if userid == "" {
+		// empty user is anonymous
+		return userData, zerr.ErrUserDataNotAllowed
+	}
+
+	err = bdw.DB.View(func(tx *bbolt.Tx) error {
+		return bdw.getUserData(userid, tx, &userData)
+	})
+
+	return userData, err
+}
+
+func (bdw *DBWrapper) getUserData(userid string, transaction *bbolt.Tx, res *repodb.UserData) error {
+	buck := transaction.Bucket([]byte(bolt.UserDataBucket))
+	if buck == nil {
+		return zerr.ErrBucketDoesNotExist
+	}
+
+	upBlob := buck.Get([]byte(userid))
+
+	if len(upBlob) == 0 {
+		return zerr.ErrUserDataNotFound
+	}
+
+	err := json.Unmarshal(upBlob, res)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (bdw *DBWrapper) SetUserData(ctx context.Context, userData repodb.UserData) error {
+	acCtx, err := localCtx.GetAccessControlContext(ctx)
+	if err != nil {
+		return err
+	}
+
+	userid := localCtx.GetUsernameFromContext(acCtx)
+	if userid == "" {
+		// empty user is anonymous
+		return zerr.ErrUserDataNotAllowed
+	}
+
+	err = bdw.DB.Update(func(tx *bbolt.Tx) error {
+		return bdw.setUserData(userid, tx, userData)
+	})
+
+	return err
+}
+
+func (bdw *DBWrapper) setUserData(userid string, transaction *bbolt.Tx, userData repodb.UserData) error {
+	buck := transaction.Bucket([]byte(bolt.UserDataBucket))
+	if buck == nil {
+		return zerr.ErrBucketDoesNotExist
+	}
+
+	upBlob, err := json.Marshal(userData)
+	if err != nil {
+		return err
+	}
+
+	err = buck.Put([]byte(userid), upBlob)
+	if err != nil {
+		return fmt.Errorf("repoDB: error while setting userData for identity %s %w", userid, err)
+	}
+
+	return nil
+}
+
+func (bdw *DBWrapper) DeleteUserData(ctx context.Context) error {
+	acCtx, err := localCtx.GetAccessControlContext(ctx)
+	if err != nil {
+		return err
+	}
+
+	userid := localCtx.GetUsernameFromContext(acCtx)
+	if userid == "" {
+		// empty user is anonymous
+		return zerr.ErrUserDataNotAllowed
+	}
+
+	err = bdw.DB.Update(func(tx *bbolt.Tx) error {
+		buck := tx.Bucket([]byte(bolt.UserDataBucket))
+		if buck == nil {
+			return zerr.ErrBucketDoesNotExist
+		}
+
+		err := buck.Delete([]byte(userid))
+		if err != nil {
+			return fmt.Errorf("repoDB: error while deleting userData for identity %s %w", userid, err)
+		}
+
+		return nil
+	})
+
+	return err
 }

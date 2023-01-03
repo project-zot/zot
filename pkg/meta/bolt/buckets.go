@@ -7,6 +7,5 @@ const (
 	RepoMetadataBucket = "RepoMetadata"
 	UserDataBucket     = "UserData"
 	VersionBucket      = "Version"
-	StarredReposKey    = "StarredReposKey"
-	BookmarkedReposKey = "BookmarkedReposKey"
+	UserAPIKeysBucket  = "UserAPIKeys"
 )

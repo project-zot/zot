@@ -45,12 +45,25 @@ type AuthConfig struct {
 	HTPasswd  AuthHTPasswd
 	LDAP      *LDAPConfig
 	Bearer    *BearerConfig
+	OpenID    *OpenIDConfig
 }
 
 type BearerConfig struct {
 	Realm   string
 	Service string
 	Cert    string
+}
+
+type OpenIDConfig struct {
+	Providers map[string]OpenIDProviderConfig
+}
+
+type OpenIDProviderConfig struct {
+	ClientID     string
+	ClientSecret string
+	KeyPath      string
+	Issuer       string
+	Scopes       []string
 }
 
 type MethodRatelimitConfig struct {
@@ -63,6 +76,7 @@ type RatelimitConfig struct {
 	Methods []MethodRatelimitConfig `mapstructure:",omitempty"`
 }
 
+//nolint:maligned
 type HTTPConfig struct {
 	Address       string
 	Port          string

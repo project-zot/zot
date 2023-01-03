@@ -24,6 +24,7 @@ type (
 )
 
 type RepoDB interface { //nolint:interfacebloat
+	UserDB
 	// IncrementRepoStars adds 1 to the star count of an image
 	IncrementRepoStars(repo string) error
 
@@ -111,6 +112,10 @@ type RepoDB interface { //nolint:interfacebloat
 	FilterTags(ctx context.Context, filter FilterFunc,
 		requestedPage PageInput) ([]RepoMetadata, map[string]ManifestMetadata, map[string]IndexData, common.PageInfo, error)
 
+	PatchDB() error
+}
+
+type UserDB interface { //nolint:interfacebloat
 	// GetStarredRepos returns starred repos and takes current user in consideration
 	GetStarredRepos(ctx context.Context) ([]string, error)
 
@@ -123,7 +128,24 @@ type RepoDB interface { //nolint:interfacebloat
 	// ToggleBookmarkRepo adds/removes bookmarks on repos
 	ToggleBookmarkRepo(ctx context.Context, reponame string) (ToggleState, error)
 
-	PatchDB() error
+	// UserDB profile/api key CRUD
+	GetUserData(ctx context.Context) (UserData, error)
+
+	SetUserData(ctx context.Context, userData UserData) error
+
+	SetUserGroups(ctx context.Context, groups []string) error
+
+	GetUserGroups(ctx context.Context) ([]string, error)
+
+	DeleteUserData(ctx context.Context) error
+
+	GetUserAPIKeyInfo(hashedKey string) (identity string, err error)
+
+	AddUserAPIKey(ctx context.Context, hashedKey string, apiKeyDetails *APIKeyDetails) error
+
+	UpdateUserAPIKeyLastUsed(ctx context.Context, hashedKey string) error
+
+	DeleteUserAPIKey(ctx context.Context, id string) error
 }
 
 type ManifestMetadata struct {
@@ -195,12 +217,6 @@ type SignatureMetadata struct {
 	LayersInfo      []LayerInfo
 }
 
-type UserData struct {
-	// data for each user.
-	StarredRepos    []string
-	BookmarkedRepos []string
-}
-
 type SortCriteria string
 
 const (
@@ -234,4 +250,21 @@ type FilterData struct {
 	IsSigned      bool
 	IsStarred     bool
 	IsBookmarked  bool
+}
+
+type UserData struct {
+	StarredRepos    []string
+	BookmarkedRepos []string
+	Groups          []string
+	APIKeys         map[string]APIKeyDetails
+}
+
+type APIKeyDetails struct {
+	CreatedAt   time.Time `json:"createdAt"`
+	CreatorUA   string    `json:"creatorUa"`
+	GeneratedBy string    `json:"generatedBy"`
+	LastUsed    time.Time `json:"lastUsed"`
+	Label       string    `json:"label"`
+	Scopes      []string  `json:"scopes"`
+	UUID        string    `json:"uuid"`
 }
