@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/gob"
 	"fmt"
 	"net"
 	"net/http"
@@ -18,6 +19,8 @@ import (
 	"github.com/docker/distribution/registry/storage/driver/factory"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
+	"github.com/gorilla/sessions"
+	"github.com/zitadel/oidc/pkg/client/rp"
 
 	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/config"
@@ -31,7 +34,7 @@ import (
 	"zotregistry.io/zot/pkg/scheduler"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/cache"
-	"zotregistry.io/zot/pkg/storage/constants"
+	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/storage/s3"
 )
@@ -50,6 +53,8 @@ type Controller struct {
 	Audit           *log.Logger
 	Server          *http.Server
 	Metrics         monitoring.MetricServer
+	RelyingParties  map[string]rp.RelyingParty
+	CookieStore     sessions.FilesystemStore
 	wgShutDown      *goSync.WaitGroup // use it to gracefully shutdown goroutines
 	// runtime params
 	chosenPort int // kernel-chosen port
@@ -62,6 +67,35 @@ func NewController(config *config.Config) *Controller {
 	controller.Config = config
 	controller.Log = logger
 	controller.wgShutDown = new(goSync.WaitGroup)
+
+	if config.HTTP.Auth.OpenID != nil {
+		if controller.RelyingParties == nil {
+			controller.RelyingParties = make(map[string]rp.RelyingParty)
+		}
+
+		if _, exists := config.HTTP.Auth.OpenID["local"]; exists {
+			rp := NewRelyingPartyOIDC(config, "local")
+			controller.RelyingParties["local"] = rp
+		}
+		if _, exists := config.HTTP.Auth.OpenID["github"]; exists {
+			rp := NewRelyingPartyOIDC(config, "github")
+			controller.RelyingParties["github"] = rp
+		}
+		if _, exists := config.HTTP.Auth.OpenID["gitlab"]; exists {
+			rp := NewRelyingPartyOIDC(config, "gitlab")
+			controller.RelyingParties["gitlab"] = rp
+		}
+		if _, exists := config.HTTP.Auth.OpenID["google"]; exists {
+			rp := NewRelyingPartyOIDC(config, "google")
+			controller.RelyingParties["google"] = rp
+		}
+
+		// To store custom types in our cookies,
+		// we must first register them using gob.Register
+		gob.Register(map[string]interface{}{})
+		controller.CookieStore = *sessions.NewFilesystemStore("", []byte("secret")) // TODO: change
+		controller.CookieStore.MaxAge(86400)
+	}
 
 	if config.Log.Audit != "" {
 		audit := log.NewAuditLogger(config.Log.Level, config.Log.Audit)
@@ -144,7 +178,8 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 		c.CORSHeaders(),
 		SessionLogger(c),
 		handlers.RecoveryHandler(handlers.RecoveryLogger(c.Log),
-			handlers.PrintRecoveryStack(false)))
+			handlers.PrintRecoveryStack(false)),
+	)
 
 	if c.Audit != nil {
 		engine.Use(SessionAuditLogger(c.Audit))
@@ -446,7 +481,7 @@ func CreateCacheDatabaseDriver(storageConfig config.StorageConfig, log log.Logge
 		if !storageConfig.RemoteCache {
 			params := cache.BoltDBDriverParameters{}
 			params.RootDir = storageConfig.RootDirectory
-			params.Name = constants.BoltdbName
+			params.Name = storageConstants.BoltdbName
 			params.UseRelPaths = getUseRelPaths(&storageConfig)
 
 			driver, _ := storage.Create("boltdb", params, log)
@@ -487,7 +522,8 @@ func CreateCacheDatabaseDriver(storageConfig config.StorageConfig, log log.Logge
 }
 
 func (c *Controller) InitRepoDB(reloadCtx context.Context) error {
-	if c.Config.Extensions != nil && c.Config.Extensions.Search != nil && *c.Config.Extensions.Search.Enable {
+	if c.Config.Extensions != nil && c.Config.Extensions.Search != nil && *c.Config.Extensions.Search.Enable ||
+		c.Config.HTTP.Auth.OpenID != nil {
 		driver, err := CreateRepoDBDriver(c.Config.Storage.StorageConfig, c.Log) //nolint:contextcheck
 		if err != nil {
 			return err

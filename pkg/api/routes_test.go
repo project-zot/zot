@@ -1322,6 +1322,33 @@ func TestRoutes(t *testing.T) {
 			So(resp.StatusCode, ShouldEqual, http.StatusOK)
 		})
 
+		Convey("CreateAPIKey", func() {
+			request, _ := http.NewRequestWithContext(context.TODO(), "POST", baseURL, nil)
+			request.Header.Add("Authorization", "Basic "+getCredString("test", "test"))
+
+			response := httptest.NewRecorder()
+
+			rthdlr.CreateAPIKey(response, request)
+
+			resp := response.Result()
+			defer resp.Body.Close()
+
+			So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+		})
+		Convey("RevokeAPIKey", func() {
+			request, _ := http.NewRequestWithContext(context.TODO(), "DELETE", baseURL, nil)
+			request.Header.Add("Authorization", "Basic "+getCredString("test", "test"))
+
+			response := httptest.NewRecorder()
+
+			rthdlr.RevokeAPIKey(response, request)
+
+			resp := response.Result()
+			defer resp.Body.Close()
+
+			So(resp.StatusCode, ShouldEqual, http.StatusInternalServerError)
+		})
+
 		Convey("Helper functions", func() {
 			testUpdateBlobUpload := func(
 				query []struct{ k, v string },

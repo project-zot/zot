@@ -357,7 +357,7 @@ func validateConfiguration(config *config.Config) error {
 		return err
 	}
 
-	// check authorization config, it should have basic auth enabled or ldap
+	// check authorization config, it should have basic auth enabled, ldap, api keys or OpenID
 	if config.HTTP.RawAccessControl != nil {
 		// checking for anonymous policy only authorization config: no users, no policies but anonymous policy
 		if err := validateAuthzPolicies(config); err != nil {
@@ -415,7 +415,8 @@ func validateConfiguration(config *config.Config) error {
 }
 
 func validateAuthzPolicies(config *config.Config) error {
-	if (config.HTTP.Auth == nil || (config.HTTP.Auth.HTPasswd.Path == "" && config.HTTP.Auth.LDAP == nil)) &&
+	if (config.HTTP.Auth == nil || (config.HTTP.Auth.HTPasswd.Path == "" && config.HTTP.Auth.LDAP == nil &&
+		config.HTTP.Auth.OpenID == nil && !config.HTTP.Auth.APIKeys)) &&
 		!authzContainsOnlyAnonymousPolicy(config) {
 		log.Error().Err(errors.ErrBadConfig).
 			Msg("access control config requires httpasswd, ldap authentication " +

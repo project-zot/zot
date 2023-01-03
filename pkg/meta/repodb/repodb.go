@@ -2,8 +2,11 @@ package repodb
 
 import (
 	"context"
+	"time"
 
 	godigest "github.com/opencontainers/go-digest"
+
+	"golang.org/x/oauth2"
 )
 
 // MetadataDB.
@@ -15,10 +18,13 @@ const (
 )
 
 const (
-	SignaturesDirPath = "/tmp/zot/signatures"
-	SigKey            = "dev.cosignproject.cosign/signature"
-	NotationType      = "notation"
-	CosignType        = "cosign"
+	SignaturesDirPath  = "/tmp/zot/signatures"
+	SigKey             = "dev.cosignproject.cosign/signature"
+	NotationType       = "notation"
+	CosignType         = "cosign"
+	UserMetadataBucket = "UserMeta"
+	UserSessionBucket  = "UserSession"
+	UserAPIKeysBucket  = "UserAPIKeys"
 )
 
 type FilterFunc func(repoMeta RepoMetadata, manifestMeta ManifestMetadata) bool
@@ -81,6 +87,16 @@ type RepoDB interface { //nolint:interfacebloat
 		requestedPage PageInput) ([]RepoMetadata, map[string]ManifestMetadata, error)
 
 	PatchDB() error
+
+	GetUserProfile(email string) (UserProfile, error)
+	SetUserProfile(email string, userProfile UserProfile) error
+	DeleteUserProfile(email string) error
+	GetUserInfoForSession(sessionID string) (UserInfo, error)
+	SetUserInfoForSession(sessionID string, userInfo UserInfo) error
+	DeleteUserSession(sessionID string) error
+	GetUserAPIKeyInfo(hashedKey string) (UserInfo, error)
+	AddUserAPIKey(hashedKey string, email string, apiKeyDetails *ApiKeyDetails) error
+	DeleteUserAPIKey(id string, email string) error
 }
 
 type ManifestMetadata struct {
@@ -166,4 +182,30 @@ type FilterData struct {
 	OsList   []string
 	ArchList []string
 	IsSigned bool
+}
+
+type UserInfo struct {
+	Email string
+}
+
+type Tokens struct {
+	IDToken    string
+	AuthzToken *oauth2.Token
+}
+
+type UserProfile struct {
+	Tokens    Tokens
+	Info      UserInfo
+	SessionID string
+	ApiKeys   map[string]ApiKeyDetails
+}
+
+type ApiKeyDetails struct {
+	Created_at   time.Time
+	Creator_ua   string
+	Generated_by string
+	Last_used    time.Time
+	Label        string
+	Scopes       []string
+	UUID         string
 }

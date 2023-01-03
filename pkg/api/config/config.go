@@ -30,6 +30,7 @@ type StorageConfig struct {
 	GCInterval    time.Duration
 	StorageDriver map[string]interface{} `mapstructure:",omitempty"`
 	CacheDriver   map[string]interface{} `mapstructure:",omitempty"`
+	RepoDBDriver  map[string]interface{} `mapstructure:",omitempty"`
 }
 
 type TLSConfig struct {
@@ -47,12 +48,22 @@ type AuthConfig struct {
 	HTPasswd  AuthHTPasswd
 	LDAP      *LDAPConfig
 	Bearer    *BearerConfig
+	OpenID    map[string]OpenIDConfig
+	APIKeys   bool `mapstructure:",omitempty"`
 }
 
 type BearerConfig struct {
 	Realm   string
 	Service string
 	Cert    string
+}
+
+type OpenIDConfig struct {
+	Client_id     string
+	Client_secret string
+	Key_path      string
+	Issuer        string
+	Scopes        []string
 }
 
 type MethodRatelimitConfig struct {
@@ -65,6 +76,7 @@ type RatelimitConfig struct {
 	Methods []MethodRatelimitConfig `mapstructure:",omitempty"`
 }
 
+// nolint: maligned
 type HTTPConfig struct {
 	Address          string
 	Port             string
@@ -99,6 +111,7 @@ type LogConfig struct {
 type GlobalStorageConfig struct {
 	StorageConfig `mapstructure:",squash"`
 	SubPaths      map[string]StorageConfig
+	RepoDBDriver  map[string]interface{} `mapstructure:",omitempty"`
 }
 
 type AccessControlConfig struct {

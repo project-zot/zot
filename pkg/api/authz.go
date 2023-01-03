@@ -169,6 +169,8 @@ func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 			resource := vars["name"]
 			reference, ok := vars["reference"]
 
+			var ctx context.Context
+
 			// bypass authz for /v2/ route
 			if request.RequestURI == "/v2/" {
 				next.ServeHTTP(response, request)
@@ -208,7 +210,20 @@ func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 				}
 			}
 
-			ctx := acCtrlr.getContext(identity, request)
+			// keep the same request context
+			ctx = request.Context()
+
+			// for openID auth and apiKeys, userName is set during the authn phase
+			if !isOpenIDAuthEnabled(ctlr.Config) {
+				ctx = acCtrlr.getContext(identity, request)
+			}
+
+			// bypass authz for /api/ endpoint used for API keys, but with context to know if current user is admin
+			if strings.Contains(request.RequestURI, "/api/") {
+				next.ServeHTTP(response, request.WithContext(ctx))
+
+				return
+			}
 
 			// will return only repos on which client is authorized to read
 			if request.RequestURI == fmt.Sprintf("%s%s", constants.RoutePrefix, constants.ExtCatalogPrefix) {

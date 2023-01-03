@@ -7,12 +7,15 @@
 
 package api
 
+// nolint: gci
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"path"
@@ -20,13 +23,18 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
+	guuid "github.com/gofrs/uuid"
+	"github.com/google/go-github/github"
 	"github.com/gorilla/mux"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opencontainers/distribution-spec/specs-go/v1/extensions"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
+	"github.com/zitadel/oidc/pkg/client/rp"
+	"github.com/zitadel/oidc/pkg/oidc"
 
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/constants"
@@ -39,7 +47,10 @@ import (
 	zreg "zotregistry.io/zot/pkg/regexp"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/storage"
-	"zotregistry.io/zot/pkg/test" //nolint:goimports
+	"zotregistry.io/zot/pkg/test" // nolint: goimports
+
+	// as required by swaggo.
+	_ "zotregistry.io/zot/swagger"
 )
 
 type RouteHandler struct {
@@ -58,7 +69,44 @@ func allowedMethods(method string) []string {
 }
 
 func (rh *RouteHandler) SetupRoutes() {
-	rh.c.Router.Use(AuthHandler(rh.c))
+	// support for redirect URI on OpenID auth
+	rh.c.Router.HandleFunc(callbackPath, rp.CodeExchangeHandler(rp.UserinfoCallback(userInfoLogic(rh.c)), rh.c.RelyingParties["local"]))
+
+	// support for Gitlab redirect URI on OpenID auth
+	rh.c.Router.HandleFunc(gitlabCallbackPath, rp.CodeExchangeHandler(rp.UserinfoCallback(userInfoLogic(rh.c)), rh.c.RelyingParties["gitlab"]))
+
+	// support for Google redirect URI on OpenID auth
+	rh.c.Router.HandleFunc(googleCallbackPath, rp.CodeExchangeHandler(rp.UserinfoCallback(userInfoLogic(rh.c)), rh.c.RelyingParties["google"]))
+
+	// support for GitHub redirect URI on OpenID auth
+	rh.c.Router.HandleFunc(githubCallbackPath, rp.CodeExchangeHandler(githubUserInfoLogic(rh.c), rh.c.RelyingParties["github"]))
+
+	// local login path for openID
+	rh.c.Router.HandleFunc(openidLoginPath, authURLHandler(rh.c, "local"))
+
+	// GitHub login path for openID
+	rh.c.Router.HandleFunc(githubOpenidLoginPath, authURLHandler(rh.c, "github"))
+
+	// Gitlab login path for openID
+	rh.c.Router.HandleFunc(gitlabOpenidLoginPath, authURLHandler(rh.c, "gitlab"))
+
+	// Google login path for openID
+	rh.c.Router.HandleFunc(googleOpenidLoginPath, authURLHandler(rh.c, "google"))
+
+	// API keys router
+	if isAPIKeyEnabled(rh.c.Config) {
+		apiPrefixedRouter := rh.c.Router.PathPrefix("/api").Subrouter()
+		{
+			apiPrefixedRouter.HandleFunc("/security/apiKey",
+				rh.CreateAPIKey).Methods(allowedMethods("POST")...)
+			apiPrefixedRouter.HandleFunc("/security/apiKey",
+				rh.RevokeAPIKey).Methods(allowedMethods("DELETE")...)
+		}
+	}
+
+	// https://github.com/opencontainers/distribution-spec/blob/main/spec.md#endpoints
+	prefixedRouter := rh.c.Router.PathPrefix(constants.RoutePrefix).Subrouter()
+	prefixedRouter.Use(AuthHandler(rh.c))
 	// authz is being enabled if AccessControl is specified
 	// if Authn is not present AccessControl will have only default policies
 	if rh.c.Config.AccessControl != nil && !isBearerAuthEnabled(rh.c.Config) {
@@ -68,11 +116,9 @@ func (rh *RouteHandler) SetupRoutes() {
 			rh.c.Log.Info().Msg("default policy only access control is being enabled")
 		}
 
-		rh.c.Router.Use(AuthzHandler(rh.c))
+		prefixedRouter.Use(AuthzHandler(rh.c))
 	}
 
-	// https://github.com/opencontainers/distribution-spec/blob/main/spec.md#endpoints
-	prefixedRouter := rh.c.Router.PathPrefix(constants.RoutePrefix).Subrouter()
 	{
 		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/tags/list", zreg.NameRegexp.String()),
 			rh.ListTags).Methods(allowedMethods("GET")...)
@@ -129,6 +175,228 @@ func (rh *RouteHandler) SetupRoutes() {
 			ext.SetupSearchRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.RepoDB, rh.c.Log)
 			gqlPlayground.SetupGQLPlaygroundRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
 		}
+	}
+}
+
+func userInfoLogic(ctlr *Controller) rp.CodeExchangeUserinfoCallback {
+	cookieStore := ctlr.CookieStore
+	return func(w http.ResponseWriter, r *http.Request, tokens *oidc.Tokens, state string,
+		relyingParty rp.RelyingParty, info oidc.UserInfo,
+	) {
+		// sID, err := uuid.NewV4()
+		// if err != nil {
+		// 	http.Error(w, err.Error(), http.StatusInternalServerError)
+		// 	return
+		// }
+		// cookieHandler.SetCookie(w, "session", sID.String())
+		// TODO: if this line has been reached, then a new session should be created
+		// if the `session` key is already on the cookie, it's not a valid one
+		session, err := cookieStore.Get(r, "session")
+		if err != nil {
+			ctlr.Log.Error().Err(err).Msg("invalid encoding session exists although it should not")
+			// http.Error(w, err.Error(), http.StatusInternalServerError)
+			session.Options.MaxAge = -1 // kill the session
+
+			err = session.Save(r, w)
+			if err != nil {
+				ctlr.Log.Error().Err(err).Msg("couldn't kill the session")
+
+				w.WriteHeader(http.StatusInternalServerError)
+
+				return
+			}
+			w.WriteHeader(http.StatusUnauthorized)
+
+			return
+		}
+
+		session.Options.Secure = true
+		// session.Options.MaxAge = 120
+		session.Options.HttpOnly = true
+		session.Options.SameSite = http.SameSiteDefaultMode
+		// session.Values["profile"] = tokens.IDTokenClaims.GetClaims()
+		session.Values["authStatus"] = true
+		// session.Values["access_token"] = tokens.AccessToken
+
+		// let the session set its own id
+		err = session.Save(r, w)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		email := info.GetEmail()
+		if email == "" {
+			ctlr.Log.Error().Msg("couldn't set user record for empty email value")
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		err = ctlr.RepoDB.SetUserInfoForSession(session.ID,
+			repodb.UserInfo{
+				Email: email,
+			})
+
+		if err != nil {
+			ctlr.Log.Error().Err(err).Msg("couldn't set the user session")
+			w.WriteHeader(http.StatusInternalServerError)
+
+			return
+		}
+
+		existingProfile, err := ctlr.RepoDB.GetUserProfile(email)
+		if err != nil {
+			if err != zerr.ErrUserProfileNotFound {
+				err := ctlr.RepoDB.DeleteUserProfile(email)
+				if err != nil {
+					ctlr.Log.Error().Err(err).Msg("couldn't delete the user profile")
+					w.WriteHeader(http.StatusInternalServerError)
+
+					return
+				}
+			}
+		}
+		if existingProfile.SessionID != "" {
+			err = ctlr.RepoDB.DeleteUserSession(existingProfile.SessionID)
+			if err != nil {
+				ctlr.Log.Error().Err(err).Msg("couldn't delete the user session")
+				w.WriteHeader(http.StatusInternalServerError)
+
+				return
+			}
+		}
+
+		err = ctlr.RepoDB.SetUserProfile(email, repodb.UserProfile{
+			Tokens: repodb.Tokens{
+				IDToken:    tokens.IDToken,
+				AuthzToken: tokens.Token,
+			},
+			Info: repodb.UserInfo{
+				Email: email,
+			},
+			SessionID: session.ID,
+		})
+		if err != nil {
+			ctlr.Log.Error().Err(err).Msg("couldn't set the user profile")
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+
+		w.Write([]byte("hello"))
+	}
+}
+
+func githubUserInfoLogic(ctlr *Controller) rp.CodeExchangeCallback {
+	cookieStore := ctlr.CookieStore
+	return func(w http.ResponseWriter, r *http.Request,
+		tokens *oidc.Tokens, state string, rp rp.RelyingParty,
+	) {
+		// TODO: if this line has been reached, then a new session should be created
+		// if the `session` key is already on the cookie, it's not a valid one
+		var primaryEmail string
+		session, err := cookieStore.Get(r, "session")
+		if err != nil {
+			ctlr.Log.Error().Err(err).Msg("invalid encoding session exists although it should not")
+			// http.Error(w, err.Error(), http.StatusInternalServerError)
+			session.Options.MaxAge = -1 // kill the session
+
+			err = session.Save(r, w)
+			if err != nil {
+				ctlr.Log.Error().Err(err).Msg("couldn't kill the session")
+
+				w.WriteHeader(http.StatusInternalServerError)
+
+				return
+			}
+			w.WriteHeader(http.StatusUnauthorized)
+
+			return
+		}
+
+		session.Options.Secure = true
+		session.Options.HttpOnly = true
+		session.Options.SameSite = http.SameSiteDefaultMode
+		session.Values["authStatus"] = true
+
+		// let the session set its own id
+		err = session.Save(r, w)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// ========
+
+		ctx := r.Context()
+		client := github.NewClient(rp.OAuthConfig().Client(ctx, tokens.Token))
+
+		userEmails, _, err := client.Users.ListEmails(ctx, &github.ListOptions{})
+		if err != nil {
+			fmt.Printf("error %v", err)
+			panic(err)
+		}
+		if len(userEmails) != 0 {
+			for _, email := range userEmails { // should have at least one primary email, if any
+				if email.GetPrimary() { // check if it's primary email
+					primaryEmail = email.GetEmail()
+
+					break
+				}
+			}
+		}
+
+		if primaryEmail == "" {
+			ctlr.Log.Error().Msg("couldn't set user record for empty email value")
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		err = ctlr.RepoDB.SetUserInfoForSession(session.ID,
+			repodb.UserInfo{
+				Email: primaryEmail,
+			})
+
+		if err != nil {
+			ctlr.Log.Error().Err(err).Msg("couldn't set the user session")
+			w.WriteHeader(http.StatusInternalServerError)
+
+			return
+		}
+
+		existingProfile, err := ctlr.RepoDB.GetUserProfile(primaryEmail)
+		if err != nil {
+			if err != zerr.ErrUserProfileNotFound {
+				err := ctlr.RepoDB.DeleteUserProfile(primaryEmail)
+				if err != nil {
+					ctlr.Log.Error().Err(err).Msg("couldn't delete the user profile")
+					w.WriteHeader(http.StatusInternalServerError)
+
+					return
+				}
+			}
+		}
+		if existingProfile.SessionID != "" {
+			err = ctlr.RepoDB.DeleteUserSession(existingProfile.SessionID)
+			if err != nil {
+				ctlr.Log.Error().Err(err).Msg("couldn't delete the user session")
+				w.WriteHeader(http.StatusInternalServerError)
+
+				return
+			}
+		}
+
+		err = ctlr.RepoDB.SetUserProfile(primaryEmail, repodb.UserProfile{
+			Tokens: repodb.Tokens{
+				AuthzToken: tokens.Token,
+			},
+			Info: repodb.UserInfo{
+				Email: primaryEmail,
+			},
+			SessionID: session.ID,
+		})
+		if err != nil {
+			ctlr.Log.Error().Err(err).Msg("couldn't set the user profile")
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+
+		w.Write([]byte("hello"))
 	}
 }
 
@@ -1570,6 +1838,315 @@ func (rh *RouteHandler) ListExtensions(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, extensionList)
 }
 
+func hashUUID(uuid string) string {
+	digester := sha256.New()
+	digester.Write([]byte(uuid))
+
+	return godigest.NewDigestFromEncoded(godigest.SHA256, fmt.Sprintf("%x", digester.Sum(nil))).Encoded()
+}
+
+type ApiKeyPayload struct {
+	Label  string   `json: "label"`
+	Scopes []string `json: "scopes"`
+}
+
+// CreateAPIKey godoc
+// @Summary Create an API key for the current user
+// @Description Returns an error if API key already exists - use regenerate API key instead.
+// @Accept  json
+// @Produce json
+// @Success 201 {string} string "created"
+// @Failure 405 {string} string "conflict"
+// @Failure 500 {string} string "internal server error"
+// @Router /v2/api/security/apiKey [post].
+func (rh *RouteHandler) CreateAPIKey(response http.ResponseWriter, request *http.Request) {
+	// username := getUsername(request)
+
+	// if ok := rh.c.APIKeysDB.Has(username); ok {
+	// 	rh.c.Log.Error().Msg("API key already exists")
+
+	// 	WriteJSON(response,
+	// 		http.StatusConflict,
+	// 		NewErrorList(NewError(APIKEY_EXISTS, map[string]string{"username": username})),
+	// 	)
+
+	// 	return
+	// }
+
+	var payload ApiKeyPayload
+	body, err := ioutil.ReadAll(request.Body)
+	if err != nil {
+		rh.c.Log.Error().Msg("unable to read request body")
+		response.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+	err = json.Unmarshal(body, &payload)
+	if err != nil {
+		response.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	session, err := rh.c.CookieStore.Get(request, "session")
+	if err != nil {
+		rh.c.Log.Err(err).Msg("can not decode existing session")
+
+		http.Error(response, "invalid session encoding", http.StatusInternalServerError)
+
+		return
+	}
+
+	if session.IsNew {
+		response.WriteHeader(http.StatusUnauthorized)
+
+		return
+	}
+
+	authenticated := session.Values["authStatus"]
+	if authenticated != true {
+		response.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	apiKeyBase, err := guuid.NewV4()
+	if err != nil {
+		response.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	apiKey := strings.ReplaceAll(apiKeyBase.String(), "-", "")
+
+	hashedAPIKey := hashUUID(apiKey)
+
+	userInfo, err := rh.c.RepoDB.GetUserInfoForSession(session.ID)
+	if userInfo.Email != "" {
+		if err != nil {
+			rh.c.Log.Err(err).Msgf("can not get user session with ID %s from DB", session.ID)
+			response.WriteHeader(http.StatusInternalServerError)
+
+			return
+		}
+	}
+
+	// will be used for identifying a specific api key
+	apiKeyID, err := guuid.NewV4()
+	if err != nil {
+		response.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	apiKeyDetails := &repodb.ApiKeyDetails{
+		Created_at:   time.Now(),
+		Creator_ua:   request.UserAgent(),
+		Generated_by: "manual",
+		Label:        payload.Label,
+		Scopes:       payload.Scopes,
+		UUID:         apiKeyID.String(),
+	}
+
+	err = rh.c.RepoDB.AddUserAPIKey(hashedAPIKey, userInfo.Email, apiKeyDetails)
+	if err != nil {
+		rh.c.Log.Error().Err(err).Str("email", userInfo.Email).Msg("error storing API key")
+		response.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	m := make(map[string]string)
+	m["apiKey"] = fmt.Sprintf("%s%s", APIKeysPrefix, apiKey)
+
+	WriteJSON(response, http.StatusCreated, m)
+}
+
+// RegenerateAPIKey godoc
+// @Summary Regenerate an API key for the current user
+// @Description Regenerate an API key for the current user, use when the user already has an API key
+// @Accept  json
+// @Produce json
+// @Success 201 {string} string "created"
+// @Failure 500 {string} string "internal server error"
+// @Router /v2/api/security/apiKey [put].
+// func (rh *RouteHandler) RegenerateAPIKey(response http.ResponseWriter, request *http.Request) {
+// 	username := getUsername(request)
+
+// 	err := rh.c.APIKeysDB.Delete(username)
+// 	if err != nil {
+// 		rh.c.Log.Error().Err(err).Str("username", username).Msg("error deleting API key")
+// 		response.WriteHeader(http.StatusInternalServerError)
+
+// 		return
+// 	}
+
+// 	uuid, err := guuid.NewV4()
+// 	if err != nil {
+// 		response.WriteHeader(http.StatusInternalServerError)
+
+// 		return
+// 	}
+
+// 	apiKey := strings.ReplaceAll(uuid.String(), "-", "")
+
+// 	hashedAPIKey := hashUUID(apiKey)
+
+// 	err = rh.c.APIKeysDB.Put(username, hashedAPIKey)
+// 	if err != nil {
+// 		rh.c.Log.Error().Err(err).Str("username", username).Msg("error storing API key")
+// 		response.WriteHeader(http.StatusInternalServerError)
+
+// 		return
+// 	}
+
+// 	m := make(map[string]string)
+// 	m["apiKey"] = apiKey
+
+// 	WriteJSON(response, http.StatusCreated, m)
+// }
+
+// RevokeAPIKey godoc
+// @Summary Revokes the current user's API key
+// @Description Revokes the current user's API key
+// @Accept  json
+// @Produce json
+// @Success 200 {string} string "ok"
+// @Failure 500 {string} string "internal server error"
+// @Router /v2/api/security/apiKey [delete].
+func (rh *RouteHandler) RevokeAPIKey(response http.ResponseWriter, request *http.Request) {
+	ids, ok := request.URL.Query()["id"]
+	if !ok || len(ids) != 1 {
+		response.WriteHeader(http.StatusBadRequest)
+
+		return
+	}
+	id := ids[0]
+
+	redirectURLFormat := "https://%s%s"
+	redirectUri := fmt.Sprintf(redirectURLFormat, request.Host, openidLoginPath)
+
+	session, err := rh.c.CookieStore.Get(request, "session")
+	if err != nil {
+		rh.c.Log.Err(err).Msg("can not decode existing session")
+
+		http.Error(response, "invalid session encoding", http.StatusInternalServerError)
+
+		return
+	}
+
+	if session.IsNew {
+		http.Redirect(response, request, redirectUri, http.StatusFound)
+
+		return
+	}
+
+	authenticated := session.Values["authStatus"]
+	if authenticated != true {
+		response.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	userInfo, err := rh.c.RepoDB.GetUserInfoForSession(session.ID)
+	if userInfo.Email != "" {
+		if err != nil {
+			if err == zerr.ErrUserSessionNotFound {
+				http.Redirect(response, request, redirectUri, http.StatusFound)
+
+				return
+			}
+			rh.c.Log.Err(err).Msg("can not get user session from DB")
+			response.WriteHeader(http.StatusInternalServerError)
+
+			return
+		}
+	}
+
+	err = rh.c.RepoDB.DeleteUserAPIKey(id, userInfo.Email)
+	if err != nil {
+		rh.c.Log.Error().Err(err).Str("id", id).Msg("error deleting API key")
+		response.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	response.WriteHeader(http.StatusOK)
+}
+
+// RevokeUserAPIKey godoc
+// @Summary Revokes another user's API key
+// @Description Revokes another user's API key, requires a privileged user (Admin only)
+// @Accept  json
+// @Produce json
+// @Success 200 {string} string "ok"
+// @Failure 403 {string} string "forbidden"
+// @Failure 500 {string} string "internal server error"
+// @Router /v2/api/security/apiKey/{username} [delete].
+// func (rh *RouteHandler) RevokeUserAPIKey(response http.ResponseWriter, request *http.Request) {
+// 	vars := mux.Vars(request)
+
+// 	username, ok := vars["username"]
+// 	if !ok || len(username) == 0 {
+// 		rh.c.Log.Error().Str("username", username).Msg("apikey: invalid username")
+// 		response.WriteHeader(http.StatusBadRequest)
+
+// 		return
+// 	}
+
+// 	if !isCurrentUserAdmin(request) {
+// 		WriteJSON(response, http.StatusForbidden, NewErrorList(NewError(DENIED)))
+
+// 		return
+// 	}
+
+// 	err := rh.c.APIKeysDB.Delete(username)
+// 	if err != nil {
+// 		rh.c.Log.Error().Err(err).Str("username", username).Msg("error deleting api key")
+// 		response.WriteHeader(http.StatusInternalServerError)
+
+// 		return
+// 	}
+
+// 	response.WriteHeader(http.StatusOK)
+// }
+
+// RevokeAllAPIKeys godoc
+// @Summary Revokes all API keys
+// @Description Revokes all API keys, requires a privileged user (Admin only)
+// @Accept  json
+// @Produce json
+// @Success 200 {string} string "ok"
+// @Failure 403 {string} string "forbidden"
+// @Failure 500 {string} string "internal server error"
+// @Router /v2/api/security/apiKey?deleteAll={0,1} [delete].
+// func (rh *RouteHandler) RevokeAllAPIKeys(response http.ResponseWriter, request *http.Request) {
+// 	deleteAll := request.FormValue("deleteAll")
+// 	if deleteAll == "0" {
+// 		response.WriteHeader(http.StatusNotModified)
+
+// 		return
+// 	} else if deleteAll != "1" {
+// 		response.WriteHeader(http.StatusBadRequest)
+
+// 		return
+// 	}
+
+// 	if !isCurrentUserAdmin(request) {
+// 		WriteJSON(response, http.StatusForbidden, NewErrorList(NewError(DENIED)))
+
+// 		return
+// 	}
+
+// 	err := rh.c.APIKeysDB.DeleteAll()
+// 	if err != nil {
+// 		rh.c.Log.Error().Err(err).Msg("error deleting all API keys")
+// 		response.WriteHeader(http.StatusInternalServerError)
+
+// 		return
+// 	}
+
+// 	response.WriteHeader(http.StatusOK)
+// }
+
 func (rh *RouteHandler) GetMetrics(w http.ResponseWriter, r *http.Request) {
 	m := rh.c.Metrics.ReceiveMetrics()
 	WriteJSON(w, http.StatusOK, m)
@@ -1794,3 +2371,19 @@ func getBlobUploadLocation(url *url.URL, name string, digest godigest.Digest) st
 
 	return url.String()
 }
+
+// // returns whether or not current user is admin.
+// func isCurrentUserAdmin(request *http.Request) bool {
+// 	// get passed context from authzHandler and check if current user is admin
+// 	if authzCtx := request.Context().Value(authzCtxKey); authzCtx != nil {
+// 		acCtx, ok := authzCtx.(AccessControlContext)
+// 		if !ok || !acCtx.isAdmin {
+// 			return false
+// 		}
+// 	} else {
+// 		// authz not enabled
+// 		return false
+// 	}
+
+// 	return true
+// }
