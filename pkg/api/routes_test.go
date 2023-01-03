@@ -6,21 +6,26 @@ package api_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/gorilla/mux"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/project-zot/mockoidc"
 	. "github.com/smartystreets/goconvey/convey"
 
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
+	"zotregistry.io/zot/pkg/meta/userdb"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test"
@@ -29,6 +34,8 @@ import (
 
 var ErrUnexpectedError = errors.New("error: unexpected error")
 
+const sessionStr = "session"
+
 func TestRoutes(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		port := test.GetFreePort()
@@ -36,12 +43,46 @@ func TestRoutes(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 
+		htpasswdPath := test.MakeHtpasswdFile()
+		defer os.Remove(htpasswdPath)
+		mockOIDCServer, err := mockoidc.Run()
+		if err != nil {
+			panic(err)
+		}
+		defer func() {
+			err := mockOIDCServer.Shutdown()
+			if err != nil {
+				panic(err)
+			}
+		}()
+
+		mockOIDCConfig := mockOIDCServer.Config()
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+			OpenID: &config.OpenIDConfig{
+				Providers: map[string]config.OpenIDProviderConfig{
+					"dex": {
+						ClientID:     mockOIDCConfig.ClientID,
+						ClientSecret: mockOIDCConfig.ClientSecret,
+						KeyPath:      "",
+						Issuer:       mockOIDCConfig.Issuer,
+						Scopes:       []string{"openid", "email"},
+					},
+				},
+				SecureCookieEncryptionKey: "test1234test1234",
+				SecureCookieHashKey:       "test1234test1234",
+				APIKeys:                   true,
+				SessionCookieStorePath:    "",
+			},
+		}
 		ctlr := api.NewController(conf)
 
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
 		ctlr.Config.Storage.Commit = true
 
-		err := test.CopyFiles("../../test/data", ctlr.Config.Storage.RootDirectory)
+		err = test.CopyFiles("../../test/data", ctlr.Config.Storage.RootDirectory)
 		if err != nil {
 			panic(err)
 		}
@@ -570,7 +611,7 @@ func TestRoutes(t *testing.T) {
 				},
 				&mocks.MockedImageStore{
 					FullBlobUploadFn: func(repo string, body io.Reader, digest godigest.Digest) (string, int64, error) {
-						return "session", 0, zerr.ErrBadBlobDigest
+						return sessionStr, 0, zerr.ErrBadBlobDigest
 					},
 				})
 			So(statusCode, ShouldEqual, http.StatusInternalServerError)
@@ -586,7 +627,7 @@ func TestRoutes(t *testing.T) {
 				},
 				&mocks.MockedImageStore{
 					FullBlobUploadFn: func(repo string, body io.Reader, digest godigest.Digest) (string, int64, error) {
-						return "session", 20, nil
+						return sessionStr, 20, nil
 					},
 				})
 			So(statusCode, ShouldEqual, http.StatusInternalServerError)
@@ -1317,6 +1358,108 @@ func TestRoutes(t *testing.T) {
 			rthdlr.ListRepositories(response, request)
 
 			resp := response.Result()
+			defer resp.Body.Close()
+
+			So(resp.StatusCode, ShouldEqual, http.StatusOK)
+		})
+
+		Convey("Test API keys", func() {
+			payload := api.APIKeyPayload{
+				Label:  "test",
+				Scopes: []string{"test"},
+			}
+			reqBody, err := json.Marshal(payload)
+			So(err, ShouldBeNil)
+
+			request, _ := http.NewRequestWithContext(context.TODO(), http.MethodPost, baseURL, bytes.NewReader(reqBody))
+			response := httptest.NewRecorder()
+
+			// call endpoint without session
+			rthdlr.CreateAPIKey(response, request)
+
+			resp := response.Result()
+			defer resp.Body.Close()
+
+			So(resp.StatusCode, ShouldEqual, http.StatusUnauthorized)
+
+			// create session
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodPost, baseURL, bytes.NewReader(reqBody))
+			response = httptest.NewRecorder()
+			session, err := ctlr.CookieStore.Get(request, sessionStr)
+			So(err, ShouldBeNil)
+
+			session.Options.Secure = true
+			session.Options.HttpOnly = true
+			session.Options.SameSite = http.SameSiteDefaultMode
+			session.Values["authStatus"] = true
+			session.Values["user"] = "email"
+
+			// let the session set its own id
+			err = session.Save(request, response)
+			So(err, ShouldBeNil)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+
+			// set session cookie from previous response
+			cookies := resp.Cookies()
+			var sessionCookie *http.Cookie
+			for _, cookie := range cookies {
+				if strings.ToLower(cookie.Name) == sessionStr {
+					sessionCookie = cookie
+
+					break
+				}
+			}
+			So(sessionCookie.Value, ShouldNotEqual, "")
+
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodPost, baseURL, bytes.NewReader(reqBody))
+			response = httptest.NewRecorder()
+			request.AddCookie(sessionCookie)
+
+			session, err = ctlr.CookieStore.Get(request, sessionStr)
+			So(err, ShouldBeNil)
+			So(session.IsNew, ShouldEqual, false)
+
+			// manually create user in DB
+			err = ctlr.UserSecDB.SetUserProfile("email", userdb.UserProfile{})
+			So(err, ShouldBeNil)
+
+			// call endpoint with session
+			rthdlr.CreateAPIKey(response, request)
+
+			resp = response.Result()
+			defer resp.Body.Close()
+
+			apiKeyResponse := struct {
+				userdb.APIKeyDetails
+				APIKey string `json:"apiKey"`
+			}{}
+
+			So(resp.StatusCode, ShouldEqual, http.StatusCreated)
+			err = json.Unmarshal(response.Body.Bytes(), &apiKeyResponse)
+			So(err, ShouldBeNil)
+			apiKey := apiKeyResponse.APIKey
+			So(apiKey, ShouldNotBeEmpty)
+			So(apiKeyResponse.UUID, ShouldNotBeEmpty)
+
+			// Revoke API key with session, no key id
+			request, _ = http.NewRequestWithContext(context.TODO(), http.MethodDelete, baseURL, nil)
+			response = httptest.NewRecorder()
+			request.AddCookie(sessionCookie)
+
+			rthdlr.RevokeAPIKey(response, request)
+			resp = response.Result()
+			defer resp.Body.Close()
+
+			So(resp.StatusCode, ShouldEqual, http.StatusBadRequest)
+
+			response = httptest.NewRecorder()
+			q := request.URL.Query()
+			q.Add("id", apiKeyResponse.UUID)
+			request.URL.RawQuery = q.Encode()
+			rthdlr.RevokeAPIKey(response, request)
+			resp = response.Result()
 			defer resp.Body.Close()
 
 			So(resp.StatusCode, ShouldEqual, http.StatusOK)

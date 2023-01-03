@@ -18,13 +18,20 @@ Examples of working configurations for various use cases are available [here](..
 
 # Configuration Parameters
 
-* [Network](#network)
-* [Storage](#storage)
-* [Authentication](#authentication)
-* [Identity-based Authorization](#identity-based-authorization)
-* [Logging](#logging)
-* [Metrics](#metrics)
-* [Sync](#sync)
+- [Configuration Parameters](#configuration-parameters)
+  - [Network](#network)
+  - [Storage](#storage)
+  - [Authentication](#authentication)
+    - [TLS Mutual Authentication](#tls-mutual-authentication)
+    - [Passphrase Authentication](#passphrase-authentication)
+      - [Authentication Failures](#authentication-failures)
+      - [API keys](#api-keys)
+  - [Identity-based Authorization](#identity-based-authorization)
+  - [Logging](#logging)
+  - [Metrics](#metrics)
+  - [Storage Drivers](#storage-drivers)
+    - [Specifying S3 credentials](#specifying-s3-credentials)
+  - [Sync](#sync)
 
 
 ## Network
@@ -170,6 +177,16 @@ Should authentication fail, to prevent automated attacks, a delayed response can
   "http": {
     "auth": {
       "failDelay": 5
+```
+
+#### API keys
+
+Use it to activate API keys
+
+```
+  "http": {
+    "auth": {
+      "apikeys": true
 ```
 
 ## Identity-based Authorization

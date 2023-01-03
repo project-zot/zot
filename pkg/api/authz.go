@@ -25,6 +25,9 @@ const (
 	Delete = "delete"
 	// behaviour actions.
 	DetectManifestCollision = "detectManifestCollision"
+	BASIC                   = "Basic"
+	BEARER                  = "Bearer"
+	OPENID                  = "OpenID"
 )
 
 // AccessController authorizes users to act on resources.
@@ -33,10 +36,17 @@ type AccessController struct {
 	Log    log.Logger
 }
 
-func NewAccessController(config *config.Config) *AccessController {
+func NewAccessController(conf *config.Config) *AccessController {
+	if conf.HTTP.AccessControl == nil {
+		return &AccessController{
+			Config: &config.AccessControlConfig{},
+			Log:    log.NewLogger(conf.Log.Level, conf.Log.Output),
+		}
+	}
+
 	return &AccessController{
-		Config: config.HTTP.AccessControl,
-		Log:    log.NewLogger(config.Log.Level, config.Log.Output),
+		Config: conf.HTTP.AccessControl,
+		Log:    log.NewLogger(conf.Log.Level, conf.Log.Output),
 	}
 }
 
@@ -156,17 +166,24 @@ func (ac *AccessController) getUserGroups(username string) []string {
 }
 
 // getContext builds ac context(allowed to read repos and if user is admin) and returns it.
-func (ac *AccessController) getContext(username string, request *http.Request) context.Context {
-	acCtx, err := localCtx.GetAccessControlContext(request.Context())
-	if err != nil {
-		return nil
+func (ac *AccessController) getContext(username string, groups []string, request *http.Request) context.Context {
+	readGlobPatterns := ac.getGlobPatterns(username, groups, Read)
+	dmcGlobPatterns := ac.getGlobPatterns(username, groups, DetectManifestCollision)
+
+	if len(readGlobPatterns) == 0 {
+		readGlobPatterns = nil
 	}
 
-	readGlobPatterns := ac.getGlobPatterns(username, acCtx.Groups, Read)
-	dmcGlobPatterns := ac.getGlobPatterns(username, acCtx.Groups, DetectManifestCollision)
+	if len(dmcGlobPatterns) == 0 {
+		dmcGlobPatterns = nil
+	}
 
-	acCtx.ReadGlobPatterns = readGlobPatterns
-	acCtx.DmcGlobPatterns = dmcGlobPatterns
+	acCtx := localCtx.AccessControlContext{
+		ReadGlobPatterns: readGlobPatterns,
+		DmcGlobPatterns:  dmcGlobPatterns,
+		Username:         username,
+		Groups:           groups,
+	}
 
 	if ac.isAdmin(username) {
 		acCtx.IsAdmin = true
@@ -175,7 +192,19 @@ func (ac *AccessController) getContext(username string, request *http.Request) c
 	}
 
 	authzCtxKey := localCtx.GetContextKey()
-	ctx := context.WithValue(request.Context(), authzCtxKey, *acCtx)
+	ctx := context.WithValue(request.Context(), authzCtxKey, acCtx)
+
+	return ctx
+}
+
+// getAuthnMdwContext builds ac context(allowed to read repos and if user is admin) and returns it.
+func (ac *AccessController) getAuthnMdwContext(authnMdw string, request *http.Request) context.Context {
+	amCtx := localCtx.AuthnMdwContext{
+		PassedAuthnMdwType: authnMdw,
+	}
+
+	amCtxKey := localCtx.GetAuthnMdwCtxKey()
+	ctx := context.WithValue(request.Context(), amCtxKey, amCtx)
 
 	return ctx
 }
@@ -226,12 +255,24 @@ func (ac *AccessController) isPermitted(userGroups []string, username, action st
 	return result
 }
 
-func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
+func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc { //nolint:gocyclo
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+			authnMdwCtx, err := localCtx.GetAuthnMdwContext(request.Context())
+			if err != nil || (authnMdwCtx != nil && authnMdwCtx.PassedAuthnMdwType == BEARER) {
+				ctlr.Log.Info().Msg("access control is not enabled for Bearer authn")
+
+				next.ServeHTTP(response, request)
+
+				return
+			}
+
 			vars := mux.Vars(request)
 			resource := vars["name"]
 			reference, ok := vars["reference"]
+
+			// keep the same request context
+			ctx := request.Context() //nolint:contextcheck
 
 			// bypass authz for /v2/ route
 			if request.RequestURI == "/v2/" {
@@ -248,11 +289,11 @@ func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 			acCtrlr := NewAccessController(ctlr.Config)
 
 			var identity string
-			var err error
 
 			// allow anonymous authz if no authn present and only default policies are present
 			identity = ""
 			if isAuthnEnabled(ctlr.Config) && request.Header.Get("Authorization") != "" {
+				// will be overwriteen if this is an API key credential
 				identity, _, err = getUsernamePasswordBasicAuth(request)
 
 				if err != nil {
@@ -277,7 +318,29 @@ func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 				}
 			}
 
-			ctx := acCtrlr.getContext(identity, request)
+			acCtx, err := localCtx.GetAccessControlContext(ctx)
+			if err != nil {
+				authzFail(response, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
+			}
+
+			// if identity got populated in authz, pass it down in the context
+			if identity != "" && (acCtx == nil || acCtx.Username == "") {
+				newCtx := acCtrlr.getContext(identity, []string{}, request)
+				ctx = newCtx
+			}
+
+			// for openID auth and apiKeys, userName is set during the authn phase
+			// NOW BASIC ALSO ADDS USER ON CTX
+			// if !isOpenIDAuthEnabled(ctlr.Config) {
+			// 	ctx = acCtrlr.getContext(identity, request)
+			// }
+
+			// bypass authz for /api/ endpoint used for API keys, but with context to know if current user is admin
+			if strings.Contains(request.RequestURI, "/api/") {
+				next.ServeHTTP(response, request.WithContext(ctx))
+
+				return
+			}
 
 			// for extensions we only need to know if the user is admin and what repos he can read, so run next()
 			if request.RequestURI == fmt.Sprintf("%s%s", constants.RoutePrefix, constants.ExtCatalogPrefix) ||

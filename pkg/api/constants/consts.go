@@ -11,4 +11,7 @@ const (
 	DefaultMediaType             = "application/json"
 	BinaryMediaType              = "application/octet-stream"
 	DefaultMetricsExtensionRoute = "/metrics"
+	DexCallbackPath              = "/dex/auth/callback"
+	DexLoginPath                 = "/dex/auth/login"
+	APIKeysPrefix                = "zak_"
 )

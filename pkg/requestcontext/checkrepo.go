@@ -12,7 +12,7 @@ func RepoIsUserAvailable(ctx context.Context, repoName string) (bool, error) {
 	if authCtx := ctx.Value(authzCtxKey); authCtx != nil {
 		acCtx, ok := authCtx.(AccessControlContext)
 		if !ok {
-			err := zerr.ErrBadCtxFormat
+			err := zerr.ErrFailedTypeAssertion
 
 			return false, err
 		}

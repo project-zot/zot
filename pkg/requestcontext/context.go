@@ -13,9 +13,17 @@ type Key int
 // request-local context key.
 var authzCtxKey = Key(0) //nolint: gochecknoglobals
 
+// request-local context key.
+var authnMdwCtxKey = Key(1) //nolint: gochecknoglobals
+
 // pointer needed for use in context.WithValue.
 func GetContextKey() *Key {
 	return &authzCtxKey
+}
+
+// pointer needed for use in context.WithValue.
+func GetAuthnMdwCtxKey() *Key {
+	return &authnMdwCtxKey
 }
 
 // AccessControlContext context passed down to http.Handlers.
@@ -29,6 +37,10 @@ type AccessControlContext struct {
 	Groups          []string
 }
 
+type AuthnMdwContext struct {
+	PassedAuthnMdwType string
+}
+
 func GetAccessControlContext(ctx context.Context) (*AccessControlContext, error) {
 	authzCtxKey := GetContextKey()
 	if authCtx := ctx.Value(authzCtxKey); authCtx != nil {
@@ -38,6 +50,20 @@ func GetAccessControlContext(ctx context.Context) (*AccessControlContext, error)
 		}
 
 		return &acCtx, nil
+	}
+
+	return nil, nil //nolint: nilnil
+}
+
+func GetAuthnMdwContext(ctx context.Context) (*AuthnMdwContext, error) {
+	authnMdwCtxKey := GetAuthnMdwCtxKey()
+	if authnMdwCtx := ctx.Value(authnMdwCtxKey); authnMdwCtx != nil {
+		amCtx, ok := authnMdwCtx.(AuthnMdwContext)
+		if !ok {
+			return nil, errors.ErrBadType
+		}
+
+		return &amCtx, nil
 	}
 
 	return nil, nil //nolint: nilnil

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/gob"
 	"fmt"
 	"net"
 	"net/http"
@@ -18,6 +19,9 @@ import (
 	"github.com/docker/distribution/registry/storage/driver/factory"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
+	"github.com/gorilla/securecookie"
+	"github.com/gorilla/sessions"
+	"github.com/zitadel/oidc/pkg/client/rp"
 
 	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/config"
@@ -25,9 +29,13 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/repodb"
-	bolt "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
-	dynamoParams "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper/params"
+	repoBolt "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
+	repoDynamoParams "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper/params"
 	"zotregistry.io/zot/pkg/meta/repodb/repodbfactory"
+	"zotregistry.io/zot/pkg/meta/userdb"
+	userBolt "zotregistry.io/zot/pkg/meta/userdb/boltdb-wrapper"
+	userDynamoParams "zotregistry.io/zot/pkg/meta/userdb/dynamodb-wrapper/params"
+	"zotregistry.io/zot/pkg/meta/userdb/userdbfactory"
 	"zotregistry.io/zot/pkg/scheduler"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/cache"
@@ -39,18 +47,22 @@ import (
 const (
 	idleTimeout       = 120 * time.Second
 	readHeaderTimeout = 5 * time.Second
+	oneDayInSeconds   = 86400
 )
 
 type Controller struct {
 	Config          *config.Config
 	Router          *mux.Router
 	RepoDB          repodb.RepoDB
+	UserSecDB       userdb.UserSecurityDB
 	StoreController storage.StoreController
 	Log             log.Logger
 	Audit           *log.Logger
 	Server          *http.Server
 	Metrics         monitoring.MetricServer
 	CveInfo         ext.CveInfo
+	RelyingParties  map[string]rp.RelyingParty
+	CookieStore     sessions.FilesystemStore
 	wgShutDown      *goSync.WaitGroup // use it to gracefully shutdown goroutines
 	// runtime params
 	chosenPort int // kernel-chosen port
@@ -63,6 +75,29 @@ func NewController(config *config.Config) *Controller {
 	controller.Config = config
 	controller.Log = logger
 	controller.wgShutDown = new(goSync.WaitGroup)
+
+	if config.HTTP.Auth.OpenID != nil {
+		if controller.RelyingParties == nil {
+			controller.RelyingParties = make(map[string]rp.RelyingParty)
+		}
+
+		if _, exists := config.HTTP.Auth.OpenID.Providers["dex"]; exists {
+			rp := NewRelyingPartyOIDC(config, "dex")
+			controller.RelyingParties["dex"] = rp
+		}
+
+		// To store custom types in our cookies,
+		// we must first register them using gob.Register
+		gob.Register(map[string]interface{}{})
+
+		cookieStoreHashKey := securecookie.GenerateRandomKey(64)
+		if cookieStoreHashKey == nil {
+			panic(errors.ErrHashKeyNotCreated)
+		}
+		controller.CookieStore = *sessions.NewFilesystemStore(config.HTTP.Auth.OpenID.SessionCookieStorePath,
+			cookieStoreHashKey)
+		controller.CookieStore.MaxAge(oneDayInSeconds)
+	}
 
 	if config.Log.Audit != "" {
 		audit := log.NewAuditLogger(config.Log.Level, config.Log.Audit)
@@ -141,7 +176,8 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 		c.CORSHeaders(),
 		SessionLogger(c),
 		handlers.RecoveryHandler(handlers.RecoveryLogger(c.Log),
-			handlers.PrintRecoveryStack(false)))
+			handlers.PrintRecoveryStack(false)),
+	)
 
 	if c.Audit != nil {
 		engine.Use(SessionAuditLogger(c.Audit))
@@ -258,6 +294,10 @@ func (c *Controller) Init(reloadCtx context.Context) error {
 	}
 
 	if err := c.InitRepoDB(reloadCtx); err != nil {
+		return err
+	}
+
+	if err := c.InitUserDB(reloadCtx); err != nil {
 		return err
 	}
 
@@ -523,20 +563,51 @@ func (c *Controller) InitRepoDB(reloadCtx context.Context) error {
 	return nil
 }
 
+func (c *Controller) InitUserDB(reloadCtx context.Context) error {
+	if c.Config.HTTP.Auth.OpenID != nil {
+		driver, err := CreateUserDBDriver(c.Config.Storage.StorageConfig, c.Log) //nolint:contextcheck
+		if err != nil {
+			return err
+		}
+
+		err = driver.PatchDB()
+		if err != nil {
+			return err
+		}
+
+		c.UserSecDB = driver
+	}
+
+	return nil
+}
+
 func CreateRepoDBDriver(storageConfig config.StorageConfig, log log.Logger) (repodb.RepoDB, error) {
 	if storageConfig.RemoteCache {
-		dynamoParams := getDynamoParams(storageConfig.CacheDriver, log)
+		dynamoParams := getRepoDynamoParams(storageConfig.CacheDriver, log)
 
 		return repodbfactory.Create("dynamodb", dynamoParams) //nolint:contextcheck
 	}
 
-	params := bolt.DBParameters{}
+	params := repoBolt.DBParameters{}
 	params.RootDir = storageConfig.RootDirectory
 
 	return repodbfactory.Create("boltdb", params) //nolint:contextcheck
 }
 
-func getDynamoParams(cacheDriverConfig map[string]interface{}, log log.Logger) dynamoParams.DBDriverParameters {
+func CreateUserDBDriver(storageConfig config.StorageConfig, log log.Logger) (userdb.UserSecurityDB, error) {
+	if storageConfig.RemoteCache {
+		dynamoParams := getUserDynamoParams(storageConfig.CacheDriver, log)
+
+		return userdbfactory.Create("dynamodb", dynamoParams) //nolint:contextcheck
+	}
+
+	params := userBolt.DBParameters{}
+	params.RootDir = storageConfig.RootDirectory
+
+	return userdbfactory.Create("boltdb", params) //nolint:contextcheck
+}
+
+func getRepoDynamoParams(cacheDriverConfig map[string]interface{}, log log.Logger) repoDynamoParams.DBDriverParameters {
 	allParametersOk := true
 
 	endpoint, ok := toStringIfOk(cacheDriverConfig, "endpoint", log)
@@ -564,7 +635,7 @@ func getDynamoParams(cacheDriverConfig map[string]interface{}, log log.Logger) d
 		panic("dynamo parameters are not specified correctly, can't proceede")
 	}
 
-	return dynamoParams.DBDriverParameters{
+	return repoDynamoParams.DBDriverParameters{
 		Endpoint:              endpoint,
 		Region:                region,
 		RepoMetaTablename:     repoMetaTablename,
@@ -572,6 +643,37 @@ func getDynamoParams(cacheDriverConfig map[string]interface{}, log log.Logger) d
 		IndexDataTablename:    indexDataTablename,
 		ArtifactDataTablename: artifactDataTablename,
 		VersionTablename:      versionTablename,
+	}
+}
+
+func getUserDynamoParams(cacheDriverConfig map[string]interface{}, log log.Logger) userDynamoParams.DBDriverParameters {
+	allParametersOk := true
+
+	endpoint, ok := toStringIfOk(cacheDriverConfig, "endpoint", log)
+	allParametersOk = allParametersOk && ok
+
+	region, ok := toStringIfOk(cacheDriverConfig, "region", log)
+	allParametersOk = allParametersOk && ok
+
+	userProfileTablename, ok := toStringIfOk(cacheDriverConfig, "userprofiletablename", log)
+	allParametersOk = allParametersOk && ok
+
+	apiKeyTablename, ok := toStringIfOk(cacheDriverConfig, "apikeytablename", log)
+	allParametersOk = allParametersOk && ok
+
+	versionTablename, ok := toStringIfOk(cacheDriverConfig, "versiontablename", log)
+	allParametersOk = allParametersOk && ok
+
+	if !allParametersOk {
+		panic("dynamo parameters are not specified correctly, can't proceede")
+	}
+
+	return userDynamoParams.DBDriverParameters{
+		Endpoint:             endpoint,
+		Region:               region,
+		UserProfileTablename: userProfileTablename,
+		APIKeyTablename:      apiKeyTablename,
+		VersionTablename:     versionTablename,
 	}
 }
 

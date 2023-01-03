@@ -15,13 +15,10 @@ const (
 	UserMetadataBucket = "UserMeta"
 	RepoMetadataBucket = "RepoMetadata"
 	VersionBucket      = "Version"
-)
-
-const (
-	SignaturesDirPath = "/tmp/zot/signatures"
-	SigKey            = "dev.cosignproject.cosign/signature"
-	NotationType      = "notation"
-	CosignType        = "cosign"
+	SignaturesDirPath  = "/tmp/zot/signatures"
+	SigKey             = "dev.cosignproject.cosign/signature"
+	NotationType       = "notation"
+	CosignType         = "cosign"
 )
 
 type FilterFunc func(repoMeta RepoMetadata, manifestMeta ManifestMetadata) bool

@@ -7,8 +7,10 @@
 
 package api
 
+//nolint: gci
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,13 +22,17 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
+	guuid "github.com/gofrs/uuid"
 	"github.com/gorilla/mux"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opencontainers/distribution-spec/specs-go/v1/extensions"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
+	"github.com/zitadel/oidc/pkg/client/rp"
+	"github.com/zitadel/oidc/pkg/oidc"
 
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/constants"
@@ -36,10 +42,14 @@ import (
 	"zotregistry.io/zot/pkg/extensions/sync"
 	"zotregistry.io/zot/pkg/log"
 	repoDBUpdate "zotregistry.io/zot/pkg/meta/repodb/update"
+	"zotregistry.io/zot/pkg/meta/userdb"
 	zreg "zotregistry.io/zot/pkg/regexp"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/storage"
-	"zotregistry.io/zot/pkg/test" //nolint:goimports
+	"zotregistry.io/zot/pkg/test" //nolint: goimports
+
+	// as required by swaggo.
+	_ "zotregistry.io/zot/swagger"
 )
 
 type RouteHandler struct {
@@ -58,11 +68,29 @@ func allowedMethods(method string) []string {
 }
 
 func (rh *RouteHandler) SetupRoutes() {
+	// Dex login path for openID
+	rh.c.Router.HandleFunc(constants.DexLoginPath, rh.AuthURLHandler(rh.c, "dex"))
+
+	// Dex callback path for openID
+	rh.c.Router.HandleFunc(constants.DexCallbackPath,
+		rp.CodeExchangeHandler(rp.UserinfoCallback(rh.UserInfoLogic(rh.c)), rh.c.RelyingParties["dex"]))
+
+	// API keys router
+	if isAPIKeyEnabled(rh.c.Config) {
+		apiPrefixedRouter := rh.c.Router.PathPrefix("/api").Subrouter()
+		{
+			apiPrefixedRouter.HandleFunc("/security/apiKey",
+				rh.CreateAPIKey).Methods(allowedMethods("POST")...)
+			apiPrefixedRouter.HandleFunc("/security/apiKey",
+				rh.RevokeAPIKey).Methods(allowedMethods("DELETE")...)
+		}
+	}
+
 	prefixedRouter := rh.c.Router.PathPrefix(constants.RoutePrefix).Subrouter()
 	prefixedRouter.Use(AuthHandler(rh.c))
 	// authz is being enabled if AccessControl is specified
 	// if Authn is not present AccessControl will have only default policies
-	if rh.c.Config.HTTP.AccessControl != nil && !isBearerAuthEnabled(rh.c.Config) {
+	if rh.c.Config.HTTP.AccessControl != nil {
 		if isAuthnEnabled(rh.c.Config) {
 			rh.c.Log.Info().Msg("access control is being enabled")
 		} else {
@@ -134,6 +162,104 @@ func (rh *RouteHandler) SetupRoutes() {
 	}
 }
 
+func (rh *RouteHandler) UserInfoLogic(ctlr *Controller) rp.CodeExchangeUserinfoCallback {
+	cookieStore := ctlr.CookieStore
+
+	return func(w http.ResponseWriter, r *http.Request, tokens *oidc.Tokens, state string,
+		relyingParty rp.RelyingParty, info oidc.UserInfo,
+	) {
+		email := info.GetEmail()
+		if email == "" {
+			ctlr.Log.Error().Msg("couldn't set user record for empty email value")
+			w.WriteHeader(http.StatusUnauthorized)
+
+			return
+		}
+
+		// if this line has been reached, then a new session should be created
+		// if the `session` key is already on the cookie, it's not a valid one
+		session, err := cookieStore.Get(r, "session")
+		if err != nil {
+			ctlr.Log.Error().Err(err).Msg("invalid encoding session exists although it should not")
+			// http.Error(w, err.Error(), http.StatusInternalServerError)
+			session.Options.MaxAge = -1 // kill the session
+
+			err = session.Save(r, w)
+			if err != nil {
+				ctlr.Log.Error().Err(err).Msg("couldn't kill the session")
+
+				w.WriteHeader(http.StatusInternalServerError)
+
+				return
+			}
+
+			w.WriteHeader(http.StatusUnauthorized)
+
+			return
+		}
+
+		session.Options.Secure = true
+		session.Options.HttpOnly = true
+		session.Options.SameSite = http.SameSiteDefaultMode
+		session.Values["authStatus"] = true
+		session.Values["user"] = email
+
+		// let the session set its own id
+		err = session.Save(r, w)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+
+			return
+		}
+
+		var groups []string
+
+		claimsMap := info.GetClaims()
+		if groupsInterface, ok := claimsMap["groups"]; ok {
+			if groups, ok = groupsInterface.([]string); !ok {
+				ctlr.Log.Error().Msgf("got data of type %T but wanted []string", groups)
+				w.WriteHeader(http.StatusInternalServerError)
+
+				return
+			}
+		} else {
+			ctlr.Log.Info().Msgf("couldn't find any 'groups' claim for user %s", email)
+		}
+
+		userProfile := userdb.UserProfile{}
+
+		oldUserProfile, err := ctlr.UserSecDB.GetUserProfile(email)
+		if err != nil {
+			if errors.Is(err, zerr.ErrUserProfileNotFound) {
+				err := ctlr.UserSecDB.DeleteUserProfile(email)
+				if err != nil {
+					ctlr.Log.Error().Err(err).Msg("couldn't delete the user profile")
+					w.WriteHeader(http.StatusInternalServerError)
+
+					return
+				}
+			}
+		}
+
+		if oldUserProfile.APIKeys != nil && len(oldUserProfile.APIKeys) != 0 {
+			userProfile.APIKeys = oldUserProfile.APIKeys
+		}
+		userProfile.Groups = groups
+
+		err = ctlr.UserSecDB.SetUserProfile(email, userProfile)
+		if err != nil {
+			ctlr.Log.Error().Err(err).Msgf("couldn't set the user profile for email %s", email)
+			w.WriteHeader(http.StatusInternalServerError)
+
+			return
+		}
+
+		ctlr.Log.Info().Msgf("user profile set successfully for email %s", email)
+
+		w.WriteHeader(http.StatusCreated)
+	}
+}
+
 // Method handlers
 
 // CheckVersionSupport godoc
@@ -149,9 +275,16 @@ func (rh *RouteHandler) CheckVersionSupport(response http.ResponseWriter, reques
 	// work correctly
 	if rh.c.Config.HTTP.Auth != nil {
 		if rh.c.Config.HTTP.Auth.Bearer != nil {
-			response.Header().Set("WWW-Authenticate", fmt.Sprintf("bearer realm=%s", rh.c.Config.HTTP.Auth.Bearer.Realm))
+			response.Header().Add("WWW-Authenticate", fmt.Sprintf("bearer realm=%s", rh.c.Config.HTTP.Auth.Bearer.Realm))
 		} else {
-			response.Header().Set("WWW-Authenticate", fmt.Sprintf("basic realm=%s", rh.c.Config.HTTP.Realm))
+			response.Header().Add("WWW-Authenticate", fmt.Sprintf("basic realm=%s", rh.c.Config.HTTP.Realm))
+		}
+
+		authenticateHeaders := removeHeadersDuplicates(response.Header().Values("WWW-Authenticate"))
+		response.Header().Del("WWW-Authenticate")
+
+		for _, header := range authenticateHeaders {
+			response.Header().Add("WWW-Authenticate", header)
 		}
 	}
 
@@ -1559,6 +1692,184 @@ func (rh *RouteHandler) ListExtensions(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, extensionList)
 }
 
+func hashUUID(uuid string) string {
+	digester := sha256.New()
+	digester.Write([]byte(uuid))
+
+	return godigest.NewDigestFromEncoded(godigest.SHA256, fmt.Sprintf("%x", digester.Sum(nil))).Encoded()
+}
+
+type APIKeyPayload struct { //nolint:revive
+	Label  string   `json:"label"`
+	Scopes []string `json:"scopes"`
+}
+
+// CreateAPIKey godoc
+// @Summary Create an API key for the current user
+// @Description Can create an api key for a logged in user, based on the provided label and scopes.
+// @Accept  json
+// @Produce json
+// @Success 201 {string} string "created"
+// @Failure 401 {string} string "unauthorized"
+// @Failure 500 {string} string "internal server error"
+// @Router /api/security/apiKey [post].
+func (rh *RouteHandler) CreateAPIKey(response http.ResponseWriter, request *http.Request) {
+	var payload APIKeyPayload
+
+	body, err := io.ReadAll(request.Body)
+	if err != nil {
+		rh.c.Log.Error().Msg("unable to read request body")
+		response.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	err = json.Unmarshal(body, &payload)
+	if err != nil {
+		response.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	session, err := rh.c.CookieStore.Get(request, "session")
+	if err != nil {
+		rh.c.Log.Err(err).Msg("can not decode existing session")
+
+		http.Error(response, "invalid session encoding", http.StatusInternalServerError)
+
+		return
+	}
+
+	if session.IsNew {
+		response.WriteHeader(http.StatusUnauthorized)
+
+		return
+	}
+
+	authenticated := session.Values["authStatus"]
+	if authenticated != true {
+		response.WriteHeader(http.StatusUnauthorized)
+
+		return
+	}
+
+	apiKeyBase, err := guuid.NewV4()
+	if err != nil {
+		response.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	apiKey := strings.ReplaceAll(apiKeyBase.String(), "-", "")
+
+	hashedAPIKey := hashUUID(apiKey)
+
+	email, ok := session.Values["user"].(string)
+	if !ok {
+		rh.c.Log.Error().Err(zerr.ErrFailedTypeAssertion).Str("email", email).
+			Msg("stored session value is not a string")
+		response.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	// will be used for identifying a specific api key
+	apiKeyID, err := guuid.NewV4()
+	if err != nil {
+		response.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	apiKeyDetails := &userdb.APIKeyDetails{
+		CreatedAt:   time.Now(),
+		LastUsed:    time.Now(),
+		CreatorUA:   request.UserAgent(),
+		GeneratedBy: "manual",
+		Label:       payload.Label,
+		Scopes:      payload.Scopes,
+		UUID:        apiKeyID.String(),
+	}
+
+	err = rh.c.UserSecDB.AddUserAPIKey(hashedAPIKey, email, apiKeyDetails)
+	if err != nil {
+		rh.c.Log.Error().Err(err).Str("email", email).Msg("error storing API key")
+		response.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	apiKeyResponse := struct {
+		userdb.APIKeyDetails
+		APIKey string `json:"apiKey"`
+	}{
+		APIKey:        fmt.Sprintf("%s%s", constants.APIKeysPrefix, apiKey),
+		APIKeyDetails: *apiKeyDetails,
+	}
+
+	WriteJSON(response, http.StatusCreated, apiKeyResponse)
+}
+
+// RevokeAPIKey godoc
+// @Summary Revokes the current user's API key
+// @Description Revokes the current user's API key based on given key ID
+// @Accept  json
+// @Produce json
+// @Success 200 {string} string "ok"
+// @Failure 500 {string} string "internal server error"
+// @Failure 401 {string} string "unauthorized"
+// @Failure 400 {string} string "bad request"
+// @Router /api/security/apiKey [delete].
+func (rh *RouteHandler) RevokeAPIKey(response http.ResponseWriter, request *http.Request) {
+	ids, ok := request.URL.Query()["id"]
+	if !ok || len(ids) != 1 {
+		response.WriteHeader(http.StatusBadRequest)
+
+		return
+	}
+	keyID := ids[0]
+
+	session, err := rh.c.CookieStore.Get(request, "session")
+	if err != nil {
+		rh.c.Log.Err(err).Msg("can not decode existing session")
+
+		http.Error(response, "invalid session encoding", http.StatusInternalServerError)
+
+		return
+	}
+
+	if session.IsNew {
+		response.WriteHeader(http.StatusUnauthorized)
+
+		return
+	}
+
+	authenticated := session.Values["authStatus"]
+	if authenticated != true {
+		response.WriteHeader(http.StatusUnauthorized)
+
+		return
+	}
+
+	email, ok := session.Values["user"].(string)
+	if !ok {
+		rh.c.Log.Err(err).Msg("can not get `user` session value")
+		response.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	err = rh.c.UserSecDB.DeleteUserAPIKey(keyID, email)
+	if err != nil {
+		rh.c.Log.Error().Err(err).Str("keyID", keyID).Msg("error deleting API key")
+		response.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	response.WriteHeader(http.StatusOK)
+}
+
 func (rh *RouteHandler) GetMetrics(w http.ResponseWriter, r *http.Request) {
 	m := rh.c.Metrics.ReceiveMetrics()
 	WriteJSON(w, http.StatusOK, m)
@@ -1778,4 +2089,19 @@ func getBlobUploadLocation(url *url.URL, name string, digest godigest.Digest) st
 	}
 
 	return url.String()
+}
+
+func removeHeadersDuplicates(headers []string) []string {
+	headersMap := make(map[string]bool)
+	list := []string{}
+
+	for _, headerVal := range headers {
+		if _, exists := headersMap[headerVal]; !exists {
+			headersMap[headerVal] = true
+
+			list = append(list, headerVal)
+		}
+	}
+
+	return list
 }
