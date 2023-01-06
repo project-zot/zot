@@ -13,7 +13,9 @@
 
 # Tooling used for blackbox testing
 hack/
-
+.stacker/
+oci/
+roots/
 bin/
 bazel-*
 coverage*.txt
