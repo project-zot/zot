@@ -45,6 +45,7 @@ var (
 	errorText      = "new s3 error"
 	errS3          = errors.New(errorText)
 	zotStorageTest = "zot-storage-test"
+	s3Region       = "us-east-2"
 )
 
 func cleanupStorage(store driver.StorageDriver, name string) {
@@ -94,7 +95,7 @@ func createObjectsStore(rootDir string, cacheDir string, dedupe bool) (
 	storageDriverParams := map[string]interface{}{
 		"rootDir":        rootDir,
 		"name":           "s3",
-		"region":         "us-east-2",
+		"region":         s3Region,
 		"bucket":         bucket,
 		"regionendpoint": endpoint,
 		"accesskey":      "minioadmin",
@@ -145,7 +146,7 @@ func createObjectsStoreDynamo(rootDir string, cacheDir string, dedupe bool, tabl
 	storageDriverParams := map[string]interface{}{
 		"rootDir":        rootDir,
 		"name":           "s3",
-		"region":         "us-east-2",
+		"region":         s3Region,
 		"bucket":         bucket,
 		"regionendpoint": endpoint,
 		"accesskey":      "minioadmin",
@@ -176,7 +177,7 @@ func createObjectsStoreDynamo(rootDir string, cacheDir string, dedupe bool, tabl
 
 	cacheDriver, _ = storage.Create("dynamodb", cache.DynamoDBDriverParameters{
 		Endpoint:  os.Getenv("DYNAMODBMOCK_ENDPOINT"),
-		Region:    os.Getenv("us-east-2"),
+		Region:    s3Region,
 		TableName: tableName,
 	}, log)
 
@@ -688,7 +689,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 						StorageDriver: map[string]interface{}{
 							"rootDir":        "/a",
 							"name":           "s3",
-							"region":         "us-east-2",
+							"region":         s3Region,
 							"bucket":         bucket,
 							"regionendpoint": endpoint,
 							"accesskey":      "minioadmin",
