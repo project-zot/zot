@@ -52,7 +52,7 @@ require (
 
 require (
 	github.com/aquasecurity/trivy v0.0.0-00010101000000-000000000000
-	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.17.9
+	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.18.0
 	github.com/containers/image/v5 v5.23.0
 	github.com/gobwas/glob v0.2.3
 	github.com/notaryproject/notation-go v0.12.0-beta.1
@@ -122,7 +122,7 @@ require (
 	github.com/aquasecurity/go-version v0.0.0-20210121072130-637058cfe492 // indirect
 	github.com/aquasecurity/tfsec v0.58.11 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20210307081110-f21760c49a8d // indirect
-	github.com/aws/aws-sdk-go v1.44.114 // indirect
+	github.com/aws/aws-sdk-go v1.44.114
 	github.com/aws/aws-sdk-go-v2 v1.17.3
 	github.com/aws/aws-sdk-go-v2/config v1.18.7
 	github.com/aws/aws-sdk-go-v2/credentials v1.13.7 // indirect
