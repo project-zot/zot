@@ -176,7 +176,7 @@ func createObjectsStoreDynamo(rootDir string, cacheDir string, dedupe bool, tabl
 
 	cacheDriver, _ = storage.Create("dynamodb", cache.DynamoDBDriverParameters{
 		Endpoint:  os.Getenv("DYNAMODBMOCK_ENDPOINT"),
-		Region:    os.Getenv("us-east-2"),
+		Region:    "us-east-2",
 		TableName: tableName,
 	}, log)
 

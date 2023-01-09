@@ -32,7 +32,7 @@ type Blob struct {
 // Use ONLY for tests.
 func (d *DynamoDBDriver) NewTable(tableName string) error {
 	//nolint:gomnd
-	_, err := d.client.CreateTable(context.TODO(), &dynamodb.CreateTableInput{
+	t, err := d.client.CreateTable(context.TODO(), &dynamodb.CreateTableInput{
 		TableName: &tableName,
 		AttributeDefinitions: []types.AttributeDefinition{
 			{
@@ -54,6 +54,10 @@ func (d *DynamoDBDriver) NewTable(tableName string) error {
 	if err != nil {
 		return err
 	}
+
+	d.log.Info().Msgf("createad table: %s", tableName)
+	d.log.Info().Msgf("table result metadata: %#v", t.ResultMetadata)
+	d.log.Info().Msgf("table description: %#v", t.TableDescription)
 
 	d.tableName = tableName
 
