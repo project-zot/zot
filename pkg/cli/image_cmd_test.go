@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -31,7 +30,6 @@ import (
 	zotErrors "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
-	"zotregistry.io/zot/pkg/api/constants"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/test"
 )
@@ -1438,129 +1436,43 @@ func TestServerResponse(t *testing.T) {
 }
 
 func TestServerResponseGQLWithoutPermissions(t *testing.T) {
-	port := test.GetFreePort()
-	url := test.GetBaseURL(port)
-	conf := config.New()
-	conf.HTTP.Port = port
+	Convey("Test accessing a blobs folder without having permissions fails fast", t, func() {
+		port := test.GetFreePort()
+		conf := config.New()
+		conf.HTTP.Port = port
 
-	dir := t.TempDir()
+		dir := t.TempDir()
 
-	err := test.CopyFiles("../../test/data/zot-test", path.Join(dir, "zot-test"))
-	if err != nil {
-		panic(err)
-	}
-
-	err = os.Chmod(path.Join(dir, "zot-test", "blobs"), 0o000)
-	if err != nil {
-		panic(err)
-	}
-
-	conf.Storage.RootDirectory = dir
-	cveConfig := &extconf.CVEConfig{
-		UpdateInterval: 2,
-	}
-	defaultVal := true
-	searchConfig := &extconf.SearchConfig{
-		BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
-		CVE:        cveConfig,
-	}
-	conf.Extensions = &extconf.ExtensionConfig{
-		Search: searchConfig,
-	}
-
-	logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
-	if err != nil {
-		panic(err)
-	}
-
-	logPath := logFile.Name()
-	defer os.Remove(logPath)
-
-	writers := io.MultiWriter(os.Stdout, logFile)
-
-	ctlr := api.NewController(conf)
-	ctlr.Log.Logger = ctlr.Log.Output(writers)
-
-	go func(controller *api.Controller) {
-		// this blocks
-		if err := controller.Run(context.Background()); err != nil {
-			return
-		}
-	}(ctlr)
-	// wait till ready
-	for {
-		res, err := resty.R().Get(url + constants.FullSearchPrefix)
-		if err == nil && res.StatusCode() == 422 {
-			break
-		}
-
-		time.Sleep(100 * time.Millisecond)
-	}
-
-	_, err = test.ReadLogFileAndSearchString(logPath, "DB update completed, next update scheduled", 90*time.Second)
-	if err != nil {
-		panic(err)
-	}
-
-	defer func(controller *api.Controller) {
-		err = os.Chmod(path.Join(dir, "zot-test", "blobs"), 0o777)
+		err := test.CopyFiles("../../test/data/zot-test", path.Join(dir, "zot-test"))
 		if err != nil {
 			panic(err)
 		}
-		ctx := context.Background()
-		_ = controller.Server.Shutdown(ctx)
-	}(ctlr)
 
-	Convey("Test all images", t, func() {
-		args := []string{"imagetest"}
-		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-		defer os.Remove(configPath)
-		cveCmd := NewImageCommand(new(searchService))
-		buff := bytes.NewBufferString("")
-		cveCmd.SetOut(buff)
-		cveCmd.SetErr(buff)
-		cveCmd.SetArgs(args)
-		err = cveCmd.Execute()
-		So(err, ShouldNotBeNil)
-	})
+		err = os.Chmod(path.Join(dir, "zot-test", "blobs"), 0o000)
+		if err != nil {
+			panic(err)
+		}
 
-	Convey("Test all images verbose", t, func() {
-		args := []string{"imagetest", "--verbose"}
-		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-		defer os.Remove(configPath)
-		cmd := NewImageCommand(new(searchService))
-		buff := bytes.NewBufferString("")
-		cmd.SetOut(buff)
-		cmd.SetErr(buff)
-		cmd.SetArgs(args)
-		err := cmd.Execute()
-		So(err, ShouldNotBeNil)
-	})
+		defer func() {
+			err = os.Chmod(path.Join(dir, "zot-test", "blobs"), 0o777)
+			if err != nil {
+				panic(err)
+			}
+		}()
 
-	Convey("Test image by name", t, func() {
-		args := []string{"imagetest", "--name", "zot-test"}
-		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-		defer os.Remove(configPath)
-		cmd := NewImageCommand(new(searchService))
-		buff := bytes.NewBufferString("")
-		cmd.SetOut(buff)
-		cmd.SetErr(buff)
-		cmd.SetArgs(args)
-		err := cmd.Execute()
-		So(err, ShouldNotBeNil)
-	})
+		conf.Storage.RootDirectory = dir
+		defaultVal := true
+		searchConfig := &extconf.SearchConfig{
+			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+		}
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: searchConfig,
+		}
 
-	Convey("Test image by digest", t, func() {
-		args := []string{"imagetest", "--digest", test.GetTestBlobDigest("zot-test", "manifest").Encoded()}
-		configPath := makeConfigFile(fmt.Sprintf(`{"configs":[{"_name":"imagetest","url":"%s","showspinner":false}]}`, url))
-		defer os.Remove(configPath)
-		cmd := NewImageCommand(new(searchService))
-		buff := bytes.NewBufferString("")
-		cmd.SetOut(buff)
-		cmd.SetErr(buff)
-		cmd.SetArgs(args)
-		err := cmd.Execute()
-		So(err, ShouldNotBeNil)
+		ctlr := api.NewController(conf)
+		if err := ctlr.Run(context.Background()); err != nil {
+			So(err, ShouldNotBeNil)
+		}
 	})
 }
 

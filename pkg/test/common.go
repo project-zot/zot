@@ -1,6 +1,7 @@
 package test
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/json"
@@ -12,16 +13,22 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path"
 	"strings"
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/specs-go"
-	imagespec "github.com/opencontainers/image-spec/specs-go/v1"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opencontainers/umoci"
 	"github.com/phayes/freeport"
+	"github.com/sigstore/cosign/cmd/cosign/cli/generate"
+	"github.com/sigstore/cosign/cmd/cosign/cli/options"
+	"github.com/sigstore/cosign/cmd/cosign/cli/sign"
 	"gopkg.in/resty.v1"
+
+	"zotregistry.io/zot/pkg/storage"
 )
 
 const (
@@ -59,8 +66,8 @@ var (
 )
 
 type Image struct {
-	Manifest imagespec.Manifest
-	Config   imagespec.Image
+	Manifest ispec.Manifest
+	Config   ispec.Image
 	Layers   [][]byte
 	Tag      string
 }
@@ -219,6 +226,50 @@ func NewControllerManager(controller Controller) ControllerManager {
 	return cm
 }
 
+func WriteImageToFileSystem(image Image, repoName string, storeController storage.StoreController) error {
+	store := storeController.GetImageStore(repoName)
+
+	err := store.InitRepo(repoName)
+	if err != nil {
+		return err
+	}
+
+	for _, layerBlob := range image.Layers {
+		layerReader := bytes.NewReader(layerBlob)
+		layerDigest := godigest.FromBytes(layerBlob)
+
+		_, _, err = store.FullBlobUpload(repoName, layerReader, layerDigest)
+		if err != nil {
+			return err
+		}
+	}
+
+	configBlob, err := json.Marshal(image.Config)
+	if err != nil {
+		return err
+	}
+
+	configReader := bytes.NewReader(configBlob)
+	configDigest := godigest.FromBytes(configBlob)
+
+	_, _, err = store.FullBlobUpload(repoName, configReader, configDigest)
+	if err != nil {
+		return err
+	}
+
+	manifestBlob, err := json.Marshal(image.Manifest)
+	if err != nil {
+		return err
+	}
+
+	_, err = store.PutImageManifest(repoName, image.Tag, ispec.MediaTypeImageManifest, manifestBlob)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func WaitTillServerReady(url string) {
 	for {
 		_, err := resty.R().Get(url)
@@ -241,7 +292,7 @@ func WaitTillTrivyDBDownloadStarted(rootDir string) {
 }
 
 // Adapted from https://gist.github.com/dopey/c69559607800d2f2f90b1b1ed4e550fb
-func randomString(n int) string {
+func RandomString(n int) string {
 	const letters = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-"
 
 	ret := make([]byte, n)
@@ -261,14 +312,14 @@ func randomString(n int) string {
 func GetRandomImageConfig() ([]byte, godigest.Digest) {
 	const maxLen = 16
 
-	randomAuthor := randomString(maxLen)
+	randomAuthor := RandomString(maxLen)
 
-	config := imagespec.Image{
-		Platform: imagespec.Platform{
+	config := ispec.Image{
+		Platform: ispec.Platform{
 			Architecture: "amd64",
 			OS:           "linux",
 		},
-		RootFS: imagespec.RootFS{
+		RootFS: ispec.RootFS{
 			Type:    "layers",
 			DiffIDs: []godigest.Digest{},
 		},
@@ -286,7 +337,7 @@ func GetRandomImageConfig() ([]byte, godigest.Digest) {
 }
 
 func GetEmptyImageConfig() ([]byte, godigest.Digest) {
-	config := imagespec.Image{}
+	config := ispec.Image{}
 
 	configBlobContent, err := json.MarshalIndent(&config, "", "\t")
 	if err != nil {
@@ -299,12 +350,12 @@ func GetEmptyImageConfig() ([]byte, godigest.Digest) {
 }
 
 func GetImageConfig() ([]byte, godigest.Digest) {
-	config := imagespec.Image{
-		Platform: imagespec.Platform{
+	config := ispec.Image{
+		Platform: ispec.Platform{
 			Architecture: "amd64",
 			OS:           "linux",
 		},
-		RootFS: imagespec.RootFS{
+		RootFS: ispec.RootFS{
 			Type:    "layers",
 			DiffIDs: []godigest.Digest{},
 		},
@@ -355,7 +406,7 @@ func GetOciLayoutDigests(imagePath string) (godigest.Digest, godigest.Digest, go
 			panic(err)
 		}
 
-		var manifest imagespec.Manifest
+		var manifest ispec.Manifest
 
 		err = json.Unmarshal(manifestBuf, &manifest)
 		if err != nil {
@@ -372,13 +423,13 @@ func GetOciLayoutDigests(imagePath string) (godigest.Digest, godigest.Digest, go
 	return manifestDigest, configDigest, layerDigest
 }
 
-func GetImageComponents(layerSize int) (imagespec.Image, [][]byte, imagespec.Manifest, error) {
-	config := imagespec.Image{
-		Platform: imagespec.Platform{
+func GetImageComponents(layerSize int) (ispec.Image, [][]byte, ispec.Manifest, error) {
+	config := ispec.Image{
+		Platform: ispec.Platform{
 			Architecture: "amd64",
 			OS:           "linux",
 		},
-		RootFS: imagespec.RootFS{
+		RootFS: ispec.RootFS{
 			Type:    "layers",
 			DiffIDs: []godigest.Digest{},
 		},
@@ -387,7 +438,7 @@ func GetImageComponents(layerSize int) (imagespec.Image, [][]byte, imagespec.Man
 
 	configBlob, err := json.Marshal(config)
 	if err = Error(err); err != nil {
-		return imagespec.Image{}, [][]byte{}, imagespec.Manifest{}, err
+		return ispec.Image{}, [][]byte{}, ispec.Manifest{}, err
 	}
 
 	configDigest := godigest.FromBytes(configBlob)
@@ -398,16 +449,16 @@ func GetImageComponents(layerSize int) (imagespec.Image, [][]byte, imagespec.Man
 
 	schemaVersion := 2
 
-	manifest := imagespec.Manifest{
+	manifest := ispec.Manifest{
 		Versioned: specs.Versioned{
 			SchemaVersion: schemaVersion,
 		},
-		Config: imagespec.Descriptor{
+		Config: ispec.Descriptor{
 			MediaType: "application/vnd.oci.image.config.v1+json",
 			Digest:    configDigest,
 			Size:      int64(len(configBlob)),
 		},
-		Layers: []imagespec.Descriptor{
+		Layers: []ispec.Descriptor{
 			{
 				MediaType: "application/vnd.oci.image.layer.v1.tar",
 				Digest:    godigest.FromBytes(layers[0]),
@@ -417,6 +468,118 @@ func GetImageComponents(layerSize int) (imagespec.Image, [][]byte, imagespec.Man
 	}
 
 	return config, layers, manifest, nil
+}
+
+func GetRandomImageComponents(layerSize int) (ispec.Image, [][]byte, ispec.Manifest, error) {
+	config := ispec.Image{
+		Platform: ispec.Platform{
+			Architecture: "amd64",
+			OS:           "linux",
+		},
+		RootFS: ispec.RootFS{
+			Type:    "layers",
+			DiffIDs: []godigest.Digest{},
+		},
+		Author: "ZotUser",
+	}
+
+	configBlob, err := json.Marshal(config)
+	if err = Error(err); err != nil {
+		return ispec.Image{}, [][]byte{}, ispec.Manifest{}, err
+	}
+
+	configDigest := godigest.FromBytes(configBlob)
+
+	layer := make([]byte, layerSize)
+
+	_, err = rand.Read(layer)
+	if err != nil {
+		return ispec.Image{}, [][]byte{}, ispec.Manifest{}, err
+	}
+
+	layers := [][]byte{
+		layer,
+	}
+
+	schemaVersion := 2
+
+	manifest := ispec.Manifest{
+		Versioned: specs.Versioned{
+			SchemaVersion: schemaVersion,
+		},
+		Config: ispec.Descriptor{
+			MediaType: "application/vnd.oci.image.config.v1+json",
+			Digest:    configDigest,
+			Size:      int64(len(configBlob)),
+		},
+		Layers: []ispec.Descriptor{
+			{
+				MediaType: "application/vnd.oci.image.layer.v1.tar",
+				Digest:    godigest.FromBytes(layers[0]),
+				Size:      int64(len(layers[0])),
+			},
+		},
+	}
+
+	return config, layers, manifest, nil
+}
+
+func GetImageWithConfig(conf ispec.Image) (ispec.Image, [][]byte, ispec.Manifest, error) {
+	configBlob, err := json.Marshal(conf)
+	if err = Error(err); err != nil {
+		return ispec.Image{}, [][]byte{}, ispec.Manifest{}, err
+	}
+
+	configDigest := godigest.FromBytes(configBlob)
+
+	layerSize := 100
+	layer := make([]byte, layerSize)
+
+	_, err = rand.Read(layer)
+	if err != nil {
+		return ispec.Image{}, [][]byte{}, ispec.Manifest{}, err
+	}
+
+	layers := [][]byte{
+		layer,
+	}
+
+	schemaVersion := 2
+
+	manifest := ispec.Manifest{
+		Versioned: specs.Versioned{
+			SchemaVersion: schemaVersion,
+		},
+		Config: ispec.Descriptor{
+			MediaType: "application/vnd.oci.image.config.v1+json",
+			Digest:    configDigest,
+			Size:      int64(len(configBlob)),
+		},
+		Layers: []ispec.Descriptor{
+			{
+				MediaType: "application/vnd.oci.image.layer.v1.tar",
+				Digest:    godigest.FromBytes(layers[0]),
+				Size:      int64(len(layers[0])),
+			},
+		},
+	}
+
+	return conf, layers, manifest, nil
+}
+
+func GetCosignSignatureTagForManifest(manifest ispec.Manifest) (string, error) {
+	manifestBlob, err := json.Marshal(manifest)
+	if err != nil {
+		return "", err
+	}
+
+	manifestDigest := godigest.FromBytes(manifestBlob)
+
+	return GetCosignSignatureTagForDigest(manifestDigest), nil
+}
+
+func GetCosignSignatureTagForDigest(manifestDigest godigest.Digest) string {
+	return manifestDigest.Algorithm().String() + "-" + manifestDigest.Encoded() + ".sig"
 }
 
 func UploadImage(img Image, baseURL, repo string) error {
@@ -463,7 +626,7 @@ func UploadImage(img Image, baseURL, repo string) error {
 		return err
 	}
 
-	if ErrStatusCode(resp.StatusCode()) != http.StatusAccepted && ErrStatusCode(resp.StatusCode()) == -1 {
+	if ErrStatusCode(resp.StatusCode()) != http.StatusAccepted || ErrStatusCode(resp.StatusCode()) == -1 {
 		return ErrPostBlob
 	}
 
@@ -480,7 +643,7 @@ func UploadImage(img Image, baseURL, repo string) error {
 		return err
 	}
 
-	if ErrStatusCode(resp.StatusCode()) != http.StatusCreated && ErrStatusCode(resp.StatusCode()) == -1 {
+	if ErrStatusCode(resp.StatusCode()) != http.StatusCreated || ErrStatusCode(resp.StatusCode()) == -1 {
 		return ErrPostBlob
 	}
 
@@ -498,7 +661,7 @@ func UploadImage(img Image, baseURL, repo string) error {
 	return err
 }
 
-func UploadArtifact(baseURL, repo string, artifactManifest *imagespec.Artifact) error {
+func UploadArtifact(baseURL, repo string, artifactManifest *ispec.Artifact) error {
 	// put manifest
 	artifactManifestBlob, err := json.Marshal(artifactManifest)
 	if err != nil {
@@ -508,7 +671,7 @@ func UploadArtifact(baseURL, repo string, artifactManifest *imagespec.Artifact) 
 	artifactManifestDigest := godigest.FromBytes(artifactManifestBlob)
 
 	_, err = resty.R().
-		SetHeader("Content-type", imagespec.MediaTypeArtifactManifest).
+		SetHeader("Content-type", ispec.MediaTypeArtifactManifest).
 		SetBody(artifactManifestBlob).
 		Put(baseURL + "/v2/" + repo + "/manifests/" + artifactManifestDigest.String())
 
@@ -566,4 +729,165 @@ func ReadLogFileAndSearchString(logPath string, stringToMatch string, timeout ti
 			}
 		}
 	}
+}
+
+func UploadImageWithBasicAuth(img Image, baseURL, repo, user, password string) error {
+	for _, blob := range img.Layers {
+		resp, err := resty.R().
+			SetBasicAuth(user, password).
+			Post(baseURL + "/v2/" + repo + "/blobs/uploads/")
+		if err != nil {
+			return err
+		}
+
+		if resp.StatusCode() != http.StatusAccepted {
+			return ErrPostBlob
+		}
+
+		loc := resp.Header().Get("Location")
+
+		digest := godigest.FromBytes(blob).String()
+
+		resp, err = resty.R().
+			SetBasicAuth(user, password).
+			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", digest).
+			SetBody(blob).
+			Put(baseURL + loc)
+
+		if err != nil {
+			return err
+		}
+
+		if resp.StatusCode() != http.StatusCreated {
+			return ErrPutBlob
+		}
+	}
+	// upload config
+	cblob, err := json.Marshal(img.Config)
+	if err = Error(err); err != nil {
+		return err
+	}
+
+	cdigest := godigest.FromBytes(cblob)
+
+	resp, err := resty.R().
+		SetBasicAuth(user, password).
+		Post(baseURL + "/v2/" + repo + "/blobs/uploads/")
+	if err = Error(err); err != nil {
+		return err
+	}
+
+	if ErrStatusCode(resp.StatusCode()) != http.StatusAccepted || ErrStatusCode(resp.StatusCode()) == -1 {
+		return ErrPostBlob
+	}
+
+	loc := Location(baseURL, resp)
+
+	// uploading blob should get 201
+	resp, err = resty.R().
+		SetBasicAuth(user, password).
+		SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
+		SetHeader("Content-Type", "application/octet-stream").
+		SetQueryParam("digest", cdigest.String()).
+		SetBody(cblob).
+		Put(loc)
+	if err = Error(err); err != nil {
+		return err
+	}
+
+	if ErrStatusCode(resp.StatusCode()) != http.StatusCreated || ErrStatusCode(resp.StatusCode()) == -1 {
+		return ErrPostBlob
+	}
+
+	// put manifest
+	manifestBlob, err := json.Marshal(img.Manifest)
+	if err = Error(err); err != nil {
+		return err
+	}
+
+	_, err = resty.R().
+		SetBasicAuth(user, password).
+		SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
+		SetBody(manifestBlob).
+		Put(baseURL + "/v2/" + repo + "/manifests/" + img.Tag)
+
+	return err
+}
+
+func SignImageUsingCosign(repoTag, port string) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+
+	defer func() { _ = os.Chdir(cwd) }()
+
+	tdir, err := os.MkdirTemp("", "cosign")
+	if err != nil {
+		return err
+	}
+
+	defer os.RemoveAll(tdir)
+
+	_ = os.Chdir(tdir)
+
+	// generate a keypair
+	os.Setenv("COSIGN_PASSWORD", "")
+
+	err = generate.GenerateKeyPairCmd(context.TODO(), "", nil)
+	if err != nil {
+		return err
+	}
+
+	imageURL := fmt.Sprintf("localhost:%s/%s", port, repoTag)
+
+	// sign the image
+	return sign.SignCmd(&options.RootOptions{Verbose: true, Timeout: 1 * time.Minute},
+		options.KeyOpts{KeyRef: path.Join(tdir, "cosign.key"), PassFunc: generate.GetPass},
+		options.RegistryOptions{AllowInsecure: true},
+		map[string]interface{}{"tag": "1.0"},
+		[]string{imageURL},
+		"", "", true, "", "", "", false, false, "", true)
+}
+
+func SignImageUsingNotary(repoTag, port string) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+
+	defer func() { _ = os.Chdir(cwd) }()
+
+	tdir, err := os.MkdirTemp("", "notation")
+	if err != nil {
+		return err
+	}
+
+	defer os.RemoveAll(tdir)
+
+	_ = os.Chdir(tdir)
+
+	_, err = exec.LookPath("notation")
+	if err != nil {
+		return err
+	}
+
+	os.Setenv("XDG_CONFIG_HOME", tdir)
+
+	// generate a keypair
+	cmd := exec.Command("notation", "cert", "generate-test", "--trust", "notation-sign-test")
+
+	err = cmd.Run()
+	if err != nil {
+		return err
+	}
+
+	// sign the image
+	image := fmt.Sprintf("localhost:%s/%s", port, repoTag)
+
+	cmd = exec.Command("notation", "sign", "--key", "notation-sign-test", "--plain-http", image)
+
+	return cmd.Run()
 }

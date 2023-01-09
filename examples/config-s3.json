@@ -15,7 +15,7 @@
             "name": "dynamodb",
             "endpoint": "http://localhost:4566",
             "region": "us-east-2",
-            "tableName": "MainTable"
+            "cacheTablename": "MainTable"
         },
         "subPaths": {
             "/a": {
@@ -59,7 +59,7 @@
                     "name": "dynamodb",
                     "endpoint": "http://localhost:4566",
                     "region": "us-east-2",
-                    "tableName": "cTable"
+                    "cacheTablename": "cTable"
                 }
             }
         }

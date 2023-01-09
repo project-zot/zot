@@ -24,6 +24,10 @@ import (
 	ext "zotregistry.io/zot/pkg/extensions"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta/repodb"
+	bolt "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
+	dynamoParams "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper/params"
+	"zotregistry.io/zot/pkg/meta/repodb/repodbfactory"
 	"zotregistry.io/zot/pkg/scheduler"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/cache"
@@ -40,6 +44,7 @@ const (
 type Controller struct {
 	Config          *config.Config
 	Router          *mux.Router
+	RepoDB          repodb.RepoDB
 	StoreController storage.StoreController
 	Log             log.Logger
 	Audit           *log.Logger
@@ -162,6 +167,12 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 		return err
 	}
 
+	if err := c.InitRepoDB(reloadCtx); err != nil {
+		return err
+	}
+
+	c.StartBackgroundTasks(reloadCtx)
+
 	monitoring.SetServerInfo(c.Metrics, c.Config.Commit, c.Config.BinaryType, c.Config.GoVersion,
 		c.Config.DistSpecVersion)
 
@@ -248,7 +259,7 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 	return server.Serve(listener)
 }
 
-func (c *Controller) InitImageStore(reloadCtx context.Context) error {
+func (c *Controller) InitImageStore(ctx context.Context) error {
 	c.StoreController = storage.StoreController{}
 
 	linter := ext.GetLinter(c.Config, c.Log)
@@ -326,8 +337,6 @@ func (c *Controller) InitImageStore(reloadCtx context.Context) error {
 			c.StoreController.SubStore = subImageStore
 		}
 	}
-
-	c.StartBackgroundTasks(reloadCtx)
 
 	return nil
 }
@@ -464,7 +473,7 @@ func CreateCacheDatabaseDriver(storageConfig config.StorageConfig, log log.Logge
 			dynamoParams := cache.DynamoDBDriverParameters{}
 			dynamoParams.Endpoint, _ = storageConfig.CacheDriver["endpoint"].(string)
 			dynamoParams.Region, _ = storageConfig.CacheDriver["region"].(string)
-			dynamoParams.TableName, _ = storageConfig.CacheDriver["tablename"].(string)
+			dynamoParams.TableName, _ = storageConfig.CacheDriver["cachetablename"].(string)
 
 			driver, _ := storage.Create("dynamodb", dynamoParams, log)
 
@@ -475,6 +484,99 @@ func CreateCacheDatabaseDriver(storageConfig config.StorageConfig, log log.Logge
 	}
 
 	return nil
+}
+
+func (c *Controller) InitRepoDB(reloadCtx context.Context) error {
+	if c.Config.Extensions != nil && c.Config.Extensions.Search != nil && *c.Config.Extensions.Search.Enable {
+		driver, err := CreateRepoDBDriver(c.Config.Storage.StorageConfig, c.Log) //nolint:contextcheck
+		if err != nil {
+			return err
+		}
+
+		err = driver.PatchDB()
+		if err != nil {
+			return err
+		}
+
+		err = repodb.SyncRepoDB(driver, c.StoreController, c.Log)
+		if err != nil {
+			return err
+		}
+
+		c.RepoDB = driver
+	}
+
+	return nil
+}
+
+func CreateRepoDBDriver(storageConfig config.StorageConfig, log log.Logger) (repodb.RepoDB, error) {
+	if storageConfig.RemoteCache {
+		dynamoParams := getDynamoParams(storageConfig.CacheDriver, log)
+
+		return repodbfactory.Create("dynamodb", dynamoParams) //nolint:contextcheck
+	}
+
+	params := bolt.DBParameters{}
+	params.RootDir = storageConfig.RootDirectory
+
+	return repodbfactory.Create("boltdb", params) //nolint:contextcheck
+}
+
+func getDynamoParams(cacheDriverConfig map[string]interface{}, log log.Logger) dynamoParams.DBDriverParameters {
+	allParametersOk := true
+
+	endpoint, ok := toStringIfOk(cacheDriverConfig, "endpoint", log)
+	allParametersOk = allParametersOk && ok
+
+	region, ok := toStringIfOk(cacheDriverConfig, "region", log)
+	allParametersOk = allParametersOk && ok
+
+	repoMetaTablename, ok := toStringIfOk(cacheDriverConfig, "repometatablename", log)
+	allParametersOk = allParametersOk && ok
+
+	manifestDataTablename, ok := toStringIfOk(cacheDriverConfig, "manifestdatatablename", log)
+	allParametersOk = allParametersOk && ok
+
+	versionTablename, ok := toStringIfOk(cacheDriverConfig, "versiontablename", log)
+	allParametersOk = allParametersOk && ok
+
+	if !allParametersOk {
+		panic("dynamo parameters are not specified correctly, can't proceede")
+	}
+
+	return dynamoParams.DBDriverParameters{
+		Endpoint:              endpoint,
+		Region:                region,
+		RepoMetaTablename:     repoMetaTablename,
+		ManifestDataTablename: manifestDataTablename,
+		VersionTablename:      versionTablename,
+	}
+}
+
+func toStringIfOk(cacheDriverConfig map[string]interface{}, param string, log log.Logger) (string, bool) {
+	val, ok := cacheDriverConfig[param]
+
+	if !ok {
+		log.Error().Msgf("parsing CacheDriver config failed, field '%s' is not present", param)
+
+		return "", false
+	}
+
+	str, ok := val.(string)
+
+	if !ok {
+		log.Error().Msgf("parsing CacheDriver config failed, parameter '%s' isn't a string", param)
+
+		return "", false
+	}
+
+	if str == "" {
+		log.Error().Msgf("parsing CacheDriver config failed, field '%s' is is empty", param)
+
+		return "", false
+	}
+
+	return str, ok
 }
 
 func (c *Controller) LoadNewConfig(reloadCtx context.Context, config *config.Config) {
@@ -514,7 +616,7 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 	// Enable extensions if extension config is provided for DefaultStore
 	if c.Config != nil && c.Config.Extensions != nil {
 		ext.EnableMetricsExtension(c.Config, c.Log, c.Config.Storage.RootDirectory)
-		ext.EnableSearchExtension(c.Config, c.Log, c.StoreController)
+		ext.EnableSearchExtension(c.Config, c.StoreController, c.RepoDB, c.Log)
 	}
 
 	if c.Config.Storage.SubPaths != nil {

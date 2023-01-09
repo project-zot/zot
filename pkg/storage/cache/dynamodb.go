@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -51,7 +52,7 @@ func (d *DynamoDBDriver) NewTable(tableName string) error {
 			WriteCapacityUnits: aws.Int64(5),
 		},
 	})
-	if err != nil {
+	if err != nil && !strings.Contains(err.Error(), "Table already exists") {
 		return err
 	}
 
@@ -87,8 +88,15 @@ func NewDynamoDBCache(parameters interface{}, log zlog.Logger) Cache {
 		return nil
 	}
 
+	driver := &DynamoDBDriver{client: dynamodb.NewFromConfig(cfg), tableName: properParameters.TableName, log: log}
+
+	err = driver.NewTable(driver.tableName)
+	if err != nil {
+		log.Error().Err(err).Msgf("unable to create table for cache '%s'", driver.tableName)
+	}
+
 	// Using the Config value, create the DynamoDB client
-	return &DynamoDBDriver{client: dynamodb.NewFromConfig(cfg), tableName: properParameters.TableName, log: log}
+	return driver
 }
 
 func (d *DynamoDBDriver) Name() string {

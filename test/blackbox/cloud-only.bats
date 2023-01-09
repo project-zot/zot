@@ -34,7 +34,10 @@ function setup() {
             "name": "dynamodb",
             "endpoint": "http://localhost:4566",
             "region": "us-east-2",
-            "tableName": "BlobTable"
+            "cacheTablename": "BlobTable",
+            "repoMetaTablename": "RepoMetadataTable",
+            "manifestDataTablename": "ManifestDataTable",
+            "versionTablename": "Version"
         }
 	},
 	"http": {
@@ -63,6 +66,8 @@ function setup() {
 EOF
     awslocal s3 --region "us-east-2" mb s3://zot-storage
     awslocal dynamodb --region "us-east-2" create-table --table-name "BlobTable" --attribute-definitions AttributeName=Digest,AttributeType=S --key-schema AttributeName=Digest,KeyType=HASH --provisioned-throughput ReadCapacityUnits=10,WriteCapacityUnits=5
+    awslocal dynamodb --region "us-east-2" create-table --table-name "RepoMetadataTable" --attribute-definitions AttributeName=RepoName,AttributeType=S --key-schema AttributeName=RepoName,KeyType=HASH --provisioned-throughput ReadCapacityUnits=10,WriteCapacityUnits=5
+    awslocal dynamodb --region "us-east-2" create-table --table-name "ManifestDataTable" --attribute-definitions AttributeName=Digest,AttributeType=S --key-schema AttributeName=Digest,KeyType=HASH --provisioned-throughput ReadCapacityUnits=10,WriteCapacityUnits=5
     zot_serve_strace ${zot_config_file}
     wait_zot_reachable "http://127.0.0.1:8080/v2/_catalog"
 }

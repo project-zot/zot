@@ -42,6 +42,7 @@ type RepoInfo {
 Search everything. Can search Images, Repos and Layers
 """
 type GlobalSearchResult {
+    Page: PageInfo
     Images: [ImageSummary]
     Repos: [RepoSummary]
     Layers: [LayerSummary]
@@ -66,7 +67,7 @@ type ImageSummary {
     DownloadCount: Int
     Layers: [LayerSummary]
     Description: String
-    Licenses: String
+    Licenses: String  #  The value of the annotation if present, 'unknown' otherwise).
     Labels: String
     Title: String
     Source: String
@@ -92,10 +93,11 @@ type RepoSummary {
     Platforms: [OsArch]
     Vendors: [String]
     Score: Int
-    NewestImage: ImageSummary
+    NewestImage: ImageSummary # Newest based on created timestamp
     DownloadCount: Int
     StarCount: Int
     IsBookmarked: Boolean
+    IsStarred: Boolean
 }
 
 # Currently the same as LayerInfo, we can refactor later
@@ -155,6 +157,35 @@ type OsArch {
     Arch: String
 }
 
+enum SortCriteria {
+    RELEVANCE
+    UPDATE_TIME
+    ALPHABETIC_ASC
+    ALPHABETIC_DSC
+    STARS
+    DOWNLOADS
+}
+
+type PageInfo {
+    ObjectCount: Int!
+    PreviousPage: Int
+    NextPage: Int
+    Pages: Int
+}
+
+# Pagination parameters
+input PageInput {
+    limit: Int
+    offset: Int
+    sortBy: SortCriteria
+}
+
+input Filter {
+    Os: [String]
+    Arch: [String]
+    HasToBeSigned: Boolean
+}
+
 type Query {
     """
     Returns a CVE list for the image specified in the arugment
@@ -179,7 +210,7 @@ type Query {
     """
     Returns a list of repos with the newest tag within
     """
-    RepoListWithNewestImage: [RepoSummary!]!  # Newest based on created timestamp
+    RepoListWithNewestImage(requestedPage: PageInput): [RepoSummary!]!  # Newest based on created timestamp
 
     """
     Returns all the images from the specified repo
@@ -194,7 +225,7 @@ type Query {
     """
     Searches within repos, images, and layers
     """
-    GlobalSearch(query: String!): GlobalSearchResult!
+    GlobalSearch(query: String!, filter: Filter, requestedPage: PageInput): GlobalSearchResult!
 
     """
     List of images which use the argument image

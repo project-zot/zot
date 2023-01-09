@@ -35,6 +35,7 @@ import (
 	ext "zotregistry.io/zot/pkg/extensions"
 	"zotregistry.io/zot/pkg/extensions/sync"
 	"zotregistry.io/zot/pkg/log"
+	repoDBUpdate "zotregistry.io/zot/pkg/meta/repodb/update"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test" //nolint:goimports
@@ -124,7 +125,7 @@ func (rh *RouteHandler) SetupRoutes() {
 		} else {
 			// extended build
 			ext.SetupMetricsRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
-			ext.SetupSearchRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
+			ext.SetupSearchRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.RepoDB, rh.c.Log)
 			gqlPlayground.SetupGQLPlaygroundRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
 		}
 	}
@@ -401,6 +402,18 @@ func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.
 		return
 	}
 
+	if rh.c.RepoDB != nil {
+		err := repoDBUpdate.OnGetManifest(name, reference, digest, content, rh.c.StoreController, rh.c.RepoDB, rh.c.Log)
+
+		if errors.Is(err, zerr.ErrOrphanSignature) {
+			rh.c.Log.Error().Err(err).Msgf("image is an orphan signature")
+		} else if err != nil {
+			response.WriteHeader(http.StatusInternalServerError)
+
+			return
+		}
+	}
+
 	response.Header().Set(constants.DistContentDigestKey, digest.String())
 	response.Header().Set("Content-Length", fmt.Sprintf("%d", len(content)))
 	response.Header().Set("Content-Type", mediaType)
@@ -601,6 +614,18 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 		return
 	}
 
+	if rh.c.RepoDB != nil {
+		err := repoDBUpdate.OnUpdateManifest(name, reference, mediaType, digest, body, rh.c.StoreController, rh.c.RepoDB,
+			rh.c.Log)
+		if errors.Is(err, zerr.ErrOrphanSignature) {
+			rh.c.Log.Error().Err(err).Msgf("pushed image is an orphan signature")
+		} else if err != nil {
+			response.WriteHeader(http.StatusInternalServerError)
+
+			return
+		}
+	}
+
 	response.Header().Set("Location", fmt.Sprintf("/v2/%s/manifests/%s", name, digest))
 	response.Header().Set(constants.DistContentDigestKey, digest.String())
 	response.WriteHeader(http.StatusCreated)
@@ -647,6 +672,25 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 		detectCollision = acCtx.CanDetectManifestCollision(name)
 	}
 
+	manifestBlob, manifestDigest, mediaType, err := imgStore.GetImageManifest(name, reference)
+	if err != nil {
+		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
+			WriteJSON(response, http.StatusBadRequest,
+				NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
+		} else if errors.Is(err, zerr.ErrManifestNotFound) {
+			WriteJSON(response, http.StatusNotFound,
+				NewErrorList(NewError(MANIFEST_UNKNOWN, map[string]string{"reference": reference})))
+		} else if errors.Is(err, zerr.ErrBadManifest) {
+			WriteJSON(response, http.StatusBadRequest,
+				NewErrorList(NewError(UNSUPPORTED, map[string]string{"reference": reference})))
+		} else {
+			rh.c.Log.Error().Err(err).Msg("unexpected error")
+			response.WriteHeader(http.StatusInternalServerError)
+		}
+
+		return
+	}
+
 	err = imgStore.DeleteImageManifest(name, reference, detectCollision)
 	if err != nil {
 		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
@@ -667,6 +711,18 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 		}
 
 		return
+	}
+
+	if rh.c.RepoDB != nil {
+		err := repoDBUpdate.OnDeleteManifest(name, reference, mediaType, manifestDigest, manifestBlob,
+			rh.c.StoreController, rh.c.RepoDB, rh.c.Log)
+		if errors.Is(err, zerr.ErrOrphanSignature) {
+			rh.c.Log.Error().Err(err).Msgf("pushed image is an orphan signature")
+		} else if err != nil {
+			response.WriteHeader(http.StatusInternalServerError)
+
+			return
+		}
 	}
 
 	response.WriteHeader(http.StatusAccepted)
