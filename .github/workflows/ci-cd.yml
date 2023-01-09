@@ -81,15 +81,14 @@ jobs:
             echo "Startup complete"        
 
             aws dynamodb --endpoint-url http://localhost:4566 --region "us-east-2" create-table --table-name BlobTable --attribute-definitions AttributeName=Digest,AttributeType=S --key-schema AttributeName=Digest,KeyType=HASH --provisioned-throughput ReadCapacityUnits=10,WriteCapacityUnits=5
-        env:
+            aws dynamodb --endpoint-url http://localhost:4566 --region "us-east-2" create-table --table-name RepoMetadataTable --attribute-definitions AttributeName=RepoName,AttributeType=S --key-schema AttributeName=RepoName,KeyType=HASH --provisioned-throughput ReadCapacityUnits=10,WriteCapacityUnits=5
+            aws dynamodb --endpoint-url http://localhost:4566 --region "us-east-2" create-table --table-name ManifestDataTable --attribute-definitions AttributeName=Digest,AttributeType=S --key-schema AttributeName=Digest,KeyType=HASH --provisioned-throughput ReadCapacityUnits=10,WriteCapacityUnits=5
+          env:
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
       - name: Run build and test
         timeout-minutes: 60
         run: |
-          aws dynamodb --endpoint-url http://localhost:4566 --region "us-east-2" create-table --table-name BlobTable --attribute-definitions AttributeName=Digest,AttributeType=S --key-schema AttributeName=Digest,KeyType=HASH --provisioned-throughput ReadCapacityUnits=10,WriteCapacityUnits=5
-          aws dynamodb --endpoint-url http://localhost:4566 --region "us-east-2" create-table --table-name RepoMetadataTable --attribute-definitions AttributeName=RepoName,AttributeType=S --key-schema AttributeName=RepoName,KeyType=HASH --provisioned-throughput ReadCapacityUnits=10,WriteCapacityUnits=5
-          aws dynamodb --endpoint-url http://localhost:4566 --region "us-east-2" create-table --table-name ManifestDataTable --attribute-definitions AttributeName=Digest,AttributeType=S --key-schema AttributeName=Digest,KeyType=HASH --provisioned-throughput ReadCapacityUnits=10,WriteCapacityUnits=5
           echo "Building for $OS:$ARCH"
           cd $GITHUB_WORKSPACE
           if [[ $OS == "linux" && $ARCH == "amd64" ]]; then
@@ -98,9 +97,6 @@ jobs:
           else
             make OS=$OS ARCH=$ARCH binary binary-minimal binary-debug cli bench exporter-minimal
           fi
-          aws dynamodb --endpoint-url "http://localhost:4566" --region "us-east-2" delete-table --table-name "BlobTable"
-          aws dynamodb --endpoint-url "http://localhost:4566" --region "us-east-2" delete-table --table-name "RepoMetadataTable"
-          aws dynamodb --endpoint-url "http://localhost:4566" --region "us-east-2" delete-table --table-name "ManifestDataTable"
         env:
           S3MOCK_ENDPOINT: localhost:4566
           DYNAMODBMOCK_ENDPOINT: http://localhost:4566
