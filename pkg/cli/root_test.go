@@ -1,7 +1,6 @@
 package cli_test
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,7 +9,6 @@ import (
 	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
-	"gopkg.in/resty.v1"
 
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
@@ -1240,21 +1238,8 @@ func TestScrub(t *testing.T) {
 			dir := t.TempDir()
 
 			controller.Config.Storage.RootDirectory = dir
-			go func(controller *api.Controller) {
-				// this blocks
-				if err := controller.Run(context.Background()); err != nil {
-					return
-				}
-			}(controller)
-			// wait till ready
-			for {
-				_, err := resty.R().Get(fmt.Sprintf("http://127.0.0.1:%s", port))
-				if err == nil {
-					break
-				}
-
-				time.Sleep(100 * time.Millisecond)
-			}
+			ctrlManager := NewControllerManager(controller)
+			ctrlManager.StartAndWait(port)
 
 			tmpfile, err := os.CreateTemp("", "zot-test*.json")
 			So(err, ShouldBeNil)
@@ -1279,10 +1264,7 @@ func TestScrub(t *testing.T) {
 			os.Args = []string{"cli_test", "scrub", tmpfile.Name()}
 			So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 
-			defer func(controller *api.Controller) {
-				ctx := context.Background()
-				_ = controller.Server.Shutdown(ctx)
-			}(controller)
+			defer ctrlManager.StopServer()
 		})
 
 		Convey("no image store provided", func(c C) {

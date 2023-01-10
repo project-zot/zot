@@ -4,7 +4,6 @@
 package cli_test
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -40,7 +39,6 @@ func TestSressTooManyOpenFiles(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
 		conf.Storage.Dedupe = false
@@ -75,8 +73,9 @@ func TestSressTooManyOpenFiles(t *testing.T) {
 		t.Log("Storage root dir is: ", dir)
 		ctlr.Config.Storage.RootDirectory = dir
 
-		go startServer(ctlr)
-		test.WaitTillServerReady(baseURL)
+		ctrlManager := test.NewControllerManager(ctlr)
+		ctrlManager.StartAndWait(port)
+
 		content := fmt.Sprintf(`{
 				"storage": {
 					"rootDirectory": "%s",
@@ -132,7 +131,7 @@ func TestSressTooManyOpenFiles(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(string(data), ShouldContainSubstring, "too many open files")
 
-		stopServer(ctlr)
+		ctrlManager.StopServer()
 		time.Sleep(2 * time.Second)
 
 		scrubFile, err := os.CreateTemp("", "zot-scrub*.txt")
@@ -212,19 +211,4 @@ func setMaxOpenFilesLimit(limit uint64) (uint64, error) {
 	fmt.Println("Max. open files is set to", rLimit.Cur)
 
 	return initialLimit, nil
-}
-
-func startServer(c *api.Controller) {
-	// this blocks
-	ctx := context.Background()
-	if err := c.Run(ctx); err != nil {
-		fmt.Printf("\nerror on starting zot server: %s\n", err)
-	}
-}
-
-func stopServer(c *api.Controller) {
-	ctx := context.Background()
-	if err := c.Server.Shutdown(ctx); err != nil {
-		fmt.Printf("\nerror on stopping zot server: %s\n", err)
-	}
 }

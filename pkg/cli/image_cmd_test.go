@@ -313,73 +313,26 @@ func TestSignature(t *testing.T) {
 		}
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = currentDir
-		go func(controller *api.Controller) {
-			// this blocks
-			if err := controller.Run(context.Background()); err != nil {
-				return
-			}
-		}(ctlr)
-		// wait till ready
-		for {
-			_, err := resty.R().Get(url)
-			if err == nil {
-				break
-			}
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(conf.HTTP.Port)
+		defer cm.StopServer()
 
-			time.Sleep(100 * time.Millisecond)
-		}
-		defer func(controller *api.Controller) {
-			ctx := context.Background()
-			_ = controller.Server.Shutdown(ctx)
-		}(ctlr)
-
-		// create a blob/layer
-		resp, _ := resty.R().Post(url + "/v2/repo7/blobs/uploads/")
-		loc := test.Location(url, resp)
-
-		content := []byte("this is a blob5")
-		digest := godigest.FromBytes(content)
-		_, _ = resty.R().SetQueryParam("digest", digest.String()).
-			SetHeader("Content-Type", "application/octet-stream").SetBody(content).Put(loc)
-
-		// upload image config blob
-		resp, _ = resty.R().Post(url + "/v2/repo7/blobs/uploads/")
-		loc = test.Location(url, resp)
-		cblob, cdigest := test.GetImageConfig()
-
-		_, _ = resty.R().
-			SetContentLength(true).
-			SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
-			SetHeader("Content-Type", "application/octet-stream").
-			SetQueryParam("digest", cdigest.String()).
-			SetBody(cblob).
-			Put(loc)
-
-		// create a manifest
-		manifest := ispec.Manifest{
-			Config: ispec.Descriptor{
-				MediaType: "application/vnd.oci.image.config.v1+json",
-				Digest:    cdigest,
-				Size:      int64(len(cblob)),
-			},
-			Layers: []ispec.Descriptor{
-				{
-					MediaType: "application/vnd.oci.image.layer.v1.tar",
-					Digest:    digest,
-					Size:      int64(len(content)),
-				},
-			},
-		}
-		manifest.SchemaVersion = 2
-
-		content, err = json.Marshal(manifest)
+		cfg, layers, manifest, err := test.GetImageComponents(1)
 		So(err, ShouldBeNil)
 
-		_, _ = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
-			SetBody(content).Put(url + "/v2/repo7/manifests/test:1.0")
+		repoName := "repo7"
+		err = test.UploadImage(
+			test.Image{
+				Config:   cfg,
+				Layers:   layers,
+				Manifest: manifest,
+				Tag:      "test:1.0",
+			}, url, repoName)
+		So(err, ShouldBeNil)
 
-		//	content = []byte("this is a blob5")
-		digest = godigest.FromBytes(content)
+		content, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+		digest := godigest.FromBytes(content)
 
 		// generate a keypair
 		if _, err := os.Stat(path.Join(currentDir, "cosign.key")); err != nil {
@@ -415,7 +368,7 @@ func TestSignature(t *testing.T) {
 		str := space.ReplaceAllString(buff.String(), " ")
 		actual := strings.TrimSpace(str)
 		So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIGNED SIZE")
-		So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 true 15B")
+		So(actual, ShouldContainSubstring, "repo7 test:1.0 6742241d true 1B")
 
 		t.Log("Test getting all images using rest calls to get catalog and individual manifests")
 		cmd = MockNewImageCommand(new(searchService))
@@ -428,7 +381,7 @@ func TestSignature(t *testing.T) {
 		str = space.ReplaceAllString(buff.String(), " ")
 		actual = strings.TrimSpace(str)
 		So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIGNED SIZE")
-		So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 true 492B")
+		So(actual, ShouldContainSubstring, "repo7 test:1.0 6742241d true 447B")
 
 		err = os.Chdir(currentWorkingDir)
 		So(err, ShouldBeNil)
@@ -452,70 +405,27 @@ func TestSignature(t *testing.T) {
 		}
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = currentDir
-		go func(controller *api.Controller) {
-			// this blocks
-			if err := controller.Run(context.Background()); err != nil {
-				return
-			}
-		}(ctlr)
-		// wait till ready
-		for {
-			_, err := resty.R().Get(url)
-			if err == nil {
-				break
-			}
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(conf.HTTP.Port)
+		defer cm.StopServer()
 
-			time.Sleep(100 * time.Millisecond)
-		}
-		defer func(controller *api.Controller) {
-			ctx := context.Background()
-			_ = controller.Server.Shutdown(ctx)
-		}(ctlr)
-
-		// create a blob/layer
-		resp, _ := resty.R().Post(url + "/v2/repo7/blobs/uploads/")
-		loc := test.Location(url, resp)
-
-		content := []byte("this is a blob5")
-		digest := godigest.FromBytes(content)
-		_, _ = resty.R().SetQueryParam("digest", digest.String()).
-			SetHeader("Content-Type", "application/octet-stream").SetBody(content).Put(loc)
-
-		// upload image config blob
-		resp, _ = resty.R().Post(url + "/v2/repo7/blobs/uploads/")
-		loc = test.Location(url, resp)
-		cblob, cdigest := test.GetImageConfig()
-
-		_, _ = resty.R().
-			SetContentLength(true).
-			SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
-			SetHeader("Content-Type", "application/octet-stream").
-			SetQueryParam("digest", cdigest.String()).
-			SetBody(cblob).
-			Put(loc)
-
-		// create a manifest
-		manifest := ispec.Manifest{
-			Config: ispec.Descriptor{
-				MediaType: "application/vnd.oci.image.config.v1+json",
-				Digest:    cdigest,
-				Size:      int64(len(cblob)),
-			},
-			Layers: []ispec.Descriptor{
-				{
-					MediaType: "application/vnd.oci.image.layer.v1.tar",
-					Digest:    digest,
-					Size:      int64(len(content)),
-				},
-			},
-		}
-		manifest.SchemaVersion = 2
-
-		content, err = json.Marshal(manifest)
+		cfg, layers, manifest, err := test.GetImageComponents(1)
 		So(err, ShouldBeNil)
 
-		_, _ = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
-			SetBody(content).Put(url + "/v2/repo7/manifests/0.0.1")
+		repoName := "repo7"
+		err = test.UploadImage(
+			test.Image{
+				Config:   cfg,
+				Layers:   layers,
+				Manifest: manifest,
+				Tag:      "0.0.1",
+			}, url, repoName)
+		So(err, ShouldBeNil)
+
+		content, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+		digest := godigest.FromBytes(content)
+		So(digest, ShouldNotBeNil)
 
 		err = SignImageUsingNotary("repo7:0.0.1", port)
 		So(err, ShouldBeNil)
@@ -535,7 +445,7 @@ func TestSignature(t *testing.T) {
 		str := space.ReplaceAllString(buff.String(), " ")
 		actual := strings.TrimSpace(str)
 		So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIGNED SIZE")
-		So(actual, ShouldContainSubstring, "repo7 0.0.1 883fc0c5 true 15B")
+		So(actual, ShouldContainSubstring, "repo7 0.0.1 6742241d true 1B")
 
 		t.Log("Test getting all images using rest calls to get catalog and individual manifests")
 		cmd = MockNewImageCommand(new(searchService))
@@ -548,7 +458,7 @@ func TestSignature(t *testing.T) {
 		str = space.ReplaceAllString(buff.String(), " ")
 		actual = strings.TrimSpace(str)
 		So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST SIGNED SIZE")
-		So(actual, ShouldContainSubstring, "repo7 0.0.1 883fc0c5 true 492B")
+		So(actual, ShouldContainSubstring, "repo7 0.0.1 6742241d true 447B")
 
 		err = os.Chdir(currentWorkingDir)
 		So(err, ShouldBeNil)
@@ -568,27 +478,10 @@ func TestDerivedImageList(t *testing.T) {
 	ctlr := api.NewController(conf)
 	ctlr.Config.Storage.RootDirectory = t.TempDir()
 
-	go func(controller *api.Controller) {
-		// this blocks
-		if err := controller.Run(context.Background()); err != nil {
-			return
-		}
-	}(ctlr)
+	cm := test.NewControllerManager(ctlr)
 
-	// wait till ready
-	for {
-		_, err := resty.R().Get(url)
-		if err == nil {
-			break
-		}
-
-		time.Sleep(100 * time.Millisecond)
-	}
-
-	defer func(controller *api.Controller) {
-		ctx := context.Background()
-		_ = controller.Server.Shutdown(ctx)
-	}(ctlr)
+	cm.StartAndWait(conf.HTTP.Port)
+	defer cm.StopServer()
 
 	err := uploadManifest(url)
 	if err != nil {
@@ -666,28 +559,10 @@ func TestBaseImageList(t *testing.T) {
 	}
 	ctlr := api.NewController(conf)
 	ctlr.Config.Storage.RootDirectory = t.TempDir()
+	cm := test.NewControllerManager(ctlr)
 
-	go func(controller *api.Controller) {
-		// this blocks
-		if err := controller.Run(context.Background()); err != nil {
-			return
-		}
-	}(ctlr)
-
-	// wait till ready
-	for {
-		_, err := resty.R().Get(url)
-		if err == nil {
-			break
-		}
-
-		time.Sleep(100 * time.Millisecond)
-	}
-
-	defer func(controller *api.Controller) {
-		ctx := context.Background()
-		_ = controller.Server.Shutdown(ctx)
-	}(ctlr)
+	cm.StartAndWait(conf.HTTP.Port)
+	defer cm.StopServer()
 
 	err := uploadManifest(url)
 	if err != nil {
@@ -1014,25 +889,9 @@ func TestServerResponseGQL(t *testing.T) {
 		}
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
-		go func(controller *api.Controller) {
-			// this blocks
-			if err := controller.Run(context.Background()); err != nil {
-				return
-			}
-		}(ctlr)
-		// wait till ready
-		for {
-			_, err := resty.R().Get(url)
-			if err == nil {
-				break
-			}
-
-			time.Sleep(100 * time.Millisecond)
-		}
-		defer func(controller *api.Controller) {
-			ctx := context.Background()
-			_ = controller.Server.Shutdown(ctx)
-		}(ctlr)
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(conf.HTTP.Port)
+		defer cm.StopServer()
 
 		err := uploadManifest(url)
 		t.Logf("%s", ctlr.Config.Storage.RootDirectory)
@@ -1286,28 +1145,10 @@ func TestServerResponse(t *testing.T) {
 	}
 	ctlr := api.NewController(conf)
 	ctlr.Config.Storage.RootDirectory = t.TempDir()
+	cm := test.NewControllerManager(ctlr)
 
-	go func(controller *api.Controller) {
-		// this blocks
-		if err := controller.Run(context.Background()); err != nil {
-			return
-		}
-	}(ctlr)
-
-	// wait till ready
-	for {
-		_, err := resty.R().Get(url)
-		if err == nil {
-			break
-		}
-
-		time.Sleep(100 * time.Millisecond)
-	}
-
-	defer func(controller *api.Controller) {
-		ctx := context.Background()
-		_ = controller.Server.Shutdown(ctx)
-	}(ctlr)
+	cm.StartAndWait(conf.HTTP.Port)
+	defer cm.StopServer()
 
 	err := uploadManifest(url)
 	if err != nil {
