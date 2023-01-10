@@ -43,6 +43,7 @@ import (
 const (
 	username   = "test"
 	passphrase = "test"
+	testDir    = "../../../../test/data"
 )
 
 type CveResult struct {
@@ -372,6 +373,87 @@ func TestImageFormat(t *testing.T) {
 		isValidImage, err = cveInfo.Scanner.IsImageFormatScannable("zot-nonreadable-test")
 		So(err, ShouldNotBeNil)
 		So(isValidImage, ShouldEqual, false)
+	})
+}
+
+func TestCVESearchDisabled(t *testing.T) {
+	Convey("Test with CVE search disabled", t, func() {
+		dbDir := testDir
+
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		htpasswdPath := MakeHtpasswdFile()
+		defer os.Remove(htpasswdPath)
+
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+		}
+
+		conf.Storage.RootDirectory = dbDir
+		defaultVal := true
+		searchConfig := &extconf.SearchConfig{
+			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+		}
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: searchConfig,
+		}
+
+		logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
+		if err != nil {
+			panic(err)
+		}
+
+		logPath := logFile.Name()
+		defer os.Remove(logPath)
+
+		writers := io.MultiWriter(os.Stdout, logFile)
+
+		ctlr := api.NewController(conf)
+		ctlr.Log.Logger = ctlr.Log.Output(writers)
+
+		go func() {
+			// this blocks
+			if err := ctlr.Run(context.Background()); err != nil {
+				return
+			}
+		}()
+
+		// wait till ready
+		for {
+			_, err := resty.R().Get(baseURL)
+			if err == nil {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		// Wait for trivy db to download
+		_, err = ReadLogFileAndSearchString(logPath, "DB update completed, next update scheduled", 90*time.Second)
+		if err != nil {
+			panic(err)
+		}
+
+		defer func() {
+			ctx := context.Background()
+			_ = ctlr.Server.Shutdown(ctx)
+		}()
+
+		resp, _ := resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={CVEListForImage(image:\"zot-test\"){Tag%20CVEList{Id%20Description%20Severity%20PackageList{Name%20InstalledVersion%20FixedVersion}}}}")
+		So(string(resp.Body()), ShouldContainSubstring, "search: CVE search is disabled")
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={ImageListForCVE(id:\"CVE-201-20482\"){RepoName%20Tag}}")
+		So(string(resp.Body()), ShouldContainSubstring, "search: CVE search is disabled")
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={ImageListWithCVEFixed(id:\"" + "randomId" + "\",image:\"zot-test\"){RepoName%20LastUpdated}}")
+		So(resp, ShouldNotBeNil)
+		So(string(resp.Body()), ShouldContainSubstring, "search: CVE search is disabled")
+		So(resp.StatusCode(), ShouldEqual, 200)
 	})
 }
 

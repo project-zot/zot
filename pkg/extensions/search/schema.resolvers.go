@@ -8,6 +8,7 @@ import (
 	"context"
 
 	"github.com/vektah/gqlparser/v2/gqlerror"
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	"zotregistry.io/zot/pkg/extensions/search/convert"
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
@@ -15,6 +16,10 @@ import (
 
 // CVEListForImage is the resolver for the CVEListForImage field.
 func (r *queryResolver) CVEListForImage(ctx context.Context, image string) (*gql_generated.CVEResultForImage, error) {
+	if r.cveInfo == nil {
+		return &gql_generated.CVEResultForImage{}, zerr.ErrCVESearchDisabled
+	}
+
 	_, copyImgTag := common.GetImageDirAndTag(image)
 
 	if copyImgTag == "" {
@@ -67,6 +72,10 @@ func (r *queryResolver) ImageListForCve(ctx context.Context, id string) ([]*gql_
 	olu := common.NewBaseOciLayoutUtils(r.storeController, r.log)
 	affectedImages := []*gql_generated.ImageSummary{}
 
+	if r.cveInfo == nil {
+		return affectedImages, zerr.ErrCVESearchDisabled
+	}
+
 	r.log.Info().Msg("extracting repositories")
 	repoList, err := olu.GetRepositories()
 	if err != nil { //nolint: wsl
@@ -118,6 +127,10 @@ func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, im
 	olu := common.NewBaseOciLayoutUtils(r.storeController, r.log)
 
 	unaffectedImages := []*gql_generated.ImageSummary{}
+
+	if r.cveInfo == nil {
+		return unaffectedImages, zerr.ErrCVESearchDisabled
+	}
 
 	tagsInfo, err := r.cveInfo.GetImageListWithCVEFixed(image, id)
 	if err != nil {

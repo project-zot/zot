@@ -44,6 +44,7 @@ var (
 	ErrImgStoreNotFound         = errors.New("routes: image store not found corresponding to given route")
 	ErrEmptyValue               = errors.New("cache: empty value")
 	ErrEmptyRepoList            = errors.New("search: no repository found")
+	ErrCVESearchDisabled        = errors.New("search: CVE search is disabled")
 	ErrInvalidRepositoryName    = errors.New("routes: not a repository name")
 	ErrSyncMissingCatalog       = errors.New("sync: couldn't fetch upstream registry's catalog")
 	ErrMethodNotSupported       = errors.New("storage: method not supported")
