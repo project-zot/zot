@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	guuid "github.com/gofrs/uuid"
 	"github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -65,12 +66,21 @@ func TestBoltDBWrapper(t *testing.T) {
 func TestDynamoDBWrapper(t *testing.T) {
 	skipIt(t)
 
+	uuid, err := guuid.NewV4()
+	if err != nil {
+		panic(err)
+	}
+
+	repoMetaTablename := "RepoMetadataTable" + uuid.String()
+	manifestDataTablename := "ManifestDataTable" + uuid.String()
+	versionTablename := "Version" + uuid.String()
+
 	Convey("DynamoDB Wrapper", t, func() {
 		dynamoDBDriverParams := dynamoParams.DBDriverParameters{
 			Endpoint:              os.Getenv("DYNAMODBMOCK_ENDPOINT"),
-			RepoMetaTablename:     "RepoMetadataTable",
-			ManifestDataTablename: "ManifestDataTable",
-			VersionTablename:      "Version",
+			RepoMetaTablename:     repoMetaTablename,
+			ManifestDataTablename: manifestDataTablename,
+			VersionTablename:      versionTablename,
 			Region:                "us-east-2",
 		}
 
