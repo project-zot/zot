@@ -833,11 +833,11 @@ func (dwr DBWrapper) createRepoMetaTable() error {
 		BillingMode: types.BillingModePayPerRequest,
 	})
 
-	if err != nil && strings.Contains(err.Error(), "Table already exists") {
-		return nil
+	if err != nil && !strings.Contains(err.Error(), "Table already exists") {
+		return err
 	}
 
-	return err
+	return dwr.waitTableToBeCreated(dwr.RepoMetaTablename)
 }
 
 func (dwr DBWrapper) deleteRepoMetaTable() error {
@@ -845,7 +845,11 @@ func (dwr DBWrapper) deleteRepoMetaTable() error {
 		TableName: aws.String(dwr.RepoMetaTablename),
 	})
 
-	return err
+	if temp := new(types.ResourceNotFoundException); errors.As(err, &temp) {
+		return nil
+	}
+
+	return dwr.waitTableToBeDeleted(dwr.RepoMetaTablename)
 }
 
 func (dwr DBWrapper) ResetRepoMetaTable() error {
@@ -855,6 +859,69 @@ func (dwr DBWrapper) ResetRepoMetaTable() error {
 	}
 
 	return dwr.createRepoMetaTable()
+}
+
+func (dwr DBWrapper) waitTableToBeCreated(tableName string) error {
+	const (
+		timeoutValue             = time.Second * 5
+		sleepTimeBetweenRequests = time.Millisecond * 50
+	)
+
+	timeout := time.After(timeoutValue)
+
+	for {
+		select {
+		case <-timeout:
+			return zerr.ErrTimeout
+		default:
+			output, err := dwr.Client.DescribeTable(context.Background(), &dynamodb.DescribeTableInput{
+				TableName: &tableName,
+			})
+			if output != nil && output.Table.TableStatus == types.TableStatusActive {
+				return nil
+			}
+
+			if temp := new(types.ResourceNotFoundException); errors.As(err, &temp) {
+				// try again later
+				time.Sleep(sleepTimeBetweenRequests)
+			} else { // we have a different error
+				return err
+			}
+		}
+	}
+}
+
+func (dwr DBWrapper) waitTableToBeDeleted(tableName string) error {
+	const (
+		timeoutValue             = time.Second * 5
+		sleepTimeBetweenRequests = time.Millisecond * 50
+	)
+
+	timeout := time.After(timeoutValue)
+
+	for {
+		select {
+		case <-timeout:
+			return zerr.ErrTimeout
+		default:
+			output, err := dwr.Client.DescribeTable(context.Background(), &dynamodb.DescribeTableInput{
+				TableName: &tableName,
+			})
+			if output != nil && output.Table.TableStatus == types.TableStatusDeleting {
+				time.Sleep(sleepTimeBetweenRequests)
+
+				continue
+			}
+
+			if err != nil {
+				if temp := new(types.ResourceNotFoundException); !errors.As(err, &temp) {
+					return err
+				}
+
+				return nil
+			}
+		}
+	}
 }
 
 func (dwr DBWrapper) createManifestDataTable() error {
@@ -875,11 +942,11 @@ func (dwr DBWrapper) createManifestDataTable() error {
 		BillingMode: types.BillingModePayPerRequest,
 	})
 
-	if err != nil && strings.Contains(err.Error(), "Table already exists") {
-		return nil
+	if err != nil && !strings.Contains(err.Error(), "Table already exists") {
+		return err
 	}
 
-	return err
+	return dwr.waitTableToBeCreated(dwr.ManifestDataTablename)
 }
 
 func (dwr *DBWrapper) createVersionTable() error {
@@ -899,9 +966,17 @@ func (dwr *DBWrapper) createVersionTable() error {
 		},
 		BillingMode: types.BillingModePayPerRequest,
 	})
+	if err != nil {
+		if strings.Contains(err.Error(), "Table already exists") {
+			return nil
+		}
 
-	if err != nil && strings.Contains(err.Error(), "Table already exists") {
-		return nil
+		return err
+	}
+
+	err = dwr.waitTableToBeCreated(dwr.VersionTablename)
+	if err != nil {
+		return err
 	}
 
 	if err == nil {
@@ -931,7 +1006,7 @@ func (dwr *DBWrapper) createVersionTable() error {
 		}
 	}
 
-	return err
+	return nil
 }
 
 func (dwr *DBWrapper) getDBVersion() (string, error) {
@@ -964,7 +1039,11 @@ func (dwr DBWrapper) deleteManifestDataTable() error {
 		TableName: aws.String(dwr.ManifestDataTablename),
 	})
 
-	return err
+	if temp := new(types.ResourceNotFoundException); errors.As(err, &temp) {
+		return nil
+	}
+
+	return dwr.waitTableToBeDeleted(dwr.ManifestDataTablename)
 }
 
 func (dwr DBWrapper) ResetManifestDataTable() error {
@@ -973,5 +1052,10 @@ func (dwr DBWrapper) ResetManifestDataTable() error {
 		return err
 	}
 
-	return dwr.createManifestDataTable()
+	err = dwr.createManifestDataTable()
+	if err != nil {
+		return err
+	}
+
+	return dwr.waitTableToBeCreated(dwr.ManifestDataTablename)
 }
