@@ -1,4 +1,4 @@
-name: 'Sync golang image from docker to ghcr'
+name: 'Sync images and artifacts to ghcr'
 on:
   schedule:
     - cron: '30 1 * * *'
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   sync-golang:
-    name: 'sync'
+    name: 'golang'
     strategy:
       matrix:
         golang_version:
@@ -32,3 +32,16 @@ jobs:
           docker pull golang:${{ matrix.golang_version }}
           docker tag golang:${{ matrix.golang_version }} ghcr.io/${{ github.repository_owner }}/golang:${{ matrix.golang_version }}
           docker push ghcr.io/${{ github.repository_owner }}/golang:${{ matrix.golang_version }}
+  sync-trivy:
+    name: 'trivy-db'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log in to GitHub Docker Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Copy trivy-db using oras cli
+        run: |
+          oras copy ghcr.io/aquasecurity/trivy-db:2 ghcr.io/ghcr.io/${{ github.repository_owner }}/trivy-db:2
