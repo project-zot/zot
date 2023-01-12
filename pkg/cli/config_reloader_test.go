@@ -57,14 +57,16 @@ func TestConfigReloader(t *testing.T) {
 				"failDelay": 1
 			  },
 			  "accessControl": {
-				"**": {
-				  "policies": [
-					{
-					  "users": ["charlie"],
-					  "actions": ["read"]
+				"repositories": {
+					"**": {
+				  	"policies": [
+						{
+					  	"users": ["charlie"],
+					  	"actions": ["read"]
+						}
+				  	],
+				  	"defaultPolicy": ["read", "create"] 
 					}
-				  ],
-				  "defaultPolicy": ["read", "create"] 
 				},
 				"adminPolicy": {
 					"users": ["admin"],
@@ -113,14 +115,16 @@ func TestConfigReloader(t *testing.T) {
 				"failDelay": 1
 			  },
 			  "accessControl": {
-				"**": {
-				  "policies": [
-					{
-					  "users": ["alice"],
-					  "actions": ["read", "create", "update", "delete"]
+				"repositories": {
+					"**": {
+				  	"policies": [
+						{
+					  	"users": ["alice"],
+					  	"actions": ["read", "create", "update", "delete"]
+						}
+				  	],
+				  	"defaultPolicy": ["read"] 
 					}
-				  ],
-				  "defaultPolicy": ["read"] 
 				},
 				"adminPolicy": {
 					"users": ["admin"],

@@ -35,14 +35,14 @@ type AccessController struct {
 
 func NewAccessController(config *config.Config) *AccessController {
 	return &AccessController{
-		Config: config.AccessControl,
+		Config: config.HTTP.AccessControl,
 		Log:    log.NewLogger(config.Log.Level, config.Log.Output),
 	}
 }
 
 // getGlobPatterns gets glob patterns from authz config on which <username> has <action> perms.
 // used to filter /v2/_catalog repositories based on user rights.
-func (ac *AccessController) getGlobPatterns(username string, action string) map[string]bool {
+func (ac *AccessController) getGlobPatterns(username string, groups []string, action string) map[string]bool {
 	globPatterns := make(map[string]bool)
 
 	for pattern, policyGroup := range ac.Config.Repositories {
@@ -65,6 +65,15 @@ func (ac *AccessController) getGlobPatterns(username string, action string) map[
 			}
 		}
 
+		// check group based policy
+		for _, group := range groups {
+			for _, p := range policyGroup.Policies {
+				if common.Contains(p.Groups, group) && common.Contains(p.Actions, action) {
+					globPatterns[pattern] = true
+				}
+			}
+		}
+
 		// if not allowed then mark it
 		if _, ok := globPatterns[pattern]; !ok {
 			globPatterns[pattern] = false
@@ -75,7 +84,7 @@ func (ac *AccessController) getGlobPatterns(username string, action string) map[
 }
 
 // can verifies if a user can do action on repository.
-func (ac *AccessController) can(username, action, repository string) bool {
+func (ac *AccessController) can(ctx context.Context, username, action, repository string) bool {
 	can := false
 
 	var longestMatchedPattern string
@@ -89,15 +98,26 @@ func (ac *AccessController) can(username, action, repository string) bool {
 		}
 	}
 
+	acCtx, err := localCtx.GetAccessControlContext(ctx)
+	if err != nil {
+		return false
+	}
+
+	userGroups := acCtx.Groups
+
 	// check matched repo based policy
 	pg, ok := ac.Config.Repositories[longestMatchedPattern]
 	if ok {
-		can = isPermitted(username, action, pg)
+		can = ac.isPermitted(userGroups, username, action, pg)
 	}
 
 	// check admins based policy
 	if !can {
 		if ac.isAdmin(username) && common.Contains(ac.Config.AdminPolicy.Actions, action) {
+			can = true
+		}
+
+		if ac.isAnyGroupInAdminPolicy(userGroups) && common.Contains(ac.Config.AdminPolicy.Actions, action) {
 			can = true
 		}
 	}
@@ -110,16 +130,43 @@ func (ac *AccessController) isAdmin(username string) bool {
 	return common.Contains(ac.Config.AdminPolicy.Users, username)
 }
 
+func (ac *AccessController) isAnyGroupInAdminPolicy(userGroups []string) bool {
+	for _, group := range userGroups {
+		if common.Contains(ac.Config.AdminPolicy.Groups, group) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (ac *AccessController) getUserGroups(username string) []string {
+	var groupNames []string
+
+	for groupName, group := range ac.Config.Groups {
+		for _, user := range group.Users {
+			// find if the user is part of any groups
+			if user == username {
+				groupNames = append(groupNames, groupName)
+			}
+		}
+	}
+
+	return groupNames
+}
+
 // getContext builds ac context(allowed to read repos and if user is admin) and returns it.
 func (ac *AccessController) getContext(username string, request *http.Request) context.Context {
-	readGlobPatterns := ac.getGlobPatterns(username, Read)
-	dmcGlobPatterns := ac.getGlobPatterns(username, DetectManifestCollision)
-
-	acCtx := localCtx.AccessControlContext{
-		ReadGlobPatterns: readGlobPatterns,
-		DmcGlobPatterns:  dmcGlobPatterns,
-		Username:         username,
+	acCtx, err := localCtx.GetAccessControlContext(request.Context())
+	if err != nil {
+		return nil
 	}
+
+	readGlobPatterns := ac.getGlobPatterns(username, acCtx.Groups, Read)
+	dmcGlobPatterns := ac.getGlobPatterns(username, acCtx.Groups, DetectManifestCollision)
+
+	acCtx.ReadGlobPatterns = readGlobPatterns
+	acCtx.DmcGlobPatterns = dmcGlobPatterns
 
 	if ac.isAdmin(username) {
 		acCtx.IsAdmin = true
@@ -128,20 +175,37 @@ func (ac *AccessController) getContext(username string, request *http.Request) c
 	}
 
 	authzCtxKey := localCtx.GetContextKey()
-	ctx := context.WithValue(request.Context(), authzCtxKey, acCtx)
+	ctx := context.WithValue(request.Context(), authzCtxKey, *acCtx)
 
 	return ctx
 }
 
 // isPermitted returns true if username can do action on a repository policy.
-func isPermitted(username, action string, policyGroup config.PolicyGroup) bool {
+func (ac *AccessController) isPermitted(userGroups []string, username, action string,
+	policyGroup config.PolicyGroup,
+) bool {
 	var result bool
+
 	// check repo/system based policies
 	for _, p := range policyGroup.Policies {
 		if common.Contains(p.Users, username) && common.Contains(p.Actions, action) {
 			result = true
 
-			break
+			return result
+		}
+	}
+
+	if userGroups != nil {
+		for _, p := range policyGroup.Policies {
+			if common.Contains(p.Actions, action) {
+				for _, group := range p.Groups {
+					if common.Contains(userGroups, group) {
+						result = true
+
+						return result
+					}
+				}
+			}
 		}
 	}
 
@@ -246,7 +310,7 @@ func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 				action = Delete
 			}
 
-			can := acCtrlr.can(identity, action, resource)
+			can := acCtrlr.can(ctx, identity, action, resource) //nolint:contextcheck
 			if !can {
 				authzFail(response, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
 			} else {

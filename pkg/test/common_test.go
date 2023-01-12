@@ -476,7 +476,7 @@ func TestUploadImage(t *testing.T) {
 
 		conf.HTTP.Port = port
 
-		conf.AccessControl = &config.AccessControlConfig{
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
 			Repositories: config.Repositories{
 				"repo": config.PolicyGroup{
 					Policies: []config.Policy{

@@ -26,6 +26,7 @@ type LDAPClient struct {
 	BindDN             string
 	BindPassword       string
 	GroupFilter        string // e.g. "(memberUid=%s)"
+	UserGroupAttribute string // e.g. "memberOf"
 	Host               string
 	ServerName         string
 	UserFilter         string // e.g. "(uid=%s)"
@@ -121,14 +122,14 @@ func sleepAndRetry(retries, maxRetries int) bool {
 }
 
 // Authenticate authenticates the user against the ldap backend.
-func (lc *LDAPClient) Authenticate(username, password string) (bool, map[string]string, error) {
+func (lc *LDAPClient) Authenticate(username, password string) (bool, map[string]string, []string, error) {
 	// serialize LDAP calls since some LDAP servers don't allow searches when binds are in flight
 	lc.lock.Lock()
 	defer lc.lock.Unlock()
 
 	if password == "" {
 		// RFC 4513 section 5.1.2
-		return false, nil, errors.ErrLDAPEmptyPassphrase
+		return false, nil, nil, errors.ErrLDAPEmptyPassphrase
 	}
 
 	connected := false
@@ -158,11 +159,13 @@ func (lc *LDAPClient) Authenticate(username, password string) (bool, map[string]
 	if !connected {
 		lc.Log.Error().Err(errors.ErrLDAPBadConn).Msg("exhausted all retries")
 
-		return false, nil, errors.ErrLDAPBadConn
+		return false, nil, nil, errors.ErrLDAPBadConn
 	}
 
 	attributes := lc.Attributes
 	attributes = append(attributes, "dn")
+	attributes = append(attributes, lc.UserGroupAttribute)
+
 	searchScope := ldap.ScopeSingleLevel
 
 	if lc.SubtreeSearch {
@@ -183,7 +186,7 @@ func (lc *LDAPClient) Authenticate(username, password string) (bool, map[string]
 		lc.Log.Error().Err(err).Str("bindDN", lc.BindDN).Str("username", username).
 			Str("baseDN", lc.Base).Msg("search failed")
 
-		return false, nil, err
+		return false, nil, nil, err
 	}
 
 	if len(search.Entries) < 1 {
@@ -191,7 +194,7 @@ func (lc *LDAPClient) Authenticate(username, password string) (bool, map[string]
 		lc.Log.Error().Err(err).Str("bindDN", lc.BindDN).Str("username", username).
 			Str("baseDN", lc.Base).Msg("entries not found")
 
-		return false, nil, err
+		return false, nil, nil, err
 	}
 
 	if len(search.Entries) > 1 {
@@ -199,10 +202,12 @@ func (lc *LDAPClient) Authenticate(username, password string) (bool, map[string]
 		lc.Log.Error().Err(err).Str("bindDN", lc.BindDN).Str("username", username).
 			Str("baseDN", lc.Base).Msg("too many entries")
 
-		return false, nil, err
+		return false, nil, nil, err
 	}
 
 	userDN := search.Entries[0].DN
+	userAttributes := search.Entries[0].Attributes[0]
+	userGroups := userAttributes.Values
 	user := map[string]string{}
 
 	for _, attr := range lc.Attributes {
@@ -214,8 +219,8 @@ func (lc *LDAPClient) Authenticate(username, password string) (bool, map[string]
 	if err != nil {
 		lc.Log.Error().Err(err).Str("bindDN", userDN).Msg("user bind failed")
 
-		return false, user, err
+		return false, user, userGroups, err
 	}
 
-	return true, user, nil
+	return true, user, userGroups, nil
 }

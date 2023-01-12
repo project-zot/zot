@@ -4,107 +4,68 @@
     "rootDirectory": "/tmp/zot"
   },
   "http": {
-    "address": "127.0.0.1",
-    "port": "8080",
-    "realm": "zot",
     "auth": {
       "htpasswd": {
         "path": "test/data/htpasswd"
-      },
-      "failDelay": 1
+      }
     },
     "accessControl": {
-      "**": {
-        "anonymousPolicy": ["read"],
-        "policies": [
-          {
-            "users": [
-              "charlie"
-            ],
-            "actions": [
-              "read",
-              "create",
-              "update"
-            ]
-          }
-        ],
-        "defaultPolicy": [
-          "read",
-          "create",
-          "delete",
-          "detectManifestCollision"
-        ]
+      "groups": {
+        "group1": {
+          "users": ["jack", "john", "jane", "ana"]
+        },
+        "group2": {
+          "users": ["alice", "mike", "jim"]
+        }
       },
-      "tmp/**": {
-        "defaultPolicy": [
-          "read",
-          "create",
-          "update"
-        ]
-      },
-      "infra/**": {
-        "policies": [
-          {
-            "users": [
-              "alice",
-              "bob"
-            ],
-            "actions": [
-              "create",
-              "read",
-              "update",
-              "delete"
-            ]
+      "repositories": {
+        "**": {
+          "policies": [{
+            "users": ["charlie"],
+            "groups": ["admins", "developers", "group1"],
+            "actions": ["read", "create", "update"]
           },
           {
-            "users": [
-              "mallory"
-            ],
-            "actions": [
-              "create",
-              "read"
-            ]
-          }
-        ],
-        "defaultPolicy": [
-          "read"
-        ]
-      },
-      "repos2/repo": {
-        "policies": [
-          {
-            "users": [
-              "charlie"
-            ],
-            "actions": [
-              "read",
-              "create"
-            ]
-          },
-          {
-            "users": [
-              "mallory"
-            ],
-            "actions": [
-              "create",
-              "read"
-            ]
-          }
-        ],
-        "defaultPolicy": [
-          "read"
-        ]
+            "users": ["mary"],
+            "groups": ["group2"],
+            "actions": ["read", "create", "update", "delete"]
+          }],
+          "defaultPolicy": ["read", "create"]
+        },
+        "tmp/**": {
+          "defaultPolicy": ["read", "create", "update"]
+        },
+        "infra/*": {
+          "policies": [{
+              "users": ["alice", "bob"],
+              "groups": ["maintainers","platformteam"],
+              "actions": ["create", "read", "update", "delete"]
+            },
+            {
+              "users": ["mallory"],
+              "actions": ["create", "read"]
+            }
+          ],
+          "defaultPolicy": ["read"]
+        },
+        "repos2/repo": {
+          "policies": [{
+              "users": ["bob"],
+              "groups": ["sparkle_team","repo2_team"],
+              "actions": ["read", "create"]
+            },
+            {
+              "users": ["mallory"],
+              "actions": ["create", "read"]
+            }
+          ],
+          "defaultPolicy": ["read"]
+        }  
       },
       "adminPolicy": {
-        "users": [
-          "admin"
-        ],
-        "actions": [
-          "read",
-          "create",
-          "update",
-          "delete"
-        ]
+        "users": ["admin"],
+        "groups": ["admins","developers"],
+        "actions": ["read", "create", "update", "delete"]
       }
     }
   },

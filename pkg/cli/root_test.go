@@ -681,7 +681,7 @@ func TestVerify(t *testing.T) {
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 		 					"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							 "accessControl":{"adminPolicy":{"users":["admin"],
+							 "accessControl":{"repositories":{},"adminPolicy":{"users":["admin"],
 							 "actions":["read","create","update","delete"]}}}}`)
 		_, err = tmpfile.Write(content)
 		So(err, ShouldBeNil)
@@ -698,7 +698,7 @@ func TestVerify(t *testing.T) {
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1},
-							"accessControl":{"adminPolicy":{"users":["admin"],
+							"accessControl":{"repositories":{},"adminPolicy":{"users":["admin"],
 							"actions":["read","create","update","delete"]}}}}`)
 		_, err = tmpfile.Write(content)
 		So(err, ShouldBeNil)
@@ -714,8 +714,8 @@ func TestVerify(t *testing.T) {
 		defer os.Remove(tmpfile.Name()) // clean up
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 		 					"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
-							 "accessControl":{"**":{"anonymousPolicy": ["read", "create"]},
-							 "/repo":{"anonymousPolicy": ["read", "create"]}
+							 "accessControl":{"repositories":{"**":{"anonymousPolicy": ["read", "create"]},
+							 "/repo":{"anonymousPolicy": ["read", "create"]}}
 							 }}}`)
 		_, err = tmpfile.Write(content)
 		So(err, ShouldBeNil)
@@ -732,8 +732,10 @@ func TestVerify(t *testing.T) {
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 		 					"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 								"accessControl":{
-									"**":{"defaultPolicy": ["read", "create"]},
-									"/repo":{"anonymousPolicy": ["read", "create"]},
+									"repositories":{
+										"**":{"defaultPolicy": ["read", "create"]},
+										"/repo":{"anonymousPolicy": ["read", "create"]},
+									},
 									"adminPolicy":{
 										"users":["admin"],
 										"actions":["read","create","update","delete"]
@@ -755,8 +757,10 @@ func TestVerify(t *testing.T) {
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 								"accessControl":{
-									"**":{"defaultPolicy": ["read", "create"]},
-									"/repo":{"anonymousPolicy": ["read", "create"]}
+									"repositories": {
+										"**":{"defaultPolicy": ["read", "create"]},
+										"/repo":{"anonymousPolicy": ["read", "create"]}
+									}
 								}
 							}}`)
 		_, err = tmpfile.Write(content)
@@ -774,12 +778,14 @@ func TestVerify(t *testing.T) {
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 								"accessControl":{
-									"/repo":{"anonymousPolicy": ["read", "create"]},
-									"/repo2":{
-										"policies": [{
-											"users": ["charlie"],
-											"actions": ["read", "create", "update"]
-										}]
+									"repositories": {
+										"/repo":{"anonymousPolicy": ["read", "create"]},
+										"/repo2":{
+											"policies": [{
+												"users": ["charlie"],
+												"actions": ["read", "create", "update"]
+											}]
+										}
 									}
 								}
 							}}`)

@@ -2,6 +2,7 @@ package api
 
 import (
 	"bufio"
+	"context"
 	"crypto/x509"
 	"encoding/base64"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 
 	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/config"
+	localCtx "zotregistry.io/zot/pkg/requestcontext"
 )
 
 const (
@@ -87,7 +89,8 @@ func noPasswdAuth(realm string, config *config.Config) mux.MiddlewareFunc {
 			}
 
 			// Process request
-			next.ServeHTTP(response, request)
+			ctx := getReqContextWithAuthorization("", []string{}, request)
+			next.ServeHTTP(response, request.WithContext(ctx)) //nolint:contextcheck
 		})
 	}
 }
@@ -123,6 +126,7 @@ func basicAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 				SkipTLS:            !ldapConfig.StartTLS,
 				Base:               ldapConfig.BaseDN,
 				BindDN:             ldapConfig.BindDN,
+				UserGroupAttribute: ldapConfig.UserGroupAttribute, // from config
 				BindPassword:       ldapConfig.BindPassword,
 				UserFilter:         fmt.Sprintf("(%s=%%s)", ldapConfig.UserAttribute),
 				InsecureSkipVerify: ldapConfig.SkipVerify,
@@ -181,9 +185,11 @@ func basicAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 				return
 			}
-			if request.Header.Get("Authorization") == "" && anonymousPolicyExists(ctlr.Config.AccessControl) {
+
+			if request.Header.Get("Authorization") == "" && anonymousPolicyExists(ctlr.Config.HTTP.AccessControl) {
 				// Process request
-				next.ServeHTTP(response, request)
+				ctx := getReqContextWithAuthorization("", []string{}, request)
+				next.ServeHTTP(response, request.WithContext(ctx)) //nolint:contextcheck
 
 				return
 			}
@@ -198,9 +204,10 @@ func basicAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 			// some client tools might send Authorization: Basic Og== (decoded into ":")
 			// empty username and password
-			if username == "" && passphrase == "" && anonymousPolicyExists(ctlr.Config.AccessControl) {
+			if username == "" && passphrase == "" && anonymousPolicyExists(ctlr.Config.HTTP.AccessControl) {
 				// Process request
-				next.ServeHTTP(response, request)
+				ctx := getReqContextWithAuthorization("", []string{}, request)
+				next.ServeHTTP(response, request.WithContext(ctx)) //nolint:contextcheck
 
 				return
 			}
@@ -210,7 +217,15 @@ func basicAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 			if ok {
 				if err := bcrypt.CompareHashAndPassword([]byte(passphraseHash), []byte(passphrase)); err == nil {
 					// Process request
-					next.ServeHTTP(response, request)
+					var userGroups []string
+
+					if ctlr.Config.HTTP.AccessControl != nil {
+						ac := NewAccessController(ctlr.Config)
+						userGroups = ac.getUserGroups(username)
+					}
+
+					ctx := getReqContextWithAuthorization(username, userGroups, request)
+					next.ServeHTTP(response, request.WithContext(ctx)) //nolint:contextcheck
 
 					return
 				}
@@ -218,10 +233,20 @@ func basicAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 			// next, LDAP if configured (network-based which can lose connectivity)
 			if ctlr.Config.HTTP.Auth != nil && ctlr.Config.HTTP.Auth.LDAP != nil {
-				ok, _, err := ldapClient.Authenticate(username, passphrase)
+				ok, _, ldapgroups, err := ldapClient.Authenticate(username, passphrase)
 				if ok && err == nil {
 					// Process request
-					next.ServeHTTP(response, request)
+					var userGroups []string
+
+					if ctlr.Config.HTTP.AccessControl != nil {
+						ac := NewAccessController(ctlr.Config)
+						userGroups = ac.getUserGroups(username)
+					}
+
+					userGroups = append(userGroups, ldapgroups...)
+
+					ctx := getReqContextWithAuthorization(username, userGroups, request)
+					next.ServeHTTP(response, request.WithContext(ctx)) //nolint:contextcheck
 
 					return
 				}
@@ -230,6 +255,18 @@ func basicAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 			authFail(response, realm, delay)
 		})
 	}
+}
+
+func getReqContextWithAuthorization(username string, groups []string, request *http.Request) context.Context {
+	acCtx := localCtx.AccessControlContext{
+		Username: username,
+		Groups:   groups,
+	}
+
+	authzCtxKey := localCtx.GetContextKey()
+	ctx := context.WithValue(request.Context(), authzCtxKey, acCtx)
+
+	return ctx
 }
 
 func isAuthnEnabled(config *config.Config) bool {

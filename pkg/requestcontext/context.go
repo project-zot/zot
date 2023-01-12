@@ -26,6 +26,7 @@ type AccessControlContext struct {
 	DmcGlobPatterns map[string]bool
 	IsAdmin         bool
 	Username        string
+	Groups          []string
 }
 
 func GetAccessControlContext(ctx context.Context) (*AccessControlContext, error) {
@@ -63,10 +64,18 @@ func (acCtx *AccessControlContext) matchesRepo(globPatterns map[string]bool, rep
 
 // returns either a user has or not read rights on 'repository'.
 func (acCtx *AccessControlContext) CanReadRepo(repository string) bool {
-	return acCtx.matchesRepo(acCtx.ReadGlobPatterns, repository)
+	if acCtx.ReadGlobPatterns != nil {
+		return acCtx.matchesRepo(acCtx.ReadGlobPatterns, repository)
+	}
+
+	return true
 }
 
 // returns either a user has or not detectManifestCollision rights on 'repository'.
 func (acCtx *AccessControlContext) CanDetectManifestCollision(repository string) bool {
-	return acCtx.matchesRepo(acCtx.DmcGlobPatterns, repository)
+	if acCtx.DmcGlobPatterns != nil {
+		return acCtx.matchesRepo(acCtx.DmcGlobPatterns, repository)
+	}
+
+	return false
 }
