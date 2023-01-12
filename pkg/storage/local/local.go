@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -1775,4 +1776,167 @@ func newGCTask(imgStore *ImageStoreLocal, repo string) *gcTask {
 
 func (gcT *gcTask) DoWork() error {
 	return gcT.imgStore.RunGCRepo(gcT.repo)
+}
+
+func (is *ImageStoreLocal) GetNextDigestWithBlobPaths(lastDigests []godigest.Digest,
+) (godigest.Digest, []string, error) {
+	var lockLatency time.Time
+
+	dir := is.rootDir
+
+	is.RLock(&lockLatency)
+	defer is.RUnlock(&lockLatency)
+
+	var duplicateBlobs []string
+
+	var digest godigest.Digest
+
+	err := filepath.WalkDir(dir, func(path string, info fs.DirEntry, err error) error {
+		if err != nil {
+			is.log.Warn().Err(err).Msg("unable to walk dir, skipping it")
+			// skip files/dirs which can't be walked
+			return filepath.SkipDir
+		}
+
+		if info.IsDir() {
+			return nil
+		}
+
+		blobDigest := godigest.NewDigestFromEncoded("sha256", info.Name())
+		if err := blobDigest.Validate(); err != nil {
+			return nil //nolint:nilerr // ignore files which are not blobs
+		}
+
+		if digest == "" && !common.DContains(lastDigests, blobDigest) {
+			digest = blobDigest
+		}
+
+		if blobDigest == digest {
+			duplicateBlobs = append(duplicateBlobs, path)
+		}
+
+		return nil
+	})
+
+	return digest, duplicateBlobs, err
+}
+
+func (is *ImageStoreLocal) dedupeBlobs(digest godigest.Digest, duplicateBlobs []string) error {
+	if fmt.Sprintf("%v", is.cache) == fmt.Sprintf("%v", nil) {
+		is.log.Error().Err(zerr.ErrDedupeRebuild).Msg("no cache driver found, can not dedupe blobs")
+
+		return zerr.ErrDedupeRebuild
+	}
+
+	is.log.Info().Str("digest", digest.String()).Msgf("rebuild dedupe: deduping blobs for digest")
+
+	var originalBlob string
+
+	var originalBlobFi fs.FileInfo
+
+	var err error
+	// rebuild from dedupe false to true
+	for _, blobPath := range duplicateBlobs {
+		/* for local storage, because we use hard links, we can assume that any blob can be original
+		so we skip the first one and hard link the rest of them with the first*/
+		if originalBlob == "" {
+			originalBlob = blobPath
+
+			originalBlobFi, err = os.Stat(originalBlob)
+			if err != nil {
+				is.log.Error().Err(err).Str("path", originalBlob).Msg("rebuild dedupe: failed to stat blob")
+
+				return err
+			}
+
+			// cache it
+			if ok := is.cache.HasBlob(digest, blobPath); !ok {
+				if err := is.cache.PutBlob(digest, blobPath); err != nil {
+					return err
+				}
+			}
+
+			continue
+		}
+
+		binfo, err := os.Stat(blobPath)
+		if err != nil {
+			is.log.Error().Err(err).Str("path", blobPath).Msg("rebuild dedupe: failed to stat blob")
+
+			return err
+		}
+
+		// dedupe blob
+		if !os.SameFile(originalBlobFi, binfo) {
+			// we should link to a temp file instead of removing blob and then linking
+			// to make this more atomic
+			uuid, err := guuid.NewV4()
+			if err != nil {
+				return err
+			}
+
+			// put temp blob in <repo>/.uploads dir
+			tempLinkBlobDir := path.Join(strings.Replace(blobPath, path.Join("blobs/sha256", binfo.Name()), "", 1),
+				storageConstants.BlobUploadDir)
+
+			if err := os.MkdirAll(tempLinkBlobDir, DefaultDirPerms); err != nil {
+				is.log.Error().Err(err).Str("dir", tempLinkBlobDir).Msg("rebuild dedupe: unable to mkdir")
+
+				return err
+			}
+
+			tempLinkBlobPath := path.Join(tempLinkBlobDir, uuid.String())
+
+			if err := os.Link(originalBlob, tempLinkBlobPath); err != nil {
+				is.log.Error().Err(err).Str("src", originalBlob).
+					Str("dst", tempLinkBlobPath).Msg("rebuild dedupe: unable to hard link")
+
+				return err
+			}
+
+			if err := os.Rename(tempLinkBlobPath, blobPath); err != nil {
+				is.log.Error().Err(err).Str("blobPath", blobPath).Msg("rebuild dedupe: unable to rename temp link")
+
+				return err
+			}
+
+			// cache it
+			if ok := is.cache.HasBlob(digest, blobPath); !ok {
+				if err := is.cache.PutBlob(digest, blobPath); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	is.log.Info().Str("digest", digest.String()).Msgf("rebuild dedupe: deduping blobs for digest finished successfully")
+
+	return nil
+}
+
+func (is *ImageStoreLocal) RunDedupeForDigest(digest godigest.Digest, dedupe bool, duplicateBlobs []string) error {
+	var lockLatency time.Time
+
+	is.Lock(&lockLatency)
+	defer is.Unlock(&lockLatency)
+
+	if dedupe {
+		return is.dedupeBlobs(digest, duplicateBlobs)
+	}
+
+	// otherwise noop
+	return nil
+}
+
+func (is *ImageStoreLocal) RunDedupeBlobs(interval time.Duration, sch *scheduler.Scheduler) {
+	// for local storage no need to undedupe blobs
+	if is.dedupe {
+		generator := &storage.DedupeTaskGenerator{
+			ImgStore: is,
+			Dedupe:   is.dedupe,
+			Log:      is.log,
+		}
+
+		sch.SubmitGenerator(generator, interval, scheduler.HighPriority)
+	}
 }

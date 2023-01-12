@@ -307,6 +307,22 @@ test-push-pull: binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM)
 test-push-pull-verbose: binary check-skopeo $(BATS)
 	$(BATS) --trace --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/pushpull.bats
 
+.PHONY: test-push-pull-running-dedupe
+test-push-pull-running-dedupe: binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM)
+	$(BATS) --trace --print-output-on-failure test/blackbox/pushpull_running_dedupe.bats
+
+.PHONY: test-push-pull-running-dedupe-verbose
+test-push-pull-running-dedupe-verbose: binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM)
+	$(BATS) --trace --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/pushpull_running_dedupe.bats
+
+.PHONY: test-restore-s3-blobs
+test-restore-s3-blobs: binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM)
+	$(BATS) --trace --print-output-on-failure test/blackbox/restore_s3_blobs.bats
+
+.PHONY: test-restore-s3-blobs-verbose
+test-restore-s3-blobs-verbose: binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM)
+	$(BATS) --trace --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/restore_s3_blobs.bats
+
 .PHONY: test-bats-referrers
 test-bats-referrers: EXTENSIONS=search
 test-bats-referrers: binary check-skopeo $(BATS) $(ORAS)

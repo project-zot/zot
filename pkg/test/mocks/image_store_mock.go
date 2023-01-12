@@ -36,15 +36,19 @@ type MockedImageStore struct {
 	CheckBlobFn            func(repo string, digest godigest.Digest) (bool, int64, error)
 	GetBlobPartialFn       func(repo string, digest godigest.Digest, mediaType string, from, to int64,
 	) (io.ReadCloser, int64, int64, error)
-	GetBlobFn           func(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error)
-	DeleteBlobFn        func(repo string, digest godigest.Digest) error
-	GetIndexContentFn   func(repo string) ([]byte, error)
-	GetBlobContentFn    func(repo string, digest godigest.Digest) ([]byte, error)
-	GetReferrersFn      func(repo string, digest godigest.Digest, artifactTypes []string) (ispec.Index, error)
-	GetOrasReferrersFn  func(repo string, digest godigest.Digest, artifactType string) ([]artifactspec.Descriptor, error)
-	URLForPathFn        func(path string) (string, error)
-	RunGCRepoFn         func(repo string) error
-	RunGCPeriodicallyFn func(interval time.Duration, sch *scheduler.Scheduler)
+	GetBlobFn          func(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error)
+	DeleteBlobFn       func(repo string, digest godigest.Digest) error
+	GetIndexContentFn  func(repo string) ([]byte, error)
+	GetBlobContentFn   func(repo string, digest godigest.Digest) ([]byte, error)
+	GetReferrersFn     func(repo string, digest godigest.Digest, artifactTypes []string) (ispec.Index, error)
+	GetOrasReferrersFn func(repo string, digest godigest.Digest, artifactType string,
+	) ([]artifactspec.Descriptor, error)
+	URLForPathFn                 func(path string) (string, error)
+	RunGCRepoFn                  func(repo string) error
+	RunGCPeriodicallyFn          func(interval time.Duration, sch *scheduler.Scheduler)
+	RunDedupeBlobsFn             func(interval time.Duration, sch *scheduler.Scheduler)
+	RunDedupeForDigestFn         func(digest godigest.Digest, dedupe bool, duplicateBlobs []string) error
+	GetNextDigestWithBlobPathsFn func(lastDigests []godigest.Digest) (godigest.Digest, []string, error)
 }
 
 func (is MockedImageStore) Lock(t *time.Time) {
@@ -331,4 +335,27 @@ func (is MockedImageStore) RunGCPeriodically(interval time.Duration, sch *schedu
 	if is.RunGCPeriodicallyFn != nil {
 		is.RunGCPeriodicallyFn(interval, sch)
 	}
+}
+
+func (is MockedImageStore) RunDedupeBlobs(interval time.Duration, sch *scheduler.Scheduler) {
+	if is.RunDedupeBlobsFn != nil {
+		is.RunDedupeBlobsFn(interval, sch)
+	}
+}
+
+func (is MockedImageStore) RunDedupeForDigest(digest godigest.Digest, dedupe bool, duplicateBlobs []string) error {
+	if is.RunDedupeForDigestFn != nil {
+		return is.RunDedupeForDigestFn(digest, dedupe, duplicateBlobs)
+	}
+
+	return nil
+}
+
+func (is MockedImageStore) GetNextDigestWithBlobPaths(lastDigests []godigest.Digest,
+) (godigest.Digest, []string, error) {
+	if is.GetNextDigestWithBlobPathsFn != nil {
+		return is.GetNextDigestWithBlobPathsFn(lastDigests)
+	}
+
+	return "", []string{}, nil
 }

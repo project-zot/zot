@@ -81,4 +81,5 @@ var (
 	ErrMediaTypeNotSupported    = errors.New("repodb: media type is not supported")
 	ErrTimeout                  = errors.New("operation timeout")
 	ErrNotImplemented           = errors.New("not implemented")
+	ErrDedupeRebuild            = errors.New("dedupe: couldn't rebuild dedupe index")
 )

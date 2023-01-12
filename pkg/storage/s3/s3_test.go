@@ -30,11 +30,13 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/scheduler"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/cache"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/s3"
 	"zotregistry.io/zot/pkg/test"
+	"zotregistry.io/zot/pkg/test/mocks"
 )
 
 //nolint:gochecknoglobals
@@ -44,6 +46,7 @@ var (
 	fileInfoSize   = 10
 	errorText      = "new s3 error"
 	errS3          = errors.New(errorText)
+	errCache       = errors.New("new cache error")
 	zotStorageTest = "zot-storage-test"
 	s3Region       = "us-east-2"
 )
@@ -85,11 +88,20 @@ func createMockStorage(rootDir string, cacheDir string, dedupe bool, store drive
 	return il
 }
 
-func createObjectsStore(rootDir string, cacheDir string, dedupe bool) (
-	driver.StorageDriver,
-	storage.ImageStore,
-	error,
-) {
+func createMockStorageWithMockCache(rootDir string, dedupe bool, store driver.StorageDriver,
+	cacheDriver cache.Cache,
+) storage.ImageStore {
+	log := log.Logger{Logger: zerolog.New(os.Stdout)}
+	metrics := monitoring.NewMetricsServer(false, log)
+
+	il := s3.NewImageStore(rootDir, "", false, storage.DefaultGCDelay,
+		dedupe, false, log, metrics, nil, store, cacheDriver,
+	)
+
+	return il
+}
+
+func createStoreDriver(rootDir string) driver.StorageDriver {
 	bucket := zotStorageTest
 	endpoint := os.Getenv("S3MOCK_ENDPOINT")
 	storageDriverParams := map[string]interface{}{
@@ -117,19 +129,33 @@ func createObjectsStore(rootDir string, cacheDir string, dedupe bool) (
 		panic(err)
 	}
 
+	return store
+}
+
+func createObjectsStore(rootDir string, cacheDir string, dedupe bool) (
+	driver.StorageDriver,
+	storage.ImageStore,
+	error,
+) {
+	store := createStoreDriver(rootDir)
+
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
 
 	var cacheDriver cache.Cache
 
+	var err error
+
 	// from pkg/cli/root.go/applyDefaultValues, s3 magic
-	if _, err := os.Stat(path.Join(cacheDir, "s3_cache.db")); dedupe || (!dedupe && err == nil) {
+	s3CacheDBPath := path.Join(cacheDir, s3.CacheDBName+storageConstants.DBExtensionName)
+	if _, err = os.Stat(s3CacheDBPath); dedupe || (!dedupe && err == nil) {
 		cacheDriver, _ = storage.Create("boltdb", cache.BoltDBDriverParameters{
 			RootDir:     cacheDir,
 			Name:        "s3_cache",
 			UseRelPaths: false,
 		}, log)
 	}
+
 	il := s3.NewImageStore(rootDir, cacheDir, false, storage.DefaultGCDelay,
 		dedupe, false, log, metrics, nil, store, cacheDriver)
 
@@ -141,32 +167,7 @@ func createObjectsStoreDynamo(rootDir string, cacheDir string, dedupe bool, tabl
 	storage.ImageStore,
 	error,
 ) {
-	bucket := zotStorageTest
-	endpoint := os.Getenv("S3MOCK_ENDPOINT")
-	storageDriverParams := map[string]interface{}{
-		"rootDir":        rootDir,
-		"name":           "s3",
-		"region":         s3Region,
-		"bucket":         bucket,
-		"regionendpoint": endpoint,
-		"accesskey":      "minioadmin",
-		"secretkey":      "minioadmin",
-		"secure":         false,
-		"skipverify":     false,
-	}
-
-	storeName := fmt.Sprintf("%v", storageDriverParams["name"])
-
-	store, err := factory.Create(storeName, storageDriverParams)
-	if err != nil {
-		panic(err)
-	}
-
-	// create bucket if it doesn't exists
-	_, err = resty.R().Put("http://" + endpoint + "/" + bucket)
-	if err != nil {
-		panic(err)
-	}
+	store := createStoreDriver(rootDir)
 
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
@@ -174,6 +175,7 @@ func createObjectsStoreDynamo(rootDir string, cacheDir string, dedupe bool, tabl
 	var cacheDriver cache.Cache
 
 	// from pkg/cli/root.go/applyDefaultValues, s3 magic
+	tableName = strings.ReplaceAll(tableName, "/", "")
 
 	cacheDriver, _ = storage.Create("dynamodb", cache.DynamoDBDriverParameters{
 		Endpoint:  os.Getenv("DYNAMODBMOCK_ENDPOINT"),
@@ -181,11 +183,10 @@ func createObjectsStoreDynamo(rootDir string, cacheDir string, dedupe bool, tabl
 		TableName: tableName,
 	}, log)
 
-	tableName = strings.ReplaceAll(tableName, "/", "")
 	//nolint:errcheck
 	cacheDriverDynamo, _ := cacheDriver.(*cache.DynamoDBDriver)
 
-	err = cacheDriverDynamo.NewTable(tableName)
+	err := cacheDriverDynamo.NewTable(tableName)
 	if err != nil {
 		panic(err)
 	}
@@ -196,12 +197,27 @@ func createObjectsStoreDynamo(rootDir string, cacheDir string, dedupe bool, tabl
 	return store, il, err
 }
 
+func runAndGetScheduler() (*scheduler.Scheduler, context.CancelFunc) {
+	taskScheduler := scheduler.NewScheduler(log.Logger{})
+	taskScheduler.RateLimit = 50 * time.Millisecond
+
+	ctx, cancel := context.WithCancel(context.Background())
+	taskScheduler.RunScheduler(ctx)
+
+	return taskScheduler, cancel
+}
+
 type FileInfoMock struct {
 	IsDirFn func() bool
 	SizeFn  func() int64
+	PathFn  func() string
 }
 
 func (f *FileInfoMock) Path() string {
+	if f != nil && f.PathFn != nil {
+		return f.PathFn()
+	}
+
 	return ""
 }
 
@@ -1558,6 +1574,59 @@ func TestS3Dedupe(t *testing.T) {
 
 			// the new blob with dedupe false should be equal with the origin blob from dedupe1
 			So(fi1.Size(), ShouldEqual, fi3.Size())
+
+			Convey("rebuild s3 dedupe index from true to false", func() { //nolint: dupl
+				taskScheduler, cancel := runAndGetScheduler()
+
+				storeDriver, imgStore, _ := createObjectsStore(testDir, t.TempDir(), false)
+				defer cleanupStorage(storeDriver, testDir)
+
+				// rebuild with dedupe false, should have all blobs with content
+				imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+				// wait until rebuild finishes
+
+				time.Sleep(10 * time.Second)
+
+				cancel()
+
+				fi1, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe1", "blobs", "sha256",
+					blobDigest1.Encoded()))
+				So(fi1.Size(), ShouldBeGreaterThan, 0)
+				So(err, ShouldBeNil)
+
+				fi2, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
+					blobDigest2.Encoded()))
+				So(err, ShouldBeNil)
+				So(fi2.Size(), ShouldEqual, fi1.Size())
+
+				blobContent, err := imgStore.GetBlobContent("dedupe2", blobDigest2)
+				So(err, ShouldBeNil)
+				So(len(blobContent), ShouldEqual, fi1.Size())
+
+				Convey("rebuild s3 dedupe index from false to true", func() {
+					taskScheduler, cancel := runAndGetScheduler()
+
+					defer cancel()
+
+					storeDriver, imgStore, _ := createObjectsStore(testDir, t.TempDir(), true)
+					defer cleanupStorage(storeDriver, testDir)
+
+					// rebuild with dedupe false, should have all blobs with content
+					imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+					// wait until rebuild finishes
+
+					time.Sleep(10 * time.Second)
+
+					fi2, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
+						blobDigest2.Encoded()))
+					So(err, ShouldBeNil)
+					So(fi2.Size(), ShouldEqual, 0)
+
+					blobContent, err := imgStore.GetBlobContent("dedupe2", blobDigest2)
+					So(err, ShouldBeNil)
+					So(len(blobContent), ShouldBeGreaterThan, 0)
+				})
+			})
 		})
 	})
 
@@ -1718,6 +1787,59 @@ func TestS3Dedupe(t *testing.T) {
 		// deduped blob should be of size 0
 		So(fi2.Size(), ShouldEqual, 0)
 
+		Convey("rebuild s3 dedupe index from true to false", func() { //nolint: dupl
+			taskScheduler, cancel := runAndGetScheduler()
+
+			storeDriver, imgStore, _ := createObjectsStore(testDir, t.TempDir(), false)
+			defer cleanupStorage(storeDriver, testDir)
+
+			// rebuild with dedupe false, should have all blobs with content
+			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+			// wait until rebuild finishes
+
+			time.Sleep(10 * time.Second)
+
+			cancel()
+
+			fi1, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe1", "blobs", "sha256",
+				blobDigest1.Encoded()))
+			So(fi1.Size(), ShouldBeGreaterThan, 0)
+			So(err, ShouldBeNil)
+
+			fi2, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
+				blobDigest2.Encoded()))
+			So(err, ShouldBeNil)
+			So(fi2.Size(), ShouldEqual, fi1.Size())
+
+			blobContent, err := imgStore.GetBlobContent("dedupe2", blobDigest2)
+			So(err, ShouldBeNil)
+			So(len(blobContent), ShouldEqual, fi1.Size())
+
+			Convey("rebuild s3 dedupe index from false to true", func() {
+				taskScheduler, cancel := runAndGetScheduler()
+
+				storeDriver, imgStore, _ := createObjectsStore(testDir, t.TempDir(), true)
+				defer cleanupStorage(storeDriver, testDir)
+
+				// rebuild with dedupe false, should have all blobs with content
+				imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+				// wait until rebuild finishes
+
+				time.Sleep(10 * time.Second)
+
+				cancel()
+
+				fi2, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
+					blobDigest2.Encoded()))
+				So(err, ShouldBeNil)
+				So(fi2.Size(), ShouldEqual, 0)
+
+				blobContent, err := imgStore.GetBlobContent("dedupe2", blobDigest2)
+				So(err, ShouldBeNil)
+				So(len(blobContent), ShouldBeGreaterThan, 0)
+			})
+		})
+
 		Convey("Check that delete blobs moves the real content to the next contenders", func() {
 			// if we delete blob1, the content should be moved to blob2
 			err = imgStore.DeleteBlob("dedupe1", blobDigest1)
@@ -1741,6 +1863,900 @@ func TestS3Dedupe(t *testing.T) {
 			_, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
 				blobDigest2.Encoded()))
 			So(err, ShouldNotBeNil)
+		})
+	})
+}
+
+func TestRebuildDedupeIndex(t *testing.T) {
+	skipIt(t)
+
+	Convey("Push images with dedupe true", t, func() {
+		uuid, err := guuid.NewV4()
+		if err != nil {
+			panic(err)
+		}
+
+		testDir := path.Join("/oci-repo-test", uuid.String())
+
+		tdir := t.TempDir()
+
+		storeDriver, imgStore, _ := createObjectsStore(testDir, tdir, true)
+		defer cleanupStorage(storeDriver, testDir)
+
+		// push image1
+		content := []byte("test-data3")
+		buf := bytes.NewBuffer(content)
+		buflen := buf.Len()
+		digest := godigest.FromBytes(content)
+
+		blobDigest1 := digest
+
+		_, blen, err := imgStore.FullBlobUpload("dedupe1", buf, digest)
+		So(err, ShouldBeNil)
+		So(blen, ShouldEqual, buflen)
+
+		hasBlob, blen1, err := imgStore.CheckBlob("dedupe1", digest)
+		So(blen1, ShouldEqual, buflen)
+		So(hasBlob, ShouldEqual, true)
+		So(err, ShouldBeNil)
+
+		cblob, cdigest := test.GetRandomImageConfig()
+		_, clen, err := imgStore.FullBlobUpload("dedupe1", bytes.NewReader(cblob), cdigest)
+		So(err, ShouldBeNil)
+		So(clen, ShouldEqual, len(cblob))
+
+		hasBlob, clen, err = imgStore.CheckBlob("dedupe1", cdigest)
+		So(err, ShouldBeNil)
+		So(hasBlob, ShouldEqual, true)
+		So(clen, ShouldEqual, len(cblob))
+
+		manifest := ispec.Manifest{
+			Config: ispec.Descriptor{
+				MediaType: "application/vnd.oci.image.config.v1+json",
+				Digest:    cdigest,
+				Size:      int64(len(cblob)),
+			},
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: "application/vnd.oci.image.layer.v1.tar",
+					Digest:    digest,
+					Size:      int64(buflen),
+				},
+			},
+		}
+
+		manifest.SchemaVersion = 2
+		manifestBuf, err := json.Marshal(manifest)
+		So(err, ShouldBeNil)
+		digest = godigest.FromBytes(manifestBuf)
+		_, err = imgStore.PutImageManifest("dedupe1", digest.String(),
+			ispec.MediaTypeImageManifest, manifestBuf)
+		So(err, ShouldBeNil)
+
+		_, _, _, err = imgStore.GetImageManifest("dedupe1", digest.String())
+		So(err, ShouldBeNil)
+
+		content = []byte("test-data3")
+		buf = bytes.NewBuffer(content)
+		buflen = buf.Len()
+		digest = godigest.FromBytes(content)
+
+		blobDigest2 := digest
+
+		_, blen, err = imgStore.FullBlobUpload("dedupe2", buf, digest)
+		So(err, ShouldBeNil)
+		So(blen, ShouldEqual, buflen)
+
+		hasBlob, blen1, err = imgStore.CheckBlob("dedupe2", digest)
+		So(blen1, ShouldEqual, buflen)
+		So(hasBlob, ShouldEqual, true)
+		So(err, ShouldBeNil)
+
+		_, clen, err = imgStore.FullBlobUpload("dedupe2", bytes.NewReader(cblob), cdigest)
+		So(err, ShouldBeNil)
+		So(clen, ShouldEqual, len(cblob))
+
+		hasBlob, clen, err = imgStore.CheckBlob("dedupe2", cdigest)
+		So(err, ShouldBeNil)
+		So(hasBlob, ShouldEqual, true)
+		So(clen, ShouldEqual, len(cblob))
+
+		digest = godigest.FromBytes(manifestBuf)
+		_, err = imgStore.PutImageManifest("dedupe2", digest.String(),
+			ispec.MediaTypeImageManifest, manifestBuf)
+		So(err, ShouldBeNil)
+
+		_, _, _, err = imgStore.GetImageManifest("dedupe2", digest.String())
+		So(err, ShouldBeNil)
+
+		configFi1, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe1", "blobs", "sha256",
+			cdigest.Encoded()))
+		So(err, ShouldBeNil)
+
+		configFi2, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
+			cdigest.Encoded()))
+		So(err, ShouldBeNil)
+
+		fi1, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe1", "blobs", "sha256",
+			blobDigest1.Encoded()))
+		So(err, ShouldBeNil)
+
+		fi2, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
+			blobDigest2.Encoded()))
+		So(err, ShouldBeNil)
+
+		// original blob should have the real content of blob
+		So(fi1.Size(), ShouldNotEqual, fi2.Size())
+		So(fi1.Size(), ShouldBeGreaterThan, 0)
+		// deduped blob should be of size 0
+		So(fi2.Size(), ShouldEqual, 0)
+
+		So(configFi1.Size(), ShouldNotEqual, configFi2.Size())
+		So(configFi1.Size(), ShouldBeGreaterThan, 0)
+		// deduped blob should be of size 0
+		So(configFi2.Size(), ShouldEqual, 0)
+
+		Convey("Intrerrupt rebuilding and restart, checking idempotency", func() {
+			for i := 0; i < 10; i++ {
+				taskScheduler := scheduler.NewScheduler(log.Logger{})
+				taskScheduler.RateLimit = 1 * time.Millisecond
+
+				ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+
+				taskScheduler.RunScheduler(ctx)
+
+				storeDriver, imgStore, _ = createObjectsStore(testDir, t.TempDir(), false)
+				defer cleanupStorage(storeDriver, testDir)
+
+				// rebuild with dedupe false, should have all blobs with content
+				imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+				sleepValue := i * 100
+				time.Sleep(time.Duration(sleepValue) * time.Millisecond)
+
+				cancel()
+			}
+
+			taskScheduler, cancel := runAndGetScheduler()
+
+			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+			// wait until rebuild finishes
+			time.Sleep(5 * time.Second)
+
+			cancel()
+
+			fi2, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
+				blobDigest2.Encoded()))
+			So(err, ShouldBeNil)
+			So(fi2.Size(), ShouldEqual, fi1.Size())
+
+			configFi2, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
+				cdigest.Encoded()))
+			So(err, ShouldBeNil)
+			So(configFi2.Size(), ShouldEqual, configFi1.Size())
+
+			// now from dedupe false to true
+			for i := 0; i < 10; i++ {
+				taskScheduler := scheduler.NewScheduler(log.Logger{})
+				taskScheduler.RateLimit = 1 * time.Millisecond
+
+				ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+				defer cancel()
+
+				taskScheduler.RunScheduler(ctx)
+
+				storeDriver, imgStore, _ = createObjectsStore(testDir, t.TempDir(), true)
+				defer cleanupStorage(storeDriver, testDir)
+
+				// rebuild with dedupe false, should have all blobs with content
+				imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+				sleepValue := i * 100
+				time.Sleep(time.Duration(sleepValue) * time.Millisecond)
+
+				cancel()
+			}
+
+			taskScheduler, cancel = runAndGetScheduler()
+
+			// rebuild with dedupe false, should have all blobs with content
+			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+			// wait until rebuild finishes
+			time.Sleep(5 * time.Second)
+
+			cancel()
+
+			fi2, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
+				blobDigest2.Encoded()))
+			So(err, ShouldBeNil)
+			So(fi2.Size(), ShouldNotEqual, fi1.Size())
+			So(fi2.Size(), ShouldEqual, 0)
+
+			configFi2, err = storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
+				cdigest.Encoded()))
+			So(err, ShouldBeNil)
+			So(configFi2.Size(), ShouldNotEqual, configFi1.Size())
+			So(configFi2.Size(), ShouldEqual, 0)
+		})
+
+		Convey("Trigger ErrDedupeRebuild because cache is nil", func() {
+			storeDriver, imgStore, _ := createObjectsStore(testDir, tdir, true)
+			defer cleanupStorage(storeDriver, testDir)
+
+			taskScheduler, cancel := runAndGetScheduler()
+			defer cancel()
+
+			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+			// wait until rebuild finishes
+			time.Sleep(3 * time.Second)
+		})
+
+		Convey("Rebuild dedupe index already rebuilt", func() {
+			taskScheduler, cancel := runAndGetScheduler()
+			defer cancel()
+
+			storeDriver, imgStore, _ := createObjectsStore(testDir, t.TempDir(), true)
+			defer cleanupStorage(storeDriver, testDir)
+
+			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+			// wait until rebuild finishes
+			time.Sleep(3 * time.Second)
+		})
+
+		Convey("Trigger Stat error while getting original blob", func() {
+			tdir := t.TempDir()
+			storeDriver, imgStore, _ := createObjectsStore(testDir, tdir, false)
+			defer cleanupStorage(storeDriver, testDir)
+
+			// remove original blob
+			err := storeDriver.PutContent(context.Background(), fi1.Path(), []byte{})
+			So(err, ShouldBeNil)
+
+			taskScheduler, cancel := runAndGetScheduler()
+			defer cancel()
+
+			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+			// wait until rebuild finishes
+			time.Sleep(5 * time.Second)
+		})
+
+		Convey("Trigger ErrDedupeRebuild while statting original blob", func() {
+			// remove original blob
+			err := storeDriver.Delete(context.Background(), fi1.Path())
+			So(err, ShouldBeNil)
+
+			taskScheduler, cancel := runAndGetScheduler()
+			defer cancel()
+
+			storeDriver, imgStore, _ := createObjectsStore(testDir, t.TempDir(), true)
+			defer cleanupStorage(storeDriver, testDir)
+
+			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+			// wait until rebuild finishes
+			time.Sleep(5 * time.Second)
+		})
+
+		Convey("Trigger ErrDedupeRebuild when original blob has 0 size", func() {
+			// remove original blob
+			err := storeDriver.PutContent(context.Background(), fi1.Path(), []byte{})
+			So(err, ShouldBeNil)
+
+			taskScheduler, cancel := runAndGetScheduler()
+			defer cancel()
+
+			storeDriver, imgStore, _ := createObjectsStore(testDir, t.TempDir(), true)
+			defer cleanupStorage(storeDriver, testDir)
+
+			// rebuild with dedupe false, should have all blobs with content
+			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+			// wait until rebuild finishes
+			time.Sleep(3 * time.Second)
+		})
+
+		Convey("Trigger GetNextDigestWithBlobPaths path not found err", func() {
+			tdir := t.TempDir()
+			storeDriver, imgStore, _ := createObjectsStore(testDir, tdir, true)
+			defer cleanupStorage(storeDriver, testDir)
+
+			// remove rootDir
+			err := storeDriver.Delete(context.Background(), imgStore.RootDir())
+			So(err, ShouldBeNil)
+
+			taskScheduler, cancel := runAndGetScheduler()
+			defer cancel()
+
+			// rebuild with dedupe false, should have all blobs with content
+			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+			// wait until rebuild finishes
+			time.Sleep(3 * time.Second)
+		})
+
+		Convey("Rebuild from true to false", func() {
+			taskScheduler, cancel := runAndGetScheduler()
+			defer cancel()
+
+			storeDriver, imgStore, _ := createObjectsStore(testDir, t.TempDir(), false)
+			defer cleanupStorage(storeDriver, testDir)
+
+			// rebuild with dedupe false, should have all blobs with content
+			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+			// wait until rebuild finishes
+			time.Sleep(10 * time.Second)
+
+			fi2, err := storeDriver.Stat(context.Background(), path.Join(testDir, "dedupe2", "blobs", "sha256",
+				blobDigest2.Encoded()))
+			So(err, ShouldBeNil)
+			So(fi2.Size(), ShouldEqual, fi1.Size())
+		})
+	})
+}
+
+func TestRebuildDedupeMockStoreDriver(t *testing.T) {
+	skipIt(t)
+
+	uuid, err := guuid.NewV4()
+	if err != nil {
+		panic(err)
+	}
+
+	testDir := path.Join("/oci-repo-test", uuid.String())
+
+	tdir := t.TempDir()
+
+	validDigest := godigest.FromString("digest")
+
+	Convey("Trigger Stat error in getOriginalBlobFromDisk()", t, func() {
+		imgStore := createMockStorage(testDir, tdir, false, &StorageDriverMock{
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+				return &FileInfoMock{}, errS3
+			},
+			WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn) error {
+				return walkFn(&FileInfoMock{
+					IsDirFn: func() bool {
+						return false
+					},
+					PathFn: func() string {
+						return fmt.Sprintf("path/to/%s", validDigest.Encoded())
+					},
+				})
+			},
+		})
+
+		taskScheduler, cancel := runAndGetScheduler()
+		defer cancel()
+
+		// rebuild with dedupe false, should have all blobs with content
+		imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+		// wait until rebuild finishes
+		time.Sleep(200 * time.Millisecond)
+	})
+
+	Convey("Trigger GetContent error in restoreDedupedBlobs()", t, func() {
+		imgStore := createMockStorage(testDir, tdir, false, &StorageDriverMock{
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+				if path == fmt.Sprintf("path/to/%s", validDigest.Encoded()) {
+					return &FileInfoMock{
+						SizeFn: func() int64 {
+							return int64(0)
+						},
+					}, nil
+				}
+
+				return &FileInfoMock{
+					SizeFn: func() int64 {
+						return int64(10)
+					},
+				}, nil
+			},
+			WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn) error {
+				_ = walkFn(&FileInfoMock{
+					IsDirFn: func() bool {
+						return false
+					},
+					PathFn: func() string {
+						return fmt.Sprintf("path/to/%s", validDigest.Encoded())
+					},
+				})
+				_ = walkFn(&FileInfoMock{
+					IsDirFn: func() bool {
+						return false
+					},
+					PathFn: func() string {
+						return fmt.Sprintf("path/to/second/%s", validDigest.Encoded())
+					},
+				})
+
+				return nil
+			},
+			GetContentFn: func(ctx context.Context, path string) ([]byte, error) {
+				return []byte{}, errS3
+			},
+		})
+
+		taskScheduler, cancel := runAndGetScheduler()
+		defer cancel()
+
+		// rebuild with dedupe false, should have all blobs with content
+		imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+		// wait until rebuild finishes
+		time.Sleep(200 * time.Millisecond)
+	})
+
+	Convey("Trigger GetContent error in restoreDedupedBlobs()", t, func() {
+		imgStore := createMockStorage(testDir, tdir, false, &StorageDriverMock{
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+				if path == fmt.Sprintf("path/to/%s", validDigest.Encoded()) {
+					return &FileInfoMock{
+						SizeFn: func() int64 {
+							return int64(0)
+						},
+					}, nil
+				}
+
+				return &FileInfoMock{
+					SizeFn: func() int64 {
+						return int64(10)
+					},
+				}, nil
+			},
+			WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn) error {
+				_ = walkFn(&FileInfoMock{
+					IsDirFn: func() bool {
+						return false
+					},
+					PathFn: func() string {
+						return fmt.Sprintf("path/to/%s", validDigest.Encoded())
+					},
+				})
+				_ = walkFn(&FileInfoMock{
+					IsDirFn: func() bool {
+						return false
+					},
+					PathFn: func() string {
+						return fmt.Sprintf("path/to/second/%s", validDigest.Encoded())
+					},
+				})
+
+				return nil
+			},
+			WriterFn: func(ctx context.Context, path string, isAppend bool) (driver.FileWriter, error) {
+				return &FileWriterMock{}, errS3
+			},
+		})
+
+		taskScheduler, cancel := runAndGetScheduler()
+		defer cancel()
+
+		// rebuild with dedupe false, should have all blobs with content
+		imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+		// wait until rebuild finishes
+		time.Sleep(200 * time.Millisecond)
+	})
+
+	Convey("Trigger Stat() error in restoreDedupedBlobs()", t, func() {
+		imgStore := createMockStorage(testDir, tdir, false, &StorageDriverMock{
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+				if path == fmt.Sprintf("path/to/%s", validDigest.Encoded()) {
+					return &FileInfoMock{
+						SizeFn: func() int64 {
+							return int64(10)
+						},
+					}, nil
+				}
+
+				return &FileInfoMock{
+					SizeFn: func() int64 {
+						return int64(10)
+					},
+				}, errS3
+			},
+			WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn) error {
+				_ = walkFn(&FileInfoMock{
+					IsDirFn: func() bool {
+						return false
+					},
+					PathFn: func() string {
+						return fmt.Sprintf("path/to/%s", validDigest.Encoded())
+					},
+				})
+				_ = walkFn(&FileInfoMock{
+					IsDirFn: func() bool {
+						return false
+					},
+					PathFn: func() string {
+						return fmt.Sprintf("path/to/second/%s", validDigest.Encoded())
+					},
+				})
+
+				return nil
+			},
+		})
+
+		taskScheduler, cancel := runAndGetScheduler()
+		defer cancel()
+
+		// rebuild with dedupe false, should have all blobs with content
+		imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+		// wait until rebuild finishes
+		time.Sleep(200 * time.Millisecond)
+
+		Convey("Trigger Stat() error in dedupeBlobs()", func() {
+			taskScheduler, cancel := runAndGetScheduler()
+			defer cancel()
+
+			imgStore := createMockStorage(testDir, t.TempDir(), true, &StorageDriverMock{
+				StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+					if path == fmt.Sprintf("path/to/%s", validDigest.Encoded()) {
+						return &FileInfoMock{
+							SizeFn: func() int64 {
+								return int64(10)
+							},
+						}, nil
+					}
+
+					return &FileInfoMock{
+						SizeFn: func() int64 {
+							return int64(10)
+						},
+					}, errS3
+				},
+				WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn) error {
+					_ = walkFn(&FileInfoMock{
+						IsDirFn: func() bool {
+							return false
+						},
+						PathFn: func() string {
+							return fmt.Sprintf("path/to/%s", validDigest.Encoded())
+						},
+					})
+					_ = walkFn(&FileInfoMock{
+						IsDirFn: func() bool {
+							return false
+						},
+						PathFn: func() string {
+							return fmt.Sprintf("path/to/second/%s", validDigest.Encoded())
+						},
+					})
+
+					return nil
+				},
+			})
+
+			// rebuild with dedupe false, should have all blobs with content
+			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+			// wait until rebuild finishes
+			time.Sleep(500 * time.Millisecond)
+		})
+	})
+
+	Convey("Trigger PutContent() error in dedupeBlobs()", t, func() {
+		tdir := t.TempDir()
+		imgStore := createMockStorage(testDir, tdir, true, &StorageDriverMock{
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+				if path == fmt.Sprintf("path/to/%s", validDigest.Encoded()) {
+					return &FileInfoMock{
+						SizeFn: func() int64 {
+							return int64(0)
+						},
+					}, nil
+				}
+
+				return &FileInfoMock{
+					SizeFn: func() int64 {
+						return int64(10)
+					},
+				}, nil
+			},
+			WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn) error {
+				_ = walkFn(&FileInfoMock{
+					IsDirFn: func() bool {
+						return false
+					},
+					PathFn: func() string {
+						return fmt.Sprintf("path/to/%s", validDigest.Encoded())
+					},
+				})
+				_ = walkFn(&FileInfoMock{
+					IsDirFn: func() bool {
+						return false
+					},
+					PathFn: func() string {
+						return fmt.Sprintf("path/to/second/%s", validDigest.Encoded())
+					},
+				})
+
+				return nil
+			},
+			PutContentFn: func(ctx context.Context, path string, content []byte) error {
+				return errS3
+			},
+		})
+
+		taskScheduler, cancel := runAndGetScheduler()
+		defer cancel()
+
+		// rebuild with dedupe false, should have all blobs with content
+		imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+		// wait until rebuild finishes
+		time.Sleep(200 * time.Millisecond)
+	})
+
+	//nolint: dupl
+	Convey("Trigger getOriginalBlob() error in dedupeBlobs()", t, func() {
+		tdir := t.TempDir()
+		imgStore := createMockStorage(testDir, tdir, true, &StorageDriverMock{
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+				if path == fmt.Sprintf("path/to/%s", validDigest.Encoded()) {
+					return &FileInfoMock{
+						SizeFn: func() int64 {
+							return int64(0)
+						},
+					}, nil
+				}
+
+				return &FileInfoMock{
+					SizeFn: func() int64 {
+						return int64(0)
+					},
+				}, nil
+			},
+			WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn) error {
+				_ = walkFn(&FileInfoMock{
+					IsDirFn: func() bool {
+						return false
+					},
+					PathFn: func() string {
+						return fmt.Sprintf("path/to/%s", validDigest.Encoded())
+					},
+				})
+				_ = walkFn(&FileInfoMock{
+					IsDirFn: func() bool {
+						return false
+					},
+					PathFn: func() string {
+						return fmt.Sprintf("path/to/second/%s", validDigest.Encoded())
+					},
+				})
+
+				return nil
+			},
+		})
+
+		taskScheduler, cancel := runAndGetScheduler()
+		defer cancel()
+
+		// rebuild with dedupe false, should have all blobs with content
+		imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+		// wait until rebuild finishes
+		time.Sleep(200 * time.Millisecond)
+	})
+
+	//nolint: dupl
+	Convey("Trigger Stat() error in dedupeBlobs()", t, func() {
+		tdir := t.TempDir()
+		imgStore := createMockStorage(testDir, tdir, true, &StorageDriverMock{
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+				if path == fmt.Sprintf("path/to/%s", validDigest.Encoded()) {
+					return &FileInfoMock{
+						SizeFn: func() int64 {
+							return int64(10)
+						},
+					}, nil
+				}
+
+				return &FileInfoMock{
+					SizeFn: func() int64 {
+						return int64(10)
+					},
+				}, errS3
+			},
+			WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn) error {
+				_ = walkFn(&FileInfoMock{
+					IsDirFn: func() bool {
+						return false
+					},
+					PathFn: func() string {
+						return fmt.Sprintf("path/to/%s", validDigest.Encoded())
+					},
+				})
+				_ = walkFn(&FileInfoMock{
+					IsDirFn: func() bool {
+						return false
+					},
+					PathFn: func() string {
+						return fmt.Sprintf("path/to/second/%s", validDigest.Encoded())
+					},
+				})
+
+				return nil
+			},
+		})
+
+		taskScheduler, cancel := runAndGetScheduler()
+		defer cancel()
+
+		// rebuild with dedupe false, should have all blobs with content
+		imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+		// wait until rebuild finishes
+		time.Sleep(200 * time.Millisecond)
+	})
+
+	Convey("Trigger getNextDigestWithBlobPaths err", t, func() {
+		tdir := t.TempDir()
+		imgStore := createMockStorage(testDir, tdir, true, &StorageDriverMock{
+			WalkFn: func(ctx context.Context, path string, f driver.WalkFn) error {
+				return errS3
+			},
+		})
+
+		taskScheduler, cancel := runAndGetScheduler()
+		defer cancel()
+
+		// rebuild with dedupe false, should have all blobs with content
+		imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+		// wait until rebuild finishes
+		time.Sleep(200 * time.Millisecond)
+	})
+
+	Convey("Trigger cache errors", t, func() {
+		storageDriverMockIfBranch := &StorageDriverMock{
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+				if path == fmt.Sprintf("path/to/%s", validDigest.Encoded()) {
+					return &FileInfoMock{
+						SizeFn: func() int64 {
+							return int64(0)
+						},
+					}, nil
+				}
+
+				return &FileInfoMock{
+					SizeFn: func() int64 {
+						return int64(10)
+					},
+				}, nil
+			},
+			WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn) error {
+				_ = walkFn(&FileInfoMock{
+					IsDirFn: func() bool {
+						return false
+					},
+					PathFn: func() string {
+						return fmt.Sprintf("path/to/%s", validDigest.Encoded())
+					},
+				})
+				_ = walkFn(&FileInfoMock{
+					IsDirFn: func() bool {
+						return false
+					},
+					PathFn: func() string {
+						return fmt.Sprintf("path/to/second/%s", validDigest.Encoded())
+					},
+				})
+
+				return nil
+			},
+		}
+
+		storageDriverMockElseBranch := &StorageDriverMock{
+			StatFn: func(ctx context.Context, path string) (driver.FileInfo, error) {
+				if path == fmt.Sprintf("path/to/%s", validDigest.Encoded()) {
+					return &FileInfoMock{
+						SizeFn: func() int64 {
+							return int64(10)
+						},
+					}, nil
+				}
+
+				return &FileInfoMock{
+					SizeFn: func() int64 {
+						return int64(10)
+					},
+				}, nil
+			},
+			WalkFn: func(ctx context.Context, path string, walkFn driver.WalkFn) error {
+				_ = walkFn(&FileInfoMock{
+					IsDirFn: func() bool {
+						return false
+					},
+					PathFn: func() string {
+						return fmt.Sprintf("path/to/%s", validDigest.Encoded())
+					},
+				})
+				_ = walkFn(&FileInfoMock{
+					IsDirFn: func() bool {
+						return false
+					},
+					PathFn: func() string {
+						return fmt.Sprintf("path/to/second/%s", validDigest.Encoded())
+					},
+				})
+
+				return nil
+			},
+		}
+
+		Convey("on original blob", func() {
+			imgStore := createMockStorageWithMockCache(testDir, true, storageDriverMockIfBranch,
+				&mocks.CacheMock{
+					HasBlobFn: func(digest godigest.Digest, path string) bool {
+						return false
+					},
+					PutBlobFn: func(digest godigest.Digest, path string) error {
+						return errCache
+					},
+				})
+
+			taskScheduler, cancel := runAndGetScheduler()
+			defer cancel()
+
+			// rebuild with dedupe false, should have all blobs with content
+			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+			// wait until rebuild finishes
+			time.Sleep(200 * time.Millisecond)
+		})
+
+		Convey("on dedupe blob", func() {
+			imgStore := createMockStorageWithMockCache(testDir, true, storageDriverMockIfBranch,
+				&mocks.CacheMock{
+					HasBlobFn: func(digest godigest.Digest, path string) bool {
+						return false
+					},
+					PutBlobFn: func(digest godigest.Digest, path string) error {
+						if path == fmt.Sprintf("path/to/%s", validDigest.Encoded()) {
+							return errCache
+						}
+
+						return nil
+					},
+				})
+
+			taskScheduler, cancel := runAndGetScheduler()
+			defer cancel()
+
+			// rebuild with dedupe false, should have all blobs with content
+			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+			// wait until rebuild finishes
+			time.Sleep(200 * time.Millisecond)
+		})
+
+		Convey("on else branch", func() {
+			imgStore := createMockStorageWithMockCache(testDir, true, storageDriverMockElseBranch,
+				&mocks.CacheMock{
+					HasBlobFn: func(digest godigest.Digest, path string) bool {
+						return false
+					},
+					PutBlobFn: func(digest godigest.Digest, path string) error {
+						return errCache
+					},
+				})
+
+			taskScheduler, cancel := runAndGetScheduler()
+			defer cancel()
+
+			// rebuild with dedupe false, should have all blobs with content
+			imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+			// wait until rebuild finishes
+			time.Sleep(200 * time.Millisecond)
 		})
 	})
 }

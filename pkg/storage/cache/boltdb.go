@@ -22,8 +22,9 @@ type BoltDBDriver struct {
 }
 
 type BoltDBDriverParameters struct {
-	RootDir, Name string
-	UseRelPaths   bool
+	RootDir     string
+	Name        string
+	UseRelPaths bool
 }
 
 func NewBoltDBCache(parameters interface{}, log zlog.Logger) Cache {
@@ -206,8 +207,15 @@ func (d *BoltDBDriver) HasBlob(digest godigest.Digest, blob string) bool {
 			return errors.ErrCacheMiss
 		}
 
-		if origin.Get([]byte(blob)) == nil {
+		deduped := bucket.Bucket([]byte(constants.DuplicatesBucket))
+		if deduped == nil {
 			return errors.ErrCacheMiss
+		}
+
+		if origin.Get([]byte(blob)) == nil {
+			if deduped.Get([]byte(blob)) == nil {
+				return errors.ErrCacheMiss
+			}
 		}
 
 		return nil

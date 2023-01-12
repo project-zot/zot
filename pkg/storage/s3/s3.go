@@ -24,6 +24,7 @@ import (
 	"github.com/rs/zerolog"
 
 	zerr "zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	zlog "zotregistry.io/zot/pkg/log"
 	zreg "zotregistry.io/zot/pkg/regexp"
@@ -1191,7 +1192,7 @@ func (is *ObjectStorage) GetBlob(repo string, digest godigest.Digest, mediaType 
 	}
 
 	// is a 'deduped' blob?
-	if binfo.Size() == 0 && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
+	if binfo.Size() == 0 {
 		// Check blobs in cache
 		dstRecord, err := is.checkCacheBlob(digest)
 		if err != nil {
@@ -1244,7 +1245,7 @@ func (is *ObjectStorage) GetBlobContent(repo string, digest godigest.Digest) ([]
 	}
 
 	// is a 'deduped' blob?
-	if binfo.Size() == 0 && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
+	if binfo.Size() == 0 {
 		// Check blobs in cache
 		dstRecord, err := is.checkCacheBlob(digest)
 		if err != nil {
@@ -1394,4 +1395,231 @@ func writeFile(store driver.StorageDriver, filepath string, buf []byte) (int, er
 	}
 
 	return n, nil
+}
+
+func (is *ObjectStorage) GetNextDigestWithBlobPaths(lastDigests []godigest.Digest) (godigest.Digest, []string, error) {
+	var lockLatency time.Time
+
+	dir := is.rootDir
+
+	is.RLock(&lockLatency)
+	defer is.RUnlock(&lockLatency)
+
+	var duplicateBlobs []string
+
+	var digest godigest.Digest
+
+	err := is.store.Walk(context.Background(), dir, func(fileInfo driver.FileInfo) error {
+		if fileInfo.IsDir() {
+			return nil
+		}
+
+		blobDigest := godigest.NewDigestFromEncoded("sha256", path.Base(fileInfo.Path()))
+		if err := blobDigest.Validate(); err != nil {
+			return nil //nolint:nilerr // ignore files which are not blobs
+		}
+
+		if digest == "" && !common.DContains(lastDigests, blobDigest) {
+			digest = blobDigest
+		}
+
+		if blobDigest == digest {
+			duplicateBlobs = append(duplicateBlobs, fileInfo.Path())
+		}
+
+		return nil
+	})
+
+	// if the root directory is not yet created
+	var perr driver.PathNotFoundError
+
+	if errors.As(err, &perr) {
+		return digest, duplicateBlobs, nil
+	}
+
+	return digest, duplicateBlobs, err
+}
+
+func (is *ObjectStorage) getOriginalBlobFromDisk(duplicateBlobs []string) (string, error) {
+	for _, blobPath := range duplicateBlobs {
+		binfo, err := is.store.Stat(context.Background(), blobPath)
+		if err != nil {
+			is.log.Error().Err(err).Str("path", blobPath).Msg("rebuild dedupe: failed to stat blob")
+
+			return "", zerr.ErrBlobNotFound
+		}
+
+		if binfo.Size() > 0 {
+			return blobPath, nil
+		}
+	}
+
+	return "", zerr.ErrBlobNotFound
+}
+
+func (is *ObjectStorage) getOriginalBlob(digest godigest.Digest, duplicateBlobs []string) (string, error) {
+	originalBlob := ""
+
+	var err error
+
+	originalBlob, err = is.checkCacheBlob(digest)
+	if err != nil && !errors.Is(err, zerr.ErrBlobNotFound) && !errors.Is(err, zerr.ErrCacheMiss) {
+		is.log.Error().Err(err).Msg("rebuild dedupe: unable to find blob in cache")
+
+		return originalBlob, err
+	}
+
+	// if we still don't have, search it
+	if originalBlob == "" {
+		is.log.Warn().Msg("rebuild dedupe: failed to find blob in cache, searching it in s3...")
+		// a rebuild dedupe was attempted in the past
+		// get original blob, should be found otherwise exit with error
+
+		originalBlob, err = is.getOriginalBlobFromDisk(duplicateBlobs)
+		if err != nil {
+			return originalBlob, err
+		}
+	}
+
+	is.log.Info().Msgf("rebuild dedupe: found original blob %s", originalBlob)
+
+	return originalBlob, nil
+}
+
+func (is *ObjectStorage) dedupeBlobs(digest godigest.Digest, duplicateBlobs []string) error {
+	if fmt.Sprintf("%v", is.cache) == fmt.Sprintf("%v", nil) {
+		is.log.Error().Err(zerr.ErrDedupeRebuild).Msg("no cache driver found, can not dedupe blobs")
+
+		return zerr.ErrDedupeRebuild
+	}
+
+	is.log.Info().Str("digest", digest.String()).Msgf("rebuild dedupe: deduping blobs for digest")
+
+	var originalBlob string
+
+	// rebuild from dedupe false to true
+	for _, blobPath := range duplicateBlobs {
+		binfo, err := is.store.Stat(context.Background(), blobPath)
+		if err != nil {
+			is.log.Error().Err(err).Str("path", blobPath).Msg("rebuild dedupe: failed to stat blob")
+
+			return err
+		}
+
+		if binfo.Size() == 0 {
+			is.log.Warn().Msg("rebuild dedupe: found file without content, trying to find the original blob")
+			// a rebuild dedupe was attempted in the past
+			// get original blob, should be found otherwise exit with error
+			if originalBlob == "" {
+				originalBlob, err = is.getOriginalBlob(digest, duplicateBlobs)
+				if err != nil {
+					is.log.Error().Err(err).Msg("rebuild dedupe: unable to find original blob")
+
+					return zerr.ErrDedupeRebuild
+				}
+
+				// cache original blob
+				if ok := is.cache.HasBlob(digest, originalBlob); !ok {
+					if err := is.cache.PutBlob(digest, originalBlob); err != nil {
+						return err
+					}
+				}
+			}
+
+			// cache dedupe blob
+			if ok := is.cache.HasBlob(digest, blobPath); !ok {
+				if err := is.cache.PutBlob(digest, blobPath); err != nil {
+					return err
+				}
+			}
+		} else {
+			// cache it
+			if ok := is.cache.HasBlob(digest, blobPath); !ok {
+				if err := is.cache.PutBlob(digest, blobPath); err != nil {
+					return err
+				}
+			}
+
+			// if we have an original blob cached then we can safely dedupe the rest of them
+			if originalBlob != "" {
+				if err := is.store.PutContent(context.Background(), blobPath, []byte{}); err != nil {
+					is.log.Error().Err(err).Str("path", blobPath).Msg("rebuild dedupe: unable to dedupe blob")
+
+					return err
+				}
+			}
+
+			// mark blob as preserved
+			originalBlob = blobPath
+		}
+	}
+
+	is.log.Info().Str("digest", digest.String()).Msgf("rebuild dedupe: deduping blobs for digest finished successfully")
+
+	return nil
+}
+
+func (is *ObjectStorage) restoreDedupedBlobs(digest godigest.Digest, duplicateBlobs []string) error {
+	is.log.Info().Str("digest", digest.String()).Msgf("rebuild dedupe: restoring deduped blobs for digest")
+
+	// first we need to find the original blob, either in cache or by checking each blob size
+	originalBlob, err := is.getOriginalBlob(digest, duplicateBlobs)
+	if err != nil {
+		is.log.Error().Err(err).Msg("rebuild dedupe: unable to find original blob")
+
+		return zerr.ErrDedupeRebuild
+	}
+
+	for _, blobPath := range duplicateBlobs {
+		binfo, err := is.store.Stat(context.Background(), blobPath)
+		if err != nil {
+			is.log.Error().Err(err).Str("path", blobPath).Msg("rebuild dedupe: failed to stat blob")
+
+			return err
+		}
+
+		// if we find a deduped blob, then copy original blob content to deduped one
+		if binfo.Size() == 0 {
+			// move content from original blob to deduped one
+			buf, err := is.store.GetContent(context.Background(), originalBlob)
+			if err != nil {
+				is.log.Error().Err(err).Str("path", originalBlob).Msg("rebuild dedupe: failed to get original blob content")
+
+				return err
+			}
+
+			_, err = writeFile(is.store, blobPath, buf)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	is.log.Info().Str("digest", digest.String()).
+		Msgf("rebuild dedupe: restoring deduped blobs for digest finished successfully")
+
+	return nil
+}
+
+func (is *ObjectStorage) RunDedupeForDigest(digest godigest.Digest, dedupe bool, duplicateBlobs []string) error {
+	var lockLatency time.Time
+
+	is.Lock(&lockLatency)
+	defer is.Unlock(&lockLatency)
+
+	if dedupe {
+		return is.dedupeBlobs(digest, duplicateBlobs)
+	}
+
+	return is.restoreDedupedBlobs(digest, duplicateBlobs)
+}
+
+func (is *ObjectStorage) RunDedupeBlobs(interval time.Duration, sch *scheduler.Scheduler) {
+	generator := &storage.DedupeTaskGenerator{
+		ImgStore: is,
+		Dedupe:   is.dedupe,
+		Log:      is.log,
+	}
+
+	sch.SubmitGenerator(generator, interval, scheduler.HighPriority)
 }

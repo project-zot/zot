@@ -16,6 +16,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/opencontainers/go-digest"
+
 	"zotregistry.io/zot/pkg/log"
 )
 
@@ -232,4 +234,14 @@ func MarshalThroughStruct(obj interface{}, throughStruct interface{}) ([]byte, e
 	}
 
 	return toJSON, nil
+}
+
+func DContains(slice []digest.Digest, item digest.Digest) bool {
+	for _, v := range slice {
+		if item == v {
+			return true
+		}
+	}
+
+	return false
 }

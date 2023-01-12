@@ -52,7 +52,11 @@ func (pq *generatorsPriorityQueue) Pop() any {
 	return item
 }
 
-const rateLimiterScheduler = 400
+const (
+	rateLimiterScheduler = 400
+	rateLimit            = 5 * time.Second
+	numWorkers           = 3
+)
 
 type Scheduler struct {
 	tasksQLow         chan Task
@@ -63,6 +67,7 @@ type Scheduler struct {
 	generatorsLock    *sync.Mutex
 	log               log.Logger
 	stopCh            chan struct{}
+	RateLimit         time.Duration
 }
 
 func NewScheduler(logC log.Logger) *Scheduler {
@@ -82,13 +87,10 @@ func NewScheduler(logC log.Logger) *Scheduler {
 		generatorsLock: new(sync.Mutex),
 		log:            log.Logger{Logger: sublogger},
 		stopCh:         make(chan struct{}),
+		// default value
+		RateLimit: rateLimit,
 	}
 }
-
-const (
-	rateLimit  = 5 * time.Second
-	numWorkers = 3
-)
 
 func (scheduler *Scheduler) poolWorker(numWorkers int, tasks chan Task) {
 	for i := 0; i < numWorkers; i++ {
@@ -119,6 +121,8 @@ func (scheduler *Scheduler) RunScheduler(ctx context.Context) {
 			case <-ctx.Done():
 				close(tasksWorker)
 				close(scheduler.stopCh)
+
+				scheduler.log.Debug().Msg("scheduler: received stop signal, exiting...")
 
 				return
 			default:

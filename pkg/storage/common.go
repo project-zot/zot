@@ -16,6 +16,7 @@ import (
 	"github.com/sigstore/cosign/pkg/oci/remote"
 
 	zerr "zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/scheduler"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 )
 
@@ -788,4 +789,89 @@ func CheckIsImageSignature(repoName string, manifestBlob []byte, reference strin
 	}
 
 	return false, "", "", nil
+}
+
+/*
+	DedupeTaskGenerator takes all blobs paths found in the imagestore and groups them by digest
+
+for each digest and based on the dedupe value it will dedupe or restore deduped blobs to the original state(undeduped)\
+by creating a task for each digest and pushing it to the task scheduler.
+*/
+type DedupeTaskGenerator struct {
+	ImgStore ImageStore
+	// storage dedupe value
+	Dedupe bool
+	// store blobs paths grouped by digest
+	digest         godigest.Digest
+	duplicateBlobs []string
+	/* store processed digest, used for iterating duplicateBlobs one by one
+	and generating a task for each unprocessed one*/
+	lastDigests []godigest.Digest
+	done        bool
+	Log         zerolog.Logger
+}
+
+func (gen *DedupeTaskGenerator) GenerateTask() (scheduler.Task, error) {
+	var err error
+
+	// get all blobs from imageStore and group them by digest
+	gen.digest, gen.duplicateBlobs, err = gen.ImgStore.GetNextDigestWithBlobPaths(gen.lastDigests)
+	if err != nil {
+		gen.Log.Error().Err(err).Msg("dedupe rebuild: failed to get next digest")
+
+		return nil, err
+	}
+
+	// if no digests left, then mark the task generator as done
+	if gen.digest == "" {
+		gen.Log.Info().Msg("dedupe rebuild: finished")
+
+		gen.done = true
+
+		return nil, nil
+	}
+
+	// mark digest as processed before running its task
+	gen.lastDigests = append(gen.lastDigests, gen.digest)
+
+	// generate rebuild dedupe task for this digest
+	return newDedupeTask(gen.ImgStore, gen.digest, gen.Dedupe, gen.duplicateBlobs, gen.Log), nil
+}
+
+func (gen *DedupeTaskGenerator) IsDone() bool {
+	return gen.done
+}
+
+func (gen *DedupeTaskGenerator) Reset() {
+	gen.lastDigests = []godigest.Digest{}
+	gen.duplicateBlobs = []string{}
+	gen.digest = ""
+	gen.done = false
+}
+
+type dedupeTask struct {
+	imgStore ImageStore
+	// digest of duplicateBLobs
+	digest godigest.Digest
+	// blobs paths with the same digest ^
+	duplicateBlobs []string
+	dedupe         bool
+	log            zerolog.Logger
+}
+
+func newDedupeTask(imgStore ImageStore, digest godigest.Digest, dedupe bool,
+	duplicateBlobs []string, log zerolog.Logger,
+) *dedupeTask {
+	return &dedupeTask{imgStore, digest, duplicateBlobs, dedupe, log}
+}
+
+func (dt *dedupeTask) DoWork() error {
+	// run task
+	err := dt.imgStore.RunDedupeForDigest(dt.digest, dt.dedupe, dt.duplicateBlobs)
+	if err != nil {
+		// log it
+		dt.log.Error().Err(err).Msgf("rebuild dedupe: failed to rebuild digest %s", dt.digest.String())
+	}
+
+	return err
 }

@@ -91,7 +91,10 @@ func TestMetricsExtension(t *testing.T) {
 		ctlrManager := test.NewControllerManager(ctlr)
 
 		subPaths := make(map[string]config.StorageConfig)
-		subPaths["/a"] = config.StorageConfig{}
+		subPaths["/a"] = config.StorageConfig{
+			Dedupe:        false,
+			RootDirectory: t.TempDir(),
+		}
 
 		ctlr.Config.Storage.RootDirectory = globalDir
 		ctlr.Config.Storage.SubPaths = subPaths

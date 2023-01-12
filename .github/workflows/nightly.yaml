@@ -1,0 +1,57 @@
+name: 'Nightly jobs'
+on:
+  schedule:
+    - cron: '30 1 * * *'
+  workflow_dispatch:
+      
+permissions: read-all
+
+#  Here we are running two tests:
+#  1. run zot with local storage and dedupe disabled, push images, restart zot with dedupe enabled
+#  task scheduler will start a dedupe all blobs process at zot startup and it shouldn't interfere with clients.
+#  2. run zot with s3 storage and dynamodb and dedupe enabled, push images, restart zot with dedupe false and no cache
+#  task scheduler will start a restore all blobs process at zot startup, after it finishes all blobs should be restored to their original state (have content)
+jobs:
+  client-tools:
+    name: Dedupe/restore blobs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
+        with:
+          go-version: 1.19.x
+      - name: Install dependencies
+        run: |
+          cd $GITHUB_WORKSPACE
+          go install github.com/swaggo/swag/cmd/swag
+          go mod download
+          sudo apt-get update
+          sudo apt-get install libgpgme-dev libassuan-dev libbtrfs-dev libdevmapper-dev pkg-config rpm uidmap
+          # install skopeo
+          git clone -b v1.9.0 https://github.com/containers/skopeo.git
+          cd skopeo
+          make bin/skopeo
+          sudo cp bin/skopeo /usr/bin
+          skopeo -v
+      - name: Install localstack
+        run: |
+          pip install --upgrade pyopenssl
+          pip install localstack awscli-local[ver1] # install LocalStack cli and awslocal
+          docker pull localstack/localstack         # Make sure to pull the latest version of the image
+          localstack start -d                       # Start LocalStack in the background
+          
+          echo "Waiting for LocalStack startup..."  # Wait 30 seconds for the LocalStack container
+          localstack wait -t 30                     # to become ready before timing out 
+          echo "Startup complete"          
+      - name: Run restore s3 blobs after cache is deleted
+        run: |
+            make test-restore-s3-blobs
+        env:
+          AWS_ACCESS_KEY_ID: fake
+          AWS_SECRET_ACCESS_KEY: fake
+      - name: Run dedupe filesystem blobs after switching dedupe to enable.
+        run: |
+            make test-push-pull-running-dedupe
+        env:
+          AWS_ACCESS_KEY_ID: fake
+          AWS_SECRET_ACCESS_KEY: fake
