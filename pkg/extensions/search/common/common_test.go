@@ -480,8 +480,12 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		defaultVal := true
 
 		updateDuration, _ := time.ParseDuration("1h")
+		trivyConfig := &extconf.TrivyConfig{
+			DBRepository: "ghcr.io/project-zot/trivy-db",
+		}
 		cveConfig := &extconf.CVEConfig{
 			UpdateInterval: updateDuration,
+			Trivy:          trivyConfig,
 		}
 		searchConfig := &extconf.SearchConfig{
 			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
@@ -507,7 +511,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		defer stopServer(ctlr)
 		WaitTillServerReady(baseURL)
 
-		substring := "{\"Search\":{\"Enable\":true,\"CVE\":{\"UpdateInterval\":3600000000000}}"
+		substring := "{\"Search\":{\"Enable\":true,\"CVE\":{\"UpdateInterval\":3600000000000,\"Trivy\":{\"DBRepository\":\"ghcr.io/project-zot/trivy-db\"}}}" //nolint: lll
 		found, err := readFileAndSearchString(logPath, substring, 2*time.Minute)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
@@ -2507,8 +2511,12 @@ func TestGlobalSearch(t *testing.T) {
 		defaultVal := true
 
 		updateDuration, _ := time.ParseDuration("1h")
+		trivyConfig := &extconf.TrivyConfig{
+			DBRepository: "ghcr.io/project-zot/trivy-db",
+		}
 		cveConfig := &extconf.CVEConfig{
 			UpdateInterval: updateDuration,
+			Trivy:          trivyConfig,
 		}
 		searchConfig := &extconf.SearchConfig{
 			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
@@ -2535,7 +2543,7 @@ func TestGlobalSearch(t *testing.T) {
 		WaitTillServerReady(baseURL)
 
 		// Wait for trivy db to download
-		substring := "{\"Search\":{\"Enable\":true,\"CVE\":{\"UpdateInterval\":3600000000000}}"
+		substring := "{\"Search\":{\"Enable\":true,\"CVE\":{\"UpdateInterval\":3600000000000,\"Trivy\":{\"DBRepository\":\"ghcr.io/project-zot/trivy-db\"}}}" //nolint: lll
 		found, err := readFileAndSearchString(logPath, substring, 2*time.Minute)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
@@ -4731,8 +4739,12 @@ func TestImageSummary(t *testing.T) {
 
 		defaultVal := true
 		updateDuration, _ := time.ParseDuration("1h")
+		trivyConfig := &extconf.TrivyConfig{
+			DBRepository: "ghcr.io/project-zot/trivy-db",
+		}
 		cveConfig := &extconf.CVEConfig{
 			UpdateInterval: updateDuration,
+			Trivy:          trivyConfig,
 		}
 		searchConfig := &extconf.SearchConfig{
 			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},

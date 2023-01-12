@@ -11,8 +11,6 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.io/zot/pkg/api/config"
-	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	"zotregistry.io/zot/pkg/log"
@@ -63,10 +61,6 @@ func TestMultipleStoragePath(t *testing.T) {
 		log := log.NewLogger("debug", "")
 		metrics := monitoring.NewMetricsServer(false, log)
 
-		conf := config.New()
-		conf.Extensions = &extconf.ExtensionConfig{}
-		conf.Extensions.Lint = &extconf.LintConfig{}
-
 		// Create ImageStore
 		firstStore := local.NewImageStore(firstRootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil, nil)
 
@@ -93,7 +87,7 @@ func TestMultipleStoragePath(t *testing.T) {
 		err = repodb.SyncRepoDB(repoDB, storeController, log)
 		So(err, ShouldBeNil)
 
-		scanner := NewScanner(storeController, repoDB, log)
+		scanner := NewScanner(storeController, repoDB, "ghcr.io/project-zot/trivy-db", log)
 
 		So(scanner.storeController.DefaultStore, ShouldNotBeNil)
 		So(scanner.storeController.SubStore, ShouldNotBeNil)
@@ -168,10 +162,6 @@ func TestTrivyLibraryErrors(t *testing.T) {
 		log := log.NewLogger("debug", "")
 		metrics := monitoring.NewMetricsServer(false, log)
 
-		conf := config.New()
-		conf.Extensions = &extconf.ExtensionConfig{}
-		conf.Extensions.Lint = &extconf.LintConfig{}
-
 		// Create ImageStore
 		store := local.NewImageStore(rootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil, nil)
 
@@ -186,7 +176,7 @@ func TestTrivyLibraryErrors(t *testing.T) {
 		err = repodb.SyncRepoDB(repoDB, storeController, log)
 		So(err, ShouldBeNil)
 
-		scanner := NewScanner(storeController, repoDB, log)
+		scanner := NewScanner(storeController, repoDB, "ghcr.io/project-zot/trivy-db", log)
 
 		// Download DB since DB download on scan is disabled
 		err = scanner.UpdateDB()
@@ -216,5 +206,46 @@ func TestTrivyLibraryErrors(t *testing.T) {
 		opts.ReportOptions.IgnorePolicy = "invalid file path"
 		_, err = scanner.runTrivy(opts)
 		So(err, ShouldNotBeNil)
+	})
+}
+
+func TestDefaultTrivyDBUrl(t *testing.T) {
+	Convey("Test trivy DB download from default location", t, func() {
+		// Create temporary directory
+		rootDir := t.TempDir()
+
+		err := test.CopyFiles("../../../../../test/data/zot-test", path.Join(rootDir, "zot-test"))
+		So(err, ShouldBeNil)
+
+		log := log.NewLogger("debug", "")
+		metrics := monitoring.NewMetricsServer(false, log)
+
+		// Create ImageStore
+		store := local.NewImageStore(rootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil, nil)
+
+		storeController := storage.StoreController{}
+		storeController.DefaultStore = store
+
+		repoDB, err := bolt.NewBoltDBWrapper(bolt.DBParameters{
+			RootDir: rootDir,
+		})
+		So(err, ShouldBeNil)
+
+		err = repodb.SyncRepoDB(repoDB, storeController, log)
+		So(err, ShouldBeNil)
+
+		// Use empty string for DB repository, the default url would be used internally
+		scanner := NewScanner(storeController, repoDB, "", log)
+
+		// Download DB since DB download on scan is disabled
+		err = scanner.UpdateDB()
+		So(err, ShouldBeNil)
+
+		img := "zot-test:0.0.1"
+
+		// Scanning image
+		opts := scanner.getTrivyOptions(img)
+		_, err = scanner.runTrivy(opts)
+		So(err, ShouldBeNil)
 	})
 }

@@ -48,9 +48,9 @@ type BaseCveInfo struct {
 }
 
 func NewCVEInfo(storeController storage.StoreController, repoDB repodb.RepoDB,
-	log log.Logger,
+	dbRepository string, log log.Logger,
 ) *BaseCveInfo {
-	scanner := trivy.NewScanner(storeController, repoDB, log)
+	scanner := trivy.NewScanner(storeController, repoDB, dbRepository, log)
 
 	return &BaseCveInfo{
 		Log:     log,

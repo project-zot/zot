@@ -311,10 +311,6 @@ func TestImageFormat(t *testing.T) {
 		imgDir := "../../../../test/data"
 		dbDir := t.TempDir()
 
-		conf := config.New()
-		conf.Extensions = &extconf.ExtensionConfig{}
-		conf.Extensions.Lint = &extconf.LintConfig{}
-
 		metrics := monitoring.NewMetricsServer(false, log)
 		defaultStore := local.NewImageStore(imgDir, false, storage.DefaultGCDelay,
 			false, false, log, metrics, nil, nil)
@@ -328,7 +324,7 @@ func TestImageFormat(t *testing.T) {
 		err = repodb.SyncRepoDB(repoDB, storeController, log)
 		So(err, ShouldBeNil)
 
-		cveInfo := cveinfo.NewCVEInfo(storeController, repoDB, log)
+		cveInfo := cveinfo.NewCVEInfo(storeController, repoDB, "", log)
 
 		isValidImage, err := cveInfo.Scanner.IsImageFormatScannable("zot-test")
 		So(err, ShouldNotBeNil)
@@ -477,8 +473,13 @@ func TestCVESearch(t *testing.T) {
 		}
 
 		conf.Storage.RootDirectory = dbDir
+
+		trivyConfig := &extconf.TrivyConfig{
+			DBRepository: "ghcr.io/project-zot/trivy-db",
+		}
 		cveConfig := &extconf.CVEConfig{
 			UpdateInterval: updateDuration,
+			Trivy:          trivyConfig,
 		}
 		defaultVal := true
 		searchConfig := &extconf.SearchConfig{

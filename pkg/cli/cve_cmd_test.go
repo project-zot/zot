@@ -358,8 +358,12 @@ func TestServerCVEResponseGQL(t *testing.T) {
 	}
 
 	conf.Storage.RootDirectory = dir
+	trivyConfig := &extconf.TrivyConfig{
+		DBRepository: "ghcr.io/project-zot/trivy-db",
+	}
 	cveConfig := &extconf.CVEConfig{
 		UpdateInterval: 2,
+		Trivy:          trivyConfig,
 	}
 	defaultVal := true
 	searchConfig := &extconf.SearchConfig{
@@ -647,8 +651,12 @@ func TestNegativeServerResponse(t *testing.T) {
 		}
 
 		conf.Storage.RootDirectory = dir
+		trivyConfig := &extconf.TrivyConfig{
+			DBRepository: "ghcr.io/project-zot/trivy-db",
+		}
 		cveConfig := &extconf.CVEConfig{
 			UpdateInterval: 2,
+			Trivy:          trivyConfig,
 		}
 		defaultVal := false
 		searchConfig := &extconf.SearchConfig{
@@ -734,8 +742,12 @@ func TestNegativeServerResponse(t *testing.T) {
 		}
 
 		conf.Storage.RootDirectory = dir
+		trivyConfig := &extconf.TrivyConfig{
+			DBRepository: "ghcr.io/project-zot/trivy-db",
+		}
 		cveConfig := &extconf.CVEConfig{
 			UpdateInterval: 2,
+			Trivy:          trivyConfig,
 		}
 		defaultVal := true
 		searchConfig := &extconf.SearchConfig{
@@ -812,8 +824,12 @@ func TestServerCVEResponse(t *testing.T) {
 	}
 
 	conf.Storage.RootDirectory = dir
+	trivyConfig := &extconf.TrivyConfig{
+		DBRepository: "ghcr.io/project-zot/trivy-db",
+	}
 	cveConfig := &extconf.CVEConfig{
 		UpdateInterval: 2,
+		Trivy:          trivyConfig,
 	}
 	defaultVal := true
 	searchConfig := &extconf.SearchConfig{
