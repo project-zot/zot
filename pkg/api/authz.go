@@ -35,7 +35,7 @@ type AccessController struct {
 
 func NewAccessController(config *config.Config) *AccessController {
 	return &AccessController{
-		Config: config.AccessControl,
+		Config: config.HTTP.AccessControl,
 		Log:    log.NewLogger(config.Log.Level, config.Log.Output),
 	}
 }
@@ -92,11 +92,15 @@ func (ac *AccessController) can(username, action, repository string) bool {
 	// check matched repo based policy
 	pg, ok := ac.Config.Repositories[longestMatchedPattern]
 	if ok {
-		can = isPermitted(username, action, pg)
+		can = isPermitted(ac, username, action, pg)
 	}
 
 	// check admins based policy
 	if !can {
+		if ac.isGroupInAdminPolicy(username) && common.Contains(ac.Config.AdminPolicy.Actions, action) {
+			can = true
+		}
+
 		if ac.isAdmin(username) && common.Contains(ac.Config.AdminPolicy.Actions, action) {
 			can = true
 		}
@@ -108,6 +112,12 @@ func (ac *AccessController) can(username, action, repository string) bool {
 // isAdmin .
 func (ac *AccessController) isAdmin(username string) bool {
 	return common.Contains(ac.Config.AdminPolicy.Users, username)
+}
+
+func (ac *AccessController) isGroupInAdminPolicy(username string) bool {
+	userGroup := getUserGroup(ac, username)
+
+	return common.Contains(ac.Config.AdminPolicy.Groups, userGroup)
 }
 
 // getContext builds ac context(allowed to read repos and if user is admin) and returns it.
@@ -133,9 +143,37 @@ func (ac *AccessController) getContext(username string, request *http.Request) c
 	return ctx
 }
 
+func getUserGroup(ac *AccessController, username string) string {
+	for groupName, group := range ac.Config.Groups {
+		for _, user := range group.Users {
+			// find if the user is part of any groupsS
+			if user == username {
+				return groupName
+			}
+		}
+	}
+
+	return ""
+}
+
 // isPermitted returns true if username can do action on a repository policy.
-func isPermitted(username, action string, policyGroup config.PolicyGroup) bool {
+func isPermitted(ac *AccessController, username, action string, policyGroup config.PolicyGroup) bool {
 	var result bool
+
+	userGroup := getUserGroup(ac, username)
+
+	if userGroup != "" {
+		for _, p := range policyGroup.Policies {
+			if common.Contains(p.Groups, userGroup) && common.Contains(p.Actions, action) {
+				result = true
+
+				return result
+			}
+		}
+
+		return result
+	}
+
 	// check repo/system based policies
 	for _, p := range policyGroup.Policies {
 		if common.Contains(p.Users, username) && common.Contains(p.Actions, action) {
@@ -246,6 +284,7 @@ func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 				action = Delete
 			}
 
+			// acCtrlr.Config.Groups
 			can := acCtrlr.can(identity, action, resource)
 			if !can {
 				authzFail(response, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)

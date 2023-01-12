@@ -358,7 +358,7 @@ func validateConfiguration(config *config.Config) error {
 	}
 
 	// check authorization config, it should have basic auth enabled or ldap
-	if config.HTTP.RawAccessControl != nil {
+	if config.HTTP.AccessControl != nil {
 		// checking for anonymous policy only authorization config: no users, no policies but anonymous policy
 		if err := validateAuthzPolicies(config); err != nil {
 			return err
@@ -400,8 +400,8 @@ func validateConfiguration(config *config.Config) error {
 	}
 
 	// check glob patterns in authz config are compilable
-	if config.AccessControl != nil {
-		for pattern := range config.AccessControl.Repositories {
+	if config.HTTP.AccessControl != nil {
+		for pattern := range config.HTTP.AccessControl.Repositories {
 			ok := glob.ValidatePattern(pattern)
 			if !ok {
 				log.Error().Err(glob.ErrBadPattern).Str("pattern", pattern).Msg("authorization pattern could not be compiled")
@@ -592,13 +592,6 @@ func LoadConfiguration(config *config.Config, configPath string) error {
 		return errors.ErrBadConfig
 	}
 
-	err := config.LoadAccessControlConfig(viperInstance)
-	if err != nil {
-		log.Error().Err(err).Msg("unable to unmarshal config's accessControl")
-
-		return err
-	}
-
 	// defaults
 	applyDefaultValues(config, viperInstance)
 
@@ -614,7 +607,7 @@ func LoadConfiguration(config *config.Config, configPath string) error {
 }
 
 func authzContainsOnlyAnonymousPolicy(cfg *config.Config) bool {
-	adminPolicy := cfg.AccessControl.AdminPolicy
+	adminPolicy := cfg.HTTP.AccessControl.AdminPolicy
 	anonymousPolicyPresent := false
 
 	log.Info().Msg("checking if anonymous authorization is the only type of authorization policy configured")
@@ -625,7 +618,7 @@ func authzContainsOnlyAnonymousPolicy(cfg *config.Config) bool {
 		return false
 	}
 
-	for _, repository := range cfg.AccessControl.Repositories {
+	for _, repository := range cfg.HTTP.AccessControl.Repositories {
 		if len(repository.DefaultPolicy) > 0 {
 			log.Info().Interface("repository", repository).
 				Msg("default policy detected, anonymous authorization is not the only authorization policy configured")

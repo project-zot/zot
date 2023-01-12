@@ -1,13 +1,11 @@
 package config
 
 import (
-	"fmt"
 	"os"
 	"time"
 
 	"github.com/getlantern/deepcopy"
 	distspec "github.com/opencontainers/distribution-spec/specs-go"
-	"github.com/spf13/viper"
 
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/storage"
@@ -66,14 +64,14 @@ type RatelimitConfig struct {
 }
 
 type HTTPConfig struct {
-	Address          string
-	Port             string
-	AllowOrigin      string // comma separated
-	TLS              *TLSConfig
-	Auth             *AuthConfig
-	RawAccessControl map[string]interface{} `mapstructure:"accessControl,omitempty"`
-	Realm            string
-	Ratelimit        *RatelimitConfig `mapstructure:",omitempty"`
+	Address       string
+	Port          string
+	AllowOrigin   string // comma separated
+	TLS           *TLSConfig
+	Auth          *AuthConfig
+	AccessControl *AccessControlConfig
+	Realm         string
+	Ratelimit     *RatelimitConfig `mapstructure:",omitempty"`
 }
 
 type LDAPConfig struct {
@@ -102,11 +100,19 @@ type GlobalStorageConfig struct {
 }
 
 type AccessControlConfig struct {
-	Repositories Repositories
+	Repositories Repositories `json:"repos" mapstructure:"repos"`
 	AdminPolicy  Policy
+	Groups       Groups
 }
 
-type Repositories map[string]PolicyGroup
+type (
+	Repositories map[string]PolicyGroup
+	Groups       map[string]Group
+)
+
+type Group struct {
+	Users []string
+}
 
 type PolicyGroup struct {
 	Policies        []Policy
@@ -117,6 +123,7 @@ type PolicyGroup struct {
 type Policy struct {
 	Users   []string
 	Actions []string
+	Groups  []string
 }
 
 type Config struct {
@@ -125,7 +132,6 @@ type Config struct {
 	Commit          string
 	ReleaseTag      string
 	BinaryType      string
-	AccessControl   *AccessControlConfig
 	Storage         GlobalStorageConfig
 	HTTP            HTTPConfig
 	Log             *LogConfig
@@ -186,43 +192,4 @@ func (c *Config) Sanitize() *Config {
 	}
 
 	return sanitizedConfig
-}
-
-// LoadAccessControlConfig populates config.AccessControl struct with values from config.
-func (c *Config) LoadAccessControlConfig(viperInstance *viper.Viper) error {
-	if c.HTTP.RawAccessControl == nil {
-		return nil
-	}
-
-	c.AccessControl = &AccessControlConfig{}
-	c.AccessControl.Repositories = make(map[string]PolicyGroup)
-
-	for policy := range c.HTTP.RawAccessControl {
-		var policies []Policy
-
-		var policyGroup PolicyGroup
-
-		if policy == "adminpolicy" {
-			adminPolicy := viperInstance.GetStringMapStringSlice("http::accessControl::adminPolicy")
-			c.AccessControl.AdminPolicy.Actions = adminPolicy["actions"]
-			c.AccessControl.AdminPolicy.Users = adminPolicy["users"]
-
-			continue
-		}
-
-		err := viperInstance.UnmarshalKey(fmt.Sprintf("http::accessControl::%s::policies", policy), &policies)
-		if err != nil {
-			return err
-		}
-
-		defaultPolicy := viperInstance.GetStringSlice(fmt.Sprintf("http::accessControl::%s::defaultPolicy", policy))
-		policyGroup.DefaultPolicy = defaultPolicy
-
-		anonymousPolicy := viperInstance.GetStringSlice(fmt.Sprintf("http::accessControl::%s::anonymousPolicy", policy))
-		policyGroup.Policies = policies
-		policyGroup.AnonymousPolicy = anonymousPolicy
-		c.AccessControl.Repositories[policy] = policyGroup
-	}
-
-	return nil
 }

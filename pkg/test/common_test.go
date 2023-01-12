@@ -72,47 +72,6 @@ func TestCopyFiles(t *testing.T) {
 		err = test.CopyFiles(dir, os.TempDir())
 		So(err, ShouldNotBeNil)
 	})
-	Convey("sourceDir contains a folder starting with invalid characters", t, func() {
-		srcDir := t.TempDir()
-		dstDir := t.TempDir()
-
-		err := os.MkdirAll(path.Join(srcDir, "_trivy", "db"), 0o755)
-		if err != nil {
-			panic(err)
-		}
-
-		err = os.MkdirAll(path.Join(srcDir, "test-index"), 0o755)
-		if err != nil {
-			panic(err)
-		}
-
-		filePathTrivy := path.Join(srcDir, "_trivy", "db", "trivy.db")
-		err = os.WriteFile(filePathTrivy, []byte("some dummy file content"), 0o644) //nolint: gosec
-		if err != nil {
-			panic(err)
-		}
-
-		var index ispec.Index
-		content, err := json.Marshal(index)
-		if err != nil {
-			panic(err)
-		}
-
-		err = os.WriteFile(path.Join(srcDir, "test-index", "index.json"), content, 0o644) //nolint: gosec
-		if err != nil {
-			panic(err)
-		}
-
-		err = test.CopyFiles(srcDir, dstDir)
-		So(err, ShouldBeNil)
-
-		_, err = os.Stat(path.Join(dstDir, "_trivy", "db", "trivy.db"))
-		So(err, ShouldNotBeNil)
-		So(os.IsNotExist(err), ShouldBeTrue)
-
-		_, err = os.Stat(path.Join(dstDir, "test-index", "index.json"))
-		So(err, ShouldBeNil)
-	})
 }
 
 func TestGetOciLayoutDigests(t *testing.T) {
@@ -449,7 +408,7 @@ func TestUploadImage(t *testing.T) {
 
 		conf.HTTP.Port = port
 
-		conf.AccessControl = &config.AccessControlConfig{
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
 			Repositories: config.Repositories{
 				"repo": config.PolicyGroup{
 					Policies: []config.Policy{

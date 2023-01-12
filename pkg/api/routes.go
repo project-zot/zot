@@ -36,7 +36,6 @@ import (
 	"zotregistry.io/zot/pkg/extensions/sync"
 	"zotregistry.io/zot/pkg/log"
 	repoDBUpdate "zotregistry.io/zot/pkg/meta/repodb/update"
-	zreg "zotregistry.io/zot/pkg/regexp"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test" //nolint:goimports
@@ -61,7 +60,7 @@ func (rh *RouteHandler) SetupRoutes() {
 	rh.c.Router.Use(AuthHandler(rh.c))
 	// authz is being enabled if AccessControl is specified
 	// if Authn is not present AccessControl will have only default policies
-	if rh.c.Config.AccessControl != nil && !isBearerAuthEnabled(rh.c.Config) {
+	if rh.c.Config.HTTP.AccessControl != nil && !isBearerAuthEnabled(rh.c.Config) {
 		if isAuthnEnabled(rh.c.Config) {
 			rh.c.Log.Info().Msg("access control is being enabled")
 		} else {
@@ -74,34 +73,34 @@ func (rh *RouteHandler) SetupRoutes() {
 	// https://github.com/opencontainers/distribution-spec/blob/main/spec.md#endpoints
 	prefixedRouter := rh.c.Router.PathPrefix(constants.RoutePrefix).Subrouter()
 	{
-		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/tags/list", zreg.NameRegexp.String()),
+		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/tags/list", NameRegexp.String()),
 			rh.ListTags).Methods(allowedMethods("GET")...)
-		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", zreg.NameRegexp.String()),
+		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", NameRegexp.String()),
 			rh.CheckManifest).Methods(allowedMethods("HEAD")...)
-		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", zreg.NameRegexp.String()),
+		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", NameRegexp.String()),
 			rh.GetManifest).Methods(allowedMethods("GET")...)
-		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", zreg.NameRegexp.String()),
+		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", NameRegexp.String()),
 			rh.UpdateManifest).Methods("PUT")
-		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", zreg.NameRegexp.String()),
+		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", NameRegexp.String()),
 			rh.DeleteManifest).Methods("DELETE")
-		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/{digest}", zreg.NameRegexp.String()),
+		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/{digest}", NameRegexp.String()),
 			rh.CheckBlob).Methods("HEAD")
-		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/{digest}", zreg.NameRegexp.String()),
+		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/{digest}", NameRegexp.String()),
 			rh.GetBlob).Methods("GET")
-		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/{digest}", zreg.NameRegexp.String()),
+		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/{digest}", NameRegexp.String()),
 			rh.DeleteBlob).Methods("DELETE")
-		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/", zreg.NameRegexp.String()),
+		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/", NameRegexp.String()),
 			rh.CreateBlobUpload).Methods("POST")
-		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/{session_id}", zreg.NameRegexp.String()),
+		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/{session_id}", NameRegexp.String()),
 			rh.GetBlobUpload).Methods("GET")
-		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/{session_id}", zreg.NameRegexp.String()),
+		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/{session_id}", NameRegexp.String()),
 			rh.PatchBlobUpload).Methods("PATCH")
-		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/{session_id}", zreg.NameRegexp.String()),
+		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/{session_id}", NameRegexp.String()),
 			rh.UpdateBlobUpload).Methods("PUT")
-		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/{session_id}", zreg.NameRegexp.String()),
+		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/blobs/uploads/{session_id}", NameRegexp.String()),
 			rh.DeleteBlobUpload).Methods("DELETE")
 		// support for OCI artifact references
-		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/referrers/{digest}", zreg.NameRegexp.String()),
+		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/referrers/{digest}", NameRegexp.String()),
 			rh.GetReferrers).Methods(allowedMethods("GET")...)
 		prefixedRouter.HandleFunc(constants.ExtCatalogPrefix,
 			rh.ListRepositories).Methods(allowedMethods("GET")...)
@@ -113,7 +112,7 @@ func (rh *RouteHandler) SetupRoutes() {
 
 	// support for ORAS artifact reference types (alpha 1) - image signature use case
 	rh.c.Router.HandleFunc(fmt.Sprintf("%s/{name:%s}/manifests/{digest}/referrers",
-		constants.ArtifactSpecRoutePrefix, zreg.NameRegexp.String()), rh.GetOrasReferrers).Methods("GET")
+		constants.ArtifactSpecRoutePrefix, NameRegexp.String()), rh.GetOrasReferrers).Methods("GET")
 
 	// swagger
 	debug.SetupSwaggerRoutes(rh.c.Config, rh.c.Router, rh.c.Log)
