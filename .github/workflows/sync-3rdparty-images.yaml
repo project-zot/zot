@@ -44,4 +44,4 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Copy trivy-db using oras cli
         run: |
-          oras copy ghcr.io/aquasecurity/trivy-db:2 ghcr.io/ghcr.io/${{ github.repository_owner }}/trivy-db:2
+          oras copy ghcr.io/aquasecurity/trivy-db:2 ghcr.io/${{ github.repository_owner }}/trivy-db:2
