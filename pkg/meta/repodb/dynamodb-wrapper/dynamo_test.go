@@ -393,6 +393,75 @@ func TestWrapperErrors(t *testing.T) {
 
 			So(err, ShouldNotBeNil)
 		})
+
+		Convey("FilterTags repoMeta unmarshal error", func() {
+			err = setBadRepoMeta(dynamoWrapper.Client, repoMetaTablename, "repo") //nolint:contextcheck
+			So(err, ShouldBeNil)
+
+			_, _, err = dynamoWrapper.FilterTags(
+				ctx,
+				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
+					return true
+				},
+				repodb.PageInput{},
+			)
+
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("FilterTags manifestMeta not found", func() {
+			err := dynamoWrapper.SetRepoTag("repo", "tag1", "manifestNotFound", "") //nolint:contextcheck
+			So(err, ShouldBeNil)
+
+			_, _, err = dynamoWrapper.FilterTags(
+				ctx,
+				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
+					return true
+				},
+				repodb.PageInput{},
+			)
+
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("FilterTags manifestMeta unmarshal error", func() {
+			err := dynamoWrapper.SetRepoTag("repo", "tag1", "dig", "") //nolint:contextcheck
+			So(err, ShouldBeNil)
+
+			err = setBadManifestData(dynamoWrapper.Client, manifestDataTablename, "dig") //nolint:contextcheck
+			So(err, ShouldBeNil)
+
+			_, _, err = dynamoWrapper.FilterTags(
+				ctx,
+				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
+					return true
+				},
+				repodb.PageInput{},
+			)
+
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("FilterTags config unmarshal error", func() {
+			err := dynamoWrapper.SetRepoTag("repo", "tag1", "dig1", "") //nolint:contextcheck
+			So(err, ShouldBeNil)
+
+			err = dynamoWrapper.SetManifestData("dig1", repodb.ManifestData{ //nolint:contextcheck
+				ManifestBlob: []byte("{}"),
+				ConfigBlob:   []byte("bad json"),
+			})
+			So(err, ShouldBeNil)
+
+			_, _, err = dynamoWrapper.FilterTags(
+				ctx,
+				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
+					return true
+				},
+				repodb.PageInput{},
+			)
+
+			So(err, ShouldNotBeNil)
+		})
 	})
 }
 

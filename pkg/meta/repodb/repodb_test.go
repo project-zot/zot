@@ -1286,6 +1286,155 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			So(err, ShouldBeNil)
 			So(len(repos), ShouldEqual, 0)
 		})
+
+		Convey("Test FilterTags", func() {
+			var (
+				repo1           = "repo1"
+				repo2           = "repo2"
+				manifestDigest1 = digest.FromString("fake-manifest1")
+				manifestDigest2 = digest.FromString("fake-manifest2")
+				manifestDigest3 = digest.FromString("fake-manifest3")
+				ctx             = context.Background()
+				emptyManifest   ispec.Manifest
+				emptyConfig     ispec.Image
+			)
+
+			emptyManifestBlob, err := json.Marshal(emptyManifest)
+			So(err, ShouldBeNil)
+
+			emptyConfigBlob, err := json.Marshal(emptyConfig)
+			So(err, ShouldBeNil)
+
+			emptyRepoMeta := repodb.ManifestMetadata{
+				ManifestBlob: emptyManifestBlob,
+				ConfigBlob:   emptyConfigBlob,
+			}
+
+			err = repoDB.SetRepoTag(repo1, "0.0.1", manifestDigest1, ispec.MediaTypeImageManifest)
+			So(err, ShouldBeNil)
+			err = repoDB.SetRepoTag(repo1, "0.0.2", manifestDigest3, ispec.MediaTypeImageManifest)
+			So(err, ShouldBeNil)
+			err = repoDB.SetRepoTag(repo1, "0.1.0", manifestDigest2, ispec.MediaTypeImageManifest)
+			So(err, ShouldBeNil)
+			err = repoDB.SetRepoTag(repo1, "1.0.0", manifestDigest2, ispec.MediaTypeImageManifest)
+			So(err, ShouldBeNil)
+			err = repoDB.SetRepoTag(repo1, "1.0.1", manifestDigest2, ispec.MediaTypeImageManifest)
+			So(err, ShouldBeNil)
+			err = repoDB.SetRepoTag(repo2, "0.0.1", manifestDigest3, ispec.MediaTypeImageManifest)
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetManifestMeta(repo1, manifestDigest1, emptyRepoMeta)
+			So(err, ShouldBeNil)
+			err = repoDB.SetManifestMeta(repo1, manifestDigest2, emptyRepoMeta)
+			So(err, ShouldBeNil)
+			err = repoDB.SetManifestMeta(repo1, manifestDigest3, emptyRepoMeta)
+			So(err, ShouldBeNil)
+			err = repoDB.SetManifestMeta(repo2, manifestDigest3, emptyRepoMeta)
+			So(err, ShouldBeNil)
+
+			Convey("Return all tags", func() {
+				repos, manifesMetaMap, err := repoDB.FilterTags(
+					ctx,
+					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
+						return true
+					},
+					repodb.PageInput{Limit: 10, Offset: 0, SortBy: repodb.AlphabeticAsc},
+				)
+
+				So(err, ShouldBeNil)
+				So(len(repos), ShouldEqual, 2)
+				So(repos[0].Name, ShouldEqual, "repo1")
+				So(repos[1].Name, ShouldEqual, "repo2")
+				So(len(repos[0].Tags), ShouldEqual, 5)
+				So(len(repos[1].Tags), ShouldEqual, 1)
+				So(repos[0].Tags, ShouldContainKey, "0.0.1")
+				So(repos[0].Tags, ShouldContainKey, "0.0.2")
+				So(repos[0].Tags, ShouldContainKey, "0.1.0")
+				So(repos[0].Tags, ShouldContainKey, "1.0.0")
+				So(repos[0].Tags, ShouldContainKey, "1.0.1")
+				So(repos[1].Tags, ShouldContainKey, "0.0.1")
+				So(manifesMetaMap, ShouldContainKey, manifestDigest1.String())
+				So(manifesMetaMap, ShouldContainKey, manifestDigest2.String())
+				So(manifesMetaMap, ShouldContainKey, manifestDigest3.String())
+			})
+
+			Convey("Return all tags in a specific repo", func() {
+				repos, manifesMetaMap, err := repoDB.FilterTags(
+					ctx,
+					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
+						return repoMeta.Name == repo1
+					},
+					repodb.PageInput{Limit: 10, Offset: 0, SortBy: repodb.AlphabeticAsc},
+				)
+
+				So(err, ShouldBeNil)
+				So(len(repos), ShouldEqual, 1)
+				So(repos[0].Name, ShouldEqual, repo1)
+				So(len(repos[0].Tags), ShouldEqual, 5)
+				So(repos[0].Tags, ShouldContainKey, "0.0.1")
+				So(repos[0].Tags, ShouldContainKey, "0.0.2")
+				So(repos[0].Tags, ShouldContainKey, "0.1.0")
+				So(repos[0].Tags, ShouldContainKey, "1.0.0")
+				So(repos[0].Tags, ShouldContainKey, "1.0.1")
+				So(manifesMetaMap, ShouldContainKey, manifestDigest1.String())
+				So(manifesMetaMap, ShouldContainKey, manifestDigest2.String())
+				So(manifesMetaMap, ShouldContainKey, manifestDigest3.String())
+			})
+
+			Convey("Filter everything out", func() {
+				repos, manifesMetaMap, err := repoDB.FilterTags(
+					ctx,
+					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
+						return false
+					},
+					repodb.PageInput{Limit: 10, Offset: 0, SortBy: repodb.AlphabeticAsc},
+				)
+
+				So(err, ShouldBeNil)
+				So(len(repos), ShouldEqual, 0)
+				So(len(manifesMetaMap), ShouldEqual, 0)
+			})
+
+			Convey("Search with access control", func() {
+				acCtx := localCtx.AccessControlContext{
+					ReadGlobPatterns: map[string]bool{
+						repo1: false,
+						repo2: true,
+					},
+					Username: "username",
+				}
+
+				authzCtxKey := localCtx.GetContextKey()
+				ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+
+				repos, manifesMetaMap, err := repoDB.FilterTags(
+					ctx,
+					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
+						return true
+					},
+					repodb.PageInput{Limit: 10, Offset: 0, SortBy: repodb.AlphabeticAsc},
+				)
+
+				So(err, ShouldBeNil)
+				So(len(repos), ShouldEqual, 1)
+				So(repos[0].Name, ShouldResemble, repo2)
+				So(len(repos[0].Tags), ShouldEqual, 1)
+				So(repos[0].Tags, ShouldContainKey, "0.0.1")
+				So(manifesMetaMap, ShouldContainKey, manifestDigest3.String())
+			})
+
+			Convey("With wrong pagination input", func() {
+				repos, _, err := repoDB.FilterTags(
+					ctx,
+					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
+						return true
+					},
+					repodb.PageInput{Limit: -1},
+				)
+				So(err, ShouldNotBeNil)
+				So(repos, ShouldBeEmpty)
+			})
+		})
 	})
 }
 

@@ -787,44 +787,45 @@ func (bdw DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 				matchedTags[tag] = descriptor
 
 				// in case tags reference the same manifest we don't download from DB multiple times
-				if manifestMeta, manifestExists := manifestMetadataMap[manifestDigest]; manifestExists {
-					manifestMetadataMap[manifestDigest] = manifestMeta
+				manifestMeta, manifestExists := manifestMetadataMap[manifestDigest]
 
-					continue
-				}
+				if !manifestExists {
+					manifestDataBlob := dataBuck.Get([]byte(manifestDigest))
+					if manifestDataBlob == nil {
+						return zerr.ErrManifestMetaNotFound
+					}
 
-				manifestDataBlob := dataBuck.Get([]byte(manifestDigest))
-				if manifestDataBlob == nil {
-					return zerr.ErrManifestMetaNotFound
-				}
+					var manifestData repodb.ManifestData
 
-				var manifestData repodb.ManifestData
+					err := json.Unmarshal(manifestDataBlob, &manifestData)
+					if err != nil {
+						return errors.Wrapf(err, "repodb: error while unmashaling manifest metadata for digest %s", manifestDigest)
+					}
 
-				err := json.Unmarshal(manifestDataBlob, &manifestData)
-				if err != nil {
-					return errors.Wrapf(err, "repodb: error while unmashaling manifest metadata for digest %s", manifestDigest)
-				}
+					var configContent ispec.Image
 
-				var configContent ispec.Image
+					err = json.Unmarshal(manifestData.ConfigBlob, &configContent)
+					if err != nil {
+						return errors.Wrapf(err, "repodb: error while unmashaling config for manifest with digest %s", manifestDigest)
+					}
 
-				err = json.Unmarshal(manifestData.ConfigBlob, &configContent)
-				if err != nil {
-					return errors.Wrapf(err, "repodb: error while unmashaling manifest metadata for digest %s", manifestDigest)
-				}
-
-				manifestMeta := repodb.ManifestMetadata{
-					ConfigBlob:   manifestData.ConfigBlob,
-					ManifestBlob: manifestData.ManifestBlob,
+					manifestMeta = repodb.ManifestMetadata{
+						ConfigBlob:   manifestData.ConfigBlob,
+						ManifestBlob: manifestData.ManifestBlob,
+					}
 				}
 
 				if !filter(repoMeta, manifestMeta) {
 					delete(matchedTags, tag)
-					delete(manifestMetadataMap, manifestDigest)
 
 					continue
 				}
 
 				manifestMetadataMap[manifestDigest] = manifestMeta
+			}
+
+			if len(matchedTags) == 0 {
+				continue
 			}
 
 			repoMeta.Tags = matchedTags
@@ -925,7 +926,7 @@ func (bdw DBWrapper) SearchTags(ctx context.Context, searchText string, filter r
 
 					err = json.Unmarshal(manifestMeta.ConfigBlob, &configContent)
 					if err != nil {
-						return errors.Wrapf(err, "repodb: error while unmashaling manifest metadata for digest %s", descriptor.Digest)
+						return errors.Wrapf(err, "repodb: error while unmashaling config for manifest with digest %s", descriptor.Digest)
 					}
 
 					imageFilterData := repodb.FilterData{

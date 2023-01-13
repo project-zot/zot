@@ -555,7 +555,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 
 func TestImageListForDigest(t *testing.T) {
 	Convey("getImageList", t, func() {
-		Convey("no page requested, SearchRepoFn returns error", func() {
+		Convey("no page requested, FilterTagsFn returns error", func() {
 			mockSearchDB := mocks.RepoDBMock{
 				FilterTagsFn: func(ctx context.Context, filter repodb.FilterFunc,
 					requestedPage repodb.PageInput,
@@ -615,7 +615,7 @@ func TestImageListForDigest(t *testing.T) {
 			So(imageList, ShouldBeEmpty)
 		})
 
-		Convey("valid repoListForDigest returned for matching manifest digest", func() {
+		Convey("valid imageListForDigest returned for matching manifest digest", func() {
 			manifestBlob, err := json.Marshal(ispec.Manifest{})
 			So(err, ShouldBeNil)
 
@@ -685,7 +685,7 @@ func TestImageListForDigest(t *testing.T) {
 			So(len(imageSummaries), ShouldEqual, 0)
 		})
 
-		Convey("valid repoListForDigest returned for matching config digest", func() {
+		Convey("valid imageListForDigest returned for matching config digest", func() {
 			manifestBlob, err := json.Marshal(ispec.Manifest{})
 			So(err, ShouldBeNil)
 
@@ -759,7 +759,7 @@ func TestImageListForDigest(t *testing.T) {
 			So(len(imageSummaries), ShouldEqual, 1)
 		})
 
-		Convey("valid repoListForDigest returned for matching layer digest", func() {
+		Convey("valid imageListForDigest returned for matching layer digest", func() {
 			manifestBlob, err := json.Marshal(ispec.Manifest{})
 			So(err, ShouldBeNil)
 
@@ -835,7 +835,7 @@ func TestImageListForDigest(t *testing.T) {
 			So(len(imageSummaries), ShouldEqual, 1)
 		})
 
-		Convey("valid repoListForDigest, multiple matching tags", func() {
+		Convey("valid imageListForDigest, multiple matching tags", func() {
 			manifestBlob, err := json.Marshal(ispec.Manifest{})
 			So(err, ShouldBeNil)
 
@@ -904,7 +904,7 @@ func TestImageListForDigest(t *testing.T) {
 			So(len(imageSummaries), ShouldEqual, 2)
 		})
 
-		Convey("valid repoListForDigest, multiple matching tags limited by pageInput", func() {
+		Convey("valid imageListForDigest, multiple matching tags limited by pageInput", func() {
 			manifestBlob, err := json.Marshal(ispec.Manifest{})
 			So(err, ShouldBeNil)
 

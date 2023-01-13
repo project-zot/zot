@@ -695,29 +695,26 @@ func (dwr DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 			matchedTags[tag] = descriptor
 
 			// in case tags reference the same manifest we don't download from DB multiple times
-			if manifestMeta, manifestExists := manifestMetadataMap[manifestDigest]; manifestExists {
-				manifestMetadataMap[manifestDigest] = manifestMeta
+			manifestMeta, manifestExists := manifestMetadataMap[manifestDigest]
 
-				continue
-			}
+			if !manifestExists {
+				manifestMeta, err := dwr.GetManifestMeta(repoMeta.Name, godigest.Digest(manifestDigest)) //nolint:contextcheck
+				if err != nil {
+					return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{},
+						errors.Wrapf(err, "repodb: error while unmashaling manifest metadata for digest %s", manifestDigest)
+				}
 
-			manifestMeta, err := dwr.GetManifestMeta(repoMeta.Name, godigest.Digest(manifestDigest)) //nolint:contextcheck
-			if err != nil {
-				return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{},
-					errors.Wrapf(err, "repodb: error while unmashaling manifest metadata for digest %s", manifestDigest)
-			}
+				var configContent ispec.Image
 
-			var configContent ispec.Image
-
-			err = json.Unmarshal(manifestMeta.ConfigBlob, &configContent)
-			if err != nil {
-				return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{},
-					errors.Wrapf(err, "repodb: error while unmashaling manifest metadata for digest %s", manifestDigest)
+				err = json.Unmarshal(manifestMeta.ConfigBlob, &configContent)
+				if err != nil {
+					return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{},
+						errors.Wrapf(err, "repodb: error while unmashaling config for manifest with digest %s", manifestDigest)
+				}
 			}
 
 			if !filter(repoMeta, manifestMeta) {
 				delete(matchedTags, tag)
-				delete(manifestMetadataMap, manifestDigest)
 
 				continue
 			}
@@ -819,7 +816,7 @@ func (dwr DBWrapper) SearchTags(ctx context.Context, searchText string, filter r
 				err = json.Unmarshal(manifestMeta.ConfigBlob, &configContent)
 				if err != nil {
 					return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{},
-						errors.Wrapf(err, "repodb: error while unmashaling manifest metadata for digest %s", descriptor.Digest)
+						errors.Wrapf(err, "repodb: error while unmashaling config for manifest with digest %s", descriptor.Digest)
 				}
 
 				imageFilterData := repodb.FilterData{
