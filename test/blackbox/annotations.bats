@@ -48,6 +48,10 @@ EOF
     org.opencontainers.image.licenses: \${{LICENSES}}
     org.opencontainers.image.vendor: \${{VENDOR}}
 EOF
+    cat > ${BATS_FILE_TMPDIR}/Dockerfile<<EOF
+FROM public.ecr.aws/t0x7q1g8/centos:7
+CMD ["/bin/sh", "-c", "echo 'It works!'"]
+EOF
     setup_zot_file_level ${zot_config_file}
     wait_zot_reachable "http://127.0.0.1:8080/v2/_catalog"
 }
@@ -66,7 +70,7 @@ function teardown_file() {
 }
 
 @test "build image with podman and specify annotations" {
-    run podman build -f build/Dockerfile -t 127.0.0.1:8080/annotations:latest . --format oci --annotation org.opencontainers.image.vendor="CentOS" --annotation org.opencontainers.image.licenses="GPLv2"
+    run podman build -f ${BATS_FILE_TMPDIR}/Dockerfile -t 127.0.0.1:8080/annotations:latest . --format oci --annotation org.opencontainers.image.vendor="CentOS" --annotation org.opencontainers.image.licenses="GPLv2"
     [ "$status" -eq 0 ]
     run podman push 127.0.0.1:8080/annotations:latest --tls-verify=false --format=oci
     [ "$status" -eq 0 ]
