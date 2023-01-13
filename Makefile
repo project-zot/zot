@@ -18,6 +18,8 @@ ORAS := $(TOOLSDIR)/bin/oras
 ORAS_VERSION := 0.16.0
 REGCLIENT := $(TOOLSDIR)/bin/regctl
 REGCLIENT_VERSION := v0.4.5
+ACTION_VALIDATOR := $(TOOLSDIR)/bin/action-validator
+ACTION_VALIDATOR_VERSION := v0.2.1
 STACKER := $(TOOLSDIR)/bin/stacker
 BATS := $(TOOLSDIR)/bin/bats
 TESTDATA := $(TOP_LEVEL)/test/data
@@ -30,7 +32,7 @@ hyphen:= -
 extended-name:=
 
 .PHONY: all
-all: modcheck swagger binary binary-minimal binary-debug cli bench exporter-minimal verify-config test covhtml check
+all: modcheck swagger binary binary-minimal binary-debug cli bench exporter-minimal verify-config test covhtml check check-gh-actions
 
 .PHONY: modcheck
 modcheck:
@@ -126,6 +128,16 @@ $(REGCLIENT):
 	curl -Lo regctl https://github.com/regclient/regclient/releases/download/$(REGCLIENT_VERSION)/regctl-linux-amd64
 	cp regctl $(TOOLSDIR)/bin/regctl
 	chmod +x $(TOOLSDIR)/bin/regctl
+
+$(ACTION_VALIDATOR):
+	mkdir -p $(TOOLSDIR)/bin
+	curl -Lo action-validator https://github.com/mpalmer/action-validator/releases/download/$(ACTION_VALIDATOR_VERSION)/action-validator_linux_amd64
+	cp action-validator $(TOOLSDIR)/bin/action-validator
+	chmod +x $(TOOLSDIR)/bin/action-validator
+
+.PHONY: check-gh-actions
+check-gh-actions: $(ACTION_VALIDATOR)
+	for i in $$(ls  .github/workflows/*); do $(ACTION_VALIDATOR) $$i; done
 
 .PHONY: covhtml
 covhtml:
