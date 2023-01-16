@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	guuid "github.com/gofrs/uuid"
 	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -27,13 +28,22 @@ func TestIterator(t *testing.T) {
 		region   = "us-east-2"
 	)
 
+	uuid, err := guuid.NewV4()
+	if err != nil {
+		panic(err)
+	}
+
+	repoMetaTablename := "RepoMetadataTable" + uuid.String()
+	manifestDataTablename := "ManifestDataTable" + uuid.String()
+	versionTablename := "Version" + uuid.String()
+
 	Convey("TestIterator", t, func() {
 		dynamoWrapper, err := dynamo.NewDynamoDBWrapper(dynamoParams.DBDriverParameters{
 			Endpoint:              endpoint,
 			Region:                region,
-			RepoMetaTablename:     "RepoMetadataTable",
-			ManifestDataTablename: "ManifestDataTable",
-			VersionTablename:      "Version",
+			RepoMetaTablename:     repoMetaTablename,
+			ManifestDataTablename: manifestDataTablename,
+			VersionTablename:      versionTablename,
 		})
 		So(err, ShouldBeNil)
 
@@ -51,7 +61,7 @@ func TestIterator(t *testing.T) {
 
 		repoMetaAttributeIterator := iterator.NewBaseDynamoAttributesIterator(
 			dynamoWrapper.Client,
-			"RepoMetadataTable",
+			repoMetaTablename,
 			"RepoMetadata",
 			1,
 			log.Logger{Logger: zerolog.New(os.Stdout)},
@@ -109,15 +119,24 @@ func TestWrapperErrors(t *testing.T) {
 		region   = "us-east-2"
 	)
 
+	uuid, err := guuid.NewV4()
+	if err != nil {
+		panic(err)
+	}
+
+	repoMetaTablename := "RepoMetadataTable" + uuid.String()
+	manifestDataTablename := "ManifestDataTable" + uuid.String()
+	versionTablename := "Version" + uuid.String()
+
 	ctx := context.Background()
 
 	Convey("Errors", t, func() {
 		dynamoWrapper, err := dynamo.NewDynamoDBWrapper(dynamoParams.DBDriverParameters{ //nolint:contextcheck
 			Endpoint:              endpoint,
 			Region:                region,
-			RepoMetaTablename:     "RepoMetadataTable",
-			ManifestDataTablename: "ManifestDataTable",
-			VersionTablename:      "Version",
+			RepoMetaTablename:     repoMetaTablename,
+			ManifestDataTablename: manifestDataTablename,
+			VersionTablename:      versionTablename,
 		})
 		So(err, ShouldBeNil)
 
@@ -139,7 +158,7 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("GetManifestData unmarshal error", func() {
-			err := setBadManifestData(dynamoWrapper.Client, "dig")
+			err := setBadManifestData(dynamoWrapper.Client, manifestDataTablename, "dig")
 			So(err, ShouldBeNil)
 
 			_, err = dynamoWrapper.GetManifestData("dig")
@@ -147,7 +166,7 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("SetManifestMeta GetRepoMeta error", func() {
-			err := setBadRepoMeta(dynamoWrapper.Client, "repo1")
+			err := setBadRepoMeta(dynamoWrapper.Client, repoMetaTablename, "repo1")
 			So(err, ShouldBeNil)
 
 			err = dynamoWrapper.SetManifestMeta("repo1", "dig", repodb.ManifestMetadata{})
@@ -174,7 +193,7 @@ func TestWrapperErrors(t *testing.T) {
 			err := dynamoWrapper.SetManifestData("dig", repodb.ManifestData{})
 			So(err, ShouldBeNil)
 
-			err = setBadRepoMeta(dynamoWrapper.Client, "repo")
+			err = setBadRepoMeta(dynamoWrapper.Client, repoMetaTablename, "repo")
 			So(err, ShouldBeNil)
 
 			_, err = dynamoWrapper.GetManifestMeta("repo", "dig")
@@ -200,7 +219,7 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("DeleteRepoTag unmarshal error", func() {
-			err = setBadRepoMeta(dynamoWrapper.Client, "repo")
+			err = setBadRepoMeta(dynamoWrapper.Client, repoMetaTablename, "repo")
 			So(err, ShouldBeNil)
 
 			err = dynamoWrapper.DeleteRepoTag("repo", "tag")
@@ -216,7 +235,7 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("GetRepoMeta unmarshal error", func() {
-			err = setBadRepoMeta(dynamoWrapper.Client, "repo")
+			err = setBadRepoMeta(dynamoWrapper.Client, repoMetaTablename, "repo")
 			So(err, ShouldBeNil)
 
 			_, err = dynamoWrapper.GetRepoMeta("repo")
@@ -276,7 +295,7 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("DeleteSignature sigDigest.SignatureManifestDigest != sigMeta.SignatureDigest true", func() {
-			err := setRepoMeta(dynamoWrapper.Client, repodb.RepoMetadata{
+			err := setRepoMeta(dynamoWrapper.Client, repoMetaTablename, repodb.RepoMetadata{
 				Name: "repo",
 				Signatures: map[string]repodb.ManifestSignatures{
 					"tag1": {
@@ -297,7 +316,7 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("GetMultipleRepoMeta unmarshal error", func() {
-			err = setBadRepoMeta(dynamoWrapper.Client, "repo") //nolint:contextcheck
+			err = setBadRepoMeta(dynamoWrapper.Client, repoMetaTablename, "repo") //nolint:contextcheck
 			So(err, ShouldBeNil)
 
 			_, err = dynamoWrapper.GetMultipleRepoMeta(ctx, func(repoMeta repodb.RepoMetadata) bool { return true },
@@ -307,7 +326,7 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("SearchRepos repoMeta unmarshal error", func() {
-			err = setBadRepoMeta(dynamoWrapper.Client, "repo") //nolint:contextcheck
+			err = setBadRepoMeta(dynamoWrapper.Client, repoMetaTablename, "repo") //nolint:contextcheck
 			So(err, ShouldBeNil)
 
 			_, _, err = dynamoWrapper.SearchRepos(ctx, "", repodb.Filter{}, repodb.PageInput{})
@@ -340,7 +359,7 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("SearchTags repoMeta unmarshal error", func() {
-			err = setBadRepoMeta(dynamoWrapper.Client, "repo") //nolint:contextcheck
+			err = setBadRepoMeta(dynamoWrapper.Client, repoMetaTablename, "repo") //nolint:contextcheck
 			So(err, ShouldBeNil)
 
 			_, _, err = dynamoWrapper.SearchTags(ctx, "repo:", repodb.Filter{}, repodb.PageInput{})
@@ -377,7 +396,7 @@ func TestWrapperErrors(t *testing.T) {
 	})
 }
 
-func setBadManifestData(client *dynamodb.Client, digest string) error {
+func setBadManifestData(client *dynamodb.Client, manifestDataTableName, digest string) error {
 	mdAttributeValue, err := attributevalue.Marshal("string")
 	if err != nil {
 		return err
@@ -395,14 +414,14 @@ func setBadManifestData(client *dynamodb.Client, digest string) error {
 				Value: digest,
 			},
 		},
-		TableName:        aws.String("ManifestDataTable"),
+		TableName:        aws.String(manifestDataTableName),
 		UpdateExpression: aws.String("SET #MD = :ManifestData"),
 	})
 
 	return err
 }
 
-func setBadRepoMeta(client *dynamodb.Client, repoName string) error {
+func setBadRepoMeta(client *dynamodb.Client, repoMetadataTableName, repoName string) error {
 	repoAttributeValue, err := attributevalue.Marshal("string")
 	if err != nil {
 		return err
@@ -420,14 +439,14 @@ func setBadRepoMeta(client *dynamodb.Client, repoName string) error {
 				Value: repoName,
 			},
 		},
-		TableName:        aws.String("RepoMetadataTable"),
+		TableName:        aws.String(repoMetadataTableName),
 		UpdateExpression: aws.String("SET #RM = :RepoMetadata"),
 	})
 
 	return err
 }
 
-func setRepoMeta(client *dynamodb.Client, repoMeta repodb.RepoMetadata) error {
+func setRepoMeta(client *dynamodb.Client, repoMetadataTableName string, repoMeta repodb.RepoMetadata) error {
 	repoAttributeValue, err := attributevalue.Marshal(repoMeta)
 	if err != nil {
 		return err
@@ -445,7 +464,7 @@ func setRepoMeta(client *dynamodb.Client, repoMeta repodb.RepoMetadata) error {
 				Value: repoMeta.Name,
 			},
 		},
-		TableName:        aws.String("RepoMetadataTable"),
+		TableName:        aws.String(repoMetadataTableName),
 		UpdateExpression: aws.String("SET #RM = :RepoMetadata"),
 	})
 
