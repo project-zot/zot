@@ -650,6 +650,101 @@ func (dwr DBWrapper) SearchRepos(ctx context.Context, searchText string, filter 
 	return foundRepos, foundManifestMetadataMap, err
 }
 
+func (dwr DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
+	requestedPage repodb.PageInput,
+) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
+	var (
+		foundManifestMetadataMap  = make(map[string]repodb.ManifestMetadata)
+		manifestMetadataMap       = make(map[string]repodb.ManifestMetadata)
+		pageFinder                repodb.PageFinder
+		repoMetaAttributeIterator iterator.AttributesIterator
+	)
+
+	repoMetaAttributeIterator = iterator.NewBaseDynamoAttributesIterator(
+		dwr.Client, dwr.RepoMetaTablename, "RepoMetadata", 0, dwr.Log,
+	)
+
+	pageFinder, err := repodb.NewBaseImagePageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
+	if err != nil {
+		return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, err
+	}
+
+	repoMetaAttribute, err := repoMetaAttributeIterator.First(ctx)
+
+	for ; repoMetaAttribute != nil; repoMetaAttribute, err = repoMetaAttributeIterator.Next(ctx) {
+		if err != nil {
+			// log
+			return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, err
+		}
+
+		var repoMeta repodb.RepoMetadata
+
+		err := attributevalue.Unmarshal(repoMetaAttribute, &repoMeta)
+		if err != nil {
+			return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, err
+		}
+
+		if ok, err := localCtx.RepoIsUserAvailable(ctx, repoMeta.Name); !ok || err != nil {
+			continue
+		}
+		matchedTags := make(map[string]repodb.Descriptor)
+		// take all manifestMetas
+		for tag, descriptor := range repoMeta.Tags {
+			manifestDigest := descriptor.Digest
+
+			matchedTags[tag] = descriptor
+
+			// in case tags reference the same manifest we don't download from DB multiple times
+			manifestMeta, manifestExists := manifestMetadataMap[manifestDigest]
+
+			if !manifestExists {
+				manifestMeta, err := dwr.GetManifestMeta(repoMeta.Name, godigest.Digest(manifestDigest)) //nolint:contextcheck
+				if err != nil {
+					return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{},
+						errors.Wrapf(err, "repodb: error while unmashaling manifest metadata for digest %s", manifestDigest)
+				}
+
+				var configContent ispec.Image
+
+				err = json.Unmarshal(manifestMeta.ConfigBlob, &configContent)
+				if err != nil {
+					return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{},
+						errors.Wrapf(err, "repodb: error while unmashaling config for manifest with digest %s", manifestDigest)
+				}
+			}
+
+			if !filter(repoMeta, manifestMeta) {
+				delete(matchedTags, tag)
+
+				continue
+			}
+
+			manifestMetadataMap[manifestDigest] = manifestMeta
+		}
+
+		if len(matchedTags) == 0 {
+			continue
+		}
+
+		repoMeta.Tags = matchedTags
+
+		pageFinder.Add(repodb.DetailedRepoMeta{
+			RepoMeta: repoMeta,
+		})
+	}
+
+	foundRepos := pageFinder.Page()
+
+	// keep just the manifestMeta we need
+	for _, repoMeta := range foundRepos {
+		for _, descriptor := range repoMeta.Tags {
+			foundManifestMetadataMap[descriptor.Digest] = manifestMetadataMap[descriptor.Digest]
+		}
+	}
+
+	return foundRepos, foundManifestMetadataMap, err
+}
+
 func (dwr DBWrapper) SearchTags(ctx context.Context, searchText string, filter repodb.Filter,
 	requestedPage repodb.PageInput,
 ) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error) {
@@ -721,7 +816,7 @@ func (dwr DBWrapper) SearchTags(ctx context.Context, searchText string, filter r
 				err = json.Unmarshal(manifestMeta.ConfigBlob, &configContent)
 				if err != nil {
 					return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{},
-						errors.Wrapf(err, "repodb: error while unmashaling manifest metadata for digest %s", descriptor.Digest)
+						errors.Wrapf(err, "repodb: error while unmashaling config for manifest with digest %s", descriptor.Digest)
 				}
 
 				imageFilterData := repodb.FilterData{
@@ -738,6 +833,10 @@ func (dwr DBWrapper) SearchTags(ctx context.Context, searchText string, filter r
 				}
 
 				manifestMetadataMap[descriptor.Digest] = manifestMeta
+			}
+
+			if len(matchedTags) == 0 {
+				continue
 			}
 
 			repoMeta.Tags = matchedTags

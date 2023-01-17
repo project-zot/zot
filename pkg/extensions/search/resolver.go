@@ -6,6 +6,7 @@ package search
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 
 	"github.com/99designs/gqlgen/graphql"
@@ -75,37 +76,78 @@ func NewResolver(log log.Logger, storeController storage.StoreController,
 	return resolver
 }
 
-func (r *queryResolver) getImageListForDigest(repoList []string, digest string) ([]*gql_generated.ImageSummary, error) {
-	imgResultForDigest := []*gql_generated.ImageSummary{}
-	olu := common.NewBaseOciLayoutUtils(r.storeController, r.log)
+func FilterByDigest(digest string) repodb.FilterFunc {
+	return func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
+		lookupDigest := digest
+		contains := false
 
-	var errResult error
+		var manifest ispec.Manifest
 
-	for _, repo := range repoList {
-		r.log.Info().Str("repo", repo).Msg("filtering list of tags in image repo by digest")
-
-		imgTags, err := r.digestInfo.GetImageTagsByDigest(repo, digest)
+		err := json.Unmarshal(manifestMeta.ManifestBlob, &manifest)
 		if err != nil {
-			r.log.Error().Err(err).Msg("unable to get filtered list of image tags")
-
-			return []*gql_generated.ImageSummary{}, err
+			return false
 		}
 
-		for _, imageInfo := range imgTags {
-			imageConfig, err := olu.GetImageConfigInfo(repo, imageInfo.Digest)
-			if err != nil {
-				return []*gql_generated.ImageSummary{}, err
+		manifestDigest := godigest.FromBytes(manifestMeta.ManifestBlob).String()
+
+		// Check the image manifest in index.json matches the search digest
+		// This is a blob with mediaType application/vnd.oci.image.manifest.v1+json
+		if strings.Contains(manifestDigest, lookupDigest) {
+			contains = true
+		}
+
+		// Check the image config matches the search digest
+		// This is a blob with mediaType application/vnd.oci.image.config.v1+json
+		if strings.Contains(manifest.Config.Digest.String(), lookupDigest) {
+			contains = true
+		}
+
+		// Check to see if the individual layers in the oci image manifest match the digest
+		// These are blobs with mediaType application/vnd.oci.image.layer.v1.tar+gzip
+		for _, layer := range manifest.Layers {
+			if strings.Contains(layer.Digest.String(), lookupDigest) {
+				contains = true
 			}
-
-			isSigned := olu.CheckManifestSignature(repo, imageInfo.Digest)
-			imageInfo := convert.BuildImageInfo(repo, imageInfo.Tag, imageInfo.Digest,
-				imageInfo.Manifest, imageConfig, isSigned)
-
-			imgResultForDigest = append(imgResultForDigest, imageInfo)
 		}
+
+		return contains
+	}
+}
+
+func getImageListForDigest(ctx context.Context, digest string, repoDB repodb.RepoDB, cveInfo cveinfo.CveInfo,
+	requestedPage *gql_generated.PageInput,
+) ([]*gql_generated.ImageSummary, error) {
+	imageList := make([]*gql_generated.ImageSummary, 0)
+
+	if requestedPage == nil {
+		requestedPage = &gql_generated.PageInput{}
 	}
 
-	return imgResultForDigest, errResult
+	skip := convert.SkipQGLField{
+		Vulnerabilities: canSkipField(convert.GetPreloads(ctx), "Images.Vulnerabilities"),
+	}
+
+	pageInput := repodb.PageInput{
+		Limit:  safeDerefferencing(requestedPage.Limit, 0),
+		Offset: safeDerefferencing(requestedPage.Offset, 0),
+		SortBy: repodb.SortCriteria(
+			safeDerefferencing(requestedPage.SortBy, gql_generated.SortCriteriaRelevance),
+		),
+	}
+
+	// get all repos
+	reposMeta, manifestMetaMap, err := repoDB.FilterTags(ctx, FilterByDigest(digest), pageInput)
+	if err != nil {
+		return []*gql_generated.ImageSummary{}, err
+	}
+
+	for _, repoMeta := range reposMeta {
+		imageSummaries := convert.RepoMeta2ImageSummaries(ctx, repoMeta, manifestMetaMap, skip, cveInfo)
+
+		imageList = append(imageList, imageSummaries...)
+	}
+
+	return imageList, nil
 }
 
 func getImageSummary(ctx context.Context, repo, tag string, repoDB repodb.RepoDB,
