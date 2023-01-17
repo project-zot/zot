@@ -5,14 +5,12 @@ package cli //nolint:testpackage
 
 import (
 	"bytes"
-	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
@@ -77,26 +75,9 @@ func TestTLSWithAuth(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
-		go func() {
-			// this blocks
-			if err := ctlr.Run(context.Background()); err != nil {
-				return
-			}
-		}()
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(BaseSecureURL1)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		defer func() {
-			ctx := context.Background()
-			_ = ctlr.Server.Shutdown(ctx)
-		}()
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(conf.HTTP.Port)
+		defer cm.StopServer()
 
 		Convey("Test with htpassw auth", func() {
 			configPath := makeConfigFile(`{"configs":[{"_name":"imagetest","showspinner":false}]}`)
@@ -174,26 +155,9 @@ func TestTLSWithoutAuth(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
-		go func() {
-			// this blocks
-			if err := ctlr.Run(context.Background()); err != nil {
-				return
-			}
-		}()
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(BaseURL1)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		defer func() {
-			ctx := context.Background()
-			_ = ctlr.Server.Shutdown(ctx)
-		}()
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(conf.HTTP.Port)
+		defer cm.StopServer()
 
 		Convey("Certs in user's home", func() {
 			configPath := makeConfigFile(
@@ -239,26 +203,9 @@ func TestTLSBadCerts(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
-		go func() {
-			// this blocks
-			if err := ctlr.Run(context.Background()); err != nil {
-				return
-			}
-		}()
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(BaseURL3)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		defer func() {
-			ctx := context.Background()
-			_ = ctlr.Server.Shutdown(ctx)
-		}()
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(conf.HTTP.Port)
+		defer cm.StopServer()
 
 		Convey("Test with system certs", func() {
 			configPath := makeConfigFile(

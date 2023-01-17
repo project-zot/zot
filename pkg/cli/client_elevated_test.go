@@ -5,7 +5,6 @@ package cli //nolint:testpackage
 
 import (
 	"bytes"
-	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -13,7 +12,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
-	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
@@ -21,6 +19,7 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
+	"zotregistry.io/zot/pkg/test"
 )
 
 func TestElevatedPrivilegesTLSNewControllerPrivilegedCert(t *testing.T) {
@@ -84,26 +83,9 @@ func TestElevatedPrivilegesTLSNewControllerPrivilegedCert(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = t.TempDir()
-		go func() {
-			// this blocks
-			if err := ctlr.Run(context.Background()); err != nil {
-				return
-			}
-		}()
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(BaseURL2)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		defer func() {
-			ctx := context.Background()
-			_ = ctlr.Server.Shutdown(ctx)
-		}()
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(conf.HTTP.Port)
+		defer cm.StopServer()
 
 		Convey("Certs in privileged path", func() {
 			configPath := makeConfigFile(
