@@ -156,10 +156,7 @@ func testSetup(t *testing.T, subpath string) error { //nolint:unparam
 
 	subRootDir = subDir
 
-	err := CopyFiles("../../../../test/data", rootDir)
-	if err != nil {
-		return err
-	}
+	CopyTestFiles("../../../../test/data", rootDir)
 
 	return CopyFiles("../../../../test/data", path.Join(subDir, subpath))
 }
@@ -324,9 +321,9 @@ func TestRepoListWithNewestImage(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		resp, err := resty.R().Get(baseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
@@ -618,9 +615,9 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		ctlr := api.NewController(conf)
 		ctlr.Log.Logger = ctlr.Log.Output(writers)
 
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		substring := "{\"Search\":{\"Enable\":true,\"CVE\":{\"UpdateInterval\":3600000000000,\"Trivy\":{\"DBRepository\":\"ghcr.io/project-zot/trivy-db\"}}}" //nolint: lll
 		found, err := readFileAndSearchString(logPath, substring, 2*time.Minute)
@@ -717,11 +714,9 @@ func TestGetReferrersGQL(t *testing.T) {
 		conf.Extensions.Search.CVE = nil
 
 		ctlr := api.NewController(conf)
-
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-
-		WaitTillServerReady(baseURL)
+		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		// =======================
 
@@ -893,9 +888,9 @@ func TestExpandedRepoInfo(t *testing.T) {
 		err = os.WriteFile(indexPath, buf, 0o600)
 		So(err, ShouldBeNil)
 
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		query := "{ExpandedRepoInfo(repo:\"test1\"){Summary%20{Name%20LastUpdated%20Size%20Platforms%20{Os%20Arch}%20Vendors%20Score}%20Images%20{Digest%20IsSigned%20Tag%20Layers%20{Size%20Digest}}}}" //nolint: lll
 
@@ -934,10 +929,9 @@ func TestExpandedRepoInfo(t *testing.T) {
 		conf.Extensions.Search.CVE = nil
 
 		ctlr := api.NewController(conf)
-
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		log := log.NewLogger("debug", "")
 		metrics := monitoring.NewMetricsServer(false, log)
@@ -1232,30 +1226,10 @@ func TestDerivedImageList(t *testing.T) {
 	conf.Extensions.Search.CVE = nil
 
 	ctlr := api.NewController(conf)
+	ctlrManager := NewControllerManager(ctlr)
 
-	go func() {
-		// this blocks
-		if err := ctlr.Run(context.Background()); err != nil {
-			return
-		}
-	}()
-
-	// wait till ready
-	for {
-		_, err := resty.R().Get(baseURL)
-		if err == nil {
-			break
-		}
-
-		time.Sleep(100 * time.Millisecond)
-	}
-
-	// shut down server
-
-	defer func() {
-		ctx := context.Background()
-		_ = ctlr.Server.Shutdown(ctx)
-	}()
+	ctlrManager.StartAndWait(port)
+	defer ctlrManager.StopServer()
 
 	Convey("Test dependency list for image working", t, func() {
 		// create test images
@@ -1583,9 +1557,9 @@ func TestDerivedImageListNoRepos(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		query := `
 			{
@@ -1659,30 +1633,10 @@ func TestBaseImageList(t *testing.T) {
 	conf.Extensions.Search.CVE = nil
 
 	ctlr := api.NewController(conf)
+	ctlrManager := NewControllerManager(ctlr)
 
-	go func() {
-		// this blocks
-		if err := ctlr.Run(context.Background()); err != nil {
-			return
-		}
-	}()
-
-	// wait till ready
-	for {
-		_, err := resty.R().Get(baseURL)
-		if err == nil {
-			break
-		}
-
-		time.Sleep(100 * time.Millisecond)
-	}
-
-	// shut down server
-
-	defer func() {
-		ctx := context.Background()
-		_ = ctlr.Server.Shutdown(ctx)
-	}()
+	ctlrManager.StartAndWait(port)
+	defer ctlrManager.StopServer()
 
 	Convey("Test base image list for image working", t, func() {
 		// create test images
@@ -2110,9 +2064,9 @@ func TestBaseImageListNoRepos(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		query := `
 			{
@@ -2179,10 +2133,10 @@ func TestGlobalSearchImageAuthor(t *testing.T) {
 	conf.Extensions.Search.CVE = nil
 
 	ctlr := api.NewController(conf)
+	ctlrManager := NewControllerManager(ctlr)
 
-	go startServer(ctlr)
-	defer stopServer(ctlr)
-	WaitTillServerReady(baseURL)
+	ctlrManager.StartAndWait(port)
+	defer ctlrManager.StopServer()
 
 	Convey("Test global search with author in manifest's annotations", t, func() {
 		cfg, layers, manifest, err := GetImageComponents(10000)
@@ -2342,9 +2296,9 @@ func TestGlobalSearch(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		// push test images to repo 1 image 1
 		config1, layers1, manifest1, err := GetImageComponents(100)
@@ -2662,9 +2616,9 @@ func TestGlobalSearch(t *testing.T) {
 		ctlr := api.NewController(conf)
 		ctlr.Log.Logger = ctlr.Log.Output(writers)
 
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		// Wait for trivy db to download
 		substring := "{\"Search\":{\"Enable\":true,\"CVE\":{\"UpdateInterval\":3600000000000,\"Trivy\":{\"DBRepository\":\"ghcr.io/project-zot/trivy-db\"}}}" //nolint: lll
@@ -2934,9 +2888,9 @@ func TestCleaningFilteringParamsGlobalSearch(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		config, layers, manifest, err := GetImageWithConfig(ispec.Image{
 			Platform: ispec.Platform{
@@ -3016,9 +2970,9 @@ func TestGlobalSearchFiltering(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		config, layers, manifest, err := GetRandomImageComponents(100)
 		So(err, ShouldBeNil)
@@ -3093,9 +3047,9 @@ func TestGlobalSearchWithInvalidInput(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		longString := RandomString(1000)
 
@@ -3191,9 +3145,9 @@ func TestImageList(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		imageStore := ctlr.StoreController.DefaultStore
 
@@ -3263,9 +3217,9 @@ func TestImageList(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		config := ispec.Image{
 			Platform: ispec.Platform{
@@ -3374,9 +3328,9 @@ func TestGlobalSearchPagination(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		for i := 0; i < 3; i++ {
 			config, layers, manifest, err := GetImageComponents(10)
@@ -3569,9 +3523,9 @@ func TestBuildImageInfo(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		olu := &common.BaseOciLayoutUtils{
 			StoreController: ctlr.StoreController,
@@ -3683,9 +3637,9 @@ func TestRepoDBWhenSigningImages(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		// push test images to repo 1 image 1
 		config1, layers1, manifest1, err := GetImageComponents(100)
@@ -3868,9 +3822,9 @@ func TestRepoDBWhenPushingImages(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		Convey("SetManifestMeta fails", func() {
 			ctlr.RepoDB = mocks.RepoDBMock{
@@ -3960,9 +3914,9 @@ func TestRepoDBWhenReadingImages(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		config1, layers1, manifest1, err := GetImageComponents(100)
 		So(err, ShouldBeNil)
@@ -4053,9 +4007,9 @@ func TestRepoDBWhenDeletingImages(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		// push test images to repo 1 image 1
 		config1, layers1, manifest1, err := GetImageComponents(100)
@@ -4634,9 +4588,9 @@ func TestSearchSize(t *testing.T) {
 		dir := t.TempDir()
 		ctlr.Config.Storage.RootDirectory = dir
 
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		repoName := "testrepo"
 		config, layers, manifest, err := GetImageComponents(10000)
@@ -4855,9 +4809,9 @@ func TestImageSummary(t *testing.T) {
 		configBlob, errConfig := json.Marshal(config)
 		configDigest := godigest.FromBytes(configBlob)
 		So(errConfig, ShouldBeNil) // marshall success, config is valid JSON
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		manifestBlob, errMarsal := json.Marshal(manifest)
 		So(errMarsal, ShouldBeNil)
@@ -5037,9 +4991,9 @@ func TestImageSummary(t *testing.T) {
 		configBlob, errConfig := json.Marshal(config)
 		configDigest := godigest.FromBytes(configBlob)
 		So(errConfig, ShouldBeNil) // marshall success, config is valid JSON
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		WaitTillServerReady(baseURL)
+		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		manifestBlob, errMarsal := json.Marshal(manifest)
 		So(errMarsal, ShouldBeNil)
@@ -5101,17 +5055,4 @@ func TestImageSummary(t *testing.T) {
 		// There are 0 vulnerabilities this data used in tests
 		So(imgSummary.Vulnerabilities.MaxSeverity, ShouldEqual, "NONE")
 	})
-}
-
-func startServer(c *api.Controller) {
-	// this blocks
-	ctx := context.Background()
-	if err := c.Run(ctx); err != nil {
-		return
-	}
-}
-
-func stopServer(c *api.Controller) {
-	ctx := context.Background()
-	_ = c.Server.Shutdown(ctx)
 }

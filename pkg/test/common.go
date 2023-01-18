@@ -179,6 +179,13 @@ func CopyFiles(sourceDir, destDir string) error {
 	return nil
 }
 
+func CopyTestFiles(sourceDir, destDir string) {
+	err := CopyFiles(sourceDir, destDir)
+	if err != nil {
+		panic(err)
+	}
+}
+
 type Controller interface {
 	Run(ctx context.Context) error
 	Shutdown()
