@@ -23,11 +23,11 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 )
 
-const dbRepository = "ghcr.io/aquasecurity/trivy-db"
+const defaultDBRepository = "ghcr.io/aquasecurity/trivy-db"
 
 // getNewScanOptions sets trivy configuration values for our scans and returns them as
 // a trivy Options structure.
-func getNewScanOptions(dir string) *flag.Options {
+func getNewScanOptions(dir, dbRepository string) *flag.Options {
 	scanOptions := flag.Options{
 		GlobalOptions: flag.GlobalOptions{
 			CacheDir: dir,
@@ -70,14 +70,19 @@ type Scanner struct {
 	log             log.Logger
 	dbLock          *sync.Mutex
 	cache           *CveCache
+	dbRepository    string
 }
 
 func NewScanner(storeController storage.StoreController,
-	repoDB repodb.RepoDB, log log.Logger,
+	repoDB repodb.RepoDB, dbRepository string, log log.Logger,
 ) *Scanner {
 	cveController := cveTrivyController{}
 
 	subCveConfig := make(map[string]*flag.Options)
+
+	if dbRepository == "" {
+		dbRepository = defaultDBRepository
+	}
 
 	if storeController.DefaultStore != nil {
 		imageStore := storeController.DefaultStore
@@ -85,7 +90,7 @@ func NewScanner(storeController storage.StoreController,
 		rootDir := imageStore.RootDir()
 
 		cacheDir := path.Join(rootDir, "_trivy")
-		opts := getNewScanOptions(cacheDir)
+		opts := getNewScanOptions(cacheDir, dbRepository)
 
 		cveController.DefaultCveConfig = opts
 	}
@@ -95,7 +100,7 @@ func NewScanner(storeController storage.StoreController,
 			rootDir := storage.RootDir()
 
 			cacheDir := path.Join(rootDir, "_trivy")
-			opts := getNewScanOptions(cacheDir)
+			opts := getNewScanOptions(cacheDir, dbRepository)
 
 			subCveConfig[route] = opts
 		}
@@ -110,6 +115,7 @@ func NewScanner(storeController storage.StoreController,
 		storeController: storeController,
 		dbLock:          &sync.Mutex{},
 		cache:           NewCveCache(10000, log), //nolint:gomnd
+		dbRepository:    dbRepository,
 	}
 }
 
@@ -333,7 +339,7 @@ func (scanner Scanner) UpdateDB() error {
 func (scanner Scanner) updateDB(dbDir string) error {
 	scanner.log.Debug().Msgf("Download Trivy DB to destination dir: %s", dbDir)
 
-	err := operation.DownloadDB("dev", dbDir, dbRepository, false, false, false)
+	err := operation.DownloadDB("dev", dbDir, scanner.dbRepository, false, false, false)
 	if err != nil {
 		scanner.log.Error().Err(err).Msgf("Error downloading Trivy DB to destination dir: %s", dbDir)
 

@@ -32,6 +32,11 @@ type SearchConfig struct {
 
 type CVEConfig struct {
 	UpdateInterval time.Duration // should be 2 hours or more, if not specified default be kept as 24 hours
+	Trivy          *TrivyConfig
+}
+
+type TrivyConfig struct {
+	DBRepository string // default is "ghcr.io/aquasecurity/trivy-db"
 }
 
 type MetricsConfig struct {

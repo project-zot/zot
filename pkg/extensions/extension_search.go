@@ -37,7 +37,12 @@ func EnableSearchExtension(config *config.Config, storeController storage.StoreC
 			log.Warn().Msg("CVE update interval set to too-short interval < 2h, changing update duration to 2 hours and continuing.") //nolint:lll // gofumpt conflicts with lll
 		}
 
-		cveInfo = cveinfo.NewCVEInfo(storeController, repoDB, log)
+		dbRepository := ""
+		if config.Extensions.Search.CVE.Trivy != nil {
+			dbRepository = config.Extensions.Search.CVE.Trivy.DBRepository
+		}
+
+		cveInfo = cveinfo.NewCVEInfo(storeController, repoDB, dbRepository, log)
 
 		go func() {
 			err := downloadTrivyDB(log, config.Extensions.Search.CVE.UpdateInterval)
@@ -77,7 +82,13 @@ func SetupSearchRoutes(config *config.Config, router *mux.Router, storeControlle
 			// cveinfo should already be initialized by this time
 			// as EnableSearchExtension is supposed to be called earlier, but let's be sure
 			if cveInfo == nil {
-				cveInfo = cveinfo.NewCVEInfo(storeController, repoDB, log)
+				dbRepository := ""
+
+				if config.Extensions.Search.CVE.Trivy != nil {
+					dbRepository = config.Extensions.Search.CVE.Trivy.DBRepository
+				}
+
+				cveInfo = cveinfo.NewCVEInfo(storeController, repoDB, dbRepository, log)
 			}
 
 			resConfig = search.GetResolverConfig(log, storeController, repoDB, cveInfo)
