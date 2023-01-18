@@ -149,6 +149,11 @@ func CopyFiles(sourceDir, destDir string) error {
 		destFilePath := path.Join(destDir, file.Name())
 
 		if file.IsDir() {
+			if strings.HasPrefix(file.Name(), "_") {
+				// Some tests create the trivy related folders under test/_trivy
+				continue
+			}
+
 			if err = CopyFiles(sourceFilePath, destFilePath); err != nil {
 				return err
 			}
@@ -283,7 +288,7 @@ func WaitTillServerReady(url string) {
 
 func WaitTillTrivyDBDownloadStarted(rootDir string) {
 	for {
-		if _, err := os.Stat(path.Join(rootDir, "trivy.db")); err == nil {
+		if _, err := os.Stat(path.Join(rootDir, "_trivy", "db", "trivy.db")); err == nil {
 			break
 		}
 

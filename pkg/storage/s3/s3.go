@@ -26,6 +26,7 @@ import (
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	zlog "zotregistry.io/zot/pkg/log"
+	zreg "zotregistry.io/zot/pkg/regexp"
 	"zotregistry.io/zot/pkg/scheduler"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/cache"
@@ -122,6 +123,12 @@ func (is *ObjectStorage) Unlock(lockStart *time.Time) {
 func (is *ObjectStorage) initRepo(name string) error {
 	repoDir := path.Join(is.rootDir, name)
 
+	if !zreg.FullNameRegexp.MatchString(name) {
+		is.log.Error().Str("repo", name).Msg("invalid repository name")
+
+		return zerr.ErrInvalidRepositoryName
+	}
+
 	// "oci-layout" file - create if it doesn't exist
 	ilPath := path.Join(repoDir, ispec.ImageLayoutFile)
 	if _, err := is.store.Stat(context.Background(), ilPath); err != nil {
@@ -176,6 +183,10 @@ func (is *ObjectStorage) InitRepo(name string) error {
 
 // ValidateRepo validates that the repository layout is complaint with the OCI repo layout.
 func (is *ObjectStorage) ValidateRepo(name string) (bool, error) {
+	if !zreg.FullNameRegexp.MatchString(name) {
+		return false, zerr.ErrInvalidRepositoryName
+	}
+
 	// https://github.com/opencontainers/image-spec/blob/master/image-layout.md#content
 	// at least, expect at least 3 entries - ["blobs", "oci-layout", "index.json"]
 	// and an additional/optional BlobUploadDir in each image store

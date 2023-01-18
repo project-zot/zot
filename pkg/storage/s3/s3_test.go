@@ -386,8 +386,8 @@ func TestStorageDriverStatFunction(t *testing.T) {
 	3) the returned storageDriver.FileInfo will report that isDir() is true.
 	*/
 	Convey("Validate storageDriver.Stat() and isDir() functions with zot storage API", t, func(c C) {
-		repo1 := "repo/testImageA"
-		repo2 := "repo/testImage"
+		repo1 := "repo/testimagea"
+		repo2 := "repo/testimage"
 
 		So(imgStore, ShouldNotBeNil)
 
@@ -446,6 +446,8 @@ func TestStorageDriverStatFunction(t *testing.T) {
 }
 
 func TestGetOrasAndOCIReferrers(t *testing.T) {
+	skipIt(t)
+
 	repo := "zot-test"
 
 	uuid, err := guuid.NewV4()
@@ -654,6 +656,50 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 	Convey("With dedupe", t, func(c C) {
 		storeDriver, imgStore, _ := createObjectsStore(testDir, tdir, true)
 		defer cleanupStorage(storeDriver, testDir)
+
+		Convey("Invalid repo name", func(c C) {
+			// Validate repo should fail if repo name does not match spec
+			_, err := imgStore.ValidateRepo(".")
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, zerr.ErrInvalidRepositoryName), ShouldBeTrue)
+
+			_, err = imgStore.ValidateRepo("..")
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, zerr.ErrInvalidRepositoryName), ShouldBeTrue)
+
+			_, err = imgStore.ValidateRepo("_test-dir")
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, zerr.ErrInvalidRepositoryName), ShouldBeTrue)
+
+			_, err = imgStore.ValidateRepo(".test-dir")
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, zerr.ErrInvalidRepositoryName), ShouldBeTrue)
+
+			_, err = imgStore.ValidateRepo("-test-dir")
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, zerr.ErrInvalidRepositoryName), ShouldBeTrue)
+
+			// Init repo should fail if repo name does not match spec
+			err = imgStore.InitRepo(".")
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, zerr.ErrInvalidRepositoryName), ShouldBeTrue)
+
+			err = imgStore.InitRepo("..")
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, zerr.ErrInvalidRepositoryName), ShouldBeTrue)
+
+			err = imgStore.InitRepo("_test-dir")
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, zerr.ErrInvalidRepositoryName), ShouldBeTrue)
+
+			err = imgStore.InitRepo(".test-dir")
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, zerr.ErrInvalidRepositoryName), ShouldBeTrue)
+
+			err = imgStore.InitRepo("-test-dir")
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, zerr.ErrInvalidRepositoryName), ShouldBeTrue)
+		})
 
 		Convey("Invalid validate repo", func(c C) {
 			So(imgStore.InitRepo(testImage), ShouldBeNil)

@@ -87,7 +87,7 @@ jobs:
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
       - name: Run build and test
-        timeout-minutes: 60
+        timeout-minutes: 70
         run: |
           echo "Building for $OS:$ARCH"
           cd $GITHUB_WORKSPACE

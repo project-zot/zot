@@ -555,8 +555,13 @@ func TestRepoListWithNewestImage(t *testing.T) {
 				ShouldBeGreaterThan,
 				0,
 			)
-			// This really depends on the test data, but with the current test images it's CRITICAL
-			So(vulnerabilities.MaxSeverity, ShouldEqual, "CRITICAL")
+			if repo.Name == "zot-cve-test" {
+				// This really depends on the test data, but with the current test image it's HIGH
+				So(vulnerabilities.MaxSeverity, ShouldEqual, "HIGH")
+			} else if repo.Name == "zot-test" {
+				// This really depends on the test data, but with the current test image it's CRITICAL
+				So(vulnerabilities.MaxSeverity, ShouldEqual, "CRITICAL")
+			}
 		}
 	})
 }

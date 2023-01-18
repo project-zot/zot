@@ -1,20 +1,19 @@
 package trivy
 
 import (
+	"context"
 	"encoding/json"
-	"flag"
 	"path"
-	"strings"
 	"sync"
 
 	dbTypes "github.com/aquasecurity/trivy-db/pkg/types"
 	"github.com/aquasecurity/trivy/pkg/commands/artifact"
 	"github.com/aquasecurity/trivy/pkg/commands/operation"
+	"github.com/aquasecurity/trivy/pkg/flag"
 	"github.com/aquasecurity/trivy/pkg/types"
 	regTypes "github.com/google/go-containerregistry/pkg/v1/types"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/urfave/cli/v2"
 
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/search/common"
@@ -24,51 +23,44 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 )
 
-type trivyCtx struct {
-	Input string
-	Ctx   *cli.Context
-}
+const dbRepository = "ghcr.io/aquasecurity/trivy-db"
 
-// newTrivyContext set some trivy configuration value and return a context.
-func newTrivyContext(dir string) *trivyCtx {
-	tCtx := &trivyCtx{}
+// getNewScanOptions sets trivy configuration values for our scans and returns them as
+// a trivy Options structure.
+func getNewScanOptions(dir string) *flag.Options {
+	scanOptions := flag.Options{
+		GlobalOptions: flag.GlobalOptions{
+			CacheDir: dir,
+		},
+		ScanOptions: flag.ScanOptions{
+			SecurityChecks: []string{types.SecurityCheckVulnerability},
+			OfflineScan:    true,
+		},
+		VulnerabilityOptions: flag.VulnerabilityOptions{
+			VulnType: []string{types.VulnTypeOS, types.VulnTypeLibrary},
+		},
+		DBOptions: flag.DBOptions{
+			DBRepository: dbRepository,
+			SkipDBUpdate: true,
+		},
+		ReportOptions: flag.ReportOptions{
+			Format: "table",
+			Severities: []dbTypes.Severity{
+				dbTypes.SeverityUnknown,
+				dbTypes.SeverityLow,
+				dbTypes.SeverityMedium,
+				dbTypes.SeverityHigh,
+				dbTypes.SeverityCritical,
+			},
+		},
+	}
 
-	app := &cli.App{}
-
-	flagSet := &flag.FlagSet{}
-
-	var cacheDir string
-
-	flagSet.StringVar(&cacheDir, "cache-dir", dir, "")
-
-	var vuln string
-
-	flagSet.StringVar(&vuln, "vuln-type", strings.Join([]string{types.VulnTypeOS, types.VulnTypeLibrary}, ","), "")
-
-	var severity string
-
-	flagSet.StringVar(&severity, "severity", strings.Join(dbTypes.SeverityNames, ","), "")
-
-	flagSet.StringVar(&tCtx.Input, "input", "", "")
-
-	var securityCheck string
-
-	flagSet.StringVar(&securityCheck, "security-checks", types.SecurityCheckVulnerability, "")
-
-	var reportFormat string
-
-	flagSet.StringVar(&reportFormat, "format", "table", "")
-
-	ctx := cli.NewContext(app, flagSet, nil)
-
-	tCtx.Ctx = ctx
-
-	return tCtx
+	return &scanOptions
 }
 
 type cveTrivyController struct {
-	DefaultCveConfig *trivyCtx
-	SubCveConfig     map[string]*trivyCtx
+	DefaultCveConfig *flag.Options
+	SubCveConfig     map[string]*flag.Options
 }
 
 type Scanner struct {
@@ -85,25 +77,27 @@ func NewScanner(storeController storage.StoreController,
 ) *Scanner {
 	cveController := cveTrivyController{}
 
-	subCveConfig := make(map[string]*trivyCtx)
+	subCveConfig := make(map[string]*flag.Options)
 
 	if storeController.DefaultStore != nil {
 		imageStore := storeController.DefaultStore
 
 		rootDir := imageStore.RootDir()
 
-		ctx := newTrivyContext(rootDir)
+		cacheDir := path.Join(rootDir, "_trivy")
+		opts := getNewScanOptions(cacheDir)
 
-		cveController.DefaultCveConfig = ctx
+		cveController.DefaultCveConfig = opts
 	}
 
 	if storeController.SubStore != nil {
 		for route, storage := range storeController.SubStore {
 			rootDir := storage.RootDir()
 
-			ctx := newTrivyContext(rootDir)
+			cacheDir := path.Join(rootDir, "_trivy")
+			opts := getNewScanOptions(cacheDir)
 
-			subCveConfig[route] = ctx
+			subCveConfig[route] = opts
 		}
 	}
 
@@ -119,33 +113,58 @@ func NewScanner(storeController storage.StoreController,
 	}
 }
 
-func (scanner Scanner) getTrivyContext(image string) *trivyCtx {
+func (scanner Scanner) getTrivyOptions(image string) flag.Options {
 	// Split image to get route prefix
 	prefixName := common.GetRoutePrefix(image)
 
-	var tCtx *trivyCtx
+	var opts flag.Options
 
 	var ok bool
 
 	var rootDir string
 
 	// Get corresponding CVE trivy config, if no sub cve config present that means its default
-	tCtx, ok = scanner.cveController.SubCveConfig[prefixName]
+	_, ok = scanner.cveController.SubCveConfig[prefixName]
 	if ok {
+		opts = *scanner.cveController.SubCveConfig[prefixName]
+
 		imgStore := scanner.storeController.SubStore[prefixName]
 
 		rootDir = imgStore.RootDir()
 	} else {
-		tCtx = scanner.cveController.DefaultCveConfig
+		opts = *scanner.cveController.DefaultCveConfig
 
 		imgStore := scanner.storeController.DefaultStore
 
 		rootDir = imgStore.RootDir()
 	}
 
-	tCtx.Input = path.Join(rootDir, image)
+	opts.ScanOptions.Target = path.Join(rootDir, image)
+	opts.ImageOptions.Input = path.Join(rootDir, image)
 
-	return tCtx
+	return opts
+}
+
+func (scanner Scanner) runTrivy(opts flag.Options) (types.Report, error) {
+	ctx := context.Background()
+
+	runner, err := artifact.NewRunner(ctx, opts)
+	if err != nil {
+		return types.Report{}, err
+	}
+	defer runner.Close(ctx)
+
+	report, err := runner.ScanImage(ctx, opts)
+	if err != nil {
+		return types.Report{}, err
+	}
+
+	report, err = runner.Filter(ctx, opts, report)
+	if err != nil {
+		return types.Report{}, err
+	}
+
+	return report, nil
 }
 
 func (scanner Scanner) IsImageFormatScannable(image string) (bool, error) {
@@ -208,10 +227,9 @@ func (scanner Scanner) ScanImage(image string) (map[string]cvemodel.CVE, error) 
 
 	scanner.log.Debug().Str("image", image).Msg("scanning image")
 
-	tCtx := scanner.getTrivyContext(image)
-
 	scanner.dbLock.Lock()
-	report, err := artifact.TrivyImageRun(tCtx.Ctx)
+	opts := scanner.getTrivyOptions(image)
+	report, err := scanner.runTrivy(opts)
 	scanner.dbLock.Unlock()
 
 	if err != nil { //nolint: wsl
@@ -288,7 +306,7 @@ func (scanner Scanner) UpdateDB() error {
 	defer scanner.dbLock.Unlock()
 
 	if scanner.storeController.DefaultStore != nil {
-		dbDir := scanner.storeController.DefaultStore.RootDir()
+		dbDir := path.Join(scanner.storeController.DefaultStore.RootDir(), "_trivy")
 
 		err := scanner.updateDB(dbDir)
 		if err != nil {
@@ -298,7 +316,9 @@ func (scanner Scanner) UpdateDB() error {
 
 	if scanner.storeController.SubStore != nil {
 		for _, storage := range scanner.storeController.SubStore {
-			err := scanner.updateDB(storage.RootDir())
+			dbDir := path.Join(storage.RootDir(), "_trivy")
+
+			err := scanner.updateDB(dbDir)
 			if err != nil {
 				return err
 			}
@@ -313,7 +333,7 @@ func (scanner Scanner) UpdateDB() error {
 func (scanner Scanner) updateDB(dbDir string) error {
 	scanner.log.Debug().Msgf("Download Trivy DB to destination dir: %s", dbDir)
 
-	err := operation.DownloadDB("dev", dbDir, false, false, false)
+	err := operation.DownloadDB("dev", dbDir, dbRepository, false, false, false)
 	if err != nil {
 		scanner.log.Error().Err(err).Msgf("Error downloading Trivy DB to destination dir: %s", dbDir)
 
