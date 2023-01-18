@@ -22,7 +22,8 @@ func TestPagination(t *testing.T) {
 
 			pageFinder.Reset()
 
-			So(pageFinder.Page(), ShouldBeEmpty)
+			result, _ := pageFinder.Page()
+			So(result, ShouldBeEmpty)
 		})
 	})
 
@@ -52,11 +53,70 @@ func TestPagination(t *testing.T) {
 
 			pageFinder.Reset()
 
-			So(pageFinder.Page(), ShouldBeEmpty)
+			result, _ := pageFinder.Page()
+			So(result, ShouldBeEmpty)
 		})
 
 		Convey("Page", func() {
-			Convey("limit < len(tags)", func() {
+			Convey("no limit or offset", func() {
+				pageFinder, err := repodb.NewBaseImagePageFinder(0, 0, repodb.AlphabeticAsc)
+				So(err, ShouldBeNil)
+				So(pageFinder, ShouldNotBeNil)
+
+				pageFinder.Add(repodb.DetailedRepoMeta{
+					RepoMeta: repodb.RepoMetadata{
+						Name: "repo1",
+						Tags: map[string]repodb.Descriptor{
+							"tag1": {Digest: "dig1", MediaType: ispec.MediaTypeImageManifest},
+						},
+					},
+				})
+
+				pageFinder.Add(repodb.DetailedRepoMeta{
+					RepoMeta: repodb.RepoMetadata{
+						Name: "repo2",
+						Tags: map[string]repodb.Descriptor{
+							"Tag1": {Digest: "dig1", MediaType: ispec.MediaTypeImageManifest},
+							"Tag2": {Digest: "dig2", MediaType: ispec.MediaTypeImageManifest},
+							"Tag3": {Digest: "dig3", MediaType: ispec.MediaTypeImageManifest},
+							"Tag4": {Digest: "dig4", MediaType: ispec.MediaTypeImageManifest},
+						},
+					},
+				})
+				_, pageInfo := pageFinder.Page()
+				So(pageInfo.ItemCount, ShouldEqual, 5)
+				So(pageInfo.TotalCount, ShouldEqual, 5)
+			})
+			Convey("Test 1 limit < len(tags)", func() {
+				pageFinder, err := repodb.NewBaseImagePageFinder(5, 2, repodb.AlphabeticAsc)
+				So(err, ShouldBeNil)
+				So(pageFinder, ShouldNotBeNil)
+
+				pageFinder.Add(repodb.DetailedRepoMeta{
+					RepoMeta: repodb.RepoMetadata{
+						Name: "repo1",
+						Tags: map[string]repodb.Descriptor{
+							"tag1": {Digest: "dig1", MediaType: ispec.MediaTypeImageManifest},
+						},
+					},
+				})
+
+				pageFinder.Add(repodb.DetailedRepoMeta{
+					RepoMeta: repodb.RepoMetadata{
+						Name: "repo2",
+						Tags: map[string]repodb.Descriptor{
+							"Tag1": {Digest: "dig1", MediaType: ispec.MediaTypeImageManifest},
+							"Tag2": {Digest: "dig2", MediaType: ispec.MediaTypeImageManifest},
+							"Tag3": {Digest: "dig3", MediaType: ispec.MediaTypeImageManifest},
+							"Tag4": {Digest: "dig4", MediaType: ispec.MediaTypeImageManifest},
+						},
+					},
+				})
+				_, pageInfo := pageFinder.Page()
+				So(pageInfo.ItemCount, ShouldEqual, 3)
+				So(pageInfo.TotalCount, ShouldEqual, 5)
+			})
+			Convey("Test 2 limit < len(tags)", func() {
 				pageFinder, err := repodb.NewBaseImagePageFinder(5, 2, repodb.AlphabeticAsc)
 				So(err, ShouldBeNil)
 				So(pageFinder, ShouldNotBeNil)
@@ -120,15 +180,17 @@ func TestPagination(t *testing.T) {
 					},
 				})
 
-				result := pageFinder.Page()
+				result, pageInfo := pageFinder.Page()
 				So(result[0].Tags, ShouldContainKey, "Tag2")
 				So(result[0].Tags, ShouldContainKey, "Tag3")
 				So(result[0].Tags, ShouldContainKey, "Tag4")
 				So(result[1].Tags, ShouldContainKey, "Tag11")
 				So(result[1].Tags, ShouldContainKey, "Tag12")
+				So(pageInfo.ItemCount, ShouldEqual, 5)
+				So(pageInfo.TotalCount, ShouldEqual, 9)
 			})
 
-			Convey("limit > len(tags)", func() {
+			Convey("Test 2 limit > len(tags)", func() {
 				pageFinder, err := repodb.NewBaseImagePageFinder(3, 0, repodb.AlphabeticAsc)
 				So(err, ShouldBeNil)
 				So(pageFinder, ShouldNotBeNil)
@@ -168,7 +230,7 @@ func TestPagination(t *testing.T) {
 					},
 				})
 
-				result := pageFinder.Page()
+				result, _ := pageFinder.Page()
 				So(result[0].Tags, ShouldContainKey, "tag1")
 				So(result[1].Tags, ShouldContainKey, "Tag1")
 				So(result[2].Tags, ShouldContainKey, "Tag11")
