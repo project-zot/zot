@@ -4,7 +4,6 @@
 package lint_test
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -56,16 +55,13 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		ctlr := api.NewController(conf)
 		dir := t.TempDir()
 
-		err := test.CopyFiles("../../../test/data", dir)
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../../test/data", dir)
 
 		ctlr.Config.Storage.RootDirectory = dir
 
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		test.WaitTillServerReady(baseURL)
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(port)
+		defer cm.StopServer()
 
 		resp, err := resty.R().SetBasicAuth(username, passphrase).
 			Get(baseURL + "/v2/zot-test/manifests/0.0.1")
@@ -104,16 +100,13 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		ctlr := api.NewController(conf)
 		dir := t.TempDir()
 
-		err := test.CopyFiles("../../../test/data", dir)
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../../test/data", dir)
 
 		ctlr.Config.Storage.RootDirectory = dir
 
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		test.WaitTillServerReady(baseURL)
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(port)
+		defer cm.StopServer()
 
 		resp, err := resty.R().SetBasicAuth(username, passphrase).
 			Get(baseURL + "/v2/zot-test/manifests/0.0.1")
@@ -152,16 +145,13 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		ctlr := api.NewController(conf)
 		dir := t.TempDir()
 
-		err := test.CopyFiles("../../../test/data", dir)
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../../test/data", dir)
 
 		ctlr.Config.Storage.RootDirectory = dir
 
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		test.WaitTillServerReady(baseURL)
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(port)
+		defer cm.StopServer()
 
 		resp, err := resty.R().SetBasicAuth(username, passphrase).
 			Get(baseURL + "/v2/zot-test/manifests/0.0.1")
@@ -206,16 +196,13 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		ctlr := api.NewController(conf)
 		dir := t.TempDir()
 
-		err := test.CopyFiles("../../../test/data", dir)
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../../test/data", dir)
 
 		ctlr.Config.Storage.RootDirectory = dir
 
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		test.WaitTillServerReady(baseURL)
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(port)
+		defer cm.StopServer()
 
 		resp, err := resty.R().SetBasicAuth(username, passphrase).
 			Get(baseURL + "/v2/zot-test/manifests/0.0.1")
@@ -295,16 +282,13 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		ctlr := api.NewController(conf)
 		dir := t.TempDir()
 
-		err := test.CopyFiles("../../../test/data", dir)
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../../test/data", dir)
 
 		ctlr.Config.Storage.RootDirectory = dir
 
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		test.WaitTillServerReady(baseURL)
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(port)
+		defer cm.StopServer()
 
 		resp, err := resty.R().SetBasicAuth(username, passphrase).
 			Get(baseURL + "/v2/zot-test/manifests/0.0.1")
@@ -383,16 +367,13 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		ctlr := api.NewController(conf)
 		dir := t.TempDir()
 
-		err := test.CopyFiles("../../../test/data", dir)
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../../test/data", dir)
 
 		ctlr.Config.Storage.RootDirectory = dir
 
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		test.WaitTillServerReady(baseURL)
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(port)
+		defer cm.StopServer()
 
 		resp, err := resty.R().SetBasicAuth(username, passphrase).
 			Get(baseURL + "/v2/zot-test/manifests/0.0.1")
@@ -435,16 +416,13 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 		ctlr := api.NewController(conf)
 		dir := t.TempDir()
 
-		err := test.CopyFiles("../../../test/data", dir)
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../../test/data", dir)
 
 		ctlr.Config.Storage.RootDirectory = dir
+		cm := test.NewControllerManager(ctlr)
 
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		test.WaitTillServerReady(baseURL)
+		cm.StartAndWait(port)
+		defer cm.StopServer()
 
 		resp, err := resty.R().SetBasicAuth(username, passphrase).
 			Get(baseURL + "/v2/zot-test/manifests/0.0.1")
@@ -486,10 +464,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 
 		dir := t.TempDir()
 
-		err := test.CopyFiles("../../../test/data", dir)
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../../test/data", dir)
 
 		var index ispec.Index
 
@@ -519,10 +494,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 
 		dir := t.TempDir()
 
-		err := test.CopyFiles("../../../test/data", dir)
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../../test/data", dir)
 
 		var index ispec.Index
 
@@ -552,10 +524,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 
 		dir := t.TempDir()
 
-		err := test.CopyFiles("../../../test/data", dir)
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../../test/data", dir)
 
 		var index ispec.Index
 		buf, err := os.ReadFile(path.Join(dir, "zot-test", "index.json"))
@@ -616,10 +585,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 
 		dir := t.TempDir()
 
-		err := test.CopyFiles("../../../test/data", dir)
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../../test/data", dir)
 
 		var index ispec.Index
 		buf, err := os.ReadFile(path.Join(dir, "zot-test", "index.json"))
@@ -679,10 +645,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 
 		dir := t.TempDir()
 
-		err := test.CopyFiles("../../../test/data", dir)
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../../test/data", dir)
 
 		var index ispec.Index
 		buf, err := os.ReadFile(path.Join(dir, "zot-test", "index.json"))
@@ -744,10 +707,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 
 		dir := t.TempDir()
 
-		err := test.CopyFiles("../../../test/data", dir)
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../../test/data", dir)
 
 		var index ispec.Index
 		buf, err := os.ReadFile(path.Join(dir, "zot-test", "index.json"))
@@ -818,10 +778,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 
 		dir := t.TempDir()
 
-		err := test.CopyFiles("../../../test/data", dir)
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../../test/data", dir)
 
 		var index ispec.Index
 		buf, err := os.ReadFile(path.Join(dir, "zot-test", "index.json"))
@@ -906,17 +863,4 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 			panic(err)
 		}
 	})
-}
-
-func startServer(c *api.Controller) {
-	// this blocks
-	ctx := context.Background()
-	if err := c.Run(ctx); err != nil {
-		return
-	}
-}
-
-func stopServer(c *api.Controller) {
-	ctx := context.Background()
-	_ = c.Server.Shutdown(ctx)
 }

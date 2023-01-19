@@ -390,10 +390,7 @@ func TestSyncInternal(t *testing.T) {
 	Convey("Test canSkipImage()", t, func() {
 		storageDir := t.TempDir()
 
-		err := test.CopyFiles("../../../test/data", storageDir)
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../../test/data", storageDir)
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
@@ -407,7 +404,7 @@ func TestSyncInternal(t *testing.T) {
 			},
 		}}
 
-		err = os.Chmod(path.Join(imageStore.RootDir(), testImage, "index.json"), 0o000)
+		err := os.Chmod(path.Join(imageStore.RootDir(), testImage, "index.json"), 0o000)
 		So(err, ShouldBeNil)
 
 		canBeSkipped, err := canSkipImage(testImage, testImageTag, "fakeDigest", imageStore, log)
@@ -520,10 +517,7 @@ func TestSyncInternal(t *testing.T) {
 			panic(err)
 		}
 
-		err = test.CopyFiles("../../../test/data", testRootDir)
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../../test/data", testRootDir)
 
 		testImageStore := local.NewImageStore(testRootDir, false,
 			storage.DefaultGCDelay, false, false, log, metrics, nil, nil)

@@ -4,7 +4,6 @@
 package scrub_test
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path"
@@ -13,7 +12,6 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	. "github.com/smartystreets/goconvey/convey"
-	"gopkg.in/resty.v1"
 
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
@@ -34,7 +32,6 @@ const (
 func TestScrubExtension(t *testing.T) {
 	Convey("Blobs integrity not affected", t, func(c C) {
 		port := test.GetFreePort()
-		url := test.GetBaseURL(port)
 
 		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
@@ -62,33 +59,13 @@ func TestScrubExtension(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		err = test.CopyFiles("../../../test/data/zot-test", path.Join(dir, repoName))
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../../test/data/zot-test", path.Join(dir, repoName))
 
-		go func(controller *api.Controller) {
-			// this blocks
-			if err := controller.Run(context.Background()); err != nil {
-				return
-			}
-		}(ctlr)
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(url)
-			if err == nil {
-				break
-			}
-
-			time.Sleep(100 * time.Millisecond)
-		}
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(port)
 		time.Sleep(6 * time.Second)
 
-		defer func(controller *api.Controller) {
-			ctx := context.Background()
-			_ = controller.Server.Shutdown(ctx)
-		}(ctlr)
+		defer cm.StopServer()
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
@@ -97,7 +74,6 @@ func TestScrubExtension(t *testing.T) {
 
 	Convey("Blobs integrity affected", t, func(c C) {
 		port := test.GetFreePort()
-		url := test.GetBaseURL(port)
 
 		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
@@ -122,10 +98,7 @@ func TestScrubExtension(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		err = test.CopyFiles("../../../test/data/zot-test", path.Join(dir, repoName))
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../../test/data/zot-test", path.Join(dir, repoName))
 		var manifestDigest godigest.Digest
 		manifestDigest, _, _ = test.GetOciLayoutDigests("../../../test/data/zot-test")
 
@@ -134,28 +107,11 @@ func TestScrubExtension(t *testing.T) {
 			panic(err)
 		}
 
-		go func(controller *api.Controller) {
-			// this blocks
-			if err := controller.Run(context.Background()); err != nil {
-				return
-			}
-		}(ctlr)
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(url)
-			if err == nil {
-				break
-			}
-
-			time.Sleep(100 * time.Millisecond)
-		}
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(port)
 		time.Sleep(6 * time.Second)
 
-		defer func(controller *api.Controller) {
-			ctx := context.Background()
-			_ = controller.Server.Shutdown(ctx)
-		}(ctlr)
+		defer cm.StopServer()
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
@@ -164,7 +120,6 @@ func TestScrubExtension(t *testing.T) {
 
 	Convey("Generator error - not enough permissions to access root directory", t, func(c C) {
 		port := test.GetFreePort()
-		url := test.GetBaseURL(port)
 
 		logFile, err := os.CreateTemp("", "zot-log*.txt")
 		So(err, ShouldBeNil)
@@ -189,35 +144,15 @@ func TestScrubExtension(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		err = test.CopyFiles("../../../test/data/zot-test", path.Join(dir, repoName))
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../../test/data/zot-test", path.Join(dir, repoName))
 
 		So(os.Chmod(path.Join(dir, repoName), 0o000), ShouldBeNil)
 
-		go func(controller *api.Controller) {
-			// this blocks
-			if err := controller.Run(context.Background()); err != nil {
-				return
-			}
-		}(ctlr)
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(url)
-			if err == nil {
-				break
-			}
-
-			time.Sleep(100 * time.Millisecond)
-		}
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(port)
 		time.Sleep(6 * time.Second)
 
-		defer func(controller *api.Controller) {
-			ctx := context.Background()
-			_ = controller.Server.Shutdown(ctx)
-		}(ctlr)
+		defer cm.StopServer()
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
@@ -249,10 +184,7 @@ func TestRunScrubRepo(t *testing.T) {
 		imgStore := local.NewImageStore(dir, true, 1*time.Second, true,
 			true, log, metrics, nil, cacheDriver)
 
-		err = test.CopyFiles("../../../test/data/zot-test", path.Join(dir, repoName))
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../../test/data/zot-test", path.Join(dir, repoName))
 
 		err = scrub.RunScrubRepo(imgStore, repoName, log)
 		So(err, ShouldBeNil)
@@ -284,10 +216,7 @@ func TestRunScrubRepo(t *testing.T) {
 		imgStore := local.NewImageStore(dir, true, 1*time.Second, true,
 			true, log, metrics, nil, cacheDriver)
 
-		err = test.CopyFiles("../../../test/data/zot-test", path.Join(dir, repoName))
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../../test/data/zot-test", path.Join(dir, repoName))
 		var manifestDigest godigest.Digest
 		manifestDigest, _, _ = test.GetOciLayoutDigests("../../../test/data/zot-test")
 
@@ -326,10 +255,7 @@ func TestRunScrubRepo(t *testing.T) {
 			true, true, log, metrics, nil, cacheDriver,
 		)
 
-		err = test.CopyFiles("../../../test/data/zot-test", path.Join(dir, repoName))
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../../test/data/zot-test", path.Join(dir, repoName))
 
 		So(os.Chmod(path.Join(dir, repoName), 0o000), ShouldBeNil)
 

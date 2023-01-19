@@ -4,7 +4,6 @@
 package sync_test
 
 import (
-	"context"
 	"os"
 	"testing"
 
@@ -42,17 +41,10 @@ func TestSyncExtension(t *testing.T) {
 		conf.Log.Output = logFile.Name()
 
 		ctlr := api.NewController(conf)
+		ctlrManager := test.NewControllerManager(ctlr)
 
-		go func() {
-			if err := ctlr.Run(context.Background()); err != nil {
-				return
-			}
-		}()
-
-		defer func() {
-			_ = ctlr.Server.Shutdown(context.Background())
-		}()
-		test.WaitTillServerReady(baseURL)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		Convey("verify sync is skipped when binary doesn't include it", func() {
 			resp, err := resty.R().

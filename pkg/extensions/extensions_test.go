@@ -4,7 +4,6 @@
 package extensions_test
 
 import (
-	"context"
 	"os"
 	"testing"
 
@@ -21,7 +20,6 @@ func TestEnableExtension(t *testing.T) {
 	Convey("Verify log if sync disabled in config", t, func() {
 		globalDir := t.TempDir()
 		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
 		conf := config.New()
 		falseValue := false
 
@@ -42,21 +40,13 @@ func TestEnableExtension(t *testing.T) {
 		defer os.Remove(logFile.Name()) // cleanup
 
 		ctlr := api.NewController(conf)
+		ctlrManager := test.NewControllerManager(ctlr)
 
-		defer func() {
-			ctx := context.Background()
-			_ = ctlr.Server.Shutdown(ctx)
-		}()
+		defer ctlrManager.StopServer()
 
 		ctlr.Config.Storage.RootDirectory = globalDir
 
-		go func() {
-			if err := ctlr.Run(context.Background()); err != nil {
-				return
-			}
-		}()
-
-		test.WaitTillServerReady(baseURL)
+		ctlrManager.StartAndWait(port)
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
@@ -71,7 +61,6 @@ func TestMetricsExtension(t *testing.T) {
 		conf := config.New()
 		port := test.GetFreePort()
 		conf.HTTP.Port = port
-		baseURL := test.GetBaseURL(port)
 
 		logFile, err := os.CreateTemp(globalDir, "zot-log*.txt")
 		So(err, ShouldBeNil)
@@ -87,6 +76,7 @@ func TestMetricsExtension(t *testing.T) {
 		defer os.Remove(logFile.Name()) // cleanup
 
 		ctlr := api.NewController(conf)
+		ctlrManager := test.NewControllerManager(ctlr)
 
 		subPaths := make(map[string]config.StorageConfig)
 		subPaths["/a"] = config.StorageConfig{}
@@ -94,12 +84,7 @@ func TestMetricsExtension(t *testing.T) {
 		ctlr.Config.Storage.RootDirectory = globalDir
 		ctlr.Config.Storage.SubPaths = subPaths
 
-		go func() {
-			if err := ctlr.Run(context.Background()); err != nil {
-				return
-			}
-		}()
-		test.WaitTillServerReady(baseURL)
+		ctlrManager.StartAndWait(port)
 
 		data, _ := os.ReadFile(logFile.Name())
 
