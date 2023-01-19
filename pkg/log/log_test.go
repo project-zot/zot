@@ -5,7 +5,6 @@ package log_test
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -49,10 +48,7 @@ type AuditLog struct {
 func TestAuditLogMessages(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		dir := t.TempDir()
-		err := CopyFiles("../../test/data", dir)
-		if err != nil {
-			panic(err)
-		}
+		CopyTestFiles("../../test/data", dir)
 
 		port := GetFreePort()
 		baseURL := GetBaseURL(port)
@@ -74,26 +70,10 @@ func TestAuditLogMessages(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 		ctlr.Config.Storage.RootDirectory = dir
-		go func() {
-			// this blocks
-			if err := ctlr.Run(context.Background()); err != nil {
-				return
-			}
-		}()
 
-		// wait till ready
-		for {
-			_, err := resty.R().Get(baseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		defer func() {
-			ctx := context.Background()
-			_ = ctlr.Server.Shutdown(ctx)
-		}()
+		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		Convey("Open auditLog file", func() {
 			auditFile, err := os.Open(auditPath)

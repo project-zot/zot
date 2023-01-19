@@ -4,7 +4,6 @@
 package test_test
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -30,12 +29,9 @@ func TestCopyFiles(t *testing.T) {
 	Convey("destDir is a file", t, func() {
 		dir := t.TempDir()
 
-		err := test.CopyFiles("../../test/data", dir)
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../test/data", dir)
 
-		err = test.CopyFiles(dir, "/etc/passwd")
+		err := test.CopyFiles(dir, "/etc/passwd")
 		So(err, ShouldNotBeNil)
 	})
 	Convey("sourceDir does not have read permissions", t, func() {
@@ -126,12 +122,9 @@ func TestGetOciLayoutDigests(t *testing.T) {
 	})
 
 	Convey("no permissions when getting index", t, func() {
-		err := test.CopyFiles("../../test/data/zot-test", path.Join(dir, "test-index"))
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../test/data/zot-test", path.Join(dir, "test-index"))
 
-		err = os.Chmod(path.Join(dir, "test-index", "index.json"), 0o000)
+		err := os.Chmod(path.Join(dir, "test-index", "index.json"), 0o000)
 		if err != nil {
 			panic(err)
 		}
@@ -145,10 +138,7 @@ func TestGetOciLayoutDigests(t *testing.T) {
 	})
 
 	Convey("can't access manifest digest", t, func() {
-		err := test.CopyFiles("../../test/data/zot-test", path.Join(dir, "test-manifest"))
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../test/data/zot-test", path.Join(dir, "test-manifest"))
 
 		buf, err := os.ReadFile(path.Join(dir, "test-manifest", "index.json"))
 		if err != nil {
@@ -238,10 +228,10 @@ func TestUploadBlob(t *testing.T) {
 		}
 
 		ctlr := api.NewController(conf)
-		go startServer(ctlr)
-		defer stopServer(ctlr)
 
-		test.WaitTillServerReady(baseURL)
+		ctlrManager := test.NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		err = test.UploadBlob(baseURL, "test", []byte("test"), "zot.com.test")
 		So(err, ShouldEqual, test.ErrPostBlob)
@@ -257,10 +247,9 @@ func TestUploadBlob(t *testing.T) {
 		conf.Storage.RootDirectory = tempDir
 
 		ctlr := api.NewController(conf)
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-
-		test.WaitTillServerReady(baseURL)
+		ctlrManager := test.NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		blob := new([]byte)
 
@@ -278,10 +267,9 @@ func TestUploadBlob(t *testing.T) {
 		conf.Storage.RootDirectory = tempDir
 
 		ctlr := api.NewController(conf)
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-
-		test.WaitTillServerReady(baseURL)
+		ctlrManager := test.NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		blob := []byte("test")
 		blobDigest := godigest.FromBytes(blob)
@@ -326,10 +314,10 @@ func TestUploadBlob(t *testing.T) {
 		conf.Storage.RootDirectory = tempDir
 
 		ctlr := api.NewController(conf)
-		go startServer(ctlr)
-		defer stopServer(ctlr)
 
-		test.WaitTillServerReady(baseURL)
+		ctlrManager := test.NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		blob := []byte("test")
 
@@ -370,10 +358,10 @@ func TestUploadImage(t *testing.T) {
 		}
 
 		ctlr := api.NewController(conf)
-		go startServer(ctlr)
-		defer stopServer(ctlr)
 
-		test.WaitTillServerReady(baseURL)
+		ctlrManager := test.NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		img := test.Image{
 			Layers: make([][]byte, 10),
@@ -392,10 +380,10 @@ func TestUploadImage(t *testing.T) {
 		conf.Storage.RootDirectory = t.TempDir()
 
 		ctlr := api.NewController(conf)
-		go startServer(ctlr)
-		defer stopServer(ctlr)
 
-		test.WaitTillServerReady(baseURL)
+		ctlrManager := test.NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		img := test.Image{
 			Layers: make([][]byte, 10), // invalid format that will result in an error
@@ -415,10 +403,10 @@ func TestUploadImage(t *testing.T) {
 		conf.Storage.RootDirectory = t.TempDir()
 
 		ctlr := api.NewController(conf)
-		go startServer(ctlr)
-		defer stopServer(ctlr)
 
-		test.WaitTillServerReady(baseURL)
+		ctlrManager := test.NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		layerBlob := []byte("test")
 
@@ -483,9 +471,9 @@ func TestUploadImage(t *testing.T) {
 
 		ctlr.Config.Storage.RootDirectory = tempDir
 
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		test.WaitTillServerReady(baseURL)
+		ctlrManager := test.NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		Convey("Request fail while pushing layer", func() {
 			err := test.UploadImageWithBasicAuth(test.Image{Layers: [][]byte{{1, 2, 3}}}, "badURL", "", "", "")
@@ -515,10 +503,10 @@ func TestUploadImage(t *testing.T) {
 		conf.Storage.RootDirectory = tempDir
 
 		ctlr := api.NewController(conf)
-		go startServer(ctlr)
-		defer stopServer(ctlr)
 
-		test.WaitTillServerReady(baseURL)
+		ctlrManager := test.NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		layerBlob := []byte("test")
 		layerBlobDigest := godigest.FromBytes(layerBlob)
@@ -568,10 +556,10 @@ func TestUploadImage(t *testing.T) {
 		conf.Storage.RootDirectory = tempDir
 
 		ctlr := api.NewController(conf)
-		go startServer(ctlr)
-		defer stopServer(ctlr)
 
-		test.WaitTillServerReady(baseURL)
+		ctlrManager := test.NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		layerBlob := []byte("test")
 
@@ -621,10 +609,10 @@ func TestInjectUploadImage(t *testing.T) {
 		conf.Storage.RootDirectory = tempDir
 
 		ctlr := api.NewController(conf)
-		go startServer(ctlr)
-		defer stopServer(ctlr)
 
-		test.WaitTillServerReady(baseURL)
+		ctlrManager := test.NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		layerBlob := []byte("test")
 		layerPath := path.Join(tempDir, "test", ".uploads")
@@ -717,10 +705,10 @@ func TestInjectUploadImageWithBasicAuth(t *testing.T) {
 		}
 
 		ctlr := api.NewController(conf)
-		go startServer(ctlr)
-		defer stopServer(ctlr)
 
-		test.WaitTillServerReady(baseURL)
+		ctlrManager := test.NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
 
 		layerBlob := []byte("test")
 		layerPath := path.Join(tempDir, "test", ".uploads")
@@ -768,17 +756,4 @@ func TestInjectUploadImageWithBasicAuth(t *testing.T) {
 			}
 		})
 	})
-}
-
-func startServer(c *api.Controller) {
-	// this blocks
-	ctx := context.Background()
-	if err := c.Run(ctx); err != nil {
-		return
-	}
-}
-
-func stopServer(c *api.Controller) {
-	ctx := context.Background()
-	_ = c.Server.Shutdown(ctx)
 }

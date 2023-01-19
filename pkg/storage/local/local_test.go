@@ -2153,14 +2153,11 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 			imgStore := local.NewImageStore(dir, true, 1*time.Second, true, true, log, metrics, nil, cacheDriver)
 			repoName := "gc-all-repos-short"
 
-			err := test.CopyFiles("../../../test/data/zot-test", path.Join(dir, repoName))
-			if err != nil {
-				panic(err)
-			}
+			test.CopyTestFiles("../../../test/data/zot-test", path.Join(dir, repoName))
 
 			var manifestDigest godigest.Digest
 			manifestDigest, _, _ = test.GetOciLayoutDigests("../../../test/data/zot-test")
-			err = os.Remove(path.Join(dir, repoName, "blobs/sha256", manifestDigest.Encoded()))
+			err := os.Remove(path.Join(dir, repoName, "blobs/sha256", manifestDigest.Encoded()))
 			if err != nil {
 				panic(err)
 			}
@@ -2191,14 +2188,11 @@ func TestGarbageCollectForImageStore(t *testing.T) {
 			imgStore := local.NewImageStore(dir, true, 1*time.Second, true, true, log, metrics, nil, cacheDriver)
 			repoName := "gc-all-repos-short"
 
-			err := test.CopyFiles("../../../test/data/zot-test", path.Join(dir, repoName))
-			if err != nil {
-				panic(err)
-			}
+			test.CopyTestFiles("../../../test/data/zot-test", path.Join(dir, repoName))
 
 			So(os.Chmod(path.Join(dir, repoName, "index.json"), 0o000), ShouldBeNil)
 
-			err = imgStore.RunGCRepo(repoName)
+			err := imgStore.RunGCRepo(repoName)
 			So(err, ShouldNotBeNil)
 
 			time.Sleep(500 * time.Millisecond)
@@ -2739,15 +2733,9 @@ func TestGetNextRepository(t *testing.T) {
 	firstRepoName := "repo1"
 	secondRepoName := "repo2"
 
-	err := test.CopyFiles("../../../test/data/zot-test", path.Join(dir, firstRepoName))
-	if err != nil {
-		panic(err)
-	}
+	test.CopyTestFiles("../../../test/data/zot-test", path.Join(dir, firstRepoName))
 
-	err = test.CopyFiles("../../../test/data/zot-test", path.Join(dir, secondRepoName))
-	if err != nil {
-		panic(err)
-	}
+	test.CopyTestFiles("../../../test/data/zot-test", path.Join(dir, secondRepoName))
 
 	Convey("Return first repository", t, func() {
 		firstRepo, err := imgStore.GetNextRepository("")
@@ -2764,9 +2752,9 @@ func TestGetNextRepository(t *testing.T) {
 	})
 
 	Convey("Return error", t, func() {
-		err = os.Chmod(imgStore.RootDir(), 0o000)
+		err := os.Chmod(imgStore.RootDir(), 0o000)
 		So(err, ShouldBeNil)
-		_, err := imgStore.GetNextRepository(firstRepoName)
+		_, err = imgStore.GetNextRepository(firstRepoName)
 		So(err, ShouldNotBeNil)
 		err = os.Chmod(imgStore.RootDir(), 0o755)
 		So(err, ShouldBeNil)

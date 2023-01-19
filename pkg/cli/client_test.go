@@ -85,9 +85,7 @@ func TestTLSWithAuth(t *testing.T) {
 
 			home := os.Getenv("HOME")
 			destCertsDir := filepath.Join(home, certsDir1)
-			if err = test.CopyFiles(sourceCertsDir, destCertsDir); err != nil {
-				panic(err)
-			}
+			test.CopyTestFiles(sourceCertsDir, destCertsDir)
 			defer os.RemoveAll(destCertsDir)
 
 			args := []string{"imagetest", "--name", "dummyImageName", "--url", HOST1}
@@ -167,9 +165,7 @@ func TestTLSWithoutAuth(t *testing.T) {
 
 			home := os.Getenv("HOME")
 			destCertsDir := filepath.Join(home, certsDir1)
-			if err = test.CopyFiles(sourceCertsDir, destCertsDir); err != nil {
-				panic(err)
-			}
+			test.CopyTestFiles(sourceCertsDir, destCertsDir)
 			defer os.RemoveAll(destCertsDir)
 
 			args := []string{"imagetest"}

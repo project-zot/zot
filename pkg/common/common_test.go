@@ -1,7 +1,6 @@
 package common_test
 
 import (
-	"context"
 	"crypto/x509"
 	"os"
 	"path"
@@ -85,8 +84,9 @@ func TestCommon(t *testing.T) {
 		So(err, ShouldBeNil)
 		ctlr.Config.Storage.RootDirectory = tempDir
 
-		go startServer(ctlr)
-		defer stopServer(ctlr)
+		cm := test.NewControllerManager(ctlr)
+		cm.StartServer()
+		defer cm.StopServer()
 		test.WaitTillServerReady(baseURL)
 
 		var resultPtr interface{}
@@ -96,17 +96,4 @@ func TestCommon(t *testing.T) {
 			resultPtr, baseURL+"/v2/", ispec.MediaTypeImageManifest, log.NewLogger("", ""))
 		So(err, ShouldNotBeNil)
 	})
-}
-
-func startServer(c *api.Controller) {
-	// this blocks
-	ctx := context.Background()
-	if err := c.Run(ctx); err != nil {
-		return
-	}
-}
-
-func stopServer(c *api.Controller) {
-	ctx := context.Background()
-	_ = c.Server.Shutdown(ctx)
 }
