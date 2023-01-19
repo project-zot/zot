@@ -154,31 +154,14 @@ func startUpstreamServer(
 
 	srcDir := t.TempDir()
 
-	err := test.CopyFiles("../../../test/data", srcDir)
-	if err != nil {
-		panic(err)
-	}
+	test.CopyTestFiles("../../../test/data", srcDir)
 
 	srcConfig.Storage.RootDirectory = srcDir
 
 	sctlr := api.NewController(srcConfig)
 
-	go func() {
-		// this blocks
-		if err := sctlr.Run(context.Background()); err != nil {
-			return
-		}
-	}()
-
-	// wait till ready
-	for {
-		_, err := client.R().Get(srcBaseURL)
-		if err == nil {
-			break
-		}
-
-		time.Sleep(100 * time.Millisecond)
-	}
+	scm := test.NewControllerManager(sctlr)
+	scm.StartAndWait(srcPort)
 
 	return sctlr, srcBaseURL, srcDir, htpasswdPath, client
 }
@@ -236,22 +219,8 @@ func startDownstreamServer(
 
 	dctlr := api.NewController(destConfig)
 
-	go func() {
-		// this blocks
-		if err := dctlr.Run(context.Background()); err != nil {
-			return
-		}
-	}()
-
-	// wait till ready
-	for {
-		_, err := client.R().Get(destBaseURL)
-		if err == nil {
-			break
-		}
-
-		time.Sleep(100 * time.Millisecond)
-	}
+	dcm := test.NewControllerManager(dctlr)
+	dcm.StartAndWait(destPort)
 
 	return dctlr, destBaseURL, destDir, client
 }
@@ -710,10 +679,9 @@ func TestOnDemandPermsDenied(t *testing.T) {
 		destConfig.Extensions.Sync = syncConfig
 
 		dctlr := api.NewController(destConfig)
+		dcm := test.NewControllerManager(dctlr)
 
-		defer func() {
-			dctlr.Shutdown()
-		}()
+		defer dcm.StopServer()
 
 		syncSubDir := path.Join(destDir, testImage, sync.SyncBlobUploadDir)
 
@@ -723,14 +691,7 @@ func TestOnDemandPermsDenied(t *testing.T) {
 		err = os.Chmod(syncSubDir, 0o000)
 		So(err, ShouldBeNil)
 
-		go func() {
-			// this blocks
-			if err := dctlr.Run(context.Background()); err != nil {
-				return
-			}
-		}()
-
-		test.WaitTillServerReady(destBaseURL)
+		dcm.StartAndWait(destPort)
 
 		resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
@@ -802,10 +763,9 @@ func TestConfigReloader(t *testing.T) {
 		destConfig.Log.Output = logFile.Name()
 
 		dctlr := api.NewController(destConfig)
+		dcm := test.NewControllerManager(dctlr)
 
-		defer func() {
-			dctlr.Shutdown()
-		}()
+		defer dcm.StopServer()
 
 		content := fmt.Sprintf(`{"distSpecVersion": "0.1.0-dev", "storage": {"rootDirectory": "%s"},
 		"http": {"address": "127.0.0.1", "port": "%s"},
@@ -926,27 +886,11 @@ func TestMandatoryAnnotations(t *testing.T) {
 		destConfig.Extensions.Lint.MandatoryAnnotations = []string{"annot1", "annot2", "annot3"}
 
 		dctlr := api.NewController(destConfig)
+		dcm := test.NewControllerManager(dctlr)
 
-		go func() {
-			// this blocks
-			if err := dctlr.Run(context.Background()); err != nil {
-				return
-			}
-		}()
+		dcm.StartAndWait(destPort)
 
-		// wait till ready
-		for {
-			_, err := destClient.R().Get(destBaseURL)
-			if err == nil {
-				break
-			}
-
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		defer func() {
-			dctlr.Shutdown()
-		}()
+		defer dcm.StopServer()
 
 		// give it time to set up sync
 		time.Sleep(5 * time.Second)
@@ -1260,19 +1204,9 @@ func TestBasicAuth(t *testing.T) {
 			}
 
 			dctlr := api.NewController(destConfig)
-
-			go func() {
-				// this blocks
-				if err := dctlr.Run(context.Background()); err != nil {
-					return
-				}
-			}()
-
-			defer func() {
-				dctlr.Shutdown()
-			}()
-
-			test.WaitTillServerReady(destBaseURL)
+			dcm := test.NewControllerManager(dctlr)
+			dcm.StartAndWait(destPort)
+			defer dcm.StopServer()
 
 			time.Sleep(3 * time.Second)
 
@@ -1977,27 +1911,15 @@ func TestSubPaths(t *testing.T) {
 
 		subpath := "/subpath"
 
-		err := test.CopyFiles("../../../test/data", path.Join(srcDir, subpath))
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../../test/data", path.Join(srcDir, subpath))
 
 		srcConfig.Storage.RootDirectory = srcDir
 
 		sctlr := api.NewController(srcConfig)
 
-		go func() {
-			// this blocks
-			if err := sctlr.Run(context.Background()); err != nil {
-				return
-			}
-		}()
-
-		test.WaitTillServerReady(srcBaseURL)
-
-		defer func() {
-			sctlr.Shutdown()
-		}()
+		scm := test.NewControllerManager(sctlr)
+		scm.StartAndWait(srcPort)
+		defer scm.StopServer()
 
 		regex := ".*"
 		var semver bool
@@ -2053,18 +1975,9 @@ func TestSubPaths(t *testing.T) {
 
 		dctlr := api.NewController(destConfig)
 
-		go func() {
-			// this blocks
-			if err := dctlr.Run(context.Background()); err != nil {
-				return
-			}
-		}()
-
-		test.WaitTillServerReady(destBaseURL)
-
-		defer func() {
-			dctlr.Shutdown()
-		}()
+		dcm := test.NewControllerManager(dctlr)
+		dcm.StartAndWait(destPort)
+		defer dcm.StopServer()
 
 		var destTagsList TagsList
 
@@ -3096,14 +3009,12 @@ func TestOnDemandRetryGoroutine(t *testing.T) {
 
 		srcDir := t.TempDir()
 
-		err := test.CopyFiles("../../../test/data", srcDir)
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../../test/data", srcDir)
 
 		srcConfig.Storage.RootDirectory = srcDir
 
 		sctlr := api.NewController(srcConfig)
+		scm := test.NewControllerManager(sctlr)
 
 		regex := ".*"
 		semver := true
@@ -3147,17 +3058,9 @@ func TestOnDemandRetryGoroutine(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 
-		// start upstream server
-		go func() {
-			// this blocks
-			if err := sctlr.Run(context.Background()); err != nil {
-				return
-			}
-		}()
+		scm.StartServer()
 
-		defer func() {
-			sctlr.Shutdown()
-		}()
+		defer scm.StopServer()
 
 		// in the meantime ondemand should retry syncing
 		time.Sleep(15 * time.Second)
@@ -3287,14 +3190,12 @@ func TestOnDemandMultipleRetries(t *testing.T) {
 
 		srcDir := t.TempDir()
 
-		err := test.CopyFiles("../../../test/data", srcDir)
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../../test/data", srcDir)
 
 		srcConfig.Storage.RootDirectory = srcDir
 
 		sctlr := api.NewController(srcConfig)
+		scm := test.NewControllerManager(sctlr)
 
 		var tlsVerify bool
 
@@ -3356,18 +3257,9 @@ func TestOnDemandMultipleRetries(t *testing.T) {
 		}()
 
 		// start upstream server
-		go func() {
-			// this blocks
-			if err := sctlr.Run(context.Background()); err != nil {
-				return
-			}
-		}()
+		scm.StartAndWait(srcPort)
 
-		test.WaitTillServerReady(srcBaseURL)
-
-		defer func() {
-			sctlr.Shutdown()
-		}()
+		defer scm.StopServer()
 
 		// wait sync
 		for {
@@ -3840,10 +3732,7 @@ func TestSyncOnlyDiff(t *testing.T) {
 		destDir := t.TempDir()
 
 		// copy images so we have them before syncing, sync should not pull them again
-		err := test.CopyFiles("../../../test/data", destDir)
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../../test/data", destDir)
 
 		destConfig.Storage.RootDirectory = destDir
 		destConfig.Storage.Dedupe = false
@@ -3855,19 +3744,11 @@ func TestSyncOnlyDiff(t *testing.T) {
 		destConfig.Log.Output = path.Join(destDir, "sync.log")
 
 		dctlr := api.NewController(destConfig)
+		dcm := test.NewControllerManager(dctlr)
 
-		go func() {
-			// this blocks
-			if err := dctlr.Run(context.Background()); err != nil {
-				return
-			}
-		}()
+		dcm.StartAndWait(destPort)
 
-		test.WaitTillServerReady(destBaseURL)
-
-		defer func() {
-			dctlr.Shutdown()
-		}()
+		defer dcm.StopServer()
 
 		resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
@@ -3923,10 +3804,7 @@ func TestSyncWithDiffDigest(t *testing.T) {
 		destDir := t.TempDir()
 
 		// copy images so we have them before syncing, sync should not pull them again
-		err := test.CopyFiles("../../../test/data", destDir)
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../../test/data", destDir)
 
 		destConfig.Storage.RootDirectory = destDir
 		destConfig.Storage.Dedupe = false
@@ -3937,6 +3815,7 @@ func TestSyncWithDiffDigest(t *testing.T) {
 		destConfig.Extensions.Sync = syncConfig
 
 		dctlr := api.NewController(destConfig)
+		dcm := test.NewControllerManager(dctlr)
 
 		// before starting downstream server, let's modify an image manifest so that sync should pull it
 		// change digest of the manifest so that sync should happen
@@ -3991,12 +3870,7 @@ func TestSyncWithDiffDigest(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 201)
 
-		go func() {
-			// this blocks
-			if err := dctlr.Run(context.Background()); err != nil {
-				return
-			}
-		}()
+		dcm.StartServer()
 
 		// watch .sync subdir, should be populated
 		done := make(chan bool)
@@ -4016,9 +3890,7 @@ func TestSyncWithDiffDigest(t *testing.T) {
 			}
 		}()
 
-		defer func() {
-			dctlr.Shutdown()
-		}()
+		defer dcm.StopServer()
 
 		test.WaitTillServerReady(destBaseURL)
 
@@ -4815,31 +4687,15 @@ func TestSyncOCIArtifactsWithTag(t *testing.T) {
 			destConfig.Extensions.Sync = syncConfig
 
 			dctlr := api.NewController(destConfig)
+			dcm := test.NewControllerManager(dctlr)
 
 			manifestPath := path.Join(destDir, repoName, "blobs", "sha256", artifactDigest.Encoded())
 			So(os.MkdirAll(manifestPath, 0o755), ShouldBeNil)
 			So(os.Chmod(manifestPath, 0o000), ShouldBeNil)
 
-			go func() {
-				// this blocks
-				if err := dctlr.Run(context.Background()); err != nil {
-					return
-				}
-			}()
+			dcm.StartAndWait(destConfig.HTTP.Port)
 
-			// wait till ready
-			for {
-				_, err := resty.R().Get(destBaseURL)
-				if err == nil {
-					break
-				}
-
-				time.Sleep(100 * time.Millisecond)
-			}
-
-			defer func() {
-				dctlr.Shutdown()
-			}()
+			defer dcm.StopServer()
 
 			defer func() {
 				err := os.Chmod(manifestPath, 0o755)

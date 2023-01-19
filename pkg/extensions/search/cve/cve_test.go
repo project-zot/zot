@@ -5,7 +5,6 @@
 package cveinfo_test
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -410,22 +409,9 @@ func TestCVESearchDisabled(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 		ctlr.Log.Logger = ctlr.Log.Output(writers)
+		ctrlManager := NewControllerManager(ctlr)
 
-		go func() {
-			// this blocks
-			if err := ctlr.Run(context.Background()); err != nil {
-				return
-			}
-		}()
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(baseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
+		ctrlManager.StartAndWait(port)
 
 		// Wait for trivy db to download
 		_, err = ReadLogFileAndSearchString(logPath, "DB update completed, next update scheduled", 90*time.Second)
@@ -433,10 +419,7 @@ func TestCVESearchDisabled(t *testing.T) {
 			panic(err)
 		}
 
-		defer func() {
-			ctx := context.Background()
-			_ = ctlr.Server.Shutdown(ctx)
-		}()
+		defer ctrlManager.StopServer()
 
 		resp, _ := resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={CVEListForImage(image:\"zot-test\"){Tag%20CVEList{Id%20Description%20Severity%20PackageList{Name%20InstalledVersion%20FixedVersion}}}}")
 		So(string(resp.Body()), ShouldContainSubstring, "search: CVE search is disabled")
@@ -502,22 +485,9 @@ func TestCVESearch(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 		ctlr.Log.Logger = ctlr.Log.Output(writers)
+		ctrlManager := NewControllerManager(ctlr)
 
-		go func() {
-			// this blocks
-			if err := ctlr.Run(context.Background()); err != nil {
-				return
-			}
-		}()
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(baseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
+		ctrlManager.StartAndWait(port)
 
 		// Wait for trivy db to download
 		_, err = ReadLogFileAndSearchString(logPath, "DB update completed, next update scheduled", 90*time.Second)
@@ -525,10 +495,7 @@ func TestCVESearch(t *testing.T) {
 			panic(err)
 		}
 
-		defer func() {
-			ctx := context.Background()
-			_ = ctlr.Server.Shutdown(ctx)
-		}()
+		defer ctrlManager.StopServer()
 
 		// without creds, should get access error
 		resp, err := resty.R().Get(baseURL + "/v2/")
@@ -740,10 +707,7 @@ func TestCVEConfig(t *testing.T) {
 
 		secondDir := t.TempDir()
 
-		err := CopyFiles("../../../../test/data", path.Join(secondDir, "a"))
-		if err != nil {
-			panic(err)
-		}
+		CopyTestFiles("../../../../test/data", path.Join(secondDir, "a"))
 
 		ctlr.Config.Storage.RootDirectory = firstDir
 		subPaths := make(map[string]config.StorageConfig)
@@ -752,22 +716,9 @@ func TestCVEConfig(t *testing.T) {
 		}
 
 		ctlr.Config.Storage.SubPaths = subPaths
+		ctrlManager := NewControllerManager(ctlr)
 
-		go func() {
-			// this blocks
-			if err := ctlr.Run(context.Background()); err != nil {
-				return
-			}
-		}()
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(baseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
+		ctrlManager.StartAndWait(port)
 
 		resp, _ := resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.RoutePrefix + "/")
 		So(resp, ShouldNotBeNil)
@@ -785,10 +736,7 @@ func TestCVEConfig(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 
-		defer func() {
-			ctx := context.Background()
-			_ = ctlr.Server.Shutdown(ctx)
-		}()
+		defer ctrlManager.StopServer()
 	})
 }
 
@@ -813,10 +761,7 @@ func TestHTTPOptionsResponse(t *testing.T) {
 		defer os.RemoveAll(firstDir)
 		defer os.RemoveAll(secondDir)
 
-		err = CopyFiles("../../../../test/data", path.Join(secondDir, "a"))
-		if err != nil {
-			panic(err)
-		}
+		CopyTestFiles("../../../../test/data", path.Join(secondDir, "a"))
 
 		ctlr.Config.Storage.RootDirectory = firstDir
 		subPaths := make(map[string]config.StorageConfig)
@@ -825,31 +770,15 @@ func TestHTTPOptionsResponse(t *testing.T) {
 		}
 
 		ctlr.Config.Storage.SubPaths = subPaths
+		ctrlManager := NewControllerManager(ctlr)
 
-		go func() {
-			// this blocks
-			if err := ctlr.Run(context.Background()); err != nil {
-				return
-			}
-		}()
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(baseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
+		ctrlManager.StartAndWait(port)
 
 		resp, _ := resty.R().Options(baseURL + constants.RoutePrefix + constants.ExtCatalogPrefix)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
 
-		defer func() {
-			ctx := context.Background()
-			_ = ctlr.Server.Shutdown(ctx)
-		}()
+		defer ctrlManager.StopServer()
 	})
 }
 

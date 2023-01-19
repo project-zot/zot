@@ -616,7 +616,7 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 	// Enable extensions if extension config is provided for DefaultStore
 	if c.Config != nil && c.Config.Extensions != nil {
 		ext.EnableMetricsExtension(c.Config, c.Log, c.Config.Storage.RootDirectory)
-		ext.EnableSearchExtension(c.Config, c.StoreController, c.RepoDB, c.Log)
+		ext.EnableSearchExtension(c.Config, c.StoreController, c.RepoDB, taskScheduler, c.Log)
 	}
 
 	if c.Config.Storage.SubPaths != nil {

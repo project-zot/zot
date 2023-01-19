@@ -17,6 +17,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/repodb"
+	"zotregistry.io/zot/pkg/scheduler"
 	"zotregistry.io/zot/pkg/storage"
 )
 
@@ -26,7 +27,7 @@ import (
 var cveInfo cveinfo.CveInfo //nolint:gochecknoglobals
 
 func EnableSearchExtension(config *config.Config, storeController storage.StoreController,
-	repoDB repodb.RepoDB, log log.Logger,
+	repoDB repodb.RepoDB, taskScheduler *scheduler.Scheduler, log log.Logger,
 ) {
 	if config.Extensions.Search != nil && *config.Extensions.Search.Enable && config.Extensions.Search.CVE != nil {
 		defaultUpdateInterval, _ := time.ParseDuration("2h")
@@ -44,30 +45,67 @@ func EnableSearchExtension(config *config.Config, storeController storage.StoreC
 
 		cveInfo = cveinfo.NewCVEInfo(storeController, repoDB, dbRepository, log)
 
-		go func() {
-			err := downloadTrivyDB(log, config.Extensions.Search.CVE.UpdateInterval)
-			if err != nil {
-				log.Error().Err(err).Msg("error while downloading TrivyDB")
-			}
-		}()
+		updateInterval := config.Extensions.Search.CVE.UpdateInterval
+
+		downloadTrivyDB(updateInterval, taskScheduler, cveInfo, log)
 	} else {
 		log.Info().Msg("CVE config not provided, skipping CVE update")
 	}
 }
 
-func downloadTrivyDB(log log.Logger, updateInterval time.Duration) error {
-	for {
-		log.Info().Msg("updating the CVE database")
+func downloadTrivyDB(interval time.Duration, sch *scheduler.Scheduler, cveInfo cveinfo.CveInfo, log log.Logger) {
+	generator := &trivyTaskGenerator{interval, cveInfo, log, false}
 
-		err := cveInfo.UpdateDB()
-		if err != nil {
-			return err
-		}
+	sch.SubmitGenerator(generator, interval, scheduler.MediumPriority)
+}
 
-		log.Info().Str("DB update completed, next update scheduled after", updateInterval.String()).Msg("")
+type trivyTaskGenerator struct {
+	interval time.Duration
+	cveInfo  cveinfo.CveInfo
+	log      log.Logger
+	done     bool
+}
 
-		time.Sleep(updateInterval)
+func (gen *trivyTaskGenerator) GenerateTask() (scheduler.Task, error) {
+	newTask := newTrivyTask(gen.interval, gen.cveInfo, &gen.done, gen.log)
+
+	return newTask, nil
+}
+
+type trivyTask struct {
+	interval time.Duration
+	cveInfo  cveinfo.CveInfo
+	done     *bool
+	log      log.Logger
+}
+
+func newTrivyTask(interval time.Duration, cveInfo cveinfo.CveInfo, done *bool, log log.Logger) *trivyTask {
+	return &trivyTask{interval, cveInfo, done, log}
+}
+
+func (trivyT *trivyTask) DoWork() error {
+	defer func() {
+		*trivyT.done = true
+	}()
+
+	trivyT.log.Info().Msg("updating the CVE database")
+
+	err := trivyT.cveInfo.UpdateDB()
+	if err != nil {
+		return err
 	}
+
+	trivyT.log.Info().Str("DB update completed, next update scheduled after", trivyT.interval.String()).Msg("")
+
+	return nil
+}
+
+func (gen *trivyTaskGenerator) IsDone() bool {
+	return gen.done
+}
+
+func (gen *trivyTaskGenerator) Reset() {
+	gen.done = false
 }
 
 func SetupSearchRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,

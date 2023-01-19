@@ -113,6 +113,9 @@ func TestCopyFiles(t *testing.T) {
 		_, err = os.Stat(path.Join(dstDir, "test-index", "index.json"))
 		So(err, ShouldBeNil)
 	})
+	Convey("panic when sourceDir does not exist", t, func() {
+		So(func() { test.CopyTestFiles("/path/to/some/unexisting/directory", os.TempDir()) }, ShouldPanic)
+	})
 }
 
 func TestGetOciLayoutDigests(t *testing.T) {

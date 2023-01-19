@@ -4,7 +4,6 @@
 package monitoring_test
 
 import (
-	"context"
 	"net/http"
 	"path"
 	"testing"
@@ -40,9 +39,9 @@ func TestExtensionMetrics(t *testing.T) {
 		ctlr := api.NewController(conf)
 		So(ctlr, ShouldNotBeNil)
 
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		test.WaitTillServerReady(baseURL)
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(port)
+		defer cm.StopServer()
 
 		// improve code coverage
 		ctlr.Metrics.SendMetric(baseURL)
@@ -56,10 +55,7 @@ func TestExtensionMetrics(t *testing.T) {
 		monitoring.IncDownloadCounter(ctlr.Metrics, "alpine")
 		monitoring.IncUploadCounter(ctlr.Metrics, "alpine")
 
-		err := test.CopyFiles("../../../test/data/zot-test", path.Join(rootDir, "alpine"))
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../../test/data/zot-test", path.Join(rootDir, "alpine"))
 		monitoring.SetStorageUsage(ctlr.Metrics, rootDir, "alpine")
 
 		monitoring.ObserveStorageLockLatency(ctlr.Metrics, time.Millisecond, rootDir, "RWLock")
@@ -91,9 +87,9 @@ func TestExtensionMetrics(t *testing.T) {
 		ctlr := api.NewController(conf)
 		So(ctlr, ShouldNotBeNil)
 
-		go startServer(ctlr)
-		defer stopServer(ctlr)
-		test.WaitTillServerReady(baseURL)
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(port)
+		defer cm.StopServer()
 
 		So(ctlr.Metrics.IsEnabled(), ShouldBeFalse)
 
@@ -102,16 +98,4 @@ func TestExtensionMetrics(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 	})
-}
-
-func startServer(c *api.Controller) {
-	// this blocks
-	if err := c.Run(context.Background()); err != nil {
-		return
-	}
-}
-
-func stopServer(c *api.Controller) {
-	ctx := context.Background()
-	_ = c.Server.Shutdown(ctx)
 }

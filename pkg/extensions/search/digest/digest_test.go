@@ -5,12 +5,10 @@
 package digestinfo_test
 
 import (
-	"context"
 	"encoding/json"
 	"net/url"
 	"os"
 	"testing"
-	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
@@ -72,15 +70,9 @@ func testSetup(t *testing.T) (string, string, *digestinfo.DigestInfo) {
 		panic(err)
 	}
 
-	err = CopyFiles("../../../../test/data", rootDir)
-	if err != nil {
-		panic(err)
-	}
+	CopyTestFiles("../../../../test/data", rootDir)
 
-	err = CopyFiles("../../../../test/data", subDir+"/a/")
-	if err != nil {
-		panic(err)
-	}
+	CopyTestFiles("../../../../test/data", subDir+"/a/")
 
 	log := log.NewLogger("debug", "")
 	metrics := monitoring.NewMetricsServer(false, log)
@@ -143,28 +135,12 @@ func TestDigestSearchHTTP(t *testing.T) {
 		}
 
 		ctlr := api.NewController(conf)
+		ctrlManager := NewControllerManager(ctlr)
 
-		go func() {
-			// this blocks
-			if err := ctlr.Run(context.Background()); err != nil {
-				return
-			}
-		}()
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(baseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
+		ctrlManager.StartAndWait(port)
 
 		// shut down server
-		defer func() {
-			ctx := context.Background()
-			_ = ctlr.Server.Shutdown(ctx)
-		}()
+		defer ctrlManager.StopServer()
 
 		resp, err := resty.R().Get(baseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
@@ -310,28 +286,12 @@ func TestDigestSearchHTTPSubPaths(t *testing.T) {
 		subPathMap["/a"] = config.StorageConfig{RootDirectory: subRootDir}
 
 		ctlr.Config.Storage.SubPaths = subPathMap
+		ctrlManager := NewControllerManager(ctlr)
 
-		go func() {
-			// this blocks
-			if err := ctlr.Run(context.Background()); err != nil {
-				return
-			}
-		}()
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(baseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
+		ctrlManager.StartAndWait(port)
 
 		// shut down server
-		defer func() {
-			ctx := context.Background()
-			_ = ctlr.Server.Shutdown(ctx)
-		}()
+		defer ctrlManager.StopServer()
 
 		resp, err := resty.R().Get(baseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
@@ -372,28 +332,12 @@ func TestDigestSearchDisabled(t *testing.T) {
 		}
 
 		ctlr := api.NewController(conf)
+		ctrlManager := NewControllerManager(ctlr)
 
-		go func() {
-			// this blocks
-			if err := ctlr.Run(context.Background()); err != nil {
-				return
-			}
-		}()
-
-		// wait till ready
-		for {
-			_, err := resty.R().Get(baseURL)
-			if err == nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
+		ctrlManager.StartAndWait(port)
 
 		// shut down server
-		defer func() {
-			ctx := context.Background()
-			_ = ctlr.Server.Shutdown(ctx)
-		}()
+		defer ctrlManager.StopServer()
 
 		resp, err := resty.R().Get(baseURL + "/v2/")
 		So(resp, ShouldNotBeNil)

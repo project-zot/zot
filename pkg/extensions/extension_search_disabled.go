@@ -10,12 +10,13 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/repodb"
+	"zotregistry.io/zot/pkg/scheduler"
 	"zotregistry.io/zot/pkg/storage"
 )
 
 // EnableSearchExtension ...
 func EnableSearchExtension(config *config.Config, storeController storage.StoreController,
-	repoDB repodb.RepoDB, log log.Logger,
+	repoDB repodb.RepoDB, scheduler *scheduler.Scheduler, log log.Logger,
 ) {
 	log.Warn().Msg("skipping enabling search extension because given zot binary doesn't include this feature," +
 		"please build a binary that does so")
