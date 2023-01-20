@@ -352,10 +352,7 @@ func TestServerCVEResponseGQL(t *testing.T) {
 
 	dir := t.TempDir()
 
-	err := test.CopyFiles("../../test/data/zot-cve-test", path.Join(dir, "zot-cve-test"))
-	if err != nil {
-		panic(err)
-	}
+	test.CopyTestFiles("../../test/data/zot-cve-test", path.Join(dir, "zot-cve-test"))
 
 	conf.Storage.RootDirectory = dir
 	trivyConfig := &extconf.TrivyConfig{
@@ -645,10 +642,7 @@ func TestNegativeServerResponse(t *testing.T) {
 
 		dir := t.TempDir()
 
-		err := test.CopyFiles("../../test/data/zot-cve-test", path.Join(dir, "zot-cve-test"))
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../test/data/zot-cve-test", path.Join(dir, "zot-cve-test"))
 
 		conf.Storage.RootDirectory = dir
 		trivyConfig := &extconf.TrivyConfig{
@@ -731,12 +725,9 @@ func TestNegativeServerResponse(t *testing.T) {
 
 		dir := t.TempDir()
 
-		err := test.CopyFiles("../../test/data/zot-cve-test", path.Join(dir, "zot-cve-test"))
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../test/data/zot-cve-test", path.Join(dir, "zot-cve-test"))
 
-		err = os.RemoveAll(path.Join(dir, "zot-cve-test/blobs"))
+		err := os.RemoveAll(path.Join(dir, "zot-cve-test/blobs"))
 		if err != nil {
 			panic(err)
 		}
@@ -818,10 +809,7 @@ func TestServerCVEResponse(t *testing.T) {
 
 	dir := t.TempDir()
 
-	err := test.CopyFiles("../../test/data/zot-cve-test", path.Join(dir, "zot-cve-test"))
-	if err != nil {
-		panic(err)
-	}
+	test.CopyTestFiles("../../test/data/zot-cve-test", path.Join(dir, "zot-cve-test"))
 
 	conf.Storage.RootDirectory = dir
 	trivyConfig := &extconf.TrivyConfig{

@@ -6133,10 +6133,7 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 			ctlr.Config.Storage.GC = true
 			ctlr.Config.Storage.GCDelay = 1 * time.Millisecond
 
-			err := test.CopyFiles("../../test/data/zot-test", path.Join(dir, repoName))
-			if err != nil {
-				panic(err)
-			}
+			test.CopyTestFiles("../../test/data/zot-test", path.Join(dir, repoName))
 
 			cm := test.NewControllerManager(ctlr)
 			cm.StartServer()
@@ -6289,10 +6286,7 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 			ctlr.Config.Storage.GC = true
 			ctlr.Config.Storage.GCDelay = 500 * time.Millisecond
 
-			err := test.CopyFiles("../../test/data/zot-test", path.Join(dir, repoName))
-			if err != nil {
-				panic(err)
-			}
+			test.CopyTestFiles("../../test/data/zot-test", path.Join(dir, repoName))
 
 			cm := test.NewControllerManager(ctlr)
 			cm.StartAndWait(port)
@@ -6389,10 +6383,7 @@ func TestPeriodicGC(t *testing.T) {
 		ctlr.Config.Storage.GCInterval = 1 * time.Hour
 		ctlr.Config.Storage.GCDelay = 1 * time.Second
 
-		err = test.CopyFiles("../../test/data/zot-test", path.Join(dir, repoName))
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../test/data/zot-test", path.Join(dir, repoName))
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -6466,10 +6457,7 @@ func TestPeriodicGC(t *testing.T) {
 		ctlr.Config.Storage.GCInterval = 1 * time.Hour
 		ctlr.Config.Storage.GCDelay = 1 * time.Second
 
-		err = test.CopyFiles("../../test/data/zot-test", path.Join(dir, repoName))
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../test/data/zot-test", path.Join(dir, repoName))
 
 		So(os.Chmod(dir, 0o000), ShouldBeNil)
 
@@ -6842,10 +6830,7 @@ func makeController(conf *config.Config, dir string, copyTestDataDest string) *a
 	ctlr := api.NewController(conf)
 
 	if copyTestDataDest != "" {
-		err := test.CopyFiles(copyTestDataDest, dir)
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles(copyTestDataDest, dir)
 	}
 	ctlr.Config.Storage.RootDirectory = dir
 

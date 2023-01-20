@@ -14,8 +14,6 @@ import (
 	"testing"
 
 	godigest "github.com/opencontainers/go-digest"
-	//nolint: goimports
-	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	//nolint:golint,stylecheck,revive
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/smartystreets/goconvey/convey/reporting"
@@ -486,90 +484,50 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
-			// upload image config blob
-			resp, err = resty.R().Post(baseURL + "/v2/repo7/blobs/uploads/")
+			cfg, layers, manifest, err := test.GetImageComponents(1)
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-			loc = test.Location(baseURL, resp)
-			cblob, cdigest := test.GetRandomImageConfig()
 
-			resp, err = resty.R().
-				SetContentLength(true).
-				SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
-				SetHeader("Content-Type", "application/octet-stream").
-				SetQueryParam("digest", cdigest.String()).
-				SetBody(cblob).
-				Put(loc)
+			repoName := "repo7"
+			err = test.UploadImage(
+				test.Image{
+					Config:   cfg,
+					Layers:   layers,
+					Manifest: manifest,
+					Tag:      "test:1.0",
+				}, baseURL, repoName)
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
-			// create a manifest
-			manifest := ispec.Manifest{
-				Config: ispec.Descriptor{
-					MediaType: "application/vnd.oci.image.config.v1+json",
-					Digest:    cdigest,
-					Size:      int64(len(cblob)),
-				},
-				Layers: []ispec.Descriptor{
-					{
-						MediaType: "application/vnd.oci.image.layer.v1.tar",
-						Digest:    digest,
-						Size:      int64(len(content)),
-					},
-				},
-			}
-			manifest.SchemaVersion = 2
 			content, err = json.Marshal(manifest)
 			So(err, ShouldBeNil)
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
-			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
-				SetBody(content).Put(baseURL + "/v2/repo7/manifests/test:1.0")
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-			digestHdr := resp.Header().Get(constants.DistContentDigestKey)
-			So(digestHdr, ShouldNotBeEmpty)
-			So(digestHdr, ShouldEqual, digest.String())
 
-			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
-				SetBody(content).Put(baseURL + "/v2/repo7/manifests/test:1.0.1")
+			err = test.UploadImage(
+				test.Image{
+					Config:   cfg,
+					Layers:   layers,
+					Manifest: manifest,
+					Tag:      "test:1.0.1",
+				}, baseURL, repoName)
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-			digestHdr = resp.Header().Get(constants.DistContentDigestKey)
-			So(digestHdr, ShouldNotBeEmpty)
-			So(digestHdr, ShouldEqual, digest.String())
 
 			content = []byte("this is a blob5")
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
 
-			// create a manifest with same blob but a different tag
-			manifest = ispec.Manifest{
-				Config: ispec.Descriptor{
-					MediaType: "application/vnd.oci.image.config.v1+json",
-					Digest:    cdigest,
-					Size:      int64(len(cblob)),
-				},
-				Layers: []ispec.Descriptor{
-					{
-						MediaType: "application/vnd.oci.image.layer.v1.tar",
-						Digest:    digest,
-						Size:      int64(len(content)),
-					},
-				},
-			}
-			manifest.SchemaVersion = 2
 			content, err = json.Marshal(manifest)
 			So(err, ShouldBeNil)
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
-			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
-				SetBody(content).Put(baseURL + "/v2/repo7/manifests/test:2.0")
+
+			err = test.UploadImage(
+				test.Image{
+					Config:   cfg,
+					Layers:   layers,
+					Manifest: manifest,
+					Tag:      "test:2.0",
+				}, baseURL, repoName)
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-			digestHdr = resp.Header().Get(constants.DistContentDigestKey)
-			So(digestHdr, ShouldNotBeEmpty)
-			So(digestHdr, ShouldEqual, digest.String())
 
 			// check/get by tag
 			resp, err = resty.R().Head(baseURL + "/v2/repo7/manifests/test:1.0")
@@ -637,73 +595,23 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			_, _ = Print("\nPagination")
 
 			for index := 0; index <= 4; index++ {
-				// create a blob/layer
-				resp, err := resty.R().Post(baseURL + "/v2/page0/blobs/uploads/")
+				cfg, layers, manifest, err := test.GetImageComponents(1)
 				So(err, ShouldBeNil)
-				So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-				loc := test.Location(baseURL, resp)
-				So(loc, ShouldNotBeEmpty)
 
-				resp, err = resty.R().Get(loc)
+				repoName := "page0"
+				err = test.UploadImage(
+					test.Image{
+						Config:   cfg,
+						Layers:   layers,
+						Manifest: manifest,
+						Tag:      fmt.Sprintf("test:%d.0", index),
+					}, baseURL, repoName)
 				So(err, ShouldBeNil)
-				So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
-				content := []byte("this is a blob7")
+
+				content, err := json.Marshal(manifest)
+				So(err, ShouldBeNil)
 				digest := godigest.FromBytes(content)
 				So(digest, ShouldNotBeNil)
-				// monolithic blob upload: success
-				resp, err = resty.R().SetQueryParam("digest", digest.String()).
-					SetHeader("Content-Type", "application/octet-stream").SetBody(content).Put(loc)
-				So(err, ShouldBeNil)
-				So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-				blobLoc := resp.Header().Get("Location")
-				So(blobLoc, ShouldNotBeEmpty)
-				So(resp.Header().Get("Content-Length"), ShouldEqual, "0")
-				So(resp.Header().Get(constants.DistContentDigestKey), ShouldNotBeEmpty)
-
-				// upload image config blob
-				resp, err = resty.R().Post(baseURL + "/v2/page0/blobs/uploads/")
-				So(err, ShouldBeNil)
-				So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-				loc = test.Location(baseURL, resp)
-				cblob, cdigest := test.GetRandomImageConfig()
-
-				resp, err = resty.R().
-					SetContentLength(true).
-					SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
-					SetHeader("Content-Type", "application/octet-stream").
-					SetQueryParam("digest", cdigest.String()).
-					SetBody(cblob).
-					Put(loc)
-				So(err, ShouldBeNil)
-				So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-
-				// create a manifest
-				manifest := ispec.Manifest{
-					Config: ispec.Descriptor{
-						MediaType: "application/vnd.oci.image.config.v1+json",
-						Digest:    cdigest,
-						Size:      int64(len(cblob)),
-					},
-					Layers: []ispec.Descriptor{
-						{
-							MediaType: "application/vnd.oci.image.layer.v1.tar",
-							Digest:    digest,
-							Size:      int64(len(content)),
-						},
-					},
-				}
-				manifest.SchemaVersion = 2
-				content, err = json.Marshal(manifest)
-				So(err, ShouldBeNil)
-				digest = godigest.FromBytes(content)
-				So(digest, ShouldNotBeNil)
-				resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
-					SetBody(content).Put(baseURL + fmt.Sprintf("/v2/page0/manifests/test:%d.0", index))
-				So(err, ShouldBeNil)
-				So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-				d := resp.Header().Get(constants.DistContentDigestKey)
-				So(d, ShouldNotBeEmpty)
-				So(d, ShouldEqual, digest.String())
 			}
 
 			resp, err := resty.R().Get(baseURL + "/v2/page0/tags/list")
@@ -828,119 +736,67 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
-			// upload image config blob
-			resp, err = resty.R().Post(baseURL + "/v2/firsttest/first/blobs/uploads/")
+			cfg, layers, manifest, err := test.GetImageComponents(1)
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-			loc := test.Location(baseURL, resp)
-			cblob, cdigest := test.GetRandomImageConfig()
 
-			resp, err = resty.R().
-				SetContentLength(true).
-				SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
-				SetHeader("Content-Type", "application/octet-stream").
-				SetQueryParam("digest", cdigest.String()).
-				SetBody(cblob).
-				Put(loc)
+			// subpath firsttest
+			err = test.UploadImage(
+				test.Image{
+					Config:   cfg,
+					Layers:   layers,
+					Manifest: manifest,
+					Tag:      "test:1.0",
+				}, baseURL, "firsttest/first")
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
 
-			// upload image config blob
-			resp, err = resty.R().Post(baseURL + "/v2/secondtest/second/blobs/uploads/")
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-			loc = test.Location(baseURL, resp)
-
-			resp, err = resty.R().
-				SetContentLength(true).
-				SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
-				SetHeader("Content-Type", "application/octet-stream").
-				SetQueryParam("digest", cdigest.String()).
-				SetBody(cblob).
-				Put(loc)
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-
-			// create a manifest
-			manifest := ispec.Manifest{
-				Config: ispec.Descriptor{
-					MediaType: "application/vnd.oci.image.config.v1+json",
-					Digest:    cdigest,
-					Size:      int64(len(cblob)),
-				},
-				Layers: []ispec.Descriptor{
-					{
-						MediaType: "application/vnd.oci.image.layer.v1.tar",
-						Digest:    digest,
-						Size:      int64(len(content)),
-					},
-				},
-			}
-			manifest.SchemaVersion = 2
 			content, err = json.Marshal(manifest)
 			So(err, ShouldBeNil)
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
-			// subpath firsttest
-			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
-				SetBody(content).Put(baseURL + "/v2/firsttest/first/manifests/test:1.0")
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-			digestHdr := resp.Header().Get(constants.DistContentDigestKey)
-			So(digestHdr, ShouldNotBeEmpty)
-			So(digestHdr, ShouldEqual, digest.String())
 
 			// subpath secondtest
-			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
-				SetBody(content).Put(baseURL + "/v2/secondtest/second/manifests/test:1.0")
+			err = test.UploadImage(
+				test.Image{
+					Config:   cfg,
+					Layers:   layers,
+					Manifest: manifest,
+					Tag:      "test:1.0",
+				}, baseURL, "secondtest/second")
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-			digestHdr = resp.Header().Get(constants.DistContentDigestKey)
-			So(digestHdr, ShouldNotBeEmpty)
-			So(digestHdr, ShouldEqual, digest.String())
+
+			content, err = json.Marshal(manifest)
+			So(err, ShouldBeNil)
+			digest = godigest.FromBytes(content)
+			So(digest, ShouldNotBeNil)
 
 			content = []byte("this is a blob5")
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
 
-			// create a manifest with same blob but a different tag
-			manifest = ispec.Manifest{
-				Config: ispec.Descriptor{
-					MediaType: "application/vnd.oci.image.config.v1+json",
-					Digest:    cdigest,
-					Size:      int64(len(cblob)),
-				},
-				Layers: []ispec.Descriptor{
-					{
-						MediaType: "application/vnd.oci.image.layer.v1.tar",
-						Digest:    digest,
-						Size:      int64(len(content)),
-					},
-				},
-			}
-			manifest.SchemaVersion = 2
+			// subpath firsttest
+			err = test.UploadImage(
+				test.Image{
+					Config:   cfg,
+					Layers:   layers,
+					Manifest: manifest,
+					Tag:      "test:2.0",
+				}, baseURL, "firsttest/first")
+			So(err, ShouldBeNil)
+
 			content, err = json.Marshal(manifest)
 			So(err, ShouldBeNil)
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
 
-			// subpath firsttest
-			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
-				SetBody(content).Put(baseURL + "/v2/firsttest/first/manifests/test:2.0")
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-			digestHdr = resp.Header().Get(constants.DistContentDigestKey)
-			So(digestHdr, ShouldNotBeEmpty)
-			So(digestHdr, ShouldEqual, digest.String())
-
 			// subpath secondtest
-			resp, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
-				SetBody(content).Put(baseURL + "/v2/secondtest/second/manifests/test:2.0")
+			err = test.UploadImage(
+				test.Image{
+					Config:   cfg,
+					Layers:   layers,
+					Manifest: manifest,
+					Tag:      "test:2.0",
+				}, baseURL, "secondtest/second")
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-			digestHdr = resp.Header().Get(constants.DistContentDigestKey)
-			So(digestHdr, ShouldNotBeEmpty)
-			So(digestHdr, ShouldEqual, digest.String())
 
 			// check/get by tag
 			resp, err = resty.R().Head(baseURL + "/v2/firsttest/first/manifests/test:1.0")

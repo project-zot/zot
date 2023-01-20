@@ -1284,12 +1284,9 @@ func TestServerResponseGQLWithoutPermissions(t *testing.T) {
 
 		dir := t.TempDir()
 
-		err := test.CopyFiles("../../test/data/zot-test", path.Join(dir, "zot-test"))
-		if err != nil {
-			panic(err)
-		}
+		test.CopyTestFiles("../../test/data/zot-test", path.Join(dir, "zot-test"))
 
-		err = os.Chmod(path.Join(dir, "zot-test", "blobs"), 0o000)
+		err := os.Chmod(path.Join(dir, "zot-test", "blobs"), 0o000)
 		if err != nil {
 			panic(err)
 		}
