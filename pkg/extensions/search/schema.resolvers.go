@@ -64,37 +64,14 @@ func (r *queryResolver) RepoListWithNewestImage(ctx context.Context, requestedPa
 }
 
 // ImageList is the resolver for the ImageList field.
-func (r *queryResolver) ImageList(ctx context.Context, repo string) ([]*gql_generated.ImageSummary, error) {
+func (r *queryResolver) ImageList(ctx context.Context, repo string, requestedPage *gql_generated.PageInput) ([]*gql_generated.ImageSummary, error) {
 	r.log.Info().Msg("extension api: getting a list of all images")
 
-	imageList := make([]*gql_generated.ImageSummary, 0)
-
-	defaultStore := r.storeController.DefaultStore
-
-	dsImageList, err := r.getImageList(defaultStore, repo)
+	imageList, err := getImageList(ctx, repo, r.repoDB, r.cveInfo, requestedPage, r.log)
 	if err != nil {
-		r.log.Error().Err(err).Msg("extension api: error extracting default store image list")
+		r.log.Error().Err(err).Msgf("unable to retrieve image list for repo: %s", repo)
 
 		return imageList, err
-	}
-
-	if len(dsImageList) != 0 {
-		imageList = append(imageList, dsImageList...)
-	}
-
-	subStore := r.storeController.SubStore
-
-	for _, store := range subStore {
-		ssImageList, err := r.getImageList(store, repo)
-		if err != nil {
-			r.log.Error().Err(err).Msg("extension api: error extracting substore image list")
-
-			return imageList, err
-		}
-
-		if len(ssImageList) != 0 {
-			imageList = append(imageList, ssImageList...)
-		}
 	}
 
 	return imageList, nil
