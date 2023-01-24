@@ -767,7 +767,7 @@ func TestConfigReloader(t *testing.T) {
 
 		defer dcm.StopServer()
 
-		content := fmt.Sprintf(`{"distSpecVersion": "0.1.0-dev", "storage": {"rootDirectory": "%s"},
+		content := fmt.Sprintf(`{"distSpecVersion": "1.1.0-dev", "storage": {"rootDirectory": "%s"},
 		"http": {"address": "127.0.0.1", "port": "%s"},
 		"log": {"level": "debug", "output": "%s"}}`, destDir, destPort, logFile.Name())
 

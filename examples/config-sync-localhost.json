@@ -1,5 +1,5 @@
 {
-    "distspecversion":"1.0.1-dev",
+    "distspecversion":"1.1.0-dev",
     "storage": {
         "rootDirectory": "/tmp/zot_to_sync",
         "dedupe": false,

@@ -18,7 +18,7 @@ function setup_file() {
     echo 'test:$2a$10$EIIoeCnvsIDAJeDL4T1sEOnL2fWOvsq7ACZbs3RT40BBBXg.Ih7V.' >> ${htpasswordFile}
     cat > ${zot_config_file}<<EOF
 {
-    "distSpecVersion": "1.0.1",
+    "distSpecVersion": "1.1.0",
     "storage": {
         "rootDirectory": "${zot_root_dir}"
     },
