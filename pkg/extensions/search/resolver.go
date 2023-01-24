@@ -1005,12 +1005,12 @@ func getImageList(ctx context.Context, repo string, repoDB repodb.RepoDB, cveInf
 	return imageList, nil
 }
 
-func getReferrers(store storage.ImageStore, repoName string, digest string, artifactType string, log log.Logger) (
+func getReferrers(store storage.ImageStore, repoName string, digest string, artifactTypes []string, log log.Logger) (
 	[]*gql_generated.Referrer, error,
 ) {
 	results := make([]*gql_generated.Referrer, 0)
 
-	index, err := store.GetReferrers(repoName, godigest.Digest(digest), artifactType)
+	index, err := store.GetReferrers(repoName, godigest.Digest(digest), artifactTypes)
 	if err != nil {
 		log.Error().Err(err).Msg("error extracting referrers list")
 

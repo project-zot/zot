@@ -40,7 +40,7 @@ type MockedImageStore struct {
 	DeleteBlobFn        func(repo string, digest godigest.Digest) error
 	GetIndexContentFn   func(repo string) ([]byte, error)
 	GetBlobContentFn    func(repo string, digest godigest.Digest) ([]byte, error)
-	GetReferrersFn      func(repo string, digest godigest.Digest, artifactType string) (ispec.Index, error)
+	GetReferrersFn      func(repo string, digest godigest.Digest, artifactTypes []string) (ispec.Index, error)
 	GetOrasReferrersFn  func(repo string, digest godigest.Digest, artifactType string) ([]artifactspec.Descriptor, error)
 	URLForPathFn        func(path string) (string, error)
 	RunGCRepoFn         func(repo string) error
@@ -290,10 +290,10 @@ func (is MockedImageStore) GetBlobContent(repo string, digest godigest.Digest) (
 
 func (is MockedImageStore) GetReferrers(
 	repo string, digest godigest.Digest,
-	artifactType string,
+	artifactTypes []string,
 ) (ispec.Index, error) {
 	if is.GetReferrersFn != nil {
-		return is.GetReferrersFn(repo, digest, artifactType)
+		return is.GetReferrersFn(repo, digest, artifactTypes)
 	}
 
 	return ispec.Index{}, nil

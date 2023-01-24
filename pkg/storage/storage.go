@@ -49,7 +49,7 @@ type ImageStore interface { //nolint:interfacebloat
 	DeleteBlob(repo string, digest godigest.Digest) error
 	GetIndexContent(repo string) ([]byte, error)
 	GetBlobContent(repo string, digest godigest.Digest) ([]byte, error)
-	GetReferrers(repo string, digest godigest.Digest, artifactType string) (ispec.Index, error)
+	GetReferrers(repo string, digest godigest.Digest, artifactTypes []string) (ispec.Index, error)
 	GetOrasReferrers(repo string, digest godigest.Digest, artifactType string) ([]artifactspec.Descriptor, error)
 	RunGCRepo(repo string) error
 	RunGCPeriodically(interval time.Duration, sch *scheduler.Scheduler)

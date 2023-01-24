@@ -527,7 +527,7 @@ func (sig *signaturesCopier) canSkipOCIRefs(localRepo, digestStr string, index i
 
 	// check oci references already synced
 	if len(index.Manifests) > 0 {
-		localRefs, err := imageStore.GetReferrers(localRepo, digest, "")
+		localRefs, err := imageStore.GetReferrers(localRepo, digest, nil)
 		if err != nil {
 			if errors.Is(err, zerr.ErrManifestNotFound) {
 				return false, nil

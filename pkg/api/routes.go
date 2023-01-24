@@ -427,9 +427,9 @@ type ImageIndex struct {
 
 func getReferrers(ctx context.Context, routeHandler *RouteHandler,
 	imgStore storage.ImageStore, name string, digest godigest.Digest,
-	artifactType string,
+	artifactTypes []string,
 ) (ispec.Index, error) {
-	references, err := imgStore.GetReferrers(name, digest, artifactType)
+	references, err := imgStore.GetReferrers(name, digest, artifactTypes)
 	if err != nil {
 		if routeHandler.c.Config.Extensions != nil &&
 			routeHandler.c.Config.Extensions.Sync != nil &&
@@ -445,7 +445,7 @@ func getReferrers(ctx context.Context, routeHandler *RouteHandler,
 				return ispec.Index{}, err
 			}
 
-			references, err = imgStore.GetReferrers(name, digest, artifactType)
+			references, err = imgStore.GetReferrers(name, digest, artifactTypes)
 		}
 	}
 
@@ -482,26 +482,14 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 		return
 	}
 
-	// filter by artifact type
-	artifactType := ""
+	// filter by artifact type (more than one can be specified)
+	artifactTypes := request.URL.Query()["artifactType"]
 
-	artifactTypes, ok := request.URL.Query()["artifactType"]
-	if ok {
-		if len(artifactTypes) != 1 {
-			rh.c.Log.Error().Msg("invalid artifact types")
-			response.WriteHeader(http.StatusBadRequest)
-
-			return
-		}
-
-		artifactType = artifactTypes[0]
-	}
-
-	rh.c.Log.Info().Str("digest", digest.String()).Str("artifactType", artifactType).Msg("getting manifest")
+	rh.c.Log.Info().Str("digest", digest.String()).Interface("artifactType", artifactTypes).Msg("getting manifest")
 
 	imgStore := rh.getImageStore(name)
 
-	referrers, err := getReferrers(request.Context(), rh, imgStore, name, digest, artifactType)
+	referrers, err := getReferrers(request.Context(), rh, imgStore, name, digest, artifactTypes)
 	if err != nil {
 		if errors.Is(err, zerr.ErrManifestNotFound) || errors.Is(err, zerr.ErrRepoNotFound) {
 			rh.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).Msg("manifest not found")

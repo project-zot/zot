@@ -1349,14 +1349,14 @@ func (is *ImageStoreLocal) DeleteBlob(repo string, digest godigest.Digest) error
 	return nil
 }
 
-func (is *ImageStoreLocal) GetReferrers(repo string, gdigest godigest.Digest, artifactType string,
+func (is *ImageStoreLocal) GetReferrers(repo string, gdigest godigest.Digest, artifactTypes []string,
 ) (ispec.Index, error) {
 	var lockLatency time.Time
 
 	is.RLock(&lockLatency)
 	defer is.RUnlock(&lockLatency)
 
-	return storage.GetReferrers(is, repo, gdigest, artifactType, is.log)
+	return storage.GetReferrers(is, repo, gdigest, artifactTypes, is.log)
 }
 
 func (is *ImageStoreLocal) GetOrasReferrers(repo string, gdigest godigest.Digest, artifactType string,

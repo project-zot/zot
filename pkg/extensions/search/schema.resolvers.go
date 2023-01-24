@@ -129,7 +129,7 @@ func (r *queryResolver) Image(ctx context.Context, image string) (*gql_generated
 }
 
 // Referrers is the resolver for the Referrers field.
-func (r *queryResolver) Referrers(ctx context.Context, repo string, digest string, typeArg string) ([]*gql_generated.Referrer, error) {
+func (r *queryResolver) Referrers(ctx context.Context, repo string, digest string, typeArg []string) ([]*gql_generated.Referrer, error) {
 	store := r.storeController.GetImageStore(repo)
 
 	referrers, err := getReferrers(store, repo, digest, typeArg, r.log)

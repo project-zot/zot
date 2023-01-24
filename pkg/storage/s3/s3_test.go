@@ -517,7 +517,7 @@ func TestGetOrasAndOCIReferrers(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(n, ShouldEqual, buflen)
 
-		Convey("Get oci referrers - application/vnd.oci.image.manifest.v1+json", func(c C) {
+		Convey("Get OCI Referrers - application/vnd.oci.image.manifest.v1+json", func(c C) {
 			artifactType := "application/vnd.example.icecream.v1"
 			// push artifact config blob
 			configBody := []byte("{}")
@@ -559,7 +559,7 @@ func TestGetOrasAndOCIReferrers(t *testing.T) {
 			_, err = imgStore.PutImageManifest(repo, manDigest.Encoded(), ispec.MediaTypeImageManifest, manBuf)
 			So(err, ShouldBeNil)
 
-			index, err := imgStore.GetReferrers(repo, mdigest, artifactType)
+			index, err := imgStore.GetReferrers(repo, mdigest, []string{artifactType})
 			So(err, ShouldBeNil)
 			So(index, ShouldNotBeEmpty)
 			So(index.Manifests[0].ArtifactType, ShouldEqual, artifactType)
@@ -597,7 +597,7 @@ func TestGetOrasAndOCIReferrers(t *testing.T) {
 			_, err = imgStore.PutImageManifest(repo, manDigest.Encoded(), ispec.MediaTypeArtifactManifest, manBuf)
 			So(err, ShouldBeNil)
 
-			index, err := imgStore.GetReferrers(repo, mdigest, artifactType)
+			index, err := imgStore.GetReferrers(repo, mdigest, []string{artifactType})
 			So(err, ShouldBeNil)
 			So(index, ShouldNotBeEmpty)
 			So(index.Manifests[1].ArtifactType, ShouldEqual, artifactType)
@@ -1240,7 +1240,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 		Convey("Test GetReferrers", func(c C) {
 			imgStore = createMockStorage(testDir, tdir, false, &StorageDriverMock{})
 			d := godigest.FromBytes([]byte(""))
-			_, err := imgStore.GetReferrers(testImage, d, "application/image")
+			_, err := imgStore.GetReferrers(testImage, d, []string{"application/image"})
 			So(err, ShouldNotBeNil)
 			So(err, ShouldEqual, zerr.ErrRepoBadVersion)
 		})

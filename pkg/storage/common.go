@@ -530,7 +530,27 @@ func GetOrasReferrers(imgStore ImageStore, repo string, gdigest godigest.Digest,
 	return result, nil
 }
 
-func GetReferrers(imgStore ImageStore, repo string, gdigest godigest.Digest, artifactType string,
+func getReferrerFilterAnnotation(artifactTypes []string) string {
+	// as per spec, return what filters were applied as an annotation if artifactTypes
+	annotation := ""
+
+	for _, artifactType := range artifactTypes {
+		if artifactType == "" {
+			// ignore empty artifactTypes
+			continue
+		}
+
+		if annotation == "" {
+			annotation = artifactType
+		} else {
+			annotation += "," + artifactType
+		}
+	}
+
+	return annotation
+}
+
+func GetReferrers(imgStore ImageStore, repo string, gdigest godigest.Digest, artifactTypes []string,
 	log zerolog.Logger,
 ) (ispec.Index, error) {
 	nilIndex := ispec.Index{}
@@ -580,8 +600,22 @@ func GetReferrers(imgStore ImageStore, repo string, gdigest godigest.Digest, art
 			}
 
 			// filter by artifact type
-			if artifactType != "" && mfst.Config.MediaType != artifactType {
-				continue
+			if len(artifactTypes) > 0 {
+				found := false
+
+				for _, artifactType := range artifactTypes {
+					if artifactType != "" && mfst.Config.MediaType != artifactType {
+						continue
+					}
+
+					found = true
+
+					break
+				}
+
+				if !found {
+					continue
+				}
 			}
 
 			result = append(result, ispec.Descriptor{
@@ -604,8 +638,21 @@ func GetReferrers(imgStore ImageStore, repo string, gdigest godigest.Digest, art
 			}
 
 			// filter by artifact type
-			if artifactType != "" && art.ArtifactType != artifactType {
-				continue
+			if len(artifactTypes) > 0 {
+				found := false
+				for _, artifactType := range artifactTypes {
+					if artifactType != "" && art.ArtifactType != artifactType {
+						continue
+					}
+
+					found = true
+
+					break
+				}
+
+				if !found {
+					continue
+				}
 			}
 
 			result = append(result, ispec.Descriptor{
@@ -625,9 +672,10 @@ func GetReferrers(imgStore ImageStore, repo string, gdigest godigest.Digest, art
 		Annotations: map[string]string{},
 	}
 
-	// response was filtered by artifactType
-	if artifactType != "" {
-		index.Annotations[storageConstants.ReferrerFilterAnnotation] = ""
+	// as per spec, return what filters were applied as an annotation if artifactTypes
+	if annotation := getReferrerFilterAnnotation(artifactTypes); annotation != "" {
+		index.Annotations[storageConstants.ReferrerFilterAnnotation] = annotation
+		log.Info().Str("annotation", annotation).Msg("filters applied")
 	}
 
 	return index, nil
