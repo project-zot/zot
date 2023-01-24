@@ -18,8 +18,9 @@ import (
 type CveInfo interface {
 	GetImageListForCVE(repo, cveID string) ([]common.TagInfo, error)
 	GetImageListWithCVEFixed(repo, cveID string) ([]common.TagInfo, error)
-	GetCVEListForImage(image string) (map[string]cvemodel.CVE, error)
+	GetCVEListForImage(image string, pageinput PageInput) ([]cvemodel.CVE, PageInfo, error)
 	GetCVESummaryForImage(image string) (ImageCVESummary, error)
+	CompareSeverities(severity1, severity2 string) int
 	UpdateDB() error
 }
 
@@ -102,15 +103,11 @@ func (cveinfo BaseCveInfo) GetImageListForCVE(repo, cveID string) ([]common.TagI
 			continue
 		}
 
-		for id := range cveMap {
-			if id == cveID {
-				imgList = append(imgList, common.TagInfo{
-					Name:   tag,
-					Digest: manifestDigest,
-				})
-
-				break
-			}
+		if _, hasCVE := cveMap[cveID]; hasCVE {
+			imgList = append(imgList, common.TagInfo{
+				Name:   tag,
+				Digest: manifestDigest,
+			})
 		}
 	}
 
@@ -208,15 +205,33 @@ func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]commo
 	return fixedTags, nil
 }
 
-func (cveinfo BaseCveInfo) GetCVEListForImage(image string) (map[string]cvemodel.CVE, error) {
-	cveMap := make(map[string]cvemodel.CVE)
-
+func (cveinfo BaseCveInfo) GetCVEListForImage(image string, pageInput PageInput) (
+	[]cvemodel.CVE,
+	PageInfo,
+	error,
+) {
 	isValidImage, err := cveinfo.Scanner.IsImageFormatScannable(image)
 	if !isValidImage {
-		return cveMap, err
+		return []cvemodel.CVE{}, PageInfo{}, err
 	}
 
-	return cveinfo.Scanner.ScanImage(image)
+	cveMap, err := cveinfo.Scanner.ScanImage(image)
+	if err != nil {
+		return []cvemodel.CVE{}, PageInfo{}, err
+	}
+
+	pageFinder, err := NewCvePageFinder(pageInput.Limit, pageInput.Offset, pageInput.SortBy, cveinfo)
+	if err != nil {
+		return []cvemodel.CVE{}, PageInfo{}, err
+	}
+
+	for _, cve := range cveMap {
+		pageFinder.Add(cve)
+	}
+
+	cveList, pageInfo := pageFinder.Page()
+
+	return cveList, pageInfo, nil
 }
 
 func (cveinfo BaseCveInfo) GetCVESummaryForImage(image string) (ImageCVESummary, error) {
@@ -259,4 +274,8 @@ func (cveinfo BaseCveInfo) GetCVESummaryForImage(image string) (ImageCVESummary,
 
 func (cveinfo BaseCveInfo) UpdateDB() error {
 	return cveinfo.Scanner.UpdateDB()
+}
+
+func (cveinfo BaseCveInfo) CompareSeverities(severity1, severity2 string) int {
+	return cveinfo.Scanner.CompareSeverities(severity1, severity2)
 }

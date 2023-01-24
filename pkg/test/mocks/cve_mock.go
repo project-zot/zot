@@ -9,8 +9,9 @@ import (
 type CveInfoMock struct {
 	GetImageListForCVEFn       func(repo, cveID string) ([]common.TagInfo, error)
 	GetImageListWithCVEFixedFn func(repo, cveID string) ([]common.TagInfo, error)
-	GetCVEListForImageFn       func(image string) (map[string]cvemodel.CVE, error)
+	GetCVEListForImageFn       func(image string, pageInput cveinfo.PageInput) ([]cvemodel.CVE, cveinfo.PageInfo, error)
 	GetCVESummaryForImageFn    func(image string) (cveinfo.ImageCVESummary, error)
+	CompareSeveritiesFn        func(severity1, severity2 string) int
 	UpdateDBFn                 func() error
 }
 
@@ -30,12 +31,16 @@ func (cveInfo CveInfoMock) GetImageListWithCVEFixed(repo, cveID string) ([]commo
 	return []common.TagInfo{}, nil
 }
 
-func (cveInfo CveInfoMock) GetCVEListForImage(image string) (map[string]cvemodel.CVE, error) {
+func (cveInfo CveInfoMock) GetCVEListForImage(image string, pageInput cveinfo.PageInput) (
+	[]cvemodel.CVE,
+	cveinfo.PageInfo,
+	error,
+) {
 	if cveInfo.GetCVEListForImageFn != nil {
-		return cveInfo.GetCVEListForImageFn(image)
+		return cveInfo.GetCVEListForImageFn(image, pageInput)
 	}
 
-	return map[string]cvemodel.CVE{}, nil
+	return []cvemodel.CVE{}, cveinfo.PageInfo{}, nil
 }
 
 func (cveInfo CveInfoMock) GetCVESummaryForImage(image string) (cveinfo.ImageCVESummary, error) {
@@ -44,6 +49,14 @@ func (cveInfo CveInfoMock) GetCVESummaryForImage(image string) (cveinfo.ImageCVE
 	}
 
 	return cveinfo.ImageCVESummary{}, nil
+}
+
+func (cveInfo CveInfoMock) CompareSeverities(severity1, severity2 string) int {
+	if cveInfo.CompareSeveritiesFn != nil {
+		return cveInfo.CompareSeveritiesFn(severity1, severity2)
+	}
+
+	return 0
 }
 
 func (cveInfo CveInfoMock) UpdateDB() error {
