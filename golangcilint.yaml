@@ -47,27 +47,6 @@ linters-settings:
       mnd:
         checks: argument,case,condition,operation,return,assign
         ignored-numbers: 10,64
-  gomoddirectives:
-    replace-allow-list:
-      - github.com/aquasecurity/fanal
-      - github.com/aquasecurity/trivy
-      - github.com/aquasecurity/trivy-db
-      - github.com/containers/image/v5
-      - github.com/opencontainers/image-spec
-      - github.com/open-policy-agent/opa
-      - github.com/vektah/gqlparser/v2
-      - go.opentelemetry.io/otel
-      - go.opentelemetry.io/otel/exporters/otlp
-      - go.opentelemetry.io/otel/metric
-      - go.opentelemetry.io/otel/sdk
-      - github.com/hashicorp/go-getter
-      - github.com/opencontainers/runc
-      - github.com/theupdateframework/go-tuf
-      - go.etcd.io/etcd/v3
-      - go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc
-      - go.opentelemetry.io/otel/exporters/otlp/otlptrace
-      - go.opentelemetry.io/otel/trace
-
 issues:
   exclude-rules:
     - path: pkg/extensions/search/schema.resolvers.go
