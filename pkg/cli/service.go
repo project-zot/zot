@@ -71,14 +71,16 @@ func (service searchService) getDerivedImageListGQL(ctx context.Context, config 
 	query := fmt.Sprintf(`
 		{
 			DerivedImageList(image:"%s"){
-				RepoName,
-				Tag,
-				Digest,
-				ConfigDigest,
-				Layers {Size Digest},
-				LastUpdated,
-				IsSigned,
-				Size
+				Results{
+					RepoName,
+					Tag,
+					Digest,
+					ConfigDigest,
+					Layers {Size Digest},
+					LastUpdated,
+					IsSigned,
+					Size
+				}
 			}
 		}`, derivedImage)
 
@@ -98,14 +100,16 @@ func (service searchService) getBaseImageListGQL(ctx context.Context, config sea
 	query := fmt.Sprintf(`
 		{
 			BaseImageList(image:"%s"){
-				RepoName,
-				Tag,
-				Digest,
-				ConfigDigest,
-				Layers {Size Digest},
-				LastUpdated,
-				IsSigned,
-				Size
+				Results{
+					RepoName,
+					Tag,
+					Digest,
+					ConfigDigest,
+					Layers {Size Digest},
+					LastUpdated,
+					IsSigned,
+					Size
+				}
 			}
 		}`, baseImage)
 
@@ -862,6 +866,13 @@ type imageStruct struct {
 	IsSigned     bool `json:"isSigned"`
 }
 
+type DerivedImageList struct {
+	Results []imageStruct `json:"results"`
+}
+type BaseImageList struct {
+	Results []imageStruct `json:"results"`
+}
+
 type imageListStructGQL struct {
 	Errors []errorGraphQL `json:"errors"`
 	Data   struct {
@@ -879,14 +890,14 @@ type imageListStructForDigestGQL struct {
 type imageListStructForDerivedImagesGQL struct {
 	Errors []errorGraphQL `json:"errors"`
 	Data   struct {
-		ImageList []imageStruct `json:"DerivedImageList"` //nolint:tagliatelle
+		ImageList DerivedImageList `json:"DerivedImageList"` //nolint:tagliatelle
 	} `json:"data"`
 }
 
 type imageListStructForBaseImagesGQL struct {
 	Errors []errorGraphQL `json:"errors"`
 	Data   struct {
-		ImageList []imageStruct `json:"BaseImageList"` //nolint:tagliatelle
+		ImageList BaseImageList `json:"BaseImageList"` //nolint:tagliatelle
 	} `json:"data"`
 }
 

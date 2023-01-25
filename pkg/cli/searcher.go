@@ -241,7 +241,7 @@ func (search derivedImageListSearcherGQL) search(config searchConfig) (bool, err
 		return true, err
 	}
 
-	if err := printResult(config, imageList.Data.ImageList); err != nil {
+	if err := printResult(config, imageList.Data.ImageList.Results); err != nil {
 		return true, err
 	}
 
@@ -266,7 +266,7 @@ func (search baseImageListSearcherGQL) search(config searchConfig) (bool, error)
 		return true, err
 	}
 
-	if err := printResult(config, imageList.Data.ImageList); err != nil {
+	if err := printResult(config, imageList.Data.ImageList.Results); err != nil {
 		return true, err
 	}
 

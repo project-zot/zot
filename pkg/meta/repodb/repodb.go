@@ -78,7 +78,7 @@ type RepoDB interface { //nolint:interfacebloat
 
 	// FilterTags filters for images given a filter function
 	FilterTags(ctx context.Context, filter FilterFunc,
-		requestedPage PageInput) ([]RepoMetadata, map[string]ManifestMetadata, error)
+		requestedPage PageInput) ([]RepoMetadata, map[string]ManifestMetadata, PageInfo, error)
 
 	PatchDB() error
 }

@@ -1335,7 +1335,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			So(err, ShouldBeNil)
 
 			Convey("Return all tags", func() {
-				repos, manifesMetaMap, err := repoDB.FilterTags(
+				repos, manifesMetaMap, pageInfo, err := repoDB.FilterTags(
 					ctx,
 					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
 						return true
@@ -1358,10 +1358,12 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				So(manifesMetaMap, ShouldContainKey, manifestDigest1.String())
 				So(manifesMetaMap, ShouldContainKey, manifestDigest2.String())
 				So(manifesMetaMap, ShouldContainKey, manifestDigest3.String())
+				So(pageInfo.ItemCount, ShouldEqual, 6)
+				So(pageInfo.TotalCount, ShouldEqual, 6)
 			})
 
 			Convey("Return all tags in a specific repo", func() {
-				repos, manifesMetaMap, err := repoDB.FilterTags(
+				repos, manifesMetaMap, pageInfo, err := repoDB.FilterTags(
 					ctx,
 					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
 						return repoMeta.Name == repo1
@@ -1381,10 +1383,12 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				So(manifesMetaMap, ShouldContainKey, manifestDigest1.String())
 				So(manifesMetaMap, ShouldContainKey, manifestDigest2.String())
 				So(manifesMetaMap, ShouldContainKey, manifestDigest3.String())
+				So(pageInfo.ItemCount, ShouldEqual, 5)
+				So(pageInfo.TotalCount, ShouldEqual, 5)
 			})
 
 			Convey("Filter everything out", func() {
-				repos, manifesMetaMap, err := repoDB.FilterTags(
+				repos, manifesMetaMap, pageInfo, err := repoDB.FilterTags(
 					ctx,
 					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
 						return false
@@ -1395,6 +1399,8 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				So(err, ShouldBeNil)
 				So(len(repos), ShouldEqual, 0)
 				So(len(manifesMetaMap), ShouldEqual, 0)
+				So(pageInfo.ItemCount, ShouldEqual, 0)
+				So(pageInfo.TotalCount, ShouldEqual, 0)
 			})
 
 			Convey("Search with access control", func() {
@@ -1409,7 +1415,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				authzCtxKey := localCtx.GetContextKey()
 				ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
 
-				repos, manifesMetaMap, err := repoDB.FilterTags(
+				repos, manifesMetaMap, pageInfo, err := repoDB.FilterTags(
 					ctx,
 					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
 						return true
@@ -1423,10 +1429,12 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				So(len(repos[0].Tags), ShouldEqual, 1)
 				So(repos[0].Tags, ShouldContainKey, "0.0.1")
 				So(manifesMetaMap, ShouldContainKey, manifestDigest3.String())
+				So(pageInfo.ItemCount, ShouldEqual, 1)
+				So(pageInfo.TotalCount, ShouldEqual, 1)
 			})
 
 			Convey("With wrong pagination input", func() {
-				repos, _, err := repoDB.FilterTags(
+				repos, _, _, err := repoDB.FilterTags(
 					ctx,
 					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
 						return true
