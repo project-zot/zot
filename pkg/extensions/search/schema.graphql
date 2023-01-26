@@ -1,3 +1,10 @@
+# Exclude these linters because current implementation of the clients would need an update
+# lint-disable fields-are-camel-cased, input-object-values-are-camel-cased
+# Exclude this linter as we have a different implementation for pagination
+# lint-disable relay-page-info-spec
+# Exclude this linters and fix the issues later
+# lint-disable type-fields-sorted-alphabetically, input-object-fields-sorted-alphabetically, enum-values-sorted-alphabetically
+
 """
 A timestamp
 """
