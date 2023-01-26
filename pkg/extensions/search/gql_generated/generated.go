@@ -154,7 +154,7 @@ type ComplexityRoot struct {
 		ImageListForCve         func(childComplexity int, id string, requestedPage *PageInput) int
 		ImageListForDigest      func(childComplexity int, id string, requestedPage *PageInput) int
 		ImageListWithCVEFixed   func(childComplexity int, id string, image string, requestedPage *PageInput) int
-		Referrers               func(childComplexity int, repo string, digest string, typeArg string) int
+		Referrers               func(childComplexity int, repo string, digest string, typeArg []string) int
 		RepoListWithNewestImage func(childComplexity int, requestedPage *PageInput) int
 	}
 
@@ -198,7 +198,7 @@ type QueryResolver interface {
 	DerivedImageList(ctx context.Context, image string, requestedPage *PageInput) (*PaginatedImagesResult, error)
 	BaseImageList(ctx context.Context, image string, requestedPage *PageInput) (*PaginatedImagesResult, error)
 	Image(ctx context.Context, image string) (*ImageSummary, error)
-	Referrers(ctx context.Context, repo string, digest string, typeArg string) ([]*Referrer, error)
+	Referrers(ctx context.Context, repo string, digest string, typeArg []string) ([]*Referrer, error)
 }
 
 type executableSchema struct {
@@ -752,7 +752,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 			return 0, false
 		}
 
-		return e.complexity.Query.Referrers(childComplexity, args["repo"].(string), args["digest"].(string), args["type"].(string)), true
+		return e.complexity.Query.Referrers(childComplexity, args["repo"].(string), args["digest"].(string), args["type"].([]string)), true
 
 	case "Query.RepoListWithNewestImage":
 		if e.complexity.Query.RepoListWithNewestImage == nil {
@@ -1209,7 +1209,7 @@ type Query {
     Returns a list of descriptors of an image or artifact manifest that are found in a <repo> and have a subject field of <digest>
     Can be filtered based on a specific artifact type <type>
     """
-    Referrers(repo: String!, digest: String!, type: String!): [Referrer]!
+    Referrers(repo: String!, digest: String!, type: [String!]): [Referrer]!
 }
 `, BuiltIn: false},
 }
@@ -1480,10 +1480,10 @@ func (ec *executionContext) field_Query_Referrers_args(ctx context.Context, rawA
 		}
 	}
 	args["digest"] = arg1
-	var arg2 string
+	var arg2 []string
 	if tmp, ok := rawArgs["type"]; ok {
 		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("type"))
-		arg2, err = ec.unmarshalNString2string(ctx, tmp)
+		arg2, err = ec.unmarshalOString2ᚕstringᚄ(ctx, tmp)
 		if err != nil {
 			return nil, err
 		}
@@ -5050,7 +5050,7 @@ func (ec *executionContext) _Query_Referrers(ctx context.Context, field graphql.
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().Referrers(rctx, fc.Args["repo"].(string), fc.Args["digest"].(string), fc.Args["type"].(string))
+		return ec.resolvers.Query().Referrers(rctx, fc.Args["repo"].(string), fc.Args["digest"].(string), fc.Args["type"].([]string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -10305,6 +10305,44 @@ func (ec *executionContext) marshalOSortCriteria2ᚖzotregistryᚗioᚋzotᚋpkg
 		return graphql.Null
 	}
 	return v
+}
+
+func (ec *executionContext) unmarshalOString2ᚕstringᚄ(ctx context.Context, v interface{}) ([]string, error) {
+	if v == nil {
+		return nil, nil
+	}
+	var vSlice []interface{}
+	if v != nil {
+		vSlice = graphql.CoerceList(v)
+	}
+	var err error
+	res := make([]string, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNString2string(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) marshalOString2ᚕstringᚄ(ctx context.Context, sel ast.SelectionSet, v []string) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	ret := make(graphql.Array, len(v))
+	for i := range v {
+		ret[i] = ec.marshalNString2string(ctx, sel, v[i])
+	}
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
 }
 
 func (ec *executionContext) unmarshalOString2ᚕᚖstring(ctx context.Context, v interface{}) ([]*string, error) {

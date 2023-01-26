@@ -862,18 +862,18 @@ func TestGetReferrersGQL(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, 200)
 		So(resp.Body(), ShouldNotBeNil)
 
-		refferrsResp := &ReferrersResp{}
+		referrersResp := &ReferrersResp{}
 
-		err = json.Unmarshal(resp.Body(), refferrsResp)
+		err = json.Unmarshal(resp.Body(), referrersResp)
 		So(err, ShouldBeNil)
-		So(refferrsResp.Errors, ShouldBeNil)
-		So(refferrsResp.ReferrersResult.Referrers[0].ArtifactType, ShouldEqual, artifactType)
-		So(refferrsResp.ReferrersResult.Referrers[0].MediaType, ShouldEqual, ispec.MediaTypeArtifactManifest)
+		So(referrersResp.Errors, ShouldBeNil)
+		So(referrersResp.ReferrersResult.Referrers[0].ArtifactType, ShouldEqual, artifactType)
+		So(referrersResp.ReferrersResult.Referrers[0].MediaType, ShouldEqual, ispec.MediaTypeArtifactManifest)
 
-		So(refferrsResp.ReferrersResult.Referrers[0].Annotations[0].Key, ShouldEqual, "com.artifact.format")
-		So(refferrsResp.ReferrersResult.Referrers[0].Annotations[0].Value, ShouldEqual, "test")
+		So(referrersResp.ReferrersResult.Referrers[0].Annotations[0].Key, ShouldEqual, "com.artifact.format")
+		So(referrersResp.ReferrersResult.Referrers[0].Annotations[0].Value, ShouldEqual, "test")
 
-		So(refferrsResp.ReferrersResult.Referrers[0].Digest, ShouldEqual, artifactManifestDigest)
+		So(referrersResp.ReferrersResult.Referrers[0].Digest, ShouldEqual, artifactManifestDigest)
 	})
 }
 

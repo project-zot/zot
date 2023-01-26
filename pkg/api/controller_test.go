@@ -53,6 +53,7 @@ import (
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
 )
@@ -4346,6 +4347,33 @@ func TestArtifactReferences(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 				So(resp.Header().Get("Content-Type"), ShouldEqual, ispec.MediaTypeImageIndex)
+
+				var index ispec.Index
+				err = json.Unmarshal(resp.Body(), &index)
+				So(err, ShouldBeNil)
+				So(index.Manifests, ShouldNotBeEmpty)
+				So(index.Annotations[storageConstants.ReferrerFilterAnnotation], ShouldNotBeEmpty)
+
+				// filter by multiple artifactTypes
+				req, err := http.NewRequestWithContext(context.TODO(), http.MethodGet,
+					baseURL+fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()), nil)
+				So(err, ShouldBeNil)
+				values := url.Values{}
+				values.Add("artifactType", artifactType)
+				values.Add("artifactType", "foobar")
+				req.URL.RawQuery = values.Encode()
+				rsp, err := http.DefaultClient.Do(req)
+				So(err, ShouldBeNil)
+				defer rsp.Body.Close()
+				So(rsp.StatusCode, ShouldEqual, http.StatusOK)
+				So(rsp.Header.Get("Content-Type"), ShouldEqual, ispec.MediaTypeImageIndex)
+				body, err := io.ReadAll(rsp.Body)
+				So(err, ShouldBeNil)
+				err = json.Unmarshal(body, &index)
+				So(err, ShouldBeNil)
+				So(index.Manifests, ShouldNotBeEmpty)
+				So(index.Annotations[storageConstants.ReferrerFilterAnnotation], ShouldNotBeEmpty)
+				So(len(strings.Split(index.Annotations[storageConstants.ReferrerFilterAnnotation], ",")), ShouldEqual, 2)
 			})
 		})
 	})

@@ -1266,14 +1266,14 @@ func (is *ObjectStorage) GetBlobContent(repo string, digest godigest.Digest) ([]
 	return blobBuf, nil
 }
 
-func (is *ObjectStorage) GetReferrers(repo string, gdigest godigest.Digest, artifactType string,
+func (is *ObjectStorage) GetReferrers(repo string, gdigest godigest.Digest, artifactTypes []string,
 ) (ispec.Index, error) {
 	var lockLatency time.Time
 
 	is.RLock(&lockLatency)
 	defer is.RUnlock(&lockLatency)
 
-	return storage.GetReferrers(is, repo, gdigest, artifactType, is.log)
+	return storage.GetReferrers(is, repo, gdigest, artifactTypes, is.log)
 }
 
 func (is *ObjectStorage) GetOrasReferrers(repo string, gdigest godigest.Digest, artifactType string,

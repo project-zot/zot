@@ -127,18 +127,22 @@ func TestGetReferrersErrors(t *testing.T) {
 		validDigest := godigest.FromBytes([]byte("blob"))
 
 		Convey("Trigger invalid digest error", func(c C) {
-			_, err := storage.GetReferrers(imgStore, "zot-test", "invalidDigest", artifactType, log.With().Caller().Logger())
+			_, err := storage.GetReferrers(imgStore, "zot-test", "invalidDigest",
+				[]string{artifactType}, log.With().Caller().Logger())
 			So(err, ShouldNotBeNil)
 
-			_, err = storage.GetOrasReferrers(imgStore, "zot-test", "invalidDigest", artifactType, log.With().Caller().Logger())
+			_, err = storage.GetOrasReferrers(imgStore, "zot-test", "invalidDigest",
+				artifactType, log.With().Caller().Logger())
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("Trigger repo not found error", func(c C) {
-			_, err := storage.GetReferrers(imgStore, "zot-test", validDigest, artifactType, log.With().Caller().Logger())
+			_, err := storage.GetReferrers(imgStore, "zot-test", validDigest,
+				[]string{artifactType}, log.With().Caller().Logger())
 			So(err, ShouldNotBeNil)
 
-			_, err = storage.GetOrasReferrers(imgStore, "zot-test", validDigest, artifactType, log.With().Caller().Logger())
+			_, err = storage.GetOrasReferrers(imgStore, "zot-test", validDigest,
+				artifactType, log.With().Caller().Logger())
 			So(err, ShouldNotBeNil)
 		})
 
@@ -169,10 +173,12 @@ func TestGetReferrersErrors(t *testing.T) {
 				},
 			}
 
-			_, err = storage.GetReferrers(imgStore, "zot-test", validDigest, artifactType, log.With().Caller().Logger())
+			_, err = storage.GetReferrers(imgStore, "zot-test", validDigest,
+				[]string{artifactType}, log.With().Caller().Logger())
 			So(err, ShouldNotBeNil)
 
-			_, err = storage.GetOrasReferrers(imgStore, "zot-test", validDigest, artifactType, log.With().Caller().Logger())
+			_, err = storage.GetOrasReferrers(imgStore, "zot-test", validDigest,
+				artifactType, log.With().Caller().Logger())
 			So(err, ShouldNotBeNil)
 		})
 
@@ -186,7 +192,8 @@ func TestGetReferrersErrors(t *testing.T) {
 				},
 			}
 
-			_, err = storage.GetReferrers(imgStore, "zot-test", validDigest, artifactType, log.With().Caller().Logger())
+			_, err = storage.GetReferrers(imgStore, "zot-test", validDigest,
+				[]string{artifactType}, log.With().Caller().Logger())
 			So(err, ShouldNotBeNil)
 		})
 
@@ -210,10 +217,12 @@ func TestGetReferrersErrors(t *testing.T) {
 				},
 			}
 
-			_, err = storage.GetOrasReferrers(imgStore, "zot-test", validDigest, artifactType, log.With().Caller().Logger())
+			_, err = storage.GetOrasReferrers(imgStore, "zot-test", validDigest,
+				artifactType, log.With().Caller().Logger())
 			So(err, ShouldNotBeNil)
 
-			_, err = storage.GetOrasReferrers(imgStore, "zot-test", digest, artifactType, log.With().Caller().Logger())
+			_, err = storage.GetOrasReferrers(imgStore, "zot-test", digest,
+				artifactType, log.With().Caller().Logger())
 			So(err, ShouldNotBeNil)
 		})
 
@@ -239,7 +248,8 @@ func TestGetReferrersErrors(t *testing.T) {
 				},
 			}
 
-			_, err = storage.GetReferrers(imgStore, "zot-test", validDigest, artifactType, log.With().Caller().Logger())
+			_, err = storage.GetReferrers(imgStore, "zot-test", validDigest,
+				[]string{artifactType}, log.With().Caller().Logger())
 			So(err, ShouldNotBeNil)
 		})
 
@@ -265,7 +275,8 @@ func TestGetReferrersErrors(t *testing.T) {
 				},
 			}
 
-			_, err = storage.GetReferrers(imgStore, "zot-test", validDigest, artifactType, log.With().Caller().Logger())
+			_, err = storage.GetReferrers(imgStore, "zot-test", validDigest,
+				[]string{artifactType}, log.With().Caller().Logger())
 			So(err, ShouldNotBeNil)
 		})
 
@@ -298,7 +309,8 @@ func TestGetReferrersErrors(t *testing.T) {
 				},
 			}
 
-			_, err = storage.GetReferrers(imgStore, "zot-test", validDigest, artifactType, log.With().Caller().Logger())
+			_, err = storage.GetReferrers(imgStore, "zot-test", validDigest,
+				[]string{artifactType}, log.With().Caller().Logger())
 			So(err, ShouldBeNil)
 		})
 	})

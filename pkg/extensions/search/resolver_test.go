@@ -1087,12 +1087,12 @@ func TestGetReferrers(t *testing.T) {
 		Convey("GetReferrers returns error", func() {
 			testLogger := log.NewLogger("debug", "")
 			mockedStore := mocks.MockedImageStore{
-				GetReferrersFn: func(repo string, digest godigest.Digest, artifactType string) (ispec.Index, error) {
+				GetReferrersFn: func(repo string, digest godigest.Digest, artifactType []string) (ispec.Index, error) {
 					return ispec.Index{}, ErrTestError
 				},
 			}
 
-			_, err := getReferrers(mockedStore, "test", "", "", testLogger)
+			_, err := getReferrers(mockedStore, "test", "", nil, testLogger)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -1108,7 +1108,7 @@ func TestGetReferrers(t *testing.T) {
 				},
 			}
 			mockedStore := mocks.MockedImageStore{
-				GetReferrersFn: func(repo string, digest godigest.Digest, artifactType string) (ispec.Index, error) {
+				GetReferrersFn: func(repo string, digest godigest.Digest, artifactTypes []string) (ispec.Index, error) {
 					return ispec.Index{
 						Manifests: []ispec.Descriptor{
 							referrerDescriptor,
@@ -1117,7 +1117,7 @@ func TestGetReferrers(t *testing.T) {
 				},
 			}
 
-			referrers, err := getReferrers(mockedStore, "test", "", "", testLogger)
+			referrers, err := getReferrers(mockedStore, "test", "", nil, testLogger)
 			So(err, ShouldBeNil)
 			So(*referrers[0].ArtifactType, ShouldEqual, referrerDescriptor.ArtifactType)
 			So(*referrers[0].MediaType, ShouldEqual, referrerDescriptor.MediaType)
@@ -1566,7 +1566,7 @@ func TestQueryResolverErrors(t *testing.T) {
 				log,
 				storage.StoreController{
 					DefaultStore: mocks.MockedImageStore{
-						GetReferrersFn: func(repo string, digest godigest.Digest, artifactType string) (ispec.Index, error) {
+						GetReferrersFn: func(repo string, digest godigest.Digest, artifactTypes []string) (ispec.Index, error) {
 							return ispec.Index{}, ErrTestError
 						},
 					},
@@ -1579,7 +1579,7 @@ func TestQueryResolverErrors(t *testing.T) {
 				resolverConfig,
 			}
 
-			_, err := qr.Referrers(ctx, "repo", "", "")
+			_, err := qr.Referrers(ctx, "repo", "", nil)
 			So(err, ShouldNotBeNil)
 		})
 	})

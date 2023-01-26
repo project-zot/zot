@@ -260,5 +260,5 @@ type Query {
     Returns a list of descriptors of an image or artifact manifest that are found in a <repo> and have a subject field of <digest>
     Can be filtered based on a specific artifact type <type>
     """
-    Referrers(repo: String!, digest: String!, type: String!): [Referrer]!
+    Referrers(repo: String!, digest: String!, type: [String!]): [Referrer]!
 }
