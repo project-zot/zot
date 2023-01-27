@@ -119,19 +119,24 @@ func TestScheduler(t *testing.T) {
 		genL := &generator{log: logger, priority: "low priority"}
 		sch.SubmitGenerator(genL, time.Duration(0), scheduler.LowPriority)
 
+		genM := &generator{log: logger, priority: "medium priority"}
+		sch.SubmitGenerator(genM, time.Duration(0), scheduler.MediumPriority)
+
 		genH := &generator{log: logger, priority: "high priority"}
 		sch.SubmitGenerator(genH, time.Duration(0), scheduler.HighPriority)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		sch.RunScheduler(ctx)
 
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(4 * time.Second)
 		cancel()
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
+
 		So(string(data), ShouldContainSubstring, "executing high priority task; index: 1")
-		So(string(data), ShouldNotContainSubstring, "executing low priority task; index: 1")
+		So(string(data), ShouldContainSubstring, "executing high priority task; index: 2")
+		So(string(data), ShouldNotContainSubstring, "executing medium priority task; index: 1")
 		So(string(data), ShouldNotContainSubstring, "error while executing task")
 	})
 
@@ -155,7 +160,7 @@ func TestScheduler(t *testing.T) {
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
-		So(string(data), ShouldContainSubstring, "Adding a new task to the scheduler")
+		So(string(data), ShouldContainSubstring, "scheduler: adding a new task")
 		So(string(data), ShouldContainSubstring, "error while executing task")
 	})
 
@@ -197,7 +202,7 @@ func TestScheduler(t *testing.T) {
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
-		So(string(data), ShouldNotContainSubstring, "Adding a new task to the scheduler")
+		So(string(data), ShouldNotContainSubstring, "scheduler: adding a new task")
 	})
 
 	Convey("Test adding a new task when context is done", t, func() {
@@ -220,6 +225,6 @@ func TestScheduler(t *testing.T) {
 
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
-		So(string(data), ShouldNotContainSubstring, "Adding a new task to the scheduler")
+		So(string(data), ShouldNotContainSubstring, "scheduler: adding a new task")
 	})
 }
