@@ -631,7 +631,7 @@ func TestVerifyMandatoryAnnotationsFunction(t *testing.T) {
 			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), linter, nil)
 
 		pass, err := linter.CheckMandatoryAnnotations("zot-test", digest, imgStore)
-		So(err, ShouldBeNil)
+		So(err, ShouldNotBeNil)
 		So(pass, ShouldBeFalse)
 	})
 

@@ -5,10 +5,13 @@ package lint
 
 import (
 	"encoding/json"
+	"fmt"
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/pkg/errors"
 
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
@@ -98,10 +101,11 @@ func (linter *Linter) CheckMandatoryAnnotations(repo string, manifestDigest godi
 
 	missingAnnotations = getMissingAnnotations(mandatoryAnnotationsMap)
 	if len(missingAnnotations) > 0 {
-		linter.log.Error().Msgf("linter: manifest %s / config %s are missing annotations: %s",
+		msg := fmt.Sprintf("\nlinter: manifest %s\nor config %s\nis missing the next annotations: %s",
 			string(manifestDigest), string(configDigest), missingAnnotations)
+		linter.log.Error().Msg(msg)
 
-		return false, nil
+		return false, errors.WithMessage(zerr.ErrImageLintAnnotations, msg)
 	}
 
 	return true, nil
