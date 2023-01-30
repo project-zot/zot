@@ -177,6 +177,8 @@ func TestMgmtExtension(t *testing.T) {
 		So(err, ShouldBeNil)
 		defaultValue := true
 
+		conf.Commit = "v1.0.0"
+
 		conf.Extensions = &extconf.ExtensionConfig{}
 		conf.Extensions.Mgmt = &extconf.MgmtConfig{
 			BaseConfig: extconf.BaseConfig{
@@ -212,6 +214,7 @@ func TestMgmtExtension(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(response.Auth.Type, ShouldEqual, "")
 		So(response.Auth.Enabled, ShouldBeFalse)
+		So(response.Version, ShouldEqual, config.Commit)
 
 		// use X-REAL-IP header
 		resp, err = resty.R().SetHeader("X-REAL-IP", "127.0.0.1").Get(baseURL + constants.FullMgmtPrefix)

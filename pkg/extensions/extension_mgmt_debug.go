@@ -15,7 +15,8 @@ import (
 )
 
 type MgmtResponse struct {
-	Auth config.AuthInfo `json:"auth"`
+	Auth    config.AuthInfo `json:"auth"`
+	Version string          `json:"serverVersion"`
 }
 
 type mgmtHandler struct {
@@ -25,8 +26,9 @@ type mgmtHandler struct {
 
 func (mgmtHandler *mgmtHandler) getAuthInfo(response http.ResponseWriter, request *http.Request) {
 	authInfo := mgmtHandler.config.GetAuthInfo()
+	version := config.Commit
 
-	resp := MgmtResponse{Auth: authInfo}
+	resp := MgmtResponse{Auth: authInfo, Version: version}
 
 	buf, err := json.Marshal(resp)
 	if err != nil {
