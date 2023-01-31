@@ -30,7 +30,6 @@ type StorageConfig struct {
 	GCInterval    time.Duration
 	StorageDriver map[string]interface{} `mapstructure:",omitempty"`
 	CacheDriver   map[string]interface{} `mapstructure:",omitempty"`
-	RepoDBDriver  map[string]interface{} `mapstructure:",omitempty"`
 }
 
 type TLSConfig struct {
@@ -111,7 +110,6 @@ type LogConfig struct {
 type GlobalStorageConfig struct {
 	StorageConfig `mapstructure:",squash"`
 	SubPaths      map[string]StorageConfig
-	RepoDBDriver  map[string]interface{} `mapstructure:",omitempty"`
 }
 
 type AccessControlConfig struct {

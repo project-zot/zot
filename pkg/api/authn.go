@@ -198,7 +198,7 @@ func openIDAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 						trimmedAPIKey := strings.TrimPrefix(apiKey, APIKeysPrefix)
 						hashedKey := hashUUID(trimmedAPIKey)
-						userInfo, err := ctlr.RepoDB.GetUserAPIKeyInfo(hashedKey)
+						userInfo, err := ctlr.UserSecDB.GetUserAPIKeyInfo(hashedKey)
 						if err != nil {
 							ctlr.Log.Err(err).Msgf("can not get user info for hashed key %s from DB", hashedKey)
 							response.WriteHeader(http.StatusInternalServerError)
@@ -239,26 +239,23 @@ func openIDAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 				response.WriteHeader(http.StatusUnauthorized)
 				return
 			}
-
-			// Access DB for user data
-			userInfo, err := ctlr.RepoDB.GetUserInfoForSession(session.ID)
-			if err != nil {
-				ctlr.Log.Err(err).Msgf("can not get user session with ID %s from DB", session.ID)
+			email, ok := session.Values["user"].(string)
+			if !ok {
+				ctlr.Log.Err(err).Msg("can not get `user` session value")
 				response.WriteHeader(http.StatusInternalServerError)
 
 				return
 			}
 
-			if userInfo.Email != "" {
-				_, err := ctlr.RepoDB.GetUserProfile(userInfo.Email)
+			if email != "" {
+				_, err := ctlr.UserSecDB.GetUserProfile(email)
 				if err != nil {
 					ctlr.Log.Err(err).Msg("can not get user profile from DB")
 					response.WriteHeader(http.StatusInternalServerError)
 
 					return
 				}
-				acCtx := acCtrlr.getContext(userInfo.Email, request)
-				// response.Header().Set("email", string(userProfile.Info.Email))
+				acCtx := acCtrlr.getContext(email, request)
 				next.ServeHTTP(response, request.WithContext(acCtx))
 			}
 		})
