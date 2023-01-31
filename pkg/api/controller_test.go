@@ -2221,7 +2221,10 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 			},
 		}
 
-		ctlr := makeController(conf, t.TempDir(), "../../test/data")
+		rootDir := t.TempDir()
+		test.CopyTestFiles("../../test/data", rootDir)
+
+		ctlr := makeController(conf, t.TempDir(), rootDir)
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -3024,7 +3027,9 @@ func TestAuthorizationWithMultiplePolicies(t *testing.T) {
 		}
 
 		dir := t.TempDir()
-		ctlr := makeController(conf, dir, "../../test/data")
+		rootDir := t.TempDir()
+		test.CopyTestFiles("../../test/data", rootDir)
+		ctlr := makeController(conf, dir, rootDir)
 
 		cm := test.NewControllerManager(ctlr)
 		cm.StartAndWait(port)
@@ -3266,7 +3271,9 @@ func TestCrossRepoMount(t *testing.T) {
 		}
 
 		dir := t.TempDir()
-		ctlr := makeController(conf, dir, "../../test/data")
+		rootDir := t.TempDir()
+		test.CopyTestFiles("../../test/data", rootDir)
+		ctlr := makeController(conf, dir, rootDir)
 		ctlr.Config.Storage.RemoteCache = false
 
 		cm := test.NewControllerManager(ctlr)
@@ -3453,7 +3460,9 @@ func TestCrossRepoMount(t *testing.T) {
 		}
 
 		dir := t.TempDir()
-		ctlr := makeController(conf, dir, "../../test/data")
+		rootDir := t.TempDir()
+		test.CopyTestFiles("../../test/data", rootDir)
+		ctlr := makeController(conf, dir, rootDir)
 		ctlr.Config.Storage.Dedupe = false
 		ctlr.Config.Storage.GC = false
 
@@ -6160,8 +6169,10 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 			ctlr.Config.Storage.RootDirectory = dir
 			ctlr.Config.Storage.GC = true
 			ctlr.Config.Storage.GCDelay = 1 * time.Millisecond
+			rootDir := t.TempDir()
 
-			test.CopyTestFiles("../../test/data/zot-test", path.Join(dir, repoName))
+			test.CopyTestFiles("../../test/data/zot-test", rootDir)
+			test.CopyTestFiles(rootDir, path.Join(dir, repoName))
 
 			cm := test.NewControllerManager(ctlr)
 			cm.StartServer()

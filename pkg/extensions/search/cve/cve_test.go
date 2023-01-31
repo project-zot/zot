@@ -706,7 +706,10 @@ func TestCVEConfig(t *testing.T) {
 
 		secondDir := t.TempDir()
 
-		CopyTestFiles("../../../../test/data", path.Join(secondDir, "a"))
+		rootDir := t.TempDir()
+
+		CopyTestFiles("../../../../test/data", rootDir)
+		CopyTestFiles(rootDir, path.Join(secondDir, "a"))
 
 		ctlr.Config.Storage.RootDirectory = firstDir
 		subPaths := make(map[string]config.StorageConfig)
@@ -760,7 +763,9 @@ func TestHTTPOptionsResponse(t *testing.T) {
 		defer os.RemoveAll(firstDir)
 		defer os.RemoveAll(secondDir)
 
-		CopyTestFiles("../../../../test/data", path.Join(secondDir, "a"))
+		rootDir := t.TempDir()
+		CopyTestFiles("../../../../test/data", rootDir)
+		CopyTestFiles(rootDir, path.Join(secondDir, "a"))
 
 		ctlr.Config.Storage.RootDirectory = firstDir
 		subPaths := make(map[string]config.StorageConfig)
