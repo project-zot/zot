@@ -19,7 +19,7 @@ function setup_file() {
     touch ${zot_log_file}
     cat >${zot_config_file} <<EOF
 {
-    "distSpecVersion": "1.0.1",
+    "distSpecVersion": "1.1.0",
     "storage": {
         "rootDirectory": "${zot_root_dir}"
     },

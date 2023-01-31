@@ -1,0 +1,40 @@
+{
+    "configs": [
+      {
+        "_name": "zot5000",
+        "showspinner": true,
+        "url": "https://aci-zot.cisco.com:5000",
+        "verify-tls": true
+      },
+      {
+        "_name": "zot5050",
+        "showspinner": true,
+        "url": "https://aci-zot.cisco.com:5050",
+        "verify-tls": true
+      },
+      {
+        "_name": "cdockerhub",
+        "showspinner": true,
+        "url": "https://dockerhub.cisco.com:5000/",
+        "verify-tls": true
+      },
+      {
+        "_name": "local",
+        "showspinner": false,
+        "url": "http://127.0.0.1:8080/",
+        "verify-tls": false
+      },
+      {
+        "_name": "zothub",
+        "showspinner": true,
+        "url": "https://zothub.io/",
+        "verify-tls": true
+      },
+      {
+        "_name": "local2",
+        "showspinner": true,
+        "url": "http://172.31.132.115:5000",
+        "verify-tls": true
+      }
+    ]
+  }
