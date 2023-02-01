@@ -5,6 +5,7 @@ package extensions
 
 import (
 	"net/http"
+	"sync"
 	"time"
 
 	gqlHandler "github.com/99designs/gqlgen/graphql/handler"
@@ -18,10 +19,20 @@ import (
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/repodb"
+	"zotregistry.io/zot/pkg/scheduler"
 	"zotregistry.io/zot/pkg/storage"
 )
 
-type CveInfo cveinfo.CveInfo
+type (
+	CveInfo cveinfo.CveInfo
+	state   int
+)
+
+const (
+	pending state = iota
+	running
+	done
+)
 
 func GetCVEInfo(config *config.Config, storeController storage.StoreController,
 	repoDB repodb.RepoDB, log log.Logger,
@@ -40,7 +51,7 @@ func GetCVEInfo(config *config.Config, storeController storage.StoreController,
 }
 
 func EnableSearchExtension(config *config.Config, storeController storage.StoreController,
-	repoDB repodb.RepoDB, cveInfo CveInfo, log log.Logger,
+	repoDB repodb.RepoDB, taskScheduler *scheduler.Scheduler, cveInfo CveInfo, log log.Logger,
 ) {
 	if config.Extensions.Search != nil && *config.Extensions.Search.Enable && config.Extensions.Search.CVE != nil {
 		defaultUpdateInterval, _ := time.ParseDuration("2h")
@@ -51,30 +62,93 @@ func EnableSearchExtension(config *config.Config, storeController storage.StoreC
 			log.Warn().Msg("CVE update interval set to too-short interval < 2h, changing update duration to 2 hours and continuing.") //nolint:lll // gofumpt conflicts with lll
 		}
 
-		go func() {
-			err := downloadTrivyDB(cveInfo, log, config.Extensions.Search.CVE.UpdateInterval)
-			if err != nil {
-				log.Error().Err(err).Msg("error while downloading TrivyDB")
-			}
-		}()
+		updateInterval := config.Extensions.Search.CVE.UpdateInterval
+
+		downloadTrivyDB(updateInterval, taskScheduler, cveInfo, log)
 	} else {
 		log.Info().Msg("CVE config not provided, skipping CVE update")
 	}
 }
 
-func downloadTrivyDB(cveInfo CveInfo, log log.Logger, updateInterval time.Duration) error {
-	for {
-		log.Info().Msg("updating the CVE database")
+func downloadTrivyDB(interval time.Duration, sch *scheduler.Scheduler, cveInfo CveInfo, log log.Logger) {
+	generator := &trivyTaskGenerator{interval, cveInfo, log, pending, 0, time.Now(), &sync.Mutex{}}
 
-		err := cveInfo.UpdateDB()
-		if err != nil {
-			return err
-		}
+	sch.SubmitGenerator(generator, interval, scheduler.HighPriority)
+}
 
-		log.Info().Str("DB update completed, next update scheduled after", updateInterval.String()).Msg("")
+type trivyTaskGenerator struct {
+	interval     time.Duration
+	cveInfo      CveInfo
+	log          log.Logger
+	status       state
+	waitTime     time.Duration
+	lastTaskTime time.Time
+	lock         *sync.Mutex
+}
 
-		time.Sleep(updateInterval)
+func (gen *trivyTaskGenerator) GenerateTask() (scheduler.Task, error) {
+	var newTask scheduler.Task
+
+	gen.lock.Lock()
+
+	if gen.status != running && time.Since(gen.lastTaskTime) >= gen.waitTime {
+		newTask = newTrivyTask(gen.interval, gen.cveInfo, gen, gen.log)
+		gen.status = running
 	}
+	gen.lock.Unlock()
+
+	return newTask, nil
+}
+
+func (gen *trivyTaskGenerator) IsDone() bool {
+	gen.lock.Lock()
+	status := gen.status
+	gen.lock.Unlock()
+
+	return status == done
+}
+
+func (gen *trivyTaskGenerator) Reset() {
+	gen.lock.Lock()
+	gen.status = pending
+	gen.waitTime = 0
+	gen.lock.Unlock()
+}
+
+type trivyTask struct {
+	interval  time.Duration
+	cveInfo   cveinfo.CveInfo
+	generator *trivyTaskGenerator
+	log       log.Logger
+}
+
+func newTrivyTask(interval time.Duration, cveInfo cveinfo.CveInfo,
+	generator *trivyTaskGenerator, log log.Logger,
+) *trivyTask {
+	return &trivyTask{interval, cveInfo, generator, log}
+}
+
+func (trivyT *trivyTask) DoWork() error {
+	trivyT.log.Info().Msg("updating the CVE database")
+
+	err := trivyT.cveInfo.UpdateDB()
+	if err != nil {
+		trivyT.generator.lock.Lock()
+		trivyT.generator.status = pending
+		trivyT.generator.waitTime += time.Second
+		trivyT.generator.lastTaskTime = time.Now()
+		trivyT.generator.lock.Unlock()
+
+		return err
+	}
+
+	trivyT.generator.lock.Lock()
+	trivyT.generator.lastTaskTime = time.Now()
+	trivyT.generator.status = done
+	trivyT.generator.lock.Unlock()
+	trivyT.log.Info().Str("DB update completed, next update scheduled after", trivyT.interval.String()).Msg("")
+
+	return nil
 }
 
 func addSearchSecurityHeaders(h http.Handler) http.HandlerFunc { //nolint:varnamelen
