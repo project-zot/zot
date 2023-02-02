@@ -42,8 +42,9 @@ func TestCommon(t *testing.T) {
 	Convey("test dirExists()", t, func() {
 		exists := common.DirExists("testdir")
 		So(exists, ShouldBeFalse)
+		tempDir := t.TempDir()
 
-		file, err := os.Create("file.txt")
+		file, err := os.Create(path.Join(tempDir, "file.txt"))
 		So(err, ShouldBeNil)
 		isDir := common.DirExists(file.Name())
 		So(isDir, ShouldBeFalse)

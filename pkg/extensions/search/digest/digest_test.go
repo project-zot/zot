@@ -273,10 +273,7 @@ func TestDigestSearchHTTPSubPaths(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		globalDir, err := os.MkdirTemp("", "digest_test")
-		if err != nil {
-			panic(err)
-		}
+		globalDir := t.TempDir()
 		defer os.RemoveAll(globalDir)
 
 		ctlr.Config.Storage.RootDirectory = globalDir

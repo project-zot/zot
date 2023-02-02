@@ -742,10 +742,8 @@ func TestConfigReloader(t *testing.T) {
 
 		destConfig.HTTP.Port = destPort
 
-		destDir, err := os.MkdirTemp("", "oci-dest-repo-test")
-		if err != nil {
-			panic(err)
-		}
+		// change
+		destDir := t.TempDir()
 
 		defer os.RemoveAll(destDir)
 
@@ -3928,8 +3926,7 @@ func TestSyncSignaturesDiff(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		defer func() { _ = os.Chdir(cwd) }()
-		tdir, err := os.MkdirTemp("", "sigs")
-		So(err, ShouldBeNil)
+		tdir := t.TempDir()
 
 		_ = os.Chdir(tdir)
 		generateKeyPairs(tdir)
@@ -4021,8 +4018,7 @@ func TestSyncSignaturesDiff(t *testing.T) {
 
 		// now add new signatures to upstream and let sync detect that upstream signatures changed and pull them
 		So(os.RemoveAll(tdir), ShouldBeNil)
-		tdir, err = os.MkdirTemp("", "sigs")
-		So(err, ShouldBeNil)
+		tdir = t.TempDir()
 		defer os.RemoveAll(tdir)
 		_ = os.Chdir(tdir)
 		generateKeyPairs(tdir)
