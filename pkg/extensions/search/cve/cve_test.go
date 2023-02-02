@@ -42,7 +42,6 @@ import (
 const (
 	username   = "test"
 	passphrase = "test"
-	testDir    = "../../../../test/data"
 )
 
 type CveResult struct {
@@ -373,8 +372,6 @@ func TestImageFormat(t *testing.T) {
 
 func TestCVESearchDisabled(t *testing.T) {
 	Convey("Test with CVE search disabled", t, func() {
-		dbDir := testDir
-
 		port := GetFreePort()
 		baseURL := GetBaseURL(port)
 		conf := config.New()
@@ -388,6 +385,8 @@ func TestCVESearchDisabled(t *testing.T) {
 			},
 		}
 
+		dbDir, err := testSetup(t)
+		So(err, ShouldBeNil)
 		conf.Storage.RootDirectory = dbDir
 		defaultVal := true
 		searchConfig := &extconf.SearchConfig{
@@ -748,15 +747,9 @@ func TestHTTPOptionsResponse(t *testing.T) {
 
 		ctlr := api.NewController(conf)
 
-		firstDir, err := os.MkdirTemp("", "oci-repo-test")
-		if err != nil {
-			panic(err)
-		}
+		firstDir := t.TempDir()
 
-		secondDir, err := os.MkdirTemp("", "oci-repo-test")
-		if err != nil {
-			panic(err)
-		}
+		secondDir := t.TempDir()
 		defer os.RemoveAll(firstDir)
 		defer os.RemoveAll(secondDir)
 
