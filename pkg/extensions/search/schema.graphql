@@ -1,22 +1,57 @@
+# Exclude these linters because current implementation of the clients would need an update
+# lint-disable fields-are-camel-cased, input-object-values-are-camel-cased
+# Exclude this linter as we have a different implementation for pagination
+# lint-disable relay-page-info-spec
+# Exclude this linters and fix the issues later
+# lint-disable type-fields-sorted-alphabetically, input-object-fields-sorted-alphabetically, enum-values-sorted-alphabetically
+
+"""
+A timestamp
+"""
 scalar Time
 
 """
 Contains the tag of the image and a list of CVEs
 """
 type CVEResultForImage {
+    """
+    Tag affected by the CVEs
+    """
     Tag: String
+    """
+    List of CVE objects which afect this specific image:tag
+    """
     CVEList: [CVE]
+    """
+    The CVE pagination information, see PageInfo object for more details
+    """
     Page: PageInfo
 }
 
 """
-Contains various details about the CVE and a list of PackageInfo about the affected packages
+Contains various details about the CVE (Common Vulnerabilities and Exposures)
+and a list of PackageInfo about the affected packages
 """
 type CVE {
+    """
+    CVE ID
+    """
     Id: String
+    """
+    A short title describing the CVE
+    """
     Title: String
+    """
+    A detailed description of the CVE
+    """
     Description: String
+    """
+    The impact the CVE has, one of "UNKNOWN", "LOW", "MEDIUM", "HIGH", "CRITICAL"
+    """
     Severity: String
+    """
+    Information on the packages in which the CVE was found
+    """
     PackageList: [PackageInfo]
 }
 
@@ -24,95 +59,239 @@ type CVE {
 Contains the name of the package, the current installed version and the version where the CVE was fixed
 """
 type PackageInfo {
+    """
+    Name of the package affected by a CVE
+    """
     Name: String
+    """
+    Current version of the package, typically affected by the CVE
+    """
     InstalledVersion: String
+    """
+    Minimum version of the package in which the CVE is fixed
+    """
     FixedVersion: String
 }
 
 """
-Contains details about the repo: a list of image summaries and a summary of the repo
+Contains details about the repo: both general information on the repo, and the list of images
 """
 type RepoInfo {
+    """
+    List of images in the repo
+    """
     Images: [ImageSummary]
+    """
+    Details about the repository itself
+    """
     Summary: RepoSummary
 }
 
-# Search results in all repos/images/layers
-# There will be other more structures for more detailed information
 """
-Search everything. Can search Images, Repos and Layers
+Search results, can contain images, repositories and layers
 """
 type GlobalSearchResult {
+    """
+    Pagination information
+    """
     Page: PageInfo
+    """
+    List of images matching the search criteria
+    """
     Images: [ImageSummary]
+    """
+    List of repositories matching the search criteria
+    """
     Repos: [RepoSummary]
+    """
+    List of layers matching the search criteria
+    NOTE: the actual search logic for layers is not implemented at the moment
+    """
     Layers: [LayerSummary]
 }
 
-# Brief on a specific image to be used in queries returning a list of images
-# We define an image as a pairing or a repo and a tag belonging to that repo
 """
-Contains details about the image
+Details about a specific image, it is used by queries returning a list of images
+We define an image as a pairing or a repository and a tag belonging to that repository
 """
 type ImageSummary {
+    """
+    Name of the repository where the image is found
+    """
     RepoName: String
+    """
+    Tag identifying the image within the repository
+    """
     Tag: String
+    """
+    Digest of the manifest file associated with this image
+    """
     Digest: String
+    """
+    Digest of the config file associated with this image
+    """
     ConfigDigest: String
+    """
+    Timestamp of the last modification done to the image (from config or the last updated layer)
+    """
     LastUpdated: Time
+    """
+    True if the image has a signature associated with it, false otherwise
+    """
     IsSigned: Boolean
+    """
+    Total size of the files associated with this image (manigest, config, layers)
+    """
     Size: String
+    """
+    OS and architecture supported by this image
+    """
     Platform: OsArch
+    """
+    Vendor associated with this image, the distributing entity, organization or individual
+    """
     Vendor: String
+    """
+    Integer used to rank search results by relevance
+    """
     Score: Int
+    """
+    Number of downloads of the manifest of this image
+    """
     DownloadCount: Int
+    """
+    Information on the layers of this image
+    """
     Layers: [LayerSummary]
+    """
+    Human-readable description of the software packaged in the image
+    """
     Description: String
-    Licenses: String  #  The value of the annotation if present, 'unknown' otherwise).
+    """
+    License(s) under which contained software is distributed as an SPDX License Expression
+    """
+    Licenses: String
+    """
+    Labels associated with this image
+    NOTE: currently this field is unused
+    """
     Labels: String
+    """
+    Human-readable title of the image
+    """
     Title: String
+    """
+    URL to get source code for building the image
+    """
     Source: String
+    """
+    URL to get documentation on the image
+    """
     Documentation: String
+    """
+    Information about the history of the specific image, see LayerHistory
+    """
     History: [LayerHistory]
+    """
+    Short summary of the identified CVEs
+    """
     Vulnerabilities: ImageVulnerabilitySummary
+    """
+    Contact details of the people or organization responsible for the image
+    """
     Authors: String
 }
 
+"""
+Contains summary of vulnerabilities found in a specific image
+"""
 type ImageVulnerabilitySummary {
+    """
+    Maximum severity of all CVEs found in this image
+    """
     MaxSeverity: String
+    """
+    Count of all CVEs found in this image
+    """
     Count: Int
 }
 
-# Brief on a specific repo to be used in queries returning a list of repos
 """
-Contains details about the repo
+Details of a specific repo, it is used by queries returning a list of repos
 """
 type RepoSummary {
+    """
+    Name of the repository
+    """
     Name: String
+    """
+    Timestamp of the last update to an image inside this repository
+    """
     LastUpdated: Time
+    """
+    Total size of the files within this repository
+    """
     Size: String
+    """
+    List of platforms supported by this repository
+    """
     Platforms: [OsArch]
+    """
+    Vendors associated with this image, the distributing entities, organizations or individuals
+    """
     Vendors: [String]
+    """
+    Integer used to rank search results by relevance
+    """
     Score: Int
-    NewestImage: ImageSummary # Newest based on created timestamp
+    """
+    Details of the newest image inside the repository
+    NOTE: not the image with the `latest` tag, the one with the most recent created timestamp
+    """
+    NewestImage: ImageSummary
+    """
+    Total numer of image manifest downloads from this repository
+    """
     DownloadCount: Int
+    """
+    Number of stars attributed to this repository by users
+    """
     StarCount: Int
+    """
+    True if the repository is bookmarked by the current user, false otherwise
+    """
     IsBookmarked: Boolean
+    """
+    True if the repository is stared by the current user, fale otherwise
+    """
     IsStarred: Boolean
 }
 
-# Currently the same as LayerInfo, we can refactor later
-# For detailed information on the layer a ImageListForDigest call can be made
 """
-Contains details about the layer
+Contains details about a specific layer which is part of an image
 """
 type LayerSummary {
+    """
+    The size of the layer in bytes
+    """
     Size: String  # Int64 is not supported.
+    """
+    Digest of the layer content
+    """
     Digest: String
+    """
+    Integer used to rank search results by relevance
+    """
     Score: Int
 }
 
+"""
+Information on how a layer was created
+"""
 type HistoryDescription {
+    """
+    Created is the time when the layer was created.
+    """
     Created: Time
     """
     CreatedBy is the command which created the layer.
@@ -132,133 +311,333 @@ type HistoryDescription {
     EmptyLayer: Boolean
 }
 
+"""
+Information about how/when a layer was built
+"""
 type LayerHistory {
+    """
+    Information specific to the layer such as size and digest.
+    """
     Layer: LayerSummary
+    """
+    Additional information about how the layer was created.
+    """
     HistoryDescription: HistoryDescription
 }
 
+"""
+Annotation is Key:Value pair representing custom data which is otherwise
+not available in other fields.
+"""
 type Annotation {
+    """
+    Custom key
+    """
     Key: String
+    """
+    Value associated with the custom key
+    """
     Value: String
 }
 
+"""
+A referrer is an object which has a reference to a another object
+"""
 type Referrer {
-        MediaType:    String
-        ArtifactType: String
-        Size:         Int
-        Digest:       String
-        Annotations:  [Annotation]!
+    """
+    Referrer MediaType
+    See https://github.com/opencontainers/artifacts for more details
+    """
+    MediaType:    String
+    """
+    Referrer ArtifactType
+    See https://github.com/opencontainers/artifacts for more details
+    """
+    ArtifactType: String
+    """
+    Total size of the referrer files in bytes
+    """
+    Size:         Int
+    """
+    Digest of the manifest file of the referrer
+    """
+    Digest:       String
+    """
+    A list of annotations associated with this referrer
+    """
+    Annotations:  [Annotation]!
 }
 
 """
-Contains details about the supported OS and architecture of the image
+Contains details about the OS and architecture of the image
 """
 type OsArch {
+    """
+    The name of the operating system which the image is built to run on,
+    Should be values listed in the Go Language document https://go.dev/doc/install/source#environment
+    """
     Os: String
+    """
+    The name of the compilation architecture which the image is built to run on,
+    Should be values listed in the Go Language document https://go.dev/doc/install/source#environment
+    """
     Arch: String
 }
 
+"""
+All sort criteria usable with pagination, some of these criteria applies only
+to certain queries. For example sort by severity is available for CVEs but not
+for repositories
+"""
 enum SortCriteria {
+    """
+    How relevant the result is based on the user input used while searching
+    Applies to: images and repositories
+    """
     RELEVANCE
+    """
+    Sort by the most recently created timestamp of the images
+    Applies to: images and repositories
+    """
     UPDATE_TIME
+    """
+    Sort alphabetically ascending
+    Applies to: images, repositories and CVEs
+    """
     ALPHABETIC_ASC
+    """
+    Sort alphabetically descending
+    Applies to: images, repositories and CVEs
+    """
     ALPHABETIC_DSC
+    """
+    Sort from the most severe to the least severe
+    Applies to: CVEs
+    """
     SEVERITY
+    """
+    Sort by the total number of stars given by users
+    Applies to: repositories
+    """
     STARS
+    """
+    Sort by the total download count
+    Applies to: repositories and images
+    """
     DOWNLOADS
 }
 
+"""
+Information on current page returned by the API
+"""
 type PageInfo {
+    """
+    The total number of objects on all pages
+    """
     TotalCount: Int!
+    """
+    The number of objects in this page
+    """
     ItemCount: Int!
 }
 
-# Pagination parameters
+"""
+Pagination parameters
+If PageInput is empty, the request should return all objects.
+"""
 input PageInput {
+    """
+    The maximum amount of results to return for this page
+    Negative values are not allowed
+    """
     limit: Int
+    """
+    The results page number you want to receive
+    Negative values are not allowed
+    """
     offset: Int
+    """
+    The criteria used to sort the results on the page
+    """
     sortBy: SortCriteria
 }
 
-# Paginated list of RepoSummary objects
-# If limit is -1, pagination is disabled
+"""
+Paginated list of RepoSummary objects
+"""
 type PaginatedReposResult {
+    """
+    Information on the returned page
+    """
     Page: PageInfo
+    """
+    List of repositories
+    """
     Results: [RepoSummary!]!
 }
 
-# Paginated list of ImageSummary objects
-# If limit is -1, pagination is disabled
+"""
+Paginated list of ImageSummary objects
+"""
 type PaginatedImagesResult {
+    """
+    Information on the returned page
+    """
     Page: PageInfo
+    """
+    List of images
+    """
     Results: [ImageSummary!]!
 }
 
+"""
+Apply various types of filters to the queries made for repositories and images
+For example we only want to display repositories which contain images with
+a certain OS ar Architecture.
+"""
 input Filter {
+    """
+    Only return images or repositories supporting the operating systems in the list
+    Should be values listed in the Go Language document https://go.dev/doc/install/source#environment
+    """
     Os: [String]
+    """
+    Only return images or repositories supporting the build architectures in the list
+    Should be values listed in the Go Language document https://go.dev/doc/install/source#environment
+    """
     Arch: [String]
+    """
+    Only return images or repositories with at least one signature
+    """
     HasToBeSigned: Boolean
 }
 
+"""
+Queries supported by the zot server
+"""
 type Query {
     """
-    Returns a CVE list for the image specified in the argument. Format image:tag
+    Returns a CVE list for the image specified in the argument
     """
-    CVEListForImage(image: String!, requestedPage: PageInput): CVEResultForImage!
+    CVEListForImage(
+        "Image name in format `repository:tag`"
+        image: String!,
+        "Sets the parameters of the requested page"
+        requestedPage: PageInput
+    ): CVEResultForImage!
 
     """
     Returns a list of images vulnerable to the CVE of the specified ID
     """
-    ImageListForCVE(id: String!, requestedPage: PageInput): [ImageSummary!]
+    ImageListForCVE(
+        "CVE ID"
+        id: String!,
+        "Sets the parameters of the requested page"
+        requestedPage: PageInput
+    ): [ImageSummary!]
 
     """
-    Returns a list of images that are no longer vulnerable to the CVE of the specified ID, from the specified image (repo)
+    Returns a list of images that are no longer vulnerable to the CVE of the specified ID,
+    from the specified repository
     """
-    ImageListWithCVEFixed(id: String!, image: String!, requestedPage: PageInput): [ImageSummary!]
+    ImageListWithCVEFixed(
+        "CVE ID"
+        id: String!,
+        "Repository name"
+        image: String!,
+        "Sets the parameters of the requested page"
+        requestedPage: PageInput
+    ): [ImageSummary!]
 
     """
     Returns a list of images which contain the specified digest 
     """
-    ImageListForDigest(id: String!, requestedPage: PageInput): [ImageSummary!]
+    ImageListForDigest(
+        "Digest to be used in searching for images"
+        id: String!,
+        "Sets the parameters of the requested page"
+        requestedPage: PageInput
+    ): [ImageSummary!]
 
     """
-    Returns a list of repos with the newest tag within
+    Returns a list of repositories with the newest tag (most recently created timestamp)
     """
-    RepoListWithNewestImage(requestedPage: PageInput): PaginatedReposResult!  # Newest based on created timestamp
+    RepoListWithNewestImage(
+        "Sets the parameters of the requested page"
+        requestedPage: PageInput
+    ): PaginatedReposResult!
 
     """
-    Returns all the images from the specified repo | from all repos if specified repo is ""
+    Returns all the images from the specified repository | from all repositories if specified repository is ""
     """
-    ImageList(repo: String!, requestedPage: PageInput): [ImageSummary!]
+    ImageList(
+        "Repository name"
+        repo: String!,
+        "Sets the parameters of the requested page"
+        requestedPage: PageInput
+    ): [ImageSummary!]
 
     """
-    Returns information about the specified repo
+    Obtain detailed information about a repository and container images within
     """
-    ExpandedRepoInfo(repo: String!): RepoInfo!
+    ExpandedRepoInfo(
+        "Repository name"
+        repo: String!
+    ): RepoInfo!
 
     """
     Searches within repos, images, and layers
     """
-    GlobalSearch(query: String!, filter: Filter, requestedPage: PageInput): GlobalSearchResult!
+    GlobalSearch(
+        """
+        Query string, searches for repository names by default,
+        when containing `:` it searches for tags inside a repository
+        """
+        query: String!,
+        "Filter to apply on the matches"
+        filter: Filter,
+        "Sets the parameters of the requested page"
+        requestedPage: PageInput
+    ): GlobalSearchResult!
 
     """
     List of images which use the argument image
     """
-    DerivedImageList(image: String!, requestedPage: PageInput): PaginatedImagesResult!
+    DerivedImageList(
+        "Image name in the format `repository:tag`"
+        image: String!,
+        "Sets the parameters of the requested page"
+        requestedPage: PageInput
+    ): PaginatedImagesResult!
 
     """
     List of images on which the argument image depends on
     """
-    BaseImageList(image: String!, requestedPage: PageInput): PaginatedImagesResult!
+    BaseImageList(
+        "Image name in the format `repository:tag`"
+        image: String!,
+        "Sets the parameters of the requested page"
+        requestedPage: PageInput
+    ): PaginatedImagesResult!
 
     """
     Search for a specific image using its name
     """
-    Image(image: String!): ImageSummary
+    Image(
+        "Image name in the format `repository:tag`"
+        image: String!
+    ): ImageSummary
 
     """
     Returns a list of descriptors of an image or artifact manifest that are found in a <repo> and have a subject field of <digest>
     Can be filtered based on a specific artifact type <type>
     """
-    Referrers(repo: String!, digest: String!, type: [String!]): [Referrer]!
+    Referrers(
+        "Repository name"
+        repo: String!,
+        "Digest the referrers are referring to"
+        digest: String!,
+        "Types of artifacts to return in the referrer list"
+        type: [String!]
+    ): [Referrer]!
 }
