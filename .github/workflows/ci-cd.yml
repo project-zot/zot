@@ -46,14 +46,24 @@ jobs:
         uses: actions/cache@v3
         with:
           path: |
-            ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
           restore-keys: |
-            ${{ runner.os }}-go-
+            ${{ runner.os }}-go-mod-
+      - name: Cache go build output
+        id: cache-go-build
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+          key: ${{ matrix.os }}-${{ matrix.arch }}-go-build-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ matrix.os }}-${{ matrix.arch }}-go-build-
       - name: Install go dependencies
         if: steps.cache-go-dependencies.outputs.cache-hit != 'true'
-        run: go mod download
+        run: |
+          cd $GITHUB_WORKSPACE
+          go mod download
       - name: Install other dependencies
         run: |
           cd $GITHUB_WORKSPACE
