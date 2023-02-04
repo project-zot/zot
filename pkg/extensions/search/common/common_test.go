@@ -630,17 +630,25 @@ func TestRepoListWithNewestImage(t *testing.T) {
 
 	Convey("Test repoListWithNewestImage with vulnerability scan enabled", t, func() {
 		subpath := "/a"
-		err := testSetup(t, subpath)
-		if err != nil {
-			panic(err)
-		}
+
+		// The other tests create 4 images, 2 in each store
+		// but we can test the same functionality with just 2 images, 1 in each substore
+		// and it will take a shorter time to scan the images
+		dir := t.TempDir()
+		subDir := t.TempDir()
+
+		err := CopyFiles("../../../../test/data/zot-test", path.Join(dir, "zot-test"))
+		So(err, ShouldBeNil)
+		err = CopyFiles("../../../../test/data/zot-cve-test", path.Join(subDir, subpath, "zot-cve-test"))
+		So(err, ShouldBeNil)
+
 		port := GetFreePort()
 		baseURL := GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
-		conf.Storage.RootDirectory = rootDir
+		conf.Storage.RootDirectory = dir
 		conf.Storage.SubPaths = make(map[string]config.StorageConfig)
-		conf.Storage.SubPaths[subpath] = config.StorageConfig{RootDirectory: subRootDir}
+		conf.Storage.SubPaths[subpath] = config.StorageConfig{RootDirectory: subDir}
 		defaultVal := true
 
 		updateDuration, _ := time.ParseDuration("1h")
@@ -720,7 +728,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		var responseStruct RepoWithNewestImageResponse
 		err = json.Unmarshal(resp.Body(), &responseStruct)
 		So(err, ShouldBeNil)
-		So(len(responseStruct.RepoListWithNewestImage.PaginatedReposResult.Results), ShouldEqual, 4)
+		So(len(responseStruct.RepoListWithNewestImage.PaginatedReposResult.Results), ShouldEqual, 2)
 
 		repos := responseStruct.RepoListWithNewestImage.PaginatedReposResult.Results
 		So(repos[0].NewestImage.Tag, ShouldEqual, "0.0.1")
