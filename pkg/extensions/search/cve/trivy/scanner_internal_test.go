@@ -1,3 +1,6 @@
+//go:build search
+// +build search
+
 package trivy
 
 import (
