@@ -23,6 +23,7 @@ import (
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/constants"
 	"zotregistry.io/zot/pkg/common"
+	syncconf "zotregistry.io/zot/pkg/extensions/config/sync"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test"
@@ -36,44 +37,6 @@ const (
 // /v2/_catalog struct.
 type catalog struct {
 	Repositories []string `json:"repositories"`
-}
-
-// key is registry address.
-type CredentialsFile map[string]Credentials
-
-type Credentials struct {
-	Username string
-	Password string
-}
-
-type Config struct {
-	Enable          *bool
-	CredentialsFile string
-	Registries      []RegistryConfig
-}
-
-type RegistryConfig struct {
-	URLs         []string
-	PollInterval time.Duration
-	Content      []Content
-	TLSVerify    *bool
-	OnDemand     bool
-	CertDir      string
-	MaxRetries   *int
-	RetryDelay   *time.Duration
-	OnlySigned   *bool
-}
-
-type Content struct {
-	Prefix      string
-	Tags        *Tags
-	Destination string `mapstructure:",omitempty"`
-	StripPrefix bool
-}
-
-type Tags struct {
-	Regex  *string
-	Semver *bool
 }
 
 type RepoReferences struct {
@@ -103,7 +66,7 @@ func GetUpstreamCatalog(client *http.Client, upstreamURL, username, password str
 
 // imagesToCopyFromRepos lists all images given a registry name and its repos.
 func imagesToCopyFromUpstream(ctx context.Context, registryName string, repoName string,
-	upstreamCtx *types.SystemContext, content Content, log log.Logger,
+	upstreamCtx *types.SystemContext, content syncconf.Content, log log.Logger,
 ) ([]types.ImageReference, error) {
 	imageRefs := []types.ImageReference{}
 
@@ -179,7 +142,7 @@ func getCopyOptions(upstreamCtx, localCtx *types.SystemContext) copy.Options {
 	return options
 }
 
-func getUpstreamContext(regCfg *RegistryConfig, credentials Credentials) *types.SystemContext {
+func getUpstreamContext(regCfg *syncconf.RegistryConfig, credentials syncconf.Credentials) *types.SystemContext {
 	upstreamCtx := &types.SystemContext{}
 	upstreamCtx.DockerCertPath = regCfg.CertDir
 	upstreamCtx.DockerDaemonCertPath = regCfg.CertDir
@@ -192,7 +155,7 @@ func getUpstreamContext(regCfg *RegistryConfig, credentials Credentials) *types.
 		upstreamCtx.DockerInsecureSkipTLSVerify = types.NewOptionalBool(true)
 	}
 
-	if credentials != (Credentials{}) {
+	if credentials != (syncconf.Credentials{}) {
 		upstreamCtx.DockerAuthConfig = &types.DockerAuthConfig{
 			Username: credentials.Username,
 			Password: credentials.Password,
@@ -203,10 +166,10 @@ func getUpstreamContext(regCfg *RegistryConfig, credentials Credentials) *types.
 }
 
 //nolint:gocyclo  // offloading some of the functionalities from here would make the code harder to follow
-func syncRegistry(ctx context.Context, regCfg RegistryConfig,
+func syncRegistry(ctx context.Context, regCfg syncconf.RegistryConfig,
 	upstreamURL string,
 	storeController storage.StoreController, localCtx *types.SystemContext,
-	policyCtx *signature.PolicyContext, credentials Credentials,
+	policyCtx *signature.PolicyContext, credentials syncconf.Credentials,
 	retryOptions *retry.RetryOptions, log log.Logger,
 ) error {
 	log.Info().Msgf("syncing registry: %s", upstreamURL)
@@ -266,8 +229,8 @@ func syncRegistry(ctx context.Context, regCfg RegistryConfig,
 			var imageReferences []types.ImageReference
 
 			if err = retry.RetryIfNecessary(ctx, func() error {
-				imageReferences, err = imagesToCopyFromUpstream(ctx, upstreamAddr, repoName, upstreamCtx,
-					regCfg.Content[contentID], log)
+				imageReferences, err = imagesToCopyFromUpstream(ctx, upstreamAddr,
+					repoName, upstreamCtx, regCfg.Content[contentID], log)
 
 				return err
 			}, retryOptions); err != nil {
@@ -457,11 +420,11 @@ func getLocalContexts(log log.Logger) (*types.SystemContext, *signature.PolicyCo
 	return localCtx, policyContext, nil
 }
 
-func Run(ctx context.Context, cfg Config,
+func Run(ctx context.Context, cfg syncconf.Config,
 	storeController storage.StoreController,
 	wtgrp *goSync.WaitGroup, logger log.Logger,
 ) error {
-	var credentialsFile CredentialsFile
+	var credentialsFile syncconf.CredentialsFile
 
 	var err error
 
@@ -508,7 +471,7 @@ func Run(ctx context.Context, cfg Config,
 		}
 
 		// schedule each registry sync
-		go func(ctx context.Context, regCfg RegistryConfig, logger log.Logger) {
+		go func(ctx context.Context, regCfg syncconf.RegistryConfig, logger log.Logger) {
 			for {
 				// increment reference since will be busy, so shutdown has to wait
 				wtgrp.Add(1)

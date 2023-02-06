@@ -26,6 +26,7 @@ import (
 
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/common"
+	syncconf "zotregistry.io/zot/pkg/extensions/config/sync"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
@@ -121,7 +122,7 @@ func parseRepositoryReference(input string) (reference.Named, error) {
 }
 
 // filterRepos filters repos based on prefix given in the config.
-func filterRepos(repos []string, contentList []Content, log log.Logger) map[int][]string {
+func filterRepos(repos []string, contentList []syncconf.Content, log log.Logger) map[int][]string {
 	filtered := make(map[int][]string)
 
 	for _, repo := range repos {
@@ -155,7 +156,7 @@ func filterRepos(repos []string, contentList []Content, log log.Logger) map[int]
 }
 
 // findRepoContentID return the contentID that maches the localRepo path for a given RegistryConfig in the config file.
-func findRepoMatchingContentID(localRepo string, contentList []Content) (int, error) {
+func findRepoMatchingContentID(localRepo string, contentList []syncconf.Content) (int, error) {
 	contentID := -1
 	localRepo = strings.Trim(localRepo, "/")
 
@@ -194,7 +195,7 @@ func findRepoMatchingContentID(localRepo string, contentList []Content) (int, er
 	return contentID, nil
 }
 
-func getRepoSource(localRepo string, content Content) string {
+func getRepoSource(localRepo string, content syncconf.Content) string {
 	localRepo = strings.Trim(localRepo, "/")
 	destination := strings.Trim(content.Destination, "/")
 	prefix := strings.Trim(content.Prefix, "/*")
@@ -219,7 +220,7 @@ func getRepoSource(localRepo string, content Content) string {
 }
 
 // getRepoDestination returns the local storage path of the synced repo based on the specified destination.
-func getRepoDestination(remoteRepo string, content Content) string {
+func getRepoDestination(remoteRepo string, content syncconf.Content) string {
 	remoteRepo = strings.Trim(remoteRepo, "/")
 	destination := strings.Trim(content.Destination, "/")
 	prefix := strings.Trim(content.Prefix, "/*")
@@ -244,13 +245,13 @@ func getRepoDestination(remoteRepo string, content Content) string {
 }
 
 // Get sync.FileCredentials from file.
-func getFileCredentials(filepath string) (CredentialsFile, error) {
+func getFileCredentials(filepath string) (syncconf.CredentialsFile, error) {
 	credsFile, err := os.ReadFile(filepath)
 	if err != nil {
 		return nil, err
 	}
 
-	var creds CredentialsFile
+	var creds syncconf.CredentialsFile
 
 	err = json.Unmarshal(credsFile, &creds)
 	if err != nil {

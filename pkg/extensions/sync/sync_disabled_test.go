@@ -13,7 +13,7 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
-	"zotregistry.io/zot/pkg/extensions/sync"
+	syncconf "zotregistry.io/zot/pkg/extensions/config/sync"
 	"zotregistry.io/zot/pkg/test"
 )
 
@@ -34,7 +34,7 @@ func TestSyncExtension(t *testing.T) {
 		conf.Storage.RootDirectory = globalDir
 		conf.Storage.Commit = true
 		conf.Extensions = &extconf.ExtensionConfig{}
-		conf.Extensions.Sync = &sync.Config{
+		conf.Extensions.Sync = &syncconf.Config{
 			Enable: &defaultValue,
 		}
 		conf.Log.Level = "warn"

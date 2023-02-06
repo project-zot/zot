@@ -18,6 +18,7 @@ import (
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/constants"
 	"zotregistry.io/zot/pkg/common"
+	syncconf "zotregistry.io/zot/pkg/extensions/config/sync"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 )
@@ -26,11 +27,12 @@ type signaturesCopier struct {
 	client          *http.Client
 	upstreamURL     url.URL
 	storeController storage.StoreController
-	credentials     Credentials
+	credentials     syncconf.Credentials
 	log             log.Logger
 }
 
-func newSignaturesCopier(httpClient *http.Client, credentials Credentials, upstreamURL url.URL,
+func newSignaturesCopier(httpClient *http.Client, credentials syncconf.Credentials,
+	upstreamURL url.URL,
 	storeController storage.StoreController, log log.Logger,
 ) *signaturesCopier {
 	return &signaturesCopier{

@@ -16,6 +16,7 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"zotregistry.io/zot/pkg/common"
+	syncconf "zotregistry.io/zot/pkg/extensions/config/sync"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 )
@@ -58,7 +59,7 @@ func (di *demandedImages) delete(key string) {
 	di.syncedMap.Delete(key)
 }
 
-func OneImage(ctx context.Context, cfg Config, storeController storage.StoreController,
+func OneImage(ctx context.Context, cfg syncconf.Config, storeController storage.StoreController,
 	repo, reference string, artifactType string, log log.Logger,
 ) error {
 	// guard against multiple parallel requests
@@ -91,10 +92,11 @@ func OneImage(ctx context.Context, cfg Config, storeController storage.StoreCont
 	return err
 }
 
-func syncOneImage(ctx context.Context, imageChannel chan error, cfg Config, storeController storage.StoreController,
+func syncOneImage(ctx context.Context, imageChannel chan error,
+	cfg syncconf.Config, storeController storage.StoreController,
 	localRepo, reference string, artifactType string, log log.Logger,
 ) {
-	var credentialsFile CredentialsFile
+	var credentialsFile syncconf.CredentialsFile
 
 	if cfg.CredentialsFile != "" {
 		var err error
@@ -258,7 +260,7 @@ func syncOneImage(ctx context.Context, imageChannel chan error, cfg Config, stor
 	imageChannel <- nil
 }
 
-func syncRun(regCfg RegistryConfig,
+func syncRun(regCfg syncconf.RegistryConfig,
 	localRepo, upstreamRepo, reference string, utils syncContextUtils, sig *signaturesCopier,
 	log log.Logger,
 ) (bool, error) {
