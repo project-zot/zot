@@ -50,6 +50,7 @@ type Controller struct {
 	Audit           *log.Logger
 	Server          *http.Server
 	Metrics         monitoring.MetricServer
+	CveInfo         ext.CveInfo
 	wgShutDown      *goSync.WaitGroup // use it to gracefully shutdown goroutines
 	// runtime params
 	chosenPort int // kernel-chosen port
@@ -615,8 +616,13 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 
 	// Enable extensions if extension config is provided for DefaultStore
 	if c.Config != nil && c.Config.Extensions != nil {
+		// There is an assumption, just like in the case of RepoDB and other attributes that
+		// StartBackgroundTasks runs before NewRouteHandler() so CveInfo is set before
+		// the handlers are configured
+		c.CveInfo = ext.GetCVEInfo(c.Config, c.StoreController, c.RepoDB, c.Log)
+
 		ext.EnableMetricsExtension(c.Config, c.Log, c.Config.Storage.RootDirectory)
-		ext.EnableSearchExtension(c.Config, c.StoreController, c.RepoDB, c.Log)
+		ext.EnableSearchExtension(c.Config, c.StoreController, c.RepoDB, c.CveInfo, c.Log)
 	}
 
 	if c.Config.Storage.SubPaths != nil {
