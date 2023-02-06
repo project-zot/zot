@@ -63,6 +63,10 @@ func newServeCmd(conf *config.Config) *cobra.Command {
 			we can change their config on the fly (restart routines with different config) */
 			reloaderCtx := hotReloader.Start()
 
+			if err := ctlr.Init(reloaderCtx); err != nil {
+				panic(err)
+			}
+
 			if err := ctlr.Run(reloaderCtx); err != nil {
 				panic(err)
 			}
