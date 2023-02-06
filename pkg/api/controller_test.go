@@ -260,7 +260,10 @@ func TestRunAlreadyRunningServer(t *testing.T) {
 		cm.StartAndWait(port)
 		defer cm.StopServer()
 
-		err := ctlr.Run(context.Background())
+		err := ctlr.Init(context.Background())
+		So(err, ShouldBeNil)
+
+		err = ctlr.Run(context.Background())
 		So(err, ShouldNotBeNil)
 	})
 }
@@ -328,7 +331,7 @@ func TestObjectStorageController(t *testing.T) {
 		ctlr := makeController(conf, "zot", "")
 		So(ctlr, ShouldNotBeNil)
 
-		err := ctlr.Run(context.Background())
+		err := ctlr.Init(context.Background())
 		So(err, ShouldNotBeNil)
 	})
 
@@ -928,7 +931,7 @@ func TestMultipleInstance(t *testing.T) {
 			},
 		}
 		ctlr := api.NewController(conf)
-		err := ctlr.Run(context.Background())
+		err := ctlr.Init(context.Background())
 		So(err, ShouldEqual, errors.ErrImgStoreNotFound)
 
 		globalDir := t.TempDir()
@@ -1016,7 +1019,7 @@ func TestMultipleInstance(t *testing.T) {
 
 		ctlr.Config.Storage.SubPaths = subPathMap
 
-		err := ctlr.Run(context.Background())
+		err := ctlr.Init(context.Background())
 		So(err, ShouldNotBeNil)
 
 		// subpath root directory does not exist.
@@ -1025,7 +1028,7 @@ func TestMultipleInstance(t *testing.T) {
 
 		ctlr.Config.Storage.SubPaths = subPathMap
 
-		err = ctlr.Run(context.Background())
+		err = ctlr.Init(context.Background())
 		So(err, ShouldNotBeNil)
 
 		subPathMap["/a"] = config.StorageConfig{RootDirectory: subDir, Dedupe: true, GC: true}

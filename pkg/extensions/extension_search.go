@@ -20,13 +20,26 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 )
 
-// We need this object to be a singleton as read/writes in the CVE DB may
-// occur at any time via DB downloads as well as during scanning.
-// The library doesn't seem to handle concurrency very well internally.
-var cveInfo cveinfo.CveInfo //nolint:gochecknoglobals
+type CveInfo cveinfo.CveInfo
+
+func GetCVEInfo(config *config.Config, storeController storage.StoreController,
+	repoDB repodb.RepoDB, log log.Logger,
+) CveInfo {
+	if config.Extensions.Search == nil || !*config.Extensions.Search.Enable || config.Extensions.Search.CVE == nil {
+		return nil
+	}
+
+	dbRepository := ""
+
+	if config.Extensions.Search.CVE.Trivy != nil {
+		dbRepository = config.Extensions.Search.CVE.Trivy.DBRepository
+	}
+
+	return cveinfo.NewCVEInfo(storeController, repoDB, dbRepository, log)
+}
 
 func EnableSearchExtension(config *config.Config, storeController storage.StoreController,
-	repoDB repodb.RepoDB, log log.Logger,
+	repoDB repodb.RepoDB, cveInfo CveInfo, log log.Logger,
 ) {
 	if config.Extensions.Search != nil && *config.Extensions.Search.Enable && config.Extensions.Search.CVE != nil {
 		defaultUpdateInterval, _ := time.ParseDuration("2h")
@@ -37,15 +50,8 @@ func EnableSearchExtension(config *config.Config, storeController storage.StoreC
 			log.Warn().Msg("CVE update interval set to too-short interval < 2h, changing update duration to 2 hours and continuing.") //nolint:lll // gofumpt conflicts with lll
 		}
 
-		dbRepository := ""
-		if config.Extensions.Search.CVE.Trivy != nil {
-			dbRepository = config.Extensions.Search.CVE.Trivy.DBRepository
-		}
-
-		cveInfo = cveinfo.NewCVEInfo(storeController, repoDB, dbRepository, log)
-
 		go func() {
-			err := downloadTrivyDB(log, config.Extensions.Search.CVE.UpdateInterval)
+			err := downloadTrivyDB(cveInfo, log, config.Extensions.Search.CVE.UpdateInterval)
 			if err != nil {
 				log.Error().Err(err).Msg("error while downloading TrivyDB")
 			}
@@ -55,7 +61,7 @@ func EnableSearchExtension(config *config.Config, storeController storage.StoreC
 	}
 }
 
-func downloadTrivyDB(log log.Logger, updateInterval time.Duration) error {
+func downloadTrivyDB(cveInfo CveInfo, log log.Logger, updateInterval time.Duration) error {
 	for {
 		log.Info().Msg("updating the CVE database")
 
@@ -71,30 +77,12 @@ func downloadTrivyDB(log log.Logger, updateInterval time.Duration) error {
 }
 
 func SetupSearchRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
-	repoDB repodb.RepoDB, log log.Logger,
+	repoDB repodb.RepoDB, cveInfo CveInfo, log log.Logger,
 ) {
 	log.Info().Msg("setting up search routes")
 
 	if config.Extensions.Search != nil && *config.Extensions.Search.Enable {
-		var resConfig gql_generated.Config
-
-		if config.Extensions.Search.CVE != nil {
-			// cveinfo should already be initialized by this time
-			// as EnableSearchExtension is supposed to be called earlier, but let's be sure
-			if cveInfo == nil {
-				dbRepository := ""
-
-				if config.Extensions.Search.CVE.Trivy != nil {
-					dbRepository = config.Extensions.Search.CVE.Trivy.DBRepository
-				}
-
-				cveInfo = cveinfo.NewCVEInfo(storeController, repoDB, dbRepository, log)
-			}
-
-			resConfig = search.GetResolverConfig(log, storeController, repoDB, cveInfo)
-		} else {
-			resConfig = search.GetResolverConfig(log, storeController, repoDB, nil)
-		}
+		resConfig := search.GetResolverConfig(log, storeController, repoDB, cveInfo)
 
 		graphqlPrefix := router.PathPrefix(constants.FullSearchPrefix).Methods("OPTIONS", "GET", "POST")
 		graphqlPrefix.Handler(gqlHandler.NewDefaultServer(gql_generated.NewExecutableSchema(resConfig)))
