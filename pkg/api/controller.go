@@ -121,11 +121,7 @@ func (c *Controller) GetPort() int {
 }
 
 func (c *Controller) Run(reloadCtx context.Context) error {
-	// print the current configuration, but strip secrets
-	c.Log.Info().Interface("params", c.Config.Sanitize()).Msg("configuration settings")
-
-	// print the current runtime environment
-	DumpRuntimeParams(c.Log)
+	c.StartBackgroundTasks(reloadCtx)
 
 	// setup HTTP API router
 	engine := mux.NewRouter()
@@ -153,26 +149,6 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 
 	c.Router = engine
 	c.Router.UseEncodedPath()
-
-	var enabled bool
-	if c.Config != nil &&
-		c.Config.Extensions != nil &&
-		c.Config.Extensions.Metrics != nil &&
-		*c.Config.Extensions.Metrics.Enable {
-		enabled = true
-	}
-
-	c.Metrics = monitoring.NewMetricsServer(enabled, c.Log)
-
-	if err := c.InitImageStore(reloadCtx); err != nil {
-		return err
-	}
-
-	if err := c.InitRepoDB(reloadCtx); err != nil {
-		return err
-	}
-
-	c.StartBackgroundTasks(reloadCtx)
 
 	monitoring.SetServerInfo(c.Metrics, c.Config.Commit, c.Config.BinaryType, c.Config.GoVersion,
 		c.Config.DistSpecVersion)
@@ -258,6 +234,43 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 	}
 
 	return server.Serve(listener)
+}
+
+func (c *Controller) Init(reloadCtx context.Context) error {
+	// print the current configuration, but strip secrets
+	c.Log.Info().Interface("params", c.Config.Sanitize()).Msg("configuration settings")
+
+	// print the current runtime environment
+	DumpRuntimeParams(c.Log)
+
+	var enabled bool
+	if c.Config != nil &&
+		c.Config.Extensions != nil &&
+		c.Config.Extensions.Metrics != nil &&
+		*c.Config.Extensions.Metrics.Enable {
+		enabled = true
+	}
+
+	c.Metrics = monitoring.NewMetricsServer(enabled, c.Log)
+
+	if err := c.InitImageStore(reloadCtx); err != nil {
+		return err
+	}
+
+	if err := c.InitRepoDB(reloadCtx); err != nil {
+		return err
+	}
+
+	c.InitCVEInfo()
+
+	return nil
+}
+
+func (c *Controller) InitCVEInfo() {
+	// Enable CVE extension if extension config is provided
+	if c.Config != nil && c.Config.Extensions != nil {
+		c.CveInfo = ext.GetCVEInfo(c.Config, c.StoreController, c.RepoDB, c.Log)
+	}
 }
 
 func (c *Controller) InitImageStore(ctx context.Context) error {
@@ -616,11 +629,6 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 
 	// Enable extensions if extension config is provided for DefaultStore
 	if c.Config != nil && c.Config.Extensions != nil {
-		// There is an assumption, just like in the case of RepoDB and other attributes that
-		// StartBackgroundTasks runs before NewRouteHandler() so CveInfo is set before
-		// the handlers are configured
-		c.CveInfo = ext.GetCVEInfo(c.Config, c.StoreController, c.RepoDB, c.Log)
-
 		ext.EnableMetricsExtension(c.Config, c.Log, c.Config.Storage.RootDirectory)
 		ext.EnableSearchExtension(c.Config, c.StoreController, c.RepoDB, c.CveInfo, c.Log)
 	}

@@ -4,6 +4,7 @@
 package test_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -189,6 +190,40 @@ func TestWaitTillTrivyDBDownloadStarted(t *testing.T) {
 
 		_, err := os.Create(path.Join(tempDir, "trivy.db"))
 		So(err, ShouldBeNil)
+	})
+}
+
+func TestControllerManager(t *testing.T) {
+	Convey("Test StartServer Init() panic", t, func() {
+		port := test.GetFreePort()
+
+		conf := config.New()
+		conf.HTTP.Port = port
+
+		ctlr := api.NewController(conf)
+		ctlrManager := test.NewControllerManager(ctlr)
+
+		// No storage configured
+		So(func() { ctlrManager.StartServer() }, ShouldPanic)
+	})
+
+	Convey("Test RunServer panic", t, func() {
+		tempDir := t.TempDir()
+
+		// Invalid port
+		conf := config.New()
+		conf.HTTP.Port = "999999"
+		conf.Storage.RootDirectory = tempDir
+
+		ctlr := api.NewController(conf)
+		ctlrManager := test.NewControllerManager(ctlr)
+
+		ctx := context.Background()
+
+		err := ctlr.Init(ctx)
+		So(err, ShouldBeNil)
+
+		So(func() { ctlrManager.RunServer(ctx) }, ShouldPanic)
 	})
 }
 
