@@ -1292,7 +1292,7 @@ func TestServerResponseGQLWithoutPermissions(t *testing.T) {
 		}
 
 		ctlr := api.NewController(conf)
-		if err := ctlr.Run(context.Background()); err != nil {
+		if err := ctlr.Init(context.Background()); err != nil {
 			So(err, ShouldNotBeNil)
 		}
 	})

@@ -5,8 +5,12 @@ package cli //nolint:testpackage
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path"
 	"regexp"
@@ -14,6 +18,9 @@ import (
 	"testing"
 	"time"
 
+	regTypes "github.com/google/go-containerregistry/pkg/v1/types"
+	godigest "github.com/opencontainers/go-digest"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/spf13/cobra"
 
@@ -21,7 +28,12 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
+	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
+	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
+	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta/repodb"
 	"zotregistry.io/zot/pkg/test"
+	"zotregistry.io/zot/pkg/test/mocks"
 )
 
 func TestSearchCVECmd(t *testing.T) {
@@ -441,9 +453,23 @@ func TestNegativeServerResponse(t *testing.T) {
 		ctlr := api.NewController(conf)
 		ctlr.Log.Logger = ctlr.Log.Output(writers)
 
-		cm := test.NewControllerManager(ctlr)
-		cm.StartAndWait(conf.HTTP.Port)
-		defer cm.StopServer()
+		ctx := context.Background()
+
+		if err := ctlr.Init(ctx); err != nil {
+			panic(err)
+		}
+
+		ctlr.CveInfo = getMockCveInfo(ctlr.RepoDB, ctlr.Log)
+
+		go func() {
+			if err := ctlr.Run(ctx); !errors.Is(err, http.ErrServerClosed) {
+				panic(err)
+			}
+		}()
+
+		defer ctlr.Shutdown()
+
+		test.WaitTillServerReady(url)
 
 		_, err = test.ReadLogFileAndSearchString(logPath, "DB update completed, next update scheduled", 90*time.Second)
 		if err != nil {
@@ -504,10 +530,23 @@ func TestServerCVEResponse(t *testing.T) {
 	ctlr := api.NewController(conf)
 	ctlr.Log.Logger = ctlr.Log.Output(writers)
 
-	cm := test.NewControllerManager(ctlr)
+	ctx := context.Background()
 
-	cm.StartAndWait(conf.HTTP.Port)
-	defer cm.StopServer()
+	if err := ctlr.Init(ctx); err != nil {
+		panic(err)
+	}
+
+	ctlr.CveInfo = getMockCveInfo(ctlr.RepoDB, ctlr.Log)
+
+	go func() {
+		if err := ctlr.Run(ctx); !errors.Is(err, http.ErrServerClosed) {
+			panic(err)
+		}
+	}()
+
+	defer ctlr.Shutdown()
+
+	test.WaitTillServerReady(url)
 
 	_, err = test.ReadLogFileAndSearchString(logPath, "DB update completed, next update scheduled", 90*time.Second)
 	if err != nil {
@@ -987,4 +1026,95 @@ func MockSearchCve(searchConfig searchConfig) error {
 	}
 
 	return zotErrors.ErrInvalidFlagsCombination
+}
+
+func getMockCveInfo(repoDB repodb.RepoDB, log log.Logger) cveinfo.CveInfo {
+	// RepoDB loaded with initial data, mock the scanner
+	severities := map[string]int{
+		"UNKNOWN":  0,
+		"LOW":      1,
+		"MEDIUM":   2,
+		"HIGH":     3,
+		"CRITICAL": 4,
+	}
+
+	// Setup test CVE data in mock scanner
+	scanner := mocks.CveScannerMock{
+		ScanImageFn: func(image string) (map[string]cvemodel.CVE, error) {
+			if image == "zot-cve-test:0.0.1" {
+				return map[string]cvemodel.CVE{
+					"CVE-2019-9923": {
+						ID:          "CVE-2019-9923",
+						Severity:    "HIGH",
+						Title:       "Title for CVE-2019-9923",
+						Description: "Description of CVE-2019-9923",
+					},
+				}, nil
+			}
+
+			// By default the image has no vulnerabilities
+			return map[string]cvemodel.CVE{}, nil
+		},
+		CompareSeveritiesFn: func(severity1, severity2 string) int {
+			return severities[severity2] - severities[severity1]
+		},
+		IsImageFormatScannableFn: func(image string) (bool, error) {
+			// Almost same logic compared to actual Trivy specific implementation
+			var imageDir string
+
+			var inputTag string
+
+			if strings.Contains(image, ":") {
+				imageDir, inputTag, _ = strings.Cut(image, ":")
+			} else {
+				imageDir = image
+			}
+
+			repoMeta, err := repoDB.GetRepoMeta(imageDir)
+			if err != nil {
+				return false, err
+			}
+
+			manifestDigestStr, ok := repoMeta.Tags[inputTag]
+			if !ok {
+				return false, zotErrors.ErrTagMetaNotFound
+			}
+
+			manifestDigest, err := godigest.Parse(manifestDigestStr.Digest)
+			if err != nil {
+				return false, err
+			}
+
+			manifestData, err := repoDB.GetManifestData(manifestDigest)
+			if err != nil {
+				return false, err
+			}
+
+			var manifestContent ispec.Manifest
+
+			err = json.Unmarshal(manifestData.ManifestBlob, &manifestContent)
+			if err != nil {
+				return false, zotErrors.ErrScanNotSupported
+			}
+
+			for _, imageLayer := range manifestContent.Layers {
+				switch imageLayer.MediaType {
+				case ispec.MediaTypeImageLayerGzip, ispec.MediaTypeImageLayer, string(regTypes.DockerLayer):
+
+					return true, nil
+				default:
+
+					return false, zotErrors.ErrScanNotSupported
+				}
+			}
+
+			return false, nil
+		},
+	}
+
+	return &cveinfo.BaseCveInfo{
+		Log:     log,
+		Scanner: scanner,
+		RepoDB:  repoDB,
+	}
 }

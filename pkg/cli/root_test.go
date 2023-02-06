@@ -78,17 +78,38 @@ func TestServe(t *testing.T) {
 		})
 
 		Convey("bad config", func(c C) {
-			tmpfile, err := os.CreateTemp("", "zot-test*.json")
-			So(err, ShouldBeNil)
-			defer os.Remove(tmpfile.Name()) // clean up
+			rootDir := t.TempDir()
+
+			tmpFile := path.Join(rootDir, "zot-test.json")
 			content := []byte(`{"log":{}}`)
-			_, err = tmpfile.Write(content)
+
+			err := os.WriteFile(tmpFile, content, 0o0600)
 			So(err, ShouldBeNil)
-			err = tmpfile.Close()
-			So(err, ShouldBeNil)
-			os.Args = []string{"cli_test", "serve", tmpfile.Name()}
+
+			os.Args = []string{"cli_test", "serve", tmpFile}
 			So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 		})
+	})
+
+	Convey("Test inaccessible rootDir", t, func(c C) {
+		tmpDir := t.TempDir()
+
+		tmpFile := path.Join(tmpDir, "zot-test.json")
+
+		// missing storag config should result in an error in Controller.Init()
+		content := []byte(`{
+			"distSpecVersion": "1.1.0-dev",
+			"http": {
+				"address":"127.0.0.1",
+				"port":"8080"
+			}
+		}`)
+
+		err := os.WriteFile(tmpFile, content, 0o0600)
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "serve", tmpFile}
+		So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
 	})
 }
 

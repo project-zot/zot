@@ -784,6 +784,10 @@ func TestConfigReloader(t *testing.T) {
 
 		go func() {
 			// this blocks
+			if err := dctlr.Init(reloadCtx); err != nil {
+				return
+			}
+
 			if err := dctlr.Run(reloadCtx); err != nil {
 				return
 			}
