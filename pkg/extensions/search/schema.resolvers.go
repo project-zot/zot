@@ -23,25 +23,25 @@ func (r *queryResolver) CVEListForImage(ctx context.Context, image string, reque
 }
 
 // ImageListForCve is the resolver for the ImageListForCVE field.
-func (r *queryResolver) ImageListForCve(ctx context.Context, id string, requestedPage *gql_generated.PageInput) ([]*gql_generated.ImageSummary, error) {
+func (r *queryResolver) ImageListForCve(ctx context.Context, id string, requestedPage *gql_generated.PageInput) (*gql_generated.PaginatedImagesResult, error) {
 	if r.cveInfo == nil {
-		return []*gql_generated.ImageSummary{}, zerr.ErrCVESearchDisabled
+		return &gql_generated.PaginatedImagesResult{}, zerr.ErrCVESearchDisabled
 	}
 
 	return getImageListForCVE(ctx, id, r.cveInfo, requestedPage, r.repoDB, r.log)
 }
 
 // ImageListWithCVEFixed is the resolver for the ImageListWithCVEFixed field.
-func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, image string, requestedPage *gql_generated.PageInput) ([]*gql_generated.ImageSummary, error) {
+func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, image string, requestedPage *gql_generated.PageInput) (*gql_generated.PaginatedImagesResult, error) {
 	if r.cveInfo == nil {
-		return []*gql_generated.ImageSummary{}, zerr.ErrCVESearchDisabled
+		return &gql_generated.PaginatedImagesResult{}, zerr.ErrCVESearchDisabled
 	}
 
 	return getImageListWithCVEFixed(ctx, id, image, r.cveInfo, requestedPage, r.repoDB, r.log)
 }
 
 // ImageListForDigest is the resolver for the ImageListForDigest field.
-func (r *queryResolver) ImageListForDigest(ctx context.Context, id string, requestedPage *gql_generated.PageInput) ([]*gql_generated.ImageSummary, error) {
+func (r *queryResolver) ImageListForDigest(ctx context.Context, id string, requestedPage *gql_generated.PageInput) (*gql_generated.PaginatedImagesResult, error) {
 	r.log.Info().Msg("extracting repositories")
 
 	imgResultForDigest, err := getImageListForDigest(ctx, id, r.repoDB, r.cveInfo, requestedPage)
@@ -64,7 +64,7 @@ func (r *queryResolver) RepoListWithNewestImage(ctx context.Context, requestedPa
 }
 
 // ImageList is the resolver for the ImageList field.
-func (r *queryResolver) ImageList(ctx context.Context, repo string, requestedPage *gql_generated.PageInput) ([]*gql_generated.ImageSummary, error) {
+func (r *queryResolver) ImageList(ctx context.Context, repo string, requestedPage *gql_generated.PageInput) (*gql_generated.PaginatedImagesResult, error) {
 	r.log.Info().Msg("extension api: getting a list of all images")
 
 	imageList, err := getImageList(ctx, repo, r.repoDB, r.cveInfo, requestedPage, r.log)

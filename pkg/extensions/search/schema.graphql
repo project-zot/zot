@@ -534,7 +534,7 @@ type Query {
         id: String!,
         "Sets the parameters of the requested page"
         requestedPage: PageInput
-    ): [ImageSummary!]
+    ): PaginatedImagesResult!
 
     """
     Returns a list of images that are no longer vulnerable to the CVE of the specified ID,
@@ -547,7 +547,7 @@ type Query {
         image: String!,
         "Sets the parameters of the requested page"
         requestedPage: PageInput
-    ): [ImageSummary!]
+    ): PaginatedImagesResult!
 
     """
     Returns a list of images which contain the specified digest 
@@ -557,7 +557,7 @@ type Query {
         id: String!,
         "Sets the parameters of the requested page"
         requestedPage: PageInput
-    ): [ImageSummary!]
+    ): PaginatedImagesResult!
 
     """
     Returns a list of repositories with the newest tag (most recently created timestamp)
@@ -575,7 +575,7 @@ type Query {
         repo: String!,
         "Sets the parameters of the requested page"
         requestedPage: PageInput
-    ): [ImageSummary!]
+    ): PaginatedImagesResult!
 
     """
     Obtain detailed information about a repository and container images within

@@ -188,7 +188,7 @@ func getImages(config searchConfig) error {
 		return err
 	}
 
-	return printResult(config, imageList.Data.ImageList)
+	return printResult(config, imageList.Data.Results)
 }
 
 type imagesByDigestSearcher struct{}
@@ -241,7 +241,7 @@ func (search derivedImageListSearcherGQL) search(config searchConfig) (bool, err
 		return true, err
 	}
 
-	if err := printResult(config, imageList.Data.ImageList.Results); err != nil {
+	if err := printResult(config, imageList.Data.Results); err != nil {
 		return true, err
 	}
 
@@ -266,7 +266,7 @@ func (search baseImageListSearcherGQL) search(config searchConfig) (bool, error)
 		return true, err
 	}
 
-	if err := printResult(config, imageList.Data.ImageList.Results); err != nil {
+	if err := printResult(config, imageList.Data.Results); err != nil {
 		return true, err
 	}
 
@@ -292,7 +292,7 @@ func (search imagesByDigestSearcherGQL) search(config searchConfig) (bool, error
 		return true, err
 	}
 
-	if err := printResult(config, imageList.Data.ImageList); err != nil {
+	if err := printResult(config, imageList.Data.Results); err != nil {
 		return true, err
 	}
 
@@ -427,7 +427,7 @@ func (search imagesByCVEIDSearcherGQL) search(config searchConfig) (bool, error)
 		return true, err
 	}
 
-	if err := printResult(config, imageList.Data.ImageList); err != nil {
+	if err := printResult(config, imageList.Data.Results); err != nil {
 		return true, err
 	}
 
@@ -553,7 +553,7 @@ func getTagsByCVE(config searchConfig) error {
 			return err
 		}
 
-		imageList = fixedTags.Data.ImageList
+		imageList = fixedTags.Data.Results
 	} else {
 		tags, err := config.searchService.getTagsForCVEGQL(ctx, config, username, password,
 			*config.params["imageName"], *config.params["cveID"])
@@ -561,7 +561,7 @@ func getTagsByCVE(config searchConfig) error {
 			return err
 		}
 
-		imageList = tags.Data.ImageList
+		imageList = tags.Data.Results
 	}
 
 	return printResult(config, imageList)

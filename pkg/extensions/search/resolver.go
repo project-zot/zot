@@ -117,7 +117,7 @@ func FilterByDigest(digest string) repodb.FilterFunc {
 
 func getImageListForDigest(ctx context.Context, digest string, repoDB repodb.RepoDB, cveInfo cveinfo.CveInfo,
 	requestedPage *gql_generated.PageInput,
-) ([]*gql_generated.ImageSummary, error) {
+) (*gql_generated.PaginatedImagesResult, error) {
 	imageList := make([]*gql_generated.ImageSummary, 0)
 
 	if requestedPage == nil {
@@ -137,9 +137,9 @@ func getImageListForDigest(ctx context.Context, digest string, repoDB repodb.Rep
 	}
 
 	// get all repos
-	reposMeta, manifestMetaMap, _, err := repoDB.FilterTags(ctx, FilterByDigest(digest), pageInput)
+	reposMeta, manifestMetaMap, pageInfo, err := repoDB.FilterTags(ctx, FilterByDigest(digest), pageInput)
 	if err != nil {
-		return []*gql_generated.ImageSummary{}, err
+		return &gql_generated.PaginatedImagesResult{}, err
 	}
 
 	for _, repoMeta := range reposMeta {
@@ -148,7 +148,13 @@ func getImageListForDigest(ctx context.Context, digest string, repoDB repodb.Rep
 		imageList = append(imageList, imageSummaries...)
 	}
 
-	return imageList, nil
+	return &gql_generated.PaginatedImagesResult{
+		Results: imageList,
+		Page: &gql_generated.PageInfo{
+			TotalCount: pageInfo.TotalCount,
+			ItemCount:  pageInfo.ItemCount,
+		},
+	}, nil
 }
 
 func getImageSummary(ctx context.Context, repo, tag string, repoDB repodb.RepoDB,
@@ -286,7 +292,7 @@ func getImageListForCVE(
 	requestedPage *gql_generated.PageInput,
 	repoDB repodb.RepoDB,
 	log log.Logger,
-) ([]*gql_generated.ImageSummary, error) {
+) (*gql_generated.PaginatedImagesResult, error) {
 	// Obtain all repos and tags
 	// Infinite page to make sure we scan all repos in advance, before filtering results
 	// The CVE scan logic is called from here, not in the actual filter,
@@ -296,7 +302,7 @@ func getImageListForCVE(
 		repodb.PageInput{Limit: 0, Offset: 0, SortBy: repodb.SortCriteria(gql_generated.SortCriteriaUpdateTime)},
 	)
 	if err != nil {
-		return []*gql_generated.ImageSummary{}, err
+		return &gql_generated.PaginatedImagesResult{}, err
 	}
 
 	affectedImages := []common.TagInfo{}
@@ -311,7 +317,7 @@ func getImageListForCVE(
 			log.Error().Str("repo", repo).Str("CVE", cveID).Err(err).
 				Msg("error getting image list for CVE from repo")
 
-			return []*gql_generated.ImageSummary{}, err
+			return &gql_generated.PaginatedImagesResult{}, err
 		}
 
 		affectedImages = append(affectedImages, tagsInfo...)
@@ -336,9 +342,9 @@ func getImageListForCVE(
 	}
 
 	// get all repos
-	reposMeta, manifestMetaMap, _, err := repoDB.FilterTags(ctx, FilterByTagInfo(affectedImages), pageInput)
+	reposMeta, manifestMetaMap, pageInfo, err := repoDB.FilterTags(ctx, FilterByTagInfo(affectedImages), pageInput)
 	if err != nil {
-		return []*gql_generated.ImageSummary{}, err
+		return &gql_generated.PaginatedImagesResult{}, err
 	}
 
 	for _, repoMeta := range reposMeta {
@@ -347,7 +353,13 @@ func getImageListForCVE(
 		imageList = append(imageList, imageSummaries...)
 	}
 
-	return imageList, nil
+	return &gql_generated.PaginatedImagesResult{
+		Results: imageList,
+		Page: &gql_generated.PageInfo{
+			TotalCount: pageInfo.TotalCount,
+			ItemCount:  pageInfo.ItemCount,
+		},
+	}, nil
 }
 
 func getImageListWithCVEFixed(
@@ -358,7 +370,7 @@ func getImageListWithCVEFixed(
 	requestedPage *gql_generated.PageInput,
 	repoDB repodb.RepoDB,
 	log log.Logger,
-) ([]*gql_generated.ImageSummary, error) {
+) (*gql_generated.PaginatedImagesResult, error) {
 	imageList := make([]*gql_generated.ImageSummary, 0)
 
 	log.Info().Str("repo", repo).Str("CVE", cveID).Msg("extracting list of tags where CVE is fixed")
@@ -368,7 +380,10 @@ func getImageListWithCVEFixed(
 		log.Error().Str("repo", repo).Str("CVE", cveID).Err(err).
 			Msg("error getting image list with CVE fixed from repo")
 
-		return imageList, err
+		return &gql_generated.PaginatedImagesResult{
+			Page:    &gql_generated.PageInfo{},
+			Results: imageList,
+		}, err
 	}
 
 	// We're not interested in other vulnerabilities
@@ -388,9 +403,9 @@ func getImageListWithCVEFixed(
 	}
 
 	// get all repos
-	reposMeta, manifestMetaMap, _, err := repoDB.FilterTags(ctx, FilterByTagInfo(tagsInfo), pageInput)
+	reposMeta, manifestMetaMap, pageInfo, err := repoDB.FilterTags(ctx, FilterByTagInfo(tagsInfo), pageInput)
 	if err != nil {
-		return []*gql_generated.ImageSummary{}, err
+		return &gql_generated.PaginatedImagesResult{}, err
 	}
 
 	for _, repoMeta := range reposMeta {
@@ -402,7 +417,13 @@ func getImageListWithCVEFixed(
 		imageList = append(imageList, imageSummaries...)
 	}
 
-	return imageList, nil
+	return &gql_generated.PaginatedImagesResult{
+		Results: imageList,
+		Page: &gql_generated.PageInfo{
+			TotalCount: pageInfo.TotalCount,
+			ItemCount:  pageInfo.ItemCount,
+		},
+	}, nil
 }
 
 func repoListWithNewestImage(
@@ -964,7 +985,7 @@ func searchingForRepos(query string) bool {
 
 func getImageList(ctx context.Context, repo string, repoDB repodb.RepoDB, cveInfo cveinfo.CveInfo,
 	requestedPage *gql_generated.PageInput, log log.Logger, //nolint:unparam
-) ([]*gql_generated.ImageSummary, error) {
+) (*gql_generated.PaginatedImagesResult, error) {
 	imageList := make([]*gql_generated.ImageSummary, 0)
 
 	if requestedPage == nil {
@@ -984,13 +1005,13 @@ func getImageList(ctx context.Context, repo string, repoDB repodb.RepoDB, cveInf
 	}
 
 	// reposMeta, manifestMetaMap, err := repoDB.SearchRepos(ctx, repo, repodb.Filter{}, pageInput)
-	reposMeta, manifestMetaMap, _, err := repoDB.FilterTags(ctx,
+	reposMeta, manifestMetaMap, pageInfo, err := repoDB.FilterTags(ctx,
 		func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
 			return true
 		},
 		pageInput)
 	if err != nil {
-		return []*gql_generated.ImageSummary{}, err
+		return &gql_generated.PaginatedImagesResult{}, err
 	}
 
 	for _, repoMeta := range reposMeta {
@@ -1002,7 +1023,13 @@ func getImageList(ctx context.Context, repo string, repoDB repodb.RepoDB, cveInf
 		imageList = append(imageList, imageSummaries...)
 	}
 
-	return imageList, nil
+	return &gql_generated.PaginatedImagesResult{
+		Results: imageList,
+		Page: &gql_generated.PageInfo{
+			TotalCount: pageInfo.TotalCount,
+			ItemCount:  pageInfo.ItemCount,
+		},
+	}, nil
 }
 
 func getReferrers(store storage.ImageStore, repoName string, digest string, artifactTypes []string, log log.Logger) (
