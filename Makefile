@@ -79,12 +79,14 @@ exporter-minimal: modcheck build-metadata
 
 .PHONY: test
 test: check-skopeo $(TESTDATA) $(NOTATION) $(ORAS)
-	go test -failfast -tags $(EXTENSIONS),containers_image_openpgp -v -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-extended.txt -covermode=atomic ./...
-	go test -failfast -tags containers_image_openpgp -v -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-minimal.txt -covermode=atomic ./...
+	rm -rf go_test.out
+	go test -failfast -tags $(EXTENSIONS),containers_image_openpgp -v -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-extended.txt -covermode=atomic ./... | tee -a go_test.out
+	go test -failfast -tags containers_image_openpgp -v -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-minimal.txt -covermode=atomic ./... | tee -a go_test.out
 	# development-mode unit tests possibly using failure injection
-	go test -failfast -tags dev,$(EXTENSIONS),containers_image_openpgp -v -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-dev-extended.txt -covermode=atomic ./pkg/test/... ./pkg/api/... ./pkg/storage/... ./pkg/extensions/sync/... -run ^TestInject
-	go test -failfast -tags dev,containers_image_openpgp -v -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-dev-minimal.txt -covermode=atomic ./pkg/test/... ./pkg/storage/... ./pkg/extensions/sync/... -run ^TestInject
-	go test -failfast -tags stress,$(EXTENSIONS),containers_image_openpgp -v -trimpath -race -timeout 15m ./pkg/cli/stress_test.go
+	go test -failfast -tags dev,$(EXTENSIONS),containers_image_openpgp -v -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-dev-extended.txt -covermode=atomic ./pkg/test/... ./pkg/api/... ./pkg/storage/... ./pkg/extensions/sync/... -run ^TestInject | tee -a go_test.out
+	go test -failfast -tags dev,containers_image_openpgp -v -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-dev-minimal.txt -covermode=atomic ./pkg/test/... ./pkg/storage/... ./pkg/extensions/sync/... -run ^TestInject | tee -a go_test.out
+	go test -failfast -tags stress,$(EXTENSIONS),containers_image_openpgp -v -trimpath -race -timeout 15m ./pkg/cli/stress_test.go | tee -a go_test.out
+	cat go_test.out | grep -E '(^(--- |=== )|	zotregistry.io/zot)'
 
 .PHONY: privileged-test
 privileged-test: check-skopeo $(TESTDATA) $(NOTATION)
