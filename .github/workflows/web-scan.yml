@@ -1,0 +1,48 @@
+name: 'Security web scan for zot'
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  release:
+    types:
+      - published
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  zap_scan:
+    runs-on: ubuntu-latest
+    name: Scan the webapplication
+    strategy:
+      matrix:
+        flavor: [zot-minimal-linux-amd64, zot-linux-amd64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          ref: main
+      - name: Setup
+        run: |
+          # upload images, zot can serve OCI image layouts directly like so
+          mkdir /tmp/zot
+          skopeo copy --format=oci docker://busybox:latest oci:/tmp/zot/busybox:latest
+          # start zot
+          docker pull ghcr.io/project-zot/zot-minimal-linux-amd64:latest
+          docker run -d --name zot -v /tmp/zot:/var/lib/registry -p 8000:5000 ghcr.io/project-zot/${{ matrix.flavor }}:latest
+          # wait until service is up
+          while true; do x=0; curl -f http://$REGISTRY_HOST/v2/ || x=1; if [ $x -eq 0 ]; then break; fi; sleep 1; done
+        env:
+          REGISTRY_HOST: localhost:8000
+      - name: ZAP Scan
+        uses: zaproxy/action-baseline@v0.7.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          docker_name: 'owasp/zap2docker-stable'
+          target: 'http://localhost:8000'
+          rules_file_name: '.zap/rules.tsv'
+          cmd_options: '-a'
