@@ -1,0 +1,66 @@
+name: 'Security web scan for zot'
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  release:
+    types:
+      - published
+
+permissions:
+  contents: read
+
+jobs:
+  zap_scan:
+    runs-on: ubuntu-latest
+    name: Scan ZOT using ZAP
+    strategy:
+      matrix:
+        flavor: [zot-linux-amd64-minimal, zot-linux-amd64]
+    steps:
+      - name: Install go
+        uses: actions/setup-go@v3
+        with:
+          go-version: 1.19.x
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Build zot
+        run: |
+          echo "Building $FLAVOR"
+          cd $GITHUB_WORKSPACE
+          if [[ $FLAVOR == "zot-linux-amd64-minimal" ]]; then
+            make binary-minimal
+          else
+            make binary
+          fi
+          ls -l bin/
+        env:
+          FLAVOR: ${{ matrix.flavor }}
+      - name: Bringup zot server
+        run: |
+          # upload images, zot can serve OCI image layouts directly like so
+          mkdir /tmp/zot
+          skopeo copy --format=oci docker://busybox:latest oci:/tmp/zot/busybox:latest
+          # start zot
+          if [[ $FLAVOR == "zot-linux-amd64-minimal" ]]; then
+            ./bin/${{ matrix.flavor }} serve examples/config-conformance.json &
+          else
+            ./bin/${{ matrix.flavor }} serve examples/config-ui.json &
+          fi
+          # wait until service is up
+          while true; do x=0; curl -f http://localhost:8080/v2/ || x=1; if [ $x -eq 0 ]; then break; fi; sleep 1; done
+        env:
+          FLAVOR: ${{ matrix.flavor }}
+      - name: ZAP Scan Rest API
+        uses: zaproxy/action-baseline@v0.7.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          docker_name: 'owasp/zap2docker-stable'
+          target: 'http://localhost:8080/v2/'
+          rules_file_name: '.zap/rules.tsv'
+          cmd_options: '-a -j'
+          allow_issue_writing: false
+          fail_action: true

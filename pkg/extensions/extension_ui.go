@@ -33,6 +33,17 @@ func (uih uiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func addUISecurityHeaders(h http.Handler) http.HandlerFunc { //nolint:varnamelen
+	return func(w http.ResponseWriter, r *http.Request) {
+		permissionsPolicy := "microphone=(), geolocation=(), battery=(), camera=(), autoplay=(), gyroscope=(), payment=()"
+		w.Header().Set("Permissions-Policy", permissionsPolicy)
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+
+		h.ServeHTTP(w, r)
+	}
+}
+
 func SetupUIRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
 	log log.Logger,
 ) {
@@ -40,11 +51,11 @@ func SetupUIRoutes(config *config.Config, router *mux.Router, storeController st
 		fsub, _ := fs.Sub(content, "build")
 		uih := uiHandler{log: log}
 
-		router.PathPrefix("/login").Handler(uih)
-		router.PathPrefix("/home").Handler(uih)
-		router.PathPrefix("/explore").Handler(uih)
-		router.PathPrefix("/image").Handler(uih)
-		router.PathPrefix("/").Handler(http.FileServer(http.FS(fsub)))
+		router.PathPrefix("/login").Handler(addUISecurityHeaders(uih))
+		router.PathPrefix("/home").Handler(addUISecurityHeaders(uih))
+		router.PathPrefix("/explore").Handler(addUISecurityHeaders(uih))
+		router.PathPrefix("/image").Handler(addUISecurityHeaders(uih))
+		router.PathPrefix("/").Handler(addUISecurityHeaders(http.FileServer(http.FS(fsub))))
 
 		log.Info().Msg("setting up ui routes")
 	}
