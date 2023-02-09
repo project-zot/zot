@@ -105,6 +105,37 @@ func (img Image) Digest() (godigest.Digest, error) {
 	return godigest.FromBytes(blob), nil
 }
 
+type Artifact struct {
+	Manifest  ispec.Artifact
+	Blobs     []ArtifactBlobs
+	Reference string
+}
+
+func (a Artifact) Digest() (godigest.Digest, error) {
+	blob, err := json.Marshal(a.Manifest)
+	if err != nil {
+		return "", err
+	}
+
+	return godigest.FromBytes(blob), nil
+}
+
+func (a Artifact) ArtifactData() (repodb.ArtifactData, error) {
+	blob, err := json.Marshal(a.Manifest)
+	if err != nil {
+		return repodb.ArtifactData{}, err
+	}
+
+	return repodb.ArtifactData{
+		ManifestBlob: blob,
+	}, nil
+}
+
+type ArtifactBlobs struct {
+	Blob      []byte
+	MediaType string
+}
+
 type MultiarchImage struct {
 	Index     ispec.Index
 	Images    []Image
@@ -623,6 +654,22 @@ func GetRandomImageComponents(layerSize int) (ispec.Image, [][]byte, ispec.Manif
 	return config, layers, manifest, nil
 }
 
+func GetRandomImage(reference string) (Image, error) {
+	const layerSize = 20
+
+	config, layers, manifest, err := GetRandomImageComponents(layerSize)
+	if err != nil {
+		return Image{}, err
+	}
+
+	return Image{
+		Manifest:  manifest,
+		Layers:    layers,
+		Config:    config,
+		Reference: reference,
+	}, nil
+}
+
 func GetImageComponentsWithConfig(conf ispec.Image) (ispec.Image, [][]byte, ispec.Manifest, error) {
 	configBlob, err := json.Marshal(conf)
 	if err = Error(err); err != nil {
@@ -728,6 +775,49 @@ func GetImageWithComponents(config ispec.Image, layers [][]byte) (Image, error) 
 	}, nil
 }
 
+func GetRandomArtifact(subject *ispec.Descriptor) (Artifact, error) {
+	var randBlob [10]byte
+
+	_, err := rand.Read(randBlob[:])
+	if err != nil {
+		return Artifact{}, err
+	}
+
+	artifactBlobs := []ArtifactBlobs{
+		{
+			Blob:      randBlob[:],
+			MediaType: "application/octet-stream",
+		},
+	}
+
+	blobsDescriptors := make([]ispec.Descriptor, 0, len(artifactBlobs))
+
+	for _, artifactBlob := range artifactBlobs {
+		blobsDescriptors = append(blobsDescriptors, ispec.Descriptor{
+			Digest:    godigest.FromBytes(artifactBlob.Blob),
+			MediaType: artifactBlob.MediaType,
+			Size:      int64(len(artifactBlob.Blob)),
+		})
+	}
+
+	artifactManifest := ispec.Artifact{
+		MediaType: ispec.MediaTypeArtifactManifest,
+		Blobs:     blobsDescriptors,
+		Subject:   subject,
+	}
+
+	artifactManifestBlob, err := json.Marshal(artifactManifest)
+	if err != nil {
+		return Artifact{}, err
+	}
+
+	return Artifact{
+		Manifest:  artifactManifest,
+		Blobs:     artifactBlobs,
+		Reference: godigest.FromBytes(artifactManifestBlob).String(),
+	}, nil
+}
+
 func GetCosignSignatureTagForManifest(manifest ispec.Manifest) (string, error) {
 	manifestBlob, err := json.Marshal(manifest)
 	if err != nil {
@@ -741,6 +831,32 @@ func GetCosignSignatureTagForManifest(manifest ispec.Manifest) (string, error) {
 
 func GetCosignSignatureTagForDigest(manifestDigest godigest.Digest) string {
 	return manifestDigest.Algorithm().String() + "-" + manifestDigest.Encoded() + ".sig"
+}
+
+func GetImageWithSubject(subjectDigest godigest.Digest, mediaType string) (Image, error) {
+	num := 100
+
+	conf, layers, manifest, err := GetRandomImageComponents(num)
+	if err != nil {
+		return Image{}, err
+	}
+
+	manifest.Subject = &ispec.Descriptor{
+		Digest:    subjectDigest,
+		MediaType: mediaType,
+	}
+
+	manifestBlob, err := json.Marshal(manifest)
+	if err != nil {
+		return Image{}, err
+	}
+
+	return Image{
+		Manifest:  manifest,
+		Config:    conf,
+		Layers:    layers,
+		Reference: godigest.FromBytes(manifestBlob).String(),
+	}, nil
 }
 
 func UploadImage(img Image, baseURL, repo string) error {
@@ -830,7 +946,19 @@ func UploadImage(img Image, baseURL, repo string) error {
 	return err
 }
 
-func UploadArtifact(baseURL, repo string, artifactManifest *ispec.Artifact) error {
+func DeleteImage(repo, reference, baseURL string) (int, error) {
+	resp, err := resty.R().Delete(
+		fmt.Sprintf(baseURL+"/v2/%s/manifests/%s", repo, reference),
+	)
+	if err != nil {
+		return -1, err
+	}
+
+	return resp.StatusCode(), err
+}
+
+// UploadArtifactManifest is used in tests where we don't need to upload the blobs of the artifact.
+func UploadArtifactManifest(artifactManifest *ispec.Artifact, baseURL, repo string) error {
 	// put manifest
 	artifactManifestBlob, err := json.Marshal(artifactManifest)
 	if err != nil {

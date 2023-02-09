@@ -512,7 +512,7 @@ func (c *Controller) InitRepoDB(reloadCtx context.Context) error {
 			return err
 		}
 
-		err = repodb.SyncRepoDB(driver, c.StoreController, c.Log)
+		err = repodb.ParseStorage(driver, c.StoreController, c.Log)
 		if err != nil {
 			return err
 		}
@@ -554,6 +554,9 @@ func getDynamoParams(cacheDriverConfig map[string]interface{}, log log.Logger) d
 	indexDataTablename, ok := toStringIfOk(cacheDriverConfig, "indexdatatablename", log)
 	allParametersOk = allParametersOk && ok
 
+	artifactDataTablename, ok := toStringIfOk(cacheDriverConfig, "artifactdatatablename", log)
+	allParametersOk = allParametersOk && ok
+
 	versionTablename, ok := toStringIfOk(cacheDriverConfig, "versiontablename", log)
 	allParametersOk = allParametersOk && ok
 
@@ -567,6 +570,7 @@ func getDynamoParams(cacheDriverConfig map[string]interface{}, log log.Logger) d
 		RepoMetaTablename:     repoMetaTablename,
 		ManifestDataTablename: manifestDataTablename,
 		IndexDataTablename:    indexDataTablename,
+		ArtifactDataTablename: artifactDataTablename,
 		VersionTablename:      versionTablename,
 	}
 }

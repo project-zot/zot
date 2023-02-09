@@ -2,5 +2,5 @@ package params
 
 type DBDriverParameters struct {
 	Endpoint, Region, RepoMetaTablename, ManifestDataTablename, IndexDataTablename,
-	VersionTablename string
+	ArtifactDataTablename, VersionTablename string
 }

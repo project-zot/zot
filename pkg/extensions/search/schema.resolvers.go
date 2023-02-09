@@ -130,9 +130,7 @@ func (r *queryResolver) Image(ctx context.Context, image string) (*gql_generated
 
 // Referrers is the resolver for the Referrers field.
 func (r *queryResolver) Referrers(ctx context.Context, repo string, digest string, typeArg []string) ([]*gql_generated.Referrer, error) {
-	store := r.storeController.GetImageStore(repo)
-
-	referrers, err := getReferrers(store, repo, digest, typeArg, r.log)
+	referrers, err := getReferrers(r.repoDB, repo, digest, typeArg, r.log)
 	if err != nil {
 		r.log.Error().Err(err).Msg("unable to get referrers from default store")
 

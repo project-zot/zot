@@ -37,6 +37,7 @@ function setup() {
             "cacheTablename": "BlobTable",
             "repoMetaTablename": "RepoMetadataTable",
             "manifestDataTablename": "ManifestDataTable",
+            "artifactDataTablename": "ArtifactDataTable",
             "indexDataTablename": "IndexDataTable",
             "versionTablename": "Version"
         }

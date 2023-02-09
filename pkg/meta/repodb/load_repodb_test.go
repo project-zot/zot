@@ -12,7 +12,6 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	oras "github.com/oras-project/artifacts-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
 	zerr "zotregistry.io/zot/errors"
@@ -32,8 +31,8 @@ const repo = "repo"
 
 var ErrTestError = errors.New("test error")
 
-func TestSyncRepoDBErrors(t *testing.T) {
-	Convey("SyncRepoDB", t, func() {
+func TestLoadOCILayoutErrors(t *testing.T) {
+	Convey("LoadOCILayout", t, func() {
 		imageStore := mocks.MockedImageStore{
 			GetIndexContentFn: func(repo string) ([]byte, error) {
 				return nil, ErrTestError
@@ -46,7 +45,7 @@ func TestSyncRepoDBErrors(t *testing.T) {
 		repoDB := mocks.RepoDBMock{}
 
 		// sync repo fail
-		err := repodb.SyncRepoDB(repoDB, storeController, log.NewLogger("debug", ""))
+		err := repodb.ParseStorage(repoDB, storeController, log.NewLogger("debug", ""))
 		So(err, ShouldNotBeNil)
 
 		Convey("getAllRepos errors", func() {
@@ -67,12 +66,12 @@ func TestSyncRepoDBErrors(t *testing.T) {
 				},
 			}
 
-			err := repodb.SyncRepoDB(repoDB, storeController, log.NewLogger("debug", ""))
+			err := repodb.ParseStorage(repoDB, storeController, log.NewLogger("debug", ""))
 			So(err, ShouldNotBeNil)
 		})
 	})
 
-	Convey("SyncRepo", t, func() {
+	Convey("LoadRepo", t, func() {
 		imageStore := mocks.MockedImageStore{}
 		storeController := storage.StoreController{DefaultStore: &imageStore}
 		repoDB := mocks.RepoDBMock{}
@@ -83,7 +82,7 @@ func TestSyncRepoDBErrors(t *testing.T) {
 				return nil, ErrTestError
 			}
 
-			err := repodb.SyncRepo("repo", repoDB, storeController, log)
+			err := repodb.ParseRepo("repo", repoDB, storeController, log)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -92,7 +91,7 @@ func TestSyncRepoDBErrors(t *testing.T) {
 				return []byte("Invalid JSON"), nil
 			}
 
-			err := repodb.SyncRepo("repo", repoDB, storeController, log)
+			err := repodb.ParseRepo("repo", repoDB, storeController, log)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -106,7 +105,7 @@ func TestSyncRepoDBErrors(t *testing.T) {
 					return repodb.RepoMetadata{}, ErrTestError
 				}
 
-				err := repodb.SyncRepo("repo", repoDB, storeController, log)
+				err := repodb.ParseRepo("repo", repoDB, storeController, log)
 				So(err, ShouldNotBeNil)
 			})
 
@@ -125,7 +124,7 @@ func TestSyncRepoDBErrors(t *testing.T) {
 					return ErrTestError
 				}
 
-				err := repodb.SyncRepo("repo", repoDB, storeController, log)
+				err := repodb.ParseRepo("repo", repoDB, storeController, log)
 				So(err, ShouldNotBeNil)
 			})
 		})
@@ -154,7 +153,7 @@ func TestSyncRepoDBErrors(t *testing.T) {
 					return repodb.ManifestMetadata{}, ErrTestError
 				}
 
-				err = repodb.SyncRepo("repo", repoDB, storeController, log)
+				err = repodb.ParseRepo("repo", repoDB, storeController, log)
 				So(err, ShouldNotBeNil)
 			})
 		})
@@ -183,7 +182,7 @@ func TestSyncRepoDBErrors(t *testing.T) {
 					return ErrTestError
 				}
 
-				err = repodb.SyncRepo("repo", repoDB, storeController, log)
+				err = repodb.ParseRepo("repo", repoDB, storeController, log)
 				So(err, ShouldNotBeNil)
 			})
 		})
@@ -215,7 +214,7 @@ func TestSyncRepoDBErrors(t *testing.T) {
 				imageStore.GetImageManifestFn = func(repo, reference string) ([]byte, godigest.Digest, string, error) {
 					return nil, "", "", ErrTestError
 				}
-				err = repodb.SyncRepo("repo", repoDB, storeController, log)
+				err = repodb.ParseRepo("repo", repoDB, storeController, log)
 				So(err, ShouldNotBeNil)
 			})
 
@@ -224,7 +223,7 @@ func TestSyncRepoDBErrors(t *testing.T) {
 				imageStore.GetImageManifestFn = func(repo, reference string) ([]byte, godigest.Digest, string, error) {
 					return []byte("Invalid JSON"), "", "", nil
 				}
-				err = repodb.SyncRepo("repo", repoDB, storeController, log)
+				err = repodb.ParseRepo("repo", repoDB, storeController, log)
 				So(err, ShouldNotBeNil)
 			})
 			Convey("CheckIsImageSignature -> not signature", func() {
@@ -241,7 +240,7 @@ func TestSyncRepoDBErrors(t *testing.T) {
 						return nil, ErrTestError
 					}
 
-					err = repodb.SyncRepo("repo", repoDB, storeController, log)
+					err = repodb.ParseRepo("repo", repoDB, storeController, log)
 					So(err, ShouldNotBeNil)
 				})
 
@@ -250,17 +249,19 @@ func TestSyncRepoDBErrors(t *testing.T) {
 						return []byte("invalid JSON"), nil
 					}
 
-					err = repodb.SyncRepo("repo", repoDB, storeController, log)
+					err = repodb.ParseRepo("repo", repoDB, storeController, log)
 					So(err, ShouldNotBeNil)
 				})
 			})
 
 			Convey("CheckIsImageSignature -> is signature", func() {
-				manifestContent := oras.Manifest{
-					Subject: &oras.Descriptor{
+				manifestContent := ispec.Artifact{
+					Subject: &ispec.Descriptor{
 						Digest: "123",
 					},
+					ArtifactType: "application/vnd.cncf.notary.signature",
 				}
+
 				manifestBlob, err := json.Marshal(manifestContent)
 				So(err, ShouldBeNil)
 
@@ -274,14 +275,14 @@ func TestSyncRepoDBErrors(t *testing.T) {
 					return ErrTestError
 				}
 
-				err = repodb.SyncRepo("repo", repoDB, storeController, log)
+				err = repodb.ParseRepo("repo", repoDB, storeController, log)
 				So(err, ShouldNotBeNil)
 			})
 		})
 	})
 }
 
-func TestSyncRepoDBWithStorage(t *testing.T) {
+func TestLoadOCILayoutWithStorage(t *testing.T) {
 	Convey("Boltdb", t, func() {
 		rootDir := t.TempDir()
 
@@ -359,7 +360,7 @@ func TestSyncRepoDBWithStorage(t *testing.T) {
 		})
 		So(err, ShouldBeNil)
 
-		err = repodb.SyncRepoDB(repoDB, storeController, log.NewLogger("debug", ""))
+		err = repodb.ParseStorage(repoDB, storeController, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
 
 		repos, err := repoDB.GetMultipleRepoMeta(
@@ -435,7 +436,7 @@ func TestSyncRepoDBWithStorage(t *testing.T) {
 		})
 		So(err, ShouldBeNil)
 
-		err = repodb.SyncRepoDB(repoDB, storeController, log.NewLogger("debug", ""))
+		err = repodb.ParseStorage(repoDB, storeController, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
 
 		repos, err := repoDB.GetMultipleRepoMeta(
@@ -451,7 +452,7 @@ func TestSyncRepoDBWithStorage(t *testing.T) {
 	})
 }
 
-func TestSyncRepoDBDynamoWrapper(t *testing.T) {
+func TestLoadOCILayoutDynamoWrapper(t *testing.T) {
 	skipIt(t)
 
 	Convey("Dynamodb", t, func() {
@@ -532,6 +533,7 @@ func TestSyncRepoDBDynamoWrapper(t *testing.T) {
 			RepoMetaTablename:     "RepoMetadataTable",
 			ManifestDataTablename: "ManifestDataTable",
 			IndexDataTablename:    "IndexDataTable",
+			ArtifactDataTablename: "ArtifactDataTable",
 			VersionTablename:      "Version",
 		})
 		So(err, ShouldBeNil)
@@ -542,7 +544,7 @@ func TestSyncRepoDBDynamoWrapper(t *testing.T) {
 		err = dynamoWrapper.ResetRepoMetaTable()
 		So(err, ShouldBeNil)
 
-		err = repodb.SyncRepoDB(dynamoWrapper, storeController, log.NewLogger("debug", ""))
+		err = repodb.ParseStorage(dynamoWrapper, storeController, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
 
 		repos, err := dynamoWrapper.GetMultipleRepoMeta(
@@ -618,12 +620,13 @@ func TestSyncRepoDBDynamoWrapper(t *testing.T) {
 			Region:                "us-east-2",
 			RepoMetaTablename:     "RepoMetadataTable",
 			ManifestDataTablename: "ManifestDataTable",
+			ArtifactDataTablename: "ArtifactDataTable",
 			IndexDataTablename:    "IndexDataTable",
 			VersionTablename:      "Version",
 		})
 		So(err, ShouldBeNil)
 
-		err = repodb.SyncRepoDB(repoDB, storeController, log.NewLogger("debug", ""))
+		err = repodb.ParseStorage(repoDB, storeController, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
 
 		repos, err := repoDB.GetMultipleRepoMeta(
@@ -637,6 +640,13 @@ func TestSyncRepoDBDynamoWrapper(t *testing.T) {
 		So(len(repos), ShouldEqual, 1)
 		So(repos[0].Tags, ShouldContainKey, "tag1")
 		So(repos[0].Tags, ShouldNotContainKey, signatureTag)
+	})
+}
+
+func TestGetReferredSubject(t *testing.T) {
+	Convey("GetReferredSubject error", t, func() {
+		_, err := repodb.GetReferredSubject([]byte("bad json"))
+		So(err, ShouldNotBeNil)
 	})
 }
 

@@ -33,6 +33,9 @@ jobs:
           make bin/skopeo
           sudo cp bin/skopeo /usr/bin
           skopeo -v
+      - name: Run referrers tests
+        run: |
+            make test-bats-referrers
       - name: Run push-pull tests
         run: |
             make test-push-pull

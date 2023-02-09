@@ -1008,6 +1008,7 @@ func TestGetReferrersGQL(t *testing.T) {
 			},
 			Subject:      subjectDescriptor,
 			ArtifactType: artifactType,
+			MediaType:    ispec.MediaTypeArtifactManifest,
 			Annotations: map[string]string{
 				"com.artifact.format": "test",
 			},
@@ -1017,14 +1018,15 @@ func TestGetReferrersGQL(t *testing.T) {
 		So(err, ShouldBeNil)
 		artifactManifestDigest := godigest.FromBytes(artifactManifestBlob)
 
-		err = UploadArtifact(baseURL, repo, artifact)
+		err = UploadArtifactManifest(artifact, baseURL, repo)
 		So(err, ShouldBeNil)
 
 		gqlQuery := `
-			{Referrers(
-				repo: "%s",
-				digest: "%s",
-				type: ""
+			{
+				Referrers(
+					repo: "%s",
+					digest: "%s",
+					type: ""
 		   		){
 					ArtifactType,
 					Digest,
@@ -5356,20 +5358,15 @@ func TestRepoDBWhenReadingImages(t *testing.T) {
 
 func TestRepoDBWhenDeletingImages(t *testing.T) {
 	Convey("Setting up zot repo with test images", t, func() {
-		subpath := "/a"
-
 		dir := t.TempDir()
-		subDir := t.TempDir()
-
-		subRootDir := path.Join(subDir, subpath)
-
 		port := GetFreePort()
 		baseURL := GetBaseURL(port)
+
 		conf := config.New()
 		conf.HTTP.Port = port
 		conf.Storage.RootDirectory = dir
-		conf.Storage.SubPaths = make(map[string]config.StorageConfig)
-		conf.Storage.SubPaths[subpath] = config.StorageConfig{RootDirectory: subRootDir}
+		conf.Storage.GC = false
+
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
 			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
@@ -5384,46 +5381,32 @@ func TestRepoDBWhenDeletingImages(t *testing.T) {
 		defer ctlrManager.StopServer()
 
 		// push test images to repo 1 image 1
-		config1, layers1, manifest1, err := GetImageComponents(100)
+		image1, err := GetRandomImage("1.0.1")
 		So(err, ShouldBeNil)
 
-		layersSize1 := 0
-		for _, l := range layers1 {
-			layersSize1 += len(l)
-		}
-
 		err = UploadImage(
-			Image{
-				Manifest:  manifest1,
-				Config:    config1,
-				Layers:    layers1,
-				Reference: "1.0.1",
-			},
+			image1,
 			baseURL,
 			"repo1",
 		)
 		So(err, ShouldBeNil)
 
 		// push test images to repo 1 image 2
-		config2, layers2, manifest2, err := GetImageComponents(200)
-		So(err, ShouldBeNil)
 		createdTime2 := time.Date(2009, 1, 1, 12, 0, 0, 0, time.UTC)
-		config2.History = append(config2.History, ispec.History{Created: &createdTime2})
-		manifest2, err = updateManifestConfig(manifest2, config2)
+		image2, err := GetImageWithConfig(ispec.Image{
+			Created: &createdTime2,
+			History: []ispec.History{
+				{
+					Created: &createdTime2,
+				},
+			},
+		})
 		So(err, ShouldBeNil)
 
-		layersSize2 := 0
-		for _, l := range layers2 {
-			layersSize2 += len(l)
-		}
+		image2.Reference = "1.0.2"
 
 		err = UploadImage(
-			Image{
-				Manifest:  manifest2,
-				Config:    config2,
-				Layers:    layers2,
-				Reference: "1.0.2",
-			},
+			image2,
 			baseURL,
 			"repo1",
 		)
@@ -5438,22 +5421,6 @@ func TestRepoDBWhenDeletingImages(t *testing.T) {
 						Platform { Os Arch }
 						LastUpdated Size 
 					}
-				}
-				Repos {
-					Name LastUpdated Size
-					Platforms { Os Arch }
-					Vendors Score
-					NewestImage { 
-						RepoName Tag LastUpdated Size IsSigned
-						Manifests{
-							Platform { Os Arch }
-							LastUpdated Size 
-						}
-					}
-				}
-				Layers {
-					Digest
-					Size
 				}
 			}
 		}`
@@ -5627,7 +5594,7 @@ func TestRepoDBWhenDeletingImages(t *testing.T) {
 
 			So(sigManifestContent, ShouldNotBeZeroValue)
 			// check notation signature
-			manifest1Blob, err := json.Marshal(manifest1)
+			manifest1Blob, err := json.Marshal(image1.Manifest)
 			So(err, ShouldBeNil)
 			manifest1Digest := godigest.FromBytes(manifest1Blob)
 			So(sigManifestContent.Subject, ShouldNotBeNil)
@@ -5651,6 +5618,65 @@ func TestRepoDBWhenDeletingImages(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			So(responseStruct.GlobalSearchResult.GlobalSearch.Images[0].IsSigned, ShouldBeFalse)
+		})
+
+		Convey("Delete a referrer", func() {
+			referredImageDigest, err := image1.Digest()
+			So(err, ShouldBeNil)
+
+			referrerImage, err := GetImageWithSubject(referredImageDigest, ispec.MediaTypeImageManifest)
+			So(err, ShouldBeNil)
+
+			err = UploadImage(
+				referrerImage,
+				baseURL,
+				"repo1",
+			)
+			So(err, ShouldBeNil)
+
+			// ------- check referrers for this image
+
+			query := fmt.Sprintf(`
+			{
+				Referrers(repo:"repo1", digest:"%s"){
+					MediaType
+					Digest
+				}
+			}`, referredImageDigest.String())
+
+			resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			responseStruct := &ReferrersResp{}
+
+			err = json.Unmarshal(resp.Body(), responseStruct)
+			So(err, ShouldBeNil)
+
+			So(len(responseStruct.ReferrersResult.Referrers), ShouldEqual, 1)
+			So(responseStruct.ReferrersResult.Referrers[0].Digest, ShouldResemble, referrerImage.Reference)
+
+			statusCode, err := DeleteImage("repo1", referrerImage.Reference, "badURL")
+			So(err, ShouldNotBeNil)
+			So(statusCode, ShouldEqual, -1)
+
+			// ------- Delete the referrer and see if it disappears from repoDB also
+			statusCode, err = DeleteImage("repo1", referrerImage.Reference, baseURL)
+			So(err, ShouldBeNil)
+			So(statusCode, ShouldEqual, http.StatusAccepted)
+
+			resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+			So(resp, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			responseStruct = &ReferrersResp{}
+
+			err = json.Unmarshal(resp.Body(), responseStruct)
+			So(err, ShouldBeNil)
+
+			So(len(responseStruct.ReferrersResult.Referrers), ShouldEqual, 0)
 		})
 
 		Convey("Deleting causes errors", func() {

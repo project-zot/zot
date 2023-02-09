@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"testing"
@@ -21,10 +22,12 @@ import (
 
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test"
+	"zotregistry.io/zot/pkg/test/mocks"
 )
 
-var ErrTestError = errors.New("test error")
+var ErrTestError = errors.New("ErrTestError")
 
 func TestCopyFiles(t *testing.T) {
 	Convey("sourceDir does not exist", t, func() {
@@ -238,7 +241,7 @@ func TestUploadArtifact(t *testing.T) {
 
 		artifact := ispec.Artifact{}
 
-		err := test.UploadArtifact(baseURL, "test", &artifact)
+		err := test.UploadArtifactManifest(&artifact, baseURL, "test")
 		So(err, ShouldNotBeNil)
 	})
 }
@@ -1271,6 +1274,65 @@ func TestGenerateNotationCerts(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		err = test.GenerateNotationCerts(tempDir, certName)
+		So(err, ShouldNotBeNil)
+	})
+}
+
+func TestWriteImageToFileSystem(t *testing.T) {
+	Convey("WriteImageToFileSystem errors", t, func() {
+		err := test.WriteImageToFileSystem(test.Image{}, "repo", storage.StoreController{
+			DefaultStore: mocks.MockedImageStore{
+				InitRepoFn: func(name string) error {
+					return ErrTestError
+				},
+			},
+		})
+		So(err, ShouldNotBeNil)
+
+		err = test.WriteImageToFileSystem(
+			test.Image{Layers: [][]byte{[]byte("testLayer")}},
+			"repo",
+			storage.StoreController{
+				DefaultStore: mocks.MockedImageStore{
+					FullBlobUploadFn: func(repo string, body io.Reader, digest godigest.Digest,
+					) (string, int64, error) {
+						return "", 0, ErrTestError
+					},
+				},
+			})
+		So(err, ShouldNotBeNil)
+
+		count := 0
+		err = test.WriteImageToFileSystem(
+			test.Image{Layers: [][]byte{[]byte("testLayer")}},
+			"repo",
+			storage.StoreController{
+				DefaultStore: mocks.MockedImageStore{
+					FullBlobUploadFn: func(repo string, body io.Reader, digest godigest.Digest,
+					) (string, int64, error) {
+						if count == 0 {
+							count++
+
+							return "", 0, nil
+						}
+
+						return "", 0, ErrTestError
+					},
+				},
+			})
+		So(err, ShouldNotBeNil)
+
+		err = test.WriteImageToFileSystem(
+			test.Image{Layers: [][]byte{[]byte("testLayer")}},
+			"repo",
+			storage.StoreController{
+				DefaultStore: mocks.MockedImageStore{
+					PutImageManifestFn: func(repo, reference, mediaType string, body []byte,
+					) (godigest.Digest, error) {
+						return "", ErrTestError
+					},
+				},
+			})
 		So(err, ShouldNotBeNil)
 	})
 }

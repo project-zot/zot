@@ -627,6 +627,22 @@ func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta repodb.RepoMetadata
 	return summary, imageSummaries
 }
 
+func StringMap2Annotations(strMap map[string]string) []*gql_generated.Annotation {
+	annotations := make([]*gql_generated.Annotation, 0, len(strMap))
+
+	for key, value := range strMap {
+		key := key
+		value := value
+
+		annotations = append(annotations, &gql_generated.Annotation{
+			Key:   &key,
+			Value: &value,
+		})
+	}
+
+	return annotations
+}
+
 func GetPreloads(ctx context.Context) map[string]bool {
 	if !graphql.HasOperationContext(ctx) {
 		return map[string]bool{}

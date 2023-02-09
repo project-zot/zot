@@ -29,6 +29,9 @@ func TestWrapperErrors(t *testing.T) {
 
 	repoMetaTablename := "RepoMetadataTable" + uuid.String()
 	manifestDataTablename := "ManifestDataTable" + uuid.String()
+	indexDataTablename := "IndexDataTable" + uuid.String()
+	artifactDataTablename := "ArtifactDataTable" + uuid.String()
+
 	versionTablename := "Version" + uuid.String()
 
 	Convey("Create table errors", t, func() {
@@ -52,6 +55,8 @@ func TestWrapperErrors(t *testing.T) {
 			Client:                dynamodb.NewFromConfig(cfg),
 			RepoMetaTablename:     repoMetaTablename,
 			ManifestDataTablename: manifestDataTablename,
+			IndexDataTablename:    indexDataTablename,
+			ArtifactDataTablename: artifactDataTablename,
 			VersionTablename:      versionTablename,
 			Patches:               version.GetDynamoDBPatches(),
 			Log:                   log.Logger{Logger: zerolog.New(os.Stdout)},
@@ -91,6 +96,8 @@ func TestWrapperErrors(t *testing.T) {
 			RepoMetaTablename:     repoMetaTablename,
 			ManifestDataTablename: manifestDataTablename,
 			VersionTablename:      versionTablename,
+			IndexDataTablename:    indexDataTablename,
+			ArtifactDataTablename: artifactDataTablename,
 			Patches:               version.GetDynamoDBPatches(),
 			Log:                   log.Logger{Logger: zerolog.New(os.Stdout)},
 		}

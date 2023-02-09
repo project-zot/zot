@@ -70,6 +70,142 @@ func TestWrapperErrors(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
+		Convey("GetArtifactData", func() {
+			err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
+				artifactBuck := tx.Bucket([]byte(repodb.ArtifactDataBucket))
+
+				return artifactBuck.Put([]byte("artifactDigest"), []byte("wrong json"))
+			})
+			So(err, ShouldBeNil)
+
+			_, err = boltdbWrapper.GetArtifactData("artifactDigest")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("SetReferrer", func() {
+			err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
+				repoBuck := tx.Bucket([]byte(repodb.RepoMetadataBucket))
+
+				return repoBuck.Put([]byte("repo"), []byte("wrong json"))
+			})
+			So(err, ShouldBeNil)
+
+			err = boltdbWrapper.SetReferrer("repo", "ref", repodb.Descriptor{})
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("DeleteReferrer", func() {
+			Convey("RepoMeta not found", func() {
+				err := boltdbWrapper.DeleteReferrer("r", "dig", "dig")
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("bad repo meta blob", func() {
+				err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
+					repoBuck := tx.Bucket([]byte(repodb.RepoMetadataBucket))
+
+					return repoBuck.Put([]byte("repo"), []byte("wrong json"))
+				})
+				So(err, ShouldBeNil)
+
+				err = boltdbWrapper.DeleteReferrer("repo", "dig", "dig")
+				So(err, ShouldNotBeNil)
+			})
+		})
+
+		Convey("GetReferrers", func() {
+			Convey("RepoMeta not found", func() {
+				_, err := boltdbWrapper.GetReferrers("repo", "dig")
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("bad repo meta blob", func() {
+				err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
+					repoBuck := tx.Bucket([]byte(repodb.RepoMetadataBucket))
+
+					return repoBuck.Put([]byte("repo"), []byte("wrong json"))
+				})
+				So(err, ShouldBeNil)
+
+				_, err = boltdbWrapper.GetReferrers("repo", "dig")
+				So(err, ShouldNotBeNil)
+			})
+		})
+
+		Convey("GetFilteredReferrersInfo", func() {
+			Convey("getReferrers fails", func() {
+				err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
+					repoBuck := tx.Bucket([]byte(repodb.RepoMetadataBucket))
+
+					return repoBuck.Put([]byte("repo"), []byte("wrong json"))
+				})
+				So(err, ShouldBeNil)
+
+				_, err = boltdbWrapper.GetFilteredReferrersInfo("repo", "", nil)
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("unmarshal erorrs", func() {
+				err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
+					manifestBuck := tx.Bucket([]byte(repodb.ManifestDataBucket))
+					artifactBuck := tx.Bucket([]byte(repodb.ArtifactDataBucket))
+
+					err = manifestBuck.Put([]byte("manifestDataRef"), []byte("bad json"))
+					So(err, ShouldBeNil)
+
+					err = artifactBuck.Put([]byte("artifactDataRef"), []byte("bad json"))
+					So(err, ShouldBeNil)
+
+					badBlob, err := json.Marshal(repodb.ArtifactData{
+						ManifestBlob: []byte("bad json"),
+					})
+					So(err, ShouldBeNil)
+
+					err = artifactBuck.Put([]byte("artifactManifestRef"), badBlob)
+					So(err, ShouldBeNil)
+
+					badBlob, err = json.Marshal(repodb.ManifestData{
+						ManifestBlob: []byte("bad json"),
+					})
+					So(err, ShouldBeNil)
+
+					err = manifestBuck.Put([]byte("badManifest"), badBlob)
+					So(err, ShouldBeNil)
+
+					return nil
+				})
+				So(err, ShouldBeNil)
+
+				err = boltdbWrapper.SetReferrer("repo", "refDigest", repodb.Descriptor{
+					Digest:    "manifestDataRef",
+					MediaType: ispec.MediaTypeImageManifest,
+				})
+				So(err, ShouldBeNil)
+
+				err = boltdbWrapper.SetReferrer("repo", "refDigest", repodb.Descriptor{
+					Digest:    "artifactDataRef",
+					MediaType: ispec.MediaTypeArtifactManifest,
+				})
+				So(err, ShouldBeNil)
+
+				err = boltdbWrapper.SetReferrer("repo", "refDigest", repodb.Descriptor{
+					Digest:    "badManifest",
+					MediaType: ispec.MediaTypeImageManifest,
+				})
+				So(err, ShouldBeNil)
+
+				err = boltdbWrapper.SetReferrer("repo", "refDigest", repodb.Descriptor{
+					Digest:    "artifactManifestRef",
+					MediaType: ispec.MediaTypeArtifactManifest,
+				})
+				So(err, ShouldBeNil)
+
+				refInfo, err := boltdbWrapper.GetFilteredReferrersInfo("repo", "refDigest", nil)
+				So(err, ShouldBeNil)
+				So(len(refInfo), ShouldEqual, 0)
+			})
+		})
+
 		Convey("SetRepoReference", func() {
 			err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
 				repoBuck := tx.Bucket([]byte(repodb.RepoMetadataBucket))

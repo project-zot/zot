@@ -89,11 +89,10 @@ jobs:
             
             echo "Waiting for LocalStack startup..."  # Wait 30 seconds for the LocalStack container
             localstack wait -t 30                     # to become ready before timing out 
-            echo "Startup complete"        
-
+            echo "Startup complete"
+            
+            aws --endpoint-url=http://localhost:4566 s3api create-bucket --bucket zot-storage --region us-east-2 --create-bucket-configuration="{\"LocationConstraint\": \"us-east-2\"}"
             aws dynamodb --endpoint-url http://localhost:4566 --region "us-east-2" create-table --table-name BlobTable --attribute-definitions AttributeName=Digest,AttributeType=S --key-schema AttributeName=Digest,KeyType=HASH --provisioned-throughput ReadCapacityUnits=10,WriteCapacityUnits=5
-            aws dynamodb --endpoint-url http://localhost:4566 --region "us-east-2" create-table --table-name RepoMetadataTable --attribute-definitions AttributeName=RepoName,AttributeType=S --key-schema AttributeName=RepoName,KeyType=HASH --provisioned-throughput ReadCapacityUnits=10,WriteCapacityUnits=5
-            aws dynamodb --endpoint-url http://localhost:4566 --region "us-east-2" create-table --table-name ManifestDataTable --attribute-definitions AttributeName=Digest,AttributeType=S --key-schema AttributeName=Digest,KeyType=HASH --provisioned-throughput ReadCapacityUnits=10,WriteCapacityUnits=5
         env:
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake

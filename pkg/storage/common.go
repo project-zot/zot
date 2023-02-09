@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/gobwas/glob"
+	notreg "github.com/notaryproject/notation-go/registry"
 	godigest "github.com/opencontainers/go-digest"
 	imeta "github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -17,6 +18,12 @@ import (
 	zerr "zotregistry.io/zot/errors"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 )
+
+func SignatureMediaTypes() map[string]bool {
+	return map[string]bool{
+		notreg.ArtifactTypeNotation: true,
+	}
+}
 
 func GetTagsByIndex(index ispec.Index) []string {
 	tags := make([]string, 0)
@@ -711,7 +718,7 @@ func IsSupportedMediaType(mediaType string) bool {
 		mediaType == oras.MediaTypeArtifactManifest
 }
 
-// imageIsSignature checks if the given image (repo:tag) represents a signature. The function
+// CheckIsImageSignature checks if the given image (repo:tag) represents a signature. The function
 // returns:
 //
 // - bool: if the image is a signature or not
@@ -726,7 +733,7 @@ func CheckIsImageSignature(repoName string, manifestBlob []byte, reference strin
 ) (bool, string, godigest.Digest, error) {
 	const cosign = "cosign"
 
-	var manifestContent oras.Manifest
+	var manifestContent ispec.Artifact
 
 	err := json.Unmarshal(manifestBlob, &manifestContent)
 	if err != nil {
@@ -734,7 +741,7 @@ func CheckIsImageSignature(repoName string, manifestBlob []byte, reference strin
 	}
 
 	// check notation signature
-	if manifestContent.Subject != nil {
+	if _, ok := SignatureMediaTypes()[manifestContent.ArtifactType]; ok && manifestContent.Subject != nil {
 		imgStore := storeController.GetImageStore(repoName)
 
 		_, signedImageManifestDigest, _, err := imgStore.GetImageManifest(repoName,

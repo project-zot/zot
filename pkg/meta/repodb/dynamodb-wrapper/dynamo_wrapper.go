@@ -32,6 +32,7 @@ type DBWrapper struct {
 	RepoMetaTablename     string
 	IndexDataTablename    string
 	ManifestDataTablename string
+	ArtifactDataTablename string
 	VersionTablename      string
 	Patches               []func(client *dynamodb.Client, tableNames map[string]string) error
 	Log                   log.Logger
@@ -62,6 +63,7 @@ func NewDynamoDBWrapper(params dynamoParams.DBDriverParameters) (*DBWrapper, err
 		RepoMetaTablename:     params.RepoMetaTablename,
 		ManifestDataTablename: params.ManifestDataTablename,
 		IndexDataTablename:    params.IndexDataTablename,
+		ArtifactDataTablename: params.ArtifactDataTablename,
 		VersionTablename:      params.VersionTablename,
 		Patches:               version.GetDynamoDBPatches(),
 		Log:                   log.Logger{Logger: zerolog.New(os.Stdout)},
@@ -78,6 +80,11 @@ func NewDynamoDBWrapper(params dynamoParams.DBDriverParameters) (*DBWrapper, err
 	}
 
 	err = dynamoWrapper.createManifestDataTable()
+	if err != nil {
+		return nil, err
+	}
+
+	err = dynamoWrapper.createArtifactDataTable()
 	if err != nil {
 		return nil, err
 	}
@@ -158,6 +165,7 @@ func (dwr *DBWrapper) SetManifestMeta(repo string, manifestDigest godigest.Diges
 			Tags:       map[string]repodb.Descriptor{},
 			Statistics: map[string]repodb.DescriptorStatistics{},
 			Signatures: map[string]repodb.ManifestSignatures{},
+			Referrers:  map[string][]repodb.Descriptor{},
 		}
 	}
 
@@ -307,6 +315,246 @@ func (dwr *DBWrapper) GetIndexData(indexDigest godigest.Digest) (repodb.IndexDat
 	return indexData, nil
 }
 
+func (dwr DBWrapper) SetArtifactData(artifactDigest godigest.Digest, artifactData repodb.ArtifactData) error {
+	artifactAttributeValue, err := attributevalue.Marshal(artifactData)
+	if err != nil {
+		return err
+	}
+
+	_, err = dwr.Client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
+		ExpressionAttributeNames: map[string]string{
+			"#AD": "ArtifactData",
+		},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":ArtifactData": artifactAttributeValue,
+		},
+		Key: map[string]types.AttributeValue{
+			"ArtifactDigest": &types.AttributeValueMemberS{
+				Value: artifactDigest.String(),
+			},
+		},
+		TableName:        aws.String(dwr.ArtifactDataTablename),
+		UpdateExpression: aws.String("SET #AD = :ArtifactData"),
+	})
+
+	return err
+}
+
+func (dwr DBWrapper) GetArtifactData(artifactDigest godigest.Digest) (repodb.ArtifactData, error) {
+	resp, err := dwr.Client.GetItem(context.TODO(), &dynamodb.GetItemInput{
+		TableName: aws.String(dwr.ArtifactDataTablename),
+		Key: map[string]types.AttributeValue{
+			"ArtifactDigest": &types.AttributeValueMemberS{
+				Value: artifactDigest.String(),
+			},
+		},
+	})
+	if err != nil {
+		return repodb.ArtifactData{}, err
+	}
+
+	if resp.Item == nil {
+		return repodb.ArtifactData{}, zerr.ErrRepoMetaNotFound
+	}
+
+	var artifactData repodb.ArtifactData
+
+	err = attributevalue.Unmarshal(resp.Item["ArtifactData"], &artifactData)
+	if err != nil {
+		return repodb.ArtifactData{}, err
+	}
+
+	return artifactData, nil
+}
+
+func (dwr DBWrapper) SetReferrer(repo string, referredDigest godigest.Digest, referrer repodb.Descriptor) error {
+	resp, err := dwr.Client.GetItem(context.TODO(), &dynamodb.GetItemInput{
+		TableName: aws.String(dwr.RepoMetaTablename),
+		Key: map[string]types.AttributeValue{
+			"RepoName": &types.AttributeValueMemberS{Value: repo},
+		},
+	})
+	if err != nil {
+		return err
+	}
+
+	repoMeta := repodb.RepoMetadata{
+		Name:       repo,
+		Tags:       map[string]repodb.Descriptor{},
+		Statistics: map[string]repodb.DescriptorStatistics{},
+		Signatures: map[string]repodb.ManifestSignatures{},
+		Referrers:  map[string][]repodb.Descriptor{},
+	}
+
+	if resp.Item != nil {
+		err := attributevalue.Unmarshal(resp.Item["RepoMetadata"], &repoMeta)
+		if err != nil {
+			return err
+		}
+	}
+
+	refferers := repoMeta.Referrers[referredDigest.String()]
+
+	for i := range refferers {
+		if refferers[i].Digest == referrer.Digest {
+			return nil
+		}
+	}
+
+	refferers = append(refferers, referrer)
+
+	repoMeta.Referrers[referredDigest.String()] = refferers
+
+	return dwr.setRepoMeta(repo, repoMeta)
+}
+
+func (dwr DBWrapper) GetReferrers(repo string, referredDigest godigest.Digest) ([]repodb.Descriptor, error) {
+	resp, err := dwr.Client.GetItem(context.TODO(), &dynamodb.GetItemInput{
+		TableName: aws.String(dwr.RepoMetaTablename),
+		Key: map[string]types.AttributeValue{
+			"RepoName": &types.AttributeValueMemberS{Value: repo},
+		},
+	})
+	if err != nil {
+		return []repodb.Descriptor{}, err
+	}
+
+	repoMeta := repodb.RepoMetadata{
+		Name:       repo,
+		Tags:       map[string]repodb.Descriptor{},
+		Statistics: map[string]repodb.DescriptorStatistics{},
+		Signatures: map[string]repodb.ManifestSignatures{},
+		Referrers:  map[string][]repodb.Descriptor{},
+	}
+
+	if resp.Item != nil {
+		err := attributevalue.Unmarshal(resp.Item["RepoMetadata"], &repoMeta)
+		if err != nil {
+			return []repodb.Descriptor{}, err
+		}
+	}
+
+	return repoMeta.Referrers[referredDigest.String()], nil
+}
+
+func (dwr DBWrapper) DeleteReferrer(repo string, referredDigest godigest.Digest,
+	referrerDigest godigest.Digest,
+) error {
+	resp, err := dwr.Client.GetItem(context.TODO(), &dynamodb.GetItemInput{
+		TableName: aws.String(dwr.RepoMetaTablename),
+		Key: map[string]types.AttributeValue{
+			"RepoName": &types.AttributeValueMemberS{Value: repo},
+		},
+	})
+	if err != nil {
+		return err
+	}
+
+	repoMeta := repodb.RepoMetadata{
+		Name:       repo,
+		Tags:       map[string]repodb.Descriptor{},
+		Statistics: map[string]repodb.DescriptorStatistics{},
+		Signatures: map[string]repodb.ManifestSignatures{},
+		Referrers:  map[string][]repodb.Descriptor{},
+	}
+
+	if resp.Item != nil {
+		err := attributevalue.Unmarshal(resp.Item["RepoMetadata"], &repoMeta)
+		if err != nil {
+			return err
+		}
+	}
+
+	referrers := repoMeta.Referrers[referredDigest.String()]
+
+	for i := range referrers {
+		if referrers[i].Digest == referrerDigest.String() {
+			referrers = append(referrers[:i], referrers[i+1:]...)
+
+			break
+		}
+	}
+
+	repoMeta.Referrers[referredDigest.String()] = referrers
+
+	return dwr.setRepoMeta(repo, repoMeta)
+}
+
+func (dwr DBWrapper) GetFilteredReferrersInfo(repo string, referredDigest godigest.Digest,
+	artifactTypes []string,
+) ([]repodb.ReferrerInfo, error) {
+	referrersDescriptors, err := dwr.GetReferrers(repo, referredDigest)
+	if err != nil {
+		return nil, err
+	}
+
+	referrersInfo := []repodb.ReferrerInfo{}
+
+	for _, descriptor := range referrersDescriptors {
+		referrerInfo := repodb.ReferrerInfo{}
+
+		switch descriptor.MediaType {
+		case ispec.MediaTypeImageManifest:
+			manifestData, err := dwr.GetManifestData(godigest.Digest(descriptor.Digest))
+			if err != nil {
+				dwr.Log.Error().Msgf("repodb: manifest data not found for digest %s", descriptor.Digest)
+
+				continue
+			}
+
+			var manifestContent ispec.Manifest
+
+			err = json.Unmarshal(manifestData.ManifestBlob, &manifestContent)
+			if err != nil {
+				dwr.Log.Error().Err(err).Msgf("repodb: can't unmarhsal manifest for digest %s",
+					descriptor.Digest)
+
+				continue
+			}
+
+			referrerInfo = repodb.ReferrerInfo{
+				Digest:       descriptor.Digest,
+				MediaType:    ispec.MediaTypeImageManifest,
+				ArtifactType: manifestContent.Config.MediaType,
+				Size:         len(manifestData.ManifestBlob),
+				Annotations:  manifestContent.Annotations,
+			}
+		case ispec.MediaTypeArtifactManifest:
+			artifactData, err := dwr.GetArtifactData(godigest.Digest(descriptor.Digest))
+			if err != nil {
+				dwr.Log.Error().Msgf("repodb: artifact data not found for digest %s", descriptor.Digest)
+
+				continue
+			}
+
+			manifestContent := ispec.Artifact{}
+
+			err = json.Unmarshal(artifactData.ManifestBlob, &manifestContent)
+			if err != nil {
+				dwr.Log.Error().Err(err).Msgf("repodb: can't unmarhsal artifact manifest for digest %s", descriptor.Digest)
+
+				continue
+			}
+
+			referrerInfo = repodb.ReferrerInfo{
+				Digest:       descriptor.Digest,
+				MediaType:    manifestContent.MediaType,
+				ArtifactType: manifestContent.ArtifactType,
+				Size:         len(artifactData.ManifestBlob),
+				Annotations:  manifestContent.Annotations,
+			}
+		}
+
+		if !common.MatchesArtifactTypes(referrerInfo.ArtifactType, artifactTypes) {
+			continue
+		}
+
+		referrersInfo = append(referrersInfo, referrerInfo)
+	}
+
+	return referrersInfo, nil
+}
+
 func (dwr *DBWrapper) SetRepoReference(repo string, reference string, manifestDigest godigest.Digest,
 	mediaType string,
 ) error {
@@ -329,6 +577,7 @@ func (dwr *DBWrapper) SetRepoReference(repo string, reference string, manifestDi
 		Tags:       map[string]repodb.Descriptor{},
 		Statistics: map[string]repodb.DescriptorStatistics{},
 		Signatures: map[string]repodb.ManifestSignatures{},
+		Referrers:  map[string][]repodb.Descriptor{},
 	}
 
 	if resp.Item != nil {
@@ -347,6 +596,7 @@ func (dwr *DBWrapper) SetRepoReference(repo string, reference string, manifestDi
 
 	repoMeta.Statistics[manifestDigest.String()] = repodb.DescriptorStatistics{DownloadCount: 0}
 	repoMeta.Signatures[manifestDigest.String()] = repodb.ManifestSignatures{}
+	repoMeta.Referrers[manifestDigest.String()] = []repodb.Descriptor{}
 
 	err = dwr.setRepoMeta(repo, repoMeta)
 
@@ -1390,6 +1640,31 @@ func (dwr *DBWrapper) createIndexDataTable() error {
 	}
 
 	return dwr.waitTableToBeCreated(dwr.IndexDataTablename)
+}
+
+func (dwr DBWrapper) createArtifactDataTable() error {
+	_, err := dwr.Client.CreateTable(context.Background(), &dynamodb.CreateTableInput{
+		TableName: aws.String(dwr.ArtifactDataTablename),
+		AttributeDefinitions: []types.AttributeDefinition{
+			{
+				AttributeName: aws.String("ArtifactDigest"),
+				AttributeType: types.ScalarAttributeTypeS,
+			},
+		},
+		KeySchema: []types.KeySchemaElement{
+			{
+				AttributeName: aws.String("ArtifactDigest"),
+				KeyType:       types.KeyTypeHash,
+			},
+		},
+		BillingMode: types.BillingModePayPerRequest,
+	})
+
+	if err != nil && !strings.Contains(err.Error(), "Table already exists") {
+		return err
+	}
+
+	return dwr.waitTableToBeCreated(dwr.ManifestDataTablename)
 }
 
 func (dwr *DBWrapper) createVersionTable() error {

@@ -76,6 +76,7 @@ func TestDynamoDBWrapper(t *testing.T) {
 	manifestDataTablename := "ManifestDataTable" + uuid.String()
 	versionTablename := "Version" + uuid.String()
 	indexDataTablename := "IndexDataTable" + uuid.String()
+	artifactDataTablename := "ArtifactDataTable" + uuid.String()
 
 	Convey("DynamoDB Wrapper", t, func() {
 		dynamoDBDriverParams := dynamoParams.DBDriverParameters{
@@ -83,6 +84,7 @@ func TestDynamoDBWrapper(t *testing.T) {
 			RepoMetaTablename:     repoMetaTablename,
 			ManifestDataTablename: manifestDataTablename,
 			IndexDataTablename:    indexDataTablename,
+			ArtifactDataTablename: artifactDataTablename,
 			VersionTablename:      versionTablename,
 			Region:                "us-east-2",
 		}
@@ -1756,6 +1758,202 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 
 			_, err = repoDB.GetIndexData(godigest.FromString("inexistent"))
 			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Test artifact logic", func() {
+			artifact, err := test.GetRandomArtifact(nil)
+			So(err, ShouldBeNil)
+
+			artifactDigest, err := artifact.Digest()
+			So(err, ShouldBeNil)
+
+			artifactData, err := artifact.ArtifactData()
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetArtifactData(artifactDigest, artifactData)
+			So(err, ShouldBeNil)
+
+			result, err := repoDB.GetArtifactData(artifactDigest)
+			So(err, ShouldBeNil)
+			So(result, ShouldResemble, artifactData)
+
+			_, err = repoDB.GetArtifactData(godigest.FromString("inexistent"))
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Test Referrers", func() {
+			image, err := test.GetRandomImage("tag")
+			So(err, ShouldBeNil)
+
+			referredDigest, err := image.Digest()
+			So(err, ShouldBeNil)
+
+			manifestBlob, err := json.Marshal(image.Manifest)
+			So(err, ShouldBeNil)
+
+			configBlob, err := json.Marshal(image.Config)
+			So(err, ShouldBeNil)
+
+			manifestData := repodb.ManifestData{
+				ManifestBlob: manifestBlob,
+				ConfigBlob:   configBlob,
+			}
+
+			err = repoDB.SetManifestData(referredDigest, manifestData)
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetRepoReference("repo", "tag", referredDigest, ispec.MediaTypeImageManifest)
+			So(err, ShouldBeNil)
+
+			// ------- Add Artifact 1
+
+			artifact1, err := test.GetRandomArtifact(&ispec.Descriptor{
+				Digest:    referredDigest,
+				MediaType: ispec.MediaTypeImageManifest,
+			})
+			So(err, ShouldBeNil)
+
+			artifactDigest1, err := artifact1.Digest()
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetReferrer("repo", referredDigest, repodb.Descriptor{
+				Digest:    artifactDigest1.String(),
+				MediaType: ispec.MediaTypeImageManifest,
+			})
+			So(err, ShouldBeNil)
+
+			// ------- Add Artifact 2
+
+			artifact2, err := test.GetRandomArtifact(&ispec.Descriptor{
+				Digest:    referredDigest,
+				MediaType: ispec.MediaTypeImageManifest,
+			})
+			So(err, ShouldBeNil)
+
+			artifactDigest2, err := artifact2.Digest()
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetReferrer("repo", referredDigest, repodb.Descriptor{
+				Digest:    artifactDigest2.String(),
+				MediaType: ispec.MediaTypeArtifactManifest,
+			})
+			So(err, ShouldBeNil)
+
+			// ------ GetReferrers
+
+			referrers, err := repoDB.GetReferrers("repo", referredDigest)
+			So(len(referrers), ShouldEqual, 2)
+			So(referrers, ShouldContain, repodb.Descriptor{
+				Digest:    artifactDigest1.String(),
+				MediaType: ispec.MediaTypeImageManifest,
+			})
+			So(referrers, ShouldContain, repodb.Descriptor{
+				Digest:    artifactDigest2.String(),
+				MediaType: ispec.MediaTypeArtifactManifest,
+			})
+			So(err, ShouldBeNil)
+
+			// ------ DeleteReferrers
+
+			err = repoDB.DeleteReferrer("repo", referredDigest, artifactDigest1)
+			So(err, ShouldBeNil)
+
+			err = repoDB.DeleteReferrer("repo", referredDigest, artifactDigest2)
+			So(err, ShouldBeNil)
+
+			referrers, err = repoDB.GetReferrers("repo", referredDigest)
+			So(err, ShouldBeNil)
+			So(len(referrers), ShouldEqual, 0)
+		})
+
+		Convey("Test Referrers on empty Repo", func() {
+			repoMeta, err := repoDB.GetRepoMeta("repo")
+			So(err, ShouldNotBeNil)
+			So(repoMeta, ShouldResemble, repodb.RepoMetadata{})
+
+			referredDigest := godigest.FromString("referredDigest")
+			referrerDigest := godigest.FromString("referrerDigest")
+
+			err = repoDB.SetReferrer("repo", referredDigest, repodb.Descriptor{
+				Digest:    referrerDigest.String(),
+				MediaType: ispec.MediaTypeImageManifest,
+			})
+			So(err, ShouldBeNil)
+
+			repoMeta, err = repoDB.GetRepoMeta("repo")
+			So(err, ShouldBeNil)
+			So(repoMeta.Referrers[referredDigest.String()][0].Digest, ShouldResemble, referrerDigest.String())
+		})
+
+		Convey("Test Referrers add same one twice", func() {
+			repoMeta, err := repoDB.GetRepoMeta("repo")
+			So(err, ShouldNotBeNil)
+			So(repoMeta, ShouldResemble, repodb.RepoMetadata{})
+
+			referredDigest := godigest.FromString("referredDigest")
+			referrerDigest := godigest.FromString("referrerDigest")
+
+			err = repoDB.SetReferrer("repo", referredDigest, repodb.Descriptor{
+				Digest:    referrerDigest.String(),
+				MediaType: ispec.MediaTypeImageManifest,
+			})
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetReferrer("repo", referredDigest, repodb.Descriptor{
+				Digest:    referrerDigest.String(),
+				MediaType: ispec.MediaTypeImageManifest,
+			})
+			So(err, ShouldBeNil)
+
+			repoMeta, err = repoDB.GetRepoMeta("repo")
+			So(err, ShouldBeNil)
+			So(len(repoMeta.Referrers[referredDigest.String()]), ShouldEqual, 1)
+		})
+
+		Convey("GetFilteredReferrersInfo", func() {
+			referredDigest := godigest.FromString("referredDigest")
+
+			err := repoDB.SetReferrer("repo", referredDigest, repodb.Descriptor{
+				Digest:    "inexistendManifestDigest",
+				MediaType: ispec.MediaTypeImageManifest,
+			})
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetReferrer("repo", referredDigest, repodb.Descriptor{
+				Digest:    "inexistendArtifactManifestDigest",
+				MediaType: ispec.MediaTypeArtifactManifest,
+			})
+			So(err, ShouldBeNil)
+
+			// ------- Set existent manifest and artifact manifest
+			err = repoDB.SetManifestData("goodManifest", repodb.ManifestData{
+				ManifestBlob: []byte(`{"artifactType": "unwantedType"}`),
+				ConfigBlob:   []byte("{}"),
+			})
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetReferrer("repo", referredDigest, repodb.Descriptor{
+				Digest:    "goodManifest",
+				MediaType: ispec.MediaTypeImageManifest,
+			})
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetArtifactData("goodArtifact", repodb.ArtifactData{
+				ManifestBlob: []byte(`{"artifactType": "wantedType"}`),
+			})
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetReferrer("repo", referredDigest, repodb.Descriptor{
+				Digest:    "goodArtifact",
+				MediaType: ispec.MediaTypeArtifactManifest,
+			})
+			So(err, ShouldBeNil)
+
+			referrerInfo, err := repoDB.GetFilteredReferrersInfo("repo", referredDigest, []string{"wantedType"})
+			So(err, ShouldBeNil)
+			So(len(referrerInfo), ShouldEqual, 1)
+			So(referrerInfo[0].ArtifactType, ShouldResemble, "wantedType")
+			So(referrerInfo[0].Digest, ShouldResemble, "goodArtifact")
 		})
 	})
 }

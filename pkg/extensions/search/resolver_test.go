@@ -1362,15 +1362,25 @@ func TestImageList(t *testing.T) {
 
 func TestGetReferrers(t *testing.T) {
 	Convey("getReferrers", t, func() {
+		referredDigest := godigest.FromString("t").String()
+
+		Convey("referredDigest is empty", func() {
+			testLogger := log.NewLogger("debug", "")
+
+			_, err := getReferrers(mocks.RepoDBMock{}, "test", "", nil, testLogger)
+			So(err, ShouldNotBeNil)
+		})
+
 		Convey("GetReferrers returns error", func() {
 			testLogger := log.NewLogger("debug", "")
-			mockedStore := mocks.MockedImageStore{
-				GetReferrersFn: func(repo string, digest godigest.Digest, artifactType []string) (ispec.Index, error) {
-					return ispec.Index{}, ErrTestError
+			mockedStore := mocks.RepoDBMock{
+				GetFilteredReferrersInfoFn: func(repo string, referredDigest godigest.Digest, artifactTypes []string,
+				) ([]repodb.ReferrerInfo, error) {
+					return nil, ErrTestError
 				},
 			}
 
-			_, err := getReferrers(mockedStore, "test", "", nil, testLogger)
+			_, err := getReferrers(mockedStore, "test", referredDigest, nil, testLogger)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -1385,17 +1395,22 @@ func TestGetReferrers(t *testing.T) {
 					"key": "value",
 				},
 			}
-			mockedStore := mocks.MockedImageStore{
-				GetReferrersFn: func(repo string, digest godigest.Digest, artifactTypes []string) (ispec.Index, error) {
-					return ispec.Index{
-						Manifests: []ispec.Descriptor{
-							referrerDescriptor,
+			mockedStore := mocks.RepoDBMock{
+				GetFilteredReferrersInfoFn: func(repo string, referredDigest godigest.Digest, artifactTypes []string,
+				) ([]repodb.ReferrerInfo, error) {
+					return []repodb.ReferrerInfo{
+						{
+							Digest:       referrerDescriptor.Digest.String(),
+							MediaType:    referrerDescriptor.MediaType,
+							ArtifactType: referrerDescriptor.ArtifactType,
+							Size:         int(referrerDescriptor.Size),
+							Annotations:  referrerDescriptor.Annotations,
 						},
 					}, nil
 				},
 			}
 
-			referrers, err := getReferrers(mockedStore, "test", "", nil, testLogger)
+			referrers, err := getReferrers(mockedStore, "test", referredDigest, nil, testLogger)
 			So(err, ShouldBeNil)
 			So(*referrers[0].ArtifactType, ShouldEqual, referrerDescriptor.ArtifactType)
 			So(*referrers[0].MediaType, ShouldEqual, referrerDescriptor.MediaType)

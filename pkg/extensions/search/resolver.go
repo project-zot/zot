@@ -1193,41 +1193,33 @@ func getImageList(ctx context.Context, repo string, repoDB repodb.RepoDB, cveInf
 	}, nil
 }
 
-func getReferrers(store storage.ImageStore, repoName string, digest string, artifactTypes []string, log log.Logger) (
-	[]*gql_generated.Referrer, error,
-) {
-	results := make([]*gql_generated.Referrer, 0)
+func getReferrers(repoDB repodb.RepoDB, repo string, referredDigest string, artifactTypes []string,
+	log log.Logger,
+) ([]*gql_generated.Referrer, error) {
+	refDigest := godigest.Digest(referredDigest)
+	if err := refDigest.Validate(); err != nil {
+		log.Error().Err(err).Msgf("graphql: bad digest string from request '%s'", referredDigest)
 
-	index, err := store.GetReferrers(repoName, godigest.Digest(digest), artifactTypes)
-	if err != nil {
-		log.Error().Err(err).Msg("error extracting referrers list")
-
-		return results, err
+		return []*gql_generated.Referrer{}, errors.Wrapf(err, "graphql: bad digest string from request '%s'",
+			referredDigest)
 	}
 
-	for _, manifest := range index.Manifests {
-		size := int(manifest.Size)
-		digest := manifest.Digest.String()
-		annotations := make([]*gql_generated.Annotation, 0)
-		artifactType := manifest.ArtifactType
-		mediaType := manifest.MediaType
+	referrers, err := repoDB.GetFilteredReferrersInfo(repo, refDigest, artifactTypes)
+	if err != nil {
+		return nil, err
+	}
 
-		for k, v := range manifest.Annotations {
-			key := k
-			value := v
+	results := make([]*gql_generated.Referrer, 0, len(referrers))
 
-			annotations = append(annotations, &gql_generated.Annotation{
-				Key:   &key,
-				Value: &value,
-			})
-		}
+	for _, referrer := range referrers {
+		referrer := referrer
 
 		results = append(results, &gql_generated.Referrer{
-			MediaType:    &mediaType,
-			ArtifactType: &artifactType,
-			Digest:       &digest,
-			Size:         &size,
-			Annotations:  annotations,
+			MediaType:    &referrer.MediaType,
+			ArtifactType: &referrer.ArtifactType,
+			Digest:       &referrer.Digest,
+			Size:         &referrer.Size,
+			Annotations:  convert.StringMap2Annotations(referrer.Annotations),
 		})
 	}
 
