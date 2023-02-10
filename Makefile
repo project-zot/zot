@@ -32,7 +32,7 @@ hyphen:= -
 extended-name:=
 
 .PHONY: all
-all: modcheck swagger binary binary-minimal binary-debug cli bench exporter-minimal verify-config test covhtml check check-gh-actions
+all: modcheck swagger binary binary-minimal binary-debug binary-ui cli bench exporter-minimal verify-config test covhtml check check-gh-actions
 
 .PHONY: modcheck
 modcheck:
@@ -45,7 +45,7 @@ ifdef EXTENSIONS
 endif
 
 .PHONY: build-metadata
-build-metadata:
+build-metadata: $(if $(findstring ui,$(EXTENSIONS)), ui)
 	echo "Imports: \n"
 	go list -tags $(EXTENSIONS) -f '{{ join .Imports "\n" }}' ./... | sort -u
 	echo "\n Files: \n"
@@ -57,12 +57,18 @@ binary-minimal: modcheck build-metadata
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)-minimal -buildmode=pie -tags containers_image_openpgp -v -trimpath -ldflags "-X zotregistry.io/zot/pkg/api/config.ReleaseTag=${RELEASE_TAG} -X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=minimal -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zot
 
 .PHONY: binary
+binary: $(if $(findstring ui,$(EXTENSIONS)), ui)
 binary: modcheck create-name build-metadata
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH) -buildmode=pie -tags $(EXTENSIONS),containers_image_openpgp -v -trimpath -ldflags "-X zotregistry.io/zot/pkg/api/config.ReleaseTag=${RELEASE_TAG} -X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=$(extended-name) -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zot
 
 .PHONY: binary-debug
+binary-debug: $(if $(findstring ui,$(EXTENSIONS)), ui)
 binary-debug: modcheck swagger create-name build-metadata
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)-debug -buildmode=pie -tags $(EXTENSIONS),debug,containers_image_openpgp -v -gcflags all='-N -l' -ldflags "-X zotregistry.io/zot/pkg/api/config.ReleaseTag=${RELEASE_TAG} -X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=$(extended-name) -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION}" ./cmd/zot
+
+.PHONY: binary-ui
+binary-ui: modcheck create-name build-metadata ui
+	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)-ui -buildmode=pie -tags $(EXTENSIONS),ui,containers_image_openpgp -v -trimpath -ldflags "-X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=$(extended-name) -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zot
 
 .PHONY: cli
 cli: modcheck create-name build-metadata
@@ -78,6 +84,7 @@ exporter-minimal: modcheck build-metadata
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zxp-$(OS)-$(ARCH) -buildmode=pie -tags containers_image_openpgp -v -trimpath ./cmd/zxp
 
 .PHONY: test
+test: $(if $(findstring ui,$(EXTENSIONS)), ui)
 test: check-skopeo $(TESTDATA) $(NOTATION) $(ORAS)
 	go test -failfast -tags $(EXTENSIONS),containers_image_openpgp -v -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-extended.txt -covermode=atomic ./...
 	go test -failfast -tags containers_image_openpgp -v -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-minimal.txt -covermode=atomic ./...
@@ -87,6 +94,7 @@ test: check-skopeo $(TESTDATA) $(NOTATION) $(ORAS)
 	go test -failfast -tags stress,$(EXTENSIONS),containers_image_openpgp -v -trimpath -race -timeout 15m ./pkg/cli/stress_test.go
 
 .PHONY: privileged-test
+privileged-test: $(if $(findstring ui,$(EXTENSIONS)), ui)
 privileged-test: check-skopeo $(TESTDATA) $(NOTATION)
 	go test -failfast -tags needprivileges,$(EXTENSIONS),containers_image_openpgp -v -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-dev-needprivileges.txt -covermode=atomic ./pkg/storage/... ./pkg/cli/... -run ^TestElevatedPrivileges
 
@@ -151,12 +159,16 @@ $(GOLINTER):
 	$(GOLINTER) version
 
 .PHONY: check
+check: $(if $(findstring ui,$(EXTENSIONS)), ui)
 check: ./golangcilint.yaml $(GOLINTER)
+	mkdir -p pkg/extensions/build; touch pkg/extensions/build/.empty
 	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags containers_image_openpgp ./...
 	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags $(EXTENSIONS),containers_image_openpgp ./...
+	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags $(EXTENSIONS),containers_image_openpgp,ui,debug ./...
 	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags dev,containers_image_openpgp ./...
 	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags dev,$(EXTENSIONS),containers_image_openpgp ./...
 	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags stress,$(EXTENSIONS),containers_image_openpgp ./...
+	rm pkg/extensions/build/.empty
 
 swagger/docs.go: 
 	swag -v || go install github.com/swaggo/swag/cmd/swag@1.6.3
@@ -204,6 +216,7 @@ clean:
 	rm -rf hack
 	rm -rf test/data/zot-test
 	rm -rf test/data/zot-cve-test
+	rm -rf pkg/extensions/build
 
 .PHONY: run
 run: binary test
@@ -262,12 +275,12 @@ run-container:
 
 .PHONY: binary-stacker
 binary-stacker:
-	${STACKER} build \
+	${STACKER} --debug build \
 		-f build/stacker.yaml \
-		--substitute COMMIT=$(PWD) \
-		--substitute OS=$(OS) \
-		--substitute ARCH=$(ARCH) \
-		--substitute PWD=$(PWD)
+		--substitute PWD=$$PWD \
+		--substitute COMMIT=$$COMMIT \
+		--substitute ARCH=$$ARCH \
+		--substitute OS=$$OS
 
 .PHONY: image
 image:
@@ -369,3 +382,20 @@ $(COSIGN):
 	mkdir -p $(TOOLSDIR)/bin
 	curl -fsSL https://github.com/sigstore/cosign/releases/download/v1.13.0/cosign-linux-amd64 -o $@; \
 	chmod +x $@
+
+.PHONY: ui
+ui:
+	pwd=$$(pwd);\
+	tdir=$$(mktemp -d);\
+	cd $$tdir;\
+	if [ -z $(RELEASE_UI) ]; then\
+		git clone https://github.com/project-zot/zui.git;\
+	else\
+		git clone --depth 1 --branch $(RELEASE_TAG) https://github.com/project-zot/zui.git;\
+	fi;\
+	cd zui;\
+	npm install;\
+	npm run build;\
+	cd $$pwd;\
+	rm -rf ./pkg/extensions/build;\
+	cp -R $$tdir/zui/build ./pkg/extensions/;

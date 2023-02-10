@@ -17,6 +17,7 @@ type ExtensionConfig struct {
 	Metrics *MetricsConfig
 	Scrub   *ScrubConfig
 	Lint    *LintConfig
+	UI      *UIConfig
 }
 
 type LintConfig struct {
@@ -51,4 +52,8 @@ type PrometheusConfig struct {
 type ScrubConfig struct {
 	BaseConfig `mapstructure:",squash"`
 	Interval   time.Duration
+}
+
+type UIConfig struct {
+	BaseConfig `mapstructure:",squash"`
 }
