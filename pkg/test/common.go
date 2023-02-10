@@ -187,6 +187,7 @@ func CopyTestFiles(sourceDir, destDir string) {
 }
 
 type Controller interface {
+	Init(ctx context.Context) error
 	Run(ctx context.Context) error
 	Shutdown()
 	GetPort() int
@@ -196,14 +197,22 @@ type ControllerManager struct {
 	controller Controller
 }
 
+func (cm *ControllerManager) RunServer(ctx context.Context) {
+	// Useful to be able to call in the same goroutine for testing purposes
+	if err := cm.controller.Run(ctx); !errors.Is(err, http.ErrServerClosed) {
+		panic(err)
+	}
+}
+
 func (cm *ControllerManager) StartServer() {
-	// this blocks
 	ctx := context.Background()
 
+	if err := cm.controller.Init(ctx); err != nil {
+		panic(err)
+	}
+
 	go func() {
-		if err := cm.controller.Run(ctx); err != nil {
-			return
-		}
+		cm.RunServer(ctx)
 	}()
 }
 
@@ -217,14 +226,7 @@ func (cm *ControllerManager) WaitServerToBeReady(port string) {
 }
 
 func (cm *ControllerManager) StartAndWait(port string) {
-	// this blocks
-	ctx := context.Background()
-
-	go func() {
-		if err := cm.controller.Run(ctx); err != nil {
-			return
-		}
-	}()
+	cm.StartServer()
 
 	url := GetBaseURL(port)
 	WaitTillServerReady(url)

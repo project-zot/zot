@@ -78,16 +78,41 @@ func TestServe(t *testing.T) {
 		})
 
 		Convey("bad config", func(c C) {
-			tmpfile, err := os.CreateTemp("", "zot-test*.json")
+			rootDir := t.TempDir()
+
+			tmpFile := path.Join(rootDir, "zot-test.json")
+			err := os.WriteFile(tmpFile, []byte(`{"log":{}}`), 0o0600)
 			So(err, ShouldBeNil)
-			defer os.Remove(tmpfile.Name()) // clean up
-			content := []byte(`{"log":{}}`)
-			_, err = tmpfile.Write(content)
-			So(err, ShouldBeNil)
-			err = tmpfile.Close()
-			So(err, ShouldBeNil)
-			os.Args = []string{"cli_test", "serve", tmpfile.Name()}
+
+			os.Args = []string{"cli_test", "serve", tmpFile}
+
 			So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+		})
+
+		Convey("config with missing rootDir", func(c C) {
+			rootDir := t.TempDir()
+
+			// missing storag config should result in an error in Controller.Init()
+			content := []byte(`{
+				"distSpecVersion": "1.1.0-dev",
+				"http": {
+					"address":"127.0.0.1",
+					"port":"8080"
+				}
+			}`)
+
+			tmpFile := path.Join(rootDir, "zot-test.json")
+			err := os.WriteFile(tmpFile, content, 0o0600)
+			So(err, ShouldBeNil)
+
+			os.Args = []string{"cli_test", "serve", tmpFile}
+
+			So(func() { _ = cli.NewServerRootCmd().Execute() }, ShouldPanic)
+
+			// wait for the config reloader goroutine to start watching the config file
+			// if we end the test too fast it will delete the config file
+			// which will cause a panic and mark the test run as a failure
+			time.Sleep(1 * time.Second)
 		})
 	})
 }

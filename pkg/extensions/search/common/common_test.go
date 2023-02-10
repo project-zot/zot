@@ -20,6 +20,7 @@ import (
 
 	dbTypes "github.com/aquasecurity/trivy-db/pkg/types"
 	"github.com/gobwas/glob"
+	regTypes "github.com/google/go-containerregistry/pkg/v1/types"
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -34,6 +35,8 @@ import (
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/extensions/search/common"
+	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
+	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/repodb"
 	"zotregistry.io/zot/pkg/storage"
@@ -354,6 +357,155 @@ func uploadNewRepoTag(tag string, repoName string, baseURL string, layers [][]by
 	return err
 }
 
+func getMockCveInfo(repoDB repodb.RepoDB, log log.Logger) cveinfo.CveInfo {
+	// RepoDB loaded with initial data, mock the scanner
+	severities := map[string]int{
+		"UNKNOWN":  0,
+		"LOW":      1,
+		"MEDIUM":   2,
+		"HIGH":     3,
+		"CRITICAL": 4,
+	}
+
+	// Setup test CVE data in mock scanner
+	scanner := mocks.CveScannerMock{
+		ScanImageFn: func(image string) (map[string]cvemodel.CVE, error) {
+			if image == "zot-cve-test:0.0.1" || image == "a/zot-cve-test:0.0.1" {
+				return map[string]cvemodel.CVE{
+					"CVE1": {
+						ID:          "CVE1",
+						Severity:    "MEDIUM",
+						Title:       "Title CVE1",
+						Description: "Description CVE1",
+					},
+					"CVE2": {
+						ID:          "CVE2",
+						Severity:    "HIGH",
+						Title:       "Title CVE2",
+						Description: "Description CVE2",
+					},
+					"CVE3": {
+						ID:          "CVE3",
+						Severity:    "LOW",
+						Title:       "Title CVE3",
+						Description: "Description CVE3",
+					},
+				}, nil
+			}
+
+			if image == "zot-test:0.0.1" || image == "a/zot-test:0.0.1" {
+				return map[string]cvemodel.CVE{
+					"CVE3": {
+						ID:          "CVE3",
+						Severity:    "LOW",
+						Title:       "Title CVE3",
+						Description: "Description CVE3",
+					},
+					"CVE4": {
+						ID:          "CVE4",
+						Severity:    "CRITICAL",
+						Title:       "Title CVE4",
+						Description: "Description CVE4",
+					},
+				}, nil
+			}
+
+			if image == "test-repo:latest" {
+				return map[string]cvemodel.CVE{
+					"CVE1": {
+						ID:          "CVE1",
+						Severity:    "MEDIUM",
+						Title:       "Title CVE1",
+						Description: "Description CVE1",
+					},
+					"CVE2": {
+						ID:          "CVE2",
+						Severity:    "HIGH",
+						Title:       "Title CVE2",
+						Description: "Description CVE2",
+					},
+					"CVE3": {
+						ID:          "CVE3",
+						Severity:    "LOW",
+						Title:       "Title CVE3",
+						Description: "Description CVE3",
+					},
+					"CVE4": {
+						ID:          "CVE4",
+						Severity:    "CRITICAL",
+						Title:       "Title CVE4",
+						Description: "Description CVE4",
+					},
+				}, nil
+			}
+
+			// By default the image has no vulnerabilities
+			return map[string]cvemodel.CVE{}, nil
+		},
+		CompareSeveritiesFn: func(severity1, severity2 string) int {
+			return severities[severity2] - severities[severity1]
+		},
+		IsImageFormatScannableFn: func(image string) (bool, error) {
+			// Almost same logic compared to actual Trivy specific implementation
+			var imageDir string
+
+			var inputTag string
+
+			if strings.Contains(image, ":") {
+				imageDir, inputTag, _ = strings.Cut(image, ":")
+			} else {
+				imageDir = image
+			}
+
+			repoMeta, err := repoDB.GetRepoMeta(imageDir)
+			if err != nil {
+				return false, err
+			}
+
+			manifestDigestStr, ok := repoMeta.Tags[inputTag]
+			if !ok {
+				return false, zerr.ErrTagMetaNotFound
+			}
+
+			manifestDigest, err := godigest.Parse(manifestDigestStr.Digest)
+			if err != nil {
+				return false, err
+			}
+
+			manifestData, err := repoDB.GetManifestData(manifestDigest)
+			if err != nil {
+				return false, err
+			}
+
+			var manifestContent ispec.Manifest
+
+			err = json.Unmarshal(manifestData.ManifestBlob, &manifestContent)
+			if err != nil {
+				return false, zerr.ErrScanNotSupported
+			}
+
+			for _, imageLayer := range manifestContent.Layers {
+				switch imageLayer.MediaType {
+				case ispec.MediaTypeImageLayerGzip, ispec.MediaTypeImageLayer, string(regTypes.DockerLayer):
+
+					return true, nil
+				default:
+
+					return false, zerr.ErrScanNotSupported
+				}
+			}
+
+			return false, nil
+		},
+	}
+
+	return &cveinfo.BaseCveInfo{
+		Log:     log,
+		Scanner: scanner,
+		RepoDB:  repoDB,
+	}
+}
+
 func TestRepoListWithNewestImage(t *testing.T) {
 	Convey("Test repoListWithNewestImage by tag with HTTP", t, func() {
 		subpath := "/a"
@@ -671,9 +823,21 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		ctlr := api.NewController(conf)
 		ctlr.Log.Logger = ctlr.Log.Output(writers)
 
-		ctlrManager := NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
-		defer ctlrManager.StopServer()
+		ctx := context.Background()
+
+		if err := ctlr.Init(ctx); err != nil {
+			panic(err)
+		}
+
+		ctlr.CveInfo = getMockCveInfo(ctlr.RepoDB, ctlr.Log)
+
+		go func() {
+			if err := ctlr.Run(ctx); !errors.Is(err, http.ErrServerClosed) {
+				panic(err)
+			}
+		}()
+
+		defer ctlr.Shutdown()
 
 		substring := "{\"Search\":{\"Enable\":true,\"CVE\":{\"UpdateInterval\":3600000000000,\"Trivy\":{\"DBRepository\":\"ghcr.io/project-zot/trivy-db\"}}}" //nolint: lll
 		found, err := readFileAndSearchString(logPath, substring, 2*time.Minute)
@@ -688,12 +852,9 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
 
-		resp, err := resty.R().Get(baseURL + "/v2/")
-		So(resp, ShouldNotBeNil)
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
+		WaitTillServerReady(baseURL)
 
-		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix)
+		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix)
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 422)
@@ -1322,20 +1483,13 @@ func TestUtilsMethod(t *testing.T) {
 }
 
 func TestDerivedImageList(t *testing.T) {
-	subpath := "/a"
-
-	err := testSetup(t, subpath)
-	if err != nil {
-		panic(err)
-	}
+	rootDir = t.TempDir()
 
 	port := GetFreePort()
 	baseURL := GetBaseURL(port)
 	conf := config.New()
 	conf.HTTP.Port = port
 	conf.Storage.RootDirectory = rootDir
-	conf.Storage.SubPaths = make(map[string]config.StorageConfig)
-	conf.Storage.SubPaths[subpath] = config.StorageConfig{RootDirectory: subRootDir}
 	defaultVal := true
 	conf.Extensions = &extconf.ExtensionConfig{
 		Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
@@ -1806,20 +1960,13 @@ func TestGetImageManifest(t *testing.T) {
 }
 
 func TestBaseImageList(t *testing.T) {
-	subpath := "/a"
-
-	err := testSetup(t, subpath)
-	if err != nil {
-		panic(err)
-	}
+	rootDir = t.TempDir()
 
 	port := GetFreePort()
 	baseURL := GetBaseURL(port)
 	conf := config.New()
 	conf.HTTP.Port = port
 	conf.Storage.RootDirectory = rootDir
-	conf.Storage.SubPaths = make(map[string]config.StorageConfig)
-	conf.Storage.SubPaths[subpath] = config.StorageConfig{RootDirectory: subRootDir}
 	defaultVal := true
 	conf.Extensions = &extconf.ExtensionConfig{
 		Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
@@ -2866,9 +3013,21 @@ func TestGlobalSearch(t *testing.T) {
 		ctlr := api.NewController(conf)
 		ctlr.Log.Logger = ctlr.Log.Output(writers)
 
-		ctlrManager := NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
-		defer ctlrManager.StopServer()
+		ctx := context.Background()
+
+		if err := ctlr.Init(ctx); err != nil {
+			panic(err)
+		}
+
+		ctlr.CveInfo = getMockCveInfo(ctlr.RepoDB, ctlr.Log)
+
+		go func() {
+			if err := ctlr.Run(ctx); !errors.Is(err, http.ErrServerClosed) {
+				panic(err)
+			}
+		}()
+
+		defer ctlr.Shutdown()
 
 		// Wait for trivy db to download
 		substring := "{\"Search\":{\"Enable\":true,\"CVE\":{\"UpdateInterval\":3600000000000,\"Trivy\":{\"DBRepository\":\"ghcr.io/project-zot/trivy-db\"}}}" //nolint: lll
@@ -2883,6 +3042,8 @@ func TestGlobalSearch(t *testing.T) {
 		found, err = readFileAndSearchString(logPath, "DB update completed, next update scheduled", 4*time.Minute)
 		So(found, ShouldBeTrue)
 		So(err, ShouldBeNil)
+
+		WaitTillServerReady(baseURL)
 
 		// push test images to repo 1 image 1
 		config1, layers1, manifest1, err := GetImageComponents(100)
@@ -5114,9 +5275,24 @@ func TestImageSummary(t *testing.T) {
 		configBlob, errConfig := json.Marshal(config)
 		configDigest := godigest.FromBytes(configBlob)
 		So(errConfig, ShouldBeNil) // marshall success, config is valid JSON
-		ctlrManager := NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
-		defer ctlrManager.StopServer()
+
+		ctx := context.Background()
+
+		if err := ctlr.Init(ctx); err != nil {
+			panic(err)
+		}
+
+		ctlr.CveInfo = getMockCveInfo(ctlr.RepoDB, ctlr.Log)
+
+		go func() {
+			if err := ctlr.Run(ctx); !errors.Is(err, http.ErrServerClosed) {
+				panic(err)
+			}
+		}()
+
+		defer ctlr.Shutdown()
+
+		WaitTillServerReady(baseURL)
 
 		manifestBlob, errMarsal := json.Marshal(manifest)
 		So(errMarsal, ShouldBeNil)
@@ -5174,8 +5350,8 @@ func TestImageSummary(t *testing.T) {
 		So(imgSummary.Platform.Arch, ShouldEqual, "amd64")
 		So(len(imgSummary.History), ShouldEqual, 1)
 		So(imgSummary.History[0].HistoryDescription.Created, ShouldEqual, createdTime)
-		So(imgSummary.Vulnerabilities.Count, ShouldEqual, 0)
+		So(imgSummary.Vulnerabilities.Count, ShouldEqual, 4)
 		// There are 0 vulnerabilities this data used in tests
-		So(imgSummary.Vulnerabilities.MaxSeverity, ShouldEqual, "NONE")
+		So(imgSummary.Vulnerabilities.MaxSeverity, ShouldEqual, "CRITICAL")
 	})
 }
