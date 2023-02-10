@@ -1054,6 +1054,26 @@ func TestLoadConfig(t *testing.T) {
 		So(err, ShouldNotBeNil)
 
 		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
+							"subPaths": {"/a": {"rootDirectory": "/zot-a","dedupe":"true","gc":"true","gcDelay":"0s"},
+							"/b": {"rootDirectory": "/zot-a","dedupe":"true"}}},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+		err = cli.LoadConfiguration(config, tmpfile.Name())
+		So(err, ShouldNotBeNil)
+
+		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
+							"subPaths": {"/a": {"rootDirectory": "/zot-a","dedupe":"true","gc":"true"},
+							"/b": {"rootDirectory": "/b","dedupe":"true"}}},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+		err = cli.LoadConfiguration(config, tmpfile.Name())
+		So(err, ShouldBeNil)
+
+		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
 							"subPaths": {"/a": {"rootDirectory": "/zot-a","dedupe":"true"},
 							"/b": {"rootDirectory": "/zot-a","dedupe":"true"}}},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
