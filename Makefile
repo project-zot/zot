@@ -21,6 +21,7 @@ REGCLIENT := $(TOOLSDIR)/bin/regctl
 REGCLIENT_VERSION := v0.4.5
 ACTION_VALIDATOR := $(TOOLSDIR)/bin/action-validator
 ACTION_VALIDATOR_VERSION := v0.2.1
+ZUI_VERSION := v2.0.0-rc2
 STACKER := $(TOOLSDIR)/bin/stacker
 BATS := $(TOOLSDIR)/bin/bats
 TESTDATA := $(TOP_LEVEL)/test/data
@@ -384,19 +385,23 @@ $(COSIGN):
 	curl -fsSL https://github.com/sigstore/cosign/releases/download/v1.13.0/cosign-linux-amd64 -o $@; \
 	chmod +x $@
 
+# set ZUI_VERSION to empty string in order to clone zui locally and build default branch
 .PHONY: ui
 ui:
-	pwd=$$(pwd);\
-	tdir=$$(mktemp -d);\
-	cd $$tdir;\
-	if [ -z $(RELEASE_UI) ]; then\
+	if [ -z $(ZUI_VERSION) ]; then\
+		pwd=$$(pwd);\
+		tdir=$$(mktemp -d);\
+		cd $$tdir;\
 		git clone https://github.com/project-zot/zui.git;\
+		cd zui;\
+		npm install;\
+		npm run build;\
+		cd $$pwd;\
+		rm -rf ./pkg/extensions/build;\
+		cp -R $$tdir/zui/build ./pkg/extensions/;\
 	else\
-		git clone --depth 1 --branch $(RELEASE_TAG) https://github.com/project-zot/zui.git;\
+		curl -fsSL https://github.com/project-zot/zui/releases/download/$(ZUI_VERSION)/zui.tgz -o zui.tgz;\
+		tar xvzf zui.tgz -C ./pkg/extensions/;\
+		rm zui.tgz;\
 	fi;\
-	cd zui;\
-	npm install;\
-	npm run build;\
-	cd $$pwd;\
-	rm -rf ./pkg/extensions/build;\
-	cp -R $$tdir/zui/build ./pkg/extensions/;
+

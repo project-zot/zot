@@ -42,18 +42,6 @@ jobs:
       - name: Check out source code
         uses: actions/checkout@v3
 
-      - name: Push release tag to zui
-        if: github.event_name == 'release' && github.event.action == 'published' && matrix.os == 'linux' && matrix.arch == 'amd64'
-        uses: ncipollo/release-action@v1
-        with:
-          token: ${{ secrets.ZUI_TOKEN }}
-          repo: zui
-          owner: project-zot
-          tag: ${{ github.event.release.tag_name }}
-          name: ${{ github.event.release.name }}
-          body: ${{ github.event.release.body }}
-          commit: main
-
       - name: Cache go dependencies
         id: cache-go-dependencies
         uses: actions/cache@v3
