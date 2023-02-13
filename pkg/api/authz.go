@@ -240,9 +240,13 @@ func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 				return
 			}
 
+			/* we want to bypass auth/authz for mgmt in case of authFail() authzFail()
+			unauthenticated users should have access to this route, but we also need to know if the user is an admin
+			*/
+			isMgmtRequested := request.RequestURI == constants.FullMgmtPrefix
+
 			acCtrlr := NewAccessController(ctlr.Config)
 
-			// allow anonymous authz if no authn present and only default policies are present
 			var identity string
 			var err error
 
@@ -264,6 +268,7 @@ func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 					for _, cert := range request.TLS.PeerCertificates {
 						identity = cert.Subject.CommonName
 					}
+
 					// if we still don't have an identity
 					if identity == "" {
 						acCtrlr.Log.Info().Msg("couldn't get identity from TLS certificate")
@@ -274,14 +279,10 @@ func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 			ctx := acCtrlr.getContext(identity, request)
 
-			// will return only repos on which client is authorized to read
-			if request.RequestURI == fmt.Sprintf("%s%s", constants.RoutePrefix, constants.ExtCatalogPrefix) {
-				next.ServeHTTP(response, request.WithContext(ctx)) //nolint:contextcheck
-
-				return
-			}
-
-			if strings.Contains(request.RequestURI, constants.FullSearchPrefix) {
+			// for extensions we only need to know if the user is admin and what repos he can read, so run next()
+			if request.RequestURI == fmt.Sprintf("%s%s", constants.RoutePrefix, constants.ExtCatalogPrefix) ||
+				strings.Contains(request.RequestURI, constants.FullSearchPrefix) ||
+				isMgmtRequested {
 				next.ServeHTTP(response, request.WithContext(ctx)) //nolint:contextcheck
 
 				return

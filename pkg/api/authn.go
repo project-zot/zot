@@ -18,6 +18,7 @@ import (
 
 	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/api/constants"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 )
 
@@ -186,12 +187,17 @@ func basicAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 				return
 			}
 
-			if request.Header.Get("Authorization") == "" && anonymousPolicyExists(ctlr.Config.HTTP.AccessControl) {
-				// Process request
-				ctx := getReqContextWithAuthorization("", []string{}, request)
-				next.ServeHTTP(response, request.WithContext(ctx)) //nolint:contextcheck
+			// we want to bypass auth for mgmt route
+			isMgmtRequested := request.RequestURI == constants.FullMgmtPrefix
 
-				return
+			if request.Header.Get("Authorization") == "" {
+				if anonymousPolicyExists(ctlr.Config.HTTP.AccessControl) || isMgmtRequested {
+					// Process request
+					ctx := getReqContextWithAuthorization("", []string{}, request)
+					next.ServeHTTP(response, request.WithContext(ctx)) //nolint:contextcheck
+
+					return
+				}
 			}
 
 			username, passphrase, err := getUsernamePasswordBasicAuth(request)
@@ -204,12 +210,14 @@ func basicAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 			// some client tools might send Authorization: Basic Og== (decoded into ":")
 			// empty username and password
-			if username == "" && passphrase == "" && anonymousPolicyExists(ctlr.Config.HTTP.AccessControl) {
-				// Process request
-				ctx := getReqContextWithAuthorization("", []string{}, request)
-				next.ServeHTTP(response, request.WithContext(ctx)) //nolint:contextcheck
+			if username == "" && passphrase == "" {
+				if anonymousPolicyExists(ctlr.Config.HTTP.AccessControl) || isMgmtRequested {
+					// Process request
+					ctx := getReqContextWithAuthorization("", []string{}, request)
+					next.ServeHTTP(response, request.WithContext(ctx)) //nolint:contextcheck
 
-				return
+					return
+				}
 			}
 
 			// first, HTTPPassword authN (which is local)

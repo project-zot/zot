@@ -6,6 +6,7 @@
 Component | Endpoint | Description
 --- | --- | ---
 [`search`](search/search.md) | `/v2/_zot/ext/search` | efficient and enhanced registry search capabilities using graphQL backend
+[`mgmt`](mgmt.md) | `/v2/_zot/ext/mgmt` | config management
 
 
 # References

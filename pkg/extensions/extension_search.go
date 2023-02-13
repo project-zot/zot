@@ -197,6 +197,16 @@ func GetExtensions(config *config.Config) distext.ExtensionList {
 		extensions = append(extensions, searchExt)
 	}
 
+	if config.Extensions != nil && config.Extensions.Mgmt != nil {
+		endpoints := []string{constants.FullMgmtPrefix}
+		mgmtExt := getExtension("_zot",
+			"https://github.com/project-zot/zot/blob/"+config.ReleaseTag+"/pkg/extensions/_zot.md",
+			"zot registry extensions",
+			endpoints)
+
+		extensions = append(extensions, mgmtExt)
+	}
+
 	extensionList.Extensions = extensions
 
 	return extensionList
