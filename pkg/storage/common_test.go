@@ -7,7 +7,6 @@ import (
 	"path"
 	"testing"
 
-	"github.com/docker/distribution/registry/storage/driver"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
@@ -169,7 +168,7 @@ func TestGetReferrersErrors(t *testing.T) {
 					return indexBuf, nil
 				},
 				GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
-					return []byte{}, driver.PathNotFoundError{}
+					return []byte{}, errors.ErrBlobNotFound
 				},
 			}
 
@@ -194,6 +193,10 @@ func TestGetReferrersErrors(t *testing.T) {
 
 			_, err = storage.GetReferrers(imgStore, "zot-test", validDigest,
 				[]string{artifactType}, log.With().Caller().Logger())
+			So(err, ShouldNotBeNil)
+
+			_, err = storage.GetOrasReferrers(imgStore, "zot-test", validDigest,
+				artifactType, log.With().Caller().Logger())
 			So(err, ShouldNotBeNil)
 		})
 
@@ -223,6 +226,20 @@ func TestGetReferrersErrors(t *testing.T) {
 
 			_, err = storage.GetOrasReferrers(imgStore, "zot-test", digest,
 				artifactType, log.With().Caller().Logger())
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Unmarshal oras artifact error", func(c C) {
+			imgStore = &mocks.MockedImageStore{
+				GetIndexContentFn: func(repo string) ([]byte, error) {
+					return indexBuf, nil
+				},
+				GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
+					return []byte("wrong content"), nil
+				},
+			}
+
+			_, err = storage.GetOrasReferrers(imgStore, "zot-test", validDigest, artifactType, log.With().Caller().Logger())
 			So(err, ShouldNotBeNil)
 		})
 

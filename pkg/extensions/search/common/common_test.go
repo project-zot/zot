@@ -24,7 +24,6 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 
@@ -4085,7 +4084,7 @@ func TestRepoDBWhenPushingImages(t *testing.T) {
 				baseURL,
 				"repo1",
 			)
-			So(err, ShouldBeNil)
+			So(err, ShouldNotBeNil)
 		})
 
 		Convey("SetManifestMeta succeeds but SetRepoTag fails", func() {
@@ -4458,10 +4457,10 @@ func TestRepoDBWhenDeletingImages(t *testing.T) {
 
 			signatureReference := ""
 
-			var sigManifestContent artifactspec.Manifest
+			var sigManifestContent ispec.Artifact
 
 			for _, manifest := range indexContent.Manifests {
-				if manifest.MediaType == artifactspec.MediaTypeArtifactManifest {
+				if manifest.MediaType == ispec.MediaTypeArtifactManifest {
 					signatureReference = manifest.Digest.String()
 					manifestBlob, _, _, err := storage.GetImageManifest(repo, signatureReference)
 					So(err, ShouldBeNil)
@@ -4853,6 +4852,82 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 
 		_, err := olu.GetImageInfo("", "")
 		So(err, ShouldNotBeNil)
+	})
+
+	Convey("CheckManifestSignature: notation", t, func() {
+		// GetReferrers - fails => checkNotarySignature returns false
+		mockStoreController := mocks.MockedImageStore{
+			GetImageManifestFn: func(name, reference string) ([]byte, godigest.Digest, string, error) {
+				return []byte{}, "", "", zerr.ErrRepoNotFound
+			},
+			GetReferrersFn: func(name string, digest godigest.Digest, mediaTypes []string) (ispec.Index, error) {
+				return ispec.Index{}, ErrTestError
+			},
+		}
+
+		storeController := storage.StoreController{DefaultStore: mockStoreController}
+		olu := common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+
+		check := olu.CheckManifestSignature("rep", godigest.FromString(""))
+		So(check, ShouldBeFalse)
+
+		// checkNotarySignature -> true
+		dir := t.TempDir()
+
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = dir
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+		}
+
+		conf.Extensions.Search.CVE = nil
+
+		ctlr := api.NewController(conf)
+
+		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
+
+		// push test image to repo
+		config, layers, manifest, err := GetImageComponents(100)
+		So(err, ShouldBeNil)
+
+		layersSize1 := 0
+		for _, l := range layers {
+			layersSize1 += len(l)
+		}
+
+		repo := "repo"
+		tag := "1.0.1"
+		err = UploadImage(
+			Image{
+				Manifest: manifest,
+				Config:   config,
+				Layers:   layers,
+				Tag:      tag,
+			},
+			baseURL,
+			repo,
+		)
+		So(err, ShouldBeNil)
+
+		olu = common.NewBaseOciLayoutUtils(ctlr.StoreController, log.NewLogger("debug", ""))
+		manifestList, err := olu.GetImageManifests(repo)
+		So(err, ShouldBeNil)
+		So(len(manifestList), ShouldEqual, 1)
+
+		isSigned := olu.CheckManifestSignature(repo, manifestList[0].Digest)
+		So(isSigned, ShouldBeFalse)
+
+		err = SignImageUsingNotary(fmt.Sprintf("%s:%s", repo, tag), port)
+		So(err, ShouldBeNil)
+
+		isSigned = olu.CheckManifestSignature(repo, manifestList[0].Digest)
+		So(isSigned, ShouldBeTrue)
 	})
 }
 

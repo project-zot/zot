@@ -119,11 +119,33 @@ function teardown_file() {
     [ $(echo "${lines[-1]}" | jq '.data.ImageList[0].RepoName') = '"annotations"' ]
     [ "$status" -eq 0 ]
 
-    run notation cert generate-test --trust "notation-sign-test"
+    run notation cert generate-test "notation-sign-test"
     [ "$status" -eq 0 ]
+
+    local trust_policy_file=${HOME}/.config/notation/trustpolicy.json
+
+    cat >${trust_policy_file} <<EOF
+{
+    "version": "1.0",
+    "trustPolicies": [
+        {
+            "name": "notation-sign-test",
+            "registryScopes": [ "*" ],
+            "signatureVerification": {
+                "level" : "strict" 
+            },
+            "trustStores": [ "ca:notation-sign-test" ],
+            "trustedIdentities": [
+                "*"
+            ]
+        }
+    ]
+}
+EOF
+
     run notation sign --key "notation-sign-test" --plain-http localhost:8080/annotations:latest
     [ "$status" -eq 0 ]
-    run notation verify --cert "notation-sign-test" --plain-http localhost:8080/annotations:latest
+    run notation verify --plain-http localhost:8080/annotations:latest
     [ "$status" -eq 0 ]
     run notation list --plain-http localhost:8080/annotations:latest
     [ "$status" -eq 0 ]

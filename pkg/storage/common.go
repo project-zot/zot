@@ -3,13 +3,10 @@ package storage
 import (
 	"encoding/json"
 	"errors"
-	"os"
 	"path"
 	"strings"
 
-	"github.com/docker/distribution/registry/storage/driver"
 	"github.com/gobwas/glob"
-	"github.com/notaryproject/notation-go"
 	godigest "github.com/opencontainers/go-digest"
 	imeta "github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -95,7 +92,7 @@ func ValidateManifest(imgStore ImageStore, repo, reference, mediaType string, bo
 			}
 		}
 	case oras.MediaTypeArtifactManifest:
-		var m notation.Descriptor
+		var m oras.Descriptor
 		if err := json.Unmarshal(body, &m); err != nil {
 			log.Error().Err(err).Msg("unable to unmarshal JSON")
 
@@ -580,7 +577,7 @@ func GetReferrers(imgStore ImageStore, repo string, gdigest godigest.Digest, art
 		if err != nil {
 			log.Error().Err(err).Str("blob", imgStore.BlobPath(repo, manifest.Digest)).Msg("failed to read manifest")
 
-			if os.IsNotExist(err) || errors.Is(err, driver.PathNotFoundError{}) {
+			if errors.Is(err, zerr.ErrBlobNotFound) {
 				return nilIndex, zerr.ErrManifestNotFound
 			}
 
@@ -691,7 +688,7 @@ func GetOrasManifestByDigest(imgStore ImageStore, repo string, digest godigest.D
 	if err != nil {
 		log.Error().Err(err).Str("blob", blobPath).Msg("failed to read manifest")
 
-		if os.IsNotExist(err) || errors.Is(err, driver.PathNotFoundError{}) {
+		if errors.Is(err, zerr.ErrBlobNotFound) {
 			return artManifest, zerr.ErrManifestNotFound
 		}
 

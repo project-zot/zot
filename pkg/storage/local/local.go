@@ -1476,7 +1476,7 @@ func (is *ImageStoreLocal) garbageCollect(dir string, repo string) error {
 					cosignDescriptors = append(cosignDescriptors, desc)
 				}
 			}
-		case oras.MediaTypeArtifactManifest:
+		case ispec.MediaTypeArtifactManifest:
 			notationDescriptors = append(notationDescriptors, desc)
 		}
 	}
@@ -1615,7 +1615,9 @@ func gcNotationSignatures(imgStore *ImageStoreLocal, oci casext.Engine, index *i
 	for _, notationDesc := range notationDescriptors {
 		foundSubject := false
 		// check if we can find the manifest which the signature points to
-		artManifest, err := storage.GetOrasManifestByDigest(imgStore, repo, notationDesc.Digest, imgStore.log)
+		var artManifest ispec.Artifact
+
+		buf, err := imgStore.GetBlobContent(repo, notationDesc.Digest)
 		if err != nil {
 			imgStore.log.Error().Err(err).Str("repo", repo).Str("digest", notationDesc.Digest.String()).
 				Msg("gc: failed to get oras artifact manifest")
@@ -1623,7 +1625,14 @@ func gcNotationSignatures(imgStore *ImageStoreLocal, oci casext.Engine, index *i
 			return err
 		}
 
-		// skip oras artifacts which are not signatures
+		if err := json.Unmarshal(buf, &artManifest); err != nil {
+			imgStore.log.Error().Err(err).Str("repo", repo).Str("digest", notationDesc.Digest.String()).
+				Msg("gc: failed to get oras artifact manifest")
+
+			return err
+		}
+
+		// skip oci artifacts which are not signatures
 		if artManifest.ArtifactType != notreg.ArtifactTypeNotation {
 			continue
 		}

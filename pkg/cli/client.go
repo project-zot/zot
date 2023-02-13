@@ -18,10 +18,10 @@ import (
 	"time"
 
 	notreg "github.com/notaryproject/notation-go/registry"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/sigstore/cosign/pkg/oci/remote"
 
 	zotErrors "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/common"
 )
 
@@ -236,14 +236,14 @@ func (p *requestsPool) doJob(ctx context.Context, job *manifestJob) {
 		isSigned = true
 	}
 
-	var referrers api.ReferenceList
+	var referrers ispec.Index
 
 	if !isSigned {
-		_, err = makeGETRequest(ctx, fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers?artifactType=%s",
+		_, err = makeGETRequest(ctx, fmt.Sprintf("%s/v2/%s/referrers/%s?artifactType=%s",
 			*job.config.servURL, job.imageName, digestStr, notreg.ArtifactTypeNotation), job.username, job.password,
 			*job.config.verifyTLS, *job.config.debug, &referrers, job.config.resultWriter)
 		if err == nil {
-			for _, reference := range referrers.References {
+			for _, reference := range referrers.Manifests {
 				if reference.ArtifactType == notreg.ArtifactTypeNotation {
 					isSigned = true
 

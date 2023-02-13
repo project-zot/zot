@@ -300,14 +300,14 @@ func syncRun(regCfg RegistryConfig,
 			Err(err).Msgf("couldn't get upstream image %s cosign manifest", upstreamImageRef.DockerReference())
 	}
 
-	refs, err := sig.getNotaryRefs(upstreamRepo, upstreamImageDigest.String())
+	index, err := sig.getOCIRefs(upstreamRepo, upstreamImageDigest.String())
 	if err != nil {
 		log.Error().Str("errorType", common.TypeOf(err)).
-			Err(err).Msgf("couldn't get upstream image %s notary references", upstreamImageRef.DockerReference())
+			Err(err).Msgf("couldn't get upstream image %s OCI references", upstreamImageRef.DockerReference())
 	}
 
 	// check if upstream image is signed
-	if cosignManifest == nil && len(refs.References) == 0 {
+	if cosignManifest == nil && len(getNotationManifestsFromOCIRefs(index)) == 0 {
 		// upstream image not signed
 		if regCfg.OnlySigned != nil && *regCfg.OnlySigned {
 			// skip unsigned images
@@ -355,12 +355,6 @@ func syncRun(regCfg RegistryConfig,
 		return false, err
 	}
 
-	index, err := sig.getOCIRefs(upstreamRepo, upstreamImageDigest.String())
-	if err != nil {
-		log.Error().Str("errorType", common.TypeOf(err)).
-			Err(err).Msgf("couldn't get upstream image %s oci references", upstreamImageRef.DockerReference())
-	}
-
 	err = sig.syncOCIRefs(localRepo, upstreamRepo, upstreamImageDigest.String(), index)
 	if err != nil {
 		return false, err
@@ -374,10 +368,16 @@ func syncRun(regCfg RegistryConfig,
 		return false, err
 	}
 
-	err = sig.syncNotaryRefs(localRepo, upstreamRepo, upstreamImageDigest.String(), refs)
+	refs, err := sig.getORASRefs(upstreamRepo, upstreamImageDigest.String())
 	if err != nil {
 		log.Error().Str("errorType", common.TypeOf(err)).
-			Err(err).Msgf("couldn't copy image notary signature %s/%s:%s", utils.upstreamAddr, upstreamRepo, reference)
+			Err(err).Msgf("couldn't get upstream image %s ORAS references", upstreamImageRef.DockerReference())
+	}
+
+	err = sig.syncORASRefs(localRepo, upstreamRepo, upstreamImageDigest.String(), refs)
+	if err != nil {
+		log.Error().Str("errorType", common.TypeOf(err)).
+			Err(err).Msgf("couldn't copy image ORAS references %s/%s:%s", utils.upstreamAddr, upstreamRepo, reference)
 
 		return false, err
 	}
@@ -409,27 +409,28 @@ func syncSignaturesArtifacts(sig *signaturesCopier, localRepo, upstreamRepo, ref
 			return err
 		}
 	case artifactType == OrasArtifact:
-		// is notary signature
-		refs, err := sig.getNotaryRefs(upstreamRepo, reference)
+		// is oras artifact
+		refs, err := sig.getORASRefs(upstreamRepo, reference)
 		if err != nil {
 			sig.log.Error().Str("errorType", common.TypeOf(err)).
-				Err(err).Msgf("couldn't get upstream image %s/%s:%s notary references", upstreamURL, upstreamRepo, reference)
+				Err(err).Msgf("couldn't get upstream image %s/%s:%s ORAS references", upstreamURL, upstreamRepo, reference)
 
 			return err
 		}
 
-		err = sig.syncNotaryRefs(localRepo, upstreamRepo, reference, refs)
+		err = sig.syncORASRefs(localRepo, upstreamRepo, reference, refs)
 		if err != nil {
 			sig.log.Error().Str("errorType", common.TypeOf(err)).
-				Err(err).Msgf("couldn't copy image signature %s/%s:%s", upstreamURL, upstreamRepo, reference)
+				Err(err).Msgf("couldn't copy image ORAS references %s/%s:%s", upstreamURL, upstreamRepo, reference)
 
 			return err
 		}
 	case artifactType == OCIReference:
+		// this contains notary signatures
 		index, err := sig.getOCIRefs(upstreamRepo, reference)
 		if err != nil {
 			sig.log.Error().Str("errorType", common.TypeOf(err)).
-				Err(err).Msgf("couldn't get oci references %s/%s:%s", upstreamURL, upstreamRepo, reference)
+				Err(err).Msgf("couldn't get OCI references %s/%s:%s", upstreamURL, upstreamRepo, reference)
 
 			return err
 		}
@@ -437,7 +438,7 @@ func syncSignaturesArtifacts(sig *signaturesCopier, localRepo, upstreamRepo, ref
 		err = sig.syncOCIRefs(localRepo, upstreamRepo, reference, index)
 		if err != nil {
 			sig.log.Error().Str("errorType", common.TypeOf(err)).
-				Err(err).Msgf("couldn't copy oci references %s/%s:%s", upstreamURL, upstreamRepo, reference)
+				Err(err).Msgf("couldn't copy OCI references %s/%s:%s", upstreamURL, upstreamRepo, reference)
 
 			return err
 		}

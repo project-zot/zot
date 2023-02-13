@@ -18,7 +18,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
-	"os/exec"
 	"path"
 	"regexp"
 	"strconv"
@@ -3964,53 +3963,28 @@ func TestImageSignatures(t *testing.T) {
 			tdir := t.TempDir()
 			_ = os.Chdir(tdir)
 
-			// "notation" (notaryv2) doesn't yet support exported apis, so use the binary instead
-			notPath, err := exec.LookPath("notation")
-			So(notPath, ShouldNotBeNil)
+			test.NotationPathLock.Lock()
+			defer test.NotationPathLock.Unlock()
+
+			test.LoadNotationPath(tdir)
+
+			err = test.GenerateNotationCerts(tdir, "good")
 			So(err, ShouldBeNil)
 
-			os.Setenv("XDG_CONFIG_HOME", tdir)
-
-			// generate a keypair
-			cmd := exec.Command("notation", "cert", "generate-test", "--trust", "good")
-			err = cmd.Run()
+			err = test.GenerateNotationCerts(tdir, "bad")
 			So(err, ShouldBeNil)
 
-			// generate another keypair
-			cmd = exec.Command("notation", "cert", "generate-test", "--trust", "bad")
-			err = cmd.Run()
-			So(err, ShouldBeNil)
-
-			// sign the image
 			image := fmt.Sprintf("localhost:%s/%s:%s", port, repoName, "1.0")
-			cmd = exec.Command("notation", "sign", "--key", "good", "--plain-http", image)
-			err = cmd.Run()
+			err = test.SignWithNotation("good", image, tdir)
 			So(err, ShouldBeNil)
 
-			// verify the image
-			cmd = exec.Command("notation", "verify", "--cert", "good", "--plain-http", image)
-			out, err := cmd.CombinedOutput()
+			err = test.VerifyWithNotation(image, tdir)
 			So(err, ShouldBeNil)
-			msg := string(out)
-			So(msg, ShouldNotBeEmpty)
-			So(strings.Contains(msg, "verification failure"), ShouldBeFalse)
 
 			// check list
-			cmd = exec.Command("notation", "list", "--plain-http", image)
-			out, err = cmd.CombinedOutput()
+			sigs, err := test.ListNotarySignatures(image, tdir)
+			So(len(sigs), ShouldEqual, 1)
 			So(err, ShouldBeNil)
-			msg = strings.TrimSuffix(string(out), "\n")
-			So(msg, ShouldNotBeEmpty)
-			_, err = godigest.Parse(msg)
-			So(err, ShouldBeNil)
-
-			// verify the image with incorrect key
-			cmd = exec.Command("notation", "verify", "--cert", "bad", "--plain-http", image)
-			out, err = cmd.CombinedOutput()
-			So(err, ShouldNotBeNil)
-			msg = string(out)
-			So(msg, ShouldNotBeEmpty)
-			So(strings.Contains(msg, "verification failure"), ShouldBeTrue)
 
 			// check unsupported manifest media type
 			resp, err := resty.R().SetHeader("Content-Type", "application/vnd.unsupported.image.manifest.v1+json").
@@ -4027,49 +4001,45 @@ func TestImageSignatures(t *testing.T) {
 			Convey("Validate corrupted signature", func() {
 				// verify with corrupted signature
 				resp, err = resty.R().SetQueryParam("artifactType", notreg.ArtifactTypeNotation).Get(
-					fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers", baseURL, repoName, digest.String()))
+					fmt.Sprintf("%s/v2/%s/referrers/%s", baseURL, repoName, digest.String()))
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-				var refs api.ReferenceList
+				var refs ispec.Index
 				err = json.Unmarshal(resp.Body(), &refs)
 				So(err, ShouldBeNil)
-				So(len(refs.References), ShouldEqual, 1)
+				So(len(refs.Manifests), ShouldEqual, 1)
 				err = os.WriteFile(path.Join(dir, repoName, "blobs",
-					strings.ReplaceAll(refs.References[0].Digest.String(), ":", "/")), []byte("corrupt"), 0o600)
+					strings.ReplaceAll(refs.Manifests[0].Digest.String(), ":", "/")), []byte("corrupt"), 0o600)
 				So(err, ShouldBeNil)
 				resp, err = resty.R().SetQueryParam("artifactType", notreg.ArtifactTypeNotation).Get(
-					fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers", baseURL, repoName, digest.String()))
+					fmt.Sprintf("%s/v2/%s/referrers/%s", baseURL, repoName, digest.String()))
 				So(err, ShouldBeNil)
-				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
-				cmd = exec.Command("notation", "verify", "--cert", "good", "--plain-http", image)
-				out, err = cmd.CombinedOutput()
+				So(resp.StatusCode(), ShouldEqual, http.StatusInternalServerError)
+
+				err = test.VerifyWithNotation(image, tdir)
 				So(err, ShouldNotBeNil)
-				msg = string(out)
-				So(msg, ShouldNotBeEmpty)
 			})
 
 			Convey("Validate deleted signature", func() {
 				// verify with corrupted signature
 				resp, err = resty.R().SetQueryParam("artifactType", notreg.ArtifactTypeNotation).Get(
-					fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers", baseURL, repoName, digest.String()))
+					fmt.Sprintf("%s/v2/%s/referrers/%s", baseURL, repoName, digest.String()))
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-				var refs api.ReferenceList
+				var refs ispec.Index
 				err = json.Unmarshal(resp.Body(), &refs)
 				So(err, ShouldBeNil)
-				So(len(refs.References), ShouldEqual, 1)
+				So(len(refs.Manifests), ShouldEqual, 1)
 				err = os.Remove(path.Join(dir, repoName, "blobs",
-					strings.ReplaceAll(refs.References[0].Digest.String(), ":", "/")))
+					strings.ReplaceAll(refs.Manifests[0].Digest.String(), ":", "/")))
 				So(err, ShouldBeNil)
 				resp, err = resty.R().SetQueryParam("artifactType", notreg.ArtifactTypeNotation).Get(
-					fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers", baseURL, repoName, digest.String()))
+					fmt.Sprintf("%s/v2/%s/referrers/%s", baseURL, repoName, digest.String()))
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
-				cmd = exec.Command("notation", "verify", "--cert", "good", "--plain-http", image)
-				out, err = cmd.CombinedOutput()
+
+				err = test.VerifyWithNotation(image, tdir)
 				So(err, ShouldNotBeNil)
-				msg = string(out)
-				So(msg, ShouldNotBeEmpty)
 			})
 		})
 
@@ -5192,7 +5162,7 @@ func TestManifestImageIndex(t *testing.T) {
 				Layers:   layers,
 				Manifest: manifest,
 			}, baseURL, repoName)
-		So(err, ShouldBeNil)
+		So(err, ShouldNotBeNil)
 
 		content, err = json.Marshal(manifest)
 		So(err, ShouldBeNil)
@@ -5217,7 +5187,7 @@ func TestManifestImageIndex(t *testing.T) {
 					Layers:   layers,
 					Manifest: manifest,
 				}, baseURL, repoName)
-			So(err, ShouldBeNil)
+			So(err, ShouldNotBeNil)
 
 			content, err = json.Marshal(manifest)
 			So(err, ShouldBeNil)
@@ -5273,7 +5243,7 @@ func TestManifestImageIndex(t *testing.T) {
 					Layers:   layers,
 					Manifest: manifest,
 				}, baseURL, repoName)
-			So(err, ShouldBeNil)
+			So(err, ShouldNotBeNil)
 			content, err = json.Marshal(manifest)
 			So(err, ShouldBeNil)
 			digest = godigest.FromBytes(content)
@@ -5446,7 +5416,7 @@ func TestManifestImageIndex(t *testing.T) {
 						Layers:   layers,
 						Manifest: manifest,
 					}, baseURL, repoName)
-				So(err, ShouldBeNil)
+				So(err, ShouldNotBeNil)
 				content, err = json.Marshal(manifest)
 				So(err, ShouldBeNil)
 				digest = godigest.FromBytes(content)
@@ -6200,23 +6170,17 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 
 			So(err, ShouldBeNil)
 
-			// "notation" (notaryv2) doesn't yet support exported apis, so use the binary instead
-			notPath, err := exec.LookPath("notation")
-			So(notPath, ShouldNotBeNil)
-			So(err, ShouldBeNil)
+			test.NotationPathLock.Lock()
+			defer test.NotationPathLock.Unlock()
 
-			os.Setenv("XDG_CONFIG_HOME", tdir)
+			test.LoadNotationPath(tdir)
 
 			// generate a keypair
-			cmd := exec.Command("notation", "cert", "generate-test", "--trust", "good")
-			output, err := cmd.CombinedOutput()
-			t.Log(string(output))
+			err = test.GenerateNotationCerts(tdir, "good")
 			So(err, ShouldBeNil)
 
 			// sign the image
-			cmd = exec.Command("notation", "sign", "--key", "good", "--plain-http", image)
-			output, err = cmd.CombinedOutput()
-			t.Log(string(output))
+			err = test.SignWithNotation("good", image, tdir)
 			So(err, ShouldBeNil)
 
 			// get cosign signature manifest
@@ -6228,15 +6192,21 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 
 			// get notation signature manifest
 			resp, err = resty.R().SetQueryParam("artifactType", notreg.ArtifactTypeNotation).Get(
-				fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers", baseURL, repoName, digest.String()))
+				fmt.Sprintf("%s/v2/%s/referrers/%s", baseURL, repoName, digest.String()))
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
+			var index ispec.Index
+
+			err = json.Unmarshal(resp.Body(), &index)
+			So(err, ShouldBeNil)
+			So(len(index.Manifests), ShouldEqual, 1)
+
 			Convey("Trigger gcNotationSignatures() error", func() {
-				var refs api.ReferenceList
+				var refs ispec.Index
 				err = json.Unmarshal(resp.Body(), &refs)
 
-				err := os.Chmod(path.Join(dir, repoName, "blobs", "sha256", refs.References[0].Digest.Encoded()), 0o000)
+				err := os.Chmod(path.Join(dir, repoName, "blobs", "sha256", refs.Manifests[0].Digest.Encoded()), 0o000)
 				So(err, ShouldBeNil)
 
 				// trigger gc
@@ -6250,9 +6220,26 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 						Manifest: manifest,
 						Tag:      tag,
 					}, baseURL, repoName)
+				So(err, ShouldNotBeNil)
+
+				err = os.Chmod(path.Join(dir, repoName, "blobs", "sha256", refs.Manifests[0].Digest.Encoded()), 0o755)
 				So(err, ShouldBeNil)
 
-				err = os.Chmod(path.Join(dir, repoName, "blobs", "sha256", refs.References[0].Digest.Encoded()), 0o755)
+				content, err := os.ReadFile(path.Join(dir, repoName, "blobs", "sha256", refs.Manifests[0].Digest.Encoded()))
+				So(err, ShouldBeNil)
+				err = os.WriteFile(path.Join(dir, repoName, "blobs", "sha256", refs.Manifests[0].Digest.Encoded()), []byte("corrupt"), 0o600) //nolint:lll
+				So(err, ShouldBeNil)
+
+				err = test.UploadImage(
+					test.Image{
+						Config:   cfg,
+						Layers:   layers,
+						Manifest: manifest,
+						Tag:      tag,
+					}, baseURL, repoName)
+				So(err, ShouldNotBeNil)
+
+				err = os.WriteFile(path.Join(dir, repoName, "blobs", "sha256", refs.Manifests[0].Digest.Encoded()), content, 0o600)
 				So(err, ShouldBeNil)
 			})
 
@@ -6296,14 +6283,22 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
 			resp, err = resty.R().SetQueryParam("artifactType", notreg.ArtifactTypeNotation).Get(
-				fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers", baseURL, repoName, digest.String()))
+				fmt.Sprintf("%s/v2/%s/referrers/%s", baseURL, repoName, digest.String()))
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			err = json.Unmarshal(resp.Body(), &index)
+			So(err, ShouldBeNil)
+			So(len(index.Manifests), ShouldEqual, 0)
 
 			resp, err = resty.R().SetQueryParam("artifactType", notreg.ArtifactTypeNotation).Get(
-				fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers", baseURL, repoName, newManifestDigest.String()))
+				fmt.Sprintf("%s/v2/%s/referrers/%s", baseURL, repoName, newManifestDigest.String()))
 			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			err = json.Unmarshal(resp.Body(), &index)
+			So(err, ShouldBeNil)
+			So(len(index.Manifests), ShouldEqual, 0)
 
 			// untagged image should also be gc'ed
 			resp, err = resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, untaggedManifestDigest))
