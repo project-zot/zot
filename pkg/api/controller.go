@@ -166,12 +166,23 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 	c.Server = server
 
 	// Create the listener
-	listener, err := net.Listen("tcp", addr)
-	if err != nil {
-		return err
-	}
+	var listener net.Listener
+	var err error
 
-	if c.Config.HTTP.Port == "0" || c.Config.HTTP.Port == "" {
+	if strings.HasPrefix(c.Config.HTTP.Address, "unix:") {
+		// unix:/path/to/socket allows listening on unix socket
+		c.Server.Addr = c.Config.HTTP.Address
+		socketPath := c.Config.HTTP.Address[len("unix:"):]
+		listener, err = net.Listen("unix", socketPath)
+		if err != nil {
+			return err
+		}
+		c.Log.Info().Str("path", socketPath).Msg("Listening on unix socket")
+	} else if c.Config.HTTP.Port == "0" || c.Config.HTTP.Port == "" {
+		listener, err = net.Listen("tcp", addr)
+		if err != nil {
+			return err
+		}
 		chosenAddr, ok := listener.Addr().(*net.TCPAddr)
 		if !ok {
 			c.Log.Error().Str("port", c.Config.HTTP.Port).Msg("invalid addr type")
@@ -185,6 +196,10 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 			"port is unspecified, listening on kernel chosen port",
 		)
 	} else {
+		listener, err = net.Listen("tcp", addr)
+		if err != nil {
+			return err
+		}
 		chosenPort, _ := strconv.ParseInt(c.Config.HTTP.Port, 10, 64)
 
 		c.chosenPort = int(chosenPort)
