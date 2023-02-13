@@ -1635,30 +1635,21 @@ func (rh *RouteHandler) getImageStore(name string) storage.ImageStore {
 func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore storage.ImageStore, name,
 	reference string,
 ) ([]byte, godigest.Digest, string, error) {
-	content, digest, mediaType, err := imgStore.GetImageManifest(name, reference)
-	if err != nil {
-		if errors.Is(err, zerr.ErrRepoNotFound) || errors.Is(err, zerr.ErrManifestNotFound) {
-			if routeHandler.c.Config.Extensions != nil &&
-				routeHandler.c.Config.Extensions.Sync != nil &&
-				*routeHandler.c.Config.Extensions.Sync.Enable {
-				routeHandler.c.Log.Info().Msgf("image not found, trying to get image %s:%s by syncing on demand",
-					name, reference)
+	if routeHandler.c.Config.Extensions != nil &&
+		routeHandler.c.Config.Extensions.Sync != nil &&
+		*routeHandler.c.Config.Extensions.Sync.Enable {
+		routeHandler.c.Log.Info().Msgf("trying to get updated image %s:%s by syncing on demand",
+			name, reference)
 
-				errSync := ext.SyncOneImage(ctx, routeHandler.c.Config, routeHandler.c.StoreController,
-					name, reference, "", routeHandler.c.Log)
-				if errSync != nil {
-					routeHandler.c.Log.Err(errSync).Msgf("error encounter while syncing image %s:%s",
-						name, reference)
-				} else {
-					content, digest, mediaType, err = imgStore.GetImageManifest(name, reference)
-				}
-			}
-		} else {
-			return []byte{}, "", "", err
+		errSync := ext.SyncOneImage(ctx, routeHandler.c.Config, routeHandler.c.StoreController,
+			name, reference, "", routeHandler.c.Log)
+		if errSync != nil {
+			routeHandler.c.Log.Err(errSync).Msgf("error encounter while syncing image %s:%s",
+				name, reference)
 		}
 	}
 
-	return content, digest, mediaType, err
+	return imgStore.GetImageManifest(name, reference)
 }
 
 // will sync referrers on demand if they are not found, in case sync extensions is enabled.
