@@ -7,7 +7,8 @@
         "subPaths": {
             "/infra": {
                 "rootDirectory": "/tmp/zot1",
-                "dedupe": true
+                "dedupe": true,
+                "gc": true
             },
             "/b": {
                 "rootDirectory": "/tmp/zot2",

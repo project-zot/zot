@@ -143,6 +143,7 @@ func newVerifyCmd(conf *config.Config) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			if len(args) > 0 {
 				if err := LoadConfiguration(conf, args[0]); err != nil {
+					log.Error().Msgf("Config file %s is invalid", args[0])
 					panic(err)
 				}
 
@@ -506,7 +507,7 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper) {
 		config.Storage.GCDelay = 0
 	}
 
-	// cache
+	// cache settings
 
 	// global storage
 
@@ -548,6 +549,12 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper) {
 
 				storageConfig.RemoteCache = false
 			}
+		}
+
+		// if gc is enabled and gcDelay is not set, it is set to default value
+		if storageConfig.GC && !viperInstance.IsSet("storage::subpaths::"+name+"::gcdelay") {
+			storageConfig.GCDelay = storage.DefaultGCDelay
+			config.Storage.SubPaths[name] = storageConfig
 		}
 	}
 }
@@ -726,6 +733,18 @@ func validateGC(config *config.Config) error {
 		if config.Storage.GCInterval != 0 {
 			log.Warn().Err(errors.ErrBadConfig).
 				Msg("periodic garbage-collect interval specified without enabling garbage-collect, will be ignored")
+		}
+	}
+
+	// subpaths
+	for name, subPath := range config.Storage.SubPaths {
+		if subPath.GC && subPath.GCDelay <= 0 {
+			log.Error().Err(errors.ErrBadConfig).
+				Str("subPath", name).
+				Interface("gcDelay", subPath.GCDelay).
+				Msg("invalid GC delay configuration - cannot be negative or zero")
+
+			return errors.ErrBadConfig
 		}
 	}
 
