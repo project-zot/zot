@@ -1047,7 +1047,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 		defer dcm.StopServer()
 
 		// give it time to set up sync
-		time.Sleep(5 * time.Second)
+		time.Sleep(10 * time.Second)
 
 		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/0.0.1")
 		So(err, ShouldBeNil)

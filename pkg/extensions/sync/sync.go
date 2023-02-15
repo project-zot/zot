@@ -384,6 +384,7 @@ func syncRegistry(ctx context.Context, regCfg RegistryConfig,
 
 					return err
 				}
+
 				// push from cache to repo
 				err = pushSyncedLocalImage(localRepo, tag, localCachePath, imageStore, log)
 				if err != nil {
