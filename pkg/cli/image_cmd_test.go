@@ -1536,7 +1536,7 @@ func (service mockService) getDerivedImageListGQL(ctx context.Context, config se
 	derivedImage string,
 ) (*imageListStructForDerivedImagesGQL, error) {
 	imageListGQLResponse := &imageListStructForDerivedImagesGQL{}
-	imageListGQLResponse.Data.ImageList.Results = []imageStruct{
+	imageListGQLResponse.Data.Results = []imageStruct{
 		{
 			RepoName:     "dummyImageName",
 			Tag:          "tag",
@@ -1554,7 +1554,7 @@ func (service mockService) getBaseImageListGQL(ctx context.Context, config searc
 	derivedImage string,
 ) (*imageListStructForBaseImagesGQL, error) {
 	imageListGQLResponse := &imageListStructForBaseImagesGQL{}
-	imageListGQLResponse.Data.ImageList.Results = []imageStruct{
+	imageListGQLResponse.Data.Results = []imageStruct{
 		{
 			RepoName:     "dummyImageName",
 			Tag:          "tag",
@@ -1572,7 +1572,7 @@ func (service mockService) getImagesGQL(ctx context.Context, config searchConfig
 	imageName string,
 ) (*imageListStructGQL, error) {
 	imageListGQLResponse := &imageListStructGQL{}
-	imageListGQLResponse.Data.ImageList = []imageStruct{
+	imageListGQLResponse.Data.Results = []imageStruct{
 		{
 			RepoName:     "dummyImageName",
 			Tag:          "tag",
@@ -1590,7 +1590,7 @@ func (service mockService) getImagesByDigestGQL(ctx context.Context, config sear
 	digest string,
 ) (*imageListStructForDigestGQL, error) {
 	imageListGQLResponse := &imageListStructForDigestGQL{}
-	imageListGQLResponse.Data.ImageList = []imageStruct{
+	imageListGQLResponse.Data.Results = []imageStruct{
 		{
 			RepoName:     "randomimageName",
 			Tag:          "tag",
@@ -1610,14 +1610,14 @@ func (service mockService) getImagesByCveIDGQL(ctx context.Context, config searc
 	imagesForCve := &imagesForCve{
 		Errors: nil,
 		Data: struct {
-			ImageList []imageStruct `json:"ImageListForCVE"` //nolint:tagliatelle
+			PaginatedImagesResult `json:"ImageListForCVE"` //nolint:tagliatelle
 		}{},
 	}
 
 	imagesForCve.Errors = nil
 
 	mockedImage := service.getMockedImageByName("anImage")
-	imagesForCve.Data.ImageList = []imageStruct{mockedImage}
+	imagesForCve.Data.Results = []imageStruct{mockedImage}
 
 	return imagesForCve, nil
 }
@@ -1628,14 +1628,14 @@ func (service mockService) getTagsForCVEGQL(ctx context.Context, config searchCo
 	images := &imagesForCve{
 		Errors: nil,
 		Data: struct {
-			ImageList []imageStruct `json:"ImageListForCVE"` //nolint:tagliatelle // graphQL schema
+			PaginatedImagesResult `json:"ImageListForCVE"` //nolint:tagliatelle // graphQL schema
 		}{},
 	}
 
 	images.Errors = nil
 
 	mockedImage := service.getMockedImageByName(imageName)
-	images.Data.ImageList = []imageStruct{mockedImage}
+	images.Data.Results = []imageStruct{mockedImage}
 
 	return images, nil
 }
@@ -1646,14 +1646,14 @@ func (service mockService) getFixedTagsForCVEGQL(ctx context.Context, config sea
 	fixedTags := &fixedTags{
 		Errors: nil,
 		Data: struct {
-			ImageList []imageStruct `json:"ImageListWithCVEFixed"` //nolint:tagliatelle // graphQL schema
+			PaginatedImagesResult `json:"ImageListWithCVEFixed"` //nolint:tagliatelle // graphQL schema
 		}{},
 	}
 
 	fixedTags.Errors = nil
 
 	mockedImage := service.getMockedImageByName(imageName)
-	fixedTags.Data.ImageList = []imageStruct{mockedImage}
+	fixedTags.Data.Results = []imageStruct{mockedImage}
 
 	return fixedTags, nil
 }

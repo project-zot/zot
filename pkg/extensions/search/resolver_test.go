@@ -614,7 +614,7 @@ func TestImageListForDigest(t *testing.T) {
 
 			imageList, err := getImageListForDigest(responseContext, "test", mockSearchDB, mocks.CveInfoMock{}, nil)
 			So(err, ShouldBeNil)
-			So(imageList, ShouldBeEmpty)
+			So(imageList.Results, ShouldBeEmpty)
 		})
 
 		Convey("valid imageListForDigest returned for matching manifest digest", func() {
@@ -677,12 +677,12 @@ func TestImageListForDigest(t *testing.T) {
 			imageSummaries, err := getImageListForDigest(responseContext, manifestDigest,
 				mockSearchDB, mocks.CveInfoMock{}, &pageInput)
 			So(err, ShouldBeNil)
-			So(len(imageSummaries), ShouldEqual, 1)
+			So(len(imageSummaries.Results), ShouldEqual, 1)
 
 			imageSummaries, err = getImageListForDigest(responseContext, "invalid",
 				mockSearchDB, mocks.CveInfoMock{}, &pageInput)
 			So(err, ShouldBeNil)
-			So(len(imageSummaries), ShouldEqual, 0)
+			So(len(imageSummaries.Results), ShouldEqual, 0)
 		})
 
 		Convey("valid imageListForDigest returned for matching config digest", func() {
@@ -756,7 +756,7 @@ func TestImageListForDigest(t *testing.T) {
 			imageSummaries, err := getImageListForDigest(responseContext, configDigest.String(),
 				mockSearchDB, mocks.CveInfoMock{}, &pageInput)
 			So(err, ShouldBeNil)
-			So(len(imageSummaries), ShouldEqual, 1)
+			So(len(imageSummaries.Results), ShouldEqual, 1)
 		})
 
 		Convey("valid imageListForDigest returned for matching layer digest", func() {
@@ -832,7 +832,7 @@ func TestImageListForDigest(t *testing.T) {
 			imageSummaries, err := getImageListForDigest(responseContext, layerDigest.String(),
 				mockSearchDB, mocks.CveInfoMock{}, &pageInput)
 			So(err, ShouldBeNil)
-			So(len(imageSummaries), ShouldEqual, 1)
+			So(len(imageSummaries.Results), ShouldEqual, 1)
 		})
 
 		Convey("valid imageListForDigest, multiple matching tags", func() {
@@ -901,7 +901,7 @@ func TestImageListForDigest(t *testing.T) {
 			imageSummaries, err := getImageListForDigest(responseContext, manifestDigest,
 				mockSearchDB, mocks.CveInfoMock{}, &pageInput)
 			So(err, ShouldBeNil)
-			So(len(imageSummaries), ShouldEqual, 2)
+			So(len(imageSummaries.Results), ShouldEqual, 2)
 		})
 
 		Convey("valid imageListForDigest, multiple matching tags limited by pageInput", func() {
@@ -981,7 +981,7 @@ func TestImageListForDigest(t *testing.T) {
 			imageSummaries, err := getImageListForDigest(responseContext, manifestDigest,
 				mockSearchDB, mocks.CveInfoMock{}, &pageInput)
 			So(err, ShouldBeNil)
-			So(len(imageSummaries), ShouldEqual, 1)
+			So(len(imageSummaries.Results), ShouldEqual, 1)
 		})
 	})
 }
@@ -1072,12 +1072,12 @@ func TestImageList(t *testing.T) {
 			imageSummaries, err := getImageList(responseContext, "test", mockSearchDB,
 				mocks.CveInfoMock{}, &pageInput, testLogger)
 			So(err, ShouldBeNil)
-			So(len(imageSummaries), ShouldEqual, 1)
+			So(len(imageSummaries.Results), ShouldEqual, 1)
 
 			imageSummaries, err = getImageList(responseContext, "invalid", mockSearchDB,
 				mocks.CveInfoMock{}, &pageInput, testLogger)
 			So(err, ShouldBeNil)
-			So(len(imageSummaries), ShouldEqual, 0)
+			So(len(imageSummaries.Results), ShouldEqual, 0)
 		})
 	})
 }
@@ -1878,9 +1878,9 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				"repo1:1.0.0",
 				"repo2:2.0.0",
 			}
-			So(len(images), ShouldEqual, len(expectedImages))
+			So(len(images.Results), ShouldEqual, len(expectedImages))
 
-			for _, image := range images {
+			for _, image := range images.Results {
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
@@ -1892,9 +1892,9 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				"repo2:2.0.0", "repo2:2.0.1",
 				"repo3:3.0.1",
 			}
-			So(len(images), ShouldEqual, len(expectedImages))
+			So(len(images.Results), ShouldEqual, len(expectedImages))
 
-			for _, image := range images {
+			for _, image := range images.Results {
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
@@ -1906,9 +1906,9 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				"repo2:2.0.0", "repo2:2.0.1", "repo2:2.1.0", "repo2:latest",
 				"repo3:3.0.1", "repo3:3.1.0", "repo3:latest",
 			}
-			So(len(images), ShouldEqual, len(expectedImages))
+			So(len(images.Results), ShouldEqual, len(expectedImages))
 
-			for _, image := range images {
+			for _, image := range images.Results {
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 		})
@@ -1926,9 +1926,9 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 			expectedImages := []string{
 				"repo1:1.0.0",
 			}
-			So(len(images), ShouldEqual, len(expectedImages))
+			So(len(images.Results), ShouldEqual, len(expectedImages))
 
-			for _, image := range images {
+			for _, image := range images.Results {
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
@@ -1940,9 +1940,9 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 			expectedImages = []string{
 				"repo2:2.0.0",
 			}
-			So(len(images), ShouldEqual, len(expectedImages))
+			So(len(images.Results), ShouldEqual, len(expectedImages))
 
-			for _, image := range images {
+			for _, image := range images.Results {
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
@@ -1950,13 +1950,13 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, pageInput, repoDB, log)
 			So(err, ShouldBeNil)
-			So(len(images), ShouldEqual, 0)
+			So(len(images.Results), ShouldEqual, 0)
 
 			pageInput = getPageInput(1, 5)
 
 			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, pageInput, repoDB, log)
 			So(err, ShouldBeNil)
-			So(len(images), ShouldEqual, 0)
+			So(len(images.Results), ShouldEqual, 0)
 
 			pageInput = getPageInput(2, 0)
 
@@ -1967,9 +1967,9 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				"repo1:1.0.0",
 				"repo2:2.0.0",
 			}
-			So(len(images), ShouldEqual, len(expectedImages))
+			So(len(images.Results), ShouldEqual, len(expectedImages))
 
-			for _, image := range images {
+			for _, image := range images.Results {
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
@@ -1982,9 +1982,9 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				"repo1:1.0.0",
 				"repo2:2.0.0",
 			}
-			So(len(images), ShouldEqual, len(expectedImages))
+			So(len(images.Results), ShouldEqual, len(expectedImages))
 
-			for _, image := range images {
+			for _, image := range images.Results {
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
@@ -1996,9 +1996,9 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 			expectedImages = []string{
 				"repo2:2.0.0",
 			}
-			So(len(images), ShouldEqual, len(expectedImages))
+			So(len(images.Results), ShouldEqual, len(expectedImages))
 
-			for _, image := range images {
+			for _, image := range images.Results {
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
@@ -2006,13 +2006,13 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, pageInput, repoDB, log)
 			So(err, ShouldBeNil)
-			So(len(images), ShouldEqual, 0)
+			So(len(images.Results), ShouldEqual, 0)
 
 			pageInput = getPageInput(5, 5)
 
 			images, err = getImageListForCVE(responseContext, "CVE1", cveInfo, pageInput, repoDB, log)
 			So(err, ShouldBeNil)
-			So(len(images), ShouldEqual, 0)
+			So(len(images.Results), ShouldEqual, 0)
 
 			pageInput = getPageInput(5, 0)
 
@@ -2024,9 +2024,9 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				"repo2:2.0.0", "repo2:2.0.1",
 				"repo3:3.0.1",
 			}
-			So(len(images), ShouldEqual, len(expectedImages))
+			So(len(images.Results), ShouldEqual, len(expectedImages))
 
-			for _, image := range images {
+			for _, image := range images.Results {
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
@@ -2039,9 +2039,9 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				"repo2:2.0.1",
 				"repo3:3.0.1",
 			}
-			So(len(images), ShouldEqual, len(expectedImages))
+			So(len(images.Results), ShouldEqual, len(expectedImages))
 
-			for _, image := range images {
+			for _, image := range images.Results {
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
@@ -2054,9 +2054,9 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				"repo1:1.0.0", "repo1:1.0.1", "repo1:1.1.0", "repo1:latest",
 				"repo2:2.0.0",
 			}
-			So(len(images), ShouldEqual, len(expectedImages))
+			So(len(images.Results), ShouldEqual, len(expectedImages))
 
-			for _, image := range images {
+			for _, image := range images.Results {
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
@@ -2069,9 +2069,9 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				"repo2:2.0.1", "repo2:2.1.0", "repo2:latest",
 				"repo3:3.0.1", "repo3:3.1.0",
 			}
-			So(len(images), ShouldEqual, len(expectedImages))
+			So(len(images.Results), ShouldEqual, len(expectedImages))
 
-			for _, image := range images {
+			for _, image := range images.Results {
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
@@ -2083,9 +2083,9 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 			expectedImages = []string{
 				"repo3:latest",
 			}
-			So(len(images), ShouldEqual, len(expectedImages))
+			So(len(images.Results), ShouldEqual, len(expectedImages))
 
-			for _, image := range images {
+			for _, image := range images.Results {
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 		})
@@ -2102,9 +2102,9 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 			expectedImages := []string{
 				"repo1:1.0.1", "repo1:1.1.0", "repo1:latest",
 			}
-			So(len(images), ShouldEqual, len(expectedImages))
+			So(len(images.Results), ShouldEqual, len(expectedImages))
 
-			for _, image := range images {
+			for _, image := range images.Results {
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
@@ -2114,15 +2114,15 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 			expectedImages = []string{
 				"repo1:1.1.0", "repo1:latest",
 			}
-			So(len(images), ShouldEqual, len(expectedImages))
+			So(len(images.Results), ShouldEqual, len(expectedImages))
 
-			for _, image := range images {
+			for _, image := range images.Results {
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
 			images, err = getImageListWithCVEFixed(responseContext, "CVE3", "repo1", cveInfo, nil, repoDB, log)
 			So(err, ShouldBeNil)
-			So(len(images), ShouldEqual, 0)
+			So(len(images.Results), ShouldEqual, 0)
 		})
 
 		Convey("Paginated requests", func() {
@@ -2138,9 +2138,9 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 			expectedImages := []string{
 				"repo1:1.0.1",
 			}
-			So(len(images), ShouldEqual, len(expectedImages))
+			So(len(images.Results), ShouldEqual, len(expectedImages))
 
-			for _, image := range images {
+			for _, image := range images.Results {
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
@@ -2152,9 +2152,9 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 			expectedImages = []string{
 				"repo1:1.1.0",
 			}
-			So(len(images), ShouldEqual, len(expectedImages))
+			So(len(images.Results), ShouldEqual, len(expectedImages))
 
-			for _, image := range images {
+			for _, image := range images.Results {
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
@@ -2166,9 +2166,9 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 			expectedImages = []string{
 				"repo1:latest",
 			}
-			So(len(images), ShouldEqual, len(expectedImages))
+			So(len(images.Results), ShouldEqual, len(expectedImages))
 
-			for _, image := range images {
+			for _, image := range images.Results {
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
@@ -2176,13 +2176,13 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, pageInput, repoDB, log)
 			So(err, ShouldBeNil)
-			So(len(images), ShouldEqual, 0)
+			So(len(images.Results), ShouldEqual, 0)
 
 			pageInput = getPageInput(1, 10)
 
 			images, err = getImageListWithCVEFixed(responseContext, "CVE1", "repo1", cveInfo, pageInput, repoDB, log)
 			So(err, ShouldBeNil)
-			So(len(images), ShouldEqual, 0)
+			So(len(images.Results), ShouldEqual, 0)
 
 			pageInput = getPageInput(2, 0)
 
@@ -2192,9 +2192,9 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 			expectedImages = []string{
 				"repo1:1.0.1", "repo1:1.1.0",
 			}
-			So(len(images), ShouldEqual, len(expectedImages))
+			So(len(images.Results), ShouldEqual, len(expectedImages))
 
-			for _, image := range images {
+			for _, image := range images.Results {
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
@@ -2206,9 +2206,9 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 			expectedImages = []string{
 				"repo1:1.1.0", "repo1:latest",
 			}
-			So(len(images), ShouldEqual, len(expectedImages))
+			So(len(images.Results), ShouldEqual, len(expectedImages))
 
-			for _, image := range images {
+			for _, image := range images.Results {
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
@@ -2220,9 +2220,9 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 			expectedImages = []string{
 				"repo1:latest",
 			}
-			So(len(images), ShouldEqual, len(expectedImages))
+			So(len(images.Results), ShouldEqual, len(expectedImages))
 
-			for _, image := range images {
+			for _, image := range images.Results {
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
@@ -2234,9 +2234,9 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 			expectedImages = []string{
 				"repo1:1.0.1", "repo1:1.1.0", "repo1:latest",
 			}
-			So(len(images), ShouldEqual, len(expectedImages))
+			So(len(images.Results), ShouldEqual, len(expectedImages))
 
-			for _, image := range images {
+			for _, image := range images.Results {
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
@@ -2248,9 +2248,9 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 			expectedImages = []string{
 				"repo1:1.1.0", "repo1:latest",
 			}
-			So(len(images), ShouldEqual, len(expectedImages))
+			So(len(images.Results), ShouldEqual, len(expectedImages))
 
-			for _, image := range images {
+			for _, image := range images.Results {
 				So(fmt.Sprintf("%s:%s", *image.RepoName, *image.Tag), ShouldBeIn, expectedImages)
 			}
 
@@ -2258,7 +2258,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 
 			images, err = getImageListWithCVEFixed(responseContext, "CVE2", "repo1", cveInfo, pageInput, repoDB, log)
 			So(err, ShouldBeNil)
-			So(len(images), ShouldEqual, 0)
+			So(len(images.Results), ShouldEqual, 0)
 		})
 	})
 }

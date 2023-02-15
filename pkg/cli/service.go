@@ -126,8 +126,8 @@ func (service searchService) getBaseImageListGQL(ctx context.Context, config sea
 func (service searchService) getImagesGQL(ctx context.Context, config searchConfig, username, password string,
 	imageName string,
 ) (*imageListStructGQL, error) {
-	query := fmt.Sprintf(`{ImageList(repo: "%s") {`+`
-									RepoName Tag Digest ConfigDigest Size Layers {Size Digest} IsSigned}
+	query := fmt.Sprintf(`{ImageList(repo: "%s") { Results {`+`
+									RepoName Tag Digest ConfigDigest Size Layers {Size Digest} IsSigned}}
 							  }`,
 		imageName)
 	result := &imageListStructGQL{}
@@ -144,8 +144,8 @@ func (service searchService) getImagesGQL(ctx context.Context, config searchConf
 func (service searchService) getImagesByDigestGQL(ctx context.Context, config searchConfig, username, password string,
 	digest string,
 ) (*imageListStructForDigestGQL, error) {
-	query := fmt.Sprintf(`{ImageListForDigest(id: "%s") {`+`
-									RepoName Tag Digest ConfigDigest Size Layers {Size Digest}}
+	query := fmt.Sprintf(`{ImageListForDigest(id: "%s") { Results{`+`
+									RepoName Tag Digest ConfigDigest Size Layers {Size Digest}}}
 							  }`,
 		digest)
 	result := &imageListStructForDigestGQL{}
@@ -162,8 +162,8 @@ func (service searchService) getImagesByDigestGQL(ctx context.Context, config se
 func (service searchService) getImagesByCveIDGQL(ctx context.Context, config searchConfig, username,
 	password, cveID string,
 ) (*imagesForCve, error) {
-	query := fmt.Sprintf(`{ImageListForCVE(id: "%s") {`+`
-								RepoName Tag Digest ConfigDigest Layers {Size Digest} Size}
+	query := fmt.Sprintf(`{ImageListForCVE(id: "%s") { Results {`+`
+								RepoName Tag Digest ConfigDigest Layers {Size Digest} Size}}
 						  }`,
 		cveID)
 	result := &imagesForCve{}
@@ -199,8 +199,8 @@ func (service searchService) getCveByImageGQL(ctx context.Context, config search
 func (service searchService) getTagsForCVEGQL(ctx context.Context, config searchConfig,
 	username, password, imageName, cveID string,
 ) (*imagesForCve, error) {
-	query := fmt.Sprintf(`{ImageListForCVE(id: "%s") {`+`
-							RepoName Tag Digest ConfigDigest Layers {Size Digest} Size}
+	query := fmt.Sprintf(`{ImageListForCVE(id: "%s") { Results {`+`
+							RepoName Tag Digest ConfigDigest Layers {Size Digest} Size}}
 						}`,
 		cveID)
 	result := &imagesForCve{}
@@ -217,8 +217,8 @@ func (service searchService) getTagsForCVEGQL(ctx context.Context, config search
 func (service searchService) getFixedTagsForCVEGQL(ctx context.Context, config searchConfig,
 	username, password, imageName, cveID string,
 ) (*fixedTags, error) {
-	query := fmt.Sprintf(`{ImageListWithCVEFixed(id: "%s", image: "%s") {`+`
-							RepoName Tag Digest ConfigDigest Layers {Size Digest} Size}
+	query := fmt.Sprintf(`{ImageListWithCVEFixed(id: "%s", image: "%s") { Results {`+`
+							RepoName Tag Digest ConfigDigest Layers {Size Digest} Size}}
 	  					}`,
 		cveID, imageName)
 
@@ -349,8 +349,8 @@ func (service searchService) getImagesByCveID(ctx context.Context, config search
 	defer wtgrp.Done()
 	defer close(rch)
 
-	query := fmt.Sprintf(`{ImageListForCVE(id: "%s") {`+`
-								RepoName Tag Digest ConfigDigest Layers {Size Digest} Size}
+	query := fmt.Sprintf(`{ImageListForCVE(id: "%s") { Results {`+`
+								RepoName Tag Digest ConfigDigest Layers {Size Digest} Size}}
 						  }`,
 		cvid)
 	result := &imagesForCve{}
@@ -387,7 +387,7 @@ func (service searchService) getImagesByCveID(ctx context.Context, config search
 
 	go rlim.startRateLimiter(ctx)
 
-	for _, image := range result.Data.ImageList {
+	for _, image := range result.Data.Results {
 		localWg.Add(1)
 
 		go addManifestCallToPool(ctx, config, rlim, username, password, image.RepoName, image.Tag, rch, &localWg)
@@ -402,8 +402,8 @@ func (service searchService) getImagesByDigest(ctx context.Context, config searc
 	defer wtgrp.Done()
 	defer close(rch)
 
-	query := fmt.Sprintf(`{ImageListForDigest(id: "%s") {`+`
-								RepoName Tag Digest ConfigDigest Size Layers {Size Digest}}
+	query := fmt.Sprintf(`{ImageListForDigest(id: "%s") { Results {`+`
+								RepoName Tag Digest ConfigDigest Size Layers {Size Digest}}}
 							  }`,
 		digest)
 	result := &imagesForDigest{}
@@ -440,7 +440,7 @@ func (service searchService) getImagesByDigest(ctx context.Context, config searc
 
 	go rlim.startRateLimiter(ctx)
 
-	for _, image := range result.Data.ImageList {
+	for _, image := range result.Data.Results {
 		localWg.Add(1)
 
 		go addManifestCallToPool(ctx, config, rlim, username, password, image.RepoName, image.Tag, rch, &localWg)
@@ -455,8 +455,8 @@ func (service searchService) getImageByNameAndCVEID(ctx context.Context, config 
 	defer wtgrp.Done()
 	defer close(rch)
 
-	query := fmt.Sprintf(`{ImageListForCVE(id: "%s") {`+`
-							RepoName Tag Digest ConfigDigest Size Layers {Size Digest}}
+	query := fmt.Sprintf(`{ImageListForCVE(id: "%s") { Results {`+`
+							RepoName Tag Digest ConfigDigest Size Layers {Size Digest}}}
 							  }`,
 		cvid)
 	result := &imagesForCve{}
@@ -493,7 +493,7 @@ func (service searchService) getImageByNameAndCVEID(ctx context.Context, config 
 
 	go rlim.startRateLimiter(ctx)
 
-	for _, image := range result.Data.ImageList {
+	for _, image := range result.Data.Results {
 		if !strings.EqualFold(imageName, image.RepoName) {
 			continue
 		}
@@ -566,8 +566,8 @@ func (service searchService) getFixedTagsForCVE(ctx context.Context, config sear
 	defer wtgrp.Done()
 	defer close(rch)
 
-	query := fmt.Sprintf(`{ImageListWithCVEFixed (id: "%s", image: "%s") {`+`
-							RepoName Tag Digest ConfigDigest Layers {Size Digest} Size}
+	query := fmt.Sprintf(`{ImageListWithCVEFixed (id: "%s", image: "%s") { Results {`+`
+							RepoName Tag Digest ConfigDigest Layers {Size Digest} Size}}
 							  }`,
 		cvid, imageName)
 	result := &fixedTags{}
@@ -604,7 +604,7 @@ func (service searchService) getFixedTagsForCVE(ctx context.Context, config sear
 
 	go rlim.startRateLimiter(ctx)
 
-	for _, img := range result.Data.ImageList {
+	for _, img := range result.Data.Results {
 		localWg.Add(1)
 
 		go addManifestCallToPool(ctx, config, rlim, username, password, imageName, img.Tag, rch, &localWg)
@@ -844,15 +844,19 @@ func (cve cveResult) stringYAML() (string, error) {
 type fixedTags struct {
 	Errors []errorGraphQL `json:"errors"`
 	Data   struct {
-		ImageList []imageStruct `json:"ImageListWithCVEFixed"` //nolint:tagliatelle // graphQL schema
+		PaginatedImagesResult `json:"ImageListWithCVEFixed"` //nolint:tagliatelle // graphQL schema
 	} `json:"data"`
 }
 
 type imagesForCve struct {
 	Errors []errorGraphQL `json:"errors"`
 	Data   struct {
-		ImageList []imageStruct `json:"ImageListForCVE"` //nolint:tagliatelle // graphQL schema
+		PaginatedImagesResult `json:"ImageListForCVE"` //nolint:tagliatelle // graphQL schema
 	} `json:"data"`
+}
+
+type PaginatedImagesResult struct {
+	Results []imageStruct `json:"results"`
 }
 
 type imageStruct struct {
@@ -876,35 +880,35 @@ type BaseImageList struct {
 type imageListStructGQL struct {
 	Errors []errorGraphQL `json:"errors"`
 	Data   struct {
-		ImageList []imageStruct `json:"ImageList"` //nolint:tagliatelle
+		PaginatedImagesResult `json:"ImageList"` //nolint:tagliatelle
 	} `json:"data"`
 }
 
 type imageListStructForDigestGQL struct {
 	Errors []errorGraphQL `json:"errors"`
 	Data   struct {
-		ImageList []imageStruct `json:"ImageListForDigest"` //nolint:tagliatelle
+		PaginatedImagesResult `json:"ImageListForDigest"` //nolint:tagliatelle
 	} `json:"data"`
 }
 
 type imageListStructForDerivedImagesGQL struct {
 	Errors []errorGraphQL `json:"errors"`
 	Data   struct {
-		ImageList DerivedImageList `json:"DerivedImageList"` //nolint:tagliatelle
+		PaginatedImagesResult `json:"DerivedImageList"` //nolint:tagliatelle
 	} `json:"data"`
 }
 
 type imageListStructForBaseImagesGQL struct {
 	Errors []errorGraphQL `json:"errors"`
 	Data   struct {
-		ImageList BaseImageList `json:"BaseImageList"` //nolint:tagliatelle
+		PaginatedImagesResult `json:"BaseImageList"` //nolint:tagliatelle
 	} `json:"data"`
 }
 
 type imagesForDigest struct {
 	Errors []errorGraphQL `json:"errors"`
 	Data   struct {
-		ImageList []imageStruct `json:"ImageListForDigest"` //nolint:tagliatelle // graphQL schema
+		PaginatedImagesResult `json:"ImageListForDigest"` //nolint:tagliatelle // graphQL schema
 	} `json:"data"`
 }
 

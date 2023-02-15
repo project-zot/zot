@@ -81,14 +81,14 @@ type ImageListResponse struct {
 }
 
 type ImageList struct {
-	SummaryList []common.ImageSummary `json:"imageList"`
+	PaginatedImagesResult `json:"imageList"`
 }
 
 type DerivedImageList struct {
-	DerivedList []common.ImageSummary `json:"derivedImageList"`
+	PaginatedImagesResult `json:"derivedImageList"`
 }
 type BaseImageList struct {
-	BaseList []common.ImageSummary `json:"baseImageList"`
+	PaginatedImagesResult `json:"baseImageList"`
 }
 
 type ExpandedRepoInfoResp struct {
@@ -3582,17 +3582,19 @@ func TestImageList(t *testing.T) {
 		Convey("without pagination, valid response", func() {
 			query := fmt.Sprintf(`{
 				ImageList(repo:"%s"){
-					History{
-						HistoryDescription{
-							Author
-							Comment
-							Created
-							CreatedBy
-							EmptyLayer
-						},
-						Layer{
-							Digest
-							Size
+					Results{
+						History{
+							HistoryDescription{
+								Author
+								Comment
+								Created
+								CreatedBy
+								EmptyLayer
+							},
+							Layer{
+								Digest
+								Size
+							}
 						}
 					}
 				}
@@ -3607,25 +3609,27 @@ func TestImageList(t *testing.T) {
 			err = json.Unmarshal(resp.Body(), &responseStruct)
 			So(err, ShouldBeNil)
 
-			So(len(responseStruct.ImageList.SummaryList), ShouldEqual, len(tags))
-			So(len(responseStruct.ImageList.SummaryList[0].History), ShouldEqual, len(imageConfigInfo.History))
+			So(len(responseStruct.ImageList.Results), ShouldEqual, len(tags))
+			So(len(responseStruct.ImageList.Results[0].History), ShouldEqual, len(imageConfigInfo.History))
 		})
 
 		Convey("Pagination with valid params", func() {
 			limit := 1
 			query := fmt.Sprintf(`{
 				ImageList(repo:"%s", requestedPage:{limit: %d, offset: 0, sortBy:RELEVANCE}){
-					History{
-						HistoryDescription{
-							Author
-							Comment
-							Created
-							CreatedBy
-							EmptyLayer
-						},
-						Layer{
-							Digest
-							Size
+					Results{
+						History{
+							HistoryDescription{
+								Author
+								Comment
+								Created
+								CreatedBy
+								EmptyLayer
+							},
+							Layer{
+								Digest
+								Size
+							}
 						}
 					}
 				}
@@ -3640,7 +3644,7 @@ func TestImageList(t *testing.T) {
 			err = json.Unmarshal(resp.Body(), &responseStruct)
 			So(err, ShouldBeNil)
 
-			So(len(responseStruct.ImageList.SummaryList), ShouldEqual, limit)
+			So(len(responseStruct.ImageList.Results), ShouldEqual, limit)
 		})
 	})
 }

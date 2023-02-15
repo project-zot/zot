@@ -20,7 +20,7 @@
 The examples below only include the GraphQL query without any additional details on how to send them to a server. They were made with the GraphQL playground from the debug binary. You can also use curl to make these queries, here's an example:
 
 ```bash
-curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageListForCVE (id:\"CVE-2002-1119\") { Name Tags } }" }' http://localhost:8080/v2/_zot/ext/search
+curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageListForCVE (id:\"CVE-2002-1119\") { Results { Name Tags } } }" }' http://localhost:8080/v2/_zot/ext/search
 ```
 
 ## List CVEs of given image
@@ -88,22 +88,24 @@ curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList
 ```graphql
 {
   ImageListForCVE(id: "CVE-2018-20651") {
-    RepoName
-    Tag
-    Digest
-    ConfigDigest
-    LastUpdated
-    IsSigned
-    Size
-    Platform {
-      Os
-      Arch
+    Results{
+      RepoName
+      Tag
+      Digest
+      ConfigDigest
+      LastUpdated
+      IsSigned
+      Size
+      Platform {
+        Os
+        Arch
+      }
+      Vendor
+      Score
+      DownloadCount
+      Licenses
+      Title
     }
-    Vendor
-    Score
-    DownloadCount
-    Licenses
-    Title
   }
 }
 ```
@@ -114,24 +116,26 @@ curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList
 {
   "data": {
     "ImageListForCVE": [
-      {
-        "RepoName": "centos",
-        "Tag": "centos8",
-        "Digest": "sha256:ac0dc62b48b7f683b49365fecef3b1f4d99fbd249b762e99f13f74938d85a6c8",
-        "ConfigDigest": "sha256:98a5843635a2ccc7d72b269923a65721480de929f882143c6c0a0eb43f9a2869",
-        "LastUpdated": "2022-10-17T16:36:09.1751694+03:00",
-        "IsSigned": true,
-        "Size": "83545800",
-        "Platform": {
-          "Os": "linux",
-          "Arch": "amd64"
+       {
+        "Results": {
+          "RepoName": "centos",
+          "Tag": "centos8",
+          "Digest": "sha256:ac0dc62b48b7f683b49365fecef3b1f4d99fbd249b762e99f13f74938d85a6c8",
+          "ConfigDigest": "sha256:98a5843635a2ccc7d72b269923a65721480de929f882143c6c0a0eb43f9a2869",
+          "LastUpdated": "2022-10-17T16:36:09.1751694+03:00",
+          "IsSigned": true,
+          "Size": "83545800",
+          "Platform": {
+            "Os": "linux",
+            "Arch": "amd64"
+          },
+          "Vendor": "[The CentOS Project](https://github.com/CentOS/sig-cloud-instance-images)\n",
+          "Score": null,
+          "DownloadCount": 0,
+          "Licenses": "View [license information](https://www.centos.org/legal/) for the software contained in this image.",
+          "Title": "centos"
         },
-        "Vendor": "[The CentOS Project](https://github.com/CentOS/sig-cloud-instance-images)\n",
-        "Score": null,
-        "DownloadCount": 0,
-        "Licenses": "View [license information](https://www.centos.org/legal/) for the software contained in this image.",
-        "Title": "centos"
-      },
+      }
     ]
   }
 }
@@ -144,11 +148,13 @@ curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList
 ```graphql
 {
   ImageListWithCVEFixed(id: "CVE-2018-20651", image: "ubuntu") {
-    RepoName
-    Tag
-    Digest
-    ConfigDigest
-    LastUpdated
+    Results {
+      RepoName
+      Tag
+      Digest
+      ConfigDigest
+      LastUpdated
+    }
   }
 }
 ```
@@ -160,11 +166,13 @@ curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList
   "data": {
     "ImageListWithCVEFixed": [
       {
-        "RepoName": "ubuntu",
-        "Tag": "latest",
-        "Digest": "sha256:650d596072ad45c6b74f4923e2cfea8158da2fb3a7b8dbb0b9ae4da3088d0591",
-        "ConfigDigest": "sha256:88eef892e29d5b11be933f13424ef885644a6a6978924fedfb51ba555278fe74",
-        "LastUpdated": "2022-10-25T01:53:41.769246372Z"
+        "Results": {
+          "RepoName": "ubuntu",
+          "Tag": "latest",
+          "Digest": "sha256:650d596072ad45c6b74f4923e2cfea8158da2fb3a7b8dbb0b9ae4da3088d0591",
+          "ConfigDigest": "sha256:88eef892e29d5b11be933f13424ef885644a6a6978924fedfb51ba555278fe74",
+          "LastUpdated": "2022-10-25T01:53:41.769246372Z"
+        }
       }
     ]
   }
@@ -180,9 +188,11 @@ curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList
   ImageListForDigest(
     id: "5f34d0bb0261d32d0b0bc91024b7d4e98d94b08a49615e08c8a5a65bc3a7e09f"
   ) {
-    RepoName
-    Tag
-    Title
+    Results{
+      RepoName
+      Tag
+      Title
+    }
   }
 }
 ```
@@ -194,9 +204,11 @@ curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList
   "data": {
     "ImageListForDigest": [
       {
-        "RepoName": "centos",
-        "Tag": "8",
-        "Title": "CentOS Base Image"
+        "Results": {
+          "RepoName": "centos",
+          "Tag": "8",
+          "Title": "CentOS Base Image"
+        }
       }
     ]
   }
@@ -285,10 +297,12 @@ curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList
 ```graphql
 {
   ImageList (repo: "ubuntu") {
-    Tag
-    Digest
-    LastUpdated
-    Size
+    Results {
+      Tag
+      Digest
+      LastUpdated
+      Size
+    }
   }
 }
 ```
@@ -300,16 +314,19 @@ curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList
   "data": {
     "ImageList": [
       {
-        "Tag": "latest",
-        "Digest": "sha256:650d596072ad45c6b74f4923e2cfea8158da2fb3a7b8dbb0b9ae4da3088d0591",
-        "LastUpdated": "2022-10-25T01:53:41.769246372Z",
-        "Size": "30426374"
-      },
-      {
-        "Tag": "xenial",
-        "Digest": "sha256:34de800b5da88feb7723a87ecbbf238afb63dbfe0c828838e26ac7458bef0ac5",
-        "LastUpdated": "2021-08-31T01:21:30.672229355Z",
-        "Size": "46499103"
+        "Results": 
+        {
+          "Tag": "latest",
+          "Digest": "sha256:650d596072ad45c6b74f4923e2cfea8158da2fb3a7b8dbb0b9ae4da3088d0591",
+          "LastUpdated": "2022-10-25T01:53:41.769246372Z",
+          "Size": "30426374"
+        },
+        {
+          "Tag": "xenial",
+          "Digest": "sha256:34de800b5da88feb7723a87ecbbf238afb63dbfe0c828838e26ac7458bef0ac5",
+          "LastUpdated": "2021-08-31T01:21:30.672229355Z",
+          "Size": "46499103"
+        }
       }
     ]
   }
