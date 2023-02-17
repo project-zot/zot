@@ -6,7 +6,7 @@ function setup_file() {
         exit 1
     fi
     # Download test data to folder common for the entire suite, not just this file
-    skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.19 oci:${TEST_DATA_DIR}/golang:1.19
+    skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.20 oci:${TEST_DATA_DIR}/golang:1.20
     # Setup zot server
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
@@ -83,9 +83,9 @@ function teardown_file() {
 }
 
 @test "build image with stacker and specify annotations" {
-    run stacker --oci-dir ${BATS_FILE_TMPDIR}/stackeroci --stacker-dir ${BATS_FILE_TMPDIR}/.stacker --roots-dir ${BATS_FILE_TMPDIR}/roots build -f ${BATS_FILE_TMPDIR}/stacker.yaml --substitute IMAGE_NAME="ghcr.io/project-zot/golang" --substitute IMAGE_TAG="1.19" --substitute DESCRIPTION="mydesc" --substitute VENDOR="CentOs" --substitute LICENSES="GPLv2" --substitute COMMIT= --substitute OS=$OS --substitute ARCH=$ARCH
+    run stacker --oci-dir ${BATS_FILE_TMPDIR}/stackeroci --stacker-dir ${BATS_FILE_TMPDIR}/.stacker --roots-dir ${BATS_FILE_TMPDIR}/roots build -f ${BATS_FILE_TMPDIR}/stacker.yaml --substitute IMAGE_NAME="ghcr.io/project-zot/golang" --substitute IMAGE_TAG="1.20" --substitute DESCRIPTION="mydesc" --substitute VENDOR="CentOs" --substitute LICENSES="GPLv2" --substitute COMMIT= --substitute OS=$OS --substitute ARCH=$ARCH
     [ "$status" -eq 0 ]
-    run stacker --oci-dir ${BATS_FILE_TMPDIR}/stackeroci --stacker-dir ${BATS_FILE_TMPDIR}/.stacker --roots-dir ${BATS_FILE_TMPDIR}/roots publish -f ${BATS_FILE_TMPDIR}/stacker.yaml --substitute IMAGE_NAME="ghcr.io/project-zot/golang" --substitute IMAGE_TAG="1.19" --substitute DESCRIPTION="mydesc" --substitute VENDOR="CentOs" --substitute LICENSES="GPLv2" --url docker://127.0.0.1:8080 --tag 1.19 --skip-tls
+    run stacker --oci-dir ${BATS_FILE_TMPDIR}/stackeroci --stacker-dir ${BATS_FILE_TMPDIR}/.stacker --roots-dir ${BATS_FILE_TMPDIR}/roots publish -f ${BATS_FILE_TMPDIR}/stacker.yaml --substitute IMAGE_NAME="ghcr.io/project-zot/golang" --substitute IMAGE_TAG="1.20" --substitute DESCRIPTION="mydesc" --substitute VENDOR="CentOs" --substitute LICENSES="GPLv2" --url docker://127.0.0.1:8080 --tag 1.20 --skip-tls
     [ "$status" -eq 0 ]
     run curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList(repo: \"ghcr.io/project-zot/golang\") { Results { RepoName Tag Digest ConfigDigest Size Layers {Size Digest } Description Vendor Licenses }}}"}' http://localhost:8080/v2/_zot/ext/search
     [ "$status" -eq 0 ]

@@ -7,7 +7,7 @@ function setup_file() {
     fi
 
     # Download test data to folder common for the entire suite, not just this file
-    skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.19 oci:${TEST_DATA_DIR}/golang:1.19
+    skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.20 oci:${TEST_DATA_DIR}/golang:1.20
     # Setup zot server
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
@@ -72,12 +72,12 @@ function teardown_file() {
 
 @test "push 2 images with same manifest with user policy" {
     run skopeo --insecure-policy copy --dest-creds test:test --dest-tls-verify=false \
-        oci:${TEST_DATA_DIR}/golang:1.19 \
-        docker://127.0.0.1:8080/golang:1.19
+        oci:${TEST_DATA_DIR}/golang:1.20 \
+        docker://127.0.0.1:8080/golang:1.20
     [ "$status" -eq 0 ]
 
     run skopeo --insecure-policy copy --dest-creds test:test --dest-tls-verify=false \
-        oci:${TEST_DATA_DIR}/golang:1.19 \
+        oci:${TEST_DATA_DIR}/golang:1.20 \
         docker://127.0.0.1:8080/golang:latest
     [ "$status" -eq 0 ]
 }
@@ -85,7 +85,7 @@ function teardown_file() {
 @test "skopeo delete image with anonymous policy should fail" {
     # skopeo deletes by digest, so it should fail with detectManifestCollision policy
     run skopeo --insecure-policy delete --tls-verify=false \
-        docker://127.0.0.1:8080/golang:1.19
+        docker://127.0.0.1:8080/golang:1.20
     [ "$status" -eq 1 ]
     # conflict status code
     [[ "$output" == *"409"* ]]
@@ -95,7 +95,7 @@ function teardown_file() {
     run regctl registry set localhost:8080 --tls disabled
     [ "$status" -eq 0 ]
 
-    run regctl image delete localhost:8080/golang:1.19 --force-tag-dereference
+    run regctl image delete localhost:8080/golang:1.20 --force-tag-dereference
     [ "$status" -eq 1 ]
     # conflict status code
     [[ "$output" == *"409"* ]]
@@ -104,6 +104,6 @@ function teardown_file() {
 @test "delete image with user policy should work" {
     # should work without detectManifestCollision policy
     run skopeo --insecure-policy delete --creds test:test --tls-verify=false \
-        docker://127.0.0.1:8080/golang:1.19
+        docker://127.0.0.1:8080/golang:1.20
     [ "$status" -eq 0 ]
 }
