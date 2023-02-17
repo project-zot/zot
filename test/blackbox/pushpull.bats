@@ -6,7 +6,7 @@ function setup_file() {
         exit 1
     fi
     # Download test data to folder common for the entire suite, not just this file
-    skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.19 oci:${TEST_DATA_DIR}/golang:1.19
+    skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.20 oci:${TEST_DATA_DIR}/golang:1.20
     # Setup zot server
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
@@ -43,26 +43,26 @@ function teardown_file() {
 
 @test "push image" {
     run skopeo --insecure-policy copy --dest-tls-verify=false \
-        oci:${TEST_DATA_DIR}/golang:1.19 \
-        docker://127.0.0.1:8080/golang:1.19
+        oci:${TEST_DATA_DIR}/golang:1.20 \
+        docker://127.0.0.1:8080/golang:1.20
     [ "$status" -eq 0 ]
     run curl http://127.0.0.1:8080/v2/_catalog
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.repositories[]') = '"golang"' ]
     run curl http://127.0.0.1:8080/v2/golang/tags/list
     [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.19"' ]
+    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.20"' ]
 }
 
 @test "pull image" {
     local oci_data_dir=${BATS_FILE_TMPDIR}/oci
     run skopeo --insecure-policy copy --src-tls-verify=false \
-        docker://127.0.0.1:8080/golang:1.19 \
-        oci:${oci_data_dir}/golang:1.19
+        docker://127.0.0.1:8080/golang:1.20 \
+        oci:${oci_data_dir}/golang:1.20
     [ "$status" -eq 0 ]
     run cat ${BATS_FILE_TMPDIR}/oci/golang/index.json
     [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.manifests[].annotations."org.opencontainers.image.ref.name"') = '"1.19"' ]
+    [ $(echo "${lines[-1]}" | jq '.manifests[].annotations."org.opencontainers.image.ref.name"') = '"1.20"' ]
 }
 
 @test "push image index" {
@@ -120,16 +120,16 @@ function teardown_file() {
 @test "attach oras artifacts" {
     # attach signature
     echo "{\"artifact\": \"\", \"signature\": \"pat hancock\"}" > signature.json
-    run oras attach --plain-http 127.0.0.1:8080/golang:1.19 --artifact-type 'signature/example' ./signature.json:application/json
+    run oras attach --plain-http 127.0.0.1:8080/golang:1.20 --artifact-type 'signature/example' ./signature.json:application/json
     [ "$status" -eq 0 ]
     # attach sbom
-    echo "{\"version\": \"0.0.0.0\", \"artifact\": \"'127.0.0.1:8080/golang:1.19'\", \"contents\": \"good\"}" > sbom.json
-    run oras attach --plain-http 127.0.0.1:8080/golang:1.19 --artifact-type 'sbom/example' ./sbom.json:application/json
+    echo "{\"version\": \"0.0.0.0\", \"artifact\": \"'127.0.0.1:8080/golang:1.20'\", \"contents\": \"good\"}" > sbom.json
+    run oras attach --plain-http 127.0.0.1:8080/golang:1.20 --artifact-type 'sbom/example' ./sbom.json:application/json
     [ "$status" -eq 0 ]
 }
 
 @test "discover oras artifacts" {
-    run oras discover --plain-http -o json 127.0.0.1:8080/golang:1.19
+    run oras discover --plain-http -o json 127.0.0.1:8080/golang:1.20
     [ "$status" -eq 0 ]
     [ $(echo "$output" | jq -r ".manifests | length") -eq 2 ]
 }
@@ -151,12 +151,12 @@ function teardown_file() {
 @test "push image with regclient" {
     run regctl registry set localhost:8080 --tls disabled
     [ "$status" -eq 0 ]
-    run regctl image copy ocidir://${TEST_DATA_DIR}/golang:1.19 localhost:8080/test-regclient
+    run regctl image copy ocidir://${TEST_DATA_DIR}/golang:1.20 localhost:8080/test-regclient
     [ "$status" -eq 0 ]
 }
 
 @test "pull image with regclient" {
-    run regctl image copy localhost:8080/test-regclient ocidir://${TEST_DATA_DIR}/golang:1.19
+    run regctl image copy localhost:8080/test-regclient ocidir://${TEST_DATA_DIR}/golang:1.20
     [ "$status" -eq 0 ]
 }
 

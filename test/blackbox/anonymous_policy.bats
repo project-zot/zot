@@ -7,7 +7,7 @@ function setup_file() {
     fi
 
     # Download test data to folder common for the entire suite, not just this file
-    skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.18 oci:${TEST_DATA_DIR}/golang:1.18
+    skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.20 oci:${TEST_DATA_DIR}/golang:1.20
     # Setup zot server
     local zot_root_dir=${BATS_FILE_TMPDIR}/zot
     local zot_config_file=${BATS_FILE_TMPDIR}/zot_config.json
@@ -67,22 +67,22 @@ function teardown_file() {
 
 @test "push image user policy" {
     run skopeo --insecure-policy copy --dest-creds test:test --dest-tls-verify=false \
-        oci:${TEST_DATA_DIR}/golang:1.18 \
-        docker://127.0.0.1:8080/golang:1.18
+        oci:${TEST_DATA_DIR}/golang:1.20 \
+        docker://127.0.0.1:8080/golang:1.20
     [ "$status" -eq 0 ]
 }
 
 @test "pull image anonymous policy" {
     local oci_data_dir=${BATS_FILE_TMPDIR}/oci
     run skopeo --insecure-policy copy --src-tls-verify=false \
-        docker://127.0.0.1:8080/golang:1.18 \
-        oci:${oci_data_dir}/golang:1.18
+        docker://127.0.0.1:8080/golang:1.20 \
+        oci:${oci_data_dir}/golang:1.20
     [ "$status" -eq 0 ]
 }
 
 @test "push image anonymous policy" {
     run skopeo --insecure-policy copy --dest-tls-verify=false \
-        oci:${TEST_DATA_DIR}/golang:1.18 \
-        docker://127.0.0.1:8080/golang:1.18
+        oci:${TEST_DATA_DIR}/golang:1.20 \
+        docker://127.0.0.1:8080/golang:1.20
     [ "$status" -eq 1 ]
 }

@@ -7,7 +7,7 @@ function setup_file() {
     fi
 
     # Download test data to folder common for the entire suite, not just this file
-    skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.19 oci:${TEST_DATA_DIR}/golang:1.19
+    skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.20 oci:${TEST_DATA_DIR}/golang:1.20
     # Setup zot server
     local zot_sync_per_root_dir=${BATS_FILE_TMPDIR}/zot-per
     local zot_sync_ondemand_root_dir=${BATS_FILE_TMPDIR}/zot-ondemand
@@ -134,8 +134,8 @@ function teardown_file() {
 # sync image
 @test "sync golang image periodically" {
     run skopeo --insecure-policy copy --dest-tls-verify=false \
-        oci:${TEST_DATA_DIR}/golang:1.19 \
-        docker://127.0.0.1:9000/golang:1.19
+        oci:${TEST_DATA_DIR}/golang:1.20 \
+        docker://127.0.0.1:9000/golang:1.20
     [ "$status" -eq 0 ]
     run curl http://127.0.0.1:9000/v2/_catalog
     [ "$status" -eq 0 ]
@@ -143,7 +143,7 @@ function teardown_file() {
     run curl http://127.0.0.1:8081/v2/_catalog
     run curl http://127.0.0.1:9000/v2/golang/tags/list
     [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.19"' ]
+    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.20"' ]
     
     run sleep 20s
     
@@ -153,25 +153,25 @@ function teardown_file() {
 
     run curl http://127.0.0.1:8081/v2/golang/tags/list
     [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.19"' ]
+    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.20"' ]
 }
 
 @test "sync golang image ondemand" {
     run skopeo --insecure-policy copy --dest-tls-verify=false \
-        oci:${TEST_DATA_DIR}/golang:1.19 \
-        docker://127.0.0.1:9000/golang:1.19
+        oci:${TEST_DATA_DIR}/golang:1.20 \
+        docker://127.0.0.1:9000/golang:1.20
     [ "$status" -eq 0 ]
     run curl http://127.0.0.1:9000/v2/_catalog
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.repositories[]') = '"golang"' ]
 
     # sync golang on demand
-    run curl http://127.0.0.1:8082/v2/golang/manifests/1.19
+    run curl http://127.0.0.1:8082/v2/golang/manifests/1.20
     [ "$status" -eq 0 ]
 
     run curl http://127.0.0.1:9000/v2/golang/tags/list
     [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.19"' ]
+    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.20"' ]
 
     run curl http://127.0.0.1:8082/v2/_catalog
     [ "$status" -eq 0 ]
@@ -179,7 +179,7 @@ function teardown_file() {
 
     run curl http://127.0.0.1:8082/v2/golang/tags/list
     [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.19"' ]
+    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.20"' ]
 }
 
 # sync index
@@ -241,9 +241,9 @@ function teardown_file() {
     [ "$status" -eq 0 ]
     run cosign generate-key-pair
     [ "$status" -eq 0 ]
-    run cosign sign --key cosign.key localhost:9000/golang:1.19 --yes
+    run cosign sign --key cosign.key localhost:9000/golang:1.20 --yes
     [ "$status" -eq 0 ]
-    run cosign verify --key cosign.pub localhost:9000/golang:1.19
+    run cosign verify --key cosign.pub localhost:9000/golang:1.20
     [ "$status" -eq 0 ]
 }
 
@@ -272,11 +272,11 @@ function teardown_file() {
 }
 EOF
 
-    run notation sign --key "notation-sign-sync-test" --plain-http localhost:9000/golang:1.19
+    run notation sign --key "notation-sign-sync-test" --plain-http localhost:9000/golang:1.20
     [ "$status" -eq 0 ]
-    run notation verify  --plain-http localhost:9000/golang:1.19
+    run notation verify  --plain-http localhost:9000/golang:1.20
     [ "$status" -eq 0 ]
-    run notation list --plain-http localhost:9000/golang:1.19
+    run notation list --plain-http localhost:9000/golang:1.20
     [ "$status" -eq 0 ]
 }
 
@@ -284,18 +284,18 @@ EOF
     # wait for signatures to be copied
     run sleep 5s
 
-    run notation verify --plain-http localhost:8081/golang:1.19
+    run notation verify --plain-http localhost:8081/golang:1.20
     [ "$status" -eq 0 ]
 
-    run cosign verify --key cosign.pub localhost:8081/golang:1.19
+    run cosign verify --key cosign.pub localhost:8081/golang:1.20
     [ "$status" -eq 0 ]
 }
 
 @test "sync signatures ondemand" {
-    run notation verify --plain-http localhost:8082/golang:1.19
+    run notation verify --plain-http localhost:8082/golang:1.20
     [ "$status" -eq 0 ]
 
-    run cosign verify --key cosign.pub localhost:8082/golang:1.19
+    run cosign verify --key cosign.pub localhost:8082/golang:1.20
     [ "$status" -eq 0 ]
 }
 

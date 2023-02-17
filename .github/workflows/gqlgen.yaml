@@ -2,7 +2,7 @@ name: "GQL generation and linting"
 
 # Validate gqlgen works
 # Validate there are no uncommitted changes after running gqlgen
-# Lint the graphql schemma
+# Lint the graphql schema
 
 on:
   push:
@@ -36,7 +36,7 @@ jobs:
         run: |
             make verify-gql-committed
   gqllint:
-    name: Check GQL schemma follows best practices
+    name: Check GQL schema follows best practices
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -44,6 +44,6 @@ jobs:
         run: |
           cd $GITHUB_WORKSPACE
           npm install graphql-schema-linter graphql
-      - name: Lint the graphql schemma
+      - name: Lint the graphql schema
         run: |
-          $(npm bin)/graphql-schema-linter pkg/extensions/search/*.graphql
+          npm exec graphql-schema-linter pkg/extensions/search/*.graphql
