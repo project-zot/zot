@@ -117,6 +117,8 @@ jobs:
           ARCH: ${{ matrix.arch }}
       - name: Upload code coverage
         uses: codecov/codecov-action@v3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Generate GraphQL Introspection JSON on Release
         if: github.event_name == 'release' && github.event.action == 'published' && matrix.os == 'linux' && matrix.arch == 'amd64'
