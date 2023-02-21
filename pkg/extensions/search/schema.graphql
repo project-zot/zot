@@ -626,7 +626,7 @@ type Query {
     Image(
         "Image name in the format `repository:tag`"
         image: String!
-    ): ImageSummary
+    ): ImageSummary!
 
     """
     Returns a list of descriptors of an image or artifact manifest that are found in a <repo> and have a subject field of <digest>
