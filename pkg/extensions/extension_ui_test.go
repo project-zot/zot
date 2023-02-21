@@ -66,10 +66,10 @@ func TestUIExtension(t *testing.T) {
 		// Upload a test image
 		err = test.UploadImage(
 			test.Image{
-				Config:   cfg,
-				Layers:   layers,
-				Manifest: manifest,
-				Tag:      tagName,
+				Config:    cfg,
+				Layers:    layers,
+				Manifest:  manifest,
+				Reference: tagName,
 			}, baseURL, repoName)
 		So(err, ShouldBeNil)
 

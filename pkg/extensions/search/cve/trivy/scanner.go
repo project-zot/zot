@@ -251,42 +251,7 @@ func (scanner Scanner) isManifestScanable(descriptor repodb.Descriptor) (bool, e
 }
 
 func (scanner Scanner) isIndexScanable(descriptor repodb.Descriptor) (bool, error) {
-	indexDigestStr := descriptor.Digest
-
-	indexDigest, err := godigest.Parse(indexDigestStr)
-	if err != nil {
-		return false, err
-	}
-
-	indexData, err := scanner.repoDB.GetIndexData(indexDigest)
-	if err != nil {
-		return false, err
-	}
-
-	var indexContent ispec.Index
-
-	err = json.Unmarshal(indexData.IndexBlob, &indexContent)
-	if err != nil {
-		scanner.log.Error().Err(err).Msg("unable to unmashal manifest blob")
-
-		return false, zerr.ErrScanNotSupported
-	}
-
-	for _, manifestDescriptor := range indexContent.Manifests {
-		ok, err := scanner.isManifestScanable(repodb.Descriptor{
-			Digest:    manifestDescriptor.Digest.String(),
-			MediaType: manifestDescriptor.MediaType,
-		})
-		if err != nil {
-			return false, err
-		}
-
-		if !ok {
-			return false, nil
-		}
-	}
-
-	return true, nil
+	return false, nil
 }
 
 func (scanner Scanner) ScanImage(image string) (map[string]cvemodel.CVE, error) {

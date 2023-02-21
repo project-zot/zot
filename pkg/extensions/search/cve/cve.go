@@ -7,6 +7,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
+	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/extensions/search/cve/trivy"
@@ -72,13 +73,17 @@ func (cveinfo BaseCveInfo) GetImageListForCVE(repo, cveID string) ([]common.TagI
 
 			manifestDigest := godigest.Digest(manifestDigestStr)
 
-			isValidImage, _ := cveinfo.Scanner.IsImageFormatScannable(repo, tag)
-			if !isValidImage {
+			isScanableImage, err := cveinfo.Scanner.IsImageFormatScannable(repo, tag)
+			if !isScanableImage || err != nil {
+				cveinfo.Log.Info().Str("image", repo+":"+tag).Err(err).Msg("image is not scanable")
+
 				continue
 			}
 
 			cveMap, err := cveinfo.Scanner.ScanImage(getImageString(repo, tag))
 			if err != nil {
+				cveinfo.Log.Info().Str("image", repo+":"+tag).Err(err).Msg("image scan failed")
+
 				continue
 			}
 
@@ -91,35 +96,8 @@ func (cveinfo BaseCveInfo) GetImageListForCVE(repo, cveID string) ([]common.TagI
 					},
 				})
 			}
-		case ispec.MediaTypeImageIndex:
-			indexDigestStr := descriptor.Digest
-
-			indexDigest := godigest.Digest(indexDigestStr)
-
-			isValidImage, _ := cveinfo.Scanner.IsImageFormatScannable(repo, tag)
-			if !isValidImage {
-				continue
-			}
-
-			// At the moment of this implementation trivy can't scan individual images inside a multi-arch when using the
-			// --input flag. When this will be possible, we should loop over all images, scan and then search their
-			// vulnerabilities.
-			cveMap, err := cveinfo.Scanner.ScanImage(getImageString(repo, tag))
-			if err != nil {
-				continue
-			}
-
-			if _, hasCVE := cveMap[cveID]; hasCVE {
-				imgList = append(imgList, common.TagInfo{
-					Name: tag,
-					Descriptor: common.Descriptor{
-						Digest:    indexDigest,
-						MediaType: descriptor.MediaType,
-					},
-				})
-			}
 		default:
-			cveinfo.Log.Error().Msg("type not supported")
+			cveinfo.Log.Error().Msgf("type '%s' not supported for scanning", descriptor.MediaType)
 		}
 	}
 
@@ -181,8 +159,8 @@ func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]commo
 
 			image := fmt.Sprintf("%s:%s", repo, tag)
 
-			isValidImage, _ := cveinfo.Scanner.IsImageFormatScannable(repo, tag)
-			if !isValidImage {
+			isValidImage, err := cveinfo.Scanner.IsImageFormatScannable(repo, tag)
+			if !isValidImage || err != nil {
 				cveinfo.Log.Debug().Str("image", image).Str("cve-id", cveID).
 					Msg("image media type not supported for scanning, adding as a vulnerable image")
 
@@ -214,10 +192,11 @@ func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]commo
 			if hasCVE {
 				vulnerableTags = append(vulnerableTags, tagInfo)
 			}
-		case ispec.MediaTypeImageIndex:
-			panic("not implemented")
 		default:
-			cveinfo.Log.Info().Msg("media type not supported %s")
+			cveinfo.Log.Error().Msgf("media type not supported '%s'", descriptor.MediaType)
+
+			return []common.TagInfo{},
+				fmt.Errorf("media type '%s' is not supported: %w", descriptor.MediaType, errors.ErrNotImplemented)
 		}
 	}
 

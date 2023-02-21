@@ -720,6 +720,16 @@ func TestWrapperErrors(t *testing.T) {
 			VersionTablename:      "",
 		})
 		So(err, ShouldNotBeNil)
+
+		_, err = dynamo.NewDynamoDBWrapper(dynamoParams.DBDriverParameters{ //nolint:contextcheck
+			Endpoint:              endpoint,
+			Region:                region,
+			RepoMetaTablename:     repoMetaTablename,
+			ManifestDataTablename: manifestDataTablename,
+			IndexDataTablename:    indexDataTablename,
+			VersionTablename:      versionTablename,
+		})
+		So(err, ShouldBeNil)
 	})
 }
 

@@ -105,23 +105,6 @@ func (img Image) Digest() (godigest.Digest, error) {
 	return godigest.FromBytes(blob), nil
 }
 
-func (img Image) ManifestData() (repodb.ManifestData, error) {
-	manifestBlob, err := json.Marshal(img.Manifest)
-	if err != nil {
-		return repodb.ManifestData{}, err
-	}
-
-	configBlob, err := json.Marshal(img.Config)
-	if err != nil {
-		return repodb.ManifestData{}, err
-	}
-
-	return repodb.ManifestData{
-		ManifestBlob: manifestBlob,
-		ConfigBlob:   configBlob,
-	}, nil
-}
-
 type MultiarchImage struct {
 	Index     ispec.Index
 	Images    []Image
@@ -902,10 +885,10 @@ func PushTestImage(repoName string, tag string, //nolint:unparam
 ) error {
 	err := UploadImage(
 		Image{
-			Manifest: manifest,
-			Config:   config,
-			Layers:   layers,
-			Tag:      tag,
+			Manifest:  manifest,
+			Config:    config,
+			Layers:    layers,
+			Reference: tag,
 		},
 		baseURL,
 		repoName,

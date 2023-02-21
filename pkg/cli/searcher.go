@@ -703,7 +703,7 @@ func printImageTableHeader(writer io.Writer, verbose bool, maxImageNameLen, maxT
 
 	table.SetColMinWidth(colImageNameIndex, imageNameWidth)
 	table.SetColMinWidth(colTagIndex, tagWidth)
-	table.SetColMinWidth(colOsArchIndex, osArchWidth)
+	table.SetColMinWidth(colPlatformIndex, platformWidth)
 	table.SetColMinWidth(colDigestIndex, digestWidth)
 	table.SetColMinWidth(colSizeIndex, sizeWidth)
 	table.SetColMinWidth(colIsSignedIndex, isSignedWidth)
@@ -734,9 +734,9 @@ func printImageTableHeader(writer io.Writer, verbose bool, maxImageNameLen, maxT
 
 	if maxPlatformLen > len("OS/ARCH") {
 		offset = strings.Repeat(" ", maxPlatformLen-len("OS/ARCH"))
-		row[colOsArchIndex] = "OS/ARCH" + offset
+		row[colPlatformIndex] = "OS/ARCH" + offset
 	} else {
-		row[colOsArchIndex] = "OS/ARCH"
+		row[colPlatformIndex] = "OS/ARCH"
 	}
 
 	row[colDigestIndex] = "DIGEST"

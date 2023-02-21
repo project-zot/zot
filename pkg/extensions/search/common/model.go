@@ -13,7 +13,7 @@ type RepoSummary struct {
 	Name        string       `json:"name"`
 	LastUpdated time.Time    `json:"lastUpdated"`
 	Size        string       `json:"size"`
-	Platforms   []OsArch     `json:"platforms"`
+	Platforms   []Platform   `json:"platforms"`
 	Vendors     []string     `json:"vendors"`
 	Score       int          `json:"score"`
 	NewestImage ImageSummary `json:"newestImage"`
@@ -44,14 +44,14 @@ type ManifestSummary struct {
 	ConfigDigest    string                    `json:"configDigest"`
 	LastUpdated     time.Time                 `json:"lastUpdated"`
 	Size            string                    `json:"size"`
-	Platform        OsArch                    `json:"platform"`
+	Platform        Platform                  `json:"platform"`
 	DownloadCount   int                       `json:"downloadCount"`
 	Layers          []LayerSummary            `json:"layers"`
 	History         []LayerHistory            `json:"history"`
 	Vulnerabilities ImageVulnerabilitySummary `json:"vulnerabilities"`
 }
 
-type OsArch struct {
+type Platform struct {
 	Os   string `json:"os"`
 	Arch string `json:"arch"`
 }

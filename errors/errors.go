@@ -78,4 +78,5 @@ var (
 	ErrOffsetIsNegative         = errors.New("pageturner: offset has negative value")
 	ErrSortCriteriaNotSupported = errors.New("pageturner: the sort criteria is not supported")
 	ErrTimeout                  = errors.New("operation timeout")
+	ErrNotImplemented           = errors.New("not implemented")
 )

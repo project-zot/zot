@@ -64,7 +64,7 @@ func BuildImageInfo(repo string, tag string, manifestDigest godigest.Digest,
 					Layers:       layers,
 					Size:         &formattedSize,
 					History:      allHistory,
-					Platform: &gql_generated.OsArch{
+					Platform: &gql_generated.Platform{
 						Os:   &imageConfig.OS,
 						Arch: &imageConfig.Architecture,
 					},
@@ -120,7 +120,7 @@ func BuildImageInfo(repo string, tag string, manifestDigest godigest.Digest,
 						Layers:       layers,
 						Size:         &formattedSize,
 						History:      allHistory,
-						Platform: &gql_generated.OsArch{
+						Platform: &gql_generated.Platform{
 							Os:   &imageConfig.OS,
 							Arch: &imageConfig.Architecture,
 						},
@@ -171,7 +171,7 @@ func BuildImageInfo(repo string, tag string, manifestDigest godigest.Digest,
 				ConfigDigest: &configDigest,
 				Layers:       layers,
 				History:      allHistory,
-				Platform: &gql_generated.OsArch{
+				Platform: &gql_generated.Platform{
 					Os:   &imageConfig.OS,
 					Arch: &imageConfig.Architecture,
 				},

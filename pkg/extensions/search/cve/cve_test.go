@@ -367,6 +367,29 @@ func TestImageFormat(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		So(isValidImage, ShouldEqual, false)
 	})
+
+	Convey("isIndexScanable", t, func() {
+		log := log.NewLogger("debug", "")
+
+		repoDB := &mocks.RepoDBMock{
+			GetRepoMetaFn: func(repo string) (repodb.RepoMetadata, error) {
+				return repodb.RepoMetadata{
+					Tags: map[string]repodb.Descriptor{
+						"tag": {MediaType: ispec.MediaTypeImageIndex},
+					},
+				}, nil
+			},
+		}
+		storeController := storage.StoreController{
+			DefaultStore: mocks.MockedImageStore{},
+		}
+
+		cveInfo := cveinfo.NewCVEInfo(storeController, repoDB, "", log)
+
+		isScanable, err := cveInfo.Scanner.IsImageFormatScannable("repo", "tag")
+		So(err, ShouldBeNil)
+		So(isScanable, ShouldBeFalse)
+	})
 }
 
 func TestCVESearchDisabled(t *testing.T) {
@@ -1466,7 +1489,7 @@ func TestCVEStruct(t *testing.T) {
 
 		tagList, err = cveInfo.GetImageListForCVE("repoIndex", "CVE1")
 		So(err, ShouldBeNil)
-		So(len(tagList), ShouldEqual, 1)
+		So(len(tagList), ShouldEqual, 0)
 
 		cveInfo = cveinfo.BaseCveInfo{Log: log, Scanner: mocks.CveScannerMock{
 			IsImageFormatScannableFn: func(repo, reference string) (bool, error) {

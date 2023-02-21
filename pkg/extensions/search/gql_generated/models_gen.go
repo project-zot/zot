@@ -93,7 +93,7 @@ type ImageSummary struct {
 	Tag *string `json:"Tag"`
 	// List of manifests for all supported versions of the image for different operating systems and architectures
 	Manifests []*ManifestSummary `json:"Manifests"`
-	// Total size of the files associated with all images (manigest, config, layers)
+	// Total size of the files associated with all images (manifest, config, layers)
 	Size *string `json:"Size"`
 	// Number of downloads of the manifest of this image
 	DownloadCount *int `json:"DownloadCount"`
@@ -158,10 +158,10 @@ type ManifestSummary struct {
 	ConfigDigest *string `json:"ConfigDigest"`
 	// Timestamp of the last update to an image inside this repository
 	LastUpdated *time.Time `json:"LastUpdated"`
-	// Total size of the files associated with this manifest (manigest, config, layers)
+	// Total size of the files associated with this manifest (manifest, config, layers)
 	Size *string `json:"Size"`
 	// OS and architecture supported by this image
-	Platform *OsArch `json:"Platform"`
+	Platform *Platform `json:"Platform"`
 	// Total numer of image manifest downloads from this repository
 	DownloadCount *int `json:"DownloadCount"`
 	// List of layers matching the search criteria
@@ -171,16 +171,6 @@ type ManifestSummary struct {
 	History []*LayerHistory `json:"History"`
 	// Short summary of the identified CVEs
 	Vulnerabilities *ImageVulnerabilitySummary `json:"Vulnerabilities"`
-}
-
-// Contains details about the OS and architecture of the image
-type OsArch struct {
-	// The name of the operating system which the image is built to run on,
-	// Should be values listed in the Go Language document https://go.dev/doc/install/source#environment
-	Os *string `json:"Os"`
-	// The name of the compilation architecture which the image is built to run on,
-	// Should be values listed in the Go Language document https://go.dev/doc/install/source#environment
-	Arch *string `json:"Arch"`
 }
 
 // Contains the name of the package, the current installed version and the version where the CVE was fixed
@@ -230,6 +220,16 @@ type PaginatedReposResult struct {
 	Results []*RepoSummary `json:"Results"`
 }
 
+// Contains details about the OS and architecture of the image
+type Platform struct {
+	// The name of the operating system which the image is built to run on,
+	// Should be values listed in the Go Language document https://go.dev/doc/install/source#environment
+	Os *string `json:"Os"`
+	// The name of the compilation architecture which the image is built to run on,
+	// Should be values listed in the Go Language document https://go.dev/doc/install/source#environment
+	Arch *string `json:"Arch"`
+}
+
 // A referrer is an object which has a reference to a another object
 type Referrer struct {
 	// Referrer MediaType
@@ -263,7 +263,7 @@ type RepoSummary struct {
 	// Total size of the files within this repository
 	Size *string `json:"Size"`
 	// List of platforms supported by this repository
-	Platforms []*OsArch `json:"Platforms"`
+	Platforms []*Platform `json:"Platforms"`
 	// Vendors associated with this image, the distributing entities, organizations or individuals
 	Vendors []*string `json:"Vendors"`
 	// Integer used to rank search results by relevance

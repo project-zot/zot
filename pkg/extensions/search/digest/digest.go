@@ -55,7 +55,7 @@ func (digestinfo DigestInfo) GetImageTagsByDigest(repo, digest string) ([]ImageI
 
 			tags := []*string{}
 
-			// Check the image manigest in index.json matches the search digest
+			// Check the image manifest in index.json matches the search digest
 			// This is a blob with mediaType application/vnd.oci.image.manifest.v1+json
 			if strings.Contains(manifest.Digest.String(), digest) {
 				tags = append(tags, &val)

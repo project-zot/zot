@@ -842,8 +842,6 @@ func addManifestCallToPool(ctx context.Context, config searchConfig, pool *reque
 ) {
 	defer wtgrp.Done()
 
-	resultManifest := manifestResponse{}
-
 	manifestEndpoint, err := combineServerAndEndpointURL(*config.servURL,
 		fmt.Sprintf("/v2/%s/manifests/%s", imageName, tagName))
 	if err != nil {
@@ -853,14 +851,13 @@ func addManifestCallToPool(ctx context.Context, config searchConfig, pool *reque
 		rch <- stringResult{"", err}
 	}
 
-	job := manifestJob{
-		url:          manifestEndpoint,
-		username:     username,
-		imageName:    imageName,
-		password:     password,
-		tagName:      tagName,
-		manifestResp: resultManifest,
-		config:       config,
+	job := httpJob{
+		url:       manifestEndpoint,
+		username:  username,
+		imageName: imageName,
+		password:  password,
+		tagName:   tagName,
+		config:    config,
 	}
 
 	wtgrp.Add(1)
@@ -1001,8 +998,9 @@ type manifestStruct struct {
 }
 
 type platform struct {
-	Os   string `json:"os"`
-	Arch string `json:"arch"`
+	Os      string `json:"os"`
+	Arch    string `json:"arch"`
+	Variant string `json:"variant"`
 }
 
 type DerivedImageList struct {
@@ -1048,7 +1046,7 @@ type imagesForDigest struct {
 }
 
 type layer struct {
-	Size   uint64 `json:"size,string"`
+	Size   int64  `json:"size,string"`
 	Digest string `json:"digest"`
 }
 
@@ -1072,7 +1070,7 @@ func (img imageStruct) stringPlainText(maxImgNameLen, maxTagLen, maxPlatformLen 
 
 	table.SetColMinWidth(colImageNameIndex, maxImgNameLen)
 	table.SetColMinWidth(colTagIndex, maxTagLen)
-	table.SetColMinWidth(colOsArchIndex, osArchWidth)
+	table.SetColMinWidth(colPlatformIndex, platformWidth)
 	table.SetColMinWidth(colDigestIndex, digestWidth)
 	table.SetColMinWidth(colSizeIndex, sizeWidth)
 	table.SetColMinWidth(colIsSignedIndex, isSignedWidth)
@@ -1119,11 +1117,11 @@ func (img imageStruct) stringPlainText(maxImgNameLen, maxTagLen, maxPlatformLen 
 			return "", fmt.Errorf("error parsing config digest %s: %w", img.Manifests[i].ConfigDigest, err)
 		}
 
-		osArch := getOsArchStr(img.Manifests[i].Platform)
+		platform := getPlatformStr(img.Manifests[i].Platform)
 
-		if maxPlatformLen > len(osArch) {
-			offset = strings.Repeat(" ", maxPlatformLen-len(osArch))
-			osArch += offset
+		if maxPlatformLen > len(platform) {
+			offset = strings.Repeat(" ", maxPlatformLen-len(platform))
+			platform += offset
 		}
 
 		minifestDigestStr := ellipsize(manifestDigest.Encoded(), digestWidth, "")
@@ -1136,7 +1134,7 @@ func (img imageStruct) stringPlainText(maxImgNameLen, maxTagLen, maxPlatformLen 
 		row[colImageNameIndex] = imageName
 		row[colTagIndex] = tagName
 		row[colDigestIndex] = minifestDigestStr
-		row[colOsArchIndex] = osArch
+		row[colPlatformIndex] = platform
 		row[colSizeIndex] = size
 		row[colIsSignedIndex] = strconv.FormatBool(isSigned)
 
@@ -1150,7 +1148,7 @@ func (img imageStruct) stringPlainText(maxImgNameLen, maxTagLen, maxPlatformLen 
 		if img.verbose {
 			for _, entry := range img.Manifests[i].Layers {
 				layerSize := entry.Size
-				size := ellipsize(strings.ReplaceAll(humanize.Bytes(layerSize), " ", ""), sizeWidth, ellipsis)
+				size := ellipsize(strings.ReplaceAll(humanize.Bytes(uint64(layerSize)), " ", ""), sizeWidth, ellipsis)
 
 				layerDigest, err := godigest.Parse(entry.Digest)
 				if err != nil {
@@ -1163,7 +1161,7 @@ func (img imageStruct) stringPlainText(maxImgNameLen, maxTagLen, maxPlatformLen 
 				layerRow[colImageNameIndex] = ""
 				layerRow[colTagIndex] = ""
 				layerRow[colDigestIndex] = ""
-				layerRow[colOsArchIndex] = ""
+				layerRow[colPlatformIndex] = ""
 				layerRow[colSizeIndex] = size
 				layerRow[colConfigIndex] = ""
 				layerRow[colLayersIndex] = layerDigestStr
@@ -1178,12 +1176,23 @@ func (img imageStruct) stringPlainText(maxImgNameLen, maxTagLen, maxPlatformLen 
 	return builder.String(), nil
 }
 
-func getOsArchStr(platform platform) string {
-	if platform.Arch == "" && platform.Os == "" {
+func getPlatformStr(platf platform) string {
+	if platf.Arch == "" && platf.Os == "" {
 		return "N/A"
 	}
 
-	return platform.Os + "/" + platform.Arch
+	platform := platf.Os
+
+	if platf.Arch != "" {
+		platform = platform + "/" + platf.Arch
+		platform = strings.Trim(platform, "/")
+
+		if platf.Variant != "" {
+			platform = platform + "/" + platf.Variant
+		}
+	}
+
+	return platform
 }
 
 func (img imageStruct) stringJSON() (string, error) {
@@ -1208,26 +1217,6 @@ func (img imageStruct) stringYAML() (string, error) {
 
 type catalogResponse struct {
 	Repositories []string `json:"repositories"`
-}
-
-//nolint:tagliatelle
-type manifestResponse struct {
-	Layers []struct {
-		MediaType string `json:"mediaType"`
-		Digest    string `json:"digest"`
-		Size      uint64 `json:"size"`
-	} `json:"layers"`
-	Annotations struct {
-		WsTychoStackerStackerYaml string `json:"ws.tycho.stacker.stacker_yaml"`
-		WsTychoStackerGitVersion  string `json:"ws.tycho.stacker.git_version"`
-	} `json:"annotations"`
-	Config struct {
-		Size      int      `json:"size"`
-		Digest    string   `json:"digest"`
-		MediaType string   `json:"mediaType"`
-		Platform  platform `json:"platform"`
-	} `json:"config"`
-	SchemaVersion int `json:"schemaVersion"`
 }
 
 func combineServerAndEndpointURL(serverURL, endPoint string) (string, error) {
@@ -1336,7 +1325,7 @@ const (
 	imageNameWidth = 10
 	tagWidth       = 8
 	digestWidth    = 8
-	osArchWidth    = 12
+	platformWidth  = 14
 	sizeWidth      = 8
 	isSignedWidth  = 8
 	configWidth    = 8
@@ -1347,7 +1336,7 @@ const (
 	colTagIndex       = 1
 	colDigestIndex    = 2
 	colConfigIndex    = 3
-	colOsArchIndex    = 4
+	colPlatformIndex  = 4
 	colIsSignedIndex  = 5
 	colLayersIndex    = 6
 	colSizeIndex      = 7

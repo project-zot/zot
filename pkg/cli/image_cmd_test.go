@@ -202,7 +202,8 @@ func TestSearchImageCmd(t *testing.T) {
 		err := imageCmd.Execute()
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
-		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE dummyImageName tag 6e2f80bf os/arch false 123kB") //nolint:lll
+		So(strings.TrimSpace(str), ShouldEqual,
+			"IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE dummyImageName tag 6e2f80bf os/arch false 123kB")
 		So(err, ShouldBeNil)
 		Convey("using shorthand", func() {
 			args := []string{"imagetest", "-n", "dummyImageName", "--url", "someUrlImage"}
@@ -217,7 +218,8 @@ func TestSearchImageCmd(t *testing.T) {
 
 			space := regexp.MustCompile(`\s+`)
 			str := space.ReplaceAllString(buff.String(), " ")
-			So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE dummyImageName tag 6e2f80bf os/arch false 123kB") //nolint:lll
+			So(strings.TrimSpace(str), ShouldEqual,
+				"IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE dummyImageName tag 6e2f80bf os/arch false 123kB")
 			So(err, ShouldBeNil)
 		})
 	})
@@ -234,7 +236,8 @@ func TestSearchImageCmd(t *testing.T) {
 		err := imageCmd.Execute()
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
-		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE anImage tag 6e2f80bf os/arch false 123kB") //nolint:lll
+		So(strings.TrimSpace(str), ShouldEqual,
+			"IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE anImage tag 6e2f80bf os/arch false 123kB")
 		So(err, ShouldBeNil)
 
 		Convey("invalid URL format", func() {
@@ -341,7 +344,7 @@ func TestSignature(t *testing.T) {
 		str = space.ReplaceAllString(buff.String(), " ")
 		actual = strings.TrimSpace(str)
 		So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE")
-		So(actual, ShouldContainSubstring, "repo7 test:1.0 6742241d N/A true 447B")
+		So(actual, ShouldContainSubstring, "repo7 test:1.0 6742241d linux/amd64 true 447B")
 
 		err = os.Chdir(currentWorkingDir)
 		So(err, ShouldBeNil)
@@ -418,7 +421,7 @@ func TestSignature(t *testing.T) {
 		str = space.ReplaceAllString(buff.String(), " ")
 		actual = strings.TrimSpace(str)
 		So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE")
-		So(actual, ShouldContainSubstring, "repo7 0.0.1 6742241d N/A true 447B")
+		So(actual, ShouldContainSubstring, "repo7 0.0.1 6742241d linux/amd64 true 447B")
 
 		err = os.Chdir(currentWorkingDir)
 		So(err, ShouldBeNil)
@@ -728,7 +731,8 @@ func TestOutputFormat(t *testing.T) {
 		err := cmd.Execute()
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
-		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE dummyImageName tag 6e2f80bf os/arch false 123kB") //nolint:lll
+		So(strings.TrimSpace(str), ShouldEqual,
+			"IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE dummyImageName tag 6e2f80bf os/arch false 123kB")
 		So(err, ShouldBeNil)
 	})
 
@@ -750,7 +754,7 @@ func TestOutputFormat(t *testing.T) {
 			`"Manifests": [ { "configDigest": "sha256:4c10985c40365538426f2ba8cf0c21384a7769be502a550dcc0601b3736625e0", `+
 			`"digest": "sha256:6e2f80bf9cfaabad474fbaf8ad68fdb652f776ea80b63492ecca404e5f6446a6", `+
 			`"layers": [ { "size": "0", "digest": "sha256:c122a146f0d02349be211bb95cc2530f4a5793f96edbdfa00860f741e5d8c0e6" } ], `+ //nolint:lll
-			`"platform": { "os": "os", "arch": "arch" }, `+
+			`"platform": { "os": "os", "arch": "arch", "variant": "" }, `+
 			`"size": "123445", "isSigned": false } ], `+
 			`"size": "123445", "isSigned": false }`)
 		So(err, ShouldBeNil)
@@ -776,7 +780,7 @@ func TestOutputFormat(t *testing.T) {
 				`configdigest: sha256:4c10985c40365538426f2ba8cf0c21384a7769be502a550dcc0601b3736625e0 `+
 				`digest: sha256:6e2f80bf9cfaabad474fbaf8ad68fdb652f776ea80b63492ecca404e5f6446a6 `+
 				`layers: - size: 0 digest: sha256:c122a146f0d02349be211bb95cc2530f4a5793f96edbdfa00860f741e5d8c0e6 `+
-				`platform: os: os arch: arch `+
+				`platform: os: os arch: arch variant: "" `+
 				`size: "123445" issigned: false `+
 				`size: "123445" issigned: false`,
 		)
@@ -805,7 +809,7 @@ func TestOutputFormat(t *testing.T) {
 					`configdigest: sha256:4c10985c40365538426f2ba8cf0c21384a7769be502a550dcc0601b3736625e0 `+
 					`digest: sha256:6e2f80bf9cfaabad474fbaf8ad68fdb652f776ea80b63492ecca404e5f6446a6 `+
 					`layers: - size: 0 digest: sha256:c122a146f0d02349be211bb95cc2530f4a5793f96edbdfa00860f741e5d8c0e6 `+
-					`platform: os: os arch: arch `+
+					`platform: os: os arch: arch variant: "" `+
 					`size: "123445" issigned: false `+
 					`size: "123445" issigned: false`,
 			)
@@ -1125,8 +1129,8 @@ func TestServerResponse(t *testing.T) {
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE")
-			So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 N/A false 492B")
-			So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 N/A false 492B")
+			So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 linux/amd64 false 492B")
+			So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 linux/amd64 false 492B")
 		})
 
 		Convey("Test all images verbose", func() {
@@ -1145,13 +1149,13 @@ func TestServerResponse(t *testing.T) {
 			actual := strings.TrimSpace(str)
 			// Actual cli output should be something similar to (order of images may differ):
 			// IMAGE NAME    TAG       DIGEST    CONFIG    OS/ARCH  SIGNED  LAYERS    SIZE
-			// repo7         test:2.0  a0ca253b  b8781e88  N/A      false             492B
-			//                                             N/A              b8781e88  15B
-			// repo7         test:1.0  a0ca253b  b8781e88  N/A      false             492B
-			//                                             N/A              b8781e88  15B
+			// repo7         test:2.0  a0ca253b  b8781e88  linux/amd64      false             492B
+			//                                             linux/amd64              b8781e88  15B
+			// repo7         test:1.0  a0ca253b  b8781e88  linux/amd64      false             492B
+			//                                             linux/amd64              b8781e88  15B
 			So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST CONFIG OS/ARCH SIGNED LAYERS SIZE")
-			So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 3a1d2d0c N/A false 492B b8781e88 15B")
-			So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 3a1d2d0c N/A false 492B b8781e88 15B")
+			So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 3a1d2d0c linux/amd64 false 492B b8781e88 15B")
+			So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 3a1d2d0c linux/amd64 false 492B b8781e88 15B")
 		})
 
 		Convey("Test image by name", func() {
@@ -1169,8 +1173,8 @@ func TestServerResponse(t *testing.T) {
 			str := space.ReplaceAllString(buff.String(), " ")
 			actual := strings.TrimSpace(str)
 			So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE")
-			So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 N/A false 492B")
-			So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 N/A false 492B")
+			So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 linux/amd64 false 492B")
+			So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 linux/amd64 false 492B")
 		})
 
 		Convey("Test image by digest", func() {
@@ -1189,11 +1193,11 @@ func TestServerResponse(t *testing.T) {
 			actual := strings.TrimSpace(str)
 			// Actual cli output should be something similar to (order of images may differ):
 			// IMAGE NAME    TAG       DIGEST   OS/ARCH  SIZE
-			// repo7         test:2.0  a0ca253b N/A      492B
-			// repo7         test:1.0  a0ca253b N/A      492B
+			// repo7         test:2.0  a0ca253b linux/amd64      492B
+			// repo7         test:1.0  a0ca253b linux/amd64      492B
 			So(actual, ShouldContainSubstring, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE")
-			So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 N/A false 492B")
-			So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 N/A false 492B")
+			So(actual, ShouldContainSubstring, "repo7 test:2.0 883fc0c5 linux/amd64 false 492B")
+			So(actual, ShouldContainSubstring, "repo7 test:1.0 883fc0c5 linux/amd64 false 492B")
 
 			Convey("nonexistent digest", func() {
 				args := []string{"imagetest", "--digest", "d1g35t"}

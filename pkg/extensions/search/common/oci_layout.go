@@ -148,27 +148,6 @@ func (olu BaseOciLayoutUtils) GetImageBlobManifest(repo string, digest godigest.
 	return blobIndex, nil
 }
 
-func (olu BaseOciLayoutUtils) GetImageBlobIndex(repo string, digest godigest.Digest) (ispec.Index, error) {
-	var blobIndex ispec.Index
-
-	imageStore := olu.StoreController.GetImageStore(repo)
-
-	blobBuf, err := imageStore.GetBlobContent(repo, digest)
-	if err != nil {
-		olu.Log.Error().Err(err).Msg("unable to open image metadata file")
-
-		return blobIndex, err
-	}
-
-	if err := json.Unmarshal(blobBuf, &blobIndex); err != nil {
-		olu.Log.Error().Err(err).Msg("unable to marshal blob index")
-
-		return blobIndex, err
-	}
-
-	return blobIndex, nil
-}
-
 func (olu BaseOciLayoutUtils) GetImageInfo(repo string, configDigest godigest.Digest) (ispec.Image, error) {
 	var imageInfo ispec.Image
 
@@ -381,7 +360,7 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(repoName string) (RepoInfo, er
 	}
 
 	repoVendorsSet := make(map[string]bool, len(manifestList))
-	repoPlatformsSet := make(map[string]OsArch, len(manifestList))
+	repoPlatformsSet := make(map[string]Platform, len(manifestList))
 
 	var lastUpdatedImageSummary ImageSummary
 
@@ -420,14 +399,14 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(repoName string) (RepoInfo, er
 		}
 
 		opSys, arch := olu.GetImagePlatform(imageConfigInfo)
-		osArch := OsArch{
+		platform := Platform{
 			Os:   opSys,
 			Arch: arch,
 		}
 
 		if opSys != "" || arch != "" {
-			osArchString := strings.TrimSpace(fmt.Sprintf("%s %s", opSys, arch))
-			repoPlatformsSet[osArchString] = osArch
+			platformString := strings.TrimSpace(fmt.Sprintf("%s %s", opSys, arch))
+			repoPlatformsSet[platformString] = platform
 		}
 
 		layers := make([]LayerSummary, 0)
@@ -486,7 +465,7 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(repoName string) (RepoInfo, er
 
 				if layersIterator+1 > len(layers) {
 					olu.Log.Error().Err(errors.ErrBadLayerCount).
-						Msgf("error on creating layer history for imaeg %s %s", repoName, man.Digest)
+						Msgf("error on creating layer history for image %s %s", repoName, man.Digest)
 
 					break
 				}
@@ -514,7 +493,7 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(repoName string) (RepoInfo, er
 					ConfigDigest: configDigest,
 					LastUpdated:  lastUpdated,
 					Size:         size,
-					Platform:     osArch,
+					Platform:     platform,
 					Layers:       layers,
 					History:      allHistory,
 				},
@@ -547,10 +526,10 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(repoName string) (RepoInfo, er
 
 	size := strconv.FormatInt(repoSize, 10)
 
-	repoPlatforms := make([]OsArch, 0, len(repoPlatformsSet))
+	repoPlatforms := make([]Platform, 0, len(repoPlatformsSet))
 
-	for _, osArch := range repoPlatformsSet {
-		repoPlatforms = append(repoPlatforms, osArch)
+	for _, platform := range repoPlatformsSet {
+		repoPlatforms = append(repoPlatforms, platform)
 	}
 
 	repoVendors := make([]string, 0, len(repoVendorsSet))

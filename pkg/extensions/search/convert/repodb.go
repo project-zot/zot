@@ -31,7 +31,7 @@ func RepoMeta2RepoSummary(ctx context.Context, repoMeta repodb.RepoMetadata,
 ) *gql_generated.RepoSummary {
 	var (
 		repoLastUpdatedTimestamp = time.Time{}
-		repoPlatformsSet         = map[string]*gql_generated.OsArch{}
+		repoPlatformsSet         = map[string]*gql_generated.Platform{}
 		repoVendorsSet           = map[string]bool{}
 		lastUpdatedImageSummary  *gql_generated.ImageSummary
 		repoStarCount            = repoMeta.Stars
@@ -63,8 +63,8 @@ func RepoMeta2RepoSummary(ctx context.Context, repoMeta repodb.RepoMetadata,
 			if *manifestSummary.Platform.Os != "" || *manifestSummary.Platform.Arch != "" {
 				opSys, arch := *manifestSummary.Platform.Os, *manifestSummary.Platform.Arch
 
-				osArchString := strings.TrimSpace(fmt.Sprintf("%s %s", opSys, arch))
-				repoPlatformsSet[osArchString] = &gql_generated.OsArch{Os: &opSys, Arch: &arch}
+				platformString := strings.TrimSpace(fmt.Sprintf("%s %s", opSys, arch))
+				repoPlatformsSet[platformString] = &gql_generated.Platform{Os: &opSys, Arch: &arch}
 			}
 
 			repoDownloadCount += manifestMetaMap[*manifestSummary.Digest].DownloadCount
@@ -87,9 +87,9 @@ func RepoMeta2RepoSummary(ctx context.Context, repoMeta repodb.RepoMetadata,
 	repoSize := strconv.FormatInt(size, 10)
 	score := 0
 
-	repoPlatforms := make([]*gql_generated.OsArch, 0, len(repoPlatformsSet))
-	for _, osArch := range repoPlatformsSet {
-		repoPlatforms = append(repoPlatforms, osArch)
+	repoPlatforms := make([]*gql_generated.Platform, 0, len(repoPlatformsSet))
+	for _, platform := range repoPlatformsSet {
+		repoPlatforms = append(repoPlatforms, platform)
 	}
 
 	repoVendors := make([]*string, 0, len(repoVendorsSet))
@@ -307,7 +307,7 @@ func ImageManifest2ImageSummary(ctx context.Context, repo, tag string, digest go
 		arch = arch + "/" + variant
 	}
 
-	osArch := gql_generated.OsArch{Os: &opSys, Arch: &arch}
+	platform := gql_generated.Platform{Os: &opSys, Arch: &arch}
 
 	for _, signatures := range repoMeta.Signatures[digest.String()] {
 		if len(signatures) > 0 {
@@ -355,7 +355,7 @@ func ImageManifest2ImageSummary(ctx context.Context, repo, tag string, digest go
 				ConfigDigest:  &configDigest,
 				LastUpdated:   &imageLastUpdated,
 				Size:          &imageSize,
-				Platform:      &osArch,
+				Platform:      &platform,
 				DownloadCount: &downloadCount,
 				Layers:        getLayersSummaries(manifestContent),
 				History:       historyEntries,
@@ -429,7 +429,7 @@ func ImageManifest2ManifestSummary(ctx context.Context, repo, tag string, descri
 		arch = arch + "/" + variant
 	}
 
-	osArch := gql_generated.OsArch{Os: &opSys, Arch: &arch}
+	platform := gql_generated.Platform{Os: &opSys, Arch: &arch}
 
 	size, imageBlobsMap := getImageBlobsInfo(
 		manifestDigestStr, int64(len(manifestMeta.ManifestBlob)),
@@ -460,7 +460,7 @@ func ImageManifest2ManifestSummary(ctx context.Context, repo, tag string, descri
 		ConfigDigest:  &configDigest,
 		LastUpdated:   &imageLastUpdated,
 		Size:          &imageSize,
-		Platform:      &osArch,
+		Platform:      &platform,
 		DownloadCount: &downloadCount,
 		Layers:        getLayersSummaries(manifestContent),
 		History:       historyEntries,
@@ -521,7 +521,7 @@ func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta repodb.RepoMetadata
 ) (*gql_generated.RepoSummary, []*gql_generated.ImageSummary) {
 	var (
 		repoLastUpdatedTimestamp = time.Time{}
-		repoPlatformsSet         = map[string]*gql_generated.OsArch{}
+		repoPlatformsSet         = map[string]*gql_generated.Platform{}
 		repoVendorsSet           = map[string]bool{}
 		lastUpdatedImageSummary  *gql_generated.ImageSummary
 		repoStarCount            = repoMeta.Stars
@@ -552,8 +552,8 @@ func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta repodb.RepoMetadata
 		for _, manifestSummary := range imageSummary.Manifests {
 			opSys, arch := *manifestSummary.Platform.Os, *manifestSummary.Platform.Arch
 			if opSys != "" || arch != "" {
-				osArchString := strings.TrimSpace(fmt.Sprintf("%s %s", opSys, arch))
-				repoPlatformsSet[osArchString] = &gql_generated.OsArch{Os: &opSys, Arch: &arch}
+				platformString := strings.TrimSpace(fmt.Sprintf("%s %s", opSys, arch))
+				repoPlatformsSet[platformString] = &gql_generated.Platform{Os: &opSys, Arch: &arch}
 			}
 
 			updateRepoBlobsMap(imageBlobs, repoBlob2Size)
@@ -578,9 +578,9 @@ func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta repodb.RepoMetadata
 	repoSize := strconv.FormatInt(size, 10)
 	score := 0
 
-	repoPlatforms := make([]*gql_generated.OsArch, 0, len(repoPlatformsSet))
-	for _, osArch := range repoPlatformsSet {
-		repoPlatforms = append(repoPlatforms, osArch)
+	repoPlatforms := make([]*gql_generated.Platform, 0, len(repoPlatformsSet))
+	for _, platform := range repoPlatformsSet {
+		repoPlatforms = append(repoPlatforms, platform)
 	}
 
 	repoVendors := make([]*string, 0, len(repoVendorsSet))

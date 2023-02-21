@@ -128,7 +128,7 @@ type ImageSummary {
     """
     Manifests: [ManifestSummary]
     """
-    Total size of the files associated with all images (manigest, config, layers)
+    Total size of the files associated with all images (manifest, config, layers)
     """
     Size: String
     """
@@ -202,13 +202,13 @@ type ManifestSummary {
     """
     LastUpdated: Time
     """
-    Total size of the files associated with this manifest (manigest, config, layers)
+    Total size of the files associated with this manifest (manifest, config, layers)
     """
     Size: String
     """
     OS and architecture supported by this image
     """
-    Platform: OsArch
+    Platform: Platform
     """
     Total numer of image manifest downloads from this repository
     """
@@ -261,7 +261,7 @@ type RepoSummary {
     """
     List of platforms supported by this repository
     """
-    Platforms: [OsArch]
+    Platforms: [Platform]
     """
     Vendors associated with this image, the distributing entities, organizations or individuals
     """
@@ -397,7 +397,7 @@ type Referrer {
 """
 Contains details about the OS and architecture of the image
 """
-type OsArch {
+type Platform {
     """
     The name of the operating system which the image is built to run on,
     Should be values listed in the Go Language document https://go.dev/doc/install/source#environment

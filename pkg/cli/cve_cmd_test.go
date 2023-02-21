@@ -179,7 +179,8 @@ func TestSearchCVECmd(t *testing.T) {
 		So(err, ShouldBeNil)
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
-		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE dummyImageName tag 6e2f80bf os/arch false 123kB") //nolint:lll
+		So(strings.TrimSpace(str), ShouldEqual,
+			"IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE dummyImageName tag 6e2f80bf os/arch false 123kB")
 	})
 
 	Convey("Test CVE by name and CVE ID - using shorthand", t, func() {
@@ -195,7 +196,8 @@ func TestSearchCVECmd(t *testing.T) {
 		So(err, ShouldBeNil)
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
-		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE dummyImageName tag 6e2f80bf os/arch false 123kB") //nolint:lll
+		So(strings.TrimSpace(str), ShouldEqual,
+			"IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE dummyImageName tag 6e2f80bf os/arch false 123kB")
 	})
 
 	Convey("Test CVE by image name - in text format", t, func() {
@@ -821,7 +823,7 @@ func TestServerCVEResponse(t *testing.T) {
 		str = strings.TrimSpace(str)
 		So(err, ShouldBeNil)
 		So(str, ShouldEqual, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE zot-cve-test 0.0.1 "+
-			test.GetTestBlobDigest("zot-cve-test", "manifest").Encoded()[:8]+" N/A false 75MB")
+			test.GetTestBlobDigest("zot-cve-test", "manifest").Encoded()[:8]+" linux/amd64 false 75MB")
 	})
 
 	Convey("Test images by CVE ID - invalid CVE ID", t, func() {
@@ -906,7 +908,7 @@ func TestServerCVEResponse(t *testing.T) {
 		str := space.ReplaceAllString(buff.String(), " ")
 		So(err, ShouldBeNil)
 		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE zot-cve-test 0.0.1 "+
-			test.GetTestBlobDigest("zot-cve-test", "manifest").Encoded()[:8]+" N/A false 75MB")
+			test.GetTestBlobDigest("zot-cve-test", "manifest").Encoded()[:8]+" linux/amd64 false 75MB")
 	})
 
 	Convey("Test CVE by name and CVE ID - invalid name and CVE ID", t, func() {

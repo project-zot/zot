@@ -1580,11 +1580,25 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Summary.Platforms), ShouldNotEqual, 5)
 
-		So(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries[0].Tag, ShouldEqual, "1.0.0")
-		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries[0].Manifests), ShouldEqual, 2)
+		found := false
+		for _, is := range responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries {
+			if is.Tag == "1.0.0" {
+				found = true
 
-		So(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries[1].Tag, ShouldEqual, "2.0.0")
-		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries[1].Manifests), ShouldEqual, 3)
+				So(len(is.Manifests), ShouldEqual, 2)
+			}
+		}
+		So(found, ShouldBeTrue)
+
+		found = false
+		for _, is := range responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries {
+			if is.Tag == "2.0.0" {
+				found = true
+
+				So(len(is.Manifests), ShouldEqual, 3)
+			}
+		}
+		So(found, ShouldBeTrue)
 	})
 }
 

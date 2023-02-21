@@ -125,11 +125,6 @@ type ComplexityRoot struct {
 		Vulnerabilities func(childComplexity int) int
 	}
 
-	OsArch struct {
-		Arch func(childComplexity int) int
-		Os   func(childComplexity int) int
-	}
-
 	PackageInfo struct {
 		FixedVersion     func(childComplexity int) int
 		InstalledVersion func(childComplexity int) int
@@ -149,6 +144,11 @@ type ComplexityRoot struct {
 	PaginatedReposResult struct {
 		Page    func(childComplexity int) int
 		Results func(childComplexity int) int
+	}
+
+	Platform struct {
+		Arch func(childComplexity int) int
+		Os   func(childComplexity int) int
 	}
 
 	Query struct {
@@ -588,20 +588,6 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.ManifestSummary.Vulnerabilities(childComplexity), true
 
-	case "OsArch.Arch":
-		if e.complexity.OsArch.Arch == nil {
-			break
-		}
-
-		return e.complexity.OsArch.Arch(childComplexity), true
-
-	case "OsArch.Os":
-		if e.complexity.OsArch.Os == nil {
-			break
-		}
-
-		return e.complexity.OsArch.Os(childComplexity), true
-
 	case "PackageInfo.FixedVersion":
 		if e.complexity.PackageInfo.FixedVersion == nil {
 			break
@@ -664,6 +650,20 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.PaginatedReposResult.Results(childComplexity), true
+
+	case "Platform.Arch":
+		if e.complexity.Platform.Arch == nil {
+			break
+		}
+
+		return e.complexity.Platform.Arch(childComplexity), true
+
+	case "Platform.Os":
+		if e.complexity.Platform.Os == nil {
+			break
+		}
+
+		return e.complexity.Platform.Os(childComplexity), true
 
 	case "Query.BaseImageList":
 		if e.complexity.Query.BaseImageList == nil {
@@ -1120,7 +1120,7 @@ type ImageSummary {
     """
     Manifests: [ManifestSummary]
     """
-    Total size of the files associated with all images (manigest, config, layers)
+    Total size of the files associated with all images (manifest, config, layers)
     """
     Size: String
     """
@@ -1194,13 +1194,13 @@ type ManifestSummary {
     """
     LastUpdated: Time
     """
-    Total size of the files associated with this manifest (manigest, config, layers)
+    Total size of the files associated with this manifest (manifest, config, layers)
     """
     Size: String
     """
     OS and architecture supported by this image
     """
-    Platform: OsArch
+    Platform: Platform
     """
     Total numer of image manifest downloads from this repository
     """
@@ -1253,7 +1253,7 @@ type RepoSummary {
     """
     List of platforms supported by this repository
     """
-    Platforms: [OsArch]
+    Platforms: [Platform]
     """
     Vendors associated with this image, the distributing entities, organizations or individuals
     """
@@ -1389,7 +1389,7 @@ type Referrer {
 """
 Contains details about the OS and architecture of the image
 """
-type OsArch {
+type Platform {
     """
     The name of the operating system which the image is built to run on,
     Should be values listed in the Go Language document https://go.dev/doc/install/source#environment
@@ -4126,9 +4126,9 @@ func (ec *executionContext) _ManifestSummary_Platform(ctx context.Context, field
 	if resTmp == nil {
 		return graphql.Null
 	}
-	res := resTmp.(*OsArch)
+	res := resTmp.(*Platform)
 	fc.Result = res
-	return ec.marshalOOsArch2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐOsArch(ctx, field.Selections, res)
+	return ec.marshalOPlatform2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPlatform(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_ManifestSummary_Platform(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -4140,11 +4140,11 @@ func (ec *executionContext) fieldContext_ManifestSummary_Platform(ctx context.Co
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
 			case "Os":
-				return ec.fieldContext_OsArch_Os(ctx, field)
+				return ec.fieldContext_Platform_Os(ctx, field)
 			case "Arch":
-				return ec.fieldContext_OsArch_Arch(ctx, field)
+				return ec.fieldContext_Platform_Arch(ctx, field)
 			}
-			return nil, fmt.Errorf("no field named %q was found under type OsArch", field.Name)
+			return nil, fmt.Errorf("no field named %q was found under type Platform", field.Name)
 		},
 	}
 	return fc, nil
@@ -4329,88 +4329,6 @@ func (ec *executionContext) fieldContext_ManifestSummary_Vulnerabilities(ctx con
 				return ec.fieldContext_ImageVulnerabilitySummary_Count(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageVulnerabilitySummary", field.Name)
-		},
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _OsArch_Os(ctx context.Context, field graphql.CollectedField, obj *OsArch) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_OsArch_Os(ctx, field)
-	if err != nil {
-		return graphql.Null
-	}
-	ctx = graphql.WithFieldContext(ctx, fc)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.Os, nil
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		return graphql.Null
-	}
-	res := resTmp.(*string)
-	fc.Result = res
-	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) fieldContext_OsArch_Os(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "OsArch",
-		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type String does not have child fields")
-		},
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _OsArch_Arch(ctx context.Context, field graphql.CollectedField, obj *OsArch) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_OsArch_Arch(ctx, field)
-	if err != nil {
-		return graphql.Null
-	}
-	ctx = graphql.WithFieldContext(ctx, fc)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.Arch, nil
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		return graphql.Null
-	}
-	res := resTmp.(*string)
-	fc.Result = res
-	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) fieldContext_OsArch_Arch(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "OsArch",
-		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type String does not have child fields")
 		},
 	}
 	return fc, nil
@@ -4864,6 +4782,88 @@ func (ec *executionContext) fieldContext_PaginatedReposResult_Results(ctx contex
 				return ec.fieldContext_RepoSummary_IsStarred(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type RepoSummary", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Platform_Os(ctx context.Context, field graphql.CollectedField, obj *Platform) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Platform_Os(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Os, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Platform_Os(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Platform",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Platform_Arch(ctx context.Context, field graphql.CollectedField, obj *Platform) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Platform_Arch(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Arch, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Platform_Arch(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Platform",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
 		},
 	}
 	return fc, nil
@@ -6274,9 +6274,9 @@ func (ec *executionContext) _RepoSummary_Platforms(ctx context.Context, field gr
 	if resTmp == nil {
 		return graphql.Null
 	}
-	res := resTmp.([]*OsArch)
+	res := resTmp.([]*Platform)
 	fc.Result = res
-	return ec.marshalOOsArch2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐOsArch(ctx, field.Selections, res)
+	return ec.marshalOPlatform2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPlatform(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_RepoSummary_Platforms(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -6288,11 +6288,11 @@ func (ec *executionContext) fieldContext_RepoSummary_Platforms(ctx context.Conte
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
 			case "Os":
-				return ec.fieldContext_OsArch_Os(ctx, field)
+				return ec.fieldContext_Platform_Os(ctx, field)
 			case "Arch":
-				return ec.fieldContext_OsArch_Arch(ctx, field)
+				return ec.fieldContext_Platform_Arch(ctx, field)
 			}
-			return nil, fmt.Errorf("no field named %q was found under type OsArch", field.Name)
+			return nil, fmt.Errorf("no field named %q was found under type Platform", field.Name)
 		},
 	}
 	return fc, nil
@@ -8908,35 +8908,6 @@ func (ec *executionContext) _ManifestSummary(ctx context.Context, sel ast.Select
 	return out
 }
 
-var osArchImplementors = []string{"OsArch"}
-
-func (ec *executionContext) _OsArch(ctx context.Context, sel ast.SelectionSet, obj *OsArch) graphql.Marshaler {
-	fields := graphql.CollectFields(ec.OperationContext, sel, osArchImplementors)
-	out := graphql.NewFieldSet(fields)
-	var invalids uint32
-	for i, field := range fields {
-		switch field.Name {
-		case "__typename":
-			out.Values[i] = graphql.MarshalString("OsArch")
-		case "Os":
-
-			out.Values[i] = ec._OsArch_Os(ctx, field, obj)
-
-		case "Arch":
-
-			out.Values[i] = ec._OsArch_Arch(ctx, field, obj)
-
-		default:
-			panic("unknown field " + strconv.Quote(field.Name))
-		}
-	}
-	out.Dispatch()
-	if invalids > 0 {
-		return graphql.Null
-	}
-	return out
-}
-
 var packageInfoImplementors = []string{"PackageInfo"}
 
 func (ec *executionContext) _PackageInfo(ctx context.Context, sel ast.SelectionSet, obj *PackageInfo) graphql.Marshaler {
@@ -9058,6 +9029,35 @@ func (ec *executionContext) _PaginatedReposResult(ctx context.Context, sel ast.S
 			if out.Values[i] == graphql.Null {
 				invalids++
 			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch()
+	if invalids > 0 {
+		return graphql.Null
+	}
+	return out
+}
+
+var platformImplementors = []string{"Platform"}
+
+func (ec *executionContext) _Platform(ctx context.Context, sel ast.SelectionSet, obj *Platform) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, platformImplementors)
+	out := graphql.NewFieldSet(fields)
+	var invalids uint32
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Platform")
+		case "Os":
+
+			out.Values[i] = ec._Platform_Os(ctx, field, obj)
+
+		case "Arch":
+
+			out.Values[i] = ec._Platform_Arch(ctx, field, obj)
+
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -10710,54 +10710,6 @@ func (ec *executionContext) marshalOManifestSummary2ᚖzotregistryᚗioᚋzotᚋ
 	return ec._ManifestSummary(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalOOsArch2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐOsArch(ctx context.Context, sel ast.SelectionSet, v []*OsArch) graphql.Marshaler {
-	if v == nil {
-		return graphql.Null
-	}
-	ret := make(graphql.Array, len(v))
-	var wg sync.WaitGroup
-	isLen1 := len(v) == 1
-	if !isLen1 {
-		wg.Add(len(v))
-	}
-	for i := range v {
-		i := i
-		fc := &graphql.FieldContext{
-			Index:  &i,
-			Result: &v[i],
-		}
-		ctx := graphql.WithFieldContext(ctx, fc)
-		f := func(i int) {
-			defer func() {
-				if r := recover(); r != nil {
-					ec.Error(ctx, ec.Recover(ctx, r))
-					ret = nil
-				}
-			}()
-			if !isLen1 {
-				defer wg.Done()
-			}
-			ret[i] = ec.marshalOOsArch2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐOsArch(ctx, sel, v[i])
-		}
-		if isLen1 {
-			f(i)
-		} else {
-			go f(i)
-		}
-
-	}
-	wg.Wait()
-
-	return ret
-}
-
-func (ec *executionContext) marshalOOsArch2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐOsArch(ctx context.Context, sel ast.SelectionSet, v *OsArch) graphql.Marshaler {
-	if v == nil {
-		return graphql.Null
-	}
-	return ec._OsArch(ctx, sel, v)
-}
-
 func (ec *executionContext) marshalOPackageInfo2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPackageInfo(ctx context.Context, sel ast.SelectionSet, v []*PackageInfo) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
@@ -10819,6 +10771,54 @@ func (ec *executionContext) unmarshalOPageInput2ᚖzotregistryᚗioᚋzotᚋpkg�
 	}
 	res, err := ec.unmarshalInputPageInput(ctx, v)
 	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalOPlatform2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPlatform(ctx context.Context, sel ast.SelectionSet, v []*Platform) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalOPlatform2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPlatform(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	return ret
+}
+
+func (ec *executionContext) marshalOPlatform2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPlatform(ctx context.Context, sel ast.SelectionSet, v *Platform) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._Platform(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalOReferrer2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐReferrer(ctx context.Context, sel ast.SelectionSet, v *Referrer) graphql.Marshaler {
