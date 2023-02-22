@@ -750,6 +750,24 @@ func UploadBlob(baseURL, repo string, blob []byte, artifactBlobMediaType string)
 	return nil
 }
 
+func PushTestImage(repoName string, tag string, //nolint:unparam
+	baseURL string, manifest ispec.Manifest,
+	config ispec.Image, layers [][]byte,
+) error {
+	err := UploadImage(
+		Image{
+			Manifest: manifest,
+			Config:   config,
+			Layers:   layers,
+			Tag:      tag,
+		},
+		baseURL,
+		repoName,
+	)
+
+	return err
+}
+
 func ReadLogFileAndSearchString(logPath string, stringToMatch string, timeout time.Duration) (bool, error) {
 	ctx, cancelFunc := context.WithTimeout(context.Background(), timeout)
 	defer cancelFunc()

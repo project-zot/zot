@@ -54,12 +54,6 @@ var (
 	ErrPutManifest = errors.New("can't put manifest")
 )
 
-//nolint:gochecknoglobals
-var (
-	rootDir    string
-	subRootDir string
-)
-
 type RepoWithNewestImageResponse struct {
 	RepoListWithNewestImage RepoListWithNewestImage `json:"data"`
 	Errors                  []ErrorGQL              `json:"errors"`
@@ -150,21 +144,6 @@ type SingleImageSummary struct {
 type ImageSummaryResult struct {
 	SingleImageSummary SingleImageSummary `json:"data"`
 	Errors             []ErrorGQL         `json:"errors"`
-}
-
-func testSetup(t *testing.T, subpath string) error { //nolint:unparam
-	t.Helper()
-	dir := t.TempDir()
-
-	subDir := t.TempDir()
-
-	rootDir = dir
-
-	subRootDir = subDir
-
-	CopyTestFiles("../../../../test/data", rootDir)
-
-	return CopyFiles("../../../../test/data", path.Join(subDir, subpath))
 }
 
 func getTags() ([]common.TagInfo, []common.TagInfo) {
@@ -508,14 +487,12 @@ func getMockCveInfo(repoDB repodb.RepoDB, log log.Logger) cveinfo.CveInfo {
 func TestRepoListWithNewestImage(t *testing.T) {
 	Convey("Test repoListWithNewestImage by tag with HTTP", t, func() {
 		subpath := "/a"
-		err := testSetup(t, subpath)
-		if err != nil {
-			panic(err)
-		}
 		port := GetFreePort()
 		baseURL := GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
+		rootDir := t.TempDir()
+		subRootDir := t.TempDir()
 		conf.Storage.RootDirectory = rootDir
 		conf.Storage.SubPaths = make(map[string]config.StorageConfig)
 		conf.Storage.SubPaths[subpath] = config.StorageConfig{RootDirectory: subRootDir}
@@ -531,6 +508,25 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		ctlrManager := NewControllerManager(ctlr)
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
+
+		config, layers, manifest, err := GetImageComponents(100)
+		So(err, ShouldBeNil)
+
+		err = PushTestImage("zot-cve-test", "0.0.1", baseURL,
+			manifest, config, layers)
+		So(err, ShouldBeNil)
+
+		err = PushTestImage("a/zot-cve-test", "0.0.1", baseURL,
+			manifest, config, layers)
+		So(err, ShouldBeNil)
+
+		err = PushTestImage("zot-test", "0.0.1", baseURL,
+			manifest, config, layers)
+		So(err, ShouldBeNil)
+
+		err = PushTestImage("a/zot-test", "0.0.1", baseURL,
+			manifest, config, layers)
+		So(err, ShouldBeNil)
 
 		resp, err := resty.R().Get(baseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
@@ -728,7 +724,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 
 			var manifestDigest godigest.Digest
 			var configDigest godigest.Digest
-			manifestDigest, configDigest, _ = GetOciLayoutDigests("../../../../test/data/zot-test")
+			manifestDigest, configDigest, _ = GetOciLayoutDigests(path.Join(subRootDir, "a/zot-test"))
 
 			// Delete config blob and try.
 			err = os.Remove(path.Join(subRootDir, "a/zot-test/blobs/sha256", configDigest.Encoded()))
@@ -781,14 +777,12 @@ func TestRepoListWithNewestImage(t *testing.T) {
 
 	Convey("Test repoListWithNewestImage with vulnerability scan enabled", t, func() {
 		subpath := "/a"
-		err := testSetup(t, subpath)
-		if err != nil {
-			panic(err)
-		}
 		port := GetFreePort()
 		baseURL := GetBaseURL(port)
 		conf := config.New()
 		conf.HTTP.Port = port
+		rootDir := t.TempDir()
+		subRootDir := t.TempDir()
 		conf.Storage.RootDirectory = rootDir
 		conf.Storage.SubPaths = make(map[string]config.StorageConfig)
 		conf.Storage.SubPaths[subpath] = config.StorageConfig{RootDirectory: subRootDir}
@@ -857,6 +851,25 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 422)
+
+		config, layers, manifest, err := GetImageComponents(100)
+		So(err, ShouldBeNil)
+
+		err = PushTestImage("zot-cve-test", "0.0.1", baseURL,
+			manifest, config, layers)
+		So(err, ShouldBeNil)
+
+		err = PushTestImage("a/zot-cve-test", "0.0.1", baseURL,
+			manifest, config, layers)
+		So(err, ShouldBeNil)
+
+		err = PushTestImage("zot-test", "0.0.1", baseURL,
+			manifest, config, layers)
+		So(err, ShouldBeNil)
+
+		err = PushTestImage("a/zot-test", "0.0.1", baseURL,
+			manifest, config, layers)
+		So(err, ShouldBeNil)
 
 		query := `{
 			RepoListWithNewestImage{
@@ -1126,10 +1139,8 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 	Convey("Test expanded repo info", t, func() {
 		subpath := "/a"
-		err := testSetup(t, subpath)
-		if err != nil {
-			panic(err)
-		}
+		rootDir := t.TempDir()
+		subRootDir := t.TempDir()
 		port := GetFreePort()
 		baseURL := GetBaseURL(port)
 		conf := config.New()
@@ -1149,9 +1160,31 @@ func TestExpandedRepoInfo(t *testing.T) {
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
+		config, layers, manifest, err := GetImageComponents(100)
+		So(err, ShouldBeNil)
+
+		manifest.Annotations = make(map[string]string)
+		manifest.Annotations["org.opencontainers.image.vendor"] = "zot"
+
+		err = PushTestImage("zot-cve-test", "0.0.1", baseURL,
+			manifest, config, layers)
+		So(err, ShouldBeNil)
+
+		err = PushTestImage("a/zot-cve-test", "0.0.1", baseURL,
+			manifest, config, layers)
+		So(err, ShouldBeNil)
+
+		err = PushTestImage("zot-test", "0.0.1", baseURL,
+			manifest, config, layers)
+		So(err, ShouldBeNil)
+
+		err = PushTestImage("a/zot-test", "0.0.1", baseURL,
+			manifest, config, layers)
+		So(err, ShouldBeNil)
+
 		log := log.NewLogger("debug", "")
 		metrics := monitoring.NewMetricsServer(false, log)
-		testStorage := local.NewImageStore("../../../../test/data", false, storage.DefaultGCDelay,
+		testStorage := local.NewImageStore(rootDir, false, storage.DefaultGCDelay,
 			false, false, log, metrics, nil, nil)
 
 		resp, err := resty.R().Get(baseURL + "/v2/")
@@ -1285,7 +1318,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(found, ShouldEqual, true)
 
 		var manifestDigest godigest.Digest
-		manifestDigest, _, _ = GetOciLayoutDigests("../../../../test/data/zot-test")
+		manifestDigest, _, _ = GetOciLayoutDigests(path.Join(rootDir, "zot-test"))
 
 		err = os.Remove(path.Join(rootDir, "zot-test/blobs/sha256", manifestDigest.Encoded()))
 		So(err, ShouldBeNil)
@@ -1482,7 +1515,7 @@ func TestUtilsMethod(t *testing.T) {
 }
 
 func TestDerivedImageList(t *testing.T) {
-	rootDir = t.TempDir()
+	rootDir := t.TempDir()
 
 	port := GetFreePort()
 	baseURL := GetBaseURL(port)
@@ -1959,7 +1992,7 @@ func TestGetImageManifest(t *testing.T) {
 }
 
 func TestBaseImageList(t *testing.T) {
-	rootDir = t.TempDir()
+	rootDir := t.TempDir()
 
 	port := GetFreePort()
 	baseURL := GetBaseURL(port)
@@ -2674,7 +2707,7 @@ func TestGlobalSearch(t *testing.T) {
 		dir := t.TempDir()
 		subDir := t.TempDir()
 
-		subRootDir = path.Join(subDir, subpath)
+		subRootDir := path.Join(subDir, subpath)
 
 		port := GetFreePort()
 		baseURL := GetBaseURL(port)
@@ -2697,10 +2730,24 @@ func TestGlobalSearch(t *testing.T) {
 		defer ctlrManager.StopServer()
 
 		// push test images to repo 1 image 1
-		config1, layers1, manifest1, err := GetImageComponents(100)
+		_, layers1, manifest1, err := GetImageComponents(100)
 		So(err, ShouldBeNil)
+
 		createdTime := time.Date(2010, 1, 1, 12, 0, 0, 0, time.UTC)
 		createdTimeL2 := time.Date(2010, 2, 1, 12, 0, 0, 0, time.UTC)
+		config1 := ispec.Image{
+			Created: &createdTimeL2,
+			Platform: ispec.Platform{
+				Architecture: "amd64",
+				OS:           "linux",
+			},
+			RootFS: ispec.RootFS{
+				Type:    "layers",
+				DiffIDs: []godigest.Digest{},
+			},
+			Author: "ZotUser",
+		}
+
 		config1.History = append(
 			config1.History,
 			ispec.History{
@@ -2973,7 +3020,7 @@ func TestGlobalSearch(t *testing.T) {
 		dir := t.TempDir()
 		subDir := t.TempDir()
 
-		subRootDir = path.Join(subDir, subpath)
+		subRootDir := path.Join(subDir, subpath)
 
 		port := GetFreePort()
 		baseURL := GetBaseURL(port)
@@ -3533,12 +3580,7 @@ func TestGlobalSearchWithInvalidInput(t *testing.T) {
 
 func TestImageList(t *testing.T) {
 	Convey("Test ImageList", t, func() {
-		subpath := "/a"
-
-		err := testSetup(t, subpath)
-		if err != nil {
-			panic(err)
-		}
+		rootDir := t.TempDir()
 
 		port := GetFreePort()
 		baseURL := GetBaseURL(port)
@@ -3558,6 +3600,47 @@ func TestImageList(t *testing.T) {
 		ctlrManager := NewControllerManager(ctlr)
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
+
+		config, layers, manifest, err := GetImageComponents(100)
+		So(err, ShouldBeNil)
+
+		createdTime := time.Date(2010, 1, 1, 12, 0, 0, 0, time.UTC)
+		createdTimeL2 := time.Date(2010, 2, 1, 12, 0, 0, 0, time.UTC)
+		config.History = append(
+			config.History,
+			ispec.History{
+				Created:    &createdTime,
+				CreatedBy:  "go test data",
+				Author:     "ZotUser",
+				Comment:    "Test history comment",
+				EmptyLayer: true,
+			},
+			ispec.History{
+				Created:    &createdTimeL2,
+				CreatedBy:  "go test data 2",
+				Author:     "ZotUser",
+				Comment:    "Test history comment2",
+				EmptyLayer: false,
+			},
+		)
+		manifest, err = updateManifestConfig(manifest, config)
+		So(err, ShouldBeNil)
+
+		err = PushTestImage("zot-cve-test", "0.0.1", baseURL,
+			manifest, config, layers)
+		So(err, ShouldBeNil)
+
+		err = PushTestImage("a/zot-cve-test", "0.0.1", baseURL,
+			manifest, config, layers)
+		So(err, ShouldBeNil)
+
+		err = PushTestImage("zot-test", "0.0.1", baseURL,
+			manifest, config, layers)
+		So(err, ShouldBeNil)
+
+		err = PushTestImage("a/zot-test", "0.0.1", baseURL,
+			manifest, config, layers)
+		So(err, ShouldBeNil)
 
 		imageStore := ctlr.StoreController.DefaultStore
 
@@ -3848,7 +3931,7 @@ func TestRepoDBWhenSigningImages(t *testing.T) {
 		dir := t.TempDir()
 		subDir := t.TempDir()
 
-		subRootDir = path.Join(subDir, subpath)
+		subRootDir := path.Join(subDir, subpath)
 
 		port := GetFreePort()
 		baseURL := GetBaseURL(port)
@@ -4218,7 +4301,7 @@ func TestRepoDBWhenDeletingImages(t *testing.T) {
 		dir := t.TempDir()
 		subDir := t.TempDir()
 
-		subRootDir = path.Join(subDir, subpath)
+		subRootDir := path.Join(subDir, subpath)
 
 		port := GetFreePort()
 		baseURL := GetBaseURL(port)
