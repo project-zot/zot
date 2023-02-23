@@ -106,7 +106,7 @@ jobs:
             make OS=$OS ARCH=$ARCH
             sudo env "PATH=$PATH" make privileged-test
           else
-            make OS=$OS ARCH=$ARCH binary binary-minimal binary-debug binary-ui cli bench exporter-minimal
+            make OS=$OS ARCH=$ARCH binary binary-minimal binary-debug cli bench exporter-minimal
           fi
         env:
           S3MOCK_ENDPOINT: localhost:4566
@@ -142,6 +142,10 @@ jobs:
     if: github.event_name == 'release' && github.event.action== 'published'
     name: Push OCI images to GitHub Packages
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      packages: write
     strategy:
       matrix:
         os: [linux, darwin]
@@ -204,7 +208,7 @@ jobs:
       - name: Build and push zot-minimal container image
         uses: project-stacker/stacker-build-push-action@main
         with:
-          file: 'build/stacker.yaml'
+          file: 'build/stacker-minimal.yaml'
           build-args: |
             RELEASE_TAG=${{ github.event.release.tag_name }}
             COMMIT=${{ github.event.release.tag_name }}-${{ github.sha }}

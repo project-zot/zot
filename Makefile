@@ -21,20 +21,20 @@ REGCLIENT := $(TOOLSDIR)/bin/regctl
 REGCLIENT_VERSION := v0.4.5
 ACTION_VALIDATOR := $(TOOLSDIR)/bin/action-validator
 ACTION_VALIDATOR_VERSION := v0.2.1
-ZUI_VERSION := v2.0.0-rc2
+ZUI_VERSION := v2.0.0-rc3
 STACKER := $(TOOLSDIR)/bin/stacker
 BATS := $(TOOLSDIR)/bin/bats
 TESTDATA := $(TOP_LEVEL)/test/data
 OS ?= linux
 ARCH ?= amd64
 BENCH_OUTPUT ?= stdout
-EXTENSIONS ?= sync,search,scrub,metrics,lint
+EXTENSIONS ?= sync,search,scrub,metrics,lint,ui
 comma:= ,
 hyphen:= -
 extended-name:=
 
 .PHONY: all
-all: modcheck swagger binary binary-minimal binary-debug binary-ui cli bench exporter-minimal verify-config test covhtml check check-gh-actions
+all: modcheck swagger binary binary-minimal binary-debug cli bench exporter-minimal verify-config test covhtml check check-gh-actions
 
 .PHONY: modcheck
 modcheck:
@@ -67,10 +67,6 @@ binary: modcheck create-name build-metadata
 binary-debug: $(if $(findstring ui,$(EXTENSIONS)), ui)
 binary-debug: modcheck swagger create-name build-metadata
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)-debug -buildmode=pie -tags $(EXTENSIONS),debug,containers_image_openpgp -v -gcflags all='-N -l' -ldflags "-X zotregistry.io/zot/pkg/api/config.ReleaseTag=${RELEASE_TAG} -X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=$(extended-name) -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION}" ./cmd/zot
-
-.PHONY: binary-ui
-binary-ui: modcheck create-name build-metadata ui
-	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)-ui -buildmode=pie -tags $(EXTENSIONS),ui,containers_image_openpgp -v -trimpath -ldflags "-X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=$(extended-name) -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zot
 
 .PHONY: cli
 cli: modcheck create-name build-metadata
@@ -166,7 +162,7 @@ check: ./golangcilint.yaml $(GOLINTER)
 	mkdir -p pkg/extensions/build; touch pkg/extensions/build/.empty
 	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags containers_image_openpgp ./...
 	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags $(EXTENSIONS),containers_image_openpgp ./...
-	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags $(EXTENSIONS),containers_image_openpgp,ui,debug ./...
+	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags $(EXTENSIONS),containers_image_openpgp,debug ./...
 	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags dev,containers_image_openpgp ./...
 	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags dev,$(EXTENSIONS),containers_image_openpgp ./...
 	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags stress,$(EXTENSIONS),containers_image_openpgp ./...
