@@ -862,7 +862,7 @@ func TestGetReferrersGQL(t *testing.T) {
 		artifactContentBlobSize := int64(len(artifactContentBlob))
 		artifactContentType := "application/octet-stream"
 		artifactContentBlobDigest := godigest.FromBytes(artifactContentBlob)
-		artifactType := "com.artifact.test"
+		artifactType := "com.artifact.test/type1"
 
 		artifactImg := Image{
 			Manifest: ispec.Manifest{
@@ -888,6 +888,8 @@ func TestGetReferrersGQL(t *testing.T) {
 			Config: ispec.Image{},
 			Layers: [][]byte{artifactContentBlob},
 		}
+
+		artifactImg.Manifest.SchemaVersion = 2
 
 		artifactManifestBlob, err := json.Marshal(artifactImg.Manifest)
 		So(err, ShouldBeNil)
@@ -987,7 +989,7 @@ func TestGetReferrersGQL(t *testing.T) {
 		artifactContentBlobSize := int64(len(artifactContentBlob))
 		artifactContentType := "application/octet-stream"
 		artifactContentBlobDigest := godigest.FromBytes(artifactContentBlob)
-		artifactType := "com.artifact.test"
+		artifactType := "com.artifact.test/type2"
 
 		configBlob, err := json.Marshal(ispec.Image{})
 		So(err, ShouldBeNil)
@@ -1010,6 +1012,8 @@ func TestGetReferrersGQL(t *testing.T) {
 				"com.artifact.format": "test",
 			},
 		}
+
+		artifactManifest.SchemaVersion = 2
 
 		artifactManifestBlob, err := json.Marshal(artifactManifest)
 		So(err, ShouldBeNil)

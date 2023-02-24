@@ -1186,6 +1186,32 @@ func (is *ImageStoreLocal) copyBlob(repo, blobPath, dstRecord string) (int64, er
 	return -1, zerr.ErrBlobNotFound
 }
 
+// StatBlob verifies a blob and returns true if the blob is correct.
+func (is *ImageStoreLocal) StatBlob(repo string, digest godigest.Digest) (int64, error) {
+	var lockLatency time.Time
+
+	if err := digest.Validate(); err != nil {
+		return -1, err
+	}
+
+	blobPath := is.BlobPath(repo, digest)
+
+	if is.dedupe && fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
+		is.Lock(&lockLatency)
+		defer is.Unlock(&lockLatency)
+	} else {
+		is.RLock(&lockLatency)
+		defer is.RUnlock(&lockLatency)
+	}
+
+	binfo, err := os.Stat(blobPath)
+	if err != nil {
+		return -1, err
+	}
+
+	return binfo.Size(), nil
+}
+
 // blobStream is using to serve blob range requests.
 type blobStream struct {
 	reader io.Reader

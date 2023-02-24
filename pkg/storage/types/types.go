@@ -37,6 +37,7 @@ type ImageStore interface { //nolint:interfacebloat
 	DedupeBlob(src string, dstDigest godigest.Digest, dst string) error
 	DeleteBlobUpload(repo, uuid string) error
 	BlobPath(repo string, digest godigest.Digest) string
+	StatBlob(repo string, digest godigest.Digest) (int64, error)
 	CheckBlob(repo string, digest godigest.Digest) (bool, int64, error)
 	GetBlob(repo string, digest godigest.Digest, mediaType string) (io.ReadCloser, int64, error)
 	GetBlobPartial(repo string, digest godigest.Digest, mediaType string, from, to int64,

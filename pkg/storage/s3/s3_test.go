@@ -569,6 +569,8 @@ func TestGetOrasAndOCIReferrers(t *testing.T) {
 				},
 			}
 
+			artifactManifest.SchemaVersion = 2
+
 			manBuf, err := json.Marshal(artifactManifest)
 			So(err, ShouldBeNil)
 

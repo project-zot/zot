@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"path"
@@ -8,6 +9,7 @@ import (
 
 	notreg "github.com/notaryproject/notation-go/registry"
 	godigest "github.com/opencontainers/go-digest"
+	"github.com/opencontainers/image-spec/schema"
 	imeta "github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	oras "github.com/oras-project/artifacts-spec/specs-go/v1"
@@ -71,25 +73,32 @@ func ValidateManifest(imgStore storageTypes.ImageStore, repo, reference, mediaTy
 	switch mediaType {
 	case ispec.MediaTypeImageManifest:
 		var manifest ispec.Manifest
-		if err := json.Unmarshal(body, &manifest); err != nil {
-			log.Error().Err(err).Msg("unable to unmarshal JSON")
+
+		// validate manifest
+		if err := schema.ValidatorMediaTypeManifest.Validate(bytes.NewBuffer(body)); err != nil {
+			log.Error().Err(err).Msg("OCIv1 image manifest schema validation failed")
 
 			return "", zerr.ErrBadManifest
 		}
 
-		if manifest.Config.MediaType == ispec.MediaTypeImageConfig {
-			digest, err := validateOCIManifest(imgStore, repo, reference, &manifest, log)
-			if err != nil {
-				log.Error().Err(err).Msg("invalid oci image manifest")
+		if err := json.Unmarshal(body, &manifest); err != nil {
+			log.Error().Err(err).Msg("unable to unmarshal image manifest")
 
-				return digest, err
-			}
+			return "", zerr.ErrBadManifest
 		}
 
-		if manifest.Subject != nil {
-			var m ispec.Descriptor
-			if err := json.Unmarshal(body, &m); err != nil {
-				log.Error().Err(err).Msg("unable to unmarshal JSON")
+		// valiate layers - a lightweight check if the blob is present
+		for _, layer := range manifest.Layers {
+			if IsNonDistributable(layer.MediaType) {
+				log.Debug().Str("digest", layer.Digest.String()).Str("mediaType", layer.MediaType).
+					Msg("skip checking non-distributable layer exists")
+
+				continue
+			}
+
+			_, err := imgStore.StatBlob(repo, layer.Digest)
+			if err != nil {
+				log.Error().Err(err).Str("digest", layer.Digest.String()).Msg("missing layer blob")
 
 				return "", zerr.ErrBadManifest
 			}
