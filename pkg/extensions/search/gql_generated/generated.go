@@ -1575,7 +1575,7 @@ type Query {
     Image(
         "Image name in the format ` + "`" + `repository:tag` + "`" + `"
         image: String!
-    ): ImageSummary
+    ): ImageSummary!
 
     """
     Returns a list of descriptors of an image or artifact manifest that are found in a <repo> and have a subject field of <digest>
@@ -5200,11 +5200,14 @@ func (ec *executionContext) _Query_Image(ctx context.Context, field graphql.Coll
 		return graphql.Null
 	}
 	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
 		return graphql.Null
 	}
 	res := resTmp.(*ImageSummary)
 	fc.Result = res
-	return ec.marshalOImageSummary2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummary(ctx, field.Selections, res)
+	return ec.marshalNImageSummary2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummary(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Query_Image(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -9002,6 +9005,9 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 					}
 				}()
 				res = ec._Query_Image(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&invalids, 1)
+				}
 				return res
 			}
 
@@ -9593,6 +9599,10 @@ func (ec *executionContext) marshalNGlobalSearchResult2ᚖzotregistryᚗioᚋzot
 		return graphql.Null
 	}
 	return ec._GlobalSearchResult(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNImageSummary2zotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummary(ctx context.Context, sel ast.SelectionSet, v ImageSummary) graphql.Marshaler {
+	return ec._ImageSummary(ctx, sel, &v)
 }
 
 func (ec *executionContext) marshalNImageSummary2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐImageSummaryᚄ(ctx context.Context, sel ast.SelectionSet, v []*ImageSummary) graphql.Marshaler {
