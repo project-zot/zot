@@ -45,6 +45,7 @@ import (
 	"oras.land/oras-go/v2/registry/remote"
 	"oras.land/oras-go/v2/registry/remote/auth"
 
+	"zotregistry.io/zot/pkg/meta/repodb"
 	"zotregistry.io/zot/pkg/storage"
 )
 
@@ -85,13 +86,47 @@ var (
 	ErrAlreadyExists         = errors.New("already exists")
 	ErrKeyNotFound           = errors.New("key not found")
 	ErrSignatureVerification = errors.New("signature verification failed")
+	ErrPutIndex              = errors.New("can't put index")
 )
 
 type Image struct {
-	Manifest ispec.Manifest
-	Config   ispec.Image
-	Layers   [][]byte
-	Tag      string
+	Manifest  ispec.Manifest
+	Config    ispec.Image
+	Layers    [][]byte
+	Reference string
+}
+
+func (img Image) Digest() (godigest.Digest, error) {
+	blob, err := json.Marshal(img.Manifest)
+	if err != nil {
+		return "", err
+	}
+
+	return godigest.FromBytes(blob), nil
+}
+
+type MultiarchImage struct {
+	Index     ispec.Index
+	Images    []Image
+	Reference string
+}
+
+func (mi *MultiarchImage) Digest() (godigest.Digest, error) {
+	indexBlob, err := json.Marshal(mi.Index)
+	if err != nil {
+		return "", err
+	}
+
+	return godigest.FromBytes(indexBlob), nil
+}
+
+func (mi *MultiarchImage) IndexData() (repodb.IndexData, error) {
+	indexBlob, err := json.Marshal(mi.Index)
+	if err != nil {
+		return repodb.IndexData{}, err
+	}
+
+	return repodb.IndexData{IndexBlob: indexBlob}, nil
 }
 
 func GetFreePort() string {
@@ -298,12 +333,40 @@ func WriteImageToFileSystem(image Image, repoName string, storeController storag
 		return err
 	}
 
-	_, err = store.PutImageManifest(repoName, image.Tag, ispec.MediaTypeImageManifest, manifestBlob)
+	_, err = store.PutImageManifest(repoName, image.Reference, ispec.MediaTypeImageManifest, manifestBlob)
 	if err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func WriteMultiArchImageToFileSystem(multiarchImage MultiarchImage, repoName string,
+	storeController storage.StoreController,
+) error {
+	store := storeController.GetImageStore(repoName)
+
+	err := store.InitRepo(repoName)
+	if err != nil {
+		return err
+	}
+
+	for _, image := range multiarchImage.Images {
+		err := WriteImageToFileSystem(image, repoName, storeController)
+		if err != nil {
+			return err
+		}
+	}
+
+	indexBlob, err := json.Marshal(multiarchImage.Index)
+	if err != nil {
+		return err
+	}
+
+	_, err = store.PutImageManifest(repoName, multiarchImage.Reference, ispec.MediaTypeImageIndex,
+		indexBlob)
+
+	return err
 }
 
 func WaitTillServerReady(url string) {
@@ -417,7 +480,7 @@ func GetOciLayoutDigests(imagePath string) (godigest.Digest, godigest.Digest, go
 
 	oci, err := umoci.OpenLayout(imagePath)
 	if err != nil {
-		panic(err)
+		panic(fmt.Errorf("error opening layout at '%s' : %w", imagePath, err))
 	}
 
 	defer oci.Close()
@@ -560,7 +623,7 @@ func GetRandomImageComponents(layerSize int) (ispec.Image, [][]byte, ispec.Manif
 	return config, layers, manifest, nil
 }
 
-func GetImageWithConfig(conf ispec.Image) (ispec.Image, [][]byte, ispec.Manifest, error) {
+func GetImageComponentsWithConfig(conf ispec.Image) (ispec.Image, [][]byte, ispec.Manifest, error) {
 	configBlob, err := json.Marshal(conf)
 	if err = Error(err); err != nil {
 		return ispec.Image{}, [][]byte{}, ispec.Manifest{}, err
@@ -601,6 +664,68 @@ func GetImageWithConfig(conf ispec.Image) (ispec.Image, [][]byte, ispec.Manifest
 	}
 
 	return conf, layers, manifest, nil
+}
+
+func GetImageWithConfig(conf ispec.Image) (Image, error) {
+	config, layers, manifest, err := GetImageComponentsWithConfig(conf)
+	if err != nil {
+		return Image{}, err
+	}
+
+	blob, err := json.Marshal(manifest)
+	if err != nil {
+		return Image{}, err
+	}
+
+	return Image{
+		Manifest:  manifest,
+		Config:    config,
+		Layers:    layers,
+		Reference: godigest.FromBytes(blob).String(),
+	}, nil
+}
+
+func GetImageWithComponents(config ispec.Image, layers [][]byte) (Image, error) {
+	configBlob, err := json.Marshal(config)
+	if err != nil {
+		return Image{}, err
+	}
+
+	manifestLayers := make([]ispec.Descriptor, 0, len(layers))
+
+	for _, layer := range layers {
+		manifestLayers = append(manifestLayers, ispec.Descriptor{
+			MediaType: "application/vnd.oci.image.layer.v1.tar",
+			Digest:    godigest.FromBytes(layer),
+			Size:      int64(len(layer)),
+		})
+	}
+
+	const schemaVersion = 2
+
+	manifest := ispec.Manifest{
+		Versioned: specs.Versioned{
+			SchemaVersion: schemaVersion,
+		},
+		Config: ispec.Descriptor{
+			MediaType: "application/vnd.oci.image.config.v1+json",
+			Digest:    godigest.FromBytes(configBlob),
+			Size:      int64(len(configBlob)),
+		},
+		Layers: manifestLayers,
+	}
+
+	manifestBlob, err := json.Marshal(manifest)
+	if err != nil {
+		return Image{}, err
+	}
+
+	return Image{
+		Manifest:  manifest,
+		Config:    config,
+		Layers:    layers,
+		Reference: godigest.FromBytes(manifestBlob).String(),
+	}, nil
 }
 
 func GetCosignSignatureTagForManifest(manifest ispec.Manifest) (string, error) {
@@ -692,7 +817,11 @@ func UploadImage(img Image, baseURL, repo string) error {
 	resp, err = resty.R().
 		SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
 		SetBody(manifestBlob).
-		Put(baseURL + "/v2/" + repo + "/manifests/" + img.Tag)
+		Put(baseURL + "/v2/" + repo + "/manifests/" + img.Reference)
+
+	if ErrStatusCode(resp.StatusCode()) != http.StatusCreated {
+		return ErrPutBlob
+	}
 
 	if ErrStatusCode(resp.StatusCode()) != http.StatusCreated {
 		return ErrPutBlob
@@ -756,10 +885,10 @@ func PushTestImage(repoName string, tag string, //nolint:unparam
 ) error {
 	err := UploadImage(
 		Image{
-			Manifest: manifest,
-			Config:   config,
-			Layers:   layers,
-			Tag:      tag,
+			Manifest:  manifest,
+			Config:    config,
+			Layers:    layers,
+			Reference: tag,
 		},
 		baseURL,
 		repoName,
@@ -1332,7 +1461,7 @@ func UploadImageWithBasicAuth(img Image, baseURL, repo, user, password string) e
 		SetBasicAuth(user, password).
 		SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
 		SetBody(manifestBlob).
-		Put(baseURL + "/v2/" + repo + "/manifests/" + img.Tag)
+		Put(baseURL + "/v2/" + repo + "/manifests/" + img.Reference)
 
 	return err
 }
@@ -1364,8 +1493,10 @@ func SignImageUsingCosign(repoTag, port string) error {
 
 	imageURL := fmt.Sprintf("localhost:%s/%s", port, repoTag)
 
+	const timeoutPeriod = 5
+
 	// sign the image
-	return sign.SignCmd(&options.RootOptions{Verbose: true, Timeout: 1 * time.Minute},
+	return sign.SignCmd(&options.RootOptions{Verbose: true, Timeout: timeoutPeriod * time.Minute},
 		options.KeyOpts{KeyRef: path.Join(tdir, "cosign.key"), PassFunc: generate.GetPass},
 		options.RegistryOptions{AllowInsecure: true},
 		map[string]interface{}{"tag": "1.0"},
@@ -1407,4 +1538,190 @@ func SignImageUsingNotary(repoTag, port string) error {
 	err = SignWithNotation("notation-sign-test", image, tdir)
 
 	return err
+}
+
+func GetRandomMultiarchImageComponents() (ispec.Index, []Image, error) {
+	const layerSize = 100
+
+	randomLayer1 := make([]byte, layerSize)
+
+	_, err := rand.Read(randomLayer1)
+	if err != nil {
+		return ispec.Index{}, []Image{}, err
+	}
+
+	image1, err := GetImageWithComponents(
+		ispec.Image{
+			Platform: ispec.Platform{
+				OS:           "linux",
+				Architecture: "amd64",
+			},
+		},
+		[][]byte{
+			randomLayer1,
+		})
+	if err != nil {
+		return ispec.Index{}, []Image{}, err
+	}
+
+	image1.Reference = getManifestDigest(image1.Manifest).String()
+
+	randomLayer2 := make([]byte, layerSize)
+
+	_, err = rand.Read(randomLayer2)
+	if err != nil {
+		return ispec.Index{}, []Image{}, err
+	}
+
+	image2, err := GetImageWithComponents(
+		ispec.Image{
+			Platform: ispec.Platform{
+				OS:           "linux",
+				Architecture: "386",
+			},
+		},
+		[][]byte{
+			randomLayer2,
+		})
+	if err != nil {
+		return ispec.Index{}, []Image{}, err
+	}
+
+	image2.Reference = getManifestDigest(image2.Manifest).String()
+
+	randomLayer3 := make([]byte, layerSize)
+
+	_, err = rand.Read(randomLayer3)
+	if err != nil {
+		return ispec.Index{}, []Image{}, err
+	}
+
+	image3, err := GetImageWithComponents(
+		ispec.Image{
+			Platform: ispec.Platform{
+				OS:           "windows",
+				Architecture: "amd64",
+			},
+		},
+		[][]byte{
+			randomLayer3,
+		})
+	if err != nil {
+		return ispec.Index{}, []Image{}, err
+	}
+
+	image3.Reference = getManifestDigest(image3.Manifest).String()
+
+	index := ispec.Index{
+		MediaType: ispec.MediaTypeImageIndex,
+		Manifests: []ispec.Descriptor{
+			{
+				MediaType: ispec.MediaTypeImageManifest,
+				Digest:    getManifestDigest(image1.Manifest),
+				Size:      getManifestSize(image1.Manifest),
+			},
+			{
+				MediaType: ispec.MediaTypeImageManifest,
+				Digest:    getManifestDigest(image2.Manifest),
+				Size:      getManifestSize(image2.Manifest),
+			},
+			{
+				MediaType: ispec.MediaTypeImageManifest,
+				Digest:    getManifestDigest(image3.Manifest),
+				Size:      getManifestSize(image3.Manifest),
+			},
+		},
+	}
+
+	return index, []Image{image1, image2, image3}, nil
+}
+
+func GetRandomMultiarchImage(reference string) (MultiarchImage, error) {
+	index, images, err := GetRandomMultiarchImageComponents()
+	if err != nil {
+		return MultiarchImage{}, err
+	}
+
+	return MultiarchImage{
+		Index: index, Images: images, Reference: reference,
+	}, err
+}
+
+func GetMultiarchImageForImages(reference string, images []Image) MultiarchImage {
+	var index ispec.Index
+
+	for i, image := range images {
+		index.Manifests = append(index.Manifests, ispec.Descriptor{
+			MediaType: ispec.MediaTypeImageManifest,
+			Digest:    getManifestDigest(image.Manifest),
+			Size:      getManifestSize(image.Manifest),
+		})
+
+		// update the reference with the digest of the manifest
+		images[i].Reference = getManifestDigest(image.Manifest).String()
+	}
+
+	return MultiarchImage{Index: index, Images: images, Reference: reference}
+}
+
+func getManifestSize(manifest ispec.Manifest) int64 {
+	manifestBlob, err := json.Marshal(manifest)
+	if err != nil {
+		return 0
+	}
+
+	return int64(len(manifestBlob))
+}
+
+func getManifestDigest(manifest ispec.Manifest) godigest.Digest {
+	manifestBlob, err := json.Marshal(manifest)
+	if err != nil {
+		return ""
+	}
+
+	return godigest.FromBytes(manifestBlob)
+}
+
+func UploadMultiarchImage(multiImage MultiarchImage, baseURL string, repo string) error {
+	for _, image := range multiImage.Images {
+		err := UploadImage(image, baseURL, repo)
+		if err != nil {
+			return err
+		}
+	}
+
+	// put manifest
+	indexBlob, err := json.Marshal(multiImage.Index)
+	if err = Error(err); err != nil {
+		return err
+	}
+
+	resp, err := resty.R().
+		SetHeader("Content-type", ispec.MediaTypeImageIndex).
+		SetBody(indexBlob).
+		Put(baseURL + "/v2/" + repo + "/manifests/" + multiImage.Reference)
+
+	if resp.StatusCode() != http.StatusCreated {
+		return ErrPutIndex
+	}
+
+	return err
+}
+
+func GetIndexBlobWithManifests(manifestDigests []godigest.Digest) ([]byte, error) {
+	manifests := make([]ispec.Descriptor, 0, len(manifestDigests))
+
+	for _, manifestDigest := range manifestDigests {
+		manifests = append(manifests, ispec.Descriptor{
+			Digest:    manifestDigest,
+			MediaType: ispec.MediaTypeImageManifest,
+		})
+	}
+
+	indexContent := ispec.Index{
+		MediaType: ispec.MediaTypeImageIndex,
+		Manifests: manifests,
+	}
+
+	return json.Marshal(indexContent)
 }

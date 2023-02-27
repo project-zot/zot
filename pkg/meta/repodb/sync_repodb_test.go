@@ -298,10 +298,10 @@ func TestSyncRepoDBWithStorage(t *testing.T) {
 
 			err = test.WriteImageToFileSystem(
 				test.Image{
-					Config:   config,
-					Layers:   layers,
-					Manifest: manifest,
-					Tag:      fmt.Sprintf("tag%d", i),
+					Config:    config,
+					Layers:    layers,
+					Manifest:  manifest,
+					Reference: fmt.Sprintf("tag%d", i),
 				},
 				repo,
 				storeController)
@@ -322,10 +322,10 @@ func TestSyncRepoDBWithStorage(t *testing.T) {
 
 		err = test.WriteImageToFileSystem(
 			test.Image{
-				Config:   config,
-				Layers:   layers,
-				Manifest: manifest,
-				Tag:      signatureTag,
+				Config:    config,
+				Layers:    layers,
+				Manifest:  manifest,
+				Reference: signatureTag,
 			},
 			repo,
 			storeController)
@@ -398,10 +398,10 @@ func TestSyncRepoDBWithStorage(t *testing.T) {
 
 		err = test.WriteImageToFileSystem(
 			test.Image{
-				Config:   config,
-				Layers:   layers,
-				Manifest: manifest,
-				Tag:      "tag1",
+				Config:    config,
+				Layers:    layers,
+				Manifest:  manifest,
+				Reference: "tag1",
 			},
 			repo,
 			storeController)
@@ -420,10 +420,10 @@ func TestSyncRepoDBWithStorage(t *testing.T) {
 
 		err = test.WriteImageToFileSystem(
 			test.Image{
-				Config:   config,
-				Layers:   layers,
-				Manifest: manifest,
-				Tag:      signatureTag,
+				Config:    config,
+				Layers:    layers,
+				Manifest:  manifest,
+				Reference: signatureTag,
 			},
 			repo,
 			storeController)
@@ -470,10 +470,10 @@ func TestSyncRepoDBDynamoWrapper(t *testing.T) {
 
 			err = test.WriteImageToFileSystem(
 				test.Image{
-					Config:   config,
-					Layers:   layers,
-					Manifest: manifest,
-					Tag:      fmt.Sprintf("tag%d", i),
+					Config:    config,
+					Layers:    layers,
+					Manifest:  manifest,
+					Reference: fmt.Sprintf("tag%d", i),
 				},
 				repo,
 				storeController)
@@ -494,10 +494,10 @@ func TestSyncRepoDBDynamoWrapper(t *testing.T) {
 
 		err = test.WriteImageToFileSystem(
 			test.Image{
-				Config:   config,
-				Layers:   layers,
-				Manifest: manifest,
-				Tag:      signatureTag,
+				Config:    config,
+				Layers:    layers,
+				Manifest:  manifest,
+				Reference: signatureTag,
 			},
 			repo,
 			storeController)
@@ -531,6 +531,7 @@ func TestSyncRepoDBDynamoWrapper(t *testing.T) {
 			Region:                "us-east-2",
 			RepoMetaTablename:     "RepoMetadataTable",
 			ManifestDataTablename: "ManifestDataTable",
+			IndexDataTablename:    "IndexDataTable",
 			VersionTablename:      "Version",
 		})
 		So(err, ShouldBeNil)
@@ -580,10 +581,10 @@ func TestSyncRepoDBDynamoWrapper(t *testing.T) {
 
 		err = test.WriteImageToFileSystem(
 			test.Image{
-				Config:   config,
-				Layers:   layers,
-				Manifest: manifest,
-				Tag:      "tag1",
+				Config:    config,
+				Layers:    layers,
+				Manifest:  manifest,
+				Reference: "tag1",
 			},
 			repo,
 			storeController)
@@ -602,10 +603,10 @@ func TestSyncRepoDBDynamoWrapper(t *testing.T) {
 
 		err = test.WriteImageToFileSystem(
 			test.Image{
-				Config:   config,
-				Layers:   layers,
-				Manifest: manifest,
-				Tag:      signatureTag,
+				Config:    config,
+				Layers:    layers,
+				Manifest:  manifest,
+				Reference: signatureTag,
 			},
 			repo,
 			storeController)
@@ -617,6 +618,7 @@ func TestSyncRepoDBDynamoWrapper(t *testing.T) {
 			Region:                "us-east-2",
 			RepoMetaTablename:     "RepoMetadataTable",
 			ManifestDataTablename: "ManifestDataTable",
+			IndexDataTablename:    "IndexDataTable",
 			VersionTablename:      "Version",
 		})
 		So(err, ShouldBeNil)

@@ -13,7 +13,7 @@ type RepoSummary struct {
 	Name        string       `json:"name"`
 	LastUpdated time.Time    `json:"lastUpdated"`
 	Size        string       `json:"size"`
-	Platforms   []OsArch     `json:"platforms"`
+	Platforms   []Platform   `json:"platforms"`
 	Vendors     []string     `json:"vendors"`
 	Score       int          `json:"score"`
 	NewestImage ImageSummary `json:"newestImage"`
@@ -22,28 +22,36 @@ type RepoSummary struct {
 type ImageSummary struct {
 	RepoName        string                    `json:"repoName"`
 	Tag             string                    `json:"tag"`
-	Digest          string                    `json:"digest"`
-	ConfigDigest    string                    `json:"configDigest"`
-	LastUpdated     time.Time                 `json:"lastUpdated"`
-	IsSigned        bool                      `json:"isSigned"`
+	Manifests       []ManifestSummary         `json:"manifests"`
 	Size            string                    `json:"size"`
-	Platform        OsArch                    `json:"platform"`
-	Vendor          string                    `json:"vendor"`
-	Score           int                       `json:"score"`
 	DownloadCount   int                       `json:"downloadCount"`
+	LastUpdated     time.Time                 `json:"lastUpdated"`
 	Description     string                    `json:"description"`
+	IsSigned        bool                      `json:"isSigned"`
 	Licenses        string                    `json:"licenses"`
 	Labels          string                    `json:"labels"`
 	Title           string                    `json:"title"`
+	Score           int                       `json:"score"`
 	Source          string                    `json:"source"`
 	Documentation   string                    `json:"documentation"`
-	History         []LayerHistory            `json:"history"`
-	Layers          []LayerSummary            `json:"layers"`
-	Vulnerabilities ImageVulnerabilitySummary `json:"vulnerabilities"`
 	Authors         string                    `json:"authors"`
+	Vendor          string                    `json:"vendor"`
+	Vulnerabilities ImageVulnerabilitySummary `json:"vulnerabilities"`
 }
 
-type OsArch struct {
+type ManifestSummary struct {
+	Digest          string                    `json:"digest"`
+	ConfigDigest    string                    `json:"configDigest"`
+	LastUpdated     time.Time                 `json:"lastUpdated"`
+	Size            string                    `json:"size"`
+	Platform        Platform                  `json:"platform"`
+	DownloadCount   int                       `json:"downloadCount"`
+	Layers          []LayerSummary            `json:"layers"`
+	History         []LayerHistory            `json:"history"`
+	Vulnerabilities ImageVulnerabilitySummary `json:"vulnerabilities"`
+}
+
+type Platform struct {
 	Os   string `json:"os"`
 	Arch string `json:"arch"`
 }

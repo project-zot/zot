@@ -359,7 +359,7 @@ func (search cveByImageSearcherGQL) search(config searchConfig) (bool, error) {
 
 	if len(cveList.Data.CVEListForImage.CVEList) > 0 &&
 		(*config.outputFormat == defaultOutoutFormat || *config.outputFormat == "") {
-		printCVETableHeader(&builder, *config.verbose, 0, 0)
+		printCVETableHeader(&builder, *config.verbose, 0, 0, 0)
 		fmt.Fprint(config.resultWriter, builder.String())
 	}
 
@@ -596,7 +596,7 @@ func collectResults(config searchConfig, wg *sync.WaitGroup, imageErr chan strin
 			if !foundResult && (*config.outputFormat == defaultOutoutFormat || *config.outputFormat == "") {
 				var builder strings.Builder
 
-				printHeader(&builder, *config.verbose, 0, 0)
+				printHeader(&builder, *config.verbose, 0, 0, 0)
 				fmt.Fprint(config.resultWriter, builder.String())
 			}
 
@@ -696,13 +696,14 @@ type stringResult struct {
 	Err      error
 }
 
-type printHeader func(writer io.Writer, verbose bool, maxImageNameLen, maxTagLen int)
+type printHeader func(writer io.Writer, verbose bool, maxImageNameLen, maxTagLen, maxPlatformLen int)
 
-func printImageTableHeader(writer io.Writer, verbose bool, maxImageNameLen, maxTagLen int) {
+func printImageTableHeader(writer io.Writer, verbose bool, maxImageNameLen, maxTagLen, maxPlatformLen int) {
 	table := getImageTableWriter(writer)
 
 	table.SetColMinWidth(colImageNameIndex, imageNameWidth)
 	table.SetColMinWidth(colTagIndex, tagWidth)
+	table.SetColMinWidth(colPlatformIndex, platformWidth)
 	table.SetColMinWidth(colDigestIndex, digestWidth)
 	table.SetColMinWidth(colSizeIndex, sizeWidth)
 	table.SetColMinWidth(colIsSignedIndex, isSignedWidth)
@@ -712,7 +713,7 @@ func printImageTableHeader(writer io.Writer, verbose bool, maxImageNameLen, maxT
 		table.SetColMinWidth(colLayersIndex, layersWidth)
 	}
 
-	row := make([]string, 7) //nolint:gomnd
+	row := make([]string, 8) //nolint:gomnd
 
 	// adding spaces so that image name and tag columns are aligned
 	// in case the name/tag are fully shown and too long
@@ -731,6 +732,13 @@ func printImageTableHeader(writer io.Writer, verbose bool, maxImageNameLen, maxT
 		row[colTagIndex] = "TAG"
 	}
 
+	if maxPlatformLen > len("OS/ARCH") {
+		offset = strings.Repeat(" ", maxPlatformLen-len("OS/ARCH"))
+		row[colPlatformIndex] = "OS/ARCH" + offset
+	} else {
+		row[colPlatformIndex] = "OS/ARCH"
+	}
+
 	row[colDigestIndex] = "DIGEST"
 	row[colSizeIndex] = "SIZE"
 	row[colIsSignedIndex] = "SIGNED"
@@ -744,7 +752,7 @@ func printImageTableHeader(writer io.Writer, verbose bool, maxImageNameLen, maxT
 	table.Render()
 }
 
-func printCVETableHeader(writer io.Writer, verbose bool, maxImgLen, maxTagLen int) {
+func printCVETableHeader(writer io.Writer, verbose bool, maxImgLen, maxTagLen, maxPlatformLen int) {
 	table := getCVETableWriter(writer)
 	row := make([]string, 3) //nolint:gomnd
 	row[colCVEIDIndex] = "ID"
@@ -759,6 +767,7 @@ func printResult(config searchConfig, imageList []imageStruct) error {
 	var builder strings.Builder
 	maxImgNameLen := 0
 	maxTagLen := 0
+	maxPlatformLen := 0
 
 	if len(imageList) > 0 {
 		for i := range imageList {
@@ -769,9 +778,17 @@ func printResult(config searchConfig, imageList []imageStruct) error {
 			if maxTagLen < len(imageList[i].Tag) {
 				maxTagLen = len(imageList[i].Tag)
 			}
+
+			for j := range imageList[i].Manifests {
+				platform := imageList[i].Manifests[j].Platform.Os + "/" + imageList[i].Manifests[j].Platform.Arch
+
+				if maxPlatformLen < len(platform) {
+					maxPlatformLen = len(platform)
+				}
+			}
 		}
 
-		printImageTableHeader(&builder, *config.verbose, maxImgNameLen, maxTagLen)
+		printImageTableHeader(&builder, *config.verbose, maxImgNameLen, maxTagLen, maxPlatformLen)
 		fmt.Fprint(config.resultWriter, builder.String())
 	}
 
@@ -779,7 +796,7 @@ func printResult(config searchConfig, imageList []imageStruct) error {
 		img := imageList[i]
 		img.verbose = *config.verbose
 
-		out, err := img.string(*config.outputFormat, maxImgNameLen, maxTagLen)
+		out, err := img.string(*config.outputFormat, maxImgNameLen, maxTagLen, maxPlatformLen)
 		if err != nil {
 			return err
 		}

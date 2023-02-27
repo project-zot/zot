@@ -119,6 +119,7 @@ func TestMultipleStoragePath(t *testing.T) {
 
 		// Scanning image in default store
 		cveMap, err := scanner.ScanImage(img0)
+
 		So(err, ShouldBeNil)
 		So(len(cveMap), ShouldEqual, 0)
 
@@ -200,7 +201,7 @@ func TestTrivyLibraryErrors(t *testing.T) {
 		So(err, ShouldNotBeNil)
 
 		// Scanning image with invalid input to trigger a scanner error
-		opts = scanner.getTrivyOptions("nonexisting_image:0.0.1")
+		opts = scanner.getTrivyOptions("nilnonexisting_image:0.0.1")
 		_, err = scanner.runTrivy(opts)
 		So(err, ShouldNotBeNil)
 
@@ -358,43 +359,43 @@ func TestImageScannable(t *testing.T) {
 	scanner := NewScanner(storeController, repoDB, "ghcr.io/project-zot/trivy-db", log)
 
 	Convey("Valid image should be scannable", t, func() {
-		result, err := scanner.IsImageFormatScannable("repo1:valid")
+		result, err := scanner.IsImageFormatScannable("repo1", "valid")
 		So(err, ShouldBeNil)
 		So(result, ShouldBeTrue)
 	})
 
 	Convey("Image with layers of unsupported types should be unscannable", t, func() {
-		result, err := scanner.IsImageFormatScannable("repo1:unscannable-layer")
+		result, err := scanner.IsImageFormatScannable("repo1", "unscannable-layer")
 		So(err, ShouldNotBeNil)
 		So(result, ShouldBeFalse)
 	})
 
 	Convey("Image with unmarshable manifests should be unscannable", t, func() {
-		result, err := scanner.IsImageFormatScannable("repo1:unmarshable")
+		result, err := scanner.IsImageFormatScannable("repo1", "unmarshable")
 		So(err, ShouldNotBeNil)
 		So(result, ShouldBeFalse)
 	})
 
 	Convey("Image with missing manifest meta should be unscannable", t, func() {
-		result, err := scanner.IsImageFormatScannable("repo1:missing")
+		result, err := scanner.IsImageFormatScannable("repo1", "missing")
 		So(err, ShouldNotBeNil)
 		So(result, ShouldBeFalse)
 	})
 
 	Convey("Image with invalid manifest digest should be unscannable", t, func() {
-		result, err := scanner.IsImageFormatScannable("repo1:invalid-digest")
+		result, err := scanner.IsImageFormatScannable("repo1", "invalid-digest")
 		So(err, ShouldNotBeNil)
 		So(result, ShouldBeFalse)
 	})
 
 	Convey("Image with unknown tag should be unscannable", t, func() {
-		result, err := scanner.IsImageFormatScannable("repo1:unknown-tag")
+		result, err := scanner.IsImageFormatScannable("repo1", "unknown-tag")
 		So(err, ShouldNotBeNil)
 		So(result, ShouldBeFalse)
 	})
 
 	Convey("Image with unknown repo should be unscannable", t, func() {
-		result, err := scanner.IsImageFormatScannable("unknown-repo:sometag")
+		result, err := scanner.IsImageFormatScannable("unknown-repo", "sometag")
 		So(err, ShouldNotBeNil)
 		So(result, ShouldBeFalse)
 	})

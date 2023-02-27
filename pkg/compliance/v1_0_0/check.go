@@ -490,10 +490,10 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			repoName := "repo7"
 			err = test.UploadImage(
 				test.Image{
-					Config:   cfg,
-					Layers:   layers,
-					Manifest: manifest,
-					Tag:      "test:1.0",
+					Config:    cfg,
+					Layers:    layers,
+					Manifest:  manifest,
+					Reference: "test:1.0",
 				}, baseURL, repoName)
 			So(err, ShouldBeNil)
 
@@ -504,10 +504,10 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 
 			err = test.UploadImage(
 				test.Image{
-					Config:   cfg,
-					Layers:   layers,
-					Manifest: manifest,
-					Tag:      "test:1.0.1",
+					Config:    cfg,
+					Layers:    layers,
+					Manifest:  manifest,
+					Reference: "test:1.0.1",
 				}, baseURL, repoName)
 			So(err, ShouldBeNil)
 
@@ -522,10 +522,10 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 
 			err = test.UploadImage(
 				test.Image{
-					Config:   cfg,
-					Layers:   layers,
-					Manifest: manifest,
-					Tag:      "test:2.0",
+					Config:    cfg,
+					Layers:    layers,
+					Manifest:  manifest,
+					Reference: "test:2.0",
 				}, baseURL, repoName)
 			So(err, ShouldBeNil)
 
@@ -601,10 +601,10 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 				repoName := "page0"
 				err = test.UploadImage(
 					test.Image{
-						Config:   cfg,
-						Layers:   layers,
-						Manifest: manifest,
-						Tag:      fmt.Sprintf("test:%d.0", index),
+						Config:    cfg,
+						Layers:    layers,
+						Manifest:  manifest,
+						Reference: fmt.Sprintf("test:%d.0", index),
 					}, baseURL, repoName)
 				So(err, ShouldBeNil)
 
@@ -742,10 +742,10 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			// subpath firsttest
 			err = test.UploadImage(
 				test.Image{
-					Config:   cfg,
-					Layers:   layers,
-					Manifest: manifest,
-					Tag:      "test:1.0",
+					Config:    cfg,
+					Layers:    layers,
+					Manifest:  manifest,
+					Reference: "test:1.0",
 				}, baseURL, "firsttest/first")
 			So(err, ShouldBeNil)
 
@@ -757,10 +757,10 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			// subpath secondtest
 			err = test.UploadImage(
 				test.Image{
-					Config:   cfg,
-					Layers:   layers,
-					Manifest: manifest,
-					Tag:      "test:1.0",
+					Config:    cfg,
+					Layers:    layers,
+					Manifest:  manifest,
+					Reference: "test:1.0",
 				}, baseURL, "secondtest/second")
 			So(err, ShouldBeNil)
 
@@ -776,10 +776,10 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			// subpath firsttest
 			err = test.UploadImage(
 				test.Image{
-					Config:   cfg,
-					Layers:   layers,
-					Manifest: manifest,
-					Tag:      "test:2.0",
+					Config:    cfg,
+					Layers:    layers,
+					Manifest:  manifest,
+					Reference: "test:2.0",
 				}, baseURL, "firsttest/first")
 			So(err, ShouldBeNil)
 
@@ -791,10 +791,10 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 			// subpath secondtest
 			err = test.UploadImage(
 				test.Image{
-					Config:   cfg,
-					Layers:   layers,
-					Manifest: manifest,
-					Tag:      "test:2.0",
+					Config:    cfg,
+					Layers:    layers,
+					Manifest:  manifest,
+					Reference: "test:2.0",
 				}, baseURL, "secondtest/second")
 			So(err, ShouldBeNil)
 

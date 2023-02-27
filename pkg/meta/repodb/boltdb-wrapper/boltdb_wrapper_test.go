@@ -13,10 +13,12 @@ import (
 
 	"zotregistry.io/zot/pkg/meta/repodb"
 	bolt "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
+	"zotregistry.io/zot/pkg/test"
 )
 
 func TestWrapperErrors(t *testing.T) {
 	Convey("Errors", t, func() {
+		ctx := context.Background()
 		tmpDir := t.TempDir()
 		boltDBParams := bolt.DBParameters{RootDir: tmpDir}
 		boltdbWrapper, err := bolt.NewBoltDBWrapper(boltDBParams)
@@ -300,7 +302,7 @@ func TestWrapperErrors(t *testing.T) {
 			})
 			So(err, ShouldBeNil)
 
-			_, _, _, err = boltdbWrapper.SearchRepos(context.Background(), "", repodb.Filter{}, repodb.PageInput{})
+			_, _, _, _, err = boltdbWrapper.SearchRepos(context.Background(), "", repodb.Filter{}, repodb.PageInput{})
 			So(err, ShouldNotBeNil)
 
 			err = boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
@@ -339,10 +341,10 @@ func TestWrapperErrors(t *testing.T) {
 			})
 			So(err, ShouldBeNil)
 
-			_, _, _, err = boltdbWrapper.SearchRepos(context.Background(), "repo1", repodb.Filter{}, repodb.PageInput{})
+			_, _, _, _, err = boltdbWrapper.SearchRepos(context.Background(), "repo1", repodb.Filter{}, repodb.PageInput{})
 			So(err, ShouldNotBeNil)
 
-			_, _, _, err = boltdbWrapper.SearchRepos(context.Background(), "repo2", repodb.Filter{}, repodb.PageInput{})
+			_, _, _, _, err = boltdbWrapper.SearchRepos(context.Background(), "repo2", repodb.Filter{}, repodb.PageInput{})
 			So(err, ShouldNotBeNil)
 
 			err = boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
@@ -378,8 +380,83 @@ func TestWrapperErrors(t *testing.T) {
 			})
 			So(err, ShouldBeNil)
 
-			_, _, _, err = boltdbWrapper.SearchRepos(context.Background(), "repo1", repodb.Filter{}, repodb.PageInput{})
+			_, _, _, _, err = boltdbWrapper.SearchRepos(context.Background(), "repo1", repodb.Filter{}, repodb.PageInput{})
 			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Index Errors", func() {
+			Convey("Bad index data", func() {
+				indexDigest := digest.FromString("indexDigest")
+
+				err := boltdbWrapper.SetRepoTag("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
+				So(err, ShouldBeNil)
+
+				err = setBadIndexData(boltdbWrapper.DB, indexDigest.String())
+				So(err, ShouldBeNil)
+
+				_, _, _, _, err = boltdbWrapper.SearchRepos(ctx, "", repodb.Filter{}, repodb.PageInput{})
+				So(err, ShouldNotBeNil)
+
+				_, _, _, _, err = boltdbWrapper.SearchTags(ctx, "repo:", repodb.Filter{}, repodb.PageInput{})
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("Bad indexBlob in IndexData", func() {
+				indexDigest := digest.FromString("indexDigest")
+
+				err := boltdbWrapper.SetRepoTag("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
+				So(err, ShouldBeNil)
+
+				err = boltdbWrapper.SetIndexData(indexDigest, repodb.IndexData{
+					IndexBlob: []byte("bad json"),
+				})
+				So(err, ShouldBeNil)
+
+				_, _, _, _, err = boltdbWrapper.SearchRepos(ctx, "", repodb.Filter{}, repodb.PageInput{})
+				So(err, ShouldNotBeNil)
+
+				_, _, _, _, err = boltdbWrapper.SearchTags(ctx, "repo:", repodb.Filter{}, repodb.PageInput{})
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("Good index data, bad manifest inside index", func() {
+				var (
+					indexDigest              = digest.FromString("indexDigest")
+					manifestDigestFromIndex1 = digest.FromString("manifestDigestFromIndex1")
+					manifestDigestFromIndex2 = digest.FromString("manifestDigestFromIndex2")
+				)
+
+				err := boltdbWrapper.SetRepoTag("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
+				So(err, ShouldBeNil)
+
+				indexBlob, err := test.GetIndexBlobWithManifests([]digest.Digest{
+					manifestDigestFromIndex1, manifestDigestFromIndex2,
+				})
+				So(err, ShouldBeNil)
+
+				err = boltdbWrapper.SetIndexData(indexDigest, repodb.IndexData{
+					IndexBlob: indexBlob,
+				})
+				So(err, ShouldBeNil)
+
+				err = boltdbWrapper.SetManifestData(manifestDigestFromIndex1, repodb.ManifestData{
+					ManifestBlob: []byte("Bad Manifest"),
+					ConfigBlob:   []byte("Bad Manifest"),
+				})
+				So(err, ShouldBeNil)
+
+				err = boltdbWrapper.SetManifestData(manifestDigestFromIndex2, repodb.ManifestData{
+					ManifestBlob: []byte("Bad Manifest"),
+					ConfigBlob:   []byte("Bad Manifest"),
+				})
+				So(err, ShouldBeNil)
+
+				_, _, _, _, err = boltdbWrapper.SearchRepos(ctx, "", repodb.Filter{}, repodb.PageInput{})
+				So(err, ShouldNotBeNil)
+
+				_, _, _, _, err = boltdbWrapper.SearchTags(ctx, "repo:", repodb.Filter{}, repodb.PageInput{})
+				So(err, ShouldNotBeNil)
+			})
 		})
 
 		Convey("SearchTags", func() {
@@ -392,10 +469,10 @@ func TestWrapperErrors(t *testing.T) {
 			})
 			So(err, ShouldBeNil)
 
-			_, _, _, err = boltdbWrapper.SearchTags(ctx, "", repodb.Filter{}, repodb.PageInput{})
+			_, _, _, _, err = boltdbWrapper.SearchTags(ctx, "", repodb.Filter{}, repodb.PageInput{})
 			So(err, ShouldNotBeNil)
 
-			_, _, _, err = boltdbWrapper.SearchTags(ctx, "repo1:", repodb.Filter{}, repodb.PageInput{})
+			_, _, _, _, err = boltdbWrapper.SearchTags(ctx, "repo1:", repodb.Filter{}, repodb.PageInput{})
 			So(err, ShouldNotBeNil)
 
 			err = boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
@@ -466,14 +543,117 @@ func TestWrapperErrors(t *testing.T) {
 			})
 			So(err, ShouldBeNil)
 
-			_, _, _, err = boltdbWrapper.SearchTags(ctx, "repo1:", repodb.Filter{}, repodb.PageInput{})
+			_, _, _, _, err = boltdbWrapper.SearchTags(ctx, "repo1:", repodb.Filter{}, repodb.PageInput{})
 			So(err, ShouldNotBeNil)
 
-			_, _, _, err = boltdbWrapper.SearchTags(ctx, "repo2:", repodb.Filter{}, repodb.PageInput{})
+			_, _, _, _, err = boltdbWrapper.SearchTags(ctx, "repo2:", repodb.Filter{}, repodb.PageInput{})
 			So(err, ShouldNotBeNil)
 
-			_, _, _, err = boltdbWrapper.SearchTags(ctx, "repo3:", repodb.Filter{}, repodb.PageInput{})
+			_, _, _, _, err = boltdbWrapper.SearchTags(ctx, "repo3:", repodb.Filter{}, repodb.PageInput{})
 			So(err, ShouldNotBeNil)
 		})
+
+		Convey("FilterTags Index errors", func() {
+			Convey("FilterTags bad IndexData", func() {
+				indexDigest := digest.FromString("indexDigest")
+
+				err := boltdbWrapper.SetRepoTag("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
+				So(err, ShouldBeNil)
+
+				err = setBadIndexData(boltdbWrapper.DB, indexDigest.String())
+				So(err, ShouldBeNil)
+
+				_, _, _, _, err = boltdbWrapper.FilterTags(ctx,
+					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool { return true },
+					repodb.PageInput{},
+				)
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("FilterTags bad indexBlob in IndexData", func() {
+				indexDigest := digest.FromString("indexDigest")
+
+				err := boltdbWrapper.SetRepoTag("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
+				So(err, ShouldBeNil)
+
+				err = boltdbWrapper.SetIndexData(indexDigest, repodb.IndexData{
+					IndexBlob: []byte("bad json"),
+				})
+				So(err, ShouldBeNil)
+
+				_, _, _, _, err = boltdbWrapper.FilterTags(ctx,
+					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool { return true },
+					repodb.PageInput{},
+				)
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("FilterTags didn't match any index manifest", func() {
+				var (
+					indexDigest              = digest.FromString("indexDigest")
+					manifestDigestFromIndex1 = digest.FromString("manifestDigestFromIndex1")
+					manifestDigestFromIndex2 = digest.FromString("manifestDigestFromIndex2")
+				)
+
+				err := boltdbWrapper.SetRepoTag("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
+				So(err, ShouldBeNil)
+
+				indexBlob, err := test.GetIndexBlobWithManifests([]digest.Digest{
+					manifestDigestFromIndex1, manifestDigestFromIndex2,
+				})
+				So(err, ShouldBeNil)
+
+				err = boltdbWrapper.SetIndexData(indexDigest, repodb.IndexData{
+					IndexBlob: indexBlob,
+				})
+				So(err, ShouldBeNil)
+
+				err = boltdbWrapper.SetManifestData(manifestDigestFromIndex1, repodb.ManifestData{
+					ManifestBlob: []byte("{}"),
+					ConfigBlob:   []byte("{}"),
+				})
+				So(err, ShouldBeNil)
+
+				err = boltdbWrapper.SetManifestData(manifestDigestFromIndex2, repodb.ManifestData{
+					ManifestBlob: []byte("{}"),
+					ConfigBlob:   []byte("{}"),
+				})
+				So(err, ShouldBeNil)
+
+				_, _, _, _, err = boltdbWrapper.FilterTags(ctx,
+					func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool { return false },
+					repodb.PageInput{},
+				)
+				So(err, ShouldBeNil)
+			})
+		})
+
+		Convey("Unsuported type", func() {
+			digest := digest.FromString("digest")
+
+			err := boltdbWrapper.SetRepoTag("repo", "tag1", digest, "invalid type") //nolint:contextcheck
+			So(err, ShouldBeNil)
+
+			_, _, _, _, err = boltdbWrapper.SearchRepos(ctx, "", repodb.Filter{}, repodb.PageInput{})
+			So(err, ShouldBeNil)
+
+			_, _, _, _, err = boltdbWrapper.SearchTags(ctx, "repo:", repodb.Filter{}, repodb.PageInput{})
+			So(err, ShouldBeNil)
+
+			_, _, _, _, err = boltdbWrapper.FilterTags(
+				ctx,
+				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool { return true },
+				repodb.PageInput{},
+			)
+			So(err, ShouldBeNil)
+		})
+	})
+}
+
+func setBadIndexData(dB *bbolt.DB, digest string) error {
+	return dB.Update(func(tx *bbolt.Tx) error {
+		indexDataBuck := tx.Bucket([]byte(repodb.IndexDataBucket))
+
+		return indexDataBuck.Put([]byte(digest), []byte("bad json"))
 	})
 }

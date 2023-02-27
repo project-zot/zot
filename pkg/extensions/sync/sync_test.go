@@ -4624,10 +4624,10 @@ func TestSyncImageIndex(t *testing.T) {
 
 			err = test.UploadImage(
 				test.Image{
-					Manifest: manifest,
-					Config:   config,
-					Layers:   layers,
-					Tag:      manifestDigest.String(),
+					Manifest:  manifest,
+					Config:    config,
+					Layers:    layers,
+					Reference: manifestDigest.String(),
 				},
 				srcBaseURL,
 				"index")

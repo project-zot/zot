@@ -19,6 +19,7 @@ func TestCreateDynamo(t *testing.T) {
 			Endpoint:              os.Getenv("DYNAMODBMOCK_ENDPOINT"),
 			RepoMetaTablename:     "RepoMetadataTable",
 			ManifestDataTablename: "ManifestDataTable",
+			IndexDataTablename:    "IndexDataTable",
 			VersionTablename:      "Version",
 			Region:                "us-east-2",
 		}

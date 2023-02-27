@@ -418,6 +418,11 @@ func TestVerifyMandatoryAnnotations(t *testing.T) {
 
 		test.CopyTestFiles("../../../test/data", dir)
 
+		files, err := os.ReadDir(dir)
+		So(err, ShouldBeNil)
+
+		t.Log("Files in dir:", dir, ": ", files)
+
 		ctlr.Config.Storage.RootDirectory = dir
 		cm := test.NewControllerManager(ctlr)
 

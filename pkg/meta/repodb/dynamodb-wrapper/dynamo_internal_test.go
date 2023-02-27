@@ -64,6 +64,9 @@ func TestWrapperErrors(t *testing.T) {
 		err = dynamoWrapper.createManifestDataTable()
 		So(err, ShouldNotBeNil)
 
+		err = dynamoWrapper.createIndexDataTable()
+		So(err, ShouldNotBeNil)
+
 		err = dynamoWrapper.createVersionTable()
 		So(err, ShouldNotBeNil)
 	})

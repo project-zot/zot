@@ -2,6 +2,7 @@ package repodb
 
 import (
 	"context"
+	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 )
@@ -9,6 +10,7 @@ import (
 // MetadataDB.
 const (
 	ManifestDataBucket = "ManifestData"
+	IndexDataBucket    = "IndexData"
 	UserMetadataBucket = "UserMeta"
 	RepoMetadataBucket = "RepoMetadata"
 	VersionBucket      = "Version"
@@ -59,6 +61,12 @@ type RepoDB interface { //nolint:interfacebloat
 	// GetManifestMeta sets ManifestMetadata for a given manifest in the database
 	SetManifestMeta(repo string, manifestDigest godigest.Digest, mm ManifestMetadata) error
 
+	// SetIndexData sets indexData for a given index in the database
+	SetIndexData(digest godigest.Digest, indexData IndexData) error
+
+	// GetIndexData returns indexData for a given Index from the database
+	GetIndexData(indexDigest godigest.Digest) (IndexData, error)
+
 	// IncrementManifestDownloads adds 1 to the download count of a manifest
 	IncrementImageDownloads(repo string, reference string) error
 
@@ -70,15 +78,15 @@ type RepoDB interface { //nolint:interfacebloat
 
 	// SearchRepos searches for repos given a search string
 	SearchRepos(ctx context.Context, searchText string, filter Filter, requestedPage PageInput) (
-		[]RepoMetadata, map[string]ManifestMetadata, PageInfo, error)
+		[]RepoMetadata, map[string]ManifestMetadata, map[string]IndexData, PageInfo, error)
 
 	// SearchTags searches for images(repo:tag) given a search string
 	SearchTags(ctx context.Context, searchText string, filter Filter, requestedPage PageInput) (
-		[]RepoMetadata, map[string]ManifestMetadata, PageInfo, error)
+		[]RepoMetadata, map[string]ManifestMetadata, map[string]IndexData, PageInfo, error)
 
 	// FilterTags filters for images given a filter function
 	FilterTags(ctx context.Context, filter FilterFunc,
-		requestedPage PageInput) ([]RepoMetadata, map[string]ManifestMetadata, PageInfo, error)
+		requestedPage PageInput) ([]RepoMetadata, map[string]ManifestMetadata, map[string]IndexData, PageInfo, error)
 
 	PatchDB() error
 }
@@ -88,6 +96,10 @@ type ManifestMetadata struct {
 	ConfigBlob    []byte
 	DownloadCount int
 	Signatures    ManifestSignatures
+}
+
+type IndexData struct {
+	IndexBlob []byte
 }
 
 type ManifestData struct {
@@ -163,7 +175,9 @@ type Filter struct {
 }
 
 type FilterData struct {
-	OsList   []string
-	ArchList []string
-	IsSigned bool
+	DownloadCount int
+	LastUpdated   time.Time
+	OsList        []string
+	ArchList      []string
+	IsSigned      bool
 }

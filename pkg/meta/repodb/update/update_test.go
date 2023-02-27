@@ -14,6 +14,7 @@ import (
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta/repodb"
 	bolt_wrapper "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
 	repoDBUpdate "zotregistry.io/zot/pkg/meta/repodb/update"
 	"zotregistry.io/zot/pkg/storage"
@@ -42,8 +43,12 @@ func TestOnUpdateManifest(t *testing.T) {
 		config, layers, manifest, err := test.GetRandomImageComponents(100)
 		So(err, ShouldBeNil)
 
-		err = test.WriteImageToFileSystem(test.Image{Config: config, Manifest: manifest, Layers: layers, Tag: "tag1"},
-			"repo", storeController)
+		err = test.WriteImageToFileSystem(
+			test.Image{
+				Config: config, Manifest: manifest, Layers: layers, Reference: "tag1",
+			},
+			"repo",
+			storeController)
 		So(err, ShouldBeNil)
 
 		manifestBlob, err := json.Marshal(manifest)
@@ -58,6 +63,26 @@ func TestOnUpdateManifest(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		So(repoMeta.Tags, ShouldContainKey, "tag1")
+	})
+
+	Convey("metadataSuccessfullySet is false", t, func() {
+		rootDir := t.TempDir()
+		storeController := storage.StoreController{}
+		log := log.NewLogger("debug", "")
+		metrics := monitoring.NewMetricsServer(false, log)
+		storeController.DefaultStore = local.NewImageStore(rootDir, true, 1*time.Second,
+			true, true, log, metrics, nil, nil,
+		)
+
+		repoDB := mocks.RepoDBMock{
+			SetManifestDataFn: func(manifestDigest godigest.Digest, mm repodb.ManifestData) error {
+				return ErrTestError
+			},
+		}
+
+		err := repoDBUpdate.OnUpdateManifest("repo", "tag1", ispec.MediaTypeImageManifest, "digest",
+			[]byte("{}"), storeController, repoDB, log)
+		So(err, ShouldNotBeNil)
 	})
 }
 
@@ -160,8 +185,8 @@ func TestUpdateErrors(t *testing.T) {
 			repoDB := mocks.RepoDBMock{}
 			log := log.NewLogger("debug", "")
 
-			err := repoDBUpdate.SetMetadataFromInput("repo", "ref", "digest", "", []byte("BadManifestBlob"),
-				storeController, repoDB, log)
+			err := repodb.SetMetadataFromInput("repo", "ref", ispec.MediaTypeImageManifest, "digest",
+				[]byte("BadManifestBlob"), storeController, repoDB, log)
 			So(err, ShouldNotBeNil)
 
 			// reference is digest
@@ -177,7 +202,7 @@ func TestUpdateErrors(t *testing.T) {
 				return []byte("{}"), nil
 			}
 
-			err = repoDBUpdate.SetMetadataFromInput("repo", string(godigest.FromString("reference")), "", "digest",
+			err = repodb.SetMetadataFromInput("repo", string(godigest.FromString("reference")), "", "digest",
 				manifestBlob, storeController, repoDB, log)
 			So(err, ShouldBeNil)
 		})
