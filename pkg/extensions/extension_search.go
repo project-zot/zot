@@ -4,6 +4,7 @@
 package extensions
 
 import (
+	"net/http"
 	"time"
 
 	gqlHandler "github.com/99designs/gqlgen/graphql/handler"
@@ -76,6 +77,14 @@ func downloadTrivyDB(cveInfo CveInfo, log log.Logger, updateInterval time.Durati
 	}
 }
 
+func addSearchSecurityHeaders(h http.Handler) http.HandlerFunc { //nolint:varnamelen
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+
+		h.ServeHTTP(w, r)
+	}
+}
+
 func SetupSearchRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
 	repoDB repodb.RepoDB, cveInfo CveInfo, log log.Logger,
 ) {
@@ -86,7 +95,7 @@ func SetupSearchRoutes(config *config.Config, router *mux.Router, storeControlle
 
 		extRouter := router.PathPrefix(constants.ExtSearchPrefix).Subrouter()
 		extRouter.Methods("GET", "POST", "OPTIONS").
-			Handler(gqlHandler.NewDefaultServer(gql_generated.NewExecutableSchema(resConfig)))
+			Handler(addSearchSecurityHeaders(gqlHandler.NewDefaultServer(gql_generated.NewExecutableSchema(resConfig))))
 	}
 }
 

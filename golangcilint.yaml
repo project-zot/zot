@@ -32,6 +32,8 @@ linters-settings:
       - w *os.File
       - to int64
       - l *ldap.Conn
+      - w http.ResponseWriter
+      - r *http.Request
   gci:
     sections:
       - standard
