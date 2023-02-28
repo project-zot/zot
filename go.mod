@@ -9,7 +9,7 @@ require (
 	github.com/apex/log v1.9.0
 	github.com/aquasecurity/trivy-db v0.0.0-20221227141502-af78ecb7db4c
 	github.com/bmatcuk/doublestar/v4 v4.6.0
-	github.com/briandowns/spinner v1.20.0
+	github.com/briandowns/spinner v1.22.0
 	github.com/chartmuseum/auth v0.5.0
 	github.com/containers/common v0.50.1
 	github.com/didip/tollbooth/v6 v6.1.2
@@ -41,10 +41,10 @@ require (
 	github.com/smartystreets/goconvey v1.7.2
 	github.com/spf13/cobra v1.6.1
 	github.com/spf13/viper v1.14.0
-	github.com/stretchr/testify v1.8.1
+	github.com/stretchr/testify v1.8.2
 	github.com/swaggo/swag v1.8.10
 	github.com/vektah/gqlparser/v2 v2.5.1
-	go.etcd.io/bbolt v1.3.6
+	go.etcd.io/bbolt v1.3.7
 	golang.org/x/crypto v0.5.0
 	gopkg.in/resty.v1 v1.12.0
 	gopkg.in/yaml.v2 v2.4.0
@@ -55,11 +55,11 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.18.5
 	github.com/containers/image/v5 v5.23.0
 	github.com/gobwas/glob v0.2.3
-	github.com/notaryproject/notation-go v1.0.0-rc.1
+	github.com/notaryproject/notation-go v1.0.0-rc.3
 	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20230117141039-067a0f5b0e25
 	github.com/sigstore/cosign v1.13.1
 	github.com/swaggo/http-swagger v1.3.3
-	oras.land/oras-go/v2 v2.0.0-rc.5
+	oras.land/oras-go/v2 v2.0.0
 )
 
 require (
@@ -181,7 +181,7 @@ require (
 	github.com/Azure/go-autorest/autorest/date v0.3.0 // indirect
 	github.com/Azure/go-autorest/logger v0.2.1 // indirect
 	github.com/Azure/go-autorest/tracing v0.6.0 // indirect
-	github.com/Azure/go-ntlmssp v0.0.0-20220621081337-cb9428e4ac1e // indirect
+	github.com/Azure/go-ntlmssp v0.0.0-20221128193559-754e69321358 // indirect
 	github.com/BurntSushi/toml v1.2.1 // indirect
 	github.com/GoogleCloudPlatform/docker-credential-gcr v2.0.5+incompatible // indirect
 	github.com/KyleBanks/depth v1.2.1 // indirect
@@ -301,7 +301,7 @@ require (
 	github.com/go-redis/redis/v8 v8.11.5 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
-	github.com/golang-jwt/jwt/v4 v4.4.2 // indirect
+	github.com/golang-jwt/jwt/v4 v4.4.3 // indirect
 	github.com/golang/glog v1.0.0 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/mock v1.6.0 // indirect
@@ -376,7 +376,7 @@ require (
 	github.com/mozillazg/docker-credential-acr-helper v0.3.0 // indirect
 	github.com/mpvl/unique v0.0.0-20150818121801-cbe035fff7de // indirect
 	github.com/nmcclain/asn1-ber v0.0.0-20170104154839-2661553a0484 // indirect
-	github.com/notaryproject/notation-core-go v1.0.0-rc.1
+	github.com/notaryproject/notation-core-go v1.0.0-rc.2
 	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/open-policy-agent/opa v0.45.0 // indirect
 	github.com/opencontainers/runc v1.1.4 // indirect
@@ -467,7 +467,7 @@ require (
 	go.uber.org/multierr v1.8.0 // indirect
 	go.uber.org/zap v1.24.0 // indirect
 	golang.org/x/exp v0.0.0-20220823124025-807a23277127 // indirect
-	golang.org/x/mod v0.6.0 // indirect
+	golang.org/x/mod v0.8.0 // indirect
 	golang.org/x/net v0.7.0 // indirect
 	golang.org/x/oauth2 v0.1.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
