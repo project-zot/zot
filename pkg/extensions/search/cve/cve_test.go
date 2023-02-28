@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"path"
 	"strings"
@@ -407,8 +406,8 @@ func TestCVESearchDisabled(t *testing.T) {
 			},
 		}
 
-		dbDir, err := testSetup(t)
-		So(err, ShouldBeNil)
+		dbDir := t.TempDir()
+
 		conf.Storage.RootDirectory = dbDir
 		defaultVal := true
 		searchConfig := &extconf.SearchConfig{
@@ -703,96 +702,6 @@ func TestCVESearch(t *testing.T) {
 		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.FullSearchPrefix + "?query={ImageListForCVE(id:\"" + cvid + "\"){Results{RepoName%20Tag}}}")
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
-	})
-}
-
-func TestCVEConfig(t *testing.T) {
-	Convey("Verify CVE config", t, func() {
-		conf := config.New()
-		port := GetFreePort()
-		conf.HTTP.Port = port
-		baseURL := GetBaseURL(port)
-		htpasswdPath := MakeHtpasswdFile()
-		defer os.Remove(htpasswdPath)
-
-		conf.HTTP.Auth = &config.AuthConfig{
-			HTPasswd: config.AuthHTPasswd{
-				Path: htpasswdPath,
-			},
-		}
-
-		ctlr := api.NewController(conf)
-
-		firstDir := t.TempDir()
-
-		secondDir := t.TempDir()
-
-		CopyTestFiles("../../../../test/data", path.Join(secondDir, "a"))
-
-		ctlr.Config.Storage.RootDirectory = firstDir
-		subPaths := make(map[string]config.StorageConfig)
-		subPaths["/a"] = config.StorageConfig{
-			RootDirectory: secondDir,
-		}
-
-		ctlr.Config.Storage.SubPaths = subPaths
-		ctrlManager := NewControllerManager(ctlr)
-
-		ctrlManager.StartAndWait(port)
-
-		resp, _ := resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.RoutePrefix + "/")
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
-
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + constants.RoutePrefix + constants.ExtCatalogPrefix)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
-
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/v2/a/zot-test/tags/list")
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 200)
-
-		resp, _ = resty.R().SetBasicAuth(username, passphrase).Get(baseURL + "/v2/zot-test/tags/list")
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, 404)
-
-		defer ctrlManager.StopServer()
-	})
-}
-
-func TestHTTPOptionsResponse(t *testing.T) {
-	Convey("Test http options response", t, func() {
-		conf := config.New()
-		port := GetFreePort()
-		conf.HTTP.Port = port
-		baseURL := GetBaseURL(port)
-
-		ctlr := api.NewController(conf)
-
-		firstDir := t.TempDir()
-
-		secondDir := t.TempDir()
-		defer os.RemoveAll(firstDir)
-		defer os.RemoveAll(secondDir)
-
-		CopyTestFiles("../../../../test/data", path.Join(secondDir, "a"))
-
-		ctlr.Config.Storage.RootDirectory = firstDir
-		subPaths := make(map[string]config.StorageConfig)
-		subPaths["/a"] = config.StorageConfig{
-			RootDirectory: secondDir,
-		}
-
-		ctlr.Config.Storage.SubPaths = subPaths
-		ctrlManager := NewControllerManager(ctlr)
-
-		ctrlManager.StartAndWait(port)
-
-		resp, _ := resty.R().Options(baseURL + constants.RoutePrefix + constants.ExtCatalogPrefix)
-		So(resp, ShouldNotBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
-
-		defer ctrlManager.StopServer()
 	})
 }
 
