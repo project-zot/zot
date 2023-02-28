@@ -79,7 +79,7 @@ func NewBoltDBWrapper(params DBParameters) (*DBWrapper, error) {
 	}, nil
 }
 
-func (bdw DBWrapper) SetManifestData(manifestDigest godigest.Digest, manifestData repodb.ManifestData) error {
+func (bdw *DBWrapper) SetManifestData(manifestDigest godigest.Digest, manifestData repodb.ManifestData) error {
 	err := bdw.DB.Update(func(tx *bolt.Tx) error {
 		buck := tx.Bucket([]byte(repodb.ManifestDataBucket))
 
@@ -99,7 +99,7 @@ func (bdw DBWrapper) SetManifestData(manifestDigest godigest.Digest, manifestDat
 	return err
 }
 
-func (bdw DBWrapper) GetManifestData(manifestDigest godigest.Digest) (repodb.ManifestData, error) {
+func (bdw *DBWrapper) GetManifestData(manifestDigest godigest.Digest) (repodb.ManifestData, error) {
 	var manifestData repodb.ManifestData
 
 	err := bdw.DB.View(func(tx *bolt.Tx) error {
@@ -122,7 +122,7 @@ func (bdw DBWrapper) GetManifestData(manifestDigest godigest.Digest) (repodb.Man
 	return manifestData, err
 }
 
-func (bdw DBWrapper) SetManifestMeta(repo string, manifestDigest godigest.Digest, manifestMeta repodb.ManifestMetadata,
+func (bdw *DBWrapper) SetManifestMeta(repo string, manifestDigest godigest.Digest, manifestMeta repodb.ManifestMetadata,
 ) error {
 	err := bdw.DB.Update(func(tx *bolt.Tx) error {
 		dataBuck := tx.Bucket([]byte(repodb.ManifestDataBucket))
@@ -169,7 +169,7 @@ func (bdw DBWrapper) SetManifestMeta(repo string, manifestDigest godigest.Digest
 	return err
 }
 
-func (bdw DBWrapper) GetManifestMeta(repo string, manifestDigest godigest.Digest) (repodb.ManifestMetadata, error) {
+func (bdw *DBWrapper) GetManifestMeta(repo string, manifestDigest godigest.Digest) (repodb.ManifestMetadata, error) {
 	var manifestMetadata repodb.ManifestMetadata
 
 	err := bdw.DB.View(func(tx *bolt.Tx) error {
@@ -214,7 +214,7 @@ func (bdw DBWrapper) GetManifestMeta(repo string, manifestDigest godigest.Digest
 	return manifestMetadata, err
 }
 
-func (bdw DBWrapper) SetIndexData(indexDigest godigest.Digest, indexMetadata repodb.IndexData) error {
+func (bdw *DBWrapper) SetIndexData(indexDigest godigest.Digest, indexMetadata repodb.IndexData) error {
 	// we make the assumption that the oci layout is consistent and all manifests refferenced inside the
 	// index are present
 	err := bdw.DB.Update(func(tx *bolt.Tx) error {
@@ -236,7 +236,7 @@ func (bdw DBWrapper) SetIndexData(indexDigest godigest.Digest, indexMetadata rep
 	return err
 }
 
-func (bdw DBWrapper) GetIndexData(indexDigest godigest.Digest) (repodb.IndexData, error) {
+func (bdw *DBWrapper) GetIndexData(indexDigest godigest.Digest) (repodb.IndexData, error) {
 	var indexMetadata repodb.IndexData
 
 	err := bdw.DB.View(func(tx *bolt.Tx) error {
@@ -259,10 +259,10 @@ func (bdw DBWrapper) GetIndexData(indexDigest godigest.Digest) (repodb.IndexData
 	return indexMetadata, err
 }
 
-func (bdw DBWrapper) SetRepoTag(repo string, tag string, manifestDigest godigest.Digest,
+func (bdw *DBWrapper) SetRepoReference(repo string, reference string, manifestDigest godigest.Digest,
 	mediaType string,
 ) error {
-	if err := common.ValidateRepoTagInput(repo, tag, manifestDigest); err != nil {
+	if err := common.ValidateRepoReferenceInput(repo, reference, manifestDigest); err != nil {
 		return err
 	}
 
@@ -273,29 +273,17 @@ func (bdw DBWrapper) SetRepoTag(repo string, tag string, manifestDigest godigest
 
 		// object not found
 		if len(repoMetaBlob) == 0 {
-			// create a new object
-			repoMeta := repodb.RepoMetadata{
-				Name: repo,
-				Tags: map[string]repodb.Descriptor{
-					tag: {
-						Digest:    manifestDigest.String(),
-						MediaType: mediaType,
-					},
-				},
-				Statistics: map[string]repodb.DescriptorStatistics{
-					manifestDigest.String(): {DownloadCount: 0},
-				},
-				Signatures: map[string]repodb.ManifestSignatures{
-					manifestDigest.String(): {},
-				},
-			}
+			var err error
 
-			repoMetaBlob, err := json.Marshal(repoMeta)
+			repoMetaBlob, err = json.Marshal(repodb.RepoMetadata{
+				Name:       repo,
+				Tags:       map[string]repodb.Descriptor{},
+				Statistics: map[string]repodb.DescriptorStatistics{},
+				Signatures: map[string]repodb.ManifestSignatures{},
+			})
 			if err != nil {
 				return err
 			}
-
-			return buck.Put([]byte(repo), repoMetaBlob)
 		}
 
 		// object found
@@ -306,10 +294,15 @@ func (bdw DBWrapper) SetRepoTag(repo string, tag string, manifestDigest godigest
 			return err
 		}
 
-		repoMeta.Tags[tag] = repodb.Descriptor{
-			Digest:    manifestDigest.String(),
-			MediaType: mediaType,
+		if !common.ReferenceIsDigest(reference) {
+			repoMeta.Tags[reference] = repodb.Descriptor{
+				Digest:    manifestDigest.String(),
+				MediaType: mediaType,
+			}
 		}
+
+		repoMeta.Statistics[manifestDigest.String()] = repodb.DescriptorStatistics{DownloadCount: 0}
+		repoMeta.Signatures[manifestDigest.String()] = repodb.ManifestSignatures{}
 
 		repoMetaBlob, err = json.Marshal(repoMeta)
 		if err != nil {
@@ -322,7 +315,7 @@ func (bdw DBWrapper) SetRepoTag(repo string, tag string, manifestDigest godigest
 	return err
 }
 
-func (bdw DBWrapper) GetRepoMeta(repo string) (repodb.RepoMetadata, error) {
+func (bdw *DBWrapper) GetRepoMeta(repo string) (repodb.RepoMetadata, error) {
 	var repoMeta repodb.RepoMetadata
 
 	err := bdw.DB.Update(func(tx *bolt.Tx) error {
@@ -347,7 +340,7 @@ func (bdw DBWrapper) GetRepoMeta(repo string) (repodb.RepoMetadata, error) {
 	return repoMeta, err
 }
 
-func (bdw DBWrapper) DeleteRepoTag(repo string, tag string) error {
+func (bdw *DBWrapper) DeleteRepoTag(repo string, tag string) error {
 	err := bdw.DB.Update(func(tx *bolt.Tx) error {
 		buck := tx.Bucket([]byte(repodb.RepoMetadataBucket))
 
@@ -383,7 +376,7 @@ func (bdw DBWrapper) DeleteRepoTag(repo string, tag string) error {
 	return err
 }
 
-func (bdw DBWrapper) IncrementRepoStars(repo string) error {
+func (bdw *DBWrapper) IncrementRepoStars(repo string) error {
 	err := bdw.DB.Update(func(tx *bolt.Tx) error {
 		buck := tx.Bucket([]byte(repodb.RepoMetadataBucket))
 
@@ -412,7 +405,7 @@ func (bdw DBWrapper) IncrementRepoStars(repo string) error {
 	return err
 }
 
-func (bdw DBWrapper) DecrementRepoStars(repo string) error {
+func (bdw *DBWrapper) DecrementRepoStars(repo string) error {
 	err := bdw.DB.Update(func(tx *bolt.Tx) error {
 		buck := tx.Bucket([]byte(repodb.RepoMetadataBucket))
 
@@ -443,7 +436,7 @@ func (bdw DBWrapper) DecrementRepoStars(repo string) error {
 	return err
 }
 
-func (bdw DBWrapper) GetRepoStars(repo string) (int, error) {
+func (bdw *DBWrapper) GetRepoStars(repo string) (int, error) {
 	stars := 0
 
 	err := bdw.DB.View(func(tx *bolt.Tx) error {
@@ -470,7 +463,7 @@ func (bdw DBWrapper) GetRepoStars(repo string) (int, error) {
 	return stars, err
 }
 
-func (bdw DBWrapper) GetMultipleRepoMeta(ctx context.Context, filter func(repoMeta repodb.RepoMetadata) bool,
+func (bdw *DBWrapper) GetMultipleRepoMeta(ctx context.Context, filter func(repoMeta repodb.RepoMetadata) bool,
 	requestedPage repodb.PageInput,
 ) ([]repodb.RepoMetadata, error) {
 	var (
@@ -515,7 +508,7 @@ func (bdw DBWrapper) GetMultipleRepoMeta(ctx context.Context, filter func(repoMe
 	return foundRepos, err
 }
 
-func (bdw DBWrapper) IncrementImageDownloads(repo string, reference string) error {
+func (bdw *DBWrapper) IncrementImageDownloads(repo string, reference string) error {
 	err := bdw.DB.Update(func(tx *bolt.Tx) error {
 		buck := tx.Bucket([]byte(repodb.RepoMetadataBucket))
 
@@ -559,7 +552,7 @@ func (bdw DBWrapper) IncrementImageDownloads(repo string, reference string) erro
 	return err
 }
 
-func (bdw DBWrapper) AddManifestSignature(repo string, signedManifestDigest godigest.Digest,
+func (bdw *DBWrapper) AddManifestSignature(repo string, signedManifestDigest godigest.Digest,
 	sygMeta repodb.SignatureMetadata,
 ) error {
 	err := bdw.DB.Update(func(tx *bolt.Tx) error {
@@ -616,7 +609,7 @@ func (bdw DBWrapper) AddManifestSignature(repo string, signedManifestDigest godi
 	return err
 }
 
-func (bdw DBWrapper) DeleteSignature(repo string, signedManifestDigest godigest.Digest,
+func (bdw *DBWrapper) DeleteSignature(repo string, signedManifestDigest godigest.Digest,
 	sigMeta repodb.SignatureMetadata,
 ) error {
 	err := bdw.DB.Update(func(tx *bolt.Tx) error {
@@ -670,7 +663,7 @@ func (bdw DBWrapper) DeleteSignature(repo string, signedManifestDigest godigest.
 	return err
 }
 
-func (bdw DBWrapper) SearchRepos(ctx context.Context, searchText string, filter repodb.Filter,
+func (bdw *DBWrapper) SearchRepos(ctx context.Context, searchText string, filter repodb.Filter,
 	requestedPage repodb.PageInput,
 ) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, repodb.PageInfo,
 	error,
@@ -1020,7 +1013,7 @@ func NewManifestMetadata(manifestDigest string, repoMeta repodb.RepoMetadata,
 	return manifestMeta
 }
 
-func (bdw DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
+func (bdw *DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 	requestedPage repodb.PageInput,
 ) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData,
 	repodb.PageInfo, error,
@@ -1179,7 +1172,7 @@ func (bdw DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 	return foundRepos, foundManifestMetadataMap, foundindexDataMap, pageInfo, err
 }
 
-func (bdw DBWrapper) SearchTags(ctx context.Context, searchText string, filter repodb.Filter,
+func (bdw *DBWrapper) SearchTags(ctx context.Context, searchText string, filter repodb.Filter,
 	requestedPage repodb.PageInput,
 ) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, repodb.PageInfo, error) {
 	var (

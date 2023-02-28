@@ -9,12 +9,13 @@ import (
 
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta/repodb"
 	"zotregistry.io/zot/pkg/storage"
 )
 
 // EnableSyncExtension ...
 func EnableSyncExtension(ctx context.Context,
-	config *config.Config, wg *goSync.WaitGroup,
+	config *config.Config, wg *goSync.WaitGroup, repoDB repodb.RepoDB,
 	storeController storage.StoreController, log log.Logger,
 ) {
 	log.Warn().Msg("skipping enabling sync extension because given zot binary doesn't include this feature," +
@@ -22,8 +23,8 @@ func EnableSyncExtension(ctx context.Context,
 }
 
 // SyncOneImage ...
-func SyncOneImage(ctx context.Context, config *config.Config, storeController storage.StoreController,
-	repoName, reference string, artifactType string, log log.Logger,
+func SyncOneImage(ctx context.Context, config *config.Config, repoDB repodb.RepoDB,
+	storeController storage.StoreController, repoName, reference string, artifactType string, log log.Logger,
 ) error {
 	log.Warn().Msg("skipping syncing on demand because given zot binary doesn't include this feature," +
 		"please build a binary that does so")

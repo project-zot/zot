@@ -181,12 +181,11 @@ func TestUpdateErrors(t *testing.T) {
 
 		Convey("SetMetadataFromInput", func() {
 			imageStore := mocks.MockedImageStore{}
-			storeController := storage.StoreController{DefaultStore: &imageStore}
 			repoDB := mocks.RepoDBMock{}
 			log := log.NewLogger("debug", "")
 
 			err := repodb.SetMetadataFromInput("repo", "ref", ispec.MediaTypeImageManifest, "digest",
-				[]byte("BadManifestBlob"), storeController, repoDB, log)
+				[]byte("BadManifestBlob"), imageStore, repoDB, log)
 			So(err, ShouldNotBeNil)
 
 			// reference is digest
@@ -203,7 +202,7 @@ func TestUpdateErrors(t *testing.T) {
 			}
 
 			err = repodb.SetMetadataFromInput("repo", string(godigest.FromString("reference")), "", "digest",
-				manifestBlob, storeController, repoDB, log)
+				manifestBlob, imageStore, repoDB, log)
 			So(err, ShouldBeNil)
 		})
 	})

@@ -755,7 +755,7 @@ func TestCVEStruct(t *testing.T) {
 		digest11 := godigest.FromBytes(manifestBlob11)
 		err = repoDB.SetManifestMeta("repo1", digest11, repoMeta11)
 		So(err, ShouldBeNil)
-		err = repoDB.SetRepoTag("repo1", "0.1.0", digest11, ispec.MediaTypeImageManifest)
+		err = repoDB.SetRepoReference("repo1", "0.1.0", digest11, ispec.MediaTypeImageManifest)
 		So(err, ShouldBeNil)
 
 		timeStamp12 := time.Date(2009, 1, 1, 12, 0, 0, 0, time.UTC)
@@ -791,7 +791,7 @@ func TestCVEStruct(t *testing.T) {
 		digest12 := godigest.FromBytes(manifestBlob12)
 		err = repoDB.SetManifestMeta("repo1", digest12, repoMeta12)
 		So(err, ShouldBeNil)
-		err = repoDB.SetRepoTag("repo1", "1.0.0", digest12, ispec.MediaTypeImageManifest)
+		err = repoDB.SetRepoReference("repo1", "1.0.0", digest12, ispec.MediaTypeImageManifest)
 		So(err, ShouldBeNil)
 
 		timeStamp13 := time.Date(2010, 1, 1, 12, 0, 0, 0, time.UTC)
@@ -825,7 +825,7 @@ func TestCVEStruct(t *testing.T) {
 		digest13 := godigest.FromBytes(manifestBlob13)
 		err = repoDB.SetManifestMeta("repo1", digest13, repoMeta13)
 		So(err, ShouldBeNil)
-		err = repoDB.SetRepoTag("repo1", "1.1.0", digest13, ispec.MediaTypeImageManifest)
+		err = repoDB.SetRepoReference("repo1", "1.1.0", digest13, ispec.MediaTypeImageManifest)
 		So(err, ShouldBeNil)
 
 		timeStamp14 := time.Date(2011, 1, 1, 12, 0, 0, 0, time.UTC)
@@ -859,7 +859,7 @@ func TestCVEStruct(t *testing.T) {
 		digest14 := godigest.FromBytes(manifestBlob14)
 		err = repoDB.SetManifestMeta("repo1", digest14, repoMeta14)
 		So(err, ShouldBeNil)
-		err = repoDB.SetRepoTag("repo1", "1.0.1", digest14, ispec.MediaTypeImageManifest)
+		err = repoDB.SetRepoReference("repo1", "1.0.1", digest14, ispec.MediaTypeImageManifest)
 		So(err, ShouldBeNil)
 
 		// Create repodb data for scannable image with no vulnerabilities
@@ -894,7 +894,7 @@ func TestCVEStruct(t *testing.T) {
 		digest61 := godigest.FromBytes(manifestBlob61)
 		err = repoDB.SetManifestMeta("repo6", digest61, repoMeta61)
 		So(err, ShouldBeNil)
-		err = repoDB.SetRepoTag("repo6", "1.0.0", digest61, ispec.MediaTypeImageManifest)
+		err = repoDB.SetRepoReference("repo6", "1.0.0", digest61, ispec.MediaTypeImageManifest)
 		So(err, ShouldBeNil)
 
 		// Create repodb data for image not supporting scanning
@@ -929,7 +929,7 @@ func TestCVEStruct(t *testing.T) {
 		digest21 := godigest.FromBytes(manifestBlob21)
 		err = repoDB.SetManifestMeta("repo2", digest21, repoMeta21)
 		So(err, ShouldBeNil)
-		err = repoDB.SetRepoTag("repo2", "1.0.0", digest21, ispec.MediaTypeImageManifest)
+		err = repoDB.SetRepoReference("repo2", "1.0.0", digest21, ispec.MediaTypeImageManifest)
 		So(err, ShouldBeNil)
 
 		// Create repodb data for invalid images/negative tests
@@ -943,7 +943,7 @@ func TestCVEStruct(t *testing.T) {
 		digest31 := godigest.FromBytes(manifestBlob31)
 		err = repoDB.SetManifestMeta("repo3", digest31, repoMeta31)
 		So(err, ShouldBeNil)
-		err = repoDB.SetRepoTag("repo3", "invalid-manifest", digest31, ispec.MediaTypeImageManifest)
+		err = repoDB.SetRepoReference("repo3", "invalid-manifest", digest31, ispec.MediaTypeImageManifest)
 		So(err, ShouldBeNil)
 
 		configBlob41 := []byte("invalid config blob")
@@ -956,11 +956,11 @@ func TestCVEStruct(t *testing.T) {
 		digest41 := godigest.FromString("abc7")
 		err = repoDB.SetManifestMeta("repo4", digest41, repoMeta41)
 		So(err, ShouldBeNil)
-		err = repoDB.SetRepoTag("repo4", "invalid-config", digest41, ispec.MediaTypeImageManifest)
+		err = repoDB.SetRepoReference("repo4", "invalid-config", digest41, ispec.MediaTypeImageManifest)
 		So(err, ShouldBeNil)
 
 		digest51 := godigest.FromString("abc8")
-		err = repoDB.SetRepoTag("repo5", "nonexitent-manifest", digest51, ispec.MediaTypeImageManifest)
+		err = repoDB.SetRepoReference("repo5", "nonexitent-manifest", digest51, ispec.MediaTypeImageManifest)
 		So(err, ShouldBeNil)
 
 		// ------ Multiarch image
@@ -997,7 +997,7 @@ func TestCVEStruct(t *testing.T) {
 		})
 		So(err, ShouldBeNil)
 
-		err = repoDB.SetRepoTag("repoIndex", "tagIndex", indexDigest, ispec.MediaTypeImageIndex)
+		err = repoDB.SetRepoReference("repoIndex", "tagIndex", indexDigest, ispec.MediaTypeImageIndex)
 		So(err, ShouldBeNil)
 
 		// RepoDB loaded with initial data, mock the scanner

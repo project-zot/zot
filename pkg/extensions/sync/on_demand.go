@@ -16,6 +16,7 @@ import (
 	"zotregistry.io/zot/pkg/common"
 	syncconf "zotregistry.io/zot/pkg/extensions/config/sync"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta/repodb"
 	"zotregistry.io/zot/pkg/storage"
 )
 
@@ -59,8 +60,8 @@ func (di *demandedImages) delete(key string) {
 	di.syncedMap.Delete(key)
 }
 
-func OneImage(ctx context.Context, cfg syncconf.Config, storeController storage.StoreController,
-	repo, reference string, artifactType string, log log.Logger,
+func OneImage(ctx context.Context, cfg syncconf.Config, repoDB repodb.RepoDB,
+	storeController storage.StoreController, repo, reference string, artifactType string, log log.Logger,
 ) error {
 	// guard against multiple parallel requests
 	demandedImage := fmt.Sprintf("%s:%s", repo, reference)
@@ -82,7 +83,7 @@ func OneImage(ctx context.Context, cfg syncconf.Config, storeController storage.
 	defer demandedImgs.delete(demandedImage)
 	defer close(imageChannel)
 
-	go syncOneImage(ctx, imageChannel, cfg, storeController, repo, reference, artifactType, log)
+	go syncOneImage(ctx, imageChannel, cfg, repoDB, storeController, repo, reference, artifactType, log)
 
 	err, ok := <-imageChannel
 	if !ok {
@@ -92,8 +93,8 @@ func OneImage(ctx context.Context, cfg syncconf.Config, storeController storage.
 	return err
 }
 
-func syncOneImage(ctx context.Context, imageChannel chan error,
-	cfg syncconf.Config, storeController storage.StoreController,
+func syncOneImage(ctx context.Context, imageChannel chan error, cfg syncconf.Config,
+	repoDB repodb.RepoDB, storeController storage.StoreController,
 	localRepo, reference string, artifactType string, log log.Logger,
 ) {
 	var credentialsFile syncconf.CredentialsFile
@@ -180,7 +181,8 @@ func syncOneImage(ctx context.Context, imageChannel chan error,
 				return
 			}
 
-			sig := newSignaturesCopier(httpClient, credentialsFile[upstreamAddr], *registryURL, storeController, log)
+			sig := newSignaturesCopier(httpClient, credentialsFile[upstreamAddr], *registryURL, repoDB,
+				storeController, log)
 
 			upstreamCtx := getUpstreamContext(&regCfg, credentialsFile[upstreamAddr])
 			options := getCopyOptions(upstreamCtx, localCtx)

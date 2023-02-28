@@ -55,13 +55,13 @@ func TestIterator(t *testing.T) {
 		So(dynamoWrapper.ResetManifestDataTable(), ShouldBeNil)
 		So(dynamoWrapper.ResetRepoMetaTable(), ShouldBeNil)
 
-		err = dynamoWrapper.SetRepoTag("repo1", "tag1", "manifestType", "manifestDigest1")
+		err = dynamoWrapper.SetRepoReference("repo1", "tag1", "manifestType", "manifestDigest1")
 		So(err, ShouldBeNil)
 
-		err = dynamoWrapper.SetRepoTag("repo2", "tag2", "manifestType", "manifestDigest2")
+		err = dynamoWrapper.SetRepoReference("repo2", "tag2", "manifestType", "manifestDigest2")
 		So(err, ShouldBeNil)
 
-		err = dynamoWrapper.SetRepoTag("repo3", "tag3", "manifestType", "manifestDigest3")
+		err = dynamoWrapper.SetRepoReference("repo3", "tag3", "manifestType", "manifestDigest3")
 		So(err, ShouldBeNil)
 
 		repoMetaAttributeIterator := iterator.NewBaseDynamoAttributesIterator(
@@ -196,7 +196,7 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("GetManifestMeta GetManifestData not found error", func() {
-			err := dynamoWrapper.SetRepoTag("repo", "tag", "dig", "")
+			err := dynamoWrapper.SetRepoReference("repo", "tag", "dig", "")
 			So(err, ShouldBeNil)
 
 			_, err = dynamoWrapper.GetManifestMeta("repo", "dig")
@@ -270,7 +270,7 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("IncrementImageDownloads tag not found error", func() {
-			err := dynamoWrapper.SetRepoTag("repo", "tag", "dig", "")
+			err := dynamoWrapper.SetRepoReference("repo", "tag", "dig", "")
 			So(err, ShouldBeNil)
 
 			err = dynamoWrapper.IncrementImageDownloads("repo", "notFoundTag")
@@ -278,7 +278,7 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("AddManifestSignature GetRepoMeta error", func() {
-			err := dynamoWrapper.SetRepoTag("repo", "tag", "dig", "")
+			err := dynamoWrapper.SetRepoReference("repo", "tag", "dig", "")
 			So(err, ShouldBeNil)
 
 			err = dynamoWrapper.AddManifestSignature("repoNotFound", "tag", repodb.SignatureMetadata{})
@@ -286,7 +286,7 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("AddManifestSignature ManifestSignatures signedManifestDigest not found error", func() {
-			err := dynamoWrapper.SetRepoTag("repo", "tag", "dig", "")
+			err := dynamoWrapper.SetRepoReference("repo", "tag", "dig", "")
 			So(err, ShouldBeNil)
 
 			err = dynamoWrapper.AddManifestSignature("repo", "tagNotFound", repodb.SignatureMetadata{})
@@ -294,7 +294,7 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("AddManifestSignature SignatureType repodb.NotationType", func() {
-			err := dynamoWrapper.SetRepoTag("repo", "tag", "dig", "")
+			err := dynamoWrapper.SetRepoReference("repo", "tag", "dig", "")
 			So(err, ShouldBeNil)
 
 			err = dynamoWrapper.AddManifestSignature("repo", "tagNotFound", repodb.SignatureMetadata{
@@ -349,7 +349,8 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("SearchRepos GetManifestMeta error", func() {
-			err := dynamoWrapper.SetRepoTag("repo", "tag1", "notFoundDigest", ispec.MediaTypeImageManifest) //nolint:contextcheck
+			err := dynamoWrapper.SetRepoReference("repo", "tag1", "notFoundDigest", //nolint:contextcheck
+				ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
 
 			_, _, _, _, err = dynamoWrapper.SearchRepos(ctx, "", repodb.Filter{}, repodb.PageInput{})
@@ -358,7 +359,7 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("SearchRepos config unmarshal error", func() {
-			err := dynamoWrapper.SetRepoTag("repo", "tag1", "dig1", ispec.MediaTypeImageManifest) //nolint:contextcheck
+			err := dynamoWrapper.SetRepoReference("repo", "tag1", "dig1", ispec.MediaTypeImageManifest) //nolint:contextcheck
 			So(err, ShouldBeNil)
 
 			err = dynamoWrapper.SetManifestData("dig1", repodb.ManifestData{ //nolint:contextcheck
@@ -375,7 +376,7 @@ func TestWrapperErrors(t *testing.T) {
 		Convey("Unsuported type", func() {
 			digest := digest.FromString("digest")
 
-			err := dynamoWrapper.SetRepoTag("repo", "tag1", digest, "invalid type") //nolint:contextcheck
+			err := dynamoWrapper.SetRepoReference("repo", "tag1", digest, "invalid type") //nolint:contextcheck
 			So(err, ShouldBeNil)
 
 			_, _, _, _, err = dynamoWrapper.SearchRepos(ctx, "", repodb.Filter{}, repodb.PageInput{})
@@ -395,7 +396,7 @@ func TestWrapperErrors(t *testing.T) {
 		Convey("SearchRepos bad index data", func() {
 			indexDigest := digest.FromString("indexDigest")
 
-			err := dynamoWrapper.SetRepoTag("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
+			err := dynamoWrapper.SetRepoReference("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
 			So(err, ShouldBeNil)
 
 			err = setBadIndexData(dynamoWrapper.Client, indexDataTablename, indexDigest.String()) //nolint:contextcheck
@@ -408,7 +409,7 @@ func TestWrapperErrors(t *testing.T) {
 		Convey("SearchRepos bad indexBlob in IndexData", func() {
 			indexDigest := digest.FromString("indexDigest")
 
-			err := dynamoWrapper.SetRepoTag("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
+			err := dynamoWrapper.SetRepoReference("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
 			So(err, ShouldBeNil)
 
 			err = dynamoWrapper.SetIndexData(indexDigest, repodb.IndexData{ //nolint:contextcheck
@@ -427,7 +428,7 @@ func TestWrapperErrors(t *testing.T) {
 				manifestDigestFromIndex2 = digest.FromString("manifestDigestFromIndex2")
 			)
 
-			err := dynamoWrapper.SetRepoTag("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
+			err := dynamoWrapper.SetRepoReference("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
 			So(err, ShouldBeNil)
 
 			indexBlob, err := test.GetIndexBlobWithManifests([]digest.Digest{
@@ -466,7 +467,7 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("SearchTags GetManifestMeta error", func() {
-			err := dynamoWrapper.SetRepoTag("repo", "tag1", "manifestNotFound", //nolint:contextcheck
+			err := dynamoWrapper.SetRepoReference("repo", "tag1", "manifestNotFound", //nolint:contextcheck
 				ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
 
@@ -476,7 +477,7 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("SearchTags config unmarshal error", func() {
-			err := dynamoWrapper.SetRepoTag("repo", "tag1", "dig1", ispec.MediaTypeImageManifest) //nolint:contextcheck
+			err := dynamoWrapper.SetRepoReference("repo", "tag1", "dig1", ispec.MediaTypeImageManifest) //nolint:contextcheck
 			So(err, ShouldBeNil)
 
 			err = dynamoWrapper.SetManifestData( //nolint:contextcheck
@@ -496,7 +497,7 @@ func TestWrapperErrors(t *testing.T) {
 		Convey("SearchTags bad index data", func() {
 			indexDigest := digest.FromString("indexDigest")
 
-			err := dynamoWrapper.SetRepoTag("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
+			err := dynamoWrapper.SetRepoReference("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
 			So(err, ShouldBeNil)
 
 			err = setBadIndexData(dynamoWrapper.Client, indexDataTablename, indexDigest.String()) //nolint:contextcheck
@@ -509,7 +510,7 @@ func TestWrapperErrors(t *testing.T) {
 		Convey("SearchTags bad indexBlob in IndexData", func() {
 			indexDigest := digest.FromString("indexDigest")
 
-			err := dynamoWrapper.SetRepoTag("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
+			err := dynamoWrapper.SetRepoReference("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
 			So(err, ShouldBeNil)
 
 			err = dynamoWrapper.SetIndexData(indexDigest, repodb.IndexData{ //nolint:contextcheck
@@ -528,7 +529,7 @@ func TestWrapperErrors(t *testing.T) {
 				manifestDigestFromIndex2 = digest.FromString("manifestDigestFromIndex2")
 			)
 
-			err := dynamoWrapper.SetRepoTag("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
+			err := dynamoWrapper.SetRepoReference("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
 			So(err, ShouldBeNil)
 
 			indexBlob, err := test.GetIndexBlobWithManifests([]digest.Digest{
@@ -573,7 +574,7 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("FilterTags manifestMeta not found", func() {
-			err := dynamoWrapper.SetRepoTag("repo", "tag1", "manifestNotFound", //nolint:contextcheck
+			err := dynamoWrapper.SetRepoReference("repo", "tag1", "manifestNotFound", //nolint:contextcheck
 				ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
 
@@ -589,7 +590,7 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("FilterTags manifestMeta unmarshal error", func() {
-			err := dynamoWrapper.SetRepoTag("repo", "tag1", "dig", ispec.MediaTypeImageManifest) //nolint:contextcheck
+			err := dynamoWrapper.SetRepoReference("repo", "tag1", "dig", ispec.MediaTypeImageManifest) //nolint:contextcheck
 			So(err, ShouldBeNil)
 
 			err = setBadManifestData(dynamoWrapper.Client, manifestDataTablename, "dig") //nolint:contextcheck
@@ -609,7 +610,7 @@ func TestWrapperErrors(t *testing.T) {
 		Convey("FilterTags bad IndexData", func() {
 			indexDigest := digest.FromString("indexDigest")
 
-			err := dynamoWrapper.SetRepoTag("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
+			err := dynamoWrapper.SetRepoReference("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
 			So(err, ShouldBeNil)
 
 			err = setBadIndexData(dynamoWrapper.Client, indexDataTablename, indexDigest.String()) //nolint:contextcheck
@@ -625,7 +626,7 @@ func TestWrapperErrors(t *testing.T) {
 		Convey("FilterTags bad indexBlob in IndexData", func() {
 			indexDigest := digest.FromString("indexDigest")
 
-			err := dynamoWrapper.SetRepoTag("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
+			err := dynamoWrapper.SetRepoReference("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
 			So(err, ShouldBeNil)
 
 			err = dynamoWrapper.SetIndexData(indexDigest, repodb.IndexData{ //nolint:contextcheck
@@ -647,7 +648,7 @@ func TestWrapperErrors(t *testing.T) {
 				manifestDigestFromIndex2 = digest.FromString("manifestDigestFromIndex2")
 			)
 
-			err := dynamoWrapper.SetRepoTag("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
+			err := dynamoWrapper.SetRepoReference("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
 			So(err, ShouldBeNil)
 
 			indexBlob, err := test.GetIndexBlobWithManifests([]digest.Digest{

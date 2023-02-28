@@ -6,6 +6,7 @@ package test_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -22,6 +23,8 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/test"
 )
+
+var ErrTestError = errors.New("test error")
 
 func TestCopyFiles(t *testing.T) {
 	Convey("sourceDir does not exist", t, func() {

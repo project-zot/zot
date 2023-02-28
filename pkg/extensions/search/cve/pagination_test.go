@@ -61,7 +61,7 @@ func TestCVEPagination(t *testing.T) {
 		digest11 := godigest.FromBytes(manifestBlob11)
 		err = repoDB.SetManifestMeta("repo1", digest11, repoMeta11)
 		So(err, ShouldBeNil)
-		err = repoDB.SetRepoTag("repo1", "0.1.0", digest11, ispec.MediaTypeImageManifest)
+		err = repoDB.SetRepoReference("repo1", "0.1.0", digest11, ispec.MediaTypeImageManifest)
 		So(err, ShouldBeNil)
 
 		timeStamp12 := time.Date(2009, 1, 1, 12, 0, 0, 0, time.UTC)
@@ -95,7 +95,7 @@ func TestCVEPagination(t *testing.T) {
 		digest12 := godigest.FromBytes(manifestBlob12)
 		err = repoDB.SetManifestMeta("repo1", digest12, repoMeta12)
 		So(err, ShouldBeNil)
-		err = repoDB.SetRepoTag("repo1", "1.0.0", digest12, ispec.MediaTypeImageManifest)
+		err = repoDB.SetRepoReference("repo1", "1.0.0", digest12, ispec.MediaTypeImageManifest)
 		So(err, ShouldBeNil)
 
 		// RepoDB loaded with initial data, mock the scanner

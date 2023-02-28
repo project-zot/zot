@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"path"
@@ -20,25 +21,28 @@ import (
 	"zotregistry.io/zot/pkg/common"
 	syncconf "zotregistry.io/zot/pkg/extensions/config/sync"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta/repodb"
 	"zotregistry.io/zot/pkg/storage"
 )
 
 type signaturesCopier struct {
 	client          *http.Client
 	upstreamURL     url.URL
-	storeController storage.StoreController
 	credentials     syncconf.Credentials
+	repoDB          repodb.RepoDB
+	storeController storage.StoreController
 	log             log.Logger
 }
 
 func newSignaturesCopier(httpClient *http.Client, credentials syncconf.Credentials,
-	upstreamURL url.URL,
+	upstreamURL url.URL, repoDB repodb.RepoDB,
 	storeController storage.StoreController, log log.Logger,
 ) *signaturesCopier {
 	return &signaturesCopier{
 		client:          httpClient,
 		credentials:     credentials,
 		upstreamURL:     upstreamURL,
+		repoDB:          repoDB,
 		storeController: storeController,
 		log:             log,
 	}
@@ -185,7 +189,18 @@ func (sig *signaturesCopier) syncCosignSignature(localRepo, remoteRepo, digestSt
 		return err
 	}
 
-	sig.log.Info().Msgf("successfully synced cosign signature for repo %s digest %s", localRepo, digestStr)
+	if sig.repoDB != nil {
+		sig.log.Debug().Msgf("trying to sync cosign signature for repo %s digest %s", localRepo, digestStr)
+
+		err = repodb.SetMetadataFromInput(localRepo, cosignTag, ispec.MediaTypeImageManifest,
+			godigest.FromBytes(cosignManifestBuf), cosignManifestBuf, sig.storeController.GetImageStore(localRepo),
+			sig.repoDB, sig.log)
+		if err != nil {
+			return fmt.Errorf("failed to set metadata for cosign signature '%s@%s': %w", localRepo, digestStr, err)
+		}
+
+		sig.log.Info().Msgf("successfully added cosign signature to RepoDB for repo %s digest %s", localRepo, digestStr)
+	}
 
 	return nil
 }
@@ -249,6 +264,19 @@ func (sig *signaturesCopier) syncORASRefs(localRepo, remoteRepo, digestStr strin
 
 			return err
 		}
+
+		// this is for notation signatures
+		if sig.repoDB != nil {
+			sig.log.Debug().Msgf("trying to sync oras artifact for repo %s digest %s", localRepo, digestStr)
+
+			err = repodb.SetMetadataFromInput(localRepo, ref.Digest.String(), ref.MediaType,
+				ref.Digest, body, sig.storeController.GetImageStore(localRepo), sig.repoDB, sig.log)
+			if err != nil {
+				return fmt.Errorf("failed to set metadata for oras artifact '%s@%s': %w", localRepo, digestStr, err)
+			}
+
+			sig.log.Info().Msgf("successfully added oras artifacts to RepoDB for repo %s digest %s", localRepo, digestStr)
+		}
 	}
 
 	sig.log.Info().Msgf("successfully synced ORAS artifacts for repo %s digest %s", localRepo, digestStr)
@@ -283,7 +311,7 @@ func (sig *signaturesCopier) syncOCIRefs(localRepo, remoteRepo, digestStr string
 
 		var artifactManifest oras.Manifest
 
-		body, statusCode, err := common.MakeHTTPGetRequest(sig.client, sig.credentials.Username,
+		OCIRefBody, statusCode, err := common.MakeHTTPGetRequest(sig.client, sig.credentials.Username,
 			sig.credentials.Password, &artifactManifest,
 			getRefManifestURL.String(), ref.MediaType, sig.log)
 		if err != nil {
@@ -304,7 +332,7 @@ func (sig *signaturesCopier) syncOCIRefs(localRepo, remoteRepo, digestStr string
 			// read manifest
 			var manifest ispec.Manifest
 
-			err = json.Unmarshal(body, &manifest)
+			err = json.Unmarshal(OCIRefBody, &manifest)
 			if err != nil {
 				sig.log.Error().Str("errorType", common.TypeOf(err)).
 					Err(err).Msgf("couldn't unmarshal oci reference manifest: %s", getRefManifestURL.String())
@@ -326,7 +354,7 @@ func (sig *signaturesCopier) syncOCIRefs(localRepo, remoteRepo, digestStr string
 			// read manifest
 			var manifest ispec.Artifact
 
-			err = json.Unmarshal(body, &manifest)
+			err = json.Unmarshal(OCIRefBody, &manifest)
 			if err != nil {
 				sig.log.Error().Str("errorType", common.TypeOf(err)).
 					Err(err).Msgf("couldn't unmarshal oci reference manifest: %s", getRefManifestURL.String())
@@ -341,17 +369,30 @@ func (sig *signaturesCopier) syncOCIRefs(localRepo, remoteRepo, digestStr string
 			}
 		}
 
-		_, err = imageStore.PutImageManifest(localRepo, ref.Digest.String(),
-			ref.MediaType, body)
+		digest, err := imageStore.PutImageManifest(localRepo, ref.Digest.String(),
+			ref.MediaType, OCIRefBody)
 		if err != nil {
 			sig.log.Error().Str("errorType", common.TypeOf(err)).
 				Err(err).Msg("couldn't upload oci reference manifest")
 
 			return err
 		}
+
+		if sig.repoDB != nil {
+			sig.log.Debug().Msgf("trying to add OCI refs for repo %s digest %s", localRepo, digestStr)
+
+			err = repodb.SetMetadataFromInput(localRepo, digestStr, ref.MediaType,
+				digest, OCIRefBody, sig.storeController.GetImageStore(localRepo),
+				sig.repoDB, sig.log)
+			if err != nil {
+				return fmt.Errorf("failed to set metadata for OCI ref in '%s@%s': %w", localRepo, digestStr, err)
+			}
+
+			sig.log.Info().Msgf("successfully added OCI refs to RepoDB for repo %s digest %s", localRepo, digestStr)
+		}
 	}
 
-	sig.log.Info().Msgf("successfully synced oci references for repo %s digest %s", localRepo, digestStr)
+	sig.log.Info().Msgf("successfully synced OCI refs for repo %s digest %s", localRepo, digestStr)
 
 	return nil
 }
@@ -397,13 +438,27 @@ func (sig *signaturesCopier) syncOCIArtifact(localRepo, remoteRepo, reference st
 	}
 
 	// push manifest
-	_, err = imageStore.PutImageManifest(localRepo, reference,
+	digest, err := imageStore.PutImageManifest(localRepo, reference,
 		ispec.MediaTypeArtifactManifest, artifactManifestBuf)
 	if err != nil {
 		sig.log.Error().Str("errorType", common.TypeOf(err)).
 			Err(err).Msg("couldn't upload OCI artifact manifest")
 
 		return err
+	}
+
+	if sig.repoDB != nil {
+		sig.log.Debug().Msgf("trying to OCI refs for repo %s digest %s", localRepo, digest.String())
+
+		err = repodb.SetMetadataFromInput(localRepo, reference, ispec.MediaTypeArtifactManifest,
+			digest, artifactManifestBuf, sig.storeController.GetImageStore(localRepo),
+			sig.repoDB, sig.log)
+		if err != nil {
+			return fmt.Errorf("failed to set metadata for OCI Artifact '%s@%s': %w", localRepo, digest.String(), err)
+		}
+
+		sig.log.Info().Msgf("successfully added oci artifacts to RepoDB for repo %s digest %s", localRepo,
+			digest.String())
 	}
 
 	sig.log.Info().Msgf("successfully synced OCI artifact for repo %s tag %s", localRepo, reference)
@@ -450,7 +505,7 @@ func (sig *signaturesCopier) canSkipOCIArtifact(localRepo, reference string, art
 
 	localArtifactBuf, _, _, err := imageStore.GetImageManifest(localRepo, reference)
 	if err != nil {
-		if errors.Is(err, zerr.ErrManifestNotFound) {
+		if errors.Is(err, zerr.ErrManifestNotFound) || errors.Is(err, zerr.ErrRepoNotFound) {
 			return false, nil
 		}
 

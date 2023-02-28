@@ -45,12 +45,12 @@ func ReferenceIsDigest(reference string) bool {
 	return err == nil
 }
 
-func ValidateRepoTagInput(repo, tag string, manifestDigest godigest.Digest) error {
+func ValidateRepoReferenceInput(repo, reference string, manifestDigest godigest.Digest) error {
 	if repo == "" {
 		return zerr.ErrEmptyRepoName
 	}
 
-	if tag == "" {
+	if reference == "" {
 		return zerr.ErrEmptyTag
 	}
 

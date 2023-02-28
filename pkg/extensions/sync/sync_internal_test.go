@@ -40,6 +40,8 @@ const (
 	host = "127.0.0.1:45117"
 )
 
+var ErrTestError = fmt.Errorf("testError")
+
 func TestInjectSyncUtils(t *testing.T) {
 	Convey("Inject errors in utils functions", t, func() {
 		repositoryReference := fmt.Sprintf("%s/%s", host, testImage)
@@ -154,7 +156,7 @@ func TestSyncInternal(t *testing.T) {
 		}
 		ctx := context.Background()
 
-		So(Run(ctx, cfg, storage.StoreController{},
+		So(Run(ctx, cfg, mocks.RepoDBMock{}, storage.StoreController{},
 			new(goSync.WaitGroup), log.NewLogger("debug", "")), ShouldNotBeNil)
 
 		_, err = getFileCredentials("/invalid/path/to/file")
@@ -190,7 +192,7 @@ func TestSyncInternal(t *testing.T) {
 		localCtx, policyCtx, err := getLocalContexts(log)
 		So(err, ShouldBeNil)
 
-		err = syncRegistry(ctx, syncRegistryConfig, "randomUpstreamURL",
+		err = syncRegistry(ctx, syncRegistryConfig, "randomUpstreamURL", mocks.RepoDBMock{},
 			storage.StoreController{DefaultStore: imageStore}, localCtx, policyCtx,
 			syncconf.Credentials{}, nil, log)
 		So(err, ShouldNotBeNil)
@@ -378,9 +380,10 @@ func TestSyncInternal(t *testing.T) {
 		imageStore := local.NewImageStore(t.TempDir(), false, storage.DefaultGCDelay,
 			false, false, log, metrics, nil, nil,
 		)
+		mockRepoDB := mocks.RepoDBMock{}
 
 		sig := newSignaturesCopier(client, syncconf.Credentials{},
-			*regURL, storage.StoreController{DefaultStore: imageStore}, log)
+			*regURL, mockRepoDB, storage.StoreController{DefaultStore: imageStore}, log)
 
 		err = sig.syncCosignSignature(testImage, testImage, testImageTag, &ispec.Manifest{})
 		So(err, ShouldNotBeNil)
@@ -430,8 +433,9 @@ func TestSyncInternal(t *testing.T) {
 		So(regURL, ShouldNotBeNil)
 
 		client := &http.Client{}
+		mockRepoDB := mocks.RepoDBMock{}
 		sig := newSignaturesCopier(client, syncconf.Credentials{},
-			*regURL, storage.StoreController{DefaultStore: imageStore}, log)
+			*regURL, mockRepoDB, storage.StoreController{DefaultStore: imageStore}, log)
 
 		canBeSkipped, err = sig.canSkipOCIRefs(testImage, testImageManifestDigest.String(), refs)
 		So(err, ShouldBeNil)
@@ -596,7 +600,7 @@ func TestSyncInternal(t *testing.T) {
 		testRootDir := path.Join(imageStore.RootDir(), testImage, SyncBlobUploadDir)
 		// testImagePath := path.Join(testRootDir, testImage)
 
-		err := pushSyncedLocalImage(testImage, testImageTag, testRootDir, imageStore, log)
+		err := pushSyncedLocalImage(testImage, testImageTag, testRootDir, nil, imageStore, log)
 		So(err, ShouldNotBeNil)
 
 		err = os.MkdirAll(testRootDir, 0o755)
@@ -663,7 +667,7 @@ func TestSyncInternal(t *testing.T) {
 			_, err = testImageStore.PutImageManifest(repo, "latest", ispec.MediaTypeImageIndex, content)
 			So(err, ShouldBeNil)
 
-			err = pushSyncedLocalImage(repo, "latest", testRootDir, imageStore, log)
+			err = pushSyncedLocalImage(repo, "latest", testRootDir, nil, imageStore, log)
 			So(err, ShouldBeNil)
 
 			// trigger  error on manifest pull
@@ -671,7 +675,7 @@ func TestSyncInternal(t *testing.T) {
 				index.Manifests[0].Digest.Algorithm().String(), index.Manifests[0].Digest.Encoded()), 0o000)
 			So(err, ShouldBeNil)
 
-			err = pushSyncedLocalImage(repo, "latest", testRootDir, imageStore, log)
+			err = pushSyncedLocalImage(repo, "latest", testRootDir, nil, imageStore, log)
 			So(err, ShouldNotBeNil)
 
 			err = os.Chmod(path.Join(testRootDir, repo, "blobs",
@@ -687,7 +691,7 @@ func TestSyncInternal(t *testing.T) {
 				}, nil,
 			)
 
-			err = pushSyncedLocalImage(repo, "latest", testRootDir, imageStoreWithLinter, log)
+			err = pushSyncedLocalImage(repo, "latest", testRootDir, nil, imageStoreWithLinter, log)
 			// linter error will be ignored by sync
 			So(err, ShouldBeNil)
 
@@ -711,7 +715,7 @@ func TestSyncInternal(t *testing.T) {
 				manifest.Config.Digest.Algorithm().String(), manifest.Config.Digest.Encoded()))
 			So(err, ShouldBeNil)
 
-			err = pushSyncedLocalImage(repo, "latest", testRootDir, imageStore, log)
+			err = pushSyncedLocalImage(repo, "latest", testRootDir, nil, imageStore, log)
 			So(err, ShouldNotBeNil)
 
 			err = os.Chmod(configBlobPath, local.DefaultDirPerms)
@@ -729,11 +733,43 @@ func TestSyncInternal(t *testing.T) {
 			err = os.MkdirAll(indexManifestPath, 0o000)
 			So(err, ShouldBeNil)
 
-			err = pushSyncedLocalImage(repo, "latest", testRootDir, imageStore, log)
+			err = pushSyncedLocalImage(repo, "latest", testRootDir, nil, imageStore, log)
 			So(err, ShouldNotBeNil)
 
 			err = os.Remove(indexManifestPath)
 			So(err, ShouldBeNil)
+		})
+
+		Convey("RepoDB Errors", func() {
+			multiArch, err := test.GetRandomMultiarchImage("bad-repodb-tag")
+			So(err, ShouldBeNil)
+
+			err = test.WriteMultiArchImageToFileSystem(multiArch, "repo", storage.StoreController{
+				DefaultStore: testImageStore,
+			})
+			So(err, ShouldBeNil)
+
+			// copyManifest Errors
+			err = pushSyncedLocalImage("repo", "bad-repodb-tag", testRootDir,
+				mocks.RepoDBMock{
+					SetRepoReferenceFn: func(repo, Reference string, manifestDigest godigest.Digest, mediaType string) error {
+						return ErrTestError
+					},
+				}, imageStore, log)
+			So(err, ShouldNotBeNil)
+
+			// SetMetadataFromInput
+			err = pushSyncedLocalImage("repo", "bad-repodb-tag", testRootDir,
+				mocks.RepoDBMock{
+					SetRepoReferenceFn: func(repo, Reference string, manifestDigest godigest.Digest, mediaType string) error {
+						if Reference == "bad-repodb-tag" {
+							return ErrTestError
+						}
+
+						return nil
+					},
+				}, imageStore, log)
+			So(err, ShouldNotBeNil)
 		})
 
 		Convey("manifest image errors", func() {
@@ -749,7 +785,7 @@ func TestSyncInternal(t *testing.T) {
 
 			if os.Geteuid() != 0 {
 				So(func() {
-					_ = pushSyncedLocalImage(testImage, testImageTag, testRootDir, imageStore, log)
+					_ = pushSyncedLocalImage(testImage, testImageTag, testRootDir, nil, imageStore, log)
 				}, ShouldPanic)
 			}
 
@@ -762,7 +798,7 @@ func TestSyncInternal(t *testing.T) {
 				panic(err)
 			}
 
-			err = pushSyncedLocalImage(testImage, testImageTag, testRootDir, imageStore, log)
+			err = pushSyncedLocalImage(testImage, testImageTag, testRootDir, nil, imageStore, log)
 			So(err, ShouldNotBeNil)
 
 			if err := os.Chmod(path.Join(testRootDir, testImage, "blobs", "sha256",
@@ -776,7 +812,7 @@ func TestSyncInternal(t *testing.T) {
 				panic(err)
 			}
 
-			err = pushSyncedLocalImage(testImage, testImageTag, testRootDir, imageStore, log)
+			err = pushSyncedLocalImage(testImage, testImageTag, testRootDir, nil, imageStore, log)
 			So(err, ShouldNotBeNil)
 
 			if err := os.Chmod(cachedManifestConfigPath, 0o755); err != nil {
@@ -803,7 +839,7 @@ func TestSyncInternal(t *testing.T) {
 				panic(err)
 			}
 
-			err = pushSyncedLocalImage(testImage, testImageTag, testRootDir, imageStore, log)
+			err = pushSyncedLocalImage(testImage, testImageTag, testRootDir, nil, imageStore, log)
 			So(err, ShouldNotBeNil)
 
 			manifest.Config.Digest = configDigestBackup
@@ -828,7 +864,7 @@ func TestSyncInternal(t *testing.T) {
 				panic(err)
 			}
 
-			err = pushSyncedLocalImage(testImage, testImageTag, testRootDir, imageStore, log)
+			err = pushSyncedLocalImage(testImage, testImageTag, testRootDir, nil, imageStore, log)
 			So(err, ShouldNotBeNil)
 		})
 	})

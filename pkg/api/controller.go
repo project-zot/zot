@@ -605,7 +605,7 @@ func (c *Controller) LoadNewConfig(reloadCtx context.Context, config *config.Con
 	if config.Extensions != nil && config.Extensions.Sync != nil {
 		// reload sync config
 		c.Config.Extensions.Sync = config.Extensions.Sync
-		ext.EnableSyncExtension(reloadCtx, c.Config, c.wgShutDown, c.StoreController, c.Log)
+		ext.EnableSyncExtension(reloadCtx, c.Config, c.wgShutDown, c.RepoDB, c.StoreController, c.Log)
 	} else if c.Config.Extensions != nil {
 		c.Config.Extensions.Sync = nil
 	}
@@ -653,7 +653,7 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 	// Enable extensions if extension config is provided for storeController
 	if c.Config.Extensions != nil {
 		if c.Config.Extensions.Sync != nil {
-			ext.EnableSyncExtension(reloadCtx, c.Config, c.wgShutDown, c.StoreController, c.Log)
+			ext.EnableSyncExtension(reloadCtx, c.Config, c.wgShutDown, c.RepoDB, c.StoreController, c.Log)
 		}
 	}
 

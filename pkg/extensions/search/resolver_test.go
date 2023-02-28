@@ -2020,7 +2020,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 	for image, digest := range tagsMap {
 		repo, tag := common.GetImageDirAndTag(image)
 
-		err := repoDB.SetRepoTag(repo, tag, digest, ispec.MediaTypeImageManifest)
+		err := repoDB.SetRepoReference(repo, tag, digest, ispec.MediaTypeImageManifest)
 		if err != nil {
 			panic(err)
 		}

@@ -35,8 +35,8 @@ type RepoDB interface { //nolint:interfacebloat
 	// GetRepoStars returns the total number of stars a repo has
 	GetRepoStars(repo string) (int, error)
 
-	// SetRepoTag sets the tag of a manifest in the tag list of a repo
-	SetRepoTag(repo string, tag string, manifestDigest godigest.Digest, mediaType string) error
+	// SetRepoReference sets the reference of a manifest in the tag list of a repo
+	SetRepoReference(repo string, reference string, manifestDigest godigest.Digest, mediaType string) error
 
 	// DeleteRepoTag delets the tag from the tag list of a repo
 	DeleteRepoTag(repo string, tag string) error

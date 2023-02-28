@@ -178,8 +178,8 @@ func TestSyncRepoDBErrors(t *testing.T) {
 				return indexBlob, nil
 			}
 
-			Convey("repoDB.SetRepoTag", func() {
-				repoDB.SetRepoTagFn = func(repo, tag string, manifestDigest godigest.Digest, mediaType string) error {
+			Convey("repoDB.SetRepoReference", func() {
+				repoDB.SetRepoReferenceFn = func(repo, tag string, manifestDigest godigest.Digest, mediaType string) error {
 					return ErrTestError
 				}
 

@@ -61,7 +61,7 @@ var (
 	ErrBadRange                 = errors.New("storage: bad range")
 	ErrBadLayerCount            = errors.New("manifest: layers count doesn't correspond to config history")
 	ErrManifestConflict         = errors.New("manifest: multiple manifests found")
-	ErrManifestMetaNotFound     = errors.New("repodb: image metadata not found for given manifest digest")
+	ErrManifestMetaNotFound     = errors.New("repodb: image metadata not found for given manifest reference")
 	ErrManifestDataNotFound     = errors.New("repodb: image data not found for given manifest digest")
 	ErrIndexDataNotFount        = errors.New("repodb: index data not found for given digest")
 	ErrRepoMetaNotFound         = errors.New("repodb: repo metadata not found for given repo name")

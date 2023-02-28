@@ -438,7 +438,7 @@ func getReferrers(ctx context.Context, routeHandler *RouteHandler,
 			routeHandler.c.Log.Info().Msgf("referrers not found, trying to get referrers to %s:%s by syncing on demand",
 				name, digest)
 
-			errSync := ext.SyncOneImage(ctx, routeHandler.c.Config, routeHandler.c.StoreController,
+			errSync := ext.SyncOneImage(ctx, routeHandler.c.Config, routeHandler.c.RepoDB, routeHandler.c.StoreController,
 				name, digest.String(), sync.OCIReference, routeHandler.c.Log)
 			if errSync != nil {
 				routeHandler.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).Msg("unable to get references")
@@ -1640,7 +1640,7 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 		routeHandler.c.Log.Info().Msgf("trying to get updated image %s:%s by syncing on demand",
 			name, reference)
 
-		errSync := ext.SyncOneImage(ctx, routeHandler.c.Config, routeHandler.c.StoreController,
+		errSync := ext.SyncOneImage(ctx, routeHandler.c.Config, routeHandler.c.RepoDB, routeHandler.c.StoreController,
 			name, reference, "", routeHandler.c.Log)
 		if errSync != nil {
 			routeHandler.c.Log.Err(errSync).Msgf("error encounter while syncing image %s:%s",
@@ -1664,7 +1664,7 @@ func getOrasReferrers(ctx context.Context, routeHandler *RouteHandler,
 			routeHandler.c.Log.Info().Msgf("artifact not found, trying to get artifact %s:%s by syncing on demand",
 				name, digest.String())
 
-			errSync := ext.SyncOneImage(ctx, routeHandler.c.Config, routeHandler.c.StoreController,
+			errSync := ext.SyncOneImage(ctx, routeHandler.c.Config, routeHandler.c.RepoDB, routeHandler.c.StoreController,
 				name, digest.String(), sync.OrasArtifact, routeHandler.c.Log)
 			if errSync != nil {
 				routeHandler.c.Log.Error().Err(err).Str("name", name).Str("digest", digest.String()).Msg("unable to get references")

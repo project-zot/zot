@@ -19,7 +19,7 @@ type RepoDBMock struct {
 
 	SetRepoLogoFn func(repo string, logoPath string) error
 
-	SetRepoTagFn func(repo string, tag string, manifestDigest godigest.Digest, mediaType string) error
+	SetRepoReferenceFn func(repo string, Reference string, manifestDigest godigest.Digest, mediaType string) error
 
 	DeleteRepoTagFn func(repo string, tag string) error
 
@@ -111,9 +111,11 @@ func (sdm RepoDBMock) SetRepoLogo(repo string, logoPath string) error {
 	return nil
 }
 
-func (sdm RepoDBMock) SetRepoTag(repo string, tag string, manifestDigest godigest.Digest, mediaType string) error {
-	if sdm.SetRepoTagFn != nil {
-		return sdm.SetRepoTagFn(repo, tag, manifestDigest, mediaType)
+func (sdm RepoDBMock) SetRepoReference(repo string, reference string, manifestDigest godigest.Digest,
+	mediaType string,
+) error {
+	if sdm.SetRepoReferenceFn != nil {
+		return sdm.SetRepoReferenceFn(repo, reference, manifestDigest, mediaType)
 	}
 
 	return nil
