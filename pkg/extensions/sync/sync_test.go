@@ -447,10 +447,22 @@ func TestORAS(t *testing.T) {
 		err = os.Chmod(path.Join(destDir, testImage, "index.json"), 0o755)
 		So(err, ShouldBeNil)
 
-		resp, err = resty.R().Get(getORASReferrersURL)
+		// trigger getORASRefs err
+		err = os.Chmod(path.Join(srcDir, testImage, "blobs/sha256", adigest.Encoded()), 0o000)
+		So(err, ShouldBeNil)
 
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + digest.String())
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeEmpty)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		err = os.Chmod(path.Join(srcDir, testImage, "blobs/sha256", adigest.Encoded()), 0o755)
+		So(err, ShouldBeNil)
+
+		resp, err = resty.R().Get(getORASReferrersURL)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeEmpty)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		var refs ReferenceList
 
@@ -540,7 +552,7 @@ func TestOnDemand(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 
-		err = os.MkdirAll(path.Join(destDir, testImage), 0o000)
+		err = os.Chmod(path.Join(destDir, testImage), 0o000)
 		if err != nil {
 			panic(err)
 		}
@@ -558,7 +570,7 @@ func TestOnDemand(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 
-		err = os.MkdirAll(path.Join(destDir, testImage, sync.SyncBlobUploadDir), 0o000)
+		err = os.Chmod(path.Join(destDir, testImage, sync.SyncBlobUploadDir), 0o000)
 		if err != nil {
 			panic(err)
 		}
@@ -604,6 +616,16 @@ func TestOnDemand(t *testing.T) {
 		}
 
 		So(destTagsList, ShouldResemble, srcTagsList)
+
+		// trigger canSkipImage error
+		err = os.Chmod(path.Join(destDir, testImage, "index.json"), 0o000)
+		if err != nil {
+			panic(err)
+		}
+
+		resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 500)
 	})
 }
 
@@ -4236,6 +4258,8 @@ func TestSyncSignaturesDiff(t *testing.T) {
 
 			time.Sleep(500 * time.Millisecond)
 		}
+
+		time.Sleep(3 * time.Second)
 
 		splittedURL = strings.SplitAfter(destBaseURL, ":")
 		destPort := splittedURL[len(splittedURL)-1]

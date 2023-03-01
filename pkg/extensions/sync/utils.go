@@ -13,6 +13,8 @@ import (
 
 	"github.com/Masterminds/semver"
 	glob "github.com/bmatcuk/doublestar/v4"
+	"github.com/containers/common/pkg/retry"
+	"github.com/containers/image/v5/copy"
 	"github.com/containers/image/v5/docker"
 	"github.com/containers/image/v5/docker/reference"
 	"github.com/containers/image/v5/manifest"
@@ -635,4 +637,130 @@ func getImageRefManifest(ctx context.Context, upstreamCtx *types.SystemContext, 
 	}
 
 	return manifestBuf, mediaType, nil
+}
+
+func syncImageWithRefs(ctx context.Context, localRepo, upstreamRepo, reference string,
+	upstreamImageRef types.ImageReference, utils syncContextUtils, sig *signaturesCopier,
+	localCachePath string, log log.Logger,
+) (bool, error) {
+	var skipped bool
+
+	imageStore := sig.storeController.GetImageStore(localRepo)
+
+	manifestBuf, mediaType, err := getImageRefManifest(ctx, utils.upstreamCtx, upstreamImageRef, log)
+	if err != nil {
+		return skipped, err
+	}
+
+	upstreamImageDigest := godigest.FromBytes(manifestBuf)
+
+	if !isSupportedMediaType(mediaType) {
+		if mediaType == ispec.MediaTypeArtifactManifest {
+			err = sig.syncOCIArtifact(localRepo, upstreamRepo, reference, manifestBuf) //nolint
+			if err != nil {
+				return skipped, err
+			}
+		}
+
+		return skipped, nil
+	}
+
+	// get upstream signatures
+	cosignManifest, err := sig.getCosignManifest(upstreamRepo, upstreamImageDigest.String())
+	if err != nil {
+		log.Error().Err(err).Msgf("couldn't get upstream image %s cosign manifest", upstreamImageRef.DockerReference())
+	}
+
+	index, err := sig.getOCIRefs(upstreamRepo, upstreamImageDigest.String())
+	if err != nil {
+		log.Error().Err(err).Msgf("couldn't get upstream image %s OCI references", upstreamImageRef.DockerReference())
+	}
+
+	// check if upstream image is signed
+	if cosignManifest == nil && len(getNotationManifestsFromOCIRefs(index)) == 0 {
+		// upstream image not signed
+		if utils.enforceSignatures {
+			// skip unsigned images
+			log.Info().Msgf("skipping image without signature %s", upstreamImageRef.DockerReference())
+			skipped = true
+
+			return skipped, nil
+		}
+	}
+
+	skipImage, err := canSkipImage(localRepo, upstreamImageDigest.String(), upstreamImageDigest, imageStore, log)
+	if err != nil {
+		log.Error().Err(err).Msgf("couldn't check if the upstream image %s can be skipped",
+			upstreamImageRef.DockerReference())
+	}
+
+	if !skipImage {
+		// sync image
+		localImageRef, err := getLocalImageRef(localCachePath, localRepo, reference)
+		if err != nil {
+			log.Error().Str("errorType", common.TypeOf(err)).
+				Err(err).Msgf("couldn't obtain a valid image reference for reference %s/%s:%s",
+				localCachePath, localRepo, reference)
+
+			return skipped, err
+		}
+
+		log.Info().Msgf("copying image %s to %s", upstreamImageRef.DockerReference(), localCachePath)
+
+		if err = retry.RetryIfNecessary(ctx, func() error {
+			_, err = copy.Image(ctx, utils.policyCtx, localImageRef, upstreamImageRef, &utils.copyOptions)
+
+			return err
+		}, utils.retryOptions); err != nil {
+			log.Error().Str("errorType", common.TypeOf(err)).
+				Err(err).Msgf("error while copying image %s to %s",
+				upstreamImageRef.DockerReference(), localCachePath)
+
+			return skipped, err
+		}
+
+		// push from cache to repo
+		err = pushSyncedLocalImage(localRepo, reference, localCachePath, imageStore, log)
+		if err != nil {
+			log.Error().Str("errorType", common.TypeOf(err)).
+				Err(err).Msgf("error while pushing synced cached image %s",
+				fmt.Sprintf("%s/%s:%s", localCachePath, localRepo, reference))
+
+			return skipped, err
+		}
+	} else {
+		log.Info().Msgf("already synced image %s, checking its signatures", upstreamImageRef.DockerReference())
+	}
+
+	// sync signatures
+	if err = retry.RetryIfNecessary(ctx, func() error {
+		err = sig.syncOCIRefs(localRepo, upstreamRepo, upstreamImageDigest.String(), index)
+		if err != nil {
+			return err
+		}
+
+		refs, err := sig.getORASRefs(upstreamRepo, upstreamImageDigest.String())
+		if err != nil && !errors.Is(err, zerr.ErrSyncReferrerNotFound) {
+			return err
+		}
+
+		err = sig.syncORASRefs(localRepo, upstreamRepo, upstreamImageDigest.String(), refs)
+		if err != nil {
+			return err
+		}
+
+		err = sig.syncCosignSignature(localRepo, upstreamRepo, upstreamImageDigest.String(), cosignManifest)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}, utils.retryOptions); err != nil {
+		log.Error().Str("errorType", common.TypeOf(err)).
+			Err(err).Msgf("couldn't copy referrer for %s", upstreamImageRef.DockerReference())
+
+		return skipped, err
+	}
+
+	return skipped, nil
 }
