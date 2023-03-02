@@ -28,10 +28,13 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
+	"zotregistry.io/zot/pkg/extensions/monitoring"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/repodb"
+	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
@@ -418,9 +421,28 @@ func TestNegativeServerResponse(t *testing.T) {
 
 		dir := t.TempDir()
 
-		test.CopyTestFiles("../../test/data/zot-cve-test", path.Join(dir, "zot-cve-test"))
+		imageStore := local.NewImageStore(dir, false, 0, false, false,
+			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil)
 
-		err := os.RemoveAll(path.Join(dir, "zot-cve-test/blobs"))
+		storeController := storage.StoreController{
+			DefaultStore: imageStore,
+		}
+
+		num := 10
+		config, layers, manifest, err := test.GetRandomImageComponents(num)
+		So(err, ShouldBeNil)
+
+		err = test.WriteImageToFileSystem(
+			test.Image{
+				Manifest:  manifest,
+				Layers:    layers,
+				Config:    config,
+				Reference: "0.0.1",
+			}, "zot-cve-test", storeController,
+		)
+		So(err, ShouldBeNil)
+
+		err = os.RemoveAll(path.Join(dir, "zot-cve-test/blobs"))
 		if err != nil {
 			panic(err)
 		}
@@ -500,8 +522,6 @@ func TestServerCVEResponse(t *testing.T) {
 
 	dir := t.TempDir()
 
-	test.CopyTestFiles("../../test/data/zot-cve-test", path.Join(dir, "zot-cve-test"))
-
 	conf.Storage.RootDirectory = dir
 	trivyConfig := &extconf.TrivyConfig{
 		DBRepository: "ghcr.io/project-zot/trivy-db",
@@ -549,6 +569,17 @@ func TestServerCVEResponse(t *testing.T) {
 	defer ctlr.Shutdown()
 
 	test.WaitTillServerReady(url)
+
+	config, layers, manifest, err := test.GetImageComponents(100)
+	if err != nil {
+		panic(err)
+	}
+
+	err = test.PushTestImage("zot-cve-test", "0.0.1", url,
+		manifest, config, layers)
+	if err != nil {
+		panic(err)
+	}
 
 	_, err = test.ReadLogFileAndSearchString(logPath, "DB update completed, next update scheduled", 90*time.Second)
 	if err != nil {
@@ -627,8 +658,7 @@ func TestServerCVEResponse(t *testing.T) {
 		str := space.ReplaceAllString(buff.String(), " ")
 		str = strings.TrimSpace(str)
 		So(err, ShouldBeNil)
-		So(str, ShouldEqual, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE zot-cve-test 0.0.1 "+
-			test.GetTestBlobDigest("zot-cve-test", "manifest").Encoded()[:8]+" N/A false 75MB")
+		So(str, ShouldEqual, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE zot-cve-test 0.0.1 82836dd7 N/A false 548B")
 	})
 
 	Convey("Test images by CVE ID - GQL - invalid CVE ID", t, func() {
@@ -743,8 +773,8 @@ func TestServerCVEResponse(t *testing.T) {
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
 		So(err, ShouldBeNil)
-		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE zot-cve-test 0.0.1 "+
-			test.GetTestBlobDigest("zot-cve-test", "manifest").Encoded()[:8]+" N/A false 75MB")
+		So(strings.TrimSpace(str), ShouldEqual,
+			"IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE zot-cve-test 0.0.1 82836dd7 N/A false 548B")
 	})
 
 	Convey("Test CVE by name and CVE ID - GQL - invalid name and CVE ID", t, func() {
@@ -822,8 +852,7 @@ func TestServerCVEResponse(t *testing.T) {
 		str := space.ReplaceAllString(buff.String(), " ")
 		str = strings.TrimSpace(str)
 		So(err, ShouldBeNil)
-		So(str, ShouldEqual, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE zot-cve-test 0.0.1 "+
-			test.GetTestBlobDigest("zot-cve-test", "manifest").Encoded()[:8]+" linux/amd64 false 75MB")
+		So(str, ShouldEqual, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE zot-cve-test 0.0.1 82836dd7 linux/amd64 false 548B")
 	})
 
 	Convey("Test images by CVE ID - invalid CVE ID", t, func() {
@@ -907,8 +936,8 @@ func TestServerCVEResponse(t *testing.T) {
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
 		So(err, ShouldBeNil)
-		So(strings.TrimSpace(str), ShouldEqual, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE zot-cve-test 0.0.1 "+
-			test.GetTestBlobDigest("zot-cve-test", "manifest").Encoded()[:8]+" linux/amd64 false 75MB")
+		So(strings.TrimSpace(str), ShouldEqual,
+			"IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE zot-cve-test 0.0.1 82836dd7 linux/amd64 false 548B")
 	})
 
 	Convey("Test CVE by name and CVE ID - invalid name and CVE ID", t, func() {
@@ -924,7 +953,8 @@ func TestServerCVEResponse(t *testing.T) {
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
 		So(err, ShouldBeNil)
-		So(strings.TrimSpace(str), ShouldNotContainSubstring, "IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE")
+		So(strings.TrimSpace(str), ShouldNotContainSubstring,
+			"IMAGE NAME TAG DIGEST OS/ARCH SIGNED SIZE")
 	})
 }
 

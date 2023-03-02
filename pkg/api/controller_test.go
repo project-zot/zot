@@ -6779,6 +6779,40 @@ func TestDistSpecExtensions(t *testing.T) {
 	})
 }
 
+func TestHTTPOptionsResponse(t *testing.T) {
+	Convey("Test http options response", t, func() {
+		conf := config.New()
+		port := test.GetFreePort()
+		conf.HTTP.Port = port
+		baseURL := test.GetBaseURL(port)
+
+		ctlr := api.NewController(conf)
+
+		firstDir := t.TempDir()
+
+		secondDir := t.TempDir()
+		defer os.RemoveAll(firstDir)
+		defer os.RemoveAll(secondDir)
+
+		ctlr.Config.Storage.RootDirectory = firstDir
+		subPaths := make(map[string]config.StorageConfig)
+		subPaths["/a"] = config.StorageConfig{
+			RootDirectory: secondDir,
+		}
+
+		ctlr.Config.Storage.SubPaths = subPaths
+		ctrlManager := test.NewControllerManager(ctlr)
+
+		ctrlManager.StartAndWait(port)
+
+		resp, _ := resty.R().Options(baseURL + constants.RoutePrefix + constants.ExtCatalogPrefix)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
+
+		defer ctrlManager.StopServer()
+	})
+}
+
 func getAllBlobs(imagePath string) []string {
 	blobList := make([]string, 0)
 
