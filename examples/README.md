@@ -305,11 +305,41 @@ In order to test the Metrics feature locally in a [Kind](https://kind.sigs.k8s.i
 ## Storage Drivers
 
 Beside filesystem storage backend, zot also supports S3 storage backend, check below url to see how to configure it:
-- [s3](https://github.com/docker/docker.github.io/blob/master/registry/storage-drivers/s3.md): A driver storing objects in an Amazon Simple Storage Service (S3) bucket.
+- [s3 config](https://github.com/docker/docker.github.io/blob/master/registry/storage-drivers/s3.md): A driver storing objects in an Amazon Simple Storage Service (S3) bucket.
 
 For an s3 zot configuration with multiple storage drivers see: [s3-config](config-s3.json).
 
 zot also supports different storage drivers for each subpath.
+
+### S3 permissions scopes
+
+The following AWS policy is required by zot for push and pull. Make sure to replace S3_BUCKET_NAME with the name of your bucket.
+
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListBucket",
+        "s3:GetBucketLocation",
+        "s3:ListBucketMultipartUploads"
+      ],
+      "Resource": "arn:aws:s3:::S3_BUCKET_NAME"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:GetObject",
+        "s3:DeleteObject",
+        "s3:ListMultipartUploadParts",
+        "s3:AbortMultipartUpload"
+      ],
+      "Resource": "arn:aws:s3:::S3_BUCKET_NAME/*"
+    }
+  ]
+}
 
 ### Specifying S3 credentials
 
@@ -372,7 +402,74 @@ AWS_PROFILE=test-account
 
 For more details see https://docs.aws.amazon.com/sdk-for-go/v1/developer-guide/configuring-sdk.html#specifying-credentials
 
+## Cache drivers
 
+zot supports two types of cache drivers: boltdb which is local and dynamodb which is remote.
+They are used when dedupe is enabled to store duplicate blobs.
+
+### BoltDB
+
+Like s3 configuration, if you don't specify a cache driver it will default to 'boltdb' and it wil be stored in zot's root directory or subpath root directory
+```
+  "storage": {
+    "rootDirectory": "/tmp/zot",
+    "dedupe": true
+  }
+```
+boltdb can be found at /tmp/zot/cache.db
+
+### DynamoDB
+
+To set up a zot with dedupe enabled and dynamodb as a cache driver, "cacheDriver" field should be included under 'storage'
+```
+    "storage": {
+        "rootDirectory": "/tmp/zot",
+        "dedupe": true,
+        "remoteCache": true,
+        "cacheDriver": {
+            "name": "dynamodb",  // driver name
+            "endpoint": "http://localhost:4566", // aws endpoint
+            "region": "us-east-2" // aws region
+            "cacheTablename": "ZotBlobTable" // table used to store deduped blobs
+
+        }
+    },
+```
+Like s3 configuration AWS GO SDK will load additional config and credentials values from the environment variables, shared credentials, and shared configuration files
+
+Additionally if search extension is enabled, additional parameters are needed:
+
+```
+        "cacheDriver": {
+            "name": "dynamodb",
+            "endpoint": "http://localhost:4566",
+            "region": "us-east-2",
+            "cacheTablename": "ZotBlobTable",
+            // used by search extensions
+            "repoMetaTablename": "ZotRepoMetadataTable",
+            "manifestDataTablename": "ZotManifestDataTable",
+            "versionTablename": "ZotVersion"
+        }
+```
+
+### DynamoDB permission scopes
+The following AWS policy is required by zot for caching blobs. Make sure to replace DYNAMODB_TABLE with the name of your table which in our case is the value of "cacheTablename" (ZotBlobTable)
+
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:CreateTable",
+        "dynamodb:GetItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem"
+      ],
+      "Resource": "arn:aws:dynamodb:*:*:table/DYNAMODB_TABLE"
+    }
+  ]
+}
 
 ## Sync
 
