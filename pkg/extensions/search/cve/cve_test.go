@@ -509,11 +509,20 @@ func TestCVESearch(t *testing.T) {
 
 		ctrlManager.StartAndWait(port)
 
+		// trivy db download fail
+		err = os.Mkdir(dbDir+"/_trivy", 0o000)
+		So(err, ShouldBeNil)
+		found, err := ReadLogFileAndSearchString(logPath, "Error downloading Trivy DB to destination dir", 180*time.Second)
+		So(err, ShouldBeNil)
+		So(found, ShouldBeTrue)
+
+		err = os.Chmod(dbDir+"/_trivy", 0o755)
+		So(err, ShouldBeNil)
+
 		// Wait for trivy db to download
-		_, err = ReadLogFileAndSearchString(logPath, "DB update completed, next update scheduled", 90*time.Second)
-		if err != nil {
-			panic(err)
-		}
+		found, err = ReadLogFileAndSearchString(logPath, "DB update completed, next update scheduled", 180*time.Second)
+		So(err, ShouldBeNil)
+		So(found, ShouldBeTrue)
 
 		defer ctrlManager.StopServer()
 
