@@ -17,6 +17,7 @@ import (
 	"zotregistry.io/zot/pkg/meta/bolt"
 	"zotregistry.io/zot/pkg/meta/common"
 	"zotregistry.io/zot/pkg/meta/repodb"
+	"zotregistry.io/zot/pkg/meta/signatures"
 	"zotregistry.io/zot/pkg/meta/version"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 )
@@ -726,6 +727,102 @@ func (bdw *DBWrapper) IncrementImageDownloads(repo string, reference string) err
 	return err
 }
 
+func (bdw *DBWrapper) UpdateSignaturesValidity(repo string, manifestDigest godigest.Digest) error {
+	err := bdw.DB.Update(func(transaction *bbolt.Tx) error {
+		// get ManifestData of signed manifest
+		manifestBuck := transaction.Bucket([]byte(bolt.ManifestDataBucket))
+		mdBlob := manifestBuck.Get([]byte(manifestDigest))
+
+		var blob []byte
+
+		if len(mdBlob) != 0 {
+			var manifestData repodb.ManifestData
+
+			err := json.Unmarshal(mdBlob, &manifestData)
+			if err != nil {
+				return fmt.Errorf("repodb: %w error while unmashaling manifest meta for digest %s", err, manifestDigest)
+			}
+
+			blob = manifestData.ManifestBlob
+		} else {
+			var indexData repodb.IndexData
+
+			indexBuck := transaction.Bucket([]byte(bolt.IndexDataBucket))
+			idBlob := indexBuck.Get([]byte(manifestDigest))
+
+			if len(idBlob) == 0 {
+				// manifest meta not found, updating signatures with details about validity and author will not be performed
+				return nil
+			}
+
+			err := json.Unmarshal(idBlob, &indexData)
+			if err != nil {
+				return fmt.Errorf("repodb: %w error while unmashaling index meta for digest %s", err, manifestDigest)
+			}
+
+			blob = indexData.IndexBlob
+		}
+
+		// update signatures with details about validity and author
+		repoBuck := transaction.Bucket([]byte(bolt.RepoMetadataBucket))
+
+		repoMetaBlob := repoBuck.Get([]byte(repo))
+		if repoMetaBlob == nil {
+			return zerr.ErrRepoMetaNotFound
+		}
+
+		var repoMeta repodb.RepoMetadata
+
+		err := json.Unmarshal(repoMetaBlob, &repoMeta)
+		if err != nil {
+			return err
+		}
+
+		manifestSignatures := repodb.ManifestSignatures{}
+		for sigType, sigs := range repoMeta.Signatures[manifestDigest.String()] {
+			signaturesInfo := []repodb.SignatureInfo{}
+
+			for _, sigInfo := range sigs {
+				layersInfo := []repodb.LayerInfo{}
+
+				for _, layerInfo := range sigInfo.LayersInfo {
+					author, date, isTrusted, _ := signatures.VerifySignature(sigType, layerInfo.LayerContent, layerInfo.SignatureKey,
+						manifestDigest, blob, repo)
+
+					if isTrusted {
+						layerInfo.Signer = author
+					}
+
+					if !date.IsZero() {
+						layerInfo.Signer = author
+						layerInfo.Date = date
+					}
+
+					layersInfo = append(layersInfo, layerInfo)
+				}
+
+				signaturesInfo = append(signaturesInfo, repodb.SignatureInfo{
+					SignatureManifestDigest: sigInfo.SignatureManifestDigest,
+					LayersInfo:              layersInfo,
+				})
+			}
+
+			manifestSignatures[sigType] = signaturesInfo
+		}
+
+		repoMeta.Signatures[manifestDigest.String()] = manifestSignatures
+
+		repoMetaBlob, err = json.Marshal(repoMeta)
+		if err != nil {
+			return err
+		}
+
+		return repoBuck.Put([]byte(repo), repoMetaBlob)
+	})
+
+	return err
+}
+
 func (bdw *DBWrapper) AddManifestSignature(repo string, signedManifestDigest godigest.Digest,
 	sygMeta repodb.SignatureMetadata,
 ) error {
@@ -780,10 +877,17 @@ func (bdw *DBWrapper) AddManifestSignature(repo string, signedManifestDigest god
 
 		signatureSlice := manifestSignatures[sygMeta.SignatureType]
 		if !common.SignatureAlreadyExists(signatureSlice, sygMeta) {
-			signatureSlice = append(signatureSlice, repodb.SignatureInfo{
-				SignatureManifestDigest: sygMeta.SignatureDigest,
-				LayersInfo:              sygMeta.LayersInfo,
-			})
+			if sygMeta.SignatureType == signatures.NotationSignature {
+				signatureSlice = append(signatureSlice, repodb.SignatureInfo{
+					SignatureManifestDigest: sygMeta.SignatureDigest,
+					LayersInfo:              sygMeta.LayersInfo,
+				})
+			} else if sygMeta.SignatureType == signatures.CosignSignature {
+				signatureSlice = []repodb.SignatureInfo{{
+					SignatureManifestDigest: sygMeta.SignatureDigest,
+					LayersInfo:              sygMeta.LayersInfo,
+				}}
+			}
 		}
 
 		manifestSignatures[sygMeta.SignatureType] = signatureSlice

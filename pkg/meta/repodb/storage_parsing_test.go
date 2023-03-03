@@ -22,6 +22,7 @@ import (
 	"zotregistry.io/zot/pkg/meta/repodb"
 	bolt_wrapper "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
 	dynamo_wrapper "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper"
+	"zotregistry.io/zot/pkg/meta/signatures"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
@@ -242,6 +243,7 @@ func TestParseStorageErrors(t *testing.T) {
 						Digest: "123",
 					},
 					ArtifactType: "application/vnd.cncf.notary.signature",
+					Layers:       []ispec.Descriptor{{MediaType: ispec.MediaTypeImageLayer}},
 				}
 
 				manifestBlob, err := json.Marshal(manifestContent)
@@ -257,6 +259,100 @@ func TestParseStorageErrors(t *testing.T) {
 					return ErrTestError
 				}
 
+				err = repodb.ParseRepo("repo", repoDB, storeController, log)
+				So(err, ShouldNotBeNil)
+
+				repoDB.AddManifestSignatureFn = func(repo string, signedManifestDigest godigest.Digest,
+					sm repodb.SignatureMetadata,
+				) error {
+					return nil
+				}
+
+				repoDB.UpdateSignaturesValidityFn = func(repo string, signedManifestDigest godigest.Digest,
+				) error {
+					return ErrTestError
+				}
+
+				err = repodb.ParseRepo("repo", repoDB, storeController, log)
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("GetSignatureLayersInfo errors", func() {
+				// get notation signature layers info
+				badNotationManifestContent := ispec.Manifest{
+					Subject: &ispec.Descriptor{
+						Digest: "123",
+					},
+					ArtifactType: "application/vnd.cncf.notary.signature",
+				}
+
+				badNotationManifestBlob, err := json.Marshal(badNotationManifestContent)
+				So(err, ShouldBeNil)
+
+				imageStore.GetImageManifestFn = func(repo, reference string) ([]byte, godigest.Digest, string, error) {
+					return badNotationManifestBlob, "", "", nil
+				}
+
+				// wrong number of layers of notation manifest
+				err = repodb.ParseRepo("repo", repoDB, storeController, log)
+				So(err, ShouldNotBeNil)
+
+				notationManifestContent := ispec.Manifest{
+					Subject: &ispec.Descriptor{
+						Digest: "123",
+					},
+					ArtifactType: "application/vnd.cncf.notary.signature",
+					Layers:       []ispec.Descriptor{{MediaType: ispec.MediaTypeImageLayer}},
+				}
+
+				notationManifestBlob, err := json.Marshal(notationManifestContent)
+				So(err, ShouldBeNil)
+
+				imageStore.GetImageManifestFn = func(repo, reference string) ([]byte, godigest.Digest, string, error) {
+					return notationManifestBlob, "", "", nil
+				}
+
+				imageStore.GetBlobContentFn = func(repo string, digest godigest.Digest) ([]byte, error) {
+					return []byte{}, ErrTestError
+				}
+
+				// unable to get layer content
+				err = repodb.ParseRepo("repo", repoDB, storeController, log)
+				So(err, ShouldNotBeNil)
+
+				_, _, cosignManifestContent, _ := test.GetRandomImageComponents(10)
+				_, _, signedManifest, _ := test.GetRandomImageComponents(10)
+				signatureTag, err := test.GetCosignSignatureTagForManifest(signedManifest)
+				So(err, ShouldBeNil)
+
+				cosignManifestContent.Annotations = map[string]string{ispec.AnnotationRefName: signatureTag}
+
+				cosignManifestBlob, err := json.Marshal(cosignManifestContent)
+				So(err, ShouldBeNil)
+
+				imageStore.GetImageManifestFn = func(repo, reference string) ([]byte, godigest.Digest, string, error) {
+					return cosignManifestBlob, "", "", nil
+				}
+
+				indexContent := ispec.Index{
+					Manifests: []ispec.Descriptor{
+						{
+							Digest:    godigest.FromString("cosignSig"),
+							MediaType: ispec.MediaTypeImageManifest,
+							Annotations: map[string]string{
+								ispec.AnnotationRefName: signatureTag,
+							},
+						},
+					},
+				}
+				indexBlob, err := json.Marshal(indexContent)
+				So(err, ShouldBeNil)
+
+				imageStore.GetIndexContentFn = func(repo string) ([]byte, error) {
+					return indexBlob, nil
+				}
+
+				// unable to get layer content
 				err = repodb.ParseRepo("repo", repoDB, storeController, log)
 				So(err, ShouldNotBeNil)
 			})
@@ -533,4 +629,23 @@ func skipIt(t *testing.T) {
 	if os.Getenv("S3MOCK_ENDPOINT") == "" {
 		t.Skip("Skipping testing without AWS S3 mock server")
 	}
+}
+
+func TestGetSignatureLayersInfo(t *testing.T) {
+	Convey("wrong signature type", t, func() {
+		layers, err := repodb.GetSignatureLayersInfo("repo", "tag", "123", "wrong signature type", []byte{},
+			nil, log.NewLogger("debug", ""))
+		So(err, ShouldBeNil)
+		So(layers, ShouldBeEmpty)
+	})
+
+	Convey("error while unmarshaling manifest content", t, func() {
+		_, err := repodb.GetSignatureLayersInfo("repo", "tag", "123", signatures.CosignSignature, []byte("bad manifest"),
+			nil, log.NewLogger("debug", ""))
+		So(err, ShouldNotBeNil)
+
+		_, err = repodb.GetSignatureLayersInfo("repo", "tag", "123", signatures.NotationSignature, []byte("bad manifest"),
+			nil, log.NewLogger("debug", ""))
+		So(err, ShouldNotBeNil)
+	})
 }

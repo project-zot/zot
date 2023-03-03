@@ -22,6 +22,7 @@ import (
 	syncconf "zotregistry.io/zot/pkg/extensions/config/sync"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/repodb"
+	"zotregistry.io/zot/pkg/meta/signatures"
 	"zotregistry.io/zot/pkg/storage"
 )
 
@@ -194,7 +195,7 @@ func (sig *signaturesCopier) syncCosignSignature(localRepo, remoteRepo, digestSt
 			Msg("trying to sync cosign signature for repo digest")
 
 		err := sig.repoDB.AddManifestSignature(localRepo, godigest.Digest(digestStr), repodb.SignatureMetadata{
-			SignatureType:   repodb.CosignType,
+			SignatureType:   signatures.CosignSignature,
 			SignatureDigest: signatureDigest.String(),
 		})
 		if err != nil {
@@ -274,7 +275,7 @@ func (sig *signaturesCopier) syncORASRefs(localRepo, remoteRepo, digestStr strin
 				Msg("trying to sync oras artifact for digest")
 
 			err := sig.repoDB.AddManifestSignature(localRepo, godigest.Digest(digestStr), repodb.SignatureMetadata{
-				SignatureType:   repodb.NotationType,
+				SignatureType:   signatures.NotationSignature,
 				SignatureDigest: signatureDigest.String(),
 			})
 			if err != nil {

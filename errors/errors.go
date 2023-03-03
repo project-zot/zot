@@ -89,4 +89,7 @@ var (
 	ErrUserDataNotAllowed             = errors.New("repodb: user data operations are not allowed")
 	ErrCouldNotPersistData            = errors.New("repodb: could not persist to db")
 	ErrDedupeRebuild                  = errors.New("dedupe: couldn't rebuild dedupe index")
+	ErrSignConfigDirNotSet            = errors.New("signatures: signature config dir not set")
+	ErrBadManifestDigest              = errors.New("signatures: bad manifest digest")
+	ErrInvalidSignatureType           = errors.New("signatures: invalid signature type")
 )

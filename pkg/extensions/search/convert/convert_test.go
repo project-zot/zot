@@ -385,3 +385,43 @@ func TestLabels(t *testing.T) {
 		So(vendor, ShouldEqual, "zot-vendor")
 	})
 }
+
+func TestGetSignaturesInfo(t *testing.T) {
+	Convey("Test get signatures info - cosign", t, func() {
+		indexDigest := godigest.FromString("123")
+		repoMeta := repodb.RepoMetadata{
+			Signatures: map[string]repodb.ManifestSignatures{string(indexDigest): {"cosign": []repodb.SignatureInfo{{
+				LayersInfo: []repodb.LayerInfo{{LayerContent: []byte{}, LayerDigest: "", SignatureKey: "", Signer: "author"}},
+			}}}},
+		}
+
+		signaturesSummary := convert.GetSignaturesInfo(true, repoMeta, indexDigest)
+		So(signaturesSummary, ShouldNotBeEmpty)
+		So(*signaturesSummary[0].Author, ShouldEqual, "author")
+		So(*signaturesSummary[0].IsTrusted, ShouldEqual, true)
+		So(*signaturesSummary[0].Tool, ShouldEqual, "cosign")
+	})
+
+	Convey("Test get signatures info - notation", t, func() {
+		indexDigest := godigest.FromString("123")
+		repoMeta := repodb.RepoMetadata{
+			Signatures: map[string]repodb.ManifestSignatures{string(indexDigest): {"notation": []repodb.SignatureInfo{{
+				LayersInfo: []repodb.LayerInfo{
+					{
+						LayerContent: []byte{},
+						LayerDigest:  "",
+						SignatureKey: "",
+						Signer:       "author",
+						Date:         time.Now().AddDate(0, 0, -1),
+					},
+				},
+			}}}},
+		}
+
+		signaturesSummary := convert.GetSignaturesInfo(true, repoMeta, indexDigest)
+		So(signaturesSummary, ShouldNotBeEmpty)
+		So(*signaturesSummary[0].Author, ShouldEqual, "author")
+		So(*signaturesSummary[0].IsTrusted, ShouldEqual, false)
+		So(*signaturesSummary[0].Tool, ShouldEqual, "notation")
+	})
+}

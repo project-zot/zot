@@ -21,6 +21,7 @@ import (
 	"zotregistry.io/zot/pkg/meta/common"
 	"zotregistry.io/zot/pkg/meta/dynamo"
 	"zotregistry.io/zot/pkg/meta/repodb" //nolint:go-staticcheck
+	"zotregistry.io/zot/pkg/meta/signatures"
 	"zotregistry.io/zot/pkg/meta/version"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 )
@@ -616,6 +617,10 @@ func (dwr *DBWrapper) IncrementImageDownloads(repo string, reference string) err
 	return dwr.SetRepoMeta(repo, repoMeta)
 }
 
+func (dwr *DBWrapper) UpdateSignaturesValidity(repo string, manifestDigest godigest.Digest) error {
+	return nil
+}
+
 func (dwr *DBWrapper) AddManifestSignature(repo string, signedManifestDigest godigest.Digest,
 	sygMeta repodb.SignatureMetadata,
 ) error {
@@ -656,10 +661,17 @@ func (dwr *DBWrapper) AddManifestSignature(repo string, signedManifestDigest god
 
 	signatureSlice := manifestSignatures[sygMeta.SignatureType]
 	if !common.SignatureAlreadyExists(signatureSlice, sygMeta) {
-		signatureSlice = append(signatureSlice, repodb.SignatureInfo{
-			SignatureManifestDigest: sygMeta.SignatureDigest,
-			LayersInfo:              sygMeta.LayersInfo,
-		})
+		if sygMeta.SignatureType == signatures.NotationSignature {
+			signatureSlice = append(signatureSlice, repodb.SignatureInfo{
+				SignatureManifestDigest: sygMeta.SignatureDigest,
+				LayersInfo:              sygMeta.LayersInfo,
+			})
+		} else if sygMeta.SignatureType == signatures.CosignSignature {
+			signatureSlice = []repodb.SignatureInfo{{
+				SignatureManifestDigest: sygMeta.SignatureDigest,
+				LayersInfo:              sygMeta.LayersInfo,
+			}}
+		}
 	}
 
 	manifestSignatures[sygMeta.SignatureType] = signatureSlice

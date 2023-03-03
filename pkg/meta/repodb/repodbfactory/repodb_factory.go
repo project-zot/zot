@@ -12,6 +12,7 @@ import (
 	"zotregistry.io/zot/pkg/meta/repodb"
 	boltdb_wrapper "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
 	dynamodb_wrapper "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper"
+	"zotregistry.io/zot/pkg/meta/signatures"
 )
 
 func New(storageConfig config.StorageConfig, log log.Logger) (repodb.RepoDB, error) {
@@ -30,6 +31,11 @@ func New(storageConfig config.StorageConfig, log log.Logger) (repodb.RepoDB, err
 	params.RootDir = storageConfig.RootDirectory
 
 	driver, err := bolt.GetBoltDriver(params)
+	if err != nil {
+		return nil, err
+	}
+
+	err = signatures.InitCosignAndNotationDirs(params.RootDir)
 	if err != nil {
 		return nil, err
 	}

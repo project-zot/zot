@@ -243,6 +243,8 @@ func ImageIndex2ImageSummary(ctx context.Context, repo, tag string, indexDigest 
 
 	annotations := GetAnnotations(indexContent.Annotations, map[string]string{})
 
+	signaturesInfo := GetSignaturesInfo(isSigned, repoMeta, indexDigest)
+
 	indexSummary := gql_generated.ImageSummary{
 		RepoName:      &repo,
 		Tag:           &tag,
@@ -251,6 +253,7 @@ func ImageIndex2ImageSummary(ctx context.Context, repo, tag string, indexDigest 
 		Manifests:     manifestSummaries,
 		LastUpdated:   &indexLastUpdated,
 		IsSigned:      &isSigned,
+		SignatureInfo: signaturesInfo,
 		Size:          &indexSize,
 		DownloadCount: &totalDownloadCount,
 		Description:   &annotations.Description,
@@ -354,6 +357,8 @@ func ImageManifest2ImageSummary(ctx context.Context, repo, tag string, digest go
 		}
 	}
 
+	signaturesInfo := GetSignaturesInfo(isSigned, repoMeta, digest)
+
 	imageSummary := gql_generated.ImageSummary{
 		RepoName:  &repoName,
 		Tag:       &tag,
@@ -366,6 +371,7 @@ func ImageManifest2ImageSummary(ctx context.Context, repo, tag string, digest go
 				LastUpdated:   &imageLastUpdated,
 				Size:          &imageSize,
 				IsSigned:      &isSigned,
+				SignatureInfo: signaturesInfo,
 				Platform:      &platform,
 				DownloadCount: &downloadCount,
 				Layers:        getLayersSummaries(manifestContent),
@@ -380,6 +386,7 @@ func ImageManifest2ImageSummary(ctx context.Context, repo, tag string, digest go
 		},
 		LastUpdated:   &imageLastUpdated,
 		IsSigned:      &isSigned,
+		SignatureInfo: signaturesInfo,
 		Size:          &imageSize,
 		DownloadCount: &downloadCount,
 		Description:   &annotations.Description,
@@ -511,6 +518,8 @@ func ImageManifest2ManifestSummary(ctx context.Context, repo, tag string, descri
 		}
 	}
 
+	signaturesInfo := GetSignaturesInfo(isSigned, repoMeta, digest)
+
 	manifestSummary := gql_generated.ManifestSummary{
 		Digest:        &manifestDigestStr,
 		ConfigDigest:  &configDigest,
@@ -521,6 +530,7 @@ func ImageManifest2ManifestSummary(ctx context.Context, repo, tag string, descri
 		Layers:        getLayersSummaries(manifestContent),
 		History:       historyEntries,
 		IsSigned:      &isSigned,
+		SignatureInfo: signaturesInfo,
 		Vulnerabilities: &gql_generated.ImageVulnerabilitySummary{
 			MaxSeverity: &imageCveSummary.MaxSeverity,
 			Count:       &imageCveSummary.Count,
@@ -743,4 +753,45 @@ func GetPreloadString(prefix, name string) string {
 	}
 
 	return name
+}
+
+func GetSignaturesInfo(isSigned bool, repoMeta repodb.RepoMetadata, indexDigest godigest.Digest,
+) []*gql_generated.SignatureSummary {
+	signaturesInfo := []*gql_generated.SignatureSummary{}
+
+	if !isSigned {
+		return signaturesInfo
+	}
+
+	for sigType, signatures := range repoMeta.Signatures[indexDigest.String()] {
+		for _, sig := range signatures {
+			for _, layer := range sig.LayersInfo {
+				var (
+					isTrusted bool
+					author    string
+					tool      string
+				)
+
+				if layer.Signer != "" {
+					author = layer.Signer
+
+					if !layer.Date.IsZero() && time.Now().After(layer.Date) {
+						isTrusted = false
+					} else {
+						isTrusted = true
+					}
+				} else {
+					isTrusted = false
+					author = ""
+				}
+
+				tool = sigType
+
+				signaturesInfo = append(signaturesInfo,
+					&gql_generated.SignatureSummary{Tool: &tool, IsTrusted: &isTrusted, Author: &author})
+			}
+		}
+	}
+
+	return signaturesInfo
 }
