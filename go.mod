@@ -136,7 +136,7 @@ require (
 	github.com/shopspring/decimal v1.2.0 // indirect
 	github.com/spdx/tools-golang v0.3.0 // indirect
 	github.com/tetratelabs/wazero v1.0.0-pre.7 // indirect
-	github.com/urfave/cli/v2 v2.8.1 // indirect
+	github.com/urfave/cli/v2 v2.10.3 // indirect
 	github.com/xeipuuv/gojsonschema v1.2.0 // indirect
 	github.com/xlab/treeprint v1.1.0 // indirect
 	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
@@ -429,7 +429,7 @@ require (
 	github.com/twitchtv/twirp v8.1.2+incompatible // indirect
 	github.com/ulikunitz/xz v0.5.10 // indirect
 	github.com/urfave/cli v1.22.7 // indirect
-	github.com/vbatts/go-mtree v0.5.0 // indirect
+	github.com/vbatts/go-mtree v0.5.2 // indirect
 	github.com/vbatts/tar-split v0.11.2 // indirect
 	github.com/vbauerster/mpb/v7 v7.5.3 // indirect
 	github.com/xanzy/go-gitlab v0.73.1 // indirect
@@ -501,4 +501,7 @@ require (
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
 
-replace helm.sh/helm/v3 => helm.sh/helm/v3 v3.10.3
+replace (
+	github.com/opencontainers/umoci => github.com/project-stacker/umoci v0.0.0-20230228184813-24efbd35e8ef
+	helm.sh/helm/v3 => helm.sh/helm/v3 v3.10.3
+)

@@ -5205,12 +5205,12 @@ func TestManifestImageIndex(t *testing.T) {
 			index.SchemaVersion = 2
 			index.Manifests = []ispec.Descriptor{
 				{
-					MediaType: ispec.MediaTypeImageIndex,
+					MediaType: ispec.MediaTypeImageManifest,
 					Digest:    digest,
 					Size:      int64(len(content)),
 				},
 				{
-					MediaType: ispec.MediaTypeImageIndex,
+					MediaType: ispec.MediaTypeImageManifest,
 					Digest:    m2dgst,
 					Size:      int64(m2size),
 				},
@@ -5261,12 +5261,12 @@ func TestManifestImageIndex(t *testing.T) {
 			index.SchemaVersion = 2
 			index.Manifests = []ispec.Descriptor{
 				{
-					MediaType: ispec.MediaTypeImageIndex,
+					MediaType: ispec.MediaTypeImageManifest,
 					Digest:    digest,
 					Size:      int64(len(content)),
 				},
 				{
-					MediaType: ispec.MediaTypeImageIndex,
+					MediaType: ispec.MediaTypeImageManifest,
 					Digest:    m2dgst,
 					Size:      int64(m2size),
 				},
@@ -5316,7 +5316,7 @@ func TestManifestImageIndex(t *testing.T) {
 				index.SchemaVersion = 2
 				index.Manifests = []ispec.Descriptor{
 					{
-						MediaType: ispec.MediaTypeImageIndex,
+						MediaType: ispec.MediaTypeImageManifest,
 						Digest:    m4dgst,
 						Size:      int64(m4size),
 					},
@@ -5340,7 +5340,7 @@ func TestManifestImageIndex(t *testing.T) {
 				index.SchemaVersion = 2
 				index.Manifests = []ispec.Descriptor{
 					{
-						MediaType: ispec.MediaTypeImageIndex,
+						MediaType: ispec.MediaTypeImageManifest,
 						Digest:    m4dgst,
 						Size:      int64(m4size),
 					},
@@ -5432,7 +5432,7 @@ func TestManifestImageIndex(t *testing.T) {
 				index.SchemaVersion = 2
 				index.Manifests = []ispec.Descriptor{
 					{
-						MediaType: ispec.MediaTypeImageIndex,
+						MediaType: ispec.MediaTypeImageManifest,
 						Digest:    digest,
 						Size:      int64(len(content)),
 					},
