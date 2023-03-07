@@ -1962,17 +1962,22 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 
 func TestRelevanceSorting(t *testing.T) {
 	Convey("Test Relevance Sorting", t, func() {
-		So(common.ScoreRepoName("alpine", "alpine"), ShouldEqual, 1)
-		So(common.ScoreRepoName("test/alpine", "alpine"), ShouldEqual, -1)
-		So(common.ScoreRepoName("alpine", "test/alpine"), ShouldEqual, 1)
-		So(common.ScoreRepoName("test", "test/alpine"), ShouldEqual, 10)
-		So(common.ScoreRepoName("pine", "test/alpine"), ShouldEqual, 3)
-		So(common.ScoreRepoName("pine", "alpine/alpine"), ShouldEqual, 3)
-		So(common.ScoreRepoName("pine", "alpine/test"), ShouldEqual, 30)
-		So(common.ScoreRepoName("test/pine", "alpine"), ShouldEqual, -1)
-		So(common.ScoreRepoName("repo/test", "repo/test/alpine"), ShouldEqual, 1)
-		So(common.ScoreRepoName("repo/test/golang", "repo/test2/alpine"), ShouldEqual, -1)
-		So(common.ScoreRepoName("repo/test/pine", "repo/test/alpine"), ShouldEqual, 3)
+		So(common.RankRepoName("alpine", "alpine"), ShouldEqual, 0)
+		So(common.RankRepoName("test/alpine", "test/alpine"), ShouldEqual, 0)
+		So(common.RankRepoName("test/alpine", "alpine"), ShouldEqual, -1)
+		So(common.RankRepoName("alpine", "test/alpine"), ShouldEqual, 1)
+		So(common.RankRepoName("test", "test/alpine"), ShouldEqual, 10)
+		So(common.RankRepoName("pine", "test/alpine"), ShouldEqual, 3)
+		So(common.RankRepoName("pine", "alpine/alpine"), ShouldEqual, 3)
+		So(common.RankRepoName("pine", "alpine/test"), ShouldEqual, 30)
+		So(common.RankRepoName("test/pine", "alpine"), ShouldEqual, -1)
+		So(common.RankRepoName("repo/test", "repo/test/alpine"), ShouldEqual, 10)
+		So(common.RankRepoName("repo/test/golang", "repo/test2/alpine"), ShouldEqual, -1)
+		So(common.RankRepoName("repo/test/pine", "repo/test/alpine"), ShouldEqual, 3)
+		So(common.RankRepoName("debian", "c3/debian/base-amd64"), ShouldEqual, 400)
+		So(common.RankRepoName("debian/base-amd64", "c3/debian/base-amd64"), ShouldEqual, 400)
+		So(common.RankRepoName("debian/base-amd64", "c3/aux/debian/base-amd64"), ShouldEqual, 800)
+		So(common.RankRepoName("aux/debian", "c3/aux/debian/base-amd64"), ShouldEqual, 400)
 
 		Convey("Integration", func() {
 			filePath := path.Join(t.TempDir(), "repo.db")

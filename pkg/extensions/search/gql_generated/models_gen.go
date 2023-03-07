@@ -114,8 +114,6 @@ type ImageSummary struct {
 	Labels *string `json:"Labels"`
 	// Human-readable title of the image
 	Title *string `json:"Title"`
-	// Integer used to rank search results by relevance
-	Score *int `json:"Score"`
 	// URL to get source code for building the image
 	Source *string `json:"Source"`
 	// URL to get documentation on the image
@@ -152,8 +150,6 @@ type LayerSummary struct {
 	Size *string `json:"Size"`
 	// Digest of the layer content
 	Digest *string `json:"Digest"`
-	// Integer used to rank search results by relevance
-	Score *int `json:"Score"`
 }
 
 // Details about a specific version of an image for a certain operating system and architecture.
@@ -276,8 +272,6 @@ type RepoSummary struct {
 	Platforms []*Platform `json:"Platforms"`
 	// Vendors associated with this image, the distributing entities, organizations or individuals
 	Vendors []*string `json:"Vendors"`
-	// Integer used to rank search results by relevance
-	Score *int `json:"Score"`
 	// Details of the newest image inside the repository
 	// NOTE: not the image with the `latest` tag, the one with the most recent created timestamp
 	NewestImage *ImageSummary `json:"NewestImage"`

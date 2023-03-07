@@ -62,7 +62,21 @@ func ValidateRepoReferenceInput(repo, reference string, manifestDigest godigest.
 	return nil
 }
 
-func ScoreRepoName(searchText string, repoName string) int {
+// These constants are meant used to describe how high or low in rank a match is.
+// Note that the "higher rank" relates to a lower number so ranks are sorted in a
+// ascending order.
+const (
+	lowPriority          = 100
+	mediumPriority       = 10
+	highPriority         = 1
+	perfectMatchPriority = 0
+)
+
+// RankRepoName associates a rank to a given repoName given a searchText.
+// The imporance of the value grows inversly proportional to the int value it has.
+// For example: rank(1) > rank(10) > rank(100)...
+func RankRepoName(searchText string, repoName string) int {
+	searchText = strings.Trim(searchText, "/")
 	searchTextSlice := strings.Split(searchText, "/")
 	repoNameSlice := strings.Split(repoName, "/")
 
@@ -70,37 +84,60 @@ func ScoreRepoName(searchText string, repoName string) int {
 		return -1
 	}
 
+	if searchText == repoName {
+		return perfectMatchPriority
+	}
+
+	// searchText containst just 1 diretory name
 	if len(searchTextSlice) == 1 {
-		// check if it maches first or last name in path
-		if index := strings.Index(repoNameSlice[len(repoNameSlice)-1], searchTextSlice[0]); index != -1 {
-			return index + 1
+		lastNameInRepoPath := repoNameSlice[len(repoNameSlice)-1]
+
+		// searchText: "bar" | repoName: "foo/bar" lastNameInRepoPath: "bar"
+		if index := strings.Index(lastNameInRepoPath, searchText); index != -1 {
+			return (index + 1) * highPriority
 		}
 
-		// we'll make repos that match the first name in path less important than matching the last name in path
-		if index := strings.Index(repoNameSlice[0], searchTextSlice[0]); index != -1 {
-			return (index + 1) * 10
+		firstNameInRepoPath := repoNameSlice[0]
+
+		// searchText: "foo" | repoName: "foo/bar" firstNameInRepoPath: "foo"
+		if index := strings.Index(firstNameInRepoPath, searchText); index != -1 {
+			return (index + 1) * mediumPriority
 		}
-
-		return -1
 	}
 
-	if len(searchTextSlice) < len(repoNameSlice) &&
-		strings.HasPrefix(repoName, searchText) {
-		return 1
-	}
+	foundPrefixInRepoName := true
 
-	// searchText and repoName match perfectly up until the last name in path
+	// searchText: "foo/bar/rep"  | repoName: "foo/bar/baz/repo" foundPrefixInRepoName: true
+	// searchText: "foo/baz/rep"  | repoName: "foo/bar/baz/repo" foundPrefixInRepoName: false
 	for i := 0; i < len(searchTextSlice)-1; i++ {
 		if searchTextSlice[i] != repoNameSlice[i] {
-			return -1
+			foundPrefixInRepoName = false
+
+			break
 		}
 	}
 
-	// check the last
-	if index := strings.Index(repoNameSlice[len(repoNameSlice)-1], searchTextSlice[len(searchTextSlice)-1]); index != -1 {
-		return (index + 1)
+	if foundPrefixInRepoName {
+		lastNameInRepoPath := repoNameSlice[len(repoNameSlice)-1]
+		lastNameInSearchText := searchTextSlice[len(searchTextSlice)-1]
+
+		// searchText: "foo/bar/epo"  | repoName: "foo/bar/baz/repo" -> Index(repo, epo) = 1
+		if index := strings.Index(lastNameInRepoPath, lastNameInSearchText); index != -1 {
+			return (index + 1) * highPriority
+		}
 	}
 
+	// searchText: "foo/bar/b"  | repoName: "foo/bar/baz/repo"
+	if strings.HasPrefix(repoName, searchText) {
+		return mediumPriority
+	}
+
+	// searchText: "bar/ba"  | repoName: "foo/bar/baz/repo"
+	if index := strings.Index(repoName, searchText); index != -1 {
+		return (index + 1) * lowPriority
+	}
+
+	// no match
 	return -1
 }
 

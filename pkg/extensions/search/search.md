@@ -101,7 +101,6 @@ curl -X POST -H "Content-Type: application/json" --data '{ "query": "{ ImageList
         Arch
       }
       Vendor
-      Score
       DownloadCount
       Licenses
       Title

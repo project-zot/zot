@@ -86,7 +86,6 @@ func RepoMeta2RepoSummary(ctx context.Context, repoMeta repodb.RepoMetadata,
 	}
 
 	repoSize := strconv.FormatInt(size, 10)
-	score := 0
 
 	repoPlatforms := make([]*gql_generated.Platform, 0, len(repoPlatformsSet))
 	for _, platform := range repoPlatformsSet {
@@ -127,7 +126,6 @@ func RepoMeta2RepoSummary(ctx context.Context, repoMeta repodb.RepoMetadata,
 		Size:          &repoSize,
 		Platforms:     repoPlatforms,
 		Vendors:       repoVendors,
-		Score:         &score,
 		NewestImage:   lastUpdatedImageSummary,
 		DownloadCount: &repoDownloadCount,
 		StarCount:     &repoStarCount,
@@ -632,7 +630,6 @@ func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta repodb.RepoMetadata
 	}
 
 	repoSize := strconv.FormatInt(size, 10)
-	score := 0
 
 	repoPlatforms := make([]*gql_generated.Platform, 0, len(repoPlatformsSet))
 	for _, platform := range repoPlatformsSet {
@@ -672,7 +669,6 @@ func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta repodb.RepoMetadata
 		Size:          &repoSize,
 		Platforms:     repoPlatforms,
 		Vendors:       repoVendors,
-		Score:         &score,
 		NewestImage:   lastUpdatedImageSummary,
 		DownloadCount: &repoDownloadCount,
 		StarCount:     &repoStarCount,

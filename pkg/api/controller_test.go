@@ -6674,7 +6674,6 @@ func TestSearchRoutes(t *testing.T) {
 					GlobalSearch(query:"testrepo"){
 						Repos {
 							Name
-							Score
 							NewestImage {
 								RepoName
 								Tag
@@ -6808,7 +6807,6 @@ func TestSearchRoutes(t *testing.T) {
 							GlobalSearch(query:"testrepo"){
 								Repos {
 									Name
-									Score
 									NewestImage {
 										RepoName
 										Tag

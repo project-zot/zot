@@ -15,7 +15,6 @@ type RepoSummary struct {
 	Size        string       `json:"size"`
 	Platforms   []Platform   `json:"platforms"`
 	Vendors     []string     `json:"vendors"`
-	Score       int          `json:"score"`
 	NewestImage ImageSummary `json:"newestImage"`
 }
 
@@ -33,7 +32,6 @@ type ImageSummary struct {
 	Licenses        string                    `json:"licenses"`
 	Labels          string                    `json:"labels"`
 	Title           string                    `json:"title"`
-	Score           int                       `json:"score"`
 	Source          string                    `json:"source"`
 	Documentation   string                    `json:"documentation"`
 	Authors         string                    `json:"authors"`

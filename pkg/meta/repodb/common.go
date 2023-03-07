@@ -9,7 +9,7 @@ import (
 // by iterating the manifests, etc.)
 type DetailedRepoMeta struct {
 	RepoMeta   RepoMetadata
-	Score      int
+	Rank       int
 	Downloads  int
 	UpdateTime time.Time
 }
@@ -38,7 +38,7 @@ func SortByAlphabeticDsc(pageBuffer []DetailedRepoMeta) func(i, j int) bool {
 
 func SortByRelevance(pageBuffer []DetailedRepoMeta) func(i, j int) bool {
 	return func(i, j int) bool {
-		return pageBuffer[i].Score < pageBuffer[j].Score
+		return pageBuffer[i].Rank < pageBuffer[j].Rank
 	}
 }
 
