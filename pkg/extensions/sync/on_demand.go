@@ -12,8 +12,6 @@ import (
 	"github.com/containers/image/v5/copy"
 	"github.com/containers/image/v5/signature"
 	"github.com/containers/image/v5/types"
-	"github.com/opencontainers/go-digest"
-	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"zotregistry.io/zot/pkg/common"
 	syncconf "zotregistry.io/zot/pkg/extensions/config/sync"
@@ -27,11 +25,13 @@ const (
 )
 
 type syncContextUtils struct {
-	policyCtx    *signature.PolicyContext
-	localCtx     *types.SystemContext
-	upstreamCtx  *types.SystemContext
-	upstreamAddr string
-	copyOptions  copy.Options
+	policyCtx         *signature.PolicyContext
+	localCtx          *types.SystemContext
+	upstreamCtx       *types.SystemContext
+	upstreamAddr      string
+	copyOptions       copy.Options
+	retryOptions      *retry.Options
+	enforceSignatures bool
 }
 
 //nolint:gochecknoglobals
@@ -142,7 +142,7 @@ func syncOneImage(ctx context.Context, imageChannel chan error,
 			upstreamRepo = getRepoSource(localRepo, regCfg.Content[contentID])
 		}
 
-		retryOptions := &retry.RetryOptions{}
+		retryOptions := &retry.Options{}
 
 		if regCfg.MaxRetries != nil {
 			retryOptions.MaxRetry = *regCfg.MaxRetries
@@ -188,6 +188,7 @@ func syncOneImage(ctx context.Context, imageChannel chan error,
 			/* demanded object is a signature or artifact
 			at tis point we already have images synced, but not their signatures. */
 			if isCosignTag(reference) || artifactType != "" {
+				//nolint: contextcheck
 				err = syncSignaturesArtifacts(sig, localRepo, upstreamRepo, reference, artifactType)
 				if err != nil {
 					continue
@@ -198,15 +199,23 @@ func syncOneImage(ctx context.Context, imageChannel chan error,
 				return
 			}
 
-			syncContextUtils := syncContextUtils{
-				policyCtx:    policyCtx,
-				localCtx:     localCtx,
-				upstreamCtx:  upstreamCtx,
-				upstreamAddr: upstreamAddr,
-				copyOptions:  options,
+			var enforeSignatures bool
+			if regCfg.OnlySigned != nil && *regCfg.OnlySigned {
+				enforeSignatures = true
 			}
+
+			syncContextUtils := syncContextUtils{
+				policyCtx:         policyCtx,
+				localCtx:          localCtx,
+				upstreamCtx:       upstreamCtx,
+				upstreamAddr:      upstreamAddr,
+				copyOptions:       options,
+				retryOptions:      &retry.Options{}, // we don't want to retry inline
+				enforceSignatures: enforeSignatures,
+			}
+
 			//nolint:contextcheck
-			skipped, copyErr := syncRun(regCfg, localRepo, upstreamRepo, reference, syncContextUtils, sig, log)
+			skipped, copyErr := syncRun(localRepo, upstreamRepo, reference, syncContextUtils, sig, log)
 			if skipped {
 				continue
 			}
@@ -241,7 +250,7 @@ func syncOneImage(ctx context.Context, imageChannel chan error,
 					time.Sleep(retryOptions.Delay)
 
 					if err = retry.RetryIfNecessary(ctx, func() error {
-						_, err := syncRun(regCfg, localRepo, upstreamRepo, reference, syncContextUtils, sig, log)
+						_, err := syncRun(localRepo, upstreamRepo, reference, syncContextUtils, sig, log)
 
 						return err
 					}, retryOptions); err != nil {
@@ -260,12 +269,9 @@ func syncOneImage(ctx context.Context, imageChannel chan error,
 	imageChannel <- nil
 }
 
-func syncRun(regCfg syncconf.RegistryConfig,
-	localRepo, upstreamRepo, reference string, utils syncContextUtils, sig *signaturesCopier,
+func syncRun(localRepo, upstreamRepo, reference string, utils syncContextUtils, sig *signaturesCopier,
 	log log.Logger,
 ) (bool, error) {
-	upstreamImageDigest, refIsDigest := parseReference(reference)
-
 	upstreamImageRef, err := getImageRef(utils.upstreamAddr, upstreamRepo, reference)
 	if err != nil {
 		log.Error().Str("errorType", common.TypeOf(err)).
@@ -275,118 +281,19 @@ func syncRun(regCfg syncconf.RegistryConfig,
 		return false, err
 	}
 
-	manifestBuf, mediaType, err := getImageRefManifest(context.Background(), utils.upstreamCtx, upstreamImageRef, log)
-	if err != nil {
-		return false, err
-	}
-
-	if !refIsDigest {
-		upstreamImageDigest = digest.FromBytes(manifestBuf)
-	}
-
-	if !isSupportedMediaType(mediaType) {
-		if mediaType == ispec.MediaTypeArtifactManifest {
-			err = sig.syncOCIArtifact(localRepo, upstreamRepo, reference, manifestBuf)
-			if err != nil {
-				return false, err
-			}
-		}
-
-		return false, nil
-	}
-
-	// get upstream signatures
-	cosignManifest, err := sig.getCosignManifest(upstreamRepo, upstreamImageDigest.String())
-	if err != nil {
-		log.Error().Str("errorType", common.TypeOf(err)).
-			Err(err).Msgf("couldn't get upstream image %s cosign manifest", upstreamImageRef.DockerReference())
-	}
-
-	index, err := sig.getOCIRefs(upstreamRepo, upstreamImageDigest.String())
-	if err != nil {
-		log.Error().Str("errorType", common.TypeOf(err)).
-			Err(err).Msgf("couldn't get upstream image %s OCI references", upstreamImageRef.DockerReference())
-	}
-
-	// check if upstream image is signed
-	if cosignManifest == nil && len(getNotationManifestsFromOCIRefs(index)) == 0 {
-		// upstream image not signed
-		if regCfg.OnlySigned != nil && *regCfg.OnlySigned {
-			// skip unsigned images
-			log.Info().Msgf("skipping image without signature %s", upstreamImageRef.DockerReference())
-
-			return true, nil
-		}
-	}
-
 	imageStore := sig.storeController.GetImageStore(localRepo)
 
 	localCachePath, err := getLocalCachePath(imageStore, localRepo)
 	if err != nil {
 		log.Error().Err(err).Msgf("couldn't get localCachePath for %s", localRepo)
-	}
-
-	localImageRef, err := getLocalImageRef(localCachePath, localRepo, reference)
-	if err != nil {
-		log.Error().Str("errorType", common.TypeOf(err)).
-			Err(err).Msgf("couldn't obtain a valid image reference for reference %s/%s:%s",
-			localCachePath, localRepo, reference)
 
 		return false, err
 	}
 
 	defer os.RemoveAll(localCachePath)
 
-	log.Info().Msgf("copying image %s to %s", upstreamImageRef.DockerReference(), localCachePath)
-
-	_, err = copy.Image(context.Background(), utils.policyCtx, localImageRef, upstreamImageRef, &utils.copyOptions)
-	if err != nil {
-		log.Error().Str("errorType", common.TypeOf(err)).
-			Err(err).Msgf("error encountered while syncing on demand %s to %s",
-			upstreamImageRef.DockerReference(), localCachePath)
-
-		return false, err
-	}
-
-	err = pushSyncedLocalImage(localRepo, reference, localCachePath, imageStore, log)
-	if err != nil {
-		log.Error().Str("errorType", common.TypeOf(err)).
-			Err(err).Msgf("error while pushing synced cached image %s",
-			fmt.Sprintf("%s/%s:%s", localCachePath, localRepo, reference))
-
-		return false, err
-	}
-
-	err = sig.syncOCIRefs(localRepo, upstreamRepo, upstreamImageDigest.String(), index)
-	if err != nil {
-		return false, err
-	}
-
-	err = sig.syncCosignSignature(localRepo, upstreamRepo, upstreamImageDigest.String(), cosignManifest)
-	if err != nil {
-		log.Error().Str("errorType", common.TypeOf(err)).
-			Err(err).Msgf("couldn't copy image cosign signature %s/%s:%s", utils.upstreamAddr, upstreamRepo, reference)
-
-		return false, err
-	}
-
-	refs, err := sig.getORASRefs(upstreamRepo, upstreamImageDigest.String())
-	if err != nil {
-		log.Error().Str("errorType", common.TypeOf(err)).
-			Err(err).Msgf("couldn't get upstream image %s ORAS references", upstreamImageRef.DockerReference())
-	}
-
-	err = sig.syncORASRefs(localRepo, upstreamRepo, upstreamImageDigest.String(), refs)
-	if err != nil {
-		log.Error().Str("errorType", common.TypeOf(err)).
-			Err(err).Msgf("couldn't copy image ORAS references %s/%s:%s", utils.upstreamAddr, upstreamRepo, reference)
-
-		return false, err
-	}
-
-	log.Info().Msgf("successfully synced %s/%s:%s", utils.upstreamAddr, upstreamRepo, reference)
-
-	return false, nil
+	return syncImageWithRefs(context.Background(), localRepo, upstreamRepo, reference, upstreamImageRef,
+		utils, sig, localCachePath, log)
 }
 
 func syncSignaturesArtifacts(sig *signaturesCopier, localRepo, upstreamRepo, reference, artifactType string) error {
