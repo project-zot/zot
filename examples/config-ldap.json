@@ -1,0 +1,73 @@
+{
+    "distSpecVersion": "1.1.0-dev",
+    "storage": {
+      "rootDirectory": "/tmp/zot"
+    },
+    "http": {
+      "address": "127.0.0.1",
+      "port": "8080",
+      "realm": "zot",
+      "tls": {
+        "cert": "test/data/server.cert",
+        "key": "test/data/server.key"
+      },
+      "auth": {
+        "ldap": {
+          "address": "ldap.example.org",
+          "port": 389,
+          "startTLS": false,
+          "baseDN":"ou=Users,dc=example,dc=org",
+          "userAttribute": "uid",
+          "userGroupAttribute": "memberOf",
+          "bindDN":"cn=ldap-searcher,ou=Users,dc=example,dc=org",
+          "bindPassword":"ldap-searcher-password",
+          "skipVerify": true,
+          "subtreeSearch": true
+        },
+        "failDelay": 5
+      },
+      "accessControl": {
+        "repositories": {
+          "**": {
+            "policies": [{
+              "users": ["charlie"],
+              "groups": ["admins", "developers", "cn=ldap-group,ou=Groups,dc=example,dc=org"],
+              "actions": ["read", "create", "update"]
+            },
+            {
+              "users": ["mary"],
+              "groups": ["group2"],
+              "actions": ["read", "create", "update", "delete"]
+            }],
+            "defaultPolicy": []
+          },
+          "tmp/**": {
+            "defaultPolicy": ["read", "create", "update"]
+          },
+          "repos2/repo": {
+            "policies": [{
+                "users": ["bob"],
+                "groups": ["sparkle_team","repo2_team"],
+                "actions": ["read", "create"]
+              },
+              {
+                "users": ["mallory"],
+                "actions": ["create", "read"]
+              }
+            ],
+            "defaultPolicy": ["read"]
+          }  
+        },
+        "adminPolicy": {
+          "users": ["admin"],
+          "groups": ["admins","developers"],
+          "actions": ["read", "create", "update", "delete"]
+        }
+      }
+    },
+    "log": {
+      "level": "debug",
+      "output": "/tmp/zot.log",
+      "audit": "/tmp/zot-audit.log"
+    }
+}

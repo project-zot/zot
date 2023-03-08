@@ -8,29 +8,31 @@
     "port": "8080",
     "realm": "zot",
     "accessControl": {
-      "**": {
-        "anonymousPolicy": [
-          "read",
-          "create"
-        ]
-      },
-      "tmp/**": {
-        "anonymousPolicy": [
-          "read",
-          "create",
-          "update"
-        ]
-      },
-      "infra/**": {
-        "anonymousPolicy": [
-          "read"
-        ]
-      },
-      "repos2/repo": {
-        "anonymousPolicy": [
-          "read"
-        ]
-      }
+      "repositories": {
+        "**": {
+          "anonymousPolicy": [
+            "read",
+            "create"
+          ]
+        },
+        "tmp/**": {
+          "anonymousPolicy": [
+            "read",
+            "create",
+            "update"
+          ]
+        },
+        "infra/**": {
+          "anonymousPolicy": [
+            "read"
+          ]
+        },
+        "repos2/repo": {
+          "anonymousPolicy": [
+            "read"
+          ]
+        }
+      } 
     }
   },
   "log": {

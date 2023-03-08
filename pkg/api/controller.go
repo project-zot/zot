@@ -211,7 +211,7 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 		if c.Config.HTTP.TLS.CACert != "" {
 			clientAuth := tls.VerifyClientCertIfGiven
 			if (c.Config.HTTP.Auth == nil || c.Config.HTTP.Auth.HTPasswd.Path == "") &&
-				!anonymousPolicyExists(c.Config.AccessControl) {
+				!anonymousPolicyExists(c.Config.HTTP.AccessControl) {
 				clientAuth = tls.RequireAndVerifyClientCert
 			}
 
@@ -599,8 +599,7 @@ func toStringIfOk(cacheDriverConfig map[string]interface{}, param string, log lo
 
 func (c *Controller) LoadNewConfig(reloadCtx context.Context, config *config.Config) {
 	// reload access control config
-	c.Config.AccessControl = config.AccessControl
-	c.Config.HTTP.RawAccessControl = config.HTTP.RawAccessControl
+	c.Config.HTTP.AccessControl = config.HTTP.AccessControl
 
 	// Enable extensions if extension config is provided
 	if config.Extensions != nil && config.Extensions.Sync != nil {

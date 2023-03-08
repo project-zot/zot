@@ -62,7 +62,7 @@ func (rh *RouteHandler) SetupRoutes() {
 	prefixedRouter.Use(AuthHandler(rh.c))
 	// authz is being enabled if AccessControl is specified
 	// if Authn is not present AccessControl will have only default policies
-	if rh.c.Config.AccessControl != nil && !isBearerAuthEnabled(rh.c.Config) {
+	if rh.c.Config.HTTP.AccessControl != nil && !isBearerAuthEnabled(rh.c.Config) {
 		if isAuthnEnabled(rh.c.Config) {
 			rh.c.Log.Info().Msg("access control is being enabled")
 		} else {
@@ -1521,8 +1521,7 @@ func (rh *RouteHandler) ListRepositories(response http.ResponseWriter, request *
 		combineRepoList = append(combineRepoList, repos...)
 	}
 
-	var repos []string
-
+	repos := make([]string, 0)
 	// authz context
 	acCtx, err := localCtx.GetAccessControlContext(request.Context())
 	if err != nil {
