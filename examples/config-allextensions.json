@@ -48,6 +48,9 @@
 		"scrub": {
 			"enable": true,
 			"interval": "24h"
+		},
+		"mgmt": {
+			"enable": true
 		}
 	}
 }

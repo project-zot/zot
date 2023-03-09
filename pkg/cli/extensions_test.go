@@ -108,7 +108,7 @@ func TestServeExtensions(t *testing.T) {
 		data, err := os.ReadFile(logFile.Name())
 		So(err, ShouldBeNil)
 		So(string(data), ShouldContainSubstring,
-			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":null,\"UI\":null") //nolint:lll // gofumpt conflicts with lll
+			"\"Extensions\":{\"Search\":null,\"Sync\":null,\"Metrics\":null,\"Scrub\":null,\"Lint\":null,\"UI\":null,\"Mgmt\":null") //nolint:lll // gofumpt conflicts with lll
 	})
 }
 
@@ -773,6 +773,67 @@ func TestServeSearchDisabled(t *testing.T) {
 		So(dataStr, ShouldContainSubstring, "CVE config not provided, skipping CVE update")
 		So(dataStr, ShouldNotContainSubstring,
 			"CVE update interval set to too-short interval < 2h, changing update duration to 2 hours and continuing.")
+	})
+}
+
+func TestServeMgmtExtension(t *testing.T) {
+	oldArgs := os.Args
+
+	defer func() { os.Args = oldArgs }()
+
+	Convey("Mgmt implicitly enabled", t, func(c C) {
+		content := `{
+					"storage": {
+						"rootDirectory": "%s"
+					},
+					"http": {
+						"address": "127.0.0.1",
+						"port": "%s"
+					},
+					"log": {
+						"level": "debug",
+						"output": "%s"
+					},
+					"extensions": {
+						"Mgmt": {
+						}
+					}
+				}`
+
+		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		So(err, ShouldBeNil)
+		data, err := os.ReadFile(logPath)
+		So(err, ShouldBeNil)
+		defer os.Remove(logPath) // clean up
+		So(string(data), ShouldContainSubstring, "\"Mgmt\":{\"Enable\":true}")
+	})
+
+	Convey("Mgmt disabled", t, func(c C) {
+		content := `{
+					"storage": {
+						"rootDirectory": "%s"
+					},
+					"http": {
+						"address": "127.0.0.1",
+						"port": "%s"
+					},
+					"log": {
+						"level": "debug",
+						"output": "%s"
+					},
+					"extensions": {
+						"Mgmt": {
+							"enable": "false"
+						}
+					}
+				}`
+
+		logPath, err := runCLIWithConfig(t.TempDir(), content)
+		So(err, ShouldBeNil)
+		data, err := os.ReadFile(logPath)
+		So(err, ShouldBeNil)
+		defer os.Remove(logPath) // clean up
+		So(string(data), ShouldContainSubstring, "\"Mgmt\":{\"Enable\":false}")
 	})
 }
 

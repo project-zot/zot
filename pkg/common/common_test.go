@@ -24,6 +24,28 @@ func TestCommon(t *testing.T) {
 		So(common.Contains([]string{}, "apple"), ShouldBeFalse)
 	})
 
+	Convey("test MarshalThroughStruct()", t, func() {
+		cfg := config.New()
+
+		newCfg := struct {
+			DistSpecVersion string
+		}{}
+
+		_, err := common.MarshalThroughStruct(cfg, &newCfg)
+		So(err, ShouldBeNil)
+		So(newCfg.DistSpecVersion, ShouldEqual, cfg.DistSpecVersion)
+
+		// negative
+		obj := make(chan int)
+		toObj := config.New()
+
+		_, err = common.MarshalThroughStruct(obj, &toObj)
+		So(err, ShouldNotBeNil)
+
+		_, err = common.MarshalThroughStruct(toObj, &obj)
+		So(err, ShouldNotBeNil)
+	})
+
 	Convey("test getTLSConfig()", t, func() {
 		caCertPool, _ := x509.SystemCertPool()
 		tlsConfig, err := common.GetTLSConfig("wrongPath", caCertPool)

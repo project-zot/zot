@@ -211,3 +211,23 @@ func DirExists(d string) bool {
 
 	return true
 }
+
+// Used to filter a json fields by using an intermediate struct.
+func MarshalThroughStruct(obj interface{}, throughStruct interface{}) ([]byte, error) {
+	toJSON, err := json.Marshal(obj)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	err = json.Unmarshal(toJSON, throughStruct)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	toJSON, err = json.Marshal(throughStruct)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	return toJSON, nil
+}

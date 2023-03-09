@@ -616,7 +616,7 @@ func TestVerify(t *testing.T) {
 		// sub paths that point to same directory should have same storage config.
 		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
 							"subPaths": {"/a": {"rootDirectory": "/zot-a","dedupe":"true"},
-							"/b": {{"rootDirectory": "/zot-a","dedupe":"false"}}}},
+							"/b": {"rootDirectory": "/zot-a","dedupe":"false"}}},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
@@ -626,7 +626,7 @@ func TestVerify(t *testing.T) {
 
 		// sub paths that point to default root directory should not be allowed.
 		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
-							"subPaths": {"/a": {"rootDirectory": "/tmp/zot","dedupe":"true"},"/b": {{"rootDirectory": "/zot-a"}}}},
+							"subPaths": {"/a": {"rootDirectory": "/tmp/zot","dedupe":"true"},"/b": {"rootDirectory": "/zot-a"}}},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
@@ -636,7 +636,7 @@ func TestVerify(t *testing.T) {
 
 		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
 							"subPaths": {"/a": {"rootDirectory": "/zot-a","dedupe":"true","gc":"true"},
-							"/b": {"rootDirectory": "/zot-a","dedupe":"true","gc":"false"}}}},
+							"/b": {"rootDirectory": "/zot-a","dedupe":"true","gc":"false"}}},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
@@ -646,7 +646,7 @@ func TestVerify(t *testing.T) {
 
 		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
 							"subPaths": {"/a": {"rootDirectory": "/zot-a","dedupe":"true","gc":"true"},
-							"/b": {"rootDirectory": "/zot-a","dedupe":"true","gc":"true","gcDelay":"1s"}}}},
+							"/b": {"rootDirectory": "/zot-a","dedupe":"true","gc":"true","gcDelay":"1s"}}},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
@@ -656,7 +656,7 @@ func TestVerify(t *testing.T) {
 
 		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
 							"subPaths": {"/a": {"rootDirectory": "/zot-a","dedupe":"true","gc":"true","gcDelay":"1s","gcInterval":"1s"},
-							"/b": {"rootDirectory": "/zot-a","dedupe":"true","gc":"true","gcDelay":"1s"}}}},
+							"/b": {"rootDirectory": "/zot-a","dedupe":"true","gc":"true","gcDelay":"1s"}}},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
@@ -666,7 +666,7 @@ func TestVerify(t *testing.T) {
 
 		content = []byte(`{"storage":{"rootDirectory":"/tmp/zot",
 							"subPaths": {"/a": {"rootDirectory": "/tmp/zot","dedupe":"true","gc":"true","gcDelay":"1s","gcInterval":"1s"},
-							"/b": {"rootDirectory": "/zot-a","dedupe":"true","gc":"true","gcDelay":"1s"}}}},
+							"/b": {"rootDirectory": "/zot-a","dedupe":"true","gc":"true","gcDelay":"1s"}}},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
 		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
@@ -741,7 +741,7 @@ func TestVerify(t *testing.T) {
 										"actions":["read","create","update","delete"]
 									}
 								}
-							}}`)
+							}`)
 		_, err = tmpfile.Write(content)
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()
@@ -893,7 +893,7 @@ func TestVerify(t *testing.T) {
 		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot"},
 							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
 							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1},
-							"accessControl":{"[":{"policies":[],"anonymousPolicy":[]}}}}`)
+							"accessControl":{"repositories":{"[":{"policies":[],"anonymousPolicy":[]}}}}}`)
 		_, err = tmpfile.Write(content)
 		So(err, ShouldBeNil)
 		err = tmpfile.Close()

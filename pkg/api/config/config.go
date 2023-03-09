@@ -69,7 +69,7 @@ type HTTPConfig struct {
 	AllowOrigin   string // comma separated
 	TLS           *TLSConfig
 	Auth          *AuthConfig
-	AccessControl *AccessControlConfig
+	AccessControl *AccessControlConfig `mapstructure:"accessControl,omitempty"`
 	Realm         string
 	Ratelimit     *RatelimitConfig `mapstructure:",omitempty"`
 }

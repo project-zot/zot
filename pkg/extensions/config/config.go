@@ -18,6 +18,11 @@ type ExtensionConfig struct {
 	Scrub   *ScrubConfig
 	Lint    *LintConfig
 	UI      *UIConfig
+	Mgmt    *MgmtConfig
+}
+
+type MgmtConfig struct {
+	BaseConfig `mapstructure:",squash"`
 }
 
 type LintConfig struct {

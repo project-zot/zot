@@ -3138,6 +3138,12 @@ func TestAuthorizationWithMultiplePolicies(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
+		// with empty username:password
+		resp, err = resty.R().SetHeader("Authorization", "Basic Og==").Get(baseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
 		// add "test" user to global policy with create permission
 		repoPolicy.Policies[0].Users = append(repoPolicy.Policies[0].Users, "test")
 		repoPolicy.Policies[0].Actions = append(repoPolicy.Policies[0].Actions, "create")
@@ -7288,6 +7294,60 @@ func TestDistSpecExtensions(t *testing.T) {
 		So(extensionList.Extensions[0].URL, ShouldContainSubstring, "_zot.md")
 		So(extensionList.Extensions[0].Description, ShouldNotBeEmpty)
 		So(extensionList.Extensions[0].Endpoints[0], ShouldEqual, constants.FullSearchPrefix)
+	})
+
+	Convey("start zot server with search and mgmt extensions", t, func(c C) {
+		conf := config.New()
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+
+		conf.HTTP.Port = port
+
+		defaultVal := true
+
+		searchConfig := &extconf.SearchConfig{
+			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+		}
+
+		mgmtConfg := &extconf.MgmtConfig{
+			BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+		}
+
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: searchConfig,
+			Mgmt:   mgmtConfg,
+		}
+
+		logFile, err := os.CreateTemp("", "zot-log*.txt")
+		So(err, ShouldBeNil)
+		conf.Log.Output = logFile.Name()
+		defer os.Remove(logFile.Name()) // clean up
+
+		ctlr := makeController(conf, t.TempDir(), "")
+
+		cm := test.NewControllerManager(ctlr)
+		cm.StartAndWait(port)
+		defer cm.StopServer()
+
+		var extensionList distext.ExtensionList
+
+		resp, err := resty.R().Get(baseURL + constants.RoutePrefix + constants.ExtOciDiscoverPrefix)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+		err = json.Unmarshal(resp.Body(), &extensionList)
+		So(err, ShouldBeNil)
+		So(len(extensionList.Extensions), ShouldEqual, 2)
+		So(len(extensionList.Extensions[0].Endpoints), ShouldEqual, 1)
+		So(len(extensionList.Extensions[1].Endpoints), ShouldEqual, 1)
+		So(extensionList.Extensions[0].Name, ShouldEqual, "_zot")
+		So(extensionList.Extensions[0].URL, ShouldContainSubstring, "_zot.md")
+		So(extensionList.Extensions[0].Description, ShouldNotBeEmpty)
+		So(extensionList.Extensions[0].Endpoints[0], ShouldEqual, constants.FullSearchPrefix)
+		So(extensionList.Extensions[1].Name, ShouldEqual, "_zot")
+		So(extensionList.Extensions[1].URL, ShouldContainSubstring, "_zot.md")
+		So(extensionList.Extensions[1].Description, ShouldNotBeEmpty)
+		So(extensionList.Extensions[1].Endpoints[0], ShouldEqual, constants.FullMgmtPrefix)
 	})
 
 	Convey("start minimal zot server", t, func(c C) {
