@@ -82,7 +82,7 @@ func SyncRepo(repo string, repoDB RepoDB, storeController storage.StoreControlle
 		}
 
 		if manifestMetaIsPresent && hasTag {
-			err = repoDB.SetRepoTag(repo, tag, manifest.Digest, manifest.MediaType)
+			err = repoDB.SetRepoReference(repo, tag, manifest.Digest, manifest.MediaType)
 			if err != nil {
 				log.Error().Err(err).Msgf("sync-repo: failed to set repo tag for %s:%s", repo, tag)
 
@@ -132,7 +132,7 @@ func SyncRepo(repo string, repoDB RepoDB, storeController storage.StoreControlle
 		}
 
 		err = SetMetadataFromInput(repo, reference, manifest.MediaType, manifest.Digest, manifestBlob,
-			storeController, repoDB, log)
+			imageStore, repoDB, log)
 		if err != nil {
 			log.Error().Err(err).Msgf("sync-repo: failed to set metadata for %s:%s", repo, tag)
 
@@ -220,15 +220,13 @@ func isManifestMetaPresent(repo string, manifest ispec.Descriptor, repoDB RepoDB
 }
 
 // NewManifestMeta takes raw data about an image and createa a new ManifestMetadate object.
-func NewManifestData(repoName string, manifestBlob []byte, storeController storage.StoreController,
+func NewManifestData(repoName string, manifestBlob []byte, imgStore storage.ImageStore,
 ) (ManifestData, error) {
 	var (
 		manifestContent ispec.Manifest
 		configContent   ispec.Image
 		manifestData    ManifestData
 	)
-
-	imgStore := storeController.GetImageStore(repoName)
 
 	err := json.Unmarshal(manifestBlob, &manifestContent)
 	if err != nil {
@@ -251,7 +249,7 @@ func NewManifestData(repoName string, manifestBlob []byte, storeController stora
 	return manifestData, nil
 }
 
-func NewIndexData(repoName string, indexBlob []byte, storeController storage.StoreController,
+func NewIndexData(repoName string, indexBlob []byte,
 ) IndexData {
 	indexData := IndexData{}
 
@@ -263,11 +261,11 @@ func NewIndexData(repoName string, indexBlob []byte, storeController storage.Sto
 // SetMetadataFromInput tries to set manifest metadata and update repo metadata by adding the current tag
 // (in case the reference is a tag). The function expects image manifests and indexes (multi arch images).
 func SetMetadataFromInput(repo, reference, mediaType string, digest godigest.Digest, descriptorBlob []byte,
-	storeController storage.StoreController, repoDB RepoDB, log log.Logger,
+	imageStore storage.ImageStore, repoDB RepoDB, log log.Logger,
 ) error {
 	switch mediaType {
 	case ispec.MediaTypeImageManifest:
-		imageData, err := NewManifestData(repo, descriptorBlob, storeController)
+		imageData, err := NewManifestData(repo, descriptorBlob, imageStore)
 		if err != nil {
 			return err
 		}
@@ -279,7 +277,7 @@ func SetMetadataFromInput(repo, reference, mediaType string, digest godigest.Dig
 			return err
 		}
 	case ispec.MediaTypeImageIndex:
-		indexData := NewIndexData(repo, descriptorBlob, storeController)
+		indexData := NewIndexData(repo, descriptorBlob)
 
 		err := repoDB.SetIndexData(digest, indexData)
 		if err != nil {
@@ -289,11 +287,7 @@ func SetMetadataFromInput(repo, reference, mediaType string, digest godigest.Dig
 		}
 	}
 
-	if refferenceIsDigest(reference) {
-		return nil
-	}
-
-	err := repoDB.SetRepoTag(repo, reference, digest, mediaType)
+	err := repoDB.SetRepoReference(repo, reference, digest, mediaType)
 	if err != nil {
 		log.Error().Err(err).Msg("repodb: error while putting repo meta")
 
@@ -301,10 +295,4 @@ func SetMetadataFromInput(repo, reference, mediaType string, digest godigest.Dig
 	}
 
 	return nil
-}
-
-func refferenceIsDigest(reference string) bool {
-	_, err := godigest.Parse(reference)
-
-	return err == nil
 }

@@ -23,6 +23,7 @@ import (
 	"zotregistry.io/zot/pkg/common"
 	syncconf "zotregistry.io/zot/pkg/extensions/config/sync"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta/repodb"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test"
 )
@@ -165,7 +166,7 @@ func getUpstreamContext(regCfg *syncconf.RegistryConfig, credentials syncconf.Cr
 
 //nolint:gocyclo  // offloading some of the functionalities from here would make the code harder to follow
 func syncRegistry(ctx context.Context, regCfg syncconf.RegistryConfig,
-	upstreamURL string,
+	upstreamURL string, repoDB repodb.RepoDB,
 	storeController storage.StoreController, localCtx *types.SystemContext,
 	policyCtx *signature.PolicyContext, credentials syncconf.Credentials,
 	retryOptions *retry.RetryOptions, log log.Logger,
@@ -246,7 +247,7 @@ func syncRegistry(ctx context.Context, regCfg syncconf.RegistryConfig,
 		}
 	}
 
-	sig := newSignaturesCopier(httpClient, credentials, *registryURL, storeController, log)
+	sig := newSignaturesCopier(httpClient, credentials, *registryURL, repoDB, storeController, log)
 
 	for _, repoReference := range reposReferences {
 		upstreamRepo := repoReference.name
@@ -323,9 +324,8 @@ func getLocalContexts(log log.Logger) (*types.SystemContext, *signature.PolicyCo
 	return localCtx, policyContext, nil
 }
 
-func Run(ctx context.Context, cfg syncconf.Config,
-	storeController storage.StoreController,
-	wtgrp *goSync.WaitGroup, logger log.Logger,
+func Run(ctx context.Context, cfg syncconf.Config, repoDB repodb.RepoDB,
+	storeController storage.StoreController, wtgrp *goSync.WaitGroup, logger log.Logger,
 ) error {
 	var credentialsFile syncconf.CredentialsFile
 
@@ -382,7 +382,7 @@ func Run(ctx context.Context, cfg syncconf.Config,
 				for _, upstreamURL := range regCfg.URLs {
 					upstreamAddr := StripRegistryTransport(upstreamURL)
 					// first try syncing main registry
-					if err := syncRegistry(ctx, regCfg, upstreamURL, storeController, localCtx, policyCtx,
+					if err := syncRegistry(ctx, regCfg, upstreamURL, repoDB, storeController, localCtx, policyCtx,
 						credentialsFile[upstreamAddr], retryOptions, logger); err != nil {
 						logger.Error().Str("errortype", common.TypeOf(err)).
 							Err(err).Str("registry", upstreamURL).

@@ -176,7 +176,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			})
 		})
 
-		Convey("Test SetRepoTag", func() {
+		Convey("Test SetRepoReference", func() {
 			// test behaviours
 			var (
 				repo1           = "repo1"
@@ -189,18 +189,33 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			)
 
 			Convey("Setting a good repo", func() {
-				err := repoDB.SetRepoTag(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+				err := repoDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
 				So(err, ShouldBeNil)
 
 				repoMeta, err := repoDB.GetRepoMeta(repo1)
 				So(err, ShouldBeNil)
+				So(repoMeta.Name, ShouldResemble, repo1)
 				So(repoMeta.Tags[tag1].Digest, ShouldEqual, manifestDigest1)
 			})
 
-			Convey("Set multiple tags for repo", func() {
-				err := repoDB.SetRepoTag(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+			Convey("Setting a good repo using a digest", func() {
+				_, err := repoDB.GetRepoMeta(repo1)
+				So(err, ShouldNotBeNil)
+
+				digest := godigest.FromString("digest")
+				err = repoDB.SetRepoReference(repo1, digest.String(), digest,
+					ispec.MediaTypeImageManifest)
 				So(err, ShouldBeNil)
-				err = repoDB.SetRepoTag(repo1, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
+
+				repoMeta, err := repoDB.GetRepoMeta(repo1)
+				So(err, ShouldBeNil)
+				So(repoMeta.Name, ShouldResemble, repo1)
+			})
+
+			Convey("Set multiple tags for repo", func() {
+				err := repoDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+				So(err, ShouldBeNil)
+				err = repoDB.SetRepoReference(repo1, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
 				So(err, ShouldBeNil)
 
 				repoMeta, err := repoDB.GetRepoMeta(repo1)
@@ -210,9 +225,9 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			})
 
 			Convey("Set multiple repos", func() {
-				err := repoDB.SetRepoTag(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+				err := repoDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
 				So(err, ShouldBeNil)
-				err = repoDB.SetRepoTag(repo2, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
+				err = repoDB.SetRepoReference(repo2, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
 				So(err, ShouldBeNil)
 
 				repoMeta1, err := repoDB.GetRepoMeta(repo1)
@@ -226,17 +241,17 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 
 			Convey("Setting a repo with invalid fields", func() {
 				Convey("Repo name is not valid", func() {
-					err := repoDB.SetRepoTag("", tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+					err := repoDB.SetRepoReference("", tag1, manifestDigest1, ispec.MediaTypeImageManifest)
 					So(err, ShouldNotBeNil)
 				})
 
 				Convey("Tag is not valid", func() {
-					err := repoDB.SetRepoTag(repo1, "", manifestDigest1, ispec.MediaTypeImageManifest)
+					err := repoDB.SetRepoReference(repo1, "", manifestDigest1, ispec.MediaTypeImageManifest)
 					So(err, ShouldNotBeNil)
 				})
 
 				Convey("Manifest Digest is not valid", func() {
-					err := repoDB.SetRepoTag(repo1, tag1, "", ispec.MediaTypeImageManifest)
+					err := repoDB.SetRepoReference(repo1, tag1, "", ispec.MediaTypeImageManifest)
 					So(err, ShouldNotBeNil)
 				})
 			})
@@ -255,10 +270,10 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				InexistentRepo = "InexistentRepo"
 			)
 
-			err := repoDB.SetRepoTag(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+			err := repoDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetRepoTag(repo2, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
+			err = repoDB.SetRepoReference(repo2, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
 
 			Convey("Get a existent repo", func() {
@@ -287,10 +302,10 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				manifestDigest2 = godigest.FromString("fake-manifest2")
 			)
 
-			err := repoDB.SetRepoTag(repo, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+			err := repoDB.SetRepoReference(repo, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetRepoTag(repo, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
+			err = repoDB.SetRepoReference(repo, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
 
 			Convey("Delete from repo a tag", func() {
@@ -352,13 +367,13 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				manifestDigest2 = godigest.FromString("fake-manifest2")
 			)
 
-			err := repoDB.SetRepoTag(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+			err := repoDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetRepoTag(repo1, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
+			err = repoDB.SetRepoReference(repo1, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetRepoTag(repo2, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
+			err = repoDB.SetRepoReference(repo2, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
 
 			Convey("Get all Repometa", func() {
@@ -407,7 +422,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				manifestDigest1 = godigest.FromString("fake-manifest1")
 			)
 
-			err := repoDB.SetRepoTag(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+			err := repoDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
 
 			err = repoDB.IncrementRepoStars(repo1)
@@ -439,7 +454,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				manifestDigest1 = godigest.FromString("fake-manifest1")
 			)
 
-			err := repoDB.SetRepoTag(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+			err := repoDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
 
 			err = repoDB.IncrementRepoStars(repo1)
@@ -474,7 +489,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				manifestDigest1 = godigest.FromString("fake-manifest1")
 			)
 
-			err := repoDB.SetRepoTag(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+			err := repoDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
 
 			err = repoDB.IncrementRepoStars(repo1)
@@ -508,7 +523,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 
 			manifestDigest := godigest.FromBytes(manifestBlob)
 
-			err = repoDB.SetRepoTag(repo1, tag1, manifestDigest, ispec.MediaTypeImageManifest)
+			err = repoDB.SetRepoReference(repo1, tag1, manifestDigest, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
 
 			err = repoDB.SetManifestMeta(repo1, manifestDigest, repodb.ManifestMetadata{
@@ -544,7 +559,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				manifestDigest1 = godigest.FromString("fake-manifest1")
 			)
 
-			err := repoDB.SetRepoTag(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+			err := repoDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
 
 			err = repoDB.SetManifestMeta(repo1, manifestDigest1, repodb.ManifestMetadata{})
@@ -572,7 +587,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				manifestDigest1 = godigest.FromString("fake-manifest1")
 			)
 
-			err := repoDB.SetRepoTag(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+			err := repoDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
 
 			err = repoDB.SetManifestMeta(repo1, manifestDigest1, repodb.ManifestMetadata{})
@@ -633,11 +648,11 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			}
 
 			Convey("Search all repos", func() {
-				err := repoDB.SetRepoTag(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+				err := repoDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
 				So(err, ShouldBeNil)
-				err = repoDB.SetRepoTag(repo1, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
+				err = repoDB.SetRepoReference(repo1, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
 				So(err, ShouldBeNil)
-				err = repoDB.SetRepoTag(repo2, tag3, manifestDigest3, ispec.MediaTypeImageManifest)
+				err = repoDB.SetRepoReference(repo2, tag3, manifestDigest3, ispec.MediaTypeImageManifest)
 				So(err, ShouldBeNil)
 
 				err = repoDB.SetManifestMeta(repo1, manifestDigest1, emptyRepoMeta)
@@ -657,7 +672,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			})
 
 			Convey("Search a repo by name", func() {
-				err := repoDB.SetRepoTag(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+				err := repoDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
 				So(err, ShouldBeNil)
 
 				err = repoDB.SetManifestMeta(repo1, manifestDigest1, emptyRepoMeta)
@@ -671,10 +686,10 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			})
 
 			Convey("Search non-existing repo by name", func() {
-				err := repoDB.SetRepoTag(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+				err := repoDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
 				So(err, ShouldBeNil)
 
-				err = repoDB.SetRepoTag(repo1, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
+				err = repoDB.SetRepoReference(repo1, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
 				So(err, ShouldBeNil)
 
 				repos, manifestMetaMap, _, _, err := repoDB.SearchRepos(ctx, "RepoThatDoesntExist", repodb.Filter{},
@@ -685,11 +700,11 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			})
 
 			Convey("Search with partial match", func() {
-				err := repoDB.SetRepoTag("alpine", tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+				err := repoDB.SetRepoReference("alpine", tag1, manifestDigest1, ispec.MediaTypeImageManifest)
 				So(err, ShouldBeNil)
-				err = repoDB.SetRepoTag("pine", tag2, manifestDigest2, ispec.MediaTypeImageManifest)
+				err = repoDB.SetRepoReference("pine", tag2, manifestDigest2, ispec.MediaTypeImageManifest)
 				So(err, ShouldBeNil)
-				err = repoDB.SetRepoTag("golang", tag3, manifestDigest3, ispec.MediaTypeImageManifest)
+				err = repoDB.SetRepoReference("golang", tag3, manifestDigest3, ispec.MediaTypeImageManifest)
 				So(err, ShouldBeNil)
 
 				err = repoDB.SetManifestMeta("alpine", manifestDigest1, emptyRepoMeta)
@@ -708,11 +723,11 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			})
 
 			Convey("Search multiple repos that share manifests", func() {
-				err := repoDB.SetRepoTag(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+				err := repoDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
 				So(err, ShouldBeNil)
-				err = repoDB.SetRepoTag(repo2, tag2, manifestDigest1, ispec.MediaTypeImageManifest)
+				err = repoDB.SetRepoReference(repo2, tag2, manifestDigest1, ispec.MediaTypeImageManifest)
 				So(err, ShouldBeNil)
-				err = repoDB.SetRepoTag(repo3, tag3, manifestDigest1, ispec.MediaTypeImageManifest)
+				err = repoDB.SetRepoReference(repo3, tag3, manifestDigest1, ispec.MediaTypeImageManifest)
 				So(err, ShouldBeNil)
 
 				err = repoDB.SetManifestMeta(repo1, manifestDigest1, emptyRepoMeta)
@@ -729,11 +744,11 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			})
 
 			Convey("Search repos with access control", func() {
-				err := repoDB.SetRepoTag(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+				err := repoDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
 				So(err, ShouldBeNil)
-				err = repoDB.SetRepoTag(repo2, tag2, manifestDigest1, ispec.MediaTypeImageManifest)
+				err = repoDB.SetRepoReference(repo2, tag2, manifestDigest1, ispec.MediaTypeImageManifest)
 				So(err, ShouldBeNil)
-				err = repoDB.SetRepoTag(repo3, tag3, manifestDigest1, ispec.MediaTypeImageManifest)
+				err = repoDB.SetRepoReference(repo3, tag3, manifestDigest1, ispec.MediaTypeImageManifest)
 				So(err, ShouldBeNil)
 
 				err = repoDB.SetManifestMeta(repo1, manifestDigest1, emptyRepoMeta)
@@ -789,7 +804,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 					}
 					repoName := "repo" + strconv.Itoa(i)
 
-					err = repoDB.SetRepoTag(repoName, tag1, manifestDigest, ispec.MediaTypeImageManifest)
+					err = repoDB.SetRepoReference(repoName, tag1, manifestDigest, ispec.MediaTypeImageManifest)
 					So(err, ShouldBeNil)
 
 					err = repoDB.SetManifestMeta(repoName, manifestDigest, manifestMeta)
@@ -972,10 +987,10 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				})
 				So(err, ShouldBeNil)
 
-				err = repoDB.SetRepoTag("repo", tag4, indexDigest, ispec.MediaTypeImageIndex)
+				err = repoDB.SetRepoReference("repo", tag4, indexDigest, ispec.MediaTypeImageIndex)
 				So(err, ShouldBeNil)
 
-				err = repoDB.SetRepoTag("repo", tag5, manifestDigest3, ispec.MediaTypeImageManifest)
+				err = repoDB.SetRepoReference("repo", tag5, manifestDigest3, ispec.MediaTypeImageManifest)
 				So(err, ShouldBeNil)
 
 				repos, manifestMetaMap, indexDataMap, _, err := repoDB.SearchRepos(ctx, "repo", repodb.Filter{}, repodb.PageInput{})
@@ -1015,17 +1030,17 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				ConfigBlob:   emptyConfigBlob,
 			}
 
-			err = repoDB.SetRepoTag(repo1, "0.0.1", manifestDigest1, ispec.MediaTypeImageManifest)
+			err = repoDB.SetRepoReference(repo1, "0.0.1", manifestDigest1, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
-			err = repoDB.SetRepoTag(repo1, "0.0.2", manifestDigest3, ispec.MediaTypeImageManifest)
+			err = repoDB.SetRepoReference(repo1, "0.0.2", manifestDigest3, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
-			err = repoDB.SetRepoTag(repo1, "0.1.0", manifestDigest2, ispec.MediaTypeImageManifest)
+			err = repoDB.SetRepoReference(repo1, "0.1.0", manifestDigest2, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
-			err = repoDB.SetRepoTag(repo1, "1.0.0", manifestDigest2, ispec.MediaTypeImageManifest)
+			err = repoDB.SetRepoReference(repo1, "1.0.0", manifestDigest2, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
-			err = repoDB.SetRepoTag(repo1, "1.0.1", manifestDigest2, ispec.MediaTypeImageManifest)
+			err = repoDB.SetRepoReference(repo1, "1.0.1", manifestDigest2, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
-			err = repoDB.SetRepoTag(repo2, "0.0.1", manifestDigest3, ispec.MediaTypeImageManifest)
+			err = repoDB.SetRepoReference(repo2, "0.0.1", manifestDigest3, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
 
 			err = repoDB.SetManifestMeta(repo1, manifestDigest1, emptyRepoMeta)
@@ -1093,11 +1108,11 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 					tag3            = "0.0.3"
 				)
 
-				err := repoDB.SetRepoTag(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+				err := repoDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
 				So(err, ShouldBeNil)
-				err = repoDB.SetRepoTag(repo2, tag2, manifestDigest1, ispec.MediaTypeImageManifest)
+				err = repoDB.SetRepoReference(repo2, tag2, manifestDigest1, ispec.MediaTypeImageManifest)
 				So(err, ShouldBeNil)
-				err = repoDB.SetRepoTag(repo3, tag3, manifestDigest1, ispec.MediaTypeImageManifest)
+				err = repoDB.SetRepoReference(repo3, tag3, manifestDigest1, ispec.MediaTypeImageManifest)
 				So(err, ShouldBeNil)
 
 				config := ispec.Image{}
@@ -1199,13 +1214,13 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				})
 				So(err, ShouldBeNil)
 
-				err = repoDB.SetRepoTag("repo", tag4, indexDigest, ispec.MediaTypeImageIndex)
+				err = repoDB.SetRepoReference("repo", tag4, indexDigest, ispec.MediaTypeImageIndex)
 				So(err, ShouldBeNil)
 
-				err = repoDB.SetRepoTag("repo", tag5, manifestDigest3, ispec.MediaTypeImageManifest)
+				err = repoDB.SetRepoReference("repo", tag5, manifestDigest3, ispec.MediaTypeImageManifest)
 				So(err, ShouldBeNil)
 
-				err = repoDB.SetRepoTag("repo", tag6, manifestDigest4, ispec.MediaTypeImageManifest)
+				err = repoDB.SetRepoReference("repo", tag6, manifestDigest4, ispec.MediaTypeImageManifest)
 				So(err, ShouldBeNil)
 
 				repos, manifestMetaMap, indexDataMap, _, err := repoDB.SearchTags(ctx, "repo:0.0", repodb.Filter{},
@@ -1236,15 +1251,15 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				tag5            = "0.0.5"
 			)
 
-			err := repoDB.SetRepoTag(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+			err := repoDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
-			err = repoDB.SetRepoTag(repo1, tag2, manifestDigest1, ispec.MediaTypeImageManifest)
+			err = repoDB.SetRepoReference(repo1, tag2, manifestDigest1, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
-			err = repoDB.SetRepoTag(repo1, tag3, manifestDigest1, ispec.MediaTypeImageManifest)
+			err = repoDB.SetRepoReference(repo1, tag3, manifestDigest1, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
-			err = repoDB.SetRepoTag(repo1, tag4, manifestDigest1, ispec.MediaTypeImageManifest)
+			err = repoDB.SetRepoReference(repo1, tag4, manifestDigest1, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
-			err = repoDB.SetRepoTag(repo1, tag5, manifestDigest1, ispec.MediaTypeImageManifest)
+			err = repoDB.SetRepoReference(repo1, tag5, manifestDigest1, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
 
 			config := ispec.Image{}
@@ -1309,15 +1324,15 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				manifestDigest3 = godigest.FromString("fake-manifest3")
 			)
 
-			err := repoDB.SetRepoTag(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+			err := repoDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
-			err = repoDB.SetRepoTag(repo1, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
+			err = repoDB.SetRepoReference(repo1, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
-			err = repoDB.SetRepoTag(repo2, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+			err = repoDB.SetRepoReference(repo2, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
-			err = repoDB.SetRepoTag(repo3, tag1, manifestDigest2, ispec.MediaTypeImageManifest)
+			err = repoDB.SetRepoReference(repo3, tag1, manifestDigest2, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
-			err = repoDB.SetRepoTag(repo4, tag1, manifestDigest3, ispec.MediaTypeImageManifest)
+			err = repoDB.SetRepoReference(repo4, tag1, manifestDigest3, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
 
 			config1 := ispec.Image{
@@ -1433,7 +1448,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				manifestFromIndexDigest2 = godigest.FromString("fake-manifestFromIndexDigest2")
 			)
 
-			err := repoDB.SetRepoTag(repo1, tag3, indexDigest, ispec.MediaTypeImageIndex)
+			err := repoDB.SetRepoReference(repo1, tag3, indexDigest, ispec.MediaTypeImageIndex)
 			So(err, ShouldBeNil)
 
 			indexBlob, err := test.GetIndexBlobWithManifests(
@@ -1449,15 +1464,15 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			})
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetRepoTag(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+			err = repoDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
-			err = repoDB.SetRepoTag(repo1, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
+			err = repoDB.SetRepoReference(repo1, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
-			err = repoDB.SetRepoTag(repo2, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+			err = repoDB.SetRepoReference(repo2, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
-			err = repoDB.SetRepoTag(repo3, tag1, manifestDigest2, ispec.MediaTypeImageManifest)
+			err = repoDB.SetRepoReference(repo3, tag1, manifestDigest2, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
-			err = repoDB.SetRepoTag(repo4, tag1, manifestDigest3, ispec.MediaTypeImageManifest)
+			err = repoDB.SetRepoReference(repo4, tag1, manifestDigest3, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
 
 			config1 := ispec.Image{
@@ -1561,7 +1576,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				ConfigBlob:   emptyConfigBlob,
 			}
 
-			err = repoDB.SetRepoTag(repo1, "2.0.0", indexDigest, ispec.MediaTypeImageIndex)
+			err = repoDB.SetRepoReference(repo1, "2.0.0", indexDigest, ispec.MediaTypeImageIndex)
 			So(err, ShouldBeNil)
 
 			indexBlob, err := test.GetIndexBlobWithManifests([]godigest.Digest{
@@ -1575,17 +1590,17 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			})
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetRepoTag(repo1, "0.0.1", manifestDigest1, ispec.MediaTypeImageManifest)
+			err = repoDB.SetRepoReference(repo1, "0.0.1", manifestDigest1, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
-			err = repoDB.SetRepoTag(repo1, "0.0.2", manifestDigest3, ispec.MediaTypeImageManifest)
+			err = repoDB.SetRepoReference(repo1, "0.0.2", manifestDigest3, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
-			err = repoDB.SetRepoTag(repo1, "0.1.0", manifestDigest2, ispec.MediaTypeImageManifest)
+			err = repoDB.SetRepoReference(repo1, "0.1.0", manifestDigest2, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
-			err = repoDB.SetRepoTag(repo1, "1.0.0", manifestDigest2, ispec.MediaTypeImageManifest)
+			err = repoDB.SetRepoReference(repo1, "1.0.0", manifestDigest2, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
-			err = repoDB.SetRepoTag(repo1, "1.0.1", manifestDigest2, ispec.MediaTypeImageManifest)
+			err = repoDB.SetRepoReference(repo1, "1.0.1", manifestDigest2, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
-			err = repoDB.SetRepoTag(repo2, "0.0.1", manifestDigest3, ispec.MediaTypeImageManifest)
+			err = repoDB.SetRepoReference(repo2, "0.0.1", manifestDigest3, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
 
 			err = repoDB.SetManifestMeta(repo1, manifestDigest1, emptyManifestMeta)
@@ -1797,15 +1812,15 @@ func TestRelevanceSorting(t *testing.T) {
 				ConfigBlob:   emptyConfigBlob,
 			}
 
-			err = repoDB.SetRepoTag(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+			err = repoDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
-			err = repoDB.SetRepoTag(repo1, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
+			err = repoDB.SetRepoReference(repo1, tag2, manifestDigest2, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
-			err = repoDB.SetRepoTag(repo2, tag3, manifestDigest3, ispec.MediaTypeImageManifest)
+			err = repoDB.SetRepoReference(repo2, tag3, manifestDigest3, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
-			err = repoDB.SetRepoTag(repo3, tag3, manifestDigest3, ispec.MediaTypeImageManifest)
+			err = repoDB.SetRepoReference(repo3, tag3, manifestDigest3, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
-			err = repoDB.SetRepoTag(repo4, tag1, manifestDigest3, ispec.MediaTypeImageManifest)
+			err = repoDB.SetRepoReference(repo4, tag1, manifestDigest3, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
 
 			err = repoDB.SetManifestMeta(repo1, manifestDigest1, emptyRepoMeta)

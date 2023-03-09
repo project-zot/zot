@@ -57,7 +57,7 @@ func TestConvertErrors(t *testing.T) {
 		digest11 := godigest.FromString("abc1")
 		err = repoDB.SetManifestMeta("repo1", digest11, repoMeta11)
 		So(err, ShouldBeNil)
-		err = repoDB.SetRepoTag("repo1", "0.1.0", digest11, ispec.MediaTypeImageManifest)
+		err = repoDB.SetRepoReference("repo1", "0.1.0", digest11, ispec.MediaTypeImageManifest)
 		So(err, ShouldBeNil)
 
 		repoMetas, manifestMetaMap, _, _, err := repoDB.SearchRepos(context.Background(), "", repodb.Filter{},

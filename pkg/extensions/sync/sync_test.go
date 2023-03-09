@@ -46,6 +46,7 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
+	"zotregistry.io/zot/pkg/test/mocks"
 )
 
 const (
@@ -137,6 +138,12 @@ func startUpstreamServer(
 
 	srcConfig.Storage.RootDirectory = srcDir
 
+	defVal := true
+	srcConfig.Extensions = &extconf.ExtensionConfig{}
+	srcConfig.Extensions.Search = &extconf.SearchConfig{
+		BaseConfig: extconf.BaseConfig{Enable: &defVal},
+	}
+
 	sctlr := api.NewController(srcConfig)
 
 	scm := test.NewControllerManager(sctlr)
@@ -193,7 +200,10 @@ func startDownstreamServer(
 	destConfig.Storage.GC = false
 
 	destConfig.Extensions = &extconf.ExtensionConfig{}
-	destConfig.Extensions.Search = nil
+	defVal := true
+	destConfig.Extensions.Search = &extconf.SearchConfig{
+		BaseConfig: extconf.BaseConfig{Enable: &defVal},
+	}
 	destConfig.Extensions.Sync = syncConfig
 
 	dctlr := api.NewController(destConfig)
@@ -626,6 +636,186 @@ func TestOnDemand(t *testing.T) {
 		resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 500)
+	})
+
+	Convey("Sync on Demand errors", t, func() {
+		Convey("Signature copier errors", func() {
+			// start upstream server
+			rootDir := t.TempDir()
+			port := test.GetFreePort()
+			srcBaseURL := test.GetBaseURL(port)
+			conf := config.New()
+			conf.HTTP.Port = port
+			conf.Storage.GC = false
+			ctlr := api.NewController(conf)
+			ctlr.Config.Storage.RootDirectory = rootDir
+
+			cm := test.NewControllerManager(ctlr)
+			cm.StartAndWait(conf.HTTP.Port)
+			defer cm.StopServer()
+
+			imageConfig, layers, manifest, err := test.GetRandomImageComponents(10)
+			So(err, ShouldBeNil)
+
+			manifestBlob, err := json.Marshal(manifest)
+			So(err, ShouldBeNil)
+
+			manifestDigest := godigest.FromBytes(manifestBlob)
+
+			err = test.UploadImage(
+				test.Image{Config: imageConfig, Layers: layers, Manifest: manifest, Reference: "test"},
+				srcBaseURL,
+				"remote-repo",
+			)
+			So(err, ShouldBeNil)
+
+			// sign using cosign
+			err = test.SignImageUsingCosign(fmt.Sprintf("remote-repo@%s", manifestDigest.String()), port)
+			So(err, ShouldBeNil)
+
+			// add OCI Ref
+			OCIRefManifest := ispec.Artifact{
+				Subject: &ispec.Descriptor{
+					MediaType: ispec.MediaTypeImageManifest,
+					Digest:    manifestDigest,
+				},
+				Blobs:     []ispec.Descriptor{},
+				MediaType: ispec.MediaTypeArtifactManifest,
+			}
+
+			OCIRefManifestBlob, err := json.Marshal(OCIRefManifest)
+			So(err, ShouldBeNil)
+
+			resp, err := resty.R().
+				SetHeader("Content-type", ispec.MediaTypeArtifactManifest).
+				SetBody(OCIRefManifestBlob).
+				Put(srcBaseURL + "/v2/remote-repo/manifests/oci.ref")
+
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+			// add ORAS Ref
+			ORASRefManifest := artifactspec.Manifest{
+				Subject: &artifactspec.Descriptor{
+					MediaType: ispec.MediaTypeImageManifest,
+					Digest:    manifestDigest,
+				},
+				Blobs:     []artifactspec.Descriptor{},
+				MediaType: artifactspec.MediaTypeArtifactManifest,
+			}
+
+			ORASRefManifestBlob, err := json.Marshal(ORASRefManifest)
+			So(err, ShouldBeNil)
+
+			resp, err = resty.R().
+				SetHeader("Content-type", artifactspec.MediaTypeArtifactManifest).
+				SetBody(ORASRefManifestBlob).
+				Put(srcBaseURL + "/v2/remote-repo/manifests/oras.ref")
+
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+			//------- Start downstream server
+
+			var tlsVerify bool
+
+			regex := ".*"
+			semver := true
+
+			syncRegistryConfig := syncconf.RegistryConfig{
+				Content: []syncconf.Content{
+					{
+						Prefix: "remote-repo",
+						Tags: &syncconf.Tags{
+							Regex:  &regex,
+							Semver: &semver,
+						},
+					},
+				},
+				URLs:      []string{srcBaseURL},
+				TLSVerify: &tlsVerify,
+				CertDir:   "",
+				OnDemand:  true,
+			}
+
+			defaultVal := true
+			syncConfig := &syncconf.Config{
+				Enable:     &defaultVal,
+				Registries: []syncconf.RegistryConfig{syncRegistryConfig},
+			}
+
+			destPort := test.GetFreePort()
+			destConfig := config.New()
+
+			destBaseURL := test.GetBaseURL(destPort)
+
+			destConfig.HTTP.Port = destPort
+
+			destDir := t.TempDir()
+
+			destConfig.Storage.RootDirectory = destDir
+			destConfig.Storage.Dedupe = false
+			destConfig.Storage.GC = false
+
+			destConfig.Extensions = &extconf.ExtensionConfig{}
+			defVal := true
+			destConfig.Extensions.Search = &extconf.SearchConfig{
+				BaseConfig: extconf.BaseConfig{Enable: &defVal},
+			}
+			destConfig.Extensions.Sync = syncConfig
+
+			dctlr := api.NewController(destConfig)
+			dcm := test.NewControllerManager(dctlr)
+			dcm.StartAndWait(destPort)
+
+			// repodb fails for syncOCIRefs
+
+			dctlr.RepoDB = mocks.RepoDBMock{
+				SetRepoReferenceFn: func(repo, Reference string, manifestDigest godigest.Digest, mediaType string) error {
+					if mediaType == ispec.MediaTypeArtifactManifest {
+						return sync.ErrTestError
+					}
+
+					return nil
+				},
+			}
+
+			resp, err = resty.R().Get(destBaseURL + "/v2/remote-repo/manifests/test")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			// repodb fails for syncCosignSignature"
+
+			dctlr.RepoDB = mocks.RepoDBMock{
+				SetRepoReferenceFn: func(repo, reference string, manifestDigest godigest.Digest, mediaType string) error {
+					if strings.HasPrefix(reference, "sha256") || strings.HasSuffix(reference, ".sig") {
+						return sync.ErrTestError
+					}
+
+					return nil
+				},
+			}
+
+			resp, err = resty.R().Get(destBaseURL + "/v2/remote-repo/manifests/test")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+
+			// repodb fails for getORASRefs
+
+			dctlr.RepoDB = mocks.RepoDBMock{
+				SetRepoReferenceFn: func(repo, Reference string, manifestDigest godigest.Digest, mediaType string) error {
+					if mediaType == artifactspec.MediaTypeArtifactManifest {
+						return sync.ErrTestError
+					}
+
+					return nil
+				},
+			}
+
+			resp, err = resty.R().Get(destBaseURL + "/v2/remote-repo/manifests/test")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, 200)
+		})
 	})
 }
 
@@ -4510,11 +4700,24 @@ func TestSyncWithDestination(t *testing.T) {
 			},
 		}
 
-		sctlr, srcBaseURL, _, _, _ := startUpstreamServer(t, false, false)
+		srcPort := test.GetFreePort()
+		srcConfig := config.New()
+		srcBaseURL := test.GetBaseURL(srcPort)
 
-		defer func() {
-			sctlr.Shutdown()
-		}()
+		srcConfig.HTTP.Port = srcPort
+
+		srcDir := t.TempDir()
+
+		srcConfig.Storage.RootDirectory = srcDir
+		defVal := true
+		srcConfig.Extensions = &extconf.ExtensionConfig{}
+		srcConfig.Extensions.Search = &extconf.SearchConfig{
+			BaseConfig: extconf.BaseConfig{Enable: &defVal},
+		}
+
+		sctlr := api.NewController(srcConfig)
+
+		test.CopyTestFiles("../../../test/data", srcDir)
 
 		err := os.MkdirAll(path.Join(sctlr.Config.Storage.RootDirectory, "/zot-fold"), local.DefaultDirPerms)
 		So(err, ShouldBeNil)
@@ -4524,8 +4727,14 @@ func TestSyncWithDestination(t *testing.T) {
 			path.Join(sctlr.Config.Storage.RootDirectory, "zot-test"),
 			path.Join(sctlr.Config.Storage.RootDirectory, "/zot-fold/zot-test"),
 		)
-
 		So(err, ShouldBeNil)
+
+		scm := test.NewControllerManager(sctlr)
+		scm.StartAndWait(srcPort)
+
+		defer func() {
+			sctlr.Shutdown()
+		}()
 
 		Convey("Test peridiocally sync", func() {
 			for _, testCase := range testCases {

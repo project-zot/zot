@@ -273,7 +273,7 @@ func TestImageScannable(t *testing.T) {
 		panic(err)
 	}
 
-	err = repoDB.SetRepoTag("repo1", "valid", digestValidManifest, ispec.MediaTypeImageManifest)
+	err = repoDB.SetRepoReference("repo1", "valid", digestValidManifest, ispec.MediaTypeImageManifest)
 	if err != nil {
 		panic(err)
 	}
@@ -309,7 +309,8 @@ func TestImageScannable(t *testing.T) {
 		panic(err)
 	}
 
-	err = repoDB.SetRepoTag("repo1", "unscannable-layer", digestManifestUnscannableLayer, ispec.MediaTypeImageManifest)
+	err = repoDB.SetRepoReference("repo1", "unscannable-layer", digestManifestUnscannableLayer,
+		ispec.MediaTypeImageManifest)
 	if err != nil {
 		panic(err)
 	}
@@ -328,7 +329,7 @@ func TestImageScannable(t *testing.T) {
 		panic(err)
 	}
 
-	err = repoDB.SetRepoTag("repo1", "unmarshable", digestUnmarshableManifest, ispec.MediaTypeImageManifest)
+	err = repoDB.SetRepoReference("repo1", "unmarshable", digestUnmarshableManifest, ispec.MediaTypeImageManifest)
 	if err != nil {
 		panic(err)
 	}
@@ -336,13 +337,13 @@ func TestImageScannable(t *testing.T) {
 	// Manifest meta cannot be found
 	digestMissingManifest := godigest.FromBytes([]byte("Some other string"))
 
-	err = repoDB.SetRepoTag("repo1", "missing", digestMissingManifest, ispec.MediaTypeImageManifest)
+	err = repoDB.SetRepoReference("repo1", "missing", digestMissingManifest, ispec.MediaTypeImageManifest)
 	if err != nil {
 		panic(err)
 	}
 
 	// RepoMeta contains invalid digest
-	err = repoDB.SetRepoTag("repo1", "invalid-digest", "invalid", ispec.MediaTypeImageManifest)
+	err = repoDB.SetRepoReference("repo1", "invalid-digest", "invalid", ispec.MediaTypeImageManifest)
 	if err != nil {
 		panic(err)
 	}

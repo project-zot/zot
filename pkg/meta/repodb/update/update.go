@@ -52,7 +52,7 @@ func OnUpdateManifest(name, reference, mediaType string, digest godigest.Digest,
 		}
 	} else {
 		err := repodb.SetMetadataFromInput(name, reference, mediaType, digest, body,
-			storeController, repoDB, log)
+			imgStore, repoDB, log)
 		if err != nil {
 			metadataSuccessfullySet = false
 		}
@@ -152,7 +152,7 @@ func OnGetManifest(name, reference string, digest godigest.Digest, body []byte,
 	if !isSignature {
 		err := repoDB.IncrementImageDownloads(name, reference)
 		if err != nil {
-			log.Error().Err(err).Msg("unexpected error")
+			log.Error().Err(err).Msgf("unexpected error for '%s:%s'", name, reference)
 
 			return err
 		}

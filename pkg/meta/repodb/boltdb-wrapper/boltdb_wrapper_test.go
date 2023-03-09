@@ -70,7 +70,7 @@ func TestWrapperErrors(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
-		Convey("SetRepoTag", func() {
+		Convey("SetRepoReference", func() {
 			err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
 				repoBuck := tx.Bucket([]byte(repodb.RepoMetadataBucket))
 
@@ -78,7 +78,7 @@ func TestWrapperErrors(t *testing.T) {
 			})
 			So(err, ShouldBeNil)
 
-			err = boltdbWrapper.SetRepoTag("repo1", "tag", "digest", ispec.MediaTypeImageManifest)
+			err = boltdbWrapper.SetRepoReference("repo1", "tag", "digest", ispec.MediaTypeImageManifest)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -388,7 +388,7 @@ func TestWrapperErrors(t *testing.T) {
 			Convey("Bad index data", func() {
 				indexDigest := digest.FromString("indexDigest")
 
-				err := boltdbWrapper.SetRepoTag("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
+				err := boltdbWrapper.SetRepoReference("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
 				So(err, ShouldBeNil)
 
 				err = setBadIndexData(boltdbWrapper.DB, indexDigest.String())
@@ -404,7 +404,7 @@ func TestWrapperErrors(t *testing.T) {
 			Convey("Bad indexBlob in IndexData", func() {
 				indexDigest := digest.FromString("indexDigest")
 
-				err := boltdbWrapper.SetRepoTag("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
+				err := boltdbWrapper.SetRepoReference("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
 				So(err, ShouldBeNil)
 
 				err = boltdbWrapper.SetIndexData(indexDigest, repodb.IndexData{
@@ -426,7 +426,7 @@ func TestWrapperErrors(t *testing.T) {
 					manifestDigestFromIndex2 = digest.FromString("manifestDigestFromIndex2")
 				)
 
-				err := boltdbWrapper.SetRepoTag("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
+				err := boltdbWrapper.SetRepoReference("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
 				So(err, ShouldBeNil)
 
 				indexBlob, err := test.GetIndexBlobWithManifests([]digest.Digest{
@@ -557,7 +557,7 @@ func TestWrapperErrors(t *testing.T) {
 			Convey("FilterTags bad IndexData", func() {
 				indexDigest := digest.FromString("indexDigest")
 
-				err := boltdbWrapper.SetRepoTag("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
+				err := boltdbWrapper.SetRepoReference("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
 				So(err, ShouldBeNil)
 
 				err = setBadIndexData(boltdbWrapper.DB, indexDigest.String())
@@ -573,7 +573,7 @@ func TestWrapperErrors(t *testing.T) {
 			Convey("FilterTags bad indexBlob in IndexData", func() {
 				indexDigest := digest.FromString("indexDigest")
 
-				err := boltdbWrapper.SetRepoTag("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
+				err := boltdbWrapper.SetRepoReference("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
 				So(err, ShouldBeNil)
 
 				err = boltdbWrapper.SetIndexData(indexDigest, repodb.IndexData{
@@ -595,7 +595,7 @@ func TestWrapperErrors(t *testing.T) {
 					manifestDigestFromIndex2 = digest.FromString("manifestDigestFromIndex2")
 				)
 
-				err := boltdbWrapper.SetRepoTag("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
+				err := boltdbWrapper.SetRepoReference("repo", "tag1", indexDigest, ispec.MediaTypeImageIndex) //nolint:contextcheck
 				So(err, ShouldBeNil)
 
 				indexBlob, err := test.GetIndexBlobWithManifests([]digest.Digest{
@@ -631,7 +631,7 @@ func TestWrapperErrors(t *testing.T) {
 		Convey("Unsuported type", func() {
 			digest := digest.FromString("digest")
 
-			err := boltdbWrapper.SetRepoTag("repo", "tag1", digest, "invalid type") //nolint:contextcheck
+			err := boltdbWrapper.SetRepoReference("repo", "tag1", digest, "invalid type") //nolint:contextcheck
 			So(err, ShouldBeNil)
 
 			_, _, _, _, err = boltdbWrapper.SearchRepos(ctx, "", repodb.Filter{}, repodb.PageInput{})

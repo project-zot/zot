@@ -91,7 +91,7 @@ func NewDynamoDBWrapper(params dynamoParams.DBDriverParameters) (*DBWrapper, err
 	return &dynamoWrapper, nil
 }
 
-func (dwr DBWrapper) SetManifestData(manifestDigest godigest.Digest, manifestData repodb.ManifestData) error {
+func (dwr *DBWrapper) SetManifestData(manifestDigest godigest.Digest, manifestData repodb.ManifestData) error {
 	mdAttributeValue, err := attributevalue.Marshal(manifestData)
 	if err != nil {
 		return err
@@ -116,7 +116,7 @@ func (dwr DBWrapper) SetManifestData(manifestDigest godigest.Digest, manifestDat
 	return err
 }
 
-func (dwr DBWrapper) GetManifestData(manifestDigest godigest.Digest) (repodb.ManifestData, error) {
+func (dwr *DBWrapper) GetManifestData(manifestDigest godigest.Digest) (repodb.ManifestData, error) {
 	resp, err := dwr.Client.GetItem(context.Background(), &dynamodb.GetItemInput{
 		TableName: aws.String(dwr.ManifestDataTablename),
 		Key: map[string]types.AttributeValue{
@@ -141,7 +141,7 @@ func (dwr DBWrapper) GetManifestData(manifestDigest godigest.Digest) (repodb.Man
 	return manifestData, nil
 }
 
-func (dwr DBWrapper) SetManifestMeta(repo string, manifestDigest godigest.Digest, manifestMeta repodb.ManifestMetadata,
+func (dwr *DBWrapper) SetManifestMeta(repo string, manifestDigest godigest.Digest, manifestMeta repodb.ManifestMetadata,
 ) error {
 	if manifestMeta.Signatures == nil {
 		manifestMeta.Signatures = repodb.ManifestSignatures{}
@@ -179,7 +179,7 @@ func (dwr DBWrapper) SetManifestMeta(repo string, manifestDigest godigest.Digest
 	return err
 }
 
-func (dwr DBWrapper) GetManifestMeta(repo string, manifestDigest godigest.Digest,
+func (dwr *DBWrapper) GetManifestMeta(repo string, manifestDigest godigest.Digest,
 ) (repodb.ManifestMetadata, error) { //nolint:contextcheck
 	manifestData, err := dwr.GetManifestData(manifestDigest)
 	if err != nil {
@@ -218,7 +218,7 @@ func (dwr DBWrapper) GetManifestMeta(repo string, manifestDigest godigest.Digest
 	return manifestMetadata, nil
 }
 
-func (dwr DBWrapper) IncrementRepoStars(repo string) error {
+func (dwr *DBWrapper) IncrementRepoStars(repo string) error {
 	repoMeta, err := dwr.GetRepoMeta(repo)
 	if err != nil {
 		return err
@@ -231,7 +231,7 @@ func (dwr DBWrapper) IncrementRepoStars(repo string) error {
 	return err
 }
 
-func (dwr DBWrapper) DecrementRepoStars(repo string) error {
+func (dwr *DBWrapper) DecrementRepoStars(repo string) error {
 	repoMeta, err := dwr.GetRepoMeta(repo)
 	if err != nil {
 		return err
@@ -246,7 +246,7 @@ func (dwr DBWrapper) DecrementRepoStars(repo string) error {
 	return err
 }
 
-func (dwr DBWrapper) GetRepoStars(repo string) (int, error) {
+func (dwr *DBWrapper) GetRepoStars(repo string) (int, error) {
 	repoMeta, err := dwr.GetRepoMeta(repo)
 	if err != nil {
 		return 0, err
@@ -255,7 +255,7 @@ func (dwr DBWrapper) GetRepoStars(repo string) (int, error) {
 	return repoMeta.Stars, nil
 }
 
-func (dwr DBWrapper) SetIndexData(indexDigest godigest.Digest, indexData repodb.IndexData) error {
+func (dwr *DBWrapper) SetIndexData(indexDigest godigest.Digest, indexData repodb.IndexData) error {
 	indexAttributeValue, err := attributevalue.Marshal(indexData)
 	if err != nil {
 		return err
@@ -280,7 +280,7 @@ func (dwr DBWrapper) SetIndexData(indexDigest godigest.Digest, indexData repodb.
 	return err
 }
 
-func (dwr DBWrapper) GetIndexData(indexDigest godigest.Digest) (repodb.IndexData, error) {
+func (dwr *DBWrapper) GetIndexData(indexDigest godigest.Digest) (repodb.IndexData, error) {
 	resp, err := dwr.Client.GetItem(context.TODO(), &dynamodb.GetItemInput{
 		TableName: aws.String(dwr.IndexDataTablename),
 		Key: map[string]types.AttributeValue{
@@ -307,8 +307,10 @@ func (dwr DBWrapper) GetIndexData(indexDigest godigest.Digest) (repodb.IndexData
 	return indexData, nil
 }
 
-func (dwr DBWrapper) SetRepoTag(repo string, tag string, manifestDigest godigest.Digest, mediaType string) error {
-	if err := common.ValidateRepoTagInput(repo, tag, manifestDigest); err != nil {
+func (dwr *DBWrapper) SetRepoReference(repo string, reference string, manifestDigest godigest.Digest,
+	mediaType string,
+) error {
+	if err := common.ValidateRepoReferenceInput(repo, reference, manifestDigest); err != nil {
 		return err
 	}
 
@@ -336,17 +338,22 @@ func (dwr DBWrapper) SetRepoTag(repo string, tag string, manifestDigest godigest
 		}
 	}
 
-	repoMeta.Tags[tag] = repodb.Descriptor{
-		Digest:    manifestDigest.String(),
-		MediaType: mediaType,
+	if !common.ReferenceIsDigest(reference) {
+		repoMeta.Tags[reference] = repodb.Descriptor{
+			Digest:    manifestDigest.String(),
+			MediaType: mediaType,
+		}
 	}
+
+	repoMeta.Statistics[manifestDigest.String()] = repodb.DescriptorStatistics{DownloadCount: 0}
+	repoMeta.Signatures[manifestDigest.String()] = repodb.ManifestSignatures{}
 
 	err = dwr.setRepoMeta(repo, repoMeta)
 
 	return err
 }
 
-func (dwr DBWrapper) DeleteRepoTag(repo string, tag string) error {
+func (dwr *DBWrapper) DeleteRepoTag(repo string, tag string) error {
 	resp, err := dwr.Client.GetItem(context.TODO(), &dynamodb.GetItemInput{
 		TableName: aws.String(dwr.RepoMetaTablename),
 		Key: map[string]types.AttributeValue{
@@ -405,7 +412,7 @@ func (dwr DBWrapper) DeleteRepoTag(repo string, tag string) error {
 	return err
 }
 
-func (dwr DBWrapper) GetRepoMeta(repo string) (repodb.RepoMetadata, error) {
+func (dwr *DBWrapper) GetRepoMeta(repo string) (repodb.RepoMetadata, error) {
 	resp, err := dwr.Client.GetItem(context.TODO(), &dynamodb.GetItemInput{
 		TableName: aws.String(dwr.RepoMetaTablename),
 		Key: map[string]types.AttributeValue{
@@ -430,7 +437,7 @@ func (dwr DBWrapper) GetRepoMeta(repo string) (repodb.RepoMetadata, error) {
 	return repoMeta, nil
 }
 
-func (dwr DBWrapper) IncrementImageDownloads(repo string, reference string) error {
+func (dwr *DBWrapper) IncrementImageDownloads(repo string, reference string) error {
 	repoMeta, err := dwr.GetRepoMeta(repo)
 	if err != nil {
 		return err
@@ -456,7 +463,7 @@ func (dwr DBWrapper) IncrementImageDownloads(repo string, reference string) erro
 	return dwr.setRepoMeta(repo, repoMeta)
 }
 
-func (dwr DBWrapper) AddManifestSignature(repo string, signedManifestDigest godigest.Digest,
+func (dwr *DBWrapper) AddManifestSignature(repo string, signedManifestDigest godigest.Digest,
 	sygMeta repodb.SignatureMetadata,
 ) error {
 	repoMeta, err := dwr.GetRepoMeta(repo)
@@ -497,7 +504,7 @@ func (dwr DBWrapper) AddManifestSignature(repo string, signedManifestDigest godi
 	return err
 }
 
-func (dwr DBWrapper) DeleteSignature(repo string, signedManifestDigest godigest.Digest,
+func (dwr *DBWrapper) DeleteSignature(repo string, signedManifestDigest godigest.Digest,
 	sigMeta repodb.SignatureMetadata,
 ) error {
 	repoMeta, err := dwr.GetRepoMeta(repo)
@@ -535,7 +542,7 @@ func (dwr DBWrapper) DeleteSignature(repo string, signedManifestDigest godigest.
 	return err
 }
 
-func (dwr DBWrapper) GetMultipleRepoMeta(ctx context.Context,
+func (dwr *DBWrapper) GetMultipleRepoMeta(ctx context.Context,
 	filter func(repoMeta repodb.RepoMetadata) bool, requestedPage repodb.PageInput,
 ) ([]repodb.RepoMetadata, error) {
 	var (
@@ -583,7 +590,7 @@ func (dwr DBWrapper) GetMultipleRepoMeta(ctx context.Context,
 	return foundRepos, err
 }
 
-func (dwr DBWrapper) SearchRepos(ctx context.Context, searchText string, filter repodb.Filter,
+func (dwr *DBWrapper) SearchRepos(ctx context.Context, searchText string, filter repodb.Filter,
 	requestedPage repodb.PageInput,
 ) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, repodb.PageInfo, error) {
 	var (
@@ -743,7 +750,7 @@ func (dwr DBWrapper) SearchRepos(ctx context.Context, searchText string, filter 
 	return foundRepos, foundManifestMetadataMap, foundindexDataMap, pageInfo, err
 }
 
-func (dwr DBWrapper) fetchManifestMetaWithCheck(repoName string, manifestDigest string,
+func (dwr *DBWrapper) fetchManifestMetaWithCheck(repoName string, manifestDigest string,
 	manifestMetadataMap map[string]repodb.ManifestMetadata,
 ) (repodb.ManifestMetadata, error) {
 	var (
@@ -796,7 +803,7 @@ func collectImageManifestFilterData(digest string, repoMeta repodb.RepoMetadata,
 	}, nil
 }
 
-func (dwr DBWrapper) fetchIndexDataWithCheck(indexDigest string, indexDataMap map[string]repodb.IndexData,
+func (dwr *DBWrapper) fetchIndexDataWithCheck(indexDigest string, indexDataMap map[string]repodb.IndexData,
 ) (repodb.IndexData, error) {
 	var (
 		indexData repodb.IndexData
@@ -816,7 +823,7 @@ func (dwr DBWrapper) fetchIndexDataWithCheck(indexDigest string, indexDataMap ma
 	return indexData, err
 }
 
-func (dwr DBWrapper) collectImageIndexFilterInfo(indexDigest string, repoMeta repodb.RepoMetadata,
+func (dwr *DBWrapper) collectImageIndexFilterInfo(indexDigest string, repoMeta repodb.RepoMetadata,
 	indexData repodb.IndexData, manifestMetadataMap map[string]repodb.ManifestMetadata,
 ) (repodb.FilterData, error) {
 	var indexContent ispec.Index
@@ -871,7 +878,7 @@ func (dwr DBWrapper) collectImageIndexFilterInfo(indexDigest string, repoMeta re
 	}, nil
 }
 
-func (dwr DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
+func (dwr *DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 	requestedPage repodb.PageInput,
 ) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, repodb.PageInfo, error) {
 	var (
@@ -1009,7 +1016,7 @@ func (dwr DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 	return foundRepos, foundManifestMetadataMap, foundindexDataMap, pageInfo, err
 }
 
-func (dwr DBWrapper) SearchTags(ctx context.Context, searchText string, filter repodb.Filter,
+func (dwr *DBWrapper) SearchTags(ctx context.Context, searchText string, filter repodb.Filter,
 	requestedPage repodb.PageInput,
 ) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, repodb.PageInfo, error) {
 	var (
@@ -1244,7 +1251,7 @@ func (dwr *DBWrapper) PatchDB() error {
 	return nil
 }
 
-func (dwr DBWrapper) setRepoMeta(repo string, repoMeta repodb.RepoMetadata) error {
+func (dwr *DBWrapper) setRepoMeta(repo string, repoMeta repodb.RepoMetadata) error {
 	repoAttributeValue, err := attributevalue.Marshal(repoMeta)
 	if err != nil {
 		return err
@@ -1269,7 +1276,7 @@ func (dwr DBWrapper) setRepoMeta(repo string, repoMeta repodb.RepoMetadata) erro
 	return err
 }
 
-func (dwr DBWrapper) createRepoMetaTable() error {
+func (dwr *DBWrapper) createRepoMetaTable() error {
 	_, err := dwr.Client.CreateTable(context.Background(), &dynamodb.CreateTableInput{
 		TableName: aws.String(dwr.RepoMetaTablename),
 		AttributeDefinitions: []types.AttributeDefinition{
@@ -1294,7 +1301,7 @@ func (dwr DBWrapper) createRepoMetaTable() error {
 	return dwr.waitTableToBeCreated(dwr.RepoMetaTablename)
 }
 
-func (dwr DBWrapper) deleteRepoMetaTable() error {
+func (dwr *DBWrapper) deleteRepoMetaTable() error {
 	_, err := dwr.Client.DeleteTable(context.Background(), &dynamodb.DeleteTableInput{
 		TableName: aws.String(dwr.RepoMetaTablename),
 	})
@@ -1306,7 +1313,7 @@ func (dwr DBWrapper) deleteRepoMetaTable() error {
 	return dwr.waitTableToBeDeleted(dwr.RepoMetaTablename)
 }
 
-func (dwr DBWrapper) ResetRepoMetaTable() error {
+func (dwr *DBWrapper) ResetRepoMetaTable() error {
 	err := dwr.deleteRepoMetaTable()
 	if err != nil {
 		return err
@@ -1315,7 +1322,7 @@ func (dwr DBWrapper) ResetRepoMetaTable() error {
 	return dwr.createRepoMetaTable()
 }
 
-func (dwr DBWrapper) waitTableToBeCreated(tableName string) error {
+func (dwr *DBWrapper) waitTableToBeCreated(tableName string) error {
 	const maxWaitTime = 20 * time.Second
 
 	waiter := dynamodb.NewTableExistsWaiter(dwr.Client)
@@ -1325,7 +1332,7 @@ func (dwr DBWrapper) waitTableToBeCreated(tableName string) error {
 	}, maxWaitTime)
 }
 
-func (dwr DBWrapper) waitTableToBeDeleted(tableName string) error {
+func (dwr *DBWrapper) waitTableToBeDeleted(tableName string) error {
 	const maxWaitTime = 20 * time.Second
 
 	waiter := dynamodb.NewTableNotExistsWaiter(dwr.Client)
@@ -1335,7 +1342,7 @@ func (dwr DBWrapper) waitTableToBeDeleted(tableName string) error {
 	}, maxWaitTime)
 }
 
-func (dwr DBWrapper) createManifestDataTable() error {
+func (dwr *DBWrapper) createManifestDataTable() error {
 	_, err := dwr.Client.CreateTable(context.Background(), &dynamodb.CreateTableInput{
 		TableName: aws.String(dwr.ManifestDataTablename),
 		AttributeDefinitions: []types.AttributeDefinition{
@@ -1360,7 +1367,7 @@ func (dwr DBWrapper) createManifestDataTable() error {
 	return dwr.waitTableToBeCreated(dwr.ManifestDataTablename)
 }
 
-func (dwr DBWrapper) createIndexDataTable() error {
+func (dwr *DBWrapper) createIndexDataTable() error {
 	_, err := dwr.Client.CreateTable(context.Background(), &dynamodb.CreateTableInput{
 		TableName: aws.String(dwr.IndexDataTablename),
 		AttributeDefinitions: []types.AttributeDefinition{
@@ -1470,7 +1477,7 @@ func (dwr *DBWrapper) getDBVersion() (string, error) {
 	return version, nil
 }
 
-func (dwr DBWrapper) deleteManifestDataTable() error {
+func (dwr *DBWrapper) deleteManifestDataTable() error {
 	_, err := dwr.Client.DeleteTable(context.Background(), &dynamodb.DeleteTableInput{
 		TableName: aws.String(dwr.ManifestDataTablename),
 	})
@@ -1482,7 +1489,7 @@ func (dwr DBWrapper) deleteManifestDataTable() error {
 	return dwr.waitTableToBeDeleted(dwr.ManifestDataTablename)
 }
 
-func (dwr DBWrapper) ResetManifestDataTable() error {
+func (dwr *DBWrapper) ResetManifestDataTable() error {
 	err := dwr.deleteManifestDataTable()
 	if err != nil {
 		return err

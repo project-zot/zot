@@ -31,6 +31,7 @@ import (
 	syncconf "zotregistry.io/zot/pkg/extensions/config/sync"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta/repodb"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
@@ -264,7 +265,7 @@ func getFileCredentials(filepath string) (syncconf.CredentialsFile, error) {
 }
 
 func pushSyncedLocalImage(localRepo, reference, localCachePath string,
-	imageStore storage.ImageStore, log log.Logger,
+	repoDB repodb.RepoDB, imageStore storage.ImageStore, log log.Logger,
 ) error {
 	log.Info().Msgf("pushing synced local image %s/%s:%s to local registry", localCachePath, localRepo, reference)
 
@@ -275,7 +276,7 @@ func pushSyncedLocalImage(localRepo, reference, localCachePath string,
 	cacheImageStore := local.NewImageStore(localCachePath, false,
 		storage.DefaultGCDelay, false, false, log, metrics, nil, nil)
 
-	manifestContent, _, mediaType, err := cacheImageStore.GetImageManifest(localRepo, reference)
+	manifestBlob, manifestDigest, mediaType, err := cacheImageStore.GetImageManifest(localRepo, reference)
 	if err != nil {
 		log.Error().Str("errorType", common.TypeOf(err)).
 			Err(err).Str("dir", path.Join(cacheImageStore.RootDir(), localRepo)).
@@ -287,7 +288,7 @@ func pushSyncedLocalImage(localRepo, reference, localCachePath string,
 	// is image manifest
 	switch mediaType {
 	case ispec.MediaTypeImageManifest:
-		if err := copyManifest(localRepo, manifestContent, reference, cacheImageStore, imageStore, log); err != nil {
+		if err := copyManifest(localRepo, manifestBlob, reference, repoDB, cacheImageStore, imageStore, log); err != nil {
 			if errors.Is(err, zerr.ErrImageLintAnnotations) {
 				log.Error().Str("errorType", common.TypeOf(err)).
 					Err(err).Msg("couldn't upload manifest because of missing annotations")
@@ -301,7 +302,7 @@ func pushSyncedLocalImage(localRepo, reference, localCachePath string,
 		// is image index
 		var indexManifest ispec.Index
 
-		if err := json.Unmarshal(manifestContent, &indexManifest); err != nil {
+		if err := json.Unmarshal(manifestBlob, &indexManifest); err != nil {
 			log.Error().Str("errorType", common.TypeOf(err)).
 				Err(err).Str("dir", path.Join(cacheImageStore.RootDir(), localRepo)).
 				Msg("invalid JSON")
@@ -322,7 +323,7 @@ func pushSyncedLocalImage(localRepo, reference, localCachePath string,
 				return err
 			}
 
-			if err := copyManifest(localRepo, manifestBuf, manifest.Digest.String(),
+			if err := copyManifest(localRepo, manifestBuf, manifest.Digest.String(), repoDB,
 				cacheImageStore, imageStore, log); err != nil {
 				if errors.Is(err, zerr.ErrImageLintAnnotations) {
 					log.Error().Str("errorType", common.TypeOf(err)).
@@ -335,19 +336,29 @@ func pushSyncedLocalImage(localRepo, reference, localCachePath string,
 			}
 		}
 
-		_, err = imageStore.PutImageManifest(localRepo, reference, mediaType, manifestContent)
+		_, err = imageStore.PutImageManifest(localRepo, reference, mediaType, manifestBlob)
 		if err != nil {
 			log.Error().Str("errorType", common.TypeOf(err)).
 				Err(err).Msg("couldn't upload manifest")
 
 			return err
 		}
+
+		if repoDB != nil {
+			err = repodb.SetMetadataFromInput(localRepo, reference, mediaType,
+				manifestDigest, manifestBlob, imageStore, repoDB, log)
+			if err != nil {
+				return fmt.Errorf("failed to set metadata for image '%s %s': %w", localRepo, reference, err)
+			}
+
+			log.Debug().Msgf("successfully set metadata for %s:%s", localRepo, reference)
+		}
 	}
 
 	return nil
 }
 
-func copyManifest(localRepo string, manifestContent []byte, reference string,
+func copyManifest(localRepo string, manifestContent []byte, reference string, repoDB repodb.RepoDB,
 	cacheImageStore, imageStore storage.ImageStore, log log.Logger,
 ) error {
 	var manifest ispec.Manifest
@@ -376,13 +387,26 @@ func copyManifest(localRepo string, manifestContent []byte, reference string,
 		return err
 	}
 
-	_, err = imageStore.PutImageManifest(localRepo, reference,
+	digest, err := imageStore.PutImageManifest(localRepo, reference,
 		ispec.MediaTypeImageManifest, manifestContent)
 	if err != nil {
 		log.Error().Str("errorType", common.TypeOf(err)).
 			Err(err).Msg("couldn't upload manifest")
 
 		return err
+	}
+
+	if repoDB != nil {
+		err = repodb.SetMetadataFromInput(localRepo, reference, ispec.MediaTypeImageManifest,
+			digest, manifestContent, imageStore, repoDB, log)
+		if err != nil {
+			log.Error().Str("errorType", common.TypeOf(err)).
+				Err(err).Msg("couldn't set metadata from input")
+
+			return err
+		}
+
+		log.Debug().Msgf("successfully set metadata for %s:%s", localRepo, reference)
 	}
 
 	return nil
@@ -720,7 +744,7 @@ func syncImageWithRefs(ctx context.Context, localRepo, upstreamRepo, reference s
 		}
 
 		// push from cache to repo
-		err = pushSyncedLocalImage(localRepo, reference, localCachePath, imageStore, log)
+		err = pushSyncedLocalImage(localRepo, reference, localCachePath, sig.repoDB, imageStore, log)
 		if err != nil {
 			log.Error().Str("errorType", common.TypeOf(err)).
 				Err(err).Msgf("error while pushing synced cached image %s",
