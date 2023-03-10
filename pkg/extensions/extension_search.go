@@ -91,7 +91,7 @@ func (gen *trivyTaskGenerator) GenerateTask() (scheduler.Task, error) {
 
 	gen.lock.Lock()
 
-	if gen.status != running && time.Since(gen.lastTaskTime) >= gen.waitTime {
+	if gen.status == pending && time.Since(gen.lastTaskTime) >= gen.waitTime {
 		newTask = newTrivyTask(gen.interval, gen.cveInfo, gen, gen.log)
 		gen.status = running
 	}
