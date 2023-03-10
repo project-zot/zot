@@ -416,7 +416,7 @@ func fetchManifestStruct(ctx context.Context, repo, manifestReference string, se
 
 	manifestSize, err := strconv.ParseInt(header.Get("Content-Length"), 10, 64)
 	if err != nil {
-		return manifestStruct{}, err
+		manifestSize = 0
 	}
 
 	var imageSize int64
