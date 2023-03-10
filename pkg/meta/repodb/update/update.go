@@ -7,19 +7,20 @@ import (
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/repodb"
+	"zotregistry.io/zot/pkg/meta/repodb/common"
 	"zotregistry.io/zot/pkg/storage"
 )
 
 // OnUpdateManifest is called when a new manifest is added. It updates repodb according to the type
 // of image pushed(normal images, signatues, etc.). In care of any errors, it makes sure to keep
 // consistency between repodb and the image store.
-func OnUpdateManifest(name, reference, mediaType string, digest godigest.Digest, body []byte,
+func OnUpdateManifest(repo, reference, mediaType string, digest godigest.Digest, body []byte,
 	storeController storage.StoreController, repoDB repodb.RepoDB, log log.Logger,
 ) error {
-	imgStore := storeController.GetImageStore(name)
+	imgStore := storeController.GetImageStore(repo)
 
 	// check if image is a signature
-	isSignature, signatureType, signedManifestDigest, err := storage.CheckIsImageSignature(name, body, reference,
+	isSignature, signatureType, signedManifestDigest, err := storage.CheckIsImageSignature(repo, body, reference,
 		storeController)
 	if err != nil {
 		if errors.Is(err, zerr.ErrOrphanSignature) {
@@ -30,8 +31,8 @@ func OnUpdateManifest(name, reference, mediaType string, digest godigest.Digest,
 
 		log.Error().Err(err).Msg("can't check if image is a signature or not")
 
-		if err := imgStore.DeleteImageManifest(name, reference, false); err != nil {
-			log.Error().Err(err).Msgf("couldn't remove image manifest %s in repo %s", reference, name)
+		if err := imgStore.DeleteImageManifest(repo, reference, false); err != nil {
+			log.Error().Err(err).Msgf("couldn't remove image manifest %s in repo %s", reference, repo)
 
 			return err
 		}
@@ -42,7 +43,7 @@ func OnUpdateManifest(name, reference, mediaType string, digest godigest.Digest,
 	metadataSuccessfullySet := true
 
 	if isSignature {
-		err = repoDB.AddManifestSignature(name, signedManifestDigest, repodb.SignatureMetadata{
+		err = repoDB.AddManifestSignature(repo, signedManifestDigest, repodb.SignatureMetadata{
 			SignatureType:   signatureType,
 			SignatureDigest: digest.String(),
 		})
@@ -51,7 +52,7 @@ func OnUpdateManifest(name, reference, mediaType string, digest godigest.Digest,
 			metadataSuccessfullySet = false
 		}
 	} else {
-		err := repodb.SetMetadataFromInput(name, reference, mediaType, digest, body,
+		err := repodb.SetMetadataFromInput(repo, reference, mediaType, digest, body,
 			imgStore, repoDB, log)
 		if err != nil {
 			metadataSuccessfullySet = false
@@ -59,10 +60,10 @@ func OnUpdateManifest(name, reference, mediaType string, digest godigest.Digest,
 	}
 
 	if !metadataSuccessfullySet {
-		log.Info().Msgf("uploding image meta was unsuccessful for tag %s in repo %s", reference, name)
+		log.Info().Msgf("uploding image meta was unsuccessful for tag %s in repo %s", reference, repo)
 
-		if err := imgStore.DeleteImageManifest(name, reference, false); err != nil {
-			log.Error().Err(err).Msgf("couldn't remove image manifest %s in repo %s", reference, name)
+		if err := imgStore.DeleteImageManifest(repo, reference, false); err != nil {
+			log.Error().Err(err).Msgf("couldn't remove image manifest %s in repo %s", reference, repo)
 
 			return err
 		}
@@ -76,12 +77,12 @@ func OnUpdateManifest(name, reference, mediaType string, digest godigest.Digest,
 // OnDeleteManifest is called when a manifest is deleted. It updates repodb according to the type
 // of image pushed(normal images, signatues, etc.). In care of any errors, it makes sure to keep
 // consistency between repodb and the image store.
-func OnDeleteManifest(name, reference, mediaType string, digest godigest.Digest, manifestBlob []byte,
+func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest, manifestBlob []byte,
 	storeController storage.StoreController, repoDB repodb.RepoDB, log log.Logger,
 ) error {
-	imgStore := storeController.GetImageStore(name)
+	imgStore := storeController.GetImageStore(repo)
 
-	isSignature, signatureType, signedManifestDigest, err := storage.CheckIsImageSignature(name, manifestBlob,
+	isSignature, signatureType, signedManifestDigest, err := storage.CheckIsImageSignature(repo, manifestBlob,
 		reference, storeController)
 	if err != nil {
 		if errors.Is(err, zerr.ErrOrphanSignature) {
@@ -98,7 +99,7 @@ func OnDeleteManifest(name, reference, mediaType string, digest godigest.Digest,
 	manageRepoMetaSuccessfully := true
 
 	if isSignature {
-		err = repoDB.DeleteSignature(name, signedManifestDigest, repodb.SignatureMetadata{
+		err = repoDB.DeleteSignature(repo, signedManifestDigest, repodb.SignatureMetadata{
 			SignatureDigest: digest.String(),
 			SignatureType:   signatureType,
 		})
@@ -107,22 +108,31 @@ func OnDeleteManifest(name, reference, mediaType string, digest godigest.Digest,
 			manageRepoMetaSuccessfully = false
 		}
 	} else {
-		err = repoDB.DeleteRepoTag(name, reference)
+		err = repoDB.DeleteRepoTag(repo, reference)
 		if err != nil {
 			log.Info().Msg("repodb: restoring image store")
 
 			// restore image store
-			_, err := imgStore.PutImageManifest(name, reference, mediaType, manifestBlob)
+			_, err := imgStore.PutImageManifest(repo, reference, mediaType, manifestBlob)
 			if err != nil {
 				log.Error().Err(err).Msg("repodb: error while restoring image store, database is not consistent")
 			}
 
 			manageRepoMetaSuccessfully = false
 		}
+
+		if refferredDigest, hasSubject := common.GetReferredSubject(manifestBlob); hasSubject {
+			err := repoDB.DeleteReferrer(repo, refferredDigest, digest)
+			if err != nil {
+				log.Error().Err(err).Msg("repodb: error while deleting referrer")
+
+				return err
+			}
+		}
 	}
 
 	if !manageRepoMetaSuccessfully {
-		log.Info().Msgf("repodb: deleting image meta was unsuccessful for tag %s in repo %s", reference, name)
+		log.Info().Msgf("repodb: deleting image meta was unsuccessful for tag %s in repo %s", reference, repo)
 
 		return err
 	}

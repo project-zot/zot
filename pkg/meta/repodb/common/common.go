@@ -1,6 +1,7 @@
 package common
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -196,4 +197,39 @@ func containsString(strSlice []string, str string) bool {
 	}
 
 	return false
+}
+
+func GetReferredSubject(descriptorBlob []byte) (godigest.Digest, bool) {
+	var manifest ispec.Manifest
+
+	err := json.Unmarshal(descriptorBlob, &manifest)
+	if err != nil {
+		return "", false
+	}
+
+	if manifest.Subject == nil || manifest.Subject.Digest.String() == "" {
+		return "", false
+	}
+
+	return manifest.Subject.Digest, true
+}
+
+func MatchesArtifactTypes(descriptorMediaType string, artifactTypes []string) bool {
+	if len(artifactTypes) == 0 {
+		return true
+	}
+
+	found := false
+
+	for _, artifactType := range artifactTypes {
+		if artifactType != "" && descriptorMediaType != artifactType {
+			continue
+		}
+
+		found = true
+
+		break
+	}
+
+	return found
 }

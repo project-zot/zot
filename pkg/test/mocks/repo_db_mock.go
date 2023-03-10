@@ -40,6 +40,19 @@ type RepoDBMock struct {
 
 	GetIndexDataFn func(indexDigest godigest.Digest) (repodb.IndexData, error)
 
+	SetArtifactDataFn func(digest godigest.Digest, artifactData repodb.ArtifactData) error
+
+	GetArtifactDataFn func(artifactDigest godigest.Digest) (repodb.ArtifactData, error)
+
+	SetReferrerFn func(repo string, referredDigest godigest.Digest, referrer repodb.Descriptor) error
+
+	DeleteReferrerFn func(repo string, referredDigest godigest.Digest, referrerDigest godigest.Digest) error
+
+	GetReferrersFn func(repo string, referredDigest godigest.Digest) ([]repodb.Descriptor, error)
+
+	GetFilteredReferrersInfoFn func(repo string, referredDigest godigest.Digest, artifactTypes []string) (
+		[]repodb.ReferrerInfo, error)
+
 	IncrementImageDownloadsFn func(repo string, reference string) error
 
 	AddManifestSignatureFn func(repo string, signedManifestDigest godigest.Digest, sm repodb.SignatureMetadata) error
@@ -101,14 +114,6 @@ func (sdm RepoDBMock) GetRepoStars(repo string) (int, error) {
 	}
 
 	return 0, nil
-}
-
-func (sdm RepoDBMock) SetRepoLogo(repo string, logoPath string) error {
-	if sdm.SetRepoLogoFn != nil {
-		return sdm.SetRepoLogoFn(repo, logoPath)
-	}
-
-	return nil
 }
 
 func (sdm RepoDBMock) SetRepoReference(repo string, reference string, manifestDigest godigest.Digest,
@@ -299,4 +304,56 @@ func (sdm RepoDBMock) PatchDB() error {
 	}
 
 	return nil
+}
+
+func (sdm RepoDBMock) SetArtifactData(digest godigest.Digest, artifactData repodb.ArtifactData) error {
+	if sdm.SetArtifactDataFn != nil {
+		return sdm.SetArtifactDataFn(digest, artifactData)
+	}
+
+	return nil
+}
+
+func (sdm RepoDBMock) GetArtifactData(artifactDigest godigest.Digest) (repodb.ArtifactData, error) {
+	if sdm.GetArtifactDataFn != nil {
+		return sdm.GetArtifactDataFn(artifactDigest)
+	}
+
+	return repodb.ArtifactData{}, nil
+}
+
+func (sdm RepoDBMock) SetReferrer(repo string, referredDigest godigest.Digest, referrer repodb.Descriptor) error {
+	if sdm.SetReferrerFn != nil {
+		return sdm.SetReferrerFn(repo, referredDigest, referrer)
+	}
+
+	return nil
+}
+
+func (sdm RepoDBMock) DeleteReferrer(repo string, referredDigest godigest.Digest,
+	referrerDigest godigest.Digest,
+) error {
+	if sdm.DeleteReferrerFn != nil {
+		return sdm.DeleteReferrerFn(repo, referredDigest, referrerDigest)
+	}
+
+	return nil
+}
+
+func (sdm RepoDBMock) GetReferrers(repo string, referredDigest godigest.Digest) ([]repodb.Descriptor, error) {
+	if sdm.GetReferrersFn != nil {
+		return sdm.GetReferrersFn(repo, referredDigest)
+	}
+
+	return []repodb.Descriptor{}, nil
+}
+
+func (sdm RepoDBMock) GetFilteredReferrersInfo(repo string, referredDigest godigest.Digest,
+	artifactTypes []string,
+) ([]repodb.ReferrerInfo, error) {
+	if sdm.GetFilteredReferrersInfoFn != nil {
+		return sdm.GetFilteredReferrersInfoFn(repo, referredDigest, artifactTypes)
+	}
+
+	return []repodb.ReferrerInfo{}, nil
 }

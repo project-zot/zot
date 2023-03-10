@@ -61,6 +61,11 @@ func NewBoltDBWrapper(params DBParameters) (*DBWrapper, error) {
 			return err
 		}
 
+		_, err = transaction.CreateBucketIfNotExists([]byte(repodb.ArtifactDataBucket))
+		if err != nil {
+			return err
+		}
+
 		_, err = transaction.CreateBucketIfNotExists([]byte(repodb.RepoMetadataBucket))
 		if err != nil {
 			return err
@@ -133,6 +138,7 @@ func (bdw *DBWrapper) SetManifestMeta(repo string, manifestDigest godigest.Diges
 			Tags:       map[string]repodb.Descriptor{},
 			Statistics: map[string]repodb.DescriptorStatistics{},
 			Signatures: map[string]repodb.ManifestSignatures{},
+			Referrers:  map[string][]repodb.Descriptor{},
 		}
 
 		repoMetaBlob := repoBuck.Get([]byte(repo))
@@ -259,6 +265,290 @@ func (bdw *DBWrapper) GetIndexData(indexDigest godigest.Digest) (repodb.IndexDat
 	return indexMetadata, err
 }
 
+func (bdw DBWrapper) SetArtifactData(artifactDigest godigest.Digest, artifactData repodb.ArtifactData) error {
+	err := bdw.DB.Update(func(tx *bolt.Tx) error {
+		buck := tx.Bucket([]byte(repodb.ArtifactDataBucket))
+
+		imBlob, err := json.Marshal(artifactData)
+		if err != nil {
+			return errors.Wrapf(err, "repodb: error while calculating blob for artifact with digest %s", artifactDigest)
+		}
+
+		err = buck.Put([]byte(artifactDigest), imBlob)
+		if err != nil {
+			return errors.Wrapf(err, "repodb: error while setting artifact blob for digest %s", artifactDigest)
+		}
+
+		return nil
+	})
+
+	return err
+}
+
+func (bdw DBWrapper) GetArtifactData(artifactDigest godigest.Digest) (repodb.ArtifactData, error) {
+	var artifactData repodb.ArtifactData
+
+	err := bdw.DB.View(func(tx *bolt.Tx) error {
+		buck := tx.Bucket([]byte(repodb.ArtifactDataBucket))
+
+		blob := buck.Get([]byte(artifactDigest))
+
+		if len(blob) == 0 {
+			return zerr.ErrArtifactDataNotFound
+		}
+
+		err := json.Unmarshal(blob, &artifactData)
+		if err != nil {
+			return errors.Wrapf(err, "repodb: error while unmashaling artifact data for digest %s", artifactDigest)
+		}
+
+		return nil
+	})
+
+	return artifactData, err
+}
+
+func (bdw DBWrapper) SetReferrer(repo string, referredDigest godigest.Digest, referrer repodb.Descriptor) error {
+	err := bdw.DB.Update(func(tx *bolt.Tx) error {
+		buck := tx.Bucket([]byte(repodb.RepoMetadataBucket))
+
+		repoMetaBlob := buck.Get([]byte(repo))
+
+		// object not found
+		if len(repoMetaBlob) == 0 {
+			var err error
+
+			// create a new object
+			repoMeta := repodb.RepoMetadata{
+				Name: repo,
+				Tags: map[string]repodb.Descriptor{},
+				Statistics: map[string]repodb.DescriptorStatistics{
+					referredDigest.String(): {},
+				},
+				Signatures: map[string]repodb.ManifestSignatures{
+					referredDigest.String(): {},
+				},
+				Referrers: map[string][]repodb.Descriptor{
+					referredDigest.String(): {
+						{
+							Digest:    referrer.Digest,
+							MediaType: referrer.MediaType,
+						},
+					},
+				},
+			}
+
+			repoMetaBlob, err = json.Marshal(repoMeta)
+			if err != nil {
+				return err
+			}
+
+			return buck.Put([]byte(repo), repoMetaBlob)
+		}
+		var repoMeta repodb.RepoMetadata
+
+		err := json.Unmarshal(repoMetaBlob, &repoMeta)
+		if err != nil {
+			return err
+		}
+
+		refferers := repoMeta.Referrers[referredDigest.String()]
+
+		for i := range refferers {
+			if refferers[i].Digest == referrer.Digest {
+				return nil
+			}
+		}
+
+		refferers = append(refferers, repodb.Descriptor{
+			Digest:    referrer.Digest,
+			MediaType: referrer.MediaType,
+		})
+
+		repoMeta.Referrers[referredDigest.String()] = refferers
+
+		repoMetaBlob, err = json.Marshal(repoMeta)
+		if err != nil {
+			return err
+		}
+
+		return buck.Put([]byte(repo), repoMetaBlob)
+	})
+
+	return err
+}
+
+func (bdw DBWrapper) DeleteReferrer(repo string, referredDigest godigest.Digest,
+	referrerDigest godigest.Digest,
+) error {
+	return bdw.DB.Update(func(tx *bolt.Tx) error {
+		buck := tx.Bucket([]byte(repodb.RepoMetadataBucket))
+
+		repoMetaBlob := buck.Get([]byte(repo))
+
+		if len(repoMetaBlob) == 0 {
+			return zerr.ErrRepoMetaNotFound
+		}
+
+		var repoMeta repodb.RepoMetadata
+
+		err := json.Unmarshal(repoMetaBlob, &repoMeta)
+		if err != nil {
+			return err
+		}
+
+		referrers := repoMeta.Referrers[referredDigest.String()]
+
+		for i := range referrers {
+			if referrers[i].Digest == referrerDigest.String() {
+				referrers = append(referrers[:i], referrers[i+1:]...)
+
+				break
+			}
+		}
+
+		repoMeta.Referrers[referredDigest.String()] = referrers
+
+		repoMetaBlob, err = json.Marshal(repoMeta)
+		if err != nil {
+			return err
+		}
+
+		return buck.Put([]byte(repo), repoMetaBlob)
+	})
+}
+
+func (bdw DBWrapper) GetReferrers(repo string, referredDigest godigest.Digest) ([]repodb.Descriptor, error) {
+	var referrers []repodb.Descriptor
+
+	err := bdw.DB.View(func(tx *bolt.Tx) error {
+		buck := tx.Bucket([]byte(repodb.RepoMetadataBucket))
+
+		repoMetaBlob := buck.Get([]byte(repo))
+		if len(repoMetaBlob) == 0 {
+			return zerr.ErrRepoMetaNotFound
+		}
+
+		var repoMeta repodb.RepoMetadata
+
+		err := json.Unmarshal(repoMetaBlob, &repoMeta)
+		if err != nil {
+			return err
+		}
+
+		referrers = repoMeta.Referrers[referredDigest.String()]
+
+		return nil
+	})
+
+	return referrers, err
+}
+
+func (bdw DBWrapper) GetFilteredReferrersInfo(repo string, referredDigest godigest.Digest,
+	artifactTypes []string,
+) ([]repodb.ReferrerInfo, error) {
+	referrersDescriptors, err := bdw.GetReferrers(repo, referredDigest)
+	if err != nil {
+		bdw.Log.Error().Msgf("repodb: failed to get referrers for  '%s@%s'", repo, referredDigest.String())
+
+		return nil, err
+	}
+
+	referrersInfo := []repodb.ReferrerInfo{}
+
+	err = bdw.DB.View(func(tx *bolt.Tx) error {
+		artifactBuck := tx.Bucket([]byte(repodb.ArtifactDataBucket))
+		manifestBuck := tx.Bucket([]byte(repodb.ManifestDataBucket))
+
+		for _, descriptor := range referrersDescriptors {
+			referrerInfo := repodb.ReferrerInfo{}
+
+			switch descriptor.MediaType {
+			case ispec.MediaTypeImageManifest:
+				manifestDataBlob := manifestBuck.Get([]byte(descriptor.Digest))
+
+				if len(manifestDataBlob) == 0 {
+					bdw.Log.Error().Msgf("repodb: manifest data not found for digest %s", descriptor.Digest)
+
+					continue
+				}
+
+				var manifestData repodb.ManifestData
+
+				err = json.Unmarshal(manifestDataBlob, &manifestData)
+				if err != nil {
+					bdw.Log.Error().Err(err).Msgf("repodb: can't unmarhsal manifest data for digest %s",
+						descriptor.Digest)
+
+					continue
+				}
+
+				var manifestContent ispec.Manifest
+
+				err := json.Unmarshal(manifestData.ManifestBlob, &manifestContent)
+				if err != nil {
+					bdw.Log.Error().Err(err).Msgf("repodb: can't unmarhsal manifest for digest %s",
+						descriptor.Digest)
+
+					continue
+				}
+
+				referrerInfo = repodb.ReferrerInfo{
+					Digest:       descriptor.Digest,
+					MediaType:    ispec.MediaTypeImageManifest,
+					ArtifactType: manifestContent.Config.MediaType,
+					Size:         len(manifestData.ManifestBlob),
+					Annotations:  manifestContent.Annotations,
+				}
+			case ispec.MediaTypeArtifactManifest:
+				artifactDataBlob := artifactBuck.Get([]byte(descriptor.Digest))
+
+				if len(artifactDataBlob) == 0 {
+					bdw.Log.Error().Msgf("repodb: artifact data not found for digest %s", descriptor.Digest)
+
+					continue
+				}
+
+				var artifactData repodb.ArtifactData
+
+				err = json.Unmarshal(artifactDataBlob, &artifactData)
+				if err != nil {
+					bdw.Log.Error().Err(err).Msgf("repodb: can't unmarhsal artifact data for digest %s", descriptor.Digest)
+
+					continue
+				}
+
+				manifestContent := ispec.Artifact{}
+
+				err := json.Unmarshal(artifactData.ManifestBlob, &manifestContent)
+				if err != nil {
+					bdw.Log.Error().Err(err).Msgf("repodb: can't unmarhsal artifact manifest for digest %s", descriptor.Digest)
+
+					continue
+				}
+
+				referrerInfo = repodb.ReferrerInfo{
+					Size:         len(artifactData.ManifestBlob),
+					Digest:       descriptor.Digest,
+					MediaType:    manifestContent.MediaType,
+					Annotations:  manifestContent.Annotations,
+					ArtifactType: manifestContent.ArtifactType,
+				}
+			}
+
+			if !common.MatchesArtifactTypes(referrerInfo.ArtifactType, artifactTypes) {
+				continue
+			}
+
+			referrersInfo = append(referrersInfo, referrerInfo)
+		}
+
+		return nil
+	})
+
+	return referrersInfo, err
+}
+
 func (bdw *DBWrapper) SetRepoReference(repo string, reference string, manifestDigest godigest.Digest,
 	mediaType string,
 ) error {
@@ -274,13 +564,16 @@ func (bdw *DBWrapper) SetRepoReference(repo string, reference string, manifestDi
 		// object not found
 		if len(repoMetaBlob) == 0 {
 			var err error
-
-			repoMetaBlob, err = json.Marshal(repodb.RepoMetadata{
+			// create a new object
+			repoMeta := repodb.RepoMetadata{
 				Name:       repo,
 				Tags:       map[string]repodb.Descriptor{},
 				Statistics: map[string]repodb.DescriptorStatistics{},
 				Signatures: map[string]repodb.ManifestSignatures{},
-			})
+				Referrers:  map[string][]repodb.Descriptor{},
+			}
+
+			repoMetaBlob, err = json.Marshal(repoMeta)
 			if err != nil {
 				return err
 			}
@@ -303,6 +596,7 @@ func (bdw *DBWrapper) SetRepoReference(repo string, reference string, manifestDi
 
 		repoMeta.Statistics[manifestDigest.String()] = repodb.DescriptorStatistics{DownloadCount: 0}
 		repoMeta.Signatures[manifestDigest.String()] = repodb.ManifestSignatures{}
+		repoMeta.Referrers[manifestDigest.String()] = []repodb.Descriptor{}
 
 		repoMetaBlob, err = json.Marshal(repoMeta)
 		if err != nil {

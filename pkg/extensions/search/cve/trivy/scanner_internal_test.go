@@ -88,7 +88,7 @@ func TestMultipleStoragePath(t *testing.T) {
 		})
 		So(err, ShouldBeNil)
 
-		err = repodb.SyncRepoDB(repoDB, storeController, log)
+		err = repodb.ParseStorage(repoDB, storeController, log)
 		So(err, ShouldBeNil)
 
 		scanner := NewScanner(storeController, repoDB, "ghcr.io/project-zot/trivy-db", log)
@@ -178,7 +178,7 @@ func TestTrivyLibraryErrors(t *testing.T) {
 		})
 		So(err, ShouldBeNil)
 
-		err = repodb.SyncRepoDB(repoDB, storeController, log)
+		err = repodb.ParseStorage(repoDB, storeController, log)
 		So(err, ShouldBeNil)
 
 		scanner := NewScanner(storeController, repoDB, "ghcr.io/project-zot/trivy-db", log)
@@ -424,7 +424,7 @@ func TestDefaultTrivyDBUrl(t *testing.T) {
 		})
 		So(err, ShouldBeNil)
 
-		err = repodb.SyncRepoDB(repoDB, storeController, log)
+		err = repodb.ParseStorage(repoDB, storeController, log)
 		So(err, ShouldBeNil)
 
 		// Use empty string for DB repository, the default url would be used internally

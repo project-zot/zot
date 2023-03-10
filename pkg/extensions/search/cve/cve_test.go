@@ -317,7 +317,7 @@ func TestImageFormat(t *testing.T) {
 		})
 		So(err, ShouldBeNil)
 
-		err = repodb.SyncRepoDB(repoDB, storeController, log)
+		err = repodb.ParseStorage(repoDB, storeController, log)
 		So(err, ShouldBeNil)
 
 		cveInfo := cveinfo.NewCVEInfo(storeController, repoDB, "", log)

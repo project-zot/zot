@@ -298,6 +298,11 @@ test-push-pull: binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM)
 test-push-pull-verbose: binary check-skopeo $(BATS)
 	$(BATS) --trace --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/pushpull.bats
 
+.PHONY: test-bats-referrers
+test-bats-referrers: EXTENSIONS=search
+test-bats-referrers: binary check-skopeo $(BATS) $(ORAS)
+	$(BATS) --trace --print-output-on-failure test/blackbox/referrers.bats
+
 .PHONY: test-cloud-only
 test-cloud-only: binary check-skopeo $(BATS)
 	$(BATS) --trace --print-output-on-failure test/blackbox/cloud-only.bats

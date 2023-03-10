@@ -25,6 +25,8 @@ import (
 	"zotregistry.io/zot/pkg/test"
 )
 
+const badTablename = "bad tablename"
+
 func TestIterator(t *testing.T) {
 	const (
 		endpoint = "http://localhost:4566"
@@ -40,6 +42,7 @@ func TestIterator(t *testing.T) {
 	manifestDataTablename := "ManifestDataTable" + uuid.String()
 	versionTablename := "Version" + uuid.String()
 	indexDataTablename := "IndexDataTable" + uuid.String()
+	artifactDataTablename := "ArtifactDataTable" + uuid.String()
 
 	Convey("TestIterator", t, func() {
 		dynamoWrapper, err := dynamo.NewDynamoDBWrapper(dynamoParams.DBDriverParameters{
@@ -48,6 +51,7 @@ func TestIterator(t *testing.T) {
 			RepoMetaTablename:     repoMetaTablename,
 			ManifestDataTablename: manifestDataTablename,
 			IndexDataTablename:    indexDataTablename,
+			ArtifactDataTablename: artifactDataTablename,
 			VersionTablename:      versionTablename,
 		})
 		So(err, ShouldBeNil)
@@ -133,6 +137,7 @@ func TestWrapperErrors(t *testing.T) {
 	manifestDataTablename := "ManifestDataTable" + uuid.String()
 	versionTablename := "Version" + uuid.String()
 	indexDataTablename := "IndexDataTable" + uuid.String()
+	artifactDataTablename := "ArtifactData" + uuid.String()
 
 	ctx := context.Background()
 
@@ -143,6 +148,7 @@ func TestWrapperErrors(t *testing.T) {
 			RepoMetaTablename:     repoMetaTablename,
 			ManifestDataTablename: manifestDataTablename,
 			IndexDataTablename:    indexDataTablename,
+			ArtifactDataTablename: artifactDataTablename,
 			VersionTablename:      versionTablename,
 		})
 		So(err, ShouldBeNil)
@@ -220,6 +226,114 @@ func TestWrapperErrors(t *testing.T) {
 
 			_, err = dynamoWrapper.GetManifestMeta("repo", "dig")
 			So(err, ShouldNotBeNil)
+		})
+
+		Convey("GetArtifactData", func() {
+			dynamoWrapper.ArtifactDataTablename = badTablename
+			_, err = dynamoWrapper.GetArtifactData("dig")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("GetArtifactData unmarhsal error", func() {
+			err = setBadArtifactData(dynamoWrapper.Client, artifactDataTablename, "dig")
+			So(err, ShouldBeNil)
+
+			_, err = dynamoWrapper.GetArtifactData("dig")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("SetReferrer client error", func() {
+			dynamoWrapper.RepoMetaTablename = badTablename
+			err := dynamoWrapper.SetReferrer("repo", "", repodb.Descriptor{})
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("SetReferrer bad repoMeta", func() {
+			err := setBadRepoMeta(dynamoWrapper.Client, repoMetaTablename, "repo")
+			So(err, ShouldBeNil)
+
+			err = dynamoWrapper.SetReferrer("repo", "", repodb.Descriptor{})
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("GetReferrers client error", func() {
+			dynamoWrapper.RepoMetaTablename = badTablename
+			_, err := dynamoWrapper.GetReferrers("repo", "")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("GetReferrers bad repoMeta", func() {
+			err := setBadRepoMeta(dynamoWrapper.Client, repoMetaTablename, "repo")
+			So(err, ShouldBeNil)
+
+			_, err = dynamoWrapper.GetReferrers("repo", "")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("DeleteReferrer client error", func() {
+			dynamoWrapper.RepoMetaTablename = badTablename
+			err := dynamoWrapper.DeleteReferrer("repo", "", "")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("DeleteReferrer bad repoMeta", func() {
+			err := setBadRepoMeta(dynamoWrapper.Client, repoMetaTablename, "repo")
+			So(err, ShouldBeNil)
+
+			err = dynamoWrapper.DeleteReferrer("repo", "", "")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("GetFilteredReferrersInfo GetReferrers errors", func() {
+			dynamoWrapper.RepoMetaTablename = badTablename
+			_, err := dynamoWrapper.GetFilteredReferrersInfo("repo", "", nil)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("GetFilteredReferrersInfo getData fails", func() {
+			dynamoWrapper.ManifestDataTablename = badTablename
+			dynamoWrapper.ArtifactDataTablename = badTablename
+			err = dynamoWrapper.SetReferrer("repo", "rf", repodb.Descriptor{
+				Digest:    "dig1",
+				MediaType: ispec.MediaTypeImageManifest,
+			})
+			So(err, ShouldBeNil)
+
+			err = dynamoWrapper.SetReferrer("repo", "rf", repodb.Descriptor{
+				Digest:    "dig2",
+				MediaType: ispec.MediaTypeArtifactManifest,
+			})
+			So(err, ShouldBeNil)
+
+			_, err := dynamoWrapper.GetFilteredReferrersInfo("repo", "rf", nil)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("GetFilteredReferrersInfo bad descriptor blob", func() {
+			err = dynamoWrapper.SetArtifactData("dig2", repodb.ArtifactData{
+				ManifestBlob: []byte("bad json"),
+			})
+			So(err, ShouldBeNil)
+
+			err = dynamoWrapper.SetManifestData("dig3", repodb.ManifestData{
+				ManifestBlob: []byte("bad json"),
+			})
+			So(err, ShouldBeNil)
+
+			err = dynamoWrapper.SetReferrer("repo", "rf", repodb.Descriptor{
+				Digest:    "dig2",
+				MediaType: ispec.MediaTypeArtifactManifest,
+			})
+			So(err, ShouldBeNil)
+
+			err = dynamoWrapper.SetReferrer("repo", "rf", repodb.Descriptor{
+				Digest:    "dig3",
+				MediaType: ispec.MediaTypeImageManifest,
+			})
+			So(err, ShouldBeNil)
+
+			_, err := dynamoWrapper.GetFilteredReferrersInfo("repo", "rf", nil)
+			So(err, ShouldBeNil)
 		})
 
 		Convey("IncrementRepoStars GetRepoMeta error", func() {
@@ -688,6 +802,7 @@ func TestWrapperErrors(t *testing.T) {
 			RepoMetaTablename:     "",
 			ManifestDataTablename: manifestDataTablename,
 			IndexDataTablename:    indexDataTablename,
+			ArtifactDataTablename: artifactDataTablename,
 			VersionTablename:      versionTablename,
 		})
 		So(err, ShouldNotBeNil)
@@ -698,6 +813,7 @@ func TestWrapperErrors(t *testing.T) {
 			RepoMetaTablename:     repoMetaTablename,
 			ManifestDataTablename: "",
 			IndexDataTablename:    indexDataTablename,
+			ArtifactDataTablename: artifactDataTablename,
 			VersionTablename:      versionTablename,
 		})
 		So(err, ShouldNotBeNil)
@@ -708,6 +824,7 @@ func TestWrapperErrors(t *testing.T) {
 			RepoMetaTablename:     repoMetaTablename,
 			ManifestDataTablename: manifestDataTablename,
 			IndexDataTablename:    "",
+			ArtifactDataTablename: artifactDataTablename,
 			VersionTablename:      versionTablename,
 		})
 		So(err, ShouldNotBeNil)
@@ -718,6 +835,7 @@ func TestWrapperErrors(t *testing.T) {
 			RepoMetaTablename:     repoMetaTablename,
 			ManifestDataTablename: manifestDataTablename,
 			IndexDataTablename:    indexDataTablename,
+			ArtifactDataTablename: artifactDataTablename,
 			VersionTablename:      "",
 		})
 		So(err, ShouldNotBeNil)
@@ -728,7 +846,19 @@ func TestWrapperErrors(t *testing.T) {
 			RepoMetaTablename:     repoMetaTablename,
 			ManifestDataTablename: manifestDataTablename,
 			IndexDataTablename:    indexDataTablename,
+			ArtifactDataTablename: "",
 			VersionTablename:      versionTablename,
+		})
+		So(err, ShouldNotBeNil)
+
+		_, err = dynamo.NewDynamoDBWrapper(dynamoParams.DBDriverParameters{ //nolint:contextcheck
+			Endpoint:              endpoint,
+			Region:                region,
+			RepoMetaTablename:     repoMetaTablename,
+			ManifestDataTablename: manifestDataTablename,
+			IndexDataTablename:    indexDataTablename,
+			VersionTablename:      versionTablename,
+			ArtifactDataTablename: artifactDataTablename,
 		})
 		So(err, ShouldBeNil)
 	})
@@ -754,6 +884,31 @@ func setBadManifestData(client *dynamodb.Client, manifestDataTableName, digest s
 		},
 		TableName:        aws.String(manifestDataTableName),
 		UpdateExpression: aws.String("SET #MD = :ManifestData"),
+	})
+
+	return err
+}
+
+func setBadArtifactData(client *dynamodb.Client, artifactDataTablename, digest string) error {
+	mdAttributeValue, err := attributevalue.Marshal("string")
+	if err != nil {
+		return err
+	}
+
+	_, err = client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
+		ExpressionAttributeNames: map[string]string{
+			"#AD": "ArtifactData",
+		},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":ArtifactData": mdAttributeValue,
+		},
+		Key: map[string]types.AttributeValue{
+			"ArtifactDigest": &types.AttributeValueMemberS{
+				Value: digest,
+			},
+		},
+		TableName:        aws.String(artifactDataTablename),
+		UpdateExpression: aws.String("SET #AD = :ArtifactData"),
 	})
 
 	return err

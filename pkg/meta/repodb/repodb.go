@@ -11,6 +11,7 @@ import (
 const (
 	ManifestDataBucket = "ManifestData"
 	IndexDataBucket    = "IndexData"
+	ArtifactDataBucket = "ArtifactData"
 	UserMetadataBucket = "UserMeta"
 	RepoMetadataBucket = "RepoMetadata"
 	VersionBucket      = "Version"
@@ -67,6 +68,26 @@ type RepoDB interface { //nolint:interfacebloat
 	// GetIndexData returns indexData for a given Index from the database
 	GetIndexData(indexDigest godigest.Digest) (IndexData, error)
 
+	// SetArtifactData sets artifactData for a given artifact in the database
+	SetArtifactData(artifactDigest godigest.Digest, artifactData ArtifactData) error
+
+	// GetArtifactData returns artifactData for a given artifact from the database
+	GetArtifactData(artifactDigest godigest.Digest) (ArtifactData, error)
+
+	// SetReferrer adds a referrer to the referrers list of a manifest inside a repo
+	SetReferrer(repo string, referredDigest godigest.Digest, referrer Descriptor) error
+
+	// SetReferrer delets a referrer to the referrers list of a manifest inside a repo
+	DeleteReferrer(repo string, referredDigest godigest.Digest, referrerDigest godigest.Digest) error
+
+	// GetReferrers returns the list of referrers for a referred manifest
+	GetReferrers(repo string, referredDigest godigest.Digest) ([]Descriptor, error)
+
+	// GetFilteredReferrersInfo returnes a list of  for all referrers of the given digest that match one of the
+	// artifact types.
+	GetFilteredReferrersInfo(repo string, referredDigest godigest.Digest, artifactTypes []string) (
+		[]ReferrerInfo, error)
+
 	// IncrementManifestDownloads adds 1 to the download count of a manifest
 	IncrementImageDownloads(repo string, reference string) error
 
@@ -107,6 +128,18 @@ type ManifestData struct {
 	ConfigBlob   []byte
 }
 
+type ArtifactData struct {
+	ManifestBlob []byte
+}
+
+type ReferrerInfo struct {
+	Digest       string
+	MediaType    string
+	ArtifactType string
+	Size         int
+	Annotations  map[string]string
+}
+
 // Descriptor represents an image. Multiple images might have the same digests but different tags.
 type Descriptor struct {
 	Digest    string
@@ -125,7 +158,9 @@ type RepoMetadata struct {
 
 	Statistics map[string]DescriptorStatistics
 	Signatures map[string]ManifestSignatures
-	Stars      int
+	Referrers  map[string][]Descriptor
+
+	Stars int
 }
 
 type LayerInfo struct {

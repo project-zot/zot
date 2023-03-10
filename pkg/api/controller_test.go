@@ -170,6 +170,7 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 			"cacheTablename":        "BlobTable",
 			"repoMetaTablename":     "RepoMetadataTable",
 			"manifestDataTablename": "ManifestDataTable",
+			"artifactDataTablename": "ArtifactDataTable",
 			"versionTablename":      "Version",
 		}
 
@@ -184,6 +185,7 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 			"cacheTablename":        "BlobTable",
 			"repoMetaTablename":     "RepoMetadataTable",
 			"manifestDataTablename": "ManifestDataTable",
+			"artifactDataTablename": "ArtifactDataTable",
 			"versionTablename":      "Version",
 		}
 
@@ -197,6 +199,7 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 			"cacheTablename":        "BlobTable",
 			"repoMetaTablename":     "RepoMetadataTable",
 			"manifestDataTablename": "ManifestDataTable",
+			"artifactDataTablename": "ArtifactDataTable",
 			"versionTablename":      "Version",
 		}
 
@@ -229,6 +232,7 @@ func TestCreateRepoDBDriver(t *testing.T) {
 			"cachetablename":        "BlobTable",
 			"repometatablename":     "RepoMetadataTable",
 			"manifestdatatablename": "ManifestDataTable",
+			"artifactDataTablename": "ArtifactDataTable",
 		}
 
 		testFunc := func() { _, _ = api.CreateRepoDBDriver(conf.Storage.StorageConfig, log) }
@@ -241,6 +245,7 @@ func TestCreateRepoDBDriver(t *testing.T) {
 			"cachetablename":        "",
 			"repometatablename":     "RepoMetadataTable",
 			"manifestdatatablename": "ManifestDataTable",
+			"artifactDataTablename": "ArtifactDataTable",
 			"versiontablename":      1,
 		}
 
@@ -2574,6 +2579,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 
 		manifestBlob := resp.Body()
 		var manifest ispec.Manifest
+
 		err = json.Unmarshal(manifestBlob, &manifest)
 		So(err, ShouldBeNil)
 

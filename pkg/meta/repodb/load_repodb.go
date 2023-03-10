@@ -12,20 +12,21 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 )
 
-// SyncRepoDB will sync all repos found in the rootdirectory of the oci layout that zot was deployed on.
-func SyncRepoDB(repoDB RepoDB, storeController storage.StoreController, log log.Logger) error {
+// ParseStorage will sync all repos found in the rootdirectory of the oci layout that zot was deployed on with the
+// ParseStorage database.
+func ParseStorage(repoDB RepoDB, storeController storage.StoreController, log log.Logger) error {
 	allRepos, err := getAllRepos(storeController)
 	if err != nil {
 		rootDir := storeController.DefaultStore.RootDir()
-		log.Error().Err(err).Msgf("sync-repodb: failed to get all repo names present under %s", rootDir)
+		log.Error().Err(err).Msgf("load-local-layout: failed to get all repo names present under %s", rootDir)
 
 		return err
 	}
 
 	for _, repo := range allRepos {
-		err := SyncRepo(repo, repoDB, storeController, log)
+		err := ParseRepo(repo, repoDB, storeController, log)
 		if err != nil {
-			log.Error().Err(err).Msgf("sync-repodb: failed to sync repo %s", repo)
+			log.Error().Err(err).Msgf("load-local-layout: failed to sync repo %s", repo)
 
 			return err
 		}
@@ -34,13 +35,13 @@ func SyncRepoDB(repoDB RepoDB, storeController storage.StoreController, log log.
 	return nil
 }
 
-// SyncRepo reads the contents of a repo and syncs all images signatures found.
-func SyncRepo(repo string, repoDB RepoDB, storeController storage.StoreController, log log.Logger) error {
+// ParseRepo reads the contents of a repo and syncs all images and signatures found.
+func ParseRepo(repo string, repoDB RepoDB, storeController storage.StoreController, log log.Logger) error {
 	imageStore := storeController.GetImageStore(repo)
 
 	indexBlob, err := imageStore.GetIndexContent(repo)
 	if err != nil {
-		log.Error().Err(err).Msgf("sync-repo: failed to read index.json for repo %s", repo)
+		log.Error().Err(err).Msgf("load-repo: failed to read index.json for repo %s", repo)
 
 		return err
 	}
@@ -49,14 +50,14 @@ func SyncRepo(repo string, repoDB RepoDB, storeController storage.StoreControlle
 
 	err = json.Unmarshal(indexBlob, &indexContent)
 	if err != nil {
-		log.Error().Err(err).Msgf("sync-repo: failed to unmarshal index.json for repo %s", repo)
+		log.Error().Err(err).Msgf("load-repo: failed to unmarshal index.json for repo %s", repo)
 
 		return err
 	}
 
 	err = resetRepoMetaTags(repo, repoDB, log)
 	if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
-		log.Error().Err(err).Msgf("sync-repo: failed to reset tag field in RepoMetadata for repo %s", repo)
+		log.Error().Err(err).Msgf("load-repo: failed to reset tag field in RepoMetadata for repo %s", repo)
 
 		return err
 	}
@@ -76,7 +77,7 @@ func SyncRepo(repo string, repoDB RepoDB, storeController storage.StoreControlle
 
 		manifestMetaIsPresent, err := isManifestMetaPresent(repo, manifest, repoDB)
 		if err != nil {
-			log.Error().Err(err).Msgf("sync-repo: error checking manifestMeta in RepoDB")
+			log.Error().Err(err).Msgf("load-repo: error checking manifestMeta in RepoDB")
 
 			return err
 		}
@@ -84,7 +85,7 @@ func SyncRepo(repo string, repoDB RepoDB, storeController storage.StoreControlle
 		if manifestMetaIsPresent && hasTag {
 			err = repoDB.SetRepoReference(repo, tag, manifest.Digest, manifest.MediaType)
 			if err != nil {
-				log.Error().Err(err).Msgf("sync-repo: failed to set repo tag for %s:%s", repo, tag)
+				log.Error().Err(err).Msgf("load-repo: failed to set repo tag for %s:%s", repo, tag)
 
 				return err
 			}
@@ -94,7 +95,7 @@ func SyncRepo(repo string, repoDB RepoDB, storeController storage.StoreControlle
 
 		manifestBlob, digest, _, err := imageStore.GetImageManifest(repo, manifest.Digest.String())
 		if err != nil {
-			log.Error().Err(err).Msgf("sync-repo: failed to set repo tag for %s:%s", repo, tag)
+			log.Error().Err(err).Msgf("load-repo: failed to set repo tag for %s:%s", repo, tag)
 
 			return err
 		}
@@ -105,7 +106,7 @@ func SyncRepo(repo string, repoDB RepoDB, storeController storage.StoreControlle
 			if errors.Is(err, zerr.ErrOrphanSignature) {
 				continue
 			} else {
-				log.Error().Err(err).Msgf("sync-repo: failed checking if image is signature for %s:%s", repo, tag)
+				log.Error().Err(err).Msgf("load-repo: failed checking if image is signature for %s:%s", repo, tag)
 
 				return err
 			}
@@ -134,7 +135,7 @@ func SyncRepo(repo string, repoDB RepoDB, storeController storage.StoreControlle
 		err = SetMetadataFromInput(repo, reference, manifest.MediaType, manifest.Digest, manifestBlob,
 			imageStore, repoDB, log)
 		if err != nil {
-			log.Error().Err(err).Msgf("sync-repo: failed to set metadata for %s:%s", repo, tag)
+			log.Error().Err(err).Msgf("load-repo: failed to set metadata for %s:%s", repo, tag)
 
 			return err
 		}
@@ -142,12 +143,13 @@ func SyncRepo(repo string, repoDB RepoDB, storeController storage.StoreControlle
 
 	// manage the signatures found
 	for _, sigData := range signaturesFound {
-		err := repoDB.AddManifestSignature(repo, godigest.Digest(sigData.signedManifestDigest), SignatureMetadata{
-			SignatureType:   sigData.signatureType,
-			SignatureDigest: sigData.signatureDigest,
-		})
+		err := repoDB.AddManifestSignature(repo, godigest.Digest(sigData.signedManifestDigest),
+			SignatureMetadata{
+				SignatureType:   sigData.signatureType,
+				SignatureDigest: sigData.signatureDigest,
+			})
 		if err != nil {
-			log.Error().Err(err).Msgf("sync-repo: failed set signature meta for signed image %s:%s manifest digest %s ",
+			log.Error().Err(err).Msgf("load-repo: failed set signature meta for signed image %s:%s manifest digest %s ",
 				sigData.repo, sigData.tag, sigData.signedManifestDigest)
 
 			return err
@@ -161,13 +163,13 @@ func SyncRepo(repo string, repoDB RepoDB, storeController storage.StoreControlle
 func resetRepoMetaTags(repo string, repoDB RepoDB, log log.Logger) error {
 	repoMeta, err := repoDB.GetRepoMeta(repo)
 	if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
-		log.Error().Err(err).Msgf("sync-repo: failed to get RepoMeta for repo %s", repo)
+		log.Error().Err(err).Msgf("load-repo: failed to get RepoMeta for repo %s", repo)
 
 		return err
 	}
 
 	if errors.Is(err, zerr.ErrRepoMetaNotFound) {
-		log.Info().Msgf("sync-repo: RepoMeta not found for repo %s, new RepoMeta will be created", repo)
+		log.Info().Msgf("load-repo: RepoMeta not found for repo %s, new RepoMeta will be created", repo)
 
 		return nil
 	}
@@ -176,7 +178,7 @@ func resetRepoMetaTags(repo string, repoDB RepoDB, log log.Logger) error {
 		// We should have a way to delete all tags at once
 		err := repoDB.DeleteRepoTag(repo, tag)
 		if err != nil {
-			log.Error().Err(err).Msgf("sync-repo: failed to delete tag %s from RepoMeta for repo %s", tag, repo)
+			log.Error().Err(err).Msgf("load-repo: failed to delete tag %s from RepoMeta for repo %s", tag, repo)
 
 			return err
 		}
@@ -220,7 +222,7 @@ func isManifestMetaPresent(repo string, manifest ispec.Descriptor, repoDB RepoDB
 }
 
 // NewManifestMeta takes raw data about an image and createa a new ManifestMetadate object.
-func NewManifestData(repoName string, manifestBlob []byte, imgStore storage.ImageStore,
+func NewManifestData(repoName string, manifestBlob []byte, imageStore storage.ImageStore,
 ) (ManifestData, error) {
 	var (
 		manifestContent ispec.Manifest
@@ -233,7 +235,7 @@ func NewManifestData(repoName string, manifestBlob []byte, imgStore storage.Imag
 		return ManifestData{}, err
 	}
 
-	configBlob, err := imgStore.GetBlobContent(repoName, manifestContent.Config.Digest)
+	configBlob, err := imageStore.GetBlobContent(repoName, manifestContent.Config.Digest)
 	if err != nil {
 		return ManifestData{}, err
 	}
@@ -249,13 +251,20 @@ func NewManifestData(repoName string, manifestBlob []byte, imgStore storage.Imag
 	return manifestData, nil
 }
 
-func NewIndexData(repoName string, indexBlob []byte,
+func NewIndexData(repoName string, indexBlob []byte, imageStore storage.ImageStore,
 ) IndexData {
 	indexData := IndexData{}
 
 	indexData.IndexBlob = indexBlob
 
 	return indexData
+}
+
+func NewArtifactData(repo string, descriptorBlob []byte, imageStore storage.ImageStore,
+) ArtifactData {
+	return ArtifactData{
+		ManifestBlob: descriptorBlob,
+	}
 }
 
 // SetMetadataFromInput tries to set manifest metadata and update repo metadata by adding the current tag
@@ -277,11 +286,32 @@ func SetMetadataFromInput(repo, reference, mediaType string, digest godigest.Dig
 			return err
 		}
 	case ispec.MediaTypeImageIndex:
-		indexData := NewIndexData(repo, descriptorBlob)
+		indexData := NewIndexData(repo, descriptorBlob, imageStore)
 
 		err := repoDB.SetIndexData(digest, indexData)
 		if err != nil {
 			log.Error().Err(err).Msg("repodb: error while putting index data")
+
+			return err
+		}
+	case ispec.MediaTypeArtifactManifest:
+		artifactData := NewArtifactData(repo, descriptorBlob, imageStore)
+
+		err := repoDB.SetArtifactData(digest, artifactData)
+		if err != nil {
+			log.Error().Err(err).Msg("repodb: error while putting artifact data")
+
+			return err
+		}
+	}
+
+	if refferredDigest, hasSubject := GetReferredSubject(descriptorBlob); hasSubject {
+		err := repoDB.SetReferrer(repo, refferredDigest, Descriptor{
+			Digest:    digest.String(),
+			MediaType: mediaType,
+		})
+		if err != nil {
+			log.Error().Err(err).Msg("repodb: error while settingg referrer")
 
 			return err
 		}
@@ -295,4 +325,19 @@ func SetMetadataFromInput(repo, reference, mediaType string, digest godigest.Dig
 	}
 
 	return nil
+}
+
+func GetReferredSubject(descriptorBlob []byte) (godigest.Digest, bool) {
+	var manifest ispec.Manifest
+
+	err := json.Unmarshal(descriptorBlob, &manifest)
+	if err != nil {
+		return "", false
+	}
+
+	if manifest.Subject == nil || manifest.Subject.Digest.String() == "" {
+		return "", false
+	}
+
+	return manifest.Subject.Digest, true
 }
