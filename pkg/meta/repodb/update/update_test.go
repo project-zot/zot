@@ -269,7 +269,7 @@ func TestUpdateErrors(t *testing.T) {
 			log := log.NewLogger("debug", "")
 
 			repoDB := mocks.RepoDBMock{
-				SetReferrerFn: func(repo string, referredDigest godigest.Digest, referrer repodb.Descriptor) error {
+				SetReferrerFn: func(repo string, referredDigest godigest.Digest, referrer repodb.ReferrerInfo) error {
 					return ErrTestError
 				},
 			}

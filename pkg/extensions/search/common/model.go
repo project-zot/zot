@@ -37,6 +37,7 @@ type ImageSummary struct {
 	Authors         string                    `json:"authors"`
 	Vendor          string                    `json:"vendor"`
 	Vulnerabilities ImageVulnerabilitySummary `json:"vulnerabilities"`
+	Referrers       []Referrer                `json:"referrers"`
 }
 
 type ManifestSummary struct {

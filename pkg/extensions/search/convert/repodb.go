@@ -193,7 +193,7 @@ func ImageIndex2ImageSummary(ctx context.Context, repo, tag string, indexDigest 
 
 	for _, descriptor := range indexContent.Manifests {
 		manifestSummary, manifestBlobs, err := ImageManifest2ManifestSummary(ctx, repo, tag, descriptor, false,
-			manifestMetaMap[descriptor.Digest.String()], cveInfo)
+			manifestMetaMap[descriptor.Digest.String()], repoMeta.Referrers[descriptor.Digest.String()], cveInfo)
 		if err != nil {
 			return &gql_generated.ImageSummary{}, map[string]int64{}, err
 		}
@@ -260,6 +260,7 @@ func ImageIndex2ImageSummary(ctx context.Context, repo, tag string, indexDigest 
 			MaxSeverity: &imageCveSummary.MaxSeverity,
 			Count:       &imageCveSummary.Count,
 		},
+		Referrers: getReferrers(repoMeta.Referrers[indexDigest.String()]),
 	}
 
 	return &indexSummary, indexBlobs, nil
@@ -382,13 +383,48 @@ func ImageManifest2ImageSummary(ctx context.Context, repo, tag string, digest go
 			MaxSeverity: &imageCveSummary.MaxSeverity,
 			Count:       &imageCveSummary.Count,
 		},
+		Referrers: getReferrers(repoMeta.Referrers[manifestDigest]),
 	}
 
 	return &imageSummary, imageBlobsMap, nil
 }
 
+func getReferrers(referrersInfo []repodb.ReferrerInfo) []*gql_generated.Referrer {
+	referrers := make([]*gql_generated.Referrer, 0, len(referrersInfo))
+
+	for _, referrerInfo := range referrersInfo {
+		referrerInfo := referrerInfo
+
+		referrers = append(referrers, &gql_generated.Referrer{
+			MediaType:    &referrerInfo.MediaType,
+			ArtifactType: &referrerInfo.ArtifactType,
+			Size:         &referrerInfo.Size,
+			Digest:       &referrerInfo.Digest,
+			Annotations:  getAnnotationsFromMap(referrerInfo.Annotations),
+		})
+	}
+
+	return referrers
+}
+
+func getAnnotationsFromMap(annotationsMap map[string]string) []*gql_generated.Annotation {
+	annotations := make([]*gql_generated.Annotation, 0, len(annotationsMap))
+
+	for key, value := range annotationsMap {
+		key := key
+		value := value
+
+		annotations = append(annotations, &gql_generated.Annotation{
+			Key:   &key,
+			Value: &value,
+		})
+	}
+
+	return annotations
+}
+
 func ImageManifest2ManifestSummary(ctx context.Context, repo, tag string, descriptor ispec.Descriptor,
-	skipCVE bool, manifestMeta repodb.ManifestMetadata, cveInfo cveinfo.CveInfo,
+	skipCVE bool, manifestMeta repodb.ManifestMetadata, referrersInfo []repodb.ReferrerInfo, cveInfo cveinfo.CveInfo,
 ) (*gql_generated.ManifestSummary, map[string]int64, error) {
 	var (
 		manifestContent ispec.Manifest
@@ -469,6 +505,7 @@ func ImageManifest2ManifestSummary(ctx context.Context, repo, tag string, descri
 			MaxSeverity: &imageCveSummary.MaxSeverity,
 			Count:       &imageCveSummary.Count,
 		},
+		Referrers: getReferrers(referrersInfo),
 	}
 
 	return &manifestSummary, imageBlobsMap, nil

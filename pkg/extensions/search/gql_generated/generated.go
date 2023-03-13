@@ -86,6 +86,7 @@ type ComplexityRoot struct {
 		LastUpdated     func(childComplexity int) int
 		Licenses        func(childComplexity int) int
 		Manifests       func(childComplexity int) int
+		Referrers       func(childComplexity int) int
 		RepoName        func(childComplexity int) int
 		Score           func(childComplexity int) int
 		Size            func(childComplexity int) int
@@ -120,6 +121,7 @@ type ComplexityRoot struct {
 		LastUpdated     func(childComplexity int) int
 		Layers          func(childComplexity int) int
 		Platform        func(childComplexity int) int
+		Referrers       func(childComplexity int) int
 		Size            func(childComplexity int) int
 		Vulnerabilities func(childComplexity int) int
 	}
@@ -419,6 +421,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.ImageSummary.Manifests(childComplexity), true
 
+	case "ImageSummary.Referrers":
+		if e.complexity.ImageSummary.Referrers == nil {
+			break
+		}
+
+		return e.complexity.ImageSummary.Referrers(childComplexity), true
+
 	case "ImageSummary.RepoName":
 		if e.complexity.ImageSummary.RepoName == nil {
 			break
@@ -572,6 +581,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.ManifestSummary.Platform(childComplexity), true
+
+	case "ManifestSummary.Referrers":
+		if e.complexity.ManifestSummary.Referrers == nil {
+			break
+		}
+
+		return e.complexity.ManifestSummary.Referrers(childComplexity), true
 
 	case "ManifestSummary.Size":
 		if e.complexity.ManifestSummary.Size == nil {
@@ -1175,6 +1191,10 @@ type ImageSummary {
     Short summary of the identified CVEs
     """
     Vulnerabilities: ImageVulnerabilitySummary
+    """
+    Information about objects that reference this image
+    """
+    Referrers: [Referrer]
 }
 """
 Details about a specific version of an image for a certain operating system and architecture.
@@ -1217,6 +1237,10 @@ type ManifestSummary {
     Short summary of the identified CVEs
     """
     Vulnerabilities: ImageVulnerabilitySummary
+    """
+    Information about objects that reference this image
+    """
+    Referrers: [Referrer]
 }
 
 """
@@ -2593,6 +2617,8 @@ func (ec *executionContext) fieldContext_GlobalSearchResult_Images(ctx context.C
 				return ec.fieldContext_ImageSummary_Authors(ctx, field)
 			case "Vulnerabilities":
 				return ec.fieldContext_ImageSummary_Vulnerabilities(ctx, field)
+			case "Referrers":
+				return ec.fieldContext_ImageSummary_Referrers(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -3055,6 +3081,8 @@ func (ec *executionContext) fieldContext_ImageSummary_Manifests(ctx context.Cont
 				return ec.fieldContext_ManifestSummary_History(ctx, field)
 			case "Vulnerabilities":
 				return ec.fieldContext_ManifestSummary_Vulnerabilities(ctx, field)
+			case "Referrers":
+				return ec.fieldContext_ManifestSummary_Referrers(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ManifestSummary", field.Name)
 		},
@@ -3637,6 +3665,59 @@ func (ec *executionContext) fieldContext_ImageSummary_Vulnerabilities(ctx contex
 				return ec.fieldContext_ImageVulnerabilitySummary_Count(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageVulnerabilitySummary", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ImageSummary_Referrers(ctx context.Context, field graphql.CollectedField, obj *ImageSummary) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_ImageSummary_Referrers(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Referrers, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.([]*Referrer)
+	fc.Result = res
+	return ec.marshalOReferrer2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐReferrer(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_ImageSummary_Referrers(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ImageSummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "MediaType":
+				return ec.fieldContext_Referrer_MediaType(ctx, field)
+			case "ArtifactType":
+				return ec.fieldContext_Referrer_ArtifactType(ctx, field)
+			case "Size":
+				return ec.fieldContext_Referrer_Size(ctx, field)
+			case "Digest":
+				return ec.fieldContext_Referrer_Digest(ctx, field)
+			case "Annotations":
+				return ec.fieldContext_Referrer_Annotations(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Referrer", field.Name)
 		},
 	}
 	return fc, nil
@@ -4344,6 +4425,59 @@ func (ec *executionContext) fieldContext_ManifestSummary_Vulnerabilities(ctx con
 	return fc, nil
 }
 
+func (ec *executionContext) _ManifestSummary_Referrers(ctx context.Context, field graphql.CollectedField, obj *ManifestSummary) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_ManifestSummary_Referrers(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Referrers, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.([]*Referrer)
+	fc.Result = res
+	return ec.marshalOReferrer2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐReferrer(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_ManifestSummary_Referrers(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ManifestSummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "MediaType":
+				return ec.fieldContext_Referrer_MediaType(ctx, field)
+			case "ArtifactType":
+				return ec.fieldContext_Referrer_ArtifactType(ctx, field)
+			case "Size":
+				return ec.fieldContext_Referrer_Size(ctx, field)
+			case "Digest":
+				return ec.fieldContext_Referrer_Digest(ctx, field)
+			case "Annotations":
+				return ec.fieldContext_Referrer_Annotations(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Referrer", field.Name)
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _PackageInfo_Name(ctx context.Context, field graphql.CollectedField, obj *PackageInfo) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_PackageInfo_Name(ctx, field)
 	if err != nil {
@@ -4675,6 +4809,8 @@ func (ec *executionContext) fieldContext_PaginatedImagesResult_Results(ctx conte
 				return ec.fieldContext_ImageSummary_Authors(ctx, field)
 			case "Vulnerabilities":
 				return ec.fieldContext_ImageSummary_Vulnerabilities(ctx, field)
+			case "Referrers":
+				return ec.fieldContext_ImageSummary_Referrers(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -5557,6 +5693,8 @@ func (ec *executionContext) fieldContext_Query_Image(ctx context.Context, field 
 				return ec.fieldContext_ImageSummary_Authors(ctx, field)
 			case "Vulnerabilities":
 				return ec.fieldContext_ImageSummary_Vulnerabilities(ctx, field)
+			case "Referrers":
+				return ec.fieldContext_ImageSummary_Referrers(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -6052,6 +6190,8 @@ func (ec *executionContext) fieldContext_RepoInfo_Images(ctx context.Context, fi
 				return ec.fieldContext_ImageSummary_Authors(ctx, field)
 			case "Vulnerabilities":
 				return ec.fieldContext_ImageSummary_Vulnerabilities(ctx, field)
+			case "Referrers":
+				return ec.fieldContext_ImageSummary_Referrers(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -6446,6 +6586,8 @@ func (ec *executionContext) fieldContext_RepoSummary_NewestImage(ctx context.Con
 				return ec.fieldContext_ImageSummary_Authors(ctx, field)
 			case "Vulnerabilities":
 				return ec.fieldContext_ImageSummary_Vulnerabilities(ctx, field)
+			case "Referrers":
+				return ec.fieldContext_ImageSummary_Referrers(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ImageSummary", field.Name)
 		},
@@ -8745,6 +8887,10 @@ func (ec *executionContext) _ImageSummary(ctx context.Context, sel ast.Selection
 
 			out.Values[i] = ec._ImageSummary_Vulnerabilities(ctx, field, obj)
 
+		case "Referrers":
+
+			out.Values[i] = ec._ImageSummary_Referrers(ctx, field, obj)
+
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -8892,6 +9038,10 @@ func (ec *executionContext) _ManifestSummary(ctx context.Context, sel ast.Select
 		case "Vulnerabilities":
 
 			out.Values[i] = ec._ManifestSummary_Vulnerabilities(ctx, field, obj)
+
+		case "Referrers":
+
+			out.Values[i] = ec._ManifestSummary_Referrers(ctx, field, obj)
 
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
@@ -10775,6 +10925,47 @@ func (ec *executionContext) marshalOPlatform2ᚖzotregistryᚗioᚋzotᚋpkgᚋe
 		return graphql.Null
 	}
 	return ec._Platform(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalOReferrer2ᚕᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐReferrer(ctx context.Context, sel ast.SelectionSet, v []*Referrer) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalOReferrer2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐReferrer(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	return ret
 }
 
 func (ec *executionContext) marshalOReferrer2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐReferrer(ctx context.Context, sel ast.SelectionSet, v *Referrer) graphql.Marshaler {

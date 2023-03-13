@@ -168,7 +168,7 @@ func (dwr *DBWrapper) SetManifestMeta(repo string, manifestDigest godigest.Diges
 			Tags:       map[string]repodb.Descriptor{},
 			Statistics: map[string]repodb.DescriptorStatistics{},
 			Signatures: map[string]repodb.ManifestSignatures{},
-			Referrers:  map[string][]repodb.Descriptor{},
+			Referrers:  map[string][]repodb.ReferrerInfo{},
 		}
 	}
 
@@ -368,7 +368,7 @@ func (dwr DBWrapper) GetArtifactData(artifactDigest godigest.Digest) (repodb.Art
 	return artifactData, nil
 }
 
-func (dwr DBWrapper) SetReferrer(repo string, referredDigest godigest.Digest, referrer repodb.Descriptor) error {
+func (dwr DBWrapper) SetReferrer(repo string, referredDigest godigest.Digest, referrer repodb.ReferrerInfo) error {
 	resp, err := dwr.Client.GetItem(context.TODO(), &dynamodb.GetItemInput{
 		TableName: aws.String(dwr.RepoMetaTablename),
 		Key: map[string]types.AttributeValue{
@@ -384,7 +384,7 @@ func (dwr DBWrapper) SetReferrer(repo string, referredDigest godigest.Digest, re
 		Tags:       map[string]repodb.Descriptor{},
 		Statistics: map[string]repodb.DescriptorStatistics{},
 		Signatures: map[string]repodb.ManifestSignatures{},
-		Referrers:  map[string][]repodb.Descriptor{},
+		Referrers:  map[string][]repodb.ReferrerInfo{},
 	}
 
 	if resp.Item != nil {
@@ -409,7 +409,7 @@ func (dwr DBWrapper) SetReferrer(repo string, referredDigest godigest.Digest, re
 	return dwr.setRepoMeta(repo, repoMeta)
 }
 
-func (dwr DBWrapper) GetReferrers(repo string, referredDigest godigest.Digest) ([]repodb.Descriptor, error) {
+func (dwr DBWrapper) GetReferrers(repo string, referredDigest godigest.Digest) ([]repodb.ReferrerInfo, error) {
 	resp, err := dwr.Client.GetItem(context.TODO(), &dynamodb.GetItemInput{
 		TableName: aws.String(dwr.RepoMetaTablename),
 		Key: map[string]types.AttributeValue{
@@ -417,7 +417,7 @@ func (dwr DBWrapper) GetReferrers(repo string, referredDigest godigest.Digest) (
 		},
 	})
 	if err != nil {
-		return []repodb.Descriptor{}, err
+		return []repodb.ReferrerInfo{}, err
 	}
 
 	repoMeta := repodb.RepoMetadata{
@@ -425,13 +425,13 @@ func (dwr DBWrapper) GetReferrers(repo string, referredDigest godigest.Digest) (
 		Tags:       map[string]repodb.Descriptor{},
 		Statistics: map[string]repodb.DescriptorStatistics{},
 		Signatures: map[string]repodb.ManifestSignatures{},
-		Referrers:  map[string][]repodb.Descriptor{},
+		Referrers:  map[string][]repodb.ReferrerInfo{},
 	}
 
 	if resp.Item != nil {
 		err := attributevalue.Unmarshal(resp.Item["RepoMetadata"], &repoMeta)
 		if err != nil {
-			return []repodb.Descriptor{}, err
+			return []repodb.ReferrerInfo{}, err
 		}
 	}
 
@@ -456,7 +456,7 @@ func (dwr DBWrapper) DeleteReferrer(repo string, referredDigest godigest.Digest,
 		Tags:       map[string]repodb.Descriptor{},
 		Statistics: map[string]repodb.DescriptorStatistics{},
 		Signatures: map[string]repodb.ManifestSignatures{},
-		Referrers:  map[string][]repodb.Descriptor{},
+		Referrers:  map[string][]repodb.ReferrerInfo{},
 	}
 
 	if resp.Item != nil {
@@ -481,79 +481,25 @@ func (dwr DBWrapper) DeleteReferrer(repo string, referredDigest godigest.Digest,
 	return dwr.setRepoMeta(repo, repoMeta)
 }
 
-func (dwr DBWrapper) GetFilteredReferrersInfo(repo string, referredDigest godigest.Digest,
+func (dwr DBWrapper) GetReferrersInfo(repo string, referredDigest godigest.Digest,
 	artifactTypes []string,
 ) ([]repodb.ReferrerInfo, error) {
-	referrersDescriptors, err := dwr.GetReferrers(repo, referredDigest)
+	referrersInfo, err := dwr.GetReferrers(repo, referredDigest)
 	if err != nil {
 		return nil, err
 	}
 
-	referrersInfo := []repodb.ReferrerInfo{}
+	filteredResults := make([]repodb.ReferrerInfo, 0, len(referrersInfo))
 
-	for _, descriptor := range referrersDescriptors {
-		referrerInfo := repodb.ReferrerInfo{}
-
-		switch descriptor.MediaType {
-		case ispec.MediaTypeImageManifest:
-			manifestData, err := dwr.GetManifestData(godigest.Digest(descriptor.Digest))
-			if err != nil {
-				dwr.Log.Error().Msgf("repodb: manifest data not found for digest %s", descriptor.Digest)
-
-				continue
-			}
-
-			var manifestContent ispec.Manifest
-
-			err = json.Unmarshal(manifestData.ManifestBlob, &manifestContent)
-			if err != nil {
-				dwr.Log.Error().Err(err).Msgf("repodb: can't unmarhsal manifest for digest %s",
-					descriptor.Digest)
-
-				continue
-			}
-
-			referrerInfo = repodb.ReferrerInfo{
-				Digest:       descriptor.Digest,
-				MediaType:    ispec.MediaTypeImageManifest,
-				ArtifactType: manifestContent.Config.MediaType,
-				Size:         len(manifestData.ManifestBlob),
-				Annotations:  manifestContent.Annotations,
-			}
-		case ispec.MediaTypeArtifactManifest:
-			artifactData, err := dwr.GetArtifactData(godigest.Digest(descriptor.Digest))
-			if err != nil {
-				dwr.Log.Error().Msgf("repodb: artifact data not found for digest %s", descriptor.Digest)
-
-				continue
-			}
-
-			manifestContent := ispec.Artifact{}
-
-			err = json.Unmarshal(artifactData.ManifestBlob, &manifestContent)
-			if err != nil {
-				dwr.Log.Error().Err(err).Msgf("repodb: can't unmarhsal artifact manifest for digest %s", descriptor.Digest)
-
-				continue
-			}
-
-			referrerInfo = repodb.ReferrerInfo{
-				Digest:       descriptor.Digest,
-				MediaType:    manifestContent.MediaType,
-				ArtifactType: manifestContent.ArtifactType,
-				Size:         len(artifactData.ManifestBlob),
-				Annotations:  manifestContent.Annotations,
-			}
-		}
-
+	for _, referrerInfo := range referrersInfo {
 		if !common.MatchesArtifactTypes(referrerInfo.ArtifactType, artifactTypes) {
 			continue
 		}
 
-		referrersInfo = append(referrersInfo, referrerInfo)
+		filteredResults = append(filteredResults, referrerInfo)
 	}
 
-	return referrersInfo, nil
+	return filteredResults, nil
 }
 
 func (dwr *DBWrapper) SetRepoReference(repo string, reference string, manifestDigest godigest.Digest,
@@ -578,7 +524,7 @@ func (dwr *DBWrapper) SetRepoReference(repo string, reference string, manifestDi
 		Tags:       map[string]repodb.Descriptor{},
 		Statistics: map[string]repodb.DescriptorStatistics{},
 		Signatures: map[string]repodb.ManifestSignatures{},
-		Referrers:  map[string][]repodb.Descriptor{},
+		Referrers:  map[string][]repodb.ReferrerInfo{},
 	}
 
 	if resp.Item != nil {
@@ -597,7 +543,7 @@ func (dwr *DBWrapper) SetRepoReference(repo string, reference string, manifestDi
 
 	repoMeta.Statistics[manifestDigest.String()] = repodb.DescriptorStatistics{DownloadCount: 0}
 	repoMeta.Signatures[manifestDigest.String()] = repodb.ManifestSignatures{}
-	repoMeta.Referrers[manifestDigest.String()] = []repodb.Descriptor{}
+	repoMeta.Referrers[manifestDigest.String()] = []repodb.ReferrerInfo{}
 
 	err = dwr.setRepoMeta(repo, repoMeta)
 

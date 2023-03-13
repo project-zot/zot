@@ -138,7 +138,7 @@ func (bdw *DBWrapper) SetManifestMeta(repo string, manifestDigest godigest.Diges
 			Tags:       map[string]repodb.Descriptor{},
 			Statistics: map[string]repodb.DescriptorStatistics{},
 			Signatures: map[string]repodb.ManifestSignatures{},
-			Referrers:  map[string][]repodb.Descriptor{},
+			Referrers:  map[string][]repodb.ReferrerInfo{},
 		}
 
 		repoMetaBlob := repoBuck.Get([]byte(repo))
@@ -308,7 +308,7 @@ func (bdw DBWrapper) GetArtifactData(artifactDigest godigest.Digest) (repodb.Art
 	return artifactData, err
 }
 
-func (bdw DBWrapper) SetReferrer(repo string, referredDigest godigest.Digest, referrer repodb.Descriptor) error {
+func (bdw DBWrapper) SetReferrer(repo string, referredDigest godigest.Digest, referrer repodb.ReferrerInfo) error {
 	err := bdw.DB.Update(func(tx *bolt.Tx) error {
 		buck := tx.Bucket([]byte(repodb.RepoMetadataBucket))
 
@@ -328,12 +328,9 @@ func (bdw DBWrapper) SetReferrer(repo string, referredDigest godigest.Digest, re
 				Signatures: map[string]repodb.ManifestSignatures{
 					referredDigest.String(): {},
 				},
-				Referrers: map[string][]repodb.Descriptor{
+				Referrers: map[string][]repodb.ReferrerInfo{
 					referredDigest.String(): {
-						{
-							Digest:    referrer.Digest,
-							MediaType: referrer.MediaType,
-						},
+						referrer,
 					},
 				},
 			}
@@ -360,10 +357,7 @@ func (bdw DBWrapper) SetReferrer(repo string, referredDigest godigest.Digest, re
 			}
 		}
 
-		refferers = append(refferers, repodb.Descriptor{
-			Digest:    referrer.Digest,
-			MediaType: referrer.MediaType,
-		})
+		refferers = append(refferers, referrer)
 
 		repoMeta.Referrers[referredDigest.String()] = refferers
 
@@ -418,8 +412,9 @@ func (bdw DBWrapper) DeleteReferrer(repo string, referredDigest godigest.Digest,
 	})
 }
 
-func (bdw DBWrapper) GetReferrers(repo string, referredDigest godigest.Digest) ([]repodb.Descriptor, error) {
-	var referrers []repodb.Descriptor
+func (bdw DBWrapper) GetReferrersInfo(repo string, referredDigest godigest.Digest, artifactTypes []string,
+) ([]repodb.ReferrerInfo, error) {
+	referrersInfoResult := []repodb.ReferrerInfo{}
 
 	err := bdw.DB.View(func(tx *bolt.Tx) error {
 		buck := tx.Bucket([]byte(repodb.RepoMetadataBucket))
@@ -436,117 +431,20 @@ func (bdw DBWrapper) GetReferrers(repo string, referredDigest godigest.Digest) (
 			return err
 		}
 
-		referrers = repoMeta.Referrers[referredDigest.String()]
+		referrersInfo := repoMeta.Referrers[referredDigest.String()]
 
-		return nil
-	})
-
-	return referrers, err
-}
-
-func (bdw DBWrapper) GetFilteredReferrersInfo(repo string, referredDigest godigest.Digest,
-	artifactTypes []string,
-) ([]repodb.ReferrerInfo, error) {
-	referrersDescriptors, err := bdw.GetReferrers(repo, referredDigest)
-	if err != nil {
-		bdw.Log.Error().Msgf("repodb: failed to get referrers for  '%s@%s'", repo, referredDigest.String())
-
-		return nil, err
-	}
-
-	referrersInfo := []repodb.ReferrerInfo{}
-
-	err = bdw.DB.View(func(tx *bolt.Tx) error {
-		artifactBuck := tx.Bucket([]byte(repodb.ArtifactDataBucket))
-		manifestBuck := tx.Bucket([]byte(repodb.ManifestDataBucket))
-
-		for _, descriptor := range referrersDescriptors {
-			referrerInfo := repodb.ReferrerInfo{}
-
-			switch descriptor.MediaType {
-			case ispec.MediaTypeImageManifest:
-				manifestDataBlob := manifestBuck.Get([]byte(descriptor.Digest))
-
-				if len(manifestDataBlob) == 0 {
-					bdw.Log.Error().Msgf("repodb: manifest data not found for digest %s", descriptor.Digest)
-
-					continue
-				}
-
-				var manifestData repodb.ManifestData
-
-				err = json.Unmarshal(manifestDataBlob, &manifestData)
-				if err != nil {
-					bdw.Log.Error().Err(err).Msgf("repodb: can't unmarhsal manifest data for digest %s",
-						descriptor.Digest)
-
-					continue
-				}
-
-				var manifestContent ispec.Manifest
-
-				err := json.Unmarshal(manifestData.ManifestBlob, &manifestContent)
-				if err != nil {
-					bdw.Log.Error().Err(err).Msgf("repodb: can't unmarhsal manifest for digest %s",
-						descriptor.Digest)
-
-					continue
-				}
-
-				referrerInfo = repodb.ReferrerInfo{
-					Digest:       descriptor.Digest,
-					MediaType:    ispec.MediaTypeImageManifest,
-					ArtifactType: manifestContent.Config.MediaType,
-					Size:         len(manifestData.ManifestBlob),
-					Annotations:  manifestContent.Annotations,
-				}
-			case ispec.MediaTypeArtifactManifest:
-				artifactDataBlob := artifactBuck.Get([]byte(descriptor.Digest))
-
-				if len(artifactDataBlob) == 0 {
-					bdw.Log.Error().Msgf("repodb: artifact data not found for digest %s", descriptor.Digest)
-
-					continue
-				}
-
-				var artifactData repodb.ArtifactData
-
-				err = json.Unmarshal(artifactDataBlob, &artifactData)
-				if err != nil {
-					bdw.Log.Error().Err(err).Msgf("repodb: can't unmarhsal artifact data for digest %s", descriptor.Digest)
-
-					continue
-				}
-
-				manifestContent := ispec.Artifact{}
-
-				err := json.Unmarshal(artifactData.ManifestBlob, &manifestContent)
-				if err != nil {
-					bdw.Log.Error().Err(err).Msgf("repodb: can't unmarhsal artifact manifest for digest %s", descriptor.Digest)
-
-					continue
-				}
-
-				referrerInfo = repodb.ReferrerInfo{
-					Size:         len(artifactData.ManifestBlob),
-					Digest:       descriptor.Digest,
-					MediaType:    manifestContent.MediaType,
-					Annotations:  manifestContent.Annotations,
-					ArtifactType: manifestContent.ArtifactType,
-				}
-			}
-
-			if !common.MatchesArtifactTypes(referrerInfo.ArtifactType, artifactTypes) {
+		for i := range referrersInfo {
+			if !common.MatchesArtifactTypes(referrersInfo[i].ArtifactType, artifactTypes) {
 				continue
 			}
 
-			referrersInfo = append(referrersInfo, referrerInfo)
+			referrersInfoResult = append(referrersInfoResult, referrersInfo[i])
 		}
 
 		return nil
 	})
 
-	return referrersInfo, err
+	return referrersInfoResult, err
 }
 
 func (bdw *DBWrapper) SetRepoReference(repo string, reference string, manifestDigest godigest.Digest,
@@ -570,7 +468,7 @@ func (bdw *DBWrapper) SetRepoReference(repo string, reference string, manifestDi
 				Tags:       map[string]repodb.Descriptor{},
 				Statistics: map[string]repodb.DescriptorStatistics{},
 				Signatures: map[string]repodb.ManifestSignatures{},
-				Referrers:  map[string][]repodb.Descriptor{},
+				Referrers:  map[string][]repodb.ReferrerInfo{},
 			}
 
 			repoMetaBlob, err = json.Marshal(repoMeta)
@@ -596,7 +494,7 @@ func (bdw *DBWrapper) SetRepoReference(repo string, reference string, manifestDi
 
 		repoMeta.Statistics[manifestDigest.String()] = repodb.DescriptorStatistics{DownloadCount: 0}
 		repoMeta.Signatures[manifestDigest.String()] = repodb.ManifestSignatures{}
-		repoMeta.Referrers[manifestDigest.String()] = []repodb.Descriptor{}
+		repoMeta.Referrers[manifestDigest.String()] = []repodb.ReferrerInfo{}
 
 		repoMetaBlob, err = json.Marshal(repoMeta)
 		if err != nil {

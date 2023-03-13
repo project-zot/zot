@@ -7,7 +7,7 @@ function setup() {
     fi
 
     # Download test data to folder common for the entire suite, not just this file
-    skopeo --insecure-policy copy --format=oci docker://alpine:latest oci:${TEST_DATA_DIR}alpine:latest
+    skopeo --insecure-policy copy --format=oci docker://ghcr.io/project-zot/golang:1.20 oci:${TEST_DATA_DIR}/golang:1.20
 
     # Setup zot server
     ZOT_ROOT_DIR=${BATS_FILE_TMPDIR}/zot
@@ -60,23 +60,23 @@ EOF
     wait_zot_reachable "http://127.0.0.1:8080/v2/_catalog"
 
     run skopeo --insecure-policy copy --dest-tls-verify=false \
-        oci:${TEST_DATA_DIR}/alpine:latest \
-        docker://127.0.0.1:8080/alpine:latest
+        oci:${TEST_DATA_DIR}/golang:1.20 \
+        docker://127.0.0.1:8080/golang:1.20
     [ "$status" -eq 0 ]
     run curl http://127.0.0.1:8080/v2/_catalog
     [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.repositories[]') = '"alpine"' ]
+    [ $(echo "${lines[-1]}" | jq '.repositories[]') = '"golang"' ]
 
-    run oras attach --plain-http --image-spec v1.1-image --artifact-type image.type 127.0.0.1:8080/alpine:latest ${IMAGE_MANIFEST_REFERRER}
+    run oras attach --plain-http --image-spec v1.1-image --artifact-type image.type 127.0.0.1:8080/golang:1.20 ${IMAGE_MANIFEST_REFERRER}
     [ "$status" -eq 0 ]
 
-    run oras attach --plain-http --image-spec v1.1-artifact --artifact-type artifact.type 127.0.0.1:8080/alpine:latest ${ARTIFACT_MANIFEST_REFERRER}
+    run oras attach --plain-http --image-spec v1.1-artifact --artifact-type artifact.type 127.0.0.1:8080/golang:1.20 ${ARTIFACT_MANIFEST_REFERRER}
     [ "$status" -eq 0 ]
 
-    MANIFEST_DIGEST=$(skopeo inspect --tls-verify=false docker://localhost:8080/alpine:latest | jq -r '.Digest')
+    MANIFEST_DIGEST=$(skopeo inspect --tls-verify=false docker://localhost:8080/golang:1.20 | jq -r '.Digest')
     echo ${MANIFEST_DIGEST}
 
-    curl -X GET http://127.0.0.1:8080/v2/alpine/referrers/${MANIFEST_DIGEST}?artifactType=image.type
+    curl -X GET http://127.0.0.1:8080/v2/golang/referrers/${MANIFEST_DIGEST}?artifactType=image.type
 }
 
 function teardown() {
@@ -88,21 +88,21 @@ function teardown() {
 @test "add referrers, one artifact and one image" {
 
     # Check referrers API using the normal REST endpoint
-    run curl -X GET http://127.0.0.1:8080/v2/alpine/referrers/${MANIFEST_DIGEST}?artifactType=image.type
+    run curl -X GET http://127.0.0.1:8080/v2/golang/referrers/${MANIFEST_DIGEST}?artifactType=image.type
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.manifests[].artifactType') = '"image.type"' ]
 
-    run curl -X GET http://127.0.0.1:8080/v2/alpine/referrers/${MANIFEST_DIGEST}?artifactType=artifact.type
+    run curl -X GET http://127.0.0.1:8080/v2/golang/referrers/${MANIFEST_DIGEST}?artifactType=artifact.type
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.manifests[].artifactType') = '"artifact.type"' ]
 
     # Check referrers API using the GQL endpoint
-    REFERRER_QUERY_DATA="{ \"query\": \"{ Referrers(repo:\\\"alpine\\\", digest:\\\"${MANIFEST_DIGEST}\\\", type:[\\\"image.type\\\"]) { MediaType ArtifactType Digest Size} }\"}"
+    REFERRER_QUERY_DATA="{ \"query\": \"{ Referrers(repo:\\\"golang\\\", digest:\\\"${MANIFEST_DIGEST}\\\", type:[\\\"image.type\\\"]) { MediaType ArtifactType Digest Size} }\"}"
     run curl -X POST -H "Content-Type: application/json" --data "${REFERRER_QUERY_DATA}" http://localhost:8080/v2/_zot/ext/search
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.data.Referrers[].ArtifactType') = '"image.type"' ]
 
-    REFERRER_QUERY_DATA="{ \"query\": \"{ Referrers(repo:\\\"alpine\\\", digest:\\\"${MANIFEST_DIGEST}\\\", type:[\\\"artifact.type\\\"]) { MediaType ArtifactType Digest Size} }\"}"
+    REFERRER_QUERY_DATA="{ \"query\": \"{ Referrers(repo:\\\"golang\\\", digest:\\\"${MANIFEST_DIGEST}\\\", type:[\\\"artifact.type\\\"]) { MediaType ArtifactType Digest Size} }\"}"
     run curl -X POST -H "Content-Type: application/json" --data "${REFERRER_QUERY_DATA}" http://localhost:8080/v2/_zot/ext/search
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.data.Referrers[].ArtifactType') = '"artifact.type"' ]

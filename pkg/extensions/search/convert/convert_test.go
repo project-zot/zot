@@ -172,6 +172,7 @@ func TestConvertErrors(t *testing.T) {
 				ManifestBlob: []byte("{}"),
 				ConfigBlob:   []byte("bad json"),
 			},
+			nil,
 			mocks.CveInfoMock{
 				GetCVESummaryForImageFn: func(repo, reference string,
 				) (cveinfo.ImageCVESummary, error) {
@@ -203,6 +204,7 @@ func TestConvertErrors(t *testing.T) {
 				ManifestBlob: []byte("{}"),
 				ConfigBlob:   configBlob,
 			},
+			nil,
 			mocks.CveInfoMock{
 				GetCVESummaryForImageFn: func(repo, reference string,
 				) (cveinfo.ImageCVESummary, error) {
