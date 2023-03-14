@@ -3,6 +3,7 @@ package trivy
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"path"
 	"sync"
 
@@ -14,7 +15,6 @@ import (
 	regTypes "github.com/google/go-containerregistry/pkg/v1/types"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/pkg/errors"
 
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/search/common"
@@ -197,14 +197,14 @@ func (scanner Scanner) IsImageFormatScannable(repo, tag string) (bool, error) {
 	case ispec.MediaTypeImageManifest:
 		ok, err := scanner.isManifestScanable(imageDescriptor)
 		if err != nil {
-			return ok, errors.Wrapf(err, "image '%s'", image)
+			return ok, fmt.Errorf("image '%s' %w", image, err)
 		}
 
 		return ok, nil
 	case ispec.MediaTypeImageIndex:
 		ok, err := scanner.isIndexScanable(imageDescriptor)
 		if err != nil {
-			return ok, errors.Wrapf(err, "image '%s'", image)
+			return ok, fmt.Errorf("image '%s' %w", image, err)
 		}
 
 		return ok, nil

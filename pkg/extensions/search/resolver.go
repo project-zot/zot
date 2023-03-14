@@ -7,6 +7,7 @@ package search
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -14,7 +15,6 @@ import (
 	"github.com/99designs/gqlgen/graphql"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/pkg/errors"
 	"github.com/vektah/gqlparser/v2/gqlerror"
 
 	zerr "zotregistry.io/zot/errors"
@@ -890,9 +890,8 @@ func validateGlobalSearchInput(query string, filter *gql_generated.Filter,
 	requestedPage *gql_generated.PageInput,
 ) error {
 	if len(query) > querySizeLimit {
-		format := "global-search: max string size limit exeeded for query parameter. max=%d current=%d"
-
-		return errors.Wrapf(zerr.ErrInvalidRequestParams, format, querySizeLimit, len(query))
+		return fmt.Errorf("global-search: max string size limit exeeded for query parameter. max=%d current=%d %w",
+			querySizeLimit, len(query), zerr.ErrInvalidRequestParams)
 	}
 
 	err := checkFilter(filter)
@@ -915,17 +914,15 @@ func checkFilter(filter *gql_generated.Filter) error {
 
 	for _, arch := range filter.Arch {
 		if len(*arch) > querySizeLimit {
-			format := "global-search: max string size limit exeeded for arch parameter. max=%d current=%d"
-
-			return errors.Wrapf(zerr.ErrInvalidRequestParams, format, querySizeLimit, len(*arch))
+			return fmt.Errorf("global-search: max string size limit exeeded for arch parameter. max=%d current=%d %w",
+				querySizeLimit, len(*arch), zerr.ErrInvalidRequestParams)
 		}
 	}
 
 	for _, osSys := range filter.Os {
 		if len(*osSys) > querySizeLimit {
-			format := "global-search: max string size limit exeeded for os parameter. max=%d current=%d"
-
-			return errors.Wrapf(zerr.ErrInvalidRequestParams, format, querySizeLimit, len(*osSys))
+			return fmt.Errorf("global-search: max string size limit exeeded for os parameter. max=%d current=%d %w",
+				querySizeLimit, len(*osSys), zerr.ErrInvalidRequestParams)
 		}
 	}
 
@@ -938,15 +935,13 @@ func checkRequestedPage(requestedPage *gql_generated.PageInput) error {
 	}
 
 	if requestedPage.Limit != nil && *requestedPage.Limit < 0 {
-		format := "global-search: requested page limit parameter can't be negative"
-
-		return errors.Wrap(zerr.ErrInvalidRequestParams, format)
+		return fmt.Errorf("global-search: requested page limit parameter can't be negative %w",
+			zerr.ErrInvalidRequestParams)
 	}
 
 	if requestedPage.Offset != nil && *requestedPage.Offset < 0 {
-		format := "global-search: requested page offset parameter can't be negative"
-
-		return errors.Wrap(zerr.ErrInvalidRequestParams, format)
+		return fmt.Errorf("global-search: requested page offset parameter can't be negative %w",
+			zerr.ErrInvalidRequestParams)
 	}
 
 	return nil
@@ -1041,8 +1036,8 @@ func expandedRepoInfo(ctx context.Context, repo string, repoDB repodb.RepoDB, cv
 
 			manifestMeta, err := repoDB.GetManifestMeta(repo, godigest.Digest(digest))
 			if err != nil {
-				graphql.AddError(ctx, errors.Wrapf(err,
-					"resolver: failed to get manifest meta for image %s:%s with manifest digest %s", repo, tag, digest))
+				graphql.AddError(ctx, fmt.Errorf("resolver: failed to get manifest meta for image %s:%s with manifest digest %s %w",
+					repo, tag, digest, err))
 
 				continue
 			}
@@ -1057,8 +1052,8 @@ func expandedRepoInfo(ctx context.Context, repo string, repoDB repodb.RepoDB, cv
 
 			indexData, err := repoDB.GetIndexData(godigest.Digest(digest))
 			if err != nil {
-				graphql.AddError(ctx, errors.Wrapf(err,
-					"resolver: failed to get manifest meta for image %s:%s with manifest digest %s", repo, tag, digest))
+				graphql.AddError(ctx, fmt.Errorf("resolver: failed to get manifest meta for image %s:%s with manifest digest %s %w",
+					repo, tag, digest, err))
 
 				continue
 			}
@@ -1067,8 +1062,8 @@ func expandedRepoInfo(ctx context.Context, repo string, repoDB repodb.RepoDB, cv
 
 			err = json.Unmarshal(indexData.IndexBlob, &indexContent)
 			if err != nil {
-				graphql.AddError(ctx, errors.Wrapf(err,
-					"resolver: failed to unmarshal index content for image %s:%s with digest %s", repo, tag, digest))
+				graphql.AddError(ctx, fmt.Errorf("resolver: failed to unmarshal index content for image %s:%s with digest %s %w",
+					repo, tag, digest, err))
 
 				continue
 			}
@@ -1078,9 +1073,9 @@ func expandedRepoInfo(ctx context.Context, repo string, repoDB repodb.RepoDB, cv
 			for _, descriptor := range indexContent.Manifests {
 				manifestMeta, err := repoDB.GetManifestMeta(repo, descriptor.Digest)
 				if err != nil {
-					graphql.AddError(ctx, errors.Wrapf(err,
-						"resolver: failed to get manifest meta with digest '%s' for multiarch image %s:%s",
-						digest, repo, tag),
+					graphql.AddError(ctx,
+						fmt.Errorf("resolver: failed to get manifest meta with digest '%s' for multiarch image %s:%s %w",
+							digest, repo, tag, err),
 					)
 
 					errorOccured = true
@@ -1200,8 +1195,8 @@ func getReferrers(repoDB repodb.RepoDB, repo string, referredDigest string, arti
 	if err := refDigest.Validate(); err != nil {
 		log.Error().Err(err).Msgf("graphql: bad digest string from request '%s'", referredDigest)
 
-		return []*gql_generated.Referrer{}, errors.Wrapf(err, "graphql: bad digest string from request '%s'",
-			referredDigest)
+		return []*gql_generated.Referrer{}, fmt.Errorf("graphql: bad digest string from request '%s' %w",
+			referredDigest, err)
 	}
 
 	referrers, err := repoDB.GetFilteredReferrersInfo(repo, refDigest, artifactTypes)
