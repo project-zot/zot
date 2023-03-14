@@ -78,6 +78,7 @@ var (
 	ErrLimitIsNegative          = errors.New("pageturner: limit has negative value")
 	ErrOffsetIsNegative         = errors.New("pageturner: offset has negative value")
 	ErrSortCriteriaNotSupported = errors.New("pageturner: the sort criteria is not supported")
+	ErrMediaTypeNotSupported    = errors.New("repodb: media type is not supported")
 	ErrTimeout                  = errors.New("operation timeout")
 	ErrNotImplemented           = errors.New("not implemented")
 )

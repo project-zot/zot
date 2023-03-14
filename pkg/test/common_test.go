@@ -241,7 +241,7 @@ func TestUploadArtifact(t *testing.T) {
 
 		artifact := ispec.Artifact{}
 
-		err := test.UploadArtifactManifest(&artifact, baseURL, "test")
+		err := test.UploadArtifactManifest(&artifact, nil, baseURL, "test")
 		So(err, ShouldNotBeNil)
 	})
 }

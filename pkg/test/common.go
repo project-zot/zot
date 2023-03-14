@@ -958,19 +958,22 @@ func DeleteImage(repo, reference, baseURL string) (int, error) {
 }
 
 // UploadArtifactManifest is used in tests where we don't need to upload the blobs of the artifact.
-func UploadArtifactManifest(artifactManifest *ispec.Artifact, baseURL, repo string) error {
+func UploadArtifactManifest(artifactManifest *ispec.Artifact, ref *string, baseURL, repo string) error {
 	// put manifest
 	artifactManifestBlob, err := json.Marshal(artifactManifest)
 	if err != nil {
 		return err
 	}
+	reference := godigest.FromBytes(artifactManifestBlob).String()
 
-	artifactManifestDigest := godigest.FromBytes(artifactManifestBlob)
+	if ref != nil {
+		reference = *ref
+	}
 
 	_, err = resty.R().
 		SetHeader("Content-type", ispec.MediaTypeArtifactManifest).
 		SetBody(artifactManifestBlob).
-		Put(baseURL + "/v2/" + repo + "/manifests/" + artifactManifestDigest.String())
+		Put(baseURL + "/v2/" + repo + "/manifests/" + reference)
 
 	return err
 }

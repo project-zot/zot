@@ -1018,7 +1018,7 @@ func TestGetReferrersGQL(t *testing.T) {
 		So(err, ShouldBeNil)
 		artifactManifestDigest := godigest.FromBytes(artifactManifestBlob)
 
-		err = UploadArtifactManifest(artifact, baseURL, repo)
+		err = UploadArtifactManifest(artifact, nil, baseURL, repo)
 		So(err, ShouldBeNil)
 
 		gqlQuery := `
@@ -1399,6 +1399,72 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
+	})
+
+	Convey("Test expanded repo info with tagged referrers", t, func() {
+		rootDir := t.TempDir()
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = rootDir
+		conf.Storage.GC = false
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+		}
+
+		conf.Extensions.Search.CVE = nil
+
+		ctlr := api.NewController(conf)
+		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
+
+		image, err := GetRandomImage("test")
+		So(err, ShouldBeNil)
+		manifestDigest, err := image.Digest()
+		So(err, ShouldBeNil)
+
+		err = UploadImage(image, baseURL, "repo")
+		So(err, ShouldBeNil)
+
+		referrer, err := GetRandomArtifact(&ispec.Descriptor{
+			Digest:    manifestDigest,
+			MediaType: ispec.MediaTypeImageManifest,
+		})
+		So(err, ShouldBeNil)
+
+		tag := "test-ref-tag"
+		err = UploadArtifactManifest(&referrer.Manifest, &tag, baseURL, "repo")
+		So(err, ShouldBeNil)
+
+		// ------- Make the call to GQL and see that it doesn't crash and that the referrer isn't in the list of tags
+		responseStruct := &ExpandedRepoInfoResp{}
+		query := `
+		{
+			ExpandedRepoInfo(repo:"repo"){
+				Images {
+					RepoName 
+					Tag 
+					Manifests {
+						Digest 
+						Layers {Size Digest}
+					}
+				}
+			}
+		}`
+		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries), ShouldEqual, 1)
+
+		repoInfo := responseStruct.ExpandedRepoInfo.RepoInfo
+		So(repoInfo.ImageSummaries[0].Tag, ShouldEqual, "test")
 	})
 
 	Convey("Test image tags order", t, func() {
