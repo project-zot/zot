@@ -292,6 +292,7 @@ func getCVEListForImage(
 	image string,
 	cveInfo cveinfo.CveInfo,
 	requestedPage *gql_generated.PageInput,
+	searchedCVE string,
 	log log.Logger, //nolint:unparam // may be used by devs for debugging
 ) (*gql_generated.CVEResultForImage, error) {
 	if requestedPage == nil {
@@ -316,7 +317,7 @@ func getCVEListForImage(
 		return &gql_generated.CVEResultForImage{}, gqlerror.Errorf("reference by digest not supported")
 	}
 
-	cveList, pageInfo, err := cveInfo.GetCVEListForImage(repo, ref, pageInput)
+	cveList, pageInfo, err := cveInfo.GetCVEListForImage(repo, ref, searchedCVE, pageInput)
 	if err != nil {
 		return &gql_generated.CVEResultForImage{}, err
 	}

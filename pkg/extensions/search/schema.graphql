@@ -550,6 +550,8 @@ type Query {
         image: String!,
         "Sets the parameters of the requested page"
         requestedPage: PageInput
+        "Search term for specific CVE by title/id"
+        searchedCVE: String
     ): CVEResultForImage!
 
     """

@@ -3,6 +3,7 @@ package cveinfo
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -19,7 +20,7 @@ import (
 type CveInfo interface {
 	GetImageListForCVE(repo, cveID string) ([]common.TagInfo, error)
 	GetImageListWithCVEFixed(repo, cveID string) ([]common.TagInfo, error)
-	GetCVEListForImage(repo, tag string, pageinput PageInput) ([]cvemodel.CVE, PageInfo, error)
+	GetCVEListForImage(repo, tag string, searchedCVE string, pageinput PageInput) ([]cvemodel.CVE, PageInfo, error)
 	GetCVESummaryForImage(repo, tag string) (ImageCVESummary, error)
 	CompareSeverities(severity1, severity2 string) int
 	UpdateDB() error
@@ -215,7 +216,18 @@ func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]commo
 	return fixedTags, nil
 }
 
-func (cveinfo BaseCveInfo) GetCVEListForImage(repo, tag string, pageInput PageInput) (
+func filterCVEList(cveMap map[string]cvemodel.CVE, searchedCVE string, pageFinder *CvePageFinder) {
+	searchedCVE = strings.ToUpper(searchedCVE)
+
+	for _, cve := range cveMap {
+		if strings.Contains(strings.ToUpper(cve.Title), searchedCVE) ||
+			strings.Contains(strings.ToUpper(cve.ID), searchedCVE) {
+			pageFinder.Add(cve)
+		}
+	}
+}
+
+func (cveinfo BaseCveInfo) GetCVEListForImage(repo, tag string, searchedCVE string, pageInput PageInput) (
 	[]cvemodel.CVE,
 	PageInfo,
 	error,
@@ -237,9 +249,7 @@ func (cveinfo BaseCveInfo) GetCVEListForImage(repo, tag string, pageInput PageIn
 		return []cvemodel.CVE{}, PageInfo{}, err
 	}
 
-	for _, cve := range cveMap {
-		pageFinder.Add(cve)
-	}
+	filterCVEList(cveMap, searchedCVE, pageFinder)
 
 	cveList, pageInfo := pageFinder.Page()
 
