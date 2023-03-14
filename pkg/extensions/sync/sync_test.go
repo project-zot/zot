@@ -25,7 +25,6 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
-	perr "github.com/pkg/errors"
 	"github.com/sigstore/cosign/cmd/cosign/cli/generate"
 	"github.com/sigstore/cosign/cmd/cosign/cli/options"
 	"github.com/sigstore/cosign/cmd/cosign/cli/sign"
@@ -5284,7 +5283,7 @@ func pushRepo(url, repoName string) godigest.Digest {
 	}
 
 	if resp.StatusCode() != http.StatusAccepted {
-		panic(perr.Wrapf(errBadStatus, "invalid status code: %d", resp.StatusCode()))
+		panic(fmt.Errorf("invalid status code: %d %w", resp.StatusCode(), errBadStatus))
 	}
 
 	loc = test.Location(url, resp)
@@ -5302,7 +5301,7 @@ func pushRepo(url, repoName string) godigest.Digest {
 	}
 
 	if resp.StatusCode() != http.StatusCreated {
-		panic(perr.Wrapf(errBadStatus, "invalid status code: %d", resp.StatusCode()))
+		panic(fmt.Errorf("invalid status code: %d %w", resp.StatusCode(), errBadStatus))
 	}
 
 	// create a manifest
@@ -5437,7 +5436,7 @@ func pushBlob(url string, repoName string, buf []byte) godigest.Digest {
 	}
 
 	if resp.StatusCode() != http.StatusAccepted {
-		panic(perr.Wrapf(errBadStatus, "invalid status code: %d", resp.StatusCode()))
+		panic(fmt.Errorf("invalid status code: %d %w", resp.StatusCode(), errBadStatus))
 	}
 
 	loc := test.Location(url, resp)
@@ -5456,7 +5455,7 @@ func pushBlob(url string, repoName string, buf []byte) godigest.Digest {
 	}
 
 	if resp.StatusCode() != http.StatusCreated {
-		panic(perr.Wrapf(errBadStatus, "invalid status code: %d", resp.StatusCode()))
+		panic(fmt.Errorf("invalid status code: %d %w", resp.StatusCode(), errBadStatus))
 	}
 
 	return digest

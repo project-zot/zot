@@ -1,8 +1,9 @@
 package update
 
 import (
+	"errors"
+
 	godigest "github.com/opencontainers/go-digest"
-	"github.com/pkg/errors"
 
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/log"

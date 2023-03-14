@@ -1,9 +1,8 @@
 package cveinfo
 
 import (
+	"fmt"
 	"sort"
-
-	"github.com/pkg/errors"
 
 	zerr "zotregistry.io/zot/errors"
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
@@ -75,7 +74,7 @@ func NewCvePageFinder(limit, offset int, sortBy SortCriteria, cveInfo CveInfo) (
 	}
 
 	if _, found := SortFunctions()[sortBy]; !found {
-		return nil, errors.Wrapf(zerr.ErrSortCriteriaNotSupported, "sorting CVEs by '%s' is not supported", sortBy)
+		return nil, fmt.Errorf("sorting CVEs by '%s' is not supported %w", sortBy, zerr.ErrSortCriteriaNotSupported)
 	}
 
 	return &CvePageFinder{

@@ -1,9 +1,8 @@
 package repodb
 
 import (
+	"fmt"
 	"sort"
-
-	"github.com/pkg/errors"
 
 	zerr "zotregistry.io/zot/errors"
 )
@@ -39,7 +38,8 @@ func NewBaseRepoPageFinder(limit, offset int, sortBy SortCriteria) (*RepoPageFin
 	}
 
 	if _, found := SortFunctions()[sortBy]; !found {
-		return nil, errors.Wrapf(zerr.ErrSortCriteriaNotSupported, "sorting repos by '%s' is not supported", sortBy)
+		return nil, fmt.Errorf("sorting repos by '%s' is not supported %w",
+			sortBy, zerr.ErrSortCriteriaNotSupported)
 	}
 
 	return &RepoPageFinder{
@@ -122,7 +122,8 @@ func NewBaseImagePageFinder(limit, offset int, sortBy SortCriteria) (*ImagePageF
 	}
 
 	if _, found := SortFunctions()[sortBy]; !found {
-		return nil, errors.Wrapf(zerr.ErrSortCriteriaNotSupported, "sorting repos by '%s' is not supported", sortBy)
+		return nil, fmt.Errorf("sorting repos by '%s' is not supported %w",
+			sortBy, zerr.ErrSortCriteriaNotSupported)
 	}
 
 	return &ImagePageFinder{
