@@ -17,6 +17,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/olekukonko/tablewriter"
 	godigest "github.com/opencontainers/go-digest"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"gopkg.in/yaml.v2"
 
 	zotErrors "zotregistry.io/zot/errors"
@@ -74,11 +75,14 @@ func (service searchService) getDerivedImageListGQL(ctx context.Context, config 
 				Results{
 					RepoName,
 					Tag,
+					Digest,
+					MediaType,
 					Manifests {
 						Digest,
 						ConfigDigest,
 						Layers {Size Digest},
 						LastUpdated,
+						IsSigned,
 						Size
 					},
 					LastUpdated,
@@ -107,11 +111,14 @@ func (service searchService) getBaseImageListGQL(ctx context.Context, config sea
 				Results{
 					RepoName,
 					Tag,
+					Digest,
+					MediaType,
 					Manifests {
 						Digest,
 						ConfigDigest,
 						Layers {Size Digest},
 						LastUpdated,
+						IsSigned,
 						Size
 					},
 					LastUpdated,
@@ -139,11 +146,14 @@ func (service searchService) getImagesGQL(ctx context.Context, config searchConf
 		ImageList(repo: "%s") {
 			Results {
 				RepoName Tag 
+				Digest
+				MediaType
 				Manifests {
 					Digest 
 					ConfigDigest
 					Size
 					Platform {Os Arch}
+					IsSigned
 					Layers {Size Digest}
 				} 
 				Size 
@@ -171,12 +181,15 @@ func (service searchService) getImagesByDigestGQL(ctx context.Context, config se
 		ImageListForDigest(id: "%s") {
 			Results {
 				RepoName Tag 
+				Digest
+				MediaType
 				Manifests {
 					Digest 
 					ConfigDigest
 					Size
+					IsSigned
 					Layers {Size Digest}
-					} 
+				} 
 				Size 
 				IsSigned
 			}
@@ -202,12 +215,15 @@ func (service searchService) getImagesByCveIDGQL(ctx context.Context, config sea
 		ImageListForCVE(id: "%s") {
 			Results {
 				RepoName Tag 
+				Digest
+				MediaType
 				Manifests {
 					Digest 
 					ConfigDigest
 					Size
+					IsSigned
 					Layers {Size Digest}
-					} 
+				} 
 				Size 
 				IsSigned
 			}
@@ -252,10 +268,13 @@ func (service searchService) getTagsForCVEGQL(ctx context.Context, config search
 			ImageListForCVE(id: "%s") {
 				Results {
 					RepoName Tag
+					Digest
+					MediaType
 					Manifests {
 						Digest 
 						ConfigDigest
 						Size
+						IsSigned
 						Layers {Size Digest}
 					} 
 					Size
@@ -282,12 +301,15 @@ func (service searchService) getFixedTagsForCVEGQL(ctx context.Context, config s
 			ImageListWithCVEFixed(id: "%s", image: "%s") {
 				Results {
 					RepoName Tag 
+					Digest
+					MediaType
 					Manifests {
 						Digest 
 						ConfigDigest
 						Size
+						IsSigned
 						Layers {Size Digest}
-						} 
+					} 
 					Size 
 				}
 			}
@@ -426,12 +448,15 @@ func (service searchService) getImagesByCveID(ctx context.Context, config search
 			ImageListForCVE(id: "%s") {
 				Results {
 					RepoName Tag 
+					Digest
+					MediaType
 					Manifests {
 						Digest 
 						ConfigDigest
 						Size
+						IsSigned
 						Layers {Size Digest}
-						} 
+					} 
 					Size 
 				}
 			}
@@ -492,12 +517,15 @@ func (service searchService) getImagesByDigest(ctx context.Context, config searc
 			ImageListForDigest(id: "%s") {
 				Results {
 					RepoName Tag 
+					Digest
+					MediaType
 					Manifests {
 						Digest 
 						ConfigDigest
 						Size
+						IsSigned
 						Layers {Size Digest}
-						} 
+					}
 					Size 
 				}
 			}
@@ -558,12 +586,15 @@ func (service searchService) getImageByNameAndCVEID(ctx context.Context, config 
 			ImageListForCVE(id: "%s") {
 				Results {
 					RepoName Tag 
+					Digest
+					MediaType
 					Manifests {
 						Digest 
 						ConfigDigest
 						Size
+						IsSigned
 						Layers {Size Digest}
-						} 
+					}
 					Size 
 				}
 			}
@@ -682,12 +713,15 @@ func (service searchService) getFixedTagsForCVE(ctx context.Context, config sear
 		ImageListWithCVEFixed (id: "%s", image: "%s") {
 			Results {
 				RepoName Tag 
+				Digest
+				MediaType
 				Manifests {
 					Digest 
 					ConfigDigest
 					Size
+					IsSigned
 					Layers {Size Digest}
-					} 
+				} 
 				Size 
 			}
 		}
@@ -984,8 +1018,10 @@ type imageStruct struct {
 	Tag       string `json:"tag"`
 	Manifests []manifestStruct
 	Size      string `json:"size"`
+	Digest    string `json:"digest"`
+	MediaType string `json:"mediaType"`
+	IsSigned  bool   `json:"isSigned"`
 	verbose   bool
-	IsSigned  bool `json:"isSigned"`
 }
 
 type manifestStruct struct {
@@ -1106,69 +1142,9 @@ func (img imageStruct) stringPlainText(maxImgNameLen, maxTagLen, maxPlatformLen 
 		tagName += offset
 	}
 
-	for i := range img.Manifests {
-		manifestDigest, err := godigest.Parse(img.Manifests[i].Digest)
-		if err != nil {
-			return "", fmt.Errorf("error parsing manifest digest %s: %w", img.Manifests[i].Digest, err)
-		}
-
-		configDigest, err := godigest.Parse(img.Manifests[i].ConfigDigest)
-		if err != nil {
-			return "", fmt.Errorf("error parsing config digest %s: %w", img.Manifests[i].ConfigDigest, err)
-		}
-
-		platform := getPlatformStr(img.Manifests[i].Platform)
-
-		if maxPlatformLen > len(platform) {
-			offset = strings.Repeat(" ", maxPlatformLen-len(platform))
-			platform += offset
-		}
-
-		minifestDigestStr := ellipsize(manifestDigest.Encoded(), digestWidth, "")
-		configDigestStr := ellipsize(configDigest.Encoded(), configWidth, "")
-		imgSize, _ := strconv.ParseUint(img.Manifests[i].Size, 10, 64)
-		size := ellipsize(strings.ReplaceAll(humanize.Bytes(imgSize), " ", ""), sizeWidth, ellipsis)
-		isSigned := img.IsSigned
-		row := make([]string, 8) //nolint:gomnd
-
-		row[colImageNameIndex] = imageName
-		row[colTagIndex] = tagName
-		row[colDigestIndex] = minifestDigestStr
-		row[colPlatformIndex] = platform
-		row[colSizeIndex] = size
-		row[colIsSignedIndex] = strconv.FormatBool(isSigned)
-
-		if img.verbose {
-			row[colConfigIndex] = configDigestStr
-			row[colLayersIndex] = ""
-		}
-
-		table.Append(row)
-
-		if img.verbose {
-			for _, entry := range img.Manifests[i].Layers {
-				layerSize := entry.Size
-				size := ellipsize(strings.ReplaceAll(humanize.Bytes(uint64(layerSize)), " ", ""), sizeWidth, ellipsis)
-
-				layerDigest, err := godigest.Parse(entry.Digest)
-				if err != nil {
-					return "", fmt.Errorf("error parsing layer digest %s: %w", entry.Digest, err)
-				}
-
-				layerDigestStr := ellipsize(layerDigest.Encoded(), digestWidth, "")
-
-				layerRow := make([]string, 8) //nolint:gomnd
-				layerRow[colImageNameIndex] = ""
-				layerRow[colTagIndex] = ""
-				layerRow[colDigestIndex] = ""
-				layerRow[colPlatformIndex] = ""
-				layerRow[colSizeIndex] = size
-				layerRow[colConfigIndex] = ""
-				layerRow[colLayersIndex] = layerDigestStr
-
-				table.Append(layerRow)
-			}
-		}
+	err := addImageToTable(table, &img, maxPlatformLen, imageName, tagName)
+	if err != nil {
+		return "", err
 	}
 
 	table.Render()
@@ -1176,9 +1152,125 @@ func (img imageStruct) stringPlainText(maxImgNameLen, maxTagLen, maxPlatformLen 
 	return builder.String(), nil
 }
 
+func addImageToTable(table *tablewriter.Table, img *imageStruct, maxPlatformLen int,
+	imageName, tagName string,
+) error {
+	switch img.MediaType {
+	case ispec.MediaTypeImageManifest:
+		return addManifestToTable(table, imageName, tagName, &img.Manifests[0], maxPlatformLen, img.verbose)
+	case ispec.MediaTypeImageIndex:
+		return addImageIndexToTable(table, img, maxPlatformLen, imageName, tagName)
+	}
+
+	return nil
+}
+
+func addImageIndexToTable(table *tablewriter.Table, img *imageStruct, maxPlatformLen int,
+	imageName, tagName string,
+) error {
+	indexDigest, err := godigest.Parse(img.Digest)
+	if err != nil {
+		return fmt.Errorf("error parsing index digest %s: %w", indexDigest, err)
+	}
+	row := make([]string, rowWidth)
+	row[colImageNameIndex] = imageName
+	row[colTagIndex] = tagName
+	row[colDigestIndex] = ellipsize(indexDigest.Encoded(), digestWidth, "")
+	row[colPlatformIndex] = "*"
+
+	imgSize, _ := strconv.ParseUint(img.Size, 10, 64)
+	row[colSizeIndex] = ellipsize(strings.ReplaceAll(humanize.Bytes(imgSize), " ", ""), sizeWidth, ellipsis)
+	row[colIsSignedIndex] = strconv.FormatBool(img.IsSigned)
+
+	if img.verbose {
+		row[colConfigIndex] = ""
+		row[colLayersIndex] = ""
+	}
+
+	table.Append(row)
+
+	for i := range img.Manifests {
+		err := addManifestToTable(table, "", "", &img.Manifests[i], maxPlatformLen, img.verbose)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func addManifestToTable(table *tablewriter.Table, imageName, tagName string, manifest *manifestStruct,
+	maxPlatformLen int, verbose bool,
+) error {
+	manifestDigest, err := godigest.Parse(manifest.Digest)
+	if err != nil {
+		return fmt.Errorf("error parsing manifest digest %s: %w", manifest.Digest, err)
+	}
+
+	configDigest, err := godigest.Parse(manifest.ConfigDigest)
+	if err != nil {
+		return fmt.Errorf("error parsing config digest %s: %w", manifest.ConfigDigest, err)
+	}
+
+	platform := getPlatformStr(manifest.Platform)
+
+	if maxPlatformLen > len(platform) {
+		offset := strings.Repeat(" ", maxPlatformLen-len(platform))
+		platform += offset
+	}
+
+	minifestDigestStr := ellipsize(manifestDigest.Encoded(), digestWidth, "")
+	configDigestStr := ellipsize(configDigest.Encoded(), configWidth, "")
+	imgSize, _ := strconv.ParseUint(manifest.Size, 10, 64)
+	size := ellipsize(strings.ReplaceAll(humanize.Bytes(imgSize), " ", ""), sizeWidth, ellipsis)
+	isSigned := manifest.IsSigned
+	row := make([]string, 8) //nolint:gomnd
+
+	row[colImageNameIndex] = imageName
+	row[colTagIndex] = tagName
+	row[colDigestIndex] = minifestDigestStr
+	row[colPlatformIndex] = platform
+	row[colSizeIndex] = size
+	row[colIsSignedIndex] = strconv.FormatBool(isSigned)
+
+	if verbose {
+		row[colConfigIndex] = configDigestStr
+		row[colLayersIndex] = ""
+	}
+
+	table.Append(row)
+
+	if verbose {
+		for _, entry := range manifest.Layers {
+			layerSize := entry.Size
+			size := ellipsize(strings.ReplaceAll(humanize.Bytes(uint64(layerSize)), " ", ""), sizeWidth, ellipsis)
+
+			layerDigest, err := godigest.Parse(entry.Digest)
+			if err != nil {
+				return fmt.Errorf("error parsing layer digest %s: %w", entry.Digest, err)
+			}
+
+			layerDigestStr := ellipsize(layerDigest.Encoded(), digestWidth, "")
+
+			layerRow := make([]string, 8) //nolint:gomnd
+			layerRow[colImageNameIndex] = ""
+			layerRow[colTagIndex] = ""
+			layerRow[colDigestIndex] = ""
+			layerRow[colPlatformIndex] = ""
+			layerRow[colSizeIndex] = size
+			layerRow[colConfigIndex] = ""
+			layerRow[colLayersIndex] = layerDigestStr
+
+			table.Append(layerRow)
+		}
+	}
+
+	return nil
+}
+
 func getPlatformStr(platf platform) string {
 	if platf.Arch == "" && platf.Os == "" {
-		return "N/A"
+		return ""
 	}
 
 	platform := platf.Os
@@ -1332,15 +1424,6 @@ const (
 	layersWidth    = 8
 	ellipsis       = "..."
 
-	colImageNameIndex = 0
-	colTagIndex       = 1
-	colDigestIndex    = 2
-	colConfigIndex    = 3
-	colPlatformIndex  = 4
-	colIsSignedIndex  = 5
-	colLayersIndex    = 6
-	colSizeIndex      = 7
-
 	cveIDWidth       = 16
 	cveSeverityWidth = 8
 	cveTitleWidth    = 48
@@ -1350,4 +1433,17 @@ const (
 	colCVETitleIndex    = 2
 
 	defaultOutoutFormat = "text"
+)
+
+const (
+	colImageNameIndex = iota
+	colTagIndex
+	colPlatformIndex
+	colDigestIndex
+	colConfigIndex
+	colIsSignedIndex
+	colLayersIndex
+	colSizeIndex
+
+	rowWidth
 )

@@ -326,12 +326,14 @@ func fetchImageIndexStruct(ctx context.Context, job *httpJob) (*imageStruct, err
 		isNotationSigned(ctx, job.imageName, indexDigest, job.config, job.username, job.password)
 
 	return &imageStruct{
-		verbose:   *job.config.verbose,
 		RepoName:  job.imageName,
 		Tag:       job.tagName,
+		Digest:    indexDigest,
+		MediaType: ispec.MediaTypeImageIndex,
+		Manifests: manifestList,
 		Size:      strconv.FormatInt(imageSize, 10),
 		IsSigned:  isIndexSigned,
-		Manifests: manifestList,
+		verbose:   *job.config.verbose,
 	}, nil
 }
 
@@ -351,14 +353,16 @@ func fetchImageManifestStruct(ctx context.Context, job *httpJob) (*imageStruct, 
 	}
 
 	return &imageStruct{
-		verbose:  *job.config.verbose,
-		RepoName: job.imageName,
-		Tag:      job.tagName,
-		Size:     manifest.Size,
-		IsSigned: manifest.IsSigned,
+		RepoName:  job.imageName,
+		Tag:       job.tagName,
+		Digest:    manifest.Digest,
+		MediaType: ispec.MediaTypeImageManifest,
 		Manifests: []manifestStruct{
 			manifest,
 		},
+		Size:     manifest.Size,
+		IsSigned: manifest.IsSigned,
+		verbose:  *job.config.verbose,
 	}, nil
 }
 

@@ -79,6 +79,7 @@ type ComplexityRoot struct {
 	ImageSummary struct {
 		Authors         func(childComplexity int) int
 		Description     func(childComplexity int) int
+		Digest          func(childComplexity int) int
 		Documentation   func(childComplexity int) int
 		DownloadCount   func(childComplexity int) int
 		IsSigned        func(childComplexity int) int
@@ -86,6 +87,7 @@ type ComplexityRoot struct {
 		LastUpdated     func(childComplexity int) int
 		Licenses        func(childComplexity int) int
 		Manifests       func(childComplexity int) int
+		MediaType       func(childComplexity int) int
 		Referrers       func(childComplexity int) int
 		RepoName        func(childComplexity int) int
 		Score           func(childComplexity int) int
@@ -118,6 +120,7 @@ type ComplexityRoot struct {
 		Digest          func(childComplexity int) int
 		DownloadCount   func(childComplexity int) int
 		History         func(childComplexity int) int
+		IsSigned        func(childComplexity int) int
 		LastUpdated     func(childComplexity int) int
 		Layers          func(childComplexity int) int
 		Platform        func(childComplexity int) int
@@ -372,6 +375,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.ImageSummary.Description(childComplexity), true
 
+	case "ImageSummary.Digest":
+		if e.complexity.ImageSummary.Digest == nil {
+			break
+		}
+
+		return e.complexity.ImageSummary.Digest(childComplexity), true
+
 	case "ImageSummary.Documentation":
 		if e.complexity.ImageSummary.Documentation == nil {
 			break
@@ -420,6 +430,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.ImageSummary.Manifests(childComplexity), true
+
+	case "ImageSummary.MediaType":
+		if e.complexity.ImageSummary.MediaType == nil {
+			break
+		}
+
+		return e.complexity.ImageSummary.MediaType(childComplexity), true
 
 	case "ImageSummary.Referrers":
 		if e.complexity.ImageSummary.Referrers == nil {
@@ -560,6 +577,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.ManifestSummary.History(childComplexity), true
+
+	case "ManifestSummary.IsSigned":
+		if e.complexity.ManifestSummary.IsSigned == nil {
+			break
+		}
+
+		return e.complexity.ManifestSummary.IsSigned(childComplexity), true
 
 	case "ManifestSummary.LastUpdated":
 		if e.complexity.ManifestSummary.LastUpdated == nil {
@@ -1131,6 +1155,14 @@ type ImageSummary {
     """
     Tag: String
     """
+    The digest of the descriptor of this image
+    """
+    Digest: String
+    """
+    The media type of the descriptor of this image
+    """
+    MediaType: String
+    """
     List of manifests for all supported versions of the image for different operating systems and architectures
     """
     Manifests: [ManifestSummary]
@@ -1216,6 +1248,10 @@ type ManifestSummary {
     Total size of the files associated with this manifest (manifest, config, layers)
     """
     Size: String
+    """
+    True if the manifest has a signature associated with it, false otherwise
+    """
+    IsSigned: Boolean
     """
     OS and architecture supported by this image
     """
@@ -2587,6 +2623,10 @@ func (ec *executionContext) fieldContext_GlobalSearchResult_Images(ctx context.C
 				return ec.fieldContext_ImageSummary_RepoName(ctx, field)
 			case "Tag":
 				return ec.fieldContext_ImageSummary_Tag(ctx, field)
+			case "Digest":
+				return ec.fieldContext_ImageSummary_Digest(ctx, field)
+			case "MediaType":
+				return ec.fieldContext_ImageSummary_MediaType(ctx, field)
 			case "Manifests":
 				return ec.fieldContext_ImageSummary_Manifests(ctx, field)
 			case "Size":
@@ -3027,6 +3067,88 @@ func (ec *executionContext) fieldContext_ImageSummary_Tag(ctx context.Context, f
 	return fc, nil
 }
 
+func (ec *executionContext) _ImageSummary_Digest(ctx context.Context, field graphql.CollectedField, obj *ImageSummary) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_ImageSummary_Digest(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Digest, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_ImageSummary_Digest(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ImageSummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ImageSummary_MediaType(ctx context.Context, field graphql.CollectedField, obj *ImageSummary) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_ImageSummary_MediaType(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.MediaType, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_ImageSummary_MediaType(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ImageSummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _ImageSummary_Manifests(ctx context.Context, field graphql.CollectedField, obj *ImageSummary) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_ImageSummary_Manifests(ctx, field)
 	if err != nil {
@@ -3071,6 +3193,8 @@ func (ec *executionContext) fieldContext_ImageSummary_Manifests(ctx context.Cont
 				return ec.fieldContext_ManifestSummary_LastUpdated(ctx, field)
 			case "Size":
 				return ec.fieldContext_ManifestSummary_Size(ctx, field)
+			case "IsSigned":
+				return ec.fieldContext_ManifestSummary_IsSigned(ctx, field)
 			case "Platform":
 				return ec.fieldContext_ManifestSummary_Platform(ctx, field)
 			case "DownloadCount":
@@ -4194,6 +4318,47 @@ func (ec *executionContext) fieldContext_ManifestSummary_Size(ctx context.Contex
 	return fc, nil
 }
 
+func (ec *executionContext) _ManifestSummary_IsSigned(ctx context.Context, field graphql.CollectedField, obj *ManifestSummary) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_ManifestSummary_IsSigned(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.IsSigned, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*bool)
+	fc.Result = res
+	return ec.marshalOBoolean2ᚖbool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_ManifestSummary_IsSigned(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ManifestSummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _ManifestSummary_Platform(ctx context.Context, field graphql.CollectedField, obj *ManifestSummary) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_ManifestSummary_Platform(ctx, field)
 	if err != nil {
@@ -4779,6 +4944,10 @@ func (ec *executionContext) fieldContext_PaginatedImagesResult_Results(ctx conte
 				return ec.fieldContext_ImageSummary_RepoName(ctx, field)
 			case "Tag":
 				return ec.fieldContext_ImageSummary_Tag(ctx, field)
+			case "Digest":
+				return ec.fieldContext_ImageSummary_Digest(ctx, field)
+			case "MediaType":
+				return ec.fieldContext_ImageSummary_MediaType(ctx, field)
 			case "Manifests":
 				return ec.fieldContext_ImageSummary_Manifests(ctx, field)
 			case "Size":
@@ -5663,6 +5832,10 @@ func (ec *executionContext) fieldContext_Query_Image(ctx context.Context, field 
 				return ec.fieldContext_ImageSummary_RepoName(ctx, field)
 			case "Tag":
 				return ec.fieldContext_ImageSummary_Tag(ctx, field)
+			case "Digest":
+				return ec.fieldContext_ImageSummary_Digest(ctx, field)
+			case "MediaType":
+				return ec.fieldContext_ImageSummary_MediaType(ctx, field)
 			case "Manifests":
 				return ec.fieldContext_ImageSummary_Manifests(ctx, field)
 			case "Size":
@@ -6160,6 +6333,10 @@ func (ec *executionContext) fieldContext_RepoInfo_Images(ctx context.Context, fi
 				return ec.fieldContext_ImageSummary_RepoName(ctx, field)
 			case "Tag":
 				return ec.fieldContext_ImageSummary_Tag(ctx, field)
+			case "Digest":
+				return ec.fieldContext_ImageSummary_Digest(ctx, field)
+			case "MediaType":
+				return ec.fieldContext_ImageSummary_MediaType(ctx, field)
 			case "Manifests":
 				return ec.fieldContext_ImageSummary_Manifests(ctx, field)
 			case "Size":
@@ -6556,6 +6733,10 @@ func (ec *executionContext) fieldContext_RepoSummary_NewestImage(ctx context.Con
 				return ec.fieldContext_ImageSummary_RepoName(ctx, field)
 			case "Tag":
 				return ec.fieldContext_ImageSummary_Tag(ctx, field)
+			case "Digest":
+				return ec.fieldContext_ImageSummary_Digest(ctx, field)
+			case "MediaType":
+				return ec.fieldContext_ImageSummary_MediaType(ctx, field)
 			case "Manifests":
 				return ec.fieldContext_ImageSummary_Manifests(ctx, field)
 			case "Size":
@@ -8827,6 +9008,14 @@ func (ec *executionContext) _ImageSummary(ctx context.Context, sel ast.Selection
 
 			out.Values[i] = ec._ImageSummary_Tag(ctx, field, obj)
 
+		case "Digest":
+
+			out.Values[i] = ec._ImageSummary_Digest(ctx, field, obj)
+
+		case "MediaType":
+
+			out.Values[i] = ec._ImageSummary_MediaType(ctx, field, obj)
+
 		case "Manifests":
 
 			out.Values[i] = ec._ImageSummary_Manifests(ctx, field, obj)
@@ -9018,6 +9207,10 @@ func (ec *executionContext) _ManifestSummary(ctx context.Context, sel ast.Select
 		case "Size":
 
 			out.Values[i] = ec._ManifestSummary_Size(ctx, field, obj)
+
+		case "IsSigned":
+
+			out.Values[i] = ec._ManifestSummary_IsSigned(ctx, field, obj)
 
 		case "Platform":
 

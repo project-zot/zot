@@ -6544,6 +6544,8 @@ func TestImageSummary(t *testing.T) {
 				Image(image:"%s:%s"){
 					RepoName
 					Tag
+					Digest
+					MediaType
 					Manifests {
 						Digest
 						ConfigDigest
@@ -6569,6 +6571,8 @@ func TestImageSummary(t *testing.T) {
 				Image(image:"%s"){
 					RepoName,
 					Tag,
+					Digest,
+					MediaType,
 					Manifests {
 						Digest
 						ConfigDigest
@@ -6679,6 +6683,8 @@ func TestImageSummary(t *testing.T) {
 		imgSummary := imgSummaryResponse.SingleImageSummary.ImageSummary
 		So(imgSummary.RepoName, ShouldContainSubstring, repoName)
 		So(imgSummary.Tag, ShouldContainSubstring, tagTarget)
+		So(imgSummary.Digest, ShouldContainSubstring, manifestDigest.Encoded())
+		So(imgSummary.MediaType, ShouldContainSubstring, ispec.MediaTypeImageManifest)
 		So(imgSummary.Manifests[0].ConfigDigest, ShouldContainSubstring, image.Manifest.Config.Digest.Encoded())
 		So(imgSummary.Manifests[0].Digest, ShouldContainSubstring, manifestDigest.Encoded())
 		So(len(imgSummary.Manifests[0].Layers), ShouldEqual, 1)

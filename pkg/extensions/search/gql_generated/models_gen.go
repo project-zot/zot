@@ -91,6 +91,10 @@ type ImageSummary struct {
 	RepoName *string `json:"RepoName"`
 	// Tag identifying the image within the repository
 	Tag *string `json:"Tag"`
+	// The digest of the descriptor of this image
+	Digest *string `json:"Digest"`
+	// The media type of the descriptor of this image
+	MediaType *string `json:"MediaType"`
 	// List of manifests for all supported versions of the image for different operating systems and architectures
 	Manifests []*ManifestSummary `json:"Manifests"`
 	// Total size of the files associated with all images (manifest, config, layers)
@@ -162,6 +166,8 @@ type ManifestSummary struct {
 	LastUpdated *time.Time `json:"LastUpdated"`
 	// Total size of the files associated with this manifest (manifest, config, layers)
 	Size *string `json:"Size"`
+	// True if the manifest has a signature associated with it, false otherwise
+	IsSigned *bool `json:"IsSigned"`
 	// OS and architecture supported by this image
 	Platform *Platform `json:"Platform"`
 	// Total numer of image manifest downloads from this repository

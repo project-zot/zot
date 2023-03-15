@@ -124,6 +124,14 @@ type ImageSummary {
     """
     Tag: String
     """
+    The digest of the descriptor of this image
+    """
+    Digest: String
+    """
+    The media type of the descriptor of this image
+    """
+    MediaType: String
+    """
     List of manifests for all supported versions of the image for different operating systems and architectures
     """
     Manifests: [ManifestSummary]
@@ -209,6 +217,10 @@ type ManifestSummary {
     Total size of the files associated with this manifest (manifest, config, layers)
     """
     Size: String
+    """
+    True if the manifest has a signature associated with it, false otherwise
+    """
+    IsSigned: Boolean
     """
     OS and architecture supported by this image
     """
