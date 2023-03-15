@@ -19,15 +19,12 @@ import (
 	"net/url"
 	"os"
 	"path"
-	"regexp"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/chartmuseum/auth"
 	"github.com/gorilla/mux"
-	"github.com/mitchellh/mapstructure"
 	vldap "github.com/nmcclain/ldap"
 	notreg "github.com/notaryproject/notation-go/registry"
 	distext "github.com/opencontainers/distribution-spec/specs-go/v1/extensions"
@@ -70,18 +67,6 @@ const (
 	ALICE                  = "alice"
 	AuthorizationNamespace = "authz/image"
 	AuthorizationAllRepos  = "**"
-)
-
-type (
-	accessTokenResponse struct {
-		AccessToken string `json:"access_token"` //nolint:tagliatelle // token format
-	}
-
-	authHeader struct {
-		Realm   string
-		Service string
-		Scope   string
-	}
 )
 
 func getCredString(username, password string) string {
@@ -1892,7 +1877,7 @@ func TestLDAPFailures(t *testing.T) {
 
 func TestBearerAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		authTestServer := makeAuthTestServer()
+		authTestServer := test.MakeAuthTestServer(ServerKey, UnauthorizedNamespace)
 		defer authTestServer.Close()
 
 		port := test.GetFreePort()
@@ -1925,7 +1910,7 @@ func TestBearerAuth(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		authorizationHeader := parseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		authorizationHeader := test.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
 		resp, err = resty.R().
 			SetQueryParam("service", authorizationHeader.Service).
 			SetQueryParam("scope", authorizationHeader.Scope).
@@ -1933,7 +1918,7 @@ func TestBearerAuth(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-		var goodToken accessTokenResponse
+		var goodToken test.AccessTokenResponse
 		err = json.Unmarshal(resp.Body(), &goodToken)
 		So(err, ShouldBeNil)
 
@@ -1955,7 +1940,7 @@ func TestBearerAuth(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		authorizationHeader = parseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		authorizationHeader = test.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
 		resp, err = resty.R().
 			SetQueryParam("service", authorizationHeader.Service).
 			SetQueryParam("scope", authorizationHeader.Scope).
@@ -1984,7 +1969,7 @@ func TestBearerAuth(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		authorizationHeader = parseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		authorizationHeader = test.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
 		resp, err = resty.R().
 			SetQueryParam("service", authorizationHeader.Service).
 			SetQueryParam("scope", authorizationHeader.Scope).
@@ -2013,7 +1998,7 @@ func TestBearerAuth(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		authorizationHeader = parseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		authorizationHeader = test.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
 		resp, err = resty.R().
 			SetQueryParam("service", authorizationHeader.Service).
 			SetQueryParam("scope", authorizationHeader.Scope).
@@ -2037,7 +2022,7 @@ func TestBearerAuth(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		authorizationHeader = parseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		authorizationHeader = test.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
 		resp, err = resty.R().
 			SetQueryParam("service", authorizationHeader.Service).
 			SetQueryParam("scope", authorizationHeader.Scope).
@@ -2045,7 +2030,7 @@ func TestBearerAuth(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-		var badToken accessTokenResponse
+		var badToken test.AccessTokenResponse
 		err = json.Unmarshal(resp.Body(), &badToken)
 		So(err, ShouldBeNil)
 
@@ -2060,7 +2045,7 @@ func TestBearerAuth(t *testing.T) {
 
 func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 	Convey("Make a new controller", t, func() {
-		authTestServer := makeAuthTestServer()
+		authTestServer := test.MakeAuthTestServer(ServerKey, UnauthorizedNamespace)
 		defer authTestServer.Close()
 
 		port := test.GetFreePort()
@@ -2101,7 +2086,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		authorizationHeader := parseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		authorizationHeader := test.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
 		resp, err = resty.R().
 			SetQueryParam("service", authorizationHeader.Service).
 			SetQueryParam("scope", authorizationHeader.Scope).
@@ -2109,7 +2094,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-		var goodToken accessTokenResponse
+		var goodToken test.AccessTokenResponse
 		err = json.Unmarshal(resp.Body(), &goodToken)
 		So(err, ShouldBeNil)
 
@@ -2125,7 +2110,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		authorizationHeader = parseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		authorizationHeader = test.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
 		resp, err = resty.R().
 			SetQueryParam("service", authorizationHeader.Service).
 			SetQueryParam("scope", authorizationHeader.Scope).
@@ -2154,7 +2139,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		authorizationHeader = parseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		authorizationHeader = test.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
 		resp, err = resty.R().
 			SetQueryParam("service", authorizationHeader.Service).
 			SetQueryParam("scope", authorizationHeader.Scope).
@@ -2183,7 +2168,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		authorizationHeader = parseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		authorizationHeader = test.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
 		resp, err = resty.R().
 			SetQueryParam("service", authorizationHeader.Service).
 			SetQueryParam("scope", authorizationHeader.Scope).
@@ -2207,7 +2192,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 
-		authorizationHeader = parseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
+		authorizationHeader = test.ParseBearerAuthHeader(resp.Header().Get("Www-Authenticate"))
 		resp, err = resty.R().
 			SetQueryParam("service", authorizationHeader.Service).
 			SetQueryParam("scope", authorizationHeader.Scope).
@@ -2215,7 +2200,7 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-		var badToken accessTokenResponse
+		var badToken test.AccessTokenResponse
 		err = json.Unmarshal(resp.Body(), &badToken)
 		So(err, ShouldBeNil)
 
@@ -2226,60 +2211,6 @@ func TestBearerAuthWithAllowReadAccess(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 	})
-}
-
-func makeAuthTestServer() *httptest.Server {
-	cmTokenGenerator, err := auth.NewTokenGenerator(&auth.TokenGeneratorOptions{
-		PrivateKeyPath: ServerKey,
-		Audience:       "Zot Registry",
-		Issuer:         "Zot",
-		AddKIDHeader:   true,
-	})
-	if err != nil {
-		panic(err)
-	}
-
-	authTestServer := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		scope := request.URL.Query().Get("scope")
-		parts := strings.Split(scope, ":")
-		name := parts[1]
-		actions := strings.Split(parts[2], ",")
-		if name == UnauthorizedNamespace {
-			actions = []string{}
-		}
-		access := []auth.AccessEntry{
-			{
-				Name:    name,
-				Type:    "repository",
-				Actions: actions,
-			},
-		}
-		token, err := cmTokenGenerator.GenerateToken(access, time.Minute*1)
-		if err != nil {
-			panic(err)
-		}
-		response.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(response, `{"access_token": "%s"}`, token)
-	}))
-
-	return authTestServer
-}
-
-func parseBearerAuthHeader(authHeaderRaw string) *authHeader {
-	re := regexp.MustCompile(`([a-zA-z]+)="(.+?)"`)
-	matches := re.FindAllStringSubmatch(authHeaderRaw, -1)
-	matchmap := make(map[string]string)
-
-	for i := 0; i < len(matches); i++ {
-		matchmap[matches[i][1]] = matches[i][2]
-	}
-
-	var h authHeader
-	if err := mapstructure.Decode(matchmap, &h); err != nil {
-		panic(err)
-	}
-
-	return &h
 }
 
 func TestAuthorizationWithBasicAuth(t *testing.T) {

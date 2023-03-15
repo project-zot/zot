@@ -55,7 +55,18 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 			}
 			vars := mux.Vars(request)
 			name := vars["name"]
+
+			// we want to bypass auth for mgmt route
+			isMgmtRequested := request.RequestURI == constants.FullMgmtPrefix
+
 			header := request.Header.Get("Authorization")
+
+			if (header == "" || header == "Basic Og==") && isMgmtRequested {
+				next.ServeHTTP(response, request)
+
+				return
+			}
+
 			action := auth.PullAction
 			if m := request.Method; m != http.MethodGet && m != http.MethodHead {
 				action = auth.PushAction

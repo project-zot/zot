@@ -1336,3 +1336,9 @@ func TestWriteImageToFileSystem(t *testing.T) {
 		So(err, ShouldNotBeNil)
 	})
 }
+
+func TestBearerServer(t *testing.T) {
+	Convey("test MakeAuthTestServer() no serve key", t, func() {
+		So(func() { test.MakeAuthTestServer("", "") }, ShouldPanic)
+	})
+}
