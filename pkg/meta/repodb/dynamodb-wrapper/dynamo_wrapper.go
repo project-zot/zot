@@ -972,6 +972,8 @@ func (dwr *DBWrapper) SearchRepos(ctx context.Context, searchText string, filter
 					indexDataMap[indexDigest] = indexData
 				default:
 					dwr.Log.Error().Msgf("Unsupported type: %s", descriptor.MediaType)
+
+					continue
 				}
 			}
 
@@ -1245,6 +1247,8 @@ func (dwr *DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 				indexDataMap[indexDigest] = indexData
 			default:
 				dwr.Log.Error().Msgf("Unsupported type: %s", descriptor.MediaType)
+
+				continue
 			}
 		}
 
@@ -1409,6 +1413,8 @@ func (dwr *DBWrapper) SearchTags(ctx context.Context, searchText string, filter 
 					indexDataMap[indexDigest] = indexData
 				default:
 					dwr.Log.Error().Msgf("Unsupported type: %s", descriptor.MediaType)
+
+					continue
 				}
 			}
 

@@ -13,6 +13,7 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/vektah/gqlparser/v2/gqlerror"
 
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
@@ -164,7 +165,7 @@ func Descriptor2ImageSummary(ctx context.Context, descriptor repodb.Descriptor, 
 		return ImageIndex2ImageSummary(ctx, repo, tag, godigest.Digest(descriptor.Digest), skipCVE,
 			repoMeta, indexDataMap[descriptor.Digest], manifestMetaMap, cveInfo)
 	default:
-		return &gql_generated.ImageSummary{}, map[string]int64{}, nil
+		return &gql_generated.ImageSummary{}, map[string]int64{}, zerr.ErrMediaTypeNotSupported
 	}
 }
 
