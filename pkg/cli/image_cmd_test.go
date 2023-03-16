@@ -1691,7 +1691,7 @@ func (service mockService) getFixedTagsForCVEGQL(ctx context.Context, config sea
 }
 
 func (service mockService) getCveByImageGQL(ctx context.Context, config searchConfig, username, password,
-	imageName string,
+	imageName, searchedCVE string,
 ) (*cveResult, error) {
 	cveRes := &cveResult{}
 	cveRes.Data = cveData{
@@ -1797,7 +1797,7 @@ func (service mockService) getImageByName(ctx context.Context, config searchConf
 }
 
 func (service mockService) getCveByImage(ctx context.Context, config searchConfig, username, password,
-	imageName string, rch chan stringResult, wtgrp *sync.WaitGroup,
+	imageName, searchedCVE string, rch chan stringResult, wtgrp *sync.WaitGroup,
 ) {
 	defer wtgrp.Done()
 	defer close(rch)

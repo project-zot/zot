@@ -302,7 +302,8 @@ func (search imagesByDigestSearcherGQL) search(config searchConfig) (bool, error
 type cveByImageSearcher struct{}
 
 func (search cveByImageSearcher) search(config searchConfig) (bool, error) {
-	if !canSearch(config.params, newSet("imageName")) || *config.fixedFlag {
+	if (!canSearch(config.params, newSet("imageName")) &&
+		!canSearch(config.params, newSet("imageName", "searchedCVE"))) || *config.fixedFlag {
 		return false, nil
 	}
 
@@ -318,7 +319,8 @@ func (search cveByImageSearcher) search(config searchConfig) (bool, error) {
 
 	wg.Add(1)
 
-	go config.searchService.getCveByImage(ctx, config, username, password, *config.params["imageName"], strErr, &wg)
+	go config.searchService.getCveByImage(ctx, config, username, password, *config.params["imageName"],
+		*config.params["searchedCVE"], strErr, &wg)
 	wg.Add(1)
 
 	errCh := make(chan error, 1)
@@ -337,7 +339,8 @@ func (search cveByImageSearcher) search(config searchConfig) (bool, error) {
 type cveByImageSearcherGQL struct{}
 
 func (search cveByImageSearcherGQL) search(config searchConfig) (bool, error) {
-	if !canSearch(config.params, newSet("imageName")) || *config.fixedFlag {
+	if (!canSearch(config.params, newSet("imageName")) &&
+		!canSearch(config.params, newSet("imageName", "searchedCVE"))) || *config.fixedFlag {
 		return false, nil
 	}
 
@@ -352,7 +355,8 @@ func (search cveByImageSearcherGQL) search(config searchConfig) (bool, error) {
 
 	defer cancel()
 
-	cveList, err := config.searchService.getCveByImageGQL(ctx, config, username, password, *config.params["imageName"])
+	cveList, err := config.searchService.getCveByImageGQL(ctx, config, username, password,
+		*config.params["imageName"], *config.params["searchedCVE"])
 	if err != nil {
 		return true, err
 	}

@@ -29,7 +29,7 @@ type SearchService interface { //nolint:interfacebloat
 	getImagesByDigestGQL(ctx context.Context, config searchConfig, username, password string,
 		digest string) (*imageListStructForDigestGQL, error)
 	getCveByImageGQL(ctx context.Context, config searchConfig, username, password,
-		imageName string) (*cveResult, error)
+		imageName string, searchedCVE string) (*cveResult, error)
 	getImagesByCveIDGQL(ctx context.Context, config searchConfig, username, password string,
 		digest string) (*imagesForCve, error)
 	getTagsForCVEGQL(ctx context.Context, config searchConfig, username, password, imageName,
@@ -43,7 +43,7 @@ type SearchService interface { //nolint:interfacebloat
 
 	getAllImages(ctx context.Context, config searchConfig, username, password string,
 		channel chan stringResult, wtgrp *sync.WaitGroup)
-	getCveByImage(ctx context.Context, config searchConfig, username, password, imageName string,
+	getCveByImage(ctx context.Context, config searchConfig, username, password, imageName, searchedCVE string,
 		channel chan stringResult, wtgrp *sync.WaitGroup)
 	getImagesByCveID(ctx context.Context, config searchConfig, username, password, cvid string,
 		channel chan stringResult, wtgrp *sync.WaitGroup)
@@ -226,11 +226,11 @@ func (service searchService) getImagesByCveIDGQL(ctx context.Context, config sea
 }
 
 func (service searchService) getCveByImageGQL(ctx context.Context, config searchConfig, username, password,
-	imageName string,
+	imageName, searchedCVE string,
 ) (*cveResult, error) {
-	query := fmt.Sprintf(`{ CVEListForImage (image:"%s")`+
+	query := fmt.Sprintf(`{ CVEListForImage (image:"%s", searchedCVE:"%s")`+
 		` { Tag CVEList { Id Title Severity Description `+
-		`PackageList {Name InstalledVersion FixedVersion}} } }`, imageName)
+		`PackageList {Name InstalledVersion FixedVersion}} } }`, imageName, searchedCVE)
 	result := &cveResult{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
@@ -618,14 +618,14 @@ func (service searchService) getImageByNameAndCVEID(ctx context.Context, config 
 }
 
 func (service searchService) getCveByImage(ctx context.Context, config searchConfig, username, password,
-	imageName string, rch chan stringResult, wtgrp *sync.WaitGroup,
+	imageName, searchedCVE string, rch chan stringResult, wtgrp *sync.WaitGroup,
 ) {
 	defer wtgrp.Done()
 	defer close(rch)
 
-	query := fmt.Sprintf(`{ CVEListForImage (image:"%s")`+
+	query := fmt.Sprintf(`{ CVEListForImage (image:"%s", searchedCVE:"%s")`+
 		` { Tag CVEList { Id Title Severity Description `+
-		`PackageList {Name InstalledVersion FixedVersion}} } }`, imageName)
+		`PackageList {Name InstalledVersion FixedVersion}} } }`, imageName, searchedCVE)
 	result := &cveResult{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)

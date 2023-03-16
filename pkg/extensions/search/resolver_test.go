@@ -2080,6 +2080,12 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 						Title:       "Title CVE3",
 						Description: "Description CVE3",
 					},
+					"CVE34": {
+						ID:          "CVE34",
+						Severity:    "LOW",
+						Title:       "Title for CVE34",
+						Description: "Description CVE34",
+					},
 				}, nil
 			}
 
@@ -2140,21 +2146,63 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 			dig := godigest.FromString("dig")
 			repoWithDigestRef := fmt.Sprintf("repo@%s", dig)
 
-			_, err := getCVEListForImage(responseContext, repoWithDigestRef, cveInfo, pageInput, log)
+			_, err := getCVEListForImage(responseContext, repoWithDigestRef, cveInfo, pageInput, "", log)
 			So(err.Error(), ShouldContainSubstring, "reference by digest not supported")
 
-			cveResult, err := getCVEListForImage(responseContext, "repo1:1.0.0", cveInfo, pageInput, log)
+			cveResult, err := getCVEListForImage(responseContext, "repo1:1.0.0", cveInfo, pageInput, "", log)
 			So(err, ShouldBeNil)
 			So(*cveResult.Tag, ShouldEqual, "1.0.0")
 
-			expectedCves := []string{"CVE1", "CVE2", "CVE3"}
+			expectedCves := []string{"CVE1", "CVE2", "CVE3", "CVE34"}
 			So(len(cveResult.CVEList), ShouldEqual, len(expectedCves))
 
 			for _, cve := range cveResult.CVEList {
 				So(expectedCves, ShouldContain, *cve.ID)
 			}
 
-			cveResult, err = getCVEListForImage(responseContext, "repo1:1.0.1", cveInfo, pageInput, log)
+			// test searching CVE by id in results
+			cveResult, err = getCVEListForImage(responseContext, "repo1:1.0.0", cveInfo, pageInput, "CVE3", log)
+			So(err, ShouldBeNil)
+			So(*cveResult.Tag, ShouldEqual, "1.0.0")
+
+			expectedCves = []string{"CVE3", "CVE34"}
+			So(len(cveResult.CVEList), ShouldEqual, len(expectedCves))
+
+			for _, cve := range cveResult.CVEList {
+				So(expectedCves, ShouldContain, *cve.ID)
+			}
+
+			// test searching CVE by id in results - no matches
+			cveResult, err = getCVEListForImage(responseContext, "repo1:1.0.0", cveInfo, pageInput, "CVE100", log)
+			So(err, ShouldBeNil)
+			So(*cveResult.Tag, ShouldEqual, "1.0.0")
+			So(len(cveResult.CVEList), ShouldEqual, 0)
+
+			// test searching CVE by id in results - partial name
+			cveResult, err = getCVEListForImage(responseContext, "repo1:1.0.0", cveInfo, pageInput, "VE3", log)
+			So(err, ShouldBeNil)
+			So(*cveResult.Tag, ShouldEqual, "1.0.0")
+
+			expectedCves = []string{"CVE3", "CVE34"}
+			So(len(cveResult.CVEList), ShouldEqual, len(expectedCves))
+
+			for _, cve := range cveResult.CVEList {
+				So(expectedCves, ShouldContain, *cve.ID)
+			}
+
+			// test searching CVE by title in results
+			cveResult, err = getCVEListForImage(responseContext, "repo1:1.0.0", cveInfo, pageInput, "Title CVE", log)
+			So(err, ShouldBeNil)
+			So(*cveResult.Tag, ShouldEqual, "1.0.0")
+
+			expectedCves = []string{"CVE1", "CVE2", "CVE3"}
+			So(len(cveResult.CVEList), ShouldEqual, len(expectedCves))
+
+			for _, cve := range cveResult.CVEList {
+				So(expectedCves, ShouldContain, *cve.ID)
+			}
+
+			cveResult, err = getCVEListForImage(responseContext, "repo1:1.0.1", cveInfo, pageInput, "", log)
 			So(err, ShouldBeNil)
 			So(*cveResult.Tag, ShouldEqual, "1.0.1")
 
@@ -2165,7 +2213,7 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 				So(expectedCves, ShouldContain, *cve.ID)
 			}
 
-			cveResult, err = getCVEListForImage(responseContext, "repo1:1.1.0", cveInfo, pageInput, log)
+			cveResult, err = getCVEListForImage(responseContext, "repo1:1.1.0", cveInfo, pageInput, "", log)
 			So(err, ShouldBeNil)
 			So(*cveResult.Tag, ShouldEqual, "1.1.0")
 

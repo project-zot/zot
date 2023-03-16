@@ -117,6 +117,7 @@ func NewCveCommand(searchService SearchService) *cobra.Command {
 func setupCveFlags(cveCmd *cobra.Command, variables cveFlagVariables) {
 	variables.searchCveParams["imageName"] = cveCmd.Flags().StringP("image", "I", "", "List CVEs by IMAGENAME[:TAG]")
 	variables.searchCveParams["cveID"] = cveCmd.Flags().StringP("cve-id", "i", "", "List images affected by a CVE")
+	variables.searchCveParams["searchedCVE"] = cveCmd.Flags().StringP("search", "s", "", "Search specific CVEs by name/id")
 
 	cveCmd.Flags().StringVar(variables.servURL, "url", "", "Specify zot server URL if config-name is not mentioned")
 	cveCmd.Flags().StringVarP(variables.user, "user", "u", "", `User Credentials of `+
