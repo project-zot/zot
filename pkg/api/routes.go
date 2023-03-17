@@ -587,7 +587,7 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 				NewErrorList(NewError(INVALID_INDEX, map[string]string{"name": name})))
 		} else if errors.Is(err, zerr.ErrImageLintAnnotations) {
 			WriteJSON(response, http.StatusBadRequest,
-				NewErrorList(NewError(MANIFEST_INVALID, map[string]string{"reference": reference})))
+				NewErrorList(NewError(MANIFEST_INVALID, map[string]string{"reference": reference}).WithMessage(err.Error())))
 		} else {
 			// could be syscall.EMFILE (Err:0x18 too many opened files), etc
 			rh.c.Log.Error().Err(err).Msg("unexpected error: performing cleanup")

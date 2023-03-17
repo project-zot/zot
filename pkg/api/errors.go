@@ -11,6 +11,12 @@ type Error struct {
 	Detail      interface{} `json:"detail,omitempty"`
 }
 
+func (e Error) WithMessage(msg string) Error {
+	e.Message = msg
+
+	return e
+}
+
 type ErrorList struct {
 	Errors []*Error `json:"errors"`
 }
