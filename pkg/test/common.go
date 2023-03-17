@@ -1049,6 +1049,29 @@ func ReadLogFileAndSearchString(logPath string, stringToMatch string, timeout ti
 	}
 }
 
+func ReadLogFileAndCountStringOccurence(logPath string, stringToMatch string,
+	timeout time.Duration, count int,
+) (bool, error) {
+	ctx, cancelFunc := context.WithTimeout(context.Background(), timeout)
+	defer cancelFunc()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return false, nil
+		default:
+			content, err := os.ReadFile(logPath)
+			if err != nil {
+				return false, err
+			}
+
+			if strings.Count(string(content), stringToMatch) >= count {
+				return true, nil
+			}
+		}
+	}
+}
+
 func CopyFile(sourceFilePath, destFilePath string) error {
 	destFile, err := os.Create(destFilePath)
 	if err != nil {
