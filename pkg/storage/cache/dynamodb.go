@@ -173,7 +173,7 @@ func (d *DynamoDBDriver) HasBlob(digest godigest.Digest, path string) bool {
 	out := Blob{}
 
 	if resp.Item == nil {
-		d.log.Error().Err(zerr.ErrCacheMiss)
+		d.log.Debug().Err(zerr.ErrCacheMiss).Str("digest", string(digest)).Msg("unable to find blob in cache")
 
 		return false
 	}
@@ -186,7 +186,7 @@ func (d *DynamoDBDriver) HasBlob(digest godigest.Digest, path string) bool {
 		}
 	}
 
-	d.log.Error().Err(zerr.ErrCacheMiss)
+	d.log.Debug().Err(zerr.ErrCacheMiss).Str("digest", string(digest)).Msg("unable to find blob in cache")
 
 	return false
 }

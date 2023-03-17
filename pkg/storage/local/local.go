@@ -986,7 +986,7 @@ retry:
 
 		dstRecordFi, err := os.Stat(dstRecord)
 		if err != nil {
-			is.log.Error().Err(err).Str("blobPath", dstRecord).Msg("dedupe: unable to stat")
+			is.log.Warn().Err(err).Str("blobPath", dstRecord).Msg("dedupe: unable to stat cache record, removing it")
 			// the actual blob on disk may have been removed by GC, so sync the cache
 			if err := is.cache.DeleteBlob(dstDigest, dstRecord); err != nil {
 				//nolint:lll // gofumpt conflicts with lll
@@ -1076,13 +1076,11 @@ func (is *ImageStoreLocal) CheckBlob(repo string, digest godigest.Digest) (bool,
 		return true, binfo.Size(), nil
 	}
 
-	is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
+	is.log.Debug().Err(err).Str("blob", blobPath).Msg("failed to find blob, searching it in cache")
 
 	// Check blobs in cache
 	dstRecord, err := is.checkCacheBlob(digest)
 	if err != nil {
-		is.log.Error().Err(err).Str("digest", digest.String()).Msg("cache: not found")
-
 		return false, -1, zerr.ErrBlobNotFound
 	}
 
@@ -1112,13 +1110,19 @@ func (is *ImageStoreLocal) checkCacheBlob(digest godigest.Digest) (string, error
 
 	dstRecord, err := is.cache.GetBlob(digest)
 	if err != nil {
+		if errors.Is(err, zerr.ErrCacheMiss) {
+			is.log.Debug().Err(err).Str("digest", string(digest)).Msg("unable to find blob in cache")
+		} else {
+			is.log.Error().Err(err).Str("digest", string(digest)).Msg("unable to search blob in cache")
+		}
+
 		return "", err
 	}
 
 	dstRecord = path.Join(is.rootDir, dstRecord)
 
 	if _, err := os.Stat(dstRecord); err != nil {
-		is.log.Error().Err(err).Str("blob", dstRecord).Msg("failed to stat blob")
+		is.log.Warn().Err(err).Str("blob", dstRecord).Msg("unable to stat cache record, removing it")
 
 		// the actual blob on disk may have been removed by GC, so sync the cache
 		if err := is.cache.DeleteBlob(digest, dstRecord); err != nil {
@@ -1214,7 +1218,7 @@ func (is *ImageStoreLocal) GetBlobPartial(repo string, digest godigest.Digest, m
 
 	binfo, err := os.Stat(blobPath)
 	if err != nil {
-		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
+		is.log.Debug().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
 
 		return nil, -1, -1, zerr.ErrBlobNotFound
 	}
@@ -1225,7 +1229,7 @@ func (is *ImageStoreLocal) GetBlobPartial(repo string, digest godigest.Digest, m
 
 	blobReadCloser, err := newBlobStream(blobPath, from, to)
 	if err != nil {
-		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to open blob")
+		is.log.Debug().Err(err).Str("blob", blobPath).Msg("failed to open blob")
 
 		return nil, -1, -1, err
 	}
@@ -1251,14 +1255,14 @@ func (is *ImageStoreLocal) GetBlob(repo string, digest godigest.Digest, mediaTyp
 
 	binfo, err := os.Stat(blobPath)
 	if err != nil {
-		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
+		is.log.Debug().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
 
 		return nil, -1, zerr.ErrBlobNotFound
 	}
 
 	blobReadCloser, err := os.Open(blobPath)
 	if err != nil {
-		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to open blob")
+		is.log.Debug().Err(err).Str("blob", blobPath).Msg("failed to open blob")
 
 		return nil, -1, err
 	}
@@ -1278,7 +1282,7 @@ func (is *ImageStoreLocal) GetBlobContent(repo string, digest godigest.Digest) (
 	blob, err := os.ReadFile(blobPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			is.log.Error().Err(err).Str("blob", blobPath).Msg("blob doesn't exist")
+			is.log.Debug().Err(err).Str("blob", blobPath).Msg("blob doesn't exist")
 
 			return []byte{}, zerr.ErrBlobNotFound
 		}
@@ -1298,7 +1302,7 @@ func (is *ImageStoreLocal) GetIndexContent(repo string) ([]byte, error) {
 	buf, err := os.ReadFile(path.Join(dir, "index.json"))
 	if err != nil {
 		if os.IsNotExist(err) {
-			is.log.Error().Err(err).Str("dir", dir).Msg("index.json doesn't exist")
+			is.log.Debug().Err(err).Str("dir", dir).Msg("index.json doesn't exist")
 
 			return []byte{}, zerr.ErrRepoNotFound
 		}
@@ -1326,7 +1330,7 @@ func (is *ImageStoreLocal) DeleteBlob(repo string, digest godigest.Digest) error
 
 	_, err := os.Stat(blobPath)
 	if err != nil {
-		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
+		is.log.Debug().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
 
 		return zerr.ErrBlobNotFound
 	}
