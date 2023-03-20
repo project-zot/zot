@@ -1,0 +1,24 @@
+name: 'Project structure checks'
+on:
+  pull_request:
+    types:
+      - opened
+      - edited
+      - reopened
+      - synchronize
+  push:
+    branches:
+      - main
+
+jobs:
+  check-filenames:
+    name: Check filenames
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - uses: batista/lint-filenames@v1
+        name: Validating golang filenames
+        with:
+          path: './'
+          pattern: '^[_\\.a-z]+\\.go$'
