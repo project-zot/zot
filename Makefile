@@ -36,9 +36,18 @@ extended-name:=
 .PHONY: all
 all: modcheck swagger binary binary-minimal binary-debug cli bench exporter-minimal verify-config test covhtml check check-gh-actions
 
-.PHONY: modcheck
-modcheck:
+.PHONY: modtidy
+modtidy:
 	go mod tidy
+
+.PHONY: modcheck
+modcheck: modtidy
+	$(eval UNCOMMITED_FILES = $(shell git status --porcelain | grep -c 'go.mod\|go.sum'))
+	@if [ $(UNCOMMITED_FILES) != 0 ]; then \
+		echo "Updated go.mod and/or go.sum have uncommitted changes, commit the changes accordingly ";\
+		git status;\
+		exit 1;\
+	fi
 
 .PHONY: create-name
 create-name:
