@@ -175,17 +175,14 @@ func resetRepoMetaTags(repo string, repoDB RepoDB, log log.Logger) error {
 		return nil
 	}
 
-	for tag := range repoMeta.Tags {
-		// We should have a way to delete all tags at once
-		err := repoDB.DeleteRepoTag(repo, tag)
-		if err != nil {
-			log.Error().Err(err).Msgf("load-repo: failed to delete tag %s from RepoMeta for repo %s", tag, repo)
-
-			return err
-		}
-	}
-
-	return nil
+	return repoDB.SetRepoMeta(repo, RepoMetadata{
+		Name:       repoMeta.Name,
+		Tags:       map[string]Descriptor{},
+		Statistics: repoMeta.Statistics,
+		Signatures: map[string]ManifestSignatures{},
+		Referrers:  map[string][]ReferrerInfo{},
+		Stars:      repoMeta.Stars,
+	})
 }
 
 func getAllRepos(storeController storage.StoreController) ([]string, error) {

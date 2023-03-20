@@ -45,6 +45,9 @@ type RepoDB interface { //nolint:interfacebloat
 	// GetRepoMeta returns RepoMetadata of a repo from the database
 	GetRepoMeta(repo string) (RepoMetadata, error)
 
+	// GetRepoMeta returns RepoMetadata of a repo from the database
+	SetRepoMeta(repo string, repoMeta RepoMetadata) error
+
 	// GetMultipleRepoMeta returns information about all repositories as map[string]RepoMetadata filtered by the filter
 	// function
 	GetMultipleRepoMeta(ctx context.Context, filter func(repoMeta RepoMetadata) bool, requestedPage PageInput) (

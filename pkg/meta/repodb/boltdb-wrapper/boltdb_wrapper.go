@@ -492,9 +492,17 @@ func (bdw *DBWrapper) SetRepoReference(repo string, reference string, manifestDi
 			}
 		}
 
-		repoMeta.Statistics[manifestDigest.String()] = repodb.DescriptorStatistics{DownloadCount: 0}
-		repoMeta.Signatures[manifestDigest.String()] = repodb.ManifestSignatures{}
-		repoMeta.Referrers[manifestDigest.String()] = []repodb.ReferrerInfo{}
+		if _, ok := repoMeta.Statistics[manifestDigest.String()]; !ok {
+			repoMeta.Statistics[manifestDigest.String()] = repodb.DescriptorStatistics{DownloadCount: 0}
+		}
+
+		if _, ok := repoMeta.Signatures[manifestDigest.String()]; !ok {
+			repoMeta.Signatures[manifestDigest.String()] = repodb.ManifestSignatures{}
+		}
+
+		if _, ok := repoMeta.Referrers[manifestDigest.String()]; !ok {
+			repoMeta.Referrers[manifestDigest.String()] = []repodb.ReferrerInfo{}
+		}
 
 		repoMetaBlob, err = json.Marshal(repoMeta)
 		if err != nil {
@@ -532,6 +540,23 @@ func (bdw *DBWrapper) GetRepoMeta(repo string) (repodb.RepoMetadata, error) {
 	return repoMeta, err
 }
 
+func (bdw *DBWrapper) SetRepoMeta(repo string, repoMeta repodb.RepoMetadata) error {
+	err := bdw.DB.Update(func(tx *bolt.Tx) error {
+		buck := tx.Bucket([]byte(repodb.RepoMetadataBucket))
+
+		repoMeta.Name = repo
+
+		repoMetaBlob, err := json.Marshal(repoMeta)
+		if err != nil {
+			return err
+		}
+
+		return buck.Put([]byte(repo), repoMetaBlob)
+	})
+
+	return err
+}
+
 func (bdw *DBWrapper) DeleteRepoTag(repo string, tag string) error {
 	err := bdw.DB.Update(func(tx *bolt.Tx) error {
 		buck := tx.Bucket([]byte(repodb.RepoMetadataBucket))
@@ -552,10 +577,6 @@ func (bdw *DBWrapper) DeleteRepoTag(repo string, tag string) error {
 		}
 
 		delete(repoMeta.Tags, tag)
-
-		if len(repoMeta.Tags) == 0 {
-			return buck.Delete([]byte(repo))
-		}
 
 		repoMetaBlob, err = json.Marshal(repoMeta)
 		if err != nil {

@@ -25,6 +25,8 @@ type RepoDBMock struct {
 
 	GetRepoMetaFn func(repo string) (repodb.RepoMetadata, error)
 
+	SetRepoMetaFn func(repo string, repoMeta repodb.RepoMetadata) error
+
 	GetMultipleRepoMetaFn func(ctx context.Context, filter func(repoMeta repodb.RepoMetadata) bool,
 		requestedPage repodb.PageInput) ([]repodb.RepoMetadata, error)
 
@@ -140,6 +142,14 @@ func (sdm RepoDBMock) GetRepoMeta(repo string) (repodb.RepoMetadata, error) {
 	}
 
 	return repodb.RepoMetadata{}, nil
+}
+
+func (sdm RepoDBMock) SetRepoMeta(repo string, repoMeta repodb.RepoMetadata) error {
+	if sdm.SetRepoMetaFn != nil {
+		return sdm.SetRepoMetaFn(repo, repoMeta)
+	}
+
+	return nil
 }
 
 func (sdm RepoDBMock) GetMultipleRepoMeta(ctx context.Context, filter func(repoMeta repodb.RepoMetadata) bool,
