@@ -9,7 +9,6 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/pkg/errors"
 
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/config"
@@ -105,7 +104,7 @@ func (linter *Linter) CheckMandatoryAnnotations(repo string, manifestDigest godi
 			string(manifestDigest), string(configDigest), missingAnnotations)
 		linter.log.Error().Msg(msg)
 
-		return false, errors.WithMessage(zerr.ErrImageLintAnnotations, msg)
+		return false, fmt.Errorf("%s: %w", msg, zerr.ErrImageLintAnnotations)
 	}
 
 	return true, nil
