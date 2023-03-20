@@ -29,7 +29,7 @@ jobs:
           key: ${{ runner.os }}-gen1-benchmark
       # Run `github-action-benchmark` action
       - name: Store benchmark result
-        uses: benchmark-action/github-action-benchmark@v1.16.1
+        uses: benchmark-action/github-action-benchmark@v1.16.2
         with:
           # What benchmark tool the output.txt came from
           tool: 'customBiggerIsBetter'
