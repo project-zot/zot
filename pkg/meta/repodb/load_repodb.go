@@ -3,6 +3,7 @@ package repodb
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -305,11 +306,9 @@ func SetMetadataFromInput(repo, reference, mediaType string, digest godigest.Dig
 		}
 	}
 
-	if refferredDigest, hasSubject := GetReferredSubject(descriptorBlob); hasSubject {
-		err := repoDB.SetReferrer(repo, refferredDigest, Descriptor{
-			Digest:    digest.String(),
-			MediaType: mediaType,
-		})
+	refferredDigest, referrerInfo, hasSubject, err := GetReferredSubject(descriptorBlob, digest.String(), mediaType)
+	if hasSubject && err == nil {
+		err := repoDB.SetReferrer(repo, refferredDigest, referrerInfo)
 		if err != nil {
 			log.Error().Err(err).Msg("repodb: error while settingg referrer")
 
@@ -317,7 +316,7 @@ func SetMetadataFromInput(repo, reference, mediaType string, digest godigest.Dig
 		}
 	}
 
-	err := repoDB.SetRepoReference(repo, reference, digest, mediaType)
+	err = repoDB.SetRepoReference(repo, reference, digest, mediaType)
 	if err != nil {
 		log.Error().Err(err).Msg("repodb: error while putting repo meta")
 
@@ -327,17 +326,55 @@ func SetMetadataFromInput(repo, reference, mediaType string, digest godigest.Dig
 	return nil
 }
 
-func GetReferredSubject(descriptorBlob []byte) (godigest.Digest, bool) {
-	var manifest ispec.Manifest
+func GetReferredSubject(descriptorBlob []byte, referrerDigest, mediaType string,
+) (godigest.Digest, ReferrerInfo, bool, error) {
+	var (
+		referrerInfo    ReferrerInfo
+		referrerSubject *ispec.Descriptor
+	)
 
-	err := json.Unmarshal(descriptorBlob, &manifest)
-	if err != nil {
-		return "", false
+	switch mediaType {
+	case ispec.MediaTypeImageManifest:
+		var manifestContent ispec.Manifest
+
+		err := json.Unmarshal(descriptorBlob, &manifestContent)
+		if err != nil {
+			return "", referrerInfo, false,
+				fmt.Errorf("repodb: can't unmarhsal manifest for digest %s: %w", referrerDigest, err)
+		}
+
+		referrerSubject = manifestContent.Subject
+
+		referrerInfo = ReferrerInfo{
+			Digest:       referrerDigest,
+			MediaType:    mediaType,
+			ArtifactType: manifestContent.Config.MediaType,
+			Size:         len(descriptorBlob),
+			Annotations:  manifestContent.Annotations,
+		}
+	case ispec.MediaTypeArtifactManifest:
+		manifestContent := ispec.Artifact{}
+
+		err := json.Unmarshal(descriptorBlob, &manifestContent)
+		if err != nil {
+			return "", referrerInfo, false,
+				fmt.Errorf("repodb: can't unmarhsal artifact manifest for digest %s: %w", referrerDigest, err)
+		}
+
+		referrerSubject = manifestContent.Subject
+
+		referrerInfo = ReferrerInfo{
+			Digest:       referrerDigest,
+			MediaType:    manifestContent.MediaType,
+			ArtifactType: manifestContent.ArtifactType,
+			Size:         len(descriptorBlob),
+			Annotations:  manifestContent.Annotations,
+		}
 	}
 
-	if manifest.Subject == nil || manifest.Subject.Digest.String() == "" {
-		return "", false
+	if referrerSubject == nil || referrerSubject.Digest.String() == "" {
+		return "", ReferrerInfo{}, false, nil
 	}
 
-	return manifest.Subject.Digest, true
+	return referrerSubject.Digest, referrerInfo, true, nil
 }

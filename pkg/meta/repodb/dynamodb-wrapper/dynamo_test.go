@@ -244,7 +244,7 @@ func TestWrapperErrors(t *testing.T) {
 
 		Convey("SetReferrer client error", func() {
 			dynamoWrapper.RepoMetaTablename = badTablename
-			err := dynamoWrapper.SetReferrer("repo", "", repodb.Descriptor{})
+			err := dynamoWrapper.SetReferrer("repo", "", repodb.ReferrerInfo{})
 			So(err, ShouldNotBeNil)
 		})
 
@@ -252,7 +252,7 @@ func TestWrapperErrors(t *testing.T) {
 			err := setBadRepoMeta(dynamoWrapper.Client, repoMetaTablename, "repo")
 			So(err, ShouldBeNil)
 
-			err = dynamoWrapper.SetReferrer("repo", "", repodb.Descriptor{})
+			err = dynamoWrapper.SetReferrer("repo", "", repodb.ReferrerInfo{})
 			So(err, ShouldNotBeNil)
 		})
 
@@ -284,32 +284,32 @@ func TestWrapperErrors(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
-		Convey("GetFilteredReferrersInfo GetReferrers errors", func() {
+		Convey("GetReferrersInfo GetReferrers errors", func() {
 			dynamoWrapper.RepoMetaTablename = badTablename
-			_, err := dynamoWrapper.GetFilteredReferrersInfo("repo", "", nil)
+			_, err := dynamoWrapper.GetReferrersInfo("repo", "", nil)
 			So(err, ShouldNotBeNil)
 		})
 
-		Convey("GetFilteredReferrersInfo getData fails", func() {
+		Convey("GetReferrersInfo getData fails", func() {
 			dynamoWrapper.ManifestDataTablename = badTablename
 			dynamoWrapper.ArtifactDataTablename = badTablename
-			err = dynamoWrapper.SetReferrer("repo", "rf", repodb.Descriptor{
+			err = dynamoWrapper.SetReferrer("repo", "rf", repodb.ReferrerInfo{
 				Digest:    "dig1",
 				MediaType: ispec.MediaTypeImageManifest,
 			})
 			So(err, ShouldBeNil)
 
-			err = dynamoWrapper.SetReferrer("repo", "rf", repodb.Descriptor{
+			err = dynamoWrapper.SetReferrer("repo", "rf", repodb.ReferrerInfo{
 				Digest:    "dig2",
 				MediaType: ispec.MediaTypeArtifactManifest,
 			})
 			So(err, ShouldBeNil)
 
-			_, err := dynamoWrapper.GetFilteredReferrersInfo("repo", "rf", nil)
+			_, err := dynamoWrapper.GetReferrersInfo("repo", "rf", nil)
 			So(err, ShouldBeNil)
 		})
 
-		Convey("GetFilteredReferrersInfo bad descriptor blob", func() {
+		Convey("GetReferrersInfo bad descriptor blob", func() {
 			err = dynamoWrapper.SetArtifactData("dig2", repodb.ArtifactData{
 				ManifestBlob: []byte("bad json"),
 			})
@@ -320,19 +320,19 @@ func TestWrapperErrors(t *testing.T) {
 			})
 			So(err, ShouldBeNil)
 
-			err = dynamoWrapper.SetReferrer("repo", "rf", repodb.Descriptor{
+			err = dynamoWrapper.SetReferrer("repo", "rf", repodb.ReferrerInfo{
 				Digest:    "dig2",
 				MediaType: ispec.MediaTypeArtifactManifest,
 			})
 			So(err, ShouldBeNil)
 
-			err = dynamoWrapper.SetReferrer("repo", "rf", repodb.Descriptor{
+			err = dynamoWrapper.SetReferrer("repo", "rf", repodb.ReferrerInfo{
 				Digest:    "dig3",
 				MediaType: ispec.MediaTypeImageManifest,
 			})
 			So(err, ShouldBeNil)
 
-			_, err := dynamoWrapper.GetFilteredReferrersInfo("repo", "rf", nil)
+			_, err := dynamoWrapper.GetReferrersInfo("repo", "rf", nil)
 			So(err, ShouldBeNil)
 		})
 

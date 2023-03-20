@@ -122,6 +122,8 @@ type ImageSummary struct {
 	Authors *string `json:"Authors"`
 	// Short summary of the identified CVEs
 	Vulnerabilities *ImageVulnerabilitySummary `json:"Vulnerabilities"`
+	// Information about objects that reference this image
+	Referrers []*Referrer `json:"Referrers"`
 }
 
 // Contains summary of vulnerabilities found in a specific image
@@ -171,6 +173,8 @@ type ManifestSummary struct {
 	History []*LayerHistory `json:"History"`
 	// Short summary of the identified CVEs
 	Vulnerabilities *ImageVulnerabilitySummary `json:"Vulnerabilities"`
+	// Information about objects that reference this image
+	Referrers []*Referrer `json:"Referrers"`
 }
 
 // Contains the name of the package, the current installed version and the version where the CVE was fixed

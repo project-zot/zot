@@ -645,7 +645,10 @@ func TestLoadOCILayoutDynamoWrapper(t *testing.T) {
 
 func TestGetReferredSubject(t *testing.T) {
 	Convey("GetReferredSubject error", t, func() {
-		_, err := repodb.GetReferredSubject([]byte("bad json"))
+		_, _, _, err := repodb.GetReferredSubject([]byte("bad json"), "digest", ispec.MediaTypeArtifactManifest)
+		So(err, ShouldNotBeNil)
+
+		_, _, _, err = repodb.GetReferredSubject([]byte("bad json"), "digest", ispec.MediaTypeImageManifest)
 		So(err, ShouldNotBeNil)
 	})
 }

@@ -1816,7 +1816,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			artifactDigest1, err := artifact1.Digest()
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetReferrer("repo", referredDigest, repodb.Descriptor{
+			err = repoDB.SetReferrer("repo", referredDigest, repodb.ReferrerInfo{
 				Digest:    artifactDigest1.String(),
 				MediaType: ispec.MediaTypeImageManifest,
 			})
@@ -1833,7 +1833,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			artifactDigest2, err := artifact2.Digest()
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetReferrer("repo", referredDigest, repodb.Descriptor{
+			err = repoDB.SetReferrer("repo", referredDigest, repodb.ReferrerInfo{
 				Digest:    artifactDigest2.String(),
 				MediaType: ispec.MediaTypeArtifactManifest,
 			})
@@ -1841,13 +1841,13 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 
 			// ------ GetReferrers
 
-			referrers, err := repoDB.GetReferrers("repo", referredDigest)
+			referrers, err := repoDB.GetReferrersInfo("repo", referredDigest, nil)
 			So(len(referrers), ShouldEqual, 2)
-			So(referrers, ShouldContain, repodb.Descriptor{
+			So(referrers, ShouldContain, repodb.ReferrerInfo{
 				Digest:    artifactDigest1.String(),
 				MediaType: ispec.MediaTypeImageManifest,
 			})
-			So(referrers, ShouldContain, repodb.Descriptor{
+			So(referrers, ShouldContain, repodb.ReferrerInfo{
 				Digest:    artifactDigest2.String(),
 				MediaType: ispec.MediaTypeArtifactManifest,
 			})
@@ -1861,7 +1861,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			err = repoDB.DeleteReferrer("repo", referredDigest, artifactDigest2)
 			So(err, ShouldBeNil)
 
-			referrers, err = repoDB.GetReferrers("repo", referredDigest)
+			referrers, err = repoDB.GetReferrersInfo("repo", referredDigest, nil)
 			So(err, ShouldBeNil)
 			So(len(referrers), ShouldEqual, 0)
 		})
@@ -1874,7 +1874,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			referredDigest := godigest.FromString("referredDigest")
 			referrerDigest := godigest.FromString("referrerDigest")
 
-			err = repoDB.SetReferrer("repo", referredDigest, repodb.Descriptor{
+			err = repoDB.SetReferrer("repo", referredDigest, repodb.ReferrerInfo{
 				Digest:    referrerDigest.String(),
 				MediaType: ispec.MediaTypeImageManifest,
 			})
@@ -1893,13 +1893,13 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			referredDigest := godigest.FromString("referredDigest")
 			referrerDigest := godigest.FromString("referrerDigest")
 
-			err = repoDB.SetReferrer("repo", referredDigest, repodb.Descriptor{
+			err = repoDB.SetReferrer("repo", referredDigest, repodb.ReferrerInfo{
 				Digest:    referrerDigest.String(),
 				MediaType: ispec.MediaTypeImageManifest,
 			})
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetReferrer("repo", referredDigest, repodb.Descriptor{
+			err = repoDB.SetReferrer("repo", referredDigest, repodb.ReferrerInfo{
 				Digest:    referrerDigest.String(),
 				MediaType: ispec.MediaTypeImageManifest,
 			})
@@ -1910,16 +1910,16 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			So(len(repoMeta.Referrers[referredDigest.String()]), ShouldEqual, 1)
 		})
 
-		Convey("GetFilteredReferrersInfo", func() {
+		Convey("GetReferrersInfo", func() {
 			referredDigest := godigest.FromString("referredDigest")
 
-			err := repoDB.SetReferrer("repo", referredDigest, repodb.Descriptor{
+			err := repoDB.SetReferrer("repo", referredDigest, repodb.ReferrerInfo{
 				Digest:    "inexistendManifestDigest",
 				MediaType: ispec.MediaTypeImageManifest,
 			})
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetReferrer("repo", referredDigest, repodb.Descriptor{
+			err = repoDB.SetReferrer("repo", referredDigest, repodb.ReferrerInfo{
 				Digest:    "inexistendArtifactManifestDigest",
 				MediaType: ispec.MediaTypeArtifactManifest,
 			})
@@ -1932,9 +1932,10 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			})
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetReferrer("repo", referredDigest, repodb.Descriptor{
-				Digest:    "goodManifest",
-				MediaType: ispec.MediaTypeImageManifest,
+			err = repoDB.SetReferrer("repo", referredDigest, repodb.ReferrerInfo{
+				Digest:       "goodManifest",
+				MediaType:    ispec.MediaTypeImageManifest,
+				ArtifactType: "unwantedType",
 			})
 			So(err, ShouldBeNil)
 
@@ -1943,13 +1944,14 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			})
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetReferrer("repo", referredDigest, repodb.Descriptor{
-				Digest:    "goodArtifact",
-				MediaType: ispec.MediaTypeArtifactManifest,
+			err = repoDB.SetReferrer("repo", referredDigest, repodb.ReferrerInfo{
+				Digest:       "goodArtifact",
+				MediaType:    ispec.MediaTypeArtifactManifest,
+				ArtifactType: "wantedType",
 			})
 			So(err, ShouldBeNil)
 
-			referrerInfo, err := repoDB.GetFilteredReferrersInfo("repo", referredDigest, []string{"wantedType"})
+			referrerInfo, err := repoDB.GetReferrersInfo("repo", referredDigest, []string{"wantedType"})
 			So(err, ShouldBeNil)
 			So(len(referrerInfo), ShouldEqual, 1)
 			So(referrerInfo[0].ArtifactType, ShouldResemble, "wantedType")

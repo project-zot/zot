@@ -1024,10 +1024,7 @@ func TestGetReferrersGQL(t *testing.T) {
 		gqlQuery := `
 			{
 				Referrers(
-					repo: "%s",
-					digest: "%s",
-					type: ""
-		   		){
+					repo: "%s", digest: "%s", type: ""){
 					ArtifactType,
 					Digest,
 					MediaType,
@@ -1755,6 +1752,13 @@ func TestUtilsMethod(t *testing.T) {
 
 		fixedTags := common.GetFixedTags(allTags, vulnerableTags)
 		So(len(fixedTags), ShouldEqual, 2)
+
+		fixedTags = common.GetFixedTags(allTags, append(vulnerableTags, common.TagInfo{
+			Name:       "taginfo",
+			Descriptor: common.Descriptor{},
+			Timestamp:  time.Date(2000, time.July, 20, 10, 10, 10, 10, time.UTC),
+		}))
+		So(len(fixedTags), ShouldEqual, 3)
 
 		log := log.NewLogger("debug", "")
 
@@ -6395,6 +6399,7 @@ func TestImageSummary(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 		conf.Storage.RootDirectory = t.TempDir()
+		conf.Storage.GC = false
 
 		defaultVal := true
 		conf.Extensions = &extconf.ExtensionConfig{
@@ -6426,6 +6431,7 @@ func TestImageSummary(t *testing.T) {
 					LastUpdated
 					Size
 					Vulnerabilities { Count MaxSeverity }
+					Referrers {MediaType ArtifactType Digest Annotations {Key Value}}
 				}
 			}`
 
@@ -6452,38 +6458,51 @@ func TestImageSummary(t *testing.T) {
 			}`
 
 		gqlEndpoint := fmt.Sprintf("%s%s?query=", baseURL, graphqlQueryPrefix)
-		config, layers, manifest, err := GetImageComponents(100)
-		So(err, ShouldBeNil)
-		createdTime := time.Date(2010, 1, 1, 12, 0, 0, 0, time.UTC)
-		config.History = append(config.History, ispec.History{Created: &createdTime})
-		manifest, err = updateManifestConfig(manifest, config)
-		So(err, ShouldBeNil)
 
-		configBlob, errConfig := json.Marshal(config)
-		configDigest := godigest.FromBytes(configBlob)
-		So(errConfig, ShouldBeNil) // marshall success, config is valid JSON
 		ctlrManager := NewControllerManager(ctlr)
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
-		manifestBlob, errMarsal := json.Marshal(manifest)
-		So(errMarsal, ShouldBeNil)
-		So(manifestBlob, ShouldNotBeNil)
-		manifestDigest := godigest.FromBytes(manifestBlob)
 		repoName := "test-repo" //nolint:goconst
-
 		tagTarget := "latest"
-		err = UploadImage(
-			Image{
-				Manifest:  manifest,
-				Config:    config,
-				Layers:    layers,
-				Reference: tagTarget,
+
+		createdTime := time.Date(2010, 1, 1, 12, 0, 0, 0, time.UTC)
+
+		image, err := GetImageWithConfig(
+			ispec.Image{
+				History: []ispec.History{{Created: &createdTime}},
+				Platform: ispec.Platform{
+					Architecture: "amd64",
+					OS:           "linux",
+				},
 			},
-			baseURL,
-			repoName,
 		)
 		So(err, ShouldBeNil)
+		image.Reference = tagTarget
+
+		manifestDigest, err := image.Digest()
+		So(err, ShouldBeNil)
+
+		err = UploadImage(image, baseURL, repoName)
+		So(err, ShouldBeNil)
+
+		// ------ Add a referrer
+		referrerImage, err := GetImageWithConfig(ispec.Image{})
+		So(err, ShouldBeNil)
+
+		referrerImage.Manifest.Subject = &ispec.Descriptor{
+			Digest:    manifestDigest,
+			MediaType: ispec.MediaTypeImageManifest,
+		}
+		referrerImage.Manifest.Config.MediaType = "test.artifact.type"
+		referrerImage.Manifest.Annotations = map[string]string{"testAnnotationKey": "testAnnotationValue"}
+		referrerManifestDigest, err := referrerImage.Digest()
+		So(err, ShouldBeNil)
+		referrerImage.Reference = referrerManifestDigest.String()
+
+		err = UploadImage(referrerImage, baseURL, repoName)
+		So(err, ShouldBeNil)
+
 		var (
 			imgSummaryResponse ImageSummaryResult
 			strQuery           string
@@ -6531,11 +6550,11 @@ func TestImageSummary(t *testing.T) {
 		imgSummary := imgSummaryResponse.SingleImageSummary.ImageSummary
 		So(imgSummary.RepoName, ShouldContainSubstring, repoName)
 		So(imgSummary.Tag, ShouldContainSubstring, tagTarget)
-		So(imgSummary.Manifests[0].ConfigDigest, ShouldContainSubstring, configDigest.Encoded())
+		So(imgSummary.Manifests[0].ConfigDigest, ShouldContainSubstring, image.Manifest.Config.Digest.Encoded())
 		So(imgSummary.Manifests[0].Digest, ShouldContainSubstring, manifestDigest.Encoded())
 		So(len(imgSummary.Manifests[0].Layers), ShouldEqual, 1)
 		So(imgSummary.Manifests[0].Layers[0].Digest, ShouldContainSubstring,
-			godigest.FromBytes(layers[0]).Encoded())
+			image.Manifest.Layers[0].Digest.Encoded())
 		So(imgSummary.LastUpdated, ShouldEqual, createdTime)
 		So(imgSummary.IsSigned, ShouldEqual, false)
 		So(imgSummary.Manifests[0].Platform.Os, ShouldEqual, "linux")
@@ -6545,6 +6564,13 @@ func TestImageSummary(t *testing.T) {
 		// No vulnerabilities should be detected since trivy is disabled
 		So(imgSummary.Vulnerabilities.Count, ShouldEqual, 0)
 		So(imgSummary.Vulnerabilities.MaxSeverity, ShouldEqual, "")
+		So(len(imgSummary.Referrers), ShouldEqual, 1)
+		So(imgSummary.Referrers[0], ShouldResemble, common.Referrer{
+			MediaType:    ispec.MediaTypeImageManifest,
+			ArtifactType: "test.artifact.type",
+			Digest:       referrerManifestDigest.String(),
+			Annotations:  []common.Annotation{{Key: "testAnnotationKey", Value: "testAnnotationValue"}},
+		})
 
 		t.Log("starting Test retrieve duplicated image same layers based on image identifier")
 		// gqlEndpoint

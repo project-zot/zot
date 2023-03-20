@@ -1374,7 +1374,7 @@ func TestGetReferrers(t *testing.T) {
 		Convey("GetReferrers returns error", func() {
 			testLogger := log.NewLogger("debug", "")
 			mockedStore := mocks.RepoDBMock{
-				GetFilteredReferrersInfoFn: func(repo string, referredDigest godigest.Digest, artifactTypes []string,
+				GetReferrersInfoFn: func(repo string, referredDigest godigest.Digest, artifactTypes []string,
 				) ([]repodb.ReferrerInfo, error) {
 					return nil, ErrTestError
 				},
@@ -1396,7 +1396,7 @@ func TestGetReferrers(t *testing.T) {
 				},
 			}
 			mockedStore := mocks.RepoDBMock{
-				GetFilteredReferrersInfoFn: func(repo string, referredDigest godigest.Digest, artifactTypes []string,
+				GetReferrersInfoFn: func(repo string, referredDigest godigest.Digest, artifactTypes []string,
 				) ([]repodb.ReferrerInfo, error) {
 					return []repodb.ReferrerInfo{
 						{

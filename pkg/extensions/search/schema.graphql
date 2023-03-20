@@ -184,6 +184,10 @@ type ImageSummary {
     Short summary of the identified CVEs
     """
     Vulnerabilities: ImageVulnerabilitySummary
+    """
+    Information about objects that reference this image
+    """
+    Referrers: [Referrer]
 }
 """
 Details about a specific version of an image for a certain operating system and architecture.
@@ -226,6 +230,10 @@ type ManifestSummary {
     Short summary of the identified CVEs
     """
     Vulnerabilities: ImageVulnerabilitySummary
+    """
+    Information about objects that reference this image
+    """
+    Referrers: [Referrer]
 }
 
 """

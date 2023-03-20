@@ -44,13 +44,13 @@ type RepoDBMock struct {
 
 	GetArtifactDataFn func(artifactDigest godigest.Digest) (repodb.ArtifactData, error)
 
-	SetReferrerFn func(repo string, referredDigest godigest.Digest, referrer repodb.Descriptor) error
+	SetReferrerFn func(repo string, referredDigest godigest.Digest, referrer repodb.ReferrerInfo) error
 
 	DeleteReferrerFn func(repo string, referredDigest godigest.Digest, referrerDigest godigest.Digest) error
 
 	GetReferrersFn func(repo string, referredDigest godigest.Digest) ([]repodb.Descriptor, error)
 
-	GetFilteredReferrersInfoFn func(repo string, referredDigest godigest.Digest, artifactTypes []string) (
+	GetReferrersInfoFn func(repo string, referredDigest godigest.Digest, artifactTypes []string) (
 		[]repodb.ReferrerInfo, error)
 
 	IncrementImageDownloadsFn func(repo string, reference string) error
@@ -322,7 +322,7 @@ func (sdm RepoDBMock) GetArtifactData(artifactDigest godigest.Digest) (repodb.Ar
 	return repodb.ArtifactData{}, nil
 }
 
-func (sdm RepoDBMock) SetReferrer(repo string, referredDigest godigest.Digest, referrer repodb.Descriptor) error {
+func (sdm RepoDBMock) SetReferrer(repo string, referredDigest godigest.Digest, referrer repodb.ReferrerInfo) error {
 	if sdm.SetReferrerFn != nil {
 		return sdm.SetReferrerFn(repo, referredDigest, referrer)
 	}
@@ -340,19 +340,11 @@ func (sdm RepoDBMock) DeleteReferrer(repo string, referredDigest godigest.Digest
 	return nil
 }
 
-func (sdm RepoDBMock) GetReferrers(repo string, referredDigest godigest.Digest) ([]repodb.Descriptor, error) {
-	if sdm.GetReferrersFn != nil {
-		return sdm.GetReferrersFn(repo, referredDigest)
-	}
-
-	return []repodb.Descriptor{}, nil
-}
-
-func (sdm RepoDBMock) GetFilteredReferrersInfo(repo string, referredDigest godigest.Digest,
+func (sdm RepoDBMock) GetReferrersInfo(repo string, referredDigest godigest.Digest,
 	artifactTypes []string,
 ) ([]repodb.ReferrerInfo, error) {
-	if sdm.GetFilteredReferrersInfoFn != nil {
-		return sdm.GetFilteredReferrersInfoFn(repo, referredDigest, artifactTypes)
+	if sdm.GetReferrersInfoFn != nil {
+		return sdm.GetReferrersInfoFn(repo, referredDigest, artifactTypes)
 	}
 
 	return []repodb.ReferrerInfo{}, nil

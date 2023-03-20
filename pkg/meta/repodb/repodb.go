@@ -75,17 +75,14 @@ type RepoDB interface { //nolint:interfacebloat
 	GetArtifactData(artifactDigest godigest.Digest) (ArtifactData, error)
 
 	// SetReferrer adds a referrer to the referrers list of a manifest inside a repo
-	SetReferrer(repo string, referredDigest godigest.Digest, referrer Descriptor) error
+	SetReferrer(repo string, referredDigest godigest.Digest, referrer ReferrerInfo) error
 
 	// SetReferrer delets a referrer to the referrers list of a manifest inside a repo
 	DeleteReferrer(repo string, referredDigest godigest.Digest, referrerDigest godigest.Digest) error
 
-	// GetReferrers returns the list of referrers for a referred manifest
-	GetReferrers(repo string, referredDigest godigest.Digest) ([]Descriptor, error)
-
-	// GetFilteredReferrersInfo returnes a list of  for all referrers of the given digest that match one of the
+	// GetReferrersInfo returnes a list of  for all referrers of the given digest that match one of the
 	// artifact types.
-	GetFilteredReferrersInfo(repo string, referredDigest godigest.Digest, artifactTypes []string) (
+	GetReferrersInfo(repo string, referredDigest godigest.Digest, artifactTypes []string) (
 		[]ReferrerInfo, error)
 
 	// IncrementManifestDownloads adds 1 to the download count of a manifest
@@ -158,7 +155,7 @@ type RepoMetadata struct {
 
 	Statistics map[string]DescriptorStatistics
 	Signatures map[string]ManifestSignatures
-	Referrers  map[string][]Descriptor
+	Referrers  map[string][]ReferrerInfo
 
 	Stars int
 }

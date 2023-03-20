@@ -1200,7 +1200,7 @@ func getReferrers(repoDB repodb.RepoDB, repo string, referredDigest string, arti
 			referredDigest, err)
 	}
 
-	referrers, err := repoDB.GetFilteredReferrersInfo(repo, refDigest, artifactTypes)
+	referrers, err := repoDB.GetReferrersInfo(repo, refDigest, artifactTypes)
 	if err != nil {
 		return nil, err
 	}
