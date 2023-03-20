@@ -35,7 +35,7 @@ import (
 	ext "zotregistry.io/zot/pkg/extensions"
 	"zotregistry.io/zot/pkg/extensions/sync"
 	"zotregistry.io/zot/pkg/log"
-	repoDBUpdate "zotregistry.io/zot/pkg/meta/repodb/update"
+	repoDBUpdate "zotregistry.io/zot/pkg/meta/update"
 	zreg "zotregistry.io/zot/pkg/regexp"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/storage"
