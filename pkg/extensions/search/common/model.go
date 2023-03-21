@@ -22,6 +22,8 @@ type RepoSummary struct {
 type ImageSummary struct {
 	RepoName        string                    `json:"repoName"`
 	Tag             string                    `json:"tag"`
+	Digest          string                    `json:"digest"`
+	MediaType       string                    `json:"mediaType"`
 	Manifests       []ManifestSummary         `json:"manifests"`
 	Size            string                    `json:"size"`
 	DownloadCount   int                       `json:"downloadCount"`

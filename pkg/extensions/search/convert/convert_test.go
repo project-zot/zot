@@ -132,8 +132,16 @@ func TestConvertErrors(t *testing.T) {
 	Convey("ImageManifest2ImageSummary", t, func() {
 		ctx := graphql.WithResponseContext(context.Background(),
 			graphql.DefaultErrorPresenter, graphql.DefaultRecover)
+		configBlob, err := json.Marshal(ispec.Image{
+			Platform: ispec.Platform{
+				OS:           "os",
+				Architecture: "arch",
+				Variant:      "var",
+			},
+		})
+		So(err, ShouldBeNil)
 
-		_, _, err := convert.ImageManifest2ImageSummary(
+		_, _, err = convert.ImageManifest2ImageSummary(
 			ctx,
 			"repo",
 			"tag",
@@ -142,7 +150,7 @@ func TestConvertErrors(t *testing.T) {
 			repodb.RepoMetadata{},
 			repodb.ManifestMetadata{
 				ManifestBlob: []byte("{}"),
-				ConfigBlob:   []byte("{}"),
+				ConfigBlob:   configBlob,
 			},
 			mocks.CveInfoMock{
 				GetCVESummaryForImageFn: func(repo, reference string,
@@ -168,6 +176,12 @@ func TestConvertErrors(t *testing.T) {
 				MediaType: ispec.MediaTypeImageManifest,
 			},
 			false,
+			repodb.RepoMetadata{
+				Tags:       map[string]repodb.Descriptor{},
+				Statistics: map[string]repodb.DescriptorStatistics{},
+				Signatures: map[string]repodb.ManifestSignatures{},
+				Referrers:  map[string][]repodb.ReferrerInfo{},
+			},
 			repodb.ManifestMetadata{
 				ManifestBlob: []byte("{}"),
 				ConfigBlob:   []byte("bad json"),
@@ -187,6 +201,7 @@ func TestConvertErrors(t *testing.T) {
 			Platform: ispec.Platform{
 				OS:           "os",
 				Architecture: "arch",
+				Variant:      "var",
 			},
 		})
 		So(err, ShouldBeNil)
@@ -200,6 +215,12 @@ func TestConvertErrors(t *testing.T) {
 				MediaType: ispec.MediaTypeImageManifest,
 			},
 			false,
+			repodb.RepoMetadata{
+				Tags:       map[string]repodb.Descriptor{},
+				Statistics: map[string]repodb.DescriptorStatistics{},
+				Signatures: map[string]repodb.ManifestSignatures{"dig": {"cosine": []repodb.SignatureInfo{{}}}},
+				Referrers:  map[string][]repodb.ReferrerInfo{},
+			},
 			repodb.ManifestMetadata{
 				ManifestBlob: []byte("{}"),
 				ConfigBlob:   configBlob,
@@ -245,6 +266,33 @@ func TestConvertErrors(t *testing.T) {
 			}, log.NewLogger("debug", ""),
 		)
 		So(len(imageSummaries), ShouldEqual, 0)
+
+		// cveInfo present no error
+		_, imageSummaries = convert.RepoMeta2ExpandedRepoInfo(
+			ctx,
+			repodb.RepoMetadata{
+				Tags: map[string]repodb.Descriptor{
+					"tag1": {Digest: "dig", MediaType: ispec.MediaTypeImageManifest},
+				},
+			},
+			map[string]repodb.ManifestMetadata{
+				"dig": {
+					ManifestBlob: []byte("{}"),
+					ConfigBlob:   []byte("{}"),
+				},
+			},
+			map[string]repodb.IndexData{},
+			convert.SkipQGLField{
+				Vulnerabilities: false,
+			},
+			mocks.CveInfoMock{
+				GetCVESummaryForImageFn: func(repo, reference string,
+				) (cveinfo.ImageCVESummary, error) {
+					return cveinfo.ImageCVESummary{}, ErrTestError
+				},
+			}, log.NewLogger("debug", ""),
+		)
+		So(len(imageSummaries), ShouldEqual, 1)
 	})
 }
 

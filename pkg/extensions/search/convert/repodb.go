@@ -189,11 +189,14 @@ func ImageIndex2ImageSummary(ctx context.Context, repo, tag string, indexDigest 
 		maxSeverity        string
 		manifestSummaries  = make([]*gql_generated.ManifestSummary, 0, len(indexContent.Manifests))
 		indexBlobs         = make(map[string]int64, 0)
+
+		indexDigestStr = indexDigest.String()
+		indexMediaType = ispec.MediaTypeImageIndex
 	)
 
 	for _, descriptor := range indexContent.Manifests {
 		manifestSummary, manifestBlobs, err := ImageManifest2ManifestSummary(ctx, repo, tag, descriptor, false,
-			manifestMetaMap[descriptor.Digest.String()], repoMeta.Referrers[descriptor.Digest.String()], cveInfo)
+			repoMeta, manifestMetaMap[descriptor.Digest.String()], repoMeta.Referrers[descriptor.Digest.String()], cveInfo)
 		if err != nil {
 			return &gql_generated.ImageSummary{}, map[string]int64{}, err
 		}
@@ -244,6 +247,8 @@ func ImageIndex2ImageSummary(ctx context.Context, repo, tag string, indexDigest 
 	indexSummary := gql_generated.ImageSummary{
 		RepoName:      &repo,
 		Tag:           &tag,
+		Digest:        &indexDigestStr,
+		MediaType:     &indexMediaType,
 		Manifests:     manifestSummaries,
 		LastUpdated:   &indexLastUpdated,
 		IsSigned:      &isSigned,
@@ -272,6 +277,7 @@ func ImageManifest2ImageSummary(ctx context.Context, repo, tag string, digest go
 	var (
 		manifestContent ispec.Manifest
 		manifestDigest  = digest.String()
+		mediaType       = ispec.MediaTypeImageManifest
 	)
 
 	err := json.Unmarshal(manifestMeta.ManifestBlob, &manifestContent)
@@ -349,14 +355,17 @@ func ImageManifest2ImageSummary(ctx context.Context, repo, tag string, digest go
 	}
 
 	imageSummary := gql_generated.ImageSummary{
-		RepoName: &repoName,
-		Tag:      &tag,
+		RepoName:  &repoName,
+		Tag:       &tag,
+		Digest:    &manifestDigest,
+		MediaType: &mediaType,
 		Manifests: []*gql_generated.ManifestSummary{
 			{
 				Digest:        &manifestDigest,
 				ConfigDigest:  &configDigest,
 				LastUpdated:   &imageLastUpdated,
 				Size:          &imageSize,
+				IsSigned:      &isSigned,
 				Platform:      &platform,
 				DownloadCount: &downloadCount,
 				Layers:        getLayersSummaries(manifestContent),
@@ -424,7 +433,8 @@ func getAnnotationsFromMap(annotationsMap map[string]string) []*gql_generated.An
 }
 
 func ImageManifest2ManifestSummary(ctx context.Context, repo, tag string, descriptor ispec.Descriptor,
-	skipCVE bool, manifestMeta repodb.ManifestMetadata, referrersInfo []repodb.ReferrerInfo, cveInfo cveinfo.CveInfo,
+	skipCVE bool, repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata, referrersInfo []repodb.ReferrerInfo,
+	cveInfo cveinfo.CveInfo,
 ) (*gql_generated.ManifestSummary, map[string]int64, error) {
 	var (
 		manifestContent ispec.Manifest
@@ -456,6 +466,7 @@ func ImageManifest2ManifestSummary(ctx context.Context, repo, tag string, descri
 		configSize        = manifestContent.Config.Size
 		imageLastUpdated  = common.GetImageLastUpdated(configContent)
 		downloadCount     = manifestMeta.DownloadCount
+		isSigned          = false
 	)
 
 	opSys := configContent.OS
@@ -492,6 +503,12 @@ func ImageManifest2ManifestSummary(ctx context.Context, repo, tag string, descri
 		}
 	}
 
+	for _, signatures := range repoMeta.Signatures[manifestDigestStr] {
+		if len(signatures) > 0 {
+			isSigned = true
+		}
+	}
+
 	manifestSummary := gql_generated.ManifestSummary{
 		Digest:        &manifestDigestStr,
 		ConfigDigest:  &configDigest,
@@ -501,6 +518,7 @@ func ImageManifest2ManifestSummary(ctx context.Context, repo, tag string, descri
 		DownloadCount: &downloadCount,
 		Layers:        getLayersSummaries(manifestContent),
 		History:       historyEntries,
+		IsSigned:      &isSigned,
 		Vulnerabilities: &gql_generated.ImageVulnerabilitySummary{
 			MaxSeverity: &imageCveSummary.MaxSeverity,
 			Count:       &imageCveSummary.Count,
