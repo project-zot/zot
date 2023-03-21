@@ -147,9 +147,11 @@ func MakeHTTPGetRequest(httpClient *http.Client, username string, password strin
 		return nil, 0, err
 	}
 
-	req.Header.Set("Content-Type", mediaType)
+	req.Header.Set("Accept", mediaType)
 
-	req.SetBasicAuth(username, password)
+	if username != "" && password != "" {
+		req.SetBasicAuth(username, password)
+	}
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
