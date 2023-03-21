@@ -1059,6 +1059,135 @@ func TestGetReferrersGQL(t *testing.T) {
 
 		So(referrersResp.ReferrersResult.Referrers[0].Digest, ShouldEqual, artifactManifestDigest)
 	})
+
+	Convey("referrers for image index", t, func() {
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = t.TempDir()
+		conf.Storage.GC = false
+
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+			Lint: &extconf.LintConfig{
+				BaseConfig: extconf.BaseConfig{
+					Enable: &defaultVal,
+				},
+			},
+		}
+
+		gqlEndpoint := fmt.Sprintf("%s%s?query=", baseURL, graphqlQueryPrefix)
+
+		conf.Extensions.Search.CVE = nil
+
+		ctlr := api.NewController(conf)
+		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
+
+		// =======================
+
+		multiarch, err := GetRandomMultiarchImage("multiarch")
+		So(err, ShouldBeNil)
+		repo := "artifact-ref"
+
+		err = UploadMultiarchImage(multiarch, baseURL, repo)
+		So(err, ShouldBeNil)
+
+		indexBlob, err := json.Marshal(multiarch.Index)
+		So(err, ShouldBeNil)
+		indexDigest := godigest.FromBytes(indexBlob)
+		indexSize := int64(len(indexBlob))
+
+		subjectDescriptor := &ispec.Descriptor{
+			MediaType: ispec.MediaTypeImageIndex,
+			Size:      indexSize,
+			Digest:    indexDigest,
+		}
+
+		artifactContentBlob := []byte("test artifact")
+		artifactContentBlobSize := int64(len(artifactContentBlob))
+		artifactContentType := "application/octet-stream"
+		artifactContentBlobDigest := godigest.FromBytes(artifactContentBlob)
+		artifactType := "com.artifact.test"
+
+		configBlob, err := json.Marshal(ispec.Image{})
+		So(err, ShouldBeNil)
+
+		artifactManifest := ispec.Manifest{
+			Layers: []ispec.Descriptor{
+				{
+					MediaType: artifactContentType,
+					Digest:    artifactContentBlobDigest,
+					Size:      artifactContentBlobSize,
+				},
+			},
+			Subject: subjectDescriptor,
+			Config: ispec.Descriptor{
+				MediaType: artifactType,
+				Digest:    godigest.FromBytes(configBlob),
+			},
+			MediaType: ispec.MediaTypeImageManifest,
+			Annotations: map[string]string{
+				"com.artifact.format": "test",
+			},
+		}
+
+		artifactManifestBlob, err := json.Marshal(artifactManifest)
+		So(err, ShouldBeNil)
+		artifactManifestDigest := godigest.FromBytes(artifactManifestBlob)
+
+		err = UploadImage(
+			Image{
+				Manifest: artifactManifest,
+				Config:   ispec.Image{},
+				Layers: [][]byte{
+					artifactContentBlob,
+				},
+				Reference: artifactManifestDigest.String(),
+			}, baseURL, repo)
+		So(err, ShouldBeNil)
+
+		gqlQuery := `
+			{
+				Referrers( repo: "%s", digest: "%s", type: "" ){
+					ArtifactType,
+					Digest,
+					MediaType,
+					Size,
+					Annotations{
+						Key
+						Value
+					}
+		   		}
+			}`
+
+		strQuery := fmt.Sprintf(gqlQuery, repo, indexDigest.String())
+
+		targetURL := fmt.Sprintf("%s%s", gqlEndpoint, url.QueryEscape(strQuery))
+
+		resp, err := resty.R().Get(targetURL)
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.Body(), ShouldNotBeNil)
+
+		referrersResp := &ReferrersResp{}
+
+		err = json.Unmarshal(resp.Body(), referrersResp)
+		So(err, ShouldBeNil)
+		So(referrersResp.Errors, ShouldBeNil)
+		So(len(referrersResp.ReferrersResult.Referrers), ShouldEqual, 1)
+		So(referrersResp.ReferrersResult.Referrers[0].ArtifactType, ShouldEqual, artifactType)
+		So(referrersResp.ReferrersResult.Referrers[0].MediaType, ShouldEqual, ispec.MediaTypeImageManifest)
+
+		So(referrersResp.ReferrersResult.Referrers[0].Annotations[0].Key, ShouldEqual, "com.artifact.format")
+		So(referrersResp.ReferrersResult.Referrers[0].Annotations[0].Value, ShouldEqual, "test")
+
+		So(referrersResp.ReferrersResult.Referrers[0].Digest, ShouldEqual, artifactManifestDigest)
+	})
 }
 
 func TestExpandedRepoInfo(t *testing.T) {
