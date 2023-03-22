@@ -64,7 +64,7 @@ func TestPagination(t *testing.T) {
 				So(pageFinder, ShouldNotBeNil)
 
 				pageFinder.Add(repodb.DetailedRepoMeta{
-					RepoMeta: repodb.RepoMetadata{
+					RepoMetadata: repodb.RepoMetadata{
 						Name: "repo1",
 						Tags: map[string]repodb.Descriptor{
 							"tag1": {Digest: "dig1", MediaType: ispec.MediaTypeImageManifest},
@@ -73,7 +73,7 @@ func TestPagination(t *testing.T) {
 				})
 
 				pageFinder.Add(repodb.DetailedRepoMeta{
-					RepoMeta: repodb.RepoMetadata{
+					RepoMetadata: repodb.RepoMetadata{
 						Name: "repo2",
 						Tags: map[string]repodb.Descriptor{
 							"Tag1": {Digest: "dig1", MediaType: ispec.MediaTypeImageManifest},
@@ -93,7 +93,7 @@ func TestPagination(t *testing.T) {
 				So(pageFinder, ShouldNotBeNil)
 
 				pageFinder.Add(repodb.DetailedRepoMeta{
-					RepoMeta: repodb.RepoMetadata{
+					RepoMetadata: repodb.RepoMetadata{
 						Name: "repo1",
 						Tags: map[string]repodb.Descriptor{
 							"tag1": {Digest: "dig1", MediaType: ispec.MediaTypeImageManifest},
@@ -102,7 +102,7 @@ func TestPagination(t *testing.T) {
 				})
 
 				pageFinder.Add(repodb.DetailedRepoMeta{
-					RepoMeta: repodb.RepoMetadata{
+					RepoMetadata: repodb.RepoMetadata{
 						Name: "repo2",
 						Tags: map[string]repodb.Descriptor{
 							"Tag1": {Digest: "dig1", MediaType: ispec.MediaTypeImageManifest},
@@ -122,7 +122,7 @@ func TestPagination(t *testing.T) {
 				So(pageFinder, ShouldNotBeNil)
 
 				pageFinder.Add(repodb.DetailedRepoMeta{
-					RepoMeta: repodb.RepoMetadata{
+					RepoMetadata: repodb.RepoMetadata{
 						Name: "repo1",
 						Tags: map[string]repodb.Descriptor{
 							"tag1": {
@@ -134,7 +134,7 @@ func TestPagination(t *testing.T) {
 				})
 
 				pageFinder.Add(repodb.DetailedRepoMeta{
-					RepoMeta: repodb.RepoMetadata{
+					RepoMetadata: repodb.RepoMetadata{
 						Name: "repo2",
 						Tags: map[string]repodb.Descriptor{
 							"Tag1": {
@@ -157,7 +157,7 @@ func TestPagination(t *testing.T) {
 					},
 				})
 				pageFinder.Add(repodb.DetailedRepoMeta{
-					RepoMeta: repodb.RepoMetadata{
+					RepoMetadata: repodb.RepoMetadata{
 						Name: "repo3",
 						Tags: map[string]repodb.Descriptor{
 							"Tag11": {
@@ -196,7 +196,7 @@ func TestPagination(t *testing.T) {
 				So(pageFinder, ShouldNotBeNil)
 
 				pageFinder.Add(repodb.DetailedRepoMeta{
-					RepoMeta: repodb.RepoMetadata{
+					RepoMetadata: repodb.RepoMetadata{
 						Name: "repo1",
 						Tags: map[string]repodb.Descriptor{
 							"tag1": {
@@ -208,7 +208,7 @@ func TestPagination(t *testing.T) {
 				})
 
 				pageFinder.Add(repodb.DetailedRepoMeta{
-					RepoMeta: repodb.RepoMetadata{
+					RepoMetadata: repodb.RepoMetadata{
 						Name: "repo2",
 						Tags: map[string]repodb.Descriptor{
 							"Tag1": {
@@ -219,7 +219,7 @@ func TestPagination(t *testing.T) {
 					},
 				})
 				pageFinder.Add(repodb.DetailedRepoMeta{
-					RepoMeta: repodb.RepoMetadata{
+					RepoMetadata: repodb.RepoMetadata{
 						Name: "repo3",
 						Tags: map[string]repodb.Descriptor{
 							"Tag11": {

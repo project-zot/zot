@@ -31,6 +31,7 @@ func TestWrapperErrors(t *testing.T) {
 	manifestDataTablename := "ManifestDataTable" + uuid.String()
 	indexDataTablename := "IndexDataTable" + uuid.String()
 	artifactDataTablename := "ArtifactDataTable" + uuid.String()
+	userDataTablename := "UserDataTable" + uuid.String()
 
 	versionTablename := "Version" + uuid.String()
 
@@ -58,6 +59,7 @@ func TestWrapperErrors(t *testing.T) {
 			IndexDataTablename:    indexDataTablename,
 			ArtifactDataTablename: artifactDataTablename,
 			VersionTablename:      versionTablename,
+			UserDataTablename:     userDataTablename,
 			Patches:               version.GetDynamoDBPatches(),
 			Log:                   log.Logger{Logger: zerolog.New(os.Stdout)},
 		}
@@ -98,6 +100,7 @@ func TestWrapperErrors(t *testing.T) {
 			VersionTablename:      versionTablename,
 			IndexDataTablename:    indexDataTablename,
 			ArtifactDataTablename: artifactDataTablename,
+			UserDataTablename:     userDataTablename,
 			Patches:               version.GetDynamoDBPatches(),
 			Log:                   log.Logger{Logger: zerolog.New(os.Stdout)},
 		}

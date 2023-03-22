@@ -93,7 +93,7 @@ func (bpt *RepoPageFinder) Page() ([]RepoMetadata, PageInfo) {
 	repos := make([]RepoMetadata, 0, len(detailedReposPage))
 
 	for _, drm := range detailedReposPage {
-		repos = append(repos, drm.RepoMeta)
+		repos = append(repos, drm.RepoMetadata)
 	}
 
 	pageInfo.TotalCount = len(bpt.pageBuffer)
@@ -150,7 +150,7 @@ func (bpt *ImagePageFinder) Page() ([]RepoMetadata, PageInfo) {
 	pageInfo := PageInfo{}
 
 	for _, drm := range bpt.pageBuffer {
-		repo := drm.RepoMeta
+		repo := drm.RepoMetadata
 		pageInfo.TotalCount += len(repo.Tags)
 	}
 
@@ -167,7 +167,7 @@ func (bpt *ImagePageFinder) Page() ([]RepoMetadata, PageInfo) {
 
 	if remainingOffset == 0 && remainingLimit == 0 {
 		for _, drm := range bpt.pageBuffer {
-			repo := drm.RepoMeta
+			repo := drm.RepoMetadata
 			repos = append(repos, repo)
 
 			pageInfo.ItemCount += len(repo.Tags)
@@ -178,13 +178,13 @@ func (bpt *ImagePageFinder) Page() ([]RepoMetadata, PageInfo) {
 
 	// bring cursor to position in RepoMeta array
 	for _, drm := range bpt.pageBuffer {
-		if remainingOffset < len(drm.RepoMeta.Tags) {
+		if remainingOffset < len(drm.Tags) {
 			tagStartIndex = remainingOffset
 
 			break
 		}
 
-		remainingOffset -= len(drm.RepoMeta.Tags)
+		remainingOffset -= len(drm.Tags)
 		repoStartIndex++
 	}
 
@@ -195,7 +195,7 @@ func (bpt *ImagePageFinder) Page() ([]RepoMetadata, PageInfo) {
 
 	// finish counting remaining tags inside the first repo meta
 	partialTags := map[string]Descriptor{}
-	firstRepoMeta := bpt.pageBuffer[repoStartIndex].RepoMeta
+	firstRepoMeta := bpt.pageBuffer[repoStartIndex].RepoMetadata
 
 	tags := make([]string, 0, len(firstRepoMeta.Tags))
 	for k := range firstRepoMeta.Tags {
@@ -226,7 +226,7 @@ func (bpt *ImagePageFinder) Page() ([]RepoMetadata, PageInfo) {
 
 	// continue with the remaining repos
 	for i := repoStartIndex; i < len(bpt.pageBuffer); i++ {
-		repoMeta := bpt.pageBuffer[i].RepoMeta
+		repoMeta := bpt.pageBuffer[i].RepoMetadata
 
 		if len(repoMeta.Tags) > remainingLimit {
 			partialTags := map[string]Descriptor{}

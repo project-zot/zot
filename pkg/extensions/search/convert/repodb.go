@@ -31,15 +31,15 @@ func RepoMeta2RepoSummary(ctx context.Context, repoMeta repodb.RepoMetadata,
 	skip SkipQGLField, cveInfo cveinfo.CveInfo,
 ) *gql_generated.RepoSummary {
 	var (
+		repoName                 = repoMeta.Name
 		repoLastUpdatedTimestamp = time.Time{}
 		repoPlatformsSet         = map[string]*gql_generated.Platform{}
 		repoVendorsSet           = map[string]bool{}
 		lastUpdatedImageSummary  *gql_generated.ImageSummary
-		repoStarCount            = repoMeta.Stars
-		isBookmarked             = false
-		isStarred                = false
 		repoDownloadCount        = 0
-		repoName                 = repoMeta.Name
+		repoStarCount            = repoMeta.Stars        // total number of stars
+		repoIsUserStarred        = repoMeta.IsStarred    // value specific to the current user
+		repoIsUserBookMarked     = repoMeta.IsBookmarked // value specific to the current user
 
 		// map used to keep track of all blobs of a repo without dublicates as
 		// some images may have the same layers
@@ -88,6 +88,7 @@ func RepoMeta2RepoSummary(ctx context.Context, repoMeta repodb.RepoMetadata,
 	repoSize := strconv.FormatInt(size, 10)
 
 	repoPlatforms := make([]*gql_generated.Platform, 0, len(repoPlatformsSet))
+
 	for _, platform := range repoPlatformsSet {
 		repoPlatforms = append(repoPlatforms, platform)
 	}
@@ -129,8 +130,8 @@ func RepoMeta2RepoSummary(ctx context.Context, repoMeta repodb.RepoMetadata,
 		NewestImage:   lastUpdatedImageSummary,
 		DownloadCount: &repoDownloadCount,
 		StarCount:     &repoStarCount,
-		IsBookmarked:  &isBookmarked,
-		IsStarred:     &isStarred,
+		IsBookmarked:  &repoIsUserBookMarked,
+		IsStarred:     &repoIsUserStarred,
 	}
 }
 
@@ -574,15 +575,15 @@ func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta repodb.RepoMetadata
 	skip SkipQGLField, cveInfo cveinfo.CveInfo, log log.Logger,
 ) (*gql_generated.RepoSummary, []*gql_generated.ImageSummary) {
 	var (
+		repoName                 = repoMeta.Name
 		repoLastUpdatedTimestamp = time.Time{}
 		repoPlatformsSet         = map[string]*gql_generated.Platform{}
 		repoVendorsSet           = map[string]bool{}
 		lastUpdatedImageSummary  *gql_generated.ImageSummary
-		repoStarCount            = repoMeta.Stars
-		isBookmarked             = false
-		isStarred                = false
 		repoDownloadCount        = 0
-		repoName                 = repoMeta.Name
+		repoStarCount            = repoMeta.Stars        // total number of stars
+		isStarred                = repoMeta.IsStarred    // value specific to the current user
+		isBookmarked             = repoMeta.IsBookmarked // value specific to the current user
 
 		// map used to keep track of all blobs of a repo without dublicates as
 		// some images may have the same layers
@@ -632,6 +633,7 @@ func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta repodb.RepoMetadata
 	repoSize := strconv.FormatInt(size, 10)
 
 	repoPlatforms := make([]*gql_generated.Platform, 0, len(repoPlatformsSet))
+
 	for _, platform := range repoPlatformsSet {
 		repoPlatforms = append(repoPlatforms, platform)
 	}

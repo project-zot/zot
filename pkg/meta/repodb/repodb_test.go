@@ -88,6 +88,7 @@ func TestDynamoDBWrapper(t *testing.T) {
 	versionTablename := "Version" + uuid.String()
 	indexDataTablename := "IndexDataTable" + uuid.String()
 	artifactDataTablename := "ArtifactDataTable" + uuid.String()
+	userDataTablename := "UserDataTable" + uuid.String()
 
 	Convey("DynamoDB Wrapper", t, func() {
 		dynamoDBDriverParams := dynamo.DBDriverParameters{
@@ -97,6 +98,7 @@ func TestDynamoDBWrapper(t *testing.T) {
 			IndexDataTablename:    indexDataTablename,
 			ArtifactDataTablename: artifactDataTablename,
 			VersionTablename:      versionTablename,
+			UserDataTablename:     userDataTablename,
 			Region:                "us-east-2",
 		}
 
@@ -114,6 +116,8 @@ func TestDynamoDBWrapper(t *testing.T) {
 			if err != nil {
 				return err
 			}
+
+			// Note: Tests are very slow if we reset the UserData table every new convey. We'll reset it as needed
 
 			err = dynamoDriver.ResetManifestDataTable()
 
@@ -529,6 +533,399 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 
 			_, err = repoDB.GetRepoStars("badRepo")
 			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Test repo stars for user", func() {
+			var (
+				repo1           = "repo1"
+				tag1            = "0.0.1"
+				manifestDigest1 = godigest.FromString("fake-manifest1")
+				repo2           = "repo2"
+			)
+
+			authzCtxKey := localCtx.GetContextKey()
+
+			acCtx1 := localCtx.AccessControlContext{
+				ReadGlobPatterns: map[string]bool{
+					repo1: true,
+					repo2: true,
+				},
+				Username: "user1",
+			}
+
+			// "user1"
+			ctx1 := context.WithValue(context.Background(), authzCtxKey, acCtx1)
+
+			acCtx2 := localCtx.AccessControlContext{
+				ReadGlobPatterns: map[string]bool{
+					repo1: true,
+					repo2: true,
+				},
+				Username: "user2",
+			}
+
+			// "user2"
+			ctx2 := context.WithValue(context.Background(), authzCtxKey, acCtx2)
+
+			acCtx3 := localCtx.AccessControlContext{
+				ReadGlobPatterns: map[string]bool{
+					repo1: true,
+					repo2: true,
+				},
+				Username: "",
+			}
+
+			// anonymous
+			ctx3 := context.WithValue(context.Background(), authzCtxKey, acCtx3)
+
+			err := repoDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetRepoReference(repo2, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+			So(err, ShouldBeNil)
+
+			starCount, err := repoDB.GetRepoStars(repo1)
+			So(err, ShouldBeNil)
+			So(starCount, ShouldEqual, 0)
+
+			starCount, err = repoDB.GetRepoStars(repo2)
+			So(err, ShouldBeNil)
+			So(starCount, ShouldEqual, 0)
+
+			repos, err := repoDB.GetStarredRepos(ctx1)
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 0)
+
+			repos, err = repoDB.GetStarredRepos(ctx2)
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 0)
+
+			repos, err = repoDB.GetStarredRepos(ctx3)
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 0)
+
+			// User 1 bookmarks repo 1, User 2 has no stars
+			toggleState, err := repoDB.ToggleStarRepo(ctx1, repo1)
+			So(err, ShouldBeNil)
+			So(toggleState, ShouldEqual, repodb.Added)
+
+			repoMeta, err := repoDB.GetRepoMeta(repo1)
+			So(err, ShouldBeNil)
+			So(repoMeta.Stars, ShouldEqual, 1)
+
+			starCount, err = repoDB.GetRepoStars(repo1)
+			So(err, ShouldBeNil)
+			So(starCount, ShouldEqual, 1)
+
+			repos, err = repoDB.GetStarredRepos(ctx1)
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 1)
+			So(repos, ShouldContain, repo1)
+
+			repos, err = repoDB.GetStarredRepos(ctx2)
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 0)
+
+			repos, err = repoDB.GetStarredRepos(ctx3)
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 0)
+
+			// User 1 and User 2 star only repo 1
+			toggleState, err = repoDB.ToggleStarRepo(ctx2, repo1)
+			So(err, ShouldBeNil)
+			So(toggleState, ShouldEqual, repodb.Added)
+
+			repoMeta, err = repoDB.GetRepoMeta(repo1)
+			So(err, ShouldBeNil)
+			So(repoMeta.Stars, ShouldEqual, 2)
+
+			starCount, err = repoDB.GetRepoStars(repo1)
+			So(err, ShouldBeNil)
+			So(starCount, ShouldEqual, 2)
+
+			repos, err = repoDB.GetStarredRepos(ctx1)
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 1)
+			So(repos, ShouldContain, repo1)
+
+			repos, err = repoDB.GetStarredRepos(ctx2)
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 1)
+			So(repos, ShouldContain, repo1)
+
+			repos, err = repoDB.GetStarredRepos(ctx3)
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 0)
+
+			// User 1 stars repos 1 and 2, and User 2 stars only repo 1
+			toggleState, err = repoDB.ToggleStarRepo(ctx1, repo2)
+			So(err, ShouldBeNil)
+			So(toggleState, ShouldEqual, repodb.Added)
+
+			repoMeta, err = repoDB.GetRepoMeta(repo2)
+			So(err, ShouldBeNil)
+			So(repoMeta.Stars, ShouldEqual, 1)
+
+			starCount, err = repoDB.GetRepoStars(repo2)
+			So(err, ShouldBeNil)
+			So(starCount, ShouldEqual, 1)
+
+			repos, err = repoDB.GetStarredRepos(ctx1)
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 2)
+			So(repos, ShouldContain, repo1)
+			So(repos, ShouldContain, repo2)
+
+			repos, err = repoDB.GetStarredRepos(ctx2)
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 1)
+			So(repos, ShouldContain, repo1)
+
+			repos, err = repoDB.GetStarredRepos(ctx3)
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 0)
+
+			// User 1 stars only repo 2, and User 2 stars only repo 1
+			toggleState, err = repoDB.ToggleStarRepo(ctx1, repo1)
+			So(err, ShouldBeNil)
+			So(toggleState, ShouldEqual, repodb.Removed)
+
+			repoMeta, err = repoDB.GetRepoMeta(repo1)
+			So(err, ShouldBeNil)
+			So(repoMeta.Stars, ShouldEqual, 1)
+
+			starCount, err = repoDB.GetRepoStars(repo1)
+			So(err, ShouldBeNil)
+			So(starCount, ShouldEqual, 1)
+
+			repos, err = repoDB.GetStarredRepos(ctx1)
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 1)
+			So(repos, ShouldContain, repo2)
+
+			repos, err = repoDB.GetStarredRepos(ctx2)
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 1)
+			So(repos, ShouldContain, repo1)
+
+			repos, err = repoDB.GetStarredRepos(ctx3)
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 0)
+
+			// User 1 stars both repos 1 and 2, and User 2 removes all stars
+			toggleState, err = repoDB.ToggleStarRepo(ctx1, repo1)
+			So(err, ShouldBeNil)
+			So(toggleState, ShouldEqual, repodb.Added)
+
+			toggleState, err = repoDB.ToggleStarRepo(ctx2, repo1)
+			So(err, ShouldBeNil)
+			So(toggleState, ShouldEqual, repodb.Removed)
+
+			repoMeta, err = repoDB.GetRepoMeta(repo1)
+			So(err, ShouldBeNil)
+			So(repoMeta.Stars, ShouldEqual, 1)
+
+			repoMeta, err = repoDB.GetRepoMeta(repo2)
+			So(err, ShouldBeNil)
+			So(repoMeta.Stars, ShouldEqual, 1)
+
+			starCount, err = repoDB.GetRepoStars(repo1)
+			So(err, ShouldBeNil)
+			So(starCount, ShouldEqual, 1)
+
+			starCount, err = repoDB.GetRepoStars(repo2)
+			So(err, ShouldBeNil)
+			So(starCount, ShouldEqual, 1)
+
+			repos, err = repoDB.GetStarredRepos(ctx1)
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 2)
+			So(repos, ShouldContain, repo1)
+			So(repos, ShouldContain, repo2)
+
+			repos, err = repoDB.GetStarredRepos(ctx2)
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 0)
+
+			repos, err = repoDB.GetStarredRepos(ctx3)
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 0)
+
+			// Anonyous user attempts to toggle a star
+			toggleState, err = repoDB.ToggleStarRepo(ctx3, repo1)
+			So(err, ShouldNotBeNil)
+			So(toggleState, ShouldEqual, repodb.NotChanged)
+
+			starCount, err = repoDB.GetRepoStars(repo1)
+			So(err, ShouldBeNil)
+			So(starCount, ShouldEqual, 1)
+
+			repos, err = repoDB.GetStarredRepos(ctx3)
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 0)
+
+			// User 1 stars just repo 1
+			toggleState, err = repoDB.ToggleStarRepo(ctx1, repo2)
+			So(err, ShouldBeNil)
+			So(toggleState, ShouldEqual, repodb.Removed)
+
+			starCount, err = repoDB.GetRepoStars(repo2)
+			So(err, ShouldBeNil)
+			So(starCount, ShouldEqual, 0)
+
+			repos, err = repoDB.GetStarredRepos(ctx3)
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 0)
+		})
+
+		Convey("Test repo bookmarks for user", func() {
+			var (
+				repo1           = "repo1"
+				tag1            = "0.0.1"
+				manifestDigest1 = godigest.FromString("fake-manifest1")
+				repo2           = "repo2"
+			)
+
+			authzCtxKey := localCtx.GetContextKey()
+
+			acCtx1 := localCtx.AccessControlContext{
+				ReadGlobPatterns: map[string]bool{
+					repo1: true,
+					repo2: true,
+				},
+				Username: "user1",
+			}
+
+			// "user1"
+			ctx1 := context.WithValue(context.Background(), authzCtxKey, acCtx1)
+
+			acCtx2 := localCtx.AccessControlContext{
+				ReadGlobPatterns: map[string]bool{
+					repo1: true,
+					repo2: true,
+				},
+				Username: "user2",
+			}
+
+			// "user2"
+			ctx2 := context.WithValue(context.Background(), authzCtxKey, acCtx2)
+
+			acCtx3 := localCtx.AccessControlContext{
+				ReadGlobPatterns: map[string]bool{
+					repo1: true,
+					repo2: true,
+				},
+				Username: "",
+			}
+
+			// anonymous
+			ctx3 := context.WithValue(context.Background(), authzCtxKey, acCtx3)
+
+			err := repoDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetRepoReference(repo2, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+			So(err, ShouldBeNil)
+
+			repos, err := repoDB.GetBookmarkedRepos(ctx1)
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 0)
+
+			repos, err = repoDB.GetBookmarkedRepos(ctx2)
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 0)
+
+			// anonymous cannot use bookmarks
+			repos, err = repoDB.GetBookmarkedRepos(ctx3)
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 0)
+
+			toggleState, err := repoDB.ToggleBookmarkRepo(ctx3, repo1)
+			So(err, ShouldNotBeNil)
+			So(toggleState, ShouldEqual, repodb.NotChanged)
+
+			repos, err = repoDB.GetBookmarkedRepos(ctx3)
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 0)
+
+			// User 1 bookmarks repo 1, User 2 has no bookmarks
+			toggleState, err = repoDB.ToggleBookmarkRepo(ctx1, repo1)
+			So(err, ShouldBeNil)
+			So(toggleState, ShouldEqual, repodb.Added)
+
+			repos, err = repoDB.GetBookmarkedRepos(ctx1)
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 1)
+			So(repos, ShouldContain, repo1)
+
+			repos, err = repoDB.GetBookmarkedRepos(ctx2)
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 0)
+
+			// User 1 and User 2 bookmark only repo 1
+			toggleState, err = repoDB.ToggleBookmarkRepo(ctx2, repo1)
+			So(err, ShouldBeNil)
+			So(toggleState, ShouldEqual, repodb.Added)
+
+			repos, err = repoDB.GetBookmarkedRepos(ctx1)
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 1)
+			So(repos, ShouldContain, repo1)
+
+			repos, err = repoDB.GetBookmarkedRepos(ctx2)
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 1)
+			So(repos, ShouldContain, repo1)
+
+			// User 1 bookmarks repos 1 and 2, and User 2 bookmarks only repo 1
+			toggleState, err = repoDB.ToggleBookmarkRepo(ctx1, repo2)
+			So(err, ShouldBeNil)
+			So(toggleState, ShouldEqual, repodb.Added)
+
+			repos, err = repoDB.GetBookmarkedRepos(ctx1)
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 2)
+			So(repos, ShouldContain, repo1)
+			So(repos, ShouldContain, repo2)
+
+			repos, err = repoDB.GetBookmarkedRepos(ctx2)
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 1)
+			So(repos, ShouldContain, repo1)
+
+			// User 1 bookmarks only repo 2, and User 2 bookmarks only repo 1
+			toggleState, err = repoDB.ToggleBookmarkRepo(ctx1, repo1)
+			So(err, ShouldBeNil)
+			So(toggleState, ShouldEqual, repodb.Removed)
+
+			repos, err = repoDB.GetBookmarkedRepos(ctx1)
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 1)
+			So(repos, ShouldContain, repo2)
+
+			repos, err = repoDB.GetBookmarkedRepos(ctx2)
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 1)
+			So(repos, ShouldContain, repo1)
+
+			// User 1 bookmarks both repos 1 and 2, and User 2 removes all bookmarks
+			toggleState, err = repoDB.ToggleBookmarkRepo(ctx1, repo1)
+			So(err, ShouldBeNil)
+			So(toggleState, ShouldEqual, repodb.Added)
+
+			toggleState, err = repoDB.ToggleBookmarkRepo(ctx2, repo1)
+			So(err, ShouldBeNil)
+			So(toggleState, ShouldEqual, repodb.Removed)
+
+			repos, err = repoDB.GetBookmarkedRepos(ctx1)
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 2)
+			So(repos, ShouldContain, repo1)
+			So(repos, ShouldContain, repo2)
+
+			repos, err = repoDB.GetBookmarkedRepos(ctx2)
+			So(err, ShouldBeNil)
+			So(len(repos), ShouldEqual, 0)
 		})
 
 		Convey("Test IncrementImageDownloads", func() {
@@ -1974,7 +2371,169 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			So(referrerInfo[0].ArtifactType, ShouldResemble, "wantedType")
 			So(referrerInfo[0].Digest, ShouldResemble, "goodArtifact")
 		})
+
+		Convey("FilterRepos", func() {
+			img, err := test.GetRandomImage("img1")
+			So(err, ShouldBeNil)
+			imgDigest, err := img.Digest()
+			So(err, ShouldBeNil)
+
+			manifestData, err := NewManifestData(img.Manifest, img.Config)
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetManifestData(imgDigest, manifestData)
+			So(err, ShouldBeNil)
+
+			multiarch, err := test.GetRandomMultiarchImage("multi")
+			So(err, ShouldBeNil)
+			multiarchDigest, err := multiarch.Digest()
+			So(err, ShouldBeNil)
+
+			indexData, err := NewIndexData(multiarch.Index)
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetIndexData(multiarchDigest, indexData)
+			So(err, ShouldBeNil)
+
+			for _, img := range multiarch.Images {
+				digest, err := img.Digest()
+				So(err, ShouldBeNil)
+
+				indManData1, err := NewManifestData(multiarch.Images[0].Manifest, multiarch.Images[0].Config)
+				So(err, ShouldBeNil)
+
+				err = repoDB.SetManifestData(digest, indManData1)
+				So(err, ShouldBeNil)
+			}
+
+			err = repoDB.SetRepoReference("repo", img.Reference, imgDigest, img.Manifest.MediaType)
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetRepoReference("repo", multiarch.Reference, multiarchDigest, ispec.MediaTypeImageIndex)
+			So(err, ShouldBeNil)
+
+			repoMetas, _, _, _, err := repoDB.FilterRepos(context.Background(),
+				func(repoMeta repodb.RepoMetadata) bool { return true }, repodb.PageInput{})
+			So(err, ShouldBeNil)
+			So(len(repoMetas), ShouldEqual, 1)
+
+			_, _, _, _, err = repoDB.FilterRepos(context.Background(),
+				func(repoMeta repodb.RepoMetadata) bool { return true }, repodb.PageInput{
+					Limit:  -1,
+					Offset: -1,
+				})
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Test bookmarked/starred field present in returned RepoMeta", func() {
+			repo99 := "repo99"
+			authzCtxKey := localCtx.GetContextKey()
+
+			acCtx := localCtx.AccessControlContext{
+				ReadGlobPatterns: map[string]bool{
+					repo99: true,
+				},
+				Username: "user1",
+			}
+			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+
+			manifestDigest := godigest.FromString("dig")
+			err := repoDB.SetManifestData(manifestDigest, repodb.ManifestData{
+				ManifestBlob: []byte("{}"),
+				ConfigBlob:   []byte("{}"),
+			})
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetRepoReference(repo99, "tag", manifestDigest, ispec.MediaTypeImageManifest)
+			So(err, ShouldBeNil)
+
+			repoMetas, _, _, _, err := repoDB.SearchRepos(ctx, repo99, repodb.Filter{}, repodb.PageInput{})
+			So(err, ShouldBeNil)
+			So(len(repoMetas), ShouldEqual, 1)
+			So(repoMetas[0].IsBookmarked, ShouldBeFalse)
+			So(repoMetas[0].IsStarred, ShouldBeFalse)
+
+			repoMetas, _, _, _, err = repoDB.SearchTags(ctx, repo99+":", repodb.Filter{}, repodb.PageInput{})
+			So(err, ShouldBeNil)
+			So(len(repoMetas), ShouldEqual, 1)
+			So(repoMetas[0].IsBookmarked, ShouldBeFalse)
+			So(repoMetas[0].IsStarred, ShouldBeFalse)
+
+			repoMetas, _, _, _, err = repoDB.FilterRepos(ctx, func(repoMeta repodb.RepoMetadata) bool {
+				return true
+			}, repodb.PageInput{})
+			So(err, ShouldBeNil)
+			So(len(repoMetas), ShouldEqual, 1)
+			So(repoMetas[0].IsBookmarked, ShouldBeFalse)
+			So(repoMetas[0].IsStarred, ShouldBeFalse)
+
+			repoMetas, _, _, _, err = repoDB.FilterTags(ctx,
+				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool { return true },
+				repodb.PageInput{},
+			)
+			So(err, ShouldBeNil)
+			So(len(repoMetas), ShouldEqual, 1)
+			So(repoMetas[0].IsBookmarked, ShouldBeFalse)
+			So(repoMetas[0].IsStarred, ShouldBeFalse)
+
+			_, err = repoDB.ToggleBookmarkRepo(ctx, repo99)
+			So(err, ShouldBeNil)
+
+			_, err = repoDB.ToggleStarRepo(ctx, repo99)
+			So(err, ShouldBeNil)
+
+			repoMetas, _, _, _, err = repoDB.SearchRepos(ctx, repo99, repodb.Filter{}, repodb.PageInput{})
+			So(err, ShouldBeNil)
+			So(len(repoMetas), ShouldEqual, 1)
+			So(repoMetas[0].IsBookmarked, ShouldBeTrue)
+			So(repoMetas[0].IsStarred, ShouldBeTrue)
+
+			repoMetas, _, _, _, err = repoDB.SearchTags(ctx, repo99+":", repodb.Filter{}, repodb.PageInput{})
+			So(err, ShouldBeNil)
+			So(len(repoMetas), ShouldEqual, 1)
+			So(repoMetas[0].IsBookmarked, ShouldBeTrue)
+			So(repoMetas[0].IsStarred, ShouldBeTrue)
+
+			repoMetas, _, _, _, err = repoDB.FilterRepos(ctx, func(repoMeta repodb.RepoMetadata) bool {
+				return true
+			}, repodb.PageInput{})
+			So(err, ShouldBeNil)
+			So(len(repoMetas), ShouldEqual, 1)
+			So(repoMetas[0].IsBookmarked, ShouldBeTrue)
+			So(repoMetas[0].IsStarred, ShouldBeTrue)
+
+			repoMetas, _, _, _, err = repoDB.FilterTags(ctx,
+				func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool { return true },
+				repodb.PageInput{},
+			)
+			So(err, ShouldBeNil)
+			So(len(repoMetas), ShouldEqual, 1)
+			So(repoMetas[0].IsBookmarked, ShouldBeTrue)
+			So(repoMetas[0].IsStarred, ShouldBeTrue)
+		})
 	})
+}
+
+func NewManifestData(manifest ispec.Manifest, config ispec.Image) (repodb.ManifestData, error) {
+	configBlob, err := json.Marshal(config)
+	if err != nil {
+		return repodb.ManifestData{}, err
+	}
+
+	manifest.Config.Digest = godigest.FromBytes(configBlob)
+
+	manifestBlob, err := json.Marshal(manifest)
+	if err != nil {
+		return repodb.ManifestData{}, err
+	}
+
+	return repodb.ManifestData{ManifestBlob: manifestBlob, ConfigBlob: configBlob}, nil
+}
+
+func NewIndexData(index ispec.Index) (repodb.IndexData, error) {
+	indexBlob, err := json.Marshal(index)
+
+	return repodb.IndexData{IndexBlob: indexBlob}, err
 }
 
 func TestRelevanceSorting(t *testing.T) {

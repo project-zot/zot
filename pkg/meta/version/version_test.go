@@ -127,6 +127,7 @@ func TestVersioningDynamoDB(t *testing.T) {
 			ManifestDataTablename: "ManifestDataTable",
 			ArtifactDataTablename: "ArtifactDataTable",
 			IndexDataTablename:    "IndexDataTable",
+			UserDataTablename:     "UserDataTable",
 			VersionTablename:      "Version",
 		}
 

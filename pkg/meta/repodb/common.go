@@ -8,7 +8,7 @@ import (
 // that's not directly available in the RepoMetadata structure (ex. that needs to be calculated
 // by iterating the manifests, etc.)
 type DetailedRepoMeta struct {
-	RepoMeta   RepoMetadata
+	RepoMetadata
 	Rank       int
 	Downloads  int
 	UpdateTime time.Time
@@ -26,13 +26,13 @@ func SortFunctions() map[SortCriteria]func(pageBuffer []DetailedRepoMeta) func(i
 
 func SortByAlphabeticAsc(pageBuffer []DetailedRepoMeta) func(i, j int) bool {
 	return func(i, j int) bool {
-		return pageBuffer[i].RepoMeta.Name < pageBuffer[j].RepoMeta.Name
+		return pageBuffer[i].Name < pageBuffer[j].Name
 	}
 }
 
 func SortByAlphabeticDsc(pageBuffer []DetailedRepoMeta) func(i, j int) bool {
 	return func(i, j int) bool {
-		return pageBuffer[i].RepoMeta.Name > pageBuffer[j].RepoMeta.Name
+		return pageBuffer[i].Name > pageBuffer[j].Name
 	}
 }
 

@@ -147,6 +147,26 @@ type ImageSummaryResult struct {
 	Errors             []ErrorGQL         `json:"errors"`
 }
 
+//nolint:tagliatelle // graphQL schema
+type StarredRepos struct {
+	PaginatedReposResult `json:"StarredRepos"`
+}
+
+//nolint:tagliatelle // graphQL schema
+type BookmarkedRepos struct {
+	PaginatedReposResult `json:"BookmarkedRepos"`
+}
+
+type StarredReposResponse struct {
+	StarredRepos `json:"data"`
+	Errors       []ErrorGQL `json:"errors"`
+}
+
+type BookmarkedReposResponse struct {
+	BookmarkedRepos `json:"data"`
+	Errors          []ErrorGQL `json:"errors"`
+}
+
 func readFileAndSearchString(filePath string, stringToMatch string, timeout time.Duration) (bool, error) {
 	ctx, cancelFunc := context.WithTimeout(context.Background(), timeout)
 	defer cancelFunc()

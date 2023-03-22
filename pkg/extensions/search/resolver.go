@@ -18,7 +18,7 @@ import (
 	"github.com/vektah/gqlparser/v2/gqlerror"
 
 	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/common"
+	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/extensions/search/convert"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
@@ -300,7 +300,7 @@ func getCVEListForImage(
 		),
 	}
 
-	repo, ref, isTag := common.GetImageDirAndReference(image)
+	repo, ref, isTag := zcommon.GetImageDirAndReference(image)
 
 	if ref == "" {
 		return &gql_generated.CVEResultForImage{}, gqlerror.Errorf("no reference provided")
@@ -560,6 +560,91 @@ func repoListWithNewestImage(
 	return paginatedRepos, nil
 }
 
+func getBookmarkedRepos(
+	ctx context.Context,
+	cveInfo cveinfo.CveInfo,
+	log log.Logger, //nolint:unparam // may be used by devs for debugging
+	requestedPage *gql_generated.PageInput,
+	repoDB repodb.RepoDB,
+) (*gql_generated.PaginatedReposResult, error) {
+	repoNames, err := repoDB.GetBookmarkedRepos(ctx)
+	if err != nil {
+		return &gql_generated.PaginatedReposResult{}, err
+	}
+
+	filterFn := func(repoMeta repodb.RepoMetadata) bool {
+		return zcommon.Contains(repoNames, repoMeta.Name)
+	}
+
+	return getFilteredPaginatedRepos(ctx, cveInfo, filterFn, log, requestedPage, repoDB)
+}
+
+func getStarredRepos(
+	ctx context.Context,
+	cveInfo cveinfo.CveInfo,
+	log log.Logger, //nolint:unparam // may be used by devs for debugging
+	requestedPage *gql_generated.PageInput,
+	repoDB repodb.RepoDB,
+) (*gql_generated.PaginatedReposResult, error) {
+	repoNames, err := repoDB.GetStarredRepos(ctx)
+	if err != nil {
+		return &gql_generated.PaginatedReposResult{}, err
+	}
+
+	filterFn := func(repoMeta repodb.RepoMetadata) bool {
+		return zcommon.Contains(repoNames, repoMeta.Name)
+	}
+
+	return getFilteredPaginatedRepos(ctx, cveInfo, filterFn, log, requestedPage, repoDB)
+}
+
+func getFilteredPaginatedRepos(
+	ctx context.Context,
+	cveInfo cveinfo.CveInfo,
+	filterFn repodb.FilterRepoFunc,
+	log log.Logger, //nolint:unparam // may be used by devs for debugging
+	requestedPage *gql_generated.PageInput,
+	repoDB repodb.RepoDB,
+) (*gql_generated.PaginatedReposResult, error) {
+	repos := []*gql_generated.RepoSummary{}
+	paginatedRepos := &gql_generated.PaginatedReposResult{}
+
+	if requestedPage == nil {
+		requestedPage = &gql_generated.PageInput{}
+	}
+
+	skip := convert.SkipQGLField{
+		Vulnerabilities: canSkipField(convert.GetPreloads(ctx), "Results.NewestImage.Vulnerabilities"),
+	}
+
+	pageInput := repodb.PageInput{
+		Limit:  safeDerefferencing(requestedPage.Limit, 0),
+		Offset: safeDerefferencing(requestedPage.Offset, 0),
+		SortBy: repodb.SortCriteria(
+			safeDerefferencing(requestedPage.SortBy, gql_generated.SortCriteriaUpdateTime),
+		),
+	}
+
+	reposMeta, manifestMetaMap, indexDataMap, pageInfo, err := repoDB.FilterRepos(ctx, filterFn, pageInput)
+	if err != nil {
+		return paginatedRepos, err
+	}
+
+	for _, repoMeta := range reposMeta {
+		repoSummary := convert.RepoMeta2RepoSummary(ctx, repoMeta, manifestMetaMap, indexDataMap,
+			skip, cveInfo)
+		repos = append(repos, repoSummary)
+	}
+
+	paginatedRepos.Page = &gql_generated.PageInfo{
+		TotalCount: pageInfo.TotalCount,
+		ItemCount:  pageInfo.ItemCount,
+	}
+	paginatedRepos.Results = repos
+
+	return paginatedRepos, nil
+}
+
 func globalSearch(ctx context.Context, query string, repoDB repodb.RepoDB, filter *gql_generated.Filter,
 	requestedPage *gql_generated.PageInput, cveInfo cveinfo.CveInfo, log log.Logger, //nolint:unparam
 ) (*gql_generated.PaginatedReposResult, []*gql_generated.ImageSummary, []*gql_generated.LayerSummary, error,
@@ -675,7 +760,7 @@ func derivedImageList(ctx context.Context, image string, digest *string, repoDB 
 		Vulnerabilities: canSkipField(convert.GetPreloads(ctx), "Vulnerabilities"),
 	}
 
-	imageRepo, imageTag := common.GetImageDirAndTag(image)
+	imageRepo, imageTag := zcommon.GetImageDirAndTag(image)
 	if imageTag == "" {
 		return &gql_generated.PaginatedImagesResult{}, gqlerror.Errorf("no reference provided")
 	}
@@ -788,7 +873,7 @@ func baseImageList(ctx context.Context, image string, digest *string, repoDB rep
 		Vulnerabilities: canSkipField(convert.GetPreloads(ctx), "Vulnerabilities"),
 	}
 
-	imageRepo, imageTag := common.GetImageDirAndTag(image)
+	imageRepo, imageTag := zcommon.GetImageDirAndTag(image)
 
 	if imageTag == "" {
 		return &gql_generated.PaginatedImagesResult{}, gqlerror.Errorf("no reference provided")

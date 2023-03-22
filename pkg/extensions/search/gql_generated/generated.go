@@ -156,6 +156,7 @@ type ComplexityRoot struct {
 
 	Query struct {
 		BaseImageList           func(childComplexity int, image string, digest *string, requestedPage *PageInput) int
+		BookmarkedRepos         func(childComplexity int, requestedPage *PageInput) int
 		CVEListForImage         func(childComplexity int, image string, requestedPage *PageInput, searchedCve *string) int
 		DerivedImageList        func(childComplexity int, image string, digest *string, requestedPage *PageInput) int
 		ExpandedRepoInfo        func(childComplexity int, repo string) int
@@ -167,6 +168,7 @@ type ComplexityRoot struct {
 		ImageListWithCVEFixed   func(childComplexity int, id string, image string, requestedPage *PageInput) int
 		Referrers               func(childComplexity int, repo string, digest string, typeArg []string) int
 		RepoListWithNewestImage func(childComplexity int, requestedPage *PageInput) int
+		StarredRepos            func(childComplexity int, requestedPage *PageInput) int
 	}
 
 	Referrer struct {
@@ -209,6 +211,8 @@ type QueryResolver interface {
 	BaseImageList(ctx context.Context, image string, digest *string, requestedPage *PageInput) (*PaginatedImagesResult, error)
 	Image(ctx context.Context, image string) (*ImageSummary, error)
 	Referrers(ctx context.Context, repo string, digest string, typeArg []string) ([]*Referrer, error)
+	StarredRepos(ctx context.Context, requestedPage *PageInput) (*PaginatedReposResult, error)
+	BookmarkedRepos(ctx context.Context, requestedPage *PageInput) (*PaginatedReposResult, error)
 }
 
 type executableSchema struct {
@@ -700,6 +704,18 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Query.BaseImageList(childComplexity, args["image"].(string), args["digest"].(*string), args["requestedPage"].(*PageInput)), true
 
+	case "Query.BookmarkedRepos":
+		if e.complexity.Query.BookmarkedRepos == nil {
+			break
+		}
+
+		args, err := ec.field_Query_BookmarkedRepos_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.BookmarkedRepos(childComplexity, args["requestedPage"].(*PageInput)), true
+
 	case "Query.CVEListForImage":
 		if e.complexity.Query.CVEListForImage == nil {
 			break
@@ -831,6 +847,18 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Query.RepoListWithNewestImage(childComplexity, args["requestedPage"].(*PageInput)), true
+
+	case "Query.StarredRepos":
+		if e.complexity.Query.StarredRepos == nil {
+			break
+		}
+
+		args, err := ec.field_Query_StarredRepos_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.StarredRepos(childComplexity, args["requestedPage"].(*PageInput)), true
 
 	case "Referrer.Annotations":
 		if e.complexity.Referrer.Annotations == nil {
@@ -1688,6 +1716,22 @@ type Query {
         "Types of artifacts to return in the referrer list"
         type: [String!]
     ): [Referrer]!
+
+    """
+    Receive RepoSummaries of repos starred by current user
+    """
+    StarredRepos(
+        "Sets the parameters of the requested page (how many to include and offset)"
+        requestedPage: PageInput
+    ): PaginatedReposResult!
+
+    """
+    Receive RepoSummaries of repos bookmarked by current user
+    """
+    BookmarkedRepos(
+        "Sets the parameters of the requested page (how many to include and offset)"
+        requestedPage: PageInput
+    ): PaginatedReposResult!
 }
 `, BuiltIn: false},
 }
@@ -1727,6 +1771,21 @@ func (ec *executionContext) field_Query_BaseImageList_args(ctx context.Context, 
 		}
 	}
 	args["requestedPage"] = arg2
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_BookmarkedRepos_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 *PageInput
+	if tmp, ok := rawArgs["requestedPage"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
+		arg0, err = ec.unmarshalOPageInput2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["requestedPage"] = arg0
 	return args, nil
 }
 
@@ -1998,6 +2057,21 @@ func (ec *executionContext) field_Query_Referrers_args(ctx context.Context, rawA
 }
 
 func (ec *executionContext) field_Query_RepoListWithNewestImage_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 *PageInput
+	if tmp, ok := rawArgs["requestedPage"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("requestedPage"))
+		arg0, err = ec.unmarshalOPageInput2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPageInput(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["requestedPage"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_StarredRepos_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
 	var arg0 *PageInput
@@ -5831,6 +5905,128 @@ func (ec *executionContext) fieldContext_Query_Referrers(ctx context.Context, fi
 	return fc, nil
 }
 
+func (ec *executionContext) _Query_StarredRepos(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Query_StarredRepos(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Query().StarredRepos(rctx, fc.Args["requestedPage"].(*PageInput))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*PaginatedReposResult)
+	fc.Result = res
+	return ec.marshalNPaginatedReposResult2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedReposResult(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Query_StarredRepos(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "Page":
+				return ec.fieldContext_PaginatedReposResult_Page(ctx, field)
+			case "Results":
+				return ec.fieldContext_PaginatedReposResult_Results(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type PaginatedReposResult", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_StarredRepos_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_BookmarkedRepos(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Query_BookmarkedRepos(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Query().BookmarkedRepos(rctx, fc.Args["requestedPage"].(*PageInput))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*PaginatedReposResult)
+	fc.Result = res
+	return ec.marshalNPaginatedReposResult2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐPaginatedReposResult(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Query_BookmarkedRepos(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "Page":
+				return ec.fieldContext_PaginatedReposResult_Page(ctx, field)
+			case "Results":
+				return ec.fieldContext_PaginatedReposResult_Results(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type PaginatedReposResult", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_BookmarkedRepos_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Query___type(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Query___type(ctx, field)
 	if err != nil {
@@ -9516,6 +9712,52 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 					}
 				}()
 				res = ec._Query_Referrers(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx, innerFunc)
+			}
+
+			out.Concurrently(i, func() graphql.Marshaler {
+				return rrm(innerCtx)
+			})
+		case "StarredRepos":
+			field := field
+
+			innerFunc := func(ctx context.Context) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_StarredRepos(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx, innerFunc)
+			}
+
+			out.Concurrently(i, func() graphql.Marshaler {
+				return rrm(innerCtx)
+			})
+		case "BookmarkedRepos":
+			field := field
+
+			innerFunc := func(ctx context.Context) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_BookmarkedRepos(ctx, field)
 				if res == graphql.Null {
 					atomic.AddUint32(&invalids, 1)
 				}

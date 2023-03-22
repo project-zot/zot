@@ -30,7 +30,7 @@ TESTDATA := $(TOP_LEVEL)/test/data
 OS ?= linux
 ARCH ?= amd64
 BENCH_OUTPUT ?= stdout
-EXTENSIONS ?= sync,search,scrub,metrics,lint,ui,mgmt
+EXTENSIONS ?= sync,search,scrub,metrics,lint,ui,mgmt,userprefs
 comma:= ,
 hyphen:= -
 extended-name:=
@@ -337,6 +337,11 @@ test-restore-s3-blobs-verbose: binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) 
 test-bats-referrers: EXTENSIONS=search
 test-bats-referrers: binary check-skopeo $(BATS) $(ORAS)
 	$(BATS) --trace --print-output-on-failure test/blackbox/referrers.bats
+
+.PHONY: test-bats-metadata
+test-bats-metadata: EXTENSIONS=search,userprefs
+test-bats-metadata: binary check-skopeo $(BATS)
+	$(BATS) --trace --print-output-on-failure test/blackbox/metadata.bats
 
 .PHONY: test-cloud-only
 test-cloud-only: binary check-skopeo $(BATS)

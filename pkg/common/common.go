@@ -40,6 +40,30 @@ func Contains(slice []string, item string) bool {
 	return false
 }
 
+// first match of item in [].
+func Index(slice []string, item string) int {
+	for k, v := range slice {
+		if item == v {
+			return k
+		}
+	}
+
+	return -1
+}
+
+// remove matches of item in [].
+func RemoveFrom(inputSlice []string, item string) []string {
+	var newSlice []string
+
+	for _, v := range inputSlice {
+		if item != v {
+			newSlice = append(newSlice, v)
+		}
+	}
+
+	return newSlice
+}
+
 func GetTLSConfig(certsPath string, caCertPool *x509.CertPool) (*tls.Config, error) {
 	clientCert := filepath.Join(certsPath, clientCertFilename)
 	clientKey := filepath.Join(certsPath, clientKeyFilename)

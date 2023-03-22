@@ -2,6 +2,7 @@ package common
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -285,4 +286,99 @@ func CheckImageLastUpdated(repoLastUpdated time.Time, isSigned bool, noImageChec
 	}
 
 	return repoLastUpdated, noImageChecked, isSigned
+}
+
+func FilterDataByRepo(foundRepos []repodb.RepoMetadata, manifestMetadataMap map[string]repodb.ManifestMetadata,
+	indexDataMap map[string]repodb.IndexData,
+) (map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, error) {
+	var (
+		foundManifestMetadataMap = make(map[string]repodb.ManifestMetadata)
+		foundindexDataMap        = make(map[string]repodb.IndexData)
+	)
+
+	// keep just the manifestMeta we need
+	for _, repoMeta := range foundRepos {
+		for _, descriptor := range repoMeta.Tags {
+			switch descriptor.MediaType {
+			case ispec.MediaTypeImageManifest:
+				foundManifestMetadataMap[descriptor.Digest] = manifestMetadataMap[descriptor.Digest]
+			case ispec.MediaTypeImageIndex:
+				indexData := indexDataMap[descriptor.Digest]
+
+				var indexContent ispec.Index
+
+				err := json.Unmarshal(indexData.IndexBlob, &indexContent)
+				if err != nil {
+					return map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{},
+						fmt.Errorf("repodb: error while getting manifest data for digest %s %w", descriptor.Digest, err)
+				}
+
+				for _, manifestDescriptor := range indexContent.Manifests {
+					manifestDigest := manifestDescriptor.Digest.String()
+
+					foundManifestMetadataMap[manifestDigest] = manifestMetadataMap[manifestDigest]
+				}
+
+				foundindexDataMap[descriptor.Digest] = indexData
+			default:
+			}
+		}
+	}
+
+	return foundManifestMetadataMap, foundindexDataMap, nil
+}
+
+func FetchDataForRepos(repoDB repodb.RepoDB, foundRepos []repodb.RepoMetadata,
+) (map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, error) {
+	foundManifestMetadataMap := map[string]repodb.ManifestMetadata{}
+	foundIndexDataMap := map[string]repodb.IndexData{}
+
+	for idx := range foundRepos {
+		for _, descriptor := range foundRepos[idx].Tags {
+			switch descriptor.MediaType {
+			case ispec.MediaTypeImageManifest:
+				manifestData, err := repoDB.GetManifestData(godigest.Digest(descriptor.Digest))
+				if err != nil {
+					return map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{}, err
+				}
+
+				foundManifestMetadataMap[descriptor.Digest] = repodb.ManifestMetadata{
+					ManifestBlob: manifestData.ManifestBlob,
+					ConfigBlob:   manifestData.ConfigBlob,
+				}
+			case ispec.MediaTypeImageIndex:
+				indexData, err := repoDB.GetIndexData(godigest.Digest(descriptor.Digest))
+				if err != nil {
+					return map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{}, err
+				}
+
+				var indexContent ispec.Index
+
+				err = json.Unmarshal(indexData.IndexBlob, &indexContent)
+				if err != nil {
+					return map[string]repodb.ManifestMetadata{},
+						map[string]repodb.IndexData{},
+						fmt.Errorf("repodb: error while getting index data for digest %s %w", descriptor.Digest, err)
+				}
+
+				for _, manifestDescriptor := range indexContent.Manifests {
+					manifestDigest := manifestDescriptor.Digest.String()
+
+					manifestData, err := repoDB.GetManifestData(manifestDescriptor.Digest)
+					if err != nil {
+						return map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{}, err
+					}
+
+					foundManifestMetadataMap[manifestDigest] = repodb.ManifestMetadata{
+						ManifestBlob: manifestData.ManifestBlob,
+						ConfigBlob:   manifestData.ConfigBlob,
+					}
+				}
+
+				foundIndexDataMap[descriptor.Digest] = indexData
+			}
+		}
+	}
+
+	return foundManifestMetadataMap, foundIndexDataMap, nil
 }

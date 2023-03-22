@@ -448,6 +448,7 @@ Additionally if search extension is enabled, additional parameters are needed:
             // used by search extensions
             "repoMetaTablename": "ZotRepoMetadataTable",
             "manifestDataTablename": "ZotManifestDataTable",
+            "userDataTablename": "ZotUserDataTable",
             "versionTablename": "ZotVersion"
         }
 ```

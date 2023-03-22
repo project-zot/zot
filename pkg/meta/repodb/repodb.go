@@ -14,7 +14,19 @@ const (
 	CosignType        = "cosign"
 )
 
-type FilterFunc func(repoMeta RepoMetadata, manifestMeta ManifestMetadata) bool
+// Used to model changes to an object after a call to the the DB.
+type ToggleState int
+
+const (
+	NotChanged ToggleState = iota
+	Added
+	Removed
+)
+
+type (
+	FilterFunc     func(repoMeta RepoMetadata, manifestMeta ManifestMetadata) bool
+	FilterRepoFunc func(repoMeta RepoMetadata) bool
+)
 
 type RepoDB interface { //nolint:interfacebloat
 	// IncrementRepoStars adds 1 to the star count of an image
@@ -95,9 +107,25 @@ type RepoDB interface { //nolint:interfacebloat
 	SearchTags(ctx context.Context, searchText string, filter Filter, requestedPage PageInput) (
 		[]RepoMetadata, map[string]ManifestMetadata, map[string]IndexData, PageInfo, error)
 
+	// FilterRepos filters for repos given a filter function
+	FilterRepos(ctx context.Context, filter FilterRepoFunc, requestedPage PageInput) (
+		[]RepoMetadata, map[string]ManifestMetadata, map[string]IndexData, PageInfo, error)
+
 	// FilterTags filters for images given a filter function
 	FilterTags(ctx context.Context, filter FilterFunc,
 		requestedPage PageInput) ([]RepoMetadata, map[string]ManifestMetadata, map[string]IndexData, PageInfo, error)
+
+	// GetStarredRepos returns starred repos and takes current user in consideration
+	GetStarredRepos(ctx context.Context) ([]string, error)
+
+	// GetBookmarkedRepos returns bookmarked repos and takes current user in consideration
+	GetBookmarkedRepos(ctx context.Context) ([]string, error)
+
+	// ToggleStarRepo adds/removes stars on repos
+	ToggleStarRepo(ctx context.Context, reponame string) (ToggleState, error)
+
+	// ToggleBookmarkRepo adds/removes bookmarks on repos
+	ToggleBookmarkRepo(ctx context.Context, reponame string) (ToggleState, error)
 
 	PatchDB() error
 }
@@ -150,6 +178,9 @@ type RepoMetadata struct {
 	Signatures map[string]ManifestSignatures
 	Referrers  map[string][]ReferrerInfo
 
+	IsStarred    bool
+	IsBookmarked bool
+
 	Stars int
 }
 
@@ -169,6 +200,12 @@ type SignatureMetadata struct {
 	SignatureType   string
 	SignatureDigest string
 	LayersInfo      []LayerInfo
+}
+
+type UserData struct {
+	// data for each user.
+	StarredRepos    []string
+	BookmarkedRepos []string
 }
 
 type SortCriteria string

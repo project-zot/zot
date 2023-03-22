@@ -10,12 +10,15 @@ type RepoInfo struct {
 }
 
 type RepoSummary struct {
-	Name        string       `json:"name"`
-	LastUpdated time.Time    `json:"lastUpdated"`
-	Size        string       `json:"size"`
-	Platforms   []Platform   `json:"platforms"`
-	Vendors     []string     `json:"vendors"`
-	NewestImage ImageSummary `json:"newestImage"`
+	Name         string       `json:"name"`
+	LastUpdated  time.Time    `json:"lastUpdated"`
+	Size         string       `json:"size"`
+	Platforms    []Platform   `json:"platforms"`
+	Vendors      []string     `json:"vendors"`
+	IsStarred    bool         `json:"isStarred"`
+	IsBookmarked bool         `json:"isBookmarked"`
+	StarCount    int          `json:"starCount"`
+	NewestImage  ImageSummary `json:"newestImage"`
 }
 
 type ImageSummary struct {

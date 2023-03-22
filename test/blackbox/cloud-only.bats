@@ -39,6 +39,7 @@ function setup() {
             "manifestDataTablename": "ManifestDataTable",
             "artifactDataTablename": "ArtifactDataTable",
             "indexDataTablename": "IndexDataTable",
+            "userDataTablename": "UserDataTable",
             "versionTablename": "Version"
         }
 	},
