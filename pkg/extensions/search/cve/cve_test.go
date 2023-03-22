@@ -29,8 +29,9 @@ import (
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta/bolt"
 	"zotregistry.io/zot/pkg/meta/repodb"
-	bolt "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
+	boltdb_wrapper "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
 	. "zotregistry.io/zot/pkg/test"
@@ -312,9 +313,13 @@ func TestImageFormat(t *testing.T) {
 			false, false, log, metrics, nil, nil)
 		storeController := storage.StoreController{DefaultStore: defaultStore}
 
-		repoDB, err := bolt.NewBoltDBWrapper(bolt.DBParameters{
+		params := bolt.DBParameters{
 			RootDir: dbDir,
-		})
+		}
+		boltDriver, err := bolt.GetBoltDriver(params)
+		So(err, ShouldBeNil)
+
+		repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver)
 		So(err, ShouldBeNil)
 
 		err = repodb.ParseStorage(repoDB, storeController, log)
@@ -716,9 +721,13 @@ func TestCVESearch(t *testing.T) {
 
 func TestCVEStruct(t *testing.T) {
 	Convey("Unit test the CVE struct", t, func() {
-		repoDB, err := bolt.NewBoltDBWrapper(bolt.DBParameters{
+		params := bolt.DBParameters{
 			RootDir: t.TempDir(),
-		})
+		}
+		boltDriver, err := bolt.GetBoltDriver(params)
+		So(err, ShouldBeNil)
+
+		repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver)
 		So(err, ShouldBeNil)
 
 		// Create repodb data for scannable image with vulnerabilities

@@ -13,10 +13,10 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"go.etcd.io/bbolt"
 
-	"zotregistry.io/zot/pkg/meta/repodb"
-	bolt "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
-	dynamo "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper"
-	dynamoParams "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper/params"
+	"zotregistry.io/zot/pkg/meta/bolt"
+	"zotregistry.io/zot/pkg/meta/dynamo"
+	boltdb_wrapper "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
+	dynamodb_wrapper "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper"
 	"zotregistry.io/zot/pkg/meta/repodb/version"
 )
 
@@ -26,7 +26,10 @@ func TestVersioningBoltDB(t *testing.T) {
 	Convey("Tests", t, func() {
 		tmpDir := t.TempDir()
 		boltDBParams := bolt.DBParameters{RootDir: tmpDir}
-		boltdbWrapper, err := bolt.NewBoltDBWrapper(boltDBParams)
+		boltDriver, err := bolt.GetBoltDriver(boltDBParams)
+		So(err, ShouldBeNil)
+
+		boltdbWrapper, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver)
 		defer os.Remove("repo.db")
 		So(boltdbWrapper, ShouldNotBeNil)
 		So(err, ShouldBeNil)
@@ -53,7 +56,7 @@ func TestVersioningBoltDB(t *testing.T) {
 
 		Convey("DBVersion is empty", func() {
 			err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				versionBuck := tx.Bucket([]byte(repodb.VersionBucket))
+				versionBuck := tx.Bucket([]byte(bolt.VersionBucket))
 
 				return versionBuck.Put([]byte(version.DBVersionKey), []byte(""))
 			})
@@ -99,7 +102,7 @@ func TestVersioningBoltDB(t *testing.T) {
 
 func setBoltDBVersion(db *bbolt.DB, vers string) error {
 	err := db.Update(func(tx *bbolt.Tx) error {
-		versionBuck := tx.Bucket([]byte(repodb.VersionBucket))
+		versionBuck := tx.Bucket([]byte(bolt.VersionBucket))
 
 		return versionBuck.Put([]byte(version.DBVersionKey), []byte(vers))
 	})
@@ -114,7 +117,7 @@ func TestVersioningDynamoDB(t *testing.T) {
 	)
 
 	Convey("Tests", t, func() {
-		dynamoWrapper, err := dynamo.NewDynamoDBWrapper(dynamoParams.DBDriverParameters{
+		params := dynamo.DBDriverParameters{
 			Endpoint:              endpoint,
 			Region:                region,
 			RepoMetaTablename:     "RepoMetadataTable",
@@ -122,7 +125,12 @@ func TestVersioningDynamoDB(t *testing.T) {
 			ArtifactDataTablename: "ArtifactDataTable",
 			IndexDataTablename:    "IndexDataTable",
 			VersionTablename:      "Version",
-		})
+		}
+
+		dynamoClient, err := dynamo.GetDynamoClient(params)
+		So(err, ShouldBeNil)
+
+		dynamoWrapper, err := dynamodb_wrapper.NewDynamoDBWrapper(dynamoClient, params)
 		So(err, ShouldBeNil)
 
 		So(dynamoWrapper.ResetManifestDataTable(), ShouldBeNil)

@@ -20,8 +20,9 @@ import (
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta/bolt"
 	"zotregistry.io/zot/pkg/meta/repodb"
-	bolt "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
+	boltdb_wrapper "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test/mocks"
@@ -1892,9 +1893,16 @@ func TestQueryResolverErrors(t *testing.T) {
 }
 
 func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
-	repoDB, err := bolt.NewBoltDBWrapper(bolt.DBParameters{
+	params := bolt.DBParameters{
 		RootDir: t.TempDir(),
-	})
+	}
+
+	boltDriver, err := bolt.GetBoltDriver(params)
+	if err != nil {
+		panic(err)
+	}
+
+	repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver)
 	if err != nil {
 		panic(err)
 	}

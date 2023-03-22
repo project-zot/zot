@@ -24,9 +24,9 @@ import (
 	ext "zotregistry.io/zot/pkg/extensions"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta/bolt"
+	"zotregistry.io/zot/pkg/meta/dynamo"
 	"zotregistry.io/zot/pkg/meta/repodb"
-	bolt "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
-	dynamoParams "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper/params"
 	"zotregistry.io/zot/pkg/meta/repodb/repodbfactory"
 	"zotregistry.io/zot/pkg/scheduler"
 	"zotregistry.io/zot/pkg/storage"
@@ -527,16 +527,26 @@ func CreateRepoDBDriver(storageConfig config.StorageConfig, log log.Logger) (rep
 	if storageConfig.RemoteCache {
 		dynamoParams := getDynamoParams(storageConfig.CacheDriver, log)
 
-		return repodbfactory.Create("dynamodb", dynamoParams) //nolint:contextcheck
+		client, err := dynamo.GetDynamoClient(dynamoParams)
+		if err != nil {
+			return nil, err
+		}
+
+		return repodbfactory.Create("dynamodb", client, dynamoParams) //nolint:contextcheck
 	}
 
 	params := bolt.DBParameters{}
 	params.RootDir = storageConfig.RootDirectory
 
-	return repodbfactory.Create("boltdb", params) //nolint:contextcheck
+	driver, err := bolt.GetBoltDriver(params)
+	if err != nil {
+		return nil, err
+	}
+
+	return repodbfactory.Create("boltdb", driver, params) //nolint:contextcheck
 }
 
-func getDynamoParams(cacheDriverConfig map[string]interface{}, log log.Logger) dynamoParams.DBDriverParameters {
+func getDynamoParams(cacheDriverConfig map[string]interface{}, log log.Logger) dynamo.DBDriverParameters {
 	allParametersOk := true
 
 	endpoint, ok := toStringIfOk(cacheDriverConfig, "endpoint", log)
@@ -564,7 +574,7 @@ func getDynamoParams(cacheDriverConfig map[string]interface{}, log log.Logger) d
 		panic("dynamo parameters are not specified correctly, can't proceede")
 	}
 
-	return dynamoParams.DBDriverParameters{
+	return dynamo.DBDriverParameters{
 		Endpoint:              endpoint,
 		Region:                region,
 		RepoMetaTablename:     repoMetaTablename,

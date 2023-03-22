@@ -14,6 +14,7 @@ import (
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta/bolt"
 	"zotregistry.io/zot/pkg/meta/repodb"
 	bolt_wrapper "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
 	repoDBUpdate "zotregistry.io/zot/pkg/meta/repodb/update"
@@ -35,9 +36,13 @@ func TestOnUpdateManifest(t *testing.T) {
 			true, true, log, metrics, nil, nil,
 		)
 
-		repoDB, err := bolt_wrapper.NewBoltDBWrapper(bolt_wrapper.DBParameters{
+		params := bolt.DBParameters{
 			RootDir: rootDir,
-		})
+		}
+		boltDriver, err := bolt.GetBoltDriver(params)
+		So(err, ShouldBeNil)
+
+		repoDB, err := bolt_wrapper.NewBoltDBWrapper(boltDriver)
 		So(err, ShouldBeNil)
 
 		config, layers, manifest, err := test.GetRandomImageComponents(100)

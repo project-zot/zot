@@ -18,11 +18,12 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
+	"zotregistry.io/zot/pkg/meta/bolt"
+	"zotregistry.io/zot/pkg/meta/dynamo"
 	"zotregistry.io/zot/pkg/meta/repodb"
-	bolt "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
+	boltdb_wrapper "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
 	"zotregistry.io/zot/pkg/meta/repodb/common"
-	dynamo "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper"
-	dynamoParams "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper/params"
+	dynamodb_wrapper "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/test"
 )
@@ -36,15 +37,17 @@ const (
 func TestBoltDBWrapper(t *testing.T) {
 	Convey("BoltDB Wrapper creation", t, func() {
 		boltDBParams := bolt.DBParameters{}
-		searchDB, err := bolt.NewBoltDBWrapper(boltDBParams)
-		So(searchDB, ShouldNotBeNil)
+		boltDriver, err := bolt.GetBoltDriver(boltDBParams)
+		So(err, ShouldBeNil)
+
+		repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver)
+		So(repoDB, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
 		err = os.Chmod("repo.db", 0o200)
 		So(err, ShouldBeNil)
 
-		searchDB, err = bolt.NewBoltDBWrapper(boltDBParams)
-		So(searchDB, ShouldBeNil)
+		_, err = bolt.GetBoltDriver(boltDBParams)
 		So(err, ShouldNotBeNil)
 
 		err = os.Chmod("repo.db", 0o600)
@@ -55,7 +58,10 @@ func TestBoltDBWrapper(t *testing.T) {
 
 	Convey("BoltDB Wrapper", t, func() {
 		boltDBParams := bolt.DBParameters{}
-		boltdbWrapper, err := bolt.NewBoltDBWrapper(boltDBParams)
+		boltDriver, err := bolt.GetBoltDriver(boltDBParams)
+		So(err, ShouldBeNil)
+
+		boltdbWrapper, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver)
 		defer os.Remove("repo.db")
 		So(boltdbWrapper, ShouldNotBeNil)
 		So(err, ShouldBeNil)
@@ -79,7 +85,7 @@ func TestDynamoDBWrapper(t *testing.T) {
 	artifactDataTablename := "ArtifactDataTable" + uuid.String()
 
 	Convey("DynamoDB Wrapper", t, func() {
-		dynamoDBDriverParams := dynamoParams.DBDriverParameters{
+		dynamoDBDriverParams := dynamo.DBDriverParameters{
 			Endpoint:              os.Getenv("DYNAMODBMOCK_ENDPOINT"),
 			RepoMetaTablename:     repoMetaTablename,
 			ManifestDataTablename: manifestDataTablename,
@@ -89,7 +95,10 @@ func TestDynamoDBWrapper(t *testing.T) {
 			Region:                "us-east-2",
 		}
 
-		dynamoDriver, err := dynamo.NewDynamoDBWrapper(dynamoDBDriverParams)
+		dynamoClient, err := dynamo.GetDynamoClient(dynamoDBDriverParams)
+		So(err, ShouldBeNil)
+
+		dynamoDriver, err := dynamodb_wrapper.NewDynamoDBWrapper(dynamoClient, dynamoDBDriverParams)
 		So(dynamoDriver, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
@@ -1985,8 +1994,10 @@ func TestRelevanceSorting(t *testing.T) {
 			boltDBParams := bolt.DBParameters{
 				RootDir: t.TempDir(),
 			}
+			boltDriver, err := bolt.GetBoltDriver(boltDBParams)
+			So(err, ShouldBeNil)
 
-			repoDB, err := bolt.NewBoltDBWrapper(boltDBParams)
+			repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver)
 			So(repoDB, ShouldNotBeNil)
 			So(err, ShouldBeNil)
 

@@ -1,32 +1,40 @@
 package repodbfactory
 
 import (
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"go.etcd.io/bbolt"
+
 	"zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/meta/dynamo"
 	"zotregistry.io/zot/pkg/meta/repodb"
 	boltdb_wrapper "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
 	dynamodb_wrapper "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper"
-	dynamoParams "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper/params"
 )
 
-func Create(dbtype string, parameters interface{}) (repodb.RepoDB, error) { //nolint:contextcheck
+func Create(dbtype string, dbDriver, parameters interface{}) (repodb.RepoDB, error) { //nolint:contextcheck
 	switch dbtype {
 	case "boltdb":
 		{
-			properParameters, ok := parameters.(boltdb_wrapper.DBParameters)
+			properDriver, ok := dbDriver.(*bbolt.DB)
 			if !ok {
 				panic("failed type assertion")
 			}
 
-			return boltdb_wrapper.NewBoltDBWrapper(properParameters)
+			return boltdb_wrapper.NewBoltDBWrapper(properDriver)
 		}
 	case "dynamodb":
 		{
-			properParameters, ok := parameters.(dynamoParams.DBDriverParameters)
+			properDriver, ok := dbDriver.(*dynamodb.Client)
 			if !ok {
 				panic("failed type assertion")
 			}
 
-			return dynamodb_wrapper.NewDynamoDBWrapper(properParameters)
+			properParameters, ok := parameters.(dynamo.DBDriverParameters)
+			if !ok {
+				panic("failed type assertion")
+			}
+
+			return dynamodb_wrapper.NewDynamoDBWrapper(properDriver, properParameters)
 		}
 	default:
 		{

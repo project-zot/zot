@@ -20,8 +20,9 @@ import (
 	"zotregistry.io/zot/pkg/extensions/search/convert"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta/bolt"
 	"zotregistry.io/zot/pkg/meta/repodb"
-	bolt "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
+	boltdb_wrapper "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
 	. "zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
@@ -30,9 +31,13 @@ var ErrTestError = errors.New("TestError")
 
 func TestConvertErrors(t *testing.T) {
 	Convey("Convert Errors", t, func() {
-		repoDB, err := bolt.NewBoltDBWrapper(bolt.DBParameters{
+		params := bolt.DBParameters{
 			RootDir: t.TempDir(),
-		})
+		}
+		boltDB, err := bolt.GetBoltDriver(params)
+		So(err, ShouldBeNil)
+
+		repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDB)
 		So(err, ShouldBeNil)
 
 		configBlob, err := json.Marshal(ispec.Image{})

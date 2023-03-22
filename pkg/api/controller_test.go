@@ -38,6 +38,7 @@ import (
 	"github.com/sigstore/cosign/pkg/oci/remote"
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/stretchr/testify/assert"
+	"go.etcd.io/bbolt"
 	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/resty.v1"
 
@@ -236,6 +237,49 @@ func TestCreateRepoDBDriver(t *testing.T) {
 
 		testFunc = func() { _, _ = api.CreateRepoDBDriver(conf.Storage.StorageConfig, log) }
 		So(testFunc, ShouldPanic)
+
+		conf.Storage.CacheDriver = map[string]interface{}{
+			"name":                  "dummy",
+			"endpoint":              "http://localhost:4566",
+			"region":                "us-east-2",
+			"cachetablename":        "test",
+			"repometatablename":     "RepoMetadataTable",
+			"manifestdatatablename": "ManifestDataTable",
+			"indexdatatablename":    "IndexDataTable",
+			"artifactdatatablename": "ArtifactDataTable",
+			"versiontablename":      "1",
+		}
+
+		testFunc = func() { _, _ = api.CreateRepoDBDriver(conf.Storage.StorageConfig, log) }
+		So(testFunc, ShouldNotPanic)
+	})
+
+	Convey("Test CreateCacheDatabaseDriver bolt", t, func() {
+		log := log.NewLogger("debug", "")
+		dir := t.TempDir()
+		conf := config.New()
+		conf.Storage.RootDirectory = dir
+		conf.Storage.Dedupe = true
+		conf.Storage.RemoteCache = false
+
+		const perms = 0o600
+
+		boltDB, err := bbolt.Open(path.Join(dir, "repo.db"), perms, &bbolt.Options{Timeout: time.Second * 10})
+		So(err, ShouldBeNil)
+
+		err = boltDB.Close()
+		So(err, ShouldBeNil)
+
+		err = os.Chmod(path.Join(dir, "repo.db"), 0o200)
+		So(err, ShouldBeNil)
+
+		_, err = api.CreateRepoDBDriver(conf.Storage.StorageConfig, log)
+		So(err, ShouldNotBeNil)
+
+		err = os.Chmod(path.Join(dir, "repo.db"), 0o600)
+		So(err, ShouldBeNil)
+
+		defer os.Remove(path.Join(dir, "repo.db"))
 	})
 }
 
