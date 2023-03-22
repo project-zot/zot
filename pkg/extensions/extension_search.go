@@ -71,12 +71,18 @@ func EnableSearchExtension(config *config.Config, storeController storage.StoreC
 }
 
 func downloadTrivyDB(interval time.Duration, sch *scheduler.Scheduler, cveInfo CveInfo, log log.Logger) {
-	generator := &trivyTaskGenerator{interval, cveInfo, log, pending, 0, time.Now(), &sync.Mutex{}}
+	generator := NewTrivyTaskGenerator(interval, cveInfo, log)
 
 	sch.SubmitGenerator(generator, interval, scheduler.HighPriority)
 }
 
-type trivyTaskGenerator struct {
+func NewTrivyTaskGenerator(interval time.Duration, cveInfo CveInfo, log log.Logger) *TrivyTaskGenerator {
+	generator := &TrivyTaskGenerator{interval, cveInfo, log, pending, 0, time.Now(), &sync.Mutex{}}
+
+	return generator
+}
+
+type TrivyTaskGenerator struct {
 	interval     time.Duration
 	cveInfo      CveInfo
 	log          log.Logger
@@ -86,7 +92,7 @@ type trivyTaskGenerator struct {
 	lock         *sync.Mutex
 }
 
-func (gen *trivyTaskGenerator) GenerateTask() (scheduler.Task, error) {
+func (gen *TrivyTaskGenerator) GenerateTask() (scheduler.Task, error) {
 	var newTask scheduler.Task
 
 	gen.lock.Lock()
@@ -100,7 +106,7 @@ func (gen *trivyTaskGenerator) GenerateTask() (scheduler.Task, error) {
 	return newTask, nil
 }
 
-func (gen *trivyTaskGenerator) IsDone() bool {
+func (gen *TrivyTaskGenerator) IsDone() bool {
 	gen.lock.Lock()
 	status := gen.status
 	gen.lock.Unlock()
@@ -108,7 +114,7 @@ func (gen *trivyTaskGenerator) IsDone() bool {
 	return status == done
 }
 
-func (gen *trivyTaskGenerator) Reset() {
+func (gen *TrivyTaskGenerator) Reset() {
 	gen.lock.Lock()
 	gen.status = pending
 	gen.waitTime = 0
@@ -118,12 +124,12 @@ func (gen *trivyTaskGenerator) Reset() {
 type trivyTask struct {
 	interval  time.Duration
 	cveInfo   cveinfo.CveInfo
-	generator *trivyTaskGenerator
+	generator *TrivyTaskGenerator
 	log       log.Logger
 }
 
 func newTrivyTask(interval time.Duration, cveInfo cveinfo.CveInfo,
-	generator *trivyTaskGenerator, log log.Logger,
+	generator *TrivyTaskGenerator, log log.Logger,
 ) *trivyTask {
 	return &trivyTask{interval, cveInfo, generator, log}
 }
@@ -135,7 +141,12 @@ func (trivyT *trivyTask) DoWork() error {
 	if err != nil {
 		trivyT.generator.lock.Lock()
 		trivyT.generator.status = pending
-		trivyT.generator.waitTime += time.Second
+
+		if trivyT.generator.waitTime == 0 {
+			trivyT.generator.waitTime = time.Second
+		}
+
+		trivyT.generator.waitTime *= 2
 		trivyT.generator.lastTaskTime = time.Now()
 		trivyT.generator.lock.Unlock()
 

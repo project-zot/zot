@@ -725,6 +725,39 @@ func TestReadLogFileAndSearchString(t *testing.T) {
 	})
 }
 
+func TestReadLogFileAndCountStringOccurence(t *testing.T) {
+	logFile, err := os.CreateTemp(t.TempDir(), "zot-log*.txt")
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = logFile.Write([]byte("line1\n line2\n line3 line1 line2\n line1"))
+	if err != nil {
+		panic(err)
+	}
+
+	logPath := logFile.Name()
+	defer os.Remove(logPath)
+
+	Convey("Invalid path", t, func() {
+		_, err = test.ReadLogFileAndCountStringOccurence("invalidPath",
+			"DB update completed, next update scheduled", 90*time.Second, 1)
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("Time too short", t, func() {
+		ok, err := test.ReadLogFileAndCountStringOccurence(logPath, "invalid string", time.Microsecond, 1)
+		So(err, ShouldBeNil)
+		So(ok, ShouldBeFalse)
+	})
+
+	Convey("Count occurrence working", t, func() {
+		ok, err := test.ReadLogFileAndCountStringOccurence(logPath, "line1", 90*time.Second, 3)
+		So(err, ShouldBeNil)
+		So(ok, ShouldBeTrue)
+	})
+}
+
 func TestInjectUploadImageWithBasicAuth(t *testing.T) {
 	Convey("Inject failures for unreachable lines", t, func() {
 		port := test.GetFreePort()
