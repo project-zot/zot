@@ -3150,7 +3150,7 @@ func TestGlobalSearchImageAuthor(t *testing.T) {
 				Repos {
 					Name LastUpdated Size
 					Platforms { Os Arch }
-					Vendors Score
+					Vendors
 					NewestImage {
 						RepoName Tag LastUpdated Size IsSigned
 						Authors
@@ -3213,7 +3213,7 @@ func TestGlobalSearchImageAuthor(t *testing.T) {
 				Repos {
 					Name LastUpdated Size
 					Platforms { Os Arch }
-					Vendors Score
+					Vendors
 					NewestImage {
 						RepoName Tag LastUpdated Size IsSigned
 						Authors
@@ -3427,7 +3427,7 @@ func TestGlobalSearch(t *testing.T) {
 					Repos {
 						Name LastUpdated Size
 						Platforms { Os Arch }
-						Vendors Score
+						Vendors
 						NewestImage {
 							RepoName Tag LastUpdated Size
 							Manifests{
@@ -3516,7 +3516,7 @@ func TestGlobalSearch(t *testing.T) {
 				Repos {
 					Name LastUpdated Size
 					Platforms { Os Arch }
-					Vendors Score
+					Vendors
 					NewestImage {
 						RepoName Tag LastUpdated Size
 						Manifests {
@@ -3753,7 +3753,7 @@ func TestGlobalSearch(t *testing.T) {
 					Repos {
 						Name LastUpdated Size
 						Platforms { Os Arch }
-						Vendors Score
+						Vendors
 						NewestImage {
 							RepoName Tag LastUpdated Size
 							Manifests {
@@ -3843,7 +3843,7 @@ func TestGlobalSearch(t *testing.T) {
 				Repos {
 					Name LastUpdated Size
 					Platforms { Os Arch }
-					Vendors Score
+					Vendors
 					NewestImage {
 						RepoName Tag LastUpdated Size
 						Manifests {

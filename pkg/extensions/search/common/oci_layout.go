@@ -482,7 +482,6 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(repoName string) (RepoInfo, er
 		manifestDigest := man.Digest.String()
 		configDigest := manifest.Config.Digest.String()
 		lastUpdated := GetImageLastUpdated(imageConfigInfo)
-		score := 0
 
 		imageSummary := ImageSummary{
 			RepoName: repoName,
@@ -501,7 +500,6 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(repoName string) (RepoInfo, er
 			LastUpdated:   lastUpdated,
 			IsSigned:      isSigned,
 			Size:          size,
-			Score:         score,
 			Description:   annotations.Description,
 			Title:         annotations.Title,
 			Documentation: annotations.Documentation,
@@ -546,7 +544,6 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(repoName string) (RepoInfo, er
 		Platforms:   repoPlatforms,
 		NewestImage: lastUpdatedImageSummary,
 		Vendors:     repoVendors,
-		Score:       -1,
 	}
 
 	repo.Summary = summary

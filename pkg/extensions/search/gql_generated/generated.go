@@ -90,7 +90,6 @@ type ComplexityRoot struct {
 		MediaType       func(childComplexity int) int
 		Referrers       func(childComplexity int) int
 		RepoName        func(childComplexity int) int
-		Score           func(childComplexity int) int
 		Size            func(childComplexity int) int
 		Source          func(childComplexity int) int
 		Tag             func(childComplexity int) int
@@ -111,7 +110,6 @@ type ComplexityRoot struct {
 
 	LayerSummary struct {
 		Digest func(childComplexity int) int
-		Score  func(childComplexity int) int
 		Size   func(childComplexity int) int
 	}
 
@@ -191,7 +189,6 @@ type ComplexityRoot struct {
 		Name          func(childComplexity int) int
 		NewestImage   func(childComplexity int) int
 		Platforms     func(childComplexity int) int
-		Score         func(childComplexity int) int
 		Size          func(childComplexity int) int
 		StarCount     func(childComplexity int) int
 		Vendors       func(childComplexity int) int
@@ -452,13 +449,6 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.ImageSummary.RepoName(childComplexity), true
 
-	case "ImageSummary.Score":
-		if e.complexity.ImageSummary.Score == nil {
-			break
-		}
-
-		return e.complexity.ImageSummary.Score(childComplexity), true
-
 	case "ImageSummary.Size":
 		if e.complexity.ImageSummary.Size == nil {
 			break
@@ -535,13 +525,6 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.LayerSummary.Digest(childComplexity), true
-
-	case "LayerSummary.Score":
-		if e.complexity.LayerSummary.Score == nil {
-			break
-		}
-
-		return e.complexity.LayerSummary.Score(childComplexity), true
 
 	case "LayerSummary.Size":
 		if e.complexity.LayerSummary.Size == nil {
@@ -946,13 +929,6 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.RepoSummary.Platforms(childComplexity), true
 
-	case "RepoSummary.Score":
-		if e.complexity.RepoSummary.Score == nil {
-			break
-		}
-
-		return e.complexity.RepoSummary.Score(childComplexity), true
-
 	case "RepoSummary.Size":
 		if e.complexity.RepoSummary.Size == nil {
 			break
@@ -1200,10 +1176,6 @@ type ImageSummary {
     """
     Title: String
     """
-    Integer used to rank search results by relevance
-    """
-    Score: Int
-    """
     URL to get source code for building the image
     """
     Source: String
@@ -1318,10 +1290,6 @@ type RepoSummary {
     """
     Vendors: [String]
     """
-    Integer used to rank search results by relevance
-    """
-    Score: Int
-    """
     Details of the newest image inside the repository
     NOTE: not the image with the ` + "`" + `latest` + "`" + ` tag, the one with the most recent created timestamp
     """
@@ -1356,10 +1324,6 @@ type LayerSummary {
     Digest of the layer content
     """
     Digest: String
-    """
-    Integer used to rank search results by relevance
-    """
-    Score: Int
 }
 
 """
@@ -2645,8 +2609,6 @@ func (ec *executionContext) fieldContext_GlobalSearchResult_Images(ctx context.C
 				return ec.fieldContext_ImageSummary_Labels(ctx, field)
 			case "Title":
 				return ec.fieldContext_ImageSummary_Title(ctx, field)
-			case "Score":
-				return ec.fieldContext_ImageSummary_Score(ctx, field)
 			case "Source":
 				return ec.fieldContext_ImageSummary_Source(ctx, field)
 			case "Documentation":
@@ -2712,8 +2674,6 @@ func (ec *executionContext) fieldContext_GlobalSearchResult_Repos(ctx context.Co
 				return ec.fieldContext_RepoSummary_Platforms(ctx, field)
 			case "Vendors":
 				return ec.fieldContext_RepoSummary_Vendors(ctx, field)
-			case "Score":
-				return ec.fieldContext_RepoSummary_Score(ctx, field)
 			case "NewestImage":
 				return ec.fieldContext_RepoSummary_NewestImage(ctx, field)
 			case "DownloadCount":
@@ -2771,8 +2731,6 @@ func (ec *executionContext) fieldContext_GlobalSearchResult_Layers(ctx context.C
 				return ec.fieldContext_LayerSummary_Size(ctx, field)
 			case "Digest":
 				return ec.fieldContext_LayerSummary_Digest(ctx, field)
-			case "Score":
-				return ec.fieldContext_LayerSummary_Score(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type LayerSummary", field.Name)
 		},
@@ -3542,47 +3500,6 @@ func (ec *executionContext) fieldContext_ImageSummary_Title(ctx context.Context,
 	return fc, nil
 }
 
-func (ec *executionContext) _ImageSummary_Score(ctx context.Context, field graphql.CollectedField, obj *ImageSummary) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_ImageSummary_Score(ctx, field)
-	if err != nil {
-		return graphql.Null
-	}
-	ctx = graphql.WithFieldContext(ctx, fc)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.Score, nil
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		return graphql.Null
-	}
-	res := resTmp.(*int)
-	fc.Result = res
-	return ec.marshalOInt2ᚖint(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) fieldContext_ImageSummary_Score(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "ImageSummary",
-		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type Int does not have child fields")
-		},
-	}
-	return fc, nil
-}
-
 func (ec *executionContext) _ImageSummary_Source(ctx context.Context, field graphql.CollectedField, obj *ImageSummary) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_ImageSummary_Source(ctx, field)
 	if err != nil {
@@ -3969,8 +3886,6 @@ func (ec *executionContext) fieldContext_LayerHistory_Layer(ctx context.Context,
 				return ec.fieldContext_LayerSummary_Size(ctx, field)
 			case "Digest":
 				return ec.fieldContext_LayerSummary_Digest(ctx, field)
-			case "Score":
-				return ec.fieldContext_LayerSummary_Score(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type LayerSummary", field.Name)
 		},
@@ -4108,47 +4023,6 @@ func (ec *executionContext) fieldContext_LayerSummary_Digest(ctx context.Context
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type String does not have child fields")
-		},
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _LayerSummary_Score(ctx context.Context, field graphql.CollectedField, obj *LayerSummary) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_LayerSummary_Score(ctx, field)
-	if err != nil {
-		return graphql.Null
-	}
-	ctx = graphql.WithFieldContext(ctx, fc)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.Score, nil
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		return graphql.Null
-	}
-	res := resTmp.(*int)
-	fc.Result = res
-	return ec.marshalOInt2ᚖint(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) fieldContext_LayerSummary_Score(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "LayerSummary",
-		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type Int does not have child fields")
 		},
 	}
 	return fc, nil
@@ -4487,8 +4361,6 @@ func (ec *executionContext) fieldContext_ManifestSummary_Layers(ctx context.Cont
 				return ec.fieldContext_LayerSummary_Size(ctx, field)
 			case "Digest":
 				return ec.fieldContext_LayerSummary_Digest(ctx, field)
-			case "Score":
-				return ec.fieldContext_LayerSummary_Score(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type LayerSummary", field.Name)
 		},
@@ -4966,8 +4838,6 @@ func (ec *executionContext) fieldContext_PaginatedImagesResult_Results(ctx conte
 				return ec.fieldContext_ImageSummary_Labels(ctx, field)
 			case "Title":
 				return ec.fieldContext_ImageSummary_Title(ctx, field)
-			case "Score":
-				return ec.fieldContext_ImageSummary_Score(ctx, field)
 			case "Source":
 				return ec.fieldContext_ImageSummary_Source(ctx, field)
 			case "Documentation":
@@ -5083,8 +4953,6 @@ func (ec *executionContext) fieldContext_PaginatedReposResult_Results(ctx contex
 				return ec.fieldContext_RepoSummary_Platforms(ctx, field)
 			case "Vendors":
 				return ec.fieldContext_RepoSummary_Vendors(ctx, field)
-			case "Score":
-				return ec.fieldContext_RepoSummary_Score(ctx, field)
 			case "NewestImage":
 				return ec.fieldContext_RepoSummary_NewestImage(ctx, field)
 			case "DownloadCount":
@@ -5854,8 +5722,6 @@ func (ec *executionContext) fieldContext_Query_Image(ctx context.Context, field 
 				return ec.fieldContext_ImageSummary_Labels(ctx, field)
 			case "Title":
 				return ec.fieldContext_ImageSummary_Title(ctx, field)
-			case "Score":
-				return ec.fieldContext_ImageSummary_Score(ctx, field)
 			case "Source":
 				return ec.fieldContext_ImageSummary_Source(ctx, field)
 			case "Documentation":
@@ -6355,8 +6221,6 @@ func (ec *executionContext) fieldContext_RepoInfo_Images(ctx context.Context, fi
 				return ec.fieldContext_ImageSummary_Labels(ctx, field)
 			case "Title":
 				return ec.fieldContext_ImageSummary_Title(ctx, field)
-			case "Score":
-				return ec.fieldContext_ImageSummary_Score(ctx, field)
 			case "Source":
 				return ec.fieldContext_ImageSummary_Source(ctx, field)
 			case "Documentation":
@@ -6422,8 +6286,6 @@ func (ec *executionContext) fieldContext_RepoInfo_Summary(ctx context.Context, f
 				return ec.fieldContext_RepoSummary_Platforms(ctx, field)
 			case "Vendors":
 				return ec.fieldContext_RepoSummary_Vendors(ctx, field)
-			case "Score":
-				return ec.fieldContext_RepoSummary_Score(ctx, field)
 			case "NewestImage":
 				return ec.fieldContext_RepoSummary_NewestImage(ctx, field)
 			case "DownloadCount":
@@ -6652,47 +6514,6 @@ func (ec *executionContext) fieldContext_RepoSummary_Vendors(ctx context.Context
 	return fc, nil
 }
 
-func (ec *executionContext) _RepoSummary_Score(ctx context.Context, field graphql.CollectedField, obj *RepoSummary) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_RepoSummary_Score(ctx, field)
-	if err != nil {
-		return graphql.Null
-	}
-	ctx = graphql.WithFieldContext(ctx, fc)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.Score, nil
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		return graphql.Null
-	}
-	res := resTmp.(*int)
-	fc.Result = res
-	return ec.marshalOInt2ᚖint(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) fieldContext_RepoSummary_Score(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "RepoSummary",
-		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type Int does not have child fields")
-		},
-	}
-	return fc, nil
-}
-
 func (ec *executionContext) _RepoSummary_NewestImage(ctx context.Context, field graphql.CollectedField, obj *RepoSummary) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_RepoSummary_NewestImage(ctx, field)
 	if err != nil {
@@ -6755,8 +6576,6 @@ func (ec *executionContext) fieldContext_RepoSummary_NewestImage(ctx context.Con
 				return ec.fieldContext_ImageSummary_Labels(ctx, field)
 			case "Title":
 				return ec.fieldContext_ImageSummary_Title(ctx, field)
-			case "Score":
-				return ec.fieldContext_ImageSummary_Score(ctx, field)
 			case "Source":
 				return ec.fieldContext_ImageSummary_Source(ctx, field)
 			case "Documentation":
@@ -9052,10 +8871,6 @@ func (ec *executionContext) _ImageSummary(ctx context.Context, sel ast.Selection
 
 			out.Values[i] = ec._ImageSummary_Title(ctx, field, obj)
 
-		case "Score":
-
-			out.Values[i] = ec._ImageSummary_Score(ctx, field, obj)
-
 		case "Source":
 
 			out.Values[i] = ec._ImageSummary_Source(ctx, field, obj)
@@ -9166,10 +8981,6 @@ func (ec *executionContext) _LayerSummary(ctx context.Context, sel ast.Selection
 		case "Digest":
 
 			out.Values[i] = ec._LayerSummary_Digest(ctx, field, obj)
-
-		case "Score":
-
-			out.Values[i] = ec._LayerSummary_Score(ctx, field, obj)
 
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
@@ -9788,10 +9599,6 @@ func (ec *executionContext) _RepoSummary(ctx context.Context, sel ast.SelectionS
 		case "Vendors":
 
 			out.Values[i] = ec._RepoSummary_Vendors(ctx, field, obj)
-
-		case "Score":
-
-			out.Values[i] = ec._RepoSummary_Score(ctx, field, obj)
 
 		case "NewestImage":
 

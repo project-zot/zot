@@ -829,7 +829,7 @@ func (dwr *DBWrapper) SearchRepos(ctx context.Context, searchText string, filter
 			continue
 		}
 
-		if score := common.ScoreRepoName(searchText, repoMeta.Name); score != -1 {
+		if rank := common.RankRepoName(searchText, repoMeta.Name); rank != -1 {
 			var (
 				// specific values used for sorting that need to be calculated based on all manifests from the repo
 				repoDownloads     = 0
@@ -935,7 +935,7 @@ func (dwr *DBWrapper) SearchRepos(ctx context.Context, searchText string, filter
 
 			pageFinder.Add(repodb.DetailedRepoMeta{
 				RepoMeta:   repoMeta,
-				Score:      score,
+				Rank:       rank,
 				Downloads:  repoDownloads,
 				UpdateTime: repoLastUpdated,
 			})

@@ -169,10 +169,6 @@ type ImageSummary {
     """
     Title: String
     """
-    Integer used to rank search results by relevance
-    """
-    Score: Int
-    """
     URL to get source code for building the image
     """
     Source: String
@@ -287,10 +283,6 @@ type RepoSummary {
     """
     Vendors: [String]
     """
-    Integer used to rank search results by relevance
-    """
-    Score: Int
-    """
     Details of the newest image inside the repository
     NOTE: not the image with the `latest` tag, the one with the most recent created timestamp
     """
@@ -325,10 +317,6 @@ type LayerSummary {
     Digest of the layer content
     """
     Digest: String
-    """
-    Integer used to rank search results by relevance
-    """
-    Score: Int
 }
 
 """
