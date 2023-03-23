@@ -21,7 +21,6 @@ import (
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	"zotregistry.io/zot/pkg/extensions/search/convert"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
-	digestinfo "zotregistry.io/zot/pkg/extensions/search/digest"
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/repodb"
@@ -38,7 +37,6 @@ type Resolver struct {
 	cveInfo         cveinfo.CveInfo
 	repoDB          repodb.RepoDB
 	storeController storage.StoreController
-	digestInfo      *digestinfo.DigestInfo
 	log             log.Logger
 }
 
@@ -46,13 +44,10 @@ type Resolver struct {
 func GetResolverConfig(log log.Logger, storeController storage.StoreController,
 	repoDB repodb.RepoDB, cveInfo cveinfo.CveInfo,
 ) gql_generated.Config {
-	digestInfo := digestinfo.NewDigestInfo(storeController, log)
-
 	resConfig := &Resolver{
 		cveInfo:         cveInfo,
 		repoDB:          repoDB,
 		storeController: storeController,
-		digestInfo:      digestInfo,
 		log:             log,
 	}
 
@@ -65,13 +60,10 @@ func GetResolverConfig(log log.Logger, storeController storage.StoreController,
 func NewResolver(log log.Logger, storeController storage.StoreController,
 	repoDB repodb.RepoDB, cveInfo cveinfo.CveInfo,
 ) *Resolver {
-	digestInfo := digestinfo.NewDigestInfo(storeController, log)
-
 	resolver := &Resolver{
 		cveInfo:         cveInfo,
 		repoDB:          repoDB,
 		storeController: storeController,
-		digestInfo:      digestInfo,
 		log:             log,
 	}
 
