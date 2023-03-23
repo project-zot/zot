@@ -64,4 +64,14 @@ function teardown_file() {
     [ $(echo "${lines[-1]}" | jq '.tags[]') = '"1.20"' ]
     run ${ZLI_PATH} cve ${REGISTRY_NAME} -I golang:1.20
     [ "$status" -eq 0 ]
+
+     found=0
+    for i in "${lines[@]}"
+    do
+
+        if [[ "$i" = *"CVE-2021-29921    CRITICAL  python-ipaddress: Improper input validation o..."* ]]; then
+            found=1
+        fi
+    done
+    [ "$found" -eq 1 ]
 }
