@@ -198,6 +198,18 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				So(err, ShouldBeNil)
 				So(repoMeta.Name, ShouldResemble, repo1)
 				So(repoMeta.Tags[tag1].Digest, ShouldEqual, manifestDigest1)
+
+				err = repoDB.SetRepoMeta(repo2, repodb.RepoMetadata{Tags: map[string]repodb.Descriptor{
+					tag2: {
+						Digest: manifestDigest2.String(),
+					},
+				}})
+				So(err, ShouldBeNil)
+
+				repoMeta, err = repoDB.GetRepoMeta(repo2)
+				So(err, ShouldBeNil)
+				So(repoMeta.Name, ShouldResemble, repo2)
+				So(repoMeta.Tags[tag2].Digest, ShouldEqual, manifestDigest2)
 			})
 
 			Convey("Setting a good repo using a digest", func() {
@@ -323,17 +335,6 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 				_, ok := repoMeta.Tags[tag1]
 				So(ok, ShouldBeFalse)
 				So(repoMeta.Tags[tag2].Digest, ShouldResemble, manifestDigest2.String())
-			})
-
-			Convey("Delete all tags from repo", func() {
-				err := repoDB.DeleteRepoTag(repo, tag1)
-				So(err, ShouldBeNil)
-				err = repoDB.DeleteRepoTag(repo, tag2)
-				So(err, ShouldBeNil)
-
-				repoMeta, err := repoDB.GetRepoMeta(repo)
-				So(err, ShouldNotBeNil)
-				So(repoMeta, ShouldBeZeroValue)
 			})
 
 			Convey("Delete inexistent tag from repo", func() {

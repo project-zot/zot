@@ -31,8 +31,8 @@ const repo = "repo"
 
 var ErrTestError = errors.New("test error")
 
-func TestLoadOCILayoutErrors(t *testing.T) {
-	Convey("LoadOCILayout", t, func() {
+func TestParseStorageErrors(t *testing.T) {
+	Convey("ParseStorag", t, func() {
 		imageStore := mocks.MockedImageStore{
 			GetIndexContentFn: func(repo string) ([]byte, error) {
 				return nil, ErrTestError
@@ -103,25 +103,6 @@ func TestLoadOCILayoutErrors(t *testing.T) {
 			Convey("repoDB.GetRepoMeta errors", func() {
 				repoDB.GetRepoMetaFn = func(repo string) (repodb.RepoMetadata, error) {
 					return repodb.RepoMetadata{}, ErrTestError
-				}
-
-				err := repodb.ParseRepo("repo", repoDB, storeController, log)
-				So(err, ShouldNotBeNil)
-			})
-
-			Convey("repoDB.DeleteRepoTag errors", func() {
-				repoDB.GetRepoMetaFn = func(repo string) (repodb.RepoMetadata, error) {
-					return repodb.RepoMetadata{
-						Tags: map[string]repodb.Descriptor{
-							"digest1": {
-								Digest:    "tag1",
-								MediaType: ispec.MediaTypeImageManifest,
-							},
-						},
-					}, nil
-				}
-				repoDB.DeleteRepoTagFn = func(repo, tag string) error {
-					return ErrTestError
 				}
 
 				err := repodb.ParseRepo("repo", repoDB, storeController, log)
@@ -282,10 +263,48 @@ func TestLoadOCILayoutErrors(t *testing.T) {
 	})
 }
 
-func TestLoadOCILayoutWithStorage(t *testing.T) {
+func TestParseStorageWithStorage(t *testing.T) {
 	Convey("Boltdb", t, func() {
 		rootDir := t.TempDir()
 
+		repoDB, err := bolt.NewBoltDBWrapper(bolt.DBParameters{
+			RootDir: rootDir,
+		})
+		So(err, ShouldBeNil)
+
+		RunParseStorageTests(rootDir, repoDB)
+	})
+}
+
+func TestParseStorageDynamoWrapper(t *testing.T) {
+	skipIt(t)
+
+	Convey("Dynamodb", t, func() {
+		rootDir := t.TempDir()
+
+		dynamoWrapper, err := dynamo.NewDynamoDBWrapper(dynamoParams.DBDriverParameters{
+			Endpoint:              os.Getenv("DYNAMODBMOCK_ENDPOINT"),
+			Region:                "us-east-2",
+			RepoMetaTablename:     "RepoMetadataTable",
+			ManifestDataTablename: "ManifestDataTable",
+			IndexDataTablename:    "IndexDataTable",
+			ArtifactDataTablename: "ArtifactDataTable",
+			VersionTablename:      "Version",
+		})
+		So(err, ShouldBeNil)
+
+		err = dynamoWrapper.ResetManifestDataTable()
+		So(err, ShouldBeNil)
+
+		err = dynamoWrapper.ResetRepoMetaTable()
+		So(err, ShouldBeNil)
+
+		RunParseStorageTests(rootDir, dynamoWrapper)
+	})
+}
+
+func RunParseStorageTests(rootDir string, repoDB repodb.RepoDB) {
+	Convey("test", func() {
 		imageStore := local.NewImageStore(rootDir, false, 0, false, false,
 			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil)
 
@@ -353,11 +372,6 @@ func TestLoadOCILayoutWithStorage(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		err = os.WriteFile(indexPath, buf, 0o600)
-		So(err, ShouldBeNil)
-
-		repoDB, err := bolt.NewBoltDBWrapper(bolt.DBParameters{
-			RootDir: rootDir,
-		})
 		So(err, ShouldBeNil)
 
 		err = repodb.ParseStorage(repoDB, storeController, log.NewLogger("debug", ""))
@@ -380,199 +394,12 @@ func TestLoadOCILayoutWithStorage(t *testing.T) {
 			So(manifestMeta.ConfigBlob, ShouldNotBeNil)
 
 			if descriptor.Digest == signedManifestDigest.String() {
-				So(repos[0].Signatures[descriptor.Digest], ShouldNotBeEmpty)
-				So(manifestMeta.Signatures["cosign"], ShouldNotBeEmpty)
-			}
-		}
-	})
-
-	Convey("Ignore orphan signatures", t, func() {
-		rootDir := t.TempDir()
-
-		imageStore := local.NewImageStore(rootDir, false, 0, false, false,
-			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil)
-
-		storeController := storage.StoreController{DefaultStore: imageStore}
-		// add an image
-		config, layers, manifest, err := test.GetRandomImageComponents(100)
-		So(err, ShouldBeNil)
-
-		err = test.WriteImageToFileSystem(
-			test.Image{
-				Config:    config,
-				Layers:    layers,
-				Manifest:  manifest,
-				Reference: "tag1",
-			},
-			repo,
-			storeController)
-		So(err, ShouldBeNil)
-
-		// add mock cosign signature without pushing the signed image
-		_, _, manifest, err = test.GetRandomImageComponents(100)
-		So(err, ShouldBeNil)
-
-		signatureTag, err := test.GetCosignSignatureTagForManifest(manifest)
-		So(err, ShouldBeNil)
-
-		// get the body of the signature
-		config, layers, manifest, err = test.GetRandomImageComponents(100)
-		So(err, ShouldBeNil)
-
-		err = test.WriteImageToFileSystem(
-			test.Image{
-				Config:    config,
-				Layers:    layers,
-				Manifest:  manifest,
-				Reference: signatureTag,
-			},
-			repo,
-			storeController)
-		So(err, ShouldBeNil)
-
-		// test that we have only 1 image inside the repo
-		repoDB, err := bolt.NewBoltDBWrapper(bolt.DBParameters{
-			RootDir: rootDir,
-		})
-		So(err, ShouldBeNil)
-
-		err = repodb.ParseStorage(repoDB, storeController, log.NewLogger("debug", ""))
-		So(err, ShouldBeNil)
-
-		repos, err := repoDB.GetMultipleRepoMeta(
-			context.Background(),
-			func(repoMeta repodb.RepoMetadata) bool { return true },
-			repodb.PageInput{},
-		)
-		So(err, ShouldBeNil)
-
-		So(len(repos), ShouldEqual, 1)
-		So(repos[0].Tags, ShouldContainKey, "tag1")
-		So(repos[0].Tags, ShouldNotContainKey, signatureTag)
-	})
-}
-
-func TestLoadOCILayoutDynamoWrapper(t *testing.T) {
-	skipIt(t)
-
-	Convey("Dynamodb", t, func() {
-		rootDir := t.TempDir()
-
-		imageStore := local.NewImageStore(rootDir, false, 0, false, false,
-			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil)
-
-		storeController := storage.StoreController{DefaultStore: imageStore}
-		manifests := []ispec.Manifest{}
-		for i := 0; i < 3; i++ {
-			config, layers, manifest, err := test.GetRandomImageComponents(100)
-			So(err, ShouldBeNil)
-
-			manifests = append(manifests, manifest)
-
-			err = test.WriteImageToFileSystem(
-				test.Image{
-					Config:    config,
-					Layers:    layers,
-					Manifest:  manifest,
-					Reference: fmt.Sprintf("tag%d", i),
-				},
-				repo,
-				storeController)
-			So(err, ShouldBeNil)
-		}
-
-		// add fake signature for tag1
-		signatureTag, err := test.GetCosignSignatureTagForManifest(manifests[1])
-		So(err, ShouldBeNil)
-
-		manifestBlob, err := json.Marshal(manifests[1])
-		So(err, ShouldBeNil)
-
-		signedManifestDigest := godigest.FromBytes(manifestBlob)
-
-		config, layers, manifest, err := test.GetRandomImageComponents(100)
-		So(err, ShouldBeNil)
-
-		err = test.WriteImageToFileSystem(
-			test.Image{
-				Config:    config,
-				Layers:    layers,
-				Manifest:  manifest,
-				Reference: signatureTag,
-			},
-			repo,
-			storeController)
-		So(err, ShouldBeNil)
-
-		// remove tag2 from index.json
-		indexPath := path.Join(rootDir, repo, "index.json")
-		indexFile, err := os.Open(indexPath)
-		So(err, ShouldBeNil)
-		buf, err := io.ReadAll(indexFile)
-		So(err, ShouldBeNil)
-
-		var index ispec.Index
-		if err = json.Unmarshal(buf, &index); err == nil {
-			for _, manifest := range index.Manifests {
-				if val, ok := manifest.Annotations[ispec.AnnotationRefName]; ok && val == "tag2" {
-					delete(manifest.Annotations, ispec.AnnotationRefName)
-
-					break
-				}
-			}
-		}
-		buf, err = json.Marshal(index)
-		So(err, ShouldBeNil)
-
-		err = os.WriteFile(indexPath, buf, 0o600)
-		So(err, ShouldBeNil)
-
-		dynamoWrapper, err := dynamo.NewDynamoDBWrapper(dynamoParams.DBDriverParameters{
-			Endpoint:              os.Getenv("DYNAMODBMOCK_ENDPOINT"),
-			Region:                "us-east-2",
-			RepoMetaTablename:     "RepoMetadataTable",
-			ManifestDataTablename: "ManifestDataTable",
-			IndexDataTablename:    "IndexDataTable",
-			ArtifactDataTablename: "ArtifactDataTable",
-			VersionTablename:      "Version",
-		})
-		So(err, ShouldBeNil)
-
-		err = dynamoWrapper.ResetManifestDataTable()
-		So(err, ShouldBeNil)
-
-		err = dynamoWrapper.ResetRepoMetaTable()
-		So(err, ShouldBeNil)
-
-		err = repodb.ParseStorage(dynamoWrapper, storeController, log.NewLogger("debug", ""))
-		So(err, ShouldBeNil)
-
-		repos, err := dynamoWrapper.GetMultipleRepoMeta(
-			context.Background(),
-			func(repoMeta repodb.RepoMetadata) bool { return true },
-			repodb.PageInput{},
-		)
-		t.Logf("%#v", repos)
-		So(err, ShouldBeNil)
-
-		So(len(repos), ShouldEqual, 1)
-		So(len(repos[0].Tags), ShouldEqual, 2)
-
-		for _, descriptor := range repos[0].Tags {
-			manifestMeta, err := dynamoWrapper.GetManifestMeta(repo, godigest.Digest(descriptor.Digest))
-			So(err, ShouldBeNil)
-			So(manifestMeta.ManifestBlob, ShouldNotBeNil)
-			So(manifestMeta.ConfigBlob, ShouldNotBeNil)
-
-			if descriptor.Digest == signedManifestDigest.String() {
 				So(manifestMeta.Signatures, ShouldNotBeEmpty)
 			}
 		}
 	})
 
-	Convey("Ignore orphan signatures", t, func() {
-		rootDir := t.TempDir()
-
+	Convey("Ignore orphan signatures", func() {
 		imageStore := local.NewImageStore(rootDir, false, 0, false, false,
 			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil)
 
@@ -614,18 +441,6 @@ func TestLoadOCILayoutDynamoWrapper(t *testing.T) {
 			storeController)
 		So(err, ShouldBeNil)
 
-		// test that we have only 1 image inside the repo
-		repoDB, err := dynamo.NewDynamoDBWrapper(dynamoParams.DBDriverParameters{
-			Endpoint:              os.Getenv("DYNAMODBMOCK_ENDPOINT"),
-			Region:                "us-east-2",
-			RepoMetaTablename:     "RepoMetadataTable",
-			ManifestDataTablename: "ManifestDataTable",
-			ArtifactDataTablename: "ArtifactDataTable",
-			IndexDataTablename:    "IndexDataTable",
-			VersionTablename:      "Version",
-		})
-		So(err, ShouldBeNil)
-
 		err = repodb.ParseStorage(repoDB, storeController, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
 
@@ -635,11 +450,56 @@ func TestLoadOCILayoutDynamoWrapper(t *testing.T) {
 			repodb.PageInput{},
 		)
 		So(err, ShouldBeNil)
-		t.Logf("%#v", repos)
 
 		So(len(repos), ShouldEqual, 1)
 		So(repos[0].Tags, ShouldContainKey, "tag1")
 		So(repos[0].Tags, ShouldNotContainKey, signatureTag)
+	})
+
+	Convey("Check statistics after load", func() {
+		imageStore := local.NewImageStore(rootDir, false, 0, false, false,
+			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil)
+
+		storeController := storage.StoreController{DefaultStore: imageStore}
+		// add an image
+		image, err := test.GetRandomImage("tag")
+		So(err, ShouldBeNil)
+
+		manifestDigest, err := image.Digest()
+		So(err, ShouldBeNil)
+
+		err = test.WriteImageToFileSystem(
+			image,
+			repo,
+			storeController)
+		So(err, ShouldBeNil)
+
+		err = repoDB.SetRepoReference(repo, "tag", manifestDigest, ispec.MediaTypeImageManifest)
+		So(err, ShouldBeNil)
+
+		err = repoDB.IncrementRepoStars(repo)
+		So(err, ShouldBeNil)
+		err = repoDB.IncrementImageDownloads(repo, "tag")
+		So(err, ShouldBeNil)
+		err = repoDB.IncrementImageDownloads(repo, "tag")
+		So(err, ShouldBeNil)
+		err = repoDB.IncrementImageDownloads(repo, "tag")
+		So(err, ShouldBeNil)
+
+		repoMeta, err := repoDB.GetRepoMeta(repo)
+		So(err, ShouldBeNil)
+
+		So(repoMeta.Statistics[manifestDigest.String()].DownloadCount, ShouldEqual, 3)
+		So(repoMeta.Stars, ShouldEqual, 1)
+
+		err = repodb.ParseStorage(repoDB, storeController, log.NewLogger("debug", ""))
+		So(err, ShouldBeNil)
+
+		repoMeta, err = repoDB.GetRepoMeta(repo)
+		So(err, ShouldBeNil)
+
+		So(repoMeta.Statistics[manifestDigest.String()].DownloadCount, ShouldEqual, 3)
+		So(repoMeta.Stars, ShouldEqual, 1)
 	})
 }
 

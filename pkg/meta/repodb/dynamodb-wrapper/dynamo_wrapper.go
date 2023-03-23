@@ -182,7 +182,7 @@ func (dwr *DBWrapper) SetManifestMeta(repo string, manifestDigest godigest.Diges
 
 	updatedRepoMeta := common.UpdateManifestMeta(repoMeta, manifestDigest, manifestMeta)
 
-	err = dwr.setRepoMeta(repo, updatedRepoMeta)
+	err = dwr.SetRepoMeta(repo, updatedRepoMeta)
 	if err != nil {
 		return err
 	}
@@ -235,7 +235,7 @@ func (dwr *DBWrapper) IncrementRepoStars(repo string) error {
 
 	repoMeta.Stars++
 
-	err = dwr.setRepoMeta(repo, repoMeta)
+	err = dwr.SetRepoMeta(repo, repoMeta)
 
 	return err
 }
@@ -250,7 +250,7 @@ func (dwr *DBWrapper) DecrementRepoStars(repo string) error {
 		repoMeta.Stars--
 	}
 
-	err = dwr.setRepoMeta(repo, repoMeta)
+	err = dwr.SetRepoMeta(repo, repoMeta)
 
 	return err
 }
@@ -406,7 +406,7 @@ func (dwr DBWrapper) SetReferrer(repo string, referredDigest godigest.Digest, re
 
 	repoMeta.Referrers[referredDigest.String()] = refferers
 
-	return dwr.setRepoMeta(repo, repoMeta)
+	return dwr.SetRepoMeta(repo, repoMeta)
 }
 
 func (dwr DBWrapper) GetReferrers(repo string, referredDigest godigest.Digest) ([]repodb.ReferrerInfo, error) {
@@ -478,7 +478,7 @@ func (dwr DBWrapper) DeleteReferrer(repo string, referredDigest godigest.Digest,
 
 	repoMeta.Referrers[referredDigest.String()] = referrers
 
-	return dwr.setRepoMeta(repo, repoMeta)
+	return dwr.SetRepoMeta(repo, repoMeta)
 }
 
 func (dwr DBWrapper) GetReferrersInfo(repo string, referredDigest godigest.Digest,
@@ -541,11 +541,19 @@ func (dwr *DBWrapper) SetRepoReference(repo string, reference string, manifestDi
 		}
 	}
 
-	repoMeta.Statistics[manifestDigest.String()] = repodb.DescriptorStatistics{DownloadCount: 0}
-	repoMeta.Signatures[manifestDigest.String()] = repodb.ManifestSignatures{}
-	repoMeta.Referrers[manifestDigest.String()] = []repodb.ReferrerInfo{}
+	if _, ok := repoMeta.Statistics[manifestDigest.String()]; !ok {
+		repoMeta.Statistics[manifestDigest.String()] = repodb.DescriptorStatistics{DownloadCount: 0}
+	}
 
-	err = dwr.setRepoMeta(repo, repoMeta)
+	if _, ok := repoMeta.Signatures[manifestDigest.String()]; !ok {
+		repoMeta.Signatures[manifestDigest.String()] = repodb.ManifestSignatures{}
+	}
+
+	if _, ok := repoMeta.Referrers[manifestDigest.String()]; !ok {
+		repoMeta.Referrers[manifestDigest.String()] = []repodb.ReferrerInfo{}
+	}
+
+	err = dwr.SetRepoMeta(repo, repoMeta)
 
 	return err
 }
@@ -573,17 +581,6 @@ func (dwr *DBWrapper) DeleteRepoTag(repo string, tag string) error {
 	}
 
 	delete(repoMeta.Tags, tag)
-
-	if len(repoMeta.Tags) == 0 {
-		_, err := dwr.Client.DeleteItem(context.Background(), &dynamodb.DeleteItemInput{
-			TableName: aws.String(dwr.RepoMetaTablename),
-			Key: map[string]types.AttributeValue{
-				"RepoName": &types.AttributeValueMemberS{Value: repo},
-			},
-		})
-
-		return err
-	}
 
 	repoAttributeValue, err := attributevalue.Marshal(repoMeta)
 	if err != nil {
@@ -657,7 +654,7 @@ func (dwr *DBWrapper) IncrementImageDownloads(repo string, reference string) err
 	manifestStatistics.DownloadCount++
 	repoMeta.Statistics[descriptorDigest] = manifestStatistics
 
-	return dwr.setRepoMeta(repo, repoMeta)
+	return dwr.SetRepoMeta(repo, repoMeta)
 }
 
 func (dwr *DBWrapper) AddManifestSignature(repo string, signedManifestDigest godigest.Digest,
@@ -696,7 +693,7 @@ func (dwr *DBWrapper) AddManifestSignature(repo string, signedManifestDigest god
 
 	repoMeta.Signatures[signedManifestDigest.String()] = manifestSignatures
 
-	err = dwr.setRepoMeta(repoMeta.Name, repoMeta)
+	err = dwr.SetRepoMeta(repoMeta.Name, repoMeta)
 
 	return err
 }
@@ -734,7 +731,7 @@ func (dwr *DBWrapper) DeleteSignature(repo string, signedManifestDigest godigest
 
 	repoMeta.Signatures[signedManifestDigest.String()] = manifestSignatures
 
-	err = dwr.setRepoMeta(repoMeta.Name, repoMeta)
+	err = dwr.SetRepoMeta(repoMeta.Name, repoMeta)
 
 	return err
 }
@@ -1453,7 +1450,9 @@ func (dwr *DBWrapper) PatchDB() error {
 	return nil
 }
 
-func (dwr *DBWrapper) setRepoMeta(repo string, repoMeta repodb.RepoMetadata) error {
+func (dwr *DBWrapper) SetRepoMeta(repo string, repoMeta repodb.RepoMetadata) error {
+	repoMeta.Name = repo
+
 	repoAttributeValue, err := attributevalue.Marshal(repoMeta)
 	if err != nil {
 		return err
