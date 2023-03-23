@@ -319,7 +319,7 @@ func TestImageFormat(t *testing.T) {
 		boltDriver, err := bolt.GetBoltDriver(params)
 		So(err, ShouldBeNil)
 
-		repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver)
+		repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver, log)
 		So(err, ShouldBeNil)
 
 		err = repodb.ParseStorage(repoDB, storeController, log)
@@ -727,7 +727,7 @@ func TestCVEStruct(t *testing.T) {
 		boltDriver, err := bolt.GetBoltDriver(params)
 		So(err, ShouldBeNil)
 
-		repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver)
+		repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
 
 		// Create repodb data for scannable image with vulnerabilities

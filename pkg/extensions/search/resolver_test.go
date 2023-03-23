@@ -1902,7 +1902,9 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 		panic(err)
 	}
 
-	repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver)
+	log := log.NewLogger("debug", "")
+
+	repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver, log)
 	if err != nil {
 		panic(err)
 	}
@@ -2132,8 +2134,6 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 			return severities[severity2] - severities[severity1]
 		},
 	}
-
-	log := log.NewLogger("debug", "")
 
 	cveInfo := &cveinfo.BaseCveInfo{
 		Log:     log,

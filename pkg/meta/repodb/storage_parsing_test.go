@@ -273,7 +273,7 @@ func TestParseStorageWithStorage(t *testing.T) {
 		})
 		So(err, ShouldBeNil)
 
-		repoDB, err := bolt_wrapper.NewBoltDBWrapper(boltDB)
+		repoDB, err := bolt_wrapper.NewBoltDBWrapper(boltDB, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
 
 		RunParseStorageTests(rootDir, repoDB)
@@ -299,7 +299,7 @@ func TestParseStorageDynamoWrapper(t *testing.T) {
 		dynamoClient, err := dynamo.GetDynamoClient(params)
 		So(err, ShouldBeNil)
 
-		dynamoWrapper, err := dynamo_wrapper.NewDynamoDBWrapper(dynamoClient, params)
+		dynamoWrapper, err := dynamo_wrapper.NewDynamoDBWrapper(dynamoClient, params, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
 
 		err = dynamoWrapper.ResetManifestDataTable()

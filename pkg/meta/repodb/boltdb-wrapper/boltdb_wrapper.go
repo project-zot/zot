@@ -4,21 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/rs/zerolog"
 	"go.etcd.io/bbolt"
 
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/bolt"
+	"zotregistry.io/zot/pkg/meta/common"
 	"zotregistry.io/zot/pkg/meta/repodb"
-	"zotregistry.io/zot/pkg/meta/repodb/common"
-	"zotregistry.io/zot/pkg/meta/repodb/version"
+	"zotregistry.io/zot/pkg/meta/version"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 )
 
@@ -28,7 +26,7 @@ type DBWrapper struct {
 	Log     log.Logger
 }
 
-func NewBoltDBWrapper(boltDB *bbolt.DB) (*DBWrapper, error) {
+func NewBoltDBWrapper(boltDB *bbolt.DB, log log.Logger) (*DBWrapper, error) {
 	err := boltDB.Update(func(transaction *bbolt.Tx) error {
 		versionBuck, err := transaction.CreateBucketIfNotExists([]byte(bolt.VersionBucket))
 		if err != nil {
@@ -69,7 +67,7 @@ func NewBoltDBWrapper(boltDB *bbolt.DB) (*DBWrapper, error) {
 	return &DBWrapper{
 		DB:      boltDB,
 		Patches: version.GetBoltDBPatches(),
-		Log:     log.Logger{Logger: zerolog.New(os.Stdout)},
+		Log:     log,
 	}, nil
 }
 

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -15,14 +14,13 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/rs/zerolog"
 
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta/common"
 	"zotregistry.io/zot/pkg/meta/dynamo"
 	"zotregistry.io/zot/pkg/meta/repodb" //nolint:go-staticcheck
-	"zotregistry.io/zot/pkg/meta/repodb/common"
-	"zotregistry.io/zot/pkg/meta/repodb/version"
+	"zotregistry.io/zot/pkg/meta/version"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 )
 
@@ -39,7 +37,7 @@ type DBWrapper struct {
 	Log                   log.Logger
 }
 
-func NewDynamoDBWrapper(client *dynamodb.Client, params dynamo.DBDriverParameters) (*DBWrapper, error) {
+func NewDynamoDBWrapper(client *dynamodb.Client, params dynamo.DBDriverParameters, log log.Logger) (*DBWrapper, error) {
 	dynamoWrapper := DBWrapper{
 		Client:                client,
 		RepoMetaTablename:     params.RepoMetaTablename,
@@ -48,7 +46,7 @@ func NewDynamoDBWrapper(client *dynamodb.Client, params dynamo.DBDriverParameter
 		ArtifactDataTablename: params.ArtifactDataTablename,
 		VersionTablename:      params.VersionTablename,
 		Patches:               version.GetDynamoDBPatches(),
-		Log:                   log.Logger{Logger: zerolog.New(os.Stdout)},
+		Log:                   log,
 	}
 
 	err := dynamoWrapper.createVersionTable()

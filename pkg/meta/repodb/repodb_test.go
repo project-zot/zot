@@ -18,11 +18,12 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 
+	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/bolt"
+	"zotregistry.io/zot/pkg/meta/common"
 	"zotregistry.io/zot/pkg/meta/dynamo"
 	"zotregistry.io/zot/pkg/meta/repodb"
 	boltdb_wrapper "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
-	"zotregistry.io/zot/pkg/meta/repodb/common"
 	dynamodb_wrapper "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/test"
@@ -40,7 +41,9 @@ func TestBoltDBWrapper(t *testing.T) {
 		boltDriver, err := bolt.GetBoltDriver(boltDBParams)
 		So(err, ShouldBeNil)
 
-		repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver)
+		log := log.NewLogger("debug", "")
+
+		repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver, log)
 		So(repoDB, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
@@ -61,7 +64,9 @@ func TestBoltDBWrapper(t *testing.T) {
 		boltDriver, err := bolt.GetBoltDriver(boltDBParams)
 		So(err, ShouldBeNil)
 
-		boltdbWrapper, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver)
+		log := log.NewLogger("debug", "")
+
+		boltdbWrapper, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver, log)
 		defer os.Remove("repo.db")
 		So(boltdbWrapper, ShouldNotBeNil)
 		So(err, ShouldBeNil)
@@ -98,7 +103,9 @@ func TestDynamoDBWrapper(t *testing.T) {
 		dynamoClient, err := dynamo.GetDynamoClient(dynamoDBDriverParams)
 		So(err, ShouldBeNil)
 
-		dynamoDriver, err := dynamodb_wrapper.NewDynamoDBWrapper(dynamoClient, dynamoDBDriverParams)
+		log := log.NewLogger("debug", "")
+
+		dynamoDriver, err := dynamodb_wrapper.NewDynamoDBWrapper(dynamoClient, dynamoDBDriverParams, log)
 		So(dynamoDriver, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
@@ -1997,7 +2004,9 @@ func TestRelevanceSorting(t *testing.T) {
 			boltDriver, err := bolt.GetBoltDriver(boltDBParams)
 			So(err, ShouldBeNil)
 
-			repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver)
+			log := log.NewLogger("debug", "")
+
+			repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver, log)
 			So(repoDB, ShouldNotBeNil)
 			So(err, ShouldBeNil)
 

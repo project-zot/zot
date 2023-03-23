@@ -11,6 +11,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"go.etcd.io/bbolt"
 
+	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/bolt"
 	"zotregistry.io/zot/pkg/meta/repodb"
 	boltdb_wrapper "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
@@ -25,7 +26,9 @@ func TestWrapperErrors(t *testing.T) {
 		boltDriver, err := bolt.GetBoltDriver(boltDBParams)
 		So(err, ShouldBeNil)
 
-		boltdbWrapper, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver)
+		log := log.NewLogger("debug", "")
+
+		boltdbWrapper, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver, log)
 		defer os.Remove("repo.db")
 		So(boltdbWrapper, ShouldNotBeNil)
 		So(err, ShouldBeNil)

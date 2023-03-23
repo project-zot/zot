@@ -90,7 +90,7 @@ func TestMultipleStoragePath(t *testing.T) {
 		boltDriver, err := bolt.GetBoltDriver(params)
 		So(err, ShouldBeNil)
 
-		repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver)
+		repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver, log)
 		So(err, ShouldBeNil)
 
 		err = repodb.ParseStorage(repoDB, storeController, log)
@@ -185,7 +185,7 @@ func TestTrivyLibraryErrors(t *testing.T) {
 		boltDriver, err := bolt.GetBoltDriver(params)
 		So(err, ShouldBeNil)
 
-		repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver)
+		repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver, log)
 		So(err, ShouldBeNil)
 
 		err = repodb.ParseStorage(repoDB, storeController, log)
@@ -236,7 +236,9 @@ func TestImageScannable(t *testing.T) {
 		panic(err)
 	}
 
-	repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver)
+	log := log.NewLogger("debug", "")
+
+	repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver, log)
 	if err != nil {
 		panic(err)
 	}
@@ -366,7 +368,6 @@ func TestImageScannable(t *testing.T) {
 	}
 
 	// Continue with initializing the objects the scanner depends on
-	log := log.NewLogger("debug", "")
 	metrics := monitoring.NewMetricsServer(false, log)
 
 	store := local.NewImageStore(rootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil, nil)
@@ -443,7 +444,7 @@ func TestDefaultTrivyDBUrl(t *testing.T) {
 		boltDriver, err := bolt.GetBoltDriver(params)
 		So(err, ShouldBeNil)
 
-		repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver)
+		repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver, log)
 		So(err, ShouldBeNil)
 
 		err = repodb.ParseStorage(repoDB, storeController, log)

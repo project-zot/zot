@@ -35,7 +35,7 @@ import (
 	ext "zotregistry.io/zot/pkg/extensions"
 	"zotregistry.io/zot/pkg/extensions/sync"
 	"zotregistry.io/zot/pkg/log"
-	repoDBUpdate "zotregistry.io/zot/pkg/meta/repodb/update"
+	"zotregistry.io/zot/pkg/meta"
 	zreg "zotregistry.io/zot/pkg/regexp"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/storage"
@@ -406,7 +406,7 @@ func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.
 	}
 
 	if rh.c.RepoDB != nil {
-		err := repoDBUpdate.OnGetManifest(name, reference, digest, content, rh.c.StoreController, rh.c.RepoDB, rh.c.Log)
+		err := meta.OnGetManifest(name, reference, digest, content, rh.c.StoreController, rh.c.RepoDB, rh.c.Log)
 
 		if errors.Is(err, zerr.ErrOrphanSignature) {
 			rh.c.Log.Error().Err(err).Msgf("image is an orphan signature")
@@ -606,7 +606,7 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 	}
 
 	if rh.c.RepoDB != nil {
-		err := repoDBUpdate.OnUpdateManifest(name, reference, mediaType, digest, body, rh.c.StoreController, rh.c.RepoDB,
+		err := meta.OnUpdateManifest(name, reference, mediaType, digest, body, rh.c.StoreController, rh.c.RepoDB,
 			rh.c.Log)
 		if errors.Is(err, zerr.ErrOrphanSignature) {
 			rh.c.Log.Error().Err(err).Msgf("pushed image is an orphan signature")
@@ -705,7 +705,7 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 	}
 
 	if rh.c.RepoDB != nil {
-		err := repoDBUpdate.OnDeleteManifest(name, reference, mediaType, manifestDigest, manifestBlob,
+		err := meta.OnDeleteManifest(name, reference, mediaType, manifestDigest, manifestBlob,
 			rh.c.StoreController, rh.c.RepoDB, rh.c.Log)
 		if errors.Is(err, zerr.ErrOrphanSignature) {
 			rh.c.Log.Error().Err(err).Msgf("pushed image is an orphan signature")

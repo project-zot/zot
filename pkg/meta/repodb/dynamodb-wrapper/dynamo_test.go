@@ -43,6 +43,8 @@ func TestIterator(t *testing.T) {
 	indexDataTablename := "IndexDataTable" + uuid.String()
 	artifactDataTablename := "ArtifactDataTable" + uuid.String()
 
+	log := log.NewLogger("debug", "")
+
 	Convey("TestIterator", t, func() {
 		params := dynamo.DBDriverParameters{
 			Endpoint:              endpoint,
@@ -56,7 +58,7 @@ func TestIterator(t *testing.T) {
 		client, err := dynamo.GetDynamoClient(params)
 		So(err, ShouldBeNil)
 
-		dynamoWrapper, err := dynamoWrapper.NewDynamoDBWrapper(client, params)
+		dynamoWrapper, err := dynamoWrapper.NewDynamoDBWrapper(client, params, log)
 		So(err, ShouldBeNil)
 
 		So(dynamoWrapper.ResetManifestDataTable(), ShouldBeNil)
@@ -76,7 +78,7 @@ func TestIterator(t *testing.T) {
 			repoMetaTablename,
 			"RepoMetadata",
 			1,
-			log.Logger{Logger: zerolog.New(os.Stdout)},
+			log,
 		)
 
 		attribute, err := repoMetaAttributeIterator.First(context.Background())
@@ -144,6 +146,8 @@ func TestWrapperErrors(t *testing.T) {
 
 	ctx := context.Background()
 
+	log := log.NewLogger("debug", "")
+
 	Convey("Errors", t, func() {
 		params := dynamo.DBDriverParameters{ //nolint:contextcheck
 			Endpoint:              endpoint,
@@ -157,7 +161,7 @@ func TestWrapperErrors(t *testing.T) {
 		client, err := dynamo.GetDynamoClient(params) //nolint:contextcheck
 		So(err, ShouldBeNil)
 
-		dynamoWrapper, err := dynamoWrapper.NewDynamoDBWrapper(client, params) //nolint:contextcheck
+		dynamoWrapper, err := dynamoWrapper.NewDynamoDBWrapper(client, params, log) //nolint:contextcheck
 		So(err, ShouldBeNil)
 
 		So(dynamoWrapper.ResetManifestDataTable(), ShouldBeNil) //nolint:contextcheck
@@ -815,7 +819,7 @@ func TestWrapperErrors(t *testing.T) {
 		client, err := dynamo.GetDynamoClient(params)
 		So(err, ShouldBeNil)
 
-		_, err = dynamoWrapper.NewDynamoDBWrapper(client, params)
+		_, err = dynamoWrapper.NewDynamoDBWrapper(client, params, log)
 		So(err, ShouldNotBeNil)
 
 		params = dynamo.DBDriverParameters{ //nolint:contextcheck
@@ -830,7 +834,7 @@ func TestWrapperErrors(t *testing.T) {
 		client, err = dynamo.GetDynamoClient(params)
 		So(err, ShouldBeNil)
 
-		_, err = dynamoWrapper.NewDynamoDBWrapper(client, params)
+		_, err = dynamoWrapper.NewDynamoDBWrapper(client, params, log)
 		So(err, ShouldNotBeNil)
 
 		params = dynamo.DBDriverParameters{ //nolint:contextcheck
@@ -845,7 +849,7 @@ func TestWrapperErrors(t *testing.T) {
 		client, err = dynamo.GetDynamoClient(params)
 		So(err, ShouldBeNil)
 
-		_, err = dynamoWrapper.NewDynamoDBWrapper(client, params)
+		_, err = dynamoWrapper.NewDynamoDBWrapper(client, params, log)
 		So(err, ShouldNotBeNil)
 
 		params = dynamo.DBDriverParameters{ //nolint:contextcheck
@@ -860,7 +864,7 @@ func TestWrapperErrors(t *testing.T) {
 		client, err = dynamo.GetDynamoClient(params)
 		So(err, ShouldBeNil)
 
-		_, err = dynamoWrapper.NewDynamoDBWrapper(client, params)
+		_, err = dynamoWrapper.NewDynamoDBWrapper(client, params, log)
 		So(err, ShouldNotBeNil)
 
 		params = dynamo.DBDriverParameters{ //nolint:contextcheck
@@ -875,7 +879,7 @@ func TestWrapperErrors(t *testing.T) {
 		client, err = dynamo.GetDynamoClient(params)
 		So(err, ShouldBeNil)
 
-		_, err = dynamoWrapper.NewDynamoDBWrapper(client, params)
+		_, err = dynamoWrapper.NewDynamoDBWrapper(client, params, log)
 		So(err, ShouldNotBeNil)
 
 		params = dynamo.DBDriverParameters{ //nolint:contextcheck
@@ -890,7 +894,7 @@ func TestWrapperErrors(t *testing.T) {
 		client, err = dynamo.GetDynamoClient(params)
 		So(err, ShouldBeNil)
 
-		_, err = dynamoWrapper.NewDynamoDBWrapper(client, params)
+		_, err = dynamoWrapper.NewDynamoDBWrapper(client, params, log)
 		So(err, ShouldBeNil)
 	})
 }

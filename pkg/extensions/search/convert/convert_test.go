@@ -37,7 +37,7 @@ func TestConvertErrors(t *testing.T) {
 		boltDB, err := bolt.GetBoltDriver(params)
 		So(err, ShouldBeNil)
 
-		repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDB)
+		repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDB, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
 
 		configBlob, err := json.Marshal(ispec.Image{})

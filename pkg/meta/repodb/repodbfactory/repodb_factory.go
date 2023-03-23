@@ -5,13 +5,16 @@ import (
 	"go.etcd.io/bbolt"
 
 	"zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/dynamo"
 	"zotregistry.io/zot/pkg/meta/repodb"
 	boltdb_wrapper "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
 	dynamodb_wrapper "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper"
 )
 
-func Create(dbtype string, dbDriver, parameters interface{}) (repodb.RepoDB, error) { //nolint:contextcheck
+func Create(dbtype string, dbDriver, parameters interface{}, log log.Logger, //nolint:contextcheck
+) (repodb.RepoDB, error,
+) {
 	switch dbtype {
 	case "boltdb":
 		{
@@ -20,7 +23,7 @@ func Create(dbtype string, dbDriver, parameters interface{}) (repodb.RepoDB, err
 				panic("failed type assertion")
 			}
 
-			return boltdb_wrapper.NewBoltDBWrapper(properDriver)
+			return boltdb_wrapper.NewBoltDBWrapper(properDriver, log)
 		}
 	case "dynamodb":
 		{
@@ -34,7 +37,7 @@ func Create(dbtype string, dbDriver, parameters interface{}) (repodb.RepoDB, err
 				panic("failed type assertion")
 			}
 
-			return dynamodb_wrapper.NewDynamoDBWrapper(properDriver, properParameters)
+			return dynamodb_wrapper.NewDynamoDBWrapper(properDriver, properParameters, log)
 		}
 	default:
 		{

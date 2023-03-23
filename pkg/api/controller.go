@@ -532,7 +532,7 @@ func CreateRepoDBDriver(storageConfig config.StorageConfig, log log.Logger) (rep
 			return nil, err
 		}
 
-		return repodbfactory.Create("dynamodb", client, dynamoParams) //nolint:contextcheck
+		return repodbfactory.Create("dynamodb", client, dynamoParams, log) //nolint:contextcheck
 	}
 
 	params := bolt.DBParameters{}
@@ -543,7 +543,7 @@ func CreateRepoDBDriver(storageConfig config.StorageConfig, log log.Logger) (rep
 		return nil, err
 	}
 
-	return repodbfactory.Create("boltdb", driver, params) //nolint:contextcheck
+	return repodbfactory.Create("boltdb", driver, params, log) //nolint:contextcheck
 }
 
 func getDynamoParams(cacheDriverConfig map[string]interface{}, log log.Logger) dynamo.DBDriverParameters {
