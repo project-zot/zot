@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/99designs/gqlgen/graphql"
 	godigest "github.com/opencontainers/go-digest"
@@ -19,6 +20,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	"zotregistry.io/zot/pkg/extensions/search/convert"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
+	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/repodb"
 	bolt "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
@@ -293,6 +295,44 @@ func TestConvertErrors(t *testing.T) {
 			}, log.NewLogger("debug", ""),
 		)
 		So(len(imageSummaries), ShouldEqual, 1)
+	})
+}
+
+func TestUpdateLastUpdatedTimestam(t *testing.T) {
+	Convey("Image summary is the first image checked for the repo", t, func() {
+		before := time.Time{}
+		after := time.Date(2023, time.April, 1, 11, 0, 0, 0, time.UTC)
+		img := convert.UpdateLastUpdatedTimestamp(
+			&before,
+			&gql_generated.ImageSummary{LastUpdated: &before},
+			&gql_generated.ImageSummary{LastUpdated: &after},
+		)
+
+		So(*img.LastUpdated, ShouldResemble, after)
+	})
+
+	Convey("Image summary is updated after the current latest image", t, func() {
+		before := time.Date(2022, time.April, 1, 11, 0, 0, 0, time.UTC)
+		after := time.Date(2023, time.April, 1, 11, 0, 0, 0, time.UTC)
+		img := convert.UpdateLastUpdatedTimestamp(
+			&before,
+			&gql_generated.ImageSummary{LastUpdated: &before},
+			&gql_generated.ImageSummary{LastUpdated: &after},
+		)
+
+		So(*img.LastUpdated, ShouldResemble, after)
+	})
+
+	Convey("Image summary is updated before the current latest image", t, func() {
+		before := time.Date(2022, time.April, 1, 11, 0, 0, 0, time.UTC)
+		after := time.Date(2023, time.April, 1, 11, 0, 0, 0, time.UTC)
+		img := convert.UpdateLastUpdatedTimestamp(
+			&after,
+			&gql_generated.ImageSummary{LastUpdated: &after},
+			&gql_generated.ImageSummary{LastUpdated: &before},
+		)
+
+		So(*img.LastUpdated, ShouldResemble, after)
 	})
 }
 
