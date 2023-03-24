@@ -1,15 +1,17 @@
 //go:build search
 // +build search
 
-//nolint:gochecknoinits
-package digestinfo_test
+package search_test
 
 import (
 	"encoding/json"
 	"net/url"
 	"os"
 	"testing"
+	"time"
 
+	godigest "github.com/opencontainers/go-digest"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 
@@ -17,12 +19,7 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
-	"zotregistry.io/zot/pkg/extensions/monitoring"
-	digestinfo "zotregistry.io/zot/pkg/extensions/search/digest"
-	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/repodb"
-	"zotregistry.io/zot/pkg/storage"
-	"zotregistry.io/zot/pkg/storage/local"
 	. "zotregistry.io/zot/pkg/test"
 )
 
@@ -55,80 +52,9 @@ type PaginatedImagesResult struct {
 	Page    repodb.PageInfo `json:"page"`
 }
 
-func testSetup(t *testing.T) (string, string, *digestinfo.DigestInfo) {
-	t.Helper()
-	dir := t.TempDir()
-	subDir := t.TempDir()
-
-	rootDir := dir
-
-	subRootDir := subDir
-
-	// Test images used/copied:
-	// IMAGE NAME    TAG        DIGEST    OS/ARCH      CONFIG    LAYERS    SIZE
-	// zot-test      0.0.1      2bacca16  linux/amd64  adf3bb6c            76MB
-	//                                                           2d473b07  76MB
-	// zot-cve-test  0.0.1      63a795ca  linux/amd64  8dd57e17            75MB
-	//                                                           7a0437f0  75MB
-
-	err := os.Mkdir(subDir+"/a", 0o700)
-	if err != nil {
-		panic(err)
-	}
-
-	CopyTestFiles("../../../../test/data", rootDir)
-
-	CopyTestFiles("../../../../test/data", subDir+"/a/")
-
-	log := log.NewLogger("debug", "")
-	metrics := monitoring.NewMetricsServer(false, log)
-	storeController := storage.StoreController{
-		DefaultStore: local.NewImageStore(rootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil, nil),
-	}
-
-	digestInfo := digestinfo.NewDigestInfo(storeController, log)
-
-	return rootDir, subRootDir, digestInfo
-}
-
-func TestDigestInfo(t *testing.T) {
-	Convey("Test image tag", t, func() {
-		_, _, digestInfo := testSetup(t)
-
-		// Search by manifest digest
-		imageTags, err := digestInfo.GetImageTagsByDigest("zot-cve-test",
-			GetTestBlobDigest("zot-cve-test", "manifest").Encoded())
-		So(err, ShouldBeNil)
-		So(len(imageTags), ShouldEqual, 1)
-		So(imageTags[0].Tag, ShouldEqual, "0.0.1")
-
-		// Search by config digest
-		imageTags, err = digestInfo.GetImageTagsByDigest("zot-test", GetTestBlobDigest("zot-test", "config").Encoded())
-		So(err, ShouldBeNil)
-		So(len(imageTags), ShouldEqual, 1)
-		So(imageTags[0].Tag, ShouldEqual, "0.0.1")
-
-		// Search by layer digest
-		imageTags, err = digestInfo.GetImageTagsByDigest("zot-cve-test", GetTestBlobDigest("zot-cve-test", "layer").Encoded())
-		So(err, ShouldBeNil)
-		So(len(imageTags), ShouldEqual, 1)
-		So(imageTags[0].Tag, ShouldEqual, "0.0.1")
-
-		// Search by non-existent image
-		imageTags, err = digestInfo.GetImageTagsByDigest("zot-tes", GetTestBlobDigest("zot-test", "manifest").Encoded())
-		So(err, ShouldNotBeNil)
-		So(len(imageTags), ShouldEqual, 0)
-
-		// Search by non-existent digest
-		imageTags, err = digestInfo.GetImageTagsByDigest("zot-test", "111")
-		So(err, ShouldBeNil)
-		So(len(imageTags), ShouldEqual, 0)
-	})
-}
-
 func TestDigestSearchHTTP(t *testing.T) {
 	Convey("Test image search by digest scanning", t, func() {
-		rootDir, _, _ := testSetup(t)
+		rootDir := t.TempDir()
 
 		port := GetFreePort()
 		baseURL := GetBaseURL(port)
@@ -147,6 +73,58 @@ func TestDigestSearchHTTP(t *testing.T) {
 
 		// shut down server
 		defer ctrlManager.StopServer()
+
+		createdTime1 := time.Date(2009, 1, 1, 12, 0, 0, 0, time.UTC)
+		layers1 := [][]byte{
+			{3, 2, 2},
+		}
+		image1, err := GetImageWithComponents(
+			ispec.Image{
+				Created: &createdTime1,
+				History: []ispec.History{
+					{
+						Created: &createdTime1,
+					},
+				},
+			},
+			layers1,
+		)
+		So(err, ShouldBeNil)
+
+		image1.Reference = "0.0.1"
+		err = UploadImage(
+			image1,
+			baseURL,
+			"zot-cve-test",
+		)
+		So(err, ShouldBeNil)
+
+		createdTime2 := time.Date(2010, 1, 1, 12, 0, 0, 0, time.UTC)
+		image2, err := GetImageWithComponents(
+			ispec.Image{
+				History: []ispec.History{{Created: &createdTime2}},
+				Platform: ispec.Platform{
+					Architecture: "amd64",
+					OS:           "linux",
+				},
+			},
+			[][]byte{
+				{0, 0, 2},
+			},
+		)
+		So(err, ShouldBeNil)
+
+		image2.Reference = "0.0.1"
+		manifestDigest, err := image2.Digest()
+		So(err, ShouldBeNil)
+
+		err = UploadImage(image2, baseURL, "zot-test")
+		So(err, ShouldBeNil)
+
+		configBlob, err := json.Marshal(image2.Config)
+		So(err, ShouldBeNil)
+
+		configDigest := godigest.FromBytes(configBlob)
 
 		resp, err := resty.R().Get(baseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
@@ -188,7 +166,7 @@ func TestDigestSearchHTTP(t *testing.T) {
 		// Call should return {"data":{"ImageListForDigest":[{"Name":"zot-test","Tags":["0.0.1"]}]}}
 		// GetTestBlobDigest("zot-test", "manifest").Encoded() should match the manifest of 1 image
 
-		gqlQuery := url.QueryEscape(`{ImageListForDigest(id:"` + GetTestBlobDigest("zot-test", "manifest").Encoded() + `")
+		gqlQuery := url.QueryEscape(`{ImageListForDigest(id:"` + manifestDigest.Encoded() + `")
 			{Results{RepoName Tag Manifests {Digest ConfigDigest Size Layers { Digest }}}}}`)
 		targetURL := baseURL + constants.FullSearchPrefix + `?query=` + gqlQuery
 
@@ -205,8 +183,7 @@ func TestDigestSearchHTTP(t *testing.T) {
 		So(responseStruct.ImgListForDigest.Results[0].RepoName, ShouldEqual, "zot-test")
 		So(responseStruct.ImgListForDigest.Results[0].Tag, ShouldEqual, "0.0.1")
 
-		// GetTestBlobDigest("zot-test", "config").Encoded() should match the config of 1 image.
-		gqlQuery = url.QueryEscape(`{ImageListForDigest(id:"` + GetTestBlobDigest("zot-test", "config").Encoded() + `")
+		gqlQuery = url.QueryEscape(`{ImageListForDigest(id:"` + configDigest.Encoded() + `")
 		{Results{RepoName Tag Manifests {Digest ConfigDigest Size Layers { Digest }}}}}`)
 
 		targetURL = baseURL + constants.FullSearchPrefix + `?query=` + gqlQuery
@@ -225,7 +202,8 @@ func TestDigestSearchHTTP(t *testing.T) {
 
 		// Call should return {"data":{"ImageListForDigest":[{"Name":"zot-cve-test","Tags":["0.0.1"]}]}}
 		// GetTestBlobDigest("zot-cve-test", "layer").Encoded() should match the layer of 1 image
-		gqlQuery = url.QueryEscape(`{ImageListForDigest(id:"` + GetTestBlobDigest("zot-cve-test", "layer").Encoded() + `")
+		layerDigest1 := godigest.FromBytes((layers1[0]))
+		gqlQuery = url.QueryEscape(`{ImageListForDigest(id:"` + layerDigest1.Encoded() + `")
 		{Results{RepoName Tag Manifests {Digest ConfigDigest Size Layers { Digest }}}}}`)
 		targetURL = baseURL + constants.FullSearchPrefix + `?query=` + gqlQuery
 
@@ -293,7 +271,7 @@ func TestDigestSearchHTTP(t *testing.T) {
 
 func TestDigestSearchHTTPSubPaths(t *testing.T) {
 	Convey("Test image search by digest scanning using storage subpaths", t, func() {
-		_, subRootDir, _ := testSetup(t)
+		subRootDir := t.TempDir()
 
 		port := GetFreePort()
 		baseURL := GetBaseURL(port)
@@ -322,6 +300,17 @@ func TestDigestSearchHTTPSubPaths(t *testing.T) {
 
 		// shut down server
 		defer ctrlManager.StopServer()
+
+		config, layers, manifest, err := GetImageComponents(100)
+		So(err, ShouldBeNil)
+
+		err = PushTestImage("a/zot-cve-test", "0.0.1", baseURL,
+			manifest, config, layers)
+		So(err, ShouldBeNil)
+
+		err = PushTestImage("a/zot-test", "0.0.1", baseURL,
+			manifest, config, layers)
+		So(err, ShouldBeNil)
 
 		resp, err := resty.R().Get(baseURL + "/v2/")
 		So(resp, ShouldNotBeNil)
