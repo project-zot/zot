@@ -24,8 +24,6 @@ import (
 	ext "zotregistry.io/zot/pkg/extensions"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/bolt"
-	"zotregistry.io/zot/pkg/meta/dynamo"
 	"zotregistry.io/zot/pkg/meta/repodb"
 	"zotregistry.io/zot/pkg/meta/repodb/repodbfactory"
 	"zotregistry.io/zot/pkg/scheduler"
@@ -502,7 +500,7 @@ func CreateCacheDatabaseDriver(storageConfig config.StorageConfig, log log.Logge
 
 func (c *Controller) InitRepoDB(reloadCtx context.Context) error {
 	if c.Config.Extensions != nil && c.Config.Extensions.Search != nil && *c.Config.Extensions.Search.Enable {
-		driver, err := CreateRepoDBDriver(c.Config.Storage.StorageConfig, c.Log) //nolint:contextcheck
+		driver, err := repodbfactory.New(c.Config.Storage.StorageConfig, c.Log) //nolint:contextcheck
 		if err != nil {
 			return err
 		}
@@ -521,94 +519,6 @@ func (c *Controller) InitRepoDB(reloadCtx context.Context) error {
 	}
 
 	return nil
-}
-
-func CreateRepoDBDriver(storageConfig config.StorageConfig, log log.Logger) (repodb.RepoDB, error) {
-	if storageConfig.RemoteCache {
-		dynamoParams := getDynamoParams(storageConfig.CacheDriver, log)
-
-		client, err := dynamo.GetDynamoClient(dynamoParams)
-		if err != nil {
-			return nil, err
-		}
-
-		return repodbfactory.Create("dynamodb", client, dynamoParams, log) //nolint:contextcheck
-	}
-
-	params := bolt.DBParameters{}
-	params.RootDir = storageConfig.RootDirectory
-
-	driver, err := bolt.GetBoltDriver(params)
-	if err != nil {
-		return nil, err
-	}
-
-	return repodbfactory.Create("boltdb", driver, params, log) //nolint:contextcheck
-}
-
-func getDynamoParams(cacheDriverConfig map[string]interface{}, log log.Logger) dynamo.DBDriverParameters {
-	allParametersOk := true
-
-	endpoint, ok := toStringIfOk(cacheDriverConfig, "endpoint", log)
-	allParametersOk = allParametersOk && ok
-
-	region, ok := toStringIfOk(cacheDriverConfig, "region", log)
-	allParametersOk = allParametersOk && ok
-
-	repoMetaTablename, ok := toStringIfOk(cacheDriverConfig, "repometatablename", log)
-	allParametersOk = allParametersOk && ok
-
-	manifestDataTablename, ok := toStringIfOk(cacheDriverConfig, "manifestdatatablename", log)
-	allParametersOk = allParametersOk && ok
-
-	indexDataTablename, ok := toStringIfOk(cacheDriverConfig, "indexdatatablename", log)
-	allParametersOk = allParametersOk && ok
-
-	artifactDataTablename, ok := toStringIfOk(cacheDriverConfig, "artifactdatatablename", log)
-	allParametersOk = allParametersOk && ok
-
-	versionTablename, ok := toStringIfOk(cacheDriverConfig, "versiontablename", log)
-	allParametersOk = allParametersOk && ok
-
-	if !allParametersOk {
-		panic("dynamo parameters are not specified correctly, can't proceede")
-	}
-
-	return dynamo.DBDriverParameters{
-		Endpoint:              endpoint,
-		Region:                region,
-		RepoMetaTablename:     repoMetaTablename,
-		ManifestDataTablename: manifestDataTablename,
-		IndexDataTablename:    indexDataTablename,
-		ArtifactDataTablename: artifactDataTablename,
-		VersionTablename:      versionTablename,
-	}
-}
-
-func toStringIfOk(cacheDriverConfig map[string]interface{}, param string, log log.Logger) (string, bool) {
-	val, ok := cacheDriverConfig[param]
-
-	if !ok {
-		log.Error().Msgf("parsing CacheDriver config failed, field '%s' is not present", param)
-
-		return "", false
-	}
-
-	str, ok := val.(string)
-
-	if !ok {
-		log.Error().Msgf("parsing CacheDriver config failed, parameter '%s' isn't a string", param)
-
-		return "", false
-	}
-
-	if str == "" {
-		log.Error().Msgf("parsing CacheDriver config failed, field '%s' is is empty", param)
-
-		return "", false
-	}
-
-	return str, ok
 }
 
 func (c *Controller) LoadNewConfig(reloadCtx context.Context, config *config.Config) {

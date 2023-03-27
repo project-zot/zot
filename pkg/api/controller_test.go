@@ -49,6 +49,7 @@ import (
 	"zotregistry.io/zot/pkg/common"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta/repodb/repodbfactory"
 	"zotregistry.io/zot/pkg/storage"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
@@ -221,7 +222,7 @@ func TestCreateRepoDBDriver(t *testing.T) {
 			"artifactDataTablename": "ArtifactDataTable",
 		}
 
-		testFunc := func() { _, _ = api.CreateRepoDBDriver(conf.Storage.StorageConfig, log) }
+		testFunc := func() { _, _ = repodbfactory.New(conf.Storage.StorageConfig, log) }
 		So(testFunc, ShouldPanic)
 
 		conf.Storage.CacheDriver = map[string]interface{}{
@@ -235,7 +236,7 @@ func TestCreateRepoDBDriver(t *testing.T) {
 			"versiontablename":      1,
 		}
 
-		testFunc = func() { _, _ = api.CreateRepoDBDriver(conf.Storage.StorageConfig, log) }
+		testFunc = func() { _, _ = repodbfactory.New(conf.Storage.StorageConfig, log) }
 		So(testFunc, ShouldPanic)
 
 		conf.Storage.CacheDriver = map[string]interface{}{
@@ -250,7 +251,7 @@ func TestCreateRepoDBDriver(t *testing.T) {
 			"versiontablename":      "1",
 		}
 
-		testFunc = func() { _, _ = api.CreateRepoDBDriver(conf.Storage.StorageConfig, log) }
+		testFunc = func() { _, _ = repodbfactory.New(conf.Storage.StorageConfig, log) }
 		So(testFunc, ShouldNotPanic)
 	})
 
@@ -273,7 +274,7 @@ func TestCreateRepoDBDriver(t *testing.T) {
 		err = os.Chmod(path.Join(dir, "repo.db"), 0o200)
 		So(err, ShouldBeNil)
 
-		_, err = api.CreateRepoDBDriver(conf.Storage.StorageConfig, log)
+		_, err = repodbfactory.New(conf.Storage.StorageConfig, log)
 		So(err, ShouldNotBeNil)
 
 		err = os.Chmod(path.Join(dir, "repo.db"), 0o600)

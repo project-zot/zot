@@ -33,7 +33,7 @@ const repo = "repo"
 var ErrTestError = errors.New("test error")
 
 func TestParseStorageErrors(t *testing.T) {
-	Convey("ParseStorag", t, func() {
+	Convey("ParseStorage", t, func() {
 		imageStore := mocks.MockedImageStore{
 			GetIndexContentFn: func(repo string) ([]byte, error) {
 				return nil, ErrTestError
@@ -72,7 +72,7 @@ func TestParseStorageErrors(t *testing.T) {
 		})
 	})
 
-	Convey("LoadRepo", t, func() {
+	Convey("Parse Repo", t, func() {
 		imageStore := mocks.MockedImageStore{}
 		storeController := storage.StoreController{DefaultStore: &imageStore}
 		repoDB := mocks.RepoDBMock{}
