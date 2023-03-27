@@ -1632,12 +1632,26 @@ func (rh *RouteHandler) getImageStore(name string) storage.ImageStore {
 }
 
 // will sync on demand if an image is not found, in case sync extensions is enabled.
-func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore storage.ImageStore, name,
-	reference string,
+func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore storage.ImageStore,
+	name, reference string,
 ) ([]byte, godigest.Digest, string, error) {
+	syncEnabled := false
 	if routeHandler.c.Config.Extensions != nil &&
 		routeHandler.c.Config.Extensions.Sync != nil &&
 		*routeHandler.c.Config.Extensions.Sync.Enable {
+		syncEnabled = true
+	}
+
+	_, digestErr := godigest.Parse(reference)
+	if digestErr == nil {
+		// if it's a digest then return local cached image, if not found and sync enabled, then try to sync
+		content, digest, mediaType, err := imgStore.GetImageManifest(name, reference)
+		if err == nil || !syncEnabled {
+			return content, digest, mediaType, err
+		}
+	}
+
+	if syncEnabled {
 		routeHandler.c.Log.Info().Msgf("trying to get updated image %s:%s by syncing on demand",
 			name, reference)
 

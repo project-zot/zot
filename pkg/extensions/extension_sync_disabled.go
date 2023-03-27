@@ -5,7 +5,6 @@ package extensions
 
 import (
 	"context"
-	goSync "sync"
 
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/log"
@@ -14,8 +13,7 @@ import (
 )
 
 // EnableSyncExtension ...
-func EnableSyncExtension(ctx context.Context,
-	config *config.Config, wg *goSync.WaitGroup, repoDB repodb.RepoDB,
+func EnableSyncExtension(ctx context.Context, config *config.Config, repoDB repodb.RepoDB,
 	storeController storage.StoreController, log log.Logger,
 ) {
 	log.Warn().Msg("skipping enabling sync extension because given zot binary doesn't include this feature," +

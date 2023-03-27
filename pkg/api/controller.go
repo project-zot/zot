@@ -11,7 +11,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	goSync "sync"
 	"syscall"
 	"time"
 
@@ -49,7 +48,6 @@ type Controller struct {
 	Server          *http.Server
 	Metrics         monitoring.MetricServer
 	CveInfo         ext.CveInfo
-	wgShutDown      *goSync.WaitGroup // use it to gracefully shutdown goroutines
 	// runtime params
 	chosenPort int // kernel-chosen port
 }
@@ -60,7 +58,6 @@ func NewController(config *config.Config) *Controller {
 	logger := log.NewLogger(config.Log.Level, config.Log.Output)
 	controller.Config = config
 	controller.Log = logger
-	controller.wgShutDown = new(goSync.WaitGroup)
 
 	if config.Log.Audit != "" {
 		audit := log.NewAuditLogger(config.Log.Level, config.Log.Audit)
@@ -529,7 +526,7 @@ func (c *Controller) LoadNewConfig(reloadCtx context.Context, config *config.Con
 	if config.Extensions != nil && config.Extensions.Sync != nil {
 		// reload sync config
 		c.Config.Extensions.Sync = config.Extensions.Sync
-		ext.EnableSyncExtension(reloadCtx, c.Config, c.wgShutDown, c.RepoDB, c.StoreController, c.Log)
+		ext.EnableSyncExtension(reloadCtx, c.Config, c.RepoDB, c.StoreController, c.Log)
 	} else if c.Config.Extensions != nil {
 		c.Config.Extensions.Sync = nil
 	}
@@ -538,9 +535,6 @@ func (c *Controller) LoadNewConfig(reloadCtx context.Context, config *config.Con
 }
 
 func (c *Controller) Shutdown() {
-	// wait gracefully
-	c.wgShutDown.Wait()
-
 	ctx := context.Background()
 	_ = c.Server.Shutdown(ctx)
 }
@@ -577,7 +571,7 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 	// Enable extensions if extension config is provided for storeController
 	if c.Config.Extensions != nil {
 		if c.Config.Extensions.Sync != nil {
-			ext.EnableSyncExtension(reloadCtx, c.Config, c.wgShutDown, c.RepoDB, c.StoreController, c.Log)
+			ext.EnableSyncExtension(reloadCtx, c.Config, c.RepoDB, c.StoreController, c.Log)
 		}
 	}
 

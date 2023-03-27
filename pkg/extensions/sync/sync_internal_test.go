@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"os"
 	"path"
-	goSync "sync"
 	"testing"
 	"time"
 
@@ -156,8 +155,7 @@ func TestSyncInternal(t *testing.T) {
 		}
 		ctx := context.Background()
 
-		So(Run(ctx, cfg, mocks.RepoDBMock{}, storage.StoreController{},
-			new(goSync.WaitGroup), log.NewLogger("debug", "")), ShouldNotBeNil)
+		So(Run(ctx, cfg, mocks.RepoDBMock{}, storage.StoreController{}, log.NewLogger("debug", "")), ShouldNotBeNil)
 
 		_, err = getFileCredentials("/invalid/path/to/file")
 		So(err, ShouldNotBeNil)

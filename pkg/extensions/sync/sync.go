@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	goSync "sync"
 	"time"
 
 	"github.com/containers/common/pkg/retry"
@@ -325,7 +324,7 @@ func getLocalContexts(log log.Logger) (*types.SystemContext, *signature.PolicyCo
 }
 
 func Run(ctx context.Context, cfg syncconf.Config, repoDB repodb.RepoDB,
-	storeController storage.StoreController, wtgrp *goSync.WaitGroup, logger log.Logger,
+	storeController storage.StoreController, logger log.Logger,
 ) error {
 	var credentialsFile syncconf.CredentialsFile
 
@@ -376,9 +375,6 @@ func Run(ctx context.Context, cfg syncconf.Config, repoDB repodb.RepoDB,
 		// schedule each registry sync
 		go func(ctx context.Context, regCfg syncconf.RegistryConfig, logger log.Logger) {
 			for {
-				// increment reference since will be busy, so shutdown has to wait
-				wtgrp.Add(1)
-
 				for _, upstreamURL := range regCfg.URLs {
 					upstreamAddr := StripRegistryTransport(upstreamURL)
 					// first try syncing main registry
@@ -392,8 +388,6 @@ func Run(ctx context.Context, cfg syncconf.Config, repoDB repodb.RepoDB,
 						break
 					}
 				}
-				// mark as done after a single sync run
-				wtgrp.Done()
 
 				select {
 				case <-ctx.Done():

@@ -5,7 +5,6 @@ package extensions
 
 import (
 	"context"
-	goSync "sync"
 
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/extensions/sync"
@@ -14,11 +13,11 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 )
 
-func EnableSyncExtension(ctx context.Context, config *config.Config, wg *goSync.WaitGroup,
+func EnableSyncExtension(ctx context.Context, config *config.Config,
 	repoDB repodb.RepoDB, storeController storage.StoreController, log log.Logger,
 ) {
 	if config.Extensions.Sync != nil && *config.Extensions.Sync.Enable {
-		if err := sync.Run(ctx, *config.Extensions.Sync, repoDB, storeController, wg, log); err != nil {
+		if err := sync.Run(ctx, *config.Extensions.Sync, repoDB, storeController, log); err != nil {
 			log.Error().Err(err).Msg("Error encountered while setting up syncing")
 		}
 	} else {
