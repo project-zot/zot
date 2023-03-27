@@ -13,34 +13,34 @@ import (
 // not available in other fields.
 type Annotation struct {
 	// Custom key
-	Key *string `json:"Key"`
+	Key *string `json:"Key,omitempty"`
 	// Value associated with the custom key
-	Value *string `json:"Value"`
+	Value *string `json:"Value,omitempty"`
 }
 
 // Contains various details about the CVE (Common Vulnerabilities and Exposures)
 // and a list of PackageInfo about the affected packages
 type Cve struct {
 	// CVE ID
-	ID *string `json:"Id"`
+	ID *string `json:"Id,omitempty"`
 	// A short title describing the CVE
-	Title *string `json:"Title"`
+	Title *string `json:"Title,omitempty"`
 	// A detailed description of the CVE
-	Description *string `json:"Description"`
+	Description *string `json:"Description,omitempty"`
 	// The impact the CVE has, one of "UNKNOWN", "LOW", "MEDIUM", "HIGH", "CRITICAL"
-	Severity *string `json:"Severity"`
+	Severity *string `json:"Severity,omitempty"`
 	// Information on the packages in which the CVE was found
-	PackageList []*PackageInfo `json:"PackageList"`
+	PackageList []*PackageInfo `json:"PackageList,omitempty"`
 }
 
 // Contains the tag of the image and a list of CVEs
 type CVEResultForImage struct {
 	// Tag affected by the CVEs
-	Tag *string `json:"Tag"`
+	Tag *string `json:"Tag,omitempty"`
 	// List of CVE objects which afect this specific image:tag
-	CVEList []*Cve `json:"CVEList"`
+	CVEList []*Cve `json:"CVEList,omitempty"`
 	// The CVE pagination information, see PageInfo object for more details
-	Page *PageInfo `json:"Page"`
+	Page *PageInfo `json:"Page,omitempty"`
 }
 
 // Apply various types of filters to the queries made for repositories and images
@@ -49,144 +49,144 @@ type CVEResultForImage struct {
 type Filter struct {
 	// Only return images or repositories supporting the operating systems in the list
 	// Should be values listed in the Go Language document https://go.dev/doc/install/source#environment
-	Os []*string `json:"Os"`
+	Os []*string `json:"Os,omitempty"`
 	// Only return images or repositories supporting the build architectures in the list
 	// Should be values listed in the Go Language document https://go.dev/doc/install/source#environment
-	Arch []*string `json:"Arch"`
+	Arch []*string `json:"Arch,omitempty"`
 	// Only return images or repositories with at least one signature
-	HasToBeSigned *bool `json:"HasToBeSigned"`
+	HasToBeSigned *bool `json:"HasToBeSigned,omitempty"`
 }
 
 // Search results, can contain images, repositories and layers
 type GlobalSearchResult struct {
 	// Pagination information
-	Page *PageInfo `json:"Page"`
+	Page *PageInfo `json:"Page,omitempty"`
 	// List of images matching the search criteria
-	Images []*ImageSummary `json:"Images"`
+	Images []*ImageSummary `json:"Images,omitempty"`
 	// List of repositories matching the search criteria
-	Repos []*RepoSummary `json:"Repos"`
+	Repos []*RepoSummary `json:"Repos,omitempty"`
 	// List of layers matching the search criteria
 	// NOTE: the actual search logic for layers is not implemented at the moment
-	Layers []*LayerSummary `json:"Layers"`
+	Layers []*LayerSummary `json:"Layers,omitempty"`
 }
 
 // Information on how a layer was created
 type HistoryDescription struct {
 	// Created is the time when the layer was created.
-	Created *time.Time `json:"Created"`
+	Created *time.Time `json:"Created,omitempty"`
 	// CreatedBy is the command which created the layer.
-	CreatedBy *string `json:"CreatedBy"`
+	CreatedBy *string `json:"CreatedBy,omitempty"`
 	// Author is the author of the build point.
-	Author *string `json:"Author"`
+	Author *string `json:"Author,omitempty"`
 	// Comment is a custom message set when creating the layer.
-	Comment *string `json:"Comment"`
+	Comment *string `json:"Comment,omitempty"`
 	// EmptyLayer is used to mark if the history item created a filesystem diff.
-	EmptyLayer *bool `json:"EmptyLayer"`
+	EmptyLayer *bool `json:"EmptyLayer,omitempty"`
 }
 
 // Details about a specific image, it is used by queries returning a list of images
 // We define an image as a pairing or a repository and a tag belonging to that repository
 type ImageSummary struct {
 	// Name of the repository where the image is found
-	RepoName *string `json:"RepoName"`
+	RepoName *string `json:"RepoName,omitempty"`
 	// Tag identifying the image within the repository
-	Tag *string `json:"Tag"`
+	Tag *string `json:"Tag,omitempty"`
 	// The digest of the descriptor of this image
-	Digest *string `json:"Digest"`
+	Digest *string `json:"Digest,omitempty"`
 	// The media type of the descriptor of this image
-	MediaType *string `json:"MediaType"`
+	MediaType *string `json:"MediaType,omitempty"`
 	// List of manifests for all supported versions of the image for different operating systems and architectures
-	Manifests []*ManifestSummary `json:"Manifests"`
+	Manifests []*ManifestSummary `json:"Manifests,omitempty"`
 	// Total size of the files associated with all images (manifest, config, layers)
-	Size *string `json:"Size"`
+	Size *string `json:"Size,omitempty"`
 	// Number of downloads of the manifest of this image
-	DownloadCount *int `json:"DownloadCount"`
+	DownloadCount *int `json:"DownloadCount,omitempty"`
 	// Timestamp of the last modification done to the image (from config or the last updated layer)
-	LastUpdated *time.Time `json:"LastUpdated"`
+	LastUpdated *time.Time `json:"LastUpdated,omitempty"`
 	// Human-readable description of the software packaged in the image
-	Description *string `json:"Description"`
+	Description *string `json:"Description,omitempty"`
 	// True if the image has a signature associated with it, false otherwise
-	IsSigned *bool `json:"IsSigned"`
+	IsSigned *bool `json:"IsSigned,omitempty"`
 	// License(s) under which contained software is distributed as an SPDX License Expression
-	Licenses *string `json:"Licenses"`
+	Licenses *string `json:"Licenses,omitempty"`
 	// Labels associated with this image
 	// NOTE: currently this field is unused
-	Labels *string `json:"Labels"`
+	Labels *string `json:"Labels,omitempty"`
 	// Human-readable title of the image
-	Title *string `json:"Title"`
+	Title *string `json:"Title,omitempty"`
 	// URL to get source code for building the image
-	Source *string `json:"Source"`
+	Source *string `json:"Source,omitempty"`
 	// URL to get documentation on the image
-	Documentation *string `json:"Documentation"`
+	Documentation *string `json:"Documentation,omitempty"`
 	// Vendor associated with this image, the distributing entity, organization or individual
-	Vendor *string `json:"Vendor"`
+	Vendor *string `json:"Vendor,omitempty"`
 	// Contact details of the people or organization responsible for the image
-	Authors *string `json:"Authors"`
+	Authors *string `json:"Authors,omitempty"`
 	// Short summary of the identified CVEs
-	Vulnerabilities *ImageVulnerabilitySummary `json:"Vulnerabilities"`
+	Vulnerabilities *ImageVulnerabilitySummary `json:"Vulnerabilities,omitempty"`
 	// Information about objects that reference this image
-	Referrers []*Referrer `json:"Referrers"`
+	Referrers []*Referrer `json:"Referrers,omitempty"`
 }
 
 // Contains summary of vulnerabilities found in a specific image
 type ImageVulnerabilitySummary struct {
 	// Maximum severity of all CVEs found in this image
-	MaxSeverity *string `json:"MaxSeverity"`
+	MaxSeverity *string `json:"MaxSeverity,omitempty"`
 	// Count of all CVEs found in this image
-	Count *int `json:"Count"`
+	Count *int `json:"Count,omitempty"`
 }
 
 // Information about how/when a layer was built
 type LayerHistory struct {
 	// Information specific to the layer such as size and digest.
-	Layer *LayerSummary `json:"Layer"`
+	Layer *LayerSummary `json:"Layer,omitempty"`
 	// Additional information about how the layer was created.
-	HistoryDescription *HistoryDescription `json:"HistoryDescription"`
+	HistoryDescription *HistoryDescription `json:"HistoryDescription,omitempty"`
 }
 
 // Contains details about a specific layer which is part of an image
 type LayerSummary struct {
 	// The size of the layer in bytes
-	Size *string `json:"Size"`
+	Size *string `json:"Size,omitempty"`
 	// Digest of the layer content
-	Digest *string `json:"Digest"`
+	Digest *string `json:"Digest,omitempty"`
 }
 
 // Details about a specific version of an image for a certain operating system and architecture.
 type ManifestSummary struct {
 	// Digest of the manifest file associated with this image
-	Digest *string `json:"Digest"`
+	Digest *string `json:"Digest,omitempty"`
 	// Digest of the config file associated with this image
-	ConfigDigest *string `json:"ConfigDigest"`
+	ConfigDigest *string `json:"ConfigDigest,omitempty"`
 	// Timestamp of the last update to an image inside this repository
-	LastUpdated *time.Time `json:"LastUpdated"`
+	LastUpdated *time.Time `json:"LastUpdated,omitempty"`
 	// Total size of the files associated with this manifest (manifest, config, layers)
-	Size *string `json:"Size"`
+	Size *string `json:"Size,omitempty"`
 	// True if the manifest has a signature associated with it, false otherwise
-	IsSigned *bool `json:"IsSigned"`
+	IsSigned *bool `json:"IsSigned,omitempty"`
 	// OS and architecture supported by this image
-	Platform *Platform `json:"Platform"`
+	Platform *Platform `json:"Platform,omitempty"`
 	// Total numer of image manifest downloads from this repository
-	DownloadCount *int `json:"DownloadCount"`
+	DownloadCount *int `json:"DownloadCount,omitempty"`
 	// List of layers matching the search criteria
 	// NOTE: the actual search logic for layers is not implemented at the moment
-	Layers []*LayerSummary `json:"Layers"`
+	Layers []*LayerSummary `json:"Layers,omitempty"`
 	// Information about the history of the specific image, see LayerHistory
-	History []*LayerHistory `json:"History"`
+	History []*LayerHistory `json:"History,omitempty"`
 	// Short summary of the identified CVEs
-	Vulnerabilities *ImageVulnerabilitySummary `json:"Vulnerabilities"`
+	Vulnerabilities *ImageVulnerabilitySummary `json:"Vulnerabilities,omitempty"`
 	// Information about objects that reference this image
-	Referrers []*Referrer `json:"Referrers"`
+	Referrers []*Referrer `json:"Referrers,omitempty"`
 }
 
 // Contains the name of the package, the current installed version and the version where the CVE was fixed
 type PackageInfo struct {
 	// Name of the package affected by a CVE
-	Name *string `json:"Name"`
+	Name *string `json:"Name,omitempty"`
 	// Current version of the package, typically affected by the CVE
-	InstalledVersion *string `json:"InstalledVersion"`
+	InstalledVersion *string `json:"InstalledVersion,omitempty"`
 	// Minimum version of the package in which the CVE is fixed
-	FixedVersion *string `json:"FixedVersion"`
+	FixedVersion *string `json:"FixedVersion,omitempty"`
 }
 
 // Information on current page returned by the API
@@ -202,18 +202,18 @@ type PageInfo struct {
 type PageInput struct {
 	// The maximum amount of results to return for this page
 	// Negative values are not allowed
-	Limit *int `json:"limit"`
+	Limit *int `json:"limit,omitempty"`
 	// The results page number you want to receive
 	// Negative values are not allowed
-	Offset *int `json:"offset"`
+	Offset *int `json:"offset,omitempty"`
 	// The criteria used to sort the results on the page
-	SortBy *SortCriteria `json:"sortBy"`
+	SortBy *SortCriteria `json:"sortBy,omitempty"`
 }
 
 // Paginated list of ImageSummary objects
 type PaginatedImagesResult struct {
 	// Information on the returned page
-	Page *PageInfo `json:"Page"`
+	Page *PageInfo `json:"Page,omitempty"`
 	// List of images
 	Results []*ImageSummary `json:"Results"`
 }
@@ -221,7 +221,7 @@ type PaginatedImagesResult struct {
 // Paginated list of RepoSummary objects
 type PaginatedReposResult struct {
 	// Information on the returned page
-	Page *PageInfo `json:"Page"`
+	Page *PageInfo `json:"Page,omitempty"`
 	// List of repositories
 	Results []*RepoSummary `json:"Results"`
 }
@@ -230,24 +230,24 @@ type PaginatedReposResult struct {
 type Platform struct {
 	// The name of the operating system which the image is built to run on,
 	// Should be values listed in the Go Language document https://go.dev/doc/install/source#environment
-	Os *string `json:"Os"`
+	Os *string `json:"Os,omitempty"`
 	// The name of the compilation architecture which the image is built to run on,
 	// Should be values listed in the Go Language document https://go.dev/doc/install/source#environment
-	Arch *string `json:"Arch"`
+	Arch *string `json:"Arch,omitempty"`
 }
 
 // A referrer is an object which has a reference to a another object
 type Referrer struct {
 	// Referrer MediaType
 	// See https://github.com/opencontainers/artifacts for more details
-	MediaType *string `json:"MediaType"`
+	MediaType *string `json:"MediaType,omitempty"`
 	// Referrer ArtifactType
 	// See https://github.com/opencontainers/artifacts for more details
-	ArtifactType *string `json:"ArtifactType"`
+	ArtifactType *string `json:"ArtifactType,omitempty"`
 	// Total size of the referrer files in bytes
-	Size *int `json:"Size"`
+	Size *int `json:"Size,omitempty"`
 	// Digest of the manifest file of the referrer
-	Digest *string `json:"Digest"`
+	Digest *string `json:"Digest,omitempty"`
 	// A list of annotations associated with this referrer
 	Annotations []*Annotation `json:"Annotations"`
 }
@@ -255,34 +255,34 @@ type Referrer struct {
 // Contains details about the repo: both general information on the repo, and the list of images
 type RepoInfo struct {
 	// List of images in the repo
-	Images []*ImageSummary `json:"Images"`
+	Images []*ImageSummary `json:"Images,omitempty"`
 	// Details about the repository itself
-	Summary *RepoSummary `json:"Summary"`
+	Summary *RepoSummary `json:"Summary,omitempty"`
 }
 
 // Details of a specific repo, it is used by queries returning a list of repos
 type RepoSummary struct {
 	// Name of the repository
-	Name *string `json:"Name"`
+	Name *string `json:"Name,omitempty"`
 	// Timestamp of the last update to an image inside this repository
-	LastUpdated *time.Time `json:"LastUpdated"`
+	LastUpdated *time.Time `json:"LastUpdated,omitempty"`
 	// Total size of the files within this repository
-	Size *string `json:"Size"`
+	Size *string `json:"Size,omitempty"`
 	// List of platforms supported by this repository
-	Platforms []*Platform `json:"Platforms"`
+	Platforms []*Platform `json:"Platforms,omitempty"`
 	// Vendors associated with this image, the distributing entities, organizations or individuals
-	Vendors []*string `json:"Vendors"`
+	Vendors []*string `json:"Vendors,omitempty"`
 	// Details of the newest image inside the repository
 	// NOTE: not the image with the `latest` tag, the one with the most recent created timestamp
-	NewestImage *ImageSummary `json:"NewestImage"`
+	NewestImage *ImageSummary `json:"NewestImage,omitempty"`
 	// Total numer of image manifest downloads from this repository
-	DownloadCount *int `json:"DownloadCount"`
+	DownloadCount *int `json:"DownloadCount,omitempty"`
 	// Number of stars attributed to this repository by users
-	StarCount *int `json:"StarCount"`
+	StarCount *int `json:"StarCount,omitempty"`
 	// True if the repository is bookmarked by the current user, false otherwise
-	IsBookmarked *bool `json:"IsBookmarked"`
+	IsBookmarked *bool `json:"IsBookmarked,omitempty"`
 	// True if the repository is stared by the current user, fale otherwise
-	IsStarred *bool `json:"IsStarred"`
+	IsStarred *bool `json:"IsStarred,omitempty"`
 }
 
 // All sort criteria usable with pagination, some of these criteria applies only

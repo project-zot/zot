@@ -3,7 +3,7 @@ module zotregistry.io/zot
 go 1.19
 
 require (
-	github.com/99designs/gqlgen v0.17.25
+	github.com/99designs/gqlgen v0.17.27
 	github.com/Masterminds/semver v1.5.0
 	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
 	github.com/apex/log v1.9.0
@@ -41,7 +41,7 @@ require (
 	github.com/spf13/cobra v1.6.1
 	github.com/spf13/viper v1.15.0
 	github.com/stretchr/testify v1.8.2
-	github.com/swaggo/swag v1.8.10
+	github.com/swaggo/swag v1.8.11
 	github.com/vektah/gqlparser/v2 v2.5.1
 	go.etcd.io/bbolt v1.3.7
 	golang.org/x/crypto v0.7.0
@@ -58,7 +58,7 @@ require (
 	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20230117141039-067a0f5b0e25
 	github.com/sigstore/cosign v1.13.1
 	github.com/swaggo/http-swagger v1.3.4
-	oras.land/oras-go/v2 v2.0.0
+	oras.land/oras-go/v2 v2.0.2
 )
 
 require (
