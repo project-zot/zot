@@ -5,26 +5,22 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/rs/zerolog"
 
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta/common"
+	"zotregistry.io/zot/pkg/meta/dynamo"
 	"zotregistry.io/zot/pkg/meta/repodb" //nolint:go-staticcheck
-	"zotregistry.io/zot/pkg/meta/repodb/common"
-	"zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper/iterator"
-	dynamoParams "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper/params"
-	"zotregistry.io/zot/pkg/meta/repodb/version"
+	"zotregistry.io/zot/pkg/meta/version"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 )
 
@@ -41,38 +37,19 @@ type DBWrapper struct {
 	Log                   log.Logger
 }
 
-func NewDynamoDBWrapper(params dynamoParams.DBDriverParameters) (*DBWrapper, error) {
-	// custom endpoint resolver to point to localhost
-	customResolver := aws.EndpointResolverWithOptionsFunc(
-		func(service, region string, options ...interface{}) (aws.Endpoint, error) {
-			return aws.Endpoint{
-				PartitionID:   "aws",
-				URL:           params.Endpoint,
-				SigningRegion: region,
-			}, nil
-		})
-
-	// Using the SDK's default configuration, loading additional config
-	// and credentials values from the environment variables, shared
-	// credentials, and shared configuration files
-	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(params.Region),
-		config.WithEndpointResolverWithOptions(customResolver))
-	if err != nil {
-		return nil, err
-	}
-
+func NewDynamoDBWrapper(client *dynamodb.Client, params dynamo.DBDriverParameters, log log.Logger) (*DBWrapper, error) {
 	dynamoWrapper := DBWrapper{
-		Client:                dynamodb.NewFromConfig(cfg),
+		Client:                client,
 		RepoMetaTablename:     params.RepoMetaTablename,
 		ManifestDataTablename: params.ManifestDataTablename,
 		IndexDataTablename:    params.IndexDataTablename,
 		ArtifactDataTablename: params.ArtifactDataTablename,
 		VersionTablename:      params.VersionTablename,
 		Patches:               version.GetDynamoDBPatches(),
-		Log:                   log.Logger{Logger: zerolog.New(os.Stdout)},
+		Log:                   log,
 	}
 
-	err = dynamoWrapper.createVersionTable()
+	err := dynamoWrapper.createVersionTable()
 	if err != nil {
 		return nil, err
 	}
@@ -740,11 +717,11 @@ func (dwr *DBWrapper) GetMultipleRepoMeta(ctx context.Context,
 	filter func(repoMeta repodb.RepoMetadata) bool, requestedPage repodb.PageInput,
 ) ([]repodb.RepoMetadata, error) {
 	var (
-		repoMetaAttributeIterator iterator.AttributesIterator
+		repoMetaAttributeIterator dynamo.AttributesIterator
 		pageFinder                repodb.PageFinder
 	)
 
-	repoMetaAttributeIterator = iterator.NewBaseDynamoAttributesIterator(
+	repoMetaAttributeIterator = dynamo.NewBaseDynamoAttributesIterator(
 		dwr.Client, dwr.RepoMetaTablename, "RepoMetadata", 0, dwr.Log,
 	)
 
@@ -790,12 +767,12 @@ func (dwr *DBWrapper) SearchRepos(ctx context.Context, searchText string, filter
 	var (
 		manifestMetadataMap       = make(map[string]repodb.ManifestMetadata)
 		indexDataMap              = make(map[string]repodb.IndexData)
-		repoMetaAttributeIterator iterator.AttributesIterator
+		repoMetaAttributeIterator dynamo.AttributesIterator
 		pageFinder                repodb.PageFinder
 		pageInfo                  repodb.PageInfo
 	)
 
-	repoMetaAttributeIterator = iterator.NewBaseDynamoAttributesIterator(
+	repoMetaAttributeIterator = dynamo.NewBaseDynamoAttributesIterator(
 		dwr.Client, dwr.RepoMetaTablename, "RepoMetadata", 0, dwr.Log,
 	)
 
@@ -1080,11 +1057,11 @@ func (dwr *DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 		manifestMetadataMap       = make(map[string]repodb.ManifestMetadata)
 		indexDataMap              = make(map[string]repodb.IndexData)
 		pageFinder                repodb.PageFinder
-		repoMetaAttributeIterator iterator.AttributesIterator
+		repoMetaAttributeIterator dynamo.AttributesIterator
 		pageInfo                  repodb.PageInfo
 	)
 
-	repoMetaAttributeIterator = iterator.NewBaseDynamoAttributesIterator(
+	repoMetaAttributeIterator = dynamo.NewBaseDynamoAttributesIterator(
 		dwr.Client, dwr.RepoMetaTablename, "RepoMetadata", 0, dwr.Log,
 	)
 
@@ -1219,7 +1196,7 @@ func (dwr *DBWrapper) SearchTags(ctx context.Context, searchText string, filter 
 	var (
 		manifestMetadataMap       = make(map[string]repodb.ManifestMetadata)
 		indexDataMap              = make(map[string]repodb.IndexData)
-		repoMetaAttributeIterator = iterator.NewBaseDynamoAttributesIterator(
+		repoMetaAttributeIterator = dynamo.NewBaseDynamoAttributesIterator(
 			dwr.Client, dwr.RepoMetaTablename, "RepoMetadata", 0, dwr.Log,
 		)
 

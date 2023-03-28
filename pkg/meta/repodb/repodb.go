@@ -7,16 +7,6 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 )
 
-// MetadataDB.
-const (
-	ManifestDataBucket = "ManifestData"
-	IndexDataBucket    = "IndexData"
-	ArtifactDataBucket = "ArtifactData"
-	UserMetadataBucket = "UserMeta"
-	RepoMetadataBucket = "RepoMetadata"
-	VersionBucket      = "Version"
-)
-
 const (
 	SignaturesDirPath = "/tmp/zot/signatures"
 	SigKey            = "dev.cosignproject.cosign/signature"

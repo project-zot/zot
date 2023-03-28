@@ -17,16 +17,21 @@ import (
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta/bolt"
 	"zotregistry.io/zot/pkg/meta/repodb"
-	bolt "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
+	boltdb_wrapper "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
 
 func TestCVEPagination(t *testing.T) {
 	Convey("CVE Pagination", t, func() {
-		repoDB, err := bolt.NewBoltDBWrapper(bolt.DBParameters{
+		params := bolt.DBParameters{
 			RootDir: t.TempDir(),
-		})
+		}
+		boltDriver, err := bolt.GetBoltDriver(params)
+		So(err, ShouldBeNil)
+
+		repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
 
 		// Create repodb data for scannable image with vulnerabilities

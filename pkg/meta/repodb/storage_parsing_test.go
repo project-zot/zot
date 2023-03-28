@@ -17,10 +17,11 @@ import (
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta/bolt"
+	"zotregistry.io/zot/pkg/meta/dynamo"
 	"zotregistry.io/zot/pkg/meta/repodb"
-	bolt "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
-	dynamo "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper"
-	dynamoParams "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper/params"
+	bolt_wrapper "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
+	dynamo_wrapper "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
@@ -32,7 +33,7 @@ const repo = "repo"
 var ErrTestError = errors.New("test error")
 
 func TestParseStorageErrors(t *testing.T) {
-	Convey("ParseStorag", t, func() {
+	Convey("ParseStorage", t, func() {
 		imageStore := mocks.MockedImageStore{
 			GetIndexContentFn: func(repo string) ([]byte, error) {
 				return nil, ErrTestError
@@ -71,7 +72,7 @@ func TestParseStorageErrors(t *testing.T) {
 		})
 	})
 
-	Convey("LoadRepo", t, func() {
+	Convey("Parse Repo", t, func() {
 		imageStore := mocks.MockedImageStore{}
 		storeController := storage.StoreController{DefaultStore: &imageStore}
 		repoDB := mocks.RepoDBMock{}
@@ -267,9 +268,12 @@ func TestParseStorageWithStorage(t *testing.T) {
 	Convey("Boltdb", t, func() {
 		rootDir := t.TempDir()
 
-		repoDB, err := bolt.NewBoltDBWrapper(bolt.DBParameters{
+		boltDB, err := bolt.GetBoltDriver(bolt.DBParameters{
 			RootDir: rootDir,
 		})
+		So(err, ShouldBeNil)
+
+		repoDB, err := bolt_wrapper.NewBoltDBWrapper(boltDB, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
 
 		RunParseStorageTests(rootDir, repoDB)
@@ -282,7 +286,7 @@ func TestParseStorageDynamoWrapper(t *testing.T) {
 	Convey("Dynamodb", t, func() {
 		rootDir := t.TempDir()
 
-		dynamoWrapper, err := dynamo.NewDynamoDBWrapper(dynamoParams.DBDriverParameters{
+		params := dynamo.DBDriverParameters{
 			Endpoint:              os.Getenv("DYNAMODBMOCK_ENDPOINT"),
 			Region:                "us-east-2",
 			RepoMetaTablename:     "RepoMetadataTable",
@@ -290,7 +294,12 @@ func TestParseStorageDynamoWrapper(t *testing.T) {
 			IndexDataTablename:    "IndexDataTable",
 			ArtifactDataTablename: "ArtifactDataTable",
 			VersionTablename:      "Version",
-		})
+		}
+
+		dynamoClient, err := dynamo.GetDynamoClient(params)
+		So(err, ShouldBeNil)
+
+		dynamoWrapper, err := dynamo_wrapper.NewDynamoDBWrapper(dynamoClient, params, log.NewLogger("debug", ""))
 		So(err, ShouldBeNil)
 
 		err = dynamoWrapper.ResetManifestDataTable()

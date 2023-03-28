@@ -5,7 +5,7 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	"zotregistry.io/zot/pkg/meta/repodb/common"
+	"zotregistry.io/zot/pkg/meta/common"
 )
 
 func TestUtils(t *testing.T) {

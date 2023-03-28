@@ -1,4 +1,4 @@
-package update_test
+package meta_test
 
 import (
 	"encoding/json"
@@ -14,9 +14,10 @@ import (
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta"
+	"zotregistry.io/zot/pkg/meta/bolt"
 	"zotregistry.io/zot/pkg/meta/repodb"
 	bolt_wrapper "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
-	repoDBUpdate "zotregistry.io/zot/pkg/meta/repodb/update"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
@@ -35,9 +36,13 @@ func TestOnUpdateManifest(t *testing.T) {
 			true, true, log, metrics, nil, nil,
 		)
 
-		repoDB, err := bolt_wrapper.NewBoltDBWrapper(bolt_wrapper.DBParameters{
+		params := bolt.DBParameters{
 			RootDir: rootDir,
-		})
+		}
+		boltDriver, err := bolt.GetBoltDriver(params)
+		So(err, ShouldBeNil)
+
+		repoDB, err := bolt_wrapper.NewBoltDBWrapper(boltDriver, log)
 		So(err, ShouldBeNil)
 
 		config, layers, manifest, err := test.GetRandomImageComponents(100)
@@ -56,7 +61,7 @@ func TestOnUpdateManifest(t *testing.T) {
 
 		digest := godigest.FromBytes(manifestBlob)
 
-		err = repoDBUpdate.OnUpdateManifest("repo", "tag1", "", digest, manifestBlob, storeController, repoDB, log)
+		err = meta.OnUpdateManifest("repo", "tag1", "", digest, manifestBlob, storeController, repoDB, log)
 		So(err, ShouldBeNil)
 
 		repoMeta, err := repoDB.GetRepoMeta("repo")
@@ -80,7 +85,7 @@ func TestOnUpdateManifest(t *testing.T) {
 			},
 		}
 
-		err := repoDBUpdate.OnUpdateManifest("repo", "tag1", ispec.MediaTypeImageManifest, "digest",
+		err := meta.OnUpdateManifest("repo", "tag1", ispec.MediaTypeImageManifest, "digest",
 			[]byte("{}"), storeController, repoDB, log)
 		So(err, ShouldNotBeNil)
 	})
@@ -108,7 +113,7 @@ func TestUpdateErrors(t *testing.T) {
 					return []byte{}, "", "", zerr.ErrManifestNotFound
 				}
 
-				err = repoDBUpdate.OnUpdateManifest("repo", "tag1", "", "digest", manifestBlob,
+				err = meta.OnUpdateManifest("repo", "tag1", "", "digest", manifestBlob,
 					storeController, repoDB, log)
 				So(err, ShouldNotBeNil)
 			})
@@ -134,7 +139,7 @@ func TestUpdateErrors(t *testing.T) {
 					return []byte{}, "", "", zerr.ErrManifestNotFound
 				}
 
-				err = repoDBUpdate.OnDeleteManifest("repo", "tag1", "digest", "media", manifestBlob,
+				err = meta.OnDeleteManifest("repo", "tag1", "digest", "media", manifestBlob,
 					storeController, repoDB, log)
 				So(err, ShouldNotBeNil)
 
@@ -142,7 +147,7 @@ func TestUpdateErrors(t *testing.T) {
 					return []byte{}, "", "", ErrTestError
 				}
 
-				err = repoDBUpdate.OnDeleteManifest("repo", "tag1", "digest", "media", manifestBlob,
+				err = meta.OnDeleteManifest("repo", "tag1", "digest", "media", manifestBlob,
 					storeController, repoDB, log)
 				So(err, ShouldNotBeNil)
 
@@ -150,7 +155,7 @@ func TestUpdateErrors(t *testing.T) {
 					return []byte{}, "", "", zerr.ErrManifestNotFound
 				}
 
-				err = repoDBUpdate.OnDeleteManifest("repo", "tag1", "digest", "media", manifestBlob,
+				err = meta.OnDeleteManifest("repo", "tag1", "digest", "media", manifestBlob,
 					storeController, repoDB, log)
 				So(err, ShouldNotBeNil)
 			})
@@ -160,7 +165,7 @@ func TestUpdateErrors(t *testing.T) {
 					return ErrTestError
 				}
 
-				err := repoDBUpdate.OnDeleteManifest("repo", "tag1", "digest", "media",
+				err := meta.OnDeleteManifest("repo", "tag1", "digest", "media",
 					[]byte(`{"subject": {"digest": "dig"}}`),
 					storeController, repoDB, log)
 				So(err, ShouldNotBeNil)
@@ -187,7 +192,7 @@ func TestUpdateErrors(t *testing.T) {
 					return []byte{}, "", "", zerr.ErrManifestNotFound
 				}
 
-				err = repoDBUpdate.OnGetManifest("repo", "tag1", "digest", manifestBlob,
+				err = meta.OnGetManifest("repo", "tag1", "digest", manifestBlob,
 					storeController, repoDB, log)
 				So(err, ShouldNotBeNil)
 
@@ -195,7 +200,7 @@ func TestUpdateErrors(t *testing.T) {
 					return []byte{}, "", "", ErrTestError
 				}
 
-				err = repoDBUpdate.OnGetManifest("repo", "tag1", "media", manifestBlob,
+				err = meta.OnGetManifest("repo", "tag1", "media", manifestBlob,
 					storeController, repoDB, log)
 				So(err, ShouldNotBeNil)
 			})

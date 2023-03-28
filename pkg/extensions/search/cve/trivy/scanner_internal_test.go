@@ -18,8 +18,9 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta/bolt"
 	"zotregistry.io/zot/pkg/meta/repodb"
-	bolt "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
+	boltdb_wrapper "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
@@ -83,9 +84,13 @@ func TestMultipleStoragePath(t *testing.T) {
 
 		storeController.SubStore = subStore
 
-		repoDB, err := bolt.NewBoltDBWrapper(bolt.DBParameters{
+		params := bolt.DBParameters{
 			RootDir: firstRootDir,
-		})
+		}
+		boltDriver, err := bolt.GetBoltDriver(params)
+		So(err, ShouldBeNil)
+
+		repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver, log)
 		So(err, ShouldBeNil)
 
 		err = repodb.ParseStorage(repoDB, storeController, log)
@@ -173,9 +178,14 @@ func TestTrivyLibraryErrors(t *testing.T) {
 		storeController := storage.StoreController{}
 		storeController.DefaultStore = store
 
-		repoDB, err := bolt.NewBoltDBWrapper(bolt.DBParameters{
+		params := bolt.DBParameters{
 			RootDir: rootDir,
-		})
+		}
+
+		boltDriver, err := bolt.GetBoltDriver(params)
+		So(err, ShouldBeNil)
+
+		repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver, log)
 		So(err, ShouldBeNil)
 
 		err = repodb.ParseStorage(repoDB, storeController, log)
@@ -217,9 +227,18 @@ func TestTrivyLibraryErrors(t *testing.T) {
 func TestImageScannable(t *testing.T) {
 	rootDir := t.TempDir()
 
-	repoDB, err := bolt.NewBoltDBWrapper(bolt.DBParameters{
+	params := bolt.DBParameters{
 		RootDir: rootDir,
-	})
+	}
+
+	boltDriver, err := bolt.GetBoltDriver(params)
+	if err != nil {
+		panic(err)
+	}
+
+	log := log.NewLogger("debug", "")
+
+	repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver, log)
 	if err != nil {
 		panic(err)
 	}
@@ -349,7 +368,6 @@ func TestImageScannable(t *testing.T) {
 	}
 
 	// Continue with initializing the objects the scanner depends on
-	log := log.NewLogger("debug", "")
 	metrics := monitoring.NewMetricsServer(false, log)
 
 	store := local.NewImageStore(rootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil, nil)
@@ -419,9 +437,14 @@ func TestDefaultTrivyDBUrl(t *testing.T) {
 		storeController := storage.StoreController{}
 		storeController.DefaultStore = store
 
-		repoDB, err := bolt.NewBoltDBWrapper(bolt.DBParameters{
+		params := bolt.DBParameters{
 			RootDir: rootDir,
-		})
+		}
+
+		boltDriver, err := bolt.GetBoltDriver(params)
+		So(err, ShouldBeNil)
+
+		repoDB, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver, log)
 		So(err, ShouldBeNil)
 
 		err = repodb.ParseStorage(repoDB, storeController, log)

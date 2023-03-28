@@ -1,4 +1,4 @@
-package update
+package meta
 
 import (
 	"errors"
@@ -7,8 +7,8 @@ import (
 
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta/common"
 	"zotregistry.io/zot/pkg/meta/repodb"
-	"zotregistry.io/zot/pkg/meta/repodb/common"
 	"zotregistry.io/zot/pkg/storage"
 )
 

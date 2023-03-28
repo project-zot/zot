@@ -13,7 +13,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	"zotregistry.io/zot/pkg/log" //nolint:go-staticcheck
-	"zotregistry.io/zot/pkg/meta/repodb/version"
+	"zotregistry.io/zot/pkg/meta/version"
 )
 
 func TestWrapperErrors(t *testing.T) {

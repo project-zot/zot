@@ -18,10 +18,9 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta/dynamo"
 	"zotregistry.io/zot/pkg/meta/repodb"
-	dynamo "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper"
-	"zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper/iterator"
-	dynamoParams "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper/params"
+	dynamoWrapper "zotregistry.io/zot/pkg/meta/repodb/dynamodb-wrapper"
 	"zotregistry.io/zot/pkg/test"
 )
 
@@ -44,8 +43,10 @@ func TestIterator(t *testing.T) {
 	indexDataTablename := "IndexDataTable" + uuid.String()
 	artifactDataTablename := "ArtifactDataTable" + uuid.String()
 
+	log := log.NewLogger("debug", "")
+
 	Convey("TestIterator", t, func() {
-		dynamoWrapper, err := dynamo.NewDynamoDBWrapper(dynamoParams.DBDriverParameters{
+		params := dynamo.DBDriverParameters{
 			Endpoint:              endpoint,
 			Region:                region,
 			RepoMetaTablename:     repoMetaTablename,
@@ -53,7 +54,11 @@ func TestIterator(t *testing.T) {
 			IndexDataTablename:    indexDataTablename,
 			ArtifactDataTablename: artifactDataTablename,
 			VersionTablename:      versionTablename,
-		})
+		}
+		client, err := dynamo.GetDynamoClient(params)
+		So(err, ShouldBeNil)
+
+		dynamoWrapper, err := dynamoWrapper.NewDynamoDBWrapper(client, params, log)
 		So(err, ShouldBeNil)
 
 		So(dynamoWrapper.ResetManifestDataTable(), ShouldBeNil)
@@ -68,12 +73,12 @@ func TestIterator(t *testing.T) {
 		err = dynamoWrapper.SetRepoReference("repo3", "tag3", "manifestType", "manifestDigest3")
 		So(err, ShouldBeNil)
 
-		repoMetaAttributeIterator := iterator.NewBaseDynamoAttributesIterator(
+		repoMetaAttributeIterator := dynamo.NewBaseDynamoAttributesIterator(
 			dynamoWrapper.Client,
 			repoMetaTablename,
 			"RepoMetadata",
 			1,
-			log.Logger{Logger: zerolog.New(os.Stdout)},
+			log,
 		)
 
 		attribute, err := repoMetaAttributeIterator.First(context.Background())
@@ -109,7 +114,7 @@ func TestIteratorErrors(t *testing.T) {
 			config.WithEndpointResolverWithOptions(customResolver))
 		So(err, ShouldBeNil)
 
-		repoMetaAttributeIterator := iterator.NewBaseDynamoAttributesIterator(
+		repoMetaAttributeIterator := dynamo.NewBaseDynamoAttributesIterator(
 			dynamodb.NewFromConfig(cfg),
 			"RepoMetadataTable",
 			"RepoMetadata",
@@ -141,8 +146,10 @@ func TestWrapperErrors(t *testing.T) {
 
 	ctx := context.Background()
 
+	log := log.NewLogger("debug", "")
+
 	Convey("Errors", t, func() {
-		dynamoWrapper, err := dynamo.NewDynamoDBWrapper(dynamoParams.DBDriverParameters{ //nolint:contextcheck
+		params := dynamo.DBDriverParameters{ //nolint:contextcheck
 			Endpoint:              endpoint,
 			Region:                region,
 			RepoMetaTablename:     repoMetaTablename,
@@ -150,7 +157,11 @@ func TestWrapperErrors(t *testing.T) {
 			IndexDataTablename:    indexDataTablename,
 			ArtifactDataTablename: artifactDataTablename,
 			VersionTablename:      versionTablename,
-		})
+		}
+		client, err := dynamo.GetDynamoClient(params) //nolint:contextcheck
+		So(err, ShouldBeNil)
+
+		dynamoWrapper, err := dynamoWrapper.NewDynamoDBWrapper(client, params, log) //nolint:contextcheck
 		So(err, ShouldBeNil)
 
 		So(dynamoWrapper.ResetManifestDataTable(), ShouldBeNil) //nolint:contextcheck
@@ -796,7 +807,7 @@ func TestWrapperErrors(t *testing.T) {
 	})
 
 	Convey("NewDynamoDBWrapper errors", t, func() {
-		_, err := dynamo.NewDynamoDBWrapper(dynamoParams.DBDriverParameters{ //nolint:contextcheck
+		params := dynamo.DBDriverParameters{ //nolint:contextcheck
 			Endpoint:              endpoint,
 			Region:                region,
 			RepoMetaTablename:     "",
@@ -804,10 +815,14 @@ func TestWrapperErrors(t *testing.T) {
 			IndexDataTablename:    indexDataTablename,
 			ArtifactDataTablename: artifactDataTablename,
 			VersionTablename:      versionTablename,
-		})
+		}
+		client, err := dynamo.GetDynamoClient(params)
+		So(err, ShouldBeNil)
+
+		_, err = dynamoWrapper.NewDynamoDBWrapper(client, params, log)
 		So(err, ShouldNotBeNil)
 
-		_, err = dynamo.NewDynamoDBWrapper(dynamoParams.DBDriverParameters{ //nolint:contextcheck
+		params = dynamo.DBDriverParameters{ //nolint:contextcheck
 			Endpoint:              endpoint,
 			Region:                region,
 			RepoMetaTablename:     repoMetaTablename,
@@ -815,10 +830,14 @@ func TestWrapperErrors(t *testing.T) {
 			IndexDataTablename:    indexDataTablename,
 			ArtifactDataTablename: artifactDataTablename,
 			VersionTablename:      versionTablename,
-		})
+		}
+		client, err = dynamo.GetDynamoClient(params)
+		So(err, ShouldBeNil)
+
+		_, err = dynamoWrapper.NewDynamoDBWrapper(client, params, log)
 		So(err, ShouldNotBeNil)
 
-		_, err = dynamo.NewDynamoDBWrapper(dynamoParams.DBDriverParameters{ //nolint:contextcheck
+		params = dynamo.DBDriverParameters{ //nolint:contextcheck
 			Endpoint:              endpoint,
 			Region:                region,
 			RepoMetaTablename:     repoMetaTablename,
@@ -826,10 +845,14 @@ func TestWrapperErrors(t *testing.T) {
 			IndexDataTablename:    "",
 			ArtifactDataTablename: artifactDataTablename,
 			VersionTablename:      versionTablename,
-		})
+		}
+		client, err = dynamo.GetDynamoClient(params)
+		So(err, ShouldBeNil)
+
+		_, err = dynamoWrapper.NewDynamoDBWrapper(client, params, log)
 		So(err, ShouldNotBeNil)
 
-		_, err = dynamo.NewDynamoDBWrapper(dynamoParams.DBDriverParameters{ //nolint:contextcheck
+		params = dynamo.DBDriverParameters{ //nolint:contextcheck
 			Endpoint:              endpoint,
 			Region:                region,
 			RepoMetaTablename:     repoMetaTablename,
@@ -837,10 +860,14 @@ func TestWrapperErrors(t *testing.T) {
 			IndexDataTablename:    indexDataTablename,
 			ArtifactDataTablename: artifactDataTablename,
 			VersionTablename:      "",
-		})
+		}
+		client, err = dynamo.GetDynamoClient(params)
+		So(err, ShouldBeNil)
+
+		_, err = dynamoWrapper.NewDynamoDBWrapper(client, params, log)
 		So(err, ShouldNotBeNil)
 
-		_, err = dynamo.NewDynamoDBWrapper(dynamoParams.DBDriverParameters{ //nolint:contextcheck
+		params = dynamo.DBDriverParameters{ //nolint:contextcheck
 			Endpoint:              endpoint,
 			Region:                region,
 			RepoMetaTablename:     repoMetaTablename,
@@ -848,10 +875,14 @@ func TestWrapperErrors(t *testing.T) {
 			IndexDataTablename:    indexDataTablename,
 			ArtifactDataTablename: "",
 			VersionTablename:      versionTablename,
-		})
+		}
+		client, err = dynamo.GetDynamoClient(params)
+		So(err, ShouldBeNil)
+
+		_, err = dynamoWrapper.NewDynamoDBWrapper(client, params, log)
 		So(err, ShouldNotBeNil)
 
-		_, err = dynamo.NewDynamoDBWrapper(dynamoParams.DBDriverParameters{ //nolint:contextcheck
+		params = dynamo.DBDriverParameters{ //nolint:contextcheck
 			Endpoint:              endpoint,
 			Region:                region,
 			RepoMetaTablename:     repoMetaTablename,
@@ -859,7 +890,11 @@ func TestWrapperErrors(t *testing.T) {
 			IndexDataTablename:    indexDataTablename,
 			VersionTablename:      versionTablename,
 			ArtifactDataTablename: artifactDataTablename,
-		})
+		}
+		client, err = dynamo.GetDynamoClient(params)
+		So(err, ShouldBeNil)
+
+		_, err = dynamoWrapper.NewDynamoDBWrapper(client, params, log)
 		So(err, ShouldBeNil)
 	})
 }

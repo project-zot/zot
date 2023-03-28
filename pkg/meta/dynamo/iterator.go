@@ -1,4 +1,4 @@
-package iterator
+package dynamo
 
 import (
 	"context"
