@@ -41,7 +41,7 @@ require (
 	github.com/spf13/cobra v1.6.1
 	github.com/spf13/viper v1.15.0
 	github.com/stretchr/testify v1.8.2
-	github.com/swaggo/swag v1.8.11
+	github.com/swaggo/swag v1.8.12
 	github.com/vektah/gqlparser/v2 v2.5.1
 	go.etcd.io/bbolt v1.3.7
 	golang.org/x/crypto v0.7.0
@@ -74,7 +74,7 @@ require (
 	github.com/aquasecurity/memoryfs v1.4.4 // indirect
 	github.com/aquasecurity/table v1.8.0 // indirect
 	github.com/aquasecurity/tml v0.6.1 // indirect
-	github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.14.5 // indirect
+	github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.14.7 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ebs v1.15.19 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.63.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.9.11 // indirect
@@ -214,11 +214,11 @@ require (
 	github.com/aquasecurity/go-pep440-version v0.0.0-20210121094942-22b2f8951d46 // indirect
 	github.com/aquasecurity/go-version v0.0.0-20210121072130-637058cfe492 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20210307081110-f21760c49a8d // indirect
-	github.com/aws/aws-sdk-go v1.44.229
+	github.com/aws/aws-sdk-go v1.44.230
 	github.com/aws/aws-sdk-go-v2 v1.17.7
 	github.com/aws/aws-sdk-go-v2/config v1.18.19
 	github.com/aws/aws-sdk-go-v2/credentials v1.13.18 // indirect
-	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.10.16
+	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.10.19
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.13.1 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.1.31 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.4.25 // indirect
@@ -378,7 +378,7 @@ require (
 	github.com/notaryproject/notation-core-go v1.0.0-rc.2
 	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/open-policy-agent/opa v0.45.0 // indirect
-	github.com/opencontainers/runc v1.1.4 // indirect
+	github.com/opencontainers/runc v1.1.5 // indirect
 	github.com/opencontainers/runtime-spec v1.0.3-0.20220311020903-6969a0a09ab1 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
 	github.com/owenrumney/squealer v1.0.1-0.20220510063705-c0be93f0edea // indirect
@@ -473,7 +473,7 @@ require (
 	golang.org/x/term v0.6.0 // indirect
 	golang.org/x/text v0.8.0 // indirect
 	golang.org/x/time v0.1.0 // indirect
-	golang.org/x/tools v0.6.0 // indirect
+	golang.org/x/tools v0.7.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	google.golang.org/api v0.107.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
