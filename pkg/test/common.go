@@ -283,6 +283,8 @@ type Controller interface {
 
 type ControllerManager struct {
 	controller Controller
+	// used to stop background tasks(goroutines) - task scheduler
+	cancelRoutinesFunc context.CancelFunc
 }
 
 func (cm *ControllerManager) RunServer(ctx context.Context) {
@@ -293,7 +295,8 @@ func (cm *ControllerManager) RunServer(ctx context.Context) {
 }
 
 func (cm *ControllerManager) StartServer() {
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	cm.cancelRoutinesFunc = cancel
 
 	if err := cm.controller.Init(ctx); err != nil {
 		panic(err)
@@ -305,6 +308,11 @@ func (cm *ControllerManager) StartServer() {
 }
 
 func (cm *ControllerManager) StopServer() {
+	// stop background tasks - task scheduler
+	if cm.cancelRoutinesFunc != nil {
+		cm.cancelRoutinesFunc()
+	}
+
 	cm.controller.Shutdown()
 }
 
