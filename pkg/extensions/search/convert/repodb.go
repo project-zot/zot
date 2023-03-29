@@ -75,7 +75,7 @@ func RepoMeta2RepoSummary(ctx context.Context, repoMeta repodb.RepoMetadata,
 			repoVendorsSet[*imageSummary.Vendor] = true
 		}
 
-		lastUpdatedImageSummary = UpdateLastUpdatedTimestam(&repoLastUpdatedTimestamp, lastUpdatedImageSummary, imageSummary)
+		lastUpdatedImageSummary = UpdateLastUpdatedTimestamp(&repoLastUpdatedTimestamp, lastUpdatedImageSummary, imageSummary)
 
 		repoDownloadCount += repoMeta.Statistics[descriptor.Digest].DownloadCount
 	}
@@ -134,8 +134,8 @@ func RepoMeta2RepoSummary(ctx context.Context, repoMeta repodb.RepoMetadata,
 	}
 }
 
-func UpdateLastUpdatedTimestam(repoLastUpdatedTimestamp *time.Time, lastUpdatedImageSummary *gql_generated.ImageSummary,
-	imageSummary *gql_generated.ImageSummary,
+func UpdateLastUpdatedTimestamp(repoLastUpdatedTimestamp *time.Time,
+	lastUpdatedImageSummary *gql_generated.ImageSummary, imageSummary *gql_generated.ImageSummary,
 ) *gql_generated.ImageSummary {
 	newLastUpdatedImageSummary := lastUpdatedImageSummary
 
@@ -617,7 +617,7 @@ func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta repodb.RepoMetadata
 			repoVendorsSet[*imageSummary.Vendor] = true
 		}
 
-		lastUpdatedImageSummary = UpdateLastUpdatedTimestam(&repoLastUpdatedTimestamp, lastUpdatedImageSummary, imageSummary)
+		lastUpdatedImageSummary = UpdateLastUpdatedTimestamp(&repoLastUpdatedTimestamp, lastUpdatedImageSummary, imageSummary)
 
 		repoDownloadCount += *imageSummary.DownloadCount
 
