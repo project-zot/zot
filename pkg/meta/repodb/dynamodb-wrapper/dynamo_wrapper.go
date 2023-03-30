@@ -806,12 +806,12 @@ func (dwr *DBWrapper) SearchRepos(ctx context.Context, searchText string, filter
 		if rank := common.RankRepoName(searchText, repoMeta.Name); rank != -1 {
 			var (
 				// specific values used for sorting that need to be calculated based on all manifests from the repo
-				repoDownloads     = 0
-				repoLastUpdated   time.Time
-				firstImageChecked = true
-				osSet             = map[string]bool{}
-				archSet           = map[string]bool{}
-				isSigned          = false
+				repoDownloads   = 0
+				repoLastUpdated = time.Time{}
+				noImageChecked  = true
+				osSet           = map[string]bool{}
+				archSet         = map[string]bool{}
+				isSigned        = false
 			)
 
 			for _, descriptor := range repoMeta.Tags {
@@ -844,17 +844,11 @@ func (dwr *DBWrapper) SearchRepos(ctx context.Context, searchText string, filter
 						archSet[arch] = true
 					}
 
-					if firstImageChecked || repoLastUpdated.Before(manifestFilterData.LastUpdated) {
-						repoLastUpdated = manifestFilterData.LastUpdated
-						firstImageChecked = false
-
-						isSigned = manifestFilterData.IsSigned
-					}
+					repoLastUpdated, noImageChecked, isSigned = common.CheckImageLastUpdated(repoLastUpdated, isSigned,
+						noImageChecked, manifestFilterData)
 
 					manifestMetadataMap[descriptor.Digest] = manifestMeta
 				case ispec.MediaTypeImageIndex:
-					var indexLastUpdated time.Time
-
 					indexDigest := descriptor.Digest
 
 					indexData, err := dwr.fetchIndexDataWithCheck(indexDigest, indexDataMap) //nolint:contextcheck
@@ -865,7 +859,7 @@ func (dwr *DBWrapper) SearchRepos(ctx context.Context, searchText string, filter
 					}
 
 					// this also updates manifestMetadataMap
-					imageFilterData, err := dwr.collectImageIndexFilterInfo(indexDigest, repoMeta, indexData, //nolint:contextcheck
+					indexFilterData, err := dwr.collectImageIndexFilterInfo(indexDigest, repoMeta, indexData, //nolint:contextcheck
 						manifestMetadataMap)
 					if err != nil {
 						return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{},
@@ -873,21 +867,18 @@ func (dwr *DBWrapper) SearchRepos(ctx context.Context, searchText string, filter
 							fmt.Errorf("%w", err)
 					}
 
-					for _, arch := range imageFilterData.ArchList {
+					for _, arch := range indexFilterData.ArchList {
 						archSet[arch] = true
 					}
 
-					for _, os := range imageFilterData.OsList {
+					for _, os := range indexFilterData.OsList {
 						osSet[os] = true
 					}
 
-					repoDownloads += imageFilterData.DownloadCount
+					repoDownloads += indexFilterData.DownloadCount
 
-					if repoLastUpdated.Before(imageFilterData.LastUpdated) {
-						repoLastUpdated = indexLastUpdated
-
-						isSigned = imageFilterData.IsSigned
-					}
+					repoLastUpdated, noImageChecked, isSigned = common.CheckImageLastUpdated(repoLastUpdated, isSigned,
+						noImageChecked, indexFilterData)
 
 					indexDataMap[indexDigest] = indexData
 				default:
@@ -898,9 +889,11 @@ func (dwr *DBWrapper) SearchRepos(ctx context.Context, searchText string, filter
 			}
 
 			repoFilterData := repodb.FilterData{
-				OsList:   common.GetMapKeys(osSet),
-				ArchList: common.GetMapKeys(archSet),
-				IsSigned: isSigned,
+				OsList:        common.GetMapKeys(osSet),
+				ArchList:      common.GetMapKeys(archSet),
+				LastUpdated:   repoLastUpdated,
+				DownloadCount: repoDownloads,
+				IsSigned:      isSigned,
 			}
 
 			if !common.AcceptedByFilter(filter, repoFilterData) {
