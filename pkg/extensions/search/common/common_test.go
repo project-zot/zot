@@ -2390,7 +2390,7 @@ func TestGetImageManifest(t *testing.T) {
 		storeController := storage.StoreController{
 			DefaultStore: mockImageStore,
 		}
-		olu := common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		_, _, err := olu.GetImageManifest("nonexistent-repo", "latest")
 		So(err, ShouldNotBeNil)
@@ -2406,7 +2406,7 @@ func TestGetImageManifest(t *testing.T) {
 		storeController := storage.StoreController{
 			DefaultStore: mockImageStore,
 		}
-		olu := common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		_, _, err := olu.GetImageManifest("test-repo", "latest") //nolint:goconst
 		So(err, ShouldNotBeNil)
@@ -3068,7 +3068,7 @@ func TestGetRepositories(t *testing.T) {
 			DefaultStore: mockImageStore,
 			SubStore:     map[string]storage.ImageStore{"test": mockImageStore},
 		}
-		olu := common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		repoList, err := olu.GetRepositories()
 		So(repoList, ShouldBeEmpty)
@@ -3078,7 +3078,7 @@ func TestGetRepositories(t *testing.T) {
 			DefaultStore: mocks.MockedImageStore{},
 			SubStore:     map[string]storage.ImageStore{"test": mockImageStore},
 		}
-		olu = common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu = NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		repoList, err = olu.GetRepositories()
 		So(repoList, ShouldBeEmpty)
@@ -3388,7 +3388,7 @@ func TestGlobalSearch(t *testing.T) {
 		)
 		So(err, ShouldBeNil)
 
-		olu := common.NewBaseOciLayoutUtils(ctlr.StoreController, log.NewLogger("debug", ""))
+		olu := NewBaseOciLayoutUtils(ctlr.StoreController, log.NewLogger("debug", ""))
 
 		// Initialize the objects containing the expected data
 		repos, err := olu.GetRepositories()
@@ -3717,7 +3717,7 @@ func TestGlobalSearch(t *testing.T) {
 		)
 		So(err, ShouldBeNil)
 
-		olu := common.NewBaseOciLayoutUtils(ctlr.StoreController, log.NewLogger("debug", ""))
+		olu := NewBaseOciLayoutUtils(ctlr.StoreController, log.NewLogger("debug", ""))
 
 		// Initialize the objects containing the expected data
 		repos, err := olu.GetRepositories()
@@ -5996,320 +5996,6 @@ func updateManifestConfig(manifest ispec.Manifest, config ispec.Image) (ispec.Ma
 	manifest.Config.Size = int64(configSize)
 
 	return manifest, err
-}
-
-func TestBaseOciLayoutUtils(t *testing.T) {
-	manifestDigest := GetTestBlobDigest("zot-test", "config").String()
-
-	Convey("GetImageManifestSize fail", t, func() {
-		mockStoreController := mocks.MockedImageStore{
-			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
-				return []byte{}, ErrTestError
-			},
-		}
-
-		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
-
-		size := olu.GetImageManifestSize("", "")
-		So(size, ShouldBeZeroValue)
-	})
-
-	Convey("GetImageConfigSize: fail GetImageBlobManifest", t, func() {
-		mockStoreController := mocks.MockedImageStore{
-			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
-				return []byte{}, ErrTestError
-			},
-		}
-
-		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
-
-		size := olu.GetImageConfigSize("", "")
-		So(size, ShouldBeZeroValue)
-	})
-
-	Convey("GetImageConfigSize: config GetBlobContent fail", t, func() {
-		mockStoreController := mocks.MockedImageStore{
-			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
-				if digest.String() == manifestDigest {
-					return []byte{}, ErrTestError
-				}
-
-				return []byte(
-					`
-				{
-					"schemaVersion": 2,
-					"mediaType": "application/vnd.oci.image.manifest.v1+json",
-					"config": {
-						"mediaType": "application/vnd.oci.image.config.v1+json",
-						"digest": manifestDigest,
-						"size": 1476
-					},
-					"layers": [
-						{
-							"mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-							"digest": "` + GetTestBlobDigest("zot-test", "layer").String() + `",
-							"size": 76097157
-						}
-					]
-				}`), nil
-			},
-		}
-
-		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
-
-		size := olu.GetImageConfigSize("", "")
-		So(size, ShouldBeZeroValue)
-	})
-
-	Convey("GetRepoLastUpdated: config GetBlobContent fail", t, func() {
-		mockStoreController := mocks.MockedImageStore{
-			GetIndexContentFn: func(repo string) ([]byte, error) {
-				return []byte{}, ErrTestError
-			},
-		}
-
-		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
-
-		_, err := olu.GetRepoLastUpdated("")
-		So(err, ShouldNotBeNil)
-	})
-
-	Convey("GetImageTagsWithTimestamp: GetImageBlobManifest fails", t, func() {
-		index := ispec.Index{
-			Manifests: []ispec.Descriptor{
-				{Annotations: map[string]string{ispec.AnnotationRefName: "w"}}, {},
-			},
-		}
-
-		indexBlob, err := json.Marshal(index)
-		So(err, ShouldBeNil)
-
-		mockStoreController := mocks.MockedImageStore{
-			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
-				return nil, ErrTestError
-			},
-			GetIndexContentFn: func(repo string) ([]byte, error) {
-				return indexBlob, nil
-			},
-		}
-
-		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
-
-		_, err = olu.GetImageTagsWithTimestamp("rep")
-		So(err, ShouldNotBeNil)
-	})
-
-	Convey("GetImageTagsWithTimestamp: GetImageInfo fails", t, func() {
-		index := ispec.Index{
-			Manifests: []ispec.Descriptor{
-				{Annotations: map[string]string{ispec.AnnotationRefName: "w"}}, {},
-			},
-		}
-
-		indexBlob, err := json.Marshal(index)
-		So(err, ShouldBeNil)
-
-		manifest := ispec.Manifest{
-			Config: ispec.Descriptor{
-				MediaType: "application/vnd.oci.image.config.v1+json",
-				Digest:    "configDigest",
-			},
-			Layers: []ispec.Descriptor{
-				{},
-				{},
-			},
-		}
-
-		manifestBlob, err := json.Marshal(manifest)
-		So(err, ShouldBeNil)
-
-		mockStoreController := mocks.MockedImageStore{
-			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
-				if digest.String() == "configDigest" {
-					return nil, ErrTestError
-				}
-
-				return manifestBlob, nil
-			},
-			GetIndexContentFn: func(repo string) ([]byte, error) {
-				return indexBlob, nil
-			},
-		}
-
-		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
-
-		_, err = olu.GetImageTagsWithTimestamp("repo")
-		So(err, ShouldNotBeNil)
-	})
-
-	Convey("GetExpandedRepoInfo: fails", t, func() {
-		index := ispec.Index{
-			Manifests: []ispec.Descriptor{
-				{},
-				{
-					Annotations: map[string]string{
-						ispec.AnnotationRefName: "w",
-						ispec.AnnotationVendor:  "vend",
-					},
-				},
-			},
-		}
-
-		indexBlob, err := json.Marshal(index)
-		So(err, ShouldBeNil)
-
-		manifest := ispec.Manifest{
-			Annotations: map[string]string{
-				ispec.AnnotationRefName: "w",
-				ispec.AnnotationVendor:  "vend",
-			},
-			Layers: []ispec.Descriptor{
-				{},
-				{},
-			},
-		}
-
-		manifestBlob, err := json.Marshal(manifest)
-		So(err, ShouldBeNil)
-
-		mockStoreController := mocks.MockedImageStore{
-			GetIndexContentFn: func(repo string) ([]byte, error) {
-				return nil, ErrTestError
-			},
-		}
-
-		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
-
-		_, err = olu.GetExpandedRepoInfo("rep")
-		So(err, ShouldNotBeNil)
-
-		// GetRepoLastUpdated fails
-		mockStoreController = mocks.MockedImageStore{
-			GetIndexContentFn: func(repo string) ([]byte, error) {
-				return indexBlob, nil
-			},
-		}
-
-		storeController = storage.StoreController{DefaultStore: mockStoreController}
-		olu = common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
-
-		_, err = olu.GetExpandedRepoInfo("rep")
-		So(err, ShouldNotBeNil)
-
-		// anotations
-
-		mockStoreController = mocks.MockedImageStore{
-			GetIndexContentFn: func(repo string) ([]byte, error) {
-				return indexBlob, nil
-			},
-			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
-				return manifestBlob, nil
-			},
-		}
-
-		storeController = storage.StoreController{DefaultStore: mockStoreController}
-		olu = common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
-
-		_, err = olu.GetExpandedRepoInfo("rep")
-		So(err, ShouldBeNil)
-	})
-
-	Convey("GetImageInfo fail", t, func() {
-		mockStoreController := mocks.MockedImageStore{
-			GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
-				return []byte{}, ErrTestError
-			},
-		}
-
-		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
-
-		_, err := olu.GetImageInfo("", "")
-		So(err, ShouldNotBeNil)
-	})
-
-	Convey("CheckManifestSignature: notation", t, func() {
-		// GetReferrers - fails => checkNotarySignature returns false
-		mockStoreController := mocks.MockedImageStore{
-			GetImageManifestFn: func(name, reference string) ([]byte, godigest.Digest, string, error) {
-				return []byte{}, "", "", zerr.ErrRepoNotFound
-			},
-			GetReferrersFn: func(name string, digest godigest.Digest, mediaTypes []string) (ispec.Index, error) {
-				return ispec.Index{}, ErrTestError
-			},
-		}
-
-		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := common.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
-
-		check := olu.CheckManifestSignature("rep", godigest.FromString(""))
-		So(check, ShouldBeFalse)
-
-		// checkNotarySignature -> true
-		dir := t.TempDir()
-
-		port := GetFreePort()
-		baseURL := GetBaseURL(port)
-		conf := config.New()
-		conf.HTTP.Port = port
-		conf.Storage.RootDirectory = dir
-		defaultVal := true
-		conf.Extensions = &extconf.ExtensionConfig{
-			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
-		}
-
-		conf.Extensions.Search.CVE = nil
-
-		ctlr := api.NewController(conf)
-
-		ctlrManager := NewControllerManager(ctlr)
-		ctlrManager.StartAndWait(port)
-		defer ctlrManager.StopServer()
-
-		// push test image to repo
-		config, layers, manifest, err := GetImageComponents(100)
-		So(err, ShouldBeNil)
-
-		layersSize1 := 0
-		for _, l := range layers {
-			layersSize1 += len(l)
-		}
-
-		repo := "repo"
-		tag := "1.0.1"
-		err = UploadImage(
-			Image{
-				Manifest:  manifest,
-				Config:    config,
-				Layers:    layers,
-				Reference: tag,
-			},
-			baseURL,
-			repo,
-		)
-		So(err, ShouldBeNil)
-
-		olu = common.NewBaseOciLayoutUtils(ctlr.StoreController, log.NewLogger("debug", ""))
-		manifestList, err := olu.GetImageManifests(repo)
-		So(err, ShouldBeNil)
-		So(len(manifestList), ShouldEqual, 1)
-
-		isSigned := olu.CheckManifestSignature(repo, manifestList[0].Digest)
-		So(isSigned, ShouldBeFalse)
-
-		err = SignImageUsingNotary(fmt.Sprintf("%s:%s", repo, tag), port)
-		So(err, ShouldBeNil)
-
-		isSigned = olu.CheckManifestSignature(repo, manifestList[0].Digest)
-		So(isSigned, ShouldBeTrue)
-	})
 }
 
 func TestSearchSize(t *testing.T) {
