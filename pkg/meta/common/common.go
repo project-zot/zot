@@ -270,3 +270,19 @@ func MatchesArtifactTypes(descriptorMediaType string, artifactTypes []string) bo
 
 	return found
 }
+
+// CheckImageLastUpdated check if the given image is updated earlier than the current repoLastUpdated value
+//
+// It returns updated values for: repoLastUpdated, noImageChecked, isSigned.
+func CheckImageLastUpdated(repoLastUpdated time.Time, isSigned bool, noImageChecked bool,
+	manifestFilterData repodb.FilterData,
+) (time.Time, bool, bool) {
+	if noImageChecked || repoLastUpdated.Before(manifestFilterData.LastUpdated) {
+		repoLastUpdated = manifestFilterData.LastUpdated
+		noImageChecked = false
+
+		isSigned = manifestFilterData.IsSigned
+	}
+
+	return repoLastUpdated, noImageChecked, isSigned
+}
