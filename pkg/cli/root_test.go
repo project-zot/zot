@@ -1018,11 +1018,57 @@ func TestVerify(t *testing.T) {
 	})
 }
 
+func TestAutoPortSelection(t *testing.T) {
+	Convey("Run server without specifying a port (port 0)", t, func() {
+		logFile, err := os.CreateTemp("", "zot-log*.txt")
+		logPath := logFile.Name()
+		So(err, ShouldBeNil)
+
+		content := fmt.Sprintf(`{"distSpecVersion": "1.0.0", "storage": {"rootDirectory": "/tmp/zot"},
+		"http": {"address": "127.0.0.1", "port": "0"},
+		"log": {"level": "debug", "output": "%s"}}`, logFile.Name())
+
+		cfgfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+
+		defer os.Remove(cfgfile.Name()) // clean up
+
+		_, err = cfgfile.Write([]byte(content))
+		So(err, ShouldBeNil)
+
+		os.Args = []string{"cli_test", "serve", cfgfile.Name()}
+		go func() {
+			err = cli.NewServerRootCmd().Execute()
+			So(err, ShouldBeNil)
+		}()
+
+		found, err := ReadLogFileAndSearchString(logPath, "Port", 90*time.Second)
+		So(found, ShouldBeTrue)
+		if err != nil {
+			panic(err)
+		}
+
+		data, err := os.ReadFile(logFile.Name())
+		So(err, ShouldBeNil)
+		So(string(data), ShouldContainSubstring, "\"Port\":")
+	})
+}
+
 func TestLoadConfig(t *testing.T) {
 	Convey("Test viper load config", t, func(c C) {
 		config := config.New()
-		err := cli.LoadConfiguration(config, "../../examples/config-policy.json")
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
 		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name())
+		content := []byte(`{"storage":{"rootDirectory":"/tmp/zot",
+							"subPaths": {"/a": {"rootDirectory": "/tmp/zot","dedupe":"true","gc":"true","gcDelay":"1s","gcInterval":"1s"},
+							"/b": {"rootDirectory": "/zot-a","dedupe":"true","gc":"true","gcDelay":"1s"}}},
+							"http":{"address":"127.0.0.1","port":"8080","realm":"zot",
+							"auth":{"htpasswd":{"path":"test/data/htpasswd"},"failDelay":1}}}`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+		err = cli.LoadConfiguration(config, tmpfile.Name())
+		So(err, ShouldNotBeNil)
 	})
 	Convey("Test subpath config combination", t, func(c C) {
 		config := config.New()

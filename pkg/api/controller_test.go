@@ -304,55 +304,6 @@ func TestRunAlreadyRunningServer(t *testing.T) {
 	})
 }
 
-func TestAutoPortSelection(t *testing.T) {
-	Convey("Run server with specifying a port", t, func() {
-		conf := config.New()
-		conf.HTTP.Port = "0"
-
-		logFile, err := os.CreateTemp("", "zot-log*.txt")
-		So(err, ShouldBeNil)
-		conf.Log.Output = logFile.Name()
-		defer os.Remove(logFile.Name()) // clean up
-
-		ctlr := makeController(conf, t.TempDir(), "")
-
-		cm := test.NewControllerManager(ctlr)
-		cm.StartServer()
-		time.Sleep(1000 * time.Millisecond)
-		defer cm.StopServer()
-
-		file, err := os.Open(logFile.Name())
-		So(err, ShouldBeNil)
-		defer file.Close()
-
-		scanner := bufio.NewScanner(file)
-
-		var contents bytes.Buffer
-		start := time.Now()
-
-		for scanner.Scan() {
-			if time.Since(start) < time.Second*30 {
-				t.Logf("Exhausted: Controller did not print the expected log within 30 seconds")
-			}
-			text := scanner.Text()
-			contents.WriteString(text)
-			if strings.Contains(text, "Port unspecified") {
-				break
-			}
-			t.Logf(scanner.Text())
-		}
-		So(scanner.Err(), ShouldBeNil)
-		So(contents.String(), ShouldContainSubstring,
-			"port is unspecified, listening on kernel chosen port",
-		)
-		So(contents.String(), ShouldContainSubstring, "\"address\":\"127.0.0.1\"")
-		So(contents.String(), ShouldContainSubstring, "\"port\":")
-
-		So(ctlr.GetPort(), ShouldBeGreaterThan, 0)
-		So(ctlr.GetPort(), ShouldBeLessThan, 65536)
-	})
-}
-
 func TestObjectStorageController(t *testing.T) {
 	skipIt(t)
 	Convey("Negative make a new object storage controller", t, func() {

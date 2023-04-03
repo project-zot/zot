@@ -14,6 +14,7 @@ import (
 	glob "github.com/bmatcuk/doublestar/v4"
 	"github.com/mitchellh/mapstructure"
 	distspec "github.com/opencontainers/distribution-spec/specs-go"
+	"github.com/phayes/freeport"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -432,6 +433,18 @@ func validateAuthzPolicies(config *config.Config) error {
 	return nil
 }
 
+func setPort(config *config.Config) {
+	// set port if 0
+	if config.HTTP.Port == "" || config.HTTP.Port == "0" {
+		newPort, err := freeport.GetFreePort()
+		if err != nil {
+			log.Error().Err(err).Str("port", config.HTTP.Port).Msg("failed to assign HTTP port automatically")
+		}
+
+		config.HTTP.Port = strconv.Itoa(newPort)
+	}
+}
+
 //nolint:gocyclo
 func applyDefaultValues(config *config.Config, viperInstance *viper.Viper) {
 	defaultVal := true
@@ -570,6 +583,8 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper) {
 			config.Storage.SubPaths[name] = storageConfig
 		}
 	}
+
+	setPort(config)
 }
 
 func updateDistSpecVersion(config *config.Config) {
@@ -708,7 +723,7 @@ func validateHTTP(config *config.Config) error {
 			return errors.ErrBadConfig
 		}
 
-		fmt.Printf("HTTP port %d\n", port)
+		log.Info().Msgf("HTTP port %d\n", port)
 	}
 
 	return nil

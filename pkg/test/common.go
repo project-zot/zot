@@ -278,7 +278,6 @@ type Controller interface {
 	Init(ctx context.Context) error
 	Run(ctx context.Context) error
 	Shutdown()
-	GetPort() int
 }
 
 type ControllerManager struct {
