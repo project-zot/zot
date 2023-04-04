@@ -37,7 +37,7 @@
 10050	WARN	(Retrieved from Cache)
 10052	WARN	(X-ChromeLogger-Data (XCOLD) Header Information Leak)
 10054	WARN	(Cookie without SameSite Attribute)
-10055	WARN	(CSP)
+10055	IGNORE	(CSP)  We set CSP in both UI (with *) and backend (no *), unfortunately the UI needs to use * in case it is deployed separately
 10056	WARN	(X-Debug-Token Information Leak)
 10057	WARN	(Username Hash Found)
 10061	WARN	(X-AspNet-Version Response Header)
