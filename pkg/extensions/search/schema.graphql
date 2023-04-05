@@ -544,6 +544,14 @@ input Filter {
     Only return images or repositories with at least one signature
     """
     HasToBeSigned: Boolean
+    """
+    Only returns images or repositories that are bookmarked or not bookmarked
+    """
+    IsBookmarked: Boolean
+    """
+    Only returns images or repositories that are starred or not starred
+    """
+    IsStarred: Boolean
 }
 
 """

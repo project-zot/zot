@@ -916,7 +916,7 @@ func (bdw *DBWrapper) SearchRepos(ctx context.Context, searchText string, filter
 			repoMeta.IsBookmarked = zcommon.Contains(userBookmarks, repoMeta.Name)
 			repoMeta.IsStarred = zcommon.Contains(userStars, repoMeta.Name)
 
-			rank := common.RankRepoName(searchText, string(repoName))
+			rank := common.RankRepoName(searchText, repoMeta.Name)
 			if rank == -1 {
 				continue
 			}
@@ -1013,6 +1013,8 @@ func (bdw *DBWrapper) SearchRepos(ctx context.Context, searchText string, filter
 				LastUpdated:   repoLastUpdated,
 				DownloadCount: repoDownloads,
 				IsSigned:      isSigned,
+				IsBookmarked:  repoMeta.IsBookmarked,
+				IsStarred:     repoMeta.IsStarred,
 			}
 
 			if !common.AcceptedByFilter(filter, repoFilterData) {

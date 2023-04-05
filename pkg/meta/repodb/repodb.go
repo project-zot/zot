@@ -234,6 +234,8 @@ type Filter struct {
 	Os            []*string
 	Arch          []*string
 	HasToBeSigned *bool
+	IsBookmarked  *bool
+	IsStarred     *bool
 }
 
 type FilterData struct {
@@ -242,4 +244,6 @@ type FilterData struct {
 	OsList        []string
 	ArchList      []string
 	IsSigned      bool
+	IsStarred     bool
+	IsBookmarked  bool
 }

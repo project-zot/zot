@@ -55,6 +55,10 @@ type Filter struct {
 	Arch []*string `json:"Arch,omitempty"`
 	// Only return images or repositories with at least one signature
 	HasToBeSigned *bool `json:"HasToBeSigned,omitempty"`
+	// Only returns images or repositories that are bookmarked or not bookmarked
+	IsBookmarked *bool `json:"IsBookmarked,omitempty"`
+	// Only returns images or repositories that are starred or not starred
+	IsStarred *bool `json:"IsStarred,omitempty"`
 }
 
 // Search results, can contain images, repositories and layers
