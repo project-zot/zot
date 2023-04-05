@@ -34,8 +34,8 @@ func getNewScanOptions(dir, dbRepository string) *flag.Options {
 			CacheDir: dir,
 		},
 		ScanOptions: flag.ScanOptions{
-			SecurityChecks: []string{types.SecurityCheckVulnerability},
-			OfflineScan:    true,
+			Scanners:    types.Scanners{types.VulnerabilityScanner},
+			OfflineScan: true,
 		},
 		VulnerabilityOptions: flag.VulnerabilityOptions{
 			VulnType: []string{types.VulnTypeOS, types.VulnTypeLibrary},

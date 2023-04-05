@@ -53,6 +53,7 @@ linters-settings:
     replace-allow-list:
       - helm.sh/helm/v3
       - github.com/opencontainers/umoci
+      - github.com/spdx/tools-golang
 issues:
   exclude-rules:
     - path: pkg/extensions/search/schema.resolvers.go
