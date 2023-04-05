@@ -682,6 +682,9 @@ func syncImageWithRefs(ctx context.Context, localRepo, upstreamRepo, reference s
 		if mediaType == ispec.MediaTypeArtifactManifest {
 			err = sig.syncOCIArtifact(localRepo, upstreamRepo, reference, manifestBuf) //nolint
 			if err != nil {
+				log.Error().Err(err).Msgf("couldn't sync oci artifact with artifact mediaType: %s",
+					upstreamImageRef.DockerReference())
+
 				return skipped, err
 			}
 		}
@@ -785,6 +788,8 @@ func syncImageWithRefs(ctx context.Context, localRepo, upstreamRepo, reference s
 
 		return skipped, err
 	}
+
+	log.Info().Msgf("successfully synced image %s", upstreamImageRef.DockerReference())
 
 	return skipped, nil
 }

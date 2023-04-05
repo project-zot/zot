@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -201,6 +200,7 @@ func makeDownstreamServer(
 		BaseConfig: extconf.BaseConfig{Enable: &defVal},
 	}
 	destConfig.Extensions.Sync = syncConfig
+	destConfig.Log.Output = path.Join(destDir, "sync.log")
 
 	dctlr := api.NewController(destConfig)
 
@@ -981,8 +981,8 @@ func TestPeriodically(t *testing.T) {
 	})
 }
 
-func TestOnDemandPermsDenied(t *testing.T) {
-	Convey("Verify sync on demand feature without perm on sync cache", t, func() {
+func TestPermsDenied(t *testing.T) {
+	Convey("Verify sync feature without perm on sync cache", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
 
 		sctlr, srcBaseURL, _, _, _ := makeUpstreamServer(t, false, false)
@@ -1031,6 +1031,7 @@ func TestOnDemandPermsDenied(t *testing.T) {
 		destConfig.Extensions = &extconf.ExtensionConfig{}
 		destConfig.Extensions.Search = nil
 		destConfig.Extensions.Sync = syncConfig
+		destConfig.Log.Output = path.Join(destDir, "sync.log")
 
 		dctlr := api.NewController(destConfig)
 		dcm := test.NewControllerManager(dctlr)
@@ -1047,8 +1048,20 @@ func TestOnDemandPermsDenied(t *testing.T) {
 
 		dcm.StartAndWait(destPort)
 
-		// give it time to sync
-		time.Sleep(3 * time.Second)
+		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
+			"couldn't get localCachePath for ", 15*time.Second)
+		if err != nil {
+			panic(err)
+		}
+
+		if !found {
+			data, err := os.ReadFile(dctlr.Config.Log.Output)
+			So(err, ShouldBeNil)
+
+			t.Logf("downstream log: %s", string(data))
+		}
+
+		So(found, ShouldBeTrue)
 
 		resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
@@ -1058,6 +1071,10 @@ func TestOnDemandPermsDenied(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
+
+		data, err := os.ReadFile(dctlr.Config.Log.Output)
+		So(err, ShouldBeNil)
+		t.Logf("downstream log: %s", string(data))
 	})
 }
 
@@ -1172,8 +1189,8 @@ func TestConfigReloader(t *testing.T) {
 		time.Sleep(2 * time.Second)
 
 		data, err := os.ReadFile(logFile.Name())
-		t.Logf("downstream log: %s", string(data))
 		So(err, ShouldBeNil)
+		t.Logf("downstream log: %s", string(data))
 		So(string(data), ShouldContainSubstring, "reloaded params")
 		So(string(data), ShouldContainSubstring, "new configuration settings")
 		So(string(data), ShouldContainSubstring, "\"Sync\":null")
@@ -1250,18 +1267,25 @@ func TestMandatoryAnnotations(t *testing.T) {
 
 		defer dcm.StopServer()
 
-		// give it time to set up sync
-		time.Sleep(10 * time.Second)
+		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
+			"couldn't upload manifest because of missing annotations", 15*time.Second)
+		if err != nil {
+			panic(err)
+		}
+
+		if !found {
+			data, err := os.ReadFile(dctlr.Config.Log.Output)
+			So(err, ShouldBeNil)
+
+			t.Logf("downstream log: %s", string(data))
+		}
+
+		So(found, ShouldBeTrue)
 
 		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/0.0.1")
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
-
-		data, err := os.ReadFile(logFile.Name())
-		t.Logf("downstream log: %s", string(data))
-		So(err, ShouldBeNil)
-		So(string(data), ShouldContainSubstring, "couldn't upload manifest because of missing annotations")
 	})
 }
 
@@ -1307,8 +1331,20 @@ func TestBadTLS(t *testing.T) {
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
 		defer dcm.StopServer()
 
-		// give it time to set up sync
-		time.Sleep(3 * time.Second)
+		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
+			"x509: certificate signed by unknown authority", 15*time.Second)
+		if err != nil {
+			panic(err)
+		}
+
+		if !found {
+			data, err := os.ReadFile(dctlr.Config.Log.Output)
+			So(err, ShouldBeNil)
+
+			t.Logf("downstream log: %s", string(data))
+		}
+
+		So(found, ShouldBeTrue)
 
 		resp, _ := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + "invalid")
 		So(resp, ShouldNotBeNil)
@@ -1318,7 +1354,7 @@ func TestBadTLS(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
-		resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 	})
@@ -1561,12 +1597,27 @@ func TestBasicAuth(t *testing.T) {
 				Registries:      []syncconf.RegistryConfig{syncRegistryConfig},
 			}
 
+			destConfig.Log.Output = path.Join(destDir, "sync.log")
+
 			dctlr := api.NewController(destConfig)
 			dcm := test.NewControllerManager(dctlr)
 			dcm.StartAndWait(destPort)
 			defer dcm.StopServer()
 
-			time.Sleep(3 * time.Second)
+			found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
+				"status code: 401", 15*time.Second)
+			if err != nil {
+				panic(err)
+			}
+
+			if !found {
+				data, err := os.ReadFile(dctlr.Config.Log.Output)
+				So(err, ShouldBeNil)
+
+				t.Logf("downstream log: %s", string(data))
+			}
+
+			So(found, ShouldBeTrue)
 
 			resp, err := resty.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 			So(err, ShouldBeNil)
@@ -1627,7 +1678,20 @@ func TestBasicAuth(t *testing.T) {
 			dcm.StartAndWait(dctlr.Config.HTTP.Port)
 			defer dcm.StopServer()
 
-			time.Sleep(3 * time.Second)
+			found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
+				"couldn't get registry credentials from", 15*time.Second)
+			if err != nil {
+				panic(err)
+			}
+
+			if !found {
+				data, err := os.ReadFile(dctlr.Config.Log.Output)
+				So(err, ShouldBeNil)
+
+				t.Logf("downstream log: %s", string(data))
+			}
+
+			So(found, ShouldBeTrue)
 
 			resp, err := destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 			So(err, ShouldBeNil)
@@ -1874,6 +1938,21 @@ func TestInvalidRegex(t *testing.T) {
 		dcm := test.NewControllerManager(dctlr)
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
 		defer dcm.StopServer()
+
+		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
+			"couldn't compile regex", 15*time.Second)
+		if err != nil {
+			panic(err)
+		}
+
+		if !found {
+			data, err := os.ReadFile(dctlr.Config.Log.Output)
+			So(err, ShouldBeNil)
+
+			t.Logf("downstream log: %s", string(data))
+		}
+
+		So(found, ShouldBeTrue)
 	})
 }
 
@@ -2755,7 +2834,20 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 			dcm.StartAndWait(dctlr.Config.HTTP.Port)
 			defer dcm.StopServer()
 
-			time.Sleep(2 * time.Second)
+			found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
+				"finished syncing", 15*time.Second)
+			if err != nil {
+				panic(err)
+			}
+
+			if !found {
+				data, err := os.ReadFile(dctlr.Config.Log.Output)
+				So(err, ShouldBeNil)
+
+				t.Logf("downstream log: %s", string(data))
+			}
+
+			So(found, ShouldBeTrue)
 
 			// should not be synced nor sync on demand
 			resp, err := resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
@@ -2790,7 +2882,20 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 			dcm.StartAndWait(dctlr.Config.HTTP.Port)
 			defer dcm.StopServer()
 
-			time.Sleep(2 * time.Second)
+			found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
+				"finished syncing", 15*time.Second)
+			if err != nil {
+				panic(err)
+			}
+
+			if !found {
+				data, err := os.ReadFile(dctlr.Config.Log.Output)
+				So(err, ShouldBeNil)
+
+				t.Logf("downstream log: %s", string(data))
+			}
+
+			So(found, ShouldBeTrue)
 
 			// should not be synced nor sync on demand
 			resp, err := resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/" + cosignTag)
@@ -2841,7 +2946,20 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 			dcm.StartAndWait(dctlr.Config.HTTP.Port)
 			defer dcm.StopServer()
 
-			time.Sleep(2 * time.Second)
+			found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
+				"finished syncing", 15*time.Second)
+			if err != nil {
+				panic(err)
+			}
+
+			if !found {
+				data, err := os.ReadFile(dctlr.Config.Log.Output)
+				So(err, ShouldBeNil)
+
+				t.Logf("downstream log: %s", string(data))
+			}
+
+			So(found, ShouldBeTrue)
 
 			// should not be synced nor sync on demand
 			resp, err = resty.R().SetHeader("Content-Type", "application/json").
@@ -2858,14 +2976,7 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 			So(len(index.Manifests), ShouldEqual, 0)
 		})
 
-		Convey("Trigger error on artifact references", func() {
-			// trigger permission denied on image manifest
-			manifestPath := path.Join(srcDir, repoName, "blobs",
-				string(imageManifestDigest.Algorithm()), imageManifestDigest.Encoded())
-			err = os.Chmod(manifestPath, 0o000)
-			So(err, ShouldBeNil)
-
-			// trigger permission error on upstream
+		Convey("Trigger error on oci refs of both mediatypes", func() {
 			artifactURLPath := path.Join("/v2", repoName, "referrers", imageManifestDigest.String())
 
 			// based on image manifest digest get referrers
@@ -2875,6 +2986,7 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 				Get(srcBaseURL + artifactURLPath)
 
 			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 			So(resp, ShouldNotBeEmpty)
 
 			var referrers ispec.Index
@@ -2882,7 +2994,7 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 			err = json.Unmarshal(resp.Body(), &referrers)
 			So(err, ShouldBeNil)
 
-			Convey("of type OCI image", func() {
+			Convey("of type OCI image", func() { //nolint: dupl
 				// read manifest
 				var artifactManifest ispec.Manifest
 				for _, ref := range referrers.Manifests {
@@ -2908,15 +3020,34 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 				dcm.StartAndWait(dctlr.Config.HTTP.Port)
 				defer dcm.StopServer()
 
-				time.Sleep(2 * time.Second)
+				found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
+					"couldn't copy referrer for", 15*time.Second)
+				if err != nil {
+					panic(err)
+				}
+
+				if !found {
+					data, err := os.ReadFile(dctlr.Config.Log.Output)
+					So(err, ShouldBeNil)
+
+					t.Logf("downstream log: %s", string(data))
+				}
+
+				So(found, ShouldBeTrue)
 
 				// should not be synced nor sync on demand
 				resp, err = resty.R().Get(destBaseURL + artifactURLPath)
 				So(err, ShouldBeNil)
-				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+				var index ispec.Index
+
+				err = json.Unmarshal(resp.Body(), &index)
+				So(err, ShouldBeNil)
+				So(len(index.Manifests), ShouldEqual, 0)
 			})
 
-			Convey("of type OCI artifact", func() {
+			Convey("of type OCI artifact", func() { //nolint: dupl
 				// read manifest
 				var artifactManifest ispec.Artifact
 				for _, ref := range referrers.Manifests {
@@ -2942,12 +3073,31 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 				dcm.StartAndWait(dctlr.Config.HTTP.Port)
 				defer dcm.StopServer()
 
-				time.Sleep(2 * time.Second)
+				found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
+					"couldn't copy referrer for", 15*time.Second)
+				if err != nil {
+					panic(err)
+				}
+
+				if !found {
+					data, err := os.ReadFile(dctlr.Config.Log.Output)
+					So(err, ShouldBeNil)
+
+					t.Logf("downstream log: %s", string(data))
+				}
+
+				So(found, ShouldBeTrue)
 
 				// should not be synced nor sync on demand
 				resp, err = resty.R().Get(destBaseURL + artifactURLPath)
 				So(err, ShouldBeNil)
-				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+				var index ispec.Index
+
+				err = json.Unmarshal(resp.Body(), &index)
+				So(err, ShouldBeNil)
+				So(len(index.Manifests), ShouldEqual, 0)
 			})
 		})
 	})
@@ -3438,7 +3588,20 @@ func TestOnDemandRetryGoroutine(t *testing.T) {
 		defer scm.StopServer()
 
 		// in the meantime ondemand should retry syncing
-		time.Sleep(15 * time.Second)
+		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
+			"successfully synced image", 15*time.Second)
+		if err != nil {
+			panic(err)
+		}
+
+		if !found {
+			data, err := os.ReadFile(dctlr.Config.Log.Output)
+			So(err, ShouldBeNil)
+
+			t.Logf("downstream log: %s", string(data))
+		}
+
+		So(found, ShouldBeTrue)
 
 		// now we should have the image synced
 		binfo, err := os.Stat(path.Join(destDir, testImage, "index.json"))
@@ -3449,6 +3612,11 @@ func TestOnDemandRetryGoroutine(t *testing.T) {
 		resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		data, err := os.ReadFile(dctlr.Config.Log.Output)
+		So(err, ShouldBeNil)
+
+		t.Logf("downstream log: %s", string(data))
 	})
 }
 
@@ -3548,8 +3716,19 @@ func TestOnDemandRetryGoroutineErr(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 
-		// in the meantime ondemand should retry syncing and finish with error
-		time.Sleep(3 * time.Second)
+		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
+			"sync routine: error while copying image", 15*time.Second)
+		if err != nil {
+			panic(err)
+		}
+		if !found {
+			data, err := os.ReadFile(dctlr.Config.Log.Output)
+			So(err, ShouldBeNil)
+
+			t.Logf("downstream log: %s", string(data))
+		}
+
+		So(found, ShouldBeTrue)
 
 		resp, err = destClient.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
@@ -3806,6 +3985,21 @@ func TestError(t *testing.T) {
 		err = os.Chmod(localRepoPath, 0o000)
 		So(err, ShouldBeNil)
 
+		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
+			"finished syncing", 15*time.Second)
+		if err != nil {
+			panic(err)
+		}
+
+		if !found {
+			data, err := os.ReadFile(dctlr.Config.Log.Output)
+			So(err, ShouldBeNil)
+
+			t.Logf("downstream log: %s", string(data))
+		}
+
+		So(found, ShouldBeTrue)
+
 		resp, err := client.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
@@ -4033,15 +4227,35 @@ func TestSignaturesOnDemand(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-		time.Sleep(3 * time.Second)
-
-		body, err := os.ReadFile(path.Join(destDir, "sync.log"))
+		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
+			"couldn't find any oci reference", 15*time.Second)
 		if err != nil {
-			log.Fatalf("unable to read file: %v", err)
+			panic(err)
 		}
 
-		So(string(body), ShouldContainSubstring, "couldn't find any oci reference")
-		So(string(body), ShouldContainSubstring, "couldn't find upstream referrer")
+		if !found {
+			data, err := os.ReadFile(dctlr.Config.Log.Output)
+			So(err, ShouldBeNil)
+
+			t.Logf("downstream log: %s", string(data))
+		}
+
+		So(found, ShouldBeTrue)
+
+		found, err = test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
+			"couldn't find upstream referrer", 15*time.Second)
+		if err != nil {
+			panic(err)
+		}
+
+		if !found {
+			data, err := os.ReadFile(dctlr.Config.Log.Output)
+			So(err, ShouldBeNil)
+
+			t.Logf("downstream log: %s", string(data))
+		}
+
+		So(found, ShouldBeTrue)
 	})
 }
 
@@ -4223,14 +4437,20 @@ func TestSyncOnlyDiff(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-		time.Sleep(3 * time.Second)
-
-		body, err := os.ReadFile(path.Join(destDir, "sync.log"))
+		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
+			"already synced image", 15*time.Second)
 		if err != nil {
-			log.Fatalf("unable to read file: %v", err)
+			panic(err)
 		}
 
-		So(string(body), ShouldContainSubstring, "already synced image")
+		if !found {
+			data, err := os.ReadFile(dctlr.Config.Log.Output)
+			So(err, ShouldBeNil)
+
+			t.Logf("downstream log: %s", string(data))
+		}
+
+		So(found, ShouldBeTrue)
 	})
 }
 
@@ -4579,8 +4799,35 @@ func TestSyncSignaturesDiff(t *testing.T) {
 		// compare cosign signatures
 		So(reflect.DeepEqual(cosignManifest, syncedCosignManifest), ShouldEqual, true)
 
-		// let it sync one more time
-		time.Sleep(10 * time.Second)
+		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
+			"skipping cosign signature", 15*time.Second)
+		if err != nil {
+			panic(err)
+		}
+
+		if !found {
+			data, err := os.ReadFile(dctlr.Config.Log.Output)
+			So(err, ShouldBeNil)
+
+			t.Logf("downstream log: %s", string(data))
+		}
+
+		So(found, ShouldBeTrue)
+
+		found, err = test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
+			"skipping oci references", 15*time.Second)
+		if err != nil {
+			panic(err)
+		}
+
+		if !found {
+			data, err := os.ReadFile(dctlr.Config.Log.Output)
+			So(err, ShouldBeNil)
+
+			t.Logf("downstream log: %s", string(data))
+		}
+
+		So(found, ShouldBeTrue)
 	})
 }
 
@@ -4632,7 +4879,20 @@ func TestOnlySignedFlag(t *testing.T) {
 		dcm.StartAndWait(dctlr.Config.HTTP.Port)
 		defer dcm.StopServer()
 
-		time.Sleep(3 * time.Second)
+		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
+			"skipping image without signature", 15*time.Second)
+		if err != nil {
+			panic(err)
+		}
+
+		if !found {
+			data, err := os.ReadFile(dctlr.Config.Log.Output)
+			So(err, ShouldBeNil)
+
+			t.Logf("downstream log: %s", string(data))
+		}
+
+		So(found, ShouldBeTrue)
 
 		resp, err := client.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
@@ -5065,8 +5325,34 @@ func TestSyncOCIArtifactsWithTag(t *testing.T) {
 
 			So(reflect.DeepEqual(syncedManifest, manifest), ShouldEqual, true)
 
-			// sync again for coverage
-			time.Sleep(5 * time.Second)
+			resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeArtifactManifest).
+				Get(destBaseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, "2.0"))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(resp.Body(), ShouldNotBeEmpty)
+			So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
+
+			var syncedArtifact ispec.Artifact
+			err = json.Unmarshal(resp.Body(), &syncedArtifact)
+			So(err, ShouldBeNil)
+
+			So(reflect.DeepEqual(syncedArtifact, artifactManifest), ShouldEqual, true)
+
+			// for coverage
+			found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
+				"skipping OCI artifact", 15*time.Second)
+			if err != nil {
+				panic(err)
+			}
+
+			// if !found {
+			data, err := os.ReadFile(dctlr.Config.Log.Output)
+			So(err, ShouldBeNil)
+
+			t.Logf("downstream log: %s", string(data))
+			// }
+
+			So(found, ShouldBeTrue)
 		})
 
 		Convey("sync on demand", func() {
@@ -5092,6 +5378,19 @@ func TestSyncOCIArtifactsWithTag(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			So(reflect.DeepEqual(syncedArtifact, artifactManifest), ShouldEqual, true)
+
+			resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeImageManifest).
+				Get(destBaseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, "1.0"))
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+			So(resp.Body(), ShouldNotBeEmpty)
+			So(resp.Header().Get("Content-Type"), ShouldNotBeEmpty)
+
+			var syncedManifest ispec.Manifest
+			err = json.Unmarshal(resp.Body(), &syncedManifest)
+			So(err, ShouldBeNil)
+
+			So(reflect.DeepEqual(syncedManifest, manifest), ShouldEqual, true)
 		})
 
 		Convey("sync periodically error on mediatype", func() {
@@ -5110,13 +5409,40 @@ func TestSyncOCIArtifactsWithTag(t *testing.T) {
 				So(err, ShouldBeNil)
 			}()
 
-			// give it time to set up sync
-			time.Sleep(3 * time.Second)
+			found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
+				"finished syncing", 15*time.Second)
+			if err != nil {
+				panic(err)
+			}
+
+			if !found {
+				data, err := os.ReadFile(dctlr.Config.Log.Output)
+				So(err, ShouldBeNil)
+
+				t.Logf("downstream log: %s", string(data))
+			}
+
+			So(found, ShouldBeTrue)
 
 			resp, err := resty.R().SetHeader("Content-Type", ispec.MediaTypeArtifactManifest).
 				Get(destBaseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, artifactDigest.String()))
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			found, err = test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
+				"couldn't get upstream image", 5*time.Second)
+			if err != nil {
+				panic(err)
+			}
+
+			if !found {
+				data, err := os.ReadFile(dctlr.Config.Log.Output)
+				So(err, ShouldBeNil)
+
+				t.Logf("downstream log: %s", string(data))
+			}
+
+			So(found, ShouldBeTrue)
 		})
 
 		Convey("sync on demand error on mediatype", func() {
@@ -5159,6 +5485,8 @@ func TestSyncOCIArtifactsWithTag(t *testing.T) {
 			destConfig.Extensions.Search = nil
 			destConfig.Extensions.Sync = syncConfig
 
+			destConfig.Log.Output = path.Join(destDir, "zot.log")
+
 			dctlr := api.NewController(destConfig)
 			dcm := test.NewControllerManager(dctlr)
 
@@ -5174,6 +5502,21 @@ func TestSyncOCIArtifactsWithTag(t *testing.T) {
 				err := os.Chmod(manifestPath, 0o755)
 				So(err, ShouldBeNil)
 			}()
+
+			found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
+				"couldn't upload OCI artifact manifest", 15*time.Second)
+			if err != nil {
+				panic(err)
+			}
+
+			if !found {
+				data, err := os.ReadFile(dctlr.Config.Log.Output)
+				So(err, ShouldBeNil)
+
+				t.Logf("downstream log: %s", string(data))
+			}
+
+			So(found, ShouldBeTrue)
 
 			resp, err := resty.R().SetHeader("Content-Type", ispec.MediaTypeArtifactManifest).
 				Get(destBaseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, artifactDigest.String()))

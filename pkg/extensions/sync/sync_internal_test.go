@@ -1265,3 +1265,61 @@ func TestCompareArtifactRefs(t *testing.T) {
 		}
 	})
 }
+
+func TestCompareArtifactManifests(t *testing.T) {
+	testCases := []struct {
+		refs1    ispec.Artifact
+		refs2    ispec.Artifact
+		expected bool
+	}{
+		{
+			refs1: ispec.Artifact{
+				MediaType:    "mediatype",
+				ArtifactType: "signature",
+				Blobs: []ispec.Descriptor{
+					{
+						Digest: "digest1",
+					},
+				},
+			},
+			refs2: ispec.Artifact{
+				MediaType:    "mediatype",
+				ArtifactType: "signature",
+				Blobs: []ispec.Descriptor{
+					{
+						Digest: "digest1",
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			refs1: ispec.Artifact{
+				MediaType:    "mediatype",
+				ArtifactType: "signature",
+				Blobs: []ispec.Descriptor{
+					{
+						Digest: "digest1",
+					},
+				},
+			},
+			refs2: ispec.Artifact{
+				MediaType:    "mediatype",
+				ArtifactType: "signature",
+				Blobs: []ispec.Descriptor{
+					{
+						Digest: "digest2",
+					},
+				},
+			},
+			expected: false,
+		},
+	}
+
+	Convey("Test artifactsEqual()", t, func() {
+		for _, test := range testCases {
+			actualResult := artifactsEqual(test.refs1, test.refs2)
+			So(actualResult, ShouldEqual, test.expected)
+		}
+	})
+}
