@@ -1503,8 +1503,9 @@ func (is *ImageStoreLocal) garbageCollect(dir string, repo string) error {
 		case ispec.MediaTypeImageManifest:
 			tag, ok := desc.Annotations[ispec.AnnotationRefName]
 			if ok {
-				// gather cosign signatures
-				if strings.HasPrefix(tag, "sha256-") && strings.HasSuffix(tag, remote.SignatureTagSuffix) {
+				// gather cosign references
+				if strings.HasPrefix(tag, "sha256-") && (strings.HasSuffix(tag, remote.SignatureTagSuffix) ||
+					strings.HasSuffix(tag, remote.SBOMTagSuffix)) {
 					cosignDescriptors = append(cosignDescriptors, desc)
 
 					continue
@@ -1536,9 +1537,9 @@ func (is *ImageStoreLocal) garbageCollect(dir string, repo string) error {
 		return err
 	}
 
-	is.log.Info().Msg("gc: cosign signatures")
+	is.log.Info().Msg("gc: cosign references")
 
-	if err := gcCosignSignatures(is, oci, &index, repo, cosignDescriptors); err != nil {
+	if err := gcCosignReferences(is, oci, &index, repo, cosignDescriptors); err != nil {
 		return err
 	}
 
@@ -1628,14 +1629,21 @@ func gcUntaggedManifests(imgStore *ImageStoreLocal, oci casext.Engine, index *is
 	return nil
 }
 
-func gcCosignSignatures(imgStore *ImageStoreLocal, oci casext.Engine, index *ispec.Index, repo string,
+func gcCosignReferences(imgStore *ImageStoreLocal, oci casext.Engine, index *ispec.Index, repo string,
 	cosignDescriptors []ispec.Descriptor,
 ) error {
 	for _, cosignDesc := range cosignDescriptors {
 		foundSubject := false
-		// check if we can find the manifest which the signature points to
+		// check if we can find the manifest which the reference points to
 		for _, desc := range index.Manifests {
+			// signature
 			subject := fmt.Sprintf("sha256-%s.%s", desc.Digest.Encoded(), remote.SignatureTagSuffix)
+			if subject == cosignDesc.Annotations[ispec.AnnotationRefName] {
+				foundSubject = true
+			}
+
+			// sbom
+			subject = fmt.Sprintf("sha256-%s.%s", desc.Digest.Encoded(), remote.SBOMTagSuffix)
 			if subject == cosignDesc.Annotations[ispec.AnnotationRefName] {
 				foundSubject = true
 			}
@@ -1644,7 +1652,7 @@ func gcCosignSignatures(imgStore *ImageStoreLocal, oci casext.Engine, index *isp
 		if !foundSubject {
 			// remove manifest
 			imgStore.log.Info().Str("repository", repo).Str("digest", cosignDesc.Digest.String()).
-				Msg("gc: removing cosign signature without subject")
+				Msg("gc: removing cosign reference without subject")
 
 			// no need to check for manifest conflict, if one doesn't have a subject, then none with same digest will have
 			_, _ = common.RemoveManifestDescByReference(index, cosignDesc.Digest.String(), false)

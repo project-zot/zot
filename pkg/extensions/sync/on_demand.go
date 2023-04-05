@@ -1,78 +1,64 @@
+//go:build sync
+// +build sync
+
 package sync
 
 import (
 	"context"
-	"fmt"
-	"net/url"
-	"os"
+	"errors"
 	"sync"
 	"time"
 
 	"github.com/containers/common/pkg/retry"
-	"github.com/containers/image/v5/copy"
-	"github.com/containers/image/v5/signature"
-	"github.com/containers/image/v5/types"
 
+	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/common"
-	syncconf "zotregistry.io/zot/pkg/extensions/config/sync"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/meta/repodb"
-	"zotregistry.io/zot/pkg/storage"
 )
 
-const (
-	OrasArtifact = "orasArtifact"
-	OCIReference = "ociReference"
-)
-
-type syncContextUtils struct {
-	policyCtx         *signature.PolicyContext
-	localCtx          *types.SystemContext
-	upstreamCtx       *types.SystemContext
-	upstreamAddr      string
-	copyOptions       copy.Options
-	retryOptions      *retry.Options
-	enforceSignatures bool
+type request struct {
+	repo      string
+	reference string
+	// used for background retries, at most one background retry per service
+	serviceID    int
+	isBackground bool
 }
 
-//nolint:gochecknoglobals
-var demandedImgs demandedImages
+/*
+	a request can be an image/signature/sbom
 
-type demandedImages struct {
-	syncedMap sync.Map
+keep track of all parallel requests, if two requests of same image/signature/sbom comes at the same time,
+process just the first one, also keep track of all background retrying routines.
+*/
+type BaseOnDemand struct {
+	services []Service
+	// map[request]chan err
+	requestStore *sync.Map
+	log          log.Logger
 }
 
-func (di *demandedImages) loadOrStoreChan(key string, value chan error) (chan error, bool) {
-	val, found := di.syncedMap.LoadOrStore(key, value)
-	errChannel, _ := val.(chan error)
-
-	return errChannel, found
+func NewOnDemand(log log.Logger) *BaseOnDemand {
+	return &BaseOnDemand{log: log, requestStore: &sync.Map{}}
 }
 
-func (di *demandedImages) loadOrStoreStr(key, value string) (string, bool) {
-	val, found := di.syncedMap.LoadOrStore(key, value)
-	str, _ := val.(string)
-
-	return str, found
+func (onDemand *BaseOnDemand) Add(service Service) {
+	onDemand.services = append(onDemand.services, service)
 }
 
-func (di *demandedImages) delete(key string) {
-	di.syncedMap.Delete(key)
-}
+func (onDemand *BaseOnDemand) SyncImage(repo, reference string) error {
+	req := request{
+		repo:      repo,
+		reference: reference,
+	}
 
-func OneImage(ctx context.Context, cfg syncconf.Config, repoDB repodb.RepoDB,
-	storeController storage.StoreController, repo, reference string, artifactType string, log log.Logger,
-) error {
-	// guard against multiple parallel requests
-	demandedImage := fmt.Sprintf("%s:%s", repo, reference)
-	// loadOrStore image-based channel
-	imageChannel, found := demandedImgs.loadOrStoreChan(demandedImage, make(chan error))
-	// if value found wait on channel receive or close
+	val, found := onDemand.requestStore.Load(req)
 	if found {
-		log.Info().Str("demandedImage", demandedImage).
-			Msg("image already demanded by another client, waiting on imageChannel")
+		onDemand.log.Info().Str("repo", repo).Str("reference", reference).
+			Msg("image already demanded, waiting on channel")
 
-		err, ok := <-imageChannel
+		syncResult, _ := val.(chan error)
+
+		err, ok := <-syncResult
 		// if channel closed exit
 		if !ok {
 			return nil
@@ -81,12 +67,15 @@ func OneImage(ctx context.Context, cfg syncconf.Config, repoDB repodb.RepoDB,
 		return err
 	}
 
-	defer demandedImgs.delete(demandedImage)
-	defer close(imageChannel)
+	syncResult := make(chan error)
+	onDemand.requestStore.Store(req, syncResult)
 
-	go syncOneImage(ctx, imageChannel, cfg, repoDB, storeController, repo, reference, artifactType, log)
+	defer onDemand.requestStore.Delete(req)
+	defer close(syncResult)
 
-	err, ok := <-imageChannel
+	go onDemand.syncImage(repo, reference, syncResult)
+
+	err, ok := <-syncResult
 	if !ok {
 		return nil
 	}
@@ -94,268 +83,87 @@ func OneImage(ctx context.Context, cfg syncconf.Config, repoDB repodb.RepoDB,
 	return err
 }
 
-func syncOneImage(ctx context.Context, imageChannel chan error, cfg syncconf.Config,
-	repoDB repodb.RepoDB, storeController storage.StoreController,
-	localRepo, reference string, artifactType string, log log.Logger,
-) {
-	var credentialsFile syncconf.CredentialsFile
+func (onDemand *BaseOnDemand) SyncReference(repo string, subjectDigestStr string, referenceType string) error {
+	var err error
 
-	if cfg.CredentialsFile != "" {
-		var err error
-
-		credentialsFile, err = getFileCredentials(cfg.CredentialsFile)
+	for _, service := range onDemand.services {
+		err = service.SetNextAvailableURL()
 		if err != nil {
-			log.Error().Str("errorType", common.TypeOf(err)).
-				Err(err).Str("credentialsFile", cfg.CredentialsFile).Msg("couldn't get registry credentials from file")
+			return err
+		}
 
-			imageChannel <- err
+		err = service.SyncReference(repo, subjectDigestStr, referenceType)
+		if err != nil {
+			continue
+		} else {
+			return nil
+		}
+	}
+
+	return err
+}
+
+func (onDemand *BaseOnDemand) syncImage(repo, reference string, syncResult chan error) {
+	var err error
+	for serviceID, service := range onDemand.services {
+		err = service.SetNextAvailableURL()
+		if err != nil {
+			syncResult <- err
 
 			return
 		}
-	}
 
-	localCtx, policyCtx, err := getLocalContexts(log)
-	if err != nil {
-		imageChannel <- err
-
-		return
-	}
-
-	for _, registryCfg := range cfg.Registries {
-		regCfg := registryCfg
-		if !regCfg.OnDemand {
-			log.Info().Strs("registry", regCfg.URLs).
-				Msg("skipping syncing on demand from registry, onDemand flag is false")
-
-			continue
-		}
-
-		upstreamRepo := localRepo
-
-		// if content config is not specified, then don't filter, just sync demanded image
-		if len(regCfg.Content) != 0 {
-			contentID, err := findRepoMatchingContentID(localRepo, regCfg.Content)
-			if err != nil {
-				log.Info().Str("localRepo", localRepo).Strs("registry",
-					regCfg.URLs).Msg("skipping syncing on demand repo from registry because it's filtered out by content config")
-
+		err = service.SyncImage(repo, reference)
+		if err != nil {
+			if errors.Is(err, zerr.ErrManifestNotFound) ||
+				errors.Is(err, zerr.ErrSyncImageFilteredOut) ||
+				errors.Is(err, zerr.ErrSyncImageNotSigned) {
 				continue
 			}
 
-			upstreamRepo = getRepoSource(localRepo, regCfg.Content[contentID])
-		}
-
-		retryOptions := &retry.Options{}
-
-		if regCfg.MaxRetries != nil {
-			retryOptions.MaxRetry = *regCfg.MaxRetries
-			if regCfg.RetryDelay != nil {
-				retryOptions.Delay = *regCfg.RetryDelay
-			}
-		}
-
-		log.Info().Strs("registry", regCfg.URLs).Msg("syncing on demand with registry")
-
-		for _, regCfgURL := range regCfg.URLs {
-			upstreamURL := regCfgURL
-
-			upstreamAddr := StripRegistryTransport(upstreamURL)
-
-			var TLSverify bool
-
-			if regCfg.TLSVerify != nil && *regCfg.TLSVerify {
-				TLSverify = true
+			req := request{
+				repo:         repo,
+				reference:    reference,
+				serviceID:    serviceID,
+				isBackground: true,
 			}
 
-			registryURL, err := url.Parse(upstreamURL)
-			if err != nil {
-				log.Error().Str("errorType", common.TypeOf(err)).
-					Err(err).Str("url", upstreamURL).Msg("couldn't parse url")
-				imageChannel <- err
-
-				return
-			}
-
-			httpClient, err := common.CreateHTTPClient(TLSverify, registryURL.Host, regCfg.CertDir)
-			if err != nil {
-				imageChannel <- err
-
-				return
-			}
-
-			sig := newSignaturesCopier(httpClient, credentialsFile[upstreamAddr], *registryURL, repoDB,
-				storeController, log)
-
-			upstreamCtx := getUpstreamContext(&regCfg, credentialsFile[upstreamAddr])
-			options := getCopyOptions(upstreamCtx, localCtx)
-
-			/* demanded object is a signature or artifact
-			at tis point we already have images synced, but not their signatures. */
-			if isCosignTag(reference) || artifactType != "" {
-				//nolint: contextcheck
-				err = syncSignaturesArtifacts(sig, localRepo, upstreamRepo, reference, artifactType)
-				if err != nil {
-					continue
-				}
-
-				imageChannel <- nil
-
-				return
-			}
-
-			var enforeSignatures bool
-			if regCfg.OnlySigned != nil && *regCfg.OnlySigned {
-				enforeSignatures = true
-			}
-
-			syncContextUtils := syncContextUtils{
-				policyCtx:         policyCtx,
-				localCtx:          localCtx,
-				upstreamCtx:       upstreamCtx,
-				upstreamAddr:      upstreamAddr,
-				copyOptions:       options,
-				retryOptions:      &retry.Options{}, // we don't want to retry inline
-				enforceSignatures: enforeSignatures,
-			}
-
-			//nolint:contextcheck
-			skipped, copyErr := syncRun(localRepo, upstreamRepo, reference, syncContextUtils, sig, log)
-			if skipped {
+			// if there is already a background routine, skip
+			if _, requested := onDemand.requestStore.LoadOrStore(req, struct{}{}); requested {
 				continue
 			}
 
-			// key used to check if we already have a go routine syncing this image
-			demandedImageRef := fmt.Sprintf("%s/%s:%s", upstreamAddr, upstreamRepo, reference)
+			retryOptions := service.GetRetryOptions()
 
-			if copyErr != nil {
-				// don't retry in background if maxretry is 0
-				if retryOptions.MaxRetry == 0 {
-					continue
-				}
-
-				_, found := demandedImgs.loadOrStoreStr(demandedImageRef, "")
-				if found {
-					log.Info().Str("demandedImageRef", demandedImageRef).Msg("image already demanded in background")
-					/* we already have a go routine spawned for this image
-					or retryOptions is not configured */
-					continue
-				}
-
-				// spawn goroutine to later pull the image
-				go func() {
+			if retryOptions.MaxRetry > 0 {
+				// retry in background
+				go func(service Service) {
 					// remove image after syncing
 					defer func() {
-						demandedImgs.delete(demandedImageRef)
-						log.Info().Str("demandedImageRef", demandedImageRef).Msg("sync routine: demanded image exited")
+						onDemand.requestStore.Delete(req)
+						onDemand.log.Info().Str("repo", repo).Str("reference", reference).
+							Msg("sync routine for image exited")
 					}()
 
-					log.Info().Str("demandedImageRef", demandedImageRef).Str("copyErr", copyErr.Error()).
-						Msg("sync routine: starting routine to copy image, err encountered")
+					onDemand.log.Info().Str("repo", repo).Str(reference, "reference").Str("err", err.Error()).
+						Msg("sync routine: starting routine to copy image, because of error")
+
 					time.Sleep(retryOptions.Delay)
 
-					if err = retry.RetryIfNecessary(ctx, func() error {
-						_, err := syncRun(localRepo, upstreamRepo, reference, syncContextUtils, sig, log)
+					if err = retry.RetryIfNecessary(context.Background(), func() error {
+						err := service.SyncImage(repo, reference)
 
 						return err
 					}, retryOptions); err != nil {
-						log.Error().Str("errorType", common.TypeOf(err)).Err(err).
-							Str("demandedImageRef", demandedImageRef).Msg("sync routine: error while copying image")
+						onDemand.log.Error().Str("errorType", common.TypeOf(err)).Str("repo", repo).Str("reference", reference).
+							Err(err).Msg("sync routine: error while copying image")
 					}
-				}()
-			} else {
-				imageChannel <- nil
-
-				return
+				}(service)
 			}
+		} else {
+			break
 		}
 	}
 
-	imageChannel <- nil
-}
-
-func syncRun(localRepo, upstreamRepo, reference string, utils syncContextUtils, sig *signaturesCopier,
-	log log.Logger,
-) (bool, error) {
-	upstreamImageRef, err := getImageRef(utils.upstreamAddr, upstreamRepo, reference)
-	if err != nil {
-		log.Error().Str("errorType", common.TypeOf(err)).Err(err).
-			Str("repository", utils.upstreamAddr+"/"+upstreamRepo+":"+reference).
-			Msg("error creating docker reference for repository")
-
-		return false, err
-	}
-
-	imageStore := sig.storeController.GetImageStore(localRepo)
-
-	localCachePath, err := getLocalCachePath(imageStore, localRepo)
-	if err != nil {
-		log.Error().Err(err).Str("repository", localRepo).Msg("couldn't get localCachePath for repository")
-
-		return false, err
-	}
-
-	defer os.RemoveAll(localCachePath)
-
-	return syncImageWithRefs(context.Background(), localRepo, upstreamRepo, reference, upstreamImageRef,
-		utils, sig, localCachePath, log)
-}
-
-func syncSignaturesArtifacts(sig *signaturesCopier, localRepo, upstreamRepo, reference, artifactType string) error {
-	upstreamURL := sig.upstreamURL.String()
-
-	switch {
-	case isCosignTag(reference):
-		// is cosign signature
-		cosignManifest, err := sig.getCosignManifest(upstreamRepo, reference)
-		if err != nil {
-			sig.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
-				Str("image", upstreamURL+"/"+upstreamRepo+":"+reference).Msg("couldn't get upstream image cosign manifest")
-
-			return err
-		}
-
-		err = sig.syncCosignSignature(localRepo, upstreamRepo, reference, cosignManifest)
-		if err != nil {
-			sig.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
-				Str("image", upstreamURL+"/"+upstreamRepo+":"+reference).Msg("couldn't copy upstream image cosign signature")
-
-			return err
-		}
-	case artifactType == OrasArtifact:
-		// is oras artifact
-		refs, err := sig.getORASRefs(upstreamRepo, reference)
-		if err != nil {
-			sig.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
-				Str("image", upstreamURL+"/"+upstreamRepo+":"+reference).Msg("couldn't get upstream image ORAS references")
-
-			return err
-		}
-
-		err = sig.syncORASRefs(localRepo, upstreamRepo, reference, refs)
-		if err != nil {
-			sig.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
-				Str("image", upstreamURL+"/"+upstreamRepo+":"+reference).Msg("couldn't copy image ORAS references")
-
-			return err
-		}
-	case artifactType == OCIReference:
-		// this contains notary signatures
-		index, err := sig.getOCIRefs(upstreamRepo, reference)
-		if err != nil {
-			sig.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
-				Str("image", upstreamURL+"/"+upstreamRepo+":"+reference).Msg("couldn't get OCI references")
-
-			return err
-		}
-
-		err = sig.syncOCIRefs(localRepo, upstreamRepo, reference, index)
-		if err != nil {
-			sig.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
-				Str("image", upstreamURL+"/"+upstreamRepo+":"+reference).Msg("couldn't copy OCI references")
-
-			return err
-		}
-	}
-
-	return nil
+	syncResult <- err
 }

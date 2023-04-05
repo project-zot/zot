@@ -23,19 +23,79 @@ function setup_file() {
         "port": "8090"
     },
     "log": {
-        "level": "debug"
+        "level": "debug",
+        "output": "/tmp/blackbox.log"
     },
     "extensions": {
         "sync": {
             "registries": [
                 {
                     "urls": [
-                        "https://docker.io/library",
-                        "https://registry.k8s.io",
-                        "https://aws.amazon.com/ecr",
-                        "https://gcr.io",
+                        "https://docker.io/library"
+                    ],
+                    "content": [
+						{
+							"prefix": "registry"
+						},
+                        {
+							"prefix": "archlinux"
+						}
+					],
+                    "onDemand": true,
+                    "tlsVerify": true
+                },
+                {
+                    "urls": [
+                        "https://registry.k8s.io"
+                    ],
+                    "content": [
+						{
+							"prefix": "kube-apiserver"
+						},
+                        {
+							"prefix": "pause"
+						},
+                        {
+                            "prefix": "kube-apiserver-amd64"
+                        }
+					],
+                    "onDemand": true,
+                    "tlsVerify": true
+                },
+                {
+                    "urls": [
+                        "https://public.ecr.aws"
+                    ],
+                    "content": [
+						{
+							"prefix": "amazonlinux/amazonlinux"
+						}
+					],
+                    "onDemand": true,
+                    "tlsVerify": true
+                },
+                {
+                    "urls": [
+                        "https://gcr.io"
+
+                    ],
+                    "content": [
+						{
+							"prefix": "google-containers/kube-proxy-amd64"
+						}
+					],
+                    "onDemand": true,
+                    "tlsVerify": true
+                },
+                {
+                    "urls": [
                         "https://mcr.microsoft.com"
                     ],
+                    "content": [
+						{
+							"prefix": "azure-cognitive-services/vision/spatial-analysis/diagnostics"
+						}
+					],
                     "onDemand": true,
                     "tlsVerify": true
                 }
@@ -80,7 +140,35 @@ function teardown_file() {
     run curl http://127.0.0.1:8090/v2/_catalog
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.repositories[0]') = '"archlinux"' ]
-    run curl http://127.0.0.1:8090/v2/registry/tags/list
+    run curl http://127.0.0.1:8090/v2/archlinux/tags/list
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"latest"' ]
+}
+
+@test "sync k8s image list on demand" {
+    run skopeo --insecure-policy copy --multi-arch=all --src-tls-verify=false \
+        docker://127.0.0.1:8090/kube-apiserver:v1.26.0 \
+        oci:${TEST_DATA_DIR}
+    [ "$status" -eq 0 ]
+
+    run curl http://127.0.0.1:8090/v2/_catalog
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.repositories[1]') = '"kube-apiserver"' ]
+    run curl http://127.0.0.1:8090/v2/kube-apiserver/tags/list
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"v1.26.0"' ]
+}
+
+@test "sync k8s image on demand" {
+    run skopeo --insecure-policy copy --src-tls-verify=false \
+        docker://127.0.0.1:8090/pause \
+        oci:${TEST_DATA_DIR}
+    [ "$status" -eq 0 ]
+
+    run curl http://127.0.0.1:8090/v2/_catalog
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.repositories[2]') = '"pause"' ]
+    run curl http://127.0.0.1:8090/v2/pause/tags/list
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.tags[]') = '"latest"' ]
 }
@@ -98,13 +186,13 @@ function teardown_file() {
 }
 
 @test "sync image on demand from aws.amazon.com/ecr" {
-    run skopeo copy docker://127.0.0.1:8090/amazonlinux:latest oci:${TEST_DATA_DIR} --src-tls-verify=false
+    run skopeo copy docker://127.0.0.1:8090/amazonlinux/amazonlinux:latest oci:${TEST_DATA_DIR} --src-tls-verify=false
     [ "$status" -eq 0 ]
 
     run curl http://127.0.0.1:8090/v2/_catalog
     [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}"| jq '.repositories | map(select(. == "amazonlinux"))' | jq '.[]') = '"amazonlinux"' ]
-    run curl http://127.0.0.1:8090/v2/amazonlinux/tags/list
+    [ $(echo "${lines[-1]}"| jq '.repositories | map(select(. == "amazonlinux/amazonlinux"))' | jq '.[]') = '"amazonlinux/amazonlinux"' ]
+    run curl http://127.0.0.1:8090/v2/amazonlinux/amazonlinux/tags/list
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.tags[]') = '"latest"' ]
 }
@@ -166,13 +254,13 @@ function teardown_file() {
 }
 
 @test "run docker with image synced from aws.amazon.com/ecr" {
-    run docker run -d 127.0.0.1:8090/amazonlinux:latest
+    run docker run -d 127.0.0.1:8090/amazonlinux/amazonlinux:latest
     [ "$status" -eq 0 ]
 
     run curl http://127.0.0.1:8090/v2/_catalog
     [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}"| jq '.repositories | map(select(. == "amazonlinux"))' | jq '.[]') = '"amazonlinux"' ]
-    run curl http://127.0.0.1:8090/v2/amazonlinux/tags/list
+    [ $(echo "${lines[-1]}"| jq '.repositories | map(select(. == "amazonlinux/amazonlinux"))' | jq '.[]') = '"amazonlinux/amazonlinux"' ]
+    run curl http://127.0.0.1:8090/v2/amazonlinux/amazonlinux/tags/list
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.tags[]') = '"latest"' ]
 
@@ -206,4 +294,3 @@ function teardown_file() {
 
     run docker kill $(docker ps -q)
 }
-

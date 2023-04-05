@@ -46,7 +46,7 @@ function setup_file() {
                     ],
                     "onDemand": false,
                     "tlsVerify": false,
-                    "PollInterval": "5s",
+                    "PollInterval": "1s",
                     "content": [
                         {
                             "prefix": "**"
@@ -282,7 +282,7 @@ EOF
 
 @test "sync signatures periodically" {
     # wait for signatures to be copied
-    run sleep 5s
+    run sleep 15s
 
     run notation verify --plain-http localhost:8081/golang:1.20
     [ "$status" -eq 0 ]
@@ -312,7 +312,7 @@ EOF
 
 @test "sync oras artifact periodically" {
 #     # wait for oras artifact to be copied
-    run sleep 5s
+    run sleep 15s
     run oras pull --plain-http 127.0.0.1:8081/hello-artifact:v2 -d -v
     [ "$status" -eq 0 ]
     grep -q "hello world" artifact.txt
@@ -337,7 +337,7 @@ EOF
 
 @test "sync helm chart periodically" {
      # wait for helm chart to be copied
-    run sleep 5s
+    run sleep 15s
 
     local chart_version=$(awk '/version/{printf $2}' ${BATS_FILE_TMPDIR}/helm-charts/charts/zot/Chart.yaml)
     run helm pull oci://localhost:8081/zot-chart/zot --version ${chart_version}
@@ -364,7 +364,7 @@ EOF
 
 @test "sync OCI artifact (oci image mediatype) periodically" {
     # wait for helm chart to be copied
-    run sleep 5s
+    run sleep 15s
     run regctl manifest get localhost:8081/artifact:demo
     [ "$status" -eq 0 ]
     run regctl artifact get localhost:8081/artifact:demo
@@ -389,7 +389,7 @@ EOF
 
 @test "sync OCI artifact (oci artifact mediatype) periodically" {
     # wait for helm chart to be copied
-    run sleep 5s
+    run sleep 15s
     run regctl manifest get localhost:8081/newartifact:demo
     [ "$status" -eq 0 ]
     run regctl artifact get localhost:8081/newartifact:demo
@@ -433,7 +433,7 @@ EOF
 
 @test "sync OCI artifact references periodically" {
     # wait for OCI artifacts to be copied
-    run sleep 5
+    run sleep 20
     run regctl artifact get localhost:8081/manifest-ref:demo
     [ "$status" -eq 0 ]
     [ "${lines[-1]}" == "test artifact" ]

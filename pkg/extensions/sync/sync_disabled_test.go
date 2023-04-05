@@ -47,8 +47,15 @@ func TestSyncExtension(t *testing.T) {
 		defer ctlrManager.StopServer()
 
 		Convey("verify sync is skipped when binary doesn't include it", func() {
+			// image
 			resp, err := resty.R().
 				Head(baseURL + "/v2/" + "invalid" + "/manifests/invalid:0.0.2")
+			So(err, ShouldBeNil)
+			So(resp, ShouldNotBeNil)
+
+			// reference
+			resp, err = resty.R().
+				Head(baseURL + "/v2/" + "invalid" + "/manifests/sha256_digest.sig")
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
 
@@ -56,7 +63,7 @@ func TestSyncExtension(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			So(string(data), ShouldContainSubstring,
-				"skipping syncing on demand because given zot binary doesn't include "+
+				"skipping enabling sync extension because given zot binary doesn't include "+
 					"this feature,please build a binary that does so")
 		})
 	})

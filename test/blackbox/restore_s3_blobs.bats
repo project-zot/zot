@@ -113,7 +113,9 @@ function teardown_file() {
     wait_zot_reachable "http://127.0.0.1:8080/v2/"
     start=`date +%s`
     echo "waiting for restoring blobs task to finish" >&3
-    wait_for_string "dedupe rebuild: finished" ${ZOT_LOG_FILE}
+    run wait_for_string "dedupe rebuild: finished" ${ZOT_LOG_FILE} "5m"
+    [ "$status" -eq 0 ]
+
     end=`date +%s`
 
     runtime=$((end-start))

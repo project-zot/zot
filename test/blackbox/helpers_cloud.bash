@@ -39,17 +39,33 @@ function zot_stop() {
     pkill zot
 }
 
+function wait_str() {
+    local filepath="$1"
+    local search_term="$2"
+    local wait_time="${3:-2m}"
+
+    (timeout $wait_time tail -F -n0 "$filepath" &) | grep -q "$search_term" && return 0
+
+    echo "timeout of $wait_time reached. unable to find '$search_term' in '$filepath'"
+    
+    return 1
+}
+
 function wait_for_string() {
-    string=$1
-    filepath=$2
+    local search_term="$1"
+    local filepath="$2"
+    local wait_time="${3:-2m}"
 
-    while [ ! -f $filepath ]
-        do sleep 2;
-    done
+    wait_file "$filepath" 60 || { echo "server log file missing: '$filepath'"; return 1; }
 
-    while ! grep "${string}" $filepath
-        do sleep 10;
-    done
+    wait_str "$filepath" "$search_term" "$wait_time"
+}
+
+function wait_file() {
+    local file="$1"; shift
+    local wait_seconds="${1:-60}"; shift
+
+    until test $((wait_seconds--)) -eq 0 -o -f "$file" ; do sleep 1; done
 }
 
 function wait_zot_reachable() {

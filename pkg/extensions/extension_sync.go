@@ -4,33 +4,48 @@
 package extensions
 
 import (
-	"context"
-
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/extensions/sync"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/repodb"
+	"zotregistry.io/zot/pkg/scheduler"
 	"zotregistry.io/zot/pkg/storage"
 )
 
-func EnableSyncExtension(ctx context.Context, config *config.Config,
-	repoDB repodb.RepoDB, storeController storage.StoreController, log log.Logger,
-) {
+func EnableSyncExtension(config *config.Config, repoDB repodb.RepoDB,
+	storeController storage.StoreController, sch *scheduler.Scheduler, log log.Logger,
+) (*sync.BaseOnDemand, error) {
 	if config.Extensions.Sync != nil && *config.Extensions.Sync.Enable {
-		if err := sync.Run(ctx, *config.Extensions.Sync, repoDB, storeController, log); err != nil {
-			log.Error().Err(err).Msg("Error encountered while setting up syncing")
+		onDemand := sync.NewOnDemand(log)
+
+		for _, registryConfig := range config.Extensions.Sync.Registries {
+			isPeriodical := len(registryConfig.Content) != 0 && registryConfig.PollInterval != 0
+			isOnDemand := registryConfig.OnDemand
+
+			if isPeriodical || isOnDemand {
+				service, err := sync.New(registryConfig, config.Extensions.Sync.CredentialsFile,
+					storeController, repoDB, log)
+				if err != nil {
+					return nil, err
+				}
+
+				if isPeriodical {
+					// add to task scheduler periodic sync
+					gen := sync.NewTaskGenerator(service, log)
+					sch.SubmitGenerator(gen, registryConfig.PollInterval, scheduler.MediumPriority)
+				}
+
+				if isOnDemand {
+					// onDemand services used in routes.go
+					onDemand.Add(service)
+				}
+			}
 		}
-	} else {
-		log.Info().Msg("Sync registries config not provided or disabled, skipping sync")
+
+		return onDemand, nil
 	}
-}
 
-func SyncOneImage(ctx context.Context, config *config.Config, repoDB repodb.RepoDB,
-	storeController storage.StoreController, repoName, reference string, artifactType string, log log.Logger,
-) error {
-	log.Info().Str("repository", repoName).Str("reference", reference).Msg("syncing image")
+	log.Info().Msg("Sync registries config not provided or disabled, skipping sync")
 
-	err := sync.OneImage(ctx, *config.Extensions.Sync, repoDB, storeController, repoName, reference, artifactType, log)
-
-	return err
+	return nil, nil //nolint: nilnil
 }

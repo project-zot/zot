@@ -12,7 +12,7 @@ permissions: read-all
 #  2. run zot with s3 storage and dynamodb and dedupe enabled, push images, restart zot with dedupe false and no cache
 #  task scheduler will start a restore all blobs process at zot startup, after it finishes all blobs should be restored to their original state (have content)
 jobs:
-  client-tools:
+  dedupe:
     name: Dedupe/restore blobs
     runs-on: ubuntu-latest
     steps:
@@ -55,3 +55,19 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: fake
           AWS_SECRET_ACCESS_KEY: fake
+  sync:
+    name: Sync harness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
+        with:
+          go-version: 1.20.x
+      - name: Install dependencies
+        run: |
+          cd $GITHUB_WORKSPACE
+          go install github.com/swaggo/swag/cmd/swag
+          go mod download
+      - name: Run sync harness
+        run: |
+            make test-sync-harness
