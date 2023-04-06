@@ -708,7 +708,7 @@ func validateHTTP(config *config.Config) error {
 			return errors.ErrBadConfig
 		}
 
-		fmt.Printf("HTTP port %d\n", port)
+		log.Info().Msgf("HTTP port %d\n", port)
 	}
 
 	return nil
