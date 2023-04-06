@@ -186,7 +186,7 @@ var doc = `{
                             },
                             "Range": {
                                 "type": "string",
-                                "description": "0-0"
+                                "description": "bytes=0-0"
                             }
                         }
                     },

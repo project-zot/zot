@@ -1001,7 +1001,7 @@ func (rh *RouteHandler) DeleteBlob(response http.ResponseWriter, request *http.R
 // @Param   name				path    string     true        "repository name"
 // @Success 202 {string} string	"accepted"
 // @Header  202 {string} Location "/v2/{name}/blobs/uploads/{session_id}"
-// @Header  202 {string} Range "0-0"
+// @Header  202 {string} Range "bytes=0-0"
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/blobs/uploads [post].
@@ -1044,7 +1044,7 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 			}
 
 			response.Header().Set("Location", getBlobUploadSessionLocation(request.URL, upload))
-			response.Header().Set("Range", "0-0")
+			response.Header().Set("Range", "bytes=0-0")
 			response.WriteHeader(http.StatusAccepted)
 
 			return
@@ -1130,7 +1130,7 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 	}
 
 	response.Header().Set("Location", getBlobUploadSessionLocation(request.URL, upload))
-	response.Header().Set("Range", "0-0")
+	response.Header().Set("Range", "bytes=0-0")
 	response.WriteHeader(http.StatusAccepted)
 }
 
@@ -1143,7 +1143,7 @@ func (rh *RouteHandler) CreateBlobUpload(response http.ResponseWriter, request *
 // @Param   session_id     path    string     true        "upload session_id"
 // @Success 204 {string} string "no content"
 // @Header  202 {string} Location "/v2/{name}/blobs/uploads/{session_id}"
-// @Header  202 {string} Range "0-128"
+// @Header  202 {string} Range "bytes=0-128"
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/blobs/uploads/{session_id} [get].
@@ -1189,7 +1189,7 @@ func (rh *RouteHandler) GetBlobUpload(response http.ResponseWriter, request *htt
 	}
 
 	response.Header().Set("Location", getBlobUploadSessionLocation(request.URL, sessionID))
-	response.Header().Set("Range", fmt.Sprintf("0-%d", size-1))
+	response.Header().Set("Range", fmt.Sprintf("bytes=0-%d", size-1))
 	response.WriteHeader(http.StatusNoContent)
 }
 
@@ -1202,7 +1202,7 @@ func (rh *RouteHandler) GetBlobUpload(response http.ResponseWriter, request *htt
 // @Param   session_id     path    string     true        "upload session_id"
 // @Success 202 {string} string	"accepted"
 // @Header  202 {string} Location "/v2/{name}/blobs/uploads/{session_id}"
-// @Header  202 {string} Range "0-128"
+// @Header  202 {string} Range "bytes=0-128"
 // @Header  200 {object} api.BlobUploadUUID
 // @Failure 400 {string} string "bad request"
 // @Failure 404 {string} string "not found"
@@ -1281,7 +1281,7 @@ func (rh *RouteHandler) PatchBlobUpload(response http.ResponseWriter, request *h
 	}
 
 	response.Header().Set("Location", getBlobUploadSessionLocation(request.URL, sessionID))
-	response.Header().Set("Range", fmt.Sprintf("0-%d", clen-1))
+	response.Header().Set("Range", fmt.Sprintf("bytes=0-%d", clen-1))
 	response.Header().Set("Content-Length", "0")
 	response.Header().Set(constants.BlobUploadUUID, sessionID)
 	response.WriteHeader(http.StatusAccepted)
