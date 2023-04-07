@@ -33,6 +33,7 @@ import (
 	"zotregistry.io/zot/pkg/meta/repodb"
 	boltdb_wrapper "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
 	"zotregistry.io/zot/pkg/storage"
+	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
 	. "zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/mocks"
@@ -309,7 +310,7 @@ func TestImageFormat(t *testing.T) {
 		dbDir := t.TempDir()
 
 		metrics := monitoring.NewMetricsServer(false, log)
-		defaultStore := local.NewImageStore(imgDir, false, storage.DefaultGCDelay,
+		defaultStore := local.NewImageStore(imgDir, false, storageConstants.DefaultGCDelay,
 			false, false, log, metrics, nil, nil)
 		storeController := storage.StoreController{DefaultStore: defaultStore}
 

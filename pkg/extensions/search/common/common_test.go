@@ -39,6 +39,7 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/repodb"
 	"zotregistry.io/zot/pkg/storage"
+	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
 	. "zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/mocks"
@@ -1345,7 +1346,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		log := log.NewLogger("debug", "")
 		metrics := monitoring.NewMetricsServer(false, log)
-		testStorage := local.NewImageStore(rootDir, false, storage.DefaultGCDelay,
+		testStorage := local.NewImageStore(rootDir, false, storageConstants.DefaultGCDelay,
 			false, false, log, metrics, nil, nil)
 
 		resp, err := resty.R().Get(baseURL + "/v2/")
@@ -1901,10 +1902,10 @@ func TestUtilsMethod(t *testing.T) {
 
 		metrics := monitoring.NewMetricsServer(false, log)
 		defaultStore := local.NewImageStore(rootDir, false,
-			storage.DefaultGCDelay, false, false, log, metrics, nil, nil)
+			storageConstants.DefaultGCDelay, false, false, log, metrics, nil, nil)
 
 		subStore := local.NewImageStore(subRootDir, false,
-			storage.DefaultGCDelay, false, false, log, metrics, nil, nil)
+			storageConstants.DefaultGCDelay, false, false, log, metrics, nil, nil)
 
 		subStoreMap := make(map[string]storage.ImageStore)
 
@@ -5689,7 +5690,7 @@ func TestRepoDBWhenDeletingImages(t *testing.T) {
 			// get signatur digest
 			log := log.NewLogger("debug", "")
 			metrics := monitoring.NewMetricsServer(false, log)
-			storage := local.NewImageStore(dir, false, storage.DefaultGCDelay,
+			storage := local.NewImageStore(dir, false, storageConstants.DefaultGCDelay,
 				false, false, log, metrics, nil, nil)
 
 			indexBlob, err := storage.GetIndexContent(repo)
@@ -5766,7 +5767,7 @@ func TestRepoDBWhenDeletingImages(t *testing.T) {
 			// get signatur digest
 			log := log.NewLogger("debug", "")
 			metrics := monitoring.NewMetricsServer(false, log)
-			storage := local.NewImageStore(dir, false, storage.DefaultGCDelay,
+			storage := local.NewImageStore(dir, false, storageConstants.DefaultGCDelay,
 				false, false, log, metrics, nil, nil)
 
 			indexBlob, err := storage.GetIndexContent(repo)

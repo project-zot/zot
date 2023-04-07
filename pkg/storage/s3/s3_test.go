@@ -81,7 +81,7 @@ func createMockStorage(rootDir string, cacheDir string, dedupe bool, store drive
 			UseRelPaths: false,
 		}, log)
 	}
-	il := s3.NewImageStore(rootDir, cacheDir, false, storage.DefaultGCDelay,
+	il := s3.NewImageStore(rootDir, cacheDir, false, storageConstants.DefaultGCDelay,
 		dedupe, false, log, metrics, nil, store, cacheDriver,
 	)
 
@@ -94,7 +94,7 @@ func createMockStorageWithMockCache(rootDir string, dedupe bool, store driver.St
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
 
-	il := s3.NewImageStore(rootDir, "", false, storage.DefaultGCDelay,
+	il := s3.NewImageStore(rootDir, "", false, storageConstants.DefaultGCDelay,
 		dedupe, false, log, metrics, nil, store, cacheDriver,
 	)
 
@@ -155,8 +155,7 @@ func createObjectsStore(rootDir string, cacheDir string, dedupe bool) (
 			UseRelPaths: false,
 		}, log)
 	}
-
-	il := s3.NewImageStore(rootDir, cacheDir, false, storage.DefaultGCDelay,
+	il := s3.NewImageStore(rootDir, cacheDir, false, storageConstants.DefaultGCDelay,
 		dedupe, false, log, metrics, nil, store, cacheDriver)
 
 	return store, il, err
@@ -191,7 +190,7 @@ func createObjectsStoreDynamo(rootDir string, cacheDir string, dedupe bool, tabl
 		panic(err)
 	}
 
-	il := s3.NewImageStore(rootDir, cacheDir, false, storage.DefaultGCDelay,
+	il := s3.NewImageStore(rootDir, cacheDir, false, storageConstants.DefaultGCDelay,
 		dedupe, false, log, metrics, nil, store, cacheDriver)
 
 	return store, il, err
@@ -768,7 +767,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 			controller := api.NewController(conf)
 			So(controller, ShouldNotBeNil)
 
-			err = controller.InitImageStore(context.Background())
+			err = controller.InitImageStore()
 			So(err, ShouldBeNil)
 		})
 

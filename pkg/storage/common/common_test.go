@@ -1,4 +1,4 @@
-package storage_test
+package common_test
 
 import (
 	"bytes"
@@ -18,6 +18,8 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/cache"
+	"zotregistry.io/zot/pkg/storage/common"
+	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/mocks"
@@ -34,7 +36,7 @@ func TestValidateManifest(t *testing.T) {
 			Name:        "cache",
 			UseRelPaths: true,
 		}, log)
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, true,
+		imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, true,
 			true, log, metrics, nil, cacheDriver)
 
 		content := []byte("this is a blob")
@@ -119,33 +121,34 @@ func TestGetReferrersErrors(t *testing.T) {
 			UseRelPaths: true,
 		}, log)
 
-		imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay, false,
+		var imgStore storage.ImageStore
+		imgStore = local.NewImageStore(dir, true, storageConstants.DefaultGCDelay, false,
 			true, log, metrics, nil, cacheDriver)
 
 		artifactType := "application/vnd.example.icecream.v1"
 		validDigest := godigest.FromBytes([]byte("blob"))
 
 		Convey("Trigger invalid digest error", func(c C) {
-			_, err := storage.GetReferrers(imgStore, "zot-test", "invalidDigest",
+			_, err := common.GetReferrers(imgStore, "zot-test", "invalidDigest",
 				[]string{artifactType}, log.With().Caller().Logger())
 			So(err, ShouldNotBeNil)
 
-			_, err = storage.GetOrasReferrers(imgStore, "zot-test", "invalidDigest",
+			_, err = common.GetOrasReferrers(imgStore, "zot-test", "invalidDigest",
 				artifactType, log.With().Caller().Logger())
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("Trigger repo not found error", func(c C) {
-			_, err := storage.GetReferrers(imgStore, "zot-test", validDigest,
+			_, err := common.GetReferrers(imgStore, "zot-test", validDigest,
 				[]string{artifactType}, log.With().Caller().Logger())
 			So(err, ShouldNotBeNil)
 
-			_, err = storage.GetOrasReferrers(imgStore, "zot-test", validDigest,
+			_, err = common.GetOrasReferrers(imgStore, "zot-test", validDigest,
 				artifactType, log.With().Caller().Logger())
 			So(err, ShouldNotBeNil)
 		})
 
-		err := test.CopyFiles("../../test/data/zot-test", path.Join(dir, "zot-test"))
+		err := test.CopyFiles("../../../test/data/zot-test", path.Join(dir, "zot-test"))
 		So(err, ShouldBeNil)
 
 		digest := godigest.FromBytes([]byte("{}"))
@@ -172,11 +175,11 @@ func TestGetReferrersErrors(t *testing.T) {
 				},
 			}
 
-			_, err = storage.GetReferrers(imgStore, "zot-test", validDigest,
+			_, err = common.GetReferrers(imgStore, "zot-test", validDigest,
 				[]string{artifactType}, log.With().Caller().Logger())
 			So(err, ShouldNotBeNil)
 
-			_, err = storage.GetOrasReferrers(imgStore, "zot-test", validDigest,
+			_, err = common.GetOrasReferrers(imgStore, "zot-test", validDigest,
 				artifactType, log.With().Caller().Logger())
 			So(err, ShouldNotBeNil)
 		})
@@ -191,11 +194,11 @@ func TestGetReferrersErrors(t *testing.T) {
 				},
 			}
 
-			_, err = storage.GetReferrers(imgStore, "zot-test", validDigest,
+			_, err = common.GetReferrers(imgStore, "zot-test", validDigest,
 				[]string{artifactType}, log.With().Caller().Logger())
 			So(err, ShouldNotBeNil)
 
-			_, err = storage.GetOrasReferrers(imgStore, "zot-test", validDigest,
+			_, err = common.GetOrasReferrers(imgStore, "zot-test", validDigest,
 				artifactType, log.With().Caller().Logger())
 			So(err, ShouldNotBeNil)
 		})
@@ -220,11 +223,11 @@ func TestGetReferrersErrors(t *testing.T) {
 				},
 			}
 
-			_, err = storage.GetOrasReferrers(imgStore, "zot-test", validDigest,
+			_, err = common.GetOrasReferrers(imgStore, "zot-test", validDigest,
 				artifactType, log.With().Caller().Logger())
 			So(err, ShouldNotBeNil)
 
-			_, err = storage.GetOrasReferrers(imgStore, "zot-test", digest,
+			_, err = common.GetOrasReferrers(imgStore, "zot-test", digest,
 				artifactType, log.With().Caller().Logger())
 			So(err, ShouldNotBeNil)
 		})
@@ -239,7 +242,7 @@ func TestGetReferrersErrors(t *testing.T) {
 				},
 			}
 
-			_, err = storage.GetOrasReferrers(imgStore, "zot-test", validDigest, artifactType, log.With().Caller().Logger())
+			_, err = common.GetOrasReferrers(imgStore, "zot-test", validDigest, artifactType, log.With().Caller().Logger())
 			So(err, ShouldNotBeNil)
 		})
 
@@ -265,7 +268,7 @@ func TestGetReferrersErrors(t *testing.T) {
 				},
 			}
 
-			_, err = storage.GetReferrers(imgStore, "zot-test", validDigest,
+			_, err = common.GetReferrers(imgStore, "zot-test", validDigest,
 				[]string{artifactType}, log.With().Caller().Logger())
 			So(err, ShouldNotBeNil)
 		})
@@ -292,7 +295,7 @@ func TestGetReferrersErrors(t *testing.T) {
 				},
 			}
 
-			_, err = storage.GetReferrers(imgStore, "zot-test", validDigest,
+			_, err = common.GetReferrers(imgStore, "zot-test", validDigest,
 				[]string{artifactType}, log.With().Caller().Logger())
 			So(err, ShouldNotBeNil)
 		})
@@ -326,7 +329,7 @@ func TestGetReferrersErrors(t *testing.T) {
 				},
 			}
 
-			_, err = storage.GetReferrers(imgStore, "zot-test", validDigest,
+			_, err = common.GetReferrers(imgStore, "zot-test", validDigest,
 				[]string{artifactType}, log.With().Caller().Logger())
 			So(err, ShouldBeNil)
 		})
@@ -339,7 +342,7 @@ func TestGetImageIndexErrors(t *testing.T) {
 	Convey("Trigger invalid digest error", t, func(c C) {
 		imgStore := &mocks.MockedImageStore{}
 
-		_, err := storage.GetImageIndex(imgStore, "zot-test", "invalidDigest", log)
+		_, err := common.GetImageIndex(imgStore, "zot-test", "invalidDigest", log)
 		So(err, ShouldNotBeNil)
 	})
 
@@ -352,7 +355,7 @@ func TestGetImageIndexErrors(t *testing.T) {
 
 		validDigest := godigest.FromBytes([]byte("blob"))
 
-		_, err := storage.GetImageIndex(imgStore, "zot-test", validDigest, log)
+		_, err := common.GetImageIndex(imgStore, "zot-test", validDigest, log)
 		So(err, ShouldNotBeNil)
 	})
 
@@ -365,7 +368,7 @@ func TestGetImageIndexErrors(t *testing.T) {
 
 		validDigest := godigest.FromBytes([]byte("blob"))
 
-		_, err := storage.GetImageIndex(imgStore, "zot-test", validDigest, log)
+		_, err := common.GetImageIndex(imgStore, "zot-test", validDigest, log)
 		So(err, ShouldNotBeNil)
 	})
 }

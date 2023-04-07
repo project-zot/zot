@@ -116,7 +116,7 @@ func newScrubCmd(conf *config.Config) *cobra.Command {
 				ctlr := api.NewController(conf)
 				ctlr.Metrics = monitoring.NewMetricsServer(false, ctlr.Log)
 
-				if err := ctlr.InitImageStore(context.Background()); err != nil {
+				if err := ctlr.InitImageStore(); err != nil {
 					panic(err)
 				}
 
@@ -566,7 +566,7 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper) {
 
 		// if gc is enabled and gcDelay is not set, it is set to default value
 		if storageConfig.GC && !viperInstance.IsSet("storage::subpaths::"+name+"::gcdelay") {
-			storageConfig.GCDelay = storage.DefaultGCDelay
+			storageConfig.GCDelay = storageConstants.DefaultGCDelay
 			config.Storage.SubPaths[name] = storageConfig
 		}
 	}

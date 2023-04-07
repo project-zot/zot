@@ -33,6 +33,7 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/repodb"
 	"zotregistry.io/zot/pkg/storage"
+	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
 )
@@ -274,7 +275,7 @@ func pushSyncedLocalImage(localRepo, reference, localCachePath string,
 	metrics := monitoring.NewMetricsServer(false, log)
 
 	cacheImageStore := local.NewImageStore(localCachePath, false,
-		storage.DefaultGCDelay, false, false, log, metrics, nil, nil)
+		storageConstants.DefaultGCDelay, false, false, log, metrics, nil, nil)
 
 	manifestBlob, manifestDigest, mediaType, err := cacheImageStore.GetImageManifest(localRepo, reference)
 	if err != nil {

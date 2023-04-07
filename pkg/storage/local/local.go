@@ -34,8 +34,8 @@ import (
 	zlog "zotregistry.io/zot/pkg/log"
 	zreg "zotregistry.io/zot/pkg/regexp"
 	"zotregistry.io/zot/pkg/scheduler"
-	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/cache"
+	storageCommon "zotregistry.io/zot/pkg/storage/common"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/test"
 )
@@ -48,17 +48,16 @@ const (
 
 // ImageStoreLocal provides the image storage operations.
 type ImageStoreLocal struct {
-	rootDir     string
-	lock        *sync.RWMutex
-	blobUploads map[string]storage.BlobUpload
-	cache       cache.Cache
-	gc          bool
-	dedupe      bool
-	commit      bool
-	gcDelay     time.Duration
-	log         zerolog.Logger
-	metrics     monitoring.MetricServer
-	linter      storage.Lint
+	rootDir string
+	lock    *sync.RWMutex
+	cache   cache.Cache
+	gc      bool
+	dedupe  bool
+	commit  bool
+	gcDelay time.Duration
+	log     zerolog.Logger
+	metrics monitoring.MetricServer
+	linter  storageCommon.Lint
 }
 
 func (is *ImageStoreLocal) RootDir() string {
@@ -72,8 +71,8 @@ func (is *ImageStoreLocal) DirExists(d string) bool {
 // NewImageStore returns a new image store backed by a file storage.
 // Use the last argument to properly set a cache database, or it will default to boltDB local storage.
 func NewImageStore(rootDir string, gc bool, gcDelay time.Duration, dedupe, commit bool,
-	log zlog.Logger, metrics monitoring.MetricServer, linter storage.Lint, cacheDriver cache.Cache,
-) storage.ImageStore {
+	log zlog.Logger, metrics monitoring.MetricServer, linter storageCommon.Lint, cacheDriver cache.Cache,
+) *ImageStoreLocal {
 	if _, err := os.Stat(rootDir); os.IsNotExist(err) {
 		if err := os.MkdirAll(rootDir, DefaultDirPerms); err != nil {
 			log.Error().Err(err).Str("rootDir", rootDir).Msg("unable to create root dir")
@@ -83,16 +82,15 @@ func NewImageStore(rootDir string, gc bool, gcDelay time.Duration, dedupe, commi
 	}
 
 	imgStore := &ImageStoreLocal{
-		rootDir:     rootDir,
-		lock:        &sync.RWMutex{},
-		blobUploads: make(map[string]storage.BlobUpload),
-		gc:          gc,
-		gcDelay:     gcDelay,
-		dedupe:      dedupe,
-		commit:      commit,
-		log:         log.With().Caller().Logger(),
-		metrics:     metrics,
-		linter:      linter,
+		rootDir: rootDir,
+		lock:    &sync.RWMutex{},
+		gc:      gc,
+		gcDelay: gcDelay,
+		dedupe:  dedupe,
+		commit:  commit,
+		log:     log.With().Caller().Logger(),
+		metrics: metrics,
+		linter:  linter,
 	}
 
 	imgStore.cache = cacheDriver
@@ -401,12 +399,12 @@ func (is *ImageStoreLocal) GetImageTags(repo string) ([]string, error) {
 	is.RLock(&lockLatency)
 	defer is.RUnlock(&lockLatency)
 
-	index, err := storage.GetIndex(is, repo, is.log)
+	index, err := storageCommon.GetIndex(is, repo, is.log)
 	if err != nil {
 		return nil, err
 	}
 
-	return storage.GetTagsByIndex(index), nil
+	return storageCommon.GetTagsByIndex(index), nil
 }
 
 // GetImageManifest returns the image manifest of an image in the specific repository.
@@ -421,12 +419,12 @@ func (is *ImageStoreLocal) GetImageManifest(repo, reference string) ([]byte, god
 	is.RLock(&lockLatency)
 	defer is.RUnlock(&lockLatency)
 
-	index, err := storage.GetIndex(is, repo, is.log)
+	index, err := storageCommon.GetIndex(is, repo, is.log)
 	if err != nil {
 		return nil, "", "", err
 	}
 
-	manifestDesc, found := storage.GetManifestDescByReference(index, reference)
+	manifestDesc, found := storageCommon.GetManifestDescByReference(index, reference)
 	if !found {
 		return nil, "", "", zerr.ErrManifestNotFound
 	}
@@ -467,14 +465,14 @@ func (is *ImageStoreLocal) PutImageManifest(repo, reference, mediaType string, /
 	is.Lock(&lockLatency)
 	defer is.Unlock(&lockLatency)
 
-	digest, err := storage.ValidateManifest(is, repo, reference, mediaType, body, is.log)
+	digest, err := storageCommon.ValidateManifest(is, repo, reference, mediaType, body, is.log)
 	if err != nil {
 		return digest, err
 	}
 
 	refIsDigest := true
 
-	mDigest, err := storage.GetAndValidateRequestDigest(body, reference, is.log)
+	mDigest, err := storageCommon.GetAndValidateRequestDigest(body, reference, is.log)
 	if err != nil {
 		if errors.Is(err, zerr.ErrBadManifest) {
 			return mDigest, err
@@ -483,7 +481,7 @@ func (is *ImageStoreLocal) PutImageManifest(repo, reference, mediaType string, /
 		refIsDigest = false
 	}
 
-	index, err := storage.GetIndex(is, repo, is.log)
+	index, err := storageCommon.GetIndex(is, repo, is.log)
 	if err != nil {
 		return "", err
 	}
@@ -497,7 +495,7 @@ func (is *ImageStoreLocal) PutImageManifest(repo, reference, mediaType string, /
 		desc.Annotations = map[string]string{ispec.AnnotationRefName: reference}
 	}
 
-	updateIndex, oldDgst, err := storage.CheckIfIndexNeedsUpdate(&index, &desc, is.log)
+	updateIndex, oldDgst, err := storageCommon.CheckIfIndexNeedsUpdate(&index, &desc, is.log)
 	if err != nil {
 		return "", err
 	}
@@ -518,7 +516,7 @@ func (is *ImageStoreLocal) PutImageManifest(repo, reference, mediaType string, /
 		return "", err
 	}
 
-	err = storage.UpdateIndexWithPrunedImageManifests(is, &index, repo, desc, oldDgst, is.log)
+	err = storageCommon.UpdateIndexWithPrunedImageManifests(is, &index, repo, desc, oldDgst, is.log)
 	if err != nil {
 		return "", err
 	}
@@ -536,7 +534,7 @@ func (is *ImageStoreLocal) PutImageManifest(repo, reference, mediaType string, /
 	}
 
 	// apply linter only on images, not signatures
-	pass, err := storage.ApplyLinter(is, is.linter, repo, desc)
+	pass, err := storageCommon.ApplyLinter(is, is.linter, repo, desc)
 	if !pass {
 		is.log.Error().Err(err).Str("repo", repo).Str("reference", reference).Msg("linter didn't pass")
 
@@ -574,17 +572,17 @@ func (is *ImageStoreLocal) DeleteImageManifest(repo, reference string, detectCol
 	is.Lock(&lockLatency)
 	defer is.Unlock(&lockLatency)
 
-	index, err := storage.GetIndex(is, repo, is.log)
+	index, err := storageCommon.GetIndex(is, repo, is.log)
 	if err != nil {
 		return err
 	}
 
-	manifestDesc, err := storage.RemoveManifestDescByReference(&index, reference, detectCollision)
+	manifestDesc, err := storageCommon.RemoveManifestDescByReference(&index, reference, detectCollision)
 	if err != nil {
 		return err
 	}
 
-	err = storage.UpdateIndexWithPrunedImageManifests(is, &index, repo, manifestDesc, manifestDesc.Digest, is.log)
+	err = storageCommon.UpdateIndexWithPrunedImageManifests(is, &index, repo, manifestDesc, manifestDesc.Digest, is.log)
 	if err != nil {
 		return err
 	}
@@ -1361,7 +1359,7 @@ func (is *ImageStoreLocal) GetReferrers(repo string, gdigest godigest.Digest, ar
 	is.RLock(&lockLatency)
 	defer is.RUnlock(&lockLatency)
 
-	return storage.GetReferrers(is, repo, gdigest, artifactTypes, is.log)
+	return storageCommon.GetReferrers(is, repo, gdigest, artifactTypes, is.log)
 }
 
 func (is *ImageStoreLocal) GetOrasReferrers(repo string, gdigest godigest.Digest, artifactType string,
@@ -1371,7 +1369,7 @@ func (is *ImageStoreLocal) GetOrasReferrers(repo string, gdigest godigest.Digest
 	is.RLock(&lockLatency)
 	defer is.RUnlock(&lockLatency)
 
-	return storage.GetOrasReferrers(is, repo, gdigest, artifactType, is.log)
+	return storageCommon.GetOrasReferrers(is, repo, gdigest, artifactType, is.log)
 }
 
 func (is *ImageStoreLocal) writeFile(filename string, data []byte) error {
@@ -1462,7 +1460,7 @@ func (is *ImageStoreLocal) garbageCollect(dir string, repo string) error {
 	for _, desc := range index.Manifests {
 		switch desc.MediaType {
 		case ispec.MediaTypeImageIndex:
-			indexImage, err := storage.GetImageIndex(is, repo, desc.Digest, is.log)
+			indexImage, err := storageCommon.GetImageIndex(is, repo, desc.Digest, is.log)
 			if err != nil {
 				is.log.Error().Err(err).Str("repo", repo).Str("digest", desc.Digest.String()).
 					Msg("gc: failed to read multiarch(index) image")
@@ -1563,7 +1561,7 @@ func gcUntaggedManifests(imgStore *ImageStoreLocal, oci casext.Engine, index *is
 				if canGC {
 					imgStore.log.Info().Str("repo", repo).Str("digest", desc.Digest.String()).Msg("gc: removing manifest without tag")
 
-					_, err = storage.RemoveManifestDescByReference(index, desc.Digest.String(), true)
+					_, err = storageCommon.RemoveManifestDescByReference(index, desc.Digest.String(), true)
 					if errors.Is(err, zerr.ErrManifestConflict) {
 						imgStore.log.Info().Str("repo", repo).Str("digest", desc.Digest.String()).
 							Msg("gc: skipping removing manifest due to conflict")
@@ -1602,7 +1600,7 @@ func gcCosignSignatures(imgStore *ImageStoreLocal, oci casext.Engine, index *isp
 				Msg("gc: removing cosign signature without subject")
 
 			// no need to check for manifest conflict, if one doesn't have a subject, then none with same digest will have
-			_, _ = storage.RemoveManifestDescByReference(index, cosignDesc.Digest.String(), false)
+			_, _ = storageCommon.RemoveManifestDescByReference(index, cosignDesc.Digest.String(), false)
 
 			err := oci.PutIndex(context.Background(), *index)
 			if err != nil {
@@ -1654,7 +1652,7 @@ func gcNotationSignatures(imgStore *ImageStoreLocal, oci casext.Engine, index *i
 				Msg("gc: removing notation signature without subject")
 
 			// no need to check for manifest conflict, if one doesn't have a subject, then none with same digest will have
-			_, _ = storage.RemoveManifestDescByReference(index, notationDesc.Digest.String(), false)
+			_, _ = storageCommon.RemoveManifestDescByReference(index, notationDesc.Digest.String(), false)
 
 			err := oci.PutIndex(context.Background(), *index)
 			if err != nil {
@@ -1931,7 +1929,7 @@ func (is *ImageStoreLocal) RunDedupeForDigest(digest godigest.Digest, dedupe boo
 func (is *ImageStoreLocal) RunDedupeBlobs(interval time.Duration, sch *scheduler.Scheduler) {
 	// for local storage no need to undedupe blobs
 	if is.dedupe {
-		generator := &storage.DedupeTaskGenerator{
+		generator := &storageCommon.DedupeTaskGenerator{
 			ImgStore: is,
 			Dedupe:   is.dedupe,
 			Log:      is.log,

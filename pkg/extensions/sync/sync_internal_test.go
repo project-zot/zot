@@ -27,6 +27,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/mocks"
@@ -67,7 +68,7 @@ func TestInjectSyncUtils(t *testing.T) {
 
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
-		imageStore := local.NewImageStore(t.TempDir(), false, storage.DefaultGCDelay,
+		imageStore := local.NewImageStore(t.TempDir(), false, storageConstants.DefaultGCDelay,
 			false, false, log, metrics, nil, nil,
 		)
 		injected = test.InjectFailure(0)
@@ -183,7 +184,7 @@ func TestSyncInternal(t *testing.T) {
 		log := log.NewLogger("debug", "")
 
 		metrics := monitoring.NewMetricsServer(false, log)
-		imageStore := local.NewImageStore(t.TempDir(), false, storage.DefaultGCDelay,
+		imageStore := local.NewImageStore(t.TempDir(), false, storageConstants.DefaultGCDelay,
 			false, false, log, metrics, nil, nil,
 		)
 
@@ -200,7 +201,7 @@ func TestSyncInternal(t *testing.T) {
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
 
-		imageStore := local.NewImageStore(t.TempDir(), false, storage.DefaultGCDelay,
+		imageStore := local.NewImageStore(t.TempDir(), false, storageConstants.DefaultGCDelay,
 			false, false, log, metrics, nil, nil)
 
 		err := os.Chmod(imageStore.RootDir(), 0o000)
@@ -375,7 +376,7 @@ func TestSyncInternal(t *testing.T) {
 		}
 
 		metrics := monitoring.NewMetricsServer(false, log)
-		imageStore := local.NewImageStore(t.TempDir(), false, storage.DefaultGCDelay,
+		imageStore := local.NewImageStore(t.TempDir(), false, storageConstants.DefaultGCDelay,
 			false, false, log, metrics, nil, nil,
 		)
 		mockRepoDB := mocks.RepoDBMock{}
@@ -401,7 +402,7 @@ func TestSyncInternal(t *testing.T) {
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
 
-		imageStore := local.NewImageStore(storageDir, false, storage.DefaultGCDelay,
+		imageStore := local.NewImageStore(storageDir, false, storageConstants.DefaultGCDelay,
 			false, false, log, metrics, nil, nil)
 
 		refs := ispec.Index{Manifests: []ispec.Descriptor{
@@ -589,7 +590,7 @@ func TestSyncInternal(t *testing.T) {
 		log := log.Logger{Logger: zerolog.New(os.Stdout)}
 		metrics := monitoring.NewMetricsServer(false, log)
 
-		imageStore := local.NewImageStore(storageDir, false, storage.DefaultGCDelay,
+		imageStore := local.NewImageStore(storageDir, false, storageConstants.DefaultGCDelay,
 			false, false, log, metrics, nil, nil)
 
 		storeController := storage.StoreController{}
@@ -609,7 +610,7 @@ func TestSyncInternal(t *testing.T) {
 		test.CopyTestFiles("../../../test/data", testRootDir)
 
 		testImageStore := local.NewImageStore(testRootDir, false,
-			storage.DefaultGCDelay, false, false, log, metrics, nil, nil)
+			storageConstants.DefaultGCDelay, false, false, log, metrics, nil, nil)
 		manifestContent, _, _, err := testImageStore.GetImageManifest(testImage, testImageTag)
 		So(err, ShouldBeNil)
 
@@ -681,7 +682,7 @@ func TestSyncInternal(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			// trigger linter error on manifest push
-			imageStoreWithLinter := local.NewImageStore(t.TempDir(), false, storage.DefaultGCDelay,
+			imageStoreWithLinter := local.NewImageStore(t.TempDir(), false, storageConstants.DefaultGCDelay,
 				false, false, log, metrics, &mocks.MockedLint{
 					LintFn: func(repo string, manifestDigest godigest.Digest, imageStore storage.ImageStore) (bool, error) {
 						return false, nil

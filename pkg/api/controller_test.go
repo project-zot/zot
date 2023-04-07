@@ -122,13 +122,13 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 			panic(err)
 		}
 
-		driver := api.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
+		driver := storage.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
 		So(driver, ShouldBeNil)
 
 		conf.Storage.RemoteCache = true
 		conf.Storage.RootDirectory = t.TempDir()
 
-		driver = api.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
+		driver = storage.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
 		So(driver, ShouldBeNil)
 	})
 	skipDynamo(t)
@@ -161,7 +161,7 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 			"versionTablename":      "Version",
 		}
 
-		driver := api.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
+		driver := storage.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
 		So(driver, ShouldNotBeNil)
 
 		// negative test cases
@@ -176,7 +176,7 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 			"versionTablename":      "Version",
 		}
 
-		driver = api.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
+		driver = storage.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
 		So(driver, ShouldBeNil)
 
 		conf.Storage.CacheDriver = map[string]interface{}{
@@ -190,7 +190,7 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 			"versionTablename":      "Version",
 		}
 
-		driver = api.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
+		driver = storage.CreateCacheDatabaseDriver(conf.Storage.StorageConfig, log)
 		So(driver, ShouldBeNil)
 	})
 }

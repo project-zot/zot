@@ -39,6 +39,7 @@ import (
 	zreg "zotregistry.io/zot/pkg/regexp"
 	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/storage/common"
 	"zotregistry.io/zot/pkg/test" //nolint:goimports
 )
 
@@ -550,7 +551,7 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 	}
 
 	mediaType := request.Header.Get("Content-Type")
-	if !storage.IsSupportedMediaType(mediaType) {
+	if !common.IsSupportedMediaType(mediaType) {
 		// response.WriteHeader(http.StatusUnsupportedMediaType)
 		WriteJSON(response, http.StatusUnsupportedMediaType,
 			NewErrorList(NewError(MANIFEST_INVALID, map[string]string{"mediaType": mediaType})))

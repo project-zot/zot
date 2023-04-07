@@ -41,7 +41,7 @@ import (
 	syncconf "zotregistry.io/zot/pkg/extensions/config/sync"
 	"zotregistry.io/zot/pkg/extensions/sync"
 	logger "zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/storage"
+	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/mocks"
@@ -1553,7 +1553,7 @@ func TestBasicAuth(t *testing.T) {
 				"a": {
 					RootDirectory: destDir,
 					GC:            true,
-					GCDelay:       storage.DefaultGCDelay,
+					GCDelay:       storageConstants.DefaultGCDelay,
 					Dedupe:        true,
 				},
 			}
@@ -2398,7 +2398,7 @@ func TestSubPaths(t *testing.T) {
 			subpath: {
 				RootDirectory: subPathDestDir,
 				GC:            true,
-				GCDelay:       storage.DefaultGCDelay,
+				GCDelay:       storageConstants.DefaultGCDelay,
 				Dedupe:        true,
 			},
 		}

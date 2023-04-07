@@ -139,7 +139,7 @@ func TestMgmtExtension(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		subPaths := make(map[string]config.StorageConfig)
-		subPaths["/a"] = config.StorageConfig{}
+		subPaths["/a"] = config.StorageConfig{Dedupe: false}
 
 		ctlr.Config.Storage.RootDirectory = globalDir
 		ctlr.Config.Storage.SubPaths = subPaths
@@ -204,7 +204,7 @@ func TestMgmtExtension(t *testing.T) {
 		ctlr := api.NewController(conf)
 
 		subPaths := make(map[string]config.StorageConfig)
-		subPaths["/a"] = config.StorageConfig{}
+		subPaths["/a"] = config.StorageConfig{Dedupe: false, RootDirectory: t.TempDir()}
 
 		ctlr.Config.Storage.RootDirectory = globalDir
 		ctlr.Config.Storage.SubPaths = subPaths
