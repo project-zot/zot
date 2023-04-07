@@ -77,12 +77,6 @@ type RepoDB interface { //nolint:interfacebloat
 	// GetIndexData returns indexData for a given Index from the database
 	GetIndexData(indexDigest godigest.Digest) (IndexData, error)
 
-	// SetArtifactData sets artifactData for a given artifact in the database
-	SetArtifactData(artifactDigest godigest.Digest, artifactData ArtifactData) error
-
-	// GetArtifactData returns artifactData for a given artifact from the database
-	GetArtifactData(artifactDigest godigest.Digest) (ArtifactData, error)
-
 	// SetReferrer adds a referrer to the referrers list of a manifest inside a repo
 	SetReferrer(repo string, referredDigest godigest.Digest, referrer ReferrerInfo) error
 
@@ -148,10 +142,6 @@ type IndexData struct {
 type ManifestData struct {
 	ManifestBlob []byte
 	ConfigBlob   []byte
-}
-
-type ArtifactData struct {
-	ManifestBlob []byte
 }
 
 type ReferrerInfo struct {

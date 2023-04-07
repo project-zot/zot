@@ -92,7 +92,7 @@ func GoroutineID() int {
 
 type goroutineHook struct{}
 
-func (h goroutineHook) Run(e *zerolog.Event, level zerolog.Level, msg string) {
+func (h goroutineHook) Run(e *zerolog.Event, level zerolog.Level, _ string) {
 	if level != zerolog.NoLevel {
 		e.Int("goroutine", GoroutineID())
 	}

@@ -32,7 +32,6 @@ type DBWrapper struct {
 	RepoMetaTablename     string
 	IndexDataTablename    string
 	ManifestDataTablename string
-	ArtifactDataTablename string
 	UserDataTablename     string
 	VersionTablename      string
 	Patches               []func(client *dynamodb.Client, tableNames map[string]string) error
@@ -45,7 +44,6 @@ func NewDynamoDBWrapper(client *dynamodb.Client, params dynamo.DBDriverParameter
 		RepoMetaTablename:     params.RepoMetaTablename,
 		ManifestDataTablename: params.ManifestDataTablename,
 		IndexDataTablename:    params.IndexDataTablename,
-		ArtifactDataTablename: params.ArtifactDataTablename,
 		VersionTablename:      params.VersionTablename,
 		UserDataTablename:     params.UserDataTablename,
 		Patches:               version.GetDynamoDBPatches(),
@@ -63,11 +61,6 @@ func NewDynamoDBWrapper(client *dynamodb.Client, params dynamo.DBDriverParameter
 	}
 
 	err = dynamoWrapper.createManifestDataTable()
-	if err != nil {
-		return nil, err
-	}
-
-	err = dynamoWrapper.createArtifactDataTable()
 	if err != nil {
 		return nil, err
 	}
@@ -299,58 +292,6 @@ func (dwr *DBWrapper) GetIndexData(indexDigest godigest.Digest) (repodb.IndexDat
 	}
 
 	return indexData, nil
-}
-
-func (dwr DBWrapper) SetArtifactData(artifactDigest godigest.Digest, artifactData repodb.ArtifactData) error {
-	artifactAttributeValue, err := attributevalue.Marshal(artifactData)
-	if err != nil {
-		return err
-	}
-
-	_, err = dwr.Client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
-		ExpressionAttributeNames: map[string]string{
-			"#AD": "ArtifactData",
-		},
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":ArtifactData": artifactAttributeValue,
-		},
-		Key: map[string]types.AttributeValue{
-			"ArtifactDigest": &types.AttributeValueMemberS{
-				Value: artifactDigest.String(),
-			},
-		},
-		TableName:        aws.String(dwr.ArtifactDataTablename),
-		UpdateExpression: aws.String("SET #AD = :ArtifactData"),
-	})
-
-	return err
-}
-
-func (dwr DBWrapper) GetArtifactData(artifactDigest godigest.Digest) (repodb.ArtifactData, error) {
-	resp, err := dwr.Client.GetItem(context.TODO(), &dynamodb.GetItemInput{
-		TableName: aws.String(dwr.ArtifactDataTablename),
-		Key: map[string]types.AttributeValue{
-			"ArtifactDigest": &types.AttributeValueMemberS{
-				Value: artifactDigest.String(),
-			},
-		},
-	})
-	if err != nil {
-		return repodb.ArtifactData{}, err
-	}
-
-	if resp.Item == nil {
-		return repodb.ArtifactData{}, zerr.ErrRepoMetaNotFound
-	}
-
-	var artifactData repodb.ArtifactData
-
-	err = attributevalue.Unmarshal(resp.Item["ArtifactData"], &artifactData)
-	if err != nil {
-		return repodb.ArtifactData{}, err
-	}
-
-	return artifactData, nil
 }
 
 func (dwr DBWrapper) SetReferrer(repo string, referredDigest godigest.Digest, referrer repodb.ReferrerInfo) error {
@@ -1662,31 +1603,6 @@ func (dwr *DBWrapper) createIndexDataTable() error {
 	}
 
 	return dwr.waitTableToBeCreated(dwr.IndexDataTablename)
-}
-
-func (dwr DBWrapper) createArtifactDataTable() error {
-	_, err := dwr.Client.CreateTable(context.Background(), &dynamodb.CreateTableInput{
-		TableName: aws.String(dwr.ArtifactDataTablename),
-		AttributeDefinitions: []types.AttributeDefinition{
-			{
-				AttributeName: aws.String("ArtifactDigest"),
-				AttributeType: types.ScalarAttributeTypeS,
-			},
-		},
-		KeySchema: []types.KeySchemaElement{
-			{
-				AttributeName: aws.String("ArtifactDigest"),
-				KeyType:       types.KeyTypeHash,
-			},
-		},
-		BillingMode: types.BillingModePayPerRequest,
-	})
-
-	if err != nil && !strings.Contains(err.Error(), "Table already exists") {
-		return err
-	}
-
-	return dwr.waitTableToBeCreated(dwr.ManifestDataTablename)
 }
 
 func (dwr *DBWrapper) createVersionTable() error {

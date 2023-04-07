@@ -21,6 +21,7 @@ import (
 	dbTypes "github.com/aquasecurity/trivy-db/pkg/types"
 	"github.com/gobwas/glob"
 	regTypes "github.com/google/go-containerregistry/pkg/v1/types"
+	notreg "github.com/notaryproject/notation-go/registry"
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -31,7 +32,7 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
-	"zotregistry.io/zot/pkg/common"
+	zcommon "zotregistry.io/zot/pkg/common"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
@@ -97,7 +98,7 @@ type ReferrersResp struct {
 }
 
 type ReferrersResult struct {
-	Referrers []common.Referrer `json:"referrers"`
+	Referrers []zcommon.Referrer `json:"referrers"`
 }
 type GlobalSearchResultResp struct {
 	GlobalSearchResult GlobalSearchResult `json:"data"`
@@ -109,24 +110,24 @@ type GlobalSearchResult struct {
 }
 
 type GlobalSearch struct {
-	Images []common.ImageSummary `json:"images"`
-	Repos  []common.RepoSummary  `json:"repos"`
-	Layers []common.LayerSummary `json:"layers"`
-	Page   repodb.PageInfo       `json:"page"`
+	Images []zcommon.ImageSummary `json:"images"`
+	Repos  []zcommon.RepoSummary  `json:"repos"`
+	Layers []zcommon.LayerSummary `json:"layers"`
+	Page   repodb.PageInfo        `json:"page"`
 }
 
 type ExpandedRepoInfo struct {
-	RepoInfo common.RepoInfo `json:"expandedRepoInfo"`
+	RepoInfo zcommon.RepoInfo `json:"expandedRepoInfo"`
 }
 
 type PaginatedReposResult struct {
-	Results []common.RepoSummary `json:"results"`
-	Page    repodb.PageInfo      `json:"page"`
+	Results []zcommon.RepoSummary `json:"results"`
+	Page    repodb.PageInfo       `json:"page"`
 }
 
 type PaginatedImagesResult struct {
-	Results []common.ImageSummary `json:"results"`
-	Page    repodb.PageInfo       `json:"page"`
+	Results []zcommon.ImageSummary `json:"results"`
+	Page    repodb.PageInfo        `json:"page"`
 }
 
 //nolint:tagliatelle // graphQL schema
@@ -140,7 +141,7 @@ type ErrorGQL struct {
 }
 
 type SingleImageSummary struct {
-	ImageSummary common.ImageSummary `json:"Image"` //nolint:tagliatelle
+	ImageSummary zcommon.ImageSummary `json:"Image"` //nolint:tagliatelle
 }
 type ImageSummaryResult struct {
 	SingleImageSummary SingleImageSummary `json:"data"`
@@ -189,7 +190,7 @@ func readFileAndSearchString(filePath string, stringToMatch string, timeout time
 }
 
 func verifyRepoSummaryFields(t *testing.T,
-	actualRepoSummary, expectedRepoSummary *common.RepoSummary,
+	actualRepoSummary, expectedRepoSummary *zcommon.RepoSummary,
 ) {
 	t.Helper()
 
@@ -218,7 +219,7 @@ func verifyRepoSummaryFields(t *testing.T,
 }
 
 func verifyImageSummaryFields(t *testing.T,
-	actualImageSummary, expectedImageSummary *common.ImageSummary,
+	actualImageSummary, expectedImageSummary *zcommon.ImageSummary,
 ) {
 	t.Helper()
 
@@ -972,30 +973,37 @@ func TestGetReferrersGQL(t *testing.T) {
 		artifactContentBlobDigest := godigest.FromBytes(artifactContentBlob)
 		artifactType := "com.artifact.test"
 
-		err = UploadBlob(baseURL, repo, artifactContentBlob, artifactContentType)
-		So(err, ShouldBeNil)
-
-		artifact := &ispec.Artifact{
-			Blobs: []ispec.Descriptor{
-				{
-					MediaType: artifactContentType,
-					Digest:    artifactContentBlobDigest,
-					Size:      artifactContentBlobSize,
+		artifactImg := Image{
+			Manifest: ispec.Manifest{
+				Layers: []ispec.Descriptor{
+					{
+						MediaType: artifactContentType,
+						Digest:    artifactContentBlobDigest,
+						Size:      artifactContentBlobSize,
+					},
+				},
+				Subject:      subjectDescriptor,
+				ArtifactType: artifactType,
+				Config: ispec.Descriptor{
+					MediaType: ispec.MediaTypeScratch,
+					Digest:    ispec.ScratchDescriptor.Digest,
+					Data:      ispec.ScratchDescriptor.Data,
+				},
+				MediaType: ispec.MediaTypeImageManifest,
+				Annotations: map[string]string{
+					"com.artifact.format": "test",
 				},
 			},
-			Subject:      subjectDescriptor,
-			ArtifactType: artifactType,
-			MediaType:    ispec.MediaTypeArtifactManifest,
-			Annotations: map[string]string{
-				"com.artifact.format": "test",
-			},
+			Config: ispec.Image{},
+			Layers: [][]byte{artifactContentBlob},
 		}
 
-		artifactManifestBlob, err := json.Marshal(artifact)
+		artifactManifestBlob, err := json.Marshal(artifactImg.Manifest)
 		So(err, ShouldBeNil)
 		artifactManifestDigest := godigest.FromBytes(artifactManifestBlob)
+		artifactImg.Reference = artifactManifestDigest.String()
 
-		err = UploadArtifactManifest(artifact, nil, baseURL, repo)
+		err = UploadImage(artifactImg, baseURL, repo)
 		So(err, ShouldBeNil)
 
 		gqlQuery := `
@@ -1029,7 +1037,7 @@ func TestGetReferrersGQL(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(referrersResp.Errors, ShouldBeNil)
 		So(referrersResp.ReferrersResult.Referrers[0].ArtifactType, ShouldEqual, artifactType)
-		So(referrersResp.ReferrersResult.Referrers[0].MediaType, ShouldEqual, ispec.MediaTypeArtifactManifest)
+		So(referrersResp.ReferrersResult.Referrers[0].MediaType, ShouldEqual, ispec.MediaTypeImageManifest)
 
 		So(referrersResp.ReferrersResult.Referrers[0].Annotations[0].Key, ShouldEqual, "com.artifact.format")
 		So(referrersResp.ReferrersResult.Referrers[0].Annotations[0].Value, ShouldEqual, "test")
@@ -1505,6 +1513,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 	})
 
 	Convey("Test expanded repo info with tagged referrers", t, func() {
+		const test = "test"
 		rootDir := t.TempDir()
 		port := GetFreePort()
 		baseURL := GetBaseURL(port)
@@ -1524,7 +1533,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		ctlrManager.StartAndWait(port)
 		defer ctlrManager.StopServer()
 
-		image, err := GetRandomImage("test")
+		image, err := GetRandomImage(test)
 		So(err, ShouldBeNil)
 		manifestDigest, err := image.Digest()
 		So(err, ShouldBeNil)
@@ -1532,17 +1541,15 @@ func TestExpandedRepoInfo(t *testing.T) {
 		err = UploadImage(image, baseURL, "repo")
 		So(err, ShouldBeNil)
 
-		referrer, err := GetRandomArtifact(&ispec.Descriptor{
-			Digest:    manifestDigest,
-			MediaType: ispec.MediaTypeImageManifest,
-		})
+		referrer, err := GetImageWithSubject(manifestDigest, ispec.MediaTypeImageManifest)
 		So(err, ShouldBeNil)
 
 		tag := "test-ref-tag"
-		err = UploadArtifactManifest(&referrer.Manifest, &tag, baseURL, "repo")
+		referrer.Reference = tag
+		err = UploadImage(referrer, baseURL, "repo")
 		So(err, ShouldBeNil)
 
-		// ------- Make the call to GQL and see that it doesn't crash and that the referrer isn't in the list of tags
+		// ------- Make the call to GQL and see that it doesn't crash
 		responseStruct := &ExpandedRepoInfoResp{}
 		query := `
 		{
@@ -1564,10 +1571,23 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
-		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries), ShouldEqual, 1)
+		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries), ShouldEqual, 2)
 
 		repoInfo := responseStruct.ExpandedRepoInfo.RepoInfo
-		So(repoInfo.ImageSummaries[0].Tag, ShouldEqual, "test")
+
+		foundTagTest := false
+		foundTagRefTag := false
+
+		for _, imgSum := range repoInfo.ImageSummaries {
+			switch imgSum.Tag {
+			case test:
+				foundTagTest = true
+			case "test-ref-tag":
+				foundTagRefTag = true
+			}
+		}
+
+		So(foundTagTest || foundTagRefTag, ShouldEqual, true)
 	})
 
 	Convey("Test image tags order", t, func() {
@@ -3241,8 +3261,8 @@ func TestGlobalSearch(t *testing.T) {
 		repos, err := olu.GetRepositories()
 		So(err, ShouldBeNil)
 
-		allExpectedRepoInfoMap := make(map[string]common.RepoInfo)
-		allExpectedImageSummaryMap := make(map[string]common.ImageSummary)
+		allExpectedRepoInfoMap := make(map[string]zcommon.RepoInfo)
+		allExpectedImageSummaryMap := make(map[string]zcommon.ImageSummary)
 		for _, repo := range repos {
 			repoInfo, err := olu.GetExpandedRepoInfo(repo)
 			So(err, ShouldBeNil)
@@ -3310,8 +3330,8 @@ func TestGlobalSearch(t *testing.T) {
 		t.Logf("returned layers: %v", responseStruct.GlobalSearchResult.GlobalSearch.Layers)
 		So(responseStruct.GlobalSearchResult.GlobalSearch.Layers, ShouldBeEmpty)
 
-		newestImageMap := make(map[string]common.ImageSummary)
-		actualRepoMap := make(map[string]common.RepoSummary)
+		newestImageMap := make(map[string]zcommon.ImageSummary)
+		actualRepoMap := make(map[string]zcommon.RepoSummary)
 		for _, repo := range responseStruct.GlobalSearchResult.GlobalSearch.Repos {
 			newestImageMap[repo.Name] = repo.NewestImage
 			actualRepoMap[repo.Name] = repo
@@ -3570,8 +3590,8 @@ func TestGlobalSearch(t *testing.T) {
 		repos, err := olu.GetRepositories()
 		So(err, ShouldBeNil)
 
-		allExpectedRepoInfoMap := make(map[string]common.RepoInfo)
-		allExpectedImageSummaryMap := make(map[string]common.ImageSummary)
+		allExpectedRepoInfoMap := make(map[string]zcommon.RepoInfo)
+		allExpectedImageSummaryMap := make(map[string]zcommon.ImageSummary)
 		for _, repo := range repos {
 			repoInfo, err := olu.GetExpandedRepoInfo(repo)
 			So(err, ShouldBeNil)
@@ -3637,8 +3657,8 @@ func TestGlobalSearch(t *testing.T) {
 		t.Logf("returned layers: %v", responseStruct.GlobalSearchResult.GlobalSearch.Layers)
 		So(responseStruct.GlobalSearchResult.GlobalSearch.Layers, ShouldBeEmpty)
 
-		newestImageMap := make(map[string]common.ImageSummary)
-		actualRepoMap := make(map[string]common.RepoSummary)
+		newestImageMap := make(map[string]zcommon.ImageSummary)
+		actualRepoMap := make(map[string]zcommon.RepoSummary)
 		for _, repo := range responseStruct.GlobalSearchResult.GlobalSearch.Repos {
 			newestImageMap[repo.Name] = repo.NewestImage
 			actualRepoMap[repo.Name] = repo
@@ -5626,10 +5646,17 @@ func TestRepoDBWhenDeletingImages(t *testing.T) {
 
 			signatureReference := ""
 
-			var sigManifestContent ispec.Artifact
+			var sigManifestContent ispec.Manifest
 
 			for _, manifest := range indexContent.Manifests {
-				if manifest.MediaType == ispec.MediaTypeArtifactManifest {
+				manifestBlob, _, _, err := storage.GetImageManifest(repo, manifest.Digest.String())
+				So(err, ShouldBeNil)
+				var manifestContent ispec.Manifest
+
+				err = json.Unmarshal(manifestBlob, &manifestContent)
+				So(err, ShouldBeNil)
+
+				if zcommon.GetManifestArtifactType(manifestContent) == notreg.ArtifactTypeNotation {
 					signatureReference = manifest.Digest.String()
 					manifestBlob, _, _, err := storage.GetImageManifest(repo, signatureReference)
 					So(err, ShouldBeNil)
@@ -6233,11 +6260,11 @@ func TestImageSummary(t *testing.T) {
 		So(imgSummary.Vulnerabilities.Count, ShouldEqual, 0)
 		So(imgSummary.Vulnerabilities.MaxSeverity, ShouldEqual, "")
 		So(len(imgSummary.Referrers), ShouldEqual, 1)
-		So(imgSummary.Referrers[0], ShouldResemble, common.Referrer{
+		So(imgSummary.Referrers[0], ShouldResemble, zcommon.Referrer{
 			MediaType:    ispec.MediaTypeImageManifest,
 			ArtifactType: "test.artifact.type",
 			Digest:       referrerManifestDigest.String(),
-			Annotations:  []common.Annotation{{Key: "testAnnotationKey", Value: "testAnnotationValue"}},
+			Annotations:  []zcommon.Annotation{{Key: "testAnnotationKey", Value: "testAnnotationValue"}},
 		})
 
 		t.Log("starting Test retrieve duplicated image same layers based on image identifier")

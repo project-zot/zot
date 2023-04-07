@@ -376,7 +376,7 @@ func TestExtractImageDetails(t *testing.T) {
 
 		olu := ocilayout.NewBaseOciLayoutUtils(storeController, testLogger)
 		resDigest, resManifest, resIspecImage, resErr := olu.ExtractImageDetails("zot-test", "latest", testLogger)
-		So(string(resDigest), ShouldContainSubstring, "sha256:c52f15d2d4")
+		So(string(resDigest), ShouldContainSubstring, "sha256:8492645f16")
 		So(resManifest.Config.Digest.String(), ShouldContainSubstring, configDigest.Encoded())
 
 		So(resIspecImage.Architecture, ShouldContainSubstring, "amd64")

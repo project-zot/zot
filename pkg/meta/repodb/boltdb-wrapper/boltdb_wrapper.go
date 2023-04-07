@@ -49,11 +49,6 @@ func NewBoltDBWrapper(boltDB *bbolt.DB, log log.Logger) (*DBWrapper, error) {
 			return err
 		}
 
-		_, err = transaction.CreateBucketIfNotExists([]byte(bolt.ArtifactDataBucket))
-		if err != nil {
-			return err
-		}
-
 		_, err = transaction.CreateBucketIfNotExists([]byte(bolt.RepoMetadataBucket))
 		if err != nil {
 			return err
@@ -256,49 +251,6 @@ func (bdw *DBWrapper) GetIndexData(indexDigest godigest.Digest) (repodb.IndexDat
 	})
 
 	return indexMetadata, err
-}
-
-func (bdw DBWrapper) SetArtifactData(artifactDigest godigest.Digest, artifactData repodb.ArtifactData) error {
-	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
-		buck := tx.Bucket([]byte(bolt.ArtifactDataBucket))
-
-		imBlob, err := json.Marshal(artifactData)
-		if err != nil {
-			return fmt.Errorf("repodb: error while calculating blob for artifact with digest %s %w", artifactDigest, err)
-		}
-
-		err = buck.Put([]byte(artifactDigest), imBlob)
-		if err != nil {
-			return fmt.Errorf("repodb: error while setting artifact blob for digest %s %w", artifactDigest, err)
-		}
-
-		return nil
-	})
-
-	return err
-}
-
-func (bdw DBWrapper) GetArtifactData(artifactDigest godigest.Digest) (repodb.ArtifactData, error) {
-	var artifactData repodb.ArtifactData
-
-	err := bdw.DB.View(func(tx *bbolt.Tx) error {
-		buck := tx.Bucket([]byte(bolt.ArtifactDataBucket))
-
-		blob := buck.Get([]byte(artifactDigest))
-
-		if len(blob) == 0 {
-			return zerr.ErrArtifactDataNotFound
-		}
-
-		err := json.Unmarshal(blob, &artifactData)
-		if err != nil {
-			return fmt.Errorf("repodb: error while unmashaling artifact data for digest %s %w", artifactDigest, err)
-		}
-
-		return nil
-	})
-
-	return artifactData, err
 }
 
 func (bdw DBWrapper) SetReferrer(repo string, referredDigest godigest.Digest, referrer repodb.ReferrerInfo) error {

@@ -49,12 +49,6 @@ EOF
         This artifact is represented as an ispec image manifest, this is the layer inside the manifest.
 EOF
 
-    ARTIFACT_MANIFEST_REFERRER=${ARTIFACT_BLOBS_DIR}/artifact-manifest-ref-blob
-    touch ${ARTIFACT_MANIFEST_REFERRER}
-    cat >${ARTIFACT_MANIFEST_REFERRER} <<EOF
-        This artifact is represented as an ispec artifact manifest, this is the blob inside the manifest.
-EOF
-
     setup_zot_file_level ${ZOT_CONFIG_FILE}
     wait_zot_reachable "http://127.0.0.1:8080/v2/_catalog"
 
@@ -67,9 +61,6 @@ EOF
     [ $(echo "${lines[-1]}" | jq '.repositories[]') = '"golang"' ]
 
     run oras attach --plain-http --image-spec v1.1-image --artifact-type image.type 127.0.0.1:8080/golang:1.20 ${IMAGE_MANIFEST_REFERRER}
-    [ "$status" -eq 0 ]
-
-    run oras attach --plain-http --image-spec v1.1-artifact --artifact-type artifact.type 127.0.0.1:8080/golang:1.20 ${ARTIFACT_MANIFEST_REFERRER}
     [ "$status" -eq 0 ]
 
     MANIFEST_DIGEST=$(skopeo inspect --tls-verify=false docker://localhost:8080/golang:1.20 | jq -r '.Digest')
@@ -91,18 +82,9 @@ function teardown() {
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.manifests[].artifactType') = '"image.type"' ]
 
-    run curl -X GET http://127.0.0.1:8080/v2/golang/referrers/${MANIFEST_DIGEST}?artifactType=artifact.type
-    [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.manifests[].artifactType') = '"artifact.type"' ]
-
     # Check referrers API using the GQL endpoint
     REFERRER_QUERY_DATA="{ \"query\": \"{ Referrers(repo:\\\"golang\\\", digest:\\\"${MANIFEST_DIGEST}\\\", type:[\\\"image.type\\\"]) { MediaType ArtifactType Digest Size} }\"}"
     run curl -X POST -H "Content-Type: application/json" --data "${REFERRER_QUERY_DATA}" http://localhost:8080/v2/_zot/ext/search
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.data.Referrers[].ArtifactType') = '"image.type"' ]
-
-    REFERRER_QUERY_DATA="{ \"query\": \"{ Referrers(repo:\\\"golang\\\", digest:\\\"${MANIFEST_DIGEST}\\\", type:[\\\"artifact.type\\\"]) { MediaType ArtifactType Digest Size} }\"}"
-    run curl -X POST -H "Content-Type: application/json" --data "${REFERRER_QUERY_DATA}" http://localhost:8080/v2/_zot/ext/search
-    [ "$status" -eq 0 ]
-    [ $(echo "${lines[-1]}" | jq '.data.Referrers[].ArtifactType') = '"artifact.type"' ]
 }

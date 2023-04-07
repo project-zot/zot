@@ -408,7 +408,7 @@ func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.
 	}
 
 	if rh.c.RepoDB != nil {
-		err := meta.OnGetManifest(name, reference, digest, content, rh.c.StoreController, rh.c.RepoDB, rh.c.Log)
+		err := meta.OnGetManifest(name, reference, content, rh.c.StoreController, rh.c.RepoDB, rh.c.Log)
 
 		if errors.Is(err, zerr.ErrOrphanSignature) {
 			rh.c.Log.Error().Err(err).Msg("image is an orphan signature")
@@ -514,6 +514,7 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 		return
 	}
 
+	response.Header().Set("OCI-Filters-Applied", strings.Join(artifactTypes, ","))
 	WriteData(response, http.StatusOK, ispec.MediaTypeImageIndex, out)
 }
 

@@ -1449,7 +1449,7 @@ func TestGetReferrers(t *testing.T) {
 		Convey("GetReferrers return index of descriptors", func() {
 			testLogger := log.NewLogger("debug", "")
 			referrerDescriptor := ispec.Descriptor{
-				MediaType:    ispec.MediaTypeArtifactManifest,
+				MediaType:    ispec.MediaTypeImageManifest,
 				ArtifactType: "com.artifact.test",
 				Size:         403,
 				Digest:       godigest.FromString("test"),

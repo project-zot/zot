@@ -234,18 +234,6 @@ func TestControllerManager(t *testing.T) {
 	})
 }
 
-func TestUploadArtifact(t *testing.T) {
-	Convey("Put request results in an error", t, func() {
-		port := test.GetFreePort()
-		baseURL := test.GetBaseURL(port)
-
-		artifact := ispec.Artifact{}
-
-		err := test.UploadArtifactManifest(&artifact, nil, baseURL, "test")
-		So(err, ShouldNotBeNil)
-	})
-}
-
 func TestUploadBlob(t *testing.T) {
 	Convey("Post request results in an error", t, func() {
 		port := test.GetFreePort()

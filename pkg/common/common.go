@@ -17,6 +17,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/opencontainers/go-digest"
+	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"zotregistry.io/zot/pkg/log"
 )
@@ -269,4 +270,12 @@ func DContains(slice []digest.Digest, item digest.Digest) bool {
 	}
 
 	return false
+}
+
+func GetManifestArtifactType(manifestContent ispec.Manifest) string {
+	if manifestContent.ArtifactType != "" {
+		return manifestContent.ArtifactType
+	}
+
+	return manifestContent.Config.MediaType
 }

@@ -923,7 +923,7 @@ func TestCVEStruct(t *testing.T) {
 			},
 			Layers: []ispec.Descriptor{
 				{
-					MediaType: ispec.MediaTypeImageLayerNonDistributableGzip,
+					MediaType: ispec.MediaTypeImageLayerNonDistributableGzip, //nolint:staticcheck
 					Size:      0,
 					Digest:    godigest.NewDigestFromEncoded(godigest.SHA256, "digest"),
 				},

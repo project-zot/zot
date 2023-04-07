@@ -78,7 +78,8 @@ func (linter *Linter) CheckMandatoryAnnotations(repo string, manifestDigest godi
 
 	content, err = imgStore.GetBlobContent(repo, configDigest)
 	if err != nil {
-		linter.log.Error().Err(err).Msg("linter: couldn't get config JSON " + configDigest.String())
+		linter.log.Error().Err(err).Msg("linter: couldn't get config JSON " +
+			configDigest.String())
 
 		return false, err
 	}

@@ -490,10 +490,8 @@ func isNotationSigned(ctx context.Context, repo, digestStr string, searchConf se
 		return false
 	}
 
-	for _, reference := range referrers.Manifests {
-		if reference.ArtifactType == notreg.ArtifactTypeNotation {
-			return true
-		}
+	if len(referrers.Manifests) > 0 {
+		return true
 	}
 
 	return false

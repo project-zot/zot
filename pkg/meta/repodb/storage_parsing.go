@@ -9,6 +9,7 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	zerr "zotregistry.io/zot/errors"
+	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 )
@@ -263,13 +264,6 @@ func NewIndexData(repoName string, indexBlob []byte, imageStore storage.ImageSto
 	return indexData
 }
 
-func NewArtifactData(repo string, descriptorBlob []byte, imageStore storage.ImageStore,
-) ArtifactData {
-	return ArtifactData{
-		ManifestBlob: descriptorBlob,
-	}
-}
-
 // SetMetadataFromInput tries to set manifest metadata and update repo metadata by adding the current tag
 // (in case the reference is a tag). The function expects image manifests and indexes (multi arch images).
 func SetMetadataFromInput(repo, reference, mediaType string, digest godigest.Digest, descriptorBlob []byte,
@@ -294,15 +288,6 @@ func SetMetadataFromInput(repo, reference, mediaType string, digest godigest.Dig
 		err := repoDB.SetIndexData(digest, indexData)
 		if err != nil {
 			log.Error().Err(err).Msg("repodb: error while putting index data")
-
-			return err
-		}
-	case ispec.MediaTypeArtifactManifest:
-		artifactData := NewArtifactData(repo, descriptorBlob, imageStore)
-
-		err := repoDB.SetArtifactData(digest, artifactData)
-		if err != nil {
-			log.Error().Err(err).Msg("repodb: error while putting artifact data")
 
 			return err
 		}
@@ -335,43 +320,22 @@ func GetReferredSubject(descriptorBlob []byte, referrerDigest, mediaType string,
 		referrerSubject *ispec.Descriptor
 	)
 
-	switch mediaType {
-	case ispec.MediaTypeImageManifest:
-		var manifestContent ispec.Manifest
+	var manifestContent ispec.Manifest
 
-		err := json.Unmarshal(descriptorBlob, &manifestContent)
-		if err != nil {
-			return "", referrerInfo, false,
-				fmt.Errorf("repodb: can't unmarhsal manifest for digest %s: %w", referrerDigest, err)
-		}
+	err := json.Unmarshal(descriptorBlob, &manifestContent)
+	if err != nil {
+		return "", referrerInfo, false,
+			fmt.Errorf("repodb: can't unmarhsal manifest for digest %s: %w", referrerDigest, err)
+	}
 
-		referrerSubject = manifestContent.Subject
+	referrerSubject = manifestContent.Subject
 
-		referrerInfo = ReferrerInfo{
-			Digest:       referrerDigest,
-			MediaType:    mediaType,
-			ArtifactType: manifestContent.Config.MediaType,
-			Size:         len(descriptorBlob),
-			Annotations:  manifestContent.Annotations,
-		}
-	case ispec.MediaTypeArtifactManifest:
-		manifestContent := ispec.Artifact{}
-
-		err := json.Unmarshal(descriptorBlob, &manifestContent)
-		if err != nil {
-			return "", referrerInfo, false,
-				fmt.Errorf("repodb: can't unmarhsal artifact manifest for digest %s: %w", referrerDigest, err)
-		}
-
-		referrerSubject = manifestContent.Subject
-
-		referrerInfo = ReferrerInfo{
-			Digest:       referrerDigest,
-			MediaType:    manifestContent.MediaType,
-			ArtifactType: manifestContent.ArtifactType,
-			Size:         len(descriptorBlob),
-			Annotations:  manifestContent.Annotations,
-		}
+	referrerInfo = ReferrerInfo{
+		Digest:       referrerDigest,
+		MediaType:    mediaType,
+		ArtifactType: zcommon.GetManifestArtifactType(manifestContent),
+		Size:         len(descriptorBlob),
+		Annotations:  manifestContent.Annotations,
 	}
 
 	if referrerSubject == nil || referrerSubject.Digest.String() == "" {

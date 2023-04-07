@@ -333,7 +333,7 @@ func TestSignature(t *testing.T) {
 		str := space.ReplaceAllString(buff.String(), " ")
 		actual := strings.TrimSpace(str)
 		So(actual, ShouldContainSubstring, "IMAGE NAME TAG OS/ARCH DIGEST SIGNED SIZE")
-		So(actual, ShouldContainSubstring, "repo7 test:1.0 linux/amd64 6742241d true 447B")
+		So(actual, ShouldContainSubstring, "repo7 test:1.0 linux/amd64 8e59ed3b true 504B")
 
 		t.Log("Test getting all images using rest calls to get catalog and individual manifests")
 		cmd = MockNewImageCommand(new(searchService))
@@ -346,7 +346,7 @@ func TestSignature(t *testing.T) {
 		str = space.ReplaceAllString(buff.String(), " ")
 		actual = strings.TrimSpace(str)
 		So(actual, ShouldContainSubstring, "IMAGE NAME TAG OS/ARCH DIGEST SIGNED SIZE")
-		So(actual, ShouldContainSubstring, "repo7 test:1.0 linux/amd64 6742241d true 447B")
+		So(actual, ShouldContainSubstring, "repo7 test:1.0 linux/amd64 8e59ed3b true 504B")
 
 		err = os.Chdir(currentWorkingDir)
 		So(err, ShouldBeNil)
@@ -410,7 +410,7 @@ func TestSignature(t *testing.T) {
 		str := space.ReplaceAllString(buff.String(), " ")
 		actual := strings.TrimSpace(str)
 		So(actual, ShouldContainSubstring, "IMAGE NAME TAG OS/ARCH DIGEST SIGNED SIZE")
-		So(actual, ShouldContainSubstring, "repo7 0.0.1 linux/amd64 6742241d true 447B")
+		So(actual, ShouldContainSubstring, "repo7 0.0.1 linux/amd64 8e59ed3b true 504B")
 
 		t.Log("Test getting all images using rest calls to get catalog and individual manifests")
 		cmd = MockNewImageCommand(new(searchService))
@@ -423,7 +423,7 @@ func TestSignature(t *testing.T) {
 		str = space.ReplaceAllString(buff.String(), " ")
 		actual = strings.TrimSpace(str)
 		So(actual, ShouldContainSubstring, "IMAGE NAME TAG OS/ARCH DIGEST SIGNED SIZE")
-		So(actual, ShouldContainSubstring, "repo7 0.0.1 linux/amd64 6742241d true 447B")
+		So(actual, ShouldContainSubstring, "repo7 0.0.1 linux/amd64 8e59ed3b true 504B")
 
 		err = os.Chdir(currentWorkingDir)
 		So(err, ShouldBeNil)
@@ -1333,13 +1333,13 @@ func runDisplayIndexTests(baseURL string) {
 		actual := strings.TrimSpace(str)
 		// Actual cli output should be something similar to (order of images may differ):
 		// IMAGE NAME    TAG        OS/ARCH           DIGEST    SIGNED  SIZE
-		// repo          multi-arch *                 46b78b06  false   1.4kB
-		//                          linux/amd64       97b0d65c  false   577B
+		// repo          multi-arch *                 59b25ae4  false   1.5kB
+		//                          linux/amd64       97b0d65c  false   634B
 		//                          windows/arm64/v6  dcfa3a9c  false   444B
 		So(actual, ShouldContainSubstring, "IMAGE NAME TAG OS/ARCH DIGEST SIGNED SIZE")
-		So(actual, ShouldContainSubstring, "repo multi-arch * 46b78b06 false 1.4kB ")
-		So(actual, ShouldContainSubstring, "linux/amd64 97b0d65c false 577B ")
-		So(actual, ShouldContainSubstring, "windows/arm64/v6 dcfa3a9c false 444B")
+		So(actual, ShouldContainSubstring, "repo multi-arch * 59b25ae4 false 1.5kB ")
+		So(actual, ShouldContainSubstring, "linux/amd64 2ab1a275 false 634B ")
+		So(actual, ShouldContainSubstring, "windows/arm64/v6 55fdd23a false 501B")
 	})
 
 	Convey("Test Image Index Verbose", func() {
@@ -1361,18 +1361,18 @@ func runDisplayIndexTests(baseURL string) {
 		actual := strings.TrimSpace(str)
 		// Actual cli output should be something similar to (order of images may differ):
 		// IMAGE NAME    TAG        OS/ARCH           DIGEST    CONFIG    SIGNED  LAYERS    SIZE
-		// repo          multi-arch *                 46b78b06            false             1.4kB
-		//                          linux/amd64       97b0d65c  58cc9abe  false             577B
+		// repo          multi-arch *                 59b25ae4            false             1.5kB
+		//                          linux/amd64       2ab1a275  58cc9abe  false             634B
 		//                                                                        cbb5b121  4B
 		//                                                                        a00291e8  4B
-		//                          windows/arm64/v6  dcfa3a9c  5132a1cd  false             444B
+		//                          windows/arm64/v6  55fdd23a  5132a1cd  false             501B
 		//                                                                        7d08ce29  4B
 		So(actual, ShouldContainSubstring, "IMAGE NAME TAG OS/ARCH DIGEST CONFIG SIGNED LAYERS SIZE")
-		So(actual, ShouldContainSubstring, "repo multi-arch * 46b78b06 false 1.4kB")
-		So(actual, ShouldContainSubstring, "linux/amd64 97b0d65c 58cc9abe false 577B")
+		So(actual, ShouldContainSubstring, "repo multi-arch * 59b25ae4 false 1.5kB")
+		So(actual, ShouldContainSubstring, "linux/amd64 2ab1a275 58cc9abe false 634B")
 		So(actual, ShouldContainSubstring, "cbb5b121 4B")
 		So(actual, ShouldContainSubstring, "a00291e8 4B")
-		So(actual, ShouldContainSubstring, "windows/arm64/v6 dcfa3a9c 5132a1cd false 444B")
+		So(actual, ShouldContainSubstring, "windows/arm64/v6 55fdd23a 5132a1cd false 501B")
 		So(actual, ShouldContainSubstring, "7d08ce29 4B")
 	})
 }

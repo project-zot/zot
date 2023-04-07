@@ -183,7 +183,7 @@ func TestConvertErrors(t *testing.T) {
 				Referrers:  map[string][]repodb.ReferrerInfo{},
 			},
 			repodb.ManifestMetadata{
-				ManifestBlob: []byte("{}"),
+				ManifestBlob: []byte(`{}`),
 				ConfigBlob:   []byte("bad json"),
 			},
 			nil,

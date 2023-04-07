@@ -63,7 +63,6 @@ var (
 	ErrManifestConflict               = errors.New("manifest: multiple manifests found")
 	ErrManifestMetaNotFound           = errors.New("repodb: image metadata not found for given manifest reference")
 	ErrManifestDataNotFound           = errors.New("repodb: image data not found for given manifest digest")
-	ErrArtifactDataNotFound           = errors.New("repodb: artifact data not found for given digest")
 	ErrIndexDataNotFount              = errors.New("repodb: index data not found for given digest")
 	ErrRepoMetaNotFound               = errors.New("repodb: repo metadata not found for given repo name")
 	ErrTagMetaNotFound                = errors.New("repodb: tag metadata not found for given repo and tag names")

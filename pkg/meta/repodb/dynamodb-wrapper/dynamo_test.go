@@ -42,7 +42,6 @@ func TestIterator(t *testing.T) {
 	manifestDataTablename := "ManifestDataTable" + uuid.String()
 	versionTablename := "Version" + uuid.String()
 	indexDataTablename := "IndexDataTable" + uuid.String()
-	artifactDataTablename := "ArtifactDataTable" + uuid.String()
 	userDataTablename := "UserDataTable" + uuid.String()
 
 	log := log.NewLogger("debug", "")
@@ -54,7 +53,6 @@ func TestIterator(t *testing.T) {
 			RepoMetaTablename:     repoMetaTablename,
 			ManifestDataTablename: manifestDataTablename,
 			IndexDataTablename:    indexDataTablename,
-			ArtifactDataTablename: artifactDataTablename,
 			VersionTablename:      versionTablename,
 			UserDataTablename:     userDataTablename,
 		}
@@ -145,7 +143,6 @@ func TestWrapperErrors(t *testing.T) {
 	manifestDataTablename := "ManifestDataTable" + uuid.String()
 	versionTablename := "Version" + uuid.String()
 	indexDataTablename := "IndexDataTable" + uuid.String()
-	artifactDataTablename := "ArtifactData" + uuid.String()
 	userDataTablename := "UserDataTable" + uuid.String()
 
 	ctx := context.Background()
@@ -159,7 +156,6 @@ func TestWrapperErrors(t *testing.T) {
 			RepoMetaTablename:     repoMetaTablename,
 			ManifestDataTablename: manifestDataTablename,
 			IndexDataTablename:    indexDataTablename,
-			ArtifactDataTablename: artifactDataTablename,
 			UserDataTablename:     userDataTablename,
 			VersionTablename:      versionTablename,
 		}
@@ -417,20 +413,6 @@ func TestWrapperErrors(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
-		Convey("GetArtifactData", func() {
-			dynamoWrapper.ArtifactDataTablename = badTablename
-			_, err = dynamoWrapper.GetArtifactData("dig")
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("GetArtifactData unmarhsal error", func() {
-			err = setBadArtifactData(dynamoWrapper.Client, artifactDataTablename, "dig")
-			So(err, ShouldBeNil)
-
-			_, err = dynamoWrapper.GetArtifactData("dig")
-			So(err, ShouldNotBeNil)
-		})
-
 		Convey("SetRepoReference client error", func() {
 			dynamoWrapper.RepoMetaTablename = badTablename
 			digest := digest.FromString("str")
@@ -488,7 +470,6 @@ func TestWrapperErrors(t *testing.T) {
 
 		Convey("GetReferrersInfo getData fails", func() {
 			dynamoWrapper.ManifestDataTablename = badTablename
-			dynamoWrapper.ArtifactDataTablename = badTablename
 			err = dynamoWrapper.SetReferrer("repo", "rf", repodb.ReferrerInfo{
 				Digest:    "dig1",
 				MediaType: ispec.MediaTypeImageManifest,
@@ -497,7 +478,7 @@ func TestWrapperErrors(t *testing.T) {
 
 			err = dynamoWrapper.SetReferrer("repo", "rf", repodb.ReferrerInfo{
 				Digest:    "dig2",
-				MediaType: ispec.MediaTypeArtifactManifest,
+				MediaType: ispec.MediaTypeImageManifest,
 			})
 			So(err, ShouldBeNil)
 
@@ -506,11 +487,6 @@ func TestWrapperErrors(t *testing.T) {
 		})
 
 		Convey("GetReferrersInfo bad descriptor blob", func() {
-			err = dynamoWrapper.SetArtifactData("dig2", repodb.ArtifactData{
-				ManifestBlob: []byte("bad json"),
-			})
-			So(err, ShouldBeNil)
-
 			err = dynamoWrapper.SetManifestData("dig3", repodb.ManifestData{
 				ManifestBlob: []byte("bad json"),
 			})
@@ -518,7 +494,7 @@ func TestWrapperErrors(t *testing.T) {
 
 			err = dynamoWrapper.SetReferrer("repo", "rf", repodb.ReferrerInfo{
 				Digest:    "dig2",
-				MediaType: ispec.MediaTypeArtifactManifest,
+				MediaType: ispec.MediaTypeImageManifest,
 			})
 			So(err, ShouldBeNil)
 
@@ -1095,7 +1071,6 @@ func TestWrapperErrors(t *testing.T) {
 			RepoMetaTablename:     "",
 			ManifestDataTablename: manifestDataTablename,
 			IndexDataTablename:    indexDataTablename,
-			ArtifactDataTablename: artifactDataTablename,
 			UserDataTablename:     userDataTablename,
 			VersionTablename:      versionTablename,
 		}
@@ -1111,7 +1086,6 @@ func TestWrapperErrors(t *testing.T) {
 			RepoMetaTablename:     repoMetaTablename,
 			ManifestDataTablename: "",
 			IndexDataTablename:    indexDataTablename,
-			ArtifactDataTablename: artifactDataTablename,
 			UserDataTablename:     userDataTablename,
 			VersionTablename:      versionTablename,
 		}
@@ -1127,7 +1101,6 @@ func TestWrapperErrors(t *testing.T) {
 			RepoMetaTablename:     repoMetaTablename,
 			ManifestDataTablename: manifestDataTablename,
 			IndexDataTablename:    "",
-			ArtifactDataTablename: artifactDataTablename,
 			UserDataTablename:     userDataTablename,
 			VersionTablename:      versionTablename,
 		}
@@ -1143,7 +1116,6 @@ func TestWrapperErrors(t *testing.T) {
 			RepoMetaTablename:     repoMetaTablename,
 			ManifestDataTablename: manifestDataTablename,
 			IndexDataTablename:    indexDataTablename,
-			ArtifactDataTablename: artifactDataTablename,
 			UserDataTablename:     userDataTablename,
 			VersionTablename:      "",
 		}
@@ -1159,41 +1131,8 @@ func TestWrapperErrors(t *testing.T) {
 			RepoMetaTablename:     repoMetaTablename,
 			ManifestDataTablename: manifestDataTablename,
 			IndexDataTablename:    indexDataTablename,
-			ArtifactDataTablename: "",
-			UserDataTablename:     userDataTablename,
-			VersionTablename:      versionTablename,
-		}
-		client, err = dynamo.GetDynamoClient(params)
-		So(err, ShouldBeNil)
-
-		_, err = dynamoWrapper.NewDynamoDBWrapper(client, params, log)
-		So(err, ShouldNotBeNil)
-
-		params = dynamo.DBDriverParameters{ //nolint:contextcheck
-			Endpoint:              endpoint,
-			Region:                region,
-			RepoMetaTablename:     repoMetaTablename,
-			ManifestDataTablename: manifestDataTablename,
-			IndexDataTablename:    indexDataTablename,
-			VersionTablename:      versionTablename,
-			UserDataTablename:     userDataTablename,
-			ArtifactDataTablename: artifactDataTablename,
-		}
-		client, err = dynamo.GetDynamoClient(params)
-		So(err, ShouldBeNil)
-
-		_, err = dynamoWrapper.NewDynamoDBWrapper(client, params, log)
-		So(err, ShouldBeNil)
-
-		params = dynamo.DBDriverParameters{ //nolint:contextcheck
-			Endpoint:              endpoint,
-			Region:                region,
-			RepoMetaTablename:     repoMetaTablename,
-			ManifestDataTablename: manifestDataTablename,
-			IndexDataTablename:    indexDataTablename,
-			VersionTablename:      versionTablename,
 			UserDataTablename:     "",
-			ArtifactDataTablename: artifactDataTablename,
+			VersionTablename:      versionTablename,
 		}
 		client, err = dynamo.GetDynamoClient(params)
 		So(err, ShouldBeNil)
@@ -1228,26 +1167,26 @@ func setBadManifestData(client *dynamodb.Client, manifestDataTableName, digest s
 	return err
 }
 
-func setBadArtifactData(client *dynamodb.Client, artifactDataTablename, digest string) error {
-	mdAttributeValue, err := attributevalue.Marshal("string")
+func setBadRepoMeta(client *dynamodb.Client, repoMetadataTableName, repoName string) error {
+	repoAttributeValue, err := attributevalue.Marshal("string")
 	if err != nil {
 		return err
 	}
 
 	_, err = client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
 		ExpressionAttributeNames: map[string]string{
-			"#AD": "ArtifactData",
+			"#RM": "RepoMetadata",
 		},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":ArtifactData": mdAttributeValue,
+			":RepoMetadata": repoAttributeValue,
 		},
 		Key: map[string]types.AttributeValue{
-			"ArtifactDigest": &types.AttributeValueMemberS{
-				Value: digest,
+			"RepoName": &types.AttributeValueMemberS{
+				Value: repoName,
 			},
 		},
-		TableName:        aws.String(artifactDataTablename),
-		UpdateExpression: aws.String("SET #AD = :ArtifactData"),
+		TableName:        aws.String(repoMetadataTableName),
+		UpdateExpression: aws.String("SET #RM = :RepoMetadata"),
 	})
 
 	return err
@@ -1273,31 +1212,6 @@ func setBadIndexData(client *dynamodb.Client, indexDataTableName, digest string)
 		},
 		TableName:        aws.String(indexDataTableName),
 		UpdateExpression: aws.String("SET #ID = :IndexData"),
-	})
-
-	return err
-}
-
-func setBadRepoMeta(client *dynamodb.Client, repoMetadataTableName, repoName string) error {
-	repoAttributeValue, err := attributevalue.Marshal("string")
-	if err != nil {
-		return err
-	}
-
-	_, err = client.UpdateItem(context.TODO(), &dynamodb.UpdateItemInput{
-		ExpressionAttributeNames: map[string]string{
-			"#RM": "RepoMetadata",
-		},
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":RepoMetadata": repoAttributeValue,
-		},
-		Key: map[string]types.AttributeValue{
-			"RepoName": &types.AttributeValueMemberS{
-				Value: repoName,
-			},
-		},
-		TableName:        aws.String(repoMetadataTableName),
-		UpdateExpression: aws.String("SET #RM = :RepoMetadata"),
 	})
 
 	return err

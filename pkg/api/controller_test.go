@@ -51,7 +51,6 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/repodb/repodbfactory"
 	"zotregistry.io/zot/pkg/storage"
-	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
 )
@@ -157,7 +156,6 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 			"cacheTablename":        "BlobTable",
 			"repoMetaTablename":     "RepoMetadataTable",
 			"manifestDataTablename": "ManifestDataTable",
-			"artifactDataTablename": "ArtifactDataTable",
 			"userDataTablename":     "ZotUserDataTable",
 			"versionTablename":      "Version",
 		}
@@ -173,7 +171,6 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 			"cacheTablename":        "BlobTable",
 			"repoMetaTablename":     "RepoMetadataTable",
 			"manifestDataTablename": "ManifestDataTable",
-			"artifactDataTablename": "ArtifactDataTable",
 			"userDataTablename":     "ZotUserDataTable",
 			"versionTablename":      "Version",
 		}
@@ -188,7 +185,6 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 			"cacheTablename":        "BlobTable",
 			"repoMetaTablename":     "RepoMetadataTable",
 			"manifestDataTablename": "ManifestDataTable",
-			"artifactDataTablename": "ArtifactDataTable",
 			"userDataTablename":     "ZotUserDataTable",
 			"versionTablename":      "Version",
 		}
@@ -222,7 +218,6 @@ func TestCreateRepoDBDriver(t *testing.T) {
 			"cachetablename":        "BlobTable",
 			"repometatablename":     "RepoMetadataTable",
 			"manifestdatatablename": "ManifestDataTable",
-			"artifactDataTablename": "ArtifactDataTable",
 			"userdatatablename":     "UserDatatable",
 		}
 
@@ -236,7 +231,6 @@ func TestCreateRepoDBDriver(t *testing.T) {
 			"cachetablename":        "",
 			"repometatablename":     "RepoMetadataTable",
 			"manifestdatatablename": "ManifestDataTable",
-			"artifactDataTablename": "ArtifactDataTable",
 			"userDataTablename":     "ZotUserDataTable",
 			"versiontablename":      1,
 		}
@@ -252,7 +246,6 @@ func TestCreateRepoDBDriver(t *testing.T) {
 			"repometatablename":     "RepoMetadataTable",
 			"manifestdatatablename": "ManifestDataTable",
 			"indexdatatablename":    "IndexDataTable",
-			"artifactdatatablename": "ArtifactDataTable",
 			"userdatatablename":     "ZotUserDataTable",
 			"versiontablename":      "1",
 		}
@@ -4312,138 +4305,15 @@ func TestArtifactReferences(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 				So(resp.Header().Get("Content-Type"), ShouldEqual, ispec.MediaTypeImageIndex)
-			})
-		})
+				So(resp.Header().Get("OCI-Filters-Applied"), ShouldEqual, artifactType)
 
-		Convey("Validate Artifact Manifest Reference", func() {
-			resp, err := resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()))
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-			var referrers ispec.Index
-			err = json.Unmarshal(resp.Body(), &referrers)
-			So(err, ShouldBeNil)
-			So(referrers.Manifests, ShouldBeEmpty)
-
-			// now upload a reference
-
-			// upload image config blob
-			resp, err = resty.R().Post(baseURL + fmt.Sprintf("/v2/%s/blobs/uploads/", repoName))
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
-			loc := test.Location(baseURL, resp)
-			cblob, cdigest := test.GetEmptyImageConfig()
-
-			resp, err = resty.R().
-				SetContentLength(true).
-				SetHeader("Content-Length", fmt.Sprintf("%d", len(cblob))).
-				SetHeader("Content-Type", "application/octet-stream").
-				SetQueryParam("digest", cdigest.String()).
-				SetBody(cblob).
-				Put(loc)
-			So(err, ShouldBeNil)
-			So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-
-			// create a artifact
-			manifest := ispec.Artifact{
-				MediaType:    ispec.MediaTypeArtifactManifest,
-				ArtifactType: artifactType,
-				Blobs: []ispec.Descriptor{
-					{
-						MediaType: "application/vnd.oci.image.layer.v1.tar",
-						Digest:    digest,
-						Size:      int64(len(content)),
-					},
-				},
-				Subject: &ispec.Descriptor{
-					MediaType: ispec.MediaTypeImageManifest,
-					Digest:    digest,
-					Size:      int64(len(content)),
-				},
-				Annotations: map[string]string{
-					"key": "val",
-				},
-			}
-			Convey("Using invalid content", func() {
-				content := []byte("invalid data")
-				So(err, ShouldBeNil)
-				mdigest := godigest.FromBytes(content)
-				So(mdigest, ShouldNotBeNil)
-				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeArtifactManifest).
-					SetBody(content).Put(baseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, mdigest.String()))
-				So(err, ShouldBeNil)
-				So(resp.StatusCode(), ShouldEqual, http.StatusBadRequest)
-
-				// unknown repo will return status not found
-				resp, err = resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", "unknown", digest.String()))
-				So(err, ShouldBeNil)
-				So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
-
-				resp, err = resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()))
-				So(err, ShouldBeNil)
-				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-				resp, err = resty.R().SetQueryParams(map[string]string{"artifactType": artifactType}).
-					Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()))
-				So(err, ShouldBeNil)
-				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-			})
-			Convey("Using valid content", func() {
-				content, err = json.Marshal(manifest)
-				So(err, ShouldBeNil)
-				mdigest := godigest.FromBytes(content)
-				So(mdigest, ShouldNotBeNil)
-				resp, err = resty.R().SetHeader("Content-Type", ispec.MediaTypeArtifactManifest).
-					SetBody(content).Put(baseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, mdigest.String()))
-				So(err, ShouldBeNil)
-				So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
-
-				resp, err = resty.R().Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()))
-				So(err, ShouldBeNil)
-				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-				resp, err = resty.R().SetQueryParams(map[string]string{"artifact": "invalid"}).
-					Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()))
-				So(err, ShouldBeNil)
-				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-				resp, err = resty.R().SetQueryParams(map[string]string{"artifactType": "invalid"}).
-					Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()))
-				So(err, ShouldBeNil)
-				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
-
-				resp, err = resty.R().SetQueryParams(map[string]string{"artifactType": artifactType}).
-					Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()))
+				resp, err = resty.R().SetQueryParams(map[string]string{"artifactType": artifactType +
+					",otherArtType"}).Get(baseURL + fmt.Sprintf("/v2/%s/referrers/%s", repoName,
+					digest.String()))
 				So(err, ShouldBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 				So(resp.Header().Get("Content-Type"), ShouldEqual, ispec.MediaTypeImageIndex)
-
-				var index ispec.Index
-				err = json.Unmarshal(resp.Body(), &index)
-				So(err, ShouldBeNil)
-				So(index.Manifests, ShouldNotBeEmpty)
-				So(index.Annotations[storageConstants.ReferrerFilterAnnotation], ShouldNotBeEmpty)
-
-				// filter by multiple artifactTypes
-				req, err := http.NewRequestWithContext(context.TODO(), http.MethodGet,
-					baseURL+fmt.Sprintf("/v2/%s/referrers/%s", repoName, digest.String()), nil)
-				So(err, ShouldBeNil)
-				values := url.Values{}
-				values.Add("artifactType", artifactType)
-				values.Add("artifactType", "foobar")
-				req.URL.RawQuery = values.Encode()
-				rsp, err := http.DefaultClient.Do(req)
-				So(err, ShouldBeNil)
-				defer rsp.Body.Close()
-				So(rsp.StatusCode, ShouldEqual, http.StatusOK)
-				So(rsp.Header.Get("Content-Type"), ShouldEqual, ispec.MediaTypeImageIndex)
-				body, err := io.ReadAll(rsp.Body)
-				So(err, ShouldBeNil)
-				err = json.Unmarshal(body, &index)
-				So(err, ShouldBeNil)
-				So(index.Manifests, ShouldNotBeEmpty)
-				So(index.Annotations[storageConstants.ReferrerFilterAnnotation], ShouldNotBeEmpty)
-				So(len(strings.Split(index.Annotations[storageConstants.ReferrerFilterAnnotation], ",")), ShouldEqual, 2)
+				So(resp.Header().Get("OCI-Filters-Applied"), ShouldEqual, artifactType+",otherArtType")
 			})
 		})
 	})

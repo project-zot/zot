@@ -87,7 +87,6 @@ func TestDynamoDBWrapper(t *testing.T) {
 	manifestDataTablename := "ManifestDataTable" + uuid.String()
 	versionTablename := "Version" + uuid.String()
 	indexDataTablename := "IndexDataTable" + uuid.String()
-	artifactDataTablename := "ArtifactDataTable" + uuid.String()
 	userDataTablename := "UserDataTable" + uuid.String()
 
 	Convey("DynamoDB Wrapper", t, func() {
@@ -96,7 +95,6 @@ func TestDynamoDBWrapper(t *testing.T) {
 			RepoMetaTablename:     repoMetaTablename,
 			ManifestDataTablename: manifestDataTablename,
 			IndexDataTablename:    indexDataTablename,
-			ArtifactDataTablename: artifactDataTablename,
 			VersionTablename:      versionTablename,
 			UserDataTablename:     userDataTablename,
 			Region:                "us-east-2",
@@ -2174,27 +2172,6 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			So(err, ShouldNotBeNil)
 		})
 
-		Convey("Test artifact logic", func() {
-			artifact, err := test.GetRandomArtifact(nil)
-			So(err, ShouldBeNil)
-
-			artifactDigest, err := artifact.Digest()
-			So(err, ShouldBeNil)
-
-			artifactData, err := artifact.ArtifactData()
-			So(err, ShouldBeNil)
-
-			err = repoDB.SetArtifactData(artifactDigest, artifactData)
-			So(err, ShouldBeNil)
-
-			result, err := repoDB.GetArtifactData(artifactDigest)
-			So(err, ShouldBeNil)
-			So(result, ShouldResemble, artifactData)
-
-			_, err = repoDB.GetArtifactData(godigest.FromString("inexistent"))
-			So(err, ShouldNotBeNil)
-		})
-
 		Convey("Test Referrers", func() {
 			image, err := test.GetRandomImage("tag")
 			So(err, ShouldBeNil)
@@ -2221,10 +2198,10 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 
 			// ------- Add Artifact 1
 
-			artifact1, err := test.GetRandomArtifact(&ispec.Descriptor{
-				Digest:    referredDigest,
-				MediaType: ispec.MediaTypeImageManifest,
-			})
+			artifact1, err := test.GetImageWithSubject(
+				referredDigest,
+				ispec.MediaTypeImageManifest,
+			)
 			So(err, ShouldBeNil)
 
 			artifactDigest1, err := artifact1.Digest()
@@ -2238,10 +2215,10 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 
 			// ------- Add Artifact 2
 
-			artifact2, err := test.GetRandomArtifact(&ispec.Descriptor{
-				Digest:    referredDigest,
-				MediaType: ispec.MediaTypeImageManifest,
-			})
+			artifact2, err := test.GetImageWithSubject(
+				referredDigest,
+				ispec.MediaTypeImageManifest,
+			)
 			So(err, ShouldBeNil)
 
 			artifactDigest2, err := artifact2.Digest()
@@ -2249,7 +2226,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 
 			err = repoDB.SetReferrer("repo", referredDigest, repodb.ReferrerInfo{
 				Digest:    artifactDigest2.String(),
-				MediaType: ispec.MediaTypeArtifactManifest,
+				MediaType: ispec.MediaTypeImageManifest,
 			})
 			So(err, ShouldBeNil)
 
@@ -2263,7 +2240,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			})
 			So(referrers, ShouldContain, repodb.ReferrerInfo{
 				Digest:    artifactDigest2.String(),
-				MediaType: ispec.MediaTypeArtifactManifest,
+				MediaType: ispec.MediaTypeImageManifest,
 			})
 			So(err, ShouldBeNil)
 
@@ -2333,12 +2310,6 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			})
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetReferrer("repo", referredDigest, repodb.ReferrerInfo{
-				Digest:    "inexistendArtifactManifestDigest",
-				MediaType: ispec.MediaTypeArtifactManifest,
-			})
-			So(err, ShouldBeNil)
-
 			// ------- Set existent manifest and artifact manifest
 			err = repoDB.SetManifestData("goodManifest", repodb.ManifestData{
 				ManifestBlob: []byte(`{"artifactType": "unwantedType"}`),
@@ -2347,20 +2318,15 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			So(err, ShouldBeNil)
 
 			err = repoDB.SetReferrer("repo", referredDigest, repodb.ReferrerInfo{
-				Digest:       "goodManifest",
+				Digest:       "goodManifestUnwanted",
 				MediaType:    ispec.MediaTypeImageManifest,
 				ArtifactType: "unwantedType",
 			})
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetArtifactData("goodArtifact", repodb.ArtifactData{
-				ManifestBlob: []byte(`{"artifactType": "wantedType"}`),
-			})
-			So(err, ShouldBeNil)
-
 			err = repoDB.SetReferrer("repo", referredDigest, repodb.ReferrerInfo{
-				Digest:       "goodArtifact",
-				MediaType:    ispec.MediaTypeArtifactManifest,
+				Digest:       "goodManifest",
+				MediaType:    ispec.MediaTypeImageManifest,
 				ArtifactType: "wantedType",
 			})
 			So(err, ShouldBeNil)
@@ -2369,7 +2335,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			So(err, ShouldBeNil)
 			So(len(referrerInfo), ShouldEqual, 1)
 			So(referrerInfo[0].ArtifactType, ShouldResemble, "wantedType")
-			So(referrerInfo[0].Digest, ShouldResemble, "goodArtifact")
+			So(referrerInfo[0].Digest, ShouldResemble, "goodManifest")
 		})
 
 		Convey("FilterRepos", func() {

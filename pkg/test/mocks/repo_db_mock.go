@@ -44,10 +44,6 @@ type RepoDBMock struct {
 
 	GetIndexDataFn func(indexDigest godigest.Digest) (repodb.IndexData, error)
 
-	SetArtifactDataFn func(digest godigest.Digest, artifactData repodb.ArtifactData) error
-
-	GetArtifactDataFn func(artifactDigest godigest.Digest) (repodb.ArtifactData, error)
-
 	SetReferrerFn func(repo string, referredDigest godigest.Digest, referrer repodb.ReferrerInfo) error
 
 	DeleteReferrerFn func(repo string, referredDigest godigest.Digest, referrerDigest godigest.Digest) error
@@ -346,22 +342,6 @@ func (sdm RepoDBMock) PatchDB() error {
 	}
 
 	return nil
-}
-
-func (sdm RepoDBMock) SetArtifactData(digest godigest.Digest, artifactData repodb.ArtifactData) error {
-	if sdm.SetArtifactDataFn != nil {
-		return sdm.SetArtifactDataFn(digest, artifactData)
-	}
-
-	return nil
-}
-
-func (sdm RepoDBMock) GetArtifactData(artifactDigest godigest.Digest) (repodb.ArtifactData, error) {
-	if sdm.GetArtifactDataFn != nil {
-		return sdm.GetArtifactDataFn(artifactDigest)
-	}
-
-	return repodb.ArtifactData{}, nil
 }
 
 func (sdm RepoDBMock) SetReferrer(repo string, referredDigest godigest.Digest, referrer repodb.ReferrerInfo) error {

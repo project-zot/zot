@@ -355,23 +355,8 @@ func (sig *signaturesCopier) syncOCIRefs(localRepo, remoteRepo, digestStr string
 			if err := syncBlob(sig, imageStore, localRepo, remoteRepo, manifest.Config.Digest); err != nil {
 				return err
 			}
-		} else if ref.MediaType == ispec.MediaTypeArtifactManifest {
-			// read manifest
-			var manifest ispec.Artifact
-
-			err = json.Unmarshal(OCIRefBody, &manifest)
-			if err != nil {
-				sig.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
-					Str("manifest", getRefManifestURL.String()).Msg("couldn't unmarshal oci reference manifest")
-
-				return err
-			}
-
-			for _, layer := range manifest.Blobs {
-				if err := syncBlob(sig, imageStore, localRepo, remoteRepo, layer.Digest); err != nil {
-					return err
-				}
-			}
+		} else {
+			continue
 		}
 
 		digest, err := imageStore.PutImageManifest(localRepo, ref.Digest.String(),
@@ -400,78 +385,6 @@ func (sig *signaturesCopier) syncOCIRefs(localRepo, remoteRepo, digestStr string
 
 	sig.log.Info().Str("repository", localRepo).Str("digest", digestStr).
 		Msg("successfully synced OCI refs for digest")
-
-	return nil
-}
-
-func (sig *signaturesCopier) syncOCIArtifact(localRepo, remoteRepo, reference string,
-	ociArtifactBuf []byte,
-) error {
-	var ociArtifact ispec.Artifact
-
-	err := json.Unmarshal(ociArtifactBuf, &ociArtifact)
-	if err != nil {
-		sig.log.Error().Err(err).Str("repository", remoteRepo).Str("reference", reference).
-			Msg("couldn't unmarshal OCI artifact")
-
-		return err
-	}
-
-	canSkipOCIArtifact, err := sig.canSkipOCIArtifact(localRepo, reference, ociArtifact)
-	if err != nil {
-		sig.log.Error().Err(err).Str("repository", remoteRepo).Str("reference", reference).
-			Msg("couldn't check if OCI artifact can be skipped")
-	}
-
-	if canSkipOCIArtifact {
-		return nil
-	}
-
-	imageStore := sig.storeController.GetImageStore(localRepo)
-
-	sig.log.Info().Msg("syncing OCI artifacts")
-
-	for _, blob := range ociArtifact.Blobs {
-		if err := syncBlob(sig, imageStore, localRepo, remoteRepo, blob.Digest); err != nil {
-			return err
-		}
-	}
-
-	artifactManifestBuf, err := json.Marshal(ociArtifact)
-	if err != nil {
-		sig.log.Error().Str("errorType", common.TypeOf(err)).
-			Err(err).Msg("couldn't marshal OCI artifact")
-
-		return err
-	}
-
-	// push manifest
-	digest, err := imageStore.PutImageManifest(localRepo, reference,
-		ispec.MediaTypeArtifactManifest, artifactManifestBuf)
-	if err != nil {
-		sig.log.Error().Str("errorType", common.TypeOf(err)).
-			Err(err).Msg("couldn't upload OCI artifact manifest")
-
-		return err
-	}
-
-	if sig.repoDB != nil {
-		sig.log.Debug().Str("repository", localRepo).Str("digest", digest.String()).
-			Msg("trying to OCI refs for repo digest")
-
-		err = repodb.SetMetadataFromInput(localRepo, reference, ispec.MediaTypeArtifactManifest,
-			digest, artifactManifestBuf, sig.storeController.GetImageStore(localRepo),
-			sig.repoDB, sig.log)
-		if err != nil {
-			return fmt.Errorf("failed to set metadata for OCI Artifact '%s@%s': %w", localRepo, digest.String(), err)
-		}
-
-		sig.log.Info().Str("repository", localRepo).Str("digest", digest.String()).
-			Msg("successfully added oci artifacts to RepoDB for repo digest")
-	}
-
-	sig.log.Info().Str("repository", localRepo).Str("tag", reference).
-		Msg("successfully synced OCI artifact for repo tag")
 
 	return nil
 }
@@ -505,47 +418,6 @@ func (sig *signaturesCopier) canSkipORASRefs(localRepo, digestStr string, refs R
 
 	sig.log.Info().Str("repository", localRepo).Str("reference", digestStr).
 		Msg("skipping ORAS artifact, already synced")
-
-	return true, nil
-}
-
-func (sig *signaturesCopier) canSkipOCIArtifact(localRepo, reference string, artifact ispec.Artifact,
-) (bool, error) {
-	imageStore := sig.storeController.GetImageStore(localRepo)
-
-	var localArtifactManifest ispec.Artifact
-
-	localArtifactBuf, _, _, err := imageStore.GetImageManifest(localRepo, reference)
-	if err != nil {
-		if errors.Is(err, zerr.ErrManifestNotFound) || errors.Is(err, zerr.ErrRepoNotFound) {
-			return false, nil
-		}
-
-		sig.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
-			Str("repository", localRepo).Str("reference", reference).
-			Msg("couldn't get local OCI artifact manifest")
-
-		return false, err
-	}
-
-	err = json.Unmarshal(localArtifactBuf, &localArtifactManifest)
-	if err != nil {
-		sig.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
-			Str("repository", localRepo).Str("reference", reference).
-			Msg("couldn't unmarshal local OCI artifact manifest")
-
-		return false, err
-	}
-
-	if !artifactsEqual(localArtifactManifest, artifact) {
-		sig.log.Info().Str("repository", localRepo).Str("reference", reference).
-			Msg("upstream OCI artifact changed, syncing again")
-
-		return false, nil
-	}
-
-	sig.log.Info().Str("repository", localRepo).Str("reference", reference).
-		Msg("skipping OCI artifact, already synced")
 
 	return true, nil
 }

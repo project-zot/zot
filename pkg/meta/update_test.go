@@ -100,7 +100,7 @@ func TestUpdateErrors(t *testing.T) {
 			log := log.NewLogger("debug", "")
 
 			Convey("zerr.ErrOrphanSignature", func() {
-				manifestContent := ispec.Artifact{
+				manifestContent := ispec.Manifest{
 					Subject: &ispec.Descriptor{
 						Digest: "123",
 					},
@@ -126,7 +126,7 @@ func TestUpdateErrors(t *testing.T) {
 			log := log.NewLogger("debug", "")
 
 			Convey("CheckIsImageSignature errors", func() {
-				manifestContent := ispec.Artifact{
+				manifestContent := ispec.Manifest{
 					Subject: &ispec.Descriptor{
 						Digest: "123",
 					},
@@ -179,7 +179,7 @@ func TestUpdateErrors(t *testing.T) {
 			log := log.NewLogger("debug", "")
 
 			Convey("CheckIsImageSignature errors", func() {
-				manifestContent := ispec.Artifact{
+				manifestContent := ispec.Manifest{
 					Subject: &ispec.Descriptor{
 						Digest: "123",
 					},
@@ -192,7 +192,7 @@ func TestUpdateErrors(t *testing.T) {
 					return []byte{}, "", "", zerr.ErrManifestNotFound
 				}
 
-				err = meta.OnGetManifest("repo", "tag1", "digest", manifestBlob,
+				err = meta.OnGetManifest("repo", "tag1", manifestBlob,
 					storeController, repoDB, log)
 				So(err, ShouldNotBeNil)
 
@@ -200,7 +200,7 @@ func TestUpdateErrors(t *testing.T) {
 					return []byte{}, "", "", ErrTestError
 				}
 
-				err = meta.OnGetManifest("repo", "tag1", "media", manifestBlob,
+				err = meta.OnGetManifest("repo", "tag1", manifestBlob,
 					storeController, repoDB, log)
 				So(err, ShouldNotBeNil)
 			})
@@ -245,22 +245,18 @@ func TestUpdateErrors(t *testing.T) {
 			err := repodb.SetMetadataFromInput("repo", "ref", ispec.MediaTypeImageManifest, "digest",
 				[]byte("{}"), imageStore, repoDB, log)
 			So(err, ShouldNotBeNil)
+		})
 
-			repoDB = mocks.RepoDBMock{
+		Convey("SetMetadataFromInput SetIndexData errors", func() {
+			imageStore := mocks.MockedImageStore{}
+			log := log.NewLogger("debug", "")
+
+			repoDB := mocks.RepoDBMock{
 				SetIndexDataFn: func(digest godigest.Digest, indexData repodb.IndexData) error {
 					return ErrTestError
 				},
 			}
-			err = repodb.SetMetadataFromInput("repo", "ref", ispec.MediaTypeImageIndex, "digest",
-				[]byte("{}"), imageStore, repoDB, log)
-			So(err, ShouldNotBeNil)
-
-			repoDB = mocks.RepoDBMock{
-				SetArtifactDataFn: func(digest godigest.Digest, artifactData repodb.ArtifactData) error {
-					return ErrTestError
-				},
-			}
-			err = repodb.SetMetadataFromInput("repo", "ref", ispec.MediaTypeArtifactManifest, "digest",
+			err := repodb.SetMetadataFromInput("repo", "ref", ispec.MediaTypeImageIndex, "digest",
 				[]byte("{}"), imageStore, repoDB, log)
 			So(err, ShouldNotBeNil)
 		})
