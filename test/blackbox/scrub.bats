@@ -23,7 +23,8 @@ function setup() {
 {
     "distSpecVersion": "1.1.0",
     "storage": {
-        "rootDirectory": "${ZOT_ROOT_DIR}"
+        "rootDirectory": "${ZOT_ROOT_DIR}",
+        "dedupe": false
     },
     "http": {
         "address": "0.0.0.0",

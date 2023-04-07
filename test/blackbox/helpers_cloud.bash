@@ -1,8 +1,10 @@
 ROOT_DIR=$(git rev-parse --show-toplevel)
+TEST_DATA_DIR=${ROOT_DIR}/test/data/
 OS="${OS:-linux}"
 ARCH="${ARCH:-amd64}"
 ZOT_PATH=${ROOT_DIR}/bin/zot-${OS}-${ARCH}
 
+mkdir -p ${TEST_DATA_DIR}
 
 function verify_prerequisites {
     if [ ! -f ${ZOT_PATH} ]; then
@@ -28,17 +30,35 @@ function zot_serve_strace() {
     strace -o "strace.txt" -f -e trace=openat ${ZOT_PATH} serve ${config_file} &
 }
 
+function zot_serve() {
+    local config_file=${1}
+    ${ZOT_PATH} serve ${config_file} &
+}
+
 function zot_stop() {
     pkill zot
+}
+
+function wait_for_string() {
+    string=$1
+    filepath=$2
+
+    while [ ! -f $filepath ]
+        do sleep 2;
+    done
+
+    while ! grep "${string}" $filepath
+        do sleep 10;
+    done
 }
 
 function wait_zot_reachable() {
     zot_url=${1}
     curl --connect-timeout 3 \
-        --max-time 3 \
+        --max-time 10 \
         --retry 10 \
         --retry-delay 0 \
-        --retry-max-time 60 \
+        --retry-max-time 120 \
         --retry-connrefused \
         ${zot_url}
 }

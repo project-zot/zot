@@ -451,11 +451,16 @@ func getUseRelPaths(storageConfig *config.StorageConfig) bool {
 }
 
 func CreateCacheDatabaseDriver(storageConfig config.StorageConfig, log log.Logger) cache.Cache {
-	if storageConfig.Dedupe {
+	if storageConfig.Dedupe || storageConfig.StorageDriver != nil {
 		if !storageConfig.RemoteCache {
 			params := cache.BoltDBDriverParameters{}
 			params.RootDir = storageConfig.RootDirectory
 			params.Name = constants.BoltdbName
+
+			if storageConfig.StorageDriver != nil {
+				params.Name = s3.CacheDBName
+			}
+
 			params.UseRelPaths = getUseRelPaths(&storageConfig)
 
 			driver, _ := storage.Create("boltdb", params, log)
@@ -548,6 +553,9 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 		c.StoreController.DefaultStore.RunGCPeriodically(c.Config.Storage.GCInterval, taskScheduler)
 	}
 
+	// Enable running dedupe blobs both ways (dedupe or restore deduped blobs)
+	c.StoreController.DefaultStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
 	// Enable extensions if extension config is provided for DefaultStore
 	if c.Config != nil && c.Config.Extensions != nil {
 		ext.EnableMetricsExtension(c.Config, c.Log, c.Config.Storage.RootDirectory)
@@ -564,6 +572,12 @@ func (c *Controller) StartBackgroundTasks(reloadCtx context.Context) {
 			// Enable extensions if extension config is provided for subImageStore
 			if c.Config != nil && c.Config.Extensions != nil {
 				ext.EnableMetricsExtension(c.Config, c.Log, storageConfig.RootDirectory)
+			}
+
+			// Enable running dedupe blobs both ways (dedupe or restore deduped blobs) for subpaths
+			substore := c.StoreController.SubStore[route]
+			if substore != nil {
+				substore.RunDedupeBlobs(time.Duration(0), taskScheduler)
 			}
 		}
 	}

@@ -3345,10 +3345,10 @@ func TestCrossRepoMount(t *testing.T) {
 		dir := t.TempDir()
 		ctlr := makeController(conf, dir, "../../test/data")
 		ctlr.Config.Storage.RemoteCache = false
+		ctlr.Config.Storage.Dedupe = false
 
-		cm := test.NewControllerManager(ctlr)
+		cm := test.NewControllerManager(ctlr) //nolint: varnamelen
 		cm.StartAndWait(port)
-		defer cm.StopServer()
 
 		params := make(map[string]string)
 
@@ -3448,6 +3448,14 @@ func TestCrossRepoMount(t *testing.T) {
 		// We have uploaded a blob and since we have provided digest it should be full blob upload and there should be entry
 		// in cache, now try mount blob request status and it should be 201 because now blob is present in cache
 		// and it should do hard link.
+
+		// restart server with dedupe enabled
+		cm.StopServer()
+		ctlr.Config.Storage.Dedupe = true
+		cm.StartAndWait(port)
+
+		// wait for dedupe task to run
+		time.Sleep(15 * time.Second)
 
 		params["mount"] = string(manifestDigest)
 		postResponse, err = client.R().
@@ -6479,7 +6487,7 @@ func TestPeriodicGC(t *testing.T) {
 		ctlr := api.NewController(conf)
 		dir := t.TempDir()
 		ctlr.Config.Storage.RootDirectory = dir
-
+		ctlr.Config.Storage.Dedupe = false
 		ctlr.Config.Storage.GC = true
 		ctlr.Config.Storage.GCInterval = 1 * time.Hour
 		ctlr.Config.Storage.GCDelay = 1 * time.Second
@@ -6518,8 +6526,8 @@ func TestPeriodicGC(t *testing.T) {
 
 		subPaths := make(map[string]config.StorageConfig)
 
-		subPaths["/a"] = config.StorageConfig{RootDirectory: subDir, GC: true, GCDelay: 1 * time.Second, GCInterval: 24 * time.Hour, RemoteCache: false} //nolint:lll // gofumpt conflicts with lll
-
+		subPaths["/a"] = config.StorageConfig{RootDirectory: subDir, GC: true, GCDelay: 1 * time.Second, GCInterval: 24 * time.Hour, RemoteCache: false, Dedupe: false} //nolint:lll // gofumpt conflicts with lll
+		ctlr.Config.Storage.Dedupe = false
 		ctlr.Config.Storage.SubPaths = subPaths
 
 		cm := test.NewControllerManager(ctlr)
@@ -6552,8 +6560,8 @@ func TestPeriodicGC(t *testing.T) {
 		ctlr := api.NewController(conf)
 		dir := t.TempDir()
 		ctlr.Config.Storage.RootDirectory = dir
+		ctlr.Config.Storage.Dedupe = false
 
-		ctlr.Config.Storage.RootDirectory = dir
 		ctlr.Config.Storage.GC = true
 		ctlr.Config.Storage.GCInterval = 1 * time.Hour
 		ctlr.Config.Storage.GCDelay = 1 * time.Second

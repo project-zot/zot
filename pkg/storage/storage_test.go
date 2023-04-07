@@ -84,6 +84,7 @@ func createObjectsStore(rootDir string, cacheDir string) (driver.StorageDriver, 
 		Name:        "s3_cache",
 		UseRelPaths: false,
 	}, log)
+
 	il := s3.NewImageStore(rootDir, cacheDir, false, storage.DefaultGCDelay,
 		true, false, log, metrics, nil, store, cacheDriver,
 	)

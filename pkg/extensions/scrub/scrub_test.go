@@ -45,6 +45,8 @@ func TestScrubExtension(t *testing.T) {
 		subdir := t.TempDir()
 
 		conf.Storage.RootDirectory = dir
+		conf.Storage.Dedupe = false
+
 		substore := config.StorageConfig{RootDirectory: subdir}
 		conf.Storage.SubPaths = map[string]config.StorageConfig{"/a": substore}
 		conf.Log.Output = logFile.Name()
@@ -86,6 +88,8 @@ func TestScrubExtension(t *testing.T) {
 		dir := t.TempDir()
 
 		conf.Storage.RootDirectory = dir
+		conf.Storage.Dedupe = false
+
 		conf.Log.Output = logFile.Name()
 		trueValue := true
 		scrubConfig := &extconf.ScrubConfig{
@@ -132,6 +136,8 @@ func TestScrubExtension(t *testing.T) {
 		dir := t.TempDir()
 
 		conf.Storage.RootDirectory = dir
+		conf.Storage.Dedupe = false
+
 		conf.Log.Output = logFile.Name()
 		trueValue := true
 		scrubConfig := &extconf.ScrubConfig{

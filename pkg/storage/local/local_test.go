@@ -2,6 +2,7 @@ package local_test
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	_ "crypto/sha256"
 	"encoding/json"
@@ -28,17 +29,31 @@ import (
 	"zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/scheduler"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/cache"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
+	"zotregistry.io/zot/pkg/test/mocks"
 )
 
 const (
 	tag      = "1.0"
 	repoName = "test"
 )
+
+var errCache = errors.New("new cache error")
+
+func runAndGetScheduler() (*scheduler.Scheduler, context.CancelFunc) {
+	taskScheduler := scheduler.NewScheduler(log.Logger{})
+	taskScheduler.RateLimit = 50 * time.Millisecond
+
+	ctx, cancel := context.WithCancel(context.Background())
+	taskScheduler.RunScheduler(ctx)
+
+	return taskScheduler, cancel
+}
 
 func TestStorageFSAPIs(t *testing.T) {
 	dir := t.TempDir()
@@ -1066,155 +1081,98 @@ func FuzzRunGCRepo(f *testing.F) {
 }
 
 func TestDedupeLinks(t *testing.T) {
-	dir := t.TempDir()
+	testCases := []struct {
+		dedupe   bool
+		expected bool
+	}{
+		{
+			dedupe:   true,
+			expected: true,
+		},
+		{
+			dedupe:   false,
+			expected: false,
+		},
+	}
 
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
-	cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
-		RootDir:     dir,
-		Name:        "cache",
-		UseRelPaths: true,
-	}, log)
-	imgStore := local.NewImageStore(dir, false, storage.DefaultGCDelay,
-		true, true, log, metrics, nil, cacheDriver)
 
-	Convey("Dedupe", t, func(c C) {
-		// manifest1
-		upload, err := imgStore.NewBlobUpload("dedupe1")
-		So(err, ShouldBeNil)
-		So(upload, ShouldNotBeEmpty)
+	for _, testCase := range testCases {
+		dir := t.TempDir()
 
-		content := []byte("test-data3")
-		buf := bytes.NewBuffer(content)
-		buflen := buf.Len()
-		digest := godigest.FromBytes(content)
-		blob, err := imgStore.PutBlobChunkStreamed("dedupe1", upload, buf)
-		So(err, ShouldBeNil)
-		So(blob, ShouldEqual, buflen)
-		blobDigest1 := strings.Split(digest.String(), ":")[1]
-		So(blobDigest1, ShouldNotBeEmpty)
+		cacheDriver, _ := storage.Create("boltdb", cache.BoltDBDriverParameters{
+			RootDir:     dir,
+			Name:        "cache",
+			UseRelPaths: true,
+		}, log)
 
-		err = imgStore.FinishBlobUpload("dedupe1", upload, buf, digest)
-		So(err, ShouldBeNil)
-		So(blob, ShouldEqual, buflen)
+		imgStore := local.NewImageStore(dir, false, storage.DefaultGCDelay,
+			testCase.dedupe, true, log, metrics, nil, cacheDriver)
 
-		_, _, err = imgStore.CheckBlob("dedupe1", digest)
-		So(err, ShouldBeNil)
+		Convey(fmt.Sprintf("Dedupe %t", testCase.dedupe), t, func(c C) {
+			// manifest1
+			upload, err := imgStore.NewBlobUpload("dedupe1")
+			So(err, ShouldBeNil)
+			So(upload, ShouldNotBeEmpty)
 
-		blobrc, _, err := imgStore.GetBlob("dedupe1", digest, "application/vnd.oci.image.layer.v1.tar+gzip")
-		So(err, ShouldBeNil)
-		err = blobrc.Close()
-		So(err, ShouldBeNil)
+			content := []byte("test-data3")
+			buf := bytes.NewBuffer(content)
+			buflen := buf.Len()
+			digest := godigest.FromBytes(content)
+			blob, err := imgStore.PutBlobChunkStreamed("dedupe1", upload, buf)
+			So(err, ShouldBeNil)
+			So(blob, ShouldEqual, buflen)
+			blobDigest1 := strings.Split(digest.String(), ":")[1]
+			So(blobDigest1, ShouldNotBeEmpty)
 
-		cblob, cdigest := test.GetRandomImageConfig()
-		_, clen, err := imgStore.FullBlobUpload("dedupe1", bytes.NewReader(cblob), cdigest)
-		So(err, ShouldBeNil)
-		So(clen, ShouldEqual, len(cblob))
-		hasBlob, _, err := imgStore.CheckBlob("dedupe1", cdigest)
-		So(err, ShouldBeNil)
-		So(hasBlob, ShouldEqual, true)
+			err = imgStore.FinishBlobUpload("dedupe1", upload, buf, digest)
+			So(err, ShouldBeNil)
+			So(blob, ShouldEqual, buflen)
 
-		manifest := ispec.Manifest{
-			Config: ispec.Descriptor{
-				MediaType: "application/vnd.oci.image.config.v1+json",
-				Digest:    cdigest,
-				Size:      int64(len(cblob)),
-			},
-			Layers: []ispec.Descriptor{
-				{
-					MediaType: "application/vnd.oci.image.layer.v1.tar",
-					Digest:    digest,
-					Size:      int64(buflen),
-				},
-			},
-		}
-		manifest.SchemaVersion = 2
-		manifestBuf, err := json.Marshal(manifest)
-		So(err, ShouldBeNil)
-		digest = godigest.FromBytes(manifestBuf)
-		_, err = imgStore.PutImageManifest("dedupe1", digest.String(),
-			ispec.MediaTypeImageManifest, manifestBuf)
-		So(err, ShouldBeNil)
-
-		_, _, _, err = imgStore.GetImageManifest("dedupe1", digest.String())
-		So(err, ShouldBeNil)
-
-		// manifest2
-		upload, err = imgStore.NewBlobUpload("dedupe2")
-		So(err, ShouldBeNil)
-		So(upload, ShouldNotBeEmpty)
-
-		content = []byte("test-data3")
-		buf = bytes.NewBuffer(content)
-		buflen = buf.Len()
-		digest = godigest.FromBytes(content)
-		blob, err = imgStore.PutBlobChunkStreamed("dedupe2", upload, buf)
-		So(err, ShouldBeNil)
-		So(blob, ShouldEqual, buflen)
-		blobDigest2 := strings.Split(digest.String(), ":")[1]
-		So(blobDigest2, ShouldNotBeEmpty)
-
-		err = imgStore.FinishBlobUpload("dedupe2", upload, buf, digest)
-		So(err, ShouldBeNil)
-		So(blob, ShouldEqual, buflen)
-
-		_, _, err = imgStore.CheckBlob("dedupe2", digest)
-		So(err, ShouldBeNil)
-
-		blobrc, _, err = imgStore.GetBlob("dedupe2", digest, "application/vnd.oci.image.layer.v1.tar+gzip")
-		So(err, ShouldBeNil)
-		err = blobrc.Close()
-		So(err, ShouldBeNil)
-
-		cblob, cdigest = test.GetRandomImageConfig()
-		_, clen, err = imgStore.FullBlobUpload("dedupe2", bytes.NewReader(cblob), cdigest)
-		So(err, ShouldBeNil)
-		So(clen, ShouldEqual, len(cblob))
-		hasBlob, _, err = imgStore.CheckBlob("dedupe2", cdigest)
-		So(err, ShouldBeNil)
-		So(hasBlob, ShouldEqual, true)
-
-		manifest = ispec.Manifest{
-			Config: ispec.Descriptor{
-				MediaType: "application/vnd.oci.image.config.v1+json",
-				Digest:    cdigest,
-				Size:      int64(len(cblob)),
-			},
-			Layers: []ispec.Descriptor{
-				{
-					MediaType: "application/vnd.oci.image.layer.v1.tar",
-					Digest:    digest,
-					Size:      int64(buflen),
-				},
-			},
-		}
-		manifest.SchemaVersion = 2
-		manifestBuf, err = json.Marshal(manifest)
-		So(err, ShouldBeNil)
-		digest = godigest.FromBytes(manifestBuf)
-		_, err = imgStore.PutImageManifest("dedupe2", "1.0", ispec.MediaTypeImageManifest, manifestBuf)
-		So(err, ShouldBeNil)
-
-		_, _, _, err = imgStore.GetImageManifest("dedupe2", digest.String())
-		So(err, ShouldBeNil)
-
-		// verify that dedupe with hard links happened
-		fi1, err := os.Stat(path.Join(dir, "dedupe2", "blobs", "sha256", blobDigest1))
-		So(err, ShouldBeNil)
-		fi2, err := os.Stat(path.Join(dir, "dedupe2", "blobs", "sha256", blobDigest2))
-		So(err, ShouldBeNil)
-		So(os.SameFile(fi1, fi2), ShouldBeTrue)
-
-		Convey("storage and cache inconsistency", func() {
-			// delete blobs
-			err = os.Remove(path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1))
+			_, _, err = imgStore.CheckBlob("dedupe1", digest)
 			So(err, ShouldBeNil)
 
-			err := os.Remove(path.Join(dir, "dedupe2", "blobs", "sha256", blobDigest2))
+			blobrc, _, err := imgStore.GetBlob("dedupe1", digest, "application/vnd.oci.image.layer.v1.tar+gzip")
+			So(err, ShouldBeNil)
+			err = blobrc.Close()
 			So(err, ShouldBeNil)
 
-			// now cache is inconsistent with storage (blobs present in cache but not in storage)
-			upload, err = imgStore.NewBlobUpload("dedupe3")
+			cblob, cdigest := test.GetRandomImageConfig()
+			_, clen, err := imgStore.FullBlobUpload("dedupe1", bytes.NewReader(cblob), cdigest)
+			So(err, ShouldBeNil)
+			So(clen, ShouldEqual, len(cblob))
+			hasBlob, _, err := imgStore.CheckBlob("dedupe1", cdigest)
+			So(err, ShouldBeNil)
+			So(hasBlob, ShouldEqual, true)
+
+			manifest := ispec.Manifest{
+				Config: ispec.Descriptor{
+					MediaType: "application/vnd.oci.image.config.v1+json",
+					Digest:    cdigest,
+					Size:      int64(len(cblob)),
+				},
+				Layers: []ispec.Descriptor{
+					{
+						MediaType: "application/vnd.oci.image.layer.v1.tar",
+						Digest:    digest,
+						Size:      int64(buflen),
+					},
+				},
+			}
+			manifest.SchemaVersion = 2
+			manifestBuf, err := json.Marshal(manifest)
+			So(err, ShouldBeNil)
+			digest = godigest.FromBytes(manifestBuf)
+			_, err = imgStore.PutImageManifest("dedupe1", digest.String(),
+				ispec.MediaTypeImageManifest, manifestBuf)
+			So(err, ShouldBeNil)
+
+			_, _, _, err = imgStore.GetImageManifest("dedupe1", digest.String())
+			So(err, ShouldBeNil)
+
+			// manifest2
+			upload, err = imgStore.NewBlobUpload("dedupe2")
 			So(err, ShouldBeNil)
 			So(upload, ShouldNotBeEmpty)
 
@@ -1222,17 +1180,213 @@ func TestDedupeLinks(t *testing.T) {
 			buf = bytes.NewBuffer(content)
 			buflen = buf.Len()
 			digest = godigest.FromBytes(content)
-			blob, err = imgStore.PutBlobChunkStreamed("dedupe3", upload, buf)
+			blob, err = imgStore.PutBlobChunkStreamed("dedupe2", upload, buf)
 			So(err, ShouldBeNil)
 			So(blob, ShouldEqual, buflen)
 			blobDigest2 := strings.Split(digest.String(), ":")[1]
 			So(blobDigest2, ShouldNotBeEmpty)
 
-			err = imgStore.FinishBlobUpload("dedupe3", upload, buf, digest)
+			err = imgStore.FinishBlobUpload("dedupe2", upload, buf, digest)
 			So(err, ShouldBeNil)
 			So(blob, ShouldEqual, buflen)
+
+			_, _, err = imgStore.CheckBlob("dedupe2", digest)
+			So(err, ShouldBeNil)
+
+			blobrc, _, err = imgStore.GetBlob("dedupe2", digest, "application/vnd.oci.image.layer.v1.tar+gzip")
+			So(err, ShouldBeNil)
+			err = blobrc.Close()
+			So(err, ShouldBeNil)
+
+			cblob, cdigest = test.GetRandomImageConfig()
+			_, clen, err = imgStore.FullBlobUpload("dedupe2", bytes.NewReader(cblob), cdigest)
+			So(err, ShouldBeNil)
+			So(clen, ShouldEqual, len(cblob))
+			hasBlob, _, err = imgStore.CheckBlob("dedupe2", cdigest)
+			So(err, ShouldBeNil)
+			So(hasBlob, ShouldEqual, true)
+
+			manifest = ispec.Manifest{
+				Config: ispec.Descriptor{
+					MediaType: "application/vnd.oci.image.config.v1+json",
+					Digest:    cdigest,
+					Size:      int64(len(cblob)),
+				},
+				Layers: []ispec.Descriptor{
+					{
+						MediaType: "application/vnd.oci.image.layer.v1.tar",
+						Digest:    digest,
+						Size:      int64(buflen),
+					},
+				},
+			}
+			manifest.SchemaVersion = 2
+			manifestBuf, err = json.Marshal(manifest)
+			So(err, ShouldBeNil)
+			digest = godigest.FromBytes(manifestBuf)
+			_, err = imgStore.PutImageManifest("dedupe2", "1.0", ispec.MediaTypeImageManifest, manifestBuf)
+			So(err, ShouldBeNil)
+
+			_, _, _, err = imgStore.GetImageManifest("dedupe2", digest.String())
+			So(err, ShouldBeNil)
+
+			// verify that dedupe with hard links happened
+			fi1, err := os.Stat(path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1))
+			So(err, ShouldBeNil)
+			fi2, err := os.Stat(path.Join(dir, "dedupe2", "blobs", "sha256", blobDigest2))
+			So(err, ShouldBeNil)
+			So(os.SameFile(fi1, fi2), ShouldEqual, testCase.expected)
+
+			if !testCase.dedupe {
+				Convey("Intrerrupt rebuilding and restart, checking idempotency", func() {
+					for i := 0; i < 10; i++ {
+						taskScheduler, cancel := runAndGetScheduler()
+						// rebuild with dedupe true
+						imgStore := local.NewImageStore(dir, false, storage.DefaultGCDelay,
+							true, true, log, metrics, nil, cacheDriver)
+
+						imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+						sleepValue := i * 50
+						time.Sleep(time.Duration(sleepValue) * time.Millisecond)
+
+						cancel()
+					}
+
+					taskScheduler, cancel := runAndGetScheduler()
+
+					// rebuild with dedupe true
+					imgStore := local.NewImageStore(dir, false, storage.DefaultGCDelay,
+						true, true, log, metrics, nil, cacheDriver)
+					imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+
+					// wait until rebuild finishes
+					time.Sleep(10 * time.Second)
+
+					cancel()
+
+					fi1, err := os.Stat(path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1))
+					So(err, ShouldBeNil)
+					fi2, err := os.Stat(path.Join(dir, "dedupe2", "blobs", "sha256", blobDigest2))
+					So(err, ShouldBeNil)
+					So(os.SameFile(fi1, fi2), ShouldEqual, true)
+				})
+
+				Convey("rebuild dedupe index error cache nil", func() {
+					// switch dedupe to true from false
+					taskScheduler, cancel := runAndGetScheduler()
+
+					imgStore := local.NewImageStore(dir, false, storage.DefaultGCDelay,
+						true, true, log, metrics, nil, nil)
+
+					// rebuild with dedupe true
+					imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+					// wait until rebuild finishes
+
+					time.Sleep(3 * time.Second)
+
+					cancel()
+
+					fi1, err := os.Stat(path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1))
+					So(err, ShouldBeNil)
+					fi2, err := os.Stat(path.Join(dir, "dedupe2", "blobs", "sha256", blobDigest2))
+					So(err, ShouldBeNil)
+
+					So(os.SameFile(fi1, fi2), ShouldEqual, false)
+				})
+
+				Convey("rebuild dedupe index cache error on original blob", func() {
+					// switch dedupe to true from false
+					taskScheduler, cancel := runAndGetScheduler()
+
+					imgStore := local.NewImageStore(dir, false, storage.DefaultGCDelay,
+						true, true, log, metrics, nil, &mocks.CacheMock{
+							HasBlobFn: func(digest godigest.Digest, path string) bool {
+								return false
+							},
+							PutBlobFn: func(digest godigest.Digest, path string) error {
+								return errCache
+							},
+						})
+					// rebuild with dedupe true, should have samefile blobs
+					imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+					// wait until rebuild finishes
+
+					time.Sleep(10 * time.Second)
+
+					cancel()
+
+					fi1, err := os.Stat(path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1))
+					So(err, ShouldBeNil)
+					fi2, err := os.Stat(path.Join(dir, "dedupe2", "blobs", "sha256", blobDigest2))
+					So(err, ShouldBeNil)
+
+					So(os.SameFile(fi1, fi2), ShouldEqual, false)
+				})
+
+				Convey("rebuild dedupe index cache error on duplicate blob", func() {
+					// switch dedupe to true from false
+					taskScheduler, cancel := runAndGetScheduler()
+
+					imgStore := local.NewImageStore(dir, false, storage.DefaultGCDelay,
+						true, true, log, metrics, nil, &mocks.CacheMock{
+							HasBlobFn: func(digest godigest.Digest, path string) bool {
+								return false
+							},
+							PutBlobFn: func(digest godigest.Digest, path string) error {
+								if strings.Contains(path, "dedupe2") {
+									return errCache
+								}
+
+								return nil
+							},
+						})
+					// rebuild with dedupe true, should have samefile blobs
+					imgStore.RunDedupeBlobs(time.Duration(0), taskScheduler)
+					// wait until rebuild finishes
+
+					time.Sleep(15 * time.Second)
+
+					cancel()
+
+					fi1, err := os.Stat(path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1))
+					So(err, ShouldBeNil)
+					fi2, err := os.Stat(path.Join(dir, "dedupe2", "blobs", "sha256", blobDigest2))
+					So(err, ShouldBeNil)
+
+					// deduped happened, but didn't cached
+					So(os.SameFile(fi1, fi2), ShouldEqual, true)
+				})
+			}
+
+			Convey("storage and cache inconsistency", func() {
+				// delete blobs
+				err = os.Remove(path.Join(dir, "dedupe1", "blobs", "sha256", blobDigest1))
+				So(err, ShouldBeNil)
+
+				err := os.Remove(path.Join(dir, "dedupe2", "blobs", "sha256", blobDigest2))
+				So(err, ShouldBeNil)
+
+				// now cache is inconsistent with storage (blobs present in cache but not in storage)
+				upload, err = imgStore.NewBlobUpload("dedupe3")
+				So(err, ShouldBeNil)
+				So(upload, ShouldNotBeEmpty)
+
+				content = []byte("test-data3")
+				buf = bytes.NewBuffer(content)
+				buflen = buf.Len()
+				digest = godigest.FromBytes(content)
+				blob, err = imgStore.PutBlobChunkStreamed("dedupe3", upload, buf)
+				So(err, ShouldBeNil)
+				So(blob, ShouldEqual, buflen)
+				blobDigest2 := strings.Split(digest.String(), ":")[1]
+				So(blobDigest2, ShouldNotBeEmpty)
+
+				err = imgStore.FinishBlobUpload("dedupe3", upload, buf, digest)
+				So(err, ShouldBeNil)
+				So(blob, ShouldEqual, buflen)
+			})
 		})
-	})
+	}
 }
 
 func TestDedupe(t *testing.T) {
