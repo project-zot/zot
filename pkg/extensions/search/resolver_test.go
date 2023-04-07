@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 
@@ -23,7 +22,6 @@ import (
 	"zotregistry.io/zot/pkg/meta/bolt"
 	"zotregistry.io/zot/pkg/meta/repodb"
 	boltdb_wrapper "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
-	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
@@ -1418,147 +1416,6 @@ func TestGetReferrers(t *testing.T) {
 			So(*referrers[0].Size, ShouldEqual, referrerDescriptor.Size)
 			So(*referrers[0].Digest, ShouldEqual, referrerDescriptor.Digest)
 			So(*referrers[0].Annotations[0].Value, ShouldEqual, referrerDescriptor.Annotations["key"])
-		})
-	})
-}
-
-func TestExtractImageDetails(t *testing.T) {
-	Convey("repoListWithNewestImage", t, func() {
-		// log := log.Logger{Logger: zerolog.New(os.Stdout)}
-		content := []byte("this is a blob5")
-		testLogger := log.NewLogger("debug", "")
-		layerDigest := godigest.FromBytes(content)
-		config := ispec.Image{
-			Platform: ispec.Platform{
-				Architecture: "amd64",
-				OS:           "linux",
-			},
-			RootFS: ispec.RootFS{
-				Type:    "layers",
-				DiffIDs: []godigest.Digest{},
-			},
-			Author: "some author",
-		}
-
-		ctx := context.TODO()
-		authzCtxKey := localCtx.GetContextKey()
-		ctx = context.WithValue(ctx, authzCtxKey,
-			localCtx.AccessControlContext{
-				ReadGlobPatterns: map[string]bool{"*": true, "**": true},
-				Username:         "jane_doe",
-			})
-		configBlobContent, _ := json.MarshalIndent(&config, "", "\t")
-		configDigest := godigest.FromBytes(configBlobContent)
-
-		localTestManifest := ispec.Manifest{
-			Config: ispec.Descriptor{
-				MediaType: "application/vnd.oci.image.config.v1+json",
-				Digest:    configDigest,
-				Size:      int64(len(configBlobContent)),
-			},
-			Layers: []ispec.Descriptor{
-				{
-					MediaType: "application/vnd.oci.image.layer.v1.tar",
-					Digest:    layerDigest,
-					Size:      int64(len(content)),
-				},
-			},
-		}
-		localTestDigestTry, _ := json.Marshal(localTestManifest)
-		localTestDigest := godigest.FromBytes(localTestDigestTry)
-
-		Convey("extractImageDetails good workflow", func() {
-			mockOlum := mocks.OciLayoutUtilsMock{
-				GetImageConfigInfoFn: func(repo string, digest godigest.Digest) (
-					ispec.Image, error,
-				) {
-					return config, nil
-				},
-				GetImageManifestFn: func(repo string, tag string) (
-					ispec.Manifest, godigest.Digest, error,
-				) {
-					return localTestManifest, localTestDigest, nil
-				},
-			}
-			resDigest, resManifest, resIspecImage, resErr := extractImageDetails(ctx,
-				mockOlum, "zot-test", "latest", testLogger)
-			So(string(resDigest), ShouldContainSubstring, "sha256:d004018b9f")
-			So(resManifest.Config.Digest.String(), ShouldContainSubstring, configDigest.Encoded())
-
-			So(resIspecImage.Architecture, ShouldContainSubstring, "amd64")
-			So(resErr, ShouldBeNil)
-		})
-
-		Convey("extractImageDetails bad ispec.ImageManifest", func() {
-			mockOlum := mocks.OciLayoutUtilsMock{
-				GetImageConfigInfoFn: func(repo string, digest godigest.Digest) (
-					ispec.Image, error,
-				) {
-					return config, nil
-				},
-				GetImageManifestFn: func(repo string, tag string) (
-					ispec.Manifest, godigest.Digest, error,
-				) {
-					return ispec.Manifest{}, localTestDigest, ErrTestError
-				},
-			}
-			resDigest, resManifest, resIspecImage, resErr := extractImageDetails(ctx,
-				mockOlum, "zot-test", "latest", testLogger)
-			So(resErr, ShouldEqual, ErrTestError)
-			So(string(resDigest), ShouldEqual, "")
-			So(resManifest, ShouldBeNil)
-
-			So(resIspecImage, ShouldBeNil)
-		})
-
-		Convey("extractImageDetails bad imageConfig", func() {
-			mockOlum := mocks.OciLayoutUtilsMock{
-				GetImageConfigInfoFn: func(repo string, digest godigest.Digest) (
-					ispec.Image, error,
-				) {
-					return config, nil
-				},
-				GetImageManifestFn: func(repo string, tag string) (
-					ispec.Manifest, godigest.Digest, error,
-				) {
-					return localTestManifest, localTestDigest, ErrTestError
-				},
-			}
-			resDigest, resManifest, resIspecImage, resErr := extractImageDetails(ctx,
-				mockOlum, "zot-test", "latest", testLogger)
-			So(string(resDigest), ShouldEqual, "")
-			So(resManifest, ShouldBeNil)
-
-			So(resIspecImage, ShouldBeNil)
-			So(resErr, ShouldEqual, ErrTestError)
-		})
-
-		Convey("extractImageDetails without proper authz", func() {
-			ctx = context.WithValue(ctx, authzCtxKey,
-				localCtx.AccessControlContext{
-					ReadGlobPatterns: map[string]bool{},
-					Username:         "jane_doe",
-				})
-			mockOlum := mocks.OciLayoutUtilsMock{
-				GetImageConfigInfoFn: func(repo string, digest godigest.Digest) (
-					ispec.Image, error,
-				) {
-					return config, nil
-				},
-				GetImageManifestFn: func(repo string, tag string) (
-					ispec.Manifest, godigest.Digest, error,
-				) {
-					return localTestManifest, localTestDigest, ErrTestError
-				},
-			}
-			resDigest, resManifest, resIspecImage, resErr := extractImageDetails(ctx,
-				mockOlum, "zot-test", "latest", testLogger)
-			So(string(resDigest), ShouldEqual, "")
-			So(resManifest, ShouldBeNil)
-
-			So(resIspecImage, ShouldBeNil)
-			So(resErr, ShouldNotBeNil)
-			So(strings.ToLower(resErr.Error()), ShouldContainSubstring, "unauthorized access")
 		})
 	})
 }
