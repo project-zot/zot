@@ -1440,3 +1440,63 @@ func TestCVEStruct(t *testing.T) {
 		So(err, ShouldBeNil)
 	})
 }
+
+func getTags() ([]cvemodel.TagInfo, []cvemodel.TagInfo) {
+	tags := make([]cvemodel.TagInfo, 0)
+
+	firstTag := cvemodel.TagInfo{
+		Name: "1.0.0",
+		Descriptor: cvemodel.Descriptor{
+			Digest:    "sha256:eca04f027f414362596f2632746d8a178362170b9ac9af772011fedcc3877ebb",
+			MediaType: ispec.MediaTypeImageManifest,
+		},
+		Timestamp: time.Now(),
+	}
+	secondTag := cvemodel.TagInfo{
+		Name: "1.0.1",
+		Descriptor: cvemodel.Descriptor{
+			Digest:    "sha256:eca04f027f414362596f2632746d8a179362170b9ac9af772011fedcc3877ebb",
+			MediaType: ispec.MediaTypeImageManifest,
+		},
+		Timestamp: time.Now(),
+	}
+	thirdTag := cvemodel.TagInfo{
+		Name: "1.0.2",
+		Descriptor: cvemodel.Descriptor{
+			Digest:    "sha256:eca04f027f414362596f2632746d8a170362170b9ac9af772011fedcc3877ebb",
+			MediaType: ispec.MediaTypeImageManifest,
+		},
+		Timestamp: time.Now(),
+	}
+	fourthTag := cvemodel.TagInfo{
+		Name: "1.0.3",
+		Descriptor: cvemodel.Descriptor{
+			Digest:    "sha256:eca04f027f414362596f2632746d8a171362170b9ac9af772011fedcc3877ebb",
+			MediaType: ispec.MediaTypeImageManifest,
+		},
+		Timestamp: time.Now(),
+	}
+
+	tags = append(tags, firstTag, secondTag, thirdTag, fourthTag)
+
+	vulnerableTags := make([]cvemodel.TagInfo, 0)
+	vulnerableTags = append(vulnerableTags, secondTag)
+
+	return tags, vulnerableTags
+}
+
+func TestFixedTags(t *testing.T) {
+	Convey("Test fixed tags", t, func() {
+		allTags, vulnerableTags := getTags()
+
+		fixedTags := cveinfo.GetFixedTags(allTags, vulnerableTags)
+		So(len(fixedTags), ShouldEqual, 2)
+
+		fixedTags = cveinfo.GetFixedTags(allTags, append(vulnerableTags, cvemodel.TagInfo{
+			Name:       "taginfo",
+			Descriptor: cvemodel.Descriptor{},
+			Timestamp:  time.Date(2000, time.July, 20, 10, 10, 10, 10, time.UTC),
+		}))
+		So(len(fixedTags), ShouldEqual, 3)
+	})
+}

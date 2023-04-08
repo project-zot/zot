@@ -3,13 +3,14 @@ package cveinfo
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/extensions/search/common"
+	"zotregistry.io/zot/pkg/common"
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/extensions/search/cve/trivy"
 	"zotregistry.io/zot/pkg/log"
@@ -18,8 +19,8 @@ import (
 )
 
 type CveInfo interface {
-	GetImageListForCVE(repo, cveID string) ([]common.TagInfo, error)
-	GetImageListWithCVEFixed(repo, cveID string) ([]common.TagInfo, error)
+	GetImageListForCVE(repo, cveID string) ([]cvemodel.TagInfo, error)
+	GetImageListWithCVEFixed(repo, cveID string) ([]cvemodel.TagInfo, error)
 	GetCVEListForImage(repo, tag string, searchedCVE string, pageinput PageInput) ([]cvemodel.CVE, PageInfo, error)
 	GetCVESummaryForImage(repo, tag string) (ImageCVESummary, error)
 	CompareSeverities(severity1, severity2 string) int
@@ -56,8 +57,8 @@ func NewCVEInfo(storeController storage.StoreController, repoDB repodb.RepoDB,
 	}
 }
 
-func (cveinfo BaseCveInfo) GetImageListForCVE(repo, cveID string) ([]common.TagInfo, error) {
-	imgList := make([]common.TagInfo, 0)
+func (cveinfo BaseCveInfo) GetImageListForCVE(repo, cveID string) ([]cvemodel.TagInfo, error) {
+	imgList := make([]cvemodel.TagInfo, 0)
 
 	repoMeta, err := cveinfo.RepoDB.GetRepoMeta(repo)
 	if err != nil {
@@ -89,9 +90,9 @@ func (cveinfo BaseCveInfo) GetImageListForCVE(repo, cveID string) ([]common.TagI
 			}
 
 			if _, hasCVE := cveMap[cveID]; hasCVE {
-				imgList = append(imgList, common.TagInfo{
+				imgList = append(imgList, cvemodel.TagInfo{
 					Name: tag,
-					Descriptor: common.Descriptor{
+					Descriptor: cvemodel.Descriptor{
 						Digest:    manifestDigest,
 						MediaType: descriptor.MediaType,
 					},
@@ -105,17 +106,17 @@ func (cveinfo BaseCveInfo) GetImageListForCVE(repo, cveID string) ([]common.TagI
 	return imgList, nil
 }
 
-func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]common.TagInfo, error) {
+func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]cvemodel.TagInfo, error) {
 	repoMeta, err := cveinfo.RepoDB.GetRepoMeta(repo)
 	if err != nil {
 		cveinfo.Log.Error().Err(err).Str("repo", repo).Str("cve-id", cveID).
 			Msg("unable to get list of tags from repo")
 
-		return []common.TagInfo{}, err
+		return []cvemodel.TagInfo{}, err
 	}
 
-	vulnerableTags := make([]common.TagInfo, 0)
-	allTags := make([]common.TagInfo, 0)
+	vulnerableTags := make([]cvemodel.TagInfo, 0)
+	allTags := make([]cvemodel.TagInfo, 0)
 
 	var hasCVE bool
 
@@ -150,10 +151,10 @@ func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]commo
 				continue
 			}
 
-			tagInfo := common.TagInfo{
+			tagInfo := cvemodel.TagInfo{
 				Name:       tag,
 				Timestamp:  common.GetImageLastUpdated(configContent),
-				Descriptor: common.Descriptor{Digest: manifestDigest, MediaType: descriptor.MediaType},
+				Descriptor: cvemodel.Descriptor{Digest: manifestDigest, MediaType: descriptor.MediaType},
 			}
 
 			allTags = append(allTags, tagInfo)
@@ -196,16 +197,16 @@ func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]commo
 		default:
 			cveinfo.Log.Error().Msgf("media type not supported '%s'", descriptor.MediaType)
 
-			return []common.TagInfo{},
+			return []cvemodel.TagInfo{},
 				fmt.Errorf("media type '%s' is not supported: %w", descriptor.MediaType, errors.ErrNotImplemented)
 		}
 	}
 
-	var fixedTags []common.TagInfo
+	var fixedTags []cvemodel.TagInfo
 
 	if len(vulnerableTags) != 0 {
 		cveinfo.Log.Info().Str("repo", repo).Str("cve-id", cveID).Msgf("Vulnerable tags: %v", vulnerableTags)
-		fixedTags = common.GetFixedTags(allTags, vulnerableTags)
+		fixedTags = GetFixedTags(allTags, vulnerableTags)
 		cveinfo.Log.Info().Str("repo", repo).Str("cve-id", cveID).Msgf("Fixed tags: %v", fixedTags)
 	} else {
 		cveinfo.Log.Info().Str("repo", repo).Str("cve-id", cveID).
@@ -297,10 +298,16 @@ func (cveinfo BaseCveInfo) GetCVESummaryForImage(repo, tag string,
 	return imageCVESummary, nil
 }
 
+func referenceIsDigest(reference string) bool {
+	_, err := godigest.Parse(reference)
+
+	return err == nil
+}
+
 func getImageString(repo, reference string) string {
 	image := repo + ":" + reference
 
-	if common.ReferenceIsDigest(reference) {
+	if referenceIsDigest(reference) {
 		image = repo + "@" + reference
 	}
 
@@ -313,4 +320,44 @@ func (cveinfo BaseCveInfo) UpdateDB() error {
 
 func (cveinfo BaseCveInfo) CompareSeverities(severity1, severity2 string) int {
 	return cveinfo.Scanner.CompareSeverities(severity1, severity2)
+}
+
+func GetFixedTags(allTags, vulnerableTags []cvemodel.TagInfo) []cvemodel.TagInfo {
+	sort.Slice(allTags, func(i, j int) bool {
+		return allTags[i].Timestamp.Before(allTags[j].Timestamp)
+	})
+
+	earliestVulnerable := vulnerableTags[0]
+	vulnerableTagMap := make(map[string]cvemodel.TagInfo, len(vulnerableTags))
+
+	for _, tag := range vulnerableTags {
+		vulnerableTagMap[tag.Name] = tag
+
+		if tag.Timestamp.Before(earliestVulnerable.Timestamp) {
+			earliestVulnerable = tag
+		}
+	}
+
+	var fixedTags []cvemodel.TagInfo
+
+	// There are some downsides to this logic
+	// We assume there can't be multiple "branches" of the same
+	// image built at different times containing different fixes
+	// There may be older images which have a fix or
+	// newer images which don't
+	for _, tag := range allTags {
+		if tag.Timestamp.Before(earliestVulnerable.Timestamp) {
+			// The vulnerability did not exist at the time this
+			// image was built
+			continue
+		}
+		// If the image is old enough for the vulnerability to
+		// exist, but it was not detected, it means it contains
+		// the fix
+		if _, ok := vulnerableTagMap[tag.Name]; !ok {
+			fixedTags = append(fixedTags, tag)
+		}
+	}
+
+	return fixedTags
 }

@@ -333,3 +333,55 @@ func TestUpdateLastUpdatedTimestam(t *testing.T) {
 		So(*img.LastUpdated, ShouldResemble, after)
 	})
 }
+
+func TestLabels(t *testing.T) {
+	Convey("Test labels", t, func() {
+		// Test various labels
+		labels := make(map[string]string)
+
+		desc := convert.GetDescription(labels)
+		So(desc, ShouldEqual, "")
+
+		license := convert.GetLicenses(labels)
+		So(license, ShouldEqual, "")
+
+		vendor := convert.GetVendor(labels)
+		So(vendor, ShouldEqual, "")
+
+		categories := convert.GetCategories(labels)
+		So(categories, ShouldEqual, "")
+
+		labels[ispec.AnnotationVendor] = "zot"
+		labels[ispec.AnnotationDescription] = "zot-desc"
+		labels[ispec.AnnotationLicenses] = "zot-license"
+		labels[convert.AnnotationLabels] = "zot-labels"
+
+		desc = convert.GetDescription(labels)
+		So(desc, ShouldEqual, "zot-desc")
+
+		license = convert.GetLicenses(labels)
+		So(license, ShouldEqual, "zot-license")
+
+		vendor = convert.GetVendor(labels)
+		So(vendor, ShouldEqual, "zot")
+
+		categories = convert.GetCategories(labels)
+		So(categories, ShouldEqual, "zot-labels")
+
+		labels = make(map[string]string)
+
+		// Use diff key
+		labels[convert.LabelAnnotationVendor] = "zot-vendor"
+		labels[convert.LabelAnnotationDescription] = "zot-label-desc"
+		labels[ispec.AnnotationLicenses] = "zot-label-license"
+
+		desc = convert.GetDescription(labels)
+		So(desc, ShouldEqual, "zot-label-desc")
+
+		license = convert.GetLicenses(labels)
+		So(license, ShouldEqual, "zot-label-license")
+
+		vendor = convert.GetVendor(labels)
+		So(vendor, ShouldEqual, "zot-vendor")
+	})
+}

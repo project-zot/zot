@@ -22,6 +22,7 @@ import (
 
 	zotErrors "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/constants"
+	"zotregistry.io/zot/pkg/common"
 )
 
 type SearchService interface { //nolint:interfacebloat
@@ -843,7 +844,7 @@ func (service searchService) makeGraphQLQuery(ctx context.Context,
 	return nil
 }
 
-func checkResultGraphQLQuery(ctx context.Context, err error, resultErrors []errorGraphQL,
+func checkResultGraphQLQuery(ctx context.Context, err error, resultErrors []common.ErrorGraphQL,
 ) error {
 	if err != nil {
 		if isContextDone(ctx) {
@@ -899,13 +900,8 @@ func addManifestCallToPool(ctx context.Context, config searchConfig, pool *reque
 }
 
 type cveResult struct {
-	Errors []errorGraphQL `json:"errors"`
-	Data   cveData        `json:"data"`
-}
-
-type errorGraphQL struct {
-	Message string   `json:"message"`
-	Path    []string `json:"path"`
+	Errors []common.ErrorGraphQL `json:"errors"`
+	Data   cveData               `json:"data"`
 }
 
 type tagListResp struct {
@@ -996,14 +992,14 @@ func (cve cveResult) stringYAML() (string, error) {
 }
 
 type fixedTags struct {
-	Errors []errorGraphQL `json:"errors"`
+	Errors []common.ErrorGraphQL `json:"errors"`
 	Data   struct {
 		PaginatedImagesResult `json:"ImageListWithCVEFixed"` //nolint:tagliatelle // graphQL schema
 	} `json:"data"`
 }
 
 type imagesForCve struct {
-	Errors []errorGraphQL `json:"errors"`
+	Errors []common.ErrorGraphQL `json:"errors"`
 	Data   struct {
 		PaginatedImagesResult `json:"ImageListForCVE"` //nolint:tagliatelle // graphQL schema
 	} `json:"data"`
@@ -1047,35 +1043,35 @@ type BaseImageList struct {
 }
 
 type imageListStructGQL struct {
-	Errors []errorGraphQL `json:"errors"`
+	Errors []common.ErrorGraphQL `json:"errors"`
 	Data   struct {
 		PaginatedImagesResult `json:"ImageList"` //nolint:tagliatelle
 	} `json:"data"`
 }
 
 type imageListStructForDigestGQL struct {
-	Errors []errorGraphQL `json:"errors"`
+	Errors []common.ErrorGraphQL `json:"errors"`
 	Data   struct {
 		PaginatedImagesResult `json:"ImageListForDigest"` //nolint:tagliatelle
 	} `json:"data"`
 }
 
 type imageListStructForDerivedImagesGQL struct {
-	Errors []errorGraphQL `json:"errors"`
+	Errors []common.ErrorGraphQL `json:"errors"`
 	Data   struct {
 		PaginatedImagesResult `json:"DerivedImageList"` //nolint:tagliatelle
 	} `json:"data"`
 }
 
 type imageListStructForBaseImagesGQL struct {
-	Errors []errorGraphQL `json:"errors"`
+	Errors []common.ErrorGraphQL `json:"errors"`
 	Data   struct {
 		PaginatedImagesResult `json:"BaseImageList"` //nolint:tagliatelle
 	} `json:"data"`
 }
 
 type imagesForDigest struct {
-	Errors []errorGraphQL `json:"errors"`
+	Errors []common.ErrorGraphQL `json:"errors"`
 	Data   struct {
 		PaginatedImagesResult `json:"ImageListForDigest"` //nolint:tagliatelle // graphQL schema
 	} `json:"data"`

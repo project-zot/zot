@@ -119,4 +119,9 @@ func TestCommon(t *testing.T) {
 			resultPtr, baseURL+"/v2/", ispec.MediaTypeImageManifest, log.NewLogger("", ""))
 		So(err, ShouldNotBeNil)
 	})
+	Convey("Test image dir and digest", t, func() {
+		repo, digest := common.GetImageDirAndDigest("image")
+		So(repo, ShouldResemble, "image")
+		So(digest, ShouldResemble, "")
+	})
 }

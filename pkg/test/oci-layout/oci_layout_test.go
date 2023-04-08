@@ -1,7 +1,7 @@
 //go:build sync && scrub && metrics && search
 // +build sync,scrub,metrics,search
 
-package test_test
+package ocilayout_test
 
 import (
 	"encoding/json"
@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"testing"
+	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -19,12 +20,16 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
+	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
 	. "zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/mocks"
+	ocilayout "zotregistry.io/zot/pkg/test/oci-layout"
 )
+
+var ErrTestError = fmt.Errorf("testError")
 
 func TestBaseOciLayoutUtils(t *testing.T) {
 	manifestDigest := GetTestBlobDigest("zot-test", "config").String()
@@ -37,7 +42,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		size := olu.GetImageManifestSize("", "")
 		So(size, ShouldBeZeroValue)
@@ -51,7 +56,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		size := olu.GetImageConfigSize("", "")
 		So(size, ShouldBeZeroValue)
@@ -86,7 +91,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		size := olu.GetImageConfigSize("", "")
 		So(size, ShouldBeZeroValue)
@@ -100,7 +105,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		_, err := olu.GetRepoLastUpdated("")
 		So(err, ShouldNotBeNil)
@@ -126,7 +131,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		_, err = olu.GetImageTagsWithTimestamp("rep")
 		So(err, ShouldNotBeNil)
@@ -170,7 +175,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		_, err = olu.GetImageTagsWithTimestamp("repo")
 		So(err, ShouldNotBeNil)
@@ -213,7 +218,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		_, err = olu.GetExpandedRepoInfo("rep")
 		So(err, ShouldNotBeNil)
@@ -226,7 +231,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController = storage.StoreController{DefaultStore: mockStoreController}
-		olu = NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu = ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		_, err = olu.GetExpandedRepoInfo("rep")
 		So(err, ShouldNotBeNil)
@@ -243,7 +248,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController = storage.StoreController{DefaultStore: mockStoreController}
-		olu = NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu = ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		_, err = olu.GetExpandedRepoInfo("rep")
 		So(err, ShouldBeNil)
@@ -257,7 +262,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		_, err := olu.GetImageInfo("", "")
 		So(err, ShouldNotBeNil)
@@ -275,7 +280,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		check := olu.CheckManifestSignature("rep", godigest.FromString(""))
 		So(check, ShouldBeFalse)
@@ -324,7 +329,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		)
 		So(err, ShouldBeNil)
 
-		olu = NewBaseOciLayoutUtils(ctlr.StoreController, log.NewLogger("debug", ""))
+		olu = ocilayout.NewBaseOciLayoutUtils(ctlr.StoreController, log.NewLogger("debug", ""))
 		manifestList, err := olu.GetImageManifests(repo)
 		So(err, ShouldBeNil)
 		So(len(manifestList), ShouldEqual, 1)
@@ -369,7 +374,7 @@ func TestExtractImageDetails(t *testing.T) {
 		So(err, ShouldBeNil)
 		configDigest := godigest.FromBytes(configBlob)
 
-		olu := NewBaseOciLayoutUtils(storeController, testLogger)
+		olu := ocilayout.NewBaseOciLayoutUtils(storeController, testLogger)
 		resDigest, resManifest, resIspecImage, resErr := olu.ExtractImageDetails("zot-test", "latest", testLogger)
 		So(string(resDigest), ShouldContainSubstring, "sha256:c52f15d2d4")
 		So(resManifest.Config.Digest.String(), ShouldContainSubstring, configDigest.Encoded())
@@ -388,7 +393,7 @@ func TestExtractImageDetails(t *testing.T) {
 			DefaultStore: imageStore,
 		}
 
-		olu := NewBaseOciLayoutUtils(storeController, testLogger)
+		olu := ocilayout.NewBaseOciLayoutUtils(storeController, testLogger)
 		resDigest, resManifest, resIspecImage, resErr := olu.ExtractImageDetails("zot-test",
 			"latest", testLogger)
 		So(resErr, ShouldEqual, zerr.ErrRepoNotFound)
@@ -431,11 +436,55 @@ func TestExtractImageDetails(t *testing.T) {
 			panic(err)
 		}
 
-		olu := NewBaseOciLayoutUtils(storeController, testLogger)
+		olu := ocilayout.NewBaseOciLayoutUtils(storeController, testLogger)
 		resDigest, resManifest, resIspecImage, resErr := olu.ExtractImageDetails("zot-test", "latest", testLogger)
 		So(resErr, ShouldEqual, zerr.ErrBlobNotFound)
 		So(string(resDigest), ShouldEqual, "")
 		So(resManifest, ShouldBeNil)
 		So(resIspecImage, ShouldBeNil)
+	})
+}
+
+func TestTagsInfo(t *testing.T) {
+	Convey("Test tags info", t, func() {
+		allTags := make([]cvemodel.TagInfo, 0)
+
+		firstTag := cvemodel.TagInfo{
+			Name: "1.0.0",
+			Descriptor: cvemodel.Descriptor{
+				Digest:    "sha256:eca04f027f414362596f2632746d8a178362170b9ac9af772011fedcc3877ebb",
+				MediaType: ispec.MediaTypeImageManifest,
+			},
+			Timestamp: time.Now(),
+		}
+		secondTag := cvemodel.TagInfo{
+			Name: "1.0.1",
+			Descriptor: cvemodel.Descriptor{
+				Digest:    "sha256:eca04f027f414362596f2632746d8a179362170b9ac9af772011fedcc3877ebb",
+				MediaType: ispec.MediaTypeImageManifest,
+			},
+			Timestamp: time.Now(),
+		}
+		thirdTag := cvemodel.TagInfo{
+			Name: "1.0.2",
+			Descriptor: cvemodel.Descriptor{
+				Digest:    "sha256:eca04f027f414362596f2632746d8a170362170b9ac9af772011fedcc3877ebb",
+				MediaType: ispec.MediaTypeImageManifest,
+			},
+			Timestamp: time.Now(),
+		}
+		fourthTag := cvemodel.TagInfo{
+			Name: "1.0.3",
+			Descriptor: cvemodel.Descriptor{
+				Digest:    "sha256:eca04f027f414362596f2632746d8a171362170b9ac9af772011fedcc3877ebb",
+				MediaType: ispec.MediaTypeImageManifest,
+			},
+			Timestamp: time.Now(),
+		}
+
+		allTags = append(allTags, firstTag, secondTag, thirdTag, fourthTag)
+
+		latestTag := ocilayout.GetLatestTag(allTags)
+		So(latestTag.Name, ShouldEqual, "1.0.3")
 	})
 }
