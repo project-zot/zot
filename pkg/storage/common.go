@@ -3,6 +3,7 @@ package storage
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path"
 	"strings"
 
@@ -54,6 +55,19 @@ func GetManifestDescByReference(index ispec.Index, reference string) (ispec.Desc
 	}
 
 	return manifestDesc, false
+}
+
+func GetRoutePrefix(name string) string {
+	names := strings.SplitN(name, "/", 2) //nolint:gomnd
+
+	if len(names) != 2 { //nolint:gomnd
+		// it means route is of global storage e.g "centos:latest"
+		if len(names) == 1 {
+			return "/"
+		}
+	}
+
+	return fmt.Sprintf("/%s", names[0])
 }
 
 func ValidateManifest(imgStore ImageStore, repo, reference, mediaType string, body []byte,

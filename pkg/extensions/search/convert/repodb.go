@@ -14,7 +14,7 @@ import (
 	"github.com/vektah/gqlparser/v2/gqlerror"
 
 	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/extensions/search/common"
+	"zotregistry.io/zot/pkg/common"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
@@ -240,7 +240,7 @@ func ImageIndex2ImageSummary(ctx context.Context, repo, tag string, indexDigest 
 
 	indexSize = strconv.FormatInt(totalIndexSize, 10)
 
-	annotations := common.GetAnnotations(indexContent.Annotations, map[string]string{})
+	annotations := GetAnnotations(indexContent.Annotations, map[string]string{})
 
 	indexSummary := gql_generated.ImageSummary{
 		RepoName:      &repo,
@@ -327,7 +327,7 @@ func ImageManifest2ImageSummary(ctx context.Context, repo, tag string, digest go
 		manifestContent.Layers)
 	imageSize := strconv.FormatInt(size, 10)
 
-	annotations := common.GetAnnotations(manifestContent.Annotations, configContent.Config.Labels)
+	annotations := GetAnnotations(manifestContent.Annotations, configContent.Config.Labels)
 
 	authors := annotations.Authors
 	if authors == "" {

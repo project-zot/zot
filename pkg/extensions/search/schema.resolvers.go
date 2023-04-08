@@ -9,7 +9,7 @@ import (
 
 	"github.com/vektah/gqlparser/v2/gqlerror"
 	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/extensions/search/common"
+	"zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
 )
 

@@ -17,7 +17,6 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/extensions/search/common"
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/repodb"
@@ -122,7 +121,7 @@ func NewScanner(storeController storage.StoreController,
 
 func (scanner Scanner) getTrivyOptions(image string) flag.Options {
 	// Split image to get route prefix
-	prefixName := common.GetRoutePrefix(image)
+	prefixName := storage.GetRoutePrefix(image)
 
 	var opts flag.Options
 

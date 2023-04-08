@@ -1,5 +1,11 @@
 package model
 
+import (
+	"time"
+
+	godigest "github.com/opencontainers/go-digest"
+)
+
 //nolint:tagliatelle // graphQL schema
 type CVE struct {
 	ID          string    `json:"Id"`
@@ -35,3 +41,16 @@ func SeverityValue(severity string) int {
 
 	return sevMap[severity]
 }
+
+type Descriptor struct {
+	Digest    godigest.Digest
+	MediaType string
+}
+
+type TagInfo struct {
+	Name       string
+	Descriptor Descriptor
+	Timestamp  time.Time
+}
+
+// move tagInfo + Descriptor in model

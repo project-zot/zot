@@ -30,7 +30,7 @@ type ImgResponseForDigest struct {
 
 //nolint:tagliatelle // graphQL schema
 type ImgListForDigest struct {
-	PaginatedImagesResult `json:"ImageListForDigest"`
+	PaginatedImagesResultForDigest `json:"ImageListForDigest"`
 }
 
 //nolint:tagliatelle // graphQL schema
@@ -42,12 +42,7 @@ type ImgInfo struct {
 	Size         string `json:"Size"`
 }
 
-type ErrorGQL struct {
-	Message string   `json:"message"`
-	Path    []string `json:"path"`
-}
-
-type PaginatedImagesResult struct {
+type PaginatedImagesResultForDigest struct {
 	Results []ImgInfo       `json:"results"`
 	Page    repodb.PageInfo `json:"page"`
 }

@@ -10,6 +10,7 @@ import (
 	distext "github.com/opencontainers/distribution-spec/specs-go/v1/extensions"
 
 	"zotregistry.io/zot/pkg/api/constants"
+	"zotregistry.io/zot/pkg/common"
 )
 
 type field struct {
@@ -24,7 +25,7 @@ type schemaList struct {
 			} `json:"queryType"` //nolint:tagliatelle // graphQL schema
 		} `json:"__schema"` //nolint:tagliatelle // graphQL schema
 	} `json:"data"`
-	Errors []errorGraphQL `json:"errors"`
+	Errors []common.ErrorGraphQL `json:"errors"`
 }
 
 func containsGQLQuery(queryList []field, query string) bool {

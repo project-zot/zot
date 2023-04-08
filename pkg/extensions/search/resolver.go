@@ -18,9 +18,10 @@ import (
 	"github.com/vektah/gqlparser/v2/gqlerror"
 
 	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/extensions/search/common"
+	"zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/extensions/search/convert"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
+	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/extensions/search/gql_generated"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/repodb"
@@ -357,7 +358,7 @@ func getCVEListForImage(
 	}, nil
 }
 
-func FilterByTagInfo(tagsInfo []common.TagInfo) repodb.FilterFunc {
+func FilterByTagInfo(tagsInfo []cvemodel.TagInfo) repodb.FilterFunc {
 	return func(repoMeta repodb.RepoMetadata, manifestMeta repodb.ManifestMetadata) bool {
 		manifestDigest := godigest.FromBytes(manifestMeta.ManifestBlob).String()
 
@@ -391,7 +392,7 @@ func getImageListForCVE(
 		return &gql_generated.PaginatedImagesResult{}, err
 	}
 
-	affectedImages := []common.TagInfo{}
+	affectedImages := []cvemodel.TagInfo{}
 
 	for _, repoMeta := range reposMeta {
 		repo := repoMeta.Name

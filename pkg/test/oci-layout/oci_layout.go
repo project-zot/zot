@@ -1,7 +1,7 @@
 //go:build sync && scrub && metrics && search
 // +build sync,scrub,metrics,search
 
-package test
+package ocilayout
 
 import (
 	"encoding/json"
@@ -17,20 +17,23 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/extensions/search/common"
+	"zotregistry.io/zot/pkg/common"
+	"zotregistry.io/zot/pkg/extensions/search/convert"
+	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/test"
 )
 
-type OciLayoutUtils interface { //nolint: interfacebloat
+type OciUtils interface { //nolint: interfacebloat
 	GetImageManifest(repo string, reference string) (ispec.Manifest, godigest.Digest, error)
 	GetImageManifests(repo string) ([]ispec.Descriptor, error)
 	GetImageBlobManifest(repo string, digest godigest.Digest) (ispec.Manifest, error)
 	GetImageInfo(repo string, configDigest godigest.Digest) (ispec.Image, error)
-	GetImageTagsWithTimestamp(repo string) ([]common.TagInfo, error)
+	GetImageTagsWithTimestamp(repo string) ([]cvemodel.TagInfo, error)
 	GetImagePlatform(imageInfo ispec.Image) (string, string)
 	GetImageManifestSize(repo string, manifestDigest godigest.Digest) int64
-	GetRepoLastUpdated(repo string) (common.TagInfo, error)
+	GetRepoLastUpdated(repo string) (cvemodel.TagInfo, error)
 	GetExpandedRepoInfo(name string) (common.RepoInfo, error)
 	GetImageConfigInfo(repo string, manifestDigest godigest.Digest) (ispec.Image, error)
 	CheckManifestSignature(name string, digest godigest.Digest) bool
@@ -180,8 +183,8 @@ func (olu BaseOciLayoutUtils) GetImageInfo(repo string, configDigest godigest.Di
 }
 
 // GetImageTagsWithTimestamp returns a list of image tags with timestamp available in the specified repository.
-func (olu BaseOciLayoutUtils) GetImageTagsWithTimestamp(repo string) ([]common.TagInfo, error) {
-	tagsInfo := make([]common.TagInfo, 0)
+func (olu BaseOciLayoutUtils) GetImageTagsWithTimestamp(repo string) ([]cvemodel.TagInfo, error) {
+	tagsInfo := make([]cvemodel.TagInfo, 0)
 
 	manifests, err := olu.GetImageManifests(repo)
 	if err != nil {
@@ -212,10 +215,10 @@ func (olu BaseOciLayoutUtils) GetImageTagsWithTimestamp(repo string) ([]common.T
 			timeStamp := common.GetImageLastUpdated(imageInfo)
 
 			tagsInfo = append(tagsInfo,
-				common.TagInfo{
+				cvemodel.TagInfo{
 					Name:      val,
 					Timestamp: timeStamp,
-					Descriptor: common.Descriptor{
+					Descriptor: cvemodel.Descriptor{
 						Digest:    digest,
 						MediaType: manifest.MediaType,
 					},
@@ -330,13 +333,13 @@ func (olu BaseOciLayoutUtils) GetImageConfigSize(repo string, manifestDigest god
 	return imageBlobManifest.Config.Size
 }
 
-func (olu BaseOciLayoutUtils) GetRepoLastUpdated(repo string) (common.TagInfo, error) {
+func (olu BaseOciLayoutUtils) GetRepoLastUpdated(repo string) (cvemodel.TagInfo, error) {
 	tagsInfo, err := olu.GetImageTagsWithTimestamp(repo)
 	if err != nil || len(tagsInfo) == 0 {
-		return common.TagInfo{}, err
+		return cvemodel.TagInfo{}, err
 	}
 
-	latestTag := common.GetLatestTag(tagsInfo)
+	latestTag := test.GetLatestTag(tagsInfo)
 
 	return latestTag, nil
 }
@@ -433,7 +436,7 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(repoName string) (common.RepoI
 		imageSize := imageLayersSize + manifestSize + configSize
 
 		// get image info from manifest annotation, if not found get from image config labels.
-		annotations := common.GetAnnotations(manifest.Annotations, imageConfigInfo.Config.Labels)
+		annotations := convert.GetAnnotations(manifest.Annotations, imageConfigInfo.Config.Labels)
 
 		if annotations.Vendor != "" {
 			repoVendorsSet[annotations.Vendor] = true

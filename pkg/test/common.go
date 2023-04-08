@@ -20,6 +20,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -45,6 +46,7 @@ import (
 	"oras.land/oras-go/v2/registry/remote"
 	"oras.land/oras-go/v2/registry/remote/auth"
 
+	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/meta/repodb"
 	"zotregistry.io/zot/pkg/storage"
 )
@@ -182,6 +184,14 @@ func MakeHtpasswdFile() string {
 	content := "test:$2y$05$hlbSXDp6hzDLu6VwACS39ORvVRpr3OMR4RlJ31jtlaOEGnPjKZI1m\n"
 
 	return MakeHtpasswdFileFromString(content)
+}
+
+func GetLatestTag(allTags []cvemodel.TagInfo) cvemodel.TagInfo {
+	sort.Slice(allTags, func(i, j int) bool {
+		return allTags[i].Timestamp.Before(allTags[j].Timestamp)
+	})
+
+	return allTags[len(allTags)-1]
 }
 
 func MakeHtpasswdFileFromString(fileContent string) string {

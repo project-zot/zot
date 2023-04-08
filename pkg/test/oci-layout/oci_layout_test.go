@@ -1,7 +1,7 @@
 //go:build sync && scrub && metrics && search
 // +build sync,scrub,metrics,search
 
-package test_test
+package ocilayout_test
 
 import (
 	"encoding/json"
@@ -24,7 +24,10 @@ import (
 	"zotregistry.io/zot/pkg/storage/local"
 	. "zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/mocks"
+	ocilayout "zotregistry.io/zot/pkg/test/oci-layout"
 )
+
+var ErrTestError = fmt.Errorf("testError")
 
 func TestBaseOciLayoutUtils(t *testing.T) {
 	manifestDigest := GetTestBlobDigest("zot-test", "config").String()
@@ -37,7 +40,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		size := olu.GetImageManifestSize("", "")
 		So(size, ShouldBeZeroValue)
@@ -51,7 +54,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		size := olu.GetImageConfigSize("", "")
 		So(size, ShouldBeZeroValue)
@@ -86,7 +89,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		size := olu.GetImageConfigSize("", "")
 		So(size, ShouldBeZeroValue)
@@ -100,7 +103,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		_, err := olu.GetRepoLastUpdated("")
 		So(err, ShouldNotBeNil)
@@ -126,7 +129,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		_, err = olu.GetImageTagsWithTimestamp("rep")
 		So(err, ShouldNotBeNil)
@@ -170,7 +173,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		_, err = olu.GetImageTagsWithTimestamp("repo")
 		So(err, ShouldNotBeNil)
@@ -213,7 +216,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		_, err = olu.GetExpandedRepoInfo("rep")
 		So(err, ShouldNotBeNil)
@@ -226,7 +229,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController = storage.StoreController{DefaultStore: mockStoreController}
-		olu = NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu = ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		_, err = olu.GetExpandedRepoInfo("rep")
 		So(err, ShouldNotBeNil)
@@ -243,7 +246,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController = storage.StoreController{DefaultStore: mockStoreController}
-		olu = NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu = ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		_, err = olu.GetExpandedRepoInfo("rep")
 		So(err, ShouldBeNil)
@@ -257,7 +260,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		_, err := olu.GetImageInfo("", "")
 		So(err, ShouldNotBeNil)
@@ -275,7 +278,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		}
 
 		storeController := storage.StoreController{DefaultStore: mockStoreController}
-		olu := NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		check := olu.CheckManifestSignature("rep", godigest.FromString(""))
 		So(check, ShouldBeFalse)
@@ -324,7 +327,7 @@ func TestBaseOciLayoutUtils(t *testing.T) {
 		)
 		So(err, ShouldBeNil)
 
-		olu = NewBaseOciLayoutUtils(ctlr.StoreController, log.NewLogger("debug", ""))
+		olu = ocilayout.NewBaseOciLayoutUtils(ctlr.StoreController, log.NewLogger("debug", ""))
 		manifestList, err := olu.GetImageManifests(repo)
 		So(err, ShouldBeNil)
 		So(len(manifestList), ShouldEqual, 1)
@@ -369,7 +372,7 @@ func TestExtractImageDetails(t *testing.T) {
 		So(err, ShouldBeNil)
 		configDigest := godigest.FromBytes(configBlob)
 
-		olu := NewBaseOciLayoutUtils(storeController, testLogger)
+		olu := ocilayout.NewBaseOciLayoutUtils(storeController, testLogger)
 		resDigest, resManifest, resIspecImage, resErr := olu.ExtractImageDetails("zot-test", "latest", testLogger)
 		So(string(resDigest), ShouldContainSubstring, "sha256:c52f15d2d4")
 		So(resManifest.Config.Digest.String(), ShouldContainSubstring, configDigest.Encoded())
@@ -388,7 +391,7 @@ func TestExtractImageDetails(t *testing.T) {
 			DefaultStore: imageStore,
 		}
 
-		olu := NewBaseOciLayoutUtils(storeController, testLogger)
+		olu := ocilayout.NewBaseOciLayoutUtils(storeController, testLogger)
 		resDigest, resManifest, resIspecImage, resErr := olu.ExtractImageDetails("zot-test",
 			"latest", testLogger)
 		So(resErr, ShouldEqual, zerr.ErrRepoNotFound)
@@ -431,7 +434,7 @@ func TestExtractImageDetails(t *testing.T) {
 			panic(err)
 		}
 
-		olu := NewBaseOciLayoutUtils(storeController, testLogger)
+		olu := ocilayout.NewBaseOciLayoutUtils(storeController, testLogger)
 		resDigest, resManifest, resIspecImage, resErr := olu.ExtractImageDetails("zot-test", "latest", testLogger)
 		So(resErr, ShouldEqual, zerr.ErrBlobNotFound)
 		So(string(resDigest), ShouldEqual, "")
