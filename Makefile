@@ -19,6 +19,8 @@ ORAS := $(TOOLSDIR)/bin/oras
 ORAS_VERSION := 1.0.0-rc.1
 REGCLIENT := $(TOOLSDIR)/bin/regctl
 REGCLIENT_VERSION := v0.4.5
+CRICTL := $(TOOLSDIR)/bin/crictl
+CRICTL_VERSION := v1.26.1
 ACTION_VALIDATOR := $(TOOLSDIR)/bin/action-validator
 ACTION_VALIDATOR_VERSION := v0.2.1
 ZUI_VERSION := commit-2f94cc3
@@ -143,6 +145,14 @@ $(REGCLIENT):
 	curl -Lo regctl https://github.com/regclient/regclient/releases/download/$(REGCLIENT_VERSION)/regctl-linux-amd64
 	cp regctl $(TOOLSDIR)/bin/regctl
 	chmod +x $(TOOLSDIR)/bin/regctl
+
+$(CRICTL):
+	mkdir -p $(TOOLSDIR)/bin
+	curl -Lo crictl.tar.gz https://github.com/kubernetes-sigs/cri-tools/releases/download/$(CRICTL_VERSION)/crictl-$(CRICTL_VERSION)-linux-amd64.tar.gz
+	tar xvzf crictl.tar.gz
+	cp crictl $(TOOLSDIR)/bin/crictl
+	chmod +x $(TOOLSDIR)/bin/crictl
+
 
 $(ACTION_VALIDATOR):
 	mkdir -p $(TOOLSDIR)/bin
@@ -300,7 +310,7 @@ $(BATS):
 	rm -rf bats-core
 
 .PHONY: test-push-pull
-test-push-pull: binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM)
+test-push-pull: binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM) $(CRICTL)
 	$(BATS) --trace --print-output-on-failure test/blackbox/pushpull.bats
 
 .PHONY: test-push-pull-verbose
@@ -308,19 +318,19 @@ test-push-pull-verbose: binary check-skopeo $(BATS)
 	$(BATS) --trace --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/pushpull.bats
 
 .PHONY: test-push-pull-running-dedupe
-test-push-pull-running-dedupe: binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM)
+test-push-pull-running-dedupe: binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM) $(CRICTL)
 	$(BATS) --trace --print-output-on-failure test/blackbox/pushpull_running_dedupe.bats
 
 .PHONY: test-push-pull-running-dedupe-verbose
-test-push-pull-running-dedupe-verbose: binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM)
+test-push-pull-running-dedupe-verbose: binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM) $(CRICTL)
 	$(BATS) --trace --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/pushpull_running_dedupe.bats
 
 .PHONY: test-restore-s3-blobs
-test-restore-s3-blobs: binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM)
+test-restore-s3-blobs: binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM) $(CRICTL)
 	$(BATS) --trace --print-output-on-failure test/blackbox/restore_s3_blobs.bats
 
 .PHONY: test-restore-s3-blobs-verbose
-test-restore-s3-blobs-verbose: binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM)
+test-restore-s3-blobs-verbose: binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) $(HELM) $(CRICTL)
 	$(BATS) --trace --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/restore_s3_blobs.bats
 
 .PHONY: test-bats-referrers

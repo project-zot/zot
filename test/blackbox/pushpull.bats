@@ -203,6 +203,16 @@ EOF
     [ "$status" -eq 0 ]
 }
 
+@test "pull manifest with docker client" {
+    run docker pull localhost:8080/test-regclient
+    [ "$status" -eq 0 ]
+}
+
+@test "pull manifest with crictl" {
+    run crictl pull localhost:8080/test-regclient
+    [ "$status" -eq 0 ]
+}
+
 @test "push OCI artifact with regclient" {
     run regctl artifact put localhost:8080/artifact:demo <<EOF
 this is an artifact
