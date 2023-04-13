@@ -314,6 +314,20 @@ func validateCacheConfig(cfg *config.Config) error {
 }
 
 func validateExtensionsConfig(cfg *config.Config) error {
+	if cfg.Extensions != nil && cfg.Extensions.UI != nil && cfg.Extensions.UI.Enable != nil && *cfg.Extensions.UI.Enable {
+		if cfg.Extensions.Mgmt == nil || !*cfg.Extensions.Mgmt.Enable {
+			log.Warn().Err(errors.ErrBadConfig).Msg("UI functionality can't be used without mgmt extension.")
+
+			return errors.ErrBadConfig
+		}
+
+		if cfg.Extensions.Search == nil || !*cfg.Extensions.Search.Enable {
+			log.Warn().Err(errors.ErrBadConfig).Msg("UI functionality can't be used without search extension.")
+
+			return errors.ErrBadConfig
+		}
+	}
+
 	//nolint:lll
 	if cfg.Storage.StorageDriver != nil && cfg.Extensions != nil && cfg.Extensions.Search != nil &&
 		cfg.Extensions.Search.Enable != nil && *cfg.Extensions.Search.Enable && cfg.Extensions.Search.CVE != nil {
