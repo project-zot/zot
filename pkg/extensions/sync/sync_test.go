@@ -487,6 +487,8 @@ func TestORAS(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeEmpty)
 		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+		waitSyncFinish(dctlr.Config.Log.Output)
 	})
 }
 
@@ -977,6 +979,8 @@ func TestPeriodically(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			So(destTagsList, ShouldNotResemble, srcTagsList)
+
+			waitSyncFinish(dctlr.Config.Log.Output)
 		})
 	})
 }
@@ -1072,9 +1076,7 @@ func TestPermsDenied(t *testing.T) {
 			panic(err)
 		}
 
-		data, err := os.ReadFile(dctlr.Config.Log.Output)
-		So(err, ShouldBeNil)
-		t.Logf("downstream log: %s", string(data))
+		waitSyncFinish(dctlr.Config.Log.Output)
 	})
 }
 
@@ -1286,6 +1288,8 @@ func TestMandatoryAnnotations(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+		waitSyncFinish(dctlr.Config.Log.Output)
 	})
 }
 
@@ -1455,6 +1459,8 @@ func TestTLS(t *testing.T) {
 		if !found {
 			panic(errSync)
 		}
+
+		waitSyncFinish(dctlr.Config.Log.Output)
 	})
 }
 
@@ -1531,6 +1537,8 @@ func TestBasicAuth(t *testing.T) {
 			}
 
 			So(destTagsList, ShouldResemble, srcTagsList)
+
+			waitSyncFinish(dctlr.Config.Log.Output)
 		})
 
 		Convey("Verify sync basic auth with wrong file credentials", func() {
@@ -2393,6 +2401,7 @@ func TestSubPaths(t *testing.T) {
 		subPathDestDir := t.TempDir()
 
 		destConfig.Storage.RootDirectory = destDir
+		destConfig.Log.Output = path.Join(destDir, "sync.log")
 
 		destConfig.Storage.SubPaths = map[string]config.StorageConfig{
 			subpath: {
@@ -2445,6 +2454,8 @@ func TestSubPaths(t *testing.T) {
 		binfo, err = os.Stat(path.Join(destDir, subpath))
 		So(binfo, ShouldBeNil)
 		So(err, ShouldNotBeNil)
+
+		waitSyncFinish(dctlr.Config.Log.Output)
 	})
 }
 
@@ -2748,6 +2759,8 @@ func TestMultipleURLs(t *testing.T) {
 		}
 
 		So(destTagsList, ShouldResemble, srcTagsList)
+
+		waitSyncFinish(dctlr.Config.Log.Output)
 	})
 }
 
@@ -3985,6 +3998,15 @@ func TestError(t *testing.T) {
 		err = os.Chmod(localRepoPath, 0o000)
 		So(err, ShouldBeNil)
 
+		defer func() {
+			err = os.Chmod(localRepoPath, 0o755)
+			So(err, ShouldBeNil)
+		}()
+
+		resp, err := client.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
 		found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
 			"finished syncing", 15*time.Second)
 		if err != nil {
@@ -3999,10 +4021,6 @@ func TestError(t *testing.T) {
 		}
 
 		So(found, ShouldBeTrue)
-
-		resp, err := client.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
-		So(err, ShouldBeNil)
-		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 	})
 }
 
@@ -4082,8 +4100,6 @@ func TestSignaturesOnDemand(t *testing.T) {
 		}
 		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")})
 		So(err, ShouldBeNil)
-
-		//
 
 		// test negative case
 		cosignEncodedDigest := strings.Replace(digest.String(), ":", "-", 1) + ".sig"
@@ -4451,6 +4467,8 @@ func TestSyncOnlyDiff(t *testing.T) {
 		}
 
 		So(found, ShouldBeTrue)
+
+		waitSyncFinish(dctlr.Config.Log.Output)
 	})
 }
 
@@ -4502,6 +4520,7 @@ func TestSyncWithDiffDigest(t *testing.T) {
 		destConfig.Extensions = &extconf.ExtensionConfig{}
 		destConfig.Extensions.Search = nil
 		destConfig.Extensions.Sync = syncConfig
+		destConfig.Log.Output = path.Join(destDir, "sync.log")
 
 		dctlr := api.NewController(destConfig)
 		dcm := test.NewControllerManager(dctlr)
@@ -4591,6 +4610,8 @@ func TestSyncWithDiffDigest(t *testing.T) {
 
 		done <- true
 		So(isPopulated, ShouldBeTrue)
+
+		waitSyncFinish(dctlr.Config.Log.Output)
 	})
 }
 
@@ -4828,6 +4849,8 @@ func TestSyncSignaturesDiff(t *testing.T) {
 		}
 
 		So(found, ShouldBeTrue)
+
+		waitSyncFinish(dctlr.Config.Log.Output)
 	})
 }
 
@@ -4897,6 +4920,8 @@ func TestOnlySignedFlag(t *testing.T) {
 		resp, err := client.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+		waitSyncFinish(dctlr.Config.Log.Output)
 	})
 
 	Convey("Verify sync ondemand revokes unsigned images", t, func() {
@@ -4915,6 +4940,8 @@ func TestOnlySignedFlag(t *testing.T) {
 		resp, err := client.R().Get(destBaseURL + "/v2/" + testImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+		waitSyncFinish(dctlr.Config.Log.Output)
 	})
 }
 
@@ -5025,7 +5052,7 @@ func TestSyncWithDestination(t *testing.T) {
 				defer dcm.StopServer()
 
 				// give it time to set up sync
-				waitSync(dctlr.Config.Storage.RootDirectory, testCase.expected)
+				waitSyncFinish(dctlr.Config.Log.Output)
 
 				resp, err := destClient.R().Get(destBaseURL + "/v2/" + testCase.expected + "/manifests/0.0.1")
 				t.Logf("testcase: %#v", testCase)
@@ -5176,6 +5203,8 @@ func TestSyncImageIndex(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			So(reflect.DeepEqual(syncedIndex, index), ShouldEqual, true)
+
+			waitSyncFinish(dctlr.Config.Log.Output)
 		})
 
 		Convey("sync on demand", func() {
@@ -5207,7 +5236,7 @@ func TestSyncImageIndex(t *testing.T) {
 
 func TestSyncOCIArtifactsWithTag(t *testing.T) {
 	Convey("Verify syncing tagged OCI artifacts", t, func() {
-		updateDuration, _ := time.ParseDuration("5s")
+		updateDuration, _ := time.ParseDuration("10s")
 
 		sctlr, srcBaseURL, _, _, _ := makeUpstreamServer(t, false, false)
 
@@ -5345,14 +5374,16 @@ func TestSyncOCIArtifactsWithTag(t *testing.T) {
 				panic(err)
 			}
 
-			// if !found {
-			data, err := os.ReadFile(dctlr.Config.Log.Output)
-			So(err, ShouldBeNil)
+			if !found {
+				data, err := os.ReadFile(dctlr.Config.Log.Output)
+				So(err, ShouldBeNil)
 
-			t.Logf("downstream log: %s", string(data))
-			// }
+				t.Logf("downstream log: %s", string(data))
+			}
 
 			So(found, ShouldBeTrue)
+
+			waitSyncFinish(dctlr.Config.Log.Output)
 		})
 
 		Convey("sync on demand", func() {
@@ -5485,7 +5516,7 @@ func TestSyncOCIArtifactsWithTag(t *testing.T) {
 			destConfig.Extensions.Search = nil
 			destConfig.Extensions.Sync = syncConfig
 
-			destConfig.Log.Output = path.Join(destDir, "zot.log")
+			destConfig.Log.Output = path.Join(destDir, "sync.log")
 
 			dctlr := api.NewController(destConfig)
 			dcm := test.NewControllerManager(dctlr)
@@ -5522,6 +5553,8 @@ func TestSyncOCIArtifactsWithTag(t *testing.T) {
 				Get(destBaseURL + fmt.Sprintf("/v2/%s/manifests/%s", repoName, artifactDigest.String()))
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+
+			waitSyncFinish(dctlr.Config.Log.Output)
 		})
 	})
 }
@@ -5807,4 +5840,14 @@ func pushBlob(url string, repoName string, buf []byte) godigest.Digest {
 	}
 
 	return digest
+}
+
+func waitSyncFinish(logPath string) bool {
+	found, err := test.ReadLogFileAndSearchString(logPath,
+		"finished syncing", 60*time.Second)
+	if err != nil {
+		panic(err)
+	}
+
+	return found
 }
