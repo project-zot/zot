@@ -1,7 +1,7 @@
 //go:build search
 // +build search
 
-package common_test
+package search_test
 
 import (
 	"context"
@@ -31,9 +31,9 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
+	"zotregistry.io/zot/pkg/common"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
-	"zotregistry.io/zot/pkg/extensions/search/common"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 	"zotregistry.io/zot/pkg/log"
@@ -42,6 +42,7 @@ import (
 	"zotregistry.io/zot/pkg/storage/local"
 	. "zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/mocks"
+	ocilayout "zotregistry.io/zot/pkg/test/oci-layout"
 )
 
 const (
@@ -144,50 +145,6 @@ type SingleImageSummary struct {
 type ImageSummaryResult struct {
 	SingleImageSummary SingleImageSummary `json:"data"`
 	Errors             []ErrorGQL         `json:"errors"`
-}
-
-func getTags() ([]common.TagInfo, []common.TagInfo) {
-	tags := make([]common.TagInfo, 0)
-
-	firstTag := common.TagInfo{
-		Name: "1.0.0",
-		Descriptor: common.Descriptor{
-			Digest:    "sha256:eca04f027f414362596f2632746d8a178362170b9ac9af772011fedcc3877ebb",
-			MediaType: ispec.MediaTypeImageManifest,
-		},
-		Timestamp: time.Now(),
-	}
-	secondTag := common.TagInfo{
-		Name: "1.0.1",
-		Descriptor: common.Descriptor{
-			Digest:    "sha256:eca04f027f414362596f2632746d8a179362170b9ac9af772011fedcc3877ebb",
-			MediaType: ispec.MediaTypeImageManifest,
-		},
-		Timestamp: time.Now(),
-	}
-	thirdTag := common.TagInfo{
-		Name: "1.0.2",
-		Descriptor: common.Descriptor{
-			Digest:    "sha256:eca04f027f414362596f2632746d8a170362170b9ac9af772011fedcc3877ebb",
-			MediaType: ispec.MediaTypeImageManifest,
-		},
-		Timestamp: time.Now(),
-	}
-	fourthTag := common.TagInfo{
-		Name: "1.0.3",
-		Descriptor: common.Descriptor{
-			Digest:    "sha256:eca04f027f414362596f2632746d8a171362170b9ac9af772011fedcc3877ebb",
-			MediaType: ispec.MediaTypeImageManifest,
-		},
-		Timestamp: time.Now(),
-	}
-
-	tags = append(tags, firstTag, secondTag, thirdTag, fourthTag)
-
-	vulnerableTags := make([]common.TagInfo, 0)
-	vulnerableTags = append(vulnerableTags, secondTag)
-
-	return tags, vulnerableTags
 }
 
 func readFileAndSearchString(filePath string, stringToMatch string, timeout time.Duration) (bool, error) {
@@ -1796,136 +1753,6 @@ func TestExpandedRepoInfo(t *testing.T) {
 	})
 }
 
-func TestUtilsMethod(t *testing.T) {
-	Convey("Test utils", t, func() {
-		// Test GetRepo method
-		repo := common.GetRepo("test")
-		So(repo, ShouldEqual, "test")
-
-		repo = common.GetRepo(":")
-		So(repo, ShouldEqual, "")
-
-		repo = common.GetRepo("")
-		So(repo, ShouldEqual, "")
-
-		repo = common.GetRepo("test:123")
-		So(repo, ShouldEqual, "test")
-
-		repo = common.GetRepo("a/test:123")
-		So(repo, ShouldEqual, "a/test")
-
-		repo = common.GetRepo("a/test:123:456")
-		So(repo, ShouldEqual, "a/test")
-
-		// Test various labels
-		labels := make(map[string]string)
-
-		desc := common.GetDescription(labels)
-		So(desc, ShouldEqual, "")
-
-		license := common.GetLicenses(labels)
-		So(license, ShouldEqual, "")
-
-		vendor := common.GetVendor(labels)
-		So(vendor, ShouldEqual, "")
-
-		categories := common.GetCategories(labels)
-		So(categories, ShouldEqual, "")
-
-		labels[ispec.AnnotationVendor] = "zot"
-		labels[ispec.AnnotationDescription] = "zot-desc"
-		labels[ispec.AnnotationLicenses] = "zot-license"
-		labels[common.AnnotationLabels] = "zot-labels"
-
-		desc = common.GetDescription(labels)
-		So(desc, ShouldEqual, "zot-desc")
-
-		license = common.GetLicenses(labels)
-		So(license, ShouldEqual, "zot-license")
-
-		vendor = common.GetVendor(labels)
-		So(vendor, ShouldEqual, "zot")
-
-		categories = common.GetCategories(labels)
-		So(categories, ShouldEqual, "zot-labels")
-
-		labels = make(map[string]string)
-
-		// Use diff key
-		labels[common.LabelAnnotationVendor] = "zot-vendor"
-		labels[common.LabelAnnotationDescription] = "zot-label-desc"
-		labels[ispec.AnnotationLicenses] = "zot-label-license"
-
-		desc = common.GetDescription(labels)
-		So(desc, ShouldEqual, "zot-label-desc")
-
-		license = common.GetLicenses(labels)
-		So(license, ShouldEqual, "zot-label-license")
-
-		vendor = common.GetVendor(labels)
-		So(vendor, ShouldEqual, "zot-vendor")
-
-		routePrefix := common.GetRoutePrefix("test:latest")
-		So(routePrefix, ShouldEqual, "/")
-
-		routePrefix = common.GetRoutePrefix("a/test:latest")
-		So(routePrefix, ShouldEqual, "/a")
-
-		routePrefix = common.GetRoutePrefix("a/b/test:latest")
-		So(routePrefix, ShouldEqual, "/a")
-
-		allTags, vulnerableTags := getTags()
-
-		latestTag := common.GetLatestTag(allTags)
-		So(latestTag.Name, ShouldEqual, "1.0.3")
-
-		fixedTags := common.GetFixedTags(allTags, vulnerableTags)
-		So(len(fixedTags), ShouldEqual, 2)
-
-		fixedTags = common.GetFixedTags(allTags, append(vulnerableTags, common.TagInfo{
-			Name:       "taginfo",
-			Descriptor: common.Descriptor{},
-			Timestamp:  time.Date(2000, time.July, 20, 10, 10, 10, 10, time.UTC),
-		}))
-		So(len(fixedTags), ShouldEqual, 3)
-
-		log := log.NewLogger("debug", "")
-
-		rootDir := t.TempDir()
-
-		subRootDir := t.TempDir()
-
-		conf := config.New()
-		conf.Extensions = &extconf.ExtensionConfig{}
-		conf.Extensions.Lint = &extconf.LintConfig{}
-
-		metrics := monitoring.NewMetricsServer(false, log)
-		defaultStore := local.NewImageStore(rootDir, false,
-			storage.DefaultGCDelay, false, false, log, metrics, nil, nil)
-
-		subStore := local.NewImageStore(subRootDir, false,
-			storage.DefaultGCDelay, false, false, log, metrics, nil, nil)
-
-		subStoreMap := make(map[string]storage.ImageStore)
-
-		subStoreMap["/b"] = subStore
-
-		storeController := storage.StoreController{DefaultStore: defaultStore, SubStore: subStoreMap}
-
-		dir := common.GetRootDir("a/zot-cve-test", storeController)
-
-		So(dir, ShouldEqual, rootDir)
-
-		dir = common.GetRootDir("b/zot-cve-test", storeController)
-
-		So(dir, ShouldEqual, subRootDir)
-
-		repo, digest := common.GetImageDirAndDigest("image")
-		So(repo, ShouldResemble, "image")
-		So(digest, ShouldResemble, "")
-	})
-}
-
 func TestDerivedImageList(t *testing.T) {
 	rootDir := t.TempDir()
 
@@ -2390,7 +2217,7 @@ func TestGetImageManifest(t *testing.T) {
 		storeController := storage.StoreController{
 			DefaultStore: mockImageStore,
 		}
-		olu := NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		_, _, err := olu.GetImageManifest("nonexistent-repo", "latest")
 		So(err, ShouldNotBeNil)
@@ -2406,7 +2233,7 @@ func TestGetImageManifest(t *testing.T) {
 		storeController := storage.StoreController{
 			DefaultStore: mockImageStore,
 		}
-		olu := NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		_, _, err := olu.GetImageManifest("test-repo", "latest") //nolint:goconst
 		So(err, ShouldNotBeNil)
@@ -3068,7 +2895,7 @@ func TestGetRepositories(t *testing.T) {
 			DefaultStore: mockImageStore,
 			SubStore:     map[string]storage.ImageStore{"test": mockImageStore},
 		}
-		olu := NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu := ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		repoList, err := olu.GetRepositories()
 		So(repoList, ShouldBeEmpty)
@@ -3078,7 +2905,7 @@ func TestGetRepositories(t *testing.T) {
 			DefaultStore: mocks.MockedImageStore{},
 			SubStore:     map[string]storage.ImageStore{"test": mockImageStore},
 		}
-		olu = NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
+		olu = ocilayout.NewBaseOciLayoutUtils(storeController, log.NewLogger("debug", ""))
 
 		repoList, err = olu.GetRepositories()
 		So(repoList, ShouldBeEmpty)
@@ -3388,7 +3215,7 @@ func TestGlobalSearch(t *testing.T) {
 		)
 		So(err, ShouldBeNil)
 
-		olu := NewBaseOciLayoutUtils(ctlr.StoreController, log.NewLogger("debug", ""))
+		olu := ocilayout.NewBaseOciLayoutUtils(ctlr.StoreController, log.NewLogger("debug", ""))
 
 		// Initialize the objects containing the expected data
 		repos, err := olu.GetRepositories()
@@ -3717,7 +3544,7 @@ func TestGlobalSearch(t *testing.T) {
 		)
 		So(err, ShouldBeNil)
 
-		olu := NewBaseOciLayoutUtils(ctlr.StoreController, log.NewLogger("debug", ""))
+		olu := ocilayout.NewBaseOciLayoutUtils(ctlr.StoreController, log.NewLogger("debug", ""))
 
 		// Initialize the objects containing the expected data
 		repos, err := olu.GetRepositories()

@@ -4,7 +4,8 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	"zotregistry.io/zot/pkg/extensions/search/common"
+	"zotregistry.io/zot/pkg/common"
+	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 )
 
 type OciLayoutUtilsMock struct {
@@ -12,11 +13,11 @@ type OciLayoutUtilsMock struct {
 	GetImageManifestsFn         func(repo string) ([]ispec.Descriptor, error)
 	GetImageBlobManifestFn      func(repo string, digest godigest.Digest) (ispec.Manifest, error)
 	GetImageInfoFn              func(repo string, digest godigest.Digest) (ispec.Image, error)
-	GetImageTagsWithTimestampFn func(repo string) ([]common.TagInfo, error)
+	GetImageTagsWithTimestampFn func(repo string) ([]cvemodel.TagInfo, error)
 	GetImagePlatformFn          func(imageInfo ispec.Image) (string, string)
 	GetImageManifestSizeFn      func(repo string, manifestDigest godigest.Digest) int64
 	GetImageConfigSizeFn        func(repo string, manifestDigest godigest.Digest) int64
-	GetRepoLastUpdatedFn        func(repo string) (common.TagInfo, error)
+	GetRepoLastUpdatedFn        func(repo string) (cvemodel.TagInfo, error)
 	GetExpandedRepoInfoFn       func(name string) (common.RepoInfo, error)
 	GetImageConfigInfoFn        func(repo string, manifestDigest godigest.Digest) (ispec.Image, error)
 	CheckManifestSignatureFn    func(name string, digest godigest.Digest) bool
@@ -64,12 +65,12 @@ func (olum OciLayoutUtilsMock) GetImageInfo(repo string, digest godigest.Digest)
 	return ispec.Image{}, nil
 }
 
-func (olum OciLayoutUtilsMock) GetImageTagsWithTimestamp(repo string) ([]common.TagInfo, error) {
+func (olum OciLayoutUtilsMock) GetImageTagsWithTimestamp(repo string) ([]cvemodel.TagInfo, error) {
 	if olum.GetImageTagsWithTimestampFn != nil {
 		return olum.GetImageTagsWithTimestampFn(repo)
 	}
 
-	return []common.TagInfo{}, nil
+	return []cvemodel.TagInfo{}, nil
 }
 
 func (olum OciLayoutUtilsMock) GetImagePlatform(imageInfo ispec.Image) (string, string) {
@@ -96,12 +97,12 @@ func (olum OciLayoutUtilsMock) GetImageConfigSize(repo string, manifestDigest go
 	return 0
 }
 
-func (olum OciLayoutUtilsMock) GetRepoLastUpdated(repo string) (common.TagInfo, error) {
+func (olum OciLayoutUtilsMock) GetRepoLastUpdated(repo string) (cvemodel.TagInfo, error) {
 	if olum.GetRepoLastUpdatedFn != nil {
 		return olum.GetRepoLastUpdatedFn(repo)
 	}
 
-	return common.TagInfo{}, nil
+	return cvemodel.TagInfo{}, nil
 }
 
 func (olum OciLayoutUtilsMock) GetExpandedRepoInfo(name string) (common.RepoInfo, error) {

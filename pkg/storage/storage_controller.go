@@ -16,7 +16,7 @@ type BlobUpload struct {
 	ID        string
 }
 
-func getRoutePrefix(name string) string {
+func GetRoutePrefix(name string) string {
 	names := strings.SplitN(name, "/", 2) //nolint:gomnd
 
 	if len(names) != 2 { //nolint:gomnd
@@ -32,7 +32,7 @@ func getRoutePrefix(name string) string {
 func (sc StoreController) GetImageStore(name string) ImageStore {
 	if sc.SubStore != nil {
 		// SubStore is being provided, now we need to find equivalent image store and this will be found by splitting name
-		prefixName := getRoutePrefix(name)
+		prefixName := GetRoutePrefix(name)
 
 		imgStore, ok := sc.SubStore[prefixName]
 		if !ok {

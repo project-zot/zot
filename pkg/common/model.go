@@ -57,6 +57,11 @@ type Platform struct {
 	Arch string `json:"arch"`
 }
 
+type ErrorGraphQL struct {
+	Message string   `json:"message"`
+	Path    []string `json:"path"`
+}
+
 type ImageVulnerabilitySummary struct {
 	MaxSeverity string `json:"maxSeverity"`
 	Count       int    `json:"count"`

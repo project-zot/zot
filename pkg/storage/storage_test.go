@@ -902,3 +902,16 @@ func TestStorageHandler(t *testing.T) {
 		})
 	}
 }
+
+func TestRoutePrefix(t *testing.T) {
+	Convey("Test route prefix", t, func() {
+		routePrefix := storage.GetRoutePrefix("test:latest")
+		So(routePrefix, ShouldEqual, "/")
+
+		routePrefix = storage.GetRoutePrefix("a/test:latest")
+		So(routePrefix, ShouldEqual, "/a")
+
+		routePrefix = storage.GetRoutePrefix("a/b/test:latest")
+		So(routePrefix, ShouldEqual, "/a")
+	})
+}

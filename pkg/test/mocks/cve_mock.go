@@ -1,14 +1,13 @@
 package mocks
 
 import (
-	"zotregistry.io/zot/pkg/extensions/search/common"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 )
 
 type CveInfoMock struct {
-	GetImageListForCVEFn       func(repo, cveID string) ([]common.TagInfo, error)
-	GetImageListWithCVEFixedFn func(repo, cveID string) ([]common.TagInfo, error)
+	GetImageListForCVEFn       func(repo, cveID string) ([]cvemodel.TagInfo, error)
+	GetImageListWithCVEFixedFn func(repo, cveID string) ([]cvemodel.TagInfo, error)
 	GetCVEListForImageFn       func(repo string, reference string, searchedCVE string, pageInput cveinfo.PageInput,
 	) ([]cvemodel.CVE, cveinfo.PageInfo, error)
 	GetCVESummaryForImageFn func(repo string, reference string,
@@ -17,20 +16,20 @@ type CveInfoMock struct {
 	UpdateDBFn          func() error
 }
 
-func (cveInfo CveInfoMock) GetImageListForCVE(repo, cveID string) ([]common.TagInfo, error) {
+func (cveInfo CveInfoMock) GetImageListForCVE(repo, cveID string) ([]cvemodel.TagInfo, error) {
 	if cveInfo.GetImageListForCVEFn != nil {
 		return cveInfo.GetImageListForCVEFn(repo, cveID)
 	}
 
-	return []common.TagInfo{}, nil
+	return []cvemodel.TagInfo{}, nil
 }
 
-func (cveInfo CveInfoMock) GetImageListWithCVEFixed(repo, cveID string) ([]common.TagInfo, error) {
+func (cveInfo CveInfoMock) GetImageListWithCVEFixed(repo, cveID string) ([]cvemodel.TagInfo, error) {
 	if cveInfo.GetImageListWithCVEFixedFn != nil {
 		return cveInfo.GetImageListWithCVEFixedFn(repo, cveID)
 	}
 
-	return []common.TagInfo{}, nil
+	return []cvemodel.TagInfo{}, nil
 }
 
 func (cveInfo CveInfoMock) GetCVEListForImage(repo string, reference string,
