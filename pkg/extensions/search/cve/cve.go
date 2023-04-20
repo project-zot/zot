@@ -62,7 +62,7 @@ func (cveinfo BaseCveInfo) GetImageListForCVE(repo, cveID string) ([]cvemodel.Ta
 
 	repoMeta, err := cveinfo.RepoDB.GetRepoMeta(repo)
 	if err != nil {
-		cveinfo.Log.Error().Err(err).Str("repo", repo).Str("cve-id", cveID).
+		cveinfo.Log.Error().Err(err).Str("repository", repo).Str("cve-id", cveID).
 			Msg("unable to get list of tags from repo")
 
 		return imgList, err
@@ -99,7 +99,7 @@ func (cveinfo BaseCveInfo) GetImageListForCVE(repo, cveID string) ([]cvemodel.Ta
 				})
 			}
 		default:
-			cveinfo.Log.Error().Msgf("type '%s' not supported for scanning", descriptor.MediaType)
+			cveinfo.Log.Error().Str("mediaType", descriptor.MediaType).Msg("media type not supported for scanning")
 		}
 	}
 
@@ -109,7 +109,7 @@ func (cveinfo BaseCveInfo) GetImageListForCVE(repo, cveID string) ([]cvemodel.Ta
 func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]cvemodel.TagInfo, error) {
 	repoMeta, err := cveinfo.RepoDB.GetRepoMeta(repo)
 	if err != nil {
-		cveinfo.Log.Error().Err(err).Str("repo", repo).Str("cve-id", cveID).
+		cveinfo.Log.Error().Err(err).Str("repository", repo).Str("cve-id", cveID).
 			Msg("unable to get list of tags from repo")
 
 		return []cvemodel.TagInfo{}, err
@@ -127,7 +127,7 @@ func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]cvemo
 		case ispec.MediaTypeImageManifest:
 			manifestDigest, err := godigest.Parse(manifestDigestStr)
 			if err != nil {
-				cveinfo.Log.Error().Err(err).Str("repo", repo).Str("tag", tag).
+				cveinfo.Log.Error().Err(err).Str("repository", repo).Str("tag", tag).
 					Str("cve-id", cveID).Str("digest", manifestDigestStr).Msg("unable to parse digest")
 
 				continue
@@ -135,7 +135,7 @@ func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]cvemo
 
 			manifestMeta, err := cveinfo.RepoDB.GetManifestMeta(repo, manifestDigest)
 			if err != nil {
-				cveinfo.Log.Error().Err(err).Str("repo", repo).Str("tag", tag).
+				cveinfo.Log.Error().Err(err).Str("repository", repo).Str("tag", tag).
 					Str("cve-id", cveID).Msg("unable to obtain manifest meta")
 
 				continue
@@ -145,7 +145,7 @@ func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]cvemo
 
 			err = json.Unmarshal(manifestMeta.ConfigBlob, &configContent)
 			if err != nil {
-				cveinfo.Log.Error().Err(err).Str("repo", repo).Str("tag", tag).
+				cveinfo.Log.Error().Err(err).Str("repository", repo).Str("tag", tag).
 					Str("cve-id", cveID).Msg("unable to unmashal manifest blob")
 
 				continue
@@ -195,7 +195,7 @@ func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]cvemo
 				vulnerableTags = append(vulnerableTags, tagInfo)
 			}
 		default:
-			cveinfo.Log.Error().Msgf("media type not supported '%s'", descriptor.MediaType)
+			cveinfo.Log.Error().Str("mediaType", descriptor.MediaType).Msg("media type not supported")
 
 			return []cvemodel.TagInfo{},
 				fmt.Errorf("media type '%s' is not supported: %w", descriptor.MediaType, errors.ErrNotImplemented)
@@ -205,11 +205,13 @@ func (cveinfo BaseCveInfo) GetImageListWithCVEFixed(repo, cveID string) ([]cvemo
 	var fixedTags []cvemodel.TagInfo
 
 	if len(vulnerableTags) != 0 {
-		cveinfo.Log.Info().Str("repo", repo).Str("cve-id", cveID).Msgf("Vulnerable tags: %v", vulnerableTags)
+		cveinfo.Log.Info().Str("repository", repo).Str("cve-id", cveID).
+			Interface("vulnerableTags", vulnerableTags).Msg("Vulnerable tags")
 		fixedTags = GetFixedTags(allTags, vulnerableTags)
-		cveinfo.Log.Info().Str("repo", repo).Str("cve-id", cveID).Msgf("Fixed tags: %v", fixedTags)
+		cveinfo.Log.Info().Str("repository", repo).Str("cve-id", cveID).
+			Interface("fixedTags", fixedTags).Msg("Fixed tags")
 	} else {
-		cveinfo.Log.Info().Str("repo", repo).Str("cve-id", cveID).
+		cveinfo.Log.Info().Str("repository", repo).Str("cve-id", cveID).
 			Msg("image does not contain any tag that have given cve")
 		fixedTags = allTags
 	}

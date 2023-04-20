@@ -184,11 +184,12 @@ func runExporter(c *Controller) {
 	}
 
 	http.Handle(c.Config.Exporter.Metrics.Path, promhttp.Handler())
-	c.Log.Info().Msgf("Exporter is listening on %s & exposes metrics on %s path",
-		exporterAddr, c.Config.Exporter.Metrics.Path)
+	c.Log.Info().Str("exporter addr", exporterAddr).
+		Str("exporter metrics path", c.Config.Exporter.Metrics.Path).
+		Msg("Exporter is listening on exporter addr & exposes metrics on exporter metrics path")
 
 	serverAddr := fmt.Sprintf("%s://%s:%s", c.Config.Server.Protocol,
 		c.Config.Server.Host, c.Config.Server.Port)
-	c.Log.Info().Msgf("Scraping metrics from %s", serverAddr)
+	c.Log.Info().Str("serverAddr", serverAddr).Msg("Scraping metrics")
 	c.Log.Fatal().Err(server.ListenAndServe()).Msg("Exporter stopped")
 }

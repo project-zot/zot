@@ -28,7 +28,7 @@ func EnableSyncExtension(ctx context.Context, config *config.Config,
 func SyncOneImage(ctx context.Context, config *config.Config, repoDB repodb.RepoDB,
 	storeController storage.StoreController, repoName, reference string, artifactType string, log log.Logger,
 ) error {
-	log.Info().Msgf("syncing image %s:%s", repoName, reference)
+	log.Info().Str("repository", repoName).Str("reference", reference).Msg("syncing image")
 
 	err := sync.OneImage(ctx, *config.Extensions.Sync, repoDB, storeController, repoName, reference, artifactType, log)
 

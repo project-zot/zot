@@ -297,8 +297,8 @@ func (c *Controller) InitImageStore(ctx context.Context) error {
 		} else {
 			storeName := fmt.Sprintf("%v", c.Config.Storage.StorageDriver["name"])
 			if storeName != storage.S3StorageDriverName {
-				c.Log.Fatal().Err(errors.ErrBadConfig).Msgf("unsupported storage driver: %s",
-					c.Config.Storage.StorageDriver["name"])
+				c.Log.Fatal().Err(errors.ErrBadConfig).Str("storageDriver", storeName).
+					Msg("unsupported storage driver")
 			}
 			// Init a Storager from connection string.
 			store, err := factory.Create(storeName, c.Config.Storage.StorageDriver)
@@ -405,7 +405,8 @@ func (c *Controller) getSubStore(subPaths map[string]config.StorageConfig,
 		} else {
 			storeName := fmt.Sprintf("%v", storageConfig.StorageDriver["name"])
 			if storeName != storage.S3StorageDriverName {
-				c.Log.Fatal().Err(errors.ErrBadConfig).Msgf("unsupported storage driver: %s", storageConfig.StorageDriver["name"])
+				c.Log.Fatal().Err(errors.ErrBadConfig).Str("storageDriver", storeName).
+					Msg("unsupported storage driver")
 			}
 
 			// Init a Storager from connection string.

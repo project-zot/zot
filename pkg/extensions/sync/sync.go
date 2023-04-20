@@ -53,8 +53,8 @@ func GetUpstreamCatalog(client *http.Client, upstreamURL, username, password str
 		password, &catalog,
 		registryCatalogURL, "application/json", log)
 	if err != nil {
-		log.Error().Msgf("couldn't query %s, status code: %d, body: %s", registryCatalogURL,
-			statusCode, body)
+		log.Error().Str("catalog", registryCatalogURL).Int("statusCode", statusCode).
+			RawJSON("body", body).Msg("couldn't query catalog")
 
 		return catalog, err
 	}
@@ -67,19 +67,20 @@ func imagesToCopyFromUpstream(ctx context.Context, registryName string, repoName
 	upstreamCtx *types.SystemContext, content syncconf.Content, log log.Logger,
 ) ([]types.ImageReference, error) {
 	imageRefs := []types.ImageReference{}
+	repoRefName := fmt.Sprintf("%s/%s", registryName, repoName)
 
-	repoRef, err := parseRepositoryReference(fmt.Sprintf("%s/%s", registryName, repoName))
+	repoRef, err := parseRepositoryReference(repoRefName)
 	if err != nil {
-		log.Error().Str("errorType", common.TypeOf(err)).
-			Err(err).Msgf("couldn't parse repository reference: %s", repoRef)
+		log.Error().Str("errorType", common.TypeOf(err)).Err(err).
+			Str("repository reference", repoRefName).Msg("couldn't parse repository reference")
 
 		return imageRefs, err
 	}
 
 	tags, err := getImageTags(ctx, upstreamCtx, repoRef)
 	if err != nil {
-		log.Error().Str("errorType", common.TypeOf(err)).
-			Err(err).Msgf("couldn't fetch tags for %s", repoRef)
+		log.Error().Str("errorType", common.TypeOf(err)).Err(err).
+			Str("repository reference", repoRefName).Msg("couldn't fetch tags reference")
 
 		return imageRefs, err
 	}
@@ -98,7 +99,7 @@ func imagesToCopyFromUpstream(ctx context.Context, registryName string, repoName
 		}
 	}
 
-	log.Debug().Msgf("repo: %s - upstream tags to be copied: %v", repoName, tags)
+	log.Debug().Str("repository", repoName).Strs("tags", tags).Msg("upstream tags to be copied")
 
 	for _, tag := range tags {
 		// don't copy cosign signature, containers/image doesn't support it
@@ -109,15 +110,16 @@ func imagesToCopyFromUpstream(ctx context.Context, registryName string, repoName
 
 		taggedRef, err := reference.WithTag(repoRef, tag)
 		if err != nil {
-			log.Err(err).Msgf("error creating a reference for repository %s and tag %q", repoRef.Name(), tag)
+			log.Err(err).Str("repository", repoRef.Name()).Str("tag", tag).
+				Msg("error creating a reference for repository and tag")
 
 			return imageRefs, err
 		}
 
 		ref, err := docker.NewReference(taggedRef)
 		if err != nil {
-			log.Err(err).Msgf("cannot obtain a valid image reference for transport %q and reference %s",
-				docker.Transport.Name(), taggedRef.String())
+			log.Err(err).Str("transport", docker.Transport.Name()).Str("reference", taggedRef.String()).
+				Msg("cannot obtain a valid image reference for transport and reference")
 
 			return imageRefs, err
 		}
@@ -170,7 +172,7 @@ func syncRegistry(ctx context.Context, regCfg syncconf.RegistryConfig,
 	policyCtx *signature.PolicyContext, credentials syncconf.Credentials,
 	retryOptions *retry.RetryOptions, log log.Logger,
 ) error {
-	log.Info().Msgf("syncing registry: %s", upstreamURL)
+	log.Info().Str("registry", upstreamURL).Msg("syncing registry")
 
 	var err error
 
@@ -212,11 +214,11 @@ func syncRegistry(ctx context.Context, regCfg syncconf.RegistryConfig,
 		return err
 	}
 
-	log.Info().Msgf("filtering %d repos based on sync prefixes", len(catalog.Repositories))
+	log.Info().Int("repo count", len(catalog.Repositories)).Msg("filtering repos based on sync prefixes")
 
 	repos := filterRepos(catalog.Repositories, regCfg.Content, log)
 
-	log.Info().Msgf("got repos: %v", repos)
+	log.Info().Interface("repos", repos).Msg("got repos")
 
 	upstreamAddr := StripRegistryTransport(upstreamURL)
 
@@ -258,8 +260,8 @@ func syncRegistry(ctx context.Context, regCfg syncconf.RegistryConfig,
 
 		localCachePath, err := getLocalCachePath(imageStore, localRepo)
 		if err != nil {
-			log.Error().Str("errorType", common.TypeOf(err)).
-				Err(err).Msgf("couldn't get localCachePath for %s", localRepo)
+			log.Error().Str("errorType", common.TypeOf(err)).Err(err).
+				Str("repository", localRepo).Msg("couldn't get localCachePath for repo")
 
 			return err
 		}
@@ -293,7 +295,7 @@ func syncRegistry(ctx context.Context, regCfg syncconf.RegistryConfig,
 		}
 	}
 
-	log.Info().Msgf("finished syncing %s", upstreamAddr)
+	log.Info().Str("upstreamAddr", upstreamAddr).Msg("finished syncing from upstream address")
 
 	return nil
 }
@@ -333,8 +335,8 @@ func Run(ctx context.Context, cfg syncconf.Config, repoDB repodb.RepoDB,
 	if cfg.CredentialsFile != "" {
 		credentialsFile, err = getFileCredentials(cfg.CredentialsFile)
 		if err != nil {
-			logger.Error().Str("errortype", common.TypeOf(err)).
-				Err(err).Msgf("couldn't get registry credentials from %s", cfg.CredentialsFile)
+			logger.Error().Str("errortype", common.TypeOf(err)).Err(err).
+				Str("credentialsFile", cfg.CredentialsFile).Msg("couldn't get registry credentials from credentials file")
 
 			return err
 		}
@@ -349,14 +351,16 @@ func Run(ctx context.Context, cfg syncconf.Config, repoDB repodb.RepoDB,
 	for _, regCfg := range cfg.Registries {
 		// if content not provided, don't run periodically sync
 		if len(regCfg.Content) == 0 {
-			logger.Info().Msgf("sync config content not configured for %v, will not run periodically sync", regCfg.URLs)
+			logger.Info().Strs("registry", regCfg.URLs).
+				Msg("sync config content not configured for registry, will not run periodically sync")
 
 			continue
 		}
 
 		// if pollInterval is not provided, don't run periodically sync
 		if regCfg.PollInterval == 0 {
-			logger.Warn().Msgf("sync config PollInterval not configured for %v, will not run periodically sync", regCfg.URLs)
+			logger.Warn().Strs("registry", regCfg.URLs).
+				Msg("sync config PollInterval not configured for registry, will not run periodically sync")
 
 			continue
 		}

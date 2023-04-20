@@ -35,7 +35,7 @@ func NewBoltDBCache(parameters interface{}, log zlog.Logger) Cache {
 
 	err := os.MkdirAll(properParameters.RootDir, constants.DefaultDirPerms)
 	if err != nil {
-		log.Error().Err(err).Msgf("unable to create directory for cache db: %v", properParameters.RootDir)
+		log.Error().Err(err).Str("directory", properParameters.RootDir).Msg("unable to create directory for cache db")
 
 		return nil
 	}

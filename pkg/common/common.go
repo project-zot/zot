@@ -182,7 +182,7 @@ func MakeHTTPGetRequest(httpClient *http.Client, username string, password strin
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		log.Error().Str("errorType", TypeOf(err)).
-			Err(err).Msgf("couldn't get blob: %s", blobURL)
+			Err(err).Str("blobURL", blobURL).Msg("couldn't get blob")
 
 		return nil, -1, err
 	}
@@ -190,7 +190,7 @@ func MakeHTTPGetRequest(httpClient *http.Client, username string, password strin
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Error().Str("errorType", TypeOf(err)).
-			Err(err).Msgf("couldn't get blob: %s", blobURL)
+			Err(err).Str("blobURL", blobURL).Msg("couldn't get blob")
 
 		return nil, resp.StatusCode, err
 	}
@@ -198,7 +198,8 @@ func MakeHTTPGetRequest(httpClient *http.Client, username string, password strin
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		log.Error().Str("status code", fmt.Sprint(resp.StatusCode)).Err(err).Msgf("couldn't get blob: %s", blobURL)
+		log.Error().Str("status code", fmt.Sprint(resp.StatusCode)).
+			Err(err).Str("blobURL", blobURL).Msg("couldn't get blob")
 
 		return nil, resp.StatusCode, errors.New(string(body)) //nolint:goerr113
 	}
@@ -208,7 +209,7 @@ func MakeHTTPGetRequest(httpClient *http.Client, username string, password strin
 	err = json.Unmarshal(body, &resultPtr)
 	if err != nil {
 		log.Error().Str("errorType", TypeOf(err)).
-			Err(err).Msgf("couldn't unmarshal blob: %s", blobURL)
+			Err(err).Str("blobURL", blobURL).Msg("couldn't unmarshal blob")
 
 		return body, resp.StatusCode, err
 	}

@@ -69,7 +69,8 @@ func OneImage(ctx context.Context, cfg syncconf.Config, repoDB repodb.RepoDB,
 	imageChannel, found := demandedImgs.loadOrStoreChan(demandedImage, make(chan error))
 	// if value found wait on channel receive or close
 	if found {
-		log.Info().Msgf("image %s already demanded by another client, waiting on imageChannel", demandedImage)
+		log.Info().Str("demandedImage", demandedImage).
+			Msg("image already demanded by another client, waiting on imageChannel")
 
 		err, ok := <-imageChannel
 		// if channel closed exit
@@ -105,7 +106,7 @@ func syncOneImage(ctx context.Context, imageChannel chan error, cfg syncconf.Con
 		credentialsFile, err = getFileCredentials(cfg.CredentialsFile)
 		if err != nil {
 			log.Error().Str("errorType", common.TypeOf(err)).
-				Err(err).Msgf("couldn't get registry credentials from %s", cfg.CredentialsFile)
+				Err(err).Str("credentialsFile", cfg.CredentialsFile).Msg("couldn't get registry credentials from file")
 
 			imageChannel <- err
 
@@ -123,7 +124,8 @@ func syncOneImage(ctx context.Context, imageChannel chan error, cfg syncconf.Con
 	for _, registryCfg := range cfg.Registries {
 		regCfg := registryCfg
 		if !regCfg.OnDemand {
-			log.Info().Msgf("skipping syncing on demand from %v, onDemand flag is false", regCfg.URLs)
+			log.Info().Strs("registry", regCfg.URLs).
+				Msg("skipping syncing on demand from registry, onDemand flag is false")
 
 			continue
 		}
@@ -134,8 +136,8 @@ func syncOneImage(ctx context.Context, imageChannel chan error, cfg syncconf.Con
 		if len(regCfg.Content) != 0 {
 			contentID, err := findRepoMatchingContentID(localRepo, regCfg.Content)
 			if err != nil {
-				log.Info().Msgf("skipping syncing on demand %s from %v registry because it's filtered out by content config",
-					localRepo, regCfg.URLs)
+				log.Info().Str("localRepo", localRepo).Strs("registry",
+					regCfg.URLs).Msg("skipping syncing on demand repo from registry because it's filtered out by content config")
 
 				continue
 			}
@@ -152,7 +154,7 @@ func syncOneImage(ctx context.Context, imageChannel chan error, cfg syncconf.Con
 			}
 		}
 
-		log.Info().Msgf("syncing on demand with %v", regCfg.URLs)
+		log.Info().Strs("registry", regCfg.URLs).Msg("syncing on demand with registry")
 
 		for _, regCfgURL := range regCfg.URLs {
 			upstreamURL := regCfgURL
@@ -233,7 +235,7 @@ func syncOneImage(ctx context.Context, imageChannel chan error, cfg syncconf.Con
 
 				_, found := demandedImgs.loadOrStoreStr(demandedImageRef, "")
 				if found {
-					log.Info().Msgf("image %s already demanded in background", demandedImageRef)
+					log.Info().Str("demandedImageRef", demandedImageRef).Msg("image already demanded in background")
 					/* we already have a go routine spawned for this image
 					or retryOptions is not configured */
 					continue
@@ -244,11 +246,11 @@ func syncOneImage(ctx context.Context, imageChannel chan error, cfg syncconf.Con
 					// remove image after syncing
 					defer func() {
 						demandedImgs.delete(demandedImageRef)
-						log.Info().Msgf("sync routine: %s exited", demandedImageRef)
+						log.Info().Str("demandedImageRef", demandedImageRef).Msg("sync routine: demanded image exited")
 					}()
 
-					log.Info().Msgf("sync routine: starting routine to copy image %s, cause err: %v",
-						demandedImageRef, copyErr)
+					log.Info().Str("demandedImageRef", demandedImageRef).Str("copyErr", copyErr.Error()).
+						Msg("sync routine: starting routine to copy image, err encountered")
 					time.Sleep(retryOptions.Delay)
 
 					if err = retry.RetryIfNecessary(ctx, func() error {
@@ -256,8 +258,8 @@ func syncOneImage(ctx context.Context, imageChannel chan error, cfg syncconf.Con
 
 						return err
 					}, retryOptions); err != nil {
-						log.Error().Str("errorType", common.TypeOf(err)).
-							Err(err).Msgf("sync routine: error while copying image %s", demandedImageRef)
+						log.Error().Str("errorType", common.TypeOf(err)).Err(err).
+							Str("demandedImageRef", demandedImageRef).Msg("sync routine: error while copying image")
 					}
 				}()
 			} else {
@@ -276,9 +278,9 @@ func syncRun(localRepo, upstreamRepo, reference string, utils syncContextUtils, 
 ) (bool, error) {
 	upstreamImageRef, err := getImageRef(utils.upstreamAddr, upstreamRepo, reference)
 	if err != nil {
-		log.Error().Str("errorType", common.TypeOf(err)).
-			Err(err).Msgf("error creating docker reference for repository %s/%s:%s",
-			utils.upstreamAddr, upstreamRepo, reference)
+		log.Error().Str("errorType", common.TypeOf(err)).Err(err).
+			Str("repository", utils.upstreamAddr+"/"+upstreamRepo+":"+reference).
+			Msg("error creating docker reference for repository")
 
 		return false, err
 	}
@@ -287,7 +289,7 @@ func syncRun(localRepo, upstreamRepo, reference string, utils syncContextUtils, 
 
 	localCachePath, err := getLocalCachePath(imageStore, localRepo)
 	if err != nil {
-		log.Error().Err(err).Msgf("couldn't get localCachePath for %s", localRepo)
+		log.Error().Err(err).Str("repository", localRepo).Msg("couldn't get localCachePath for repository")
 
 		return false, err
 	}
@@ -306,16 +308,16 @@ func syncSignaturesArtifacts(sig *signaturesCopier, localRepo, upstreamRepo, ref
 		// is cosign signature
 		cosignManifest, err := sig.getCosignManifest(upstreamRepo, reference)
 		if err != nil {
-			sig.log.Error().Str("errorType", common.TypeOf(err)).
-				Err(err).Msgf("couldn't get upstream image %s:%s:%s cosign manifest", upstreamURL, upstreamRepo, reference)
+			sig.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
+				Str("image", upstreamURL+"/"+upstreamRepo+":"+reference).Msg("couldn't get upstream image cosign manifest")
 
 			return err
 		}
 
 		err = sig.syncCosignSignature(localRepo, upstreamRepo, reference, cosignManifest)
 		if err != nil {
-			sig.log.Error().Str("errorType", common.TypeOf(err)).
-				Err(err).Msgf("couldn't copy upstream image cosign signature %s/%s:%s", upstreamURL, upstreamRepo, reference)
+			sig.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
+				Str("image", upstreamURL+"/"+upstreamRepo+":"+reference).Msg("couldn't copy upstream image cosign signature")
 
 			return err
 		}
@@ -323,16 +325,16 @@ func syncSignaturesArtifacts(sig *signaturesCopier, localRepo, upstreamRepo, ref
 		// is oras artifact
 		refs, err := sig.getORASRefs(upstreamRepo, reference)
 		if err != nil {
-			sig.log.Error().Str("errorType", common.TypeOf(err)).
-				Err(err).Msgf("couldn't get upstream image %s/%s:%s ORAS references", upstreamURL, upstreamRepo, reference)
+			sig.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
+				Str("image", upstreamURL+"/"+upstreamRepo+":"+reference).Msg("couldn't get upstream image ORAS references")
 
 			return err
 		}
 
 		err = sig.syncORASRefs(localRepo, upstreamRepo, reference, refs)
 		if err != nil {
-			sig.log.Error().Str("errorType", common.TypeOf(err)).
-				Err(err).Msgf("couldn't copy image ORAS references %s/%s:%s", upstreamURL, upstreamRepo, reference)
+			sig.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
+				Str("image", upstreamURL+"/"+upstreamRepo+":"+reference).Msg("couldn't copy image ORAS references")
 
 			return err
 		}
@@ -340,16 +342,16 @@ func syncSignaturesArtifacts(sig *signaturesCopier, localRepo, upstreamRepo, ref
 		// this contains notary signatures
 		index, err := sig.getOCIRefs(upstreamRepo, reference)
 		if err != nil {
-			sig.log.Error().Str("errorType", common.TypeOf(err)).
-				Err(err).Msgf("couldn't get OCI references %s/%s:%s", upstreamURL, upstreamRepo, reference)
+			sig.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
+				Str("image", upstreamURL+"/"+upstreamRepo+":"+reference).Msg("couldn't get OCI references")
 
 			return err
 		}
 
 		err = sig.syncOCIRefs(localRepo, upstreamRepo, reference, index)
 		if err != nil {
-			sig.log.Error().Str("errorType", common.TypeOf(err)).
-				Err(err).Msgf("couldn't copy OCI references %s/%s:%s", upstreamURL, upstreamRepo, reference)
+			sig.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
+				Str("image", upstreamURL+"/"+upstreamRepo+":"+reference).Msg("couldn't copy OCI references")
 
 			return err
 		}

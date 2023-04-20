@@ -33,7 +33,7 @@ func OnUpdateManifest(repo, reference, mediaType string, digest godigest.Digest,
 		log.Error().Err(err).Msg("can't check if image is a signature or not")
 
 		if err := imgStore.DeleteImageManifest(repo, reference, false); err != nil {
-			log.Error().Err(err).Msgf("couldn't remove image manifest %s in repo %s", reference, repo)
+			log.Error().Err(err).Str("manifest", reference).Str("repository", repo).Msg("couldn't remove image manifest in repo")
 
 			return err
 		}
@@ -61,10 +61,11 @@ func OnUpdateManifest(repo, reference, mediaType string, digest godigest.Digest,
 	}
 
 	if !metadataSuccessfullySet {
-		log.Info().Msgf("uploding image meta was unsuccessful for tag %s in repo %s", reference, repo)
+		log.Info().Str("tag", reference).Str("repository", repo).Msg("uploding image meta was unsuccessful for tag in repo")
 
 		if err := imgStore.DeleteImageManifest(repo, reference, false); err != nil {
-			log.Error().Err(err).Msgf("couldn't remove image manifest %s in repo %s", reference, repo)
+			log.Error().Err(err).Str("reference", reference).Str("repository", repo).
+				Msg("couldn't remove image manifest in repo")
 
 			return err
 		}
@@ -133,7 +134,8 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 	}
 
 	if !manageRepoMetaSuccessfully {
-		log.Info().Msgf("repodb: deleting image meta was unsuccessful for tag %s in repo %s", reference, repo)
+		log.Info().Str("tag", reference).Str("repository", repo).
+			Msg("repodb: deleting image meta was unsuccessful for tag in repo")
 
 		return err
 	}
@@ -163,7 +165,8 @@ func OnGetManifest(name, reference string, digest godigest.Digest, body []byte,
 	if !isSignature {
 		err := repoDB.IncrementImageDownloads(name, reference)
 		if err != nil {
-			log.Error().Err(err).Msgf("unexpected error for '%s:%s'", name, reference)
+			log.Error().Err(err).Str("repository", name).Str("reference", reference).
+				Msg("unexpected error for image")
 
 			return err
 		}
