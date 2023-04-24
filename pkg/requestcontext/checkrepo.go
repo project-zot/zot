@@ -26,3 +26,11 @@ func RepoIsUserAvailable(ctx context.Context, repoName string) (bool, error) {
 
 	return true, nil
 }
+
+func GetUsernameFromContext(ctx *AccessControlContext) string {
+	if ctx == nil {
+		return ""
+	}
+
+	return ctx.Username
+}

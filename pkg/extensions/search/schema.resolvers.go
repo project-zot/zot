@@ -144,6 +144,16 @@ func (r *queryResolver) Referrers(ctx context.Context, repo string, digest strin
 	return referrers, nil
 }
 
+// StarredRepos is the resolver for the StarredRepos field.
+func (r *queryResolver) StarredRepos(ctx context.Context, requestedPage *gql_generated.PageInput) (*gql_generated.PaginatedReposResult, error) {
+	return getStarredRepos(ctx, r.cveInfo, r.log, requestedPage, r.repoDB)
+}
+
+// BookmarkedRepos is the resolver for the BookmarkedRepos field.
+func (r *queryResolver) BookmarkedRepos(ctx context.Context, requestedPage *gql_generated.PageInput) (*gql_generated.PaginatedReposResult, error) {
+	return getBookmarkedRepos(ctx, r.cveInfo, r.log, requestedPage, r.repoDB)
+}
+
 // Query returns gql_generated.QueryResolver implementation.
 func (r *Resolver) Query() gql_generated.QueryResolver { return &queryResolver{r} }
 

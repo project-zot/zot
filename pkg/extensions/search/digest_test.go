@@ -86,7 +86,8 @@ func TestDigestSearchHTTP(t *testing.T) {
 		)
 		So(err, ShouldBeNil)
 
-		image1.Reference = "0.0.1"
+		const ver001 = "0.0.1"
+		image1.Reference = ver001
 		err = UploadImage(
 			image1,
 			baseURL,
@@ -109,7 +110,7 @@ func TestDigestSearchHTTP(t *testing.T) {
 		)
 		So(err, ShouldBeNil)
 
-		image2.Reference = "0.0.1"
+		image2.Reference = ver001
 		manifestDigest, err := image2.Digest()
 		So(err, ShouldBeNil)
 

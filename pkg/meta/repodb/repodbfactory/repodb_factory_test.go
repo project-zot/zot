@@ -23,6 +23,7 @@ func TestCreateDynamo(t *testing.T) {
 			ManifestDataTablename: "ManifestDataTable",
 			IndexDataTablename:    "IndexDataTable",
 			ArtifactDataTablename: "ArtifactDataTable",
+			UserDataTablename:     "UserDataTable",
 			VersionTablename:      "Version",
 			Region:                "us-east-2",
 		}

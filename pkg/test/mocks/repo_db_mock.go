@@ -67,6 +67,9 @@ type RepoDBMock struct {
 	SearchTagsFn func(ctx context.Context, searchText string, filter repodb.Filter, requestedPage repodb.PageInput) (
 		[]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, repodb.PageInfo, error)
 
+	FilterReposFn func(ctx context.Context, filter repodb.FilterRepoFunc, requestedPage repodb.PageInput) (
+		[]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, repodb.PageInfo, error)
+
 	FilterTagsFn func(ctx context.Context, filter repodb.FilterFunc,
 		requestedPage repodb.PageInput,
 	) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, repodb.PageInfo, error)
@@ -82,6 +85,14 @@ type RepoDBMock struct {
 
 	SearchForDescendantImagesFn func(ctx context.Context, searchText string, requestedPage repodb.PageInput) (
 		[]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, error)
+
+	GetStarredReposFn func(ctx context.Context) ([]string, error)
+
+	GetBookmarkedReposFn func(ctx context.Context) ([]string, error)
+
+	ToggleStarRepoFn func(ctx context.Context, repo string) (repodb.ToggleState, error)
+
+	ToggleBookmarkRepoFn func(ctx context.Context, repo string) (repodb.ToggleState, error)
 
 	PatchDBFn func() error
 }
@@ -244,6 +255,17 @@ func (sdm RepoDBMock) SearchTags(ctx context.Context, searchText string, filter 
 		map[string]repodb.IndexData{}, repodb.PageInfo{}, nil
 }
 
+func (sdm RepoDBMock) FilterRepos(ctx context.Context, filter repodb.FilterRepoFunc,
+	requestedPage repodb.PageInput,
+) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, repodb.PageInfo, error) {
+	if sdm.FilterReposFn != nil {
+		return sdm.FilterReposFn(ctx, filter, requestedPage)
+	}
+
+	return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{},
+		map[string]repodb.IndexData{}, repodb.PageInfo{}, nil
+}
+
 func (sdm RepoDBMock) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 	requestedPage repodb.PageInput,
 ) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, repodb.PageInfo, error) {
@@ -358,4 +380,36 @@ func (sdm RepoDBMock) GetReferrersInfo(repo string, referredDigest godigest.Dige
 	}
 
 	return []repodb.ReferrerInfo{}, nil
+}
+
+func (sdm RepoDBMock) GetStarredRepos(ctx context.Context) ([]string, error) {
+	if sdm.GetStarredReposFn != nil {
+		return sdm.GetStarredReposFn(ctx)
+	}
+
+	return []string{}, nil
+}
+
+func (sdm RepoDBMock) GetBookmarkedRepos(ctx context.Context) ([]string, error) {
+	if sdm.GetBookmarkedReposFn != nil {
+		return sdm.GetBookmarkedReposFn(ctx)
+	}
+
+	return []string{}, nil
+}
+
+func (sdm RepoDBMock) ToggleStarRepo(ctx context.Context, repo string) (repodb.ToggleState, error) {
+	if sdm.ToggleStarRepoFn != nil {
+		return sdm.ToggleStarRepoFn(ctx, repo)
+	}
+
+	return repodb.NotChanged, nil
+}
+
+func (sdm RepoDBMock) ToggleBookmarkRepo(ctx context.Context, repo string) (repodb.ToggleState, error) {
+	if sdm.ToggleBookmarkRepoFn != nil {
+		return sdm.ToggleBookmarkRepoFn(ctx, repo)
+	}
+
+	return repodb.NotChanged, nil
 }

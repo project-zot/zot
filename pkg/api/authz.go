@@ -240,11 +240,6 @@ func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 				return
 			}
 
-			/* we want to bypass auth/authz for mgmt in case of authFail() authzFail()
-			unauthenticated users should have access to this route, but we also need to know if the user is an admin
-			*/
-			isMgmtRequested := request.RequestURI == constants.FullMgmtPrefix
-
 			acCtrlr := NewAccessController(ctlr.Config)
 
 			var identity string
@@ -279,10 +274,9 @@ func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 			ctx := acCtrlr.getContext(identity, request)
 
-			// for extensions we only need to know if the user is admin and what repos he can read, so run next()
-			if request.RequestURI == fmt.Sprintf("%s%s", constants.RoutePrefix, constants.ExtCatalogPrefix) ||
-				strings.Contains(request.RequestURI, constants.FullSearchPrefix) ||
-				isMgmtRequested {
+			// for extensions, we only need to know the username, whether the user is an admin, and what repositories
+			// they can read. So, run next()
+			if isExtensionURI(request.RequestURI) {
 				next.ServeHTTP(response, request.WithContext(ctx)) //nolint:contextcheck
 
 				return
@@ -319,6 +313,11 @@ func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 			}
 		})
 	}
+}
+
+func isExtensionURI(requestURI string) bool {
+	return strings.Contains(requestURI, constants.ExtPrefix) ||
+		requestURI == fmt.Sprintf("%s%s", constants.RoutePrefix, constants.ExtCatalogPrefix)
 }
 
 func authzFail(w http.ResponseWriter, realm string, delay int) {

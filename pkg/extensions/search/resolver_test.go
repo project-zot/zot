@@ -22,6 +22,7 @@ import (
 	"zotregistry.io/zot/pkg/meta/bolt"
 	"zotregistry.io/zot/pkg/meta/repodb"
 	boltdb_wrapper "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
+	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
@@ -418,7 +419,7 @@ func TestRepoListWithNewestImage(t *testing.T) {
 			So(repos.Results, ShouldBeEmpty)
 		})
 
-		Convey("RepoDB SearchRepo Bad manifest referenced", func() {
+		Convey("RepoDB SearchRepo bad manifest referenced", func() {
 			mockRepoDB := mocks.RepoDBMock{
 				SearchReposFn: func(ctx context.Context, searchText string, filter repodb.Filter, requestedPage repodb.PageInput,
 				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, repodb.PageInfo, error) {
@@ -546,8 +547,8 @@ func TestRepoListWithNewestImage(t *testing.T) {
 
 					for _, repoMeta := range repos {
 						pageFinder.Add(repodb.DetailedRepoMeta{
-							RepoMeta:   repoMeta,
-							UpdateTime: createTime,
+							RepoMetadata: repoMeta,
+							UpdateTime:   createTime,
 						})
 						createTime = createTime.Add(time.Second)
 					}
@@ -619,6 +620,68 @@ func TestRepoListWithNewestImage(t *testing.T) {
 				So(*repos.Results[0].LastUpdated, ShouldEqual, createTime2)
 			})
 		})
+	})
+}
+
+func TestGetBookmarkedRepos(t *testing.T) {
+	Convey("getBookmarkedRepos", t, func() {
+		responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
+			graphql.DefaultRecover)
+		_, err := getBookmarkedRepos(
+			responseContext,
+			mocks.CveInfoMock{},
+			log.NewLogger("debug", ""),
+			nil,
+			mocks.RepoDBMock{
+				GetBookmarkedReposFn: func(ctx context.Context) ([]string, error) {
+					return []string{}, ErrTestError
+				},
+			},
+		)
+		So(err, ShouldNotBeNil)
+	})
+}
+
+func TestGetStarredRepos(t *testing.T) {
+	Convey("getStarredRepos", t, func() {
+		responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
+			graphql.DefaultRecover)
+		_, err := getStarredRepos(
+			responseContext,
+			mocks.CveInfoMock{},
+			log.NewLogger("debug", ""),
+			nil,
+			mocks.RepoDBMock{
+				GetStarredReposFn: func(ctx context.Context) ([]string, error) {
+					return []string{}, ErrTestError
+				},
+			},
+		)
+		So(err, ShouldNotBeNil)
+	})
+}
+
+func TestGetFilteredPaginatedRepos(t *testing.T) {
+	Convey("getFilteredPaginatedRepos FilterRepos fails", t, func() {
+		responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
+			graphql.DefaultRecover)
+		_, err := getFilteredPaginatedRepos(
+			responseContext,
+			mocks.CveInfoMock{},
+			func(repoMeta repodb.RepoMetadata) bool { return true },
+			log.NewLogger("debug", ""),
+			nil,
+			mocks.RepoDBMock{
+				FilterReposFn: func(ctx context.Context, filter repodb.FilterRepoFunc, requestedPage repodb.PageInput,
+				) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, repodb.PageInfo,
+					error,
+				) {
+					return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{},
+						repodb.PageInfo{}, ErrTestError
+				},
+			},
+		)
+		So(err, ShouldNotBeNil)
 	})
 }
 
@@ -1028,7 +1091,7 @@ func TestImageListForDigest(t *testing.T) {
 						repos[i].Tags = matchedTags
 
 						pageFinder.Add(repodb.DetailedRepoMeta{
-							RepoMeta: repo,
+							RepoMetadata: repo,
 						})
 					}
 
@@ -2486,6 +2549,28 @@ func TestCVEResolvers(t *testing.T) { //nolint:gocyclo
 			So(len(images.Results), ShouldEqual, 0)
 		})
 	})
+
+	Convey("Errors for cve resolvers", t, func() {
+		_, err := getImageListForCVE(
+			context.Background(),
+			"id",
+			mocks.CveInfoMock{
+				GetImageListForCVEFn: func(repo, cveID string) ([]cvemodel.TagInfo, error) {
+					return []cvemodel.TagInfo{}, ErrTestError
+				},
+			},
+			nil,
+			mocks.RepoDBMock{
+				GetMultipleRepoMetaFn: func(ctx context.Context, filter func(repoMeta repodb.RepoMetadata) bool,
+					requestedPage repodb.PageInput,
+				) ([]repodb.RepoMetadata, error) {
+					return []repodb.RepoMetadata{{}}, nil
+				},
+			},
+			log,
+		)
+		So(err, ShouldNotBeNil)
+	})
 }
 
 func getPageInput(limit int, offset int) *gql_generated.PageInput {
@@ -2726,7 +2811,7 @@ func TestDerivedImageList(t *testing.T) {
 					repos[i].Tags = matchedTags
 
 					pageFinder.Add(repodb.DetailedRepoMeta{
-						RepoMeta: repo,
+						RepoMetadata: repo,
 					})
 				}
 				repos, pageInfo := pageFinder.Page()
@@ -2989,7 +3074,7 @@ func TestBaseImageList(t *testing.T) {
 					repos[i].Tags = matchedTags
 
 					pageFinder.Add(repodb.DetailedRepoMeta{
-						RepoMeta: repo,
+						RepoMetadata: repo,
 					})
 				}
 
@@ -3163,7 +3248,7 @@ func TestBaseImageList(t *testing.T) {
 					repos[i].Tags = matchedTags
 
 					pageFinder.Add(repodb.DetailedRepoMeta{
-						RepoMeta: repo,
+						RepoMetadata: repo,
 					})
 				}
 
@@ -3182,6 +3267,8 @@ func TestBaseImageList(t *testing.T) {
 }
 
 func TestExpandedRepoInfo(t *testing.T) {
+	log := log.NewLogger("debug", "")
+
 	Convey("ExpandedRepoInfo Errors", t, func() {
 		responseContext := graphql.WithResponseContext(context.Background(), graphql.DefaultErrorPresenter,
 			graphql.DefaultRecover)
@@ -3198,8 +3285,20 @@ func TestExpandedRepoInfo(t *testing.T) {
 							Digest:    "digestIndex",
 							MediaType: ispec.MediaTypeImageIndex,
 						},
+						"tagGetIndexError": {
+							Digest:    "errorIndexDigest",
+							MediaType: ispec.MediaTypeImageIndex,
+						},
 						"tagGoodIndexBadManifests": {
 							Digest:    "goodIndexBadManifests",
+							MediaType: ispec.MediaTypeImageIndex,
+						},
+						"tagGoodIndex1GoodManfest": {
+							Digest:    "goodIndexGoodManfest",
+							MediaType: ispec.MediaTypeImageIndex,
+						},
+						"tagGoodIndex2GoodManfest": {
+							Digest:    "goodIndexGoodManfest",
 							MediaType: ispec.MediaTypeImageIndex,
 						},
 					},
@@ -3227,6 +3326,16 @@ func TestExpandedRepoInfo(t *testing.T) {
 				})
 				So(err, ShouldBeNil)
 
+				goodIndexGoodManfestBlob, err := json.Marshal(ispec.Index{
+					Manifests: []ispec.Descriptor{
+						{
+							Digest:    "goodManifest",
+							MediaType: ispec.MediaTypeImageManifest,
+						},
+					},
+				})
+				So(err, ShouldBeNil)
+
 				switch indexDigest {
 				case "errorIndexDigest":
 					return repodb.IndexData{}, ErrTestError
@@ -3234,14 +3343,61 @@ func TestExpandedRepoInfo(t *testing.T) {
 					return repodb.IndexData{
 						IndexBlob: goodIndexBadManifestsBlob,
 					}, nil
+				case "goodIndexGoodManfest":
+					return repodb.IndexData{
+						IndexBlob: goodIndexGoodManfestBlob,
+					}, nil
 				default:
 					return repodb.IndexData{}, nil
 				}
 			},
 		}
-		log := log.NewLogger("debug", "")
 
 		_, err := expandedRepoInfo(responseContext, "repo", repoDB, mocks.CveInfoMock{}, log)
 		So(err, ShouldBeNil)
+	})
+
+	Convey("Access error", t, func() {
+		authzCtxKey := localCtx.GetContextKey()
+		acCtxUser := localCtx.AccessControlContext{
+			ReadGlobPatterns: map[string]bool{
+				"repo": false,
+			},
+			Username: "user",
+		}
+
+		ctx := context.WithValue(context.Background(), authzCtxKey, acCtxUser)
+
+		responseContext := graphql.WithResponseContext(ctx, graphql.DefaultErrorPresenter,
+			graphql.DefaultRecover)
+
+		_, err := expandedRepoInfo(responseContext, "repo", mocks.RepoDBMock{}, mocks.CveInfoMock{}, log)
+		So(err, ShouldBeNil)
+	})
+}
+
+func TestFilterFunctions(t *testing.T) {
+	Convey("Filter Functions", t, func() {
+		Convey("FilterByDigest bad manifest blob", func() {
+			filterFunc := FilterByDigest("digest")
+			ok := filterFunc(
+				repodb.RepoMetadata{},
+				repodb.ManifestMetadata{
+					ManifestBlob: []byte("bad blob"),
+				},
+			)
+			So(ok, ShouldBeFalse)
+		})
+
+		Convey("filterDerivedImages bad manifest blob", func() {
+			filterFunc := filterDerivedImages(&gql_generated.ImageSummary{})
+			ok := filterFunc(
+				repodb.RepoMetadata{},
+				repodb.ManifestMetadata{
+					ManifestBlob: []byte("bad blob"),
+				},
+			)
+			So(ok, ShouldBeFalse)
+		})
 	})
 }

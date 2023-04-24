@@ -657,6 +657,7 @@ func GetRandomImageComponents(layerSize int) (ispec.Image, [][]byte, ispec.Manif
 				Size:      int64(len(layers[0])),
 			},
 		},
+		MediaType: ispec.MediaTypeImageManifest,
 	}
 
 	return config, layers, manifest, nil

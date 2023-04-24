@@ -5,7 +5,9 @@ const (
 	ManifestDataBucket = "ManifestData"
 	IndexDataBucket    = "IndexData"
 	ArtifactDataBucket = "ArtifactData"
-	UserMetadataBucket = "UserMeta"
 	RepoMetadataBucket = "RepoMetadata"
+	UserDataBucket     = "UserData"
 	VersionBucket      = "Version"
+	StarredReposKey    = "StarredReposKey"
+	BookmarkedReposKey = "BookmarkedReposKey"
 )

@@ -95,6 +95,9 @@ func getDynamoParams(cacheDriverConfig map[string]interface{}, log log.Logger) d
 	versionTablename, ok := toStringIfOk(cacheDriverConfig, "versiontablename", log)
 	allParametersOk = allParametersOk && ok
 
+	userDataTablename, ok := toStringIfOk(cacheDriverConfig, "userdatatablename", log)
+	allParametersOk = allParametersOk && ok
+
 	if !allParametersOk {
 		panic("dynamo parameters are not specified correctly, can't proceede")
 	}
@@ -106,6 +109,7 @@ func getDynamoParams(cacheDriverConfig map[string]interface{}, log log.Logger) d
 		ManifestDataTablename: manifestDataTablename,
 		IndexDataTablename:    indexDataTablename,
 		ArtifactDataTablename: artifactDataTablename,
+		UserDataTablename:     userDataTablename,
 		VersionTablename:      versionTablename,
 	}
 }

@@ -56,7 +56,6 @@ EOF
 EOF
 
     setup_zot_file_level ${ZOT_CONFIG_FILE}
-    echo "yes"
     wait_zot_reachable "http://127.0.0.1:8080/v2/_catalog"
 
     run skopeo --insecure-policy copy --dest-tls-verify=false \

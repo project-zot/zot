@@ -3,7 +3,6 @@ package bolt_test
 import (
 	"context"
 	"encoding/json"
-	"os"
 	"testing"
 
 	"github.com/opencontainers/go-digest"
@@ -15,6 +14,7 @@ import (
 	"zotregistry.io/zot/pkg/meta/bolt"
 	"zotregistry.io/zot/pkg/meta/repodb"
 	boltdb_wrapper "zotregistry.io/zot/pkg/meta/repodb/boltdb-wrapper"
+	localCtx "zotregistry.io/zot/pkg/requestcontext"
 	"zotregistry.io/zot/pkg/test"
 )
 
@@ -29,7 +29,6 @@ func TestWrapperErrors(t *testing.T) {
 		log := log.NewLogger("debug", "")
 
 		boltdbWrapper, err := boltdb_wrapper.NewBoltDBWrapper(boltDriver, log)
-		defer os.Remove("repo.db")
 		So(boltdbWrapper, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
@@ -74,6 +73,21 @@ func TestWrapperErrors(t *testing.T) {
 			So(err, ShouldNotBeNil)
 
 			_, err = boltdbWrapper.GetManifestMeta("repo1", "digest1")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("FilterRepos", func() {
+			err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
+				buck := tx.Bucket([]byte(bolt.RepoMetadataBucket))
+				err := buck.Put([]byte("badRepo"), []byte("bad repo"))
+				So(err, ShouldBeNil)
+
+				return nil
+			})
+			So(err, ShouldBeNil)
+
+			_, _, _, _, err = boltdbWrapper.FilterRepos(context.Background(),
+				func(repoMeta repodb.RepoMetadata) bool { return true }, repodb.PageInput{})
 			So(err, ShouldNotBeNil)
 		})
 
@@ -703,6 +717,184 @@ func TestWrapperErrors(t *testing.T) {
 				)
 				So(err, ShouldBeNil)
 			})
+		})
+
+		Convey("ToggleStarRepo bad context errors", func() {
+			authzCtxKey := localCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), authzCtxKey, "bad context")
+
+			_, err := boltdbWrapper.ToggleStarRepo(ctx, "repo")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("ToggleStarRepo, getting StarredRepoKey from bucket fails", func() {
+			acCtx := localCtx.AccessControlContext{
+				ReadGlobPatterns: map[string]bool{
+					"repo": true,
+				},
+				Username: "username",
+			}
+			authzCtxKey := localCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+
+			err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
+				userdb, err := tx.CreateBucketIfNotExists([]byte(bolt.UserDataBucket))
+				So(err, ShouldBeNil)
+				userBucket, err := userdb.CreateBucketIfNotExists([]byte(acCtx.Username))
+				So(err, ShouldBeNil)
+
+				err = userBucket.Put([]byte(bolt.StarredReposKey), []byte("bad array"))
+				So(err, ShouldBeNil)
+
+				return nil
+			})
+			So(err, ShouldBeNil)
+
+			_, err = boltdbWrapper.ToggleStarRepo(ctx, "repo")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("ToggleBookmarkRepo, unmarshal error", func() {
+			acCtx := localCtx.AccessControlContext{
+				ReadGlobPatterns: map[string]bool{
+					"repo": true,
+				},
+				Username: "username",
+			}
+			authzCtxKey := localCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+
+			err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
+				userdb, err := tx.CreateBucketIfNotExists([]byte(bolt.UserDataBucket))
+				So(err, ShouldBeNil)
+				userBucket, err := userdb.CreateBucketIfNotExists([]byte(acCtx.Username))
+				So(err, ShouldBeNil)
+
+				err = userBucket.Put([]byte(bolt.BookmarkedReposKey), []byte("bad array"))
+				So(err, ShouldBeNil)
+
+				return nil
+			})
+			So(err, ShouldBeNil)
+
+			_, err = boltdbWrapper.ToggleBookmarkRepo(ctx, "repo")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("ToggleStarRepo, no repoMeta found", func() {
+			acCtx := localCtx.AccessControlContext{
+				ReadGlobPatterns: map[string]bool{
+					"repo": true,
+				},
+				Username: "username",
+			}
+			authzCtxKey := localCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+
+			err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
+				repoBuck := tx.Bucket([]byte(bolt.RepoMetadataBucket))
+
+				err := repoBuck.Put([]byte("repo"), []byte("bad repo"))
+				So(err, ShouldBeNil)
+
+				return nil
+			})
+			So(err, ShouldBeNil)
+
+			_, err = boltdbWrapper.ToggleStarRepo(ctx, "repo")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("ToggleStarRepo, bad repoMeta found", func() {
+			acCtx := localCtx.AccessControlContext{
+				ReadGlobPatterns: map[string]bool{
+					"repo": true,
+				},
+				Username: "username",
+			}
+			authzCtxKey := localCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+
+			_, err = boltdbWrapper.ToggleStarRepo(ctx, "repo")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("ToggleBookmarkRepo bad context errors", func() {
+			authzCtxKey := localCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), authzCtxKey, "bad context")
+
+			_, err := boltdbWrapper.ToggleBookmarkRepo(ctx, "repo")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("GetStarredRepos bad context errors", func() {
+			authzCtxKey := localCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), authzCtxKey, "bad context")
+
+			_, err := boltdbWrapper.GetStarredRepos(ctx)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("GetStarredRepos user data unmarshal error", func() {
+			acCtx := localCtx.AccessControlContext{
+				ReadGlobPatterns: map[string]bool{
+					"repo": true,
+				},
+				Username: "username",
+			}
+			authzCtxKey := localCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+
+			err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
+				userdb, err := tx.CreateBucketIfNotExists([]byte(bolt.UserDataBucket))
+				So(err, ShouldBeNil)
+				userBucket, err := userdb.CreateBucketIfNotExists([]byte(acCtx.Username))
+				So(err, ShouldBeNil)
+
+				err = userBucket.Put([]byte(bolt.StarredReposKey), []byte("bad array"))
+				So(err, ShouldBeNil)
+
+				return nil
+			})
+			So(err, ShouldBeNil)
+
+			_, err = boltdbWrapper.GetStarredRepos(ctx)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("GetBookmarkedRepos user data unmarshal error", func() {
+			acCtx := localCtx.AccessControlContext{
+				ReadGlobPatterns: map[string]bool{
+					"repo": true,
+				},
+				Username: "username",
+			}
+			authzCtxKey := localCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+
+			err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
+				userdb, err := tx.CreateBucketIfNotExists([]byte(bolt.UserDataBucket))
+				So(err, ShouldBeNil)
+				userBucket, err := userdb.CreateBucketIfNotExists([]byte(acCtx.Username))
+				So(err, ShouldBeNil)
+
+				err = userBucket.Put([]byte(bolt.BookmarkedReposKey), []byte("bad array"))
+				So(err, ShouldBeNil)
+
+				return nil
+			})
+			So(err, ShouldBeNil)
+
+			_, err = boltdbWrapper.GetBookmarkedRepos(ctx)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("GetBookmarkedRepos bad context errors", func() {
+			authzCtxKey := localCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), authzCtxKey, "bad context")
+
+			_, err := boltdbWrapper.GetBookmarkedRepos(ctx)
+			So(err, ShouldNotBeNil)
 		})
 
 		Convey("Unsuported type", func() {

@@ -680,4 +680,20 @@ type Query {
         "Types of artifacts to return in the referrer list"
         type: [String!]
     ): [Referrer]!
+
+    """
+    Receive RepoSummaries of repos starred by current user
+    """
+    StarredRepos(
+        "Sets the parameters of the requested page (how many to include and offset)"
+        requestedPage: PageInput
+    ): PaginatedReposResult!
+
+    """
+    Receive RepoSummaries of repos bookmarked by current user
+    """
+    BookmarkedRepos(
+        "Sets the parameters of the requested page (how many to include and offset)"
+        requestedPage: PageInput
+    ): PaginatedReposResult!
 }

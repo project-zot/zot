@@ -158,6 +158,7 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 			"repoMetaTablename":     "RepoMetadataTable",
 			"manifestDataTablename": "ManifestDataTable",
 			"artifactDataTablename": "ArtifactDataTable",
+			"userDataTablename":     "ZotUserDataTable",
 			"versionTablename":      "Version",
 		}
 
@@ -173,6 +174,7 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 			"repoMetaTablename":     "RepoMetadataTable",
 			"manifestDataTablename": "ManifestDataTable",
 			"artifactDataTablename": "ArtifactDataTable",
+			"userDataTablename":     "ZotUserDataTable",
 			"versionTablename":      "Version",
 		}
 
@@ -187,6 +189,7 @@ func TestCreateCacheDatabaseDriver(t *testing.T) {
 			"repoMetaTablename":     "RepoMetadataTable",
 			"manifestDataTablename": "ManifestDataTable",
 			"artifactDataTablename": "ArtifactDataTable",
+			"userDataTablename":     "ZotUserDataTable",
 			"versionTablename":      "Version",
 		}
 
@@ -220,6 +223,7 @@ func TestCreateRepoDBDriver(t *testing.T) {
 			"repometatablename":     "RepoMetadataTable",
 			"manifestdatatablename": "ManifestDataTable",
 			"artifactDataTablename": "ArtifactDataTable",
+			"userdatatablename":     "UserDatatable",
 		}
 
 		testFunc := func() { _, _ = repodbfactory.New(conf.Storage.StorageConfig, log) }
@@ -233,6 +237,7 @@ func TestCreateRepoDBDriver(t *testing.T) {
 			"repometatablename":     "RepoMetadataTable",
 			"manifestdatatablename": "ManifestDataTable",
 			"artifactDataTablename": "ArtifactDataTable",
+			"userDataTablename":     "ZotUserDataTable",
 			"versiontablename":      1,
 		}
 
@@ -248,6 +253,7 @@ func TestCreateRepoDBDriver(t *testing.T) {
 			"manifestdatatablename": "ManifestDataTable",
 			"indexdatatablename":    "IndexDataTable",
 			"artifactdatatablename": "ArtifactDataTable",
+			"userdatatablename":     "ZotUserDataTable",
 			"versiontablename":      "1",
 		}
 

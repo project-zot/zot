@@ -49,6 +49,9 @@ jobs:
       - name: Run referrers tests
         run: |
             make test-bats-referrers
+      - name: Run metadata tests
+        run: | 
+            make test-bats-metadata
       - name: Run push-pull tests
         run: |
             make test-push-pull
