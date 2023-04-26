@@ -6,6 +6,7 @@ import (
 	"path"
 	"strings"
 
+	ds "github.com/docker/distribution/manifest/schema2"
 	"github.com/gobwas/glob"
 	notreg "github.com/notaryproject/notation-go/registry"
 	godigest "github.com/opencontainers/go-digest"
@@ -716,7 +717,8 @@ func IsSupportedMediaType(mediaType string) bool {
 	return mediaType == ispec.MediaTypeImageIndex ||
 		mediaType == ispec.MediaTypeImageManifest ||
 		mediaType == ispec.MediaTypeArtifactManifest ||
-		mediaType == oras.MediaTypeArtifactManifest
+		mediaType == oras.MediaTypeArtifactManifestt ||
+		mediaType == ds.MediaTypeManifest
 }
 
 // CheckIsImageSignature checks if the given image (repo:tag) represents a signature. The function
