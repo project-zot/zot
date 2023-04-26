@@ -19,9 +19,9 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/sigstore/cosign/cmd/cosign/cli/generate"
-	"github.com/sigstore/cosign/cmd/cosign/cli/options"
-	"github.com/sigstore/cosign/cmd/cosign/cli/sign"
+	"github.com/sigstore/cosign/v2/cmd/cosign/cli/generate"
+	"github.com/sigstore/cosign/v2/cmd/cosign/cli/options"
+	"github.com/sigstore/cosign/v2/cmd/cosign/cli/sign"
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/spf13/cobra"
 	"gopkg.in/resty.v1"
@@ -300,7 +300,7 @@ func TestSignature(t *testing.T) {
 		// generate a keypair
 		if _, err := os.Stat(path.Join(currentDir, "cosign.key")); err != nil {
 			os.Setenv("COSIGN_PASSWORD", "")
-			err = generate.GenerateKeyPairCmd(context.TODO(), "", nil)
+			err = generate.GenerateKeyPairCmd(context.TODO(), "", "cosign", nil)
 			So(err, ShouldBeNil)
 		}
 
@@ -310,10 +310,12 @@ func TestSignature(t *testing.T) {
 		// sign the image
 		err = sign.SignCmd(&options.RootOptions{Verbose: true, Timeout: 1 * time.Minute},
 			options.KeyOpts{KeyRef: path.Join(currentDir, "cosign.key"), PassFunc: generate.GetPass},
-			options.RegistryOptions{AllowInsecure: true},
-			map[string]interface{}{"tag": "test:1.0"},
-			[]string{fmt.Sprintf("localhost:%s/%s@%s", port, "repo7", digest.String())},
-			"", "", true, "", "", "", false, false, "", true)
+			options.SignOptions{
+				Registry:          options.RegistryOptions{AllowInsecure: true},
+				AnnotationOptions: options.AnnotationOptions{Annotations: []string{"tag=test:1.0"}},
+				Upload:            true,
+			},
+			[]string{fmt.Sprintf("localhost:%s/%s@%s", port, "repo7", digest.String())})
 		So(err, ShouldBeNil)
 
 		t.Logf("%s", ctlr.Config.Storage.RootDirectory)

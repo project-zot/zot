@@ -19,7 +19,7 @@ import (
 
 	notreg "github.com/notaryproject/notation-go/registry"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/sigstore/cosign/pkg/oci/remote"
+	"github.com/sigstore/cosign/v2/pkg/oci/remote"
 
 	zotErrors "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/common"

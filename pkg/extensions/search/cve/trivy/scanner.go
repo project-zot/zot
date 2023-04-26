@@ -10,6 +10,7 @@ import (
 	dbTypes "github.com/aquasecurity/trivy-db/pkg/types"
 	"github.com/aquasecurity/trivy/pkg/commands/artifact"
 	"github.com/aquasecurity/trivy/pkg/commands/operation"
+	fanalTypes "github.com/aquasecurity/trivy/pkg/fanal/types"
 	"github.com/aquasecurity/trivy/pkg/flag"
 	"github.com/aquasecurity/trivy/pkg/types"
 	regTypes "github.com/google/go-containerregistry/pkg/v1/types"
@@ -368,7 +369,10 @@ func (scanner Scanner) UpdateDB() error {
 func (scanner Scanner) updateDB(dbDir string) error {
 	scanner.log.Debug().Msgf("Download Trivy DB to destination dir: %s", dbDir)
 
-	err := operation.DownloadDB("dev", dbDir, scanner.dbRepository, false, false, false)
+	ctx := context.Background()
+
+	err := operation.DownloadDB(ctx, "dev", dbDir, scanner.dbRepository, false, false,
+		fanalTypes.RemoteOptions{Insecure: false})
 	if err != nil {
 		scanner.log.Error().Err(err).Msgf("Error downloading Trivy DB to destination dir: %s", dbDir)
 

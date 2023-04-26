@@ -239,11 +239,11 @@ function teardown_file() {
 @test "sign/verify with cosign" {
     run cosign initialize
     [ "$status" -eq 0 ]
-    run cosign generate-key-pair
+    run cosign generate-key-pair --output-key-prefix "cosign-sign-sync-test"
     [ "$status" -eq 0 ]
-    run cosign sign --key cosign.key localhost:9000/golang:1.20 --yes
+    run cosign sign --key cosign-sign-sync-test.key localhost:9000/golang:1.20 --yes
     [ "$status" -eq 0 ]
-    run cosign verify --key cosign.pub localhost:9000/golang:1.20
+    run cosign verify --key cosign-sign-sync-test.pub localhost:9000/golang:1.20
     [ "$status" -eq 0 ]
 }
 
@@ -287,7 +287,7 @@ EOF
     run notation verify --plain-http localhost:8081/golang:1.20
     [ "$status" -eq 0 ]
 
-    run cosign verify --key cosign.pub localhost:8081/golang:1.20
+    run cosign verify --key cosign-sign-sync-test.pub localhost:8081/golang:1.20
     [ "$status" -eq 0 ]
 }
 
@@ -295,7 +295,7 @@ EOF
     run notation verify --plain-http localhost:8082/golang:1.20
     [ "$status" -eq 0 ]
 
-    run cosign verify --key cosign.pub localhost:8082/golang:1.20
+    run cosign verify --key cosign-sign-sync-test.pub localhost:8082/golang:1.20
     [ "$status" -eq 0 ]
 }
 

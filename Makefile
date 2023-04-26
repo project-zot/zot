@@ -14,6 +14,7 @@ GOLINTER_VERSION := v1.52.2
 NOTATION := $(TOOLSDIR)/bin/notation
 NOTATION_VERSION := 1.0.0-rc.2
 COSIGN := $(TOOLSDIR)/bin/cosign
+COSIGN_VERSION := 2.0.2
 HELM := $(TOOLSDIR)/bin/helm
 ORAS := $(TOOLSDIR)/bin/oras
 ORAS_VERSION := 1.0.0-rc.1
@@ -423,7 +424,7 @@ $(STACKER):
 
 $(COSIGN):
 	mkdir -p $(TOOLSDIR)/bin
-	curl -fsSL https://github.com/sigstore/cosign/releases/download/v1.13.0/cosign-linux-amd64 -o $@; \
+	curl -fsSL https://github.com/sigstore/cosign/releases/download/v$(COSIGN_VERSION)/cosign-linux-amd64 -o $@; \
 	chmod +x $@
 
 # set ZUI_VERSION to empty string in order to clone zui locally and build default branch
