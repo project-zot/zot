@@ -14,7 +14,7 @@ const (
 	CosignType        = "cosign"
 )
 
-// Used to model changes to an object after a call to the the DB.
+// Used to model changes to an object after a call to the DB.
 type ToggleState int
 
 const (

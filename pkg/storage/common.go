@@ -203,7 +203,6 @@ func CheckIfIndexNeedsUpdate(index *ispec.Index, desc *ispec.Descriptor,
 		manifest := manifest
 		if reference == manifest.Digest.String() {
 			// nothing changed, so don't update
-			desc = &manifest
 			updateIndex = false
 
 			break
@@ -213,7 +212,6 @@ func CheckIfIndexNeedsUpdate(index *ispec.Index, desc *ispec.Descriptor,
 		if ok && v == reference {
 			if manifest.Digest.String() == desc.Digest.String() {
 				// nothing changed, so don't update
-				desc = &manifest
 				updateIndex = false
 
 				break

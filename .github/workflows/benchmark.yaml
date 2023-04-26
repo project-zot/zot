@@ -18,7 +18,7 @@ jobs:
       - uses: actions/setup-go@v4
         with:
           cache: false
-          go-version: 1.19.x
+          go-version: 1.20.x
       # Run benchmark with `go test -bench` and stores the output to a file
       - name: Run benchmark
         run: make BENCH_OUTPUT=ci-cd run-bench

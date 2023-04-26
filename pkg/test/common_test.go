@@ -1229,7 +1229,7 @@ func TestGenerateNotationCerts(t *testing.T) {
 		So(err, ShouldBeNil)
 		signingKeysBuf, err := json.Marshal(notconfig.SigningKeys{})
 		So(err, ShouldBeNil)
-		err = os.WriteFile(filePath, signingKeysBuf, 0o555)
+		err = os.WriteFile(filePath, signingKeysBuf, 0o555) //nolint:gosec // test code
 		So(err, ShouldBeNil)
 		err = test.GenerateNotationCerts(t.TempDir(), "cert")
 		So(err, ShouldNotBeNil)
