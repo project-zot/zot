@@ -18,7 +18,7 @@ func GetContextKey() *Key {
 	return &authzCtxKey
 }
 
-// AccessControlContext context passed down to http.Handlers.
+// AccessControlContext - contains user authn/authz information.
 type AccessControlContext struct {
 	// read method action
 	ReadGlobPatterns map[string]bool
@@ -29,6 +29,13 @@ type AccessControlContext struct {
 	Groups          []string
 }
 
+/*
+	GetAccessControlContext returns an AccessControlContext struct made available on all http requests
+	(using context.Context values) by authz and authn middlewares.
+
+its methods and attributes can be used in http.Handlers to get user info for that specific request
+(username, groups, if it's an admin, if it can access certain resources).
+*/
 func GetAccessControlContext(ctx context.Context) (*AccessControlContext, error) {
 	authzCtxKey := GetContextKey()
 	if authCtx := ctx.Value(authzCtxKey); authCtx != nil {
@@ -43,7 +50,31 @@ func GetAccessControlContext(ctx context.Context) (*AccessControlContext, error)
 	return nil, nil //nolint: nilnil
 }
 
-// returns either a user has or not rights on 'repository'.
+// returns whether or not the user/anonymous who made the request has read permission on 'repository'.
+func (acCtx *AccessControlContext) CanReadRepo(repository string) bool {
+	if acCtx.ReadGlobPatterns != nil {
+		return acCtx.matchesRepo(acCtx.ReadGlobPatterns, repository)
+	}
+
+	return true
+}
+
+/*
+returns whether or not the user/anonymous who made the request
+has detectManifestCollision permission on 'repository'.
+*/
+func (acCtx *AccessControlContext) CanDetectManifestCollision(repository string) bool {
+	if acCtx.DmcGlobPatterns != nil {
+		return acCtx.matchesRepo(acCtx.DmcGlobPatterns, repository)
+	}
+
+	return false
+}
+
+/*
+returns whether or not 'repository' can be found in the list of patterns
+on which the user who made the request has read permission on.
+*/
 func (acCtx *AccessControlContext) matchesRepo(globPatterns map[string]bool, repository string) bool {
 	var longestMatchedPattern string
 
@@ -60,22 +91,4 @@ func (acCtx *AccessControlContext) matchesRepo(globPatterns map[string]bool, rep
 	allowed := globPatterns[longestMatchedPattern]
 
 	return allowed
-}
-
-// returns either a user has or not read rights on 'repository'.
-func (acCtx *AccessControlContext) CanReadRepo(repository string) bool {
-	if acCtx.ReadGlobPatterns != nil {
-		return acCtx.matchesRepo(acCtx.ReadGlobPatterns, repository)
-	}
-
-	return true
-}
-
-// returns either a user has or not detectManifestCollision rights on 'repository'.
-func (acCtx *AccessControlContext) CanDetectManifestCollision(repository string) bool {
-	if acCtx.DmcGlobPatterns != nil {
-		return acCtx.matchesRepo(acCtx.DmcGlobPatterns, repository)
-	}
-
-	return false
 }

@@ -155,20 +155,15 @@ func (ac *AccessController) getUserGroups(username string) []string {
 	return groupNames
 }
 
-// getContext builds ac context(allowed to read repos and if user is admin) and returns it.
-func (ac *AccessController) getContext(username string, request *http.Request) context.Context {
-	acCtx, err := localCtx.GetAccessControlContext(request.Context())
-	if err != nil {
-		return nil
-	}
-
-	readGlobPatterns := ac.getGlobPatterns(username, acCtx.Groups, Read)
-	dmcGlobPatterns := ac.getGlobPatterns(username, acCtx.Groups, DetectManifestCollision)
+// getContext updates an AccessControlContext for a user/anonymous and returns a context.Context containing it.
+func (ac *AccessController) getContext(acCtx *localCtx.AccessControlContext, request *http.Request) context.Context {
+	readGlobPatterns := ac.getGlobPatterns(acCtx.Username, acCtx.Groups, Read)
+	dmcGlobPatterns := ac.getGlobPatterns(acCtx.Username, acCtx.Groups, DetectManifestCollision)
 
 	acCtx.ReadGlobPatterns = readGlobPatterns
 	acCtx.DmcGlobPatterns = dmcGlobPatterns
 
-	if ac.isAdmin(username) {
+	if ac.isAdmin(acCtx.Username) {
 		acCtx.IsAdmin = true
 	} else {
 		acCtx.IsAdmin = false
@@ -243,16 +238,23 @@ func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 			acCtrlr := NewAccessController(ctlr.Config)
 
 			var identity string
+
 			var err error
 
-			// allow anonymous authz if no authn present and only default policies are present
-			identity = ""
-			if isAuthnEnabled(ctlr.Config) && request.Header.Get("Authorization") != "" {
-				identity, _, err = getUsernamePasswordBasicAuth(request)
+			// anonymous context
+			acCtx := &localCtx.AccessControlContext{}
 
-				if err != nil {
+			// get username from context made in authn.go
+			if isAuthnEnabled(ctlr.Config) {
+				// get access control context made in authn.go if authn is enabled
+				acCtx, err = localCtx.GetAccessControlContext(request.Context())
+				if err != nil { // should never happen
 					authFail(response, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
+
+					return
 				}
+
+				identity = acCtx.Username
 			}
 
 			if request.TLS != nil {
@@ -268,14 +270,19 @@ func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 					if identity == "" {
 						acCtrlr.Log.Info().Msg("couldn't get identity from TLS certificate")
 						authFail(response, ctlr.Config.HTTP.Realm, ctlr.Config.HTTP.Auth.FailDelay)
+
+						return
 					}
 				}
 			}
 
-			ctx := acCtrlr.getContext(identity, request)
+			ctx := acCtrlr.getContext(acCtx, request)
 
-			// for extensions, we only need to know the username, whether the user is an admin, and what repositories
-			// they can read. So, run next()
+			/* Notes:
+			 	- since we only do READ actions in extensions, we can bypass authz for them
+				only need to know the username, whether the user is an admin, or what repos he can read.
+				let each extension to apply	authorization on them using localCtx.AccessControlContext{}
+			*/
 			if isExtensionURI(request.RequestURI) {
 				next.ServeHTTP(response, request.WithContext(ctx)) //nolint:contextcheck
 
