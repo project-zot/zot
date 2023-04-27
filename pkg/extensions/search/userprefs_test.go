@@ -17,6 +17,7 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
+	"zotregistry.io/zot/pkg/common"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
@@ -609,6 +610,199 @@ func TestChangingRepoState(t *testing.T) {
 		resp, err = anonynousClient.Put(userprefsBaseURL + PutRepoBookmarkURL(accesibleRepo))
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusForbidden)
+	})
+}
+
+func TestGlobalSearchWithUserPrefFiltering(t *testing.T) {
+	Convey("Bookmarks and Stars filtering", t, func() {
+		dir := t.TempDir()
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = dir
+
+		simpleUser := "simpleUser"
+		simpleUserPassword := "simpleUserPass"
+		credTests := fmt.Sprintf("%s\n\n", getCredString(simpleUser, simpleUserPassword))
+
+		htpasswdPath := MakeHtpasswdFileFromString(credTests)
+		defer os.Remove(htpasswdPath)
+
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+		}
+
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
+			Repositories: config.Repositories{
+				"**": config.PolicyGroup{
+					Policies: []config.Policy{
+						{
+							Users:   []string{simpleUser},
+							Actions: []string{"read", "create"},
+						},
+					},
+				},
+			},
+		}
+
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+		}
+
+		ctlr := api.NewController(conf)
+
+		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
+
+		preferencesBaseURL := baseURL + constants.FullUserPreferencesPrefix
+		simpleUserClient := resty.R().SetBasicAuth(simpleUser, simpleUserPassword)
+
+		// ------ Add simple repo
+		repo := "repo"
+		img, err := GetRandomImage("tag")
+		So(err, ShouldBeNil)
+		err = UploadImageWithBasicAuth(img, baseURL, repo, simpleUser, simpleUserPassword)
+		So(err, ShouldBeNil)
+
+		// ------ Add repo and star it
+		sRepo := "starred-repo"
+		img, err = GetRandomImage("tag")
+		So(err, ShouldBeNil)
+		err = UploadImageWithBasicAuth(img, baseURL, sRepo, simpleUser, simpleUserPassword)
+		So(err, ShouldBeNil)
+
+		resp, err := simpleUserClient.Put(preferencesBaseURL + PutRepoStarURL(sRepo))
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(err, ShouldBeNil)
+
+		// ------ Add repo and bookmark it
+		bRepo := "bookmarked-repo"
+		img, err = GetRandomImage("tag")
+		So(err, ShouldBeNil)
+		err = UploadImageWithBasicAuth(img, baseURL, bRepo, simpleUser, simpleUserPassword)
+		So(err, ShouldBeNil)
+
+		resp, err = simpleUserClient.Put(preferencesBaseURL + PutRepoBookmarkURL(bRepo))
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(err, ShouldBeNil)
+
+		// ------ Add repo, star and bookmark it
+		sbRepo := "starred-bookmarked-repo"
+		img, err = GetRandomImage("tag")
+		So(err, ShouldBeNil)
+		err = UploadImageWithBasicAuth(img, baseURL, sbRepo, simpleUser, simpleUserPassword)
+		So(err, ShouldBeNil)
+
+		resp, err = simpleUserClient.Put(preferencesBaseURL + PutRepoStarURL(sbRepo))
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(err, ShouldBeNil)
+		resp, err = simpleUserClient.Put(preferencesBaseURL + PutRepoBookmarkURL(sbRepo))
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(err, ShouldBeNil)
+
+		// Make global search requests filterin by IsStarred and IsBookmarked
+
+		query := `{ GlobalSearch(query:"repo", ){ Repos { Name } } }`
+
+		resp, err = simpleUserClient.Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		responseStruct := &GlobalSearchResultResp{}
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+
+		foundRepos := responseStruct.GlobalSearchResult.GlobalSearch.Repos
+		So(len(foundRepos), ShouldEqual, 4)
+
+		// Filter by IsStarred = true
+		query = `{ GlobalSearch(query:"repo", filter:{ IsStarred:true }) { Repos { Name IsStarred IsBookmarked }}}`
+
+		resp, err = simpleUserClient.Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		responseStruct = &GlobalSearchResultResp{}
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+
+		foundRepos = responseStruct.GlobalSearchResult.GlobalSearch.Repos
+		So(len(foundRepos), ShouldEqual, 2)
+		So(foundRepos, ShouldContain, common.RepoSummary{Name: sRepo, IsStarred: true, IsBookmarked: false})
+		So(foundRepos, ShouldContain, common.RepoSummary{Name: sbRepo, IsStarred: true, IsBookmarked: true})
+
+		// Filter by IsStarred = true && IsBookmarked = false
+		query = `{ 
+			GlobalSearch(query:"repo", filter:{ IsStarred:true, IsBookmarked:false }) { 
+				Repos { Name IsStarred IsBookmarked }
+			}
+		}`
+
+		resp, err = simpleUserClient.Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		responseStruct = &GlobalSearchResultResp{}
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+
+		foundRepos = responseStruct.GlobalSearchResult.GlobalSearch.Repos
+		So(len(foundRepos), ShouldEqual, 1)
+		So(foundRepos, ShouldContain, common.RepoSummary{Name: sRepo, IsStarred: true, IsBookmarked: false})
+
+		// Filter by IsBookmarked = true
+		query = `{ 
+			GlobalSearch(query:"repo", filter:{ IsBookmarked:true }) { 
+				Repos { Name IsStarred IsBookmarked }
+			}
+		}`
+
+		resp, err = simpleUserClient.Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		responseStruct = &GlobalSearchResultResp{}
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+
+		foundRepos = responseStruct.GlobalSearchResult.GlobalSearch.Repos
+		So(len(foundRepos), ShouldEqual, 2)
+		So(foundRepos, ShouldContain, common.RepoSummary{Name: bRepo, IsStarred: false, IsBookmarked: true})
+		So(foundRepos, ShouldContain, common.RepoSummary{Name: sbRepo, IsStarred: true, IsBookmarked: true})
+
+		// Filter by IsBookmarked = true && IsStarred = false
+		query = `{ 
+			GlobalSearch(query:"repo", filter:{ IsBookmarked:true, IsStarred:false }) { 
+				Repos { Name IsStarred IsBookmarked }
+			}
+		}`
+
+		resp, err = simpleUserClient.Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		responseStruct = &GlobalSearchResultResp{}
+
+		err = json.Unmarshal(resp.Body(), responseStruct)
+		So(err, ShouldBeNil)
+
+		foundRepos = responseStruct.GlobalSearchResult.GlobalSearch.Repos
+		So(len(foundRepos), ShouldEqual, 1)
+		So(foundRepos, ShouldContain, common.RepoSummary{Name: bRepo, IsStarred: false, IsBookmarked: true})
 	})
 }
 

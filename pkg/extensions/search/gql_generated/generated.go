@@ -1580,6 +1580,14 @@ input Filter {
     Only return images or repositories with at least one signature
     """
     HasToBeSigned: Boolean
+    """
+    Only returns images or repositories that are bookmarked or not bookmarked
+    """
+    IsBookmarked: Boolean
+    """
+    Only returns images or repositories that are starred or not starred
+    """
+    IsStarred: Boolean
 }
 
 """
@@ -8750,7 +8758,7 @@ func (ec *executionContext) unmarshalInputFilter(ctx context.Context, obj interf
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"Os", "Arch", "HasToBeSigned"}
+	fieldsInOrder := [...]string{"Os", "Arch", "HasToBeSigned", "IsBookmarked", "IsStarred"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -8778,6 +8786,22 @@ func (ec *executionContext) unmarshalInputFilter(ctx context.Context, obj interf
 
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("HasToBeSigned"))
 			it.HasToBeSigned, err = ec.unmarshalOBoolean2ᚖbool(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		case "IsBookmarked":
+			var err error
+
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("IsBookmarked"))
+			it.IsBookmarked, err = ec.unmarshalOBoolean2ᚖbool(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		case "IsStarred":
+			var err error
+
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("IsStarred"))
+			it.IsStarred, err = ec.unmarshalOBoolean2ᚖbool(ctx, v)
 			if err != nil {
 				return it, err
 			}

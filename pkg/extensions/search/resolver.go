@@ -667,6 +667,8 @@ func globalSearch(ctx context.Context, query string, repoDB repodb.RepoDB, filte
 			Os:            filter.Os,
 			Arch:          filter.Arch,
 			HasToBeSigned: filter.HasToBeSigned,
+			IsBookmarked:  filter.IsBookmarked,
+			IsStarred:     filter.IsStarred,
 		}
 	}
 

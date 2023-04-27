@@ -224,6 +224,14 @@ func AcceptedByFilter(filter repodb.Filter, data repodb.FilterData) bool {
 		return false
 	}
 
+	if filter.IsBookmarked != nil && *filter.IsBookmarked != data.IsBookmarked {
+		return false
+	}
+
+	if filter.IsStarred != nil && *filter.IsStarred != data.IsStarred {
+		return false
+	}
+
 	return true
 }
 

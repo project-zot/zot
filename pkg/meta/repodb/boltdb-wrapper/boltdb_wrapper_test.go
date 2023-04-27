@@ -406,6 +406,7 @@ func TestWrapperErrors(t *testing.T) {
 				}
 
 				repoMeta := repodb.RepoMetadata{
+					Name: "repo1",
 					Tags: map[string]repodb.Descriptor{
 						"tag1": {Digest: "dig1", MediaType: ispec.MediaTypeImageManifest},
 					},
@@ -420,6 +421,7 @@ func TestWrapperErrors(t *testing.T) {
 				}
 
 				repoMeta = repodb.RepoMetadata{
+					Name: "repo2",
 					Tags: map[string]repodb.Descriptor{
 						"tag2": {Digest: "dig2", MediaType: ispec.MediaTypeImageManifest},
 					},
@@ -459,6 +461,7 @@ func TestWrapperErrors(t *testing.T) {
 				}
 
 				repoMeta = repodb.RepoMetadata{
+					Name: "repo1",
 					Tags: map[string]repodb.Descriptor{
 						"tag1": {Digest: "dig1", MediaType: ispec.MediaTypeImageManifest},
 					},
@@ -593,6 +596,7 @@ func TestWrapperErrors(t *testing.T) {
 
 				// manifest data doesn't exist
 				repoMeta = repodb.RepoMetadata{
+					Name: "repo1",
 					Tags: map[string]repodb.Descriptor{
 						"tag2": {Digest: "dig2", MediaType: ispec.MediaTypeImageManifest},
 					},
@@ -608,6 +612,7 @@ func TestWrapperErrors(t *testing.T) {
 
 				// manifest data is wrong
 				repoMeta = repodb.RepoMetadata{
+					Name: "repo2",
 					Tags: map[string]repodb.Descriptor{
 						"tag2": {Digest: "wrongManifestData", MediaType: ispec.MediaTypeImageManifest},
 					},
@@ -622,6 +627,7 @@ func TestWrapperErrors(t *testing.T) {
 				}
 
 				repoMeta = repodb.RepoMetadata{
+					Name: "repo3",
 					Tags: map[string]repodb.Descriptor{
 						"tag1": {Digest: "dig1", MediaType: ispec.MediaTypeImageManifest},
 					},
