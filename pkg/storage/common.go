@@ -717,7 +717,7 @@ func IsSupportedMediaType(mediaType string) bool {
 	return mediaType == ispec.MediaTypeImageIndex ||
 		mediaType == ispec.MediaTypeImageManifest ||
 		mediaType == ispec.MediaTypeArtifactManifest ||
-		mediaType == oras.MediaTypeArtifactManifestt ||
+		mediaType == oras.MediaTypeArtifactManifest ||
 		mediaType == ds.MediaTypeManifest
 }
 
