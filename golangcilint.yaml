@@ -5,7 +5,7 @@ run:
 
 linters:
   enable-all: true
-  disable: funlen,gocognit,exhaustivestruct,paralleltest,forbidigo,ireturn,wrapcheck,exhaustive,maintidx,exhaustruct,nosnakecase,interfacer,structcheck,varcheck,deadcode,ifshort,golint,scopelint,maligned,rowserrcheck,sqlclosecheck
+  disable: funlen,gocognit,exhaustivestruct,paralleltest,forbidigo,ireturn,wrapcheck,exhaustive,maintidx,exhaustruct,nosnakecase,interfacer,structcheck,varcheck,deadcode,ifshort,golint,scopelint,maligned,rowserrcheck,sqlclosecheck,revive,musttag
 
 linters-settings:
   dupl:

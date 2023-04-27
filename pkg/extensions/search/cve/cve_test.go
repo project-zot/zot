@@ -111,7 +111,8 @@ func generateTestData(dbDir string) error { //nolint: gocyclo
 		return err
 	}
 
-	if err = os.WriteFile(path.Join(dbDir, "zot-nonreadable-test", "index.json"), buf, 0o111); err != nil {
+	if err = os.WriteFile(path.Join(dbDir, "zot-nonreadable-test", "index.json"), //nolint:gosec // test code
+		buf, 0o111); err != nil {
 		return err
 	}
 

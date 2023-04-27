@@ -21,7 +21,7 @@ func SetupSwaggerRoutes(conf *config.Config, router *mux.Router, authFunc mux.Mi
 	log log.Logger,
 ) {
 	log.Info().Msg("setting up swagger route")
-	// swagger swagger "/swagger/v2/index.html"
+	// swagger "/swagger/v2/index.html"
 	swgRouter := router.PathPrefix("/swagger/v2/").Subrouter()
 	swgRouter.Use(authFunc)
 	swgRouter.Methods("GET").Handler(httpSwagger.WrapHandler)

@@ -31,7 +31,7 @@ jobs:
       - uses: actions/setup-go@v4
         with:
           cache: false
-          go-version: 1.19.x
+          go-version: 1.20.x
       - name: Install dependencies
         run: |
           cd $GITHUB_WORKSPACE
@@ -105,8 +105,8 @@ jobs:
             ./bin/zot-linux-amd64 serve test/cluster/config-minio3.json &
             sleep 10
             # run tests
-            skopeo --debug copy --format=oci --dest-tls-verify=false docker://ghcr.io/project-zot/golang:1.19 docker://localhost:8080/golang:1.19
-            skopeo --debug copy --src-tls-verify=false docker://localhost:8080/golang:1.19 oci:golang:1.19
+            skopeo --debug copy --format=oci --dest-tls-verify=false docker://ghcr.io/project-zot/golang:1.20 docker://localhost:8080/golang:1.20
+            skopeo --debug copy --src-tls-verify=false docker://localhost:8080/golang:1.20 oci:golang:1.20
             echo "{\"name\":\"foo\",\"value\":\"bar\"}" > config.json
             echo "hello world" > artifact.txt
             oras push --plain-http localhost:8080/hello-artifact:v2 \

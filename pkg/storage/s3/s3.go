@@ -1458,7 +1458,7 @@ func (is *ObjectStorage) getOriginalBlobFromDisk(duplicateBlobs []string) (strin
 }
 
 func (is *ObjectStorage) getOriginalBlob(digest godigest.Digest, duplicateBlobs []string) (string, error) {
-	originalBlob := ""
+	var originalBlob string
 
 	var err error
 

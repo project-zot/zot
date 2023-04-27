@@ -501,7 +501,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			So(err, ShouldBeNil)
 			So(repoMeta.Stars, ShouldEqual, 0)
 
-			repoMeta, err = repoDB.GetRepoMeta("badRepo")
+			_, err = repoDB.GetRepoMeta("badRepo")
 			So(err, ShouldNotBeNil)
 		})
 
@@ -2663,7 +2663,7 @@ func generateTestImage() ([]byte, []byte, error) {
 	// init layers with random values
 	for i := range layers {
 		//nolint:gosec
-		_, err := rand.Read(layers[i])
+		_, err := rand.Read(layers[i]) //nolint:staticcheck
 		if err != nil {
 			return []byte{}, []byte{}, err
 		}

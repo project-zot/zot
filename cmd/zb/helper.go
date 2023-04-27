@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
-	mrand "math/rand"
+	"math/rand"
 	"net/http"
 	"os"
 	"path"
@@ -904,7 +904,8 @@ func getRandomSize(probabilityRange []float64) (int, int) {
 
 //nolint:gosec
 func flipFunc(probabilityRange []float64) int {
-	mrand.Seed(time.Now().UTC().UnixNano())
+	seed := time.Now().UTC().UnixNano()
+	mrand := rand.New(rand.NewSource(seed))
 	toss := mrand.Float64()
 
 	for idx, r := range probabilityRange {

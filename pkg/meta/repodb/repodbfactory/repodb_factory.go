@@ -132,7 +132,7 @@ func toStringIfOk(cacheDriverConfig map[string]interface{}, param string, log lo
 	}
 
 	if str == "" {
-		log.Error().Msgf("parsing CacheDriver config failed, field '%s' is is empty", param)
+		log.Error().Msgf("parsing CacheDriver config failed, field '%s' is empty", param)
 
 		return "", false
 	}

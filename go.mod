@@ -1,6 +1,6 @@
 module zotregistry.io/zot
 
-go 1.19
+go 1.20
 
 require (
 	github.com/99designs/gqlgen v0.17.29
