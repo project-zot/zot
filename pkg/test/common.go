@@ -37,9 +37,9 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opencontainers/umoci"
 	"github.com/phayes/freeport"
-	"github.com/sigstore/cosign/cmd/cosign/cli/generate"
-	"github.com/sigstore/cosign/cmd/cosign/cli/options"
-	"github.com/sigstore/cosign/cmd/cosign/cli/sign"
+	"github.com/sigstore/cosign/v2/cmd/cosign/cli/generate"
+	"github.com/sigstore/cosign/v2/cmd/cosign/cli/options"
+	"github.com/sigstore/cosign/v2/cmd/cosign/cli/sign"
 	"gopkg.in/resty.v1"
 	"oras.land/oras-go/v2/registry"
 	"oras.land/oras-go/v2/registry/remote"
@@ -1651,7 +1651,7 @@ func SignImageUsingCosign(repoTag, port string) error {
 	// generate a keypair
 	os.Setenv("COSIGN_PASSWORD", "")
 
-	err = generate.GenerateKeyPairCmd(context.TODO(), "", nil)
+	err = generate.GenerateKeyPairCmd(context.TODO(), "", "cosign", nil)
 	if err != nil {
 		return err
 	}
@@ -1663,10 +1663,12 @@ func SignImageUsingCosign(repoTag, port string) error {
 	// sign the image
 	return sign.SignCmd(&options.RootOptions{Verbose: true, Timeout: timeoutPeriod * time.Minute},
 		options.KeyOpts{KeyRef: path.Join(tdir, "cosign.key"), PassFunc: generate.GetPass},
-		options.RegistryOptions{AllowInsecure: true},
-		map[string]interface{}{"tag": "1.0"},
-		[]string{imageURL},
-		"", "", true, "", "", "", false, false, "", true)
+		options.SignOptions{
+			Registry:          options.RegistryOptions{AllowInsecure: true},
+			AnnotationOptions: options.AnnotationOptions{Annotations: []string{"tag=1.0"}},
+			Upload:            true,
+		},
+		[]string{imageURL})
 }
 
 func SignImageUsingNotary(repoTag, port string) error {

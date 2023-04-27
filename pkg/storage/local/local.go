@@ -26,7 +26,7 @@ import (
 	"github.com/opencontainers/umoci/oci/casext"
 	oras "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/rs/zerolog"
-	"github.com/sigstore/cosign/pkg/oci/remote"
+	"github.com/sigstore/cosign/v2/pkg/oci/remote"
 
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/common"

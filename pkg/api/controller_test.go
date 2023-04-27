@@ -31,11 +31,11 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
-	"github.com/sigstore/cosign/cmd/cosign/cli/generate"
-	"github.com/sigstore/cosign/cmd/cosign/cli/options"
-	"github.com/sigstore/cosign/cmd/cosign/cli/sign"
-	"github.com/sigstore/cosign/cmd/cosign/cli/verify"
-	"github.com/sigstore/cosign/pkg/oci/remote"
+	"github.com/sigstore/cosign/v2/cmd/cosign/cli/generate"
+	"github.com/sigstore/cosign/v2/cmd/cosign/cli/options"
+	"github.com/sigstore/cosign/v2/cmd/cosign/cli/sign"
+	"github.com/sigstore/cosign/v2/cmd/cosign/cli/verify"
+	"github.com/sigstore/cosign/v2/pkg/oci/remote"
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/stretchr/testify/assert"
 	"go.etcd.io/bbolt"
@@ -3970,20 +3970,24 @@ func TestImageSignatures(t *testing.T) {
 
 			// generate a keypair
 			os.Setenv("COSIGN_PASSWORD", "")
-			err = generate.GenerateKeyPairCmd(context.TODO(), "", nil)
+			err = generate.GenerateKeyPairCmd(context.TODO(), "", "cosign", nil)
 			So(err, ShouldBeNil)
+
+			annotations := []string{"tag=1.0"}
 
 			// sign the image
 			err = sign.SignCmd(&options.RootOptions{Verbose: true, Timeout: 1 * time.Minute},
 				options.KeyOpts{KeyRef: path.Join(tdir, "cosign.key"), PassFunc: generate.GetPass},
-				options.RegistryOptions{AllowInsecure: true},
-				map[string]interface{}{"tag": "1.0"},
-				[]string{fmt.Sprintf("localhost:%s/%s@%s", port, repoName, digest.String())},
-				"", "", true, "", "", "", false, false, "", true)
+				options.SignOptions{
+					Registry:          options.RegistryOptions{AllowInsecure: true},
+					AnnotationOptions: options.AnnotationOptions{Annotations: annotations},
+					Upload:            true,
+				},
+				[]string{fmt.Sprintf("localhost:%s/%s@%s", port, repoName, digest.String())})
 			So(err, ShouldBeNil)
 
 			// verify the image
-			aopts := &options.AnnotationOptions{Annotations: []string{"tag=1.0"}}
+			aopts := &options.AnnotationOptions{Annotations: annotations}
 			amap, err := aopts.AnnotationsMap()
 			So(err, ShouldBeNil)
 			vrfy := verify.VerifyCommand{
@@ -3991,6 +3995,7 @@ func TestImageSignatures(t *testing.T) {
 				CheckClaims:     true,
 				KeyRef:          path.Join(tdir, "cosign.pub"),
 				Annotations:     amap,
+				IgnoreTlog:      true,
 			}
 			err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", port, repoName, "1.0")})
 			So(err, ShouldBeNil)
@@ -4004,6 +4009,7 @@ func TestImageSignatures(t *testing.T) {
 				CheckClaims:     true,
 				KeyRef:          path.Join(tdir, "cosign.pub"),
 				Annotations:     amap,
+				IgnoreTlog:      true,
 			}
 			err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", port, repoName, "1.0")})
 			So(err, ShouldNotBeNil)
@@ -4017,6 +4023,7 @@ func TestImageSignatures(t *testing.T) {
 				RegistryOptions: options.RegistryOptions{AllowInsecure: true},
 				KeyRef:          path.Join(tdir, "cosign.key"),
 				Annotations:     amap,
+				IgnoreTlog:      true,
 			}
 			err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", port, repoName, "1.0")})
 			So(err, ShouldNotBeNil)
@@ -4028,7 +4035,7 @@ func TestImageSignatures(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			os.Setenv("COSIGN_PASSWORD", "")
-			err = generate.GenerateKeyPairCmd(context.TODO(), "", nil)
+			err = generate.GenerateKeyPairCmd(context.TODO(), "", "cosign", nil)
 			So(err, ShouldBeNil)
 
 			// verify the image with incorrect key
@@ -4040,6 +4047,7 @@ func TestImageSignatures(t *testing.T) {
 				RegistryOptions: options.RegistryOptions{AllowInsecure: true},
 				KeyRef:          path.Join(tdir, "cosign.pub"),
 				Annotations:     amap,
+				IgnoreTlog:      true,
 			}
 			err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", port, repoName, "1.0")})
 			So(err, ShouldNotBeNil)
@@ -6244,18 +6252,22 @@ func TestGCSignaturesAndUntaggedManifests(t *testing.T) {
 
 			// generate a keypair
 			os.Setenv("COSIGN_PASSWORD", "")
-			err = generate.GenerateKeyPairCmd(context.TODO(), "", nil)
+			err = generate.GenerateKeyPairCmd(context.TODO(), "", "cosign", nil)
 			So(err, ShouldBeNil)
 
 			image := fmt.Sprintf("localhost:%s/%s@%s", port, repoName, digest.String())
 
+			annotations := []string{fmt.Sprintf("tag=%s", tag)}
+
 			// sign the image
 			err = sign.SignCmd(&options.RootOptions{Verbose: true, Timeout: 1 * time.Minute},
 				options.KeyOpts{KeyRef: path.Join(tdir, "cosign.key"), PassFunc: generate.GetPass},
-				options.RegistryOptions{AllowInsecure: true},
-				map[string]interface{}{"tag": tag},
-				[]string{image},
-				"", "", true, "", "", "", false, false, "", true)
+				options.SignOptions{
+					Registry:          options.RegistryOptions{AllowInsecure: true},
+					AnnotationOptions: options.AnnotationOptions{Annotations: annotations},
+					Upload:            true,
+				},
+				[]string{image})
 
 			So(err, ShouldBeNil)
 

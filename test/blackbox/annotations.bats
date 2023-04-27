@@ -104,11 +104,11 @@ function teardown_file() {
     
     run cosign initialize
     [ "$status" -eq 0 ]
-    run cosign generate-key-pair
+    run cosign generate-key-pair --output-key-prefix "cosign-sign-test"
     [ "$status" -eq 0 ]
-    run cosign sign --key cosign.key localhost:8080/annotations:latest --yes
+    run cosign sign --key cosign-sign-test.key localhost:8080/annotations:latest --yes
     [ "$status" -eq 0 ]
-    run cosign verify --key cosign.pub localhost:8080/annotations:latest
+    run cosign verify --key cosign-sign-test.pub localhost:8080/annotations:latest
     [ "$status" -eq 0 ]
     local sigName=$(echo "${lines[-1]}" | jq '.[].critical.image."docker-manifest-digest"')
     [ "$status" -eq 0 ]

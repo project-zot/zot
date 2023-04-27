@@ -24,11 +24,11 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	artifactspec "github.com/oras-project/artifacts-spec/specs-go/v1"
-	"github.com/sigstore/cosign/cmd/cosign/cli/generate"
-	"github.com/sigstore/cosign/cmd/cosign/cli/options"
-	"github.com/sigstore/cosign/cmd/cosign/cli/sign"
-	"github.com/sigstore/cosign/cmd/cosign/cli/verify"
-	"github.com/sigstore/cosign/pkg/oci/remote"
+	"github.com/sigstore/cosign/v2/cmd/cosign/cli/generate"
+	"github.com/sigstore/cosign/v2/cmd/cosign/cli/options"
+	"github.com/sigstore/cosign/v2/cmd/cosign/cli/sign"
+	"github.com/sigstore/cosign/v2/cmd/cosign/cli/verify"
+	"github.com/sigstore/cosign/v2/pkg/oci/remote"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"
 
@@ -3222,6 +3222,7 @@ func TestSignatures(t *testing.T) {
 			CheckClaims:     true,
 			KeyRef:          path.Join(tdir, "cosign.pub"),
 			Annotations:     amap,
+			IgnoreTlog:      true,
 		}
 
 		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")})
@@ -4097,6 +4098,7 @@ func TestSignaturesOnDemand(t *testing.T) {
 			CheckClaims:     true,
 			KeyRef:          path.Join(tdir, "cosign.pub"),
 			Annotations:     amap,
+			IgnoreTlog:      true,
 		}
 		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")})
 		So(err, ShouldBeNil)
@@ -4355,6 +4357,7 @@ func TestOnlySignaturesOnDemand(t *testing.T) {
 			CheckClaims:     true,
 			KeyRef:          path.Join(tdir, "cosign.pub"),
 			Annotations:     amap,
+			IgnoreTlog:      true,
 		}
 
 		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")})
@@ -4374,6 +4377,7 @@ func TestOnlySignaturesOnDemand(t *testing.T) {
 			CheckClaims:     true,
 			KeyRef:          path.Join(tdir, "cosign.pub"),
 			Annotations:     amap,
+			IgnoreTlog:      true,
 		}
 
 		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")})
@@ -4721,6 +4725,7 @@ func TestSyncSignaturesDiff(t *testing.T) {
 			CheckClaims:     true,
 			KeyRef:          path.Join(tdir, "cosign.pub"),
 			Annotations:     amap,
+			IgnoreTlog:      true,
 		}
 		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")})
 		So(err, ShouldBeNil)
@@ -4747,6 +4752,7 @@ func TestSyncSignaturesDiff(t *testing.T) {
 			CheckClaims:     true,
 			KeyRef:          path.Join(tdir, "cosign.pub"),
 			Annotations:     amap,
+			IgnoreTlog:      true,
 		}
 		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")})
 		So(err, ShouldBeNil)
@@ -5564,7 +5570,7 @@ func generateKeyPairs(tdir string) {
 	os.Setenv("COSIGN_PASSWORD", "")
 
 	if _, err := os.Stat(path.Join(tdir, "cosign.key")); err != nil {
-		err := generate.GenerateKeyPairCmd(context.TODO(), "", nil)
+		err := generate.GenerateKeyPairCmd(context.TODO(), "", "cosign", nil)
 		if err != nil {
 			panic(err)
 		}
@@ -5582,20 +5588,24 @@ func generateKeyPairs(tdir string) {
 }
 
 func signImage(tdir, port, repoName string, digest godigest.Digest) {
+	annotations := []string{"tag=1.0"}
+
 	// push signatures to upstream server so that we can sync them later
 	// sign the image
 	err := sign.SignCmd(&options.RootOptions{Verbose: true, Timeout: 1 * time.Minute},
 		options.KeyOpts{KeyRef: path.Join(tdir, "cosign.key"), PassFunc: generate.GetPass},
-		options.RegistryOptions{AllowInsecure: true},
-		map[string]interface{}{"tag": "1.0"},
-		[]string{fmt.Sprintf("localhost:%s/%s@%s", port, repoName, digest.String())},
-		"", "", true, "", "", "", false, false, "", true)
+		options.SignOptions{
+			Registry:          options.RegistryOptions{AllowInsecure: true},
+			AnnotationOptions: options.AnnotationOptions{Annotations: annotations},
+			Upload:            true,
+		},
+		[]string{fmt.Sprintf("localhost:%s/%s@%s", port, repoName, digest.String())})
 	if err != nil {
 		panic(err)
 	}
 
 	// verify the image
-	a := &options.AnnotationOptions{Annotations: []string{"tag=1.0"}}
+	a := &options.AnnotationOptions{Annotations: annotations}
 
 	amap, err := a.AnnotationsMap()
 	if err != nil {
@@ -5607,6 +5617,7 @@ func signImage(tdir, port, repoName string, digest godigest.Digest) {
 		CheckClaims:     true,
 		KeyRef:          path.Join(tdir, "cosign.pub"),
 		Annotations:     amap,
+		IgnoreTlog:      true,
 	}
 
 	err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", port, repoName, "1.0")})
