@@ -11,7 +11,7 @@ require (
 	github.com/bmatcuk/doublestar/v4 v4.6.0
 	github.com/briandowns/spinner v1.23.0
 	github.com/chartmuseum/auth v0.5.0
-	github.com/containers/common v0.50.1
+	github.com/containers/common v0.48.1
 	github.com/didip/tollbooth/v6 v6.1.2
 	github.com/docker/distribution v2.8.1+incompatible
 	github.com/dustin/go-humanize v1.0.1
@@ -41,7 +41,7 @@ require (
 	github.com/spf13/cobra v1.7.0
 	github.com/spf13/viper v1.15.0
 	github.com/stretchr/testify v1.8.2
-	github.com/swaggo/swag v1.8.12
+	github.com/swaggo/swag v1.16.1
 	github.com/vektah/gqlparser/v2 v2.5.1
 	go.etcd.io/bbolt v1.3.7
 	golang.org/x/crypto v0.8.0
@@ -52,7 +52,7 @@ require (
 require (
 	github.com/aquasecurity/trivy v0.40.0
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.19.4
-	github.com/containers/image/v5 v5.23.0
+	github.com/containers/image/v5 v5.21.1
 	github.com/gobwas/glob v0.2.3
 	github.com/notaryproject/notation-go v1.0.0-rc.3
 	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20230117141039-067a0f5b0e25
