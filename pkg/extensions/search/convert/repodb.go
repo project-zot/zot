@@ -599,7 +599,8 @@ func RepoMeta2ExpandedRepoInfo(ctx context.Context, repoMeta repodb.RepoMetadata
 		imageSummary, imageBlobs, err := Descriptor2ImageSummary(ctx, descriptor, repoName, tag,
 			skip.Vulnerabilities, repoMeta, manifestMetaMap, indexDataMap, cveInfo)
 		if err != nil {
-			log.Error().Msgf("repodb: erorr while converting descriptor for image '%s:%s'", repoName, tag)
+			log.Error().Str("repository", repoName).Str("reference", tag).
+				Msg("repodb: erorr while converting descriptor for image")
 
 			continue
 		}

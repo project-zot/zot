@@ -267,7 +267,7 @@ func getImageSummary(ctx context.Context, repo, tag string, digest *string, repo
 
 		indexDataMap[indexDigest] = indexData
 	default:
-		log.Error().Msgf("resolver: media type '%s' not supported", manifestDescriptor.MediaType)
+		log.Error().Str("mediaType", manifestDescriptor.MediaType).Msg("resolver: media type not supported")
 	}
 
 	skip := convert.SkipQGLField{
@@ -399,11 +399,11 @@ func getImageListForCVE(
 	for _, repoMeta := range reposMeta {
 		repo := repoMeta.Name
 
-		log.Info().Str("repo", repo).Str("CVE", cveID).Msg("extracting list of tags affected by CVE")
+		log.Info().Str("repository", repo).Str("CVE", cveID).Msg("extracting list of tags affected by CVE")
 
 		tagsInfo, err := cveInfo.GetImageListForCVE(repo, cveID)
 		if err != nil {
-			log.Error().Str("repo", repo).Str("CVE", cveID).Err(err).
+			log.Error().Str("repository", repo).Str("CVE", cveID).Err(err).
 				Msg("error getting image list for CVE from repo")
 
 			return &gql_generated.PaginatedImagesResult{}, err
@@ -463,11 +463,11 @@ func getImageListWithCVEFixed(
 ) (*gql_generated.PaginatedImagesResult, error) {
 	imageList := make([]*gql_generated.ImageSummary, 0)
 
-	log.Info().Str("repo", repo).Str("CVE", cveID).Msg("extracting list of tags where CVE is fixed")
+	log.Info().Str("repository", repo).Str("CVE", cveID).Msg("extracting list of tags where CVE is fixed")
 
 	tagsInfo, err := cveInfo.GetImageListWithCVEFixed(repo, cveID)
 	if err != nil {
-		log.Error().Str("repo", repo).Str("CVE", cveID).Err(err).
+		log.Error().Str("repository", repo).Str("CVE", cveID).Err(err).
 			Msg("error getting image list with CVE fixed from repo")
 
 		return &gql_generated.PaginatedImagesResult{
@@ -1091,14 +1091,14 @@ func deleteElementAt(slice []*string, i int) []*string {
 func expandedRepoInfo(ctx context.Context, repo string, repoDB repodb.RepoDB, cveInfo cveinfo.CveInfo, log log.Logger,
 ) (*gql_generated.RepoInfo, error) {
 	if ok, err := localCtx.RepoIsUserAvailable(ctx, repo); !ok || err != nil {
-		log.Info().Err(err).Msgf("resolver: 'repo %s is user available' = %v", repo, ok)
+		log.Info().Err(err).Str("repository", repo).Bool("availability", ok).Msg("resolver: repo user availability")
 
 		return &gql_generated.RepoInfo{}, nil //nolint:nilerr // don't give details to a potential attacker
 	}
 
 	repoMeta, err := repoDB.GetRepoMeta(repo)
 	if err != nil {
-		log.Error().Err(err).Msgf("resolver: can't retrieve repoMeta for repo %s", repo)
+		log.Error().Err(err).Str("repository", repo).Msg("resolver: can't retrieve repoMeta for repo")
 
 		return &gql_generated.RepoInfo{}, err
 	}
@@ -1276,7 +1276,7 @@ func getReferrers(repoDB repodb.RepoDB, repo string, referredDigest string, arti
 ) ([]*gql_generated.Referrer, error) {
 	refDigest := godigest.Digest(referredDigest)
 	if err := refDigest.Validate(); err != nil {
-		log.Error().Err(err).Msgf("graphql: bad digest string from request '%s'", referredDigest)
+		log.Error().Err(err).Str("digest", referredDigest).Msg("graphql: bad referenced digest string from request")
 
 		return []*gql_generated.Referrer{}, fmt.Errorf("graphql: bad digest string from request '%s' %w",
 			referredDigest, err)

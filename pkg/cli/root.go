@@ -143,11 +143,11 @@ func newVerifyCmd(conf *config.Config) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			if len(args) > 0 {
 				if err := LoadConfiguration(conf, args[0]); err != nil {
-					log.Error().Msgf("Config file %s is invalid", args[0])
+					log.Error().Str("config", args[0]).Msg("Config file is invalid")
 					panic(err)
 				}
 
-				log.Info().Msgf("Config file %s is valid", args[0])
+				log.Info().Str("config", args[0]).Msg("Config file is valid")
 			}
 		},
 	}
@@ -263,16 +263,17 @@ func validateCacheConfig(cfg *config.Config) error {
 
 		// unsupported cache driver
 		if cfg.Storage.CacheDriver["name"] != storageConstants.DynamoDBDriverName {
-			log.Error().Err(errors.ErrBadConfig).Msgf("unsupported cache driver: %s", cfg.Storage.CacheDriver["name"])
+			log.Error().Err(errors.ErrBadConfig).
+				Interface("cacheDriver", cfg.Storage.CacheDriver["name"]).Msg("unsupported cache driver")
 
 			return errors.ErrBadConfig
 		}
 	}
 
 	if !cfg.Storage.RemoteCache && cfg.Storage.CacheDriver != nil {
-		log.Warn().Err(errors.ErrBadConfig).Msgf(
-			"remoteCache set to false but cacheDriver config (remote caching) provided for %s,"+
-				"will ignore and use local caching", cfg.Storage.RootDirectory)
+		log.Warn().Err(errors.ErrBadConfig).Str("directory", cfg.Storage.RootDirectory).
+			Msg("remoteCache set to false but cacheDriver config (remote caching) provided for directory" +
+				"will ignore and use local caching")
 	}
 
 	// subpaths
@@ -295,16 +296,17 @@ func validateCacheConfig(cfg *config.Config) error {
 
 			// unsupported cache driver
 			if subPath.CacheDriver["name"] != storageConstants.DynamoDBDriverName {
-				log.Error().Err(errors.ErrBadConfig).Msgf("unsupported cache driver: %s", subPath.CacheDriver["name"])
+				log.Error().Err(errors.ErrBadConfig).Interface("cacheDriver", cfg.Storage.CacheDriver["name"]).
+					Msg("unsupported cache driver")
 
 				return errors.ErrBadConfig
 			}
 		}
 
 		if !subPath.RemoteCache && subPath.CacheDriver != nil {
-			log.Warn().Err(errors.ErrBadConfig).Msgf(
-				"remoteCache set to false but cacheDriver config (remote caching) provided for %s,"+
-					"will ignore and use local caching", subPath.RootDirectory)
+			log.Warn().Err(errors.ErrBadConfig).Str("directory", cfg.Storage.RootDirectory).
+				Msg("remoteCache set to false but cacheDriver config (remote caching) provided for directory," +
+					"will ignore and use local caching")
 		}
 	}
 
@@ -373,7 +375,8 @@ func validateConfiguration(config *config.Config) error {
 	if len(config.Storage.StorageDriver) != 0 {
 		// enforce s3 driver in case of using storage driver
 		if config.Storage.StorageDriver["name"] != storage.S3StorageDriverName {
-			log.Error().Err(errors.ErrBadConfig).Msgf("unsupported storage driver: %s", config.Storage.StorageDriver["name"])
+			log.Error().Err(errors.ErrBadConfig).Interface("cacheDriver", config.Storage.StorageDriver["name"]).
+				Msg("unsupported storage driver")
 
 			return errors.ErrBadConfig
 		}
@@ -394,8 +397,8 @@ func validateConfiguration(config *config.Config) error {
 			for route, storageConfig := range subPaths {
 				if len(storageConfig.StorageDriver) != 0 {
 					if storageConfig.StorageDriver["name"] != storage.S3StorageDriverName {
-						log.Error().Err(errors.ErrBadConfig).Str("subpath",
-							route).Msgf("unsupported storage driver: %s", storageConfig.StorageDriver["name"])
+						log.Error().Err(errors.ErrBadConfig).Str("subpath", route).Interface("storageDriver",
+							storageConfig.StorageDriver["name"]).Msg("unsupported storage driver")
 
 						return errors.ErrBadConfig
 					}
@@ -577,9 +580,8 @@ func updateDistSpecVersion(config *config.Config) {
 		return
 	}
 
-	log.Warn().
-		Msgf("config dist-spec version: %s differs from version actually used: %s",
-			config.DistSpecVersion, distspec.Version)
+	log.Warn().Str("config version", config.DistSpecVersion).Str("supported version", distspec.Version).
+		Msg("config dist-spec version differs from version actually used")
 
 	config.DistSpecVersion = distspec.Version
 }
@@ -605,13 +607,13 @@ func LoadConfiguration(config *config.Config, configPath string) error {
 	}
 
 	if len(metaData.Keys) == 0 {
-		log.Error().Err(errors.ErrBadConfig).Msgf("config doesn't contain any key:value pair")
+		log.Error().Err(errors.ErrBadConfig).Msg("config doesn't contain any key:value pair")
 
 		return errors.ErrBadConfig
 	}
 
 	if len(metaData.Unused) > 0 {
-		log.Error().Err(errors.ErrBadConfig).Msgf("unknown keys: %v", metaData.Unused)
+		log.Error().Err(errors.ErrBadConfig).Strs("keys", metaData.Unused).Msg("unknown keys")
 
 		return errors.ErrBadConfig
 	}
@@ -707,8 +709,6 @@ func validateHTTP(config *config.Config) error {
 
 			return errors.ErrBadConfig
 		}
-
-		log.Info().Msgf("HTTP port %d\n", port)
 	}
 
 	return nil
@@ -717,15 +717,15 @@ func validateHTTP(config *config.Config) error {
 func validateGC(config *config.Config) error {
 	// enforce GC params
 	if config.Storage.GCDelay < 0 {
-		log.Error().Err(errors.ErrBadConfig).
-			Msgf("invalid garbage-collect delay %v specified", config.Storage.GCDelay)
+		log.Error().Err(errors.ErrBadConfig).Dur("delay", config.Storage.GCDelay).
+			Msg("invalid garbage-collect delay specified")
 
 		return errors.ErrBadConfig
 	}
 
 	if config.Storage.GCInterval < 0 {
-		log.Error().Err(errors.ErrBadConfig).
-			Msgf("invalid garbage-collect interval %v specified", config.Storage.GCInterval)
+		log.Error().Err(errors.ErrBadConfig).Dur("interval", config.Storage.GCInterval).
+			Msg("invalid garbage-collect interval specified")
 
 		return errors.ErrBadConfig
 	}
@@ -763,8 +763,8 @@ func validateSync(config *config.Config) error {
 		for id, regCfg := range config.Extensions.Sync.Registries {
 			// check retry options are configured for sync
 			if regCfg.MaxRetries != nil && regCfg.RetryDelay == nil {
-				log.Error().Err(errors.ErrBadConfig).Msgf("extensions.sync.registries[%d].retryDelay"+
-					" is required when using extensions.sync.registries[%d].maxRetries", id, id)
+				log.Error().Err(errors.ErrBadConfig).Int("id", id).Interface("extensions.sync.registries[id]",
+					config.Extensions.Sync.Registries[id]).Msg("retryDelay is required when using maxRetries")
 
 				return errors.ErrBadConfig
 			}

@@ -240,8 +240,8 @@ func (scanner Scanner) isManifestScanable(descriptor repodb.Descriptor) (bool, e
 		case ispec.MediaTypeImageLayerGzip, ispec.MediaTypeImageLayer, string(regTypes.DockerLayer):
 			continue
 		default:
-			scanner.log.Debug().
-				Msgf("image media type %s not supported for scanning", imageLayer.MediaType)
+			scanner.log.Debug().Str("mediaType", imageLayer.MediaType).
+				Msg("image media type not supported for scanning")
 
 			return false, zerr.ErrScanNotSupported
 		}
@@ -367,19 +367,19 @@ func (scanner Scanner) UpdateDB() error {
 }
 
 func (scanner Scanner) updateDB(dbDir string) error {
-	scanner.log.Debug().Msgf("Download Trivy DB to destination dir: %s", dbDir)
+	scanner.log.Debug().Str("dbDir", dbDir).Msg("Download Trivy DB to destination dir")
 
 	ctx := context.Background()
 
 	err := operation.DownloadDB(ctx, "dev", dbDir, scanner.dbRepository, false, false,
 		fanalTypes.RemoteOptions{Insecure: false})
 	if err != nil {
-		scanner.log.Error().Err(err).Msgf("Error downloading Trivy DB to destination dir: %s", dbDir)
+		scanner.log.Error().Err(err).Str("dbDir", dbDir).Msg("Error downloading Trivy DB to destination dir")
 
 		return err
 	}
 
-	scanner.log.Debug().Msgf("Finished downloading Trivy DB to destination dir: %s", dbDir)
+	scanner.log.Debug().Str("dbDir", dbDir).Msg("Finished downloading Trivy DB to destination dir")
 
 	return nil
 }

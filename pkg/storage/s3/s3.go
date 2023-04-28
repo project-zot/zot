@@ -125,7 +125,7 @@ func (is *ObjectStorage) initRepo(name string) error {
 	repoDir := path.Join(is.rootDir, name)
 
 	if !zreg.FullNameRegexp.MatchString(name) {
-		is.log.Error().Str("repo", name).Msg("invalid repository name")
+		is.log.Error().Str("repository", name).Msg("invalid repository name")
 
 		return zerr.ErrInvalidRepositoryName
 	}
@@ -441,7 +441,7 @@ func (is *ObjectStorage) PutImageManifest(repo, reference, mediaType string, //n
 	// apply linter only on images, not signatures
 	pass, err := storage.ApplyLinter(is, is.linter, repo, desc)
 	if !pass {
-		is.log.Error().Err(err).Str("repo", repo).Str("reference", reference).Msg("linter didn't pass")
+		is.log.Error().Err(err).Str("repository", repo).Str("reference", reference).Msg("linter didn't pass")
 
 		return "", err
 	}
@@ -1037,7 +1037,7 @@ func (is *ObjectStorage) checkCacheBlob(digest godigest.Digest) (string, error) 
 
 func (is *ObjectStorage) copyBlob(repo string, blobPath, dstRecord string) (int64, error) {
 	if err := is.initRepo(repo); err != nil {
-		is.log.Error().Err(err).Str("repo", repo).Msg("unable to initialize an empty repo")
+		is.log.Error().Err(err).Str("repository", repo).Msg("unable to initialize an empty repo")
 
 		return -1, err
 	}
@@ -1481,7 +1481,7 @@ func (is *ObjectStorage) getOriginalBlob(digest godigest.Digest, duplicateBlobs 
 		}
 	}
 
-	is.log.Info().Msgf("rebuild dedupe: found original blob %s", originalBlob)
+	is.log.Info().Str("originalBlob", originalBlob).Msg("rebuild dedupe: found original blob")
 
 	return originalBlob, nil
 }
@@ -1493,7 +1493,7 @@ func (is *ObjectStorage) dedupeBlobs(digest godigest.Digest, duplicateBlobs []st
 		return zerr.ErrDedupeRebuild
 	}
 
-	is.log.Info().Str("digest", digest.String()).Msgf("rebuild dedupe: deduping blobs for digest")
+	is.log.Info().Str("digest", digest.String()).Msg("rebuild dedupe: deduping blobs for digest")
 
 	var originalBlob string
 
@@ -1554,13 +1554,13 @@ func (is *ObjectStorage) dedupeBlobs(digest godigest.Digest, duplicateBlobs []st
 		}
 	}
 
-	is.log.Info().Str("digest", digest.String()).Msgf("rebuild dedupe: deduping blobs for digest finished successfully")
+	is.log.Info().Str("digest", digest.String()).Msg("rebuild dedupe: deduping blobs for digest finished successfully")
 
 	return nil
 }
 
 func (is *ObjectStorage) restoreDedupedBlobs(digest godigest.Digest, duplicateBlobs []string) error {
-	is.log.Info().Str("digest", digest.String()).Msgf("rebuild dedupe: restoring deduped blobs for digest")
+	is.log.Info().Str("digest", digest.String()).Msg("rebuild dedupe: restoring deduped blobs for digest")
 
 	// first we need to find the original blob, either in cache or by checking each blob size
 	originalBlob, err := is.getOriginalBlob(digest, duplicateBlobs)
@@ -1596,7 +1596,7 @@ func (is *ObjectStorage) restoreDedupedBlobs(digest godigest.Digest, duplicateBl
 	}
 
 	is.log.Info().Str("digest", digest.String()).
-		Msgf("rebuild dedupe: restoring deduped blobs for digest finished successfully")
+		Msg("rebuild dedupe: restoring deduped blobs for digest finished successfully")
 
 	return nil
 }

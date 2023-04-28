@@ -898,7 +898,7 @@ func (dwr *DBWrapper) SearchRepos(ctx context.Context, searchText string, filter
 
 				indexDataMap[indexDigest] = indexData
 			default:
-				dwr.Log.Error().Msgf("Unsupported type: %s", descriptor.MediaType)
+				dwr.Log.Error().Str("mediaType", descriptor.MediaType).Msg("Unsupported media type")
 
 				continue
 			}
@@ -1197,7 +1197,7 @@ func (dwr *DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 
 				indexDataMap[indexDigest] = indexData
 			default:
-				dwr.Log.Error().Msgf("Unsupported type: %s", descriptor.MediaType)
+				dwr.Log.Error().Str("mediaType", descriptor.MediaType).Msg("Unsupported media type")
 
 				continue
 			}
@@ -1433,7 +1433,7 @@ func (dwr *DBWrapper) SearchTags(ctx context.Context, searchText string, filter 
 
 				indexDataMap[indexDigest] = indexData
 			default:
-				dwr.Log.Error().Msgf("Unsupported type: %s", descriptor.MediaType)
+				dwr.Log.Error().Str("mediaType", descriptor.MediaType).Msg("Unsupported media type")
 
 				continue
 			}

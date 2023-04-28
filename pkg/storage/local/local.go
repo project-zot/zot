@@ -157,7 +157,7 @@ func (is *ImageStoreLocal) initRepo(name string) error {
 	}
 
 	if !zreg.FullNameRegexp.MatchString(name) {
-		is.log.Error().Str("repo", name).Msg("invalid repository name")
+		is.log.Error().Str("repository", name).Msg("invalid repository name")
 
 		return zerr.ErrInvalidRepositoryName
 	}
@@ -538,7 +538,7 @@ func (is *ImageStoreLocal) PutImageManifest(repo, reference, mediaType string, /
 	// apply linter only on images, not signatures
 	pass, err := storage.ApplyLinter(is, is.linter, repo, desc)
 	if !pass {
-		is.log.Error().Err(err).Str("repo", repo).Str("reference", reference).Msg("linter didn't pass")
+		is.log.Error().Err(err).Str("repository", repo).Str("reference", reference).Msg("linter didn't pass")
 
 		return "", err
 	}
@@ -821,7 +821,7 @@ func (is *ImageStoreLocal) FinishBlobUpload(repo, uuid string, body io.Reader, d
 
 	_, err = io.Copy(digester, blobFile)
 	if err != nil {
-		is.log.Error().Err(err).Str("repo", repo).Str("blob", src).Str("digest", dstDigest.String()).
+		is.log.Error().Err(err).Str("repository", repo).Str("blob", src).Str("digest", dstDigest.String()).
 			Msg("unable to compute hash")
 
 		return err
@@ -1143,7 +1143,7 @@ func (is *ImageStoreLocal) checkCacheBlob(digest godigest.Digest) (string, error
 
 func (is *ImageStoreLocal) copyBlob(repo, blobPath, dstRecord string) (int64, error) {
 	if err := is.initRepo(repo); err != nil {
-		is.log.Error().Err(err).Str("repo", repo).Msg("unable to initialize an empty repo")
+		is.log.Error().Err(err).Str("repository", repo).Msg("unable to initialize an empty repo")
 
 		return -1, err
 	}
@@ -1464,7 +1464,7 @@ func (is *ImageStoreLocal) garbageCollect(dir string, repo string) error {
 		case ispec.MediaTypeImageIndex:
 			indexImage, err := storage.GetImageIndex(is, repo, desc.Digest, is.log)
 			if err != nil {
-				is.log.Error().Err(err).Str("repo", repo).Str("digest", desc.Digest.String()).
+				is.log.Error().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
 					Msg("gc: failed to read multiarch(index) image")
 
 				return err
@@ -1530,7 +1530,7 @@ func gcUntaggedManifests(imgStore *ImageStoreLocal, oci casext.Engine, index *is
 				// check if is indeed an image and not an artifact by checking it's config blob
 				buf, err := imgStore.GetBlobContent(repo, desc.Digest)
 				if err != nil {
-					imgStore.log.Error().Err(err).Str("repo", repo).Str("digest", desc.Digest.String()).
+					imgStore.log.Error().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
 						Msg("gc: failed to read image manifest")
 
 					return err
@@ -1554,18 +1554,19 @@ func gcUntaggedManifests(imgStore *ImageStoreLocal, oci casext.Engine, index *is
 				// remove manifest if it's older than gc.delay
 				canGC, err := isBlobOlderThan(imgStore, repo, desc.Digest, imgStore.gcDelay)
 				if err != nil {
-					imgStore.log.Error().Err(err).Str("repo", repo).Str("digest", desc.Digest.String()).
-						Msgf("gc: failed to check if blob is older than %s", imgStore.gcDelay.String())
+					imgStore.log.Error().Err(err).Str("repository", repo).Str("digest", desc.Digest.String()).
+						Str("delay", imgStore.gcDelay.String()).Msg("gc: failed to check if blob is older than delay")
 
 					return err
 				}
 
 				if canGC {
-					imgStore.log.Info().Str("repo", repo).Str("digest", desc.Digest.String()).Msg("gc: removing manifest without tag")
+					imgStore.log.Info().Str("repository", repo).Str("digest", desc.Digest.String()).
+						Msg("gc: removing manifest without tag")
 
 					_, err = storage.RemoveManifestDescByReference(index, desc.Digest.String(), true)
 					if errors.Is(err, zerr.ErrManifestConflict) {
-						imgStore.log.Info().Str("repo", repo).Str("digest", desc.Digest.String()).
+						imgStore.log.Info().Str("repository", repo).Str("digest", desc.Digest.String()).
 							Msg("gc: skipping removing manifest due to conflict")
 
 						continue
@@ -1598,7 +1599,7 @@ func gcCosignSignatures(imgStore *ImageStoreLocal, oci casext.Engine, index *isp
 
 		if !foundSubject {
 			// remove manifest
-			imgStore.log.Info().Str("repo", repo).Str("digest", cosignDesc.Digest.String()).
+			imgStore.log.Info().Str("repository", repo).Str("digest", cosignDesc.Digest.String()).
 				Msg("gc: removing cosign signature without subject")
 
 			// no need to check for manifest conflict, if one doesn't have a subject, then none with same digest will have
@@ -1624,14 +1625,14 @@ func gcNotationSignatures(imgStore *ImageStoreLocal, oci casext.Engine, index *i
 
 		buf, err := imgStore.GetBlobContent(repo, notationDesc.Digest)
 		if err != nil {
-			imgStore.log.Error().Err(err).Str("repo", repo).Str("digest", notationDesc.Digest.String()).
+			imgStore.log.Error().Err(err).Str("repository", repo).Str("digest", notationDesc.Digest.String()).
 				Msg("gc: failed to get oras artifact manifest")
 
 			return err
 		}
 
 		if err := json.Unmarshal(buf, &artManifest); err != nil {
-			imgStore.log.Error().Err(err).Str("repo", repo).Str("digest", notationDesc.Digest.String()).
+			imgStore.log.Error().Err(err).Str("repository", repo).Str("digest", notationDesc.Digest.String()).
 				Msg("gc: failed to get oras artifact manifest")
 
 			return err
@@ -1650,7 +1651,7 @@ func gcNotationSignatures(imgStore *ImageStoreLocal, oci casext.Engine, index *i
 
 		if !foundSubject {
 			// remove manifest
-			imgStore.log.Info().Str("repo", repo).Str("digest", notationDesc.Digest.String()).
+			imgStore.log.Info().Str("repository", repo).Str("digest", notationDesc.Digest.String()).
 				Msg("gc: removing notation signature without subject")
 
 			// no need to check for manifest conflict, if one doesn't have a subject, then none with same digest will have
@@ -1828,7 +1829,7 @@ func (is *ImageStoreLocal) dedupeBlobs(digest godigest.Digest, duplicateBlobs []
 		return zerr.ErrDedupeRebuild
 	}
 
-	is.log.Info().Str("digest", digest.String()).Msgf("rebuild dedupe: deduping blobs for digest")
+	is.log.Info().Str("digest", digest.String()).Msg("rebuild dedupe: deduping blobs for digest")
 
 	var originalBlob string
 
@@ -1909,7 +1910,7 @@ func (is *ImageStoreLocal) dedupeBlobs(digest godigest.Digest, duplicateBlobs []
 		}
 	}
 
-	is.log.Info().Str("digest", digest.String()).Msgf("rebuild dedupe: deduping blobs for digest finished successfully")
+	is.log.Info().Str("digest", digest.String()).Msg("rebuild dedupe: deduping blobs for digest finished successfully")
 
 	return nil
 }

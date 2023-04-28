@@ -411,7 +411,7 @@ func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.
 		err := meta.OnGetManifest(name, reference, digest, content, rh.c.StoreController, rh.c.RepoDB, rh.c.Log)
 
 		if errors.Is(err, zerr.ErrOrphanSignature) {
-			rh.c.Log.Error().Err(err).Msgf("image is an orphan signature")
+			rh.c.Log.Error().Err(err).Msg("image is an orphan signature")
 		} else if err != nil {
 			response.WriteHeader(http.StatusInternalServerError)
 
@@ -438,8 +438,8 @@ func getReferrers(ctx context.Context, routeHandler *RouteHandler,
 		if routeHandler.c.Config.Extensions != nil &&
 			routeHandler.c.Config.Extensions.Sync != nil &&
 			*routeHandler.c.Config.Extensions.Sync.Enable {
-			routeHandler.c.Log.Info().Msgf("referrers not found, trying to get referrers to %s:%s by syncing on demand",
-				name, digest)
+			routeHandler.c.Log.Info().Str("repository", name).Str("reference", digest.String()).
+				Msg("referrers not found, trying to get reference by syncing on demand")
 
 			errSync := ext.SyncOneImage(ctx, routeHandler.c.Config, routeHandler.c.RepoDB, routeHandler.c.StoreController,
 				name, digest.String(), sync.OCIReference, routeHandler.c.Log)
@@ -598,7 +598,8 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 				// deletion of image manifest is important, but not critical for image repo consistancy
 				// in the worst scenario a partial manifest file written to disk will not affect the repo because
 				// the new manifest was not added to "index.json" file (it is possible that GC will take care of it)
-				rh.c.Log.Error().Err(err).Msgf("couldn't remove image manifest %s in repo %s", reference, name)
+				rh.c.Log.Error().Err(err).Str("repository", name).Str("reference", reference).
+					Msg("couldn't remove image manifest in repo")
 			}
 
 			response.WriteHeader(http.StatusInternalServerError)
@@ -611,7 +612,7 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 		err := meta.OnUpdateManifest(name, reference, mediaType, digest, body, rh.c.StoreController, rh.c.RepoDB,
 			rh.c.Log)
 		if errors.Is(err, zerr.ErrOrphanSignature) {
-			rh.c.Log.Error().Err(err).Msgf("pushed image is an orphan signature")
+			rh.c.Log.Error().Err(err).Msg("pushed image is an orphan signature")
 		} else if err != nil {
 			response.WriteHeader(http.StatusInternalServerError)
 
@@ -710,7 +711,7 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 		err := meta.OnDeleteManifest(name, reference, mediaType, manifestDigest, manifestBlob,
 			rh.c.StoreController, rh.c.RepoDB, rh.c.Log)
 		if errors.Is(err, zerr.ErrOrphanSignature) {
-			rh.c.Log.Error().Err(err).Msgf("pushed image is an orphan signature")
+			rh.c.Log.Error().Err(err).Msg("pushed image is an orphan signature")
 		} else if err != nil {
 			response.WriteHeader(http.StatusInternalServerError)
 
@@ -1274,7 +1275,8 @@ func (rh *RouteHandler) PatchBlobUpload(response http.ResponseWriter, request *h
 			rh.c.Log.Error().Err(err).Msg("unexpected error: removing .uploads/ files")
 
 			if err = imgStore.DeleteBlobUpload(name, sessionID); err != nil {
-				rh.c.Log.Error().Err(err).Msgf("couldn't remove blobUpload %s in repo %s", sessionID, name)
+				rh.c.Log.Error().Err(err).Str("blobUpload", sessionID).Str("repository", name).
+					Msg("couldn't remove blobUpload in repo")
 			}
 			response.WriteHeader(http.StatusInternalServerError)
 		}
@@ -1393,7 +1395,8 @@ func (rh *RouteHandler) UpdateBlobUpload(response http.ResponseWriter, request *
 				rh.c.Log.Error().Err(err).Msg("unexpected error: removing .uploads/ files")
 
 				if err = imgStore.DeleteBlobUpload(name, sessionID); err != nil {
-					rh.c.Log.Error().Err(err).Msgf("couldn't remove blobUpload %s in repo %s", sessionID, name)
+					rh.c.Log.Error().Err(err).Str("blobUpload", sessionID).Str("repository", name).
+						Msg("couldn't remove blobUpload in repo")
 				}
 				response.WriteHeader(http.StatusInternalServerError)
 			}
@@ -1422,7 +1425,8 @@ finish:
 			rh.c.Log.Error().Err(err).Msg("unexpected error: removing .uploads/ files")
 
 			if err = imgStore.DeleteBlobUpload(name, sessionID); err != nil {
-				rh.c.Log.Error().Err(err).Msgf("couldn't remove blobUpload %s in repo %s", sessionID, name)
+				rh.c.Log.Error().Err(err).Str("blobUpload", sessionID).Str("repository", name).
+					Msg("couldn't remove blobUpload in repo")
 			}
 			response.WriteHeader(http.StatusInternalServerError)
 		}
@@ -1654,14 +1658,14 @@ func getImageManifest(ctx context.Context, routeHandler *RouteHandler, imgStore 
 	}
 
 	if syncEnabled {
-		routeHandler.c.Log.Info().Msgf("trying to get updated image %s:%s by syncing on demand",
-			name, reference)
+		routeHandler.c.Log.Info().Str("repository", name).Str("reference", reference).
+			Msg("trying to get updated image by syncing on demand")
 
 		errSync := ext.SyncOneImage(ctx, routeHandler.c.Config, routeHandler.c.RepoDB, routeHandler.c.StoreController,
 			name, reference, "", routeHandler.c.Log)
 		if errSync != nil {
-			routeHandler.c.Log.Err(errSync).Msgf("error encounter while syncing image %s:%s",
-				name, reference)
+			routeHandler.c.Log.Err(errSync).Str("repository", name).Str("reference", reference).
+				Msg("error encounter while syncing image")
 		}
 	}
 
@@ -1678,8 +1682,8 @@ func getOrasReferrers(ctx context.Context, routeHandler *RouteHandler,
 		if routeHandler.c.Config.Extensions != nil &&
 			routeHandler.c.Config.Extensions.Sync != nil &&
 			*routeHandler.c.Config.Extensions.Sync.Enable {
-			routeHandler.c.Log.Info().Msgf("artifact not found, trying to get artifact %s:%s by syncing on demand",
-				name, digest.String())
+			routeHandler.c.Log.Info().Str("repository", name).Str("reference", digest.String()).
+				Msg("artifact not found, trying to get artifact by syncing on demand")
 
 			errSync := ext.SyncOneImage(ctx, routeHandler.c.Config, routeHandler.c.RepoDB, routeHandler.c.StoreController,
 				name, digest.String(), sync.OrasArtifact, routeHandler.c.Log)

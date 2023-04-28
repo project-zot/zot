@@ -19,7 +19,8 @@ func ParseStorage(repoDB RepoDB, storeController storage.StoreController, log lo
 	allRepos, err := getAllRepos(storeController)
 	if err != nil {
 		rootDir := storeController.DefaultStore.RootDir()
-		log.Error().Err(err).Msgf("load-local-layout: failed to get all repo names present under %s", rootDir)
+		log.Error().Err(err).Str("rootDir", rootDir).
+			Msg("load-local-layout: failed to get all repo names present under rootDir")
 
 		return err
 	}
@@ -27,7 +28,7 @@ func ParseStorage(repoDB RepoDB, storeController storage.StoreController, log lo
 	for _, repo := range allRepos {
 		err := ParseRepo(repo, repoDB, storeController, log)
 		if err != nil {
-			log.Error().Err(err).Msgf("load-local-layout: failed to sync repo %s", repo)
+			log.Error().Err(err).Str("repository", repo).Msg("load-local-layout: failed to sync repo")
 
 			return err
 		}
@@ -42,7 +43,7 @@ func ParseRepo(repo string, repoDB RepoDB, storeController storage.StoreControll
 
 	indexBlob, err := imageStore.GetIndexContent(repo)
 	if err != nil {
-		log.Error().Err(err).Msgf("load-repo: failed to read index.json for repo %s", repo)
+		log.Error().Err(err).Str("repository", repo).Msg("load-repo: failed to read index.json for repo")
 
 		return err
 	}
@@ -51,14 +52,14 @@ func ParseRepo(repo string, repoDB RepoDB, storeController storage.StoreControll
 
 	err = json.Unmarshal(indexBlob, &indexContent)
 	if err != nil {
-		log.Error().Err(err).Msgf("load-repo: failed to unmarshal index.json for repo %s", repo)
+		log.Error().Err(err).Str("repository", repo).Msg("load-repo: failed to unmarshal index.json for repo")
 
 		return err
 	}
 
 	err = resetRepoMetaTags(repo, repoDB, log)
 	if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
-		log.Error().Err(err).Msgf("load-repo: failed to reset tag field in RepoMetadata for repo %s", repo)
+		log.Error().Err(err).Str("repository", repo).Msg("load-repo: failed to reset tag field in RepoMetadata for repo")
 
 		return err
 	}
@@ -78,7 +79,7 @@ func ParseRepo(repo string, repoDB RepoDB, storeController storage.StoreControll
 
 		manifestMetaIsPresent, err := isManifestMetaPresent(repo, manifest, repoDB)
 		if err != nil {
-			log.Error().Err(err).Msgf("load-repo: error checking manifestMeta in RepoDB")
+			log.Error().Err(err).Msg("load-repo: error checking manifestMeta in RepoDB")
 
 			return err
 		}
@@ -86,7 +87,7 @@ func ParseRepo(repo string, repoDB RepoDB, storeController storage.StoreControll
 		if manifestMetaIsPresent && hasTag {
 			err = repoDB.SetRepoReference(repo, tag, manifest.Digest, manifest.MediaType)
 			if err != nil {
-				log.Error().Err(err).Msgf("load-repo: failed to set repo tag for %s:%s", repo, tag)
+				log.Error().Err(err).Str("repository", repo).Str("tag", tag).Msg("load-repo: failed to set repo tag")
 
 				return err
 			}
@@ -96,7 +97,8 @@ func ParseRepo(repo string, repoDB RepoDB, storeController storage.StoreControll
 
 		manifestBlob, digest, _, err := imageStore.GetImageManifest(repo, manifest.Digest.String())
 		if err != nil {
-			log.Error().Err(err).Msgf("load-repo: failed to set repo tag for %s:%s", repo, tag)
+			log.Error().Err(err).Str("repository", repo).Str("tag", tag).
+				Msg("load-repo: failed to set repo tag for image")
 
 			return err
 		}
@@ -107,7 +109,8 @@ func ParseRepo(repo string, repoDB RepoDB, storeController storage.StoreControll
 			if errors.Is(err, zerr.ErrOrphanSignature) {
 				continue
 			} else {
-				log.Error().Err(err).Msgf("load-repo: failed checking if image is signature for %s:%s", repo, tag)
+				log.Error().Err(err).Str("repository", repo).Str("tag", tag).
+					Msg("load-repo: failed checking if image is signature for specified image")
 
 				return err
 			}
@@ -136,7 +139,8 @@ func ParseRepo(repo string, repoDB RepoDB, storeController storage.StoreControll
 		err = SetMetadataFromInput(repo, reference, manifest.MediaType, manifest.Digest, manifestBlob,
 			imageStore, repoDB, log)
 		if err != nil {
-			log.Error().Err(err).Msgf("load-repo: failed to set metadata for %s:%s", repo, tag)
+			log.Error().Err(err).Str("repository", repo).Str("tag", tag).
+				Msg("load-repo: failed to set metadata for image")
 
 			return err
 		}
@@ -150,8 +154,9 @@ func ParseRepo(repo string, repoDB RepoDB, storeController storage.StoreControll
 				SignatureDigest: sigData.signatureDigest,
 			})
 		if err != nil {
-			log.Error().Err(err).Msgf("load-repo: failed set signature meta for signed image %s:%s manifest digest %s ",
-				sigData.repo, sigData.tag, sigData.signedManifestDigest)
+			log.Error().Err(err).Str("repository", sigData.repo).Str("tag", sigData.tag).
+				Str("manifestDigest", sigData.signedManifestDigest).
+				Msg("load-repo: failed set signature meta for signed image manifest digest")
 
 			return err
 		}
@@ -164,13 +169,13 @@ func ParseRepo(repo string, repoDB RepoDB, storeController storage.StoreControll
 func resetRepoMetaTags(repo string, repoDB RepoDB, log log.Logger) error {
 	repoMeta, err := repoDB.GetRepoMeta(repo)
 	if err != nil && !errors.Is(err, zerr.ErrRepoMetaNotFound) {
-		log.Error().Err(err).Msgf("load-repo: failed to get RepoMeta for repo %s", repo)
+		log.Error().Err(err).Str("repository", repo).Msg("load-repo: failed to get RepoMeta for repo")
 
 		return err
 	}
 
 	if errors.Is(err, zerr.ErrRepoMetaNotFound) {
-		log.Info().Msgf("load-repo: RepoMeta not found for repo %s, new RepoMeta will be created", repo)
+		log.Info().Str("repository", repo).Msg("load-repo: RepoMeta not found for repo, new RepoMeta will be created")
 
 		return nil
 	}

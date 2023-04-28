@@ -158,7 +158,7 @@ func (ms *metricServer) Run() {
 			case bool:
 				ms.reqChan <- ms.enabled
 			default:
-				ms.log.Error().Msgf("unexpected type %T", v)
+				ms.log.Error().Str("type", fmt.Sprintf("%T", v)).Msg("unexpected type")
 			}
 		case <-sendAfter:
 			// Check if we didn't receive a metrics scrape in a while and if so,

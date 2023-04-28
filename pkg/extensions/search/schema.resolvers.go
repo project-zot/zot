@@ -73,7 +73,7 @@ func (r *queryResolver) ImageList(ctx context.Context, repo string, requestedPag
 
 	imageList, err := getImageList(ctx, repo, r.repoDB, r.cveInfo, requestedPage, r.log)
 	if err != nil {
-		r.log.Error().Err(err).Msgf("unable to retrieve image list for repo: %s", repo)
+		r.log.Error().Err(err).Str("repository", repo).Msg("unable to retrieve image list for repo")
 
 		return imageList, err
 	}

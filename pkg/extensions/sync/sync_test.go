@@ -1613,7 +1613,7 @@ func TestBasicAuth(t *testing.T) {
 			defer dcm.StopServer()
 
 			found, err := test.ReadLogFileAndSearchString(dctlr.Config.Log.Output,
-				"status code: 401", 15*time.Second)
+				"status code\":\"401", 15*time.Second)
 			if err != nil {
 				panic(err)
 			}

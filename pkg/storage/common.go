@@ -868,7 +868,7 @@ func (dt *dedupeTask) DoWork() error {
 	err := dt.imgStore.RunDedupeForDigest(dt.digest, dt.dedupe, dt.duplicateBlobs)
 	if err != nil {
 		// log it
-		dt.log.Error().Err(err).Msgf("rebuild dedupe: failed to rebuild digest %s", dt.digest.String())
+		dt.log.Error().Err(err).Str("digest", dt.digest.String()).Msg("rebuild dedupe: failed to rebuild digest")
 	}
 
 	return err

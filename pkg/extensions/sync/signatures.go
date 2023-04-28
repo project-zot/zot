@@ -64,14 +64,14 @@ func (sig *signaturesCopier) getCosignManifest(repo, digestStr string) (*ispec.M
 		getCosignManifestURL.String(), ispec.MediaTypeImageManifest, sig.log)
 	if err != nil {
 		if statusCode == http.StatusNotFound {
-			sig.log.Error().Str("errorType", common.TypeOf(err)).
-				Err(err).Msgf("couldn't find any cosign manifest: %s", getCosignManifestURL.String())
+			sig.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
+				Str("manifest", getCosignManifestURL.String()).Msg("couldn't find any cosign manifest")
 
 			return nil, zerr.ErrSyncReferrerNotFound
 		}
 
-		sig.log.Error().Str("errorType", common.TypeOf(err)).
-			Err(err).Msgf("couldn't get cosign manifest: %s", getCosignManifestURL.String())
+		sig.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
+			Str("manifest", getCosignManifestURL.String()).Msg("couldn't get cosign manifest")
 
 		return nil, err
 	}
@@ -122,15 +122,15 @@ func (sig *signaturesCopier) getOCIRefs(repo, digestStr string) (ispec.Index, er
 		getReferrersURL.String(), "application/json", sig.log)
 	if err != nil {
 		if statusCode == http.StatusNotFound {
-			sig.log.Info().Msgf("couldn't find any oci reference from %s, status code: %d, skipping",
-				getReferrersURL.String(), statusCode)
+			sig.log.Info().Str("referrers", getReferrersURL.String()).Int("statusCode", statusCode).
+				Msg("couldn't find any oci reference from referrers, skipping")
 
 			return index, zerr.ErrSyncReferrerNotFound
 		}
 
-		sig.log.Error().Str("errorType", common.TypeOf(zerr.ErrSyncReferrer)).
-			Err(zerr.ErrSyncReferrer).Msgf("couldn't get oci reference from %s, status code: %d skipping",
-			getReferrersURL.String(), statusCode)
+		sig.log.Error().Str("errorType", common.TypeOf(zerr.ErrSyncReferrer)).Err(zerr.ErrSyncReferrer).
+			Str("referrers", getReferrersURL.String()).Int("statusCode", statusCode).
+			Msg("couldn't get oci reference from referrers, skipping")
 
 		return index, zerr.ErrSyncReferrer
 	}
@@ -150,8 +150,8 @@ func (sig *signaturesCopier) syncCosignSignature(localRepo, remoteRepo, digestSt
 
 	skipCosignSig, err := sig.canSkipCosignSignature(localRepo, digestStr, cosignManifest)
 	if err != nil {
-		sig.log.Error().Err(err).Msgf("couldn't check if the upstream image %s:%s cosign signature can be skipped",
-			remoteRepo, digestStr)
+		sig.log.Error().Err(err).Str("repository", remoteRepo).Str("reference", digestStr).
+			Msg("couldn't check if the upstream image cosign signature can be skipped")
 	}
 
 	if skipCosignSig {
@@ -190,7 +190,8 @@ func (sig *signaturesCopier) syncCosignSignature(localRepo, remoteRepo, digestSt
 	}
 
 	if sig.repoDB != nil {
-		sig.log.Debug().Msgf("trying to sync cosign signature for repo %s digest %s", localRepo, digestStr)
+		sig.log.Debug().Str("repository", localRepo).Str("digest", digestStr).
+			Msg("trying to sync cosign signature for repo digest")
 
 		err = repodb.SetMetadataFromInput(localRepo, cosignTag, ispec.MediaTypeImageManifest,
 			godigest.FromBytes(cosignManifestBuf), cosignManifestBuf, sig.storeController.GetImageStore(localRepo),
@@ -199,7 +200,8 @@ func (sig *signaturesCopier) syncCosignSignature(localRepo, remoteRepo, digestSt
 			return fmt.Errorf("failed to set metadata for cosign signature '%s@%s': %w", localRepo, digestStr, err)
 		}
 
-		sig.log.Info().Msgf("successfully added cosign signature to RepoDB for repo %s digest %s", localRepo, digestStr)
+		sig.log.Info().Str("repository", localRepo).Str("digest", digestStr).
+			Msg("successfully added cosign signature to RepoDB for repo digest")
 	}
 
 	return nil
@@ -213,8 +215,8 @@ func (sig *signaturesCopier) syncORASRefs(localRepo, remoteRepo, digestStr strin
 
 	skipORASRefs, err := sig.canSkipORASRefs(localRepo, digestStr, referrers)
 	if err != nil {
-		sig.log.Error().Err(err).Msgf("couldn't check if the upstream image %s:%s ORAS artifact can be skipped",
-			remoteRepo, digestStr)
+		sig.log.Error().Err(err).Str("repository", remoteRepo).Str("reference", digestStr).
+			Msg("couldn't check if the upstream image ORAS artifact can be skipped")
 	}
 
 	if skipORASRefs {
@@ -238,14 +240,14 @@ func (sig *signaturesCopier) syncORASRefs(localRepo, remoteRepo, digestStr strin
 			getRefManifestURL.String(), ref.MediaType, sig.log)
 		if err != nil {
 			if statusCode == http.StatusNotFound {
-				sig.log.Error().Str("errorType", common.TypeOf(err)).
-					Err(err).Msgf("couldn't find any ORAS manifest: %s", getRefManifestURL.String())
+				sig.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
+					Str("manifest", getRefManifestURL.String()).Msg("couldn't find any ORAS manifest")
 
 				return zerr.ErrSyncReferrerNotFound
 			}
 
-			sig.log.Error().Str("errorType", common.TypeOf(err)).
-				Err(err).Msgf("couldn't get ORAS manifest: %s", getRefManifestURL.String())
+			sig.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
+				Str("manifest", getRefManifestURL.String()).Msg("couldn't get ORAS manifest")
 
 			return err
 		}
@@ -267,7 +269,8 @@ func (sig *signaturesCopier) syncORASRefs(localRepo, remoteRepo, digestStr strin
 
 		// this is for notation signatures
 		if sig.repoDB != nil {
-			sig.log.Debug().Msgf("trying to sync oras artifact for repo %s digest %s", localRepo, digestStr)
+			sig.log.Debug().Str("repository", localRepo).Str("digest", digestStr).
+				Msg("trying to sync oras artifact for digest")
 
 			err = repodb.SetMetadataFromInput(localRepo, ref.Digest.String(), ref.MediaType,
 				ref.Digest, body, sig.storeController.GetImageStore(localRepo), sig.repoDB, sig.log)
@@ -275,11 +278,13 @@ func (sig *signaturesCopier) syncORASRefs(localRepo, remoteRepo, digestStr strin
 				return fmt.Errorf("failed to set metadata for oras artifact '%s@%s': %w", localRepo, digestStr, err)
 			}
 
-			sig.log.Info().Msgf("successfully added oras artifacts to RepoDB for repo %s digest %s", localRepo, digestStr)
+			sig.log.Info().Str("repository", localRepo).Str("digest", digestStr).
+				Msg("successfully added oras artifacts to RepoDB for digest")
 		}
 	}
 
-	sig.log.Info().Msgf("successfully synced ORAS artifacts for repo %s digest %s", localRepo, digestStr)
+	sig.log.Info().Str("repository", localRepo).Str("digest", digestStr).
+		Msg("successfully synced ORAS artifacts for digest")
 
 	return nil
 }
@@ -292,8 +297,8 @@ func (sig *signaturesCopier) syncOCIRefs(localRepo, remoteRepo, digestStr string
 
 	skipOCIRefs, err := sig.canSkipOCIRefs(localRepo, digestStr, index)
 	if err != nil {
-		sig.log.Error().Err(err).Msgf("couldn't check if the upstream image %s:%s oci references can be skipped",
-			remoteRepo, digestStr)
+		sig.log.Error().Err(err).Str("repository", remoteRepo).Str("reference", digestStr).
+			Msg("couldn't check if the upstream image oci references can be skipped")
 	}
 
 	if skipOCIRefs {
@@ -316,14 +321,14 @@ func (sig *signaturesCopier) syncOCIRefs(localRepo, remoteRepo, digestStr string
 			getRefManifestURL.String(), ref.MediaType, sig.log)
 		if err != nil {
 			if statusCode == http.StatusNotFound {
-				sig.log.Error().Str("errorType", common.TypeOf(err)).
-					Err(err).Msgf("couldn't find any oci reference manifest: %s", getRefManifestURL.String())
+				sig.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
+					Str("manifest", getRefManifestURL.String()).Msg("couldn't find any oci reference manifest")
 
 				return zerr.ErrSyncReferrerNotFound
 			}
 
-			sig.log.Error().Str("errorType", common.TypeOf(err)).
-				Err(err).Msgf("couldn't get oci reference manifest: %s", getRefManifestURL.String())
+			sig.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
+				Str("manifest", getRefManifestURL.String()).Msg("couldn't get oci reference manifest")
 
 			return err
 		}
@@ -334,8 +339,8 @@ func (sig *signaturesCopier) syncOCIRefs(localRepo, remoteRepo, digestStr string
 
 			err = json.Unmarshal(OCIRefBody, &manifest)
 			if err != nil {
-				sig.log.Error().Str("errorType", common.TypeOf(err)).
-					Err(err).Msgf("couldn't unmarshal oci reference manifest: %s", getRefManifestURL.String())
+				sig.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
+					Str("manifest", getRefManifestURL.String()).Msg("couldn't unmarshal oci reference manifest")
 
 				return err
 			}
@@ -356,8 +361,8 @@ func (sig *signaturesCopier) syncOCIRefs(localRepo, remoteRepo, digestStr string
 
 			err = json.Unmarshal(OCIRefBody, &manifest)
 			if err != nil {
-				sig.log.Error().Str("errorType", common.TypeOf(err)).
-					Err(err).Msgf("couldn't unmarshal oci reference manifest: %s", getRefManifestURL.String())
+				sig.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
+					Str("manifest", getRefManifestURL.String()).Msg("couldn't unmarshal oci reference manifest")
 
 				return err
 			}
@@ -379,7 +384,7 @@ func (sig *signaturesCopier) syncOCIRefs(localRepo, remoteRepo, digestStr string
 		}
 
 		if sig.repoDB != nil {
-			sig.log.Debug().Msgf("trying to add OCI refs for repo %s digest %s", localRepo, digestStr)
+			sig.log.Debug().Str("repository", localRepo).Str("digest", digestStr).Msg("trying to add OCI refs for repo digest")
 
 			err = repodb.SetMetadataFromInput(localRepo, digestStr, ref.MediaType,
 				digest, OCIRefBody, sig.storeController.GetImageStore(localRepo),
@@ -388,11 +393,13 @@ func (sig *signaturesCopier) syncOCIRefs(localRepo, remoteRepo, digestStr string
 				return fmt.Errorf("failed to set metadata for OCI ref in '%s@%s': %w", localRepo, digestStr, err)
 			}
 
-			sig.log.Info().Msgf("successfully added OCI refs to RepoDB for repo %s digest %s", localRepo, digestStr)
+			sig.log.Info().Str("repository", localRepo).Str("digest", digestStr).
+				Msg("successfully added OCI refs to RepoDB for digest")
 		}
 	}
 
-	sig.log.Info().Msgf("successfully synced OCI refs for repo %s digest %s", localRepo, digestStr)
+	sig.log.Info().Str("repository", localRepo).Str("digest", digestStr).
+		Msg("successfully synced OCI refs for digest")
 
 	return nil
 }
@@ -404,15 +411,16 @@ func (sig *signaturesCopier) syncOCIArtifact(localRepo, remoteRepo, reference st
 
 	err := json.Unmarshal(ociArtifactBuf, &ociArtifact)
 	if err != nil {
-		sig.log.Error().Err(err).Msgf("couldn't unmarshal OCI artifact from %s:%s", remoteRepo, reference)
+		sig.log.Error().Err(err).Str("repository", remoteRepo).Str("reference", reference).
+			Msg("couldn't unmarshal OCI artifact")
 
 		return err
 	}
 
 	canSkipOCIArtifact, err := sig.canSkipOCIArtifact(localRepo, reference, ociArtifact)
 	if err != nil {
-		sig.log.Error().Err(err).Msgf("couldn't check if OCI artifact %s:%s can be skipped",
-			remoteRepo, reference)
+		sig.log.Error().Err(err).Str("repository", remoteRepo).Str("reference", reference).
+			Msg("couldn't check if OCI artifact can be skipped")
 	}
 
 	if canSkipOCIArtifact {
@@ -448,7 +456,8 @@ func (sig *signaturesCopier) syncOCIArtifact(localRepo, remoteRepo, reference st
 	}
 
 	if sig.repoDB != nil {
-		sig.log.Debug().Msgf("trying to OCI refs for repo %s digest %s", localRepo, digest.String())
+		sig.log.Debug().Str("repository", localRepo).Str("digest", digest.String()).
+			Msg("trying to OCI refs for repo digest")
 
 		err = repodb.SetMetadataFromInput(localRepo, reference, ispec.MediaTypeArtifactManifest,
 			digest, artifactManifestBuf, sig.storeController.GetImageStore(localRepo),
@@ -457,11 +466,12 @@ func (sig *signaturesCopier) syncOCIArtifact(localRepo, remoteRepo, reference st
 			return fmt.Errorf("failed to set metadata for OCI Artifact '%s@%s': %w", localRepo, digest.String(), err)
 		}
 
-		sig.log.Info().Msgf("successfully added oci artifacts to RepoDB for repo %s digest %s", localRepo,
-			digest.String())
+		sig.log.Info().Str("repository", localRepo).Str("digest", digest.String()).
+			Msg("successfully added oci artifacts to RepoDB for repo digest")
 	}
 
-	sig.log.Info().Msgf("successfully synced OCI artifact for repo %s tag %s", localRepo, reference)
+	sig.log.Info().Str("repository", localRepo).Str("tag", reference).
+		Msg("successfully synced OCI artifact for repo tag")
 
 	return nil
 }
@@ -479,20 +489,22 @@ func (sig *signaturesCopier) canSkipORASRefs(localRepo, digestStr string, refs R
 				return false, nil
 			}
 
-			sig.log.Error().Str("errorType", common.TypeOf(err)).
-				Err(err).Msgf("couldn't get local ORAS artifact %s:%s manifest", localRepo, digestStr)
+			sig.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
+				Str("repository", localRepo).Str("reference", digestStr).Msg("couldn't get local ORAS artifact manifest")
 
 			return false, err
 		}
 
 		if !artifactDescriptorsEqual(localRefs, refs.References) {
-			sig.log.Info().Msgf("upstream ORAS artifacts %s:%s changed, syncing again", localRepo, digestStr)
+			sig.log.Info().Str("repository", localRepo).Str("reference", digestStr).
+				Msg("upstream ORAS artifacts changed, syncing again")
 
 			return false, nil
 		}
 	}
 
-	sig.log.Info().Msgf("skipping ORAS artifact %s:%s, already synced", localRepo, digestStr)
+	sig.log.Info().Str("repository", localRepo).Str("reference", digestStr).
+		Msg("skipping ORAS artifact, already synced")
 
 	return true, nil
 }
@@ -509,27 +521,31 @@ func (sig *signaturesCopier) canSkipOCIArtifact(localRepo, reference string, art
 			return false, nil
 		}
 
-		sig.log.Error().Str("errorType", common.TypeOf(err)).
-			Err(err).Msgf("couldn't get local OCI artifact %s:%s manifest", localRepo, reference)
+		sig.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
+			Str("repository", localRepo).Str("reference", reference).
+			Msg("couldn't get local OCI artifact manifest")
 
 		return false, err
 	}
 
 	err = json.Unmarshal(localArtifactBuf, &localArtifactManifest)
 	if err != nil {
-		sig.log.Error().Str("errorType", common.TypeOf(err)).
-			Err(err).Msgf("couldn't unmarshal local OCI artifact %s:%s manifest", localRepo, reference)
+		sig.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
+			Str("repository", localRepo).Str("reference", reference).
+			Msg("couldn't unmarshal local OCI artifact manifest")
 
 		return false, err
 	}
 
 	if !artifactsEqual(localArtifactManifest, artifact) {
-		sig.log.Info().Msgf("upstream OCI artifact %s:%s changed, syncing again", localRepo, reference)
+		sig.log.Info().Str("repository", localRepo).Str("reference", reference).
+			Msg("upstream OCI artifact changed, syncing again")
 
 		return false, nil
 	}
 
-	sig.log.Info().Msgf("skipping OCI artifact %s:%s, already synced", localRepo, reference)
+	sig.log.Info().Str("repository", localRepo).Str("reference", reference).
+		Msg("skipping OCI artifact, already synced")
 
 	return true, nil
 }
@@ -551,28 +567,32 @@ func (sig *signaturesCopier) canSkipCosignSignature(localRepo, digestStr string,
 				return false, nil
 			}
 
-			sig.log.Error().Str("errorType", common.TypeOf(err)).
-				Err(err).Msgf("couldn't get local cosign %s:%s manifest", localRepo, digestStr)
+			sig.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
+				Str("repository", localRepo).Str("reference", digestStr).
+				Msg("couldn't get local cosign manifest")
 
 			return false, err
 		}
 
 		err = json.Unmarshal(localCosignManifestBuf, &localCosignManifest)
 		if err != nil {
-			sig.log.Error().Str("errorType", common.TypeOf(err)).
-				Err(err).Msgf("couldn't unmarshal local cosign signature %s:%s manifest", localRepo, digestStr)
+			sig.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
+				Str("repository", localRepo).Str("reference", digestStr).
+				Msg("couldn't unmarshal local cosign signature manifest")
 
 			return false, err
 		}
 
 		if !manifestsEqual(localCosignManifest, *cosignManifest) {
-			sig.log.Info().Msgf("upstream cosign signatures %s:%s changed, syncing again", localRepo, digestStr)
+			sig.log.Info().Str("repository", localRepo).Str("reference", digestStr).
+				Msg("upstream cosign signatures changed, syncing again")
 
 			return false, nil
 		}
 	}
 
-	sig.log.Info().Msgf("skipping cosign signature %s:%s, already synced", localRepo, digestStr)
+	sig.log.Info().Str("repository", localRepo).Str("reference", digestStr).
+		Msg("skipping cosign signature, already synced")
 
 	return true, nil
 }
@@ -590,20 +610,23 @@ func (sig *signaturesCopier) canSkipOCIRefs(localRepo, digestStr string, index i
 				return false, nil
 			}
 
-			sig.log.Error().Str("errorType", common.TypeOf(err)).
-				Err(err).Msgf("couldn't get local ocireferences for %s:%s manifest", localRepo, digestStr)
+			sig.log.Error().Str("errorType", common.TypeOf(err)).Err(err).
+				Str("repository", localRepo).Str("reference", digestStr).
+				Msg("couldn't get local ocireferences for manifest")
 
 			return false, err
 		}
 
 		if !descriptorsEqual(localRefs.Manifests, index.Manifests) {
-			sig.log.Info().Msgf("upstream oci references for %s:%s changed, syncing again", localRepo, digestStr)
+			sig.log.Info().Str("repository", localRepo).Str("reference", digestStr).
+				Msg("upstream oci references for manifest changed, syncing again")
 
 			return false, nil
 		}
 	}
 
-	sig.log.Info().Msgf("skipping oci references %s:%s, already synced", localRepo, digestStr)
+	sig.log.Info().Str("repository", localRepo).Str("reference", digestStr).
+		Msg("skipping oci references, already synced")
 
 	return true, nil
 }
@@ -622,8 +645,8 @@ func syncBlob(sig *signaturesCopier, imageStore storage.ImageStore, remoteRepo, 
 
 	resp, err := sig.client.Do(req)
 	if err != nil {
-		sig.log.Error().Str("errorType", common.TypeOf(err)).Str("url", getBlobURL.String()).
-			Err(err).Msgf("couldn't get blob: %s", getBlobURL.String())
+		sig.log.Error().Str("errorType", common.TypeOf(err)).Str("blob url", getBlobURL.String()).
+			Err(err).Msg("couldn't get blob from url")
 
 		return err
 	}
@@ -631,8 +654,8 @@ func syncBlob(sig *signaturesCopier, imageStore storage.ImageStore, remoteRepo, 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		sig.log.Info().Str("url", getBlobURL.String()).Msgf("couldn't find blob from %s, status code: %d",
-			getBlobURL.String(), resp.StatusCode)
+		sig.log.Info().Str("url", getBlobURL.String()).Str("blob url", getBlobURL.String()).
+			Int("statusCode", resp.StatusCode).Msg("couldn't find blob from url, status code")
 
 		return zerr.ErrSyncReferrer
 	}

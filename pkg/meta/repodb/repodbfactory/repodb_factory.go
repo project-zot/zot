@@ -118,7 +118,7 @@ func toStringIfOk(cacheDriverConfig map[string]interface{}, param string, log lo
 	val, ok := cacheDriverConfig[param]
 
 	if !ok {
-		log.Error().Msgf("parsing CacheDriver config failed, field '%s' is not present", param)
+		log.Error().Str("field", param).Msg("parsing CacheDriver config failed, field is not present")
 
 		return "", false
 	}
@@ -126,13 +126,13 @@ func toStringIfOk(cacheDriverConfig map[string]interface{}, param string, log lo
 	str, ok := val.(string)
 
 	if !ok {
-		log.Error().Msgf("parsing CacheDriver config failed, parameter '%s' isn't a string", param)
+		log.Error().Str("parameter", param).Msg("parsing CacheDriver config failed, parameter isn't a string")
 
 		return "", false
 	}
 
 	if str == "" {
-		log.Error().Msgf("parsing CacheDriver config failed, field '%s' is empty", param)
+		log.Error().Str("field", param).Msg("parsing CacheDriver config failed, field is empty")
 
 		return "", false
 	}

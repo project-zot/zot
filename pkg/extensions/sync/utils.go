@@ -45,7 +45,8 @@ type ReferenceList struct {
 func getTagFromRef(ref types.ImageReference, log log.Logger) reference.Tagged {
 	tagged, isTagged := ref.DockerReference().(reference.Tagged)
 	if !isTagged {
-		log.Warn().Msgf("internal server error, reference %s does not have a tag, skipping", ref.DockerReference())
+		log.Warn().Str("reference", ref.DockerReference().String()).
+			Msg("internal server error, reference does not have a tag, skipping")
 	}
 
 	return tagged
@@ -76,7 +77,7 @@ func filterTagsByRegex(tags []string, regex string, log log.Logger) ([]string, e
 		return filteredTags, nil
 	}
 
-	log.Info().Msgf("start filtering using the regular expression: %s", regex)
+	log.Info().Str("regex", regex).Msg("start filtering using the regular expression")
 
 	tagReg, err := regexp.Compile(regex)
 	if err != nil {
@@ -267,7 +268,7 @@ func getFileCredentials(filepath string) (syncconf.CredentialsFile, error) {
 func pushSyncedLocalImage(localRepo, reference, localCachePath string,
 	repoDB repodb.RepoDB, imageStore storage.ImageStore, log log.Logger,
 ) error {
-	log.Info().Msgf("pushing synced local image %s/%s:%s to local registry", localCachePath, localRepo, reference)
+	log.Info().Str("image", localCachePath+"/"+localRepo+":"+reference).Msg("pushing synced local image to local registry")
 
 	var lockLatency time.Time
 
@@ -280,7 +281,7 @@ func pushSyncedLocalImage(localRepo, reference, localCachePath string,
 	if err != nil {
 		log.Error().Str("errorType", common.TypeOf(err)).
 			Err(err).Str("dir", path.Join(cacheImageStore.RootDir(), localRepo)).
-			Msgf("couldn't find %s manifest", reference)
+			Str("manifest", reference).Msg("couldn't find manifest")
 
 		return err
 	}
@@ -351,7 +352,8 @@ func pushSyncedLocalImage(localRepo, reference, localCachePath string,
 				return fmt.Errorf("failed to set metadata for image '%s %s': %w", localRepo, reference, err)
 			}
 
-			log.Debug().Msgf("successfully set metadata for %s:%s", localRepo, reference)
+			log.Debug().Str("repository", localRepo).Str("reference", reference).
+				Msg("successfully set metadata for image")
 		}
 	}
 
@@ -406,7 +408,8 @@ func copyManifest(localRepo string, manifestContent []byte, reference string, re
 			return err
 		}
 
-		log.Debug().Msgf("successfully set metadata for %s:%s", localRepo, reference)
+		log.Debug().Str("repository", localRepo).Str("reference", reference).
+			Msg("successfully set metadata for image")
 	}
 
 	return nil
@@ -543,13 +546,15 @@ func canSkipImage(repo, tag string, digest godigest.Digest, imageStore storage.I
 		}
 
 		log.Error().Str("errorType", common.TypeOf(err)).
-			Err(err).Msgf("couldn't get local image %s:%s manifest", repo, tag)
+			Err(err).Str("repository", repo).Str("tag", tag).
+			Msg("couldn't get local image manifest")
 
 		return false, err
 	}
 
 	if localImageManifestDigest != digest {
-		log.Info().Msgf("upstream image %s:%s digest changed, syncing again", repo, tag)
+		log.Info().Str("repository", repo).Str("tag", tag).
+			Msg("upstream image digest changed, syncing again")
 
 		return false, nil
 	}
@@ -646,7 +651,8 @@ func getImageRefManifest(ctx context.Context, upstreamCtx *types.SystemContext, 
 ) ([]byte, string, error) {
 	imageSource, err := imageRef.NewImageSource(ctx, upstreamCtx)
 	if err != nil {
-		log.Error().Err(err).Msgf("couldn't get upstream image %s manifest details", imageRef.DockerReference())
+		log.Error().Err(err).Str("image", imageRef.DockerReference().String()).
+			Msg("couldn't get upstream image manifest details")
 
 		return []byte{}, "", err
 	}
@@ -655,7 +661,8 @@ func getImageRefManifest(ctx context.Context, upstreamCtx *types.SystemContext, 
 
 	manifestBuf, mediaType, err := imageSource.GetManifest(ctx, nil)
 	if err != nil {
-		log.Error().Err(err).Msgf("couldn't get upstream image %s manifest mediaType", imageRef.DockerReference())
+		log.Error().Err(err).Str("image", imageRef.DockerReference().String()).
+			Msg("couldn't get upstream image manifest mediaType")
 
 		return []byte{}, "", err
 	}
@@ -682,8 +689,8 @@ func syncImageWithRefs(ctx context.Context, localRepo, upstreamRepo, reference s
 		if mediaType == ispec.MediaTypeArtifactManifest {
 			err = sig.syncOCIArtifact(localRepo, upstreamRepo, reference, manifestBuf) //nolint
 			if err != nil {
-				log.Error().Err(err).Msgf("couldn't sync oci artifact with artifact mediaType: %s",
-					upstreamImageRef.DockerReference())
+				log.Error().Err(err).Str("image", upstreamImageRef.DockerReference().String()).
+					Msg("couldn't sync oci artifact with artifact mediaType")
 
 				return skipped, err
 			}
@@ -695,12 +702,14 @@ func syncImageWithRefs(ctx context.Context, localRepo, upstreamRepo, reference s
 	// get upstream signatures
 	cosignManifest, err := sig.getCosignManifest(upstreamRepo, upstreamImageDigest.String())
 	if err != nil {
-		log.Error().Err(err).Msgf("couldn't get upstream image %s cosign manifest", upstreamImageRef.DockerReference())
+		log.Error().Err(err).Str("image", upstreamImageRef.DockerReference().String()).
+			Msg("couldn't get upstream imagecosign manifest")
 	}
 
 	index, err := sig.getOCIRefs(upstreamRepo, upstreamImageDigest.String())
 	if err != nil {
-		log.Error().Err(err).Msgf("couldn't get upstream image %s OCI references", upstreamImageRef.DockerReference())
+		log.Error().Err(err).Str("image", upstreamImageRef.DockerReference().String()).
+			Msg("couldn't get upstream image OCI references")
 	}
 
 	// check if upstream image is signed
@@ -708,7 +717,8 @@ func syncImageWithRefs(ctx context.Context, localRepo, upstreamRepo, reference s
 		// upstream image not signed
 		if utils.enforceSignatures {
 			// skip unsigned images
-			log.Info().Msgf("skipping image without signature %s", upstreamImageRef.DockerReference())
+			log.Info().Str("image", upstreamImageRef.DockerReference().String()).
+				Msg("skipping image without signature")
 			skipped = true
 
 			return skipped, nil
@@ -717,31 +727,32 @@ func syncImageWithRefs(ctx context.Context, localRepo, upstreamRepo, reference s
 
 	skipImage, err := canSkipImage(localRepo, upstreamImageDigest.String(), upstreamImageDigest, imageStore, log)
 	if err != nil {
-		log.Error().Err(err).Msgf("couldn't check if the upstream image %s can be skipped",
-			upstreamImageRef.DockerReference())
+		log.Error().Err(err).Str("image", upstreamImageRef.DockerReference().String()).
+			Msg("couldn't check if the upstream image can be skipped")
 	}
 
 	if !skipImage {
 		// sync image
 		localImageRef, err := getLocalImageRef(localCachePath, localRepo, reference)
 		if err != nil {
-			log.Error().Str("errorType", common.TypeOf(err)).
-				Err(err).Msgf("couldn't obtain a valid image reference for reference %s/%s:%s",
-				localCachePath, localRepo, reference)
+			log.Error().Str("errorType", common.TypeOf(err)).Err(err).
+				Str("reference", localCachePath+"/"+localRepo+":"+reference).
+				Msg("couldn't obtain a valid image reference for reference")
 
 			return skipped, err
 		}
 
-		log.Info().Msgf("copying image %s to %s", upstreamImageRef.DockerReference(), localCachePath)
+		log.Info().Str("image", upstreamImageRef.DockerReference().String()).
+			Str("path", localCachePath).Msg("copying image to path")
 
 		if err = retry.RetryIfNecessary(ctx, func() error {
 			_, err = copy.Image(ctx, utils.policyCtx, localImageRef, upstreamImageRef, &utils.copyOptions)
 
 			return err
 		}, utils.retryOptions); err != nil {
-			log.Error().Str("errorType", common.TypeOf(err)).
-				Err(err).Msgf("error while copying image %s to %s",
-				upstreamImageRef.DockerReference(), localCachePath)
+			log.Error().Str("errorType", common.TypeOf(err)).Err(err).
+				Str("image", upstreamImageRef.DockerReference().String()).Str("path", localCachePath).
+				Msg("error while copying image to path")
 
 			return skipped, err
 		}
@@ -749,14 +760,14 @@ func syncImageWithRefs(ctx context.Context, localRepo, upstreamRepo, reference s
 		// push from cache to repo
 		err = pushSyncedLocalImage(localRepo, reference, localCachePath, sig.repoDB, imageStore, log)
 		if err != nil {
-			log.Error().Str("errorType", common.TypeOf(err)).
-				Err(err).Msgf("error while pushing synced cached image %s",
-				fmt.Sprintf("%s/%s:%s", localCachePath, localRepo, reference))
+			log.Error().Str("errorType", common.TypeOf(err)).Err(err).
+				Str("image", localCachePath+"/"+localRepo+":"+reference).Msg("error while pushing synced cached image")
 
 			return skipped, err
 		}
 	} else {
-		log.Info().Msgf("already synced image %s, checking its signatures", upstreamImageRef.DockerReference())
+		log.Info().Str("image", upstreamImageRef.DockerReference().String()).
+			Msg("already synced image, checking its signatures")
 	}
 
 	// sync signatures
@@ -783,13 +794,13 @@ func syncImageWithRefs(ctx context.Context, localRepo, upstreamRepo, reference s
 
 		return nil
 	}, utils.retryOptions); err != nil {
-		log.Error().Str("errorType", common.TypeOf(err)).
-			Err(err).Msgf("couldn't copy referrer for %s", upstreamImageRef.DockerReference())
+		log.Error().Str("errorType", common.TypeOf(err)).Err(err).
+			Str("image", upstreamImageRef.DockerReference().String()).Msg("couldn't copy referrer for image")
 
 		return skipped, err
 	}
 
-	log.Info().Msgf("successfully synced image %s", upstreamImageRef.DockerReference())
+	log.Info().Str("image", upstreamImageRef.DockerReference().String()).Msg("successfully synced image")
 
 	return skipped, nil
 }

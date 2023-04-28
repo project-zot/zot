@@ -237,7 +237,7 @@ func (olu BaseOciLayoutUtils) checkNotarySignature(name string, digest godigest.
 
 	referrers, err := imageStore.GetReferrers(name, digest, []string{mediaType})
 	if err != nil {
-		olu.Log.Info().Err(err).Str("repo", name).Str("digest",
+		olu.Log.Info().Err(err).Str("repository", name).Str("digest",
 			digest.String()).Str("mediatype", mediaType).Msg("invalid notary signature")
 
 		return false
@@ -264,7 +264,7 @@ func (olu BaseOciLayoutUtils) checkCosignSignature(name string, digest godigest.
 
 	_, _, _, err := imageStore.GetImageManifest(name, reference) //nolint: dogsled
 	if err != nil {
-		olu.Log.Info().Err(err).Str("repo", name).Str("digest",
+		olu.Log.Info().Err(err).Str("repository", name).Str("digest",
 			digest.String()).Msg("invalid cosign signature")
 
 		return false
@@ -362,7 +362,7 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(repoName string) (common.RepoI
 
 	lastUpdatedTag, err := olu.GetRepoLastUpdated(repoName)
 	if err != nil {
-		olu.Log.Error().Err(err).Msgf("can't get last updated manifest for repo: %s", repoName)
+		olu.Log.Error().Err(err).Str("repository", repoName).Msg("can't get last updated manifest for repo")
 
 		return common.RepoInfo{}, err
 	}
@@ -377,8 +377,8 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(repoName string) (common.RepoI
 
 		tag, ok := man.Annotations[ispec.AnnotationRefName]
 		if !ok {
-			olu.Log.Info().Msgf("skipping manifest with digest %s because it doesn't have a tag",
-				man.Digest.String())
+			olu.Log.Info().Str("digest", man.Digest.String()).
+				Msg("skipping manifest with digest because it doesn't have a tag")
 
 			continue
 		}
@@ -401,7 +401,8 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(repoName string) (common.RepoI
 
 		imageConfigInfo, err := olu.GetImageConfigInfo(repoName, man.Digest)
 		if err != nil {
-			olu.Log.Error().Err(err).Msgf("can't retrieve config info for the image %s %s", repoName, man.Digest)
+			olu.Log.Error().Err(err).Str("repository", repoName).Str("manifest digest", man.Digest.String()).
+				Msg("can't retrieve config info for the image")
 
 			continue
 		}
@@ -472,8 +473,8 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(repoName string) (common.RepoI
 				}
 
 				if layersIterator+1 > len(layers) {
-					olu.Log.Error().Err(zerr.ErrBadLayerCount).
-						Msgf("error on creating layer history for image %s %s", repoName, man.Digest)
+					olu.Log.Error().Err(err).Str("repository", repoName).Str("manifest digest", man.Digest.String()).
+						Msg("error on creating layer history for image")
 
 					break
 				}
@@ -484,7 +485,7 @@ func (olu BaseOciLayoutUtils) GetExpandedRepoInfo(repoName string) (common.RepoI
 			}
 		}
 
-		olu.Log.Debug().Msgf("all history %v", allHistory)
+		olu.Log.Debug().Interface("history", allHistory).Msg("all history")
 
 		size := strconv.Itoa(int(imageSize))
 		manifestDigest := man.Digest.String()

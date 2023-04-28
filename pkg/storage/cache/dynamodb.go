@@ -83,7 +83,7 @@ func NewDynamoDBCache(parameters interface{}, log zlog.Logger) Cache {
 	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(properParameters.Region),
 		config.WithEndpointResolverWithOptions(customResolver))
 	if err != nil {
-		log.Error().Msgf("unable to load AWS SDK config for dynamodb, %v", err)
+		log.Error().Err(err).Msg("unable to load AWS SDK config for dynamodb")
 
 		return nil
 	}
@@ -92,7 +92,7 @@ func NewDynamoDBCache(parameters interface{}, log zlog.Logger) Cache {
 
 	err = driver.NewTable(driver.tableName)
 	if err != nil {
-		log.Error().Err(err).Msgf("unable to create table for cache '%s'", driver.tableName)
+		log.Error().Err(err).Str("tableName", driver.tableName).Msg("unable to create table for cache")
 	}
 
 	// Using the Config value, create the DynamoDB client
@@ -112,7 +112,7 @@ func (d *DynamoDBDriver) GetBlob(digest godigest.Digest) (string, error) {
 		},
 	})
 	if err != nil {
-		d.log.Error().Msgf("failed to get blob %v, %v", d.tableName, err)
+		d.log.Error().Err(err).Str("tableName", d.tableName).Msg("failed to get blob")
 
 		return "", err
 	}
@@ -165,7 +165,7 @@ func (d *DynamoDBDriver) HasBlob(digest godigest.Digest, path string) bool {
 		},
 	})
 	if err != nil {
-		d.log.Error().Msgf("failed to get blob %v, %v", d.tableName, err)
+		d.log.Error().Err(err).Str("tableName", d.tableName).Msg("failed to get blob")
 
 		return false
 	}
