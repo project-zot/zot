@@ -337,7 +337,7 @@ func pushSyncedLocalImage(localRepo, reference, localCachePath string,
 			}
 		}
 
-		_, err = imageStore.PutImageManifest(localRepo, reference, mediaType, manifestBlob)
+		_, _, err = imageStore.PutImageManifest(localRepo, reference, mediaType, manifestBlob)
 		if err != nil {
 			log.Error().Str("errorType", common.TypeOf(err)).
 				Err(err).Msg("couldn't upload manifest")
@@ -393,7 +393,7 @@ func copyManifest(localRepo string, manifestContent []byte, reference string, re
 		return err
 	}
 
-	digest, err := imageStore.PutImageManifest(localRepo, reference,
+	digest, _, err := imageStore.PutImageManifest(localRepo, reference,
 		ispec.MediaTypeImageManifest, manifestContent)
 	if err != nil {
 		log.Error().Str("errorType", common.TypeOf(err)).

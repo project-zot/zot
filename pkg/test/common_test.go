@@ -1349,8 +1349,8 @@ func TestWriteImageToFileSystem(t *testing.T) {
 			storage.StoreController{
 				DefaultStore: mocks.MockedImageStore{
 					PutImageManifestFn: func(repo, reference, mediaType string, body []byte,
-					) (godigest.Digest, error) {
-						return "", ErrTestError
+					) (godigest.Digest, godigest.Digest, error) {
+						return "", "", ErrTestError
 					},
 				},
 			})

@@ -520,7 +520,7 @@ func TestGetOrasAndOCIReferrers(t *testing.T) {
 		mbuflen := mbuf.Len()
 		mdigest := godigest.FromBytes(mblob)
 
-		d, err := imgStore.PutImageManifest(repo, "1.0", ispec.MediaTypeImageManifest, mbuf.Bytes())
+		d, _, err := imgStore.PutImageManifest(repo, "1.0", ispec.MediaTypeImageManifest, mbuf.Bytes())
 		So(d, ShouldEqual, mdigest)
 		So(err, ShouldBeNil)
 
@@ -572,7 +572,7 @@ func TestGetOrasAndOCIReferrers(t *testing.T) {
 			manBufLen := len(manBuf)
 			manDigest := godigest.FromBytes(manBuf)
 
-			_, err = imgStore.PutImageManifest(repo, manDigest.Encoded(), ispec.MediaTypeImageManifest, manBuf)
+			_, _, err = imgStore.PutImageManifest(repo, manDigest.Encoded(), ispec.MediaTypeImageManifest, manBuf)
 			So(err, ShouldBeNil)
 
 			index, err := imgStore.GetReferrers(repo, mdigest, []string{artifactType})
@@ -606,7 +606,7 @@ func TestGetOrasAndOCIReferrers(t *testing.T) {
 			manBufLen := len(manBuf)
 			manDigest := godigest.FromBytes(manBuf)
 
-			_, err = imgStore.PutImageManifest(repo, manDigest.Encoded(), artifactspec.MediaTypeArtifactManifest, manBuf)
+			_, _, err = imgStore.PutImageManifest(repo, manDigest.Encoded(), artifactspec.MediaTypeArtifactManifest, manBuf)
 			So(err, ShouldBeNil)
 
 			descriptors, err := imgStore.GetOrasReferrers(repo, mdigest, "signature-example")
@@ -876,7 +876,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 			err = imgStore.DeleteImageManifest(testImage, "1.0", false)
 			So(err, ShouldNotBeNil)
 
-			_, err = imgStore.PutImageManifest(testImage, "1.0", "application/json", []byte{})
+			_, _, err = imgStore.PutImageManifest(testImage, "1.0", "application/json", []byte{})
 			So(err, ShouldNotBeNil)
 
 			_, err = imgStore.PutBlobChunkStreamed(testImage, upload, bytes.NewBuffer([]byte(testImage)))
@@ -1305,7 +1305,7 @@ func TestS3Dedupe(t *testing.T) {
 		manifestBuf, err := json.Marshal(manifest)
 		So(err, ShouldBeNil)
 		digest = godigest.FromBytes(manifestBuf)
-		_, err = imgStore.PutImageManifest("dedupe1", digest.String(),
+		_, _, err = imgStore.PutImageManifest("dedupe1", digest.String(),
 			ispec.MediaTypeImageManifest, manifestBuf)
 		So(err, ShouldBeNil)
 
@@ -1379,7 +1379,7 @@ func TestS3Dedupe(t *testing.T) {
 		manifestBuf, err = json.Marshal(manifest)
 		So(err, ShouldBeNil)
 		digest = godigest.FromBytes(manifestBuf)
-		_, err = imgStore.PutImageManifest("dedupe2", "1.0", ispec.MediaTypeImageManifest,
+		_, _, err = imgStore.PutImageManifest("dedupe2", "1.0", ispec.MediaTypeImageManifest,
 			manifestBuf)
 		So(err, ShouldBeNil)
 
@@ -1514,7 +1514,7 @@ func TestS3Dedupe(t *testing.T) {
 			manifestBuf, err = json.Marshal(manifest)
 			So(err, ShouldBeNil)
 			digest = godigest.FromBytes(manifestBuf)
-			_, err = imgStore.PutImageManifest("dedupe3", "1.0", ispec.MediaTypeImageManifest,
+			_, _, err = imgStore.PutImageManifest("dedupe3", "1.0", ispec.MediaTypeImageManifest,
 				manifestBuf)
 			So(err, ShouldBeNil)
 
@@ -1662,7 +1662,7 @@ func TestS3Dedupe(t *testing.T) {
 		manifestBuf, err := json.Marshal(manifest)
 		So(err, ShouldBeNil)
 		digest = godigest.FromBytes(manifestBuf)
-		_, err = imgStore.PutImageManifest("dedupe1", digest.String(),
+		_, _, err = imgStore.PutImageManifest("dedupe1", digest.String(),
 			ispec.MediaTypeImageManifest, manifestBuf)
 		So(err, ShouldBeNil)
 
@@ -1728,7 +1728,7 @@ func TestS3Dedupe(t *testing.T) {
 		manifestBuf, err = json.Marshal(manifest)
 		So(err, ShouldBeNil)
 		digest = godigest.FromBytes(manifestBuf)
-		_, err = imgStore.PutImageManifest("dedupe2", "1.0", ispec.MediaTypeImageManifest,
+		_, _, err = imgStore.PutImageManifest("dedupe2", "1.0", ispec.MediaTypeImageManifest,
 			manifestBuf)
 		So(err, ShouldBeNil)
 
@@ -1891,7 +1891,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 		manifestBuf, err := json.Marshal(manifest)
 		So(err, ShouldBeNil)
 		digest = godigest.FromBytes(manifestBuf)
-		_, err = imgStore.PutImageManifest("dedupe1", digest.String(),
+		_, _, err = imgStore.PutImageManifest("dedupe1", digest.String(),
 			ispec.MediaTypeImageManifest, manifestBuf)
 		So(err, ShouldBeNil)
 
@@ -1924,7 +1924,7 @@ func TestRebuildDedupeIndex(t *testing.T) {
 		So(clen, ShouldEqual, len(cblob))
 
 		digest = godigest.FromBytes(manifestBuf)
-		_, err = imgStore.PutImageManifest("dedupe2", digest.String(),
+		_, _, err = imgStore.PutImageManifest("dedupe2", digest.String(),
 			ispec.MediaTypeImageManifest, manifestBuf)
 		So(err, ShouldBeNil)
 
@@ -2970,7 +2970,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 		digest = godigest.FromBytes(content)
 		So(digest, ShouldNotBeNil)
 		m1content := content
-		_, err = imgStore.PutImageManifest("index", "test:1.0", ispec.MediaTypeImageManifest, content)
+		_, _, err = imgStore.PutImageManifest("index", "test:1.0", ispec.MediaTypeImageManifest, content)
 		So(err, ShouldBeNil)
 
 		// create another manifest but upload using its sha256 reference
@@ -3013,7 +3013,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 		So(digest, ShouldNotBeNil)
 		m2dgst := digest
 		m2size := len(content)
-		_, err = imgStore.PutImageManifest("index", digest.String(), ispec.MediaTypeImageManifest, content)
+		_, _, err = imgStore.PutImageManifest("index", digest.String(), ispec.MediaTypeImageManifest, content)
 		So(err, ShouldBeNil)
 
 		Convey("Image index", func() {
@@ -3053,7 +3053,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 			So(err, ShouldBeNil)
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
-			_, err = imgStore.PutImageManifest("index", digest.String(), ispec.MediaTypeImageManifest, content)
+			_, _, err = imgStore.PutImageManifest("index", digest.String(), ispec.MediaTypeImageManifest, content)
 			So(err, ShouldBeNil)
 
 			var index ispec.Index
@@ -3076,7 +3076,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
 			index1dgst := digest
-			_, err = imgStore.PutImageManifest("index", "test:index1", ispec.MediaTypeImageIndex, content)
+			_, _, err = imgStore.PutImageManifest("index", "test:index1", ispec.MediaTypeImageIndex, content)
 			So(err, ShouldBeNil)
 			_, _, _, err = imgStore.GetImageManifest("index", "test:index1")
 			So(err, ShouldBeNil)
@@ -3119,7 +3119,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 			So(digest, ShouldNotBeNil)
 			m4dgst := digest
 			m4size := len(content)
-			_, err = imgStore.PutImageManifest("index", digest.String(), ispec.MediaTypeImageManifest, content)
+			_, _, err = imgStore.PutImageManifest("index", digest.String(), ispec.MediaTypeImageManifest, content)
 			So(err, ShouldBeNil)
 
 			index.SchemaVersion = 2
@@ -3140,7 +3140,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 			So(err, ShouldBeNil)
 			digest = godigest.FromBytes(content)
 			So(digest, ShouldNotBeNil)
-			_, err = imgStore.PutImageManifest("index", "test:index2", ispec.MediaTypeImageIndex, content)
+			_, _, err = imgStore.PutImageManifest("index", "test:index2", ispec.MediaTypeImageIndex, content)
 			So(err, ShouldBeNil)
 			_, _, _, err = imgStore.GetImageManifest("index", "test:index2")
 			So(err, ShouldBeNil)
@@ -3169,7 +3169,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 				So(err, ShouldBeNil)
 				digest = godigest.FromBytes(content)
 				So(digest, ShouldNotBeNil)
-				_, err = imgStore.PutImageManifest("index", "test:index3", ispec.MediaTypeImageIndex, content)
+				_, _, err = imgStore.PutImageManifest("index", "test:index3", ispec.MediaTypeImageIndex, content)
 				So(err, ShouldBeNil)
 				_, _, _, err = imgStore.GetImageManifest("index", "test:index3")
 				So(err, ShouldBeNil)
@@ -3190,7 +3190,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 				So(err, ShouldBeNil)
 				digest = godigest.FromBytes(content)
 				So(digest, ShouldNotBeNil)
-				_, err = imgStore.PutImageManifest("index", digest.String(), ispec.MediaTypeImageIndex, content)
+				_, _, err = imgStore.PutImageManifest("index", digest.String(), ispec.MediaTypeImageIndex, content)
 				So(err, ShouldBeNil)
 				_, _, _, err = imgStore.GetImageManifest("index", digest.String())
 				So(err, ShouldBeNil)
@@ -3267,7 +3267,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 				So(err, ShouldBeNil)
 				digest = godigest.FromBytes(content)
 				So(digest, ShouldNotBeNil)
-				_, err = imgStore.PutImageManifest("index", digest.String(), ispec.MediaTypeImageManifest, content)
+				_, _, err = imgStore.PutImageManifest("index", digest.String(), ispec.MediaTypeImageManifest, content)
 				So(err, ShouldBeNil)
 				_, _, _, err = imgStore.GetImageManifest("index", digest.String())
 				So(err, ShouldBeNil)
@@ -3285,7 +3285,7 @@ func TestS3ManifestImageIndex(t *testing.T) {
 				So(err, ShouldBeNil)
 				digest = godigest.FromBytes(content)
 				So(digest, ShouldNotBeNil)
-				_, err = imgStore.PutImageManifest("index", "test:index1", ispec.MediaTypeImageIndex, content)
+				_, _, err = imgStore.PutImageManifest("index", "test:index1", ispec.MediaTypeImageIndex, content)
 				So(err, ShouldBeNil)
 				_, _, _, err = imgStore.GetImageManifest("index", "test:index1")
 				So(err, ShouldBeNil)
@@ -3338,11 +3338,11 @@ func TestS3ManifestImageIndex(t *testing.T) {
 					So(err, ShouldBeNil)
 					digest = godigest.FromBytes(content)
 					So(digest, ShouldNotBeNil)
-					_, err = imgStore.PutImageManifest("index", "test:1.0", ispec.MediaTypeImageIndex, content)
+					_, _, err = imgStore.PutImageManifest("index", "test:1.0", ispec.MediaTypeImageIndex, content)
 					So(err, ShouldNotBeNil)
 
 					// previously an image index, try writing a manifest
-					_, err = imgStore.PutImageManifest("index", "test:index1", ispec.MediaTypeImageManifest, m1content)
+					_, _, err = imgStore.PutImageManifest("index", "test:index1", ispec.MediaTypeImageManifest, m1content)
 					So(err, ShouldNotBeNil)
 				})
 			})

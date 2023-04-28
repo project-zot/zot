@@ -148,8 +148,10 @@ func TestRoutes(t *testing.T) {
 					"reference": "reference",
 				},
 				&mocks.MockedImageStore{
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest, error) {
-						return "", zerr.ErrRepoNotFound
+					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest,
+						godigest.Digest, error,
+					) {
+						return "", "", zerr.ErrRepoNotFound
 					},
 				})
 			So(statusCode, ShouldEqual, http.StatusNotFound)
@@ -161,8 +163,10 @@ func TestRoutes(t *testing.T) {
 				},
 
 				&mocks.MockedImageStore{
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest, error) {
-						return "", zerr.ErrManifestNotFound
+					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest,
+						godigest.Digest, error,
+					) {
+						return "", "", zerr.ErrManifestNotFound
 					},
 				})
 			So(statusCode, ShouldEqual, http.StatusNotFound)
@@ -173,8 +177,10 @@ func TestRoutes(t *testing.T) {
 					"reference": "reference",
 				},
 				&mocks.MockedImageStore{
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest, error) {
-						return "", zerr.ErrBadManifest
+					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest,
+						godigest.Digest, error,
+					) {
+						return "", "", zerr.ErrBadManifest
 					},
 				})
 			So(statusCode, ShouldEqual, http.StatusBadRequest)
@@ -185,8 +191,10 @@ func TestRoutes(t *testing.T) {
 					"reference": "reference",
 				},
 				&mocks.MockedImageStore{
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest, error) {
-						return "", zerr.ErrBlobNotFound
+					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest,
+						godigest.Digest, error,
+					) {
+						return "", "", zerr.ErrBlobNotFound
 					},
 				})
 			So(statusCode, ShouldEqual, http.StatusBadRequest)
@@ -198,8 +206,10 @@ func TestRoutes(t *testing.T) {
 					"reference": "reference",
 				},
 				&mocks.MockedImageStore{
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest, error) {
-						return "", zerr.ErrRepoBadVersion
+					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest,
+						godigest.Digest, error,
+					) {
+						return "", "", zerr.ErrRepoBadVersion
 					},
 				})
 			So(statusCode, ShouldEqual, http.StatusInternalServerError)

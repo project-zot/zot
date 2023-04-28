@@ -70,7 +70,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 
 		manifestBlob, err := json.Marshal(manifest)
 		So(err, ShouldBeNil)
-		manifestDigest, err := imgStore.PutImageManifest(repoName, tag, ispec.MediaTypeImageManifest, manifestBlob)
+		manifestDigest, _, err := imgStore.PutImageManifest(repoName, tag, ispec.MediaTypeImageManifest, manifestBlob)
 		So(err, ShouldBeNil)
 
 		Convey("Blobs integrity not affected", func() {
@@ -255,7 +255,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 
 			indexBlob, err := json.Marshal(index)
 			So(err, ShouldBeNil)
-			indexDigest, err := imgStore.PutImageManifest(repoName, "", ispec.MediaTypeImageIndex, indexBlob)
+			indexDigest, _, err := imgStore.PutImageManifest(repoName, "", ispec.MediaTypeImageIndex, indexBlob)
 			So(err, ShouldBeNil)
 
 			buff := bytes.NewBufferString("")

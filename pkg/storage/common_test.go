@@ -71,7 +71,7 @@ func TestValidateManifest(t *testing.T) {
 			body, err := json.Marshal(manifest)
 			So(err, ShouldBeNil)
 
-			_, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, body)
+			_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, body)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -101,7 +101,7 @@ func TestValidateManifest(t *testing.T) {
 			body, err := json.Marshal(manifest)
 			So(err, ShouldBeNil)
 
-			_, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, body)
+			_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, body)
 			So(err, ShouldNotBeNil)
 		})
 
@@ -130,7 +130,7 @@ func TestValidateManifest(t *testing.T) {
 			body, err := json.Marshal(manifest)
 			So(err, ShouldBeNil)
 
-			_, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, body)
+			_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, body)
 			So(err, ShouldBeNil)
 		})
 	})

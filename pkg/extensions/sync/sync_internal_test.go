@@ -698,7 +698,7 @@ func TestSyncInternal(t *testing.T) {
 
 				manifestDigest := godigest.FromBytes(manifestContent)
 
-				_, err = testImageStore.PutImageManifest(repo, manifestDigest.String(),
+				_, _, err = testImageStore.PutImageManifest(repo, manifestDigest.String(),
 					ispec.MediaTypeImageManifest, manifestContent)
 				So(err, ShouldBeNil)
 
@@ -715,7 +715,7 @@ func TestSyncInternal(t *testing.T) {
 			So(digest, ShouldNotBeNil)
 
 			// upload index image
-			_, err = testImageStore.PutImageManifest(repo, "latest", ispec.MediaTypeImageIndex, content)
+			_, _, err = testImageStore.PutImageManifest(repo, "latest", ispec.MediaTypeImageIndex, content)
 			So(err, ShouldBeNil)
 
 			err = pushSyncedLocalImage(repo, "latest", testRootDir, nil, imageStore, log)

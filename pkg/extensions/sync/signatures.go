@@ -180,7 +180,7 @@ func (sig *signaturesCopier) syncCosignSignature(localRepo, remoteRepo, digestSt
 	}
 
 	// push manifest
-	_, err = imageStore.PutImageManifest(localRepo, cosignTag,
+	_, _, err = imageStore.PutImageManifest(localRepo, cosignTag,
 		ispec.MediaTypeImageManifest, cosignManifestBuf)
 	if err != nil {
 		sig.log.Error().Str("errorType", common.TypeOf(err)).
@@ -258,7 +258,7 @@ func (sig *signaturesCopier) syncORASRefs(localRepo, remoteRepo, digestStr strin
 			}
 		}
 
-		_, err = imageStore.PutImageManifest(localRepo, ref.Digest.String(),
+		_, _, err = imageStore.PutImageManifest(localRepo, ref.Digest.String(),
 			oras.MediaTypeArtifactManifest, body)
 		if err != nil {
 			sig.log.Error().Str("errorType", common.TypeOf(err)).
@@ -359,7 +359,7 @@ func (sig *signaturesCopier) syncOCIRefs(localRepo, remoteRepo, digestStr string
 			continue
 		}
 
-		digest, err := imageStore.PutImageManifest(localRepo, ref.Digest.String(),
+		digest, _, err := imageStore.PutImageManifest(localRepo, ref.Digest.String(),
 			ref.MediaType, OCIRefBody)
 		if err != nil {
 			sig.log.Error().Str("errorType", common.TypeOf(err)).

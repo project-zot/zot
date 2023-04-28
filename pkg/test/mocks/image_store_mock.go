@@ -12,15 +12,16 @@ import (
 )
 
 type MockedImageStore struct {
-	DirExistsFn            func(d string) bool
-	RootDirFn              func() string
-	InitRepoFn             func(name string) error
-	ValidateRepoFn         func(name string) (bool, error)
-	GetRepositoriesFn      func() ([]string, error)
-	GetNextRepositoryFn    func(repo string) (string, error)
-	GetImageTagsFn         func(repo string) ([]string, error)
-	GetImageManifestFn     func(repo string, reference string) ([]byte, godigest.Digest, string, error)
-	PutImageManifestFn     func(repo string, reference string, mediaType string, body []byte) (godigest.Digest, error)
+	DirExistsFn         func(d string) bool
+	RootDirFn           func() string
+	InitRepoFn          func(name string) error
+	ValidateRepoFn      func(name string) (bool, error)
+	GetRepositoriesFn   func() ([]string, error)
+	GetNextRepositoryFn func(repo string) (string, error)
+	GetImageTagsFn      func(repo string) ([]string, error)
+	GetImageManifestFn  func(repo string, reference string) ([]byte, godigest.Digest, string, error)
+	PutImageManifestFn  func(repo string, reference string, mediaType string, body []byte) (godigest.Digest,
+		godigest.Digest, error)
 	DeleteImageManifestFn  func(repo string, reference string, detectCollision bool) error
 	BlobUploadPathFn       func(repo string, uuid string) string
 	NewBlobUploadFn        func(repo string) (string, error)
@@ -124,12 +125,12 @@ func (is MockedImageStore) PutImageManifest(
 	reference string,
 	mediaType string,
 	body []byte,
-) (godigest.Digest, error) {
+) (godigest.Digest, godigest.Digest, error) {
 	if is.PutImageManifestFn != nil {
 		return is.PutImageManifestFn(repo, reference, mediaType, body)
 	}
 
-	return "", nil
+	return "", "", nil
 }
 
 func (is MockedImageStore) GetImageTags(name string) ([]string, error) {
