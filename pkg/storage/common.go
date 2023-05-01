@@ -152,10 +152,16 @@ func validateOCIManifest(imgStore ImageStore, repo, reference string, manifest *
 	}
 
 	// validate the layers
-	for _, l := range manifest.Layers {
-		_, err := imgStore.GetBlobContent(repo, l.Digest)
+	for _, layer := range manifest.Layers {
+		if IsNonDistributable(layer.MediaType) {
+			log.Warn().Str("digest", layer.Digest.String()).Str("mediaType", layer.MediaType).Msg("not validating layer exists")
+
+			continue
+		}
+
+		_, err := imgStore.GetBlobContent(repo, layer.Digest)
 		if err != nil {
-			return l.Digest, zerr.ErrBlobNotFound
+			return layer.Digest, zerr.ErrBlobNotFound
 		}
 	}
 
@@ -715,6 +721,12 @@ func IsSupportedMediaType(mediaType string) bool {
 		mediaType == ispec.MediaTypeImageManifest ||
 		mediaType == ispec.MediaTypeArtifactManifest ||
 		mediaType == oras.MediaTypeArtifactManifest
+}
+
+func IsNonDistributable(mediaType string) bool {
+	return mediaType == ispec.MediaTypeImageLayerNonDistributable ||
+		mediaType == ispec.MediaTypeImageLayerNonDistributableGzip ||
+		mediaType == ispec.MediaTypeImageLayerNonDistributableZstd
 }
 
 // CheckIsImageSignature checks if the given image (repo:tag) represents a signature. The function
