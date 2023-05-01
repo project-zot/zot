@@ -1,7 +1,7 @@
 build:
   from:
     type: docker
-    url: docker://ghcr.io/project-zot/golang:1.19
+    url: docker://ghcr.io/project-zot/golang:1.20
   binds:
     - ../. -> /zotcopy
   run: |
