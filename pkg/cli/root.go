@@ -68,7 +68,7 @@ func newServeCmd(conf *config.Config) *cobra.Command {
 			}
 
 			if err := ctlr.Run(reloaderCtx); err != nil {
-				panic(err)
+				log.Fatal().Err(err).Msg("unable to start controller, exiting")
 			}
 		},
 	}
