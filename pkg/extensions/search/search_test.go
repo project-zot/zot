@@ -4699,7 +4699,7 @@ func TestRepoDBIndexOperations(t *testing.T) {
 
 func RunRepoDBIndexTests(baseURL, port string) {
 	Convey("Push test index", func() {
-		repo := "repo"
+		const repo = "repo"
 
 		multiarchImage, err := GetRandomMultiarchImage("tag1")
 		So(err, ShouldBeNil)

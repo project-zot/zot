@@ -3274,7 +3274,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 			graphql.DefaultRecover)
 
 		repoDB := mocks.RepoDBMock{
-			GetRepoMetaFn: func(repo string) (repodb.RepoMetadata, error) {
+			GetUserRepoMetaFn: func(ctx context.Context, repo string) (repodb.RepoMetadata, error) {
 				return repodb.RepoMetadata{
 					Tags: map[string]repodb.Descriptor{
 						"tagManifest": {

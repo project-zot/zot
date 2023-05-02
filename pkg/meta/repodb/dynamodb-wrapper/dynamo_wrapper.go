@@ -616,6 +616,39 @@ func (dwr *DBWrapper) GetRepoMeta(repo string) (repodb.RepoMetadata, error) {
 	return repoMeta, nil
 }
 
+func (dwr *DBWrapper) GetUserRepoMeta(ctx context.Context, repo string) (repodb.RepoMetadata, error) {
+	resp, err := dwr.Client.GetItem(ctx, &dynamodb.GetItemInput{
+		TableName: aws.String(dwr.RepoMetaTablename),
+		Key: map[string]types.AttributeValue{
+			"RepoName": &types.AttributeValueMemberS{Value: repo},
+		},
+	})
+	if err != nil {
+		return repodb.RepoMetadata{}, err
+	}
+
+	if resp.Item == nil {
+		return repodb.RepoMetadata{}, zerr.ErrRepoMetaNotFound
+	}
+
+	var repoMeta repodb.RepoMetadata
+
+	err = attributevalue.Unmarshal(resp.Item["RepoMetadata"], &repoMeta)
+	if err != nil {
+		return repodb.RepoMetadata{}, err
+	}
+
+	userMeta, err := dwr.GetUserMeta(ctx)
+	if err != nil {
+		return repodb.RepoMetadata{}, err
+	}
+
+	repoMeta.IsBookmarked = zcommon.Contains(userMeta.BookmarkedRepos, repo)
+	repoMeta.IsStarred = zcommon.Contains(userMeta.StarredRepos, repo)
+
+	return repoMeta, nil
+}
+
 func (dwr *DBWrapper) IncrementImageDownloads(repo string, reference string) error {
 	repoMeta, err := dwr.GetRepoMeta(repo)
 	if err != nil {
@@ -1926,7 +1959,7 @@ func (dwr *DBWrapper) GetStarredRepos(ctx context.Context) ([]string, error) {
 	return userMeta.StarredRepos, err
 }
 
-func (dwr DBWrapper) GetUserMeta(ctx context.Context) (repodb.UserData, error) {
+func (dwr *DBWrapper) GetUserMeta(ctx context.Context) (repodb.UserData, error) {
 	acCtx, err := localCtx.GetAccessControlContext(ctx)
 	if err != nil {
 		return repodb.UserData{}, err
@@ -1963,7 +1996,7 @@ func (dwr DBWrapper) GetUserMeta(ctx context.Context) (repodb.UserData, error) {
 	return userMeta, nil
 }
 
-func (dwr DBWrapper) createUserDataTable() error {
+func (dwr *DBWrapper) createUserDataTable() error {
 	_, err := dwr.Client.CreateTable(context.Background(), &dynamodb.CreateTableInput{
 		TableName: aws.String(dwr.UserDataTablename),
 		AttributeDefinitions: []types.AttributeDefinition{
@@ -1988,7 +2021,7 @@ func (dwr DBWrapper) createUserDataTable() error {
 	return dwr.waitTableToBeCreated(dwr.UserDataTablename)
 }
 
-func (dwr DBWrapper) SetUserMeta(ctx context.Context, userMeta repodb.UserData) error {
+func (dwr *DBWrapper) SetUserMeta(ctx context.Context, userMeta repodb.UserData) error {
 	acCtx, err := localCtx.GetAccessControlContext(ctx)
 	if err != nil {
 		return err

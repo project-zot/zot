@@ -2511,6 +2511,35 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			So(repoMetas[0].IsBookmarked, ShouldBeTrue)
 			So(repoMetas[0].IsStarred, ShouldBeTrue)
 		})
+
+		Convey("Test GetUserRepoMeta", func() {
+			authzCtxKey := localCtx.GetContextKey()
+
+			acCtx := localCtx.AccessControlContext{
+				ReadGlobPatterns: map[string]bool{
+					"repo": true,
+				},
+				Username: "user1",
+			}
+			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+
+			digest := godigest.FromString("1")
+
+			err := repoDB.SetRepoReference("repo", "tag", digest, ispec.MediaTypeImageManifest)
+			So(err, ShouldBeNil)
+
+			_, err = repoDB.ToggleBookmarkRepo(ctx, "repo")
+			So(err, ShouldBeNil)
+
+			_, err = repoDB.ToggleStarRepo(ctx, "repo")
+			So(err, ShouldBeNil)
+
+			repoMeta, err := repoDB.GetUserRepoMeta(ctx, "repo")
+			So(err, ShouldBeNil)
+			So(repoMeta.IsBookmarked, ShouldBeTrue)
+			So(repoMeta.IsStarred, ShouldBeTrue)
+			So(repoMeta.Tags, ShouldContainKey, "tag")
+		})
 	})
 }
 
