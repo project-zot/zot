@@ -272,7 +272,7 @@ function teardown_file() {
 }
 EOF
 
-    run notation sign --signature-manifest image --key "notation-sign-sync-test" --plain-http localhost:9000/golang:1.20
+    run notation sign --key "notation-sign-sync-test" --plain-http localhost:9000/golang:1.20
     [ "$status" -eq 0 ]
     run notation verify --plain-http localhost:9000/golang:1.20
     [ "$status" -eq 0 ]
