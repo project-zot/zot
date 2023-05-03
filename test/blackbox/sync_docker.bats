@@ -30,7 +30,11 @@ function setup_file() {
             "registries": [
                 {
                     "urls": [
-                        "https://docker.io/library"
+                        "https://docker.io/library",
+                        "https://registry.k8s.io",
+                        "https://aws.amazon.com/ecr",
+                        "https://gcr.io",
+                        "https://mcr.microsoft.com"
                     ],
                     "onDemand": true,
                     "tlsVerify": true
@@ -80,3 +84,126 @@ function teardown_file() {
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.tags[]') = '"latest"' ]
 }
+
+@test "sync image on demand from registry.k8s.io" {
+    run skopeo copy docker://127.0.0.1:8090/kube-apiserver-amd64:v1.10.0 oci:${TEST_DATA_DIR} --src-tls-verify=false
+    [ "$status" -eq 0 ]
+
+    run curl http://127.0.0.1:8090/v2/_catalog
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}"| jq '.repositories | map(select(. == "kube-apiserver-amd64"))' | jq '.[]') = '"kube-apiserver-amd64"' ]
+    run curl http://127.0.0.1:8090/v2/kube-apiserver-amd64/tags/list
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"v1.10.0"' ]
+}
+
+@test "sync image on demand from aws.amazon.com/ecr" {
+    run skopeo copy docker://127.0.0.1:8090/amazonlinux:latest oci:${TEST_DATA_DIR} --src-tls-verify=false
+    [ "$status" -eq 0 ]
+
+    run curl http://127.0.0.1:8090/v2/_catalog
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}"| jq '.repositories | map(select(. == "amazonlinux"))' | jq '.[]') = '"amazonlinux"' ]
+    run curl http://127.0.0.1:8090/v2/amazonlinux/tags/list
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"latest"' ]
+}
+
+@test "sync image on demand from gcr.io" {
+    run skopeo copy docker://127.0.0.1:8090/google-containers/kube-proxy-amd64:v1.17.9 oci:${TEST_DATA_DIR} --src-tls-verify=false
+    [ "$status" -eq 0 ]
+
+    run curl http://127.0.0.1:8090/v2/_catalog
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}"| jq '.repositories | map(select(. == "google-containers/kube-proxy-amd64"))' | jq '.[]') = '"google-containers/kube-proxy-amd64"' ]
+    run curl http://127.0.0.1:8090/v2/google-containers/kube-proxy-amd64/tags/list
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"v1.17.9"' ]
+}
+
+@test "sync image on demand from mcr.microsoft.com" {
+    run skopeo copy docker://127.0.0.1:8090/azure-cognitive-services/vision/spatial-analysis/diagnostics:latest oci:${TEST_DATA_DIR} --src-tls-verify=false
+    [ "$status" -eq 0 ]
+
+    run curl http://127.0.0.1:8090/v2/_catalog
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}"| jq '.repositories | map(select(. == "azure-cognitive-services/vision/spatial-analysis/diagnostics"))' | jq '.[]') = '"azure-cognitive-services/vision/spatial-analysis/diagnostics"' ]
+    run curl http://127.0.0.1:8090/v2/azure-cognitive-services/vision/spatial-analysis/diagnostics/tags/list
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"latest"' ]
+}
+
+@test "run docker with image synced from docker.io/library" {
+    local zot_root_dir=${BATS_FILE_TMPDIR}/zot 
+    run rm -rf ${zot_root_dir}
+    [ "$status" -eq 0 ]
+    
+    run docker run -d 127.0.0.1:8090/archlinux:latest
+    [ "$status" -eq 0 ]
+
+    run curl http://127.0.0.1:8090/v2/_catalog
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}"| jq '.repositories | map(select(. == "archlinux"))' | jq '.[]') = '"archlinux"' ]
+    run curl http://127.0.0.1:8090/v2/archlinux/tags/list
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"latest"' ]
+
+    run docker kill $(docker ps -q)
+}
+
+@test "run docker with image synced from registry.k8s.io" {
+    run docker run -d 127.0.0.1:8090/kube-apiserver-amd64:v1.10.0
+    [ "$status" -eq 0 ]
+
+    run curl http://127.0.0.1:8090/v2/_catalog
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}"| jq '.repositories | map(select(. == "kube-apiserver-amd64"))' | jq '.[]') = '"kube-apiserver-amd64"' ]
+    run curl http://127.0.0.1:8090/v2/kube-apiserver-amd64/tags/list
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"v1.10.0"' ]
+
+    run docker kill $(docker ps -q)
+}
+
+@test "run docker with image synced from aws.amazon.com/ecr" {
+    run docker run -d 127.0.0.1:8090/amazonlinux:latest
+    [ "$status" -eq 0 ]
+
+    run curl http://127.0.0.1:8090/v2/_catalog
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}"| jq '.repositories | map(select(. == "amazonlinux"))' | jq '.[]') = '"amazonlinux"' ]
+    run curl http://127.0.0.1:8090/v2/amazonlinux/tags/list
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"latest"' ]
+
+    run docker kill $(docker ps -q)
+}
+
+@test "run docker with image synced from gcr.io" {
+    run docker run -d 127.0.0.1:8090/google-containers/kube-proxy-amd64:v1.17.9
+    [ "$status" -eq 0 ]
+
+    run curl http://127.0.0.1:8090/v2/_catalog
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}"| jq '.repositories | map(select(. == "google-containers/kube-proxy-amd64"))' | jq '.[]') = '"google-containers/kube-proxy-amd64"' ]
+    run curl http://127.0.0.1:8090/v2/google-containers/kube-proxy-amd64/tags/list
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"v1.17.9"' ]
+
+    run docker kill $(docker ps -q)
+}
+
+@test "run docker with image synced from mcr.microsoft.com" {
+    run docker run -d 127.0.0.1:8090/azure-cognitive-services/vision/spatial-analysis/diagnostics:latest
+    [ "$status" -eq 0 ]
+
+    run curl http://127.0.0.1:8090/v2/_catalog
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}"| jq '.repositories | map(select(. == "azure-cognitive-services/vision/spatial-analysis/diagnostics"))' | jq '.[]') = '"azure-cognitive-services/vision/spatial-analysis/diagnostics"' ]
+    run curl http://127.0.0.1:8090/v2/azure-cognitive-services/vision/spatial-analysis/diagnostics/tags/list
+    [ "$status" -eq 0 ]
+    [ $(echo "${lines[-1]}" | jq '.tags[]') = '"latest"' ]
+
+    run docker kill $(docker ps -q)
+}
+
