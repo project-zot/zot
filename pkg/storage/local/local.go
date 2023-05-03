@@ -1451,6 +1451,12 @@ func ensureDir(dir string, log zerolog.Logger) error {
 	return nil
 }
 
+type extendedManifest struct {
+	ispec.Manifest
+
+	Digest godigest.Digest
+}
+
 func (is *ImageStoreLocal) garbageCollect(dir string, repo string) error {
 	oci, err := umoci.OpenLayout(dir)
 	if err := test.Error(err); err != nil {
@@ -1466,7 +1472,7 @@ func (is *ImageStoreLocal) garbageCollect(dir string, repo string) error {
 
 	referencedByImageIndex := []string{}
 	cosignDescriptors := []ispec.Descriptor{}
-	notationDescriptors := []ispec.Descriptor{}
+	notationManifests := []extendedManifest{}
 
 	/* gather manifests references by multiarch images (to skip gc)
 	gather cosign and notation signatures descriptors */
@@ -1504,7 +1510,10 @@ func (is *ImageStoreLocal) garbageCollect(dir string, repo string) error {
 			}
 
 			if zcommon.GetManifestArtifactType(manifestContent) == notreg.ArtifactTypeNotation {
-				notationDescriptors = append(notationDescriptors, desc)
+				notationManifests = append(notationManifests, extendedManifest{
+					Digest:   desc.Digest,
+					Manifest: manifestContent,
+				})
 
 				continue
 			}
@@ -1525,7 +1534,7 @@ func (is *ImageStoreLocal) garbageCollect(dir string, repo string) error {
 
 	is.log.Info().Msg("gc: notation signatures")
 
-	if err := gcNotationSignatures(is, oci, &index, repo, notationDescriptors); err != nil {
+	if err := gcNotationSignatures(is, oci, &index, repo, notationManifests); err != nil {
 		return err
 	}
 
@@ -1641,41 +1650,24 @@ func gcCosignSignatures(imgStore *ImageStoreLocal, oci casext.Engine, index *isp
 }
 
 func gcNotationSignatures(imgStore *ImageStoreLocal, oci casext.Engine, index *ispec.Index, repo string,
-	notationDescriptors []ispec.Descriptor,
+	notationManifests []extendedManifest,
 ) error {
-	for _, notationDesc := range notationDescriptors {
+	for _, notationManifest := range notationManifests {
 		foundSubject := false
-		// check if we can find the manifest which the signature points to
-		var artManifest ispec.Manifest
-
-		buf, err := imgStore.GetBlobContent(repo, notationDesc.Digest)
-		if err != nil {
-			imgStore.log.Error().Err(err).Str("repository", repo).Str("digest", notationDesc.Digest.String()).
-				Msg("gc: failed to get notation manifest")
-
-			return err
-		}
-
-		if err := json.Unmarshal(buf, &artManifest); err != nil {
-			imgStore.log.Error().Err(err).Str("repository", repo).Str("digest", notationDesc.Digest.String()).
-				Msg("gc: failed to get notation manifest")
-
-			return err
-		}
 
 		for _, desc := range index.Manifests {
-			if desc.Digest == artManifest.Subject.Digest {
+			if desc.Digest == notationManifest.Subject.Digest {
 				foundSubject = true
 			}
 		}
 
 		if !foundSubject {
 			// remove manifest
-			imgStore.log.Info().Str("repository", repo).Str("digest", notationDesc.Digest.String()).
+			imgStore.log.Info().Str("repository", repo).Str("digest", notationManifest.Digest.String()).
 				Msg("gc: removing notation signature without subject")
 
 			// no need to check for manifest conflict, if one doesn't have a subject, then none with same digest will have
-			_, _ = storage.RemoveManifestDescByReference(index, notationDesc.Digest.String(), false)
+			_, _ = storage.RemoveManifestDescByReference(index, notationManifest.Digest.String(), false)
 
 			err := oci.PutIndex(context.Background(), *index)
 			if err != nil {

@@ -869,7 +869,7 @@ func TestSyncWithNonDistributableBlob(t *testing.T) {
 		nonDistributableLayer := make([]byte, 10)
 		nonDistributableDigest := godigest.FromBytes(nonDistributableLayer)
 		nonDistributableLayerDesc := ispec.Descriptor{
-			MediaType: ispec.MediaTypeImageLayerNonDistributableGzip,
+			MediaType: ispec.MediaTypeImageLayerNonDistributableGzip, //nolint:staticcheck
 			Digest:    nonDistributableDigest,
 			Size:      int64(len(nonDistributableLayer)),
 			URLs: []string{

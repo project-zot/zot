@@ -514,7 +514,10 @@ func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http
 		return
 	}
 
-	response.Header().Set("OCI-Filters-Applied", strings.Join(artifactTypes, ","))
+	if len(artifactTypes) > 0 {
+		response.Header().Set("OCI-Filters-Applied", strings.Join(artifactTypes, ","))
+	}
+
 	WriteData(response, http.StatusOK, ispec.MediaTypeImageIndex, out)
 }
 

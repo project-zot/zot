@@ -325,7 +325,7 @@ func GetReferredSubject(descriptorBlob []byte, referrerDigest, mediaType string,
 	err := json.Unmarshal(descriptorBlob, &manifestContent)
 	if err != nil {
 		return "", referrerInfo, false,
-			fmt.Errorf("repodb: can't unmarhsal manifest for digest %s: %w", referrerDigest, err)
+			fmt.Errorf("repodb: can't unmarshal manifest for digest %s: %w", referrerDigest, err)
 	}
 
 	referrerSubject = manifestContent.Subject
