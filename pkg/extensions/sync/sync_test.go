@@ -810,6 +810,89 @@ func TestOnDemand(t *testing.T) {
 	})
 }
 
+func TestSyncWithNonDistributableBlob(t *testing.T) {
+	Convey("Verify sync doesn't copy non distributable blobs", t, func() {
+		sctlr, srcBaseURL, srcDir, _, _ := makeUpstreamServer(t, false, false)
+
+		scm := test.NewControllerManager(sctlr)
+		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		defer scm.StopServer()
+
+		var tlsVerify bool
+
+		maxRetries := 1
+		delay := 1 * time.Second
+		repoName := "remote-repo"
+		tag := "latest"
+
+		syncRegistryConfig := syncconf.RegistryConfig{
+			Content: []syncconf.Content{
+				{
+					Prefix: repoName,
+				},
+			},
+			URLs:       []string{srcBaseURL},
+			TLSVerify:  &tlsVerify,
+			OnDemand:   true,
+			MaxRetries: &maxRetries,
+			RetryDelay: &delay,
+		}
+
+		defaultVal := true
+		syncConfig := &syncconf.Config{
+			Enable:     &defaultVal,
+			Registries: []syncconf.RegistryConfig{syncRegistryConfig},
+		}
+
+		dctlr, destBaseURL, _, destClient := makeDownstreamServer(t, false, syncConfig)
+
+		dcm := test.NewControllerManager(dctlr)
+
+		imageConfig, layers, manifest, err := test.GetRandomImageComponents(10)
+		So(err, ShouldBeNil)
+
+		nonDistributableLayer := make([]byte, 10)
+		nonDistributableDigest := godigest.FromBytes(nonDistributableLayer)
+		nonDistributableLayerDesc := ispec.Descriptor{
+			MediaType: ispec.MediaTypeImageLayerNonDistributableGzip,
+			Digest:    nonDistributableDigest,
+			Size:      int64(len(nonDistributableLayer)),
+			URLs: []string{
+				path.Join(srcBaseURL, "v2", repoName, "blobs", nonDistributableDigest.String()),
+			},
+		}
+
+		manifest.Layers = append(manifest.Layers, nonDistributableLayerDesc)
+
+		err = test.UploadImage(
+			test.Image{Config: imageConfig, Layers: layers, Manifest: manifest, Reference: tag},
+			srcBaseURL,
+			repoName,
+		)
+
+		So(err, ShouldBeNil)
+
+		err = os.WriteFile(path.Join(srcDir, repoName, "blobs/sha256", nonDistributableDigest.Encoded()),
+			nonDistributableLayer, 0o600)
+		So(err, ShouldBeNil)
+
+		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		defer dcm.StopServer()
+
+		time.Sleep(3 * time.Second)
+
+		resp, err := destClient.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/" + tag)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		resp, err = destClient.R().Get(destBaseURL + "/v2/" + repoName + "/blobs/" + nonDistributableDigest.String())
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
+	})
+}
+
 func TestPeriodically(t *testing.T) {
 	Convey("Verify sync feature", t, func() {
 		updateDuration, _ := time.ParseDuration("30m")
