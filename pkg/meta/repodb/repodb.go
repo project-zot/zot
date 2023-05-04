@@ -47,6 +47,10 @@ type RepoDB interface { //nolint:interfacebloat
 	// GetRepoMeta returns RepoMetadata of a repo from the database
 	GetRepoMeta(repo string) (RepoMetadata, error)
 
+	// GetUserRepometa return RepoMetadata of a repo from the database along side specific information about the
+	// user
+	GetUserRepoMeta(ctx context.Context, repo string) (RepoMetadata, error)
+
 	// GetRepoMeta returns RepoMetadata of a repo from the database
 	SetRepoMeta(repo string, repoMeta RepoMetadata) error
 

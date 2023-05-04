@@ -806,6 +806,198 @@ func TestGlobalSearchWithUserPrefFiltering(t *testing.T) {
 	})
 }
 
+func TestExpandedRepoInfoWithUserPrefs(t *testing.T) {
+	Convey("ExpandedRepoInfo with User Prefs", t, func() {
+		dir := t.TempDir()
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = dir
+
+		simpleUser := "simpleUser"
+		simpleUserPassword := "simpleUserPass"
+		credTests := fmt.Sprintf("%s\n\n", getCredString(simpleUser, simpleUserPassword))
+
+		htpasswdPath := MakeHtpasswdFileFromString(credTests)
+		defer os.Remove(htpasswdPath)
+
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+		}
+
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
+			Repositories: config.Repositories{
+				"**": config.PolicyGroup{
+					Policies: []config.Policy{
+						{
+							Users:   []string{simpleUser},
+							Actions: []string{"read", "create"},
+						},
+					},
+				},
+			},
+		}
+
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+		}
+
+		ctlr := api.NewController(conf)
+
+		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
+
+		preferencesBaseURL := baseURL + constants.FullUserPreferencesPrefix
+		simpleUserClient := resty.R().SetBasicAuth(simpleUser, simpleUserPassword)
+
+		// ------ Add sbrepo and star/bookmark it
+		sbrepo := "sbrepo"
+		img, err := GetRandomImage("tag")
+		So(err, ShouldBeNil)
+		err = UploadImageWithBasicAuth(img, baseURL, sbrepo, simpleUser, simpleUserPassword)
+		So(err, ShouldBeNil)
+
+		resp, err := simpleUserClient.Put(preferencesBaseURL + PutRepoStarURL(sbrepo))
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(err, ShouldBeNil)
+
+		resp, err = simpleUserClient.Put(preferencesBaseURL + PutRepoBookmarkURL(sbrepo))
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(err, ShouldBeNil)
+
+		// ExpandedRepoinfo
+
+		query := `
+		{
+			ExpandedRepoInfo(repo:"sbrepo"){
+				Summary {
+					Name IsStarred IsBookmarked 
+				}
+			}
+		}`
+
+		resp, err = simpleUserClient.Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		responseStruct := ExpandedRepoInfoResp{}
+
+		err = json.Unmarshal(resp.Body(), &responseStruct)
+		So(err, ShouldBeNil)
+
+		repoInfo := responseStruct.ExpandedRepoInfo.RepoInfo
+		So(repoInfo.Summary.IsBookmarked, ShouldBeTrue)
+		So(repoInfo.Summary.IsStarred, ShouldBeTrue)
+
+		// ------ Add srepo and star it
+		srepo := "srepo"
+		img, err = GetRandomImage("tag")
+		So(err, ShouldBeNil)
+		err = UploadImageWithBasicAuth(img, baseURL, srepo, simpleUser, simpleUserPassword)
+		So(err, ShouldBeNil)
+
+		resp, err = simpleUserClient.Put(preferencesBaseURL + PutRepoStarURL(srepo))
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(err, ShouldBeNil)
+
+		// ExpandedRepoinfo
+		query = `
+		{
+			ExpandedRepoInfo(repo:"srepo"){
+				Summary {
+					Name IsStarred IsBookmarked 
+				}
+			}
+		}`
+
+		resp, err = simpleUserClient.Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		responseStruct = ExpandedRepoInfoResp{}
+
+		err = json.Unmarshal(resp.Body(), &responseStruct)
+		So(err, ShouldBeNil)
+
+		repoInfo = responseStruct.ExpandedRepoInfo.RepoInfo
+		So(repoInfo.Summary.IsBookmarked, ShouldBeFalse)
+		So(repoInfo.Summary.IsStarred, ShouldBeTrue)
+
+		// ------ Add brepo and bookmark it
+		brepo := "brepo"
+		img, err = GetRandomImage("tag")
+		So(err, ShouldBeNil)
+		err = UploadImageWithBasicAuth(img, baseURL, brepo, simpleUser, simpleUserPassword)
+		So(err, ShouldBeNil)
+
+		resp, err = simpleUserClient.Put(preferencesBaseURL + PutRepoBookmarkURL(brepo))
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+		So(err, ShouldBeNil)
+
+		// ExpandedRepoinfo
+		query = `
+		{
+			ExpandedRepoInfo(repo:"brepo"){
+				Summary {
+					Name IsStarred IsBookmarked 
+				}
+			}
+		}`
+
+		resp, err = simpleUserClient.Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		responseStruct = ExpandedRepoInfoResp{}
+
+		err = json.Unmarshal(resp.Body(), &responseStruct)
+		So(err, ShouldBeNil)
+
+		repoInfo = responseStruct.ExpandedRepoInfo.RepoInfo
+		So(repoInfo.Summary.IsBookmarked, ShouldBeTrue)
+		So(repoInfo.Summary.IsStarred, ShouldBeFalse)
+
+		// ------ Add repo without star/bookmark
+		repo := "repo"
+		img, err = GetRandomImage("tag")
+		So(err, ShouldBeNil)
+		err = UploadImageWithBasicAuth(img, baseURL, repo, simpleUser, simpleUserPassword)
+		So(err, ShouldBeNil)
+
+		// ExpandedRepoinfo
+		query = `
+		{
+			ExpandedRepoInfo(repo:"repo"){
+				Summary {
+					Name IsStarred IsBookmarked 
+				}
+			}
+		}`
+
+		resp, err = simpleUserClient.Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		responseStruct = ExpandedRepoInfoResp{}
+
+		err = json.Unmarshal(resp.Body(), &responseStruct)
+		So(err, ShouldBeNil)
+
+		repoInfo = responseStruct.ExpandedRepoInfo.RepoInfo
+		So(repoInfo.Summary.IsBookmarked, ShouldBeFalse)
+		So(repoInfo.Summary.IsStarred, ShouldBeFalse)
+	})
+}
+
 func PutRepoStarURL(repo string) string {
 	return fmt.Sprintf("?repo=%s&action=toggleStar", repo)
 }

@@ -1096,7 +1096,7 @@ func expandedRepoInfo(ctx context.Context, repo string, repoDB repodb.RepoDB, cv
 		return &gql_generated.RepoInfo{}, nil //nolint:nilerr // don't give details to a potential attacker
 	}
 
-	repoMeta, err := repoDB.GetRepoMeta(repo)
+	repoMeta, err := repoDB.GetUserRepoMeta(ctx, repo)
 	if err != nil {
 		log.Error().Err(err).Str("repository", repo).Msg("resolver: can't retrieve repoMeta for repo")
 

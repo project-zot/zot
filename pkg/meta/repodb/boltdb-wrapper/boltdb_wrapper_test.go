@@ -922,6 +922,30 @@ func TestWrapperErrors(t *testing.T) {
 			)
 			So(err, ShouldBeNil)
 		})
+
+		Convey("GetUserRepoMeta unmarshal error", func() {
+			acCtx := localCtx.AccessControlContext{
+				ReadGlobPatterns: map[string]bool{
+					"repo": true,
+				},
+				Username: "username",
+			}
+			authzCtxKey := localCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+
+			err = boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
+				repoBuck := tx.Bucket([]byte(bolt.RepoMetadataBucket))
+
+				err := repoBuck.Put([]byte("repo"), []byte("bad repo"))
+				So(err, ShouldBeNil)
+
+				return nil
+			})
+			So(err, ShouldBeNil)
+
+			_, err := boltdbWrapper.GetUserRepoMeta(ctx, "repo")
+			So(err, ShouldNotBeNil)
+		})
 	})
 }
 

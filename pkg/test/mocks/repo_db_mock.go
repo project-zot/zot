@@ -25,6 +25,8 @@ type RepoDBMock struct {
 
 	GetRepoMetaFn func(repo string) (repodb.RepoMetadata, error)
 
+	GetUserRepoMetaFn func(ctx context.Context, repo string) (repodb.RepoMetadata, error)
+
 	SetRepoMetaFn func(repo string, repoMeta repodb.RepoMetadata) error
 
 	GetMultipleRepoMetaFn func(ctx context.Context, filter func(repoMeta repodb.RepoMetadata) bool,
@@ -150,6 +152,14 @@ func (sdm RepoDBMock) DeleteRepoTag(repo string, tag string) error {
 func (sdm RepoDBMock) GetRepoMeta(repo string) (repodb.RepoMetadata, error) {
 	if sdm.GetRepoMetaFn != nil {
 		return sdm.GetRepoMetaFn(repo)
+	}
+
+	return repodb.RepoMetadata{}, nil
+}
+
+func (sdm RepoDBMock) GetUserRepoMeta(ctx context.Context, repo string) (repodb.RepoMetadata, error) {
+	if sdm.GetUserRepoMetaFn != nil {
+		return sdm.GetUserRepoMetaFn(ctx, repo)
 	}
 
 	return repodb.RepoMetadata{}, nil

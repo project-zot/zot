@@ -1037,6 +1037,55 @@ func TestWrapperErrors(t *testing.T) {
 			err := dynamoWrapper.PatchDB()
 			So(err, ShouldNotBeNil)
 		})
+
+		Convey("GetUserRepoMeta client.GetItem error", func() {
+			dynamoWrapper.RepoMetaTablename = badTablename
+
+			_, err = dynamoWrapper.GetUserRepoMeta(ctx, "repo")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("GetUserRepoMeta repoMeta not found", func() {
+			_, err = dynamoWrapper.GetUserRepoMeta(ctx, "unknown-repo-meta")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("GetUserRepoMeta userMeta not found", func() {
+			err := dynamoWrapper.SetRepoReference("repo", "tag", digest.FromString("1"), ispec.MediaTypeImageManifest)
+			So(err, ShouldBeNil)
+			dynamoWrapper.UserDataTablename = badTablename
+
+			acCtx := localCtx.AccessControlContext{
+				ReadGlobPatterns: map[string]bool{
+					"repo": true,
+				},
+				Username: "username",
+			}
+
+			authzCtxKey := localCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+
+			_, err = dynamoWrapper.GetUserRepoMeta(ctx, "repo")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("GetUserRepoMeta unmarshal error", func() {
+			err := setBadRepoMeta(dynamoWrapper.Client, repoMetaTablename, "repo")
+			So(err, ShouldBeNil)
+
+			acCtx := localCtx.AccessControlContext{
+				ReadGlobPatterns: map[string]bool{
+					"repo": true,
+				},
+				Username: "username",
+			}
+
+			authzCtxKey := localCtx.GetContextKey()
+			ctx := context.WithValue(context.Background(), authzCtxKey, acCtx)
+
+			_, err = dynamoWrapper.GetUserRepoMeta(ctx, "repo")
+			So(err, ShouldNotBeNil)
+		})
 	})
 
 	Convey("NewDynamoDBWrapper errors", t, func() {

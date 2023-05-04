@@ -533,6 +533,36 @@ func (bdw *DBWrapper) GetRepoMeta(repo string) (repodb.RepoMetadata, error) {
 	return repoMeta, err
 }
 
+func (bdw *DBWrapper) GetUserRepoMeta(ctx context.Context, repo string) (repodb.RepoMetadata, error) {
+	var repoMeta repodb.RepoMetadata
+
+	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
+		buck := tx.Bucket([]byte(bolt.RepoMetadataBucket))
+		userBookmarks := getUserBookmarks(ctx, tx)
+		userStars := getUserStars(ctx, tx)
+
+		repoMetaBlob := buck.Get([]byte(repo))
+
+		// object not found
+		if repoMetaBlob == nil {
+			return zerr.ErrRepoMetaNotFound
+		}
+
+		// object found
+		err := json.Unmarshal(repoMetaBlob, &repoMeta)
+		if err != nil {
+			return err
+		}
+
+		repoMeta.IsBookmarked = zcommon.Contains(userBookmarks, repo)
+		repoMeta.IsStarred = zcommon.Contains(userStars, repo)
+
+		return nil
+	})
+
+	return repoMeta, err
+}
+
 func (bdw *DBWrapper) SetRepoMeta(repo string, repoMeta repodb.RepoMetadata) error {
 	err := bdw.DB.Update(func(tx *bbolt.Tx) error {
 		buck := tx.Bucket([]byte(bolt.RepoMetadataBucket))
