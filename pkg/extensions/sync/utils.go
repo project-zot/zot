@@ -376,6 +376,10 @@ func copyManifest(localRepo string, manifestContent []byte, reference string, re
 	}
 
 	for _, blob := range manifest.Layers {
+		if storage.IsNonDistributable(blob.MediaType) {
+			continue
+		}
+
 		err = copyBlob(localRepo, blob.Digest, blob.MediaType,
 			cacheImageStore, imageStore, log)
 		if err != nil {
