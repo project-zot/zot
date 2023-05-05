@@ -49,6 +49,7 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 			if request.Method == http.MethodOptions {
+				next.ServeHTTP(response, request)
 				response.WriteHeader(http.StatusNoContent)
 
 				return
@@ -95,6 +96,7 @@ func noPasswdAuth(realm string, config *config.Config) mux.MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 			if request.Method == http.MethodOptions {
+				next.ServeHTTP(response, request)
 				response.WriteHeader(http.StatusNoContent)
 
 				return
@@ -193,6 +195,7 @@ func basicAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 			if request.Method == http.MethodOptions {
+				next.ServeHTTP(response, request)
 				response.WriteHeader(http.StatusNoContent)
 
 				return

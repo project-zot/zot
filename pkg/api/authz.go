@@ -228,6 +228,12 @@ func AuthzHandler(ctlr *Controller) mux.MiddlewareFunc {
 			resource := vars["name"]
 			reference, ok := vars["reference"]
 
+			if request.Method == http.MethodOptions {
+				next.ServeHTTP(response, request)
+
+				return
+			}
+
 			// bypass authz for /v2/ route
 			if request.RequestURI == "/v2/" {
 				next.ServeHTTP(response, request)

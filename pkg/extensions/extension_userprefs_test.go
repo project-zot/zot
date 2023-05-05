@@ -13,19 +13,54 @@ import (
 
 	"github.com/gorilla/mux"
 	. "github.com/smartystreets/goconvey/convey"
+	"gopkg.in/resty.v1"
 
 	zerr "zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/api"
+	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/api/constants"
 	"zotregistry.io/zot/pkg/extensions"
+	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/repodb"
+	"zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
 
 var ErrTestError = errors.New("TestError")
 
-const UserprefsBaseURL = "http://127.0.0.1:8080/v2/_zot/ext/userprefs"
+func TestAllowedMethodsHeader(t *testing.T) {
+	defaultVal := true
+
+	Convey("Test http options response", t, func() {
+		conf := config.New()
+		port := test.GetFreePort()
+		conf.HTTP.Port = port
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{
+				BaseConfig: extconf.BaseConfig{Enable: &defaultVal},
+			},
+		}
+		baseURL := test.GetBaseURL(port)
+
+		ctlr := api.NewController(conf)
+		ctlr.Config.Storage.RootDirectory = t.TempDir()
+
+		ctrlManager := test.NewControllerManager(ctlr)
+
+		ctrlManager.StartAndWait(port)
+		defer ctrlManager.StopServer()
+
+		resp, _ := resty.R().Options(baseURL + constants.FullUserPreferencesPrefix)
+		So(resp, ShouldNotBeNil)
+		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "HEAD,GET,POST,PUT,OPTIONS")
+		So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
+	})
+}
 
 func TestHandlers(t *testing.T) {
+	const UserprefsBaseURL = "http://127.0.0.1:8080/v2/_zot/ext/userprefs"
+
 	log := log.NewLogger("debug", "")
 	mockrepoDB := mocks.RepoDBMock{}
 

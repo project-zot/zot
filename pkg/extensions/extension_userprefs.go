@@ -13,6 +13,7 @@ import (
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
+	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/repodb"
 	"zotregistry.io/zot/pkg/storage"
@@ -31,12 +32,19 @@ func SetupUserPreferencesRoutes(config *config.Config, router *mux.Router, store
 
 		userprefsRouter := router.PathPrefix(constants.ExtUserPreferencesPrefix).Subrouter()
 
-		userprefsRouter.HandleFunc("", HandleUserPrefs(repoDB, log)).Methods(http.MethodPut)
+		userprefsRouter.HandleFunc("", HandleUserPrefs(repoDB, log)).Methods(zcommon.AllowedMethods(http.MethodPut)...)
 	}
 }
 
 func HandleUserPrefs(repoDB repodb.RepoDB, log log.Logger) func(w http.ResponseWriter, r *http.Request) {
 	return func(rsp http.ResponseWriter, req *http.Request) {
+		rsp.Header().Set("Access-Control-Allow-Methods", "HEAD,GET,POST,PUT,OPTIONS")
+		rsp.Header().Set("Access-Control-Allow-Headers", "Authorization,content-type")
+
+		if req.Method == http.MethodOptions {
+			return
+		}
+
 		if !queryHasParams(req.URL.Query(), []string{"action"}) {
 			rsp.WriteHeader(http.StatusBadRequest)
 
