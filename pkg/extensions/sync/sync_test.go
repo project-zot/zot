@@ -2946,7 +2946,7 @@ func TestPeriodicallySignaturesErr(t *testing.T) {
 			So(found, ShouldBeTrue)
 
 			// should not be synced nor sync on demand
-			resp, err := resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
+			resp, err := resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/" + testImageTag)
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusNotFound)
 		})
@@ -3285,7 +3285,7 @@ func TestSignatures(t *testing.T) {
 		splittedURL = strings.SplitAfter(destBaseURL, ":")
 		destPort := splittedURL[len(splittedURL)-1]
 
-		a := &options.AnnotationOptions{Annotations: []string{"tag=1.0"}}
+		a := &options.AnnotationOptions{Annotations: []string{fmt.Sprintf("tag=%s", testImageTag)}}
 		amap, err := a.AnnotationsMap()
 		if err != nil {
 			panic(err)
@@ -3294,7 +3294,7 @@ func TestSignatures(t *testing.T) {
 		time.Sleep(1 * time.Second)
 
 		// notation verify the image
-		image := fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")
+		image := fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)
 
 		err = test.VerifyWithNotation(image, tdir)
 		So(err, ShouldBeNil)
@@ -3308,7 +3308,7 @@ func TestSignatures(t *testing.T) {
 			IgnoreTlog:      true,
 		}
 
-		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")})
+		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)})
 		So(err, ShouldBeNil)
 
 		// get oci references from downstream, should be synced
@@ -3369,7 +3369,7 @@ func TestSignatures(t *testing.T) {
 		}
 
 		// sync on demand
-		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -3387,7 +3387,7 @@ func TestSignatures(t *testing.T) {
 		}
 
 		// sync on demand
-		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -3403,7 +3403,7 @@ func TestSignatures(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// sync on demand
-		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -3448,7 +3448,7 @@ func TestSignatures(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// sync on demand
-		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -3469,7 +3469,7 @@ func TestSignatures(t *testing.T) {
 		}
 
 		// sync on demand
-		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -3492,7 +3492,7 @@ func TestSignatures(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// sync on demand
-		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -3513,7 +3513,7 @@ func TestSignatures(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// sync on demand
-		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -3530,7 +3530,7 @@ func TestSignatures(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// sync on demand
-		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -3571,7 +3571,7 @@ func TestSignatures(t *testing.T) {
 		}
 
 		// sync on demand
-		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -3595,7 +3595,7 @@ func TestSignatures(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// sync on demand
-		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -3616,7 +3616,7 @@ func TestSignatures(t *testing.T) {
 		}
 
 		// sync on demand
-		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 	})
@@ -4157,21 +4157,21 @@ func TestSignaturesOnDemand(t *testing.T) {
 		defer dcm.StopServer()
 
 		// sync on demand
-		resp, err := resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
+		resp, err := resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
 		splittedURL = strings.SplitAfter(destBaseURL, ":")
 		destPort := splittedURL[len(splittedURL)-1]
 
-		a := &options.AnnotationOptions{Annotations: []string{"tag=1.0"}}
+		a := &options.AnnotationOptions{Annotations: []string{fmt.Sprintf("tag=%s", testImageTag)}}
 		amap, err := a.AnnotationsMap()
 		if err != nil {
 			panic(err)
 		}
 
 		// notation verify the synced image
-		image := fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")
+		image := fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)
 		err = test.VerifyWithNotation(image, tdir)
 		So(err, ShouldBeNil)
 
@@ -4183,7 +4183,7 @@ func TestSignaturesOnDemand(t *testing.T) {
 			Annotations:     amap,
 			IgnoreTlog:      true,
 		}
-		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")})
+		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)})
 		So(err, ShouldBeNil)
 
 		// test negative case
@@ -4211,7 +4211,7 @@ func TestSignaturesOnDemand(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// sync on demand
-		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -4230,7 +4230,7 @@ func TestSignaturesOnDemand(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// sync on demand
-		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -4324,7 +4324,7 @@ func TestSignaturesOnDemand(t *testing.T) {
 			So(err, ShouldBeNil)
 		}
 
-		resp, err = resty.R().Get(destBaseURL + "/v2/" + testSignedImage + "/manifests/1.0")
+		resp, err = resty.R().Get(destBaseURL + "/v2/" + testSignedImage + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -4412,7 +4412,7 @@ func TestOnlySignaturesOnDemand(t *testing.T) {
 		defer dcm.StopServer()
 
 		// sync on demand
-		resp, err := resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/1.0")
+		resp, err := resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
@@ -4421,7 +4421,7 @@ func TestOnlySignaturesOnDemand(t *testing.T) {
 		splittedURL = strings.SplitAfter(destBaseURL, ":")
 		destPort := splittedURL[len(splittedURL)-1]
 
-		a := &options.AnnotationOptions{Annotations: []string{"tag=1.0"}}
+		a := &options.AnnotationOptions{Annotations: []string{fmt.Sprintf("tag=%s", testImageTag)}}
 		amap, err := a.AnnotationsMap()
 		if err != nil {
 			panic(err)
@@ -4430,7 +4430,7 @@ func TestOnlySignaturesOnDemand(t *testing.T) {
 		generateKeyPairs(tdir)
 
 		// sync signature on demand when upstream doesn't have the signature
-		image := fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")
+		image := fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)
 		err = test.VerifyWithNotation(image, tdir)
 		So(err, ShouldNotBeNil)
 
@@ -4443,14 +4443,14 @@ func TestOnlySignaturesOnDemand(t *testing.T) {
 			IgnoreTlog:      true,
 		}
 
-		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")})
+		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)})
 		So(err, ShouldNotBeNil)
 
 		// sign upstream image
 		So(func() { signImage(tdir, srcPort, repoName, digest) }, ShouldNotPanic)
 
 		// now it should sync signatures on demand, even if we already have the image
-		image = fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")
+		image = fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)
 		err = test.VerifyWithNotation(image, tdir)
 		So(err, ShouldBeNil)
 
@@ -4463,7 +4463,7 @@ func TestOnlySignaturesOnDemand(t *testing.T) {
 			IgnoreTlog:      true,
 		}
 
-		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")})
+		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)})
 		So(err, ShouldBeNil)
 
 		// trigger syncing OCI references on demand
@@ -4791,14 +4791,14 @@ func TestSyncSignaturesDiff(t *testing.T) {
 		splittedURL = strings.SplitAfter(destBaseURL, ":")
 		destPort := splittedURL[len(splittedURL)-1]
 
-		a := &options.AnnotationOptions{Annotations: []string{"tag=1.0"}}
+		a := &options.AnnotationOptions{Annotations: []string{fmt.Sprintf("tag=%s", testImageTag)}}
 		amap, err := a.AnnotationsMap()
 		if err != nil {
 			panic(err)
 		}
 
 		// notation verify the image
-		image := fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")
+		image := fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)
 		err = test.VerifyWithNotation(image, tdir)
 		So(err, ShouldBeNil)
 
@@ -4810,7 +4810,7 @@ func TestSyncSignaturesDiff(t *testing.T) {
 			Annotations:     amap,
 			IgnoreTlog:      true,
 		}
-		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")})
+		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)})
 		So(err, ShouldBeNil)
 
 		// now add new signatures to upstream and let sync detect that upstream signatures changed and pull them
@@ -4825,7 +4825,7 @@ func TestSyncSignaturesDiff(t *testing.T) {
 		time.Sleep(10 * time.Second)
 
 		// notation verify the image
-		image = fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")
+		image = fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)
 		err = test.VerifyWithNotation(image, tdir)
 		So(err, ShouldBeNil)
 
@@ -4837,7 +4837,7 @@ func TestSyncSignaturesDiff(t *testing.T) {
 			Annotations:     amap,
 			IgnoreTlog:      true,
 		}
-		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, "1.0")})
+		err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort, repoName, testImageTag)})
 		So(err, ShouldBeNil)
 
 		// compare signatures
@@ -4868,7 +4868,7 @@ func TestSyncSignaturesDiff(t *testing.T) {
 
 		var manifestDigest string
 		for _, manifestDesc := range srcIndex.Manifests {
-			if manifestDesc.Annotations[ispec.AnnotationRefName] == "1.0" {
+			if manifestDesc.Annotations[ispec.AnnotationRefName] == testImageTag {
 				manifestDigest = string(manifestDesc.Digest)
 			} else if manifestDesc.MediaType == notreg.ArtifactTypeNotation {
 				upstreamRefsDigests = append(upstreamRefsDigests, manifestDesc.Digest.String())
@@ -5036,6 +5036,8 @@ func TestOnlySignedFlag(t *testing.T) {
 
 func TestSyncWithDestination(t *testing.T) {
 	Convey("Test sync computes destination option correctly", t, func() {
+		repoName := "zot-fold/zot-test"
+
 		testCases := []struct {
 			content  syncconf.Content
 			expected string
@@ -5044,42 +5046,34 @@ func TestSyncWithDestination(t *testing.T) {
 			{
 				expected: "zot-test/zot-fold/zot-test",
 				content:  syncconf.Content{Prefix: "zot-fold/zot-test", Destination: "/zot-test", StripPrefix: false},
-				repo:     "zot-fold/zot-test",
 			},
 			{
 				expected: "zot-fold/zot-test",
 				content:  syncconf.Content{Prefix: "zot-fold/zot-test", Destination: "/", StripPrefix: false},
-				repo:     "zot-fold/zot-test",
 			},
 			{
 				expected: "zot-test",
 				content:  syncconf.Content{Prefix: "zot-fold/zot-test", Destination: "/zot-test", StripPrefix: true},
-				repo:     "zot-fold/zot-test",
 			},
 			{
 				expected: "zot-test",
 				content:  syncconf.Content{Prefix: "zot-fold/*", Destination: "/", StripPrefix: true},
-				repo:     "zot-fold/zot-test",
 			},
 			{
 				expected: "zot-test",
 				content:  syncconf.Content{Prefix: "zot-fold/zot-test", Destination: "/zot-test", StripPrefix: true},
-				repo:     "zot-fold/zot-test",
 			},
 			{
 				expected: "zot-test",
 				content:  syncconf.Content{Prefix: "zot-fold/*", Destination: "/", StripPrefix: true},
-				repo:     "zot-fold/zot-test",
 			},
 			{
 				expected: "zot-test",
 				content:  syncconf.Content{Prefix: "zot-fold/**", Destination: "/", StripPrefix: true},
-				repo:     "zot-fold/zot-test",
 			},
 			{
 				expected: "zot-fold/zot-test",
 				content:  syncconf.Content{Prefix: "zot-fold/**", Destination: "/", StripPrefix: false},
-				repo:     "zot-fold/zot-test",
 			},
 		}
 
@@ -5116,6 +5110,27 @@ func TestSyncWithDestination(t *testing.T) {
 		scm.StartAndWait(srcPort)
 		defer scm.StopServer()
 
+		splittedURL := strings.SplitAfter(srcBaseURL, ":")
+		srcPort = splittedURL[len(splittedURL)-1]
+
+		cwd, err := os.Getwd()
+		So(err, ShouldBeNil)
+
+		defer func() { _ = os.Chdir(cwd) }()
+		tdir := t.TempDir()
+		_ = os.Chdir(tdir)
+
+		generateKeyPairs(tdir)
+
+		// get manifest digest from source
+		resp, err := resty.R().Get(srcBaseURL + "/v2/" + repoName + "/manifests/" + testImageTag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		digest := godigest.FromBytes(resp.Body())
+
+		So(func() { signImage(tdir, srcPort, repoName, digest) }, ShouldNotPanic)
+
 		Convey("Test peridiocally sync", func() {
 			for _, testCase := range testCases {
 				updateDuration, _ := time.ParseDuration("30m")
@@ -5148,6 +5163,32 @@ func TestSyncWithDestination(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+				splittedURL = strings.SplitAfter(destBaseURL, ":")
+				destPort := splittedURL[len(splittedURL)-1]
+
+				a := &options.AnnotationOptions{Annotations: []string{fmt.Sprintf("tag=%s", testImageTag)}}
+				amap, err := a.AnnotationsMap()
+				if err != nil {
+					panic(err)
+				}
+
+				// notation verify the synced image
+				image := fmt.Sprintf("localhost:%s/%s:%s", destPort, testCase.expected, testImageTag)
+				err = test.VerifyWithNotation(image, tdir)
+				So(err, ShouldBeNil)
+
+				// cosign verify the synced image
+				vrfy := verify.VerifyCommand{
+					RegistryOptions: options.RegistryOptions{AllowInsecure: true},
+					CheckClaims:     true,
+					KeyRef:          path.Join(tdir, "cosign.pub"),
+					Annotations:     amap,
+					IgnoreTlog:      true,
+				}
+				err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort,
+					testCase.expected, testImageTag)})
+				So(err, ShouldBeNil)
 			}
 		})
 
@@ -5179,6 +5220,32 @@ func TestSyncWithDestination(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+				splittedURL = strings.SplitAfter(destBaseURL, ":")
+				destPort := splittedURL[len(splittedURL)-1]
+
+				a := &options.AnnotationOptions{Annotations: []string{fmt.Sprintf("tag=%s", testImageTag)}}
+				amap, err := a.AnnotationsMap()
+				if err != nil {
+					panic(err)
+				}
+
+				// notation verify the synced image
+				image := fmt.Sprintf("localhost:%s/%s:%s", destPort, testCase.expected, testImageTag)
+				err = test.VerifyWithNotation(image, tdir)
+				So(err, ShouldBeNil)
+
+				// cosign verify the synced image
+				vrfy := verify.VerifyCommand{
+					RegistryOptions: options.RegistryOptions{AllowInsecure: true},
+					CheckClaims:     true,
+					KeyRef:          path.Join(tdir, "cosign.pub"),
+					Annotations:     amap,
+					IgnoreTlog:      true,
+				}
+				err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", destPort,
+					testCase.expected, testImageTag)})
+				So(err, ShouldBeNil)
 			}
 		})
 	})
@@ -5671,7 +5738,7 @@ func generateKeyPairs(tdir string) {
 }
 
 func signImage(tdir, port, repoName string, digest godigest.Digest) {
-	annotations := []string{"tag=1.0"}
+	annotations := []string{fmt.Sprintf("tag=%s", testImageTag)}
 
 	// push signatures to upstream server so that we can sync them later
 	// sign the image
@@ -5703,7 +5770,7 @@ func signImage(tdir, port, repoName string, digest godigest.Digest) {
 		IgnoreTlog:      true,
 	}
 
-	err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", port, repoName, "1.0")})
+	err = vrfy.Exec(context.TODO(), []string{fmt.Sprintf("localhost:%s/%s:%s", port, repoName, testImageTag)})
 	if err != nil {
 		panic(err)
 	}
@@ -5714,7 +5781,7 @@ func signImage(tdir, port, repoName string, digest godigest.Digest) {
 	test.LoadNotationPath(tdir)
 
 	// sign the image
-	image := fmt.Sprintf("localhost:%s/%s:%s", port, repoName, "1.0")
+	image := fmt.Sprintf("localhost:%s/%s:%s", port, repoName, testImageTag)
 
 	err = test.SignWithNotation("good", image, tdir)
 	if err != nil {
@@ -5805,7 +5872,7 @@ func pushRepo(url, repoName string) godigest.Digest {
 	digest = godigest.FromBytes(content)
 
 	_, err = resty.R().SetHeader("Content-Type", "application/vnd.oci.image.manifest.v1+json").
-		SetBody(content).Put(url + fmt.Sprintf("/v2/%s/manifests/1.0", repoName))
+		SetBody(content).Put(url + fmt.Sprintf("/v2/%s/manifests/%s", repoName, testImageTag))
 	if err != nil {
 		panic(err)
 	}
