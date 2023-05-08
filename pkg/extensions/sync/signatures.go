@@ -631,7 +631,7 @@ func (sig *signaturesCopier) canSkipOCIRefs(localRepo, digestStr string, index i
 	return true, nil
 }
 
-func syncBlob(sig *signaturesCopier, imageStore storage.ImageStore, remoteRepo, localRepo string,
+func syncBlob(sig *signaturesCopier, imageStore storage.ImageStore, localRepo, remoteRepo string,
 	digest godigest.Digest,
 ) error {
 	getBlobURL := sig.upstreamURL
