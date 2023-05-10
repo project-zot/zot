@@ -29,6 +29,7 @@ import (
 	zotErrors "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
+	"zotregistry.io/zot/pkg/common"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/test"
 )
@@ -753,13 +754,18 @@ func TestOutputFormat(t *testing.T) {
 		space := regexp.MustCompile(`\s+`)
 		str := space.ReplaceAllString(buff.String(), " ")
 		So(strings.TrimSpace(str), ShouldEqual, `{ "repoName": "dummyImageName", "tag": "tag", `+
-			`"Manifests": [ { "configDigest": "sha256:4c10985c40365538426f2ba8cf0c21384a7769be502a550dcc0601b3736625e0", `+
-			`"digest": "sha256:6e2f80bf9cfaabad474fbaf8ad68fdb652f776ea80b63492ecca404e5f6446a6", `+
-			`"layers": [ { "size": "0", "digest": "sha256:c122a146f0d02349be211bb95cc2530f4a5793f96edbdfa00860f741e5d8c0e6" } ], `+ //nolint:lll
-			`"platform": { "os": "os", "arch": "arch", "variant": "" }, `+
-			`"size": "123445", "isSigned": false } ], `+
-			`"size": "123445", "digest": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08", `+
-			`"mediaType": "application/vnd.oci.image.manifest.v1+json", "isSigned": false }`)
+			`"digest": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08", `+
+			`"mediaType": "application/vnd.oci.image.manifest.v1+json", `+
+			`"manifests": [ { "digest": "sha256:6e2f80bf9cfaabad474fbaf8ad68fdb652f776ea80b63492ecca404e5f6446a6", `+
+			`"configDigest": "sha256:4c10985c40365538426f2ba8cf0c21384a7769be502a550dcc0601b3736625e0", `+
+			`"lastUpdated": "0001-01-01T00:00:00Z", "size": "123445", "platform": { "os": "os", "arch": "arch", `+
+			`"variant": "" }, "isSigned": false, "downloadCount": 0, `+
+			`"layers": [ { "size": "", "digest": "sha256:c122a146f0d02349be211bb95cc2530f4a5793f96edbdfa00860f741e5d8c0e6", `+
+			`"score": 0 } ], "history": null, "vulnerabilities": { "maxSeverity": "", "count": 0 }, `+
+			`"referrers": null, "artifactType": "" } ], "size": "123445", `+
+			`"downloadCount": 0, "lastUpdated": "0001-01-01T00:00:00Z", "description": "", "isSigned": false, "licenses": "", `+
+			`"labels": "", "title": "", "source": "", "documentation": "", "authors": "", "vendor": "", `+
+			`"vulnerabilities": { "maxSeverity": "", "count": 0 }, "referrers": null }`)
 		So(err, ShouldBeNil)
 	})
 
@@ -779,14 +785,18 @@ func TestOutputFormat(t *testing.T) {
 			strings.TrimSpace(str),
 			ShouldEqual,
 			`reponame: dummyImageName tag: tag `+
-				`manifests: - `+
-				`configdigest: sha256:4c10985c40365538426f2ba8cf0c21384a7769be502a550dcc0601b3736625e0 `+
+				`digest: sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 `+
+				`mediatype: application/vnd.oci.image.manifest.v1+json manifests: - `+
 				`digest: sha256:6e2f80bf9cfaabad474fbaf8ad68fdb652f776ea80b63492ecca404e5f6446a6 `+
-				`layers: - size: 0 digest: sha256:c122a146f0d02349be211bb95cc2530f4a5793f96edbdfa00860f741e5d8c0e6 `+
-				`platform: os: os arch: arch variant: "" `+
-				`size: "123445" issigned: false `+
-				`size: "123445" digest: sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 `+
-				`mediatype: application/vnd.oci.image.manifest.v1+json issigned: false`,
+				`configdigest: sha256:4c10985c40365538426f2ba8cf0c21384a7769be502a550dcc0601b3736625e0 `+
+				`lastupdated: 0001-01-01T00:00:00Z size: "123445" platform: os: os arch: arch variant: "" `+
+				`issigned: false downloadcount: 0 layers: - size: "" `+
+				`digest: sha256:c122a146f0d02349be211bb95cc2530f4a5793f96edbdfa00860f741e5d8c0e6 score: 0 `+
+				`history: [] vulnerabilities: maxseverity: "" count: 0 referrers: [] artifacttype: "" `+
+				`size: "123445" downloadcount: 0 `+
+				`lastupdated: 0001-01-01T00:00:00Z description: "" issigned: false licenses: "" labels: "" `+
+				`title: "" source: "" documentation: "" authors: "" vendor: "" vulnerabilities: maxseverity: "" `+
+				`count: 0 referrers: []`,
 		)
 		So(err, ShouldBeNil)
 
@@ -809,14 +819,18 @@ func TestOutputFormat(t *testing.T) {
 				strings.TrimSpace(str),
 				ShouldEqual,
 				`reponame: dummyImageName tag: tag `+
-					`manifests: - `+
+					`digest: sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 `+
+					`mediatype: application/vnd.oci.image.manifest.v1+json `+
+					`manifests: - digest: sha256:6e2f80bf9cfaabad474fbaf8ad68fdb652f776ea80b63492ecca404e5f6446a6 `+
 					`configdigest: sha256:4c10985c40365538426f2ba8cf0c21384a7769be502a550dcc0601b3736625e0 `+
-					`digest: sha256:6e2f80bf9cfaabad474fbaf8ad68fdb652f776ea80b63492ecca404e5f6446a6 `+
-					`layers: - size: 0 digest: sha256:c122a146f0d02349be211bb95cc2530f4a5793f96edbdfa00860f741e5d8c0e6 `+
-					`platform: os: os arch: arch variant: "" `+
-					`size: "123445" issigned: false `+
-					`size: "123445" digest: sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 `+
-					`mediatype: application/vnd.oci.image.manifest.v1+json issigned: false`,
+					`lastupdated: 0001-01-01T00:00:00Z size: "123445" platform: os: os arch: arch variant: "" `+
+					`issigned: false downloadcount: 0 layers: - size: "" `+
+					`digest: sha256:c122a146f0d02349be211bb95cc2530f4a5793f96edbdfa00860f741e5d8c0e6 score: 0 `+
+					`history: [] vulnerabilities: maxseverity: "" count: 0 referrers: [] artifacttype: "" `+
+					`size: "123445" downloadcount: 0 `+
+					`lastupdated: 0001-01-01T00:00:00Z description: "" issigned: false licenses: "" labels: "" `+
+					`title: "" source: "" documentation: "" authors: "" vendor: "" vulnerabilities: maxseverity: `+
+					`"" count: 0 referrers: []`,
 			)
 			So(err, ShouldBeNil)
 		})
@@ -1698,18 +1712,18 @@ func (service mockService) getRepos(ctx context.Context, config searchConfig, us
 
 func (service mockService) getDerivedImageListGQL(ctx context.Context, config searchConfig, username, password string,
 	derivedImage string,
-) (*imageListStructForDerivedImagesGQL, error) {
-	imageListGQLResponse := &imageListStructForDerivedImagesGQL{}
-	imageListGQLResponse.Data.Results = []imageStruct{
+) (*common.DerivedImageListResponse, error) {
+	imageListGQLResponse := &common.DerivedImageListResponse{}
+	imageListGQLResponse.DerivedImageList.Results = []common.ImageSummary{
 		{
 			RepoName: "dummyImageName",
 			Tag:      "tag",
-			Manifests: []manifestStruct{
+			Manifests: []common.ManifestSummary{
 				{
 					Digest:       godigest.FromString("Digest").String(),
 					ConfigDigest: godigest.FromString("ConfigDigest").String(),
 					Size:         "123445",
-					Layers:       []layer{{Digest: godigest.FromString("LayerDigest").String()}},
+					Layers:       []common.LayerSummary{{Digest: godigest.FromString("LayerDigest").String()}},
 				},
 			},
 			Size: "123445",
@@ -1721,18 +1735,18 @@ func (service mockService) getDerivedImageListGQL(ctx context.Context, config se
 
 func (service mockService) getBaseImageListGQL(ctx context.Context, config searchConfig, username, password string,
 	derivedImage string,
-) (*imageListStructForBaseImagesGQL, error) {
-	imageListGQLResponse := &imageListStructForBaseImagesGQL{}
-	imageListGQLResponse.Data.Results = []imageStruct{
+) (*common.BaseImageListResponse, error) {
+	imageListGQLResponse := &common.BaseImageListResponse{}
+	imageListGQLResponse.BaseImageList.Results = []common.ImageSummary{
 		{
 			RepoName: "dummyImageName",
 			Tag:      "tag",
-			Manifests: []manifestStruct{
+			Manifests: []common.ManifestSummary{
 				{
 					Digest:       godigest.FromString("Digest").String(),
 					ConfigDigest: godigest.FromString("ConfigDigest").String(),
 					Size:         "123445",
-					Layers:       []layer{{Digest: godigest.FromString("LayerDigest").String()}},
+					Layers:       []common.LayerSummary{{Digest: godigest.FromString("LayerDigest").String()}},
 				},
 			},
 			Size: "123445",
@@ -1744,20 +1758,20 @@ func (service mockService) getBaseImageListGQL(ctx context.Context, config searc
 
 func (service mockService) getImagesGQL(ctx context.Context, config searchConfig, username, password string,
 	imageName string,
-) (*imageListStructGQL, error) {
-	imageListGQLResponse := &imageListStructGQL{}
-	imageListGQLResponse.Data.Results = []imageStruct{
+) (*common.ImageListResponse, error) {
+	imageListGQLResponse := &common.ImageListResponse{}
+	imageListGQLResponse.PaginatedImagesResult.Results = []common.ImageSummary{
 		{
 			RepoName:  "dummyImageName",
 			Tag:       "tag",
 			MediaType: ispec.MediaTypeImageManifest,
 			Digest:    godigest.FromString("test").String(),
-			Manifests: []manifestStruct{
+			Manifests: []common.ManifestSummary{
 				{
 					Digest:       godigest.FromString("Digest").String(),
 					ConfigDigest: godigest.FromString("ConfigDigest").String(),
 					Size:         "123445",
-					Layers:       []layer{{Digest: godigest.FromString("LayerDigest").String()}},
+					Layers:       []common.LayerSummary{{Digest: godigest.FromString("LayerDigest").String()}},
 				},
 			},
 			Size: "123445",
@@ -1769,19 +1783,19 @@ func (service mockService) getImagesGQL(ctx context.Context, config searchConfig
 
 func (service mockService) getImagesByDigestGQL(ctx context.Context, config searchConfig, username, password string,
 	digest string,
-) (*imageListStructForDigestGQL, error) {
-	imageListGQLResponse := &imageListStructForDigestGQL{}
-	imageListGQLResponse.Data.Results = []imageStruct{
+) (*common.ImagesForDigest, error) {
+	imageListGQLResponse := &common.ImagesForDigest{}
+	imageListGQLResponse.Results = []common.ImageSummary{
 		{
 			RepoName:  "randomimageName",
 			Tag:       "tag",
 			MediaType: ispec.MediaTypeImageManifest,
 			Digest:    godigest.FromString("test").String(),
-			Manifests: []manifestStruct{
+			Manifests: []common.ManifestSummary{
 				{
 					Digest:       godigest.FromString("Digest").String(),
 					ConfigDigest: godigest.FromString("ConfigDigest").String(),
-					Layers:       []layer{{Digest: godigest.FromString("LayerDigest").String()}},
+					Layers:       []common.LayerSummary{{Digest: godigest.FromString("LayerDigest").String()}},
 					Size:         "123445",
 				},
 			},
@@ -1794,54 +1808,54 @@ func (service mockService) getImagesByDigestGQL(ctx context.Context, config sear
 
 func (service mockService) getImagesByCveIDGQL(ctx context.Context, config searchConfig, username, password string,
 	digest string,
-) (*imagesForCve, error) {
-	imagesForCve := &imagesForCve{
+) (*common.ImagesForCve, error) {
+	imagesForCve := &common.ImagesForCve{
 		Errors: nil,
-		Data: struct {
-			PaginatedImagesResult `json:"ImageListForCVE"` //nolint:tagliatelle
+		ImagesForCVEList: struct {
+			common.PaginatedImagesResult `json:"ImageListForCVE"` //nolint:tagliatelle
 		}{},
 	}
 
 	imagesForCve.Errors = nil
 
 	mockedImage := service.getMockedImageByName("anImage")
-	imagesForCve.Data.Results = []imageStruct{mockedImage}
+	imagesForCve.Results = []common.ImageSummary{common.ImageSummary(mockedImage)}
 
 	return imagesForCve, nil
 }
 
 func (service mockService) getTagsForCVEGQL(ctx context.Context, config searchConfig, username, password,
 	imageName, cveID string,
-) (*imagesForCve, error) {
-	images := &imagesForCve{
+) (*common.ImagesForCve, error) {
+	images := &common.ImagesForCve{
 		Errors: nil,
-		Data: struct {
-			PaginatedImagesResult `json:"ImageListForCVE"` //nolint:tagliatelle // graphQL schema
+		ImagesForCVEList: struct {
+			common.PaginatedImagesResult `json:"ImageListForCVE"` //nolint:tagliatelle // graphQL schema
 		}{},
 	}
 
 	images.Errors = nil
 
 	mockedImage := service.getMockedImageByName(imageName)
-	images.Data.Results = []imageStruct{mockedImage}
+	images.Results = []common.ImageSummary{common.ImageSummary(mockedImage)}
 
 	return images, nil
 }
 
 func (service mockService) getFixedTagsForCVEGQL(ctx context.Context, config searchConfig, username, password,
 	imageName, cveID string,
-) (*fixedTags, error) {
-	fixedTags := &fixedTags{
+) (*common.FixedTags, error) {
+	fixedTags := &common.FixedTags{
 		Errors: nil,
-		Data: struct {
-			PaginatedImagesResult `json:"ImageListWithCVEFixed"` //nolint:tagliatelle // graphQL schema
+		ImageListWithCVEFixed: struct {
+			common.PaginatedImagesResult `json:"ImageListWithCVEFixed"` //nolint:tagliatelle // graphQL schema
 		}{},
 	}
 
 	fixedTags.Errors = nil
 
 	mockedImage := service.getMockedImageByName(imageName)
-	fixedTags.Data.Results = []imageStruct{mockedImage}
+	fixedTags.Results = []common.ImageSummary{common.ImageSummary(mockedImage)}
 
 	return fixedTags, nil
 }
@@ -1879,11 +1893,11 @@ func (service mockService) getMockedImageByName(imageName string) imageStruct {
 	image := imageStruct{}
 	image.RepoName = imageName
 	image.Tag = "tag"
-	image.Manifests = []manifestStruct{
+	image.Manifests = []common.ManifestSummary{
 		{
 			Digest:       godigest.FromString("Digest").String(),
 			ConfigDigest: godigest.FromString("ConfigDigest").String(),
-			Layers:       []layer{{Digest: godigest.FromString("LayerDigest").String()}},
+			Layers:       []common.LayerSummary{{Digest: godigest.FromString("LayerDigest").String()}},
 			Size:         "123445",
 		},
 	}
@@ -1903,18 +1917,18 @@ func (service mockService) getAllImages(ctx context.Context, config searchConfig
 	image.Tag = "tag"
 	image.Digest = godigest.FromString("test").String()
 	image.MediaType = ispec.MediaTypeImageManifest
-	image.Manifests = []manifestStruct{
+	image.Manifests = []common.ManifestSummary{
 		{
 			Digest:       godigest.FromString("Digest").String(),
 			ConfigDigest: godigest.FromString("ConfigDigest").String(),
-			Layers:       []layer{{Digest: godigest.FromString("LayerDigest").String()}},
+			Layers:       []common.LayerSummary{{Digest: godigest.FromString("LayerDigest").String()}},
 			Size:         "123445",
-			Platform:     platform{Os: "os", Arch: "arch"},
+			Platform:     common.Platform{Os: "os", Arch: "arch"},
 		},
 	}
 	image.Size = "123445"
 
-	str, err := image.string(*config.outputFormat, len(image.RepoName), len(image.Tag), len("os/Arch"))
+	str, err := image.string(*config.outputFormat, len(image.RepoName), len(image.Tag), len("os/Arch"), *config.verbose)
 	if err != nil {
 		channel <- stringResult{"", err}
 
@@ -1935,18 +1949,18 @@ func (service mockService) getImageByName(ctx context.Context, config searchConf
 	image.Tag = "tag"
 	image.Digest = godigest.FromString("test").String()
 	image.MediaType = ispec.MediaTypeImageManifest
-	image.Manifests = []manifestStruct{
+	image.Manifests = []common.ManifestSummary{
 		{
 			Digest:       godigest.FromString("Digest").String(),
 			ConfigDigest: godigest.FromString("ConfigDigest").String(),
-			Layers:       []layer{{Digest: godigest.FromString("LayerDigest").String()}},
+			Layers:       []common.LayerSummary{{Digest: godigest.FromString("LayerDigest").String()}},
 			Size:         "123445",
-			Platform:     platform{Os: "os", Arch: "arch"},
+			Platform:     common.Platform{Os: "os", Arch: "arch"},
 		},
 	}
 	image.Size = "123445"
 
-	str, err := image.string(*config.outputFormat, len(image.RepoName), len(image.Tag), len("os/Arch"))
+	str, err := image.string(*config.outputFormat, len(image.RepoName), len(image.Tag), len("os/Arch"), *config.verbose)
 	if err != nil {
 		channel <- stringResult{"", err}
 

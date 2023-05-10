@@ -961,7 +961,7 @@ func (bdw *DBWrapper) DeleteSignature(repo string, signedManifestDigest godigest
 
 func (bdw *DBWrapper) SearchRepos(ctx context.Context, searchText string, filter repodb.Filter,
 	requestedPage repodb.PageInput,
-) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, repodb.PageInfo,
+) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, zcommon.PageInfo,
 	error,
 ) {
 	var (
@@ -969,13 +969,13 @@ func (bdw *DBWrapper) SearchRepos(ctx context.Context, searchText string, filter
 		foundManifestMetadataMap = make(map[string]repodb.ManifestMetadata)
 		foundindexDataMap        = make(map[string]repodb.IndexData)
 		pageFinder               repodb.PageFinder
-		pageInfo                 repodb.PageInfo
+		pageInfo                 zcommon.PageInfo
 	)
 
 	pageFinder, err := repodb.NewBaseRepoPageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
 	if err != nil {
 		return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{},
-			repodb.PageInfo{}, err
+			zcommon.PageInfo{}, err
 	}
 
 	err = bdw.DB.View(func(transaction *bbolt.Tx) error {
@@ -1291,7 +1291,7 @@ func NewManifestMetadata(manifestDigest string, repoMeta repodb.RepoMetadata,
 func (bdw *DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 	requestedPage repodb.PageInput,
 ) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData,
-	repodb.PageInfo, error,
+	zcommon.PageInfo, error,
 ) {
 	var (
 		foundRepos               = make([]repodb.RepoMetadata, 0)
@@ -1300,13 +1300,13 @@ func (bdw *DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 		foundManifestMetadataMap = make(map[string]repodb.ManifestMetadata)
 		foundindexDataMap        = make(map[string]repodb.IndexData)
 		pageFinder               repodb.PageFinder
-		pageInfo                 repodb.PageInfo
+		pageInfo                 zcommon.PageInfo
 	)
 
 	pageFinder, err := repodb.NewBaseImagePageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
 	if err != nil {
 		return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{},
-			repodb.PageInfo{}, err
+			zcommon.PageInfo{}, err
 	}
 
 	err = bdw.DB.View(func(transaction *bbolt.Tx) error {
@@ -1432,12 +1432,12 @@ func (bdw *DBWrapper) FilterRepos(ctx context.Context,
 	filter repodb.FilterRepoFunc,
 	requestedPage repodb.PageInput,
 ) (
-	[]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, repodb.PageInfo, error,
+	[]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, zcommon.PageInfo, error,
 ) {
 	var (
 		foundRepos = make([]repodb.RepoMetadata, 0)
 		pageFinder repodb.PageFinder
-		pageInfo   repodb.PageInfo
+		pageInfo   zcommon.PageInfo
 	)
 
 	pageFinder, err := repodb.NewBaseRepoPageFinder(
@@ -1494,14 +1494,14 @@ func (bdw *DBWrapper) FilterRepos(ctx context.Context,
 
 func (bdw *DBWrapper) SearchTags(ctx context.Context, searchText string, filter repodb.Filter,
 	requestedPage repodb.PageInput,
-) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, repodb.PageInfo, error) {
+) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, zcommon.PageInfo, error) {
 	var (
 		foundRepos               = make([]repodb.RepoMetadata, 0)
 		manifestMetadataMap      = make(map[string]repodb.ManifestMetadata)
 		indexDataMap             = make(map[string]repodb.IndexData)
 		foundManifestMetadataMap = make(map[string]repodb.ManifestMetadata)
 		foundindexDataMap        = make(map[string]repodb.IndexData)
-		pageInfo                 repodb.PageInfo
+		pageInfo                 zcommon.PageInfo
 
 		pageFinder repodb.PageFinder
 	)
@@ -1509,13 +1509,13 @@ func (bdw *DBWrapper) SearchTags(ctx context.Context, searchText string, filter 
 	pageFinder, err := repodb.NewBaseImagePageFinder(requestedPage.Limit, requestedPage.Offset, requestedPage.SortBy)
 	if err != nil {
 		return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{},
-			repodb.PageInfo{}, err
+			zcommon.PageInfo{}, err
 	}
 
 	searchedRepo, searchedTag, err := common.GetRepoTag(searchText)
 	if err != nil {
 		return []repodb.RepoMetadata{}, map[string]repodb.ManifestMetadata{}, map[string]repodb.IndexData{},
-			repodb.PageInfo{},
+			zcommon.PageInfo{},
 			fmt.Errorf("repodb: error while parsing search text, invalid format %w", err)
 	}
 

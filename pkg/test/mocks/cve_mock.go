@@ -1,6 +1,7 @@
 package mocks
 
 import (
+	"zotregistry.io/zot/pkg/common"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 )
@@ -9,7 +10,7 @@ type CveInfoMock struct {
 	GetImageListForCVEFn       func(repo, cveID string) ([]cvemodel.TagInfo, error)
 	GetImageListWithCVEFixedFn func(repo, cveID string) ([]cvemodel.TagInfo, error)
 	GetCVEListForImageFn       func(repo string, reference string, searchedCVE string, pageInput cveinfo.PageInput,
-	) ([]cvemodel.CVE, cveinfo.PageInfo, error)
+	) ([]cvemodel.CVE, common.PageInfo, error)
 	GetCVESummaryForImageFn func(repo string, reference string,
 	) (cveinfo.ImageCVESummary, error)
 	CompareSeveritiesFn func(severity1, severity2 string) int
@@ -36,14 +37,14 @@ func (cveInfo CveInfoMock) GetCVEListForImage(repo string, reference string,
 	searchedCVE string, pageInput cveinfo.PageInput,
 ) (
 	[]cvemodel.CVE,
-	cveinfo.PageInfo,
+	common.PageInfo,
 	error,
 ) {
 	if cveInfo.GetCVEListForImageFn != nil {
 		return cveInfo.GetCVEListForImageFn(repo, reference, searchedCVE, pageInput)
 	}
 
-	return []cvemodel.CVE{}, cveinfo.PageInfo{}, nil
+	return []cvemodel.CVE{}, common.PageInfo{}, nil
 }
 
 func (cveInfo CveInfoMock) GetCVESummaryForImage(repo string, reference string,

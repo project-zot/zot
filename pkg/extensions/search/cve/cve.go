@@ -21,7 +21,7 @@ import (
 type CveInfo interface {
 	GetImageListForCVE(repo, cveID string) ([]cvemodel.TagInfo, error)
 	GetImageListWithCVEFixed(repo, cveID string) ([]cvemodel.TagInfo, error)
-	GetCVEListForImage(repo, tag string, searchedCVE string, pageinput PageInput) ([]cvemodel.CVE, PageInfo, error)
+	GetCVEListForImage(repo, tag string, searchedCVE string, pageinput PageInput) ([]cvemodel.CVE, common.PageInfo, error)
 	GetCVESummaryForImage(repo, tag string) (ImageCVESummary, error)
 	CompareSeverities(severity1, severity2 string) int
 	UpdateDB() error
@@ -232,24 +232,24 @@ func filterCVEList(cveMap map[string]cvemodel.CVE, searchedCVE string, pageFinde
 
 func (cveinfo BaseCveInfo) GetCVEListForImage(repo, tag string, searchedCVE string, pageInput PageInput) (
 	[]cvemodel.CVE,
-	PageInfo,
+	common.PageInfo,
 	error,
 ) {
 	isValidImage, err := cveinfo.Scanner.IsImageFormatScannable(repo, tag)
 	if !isValidImage {
-		return []cvemodel.CVE{}, PageInfo{}, err
+		return []cvemodel.CVE{}, common.PageInfo{}, err
 	}
 
 	image := getImageString(repo, tag)
 
 	cveMap, err := cveinfo.Scanner.ScanImage(image)
 	if err != nil {
-		return []cvemodel.CVE{}, PageInfo{}, err
+		return []cvemodel.CVE{}, common.PageInfo{}, err
 	}
 
 	pageFinder, err := NewCvePageFinder(pageInput.Limit, pageInput.Offset, pageInput.SortBy, cveinfo)
 	if err != nil {
-		return []cvemodel.CVE{}, PageInfo{}, err
+		return []cvemodel.CVE{}, common.PageInfo{}, err
 	}
 
 	filterCVEList(cveMap, searchedCVE, pageFinder)

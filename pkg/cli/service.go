@@ -27,21 +27,21 @@ import (
 
 type SearchService interface { //nolint:interfacebloat
 	getImagesGQL(ctx context.Context, config searchConfig, username, password string,
-		imageName string) (*imageListStructGQL, error)
+		imageName string) (*common.ImageListResponse, error)
 	getImagesByDigestGQL(ctx context.Context, config searchConfig, username, password string,
-		digest string) (*imageListStructForDigestGQL, error)
+		digest string) (*common.ImagesForDigest, error)
 	getCveByImageGQL(ctx context.Context, config searchConfig, username, password,
 		imageName string, searchedCVE string) (*cveResult, error)
 	getImagesByCveIDGQL(ctx context.Context, config searchConfig, username, password string,
-		digest string) (*imagesForCve, error)
+		digest string) (*common.ImagesForCve, error)
 	getTagsForCVEGQL(ctx context.Context, config searchConfig, username, password, imageName,
-		cveID string) (*imagesForCve, error)
+		cveID string) (*common.ImagesForCve, error)
 	getFixedTagsForCVEGQL(ctx context.Context, config searchConfig, username, password, imageName,
-		cveID string) (*fixedTags, error)
+		cveID string) (*common.FixedTags, error)
 	getDerivedImageListGQL(ctx context.Context, config searchConfig, username, password string,
-		derivedImage string) (*imageListStructForDerivedImagesGQL, error)
+		derivedImage string) (*common.DerivedImageListResponse, error)
 	getBaseImageListGQL(ctx context.Context, config searchConfig, username, password string,
-		baseImage string) (*imageListStructForBaseImagesGQL, error)
+		baseImage string) (*common.BaseImageListResponse, error)
 
 	getAllImages(ctx context.Context, config searchConfig, username, password string,
 		channel chan stringResult, wtgrp *sync.WaitGroup)
@@ -69,7 +69,7 @@ func NewSearchService() SearchService {
 
 func (service searchService) getDerivedImageListGQL(ctx context.Context, config searchConfig, username, password string,
 	derivedImage string,
-) (*imageListStructForDerivedImagesGQL, error) {
+) (*common.DerivedImageListResponse, error) {
 	query := fmt.Sprintf(`
 		{
 			DerivedImageList(image:"%s"){
@@ -93,7 +93,7 @@ func (service searchService) getDerivedImageListGQL(ctx context.Context, config 
 			}
 		}`, derivedImage)
 
-	result := &imageListStructForDerivedImagesGQL{}
+	result := &common.DerivedImageListResponse{}
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
 
 	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
@@ -105,7 +105,7 @@ func (service searchService) getDerivedImageListGQL(ctx context.Context, config 
 
 func (service searchService) getBaseImageListGQL(ctx context.Context, config searchConfig, username, password string,
 	baseImage string,
-) (*imageListStructForBaseImagesGQL, error) {
+) (*common.BaseImageListResponse, error) {
 	query := fmt.Sprintf(`
 		{
 			BaseImageList(image:"%s"){
@@ -129,7 +129,7 @@ func (service searchService) getBaseImageListGQL(ctx context.Context, config sea
 			}
 		}`, baseImage)
 
-	result := &imageListStructForBaseImagesGQL{}
+	result := &common.BaseImageListResponse{}
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
 
 	if errResult := checkResultGraphQLQuery(ctx, err, result.Errors); errResult != nil {
@@ -141,7 +141,7 @@ func (service searchService) getBaseImageListGQL(ctx context.Context, config sea
 
 func (service searchService) getImagesGQL(ctx context.Context, config searchConfig, username, password string,
 	imageName string,
-) (*imageListStructGQL, error) {
+) (*common.ImageListResponse, error) {
 	query := fmt.Sprintf(`
 	{
 		ImageList(repo: "%s") {
@@ -163,7 +163,7 @@ func (service searchService) getImagesGQL(ctx context.Context, config searchConf
 		}
 	}`,
 		imageName)
-	result := &imageListStructGQL{}
+	result := &common.ImageListResponse{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
 
@@ -176,7 +176,7 @@ func (service searchService) getImagesGQL(ctx context.Context, config searchConf
 
 func (service searchService) getImagesByDigestGQL(ctx context.Context, config searchConfig, username, password string,
 	digest string,
-) (*imageListStructForDigestGQL, error) {
+) (*common.ImagesForDigest, error) {
 	query := fmt.Sprintf(`
 	{
 		ImageListForDigest(id: "%s") {
@@ -197,7 +197,7 @@ func (service searchService) getImagesByDigestGQL(ctx context.Context, config se
 		}
 	}`,
 		digest)
-	result := &imageListStructForDigestGQL{}
+	result := &common.ImagesForDigest{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
 
@@ -210,7 +210,7 @@ func (service searchService) getImagesByDigestGQL(ctx context.Context, config se
 
 func (service searchService) getImagesByCveIDGQL(ctx context.Context, config searchConfig, username,
 	password, cveID string,
-) (*imagesForCve, error) {
+) (*common.ImagesForCve, error) {
 	query := fmt.Sprintf(`
 	{
 		ImageListForCVE(id: "%s") {
@@ -231,7 +231,7 @@ func (service searchService) getImagesByCveIDGQL(ctx context.Context, config sea
 		}
 	}`,
 		cveID)
-	result := &imagesForCve{}
+	result := &common.ImagesForCve{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
 
@@ -263,7 +263,7 @@ func (service searchService) getCveByImageGQL(ctx context.Context, config search
 
 func (service searchService) getTagsForCVEGQL(ctx context.Context, config searchConfig,
 	username, password, imageName, cveID string,
-) (*imagesForCve, error) {
+) (*common.ImagesForCve, error) {
 	query := fmt.Sprintf(`
 		{
 			ImageListForCVE(id: "%s") {
@@ -283,7 +283,7 @@ func (service searchService) getTagsForCVEGQL(ctx context.Context, config search
 			}
 		}`,
 		cveID)
-	result := &imagesForCve{}
+	result := &common.ImagesForCve{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
 
@@ -296,7 +296,7 @@ func (service searchService) getTagsForCVEGQL(ctx context.Context, config search
 
 func (service searchService) getFixedTagsForCVEGQL(ctx context.Context, config searchConfig,
 	username, password, imageName, cveID string,
-) (*fixedTags, error) {
+) (*common.FixedTags, error) {
 	query := fmt.Sprintf(`
 		{
 			ImageListWithCVEFixed(id: "%s", image: "%s") {
@@ -317,7 +317,7 @@ func (service searchService) getFixedTagsForCVEGQL(ctx context.Context, config s
 		}`,
 		cveID, imageName)
 
-	result := &fixedTags{}
+	result := &common.FixedTags{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
 
@@ -464,7 +464,7 @@ func (service searchService) getImagesByCveID(ctx context.Context, config search
 		}`,
 		cvid)
 
-	result := &imagesForCve{}
+	result := &common.ImagesForCve{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
 	if err != nil {
@@ -498,7 +498,7 @@ func (service searchService) getImagesByCveID(ctx context.Context, config search
 
 	go rlim.startRateLimiter(ctx)
 
-	for _, image := range result.Data.Results {
+	for _, image := range result.Results {
 		localWg.Add(1)
 
 		go addManifestCallToPool(ctx, config, rlim, username, password, image.RepoName, image.Tag, rch, &localWg)
@@ -533,7 +533,7 @@ func (service searchService) getImagesByDigest(ctx context.Context, config searc
 		}`,
 		digest)
 
-	result := &imagesForDigest{}
+	result := &common.ImagesForDigest{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
 	if err != nil {
@@ -567,7 +567,7 @@ func (service searchService) getImagesByDigest(ctx context.Context, config searc
 
 	go rlim.startRateLimiter(ctx)
 
-	for _, image := range result.Data.Results {
+	for _, image := range result.Results {
 		localWg.Add(1)
 
 		go addManifestCallToPool(ctx, config, rlim, username, password, image.RepoName, image.Tag, rch, &localWg)
@@ -602,7 +602,7 @@ func (service searchService) getImageByNameAndCVEID(ctx context.Context, config 
 		}`,
 		cvid)
 
-	result := &imagesForCve{}
+	result := &common.ImagesForCve{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
 	if err != nil {
@@ -636,7 +636,7 @@ func (service searchService) getImageByNameAndCVEID(ctx context.Context, config 
 
 	go rlim.startRateLimiter(ctx)
 
-	for _, image := range result.Data.Results {
+	for _, image := range result.Results {
 		if !strings.EqualFold(imageName, image.RepoName) {
 			continue
 		}
@@ -728,7 +728,7 @@ func (service searchService) getFixedTagsForCVE(ctx context.Context, config sear
 		}
 	}`, cvid, imageName)
 
-	result := &fixedTags{}
+	result := &common.FixedTags{}
 
 	err := service.makeGraphQLQuery(ctx, config, username, password, query, result)
 	if err != nil {
@@ -762,7 +762,7 @@ func (service searchService) getFixedTagsForCVE(ctx context.Context, config sear
 
 	go rlim.startRateLimiter(ctx)
 
-	for _, img := range result.Data.Results {
+	for _, img := range result.Results {
 		localWg.Add(1)
 
 		go addManifestCallToPool(ctx, config, rlim, username, password, imageName, img.Tag, rch, &localWg)
@@ -844,7 +844,7 @@ func (service searchService) makeGraphQLQuery(ctx context.Context,
 	return nil
 }
 
-func checkResultGraphQLQuery(ctx context.Context, err error, resultErrors []common.ErrorGraphQL,
+func checkResultGraphQLQuery(ctx context.Context, err error, resultErrors []common.ErrorGQL,
 ) error {
 	if err != nil {
 		if isContextDone(ctx) {
@@ -900,8 +900,8 @@ func addManifestCallToPool(ctx context.Context, config searchConfig, pool *reque
 }
 
 type cveResult struct {
-	Errors []common.ErrorGraphQL `json:"errors"`
-	Data   cveData               `json:"data"`
+	Errors []common.ErrorGQL `json:"errors"`
+	Data   cveData           `json:"data"`
 }
 
 type tagListResp struct {
@@ -991,101 +991,12 @@ func (cve cveResult) stringYAML() (string, error) {
 	return string(body), nil
 }
 
-type fixedTags struct {
-	Errors []common.ErrorGraphQL `json:"errors"`
-	Data   struct {
-		PaginatedImagesResult `json:"ImageListWithCVEFixed"` //nolint:tagliatelle // graphQL schema
-	} `json:"data"`
-}
+type imageStruct common.ImageSummary
 
-type imagesForCve struct {
-	Errors []common.ErrorGraphQL `json:"errors"`
-	Data   struct {
-		PaginatedImagesResult `json:"ImageListForCVE"` //nolint:tagliatelle // graphQL schema
-	} `json:"data"`
-}
-
-type PaginatedImagesResult struct {
-	Results []imageStruct `json:"results"`
-}
-
-type imageStruct struct {
-	RepoName  string `json:"repoName"`
-	Tag       string `json:"tag"`
-	Manifests []manifestStruct
-	Size      string `json:"size"`
-	Digest    string `json:"digest"`
-	MediaType string `json:"mediaType"`
-	IsSigned  bool   `json:"isSigned"`
-	verbose   bool
-}
-
-type manifestStruct struct {
-	ConfigDigest string   `json:"configDigest"`
-	Digest       string   `json:"digest"`
-	Layers       []layer  `json:"layers"`
-	Platform     platform `json:"platform"`
-	Size         string   `json:"size"`
-	IsSigned     bool     `json:"isSigned"`
-}
-
-type platform struct {
-	Os      string `json:"os"`
-	Arch    string `json:"arch"`
-	Variant string `json:"variant"`
-}
-
-type DerivedImageList struct {
-	Results []imageStruct `json:"results"`
-}
-type BaseImageList struct {
-	Results []imageStruct `json:"results"`
-}
-
-type imageListStructGQL struct {
-	Errors []common.ErrorGraphQL `json:"errors"`
-	Data   struct {
-		PaginatedImagesResult `json:"ImageList"` //nolint:tagliatelle
-	} `json:"data"`
-}
-
-type imageListStructForDigestGQL struct {
-	Errors []common.ErrorGraphQL `json:"errors"`
-	Data   struct {
-		PaginatedImagesResult `json:"ImageListForDigest"` //nolint:tagliatelle
-	} `json:"data"`
-}
-
-type imageListStructForDerivedImagesGQL struct {
-	Errors []common.ErrorGraphQL `json:"errors"`
-	Data   struct {
-		PaginatedImagesResult `json:"DerivedImageList"` //nolint:tagliatelle
-	} `json:"data"`
-}
-
-type imageListStructForBaseImagesGQL struct {
-	Errors []common.ErrorGraphQL `json:"errors"`
-	Data   struct {
-		PaginatedImagesResult `json:"BaseImageList"` //nolint:tagliatelle
-	} `json:"data"`
-}
-
-type imagesForDigest struct {
-	Errors []common.ErrorGraphQL `json:"errors"`
-	Data   struct {
-		PaginatedImagesResult `json:"ImageListForDigest"` //nolint:tagliatelle // graphQL schema
-	} `json:"data"`
-}
-
-type layer struct {
-	Size   int64  `json:"size,string"`
-	Digest string `json:"digest"`
-}
-
-func (img imageStruct) string(format string, maxImgNameLen, maxTagLen, maxPlatformLen int) (string, error) {
+func (img imageStruct) string(format string, maxImgNameLen, maxTagLen, maxPlatformLen int, verbose bool) (string, error) { //nolint: lll
 	switch strings.ToLower(format) {
 	case "", defaultOutoutFormat:
-		return img.stringPlainText(maxImgNameLen, maxTagLen, maxPlatformLen)
+		return img.stringPlainText(maxImgNameLen, maxTagLen, maxPlatformLen, verbose)
 	case "json":
 		return img.stringJSON()
 	case "yml", "yaml":
@@ -1095,7 +1006,7 @@ func (img imageStruct) string(format string, maxImgNameLen, maxTagLen, maxPlatfo
 	}
 }
 
-func (img imageStruct) stringPlainText(maxImgNameLen, maxTagLen, maxPlatformLen int) (string, error) {
+func (img imageStruct) stringPlainText(maxImgNameLen, maxTagLen, maxPlatformLen int, verbose bool) (string, error) {
 	var builder strings.Builder
 
 	table := getImageTableWriter(&builder)
@@ -1107,7 +1018,7 @@ func (img imageStruct) stringPlainText(maxImgNameLen, maxTagLen, maxPlatformLen 
 	table.SetColMinWidth(colSizeIndex, sizeWidth)
 	table.SetColMinWidth(colIsSignedIndex, isSignedWidth)
 
-	if img.verbose {
+	if verbose {
 		table.SetColMinWidth(colConfigIndex, configWidth)
 		table.SetColMinWidth(colLayersIndex, layersWidth)
 	}
@@ -1138,7 +1049,7 @@ func (img imageStruct) stringPlainText(maxImgNameLen, maxTagLen, maxPlatformLen 
 		tagName += offset
 	}
 
-	err := addImageToTable(table, &img, maxPlatformLen, imageName, tagName)
+	err := addImageToTable(table, &img, maxPlatformLen, imageName, tagName, verbose)
 	if err != nil {
 		return "", err
 	}
@@ -1149,20 +1060,20 @@ func (img imageStruct) stringPlainText(maxImgNameLen, maxTagLen, maxPlatformLen 
 }
 
 func addImageToTable(table *tablewriter.Table, img *imageStruct, maxPlatformLen int,
-	imageName, tagName string,
+	imageName, tagName string, verbose bool,
 ) error {
 	switch img.MediaType {
 	case ispec.MediaTypeImageManifest:
-		return addManifestToTable(table, imageName, tagName, &img.Manifests[0], maxPlatformLen, img.verbose)
+		return addManifestToTable(table, imageName, tagName, &img.Manifests[0], maxPlatformLen, verbose)
 	case ispec.MediaTypeImageIndex:
-		return addImageIndexToTable(table, img, maxPlatformLen, imageName, tagName)
+		return addImageIndexToTable(table, img, maxPlatformLen, imageName, tagName, verbose)
 	}
 
 	return nil
 }
 
 func addImageIndexToTable(table *tablewriter.Table, img *imageStruct, maxPlatformLen int,
-	imageName, tagName string,
+	imageName, tagName string, verbose bool,
 ) error {
 	indexDigest, err := godigest.Parse(img.Digest)
 	if err != nil {
@@ -1178,7 +1089,7 @@ func addImageIndexToTable(table *tablewriter.Table, img *imageStruct, maxPlatfor
 	row[colSizeIndex] = ellipsize(strings.ReplaceAll(humanize.Bytes(imgSize), " ", ""), sizeWidth, ellipsis)
 	row[colIsSignedIndex] = strconv.FormatBool(img.IsSigned)
 
-	if img.verbose {
+	if verbose {
 		row[colConfigIndex] = ""
 		row[colLayersIndex] = ""
 	}
@@ -1186,7 +1097,7 @@ func addImageIndexToTable(table *tablewriter.Table, img *imageStruct, maxPlatfor
 	table.Append(row)
 
 	for i := range img.Manifests {
-		err := addManifestToTable(table, "", "", &img.Manifests[i], maxPlatformLen, img.verbose)
+		err := addManifestToTable(table, "", "", &img.Manifests[i], maxPlatformLen, verbose)
 		if err != nil {
 			return err
 		}
@@ -1195,7 +1106,7 @@ func addImageIndexToTable(table *tablewriter.Table, img *imageStruct, maxPlatfor
 	return nil
 }
 
-func addManifestToTable(table *tablewriter.Table, imageName, tagName string, manifest *manifestStruct,
+func addManifestToTable(table *tablewriter.Table, imageName, tagName string, manifest *common.ManifestSummary,
 	maxPlatformLen int, verbose bool,
 ) error {
 	manifestDigest, err := godigest.Parse(manifest.Digest)
@@ -1238,8 +1149,8 @@ func addManifestToTable(table *tablewriter.Table, imageName, tagName string, man
 
 	if verbose {
 		for _, entry := range manifest.Layers {
-			layerSize := entry.Size
-			size := ellipsize(strings.ReplaceAll(humanize.Bytes(uint64(layerSize)), " ", ""), sizeWidth, ellipsis)
+			layerSize, _ := strconv.ParseUint(entry.Size, 10, 64)
+			size := ellipsize(strings.ReplaceAll(humanize.Bytes(layerSize), " ", ""), sizeWidth, ellipsis)
 
 			layerDigest, err := godigest.Parse(entry.Digest)
 			if err != nil {
@@ -1264,7 +1175,7 @@ func addManifestToTable(table *tablewriter.Table, imageName, tagName string, man
 	return nil
 }
 
-func getPlatformStr(platf platform) string {
+func getPlatformStr(platf common.Platform) string {
 	if platf.Arch == "" && platf.Os == "" {
 		return ""
 	}

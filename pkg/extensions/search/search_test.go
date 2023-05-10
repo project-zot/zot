@@ -56,118 +56,6 @@ var (
 	ErrPutManifest = errors.New("can't put manifest")
 )
 
-type RepoWithNewestImageResponse struct {
-	RepoListWithNewestImage RepoListWithNewestImage `json:"data"`
-	Errors                  []ErrorGQL              `json:"errors"`
-}
-
-type DerivedImageListResponse struct {
-	DerivedImageList DerivedImageList `json:"data"`
-	Errors           []ErrorGQL       `json:"errors"`
-}
-
-type BaseImageListResponse struct {
-	BaseImageList BaseImageList `json:"data"`
-	Errors        []ErrorGQL    `json:"errors"`
-}
-
-type ImageListResponse struct {
-	ImageList ImageList  `json:"data"`
-	Errors    []ErrorGQL `json:"errors"`
-}
-
-type ImageList struct {
-	PaginatedImagesResult `json:"imageList"`
-}
-
-type DerivedImageList struct {
-	PaginatedImagesResult `json:"derivedImageList"`
-}
-type BaseImageList struct {
-	PaginatedImagesResult `json:"baseImageList"`
-}
-
-type ExpandedRepoInfoResp struct {
-	ExpandedRepoInfo ExpandedRepoInfo `json:"data"`
-	Errors           []ErrorGQL       `json:"errors"`
-}
-
-type ReferrersResp struct {
-	ReferrersResult ReferrersResult `json:"data"`
-	Errors          []ErrorGQL      `json:"errors"`
-}
-
-type ReferrersResult struct {
-	Referrers []zcommon.Referrer `json:"referrers"`
-}
-type GlobalSearchResultResp struct {
-	GlobalSearchResult GlobalSearchResult `json:"data"`
-	Errors             []ErrorGQL         `json:"errors"`
-}
-
-type GlobalSearchResult struct {
-	GlobalSearch GlobalSearch `json:"globalSearch"`
-}
-
-type GlobalSearch struct {
-	Images []zcommon.ImageSummary `json:"images"`
-	Repos  []zcommon.RepoSummary  `json:"repos"`
-	Layers []zcommon.LayerSummary `json:"layers"`
-	Page   repodb.PageInfo        `json:"page"`
-}
-
-type ExpandedRepoInfo struct {
-	RepoInfo zcommon.RepoInfo `json:"expandedRepoInfo"`
-}
-
-type PaginatedReposResult struct {
-	Results []zcommon.RepoSummary `json:"results"`
-	Page    repodb.PageInfo       `json:"page"`
-}
-
-type PaginatedImagesResult struct {
-	Results []zcommon.ImageSummary `json:"results"`
-	Page    repodb.PageInfo        `json:"page"`
-}
-
-//nolint:tagliatelle // graphQL schema
-type RepoListWithNewestImage struct {
-	PaginatedReposResult `json:"RepoListWithNewestImage"`
-}
-
-type ErrorGQL struct {
-	Message string   `json:"message"`
-	Path    []string `json:"path"`
-}
-
-type SingleImageSummary struct {
-	ImageSummary zcommon.ImageSummary `json:"Image"` //nolint:tagliatelle
-}
-type ImageSummaryResult struct {
-	SingleImageSummary SingleImageSummary `json:"data"`
-	Errors             []ErrorGQL         `json:"errors"`
-}
-
-//nolint:tagliatelle // graphQL schema
-type StarredRepos struct {
-	PaginatedReposResult `json:"StarredRepos"`
-}
-
-//nolint:tagliatelle // graphQL schema
-type BookmarkedRepos struct {
-	PaginatedReposResult `json:"BookmarkedRepos"`
-}
-
-type StarredReposResponse struct {
-	StarredRepos `json:"data"`
-	Errors       []ErrorGQL `json:"errors"`
-}
-
-type BookmarkedReposResponse struct {
-	BookmarkedRepos `json:"data"`
-	Errors          []ErrorGQL `json:"errors"`
-}
-
 func readFileAndSearchString(filePath string, stringToMatch string, timeout time.Duration) (bool, error) {
 	ctx, cancelFunc := context.WithTimeout(context.Background(), timeout)
 	defer cancelFunc()
@@ -554,12 +442,12 @@ func TestRepoListWithNewestImage(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			var responseStruct RepoWithNewestImageResponse
+			var responseStruct zcommon.RepoWithNewestImageResponse
 			err = json.Unmarshal(resp.Body(), &responseStruct)
 			So(err, ShouldBeNil)
-			So(len(responseStruct.RepoListWithNewestImage.PaginatedReposResult.Results), ShouldEqual, 2)
-			So(responseStruct.RepoListWithNewestImage.PaginatedReposResult.Page.ItemCount, ShouldEqual, 2)
-			So(responseStruct.RepoListWithNewestImage.PaginatedReposResult.Page.TotalCount, ShouldEqual, 4)
+			So(len(responseStruct.Results), ShouldEqual, 2)
+			So(responseStruct.Page.ItemCount, ShouldEqual, 2)
+			So(responseStruct.Page.TotalCount, ShouldEqual, 4)
 		})
 
 		Convey("Test repoListWithNewestImage with pagination, no limit or offset", func() {
@@ -588,12 +476,12 @@ func TestRepoListWithNewestImage(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			var responseStruct RepoWithNewestImageResponse
+			var responseStruct zcommon.RepoWithNewestImageResponse
 			err = json.Unmarshal(resp.Body(), &responseStruct)
 			So(err, ShouldBeNil)
-			So(len(responseStruct.RepoListWithNewestImage.PaginatedReposResult.Results), ShouldEqual, 4)
-			So(responseStruct.RepoListWithNewestImage.PaginatedReposResult.Page.ItemCount, ShouldEqual, 4)
-			So(responseStruct.RepoListWithNewestImage.PaginatedReposResult.Page.TotalCount, ShouldEqual, 4)
+			So(len(responseStruct.Results), ShouldEqual, 4)
+			So(responseStruct.Page.ItemCount, ShouldEqual, 4)
+			So(responseStruct.Page.TotalCount, ShouldEqual, 4)
 		})
 
 		Convey("Test repoListWithNewestImage multiple", func() {
@@ -611,12 +499,12 @@ func TestRepoListWithNewestImage(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			var responseStruct RepoWithNewestImageResponse
+			var responseStruct zcommon.RepoWithNewestImageResponse
 			err = json.Unmarshal(resp.Body(), &responseStruct)
 			So(err, ShouldBeNil)
-			So(len(responseStruct.RepoListWithNewestImage.PaginatedReposResult.Results), ShouldEqual, 4)
+			So(len(responseStruct.Results), ShouldEqual, 4)
 
-			images := responseStruct.RepoListWithNewestImage.PaginatedReposResult.Results
+			images := responseStruct.Results
 			So(images[0].NewestImage.Tag, ShouldEqual, "0.0.1")
 
 			query = `{
@@ -641,9 +529,9 @@ func TestRepoListWithNewestImage(t *testing.T) {
 
 			err = json.Unmarshal(resp.Body(), &responseStruct)
 			So(err, ShouldBeNil)
-			So(len(responseStruct.RepoListWithNewestImage.PaginatedReposResult.Results), ShouldEqual, 1)
+			So(len(responseStruct.Results), ShouldEqual, 1)
 
-			repos := responseStruct.RepoListWithNewestImage.PaginatedReposResult.Results
+			repos := responseStruct.Results
 			So(repos[0].NewestImage.Tag, ShouldEqual, "0.0.1")
 
 			query = `{
@@ -670,9 +558,9 @@ func TestRepoListWithNewestImage(t *testing.T) {
 
 			err = json.Unmarshal(resp.Body(), &responseStruct)
 			So(err, ShouldBeNil)
-			So(len(responseStruct.RepoListWithNewestImage.PaginatedReposResult.Results), ShouldEqual, 4)
+			So(len(responseStruct.Results), ShouldEqual, 4)
 
-			images = responseStruct.RepoListWithNewestImage.PaginatedReposResult.Results
+			images = responseStruct.Results
 			So(images[0].NewestImage.Tag, ShouldEqual, "0.0.1")
 			So(images[0].NewestImage.Vulnerabilities.Count, ShouldEqual, 0)
 			So(images[0].NewestImage.Vulnerabilities.MaxSeverity, ShouldEqual, "")
@@ -880,12 +768,12 @@ func TestRepoListWithNewestImage(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		var responseStruct RepoWithNewestImageResponse
+		var responseStruct zcommon.RepoWithNewestImageResponse
 		err = json.Unmarshal(resp.Body(), &responseStruct)
 		So(err, ShouldBeNil)
-		So(len(responseStruct.RepoListWithNewestImage.PaginatedReposResult.Results), ShouldEqual, 4)
+		So(len(responseStruct.Results), ShouldEqual, 4)
 
-		repos := responseStruct.RepoListWithNewestImage.PaginatedReposResult.Results
+		repos := responseStruct.Results
 		So(repos[0].NewestImage.Tag, ShouldEqual, "0.0.1")
 
 		for _, repo := range repos {
@@ -1031,18 +919,18 @@ func TestGetReferrersGQL(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, 200)
 		So(resp.Body(), ShouldNotBeNil)
 
-		referrersResp := &ReferrersResp{}
+		referrersResp := &zcommon.ReferrersResp{}
 
 		err = json.Unmarshal(resp.Body(), referrersResp)
 		So(err, ShouldBeNil)
 		So(referrersResp.Errors, ShouldBeNil)
-		So(referrersResp.ReferrersResult.Referrers[0].ArtifactType, ShouldEqual, artifactType)
-		So(referrersResp.ReferrersResult.Referrers[0].MediaType, ShouldEqual, ispec.MediaTypeImageManifest)
+		So(referrersResp.Referrers[0].ArtifactType, ShouldEqual, artifactType)
+		So(referrersResp.Referrers[0].MediaType, ShouldEqual, ispec.MediaTypeImageManifest)
 
-		So(referrersResp.ReferrersResult.Referrers[0].Annotations[0].Key, ShouldEqual, "com.artifact.format")
-		So(referrersResp.ReferrersResult.Referrers[0].Annotations[0].Value, ShouldEqual, "test")
+		So(referrersResp.Referrers[0].Annotations[0].Key, ShouldEqual, "com.artifact.format")
+		So(referrersResp.Referrers[0].Annotations[0].Value, ShouldEqual, "test")
 
-		So(referrersResp.ReferrersResult.Referrers[0].Digest, ShouldEqual, artifactManifestDigest)
+		So(referrersResp.Referrers[0].Digest, ShouldEqual, artifactManifestDigest)
 	})
 
 	Convey("referrers for image index", t, func() {
@@ -1159,19 +1047,19 @@ func TestGetReferrersGQL(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, 200)
 		So(resp.Body(), ShouldNotBeNil)
 
-		referrersResp := &ReferrersResp{}
+		referrersResp := &zcommon.ReferrersResp{}
 
 		err = json.Unmarshal(resp.Body(), referrersResp)
 		So(err, ShouldBeNil)
 		So(referrersResp.Errors, ShouldBeNil)
-		So(len(referrersResp.ReferrersResult.Referrers), ShouldEqual, 1)
-		So(referrersResp.ReferrersResult.Referrers[0].ArtifactType, ShouldEqual, artifactType)
-		So(referrersResp.ReferrersResult.Referrers[0].MediaType, ShouldEqual, ispec.MediaTypeImageManifest)
+		So(len(referrersResp.Referrers), ShouldEqual, 1)
+		So(referrersResp.Referrers[0].ArtifactType, ShouldEqual, artifactType)
+		So(referrersResp.Referrers[0].MediaType, ShouldEqual, ispec.MediaTypeImageManifest)
 
-		So(referrersResp.ReferrersResult.Referrers[0].Annotations[0].Key, ShouldEqual, "com.artifact.format")
-		So(referrersResp.ReferrersResult.Referrers[0].Annotations[0].Value, ShouldEqual, "test")
+		So(referrersResp.Referrers[0].Annotations[0].Key, ShouldEqual, "com.artifact.format")
+		So(referrersResp.Referrers[0].Annotations[0].Value, ShouldEqual, "test")
 
-		So(referrersResp.ReferrersResult.Referrers[0].Digest, ShouldEqual, artifactManifestDigest)
+		So(referrersResp.Referrers[0].Digest, ShouldEqual, artifactManifestDigest)
 	})
 }
 
@@ -1266,20 +1154,20 @@ func TestExpandedRepoInfo(t *testing.T) {
 		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
 		So(resp, ShouldNotBeNil)
 		So(err, ShouldBeNil)
-		responseStruct := &ExpandedRepoInfoResp{}
+		responseStruct := &zcommon.ExpandedRepoInfoResp{}
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
 
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		responseStruct = &ExpandedRepoInfoResp{}
+		responseStruct = &zcommon.ExpandedRepoInfoResp{}
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
-		So(responseStruct.ExpandedRepoInfo.RepoInfo.Summary, ShouldNotBeEmpty)
-		So(responseStruct.ExpandedRepoInfo.RepoInfo.Summary.Name, ShouldEqual, "test1")
-		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries), ShouldEqual, 2)
+		So(responseStruct.Summary, ShouldNotBeEmpty)
+		So(responseStruct.Summary.Name, ShouldEqual, "test1")
+		So(len(responseStruct.ImageSummaries), ShouldEqual, 2)
 	})
 
 	Convey("Test expanded repo info", t, func() {
@@ -1356,12 +1244,12 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		responseStruct := &ExpandedRepoInfoResp{}
+		responseStruct := &zcommon.ExpandedRepoInfoResp{}
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
-		So(responseStruct.ExpandedRepoInfo.RepoInfo.Summary, ShouldNotBeEmpty)
-		So(responseStruct.ExpandedRepoInfo.RepoInfo.Summary.Name, ShouldEqual, "zot-cve-test")
+		So(responseStruct.Summary, ShouldNotBeEmpty)
+		So(responseStruct.Summary.Name, ShouldEqual, "zot-cve-test")
 
 		query = `{
 			ExpandedRepoInfo(repo:"zot-cve-test"){
@@ -1381,18 +1269,18 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		responseStruct = &ExpandedRepoInfoResp{}
+		responseStruct = &zcommon.ExpandedRepoInfoResp{}
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
-		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries), ShouldNotEqual, 0)
-		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries[0].Manifests[0].Layers), ShouldNotEqual, 0)
+		So(len(responseStruct.ImageSummaries), ShouldNotEqual, 0)
+		So(len(responseStruct.ImageSummaries[0].Manifests[0].Layers), ShouldNotEqual, 0)
 
 		_, testManifestDigest, _, err := testStorage.GetImageManifest("zot-cve-test", "0.0.1")
 		So(err, ShouldBeNil)
 
 		found := false
-		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries {
+		for _, m := range responseStruct.ImageSummaries {
 			if m.Manifests[0].Digest == testManifestDigest.String() {
 				found = true
 				So(m.IsSigned, ShouldEqual, false)
@@ -1410,14 +1298,14 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
-		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries), ShouldNotEqual, 0)
-		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries[0].Manifests[0].Layers), ShouldNotEqual, 0)
+		So(len(responseStruct.ImageSummaries), ShouldNotEqual, 0)
+		So(len(responseStruct.ImageSummaries[0].Manifests[0].Layers), ShouldNotEqual, 0)
 
 		_, testManifestDigest, _, err = testStorage.GetImageManifest("zot-cve-test", "0.0.1")
 		So(err, ShouldBeNil)
 
 		found = false
-		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries {
+		for _, m := range responseStruct.ImageSummaries {
 			if m.Manifests[0].Digest == testManifestDigest.String() {
 				found = true
 				So(m.IsSigned, ShouldEqual, true)
@@ -1457,14 +1345,14 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
-		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries), ShouldNotEqual, 0)
-		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries[0].Manifests[0].Layers), ShouldNotEqual, 0)
+		So(len(responseStruct.ImageSummaries), ShouldNotEqual, 0)
+		So(len(responseStruct.ImageSummaries[0].Manifests[0].Layers), ShouldNotEqual, 0)
 
 		_, testManifestDigest, _, err = testStorage.GetImageManifest("zot-test", "0.0.1")
 		So(err, ShouldBeNil)
 
 		found = false
-		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries {
+		for _, m := range responseStruct.ImageSummaries {
 			if m.Manifests[0].Digest == testManifestDigest.String() {
 				found = true
 				So(m.IsSigned, ShouldEqual, false)
@@ -1482,14 +1370,14 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
-		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries), ShouldNotEqual, 0)
-		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries[0].Manifests[0].Layers), ShouldNotEqual, 0)
+		So(len(responseStruct.ImageSummaries), ShouldNotEqual, 0)
+		So(len(responseStruct.ImageSummaries[0].Manifests[0].Layers), ShouldNotEqual, 0)
 
 		_, testManifestDigest, _, err = testStorage.GetImageManifest("zot-test", "0.0.1")
 		So(err, ShouldBeNil)
 
 		found = false
-		for _, m := range responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries {
+		for _, m := range responseStruct.ImageSummaries {
 			if m.Manifests[0].Digest == testManifestDigest.String() {
 				found = true
 				So(m.IsSigned, ShouldEqual, true)
@@ -1550,7 +1438,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// ------- Make the call to GQL and see that it doesn't crash
-		responseStruct := &ExpandedRepoInfoResp{}
+		responseStruct := &zcommon.ExpandedRepoInfoResp{}
 		query := `
 		{
 			ExpandedRepoInfo(repo:"repo"){
@@ -1571,9 +1459,9 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
-		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries), ShouldEqual, 2)
+		So(len(responseStruct.ImageSummaries), ShouldEqual, 2)
 
-		repoInfo := responseStruct.ExpandedRepoInfo.RepoInfo
+		repoInfo := responseStruct.RepoInfo
 
 		foundTagTest := false
 		foundTagRefTag := false
@@ -1635,7 +1523,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		err = uploadNewRepoTag("3.0", repoName, baseURL, layers)
 		So(err, ShouldBeNil)
 
-		responseStruct := &ExpandedRepoInfoResp{}
+		responseStruct := &zcommon.ExpandedRepoInfoResp{}
 		query := `
 		{
 			ExpandedRepoInfo(repo:"test-repo"){
@@ -1656,12 +1544,12 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
-		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries), ShouldNotEqual, 0)
-		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries[0].Manifests[0].Layers), ShouldNotEqual, 0)
+		So(len(responseStruct.ImageSummaries), ShouldNotEqual, 0)
+		So(len(responseStruct.ImageSummaries[0].Manifests[0].Layers), ShouldNotEqual, 0)
 
-		So(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries[0].Tag, ShouldEqual, "3.0")
-		So(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries[1].Tag, ShouldEqual, "2.0")
-		So(responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries[2].Tag, ShouldEqual, "1.0")
+		So(responseStruct.ImageSummaries[0].Tag, ShouldEqual, "3.0")
+		So(responseStruct.ImageSummaries[1].Tag, ShouldEqual, "2.0")
+		So(responseStruct.ImageSummaries[2].Tag, ShouldEqual, "1.0")
 	})
 
 	Convey("With Multiarch Images", t, func() {
@@ -1746,7 +1634,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		defer ctlrManager.StopServer()
 
 		// ------- Test ExpandedRepoInfo
-		responseStruct := &ExpandedRepoInfoResp{}
+		responseStruct := &zcommon.ExpandedRepoInfoResp{}
 
 		query := `
 		{
@@ -1769,10 +1657,10 @@ func TestExpandedRepoInfo(t *testing.T) {
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
-		So(len(responseStruct.ExpandedRepoInfo.RepoInfo.Summary.Platforms), ShouldNotEqual, 5)
+		So(len(responseStruct.Summary.Platforms), ShouldNotEqual, 5)
 
 		found := false
-		for _, is := range responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries {
+		for _, is := range responseStruct.ImageSummaries {
 			if is.Tag == "1.0.0" {
 				found = true
 
@@ -1782,7 +1670,7 @@ func TestExpandedRepoInfo(t *testing.T) {
 		So(found, ShouldBeTrue)
 
 		found = false
-		for _, is := range responseStruct.ExpandedRepoInfo.RepoInfo.ImageSummaries {
+		for _, is := range responseStruct.ImageSummaries {
 			if is.Tag == "2.0.0" {
 				found = true
 
@@ -2184,7 +2072,7 @@ func TestDerivedImageList(t *testing.T) {
 				}
 			}`
 
-		responseStruct := &DerivedImageListResponse{}
+		responseStruct := &zcommon.DerivedImageListResponse{}
 		contains := false
 		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
 		So(err, ShouldBeNil)
@@ -2860,7 +2748,7 @@ func TestBaseImageList(t *testing.T) {
 			}
 		}`
 
-		responseStruct := &BaseImageListResponse{}
+		responseStruct := &zcommon.BaseImageListResponse{}
 		contains := false
 		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(query))
 		So(err, ShouldBeNil)
@@ -3004,12 +2892,12 @@ func TestGlobalSearchImageAuthor(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		responseStructImages := &GlobalSearchResultResp{}
+		responseStructImages := &zcommon.GlobalSearchResultResp{}
 
 		err = json.Unmarshal(resp.Body(), responseStructImages)
 		So(err, ShouldBeNil)
 
-		So(responseStructImages.GlobalSearchResult.GlobalSearch.Images[0].Authors, ShouldEqual, "author name")
+		So(responseStructImages.Images[0].Authors, ShouldEqual, "author name")
 
 		query = `
 		{
@@ -3031,12 +2919,12 @@ func TestGlobalSearchImageAuthor(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		responseStructRepos := &GlobalSearchResultResp{}
+		responseStructRepos := &zcommon.GlobalSearchResultResp{}
 
 		err = json.Unmarshal(resp.Body(), responseStructRepos)
 		So(err, ShouldBeNil)
 
-		So(responseStructRepos.GlobalSearchResult.GlobalSearch.Repos[0].NewestImage.Authors, ShouldEqual, "author name")
+		So(responseStructRepos.Repos[0].NewestImage.Authors, ShouldEqual, "author name")
 	})
 
 	Convey("Test global search with author in manifest's config", t, func() {
@@ -3067,12 +2955,12 @@ func TestGlobalSearchImageAuthor(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		responseStructImages := &GlobalSearchResultResp{}
+		responseStructImages := &zcommon.GlobalSearchResultResp{}
 
 		err = json.Unmarshal(resp.Body(), responseStructImages)
 		So(err, ShouldBeNil)
 
-		So(responseStructImages.GlobalSearchResult.GlobalSearch.Images[0].Authors, ShouldEqual, "ZotUser")
+		So(responseStructImages.Images[0].Authors, ShouldEqual, "ZotUser")
 
 		query = `
 		{
@@ -3094,12 +2982,12 @@ func TestGlobalSearchImageAuthor(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		responseStructRepos := &GlobalSearchResultResp{}
+		responseStructRepos := &zcommon.GlobalSearchResultResp{}
 
 		err = json.Unmarshal(resp.Body(), responseStructRepos)
 		So(err, ShouldBeNil)
 
-		So(responseStructRepos.GlobalSearchResult.GlobalSearch.Repos[0].NewestImage.Authors, ShouldEqual, "ZotUser")
+		So(responseStructRepos.Repos[0].NewestImage.Authors, ShouldEqual, "ZotUser")
 	})
 }
 
@@ -3316,23 +3204,23 @@ func TestGlobalSearch(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		responseStruct := &GlobalSearchResultResp{}
+		responseStruct := &zcommon.GlobalSearchResultResp{}
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
 
 		// Make sure the repo/image counts match before comparing actual content
-		So(responseStruct.GlobalSearchResult.GlobalSearch.Images, ShouldNotBeNil)
-		t.Logf("returned images: %v", responseStruct.GlobalSearchResult.GlobalSearch.Images)
-		So(responseStruct.GlobalSearchResult.GlobalSearch.Images, ShouldBeEmpty)
-		t.Logf("returned repos: %v", responseStruct.GlobalSearchResult.GlobalSearch.Repos)
-		So(len(responseStruct.GlobalSearchResult.GlobalSearch.Repos), ShouldEqual, 2)
-		t.Logf("returned layers: %v", responseStruct.GlobalSearchResult.GlobalSearch.Layers)
-		So(responseStruct.GlobalSearchResult.GlobalSearch.Layers, ShouldBeEmpty)
+		So(responseStruct.Images, ShouldNotBeNil)
+		t.Logf("returned images: %v", responseStruct.Images)
+		So(responseStruct.Images, ShouldBeEmpty)
+		t.Logf("returned repos: %v", responseStruct.Repos)
+		So(len(responseStruct.Repos), ShouldEqual, 2)
+		t.Logf("returned layers: %v", responseStruct.GlobalSearch.Layers)
+		So(responseStruct.Layers, ShouldBeEmpty)
 
 		newestImageMap := make(map[string]zcommon.ImageSummary)
 		actualRepoMap := make(map[string]zcommon.RepoSummary)
-		for _, repo := range responseStruct.GlobalSearchResult.GlobalSearch.Repos {
+		for _, repo := range responseStruct.Repos {
 			newestImageMap[repo.Name] = repo.NewestImage
 			actualRepoMap[repo.Name] = repo
 		}
@@ -3406,17 +3294,17 @@ func TestGlobalSearch(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		responseStruct = &GlobalSearchResultResp{}
+		responseStruct = &zcommon.GlobalSearchResultResp{}
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
 
-		So(responseStruct.GlobalSearchResult.GlobalSearch.Images, ShouldNotBeEmpty)
-		So(responseStruct.GlobalSearchResult.GlobalSearch.Repos, ShouldBeEmpty)
-		So(responseStruct.GlobalSearchResult.GlobalSearch.Layers, ShouldBeEmpty)
+		So(responseStruct.Images, ShouldNotBeEmpty)
+		So(responseStruct.Repos, ShouldBeEmpty)
+		So(responseStruct.Layers, ShouldBeEmpty)
 
-		So(len(responseStruct.GlobalSearchResult.GlobalSearch.Images), ShouldEqual, 1)
-		actualImageSummary := responseStruct.GlobalSearchResult.GlobalSearch.Images[0]
+		So(len(responseStruct.Images), ShouldEqual, 1)
+		actualImageSummary := responseStruct.Images[0]
 		So(actualImageSummary.Tag, ShouldEqual, "1.0.1")
 
 		expectedImageSummary, ok := allExpectedImageSummaryMap["repo1:1.0.1"]
@@ -3643,23 +3531,23 @@ func TestGlobalSearch(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		responseStruct := &GlobalSearchResultResp{}
+		responseStruct := &zcommon.GlobalSearchResultResp{}
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
 
 		// Make sure the repo/image counts match before comparing actual content
-		So(responseStruct.GlobalSearchResult.GlobalSearch.Images, ShouldNotBeNil)
-		t.Logf("returned images: %v", responseStruct.GlobalSearchResult.GlobalSearch.Images)
-		So(responseStruct.GlobalSearchResult.GlobalSearch.Images, ShouldBeEmpty)
-		t.Logf("returned repos: %v", responseStruct.GlobalSearchResult.GlobalSearch.Repos)
-		So(len(responseStruct.GlobalSearchResult.GlobalSearch.Repos), ShouldEqual, 2)
-		t.Logf("returned layers: %v", responseStruct.GlobalSearchResult.GlobalSearch.Layers)
-		So(responseStruct.GlobalSearchResult.GlobalSearch.Layers, ShouldBeEmpty)
+		So(responseStruct.Images, ShouldNotBeNil)
+		t.Logf("returned images: %v", responseStruct.Images)
+		So(responseStruct.Images, ShouldBeEmpty)
+		t.Logf("returned repos: %v", responseStruct.Repos)
+		So(len(responseStruct.Repos), ShouldEqual, 2)
+		t.Logf("returned layers: %v", responseStruct.Layers)
+		So(responseStruct.Layers, ShouldBeEmpty)
 
 		newestImageMap := make(map[string]zcommon.ImageSummary)
 		actualRepoMap := make(map[string]zcommon.RepoSummary)
-		for _, repo := range responseStruct.GlobalSearchResult.GlobalSearch.Repos {
+		for _, repo := range responseStruct.Repos {
 			newestImageMap[repo.Name] = repo.NewestImage
 			actualRepoMap[repo.Name] = repo
 		}
@@ -3733,17 +3621,17 @@ func TestGlobalSearch(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		responseStruct = &GlobalSearchResultResp{}
+		responseStruct = &zcommon.GlobalSearchResultResp{}
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
 
-		So(responseStruct.GlobalSearchResult.GlobalSearch.Images, ShouldNotBeEmpty)
-		So(responseStruct.GlobalSearchResult.GlobalSearch.Repos, ShouldBeEmpty)
-		So(responseStruct.GlobalSearchResult.GlobalSearch.Layers, ShouldBeEmpty)
+		So(responseStruct.Images, ShouldNotBeEmpty)
+		So(responseStruct.Repos, ShouldBeEmpty)
+		So(responseStruct.Layers, ShouldBeEmpty)
 
-		So(len(responseStruct.GlobalSearchResult.GlobalSearch.Images), ShouldEqual, 1)
-		actualImageSummary := responseStruct.GlobalSearchResult.GlobalSearch.Images[0]
+		So(len(responseStruct.Images), ShouldEqual, 1)
+		actualImageSummary := responseStruct.Images[0]
 		So(actualImageSummary.Tag, ShouldEqual, "1.0.1")
 
 		expectedImageSummary, ok := allExpectedImageSummaryMap["repo1:1.0.1"]
@@ -3825,7 +3713,7 @@ func TestCleaningFilteringParamsGlobalSearch(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		responseStruct := &GlobalSearchResultResp{}
+		responseStruct := &zcommon.GlobalSearchResultResp{}
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
@@ -3899,13 +3787,13 @@ func TestGlobalSearchFiltering(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		responseStruct := &GlobalSearchResultResp{}
+		responseStruct := &zcommon.GlobalSearchResultResp{}
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
 
-		So(responseStruct.GlobalSearchResult.GlobalSearch.Repos, ShouldNotBeEmpty)
-		So(responseStruct.GlobalSearchResult.GlobalSearch.Repos[0].Name, ShouldResemble, "signed-repo")
+		So(responseStruct.Repos, ShouldNotBeEmpty)
+		So(responseStruct.Repos[0].Name, ShouldResemble, "signed-repo")
 	})
 }
 
@@ -3946,7 +3834,7 @@ func TestGlobalSearchWithInvalidInput(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		responseStruct := &GlobalSearchResultResp{}
+		responseStruct := &zcommon.GlobalSearchResultResp{}
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
@@ -3968,7 +3856,7 @@ func TestGlobalSearchWithInvalidInput(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		responseStruct = &GlobalSearchResultResp{}
+		responseStruct = &zcommon.GlobalSearchResultResp{}
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
@@ -3990,7 +3878,7 @@ func TestGlobalSearchWithInvalidInput(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 200)
 
-		responseStruct = &GlobalSearchResultResp{}
+		responseStruct = &zcommon.GlobalSearchResultResp{}
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
@@ -4111,12 +3999,12 @@ func TestImageList(t *testing.T) {
 			So(resp.StatusCode(), ShouldEqual, 200)
 			So(resp, ShouldNotBeNil)
 
-			var responseStruct ImageListResponse
+			var responseStruct zcommon.ImageListResponse
 			err = json.Unmarshal(resp.Body(), &responseStruct)
 			So(err, ShouldBeNil)
 
-			So(len(responseStruct.ImageList.Results), ShouldEqual, len(tags))
-			So(len(responseStruct.ImageList.Results[0].Manifests[0].History), ShouldEqual, len(imageConfigInfo.History))
+			So(len(responseStruct.Results), ShouldEqual, len(tags))
+			So(len(responseStruct.Results[0].Manifests[0].History), ShouldEqual, len(imageConfigInfo.History))
 		})
 
 		Convey("Pagination with valid params", func() {
@@ -4148,11 +4036,11 @@ func TestImageList(t *testing.T) {
 			So(resp.StatusCode(), ShouldEqual, 200)
 			So(resp, ShouldNotBeNil)
 
-			var responseStruct ImageListResponse
+			var responseStruct zcommon.ImageListResponse
 			err = json.Unmarshal(resp.Body(), &responseStruct)
 			So(err, ShouldBeNil)
 
-			So(len(responseStruct.ImageList.Results), ShouldEqual, limit)
+			So(len(responseStruct.Results), ShouldEqual, limit)
 		})
 	})
 }
@@ -4209,16 +4097,16 @@ func TestGlobalSearchPagination(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct := &GlobalSearchResultResp{}
+			responseStruct := &zcommon.GlobalSearchResultResp{}
 
 			err = json.Unmarshal(resp.Body(), responseStruct)
 			So(err, ShouldBeNil)
 
-			So(responseStruct.GlobalSearchResult.GlobalSearch.Images, ShouldBeEmpty)
-			So(responseStruct.GlobalSearchResult.GlobalSearch.Repos, ShouldNotBeEmpty)
-			So(responseStruct.GlobalSearchResult.GlobalSearch.Layers, ShouldBeEmpty)
+			So(responseStruct.Images, ShouldBeEmpty)
+			So(responseStruct.Repos, ShouldNotBeEmpty)
+			So(responseStruct.Layers, ShouldBeEmpty)
 
-			So(len(responseStruct.GlobalSearchResult.GlobalSearch.Repos), ShouldEqual, 3)
+			So(len(responseStruct.Repos), ShouldEqual, 3)
 		})
 
 		Convey("Limit is lower than the repo count", func() {
@@ -4236,16 +4124,16 @@ func TestGlobalSearchPagination(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct := &GlobalSearchResultResp{}
+			responseStruct := &zcommon.GlobalSearchResultResp{}
 
 			err = json.Unmarshal(resp.Body(), responseStruct)
 			So(err, ShouldBeNil)
 
-			So(responseStruct.GlobalSearchResult.GlobalSearch.Images, ShouldBeEmpty)
-			So(responseStruct.GlobalSearchResult.GlobalSearch.Repos, ShouldNotBeEmpty)
-			So(responseStruct.GlobalSearchResult.GlobalSearch.Layers, ShouldBeEmpty)
+			So(responseStruct.Images, ShouldBeEmpty)
+			So(responseStruct.Repos, ShouldNotBeEmpty)
+			So(responseStruct.Layers, ShouldBeEmpty)
 
-			So(len(responseStruct.GlobalSearchResult.GlobalSearch.Repos), ShouldEqual, 2)
+			So(len(responseStruct.Repos), ShouldEqual, 2)
 		})
 
 		Convey("PageInfo returned proper response", func() {
@@ -4267,18 +4155,18 @@ func TestGlobalSearchPagination(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct := &GlobalSearchResultResp{}
+			responseStruct := &zcommon.GlobalSearchResultResp{}
 
 			err = json.Unmarshal(resp.Body(), responseStruct)
 			So(err, ShouldBeNil)
 
-			So(responseStruct.GlobalSearchResult.GlobalSearch.Images, ShouldBeEmpty)
-			So(responseStruct.GlobalSearchResult.GlobalSearch.Repos, ShouldNotBeEmpty)
-			So(responseStruct.GlobalSearchResult.GlobalSearch.Layers, ShouldBeEmpty)
+			So(responseStruct.Images, ShouldBeEmpty)
+			So(responseStruct.Repos, ShouldNotBeEmpty)
+			So(responseStruct.Layers, ShouldBeEmpty)
 
-			So(len(responseStruct.GlobalSearchResult.GlobalSearch.Repos), ShouldEqual, 2)
-			So(responseStruct.GlobalSearchResult.GlobalSearch.Page.TotalCount, ShouldEqual, 3)
-			So(responseStruct.GlobalSearchResult.GlobalSearch.Page.ItemCount, ShouldEqual, 2)
+			So(len(responseStruct.Repos), ShouldEqual, 2)
+			So(responseStruct.Page.TotalCount, ShouldEqual, 3)
+			So(responseStruct.Page.ItemCount, ShouldEqual, 2)
 		})
 
 		Convey("PageInfo when limit is bigger than the repo count", func() {
@@ -4300,18 +4188,18 @@ func TestGlobalSearchPagination(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct := &GlobalSearchResultResp{}
+			responseStruct := &zcommon.GlobalSearchResultResp{}
 
 			err = json.Unmarshal(resp.Body(), responseStruct)
 			So(err, ShouldBeNil)
 
-			So(responseStruct.GlobalSearchResult.GlobalSearch.Images, ShouldBeEmpty)
-			So(responseStruct.GlobalSearchResult.GlobalSearch.Repos, ShouldNotBeEmpty)
-			So(responseStruct.GlobalSearchResult.GlobalSearch.Layers, ShouldBeEmpty)
+			So(responseStruct.Images, ShouldBeEmpty)
+			So(responseStruct.Repos, ShouldNotBeEmpty)
+			So(responseStruct.Layers, ShouldBeEmpty)
 
-			So(len(responseStruct.GlobalSearchResult.GlobalSearch.Repos), ShouldEqual, 3)
-			So(responseStruct.GlobalSearchResult.GlobalSearch.Page.TotalCount, ShouldEqual, 3)
-			So(responseStruct.GlobalSearchResult.GlobalSearch.Page.ItemCount, ShouldEqual, 3)
+			So(len(responseStruct.Repos), ShouldEqual, 3)
+			So(responseStruct.Page.TotalCount, ShouldEqual, 3)
+			So(responseStruct.Page.ItemCount, ShouldEqual, 3)
 		})
 
 		Convey("PageInfo when limit and offset have 0 value", func() {
@@ -4333,18 +4221,18 @@ func TestGlobalSearchPagination(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct := &GlobalSearchResultResp{}
+			responseStruct := &zcommon.GlobalSearchResultResp{}
 
 			err = json.Unmarshal(resp.Body(), responseStruct)
 			So(err, ShouldBeNil)
 
-			So(responseStruct.GlobalSearchResult.GlobalSearch.Images, ShouldBeEmpty)
-			So(responseStruct.GlobalSearchResult.GlobalSearch.Repos, ShouldNotBeEmpty)
-			So(responseStruct.GlobalSearchResult.GlobalSearch.Layers, ShouldBeEmpty)
+			So(responseStruct.Images, ShouldBeEmpty)
+			So(responseStruct.Repos, ShouldNotBeEmpty)
+			So(responseStruct.Layers, ShouldBeEmpty)
 
-			So(len(responseStruct.GlobalSearchResult.GlobalSearch.Repos), ShouldEqual, 3)
-			So(responseStruct.GlobalSearchResult.GlobalSearch.Page.TotalCount, ShouldEqual, 3)
-			So(responseStruct.GlobalSearchResult.GlobalSearch.Page.ItemCount, ShouldEqual, 3)
+			So(len(responseStruct.Repos), ShouldEqual, 3)
+			So(responseStruct.Page.TotalCount, ShouldEqual, 3)
+			So(responseStruct.Page.ItemCount, ShouldEqual, 3)
 		})
 	})
 }
@@ -4471,12 +4359,12 @@ func TestRepoDBWhenSigningImages(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct := &GlobalSearchResultResp{}
+			responseStruct := &zcommon.GlobalSearchResultResp{}
 
 			err = json.Unmarshal(resp.Body(), responseStruct)
 			So(err, ShouldBeNil)
 
-			So(responseStruct.GlobalSearchResult.GlobalSearch.Images[0].IsSigned, ShouldBeTrue)
+			So(responseStruct.Images[0].IsSigned, ShouldBeTrue)
 
 			// check image 2 is signed also because it has the same manifest
 			resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(queryImage2))
@@ -4484,12 +4372,12 @@ func TestRepoDBWhenSigningImages(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct = &GlobalSearchResultResp{}
+			responseStruct = &zcommon.GlobalSearchResultResp{}
 
 			err = json.Unmarshal(resp.Body(), responseStruct)
 			So(err, ShouldBeNil)
 
-			So(responseStruct.GlobalSearchResult.GlobalSearch.Images[0].IsSigned, ShouldBeTrue)
+			So(responseStruct.Images[0].IsSigned, ShouldBeTrue)
 
 			// delete the signature
 			resp, err = resty.R().Delete(baseURL + "/v2/" + "repo1" + "/manifests/" +
@@ -4503,12 +4391,12 @@ func TestRepoDBWhenSigningImages(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct = &GlobalSearchResultResp{}
+			responseStruct = &zcommon.GlobalSearchResultResp{}
 
 			err = json.Unmarshal(resp.Body(), responseStruct)
 			So(err, ShouldBeNil)
 
-			So(responseStruct.GlobalSearchResult.GlobalSearch.Images[0].IsSigned, ShouldBeFalse)
+			So(responseStruct.Images[0].IsSigned, ShouldBeFalse)
 		})
 
 		Convey("Cover errors when signing with cosign", func() {
@@ -4557,12 +4445,12 @@ func TestRepoDBWhenSigningImages(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct := &GlobalSearchResultResp{}
+			responseStruct := &zcommon.GlobalSearchResultResp{}
 
 			err = json.Unmarshal(resp.Body(), responseStruct)
 			So(err, ShouldBeNil)
 
-			So(responseStruct.GlobalSearchResult.GlobalSearch.Images[0].IsSigned, ShouldBeTrue)
+			So(responseStruct.Images[0].IsSigned, ShouldBeTrue)
 		})
 
 		Convey("Sign with notation index", func() {
@@ -4574,12 +4462,12 @@ func TestRepoDBWhenSigningImages(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct := &GlobalSearchResultResp{}
+			responseStruct := &zcommon.GlobalSearchResultResp{}
 
 			err = json.Unmarshal(resp.Body(), responseStruct)
 			So(err, ShouldBeNil)
 
-			So(responseStruct.GlobalSearchResult.GlobalSearch.Images[0].IsSigned, ShouldBeTrue)
+			So(responseStruct.Images[0].IsSigned, ShouldBeTrue)
 		})
 
 		Convey("Sign with cosign index", func() {
@@ -4592,12 +4480,12 @@ func TestRepoDBWhenSigningImages(t *testing.T) {
 
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct := &GlobalSearchResultResp{}
+			responseStruct := &zcommon.GlobalSearchResultResp{}
 
 			err = json.Unmarshal(resp.Body(), responseStruct)
 			So(err, ShouldBeNil)
 
-			So(responseStruct.GlobalSearchResult.GlobalSearch.Images[0].IsSigned, ShouldBeTrue)
+			So(responseStruct.Images[0].IsSigned, ShouldBeTrue)
 		})
 	})
 }
@@ -4757,7 +4645,7 @@ func RunRepoDBIndexTests(baseURL, port string) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-		responseStruct := &GlobalSearchResultResp{}
+		responseStruct := &zcommon.GlobalSearchResultResp{}
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
@@ -4775,7 +4663,7 @@ func RunRepoDBIndexTests(baseURL, port string) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-		responseStruct = &GlobalSearchResultResp{}
+		responseStruct = &zcommon.GlobalSearchResultResp{}
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
@@ -4796,7 +4684,7 @@ func RunRepoDBIndexTests(baseURL, port string) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-		responseStruct = &GlobalSearchResultResp{}
+		responseStruct = &zcommon.GlobalSearchResultResp{}
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
@@ -5402,12 +5290,12 @@ func TestRepoDBWhenReadingImages(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-			responseStruct := &GlobalSearchResultResp{}
+			responseStruct := &zcommon.GlobalSearchResultResp{}
 
 			err = json.Unmarshal(resp.Body(), responseStruct)
 			So(err, ShouldBeNil)
-			So(responseStruct.GlobalSearchResult.GlobalSearch.Images, ShouldNotBeEmpty)
-			So(responseStruct.GlobalSearchResult.GlobalSearch.Images[0].DownloadCount, ShouldEqual, 3)
+			So(responseStruct.Images, ShouldNotBeEmpty)
+			So(responseStruct.Images[0].DownloadCount, ShouldEqual, 3)
 		})
 
 		Convey("Error when incrementing", func() {
@@ -5498,12 +5386,12 @@ func TestRepoDBWhenDeletingImages(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-		responseStruct := &GlobalSearchResultResp{}
+		responseStruct := &zcommon.GlobalSearchResultResp{}
 
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
 
-		So(len(responseStruct.GlobalSearchResult.GlobalSearch.Images), ShouldEqual, 2)
+		So(len(responseStruct.Images), ShouldEqual, 2)
 
 		Convey("Delete a normal tag", func() {
 			resp, err := resty.R().Delete(baseURL + "/v2/" + "repo1" + "/manifests/" + "1.0.1")
@@ -5516,13 +5404,13 @@ func TestRepoDBWhenDeletingImages(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 
-			responseStruct := &GlobalSearchResultResp{}
+			responseStruct := &zcommon.GlobalSearchResultResp{}
 
 			err = json.Unmarshal(resp.Body(), responseStruct)
 			So(err, ShouldBeNil)
 
-			So(len(responseStruct.GlobalSearchResult.GlobalSearch.Images), ShouldEqual, 1)
-			So(responseStruct.GlobalSearchResult.GlobalSearch.Images[0].Tag, ShouldEqual, "1.0.2")
+			So(len(responseStruct.Images), ShouldEqual, 1)
+			So(responseStruct.Images[0].Tag, ShouldEqual, "1.0.2")
 		})
 
 		Convey("Delete a cosign signature", func() {
@@ -5548,12 +5436,12 @@ func TestRepoDBWhenDeletingImages(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct := &GlobalSearchResultResp{}
+			responseStruct := &zcommon.GlobalSearchResultResp{}
 
 			err = json.Unmarshal(resp.Body(), responseStruct)
 			So(err, ShouldBeNil)
 
-			So(responseStruct.GlobalSearchResult.GlobalSearch.Images[0].IsSigned, ShouldBeTrue)
+			So(responseStruct.Images[0].IsSigned, ShouldBeTrue)
 
 			// get signatur digest
 			log := log.NewLogger("debug", "")
@@ -5593,12 +5481,12 @@ func TestRepoDBWhenDeletingImages(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct = &GlobalSearchResultResp{}
+			responseStruct = &zcommon.GlobalSearchResultResp{}
 
 			err = json.Unmarshal(resp.Body(), responseStruct)
 			So(err, ShouldBeNil)
 
-			So(responseStruct.GlobalSearchResult.GlobalSearch.Images[0].IsSigned, ShouldBeFalse)
+			So(responseStruct.Images[0].IsSigned, ShouldBeFalse)
 		})
 
 		Convey("Delete a notary signature", func() {
@@ -5625,12 +5513,12 @@ func TestRepoDBWhenDeletingImages(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct := &GlobalSearchResultResp{}
+			responseStruct := &zcommon.GlobalSearchResultResp{}
 
 			err = json.Unmarshal(resp.Body(), responseStruct)
 			So(err, ShouldBeNil)
 
-			So(responseStruct.GlobalSearchResult.GlobalSearch.Images[0].IsSigned, ShouldBeTrue)
+			So(responseStruct.Images[0].IsSigned, ShouldBeTrue)
 
 			// get signatur digest
 			log := log.NewLogger("debug", "")
@@ -5687,12 +5575,12 @@ func TestRepoDBWhenDeletingImages(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct = &GlobalSearchResultResp{}
+			responseStruct = &zcommon.GlobalSearchResultResp{}
 
 			err = json.Unmarshal(resp.Body(), responseStruct)
 			So(err, ShouldBeNil)
 
-			So(responseStruct.GlobalSearchResult.GlobalSearch.Images[0].IsSigned, ShouldBeFalse)
+			So(responseStruct.Images[0].IsSigned, ShouldBeFalse)
 		})
 
 		Convey("Delete a referrer", func() {
@@ -5724,13 +5612,13 @@ func TestRepoDBWhenDeletingImages(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct := &ReferrersResp{}
+			responseStruct := &zcommon.ReferrersResp{}
 
 			err = json.Unmarshal(resp.Body(), responseStruct)
 			So(err, ShouldBeNil)
 
-			So(len(responseStruct.ReferrersResult.Referrers), ShouldEqual, 1)
-			So(responseStruct.ReferrersResult.Referrers[0].Digest, ShouldResemble, referrerImage.Reference)
+			So(len(responseStruct.Referrers), ShouldEqual, 1)
+			So(responseStruct.Referrers[0].Digest, ShouldResemble, referrerImage.Reference)
 
 			statusCode, err := DeleteImage("repo1", referrerImage.Reference, "badURL")
 			So(err, ShouldNotBeNil)
@@ -5746,12 +5634,12 @@ func TestRepoDBWhenDeletingImages(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 
-			responseStruct = &ReferrersResp{}
+			responseStruct = &zcommon.ReferrersResp{}
 
 			err = json.Unmarshal(resp.Body(), responseStruct)
 			So(err, ShouldBeNil)
 
-			So(len(responseStruct.ReferrersResult.Referrers), ShouldEqual, 0)
+			So(len(responseStruct.Referrers), ShouldEqual, 0)
 		})
 
 		Convey("Deleting causes errors", func() {
@@ -5955,7 +5843,7 @@ func TestSearchSize(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 		So(configSize+layersSize+manifestSize, ShouldNotBeZeroValue)
 
-		responseStruct := &GlobalSearchResultResp{}
+		responseStruct := &zcommon.GlobalSearchResultResp{}
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
 
@@ -5992,7 +5880,7 @@ func TestSearchSize(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 		So(configSize+layersSize+manifestSize, ShouldNotBeZeroValue)
 
-		responseStruct = &GlobalSearchResultResp{}
+		responseStruct = &zcommon.GlobalSearchResultResp{}
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
 
@@ -6043,11 +5931,11 @@ func TestSearchSize(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 		So(configSize+layersSize+manifestSize, ShouldNotBeZeroValue)
 
-		responseStruct = &GlobalSearchResultResp{}
+		responseStruct = &zcommon.GlobalSearchResultResp{}
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
 
-		So(len(responseStruct.GlobalSearchResult.GlobalSearch.Images), ShouldEqual, 2)
+		So(len(responseStruct.Images), ShouldEqual, 2)
 		// check that the repo size is the same
 		// query for repos
 		query = `
@@ -6078,7 +5966,7 @@ func TestSearchSize(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
 		So(configSize+layersSize+manifestSize, ShouldNotBeZeroValue)
 
-		responseStruct = &GlobalSearchResultResp{}
+		responseStruct = &zcommon.GlobalSearchResultResp{}
 		err = json.Unmarshal(resp.Body(), responseStruct)
 		So(err, ShouldBeNil)
 
@@ -6205,7 +6093,7 @@ func TestImageSummary(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		var (
-			imgSummaryResponse ImageSummaryResult
+			imgSummaryResponse zcommon.ImageSummaryResult
 			strQuery           string
 			targetURL          string
 			resp               *resty.Response
@@ -6247,7 +6135,7 @@ func TestImageSummary(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(imgSummaryResponse, ShouldNotBeNil)
 		So(imgSummaryResponse.SingleImageSummary, ShouldNotBeNil)
-		So(imgSummaryResponse.SingleImageSummary.ImageSummary, ShouldNotBeNil)
+		So(imgSummaryResponse.ImageSummary, ShouldNotBeNil)
 		imgSummary := imgSummaryResponse.SingleImageSummary.ImageSummary
 		So(imgSummary.RepoName, ShouldContainSubstring, repoName)
 		So(imgSummary.Tag, ShouldContainSubstring, tagTarget)
@@ -6289,7 +6177,7 @@ func TestImageSummary(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(imgSummaryResponse, ShouldNotBeNil)
 		So(imgSummaryResponse.SingleImageSummary, ShouldNotBeNil)
-		So(imgSummaryResponse.SingleImageSummary.ImageSummary, ShouldNotBeNil)
+		So(imgSummaryResponse.ImageSummary, ShouldNotBeNil)
 
 		So(len(imgSummaryResponse.Errors), ShouldEqual, 1)
 		So(imgSummaryResponse.Errors[0].Message,
@@ -6309,7 +6197,7 @@ func TestImageSummary(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(imgSummaryResponse, ShouldNotBeNil)
 		So(imgSummaryResponse.SingleImageSummary, ShouldNotBeNil)
-		So(imgSummaryResponse.SingleImageSummary.ImageSummary, ShouldNotBeNil)
+		So(imgSummaryResponse.ImageSummary, ShouldNotBeNil)
 
 		So(len(imgSummaryResponse.Errors), ShouldEqual, 1)
 		So(imgSummaryResponse.Errors[0].Message,
@@ -6415,7 +6303,7 @@ func TestImageSummary(t *testing.T) {
 		)
 		So(err, ShouldBeNil)
 		var (
-			imgSummaryResponse ImageSummaryResult
+			imgSummaryResponse zcommon.ImageSummaryResult
 			strQuery           string
 			targetURL          string
 			resp               *resty.Response
@@ -6436,9 +6324,9 @@ func TestImageSummary(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(imgSummaryResponse, ShouldNotBeNil)
 		So(imgSummaryResponse.SingleImageSummary, ShouldNotBeNil)
-		So(imgSummaryResponse.SingleImageSummary.ImageSummary, ShouldNotBeNil)
+		So(imgSummaryResponse.ImageSummary, ShouldNotBeNil)
 
-		imgSummary := imgSummaryResponse.SingleImageSummary.ImageSummary
+		imgSummary := imgSummaryResponse.ImageSummary
 		So(imgSummary.RepoName, ShouldContainSubstring, repoName)
 		So(imgSummary.Tag, ShouldContainSubstring, tagTarget)
 		So(imgSummary.Manifests[0].ConfigDigest, ShouldContainSubstring, configDigest.Encoded())
@@ -6490,7 +6378,7 @@ func TestImageSummary(t *testing.T) {
 		queryImg1 := fmt.Sprintf(query, 1)
 		queryImg2 := fmt.Sprintf(query, 2)
 
-		var imgSummaryResponse ImageSummaryResult
+		var imgSummaryResponse zcommon.ImageSummaryResult
 
 		ctlrManager := NewControllerManager(ctlr)
 		ctlrManager.StartAndWait(port)
@@ -6561,7 +6449,7 @@ func TestImageSummary(t *testing.T) {
 			}
 		}`
 
-		var expandedRepoInfoResp ExpandedRepoInfoResp
+		var expandedRepoInfoResp zcommon.ExpandedRepoInfoResp
 
 		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" +
 			url.QueryEscape(queryExpRepoInfo))

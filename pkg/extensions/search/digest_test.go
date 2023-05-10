@@ -18,14 +18,14 @@ import (
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
+	"zotregistry.io/zot/pkg/common"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
-	"zotregistry.io/zot/pkg/meta/repodb"
 	. "zotregistry.io/zot/pkg/test"
 )
 
 type ImgResponseForDigest struct {
-	ImgListForDigest ImgListForDigest `json:"data"`
-	Errors           []ErrorGQL       `json:"errors"`
+	ImgListForDigest ImgListForDigest  `json:"data"`
+	Errors           []common.ErrorGQL `json:"errors"`
 }
 
 //nolint:tagliatelle // graphQL schema
@@ -44,7 +44,7 @@ type ImgInfo struct {
 
 type PaginatedImagesResultForDigest struct {
 	Results []ImgInfo       `json:"results"`
-	Page    repodb.PageInfo `json:"page"`
+	Page    common.PageInfo `json:"page"`
 }
 
 func TestDigestSearchHTTP(t *testing.T) {

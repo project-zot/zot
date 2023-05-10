@@ -5,13 +5,14 @@ import (
 	"sort"
 
 	zerr "zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/common"
 )
 
 // PageFinder permits keeping a pool of objects using Add
 // and returning a specific page.
 type PageFinder interface {
 	Add(detailedRepoMeta DetailedRepoMeta)
-	Page() ([]RepoMetadata, PageInfo)
+	Page() ([]RepoMetadata, common.PageInfo)
 	Reset()
 }
 
@@ -58,12 +59,12 @@ func (bpt *RepoPageFinder) Add(namedRepoMeta DetailedRepoMeta) {
 	bpt.pageBuffer = append(bpt.pageBuffer, namedRepoMeta)
 }
 
-func (bpt *RepoPageFinder) Page() ([]RepoMetadata, PageInfo) {
+func (bpt *RepoPageFinder) Page() ([]RepoMetadata, common.PageInfo) {
 	if len(bpt.pageBuffer) == 0 {
-		return []RepoMetadata{}, PageInfo{}
+		return []RepoMetadata{}, common.PageInfo{}
 	}
 
-	pageInfo := &PageInfo{}
+	pageInfo := &common.PageInfo{}
 
 	sort.Slice(bpt.pageBuffer, SortFunctions()[bpt.sortBy](bpt.pageBuffer))
 
@@ -142,12 +143,12 @@ func (bpt *ImagePageFinder) Add(namedRepoMeta DetailedRepoMeta) {
 	bpt.pageBuffer = append(bpt.pageBuffer, namedRepoMeta)
 }
 
-func (bpt *ImagePageFinder) Page() ([]RepoMetadata, PageInfo) {
+func (bpt *ImagePageFinder) Page() ([]RepoMetadata, common.PageInfo) {
 	if len(bpt.pageBuffer) == 0 {
-		return []RepoMetadata{}, PageInfo{}
+		return []RepoMetadata{}, common.PageInfo{}
 	}
 
-	pageInfo := PageInfo{}
+	pageInfo := common.PageInfo{}
 
 	for _, drm := range bpt.pageBuffer {
 		repo := drm.RepoMetadata
@@ -190,7 +191,7 @@ func (bpt *ImagePageFinder) Page() ([]RepoMetadata, PageInfo) {
 
 	// offset is larger than the number of tags
 	if repoStartIndex >= len(bpt.pageBuffer) {
-		return []RepoMetadata{}, PageInfo{}
+		return []RepoMetadata{}, common.PageInfo{}
 	}
 
 	// finish counting remaining tags inside the first repo meta

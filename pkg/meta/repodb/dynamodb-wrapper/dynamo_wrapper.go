@@ -769,13 +769,13 @@ func (dwr *DBWrapper) GetMultipleRepoMeta(ctx context.Context,
 
 func (dwr *DBWrapper) SearchRepos(ctx context.Context, searchText string, filter repodb.Filter,
 	requestedPage repodb.PageInput,
-) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, repodb.PageInfo, error) {
+) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, zcommon.PageInfo, error) {
 	var (
 		manifestMetadataMap       = make(map[string]repodb.ManifestMetadata)
 		indexDataMap              = make(map[string]repodb.IndexData)
 		repoMetaAttributeIterator dynamo.AttributesIterator
 		pageFinder                repodb.PageFinder
-		pageInfo                  repodb.PageInfo
+		pageInfo                  zcommon.PageInfo
 
 		userBookmarks = getUserBookmarks(ctx, dwr)
 		userStars     = getUserStars(ctx, dwr)
@@ -1077,13 +1077,13 @@ func (dwr *DBWrapper) collectImageIndexFilterInfo(indexDigest string, repoMeta r
 
 func (dwr *DBWrapper) FilterTags(ctx context.Context, filter repodb.FilterFunc,
 	requestedPage repodb.PageInput,
-) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, repodb.PageInfo, error) {
+) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, zcommon.PageInfo, error) {
 	var (
 		manifestMetadataMap       = make(map[string]repodb.ManifestMetadata)
 		indexDataMap              = make(map[string]repodb.IndexData)
 		repoMetaAttributeIterator dynamo.AttributesIterator
 		pageFinder                repodb.PageFinder
-		pageInfo                  repodb.PageInfo
+		pageInfo                  zcommon.PageInfo
 		userBookmarks             = getUserBookmarks(ctx, dwr)
 		userStars                 = getUserStars(ctx, dwr)
 	)
@@ -1224,11 +1224,11 @@ func (dwr *DBWrapper) FilterRepos(ctx context.Context,
 	filter repodb.FilterRepoFunc,
 	requestedPage repodb.PageInput,
 ) (
-	[]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, repodb.PageInfo, error,
+	[]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, zcommon.PageInfo, error,
 ) {
 	var (
 		repoMetaAttributeIterator dynamo.AttributesIterator
-		pageInfo                  repodb.PageInfo
+		pageInfo                  zcommon.PageInfo
 		userBookmarks             = getUserBookmarks(ctx, dwr)
 		userStars                 = getUserStars(ctx, dwr)
 	)
@@ -1282,13 +1282,13 @@ func (dwr *DBWrapper) FilterRepos(ctx context.Context,
 
 func (dwr *DBWrapper) SearchTags(ctx context.Context, searchText string, filter repodb.Filter,
 	requestedPage repodb.PageInput,
-) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, repodb.PageInfo, error) {
+) ([]repodb.RepoMetadata, map[string]repodb.ManifestMetadata, map[string]repodb.IndexData, zcommon.PageInfo, error) {
 	var (
 		manifestMetadataMap       = make(map[string]repodb.ManifestMetadata)
 		indexDataMap              = make(map[string]repodb.IndexData)
 		repoMetaAttributeIterator dynamo.AttributesIterator
 		pageFinder                repodb.PageFinder
-		pageInfo                  repodb.PageInfo
+		pageInfo                  zcommon.PageInfo
 		userBookmarks             = getUserBookmarks(ctx, dwr)
 		userStars                 = getUserStars(ctx, dwr)
 	)

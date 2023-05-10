@@ -25,7 +25,7 @@ type schemaList struct {
 			} `json:"queryType"` //nolint:tagliatelle // graphQL schema
 		} `json:"__schema"` //nolint:tagliatelle // graphQL schema
 	} `json:"data"`
-	Errors []common.ErrorGraphQL `json:"errors"`
+	Errors []common.ErrorGQL `json:"errors"`
 }
 
 func containsGQLQuery(queryList []field, query string) bool {

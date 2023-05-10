@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	zerr "zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/common"
 	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
 )
 
@@ -46,7 +47,7 @@ func SortBySeverity(pageBuffer []cvemodel.CVE, cveInfo CveInfo) func(i, j int) b
 // and returning a specific page.
 type PageFinder interface {
 	Add(cve cvemodel.CVE)
-	Page() ([]cvemodel.CVE, PageInfo)
+	Page() ([]cvemodel.CVE, common.PageInfo)
 	Reset()
 }
 
@@ -94,12 +95,12 @@ func (bpt *CvePageFinder) Add(cve cvemodel.CVE) {
 	bpt.pageBuffer = append(bpt.pageBuffer, cve)
 }
 
-func (bpt *CvePageFinder) Page() ([]cvemodel.CVE, PageInfo) {
+func (bpt *CvePageFinder) Page() ([]cvemodel.CVE, common.PageInfo) {
 	if len(bpt.pageBuffer) == 0 {
-		return []cvemodel.CVE{}, PageInfo{}
+		return []cvemodel.CVE{}, common.PageInfo{}
 	}
 
-	pageInfo := &PageInfo{}
+	pageInfo := &common.PageInfo{}
 
 	sort.Slice(bpt.pageBuffer, SortFunctions()[bpt.sortBy](bpt.pageBuffer, bpt.cveInfo))
 
@@ -129,11 +130,6 @@ func (bpt *CvePageFinder) Page() ([]cvemodel.CVE, PageInfo) {
 	pageInfo.TotalCount = len(bpt.pageBuffer)
 
 	return cves, *pageInfo
-}
-
-type PageInfo struct {
-	TotalCount int
-	ItemCount  int
 }
 
 type PageInput struct {
