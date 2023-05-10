@@ -353,6 +353,7 @@ jobs:
 
   update-helm-chart:
     if: github.event_name == 'release' && github.event.action== 'published'
+    needs: push-image
     name: Update Helm Chart
     runs-on: ubuntu-latest
     steps:
