@@ -361,7 +361,7 @@ func TestSyncInternal(t *testing.T) {
 		So(regURL, ShouldNotBeNil)
 
 		ref := ispec.Descriptor{
-			MediaType:    ispec.MediaTypeArtifactManifest,
+			MediaType:    ispec.MediaTypeImageManifest,
 			Digest:       "fakeDigest",
 			ArtifactType: "application/vnd.cncf.notary.signature",
 		}
@@ -406,7 +406,7 @@ func TestSyncInternal(t *testing.T) {
 
 		refs := ispec.Index{Manifests: []ispec.Descriptor{
 			{
-				MediaType:    ispec.MediaTypeArtifactManifest,
+				MediaType:    ispec.MediaTypeImageManifest,
 				Digest:       "fakeDigest",
 				ArtifactType: "application/vnd.cncf.notary.signature",
 			},
@@ -446,7 +446,7 @@ func TestSyncInternal(t *testing.T) {
 		err = json.Unmarshal(buf, &index)
 		So(err, ShouldBeNil)
 		index.Manifests = append(index.Manifests, ispec.Descriptor{
-			MediaType:    ispec.MediaTypeArtifactManifest,
+			MediaType:    ispec.MediaTypeImageManifest,
 			Digest:       godigest.FromString(""),
 			ArtifactType: "application/vnd.cncf.notary.signature",
 		})
@@ -546,6 +546,59 @@ func TestSyncInternal(t *testing.T) {
 		canBeSkipped, err = sig.canSkipORASRefs(testImage, testImageManifestDigest.String(), refList)
 		So(err, ShouldBeNil)
 		So(canBeSkipped, ShouldBeFalse)
+	})
+
+	Convey("Test syncOCIRefs with bad mediaType", t, func() {
+		downPort, upPort := test.GetFreePort(), test.GetFreePort()
+
+		downStream := test.StartTestHTTPServer(
+			[]test.RouteHandler{
+				{
+					Route: "",
+					HandlerFunc: func(w http.ResponseWriter, r *http.Request) {
+						w.WriteHeader(http.StatusOK)
+					},
+					AllowedMethods: []string{},
+				},
+			},
+			downPort,
+		)
+		defer downStream.Close()
+
+		upStream := test.StartTestHTTPServer(
+			[]test.RouteHandler{
+				{
+					Route: "/v2/{name}/manifests/{digest}",
+					HandlerFunc: func(w http.ResponseWriter, r *http.Request) {
+						w.WriteHeader(http.StatusOK)
+						_, err := w.Write([]byte("{}"))
+						if err != nil {
+							t.FailNow()
+						}
+					},
+					AllowedMethods: []string{"GET"},
+				},
+			},
+			upPort,
+		)
+		defer upStream.Close()
+
+		upStreamURL, err := url.Parse(fmt.Sprintf("http://127.0.0.1:%s", upPort))
+		So(err, ShouldBeNil)
+
+		client := &http.Client{}
+		mockRepoDB := mocks.RepoDBMock{}
+		mockImageStore := mocks.MockedImageStore{}
+		sig := newSignaturesCopier(client, syncconf.Credentials{},
+			*upStreamURL, mockRepoDB, storage.StoreController{DefaultStore: mockImageStore},
+			log.NewLogger("debug", ""),
+		)
+
+		digest := godigest.FromString("1")
+
+		err = sig.syncOCIRefs("repo", "repo", digest.String(),
+			ispec.Index{Manifests: []ispec.Descriptor{{MediaType: "bad media type", Digest: digest}}})
+		So(err, ShouldBeNil)
 	})
 
 	Convey("Test filterRepos()", t, func() {
@@ -1261,64 +1314,6 @@ func TestCompareArtifactRefs(t *testing.T) {
 	Convey("Test manifestsEqual()", t, func() {
 		for _, test := range testCases {
 			actualResult := artifactDescriptorsEqual(test.refs1, test.refs2)
-			So(actualResult, ShouldEqual, test.expected)
-		}
-	})
-}
-
-func TestCompareArtifactManifests(t *testing.T) {
-	testCases := []struct {
-		refs1    ispec.Artifact
-		refs2    ispec.Artifact
-		expected bool
-	}{
-		{
-			refs1: ispec.Artifact{
-				MediaType:    "mediatype",
-				ArtifactType: "signature",
-				Blobs: []ispec.Descriptor{
-					{
-						Digest: "digest1",
-					},
-				},
-			},
-			refs2: ispec.Artifact{
-				MediaType:    "mediatype",
-				ArtifactType: "signature",
-				Blobs: []ispec.Descriptor{
-					{
-						Digest: "digest1",
-					},
-				},
-			},
-			expected: true,
-		},
-		{
-			refs1: ispec.Artifact{
-				MediaType:    "mediatype",
-				ArtifactType: "signature",
-				Blobs: []ispec.Descriptor{
-					{
-						Digest: "digest1",
-					},
-				},
-			},
-			refs2: ispec.Artifact{
-				MediaType:    "mediatype",
-				ArtifactType: "signature",
-				Blobs: []ispec.Descriptor{
-					{
-						Digest: "digest2",
-					},
-				},
-			},
-			expected: false,
-		},
-	}
-
-	Convey("Test artifactsEqual()", t, func() {
-		for _, test := range testCases {
-			actualResult := artifactsEqual(test.refs1, test.refs2)
 			So(actualResult, ShouldEqual, test.expected)
 		}
 	})

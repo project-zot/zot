@@ -24,7 +24,7 @@ import (
 	"github.com/rs/zerolog"
 
 	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/common"
+	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	zlog "zotregistry.io/zot/pkg/log"
 	zreg "zotregistry.io/zot/pkg/regexp"
@@ -436,6 +436,17 @@ func (is *ObjectStorage) PutImageManifest(repo, reference, mediaType string, //n
 		is.log.Error().Err(err).Str("file", indexPath).Msg("unable to marshal JSON")
 
 		return "", err
+	}
+
+	if mediaType == ispec.MediaTypeImageManifest {
+		var manifest ispec.Manifest
+
+		err := json.Unmarshal(body, &manifest)
+		if err != nil {
+			return "", err
+		}
+
+		desc.ArtifactType = zcommon.GetManifestArtifactType(manifest)
 	}
 
 	// apply linter only on images, not signatures
@@ -1419,7 +1430,7 @@ func (is *ObjectStorage) GetNextDigestWithBlobPaths(lastDigests []godigest.Diges
 			return nil //nolint:nilerr // ignore files which are not blobs
 		}
 
-		if digest == "" && !common.DContains(lastDigests, blobDigest) {
+		if digest == "" && !zcommon.DContains(lastDigests, blobDigest) {
 			digest = blobDigest
 		}
 

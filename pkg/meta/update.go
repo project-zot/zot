@@ -144,7 +144,7 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 }
 
 // OnDeleteManifest is called when a manifest is downloaded. It increments the download couter on that manifest.
-func OnGetManifest(name, reference string, digest godigest.Digest, body []byte,
+func OnGetManifest(name, reference string, body []byte,
 	storeController storage.StoreController, repoDB repodb.RepoDB, log log.Logger,
 ) error {
 	// check if image is a signature

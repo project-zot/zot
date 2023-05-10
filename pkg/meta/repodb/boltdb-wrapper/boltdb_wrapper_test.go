@@ -91,18 +91,6 @@ func TestWrapperErrors(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
-		Convey("GetArtifactData", func() {
-			err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
-				artifactBuck := tx.Bucket([]byte(bolt.ArtifactDataBucket))
-
-				return artifactBuck.Put([]byte("artifactDigest"), []byte("wrong json"))
-			})
-			So(err, ShouldBeNil)
-
-			_, err = boltdbWrapper.GetArtifactData("artifactDigest")
-			So(err, ShouldNotBeNil)
-		})
-
 		Convey("SetReferrer", func() {
 			err := boltdbWrapper.DB.Update(func(tx *bbolt.Tx) error {
 				repoBuck := tx.Bucket([]byte(bolt.RepoMetadataBucket))

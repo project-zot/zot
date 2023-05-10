@@ -105,32 +105,6 @@ func (img Image) Digest() (godigest.Digest, error) {
 	return godigest.FromBytes(blob), nil
 }
 
-type Artifact struct {
-	Manifest  ispec.Artifact
-	Blobs     []ArtifactBlobs
-	Reference string
-}
-
-func (a Artifact) Digest() (godigest.Digest, error) {
-	blob, err := json.Marshal(a.Manifest)
-	if err != nil {
-		return "", err
-	}
-
-	return godigest.FromBytes(blob), nil
-}
-
-func (a Artifact) ArtifactData() (repodb.ArtifactData, error) {
-	blob, err := json.Marshal(a.Manifest)
-	if err != nil {
-		return repodb.ArtifactData{}, err
-	}
-
-	return repodb.ArtifactData{
-		ManifestBlob: blob,
-	}, nil
-}
-
 type ArtifactBlobs struct {
 	Blob      []byte
 	MediaType string
@@ -588,6 +562,7 @@ func GetImageComponents(layerSize int) (ispec.Image, [][]byte, ispec.Manifest, e
 	schemaVersion := 2
 
 	manifest := ispec.Manifest{
+		MediaType: ispec.MediaTypeImageManifest,
 		Versioned: specs.Versioned{
 			SchemaVersion: schemaVersion,
 		},
@@ -642,6 +617,7 @@ func GetRandomImageComponents(layerSize int) (ispec.Image, [][]byte, ispec.Manif
 	schemaVersion := 2
 
 	manifest := ispec.Manifest{
+		MediaType: ispec.MediaTypeImageManifest,
 		Versioned: specs.Versioned{
 			SchemaVersion: schemaVersion,
 		},
@@ -657,7 +633,6 @@ func GetRandomImageComponents(layerSize int) (ispec.Image, [][]byte, ispec.Manif
 				Size:      int64(len(layers[0])),
 			},
 		},
-		MediaType: ispec.MediaTypeImageManifest,
 	}
 
 	return config, layers, manifest, nil
@@ -702,6 +677,7 @@ func GetImageComponentsWithConfig(conf ispec.Image) (ispec.Image, [][]byte, ispe
 	schemaVersion := 2
 
 	manifest := ispec.Manifest{
+		MediaType: ispec.MediaTypeImageManifest,
 		Versioned: specs.Versioned{
 			SchemaVersion: schemaVersion,
 		},
@@ -760,6 +736,7 @@ func GetImageWithComponents(config ispec.Image, layers [][]byte) (Image, error) 
 	const schemaVersion = 2
 
 	manifest := ispec.Manifest{
+		MediaType: ispec.MediaTypeImageManifest,
 		Versioned: specs.Versioned{
 			SchemaVersion: schemaVersion,
 		},
@@ -781,49 +758,6 @@ func GetImageWithComponents(config ispec.Image, layers [][]byte) (Image, error) 
 		Config:    config,
 		Layers:    layers,
 		Reference: godigest.FromBytes(manifestBlob).String(),
-	}, nil
-}
-
-func GetRandomArtifact(subject *ispec.Descriptor) (Artifact, error) {
-	var randBlob [10]byte
-
-	_, err := rand.Read(randBlob[:])
-	if err != nil {
-		return Artifact{}, err
-	}
-
-	artifactBlobs := []ArtifactBlobs{
-		{
-			Blob:      randBlob[:],
-			MediaType: "application/octet-stream",
-		},
-	}
-
-	blobsDescriptors := make([]ispec.Descriptor, 0, len(artifactBlobs))
-
-	for _, artifactBlob := range artifactBlobs {
-		blobsDescriptors = append(blobsDescriptors, ispec.Descriptor{
-			Digest:    godigest.FromBytes(artifactBlob.Blob),
-			MediaType: artifactBlob.MediaType,
-			Size:      int64(len(artifactBlob.Blob)),
-		})
-	}
-
-	artifactManifest := ispec.Artifact{
-		MediaType: ispec.MediaTypeArtifactManifest,
-		Blobs:     blobsDescriptors,
-		Subject:   subject,
-	}
-
-	artifactManifestBlob, err := json.Marshal(artifactManifest)
-	if err != nil {
-		return Artifact{}, err
-	}
-
-	return Artifact{
-		Manifest:  artifactManifest,
-		Blobs:     artifactBlobs,
-		Reference: godigest.FromBytes(artifactManifestBlob).String(),
 	}, nil
 }
 
@@ -906,6 +840,11 @@ func UploadImage(img Image, baseURL, repo string) error {
 
 	cdigest := godigest.FromBytes(cblob)
 
+	if img.Manifest.Config.MediaType == ispec.MediaTypeScratch {
+		cblob = ispec.ScratchDescriptor.Data
+		cdigest = ispec.ScratchDescriptor.Digest
+	}
+
 	resp, err := resty.R().
 		Post(baseURL + "/v2/" + repo + "/blobs/uploads/")
 	if err = Error(err); err != nil {
@@ -940,7 +879,7 @@ func UploadImage(img Image, baseURL, repo string) error {
 	}
 
 	resp, err = resty.R().
-		SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
+		SetHeader("Content-type", ispec.MediaTypeImageManifest).
 		SetBody(manifestBlob).
 		Put(baseURL + "/v2/" + repo + "/manifests/" + img.Reference)
 
@@ -964,27 +903,6 @@ func DeleteImage(repo, reference, baseURL string) (int, error) {
 	}
 
 	return resp.StatusCode(), err
-}
-
-// UploadArtifactManifest is used in tests where we don't need to upload the blobs of the artifact.
-func UploadArtifactManifest(artifactManifest *ispec.Artifact, ref *string, baseURL, repo string) error {
-	// put manifest
-	artifactManifestBlob, err := json.Marshal(artifactManifest)
-	if err != nil {
-		return err
-	}
-	reference := godigest.FromBytes(artifactManifestBlob).String()
-
-	if ref != nil {
-		reference = *ref
-	}
-
-	_, err = resty.R().
-		SetHeader("Content-type", ispec.MediaTypeArtifactManifest).
-		SetBody(artifactManifestBlob).
-		Put(baseURL + "/v2/" + repo + "/manifests/" + reference)
-
-	return err
 }
 
 func UploadBlob(baseURL, repo string, blob []byte, artifactBlobMediaType string) error {
@@ -1252,7 +1170,11 @@ func SignWithNotation(keyName string, reference string, tdir string) error {
 		PlainHTTP: plainHTTP,
 	}
 
-	sigRepo := notreg.NewRepository(remoteRepo)
+	repositoryOpts := notreg.RepositoryOptions{
+		OCIImageManifest: true,
+	}
+
+	sigRepo := notreg.NewRepositoryWithOptions(remoteRepo, repositoryOpts)
 
 	sigOpts := notation.RemoteSignOptions{
 		SignOptions: notation.SignOptions{
@@ -1334,7 +1256,11 @@ func VerifyWithNotation(reference string, tdir string) error {
 		PlainHTTP: plainHTTP,
 	}
 
-	repo := notreg.NewRepository(remoteRepo)
+	repositoryOpts := notreg.RepositoryOptions{
+		OCIImageManifest: true,
+	}
+
+	repo := notreg.NewRepositoryWithOptions(remoteRepo, repositoryOpts)
 
 	manifestDesc, err := repo.Resolve(ctx, ref.Reference)
 	if err != nil {
@@ -1357,7 +1283,7 @@ func VerifyWithNotation(reference string, tdir string) error {
 		PlainHTTP: plainHTTP,
 	}
 
-	repo = notreg.NewRepository(remoteRepo)
+	repo = notreg.NewRepositoryWithOptions(remoteRepo, repositoryOpts)
 
 	configs := map[string]string{}
 
@@ -1586,6 +1512,11 @@ func UploadImageWithBasicAuth(img Image, baseURL, repo, user, password string) e
 	}
 
 	cdigest := godigest.FromBytes(cblob)
+
+	if img.Manifest.Config.MediaType == ispec.MediaTypeScratch {
+		cblob = ispec.ScratchDescriptor.Data
+		cdigest = ispec.ScratchDescriptor.Digest
+	}
 
 	resp, err := resty.R().
 		SetBasicAuth(user, password).

@@ -145,7 +145,7 @@ function teardown_file() {
 }
 EOF
 
-    run notation sign --key "notation-sign-test" --plain-http localhost:8080/annotations:latest
+    run notation sign --signature-manifest image --key "notation-sign-test" --plain-http localhost:8080/annotations:latest
     [ "$status" -eq 0 ]
     run notation verify --plain-http localhost:8080/annotations:latest
     [ "$status" -eq 0 ]

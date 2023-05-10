@@ -29,7 +29,7 @@ import (
 	"github.com/sigstore/cosign/v2/pkg/oci/remote"
 
 	zerr "zotregistry.io/zot/errors"
-	"zotregistry.io/zot/pkg/common"
+	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	zlog "zotregistry.io/zot/pkg/log"
 	zreg "zotregistry.io/zot/pkg/regexp"
@@ -66,7 +66,7 @@ func (is *ImageStoreLocal) RootDir() string {
 }
 
 func (is *ImageStoreLocal) DirExists(d string) bool {
-	return common.DirExists(d)
+	return zcommon.DirExists(d)
 }
 
 // NewImageStore returns a new image store backed by a file storage.
@@ -535,7 +535,18 @@ func (is *ImageStoreLocal) PutImageManifest(repo, reference, mediaType string, /
 		return "", err
 	}
 
-	// apply linter only on images, not signatures
+	if mediaType == ispec.MediaTypeImageManifest {
+		var manifest ispec.Manifest
+
+		err := json.Unmarshal(body, &manifest)
+		if err != nil {
+			return "", err
+		}
+
+		desc.ArtifactType = zcommon.GetManifestArtifactType(manifest)
+	}
+
+	// apply linter only on images, not signatures or indexes
 	pass, err := storage.ApplyLinter(is, is.linter, repo, desc)
 	if !pass {
 		is.log.Error().Err(err).Str("repository", repo).Str("reference", reference).Msg("linter didn't pass")
@@ -1440,6 +1451,12 @@ func ensureDir(dir string, log zerolog.Logger) error {
 	return nil
 }
 
+type extendedManifest struct {
+	ispec.Manifest
+
+	Digest godigest.Digest
+}
+
 func (is *ImageStoreLocal) garbageCollect(dir string, repo string) error {
 	oci, err := umoci.OpenLayout(dir)
 	if err := test.Error(err); err != nil {
@@ -1455,7 +1472,7 @@ func (is *ImageStoreLocal) garbageCollect(dir string, repo string) error {
 
 	referencedByImageIndex := []string{}
 	cosignDescriptors := []ispec.Descriptor{}
-	notationDescriptors := []ispec.Descriptor{}
+	notationManifests := []extendedManifest{}
 
 	/* gather manifests references by multiarch images (to skip gc)
 	gather cosign and notation signatures descriptors */
@@ -1479,10 +1496,27 @@ func (is *ImageStoreLocal) garbageCollect(dir string, repo string) error {
 				// gather cosign signatures
 				if strings.HasPrefix(tag, "sha256-") && strings.HasSuffix(tag, remote.SignatureTagSuffix) {
 					cosignDescriptors = append(cosignDescriptors, desc)
+
+					continue
 				}
 			}
-		case ispec.MediaTypeArtifactManifest:
-			notationDescriptors = append(notationDescriptors, desc)
+
+			manifestContent, err := storage.GetImageManifest(is, repo, desc.Digest, is.log)
+			if err != nil {
+				is.log.Error().Err(err).Str("repo", repo).Str("digest", desc.Digest.String()).
+					Msg("gc: failed to read manifest image")
+
+				return err
+			}
+
+			if zcommon.GetManifestArtifactType(manifestContent) == notreg.ArtifactTypeNotation {
+				notationManifests = append(notationManifests, extendedManifest{
+					Digest:   desc.Digest,
+					Manifest: manifestContent,
+				})
+
+				continue
+			}
 		}
 	}
 
@@ -1500,7 +1534,7 @@ func (is *ImageStoreLocal) garbageCollect(dir string, repo string) error {
 
 	is.log.Info().Msg("gc: notation signatures")
 
-	if err := gcNotationSignatures(is, oci, &index, repo, notationDescriptors); err != nil {
+	if err := gcNotationSignatures(is, oci, &index, repo, notationManifests); err != nil {
 		return err
 	}
 
@@ -1519,7 +1553,7 @@ func gcUntaggedManifests(imgStore *ImageStoreLocal, oci casext.Engine, index *is
 ) error {
 	for _, desc := range index.Manifests {
 		// skip manifests referenced in image indexex
-		if common.Contains(referencedByImageIndex, desc.Digest.String()) {
+		if zcommon.Contains(referencedByImageIndex, desc.Digest.String()) {
 			continue
 		}
 
@@ -1616,46 +1650,24 @@ func gcCosignSignatures(imgStore *ImageStoreLocal, oci casext.Engine, index *isp
 }
 
 func gcNotationSignatures(imgStore *ImageStoreLocal, oci casext.Engine, index *ispec.Index, repo string,
-	notationDescriptors []ispec.Descriptor,
+	notationManifests []extendedManifest,
 ) error {
-	for _, notationDesc := range notationDescriptors {
+	for _, notationManifest := range notationManifests {
 		foundSubject := false
-		// check if we can find the manifest which the signature points to
-		var artManifest ispec.Artifact
-
-		buf, err := imgStore.GetBlobContent(repo, notationDesc.Digest)
-		if err != nil {
-			imgStore.log.Error().Err(err).Str("repository", repo).Str("digest", notationDesc.Digest.String()).
-				Msg("gc: failed to get oras artifact manifest")
-
-			return err
-		}
-
-		if err := json.Unmarshal(buf, &artManifest); err != nil {
-			imgStore.log.Error().Err(err).Str("repository", repo).Str("digest", notationDesc.Digest.String()).
-				Msg("gc: failed to get oras artifact manifest")
-
-			return err
-		}
-
-		// skip oci artifacts which are not signatures
-		if artManifest.ArtifactType != notreg.ArtifactTypeNotation {
-			continue
-		}
 
 		for _, desc := range index.Manifests {
-			if desc.Digest == artManifest.Subject.Digest {
+			if desc.Digest == notationManifest.Subject.Digest {
 				foundSubject = true
 			}
 		}
 
 		if !foundSubject {
 			// remove manifest
-			imgStore.log.Info().Str("repository", repo).Str("digest", notationDesc.Digest.String()).
+			imgStore.log.Info().Str("repository", repo).Str("digest", notationManifest.Digest.String()).
 				Msg("gc: removing notation signature without subject")
 
 			// no need to check for manifest conflict, if one doesn't have a subject, then none with same digest will have
-			_, _ = storage.RemoveManifestDescByReference(index, notationDesc.Digest.String(), false)
+			_, _ = storage.RemoveManifestDescByReference(index, notationManifest.Digest.String(), false)
 
 			err := oci.PutIndex(context.Background(), *index)
 			if err != nil {
@@ -1808,7 +1820,7 @@ func (is *ImageStoreLocal) GetNextDigestWithBlobPaths(lastDigests []godigest.Dig
 			return nil //nolint:nilerr // ignore files which are not blobs
 		}
 
-		if digest == "" && !common.DContains(lastDigests, blobDigest) {
+		if digest == "" && !zcommon.DContains(lastDigests, blobDigest) {
 			digest = blobDigest
 		}
 

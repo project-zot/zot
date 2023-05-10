@@ -118,7 +118,7 @@ func TestValidateManifest(t *testing.T) {
 				},
 				Layers: []ispec.Descriptor{
 					{
-						MediaType: ispec.MediaTypeImageLayerNonDistributable,
+						MediaType: ispec.MediaTypeImageLayerNonDistributable, //nolint:staticcheck
 						Digest:    digest,
 						Size:      int64(len(content)),
 					},
@@ -299,38 +299,11 @@ func TestGetReferrersErrors(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
-		Convey("Trigger unmarshal error on artifact mediaType", func(c C) {
-			index = ispec.Index{
-				Manifests: []ispec.Descriptor{
-					{
-						MediaType: ispec.MediaTypeArtifactManifest,
-						Digest:    digest,
-					},
-				},
-			}
-
-			indexBuf, err = json.Marshal(index)
-			So(err, ShouldBeNil)
-
-			imgStore = &mocks.MockedImageStore{
-				GetIndexContentFn: func(repo string) ([]byte, error) {
-					return indexBuf, nil
-				},
-				GetBlobContentFn: func(repo string, digest godigest.Digest) ([]byte, error) {
-					return []byte{}, nil
-				},
-			}
-
-			_, err = storage.GetReferrers(imgStore, "zot-test", validDigest,
-				[]string{artifactType}, log.With().Caller().Logger())
-			So(err, ShouldNotBeNil)
-		})
-
 		Convey("Trigger nil subject", func(c C) {
 			index = ispec.Index{
 				Manifests: []ispec.Descriptor{
 					{
-						MediaType: ispec.MediaTypeArtifactManifest,
+						MediaType: ispec.MediaTypeImageManifest,
 						Digest:    digest,
 					},
 				},
@@ -396,5 +369,14 @@ func TestGetImageIndexErrors(t *testing.T) {
 
 		_, err := storage.GetImageIndex(imgStore, "zot-test", validDigest, log)
 		So(err, ShouldNotBeNil)
+	})
+}
+
+func TestIsSignature(t *testing.T) {
+	Convey("Unknown media type", t, func(c C) {
+		isSingature := storage.IsSignature(ispec.Descriptor{
+			MediaType: "unknown media type",
+		})
+		So(isSingature, ShouldBeFalse)
 	})
 }

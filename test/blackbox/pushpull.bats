@@ -120,11 +120,11 @@ function teardown_file() {
 @test "attach oras artifacts" {
     # attach signature
     echo "{\"artifact\": \"\", \"signature\": \"pat hancock\"}" > signature.json
-    run oras attach --plain-http 127.0.0.1:8080/golang:1.20 --artifact-type 'signature/example' ./signature.json:application/json
+    run oras attach --plain-http 127.0.0.1:8080/golang:1.20 --image-spec v1.1-image --artifact-type 'signature/example' ./signature.json:application/json
     [ "$status" -eq 0 ]
     # attach sbom
     echo "{\"version\": \"0.0.0.0\", \"artifact\": \"'127.0.0.1:8080/golang:1.20'\", \"contents\": \"good\"}" > sbom.json
-    run oras attach --plain-http 127.0.0.1:8080/golang:1.20 --artifact-type 'sbom/example' ./sbom.json:application/json
+    run oras attach --plain-http 127.0.0.1:8080/golang:1.20 --image-spec v1.1-image --artifact-type 'sbom/example' ./sbom.json:application/json
     [ "$status" -eq 0 ]
 }
 
@@ -248,7 +248,7 @@ EOF
     run regctl artifact list localhost:8080/artifact-ref:demo --format raw-body
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.manifests | length') -eq 0 ]
-    run regctl artifact put --media-type  "application/vnd.oci.artifact.manifest.v1+json" --annotation  demo=true --annotation format=oci --artifact-type "application/vnd.example.icecream.v1" --subject localhost:8080/artifact-ref:demo << EOF
+    run regctl artifact put --annotation  demo=true --annotation format=oci --artifact-type "application/vnd.example.icecream.v1" --subject localhost:8080/artifact-ref:demo << EOF
 test reference
 EOF
     [ "$status" -eq 0 ]

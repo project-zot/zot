@@ -462,7 +462,7 @@ require (
 )
 
 replace (
-	github.com/opencontainers/umoci => github.com/project-stacker/umoci v0.0.0-20230228184813-24efbd35e8ef
+	github.com/opencontainers/image-spec => github.com/project-zot/image-spec v0.0.0-20230428141304-a263befc67ea
 	// v0.3.1-0.20230104082527-d6f58551be3f is taken from github.com/moby/buildkit v0.11.0
 	// spdx logic write on v0.3.0 and incompatible with v0.3.1-0.20230104082527-d6f58551be3f
 	// see https://github.com/aquasecurity/trivy/commit/2033e05b6b563aa4bc46d6234b3657a54e71ee46

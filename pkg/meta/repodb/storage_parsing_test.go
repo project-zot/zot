@@ -237,7 +237,7 @@ func TestParseStorageErrors(t *testing.T) {
 			})
 
 			Convey("CheckIsImageSignature -> is signature", func() {
-				manifestContent := ispec.Artifact{
+				manifestContent := ispec.Manifest{
 					Subject: &ispec.Descriptor{
 						Digest: "123",
 					},
@@ -292,7 +292,6 @@ func TestParseStorageDynamoWrapper(t *testing.T) {
 			RepoMetaTablename:     "RepoMetadataTable",
 			ManifestDataTablename: "ManifestDataTable",
 			IndexDataTablename:    "IndexDataTable",
-			ArtifactDataTablename: "ArtifactDataTable",
 			UserDataTablename:     "UserDataTable",
 			VersionTablename:      "Version",
 		}
@@ -515,10 +514,7 @@ func RunParseStorageTests(rootDir string, repoDB repodb.RepoDB) {
 
 func TestGetReferredSubject(t *testing.T) {
 	Convey("GetReferredSubject error", t, func() {
-		_, _, _, err := repodb.GetReferredSubject([]byte("bad json"), "digest", ispec.MediaTypeArtifactManifest)
-		So(err, ShouldNotBeNil)
-
-		_, _, _, err = repodb.GetReferredSubject([]byte("bad json"), "digest", ispec.MediaTypeImageManifest)
+		_, _, _, err := repodb.GetReferredSubject([]byte("bad json"), "digest", ispec.MediaTypeImageManifest)
 		So(err, ShouldNotBeNil)
 	})
 }

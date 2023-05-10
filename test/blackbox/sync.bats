@@ -272,9 +272,9 @@ function teardown_file() {
 }
 EOF
 
-    run notation sign --key "notation-sign-sync-test" --plain-http localhost:9000/golang:1.20
+    run notation sign --signature-manifest image --key "notation-sign-sync-test" --plain-http localhost:9000/golang:1.20
     [ "$status" -eq 0 ]
-    run notation verify  --plain-http localhost:9000/golang:1.20
+    run notation verify --plain-http localhost:9000/golang:1.20
     [ "$status" -eq 0 ]
     run notation list --plain-http localhost:9000/golang:1.20
     [ "$status" -eq 0 ]
@@ -381,7 +381,7 @@ EOF
 }
 
 @test "push OCI artifact (oci artifact mediatype) with regclient" {
-    run regctl artifact put --media-type  "application/vnd.oci.artifact.manifest.v1+json" --artifact-type "application/vnd.example.icecream.v1"  localhost:9000/newartifact:demo <<EOF
+    run regctl artifact put --artifact-type "application/vnd.example.icecream.v1"  localhost:9000/newartifact:demo <<EOF
 this is an oci artifact
 EOF
     [ "$status" -eq 0 ]
@@ -425,7 +425,7 @@ EOF
     run regctl artifact list localhost:9000/artifact-ref:demo --format raw-body
     [ "$status" -eq 0 ]
     [ $(echo "${lines[-1]}" | jq '.manifests | length') -eq 0 ]
-    run regctl artifact put --media-type  "application/vnd.oci.artifact.manifest.v1+json" --annotation  demo=true --annotation format=oci --artifact-type "application/vnd.example.icecream.v1" --subject localhost:9000/artifact-ref:demo << EOF
+    run regctl artifact put --annotation  demo=true --annotation format=oci --artifact-type "application/vnd.example.icecream.v1" --subject localhost:9000/artifact-ref:demo << EOF
 test reference
 EOF
     [ "$status" -eq 0 ]

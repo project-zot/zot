@@ -16,8 +16,14 @@ import (
 	"github.com/sigstore/cosign/v2/pkg/oci/remote"
 
 	zerr "zotregistry.io/zot/errors"
+	zcommon "zotregistry.io/zot/pkg/common"
 	"zotregistry.io/zot/pkg/scheduler"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
+)
+
+const (
+	CosignType   = "cosign"
+	NotationType = "notation"
 )
 
 func SignatureMediaTypes() map[string]bool {
@@ -105,22 +111,6 @@ func ValidateManifest(imgStore ImageStore, repo, reference, mediaType string, bo
 			log.Error().Err(err).Msg("unable to unmarshal JSON")
 
 			return "", zerr.ErrBadManifest
-		}
-	case ispec.MediaTypeArtifactManifest:
-		var artifact ispec.Artifact
-		if err := json.Unmarshal(body, &artifact); err != nil {
-			log.Error().Err(err).Msg("unable to unmarshal JSON")
-
-			return "", zerr.ErrBadManifest
-		}
-
-		if artifact.Subject != nil {
-			var m ispec.Descriptor
-			if err := json.Unmarshal(body, &m); err != nil {
-				log.Error().Err(err).Msg("unable to unmarshal JSON")
-
-				return "", zerr.ErrBadManifest
-			}
 		}
 	}
 
@@ -303,6 +293,27 @@ func GetImageIndex(imgStore ImageStore, repo string, digest godigest.Digest, log
 	return imageIndex, nil
 }
 
+func GetImageManifest(imgStore ImageStore, repo string, digest godigest.Digest, log zerolog.Logger,
+) (ispec.Manifest, error) {
+	var manifestContent ispec.Manifest
+
+	manifestBlob, err := imgStore.GetBlobContent(repo, digest)
+	if err != nil {
+		return manifestContent, err
+	}
+
+	manifestPath := path.Join(imgStore.RootDir(), repo, "blobs",
+		digest.Algorithm().String(), digest.Encoded())
+
+	if err := json.Unmarshal(manifestBlob, &manifestContent); err != nil {
+		log.Error().Err(err).Str("path", manifestPath).Msg("invalid JSON")
+
+		return manifestContent, err
+	}
+
+	return manifestContent, nil
+}
+
 func RemoveManifestDescByReference(index *ispec.Index, reference string, detectCollisions bool,
 ) (ispec.Descriptor, error) {
 	var removedManifest ispec.Descriptor
@@ -456,29 +467,48 @@ func PruneImageManifestsFromIndex(imgStore ImageStore, repo string, digest godig
 	return prunedManifests, nil
 }
 
-func ApplyLinter(imgStore ImageStore, linter Lint, repo string, manifestDesc ispec.Descriptor) (bool, error) {
+func ApplyLinter(imgStore ImageStore, linter Lint, repo string, descriptor ispec.Descriptor) (bool, error) {
 	pass := true
 
-	if linter != nil {
-		tag := manifestDesc.Annotations[ispec.AnnotationRefName]
-		// apply linter only on images, not signatures
-		if manifestDesc.MediaType == ispec.MediaTypeImageManifest &&
-			// check that image manifest is not cosign signature
-			!strings.HasPrefix(tag, "sha256-") &&
-			!strings.HasSuffix(tag, remote.SignatureTagSuffix) {
-			// lint new index with new manifest before writing to disk
-			pass, err := linter.Lint(repo, manifestDesc.Digest, imgStore)
-			if err != nil {
-				return false, err
-			}
+	// we'll skip anything that's not a image manifest
+	if descriptor.MediaType != ispec.MediaTypeImageManifest {
+		return pass, nil
+	}
 
-			if !pass {
-				return false, zerr.ErrImageLintAnnotations
-			}
+	if linter != nil && !IsSignature(descriptor) {
+		// lint new index with new manifest before writing to disk
+		pass, err := linter.Lint(repo, descriptor.Digest, imgStore)
+		if err != nil {
+			return false, err
+		}
+
+		if !pass {
+			return false, zerr.ErrImageLintAnnotations
 		}
 	}
 
 	return pass, nil
+}
+
+func IsSignature(descriptor ispec.Descriptor) bool {
+	tag := descriptor.Annotations[ispec.AnnotationRefName]
+
+	switch descriptor.MediaType {
+	case ispec.MediaTypeImageManifest:
+		// is cosgin signature
+		if strings.HasPrefix(tag, "sha256-") && strings.HasSuffix(tag, remote.SignatureTagSuffix) {
+			return true
+		}
+
+		// is notation signature
+		if descriptor.ArtifactType == notreg.ArtifactTypeNotation {
+			return true
+		}
+	default:
+		return false
+	}
+
+	return false
 }
 
 func GetOrasReferrers(imgStore ImageStore, repo string, gdigest godigest.Digest, artifactType string,
@@ -609,67 +639,18 @@ func GetReferrers(imgStore ImageStore, repo string, gdigest godigest.Digest, art
 			}
 
 			// filter by artifact type
-			if len(artifactTypes) > 0 {
-				found := false
+			manifestArtifactType := zcommon.GetManifestArtifactType(mfst)
 
-				for _, artifactType := range artifactTypes {
-					if artifactType != "" && mfst.Config.MediaType != artifactType {
-						continue
-					}
-
-					found = true
-
-					break
-				}
-
-				if !found {
-					continue
-				}
-			}
-
-			result = append(result, ispec.Descriptor{
-				MediaType:    manifest.MediaType,
-				ArtifactType: mfst.Config.MediaType,
-				Size:         manifest.Size,
-				Digest:       manifest.Digest,
-				Annotations:  mfst.Annotations,
-			})
-		} else if manifest.MediaType == ispec.MediaTypeArtifactManifest {
-			var art ispec.Artifact
-			if err := json.Unmarshal(buf, &art); err != nil {
-				log.Error().Err(err).Str("manifest digest", manifest.Digest.String()).Msg("invalid JSON")
-
-				return nilIndex, err
-			}
-
-			if art.Subject == nil || art.Subject.Digest != gdigest {
+			if len(artifactTypes) > 0 && !zcommon.Contains(artifactTypes, manifestArtifactType) {
 				continue
 			}
 
-			// filter by artifact type
-			if len(artifactTypes) > 0 {
-				found := false
-				for _, artifactType := range artifactTypes {
-					if artifactType != "" && art.ArtifactType != artifactType {
-						continue
-					}
-
-					found = true
-
-					break
-				}
-
-				if !found {
-					continue
-				}
-			}
-
 			result = append(result, ispec.Descriptor{
 				MediaType:    manifest.MediaType,
-				ArtifactType: art.ArtifactType,
+				ArtifactType: manifestArtifactType,
 				Size:         manifest.Size,
 				Digest:       manifest.Digest,
-				Annotations:  art.Annotations,
+				Annotations:  mfst.Annotations,
 			})
 		}
 	}
@@ -719,14 +700,13 @@ func GetOrasManifestByDigest(imgStore ImageStore, repo string, digest godigest.D
 func IsSupportedMediaType(mediaType string) bool {
 	return mediaType == ispec.MediaTypeImageIndex ||
 		mediaType == ispec.MediaTypeImageManifest ||
-		mediaType == ispec.MediaTypeArtifactManifest ||
 		mediaType == oras.MediaTypeArtifactManifest
 }
 
 func IsNonDistributable(mediaType string) bool {
-	return mediaType == ispec.MediaTypeImageLayerNonDistributable ||
-		mediaType == ispec.MediaTypeImageLayerNonDistributableGzip ||
-		mediaType == ispec.MediaTypeImageLayerNonDistributableZstd
+	return mediaType == ispec.MediaTypeImageLayerNonDistributable || //nolint:staticcheck
+		mediaType == ispec.MediaTypeImageLayerNonDistributableGzip || //nolint:staticcheck
+		mediaType == ispec.MediaTypeImageLayerNonDistributableZstd //nolint:staticcheck
 }
 
 // CheckIsImageSignature checks if the given image (repo:tag) represents a signature. The function
@@ -742,30 +722,30 @@ func IsNonDistributable(mediaType string) bool {
 func CheckIsImageSignature(repoName string, manifestBlob []byte, reference string,
 	storeController StoreController,
 ) (bool, string, godigest.Digest, error) {
-	const cosign = "cosign"
-
-	var manifestContent ispec.Artifact
+	var manifestContent ispec.Manifest
 
 	err := json.Unmarshal(manifestBlob, &manifestContent)
 	if err != nil {
 		return false, "", "", err
 	}
 
+	manifestArtifactType := zcommon.GetManifestArtifactType(manifestContent)
+
 	// check notation signature
-	if _, ok := SignatureMediaTypes()[manifestContent.ArtifactType]; ok && manifestContent.Subject != nil {
+	if _, ok := SignatureMediaTypes()[manifestArtifactType]; ok && manifestContent.Subject != nil {
 		imgStore := storeController.GetImageStore(repoName)
 
 		_, signedImageManifestDigest, _, err := imgStore.GetImageManifest(repoName,
 			manifestContent.Subject.Digest.String())
 		if err != nil {
 			if errors.Is(err, zerr.ErrManifestNotFound) {
-				return true, "notation", signedImageManifestDigest, zerr.ErrOrphanSignature
+				return true, NotationType, signedImageManifestDigest, zerr.ErrOrphanSignature
 			}
 
 			return false, "", "", err
 		}
 
-		return true, "notation", signedImageManifestDigest, nil
+		return true, NotationType, signedImageManifestDigest, nil
 	}
 
 	// check cosign
@@ -785,17 +765,17 @@ func CheckIsImageSignature(repoName string, manifestBlob []byte, reference strin
 			signedImageManifestDigest.String())
 		if err != nil {
 			if errors.Is(err, zerr.ErrManifestNotFound) {
-				return true, cosign, signedImageManifestDigest, zerr.ErrOrphanSignature
+				return true, CosignType, signedImageManifestDigest, zerr.ErrOrphanSignature
 			}
 
 			return false, "", "", err
 		}
 
 		if signedImageManifestDigest.String() == "" {
-			return true, cosign, signedImageManifestDigest, zerr.ErrOrphanSignature
+			return true, CosignType, signedImageManifestDigest, zerr.ErrOrphanSignature
 		}
 
-		return true, cosign, signedImageManifestDigest, nil
+		return true, CosignType, signedImageManifestDigest, nil
 	}
 
 	return false, "", "", nil

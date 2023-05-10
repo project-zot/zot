@@ -52,8 +52,8 @@ linters-settings:
   gomoddirectives:
     replace-allow-list:
       - helm.sh/helm/v3
-      - github.com/opencontainers/umoci
       - github.com/spdx/tools-golang
+      - github.com/opencontainers/image-spec
 issues:
   exclude-rules:
     - path: pkg/extensions/search/schema.resolvers.go

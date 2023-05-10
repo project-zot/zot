@@ -5,7 +5,6 @@ package cli //nolint:testpackage
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,48 +18,6 @@ import (
 
 	"zotregistry.io/zot/pkg/test"
 )
-
-type RouteHandler struct {
-	Route string
-	// HandlerFunc is the HTTP handler function that receives a writer for output and an HTTP request as input.
-	HandlerFunc http.HandlerFunc
-	// AllowedMethods specifies the HTTP methods allowed for the current route.
-	AllowedMethods []string
-}
-
-// Routes is a map that associates HTTP paths to their corresponding HTTP handlers.
-type HTTPRoutes []RouteHandler
-
-func StartTestHTTPServer(routes HTTPRoutes, port string) *http.Server {
-	baseURL := test.GetBaseURL(port)
-	mux := mux.NewRouter()
-
-	mux.HandleFunc("/test", func(w http.ResponseWriter, r *http.Request) {
-		_, err := w.Write([]byte("{}"))
-		if err != nil {
-			return
-		}
-	}).Methods(http.MethodGet)
-
-	for _, routeHandler := range routes {
-		mux.HandleFunc(routeHandler.Route, routeHandler.HandlerFunc).Methods(routeHandler.AllowedMethods...)
-	}
-
-	server := &http.Server{ //nolint:gosec
-		Addr:    fmt.Sprintf(":%s", port),
-		Handler: mux,
-	}
-
-	go func() {
-		if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-			return
-		}
-	}()
-
-	test.WaitTillServerReady(baseURL + "/test")
-
-	return server
-}
 
 func getDefaultSearchConf(baseURL string) searchConfig {
 	verifyTLS := false
@@ -81,7 +38,7 @@ func getDefaultSearchConf(baseURL string) searchConfig {
 func TestDoHTTPRequest(t *testing.T) {
 	Convey("doHTTPRequest nil result pointer", t, func() {
 		port := test.GetFreePort()
-		server := StartTestHTTPServer(nil, port)
+		server := test.StartTestHTTPServer(nil, port)
 		defer server.Close()
 
 		url := fmt.Sprintf("http://127.0.0.1:%s/asd", port)
@@ -93,7 +50,7 @@ func TestDoHTTPRequest(t *testing.T) {
 
 	Convey("doHTTPRequest bad return json", t, func() {
 		port := test.GetFreePort()
-		server := StartTestHTTPServer(HTTPRoutes{
+		server := test.StartTestHTTPServer(test.HTTPRoutes{
 			{
 				Route: "/test",
 				HandlerFunc: func(w http.ResponseWriter, r *http.Request) {
@@ -135,7 +92,7 @@ func TestDoHTTPRequest(t *testing.T) {
 		searchConf := getDefaultSearchConf(baseURL)
 
 		// 404 erorr will appear
-		server := StartTestHTTPServer(HTTPRoutes{}, port)
+		server := test.StartTestHTTPServer(test.HTTPRoutes{}, port)
 		defer server.Close()
 
 		URL := baseURL + "/v2/repo/manifests/tag"
@@ -158,7 +115,7 @@ func TestDoHTTPRequest(t *testing.T) {
 		searchConf := getDefaultSearchConf(baseURL)
 
 		Convey("makeGETRequest manifest error, context is done", func() {
-			server := StartTestHTTPServer(HTTPRoutes{}, port)
+			server := test.StartTestHTTPServer(test.HTTPRoutes{}, port)
 			defer server.Close()
 
 			ctx, cancel := context.WithCancel(context.Background())
@@ -172,7 +129,7 @@ func TestDoHTTPRequest(t *testing.T) {
 		})
 
 		Convey("makeGETRequest manifest error, context is not done", func() {
-			server := StartTestHTTPServer(HTTPRoutes{}, port)
+			server := test.StartTestHTTPServer(test.HTTPRoutes{}, port)
 			defer server.Close()
 
 			_, err := fetchManifestStruct(context.Background(), "repo", "tag", searchConf,
@@ -182,7 +139,7 @@ func TestDoHTTPRequest(t *testing.T) {
 		})
 
 		Convey("makeGETRequest config error, context is not done", func() {
-			server := StartTestHTTPServer(HTTPRoutes{
+			server := test.StartTestHTTPServer(test.HTTPRoutes{
 				{
 					Route: "/v2/{name}/manifests/{reference}",
 					HandlerFunc: func(w http.ResponseWriter, r *http.Request) {
@@ -203,7 +160,7 @@ func TestDoHTTPRequest(t *testing.T) {
 		})
 
 		Convey("Platforms on config", func() {
-			server := StartTestHTTPServer(HTTPRoutes{
+			server := test.StartTestHTTPServer(test.HTTPRoutes{
 				{
 					Route: "/v2/{name}/manifests/{reference}",
 					HandlerFunc: func(w http.ResponseWriter, r *http.Request) {
@@ -258,7 +215,7 @@ func TestDoHTTPRequest(t *testing.T) {
 		})
 
 		Convey("fetchImageIndexStruct no errors", func() {
-			server := StartTestHTTPServer(HTTPRoutes{
+			server := test.StartTestHTTPServer(test.HTTPRoutes{
 				{
 					Route: "/v2/{name}/manifests/{reference}",
 					HandlerFunc: func(writer http.ResponseWriter, req *http.Request) {
@@ -327,7 +284,7 @@ func TestDoHTTPRequest(t *testing.T) {
 		})
 
 		Convey("fetchImageIndexStruct makeGETRequest errors context done", func() {
-			server := StartTestHTTPServer(HTTPRoutes{}, port)
+			server := test.StartTestHTTPServer(test.HTTPRoutes{}, port)
 			defer server.Close()
 
 			ctx, cancel := context.WithCancel(context.Background())
@@ -349,7 +306,7 @@ func TestDoHTTPRequest(t *testing.T) {
 		})
 
 		Convey("fetchImageIndexStruct makeGETRequest errors context not done", func() {
-			server := StartTestHTTPServer(HTTPRoutes{}, port)
+			server := test.StartTestHTTPServer(test.HTTPRoutes{}, port)
 			defer server.Close()
 
 			URL := baseURL + "/v2/repo/manifests/indexRef"
@@ -384,7 +341,7 @@ func TestDoJobErrors(t *testing.T) {
 		reqPool.wtgrp.Add(1)
 
 		Convey("Do Job makeHEADRequest error context done", func() {
-			server := StartTestHTTPServer(HTTPRoutes{}, port)
+			server := test.StartTestHTTPServer(test.HTTPRoutes{}, port)
 			defer server.Close()
 
 			URL := baseURL + "/v2/repo/manifests/manifestRef"
@@ -404,7 +361,7 @@ func TestDoJobErrors(t *testing.T) {
 		})
 
 		Convey("Do Job makeHEADRequest error context not done", func() {
-			server := StartTestHTTPServer(HTTPRoutes{}, port)
+			server := test.StartTestHTTPServer(test.HTTPRoutes{}, port)
 			defer server.Close()
 
 			URL := baseURL + "/v2/repo/manifests/manifestRef"
@@ -426,7 +383,7 @@ func TestDoJobErrors(t *testing.T) {
 		})
 
 		Convey("Do Job fetchManifestStruct errors context canceled", func() {
-			server := StartTestHTTPServer(HTTPRoutes{
+			server := test.StartTestHTTPServer(test.HTTPRoutes{
 				{
 					Route: "/v2/{name}/manifests/{reference}",
 					HandlerFunc: func(w http.ResponseWriter, r *http.Request) {
@@ -459,7 +416,7 @@ func TestDoJobErrors(t *testing.T) {
 		})
 
 		Convey("Do Job fetchManifestStruct errors context not canceled", func() {
-			server := StartTestHTTPServer(HTTPRoutes{
+			server := test.StartTestHTTPServer(test.HTTPRoutes{
 				{
 					Route: "/v2/{name}/manifests/{reference}",
 					HandlerFunc: func(w http.ResponseWriter, r *http.Request) {
@@ -493,7 +450,7 @@ func TestDoJobErrors(t *testing.T) {
 		})
 
 		Convey("Do Job fetchIndexStruct errors context canceled", func() {
-			server := StartTestHTTPServer(HTTPRoutes{
+			server := test.StartTestHTTPServer(test.HTTPRoutes{
 				{
 					Route: "/v2/{name}/manifests/{reference}",
 					HandlerFunc: func(w http.ResponseWriter, r *http.Request) {
@@ -526,7 +483,7 @@ func TestDoJobErrors(t *testing.T) {
 		})
 
 		Convey("Do Job fetchIndexStruct errors context not canceled", func() {
-			server := StartTestHTTPServer(HTTPRoutes{
+			server := test.StartTestHTTPServer(test.HTTPRoutes{
 				{
 					Route: "/v2/{name}/manifests/{reference}",
 					HandlerFunc: func(w http.ResponseWriter, r *http.Request) {
@@ -559,7 +516,7 @@ func TestDoJobErrors(t *testing.T) {
 			So(result.StrValue, ShouldResemble, "")
 		})
 		Convey("Do Job fetchIndexStruct not supported content type", func() {
-			server := StartTestHTTPServer(HTTPRoutes{
+			server := test.StartTestHTTPServer(test.HTTPRoutes{
 				{
 					Route: "/v2/{name}/manifests/{reference}",
 					HandlerFunc: func(w http.ResponseWriter, r *http.Request) {
@@ -589,7 +546,7 @@ func TestDoJobErrors(t *testing.T) {
 		})
 
 		Convey("Media type is MediaTypeImageIndex image.string erorrs", func() {
-			server := StartTestHTTPServer(HTTPRoutes{
+			server := test.StartTestHTTPServer(test.HTTPRoutes{
 				{
 					Route: "/v2/{name}/manifests/{reference}",
 					HandlerFunc: func(w http.ResponseWriter, r *http.Request) {

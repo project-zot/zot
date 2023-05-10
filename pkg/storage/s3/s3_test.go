@@ -584,44 +584,6 @@ func TestGetOrasAndOCIReferrers(t *testing.T) {
 			So(index.Manifests[0].Digest, ShouldEqual, manDigest)
 		})
 
-		Convey("Get oci referrers - application/vnd.oci.artifact.manifest.v1+json", func(c C) {
-			artifactType := "application/vnd.example.icecream.v1"
-
-			artifactManifest := ispec.Artifact{
-				MediaType:    ispec.MediaTypeArtifactManifest,
-				ArtifactType: artifactType,
-				Blobs: []ispec.Descriptor{
-					{
-						MediaType: "application/octet-stream",
-						Size:      int64(buflen),
-						Digest:    digest,
-					},
-				},
-				Subject: &ispec.Descriptor{
-					MediaType: ispec.MediaTypeImageManifest,
-					Size:      int64(mbuflen),
-					Digest:    mdigest,
-				},
-			}
-
-			manBuf, err := json.Marshal(artifactManifest)
-			So(err, ShouldBeNil)
-
-			manBufLen := len(manBuf)
-			manDigest := godigest.FromBytes(manBuf)
-
-			_, err = imgStore.PutImageManifest(repo, manDigest.Encoded(), ispec.MediaTypeArtifactManifest, manBuf)
-			So(err, ShouldBeNil)
-
-			index, err := imgStore.GetReferrers(repo, mdigest, []string{artifactType})
-			So(err, ShouldBeNil)
-			So(index, ShouldNotBeEmpty)
-			So(index.Manifests[1].ArtifactType, ShouldEqual, artifactType)
-			So(index.Manifests[1].MediaType, ShouldEqual, ispec.MediaTypeArtifactManifest)
-			So(index.Manifests[1].Size, ShouldEqual, manBufLen)
-			So(index.Manifests[1].Digest, ShouldEqual, manDigest)
-		})
-
 		Convey("Get oras referrers", func(c C) {
 			artifactManifest := artifactspec.Manifest{}
 			artifactManifest.ArtifactType = "signature-example"

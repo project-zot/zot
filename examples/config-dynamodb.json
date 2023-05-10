@@ -20,7 +20,6 @@
             "cacheTablename": "ZotBlobTable",
             "repoMetaTablename": "ZotRepoMetadataTable",
             "manifestDataTablename": "ZotManifestDataTable",
-            "artifactDataTablename": "ZotArtifactDataTable",
             "userDataTablename": "ZotUserDataTable",
             "versionTablename": "ZotVersion"
         }

@@ -590,17 +590,6 @@ func manifestsEqual(manifest1, manifest2 ispec.Manifest) bool {
 	return false
 }
 
-func artifactsEqual(manifest1, manifest2 ispec.Artifact) bool {
-	if manifest1.ArtifactType == manifest2.ArtifactType &&
-		manifest1.MediaType == manifest2.MediaType {
-		if descriptorsEqual(manifest1.Blobs, manifest2.Blobs) {
-			return true
-		}
-	}
-
-	return false
-}
-
 func artifactDescriptorsEqual(desc1, desc2 []artifactspec.Descriptor) bool {
 	if len(desc1) != len(desc2) {
 		return false
@@ -690,16 +679,6 @@ func syncImageWithRefs(ctx context.Context, localRepo, upstreamRepo, reference s
 	upstreamImageDigest := godigest.FromBytes(manifestBuf)
 
 	if !isSupportedMediaType(mediaType) {
-		if mediaType == ispec.MediaTypeArtifactManifest {
-			err = sig.syncOCIArtifact(localRepo, upstreamRepo, reference, manifestBuf) //nolint
-			if err != nil {
-				log.Error().Err(err).Str("image", upstreamImageRef.DockerReference().String()).
-					Msg("couldn't sync oci artifact with artifact mediaType")
-
-				return skipped, err
-			}
-		}
-
 		return skipped, nil
 	}
 
