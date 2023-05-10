@@ -265,14 +265,10 @@ func (bdw DBWrapper) SetReferrer(repo string, referredDigest godigest.Digest, re
 
 			// create a new object
 			repoMeta := repodb.RepoMetadata{
-				Name: repo,
-				Tags: map[string]repodb.Descriptor{},
-				Statistics: map[string]repodb.DescriptorStatistics{
-					referredDigest.String(): {},
-				},
-				Signatures: map[string]repodb.ManifestSignatures{
-					referredDigest.String(): {},
-				},
+				Name:       repo,
+				Tags:       map[string]repodb.Descriptor{},
+				Statistics: map[string]repodb.DescriptorStatistics{},
+				Signatures: map[string]repodb.ManifestSignatures{},
 				Referrers: map[string][]repodb.ReferrerInfo{
 					referredDigest.String(): {
 						referrer,
@@ -404,30 +400,20 @@ func (bdw *DBWrapper) SetRepoReference(repo string, reference string, manifestDi
 
 		repoMetaBlob := buck.Get([]byte(repo))
 
-		// object not found
-		if len(repoMetaBlob) == 0 {
-			var err error
-			// create a new object
-			repoMeta := repodb.RepoMetadata{
-				Name:       repo,
-				Tags:       map[string]repodb.Descriptor{},
-				Statistics: map[string]repodb.DescriptorStatistics{},
-				Signatures: map[string]repodb.ManifestSignatures{},
-				Referrers:  map[string][]repodb.ReferrerInfo{},
-			}
+		repoMeta := repodb.RepoMetadata{
+			Name:       repo,
+			Tags:       map[string]repodb.Descriptor{},
+			Statistics: map[string]repodb.DescriptorStatistics{},
+			Signatures: map[string]repodb.ManifestSignatures{},
+			Referrers:  map[string][]repodb.ReferrerInfo{},
+		}
 
-			repoMetaBlob, err = json.Marshal(repoMeta)
+		// object not found
+		if len(repoMetaBlob) > 0 {
+			err := json.Unmarshal(repoMetaBlob, &repoMeta)
 			if err != nil {
 				return err
 			}
-		}
-
-		// object found
-		var repoMeta repodb.RepoMetadata
-
-		err := json.Unmarshal(repoMetaBlob, &repoMeta)
-		if err != nil {
-			return err
 		}
 
 		if !common.ReferenceIsDigest(reference) {
@@ -449,7 +435,7 @@ func (bdw *DBWrapper) SetRepoReference(repo string, reference string, manifestDi
 			repoMeta.Referrers[manifestDigest.String()] = []repodb.ReferrerInfo{}
 		}
 
-		repoMetaBlob, err = json.Marshal(repoMeta)
+		repoMetaBlob, err := json.Marshal(repoMeta)
 		if err != nil {
 			return err
 		}
@@ -747,8 +733,33 @@ func (bdw *DBWrapper) AddManifestSignature(repo string, signedManifestDigest god
 		buck := tx.Bucket([]byte(bolt.RepoMetadataBucket))
 
 		repoMetaBlob := buck.Get([]byte(repo))
-		if repoMetaBlob == nil {
-			return zerr.ErrManifestMetaNotFound
+
+		if len(repoMetaBlob) == 0 {
+			var err error
+			// create a new object
+			repoMeta := repodb.RepoMetadata{
+				Name: repo,
+				Tags: map[string]repodb.Descriptor{},
+				Signatures: map[string]repodb.ManifestSignatures{
+					signedManifestDigest.String(): {
+						sygMeta.SignatureType: []repodb.SignatureInfo{
+							{
+								SignatureManifestDigest: sygMeta.SignatureDigest,
+								LayersInfo:              sygMeta.LayersInfo,
+							},
+						},
+					},
+				},
+				Statistics: map[string]repodb.DescriptorStatistics{},
+				Referrers:  map[string][]repodb.ReferrerInfo{},
+			}
+
+			repoMetaBlob, err = json.Marshal(repoMeta)
+			if err != nil {
+				return err
+			}
+
+			return buck.Put([]byte(repo), repoMetaBlob)
 		}
 
 		var repoMeta repodb.RepoMetadata
@@ -769,17 +780,10 @@ func (bdw *DBWrapper) AddManifestSignature(repo string, signedManifestDigest god
 
 		signatureSlice := manifestSignatures[sygMeta.SignatureType]
 		if !common.SignatureAlreadyExists(signatureSlice, sygMeta) {
-			if sygMeta.SignatureType == repodb.NotationType {
-				signatureSlice = append(signatureSlice, repodb.SignatureInfo{
-					SignatureManifestDigest: sygMeta.SignatureDigest,
-					LayersInfo:              sygMeta.LayersInfo,
-				})
-			} else if sygMeta.SignatureType == repodb.CosignType {
-				signatureSlice = []repodb.SignatureInfo{{
-					SignatureManifestDigest: sygMeta.SignatureDigest,
-					LayersInfo:              sygMeta.LayersInfo,
-				}}
-			}
+			signatureSlice = append(signatureSlice, repodb.SignatureInfo{
+				SignatureManifestDigest: sygMeta.SignatureDigest,
+				LayersInfo:              sygMeta.LayersInfo,
+			})
 		}
 
 		manifestSignatures[sygMeta.SignatureType] = signatureSlice

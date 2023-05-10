@@ -41,6 +41,7 @@ import (
 	syncconf "zotregistry.io/zot/pkg/extensions/config/sync"
 	"zotregistry.io/zot/pkg/extensions/sync"
 	logger "zotregistry.io/zot/pkg/log"
+	"zotregistry.io/zot/pkg/meta/repodb"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
@@ -3634,6 +3635,97 @@ func TestSignatures(t *testing.T) {
 		resp, err = resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/" + testImageTag)
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+	})
+}
+
+func getPortFromBaseURL(baseURL string) string {
+	slice := strings.Split(baseURL, ":")
+
+	return slice[len(slice)-1]
+}
+
+func TestSyncedSignaturesRepoDB(t *testing.T) {
+	Convey("Verify that repodb update correctly when syncing a signature", t, func() {
+		repoName := "signed-repo"
+		tag := "random-signed-image"
+		updateDuration := 30 * time.Minute
+
+		// Create source registry
+
+		sctlr, srcBaseURL, srcDir, _, _ := makeUpstreamServer(t, false, false)
+		t.Log(srcDir)
+		srcPort := getPortFromBaseURL(srcBaseURL)
+
+		scm := test.NewControllerManager(sctlr)
+		scm.StartAndWait(sctlr.Config.HTTP.Port)
+		defer scm.StopServer()
+
+		// Push an image
+		destImage, err := test.GetRandomImage(tag)
+		So(err, ShouldBeNil)
+
+		signedImageDigest, err := destImage.Digest()
+		So(err, ShouldBeNil)
+
+		err = test.UploadImage(destImage, srcBaseURL, repoName)
+		So(err, ShouldBeNil)
+
+		err = test.SignImageUsingNotary(repoName+":"+tag, srcPort)
+		So(err, ShouldBeNil)
+
+		err = test.SignImageUsingCosign(repoName+":"+tag, srcPort)
+		So(err, ShouldBeNil)
+
+		// Create destination registry
+		var (
+			regex      = ".*"
+			semver     = false
+			tlsVerify  = false
+			defaultVal = true
+		)
+
+		syncConfig := &syncconf.Config{
+			Enable: &defaultVal,
+			Registries: []syncconf.RegistryConfig{
+				{
+					Content: []syncconf.Content{
+						{
+							Prefix: repoName,
+							Tags:   &syncconf.Tags{Regex: &regex, Semver: &semver},
+						},
+					},
+					URLs:         []string{srcBaseURL},
+					PollInterval: updateDuration,
+					TLSVerify:    &tlsVerify,
+					CertDir:      "",
+					OnDemand:     true,
+				},
+			},
+		}
+
+		dctlr, destBaseURL, dstDir, _ := makeDownstreamServer(t, false, syncConfig)
+		t.Log(dstDir)
+
+		dcm := test.NewControllerManager(dctlr)
+		dcm.StartAndWait(dctlr.Config.HTTP.Port)
+		defer dcm.StopServer()
+
+		// Trigger SyncOnDemand
+		resp, err := resty.R().Get(destBaseURL + "/v2/" + repoName + "/manifests/" + tag)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+		repoMeta, err := dctlr.RepoDB.GetRepoMeta(repoName)
+		So(err, ShouldBeNil)
+		So(repoMeta.Tags, ShouldContainKey, tag)
+		So(len(repoMeta.Tags), ShouldEqual, 1)
+		So(repoMeta.Signatures, ShouldContainKey, signedImageDigest.String())
+
+		imageSignatures := repoMeta.Signatures[signedImageDigest.String()]
+		So(imageSignatures, ShouldContainKey, repodb.CosignType)
+		So(len(imageSignatures[repodb.CosignType]), ShouldEqual, 1)
+		So(imageSignatures, ShouldContainKey, repodb.NotationType)
+		So(len(imageSignatures[repodb.NotationType]), ShouldEqual, 1)
 	})
 }
 

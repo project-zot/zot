@@ -434,10 +434,7 @@ func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.
 
 	if rh.c.RepoDB != nil {
 		err := meta.OnGetManifest(name, reference, content, rh.c.StoreController, rh.c.RepoDB, rh.c.Log)
-
-		if errors.Is(err, zerr.ErrOrphanSignature) {
-			rh.c.Log.Error().Err(err).Msg("image is an orphan signature")
-		} else if err != nil {
+		if err != nil {
 			response.WriteHeader(http.StatusInternalServerError)
 
 			return
@@ -647,9 +644,7 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 	if rh.c.RepoDB != nil {
 		err := meta.OnUpdateManifest(name, reference, mediaType, digest, body, rh.c.StoreController, rh.c.RepoDB,
 			rh.c.Log)
-		if errors.Is(err, zerr.ErrOrphanSignature) {
-			rh.c.Log.Error().Err(err).Msg("pushed image is an orphan signature")
-		} else if err != nil {
+		if err != nil {
 			response.WriteHeader(http.StatusInternalServerError)
 
 			return
@@ -750,9 +745,7 @@ func (rh *RouteHandler) DeleteManifest(response http.ResponseWriter, request *ht
 	if rh.c.RepoDB != nil {
 		err := meta.OnDeleteManifest(name, reference, mediaType, manifestDigest, manifestBlob,
 			rh.c.StoreController, rh.c.RepoDB, rh.c.Log)
-		if errors.Is(err, zerr.ErrOrphanSignature) {
-			rh.c.Log.Error().Err(err).Msg("pushed image is an orphan signature")
-		} else if err != nil {
+		if err != nil {
 			response.WriteHeader(http.StatusInternalServerError)
 
 			return

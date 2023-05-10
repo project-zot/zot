@@ -646,6 +646,15 @@ func GetRandomImage(reference string) (Image, error) {
 		return Image{}, err
 	}
 
+	if reference == "" {
+		blob, err := json.Marshal(manifest)
+		if err != nil {
+			return Image{}, err
+		}
+
+		reference = godigest.FromBytes(blob).String()
+	}
+
 	return Image{
 		Manifest:  manifest,
 		Layers:    layers,

@@ -264,7 +264,7 @@ func TestParseStorageErrors(t *testing.T) {
 	})
 }
 
-func TestParseStorageWithStorage(t *testing.T) {
+func TestParseStorageWithBoltDB(t *testing.T) {
 	Convey("Boltdb", t, func() {
 		rootDir := t.TempDir()
 
@@ -313,7 +313,7 @@ func TestParseStorageDynamoWrapper(t *testing.T) {
 }
 
 func RunParseStorageTests(rootDir string, repoDB repodb.RepoDB) {
-	Convey("test", func() {
+	Convey("Test with simple case", func() {
 		imageStore := local.NewImageStore(rootDir, false, 0, false, false,
 			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil)
 
@@ -408,7 +408,7 @@ func RunParseStorageTests(rootDir string, repoDB repodb.RepoDB) {
 		}
 	})
 
-	Convey("Ignore orphan signatures", func() {
+	Convey("Accept orphan signatures", func() {
 		imageStore := local.NewImageStore(rootDir, false, 0, false, false,
 			log.NewLogger("debug", ""), monitoring.NewMetricsServer(false, log.NewLogger("debug", "")), nil, nil)
 
@@ -429,10 +429,13 @@ func RunParseStorageTests(rootDir string, repoDB repodb.RepoDB) {
 		So(err, ShouldBeNil)
 
 		// add mock cosign signature without pushing the signed image
-		_, _, manifest, err = test.GetRandomImageComponents(100)
+		image, err := test.GetRandomImage("")
 		So(err, ShouldBeNil)
 
-		signatureTag, err := test.GetCosignSignatureTagForManifest(manifest)
+		signatureTag, err := test.GetCosignSignatureTagForManifest(image.Manifest)
+		So(err, ShouldBeNil)
+
+		missingImageDigest, err := image.Digest()
 		So(err, ShouldBeNil)
 
 		// get the body of the signature
@@ -460,9 +463,14 @@ func RunParseStorageTests(rootDir string, repoDB repodb.RepoDB) {
 		)
 		So(err, ShouldBeNil)
 
+		for _, desc := range repos[0].Tags {
+			So(desc.Digest, ShouldNotResemble, missingImageDigest.String())
+		}
+
 		So(len(repos), ShouldEqual, 1)
 		So(repos[0].Tags, ShouldContainKey, "tag1")
 		So(repos[0].Tags, ShouldNotContainKey, signatureTag)
+		So(repos[0].Signatures, ShouldContainKey, missingImageDigest.String())
 	})
 
 	Convey("Check statistics after load", func() {

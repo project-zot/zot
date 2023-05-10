@@ -262,10 +262,6 @@ func TestWrapperErrors(t *testing.T) {
 			})
 			So(err, ShouldBeNil)
 
-			err = boltdbWrapper.AddManifestSignature("repo2", digest.FromString("dig"),
-				repodb.SignatureMetadata{})
-			So(err, ShouldNotBeNil)
-
 			err = boltdbWrapper.AddManifestSignature("repo1", digest.FromString("dig"),
 				repodb.SignatureMetadata{})
 			So(err, ShouldNotBeNil)
