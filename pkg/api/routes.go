@@ -30,6 +30,7 @@ import (
 
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/api/constants"
+	zcommon "zotregistry.io/zot/pkg/common"
 	gqlPlayground "zotregistry.io/zot/pkg/debug/gqlplayground"
 	debug "zotregistry.io/zot/pkg/debug/swagger"
 	ext "zotregistry.io/zot/pkg/extensions"
@@ -53,10 +54,6 @@ func NewRouteHandler(c *Controller) *RouteHandler {
 	return rh
 }
 
-func allowedMethods(method string) []string {
-	return []string{http.MethodOptions, method}
-}
-
 func (rh *RouteHandler) SetupRoutes() {
 	prefixedRouter := rh.c.Router.PathPrefix(constants.RoutePrefix).Subrouter()
 	prefixedRouter.Use(AuthHandler(rh.c))
@@ -75,11 +72,11 @@ func (rh *RouteHandler) SetupRoutes() {
 	// https://github.com/opencontainers/distribution-spec/blob/main/spec.md#endpoints
 	{
 		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/tags/list", zreg.NameRegexp.String()),
-			rh.ListTags).Methods(allowedMethods("GET")...)
+			rh.ListTags).Methods(zcommon.AllowedMethods("GET")...)
 		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", zreg.NameRegexp.String()),
-			rh.CheckManifest).Methods(allowedMethods("HEAD")...)
+			rh.CheckManifest).Methods(zcommon.AllowedMethods("HEAD")...)
 		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", zreg.NameRegexp.String()),
-			rh.GetManifest).Methods(allowedMethods("GET")...)
+			rh.GetManifest).Methods(zcommon.AllowedMethods("GET")...)
 		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", zreg.NameRegexp.String()),
 			rh.UpdateManifest).Methods("PUT")
 		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", zreg.NameRegexp.String()),
@@ -102,13 +99,13 @@ func (rh *RouteHandler) SetupRoutes() {
 			rh.DeleteBlobUpload).Methods("DELETE")
 		// support for OCI artifact references
 		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/referrers/{digest}", zreg.NameRegexp.String()),
-			rh.GetReferrers).Methods(allowedMethods("GET")...)
+			rh.GetReferrers).Methods(zcommon.AllowedMethods("GET")...)
 		prefixedRouter.HandleFunc(constants.ExtCatalogPrefix,
-			rh.ListRepositories).Methods(allowedMethods("GET")...)
+			rh.ListRepositories).Methods(zcommon.AllowedMethods("GET")...)
 		prefixedRouter.HandleFunc(constants.ExtOciDiscoverPrefix,
-			rh.ListExtensions).Methods(allowedMethods("GET")...)
+			rh.ListExtensions).Methods(zcommon.AllowedMethods("GET")...)
 		prefixedRouter.HandleFunc("/",
-			rh.CheckVersionSupport).Methods(allowedMethods("GET")...)
+			rh.CheckVersionSupport).Methods(zcommon.AllowedMethods("GET")...)
 	}
 
 	// support for ORAS artifact reference types (alpha 1) - image signature use case
@@ -146,6 +143,13 @@ func (rh *RouteHandler) SetupRoutes() {
 // @Produce json
 // @Success 200 {string} string	"ok".
 func (rh *RouteHandler) CheckVersionSupport(response http.ResponseWriter, request *http.Request) {
+	response.Header().Set("Access-Control-Allow-Methods", "HEAD,GET,POST,OPTIONS")
+	response.Header().Set("Access-Control-Allow-Headers", "Authorization,content-type")
+
+	if request.Method == http.MethodOptions {
+		return
+	}
+
 	response.Header().Set(constants.DistAPIVersion, "registry/2.0")
 	// NOTE: compatibility workaround - return this header in "allowed-read" mode to allow for clients to
 	// work correctly
@@ -178,6 +182,13 @@ type ImageTags struct {
 // @Failure 404 {string} 	string 				"not found"
 // @Failure 400 {string} 	string 				"bad request".
 func (rh *RouteHandler) ListTags(response http.ResponseWriter, request *http.Request) {
+	response.Header().Set("Access-Control-Allow-Methods", "HEAD,GET,POST,OPTIONS")
+	response.Header().Set("Access-Control-Allow-Headers", "Authorization,content-type")
+
+	if request.Method == http.MethodOptions {
+		return
+	}
+
 	vars := mux.Vars(request)
 
 	name, ok := vars["name"]
@@ -301,6 +312,13 @@ func (rh *RouteHandler) ListTags(response http.ResponseWriter, request *http.Req
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error".
 func (rh *RouteHandler) CheckManifest(response http.ResponseWriter, request *http.Request) {
+	response.Header().Set("Access-Control-Allow-Methods", "HEAD,GET,POST,OPTIONS")
+	response.Header().Set("Access-Control-Allow-Headers", "Authorization,content-type")
+
+	if request.Method == http.MethodOptions {
+		return
+	}
+
 	vars := mux.Vars(request)
 	name, ok := vars["name"]
 
@@ -367,6 +385,13 @@ type ExtensionList struct {
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/manifests/{reference} [get].
 func (rh *RouteHandler) GetManifest(response http.ResponseWriter, request *http.Request) {
+	response.Header().Set("Access-Control-Allow-Methods", "HEAD,GET,POST,OPTIONS")
+	response.Header().Set("Access-Control-Allow-Headers", "Authorization,content-type")
+
+	if request.Method == http.MethodOptions {
+		return
+	}
+
 	vars := mux.Vars(request)
 	name, ok := vars["name"]
 
@@ -468,6 +493,13 @@ func getReferrers(ctx context.Context, routeHandler *RouteHandler,
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/references/{digest} [get].
 func (rh *RouteHandler) GetReferrers(response http.ResponseWriter, request *http.Request) {
+	response.Header().Set("Access-Control-Allow-Methods", "HEAD,GET,POST,OPTIONS")
+	response.Header().Set("Access-Control-Allow-Headers", "Authorization,content-type")
+
+	if request.Method == http.MethodOptions {
+		return
+	}
+
 	vars := mux.Vars(request)
 
 	name, ok := vars["name"]
@@ -1501,6 +1533,13 @@ type RepositoryList struct {
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/_catalog [get].
 func (rh *RouteHandler) ListRepositories(response http.ResponseWriter, request *http.Request) {
+	response.Header().Set("Access-Control-Allow-Methods", "HEAD,GET,POST,OPTIONS")
+	response.Header().Set("Access-Control-Allow-Headers", "Authorization,content-type")
+
+	if request.Method == http.MethodOptions {
+		return
+	}
+
 	combineRepoList := make([]string, 0)
 
 	subStore := rh.c.StoreController.SubStore
@@ -1560,6 +1599,13 @@ func (rh *RouteHandler) ListRepositories(response http.ResponseWriter, request *
 // @Success 200 {object} 	api.ExtensionList
 // @Router /v2/_oci/ext/discover [get].
 func (rh *RouteHandler) ListExtensions(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Methods", "HEAD,GET,POST,OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Authorization,content-type")
+
+	if r.Method == http.MethodOptions {
+		return
+	}
+
 	extensionList := ext.GetExtensions(rh.c.Config)
 
 	WriteJSON(w, http.StatusOK, extensionList)

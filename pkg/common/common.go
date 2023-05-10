@@ -30,6 +30,10 @@ const (
 	caCertFilename     = "ca.crt"
 )
 
+func AllowedMethods(method string) []string {
+	return []string{http.MethodOptions, method}
+}
+
 func Contains(slice []string, item string) bool {
 	for _, v := range slice {
 		if item == v {

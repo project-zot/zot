@@ -483,6 +483,7 @@ func TestHtpasswdSingleCred(t *testing.T) {
 				So(resp.StatusCode(), ShouldEqual, http.StatusNoContent)
 				So(len(resp.Header()), ShouldEqual, 4)
 				So(resp.Header()["Access-Control-Allow-Headers"], ShouldResemble, header)
+				So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "HEAD,GET,POST,OPTIONS")
 
 				// with invalid creds, it should fail
 				resp, _ = resty.R().SetBasicAuth("chuck", "chuck").Get(baseURL + "/v2/")
@@ -490,6 +491,88 @@ func TestHtpasswdSingleCred(t *testing.T) {
 				So(resp.StatusCode(), ShouldEqual, http.StatusUnauthorized)
 			}()
 		}
+	})
+}
+
+func TestAllowMethodsHeader(t *testing.T) {
+	Convey("Options request", t, func() {
+		dir := t.TempDir()
+		port := test.GetFreePort()
+		baseURL := test.GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = dir
+
+		simpleUser := "simpleUser"
+		simpleUserPassword := "simpleUserPass"
+		credTests := fmt.Sprintf("%s\n\n", getCredString(simpleUser, simpleUserPassword))
+
+		htpasswdPath := test.MakeHtpasswdFileFromString(credTests)
+		defer os.Remove(htpasswdPath)
+
+		conf.HTTP.Auth = &config.AuthConfig{
+			HTPasswd: config.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+		}
+
+		conf.HTTP.AccessControl = &config.AccessControlConfig{
+			Repositories: config.Repositories{
+				"**": config.PolicyGroup{
+					Policies: []config.Policy{
+						{
+							Users:   []string{simpleUser},
+							Actions: []string{"read", "create"},
+						},
+					},
+				},
+			},
+		}
+
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+		}
+
+		ctlr := api.NewController(conf)
+
+		ctlrManager := test.NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
+
+		simpleUserClient := resty.R().SetBasicAuth(simpleUser, simpleUserPassword)
+
+		digest := godigest.FromString("digest")
+
+		// /v2
+		resp, err := simpleUserClient.Options(baseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "HEAD,GET,POST,OPTIONS")
+
+		// /v2/{name}/tags/list
+		resp, err = simpleUserClient.Options(baseURL + "/v2/reponame/tags/list")
+		So(err, ShouldBeNil)
+		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "HEAD,GET,POST,OPTIONS")
+
+		// /v2/{name}/manifests/{reference}
+		resp, err = simpleUserClient.Options(baseURL + "/v2/reponame/manifests/" + digest.String())
+		So(err, ShouldBeNil)
+		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "HEAD,GET,POST,OPTIONS")
+
+		// /v2/{name}/referrers/{digest}
+		resp, err = simpleUserClient.Options(baseURL + "/v2/reponame/referrers/" + digest.String())
+		So(err, ShouldBeNil)
+		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "HEAD,GET,POST,OPTIONS")
+
+		// /v2/_catalog
+		resp, err = simpleUserClient.Options(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "HEAD,GET,POST,OPTIONS")
+
+		// /v2/_oci/ext/discover
+		resp, err = simpleUserClient.Options(baseURL + "/v2/_oci/ext/discover")
+		So(err, ShouldBeNil)
+		So(resp.Header().Get("Access-Control-Allow-Methods"), ShouldResemble, "HEAD,GET,POST,OPTIONS")
 	})
 }
 
