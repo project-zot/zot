@@ -179,8 +179,24 @@ func SetupSearchRoutes(config *config.Config, router *mux.Router, storeControlle
 		resConfig := search.GetResolverConfig(log, storeController, repoDB, cveInfo)
 
 		extRouter := router.PathPrefix(constants.ExtSearchPrefix).Subrouter()
+		extRouter.Use(SearchACHeadersHandler())
 		extRouter.Methods("GET", "POST", "OPTIONS").
 			Handler(addSearchSecurityHeaders(gqlHandler.NewDefaultServer(gql_generated.NewExecutableSchema(resConfig))))
+	}
+}
+
+func SearchACHeadersHandler() mux.MiddlewareFunc {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
+			resp.Header().Set("Access-Control-Allow-Methods", "HEAD,GET,POST,OPTIONS")
+			resp.Header().Set("Access-Control-Allow-Headers", "Authorization,content-type")
+
+			if req.Method == http.MethodOptions {
+				return
+			}
+
+			next.ServeHTTP(resp, req)
+		})
 	}
 }
 
