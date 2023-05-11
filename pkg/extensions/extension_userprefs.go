@@ -31,20 +31,29 @@ func SetupUserPreferencesRoutes(config *config.Config, router *mux.Router, store
 		log.Info().Msg("setting up user preferences routes")
 
 		userprefsRouter := router.PathPrefix(constants.ExtUserPreferencesPrefix).Subrouter()
+		userprefsRouter.Use(UserPrefsACHeadersHandler())
 
 		userprefsRouter.HandleFunc("", HandleUserPrefs(repoDB, log)).Methods(zcommon.AllowedMethods(http.MethodPut)...)
 	}
 }
 
+func UserPrefsACHeadersHandler() mux.MiddlewareFunc {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
+			resp.Header().Set("Access-Control-Allow-Methods", "HEAD,GET,POST,PUT,OPTIONS")
+			resp.Header().Set("Access-Control-Allow-Headers", "Authorization,content-type")
+
+			if req.Method == http.MethodOptions {
+				return
+			}
+
+			next.ServeHTTP(resp, req)
+		})
+	}
+}
+
 func HandleUserPrefs(repoDB repodb.RepoDB, log log.Logger) func(w http.ResponseWriter, r *http.Request) {
 	return func(rsp http.ResponseWriter, req *http.Request) {
-		rsp.Header().Set("Access-Control-Allow-Methods", "HEAD,GET,POST,PUT,OPTIONS")
-		rsp.Header().Set("Access-Control-Allow-Headers", "Authorization,content-type")
-
-		if req.Method == http.MethodOptions {
-			return
-		}
-
 		if !queryHasParams(req.URL.Query(), []string{"action"}) {
 			rsp.WriteHeader(http.StatusBadRequest)
 
