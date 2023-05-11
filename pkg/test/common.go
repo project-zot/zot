@@ -1176,12 +1176,12 @@ func SignWithNotation(keyName string, reference string, tdir string) error {
 
 	sigRepo := notreg.NewRepositoryWithOptions(remoteRepo, repositoryOpts)
 
-	sigOpts := notation.RemoteSignOptions{
-		SignOptions: notation.SignOptions{
-			ArtifactReference:  ref.String(),
+	sigOpts := notation.SignOptions{
+		SignerSignOptions: notation.SignerSignOptions{
 			SignatureMediaType: mediaType,
 			PluginConfig:       map[string]string{},
 		},
+		ArtifactReference: ref.String(),
 	}
 
 	_, err = notation.Sign(ctx, newSigner, sigRepo, sigOpts)
@@ -1287,7 +1287,7 @@ func VerifyWithNotation(reference string, tdir string) error {
 
 	configs := map[string]string{}
 
-	verifyOpts := notation.RemoteVerifyOptions{
+	verifyOpts := notation.VerifyOptions{
 		ArtifactReference:    ref.String(),
 		PluginConfig:         configs,
 		MaxSignatureAttempts: math.MaxInt64,
