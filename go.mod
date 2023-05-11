@@ -13,7 +13,7 @@ require (
 	github.com/chartmuseum/auth v0.5.0
 	github.com/containers/common v0.53.0
 	github.com/didip/tollbooth/v6 v6.1.2
-	github.com/docker/distribution v2.8.1+incompatible
+	github.com/docker/distribution v2.8.2+incompatible
 	github.com/dustin/go-humanize v1.0.1
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/getlantern/deepcopy v0.0.0-20160317154340-7f45deb8130a
