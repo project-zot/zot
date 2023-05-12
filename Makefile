@@ -86,7 +86,7 @@ binary: modcheck create-name build-metadata
 .PHONY: binary-debug
 binary-debug: $(if $(findstring ui,$(BUILD_LABELS)), ui)
 binary-debug: modcheck swagger create-name build-metadata
-	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)-debug -buildmode=pie -tags $(EXTENSIONS),debug,containers_image_openpgp -v -gcflags all='-N -l' -ldflags "-X zotregistry.io/zot/pkg/api/config.ReleaseTag=${RELEASE_TAG} -X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=$(extended-name) -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION}" ./cmd/zot
+	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)-debug -buildmode=pie -tags $(BUILD_LABELS),debug,containers_image_openpgp -v -gcflags all='-N -l' -ldflags "-X zotregistry.io/zot/pkg/api/config.ReleaseTag=${RELEASE_TAG} -X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=$(extended-name) -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION}" ./cmd/zot
 
 .PHONY: cli
 cli: modcheck create-name build-metadata
@@ -348,7 +348,7 @@ test-bats-referrers: binary check-skopeo $(BATS) $(ORAS)
 	$(BATS) --trace --print-output-on-failure test/blackbox/referrers.bats
 
 .PHONY: test-bats-metadata
-test-bats-metadata: EXTENSIONS=search,userprefs
+test-bats-metadata: BUILD_LABELS=search,userprefs
 test-bats-metadata: binary check-skopeo $(BATS)
 	$(BATS) --trace --print-output-on-failure test/blackbox/metadata.bats
 
