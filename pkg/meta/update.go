@@ -115,7 +115,7 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 			log.Info().Msg("repodb: restoring image store")
 
 			// restore image store
-			_, err := imgStore.PutImageManifest(repo, reference, mediaType, manifestBlob)
+			_, _, err := imgStore.PutImageManifest(repo, reference, mediaType, manifestBlob)
 			if err != nil {
 				log.Error().Err(err).Msg("repodb: error while restoring image store, database is not consistent")
 			}

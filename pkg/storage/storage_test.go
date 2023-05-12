@@ -280,19 +280,19 @@ func TestStorageAPIs(t *testing.T) {
 						So(err, ShouldBeNil)
 
 						Convey("Bad image manifest", func() {
-							_, err = imgStore.PutImageManifest("test", digest.String(), "application/json",
+							_, _, err = imgStore.PutImageManifest("test", digest.String(), "application/json",
 								manifestBuf)
 							So(err, ShouldNotBeNil)
 
-							_, err = imgStore.PutImageManifest("test", digest.String(), ispec.MediaTypeImageManifest,
+							_, _, err = imgStore.PutImageManifest("test", digest.String(), ispec.MediaTypeImageManifest,
 								[]byte{})
 							So(err, ShouldNotBeNil)
 
-							_, err = imgStore.PutImageManifest("test", digest.String(), ispec.MediaTypeImageManifest,
+							_, _, err = imgStore.PutImageManifest("test", digest.String(), ispec.MediaTypeImageManifest,
 								[]byte(`{"test":true}`))
 							So(err, ShouldNotBeNil)
 
-							_, err = imgStore.PutImageManifest("test", digest.String(), ispec.MediaTypeImageManifest,
+							_, _, err = imgStore.PutImageManifest("test", digest.String(), ispec.MediaTypeImageManifest,
 								manifestBuf)
 							So(err, ShouldNotBeNil)
 
@@ -340,20 +340,20 @@ func TestStorageAPIs(t *testing.T) {
 							badMb, err := json.Marshal(manifest)
 							So(err, ShouldBeNil)
 
-							_, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, badMb)
+							_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, badMb)
 							So(err, ShouldNotBeNil)
 
-							_, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, manifestBuf)
+							_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, manifestBuf)
 							So(err, ShouldBeNil)
 
 							// same manifest for coverage
-							_, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, manifestBuf)
+							_, _, err = imgStore.PutImageManifest("test", "1.0", ispec.MediaTypeImageManifest, manifestBuf)
 							So(err, ShouldBeNil)
 
-							_, err = imgStore.PutImageManifest("test", "2.0", ispec.MediaTypeImageManifest, manifestBuf)
+							_, _, err = imgStore.PutImageManifest("test", "2.0", ispec.MediaTypeImageManifest, manifestBuf)
 							So(err, ShouldBeNil)
 
-							_, err = imgStore.PutImageManifest("test", "3.0", ispec.MediaTypeImageManifest, manifestBuf)
+							_, _, err = imgStore.PutImageManifest("test", "3.0", ispec.MediaTypeImageManifest, manifestBuf)
 							So(err, ShouldBeNil)
 
 							_, err = imgStore.GetImageTags("inexistent")
@@ -487,11 +487,11 @@ func TestStorageAPIs(t *testing.T) {
 						})
 
 						Convey("Bad image manifest", func() {
-							_, err = imgStore.PutImageManifest("test", digest.String(),
+							_, _, err = imgStore.PutImageManifest("test", digest.String(),
 								ispec.MediaTypeImageManifest, manifestBuf)
 							So(err, ShouldNotBeNil)
 
-							_, err = imgStore.PutImageManifest("test", digest.String(),
+							_, _, err = imgStore.PutImageManifest("test", digest.String(),
 								ispec.MediaTypeImageManifest, []byte("bad json"))
 							So(err, ShouldNotBeNil)
 
@@ -526,12 +526,12 @@ func TestStorageAPIs(t *testing.T) {
 							manifestBuf, err = json.Marshal(manifest)
 							So(err, ShouldBeNil)
 							digest := godigest.FromBytes(manifestBuf)
-							_, err = imgStore.PutImageManifest("test", digest.String(),
+							_, _, err = imgStore.PutImageManifest("test", digest.String(),
 								ispec.MediaTypeImageManifest, manifestBuf)
 							So(err, ShouldBeNil)
 
 							// same manifest for coverage
-							_, err = imgStore.PutImageManifest("test", digest.String(),
+							_, _, err = imgStore.PutImageManifest("test", digest.String(),
 								ispec.MediaTypeImageManifest, manifestBuf)
 							So(err, ShouldBeNil)
 
@@ -624,7 +624,7 @@ func TestStorageAPIs(t *testing.T) {
 					So(err, ShouldBeNil)
 
 					digest = godigest.FromBytes(manifestBuf)
-					_, err = imgStore.PutImageManifest("replace", "1.0", ispec.MediaTypeImageManifest, manifestBuf)
+					_, _, err = imgStore.PutImageManifest("replace", "1.0", ispec.MediaTypeImageManifest, manifestBuf)
 					So(err, ShouldBeNil)
 
 					_, _, _, err = imgStore.GetImageManifest("replace", digest.String())
@@ -675,7 +675,7 @@ func TestStorageAPIs(t *testing.T) {
 					manifestBuf, err = json.Marshal(manifest)
 					So(err, ShouldBeNil)
 					_ = godigest.FromBytes(manifestBuf)
-					_, err = imgStore.PutImageManifest("replace", "1.0", ispec.MediaTypeImageManifest, manifestBuf)
+					_, _, err = imgStore.PutImageManifest("replace", "1.0", ispec.MediaTypeImageManifest, manifestBuf)
 					So(err, ShouldBeNil)
 				})
 
@@ -790,7 +790,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 				So(err, ShouldBeNil)
 
 				Convey("Missing mandatory annotations", func() {
-					_, err = imgStore.PutImageManifest("test", "1.0.0", ispec.MediaTypeImageManifest, manifestBuf)
+					_, _, err = imgStore.PutImageManifest("test", "1.0.0", ispec.MediaTypeImageManifest, manifestBuf)
 					So(err, ShouldNotBeNil)
 				})
 
@@ -818,7 +818,7 @@ func TestMandatoryAnnotations(t *testing.T) {
 							}, cacheDriver)
 					}
 
-					_, err = imgStore.PutImageManifest("test", "1.0.0", ispec.MediaTypeImageManifest, manifestBuf)
+					_, _, err = imgStore.PutImageManifest("test", "1.0.0", ispec.MediaTypeImageManifest, manifestBuf)
 					So(err, ShouldNotBeNil)
 				})
 			})

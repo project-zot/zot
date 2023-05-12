@@ -52,7 +52,7 @@ func generateTestImage(storeController storage.StoreController, image string) {
 
 	manifestBlob, err := json.Marshal(manifest)
 	So(err, ShouldBeNil)
-	_, err = store.PutImageManifest(repoName, tag, ispec.MediaTypeImageManifest, manifestBlob)
+	_, _, err = store.PutImageManifest(repoName, tag, ispec.MediaTypeImageManifest, manifestBlob)
 	So(err, ShouldBeNil)
 }
 

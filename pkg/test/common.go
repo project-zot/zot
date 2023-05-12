@@ -346,7 +346,7 @@ func WriteImageToFileSystem(image Image, repoName string, storeController storag
 		return err
 	}
 
-	_, err = store.PutImageManifest(repoName, image.Reference, ispec.MediaTypeImageManifest, manifestBlob)
+	_, _, err = store.PutImageManifest(repoName, image.Reference, ispec.MediaTypeImageManifest, manifestBlob)
 	if err != nil {
 		return err
 	}
@@ -376,7 +376,7 @@ func WriteMultiArchImageToFileSystem(multiarchImage MultiarchImage, repoName str
 		return err
 	}
 
-	_, err = store.PutImageManifest(repoName, multiarchImage.Reference, ispec.MediaTypeImageIndex,
+	_, _, err = store.PutImageManifest(repoName, multiarchImage.Reference, ispec.MediaTypeImageIndex,
 		indexBlob)
 
 	return err

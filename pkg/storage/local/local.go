@@ -455,11 +455,11 @@ func (is *ImageStoreLocal) GetImageManifest(repo, reference string) ([]byte, god
 // PutImageManifest adds an image manifest to the repository.
 func (is *ImageStoreLocal) PutImageManifest(repo, reference, mediaType string, //nolint: gocyclo
 	body []byte,
-) (godigest.Digest, error) {
+) (godigest.Digest, godigest.Digest, error) {
 	if err := is.InitRepo(repo); err != nil {
 		is.log.Debug().Err(err).Msg("init repo")
 
-		return "", err
+		return "", "", err
 	}
 
 	var lockLatency time.Time
@@ -469,7 +469,7 @@ func (is *ImageStoreLocal) PutImageManifest(repo, reference, mediaType string, /
 
 	digest, err := storage.ValidateManifest(is, repo, reference, mediaType, body, is.log)
 	if err != nil {
-		return digest, err
+		return digest, "", err
 	}
 
 	refIsDigest := true
@@ -477,7 +477,7 @@ func (is *ImageStoreLocal) PutImageManifest(repo, reference, mediaType string, /
 	mDigest, err := storage.GetAndValidateRequestDigest(body, reference, is.log)
 	if err != nil {
 		if errors.Is(err, zerr.ErrBadManifest) {
-			return mDigest, err
+			return mDigest, "", err
 		}
 
 		refIsDigest = false
@@ -485,7 +485,7 @@ func (is *ImageStoreLocal) PutImageManifest(repo, reference, mediaType string, /
 
 	index, err := storage.GetIndex(is, repo, is.log)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	// create a new descriptor
@@ -497,13 +497,32 @@ func (is *ImageStoreLocal) PutImageManifest(repo, reference, mediaType string, /
 		desc.Annotations = map[string]string{ispec.AnnotationRefName: reference}
 	}
 
+	var subjectDigest godigest.Digest
+
+	artifactType := ""
+
+	if mediaType == ispec.MediaTypeImageManifest {
+		var manifest ispec.Manifest
+
+		err := json.Unmarshal(body, &manifest)
+		if err != nil {
+			return "", "", err
+		}
+
+		if manifest.Subject != nil {
+			subjectDigest = manifest.Subject.Digest
+		}
+
+		artifactType = zcommon.GetManifestArtifactType(manifest)
+	}
+
 	updateIndex, oldDgst, err := storage.CheckIfIndexNeedsUpdate(&index, &desc, is.log)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	if !updateIndex {
-		return desc.Digest, nil
+		return desc.Digest, subjectDigest, nil
 	}
 
 	// write manifest to "blobs"
@@ -515,12 +534,12 @@ func (is *ImageStoreLocal) PutImageManifest(repo, reference, mediaType string, /
 	if err := is.writeFile(file, body); err != nil {
 		is.log.Error().Err(err).Str("file", file).Msg("unable to write")
 
-		return "", err
+		return "", "", err
 	}
 
 	err = storage.UpdateIndexWithPrunedImageManifests(is, &index, repo, desc, oldDgst, is.log)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	// now update "index.json"
@@ -532,45 +551,37 @@ func (is *ImageStoreLocal) PutImageManifest(repo, reference, mediaType string, /
 	if err := test.Error(err); err != nil {
 		is.log.Error().Err(err).Str("file", file).Msg("unable to marshal JSON")
 
-		return "", err
+		return "", "", err
 	}
 
-	if mediaType == ispec.MediaTypeImageManifest {
-		var manifest ispec.Manifest
-
-		err := json.Unmarshal(body, &manifest)
-		if err != nil {
-			return "", err
-		}
-
-		desc.ArtifactType = zcommon.GetManifestArtifactType(manifest)
-	}
+	// update the descriptors artifact type in order to check for signatures when applying the linter
+	desc.ArtifactType = artifactType
 
 	// apply linter only on images, not signatures or indexes
 	pass, err := storage.ApplyLinter(is, is.linter, repo, desc)
 	if !pass {
 		is.log.Error().Err(err).Str("repository", repo).Str("reference", reference).Msg("linter didn't pass")
 
-		return "", err
+		return "", "", err
 	}
 
 	err = is.writeFile(file, buf)
 	if err := test.Error(err); err != nil {
 		is.log.Error().Err(err).Str("file", file).Msg("unable to write")
 
-		return "", err
+		return "", "", err
 	}
 
 	if is.gc {
 		if err := is.garbageCollect(dir, repo); err != nil {
-			return "", err
+			return "", "", err
 		}
 	}
 
 	monitoring.SetStorageUsage(is.metrics, is.rootDir, repo)
 	monitoring.IncUploadCounter(is.metrics, repo)
 
-	return desc.Digest, nil
+	return desc.Digest, subjectDigest, nil
 }
 
 // DeleteImageManifest deletes the image manifest from the repository.

@@ -4515,8 +4515,10 @@ func TestRepoDBWhenSigningImages(t *testing.T) {
 			Convey("imageIsSignature fails", func() {
 				// make image store ignore the wrong format of the input
 				ctlr.StoreController.DefaultStore = mocks.MockedImageStore{
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest, error) {
-						return "", nil
+					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest,
+						godigest.Digest, error,
+					) {
+						return "", "", nil
 					},
 					DeleteImageManifestFn: func(repo, reference string, dc bool) error {
 						return ErrTestError
@@ -5783,8 +5785,10 @@ func TestRepoDBWhenDeletingImages(t *testing.T) {
 
 			Convey("imageIsSignature fails", func() {
 				ctlr.StoreController.DefaultStore = mocks.MockedImageStore{
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest, error) {
-						return "", nil
+					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest,
+						godigest.Digest, error,
+					) {
+						return "", "", nil
 					},
 					DeleteImageManifestFn: func(repo, reference string, dc bool) error {
 						return nil
@@ -5807,8 +5811,10 @@ func TestRepoDBWhenDeletingImages(t *testing.T) {
 
 						return configBlob, nil
 					},
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest, error) {
-						return "", nil
+					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest,
+						godigest.Digest, error,
+					) {
+						return "", "", nil
 					},
 					DeleteImageManifestFn: func(repo, reference string, dc bool) error {
 						return nil
@@ -5835,8 +5841,10 @@ func TestRepoDBWhenDeletingImages(t *testing.T) {
 
 						return configBlob, nil
 					},
-					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest, error) {
-						return "", ErrTestError
+					PutImageManifestFn: func(repo, reference, mediaType string, body []byte) (godigest.Digest,
+						godigest.Digest, error,
+					) {
+						return "", "", ErrTestError
 					},
 					DeleteImageManifestFn: func(repo, reference string, dc bool) error {
 						return nil

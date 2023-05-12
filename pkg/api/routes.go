@@ -606,7 +606,7 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 		return
 	}
 
-	digest, err := imgStore.PutImageManifest(name, reference, mediaType, body)
+	digest, subjectDigest, err := imgStore.PutImageManifest(name, reference, mediaType, body)
 	if err != nil {
 		if errors.Is(err, zerr.ErrRepoNotFound) { //nolint:gocritic // errorslint conflicts with gocritic:IfElseChain
 			WriteJSON(response, http.StatusNotFound,
@@ -654,6 +654,10 @@ func (rh *RouteHandler) UpdateManifest(response http.ResponseWriter, request *ht
 
 			return
 		}
+	}
+
+	if subjectDigest.String() != "" {
+		response.Header().Set(constants.SubjectDigestKey, subjectDigest.String())
 	}
 
 	response.Header().Set("Location", fmt.Sprintf("/v2/%s/manifests/%s", name, digest))
