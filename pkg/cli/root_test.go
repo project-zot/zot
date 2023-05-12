@@ -1018,6 +1018,100 @@ func TestVerify(t *testing.T) {
 	})
 }
 
+func TestValidateExtensionsConfig(t *testing.T) {
+	Convey("Test missing extensions for UI to work", t, func(c C) {
+		config := config.New()
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name())
+		content := []byte(`{
+			"storage": {
+				"rootDirectory": "%/tmp/zot"
+			},
+			"http": {
+				"address": "127.0.0.1",
+				"port": "8080"
+			},
+			"log": {
+				"level": "debug"
+			},
+			"extensions": {
+				"ui": {
+					"enable": "true"
+				}
+			}
+		}`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+		err = cli.LoadConfiguration(config, tmpfile.Name())
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("Test missing extensions for UI to work", t, func(c C) {
+		config := config.New()
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name())
+
+		content := []byte(`{
+			"storage": {
+				"rootDirectory": "%/tmp/zot"
+			},
+			"http": {
+				"address": "127.0.0.1",
+				"port": "8080"
+			},
+			"log": {
+				"level": "debug"
+			},
+			"extensions": {
+				"ui": {
+					"enable": "true"
+				},
+				"mgmt": {
+					"enable": "true"
+				}
+			}
+		}`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+		err = cli.LoadConfiguration(config, tmpfile.Name())
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("Test missing mgmt extension for UI to work", t, func(c C) {
+		config := config.New()
+		tmpfile, err := os.CreateTemp("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name())
+
+		content := []byte(`{
+			"storage": {
+				"rootDirectory": "%/tmp/zot"
+			},
+			"http": {
+				"address": "127.0.0.1",
+				"port": "8080"
+			},
+			"log": {
+				"level": "debug"
+			},
+			"extensions": {
+				"ui": {
+					"enable": "true"
+				},
+				"search": {
+					"enable": "true"
+				}
+			}
+		}`)
+		err = os.WriteFile(tmpfile.Name(), content, 0o0600)
+		So(err, ShouldBeNil)
+		err = cli.LoadConfiguration(config, tmpfile.Name())
+		So(err, ShouldNotBeNil)
+	})
+}
+
 func TestLoadConfig(t *testing.T) {
 	Convey("Test viper load config", t, func(c C) {
 		config := config.New()

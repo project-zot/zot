@@ -32,9 +32,17 @@ OS ?= linux
 ARCH ?= amd64
 BENCH_OUTPUT ?= stdout
 EXTENSIONS ?= sync,search,scrub,metrics,lint,ui,mgmt,userprefs
+UI_DEPENDENCIES := search,mgmt,userprefs
 comma:= ,
+space := $(null) #
 hyphen:= -
 extended-name:=
+
+define add-extensions =
+	$(shell echo $(shell echo $(subst $(space),$(comma), $(strip $(shell echo $(subst $(comma),$(space), $(if $(findstring ui,$(EXTENSIONS)), "$(EXTENSIONS)$(comma)$(UI_DEPENDENCIES)", $(EXTENSIONS))) | tr ' ' '\n' | sort -u | tr '\n' ' '))) | cut -c2-) | tr -d " \t\n\r")
+endef
+
+BUILD_LABELS = $(strip $(call add-extensions))
 
 .PHONY: all
 all: modcheck swagger binary binary-minimal binary-debug cli bench exporter-minimal verify-config test covhtml check check-gh-actions
@@ -54,59 +62,59 @@ modcheck: modtidy
 
 .PHONY: create-name
 create-name:
-ifdef EXTENSIONS
-	$(eval extended-name=-$(subst $(comma),$(hyphen),$(EXTENSIONS)))
+ifdef BUILD_LABELS
+	$(eval extended-name=-$(subst $(comma),$(hyphen),$(BUILD_LABELS)))
 endif
 
 .PHONY: build-metadata
-build-metadata: $(if $(findstring ui,$(EXTENSIONS)), ui)
+build-metadata: $(if $(findstring ui,$(BUILD_LABELS)), ui)
 	echo "Imports: \n"
-	go list -tags $(EXTENSIONS) -f '{{ join .Imports "\n" }}' ./... | sort -u
+	go list -tags $(BUILD_LABELS) -f '{{ join .Imports "\n" }}' ./... | sort -u
 	echo "\n Files: \n"
-	go list -tags $(EXTENSIONS) -f '{{ join .GoFiles "\n" }}' ./... | sort -u
+	go list -tags $(BUILD_LABELS) -f '{{ join .GoFiles "\n" }}' ./... | sort -u
 
 .PHONY: binary-minimal
-binary-minimal: EXTENSIONS=minimal # tag doesn't exist, but we need it to overwrite default value and indicate that we have no extension in build-metadata
+binary-minimal: BUILD_LABELS=minimal # tag doesn't exist, but we need it to overwrite default value and indicate that we have no extension in build-metadata
 binary-minimal: modcheck build-metadata
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)-minimal -buildmode=pie -tags containers_image_openpgp -v -trimpath -ldflags "-X zotregistry.io/zot/pkg/api/config.ReleaseTag=${RELEASE_TAG} -X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=minimal -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zot
 
 .PHONY: binary
-binary: $(if $(findstring ui,$(EXTENSIONS)), ui)
+binary: $(if $(findstring ui,$(BUILD_LABELS)), ui)
 binary: modcheck create-name build-metadata
-	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH) -buildmode=pie -tags $(EXTENSIONS),containers_image_openpgp -v -trimpath -ldflags "-X zotregistry.io/zot/pkg/api/config.ReleaseTag=${RELEASE_TAG} -X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=$(extended-name) -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zot
+	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH) -buildmode=pie -tags $(BUILD_LABELS),containers_image_openpgp -v -trimpath -ldflags "-X zotregistry.io/zot/pkg/api/config.ReleaseTag=${RELEASE_TAG} -X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=$(extended-name) -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zot
 
 .PHONY: binary-debug
-binary-debug: $(if $(findstring ui,$(EXTENSIONS)), ui)
+binary-debug: $(if $(findstring ui,$(BUILD_LABELS)), ui)
 binary-debug: modcheck swagger create-name build-metadata
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zot-$(OS)-$(ARCH)-debug -buildmode=pie -tags $(EXTENSIONS),debug,containers_image_openpgp -v -gcflags all='-N -l' -ldflags "-X zotregistry.io/zot/pkg/api/config.ReleaseTag=${RELEASE_TAG} -X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=$(extended-name) -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION}" ./cmd/zot
 
 .PHONY: cli
 cli: modcheck create-name build-metadata
-	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zli-$(OS)-$(ARCH) -buildmode=pie -tags $(EXTENSIONS),search,containers_image_openpgp -v -trimpath -ldflags "-X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=$(extended-name) -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zli
+	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zli-$(OS)-$(ARCH) -buildmode=pie -tags $(BUILD_LABELS),search,containers_image_openpgp -v -trimpath -ldflags "-X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=$(extended-name) -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zli
 
 .PHONY: bench
 bench: modcheck create-name build-metadata
-	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zb-$(OS)-$(ARCH) -buildmode=pie -tags $(EXTENSIONS),containers_image_openpgp -v -trimpath -ldflags "-X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=$(extended-name) -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zb
+	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zb-$(OS)-$(ARCH) -buildmode=pie -tags $(BUILD_LABELS),containers_image_openpgp -v -trimpath -ldflags "-X zotregistry.io/zot/pkg/api/config.Commit=${COMMIT} -X zotregistry.io/zot/pkg/api/config.BinaryType=$(extended-name) -X zotregistry.io/zot/pkg/api/config.GoVersion=${GO_VERSION} -s -w" ./cmd/zb
 
 .PHONY: exporter-minimal
-exporter-minimal: EXTENSIONS=minimal # tag doesn't exist, but we need it to overwrite default value and indicate that we have no extension in build-metadata
+exporter-minimal: BUILD_LABELS=minimal # tag doesn't exist, but we need it to overwrite default value and indicate that we have no extension in build-metadata
 exporter-minimal: modcheck build-metadata
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -o bin/zxp-$(OS)-$(ARCH) -buildmode=pie -tags containers_image_openpgp -v -trimpath ./cmd/zxp
 
 .PHONY: test
-test: $(if $(findstring ui,$(EXTENSIONS)), ui)
+test: $(if $(findstring ui,$(BUILD_LABELS)), ui)
 test: check-skopeo $(TESTDATA) $(ORAS)
-	go test -failfast -tags $(EXTENSIONS),containers_image_openpgp -v -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-extended.txt -covermode=atomic ./...
+	go test -failfast -tags $(BUILD_LABELS),containers_image_openpgp -v -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-extended.txt -covermode=atomic ./...
 	go test -failfast -tags containers_image_openpgp -v -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-minimal.txt -covermode=atomic ./...
 	# development-mode unit tests possibly using failure injection
-	go test -failfast -tags dev,$(EXTENSIONS),containers_image_openpgp -v -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-dev-extended.txt -covermode=atomic ./pkg/test/... ./pkg/api/... ./pkg/storage/... ./pkg/extensions/sync/... -run ^TestInject
+	go test -failfast -tags dev,$(BUILD_LABELS),containers_image_openpgp -v -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-dev-extended.txt -covermode=atomic ./pkg/test/... ./pkg/api/... ./pkg/storage/... ./pkg/extensions/sync/... -run ^TestInject
 	go test -failfast -tags dev,containers_image_openpgp -v -trimpath -race -cover -coverpkg ./... -coverprofile=coverage-dev-minimal.txt -covermode=atomic ./pkg/test/... ./pkg/storage/... ./pkg/extensions/sync/... -run ^TestInject
-	go test -failfast -tags stress,$(EXTENSIONS),containers_image_openpgp -v -trimpath -race -timeout 15m ./pkg/cli/stress_test.go
+	go test -failfast -tags stress,$(BUILD_LABELS),containers_image_openpgp -v -trimpath -race -timeout 15m ./pkg/cli/stress_test.go
 
 .PHONY: privileged-test
-privileged-test: $(if $(findstring ui,$(EXTENSIONS)), ui)
+privileged-test: $(if $(findstring ui,$(BUILD_LABELS)), ui)
 privileged-test: check-skopeo $(TESTDATA)
-	go test -failfast -tags needprivileges,$(EXTENSIONS),containers_image_openpgp -v -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-dev-needprivileges.txt -covermode=atomic ./pkg/storage/... ./pkg/cli/... -run ^TestElevatedPrivileges
+	go test -failfast -tags needprivileges,$(BUILD_LABELS),containers_image_openpgp -v -trimpath -race -timeout 15m -cover -coverpkg ./... -coverprofile=coverage-dev-needprivileges.txt -covermode=atomic ./pkg/storage/... ./pkg/cli/... -run ^TestElevatedPrivileges
 
 $(TESTDATA): check-skopeo
 	$(shell mkdir -p ${TESTDATA}; cd ${TESTDATA}; mkdir -p noidentity; ../scripts/gen_certs.sh; cd ${TESTDATA}/noidentity; ../../scripts/gen_nameless_certs.sh; cd ${TOP_LEVEL}; skopeo --insecure-policy copy -q docker://public.ecr.aws/t0x7q1g8/centos:7 oci:${TESTDATA}/zot-test:0.0.1;skopeo --insecure-policy copy -q docker://public.ecr.aws/t0x7q1g8/centos:8 oci:${TESTDATA}/zot-cve-test:0.0.1)
@@ -177,15 +185,15 @@ $(GOLINTER):
 	$(GOLINTER) version
 
 .PHONY: check
-check: $(if $(findstring ui,$(EXTENSIONS)), ui)
+check: $(if $(findstring ui,$(BUILD_LABELS)), ui)
 check: ./golangcilint.yaml $(GOLINTER)
 	mkdir -p pkg/extensions/build; touch pkg/extensions/build/.empty
 	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags containers_image_openpgp ./...
-	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags $(EXTENSIONS),containers_image_openpgp ./...
-	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags $(EXTENSIONS),containers_image_openpgp,debug ./...
+	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags $(BUILD_LABELS),containers_image_openpgp ./...
+	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags $(BUILD_LABELS),containers_image_openpgp,debug ./...
 	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags dev,containers_image_openpgp ./...
-	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags dev,$(EXTENSIONS),containers_image_openpgp ./...
-	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags stress,$(EXTENSIONS),containers_image_openpgp ./...
+	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags dev,$(BUILD_LABELS),containers_image_openpgp ./...
+	$(GOLINTER) --config ./golangcilint.yaml run --enable-all --out-format=colored-line-number --build-tags stress,$(BUILD_LABELS),containers_image_openpgp ./...
 	rm pkg/extensions/build/.empty
 
 swagger/docs.go: 
@@ -204,7 +212,7 @@ update-licenses:
 .PHONY: check-licenses
 check-licenses:
 	go install github.com/google/go-licenses@latest
-	@for tag in "$(EXTENSIONS),containers_image_openpgp" "$(EXTENSIONS),containers_image_openpgp"; do \
+	@for tag in "$(BUILD_LABELS),containers_image_openpgp" "$(BUILD_LABELS),containers_image_openpgp"; do \
 		echo Evaluating tag: $$tag;\
 		for mod in $$(go list -m -f '{{if not (or .Indirect .Main)}}{{.Path}}{{end}}' all); do \
 			while [ x$$mod != x ]; do \
@@ -335,7 +343,7 @@ test-restore-s3-blobs-verbose: binary check-skopeo $(BATS) $(REGCLIENT) $(ORAS) 
 	$(BATS) --trace --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/restore_s3_blobs.bats
 
 .PHONY: test-bats-referrers
-test-bats-referrers: EXTENSIONS=search
+test-bats-referrers: BUILD_LABELS=search
 test-bats-referrers: binary check-skopeo $(BATS) $(ORAS)
 	$(BATS) --trace --print-output-on-failure test/blackbox/referrers.bats
 
@@ -353,44 +361,44 @@ test-cloud-only-verbose: binary check-skopeo $(BATS)
 	$(BATS) --trace --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/cloud-only.bats
 
 .PHONY: test-bats-sync
-test-bats-sync: EXTENSIONS=sync
+test-bats-sync: BUILD_LABELS=sync
 test-bats-sync: binary binary-minimal check-skopeo $(BATS) $(NOTATION) $(COSIGN)
 	$(BATS) --trace --print-output-on-failure test/blackbox/sync.bats
 	$(BATS) --trace --print-output-on-failure test/blackbox/sync_docker.bats
 	
 .PHONY: test-bats-sync-verbose
-test-bats-sync-verbose: EXTENSIONS=sync
+test-bats-sync-verbose: BUILD_LABELS=sync
 test-bats-sync-verbose: binary binary-minimal check-skopeo $(BATS) $(NOTATION) $(COSIGN)
 	$(BATS) --trace -t -x -p --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/sync.bats
 	$(BATS) --trace -t -x -p --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/sync_docker.bats
 
 .PHONY: test-bats-cve
-test-bats-cve: EXTENSIONS=search
+test-bats-cve: BUILD_LABELS=search
 test-bats-cve: binary cli check-skopeo $(BATS)
 	$(BATS) --trace --print-output-on-failure test/blackbox/cve.bats
 
 .PHONY: test-bats-cve-verbose
-test-bats-cve-verbose: EXTENSIONS=search
+test-bats-cve-verbose: BUILD_LABELS=search
 test-bats-cve-verbose: binary cli check-skopeo $(BATS)
 	$(BATS) --trace -t -x -p --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/cve.bats
 
 .PHONY: test-bats-scrub
-test-bats-scrub: EXTENSIONS=scrub
+test-bats-scrub: BUILD_LABELS=scrub
 test-bats-scrub: binary check-skopeo $(BATS)
 	$(BATS) --trace --print-output-on-failure test/blackbox/scrub.bats
 
 .PHONY: test-bats-scrub-verbose
-test-bats-scrub-verbose: EXTENSIONS=scrub
+test-bats-scrub-verbose: BUILD_LABELS=scrub
 test-bats-scrub-verbose: binary check-skopeo $(BATS)
 	$(BATS) --trace -p --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/scrub.bats
 
 .PHONY: test-bats-metrics
-test-bats-metrics: EXTENSIONS=metrics
+test-bats-metrics: BUILD_LABELS=metrics
 test-bats-metrics: binary check-skopeo $(BATS)
 	$(BATS) --trace --print-output-on-failure test/blackbox/metrics.bats
 
 .PHONY: test-bats-metrics-verbose
-test-bats-metrics-verbose: EXTENSIONS=metrics
+test-bats-metrics-verbose: BUILD_LABELS=metrics
 test-bats-metrics-verbose: binary check-skopeo $(BATS)
 	$(BATS) --trace -p --verbose-run --print-output-on-failure --show-output-of-passing-tests test/blackbox/metrics.bats
 
@@ -430,6 +438,7 @@ $(COSIGN):
 # set ZUI_VERSION to empty string in order to clone zui locally and build default branch
 .PHONY: ui
 ui:
+	echo $(BUILD_LABELS);\
 	if [ -z $(ZUI_VERSION) ]; then\
 		pwd=$$(pwd);\
 		tdir=$$(mktemp -d);\

@@ -66,17 +66,24 @@ type mgmt struct {
 	log    log.Logger
 }
 
-func (mgmt *mgmt) handler(response http.ResponseWriter, request *http.Request) {
-	sanitizedConfig := mgmt.config.Sanitize()
+func (mgmt *mgmt) handler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sanitizedConfig := mgmt.config.Sanitize()
+		buf, err := common.MarshalThroughStruct(sanitizedConfig, &StrippedConfig{})
+		if err != nil {
+			mgmt.log.Error().Err(err).Msg("mgmt: couldn't marshal config response")
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		_, _ = w.Write(buf)
+	})
+}
 
-	buf, err := common.MarshalThroughStruct(sanitizedConfig, &StrippedConfig{})
-	if err != nil {
-		mgmt.log.Error().Err(err).Msg("mgmt: couldn't marshal config response")
+func addMgmtSecurityHeaders(h http.Handler) http.HandlerFunc { //nolint:varnamelen
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
 
-		response.WriteHeader(http.StatusInternalServerError)
+		h.ServeHTTP(w, r)
 	}
-
-	_, _ = response.Write(buf)
 }
 
 func SetupMgmtRoutes(config *config.Config, router *mux.Router, log log.Logger) {
@@ -85,6 +92,6 @@ func SetupMgmtRoutes(config *config.Config, router *mux.Router, log log.Logger) 
 
 		mgmt := mgmt{config: config, log: log}
 
-		router.PathPrefix(constants.ExtMgmtPrefix).Methods("GET").HandlerFunc(mgmt.handler)
+		router.PathPrefix(constants.ExtMgmtPrefix).Methods("GET").Handler(addMgmtSecurityHeaders(mgmt.handler()))
 	}
 }
