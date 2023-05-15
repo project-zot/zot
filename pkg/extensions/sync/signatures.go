@@ -292,15 +292,15 @@ func (sig *signaturesCopier) syncORASRefs(localRepo, remoteRepo, digestStr strin
 	return nil
 }
 
-func (sig *signaturesCopier) syncOCIRefs(localRepo, remoteRepo, digestStr string, index ispec.Index,
+func (sig *signaturesCopier) syncOCIRefs(localRepo, remoteRepo, subjectStr string, index ispec.Index,
 ) error {
 	if len(index.Manifests) == 0 {
 		return nil
 	}
 
-	skipOCIRefs, err := sig.canSkipOCIRefs(localRepo, digestStr, index)
+	skipOCIRefs, err := sig.canSkipOCIRefs(localRepo, subjectStr, index)
 	if err != nil {
-		sig.log.Error().Err(err).Str("repository", remoteRepo).Str("reference", digestStr).
+		sig.log.Error().Err(err).Str("repository", remoteRepo).Str("reference", subjectStr).
 			Msg("couldn't check if the upstream image oci references can be skipped")
 	}
 
@@ -362,7 +362,7 @@ func (sig *signaturesCopier) syncOCIRefs(localRepo, remoteRepo, digestStr string
 			continue
 		}
 
-		digest, _, err := imageStore.PutImageManifest(localRepo, ref.Digest.String(),
+		refDigest, _, err := imageStore.PutImageManifest(localRepo, ref.Digest.String(),
 			ref.MediaType, OCIRefBody)
 		if err != nil {
 			sig.log.Error().Str("errorType", common.TypeOf(err)).
@@ -372,34 +372,34 @@ func (sig *signaturesCopier) syncOCIRefs(localRepo, remoteRepo, digestStr string
 		}
 
 		if sig.repoDB != nil {
-			sig.log.Debug().Str("repository", localRepo).Str("digest", digestStr).Msg("trying to add OCI refs for repo digest")
+			sig.log.Debug().Str("repository", localRepo).Str("digest", subjectStr).Msg("trying to add OCI refs for repo digest")
 
-			isSig, _, signedManifestDig, err := storage.CheckIsImageSignature(localRepo, OCIRefBody, ref.Digest.String())
+			isSig, sigType, signedManifestDig, err := storage.CheckIsImageSignature(localRepo, OCIRefBody, ref.Digest.String())
 			if err != nil {
-				return fmt.Errorf("failed to set metadata for OCI ref in '%s@%s': %w", localRepo, digestStr, err)
+				return fmt.Errorf("failed to set metadata for OCI ref in '%s@%s': %w", localRepo, subjectStr, err)
 			}
 
 			if isSig {
 				err = sig.repoDB.AddManifestSignature(localRepo, signedManifestDig, repodb.SignatureMetadata{
-					SignatureType:   repodb.NotationType,
-					SignatureDigest: digestStr,
+					SignatureType:   sigType,
+					SignatureDigest: refDigest.String(),
 				})
 			} else {
-				err = repodb.SetImageMetaFromInput(localRepo, digestStr, ref.MediaType,
-					digest, OCIRefBody, sig.storeController.GetImageStore(localRepo),
+				err = repodb.SetImageMetaFromInput(localRepo, refDigest.String(), ref.MediaType,
+					refDigest, OCIRefBody, sig.storeController.GetImageStore(localRepo),
 					sig.repoDB, sig.log)
 			}
 
 			if err != nil {
-				return fmt.Errorf("failed to set metadata for OCI ref in '%s@%s': %w", localRepo, digestStr, err)
+				return fmt.Errorf("failed to set metadata for OCI ref in '%s@%s': %w", localRepo, subjectStr, err)
 			}
 
-			sig.log.Info().Str("repository", localRepo).Str("digest", digestStr).
+			sig.log.Info().Str("repository", localRepo).Str("digest", subjectStr).
 				Msg("successfully added OCI refs to RepoDB for digest")
 		}
 	}
 
-	sig.log.Info().Str("repository", localRepo).Str("digest", digestStr).
+	sig.log.Info().Str("repository", localRepo).Str("digest", subjectStr).
 		Msg("successfully synced OCI refs for digest")
 
 	return nil
