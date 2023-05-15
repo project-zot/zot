@@ -346,7 +346,7 @@ func pushSyncedLocalImage(localRepo, reference, localCachePath string,
 		}
 
 		if repoDB != nil {
-			err = repodb.SetMetadataFromInput(localRepo, reference, mediaType,
+			err = repodb.SetImageMetaFromInput(localRepo, reference, mediaType,
 				manifestDigest, manifestBlob, imageStore, repoDB, log)
 			if err != nil {
 				return fmt.Errorf("failed to set metadata for image '%s %s': %w", localRepo, reference, err)
@@ -403,7 +403,7 @@ func copyManifest(localRepo string, manifestContent []byte, reference string, re
 	}
 
 	if repoDB != nil {
-		err = repodb.SetMetadataFromInput(localRepo, reference, ispec.MediaTypeImageManifest,
+		err = repodb.SetImageMetaFromInput(localRepo, reference, ispec.MediaTypeImageManifest,
 			digest, manifestContent, imageStore, repoDB, log)
 		if err != nil {
 			log.Error().Str("errorType", common.TypeOf(err)).

@@ -180,7 +180,7 @@ func (sig *signaturesCopier) syncCosignSignature(localRepo, remoteRepo, digestSt
 	}
 
 	// push manifest
-	_, _, err = imageStore.PutImageManifest(localRepo, cosignTag,
+	signatureDigest, _, err := imageStore.PutImageManifest(localRepo, cosignTag,
 		ispec.MediaTypeImageManifest, cosignManifestBuf)
 	if err != nil {
 		sig.log.Error().Str("errorType", common.TypeOf(err)).
@@ -193,9 +193,10 @@ func (sig *signaturesCopier) syncCosignSignature(localRepo, remoteRepo, digestSt
 		sig.log.Debug().Str("repository", localRepo).Str("digest", digestStr).
 			Msg("trying to sync cosign signature for repo digest")
 
-		err = repodb.SetMetadataFromInput(localRepo, cosignTag, ispec.MediaTypeImageManifest,
-			godigest.FromBytes(cosignManifestBuf), cosignManifestBuf, sig.storeController.GetImageStore(localRepo),
-			sig.repoDB, sig.log)
+		err := sig.repoDB.AddManifestSignature(localRepo, godigest.Digest(digestStr), repodb.SignatureMetadata{
+			SignatureType:   repodb.CosignType,
+			SignatureDigest: signatureDigest.String(),
+		})
 		if err != nil {
 			return fmt.Errorf("failed to set metadata for cosign signature '%s@%s': %w", localRepo, digestStr, err)
 		}
@@ -258,7 +259,7 @@ func (sig *signaturesCopier) syncORASRefs(localRepo, remoteRepo, digestStr strin
 			}
 		}
 
-		_, _, err = imageStore.PutImageManifest(localRepo, ref.Digest.String(),
+		signatureDigest, _, err := imageStore.PutImageManifest(localRepo, ref.Digest.String(),
 			oras.MediaTypeArtifactManifest, body)
 		if err != nil {
 			sig.log.Error().Str("errorType", common.TypeOf(err)).
@@ -272,8 +273,10 @@ func (sig *signaturesCopier) syncORASRefs(localRepo, remoteRepo, digestStr strin
 			sig.log.Debug().Str("repository", localRepo).Str("digest", digestStr).
 				Msg("trying to sync oras artifact for digest")
 
-			err = repodb.SetMetadataFromInput(localRepo, ref.Digest.String(), ref.MediaType,
-				ref.Digest, body, sig.storeController.GetImageStore(localRepo), sig.repoDB, sig.log)
+			err := sig.repoDB.AddManifestSignature(localRepo, godigest.Digest(digestStr), repodb.SignatureMetadata{
+				SignatureType:   repodb.NotationType,
+				SignatureDigest: signatureDigest.String(),
+			})
 			if err != nil {
 				return fmt.Errorf("failed to set metadata for oras artifact '%s@%s': %w", localRepo, digestStr, err)
 			}
@@ -371,9 +374,22 @@ func (sig *signaturesCopier) syncOCIRefs(localRepo, remoteRepo, digestStr string
 		if sig.repoDB != nil {
 			sig.log.Debug().Str("repository", localRepo).Str("digest", digestStr).Msg("trying to add OCI refs for repo digest")
 
-			err = repodb.SetMetadataFromInput(localRepo, digestStr, ref.MediaType,
-				digest, OCIRefBody, sig.storeController.GetImageStore(localRepo),
-				sig.repoDB, sig.log)
+			isSig, _, signedManifestDig, err := storage.CheckIsImageSignature(localRepo, OCIRefBody, ref.Digest.String())
+			if err != nil {
+				return fmt.Errorf("failed to set metadata for OCI ref in '%s@%s': %w", localRepo, digestStr, err)
+			}
+
+			if isSig {
+				err = sig.repoDB.AddManifestSignature(localRepo, signedManifestDig, repodb.SignatureMetadata{
+					SignatureType:   repodb.NotationType,
+					SignatureDigest: digestStr,
+				})
+			} else {
+				err = repodb.SetImageMetaFromInput(localRepo, digestStr, ref.MediaType,
+					digest, OCIRefBody, sig.storeController.GetImageStore(localRepo),
+					sig.repoDB, sig.log)
+			}
+
 			if err != nil {
 				return fmt.Errorf("failed to set metadata for OCI ref in '%s@%s': %w", localRepo, digestStr, err)
 			}

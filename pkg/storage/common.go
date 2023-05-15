@@ -26,12 +26,6 @@ const (
 	NotationType = "notation"
 )
 
-func SignatureMediaTypes() map[string]bool {
-	return map[string]bool{
-		notreg.ArtifactTypeNotation: true,
-	}
-}
-
 func GetTagsByIndex(index ispec.Index) []string {
 	tags := make([]string, 0)
 
@@ -720,7 +714,6 @@ func IsNonDistributable(mediaType string) bool {
 //
 // - error: any errors that occur.
 func CheckIsImageSignature(repoName string, manifestBlob []byte, reference string,
-	storeController StoreController,
 ) (bool, string, godigest.Digest, error) {
 	var manifestContent ispec.Manifest
 
@@ -732,20 +725,8 @@ func CheckIsImageSignature(repoName string, manifestBlob []byte, reference strin
 	manifestArtifactType := zcommon.GetManifestArtifactType(manifestContent)
 
 	// check notation signature
-	if _, ok := SignatureMediaTypes()[manifestArtifactType]; ok && manifestContent.Subject != nil {
-		imgStore := storeController.GetImageStore(repoName)
-
-		_, signedImageManifestDigest, _, err := imgStore.GetImageManifest(repoName,
-			manifestContent.Subject.Digest.String())
-		if err != nil {
-			if errors.Is(err, zerr.ErrManifestNotFound) {
-				return true, NotationType, signedImageManifestDigest, zerr.ErrOrphanSignature
-			}
-
-			return false, "", "", err
-		}
-
-		return true, NotationType, signedImageManifestDigest, nil
+	if manifestArtifactType == notreg.ArtifactTypeNotation && manifestContent.Subject != nil {
+		return true, NotationType, manifestContent.Subject.Digest, nil
 	}
 
 	// check cosign
@@ -758,22 +739,6 @@ func CheckIsImageSignature(repoName string, manifestBlob []byte, reference strin
 
 		signedImageManifestDigest := godigest.NewDigestFromEncoded(godigest.SHA256,
 			signedImageManifestDigestEncoded)
-
-		imgStore := storeController.GetImageStore(repoName)
-
-		_, signedImageManifestDigest, _, err := imgStore.GetImageManifest(repoName,
-			signedImageManifestDigest.String())
-		if err != nil {
-			if errors.Is(err, zerr.ErrManifestNotFound) {
-				return true, CosignType, signedImageManifestDigest, zerr.ErrOrphanSignature
-			}
-
-			return false, "", "", err
-		}
-
-		if signedImageManifestDigest.String() == "" {
-			return true, CosignType, signedImageManifestDigest, zerr.ErrOrphanSignature
-		}
 
 		return true, CosignType, signedImageManifestDigest, nil
 	}

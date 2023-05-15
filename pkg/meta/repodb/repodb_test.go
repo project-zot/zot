@@ -994,6 +994,34 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			So(err, ShouldNotBeNil)
 		})
 
+		Convey("Test AddImageSignature with inverted order", func() {
+			var (
+				repo1           = "repo1"
+				tag1            = "0.0.1"
+				manifestDigest1 = godigest.FromString("fake-manifest1")
+			)
+
+			err := repoDB.AddManifestSignature(repo1, manifestDigest1, repodb.SignatureMetadata{
+				SignatureType:   "cosign",
+				SignatureDigest: "digest",
+			})
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
+			So(err, ShouldBeNil)
+
+			err = repoDB.SetManifestData(manifestDigest1, repodb.ManifestData{})
+			So(err, ShouldBeNil)
+
+			repoMeta, err := repoDB.GetRepoMeta(repo1)
+			So(err, ShouldBeNil)
+			So(repoMeta.Signatures[manifestDigest1.String()]["cosign"][0].SignatureManifestDigest,
+				ShouldResemble, "digest")
+
+			_, err = repoDB.GetManifestMeta(repo1, "badDigest")
+			So(err, ShouldNotBeNil)
+		})
+
 		Convey("Test DeleteSignature", func() {
 			var (
 				repo1           = "repo1"
@@ -1004,7 +1032,7 @@ func RunRepoDBTests(repoDB repodb.RepoDB, preparationFuncs ...func() error) {
 			err := repoDB.SetRepoReference(repo1, tag1, manifestDigest1, ispec.MediaTypeImageManifest)
 			So(err, ShouldBeNil)
 
-			err = repoDB.SetManifestMeta(repo1, manifestDigest1, repodb.ManifestMetadata{})
+			err = repoDB.SetManifestData(manifestDigest1, repodb.ManifestData{})
 			So(err, ShouldBeNil)
 
 			err = repoDB.AddManifestSignature(repo1, manifestDigest1, repodb.SignatureMetadata{

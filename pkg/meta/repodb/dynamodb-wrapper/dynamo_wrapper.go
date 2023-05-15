@@ -621,6 +621,27 @@ func (dwr *DBWrapper) AddManifestSignature(repo string, signedManifestDigest god
 ) error {
 	repoMeta, err := dwr.GetRepoMeta(repo)
 	if err != nil {
+		if errors.Is(err, zerr.ErrRepoMetaNotFound) {
+			repoMeta = repodb.RepoMetadata{
+				Name:       repo,
+				Tags:       map[string]repodb.Descriptor{},
+				Statistics: map[string]repodb.DescriptorStatistics{},
+				Signatures: map[string]repodb.ManifestSignatures{
+					signedManifestDigest.String(): {
+						sygMeta.SignatureType: []repodb.SignatureInfo{
+							{
+								SignatureManifestDigest: sygMeta.SignatureDigest,
+								LayersInfo:              sygMeta.LayersInfo,
+							},
+						},
+					},
+				},
+				Referrers: map[string][]repodb.ReferrerInfo{},
+			}
+
+			return dwr.SetRepoMeta(repo, repoMeta)
+		}
+
 		return err
 	}
 
@@ -635,26 +656,17 @@ func (dwr *DBWrapper) AddManifestSignature(repo string, signedManifestDigest god
 
 	signatureSlice := manifestSignatures[sygMeta.SignatureType]
 	if !common.SignatureAlreadyExists(signatureSlice, sygMeta) {
-		if sygMeta.SignatureType == repodb.NotationType {
-			signatureSlice = append(signatureSlice, repodb.SignatureInfo{
-				SignatureManifestDigest: sygMeta.SignatureDigest,
-				LayersInfo:              sygMeta.LayersInfo,
-			})
-		} else if sygMeta.SignatureType == repodb.CosignType {
-			signatureSlice = []repodb.SignatureInfo{{
-				SignatureManifestDigest: sygMeta.SignatureDigest,
-				LayersInfo:              sygMeta.LayersInfo,
-			}}
-		}
+		signatureSlice = append(signatureSlice, repodb.SignatureInfo{
+			SignatureManifestDigest: sygMeta.SignatureDigest,
+			LayersInfo:              sygMeta.LayersInfo,
+		})
 	}
 
 	manifestSignatures[sygMeta.SignatureType] = signatureSlice
 
 	repoMeta.Signatures[signedManifestDigest.String()] = manifestSignatures
 
-	err = dwr.SetRepoMeta(repoMeta.Name, repoMeta)
-
-	return err
+	return dwr.SetRepoMeta(repoMeta.Name, repoMeta)
 }
 
 func (dwr *DBWrapper) DeleteSignature(repo string, signedManifestDigest godigest.Digest,

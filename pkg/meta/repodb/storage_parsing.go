@@ -65,16 +65,6 @@ func ParseRepo(repo string, repoDB RepoDB, storeController storage.StoreControll
 		return err
 	}
 
-	type foundSignatureData struct {
-		repo                 string
-		tag                  string
-		signatureType        string
-		signedManifestDigest string
-		signatureDigest      string
-	}
-
-	var signaturesFound []foundSignatureData
-
 	for _, manifest := range indexContent.Manifests {
 		tag, hasTag := manifest.Annotations[ispec.AnnotationRefName]
 
@@ -85,6 +75,7 @@ func ParseRepo(repo string, repoDB RepoDB, storeController storage.StoreControll
 			return err
 		}
 
+		// this check helps reduce unecesary reads from storage
 		if manifestMetaIsPresent && hasTag {
 			err = repoDB.SetRepoReference(repo, tag, manifest.Digest, manifest.MediaType)
 			if err != nil {
@@ -105,28 +96,27 @@ func ParseRepo(repo string, repoDB RepoDB, storeController storage.StoreControll
 		}
 
 		isSignature, signatureType, signedManifestDigest, err := storage.CheckIsImageSignature(repo,
-			manifestBlob, tag, storeController)
+			manifestBlob, tag)
 		if err != nil {
-			if errors.Is(err, zerr.ErrOrphanSignature) {
-				continue
-			} else {
-				log.Error().Err(err).Str("repository", repo).Str("tag", tag).
-					Msg("load-repo: failed checking if image is signature for specified image")
+			log.Error().Err(err).Str("repository", repo).Str("tag", tag).
+				Msg("load-repo: failed checking if image is signature for specified image")
 
-				return err
-			}
+			return err
 		}
 
 		if isSignature {
-			// We'll ignore signatures now because the order in which the signed image and signature are added into
-			// the DB matters. First we add the normal images then the signatures
-			signaturesFound = append(signaturesFound, foundSignatureData{
-				repo:                 repo,
-				tag:                  tag,
-				signatureType:        signatureType,
-				signedManifestDigest: signedManifestDigest.String(),
-				signatureDigest:      digest.String(),
-			})
+			err := repoDB.AddManifestSignature(repo, signedManifestDigest,
+				SignatureMetadata{
+					SignatureType:   signatureType,
+					SignatureDigest: digest.String(),
+				})
+			if err != nil {
+				log.Error().Err(err).Str("repository", repo).Str("tag", tag).
+					Str("manifestDigest", signedManifestDigest.String()).
+					Msg("load-repo: failed set signature meta for signed image manifest digest")
+
+				return err
+			}
 
 			continue
 		}
@@ -137,27 +127,11 @@ func ParseRepo(repo string, repoDB RepoDB, storeController storage.StoreControll
 			reference = manifest.Digest.String()
 		}
 
-		err = SetMetadataFromInput(repo, reference, manifest.MediaType, manifest.Digest, manifestBlob,
+		err = SetImageMetaFromInput(repo, reference, manifest.MediaType, manifest.Digest, manifestBlob,
 			imageStore, repoDB, log)
 		if err != nil {
 			log.Error().Err(err).Str("repository", repo).Str("tag", tag).
 				Msg("load-repo: failed to set metadata for image")
-
-			return err
-		}
-	}
-
-	// manage the signatures found
-	for _, sigData := range signaturesFound {
-		err := repoDB.AddManifestSignature(repo, godigest.Digest(sigData.signedManifestDigest),
-			SignatureMetadata{
-				SignatureType:   sigData.signatureType,
-				SignatureDigest: sigData.signatureDigest,
-			})
-		if err != nil {
-			log.Error().Err(err).Str("repository", sigData.repo).Str("tag", sigData.tag).
-				Str("manifestDigest", sigData.signedManifestDigest).
-				Msg("load-repo: failed set signature meta for signed image manifest digest")
 
 			return err
 		}
@@ -266,7 +240,7 @@ func NewIndexData(repoName string, indexBlob []byte, imageStore storage.ImageSto
 
 // SetMetadataFromInput tries to set manifest metadata and update repo metadata by adding the current tag
 // (in case the reference is a tag). The function expects image manifests and indexes (multi arch images).
-func SetMetadataFromInput(repo, reference, mediaType string, digest godigest.Digest, descriptorBlob []byte,
+func SetImageMetaFromInput(repo, reference, mediaType string, digest godigest.Digest, descriptorBlob []byte,
 	imageStore storage.ImageStore, repoDB RepoDB, log log.Logger,
 ) error {
 	switch mediaType {

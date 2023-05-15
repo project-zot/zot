@@ -1,11 +1,8 @@
 package meta
 
 import (
-	"errors"
-
 	godigest "github.com/opencontainers/go-digest"
 
-	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/common"
 	"zotregistry.io/zot/pkg/meta/repodb"
@@ -21,15 +18,8 @@ func OnUpdateManifest(repo, reference, mediaType string, digest godigest.Digest,
 	imgStore := storeController.GetImageStore(repo)
 
 	// check if image is a signature
-	isSignature, signatureType, signedManifestDigest, err := storage.CheckIsImageSignature(repo, body, reference,
-		storeController)
+	isSignature, signatureType, signedManifestDigest, err := storage.CheckIsImageSignature(repo, body, reference)
 	if err != nil {
-		if errors.Is(err, zerr.ErrOrphanSignature) {
-			log.Warn().Err(err).Msg("image has signature format but it doesn't sign any image")
-
-			return zerr.ErrOrphanSignature
-		}
-
 		log.Error().Err(err).Msg("can't check if image is a signature or not")
 
 		if err := imgStore.DeleteImageManifest(repo, reference, false); err != nil {
@@ -53,7 +43,7 @@ func OnUpdateManifest(repo, reference, mediaType string, digest godigest.Digest,
 			metadataSuccessfullySet = false
 		}
 	} else {
-		err := repodb.SetMetadataFromInput(repo, reference, mediaType, digest, body,
+		err := repodb.SetImageMetaFromInput(repo, reference, mediaType, digest, body,
 			imgStore, repoDB, log)
 		if err != nil {
 			metadataSuccessfullySet = false
@@ -85,14 +75,8 @@ func OnDeleteManifest(repo, reference, mediaType string, digest godigest.Digest,
 	imgStore := storeController.GetImageStore(repo)
 
 	isSignature, signatureType, signedManifestDigest, err := storage.CheckIsImageSignature(repo, manifestBlob,
-		reference, storeController)
+		reference)
 	if err != nil {
-		if errors.Is(err, zerr.ErrOrphanSignature) {
-			log.Warn().Err(err).Msg("image has signature format but it doesn't sign any image")
-
-			return zerr.ErrOrphanSignature
-		}
-
 		log.Error().Err(err).Msg("can't check if image is a signature or not")
 
 		return err
@@ -148,15 +132,8 @@ func OnGetManifest(name, reference string, body []byte,
 	storeController storage.StoreController, repoDB repodb.RepoDB, log log.Logger,
 ) error {
 	// check if image is a signature
-	isSignature, _, _, err := storage.CheckIsImageSignature(name, body, reference,
-		storeController)
+	isSignature, _, _, err := storage.CheckIsImageSignature(name, body, reference)
 	if err != nil {
-		if errors.Is(err, zerr.ErrOrphanSignature) {
-			log.Warn().Err(err).Msg("image has signature format but it doesn't sign any image")
-
-			return err
-		}
-
 		log.Error().Err(err).Msg("can't check if manifest is a signature or not")
 
 		return err
