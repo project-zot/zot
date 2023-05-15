@@ -53,6 +53,8 @@ type ManifestSummary struct {
 	Layers          []LayerSummary            `json:"layers"`
 	History         []LayerHistory            `json:"history"`
 	Vulnerabilities ImageVulnerabilitySummary `json:"vulnerabilities"`
+	Referrers       []Referrer                `json:"referrers"`
+	ArtifactType    string                    `json:"artifactType"`
 }
 
 type Platform struct {
