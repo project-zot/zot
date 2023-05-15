@@ -242,6 +242,10 @@ type ManifestSummary {
     Information about objects that reference this image
     """
     Referrers: [Referrer]
+    """
+    Value of the artifactType field if present else the value of the config media type
+    """
+    ArtifactType: String
 }
 
 """

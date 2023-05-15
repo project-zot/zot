@@ -6456,4 +6456,132 @@ func TestImageSummary(t *testing.T) {
 		// There are 0 vulnerabilities this data used in tests
 		So(imgSummary.Vulnerabilities.MaxSeverity, ShouldEqual, "CRITICAL")
 	})
+
+	Convey("GraphQL query for Artifact Type", t, func() {
+		port := GetFreePort()
+		baseURL := GetBaseURL(port)
+		conf := config.New()
+		conf.HTTP.Port = port
+		conf.Storage.RootDirectory = t.TempDir()
+		conf.Storage.GC = false
+
+		defaultVal := true
+		conf.Extensions = &extconf.ExtensionConfig{
+			Search: &extconf.SearchConfig{BaseConfig: extconf.BaseConfig{Enable: &defaultVal}},
+		}
+
+		conf.Extensions.Search.CVE = nil
+
+		ctlr := api.NewController(conf)
+
+		query := `
+			{
+				Image(image:"repo:art%d"){
+					RepoName
+					Tag
+					Manifests {
+						Digest
+						ArtifactType
+					}
+					Size
+				}
+			}`
+
+		queryImg1 := fmt.Sprintf(query, 1)
+		queryImg2 := fmt.Sprintf(query, 2)
+
+		var imgSummaryResponse ImageSummaryResult
+
+		ctlrManager := NewControllerManager(ctlr)
+		ctlrManager.StartAndWait(port)
+		defer ctlrManager.StopServer()
+
+		// upload the images
+		artType1 := "application/test.signature.v1"
+		artType2 := "application/test.signature.v2"
+
+		img1, err := GetRandomImage("art1")
+		So(err, ShouldBeNil)
+		img1.Manifest.Config = ispec.ScratchDescriptor
+		img1.Manifest.ArtifactType = artType1
+		digest1, err := img1.Digest()
+		So(err, ShouldBeNil)
+
+		err = UploadImage(img1, baseURL, "repo")
+		So(err, ShouldBeNil)
+
+		img2, err := GetRandomImage("art2")
+		So(err, ShouldBeNil)
+		img2.Manifest.Config.MediaType = artType2
+		digest2, err := img2.Digest()
+		So(err, ShouldBeNil)
+
+		err = UploadImage(img2, baseURL, "repo")
+		So(err, ShouldBeNil)
+
+		// GET image 1
+		resp, err := resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(queryImg1))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.Body(), ShouldNotBeNil)
+
+		err = json.Unmarshal(resp.Body(), &imgSummaryResponse)
+		So(err, ShouldBeNil)
+
+		imgSum := imgSummaryResponse.SingleImageSummary.ImageSummary
+		So(len(imgSum.Manifests), ShouldEqual, 1)
+		So(imgSum.Manifests[0].ArtifactType, ShouldResemble, artType1)
+
+		// GET image 2
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" + url.QueryEscape(queryImg2))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.Body(), ShouldNotBeNil)
+
+		err = json.Unmarshal(resp.Body(), &imgSummaryResponse)
+		So(err, ShouldBeNil)
+
+		imgSum = imgSummaryResponse.SingleImageSummary.ImageSummary
+		So(len(imgSum.Manifests), ShouldEqual, 1)
+		So(imgSum.Manifests[0].ArtifactType, ShouldResemble, artType2)
+
+		// Expanded repo info test
+
+		queryExpRepoInfo := `{
+			ExpandedRepoInfo(repo:"test1"){
+				Images {
+					Tag
+					Manifests {
+						Digest
+						ArtifactType
+					}
+				}
+			}
+		}`
+
+		var expandedRepoInfoResp ExpandedRepoInfoResp
+
+		resp, err = resty.R().Get(baseURL + graphqlQueryPrefix + "?query=" +
+			url.QueryEscape(queryExpRepoInfo))
+		So(resp, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+		So(resp.Body(), ShouldNotBeNil)
+
+		err = json.Unmarshal(resp.Body(), &expandedRepoInfoResp)
+		So(err, ShouldBeNil)
+
+		imgSums := expandedRepoInfoResp.ExpandedRepoInfo.RepoInfo.ImageSummaries
+
+		for _, imgSum := range imgSums {
+			switch imgSum.Digest {
+			case digest1.String():
+				So(imgSum.Manifests[0].ArtifactType, ShouldResemble, artType1)
+			case digest2.String():
+				So(imgSum.Manifests[0].ArtifactType, ShouldResemble, artType2)
+			}
+		}
+	})
 }

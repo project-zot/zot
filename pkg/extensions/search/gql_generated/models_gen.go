@@ -181,6 +181,8 @@ type ManifestSummary struct {
 	Vulnerabilities *ImageVulnerabilitySummary `json:"Vulnerabilities,omitempty"`
 	// Information about objects that reference this image
 	Referrers []*Referrer `json:"Referrers,omitempty"`
+	// Value of the artifactType field if present else the value of the config media type
+	ArtifactType *string `json:"ArtifactType,omitempty"`
 }
 
 // Contains the name of the package, the current installed version and the version where the CVE was fixed

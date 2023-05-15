@@ -115,6 +115,7 @@ type ComplexityRoot struct {
 	}
 
 	ManifestSummary struct {
+		ArtifactType    func(childComplexity int) int
 		ConfigDigest    func(childComplexity int) int
 		Digest          func(childComplexity int) int
 		DownloadCount   func(childComplexity int) int
@@ -537,6 +538,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.LayerSummary.Size(childComplexity), true
+
+	case "ManifestSummary.ArtifactType":
+		if e.complexity.ManifestSummary.ArtifactType == nil {
+			break
+		}
+
+		return e.complexity.ManifestSummary.ArtifactType(childComplexity), true
 
 	case "ManifestSummary.ConfigDigest":
 		if e.complexity.ManifestSummary.ConfigDigest == nil {
@@ -1278,6 +1286,10 @@ type ManifestSummary {
     Information about objects that reference this image
     """
     Referrers: [Referrer]
+    """
+    Value of the artifactType field if present else the value of the config media type
+    """
+    ArtifactType: String
 }
 
 """
@@ -3248,6 +3260,8 @@ func (ec *executionContext) fieldContext_ImageSummary_Manifests(ctx context.Cont
 				return ec.fieldContext_ManifestSummary_Vulnerabilities(ctx, field)
 			case "Referrers":
 				return ec.fieldContext_ManifestSummary_Referrers(ctx, field)
+			case "ArtifactType":
+				return ec.fieldContext_ManifestSummary_ArtifactType(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ManifestSummary", field.Name)
 		},
@@ -4593,6 +4607,47 @@ func (ec *executionContext) fieldContext_ManifestSummary_Referrers(ctx context.C
 				return ec.fieldContext_Referrer_Annotations(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Referrer", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ManifestSummary_ArtifactType(ctx context.Context, field graphql.CollectedField, obj *ManifestSummary) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_ManifestSummary_ArtifactType(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.ArtifactType, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_ManifestSummary_ArtifactType(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ManifestSummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
 		},
 	}
 	return fc, nil
@@ -9281,6 +9336,10 @@ func (ec *executionContext) _ManifestSummary(ctx context.Context, sel ast.Select
 		case "Referrers":
 
 			out.Values[i] = ec._ManifestSummary_Referrers(ctx, field, obj)
+
+		case "ArtifactType":
+
+			out.Values[i] = ec._ManifestSummary_ArtifactType(ctx, field, obj)
 
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))

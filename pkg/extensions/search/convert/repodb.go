@@ -301,6 +301,7 @@ func ImageManifest2ImageSummary(ctx context.Context, repo, tag string, digest go
 		repoName         = repo
 		configDigest     = manifestContent.Config.Digest.String()
 		configSize       = manifestContent.Config.Size
+		artifactType     = common.GetManifestArtifactType(manifestContent)
 		imageLastUpdated = common.GetImageLastUpdated(configContent)
 		downloadCount    = repoMeta.Statistics[digest.String()].DownloadCount
 		isSigned         = false
@@ -373,6 +374,8 @@ func ImageManifest2ImageSummary(ctx context.Context, repo, tag string, digest go
 					MaxSeverity: &imageCveSummary.MaxSeverity,
 					Count:       &imageCveSummary.Count,
 				},
+				Referrers:    getReferrers(repoMeta.Referrers[manifestDigest]),
+				ArtifactType: &artifactType,
 			},
 		},
 		LastUpdated:   &imageLastUpdated,
@@ -437,8 +440,7 @@ func ImageManifest2ManifestSummary(ctx context.Context, repo, tag string, descri
 ) (*gql_generated.ManifestSummary, map[string]int64, error) {
 	var (
 		manifestContent ispec.Manifest
-
-		digest = descriptor.Digest
+		digest          = descriptor.Digest
 	)
 
 	err := json.Unmarshal(manifestMeta.ManifestBlob, &manifestContent)
@@ -463,6 +465,7 @@ func ImageManifest2ManifestSummary(ctx context.Context, repo, tag string, descri
 		manifestDigestStr = digest.String()
 		configDigest      = manifestContent.Config.Digest.String()
 		configSize        = manifestContent.Config.Size
+		artifactType      = common.GetManifestArtifactType(manifestContent)
 		imageLastUpdated  = common.GetImageLastUpdated(configContent)
 		downloadCount     = manifestMeta.DownloadCount
 		isSigned          = false
@@ -522,7 +525,8 @@ func ImageManifest2ManifestSummary(ctx context.Context, repo, tag string, descri
 			MaxSeverity: &imageCveSummary.MaxSeverity,
 			Count:       &imageCveSummary.Count,
 		},
-		Referrers: getReferrers(referrersInfo),
+		Referrers:    getReferrers(referrersInfo),
+		ArtifactType: &artifactType,
 	}
 
 	return &manifestSummary, imageBlobsMap, nil
