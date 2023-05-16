@@ -69,14 +69,16 @@ func (rh *RouteHandler) SetupRoutes() {
 		prefixedRouter.Use(AuthzHandler(rh.c))
 	}
 
+	applyCORSHeaders := getCORSHeadersHandler(rh.c.Config.HTTP.AllowOrigin)
+
 	// https://github.com/opencontainers/distribution-spec/blob/main/spec.md#endpoints
 	{
 		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/tags/list", zreg.NameRegexp.String()),
-			rh.ListTags).Methods(zcommon.AllowedMethods("GET")...)
+			applyCORSHeaders(rh.ListTags)).Methods(zcommon.AllowedMethods("GET")...)
 		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", zreg.NameRegexp.String()),
-			rh.CheckManifest).Methods(zcommon.AllowedMethods("HEAD")...)
+			applyCORSHeaders(rh.CheckManifest)).Methods(zcommon.AllowedMethods("HEAD")...)
 		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", zreg.NameRegexp.String()),
-			rh.GetManifest).Methods(zcommon.AllowedMethods("GET")...)
+			applyCORSHeaders(rh.GetManifest)).Methods(zcommon.AllowedMethods("GET")...)
 		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", zreg.NameRegexp.String()),
 			rh.UpdateManifest).Methods("PUT")
 		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", zreg.NameRegexp.String()),
@@ -99,13 +101,13 @@ func (rh *RouteHandler) SetupRoutes() {
 			rh.DeleteBlobUpload).Methods("DELETE")
 		// support for OCI artifact references
 		prefixedRouter.HandleFunc(fmt.Sprintf("/{name:%s}/referrers/{digest}", zreg.NameRegexp.String()),
-			rh.GetReferrers).Methods(zcommon.AllowedMethods("GET")...)
+			applyCORSHeaders(rh.GetReferrers)).Methods(zcommon.AllowedMethods("GET")...)
 		prefixedRouter.HandleFunc(constants.ExtCatalogPrefix,
-			rh.ListRepositories).Methods(zcommon.AllowedMethods("GET")...)
+			applyCORSHeaders(rh.ListRepositories)).Methods(zcommon.AllowedMethods("GET")...)
 		prefixedRouter.HandleFunc(constants.ExtOciDiscoverPrefix,
-			rh.ListExtensions).Methods(zcommon.AllowedMethods("GET")...)
+			applyCORSHeaders(rh.ListExtensions)).Methods(zcommon.AllowedMethods("GET")...)
 		prefixedRouter.HandleFunc("/",
-			rh.CheckVersionSupport).Methods(zcommon.AllowedMethods("GET")...)
+			applyCORSHeaders(rh.CheckVersionSupport)).Methods(zcommon.AllowedMethods("GET")...)
 	}
 
 	// support for ORAS artifact reference types (alpha 1) - image signature use case
@@ -122,14 +124,48 @@ func (rh *RouteHandler) SetupRoutes() {
 			prefixedRouter.HandleFunc("/metrics", rh.GetMetrics).Methods("GET")
 		} else {
 			// extended build
-			ext.SetupMetricsRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, AuthHandler(rh.c), rh.c.Log)
-			ext.SetupSearchRoutes(rh.c.Config, prefixedRouter, rh.c.StoreController, rh.c.RepoDB, rh.c.CveInfo, rh.c.Log)
-			ext.SetupUserPreferencesRoutes(rh.c.Config, prefixedRouter, rh.c.StoreController, rh.c.RepoDB, rh.c.CveInfo,
+			prefixedExtensionsRouter := prefixedRouter.PathPrefix(constants.ExtPrefix).Subrouter()
+			prefixedExtensionsRouter.Use(CORSHeadersMiddleware(rh.c.Config.HTTP.AllowOrigin))
+
+			ext.SetupMgmtRoutes(rh.c.Config, prefixedExtensionsRouter, rh.c.Log)
+			ext.SetupSearchRoutes(rh.c.Config, prefixedExtensionsRouter, rh.c.StoreController, rh.c.RepoDB, rh.c.CveInfo,
 				rh.c.Log)
+			ext.SetupUserPreferencesRoutes(rh.c.Config, prefixedExtensionsRouter, rh.c.StoreController, rh.c.RepoDB,
+				rh.c.CveInfo, rh.c.Log)
+
 			ext.SetupUIRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, rh.c.Log)
-			ext.SetupMgmtRoutes(rh.c.Config, prefixedRouter, rh.c.Log)
+			ext.SetupMetricsRoutes(rh.c.Config, rh.c.Router, rh.c.StoreController, AuthHandler(rh.c), rh.c.Log)
+
 			gqlPlayground.SetupGQLPlaygroundRoutes(rh.c.Config, prefixedRouter, rh.c.StoreController, rh.c.Log)
 		}
+	}
+}
+
+func CORSHeadersMiddleware(allowOrigin string) mux.MiddlewareFunc {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+			addCORSHeaders(allowOrigin, response)
+
+			next.ServeHTTP(response, request)
+		})
+	}
+}
+
+func getCORSHeadersHandler(allowOrigin string) func(http.HandlerFunc) http.HandlerFunc {
+	return func(next http.HandlerFunc) http.HandlerFunc {
+		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+			addCORSHeaders(allowOrigin, response)
+
+			next.ServeHTTP(response, request)
+		})
+	}
+}
+
+func addCORSHeaders(allowOrigin string, response http.ResponseWriter) {
+	if allowOrigin == "" {
+		response.Header().Set("Access-Control-Allow-Origin", "*")
+	} else {
+		response.Header().Set("Access-Control-Allow-Origin", allowOrigin)
 	}
 }
 

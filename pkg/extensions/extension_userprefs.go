@@ -30,7 +30,7 @@ func SetupUserPreferencesRoutes(config *config.Config, router *mux.Router, store
 	if config.Extensions.Search != nil && *config.Extensions.Search.Enable {
 		log.Info().Msg("setting up user preferences routes")
 
-		userprefsRouter := router.PathPrefix(constants.ExtUserPreferencesPrefix).Subrouter()
+		userprefsRouter := router.PathPrefix(constants.ExtUserPreferences).Subrouter()
 		userprefsRouter.Use(UserPrefsACHeadersHandler())
 
 		userprefsRouter.HandleFunc("", HandleUserPrefs(repoDB, log)).Methods(zcommon.AllowedMethods(http.MethodPut)...)

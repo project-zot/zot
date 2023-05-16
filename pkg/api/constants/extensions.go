@@ -5,11 +5,17 @@ const (
 	ExtCatalogPrefix     = "/_catalog"
 	ExtOciDiscoverPrefix = "/_oci/ext/discover"
 	// zot specific extensions.
-	ExtPrefix                 = "/_zot/ext"
-	ExtSearchPrefix           = ExtPrefix + "/search"
-	FullSearchPrefix          = RoutePrefix + ExtSearchPrefix
-	ExtMgmtPrefix             = ExtPrefix + "/mgmt"
-	FullMgmtPrefix            = RoutePrefix + ExtMgmtPrefix
-	ExtUserPreferencesPrefix  = ExtPrefix + "/userprefs"
+	ExtPrefix = "/_zot/ext"
+
+	ExtSearch        = "/search"
+	ExtSearchPrefix  = ExtPrefix + ExtSearch
+	FullSearchPrefix = RoutePrefix + ExtSearchPrefix
+
+	ExtMgmt        = "/mgmt"
+	ExtMgmtPrefix  = ExtPrefix + ExtMgmt
+	FullMgmtPrefix = RoutePrefix + ExtMgmtPrefix
+
+	ExtUserPreferences        = "/userprefs"
+	ExtUserPreferencesPrefix  = ExtPrefix + ExtUserPreferences
 	FullUserPreferencesPrefix = RoutePrefix + ExtUserPreferencesPrefix
 )

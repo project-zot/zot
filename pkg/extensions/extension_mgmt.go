@@ -92,6 +92,6 @@ func SetupMgmtRoutes(config *config.Config, router *mux.Router, log log.Logger) 
 
 		mgmt := mgmt{config: config, log: log}
 
-		router.PathPrefix(constants.ExtMgmtPrefix).Methods("GET").Handler(addMgmtSecurityHeaders(mgmt.handler()))
+		router.PathPrefix(constants.ExtMgmt).Methods("GET").Handler(addMgmtSecurityHeaders(mgmt.handler()))
 	}
 }
