@@ -10,7 +10,6 @@ import (
 
 	gqlHandler "github.com/99designs/gqlgen/graphql/handler"
 	"github.com/gorilla/mux"
-	distext "github.com/opencontainers/distribution-spec/specs-go/v1/extensions"
 
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/api/constants"
@@ -33,6 +32,10 @@ const (
 	running
 	done
 )
+
+func IsBuiltWithSearchExtension() bool {
+	return true
+}
 
 func GetCVEInfo(config *config.Config, storeController storage.StoreController,
 	repoDB repodb.RepoDB, log log.Logger,
@@ -198,43 +201,4 @@ func SearchACHeadersHandler() mux.MiddlewareFunc {
 			next.ServeHTTP(resp, req)
 		})
 	}
-}
-
-func getExtension(name, url, description string, endpoints []string) distext.Extension {
-	return distext.Extension{
-		Name:        name,
-		URL:         url,
-		Description: description,
-		Endpoints:   endpoints,
-	}
-}
-
-func GetExtensions(config *config.Config) distext.ExtensionList {
-	extensionList := distext.ExtensionList{}
-
-	extensions := make([]distext.Extension, 0)
-
-	if config.Extensions != nil && config.Extensions.Search != nil {
-		endpoints := []string{constants.FullSearchPrefix}
-		searchExt := getExtension("_zot",
-			"https://github.com/project-zot/zot/blob/"+config.ReleaseTag+"/pkg/extensions/_zot.md",
-			"zot registry extensions",
-			endpoints)
-
-		extensions = append(extensions, searchExt)
-	}
-
-	if config.Extensions != nil && config.Extensions.Mgmt != nil {
-		endpoints := []string{constants.FullMgmtPrefix}
-		mgmtExt := getExtension("_zot",
-			"https://github.com/project-zot/zot/blob/"+config.ReleaseTag+"/pkg/extensions/_zot.md",
-			"zot registry extensions",
-			endpoints)
-
-		extensions = append(extensions, mgmtExt)
-	}
-
-	extensionList.Extensions = extensions
-
-	return extensionList
 }

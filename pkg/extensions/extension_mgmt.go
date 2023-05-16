@@ -40,6 +40,10 @@ type StrippedConfig struct {
 	} `json:"http" mapstructure:"http"`
 }
 
+func IsBuiltWithMGMTExtension() bool {
+	return true
+}
+
 func (auth Auth) MarshalJSON() ([]byte, error) {
 	type localAuth Auth
 

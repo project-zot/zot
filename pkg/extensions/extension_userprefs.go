@@ -24,6 +24,10 @@ const (
 	ToggleRepoStarAction     = "toggleStar"
 )
 
+func IsBuiltWithUserPrefsExtension() bool {
+	return true
+}
+
 func SetupUserPreferencesRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
 	repoDB repodb.RepoDB, cveInfo CveInfo, log log.Logger,
 ) {

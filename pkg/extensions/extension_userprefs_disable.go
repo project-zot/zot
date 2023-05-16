@@ -12,6 +12,10 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 )
 
+func IsBuiltWithUserPrefsExtension() bool {
+	return false
+}
+
 func SetupUserPreferencesRoutes(config *config.Config, router *mux.Router, storeController storage.StoreController,
 	repoDB repodb.RepoDB, cveInfo CveInfo, log log.Logger,
 ) {
