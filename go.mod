@@ -3,7 +3,7 @@ module zotregistry.io/zot
 go 1.20
 
 require (
-	github.com/99designs/gqlgen v0.17.30
+	github.com/99designs/gqlgen v0.17.31
 	github.com/Masterminds/semver v1.5.0
 	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
 	github.com/apex/log v1.9.0
@@ -34,7 +34,7 @@ require (
 	github.com/opencontainers/umoci v0.4.8-0.20210922062158-e60a0cc726e6
 	github.com/oras-project/artifacts-spec v1.0.0-rc.2
 	github.com/phayes/freeport v0.0.0-20220201140144-74d24b5ae9f5
-	github.com/prometheus/client_golang v1.15.0
+	github.com/prometheus/client_golang v1.15.1
 	github.com/prometheus/client_model v0.4.0
 	github.com/rs/zerolog v1.29.1
 	github.com/smartystreets/goconvey v1.8.0
@@ -51,7 +51,7 @@ require (
 
 require (
 	github.com/aquasecurity/trivy v0.40.0
-	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.19.6
+	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.19.7
 	github.com/containers/image/v5 v5.25.0
 	github.com/gobwas/glob v0.2.3
 	github.com/notaryproject/notation-go v1.0.0-rc.4
@@ -219,8 +219,8 @@ require (
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
 	github.com/aws/aws-sdk-go v1.44.262
 	github.com/aws/aws-sdk-go-v2 v1.18.0
-	github.com/aws/aws-sdk-go-v2/config v1.18.22
-	github.com/aws/aws-sdk-go-v2/credentials v1.13.21 // indirect
+	github.com/aws/aws-sdk-go-v2/config v1.18.25
+	github.com/aws/aws-sdk-go-v2/credentials v1.13.24 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.10.23
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.13.3 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.1.33 // indirect
@@ -229,9 +229,9 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ecr v1.17.18 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ecrpublic v1.12.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.9.27 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sso v1.12.9 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.14.9 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sts v1.18.10 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sso v1.12.10 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.14.10 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sts v1.19.0 // indirect
 	github.com/aws/smithy-go v1.13.5 // indirect
 	github.com/awslabs/amazon-ecr-credential-helper/ecr-login v0.0.0-20220228164355-396b2034c795 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect

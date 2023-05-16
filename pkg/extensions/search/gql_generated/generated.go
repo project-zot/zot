@@ -8824,42 +8824,47 @@ func (ec *executionContext) unmarshalInputFilter(ctx context.Context, obj interf
 			var err error
 
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("Os"))
-			it.Os, err = ec.unmarshalOString2ᚕᚖstring(ctx, v)
+			data, err := ec.unmarshalOString2ᚕᚖstring(ctx, v)
 			if err != nil {
 				return it, err
 			}
+			it.Os = data
 		case "Arch":
 			var err error
 
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("Arch"))
-			it.Arch, err = ec.unmarshalOString2ᚕᚖstring(ctx, v)
+			data, err := ec.unmarshalOString2ᚕᚖstring(ctx, v)
 			if err != nil {
 				return it, err
 			}
+			it.Arch = data
 		case "HasToBeSigned":
 			var err error
 
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("HasToBeSigned"))
-			it.HasToBeSigned, err = ec.unmarshalOBoolean2ᚖbool(ctx, v)
+			data, err := ec.unmarshalOBoolean2ᚖbool(ctx, v)
 			if err != nil {
 				return it, err
 			}
+			it.HasToBeSigned = data
 		case "IsBookmarked":
 			var err error
 
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("IsBookmarked"))
-			it.IsBookmarked, err = ec.unmarshalOBoolean2ᚖbool(ctx, v)
+			data, err := ec.unmarshalOBoolean2ᚖbool(ctx, v)
 			if err != nil {
 				return it, err
 			}
+			it.IsBookmarked = data
 		case "IsStarred":
 			var err error
 
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("IsStarred"))
-			it.IsStarred, err = ec.unmarshalOBoolean2ᚖbool(ctx, v)
+			data, err := ec.unmarshalOBoolean2ᚖbool(ctx, v)
 			if err != nil {
 				return it, err
 			}
+			it.IsStarred = data
 		}
 	}
 
@@ -8884,26 +8889,29 @@ func (ec *executionContext) unmarshalInputPageInput(ctx context.Context, obj int
 			var err error
 
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("limit"))
-			it.Limit, err = ec.unmarshalOInt2ᚖint(ctx, v)
+			data, err := ec.unmarshalOInt2ᚖint(ctx, v)
 			if err != nil {
 				return it, err
 			}
+			it.Limit = data
 		case "offset":
 			var err error
 
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("offset"))
-			it.Offset, err = ec.unmarshalOInt2ᚖint(ctx, v)
+			data, err := ec.unmarshalOInt2ᚖint(ctx, v)
 			if err != nil {
 				return it, err
 			}
+			it.Offset = data
 		case "sortBy":
 			var err error
 
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("sortBy"))
-			it.SortBy, err = ec.unmarshalOSortCriteria2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐSortCriteria(ctx, v)
+			data, err := ec.unmarshalOSortCriteria2ᚖzotregistryᚗioᚋzotᚋpkgᚋextensionsᚋsearchᚋgql_generatedᚐSortCriteria(ctx, v)
 			if err != nil {
 				return it, err
 			}
+			it.SortBy = data
 		}
 	}
 
