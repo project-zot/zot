@@ -13,7 +13,7 @@ import (
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/log"
-	"zotregistry.io/zot/pkg/storage"
+	storageTypes "zotregistry.io/zot/pkg/storage/types"
 )
 
 type Linter struct {
@@ -29,7 +29,7 @@ func NewLinter(config *config.LintConfig, log log.Logger) *Linter {
 }
 
 func (linter *Linter) CheckMandatoryAnnotations(repo string, manifestDigest godigest.Digest,
-	imgStore storage.ImageStore,
+	imgStore storageTypes.ImageStore,
 ) (bool, error) {
 	if linter.config == nil {
 		return true, nil
@@ -112,7 +112,7 @@ func (linter *Linter) CheckMandatoryAnnotations(repo string, manifestDigest godi
 }
 
 func (linter *Linter) Lint(repo string, manifestDigest godigest.Digest,
-	imageStore storage.ImageStore,
+	imageStore storageTypes.ImageStore,
 ) (bool, error) {
 	return linter.CheckMandatoryAnnotations(repo, manifestDigest, imageStore)
 }

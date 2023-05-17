@@ -20,4 +20,6 @@ const (
 	BoltdbName               = "cache"
 	ReferrerFilterAnnotation = "org.opencontainers.referrers.filtersApplied"
 	DynamoDBDriverName       = "dynamodb"
+	DefaultGCDelay           = 1 * time.Hour
+	S3StorageDriverName      = "s3"
 )

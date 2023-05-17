@@ -17,6 +17,8 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/cache"
+	common "zotregistry.io/zot/pkg/storage/common"
+	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/local"
 	"zotregistry.io/zot/pkg/test"
 )
@@ -37,7 +39,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 		Name:        "cache",
 		UseRelPaths: true,
 	}, log)
-	imgStore := local.NewImageStore(dir, true, storage.DefaultGCDelay,
+	imgStore := local.NewImageStore(dir, true, storageConstants.DefaultGCDelay,
 		true, true, log, metrics, nil, cacheDriver)
 
 	Convey("Scrub only one repo", t, func(c C) {
@@ -111,7 +113,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 			// verify error message
 			So(actual, ShouldContainSubstring, "test 1.0 affected parse application/vnd.oci.image.manifest.v1+json")
 
-			index, err := storage.GetIndex(imgStore, repoName, log.With().Caller().Logger())
+			index, err := common.GetIndex(imgStore, repoName, log.With().Caller().Logger())
 			So(err, ShouldBeNil)
 
 			So(len(index.Manifests), ShouldEqual, 1)
@@ -191,7 +193,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 			err = os.Chmod(layerFile, 0x0200)
 			So(err, ShouldBeNil)
 
-			index, err := storage.GetIndex(imgStore, repoName, log.With().Caller().Logger())
+			index, err := common.GetIndex(imgStore, repoName, log.With().Caller().Logger())
 			So(err, ShouldBeNil)
 
 			So(len(index.Manifests), ShouldEqual, 1)
@@ -325,7 +327,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 			So(actual, ShouldContainSubstring, "test 1.0 affected")
 			So(actual, ShouldContainSubstring, "no such file or directory")
 
-			index, err := storage.GetIndex(imgStore, repoName, log.With().Caller().Logger())
+			index, err := common.GetIndex(imgStore, repoName, log.With().Caller().Logger())
 			So(err, ShouldBeNil)
 
 			So(len(index.Manifests), ShouldEqual, 2)

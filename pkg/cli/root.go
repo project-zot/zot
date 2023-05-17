@@ -24,7 +24,6 @@ import (
 	"zotregistry.io/zot/pkg/api/constants"
 	extconf "zotregistry.io/zot/pkg/extensions/config"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
-	"zotregistry.io/zot/pkg/storage"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/s3"
 )
@@ -116,7 +115,7 @@ func newScrubCmd(conf *config.Config) *cobra.Command {
 				ctlr := api.NewController(conf)
 				ctlr.Metrics = monitoring.NewMetricsServer(false, ctlr.Log)
 
-				if err := ctlr.InitImageStore(context.Background()); err != nil {
+				if err := ctlr.InitImageStore(); err != nil {
 					panic(err)
 				}
 
@@ -388,7 +387,7 @@ func validateConfiguration(config *config.Config) error {
 
 	if len(config.Storage.StorageDriver) != 0 {
 		// enforce s3 driver in case of using storage driver
-		if config.Storage.StorageDriver["name"] != storage.S3StorageDriverName {
+		if config.Storage.StorageDriver["name"] != storageConstants.S3StorageDriverName {
 			log.Error().Err(errors.ErrBadConfig).Interface("cacheDriver", config.Storage.StorageDriver["name"]).
 				Msg("unsupported storage driver")
 
@@ -410,7 +409,7 @@ func validateConfiguration(config *config.Config) error {
 
 			for route, storageConfig := range subPaths {
 				if len(storageConfig.StorageDriver) != 0 {
-					if storageConfig.StorageDriver["name"] != storage.S3StorageDriverName {
+					if storageConfig.StorageDriver["name"] != storageConstants.S3StorageDriverName {
 						log.Error().Err(errors.ErrBadConfig).Str("subpath", route).Interface("storageDriver",
 							storageConfig.StorageDriver["name"]).Msg("unsupported storage driver")
 
@@ -583,7 +582,7 @@ func applyDefaultValues(config *config.Config, viperInstance *viper.Viper) {
 
 		// if gc is enabled and gcDelay is not set, it is set to default value
 		if storageConfig.GC && !viperInstance.IsSet("storage::subpaths::"+name+"::gcdelay") {
-			storageConfig.GCDelay = storage.DefaultGCDelay
+			storageConfig.GCDelay = storageConstants.DefaultGCDelay
 			config.Storage.SubPaths[name] = storageConfig
 		}
 	}

@@ -42,8 +42,7 @@ import (
 	"zotregistry.io/zot/pkg/extensions/sync"
 	logger "zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/signatures"
-	"zotregistry.io/zot/pkg/storage"
-	"zotregistry.io/zot/pkg/storage/local"
+	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/test"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
@@ -1660,7 +1659,7 @@ func TestBasicAuth(t *testing.T) {
 				"a": {
 					RootDirectory: destDir,
 					GC:            true,
-					GCDelay:       storage.DefaultGCDelay,
+					GCDelay:       storageConstants.DefaultGCDelay,
 					Dedupe:        true,
 				},
 			}
@@ -2506,7 +2505,7 @@ func TestSubPaths(t *testing.T) {
 			subpath: {
 				RootDirectory: subPathDestDir,
 				GC:            true,
-				GCDelay:       storage.DefaultGCDelay,
+				GCDelay:       storageConstants.DefaultGCDelay,
 				Dedupe:        true,
 			},
 		}
@@ -5203,7 +5202,7 @@ func TestSyncWithDestination(t *testing.T) {
 
 		test.CopyTestFiles("../../../test/data", srcDir)
 
-		err := os.MkdirAll(path.Join(sctlr.Config.Storage.RootDirectory, "/zot-fold"), local.DefaultDirPerms)
+		err := os.MkdirAll(path.Join(sctlr.Config.Storage.RootDirectory, "/zot-fold"), storageConstants.DefaultDirPerms)
 		So(err, ShouldBeNil)
 
 		// move upstream images under /zot-fold

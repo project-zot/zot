@@ -3,17 +3,18 @@ package storage
 import (
 	"fmt"
 	"strings"
+
+	storageTypes "zotregistry.io/zot/pkg/storage/types"
+)
+
+const (
+	CosignType   = "cosign"
+	NotationType = "notation"
 )
 
 type StoreController struct {
-	DefaultStore ImageStore
-	SubStore     map[string]ImageStore
-}
-
-// BlobUpload models and upload request.
-type BlobUpload struct {
-	StoreName string
-	ID        string
+	DefaultStore storageTypes.ImageStore
+	SubStore     map[string]storageTypes.ImageStore
 }
 
 func GetRoutePrefix(name string) string {
@@ -29,7 +30,7 @@ func GetRoutePrefix(name string) string {
 	return fmt.Sprintf("/%s", names[0])
 }
 
-func (sc StoreController) GetImageStore(name string) ImageStore {
+func (sc StoreController) GetImageStore(name string) storageTypes.ImageStore {
 	if sc.SubStore != nil {
 		// SubStore is being provided, now we need to find equivalent image store and this will be found by splitting name
 		prefixName := GetRoutePrefix(name)

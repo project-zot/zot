@@ -14,7 +14,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/docker/distribution/registry/storage/driver/factory"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 
@@ -27,10 +26,6 @@ import (
 	"zotregistry.io/zot/pkg/meta/repodb/repodbfactory"
 	"zotregistry.io/zot/pkg/scheduler"
 	"zotregistry.io/zot/pkg/storage"
-	"zotregistry.io/zot/pkg/storage/cache"
-	"zotregistry.io/zot/pkg/storage/constants"
-	"zotregistry.io/zot/pkg/storage/local"
-	"zotregistry.io/zot/pkg/storage/s3"
 )
 
 const (
@@ -224,7 +219,7 @@ func (c *Controller) Init(reloadCtx context.Context) error {
 
 	c.Metrics = monitoring.NewMetricsServer(enabled, c.Log)
 
-	if err := c.InitImageStore(reloadCtx); err != nil {
+	if err := c.InitImageStore(); err != nil { //nolint:contextcheck
 		return err
 	}
 
@@ -244,235 +239,15 @@ func (c *Controller) InitCVEInfo() {
 	}
 }
 
-func (c *Controller) InitImageStore(ctx context.Context) error {
-	c.StoreController = storage.StoreController{}
-
+func (c *Controller) InitImageStore() error {
 	linter := ext.GetLinter(c.Config, c.Log)
 
-	if c.Config.Storage.RootDirectory != "" {
-		// no need to validate hard links work on s3
-		if c.Config.Storage.Dedupe && c.Config.Storage.StorageDriver == nil {
-			err := local.ValidateHardLink(c.Config.Storage.RootDirectory)
-			if err != nil {
-				c.Log.Warn().Msg("input storage root directory filesystem does not supports hardlinking," +
-					"disabling dedupe functionality")
-
-				c.Config.Storage.Dedupe = false
-			}
-		}
-
-		var defaultStore storage.ImageStore
-		if c.Config.Storage.StorageDriver == nil {
-			// false positive lint - linter does not implement Lint method
-			//nolint:typecheck,contextcheck
-			defaultStore = local.NewImageStore(c.Config.Storage.RootDirectory,
-				c.Config.Storage.GC, c.Config.Storage.GCDelay,
-				c.Config.Storage.Dedupe, c.Config.Storage.Commit, c.Log, c.Metrics, linter,
-				CreateCacheDatabaseDriver(c.Config.Storage.StorageConfig, c.Log),
-			)
-		} else {
-			storeName := fmt.Sprintf("%v", c.Config.Storage.StorageDriver["name"])
-			if storeName != storage.S3StorageDriverName {
-				c.Log.Fatal().Err(errors.ErrBadConfig).Str("storageDriver", storeName).
-					Msg("unsupported storage driver")
-			}
-			// Init a Storager from connection string.
-			store, err := factory.Create(storeName, c.Config.Storage.StorageDriver)
-			if err != nil {
-				c.Log.Error().Err(err).Str("rootDir", c.Config.Storage.RootDirectory).Msg("unable to create s3 service")
-
-				return err
-			}
-
-			/* in the case of s3 c.Config.Storage.RootDirectory is used for caching blobs locally and
-			c.Config.Storage.StorageDriver["rootdirectory"] is the actual rootDir in s3 */
-			rootDir := "/"
-			if c.Config.Storage.StorageDriver["rootdirectory"] != nil {
-				rootDir = fmt.Sprintf("%v", c.Config.Storage.StorageDriver["rootdirectory"])
-			}
-
-			// false positive lint - linter does not implement Lint method
-			//nolint: typecheck,contextcheck
-			defaultStore = s3.NewImageStore(rootDir, c.Config.Storage.RootDirectory,
-				c.Config.Storage.GC, c.Config.Storage.GCDelay, c.Config.Storage.Dedupe,
-				c.Config.Storage.Commit, c.Log, c.Metrics, linter, store,
-				CreateCacheDatabaseDriver(c.Config.Storage.StorageConfig, c.Log))
-		}
-
-		c.StoreController.DefaultStore = defaultStore
-	} else {
-		// we can't proceed without global storage
-		c.Log.Error().Err(errors.ErrImgStoreNotFound).Msg("controller: no storage config provided")
-
-		return errors.ErrImgStoreNotFound
-	}
-
-	if c.Config.Storage.SubPaths != nil {
-		if len(c.Config.Storage.SubPaths) > 0 {
-			subPaths := c.Config.Storage.SubPaths
-
-			//nolint: contextcheck
-			subImageStore, err := c.getSubStore(subPaths, linter)
-			if err != nil {
-				c.Log.Error().Err(err).Msg("controller: error getting sub image store")
-
-				return err
-			}
-
-			c.StoreController.SubStore = subImageStore
-		}
-	}
-
-	return nil
-}
-
-func (c *Controller) getSubStore(subPaths map[string]config.StorageConfig,
-	linter storage.Lint,
-) (map[string]storage.ImageStore, error) {
-	imgStoreMap := make(map[string]storage.ImageStore, 0)
-
-	subImageStore := make(map[string]storage.ImageStore)
-
-	// creating image store per subpaths
-	for route, storageConfig := range subPaths {
-		// no need to validate hard links work on s3
-		if storageConfig.Dedupe && storageConfig.StorageDriver == nil {
-			err := local.ValidateHardLink(storageConfig.RootDirectory)
-			if err != nil {
-				c.Log.Warn().Msg("input storage root directory filesystem does not supports hardlinking, " +
-					"disabling dedupe functionality")
-
-				storageConfig.Dedupe = false
-			}
-		}
-
-		if storageConfig.StorageDriver == nil {
-			// Compare if subpath root dir is same as default root dir
-			isSame, _ := config.SameFile(c.Config.Storage.RootDirectory, storageConfig.RootDirectory)
-
-			if isSame {
-				c.Log.Error().Err(errors.ErrBadConfig).Msg("sub path storage directory is same as root directory")
-
-				return nil, errors.ErrBadConfig
-			}
-
-			isUnique := true
-
-			// Compare subpath unique files
-			for file := range imgStoreMap {
-				// We already have image storage for this file
-				if compareImageStore(file, storageConfig.RootDirectory) {
-					subImageStore[route] = imgStoreMap[file]
-
-					isUnique = true
-				}
-			}
-
-			// subpath root directory is unique
-			// add it to uniqueSubFiles
-			// Create a new image store and assign it to imgStoreMap
-			if isUnique {
-				imgStoreMap[storageConfig.RootDirectory] = local.NewImageStore(storageConfig.RootDirectory,
-					storageConfig.GC, storageConfig.GCDelay, storageConfig.Dedupe,
-					storageConfig.Commit, c.Log, c.Metrics, linter, CreateCacheDatabaseDriver(storageConfig, c.Log))
-
-				subImageStore[route] = imgStoreMap[storageConfig.RootDirectory]
-			}
-		} else {
-			storeName := fmt.Sprintf("%v", storageConfig.StorageDriver["name"])
-			if storeName != storage.S3StorageDriverName {
-				c.Log.Fatal().Err(errors.ErrBadConfig).Str("storageDriver", storeName).
-					Msg("unsupported storage driver")
-			}
-
-			// Init a Storager from connection string.
-			store, err := factory.Create(storeName, storageConfig.StorageDriver)
-			if err != nil {
-				c.Log.Error().Err(err).Str("rootDir", storageConfig.RootDirectory).Msg("Unable to create s3 service")
-
-				return nil, err
-			}
-
-			/* in the case of s3 c.Config.Storage.RootDirectory is used for caching blobs locally and
-			c.Config.Storage.StorageDriver["rootdirectory"] is the actual rootDir in s3 */
-			rootDir := "/"
-			if c.Config.Storage.StorageDriver["rootdirectory"] != nil {
-				rootDir = fmt.Sprintf("%v", c.Config.Storage.StorageDriver["rootdirectory"])
-			}
-
-			// false positive lint - linter does not implement Lint method
-			//nolint: typecheck
-			subImageStore[route] = s3.NewImageStore(rootDir, storageConfig.RootDirectory,
-				storageConfig.GC, storageConfig.GCDelay,
-				storageConfig.Dedupe, storageConfig.Commit, c.Log, c.Metrics, linter, store,
-				CreateCacheDatabaseDriver(storageConfig, c.Log),
-			)
-		}
-	}
-
-	return subImageStore, nil
-}
-
-func compareImageStore(root1, root2 string) bool {
-	isSameFile, err := config.SameFile(root1, root2)
-	// This error is path error that means either of root directory doesn't exist, in that case do string match
+	storeController, err := storage.New(c.Config, linter, c.Metrics, c.Log)
 	if err != nil {
-		return strings.EqualFold(root1, root2)
+		return err
 	}
 
-	return isSameFile
-}
-
-func getUseRelPaths(storageConfig *config.StorageConfig) bool {
-	return storageConfig.StorageDriver == nil
-}
-
-func CreateCacheDatabaseDriver(storageConfig config.StorageConfig, log log.Logger) cache.Cache {
-	if storageConfig.Dedupe || storageConfig.StorageDriver != nil {
-		if !storageConfig.RemoteCache {
-			params := cache.BoltDBDriverParameters{}
-			params.RootDir = storageConfig.RootDirectory
-			params.Name = constants.BoltdbName
-
-			if storageConfig.StorageDriver != nil {
-				params.Name = s3.CacheDBName
-			}
-
-			params.UseRelPaths = getUseRelPaths(&storageConfig)
-
-			driver, _ := storage.Create("boltdb", params, log)
-
-			return driver
-		}
-
-		// remote cache
-		if storageConfig.CacheDriver != nil {
-			name, ok := storageConfig.CacheDriver["name"].(string)
-			if !ok {
-				log.Warn().Msg("remote cache driver name missing!")
-
-				return nil
-			}
-
-			if name != constants.DynamoDBDriverName {
-				log.Warn().Str("driver", name).Msg("remote cache driver unsupported!")
-
-				return nil
-			}
-
-			// dynamodb
-			dynamoParams := cache.DynamoDBDriverParameters{}
-			dynamoParams.Endpoint, _ = storageConfig.CacheDriver["endpoint"].(string)
-			dynamoParams.Region, _ = storageConfig.CacheDriver["region"].(string)
-			dynamoParams.TableName, _ = storageConfig.CacheDriver["cachetablename"].(string)
-
-			driver, _ := storage.Create("dynamodb", dynamoParams, log)
-
-			return driver
-		}
-
-		return nil
-	}
+	c.StoreController = storeController
 
 	return nil
 }

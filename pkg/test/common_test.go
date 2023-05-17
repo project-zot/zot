@@ -24,6 +24,7 @@ import (
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/test"
+	"zotregistry.io/zot/pkg/test/inject"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
 
@@ -174,7 +175,7 @@ func TestGetOciLayoutDigests(t *testing.T) {
 
 func TestGetImageComponents(t *testing.T) {
 	Convey("Inject failures for unreachable lines", t, func() {
-		injected := test.InjectFailure(0)
+		injected := inject.InjectFailure(0)
 		if injected {
 			_, _, _, err := test.GetImageComponents(100)
 			So(err, ShouldNotBeNil)
@@ -183,6 +184,26 @@ func TestGetImageComponents(t *testing.T) {
 	Convey("finishes successfully", t, func() {
 		_, _, _, err := test.GetImageComponents(100)
 		So(err, ShouldBeNil)
+	})
+}
+
+func TestGetRandomImageComponents(t *testing.T) {
+	Convey("Inject failures for unreachable lines", t, func() {
+		injected := inject.InjectFailure(0)
+		if injected {
+			_, _, _, err := test.GetRandomImageComponents(100)
+			So(err, ShouldNotBeNil)
+		}
+	})
+}
+
+func TestGetImageComponentsWithConfig(t *testing.T) {
+	Convey("Inject failures for unreachable lines", t, func() {
+		injected := inject.InjectFailure(0)
+		if injected {
+			_, _, _, err := test.GetImageComponentsWithConfig(ispec.Image{})
+			So(err, ShouldNotBeNil)
+		}
 	})
 }
 
@@ -601,14 +622,14 @@ func TestUploadImage(t *testing.T) {
 		}
 
 		Convey("CreateBlobUpload", func() {
-			injected := test.InjectFailure(2)
+			injected := inject.InjectFailure(2)
 			if injected {
 				err := test.UploadImage(img, baseURL, "test")
 				So(err, ShouldNotBeNil)
 			}
 		})
 		Convey("UpdateBlobUpload", func() {
-			injected := test.InjectFailure(4)
+			injected := inject.InjectFailure(4)
 			if injected {
 				err := test.UploadImage(img, baseURL, "test")
 				So(err, ShouldNotBeNil)
@@ -662,28 +683,28 @@ func TestInjectUploadImage(t *testing.T) {
 		}
 
 		Convey("first marshal", func() {
-			injected := test.InjectFailure(0)
+			injected := inject.InjectFailure(0)
 			if injected {
 				err := test.UploadImage(img, baseURL, "test")
 				So(err, ShouldNotBeNil)
 			}
 		})
 		Convey("CreateBlobUpload POST call", func() {
-			injected := test.InjectFailure(1)
+			injected := inject.InjectFailure(1)
 			if injected {
 				err := test.UploadImage(img, baseURL, "test")
 				So(err, ShouldNotBeNil)
 			}
 		})
 		Convey("UpdateBlobUpload PUT call", func() {
-			injected := test.InjectFailure(3)
+			injected := inject.InjectFailure(3)
 			if injected {
 				err := test.UploadImage(img, baseURL, "test")
 				So(err, ShouldNotBeNil)
 			}
 		})
 		Convey("second marshal", func() {
-			injected := test.InjectFailure(5)
+			injected := inject.InjectFailure(5)
 			if injected {
 				err := test.UploadImage(img, baseURL, "test")
 				So(err, ShouldNotBeNil)
@@ -791,28 +812,28 @@ func TestInjectUploadImageWithBasicAuth(t *testing.T) {
 		}
 
 		Convey("first marshal", func() {
-			injected := test.InjectFailure(0)
+			injected := inject.InjectFailure(0)
 			if injected {
 				err := test.UploadImageWithBasicAuth(img, baseURL, "test", "user", "password")
 				So(err, ShouldNotBeNil)
 			}
 		})
 		Convey("CreateBlobUpload POST call", func() {
-			injected := test.InjectFailure(1)
+			injected := inject.InjectFailure(1)
 			if injected {
 				err := test.UploadImageWithBasicAuth(img, baseURL, "test", "user", "password")
 				So(err, ShouldNotBeNil)
 			}
 		})
 		Convey("UpdateBlobUpload PUT call", func() {
-			injected := test.InjectFailure(3)
+			injected := inject.InjectFailure(3)
 			if injected {
 				err := test.UploadImageWithBasicAuth(img, baseURL, "test", "user", "password")
 				So(err, ShouldNotBeNil)
 			}
 		})
 		Convey("second marshal", func() {
-			injected := test.InjectFailure(5)
+			injected := inject.InjectFailure(5)
 			if injected {
 				err := test.UploadImageWithBasicAuth(img, baseURL, "test", "user", "password")
 				So(err, ShouldNotBeNil)

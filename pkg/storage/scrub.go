@@ -17,6 +17,7 @@ import (
 	"github.com/opencontainers/umoci/oci/casext"
 
 	"zotregistry.io/zot/errors"
+	storageTypes "zotregistry.io/zot/pkg/storage/types"
 )
 
 const (
@@ -45,7 +46,7 @@ type ScrubResults struct {
 func (sc StoreController) CheckAllBlobsIntegrity() (ScrubResults, error) {
 	results := ScrubResults{}
 
-	imageStoreList := make(map[string]ImageStore)
+	imageStoreList := make(map[string]storageTypes.ImageStore)
 	if sc.SubStore != nil {
 		imageStoreList = sc.SubStore
 	}
@@ -64,7 +65,7 @@ func (sc StoreController) CheckAllBlobsIntegrity() (ScrubResults, error) {
 	return results, nil
 }
 
-func CheckImageStoreBlobsIntegrity(imgStore ImageStore) ([]ScrubImageResult, error) {
+func CheckImageStoreBlobsIntegrity(imgStore storageTypes.ImageStore) ([]ScrubImageResult, error) {
 	results := []ScrubImageResult{}
 
 	repos, err := imgStore.GetRepositories()
@@ -84,7 +85,7 @@ func CheckImageStoreBlobsIntegrity(imgStore ImageStore) ([]ScrubImageResult, err
 	return results, nil
 }
 
-func CheckRepo(imageName string, imgStore ImageStore) ([]ScrubImageResult, error) {
+func CheckRepo(imageName string, imgStore storageTypes.ImageStore) ([]ScrubImageResult, error) {
 	results := []ScrubImageResult{}
 
 	dir := path.Join(imgStore.RootDir(), imageName)

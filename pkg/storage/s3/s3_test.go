@@ -35,7 +35,9 @@ import (
 	"zotregistry.io/zot/pkg/storage/cache"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
 	"zotregistry.io/zot/pkg/storage/s3"
+	storageTypes "zotregistry.io/zot/pkg/storage/types"
 	"zotregistry.io/zot/pkg/test"
+	"zotregistry.io/zot/pkg/test/inject"
 	"zotregistry.io/zot/pkg/test/mocks"
 )
 
@@ -67,7 +69,8 @@ func skipIt(t *testing.T) {
 	}
 }
 
-func createMockStorage(rootDir string, cacheDir string, dedupe bool, store driver.StorageDriver) storage.ImageStore {
+func createMockStorage(rootDir string, cacheDir string, dedupe bool, store driver.StorageDriver,
+) storageTypes.ImageStore {
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
 
@@ -81,7 +84,7 @@ func createMockStorage(rootDir string, cacheDir string, dedupe bool, store drive
 			UseRelPaths: false,
 		}, log)
 	}
-	il := s3.NewImageStore(rootDir, cacheDir, false, storage.DefaultGCDelay,
+	il := s3.NewImageStore(rootDir, cacheDir, false, storageConstants.DefaultGCDelay,
 		dedupe, false, log, metrics, nil, store, cacheDriver,
 	)
 
@@ -90,11 +93,11 @@ func createMockStorage(rootDir string, cacheDir string, dedupe bool, store drive
 
 func createMockStorageWithMockCache(rootDir string, dedupe bool, store driver.StorageDriver,
 	cacheDriver cache.Cache,
-) storage.ImageStore {
+) storageTypes.ImageStore {
 	log := log.Logger{Logger: zerolog.New(os.Stdout)}
 	metrics := monitoring.NewMetricsServer(false, log)
 
-	il := s3.NewImageStore(rootDir, "", false, storage.DefaultGCDelay,
+	il := s3.NewImageStore(rootDir, "", false, storageConstants.DefaultGCDelay,
 		dedupe, false, log, metrics, nil, store, cacheDriver,
 	)
 
@@ -134,7 +137,7 @@ func createStoreDriver(rootDir string) driver.StorageDriver {
 
 func createObjectsStore(rootDir string, cacheDir string, dedupe bool) (
 	driver.StorageDriver,
-	storage.ImageStore,
+	storageTypes.ImageStore,
 	error,
 ) {
 	store := createStoreDriver(rootDir)
@@ -156,7 +159,7 @@ func createObjectsStore(rootDir string, cacheDir string, dedupe bool) (
 		}, log)
 	}
 
-	il := s3.NewImageStore(rootDir, cacheDir, false, storage.DefaultGCDelay,
+	il := s3.NewImageStore(rootDir, cacheDir, false, storageConstants.DefaultGCDelay,
 		dedupe, false, log, metrics, nil, store, cacheDriver)
 
 	return store, il, err
@@ -164,7 +167,7 @@ func createObjectsStore(rootDir string, cacheDir string, dedupe bool) (
 
 func createObjectsStoreDynamo(rootDir string, cacheDir string, dedupe bool, tableName string) (
 	driver.StorageDriver,
-	storage.ImageStore,
+	storageTypes.ImageStore,
 	error,
 ) {
 	store := createStoreDriver(rootDir)
@@ -191,7 +194,7 @@ func createObjectsStoreDynamo(rootDir string, cacheDir string, dedupe bool, tabl
 		panic(err)
 	}
 
-	il := s3.NewImageStore(rootDir, cacheDir, false, storage.DefaultGCDelay,
+	il := s3.NewImageStore(rootDir, cacheDir, false, storageConstants.DefaultGCDelay,
 		dedupe, false, log, metrics, nil, store, cacheDriver)
 
 	return store, il, err
@@ -730,7 +733,7 @@ func TestNegativeCasesObjectsStorage(t *testing.T) {
 			controller := api.NewController(conf)
 			So(controller, ShouldNotBeNil)
 
-			err = controller.InitImageStore(context.Background())
+			err = controller.InitImageStore()
 			So(err, ShouldBeNil)
 		})
 
@@ -3781,7 +3784,7 @@ func TestInjectDedupe(t *testing.T) {
 		err := imgStore.DedupeBlob("blob", "digest", "newblob")
 		So(err, ShouldBeNil)
 
-		injected := test.InjectFailure(0)
+		injected := inject.InjectFailure(0)
 		err = imgStore.DedupeBlob("blob", "digest", "newblob")
 		if injected {
 			So(err, ShouldNotBeNil)
@@ -3789,7 +3792,7 @@ func TestInjectDedupe(t *testing.T) {
 			So(err, ShouldBeNil)
 		}
 
-		injected = test.InjectFailure(1)
+		injected = inject.InjectFailure(1)
 		err = imgStore.DedupeBlob("blob", "digest", "newblob")
 		if injected {
 			So(err, ShouldNotBeNil)

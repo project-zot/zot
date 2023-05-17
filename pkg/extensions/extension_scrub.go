@@ -13,6 +13,7 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/scheduler"
 	"zotregistry.io/zot/pkg/storage"
+	storageTypes "zotregistry.io/zot/pkg/storage/types"
 )
 
 // EnableScrubExtension enables scrub extension.
@@ -50,7 +51,7 @@ func EnableScrubExtension(config *config.Config, log log.Logger, storeController
 }
 
 type taskGenerator struct {
-	imgStore storage.ImageStore
+	imgStore storageTypes.ImageStore
 	log      log.Logger
 	lastRepo string
 	done     bool

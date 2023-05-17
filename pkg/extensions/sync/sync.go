@@ -24,7 +24,7 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/meta/repodb"
 	"zotregistry.io/zot/pkg/storage"
-	"zotregistry.io/zot/pkg/test"
+	"zotregistry.io/zot/pkg/test/inject"
 )
 
 const (
@@ -315,7 +315,7 @@ func getLocalContexts(log log.Logger) (*types.SystemContext, *signature.PolicyCo
 	policy = &signature.Policy{Default: []signature.PolicyRequirement{signature.NewPRInsecureAcceptAnything()}}
 
 	policyContext, err := signature.NewPolicyContext(policy)
-	if err := test.Error(err); err != nil {
+	if err := inject.Error(err); err != nil {
 		log.Error().Str("errorType", common.TypeOf(err)).
 			Err(err).Msg("couldn't create policy context")
 

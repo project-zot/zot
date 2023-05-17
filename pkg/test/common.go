@@ -47,6 +47,7 @@ import (
 
 	"zotregistry.io/zot/pkg/meta/repodb"
 	"zotregistry.io/zot/pkg/storage"
+	"zotregistry.io/zot/pkg/test/inject"
 )
 
 const (
@@ -549,7 +550,7 @@ func GetImageComponents(layerSize int) (ispec.Image, [][]byte, ispec.Manifest, e
 	}
 
 	configBlob, err := json.Marshal(config)
-	if err = Error(err); err != nil {
+	if err = inject.Error(err); err != nil {
 		return ispec.Image{}, [][]byte{}, ispec.Manifest{}, err
 	}
 
@@ -597,7 +598,7 @@ func GetRandomImageComponents(layerSize int) (ispec.Image, [][]byte, ispec.Manif
 	}
 
 	configBlob, err := json.Marshal(config)
-	if err = Error(err); err != nil {
+	if err = inject.Error(err); err != nil {
 		return ispec.Image{}, [][]byte{}, ispec.Manifest{}, err
 	}
 
@@ -665,7 +666,7 @@ func GetRandomImage(reference string) (Image, error) {
 
 func GetImageComponentsWithConfig(conf ispec.Image) (ispec.Image, [][]byte, ispec.Manifest, error) {
 	configBlob, err := json.Marshal(conf)
-	if err = Error(err); err != nil {
+	if err = inject.Error(err); err != nil {
 		return ispec.Image{}, [][]byte{}, ispec.Manifest{}, err
 	}
 
@@ -843,7 +844,7 @@ func UploadImage(img Image, baseURL, repo string) error {
 	}
 	// upload config
 	cblob, err := json.Marshal(img.Config)
-	if err = Error(err); err != nil {
+	if err = inject.Error(err); err != nil {
 		return err
 	}
 
@@ -856,11 +857,11 @@ func UploadImage(img Image, baseURL, repo string) error {
 
 	resp, err := resty.R().
 		Post(baseURL + "/v2/" + repo + "/blobs/uploads/")
-	if err = Error(err); err != nil {
+	if err = inject.Error(err); err != nil {
 		return err
 	}
 
-	if ErrStatusCode(resp.StatusCode()) != http.StatusAccepted || ErrStatusCode(resp.StatusCode()) == -1 {
+	if inject.ErrStatusCode(resp.StatusCode()) != http.StatusAccepted || inject.ErrStatusCode(resp.StatusCode()) == -1 {
 		return ErrPostBlob
 	}
 
@@ -873,17 +874,17 @@ func UploadImage(img Image, baseURL, repo string) error {
 		SetQueryParam("digest", cdigest.String()).
 		SetBody(cblob).
 		Put(loc)
-	if err = Error(err); err != nil {
+	if err = inject.Error(err); err != nil {
 		return err
 	}
 
-	if ErrStatusCode(resp.StatusCode()) != http.StatusCreated || ErrStatusCode(resp.StatusCode()) == -1 {
+	if inject.ErrStatusCode(resp.StatusCode()) != http.StatusCreated || inject.ErrStatusCode(resp.StatusCode()) == -1 {
 		return ErrPostBlob
 	}
 
 	// put manifest
 	manifestBlob, err := json.Marshal(img.Manifest)
-	if err = Error(err); err != nil {
+	if err = inject.Error(err); err != nil {
 		return err
 	}
 
@@ -892,11 +893,11 @@ func UploadImage(img Image, baseURL, repo string) error {
 		SetBody(manifestBlob).
 		Put(baseURL + "/v2/" + repo + "/manifests/" + img.Reference)
 
-	if ErrStatusCode(resp.StatusCode()) != http.StatusCreated {
+	if inject.ErrStatusCode(resp.StatusCode()) != http.StatusCreated {
 		return ErrPutBlob
 	}
 
-	if ErrStatusCode(resp.StatusCode()) != http.StatusCreated {
+	if inject.ErrStatusCode(resp.StatusCode()) != http.StatusCreated {
 		return ErrPutBlob
 	}
 
@@ -1512,7 +1513,7 @@ func UploadImageWithBasicAuth(img Image, baseURL, repo, user, password string) e
 	}
 	// upload config
 	cblob, err := json.Marshal(img.Config)
-	if err = Error(err); err != nil {
+	if err = inject.Error(err); err != nil {
 		return err
 	}
 
@@ -1526,11 +1527,11 @@ func UploadImageWithBasicAuth(img Image, baseURL, repo, user, password string) e
 	resp, err := resty.R().
 		SetBasicAuth(user, password).
 		Post(baseURL + "/v2/" + repo + "/blobs/uploads/")
-	if err = Error(err); err != nil {
+	if err = inject.Error(err); err != nil {
 		return err
 	}
 
-	if ErrStatusCode(resp.StatusCode()) != http.StatusAccepted || ErrStatusCode(resp.StatusCode()) == -1 {
+	if inject.ErrStatusCode(resp.StatusCode()) != http.StatusAccepted || inject.ErrStatusCode(resp.StatusCode()) == -1 {
 		return ErrPostBlob
 	}
 
@@ -1544,17 +1545,17 @@ func UploadImageWithBasicAuth(img Image, baseURL, repo, user, password string) e
 		SetQueryParam("digest", cdigest.String()).
 		SetBody(cblob).
 		Put(loc)
-	if err = Error(err); err != nil {
+	if err = inject.Error(err); err != nil {
 		return err
 	}
 
-	if ErrStatusCode(resp.StatusCode()) != http.StatusCreated || ErrStatusCode(resp.StatusCode()) == -1 {
+	if inject.ErrStatusCode(resp.StatusCode()) != http.StatusCreated || inject.ErrStatusCode(resp.StatusCode()) == -1 {
 		return ErrPostBlob
 	}
 
 	// put manifest
 	manifestBlob, err := json.Marshal(img.Manifest)
-	if err = Error(err); err != nil {
+	if err = inject.Error(err); err != nil {
 		return err
 	}
 
@@ -1795,7 +1796,7 @@ func UploadMultiarchImage(multiImage MultiarchImage, baseURL string, repo string
 
 	// put manifest
 	indexBlob, err := json.Marshal(multiImage.Index)
-	if err = Error(err); err != nil {
+	if err = inject.Error(err); err != nil {
 		return err
 	}
 
