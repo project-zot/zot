@@ -1358,11 +1358,13 @@ func (is *ObjectStorage) DeleteBlob(repo string, digest godigest.Digest) error {
 		}
 
 		// remove cache entry and move blob contents to the next candidate if there is any
-		if err := is.cache.DeleteBlob(digest, blobPath); err != nil {
-			is.log.Error().Err(err).Str("digest", digest.String()).Str("blobPath", blobPath).
-				Msg("unable to remove blob path from cache")
+		if ok := is.cache.HasBlob(digest, blobPath); ok {
+			if err := is.cache.DeleteBlob(digest, blobPath); err != nil {
+				is.log.Error().Err(err).Str("digest", digest.String()).Str("blobPath", blobPath).
+					Msg("unable to remove blob path from cache")
 
-			return err
+				return err
+			}
 		}
 
 		// if the deleted blob is one with content

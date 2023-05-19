@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -18,21 +19,83 @@ import (
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"gopkg.in/resty.v1"
 
-	"zotregistry.io/zot/errors"
+	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/test"
 )
 
+func makeHTTPGetRequest(url string, resultPtr interface{}, client *resty.Client) error {
+	resp, err := client.R().Get(url)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode() != http.StatusOK {
+		log.Printf("unable to make GET request on %s, response status code: %d", url, resp.StatusCode())
+
+		return errors.New(string(resp.Body())) //nolint: goerr113
+	}
+
+	err = json.Unmarshal(resp.Body(), resultPtr)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func makeHTTPDeleteRequest(url string, client *resty.Client) error {
+	resp, err := client.R().Delete(url)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode() != http.StatusAccepted {
+		log.Printf("unable to make DELETE request on %s, response status code: %d", url, resp.StatusCode())
+
+		return errors.New(string(resp.Body())) //nolint: goerr113
+	}
+
+	return nil
+}
+
 func deleteTestRepo(repos []string, url string, client *resty.Client) error {
 	for _, repo := range repos {
-		resp, err := client.R().Delete((fmt.Sprintf("%s/v2/%s/", url, repo)))
+		var tags api.ImageTags
+
+		// get tags
+		err := makeHTTPGetRequest(fmt.Sprintf("%s/v2/%s/tags/list", url, repo), &tags, client)
 		if err != nil {
 			return err
 		}
 
-		// request specific check
-		statusCode := resp.StatusCode()
-		if statusCode != http.StatusAccepted {
-			return errors.ErrUnknownCode
+		for _, tag := range tags.Tags {
+			var manifest ispec.Manifest
+
+			// first get tag manifest to get containing blobs
+			err := makeHTTPGetRequest(fmt.Sprintf("%s/v2/%s/manifests/%s", url, repo, tag), &manifest, client)
+			if err != nil {
+				return err
+			}
+
+			// delete blobs
+			for _, blob := range manifest.Layers {
+				err := makeHTTPDeleteRequest(fmt.Sprintf("%s/v2/%s/blobs/%s", url, repo, blob.Digest.String()), client)
+				if err != nil {
+					return err
+				}
+			}
+
+			// delete config blob
+			err = makeHTTPDeleteRequest(fmt.Sprintf("%s/v2/%s/blobs/%s", url, repo, manifest.Config.Digest.String()), client)
+			if err != nil {
+				return err
+			}
+
+			// delete manifest
+			err = makeHTTPDeleteRequest(fmt.Sprintf("%s/v2/%s/manifests/%s", url, repo, tag), client)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -273,7 +336,7 @@ func pushMonolithImage(workdir, url, trepo string, repos []string, config testCo
 	// request specific check
 	statusCode = resp.StatusCode()
 	if statusCode != http.StatusAccepted {
-		return nil, repos, errors.ErrUnknownCode
+		return nil, repos, errors.New(string(resp.Body())) //nolint: goerr113
 	}
 
 	loc := test.Location(url, resp)
@@ -311,7 +374,7 @@ func pushMonolithImage(workdir, url, trepo string, repos []string, config testCo
 	// request specific check
 	statusCode = resp.StatusCode()
 	if statusCode != http.StatusCreated {
-		return nil, repos, errors.ErrUnknownCode
+		return nil, repos, errors.New(string(resp.Body())) //nolint: goerr113
 	}
 
 	// upload image config blob
@@ -325,7 +388,7 @@ func pushMonolithImage(workdir, url, trepo string, repos []string, config testCo
 	// request specific check
 	statusCode = resp.StatusCode()
 	if statusCode != http.StatusAccepted {
-		return nil, repos, errors.ErrUnknownCode
+		return nil, repos, errors.New(string(resp.Body())) //nolint: goerr113
 	}
 
 	loc = test.Location(url, resp)
@@ -345,7 +408,7 @@ func pushMonolithImage(workdir, url, trepo string, repos []string, config testCo
 	// request specific check
 	statusCode = resp.StatusCode()
 	if statusCode != http.StatusCreated {
-		return nil, repos, errors.ErrUnknownCode
+		return nil, repos, errors.New(string(resp.Body())) //nolint: goerr113
 	}
 
 	// create a manifest
@@ -388,7 +451,7 @@ func pushMonolithImage(workdir, url, trepo string, repos []string, config testCo
 	// request specific check
 	statusCode = resp.StatusCode()
 	if statusCode != http.StatusCreated {
-		return nil, repos, errors.ErrUnknownCode
+		return nil, repos, errors.New(string(resp.Body())) //nolint: goerr113
 	}
 
 	manifestHash[repo] = manifestTag
