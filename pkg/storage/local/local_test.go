@@ -733,6 +733,48 @@ func FuzzFullBlobUpload(f *testing.F) {
 	})
 }
 
+func TestStorageCacheErrors(t *testing.T) {
+	Convey("get error in DedupeBlob() when cache.Put() deduped blob", t, func() {
+		log := log.Logger{Logger: zerolog.New(os.Stdout)}
+		metrics := monitoring.NewMetricsServer(false, log)
+
+		dir := t.TempDir()
+
+		originRepo := "dedupe1"
+		dedupedRepo := "dedupe2"
+
+		cblob, cdigest := test.GetRandomImageConfig()
+
+		getBlobPath := ""
+		imgStore := local.NewImageStore(dir, false, storage.DefaultGCDelay,
+			true, true, log, metrics, nil, &mocks.CacheMock{
+				PutBlobFn: func(digest godigest.Digest, path string) error {
+					if strings.Contains(path, dedupedRepo) {
+						return errCache
+					}
+
+					return nil
+				},
+				GetBlobFn: func(digest godigest.Digest) (string, error) {
+					return getBlobPath, nil
+				},
+			})
+
+		err := imgStore.InitRepo(originRepo)
+		So(err, ShouldBeNil)
+
+		err = imgStore.InitRepo(dedupedRepo)
+		So(err, ShouldBeNil)
+
+		_, _, err = imgStore.FullBlobUpload(originRepo, bytes.NewReader(cblob), cdigest)
+		So(err, ShouldBeNil)
+
+		getBlobPath = strings.ReplaceAll(imgStore.BlobPath(originRepo, cdigest), imgStore.RootDir(), "")
+		_, _, err = imgStore.FullBlobUpload(dedupedRepo, bytes.NewReader(cblob), cdigest)
+		So(err, ShouldNotBeNil)
+	})
+}
+
 func FuzzDedupeBlob(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data string) {
 		log := &log.Logger{Logger: zerolog.New(os.Stdout)}
@@ -1107,8 +1149,15 @@ func TestDedupeLinks(t *testing.T) {
 			UseRelPaths: true,
 		}, log)
 
-		imgStore := local.NewImageStore(dir, false, storage.DefaultGCDelay,
-			testCase.dedupe, true, log, metrics, nil, cacheDriver)
+		var imgStore storage.ImageStore
+
+		if testCase.dedupe {
+			imgStore = local.NewImageStore(dir, false, storage.DefaultGCDelay,
+				testCase.dedupe, true, log, metrics, nil, cacheDriver)
+		} else {
+			imgStore = local.NewImageStore(dir, false, storage.DefaultGCDelay,
+				testCase.dedupe, true, log, metrics, nil, nil)
+		}
 
 		Convey(fmt.Sprintf("Dedupe %t", testCase.dedupe), t, func(c C) {
 			// manifest1
@@ -1238,6 +1287,16 @@ func TestDedupeLinks(t *testing.T) {
 			So(os.SameFile(fi1, fi2), ShouldEqual, testCase.expected)
 
 			if !testCase.dedupe {
+				Convey("delete blobs from storage/cache should work when dedupe is false", func() {
+					So(blobDigest1, ShouldEqual, blobDigest2)
+
+					err = imgStore.DeleteBlob("dedupe1", godigest.NewDigestFromEncoded(godigest.SHA256, blobDigest1))
+					So(err, ShouldBeNil)
+
+					err = imgStore.DeleteBlob("dedupe2", godigest.NewDigestFromEncoded(godigest.SHA256, blobDigest2))
+					So(err, ShouldBeNil)
+				})
+
 				Convey("Intrerrupt rebuilding and restart, checking idempotency", func() {
 					for i := 0; i < 10; i++ {
 						taskScheduler, cancel := runAndGetScheduler()
@@ -1357,6 +1416,16 @@ func TestDedupeLinks(t *testing.T) {
 					So(os.SameFile(fi1, fi2), ShouldEqual, true)
 				})
 			}
+
+			Convey("delete blobs from storage/cache should work when dedupe is true", func() {
+				So(blobDigest1, ShouldEqual, blobDigest2)
+
+				err = imgStore.DeleteBlob("dedupe1", godigest.NewDigestFromEncoded(godigest.SHA256, blobDigest1))
+				So(err, ShouldBeNil)
+
+				err = imgStore.DeleteBlob("dedupe2", godigest.NewDigestFromEncoded(godigest.SHA256, blobDigest2))
+				So(err, ShouldBeNil)
+			})
 
 			Convey("storage and cache inconsistency", func() {
 				// delete blobs

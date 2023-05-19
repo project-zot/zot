@@ -270,6 +270,7 @@ type testFunc func(
 	config testConfig,
 	statsCh chan statsRecord,
 	client *resty.Client,
+	skipCleanup bool,
 ) error
 
 //nolint:gosec
@@ -279,6 +280,7 @@ func GetCatalog(
 	config testConfig,
 	statsCh chan statsRecord,
 	client *resty.Client,
+	skipCleanup bool,
 ) error {
 	var repos []string
 
@@ -336,9 +338,11 @@ func GetCatalog(
 	}
 
 	// clean up
-	err = deleteTestRepo(repos, url, client)
-	if err != nil {
-		return err
+	if !skipCleanup {
+		err = deleteTestRepo(repos, url, client)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -350,6 +354,7 @@ func PushMonolithStreamed(
 	config testConfig,
 	statsCh chan statsRecord,
 	client *resty.Client,
+	skipCleanup bool,
 ) error {
 	var repos []string
 
@@ -363,9 +368,11 @@ func PushMonolithStreamed(
 	}
 
 	// clean up
-	err := deleteTestRepo(repos, url, client)
-	if err != nil {
-		return err
+	if !skipCleanup {
+		err := deleteTestRepo(repos, url, client)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -377,6 +384,7 @@ func PushChunkStreamed(
 	config testConfig,
 	statsCh chan statsRecord,
 	client *resty.Client,
+	skipCleanup bool,
 ) error {
 	var repos []string
 
@@ -390,9 +398,11 @@ func PushChunkStreamed(
 	}
 
 	// clean up
-	err := deleteTestRepo(repos, url, client)
-	if err != nil {
-		return err
+	if !skipCleanup {
+		err := deleteTestRepo(repos, url, client)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -404,6 +414,7 @@ func Pull(
 	config testConfig,
 	statsCh chan statsRecord,
 	client *resty.Client,
+	skipCleanup bool,
 ) error {
 	var repos []string
 
@@ -472,9 +483,11 @@ func Pull(
 	}
 
 	// clean up
-	err := deleteTestRepo(repos, url, client)
-	if err != nil {
-		return err
+	if !skipCleanup {
+		err := deleteTestRepo(repos, url, client)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -486,6 +499,7 @@ func MixedPullAndPush(
 	config testConfig,
 	statsCh chan statsRecord,
 	client *resty.Client,
+	skipCleanup bool,
 ) error {
 	var repos []string
 
@@ -519,9 +533,11 @@ func MixedPullAndPush(
 	}
 
 	// clean up
-	err = deleteTestRepo(repos, url, client)
-	if err != nil {
-		return err
+	if !skipCleanup {
+		err = deleteTestRepo(repos, url, client)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -633,7 +649,7 @@ var testSuite = []testConfig{ //nolint:gochecknoglobals // used only in this tes
 func Perf(
 	workdir, url, auth, repo string,
 	concurrency int, requests int,
-	outFmt string, srcIPs string, srcCIDR string,
+	outFmt string, srcIPs string, srcCIDR string, skipCleanup bool,
 ) {
 	json := jsoniter.ConfigCompatibleWithStandardLibrary
 	// logging
@@ -702,7 +718,10 @@ func Perf(
 					log.Fatal(err)
 				}
 
-				_ = tconfig.tfunc(workdir, url, repo, requests/concurrency, tconfig, statsCh, httpClient)
+				err = tconfig.tfunc(workdir, url, repo, requests/concurrency, tconfig, statsCh, httpClient, skipCleanup)
+				if err != nil {
+					log.Fatal(err)
+				}
 			}()
 		}
 		wg.Wait()

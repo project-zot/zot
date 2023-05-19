@@ -18,6 +18,8 @@ func NewPerfRootCmd() *cobra.Command {
 
 	var concurrency, requests int
 
+	var skipCleanup bool
+
 	rootCmd := &cobra.Command{
 		Use:   "zb <url>",
 		Short: "`zb`",
@@ -46,7 +48,7 @@ func NewPerfRootCmd() *cobra.Command {
 
 			requests = concurrency * (requests / concurrency)
 
-			Perf(workdir, url, auth, repo, concurrency, requests, outFmt, srcIPs, srcCIDR)
+			Perf(workdir, url, auth, repo, concurrency, requests, outFmt, srcIPs, srcCIDR, skipCleanup)
 		},
 	}
 
@@ -66,6 +68,8 @@ func NewPerfRootCmd() *cobra.Command {
 		"Number of requests to perform")
 	rootCmd.Flags().StringVarP(&outFmt, "output-format", "o", "",
 		"Output format of test results: stdout (default), json, ci-cd")
+	rootCmd.Flags().BoolVar(&skipCleanup, "skip-cleanup", false,
+		"Clean up pushed repos from remote registry after running benchmark (default true)")
 
 	// "version"
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "Show the version and exit")

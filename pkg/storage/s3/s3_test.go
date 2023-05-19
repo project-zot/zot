@@ -1400,6 +1400,16 @@ func TestS3Dedupe(t *testing.T) {
 		// deduped blob should be of size 0
 		So(fi2.Size(), ShouldEqual, 0)
 
+		Convey("delete blobs from storage/cache should work when dedupe is true", func() {
+			So(blobDigest1, ShouldEqual, blobDigest2)
+
+			err = imgStore.DeleteBlob("dedupe1", blobDigest1)
+			So(err, ShouldBeNil)
+
+			err = imgStore.DeleteBlob("dedupe2", blobDigest2)
+			So(err, ShouldBeNil)
+		})
+
 		Convey("Check that delete blobs moves the real content to the next contenders", func() {
 			// if we delete blob1, the content should be moved to blob2
 			err = imgStore.DeleteBlob("dedupe1", blobDigest1)
@@ -1536,6 +1546,19 @@ func TestS3Dedupe(t *testing.T) {
 
 			// the new blob with dedupe false should be equal with the origin blob from dedupe1
 			So(fi1.Size(), ShouldEqual, fi3.Size())
+
+			Convey("delete blobs from storage/cache should work when dedupe is false", func() {
+				So(blobDigest1, ShouldEqual, blobDigest2)
+
+				err = imgStore.DeleteBlob("dedupe1", blobDigest1)
+				So(err, ShouldBeNil)
+
+				err = imgStore.DeleteBlob("dedupe2", blobDigest2)
+				So(err, ShouldBeNil)
+
+				err = imgStore.DeleteBlob("dedupe3", blobDigest2)
+				So(err, ShouldBeNil)
+			})
 
 			Convey("rebuild s3 dedupe index from true to false", func() { //nolint: dupl
 				taskScheduler, cancel := runAndGetScheduler()
@@ -1749,6 +1772,16 @@ func TestS3Dedupe(t *testing.T) {
 		// deduped blob should be of size 0
 		So(fi2.Size(), ShouldEqual, 0)
 
+		Convey("delete blobs from storage/cache should work when dedupe is true", func() {
+			So(blobDigest1, ShouldEqual, blobDigest2)
+
+			err = imgStore.DeleteBlob("dedupe1", blobDigest1)
+			So(err, ShouldBeNil)
+
+			err = imgStore.DeleteBlob("dedupe2", blobDigest2)
+			So(err, ShouldBeNil)
+		})
+
 		Convey("rebuild s3 dedupe index from true to false", func() { //nolint: dupl
 			taskScheduler, cancel := runAndGetScheduler()
 
@@ -1776,6 +1809,16 @@ func TestS3Dedupe(t *testing.T) {
 			blobContent, err := imgStore.GetBlobContent("dedupe2", blobDigest2)
 			So(err, ShouldBeNil)
 			So(len(blobContent), ShouldEqual, fi1.Size())
+
+			Convey("delete blobs from storage/cache should work when dedupe is false", func() {
+				So(blobDigest1, ShouldEqual, blobDigest2)
+
+				err = imgStore.DeleteBlob("dedupe1", blobDigest1)
+				So(err, ShouldBeNil)
+
+				err = imgStore.DeleteBlob("dedupe2", blobDigest2)
+				So(err, ShouldBeNil)
+			})
 
 			Convey("rebuild s3 dedupe index from false to true", func() {
 				taskScheduler, cancel := runAndGetScheduler()

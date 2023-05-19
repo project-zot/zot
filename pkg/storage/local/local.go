@@ -1045,6 +1045,13 @@ retry:
 			}
 		}
 
+		// also put dedupe blob in cache
+		if err := is.cache.PutBlob(dstDigest, dst); err != nil {
+			is.log.Error().Err(err).Str("blobPath", dst).Msg("dedupe: unable to insert blob record")
+
+			return err
+		}
+
 		if err := os.Remove(src); err != nil {
 			is.log.Error().Err(err).Str("src", src).Msg("dedupe: uname to remove blob")
 
