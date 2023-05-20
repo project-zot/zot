@@ -178,7 +178,7 @@ func SetupSearchRoutes(config *config.Config, router *mux.Router, storeControlle
 	if config.Extensions.Search != nil && *config.Extensions.Search.Enable {
 		resConfig := search.GetResolverConfig(log, storeController, repoDB, cveInfo)
 
-		extRouter := router.PathPrefix(constants.ExtSearchPrefix).Subrouter()
+		extRouter := router.PathPrefix(constants.ExtSearch).Subrouter()
 		extRouter.Use(SearchACHeadersHandler())
 		extRouter.Methods("GET", "POST", "OPTIONS").
 			Handler(addSearchSecurityHeaders(gqlHandler.NewDefaultServer(gql_generated.NewExecutableSchema(resConfig))))

@@ -495,6 +495,7 @@ func TestAllowMethodsHeader(t *testing.T) {
 		conf := config.New()
 		conf.HTTP.Port = port
 		conf.Storage.RootDirectory = dir
+		conf.HTTP.AllowOrigin = "someOrigin"
 
 		simpleUser := "simpleUser"
 		simpleUserPassword := "simpleUserPass"

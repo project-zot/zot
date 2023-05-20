@@ -67,26 +67,6 @@ func NewController(config *config.Config) *Controller {
 	return &controller
 }
 
-func (c *Controller) CORSHeaders() mux.MiddlewareFunc {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-			// CORS
-			c.CORSHandler(response, request)
-
-			next.ServeHTTP(response, request)
-		})
-	}
-}
-
-func (c *Controller) CORSHandler(response http.ResponseWriter, request *http.Request) {
-	// allow origin as specified in config if not accept request from anywhere.
-	if c.Config.HTTP.AllowOrigin == "" {
-		response.Header().Set("Access-Control-Allow-Origin", "*")
-	} else {
-		response.Header().Set("Access-Control-Allow-Origin", c.Config.HTTP.AllowOrigin)
-	}
-}
-
 func DumpRuntimeParams(log log.Logger) {
 	var rLimit syscall.Rlimit
 
@@ -130,7 +110,6 @@ func (c *Controller) Run(reloadCtx context.Context) error {
 	}
 
 	engine.Use(
-		c.CORSHeaders(),
 		SessionLogger(c),
 		handlers.RecoveryHandler(handlers.RecoveryLogger(c.Log),
 			handlers.PrintRecoveryStack(false)))
