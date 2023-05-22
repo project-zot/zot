@@ -372,7 +372,7 @@ func (scanner Scanner) updateDB(dbDir string) error {
 	ctx := context.Background()
 
 	err := operation.DownloadDB(ctx, "dev", dbDir, scanner.dbRepository, false, false,
-		fanalTypes.RemoteOptions{Insecure: false})
+		fanalTypes.RegistryOptions{Insecure: false})
 	if err != nil {
 		scanner.log.Error().Err(err).Str("dbDir", dbDir).Msg("Error downloading Trivy DB to destination dir")
 
