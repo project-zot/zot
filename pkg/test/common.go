@@ -1179,9 +1179,7 @@ func SignWithNotation(keyName string, reference string, tdir string) error {
 		PlainHTTP: plainHTTP,
 	}
 
-	repositoryOpts := notreg.RepositoryOptions{
-		OCIImageManifest: true,
-	}
+	repositoryOpts := notreg.RepositoryOptions{}
 
 	sigRepo := notreg.NewRepositoryWithOptions(remoteRepo, repositoryOpts)
 
@@ -1265,9 +1263,7 @@ func VerifyWithNotation(reference string, tdir string) error {
 		PlainHTTP: plainHTTP,
 	}
 
-	repositoryOpts := notreg.RepositoryOptions{
-		OCIImageManifest: true,
-	}
+	repositoryOpts := notreg.RepositoryOptions{}
 
 	repo := notreg.NewRepositoryWithOptions(remoteRepo, repositoryOpts)
 
