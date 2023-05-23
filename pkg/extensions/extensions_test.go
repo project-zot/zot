@@ -24,8 +24,9 @@ import (
 )
 
 const (
-	ServerCert = "../../test/data/server.cert"
-	ServerKey  = "../../test/data/server.key"
+	ServerCert            = "../../test/data/server.cert"
+	ServerKey             = "../../test/data/server.key"
+	AuthorizationAllRepos = "**"
 )
 
 func TestEnableExtension(t *testing.T) {
@@ -108,6 +109,35 @@ func TestMetricsExtension(t *testing.T) {
 	})
 }
 
+func TestHTTPStruct(t *testing.T) {
+	Convey("Check custom unmarshal", t, func() {
+		customHTTP := &extensions.HTTP{}
+		Convey("invalid data unmarshal", func() {
+			data := []byte(`{"auth":what?}`)
+			err := customHTTP.UnmarshalJSON(data)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("valid data unmarshal", func() {
+			htpasswdPath := test.MakeHtpasswdFile()
+			validHTTP := &extensions.HTTP{
+				Auth: &extensions.Auth{
+					HTPasswd: &extensions.HTPasswd{
+						Path: htpasswdPath,
+					},
+				},
+				AccessControl: &extensions.AccessControl{
+					AnonymousPolicy: true,
+				},
+			}
+			data, err := json.Marshal(validHTTP)
+			So(err, ShouldBeNil)
+			err = customHTTP.UnmarshalJSON(data)
+			So(err, ShouldBeNil)
+		})
+	})
+}
+
 func TestMgmtExtension(t *testing.T) {
 	globalDir := t.TempDir()
 	conf := config.New()
@@ -121,6 +151,126 @@ func TestMgmtExtension(t *testing.T) {
 	}
 
 	defaultValue := true
+
+	Convey("verify mgmt route enabled with accessControl", t, func() {
+		Convey("access control enabled but no anonymous policy ", func() {
+			conf.HTTP.AccessControl = &config.AccessControlConfig{
+				Repositories: config.Repositories{},
+			}
+
+			conf.Extensions = &extconf.ExtensionConfig{}
+			conf.Extensions.Mgmt = &extconf.MgmtConfig{
+				BaseConfig: extconf.BaseConfig{
+					Enable: &defaultValue,
+				},
+			}
+
+			conf.Log.Output = logFile.Name()
+			defer os.Remove(logFile.Name()) // cleanup
+
+			ctlr := api.NewController(conf)
+			subPaths := make(map[string]config.StorageConfig)
+			subPaths["/a"] = config.StorageConfig{}
+
+			ctlr.Config.Storage.RootDirectory = globalDir
+			ctlr.Config.Storage.SubPaths = subPaths
+			ctlrManager := test.NewControllerManager(ctlr)
+			ctlrManager.StartAndWait(port)
+			defer ctlrManager.StopServer()
+
+			data, _ := os.ReadFile(logFile.Name())
+
+			So(string(data), ShouldContainSubstring, "setting up mgmt routes")
+
+			resp, err := resty.R().Get(baseURL + constants.FullMgmtPrefix)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			mgmtResp := extensions.StrippedConfig{}
+			err = json.Unmarshal(resp.Body(), &mgmtResp)
+			So(err, ShouldBeNil)
+			So(mgmtResp.HTTP.AccessControl.AnonymousPolicy, ShouldBeFalse)
+		})
+
+		Convey("anonymous policy exists", func() {
+			conf.HTTP.AccessControl = &config.AccessControlConfig{
+				Repositories: config.Repositories{
+					AuthorizationAllRepos: config.PolicyGroup{
+						AnonymousPolicy: []string{"read"},
+					},
+				},
+			}
+
+			conf.Extensions = &extconf.ExtensionConfig{}
+			conf.Extensions.Mgmt = &extconf.MgmtConfig{
+				BaseConfig: extconf.BaseConfig{
+					Enable: &defaultValue,
+				},
+			}
+
+			conf.Log.Output = logFile.Name()
+			defer os.Remove(logFile.Name()) // cleanup
+
+			ctlr := api.NewController(conf)
+			subPaths := make(map[string]config.StorageConfig)
+			subPaths["/a"] = config.StorageConfig{}
+
+			ctlr.Config.Storage.RootDirectory = globalDir
+			ctlr.Config.Storage.SubPaths = subPaths
+			ctlrManager := test.NewControllerManager(ctlr)
+			ctlrManager.StartAndWait(port)
+			defer ctlrManager.StopServer()
+
+			data, _ := os.ReadFile(logFile.Name())
+
+			So(string(data), ShouldContainSubstring, "setting up mgmt routes")
+
+			resp, err := resty.R().Get(baseURL + constants.FullMgmtPrefix)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			mgmtResp := extensions.StrippedConfig{}
+			err = json.Unmarshal(resp.Body(), &mgmtResp)
+			So(err, ShouldBeNil)
+			So(mgmtResp.HTTP.AccessControl.AnonymousPolicy, ShouldBeTrue)
+		})
+
+		Convey("anonymous policy not present", func() {
+			conf.HTTP.AccessControl = nil
+			conf.Extensions = &extconf.ExtensionConfig{}
+			conf.Extensions.Mgmt = &extconf.MgmtConfig{
+				BaseConfig: extconf.BaseConfig{
+					Enable: &defaultValue,
+				},
+			}
+
+			conf.Log.Output = logFile.Name()
+			defer os.Remove(logFile.Name()) // cleanup
+
+			ctlr := api.NewController(conf)
+			subPaths := make(map[string]config.StorageConfig)
+			subPaths["/a"] = config.StorageConfig{}
+
+			ctlr.Config.Storage.RootDirectory = globalDir
+			ctlr.Config.Storage.SubPaths = subPaths
+			ctlrManager := test.NewControllerManager(ctlr)
+			ctlrManager.StartAndWait(port)
+			defer ctlrManager.StopServer()
+
+			data, _ := os.ReadFile(logFile.Name())
+
+			So(string(data), ShouldContainSubstring, "setting up mgmt routes")
+
+			resp, err := resty.R().Get(baseURL + constants.FullMgmtPrefix)
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusOK)
+
+			mgmtResp := extensions.StrippedConfig{}
+			err = json.Unmarshal(resp.Body(), &mgmtResp)
+			So(err, ShouldBeNil)
+			So(mgmtResp.HTTP.AccessControl, ShouldBeNil)
+		})
+	})
 
 	Convey("Verify mgmt route enabled with htpasswd", t, func() {
 		htpasswdPath := test.MakeHtpasswdFile()

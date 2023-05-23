@@ -32,12 +32,33 @@ type Auth struct {
 	} `json:"ldap,omitempty" mapstructure:"ldap"`
 }
 
+type AccessControl struct {
+	AnonymousPolicy bool `json:"anonymousPolicy,omitempty" mapstructure:"anonymousPolicy"`
+}
+
+type HTTP struct {
+	Auth          *Auth          `json:"auth,omitempty" mapstructure:"auth"`
+	AccessControl *AccessControl `json:"accessControl,omitempty" mapstructure:"accessControl"`
+}
 type StrippedConfig struct {
 	DistSpecVersion string `json:"distSpecVersion" mapstructure:"distSpecVersion"`
 	BinaryType      string `json:"binaryType" mapstructure:"binaryType"`
-	HTTP            struct {
-		Auth *Auth `json:"auth,omitempty" mapstructure:"auth"`
-	} `json:"http" mapstructure:"http"`
+	HTTP            *HTTP  `json:"http" mapstructure:"http"`
+}
+
+func (http *HTTP) UnmarshalJSON(data []byte) error {
+	type Alias HTTP
+	// var internalHTTP Alias
+	internalHTTP := (*Alias)(http)
+
+	err := json.Unmarshal(data, &internalHTTP)
+	if err != nil {
+		return err
+	}
+	http.Auth = internalHTTP.Auth
+	http.AccessControl = internalHTTP.AccessControl
+
+	return nil
 }
 
 func (auth Auth) MarshalJSON() ([]byte, error) {
@@ -69,7 +90,14 @@ type mgmt struct {
 func (mgmt *mgmt) handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sanitizedConfig := mgmt.config.Sanitize()
-		buf, err := common.MarshalThroughStruct(sanitizedConfig, &StrippedConfig{})
+		strippedConfig := &StrippedConfig{
+			HTTP: &HTTP{
+				AccessControl: &AccessControl{
+					AnonymousPolicy: anonymousPolicyExists(mgmt.config.HTTP.AccessControl),
+				},
+			},
+		}
+		buf, err := common.MarshalThroughStruct(sanitizedConfig, strippedConfig)
 		if err != nil {
 			mgmt.log.Error().Err(err).Msg("mgmt: couldn't marshal config response")
 			w.WriteHeader(http.StatusInternalServerError)
@@ -94,4 +122,18 @@ func SetupMgmtRoutes(config *config.Config, router *mux.Router, log log.Logger) 
 
 		router.PathPrefix(constants.ExtMgmt).Methods("GET").Handler(addMgmtSecurityHeaders(mgmt.handler()))
 	}
+}
+
+func anonymousPolicyExists(config *config.AccessControlConfig) bool {
+	if config == nil {
+		return false
+	}
+
+	for _, repository := range config.Repositories {
+		if len(repository.AnonymousPolicy) > 0 {
+			return true
+		}
+	}
+
+	return false
 }
